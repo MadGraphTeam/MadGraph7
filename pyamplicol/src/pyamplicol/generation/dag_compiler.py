@@ -35,6 +35,7 @@ from .dag_equivalence import (
     _canonical_kernel_evaluation,
     assign_recursive_current_evaluation_reuse,
 )
+from .dag_grades import split_u1_grades
 from .dag_ordering import (
     _closure_candidate_splits,
     _closure_combination_matches_word,
@@ -68,7 +69,10 @@ from .dag_types import (
     GenericDAG,
     InteractionNode,
 )
-from .fermion_ordering import apply_fermion_ordering_signs
+from .fermion_ordering import (
+    apply_colour_connection_signs,
+    apply_fermion_ordering_signs,
+)
 
 DAGProgressCallback = Callable[[Mapping[str, str | int]], None]
 
@@ -220,6 +224,8 @@ class GenericDAGCompiler:
         progress_callback: DAGProgressCallback | None = None,
         loop_blocks: bool = False,
         loop_block_reachability: LoopBlockReachability | None = None,
+        u1_grades: bool = False,
+        loop_born: bool = False,
     ) -> None:
         """``loop_blocks`` compiles loop-request blocks instead of a tree.
 
@@ -228,7 +234,15 @@ class GenericDAGCompiler:
         closure pruning layers replaced by ``loop_block_reachability``
         (default ``AttachableLoopBlocks``). It builds no amplitude roots; the
         Born stays the ordinary tree compilation. Reflection folding and
-        tree-only selections do not apply.
+        tree-only selections do not apply. ``u1_grades`` makes every block
+        exact in N_c (``generation.dag_grades.split_u1_grades``), as leading
+        and next-to-leading colour need; full colour at N_c = 3 does not.
+
+        ``loop_born`` compiles the Born DAG of a loop request: a Dirac current
+        closing on a Weyl sink is a root with the marker contraction
+        ``dag_ordering.DIRAC_WEYL_CLOSURE`` (``_direct_contraction_ir``)
+        instead of a refusal. No tree evaluator lowers such a root; the loop
+        engine reads the roots' orders, sectors and helicities only.
         """
 
         if loop_blocks:
@@ -254,7 +268,16 @@ class GenericDAGCompiler:
             lc_all_ordering_symmetry = False
         elif loop_block_reachability is not None:
             raise ValueError("loop_block_reachability requires loop_blocks=True")
+        elif u1_grades:
+            raise ValueError("u1_grades requires loop_blocks=True")
+        if loop_born and (loop_blocks or backward_live_planning):
+            raise ValueError(
+                "loop_born compiles a loop request's Born tree: it excludes "
+                "loop_blocks and backward_live_planning"
+            )
+        self.loop_born = bool(loop_born)
         self.loop_blocks = bool(loop_blocks)
+        self.u1_grades = bool(u1_grades)
         self.loop_block_reachability = loop_block_reachability
         self.model = model
         self.color_plan = color_plan
@@ -1553,8 +1576,22 @@ class GenericDAGCompiler:
             current_count=len(dag.currents),
             interaction_count=len(dag.interactions),
         )
+        # With ``u1_grades`` (leading and next-to-leading colour), a block
+        # whose trees have several N_c grades (U(1)-subtraction pieces of
+        # identical-flavour lines) is graded: its currents carry their grade,
+        # split per grade where one current mixes them
+        # (``generation.dag_grades``). A current derived with both
+        # colour-connection parities (several pairings of identical-flavour
+        # lines) takes the other parity's -1 in those derivations' colour
+        # weights (``loops/v2/blocks.py``). The parity depends on the colour
+        # state, which the evaluation contracts of the reuse leave out, so
+        # the fold precedes the reuse's value equivalences.
+        if self.u1_grades:
+            dag = split_u1_grades(dag)
         return self._apply_fermion_ordering(
-            assign_recursive_current_evaluation_reuse(dag, self.model)
+            assign_recursive_current_evaluation_reuse(
+                apply_colour_connection_signs(dag, self.model), self.model
+            )
         )
 
     def _compile_backward_live_plan(
@@ -2189,7 +2226,9 @@ class GenericDAGCompiler:
             right: CurrentNode,
         ) -> ContractionIR | None:
             if not self.online_evaluation_reuse:
-                return _direct_contraction_ir(self.model, left.index, right.index)
+                return _direct_contraction_ir(
+                    self.model, left.index, right.index, loop_born=self.loop_born
+                )
             key = (
                 left.index.particle_id,
                 right.index.particle_id,
@@ -2201,6 +2240,7 @@ class GenericDAGCompiler:
                     self.model,
                     left.index,
                     right.index,
+                    loop_born=self.loop_born,
                 )
             return eager_direct_contractions[key]
 
@@ -2493,6 +2533,7 @@ def compile_generic_dag(
     online_evaluation_reuse: bool = False,
     backward_live_planning: bool = False,
     progress_callback: DAGProgressCallback | None = None,
+    loop_born: bool = False,
 ) -> GenericDAG:
     return GenericDAGCompiler(
         model=model,
@@ -2514,4 +2555,5 @@ def compile_generic_dag(
         online_evaluation_reuse=online_evaluation_reuse,
         backward_live_planning=backward_live_planning,
         progress_callback=progress_callback,
+        loop_born=loop_born,
     ).compile(process)

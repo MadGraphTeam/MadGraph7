@@ -1,5 +1,15 @@
 # Standalone virtual SDK
 
+> **Plan v4 only.** The per-diagram legacy one-loop engine was removed
+> (2026-10-29, user ruling M-QCD Q3): the SDK opens plan v4 artifacts of the
+> v2 engine; a plan v1-v3 artifact (`rusticol.loop-runtime.v3`) is refused
+> with a compatibility error ("the legacy one-loop engine was removed ...;
+> regenerate the artifact"). Resolved, directed-colour (correlated) and
+> spin-source evaluations were served by the legacy runtime only: their entry
+> points remain in the ABI and refuse with the plan v4 reason (use the Python
+> API); the verification policy was removed (ABI version 2). Where the text
+> below describes resolved axes, it describes those refusing entry points.
+
 These additive Rust/C/C++/Fortran interfaces call the same `VirtualRuntime` used by the Python
 facade. It reads ordinary verified process artifacts and needs no Python process,
 model importer, graph generator or alternate reducer. The existing tree SDK is
@@ -57,38 +67,69 @@ additive grouped complex interface below; mapped-process calls remain
 unavailable. A prepared, explicitly continued source-colour plan can be loaded
 with LC/NLC metadata; generation requires its declared model continuation.
 
+Plan v4 artifacts (the v2 loop engine, `point_inputs = "native-v2"`) open
+through the same `rusticol_virtual_open`: the stored native programs (tree,
+counterterm and parameter programs with their binary64 SymJIT plane
+applications) evaluate every point without Python, generation or a Symbolica
+licence, bitwise equal to the Python API in binary64. They serve ordinary
+(unresolved) binary64 virtuals with model R2: `rusticol_virtual_set_poles`
+selects every pole (`"all"`, the default), the finite part alone (`"none"`:
+the pole-only work is skipped natively and the single and double pole entries
+are quiet NaNs) or a split selection (`"uv"`: the poles are the bare loop's UV
+poles; `"ir"`: the renormalised virtual's IR poles), which also runs the
+stored companion of the certified-scaleless families; the finite part is the
+same in every selection, and every selection is bitwise the Python API's.
+Correlated, resolved and extended-precision evaluations of a plan v4
+process go through the Python API; plan v1-v3 handles accept `"all"` only.
+The R2 strategy of a plan v4 process is the model's: `"auto"` (the default,
+`NULL`) and `"model"` select it, `"direct"` is refused.
+
+Model parameters of a plan v4 process (`parameters_json` at open,
+`rusticol_virtual_update_parameters`) behave exactly as the Python API's
+`Runtime.load(..., model_parameters=...)` and `set_model_parameters`: the
+whole mapping is validated before anything is applied, and an unknown name
+(not an external parameter of the artifact's model), the renormalisation
+scale's parameter (set per point through `mu_r2`; generation resolves which
+parameter it is, as the Python API does) and a parameter fixed at generation
+(`[loop.preparation] fixed_parameters`, e.g. a coloured width fixed to zero)
+set to another value are refused with `RUSTICOL_VIRTUAL_INVALID_ARGUMENT` and
+the Python API's message; a refused update changes nothing (an open refuses
+the handle). A known parameter the process does not read is accepted with no
+effect, as in Python. Names are nonempty (an empty name is refused with
+`RUSTICOL_VIRTUAL_INVALID_ARGUMENT` and the Python API's `TypeError` message).
+Values are ASCII decimal strings read as Python's `Decimal` (surrounding ASCII
+whitespace and underscores ignored; no fractions, no non-ASCII digits or
+whitespace, which the Python API refuses too; an infinity or NaN is refused
+as not finite) and real: a
+nonzero imaginary part is the Python API's `CompatibilityError`, here
+`RUSTICOL_VIRTUAL_RUNTIME_ERROR` (as `"direct"` R2). The checks run in the
+Python API's order (every value, then every name, by name), so a mapping with
+several refused entries is refused with the same message in every client. The
+fixed parameters include those the model preparation fixes (e.g. a colour
+declaration's external scheme constants); their refusal says so (they are not
+run-time parameters), while one the request fixed points to
+`[loop.preparation] fixed_parameters`.
+
+A model whose Born couplings, kernel constants or masses depend on the
+renormalisation scale (a running-coupling or MSbar-mass UFO; generation
+records the parameter program's scale-dependent outputs) is evaluated per
+exact `mu_r2`: a batch of mixed scales is partitioned by scale, so every point
+equals its evaluation in a batch of its scale alone. The usual NLO models,
+whose scale enters the counterterms only, run one batch.
+
 `Runtime::evaluate` accepts binary64 inputs and returns binary64 numerical rows.
-It preserves every finite input's exact value for optional higher-precision
-verification. Standard fixed decimal formatting uses 1074 fractional places,
-the maximum denominator exponent of IEEE binary64, then removes redundant
-fractional zeros. This ingress cost belongs outside numerator/reducer/master
-timings. `evaluate_decimal` accepts original exact decimal strings directly.
-Neither method silently requests verification or rescue. `Runtime::open_with_policy`
-retains an explicit default before exact source parameters are evaluated.
-An evaluation-level policy replaces that default only for that call; omission
-inherits it, including after `clear()`.
+It reads every finite input as its exact value: standard fixed decimal
+formatting uses 1074 fractional places, the maximum denominator exponent of
+IEEE binary64, then removes redundant fractional zeros. This ingress cost
+belongs outside numerator/reducer/master timings. `evaluate_decimal` accepts
+original exact decimal strings directly.
 
 Results store compact successful IDs alongside statuses for **all** requested
 IDs. Failed points have no numerical row. An ordinary success reports accuracy
-not established; explicit verification delegates the existing native policy,
-including exact source snapshots, increasing actual precision, subset retries,
-comparison of all components/axes and output-conversion checks. Detailed JSON
-records retain failures and attempt history. With a configured policy, a numerical
-global source-binding failure retains the original exact overrides/defaults and
-its failed primary stage when a configured higher carrier can realize them.
-That admission is not an accuracy claim: rescue still requires agreement of
-complete results at two successful levels and checked conversion to binary64.
-Malformed parameters and unrecoverable formula errors remain atomic function
-errors. Without a load-time policy, source binding keeps its eager behavior.
-
-The additive C entry point is `rusticol_virtual_open_with_policy`, with the same
-verification JSON accepted by batch requests. The installed dependency-free Rust
-wrapper has `open_with_policy(..., verification_json)`. C++ accepts the optional
-policy JSON as the final constructor argument; Fortran accepts it as the optional
-trailing `verification_json=` argument of `load`. Existing open signatures and
-positional Fortran calls remain valid. Capability JSON reports the retained
-policy; all ordinary, resolved, directed and spin-source evaluations preserve
-their full verification diagnostics.
+not established. The SDK has no verification policy (ABI version 2 dropped
+version 1's `rusticol_virtual_open_with_policy` and the batch request's
+`verification_json`, which plan v4 refused): stability estimates and the
+precision rescue are the Python API's (`stability=` on the native evaluate).
 
 Inclusive output axes are `[point,order,epsilon]`. Resolved output adds helicity
 and colour-component axes before epsilon. Resolved LC components are signed
@@ -97,8 +138,7 @@ overcomplete. Inclusive projected identity correlations and NLC/full retain one
 contracted component. The saved plan supplies component IDs and, for resolved LC,
 Born-column memberships. Summing helicity and component axes
 reconstructs the inclusive result. Helicity rows retain the inclusive initial spin
-average. Failures and precision rescue operate on whole original physical points,
-including every component and squared order in the agreement check.
+average. Failures operate on whole original physical points.
 The epsilon axis is always `(0,-1,-2)`, with physical couplings included.
 Catalogue JSON supplies the exact contributing Born/loop order pairs. These
 signed interference values are not probabilities.
@@ -110,21 +150,12 @@ exclusive access, and parameter updates use the existing atomic source owner.
 There is no per-event model-parameter interface. `mu_r2` is explicit, positive,
 scalar or per-point; it is unrelated to the numerator's extra-dimensional mu².
 
-Focused Rust controls accept `PYAMPLICOL_VIRTUAL_ARTIFACT` for the resolved gg
-fixture and `PYAMPLICOL_VIRTUAL_MIXED_ARTIFACT` for the full-CKM uudd source fixture.
-`PYAMPLICOL_VIRTUAL_LC_ARTIFACT` exercises genuine source LC anchors, including
-analytic gg checks, all component axes and native subset precision rescue.
-Run the opt-in debug controls with `RUST_MIN_STACK=16777216`: the Rust test
-harness's default 2 MiB thread stack is smaller than these dependency-backed
-debug evaluators need. The standalone C controls pass on the ordinary process
-stack. This test configuration is not a process-size or multiplicity limit.
-
 C++17 callers include `include/rusticol_virtual.hpp` and use the move-only
 `rusticol::VirtualRuntime` and `VirtualEvaluation` classes. Function errors throw
 `VirtualError`; per-point numerical failures remain statuses in a successfully
 returned result. Each evaluation makes one C bulk call. Result copies to standard
 vectors retain the C axis order, and result ownership survives runtime moves,
-`clear()` and destruction. Exact parameter and verification JSON pass unchanged.
+`clear()` and destruction. Exact parameter JSON passes unchanged.
 For example, from this directory:
 
 ```sh
@@ -174,8 +205,8 @@ gfortran -std=f2018 examples/client.f90 rusticol_virtual.o \
 Both wrapper clients additionally accept the retained full-CKM source fixture
 with process `uudd`. Their three-order inclusive values check the committed
 MadLoop control, and each order's resolved helicity sum reconstructs all poles.
-Both exercise sparse IDs, real numerical failures with compact rows, explicit
-DoubleFloat verification, empty batches, exact parameter JSON and result
+Both exercise sparse IDs, real numerical failures with compact rows, empty
+batches, exact parameter JSON and result
 lifetimes. They call no Python interpreter. The ordinary SDK bundle includes
 these wrappers alongside the same combined archive.
 
@@ -184,75 +215,70 @@ these same outputs using UMAMI's bulk offset/count/stride layout. Its separate
 keys expose every squared order and Laurent coefficient, with mandatory lane
 statuses and no probability or finite-only tree fallback.
 
-## Grouped complex colour correlations
+## Correlated and spin-source entry points
 
-`evaluate_correlated` evaluates every saved directed colour history in one native
-call. It returns a separate `CorrelatedEvaluation`, leaving ordinary real-valued
-ABI structures and scalar semantics unchanged. Its Born axes are
-`[successful_point, history, born_order]`; virtual axes are
-`[successful_point, history, virtual_order, epsilon]`. Histories and squared orders
-are never summed implicitly. Query ordered history IDs before interpreting this
-axis; the SDK query returns IDs, not a second convention for colour-leg labels.
-The native saved plan remains the authority for the exact ordered operations.
+`rusticol_virtual_evaluate_correlated` (grouped complex colour histories),
+its joint spin-source form and the matching C++, Fortran, Rust and UMAMI
+wrappers remain in the ABI. They were served by the removed legacy runtime
+and refuse a plan v4 process with the plan v4 reason: evaluate correlated,
+resolved and spin-source virtuals of plan v4 through the Python API
+(`evaluate_correlated`, `evaluate_correlated_many`, `evaluate_resolved`).
 
-The active scope is inclusive spectator helicities, full colour and model-rule
-R2. Saved massless-gluon source classes additionally accept literal complex
-vectors through `evaluate_correlated_with_sources`. Correlated resolved output,
-LC/NLC composition and mappings remain unavailable. Capability inspection reports whether the artifact actually
-contains directed kernels. The same handle still supports ordinary evaluation.
+## glibc floor (Linux)
 
-C uses the explicit pair `rusticol_virtual_complex64 { real, imag }` and a separate
-owned `rusticol_virtual_correlated_result`. Element counts refer to pairs. C++
-returns `std::complex<double>` vectors. The dependency-free Rust wrapper returns
-its existing `Complex64 { re, im }` values. Neither relies on a language complex
-ABI matching the C pair. Fortran `evaluate_correlated` returns
-`virtual_correlated_evaluation` with `complex(c_double)` arrays:
+The shared library `librusticol_loop_sdk.so` of a release native build
+(`tools/developer/build_loop_native.py`) needs the glibc symbol versions it
+links: `readelf -V librusticol_loop_sdk.so` lists them, and the build's
+`build-info.json` records them (`glibc_version_needs`). A build with the
+repository's toolchain needs at most `GLIBC_2.38` and no glibc ABI marker: the
+build compiles its C dependencies (GMP, MPFR, MPC) with the traditional TLS
+dialect, so the library does not need `GLIBC_ABI_GNU2_TLS`, which only glibc
+builds carrying that marker define. The floor is therefore glibc 2.38 (the
+same holds for the Python extension `_rusticol.so`). Its symbols bind numbered
+versions (`readelf --dyn-syms -W librusticol_loop_sdk.so` shows
+`__isoc23_strtol@GLIBC_2.38` and `hypot@GLIBC_2.35`, for instance), so an older
+glibc is caught at the first step that sees it.
 
-| Array | Fortran dimensions |
-|---|---|
-| `born` | `(born_order, history, successful_point)` |
-| `virtual_values` | `(epsilon, virtual_order, history, successful_point)` |
+Linking a client executable with a toolchain whose glibc is older than 2.38
+fails at link time: GNU ld checks the shared library's undefined symbols for
+an executable (`--no-allow-shlib-undefined`, its default there), and the older
+glibc's `libc.so.6` defines no symbol of version `GLIBC_2.38`:
 
-All wrappers preserve compact successful IDs, all-input statuses and owned
-history/diagnostic JSON. Explicit higher-precision verification uses the shared
-native coordinator and checks both separately integrated cross terms as well as
-complete outputs. No imaginary part is discarded. Result ownership survives
-runtime clear/free, and short C buffers remain untouched.
+```text
+ld: .../librusticol_loop_sdk.so: undefined reference to `__isoc23_strtol@GLIBC_2.38'
+```
 
-`PYAMPLICOL_VIRTUAL_DIRECTED_ARTIFACT` runs the retained source control in
-`tests/correlated_runtime.rs`, including maximum uint64 IDs, empty/all-failed
-batches, complex swapped histories, ordinary identity reconstruction and subset
-AP60/AP80 rescue. `examples/client_correlated.{c,cpp,f90,rs}` exercise the
-standalone wrappers; the C client also validates UMAMI offset/stride transport,
-failed-row sentinels and short-buffer rejection. These are correctness controls,
-not benchmark timing measurements.
+A client built on glibc 2.38 or newer and run on an older glibc (or a shared
+library or plugin linked against the SDK on an older toolchain, which GNU ld
+does not check) is stopped by the dynamic loader before it runs:
 
-## Saved joint spin sources
+```text
+./client: .../libc.so.6: version `GLIBC_2.38' not found (required by .../librusticol_loop_sdk.so)
+```
 
-Query `spin_correlation_classes_json` for the exact joint sets available in an
-artifact. Each source label is a one-based physical leg. A call selects a complete
-saved joint class; it does not silently combine singleton classes. There is no
-fixed bound on the number of classes or selected legs. The current source-kernel
-certification covers external massless gluons in the full-colour QCD model-rule
-path. Ordinary `evaluate_correlated` still selects ordinary external states.
+Both messages mean this floor: build and run the client on glibc 2.38 or newer
+(`ldd --version` shows the release), or build the SDK from source on the older
+host so that it links against that host's glibc.
 
-Safe Rust uses borrowed `SpinSources { legs, values }`. C uses
-`rusticol_virtual_spin_sources` with the same explicit complex pairs as outputs.
-C++, and the packaged Rust wrapper, take leg and complex-vector slices. Vectors
-are laid out in row/selected-leg/Lorentz-component order, with four components
-per leg. Supply one row to broadcast or one row per physical point. Components
-are used literally: no normalization, conjugation or transverse projection is
-applied. Only the saved SourceIR crossing phase transforms them.
+C and C++ clients of the release build's shared library can stop at compile
+time, before either: define `RUSTICOL_VIRTUAL_SHARED`, and
+`rusticol_virtual.h` refuses a toolchain whose glibc release is older than
+`RUSTICOL_VIRTUAL_GLIBC_FLOOR_MAJOR.MINOR` (2.38) with an `#error` that names
+the floor (every glibc release defines the numbered versions of the releases
+before it, so the release comparison is exact). The macro states the release
+build's floor, not that of an SDK built from source on an older host: omit it
+for such a build.
 
-Fortran appends optional `spin_legs` and `spin_vectors` to `evaluate_correlated`;
-both must be present together. Vectors have dimensions `(4, selected_leg, row)`.
-Every wrapper borrows sources only for its synchronous native call. Exact copies
-of the binary64 components survive compaction and optional high-precision replay.
-The standalone output remains binary64. The owned result records its selected
-source labels (`spin_legs_json` in wrappers, `spin_legs` in the Cargo API).
+```sh
+cc -std=c11 -DRUSTICOL_VIRTUAL_SHARED examples/client.c -Iinclude \
+  -L/path/to/build -lrusticol_loop_sdk -Wl,-rpath,/path/to/build -lm -o client
+```
 
-`PYAMPLICOL_VIRTUAL_SPIN_ARTIFACT` runs the retained source transport control in
-`tests/spin_runtime.rs`. The `examples/client_spin.{c,cpp,f90,rs}` clients exercise
-the same saved artifact without regenerating diagrams. The C client additionally
-checks UMAMI source offset/stride layouts, literal complex scaling, short buffers
-and output/result lifetimes.
+Fortran has no such hook (the module is not preprocessed): the link-time error
+or the loader message above names the floor. From Python, `import
+pyamplicol._rusticol` first looks up every glibc version the extension needs in
+the running glibc and raises `pyamplicol.NativePlatformError` naming the missing
+versions, the running glibc and the remedy; a refusal by the dynamic loader
+becomes the same error.
+pyAmpliCol does not open `librusticol_loop_sdk.so` from Python; code that opens
+it with `ctypes` gets the dynamic loader's `OSError`.

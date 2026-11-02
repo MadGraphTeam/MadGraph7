@@ -42,6 +42,10 @@ def _symbolica_instruction_program_repr(exported: Any) -> str:
     load time; Rusticol registers only pyAmpliCol's scalar primitives, so any
     other non-built-in function fails closed in the compiler. A program
     without sub-evaluators or namespaced functions serializes as before.
+
+    Jumps and their targets (``if_else``, ``goto``, ``label``) are kept:
+    SymJIT 2.28.3 carries the fix of its common-subexpression elimination
+    across branches (siravan/symjit#31), for which they used to be dropped.
     """
     if isinstance(exported, tuple):
         instructions, temporary_count, constants = exported

@@ -23,7 +23,37 @@
 //! precision-generic engine (f64, DoubleFloat, arbitrary precision), whose
 //! numerator is one Symbolica template per (propagators, rank), built once
 //! from the exponent arrays of the tensor layout with one parameter per
-//! coefficient; its masters are evaluated uncached by `SymbolicaMasters`.
+//! coefficient; its masters are evaluated uncached by `SymbolicaMasters`,
+//! without an on-shell threshold.
+//!
+//! **Absolute thresholds of the fast engine (genericity audit 2, G2-M3).**
+//! On the pinned NinjaRS 41a4c00 the fast path compares inputs with absolute
+//! constants in the model's units: `OneLoopNativeMasters` sets squared masses
+//! and invariants with `|re| + |im| < 1e-9` to zero and a real invariant
+//! within `1e-9` of a real squared mass to that mass
+//! ([`NATIVE_ONSHELL_THRESHOLD`]), and the engine itself skips the bubble of
+//! two massless lines whose invariant is below `FastOptions::infrared_eps`
+//! (`1e-9`) and builds its cut bases from momenta whose square is below it as
+//! if they were light-like. A light mass (a keV mass in GeV, `m² = 1e-12`, or
+//! the electron in TeV) or a tiny invariant thus changes the integral in
+//! binary64 alone, by a unit-dependent amount. Every lane whose inputs reach
+//! one of these thresholds ([`reaches_fast_threshold`]: a squared mass or an
+//! off-diagonal invariant with `0 < |x| < 1e-9`, or an invariant within
+//! `(0, 1e-9)` of a real squared mass of the lane; exact comparisons of the
+//! given inputs, never relative to a scale) is reduced instead by the generic
+//! binary64 engine, which has none; every other lane takes the fast engine
+//! unchanged, so plans and points without such inputs keep its bits. The
+//! check runs per frame, on the frame's own (rescaled) inputs.
+//! [`V2Reducer::take_exact_lanes`] counts the routed lanes. The generic
+//! engine builds and evaluates Symbolica expressions, so a routed lane is the
+//! one binary64 reduction that touches Symbolica state: it takes pyAmpliCol's
+//! library key on its thread (`pyamplicol::unlock`); every other binary64
+//! lane touches none. Exactly zero
+//! masses and invariants, and invariants exactly equal to a mass (the
+//! executor's on-shell external invariants), never route. The upstream
+//! `OneLoopNativeMasters::with_onshell_threshold(None)` (NinjaRS PR prepared
+//! by package onshell-threshold) removes the masters' part; the engine's
+//! `infrared_eps` part stays a routing rule.
 //!
 //! **Reduction-direction check.** [`ReductionFrame`] re-reduces the same
 //! numerators in a dihedrally relabelled frame of the propagator cycle, by
@@ -97,6 +127,68 @@ pub struct ReductionFrame {
 /// The scale factor `x = 7/10` of a rescaled frame (non-dyadic, so that
 /// every scaled input rounds differently).
 pub const RESCALING: (i64, i64) = (7, 10);
+
+/// `OneLoopNativeMasters`' absolute on-shell threshold on the pinned NinjaRS
+/// 41a4c00 (original Ninja's `INFRARED_EPS`, the crate-private
+/// `oneloop_native::ONSHELL_THRESHOLD`; a test pins the provider's behaviour
+/// at it).
+pub const NATIVE_ONSHELL_THRESHOLD: f64 = 1e-9;
+
+/// The fast engine's routing threshold, in the model's units: the larger of
+/// [`NATIVE_ONSHELL_THRESHOLD`] and `FastOptions::infrared_eps` (module
+/// docs). The one value [`V2Reducer`]'s binary64 engine routes by, and the
+/// one the generation record of light masses compares with
+/// (`GeneratedProcess.binary64_exact_engine`).
+pub fn fast_engine_threshold() -> f64 {
+    NATIVE_ONSHELL_THRESHOLD.max(FastOptions::default().infrared_eps)
+}
+
+/// Whether one lane's binary64 inputs reach an absolute threshold of the fast
+/// engine below `threshold` (module docs): a squared mass or an off-diagonal
+/// invariant `x` with `0 < |re x| + |im x| < threshold`, or an off-diagonal
+/// invariant `s` and a real squared mass `m²` of the lane with
+/// `0 < |s - m²| < threshold`. `masses` holds the lane's `n` squared masses
+/// and `s_matrix` its `n²` invariants. A superset of the rows the masters
+/// move (a master row compares an invariant with its own masses only).
+pub fn reaches_fast_threshold(
+    n: usize,
+    masses: &[Complex<f64>],
+    s_matrix: &[Complex<f64>],
+    threshold: f64,
+) -> bool {
+    squared_mass_reaches_fast_threshold(masses, threshold)
+        || invariant_reaches_fast_threshold(n, masses, s_matrix, threshold)
+}
+
+/// The squared masses' clause of [`reaches_fast_threshold`]: a squared mass
+/// `x` with `0 < |re x| + |im x| < threshold`.
+pub(super) fn squared_mass_reaches_fast_threshold(masses: &[Complex<f64>], threshold: f64) -> bool {
+    masses.iter().any(|m| {
+        let size = m.re.abs() + m.im.abs();
+        size > 0. && size < threshold
+    })
+}
+
+/// The invariants' clause of [`reaches_fast_threshold`]: an off-diagonal
+/// invariant `s` with `0 < |re s| + |im s| < threshold`, or within
+/// `(0, threshold)` of a real squared mass of the lane.
+fn invariant_reaches_fast_threshold(
+    n: usize,
+    masses: &[Complex<f64>],
+    s_matrix: &[Complex<f64>],
+    threshold: f64,
+) -> bool {
+    let inside = |size: f64| size > 0. && size < threshold;
+    (0..n).any(|i| {
+        (0..n).filter(|&j| j != i).any(|j| {
+            let s = &s_matrix[i * n + j];
+            inside(s.re.abs() + s.im.abs())
+                || masses
+                    .iter()
+                    .any(|m| m.im == 0. && inside((s.re - m.re).abs()))
+        })
+    })
+}
 
 impl ReductionFrame {
     /// The loop direction reversed: `q -> -q` with the cycle traversed
@@ -369,6 +461,41 @@ impl<T: Carrier> BucketInput<T> {
     }
 }
 
+impl<T: Carrier> BucketInput<T> {
+    /// The lanes `keep` selects, in order.
+    fn select(&self, keep: &[bool]) -> Self {
+        let (n, width) = (self.n, ncoeff(self.rank));
+        let lanes = keep.iter().filter(|&&k| k).count();
+        let mut input = Self {
+            n,
+            rank: self.rank,
+            ids: Vec::with_capacity(lanes),
+            shifts: Vec::with_capacity(lanes * 4 * n),
+            masses: Vec::with_capacity(lanes * n),
+            scales: Vec::with_capacity(lanes),
+            s_matrix: Vec::with_capacity(lanes * n * n),
+            coefficients: Vec::with_capacity(lanes * width),
+        };
+        for lane in (0..self.ids.len()).filter(|&lane| keep[lane]) {
+            input.ids.push(self.ids[lane]);
+            input
+                .shifts
+                .extend_from_slice(&self.shifts[lane * 4 * n..(lane + 1) * 4 * n]);
+            input
+                .masses
+                .extend_from_slice(&self.masses[lane * n..(lane + 1) * n]);
+            input.scales.push(self.scales[lane].clone());
+            input
+                .s_matrix
+                .extend_from_slice(&self.s_matrix[lane * n * n..(lane + 1) * n * n]);
+            input
+                .coefficients
+                .extend_from_slice(&self.coefficients[lane * width..(lane + 1) * width]);
+        }
+        input
+    }
+}
+
 /// The rescaling factor [`RESCALING`] in the carrier of `like`.
 fn rescaling<T: Carrier>(like: &Complex<T>) -> Complex<T> {
     let zero = like.re.zero();
@@ -511,13 +638,21 @@ fn output_batches<T: BatchCarrier>(
 }
 
 /// Binary64 engine: per-(n, rank) `FastAmplitude`s, upstream tensor
-/// numerators and cached native masters.
+/// numerators and cached native masters; lanes that reach one of their
+/// absolute thresholds go to the generic binary64 engine (module docs).
 struct FastEngine {
     amplitudes: HashMap<(usize, usize), FastAmplitude>,
     numerators: HashMap<usize, TensorNumerator>,
     masters: MasterCache<OneLoopNativeMasters>,
     results: Vec<FastResult>,
     statuses: Vec<FastStatus>,
+    /// The largest absolute threshold of the fast path, in model units.
+    threshold: f64,
+    /// The exact engine of the lanes at or below `threshold`, built on first
+    /// use.
+    exact: Option<GenericEngine<f64>>,
+    /// Lanes reduced by `exact` since the last [`V2Reducer::take_exact_lanes`].
+    exact_lanes: u64,
 }
 
 impl FastEngine {
@@ -528,7 +663,25 @@ impl FastEngine {
             masters: MasterCache::new(OneLoopNativeMasters::new().map_err(error)?, cache_masters),
             results: Vec::new(),
             statuses: Vec::new(),
+            threshold: fast_engine_threshold(),
+            exact: None,
+            exact_lanes: 0,
         })
+    }
+
+    /// Whether each lane of `input` reaches the fast path's thresholds.
+    fn routed(&self, input: &BucketInput<f64>) -> Vec<bool> {
+        let n = input.n;
+        (0..input.ids.len())
+            .map(|lane| {
+                reaches_fast_threshold(
+                    n,
+                    &input.masses[lane * n..(lane + 1) * n],
+                    &input.s_matrix[lane * n * n..(lane + 1) * n * n],
+                    self.threshold,
+                )
+            })
+            .collect()
     }
 }
 
@@ -545,6 +698,40 @@ impl BucketEngine<f64> for FastEngine {
     }
 
     fn reduce(&mut self, input: &BucketInput<f64>) -> ExecutionResult<Vec<Outcome<f64>>> {
+        let routed = self.routed(input);
+        if !routed.contains(&true) {
+            return self.reduce_fast(input);
+        }
+        self.exact_lanes += routed.iter().filter(|&&r| r).count() as u64;
+        let kept: Vec<bool> = routed.iter().map(|&r| !r).collect();
+        let mut fast = if kept.contains(&true) {
+            self.reduce_fast(&input.select(&kept))?
+        } else {
+            Vec::new()
+        }
+        .into_iter();
+        // The generic engine parses and evaluates Symbolica expressions: it
+        // runs under pyAmpliCol's library key on this thread (module docs,
+        // 'Absolute thresholds'), whichever thread the executor reduces on.
+        let mut exact = {
+            let _unlock = pyamplicol::unlock();
+            self.exact
+                .get_or_insert_with(|| GenericEngine::new(0_f64))
+                .reduce(&input.select(&routed))?
+        }
+        .into_iter();
+        routed
+            .iter()
+            .map(|&r| {
+                if r { exact.next() } else { fast.next() }
+                    .ok_or_else(|| error("a reduction engine lost a lane"))
+            })
+            .collect()
+    }
+}
+
+impl FastEngine {
+    fn reduce_fast(&mut self, input: &BucketInput<f64>) -> ExecutionResult<Vec<Outcome<f64>>> {
         let (n, rank, lanes) = (input.n, input.rank, input.ids.len());
         let shifts = input
             .shifts
@@ -686,7 +873,7 @@ fn template(rank: usize) -> (String, Vec<String>) {
 /// for the 968 lanes of four uu~ -> e-e+dd~g points in one bucket stream), so
 /// buckets are reduced in chunks of this many lanes; lanes are independent,
 /// and chunking leaves every value unchanged.
-const GENERIC_CHUNK_LANES: usize = 16;
+pub(super) const GENERIC_CHUNK_LANES: usize = 16;
 
 impl<T: Carrier> BucketEngine<T> for GenericEngine<T>
 where
@@ -799,6 +986,16 @@ impl V2Reducer {
         match &mut self.engines {
             Engines::Fast(engine) => Some(engine.masters.take_statistics()),
             _ => None,
+        }
+    }
+
+    /// Lanes of the fast engine reduced by the generic binary64 engine since
+    /// the last call because their inputs reach one of the fast path's
+    /// absolute thresholds (module docs); 0 for the generic engines.
+    pub fn take_exact_lanes(&mut self) -> u64 {
+        match &mut self.engines {
+            Engines::Fast(engine) => std::mem::take(&mut engine.exact_lanes),
+            _ => 0,
         }
     }
 

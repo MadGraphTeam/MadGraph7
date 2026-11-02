@@ -62,8 +62,6 @@ def test_generate_accepts_a_repeated_particle_veto() -> None:
                 "generate",
                 "--loop-coupling-order",
                 "QCD",
-                "--loop-engine",
-                "v2",
                 "--particle-veto",
                 "t",
                 "--particle-veto",
@@ -74,8 +72,42 @@ def test_generate_accepts_a_repeated_particle_veto() -> None:
         .effective
     )
     assert config.generation.particle_veto == ("t", "b")
+    assert config.generation.allow_anomalous_veto is False
     with pytest.raises(ConfigurationError, match="particle_veto requires"):
         parse_cli(("generate", "--particle-veto", "t")).resolve()
+    # [U2]: the override of an anomalous veto (refused by default).
+    allowed = (
+        parse_cli(
+            (
+                "generate",
+                "--loop-coupling-order",
+                "QCD",
+                "--particle-veto",
+                "t",
+                "--allow-anomalous-veto",
+            )
+        )
+        .resolve()
+        .effective
+    )
+    assert allowed.generation.allow_anomalous_veto is True
+
+
+def test_generate_refuses_the_removed_loop_engine_option() -> None:
+    """The legacy one-loop engine was removed: naming the engine (on the
+    command line or as an override) is refused with the reason."""
+
+    for argv in (
+        ("generate", "--loop-engine", "legacy"),
+        ("generate", "--loop-engine", "v2"),
+        ("generate", "--set", "loop.engine=legacy"),
+    ):
+        with pytest.raises(
+            ConfigurationError,
+            match=r"'loop\.engine' was removed: the legacy one-loop engine was "
+            r"removed; v2 .* is the only one-loop engine; delete the setting",
+        ):
+            parse_cli(argv).resolve()
 
 
 def test_generate_defaults_to_recurrence_execution() -> None:

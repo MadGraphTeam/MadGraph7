@@ -45,6 +45,27 @@ a finite term. Origins per component (``assemble.COMPONENTS``):
   Catani's operator (``tests/unit/test_loop_v2_poles.py``,
   ``rust/loop-reduction/tests/runtime_v2_reduce.rs``).
 
+**Models with pole regulators (M-SM MS-POLES).** MadLoop's electroweak UFOs
+(loop_qcd_qed_sm and its G_mu variant) do state the origin: their CT
+parameters are linear in two external parameters, ``epsUV`` and ``epsIR``
+(UFO/SLHA block TECHNICAL, codes 1 and 2, default 1), which multiply every
+1/eps_UV and 1/eps_IR of their pole coefficients (``(epsUV - epsIR)`` for a
+massless delta-Z, ``(epsUV + 2 epsIR)`` for a massive one); the finite parts
+do not read them. Where both are adjustable external parameters of the
+request (``pole_regulators``), the counterterm components' UV parts are the
+counterterm program at the point's parameters with the IR regulator at 0
+(``regulated_parameters``; MadLoop's evaluation at ``epsIR = 0``) and their
+IR parts the rest, ``CT(epsUV, epsIR) - CT(epsUV, 0)``, for ``r2``,
+``uv_local`` and the field factors alike (``split_sector``'s
+``counterterms_uv``): no remainder, so bare + counterterm UV poles = 0 is a
+test (of the model's counterterms and of the bare residues), and the
+``"ir"`` virtual is ``bare_IR + CT_IR``. An evaluation at ``(0, epsIR)``
+would count a pole term that reads neither regulator twice (the UFOs'
+``dMB_*`` massive-b corrections of the electroweak CT parameters are such
+terms, UV in MadLoop's ``epsIR = 0`` reading), so the IR part is the
+difference. ``"all"`` and ``"none"`` never form it: their values are
+bitwise unchanged.
+
 ``catani_poles`` is the IR-pole prediction of the renormalised virtual
 (Catani, Dittmaier, Trocsanyi, Phys. Lett. B500 (2001) 149): per ordered pair
 of coloured legs (j, k), (1/C_j) [C_j (mu^2/s_jk)^eps V^(S)_jk + Gamma_j]
@@ -67,11 +88,12 @@ joint request's prediction is the sum of its corrections' operators
 only where its coupling is not alpha(0) (``EXTERNAL_PHOTON_CONVENTIONS``):
 with alpha(0), delta Z_e^alpha(0) + 1/2 delta Z_AA has no light-fermion pole;
 with the loops' coupling the photon's gamma_gamma = -2/3 sum_f N_c^f Q_f^2
-(massless charged fermions) stays. The production convention is alpha(0), the
-user's decision [U9] of 2026-10-25 (``EXTERNAL_PHOTON_CONVENTION``); the
-engine implements that coupling in WP3.2 EWI-6b, so until then its virtual
-makes no prediction with an external photon and the generation refuses
-electroweak requests with one (``ew_policy``).
+(massless charged fermions) stays. A tagged photon (MG5_aMC's ``!a!``,
+``SliceRequest.external_photons``: by default the final-state ones) couples
+with alpha(0), the user's decision [U9] of 2026-10-25
+(``EXTERNAL_PHOTON_CONVENTION``, WP3.2 EWI-6b); an untagged one (a PDF
+photon) keeps the loops' coupling (``UNTAGGED_PHOTON_CONVENTION``, MS-PHOTON),
+so the engine's operator passes the number of untagged photons.
 
 The fixtures' provider poles of the electroweak rungs (MadLoop, Recola and
 OpenLoops; g g > t t~, u u~ > e- e+ g, g g > t t~ e- e+ and
@@ -83,7 +105,8 @@ g g > t t~ e- e+ g at O(alpha)) and of the MadLoop G_mu controls
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Container, Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from fractions import Fraction
 from typing import Any
 
@@ -96,6 +119,130 @@ from .families import Orders, add_orders
 ORIGINS = ("uv", "ir")
 # Components whose poles are ultraviolet by origin (local counterterms).
 LOCAL_UV = ("r2", "uv_local")
+# UFO/SLHA codes of a model's pole regulators (module docstring, "Models
+# with pole regulators"): the parameters that multiply the 1/eps_UV and
+# 1/eps_IR of its counterterm parameters (MadLoop's electroweak UFOs:
+# epsUV and epsIR).
+REGULATOR_CODES = {"uv": ("TECHNICAL", (1,)), "ir": ("TECHNICAL", (2,))}
+
+
+@dataclass(frozen=True)
+class PoleRegulators:
+    """The names of a model's UV and IR pole regulators (``pole_regulators``)."""
+
+    uv: str
+    ir: str
+
+    def record(self) -> dict[str, str]:
+        return {"uv": self.uv, "ir": self.ir}
+
+    @classmethod
+    def from_record(cls, record: Mapping[str, str] | None) -> PoleRegulators | None:
+        return None if record is None else cls(str(record["uv"]), str(record["ir"]))
+
+
+def _by_code(externals: Iterable[tuple[str, str, Any]]) -> PoleRegulators | None:
+    """The regulators among (name, LHA block, LHA code) of real external
+    parameters (``REGULATOR_CODES``), None unless both exist once each."""
+
+    externals = list(externals)
+    found: dict[str, str] = {}
+    for origin, (block, code) in REGULATOR_CODES.items():
+        names = [
+            name
+            for name, lhablock, lhacode in externals
+            if str(lhablock or "").upper() == block
+            and tuple(int(c) for c in (lhacode or ())) == code
+        ]
+        if len(names) != 1:
+            return None
+        found[origin] = str(names[0])
+    return PoleRegulators(**found)
+
+
+def _value_texts(value: Mapping[str, Any]) -> list[tuple[int, str]]:
+    """(epsilon power, source text) of a raw model value: a Laurent value's
+    terms, else the value's expression at power 0."""
+
+    if value.get("kind") == "laurent":
+        return [(int(power), str(text)) for power, text in value["terms"]]
+    text = value.get("expression")
+    return [] if text is None else [(0, str(text))]
+
+
+def model_pole_regulators(raw: Any) -> PoleRegulators | None:
+    """The pole regulators a raw loop model declares: its real external
+    parameters at ``REGULATOR_CODES`` (by code, not by name) that only the
+    pole coefficients of its Laurent values (the counterterm parameters'
+    1/eps terms) read; None when it has none, or when a tree parameter, a
+    coupling or a finite part reads one (a model using those codes for
+    something else: setting it to 0 would change more than the
+    counterterms' IR poles)."""
+
+    if raw is None:
+        return None
+    externals = []
+    for record in raw.collections["parameters"]:
+        fields = record["fields"]
+        if fields.get("nature") == "external" and (
+            str(fields.get("type", "real")).lower() == "real"
+        ):
+            externals.append(
+                (record["name"], fields.get("lhablock"), fields.get("lhacode"))
+            )
+    regulators = _by_code(externals)
+    if regulators is None:
+        return None
+    names = "|".join(re.escape(name) for name in (regulators.uv, regulators.ir))
+    reads = re.compile(rf"(?<![A-Za-z0-9_.])(?:{names})(?![A-Za-z0-9_])")
+    for collection in ("parameters", "counterterm_parameters", "couplings"):
+        for record in raw.collections[collection]:
+            if collection == "parameters" and record["name"] in (
+                regulators.uv,
+                regulators.ir,
+            ):
+                continue
+            value = raw.exact_value(collection, record["id"])
+            for power, text in _value_texts(value):
+                if power >= 0 and reads.search(text):
+                    return None
+    return regulators
+
+
+def pole_regulators(
+    parameters: Iterable[Any], fixed: Container[str] = (), raw: Any = None
+) -> PoleRegulators | None:
+    """The pole regulators of a model (``REGULATOR_CODES``): its real
+    external parameters at UFO/SLHA codes (TECHNICAL, 1) and (TECHNICAL, 2),
+    by code, not by name; None unless both exist once each and neither is
+    fixed (``fixed``: the request's and the preparation's fixed parameters,
+    which the counterterm program substitutes). ``parameters`` are the
+    compiled model's parameter records (``compiled.ir.parameters``); with
+    its raw loop model ``raw`` the regulators must also be the ones it
+    declares (``model_pole_regulators``: read only by pole coefficients)."""
+
+    found = _by_code(
+        (record.name, record.lhablock, record.lhacode)
+        for record in parameters
+        if record.nature == "external" and str(record.parameter_type).lower() == "real"
+    )
+    if found is None or found.uv in fixed or found.ir in fixed:
+        return None
+    if raw is not None and model_pole_regulators(raw) != found:
+        return None
+    return found
+
+
+def regulated_parameters(
+    values: Mapping[str, str], regulators: PoleRegulators
+) -> dict[str, str]:
+    """A point's complete parameter values with the IR regulator at 0: the
+    counterterm program there is the counterterms' UV part (module
+    docstring)."""
+
+    out = dict(values)
+    out[regulators.ir] = "0"
+    return out
 
 
 def pole_mode(poles: PoleSelection | str) -> PoleSelection:
@@ -152,30 +299,45 @@ def split_sector(
     bare_uv: Any,
     field_component: str,
     laurent: Callable[..., Any],
+    counterterms_uv: Mapping[str, Any] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """UV and IR parts of every component of one sector (or output column).
 
     ``components`` maps ``bare``, ``r2``, ``uv_local`` and the field
     component to their combined Laurent values (``finite, single_pole,
     double_pole``); ``bare_uv`` is the bare loop's UV Laurent (finite part
-    unused, double pole zero). Returns ``{origin: {component: Laurent}}``
-    for those four components and the sums ``uv`` (UV_local plus fields) and
-    ``virtual`` (bare + uv + r2, the renormalised virtual): each part keeps
-    the combined finite part, and the two parts' poles add up to the
-    combined poles (to rounding).
+    unused, double pole zero). ``counterterms_uv`` maps ``r2``, ``uv_local``
+    and the field component to their UV Laurent values (finite parts
+    unused): the counterterm program with the IR regulator at 0 for a model
+    with pole regulators (module docstring); None (a model without them):
+    the local counterterms' poles are UV and the field factors carry what
+    makes the renormalised virtual UV finite. Returns ``{origin: {component:
+    Laurent}}`` for those four components and the sums ``uv`` (UV_local plus
+    fields) and ``virtual`` (bare + uv + r2, the renormalised virtual): each
+    part keeps the combined finite part, and the two parts' poles add up to
+    the combined poles (to rounding).
     """
 
     def poles(value) -> tuple[Any, Any]:
         return value.single_pole, value.double_pole
 
     ultraviolet: dict[str, tuple[Any, Any]] = {"bare": poles(bare_uv)}
-    for name in LOCAL_UV:
-        ultraviolet[name] = poles(components[name])
-    # The renormalised virtual is UV finite: the field factors carry the rest.
-    ultraviolet[field_component] = tuple(
-        -(ultraviolet["bare"][k] + ultraviolet["uv_local"][k] + ultraviolet["r2"][k])
-        for k in (0, 1)
-    )
+    if counterterms_uv is not None:
+        for name in (*LOCAL_UV, field_component):
+            ultraviolet[name] = poles(counterterms_uv[name])
+    else:
+        for name in LOCAL_UV:
+            ultraviolet[name] = poles(components[name])
+        # The renormalised virtual is UV finite: the field factors carry the
+        # rest.
+        ultraviolet[field_component] = tuple(
+            -(
+                ultraviolet["bare"][k]
+                + ultraviolet["uv_local"][k]
+                + ultraviolet["r2"][k]
+            )
+            for k in (0, 1)
+        )
     out: dict[str, dict[str, Any]] = {origin: {} for origin in ORIGINS}
     for name, (single, double) in ultraviolet.items():
         value = components[name]
@@ -288,17 +450,233 @@ def _minkowski_dot(a: Sequence[Fraction], b: Sequence[Fraction]) -> Fraction:
     return a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3]
 
 
+# ------------------------------------------------- strong gamma_j and beta_0
+
+# UFO spins (2s + 1).
+_FERMION_SPIN, _SCALAR_SPIN = 2, 1
+# SU(N_c), N_c = 3: Casimir C(R) and Dynkin index T(R) of the representations
+# the strong operator covers (UFO colour 3, -3 and 8).
+_N_C = Fraction(3)
+_CASIMIRS = {3: (_N_C * _N_C - 1) / (2 * _N_C), 8: _N_C}
+_DYNKIN = {3: Fraction(1, 2), 8: _N_C}
+# The weight of one species in beta_0 (per unit T(R)): a Dirac fermion
+# (particle and antiparticle) 2/3, a Majorana fermion 1/3, a complex scalar
+# 1/6 and a real scalar 1/12 (the gluon and its ghosts give 11/6 C_A).
+_BETA_WEIGHTS = {
+    (_FERMION_SPIN, False): Fraction(2, 3),
+    (_FERMION_SPIN, True): Fraction(1, 3),
+    (_SCALAR_SPIN, False): Fraction(1, 6),
+    (_SCALAR_SPIN, True): Fraction(1, 12),
+}
+
+
+def colour_casimir(colour: int) -> Fraction | None:
+    """C(R) of a UFO colour representation; None outside 3, -3 and 8."""
+
+    return _CASIMIRS.get(abs(int(colour)))
+
+
+def strong_beta0(species: Iterable[tuple[int, int, bool]]) -> Fraction | None:
+    """beta_0 = 11/6 C_A - sum_s w_s T(R_s) of a strong correction, the
+    gluon's gamma_g (Catani: 11/6 C_A - 2/3 T_R n_f in QCD), over the
+    massless coloured species ``(spin, colour, self-conjugate)`` other than
+    the gluon and its ghosts that run in its loops (one entry per particle-
+    antiparticle pair); None for a species the weights do not cover (a
+    coloured vector, a representation without T(R))."""
+
+    beta = Fraction(11, 6) * _N_C
+    for spin, colour, real in species:
+        weight = _BETA_WEIGHTS.get((int(spin), bool(real)))
+        index = _DYNKIN.get(abs(int(colour)))
+        if weight is None or index is None:
+            return None
+        beta -= weight * index
+    return beta
+
+
+def strong_gamma(
+    spin: int, colour: int, beta0: Fraction | None, *, gauge: bool
+) -> Fraction | None:
+    """gamma_j of a massless coloured leg by its spin and representation: the
+    gluon (``gauge``: the massless adjoint gauge vector) beta_0, a fermion
+    3/2 C(R), a scalar 2 C(R); None for anything else (another coloured
+    vector, a representation without C(R)) or a missing beta_0."""
+
+    if gauge:
+        return beta0
+    casimir = colour_casimir(colour)
+    if casimir is None:
+        return None
+    if int(spin) == _FERMION_SPIN:
+        return Fraction(3, 2) * casimir
+    if int(spin) == _SCALAR_SPIN:
+        return 2 * casimir
+    return None
+
+
+# ----------------------------------------------- sectors the operators cover
+
+# Why a sector has no prediction (``sector_predictions``; the reason of every
+# unpredicted sector, ``LoopSlice.unpredicted_sectors``):
+# * a soft exchange of a coupling the request does not correct is IR
+#   divergent (its tree of order L - 2c exists, or may: a QCD correction of
+#   u u~ > d d~ with gluon and photon Borns misses the photon exchanges);
+UNCORRECTED_EXCHANGE = "uncorrected-exchange"
+# * the operator sums a dressed Born interference whose loop order the request
+#   does not compute;
+UNCOMPUTED_BORN_PAIR = "uncomputed-born-pair"
+# * the requested correction's loops leave out soft exchanges between legs
+#   that a line of a species no requested correction circulates separates in
+#   a Born tree (``separated_exchange``): u d > u d h at QCD = 0, the gluon
+#   between the two quark lines of a Z- and a W-exchange tree.
+SEPARATED_EXCHANGE = "separated-exchange"
+UNPREDICTED_REASONS = (UNCORRECTED_EXCHANGE, UNCOMPUTED_BORN_PAIR, SEPARATED_EXCHANGE)
+
+# The components of a Born tree (``separated_exchange``): the charged legs
+# that lines of loop species join, one frozenset per component.
+Partition = frozenset[frozenset[int]]
+
+
+def separated_exchange(partitions: Iterable[Partition], *, abelian: bool) -> bool:
+    """Whether a correction's computed loops miss soft exchanges its Catani
+    operator assumes, for Born trees with the given ``partitions``.
+
+    A loop of a soft exchange between charged legs j and k runs through the
+    tree's lines between them, so the request computes it only where lines
+    of species that a requested correction circulates join j and k
+    (``LoopEligibility``'s species condition): within one component of the
+    tree. The operator sums every pair. A non-abelian charge is conserved
+    within each component and the colour tensor of a component is invariant,
+    so <B|T_j.T_k|D> vanishes for j and k in two components of a tree D
+    whenever every tree of the Born B has D's partition: the operator is
+    then the computed loops' (u b > d t, the W joining two quark lines).
+    With several partitions the cross terms do not vanish (u d > u d h at
+    QCD = 0: Z and W exchange; u b > d t g: the gluon on either line). An
+    abelian correlator Q_j Q_k <B|D> does not vanish across components, so
+    an abelian operator needs one component per tree."""
+
+    found = set(partitions)
+    if abelian:
+        return any(len(partition) > 1 for partition in found)
+    return len(found) > 1
+
+
+def sector_predictions(
+    sectors: Sequence[tuple[Orders, Iterable[tuple[Orders, Orders]]]],
+    born_orders: Iterable[Orders],
+    corrections: Iterable[str],
+    tree_exists: Callable[[Orders], bool | None],
+    separated: Callable[[str, frozenset[Orders]], bool] | None = None,
+) -> dict[Orders, str | None]:
+    """Per sector of the slice, None where the requested corrections'
+    operators predict its IR poles, else the reason (``UNPREDICTED_REASONS``)
+    (``sectors``: (sector, its (Born order, loop order) pairs) of the
+    slice; ``born_orders`` the Born amplitude orders of its tree program).
+
+    The poles of a complete one-loop amplitude of order L are
+    sum_c I_c A0_{L - 2c} over every coupling order c with L_c >= 2 (Catani:
+    a soft or collinear exchange of a c-boson leaves a tree of order L - 2c).
+    A request computes the loops of its corrections only (MadLoop's loop
+    selection: a QCD correction drops the gluon-photon boxes), so a sector
+    is predicted only if, for each of its loop orders L and each such c,
+
+    * c is a requested correction and the tree of order L - 2c is one of the
+      Born amplitudes of the slice or provably absent (its operator then
+      holds every Born interference the loop's c-poles multiply), or
+    * c is not requested and the tree of order L - 2c provably does not
+      exist (the loop misses no IR-divergent c-exchange);
+
+    if every Born interference a requested correction dresses in the
+    sector (A0_a A0_b with a + b + 2c = sector) pairs with a requested loop
+    order a + 2c (the operator sums over all of them); and if no requested
+    correction's loops leave out an exchange its operator sums over the
+    Born amplitudes it dresses there (``separated(c, orders)``,
+    ``separated_exchange``). ``tree_exists(a)`` answers for an order a that
+    is not a Born amplitude order: False when the process provably has no
+    tree of order a, True when it has one, None when unknown (no
+    prediction). A mixed QCD x EW sector of a QCD-only request (u u~ > d d~
+    with gluon and photon Borns) is therefore not predicted: its order-g^2
+    e^2 loops miss the photon exchanges that the QCD Born's QED poles
+    need."""
+
+    born = frozenset(born_orders)
+    corrections = frozenset(corrections)
+    loops = frozenset(loop for _sector, pairs in sectors for _born, loop in pairs)
+    out: dict[Orders, str | None] = {}
+    for sector, pairs in sectors:
+        reason = None
+        for _born, loop in pairs:
+            for name, power in loop:
+                if power < 2:
+                    continue
+                lower = add_orders(loop, ((name, -2),))
+                exists = True if lower in born else tree_exists(lower)
+                if name in corrections:
+                    complete = exists is False or lower in born
+                else:
+                    complete = exists is False
+                if not complete:
+                    reason = UNCORRECTED_EXCHANGE
+                    break
+            if reason is not None:
+                break
+        if reason is None:
+            dressed = {
+                name: frozenset(
+                    order
+                    for a in born
+                    for b in born
+                    if add_orders(a, b, ((name, 2),)) == sector
+                    for order in (a, b)
+                )
+                for name in sorted(corrections)
+            }
+            if not all(
+                add_orders(a, ((name, 2),)) in loops
+                for name, orders in dressed.items()
+                for a in orders
+            ):
+                reason = UNCOMPUTED_BORN_PAIR
+            elif separated is not None and any(
+                orders and separated(name, orders) for name, orders in dressed.items()
+            ):
+                reason = SEPARATED_EXCHANGE
+        out[sector] = reason
+    return out
+
+
+def predicted_sectors(
+    sectors: Sequence[tuple[Orders, Iterable[tuple[Orders, Orders]]]],
+    born_orders: Iterable[Orders],
+    corrections: Iterable[str],
+    tree_exists: Callable[[Orders], bool | None],
+    separated: Callable[[str, frozenset[Orders]], bool] | None = None,
+) -> frozenset[Orders]:
+    """The sectors whose IR poles the requested corrections' operators
+    predict (``sector_predictions`` without a reason)."""
+
+    return frozenset(
+        sector
+        for sector, reason in sector_predictions(
+            sectors, born_orders, corrections, tree_exists, separated
+        ).items()
+        if reason is None
+    )
+
+
 # ------------------------------------------------------------------ QED Catani
 
-# UFO spins (2s + 1) of the charged massless emitters with a QED gamma.
-_FERMION_SPIN, _SCALAR_SPIN = 2, 1
 # The coupling of an on-shell external photon: "alpha0" (alpha(0) with its
 # charge-renormalisation term, MadLoop's and OpenLoops' convention) or
 # "loop-coupling" (the loops' alpha, e.g. alpha_Gmu throughout).
-# ``EXTERNAL_PHOTON_CONVENTION`` is the production choice, "alpha0" by the
-# user's decision [U9] of 2026-10-25 (slice-status DECISIONS ~04:55).
+# ``EXTERNAL_PHOTON_CONVENTION`` is the one of a tagged photon, "alpha0" by
+# the user's decision [U9] of 2026-10-25 (slice-status DECISIONS ~04:55);
+# since MS-PHOTON the tags are per leg (``SliceRequest.external_photons``,
+# MG5_aMC's ``!a!``) and an untagged photon takes
+# ``UNTAGGED_PHOTON_CONVENTION``.
 EXTERNAL_PHOTON_CONVENTIONS = ("alpha0", "loop-coupling")
 EXTERNAL_PHOTON_CONVENTION = "alpha0"
+UNTAGGED_PHOTON_CONVENTION = "loop-coupling"
 
 
 def dressed_born(
@@ -549,20 +927,32 @@ __all__ = [
     "EXTERNAL_PHOTON_CONVENTIONS",
     "LOCAL_UV",
     "ORIGINS",
+    "SEPARATED_EXCHANGE",
+    "UNCOMPUTED_BORN_PAIR",
+    "UNCORRECTED_EXCHANGE",
+    "UNPREDICTED_REASONS",
+    "UNTAGGED_PHOTON_CONVENTION",
+    "Partition",
     "catani_poles",
+    "colour_casimir",
     "coupling_value",
     "dressed_born",
     "exact_charge",
     "has_poles",
     "photon_gamma",
     "pole_mode",
+    "predicted_sectors",
     "qed_catani_poles",
     "qed_coupling",
     "qed_gamma",
     "reducer_poles",
+    "sector_predictions",
     "sector_sum",
     "select_lane",
     "select_sector",
+    "separated_exchange",
     "split_sector",
     "splits",
+    "strong_beta0",
+    "strong_gamma",
 ]

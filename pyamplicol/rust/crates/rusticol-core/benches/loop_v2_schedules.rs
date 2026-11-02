@@ -92,6 +92,8 @@ fn batch(plan: &LoopProgramV4, points: usize) -> V2Batch<f64> {
             .collect(),
         scales: vec![Rational::from(1); points],
         masses: (0..plan.masses).map(|_| Rational::from(0)).collect(),
+        masses_imaginary: Vec::new(),
+        leg_masses: Vec::new(),
         constants: (0..plan.constants).map(|_| random.complex()).collect(),
         block_rows: (0..points)
             .map(|_| (0..block).map(|_| random.complex()).collect())

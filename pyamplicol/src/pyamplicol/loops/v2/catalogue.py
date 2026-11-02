@@ -34,20 +34,56 @@ Conventions
 * Loop lines are full current states (chirality 0). Attached blocks come in
   every current state the tree engine produces, including Weyl-projected
   massless fermions.
+* Segments carry the tree engine's reading sign
+  (``_CatalogueBuilder.reading_sign``), one rule for every vertex. The tree
+  engine reads every vertex in the all-outgoing convention: the current of
+  each outgoing tree particle on the leg of that particle, with its outgoing
+  momentum and colour flow (``generation.runtime_schema``: "sum all-outgoing
+  momenta ... negate physical incoming momenta first"). The segments read
+  boson legs by their incoming fields with incoming momenta, and the colour
+  seeds read the incoming colour (fermion legs already take the tree
+  reading, ``conventions.TreeReading``). The tree engine's value is the
+  segment's times ``L(pi legs, -p) / L(legs, p)``, ``L`` the Lorentz
+  structure and ``pi`` the exchange of each boson leg with its
+  antiparticle's leg (identity for a vertex read through its conjugate rule,
+  which already takes the antiparticles' legs), times the colour tensor's
+  sign under the transposition of its adjoint generators
+  (``conventions.colour_transposition_sign``: -1 per ``f``, 1 for ``d``,
+  ``T``, identities and two-index traces); a vertex where either factor is
+  not a sign is refused. On the SM's coloured vertices the factors cancel
+  (the momentum-odd three-gluon vertex against its ``f``; the quark-gluon
+  and four-gluon vertices have neither), so QCD segments keep their reading;
+  a coloured vertex whose colour does not compensate its momenta (a W
+  coupling of a coloured scalar pair, a chromomagnetic dipole) takes the
+  sign of its colour-singlet copy. On the SM the product is -1 exactly on
+  the Z G0 H, W G0 G+- and W G+- H vertices. On the vertices closed under
+  conjugation the signs are field signs, those of G0 negated (they fix
+  s(G0) = -1, s(G+) s(G-) = 1 and s(g) = 1); W G0 G+- and W G+- H, read
+  through their conjugate rules, take the ratio alone and are no field
+  signs. The Goldstone Yukawas' lone chiral projectors are matched to the
+  tree engine's readings (``models.tensors``), and blocks, Born and
+  counterterms come from it. A ghost vertex has no tree reading; it takes
+  the product of the field signs of its other legs, solved over GF(2) from
+  the closed boson vertices (-1 for the ghost-G0 vertices, 1 for the gluon's
+  ghost vertex), so the loops' ghost lines share that basis. Found by O2 per
+  family on e+ e- > t t~ h and e- e+ > mu- mu+ (massive muon) against the
+  legacy engine and MadLoop (WP3.2 EWI-5); one rule for coloured vertices
+  too by the second genericity audit (G2-M6).
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+import json
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
-from functools import cache
+from fractions import Fraction
 from itertools import permutations, product
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias, cast
 
 from ..._internal.physics.symbols import ModelSymbolRegistry, symbols
 from ...models import compiler_symbolica as _sym
-from ...models import tensors as _tensors
 from ...models.compiler_entry import compile_ufo_model_ir
 from ...models.compiler_kernels import (
     _input_tensor_expression,
@@ -59,6 +95,7 @@ from ...models.external import CompiledUFOModel
 from ...models.prepared_catalog import (
     PreparedContractKind,
     PreparedKernelCatalog,
+    PreparedKernelCatalogError,
     PreparedKernelInput,
     PreparedKernelSpec,
     TreeKernelVariant,
@@ -74,13 +111,19 @@ from ...models.prepared_catalog_builder import (
 )
 from ...models.prepared_catalog_helpers import (
     canonical_expressions,
+    canonical_json,
     component_descriptors,
     formal_components,
     formal_model_parameter,
     model_parameter_descriptor,
     used_input_descriptors,
 )
-from ...models.tensors import normalize_lorentz_expression
+from ...models.tensors import (
+    LEVI_CIVITA,
+    levi_civita_tensor,
+    normalize_lorentz_expression,
+)
+from .conventions import ReadingSignError, colour_transposition_sign
 
 if TYPE_CHECKING:
     from ...models.contracts import CompiledParticleRecord, CompiledVertexTerm
@@ -92,9 +135,42 @@ LOOP_KERNEL_CATALOGUE_ABI = "pyamplicol-loop-kernel-catalogue-v1"
 LoopSegmentForm: TypeAlias = Literal["fused", "split"]
 LOOP_SEGMENT_FORMS: tuple[LoopSegmentForm, ...] = ("fused", "split")
 
+# The segments' polynomial stage (``_polynomial_candidate`` without the
+# candidate's signature: monomial coefficients, their canonical strings and
+# the inputs they read) runs natively, every segment of a catalogue in one
+# parallel call (``rusticol_core::loop_v2::generate::catalogue`` through the
+# loop extension's ``loop_catalogue_polynomials``; M-SM MS-GEN, HANDOFF
+# §0.4): byte-identical to ``_polynomial_coefficients``,
+# ``canonical_expressions``, ``used_input_descriptors`` and the
+# undeclared-input check of ``_candidate_from_payload``, which stay the
+# oracle (``native_catalogue_polynomials(False)`` runs them).
+NATIVE_CATALOGUE_POLYNOMIALS = True
+# Segments per native call: enough for the worker pool, few enough that the
+# deferred outputs and the returned canonical strings (megabytes per segment
+# on the electroweak UFOs) do not pile up.
+NATIVE_CATALOGUE_CHUNK = 64
+
+
+@contextmanager
+def native_catalogue_polynomials(enabled: bool) -> Iterator[None]:
+    """``NATIVE_CATALOGUE_POLYNOMIALS`` set to ``enabled`` for the block and
+    restored after it: ``native_catalogue_polynomials(False)`` is the oracle
+    lane."""
+
+    global NATIVE_CATALOGUE_POLYNOMIALS
+    before = NATIVE_CATALOGUE_POLYNOMIALS
+    NATIVE_CATALOGUE_POLYNOMIALS = bool(enabled)
+    try:
+        yield
+    finally:
+        NATIVE_CATALOGUE_POLYNOMIALS = before
+
 
 class LoopKernelCatalogueError(ValueError):
     """Raised when a model cannot provide a complete exact loop kernel."""
+
+    # The listed internal refusal (``refusals.LOOP_INTERNAL_REFUSALS``).
+    refusal_key = "loop-kernel-catalogue"
 
 
 @dataclass(frozen=True, order=True, slots=True)
@@ -375,7 +451,9 @@ def compile_tree_kernel_variant(
         )
     return replace(
         compiled,
-        ir=compile_ufo_model_ir(compiled.model, tree_kernel_variant=variant),
+        ir=compile_ufo_model_ir(
+            compiled.model, tree_kernel_variant=variant, gauge=compiled.ir.gauge
+        ),
         _serialized_path=None,
         _prepared_bundle=None,
     )
@@ -468,6 +546,28 @@ class _PendingBinding:
     build: Any
 
 
+# A lowered polynomial kernel: its entries and candidate (None: zero).
+_Lowered: TypeAlias = "tuple[tuple[LoopMonomialEntry, ...], _Candidate] | None"
+
+
+@dataclass(frozen=True, slots=True)
+class _DeferredPolynomials:
+    """The ``_polynomial_candidate`` calls of one segment, lowered natively
+    with every other segment of the catalogue (``_CatalogueBuilder._flush``):
+    one variant per form, each with its block variables and error context;
+    ``bind`` takes the variants' results in order and returns False to skip
+    the remaining ones. ``available`` are the job's own inputs followed by
+    the model parameters."""
+
+    contract_kind: PreparedContractKind
+    outputs: tuple[Any, ...]
+    rows: tuple[Any, ...]
+    variants: tuple[tuple[str, tuple[tuple[Any, ...], ...], str], ...]
+    own_inputs: int
+    available: tuple[PreparedKernelInput, ...]
+    bind: Callable[[str, _Lowered], bool]
+
+
 class _CatalogueBuilder:
     """Accumulates exact candidates and their bindings for one model."""
 
@@ -509,6 +609,14 @@ class _CatalogueBuilder:
         self.proof_classes: dict[str, set[str]] = {}
         self.pending: list[_PendingBinding] = []
         self.unsupported_counterterms: list[UnsupportedCountertermSite] = []
+        self.native_polynomials = NATIVE_CATALOGUE_POLYNOMIALS
+        self._deferred: list[_DeferredPolynomials] = []
+        self._native: Any = None
+        self._input_items: dict[PreparedKernelInput, tuple[str, str]] = {}
+        self._shared_items: list[tuple[str, str]] | None = None
+        self._reading_signs: dict[int, int] = {}
+        self._field_signs: _FieldSigns | None = None
+        self._conjugate_signs: _FieldSigns | None = None
 
     # -- species -----------------------------------------------------------
 
@@ -632,6 +740,8 @@ class _CatalogueBuilder:
             tag=f"loop_v2_t{term.id}",
         )
         coupling = self._coupling(term)
+        if self.reading_sign(term) < 0:
+            coupling = -coupling
         outputs = self._numerator(
             out_species,
             tuple(coupling * component for component in vertex),
@@ -642,12 +752,12 @@ class _CatalogueBuilder:
                 f"segment of {term.vertex} produced {len(outputs)} components for "
                 f"species {out_species}, expected {out_dimension}"
             )
-        available = (
+        own_inputs = (
             *component_descriptors(self.model, "loop-momentum", shift),
             *component_descriptors(self.model, "block-current", block_values),
             *component_descriptors(self.model, "block-momentum", block_momentum_values),
-            *self.parameter_descriptors,
         )
+        available = (*own_inputs, *self.parameter_descriptors)
         context = f"segment {term.vertex}/{term.id} {loop_in}->{loop_out}"
         metadata: dict[str, Any] = {
             "vertex": term.vertex,
@@ -664,21 +774,16 @@ class _CatalogueBuilder:
             "color_normalization_power": int(term.lc_color_normalization_power),
             "coupling_orders": tuple(term.coupling_orders),
         }
-        for form in LOOP_SEGMENT_FORMS:
-            lowered = self._polynomial_candidate(
-                "loop-segment",
-                outputs,
-                rows,
-                tuple(blocks) if form == "split" else (),
-                available,
-                context=f"{form} {context}",
-            )
+
+        def bind(form: str, lowered: _Lowered) -> bool:
             if lowered is None:
                 if any(chiralities):
-                    return  # a chirality selection rule, not a missing kernel
+                    return False  # a chirality selection rule, not a missing kernel
                 raise LoopKernelCatalogueError(f"{context} lowered to zero")
             entries, candidate = lowered
-            key = LoopSegmentKey(term.id, loop_in, loop_out, chiralities, form)
+            key = LoopSegmentKey(
+                term.id, loop_in, loop_out, chiralities, cast("LoopSegmentForm", form)
+            )
             self.pending.append(
                 _PendingBinding(
                     candidate,
@@ -690,6 +795,278 @@ class _CatalogueBuilder:
                     ),
                 )
             )
+            return True
+
+        variants = tuple(
+            (form, tuple(blocks) if form == "split" else (), f"{form} {context}")
+            for form in LOOP_SEGMENT_FORMS
+        )
+        if not self.native_polynomials:
+            for form, form_blocks, form_context in variants:
+                lowered = self._polynomial_candidate(
+                    "loop-segment",
+                    outputs,
+                    rows,
+                    form_blocks,
+                    available,
+                    context=form_context,
+                )
+                if not bind(form, lowered):
+                    return
+            return
+        self._deferred.append(
+            _DeferredPolynomials(
+                "loop-segment",
+                tuple(outputs),
+                tuple(rows),
+                variants,
+                len(own_inputs),
+                available,
+                bind,
+            )
+        )
+        if len(self._deferred) >= NATIVE_CATALOGUE_CHUNK:
+            self._flush()
+
+    # -- tree reading of vertices ------------------------------------------
+
+    def reading_sign(self, term: CompiledVertexTerm) -> int:
+        """The sign of the tree engine's reading of ``term`` against its
+        segments' (module docstring), one rule for every vertex: on a ghost
+        vertex the product of its other legs' field signs, on any other the
+        ratio of the two readings' Lorentz structures times its colour
+        tensor's transposition sign. A vertex where either is not a sign is
+        refused (``LoopKernelCatalogueError``)."""
+
+        found = self._reading_signs.get(term.id)
+        if found is None:
+            found = self._reading_signs[term.id] = self._reading_sign(term)
+        return found
+
+    def _reading_sign(self, term: CompiledVertexTerm) -> int:
+        records = tuple(self.particles[name] for name in term.particles)
+        # Ghosts first: the gluon's ghost vertex is no sign kinematically.
+        # Every ghost vertex is read on its own legs, closed under
+        # conjugation or not (``conventions.conjugate_vertex_rules``): the
+        # product of the field signs of its other legs. On a vertex not
+        # closed under conjugation (a W ghost vertex, [ghA ghWm~ W-]) that
+        # product holds a charged field, whose sign the equations fix only
+        # up to one sign per charge-conjugate family (s(W+) s(W-) = 1,
+        # s(W-) s(G+) = -1 on the SM): ``gauge`` sets the free one to +1,
+        # which every ghost loop, charge-balanced, cancels.
+        if any(record.ghost_number for record in records):
+            closed = self._closed(term.particles)
+            sign = self._signs(conjugates=not closed).product(
+                (record.name for record in records if not record.ghost_number),
+                gauge=not closed,
+            )
+            if sign is None:
+                raise LoopKernelCatalogueError(
+                    f"ghost vertex {term.vertex} {tuple(term.particles)}: the "
+                    "field signs of its other legs are not fixed by the boson "
+                    "vertices"
+                )
+            return sign
+        what = f"vertex {term.vertex} {tuple(term.particles)}"
+        try:
+            colour = colour_transposition_sign(term.color_source, what)
+        except ReadingSignError as error:
+            raise LoopKernelCatalogueError(str(error)) from error
+        return colour * self._kinematic_reading_sign(term, records)
+
+    def _closed(self, names: Sequence[str]) -> bool:
+        return sorted(names) == sorted(self.particles[name].antiname for name in names)
+
+    def _kinematic_reading_sign(
+        self, term: CompiledVertexTerm, records: tuple[CompiledParticleRecord, ...]
+    ) -> int:
+        """L(pi legs, -p) / L(legs, p): each boson current on the leg of its
+        antiparticle (a closed vertex; a vertex not closed under conjugation
+        is read through its conjugate rule, on the antiparticles' legs
+        already), every momentum reversed. Refused unless it is +-1."""
+
+        legs = range(len(records))
+        partner = {leg: leg for leg in legs}
+        if self._closed(term.particles):
+            free = [leg for leg in legs if records[leg].spin != _FERMION_SPIN]
+            while free:
+                leg = free.pop(0)
+                anti = records[leg].antiname
+                other = (
+                    leg
+                    if anti == records[leg].name
+                    else next(o for o in free if records[o].name == anti)
+                )
+                if other != leg:
+                    free.remove(other)
+                partner[leg], partner[other] = other, leg
+        pdgs = tuple(record.pdg_code for record in records)
+        dimensions = tuple(int(self.model.current_dimension(pdg, 0)) for pdg in pdgs)
+        values = formal_components(self.model, "block-current", sum(dimensions))
+        vectors = formal_components(self.model, "block-momentum", 4 * len(records))
+        currents, momenta = {}, {}
+        offset = 0
+        for leg, (pdg, dimension) in enumerate(zip(pdgs, dimensions, strict=True)):
+            currents[leg] = self._embedded_current(
+                pdg, 0, values[offset : offset + dimension]
+            )
+            momenta[leg] = vectors[4 * leg : 4 * leg + 4]
+            offset += dimension
+        spins = tuple(record.spin for record in records)
+        (incoming,) = _contract_lorentz(
+            self.model_symbols,
+            term.lorentz_expression,
+            spins,
+            currents,
+            momenta,
+            output_leg=None,
+            tag=f"loop_v2_r{term.id}",
+        )
+        (tree,) = _contract_lorentz(
+            self.model_symbols,
+            term.lorentz_expression,
+            spins,
+            {partner[leg]: currents[leg] for leg in legs},
+            {partner[leg]: tuple(-x for x in momenta[leg]) for leg in legs},
+            output_leg=None,
+            tag=f"loop_v2_r{term.id}",
+        )
+        for sign in (1, -1):
+            if (tree - sign * incoming).expand().to_canonical_string() == "0":
+                return sign
+        raise LoopKernelCatalogueError(
+            f"vertex {term.vertex} {tuple(term.particles)}: its tree reading is "
+            "not a sign of its loop segments' reading (a Lorentz structure of "
+            "mixed momentum parity or exchange symmetry)"
+        )
+
+    def _signs(self, *, conjugates: bool = False) -> _FieldSigns:
+        """Field signs of the tree engine's basis, from the reading signs of
+        the model's closed boson vertices of every colour (module
+        docstring); with ``conjugates`` also from the boson vertices not
+        closed under conjugation, read through their conjugate rules (the
+        signs of the ghost vertices not closed under conjugation; the closed
+        ones keep the closed vertices' equations alone). A vertex without a
+        reading sign fixes no field sign (a segment of it is refused by
+        ``reading_sign`` itself)."""
+
+        if conjugates:
+            if self._conjugate_signs is None:
+                self._conjugate_signs = self._solve_signs(conjugates=True)
+            return self._conjugate_signs
+        if self._field_signs is None:
+            self._field_signs = self._solve_signs(conjugates=False)
+        return self._field_signs
+
+    def _solve_signs(self, *, conjugates: bool) -> _FieldSigns:
+        equations = []
+        for term in self.compiled.ir.vertex_terms:
+            records = tuple(self.particles[name] for name in term.particles)
+            if any(
+                record.ghost_number
+                or record.spin == _FERMION_SPIN
+                or record.auxiliary_kind is not None
+                for record in records
+            ):
+                continue
+            if not self._closed(term.particles):
+                # A boson vertex read through its conjugate rule: the
+                # tree engine's reading against the own-leg one is a
+                # product of field signs too (WP3.2 EWI-7), which ties
+                # the charged fields' signs together (W G H, W G G0,
+                # W G A, W G Z).
+                if conjugates:
+                    sign = self._conjugate_reading_sign(term, records)
+                    if sign is not None:
+                        equations.append((term.particles, sign))
+                continue
+            try:
+                sign = self.reading_sign(term)
+            except LoopKernelCatalogueError:
+                continue
+            equations.append((term.particles, sign))
+        return _FieldSigns(equations)
+
+    def _conjugate_reading_sign(
+        self, term: CompiledVertexTerm, records: tuple[CompiledParticleRecord, ...]
+    ) -> int | None:
+        """The tree engine's reading of a boson vertex not closed under
+        conjugation against its own-leg reading (incoming fields, incoming
+        momenta), or None where it is not a sign: c' L'(pi legs, -p) /
+        (c L(legs, p)) with c', L' the coupling and Lorentz structure of the
+        model's unique conjugate term (the antiparticles' term at the same
+        coupling orders, one colour and Lorentz cell each: the Hermitian
+        partner), pi each leg's antiparticle leg of that term."""
+
+        def orders_of(item: CompiledVertexTerm) -> tuple[tuple[str, int], ...]:
+            return tuple(
+                sorted((name, int(power)) for name, power in item.coupling_orders)
+            )
+
+        anti = sorted(record.antiname for record in records)
+        orders = orders_of(term)
+        cells = [
+            other
+            for other in self.compiled.ir.vertex_terms
+            if other.vertex == term.vertex
+        ]
+        partners = [
+            other
+            for other in self.compiled.ir.vertex_terms
+            if sorted(other.particles) == anti and orders_of(other) == orders
+        ]
+        if len(cells) != 1 or len(partners) != 1:
+            return None
+        (partner,) = partners
+        free = list(range(len(partner.particles)))
+        legs = {}
+        for leg, record in enumerate(records):
+            match = [o for o in free if partner.particles[o] == record.antiname]
+            if len(match) != 1:
+                return None  # identical legs: no unique pairing
+            legs[leg] = match[0]
+            free.remove(match[0])
+        pdgs = tuple(record.pdg_code for record in records)
+        dimensions = tuple(int(self.model.current_dimension(pdg, 0)) for pdg in pdgs)
+        values = formal_components(self.model, "block-current", sum(dimensions))
+        vectors = formal_components(self.model, "block-momentum", 4 * len(records))
+        currents, momenta = {}, {}
+        offset = 0
+        for leg, (pdg, dimension) in enumerate(zip(pdgs, dimensions, strict=True)):
+            currents[leg] = self._embedded_current(
+                pdg, 0, values[offset : offset + dimension]
+            )
+            momenta[leg] = vectors[4 * leg : 4 * leg + 4]
+            offset += dimension
+        (own,) = _contract_lorentz(
+            self.model_symbols,
+            term.lorentz_expression,
+            tuple(record.spin for record in records),
+            currents,
+            momenta,
+            output_leg=None,
+            tag=f"loop_v2_r{term.id}",
+        )
+        spins = [0] * len(records)
+        for leg, record in enumerate(records):
+            spins[legs[leg]] = record.spin
+        (tree,) = _contract_lorentz(
+            self.model_symbols,
+            partner.lorentz_expression,
+            tuple(spins),
+            {legs[leg]: currents[leg] for leg in currents},
+            {legs[leg]: tuple(-x for x in momenta[leg]) for leg in momenta},
+            output_leg=None,
+            tag=f"loop_v2_r{partner.id}",
+        )
+        ratio = (self._coupling(partner) / self._coupling(term)).cancel()
+        for kinematic in (1, -1):
+            if (tree - kinematic * own).expand().to_canonical_string() != "0":
+                continue
+            for value in (1, -1):
+                if (ratio - value).expand().to_canonical_string() == "0":
+                    return kinematic * value
+        return None
 
     def _embedded_current(
         self,
@@ -871,17 +1248,37 @@ class _CatalogueBuilder:
             raise LoopKernelCatalogueError(
                 f"counterterm {entry.vertex_name} has a ghost leg"
             )
-        lorentz = self.lorentz.get(entry.lorentz_name)
+        # A root entry promoted onto a scalar-vector mixing line
+        # (``ct_sites.PromotedRootEntry``): its scalar leg takes a vector
+        # current contracted with the leg's momentum, L * P(mu_k, k).
+        promoted = getattr(entry, "promoted_leg", None)
+        name = entry.lorentz_name if promoted is None else entry.base_lorentz_name
+        lorentz = self.lorentz.get(name)
         if lorentz is None:
             raise LoopKernelCatalogueError(
-                f"counterterm Lorentz structure {entry.lorentz_name!r} is not in "
+                f"counterterm Lorentz structure {name!r} is not in "
                 f"the compiled payload of {self.compiled.name!r}"
+            )
+        structure = str(lorentz["structure"])
+        if promoted is not None:
+            if records[promoted].spin != 1:
+                raise LoopKernelCatalogueError(
+                    f"{entry.vertex_name}: leg {promoted + 1} is not a scalar leg"
+                )
+            vector = self._promotion_vector(records[promoted])
+            records = (*records[:promoted], vector, *records[promoted + 1 :])
+            pdgs = tuple(record.pdg_code for record in records)
+            leg = promoted + 1
+            structure = (
+                f"({structure})*UFO::{{}}::P("
+                f"UFO::{{}}::idx(1,{leg}),UFO::{{}}::idx(1,{leg}))"
             )
         spins = tuple(record.spin for record in records)
         try:
-            # R2 rules of neutral currents carry Epsilon (e.g. R2_GGZ).
+            # R2 rules of neutral currents carry Epsilon (e.g. R2_GGZ), the
+            # dense ``tensors.LEVI_CIVITA``.
             expression = normalize_lorentz_expression(
-                _with_levi_civita(str(lorentz["structure"])),
+                structure,
                 spins,
                 model_symbols=self.model_symbols,
             ).expression
@@ -901,6 +1298,30 @@ class _CatalogueBuilder:
             *(_state_chiralities(self.model, pdg) for pdg in pdgs)
         ):
             self._add_counterterm_site(entry, pdgs, spins, expression, chiralities)
+
+    def _promotion_vector(self, scalar: Any) -> Any:
+        """A vector record whose current a promoted scalar leg takes (four
+        components, no chirality): the uncoloured, non-ghost vector of the
+        scalar's charge with the lowest |PDG| code (a mixing line's vector
+        current enters the kernel as is, whichever vector it was)."""
+
+        charge = Fraction(str(scalar.charge))
+        found = sorted(
+            (
+                record
+                for record in self.by_pdg.values()
+                if record.spin == 3
+                and record.ghost_number == 0
+                and int(record.color) == 1
+                and Fraction(str(record.charge)) == charge
+            ),
+            key=lambda record: (abs(record.pdg_code), record.pdg_code),
+        )
+        if not found:
+            raise LoopKernelCatalogueError(
+                f"no vector of charge {charge} for a promoted scalar leg"
+            )
+        return found[0]
 
     def _add_counterterm_site(
         self,
@@ -1010,7 +1431,129 @@ class _CatalogueBuilder:
         _register_candidate(self.candidates, self.proof_classes, candidate)
         return candidate
 
+    def _flush(self) -> None:
+        """Lower the deferred segments natively, in one parallel call, and
+        bind them in their order (the oracle's, which binds each at once;
+        ``finish`` orders the bindings and kernels)."""
+
+        deferred, self._deferred = self._deferred, []
+        if not deferred:
+            return
+        if self._native is None:
+            # Verified once per catalogue: the identity check costs 0.2 s
+            # per call in a source checkout.
+            from ..native import load_loop_native
+
+            self._native = load_loop_native()
+        shared = self.parameter_descriptors
+        (kind,) = {item.contract_kind for item in deferred}
+        jobs = []
+        for item in deferred:
+            if item.available[item.own_inputs :] != shared:
+                raise LoopKernelCatalogueError(
+                    f"{item.variants[0][2]}: the native polynomial stage takes the "
+                    "model parameters as its shared inputs"
+                )
+            jobs.append(
+                (
+                    # Symbolica's portable text (every namespace but the
+                    # default one): the same expression as its canonical
+                    # string, without sorting every node.
+                    [_portable(output) for output in item.outputs],
+                    [row.to_canonical_string() for row in item.rows],
+                    [
+                        [
+                            [value.to_canonical_string() for value in block]
+                            for block in blocks
+                        ]
+                        for _form, blocks, _context in item.variants
+                    ],
+                    [self._input_item(d) for d in item.available[: item.own_inputs]],
+                )
+            )
+        if self._shared_items is None:
+            self._shared_items = [self._input_item(d) for d in shared]
+        results = self._native.loop_catalogue_polynomials(
+            jobs,
+            [component.to_canonical_string() for component in self.q],
+            self._shared_items,
+            (
+                json.dumps(LOOP_KERNEL_CATALOGUE_ABI, ensure_ascii=True),
+                json.dumps(kind, ensure_ascii=True),
+            ),
+        )
+        for item, variants in zip(deferred, results, strict=True):
+            for (form, _blocks, context), (found, refusal) in zip(
+                item.variants, variants, strict=True
+            ):
+                lowered = self._native_lowered(
+                    item.contract_kind, item.available, context, found, refusal
+                )
+                if not item.bind(form, lowered):
+                    break
+
+    def _native_lowered(
+        self,
+        contract_kind: PreparedContractKind,
+        available: Sequence[PreparedKernelInput],
+        context: str,
+        found: Any,
+        refusal: tuple[str, str] | None,
+    ) -> _Lowered:
+        """A native variant's result as ``_polynomial_candidate``'s, with the
+        oracle's refusals."""
+
+        if refusal is not None:
+            kind, detail = refusal
+            if kind == "not-linear":
+                raise LoopKernelCatalogueError(
+                    "loop kernel is not linear in the open-loop current and blocks"
+                )
+            if kind == "unexpected-monomial":
+                raise LoopKernelCatalogueError(f"unexpected monomial {detail}")
+            if kind == "not-finite":
+                raise PreparedKernelCatalogError(
+                    f"{context} output {detail} is not a finite exact expression"
+                )
+            if kind == "undeclared":
+                raise PreparedKernelCatalogError(
+                    f"prepared {contract_kind} contract has undeclared inputs: {detail}"
+                )
+            raise LoopKernelCatalogueError(f"{context}: native refusal {kind} {detail}")
+        if found is None:
+            return None
+        raw, exact, positions, signature = found
+        entries = tuple(
+            LoopMonomialEntry(int(row), int(out), tuple(exponents), tuple(blocks))
+            for row, out, exponents, blocks in raw
+        )
+        # ``_candidate_from_payload``'s candidate, its checks and signature
+        # formed natively.
+        candidate = _Candidate(
+            contract_kind=contract_kind,
+            canonical_signature=signature,
+            exact_expressions=tuple(exact),
+            inputs=tuple(available[position] for position in positions),
+            output_layout=tuple(entry.label() for entry in entries),
+            proof_class=None,
+        )
+        _register_candidate(self.candidates, self.proof_classes, candidate)
+        return entries, candidate
+
+    def _input_item(self, descriptor: PreparedKernelInput) -> tuple[str, str]:
+        """(symbol, the canonical JSON of the descriptor) of an available
+        input, as ``_candidate_from_payload`` writes it."""
+
+        found = self._input_items.get(descriptor)
+        if found is None:
+            found = self._input_items[descriptor] = (
+                descriptor.symbol,
+                canonical_json(descriptor.to_dict()).decode("ascii"),
+            )
+        return found
+
     def finish(self, loop_species: tuple[int, ...]) -> LoopKernelCatalogue:
+        self._flush()
         signatures = tuple(sorted(self.candidates))
         kernel_ids = {signature: index for index, signature in enumerate(signatures)}
         kernels = tuple(
@@ -1054,6 +1597,113 @@ class _CatalogueBuilder:
         )
 
 
+# UFO spin of a fermion (2S + 1).
+_FERMION_SPIN = 2
+
+
+class _FieldSigns:
+    """Signs s_f = +-1 of fields with prod_legs s_f = sign per equation,
+    solved over GF(2) (``_CatalogueBuilder._signs``).
+
+    The equations split into components of fields that share an equation;
+    each is solved on its own. A component whose equations contradict each
+    other (no field basis gives its reading signs) fixes no sign: a product
+    over one of its fields is refused, every other product is unaffected
+    (a ghost vertex's sign needs only the fields it holds)."""
+
+    def __init__(self, equations: Iterable[tuple[Iterable[str], int]]):
+        self._index: dict[str, int] = {}
+        # (mask, parity, support): the support holds every field of the
+        # vertex, also those its mask cancels (a field on two legs).
+        rows = []
+        for names, sign in equations:
+            names = tuple(names)
+            support = 0
+            for name in names:
+                support |= 1 << self._index.setdefault(name, len(self._index))
+            rows.append((self._mask(names), int(sign < 0), support))
+        # Union-find over the field bits: one component per connected set.
+        parent = list(range(len(self._index)))
+
+        def root(bit: int) -> int:
+            while parent[bit] != bit:
+                parent[bit] = parent[parent[bit]]
+                bit = parent[bit]
+            return bit
+
+        for _mask, _parity, support in rows:
+            bits = [bit for bit in range(support.bit_length()) if support >> bit & 1]
+            for bit in bits[1:]:
+                parent[root(bit)] = root(bits[0])
+        self._component = {bit: root(bit) for bit in range(len(self._index))}
+        self._names = {bit: name for name, bit in self._index.items()}
+        # Reduced rows: pivot bit -> (mask, parity); a mask is a field set.
+        self._rows: dict[int, tuple[int, int]] = {}
+        # Components whose equations contradict each other.
+        self._contradicted: set[int] = set()
+        for mask, parity, support in rows:
+            if not support:
+                continue
+            component = self._component[support.bit_length() - 1]
+            if component in self._contradicted:
+                continue
+            mask, parity = self._reduce(mask, parity)
+            if not mask:
+                if parity:
+                    self._contradicted.add(component)
+                    self._rows = {
+                        bit: row
+                        for bit, row in self._rows.items()
+                        if self._component[bit] != component
+                    }
+                continue
+            pivot = mask.bit_length() - 1
+            for bit, (other, other_parity) in list(self._rows.items()):
+                if other >> pivot & 1:
+                    self._rows[bit] = (other ^ mask, other_parity ^ parity)
+            self._rows[pivot] = (mask, parity)
+
+    def _mask(self, names: Iterable[str]) -> int:
+        mask = 0
+        for name in names:
+            mask ^= 1 << self._index.setdefault(name, len(self._index))
+        return mask
+
+    def _reduce(self, mask: int, parity: int) -> tuple[int, int]:
+        for bit in sorted(self._rows, reverse=True):
+            if mask >> bit & 1:
+                row, row_parity = self._rows[bit]
+                mask, parity = mask ^ row, parity ^ row_parity
+        return mask, parity
+
+    def product(self, names: Iterable[str], *, gauge: bool = False) -> int | None:
+        """prod s_f over ``names``, None when the equations do not fix it;
+        with ``gauge`` every sign the equations leave free is +1 (one
+        solution of the equations: products the equations fix are the same
+        in every solution).
+
+        Refused (``LoopKernelCatalogueError``) when one of the fields (with
+        odd multiplicity) lies in a component whose equations contradict
+        each other."""
+
+        known = len(self._component)
+        mask = self._mask(names)
+        touched = sorted(
+            self._names[bit]
+            for bit in range(min(mask.bit_length(), known))
+            if mask >> bit & 1 and self._component[bit] in self._contradicted
+        )
+        if touched:
+            raise LoopKernelCatalogueError(
+                "the tree reading signs of the closed boson vertices with the "
+                f"fields {touched} are not those of a field basis"
+            )
+        mask, parity = self._reduce(mask, 0)
+        if mask and not gauge:
+            return None
+        return -1 if parity else 1
+
+
 def _counterterm_entry_key(entry: KernelBasisEntry) -> tuple[str, int, int, int, int]:
     return (
         entry.collection,
@@ -1062,73 +1712,6 @@ def _counterterm_entry_key(entry: KernelBasisEntry) -> tuple[str, int, int, int,
         entry.lorentz_index,
         -1 if entry.loop_group_index is None else entry.loop_group_index,
     )
-
-
-# The four-dimensional Levi-Civita tensor of UFO Lorentz structures.
-UFO_LEVI_CIVITA = symbols.qualified_name("loop_v2_ufo_levi_civita")
-
-
-def _permutation_sign(permutation: Sequence[int]) -> int:
-    sign, order = 1, list(permutation)
-    for index in range(len(order)):
-        while order[index] != index:
-            target = order[index]
-            order[index], order[target] = order[target], order[index]
-            sign = -sign
-    return sign
-
-
-@cache
-def ufo_levi_civita_tensor() -> Any:
-    """The dense ``Epsilon`` of UFO Lorentz structures (``UFO_LEVI_CIVITA``).
-
-    ALOHA (``aloha_object.L_Epsilon``) represents Epsilon by its contravariant
-    components with epsilon^{0123} = -1 (epsilon_{0123} = +1) and contracts
-    every Lorentz index with the metric. Spenso contracts Minkowski slots the
-    same way (vectors are contravariant components), so the components are
-    ALOHA's: minus the sign of the index permutation. The ``ct-site`` kernels
-    of R2_GGZ and R2_GGGVa equal compiled ALOHA routines to rounding
-    (``tests/unit/test_loop_v2_levi_civita.py``).
-    """
-
-    _sym._ensure_symbolica()
-    minkowski = _sym.Representation.mink(4)
-    components = [
-        _sym.E(str(-_permutation_sign(axes) if len(set(axes)) == 4 else 0))
-        for axes in product(range(4), repeat=4)
-    ]
-    return _sym.Tensor.dense(
-        _sym.TensorName(UFO_LEVI_CIVITA)(*[minkowski] * 4), components
-    )
-
-
-def _with_levi_civita(structure: str) -> str:
-    """A wrapped UFO Lorentz structure with ``Epsilon`` as ``UFO_LEVI_CIVITA``.
-
-    The tree model compiler refuses Epsilon (``models.tensors``); the loop
-    catalogue admits it for counterterm sites only, with the slot labels the
-    normaliser gives the other Lorentz indices.
-    """
-
-    if "Epsilon" not in structure:
-        return structure
-    _sym._ensure_symbolica()
-    _tensors._ensure_symbolica()
-    minkowski = _sym.Representation.mink(4)
-    name = _sym.TensorName(UFO_LEVI_CIVITA)
-    wildcards = _tensors._WILDCARDS
-
-    def replace(match: Mapping[Any, Any]) -> Any:
-        return name(
-            *(
-                minkowski(_tensors._ufo_lorentz_label(match[wildcards[label]]))
-                for label in ("a_", "b_", "c_", "d_")
-            )
-        ).to_expression()
-
-    return _tensors._replace(
-        _sym.E(structure), "UFO::Epsilon(a_,b_,c_,d_)", replace
-    ).to_canonical_string()
 
 
 def _contract_lorentz(
@@ -1150,8 +1733,8 @@ def _contract_lorentz(
     """
 
     library = _sym.TensorLibrary.hep_lib_atom()
-    if UFO_LEVI_CIVITA in lorentz_expression:
-        library.register(ufo_levi_civita_tensor())
+    if LEVI_CIVITA in lorentz_expression:
+        library.register(levi_civita_tensor())
     minkowski = _sym.Representation.mink(4)
     momentum_names = {
         leg: _sym.TensorName(model_symbols.ufo_momentum_tensor_name(leg + 1))
@@ -1187,6 +1770,15 @@ def _contract_lorentz(
             network.result_tensor(library), labels
         ).values
     )
+
+
+def _portable(value: Any) -> str:
+    """An output as ``_polynomial_coefficients`` reads it (``0 + output``),
+    in Symbolica's portable text."""
+
+    if not isinstance(value, _sym.Expression):
+        value = _sym.E("0") + value
+    return repr(value)
 
 
 def _polynomial_coefficients(

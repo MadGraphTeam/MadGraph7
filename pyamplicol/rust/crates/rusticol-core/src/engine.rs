@@ -1552,10 +1552,6 @@ struct GenericSourceIrManifest {
     width_parameter: Option<String>,
 }
 
-// Reuse the existing typed tree SourceIR parser/validation for saved loop ports;
-// loop execution itself consumes the retained exact phase evaluator.
-pub(crate) use validation::validate_loop_vector_sources;
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct GenericSourceRecordManifest {
@@ -4899,7 +4895,9 @@ pub(crate) use evaluator::symjit_plane::{
     feature = "symbolica-runtime",
     any(test, feature = "python-generation-bridge")
 ))]
-pub(crate) use evaluator::symjit_plane::compile_symbolica_evaluator_to_plane_application_bytes;
+pub(crate) use evaluator::symjit_plane::{
+    compile_symbolica_evaluator_to_plane_application_bytes, real_axis_sensitive_outputs,
+};
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 pub(crate) use evaluator::symjit_plane::{
     PlaneDescriptor, SymjitPlaneKernel, SymjitPlaneLayout, symjit_cpu_features,

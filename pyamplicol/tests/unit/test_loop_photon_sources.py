@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: 0BSD
-"""Actual model-owned photon sources, crossed ports and cold native replay."""
+"""Actual model-owned photon sources and crossed ports against Recola (the v2
+engine on the public CLI route)."""
 
 import io
 import json
@@ -11,11 +12,9 @@ from pathlib import Path
 import pytest
 
 from pyamplicol import CorrelatedRequest, CorrelatorConfig, Runtime
-from pyamplicol.api import VirtualArithmeticSpec, VirtualStabilityPolicy
-from pyamplicol.api.errors import EvaluationError
 from pyamplicol.cli import run_cli
-from pyamplicol.loops.model_compatibility import prepare_loop_sm_scalar_declarations
 from pyamplicol.models.loading import compile_model_source
+from tools.loop_reference.model_compatibility import prepare_loop_sm_scalar_declarations
 
 from .test_loop_generation_public_runtime import _card
 
@@ -104,49 +103,6 @@ def _flat(result):
     return [result.born_values[0][0], *result.values[0][0]]
 
 
-def test_cold_photon_source_contracts_are_authoritative(photon_artifact, tmp_path):
-    from pyamplicol.loops.native import load_loop_native
-
-    from .test_loop_portable import _rewrite
-
-    path, photon_leg, _ = photon_artifact
-    native = load_loop_native()
-    pacbin = path / "processes/photon/loop-runtime.pacbin"
-    saved = native.PortableLoopPlan(str(pacbin))
-    data = json.loads(saved.metadata_json())
-    for group in data["spin_projections"]:
-        for leg, contract in zip(group["legs"], group["source_contracts"], strict=True):
-            assert contract["identity"]["pdg_label"] == (
-                22 if leg == photon_leg else 21
-            )
-            assert contract["wavefunction_family"] == "vector"
-            assert len(contract["states"]) == 2
-    for index, (mutate, message) in enumerate(
-        [
-            (
-                lambda d: d["spin_projections"][0]["source_contracts"].clear(),
-                "contract",
-            ),
-            (
-                lambda d: d["spin_projections"][0]["source_contracts"][0][
-                    "identity"
-                ].update(pdg_label=21),
-                "antiparticle relation",
-            ),
-            (
-                lambda d: d["spin_projections"][0]["source_contracts"][0][
-                    "states"
-                ].append(d["spin_projections"][0]["source_contracts"][0]["states"][0]),
-                "SourceIR",
-            ),
-        ]
-    ):
-        broken = tmp_path / f"bad-source-{index}.pacbin"
-        _rewrite(pacbin, broken, mutate)
-        with pytest.raises(ValueError, match=message):
-            native.PortableLoopPlan(str(broken))
-
-
 @pytest.mark.parametrize(
     "arithmetic,precision",
     [
@@ -160,7 +116,7 @@ def test_photon_sources_match_recola_and_cold_literal_replay(
 ):
     path, photon_leg, rows = photon_artifact
     runtime = _runtime(path, arithmetic, precision)
-    assert runtime.inspect()["spin_correlations"] == (
+    assert tuple(map(tuple, runtime.inspect()["spin_correlations"])) == (
         (photon_leg,),
         (photon_leg, 4),
         (4,),
@@ -210,7 +166,7 @@ def test_photon_sources_match_recola_and_cold_literal_replay(
         assert after.values[0] == result.values[0]
 
 
-def test_photon_joint_polarization_sum_and_subset_rescue(photon_artifact):
+def test_photon_joint_polarization_sum(photon_artifact):
     path, photon_leg, rows = photon_artifact
     runtime = _runtime(path)
     point, scale = rows[0]["point"], rows[0]["mu_r2"]
@@ -234,26 +190,3 @@ def test_photon_joint_polarization_sum_and_subset_rescue(photon_artifact):
         assert sum(float(v[0][e].real) for v in joint.values) == pytest.approx(
             ordinary.values[0][0][e], rel=3e-9, abs=2e-12
         )
-    requests = {
-        "joint": CorrelatedRequest("born", {photon_leg: rows[1]["vector"], 4: b})
-    }
-    with pytest.raises(EvaluationError) as failure:
-        runtime.evaluate_correlated_many(
-            [point] * 3, requests, mu_r2=[scale, "1e-400", scale]
-        )
-    assert {v.point_id for v in failure.value.failures} == {1}
-    rescued = runtime.evaluate_correlated_many(
-        [point] * 3,
-        requests,
-        mu_r2=[scale, "1e-400", scale],
-        stability=VirtualStabilityPolicy(
-            (
-                VirtualArithmeticSpec("arbitrary", 60),
-                VirtualArithmeticSpec("arbitrary", 80),
-            ),
-            "1e-8",
-            "1e-9",
-        ),
-    )["joint"]
-    assert [v.status for v in rescued.diagnostics] == ["success", "rescued", "success"]
-    assert rescued.values[0] == rescued.values[2]

@@ -31,6 +31,17 @@
 //! Born's into ket vectors, interfered with the Born per sector
 //! (`super::interference`).
 //!
+//! **Loop-side sources** (the asymmetric Ward mode, `loops/v2/ward.py`): per
+//! point a literal complex four-vector may replace a vector leg's
+//! wavefunction on the loop side only (`TreeProgram::inputs_loop_side`). The
+//! trees then run twice: the physical run gives the Born bra (the plan's Born
+//! components, the seeds' input, and `|A0|²`), the loop-side run the block
+//! rows, the counterterm kets (with the counterterm program's own state
+//! overridden) and the Born ket of the external-field insertions; the Born
+//! interference of the physical bra with the loop-side ket is formed per
+//! squared Born order (`TreeInputs::loop_born`). With `v = c p_j` on a gluon
+//! leg every output vanishes by gauge invariance.
+//!
 //! **Parameters.** Every parameter-dependent value derives from the external
 //! model parameters through one saved exact evaluator of the program (its
 //! last saved evaluator): the tree program's derived model parameters, the
@@ -54,100 +65,354 @@
 //! compile).
 
 use super::dress::{Carrier, cast, parse_rational};
-use super::interference::{Entry, Interference, InterferenceRuntime, Ket};
+use super::interference::{Entry, Interference, InterferenceRuntime, Ket, MetricCells};
 use super::plan::LoopProgramV4;
 use crate::engine::{PlaneDescriptor, SchemaSources, SymjitPlaneKernel, SymjitPlaneLayout};
 use crate::{RusticolError, RusticolResult};
 use rayon::prelude::*;
 use serde::Deserialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use symbolica::domains::float::{Complex, DoubleFloat, Float, Real};
 use symbolica::domains::rational::Rational;
 use symbolica::evaluate::{BatchExpressionEvaluator, EvaluationDomain};
 
-/// The tree-program schema this executor runs.
-pub const TREE_SCHEMA: u32 = 3;
+/// The tree-program schema this executor runs (4: the counterterm program's
+/// slot table and per-slot reachability masks, WP3.1 I5).
+pub const TREE_SCHEMA: u32 = 4;
+
+/// A saved exact evaluator with its coefficients cast to binary64, as
+/// [`TreeProgram::runtime`] casts them (the evaluator binary64 would run
+/// without a plane application). Call under the library key.
+#[cfg(feature = "python-generation-bridge")]
+fn binary64_evaluator(
+    saved: &[u8],
+) -> RusticolResult<symbolica::evaluate::ExpressionEvaluator<Complex<f64>>> {
+    let zero = 0.0_f64;
+    let complex = |re: &Rational, im: &Rational| Complex::new(cast(&zero, re), cast(&zero, im));
+    Ok(
+        crate::engine::decode_exact_evaluator_state(saved)?.map_coeff_with_prec(
+            &|r| complex(&r.re, &r.im),
+            symbolica::domains::float::FloatLike::get_precision(&zero),
+        ),
+    )
+}
 
 /// Generation: the binary64 SymJIT plane application of a saved exact
 /// evaluator of a tree program (a kernel or the parameter program), with its
 /// input and output counts. The evaluator is the one binary64 would run
 /// without it (its coefficients, registered constants included, cast as
 /// [`TreeProgram::runtime`] casts them), compiled at `opt_level` into
-/// storage-v4 IR (`evaluator::symjit_plane`).
+/// storage-v4 IR (`evaluator::symjit_plane`). `real_points` are rows of real
+/// input values at which the program runs (the parameter program: the
+/// request's parameter values), the plane check's real-axis rows
+/// ([`verify_plane`]). An application that disagrees with its evaluator at a
+/// probe row is compiled again at optimisation level 0 and kept if that one
+/// passes the check: SymJIT's optimised AVX/AVX-512 code (2.27.3 through
+/// v228 `c0ccfa4`) gave NaN where its scalar code and level 0 are right
+/// (CM05's parameter program, M-SM MS-MASTERS; upstream report
+/// `upstream/symjit-simd-complex-times-alias`). The plane
+/// check's refusal is a value: `Ok(Err(mismatch))` when the plane
+/// application disagrees with its exact evaluator at the check's probes at
+/// both levels (the first level's mismatch), or when an output's real-axis
+/// value cannot be certified without a real point (the generation refuses the
+/// program, naming the output: `native_trees.NATIVE_EXPORT_REFUSALS` key
+/// `plane-mismatch`); any other failure is an error.
 #[cfg(feature = "python-generation-bridge")]
-pub fn compile_plane_application(
+pub fn compile_plane_application_checked(
     saved: &[u8],
     opt_level: u8,
     compress: bool,
-) -> RusticolResult<(Vec<u8>, usize, usize)> {
+    real_points: &[Vec<f64>],
+) -> RusticolResult<Result<(Vec<u8>, usize, usize), PlaneMismatch>> {
     let _unlock = crate::licence::unlock();
-    let zero = 0.0_f64;
-    let complex = |re: &Rational, im: &Rational| Complex::new(cast(&zero, re), cast(&zero, im));
-    let evaluator = crate::engine::decode_exact_evaluator_state(saved)?.map_coeff_with_prec(
-        &|r| complex(&r.re, &r.im),
-        symbolica::domains::float::FloatLike::get_precision(&zero),
-    );
-    let (plane, inputs, outputs) =
+    let evaluator = binary64_evaluator(saved)?;
+    let compile = |level: u8| {
         crate::engine::compile_symbolica_evaluator_to_plane_application_bytes(
-            &evaluator, opt_level, compress,
-        )?;
-    verify_plane(&plane, evaluator.into_batch_evaluator(), (inputs, outputs))?;
-    Ok((plane, inputs, outputs))
+            &evaluator, level, compress,
+        )
+    };
+    let (plane, inputs, outputs) = compile(opt_level)?;
+    if let Some(point) = real_points.iter().find(|point| point.len() != inputs) {
+        return Err(invalid(format!(
+            "plane check: a real point of {} values for a program of {inputs} inputs",
+            point.len()
+        )));
+    }
+    let sensitive = if real_points.is_empty() {
+        crate::engine::real_axis_sensitive_outputs(&evaluator)?
+    } else {
+        Vec::new()
+    };
+    if let Some(&output) = sensitive.first() {
+        return Ok(Err(PlaneMismatch {
+            output,
+            probe: PlaneProbe::NoRealPoint,
+        }));
+    }
+    let mut batch = evaluator.clone().into_batch_evaluator();
+    let shape = (inputs, outputs);
+    Ok(level_zero_fallback(
+        plane,
+        opt_level,
+        || Ok(compile(0)?.0),
+        |plane| verify_plane(plane, &mut batch, shape, real_points),
+    )?
+    .map(|plane| (plane, inputs, outputs)))
 }
 
-/// Refuse a plane application that disagrees with its evaluator at two fixed
-/// real points (inputs in (0.5, 1.5)): a translation error (a constant or a
-/// function read wrongly) changes an output at O(1), while the two
-/// evaluations' rounding differs by orders of magnitude less (the criterion
-/// of the tree engine's exporter, `symbolica_helpers._verify_symjit_plane_
-/// constants`).
+/// [`compile_plane_application_checked`]'s choice: `plane` (compiled at
+/// `opt_level`) when `verify` passes it; after a probe-row disagreement at
+/// `opt_level > 0`, the level-0 compilation (`level0`) when `verify` passes
+/// that one; otherwise the first disagreement. A program without a real
+/// point to certify a branch side (`PlaneProbe::NoRealPoint`) is not
+/// recompiled: no level certifies it.
+#[cfg(any(test, feature = "python-generation-bridge"))]
+fn level_zero_fallback<P>(
+    plane: P,
+    opt_level: u8,
+    level0: impl FnOnce() -> RusticolResult<P>,
+    mut verify: impl FnMut(&P) -> RusticolResult<Option<PlaneMismatch>>,
+) -> RusticolResult<Result<P, PlaneMismatch>> {
+    let Some(mismatch) = verify(&plane)? else {
+        return Ok(Ok(plane));
+    };
+    if opt_level > 0 && matches!(mismatch.probe, PlaneProbe::Row { .. }) {
+        let plane = level0()?;
+        if verify(&plane)?.is_none() {
+            return Ok(Ok(plane));
+        }
+    }
+    Ok(Err(mismatch))
+}
+
+/// What the plane check refuses ([`compile_plane_application_checked`]): the
+/// output and how.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PlaneMismatch {
+    pub output: usize,
+    pub probe: PlaneProbe,
+}
+
+/// How a plane check refuses an output ([`PlaneMismatch`]).
+#[derive(Clone, Debug, PartialEq)]
+pub enum PlaneProbe {
+    /// The plane application and its exact evaluator disagree at a probe row
+    /// (off the real axis, or one of the caller's real points), in the real or
+    /// imaginary part, with the two binary64 values.
+    Row {
+        row: usize,
+        real_axis: bool,
+        imaginary: bool,
+        plane: f64,
+        exact: f64,
+    },
+    /// The output's value at real inputs depends on a branch side or a
+    /// discontinuity (`engine::real_axis_sensitive_outputs`) and the caller
+    /// gave no real point to certify it at.
+    NoRealPoint,
+}
+
+impl std::fmt::Display for PlaneMismatch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.probe {
+            PlaneProbe::Row {
+                row,
+                real_axis,
+                imaginary,
+                plane,
+                exact,
+            } => write!(
+                f,
+                "the SymJIT plane application disagrees with its exact evaluator at \
+                 output {} ({} part, {} probe row {row}: {plane:e} against {exact:e})",
+                self.output,
+                if *imaginary { "imaginary" } else { "real" },
+                if *real_axis { "real-axis" } else { "complex" },
+            ),
+            PlaneProbe::NoRealPoint => write!(
+                f,
+                "output {} reads a branch-cut or discontinuous function of the \
+                 inputs, whose side at real inputs only a real point of the \
+                 program can certify, and none was given",
+                self.output
+            ),
+        }
+    }
+}
+
+/// The plane check: the first disagreement of a plane application with its
+/// evaluator, or `None`. A translation error (a constant or a function read
+/// wrongly) changes an output at O(1), while the two evaluations' rounding
+/// differs by orders of magnitude less (the criterion of the tree engine's
+/// exporter, `symbolica_helpers._verify_symjit_plane_constants`).
+///
+/// Its rows: two complex rows off the real axis (real parts in (0.5, 1.5),
+/// imaginary parts of either sign in 0.25..0.75 in magnitude, a deterministic
+/// low-discrepancy sequence), where no input-dependent argument sits on a
+/// branch cut, so the check certifies the translation whatever the inputs'
+/// order, names and values; then `real_points`, the real inputs at which the
+/// program runs, which certify the real-axis evaluation there (a signed
+/// zero's side of a cut, a predicate's branch). The former real probes,
+/// assigned by input index, put arguments on cuts at arbitrary points and
+/// made the verdict depend on the parameters' declaration order; at real
+/// inputs the plane takes exact arithmetic's side of a cut by construction
+/// (`symjit_plane::canonical_cut_row`, M-SM MS-MASTERS: before it, SymJIT's
+/// negated real had a -0 imaginary part where Symbolica's evaluator has +0,
+/// `sqrt(-x)` at x > 0: -i sqrt(x) against +i sqrt(x)).
+/// The rows run together, then each in a call of its own, as a batch of
+/// equal rows runs them: a SIMD block of equal lanes (the padding copies
+/// the last row) runs SymJIT's SIMD code, which a block whose lanes take
+/// different branches replays in scalar code. CM05's parameter program gave
+/// NaN in SIMD only (M-SM MS-MASTERS, DESIGN risk 13).
 #[cfg(feature = "python-generation-bridge")]
 fn verify_plane(
     plane: &[u8],
-    mut evaluator: BatchExpressionEvaluator<Complex<f64>>,
+    evaluator: &mut BatchExpressionEvaluator<Complex<f64>>,
     shape: (usize, usize),
-) -> RusticolResult<()> {
-    const ROWS: usize = 2;
+    real_points: &[Vec<f64>],
+) -> RusticolResult<Option<PlaneMismatch>> {
+    const OFF_AXIS: usize = 2;
     let (inputs, outputs) = shape;
-    // A low-discrepancy sequence: deterministic, distinct per input.
-    let values: Vec<Complex<f64>> = (0..ROWS * inputs)
+    let rows = OFF_AXIS + real_points.len();
+    let mut values = off_axis_probes(inputs, OFF_AXIS);
+    for point in real_points {
+        values.extend(point.iter().map(|&x| Complex::new(x, 0.0)));
+    }
+    let mut expected = vec![Complex::new(0.0, 0.0); rows * outputs];
+    evaluator
+        .evaluate_batch(&values, &mut expected, rows)
+        .map_err(|e| invalid(format!("plane check: {e}")))?;
+    // One load (one compilation) for every call, as the runtime's kernel.
+    let mut kernel = BinaryPlane::load(plane, shape)?;
+    let mut got = vec![Complex::new(0.0, 0.0); rows * outputs];
+    kernel.evaluate(&values, &mut got, rows)?;
+    let mixed = first_mismatch(&expected, &got, outputs).map(|mut mismatch| {
+        if let PlaneProbe::Row { row, real_axis, .. } = &mut mismatch.probe {
+            if *row >= OFF_AXIS {
+                *row -= OFF_AXIS;
+                *real_axis = true;
+            }
+        }
+        mismatch
+    });
+    if mixed.is_some() {
+        return Ok(mixed);
+    }
+    let scales = output_scales(&expected, outputs);
+    let mut got = vec![Complex::new(0.0, 0.0); outputs];
+    for row in 0..rows {
+        kernel.evaluate(&values[row * inputs..][..inputs], &mut got, 1)?;
+        if let Some(mut mismatch) = first_mismatch_at(
+            &expected[row * outputs..][..outputs],
+            &got,
+            outputs,
+            &scales,
+        ) {
+            if let PlaneProbe::Row {
+                row: probe,
+                real_axis,
+                ..
+            } = &mut mismatch.probe
+            {
+                *real_axis = row >= OFF_AXIS;
+                *probe = if row >= OFF_AXIS { row - OFF_AXIS } else { row };
+            }
+            return Ok(Some(mismatch));
+        }
+    }
+    Ok(None)
+}
+
+/// `rows` rows of `inputs` complex probe values off the real axis: real parts
+/// 0.5 + frac(k / phi) and imaginary parts 0.25 + 0.5 frac(k / rho) (phi the
+/// golden ratio, rho the plastic number: a two-dimensional low-discrepancy
+/// sequence, every value distinct), positive in even rows and negative in
+/// odd rows (both half-planes).
+#[cfg(any(test, feature = "python-generation-bridge"))]
+fn off_axis_probes(inputs: usize, rows: usize) -> Vec<Complex<f64>> {
+    (0..rows * inputs)
         .map(|k| {
+            let n = (k + 1) as f64;
+            let sign = if (k / inputs.max(1)) % 2 == 0 { 1.0 } else { -1.0 };
             Complex::new(
-                0.5 + (0.618_033_988_749_894_8 * (k + 1) as f64).fract(),
-                0.0,
+                0.5 + (0.618_033_988_749_894_8 * n).fract(),
+                sign * (0.25 + 0.5 * (0.754_877_666_246_692_7 * n).fract()),
             )
         })
-        .collect();
-    let mut expected = vec![Complex::new(0.0, 0.0); ROWS * outputs];
-    evaluator
-        .evaluate_batch(&values, &mut expected, ROWS)
-        .map_err(|e| invalid(format!("plane check: {e}")))?;
-    let got = evaluate_plane_application(plane, shape, &values, ROWS)?;
+        .collect()
+}
+
+/// The first value where `got` (the plane application's rows) and `expected`
+/// (the evaluator's) disagree beyond rounding, row-major over `outputs`
+/// complex outputs per row: a part agrees bitwise, both NaN, within 1e-6 of
+/// itself, or within 1e-12 of its output's scale (the largest finite part of
+/// that output over the rows: a part that cancels to rounding, e.g. the zero
+/// imaginary part of a real coupling, against its output's size, and a small
+/// output not against a large one's).
+#[cfg(any(test, feature = "python-generation-bridge"))]
+fn first_mismatch(
+    expected: &[Complex<f64>],
+    got: &[Complex<f64>],
+    outputs: usize,
+) -> Option<PlaneMismatch> {
+    first_mismatch_at(expected, got, outputs, &output_scales(expected, outputs))
+}
+
+/// Per output the largest finite part of `expected` (row-major over
+/// `outputs` complex outputs per row): [`first_mismatch`]'s scales.
+#[cfg(any(test, feature = "python-generation-bridge"))]
+fn output_scales(expected: &[Complex<f64>], outputs: usize) -> Vec<f64> {
+    let width = outputs.max(1);
+    let mut scales = vec![0.0_f64; width];
+    for (index, z) in expected.iter().enumerate() {
+        for x in [z.re, z.im] {
+            if x.is_finite() {
+                scales[index % width] = scales[index % width].max(x.abs());
+            }
+        }
+    }
+    scales
+}
+
+/// [`first_mismatch`] with given per-output `scales` (the plane check's
+/// single-row SIMD calls take those of all its rows, so a part that cancels
+/// to rounding in one row is measured against its output's size).
+#[cfg(any(test, feature = "python-generation-bridge"))]
+fn first_mismatch_at(
+    expected: &[Complex<f64>],
+    got: &[Complex<f64>],
+    outputs: usize,
+    scales: &[f64],
+) -> Option<PlaneMismatch> {
     let parts = |values: &[Complex<f64>]| -> Vec<f64> {
         values.iter().flat_map(|z| [z.re, z.im]).collect()
     };
-    let (expected, got) = (parts(&expected), parts(&got));
-    let scale = expected
-        .iter()
-        .filter(|x| x.is_finite())
-        .fold(0.0_f64, |m, x| m.max(x.abs()));
+    let width = outputs.max(1);
+    let (expected, got) = (parts(expected), parts(got));
     for (index, (&e, &g)) in expected.iter().zip(&got).enumerate() {
+        let scale = scales[(index / 2) % width];
         let agree = e.to_bits() == g.to_bits()
             || (e.is_nan() && g.is_nan())
             || (e - g).abs() <= 1e-6 * e.abs()
             || (e - g).abs() <= 1e-12 * scale;
         if !agree {
-            return Err(invalid(format!(
-                "the SymJIT plane application disagrees with its exact evaluator \
-                 (value {index}: {g:e} against {e:e}); keep this program on the \
-                 exact evaluator"
-            )));
+            let value = index / 2;
+            return Some(PlaneMismatch {
+                output: value % outputs.max(1),
+                probe: PlaneProbe::Row {
+                    row: value / outputs.max(1),
+                    real_axis: false,
+                    imaginary: index % 2 == 1,
+                    plane: g,
+                    exact: e,
+                },
+            });
         }
     }
-    Ok(())
+    None
 }
 
-/// The binary64 rows of a plane application (`compile_plane_application`)
+/// The binary64 rows of a plane application (`compile_plane_application_checked`)
 /// through the production loader, row-major: a cold-path check of an export
 /// against its exact evaluator.
 #[cfg(feature = "python-generation-bridge")]
@@ -196,6 +461,43 @@ fn exact(value: &str) -> RusticolResult<Rational> {
     parse_rational(value).map_err(|error| invalid(error.message()))
 }
 
+/// The key of the complex-mass master refusal (M-SM MS-MASTERS).
+pub const COMPLEX_MASS_MASTER: &str = "complex-mass-master";
+/// The smallest |Im m²| / Re m² a complex pole mass may take at a batch's
+/// parameters in a carrier that guards it
+/// ([`TreeCarrier::COMPLEX_MASS_MASTER_GUARD`]).
+pub const COMPLEX_MASS_MASTER_RATIO: f64 = 1e-150;
+
+/// The complex-mass master guard (M-SM MS-MASTERS) on a pole mass's square
+/// `re + i im` (plan mass `index`) at a batch's parameters: refused, as a
+/// model-parameter error naming `complex-mass-master`, when
+/// `0 < |im| < 1e-150 re`. Only double-double calls it
+/// ([`TreeCarrier::COMPLEX_MASS_MASTER_GUARD`]): its C0 turned non-finite
+/// there (CM01 at 1e-155, 1e-160 and 1e-300 of the masses, intermittently),
+/// while binary64 and arbitrary precision equal the zero-width value. A
+/// deliberate refusal of unphysical widths, with no upstream track (no CM
+/// row reaches it). An exactly real pole mass (`im = 0`, a zero width) is
+/// the real-mass limit and passes.
+fn require_complex_mass_master(index: usize, re: &Rational, im: &Rational) -> RusticolResult<()> {
+    if im.is_zero() || re.is_zero() {
+        return Ok(());
+    }
+    let ratio = (im.abs() / re.abs()).to_f64();
+    if ratio >= COMPLEX_MASS_MASTER_RATIO {
+        return Ok(());
+    }
+    let (re64, im64) = (re.to_f64(), im.to_f64());
+    Err(RusticolError::model_parameter(format!(
+        "{COMPLEX_MASS_MASTER}: the complex pole mass m = {:.6} (m^2 = {re64:e} \
+         {im64:+e} i; loop mass {index}) has |Im m^2| / Re m^2 = {ratio:e} at \
+         these model parameters, below 1e-150: its width is below 1e-150 of \
+         the mass, where the double-double complex-mass master integrals are \
+         unreliable. Instead: evaluate in binary64 or arbitrary precision, give \
+         that width at least 1e-150 of its mass, or zero",
+        re64.abs().sqrt()
+    )))
+}
+
 // ------------------------------------------------------------------ file form
 
 #[derive(Deserialize)]
@@ -215,6 +517,11 @@ struct TreeFile {
     interactions: InteractionFile,
     /// (state component start, dimension, Wick sign) per plan block row.
     block_rows: Vec<(usize, usize, i32)>,
+    /// Further (plan block row, state component start, Wick sign) terms of
+    /// rows whose block current the tree engine splits into several trees
+    /// (by flavour flow): each adds its current to the row, in order.
+    #[serde(default)]
+    block_row_terms: Vec<(usize, usize, i32)>,
     born: BornFile,
     parameters: ParameterFile,
     /// The counterterm and external-field components (none: Born and bare
@@ -265,12 +572,40 @@ struct ParameterFile {
     positive: Vec<usize>,
     /// (PDG code, external index) of every massive external particle.
     masses: Vec<(i32, usize)>,
-    /// Per plan mass: the external index of its mass parameter (squared),
-    /// or none (massless).
-    plan_masses: Vec<Option<usize>>,
+    /// (PDG code, output index) of every massive external particle whose
+    /// mass is a derived model parameter (e.g. loop_sm's MW): a carrier
+    /// value of the program, real and positive (also in `positive`). Its
+    /// legs are bound like an exact mass's, to the square of the carrier
+    /// value's exact rational (the value its sources take; DESIGN §11.1).
+    #[serde(default)]
+    derived_masses: Vec<(i32, usize)>,
+    /// Per plan mass (squared): the external index of its mass parameter,
+    /// `["output", o]` for a derived mass parameter (output `o`, real and
+    /// positive, also in `positive`; bound as `derived_masses` are),
+    /// `["complex", o]` for a complex one (a complex-mass scheme's pole mass:
+    /// output `o`, bound to the square of its carrier value's exact complex
+    /// rational, `BoundParameters::masses_imaginary`), or none (massless).
+    plan_masses: Vec<Option<MassFile>>,
     /// The renormalisation scale's parameter, if the program reads it:
     /// sqrt(mu_R^2) of each point.
     scale: Option<usize>,
+    /// Every output that depends on the scale's parameter, with its name
+    /// (generation's structural analysis, `native_trees._scale_outputs`;
+    /// empty without a scale input). Absent in an artifact written before
+    /// the analysis: its batches are then checked per point.
+    #[serde(default)]
+    scale_outputs: Option<Vec<(usize, String)>>,
+    /// The on-shell external photons of an electroweak request (WP3.2
+    /// EWI-6b, the alpha(0) convention): the output index of
+    /// alpha(0) / alpha (real and positive, also in `positive`) and the
+    /// photons' 1-based leg labels. Every source of those legs, spin and
+    /// loop-side sources included, takes sqrt(alpha(0) / alpha) in the
+    /// trees and the counterterm program, so the Born, the loops, the
+    /// counterterm kets and the field insertions carry (alpha(0) / alpha)^n
+    /// and the average stays the slice's. Written only when present: an
+    /// older native refuses the record (unknown field).
+    #[serde(default)]
+    photons: Option<(usize, Vec<usize>)>,
 }
 
 #[derive(Deserialize)]
@@ -284,6 +619,9 @@ struct CountertermTreesFile {
     model_count: usize,
     momentum_slots: Vec<(usize, u64)>,
     source_fill: serde_json::Value,
+    /// The slot table: (pseudo-order, component, epsilon power, N_c grade)
+    /// per counterterm slot (`native_trees.counterterm_slots`).
+    slots: Vec<(String, String, i32, i32)>,
     interactions: InteractionFile,
 }
 
@@ -298,6 +636,11 @@ struct InteractionFile {
     /// `[value, p, model]`.
     propagators: Vec<(usize, usize, Vec<usize>)>,
     steps: Vec<StepFile>,
+    /// A counterterm program's slot sets (indices into its slot table,
+    /// `CountertermTreesFile::slots`); each step's `accumulator_masks` index
+    /// them. Absent for the trees.
+    #[serde(default)]
+    masks: Vec<Vec<usize>>,
 }
 
 #[derive(Deserialize)]
@@ -324,13 +667,12 @@ struct StepFile {
     /// (accumulator, propagator or -1 to copy, momentum start, state start,
     /// dimension).
     outputs: Vec<(usize, i64, usize, usize, usize)>,
-    /// Interactions and outputs of currents only epsilon-pole terms read
-    /// (indices; a counterterm program's pole slots): finite-only
-    /// evaluations skip them.
+    /// Per accumulator the slot set (`InteractionFile::masks`) its result
+    /// current reaches (a counterterm program; empty for the trees): an
+    /// evaluation skips the interactions and outputs of the currents that
+    /// reach no slot it computes (finite-only: no slot of epsilon power 0).
     #[serde(default)]
-    pole_interactions: Vec<usize>,
-    #[serde(default)]
-    pole_outputs: Vec<usize>,
+    accumulator_masks: Vec<usize>,
 }
 
 #[derive(Deserialize)]
@@ -507,6 +849,25 @@ enum ModelSource {
     Output { index: usize, imaginary: bool },
 }
 
+/// A plan mass's source in the record (`ParameterFile::plan_masses`):
+/// `["output", o]` or `["complex", o]` (the kind is checked on loading).
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum MassFile {
+    Input(usize),
+    Output(String, usize),
+}
+
+/// A plan mass's source: an external parameter (exact) or a parameter
+/// program output (a derived mass, the exact value of its carrier: real and
+/// positive, or complex).
+#[derive(Clone, Copy)]
+enum MassSource {
+    Input(usize),
+    Output(usize),
+    Complex(usize),
+}
+
 struct Parameters {
     names: Vec<String>,
     defaults: Vec<Rational>,
@@ -523,8 +884,38 @@ struct Parameters {
     constants: Vec<usize>,
     positive: Vec<usize>,
     masses: Vec<(i32, usize)>,
-    plan_masses: Vec<Option<usize>>,
+    derived_masses: Vec<(i32, usize)>,
+    plan_masses: Vec<Option<MassSource>>,
     scale: Option<usize>,
+    scale_outputs: Option<Vec<(usize, String)>>,
+    /// `ParameterFile::photons`.
+    photons: Option<(usize, Vec<usize>)>,
+}
+
+impl Parameters {
+    /// `TreeProgram::scale_dependent_shared`.
+    fn scale_dependent_shared(&self) -> Option<Vec<&str>> {
+        let program = self;
+        let dependent = program.scale_outputs.as_ref()?;
+        let shared: BTreeSet<usize> = program
+            .couplings
+            .iter()
+            .chain(&program.constants)
+            .chain(program.derived_masses.iter().map(|(_, o)| o))
+            .chain(program.plan_masses.iter().filter_map(|mass| match mass {
+                Some(MassSource::Output(o) | MassSource::Complex(o)) => Some(o),
+                _ => None,
+            }))
+            .copied()
+            .collect();
+        Some(
+            dependent
+                .iter()
+                .filter(|(o, _)| shared.contains(o))
+                .map(|(_, name)| name.as_str())
+                .collect(),
+        )
+    }
 }
 
 /// The counterterm closure of a program and its interferences.
@@ -535,7 +926,117 @@ struct Counterterms {
     components: usize,
     terms: Vec<Term>,
     interference: Interference,
+    /// The interference layout observable columns share
+    /// (`TreeProgram::set_columns`): Born components, ket components, ket
+    /// vectors and tensors, Born orders, the projection depth.
+    layout: InterferenceLayout,
 }
+
+struct InterferenceLayout {
+    born: Vec<(usize, usize, i32)>,
+    ket: Vec<(usize, usize, i32)>,
+    vectors: usize,
+    tensors: usize,
+    basis: usize,
+    orders: usize,
+    depth: Option<i32>,
+}
+
+/// One observable column of a process (`loops/v2/native_observables.py`):
+/// its Born and counterterm/field interferences over the Born basis and the
+/// ket tensors with its own metric (a colour history's operator) and
+/// degrees, the swapped metric of a directed history, and the Born rows and
+/// bra basis elements it keeps (helicity-resolved columns). Columns with the
+/// same entries and metric share one interference (`Columns::programs`).
+struct Column {
+    direct: usize,
+    swapped: Option<usize>,
+    /// Outputs `0 .. born_outputs` are Born interferences (per squared Born
+    /// order, the direct metric only); the others counterterm and field
+    /// outputs (direct plus the conjugate swapped value, or twice the real
+    /// part of the direct one without a swapped metric).
+    born_outputs: usize,
+    rows: Option<Vec<bool>>,
+    basis: Option<Vec<bool>>,
+}
+
+/// The spin-source slots of one interaction program's state: per
+/// (1-based) leg label its vector source slots with the source's crossing
+/// phase (`correlated_exact._fill_correlated_sources`).
+type SourceSlots = BTreeMap<usize, Vec<(usize, [Rational; 2])>>;
+
+/// The observable columns of a process (`TreeProgram::set_columns`).
+pub struct Columns {
+    /// The distinct interferences (entries and metric) of the columns.
+    programs: Vec<Interference>,
+    columns: Vec<Column>,
+    /// Spin-source slots of the trees' state and the counterterm program's.
+    trees: SourceSlots,
+    counterterms: SourceSlots,
+}
+
+/// The overlap cells of one colour metric: its distinct cells (per N_c
+/// power, re, im) and, per ket tensor and Born basis element, the index of
+/// its cell (`native_observables._Metrics`).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CellsFile {
+    values: Vec<Vec<(i32, String, String)>>,
+    ids: Vec<Vec<u32>>,
+}
+
+/// One interference program of the columns: its entries (kind, bra Born
+/// order, vector or Born order, coupling slot, N_c grade, output, degree),
+/// the epsilon power of each output and the number of Born outputs.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ColumnProgramFile {
+    #[allow(clippy::type_complexity)]
+    entries: Vec<(String, usize, usize, Option<usize>, i32, usize, Option<i32>)>,
+    outputs: Vec<i32>,
+    born_outputs: usize,
+}
+
+/// One column: its program, its direct and (directed histories) swapped
+/// metric (indices into `ColumnsFile::cells`, whose None entry is the Born
+/// metric of the counterterm interference itself), the Born rows and bra
+/// basis elements it keeps (None: all).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ColumnFile {
+    program: usize,
+    cells: usize,
+    swapped: Option<usize>,
+    rows: Option<Vec<usize>>,
+    basis: Option<Vec<usize>>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ColumnsFile {
+    cells: Vec<Option<CellsFile>>,
+    programs: Vec<ColumnProgramFile>,
+    columns: Vec<ColumnFile>,
+    /// (leg label, state component start, phase re, phase im) per vector
+    /// source slot of the trees' state and of the counterterm program's.
+    trees: Vec<(usize, usize, String, String)>,
+    counterterms: Vec<(usize, usize, String, String)>,
+}
+
+/// The spin sources of one point: per (1-based) leg label a literal complex
+/// four-vector replacing the leg's wavefunction in the trees and the
+/// counterterm program, and the Born rows the point keeps (a source leg's
+/// fixed helicity row; `None`: every row).
+pub struct PointSources<T> {
+    pub vectors: Vec<(usize, [Complex<T>; 4])>,
+    pub rows: Option<Vec<bool>>,
+}
+
+/// The loop-side sources of one point (`TreeProgram::inputs_loop_side`):
+/// per (1-based) vector leg label a literal complex four-vector replacing the
+/// leg's wavefunction in the loop side's trees and counterterm program only
+/// (empty: the point's loop side is its physical one).
+pub type LoopSources<T> = Vec<(usize, [Complex<T>; 4])>;
 
 /// A loaded tree program (one process, any carrier).
 pub struct TreeProgram {
@@ -548,6 +1049,10 @@ pub struct TreeProgram {
     sources: SchemaSources,
     interactions: Interactions,
     block_rows: Vec<(usize, usize, i32)>,
+    /// `TreeFile::block_row_terms` and each block row's offset in a point's
+    /// rows.
+    block_row_terms: Vec<(usize, usize, i32)>,
+    block_row_offsets: Vec<usize>,
     rows: usize,
     components: usize,
     plan_components: Vec<Option<usize>>,
@@ -560,12 +1065,21 @@ pub struct TreeProgram {
     parameters: Parameters,
     counterterms: Option<Counterterms>,
     counterterm_trees: Option<CountertermTrees>,
+    /// Observable columns (`set_columns`), formed per point when set.
+    columns: Option<Columns>,
     /// The leg masks of the closure terms' slots.
     masks: Vec<u64>,
     /// The closure terms' kernel input layouts.
     layouts: Vec<Vec<TermInput>>,
     /// The closure terms' colour weights and their sqrt(2) powers.
     weights: Vec<([Rational; 2], i32)>,
+    /// The rows the plan's columns keep and the block rows its kept links
+    /// read, when they restrict them (`rows::Restriction`): applied by
+    /// `set_columns` (observable columns).
+    restriction: Option<rows::Restriction>,
+    /// The Born rows the root closures evaluate (none: every row; set by
+    /// the row restriction, `rows`).
+    closure_rows: Option<Vec<bool>>,
 }
 
 /// The parameter-only inputs of one batch.
@@ -575,6 +1089,9 @@ pub struct TreeBatch<T> {
     pub model: Vec<Vec<T>>,
     /// Exact masses of massive external particles by PDG code.
     pub masses: BTreeMap<i32, Rational>,
+    /// Carrier masses of massive external particles whose mass is a derived
+    /// model parameter, by PDG code (the parameter program's outputs).
+    pub derived_masses: BTreeMap<i32, T>,
     /// Couplings per (name, N_c grade) slot.
     pub couplings: Vec<Complex<T>>,
     /// Per point the counterterm and field couplings per (name, epsilon
@@ -582,6 +1099,9 @@ pub struct TreeBatch<T> {
     pub counterterm_couplings: Vec<Vec<Complex<T>>>,
     /// Per point the counterterm program's model parameter values.
     pub counterterm_model: Vec<Vec<T>>,
+    /// Per point the source scale sqrt(alpha(0) / alpha) of the on-shell
+    /// external photons (`ParameterFile::photons`; empty without them).
+    pub photon_scales: Vec<T>,
 }
 
 /// The values a batch's external parameters bind (`TreeProgram::bind`).
@@ -590,8 +1110,16 @@ pub struct BoundParameters<T> {
     pub trees: TreeBatch<T>,
     /// The plan's kernel constants.
     pub constants: Vec<Complex<T>>,
-    /// The plan's squared masses per mass id.
+    /// The plan's squared masses per mass id (their real parts).
     pub masses: Vec<Rational>,
+    /// The imaginary parts of the plan's squared masses (a complex-mass
+    /// scheme's pole masses, `["complex", o]` plan masses;
+    /// `V2Batch::masses_imaginary`), or empty when the program has no
+    /// complex plan mass.
+    pub masses_imaginary: Vec<Rational>,
+    /// The squared mass of each leg's external state (`V2Batch::leg_masses`),
+    /// from the same exact mass parameters as the plan's and the sources'.
+    pub leg_masses: Vec<Option<Rational>>,
 }
 
 /// Native inputs of a batch, per point.
@@ -604,9 +1132,17 @@ pub struct TreeInputs<T> {
     pub amplitudes: Vec<Vec<Complex<T>>>,
     /// `|A0|²` per squared Born order (with a colour metric).
     pub born_squared: Option<Vec<Vec<T>>>,
+    /// With loop-side sources and a colour metric: `Re <A0|M|A0'>` per
+    /// squared Born order, the physical Born bra `A0` against the loop-side
+    /// Born ket `A0'` (`TreeProgram::inputs_loop_side`).
+    pub loop_born: Option<Vec<Vec<T>>>,
     /// The counterterm and external-field outputs (component, sector,
     /// epsilon power), divided by the average (with counterterms).
     pub counterterms: Option<Vec<Vec<T>>>,
+    /// Per point and observable column its outputs (`set_columns`: the Born
+    /// interferences, then the counterterm and field ones, these divided by
+    /// the average); none without columns.
+    pub columns: Option<Vec<Vec<Vec<Complex<T>>>>>,
     /// Wall seconds per stage: the interaction programs (`"trees:
     /// programs"`, with the states), the Born and counterterm root closures
     /// (`"trees: closures"`) and the rest (`"trees: interferences"`: block
@@ -630,6 +1166,9 @@ pub struct TreeRuntime<T> {
     metric: Option<Vec<Complex<T>>>,
     average: T,
     interference: Option<InterferenceRuntime<T>>,
+    /// The metric runtime of each distinct column interference
+    /// (`Columns::programs`).
+    columns: Vec<InterferenceRuntime<T>>,
 }
 
 /// One kernel (or the parameter program) in carrier `T`: its exact
@@ -857,15 +1396,51 @@ impl PlaneRows<f64> for BinaryPlane {
     }
 }
 
+/// Per slot set of a counterterm program (`InteractionFile::masks`: slot
+/// indices, increasing, into the slot table whose epsilon powers are
+/// `powers`) whether it holds no slot of epsilon power 0: a current reaching
+/// only such a set is pole-only work, skipped by finite-only evaluations.
+fn pole_slot_sets(masks: &[Vec<usize>], powers: &[i32]) -> RusticolResult<Vec<bool>> {
+    require(
+        !masks.is_empty()
+            && masks.iter().all(|mask| {
+                !mask.is_empty()
+                    && mask.windows(2).all(|pair| pair[0] < pair[1])
+                    && mask.iter().all(|&slot| slot < powers.len())
+            }),
+        "counterterm slot masks",
+    )?;
+    Ok(masks
+        .iter()
+        .map(|mask| mask.iter().all(|&slot| powers[slot] != 0))
+        .collect())
+}
+
 /// Validate and group an interaction program (`InteractionFile`); `saved`
 /// holds its kernels' evaluators, vertex kernels first.
+/// `slots` is a counterterm program's slot table (none for the trees): the
+/// epsilon power of each slot. A step's interaction or output is a pole one
+/// (finite-only evaluations skip it) when its accumulator's slot set holds
+/// no slot of epsilon power 0.
 fn load_interactions(
     program: InteractionFile,
     saved: &[Vec<u8>],
     planes: Option<&[Vec<u8>]>,
     state_size: usize,
     model_count: usize,
+    slots: Option<&[i32]>,
 ) -> RusticolResult<Interactions> {
+    // Per slot set whether it reaches no finite slot (the finite-only skip).
+    let pole_masks: Vec<bool> = match slots {
+        Some(powers) => pole_slot_sets(&program.masks, powers)?,
+        None => {
+            require(
+                program.masks.is_empty(),
+                "slot masks outside a counterterm program",
+            )?;
+            Vec::new()
+        }
+    };
     let kernels = program.kernels.len();
     require(
         saved.len() == kernels + program.propagators.len()
@@ -900,21 +1475,29 @@ fn load_interactions(
             offsets.push(width);
             width += dimension;
         }
-        require(
-            step.pole_interactions
+        // Per accumulator whether only pole slots read its current.
+        let pole: Vec<bool> = if slots.is_some() {
+            require(
+                step.accumulator_masks.len() == step.accumulators.len()
+                    && step
+                        .accumulator_masks
+                        .iter()
+                        .all(|&mask| mask < pole_masks.len()),
+                "accumulator slot masks",
+            )?;
+            step.accumulator_masks
                 .iter()
-                .all(|&i| i < step.interactions.len())
-                && step.pole_outputs.iter().all(|&i| i < step.outputs.len()),
-            "pole interaction or output index",
-        )?;
-        let pole_interactions: std::collections::BTreeSet<usize> =
-            step.pole_interactions.iter().copied().collect();
-        let pole_outputs: std::collections::BTreeSet<usize> =
-            step.pole_outputs.iter().copied().collect();
+                .map(|&mask| pole_masks[mask])
+                .collect()
+        } else {
+            require(
+                step.accumulator_masks.is_empty(),
+                "slot masks outside a counterterm program",
+            )?;
+            vec![false; step.accumulators.len()]
+        };
         let mut groups: BTreeMap<usize, Vec<Edge>> = BTreeMap::new();
-        for (index, (kernel, left, ld, right, rd, pl, pr, accumulator, re, im)) in
-            step.interactions.into_iter().enumerate()
-        {
+        for (kernel, left, ld, right, rd, pl, pr, accumulator, re, im) in step.interactions {
             let (inputs, outputs, model) = program
                 .kernels
                 .get(kernel)
@@ -938,13 +1521,11 @@ fn load_interactions(
                 right_momentum: pr,
                 accumulator: offsets[accumulator],
                 weight: [exact(&re)?, exact(&im)?],
-                pole: pole_interactions.contains(&index),
+                pole: pole[accumulator],
             });
         }
         let mut outputs = Vec::with_capacity(step.outputs.len());
-        for (index, (accumulator, propagator, momentum, start, dimension)) in
-            step.outputs.into_iter().enumerate()
-        {
+        for (accumulator, propagator, momentum, start, dimension) in step.outputs {
             require(
                 accumulator < step.accumulators.len() && within(start, dimension),
                 "interaction output",
@@ -975,7 +1556,7 @@ fn load_interactions(
                 momentum,
                 start,
                 dimension,
-                pole_outputs.contains(&index),
+                pole[accumulator],
             ));
         }
         steps.push(Step {
@@ -1030,6 +1611,25 @@ fn load_parameters(
         "parameter program plan masses",
     )?;
     let output = |index: usize| index < file.outputs;
+    let plan_masses = file
+        .plan_masses
+        .iter()
+        .map(|mass| match mass {
+            None => Ok(None),
+            Some(MassFile::Input(i)) if *i < inputs && Some(*i) != file.scale => {
+                Ok(Some(MassSource::Input(*i)))
+            }
+            Some(MassFile::Output(kind, o))
+                if kind == "output" && output(*o) && file.positive.contains(o) =>
+            {
+                Ok(Some(MassSource::Output(*o)))
+            }
+            Some(MassFile::Output(kind, o)) if kind == "complex" && output(*o) => {
+                Ok(Some(MassSource::Complex(*o)))
+            }
+            Some(_) => Err(invalid("parameter program plan mass source")),
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
     require(
         file.couplings
             .iter()
@@ -1037,16 +1637,26 @@ fn load_parameters(
             .chain(&file.finite)
             .chain(&file.constants)
             .chain(&file.positive)
+            .chain(file.derived_masses.iter().map(|(_, o)| o))
             .all(|&o| output(o))
-            && file.masses.iter().all(|&(_, i)| i < inputs)
-            && file.plan_masses.iter().flatten().all(|&i| i < inputs)
-            && file.scale.is_none_or(|i| i < inputs)
             && file
-                .plan_masses
+                .derived_masses
                 .iter()
-                .flatten()
-                .chain(file.masses.iter().map(|(_, i)| i))
-                .all(|&i| Some(i) != file.scale),
+                .all(|(_, o)| file.positive.contains(o))
+            && file
+                .derived_masses
+                .iter()
+                .all(|(pdg, _)| !file.masses.iter().any(|(exact, _)| exact == pdg))
+            && file.masses.iter().all(|&(_, i)| i < inputs)
+            && file.scale.is_none_or(|i| i < inputs)
+            && file.masses.iter().all(|&(_, i)| Some(i) != file.scale)
+            && file.scale_outputs.as_ref().is_none_or(|dependent| {
+                dependent.iter().all(|(o, _)| output(*o))
+                    && (file.scale.is_some() || dependent.is_empty())
+            })
+            && file.photons.as_ref().is_none_or(|(o, legs)| {
+                output(*o) && file.positive.contains(o) && !legs.is_empty()
+            }),
         "parameter program index",
     )?;
     let sources = |records: &[(String, usize, bool)]| {
@@ -1086,8 +1696,11 @@ fn load_parameters(
         constants: file.constants,
         positive: file.positive,
         masses: file.masses,
-        plan_masses: file.plan_masses,
+        derived_masses: file.derived_masses,
+        plan_masses,
         scale: file.scale,
+        scale_outputs: file.scale_outputs,
+        photons: file.photons,
     })
 }
 
@@ -1247,7 +1860,7 @@ fn load_counterterms(
         basis,
         orders,
         file.tensors,
-        cells,
+        MetricCells::List(cells),
         &file.born,
         &file.ket,
         file.vectors,
@@ -1266,6 +1879,57 @@ fn load_counterterms(
         components,
         terms,
         interference,
+        layout: InterferenceLayout {
+            born: file.born,
+            ket: file.ket,
+            vectors: file.vectors,
+            tensors: file.tensors,
+            basis,
+            orders,
+            depth: file.depth,
+        },
+    })
+}
+
+/// Interference entries as stored: (kind, bra Born order, vector or Born
+/// order, coupling slot, N_c grade, output, degree).
+#[allow(clippy::type_complexity)]
+fn load_entries(
+    entries: &[(String, usize, usize, Option<usize>, i32, usize, Option<i32>)],
+) -> RusticolResult<Vec<Entry>> {
+    entries
+        .iter()
+        .map(|(kind, bra, ket, coupling, grade, output, degree)| {
+            let ket = match kind.as_str() {
+                "vector" => Ket::Vector(*ket),
+                "born" => Ket::Born(*ket),
+                _ => return Err(invalid(format!("interference entry {kind:?}"))),
+            };
+            Ok(Entry {
+                bra: *bra,
+                ket,
+                coupling: *coupling,
+                grade: *grade,
+                output: *output,
+                degree: *degree,
+            })
+        })
+        .collect()
+}
+
+fn load_cells(cells: CellsFile) -> RusticolResult<MetricCells> {
+    let values = cells
+        .values
+        .iter()
+        .map(|cell| {
+            cell.iter()
+                .map(|(power, re, im)| Ok((*power, [exact(re)?, exact(im)?])))
+                .collect()
+        })
+        .collect::<RusticolResult<_>>()?;
+    Ok(MetricCells::Table {
+        values,
+        ids: cells.ids,
     })
 }
 
@@ -1280,7 +1944,25 @@ impl TreeProgram {
         planes: Option<&[Vec<u8>]>,
         plan: &LoopProgramV4,
     ) -> RusticolResult<Self> {
-        let file: TreeFile = serde_json::from_slice(json).map_err(|e| invalid(e.to_string()))?;
+        Self::load_with_components(json, kernels, planes, plan, None)
+    }
+
+    /// `load` for another plan of the same process (an observable column
+    /// set's plan, `loops/v2/native_observables`): `plan_components` (per
+    /// plan Born component its tree component, or none) replaces the
+    /// program's own.
+    pub fn load_with_components(
+        json: &[u8],
+        kernels: &[Vec<u8>],
+        planes: Option<&[Vec<u8>]>,
+        plan: &LoopProgramV4,
+        plan_components: Option<Vec<Option<usize>>>,
+    ) -> RusticolResult<Self> {
+        let mut file: TreeFile =
+            serde_json::from_slice(json).map_err(|e| invalid(e.to_string()))?;
+        if let Some(components) = plan_components {
+            file.born.plan_components = components;
+        }
         require(
             file.schema == TREE_SCHEMA,
             "unsupported tree-program schema",
@@ -1327,6 +2009,7 @@ impl TreeProgram {
             planes,
             file.state_size,
             file.model_count,
+            None,
         )?;
         let counterterm_trees = match file.counterterm_trees {
             Some(ct) => {
@@ -1341,6 +2024,18 @@ impl TreeProgram {
                         "counterterm program momentum slot outside its state",
                     )?;
                 }
+                require(
+                    !ct.slots.is_empty()
+                        && ct
+                            .slots
+                            .iter()
+                            .map(|slot| &slot.0)
+                            .collect::<std::collections::BTreeSet<_>>()
+                            .len()
+                            == ct.slots.len(),
+                    "counterterm slot table",
+                )?;
+                let powers: Vec<i32> = ct.slots.iter().map(|slot| slot.2).collect();
                 Some(CountertermTrees {
                     layout: StateLayout {
                         size: ct.state_size,
@@ -1355,6 +2050,7 @@ impl TreeProgram {
                         counterterm_planes,
                         ct.state_size,
                         ct.model_count,
+                        Some(&powers),
                     )?,
                 })
             }
@@ -1382,6 +2078,21 @@ impl TreeProgram {
             file.counterterms.as_ref().map_or(0, |ct| ct.couplings),
             plan,
         )?;
+        let sources = SchemaSources::from_value(&file.source_fill)?;
+        if let Some((_, legs)) = &parameters.photons {
+            // Each photon a leg with sources in the trees and, with one, the
+            // counterterm program.
+            require(
+                legs.iter().all(|&leg| {
+                    (1..=file.legs).contains(&leg)
+                        && !sources.leg_slots(leg).is_empty()
+                        && counterterm_trees
+                            .as_ref()
+                            .is_none_or(|ct| !ct.sources.leg_slots(leg).is_empty())
+                }),
+                "a photon leg without sources",
+            )?;
+        }
         require(
             file.block_rows.len() == plan.block_rows.len(),
             "block rows differ from the plan's",
@@ -1392,6 +2103,24 @@ impl TreeProgram {
                 "block row",
             )?;
         }
+        for &(row, start, sign) in &file.block_row_terms {
+            require(
+                file.block_rows
+                    .get(row)
+                    .is_some_and(|&(_, dimension, _)| start + dimension <= file.state_size)
+                    && sign.abs() == 1,
+                "block row term",
+            )?;
+        }
+        let block_row_offsets = file
+            .block_rows
+            .iter()
+            .scan(0, |offset, &(_, dimension, _)| {
+                let start = *offset;
+                *offset += dimension;
+                Some(start)
+            })
+            .collect();
         let born = file.born;
         require(born.rows == plan.rows, "Born rows differ from the plan's")?;
         require(
@@ -1500,9 +2229,11 @@ impl TreeProgram {
             model_offset: file.model_offset,
             model_count: file.model_count,
             momentum_slots: file.momentum_slots,
-            sources: SchemaSources::from_value(&file.source_fill)?,
+            sources,
             interactions,
             block_rows: file.block_rows,
+            block_row_terms: file.block_row_terms,
+            block_row_offsets,
             rows: born.rows,
             components: born.components,
             plan_components: born.plan_components,
@@ -1515,6 +2246,9 @@ impl TreeProgram {
             parameters,
             counterterms,
             counterterm_trees,
+            columns: None,
+            restriction: rows::Restriction::of(plan),
+            closure_rows: None,
             layouts: layouts.into_iter().map(|(inputs, _)| inputs).collect(),
             weights,
             masks: {
@@ -1535,6 +2269,45 @@ impl TreeProgram {
     /// Exact default value per external parameter.
     pub fn parameter_defaults(&self) -> &[Rational] {
         &self.parameters.defaults
+    }
+
+    /// The renormalisation scale's external parameter, if the program reads
+    /// it (each point's sqrt(mu_R^2) binds it).
+    pub fn scale_parameter(&self) -> Option<&str> {
+        self.parameters
+            .scale
+            .map(|index| self.parameters.names[index].as_str())
+    }
+
+    /// The names of the batch-shared outputs (Born couplings, kernel
+    /// constants, derived external and loop masses) that depend on the
+    /// renormalisation scale, by generation's record (`None`: an artifact
+    /// written before the record). Empty for the usual NLO models, whose
+    /// scale enters the counterterm couplings only; a running-coupling or
+    /// MSbar-mass model lists its Born couplings or masses here, and a batch
+    /// of such a model takes one mu_R^2 (`V2Runtime` partitions by it).
+    pub fn scale_dependent_shared(&self) -> Option<Vec<&str>> {
+        self.parameters.scale_dependent_shared()
+    }
+
+    /// The names of the outputs `indices` in the generation record (by
+    /// output index without one).
+    fn output_names(&self, indices: &[usize]) -> Vec<String> {
+        let named: BTreeMap<usize, &str> = self
+            .parameters
+            .scale_outputs
+            .iter()
+            .flatten()
+            .map(|(o, name)| (*o, name.as_str()))
+            .collect();
+        indices
+            .iter()
+            .map(|o| {
+                named
+                    .get(o)
+                    .map_or_else(|| format!("output {o}"), |n| (*n).to_owned())
+            })
+            .collect()
     }
 
     /// Bind a batch's external parameters (`values`, exact, in
@@ -1564,6 +2337,19 @@ impl TreeProgram {
         let width = program.names.len();
         require(points > 0, "a batch needs points")?;
         require(values.len() == width, "external parameter count")?;
+        // A model whose shared values run with the scale takes one mu_R^2
+        // per batch (`V2Runtime::evaluate` partitions by it).
+        if let Some(dependent) = self.scale_dependent_shared()
+            && !dependent.is_empty()
+            && scales.iter().any(|scale| scale != &scales[0])
+        {
+            return Err(RusticolError::invalid_argument(format!(
+                "loop v2 trees: {} depend on the renormalisation scale {}: \
+                 a batch takes one mu_R^2 (evaluate one batch per scale)",
+                dependent.join(", "),
+                self.scale_parameter().unwrap_or("parameter"),
+            )));
+        }
         let czero = Complex::new(zero.clone(), zero.clone());
         let shared: Vec<T> = values.iter().map(|value| cast(zero, value)).collect();
         let mut rows_in = Vec::with_capacity(points);
@@ -1589,20 +2375,40 @@ impl TreeProgram {
             .evaluate_batch(&inputs, &mut outputs, points)
             .map_err(|e| invalid(format!("parameter program: {e}")))?;
         let rows: Vec<&[Complex<T>]> = outputs.chunks_exact(program.outputs).collect();
+        // Values a batch shares (Born couplings, kernel constants, masses):
+        // equal at every point unless they depend on the scale, which a
+        // batch of mixed scales of such a model was refused for above (or,
+        // in an artifact written before the scale record, here, naming the
+        // outputs that differ).
         let shared = |indices: &[usize], what: &str| -> RusticolResult<Vec<Complex<T>>> {
             let first: Vec<Complex<T>> = indices.iter().map(|&o| rows[0][o].clone()).collect();
-            for row in &rows[1..] {
-                require(
-                    indices
-                        .iter()
-                        .zip(&first)
-                        .all(|(&o, value)| row[o] == *value),
-                    what,
-                )?;
+            let differ: Vec<usize> = indices
+                .iter()
+                .zip(&first)
+                .filter(|&(&o, value)| rows[1..].iter().any(|row| row[o] != *value))
+                .map(|(&o, _)| o)
+                .collect();
+            if !differ.is_empty() {
+                return Err(RusticolError::invalid_argument(format!(
+                    "loop v2 trees: the points of one batch need equal {what}; {} \
+                     differ between the batch's scales (they depend on the \
+                     renormalisation scale: evaluate one batch per scale)",
+                    self.output_names(&differ).join(", "),
+                )));
             }
             Ok(first)
         };
         for row in &rows {
+            if let Some((o, _)) = &program.photons {
+                // Its square root scales the photons' sources (`scale_photons`).
+                let value = &row[*o];
+                require(
+                    value.im == *zero && value.re > *zero && value.re.is_finite(),
+                    "the on-shell external photons' alpha(0)/alpha is not real, \
+                     finite and positive: set the model's 1/alpha(0) parameter \
+                     (aEW0M1 of MG5_aMC's G_mu loop models, e.g. 137.035999)",
+                )?;
+            }
             for &o in &program.positive {
                 let value = &row[o];
                 require(
@@ -1629,14 +2435,8 @@ impl TreeProgram {
                     .collect()
             })
             .collect();
-        let couplings = shared(
-            &program.couplings,
-            "the points of one batch need equal Born couplings",
-        )?;
-        let constants = shared(
-            &program.constants,
-            "the points of one batch need equal kernel constants",
-        )?;
+        let couplings = shared(&program.couplings, "Born couplings")?;
+        let constants = shared(&program.constants, "kernel constants")?;
         let values_of = |sources: &[ModelSource]| -> Vec<Vec<T>> {
             rows_in
                 .iter()
@@ -1660,27 +2460,95 @@ impl TreeProgram {
         };
         let model = values_of(&program.model);
         let counterterm_model = values_of(&program.counterterm_model);
+        // Real and positive (`positive`, checked above).
+        let photon_scales = program.photons.as_ref().map_or_else(Vec::new, |(o, _)| {
+            rows.iter().map(|row| row[*o].re.clone().sqrt()).collect()
+        });
+        let masses: BTreeMap<i32, Rational> = program
+            .masses
+            .iter()
+            .map(|&(pdg, index)| (pdg, values[index].clone()))
+            .collect();
+        let derived: Vec<usize> = program.derived_masses.iter().map(|&(_, o)| o).collect();
+        let derived_masses: BTreeMap<i32, T> = program
+            .derived_masses
+            .iter()
+            .zip(shared(&derived, "external masses")?)
+            .map(|(&(pdg, _), value)| (pdg, value.re))
+            .collect();
+        // A derived mass is bound like an exact one: its carrier value's
+        // exact rational, so its legs' invariants and its propagators take
+        // the square of the value its sources take (DESIGN §11.1).
+        let mut exact_masses = masses.clone();
+        for (&pdg, value) in &derived_masses {
+            exact_masses.insert(pdg, value.exact()?);
+        }
+        let outputs: Vec<usize> = program
+            .plan_masses
+            .iter()
+            .filter_map(|mass| match mass {
+                Some(MassSource::Output(o) | MassSource::Complex(o)) => Some(*o),
+                _ => None,
+            })
+            .collect();
+        let mut derived_plan = shared(&outputs, "loop masses")?.into_iter();
+        let complex_masses = program
+            .plan_masses
+            .iter()
+            .any(|mass| matches!(mass, Some(MassSource::Complex(_))));
+        let mut plan_masses = Vec::with_capacity(program.plan_masses.len());
+        let mut masses_imaginary = Vec::new();
+        for (index, mass) in program.plan_masses.iter().enumerate() {
+            let (re, im) = match mass {
+                Some(MassSource::Input(index)) => {
+                    (&values[*index] * &values[*index], Rational::from(0))
+                }
+                Some(MassSource::Output(_)) => {
+                    let value = derived_plan
+                        .next()
+                        .expect("one value per output plan mass")
+                        .re
+                        .exact()?;
+                    (&value * &value, Rational::from(0))
+                }
+                // A complex pole mass M: the square of its carrier value's
+                // exact complex rational (as a real derived mass's, DESIGN
+                // §11.1), the M² the tree propagators' carrier value squares.
+                Some(MassSource::Complex(_)) => {
+                    let value = derived_plan.next().expect("one value per output plan mass");
+                    let (re, im) = (value.re.exact()?, value.im.exact()?);
+                    let squared = (&re * &re - &im * &im, Rational::from(2) * &re * &im);
+                    if T::COMPLEX_MASS_MASTER_GUARD {
+                        require_complex_mass_master(index, &squared.0, &squared.1)?;
+                    }
+                    squared
+                }
+                None => (Rational::from(0), Rational::from(0)),
+            };
+            plan_masses.push(re);
+            if complex_masses {
+                masses_imaginary.push(im);
+            }
+        }
         Ok(BoundParameters {
+            leg_masses: self
+                .sources
+                .leg_masses(self.legs, &exact_masses)?
+                .into_iter()
+                .map(Some)
+                .collect(),
             trees: TreeBatch {
                 model,
-                masses: program
-                    .masses
-                    .iter()
-                    .map(|&(pdg, index)| (pdg, values[index].clone()))
-                    .collect(),
+                masses,
+                derived_masses,
                 couplings,
                 counterterm_couplings,
                 counterterm_model,
+                photon_scales,
             },
             constants,
-            masses: program
-                .plan_masses
-                .iter()
-                .map(|mass| match mass {
-                    Some(index) => &values[*index] * &values[*index],
-                    None => Rational::from(0),
-                })
-                .collect(),
+            masses: plan_masses,
+            masses_imaginary,
         })
     }
 
@@ -1772,6 +2640,17 @@ impl TreeProgram {
                 .map(|(_s, _l, _r, [re, im])| complex(re, im))
                 .collect()
         });
+        let columns = self
+            .columns
+            .as_ref()
+            .map(|columns| {
+                columns
+                    .programs
+                    .iter()
+                    .map(|program| program.runtime(zero))
+                    .collect()
+            })
+            .unwrap_or_default();
         Ok(TreeRuntime {
             parameters,
             kernels,
@@ -1782,7 +2661,134 @@ impl TreeProgram {
             metric,
             average: cast(zero, &self.average),
             interference,
+            columns,
         })
+    }
+
+    /// Set the observable columns (`loops/v2/native_observables.py`; JSON
+    /// `ColumnsFile`): each point then also forms every column's Born and
+    /// counterterm/field interferences (`TreeInputs::columns`). Needs the
+    /// counterterm components, whose interference layout the columns share.
+    /// Build the runtime after setting them.
+    pub fn set_columns(&mut self, json: &[u8]) -> RusticolResult<()> {
+        let mut file: ColumnsFile =
+            serde_json::from_slice(json).map_err(|e| invalid(format!("columns: {e}")))?;
+        // Each metric is loaded once (the columns share them by index).
+        let mut metrics: Vec<Option<MetricCells>> = Vec::with_capacity(file.cells.len());
+        for cells in std::mem::take(&mut file.cells) {
+            metrics.push(cells.map(load_cells).transpose()?);
+        }
+        // Columns need the counterterm interference layout; a program
+        // without counterterms (the certified-scaleless companion's) takes
+        // the spin sources only.
+        let ct = self.counterterms.as_ref();
+        require(
+            ct.is_some() || file.columns.is_empty(),
+            "observable columns need the counterterm components",
+        )?;
+        let basis = ct.map_or(0, |ct| ct.layout.basis);
+        let flags = |kept: &Option<Vec<usize>>, count: usize, what: &str| {
+            kept.as_ref()
+                .map(|kept| {
+                    let mut flags = vec![false; count];
+                    for &k in kept {
+                        if k >= count {
+                            return Err(invalid(format!("a column's {what} index")));
+                        }
+                        flags[k] = true;
+                    }
+                    Ok(flags)
+                })
+                .transpose()
+        };
+        // One interference per distinct (program, metric) pair.
+        let mut index: BTreeMap<(usize, usize), usize> = BTreeMap::new();
+        let mut programs = Vec::new();
+        let mut interference = |program: usize, cells: usize| -> RusticolResult<usize> {
+            if let Some(&found) = index.get(&(program, cells)) {
+                return Ok(found);
+            }
+            let ct = ct.expect("columns need counterterms");
+            let layout = &ct.layout;
+            let record = file
+                .programs
+                .get(program)
+                .ok_or_else(|| invalid("a column's program index"))?;
+            let metric = match metrics
+                .get(cells)
+                .ok_or_else(|| invalid("a column's metric index"))?
+            {
+                Some(metric) => metric.clone(),
+                // The Born metric: the counterterm interference's own cells.
+                None => ct.interference.cells().clone(),
+            };
+            programs.push(Interference::new(
+                layout.basis,
+                layout.orders,
+                layout.tensors,
+                metric,
+                &layout.born,
+                &layout.ket,
+                layout.vectors,
+                load_entries(&record.entries)?,
+                record.outputs.clone(),
+                ct.couplings,
+                layout.depth,
+            )?);
+            index.insert((program, cells), programs.len() - 1);
+            Ok(programs.len() - 1)
+        };
+        let mut columns = Vec::with_capacity(file.columns.len());
+        for column in &file.columns {
+            let record = file
+                .programs
+                .get(column.program)
+                .ok_or_else(|| invalid("a column's program index"))?;
+            require(
+                record.born_outputs <= record.outputs.len(),
+                "a column's Born outputs",
+            )?;
+            columns.push(Column {
+                direct: interference(column.program, column.cells)?,
+                swapped: column
+                    .swapped
+                    .map(|cells| interference(column.program, cells))
+                    .transpose()?,
+                born_outputs: record.born_outputs,
+                rows: flags(&column.rows, self.rows, "row")?,
+                basis: flags(&column.basis, basis, "basis element")?,
+            });
+        }
+        let slots = |records: &[(usize, usize, String, String)], size: usize| {
+            let mut out: SourceSlots = BTreeMap::new();
+            for (leg, start, re, im) in records {
+                require(
+                    *leg >= 1 && *leg <= self.legs && start + 4 <= size,
+                    "a spin-source slot",
+                )?;
+                out.entry(*leg)
+                    .or_default()
+                    .push((*start, [exact(re)?, exact(im)?]));
+            }
+            Ok::<_, RusticolError>(out)
+        };
+        let counterterm_size = self
+            .counterterm_trees
+            .as_ref()
+            .map_or(0, |ct| ct.layout.size);
+        let restricts = !columns.is_empty();
+        self.columns = Some(Columns {
+            programs,
+            columns,
+            trees: slots(&file.trees, self.state_size)?,
+            counterterms: slots(&file.counterterms, counterterm_size)?,
+        });
+        // Observable columns of a plan that keeps some Born rows: the
+        // program evaluates what their kept rows read (`rows`).
+        if restricts && let Some(restriction) = self.restriction.take() {
+            self.restrict_rows(restriction);
+        }
+        Ok(())
     }
 
     /// Whether the program forms the counterterm and external-field
@@ -1810,6 +2816,90 @@ impl TreeProgram {
     where
         Complex<T>: Real + EvaluationDomain,
     {
+        self.inputs_with(runtime, plan, batch, momenta, constants, poles, None, zero)
+    }
+
+    /// `inputs` with per point spin sources (`sources`; the observable
+    /// columns' spin-source slots, `set_columns`): each listed leg's
+    /// wavefunction is the given vector times its source's crossing phase in
+    /// the trees and the counterterm program, and the point's Born
+    /// components vanish outside its kept rows.
+    #[allow(clippy::too_many_arguments)]
+    pub fn inputs_with<T: TreeCarrier>(
+        &self,
+        runtime: &mut TreeRuntime<T>,
+        plan: &LoopProgramV4,
+        batch: &TreeBatch<T>,
+        momenta: &[Vec<Rational>],
+        constants: &[Complex<T>],
+        poles: bool,
+        sources: Option<&[PointSources<T>]>,
+        zero: &T,
+    ) -> RusticolResult<TreeInputs<T>>
+    where
+        Complex<T>: Real + EvaluationDomain,
+    {
+        self.inputs_loop_side(
+            runtime, plan, batch, momenta, constants, poles, sources, None, zero,
+        )
+    }
+
+    /// `inputs_with` with per point loop-side sources (`loop_sources`, one
+    /// `LoopSources` per point; the asymmetric Ward mode): each listed vector
+    /// leg's wavefunction is the given vector times its source's crossing
+    /// phase (every helicity source of the leg, as a spin source) in a second
+    /// run of the trees and in the counterterm program, on top of the spin
+    /// sources. The physical run gives the plan's Born components (the seeds'
+    /// bra), every Born component (`amplitudes`) and `|A0|²`; the loop-side
+    /// run gives the block rows, the counterterm kets and the external-field
+    /// insertions' Born ket, and `loop_born` the Born interference of the
+    /// physical bra with the loop-side ket. The vectors need the full tree
+    /// kernels (the caller's slice generation; the transverse Yang-Mills
+    /// kernel assumes conserved currents). Observable columns are refused
+    /// with loop-side sources (they run the inclusive outputs).
+    #[allow(clippy::too_many_arguments)]
+    pub fn inputs_loop_side<T: TreeCarrier>(
+        &self,
+        runtime: &mut TreeRuntime<T>,
+        plan: &LoopProgramV4,
+        batch: &TreeBatch<T>,
+        momenta: &[Vec<Rational>],
+        constants: &[Complex<T>],
+        poles: bool,
+        sources: Option<&[PointSources<T>]>,
+        loop_sources: Option<&[LoopSources<T>]>,
+        zero: &T,
+    ) -> RusticolResult<TreeInputs<T>>
+    where
+        Complex<T>: Real + EvaluationDomain,
+    {
+        if let Some(loop_sources) = loop_sources {
+            require(
+                loop_sources.len() == momenta.len(),
+                "loop-side sources per point",
+            )?;
+            require(
+                self.columns
+                    .as_ref()
+                    .is_none_or(|columns| columns.columns.is_empty()),
+                "loop-side sources run the inclusive outputs, not observable columns",
+            )?;
+        }
+        if let Some(sources) = sources {
+            require(
+                sources.len() == momenta.len() && self.columns.is_some(),
+                "spin sources per point need the observable columns",
+            )?;
+            for point in sources {
+                require(
+                    point
+                        .rows
+                        .as_ref()
+                        .is_none_or(|rows| rows.len() == self.rows),
+                    "a point's kept rows",
+                )?;
+            }
+        }
         // Exact states under the key; plane applications touch no Symbolica
         // state.
         let _unlock = runtime
@@ -1865,6 +2955,12 @@ impl TreeProgram {
             .masses
             .iter()
             .map(|(&pdg, mass)| (pdg, cast(zero, mass)))
+            .chain(
+                batch
+                    .derived_masses
+                    .iter()
+                    .map(|(&pdg, mass)| (pdg, mass.clone())),
+            )
             .collect();
         // The tree state of every point.
         let layout = StateLayout {
@@ -1883,16 +2979,40 @@ impl TreeProgram {
             &batch.model,
             zero,
         )?;
-        run_interactions(
-            &self.interactions,
-            layout,
-            &mut runtime.kernels,
-            &runtime.edge_weights,
-            &mut states,
-            points,
-            true,
-            &czero,
-        )?;
+        if let (Some(sources), Some(columns)) = (sources, &self.columns) {
+            Self::override_sources(&mut states, layout.size, &columns.trees, sources, zero)?;
+        }
+        // The loop side's states: the physical ones with each point's
+        // loop-side vectors in their legs' vector source slots.
+        let mut loop_states = match loop_sources {
+            Some(loop_sources) => {
+                let mut loop_states = states.clone();
+                Self::override_loop_sources(
+                    &mut loop_states,
+                    layout.size,
+                    &self.sources,
+                    loop_sources,
+                    zero,
+                )?;
+                Some(loop_states)
+            }
+            None => None,
+        };
+        for states in std::iter::once(&mut states).chain(loop_states.as_mut()) {
+            self.scale_photons(states, layout.size, &self.sources, batch)?;
+        }
+        for states in std::iter::once(&mut states).chain(loop_states.as_mut()) {
+            run_interactions(
+                &self.interactions,
+                layout,
+                &mut runtime.kernels,
+                &runtime.edge_weights,
+                states,
+                points,
+                true,
+                &czero,
+            )?;
+        }
         // The counterterm program's state of every point (empty without it).
         let counterterm_states = match &self.counterterm_trees {
             Some(ct) => {
@@ -1906,6 +3026,26 @@ impl TreeProgram {
                     &batch.counterterm_model,
                     zero,
                 )?;
+                if let (Some(sources), Some(columns)) = (sources, &self.columns) {
+                    Self::override_sources(
+                        &mut ct_states,
+                        ct.layout.size,
+                        &columns.counterterms,
+                        sources,
+                        zero,
+                    )?;
+                }
+                // Counterterm currents are loop side only.
+                if let Some(loop_sources) = loop_sources {
+                    Self::override_loop_sources(
+                        &mut ct_states,
+                        ct.layout.size,
+                        &ct.sources,
+                        loop_sources,
+                        zero,
+                    )?;
+                }
+                self.scale_photons(&mut ct_states, ct.layout.size, &ct.sources, batch)?;
                 run_interactions(
                     &ct.interactions,
                     ct.layout,
@@ -1929,10 +3069,13 @@ impl TreeProgram {
             born: Vec::with_capacity(points),
             amplitudes: Vec::with_capacity(points),
             born_squared: runtime.metric.is_some().then(|| Vec::with_capacity(points)),
+            loop_born: (runtime.metric.is_some() && loop_states.is_some())
+                .then(|| Vec::with_capacity(points)),
             counterterms: self
                 .counterterms
                 .as_ref()
                 .map(|_| Vec::with_capacity(points)),
+            columns: self.columns.as_ref().map(|_| Vec::with_capacity(points)),
             seconds: Vec::with_capacity(3),
         };
         out.seconds
@@ -1944,20 +3087,30 @@ impl TreeProgram {
             .map(|point| self.mask_momenta(point, zero))
             .collect();
         let states = (states.as_slice(), self.state_size);
+        // The loop side's trees: the loop-side run, else the physical one.
+        let loop_side = loop_states.as_ref().map_or(states, |loop_states| {
+            (loop_states.as_slice(), self.state_size)
+        });
         let counterterm_states = (counterterm_states.as_slice(), counterterm_size);
-        let mut amplitudes = self.close(
-            &self.terms,
-            &runtime.weights,
-            &vec![batch.couplings.as_slice(); points],
-            None,
-            self.components,
-            plan,
-            &momenta,
-            states,
-            counterterm_states,
-            constants,
-            zero,
-        );
+        let born_closure = |states| {
+            self.close(
+                &self.terms,
+                &runtime.weights,
+                &vec![batch.couplings.as_slice(); points],
+                None,
+                self.components,
+                plan,
+                &momenta,
+                states,
+                counterterm_states,
+                constants,
+                zero,
+            )
+        };
+        let mut amplitudes = born_closure(states);
+        // The loop side's Born amplitudes (the external-field insertions'
+        // ket), with loop-side sources.
+        let mut loop_amplitudes = loop_states.as_ref().map(|_| born_closure(loop_side));
         let kets = match (&self.counterterms, &runtime.interference) {
             (Some(ct), Some(_)) => self.close(
                 &ct.terms,
@@ -1971,7 +3124,7 @@ impl TreeProgram {
                 ct.components,
                 plan,
                 &momenta,
-                states,
+                loop_side,
                 counterterm_states,
                 constants,
                 zero,
@@ -1981,8 +3134,88 @@ impl TreeProgram {
         out.seconds
             .push(("trees: closures", started.elapsed().as_secs_f64()));
         let started = std::time::Instant::now();
-        for (index, state) in states.0.chunks_exact(self.state_size).enumerate() {
-            let amplitudes = std::mem::take(&mut amplitudes[index]);
+        for (index, state) in loop_side.0.chunks_exact(self.state_size).enumerate() {
+            let mut amplitudes = std::mem::take(&mut amplitudes[index]);
+            let mut loop_amplitudes = loop_amplitudes
+                .as_mut()
+                .map(|loop_amplitudes| std::mem::take(&mut loop_amplitudes[index]));
+            let kept_rows = sources.and_then(|sources| sources[index].rows.as_deref());
+            if let Some(kept) = kept_rows {
+                // A source leg keeps its fixed row only: the other rows'
+                // Born components vanish (no seeds, no interference).
+                for amplitudes in std::iter::once(&mut amplitudes).chain(loop_amplitudes.as_mut()) {
+                    for (row, keep) in kept.iter().enumerate() {
+                        if !keep {
+                            for value in &mut amplitudes[row * self.components..][..self.components]
+                            {
+                                *value = czero.clone();
+                            }
+                        }
+                    }
+                }
+            }
+            if let (Some(columns), Some(out)) = (
+                self.columns.as_ref().filter(|c| !c.columns.is_empty()),
+                &mut out.columns,
+            ) {
+                let ct = self
+                    .counterterms
+                    .as_ref()
+                    .expect("columns need counterterms");
+                let couplings = &batch.counterterm_couplings[index];
+                let every = vec![true; self.rows];
+                let mut values = Vec::with_capacity(columns.columns.len());
+                for column in &columns.columns {
+                    let keep: Vec<bool> = (0..self.rows)
+                        .map(|row| {
+                            column.rows.as_ref().is_none_or(|rows| rows[row])
+                                && kept_rows.is_none_or(|kept| kept[row])
+                        })
+                        .collect();
+                    let keep = if keep.iter().all(|k| *k) {
+                        &every
+                    } else {
+                        &keep
+                    };
+                    let evaluate = |program: usize| {
+                        columns.programs[program].evaluate_complex(
+                            &runtime.columns[program],
+                            &amplitudes,
+                            None,
+                            self.components,
+                            &kets[index],
+                            ct.components,
+                            keep,
+                            column.basis.as_deref(),
+                            couplings,
+                            poles,
+                            zero,
+                        )
+                    };
+                    let mut column_values = evaluate(column.direct);
+                    let other = column.swapped.map(evaluate);
+                    for (k, value) in column_values.iter_mut().enumerate() {
+                        if k < column.born_outputs {
+                            // The Born: `observables._Assembly.result`
+                            // divides it by the average.
+                            continue;
+                        }
+                        // Python's `value + other.conjugate()`, divided by
+                        // the average as `_Assembly._local` does.
+                        let conjugate = match &other {
+                            Some(other) => other[k].conj(),
+                            None => value.conj(),
+                        };
+                        *value += conjugate;
+                        *value = Complex::new(
+                            value.re.clone() / runtime.average.clone(),
+                            value.im.clone() / runtime.average.clone(),
+                        );
+                    }
+                    values.push(column_values);
+                }
+                out.push(values);
+            }
             let mut rows = Vec::new();
             for &(start, dimension, sign) in &self.block_rows {
                 for value in &state[start..start + dimension] {
@@ -1991,6 +3224,20 @@ impl TreeProgram {
                     } else {
                         value.clone()
                     });
+                }
+            }
+            for &(row, start, sign) in &self.block_row_terms {
+                let dimension = self.block_rows[row].1;
+                let offset = self.block_row_offsets[row];
+                for (target, value) in rows[offset..offset + dimension]
+                    .iter_mut()
+                    .zip(&state[start..start + dimension])
+                {
+                    *target += if sign < 0 {
+                        -value.clone()
+                    } else {
+                        value.clone()
+                    };
                 }
             }
             out.block_rows.push(rows);
@@ -2003,6 +3250,7 @@ impl TreeProgram {
                 let values = ct.interference.evaluate(
                     interference,
                     &amplitudes,
+                    loop_amplitudes.as_deref(),
                     self.components,
                     &kets[index],
                     ct.components,
@@ -2027,7 +3275,11 @@ impl TreeProgram {
             out.born.push(born);
             if let Some(squared) = &mut out.born_squared {
                 let metric = runtime.metric.as_ref().expect("a runtime Born metric");
-                squared.push(self.squared(runtime, metric, &amplitudes, zero));
+                squared.push(self.squared(runtime, metric, &amplitudes, &amplitudes, zero));
+            }
+            if let (Some(loop_born), Some(ket)) = (&mut out.loop_born, &loop_amplitudes) {
+                let metric = runtime.metric.as_ref().expect("a runtime Born metric");
+                loop_born.push(self.squared(runtime, metric, &amplitudes, ket, zero));
             }
             out.amplitudes.push(amplitudes);
         }
@@ -2086,6 +3338,121 @@ impl TreeProgram {
             }
         }
         Ok(states)
+    }
+
+    /// Multiply every source of the on-shell external photons
+    /// (`ParameterFile::photons`) by its point's sqrt(alpha(0) / alpha),
+    /// after the spin and loop-side sources replaced theirs: one interaction
+    /// program's states, `sources` its source fill. Every amplitude is
+    /// linear in each leg's source, so each output takes
+    /// (alpha(0) / alpha)^n, as the Python lane's scaled average
+    /// (`assemble._PointEvaluation.average`) gives it.
+    fn scale_photons<T: TreeCarrier>(
+        &self,
+        states: &mut [Complex<T>],
+        size: usize,
+        sources: &SchemaSources,
+        batch: &TreeBatch<T>,
+    ) -> RusticolResult<()> {
+        let Some((_, legs)) = &self.parameters.photons else {
+            return Ok(());
+        };
+        if size == 0 {
+            return Ok(());
+        }
+        require(
+            batch.photon_scales.len() * size == states.len(),
+            "a photon source scale per point",
+        )?;
+        let slots: Vec<(usize, usize)> = legs
+            .iter()
+            .flat_map(|&leg| sources.leg_slots(leg))
+            .collect();
+        require(
+            slots.iter().all(|&(start, stop)| start <= stop && stop <= size),
+            "a photon source slot outside the state",
+        )?;
+        for (state, scale) in states.chunks_exact_mut(size).zip(&batch.photon_scales) {
+            for &(start, stop) in &slots {
+                for value in &mut state[start..stop] {
+                    *value = Complex::new(
+                        value.re.clone() * scale.clone(),
+                        value.im.clone() * scale.clone(),
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Write each point's spin-source vectors (times each slot's crossing
+    /// phase) into the source slots of its legs.
+    fn override_sources<T: TreeCarrier>(
+        states: &mut [Complex<T>],
+        size: usize,
+        slots: &SourceSlots,
+        sources: &[PointSources<T>],
+        zero: &T,
+    ) -> RusticolResult<()> {
+        Self::write_vectors(
+            states,
+            size,
+            slots,
+            sources.iter().map(|point| point.vectors.as_slice()),
+            zero,
+        )
+    }
+
+    /// Write each point's loop-side vectors (times each slot's crossing
+    /// phase) into the vector source slots of its legs in one interaction
+    /// program's state; `sources` is that program's source fill, whose
+    /// vector sources (`SchemaSources::vector_slots`) are the targets.
+    fn override_loop_sources<T: TreeCarrier>(
+        states: &mut [Complex<T>],
+        size: usize,
+        sources: &SchemaSources,
+        loop_sources: &[LoopSources<T>],
+        zero: &T,
+    ) -> RusticolResult<()> {
+        let mut slots: SourceSlots = BTreeMap::new();
+        for (leg, start, [re, im]) in sources.vector_slots() {
+            require(start + 4 <= size, "a vector source slot outside the state")?;
+            // The phase as the Python lane reads it (`Decimal(str(x))`).
+            let phase = [exact(&format!("{re:?}"))?, exact(&format!("{im:?}"))?];
+            slots.entry(leg).or_default().push((start, phase));
+        }
+        Self::write_vectors(
+            states,
+            size,
+            &slots,
+            loop_sources.iter().map(Vec::as_slice),
+            zero,
+        )
+    }
+
+    /// Write per point its (leg, vector) pairs, times each slot's crossing
+    /// phase, into the source slots of the legs (`slots`).
+    fn write_vectors<'a, T: TreeCarrier + 'a>(
+        states: &mut [Complex<T>],
+        size: usize,
+        slots: &SourceSlots,
+        points: impl Iterator<Item = &'a [(usize, [Complex<T>; 4])]>,
+        zero: &T,
+    ) -> RusticolResult<()> {
+        for (state, vectors) in states.chunks_exact_mut(size.max(1)).zip(points) {
+            for (leg, vector) in vectors {
+                let found = slots
+                    .get(leg)
+                    .ok_or_else(|| invalid(format!("leg {leg} has no vector source slot")))?;
+                for (start, [re, im]) in found {
+                    let phase = Complex::new(cast(zero, re), cast(zero, im));
+                    for (mu, component) in vector.iter().enumerate() {
+                        state[start + mu] = component.clone() * phase.clone();
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     /// The incoming momentum sum of each closure slot's leg mask.
@@ -2159,20 +3526,25 @@ impl TreeProgram {
         out
     }
 
-    /// `|A0|²` per squared Born order of one point (divided by the average):
-    /// the metric over pairs of Born components.
+    /// `Re <bra|M|ket>` per squared Born order of one point (divided by the
+    /// average): the metric over pairs of Born components, `|A0|²` for
+    /// `bra = ket` (the loop-side Born interference otherwise).
     fn squared<T: Carrier>(
         &self,
         runtime: &TreeRuntime<T>,
         metric: &[Complex<T>],
-        amplitudes: &[Complex<T>],
+        bra: &[Complex<T>],
+        ket: &[Complex<T>],
         zero: &T,
     ) -> Vec<T> {
         let entries = self.metric.as_ref().expect("a runtime metric has entries");
         let mut out = vec![zero.clone(); self.squared.len()];
-        for row in amplitudes.chunks_exact(self.components) {
+        for (row, ket) in bra
+            .chunks_exact(self.components)
+            .zip(ket.chunks_exact(self.components))
+        {
             for ((squared, left, right, _), value) in entries.iter().zip(metric) {
-                out[*squared] += (row[*left].conj() * value.clone() * row[*right].clone()).re;
+                out[*squared] += (row[*left].conj() * value.clone() * ket[*right].clone()).re;
             }
         }
         out.into_iter()
@@ -2364,6 +3736,10 @@ impl<T: Carrier> Closure<'_, T> {
             || (vec![zero.clone(); inputs * v], Vec::new()),
             |(x, starts), (task, target)| {
                 let (chunk, row) = (task / rows, task % rows);
+                // A row the program's restriction drops stays zero (`rows`).
+                if program.closure_rows.as_ref().is_some_and(|kept| !kept[row]) {
+                    return;
+                }
                 let lanes: [usize; L] =
                     std::array::from_fn(|l| first + (chunk * L + l).min(points - 1));
                 for term in self.terms {
@@ -2494,6 +3870,24 @@ where
     };
     let mut parameters = Vec::new();
     let mut outputs = Vec::new();
+    // The weights follow the program's interactions (a runtime built before
+    // a row restriction, `rows`, would not).
+    require(
+        edge_weights.len() == program.steps.len()
+            && program
+                .steps
+                .iter()
+                .zip(edge_weights)
+                .all(|(step, weights)| {
+                    step.groups.len() == weights.len()
+                        && step
+                            .groups
+                            .iter()
+                            .zip(weights)
+                            .all(|((_, edges), weights)| edges.len() == weights.len())
+                }),
+        "a tree runtime of another interaction program",
+    )?;
     for (step, weights) in program.steps.iter().zip(edge_weights) {
         let mut sums = vec![czero.clone(); points * step.width];
         for ((kernel, edges), weights) in step.groups.iter().zip(weights) {
@@ -2786,6 +4180,14 @@ fn plane_propagator<T: Clone>(
 /// masses are carrier values (binary64 ones in binary64, as the tree
 /// runtime's own source records).
 pub trait TreeCarrier: Carrier + PartialOrd {
+    /// Whether `TreeProgram::bind` refuses a complex pole mass with
+    /// 0 < |Im m²| < 1e-150 Re m² (`require_complex_mass_master`): the
+    /// carrier whose masters failed there (double-double).
+    const COMPLEX_MASS_MASTER_GUARD: bool = false;
+
+    /// The carrier value's exact rational (a finite value).
+    fn exact(&self) -> RusticolResult<Rational>;
+
     fn fill_sources(
         sources: &SchemaSources,
         masses: &BTreeMap<i32, Self>,
@@ -2805,6 +4207,10 @@ pub trait TreeCarrier: Carrier + PartialOrd {
 }
 
 impl TreeCarrier for f64 {
+    fn exact(&self) -> RusticolResult<Rational> {
+        Rational::try_from(*self).map_err(|_| invalid("a carrier value is not finite"))
+    }
+
     fn fill_sources(
         sources: &SchemaSources,
         masses: &BTreeMap<i32, Self>,
@@ -2834,6 +4240,14 @@ impl TreeCarrier for f64 {
 }
 
 impl TreeCarrier for DoubleFloat {
+    const COMPLEX_MASS_MASTER_GUARD: bool = true;
+
+    fn exact(&self) -> RusticolResult<Rational> {
+        // The unevaluated sum of its two binary64 parts.
+        let parts = self.into_inner();
+        Ok(&parts.hi().exact()? + &parts.lo().exact()?)
+    }
+
     fn fill_sources(
         sources: &SchemaSources,
         masses: &BTreeMap<i32, Self>,
@@ -2854,6 +4268,13 @@ impl TreeCarrier for DoubleFloat {
 }
 
 impl TreeCarrier for Float {
+    fn exact(&self) -> RusticolResult<Rational> {
+        if !self.is_finite() {
+            return Err(invalid("a carrier value is not finite"));
+        }
+        Ok(self.to_rational())
+    }
+
     fn fill_sources(
         sources: &SchemaSources,
         masses: &BTreeMap<i32, Self>,
@@ -2872,6 +4293,9 @@ impl TreeCarrier for Float {
         exact_kernel(_saved, zero)
     }
 }
+
+#[path = "trees_rows.rs"]
+mod rows;
 
 #[cfg(test)]
 #[path = "trees_tests.rs"]

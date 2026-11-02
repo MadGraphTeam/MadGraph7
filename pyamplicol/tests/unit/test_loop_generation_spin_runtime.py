@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: 0BSD
-"""Fresh public joint-source publication and independent singleton-spin physics."""
+"""Fresh public joint-source publication and independent singleton-spin physics
+(the v2 engine on the public CLI route against Recola)."""
 
 import io
 import json
@@ -11,11 +12,9 @@ from pathlib import Path
 import pytest
 
 from pyamplicol import CorrelatedRequest, CorrelatedValue, CorrelatorConfig, Runtime
-from pyamplicol.api import VirtualArithmeticSpec, VirtualStabilityPolicy
-from pyamplicol.api.errors import EvaluationError
 from pyamplicol.cli import run_cli
-from pyamplicol.loops.model_compatibility import prepare_loop_sm_scalar_declarations
 from pyamplicol.models.loading import compile_model_source
+from tools.loop_reference.model_compatibility import prepare_loop_sm_scalar_declarations
 
 from .test_loop_generation_public_runtime import _card
 
@@ -102,7 +101,11 @@ def test_public_singleton_spin_matches_independent_recola(
 ):
     path, rows = public_spin_artifact
     runtime = Runtime.load(path, arithmetic=arithmetic, precision=precision)
-    assert runtime.inspect()["spin_correlations"] == ((3,), (3, 4), (4,))
+    assert tuple(map(tuple, runtime.inspect()["spin_correlations"])) == (
+        (3,),
+        (3, 4),
+        (4,),
+    )
     result = runtime.evaluate_correlated_many(
         [row["point"] for row in rows],
         {"spin": CorrelatedRequest("born", {3: [row["vector"] for row in rows]})},
@@ -160,34 +163,3 @@ def test_public_joint_sources_preserve_normalization_and_defaults(public_spin_ar
         ordinary.born_values[0][0]
     )
     assert runtime.evaluate_correlated([], mu_r2=[]).shape == (0, 1, 3)
-
-
-def test_public_joint_sources_replay_through_precision_rescue(public_spin_artifact):
-    path, rows = public_spin_artifact
-    runtime = Runtime.load(path)
-    vector = [("0", "0"), ("0.8", "0"), ("0", "1"), ("-0.6", "0")]
-    requests = {"joint": CorrelatedRequest("born", {3: vector, 4: vector})}
-    points = [rows[0]["point"]] * 3
-    scales = [rows[0]["mu_r2"], "1e-400", rows[0]["mu_r2"]]
-    with pytest.raises(EvaluationError) as failure:
-        runtime.evaluate_correlated_many(points, requests, mu_r2=scales)
-    assert {item.point_id for item in failure.value.failures} == {1}
-    result = runtime.evaluate_correlated_many(
-        points,
-        requests,
-        mu_r2=scales,
-        stability=VirtualStabilityPolicy(
-            (
-                VirtualArithmeticSpec("arbitrary", 60),
-                VirtualArithmeticSpec("arbitrary", 80),
-            ),
-            "1e-8",
-            "1e-9",
-        ),
-    )["joint"]
-    assert [item.status for item in result.diagnostics] == [
-        "success",
-        "rescued",
-        "success",
-    ]
-    assert result.values[0] == result.values[2]

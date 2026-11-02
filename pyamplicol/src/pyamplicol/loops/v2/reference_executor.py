@@ -63,8 +63,8 @@ from __future__ import annotations
 
 import random
 from collections import Counter, defaultdict
-from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
-from contextlib import nullcontext
+from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
 from decimal import Decimal, localcontext
 from fractions import Fraction
@@ -560,15 +560,14 @@ class ExactKernel:
             for item in self.inputs
             if item.role == "model-parameter"
         }
-        self.outputs = tuple(
-            tuple(
-                sorted(
-                    _kernel_terms(E(expression), positions, parameters),
-                    key=_term_order,
-                )
-            )
-            for expression in spec.exact_expressions
-        )
+        if NATIVE_KERNEL_TERMS:
+            read = _native_kernel_terms(spec.exact_expressions, positions, parameters)
+        else:
+            read = [
+                _kernel_terms(E(expression), positions, parameters)
+                for expression in spec.exact_expressions
+            ]
+        self.outputs = tuple(tuple(sorted(terms, key=_term_order)) for terms in read)
         self._bound: KernelConstants | None = None
         self._resolved: tuple[tuple[tuple[Any, Any], ...], ...] = ()
 
@@ -625,25 +624,121 @@ def _kernel_terms(expression: Any, positions, parameters):
     for term in terms:
         reading = _TermReading(positions, parameters)
         reading.read(term, Fraction(1), distributed=False)
-        exact_factors, irrational = [], []
-        for base, exponent in sorted(reading.powers.items()):
-            if not exponent:
-                continue
-            if base[0] in ("pi", "expr"):
-                irrational.append((base, exponent))
-                continue
-            whole, fraction = divmod(exponent, 1)
-            if whole:
-                exact_factors.append((base, int(whole)))
-            if fraction:
-                irrational.append((base, fraction))
-        key = (
-            reading.coefficient,
-            tuple(exact_factors),
-            tuple(irrational),
-            tuple(sorted(reading.positive)),
+        yield _term_key(
+            reading.coefficient, reading.powers, reading.positive, reading.monomial
         )
-        yield key, tuple(sorted(reading.monomial.items()))
+
+
+def _term_key(
+    coefficient: tuple[Fraction, Fraction],
+    powers: Mapping[Factor, Fraction],
+    positive: Iterable[Factor],
+    monomial: Mapping[int, int],
+) -> tuple[Hashable, tuple[tuple[int, int], ...]]:
+    """(constant key, monomial) of one read term (``_kernel_terms``): the
+    factors' summed exponents split into exact integer powers and irrational
+    parts, every list sorted. The oracle and the native reading
+    (``_native_kernel_terms``) share it."""
+
+    exact_factors, irrational = [], []
+    for base, exponent in sorted(powers.items()):
+        if not exponent:
+            continue
+        if base[0] in ("pi", "expr"):
+            irrational.append((base, exponent))
+            continue
+        whole, fraction = divmod(exponent, 1)
+        if whole:
+            exact_factors.append((base, int(whole)))
+        if fraction:
+            irrational.append((base, fraction))
+    key = (
+        coefficient,
+        tuple(exact_factors),
+        tuple(irrational),
+        tuple(sorted(positive)),
+    )
+    return key, tuple(sorted(monomial.items()))
+
+
+# The exact kernels' term reading (the parse, expansion and factor reading
+# of every output's canonical string; 30 s of an electroweak 2->3 export)
+# runs natively, a kernel's outputs in one parallel call
+# (``rusticol_core::loop_v2::generate::kernel_terms`` through the loop
+# extension's ``loop_kernel_terms``; M-FINAL MF-RUST, HANDOFF §0.4): the same
+# readings as ``_TermReading``, assembled by the shared ``_term_key``, so the
+# kernels' terms are identical; ``_kernel_terms`` stays the oracle
+# (``native_kernel_terms(False)`` runs it).
+NATIVE_KERNEL_TERMS = True
+
+
+@contextmanager
+def native_kernel_terms(enabled: bool) -> Iterator[None]:
+    """``NATIVE_KERNEL_TERMS`` set to ``enabled`` for the block and restored
+    after it: ``native_kernel_terms(False)`` is the oracle lane."""
+
+    global NATIVE_KERNEL_TERMS
+    before = NATIVE_KERNEL_TERMS
+    NATIVE_KERNEL_TERMS = bool(enabled)
+    try:
+        yield
+    finally:
+        NATIVE_KERNEL_TERMS = before
+
+
+def _native_kernel_terms(
+    expressions: Sequence[str],
+    positions: Mapping[str, int],
+    parameters: Mapping[str, str],
+) -> list[list[tuple[Hashable, tuple[tuple[int, int], ...]]]]:
+    """``_kernel_terms`` of every output of one kernel, read natively; the
+    oracle's ``NotImplementedError`` with its message on a refusal."""
+
+    from .assemble import _loop_native
+
+    ((outputs, refusal),) = _loop_native().loop_kernel_terms(
+        [(list(expressions), list(positions.items()), list(parameters.items()))]
+    )
+    if refusal is not None:
+        raise NotImplementedError(refusal)
+    numbers: dict[tuple[str, str], Fraction] = {}
+    bases: dict[Any, Factor] = {}
+
+    def number(pair: tuple[str, str]) -> Fraction:
+        found = numbers.get(pair)
+        if found is None:
+            found = numbers[pair] = Fraction(int(pair[0]), int(pair[1]))
+        return found
+
+    def base(item: tuple[str, str, list[tuple[str, str]]]) -> Factor:
+        kind, text, pairs = item
+        if kind == "expr":
+            return ("expr", (text, tuple(pairs)))
+        found = bases.get((kind, text))
+        if found is None:
+            if kind == "param":
+                found = ("param", text)
+            elif kind == "prime":
+                found = ("prime", int(text))
+            elif kind == "pi":
+                found = ("pi", None)
+            else:
+                raise ValueError(f"unknown kernel factor kind {kind!r}")
+            bases[(kind, text)] = found
+        return found
+
+    return [
+        [
+            _term_key(
+                (number(re), number(im)),
+                {base(b): number(exponent) for b, exponent in powers},
+                [base(b) for b in positive],
+                dict(monomial),
+            )
+            for (re, im), powers, positive, monomial in terms
+        ]
+        for terms in outputs
+    ]
 
 
 class _TermReading:
@@ -762,7 +857,10 @@ class BlockRows(Protocol):
     def rows(
         self, block: BlockCurrent, word: Hashable
     ) -> Mapping[int, tuple[Row, ...]]:
-        """Helicity rows of a block word, per current chirality."""
+        """Helicity rows of a block word, per current chirality. ``word``
+        is the content colour's name of the block
+        (``PositionColour.block_names``): a colour-ordered word, or (word,
+        N_c grade) over graded blocks."""
         ...
 
     def value(
@@ -995,7 +1093,7 @@ class CatalogueKinematics:
                 (state.colour_index,),
                 state.legs,
                 term.vertex.orders,
-                tuple(zip(term.blocks, state.words, strict=True)),
+                tuple(zip(term.blocks, state.block_names, strict=True)),
             )
             return
         if not isinstance(content.colour, tuple):

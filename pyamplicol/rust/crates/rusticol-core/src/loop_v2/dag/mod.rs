@@ -13,6 +13,9 @@
 //!   first-seen order (rule 5);
 //! * [`colour`] is the loop-block colour engine (`ColorEngine._loop_block_*`,
 //!   `ordered_combination_labels`, `combine`);
+//! * [`grades`] grades the blocks whose trees mix N_c grades
+//!   (U(1)-subtraction pieces) for leading and next-to-leading colour
+//!   (`generation/dag_grades.split_u1_grades`);
 //! * [`reuse`] is `assign_recursive_current_evaluation_reuse`: the
 //!   value-equivalence derivation of the currents that share an evaluation
 //!   contract (the closed colour components of the CT program's currents)
@@ -21,7 +24,10 @@
 //! * [`signs`] folds the colour-flow convention's external-fermion ordering
 //!   signs (`apply_fermion_ordering_signs(coloured_lines=False)`);
 //! * [`blocks`] groups the currents into blocks (`loops/v2/blocks._blocks`)
-//!   and answers the Ward-kernel query (`coloured_propagated`).
+//!   and answers generation's current scans (`propagated_species`,
+//!   `u1_leaking`);
+//! * [`program`] is the DAG's interaction program for the native lane
+//!   (`native_trees._interaction_program` on the runtime schema's layout).
 //!
 //! The result is a [`ColumnarDag`]: struct-of-arrays currents and
 //! interactions with interned tables. It round-trips through a byte container
@@ -35,7 +41,9 @@
 pub mod blocks;
 pub mod colour;
 pub mod exact;
+pub mod grades;
 pub mod input;
+pub mod program;
 pub mod recursion;
 pub mod reuse;
 pub mod signs;
@@ -47,7 +55,10 @@ use sha2::{Digest, Sha256};
 ///
 /// `Unsupported` names a feature the native builder does not cover yet
 /// (rule 2: fail closed, never silently); `Invalid` mirrors an error the
-/// Python oracle raises for the same input.
+/// Python oracle raises for the same input. An `Unsupported` message that
+/// starts with a key of [`ADMISSION_REFUSALS`] and `": "` is a refusal of the
+/// request itself (no lane covers it), which Python raises as its typed
+/// generation refusal (`loops.v2.refusals.LOOP_ADMISSION_REFUSALS`).
 #[derive(Debug, thiserror::Error)]
 pub enum DagError {
     #[error("unsupported: {0}")]
@@ -59,6 +70,23 @@ pub enum DagError {
 }
 
 pub type DagResult<T> = Result<T, DagError>;
+
+/// [`DagError::Unsupported`] key: a merge of a coloured and a colour-singlet
+/// fermion current, or a block whose coloured fermion ends do not pair (one
+/// fermion line changing colour representation, e.g. at a leptoquark vertex
+/// u e S): the colour flow signs coloured fermion lines and the Wick order
+/// colour-singlet ones, so such a line has no sign (genericity audit 2,
+/// G2-m1). Python admission refuses it before the DAG.
+pub const FERMION_LINE_REPRESENTATION: &str = "fermion-line-representation";
+
+/// The keys of the [`DagError::Unsupported`] refusals that refuse the request
+/// (listed in Python's `LOOP_ADMISSION_REFUSALS`), not fallbacks.
+pub const ADMISSION_REFUSALS: &[&str] = &[FERMION_LINE_REPRESENTATION];
+
+pub(crate) fn refused<T>(key: &str, message: impl std::fmt::Display) -> DagResult<T> {
+    debug_assert!(ADMISSION_REFUSALS.contains(&key));
+    Err(DagError::Unsupported(format!("{key}: {message}")))
+}
 
 pub(crate) fn invalid<T>(message: impl Into<String>) -> DagResult<T> {
     Err(DagError::Invalid(message.into()))
@@ -78,7 +106,12 @@ pub struct Species {
     pub quantum_numbers: Vec<(String, String)>,
 }
 
-/// `ColorState` of `generation/dag_types.py`.
+/// `ColorState` of `generation/dag_types.py`. `nc_grade` is the N_c grade
+/// of every current of a block whose trees have several grades ([`grades`]:
+/// a current whose own derivations mix grades is split into one current per
+/// grade, a current of one grade in such a block takes its grade as a
+/// label); `None` for the currents of a block of one grade and without the
+/// split (and absent from the JSON tables then).
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ColourState {
     pub accuracy: String,
@@ -87,6 +120,8 @@ pub struct ColourState {
     pub basis_key: Vec<String>,
     pub traces: Vec<Vec<u8>>,
     pub lines: Vec<Vec<u8>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nc_grade: Option<i64>,
 }
 
 impl ColourState {
@@ -440,6 +475,12 @@ impl ColumnarDag {
             for key in &colour.basis_key {
                 put_str(&mut record, key);
             }
+            if let Some(grade) = colour.nc_grade {
+                // A trace count is never u32::MAX: the marker is unambiguous
+                // and states without a grade keep their records.
+                put_u32(&mut record, u32::MAX);
+                put_i64(&mut record, grade);
+            }
             for parts in [&colour.traces, &colour.lines] {
                 put_u32(&mut record, parts.len() as u32);
                 for part in parts {
@@ -525,11 +566,19 @@ fn put_opt_str(out: &mut Vec<u8>, value: Option<&str>) {
 }
 
 /// Builds the loop-request DAG of `input` (the JSON of
-/// `dag_input.dag_input`): recursion, prune, evaluation reuse, signs.
+/// `dag_input.dag_input`): recursion, prune, N_c grade split (leading and
+/// next-to-leading colour), colour-connection signs, evaluation reuse,
+/// colour-flow signs. The connection signs depend on the colour state, which
+/// the evaluation contracts of the reuse leave out, so they are folded
+/// before the reuse derives its value equivalences.
 pub fn build(input: &input::DagInput) -> DagResult<ColumnarDag> {
     let mut dag = recursion::compile(input)?;
     if dag.finish {
         recursion::prune_to_admitted(input, &mut dag);
+        if input.u1_grades {
+            grades::split_u1_grades(input, &mut dag)?;
+        }
+        signs::apply_connection_signs(input, &mut dag)?;
         reuse::assign_reuse(input, &mut dag)?;
         signs::apply_colour_flow_signs(input, &mut dag)?;
     }
@@ -557,6 +606,7 @@ mod tests {
                     basis_key: vec![],
                     traces: vec![],
                     lines: vec![],
+                    nc_grade: None,
                 }],
                 orders: vec![vec![], vec![("QCD".into(), 1)]],
                 vertices: vec![VertexKey {

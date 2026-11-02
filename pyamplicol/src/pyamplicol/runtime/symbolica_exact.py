@@ -3436,7 +3436,15 @@ def _particle_mass(
         for raw_parameter in cast(
             Sequence[Mapping[str, object]], schema["model_parameters"]
         ):
-            if raw_parameter["name"] == parameter_name:
+            # An external mass by its name; a derived one (an internal mass,
+            # e.g. loop_sm's MW or a complex-mass scheme's line mass) by its
+            # real component, evaluated at the point's parameters (the
+            # record's ``mass`` is its value at generation).
+            if raw_parameter["name"] == parameter_name or (
+                raw_parameter.get("kind") == "derived_parameter_component"
+                and raw_parameter.get("runtime_name") == parameter_name
+                and raw_parameter.get("complex_component") == "real"
+            ):
                 try:
                     return parameters[_json_integer(raw_parameter["parameter_index"])]
                 except IndexError as exc:
@@ -3576,7 +3584,15 @@ def _massive_dirac(
     energy, px, py, pz = momentum
     nsf = (-1 if energy > 0 else 1) if antiquark else (1 if energy > 0 else -1)
     nh = nsf * helicity
-    pp = _sqrt(px * px + py * py + pz * pz, "massive fermion source")
+    # On the z axis |p| is |pz| exactly: the branch below (pp3 = |p| + pz = 0
+    # for a momentum along -z) must not hang on the rounding of sqrt(pz^2),
+    # whose residue gave chi = (~1e-25, 0) instead of (0, -nh) (a vanishing
+    # spinor, e.g. b b~ > w+ w- with 30-digit beam momenta at 50 digits).
+    pp = (
+        abs(pz)
+        if px == 0 and py == 0
+        else _sqrt(px * px + py * py + pz * pz, "massive fermion source")
+    )
     omega1 = _sqrt(abs(energy) + pp, "massive fermion source")
     if omega1 == 0:
         raise EvaluationError("massive fermion source has zero normalization")
@@ -3590,7 +3606,11 @@ def _massive_dirac(
     signed_px, signed_py, signed_pz = (px, py, pz) if energy > 0 else (-px, -py, -pz)
     pp3 = max(pp + signed_pz, _ZERO)
     chi1 = _ONE if pp == 0 else _sqrt(pp3 / (_TWO * pp), "massive fermion source")
-    if pp3 == 0 or pp == 0:
+    if pp == 0:
+        # At rest the helicity axis is +z, the general branch's limit along
+        # +z (HELAS ixxxxx/oxxxxx's rest spinor): chi = (1, 0).
+        chi2 = (_ZERO, _ZERO)
+    elif pp3 == 0:
         chi2 = (-Decimal(nh), _ZERO)
     else:
         denominator = _sqrt(_TWO * pp * pp3, "massive fermion source")

@@ -11,7 +11,7 @@ from types import MappingProxyType
 from typing import Any, NoReturn, TypeVar, cast, get_type_hints
 
 from .errors import ConfigurationError
-from .models import Action, ProcessEntry, RunConfig
+from .models import LOOP_ENGINE_REMOVED, Action, ProcessEntry, RunConfig
 from .registry import (
     CONFIG_SECTIONS,
     FIELD_REGISTRY,
@@ -21,6 +21,14 @@ from .registry import (
 )
 
 _DataclassT = TypeVar("_DataclassT")
+
+# Removed settings, refused with their reason wherever they are named (card,
+# mapping, dedicated CLI option or dotted override).
+REMOVED_FIELDS = MappingProxyType(
+    {
+        "loop.engine": LOOP_ENGINE_REMOVED,
+    }
+)
 
 
 def _extend_errors(errors: list[str], error: ConfigurationError) -> None:
@@ -110,6 +118,8 @@ def _unknown_field(path: str) -> NoReturn:
 
 
 def _unknown_field_message(path: str) -> str:
+    if path in REMOVED_FIELDS:
+        return REMOVED_FIELDS[path]
     candidates = list(FIELD_REGISTRY)
     suggestion = difflib.get_close_matches(path, candidates, n=1, cutoff=0.55)
     suffix = f"; did you mean {suggestion[0]!r}?" if suggestion else ""
@@ -265,7 +275,12 @@ def _coerce(
             if value in {"built-in-sm", "builtin_sm"} or is_sm_heft_alias(value):
                 result = value
             else:
-                result = str(_resolve_path(value, base_dir, item.path))
+                from .._internal.packaged_models import resolve_model_path
+
+                # A bare name of a shipped UFO model ("loop_sm") selects it
+                # when no such path exists next to the card.
+                _resolve_path(value, base_dir, item.path)
+                result = str(resolve_model_path(value, base_dir))
         else:
             result = value
     elif kind == "path":
@@ -308,6 +323,22 @@ def _coerce(
         ):
             raise ConfigurationError(f"{item.path} must be a list of integers")
         result = tuple(cast(Sequence[int], value))
+    elif kind == "choice_or_list_int":
+        # One of the choices, or a list of integers (``loop.external_photons``).
+        if isinstance(value, str):
+            result = value
+        elif isinstance(value, Sequence) and not isinstance(value, bytes):
+            if any(
+                isinstance(entry, bool) or not isinstance(entry, int) for entry in value
+            ):
+                raise ConfigurationError(
+                    f"{item.path} must be one of the choices or a list of integers"
+                )
+            return tuple(cast(Sequence[int], value))
+        else:
+            raise ConfigurationError(
+                f"{item.path} must be one of the choices or a list of integers"
+            )
     elif kind == "process_entries":
         result = _coerce_process_entries(value, item.path)
     elif kind in ("map_list_str", "map_int", "map_list_int", "map_exact_scalar"):
@@ -367,7 +398,13 @@ def parse_override(
         try:
             parsed = tomllib.loads(f"value = {value_text}\n")["value"]
         except tomllib.TOMLDecodeError as exc:
-            if item.kind not in ("str", "path", "auto_int", "auto_bool"):
+            if item.kind not in (
+                "str",
+                "path",
+                "auto_int",
+                "auto_bool",
+                "choice_or_list_int",
+            ):
                 raise ConfigurationError(
                     f"invalid value for override {path!r}: {value_text!r}"
                 ) from exc

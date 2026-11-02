@@ -27,7 +27,14 @@ from pyamplicol.loops.v2.schedules import (
 )
 from pyamplicol.loops.v2.skeletons import DressedColour, PlanarWords
 
-ROWS = cheapest(lambda mask: 2 ** mask.bit_count(), STRUCTURED)
+
+def _rows(table) -> tuple[tuple[int, ...], object]:
+    """The helicity rows of the control processes' legs (all massless: two
+    each) and the Python oracle's frame policy on them (the native policy
+    takes the counts explicitly, ``schedules(leg_rows=...)``)."""
+
+    counts = (2,) * len(table.legs)
+    return counts, cheapest(generator_input.frame_rows(counts), STRUCTURED)
 
 
 def assert_same_families(native, python) -> None:
@@ -96,8 +103,9 @@ def test_native_stages_equal_python_on_the_control_model(
     colour = (
         DressedColour() if colour_model == "dressed" else PlanarWords(len(table.legs))
     )
-    python = build_schedules(families, catalogue, colour, policy=ROWS)
-    assert_same_schedules(generation.schedules(colour), python)
+    counts, rows = _rows(table)
+    python = build_schedules(families, catalogue, colour, policy=rows)
+    assert_same_schedules(generation.schedules(colour, leg_rows=counts), python)
     # The prune pass: a filter and each family's stored frame.
     frames = {key: s.trie.frame for key, s in python.schedules.items()}
 
@@ -129,9 +137,10 @@ def test_native_stages_keep_mixed_order_sectors_apart(control, loop_native):
     families = generate_families(table, catalogue, selection)
     assert_same_families(generation.families(), families)
     colour = PlanarWords(len(table.legs))
+    counts, rows = _rows(table)
     assert_same_schedules(
-        generation.schedules(colour),
-        build_schedules(families, catalogue, colour, policy=ROWS),
+        generation.schedules(colour, leg_rows=counts),
+        build_schedules(families, catalogue, colour, policy=rows),
     )
 
 
@@ -206,13 +215,19 @@ def test_native_stages_equal_python_in_the_slice(slices, name, accuracy):
     )
     families = generate_families(table, slice_.loop_catalogue, selection)
     assert_same_families(slice_.families, families)
+    counts = generator_input.leg_rows(slice_.blocks)
     python = build_schedules(
-        families, slice_.loop_catalogue, slice_.colour, policy=assemble._FRAME_POLICY
+        families,
+        slice_.loop_catalogue,
+        slice_.colour,
+        policy=assemble._frame_policy(counts),
     )
     if accuracy == "full":
         assert_same_schedules(slice_.plan, python)
         return
-    native_first = slice_.generation.schedules(slice_.colour, model=STRUCTURED)
+    native_first = slice_.generation.schedules(
+        slice_.colour, model=STRUCTURED, leg_rows=counts
+    )
     assert_same_schedules(native_first, python)
     frames = {key: s.trie.frame for key, s in python.schedules.items()}
     keep = slice_.plan.view.keep
@@ -399,9 +414,9 @@ def test_born_orders_the_root_closure_misses_are_refused(
     [
         pytest.param("uux_ddxg", [0], "python", marks=pytest.mark.loop_physics),
         pytest.param("uux_ddxg", [0], "native", marks=pytest.mark.loop_physics),
-        # Massive fermion loop lines: the tree reading's mass flips reach the
-        # native kernel constants (stable tops, all fixture parameters).
-        pytest.param("gg_ttx", [0, 1, 2], "python", marks=pytest.mark.loop_physics),
+        # g g > t t~ (massive fermion loop lines, the tree reading's mass
+        # flips in the native kernel constants) is the M-QCD campaign's row
+        # B01 (``test_loop_v2_mqcd_default``; PLAN §3.2 MQ-VALIDATE item 3).
         pytest.param("gg_gggg", [0], "python", marks=pytest.mark.loop_nightly),
         # gamma*/Z at seven legs: chiral couplings on loop quark lines, closed
         # quark loops with the Z, Furry-certified A g g triangles and the
@@ -675,7 +690,10 @@ def test_native_schedules_at_seven_legs(loop_sm_request_model, loop_native):
     families = generate_families(table, catalogue, selection)
     assert_same_families(generation.families(), families)
     colour = SeedColour(blocks, data, compiled.ir.vertex_terms)
+    counts = generator_input.leg_rows(blocks)
     assert_same_schedules(
-        generation.schedules(colour),
-        build_schedules(families, catalogue, colour, policy=assemble._FRAME_POLICY),
+        generation.schedules(colour, leg_rows=counts),
+        build_schedules(
+            families, catalogue, colour, policy=assemble._frame_policy(counts)
+        ),
     )

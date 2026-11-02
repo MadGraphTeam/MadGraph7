@@ -28,7 +28,7 @@ static int pa_umami_evaluate(rusticol_virtual_handle *runtime,
   const void *in[]={momenta,request->mu_r2,ids}; const size_t in_sizes[]={inputs,1,stride};
   const int out_keys[]={PYAMPLICOL_UMAMI_V1_OUT_BORN,PYAMPLICOL_UMAMI_V1_OUT_VIRTUAL,PYAMPLICOL_UMAMI_V1_OUT_STATUS};
   void *out[]={born,loop,statuses}; const size_t out_sizes[]={nb,nv,stride};
-  pyamplicol_umami_virtual_v1_options options={request->resolved,request->r2_strategy,request->verification_json};
+  pyamplicol_umami_virtual_v1_options options={request->resolved,request->r2_strategy};
   UmamiStatus call=pyamplicol_umami_virtual_v1_evaluate(runtime,count,stride,offset,3,in_keys,in,in_sizes,3,out_keys,out,out_sizes,&options,result);
   if(call!=UMAMI_SUCCESS) pa_die(pyamplicol_umami_virtual_v1_last_error_message());
   puts("umami per-point axes Born=[colour,helicity,order], virtual=[epsilon,colour,helicity,order]; order varies fastest");

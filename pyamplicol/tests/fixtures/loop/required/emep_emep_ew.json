@@ -1,0 +1,360 @@
+{
+  "process": "e- e+ > e- e+ QCD=0 QED=2 [virt=QED] QED^2==6",
+  "name": "emep_emep_ew",
+  "pdgs": [
+    11,
+    -11,
+    11,
+    -11
+  ],
+  "correction": "EW",
+  "born_orders": {
+    "QCD": 0,
+    "QED": 2
+  },
+  "loop_orders": {
+    "QCD": 0,
+    "QED": 4
+  },
+  "scheme": "ew-qcd-qed-sm",
+  "scheme_description": "Full NLO EW in MG5_aMC's loop_qcd_qed_sm (alpha(M_Z) scheme: aEWM1, MZ and MW all inputs; lhv=1, epsUV=epsIR=1) at its default restriction (massless light fermions, diagonal CKM), real on-shell masses with all widths zero, stable top, Feynman gauge. MadLoop only: the Recola and OpenLoops drivers have no translation of these inputs.",
+  "source": "independent references: MadLoop/MG5_aMC 3.7.0",
+  "scope": "Independent provider references at exact on-shell decimal points; binary64 provider arithmetic; timings are single-run by-products, not benchmarks.",
+  "convention": "MadLoop/BLHA C_eps=(4pi)^eps/Gamma(1-eps); F_MadLoop=F_Recola+pi^2/6*D; OpenLoops truepoles=1, polenorm=0; physical couplings, no alpha extraction; initial spin/colour average and final identical-particle factor included",
+  "normalization": {
+    "initial_average": 4,
+    "final_symmetry": 1,
+    "denominator": 4
+  },
+  "normalization_denominator": 4,
+  "points": [
+    [
+      [
+        "1562.5",
+        "0",
+        "0",
+        "1562.5"
+      ],
+      [
+        "1562.5",
+        "0",
+        "0",
+        "-1562.5"
+      ],
+      [
+        "1562.5",
+        "840",
+        "-790.5",
+        "1054"
+      ],
+      [
+        "1562.5",
+        "-840",
+        "790.5",
+        "-1054"
+      ]
+    ],
+    [
+      [
+        "640",
+        "0",
+        "0",
+        "640"
+      ],
+      [
+        "640",
+        "0",
+        "0",
+        "-640"
+      ],
+      [
+        "640",
+        "184.9688064",
+        "-290.1147648",
+        "539.648"
+      ],
+      [
+        "640",
+        "-184.9688064",
+        "290.1147648",
+        "-539.648"
+      ]
+    ],
+    [
+      [
+        "1250",
+        "0",
+        "0",
+        "1250"
+      ],
+      [
+        "1250",
+        "0",
+        "0",
+        "-1250"
+      ],
+      [
+        "1250",
+        "264",
+        "-702",
+        "1000"
+      ],
+      [
+        "1250",
+        "-264",
+        "702",
+        "-1000"
+      ]
+    ]
+  ],
+  "mu_r": [
+    "1000",
+    "700",
+    "1400"
+  ],
+  "point_construction": {
+    "construction": "tools/loop_reference/exact_points.py: deterministic exact terminating-decimal sequential construction; mass shells and momentum conservation exact",
+    "cuts": {
+      "min_2pipj_over_s": "1/1000",
+      "resonance_exclusion": "|s_ij-M^2| >= M^2/10 for final particle-antiparticle pairs",
+      "resonances": [
+        "91.188",
+        "80.419",
+        "125",
+        "173.3"
+      ]
+    },
+    "sqrt_s": [
+      "3125",
+      "1280",
+      "2500"
+    ]
+  },
+  "parameters": {
+    "aS": "0.118",
+    "aEWM1": "128.93",
+    "MZ": "91.188",
+    "MW": "80.419",
+    "MH": "125",
+    "MT": "173.3",
+    "ymt": "173.3"
+  },
+  "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+  },
+  "derived_parameters": {
+    "MW": "80.419",
+    "alpha": "0.00775614674629643992864344993407"
+  },
+  "active_flavours": 5,
+  "loop_quark_flavours": 6,
+  "rows": [
+    {
+      "born": 0.9565439173275887,
+      "finite": -0.12789681760084723,
+      "single_pole": -0.004058402964848453,
+      "double_pole": -0.00472314256502508,
+      "providers": {
+        "madloop": {
+          "born": 0.9565439173275887,
+          "finite": -0.12789681760084723,
+          "single_pole": -0.004058402964848453,
+          "double_pole": -0.00472314256502508,
+          "accuracy": 1.3707373362842468e-15,
+          "status": 216,
+          "seconds": 0.001344545,
+          "universal_double_pole_relative_error": 7.34563249825424e-16
+        }
+      },
+      "provider_pair_relative_errors": {},
+      "provider_pair_strict_relative_errors": {}
+    },
+    {
+      "born": 5.392129573398504,
+      "finite": -0.4326261554078482,
+      "single_pole": -0.0734103775830339,
+      "double_pole": -0.0266248064964978,
+      "providers": {
+        "madloop": {
+          "born": 5.392129573398504,
+          "finite": -0.4326261554078482,
+          "single_pole": -0.0734103775830339,
+          "double_pole": -0.0266248064964978,
+          "accuracy": 1.0551740187440463e-15,
+          "status": 216,
+          "seconds": 0.001377025,
+          "universal_double_pole_relative_error": 5.212352551610066e-16
+        }
+      },
+      "provider_pair_relative_errors": {},
+      "provider_pair_strict_relative_errors": {}
+    },
+    {
+      "born": 3.1124088906948773,
+      "finite": -0.4015513616814349,
+      "single_pole": -0.038998134135907296,
+      "double_pole": -0.015368192348631099,
+      "providers": {
+        "madloop": {
+          "born": 3.1124088906948773,
+          "finite": -0.4015513616814349,
+          "single_pole": -0.038998134135907296,
+          "double_pole": -0.015368192348631099,
+          "accuracy": 1.3925952177060034e-15,
+          "status": 216,
+          "seconds": 0.001344326,
+          "universal_double_pole_relative_error": 7.901426567529439e-16
+        }
+      },
+      "provider_pair_relative_errors": {},
+      "provider_pair_strict_relative_errors": {}
+    }
+  ],
+  "primary_provider": "madloop",
+  "universal_double_pole_factor": -0.004937716376076796,
+  "maximum_provider_relative_error": null,
+  "error_metric": "|a-b|/max(|a|,|b|,|Born|*coupling/(2pi)) for Laurent coefficients, |a-b|/max(|a|,|b|) for Born; strict relative errors also listed per row",
+  "maximum_universal_double_pole_relative_error": 7.901426567529439e-16,
+  "tolerance": 2e-08,
+  "validation_status": "single provider; no cross-check",
+  "validated_providers": [
+    "madloop"
+  ],
+  "excluded_providers": {},
+  "providers": {
+    "madloop": {
+      "provider": "madloop",
+      "process_name": "emep_emep_ew",
+      "host": "itphlies",
+      "cpu": 240,
+      "points_file": "${LOOP_REFERENCE_ROOT}/runs/required/emep_emep_ew/points.json",
+      "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
+      "settings": {
+        "absent_card_parameters_fixed_to_zero": [
+          "MB",
+          "ymb",
+          "MTA",
+          "ymtau"
+        ],
+        "MadLoopParams": {
+          "MLReductionLib": "6|7|1",
+          "COLLIERGlobalCache": "-1",
+          "MLStabThres": "1.000000d-03",
+          "ImprovePSPoint": "2"
+        },
+        "param_card": "######################################################################\n## PARAM_CARD AUTOMATICALY GENERATED BY MG5                       ####\n######################################################################\n###################################\n## INFORMATION FOR LOOP\n###################################\nBLOCK LOOP # \n      666 1.000000e+03 # mu_r\n###################################\n## INFORMATION FOR MASS\n###################################\nBLOCK MASS # \n      6 173.3 # mt\n      23 91.188 # mz\n      24 80.419 # mw\n      25 125 # mh\n      1 0.000000e+00 # d : 0.0\n      2 0.000000e+00 # u : 0.0\n      3 0.000000e+00 # s : 0.0\n      4 0.000000e+00 # c : 0.0\n      5 0.000000e+00 # b : 0.0\n      11 0.000000e+00 # e- : 0.0\n      12 0.000000e+00 # ve : 0.0\n      13 0.000000e+00 # mu- : 0.0\n      14 0.000000e+00 # vm : 0.0\n      15 0.000000e+00 # ta- : 0.0\n      16 0.000000e+00 # vt : 0.0\n      21 0.000000e+00 # g : 0.0\n      22 0.000000e+00 # a : 0.0\n      9000002 9.118800e+01 # ghz : mz\n      9000003 8.041900e+01 # ghwp : mw\n      9000004 8.041900e+01 # ghwm : mw\n      250 9.118800e+01 # g0 : mz\n      251 8.041900e+01 # g+ : mw\n###################################\n## INFORMATION FOR SMINPUTS\n###################################\nBLOCK SMINPUTS # \n      1 128.93 # aewm1\n      3 0.118 # as (note: this parameter is not used if you use a pdf set)\n###################################\n## INFORMATION FOR YUKAWA\n###################################\nBLOCK YUKAWA # \n      6 173.3 # ymt\n###################################\n## INFORMATION FOR DECAY\n###################################\nDECAY 6 0 # wt\nDECAY 23 0 # wz\nDECAY 24 0 # ww\nDECAY 25 0 # wh\nDECAY 1 0.000000e+00 # d : 0.0\nDECAY 2 0.000000e+00 # u : 0.0\nDECAY 3 0.000000e+00 # s : 0.0\nDECAY 4 0.000000e+00 # c : 0.0\nDECAY 5 0.000000e+00 # b : 0.0\nDECAY 11 0.000000e+00 # e- : 0.0\nDECAY 12 0.000000e+00 # ve : 0.0\nDECAY 13 0.000000e+00 # mu- : 0.0\nDECAY 14 0.000000e+00 # vm : 0.0\nDECAY 15 0.000000e+00 # ta- : 0.0\nDECAY 16 0.000000e+00 # vt : 0.0\nDECAY 21 0.000000e+00 # g : 0.0\nDECAY 22 0.000000e+00 # a : 0.0\nDECAY 250 2.488830e+00 # g0 : wz\nDECAY 251 2.084650e+00 # g+ : ww\n###################################\n## INFORMATION FOR QNUMBERS 9000001\n###################################\nBLOCK QNUMBERS 9000001 #  gha\n      1 0 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 1 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 1 # particle/antiparticle distinction (0=own anti)\n###################################\n## INFORMATION FOR QNUMBERS 9000002\n###################################\nBLOCK QNUMBERS 9000002 #  ghz\n      1 0 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 1 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 1 # particle/antiparticle distinction (0=own anti)\n###################################\n## INFORMATION FOR QNUMBERS 9000003\n###################################\nBLOCK QNUMBERS 9000003 #  ghwp\n      1 3 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 1 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 1 # particle/antiparticle distinction (0=own anti)\n###################################\n## INFORMATION FOR QNUMBERS 9000004\n###################################\nBLOCK QNUMBERS 9000004 #  ghwm\n      1 -3 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 1 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 1 # particle/antiparticle distinction (0=own anti)\n###################################\n## INFORMATION FOR QNUMBERS 9000005\n###################################\nBLOCK QNUMBERS 9000005 #  ghg\n      1 0 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 8 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 1 # particle/antiparticle distinction (0=own anti)\n###################################\n## INFORMATION FOR QNUMBERS 250\n###################################\nBLOCK QNUMBERS 250 #  g0\n      1 0 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 1 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 0 # particle/antiparticle distinction (0=own anti)\n###################################\n## INFORMATION FOR QNUMBERS 251\n###################################\nBLOCK QNUMBERS 251 #  g+\n      1 3 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 1 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 1 # particle/antiparticle distinction (0=own anti)\n\n",
+        "export": "${LOOP_REFERENCE_ROOT}/runs/required/emep_emep_ew/madloop-export",
+        "fortran_flags": {
+          "export_make_opts": {
+            "GLOBAL_FLAG": "-O",
+            "ALOHA_FLAG": "",
+            "MATRIX_FLAG": ""
+          },
+          "mg5_production": {
+            "GLOBAL_FLAG": "-O",
+            "ALOHA_FLAG": "",
+            "MATRIX_FLAG": ""
+          },
+          "production_build": true,
+          "source": "MG5_aMC run-card defaults global_flag/aloha_flag/matrix_flag (CommonRunCmd.update_make_opts of an optimised MG5 run); MadLoop's own makefile adds -O3 for polynomial.f"
+        },
+        "mg5_quadruple_precision_model_function_repairs": [
+          "added KIND=16 to 19 CMPLX calls in MP_ functions",
+          "replaced 6 TWOPII pi literals 3.14169258478796109557151794433593750E0_16 by 3.14159265358979323846264338327950288E0_16"
+        ],
+        "requested_relative_accuracy": 1e-11,
+        "stability_check": "forced on every call"
+      },
+      "generation": {
+        "process_name": "emep_emep_ew",
+        "mg5": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0",
+        "model": "${LOOP_REFERENCE_ROOT}/models/loop_qcd_qed_sm",
+        "command": "e- e+ > e- e+ QCD=0 QED=2 [virt=QED] QED^2==6",
+        "host": "itphlies",
+        "pid": 725341,
+        "status": "compiled",
+        "graph_generation_s": 4.5340979360044,
+        "process": "Process: e- e+ > e- e+ QCD=0 QED<=2 [ virt = QED ] QED^2==6",
+        "born": 4,
+        "loops": 196,
+        "identified_loop_records": 152,
+        "count_convention": "loops: sum of native diagram.multiplier",
+        "born_orders": [
+          {
+            "QCD": 0,
+            "QED": 2,
+            "count": 4
+          }
+        ],
+        "loop_orders": [
+          {
+            "QCD": 0,
+            "QED": 4,
+            "count": 196
+          }
+        ],
+        "UVCT_diagrams": 0,
+        "attached_CT_vertices": 134,
+        "source_export_s": 36.40969579201192,
+        "fortran_flags": {
+          "GLOBAL_FLAG": "-O",
+          "ALOHA_FLAG": "",
+          "MATRIX_FLAG": ""
+        },
+        "compile_s": 24.029280542046763,
+        "compile_jobs": 8
+      },
+      "version": "MadLoop/MG5_aMC 3.7.0",
+      "provenance": {
+        "MG5_aMC": {
+          "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0",
+          "version": "3.7.0"
+        },
+        "reducer_libraries": {
+          "libcts.a": {
+            "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/vendor/CutTools/includects/libcts.a",
+            "version": null
+          },
+          "libiregi.a": {
+            "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/vendor/IREGI/src/libiregi.a",
+            "version": null
+          },
+          "libninja.a": {
+            "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/HEPTools/ninja/lib/libninja.a",
+            "version": "1.2.0"
+          },
+          "libavh_olo.a": {
+            "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/HEPTools/oneloop/libavh_olo.a",
+            "version": "3.6"
+          },
+          "libcollier.a": {
+            "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/HEPTools/collier/libcollier.a",
+            "version": "1.2.9"
+          }
+        }
+      },
+      "split_order_indices": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "initial_call_seconds": 0.057798253,
+      "initialization_calls": 5,
+      "process_wall_seconds": 0.08473974699154496,
+      "evaluation_seconds": [
+        0.001344545,
+        0.001377025,
+        0.001344326
+      ]
+    }
+  },
+  "timing_only_runs": {}
+}

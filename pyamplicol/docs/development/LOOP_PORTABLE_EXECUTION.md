@@ -2,6 +2,11 @@
 
 # Internal graph-free loop execution
 
+> Historical: this describes the plan v3 runtime of the per-diagram legacy
+> loop engine, removed on 2026-10-29 (MQ-LEGACY-REMOVE; `loops/portable.py`
+> and the native `PortableLoopPlan`/`NativeLoopProgram` no longer exist).
+> Plan v4 (the v2 engine) is described in `loop_v2/DESIGN.md` §12.
+
 `loops.portable.write_loop_pacbin` lowers a retained, complete source/legacy
 model-R2 or certified direct-R2 four-gluon program to the existing
 `evaluators.pacbin` envelope.
@@ -19,8 +24,7 @@ one scalar owner and ordinary/CT scale views, including anonymous external-field
 coefficients. Explicitly continued full/LC/NLC model-rule colour projections are
 persisted with their structural sector degrees. Source dimensional/direct
 execution remains outside this boundary. Saved full-colour directed kernels use
-explicit native mode selection. Source-owned precision verification/rescue is
-explicit and uses the native coordinator described below.
+explicit native mode selection.
 
 ### Cold directed projections
 
@@ -235,8 +239,7 @@ point; the separate Python opt-in projector JIT is not exposed here.
 
 This native coordinator admits full/LC/NLC legacy/source model-rule programs
 and the certified legacy direct four-gluon descriptor. Correlations remain
-separate work; the standalone virtual SDK uses this coordinator. Explicit
-source-owned precision verification and rescue are described below. The default
+separate work; the standalone virtual SDK uses this coordinator. The default
 entry points raise on failed reductions or nonfinite assembled components;
 successful reducer statuses alone do not establish numerical accuracy.
 
@@ -368,104 +371,24 @@ projection also checks all-failed point/helicity diagnostics. These injected
 controls test execution transport, not physics accuracy.
 
 
-## Explicit cross-precision verification and rescue
+## Explicit cross-precision verification and rescue (removed)
 
-`Runtime.load` accepts an optional retained `VirtualStabilityPolicy`, applied
-before exact source binding. Ordinary, resolved, directed and spin evaluations
-use it unless the call supplies an explicit replacement. Without either policy,
-evaluation performs no extra precision work. For example:
-
-```python
-from pyamplicol import Runtime, VirtualArithmeticSpec, VirtualStabilityPolicy
-
-policy = VirtualStabilityPolicy(
-    higher=(VirtualArithmeticSpec("arbitrary", 60),
-            VirtualArithmeticSpec("arbitrary", 80)),
-    relative_tolerance="1e-8",
-    absolute_tolerance="1e-20",
-    verify_successful=False,
-)
-runtime = Runtime.load(artifact, stability=policy)
-result = runtime.evaluate(points, mu_r2=scales)
-```
-
-The native coordinator validates actual increasing precision bits: double has
-53 bits, DoubleFloat 106, and arbitrary precision uses the dependency's actual
-requested-bit conversion. A numerically lower arbitrary setting cannot follow
-DoubleFloat just because its enum is different. Tolerances are exact finite,
-nonnegative decimal strings, not both zero. There is no hidden policy or
-per-event Python retry loop.
-
-With `verify_successful=False`, initially successful points are returned
-unchanged and explicitly remain accuracy-unestablished. Only failed points
-enter the higher-carrier batches. With `True`, successful points also enter
-verification; agreement with a higher evaluation preserves the original result.
-When the primary failed or disagreed, rescue requires two successful increasing
-precision evaluations that agree. Failed intermediate attempts do not erase a
-previous successful candidate. Comparison includes all Born values, every
-physical/local component, order and Laurent coefficient, and every requested
-resolved helicity and colour component. It uses the shared native
-`Batch.agreement_rows` rule on both real and imaginary parts:
-`abs(a-b) <= atol + rtol*max(abs(a),abs(b))`.
-
-A rescued output is converted to the caller's requested carrier only after
-agreement. The converted result must satisfy the same bound against the
-accepted higher value; a bound that cannot be represented by the requested
-output precision leaves the point unresolved. The requested carrier and R2
-strategy never change implicitly. Agreement is empirical numerical evidence,
-not an independent physics proof or an estimated number of reliable digits.
-
-One immutable source snapshot is captured at call entry. Each higher owner
-re-evaluates that snapshot's exact overrides and saved default/formula
-programs, without merging previous retry state or publishing a parameter
-update. Native retries select original decimal momentum/scale rows; they never
-promote the rounded primary buffers. Higher workspaces are cached by explicit
-carrier/precision and cleared by `clear`, while source parameter state remains.
-With a configured policy, a numerical primary source-binding failure can retain
-the exact overrides and defaults when a configured higher realization succeeds.
-That admission establishes no amplitude accuracy: the ordinary complete-result
-agreement and output-conversion checks still apply. Failed source snapshots
-expose their failure stage but refuse numerical `arguments` and `values` access.
-Malformed inputs and unsupported settings remain errors. Parameter updates
-validate before publishing; a rejected update preserves the previous revision.
-
-An arithmetic-changing call supplies its explicit policy before constructing
-the alternate source owner. The alternate handle is local to the call, so it
-cannot replace the original runtime's retained policy. `clear` releases work
-buffers while preserving exact parameter state and policy. Standalone Rust,
-C, C++ and Fortran expose additive policy-bearing open operations and retain
-binary64 result carriers. Raw native complete-result operations reject a
-configured policy rather than silently discard verification diagnostics.
-
-Each public lane can carry a `VirtualVerificationDiagnostic` with original
-point ID, attempted carriers/bits, numerical failures, comparison precision,
-agreement and conversion outcomes. Accepted rescue histories retain earlier
-failures without making the completed call fail. Unresolved points populate
-`EvaluationError.failures` and `EvaluationError.verification`; successful
-numerical attempts without accepted agreement are distinguished as
-`accuracy-not-established`. No unavailable values are filled with zeros or NaNs.
-
-The source-binding transport control adds an overflowing exponential diagnostic
-to an existing real-input guard, leaving all saved physical instructions and
-scalar values unchanged. Public resolved LC components and complex joint-spin
-results agree with their unmodified controls after AP60/AP80 rescue. The native
-owner tests cover eager rejection, exact snapshot ownership, atomic updates and
-policy replacement; a standalone Rust control checks the ordinary physical
-result and owned rescue diagnostics. Focused C, C++, Fortran and installed Rust
-clients exercise the new policy-bearing open operation and empty-result lifetime.
-These are correctness controls, not performance measurements or new physics
-certification. The live-producer stability helper also preserves exact source
-bindings through numerical failures in its full-colour, real-mass domain,
-including the retained massive-W control; its complete six-field controls and remaining
-limits are described in [the model implementation notes](LOOP_MODEL_IR.md#live-producer-source-binding-rescue).
+The legacy agreement-based policy described here (`VirtualStabilityPolicy`,
+`VirtualArithmeticSpec`, the native `Batch.agreement_rows` comparison and the
+SDK's policy-bearing open operations) no longer exists: the Python policy was
+removed with this engine and by MF-RESCUE, the native agreement check and the
+SDK policy argument by MF-CLEAN (2026-11-01, virtual C ABI version 2). The v2
+engine's optional stability rescue is `VirtualRescuePolicy`, available only
+through the Python native `evaluate` API (`loop_v2/DESIGN.md`, MF-RESCUE status;
+`docs/user/python-api.md`).
 
 ## Explicit partial-value returns
 
 All public virtual evaluation methods accept the per-call option
 `on_failure="return"`; the default `"raise"` retains `EvaluationError` and its
-failure/verification payload. The option applies to ordinary, resolved,
+failure payload. The option applies to ordinary, resolved,
 precision-specific, correlated and grouped source requests. It does not change
-the arithmetic, configured verification policy or runtime defaults.
+the arithmetic or runtime defaults.
 
 ```python
 result = runtime.evaluate_resolved(points, mu_r2=scales, on_failure="return")
@@ -487,12 +410,7 @@ all-failed batch retains its input length and complete order/shape metadata.
 
 Each unavailable lane retains the existing `VirtualFailureDiagnostic` records,
 including original point ID and available helicity, colour component, squared
-order, family, external leg, history and direction. If numerical values were
-obtained without accepted precision agreement, its status is
-`accuracy-not-established`, still invalid with absent values. Successful rescue
-keeps earlier failures in its verification attempts and exposes no unrecovered
-lane failures. Source admission alone cannot turn one high-precision amplitude
-into an accepted result.
+order, family, external leg, history and direction.
 
 Finite/single/double-pole access, `for_order()`, `sum_orders()` and resolved
 `.total()` preserve missing entries and immutable diagnostics. Channel indices
@@ -534,9 +452,8 @@ immutable `.total()` result sums helicity/component axes and preserves squared
 orders, Laurent coefficients and colour accuracy. Text and JSON output keep
 component identities and signs. Public `ProcessPhysics` exposes virtual anchors
 through `born_anchored_color_components` while tree `color_flows` stay unchanged.
-Native errors and verification histories identify original physical points and
-optional colour components; one failed component removes or rescues the whole
-point using its original exact inputs.
+Native errors identify original physical points and optional colour
+components; one failed component removes the whole point.
 
 ### Public saved directed colour histories
 
@@ -556,10 +473,9 @@ Ordinary `evaluate` still selects its ordinary real projection.
 The reserved public `born` request selects an explicitly named empty history,
 or the unique saved history with empty bra and ket. Ambiguous unnamed identities
 are not guessed. This derived alias does not add a native history or change its
-column order. Model parameters, `mu_r2`, arithmetic, strategy and optional native
-verification use the ordinary exact-input interfaces. Errors preserve physical
-point identity and available history/direction labels. Verification compares
-both complex cross terms as well as their complete sum.
+column order. Model parameters, `mu_r2`, arithmetic and strategy use the ordinary
+exact-input interfaces. Errors preserve physical point identity and available
+history/direction labels.
 
 This initial saved-public domain is full colour, model R2 plus UV and inclusive
 physical helicities. Spin replacement, selected helicities, resolved directed

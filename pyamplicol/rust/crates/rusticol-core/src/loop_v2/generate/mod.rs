@@ -12,12 +12,35 @@
 //! - [`schedules`]: skeletons, the view, frames and schedule-B tries
 //!   (`skeletons.py`, `schedules.py`);
 //! - [`cycles`]: SU(N_c) overlaps of trace products by cycle counting (the
-//!   exact colour contractions of `colour.py`).
+//!   exact colour contractions of `colour.py`);
+//! - [`seeds`]: seed combinations and seed classes (`colour.py`
+//!   `build_seed_table` / `extend_seed_table`);
+//! - [`networks`]: exact SU(N_c) reduction of colour networks (quark rings
+//!   and generic seeds of the seed stage);
+//! - [`arena`]: the retained schedule builds of a generation, read in place
+//!   by the seed stage, the LC/NLC prune rebuild and plan lowering;
+//! - [`catalogue`]: the loop-kernel catalogue's polynomial stage (monomial
+//!   coefficients, canonical strings and inputs of every segment;
+//!   `catalogue.py`);
+//! - [`rename`]: symbol renaming on Symbolica's portable text (the canonical
+//!   stages of `assemble._canonical_stage`);
+//! - [`kernel_terms`]: the exact kernels' term reading (parse, expansion and
+//!   factors of every kernel output; `reference_executor._kernel_terms`);
+//! - [`state_rename`]: symbol renaming in Symbolica's binary export (the
+//!   parameter program's canonical stage without a text round trip).
 
+pub mod arena;
+pub mod catalogue;
+pub mod cells;
 pub mod cycles;
 pub mod families;
+pub mod kernel_terms;
+pub mod networks;
 pub mod orders;
+pub mod rename;
 pub mod schedules;
+pub mod seeds;
+pub mod state_rename;
 
 use std::collections::{HashMap, HashSet};
 use std::hash::{BuildHasherDefault, Hasher};

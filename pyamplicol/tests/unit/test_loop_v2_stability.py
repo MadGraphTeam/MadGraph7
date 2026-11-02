@@ -113,6 +113,52 @@ def test_one_reduction_check_per_evaluation():
 
 
 @pytest.mark.loop_fast
+def test_recommended_checks_and_their_public_spellings(tmp_path):
+    """The recommended configuration (the O1 rule's estimate, package
+    mq-stab): one rotation that moves the beam axis and every other
+    coordinate axis (a rotation about z re-rounds no beam momentum and
+    under-reported u u~ > u u~ e+ e-'s double pole 23-fold:
+    ``test_loop_v2_fermion_lines.py``) and the rescaled reduction check, the
+    one check that evaluates the master integrals again. The public API, the
+    TOML card and the CLI spell it."""
+
+    from pyamplicol.api.virtual_results import VirtualStabilityChecks
+    from pyamplicol.cli.parser import build_parser
+    from pyamplicol.config import ConfigurationError, resolve_config
+    from pyamplicol.loops.v2.stability import RECOMMENDED_CHECKS, default_rotation
+
+    (rotation,) = RECOMMENDED_CHECKS.rotations
+    assert rotation == default_rotation(0)
+    for axis in range(3):
+        image = [rotation.matrix[i][axis] for i in range(3)]
+        assert all(image[i] != (i == axis) for i in range(3)), (axis, image)
+    assert RECOMMENDED_CHECKS.reduction == RESCALED
+    public = VirtualStabilityChecks(1, True, rescaled=True)
+    assert public.to_checks() == RECOMMENDED_CHECKS
+    assert VirtualStabilityChecks(1, True).to_checks().reduction == REDUCTION
+    with pytest.raises(ValueError, match="variant of the reduction-direction"):
+        VirtualStabilityChecks(1, rescaled=True)
+    with pytest.raises(TypeError, match="rescaled must be a boolean"):
+        VirtualStabilityChecks(1, True, rescaled=1)
+    card = tmp_path / "card.toml"
+    card.write_text(
+        'action = "generate"\n[evaluation.stability_checks]\n'
+        "rotation_count = 1\nreduction_direction = true\nrescaled = true\n"
+    )
+    checks = resolve_config(card).effective.evaluation.stability_checks
+    assert checks.to_checks() == public
+    card.write_text(
+        'action = "generate"\n[evaluation.stability_checks]\nrescaled = true\n'
+    )
+    with pytest.raises(ConfigurationError, match="stability_checks"):
+        resolve_config(card)
+    arguments = build_parser().parse_args(
+        ["evaluate", "--stability-reduction-direction", "--stability-rescaled"]
+    )
+    assert getattr(arguments, "evaluation.stability_checks.rescaled") is True
+
+
+@pytest.mark.loop_fast
 def test_double_double_is_a_native_carrier():
     carrier = Precision.double_double()
     assert carrier.unit_roundoff == 2.0**-104

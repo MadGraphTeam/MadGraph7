@@ -19,7 +19,6 @@ from pyamplicol.config import (
     ConfigResolution,
     ConfigurationError,
     EvaluatorExecutionMode,
-    LoopEngine,
     PoleSelection,
     ProcessGroupAnalysis,
     resolve_config,
@@ -389,6 +388,17 @@ def _add_generation_options(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--allow-anomalous-veto",
+        dest="generation.allow_anomalous_veto",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "v2 virtuals: lower the Levi-Civita counterterms a --particle-veto "
+            "keeps from cancelling (e.g. a veto breaking a quark doublet), "
+            "refused by default; recorded in the artifact"
+        ),
+    )
+    parser.add_argument(
         "--validation",
         dest="generation.validation.enabled",
         action=argparse.BooleanOptionalAction,
@@ -468,12 +478,13 @@ def _add_evaluator_options(
             choices=("auto", "model", "direct"),
             default=argparse.SUPPRESS,
         )
+        # Removed with the legacy loop engine; still parsed so that naming it
+        # is refused with the removal reason (``config.resolver.REMOVED_FIELDS``).
         parser.add_argument(
             "--loop-engine",
             dest="loop.engine",
-            choices=tuple(engine.value for engine in LoopEngine),
             default=argparse.SUPPRESS,
-            help="one-loop engine of virtual generation (default legacy)",
+            help=argparse.SUPPRESS,
         )
         parser.add_argument(
             "--execution-mode",
@@ -595,28 +606,27 @@ def _add_evaluation_options(
             "with diagnostics"
         ),
     )
+    # The precision-rescue options were removed with the legacy loop engine;
+    # still parsed so that naming one is refused with the removal reason
+    # (``config.models.EVALUATION_STABILITY_REMOVED``).
     parser.add_argument(
         "--stability-higher",
         dest="evaluation.stability.higher",
         action="append",
         default=argparse.SUPPRESS,
-        metavar="CARRIER",
-        help=(
-            "ordered rescue level: double, double-double or arbitrary:DIGITS; "
-            "repeat for each level"
-        ),
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--stability-relative-tolerance",
         dest="evaluation.stability.relative_tolerance",
         default=argparse.SUPPRESS,
-        metavar="EXACT_VALUE",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--stability-absolute-tolerance",
         dest="evaluation.stability.absolute_tolerance",
         default=argparse.SUPPRESS,
-        metavar="EXACT_VALUE",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--poles",
@@ -656,14 +666,22 @@ def _add_evaluation_options(
         help="v2 virtual check: reduce every loop numerator again, reversed",
     )
     parser.add_argument(
+        "--stability-rescaled",
+        dest="evaluation.stability_checks.rescaled",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "v2 virtual check: run the reduction-direction check at rescaled "
+            "inputs, evaluating the master integrals again (with "
+            "--stability-reduction-direction)"
+        ),
+    )
+    parser.add_argument(
         "--verify-successful",
         dest="evaluation.stability.verify_successful",
         action=argparse.BooleanOptionalAction,
         default=argparse.SUPPRESS,
-        help=(
-            "also compare initially successful virtual results across "
-            "configured precisions"
-        ),
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--process",

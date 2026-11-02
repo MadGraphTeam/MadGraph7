@@ -52,6 +52,8 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:  # the ``tools`` package, run as a script
+    sys.path.insert(0, str(ROOT))
 OUTPUT = ROOT / "tests" / "fixtures" / "loop" / "v2" / "operation_counts.json"
 # As the tests' loop_sm_ufo input: the environment variable, else the
 # checkout's MadGraph copy.
@@ -91,10 +93,10 @@ SCHEDULES = ("B", "M", "F")
 def compile_loop_sm(ufo: Path, cache: Path) -> Any:
     """loop_sm compiled with the checked scalar-arity view (as the tests)."""
 
-    from pyamplicol.loops.model_compatibility import (
+    from pyamplicol.models.loading import compile_model_source, load_compiled_model
+    from tools.loop_reference.model_compatibility import (
         prepare_loop_sm_scalar_declarations,
     )
-    from pyamplicol.models.loading import compile_model_source, load_compiled_model
 
     model = compile_model_source(ufo, cache_dir=cache / "model-cache")
     model = replace(

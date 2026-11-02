@@ -609,12 +609,15 @@ def test_constant_factors_are_decided_not_assumed():
         CountertermModel,
     )
 
-    # The helper resolution alone (UFO function bindings value_0 = cond,
-    # value_1 = reglog), without a compiled model.
+    # The helper resolution alone (UFO-standard helpers: scalar-library
+    # records value_0 = cond, value_1 = reglog), without a compiled model.
     lowering = CoefficientLowering.__new__(CoefficientLowering)
-    lowering._helpers = {0: "cond", 1: "reglog"}
+    lowering._helpers = lowering._standard = {0: "cond", 1: "reglog"}
+    lowering._fixed, lowering._substitution = [], {}
     lowering._zero = E("0")
-    lowering._log = symbols.qualified("symbolica::log")
+    lowering._log, lowering._conj = symbols.qualified(
+        "symbolica::log", "symbolica::conj"
+    )
     lowering.assumptions = set()
     helper = "pyamplicol_scalar_model_test::value_"
     assert lowering._resolve(E(f"{helper}1(2*𝜋)")) == E("log(2*𝜋)")
@@ -922,15 +925,20 @@ def test_insertion_reachability_tells_a_vertex_from_its_conjugate(
     assert not admitted(neutral, -1, 1)
 
 
-def _program_and_rules(compiled_path, text, born, loop, veto=()):
+def _program_and_rules(compiled_path, text, born, loop, veto=(), *, u1_grades=False):
     """The production CT program (``ct_closure.counterterm_program_blocks``,
-    as ``LoopSlice.generate`` builds it) of ``text`` on a compiled model,
-    with the request's rules, native model, selection and the CT-lowered
-    model's process IR."""
+    as ``LoopSlice.generate`` builds it; ``u1_grades`` as for a leading- or
+    next-to-leading-colour request) of ``text`` on a compiled model, with the
+    request's rules, native model, selection and the CT-lowered model's
+    process IR."""
 
     import json
 
-    from pyamplicol.loops.v2.assemble import SliceRequest, prepare_request_model
+    from pyamplicol.loops.v2.assemble import (
+        SliceRequest,
+        prepare_request_model,
+        resolve_request,
+    )
     from pyamplicol.loops.v2.blocks import (
         build_tree_blocks,
         vetoed_particle_ids,
@@ -943,12 +951,17 @@ def _program_and_rules(compiled_path, text, born, loop, veto=()):
     from pyamplicol.processes.model import build_model_process_ir
 
     compiled = load_compiled_model(compiled_path)
-    request = SliceRequest(
-        text,
-        born,
-        loop,
-        fixed_parameters=legacy_capture.FIXED_PARAMETERS,
-        particle_veto=tuple(veto),
+    # The model's strong correction (``resolve_request``: SliceRequest
+    # names no correction by default).
+    request = resolve_request(
+        compiled,
+        SliceRequest(
+            text,
+            born,
+            loop,
+            fixed_parameters=legacy_capture.FIXED_PARAMETERS,
+            particle_veto=tuple(veto),
+        ),
     )
     prepared, continuation, fixed, _scale, _alpha = prepare_request_model(
         compiled, request
@@ -982,6 +995,7 @@ def _program_and_rules(compiled_path, text, born, loop, veto=()):
             tuple(sorted(request.loop_order_bounds.items())),
             request.compatibility,
         ),
+        u1_grades=u1_grades,
     )
     return program, prepared.counterterms.rules, data, selection
 
@@ -1136,11 +1150,15 @@ def test_recursion_equals_site_closure(
 # The tree runtime keeps the U(1)-subtraction colour weight 1/N_c of
 # processes with several quark lines in binary64 (``GenericDAG.color_weight``,
 # wave01-open-minors), so their 200-bit Born is exact to ~1e-17 only.
+# Re-justified (MF-CLEAN): ~1e-17 is far below the ~1e-5 attention threshold
+# (precision is lax), so not a defect; the xfail pins it at the unchanged
+# 200-bit tolerance and flips if the tree weight becomes exact.
 _BINARY64_U1_WEIGHT = pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
     reason="tree runtime U(1)-subtraction colour weight is binary64 "
-    "(several quark lines): the 200-bit Born is exact to ~1e-17",
+    "(several quark lines): the 200-bit Born is exact to ~1e-17, below the "
+    "~1e-5 attention threshold, so kept as a pin, not a defect",
 )
 
 

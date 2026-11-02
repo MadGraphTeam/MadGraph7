@@ -19,9 +19,9 @@ parameters (``_OperatorPoint``):
 * the operator's parts: exact UFO charges, all-incoming charges (physical
   charges of outgoing legs are refused: they do not add to zero), the
   massless closed form, a massive pair, the external-photon conventions
-  (alpha(0), the user's decision [U9], adds no gamma_gamma) and no prediction
-  for a massless charged vector or an external photon in the engine (WP3.2
-  EWI-6b);
+  (a tagged photon, alpha(0), the user's decision [U9], adds no gamma_gamma;
+  an untagged one, MS-PHOTON, adds -gamma_gamma/eps) and no prediction for a
+  massless charged vector;
 * the per-correction structure: the Born interferences each correction
   dresses (cross orders included), the sum over the corrections, and no
   prediction for a correction without an operator, never a partial sum (the
@@ -51,6 +51,7 @@ from types import SimpleNamespace
 import pytest
 
 from pyamplicol.loops.v2.assemble import Precision, _Numbers, _PointEvaluation
+from pyamplicol.loops.v2.ew_policy import CorrectionOrders
 from pyamplicol.loops.v2.families import ExternalLeg, MassId, add_orders, mass_name
 from pyamplicol.loops.v2.poles import (
     EXTERNAL_PHOTON_CONVENTION,
@@ -120,6 +121,7 @@ class _OperatorPoint(_PointEvaluation):
         *,
         corrections=("QED",),
         precision=None,
+        photons=None,
     ):
         records = {int(record.pdg_code): record for record in compiled.ir.particles}
         legs, incoming = [], []
@@ -137,13 +139,26 @@ class _OperatorPoint(_PointEvaluation):
             exact = [Fraction(str(x)) for x in momentum]
             incoming.append(exact if initial else [-x for x in exact])
         names = {record.name for record in compiled.ir.parameters}
+        # Every charged species is perturbative in QED (the untagged
+        # photons' gamma_gamma reads them, ``_photon_gamma``).
+        species = {
+            abs(int(record.pdg_code)): ("QED",)
+            for record in compiled.ir.particles
+            if float(record.charge)
+        }
         self.slice = SimpleNamespace(
             compiled=compiled,
             request=SimpleNamespace(
-                corrections=corrections, fixed_parameters=dict(ZERO_WIDTHS)
+                corrections=corrections,
+                fixed_parameters=dict(ZERO_WIDTHS),
+                particle_veto=(),
+            ),
+            prepared=SimpleNamespace(
+                structure=SimpleNamespace(perturbative_species_orders=species)
             ),
             families=SimpleNamespace(legs=tuple(legs)),
             sectors=((sector, frozenset()),),
+            external_photons=photons,
             _cache={},
         )
         self.numbers = _Numbers(precision or Precision.double())
@@ -151,6 +166,10 @@ class _OperatorPoint(_PointEvaluation):
         self.incoming = incoming
         self.scale = Fraction(str(scale2))
         self.born = born
+
+    def _predicted_sectors(self):
+        # Operator-level points: their one sector is complete.
+        return frozenset(sector for sector, _pairs in self.slice.sectors)
 
 
 def _orders(orders) -> tuple:
@@ -369,9 +388,9 @@ def test_external_photon_conventions():
     adds nothing: delta Z_e^alpha(0) + 1/2 delta Z_AA has no light-fermion
     pole; with the loops' coupling each photon adds -gamma_gamma/eps Born,
     gamma_gamma = -2/3 sum_f N_c^f Q_f^2 (five light quarks and three
-    leptons: -40/9). The engine makes no prediction with a photon until it
-    couples it with alpha(0) (WP3.2 EWI-6b): ``ew_policy`` refuses such
-    requests."""
+    leptons: -40/9). The engine passes its untagged photons under the
+    loops' coupling (MS-PHOTON, ``test_untagged_external_photons_add_gamma_
+    gamma``)."""
 
     assert EXTERNAL_PHOTON_CONVENTION == "alpha0"
     light = [(Q(2, 3), 3)] * 2 + [(Q(-1, 3), 3)] * 3 + [(Q(-1), 1)] * 3
@@ -398,10 +417,16 @@ def test_external_photon_conventions():
 
 
 @pytest.mark.loop_physics
-def test_engine_operator_makes_no_prediction_with_an_external_photon(gmu):
-    """u u~ > a g at QCD + QED orders: the engine's QED operator gives none
-    (its photon coupling is not alpha(0) yet), so the joint request has no
-    prediction rather than a partial sum."""
+def test_untagged_external_photons_add_gamma_gamma(gmu):
+    """u u~ > a g at QCD + QED orders (MS-PHOTON, per leg): with the photon
+    untagged (a slice whose ``external_photons`` does not list it) the
+    engine's QED operator predicts the poles of the loops' coupling, the
+    tagged (alpha(0)) prediction minus gamma_gamma/eps Born per photon,
+    gamma_gamma = -2/3 sum_f N_c^f Q_f^2 over the massless charged fermions
+    (the default card: five quarks and three leptons, -40/9); the joint
+    request is predicted (no partial sum)."""
+
+    from pyamplicol.loops.v2.ew_policy import ExternalPhotons
 
     point = [
         [1, 0, 0, 1],
@@ -410,19 +435,31 @@ def test_engine_operator_makes_no_prediction_with_an_external_photon(gmu):
         [1, 0, Q(-3, 5), Q(-4, 5)],
     ]
     sector = (("QCD", 2), ("QED", 4))
-    evaluation = _OperatorPoint(
-        gmu,
-        (2, -2, 22, 21),
-        point,
-        1,
-        CONTROL_PARAMETERS,
-        {(("QCD", 2), ("QED", 2)): 1.0},
-        sector,
-        corrections=("QCD", "QED"),
-    )
-    evaluation._qcd_poles = lambda: {sector: (1.0, 1.0)}
-    assert evaluation._qed_poles() is None
-    assert evaluation._ir_poles() is None
+
+    def evaluation(photons):
+        found = _OperatorPoint(
+            gmu,
+            (2, -2, 22, 21),
+            point,
+            1,
+            CONTROL_PARAMETERS,
+            {(("QCD", 2), ("QED", 2)): 1.0},
+            sector,
+            corrections=("QCD", "QED"),
+            photons=photons,
+        )
+        found._qcd_poles = lambda: {sector: (1.0, 1.0)}
+        return found
+
+    tagged = evaluation(ExternalPhotons((3,), "aEW0M1", "eCoup_DGmua0_UV_EW", "QED"))
+    untagged = evaluation(None)
+    alpha = untagged._qed_alpha()
+    with_alpha0 = tagged._qed_poles()[sector]
+    single, double = untagged._qed_poles()[sector]
+    assert double == with_alpha0[1]
+    shift = 40 / 9 * alpha / (2 * math.pi)
+    assert abs(single - (with_alpha0[0] + shift)) <= 1e-14 * abs(single)
+    assert untagged._ir_poles()[sector] == (1.0 + single, 1.0 + double)
 
 
 @pytest.mark.loop_physics
@@ -488,6 +525,12 @@ def test_per_correction_sectors_and_sums():
                 request=SimpleNamespace(corrections=corrections)
             )
             self._qcd, self._qed = qcd, qed
+
+        def _correction_orders(self):
+            return CorrectionOrders("QCD", "QED")
+
+        def _predicted_sectors(self):
+            return frozenset({upper, lower})
 
         def _qcd_poles(self):
             return self._qcd

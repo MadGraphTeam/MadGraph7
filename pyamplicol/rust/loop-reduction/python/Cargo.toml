@@ -19,5 +19,6 @@ pyo3 = { version = "0.29", features = ["abi3-py311", "multiple-pymethods"] }
 pyamplicol = { path = "../../crates/pyamplicol" }
 rusticol-core = { path = "../../crates/rusticol-core", features = ["symbolica-runtime", "python-generation-bridge"] }
 rusticol-loop-reduction = { path = ".." }
+serde = { workspace = true }
 serde_json = { workspace = true }
 symbolica = { version = "=3.0.1", default-features = false, features = ["integer-gmp", "float-mpfr"] }

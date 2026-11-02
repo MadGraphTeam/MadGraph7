@@ -292,6 +292,15 @@ RESOLVED_CONTROLS = {
     ),
     "gg_gg_lc": ("g g > g g", QCD2, QCD4, "lc", "legacy/gg_gg.json"),
     "gg_gg_nlc": ("g g > g g", QCD2, QCD4, "nlc", "legacy/gg_gg.json"),
+    # Identical-flavour lines: blocks of one word and two N_c grades
+    # (``generation.dag_grades``).
+    "uux_uuxg_nlc": (
+        "u u~ > u u~ g",
+        {"QCD": 3, "QED": 0},
+        {"QCD": 5, "QED": 0},
+        "nlc",
+        "legacy/uux_uuxg.json",
+    ),
 }
 
 
@@ -1341,6 +1350,15 @@ import sys
 
 from symbolica import S
 
+from pyamplicol._internal.physics.canonical_order import canonical_symbols
+
+from pyamplicol.loops.scalar_frontend import scalar_predicates
+
+# The model compiler's canonical symbols and the scalar predicates first:
+# their blocks' padding would absorb the unrelated symbols for every symbol
+# created after them.
+canonical_symbols(1)
+scalar_predicates()
 model, unrelated = sys.argv[1], int(sys.argv[2])
 for k in range(unrelated):
     S(f"history::unrelated{k}")
@@ -1934,7 +1952,11 @@ def assert_native_estimates_follow_the_api(generate, carrier: str) -> None:
     scales = ["1000000"] * 2
     precision = NATIVE_CARRIERS[carrier]
     alone = NativeObservables.correlated(observables, (INCLUSIVE,), lanes=4)
-    inclusive = NativeExecutor(observables.slice, lanes=4)
+    # Observable columns are contracted directly (design §7.3), so the
+    # inclusive evaluation they share their lanes with is the direct one
+    # (under "auto" the inclusive virtual takes the seed FFT, equal to
+    # rounding: ``test_loop_v2_seed_fft``).
+    inclusive = NativeExecutor(observables.slice, lanes=4, contraction="direct")
     rotation = Rotation.about("z", "3/5", "4/5")
     for checks, names in (
         (StabilityChecks((rotation,)), {ROTATION.format(0)}),
@@ -2130,5 +2152,8 @@ def test_observables_refuse_a_required_seed_fft(generate):
     required = dataclasses.replace(
         slice_, request=dataclasses.replace(slice_.request, colour_contraction="fft")
     )
-    with pytest.raises(ValueError, match="contracted directly"):
+    from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+    with pytest.raises(LoopRequestUnsupported, match="contracted directly") as refused:
         ObservableSlice.of(required, correlators=declarations)
+    assert refused.value.key == "forced-seed-fft-unserved"

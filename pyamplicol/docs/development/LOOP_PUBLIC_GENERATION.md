@@ -2,6 +2,11 @@
 
 # Public model-rule loop generation
 
+> Historical: this describes the per-diagram legacy one-loop engine, removed on
+> 2026-10-29 (MQ-LEGACY-REMOVE; v2 is the only one-loop engine, see
+> `loop_v2/DESIGN.md` and §13.3 there). The modules, tools and tests named
+> here may no longer exist.
+
 `Generator.plan` and `Generator.generate` accept virtual requests through
 `process.loop_coupling_orders`. The same entry points used for tree generation now
 publish source-owned loop PACBIN instructions in the ordinary transactional
@@ -197,11 +202,16 @@ planning does not certify numerical execution.
 
 The supplied MadLoop `loop_sm` has a known source reference mismatch: the four-G0
 vertex `V_1001` points at the three-slot constant tensor `SSS1`. A broad prepared
-scope therefore requires the existing explicit
-`loops.model_compatibility.prepare_loop_sm_scalar_declarations` view before
-serialization. It verifies that exact mismatch, replaces only that tensor
-reference with `SSSS1`, and records the derivation while preserving the source
-snapshot. The public service does not repair a model by recognizing its name.
+scope therefore requires the explicit test-support view
+`tools/loop_reference/model_compatibility.prepare_loop_sm_scalar_declarations`
+before serialization. It finds the mismatch structurally (a constant scalar
+tensor with fewer slots than the vertex's scalars), replaces only that tensor
+reference with the unique constant tensor of the full spin signature (`SSSS1`),
+and records the derivation while preserving the source snapshot. The public
+service does not repair a model by recognizing its name. The view ships with
+the source checkout (`tools/`), not with the installed package: preparing a
+broad `loop_sm` scope needs the checkout
+(`examples/loop/source_colour/prepare_model.py` imports it from there).
 Unprepared mismatches identify the vertex, Lorentz tensor, actual spin slots and
 required particle slots. The current Drell–Yan and four-gluon public controls use
 this explicitly prepared view.

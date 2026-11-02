@@ -1,5 +1,11 @@
 # Exact loop-model preparation
 
+> Partly historical: the model preparation (`loops.model`, `loops.compiler`
+> `prepare_loop_request_model`) is shared with engine v2; the kernels,
+> recurrence, physical programs and oracles described for the per-diagram
+> legacy one-loop engine were removed on 2026-10-29 (MQ-LEGACY-REMOVE; see
+> `loop_v2/DESIGN.md` §13.3).
+
 `pyamplicol.loops.model.build_loop_model(raw_sidecar)` prepares exact scalar
 definitions and individual tree/UV/R2 colour × Lorentz × loop-group entries.
 It consumes the existing raw UFO sidecar, including its exact-source contract;
@@ -51,8 +57,8 @@ particle counterterm metadata are retained; process-dependent matching,
 external-wavefunction insertions, restrictions and scalar-kernel compilation
 remain separate work. The active four-gluon `loop_sm` R2 coefficients contain
 fixed SU(3) constants. Preserving them does not reconstruct their Nc dependence.
-`FormalColorIdentities` states explicit SU(Nc) CA/CF/TR/TF/Ncol substitutions
-with fixed Nf, but never applies them automatically or certifies LC/NLC.
+Formal-Nc identities of colour parameters (CA, CF, TR, ...) are never assumed:
+a model supplies them in its `LoopColorDeclaration.parameter_identities`.
 Legacy inconsistent non-QCD Lorentz spin signatures fail when requested.
 
 ## Exact restrictions and external requests
@@ -1126,14 +1132,21 @@ the same augmented native model as its Born and bare-loop catalogues. The
 prepared model records the original `ufo` vertex frame. Every matched fermion
 CT must have a tested FFV/FFS expression as well as exact local source evidence;
 epsilon structures still reject. CT recurrences apply the same typed endpoint
-adapter as ordinary vertices. The neutral-lepton conformance helper admits only
-the proven ordered lepton/antilepton A/Z FFV and neutral A/Z two-point source
-expressions. Other source rules remain present and unvalidated, so a process
-that needs one fails the existing tensor-basis guard.
+adapter as ordinary vertices. The neutral-lepton conformance helper certifies
+by structure, never by particle identity (genericity audit m5): an FFV entry of
+any colour-singlet antifermion/fermion pair (the antiparticle first) with any
+self-conjugate vector whose exact Lorentz tensor `certified_ffv_source` accepts,
+and a two-point entry of two self-conjugate vectors whose tensor is one of the
+tested neutral two-vector bases. Other source rules remain present and
+unvalidated, so a process that needs one fails the existing tensor-basis guard.
 
-The separate `massive_neutral_lepton_counterterm_validations` catalogue adds
-the tested ordered electron/muon H/G0 scalar-Dirac bases and neutral G0-A/Z
-mixing entries, retaining every source key and all other unvalidated entries.
+The separate `massive_neutral_lepton_counterterm_validations` catalogue adds,
+by the same structural rule, the FFS entries of any colour-singlet
+antifermion/fermion pair with any self-conjugate colour-singlet scalar whose
+tensor `certified_ffs_source` accepts, and the self-conjugate scalar-vector
+mixing entries with a tested momentum tensor, retaining every source key and
+all other unvalidated entries. On the Gmu models this certifies the tau's
+A/Z/H/G0 and the neutrinos' A/Z entries alongside the electron's and muon's.
 The real-mass massive-muon control sets `MM=ymm=0.105658`, retains the same full
 Gmu electroweak species, and uses three exactly on-shell terminating-decimal
 points. It has two Born graphs, 145 loop graphs and 64 matched local CT
@@ -1199,18 +1212,17 @@ couplings for each point. All three arithmetic modes are checked, together with
 global Gf bits beyond binary64, source snapshot retention across an update,
 empty batches and rejection of mixed frames or missing source collections.
 
-`model_cms.prepare_gmu_complex_mass_declarations` provides a bounded cold
-declaration view for the external-mass Gmu source. The result retains the original
-raw object and one derived immutable raw model. Every structural/scalar consumer
-uses that same derived model; there is no competing runtime definition override.
-The transformation appends `CMASS_MZ/MW/MT/MH = sqrt(M**2-i*M*width)` declarations,
-retains real external mass/width inputs, continues dependent internal parameter
-types and expressions, enables the source CMSParam branch, and converts all
-source Yukawa inputs to enforced internal mass aliases. Existing exact source
-name tokens are rewritten without parsing numeric lexemes through binary64.
-Alias definitions are appended after rewriting, so their real inputs cannot
-accidentally become self-references. The original Gmu antiparticle metadata
-repair is checked before aliasing; its diagnostic is retained.
+`model_cms.complex_mass_scheme` (M-SM MS-CMS, a port of MG5_aMC's
+`Model.change_mass_to_complex_scheme`; DESIGN §6.8) replaces the former
+bounded G_mu-only declaration view. It retains the original raw object and one
+derived immutable raw model (`complex_mass_model` applies the same decisions to
+the compiled tree payload), generic in the model: per nonzero width at the card
+an external mass gets `CMASS_M = sqrt(M**2 - i*M*width)`, real mass and width
+inputs are kept, dependent internal parameters become complex and read the pole
+masses, CMSParam is enabled, Yukawa inputs become mass ties, and the
+restriction card's parameters of value 1 become constants (MG5_aMC restricts
+after its transform). Existing exact source name tokens are rewritten without
+parsing numeric lexemes through binary64.
 
 Pole-mass references cover the complete covariant multiplet, including ghosts
 whose original width metadata is ZERO. The actual optimized MadLoop ee-to-mumu
@@ -1776,7 +1788,8 @@ fixed during preparation, and an attempted update is rejected atomically. An
 internal expression must reduce to the required value with the same fixed map.
 Scheme declarations alone cannot establish these ties.
 
-The explicit `qcd_source_color.prepare_loop_sm_four_gluon_color` profile supplies
+The explicit test-support profile
+`tools/loop_reference/qcd_source_color.prepare_loop_sm_four_gluon_color` supplies
 the source names `G` and `lhv`, always requires HV with `lhv=1`, and runs whole
 tensor/scalar/species conformance on each selected four-adjoint-vector R2 group.
 It preserves all unrelated caller declarations and original CT evidence. Model

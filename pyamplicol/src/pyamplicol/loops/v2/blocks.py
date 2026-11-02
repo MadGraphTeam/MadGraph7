@@ -33,10 +33,18 @@ Conventions a consumer relies on:
 * **N_c grade.** The tree engine weights every U(1)-subtraction auxiliary it
   produces from a fundamental line pair with the numeric 1/N_c of the Fierz
   identity at N_c = 3. A block whose trees produce k auxiliaries has grade
-  g = -k (``BlockColourFlow.nc_grade``; ``None`` if its trees disagree, e.g.
-  a U(1) piece and a photon giving the same flow) and rows carrying 3^g; the
+  g = -k (``BlockColourFlow.nc_grade``) and rows carrying 3^g; the
   formal-N_c current is the row times N_c^g 3^(-g), which the colour seeds
-  apply (design §3.2 item 4).
+  apply (design §3.2 item 4). Trees of one word with different grades
+  (identical-flavour lines: a gluon and the U(1) piece of the
+  Fermi-exchanged pairing; a U(1) piece and a photon) are separate blocks:
+  the loop-request compilation of a leading- or next-to-leading-colour
+  request puts the grade into the identity of those currents
+  (``generation.dag_grades.split_u1_grades``, ``ColorState.nc_grade``), so a
+  word and its grade name a block's colour (``colour.PositionColour``). A
+  full-colour request needs no grades (every power is kept at N_c = 3) and
+  keeps its blocks as they are: there ``nc_grade`` is ``None`` for a block
+  whose trees disagree (``SeedTable.formal_nc`` false, full colour only).
 * **Signs.** ``BlockColourFlow.sign`` extends the tree engine's Born colour
   metric (``color/correlator_matrices.py``) to blocks: the parity of the
   antifundamental string ends listed in the order of their fundamental
@@ -56,10 +64,17 @@ Conventions a consumer relies on:
   end last). Then ``sum_words wick_sign * colour * row`` is the Feynman-rule
   current with each diagram signed by the parity of its fermion lines
   listed that way, FeynKit's convention, for flavour-changing lines as well.
-  The connection parity is the same along every tree of a block; generation
-  fails otherwise. Colour-singlet fermions carry the tree engine's Koszul
-  signs inside the rows (``generation/fermion_ordering.py``). The loop sign
-  rule of design §3.3 composes these signs.
+  A current whose trees pair its coloured fermion endpoints in more than one
+  way can have trees of both connection parities (identical-flavour lines:
+  a counterterm stage closing the gluons of one pairing and one taking the
+  U(1)-subtraction auxiliary of the other give the same closed lines); the
+  loop-request compilation folds the ``-1`` of the derivations with the
+  other parity into their colour weights
+  (``generation.fermion_ordering.apply_colour_connection_signs``), so every
+  current, and every block, has one connection parity. Colour-singlet
+  fermions carry the tree engine's Koszul signs inside the rows
+  (``generation/fermion_ordering.py``). The loop sign rule of design §3.3
+  composes these signs.
 * **Kernel variants.** ``KERNEL_VARIANT_BY_BLOCK_CLASS`` is the tree kernel
   variant a block class requires; a block records the variant of the model's
   compiled kernels (``compile_tree_kernel_variant``), which must satisfy it.
@@ -70,6 +85,18 @@ Conventions a consumer relies on:
   rules, so trees that propagate one take the full kernels
   (``with_ward_kernels``). The DAGs do not depend on the variant, so the
   switch keeps them (``TreeBlocks.with_kernels``).
+* **Native DAG.** Under ``dag_input.NATIVE_DAG`` the loop-request DAG of the
+  blocks is the native builder's (WP3.1 A4, ``dag_input.loop_request_blocks``):
+  ``TreeBlocks.blocks_dag`` is then a ``dag_input.NativeDag`` handle, its
+  blocks and the Ward-kernel and coloured-width queries come from the
+  native columns, and reading a ``GenericDAG`` attribute of the handle
+  (the per-point Python rows, ``assemble.TreeRows``) decodes it once,
+  counted (``dag_input.decode_count``). The tree engine's loop-request
+  mode (``GenericDAGCompiler(loop_blocks=True)`` with ``_blocks``) is the
+  oracle, and the stage for a request with a feature the native builder
+  lists as not covered (``dag_input.NATIVE_FALLBACKS``;
+  ``TreeBlocks.dag_fallback`` names it, ``dag_input.fallback_record``
+  collects a slice's); any other refusal is raised.
 * **Families.** ``TreeBlocks.block_table`` is the WP1.3 ``BlockTable`` view of
   the blocks in a native model's incoming field names, and
   ``requested_loop_blocks`` turns ``FamilySet.block_requests()`` back into the
@@ -82,20 +109,22 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from itertools import combinations, pairwise
 from types import MappingProxyType
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pyamplicol.generation.dag_compiler import (
     DAGProgressCallback,
-    GenericDAGCompiler,
     LoopBlockReachability,
     compile_generic_dag,
 )
+from pyamplicol.generation.dag_grades import u1_grade_sets
 from pyamplicol.generation.dag_types import (
     AmplitudeRoot,
     ColorState,
     CurrentIndex,
     GenericDAG,
 )
+from pyamplicol.generation.fermion_ordering import colour_connection_parities
+from pyamplicol.loops.order_names import CouplingOrderNames, order_key
 from pyamplicol.loops.v2.families import (
     BlockCurrent,
     ExternalLeg,
@@ -105,9 +134,12 @@ from pyamplicol.loops.v2.families import (
     model_data,
 )
 from pyamplicol.models.base import CouplingOrders, Model, QuantumNumberFlow
-from pyamplicol.models.contracts import U1_SUBTRACTION_AUXILIARY_KIND, TreeKernelVariant
+from pyamplicol.models.contracts import TreeKernelVariant
 from pyamplicol.models.prepared_catalog_builder import model_tree_kernel_variant
 from pyamplicol.processes.ir import CanonicalProcessIR
+
+if TYPE_CHECKING:
+    from .dag_input import NativeDag
 
 BlockClass = Literal["plain", "ward", "spin-source", "counterterm"]
 
@@ -135,7 +167,9 @@ class RequestedLoopBlocks:
     block current an admitted position consumes. Particle ids follow the tree
     engine: the field produced by the tree and entering the loop vertex, in
     the all-outgoing convention (the conjugate of the incoming field name);
-    ``requested_loop_blocks`` converts family requests.
+    ``requested_loop_blocks`` converts family requests. Coupling orders take
+    the tree engine's keys (``models.order_names.order_key``), as the tree
+    engine and the native DAG compare them.
     """
 
     requests: frozenset[tuple[int, int, CouplingOrders]]
@@ -143,7 +177,11 @@ class RequestedLoopBlocks:
 
     def __post_init__(self) -> None:
         requests = frozenset(
-            (int(mask), int(particle_id), add_orders(orders))
+            (
+                int(mask),
+                int(particle_id),
+                add_orders(tuple((order_key(n), p) for n, p in orders)),
+            )
             for mask, particle_id, orders in self.requests
         )
         object.__setattr__(self, "requests", requests)
@@ -338,12 +376,21 @@ class BlockKey:
     auxiliary_kind: str | None
 
     @classmethod
-    def from_index(cls, index: CurrentIndex) -> BlockKey:
+    def from_index(
+        cls, index: CurrentIndex, names: CouplingOrderNames | None = None
+    ) -> BlockKey:
+        """The key of a tree-engine current; ``names`` (the model's) spell
+        its coupling orders as the model declares them."""
+
         return cls(
             external_mask=index.external_mask,
             particle_id=index.particle_id,
             word=index.ordered_external_labels,
-            coupling_orders=index.coupling_orders,
+            coupling_orders=(
+                index.coupling_orders
+                if names is None
+                else names.orders(index.coupling_orders)
+            ),
             color_state=index.color_state,
             chirality=index.chirality,
             spin_state=index.spin_state,
@@ -401,14 +448,26 @@ class BornRoot:
 
 @dataclass(frozen=True)
 class TreeBlocks:
-    """Blocks and Born of one loop request (design §3.2 exports)."""
+    """Blocks and Born of one loop request (design §3.2 exports).
+
+    ``blocks_dag`` is the loop-request DAG of the blocks: a ``GenericDAG``,
+    or the native builder's ``dag_input.NativeDag`` handle (module
+    docstring, "Native DAG"); ``dag_fallback`` names the listed feature
+    (``"<NativeFallback.key>: <detail>"``) for which the tree engine built it
+    under ``dag_input.NATIVE_DAG``. ``graded`` tells that the DAG was
+    compiled with the N_c grade split (leading and next-to-leading colour,
+    ``generation.dag_grades``): every block has one grade, and a colour state
+    names a block by its word and grade (``colour.block_name``).
+    """
 
     process: CanonicalProcessIR
-    blocks_dag: GenericDAG
-    born_dag: GenericDAG
+    blocks_dag: GenericDAG | NativeDag
+    born_dag: GenericDAG | NativeDag
     blocks: tuple[Block, ...]
     born_roots: tuple[BornRoot, ...]
     kernel_variant: TreeKernelVariant
+    dag_fallback: str | None = None
+    graded: bool = False
 
     def blocks_on(self, mask: int) -> tuple[Block, ...]:
         return tuple(block for block in self.blocks if block.key.external_mask == mask)
@@ -422,8 +481,8 @@ class TreeBlocks:
         variant = model_tree_kernel_variant(model)
         return replace(
             self,
-            blocks=_blocks(self.blocks_dag, model, variant),
-            born_roots=_born_roots(self.born_dag, model),
+            blocks=_dag_blocks(self.blocks_dag, model, variant),
+            born_roots=_dag_born_roots(self.born_dag, model),
             kernel_variant=variant,
         )
 
@@ -543,14 +602,22 @@ def build_tree_blocks(
     ignored_particle_ids: Iterable[int] = (),
     ignored_vertex_kinds: Iterable[int] = (),
     progress_callback: DAGProgressCallback | None = None,
+    u1_grades: bool = False,
 ) -> TreeBlocks:
     """Compile the blocks and the Born of one loop request.
 
     The Born is ``compile_generic_dag`` of ``process`` with
-    ``born_coupling_orders``, exactly as a tree request compiles it. Blocks are
+    ``born_coupling_orders``, as a tree request compiles it, except that a
+    Dirac current closing on a Weyl sink is a root (``loop_born``: the
+    marker contraction ``dag_ordering.DIRAC_WEYL_CLOSURE``, which no tree
+    evaluator lowers, where a tree request refuses): the slice reads the
+    Born DAG's colour plan and its roots' orders, sectors and helicities,
+    and closes the Born on the blocks at a vertex holding leg 1. Blocks are
     exact colour-flow currents, so they are compiled at full colour whatever
     the requested accuracy; ``block_coupling_orders`` bounds the orders a
     block may carry (the loop-amplitude orders bound it without loss).
+    ``u1_grades`` (leading and next-to-leading colour) makes every block
+    exact in N_c (``generation.dag_grades``).
     """
 
     ignored_particles = tuple(ignored_particle_ids)
@@ -562,29 +629,90 @@ def build_tree_blocks(
         ignored_particle_ids=ignored_particles,
         ignored_vertex_kinds=ignored_kinds,
         progress_callback=progress_callback,
+        loop_born=True,
     )
-    blocks_dag = GenericDAGCompiler(
-        model=model,
-        max_coupling_orders=block_coupling_orders,
+    kernel_variant = model_tree_kernel_variant(model)
+    from .dag_input import loop_request_blocks
+
+    blocks_dag, blocks, fallback = loop_request_blocks(
+        process,
+        model,
+        block_coupling_orders=block_coupling_orders,
+        reachability=reachability,
         ignored_particle_ids=ignored_particles,
         ignored_vertex_kinds=ignored_kinds,
         progress_callback=progress_callback,
-        loop_blocks=True,
-        loop_block_reachability=reachability,
-    ).compile(replace(process, color_accuracy="full"))
-    kernel_variant = model_tree_kernel_variant(model)
+        kernel_variant=kernel_variant,
+        u1_grades=u1_grades,
+    )
     return TreeBlocks(
         process=process,
         blocks_dag=blocks_dag,
         born_dag=born_dag,
-        blocks=_blocks(blocks_dag, model, kernel_variant),
+        blocks=blocks,
         born_roots=_born_roots(born_dag, model),
         kernel_variant=kernel_variant,
+        dag_fallback=fallback,
+        graded=u1_grades,
+    )
+
+
+def _dag_blocks(
+    dag: GenericDAG | NativeDag, model: Model, kernel_variant: TreeKernelVariant
+) -> tuple[Block, ...]:
+    """``_blocks`` of a loop-request DAG, natively for a ``NativeDag``
+    (``NativeDag.blocks``, equal to ``_blocks`` of its decoded DAG)."""
+
+    from .dag_input import NativeDag
+
+    if isinstance(dag, NativeDag):
+        return dag.blocks(kernel_variant)
+    return _blocks(dag, model, kernel_variant)
+
+
+def _dag_born_roots(dag: GenericDAG | NativeDag, model: Model) -> tuple[BornRoot, ...]:
+    """``_born_roots`` of a Born DAG; none for a ``NativeDag`` (the program
+    DAG a counterterm program also keeps as its ``born_dag``: a loop-request
+    DAG has no amplitude roots), which is not decoded for them."""
+
+    from .dag_input import NativeDag
+
+    if isinstance(dag, NativeDag):
+        return ()
+    return _born_roots(dag, model)
+
+
+def propagated_species(
+    dag: GenericDAG | NativeDag,
+) -> tuple[tuple[int, bool], ...]:
+    """Distinct ``(particle id, amputated)`` of the non-source,
+    non-auxiliary currents of ``dag``, sorted; ``amputated``: the current's
+    momentum leaves exactly one leg out. The current scan of
+    ``ward_breaking_fields`` and ``artifact.coloured_widths``: native for a
+    ``NativeDag`` (``NativeDag.propagated_species``), so neither decodes it."""
+
+    from .dag_input import NativeDag
+
+    if isinstance(dag, NativeDag):
+        return dag.propagated_species()
+    sources = set(dag.sources)
+    legs = (1 << len(dag.process.legs)) - 1
+    return tuple(
+        sorted(
+            {
+                (
+                    int(current.index.particle_id),
+                    (legs & ~current.index.momentum_mask).bit_count() == 1,
+                )
+                for current_id, current in enumerate(dag.currents)
+                if current_id not in sources and current.index.auxiliary_kind is None
+            }
+        )
     )
 
 
 def ward_breaking_fields(
-    dags: Iterable[GenericDAG],
+    dags: Iterable[GenericDAG | NativeDag],
     compiled: Any,
     fixed_parameters: Mapping[str, Any] = MappingProxyType({}),
 ) -> frozenset[str]:
@@ -615,12 +743,8 @@ def ward_breaking_fields(
 
     out = set()
     for dag in dags:
-        sources = set(dag.sources)
-        for current_id, current in enumerate(dag.currents):
-            index = current.index
-            if current_id in sources or index.auxiliary_kind is not None:
-                continue
-            record = particles.get(int(index.particle_id))
+        for particle_id, _amputated in propagated_species(dag):
+            record = particles.get(particle_id)
             if record is None or abs(int(record.color)) == 1:
                 continue
             width = str(record.width)
@@ -704,11 +828,12 @@ def _blocks(
         and abs(representations[leg.label]) == 3
         and model.is_fermion(int(leg.outgoing_pdg))
     }
-    connections = _connection_parities(dag, model, endpoints)
+    connections = _connection_parities(dag, model)
     grades = u1_grades(dag)
+    names = CouplingOrderNames.of_model(model)
     rows_by_key: dict[BlockKey, list[BlockRow]] = {}
     for current in dag.currents:
-        rows_by_key.setdefault(BlockKey.from_index(current.index), []).append(
+        rows_by_key.setdefault(BlockKey.from_index(current.index, names), []).append(
             BlockRow(decode(current.index.helicity_ancestry), current.id)
         )
     blocks = []
@@ -754,15 +879,13 @@ def _blocks(
     return tuple(blocks)
 
 
-def _connection_parities(
-    dag: GenericDAG, model: Model, endpoints: Mapping[int, int]
-) -> list[int]:
-    """Parity of the colour-octet connections between fermion lines.
+def _connection_parities(dag: GenericDAG, model: Model) -> list[int | None]:
+    """Parity of the colour-octet connections between fermion lines of every
+    current (``generation.fermion_ordering.colour_connection_parities``).
 
     A merge connects two lines when both inputs hold coloured fermion
     endpoints in their open words and one of them is a colour-octet current
-    (a gluon, contact or U(1)-subtraction auxiliary). Every derivation of a
-    current must agree.
+    (a gluon, contact or U(1)-subtraction auxiliary).
 
     The closed lines of counterterm currents (design §6.1) are complete:
     nothing crosses them, so their endpoints do not count, and a colour
@@ -771,85 +894,30 @@ def _connection_parities(
     connects nothing. Its U(1)-subtraction sign is then a colour weight of
     the stage that replaces the leg
     (``models.compiler_color_flow.synthesize_u1_projections``).
+
+    A current derived with both parities (several pairings of
+    identical-flavour lines meeting in one colour state) has the parity of
+    its first derivation; the loop-request compilation folded the ``-1`` of
+    the others into their colour weights
+    (``generation.fermion_ordering.apply_colour_connection_signs``, and the
+    native builder's ``signs::apply_connection_signs``).
     """
 
-    def octet(index: CurrentIndex) -> bool:
-        return (
-            model.color_rep(index.particle_id) == 8
-            or index.auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND
-        )
-
-    def singlet(index: CurrentIndex) -> bool:
-        return (
-            model.color_rep(index.particle_id) == 1
-            or index.auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND
-        )
-
-    def coloured_fermion(particle_id: int) -> bool:
-        return model.is_fermion(particle_id) and abs(model.color_rep(particle_id)) == 3
-
-    def has_endpoints(index: CurrentIndex) -> bool:
-        return any(label in endpoints for label in index.ordered_external_labels)
-
-    currents = dag.currents
-    parity: list[int | None] = [
-        0 if current.is_source else None for current in currents
-    ]
-    for interaction in sorted(
-        dag.interactions,
-        key=lambda row: currents[row.result_id].index.external_mask.bit_count(),
-    ):
-        left = currents[interaction.left_id].index
-        right = currents[interaction.right_id].index
-        connects = (
-            has_endpoints(left)
-            and has_endpoints(right)
-            and (octet(left) or octet(right))
-            and (
-                coloured_fermion(currents[interaction.result_id].index.particle_id)
-                or not (singlet(left) or singlet(right))
-            )
-        )
-        value = parity[interaction.left_id] ^ parity[interaction.right_id] ^ connects
-        known = parity[interaction.result_id]
-        if known is None:
-            parity[interaction.result_id] = value
-        elif known != value:
-            raise ValueError(
-                f"current {interaction.result_id} has derivations with different "
-                "colour-connection signs"
-            )
+    parity, _ = colour_connection_parities(dag, model)
     return parity
 
 
 def u1_grades(dag: GenericDAG) -> list[int | None]:
     """N_c grade of every current: minus the number of U(1)-subtraction
     auxiliaries its trees produce (module docstring), ``None`` if its
-    derivations disagree."""
+    derivations disagree or none derives it (the single-grade view of
+    ``generation.dag_grades.u1_grade_sets``, whose ``split_u1_grades`` splits
+    the disagreeing currents of a loop-request DAG)."""
 
-    currents = dag.currents
-    grade: list[int | None] = [0 if current.is_source else None for current in currents]
-    mixed: set[int] = set()
-    for interaction in sorted(
-        dag.interactions,
-        key=lambda row: currents[row.result_id].index.external_mask.bit_count(),
-    ):
-        left, right = grade[interaction.left_id], grade[interaction.right_id]
-        result = interaction.result_id
-        if left is None or right is None:
-            mixed.add(result)
-            continue
-        value = (
-            left
-            + right
-            - (currents[result].index.auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND)
-        )
-        if grade[result] is None and result not in mixed:
-            grade[result] = value
-        elif grade[result] != value:
-            grade[result] = None
-            mixed.add(result)
-    return grade
+    return [
+        next(iter(grades)) if len(grades) == 1 else None
+        for grades in u1_grade_sets(dag)
+    ]
 
 
 def _born_root_orders(
@@ -878,10 +946,11 @@ def _born_roots(dag: GenericDAG, model: Model) -> tuple[BornRoot, ...]:
     vertices: dict[tuple[int, tuple[int, int, int]], Any] = {}
     for vertex in model.vertices:
         vertices.setdefault((vertex.kind, vertex.particles), vertex)
+    names = CouplingOrderNames.of_model(model)
     return tuple(
         BornRoot(
             root_id=root.id,
-            coupling_orders=_born_root_orders(dag, model, root, vertices),
+            coupling_orders=names.orders(_born_root_orders(dag, model, root, vertices)),
             color_sector_id=root.color_sector_id,
             helicities=decode(
                 dag.currents[root.left_id].index.helicity_ancestry
@@ -906,6 +975,7 @@ __all__ = [
     "block_colour_flow",
     "build_tree_blocks",
     "identity_pairing_sign",
+    "propagated_species",
     "requested_loop_blocks",
     "u1_grades",
     "vetoed_particle_ids",

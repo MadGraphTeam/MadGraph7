@@ -13,9 +13,11 @@ colour-basis elements on the Born (bra) side.
   K_BL[b, c] = <bra(b)|ket(kappa_c)> and K_LB = (K_BL^swapped)^dagger. The
   first term is seeded with the directed seed table, the second with the
   table of the swapped history and conjugated after reduction (one column if
-  the history is symmetric). Counterterm and field components use the same
-  directed overlaps; the Born is B^dagger K_BB B. Results are complex. At LC
-  and NLC every directed output is projected at the leading degree of its
+  the history is symmetric, or self-adjoint: a dipole T_i.T_j whose swapped
+  table equals its direct one, ``DirectedColour._self_adjoint``).
+  Counterterm and field components use the same directed overlaps; the Born
+  is B^dagger K_BB B. Results are complex. At LC and NLC every directed
+  output is projected at the leading degree of its
   history's complete family (all diagonal catalogue histories of its order
   and output legs, every pair, both directions; ``colour_family``), and the
   slice's colour pruning keeps the skeletons live in any of those tables.
@@ -142,6 +144,12 @@ ComplexPair = tuple[Decimal, Decimal]
 # Kind of the resolved colour components (design §1.6, decision 3).
 BORN_BASIS_COMPONENTS = "born-basis-anchored-interference"
 INCLUSIVE = "born"
+# A history of one gluon emission on each side, off two different legs with
+# the same emitted gluon (a dipole T_i.T_j), whose swapped seed table equals
+# its direct one is self-adjoint (``DirectedColour.swapped``): one seed
+# column (2 Re) instead of two, and its swapped metric is its direct one.
+# False keeps two columns for every asymmetric history (the oracle).
+SELF_ADJOINT_HISTORIES = True
 
 
 # --------------------------------------------------------------------- columns
@@ -292,6 +300,7 @@ class DirectedColour:
         history: ColorCorrelator,
         cells: _PrimitiveCells | None = None,
         literals: dict | None = None,
+        adjoint: dict | None = None,
     ):
         legs = table.basis.legs
         self.history = history
@@ -301,6 +310,10 @@ class DirectedColour:
             raise ValueError(
                 f"colour history {history.id!r} has incompatible bra/ket outputs"
             )
+        # Self-adjointness decided once per history for a slice and its
+        # certified-scaleless companion (``ObservableSlice._adjoint``), so
+        # their column plans number their lanes alike.
+        self._adjoint = {} if adjoint is None else adjoint
         self._legs = legs
         self._images: dict[tuple[bool, Any], ConnectedColorTensor] = {}
         self._operators: dict[tuple[bool, Any], ConnectedColorTensor] = {}
@@ -313,9 +326,78 @@ class DirectedColour:
 
     @cached_property
     def swapped(self) -> SeedTable:
-        """The seed table of the history with bra and ket exchanged."""
+        """The seed table of the history with bra and ket exchanged: the
+        direct table itself (one seed column, 2 Re) when the history is
+        symmetric or self-adjoint (``_self_adjoint``)."""
 
-        return self.table if self.symmetric else self._table(self._seeds, True)
+        if self.symmetric:
+            return self.table
+        table = self._table(self._seeds, True)
+        return self.table if self._self_adjoint(table) else table
+
+    def _commuting(self) -> bool:
+        """One gluon emission on each side, off two different legs, with the
+        same emitted gluon: bra(b) = T_i b and ket(k) = T_j k."""
+
+        bra, ket = self._bra.emissions, self._ket.emissions
+        return (
+            len(bra) == 1
+            and len(ket) == 1
+            and isinstance(bra[0], EmitGluon)
+            and isinstance(ket[0], EmitGluon)
+            and bra[0].emitted_label == ket[0].emitted_label
+            and bra[0].emitter_label != ket[0].emitter_label
+        )
+
+    def _self_adjoint(self, swapped: SeedTable) -> bool:
+        """Whether the swapped direction equals the direct one on every
+        tensor: the seed table of the swapped history and every metric that
+        reads it (the stored columns' counterterm metrics,
+        ``native_observables._Metrics``).
+
+        For a dipole (``_commuting``) the direct cells are <T_i b|T_j k> =
+        s_i <b|T_i T_j k> and the swapped ones <T_j b|T_i k> = s_j <b|T_j T_i
+        k>, with T_i^dagger = s_i T_i (a colour charge is hermitian up to its
+        convention's phase) and T_i T_j = T_j T_i (different legs). The
+        slice's two exact seed tables decide it: equal with a nonzero cell,
+        so s_i = s_j and the two directions are equal on every tensor. A
+        certified-scaleless companion takes the slice's decision (its lanes
+        are numbered alike) and checks its own tables against it."""
+
+        if not SELF_ADJOINT_HISTORIES or not self._commuting():
+            return False
+        key = (self.history.bra, self.history.ket)
+        equal, nonzero = self._compare(swapped)
+        decided = self._adjoint.get(key)
+        if decided is None:
+            decided = self._adjoint[key] = equal and nonzero
+        elif decided and not equal:
+            raise ValueError(
+                f"colour history {self.history.id!r}: the swapped seed table "
+                "differs from the direct one although the slice's tables "
+                "showed the dipole self-adjoint"
+            )
+        return decided
+
+    def _compare(self, swapped: SeedTable) -> tuple[bool, bool]:
+        """(the swapped table's cells equal the direct ones, the direct table
+        has a nonzero cell): on the native tables (package C's "cells" stage
+        keeps them, ``native_cells.directed_table``) their distinct cells and
+        first-seen ids, which equal tables share; else the Python cells."""
+
+        from . import native_cells
+
+        handles = native_cells._DIRECTED.get(self, {})
+        direct, other = handles.get(False), handles.get(True)
+        if direct is not None and other is not None:
+            values, ids = direct.decode()
+            return (values, ids) == other.decode(), any(
+                Fraction(re) or Fraction(im) for value in values for _p, re, im in value
+            )
+        cells = self.table.cells
+        return swapped.cells == cells, any(
+            value for row in cells for cell in row for value in cell.values()
+        )
 
     def _sides(self, swapped: bool) -> tuple[ColorConnection, ColorConnection]:
         """(Born side, loop side) connections of one direction."""
@@ -354,6 +436,10 @@ class DirectedColour:
     def _table(self, table: SeedTable, swapped: bool) -> SeedTable:
         if not self._absorbable(swapped):
             return self.generic_table(swapped)
+        from . import native_cells  # WP3.1 C5 switch: the "cells" stage
+
+        if (found := native_cells.directed_table(self, table, swapped)) is not None:
+            return found
         images = replace(
             table.basis,
             tensors=tuple(self.operator(b, swapped) for b in table.basis.tensors),
@@ -597,6 +683,67 @@ def _sum_results(results: Sequence[PointResult]) -> PointResult:
 # --------------------------------------------------------------------- slice
 
 
+# Observable columns are contracted directly (design §7.3: no correlated or
+# resolved seed FFT): a request that requires the FFT serves its inclusive
+# virtual only (declared observables are refused at generation, the stored
+# correlated and resolved outputs at the runtime).
+FORCED_FFT_OBSERVABLES = (
+    "observable columns are contracted directly (design §7.3: no correlated "
+    "or resolved seed FFT); generate the slice with colour contraction 'auto' "
+    "or 'direct'"
+)
+
+
+def _refuse_selected_observables(request: Any, declared: bool) -> None:
+    """Declared observables (colour or spin correlations, the Ward mode) with
+    a leading-colour selection that keeps fewer helicities or flows are
+    refused (``selected-correlators``), as the tree engine's correlated
+    generation refuses its selectors: a spin source on a leg of fixed
+    helicity would ignore the selection."""
+
+    selection = request.selection
+    if declared and selection is not None and selection.restricts:
+        from .refusals import LoopRequestUnsupported
+
+        raise LoopRequestUnsupported(
+            "selected-correlators",
+            "correlated generation requires complete colour and helicity "
+            f"coverage; the request selects {selection.record()}",
+        )
+
+
+def require_vector_spin_sources(
+    compiled: Any, process: Any, spin_classes: Iterable[Iterable[int]]
+) -> None:
+    """Every leg of a declared spin class is a leg of ``process`` with a full
+    four-component vector source, refused at generation (``GenerationError``)
+    with the tree engine's correlated-generation rule and message
+    (``generation.correlated``) instead of at evaluation."""
+
+    from pyamplicol.api.errors import GenerationError
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.processes.model import build_model_process_ir
+
+    labels = sorted({int(label) for group in spin_classes for label in group})
+    if not labels:
+        return
+    ir = build_model_process_ir(process, compiled.ir, color_accuracy="full")
+    model = CompiledUFOModel(compiled)
+    by_label = {int(leg.label): leg for leg in ir.legs}
+    for label in labels:
+        leg = by_label.get(label)
+        if leg is None or leg.outgoing_pdg is None:
+            raise GenerationError(
+                f"spin-correlated leg {label} is absent from {ir.process!r}"
+            )
+        source = model._source_ir(int(leg.outgoing_pdg))
+        if source.wavefunction_family != "vector" or source.component_dimension != 4:
+            raise GenerationError(
+                f"spin-correlated leg {label} requires a full "
+                "four-component vector source"
+            )
+
+
 @dataclass
 class ObservableSlice:
     """A generated slice and its declared observables.
@@ -604,7 +751,8 @@ class ObservableSlice:
     ``correlators`` declares directed colour histories and spin classes as the
     public ``CorrelatorConfig`` does; ``ward`` prepares the asymmetric Ward
     mode. Spin classes and the Ward mode generate the slice on the full tree
-    kernels.
+    kernels. ``generate(native_inputs=True)`` is ``LoopSlice.generate``'s:
+    the caller stores the native point inputs.
     """
 
     slice: LoopSlice
@@ -619,6 +767,9 @@ class ObservableSlice:
     # The observables of the certified-scaleless companion (``scaleless``),
     # once built: [ObservableSlice or None].
     _scaleless: list = field(default_factory=list, repr=False)
+    # Per directed history (bra, ket): self-adjoint or not
+    # (``DirectedColour._self_adjoint``), shared with the companion.
+    _adjoint: dict = field(default_factory=dict, repr=False)
 
     @classmethod
     def generate(
@@ -629,8 +780,21 @@ class ObservableSlice:
         *,
         correlators: CorrelatorConfig | None = None,
         ward: bool = False,
+        native_inputs: bool = False,
     ) -> ObservableSlice:
         correlators = correlators or CorrelatorConfig()
+        _refuse_selected_observables(
+            request,
+            bool(
+                correlators.color_correlations
+                or correlators.spin_correlations
+                or correlators.all_color_through_order is not None
+            )
+            or ward,
+        )
+        require_vector_spin_sources(
+            compiled, request.process, correlators.spin_correlations
+        )
         full = bool(correlators.spin_correlations) or ward
         if full:
             from .catalogue import compile_tree_kernel_variant
@@ -638,7 +802,9 @@ class ObservableSlice:
             compiled = compile_tree_kernel_variant(compiled, "full")
         # LC/NLC colour histories prune with their own seed tables (``of``).
         prune = not correlators.color_correlations
-        slice_ = LoopSlice.generate(compiled, request, native, prune=prune)
+        slice_ = LoopSlice.generate(
+            compiled, request, native, prune=prune, native_inputs=native_inputs
+        )
         return cls.of(slice_, correlators=correlators, ward=ward)
 
     @classmethod
@@ -648,8 +814,10 @@ class ObservableSlice:
         *,
         correlators: CorrelatorConfig | None = None,
         ward: bool = False,
+        adjoint: dict | None = None,
     ) -> ObservableSlice:
-        """The observables of an already generated slice.
+        """The observables of an already generated slice (``adjoint``: the
+        self-adjointness decisions of the slice whose companion this is).
 
         At LC/NLC a slice generated without colour pruning is pruned here,
         keeping every skeleton live in the inclusive seed table or in the
@@ -660,12 +828,20 @@ class ObservableSlice:
 
         from pyamplicol.color.correlator_matrices import process_color_legs
 
-        if slice_.request.colour_contraction == "fft":
-            raise ValueError(
-                "observable columns are contracted directly (design §7.3: no "
-                "correlated or resolved seed FFT); generate the slice with "
-                "colour contraction 'auto' or 'direct'"
+        declared = correlators is not None and bool(
+            correlators.color_correlations
+            or correlators.spin_correlations
+            or correlators.all_color_through_order is not None
+        )
+        if slice_.request.colour_contraction == "fft" and (declared or ward):
+            # The inclusive virtual takes the forced seed FFT (the native
+            # executor, MQ-FFT); declared observables could never run.
+            from .refusals import LoopRequestUnsupported
+
+            raise LoopRequestUnsupported(
+                "forced-seed-fft-unserved", FORCED_FFT_OBSERVABLES
             )
+        _refuse_selected_observables(slice_.request, declared or ward)
         correlators = correlators or CorrelatorConfig()
         correlators = correlators._resolve_color(
             process_color_legs(slice_.blocks.process)
@@ -683,6 +859,8 @@ class ObservableSlice:
             tuple(correlators.spin_correlations),
             ward,
         )
+        if adjoint is not None:
+            out._adjoint = adjoint
         directed = [history for history in out.histories if history.bra]
         if slice_.request.accuracy != "full":
             if slice_.colour_pruned and directed:
@@ -733,6 +911,7 @@ class ObservableSlice:
                         tuple(self.histories), tuple(self.spin_classes)
                     ),
                     ward=self.ward,
+                    adjoint=self._adjoint,
                 )
             self._scaleless.append(companion)
         return self._scaleless[0]
@@ -761,7 +940,7 @@ class ObservableSlice:
         found = self._directed.get(key)
         if found is None:
             found = self._directed[key] = DirectedColour(
-                self.slice.table, history, self._cells, self._literals
+                self.slice.table, history, self._cells, self._literals, self._adjoint
             )
         return found
 
@@ -802,6 +981,10 @@ class ObservableSlice:
         """The complete-family degrees; ``tables`` collects every pair's
         seed table (the pruning criteria)."""
 
+        from . import native_cells  # WP3.1 C5 switch: the "family" stage
+
+        if (found := native_cells.family_degrees(self, family, tables)) is not None:
+            return found
         slice_ = self.slice
         out: dict[str, dict] = {"born": {}, "virtual": {}}
         for alpha, beta in product(family, repeat=2):
@@ -1386,16 +1569,19 @@ class ColumnPlan:
                     out[swapped] = (sector, 1)
         return out
 
-    def _budget(self, key, lanes, width: int, local=()) -> dict[Orders, Budget]:
+    def _budget(
+        self, key, lanes, width: int, local=(), average=None
+    ) -> dict[Orders, Budget]:
         """Per sector sum_lanes m |delta Omega| / (16 pi^2 average) plus the
         absolute local components (``assemble._PointEvaluation._lane_budget``
         for observable columns). Differences arrive in the carrier and are
         rounded to binary64 only as magnitudes, so deviations below one
         binary64 unit of the values survive outside binary64."""
 
-        factor = 1 / (
-            LOOP_FACTOR_DENOMINATOR * math.pi**2 * self.slice.normalisation.average
-        )
+        # ``average``: the point's (``_PointEvaluation.average``, which takes
+        # the alpha(0) of external photons, WP3.2 EWI-6b).
+        average = self.slice.normalisation.average if average is None else average
+        factor = 1 / (LOOP_FACTOR_DENOMINATOR * math.pi**2 * float(average))
         mine = self._lanes_of(key)
         budget = {sector: [0.0] * width for sector, _pairs in self.slice.sectors}
         for (_family, _loop, column), errors in lanes.items():
@@ -1457,11 +1643,13 @@ class ColumnPlan:
 
         width = 3 if reference.poles else 1
         local = [result.components[name] for name in LOCAL_COMPONENTS]
+        average = reference.average
         scale = self._budget(
             key,
             {lane: value.coefficients for lane, value in reference.families.items()},
             width,
             local,
+            average,
         )
         budgets = {}
         zero = Laurent(*[reference.numbers.zero] * width)
@@ -1485,7 +1673,9 @@ class ColumnPlan:
                 differences(result.components[name], other.components[name])
                 for name in LOCAL_COMPONENTS
             ]
-            budgets[ROTATION.format(index)] = self._budget(key, lanes, width, changes)
+            budgets[ROTATION.format(index)] = self._budget(
+                key, lanes, width, changes, average
+            )
         deviations = None
         if reduction is not None:
             if reference.retest_families is None:
@@ -1503,7 +1693,7 @@ class ColumnPlan:
                 for lane, value in reference.families.items()
                 if lane[2] in mine
             }
-            budgets[reduction] = self._budget(key, deviations, width)
+            budgets[reduction] = self._budget(key, deviations, width, (), average)
         magnitudes = {
             sector: Laurent(*[float(abs(x)) for x in laurent.coefficients])
             for sector, laurent in result.components["virtual"].items()
@@ -1535,7 +1725,7 @@ class _Assembly:
         evaluation = self.evaluation
         width = 3 if evaluation.poles else 1
         born, local = self._local(column)
-        average = slice_.normalisation.average
+        average = evaluation.average
         factor = numbers.pair(0, 1) * (
             1 / (LOOP_FACTOR_DENOMINATOR * numbers.pi * numbers.pi * average)
         )
@@ -1577,6 +1767,8 @@ class _Assembly:
             if split is None
             else {origin: {name: {} for name in COMPONENTS} for origin in ORIGINS}
         )
+        # A model with pole regulators: the counterterms' own UV parts.
+        local_uv = None if split is None else self._local_uv(column)
 
         def bare_of(lanes, direct, swapped):
             a = lanes.get(direct, [zero] * width)
@@ -1598,11 +1790,23 @@ class _Assembly:
                     for power in LAURENT_POWERS[:width]
                 ]
             if origins is not None:
+                counterterms_uv = None
+                if local_uv is not None:
+                    counterterms_uv = {
+                        name: laurent(
+                            [
+                                local_uv.get((name, sector, power), zero)
+                                for power in LAURENT_POWERS
+                            ]
+                        )
+                        for name in ("r2", "uv_local", FIELD_COMPONENT)
+                    }
                 parts = split_sector(
                     {name: laurent(value) for name, value in values.items()},
                     laurent(bare_of(ultraviolet, direct, swapped)),
                     FIELD_COMPONENT,
                     Laurent,
+                    counterterms_uv,
                 )
                 for origin, part in parts.items():
                     for name in COMPONENTS:
@@ -1654,6 +1858,17 @@ class _Assembly:
             pole_origins=origins,
         )
 
+    def _local_uv(self, column: Column) -> dict | None:
+        """The UV parts of one column's counterterm and field interferences
+        (``_local`` of the point's counterterm twin at the IR regulator 0,
+        ``assemble._PointEvaluation.counterterm_twin``), or None for a model
+        without pole regulators."""
+
+        twin = self.evaluation.counterterm_twin()
+        if twin is None:
+            return None
+        return type(self)(self.plan, twin)._local(column)[1]
+
     def _local(self, column: Column):
         """Born, counterterm and field interferences of one column, complex
         and before the initial average of the virtual pieces is applied to the
@@ -1699,7 +1914,7 @@ class _Assembly:
         powers = LAURENT_POWERS if evaluation.poles else (0,)
         born: dict[Orders, Any] = defaultdict(lambda: numbers.zero)
         local: dict[tuple[str, Orders, int], Any] = defaultdict(lambda: numbers.zero)
-        average = slice_.normalisation.average
+        average = evaluation.average
         for row, vectors in evaluation.born_vectors.items():
             if column.rows is not None and row not in column.rows:
                 continue
@@ -1797,12 +2012,18 @@ class NativeObservables:
             columns=self.plan.seed_columns,
             merged=merged_graph(observables.slice) if schedule == "M" else None,
         )
+        # Observable columns are contracted directly (``FORCED_FFT_
+        # OBSERVABLES``; their assembly reports "direct"). A request that
+        # requires the FFT refuses them on the public route (the runtime's
+        # observable outputs) and at a declaration (``ObservableSlice.of``);
+        # the generation's validation still runs them as its reference.
         self.executor = NativeExecutor(
             observables.slice,
             exported=exported,
             lanes=lanes,
             threads=threads,
             scaleless=lambda: self._scaleless(lanes, threads),
+            contraction="direct",
         )
 
     def _scaleless(self, lanes: int, threads: int | None) -> NativeExecutor | None:
@@ -1815,7 +2036,11 @@ class NativeObservables:
             return None
         exported = export_plan(plan.slice, forward=False, columns=plan.seed_columns)
         return NativeExecutor(
-            plan.slice, exported=exported, lanes=lanes, threads=threads
+            plan.slice,
+            exported=exported,
+            lanes=lanes,
+            threads=threads,
+            contraction="direct",
         )
 
     @classmethod

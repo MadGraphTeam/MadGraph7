@@ -8,24 +8,30 @@ process peak memory and the number of native decodes (rule 9). Python
 oracle records are stored once per (process, stage) and compared against the
 native lane (``RUST-MIGRATION.md`` §2 rule 6).
 
-Stages:
+Stages (digests: ``loops.v2.snapshot``):
 
-* ``s1p``: S1', the loop-request block DAG (``GenericDAGCompiler(
-  loop_blocks=True)``, default reachability, the request's loop-order
-  bounds) and its blocks (``blocks._blocks``).
+* ``s1p``: S1', the loop-request block DAG (``dag_input.loop_request_blocks``,
+  the stage of ``build_tree_blocks``: default reachability, the request's
+  loop-order bounds) and its blocks.
 * ``s1pp``: S1'', the counterterm program's DAG, its blocks and clone lines
   (``ct_closure.counterterm_program_blocks``, the production chain: CT
   lowering, the recursion with its inert rules, ``CountertermBlocks.build``,
   the U(1) leakage check), chained after the request model, the Born and the
-  loop blocks. The native lane runs the same chain and replaces only its
-  ``CT program`` stage (``dag_input.native_counterterm_blocks`` and
-  ``dag_input.u1_leaking_structures``), so the lowering and the recursion
-  are the production ones. ``--blocks native`` chains the native loop-block
-  DAG (equal to Python's by its S1' digest) into the Ward-kernel query and
-  compiles only the Born in Python (rule 6: no oracle run repeats an
-  upstream Python stage whose native twin is proven equal).
+  loop blocks (``build_tree_blocks`` and ``with_ward_kernels``).
+  ``--blocks native`` builds those loop blocks natively (equal to Python's
+  by their S1' digest; rule 6: no oracle run repeats an upstream Python
+  stage whose native twin is proven equal).
 
-Lanes: ``python`` (the oracle) or ``native`` (``dag_input.native_blocks``).
+* ``pct``: P-ct, the counterterm program's interaction program and saved
+  kernels in the native lane's export (``native_trees._CountertermTrees.of``),
+  chained after the native S1'' chain (``--blocks`` as for ``s1pp``; the CT
+  DAG is always the native builder's, equal to Python's by S1''): ``native``
+  is A5's program (``dag_input.NATIVE_PROGRAM``), ``python`` the oracle on
+  the decoded DAG (``TreeRows`` and ``_interaction_program``).
+
+Lanes: ``python`` (the oracle: ``dag_input.NATIVE_DAG`` off) or ``native``
+(the production stage with the flag on). A record whose stage fell back to
+the tree engine names the reason (``fallback``).
 The request follows ``tools/loop_v2_generate.py``: ``--born`` bounds, loop
 orders = Born + 2 in QCD unless ``--loop`` is given.
 
@@ -38,14 +44,19 @@ Example::
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import resource
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:  # the ``tools`` package, run as a script
+    sys.path.insert(0, str(ROOT))
 
 
 def _orders(text: str) -> dict[str, int]:
@@ -89,10 +100,10 @@ def _load_model(args: argparse.Namespace) -> Any:
     # The loop_sm recipe of tests/conftest.py (scalar-arity view).
     from dataclasses import replace
 
-    from pyamplicol.loops.model_compatibility import (
+    from pyamplicol.models.loading import compile_model_source
+    from tools.loop_reference.model_compatibility import (
         prepare_loop_sm_scalar_declarations,
     )
-    from pyamplicol.models.loading import compile_model_source
 
     cache = Path(args.cache)
     written = sorted(cache.glob("loop-sm.json*.json"))
@@ -110,156 +121,86 @@ def _load_model(args: argparse.Namespace) -> Any:
     return load_compiled_model(model.write(cache / "loop-sm.json"))
 
 
-def _loop_blocks(
-    clock: _Clock,
-    lane: str,
-    process: Any,
-    model: Any,
-    bounds: Mapping[str, int],
-    ignored: tuple[int, ...],
-) -> tuple[Any, Any, tuple[Any, ...]]:
-    """``(NativeDag of the DAG, the GenericDAG or None, blocks)``."""
+def _native_dag(on: bool) -> contextlib.AbstractContextManager[None]:
+    """``dag_input.NATIVE_DAG`` set to ``on`` (the lane) for the block."""
 
-    from pyamplicol.generation.dag_compiler import GenericDAGCompiler
     from pyamplicol.loops.v2 import dag_input
-    from pyamplicol.loops.v2.blocks import _blocks
-    from pyamplicol.models.prepared_catalog_builder import model_tree_kernel_variant
 
-    variant = model_tree_kernel_variant(model)
-    if lane == "python":
-        dag = clock(
-            "loop-block DAG",
-            lambda: GenericDAGCompiler(
-                model=model,
-                max_coupling_orders=bounds,
-                ignored_particle_ids=ignored,
-                loop_blocks=True,
-            ).compile(process),
-        )
-        blocks = clock("blocks", lambda: _blocks(dag, model, variant))
-        native = clock("encode", lambda: dag_input.NativeDag.from_dag(dag, model))
-        return native, dag, blocks
-    tables = clock(
-        "input tables",
-        lambda: dag_input.dag_input(
-            process, model, max_coupling_orders=bounds, ignored_particle_ids=ignored
-        ),
-    )
-    handle = clock("loop-block DAG", lambda: dag_input._native().V2Dag.build(tables))
-    native = dag_input.NativeDag(handle, process, model)
-    blocks = clock("blocks", lambda: native.blocks(variant))
-    return native, None, blocks
+    return dag_input.native_flags(dag=on)
 
 
 def _s1p(args: argparse.Namespace, clock: _Clock, record: dict[str, Any]) -> None:
-    from pyamplicol.loops.v2 import dag_input
+    from pyamplicol.loops.v2 import snapshot
+    from pyamplicol.loops.v2.blocks import TreeBlocks
+    from pyamplicol.loops.v2.dag_input import loop_request_blocks
     from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.models.prepared_catalog_builder import model_tree_kernel_variant
     from pyamplicol.processes.model import build_model_process_ir
 
     compiled = clock("model", lambda: _load_model(args))
     model = CompiledUFOModel(compiled)
     process = build_model_process_ir(args.process, compiled.ir, color_accuracy="full")
-    native, _dag, blocks = _loop_blocks(
-        clock, args.lane, process, model, record["loop_bounds"], tuple(args.ignore)
+    with _native_dag(args.lane == "native"):
+        dag, blocks, fallback = clock(
+            "loop-block DAG + blocks",
+            lambda: loop_request_blocks(
+                process,
+                model,
+                block_coupling_orders=record["loop_bounds"],
+                ignored_particle_ids=tuple(args.ignore),
+                kernel_variant=model_tree_kernel_variant(model),
+            ),
+        )
+    tree = TreeBlocks(process, dag, dag, blocks, (), blocks[0].kernel_variant)
+    digest = clock("S1' digest", lambda: snapshot.loop_blocks_digest(tree))
+    record["fallback"] = fallback
+    record["counts"] = _counts(dag, blocks)
+    record["digests"] = {"S1'": digest}
+
+
+def _counts(dag: Any, blocks: tuple[Any, ...]) -> dict[str, int]:
+    from pyamplicol.loops.v2 import dag_input
+
+    native = (
+        dag
+        if isinstance(dag, dag_input.NativeDag)
+        else dag_input.NativeDag.from_dag(dag, None)
     )
-    dag_digest = clock("dag digest", native.digest)
-    block_digest = clock("blocks digest", lambda: dag_input.blocks_digest(blocks))
     currents, interactions, sources = native.counts()
-    record["counts"] = {
+    return {
         "currents": currents,
         "interactions": interactions,
         "sources": sources,
         "blocks": len(blocks),
     }
-    record["digests"] = {
-        "dag": dag_digest,
-        "blocks": block_digest,
-        "S1'": dag_input.stage_digest("S1'", dag_digest, block_digest),
-    }
-
-
-def _native_blocks_chain(
-    clock: _Clock, process: Any, compiled: Any, request: Any, fixed: Any
-) -> tuple[Any, tuple[Any, ...]]:
-    """``(compiled, born_orders)`` of ``with_ward_kernels(build_tree_blocks(...))``
-    with the loop-block DAG native: the Born in Python, the Ward-kernel query
-    on the native DAG's ``coloured_propagated()`` (the current scan of
-    ``ward_breaking_fields``) and the Born DAG."""
-
-    from dataclasses import replace
-    from types import SimpleNamespace
-
-    from pyamplicol.generation.dag_compiler import compile_generic_dag
-    from pyamplicol.loops.v2 import dag_input
-    from pyamplicol.loops.v2.blocks import (
-        _born_roots,
-        vetoed_particle_ids,
-        ward_breaking_fields,
-    )
-    from pyamplicol.loops.v2.catalogue import compile_tree_kernel_variant
-    from pyamplicol.models.external import CompiledUFOModel
-    from pyamplicol.models.prepared_catalog_builder import model_tree_kernel_variant
-
-    model = CompiledUFOModel(compiled)
-    ignored = vetoed_particle_ids(request.particle_veto)
-    born = clock(
-        "Born",
-        lambda: compile_generic_dag(
-            process,
-            model=model,
-            max_coupling_orders=dict(request.born_orders),
-            ignored_particle_ids=ignored,
-        ),
-    )
-    native = clock(
-        "loop-block DAG (native)",
-        lambda: dag_input.native_blocks(
-            replace(process, color_accuracy="full"),
-            model,
-            max_coupling_orders=request.loop_order_bounds,
-            ignored_particle_ids=ignored,
-        ),
-    )
-    # The current scan of ``ward_breaking_fields`` reads ids and kinds only.
-    propagated: Any = SimpleNamespace(
-        sources=(),
-        currents=tuple(
-            SimpleNamespace(index=SimpleNamespace(particle_id=pdg, auxiliary_kind=None))
-            for pdg in sorted(native.coloured_propagated())
-        ),
-    )
-    if model_tree_kernel_variant(model) != "full" and ward_breaking_fields(
-        (propagated, born), compiled, fixed
-    ):
-        compiled = compile_tree_kernel_variant(compiled, "full")
-    born_orders = tuple(
-        sorted({root.coupling_orders for root in _born_roots(born, model)})
-    )
-    return compiled, born_orders
 
 
 def _s1pp(args: argparse.Namespace, clock: _Clock, record: dict[str, Any]) -> None:
-    from pyamplicol.loops.v2 import dag_input
-    from pyamplicol.loops.v2.assemble import SliceRequest, prepare_request_model
+    from pyamplicol.loops.v2 import snapshot
+    from pyamplicol.loops.v2.assemble import (
+        SliceRequest,
+        prepare_request_model,
+        resolve_request,
+    )
     from pyamplicol.loops.v2.blocks import (
         build_tree_blocks,
         vetoed_particle_ids,
         with_ward_kernels,
     )
-    from pyamplicol.loops.v2.ct_closure import (
-        UnprojectedU1Error,
-        counterterm_program_blocks,
-    )
+    from pyamplicol.loops.v2.ct_closure import counterterm_program_blocks
     from pyamplicol.loops.v2.families import LoopOrderSelection, add_orders
     from pyamplicol.models.external import CompiledUFOModel
     from pyamplicol.processes.model import build_model_process_ir
 
     compiled = clock("model", lambda: _load_model(args))
-    request = SliceRequest(
-        args.process,
-        record["born_bounds"],
-        record["loop_orders"],
-        particle_veto=tuple(args.ignore),
+    request = resolve_request(
+        compiled,
+        SliceRequest(
+            args.process,
+            record["born_bounds"],
+            record["loop_orders"],
+            particle_veto=tuple(args.ignore),
+        ),
     )
     prepared, continuation, fixed, _scale, _alpha = clock(
         "request model", lambda: prepare_request_model(compiled, request)
@@ -270,39 +211,23 @@ def _s1pp(args: argparse.Namespace, clock: _Clock, record: dict[str, Any]) -> No
         frozenset(add_orders(tuple(o.items())) for o in request.exact_loop_orders),
     )
     process = build_model_process_ir(args.process, compiled.ir, color_accuracy="full")
-    if args.blocks == "python":
-        blocks = clock(
-            "Born + loop blocks",
-            lambda: build_tree_blocks(
-                process,
-                CompiledUFOModel(compiled),
-                born_coupling_orders=dict(request.born_orders),
-                block_coupling_orders=request.loop_order_bounds,
-                ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
-            ),
+
+    def loop_blocks() -> tuple[tuple[Any, ...], Any]:
+        tree = build_tree_blocks(
+            process,
+            CompiledUFOModel(compiled),
+            born_coupling_orders=dict(request.born_orders),
+            block_coupling_orders=request.loop_order_bounds,
+            ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
         )
-        blocks, compiled = with_ward_kernels(blocks, compiled, fixed)
-        born_orders = blocks.born_orders
-    else:
-        compiled, born_orders = _native_blocks_chain(
-            clock, process, compiled, request, fixed
-        )
-    recursion: list[Any] = []
+        tree, kernels = with_ward_kernels(tree, compiled, fixed)
+        return tree.born_orders, kernels
 
-    class _NativeProgram(Exception):
-        """Raised at the chain's ``CT program`` stage in the native lane."""
-
-    def stage(name: str, work: Callable[[], Any]) -> Any:
-        if args.lane == "native" and name == "CT program":
-            raise _NativeProgram
-        value = clock(name, work)
-        if name == "CT recursion":
-            recursion.append(value)
-        return value
-
+    with _native_dag(args.blocks == "native"):
+        born_orders, compiled = clock("Born + loop blocks + Ward kernels", loop_blocks)
     # The production chain (``LoopSlice.generate``): the CT program depends
     # on no loop family (REQUIREMENTS_ADDENDUM J), so none is generated here.
-    try:
+    with _native_dag(args.lane == "native"):
         program = counterterm_program_blocks(
             compiled,
             prepared,
@@ -319,57 +244,46 @@ def _s1pp(args: argparse.Namespace, clock: _Clock, record: dict[str, Any]) -> No
                 tuple(sorted(request.loop_order_bounds.items())),
                 request.compatibility,
             ),
-            stage=stage,
+            stage=clock,
         )
-    except _NativeProgram:
-        ((ct_recursion, ir),) = recursion
-        native_program = clock(
-            "CT program",
-            lambda: dag_input.native_counterterm_blocks(
-                ct_recursion,
-                ir,
-                ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
-            ),
-        )
-        leaking = clock(
-            "U(1) leakage", lambda: dag_input.u1_leaking_structures(native_program)
-        )
-        if leaking:
-            raise UnprojectedU1Error(
-                f"counterterm vertices {sorted(str(s.particles) for s in leaking)} "
-                "would take the U(1) part of a fermion line's gluon"
-            ) from None
-        native = native_program.dag
-        program_blocks, clones = native_program.blocks, native_program.clones
-    else:
-        lowered_model = CompiledUFOModel(program.recursion.model.lowered.compiled)
-        dag = program.blocks.blocks_dag
-        native = clock(
-            "encode", lambda: dag_input.NativeDag.from_dag(dag, lowered_model)
-        )
-        program_blocks, clones = program.blocks.blocks, program.clones
-    dag_digest = clock("dag digest", native.digest)
-    block_digest = clock(
-        "blocks digest", lambda: dag_input.blocks_digest(program_blocks, clones)
-    )
-    currents, interactions, sources = native.counts()
+    digest = clock("S1'' digest", lambda: snapshot.counterterm_program_digest(program))
+    record["fallback"] = program.blocks.dag_fallback
     record["counts"] = {
-        "currents": currents,
-        "interactions": interactions,
-        "sources": sources,
-        "blocks": len(program_blocks),
-        "clones": len(clones),
+        **_counts(program.blocks.blocks_dag, program.blocks.blocks),
+        "clones": len(program.clones),
     }
-    record["digests"] = {
-        "dag": dag_digest,
-        "blocks": block_digest,
-        "S1''": dag_input.stage_digest("S1''", dag_digest, block_digest),
-    }
+    record["digests"] = {"S1''": digest}
+    if args.stage == "pct":
+        record["_program"] = program
+
+
+def _pct(args: argparse.Namespace, clock: _Clock, record: dict[str, Any]) -> None:
+    from pyamplicol.loops.v2 import dag_input, snapshot
+    from pyamplicol.loops.v2.ct_closure import CountertermProgram
+    from pyamplicol.loops.v2.native_trees import _CountertermTrees
+
+    lane = args.lane
+    args.lane = "native"
+    try:
+        _s1pp(args, clock, record)
+    finally:
+        args.lane = lane
+    blocks = record.pop("_program")
+    with dag_input.native_flags(program=lane == "native"):
+        trees = clock(
+            "CT interaction program",
+            lambda: _CountertermTrees.of(CountertermProgram(blocks, ()), 0),
+        )
+    digest = clock("P-ct digest", lambda: snapshot.counterterm_trees_digest(trees))
+    steps = trees.record["interactions"]["steps"]
+    record["counts"]["program rows"] = sum(len(step["interactions"]) for step in steps)
+    record["counts"]["kernels"] = len(trees.saved)
+    record["digests"]["P-ct"] = digest
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("stage", choices=("s1p", "s1pp"))
+    parser.add_argument("stage", choices=("s1p", "s1pp", "pct"))
     parser.add_argument("process")
     parser.add_argument("--born", required=True, help="Born bounds, e.g. QCD=5,QED=0")
     parser.add_argument(
@@ -380,8 +294,8 @@ def main(argv: list[str] | None = None) -> int:
         "--blocks",
         choices=("python", "native"),
         default="python",
-        help="s1pp: the Born and loop blocks upstream of the CT program in "
-        "Python, or the loop blocks native (equal by S1')",
+        help="s1pp, pct: the loop blocks upstream of the CT program in Python, "
+        "or native (equal by S1')",
     )
     parser.add_argument(
         "--ignore",
@@ -426,7 +340,7 @@ def main(argv: list[str] | None = None) -> int:
         ).strip()
     except (OSError, subprocess.CalledProcessError):
         record["commit"] = None
-    stage = _s1p if args.stage == "s1p" else _s1pp
+    stage = {"s1p": _s1p, "s1pp": _s1pp, "pct": _pct}[args.stage]
     clock = _Clock(args.log)
     start = time.perf_counter()
     stage(args, clock, record)

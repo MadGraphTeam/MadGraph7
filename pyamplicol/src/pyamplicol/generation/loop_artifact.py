@@ -4,26 +4,22 @@
 These records describe a saved execution lane. Scheme names are supplied by the
 caller and remain declarations, never model-name-derived physics certificates.
 
-Two engines publish virtual processes: the legacy per-diagram engine
-(``rusticol.loop-runtime.v3``, kept as the oracle until gate R3) and the
-shared-recursion engine v2 (``rusticol.loop-runtime.v4``, plan v4; design
-§12.1), whose metadata is ``LoopV2ExecutionMetadata``.
+Virtual processes are published by the shared-recursion engine v2
+(``rusticol.loop-runtime.v4``, plan v4; design §12.1), whose metadata is
+``LoopV2ExecutionMetadata``. The removed legacy engine's format
+(``rusticol.loop-runtime.v3``) is refused at load (``runtime.backend``).
 """
 
 from __future__ import annotations
 
-import json
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
 
-from pyamplicol._internal.versions import (
-    LOOP_RUNTIME_CAPABILITY,
-    LOOP_V2_RUNTIME_CAPABILITY,
-)
+from pyamplicol._internal.versions import LOOP_V2_RUNTIME_CAPABILITY
 from pyamplicol.config import PoleSelection
 from pyamplicol.loops.orders import VirtualOrderSector
-from pyamplicol.loops.physical_orders import PhysicalOrderLayout
 from pyamplicol.models.base import CouplingOrders
 from pyamplicol.models.loop_declaration import (
     LoopSchemeDeclaration as LoopSchemeDeclaration,
@@ -41,150 +37,18 @@ LOOP_V2_EXECUTION_SCHEMA = 4
 LOOP_V2_PHYSICS_SCHEMA = 2
 # How a plan v4 process obtains its per-point inputs (trees, Born amplitudes,
 # counterterm and field components): from native programs stored as further
-# PACBIN members (``loops.v2.native_process``, WP3.1), or rebuilt at load from
-# the artifact's compiled model and generation request where a process has no
-# native program (rusticol-core ``loop_artifact::LOOP_V2_*POINT_INPUTS``).
-# "native-v2": the native programs with the binary64 SymJIT plane application
-# of every saved evaluator (licence-free binary64, DESIGN §3.7).
-LOOP_V2_POINT_INPUTS = "regenerated-at-load"
+# PACBIN members (``loops.v2.native_process``, WP3.1; rusticol-core
+# ``loop_artifact::LOOP_V2_NATIVE_POINT_INPUTS``). "native-v2": the native
+# programs with the binary64 SymJIT plane application of every saved
+# evaluator (licence-free binary64, DESIGN §3.7). A process without them is
+# refused at generation: nothing of a stored process regenerates at load
+# (REQUIREMENTS_ADDENDUM G).
 LOOP_V2_NATIVE_POINT_INPUTS = "native-v2"
 # Former declarations, refused with a request to regenerate (internal artifact
 # formats are not kept backward compatible, AGENTS.md): "native-v1" stored no
-# plane applications.
-LOOP_V2_RETIRED_POINT_INPUTS = ("native-v1",)
-
-
-@dataclass(frozen=True, slots=True)
-class LoopExecutionMetadata:
-    scheme: LoopSchemeDeclaration
-    orders: PhysicalOrderLayout
-    r2_strategy: Literal["model", "direct"]
-    available_r2_strategies: tuple[str, ...]
-    arithmetic: tuple[str, ...]
-    source_owned: bool
-    contribution_kind: Literal["virtual"] = "virtual"
-    execution_mode: Literal["loop_recurrence"] = "loop_recurrence"
-    epsilon_powers: tuple[int, ...] = (0, -1, -2)
-    epsilon_convention: str = EPSILON_CONVENTION
-    dimension: str = "D=4-2*epsilon"
-    interference: str | None = None
-    color_accuracy: str = "full"
-    scheme_status: str = "declared-not-certified"
-    correlations: bool = False
-    resolved: bool = False
-    partial_results: bool = False
-
-    def __post_init__(self):
-        if not isinstance(self.scheme, LoopSchemeDeclaration) or not isinstance(
-            self.orders, PhysicalOrderLayout
-        ):
-            raise TypeError("loop metadata requires typed scheme and order records")
-        if self.r2_strategy != "model" or (
-            self.available_r2_strategies != (self.r2_strategy,)
-        ):
-            raise ValueError(
-                "public loop artifact currently requires model-supplied R2"
-            )
-        if self.arithmetic != ("double", "double-double", "arbitrary"):
-            raise ValueError("loop artifact must declare its three supported carriers")
-        if self.source_owned is not True:
-            raise TypeError("public loop artifacts require source-owned scalar data")
-        if type(self.resolved) is not bool or type(self.correlations) is not bool:
-            raise TypeError("loop resolved/correlation capabilities must be booleans")
-        interference = (
-            DIRECTED_INTERFERENCE if self.correlations else ORDINARY_INTERFERENCE
-        )
-        if self.interference is None:
-            object.__setattr__(self, "interference", interference)
-        elif self.interference != interference:
-            raise ValueError(
-                "loop interference declaration must match correlation capability"
-            )
-        if (
-            self.contribution_kind != "virtual"
-            or self.execution_mode != "loop_recurrence"
-            or self.epsilon_powers != (0, -1, -2)
-            or self.epsilon_convention != EPSILON_CONVENTION
-            or self.dimension != "D=4-2*epsilon"
-            or self.color_accuracy not in ("lc", "nlc", "full")
-            or self.scheme_status != "declared-not-certified"
-        ):
-            raise ValueError("unsupported loop contribution or convention declaration")
-        if self.partial_results is not False:
-            raise ValueError("loop artifact public partial results are unavailable")
-        if self.correlations and self.resolved:
-            raise ValueError("directed loop artifacts require inclusive projection")
-
-    def validate_plan(self, plan):
-        if self.correlations != (plan.get("directed_projection") is not None):
-            raise ValueError(
-                "loop artifact correlation capability differs from the validated plan"
-            )
-        projection = plan.get("color_projection")
-        accuracy = "full" if projection is None else projection["accuracy"]
-        if self.color_accuracy != accuracy:
-            raise ValueError(
-                "loop artifact colour accuracy differs from the validated plan"
-            )
-        from pyamplicol.loops.physical_correlations import (
-            PROJECTED_FAMILY_CONVENTION,
-            PROJECTED_IDENTITY_CONVENTION,
-        )
-
-        directed = plan.get("directed_projection")
-        projected_directed = (
-            self.correlations
-            and projection is not None
-            and directed["kind"] == "directed-complex"
-            and bool(directed["histories"])
-            and (
-                (
-                    directed["convention"] == PROJECTED_IDENTITY_CONVENTION
-                    and directed.get("color_family_projection") is None
-                    and all(
-                        not item["bra"] and not item["ket"]
-                        for item in directed["histories"]
-                    )
-                )
-                or (
-                    directed["convention"] == PROJECTED_FAMILY_CONVENTION
-                    and directed.get("color_family_projection") is not None
-                    and directed["color_family_projection"]["kind"]
-                    == "complete-typed-history-families-v1"
-                    and directed["color_family_projection"]["accuracy"] == accuracy
-                )
-            )
-        )
-        if self.correlations and projection is not None and not projected_directed:
-            raise ValueError("projected correlation requires a certified descriptor")
-        partition = plan.get("born_color_components")
-        if self.color_accuracy == "lc" and not projected_directed:
-            if partition is None or not self.resolved:
-                raise ValueError(
-                    "LC loop artifacts require resolved canonical Born components"
-                )
-        elif partition is not None:
-            raise ValueError(
-                "Born colour components require LC ordinary resolved output"
-            )
-        if type(self.resolved) is not bool or self.resolved != (
-            plan.get("helicity_projection") is not None
-        ):
-            raise ValueError(
-                "loop artifact resolved capability differs from the validated plan"
-            )
-        # JSON normalization only removes tuple/list representation differences.
-        orders = json.loads(json.dumps(asdict(self.orders)))
-        if orders != plan["order_layout"]:
-            raise ValueError("loop artifact order axes differ from the validated plan")
-        if self.r2_strategy != plan["r2_strategy"]:
-            raise ValueError(
-                "loop artifact R2 strategy differs from the validated plan"
-            )
-        if self.source_owned != (plan["model_binding"]["kind"] == "source"):
-            raise ValueError(
-                "loop artifact scalar ownership differs from the validated plan"
-            )
+# plane applications, "regenerated-at-load" rebuilt the inputs at load from
+# the artifact's compiled model and generation request.
+LOOP_V2_RETIRED_POINT_INPUTS = ("native-v1", "regenerated-at-load")
 
 
 @dataclass(frozen=True, slots=True)
@@ -200,8 +64,10 @@ class LoopV2ExecutionMetadata:
     the Born metric ``"born"`` is always available) and ``spin_correlations``
     the declared spin classes (one-based legs); ``resolved`` is whether
     helicity/colour-resolved output is served: always, since observable
-    columns are contracted directly (``color_contraction`` is "auto" or
-    "direct"; generation refuses the forced seed FFT). ``poles`` lists the
+    columns are contracted directly. ``color_contraction`` is the requested
+    seed contraction ("auto", "direct" or "fft", design §7.3): the certified
+    symmetric-group orbit pairs of the stored seed Fourier record are
+    contracted by the FFT under "auto" and "fft". ``poles`` lists the
     pole selections an evaluation may request (``PoleSelection``: every pole,
     none for the finite part only, or their ultraviolet or infrared parts;
     design §12.4); stability estimates come from the requested checks, and
@@ -215,7 +81,7 @@ class LoopV2ExecutionMetadata:
     buckets: tuple[tuple[int, int, int], ...]
     color_accuracy: Literal["lc", "nlc", "full"]
     color_degrees: dict[str, int | None] | None
-    color_contraction: Literal["auto", "direct"]
+    color_contraction: Literal["auto", "direct", "fft"]
     engine: Literal["v2"] = "v2"
     schedule: Literal["backward"] = "backward"
     r2_strategy: Literal["model"] = "model"
@@ -246,13 +112,10 @@ class LoopV2ExecutionMetadata:
             raise ValueError("colour degrees exist exactly at LC and NLC")
         if sum(count for _n, _r, count in self.buckets) != self.families:
             raise ValueError("reduction buckets must cover every family once")
-        if (
-            self.color_contraction not in ("auto", "direct")
-            or self.resolved is not True
-        ):
-            raise ValueError(
-                "v2 processes contract seed columns directly and serve resolved output"
-            )
+        if self.color_contraction not in ("auto", "direct", "fft"):
+            raise ValueError("unknown v2 seed contraction policy")
+        if self.resolved is not True:
+            raise ValueError("v2 processes serve resolved output")
         if tuple(self.poles) != tuple(PoleSelection):
             raise ValueError(
                 "v2 processes serve the pole selections "
@@ -270,59 +133,48 @@ class LoopV2ExecutionMetadata:
 
 
 @dataclass(frozen=True, slots=True)
-class LoopProcessArtifact:
-    """One already compiled loop PACBIN and explicit publication declarations."""
+class LoopV2ProcessArtifact:
+    """One plan v4 process: its PACBIN, generation request and public catalogue.
+
+    ``request`` is the slice request record (``loops.v2.artifact``, the
+    generation record; a load never regenerates from it); ``plan_sha256`` is the
+    digest of the stored plan JSON and ``scaleless_plan_sha256`` that of the
+    stored companion plan of the certified-scaleless families (None without
+    them; ``loops.v2.artifact.SCALELESS_PLAN_MEMBER``). ``aliases`` are the
+    process's published permutation aliases (the manifest's alias records:
+    ``id``, ``expression``, ``external_pdgs`` and ``external_permutation``,
+    representative leg -> alias leg within each side), which the runtime
+    serves through this process at the permuted momenta.
+    """
 
     process_id: str
     expression: str
     external_pdgs: tuple[int, ...]
     loop_runtime_path: Path
-    metadata: LoopExecutionMetadata
+    metadata: LoopV2ExecutionMetadata
     validation_point: ValidationPointRecord
     generation_filters: dict[str, object]
     color_accuracy: str = "full"
     aliases: tuple = ()
-
-    def __post_init__(self):
-        if not isinstance(self.metadata, LoopExecutionMetadata):
-            raise TypeError("loop process requires explicit typed execution metadata")
-        if self.color_accuracy != self.metadata.color_accuracy or self.aliases:
-            raise ValueError(
-                "loop process colour accuracy must match its metadata; aliases "
-                "are unavailable"
-            )
-
-    @property
-    def runtime_capability(self) -> str:
-        return LOOP_RUNTIME_CAPABILITY
-
-
-@dataclass(frozen=True, slots=True)
-class LoopV2ProcessArtifact(LoopProcessArtifact):
-    """One plan v4 process: its PACBIN, generation request and public catalogue.
-
-    ``request`` is the slice request record (``loops.v2.artifact``) from which
-    the runtime rebuilds the Python per-point inputs; ``plan_sha256`` is the
-    digest of the stored plan JSON and ``scaleless_plan_sha256`` that of the
-    stored companion plan of the certified-scaleless families (None without
-    them; ``loops.v2.artifact.SCALELESS_PLAN_MEMBER``).
-    """
-
     request: dict[str, object] | None = None
     plan_sha256: str = ""
     scaleless_plan_sha256: str | None = None
     state_legs: tuple[dict[str, object], ...] = ()
     helicities: tuple[tuple[int, ...], ...] = ()
-    point_inputs: str = LOOP_V2_POINT_INPUTS
+    point_inputs: str = LOOP_V2_NATIVE_POINT_INPUTS
 
     def __post_init__(self) -> None:
         if not isinstance(self.metadata, LoopV2ExecutionMetadata):
             raise TypeError("v2 loop processes require LoopV2ExecutionMetadata")
-        if self.color_accuracy != self.metadata.color_accuracy or self.aliases:
-            raise ValueError(
-                "loop process colour accuracy must match its metadata; aliases "
-                "are unavailable"
-            )
+        if self.color_accuracy != self.metadata.color_accuracy:
+            raise ValueError("loop process colour accuracy must match its metadata")
+        for alias in self.aliases:
+            permutation = list(alias.get("external_permutation", ()))
+            if sorted(permutation) != list(range(len(self.external_pdgs))):
+                raise ValueError(
+                    f"alias {alias.get('id')!r} needs a complete permutation of "
+                    f"{len(self.external_pdgs)} external legs"
+                )
         if self.request is None or len(self.plan_sha256) != 64:
             raise ValueError("v2 loop processes record their request and plan digest")
         if (
@@ -338,12 +190,35 @@ class LoopV2ProcessArtifact(LoopProcessArtifact):
                 f"(this build stores {LOOP_V2_NATIVE_POINT_INPUTS!r}); regenerate "
                 "the artifact"
             )
-        if self.point_inputs not in (LOOP_V2_POINT_INPUTS, LOOP_V2_NATIVE_POINT_INPUTS):
+        if self.point_inputs != LOOP_V2_NATIVE_POINT_INPUTS:
             raise ValueError(f"unknown point inputs {self.point_inputs!r}")
 
     @property
     def runtime_capability(self) -> str:
         return LOOP_V2_RUNTIME_CAPABILITY
+
+
+def recorded_conventions(
+    extensions: Mapping[str, object], process_id: str
+) -> dict[str, object] | None:
+    """The conventions of process ``process_id``'s electroweak virtual as the
+    artifact's generation extension records them (the process's generation
+    filters, ``conventions``: WP3.2 EWI-7, ``loops.v2.ew_policy.
+    scheme_conventions``), None when none is recorded. The physics metadata
+    keeps its schema (the native admission reads it)."""
+
+    generation = extensions.get("generation")
+    if not isinstance(generation, Mapping):
+        return None
+    records = generation.get("concrete_processes")
+    if not isinstance(records, (list, tuple)):
+        return None
+    for record in records:
+        if isinstance(record, Mapping) and record.get("id") == process_id:
+            filters = record.get("filters")
+            found = filters.get("conventions") if isinstance(filters, Mapping) else None
+            return dict(found) if isinstance(found, Mapping) else None
+    return None
 
 
 def _v2_process_payloads(
@@ -380,37 +255,8 @@ def _v2_process_payloads(
     return physics, execution
 
 
-def loop_process_payloads(process: LoopProcessArtifact, staged_plan: Path):
-    """Validate the staged snapshot through core before publishing its metadata."""
-    if isinstance(process, LoopV2ProcessArtifact):
-        return _v2_process_payloads(process)
-
-    from pyamplicol.loops.native import load_loop_native
-
-    backend = load_loop_native()
-
-    plan = json.loads(backend.PortableLoopPlan(str(staged_plan)).metadata_json())
-    process.metadata.validate_plan(plan)
-    if list(process.external_pdgs) != plan["external_pdgs"]:
-        raise ValueError(
-            "loop artifact external particles differ from the validated plan"
-        )
-    physics = {
-        "schema_version": 1,
-        "kind": LOOP_PHYSICS_KIND,
-        "process_id": process.process_id,
-        "metadata": asdict(process.metadata),
-        "initial_average": plan["initial_average"],
-        "state_legs": plan["state_legs"],
-        "helicities": plan["helicities"],
-    }
-    execution = {
-        "schema_version": 3,
-        "kind": LOOP_RUNTIME_KIND,
-        "process_id": process.process_id,
-        "contribution_kind": "virtual",
-        "execution_mode": "loop_recurrence",
-        "required_runtime_capabilities": [LOOP_RUNTIME_CAPABILITY],
-        "runtime_path": LOOP_RUNTIME_PATH,
-    }
-    return physics, execution
+def loop_process_payloads(process: LoopV2ProcessArtifact, staged_plan: Path):
+    """The physics and execution records of one published plan v4 process."""
+    if not isinstance(process, LoopV2ProcessArtifact):
+        raise TypeError("loop processes are plan v4 (LoopV2ProcessArtifact)")
+    return _v2_process_payloads(process)

@@ -2,6 +2,10 @@
 
 //! Existing epsilon-sector reduction facade shared with non-Python callers.
 use super::fast::FastReductions;
+use super::v2_reduce::{
+    GENERIC_CHUNK_LANES, fast_engine_threshold, reaches_fast_threshold,
+    squared_mass_reaches_fast_threshold,
+};
 use super::*;
 use crate::{
     AmplitudeInput, EvaluationStatus, FourMomentum, Lane, Laurent, PolynomialReducer,
@@ -243,9 +247,269 @@ where
 
 enum Plans {
     Double(Reductions<f64>),
-    Fast(FastReductions),
+    Fast(Box<FastPlan>),
     DoubleDouble(Reductions<DoubleFloat>),
     Arbitrary(Reductions<Float>),
+}
+
+/// The binary64 fast plan of the legacy engine and its exact fallback
+/// (genericity audit 2, G2-M3; `v2_reduce` module docs, 'Absolute
+/// thresholds'). On the pinned NinjaRS the fast path compares its inputs with
+/// absolute constants in the model's units (the native masters' on-shell
+/// snap and the engine's `infrared_eps`, both `1e-9`). Lanes are routed on
+/// the given inputs ([`Route`]): with an invariant matrix, every lane whose
+/// squared masses or invariants reach the thresholds
+/// ([`reaches_fast_threshold`], the v2 engine's rule) is reduced instead by
+/// the generic binary64 reduction of the same numerator, which has none,
+/// built on first use under pyAmpliCol's library key. Without one the
+/// invariants are formed from the binary64 shifts, which are not given
+/// inputs: below the thresholds they are indistinguishable from rounding (a
+/// massless leg at a generic angle gives `|p²| ~ 1e-11` at `E = 500`), which
+/// the fast path's snap sets to zero as before, and an external leg's
+/// squared mass is not given at all. Such a call routes on the given squared
+/// masses alone: a lane with a light squared mass is refused with
+/// [`light_mass_needs_invariants`] (rounded invariants cannot resolve so
+/// light a mass: a formed `p² ≈ 0` may stand for a massless leg or for one
+/// of that mass), every other lane keeps the fast path. Every lane neither
+/// routed nor refused, and every call without such a lane, keeps the fast
+/// reduction's code path and bits.
+struct FastPlan {
+    fast: FastReductions,
+    expressions: [String; 3],
+    parameters: Vec<String>,
+    exact: Option<Reductions<f64>>,
+    threshold: f64,
+    /// Lanes reduced by `exact` since the last
+    /// [`PolynomialPlan::take_exact_lanes`].
+    exact_lanes: u64,
+}
+
+/// The status of a lane of a legacy binary64 fast plan that carries a squared
+/// mass in `(0, threshold)` while the call gives no invariant matrix
+/// ([`FastPlan`]; `threshold` is the plan's, [`fast_engine_threshold`]):
+/// binary64 invariants formed from rounded shifts cannot resolve so light a
+/// mass. Pass the exact invariants (`s_matrix`), or use double-double or
+/// arbitrary precision. The message names the threshold the rule compared
+/// with (`1e-9` on the pinned NinjaRS).
+pub fn light_mass_needs_invariants(threshold: f64) -> String {
+    format!(
+        "InvalidInput(a squared mass below the binary64 fast path's absolute threshold \
+         {threshold:e} needs the exact invariant matrix, which invariants formed from the rounded \
+         shifts cannot replace; pass s_matrix, or use double-double or arbitrary precision)"
+    )
+}
+
+/// Where a lane of [`FastPlan`] is reduced.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Route {
+    /// The fast reduction.
+    Fast,
+    /// The generic binary64 reduction (`FastPlan::exact`).
+    Exact,
+    /// Not reduced: [`light_mass_needs_invariants`].
+    Refused,
+}
+
+/// The rows of `values` (`width` entries per lane) whose route is `wanted`.
+fn kept<V: Clone>(values: &[V], width: usize, routes: &[Route], wanted: Route) -> Vec<V> {
+    values
+        .chunks_exact(width.max(1))
+        .zip(routes)
+        .filter(|&(_, &route)| route == wanted)
+        .flat_map(|(row, _)| row.iter().cloned())
+        .collect()
+}
+
+impl FastPlan {
+    /// The route of each lane ([`FastPlan`]); empty for inputs the fast path
+    /// refuses (shape, complex shifts, scales or invariants), which keep its
+    /// refusal.
+    fn routes(
+        &self,
+        lanes: usize,
+        shifts: &[FourMomentum<Complex<f64>>],
+        masses: &[Complex<f64>],
+        scales: &[Complex<f64>],
+        parameters: &[Complex<f64>],
+        s_matrix: Option<&[Complex<f64>]>,
+    ) -> Vec<Route> {
+        let (n, width) = (self.fast.propagators, self.fast.parameter_count);
+        let real = |values: &[Complex<f64>]| values.iter().all(|z| z.im == 0.);
+        let admissible = shifts.len() == lanes * n
+            && masses.len() == lanes * n
+            && scales.len() == lanes
+            && parameters.len() == lanes * width
+            && s_matrix.is_none_or(|s| s.len() == lanes * n * n && real(s))
+            && real(scales)
+            && shifts
+                .iter()
+                .all(|p| p.components().iter().all(|z| z.im == 0.));
+        if !admissible {
+            return Vec::new();
+        }
+        (0..lanes)
+            .map(|lane| {
+                let masses = &masses[lane * n..(lane + 1) * n];
+                match s_matrix {
+                    Some(matrix) => {
+                        let invariants = &matrix[lane * n * n..(lane + 1) * n * n];
+                        if reaches_fast_threshold(n, masses, invariants, self.threshold) {
+                            Route::Exact
+                        } else {
+                            Route::Fast
+                        }
+                    }
+                    None if squared_mass_reaches_fast_threshold(masses, self.threshold) => {
+                        Route::Refused
+                    }
+                    None => Route::Fast,
+                }
+            })
+            .collect()
+    }
+
+    fn evaluate_native(
+        &mut self,
+        ids: &[u64],
+        shifts: &[FourMomentum<Complex<f64>>],
+        masses: &[Complex<f64>],
+        scales: &[Complex<f64>],
+        parameters: &[Complex<f64>],
+        s_matrix: Option<&[Complex<f64>]>,
+    ) -> ExecutionResult<Vec<Lane<Complex<f64>, String>>> {
+        let (n, width) = (self.fast.propagators, self.fast.parameter_count);
+        let routes = self.routes(ids.len(), shifts, masses, scales, parameters, s_matrix);
+        if routes.iter().all(|&route| route == Route::Fast) {
+            return self
+                .fast
+                .evaluate_native(ids, shifts, masses, scales, parameters, s_matrix);
+        }
+        let count = |wanted: Route| routes.iter().filter(|&&route| route == wanted).count();
+        self.exact_lanes += count(Route::Exact) as u64;
+        let threshold = self.threshold;
+        let part = |wanted: Route| {
+            (
+                kept(ids, 1, &routes, wanted),
+                kept(shifts, n, &routes, wanted),
+                kept(masses, n, &routes, wanted),
+                kept(scales, 1, &routes, wanted),
+                kept(parameters, width, &routes, wanted),
+                s_matrix.map(|s| kept(s, n * n, &routes, wanted)),
+            )
+        };
+        let mut fast = if count(Route::Fast) > 0 {
+            let (ids, shifts, masses, scales, parameters, matrix) = part(Route::Fast);
+            self.fast.evaluate_native(
+                &ids,
+                &shifts,
+                &masses,
+                &scales,
+                &parameters,
+                matrix.as_deref(),
+            )?
+        } else {
+            Vec::new()
+        }
+        .into_iter();
+        let mut exact = if count(Route::Exact) > 0 {
+            // The generic reduction parses and evaluates Symbolica
+            // expressions.
+            let _unlock = pyamplicol::unlock();
+            let exact = match &mut self.exact {
+                Some(exact) => exact,
+                None => self.exact.insert(Reductions::new(
+                    &self.expressions,
+                    &self.parameters,
+                    n,
+                    0_f64,
+                )?),
+            };
+            let (ids, shifts, masses, scales, parameters, matrix) = part(Route::Exact);
+            let mut lanes = Vec::with_capacity(ids.len());
+            // In chunks, as the v2 generic engine (values unchanged).
+            for start in (0..ids.len()).step_by(GENERIC_CHUNK_LANES) {
+                let end = (start + GENERIC_CHUNK_LANES).min(ids.len());
+                lanes.extend(exact.evaluate_native(
+                    &ids[start..end],
+                    &shifts[start * n..end * n],
+                    &masses[start * n..end * n],
+                    &scales[start..end],
+                    &parameters[start * width..end * width],
+                    matrix.as_deref().map(|s| &s[start * n * n..end * n * n]),
+                )?);
+            }
+            lanes
+        } else {
+            Vec::new()
+        }
+        .into_iter();
+        ids.iter()
+            .zip(&routes)
+            .map(|(&id, &route)| {
+                match route {
+                    Route::Fast => fast.next(),
+                    Route::Exact => exact.next(),
+                    Route::Refused => Some(Lane {
+                        id,
+                        status: light_mass_needs_invariants(threshold),
+                        value: None,
+                    }),
+                }
+                .ok_or_else(|| error("a reduction engine lost a lane"))
+            })
+            .collect()
+    }
+
+    fn evaluate_decimal(
+        &mut self,
+        ids: &[u64],
+        shifts: &[DecimalMomentum],
+        masses: &[DecimalComplex],
+        scales: &[DecimalComplex],
+        parameters: &[DecimalComplex],
+    ) -> ExecutionResult<Vec<RawLane>> {
+        let parse_all = |values: &[DecimalComplex]| {
+            values
+                .iter()
+                .map(|z| parse_complex::<f64>(z, 53))
+                .collect::<ExecutionResult<Vec<_>>>()
+        };
+        let shifts = shifts
+            .iter()
+            .map(|p| {
+                Ok(FourMomentum::from([
+                    parse_complex::<f64>(&p[0], 53)?,
+                    parse_complex::<f64>(&p[1], 53)?,
+                    parse_complex::<f64>(&p[2], 53)?,
+                    parse_complex::<f64>(&p[3], 53)?,
+                ]))
+            })
+            .collect::<ExecutionResult<Vec<_>>>()?;
+        Ok(self
+            .evaluate_native(
+                ids,
+                &shifts,
+                &parse_all(masses)?,
+                &parse_all(scales)?,
+                &parse_all(parameters)?,
+                None,
+            )?
+            .into_iter()
+            .map(|lane| {
+                (
+                    lane.id,
+                    lane.status,
+                    lane.value.map(|v| {
+                        [
+                            decimal_complex(v.finite, 53),
+                            decimal_complex(v.single_pole, 53),
+                            decimal_complex(v.double_pole, 53),
+                        ]
+                    }),
+                )
+            })
+            .collect())
+    }
 }
 
 /// Native polynomial numerator reduction with explicit epsilon sectors.
@@ -264,7 +528,7 @@ impl PolynomialPlan {
     pub fn set_profiling(&mut self, enabled: bool) -> ExecutionResult<()> {
         match &mut self.plan {
             Plans::Fast(plan) => {
-                plan.set_profiling(enabled);
+                plan.fast.set_profiling(enabled);
                 Ok(())
             }
             _ => Err(error(
@@ -278,7 +542,7 @@ impl PolynomialPlan {
     /// Numerator preparation occurs outside the engine and is reported separately.
     pub fn take_profile(&mut self) -> ExecutionResult<std::collections::BTreeMap<String, f64>> {
         let profile = match &mut self.plan {
-            Plans::Fast(plan) => plan.take_profile(),
+            Plans::Fast(plan) => plan.fast.take_profile(),
             _ => {
                 return Err(error(
                     "profiling currently requires fast or fast-tensor engine",
@@ -321,6 +585,19 @@ impl PolynomialPlan {
         .collect())
     }
 
+    /// Lanes of the binary64 fast plan reduced by the generic binary64
+    /// reduction since the last call because their inputs reach one of the
+    /// fast path's absolute thresholds (`FastPlan`); 0 for the generic plans.
+    /// A test hook: the legacy Python binding and `runtime::physical` do not
+    /// report it (the v2 executor reports its own count,
+    /// `V2Reducer::take_exact_lanes`).
+    pub fn take_exact_lanes(&mut self) -> u64 {
+        match &mut self.plan {
+            Plans::Fast(plan) => std::mem::take(&mut plan.exact_lanes),
+            _ => 0,
+        }
+    }
+
     pub fn new(
         propagators: usize,
         epsilon_sectors: [String; 3],
@@ -338,12 +615,19 @@ impl PolynomialPlan {
                 return Err(error("fast engine supports only double arithmetic"));
             }
             return Ok(Self {
-                plan: Plans::Fast(FastReductions::new(
-                    &epsilon_sectors,
-                    &parameters,
-                    propagators,
-                    engine == "fast-tensor",
-                )?),
+                plan: Plans::Fast(Box::new(FastPlan {
+                    fast: FastReductions::new(
+                        &epsilon_sectors,
+                        &parameters,
+                        propagators,
+                        engine == "fast-tensor",
+                    )?,
+                    expressions: epsilon_sectors,
+                    parameters,
+                    exact: None,
+                    threshold: fast_engine_threshold(),
+                    exact_lanes: 0,
+                })),
                 precision_bits: bits,
             });
         }
@@ -530,11 +814,12 @@ impl PolynomialPlan {
         }
         match &mut self.plan {
             Plans::Fast(p) => {
-                if shifts.columns() != p.propagators * 4
-                    || masses_squared.columns() != p.propagators
+                let (propagators, parameter_count) = (p.fast.propagators, p.fast.parameter_count);
+                if shifts.columns() != propagators * 4
+                    || masses_squared.columns() != propagators
                     || scales_squared.columns() != 1
-                    || parameters.columns() != p.parameter_count
-                    || s_matrix.is_some_and(|s| s.columns() != p.propagators * p.propagators)
+                    || parameters.columns() != parameter_count
+                    || s_matrix.is_some_and(|s| s.columns() != propagators * propagators)
                 {
                     return Err(error("reduction batch dimensions differ"));
                 }

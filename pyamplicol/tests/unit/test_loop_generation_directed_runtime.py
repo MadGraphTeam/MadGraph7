@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Fresh public colour-history generation with an independent Recola dipole."""
+"""Fresh public colour-history generation (v2) with an independent Recola dipole."""
 
 import io
 import json
@@ -12,8 +12,8 @@ import pytest
 from pyamplicol import CorrelatedRequest, CorrelatedValue, CorrelatorConfig, Runtime
 from pyamplicol.cli import run_cli
 from pyamplicol.color.correlator_matrices import ColorCorrelator
-from pyamplicol.loops.model_compatibility import prepare_loop_sm_scalar_declarations
 from pyamplicol.models.loading import compile_model_source
+from tools.loop_reference.model_compatibility import prepare_loop_sm_scalar_declarations
 
 from .test_loop_generation_public_runtime import _card
 
@@ -94,10 +94,9 @@ def test_fresh_public_virtual_dipole_matches_recola(
     ]
     assert runtime.available_color_correlations() == declarations.color_requests
     metadata = runtime.inspect()
-    assert metadata["correlations"] is True and metadata["resolved"] is False
-    assert metadata["color_correlations"] == [
-        item.to_json_dict() for item in declarations.color_requests
-    ]
+    assert metadata["engine"] == "v2"
+    # v2 records the declared histories by id (the born history is implicit).
+    assert metadata["color_correlations"] == ["T11", "T12"]
     rows = json.loads(Path(reference).read_text())["rows"]
     points, scales = [row["point"] for row in rows], [row["mu_r2"] for row in rows]
     for arithmetic, precision in (

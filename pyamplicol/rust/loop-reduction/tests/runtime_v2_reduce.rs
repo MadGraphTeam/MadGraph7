@@ -2,8 +2,9 @@
 
 //! v2 family reductions: true-rank buckets, cached masters and frames.
 use rusticol_loop_reduction::runtime::{
-    Batch, FamilyGroup, MasterCache, PoleSelection, Poles, PolynomialPlan, ReduceOptions,
-    ReductionFrame, V2Reducer, tensor_monomials,
+    Batch, FamilyGroup, MasterCache, NATIVE_ONSHELL_THRESHOLD, PoleSelection, Poles,
+    PolynomialPlan, ReduceOptions, ReductionFrame, V2Output, V2Reducer, fast_engine_threshold,
+    reaches_fast_threshold, tensor_monomials,
 };
 use symbolica::domains::float::{Float, RealLike};
 
@@ -80,11 +81,16 @@ struct Lanes {
 }
 
 fn lanes(family: &Family, points: &[[f64; 3]], ids: &[u64], arithmetic: &str) -> Lanes {
+    let points: Vec<_> = points.iter().map(|&direction| momenta(direction)).collect();
+    lanes_at(family, &points, ids, arithmetic)
+}
+
+/// [`lanes`] at the given external momenta (legs 0 and 1 incoming).
+fn lanes_at(family: &Family, points: &[[[f64; 4]; 4]], ids: &[u64], arithmetic: &str) -> Lanes {
     let n = family.legs.len();
     let width = tensor_monomials(family.rank).len();
     let (mut shifts, mut matrix, mut coefficients) = (vec![], vec![], vec![]);
-    for (point, &direction) in points.iter().enumerate() {
-        let p = momenta(direction);
+    for (point, &p) in points.iter().enumerate() {
         let mut v = [0.0_f64; 4];
         let mut vectors = vec![];
         for legs in &family.legs {
@@ -626,4 +632,871 @@ fn the_master_cache_forwards_a_selected_providers_capability() {
     );
     assert!(refused.is_err());
     assert!(cache.is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// The fast engine's absolute thresholds (genericity audit 2, G2-M3): lanes
+// whose inputs reach NinjaRS 41a4c00's absolute `1e-9` (the masters'
+// on-shell snap, the engine's `infrared_eps`) take the generic binary64
+// engine; every other lane keeps the fast engine's bits.
+
+/// A keV mass squared in GeV².
+const LIGHT: f64 = 1e-12;
+
+/// Families with light internal lines: collinear-singular triangles of
+/// light lines between massless legs, a box with a light line between
+/// massless legs, and the light bubble of the massless leg 0 (`B0(0; m², m²)
+/// = 1/ε - log(m²/μ²)`, scaleless when massless).
+fn light_families() -> Vec<Family> {
+    vec![
+        Family {
+            legs: vec![vec![0], vec![1], vec![2, 3]],
+            masses: vec![LIGHT; 3],
+            rank: 3,
+        },
+        Family {
+            legs: vec![vec![0], vec![1], vec![2, 3]],
+            masses: vec![LIGHT, 0., LIGHT],
+            rank: 2,
+        },
+        Family {
+            legs: vec![vec![0], vec![1], vec![2], vec![3]],
+            masses: vec![0., 0., 0., LIGHT],
+            rank: 3,
+        },
+        Family {
+            legs: vec![vec![0], vec![1, 2, 3]],
+            masses: vec![LIGHT, LIGHT],
+            rank: 2,
+        },
+    ]
+}
+
+/// A box with a light line beside a massive leg: oneloopmaster's binary64
+/// C0 of its sub-triangles (`m²/p² ~ 1e-17`) is not finite, in the fast and
+/// the generic engine alike; DoubleFloat evaluates it.
+fn binary64_failing_family() -> Family {
+    Family {
+        legs: vec![vec![0], vec![1], vec![2], vec![3]],
+        masses: vec![LIGHT, 0., 0., 0.],
+        rank: 3,
+    }
+}
+
+fn family_lanes(families: &[Family], base: u64, arithmetic: &str) -> Vec<Lanes> {
+    families
+        .iter()
+        .enumerate()
+        .map(|(f, family)| {
+            let ids: Vec<u64> = (0..POINTS.len() as u64)
+                .map(|p| base + 10 * p + f as u64)
+                .collect();
+            lanes(family, &POINTS, &ids, arithmetic)
+        })
+        .collect()
+}
+
+/// `lanes` in units `x` times GeV: every dimensionful input of the exact GeV
+/// lanes scaled once (shifts by `x`; squared masses, scale and invariants by
+/// `x²`; degree-`d` coefficients by `x^-d`), so that an invariant equal to a
+/// mass stays equal to it. The integrals scale as `x^(4 - 2N)`.
+fn in_units(lanes: &Lanes, x: f64) -> Lanes {
+    let rows = lanes.coefficients.rows();
+    let ids = lanes.coefficients.ids().to_vec();
+    let scaled = |batch: &Batch, factor: &dyn Fn(usize) -> f64| {
+        let columns = batch.columns();
+        let values: Vec<[String; 2]> = values(batch)
+            .iter()
+            .enumerate()
+            .map(|(k, [re, im])| {
+                let f = factor(k % columns);
+                [format!("{:e}", re * f), format!("{:e}", im * f)]
+            })
+            .collect();
+        Batch::from_decimal(values, rows, columns, "double", None, Some(ids.clone())).unwrap()
+    };
+    let degrees: Vec<i32> = tensor_monomials(lanes.rank)
+        .iter()
+        .map(|alpha| alpha.iter().sum::<u32>() as i32)
+        .collect();
+    Lanes {
+        n: lanes.n,
+        rank: lanes.rank,
+        shifts: scaled(&lanes.shifts, &|_| x),
+        masses: scaled(&lanes.masses, &|_| x * x),
+        scales: scaled(&lanes.scales, &|_| x * x),
+        matrix: scaled(&lanes.matrix, &|_| x * x),
+        coefficients: scaled(&lanes.coefficients, &|k| x.powi(-degrees[k])),
+    }
+}
+
+fn reduce(reducer: &mut V2Reducer, all: &[Lanes], check: ReductionFrame) -> V2Output {
+    reducer
+        .reduce(
+            &all.iter().map(group).collect::<Vec<_>>(),
+            ReduceOptions {
+                check: Some(check),
+                ..ReduceOptions::default()
+            },
+        )
+        .unwrap()
+}
+
+fn statuses(batches: &[rusticol_loop_reduction::runtime::ReductionBatch]) -> Vec<Vec<String>> {
+    batches
+        .iter()
+        .map(|b| b.statuses().iter().map(|(_, s)| s.clone()).collect())
+        .collect()
+}
+
+#[test]
+fn the_pinned_native_masters_snap_at_the_routing_threshold() {
+    use ninjars::fast::{C64, FastMaster, FastMasters, FastOptions};
+    use ninjars_symbolica::OneLoopNativeMasters;
+    // The routing threshold is the largest absolute constant of the fast path.
+    assert_eq!(NATIVE_ONSHELL_THRESHOLD, 1e-9);
+    assert_eq!(
+        FastOptions::default().infrared_eps,
+        NATIVE_ONSHELL_THRESHOLD
+    );
+    assert_eq!(fast_engine_threshold(), NATIVE_ONSHELL_THRESHOLD);
+    let mut masters = OneLoopNativeMasters::new().unwrap();
+    let mut a0 = |m2: f64| {
+        let (mut out, mut ok) = ([[C64::ZERO; 3]], [false]);
+        masters
+            .evaluate(
+                FastMaster::A0,
+                &[C64::real(m2), C64::real(1e4)],
+                &mut out,
+                &mut ok,
+            )
+            .unwrap();
+        assert!(ok[0]);
+        out[0]
+    };
+    // Below the threshold the provider evaluates the massless tadpole (0),
+    // at and above it the given mass.
+    let zero = a0(0.);
+    assert_eq!(a0(0.999e-9), zero);
+    assert_ne!(a0(1e-9), zero);
+    assert_ne!(a0(LIGHT * 1e6), zero);
+}
+
+#[test]
+fn the_routing_rule_compares_the_given_inputs_exactly() {
+    let c = |re: f64, im: f64| rusticol_loop_reduction::Complex::new(re, im);
+    let t = NATIVE_ONSHELL_THRESHOLD;
+    let s = |entries: [f64; 4]| entries.map(|x| c(x, 0.)).to_vec();
+    let route = |masses: &[f64; 2], matrix: [f64; 4]| {
+        reaches_fast_threshold(2, &masses.map(|m| c(m, 0.)), &s(matrix), t)
+    };
+    // Exact zeros, invariants equal to a mass and generic values never route.
+    assert!(!route(&[0., 0.], [0., 0., 0., 0.]));
+    assert!(!route(&[TOP, 0.], [0., TOP, TOP, 0.]));
+    assert!(!route(&[TOP, 1e-9], [0., 2.5e5, 2.5e5, 0.]));
+    // A light mass, a light invariant, an invariant near a mass.
+    assert!(route(&[LIGHT, 0.], [0., 2.5e5, 2.5e5, 0.]));
+    assert!(route(&[0., 0.], [0., 5e-10, 5e-10, 0.]));
+    assert!(route(&[TOP, 0.], [0., TOP + 1e-11, TOP + 1e-11, 0.]));
+    // The diagonal is not an invariant; a width alone is a squared mass.
+    assert!(!route(&[0., 0.], [5e-10, 0., 0., 5e-10]));
+    assert!(reaches_fast_threshold(
+        2,
+        &[c(0., -5e-10), c(0., 0.)],
+        &s([0., 0., 0., 0.]),
+        t
+    ));
+    // A complex mass is never an invariant's on-shell value.
+    assert!(!reaches_fast_threshold(
+        2,
+        &[c(TOP, -1.), c(0., 0.)],
+        &s([0., TOP + 1e-11, TOP + 1e-11, 0.]),
+        t
+    ));
+}
+
+#[test]
+fn light_internal_masses_take_the_exact_engine_and_agree_with_double_double() {
+    let light = family_lanes(&light_families(), 300, "double");
+    let mut fast = V2Reducer::new("double", None, "fast", true).unwrap();
+    let routed = reduce(&mut fast, &light, ReductionFrame::RESCALED);
+    // Every light lane, in both frames.
+    assert_eq!(
+        fast.take_exact_lanes(),
+        2 * (light.len() * POINTS.len()) as u64
+    );
+    assert_eq!(fast.take_exact_lanes(), 0);
+    let generic = reduce(
+        &mut V2Reducer::new("double", None, "generic", true).unwrap(),
+        &light,
+        ReductionFrame::RESCALED,
+    );
+    let dd_lanes = family_lanes(&light_families(), 300, "double-double");
+    let dd = reduce(
+        &mut V2Reducer::new("double-double", None, "generic", true).unwrap(),
+        &dd_lanes,
+        ReductionFrame::RESCALED,
+    );
+    // The same engine's bits, and DoubleFloat to binary64 accuracy.
+    for index in 0..light.len() {
+        let mine = values(&routed.direct[index].values().unwrap());
+        assert_eq!(mine, values(&generic.direct[index].values().unwrap()));
+        let check = values(&routed.check.as_ref().unwrap()[index].values().unwrap());
+        assert_eq!(
+            check,
+            values(&generic.check.as_ref().unwrap()[index].values().unwrap())
+        );
+        let reference = values(&dd.direct[index].values().unwrap());
+        let error = relative(&mine, &reference, 3);
+        assert!(error < 1e-12, "family {index}: {error:e}");
+    }
+    // What the snap computed: the massless lines' integrals, an O(1) change
+    // where the light lines regulate a mass singularity (all but the box,
+    // whose light line joins the two massive legs).
+    let singular = [true, true, false, true];
+    let massless: Vec<Family> = light_families()
+        .into_iter()
+        .map(|f| Family {
+            masses: f
+                .masses
+                .iter()
+                .map(|&m| if m == LIGHT { 0. } else { m })
+                .collect(),
+            ..f
+        })
+        .collect();
+    let snapped = reduce(
+        &mut fast,
+        &family_lanes(&massless, 300, "double"),
+        ReductionFrame::RESCALED,
+    );
+    assert_eq!(fast.take_exact_lanes(), 0);
+    for index in (0..light.len()).filter(|&index| singular[index]) {
+        let reference = values(&dd.direct[index].values().unwrap());
+        let wrong = values(&snapped.direct[index].values().unwrap());
+        assert!(relative(&wrong, &reference, 3) > 1e-3, "family {index}");
+    }
+}
+
+#[test]
+fn fast_lanes_keep_their_bits_beside_routed_lanes() {
+    let heavy = all_lanes("double");
+    let mut alone = V2Reducer::new("double", None, "fast", true).unwrap();
+    let reference = reduce(&mut alone, &heavy, ReductionFrame::REVERSED);
+    assert_eq!(alone.take_exact_lanes(), 0);
+    let mut mixed_lanes = all_lanes("double");
+    mixed_lanes.extend(family_lanes(&light_families(), 300, "double"));
+    let mut mixed = V2Reducer::new("double", None, "fast", true).unwrap();
+    let output = reduce(&mut mixed, &mixed_lanes, ReductionFrame::REVERSED);
+    assert!(mixed.take_exact_lanes() > 0);
+    for index in 0..heavy.len() {
+        assert_eq!(
+            values(&output.direct[index].values().unwrap()),
+            values(&reference.direct[index].values().unwrap())
+        );
+        assert_eq!(
+            values(&output.check.as_ref().unwrap()[index].values().unwrap()),
+            values(&reference.check.as_ref().unwrap()[index].values().unwrap())
+        );
+        assert_eq!(
+            output.direct[index].statuses(),
+            reference.direct[index].statuses()
+        );
+    }
+}
+
+/// Unit scaling: the same lanes in TeV, GeV and MeV (every dimensionful input
+/// scaled by `x = 1e-3, 1, 1e3`) give the same statuses and integrals scaled
+/// by `x^(4 - 2N)`, in both check frames. The light lanes route in TeV and
+/// GeV (`m² = 1e-18, 1e-12`) and take the fast engine in MeV (`1e-6`): the
+/// absolute thresholds no longer change the integrals.
+#[test]
+fn integrals_and_statuses_scale_with_the_units() {
+    let mut gev = all_lanes("double");
+    gev.extend(family_lanes(&massless_families(), 100, "double"));
+    gev.extend(family_lanes(&light_families(), 300, "double"));
+    let light = (gev.len() - light_families().len()..gev.len()).collect::<Vec<_>>();
+    for frame in [ReductionFrame::REVERSED, ReductionFrame::RESCALED] {
+        let mut reducer = V2Reducer::new("double", None, "fast", true).unwrap();
+        let reference = reduce(&mut reducer, &gev, frame);
+        let routed_in_gev = reducer.take_exact_lanes();
+        assert_eq!(routed_in_gev, 2 * (light.len() * POINTS.len()) as u64);
+        for (x, routed) in [(1e-3, routed_in_gev), (1e3, 0)] {
+            let units: Vec<Lanes> = gev.iter().map(|l| in_units(l, x)).collect();
+            let output = reduce(&mut reducer, &units, frame);
+            assert_eq!(reducer.take_exact_lanes(), routed, "x = {x}");
+            assert_eq!(statuses(&output.direct), statuses(&reference.direct));
+            for (index, lanes) in gev.iter().enumerate() {
+                let back = x.powi(2 * lanes.n as i32 - 4);
+                for (got, want) in [
+                    (&output.direct[index], &reference.direct[index]),
+                    (
+                        &output.check.as_ref().unwrap()[index],
+                        &reference.check.as_ref().unwrap()[index],
+                    ),
+                ] {
+                    let got: Vec<[f64; 2]> = values(&got.values().unwrap())
+                        .iter()
+                        .map(|[re, im]| [re * back, im * back])
+                        .collect();
+                    let error = relative(&got, &values(&want.values().unwrap()), 3);
+                    assert!(
+                        error < 1e-11,
+                        "x = {x}, {frame:?}, group {index}: {error:e}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// Unit scaling with exactly scaled inputs: in units of a power of two
+/// (`x = 2^-10`, `2^10`) every dimensionful input scales without rounding,
+/// so the routing and every status are compared on exactly the GeV inputs
+/// times `x` (the decisions scale exactly), and the integrals times
+/// `x^(2N - 4)` measure what the reduction itself does with the units. They
+/// are not bitwise: the binary64 reduction commutes with the scaling only up
+/// to rounding (measured on the pinned NinjaRS and oneloopmaster: 43 of the 96
+/// comparisons bitwise, at most 2.3e-13 relative, on the massless rank-4
+/// box), and no absolute constant is crossed (that would be an O(1) change,
+/// as the massless integrals of the light lanes are). `2^-10` keeps the light lanes
+/// routed (`m² ≈ 1e-18`); `2^10` takes them off the threshold (`m² ≈ 1e-6`)
+/// onto the fast engine, which then agrees with the generic one.
+#[test]
+fn power_of_two_units_scale_the_decisions_exactly() {
+    let mut gev = all_lanes("double");
+    gev.extend(family_lanes(&massless_families(), 100, "double"));
+    gev.extend(family_lanes(&light_families(), 300, "double"));
+    let first_light = gev.len() - light_families().len();
+    for frame in [ReductionFrame::REVERSED, ReductionFrame::RESCALED] {
+        let mut reducer = V2Reducer::new("double", None, "fast", true).unwrap();
+        let reference = reduce(&mut reducer, &gev, frame);
+        let routed_in_gev = reducer.take_exact_lanes();
+        assert_eq!(
+            routed_in_gev,
+            2 * ((gev.len() - first_light) * POINTS.len()) as u64
+        );
+        for (exponent, routed) in [(-10, routed_in_gev), (10, 0)] {
+            let x = 2f64.powi(exponent);
+            let units: Vec<Lanes> = gev.iter().map(|l| in_units(l, x)).collect();
+            let output = reduce(&mut reducer, &units, frame);
+            assert_eq!(reducer.take_exact_lanes(), routed, "x = 2^{exponent}");
+            assert_eq!(statuses(&output.direct), statuses(&reference.direct));
+            assert_eq!(
+                statuses(output.check.as_ref().unwrap()),
+                statuses(reference.check.as_ref().unwrap())
+            );
+            for (index, lanes) in gev.iter().enumerate() {
+                let back = x.powi(2 * lanes.n as i32 - 4);
+                for (got, want) in [
+                    (&output.direct[index], &reference.direct[index]),
+                    (
+                        &output.check.as_ref().unwrap()[index],
+                        &reference.check.as_ref().unwrap()[index],
+                    ),
+                ] {
+                    let got: Vec<[f64; 2]> = values(&got.values().unwrap())
+                        .iter()
+                        .map(|[re, im]| [re * back, im * back])
+                        .collect();
+                    let error = relative(&got, &values(&want.values().unwrap()), 3);
+                    assert!(
+                        error < 1e-12,
+                        "x = 2^{exponent}, {frame:?}, group {index}: {error:e}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn a_routed_lane_fails_as_the_generic_engine_does() {
+    let family = binary64_failing_family();
+    let statuses_of = |engine: &str, arithmetic: &str| {
+        let lanes = lanes(&family, &POINTS, &[0, 1, 2], arithmetic);
+        let mut reducer = V2Reducer::new(arithmetic, None, engine, true).unwrap();
+        let out = reduce(&mut reducer, &[lanes], ReductionFrame::RESCALED);
+        (statuses(&out.direct), statuses(out.check.as_ref().unwrap()))
+    };
+    let routed = statuses_of("fast", "double");
+    assert_eq!(routed, statuses_of("generic", "double"));
+    assert!(
+        routed.0[0].iter().all(|s| s.contains("NonFiniteResult")),
+        "{routed:?}"
+    );
+    let extended = statuses_of("generic", "double-double");
+    assert!(
+        extended.0[0]
+            .iter()
+            .chain(&extended.1[0])
+            .all(|s| s == "success")
+    );
+}
+
+/// The tensor numerator `Σ_k c_k q^α_k` of rank `rank` and its parameters.
+fn tensor_numerator(rank: usize) -> ([String; 3], Vec<String>) {
+    let monomials = tensor_monomials(rank);
+    let names: Vec<_> = (0..monomials.len()).map(|k| format!("c{k}")).collect();
+    let numerator = monomials
+        .iter()
+        .zip(&names)
+        .map(|(alpha, name)| {
+            let mut term = name.clone();
+            for (variable, power) in ["q0", "q1", "q2", "q3"].iter().zip(alpha) {
+                term += &format!("*{variable}^{power}");
+            }
+            term
+        })
+        .collect::<Vec<_>>()
+        .join("+");
+    ([numerator, "0".into(), "0".into()], names)
+}
+
+fn legacy_plan(lanes: &Lanes, engine: &str) -> PolynomialPlan {
+    let (numerator, names) = tensor_numerator(lanes.rank);
+    PolynomialPlan::new(lanes.n, numerator, names, "double", None, engine).unwrap()
+}
+
+fn legacy_reduce(
+    plan: &mut PolynomialPlan,
+    lanes: &Lanes,
+    matrix: bool,
+) -> rusticol_loop_reduction::runtime::ReductionBatch {
+    plan.evaluate_batch(
+        &lanes.shifts,
+        &lanes.masses,
+        &lanes.scales,
+        &lanes.coefficients,
+        matrix.then_some(&lanes.matrix),
+    )
+    .unwrap()
+}
+
+/// Two lane sets of one `(n, rank)` as one call, `a`'s lanes first.
+fn concatenated(a: &Lanes, b: &Lanes) -> Lanes {
+    assert_eq!((a.n, a.rank), (b.n, b.rank));
+    let join = |x: &Batch, y: &Batch| {
+        let mut ids = x.ids().to_vec();
+        ids.extend_from_slice(y.ids());
+        let mut entries = complex_decimal(&values(x));
+        entries.extend(complex_decimal(&values(y)));
+        Batch::from_decimal(
+            entries,
+            x.rows() + y.rows(),
+            x.columns(),
+            "double",
+            None,
+            Some(ids),
+        )
+        .unwrap()
+    };
+    Lanes {
+        n: a.n,
+        rank: a.rank,
+        shifts: join(&a.shifts, &b.shifts),
+        masses: join(&a.masses, &b.masses),
+        scales: join(&a.scales, &b.scales),
+        matrix: join(&a.matrix, &b.matrix),
+        coefficients: join(&a.coefficients, &b.coefficients),
+    }
+}
+
+/// The legacy engine's binary64 fast plans (`PolynomialPlan` `fast` and
+/// `fast-tensor`, kept as this crate's test oracle after the legacy engine's
+/// removal) route by the same rule: light
+/// lanes give the legacy generic binary64 plan's bits with the invariant
+/// matrix, not the massless lines' integrals the snap computed, and are
+/// refused without it (`light_mass_needs_invariants`; the next test); the
+/// lanes of an ordinary family keep the fast plan's bits beside them in one
+/// call, and a call without a light lane routes nothing.
+#[test]
+fn the_legacy_fast_plans_route_light_lanes_to_their_generic_plan() {
+    use rusticol_loop_reduction::runtime::light_mass_needs_invariants;
+    // The refusal names the threshold the rule compares with.
+    let refused = light_mass_needs_invariants(fast_engine_threshold());
+    assert!(
+        refused.contains("absolute threshold 1e-9 needs"),
+        "{refused}"
+    );
+    let light = family_lanes(&light_families(), 300, "double");
+    let massless: Vec<Family> = light_families()
+        .into_iter()
+        .map(|f| Family {
+            masses: f
+                .masses
+                .iter()
+                .map(|&m| if m == LIGHT { 0. } else { m })
+                .collect(),
+            ..f
+        })
+        .collect();
+    let massless = family_lanes(&massless, 300, "double");
+    let singular = [true, true, false, true];
+    let dd = family_lanes(&light_families(), 300, "double-double");
+    let mut reference = V2Reducer::new("double-double", None, "generic", true).unwrap();
+    let dd = reduce(&mut reference, &dd, ReductionFrame::REVERSED);
+    for (index, lanes) in light.iter().enumerate() {
+        let want = values(&dd.direct[index].values().unwrap());
+        let generic = values(
+            &legacy_reduce(&mut legacy_plan(lanes, "generic"), lanes, true)
+                .values()
+                .unwrap(),
+        );
+        for matrix in [true, false] {
+            for engine in ["fast", "fast-tensor"] {
+                let mut plan = legacy_plan(lanes, engine);
+                let reduced = legacy_reduce(&mut plan, lanes, matrix);
+                if matrix {
+                    let got = values(&reduced.values().unwrap());
+                    assert_eq!(plan.take_exact_lanes(), POINTS.len() as u64, "{engine}");
+                    assert_eq!(got, generic, "family {index}, {engine}");
+                    let error = relative(&got, &want, 3);
+                    assert!(error < 1e-12, "family {index}, {engine}: {error:e}");
+                } else {
+                    // Without the invariants a light lane is refused.
+                    assert_eq!(plan.take_exact_lanes(), 0, "{engine}");
+                    assert!(
+                        reduced
+                            .statuses()
+                            .iter()
+                            .all(|(_, status)| *status == refused),
+                        "family {index}, {engine}"
+                    );
+                    assert_eq!(reduced.successful_values().rows(), 0);
+                }
+                if singular[index] {
+                    let snapped = values(
+                        &legacy_reduce(&mut plan, &massless[index], matrix)
+                            .values()
+                            .unwrap(),
+                    );
+                    assert_eq!(plan.take_exact_lanes(), 0);
+                    assert!(relative(&snapped, &want, 3) > 1e-3, "family {index}");
+                }
+            }
+        }
+    }
+    // An ordinary box beside the light box in one call.
+    let heavy = &all_lanes("double")[0];
+    let mixed = concatenated(heavy, &light[2]);
+    for engine in ["fast", "fast-tensor"] {
+        let mut alone = legacy_plan(heavy, engine);
+        let reference = values(&legacy_reduce(&mut alone, heavy, true).values().unwrap());
+        assert_eq!(alone.take_exact_lanes(), 0);
+        let mut plan = legacy_plan(&mixed, engine);
+        let got = legacy_reduce(&mut plan, &mixed, true);
+        assert_eq!(plan.take_exact_lanes(), POINTS.len() as u64);
+        let ids: Vec<u64> = got.statuses().iter().map(|(id, _)| *id).collect();
+        assert_eq!(ids, mixed.coefficients.ids());
+        let got = values(&got.values().unwrap());
+        assert_eq!(got[..reference.len()], reference[..], "{engine}");
+        let light_generic = values(
+            &legacy_reduce(&mut legacy_plan(&light[2], "generic"), &light[2], true)
+                .values()
+                .unwrap(),
+        );
+        assert_eq!(got[reference.len()..], light_generic[..], "{engine}");
+    }
+}
+
+/// The legacy fast plans without an invariant matrix (`evaluate_batch` with
+/// `s_matrix = None`, `evaluate_decimal`) form the invariants from the
+/// binary64 shifts: a massless leg at a generic angle gives a rounding
+/// `p²` in `(0, 1e-9)` (here `-7.3e-11`, `E = 500`), which the fast path's
+/// snap sets to zero. Such calls route on the squared masses alone: the
+/// massless box keeps the fast plan (no lane routed) and equals the generic
+/// plan given the exact invariants (the massless legs on their shells); the
+/// generic plan given the rounded `p²` instead computes a slightly off-shell
+/// box (it fails or is O(1) off). A light internal line is refused
+/// (`light_mass_needs_invariants`): rounded invariants cannot resolve it;
+/// given the exact invariants it is routed and gives the generic plan's
+/// outcome (here its binary64 C0's failure), and beside it in one call the
+/// massless lane keeps its bits.
+#[test]
+fn the_legacy_fast_plans_without_invariants_route_on_the_squared_masses() {
+    use rusticol_loop_reduction::runtime::light_mass_needs_invariants;
+    let energy = 500_f64;
+    let (theta, phi) = (1.1_f64, 0.4_f64);
+    let p3 = [
+        energy,
+        energy * theta.sin() * phi.cos(),
+        energy * theta.sin() * phi.sin(),
+        energy * theta.cos(),
+    ];
+    let point = [
+        [energy, 0., 0., energy],
+        [energy, 0., 0., -energy],
+        p3,
+        [energy, -p3[1], -p3[2], -p3[3]],
+    ];
+    let lanes_of = |masses: Vec<f64>, id: u64| {
+        let family = Family {
+            legs: vec![vec![0], vec![1], vec![2], vec![3]],
+            masses,
+            rank: 3,
+        };
+        let mut lanes = lanes_at(&family, &[point], &[id], "double");
+        let n = family.legs.len();
+        let rounded = values(&lanes.matrix);
+        // The precondition: an invariant formed from the shifts is rounding
+        // inside the thresholds.
+        assert!(rounded.iter().any(|[re, _]| *re != 0. && re.abs() < 1e-9));
+        let mut exact = rounded.clone();
+        for i in 0..n {
+            for j in [(i + 1) % n, (i + n - 1) % n] {
+                exact[i * n + j] = [0., 0.];
+            }
+        }
+        let rounded_lanes = Batch::from_decimal(
+            complex_decimal(&rounded),
+            1,
+            n * n,
+            "double",
+            None,
+            Some(vec![id]),
+        )
+        .unwrap();
+        lanes.matrix = Batch::from_decimal(
+            complex_decimal(&exact),
+            1,
+            n * n,
+            "double",
+            None,
+            Some(vec![id]),
+        )
+        .unwrap();
+        (lanes, rounded_lanes)
+    };
+    let (massless, rounded) = lanes_of(vec![0.; 4], 11);
+    let exact_generic = values(
+        &legacy_reduce(&mut legacy_plan(&massless, "generic"), &massless, true)
+            .values()
+            .unwrap(),
+    );
+    // What routing on the formed invariants did (the re-audit of
+    // 2026-10-28): the generic plan at the rounded p² fails or is O(1) off.
+    let off_shell = legacy_plan(&massless, "generic")
+        .evaluate_batch(
+            &massless.shifts,
+            &massless.masses,
+            &massless.scales,
+            &massless.coefficients,
+            Some(&rounded),
+        )
+        .unwrap();
+    eprintln!(
+        "the generic plan at the rounded invariants: {:?}",
+        off_shell.statuses()
+    );
+    if let Ok(off_shell) = off_shell.values() {
+        let off = relative(&values(&off_shell), &exact_generic, 3);
+        eprintln!("{off:e} off");
+        assert!(off > 1e-2, "{off:e}");
+    }
+    for engine in ["fast", "fast-tensor"] {
+        let mut plan = legacy_plan(&massless, engine);
+        let given = values(&legacy_reduce(&mut plan, &massless, true).values().unwrap());
+        let formed = legacy_reduce(&mut plan, &massless, false);
+        assert_eq!(plan.take_exact_lanes(), 0, "{engine}");
+        assert_eq!(formed.statuses(), [(11, "success".to_string())], "{engine}");
+        let formed = values(&formed.values().unwrap());
+        let error = relative(&formed, &exact_generic, 3);
+        assert!(error < 1e-12, "{engine}: {error:e}");
+        assert!(relative(&given, &exact_generic, 3) < 1e-12, "{engine}");
+    }
+    let (light, _) = lanes_of(vec![0., 0., 0., LIGHT], 12);
+    // The generic plan's outcome, a failure of its binary64 C0 here
+    // (`MasterFailed`), which the routed lane reproduces.
+    let generic = legacy_reduce(&mut legacy_plan(&light, "generic"), &light, true);
+    for engine in ["fast", "fast-tensor"] {
+        let mut plan = legacy_plan(&light, engine);
+        let refused = legacy_reduce(&mut plan, &light, false);
+        assert_eq!(plan.take_exact_lanes(), 0, "{engine}");
+        assert_eq!(
+            refused.statuses(),
+            [(12, light_mass_needs_invariants(fast_engine_threshold()))],
+            "{engine}"
+        );
+        assert_eq!(refused.successful_values().rows(), 0);
+        let given = legacy_reduce(&mut plan, &light, true);
+        assert_eq!(plan.take_exact_lanes(), 1, "{engine}");
+        assert_eq!(given.statuses(), generic.statuses(), "{engine}");
+        assert_eq!(
+            values(&given.successful_values()),
+            values(&generic.successful_values()),
+            "{engine}"
+        );
+        // In one call beside the massless lane, which keeps its bits.
+        let both = concatenated(&massless, &light);
+        let mut plan = legacy_plan(&both, engine);
+        let alone = values(
+            &legacy_reduce(&mut legacy_plan(&massless, engine), &massless, false)
+                .values()
+                .unwrap(),
+        );
+        let mixed = legacy_reduce(&mut plan, &both, false);
+        assert_eq!(plan.take_exact_lanes(), 0, "{engine}");
+        assert_eq!(
+            mixed.statuses(),
+            [
+                (11, "success".to_string()),
+                (12, light_mass_needs_invariants(fast_engine_threshold()))
+            ],
+            "{engine}"
+        );
+        assert_eq!(values(&mixed.successful_values()), alone, "{engine}");
+    }
+}
+
+/// Coefficients of `Π_j (q·a_j + b_j)` (Minkowski product, rank = the number
+/// of factors) in the tensor layout of `tensor_monomials(rank)`.
+fn product_numerator(factors: &[([f64; 4], f64)]) -> Vec<[f64; 2]> {
+    use std::collections::HashMap;
+    let mut polynomial: HashMap<[u32; 4], f64> = HashMap::from([([0; 4], 1.)]);
+    for (a, b) in factors {
+        let mut next: HashMap<[u32; 4], f64> = HashMap::new();
+        for (alpha, c) in &polynomial {
+            *next.entry(*alpha).or_default() += c * b;
+            for mu in 0..4 {
+                let mut beta = *alpha;
+                beta[mu] += 1;
+                let metric = if mu == 0 { 1. } else { -1. };
+                *next.entry(beta).or_default() += c * metric * a[mu];
+            }
+        }
+        polynomial = next;
+    }
+    tensor_monomials(factors.len())
+        .iter()
+        .map(|alpha| [polynomial.get(alpha).copied().unwrap_or(0.), 0.])
+        .collect()
+}
+
+/// A rotation of the three-vector part (about x by 0.3, then about y by 0.7).
+fn rotated(p: &[f64; 4]) -> [f64; 4] {
+    let (c, s) = (0.3_f64.cos(), 0.3_f64.sin());
+    let (y, z) = (c * p[2] - s * p[3], s * p[2] + c * p[3]);
+    let (c, s) = (0.7_f64.cos(), 0.7_f64.sin());
+    let (x, z) = (c * p[1] + s * z, -s * p[1] + c * z);
+    [p[0], x, y, z]
+}
+
+/// Ninja's light-like spinors (`ninjars fast/geometry.rs:62-104` at 41a4c00;
+/// DESIGN §11.2 'Other thresholds on the binary64 path'). The fast engine
+/// builds each cut basis' complex vectors from the spinors of two light-like
+/// vectors: within `infrared_eps` (absolute, `1e-9` in the model's units) of
+/// `p⁰ = ±p³` it takes the beam axis' spinor and drops the transverse
+/// momentum, and outside it divides by `√(p⁰ + p³)`, formed by cancellation
+/// near the `-z` axis (relative error ≈ `2.2e-16/θ²` at an angle `θ` from
+/// it). Neither is routed: no mass or invariant is near a threshold. A
+/// massless rank-3 box with beams along `x` and the outgoing legs at `θ` from
+/// the `z` axis (`s = 4E²`, `t ≈ u ≈ -2E²`, `E = 500`; the branch for
+/// `θ < 2e-6`) against the same lanes rotated (momenta and the numerator's
+/// four-vectors): the generic engine agrees with DoubleFloat in both frames,
+/// the fast engine only in the rotated one, and its error is silent (the lane
+/// succeeds) and as large as the two frames' difference, so a rotation check
+/// sees it; the reduction-direction check differs from the direct frame by
+/// more than half the error. Pins the pinned NinjaRS's behaviour (the upstream note
+/// `workspace/reports/engine-v2/upstream/ninjars-lightlike-spinor/`).
+#[test]
+fn a_rotation_check_sees_ninjas_lightlike_spinor_errors() {
+    let energy = 500_f64;
+    let factors = [
+        ([1.3, 0.2, -0.7, 0.4], 2.0e2),
+        ([0.5, -1.1, 0.3, 0.9], -1.5e2),
+        ([0.8, 0.6, 1.2, -0.3], 0.7e2),
+    ];
+    let family = Family {
+        legs: vec![vec![0], vec![1], vec![2], vec![3]],
+        masses: vec![0.; 4],
+        rank: 3,
+    };
+    // (θ, the fast engine's least error): the cancellation (1e-3, 1e-5) and
+    // the branch (1e-6, 1e-8; measured 7.1e-10, 6.2e-6, 8.8e-6, 8.8e-8).
+    for (angle, least) in [(1e-3, 1e-10), (1e-5, 1e-6), (1e-6, 1e-6), (1e-8, 1e-8)] {
+        let point = [
+            [energy, energy, 0., 0.],
+            [energy, -energy, 0., 0.],
+            [
+                energy,
+                energy * f64::sin(angle),
+                0.,
+                energy * f64::cos(angle),
+            ],
+            [
+                energy,
+                -energy * f64::sin(angle),
+                0.,
+                -energy * f64::cos(angle),
+            ],
+        ];
+        let frame = |rotate: bool, arithmetic: &str| {
+            let r = |p: &[f64; 4]| if rotate { rotated(p) } else { *p };
+            let momenta = point.map(|p| r(&p));
+            let mut lanes = lanes_at(&family, &[momenta], &[7], arithmetic);
+            // The massless legs on their shells exactly, as the executor
+            // binds them (DESIGN §11.1): no invariant near a threshold.
+            let n = family.legs.len();
+            let mut matrix = values(&lanes.matrix);
+            for i in 0..n {
+                for j in [(i + 1) % n, (i + n - 1) % n] {
+                    matrix[i * n + j] = [0., 0.];
+                }
+            }
+            let batch = |entries: &[[f64; 2]]| {
+                Batch::from_decimal(
+                    complex_decimal(entries),
+                    1,
+                    entries.len(),
+                    arithmetic,
+                    None,
+                    Some(vec![7]),
+                )
+                .unwrap()
+            };
+            lanes.matrix = batch(&matrix);
+            lanes.coefficients = batch(&product_numerator(&factors.map(|(a, b)| (r(&a), b))));
+            lanes
+        };
+        let run = |engine: &str, arithmetic: &str, rotate: bool| {
+            let lanes = frame(rotate, arithmetic);
+            let mut reducer = V2Reducer::new(arithmetic, None, engine, true).unwrap();
+            let out = reduce(&mut reducer, &[lanes], ReductionFrame::REVERSED);
+            assert_eq!(reducer.take_exact_lanes(), 0);
+            assert_eq!(
+                statuses(&out.direct),
+                [["success"]],
+                "{engine} {arithmetic}"
+            );
+            (
+                values(&out.direct[0].values().unwrap()),
+                values(&out.check.as_ref().unwrap()[0].values().unwrap()),
+            )
+        };
+        let (reference, _) = run("generic", "double-double", false);
+        let error = |x: &[[f64; 2]]| relative(x, &reference, 3);
+        for rotate in [false, true] {
+            let (generic, _) = run("generic", "double", rotate);
+            assert!(
+                error(&generic) < 1e-13,
+                "θ = {angle:e}: {:e}",
+                error(&generic)
+            );
+        }
+        let (fast, reversed) = run("fast", "double", false);
+        let (fast_rotated, _) = run("fast", "double", true);
+        let (wrong, seen) = (error(&fast), relative(&fast, &fast_rotated, 3));
+        assert!(error(&fast_rotated) < 1e-13, "θ = {angle:e}");
+        assert!(wrong > least, "θ = {angle:e}: {wrong:e}");
+        assert!(seen > 0.5 * wrong && seen < 2. * wrong, "θ = {angle:e}");
+        // The reduction-direction check sees it too (measured 1.29 to 2.26
+        // times the error).
+        let direction = relative(&fast, &reversed, 3);
+        assert!(direction > 0.5 * wrong, "θ = {angle:e}: {direction:e}");
+        eprintln!(
+            "θ = {angle:e}: fast {wrong:e}, rotation check {seen:e}, \
+             reduction-direction check {direction:e}"
+        );
+    }
 }

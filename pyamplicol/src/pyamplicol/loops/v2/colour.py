@@ -49,8 +49,14 @@ Conventions a consumer relies on:
   contracts them with the native S_m FFT in binary64, the rest directly.
 * **N_c grades.** Blocks with U(1)-subtraction pieces enter with their grade
   (``BlockColourFlow.nc_grade``) and the Born amplitude A0[b] is split into
-  grades (``SeedTable.seeds``), so seeds are exact in N_c; a process whose
-  blocks mix grades has only full colour (design §3.2 item 4).
+  grades (``SeedTable.seeds``), so seeds are exact in N_c (design §3.2 item
+  4). Every block of a leading- or next-to-leading-colour request has one
+  grade: trees of one word with different grades (identical-flavour lines)
+  are separate blocks (``generation.dag_grades``, ``TreeBlocks.graded``),
+  told apart by ``PositionColour.grades``. Full-colour blocks are named by
+  their words alone, as every power is kept at N_c = 3. A table over blocks
+  that mix grades (``formal_nc`` false; only from a DAG compiled without
+  that pass) has only full colour.
 * **Signs.** kappa uses the plain colour-flow strings of the blocks.
   ``Block.wick_sign``, the skeleton's fermion sign epsilon_s, its automorphism
   weight and its i-factors belong to the leaf weight (design §3.3), never to K.
@@ -551,13 +557,45 @@ class PositionColour:
     ``legs`` are the 1-based UFO legs of the vertex rule taken by the loop
     line entering and leaving the position and by each attached block, in the
     order of ``Position.blocks``; the kinematic segment uses the same legs.
-    ``words`` holds the block word of each attached block current.
+    ``words`` holds the block word of each attached block current. Over
+    graded blocks (``TreeBlocks.graded``: leading and next-to-leading colour)
+    ``grades`` holds its N_c grade (``BlockColourFlow.nc_grade``):
+    identical-flavour lines reach one word with several grades, as separate
+    blocks (``generation.dag_grades``), so a word and its grade name the
+    block. Over full-colour blocks a word alone names its blocks (every power
+    is kept at N_c = 3) and ``grades`` is empty.
     """
 
     rule: str
     colour_index: int
     legs: tuple[int, ...]
     words: tuple[tuple[int, ...], ...]
+    grades: tuple[int, ...] = ()
+
+    @property
+    def block_names(self) -> tuple[BlockName, ...]:
+        """The name of each attached block among the blocks of its block
+        current (``block_name``; ``SeedColour.attached_blocks``, the block
+        rows of ``reference_executor.BlockRows``): its word, or (word, N_c
+        grade) over graded blocks."""
+
+        if not self.grades:
+            return self.words
+        return tuple(zip(self.words, self.grades, strict=True))
+
+
+# A block's name among the blocks of its block current: its word, or (word,
+# N_c grade) over graded blocks (``block_name``).
+BlockName = tuple[int, ...] | tuple[tuple[int, ...], int | None]
+
+
+def block_name(blocks: TreeBlocks, block: Block) -> BlockName:
+    """The name with which a colour state refers to ``block`` of ``blocks``
+    (``PositionColour.block_names``): its word over full-colour blocks, (word,
+    N_c grade) over graded blocks (``TreeBlocks.graded``)."""
+
+    word = block.key.word
+    return (word, block.colour_flow.nc_grade) if blocks.graded else word
 
 
 def block_colour_network(
@@ -572,6 +610,15 @@ def block_colour_network(
     closes its open ends with (tau^X)^in_out. ``open_label`` names the field's
     colour index (X, or the open fundamental end). A block of N_c grade g
     (U(1)-subtraction pieces, whose rows carry 3^g) contributes N_c^g 3^(-g).
+
+    A block whose trees mix grades (``nc_grade`` ``None``: only from a DAG
+    compiled without the grade split, i.e. full colour) takes g = 0. That is
+    exact where such a block can be evaluated: at N_c = 3, N_c^g 3^(-g) = 1
+    for every g, and full colour keeps every power at N_c = 3. This network
+    is built once for every accuracy of a seed table, so the accuracy is not
+    known here; a projection of such a block is refused where it is
+    (``SeedTable.seeds``; at generation ``refusals.require_nc_exact``, at
+    export ``refusals.require_formal_nc_tables``).
     """
 
     incoming = open_label if field_representation == -3 else (open_label, "in")
@@ -598,6 +645,14 @@ def block_colour_network(
 
 
 _UFO_SLOT = re.compile(r"ufo_c_(\d+)$")
+
+
+def _graded_name_order(name: tuple[tuple[int, ...], int]) -> tuple:
+    """Graded block names in state order: words in order, then the grades of
+    one word decreasing (0 first)."""
+
+    word, grade = name
+    return (word, -grade)
 
 
 def _vertex_label(name: str) -> Label:
@@ -654,7 +709,12 @@ class SeedColour:
                 )
                 for p in network
             )
-        self._words: dict[tuple[int, str, Orders], dict[tuple[int, ...], Block]] = {}
+        # (mask, field, orders) -> block name (``block_name``) -> block. The
+        # blocks of one name differ only by chirality or by the flavour flow
+        # of their trees (one field current the tree engine splits; their
+        # rows add, ``assemble._BlockRows``), which colour ignores: their
+        # colour flows must agree up to the sign their rows carry.
+        self._words: dict[tuple[int, str, Orders], dict[BlockName, Block]] = {}
         for block in blocks.blocks:
             key = block.key
             if key.auxiliary_kind is not None:
@@ -664,10 +724,26 @@ class SeedColour:
                     f"loop seeds of block {key.word} with closed colour traces "
                     "(a colour-singlet vertex of two adjoint currents)"
                 )
+            if blocks.graded and block.colour_flow.nc_grade is None:
+                # The grade split leaves every block one grade; a graded
+                # table must never name a block by a mixed one.
+                raise ValueError(
+                    f"block {key.word} of a graded loop request mixes N_c "
+                    "grades (generation.dag_grades left it mixed)"
+                )
             field_name = self._fields.incoming(key.particle_id)["name"]
-            self._words.setdefault(
+            first = self._words.setdefault(
                 (key.external_mask, field_name, key.coupling_orders), {}
-            ).setdefault(key.word, block)
+            ).setdefault(block_name(blocks, block), block)
+            if first is not block and replace(first.colour_flow, sign=1) != replace(
+                block.colour_flow, sign=1
+            ):
+                raise ValueError(
+                    f"blocks {first.id} and {block.id} of word {key.word} and "
+                    "field current differ in colour flow"
+                )
+        # The block names of each block current in state order, once.
+        self._ordered: dict[tuple[int, str, Orders], tuple[BlockName, ...]] = {}
 
     # -- ColourModel ---------------------------------------------------------
 
@@ -675,18 +751,42 @@ class SeedColour:
         vertex = position.vertex
         indices = self._indices.get((vertex.rule, add_orders(vertex.orders)))
         if not indices:
-            raise ValueError(f"no colour structure of {vertex.rule} at {vertex.orders}")
+            # The loop catalogue holds a vertex the tree model dropped (one
+            # whose couplings vanish at the restriction is no loop vertex,
+            # ``ct_sites.vanishing_loop_vertices``): refused, listed.
+            from .refusals import LoopRequestUnsupported
+
+            particles = " ".join(self._rules[vertex.rule]["particles"])
+            raise LoopRequestUnsupported(
+                "loop-vertex-outside-tree-model",
+                f"{self.blocks.process.process!r}: the loop vertex {vertex.rule} "
+                f"({particles}) at the coupling orders {dict(vertex.orders)} "
+                "has no term in the request's tree model, and its couplings are "
+                "not shown to vanish at the model's restriction",
+            )
         legs = self._canonical_legs(
             vertex.rule,
             vertex.loop_in,
             self._fields.by_name[vertex.loop_out]["antiname"],
             tuple(block.field for block in position.blocks),
         )
-        options = [tuple(sorted(self._block_words(block))) for block in position.blocks]
+        options = [self._ordered_names(block) for block in position.blocks]
+        if not self.blocks.graded:
+            return tuple(
+                PositionColour(vertex.rule, index, legs, words)
+                for index in sorted(indices)
+                for words in product(*options)
+            )
         return tuple(
-            PositionColour(vertex.rule, index, legs, words)
+            PositionColour(
+                vertex.rule,
+                index,
+                legs,
+                tuple(word for word, _grade in choice),
+                tuple(grade for _word, grade in choice),
+            )
             for index in sorted(indices)
-            for words in product(*options)
+            for choice in product(*options)
         )
 
     def reflected(self, state: PositionColour) -> PositionColour:
@@ -698,7 +798,9 @@ class SeedColour:
             particles[in_leg - 1],
             tuple(particles[leg - 1] for leg in attached),
         )
-        return PositionColour(state.rule, state.colour_index, legs, state.words)
+        return PositionColour(
+            state.rule, state.colour_index, legs, state.words, state.grades
+        )
 
     # -- seeds ---------------------------------------------------------------
 
@@ -716,7 +818,7 @@ class SeedColour:
         for term in content.terms:
             blocks = tuple(
                 self._words[(current.mask, current.field, current.orders)][word]
-                for current, word in zip(term.blocks, state.words, strict=True)
+                for current, word in zip(term.blocks, state.block_names, strict=True)
             )
             if found is None:
                 found = blocks
@@ -790,11 +892,29 @@ class SeedColour:
 
     # -- helpers -------------------------------------------------------------
 
-    def _block_words(self, block) -> tuple[tuple[int, ...], ...]:
+    def _block_words(self, block) -> tuple[BlockName, ...]:
+        """The names (``block_name``) of a block current's tree blocks."""
+
         words = self._words.get((block.mask, block.field, block.orders))
         if not words:
             raise ValueError(f"no tree block for {block}")
         return tuple(words)
+
+    def _ordered_names(self, block) -> tuple[BlockName, ...]:
+        """``_block_words`` in state order (words in order; over graded
+        blocks the grades of one word decreasing), cached per block
+        current."""
+
+        key = (block.mask, block.field, block.orders)
+        found = self._ordered.get(key)
+        if found is None:
+            names = self._block_words(block)
+            found = self._ordered[key] = tuple(
+                sorted(names, key=_graded_name_order)
+                if self.blocks.graded
+                else sorted(names)
+            )
+        return found
 
     def _canonical_legs(
         self, rule: str, loop_in: str, out_particle: str, attached: tuple[str, ...]
@@ -817,13 +937,13 @@ class SeedColour:
     @cached_property
     def formal_nc(self) -> bool:
         """Whether every block is exact in N_c: its numeric U(1)-subtraction
-        pieces have one N_c grade (``BlockColourFlow.nc_grade``)."""
+        pieces have one N_c grade (``BlockColourFlow.nc_grade``); the
+        criterion of the LC/NLC generation refusal
+        (``refusals.mixed_grade_blocks``)."""
 
-        return all(
-            block.colour_flow.nc_grade is not None
-            for block in self.blocks.blocks
-            if block.key.auxiliary_kind is None
-        )
+        from .refusals import mixed_grade_blocks
+
+        return not mixed_grade_blocks(self.blocks)
 
 
 def canonical_seed(seed: ConnectedColorTensor) -> ConnectedColorTensor:
@@ -944,10 +1064,19 @@ class Primitive:
         return _reduced_primitive(self, legs)
 
 
+#: Quark-ring reductions made natively by the seed stage
+#: (``native_seeds._prime_reduction``), taken by ``_reduced_primitive`` in
+#: place of ``reduce_network`` so its cache holds them.
+_NATIVE_REDUCED: dict[tuple[Primitive, tuple[ColorLeg, ...]], ConnectedColorTensor] = {}
+
+
 @lru_cache(maxsize=1 << 14)
 def _reduced_primitive(
     primitive: Primitive, legs: tuple[ColorLeg, ...]
 ) -> ConnectedColorTensor:
+    native = _NATIVE_REDUCED.pop((primitive, legs), None)
+    if native is not None:
+        return native
     external = {leg.label: leg.label for leg in legs}
     return reduce_network(primitive.network(), legs, external)
 
@@ -1835,7 +1964,8 @@ class SeedTable:
     of the skeletons using class c and ``cells[c][b]`` the Laurent
     coefficients of K. Squared-order sectors are given as their (Born order,
     loop order) pairs. ``formal_nc`` is false when the tree currents carry
-    numeric U(1) pieces of mixed N_c grade; then only full colour is exact.
+    numeric U(1) pieces of mixed N_c grade (a DAG compiled without the grade
+    split of ``generation.dag_grades``); then only full colour is exact.
     ``certificates`` holds the loop-level certificate of every compression
     the classes use.
     """
@@ -1937,8 +2067,9 @@ class SeedTable:
         if accuracy != "full":
             if not self.formal_nc:
                 raise ValueError(
-                    f"{accuracy.upper()} seeds need N_c-exact tree currents; this "
-                    "process has numeric U(1)-subtraction currents (design §3.2)"
+                    f"{accuracy.upper()} seeds need N_c-exact tree currents; these "
+                    "blocks mix U(1)-subtraction grades (a DAG compiled without "
+                    "generation.dag_grades.split_u1_grades; design §3.2)"
                 )
             if degree is None:
                 degree = self.degree(
@@ -1980,6 +2111,15 @@ def _at_three(
 SeedCombination = tuple[tuple[int, ExactColorCoefficient], ...]
 
 
+def _native_seeds() -> Any:
+    """The native seed stage module when it is switched on (WP3.1 B; the
+    one flag ``native_seeds.NATIVE``), else None."""
+
+    from . import native_seeds
+
+    return native_seeds if native_seeds.NATIVE else None
+
+
 def build_seed_table(
     colour: SeedColour,
     skeletons: Iterable[Skeleton],
@@ -1997,8 +2137,13 @@ def build_seed_table(
     outside every certified class keep their generic seed. ``basis``
     defaults to the tree engine's Born basis (``born_basis``); any set of
     literal colour tensors whose amplitudes the caller provides works.
+
+    Runs natively (``native_seeds``, WP3.1 B) unless ``native_seeds.NATIVE``
+    is off: this Python stage is the native stage's oracle.
     """
 
+    if (native := _native_seeds()) is not None:
+        return native.build_seed_table(colour, skeletons, basis, compress=compress)
     if basis is None:
         basis = born_basis(colour.blocks)
     skeletons = list(skeletons)
@@ -2030,8 +2175,13 @@ def extend_seed_table(
 ) -> tuple[SeedTable, dict[Skeleton, SeedCombination]]:
     """``table`` and ``class_of`` with the seeds of further skeletons (e.g.
     new readings of the same skeletons). Existing classes keep their index;
-    compressions are used only where ``table`` holds their certificate."""
+    compressions are used only where ``table`` holds their certificate.
+    Native like ``build_seed_table``."""
 
+    if (native := _native_seeds()) is not None:
+        return native.extend_seed_table(
+            table, class_of, colour, skeletons, compress=compress
+        )
     return _extended(
         table,
         class_of,
@@ -2134,6 +2284,10 @@ def seed_cells(
     The tensors of ``basis`` may be any literal tensors on the Born legs,
     e.g. the operator images of a directed colour history (design §7.7)."""
 
+    from . import native_cells  # WP3.1 C1 switch (rule 1): the "cells" stage
+
+    if "cells" in native_cells.NATIVE_STAGES:
+        return native_cells.switched_seed_cells(basis, classes, primitive_cells)
     if primitive_cells is None:
         primitive_cells = _PrimitiveCells(basis)
     elif primitive_cells.basis is not basis:
@@ -2257,6 +2411,25 @@ class _PrimitiveCells:
         self._relabellings: dict[tuple, tuple[int, ...]] = {}
         self._rings: dict[Primitive, int] = {}
         self._ring_cells: dict[tuple[int, int], Laurent] = {}
+        # The native twin (``native``): the first one built is the root, held
+        # in a list that the rebased copies share, and the others are rebased
+        # from it, so their native caches are shared both ways.
+        self._native_root: list[Any] = []
+        self._native: Any = None
+
+    def native(self) -> Any:
+        """The native twin of these cells (``native_cells.NativeCells``) on
+        this basis, sharing its caches with every rebased copy's twin."""
+
+        if self._native is None:
+            from .native_cells import NativeCells
+
+            if not self._native_root:
+                self._native_root.append(NativeCells(self.basis))
+            root = self._native_root[0]
+            same = root.basis is self.basis
+            self._native = root if same else root.rebased(self.basis)
+        return self._native
 
     def rebased(self, basis: BornBasis) -> _PrimitiveCells:
         """The cells against another basis on the same legs, sharing this
@@ -2269,6 +2442,7 @@ class _PrimitiveCells:
         other = copy(self)
         other.basis = basis
         other._relabellings = {}
+        other._native = None
         return other
 
     def __call__(self, primitive: Primitive) -> tuple[Laurent, ...]:
@@ -3022,6 +3196,7 @@ def certify_leading_colour(
 __all__ = [
     "COMPRESSION_THEOREMS",
     "SYMMETRIC_GROUP_FFT",
+    "BlockName",
     "BornBasis",
     "ColourNetwork",
     "ColourProduct",
@@ -3039,6 +3214,7 @@ __all__ = [
     "SeedTable",
     "VertexDecomposition",
     "block_colour_network",
+    "block_name",
     "born_basis",
     "build_seed_table",
     "canonical_primitive",

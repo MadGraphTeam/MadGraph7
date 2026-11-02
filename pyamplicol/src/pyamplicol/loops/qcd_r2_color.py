@@ -18,7 +18,15 @@ from .._internal.physics.symbols import symbols
 from .exact import require_exact_numbers
 from .model import CovariantKernelCatalogue, KernelBasisEntry, NativeLocalKernel
 from .model_expressions import parse_exact_ufo
-from .model_gluons import _FOUR_R2_LORENTZ
+
+# The four-gluon R2 Lorentz structures of the UFO source (compared with
+# generated ALOHA).
+_FOUR_R2_LORENTZ = (
+    "Metric(1,4)*Metric(2,3)",
+    "Metric(1,3)*Metric(2,4)",
+    "Metric(1,2)*Metric(3,4)",
+    "Metric(1,4)*Metric(2,3)+Metric(1,3)*Metric(2,4)+Metric(1,2)*Metric(3,4)",
+)
 
 
 @dataclass(frozen=True, slots=True)

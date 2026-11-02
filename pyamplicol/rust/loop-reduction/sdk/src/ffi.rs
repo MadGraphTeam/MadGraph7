@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: 0BSD
 //! Additive ABI following the existing C SDK's panic, buffer and error rules.
 use super::*;
-use serde::Deserialize;
 use std::{
     cell::RefCell,
     ffi::{CStr, CString, c_char, c_int},
@@ -134,7 +133,6 @@ pub struct BatchRequest {
     pub scale_count: usize,
     pub resolved: u32,
     pub r2_strategy: *const c_char,
-    pub verification_json: *const c_char,
 }
 
 /// Borrowed source rows, separate from BatchRequest to preserve its ABI.
@@ -167,49 +165,9 @@ pub struct CorrelatedResultShape {
     pub axes: CorrelatedShape,
 }
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Policy {
-    higher: Vec<Level>,
-    relative_tolerance: String,
-    absolute_tolerance: String,
-    verify_successful: bool,
-}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Level {
-    arithmetic: String,
-    precision: Option<u32>,
-}
-impl From<Policy> for VerificationPolicy {
-    fn from(p: Policy) -> Self {
-        Self {
-            higher: p
-                .higher
-                .into_iter()
-                .map(|l| ArithmeticSpec {
-                    arithmetic: l.arithmetic,
-                    precision: l.precision,
-                })
-                .collect(),
-            relative_tolerance: p.relative_tolerance,
-            absolute_tolerance: p.absolute_tolerance,
-            verify_successful: p.verify_successful,
-        }
-    }
-}
-
-unsafe fn read_policy(value: *const c_char) -> Result<Option<VerificationPolicy>> {
-    unsafe { text(value)? }
-        .map(serde_json::from_str::<Policy>)
-        .transpose()
-        .map_err(bad)
-        .map(|policy| policy.map(VerificationPolicy::from))
-}
-
 #[unsafe(no_mangle)]
 pub extern "C" fn rusticol_virtual_abi_version() -> u32 {
-    1
+    2
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn rusticol_virtual_last_error_message() -> *const c_char {
@@ -223,27 +181,6 @@ pub unsafe extern "C" fn rusticol_virtual_open(
     strategy: *const c_char,
     output: *mut *mut VirtualHandle,
 ) -> c_int {
-    unsafe {
-        rusticol_virtual_open_with_policy(
-            path,
-            process,
-            parameters_json,
-            strategy,
-            ptr::null(),
-            output,
-        )
-    }
-}
-/// Additive entry point; the original open call retains eager binding semantics.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rusticol_virtual_open_with_policy(
-    path: *const c_char,
-    process: *const c_char,
-    parameters_json: *const c_char,
-    strategy: *const c_char,
-    verification_json: *const c_char,
-    output: *mut *mut VirtualHandle,
-) -> c_int {
     guard(|| unsafe {
         let output = mutable(output)?;
         *output = ptr::null_mut();
@@ -251,13 +188,11 @@ pub unsafe extern "C" fn rusticol_virtual_open_with_policy(
             .map(serde_json::from_str::<SourceOverrides>)
             .transpose()
             .map_err(bad)?;
-        let policy = read_policy(verification_json)?;
-        let runtime = Runtime::open_with_policy(
+        let runtime = Runtime::open(
             required_text(path)?,
             text(process)?,
             parameters.as_ref(),
             text(strategy)?.unwrap_or("auto"),
-            policy.as_ref(),
         )?;
         *output = Box::into_raw(Box::new(VirtualHandle(runtime)));
         Ok(())
@@ -291,6 +226,21 @@ pub unsafe extern "C" fn rusticol_virtual_update_parameters(
         let revision = mutable(revision)?;
         let changes = serde_json::from_str(required_text(changes_json)?).map_err(bad)?;
         *revision = mutable(handle)?.0.update_parameters(&changes)?;
+        Ok(())
+    })
+}
+/// The pole selection of the handle's later evaluations, the Python API's
+/// four: "all" (NULL, the default), "none" (plan v4: the finite part, pole
+/// entries quiet NaNs), "uv" (plan v4: the bare loop's UV poles) or "ir"
+/// (plan v4: the renormalised virtual's IR poles).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_set_poles(
+    handle: *mut VirtualHandle,
+    poles: *const c_char,
+) -> c_int {
+    guard(|| unsafe {
+        let poles = crate::Poles::parse(text(poles)?.unwrap_or("all"))?;
+        mutable(handle)?.0.set_poles(poles)?;
         Ok(())
     })
 }
@@ -331,26 +281,21 @@ runtime_json!(
     spin_correlation_classes_json
 );
 
-// Common batch shape, opaque point identities and verification policy ingress.
-unsafe fn request_arguments(
-    runtime: &Runtime,
-    request: &BatchRequest,
-) -> Result<(Vec<u64>, Option<VerificationPolicy>)> {
+// Common batch shape and opaque point identities.
+unsafe fn request_ids(runtime: &Runtime, request: &BatchRequest) -> Result<Vec<u64>> {
     unsafe {
         if request.momentum_count
             != product(&[request.point_count, runtime.shape().external_count, 4])?
         {
             return Err(bad("momentum count differs from point/leg shape"));
         }
-        let ids = if request.point_ids.is_null() {
+        if request.point_ids.is_null() {
             (0..request.point_count)
                 .map(|v| u64::try_from(v).map_err(bad))
-                .collect::<Result<Vec<_>>>()?
+                .collect::<Result<Vec<_>>>()
         } else {
-            values(request.point_ids, request.point_count)?.to_vec()
-        };
-        let policy = read_policy(request.verification_json)?;
-        Ok((ids, policy))
+            Ok(values(request.point_ids, request.point_count)?.to_vec())
+        }
     }
 }
 
@@ -368,14 +313,13 @@ pub unsafe extern "C" fn rusticol_virtual_evaluate(
             return Err(bad("resolved must be zero or one"));
         }
         let handle = mutable(handle)?;
-        let (ids, policy) = request_arguments(&handle.0, request)?;
+        let ids = request_ids(&handle.0, request)?;
         let result = handle.0.evaluate(
             values(request.momenta, request.momentum_count)?,
             &ids,
             values(request.mu_r2, request.scale_count)?,
             request.resolved == 1,
             text(request.r2_strategy)?,
-            policy.as_ref(),
         )?;
         *output = Box::into_raw(Box::new(VirtualResult(result)));
         Ok(())
@@ -513,13 +457,12 @@ pub unsafe extern "C" fn rusticol_virtual_evaluate_correlated(
             return Err(bad("resolved directed correlations are unavailable"));
         }
         let handle = mutable(handle)?;
-        let (ids, policy) = request_arguments(&handle.0, request)?;
+        let ids = request_ids(&handle.0, request)?;
         let result = handle.0.evaluate_correlated(
             values(request.momenta, request.momentum_count)?,
             &ids,
             values(request.mu_r2, request.scale_count)?,
             text(request.r2_strategy)?,
-            policy.as_ref(),
         )?;
         *output = Box::into_raw(Box::new(CorrelatedResult(result)));
         Ok(())
@@ -542,7 +485,7 @@ pub unsafe extern "C" fn rusticol_virtual_evaluate_correlated_with_sources(
         }
         let sources = reference(sources)?;
         let handle = mutable(handle)?;
-        let (ids, policy) = request_arguments(&handle.0, request)?;
+        let ids = request_ids(&handle.0, request)?;
         let result = handle.0.evaluate_correlated_with_sources(
             values(request.momenta, request.momentum_count)?,
             &ids,
@@ -552,7 +495,6 @@ pub unsafe extern "C" fn rusticol_virtual_evaluate_correlated_with_sources(
                 values: values(sources.values, sources.value_count)?,
             },
             text(request.r2_strategy)?,
-            policy.as_ref(),
         )?;
         *output = Box::into_raw(Box::new(CorrelatedResult(result)));
         Ok(())

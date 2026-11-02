@@ -43,15 +43,35 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 115
-    assert FIELD_REGISTRY["loop.engine"].default == "legacy"
+    assert len(FIELD_REGISTRY) == 120
+    # MS-PHOTON: the photons' alpha(0) tags (MG5_aMC's !a!).
+    assert FIELD_REGISTRY["loop.external_photons"].kind == "choice_or_list_int"
+    assert FIELD_REGISTRY["loop.external_photons"].default == "final"
+    assert FIELD_REGISTRY["loop.alpha0_inverse_parameter"].nullable
+    # The legacy one-loop engine and its switch were removed (v2 only).
+    assert "loop.engine" not in FIELD_REGISTRY
+    assert FIELD_REGISTRY["loop.alpha_s_parameter"].nullable
+    assert FIELD_REGISTRY["loop.alpha_s_parameter"].default is None
     assert FIELD_REGISTRY["generation.particle_veto"].kind == "list_str"
     assert FIELD_REGISTRY["generation.particle_veto"].default == ()
+    assert FIELD_REGISTRY["generation.allow_anomalous_veto"].kind == "bool"
+    assert FIELD_REGISTRY["generation.allow_anomalous_veto"].default is False
     assert FIELD_REGISTRY["evaluation.poles"].default == "all"
     assert FIELD_REGISTRY["evaluation.poles"].choices == ("all", "none", "uv", "ir")
     assert FIELD_REGISTRY["evaluation.stability_checks.rotations"].kind == "list_str"
     assert FIELD_REGISTRY["evaluation.stability_checks.rotation_count"].default == 0
+    assert FIELD_REGISTRY["evaluation.stability_checks.rescaled"].default is False
     assert FIELD_REGISTRY["loop.preparation"].nullable
+
+
+def test_loop_config_refuses_the_removed_engine_with_the_reason() -> None:
+    for value in ("legacy", "v2"):
+        with pytest.raises(
+            ConfigurationError,
+            match=r"'loop\.engine' was removed: the legacy one-loop engine was removed",
+        ):
+            LoopConfig(engine=value)
+    assert LoopConfig(r2_strategy="model").r2_strategy is R2Strategy.MODEL
     assert (
         FIELD_REGISTRY["loop.preparation.fixed_parameters"].kind == "map_exact_scalar"
     )
@@ -339,7 +359,15 @@ def test_symmetric_group_fft_requires_contracted_color_and_supported_lane(
     fft_basis: ColorFFTBasis,
 ) -> None:
     with pytest.raises(ConfigurationError, match=r"requires color\.accuracy"):
-        ColorConfig(contraction="symmetric-group-fft", fft_basis=fft_basis)
+        ColorConfig(
+            accuracy="lc", contraction="symmetric-group-fft", fft_basis=fft_basis
+        )
+    # Without an accuracy a tree request resolves to LC (``RunConfig``).
+    with pytest.raises(ConfigurationError, match=r"requires color\.accuracy"):
+        RunConfig(
+            action="generate",
+            color=ColorConfig(contraction="symmetric-group-fft", fft_basis=fft_basis),
+        )
 
     for accuracy in ("nlc", "full"):
         for execution_mode in ("recurrence", "on-the-fly"):
@@ -450,34 +478,33 @@ def test_recurrence_evaluator_sizes_must_be_positive_integers(
         RecurrenceEvaluatorConfig(**{field_name: value})  # type: ignore[arg-type]
 
 
-def test_particle_veto_is_a_v2_virtual_generation_option() -> None:
-    from pyamplicol.config import (
-        GenerationConfig,
-        LoopConfig,
-        LoopEngine,
-        ProcessConfig,
-    )
+def test_particle_veto_is_a_virtual_generation_option() -> None:
+    from pyamplicol.config import GenerationConfig, LoopConfig, ProcessConfig
 
     veto = GenerationConfig(particle_veto=["t"])
     assert veto.particle_veto == ("t",)
     virtual = ProcessConfig(loop_coupling_orders=("QCD",))
     config = RunConfig(
-        action="generate",
-        process=virtual,
-        loop=LoopConfig(engine=LoopEngine.V2),
-        generation=veto,
+        action="generate", process=virtual, loop=LoopConfig(), generation=veto
     )
     assert config.generation.particle_veto == ("t",)
-    for process, loop in (
-        (ProcessConfig(), LoopConfig(engine=LoopEngine.V2)),
-        (virtual, LoopConfig()),
-    ):
-        with pytest.raises(ConfigurationError, match="particle_veto requires"):
-            RunConfig(action="generate", process=process, loop=loop, generation=veto)
+    with pytest.raises(ConfigurationError, match="particle_veto requires"):
+        RunConfig(
+            action="generate",
+            process=ProcessConfig(),
+            loop=LoopConfig(),
+            generation=veto,
+        )
     with pytest.raises(ConfigurationError, match="non-empty strings"):
         GenerationConfig(particle_veto=[""])
     with pytest.raises(ConfigurationError, match="list of strings"):
         GenerationConfig(particle_veto="t")
+    # [U2]: the override of an anomalous veto accompanies a veto.
+    assert GenerationConfig(particle_veto=["t"], allow_anomalous_veto=True)
+    with pytest.raises(ConfigurationError, match=r"requires generation\.particle_veto"):
+        GenerationConfig(allow_anomalous_veto=True)
+    with pytest.raises(ConfigurationError, match="must be a boolean"):
+        GenerationConfig(particle_veto=["t"], allow_anomalous_veto="yes")
 
 
 def test_cpp_flags_cannot_hide_target_cpu_requirements() -> None:

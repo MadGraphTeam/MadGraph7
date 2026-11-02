@@ -15,6 +15,7 @@ if TYPE_CHECKING:
         EvaluationError,
         GenerationError,
         ModelError,
+        NativePlatformError,
         PyAmpliColError,
     )
     from .models import (
@@ -84,9 +85,12 @@ if TYPE_CHECKING:
         VirtualFailureDiagnostic,
         VirtualLaneDiagnostic,
         VirtualPoleParts,
+        VirtualRescueAttempt,
+        VirtualRescueLevel,
+        VirtualRescuePolicy,
+        VirtualRescueRecord,
         VirtualStabilityChecks,
         VirtualStabilityEstimate,
-        VirtualStabilityPolicy,
         VirtualVerificationAttempt,
         VirtualVerificationDiagnostic,
     )
@@ -131,6 +135,7 @@ __all__ = [
     "ModelSource",
     "ModelSourceKind",
     "Momenta",
+    "NativePlatformError",
     "PhysicsReduction",
     "PoleSelection",
     "ProcessAlias",
@@ -151,9 +156,12 @@ __all__ = [
     "VirtualFailureDiagnostic",
     "VirtualLaneDiagnostic",
     "VirtualPoleParts",
+    "VirtualRescueAttempt",
+    "VirtualRescueLevel",
+    "VirtualRescuePolicy",
+    "VirtualRescueRecord",
     "VirtualStabilityChecks",
     "VirtualStabilityEstimate",
-    "VirtualStabilityPolicy",
     "VirtualVerificationAttempt",
     "VirtualVerificationDiagnostic",
     "WarmUpResult",
@@ -172,6 +180,7 @@ _ERROR_EXPORTS = (
     "EvaluationError",
     "GenerationError",
     "ModelError",
+    "NativePlatformError",
     "PyAmpliColError",
 )
 _PROTOCOL_EXPORTS = (
@@ -242,7 +251,10 @@ _VIRTUAL_RESULT_EXPORTS = (
     "VirtualPoleParts",
     "VirtualStabilityChecks",
     "VirtualStabilityEstimate",
-    "VirtualStabilityPolicy",
+    "VirtualRescueAttempt",
+    "VirtualRescueLevel",
+    "VirtualRescuePolicy",
+    "VirtualRescueRecord",
     "VirtualVerificationAttempt",
     "VirtualVerificationDiagnostic",
 )

@@ -19,7 +19,7 @@ from pyamplicol import _rusticol
 from pyamplicol._internal.physics.symbols import symbols
 from pyamplicol._internal.physics.types import NativeEvaluationError
 from pyamplicol.evaluators.symbolica_helpers import _symbolica_instruction_program_repr
-from pyamplicol.loops.scalar_frontend import _producer_predicate, real_scalar_part
+from pyamplicol.loops.scalar_frontend import _producer_predicate
 
 
 def _primitive(name: str) -> Any:
@@ -38,7 +38,10 @@ def test_helper_bodies_inline_and_evaluate_as_symbolica_does() -> None:
     helper = symbols.qualified("pyamplicol_symjit_helper_test::helper")
     body = choose(equal(a, b), a, 3 * b) + choose(truth(less(a, b)), b * b, a)
     evaluator = Expression.evaluator_multiple(
-        [helper(x, y) + 2 * helper(y, y), real_scalar_part(x) * helper(x, x + y)],
+        [
+            helper(x, y) + 2 * helper(y, y),
+            _primitive("real_part")(x) * helper(x, x + y),
+        ],
         [x, y],
         functions=[FunctionDefinition(helper, [a, b], body, inlining="never")],
         jit_compile=False,
@@ -135,8 +138,11 @@ def test_nested_helper_bodies_inline_in_both_exporters() -> None:
     python_application = _rusticol._compile_symjit_plane_application_v2(
         program, 2, 2, 2, False
     )
+    # The helpers select on a predicate: the plane check certifies their
+    # real-axis branches at real points of the program (the real rows).
+    real = [[z.real for z in row] for row in rows if not any(z.imag for z in row)]
     rust_application, inputs, outputs = load_loop_native().compile_v2_plane(
-        bytes(evaluator.save()), 2, False
+        bytes(evaluator.save()), 2, False, real
     )
     assert (inputs, outputs) == (2, 2)
     for application in (python_application, bytes(rust_application)):
@@ -145,6 +151,72 @@ def test_nested_helper_bodies_inline_in_both_exporters() -> None:
         )
         values = np.asarray(flat, dtype=np.float64).view(np.complex128)
         assert values.reshape(-1, 2).tobytes() == expected.tobytes()
+
+
+def test_untaken_branches_define_no_shared_values() -> None:
+    """A value computed in one branch of a helper's conditional and twice in
+    straight-line code (other helpers' bodies): SymJIT's common-subexpression
+    elimination (2.27.3 to 2.28.2) assigned the shared value at its first
+    occurrence, inside the branch, so where the branch is not taken the
+    straight-line uses read an unset temporary (found while localising
+    CM01's zero-width defect, M-SM MS-MASTERS;
+    ``upstream/symjit-cse-across-branches``, fixed in 2.28.3 by
+    siravan/symjit#31). Both translations keep the jumps, and the planes
+    equal Symbolica on either side of the condition, at the parameter
+    program's level 0 and at level 2, with the plane check given only the
+    taken side."""
+    from symbolica import Evaluator, Expression, FunctionDefinition, S
+
+    from pyamplicol.loops.native import load_loop_native
+
+    truth = _primitive("truth")
+    choose = symbols.qualified("symbolica::if")
+    c, x, y, z = (S(f"symjit_cse_{name}") for name in "cxyz")
+    k, a, b, d = (S(f"symjit_cse_arg_{name}") for name in "kabd")
+    f, g, h = (
+        symbols.qualified(f"pyamplicol_symjit_helper_test::cse_{name}")
+        for name in "fgh"
+    )
+    shared = (a * b + d) * a
+    evaluator = Expression.evaluator_multiple(
+        [f(c, x, y, z), g(x, y, z), h(x, y, z)],
+        [c, x, y, z],
+        functions=[
+            FunctionDefinition(
+                f, [k, a, b, d], choose(truth(k), shared, b), inlining="never"
+            ),
+            FunctionDefinition(g, [a, b, d], shared + b, inlining="never"),
+            FunctionDefinition(h, [a, b, d], shared + d, inlining="never"),
+        ],
+        jit_compile=False,
+        n_cores=1,
+    )
+    state = bytes(evaluator.save())
+    rows = np.array(
+        [[1, 2, 3, 5], [0, 2, 3, 5], [0, 1.5, -2, 0.25]], dtype=np.complex128
+    )
+    expected = np.asarray(Evaluator.load(state).evaluate_complex(rows))
+    assert expected[1].tolist() == [3, 25, 27]
+    program = _symbolica_instruction_program_repr(evaluator.get_instructions())
+    assert "if_else" in program and "join" in program
+    native = load_loop_native()
+    for level in (0, 2):
+        rust_application, inputs, outputs = native.compile_v2_plane(
+            state, level, False, [[1.0, 2.0, 3.0, 5.0]]
+        )
+        assert (inputs, outputs) == (4, 3)
+        python_application = _rusticol._compile_symjit_plane_application_v2(
+            program, 4, 3, level, False
+        )
+        for application in (bytes(rust_application), python_application):
+            flat = _rusticol._evaluate_symjit_plane_application_v2(
+                application, 4, 3, rows.view(np.float64).ravel().tolist(), len(rows)
+            )
+            values = np.asarray(flat, dtype=np.float64).view(np.complex128)
+            assert values.reshape(-1, 3).tobytes() == expected.tobytes(), (
+                level,
+                values,
+            )
 
 
 def test_unbound_functions_are_refused_by_the_plane_compiler() -> None:
@@ -214,19 +286,11 @@ def test_true_zero_constants_export() -> None:
     assert application
 
 
-SYMJIT_RANDOM_CALL_TAG = (
-    "SymJIT 2.27.3 tags every external call with a rand::random() constant "
-    "(compiler.rs translate_external_fun, against CSE), so the stored IR of a "
-    "program calling the scalar primitives differs between compilations; the "
-    "values do not, and a stored application recompiles to the same code at "
-    "every load (still in SymJIT 2.28.1 and v228 d37160b8; deterministic-tag "
-    "patch prepared in workspace/reports/engine-v2/upstream/"
-    "symjit-reproducible-external-calls, not filed yet)"
-)
-
-
-@pytest.mark.xfail(strict=True, reason=SYMJIT_RANDOM_CALL_TAG)
 def test_plane_applications_calling_primitives_are_byte_reproducible() -> None:
+    """Two compilations of a program calling a scalar primitive save the same
+    bytes: SymJIT 2.28.1 and later tag external calls deterministically and
+    write their sets and subroutines in a fixed order (siravan/symjit#26;
+    2.27.3 tagged every call with ``rand::random()``)."""
     from symbolica import Expression, S
 
     x, y = S("symjit_reproducible_x"), S("symjit_reproducible_y")

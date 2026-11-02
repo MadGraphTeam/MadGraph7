@@ -1,22 +1,21 @@
 # SPDX-License-Identifier: 0BSD
-"""Public source preparation reuses the real Gmu cache without process graphs.
+"""Public loop-model resolution of the real Gmu source keeps shared exclusions.
 
-This is preparation-boundary coverage, not a successful public generate/dry-run
+This is resolution-boundary coverage, not a successful public generate/dry-run
 or another numerical EW reference campaign.
 """
 
 import json
-import tomllib
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from pyamplicol.api import ModelError, ProcessRequest, ProcessSet
+from pyamplicol.api import ModelError
 from pyamplicol.api.models import _compiled_model_from_payload
 from pyamplicol.api.requests import ModelSource
-from pyamplicol.config import config_to_toml, resolve_config
+from pyamplicol.config import resolve_config
 from pyamplicol.generation.service import GenerationBackend
 
 pytestmark = pytest.mark.loop_physics
@@ -38,8 +37,10 @@ def gmu_source(loop_gmu_ufo, tmp_path_factory):
         loop_gmu_ufo, restriction="full", cache_dir=cache, require_supported=False
     )
     assert compiled.raw_loop_model is not None
-    assert not compiled.supported
-    assert tuple(issue.code for issue in compiled.issues) == ("unknown-functions",)
+    # The NLO UFO scalar helpers (arg, crecms, grreglog, recms, regsqrt) are
+    # registered: the tree model of the G_mu source is supported (MS-MODEL).
+    assert compiled.supported
+    assert compiled.issues == ()
     reference = (
         Path(__file__).resolve().parents[2]
         / "tools/loop_reference/real_mass_ew_quarks.json"
@@ -99,196 +100,6 @@ def _options(gmu):
     }
 
 
-def _forbid_process_work(monkeypatch):
-    from pyamplicol import _rusticol
-    from pyamplicol.generation import loop_service
-    from pyamplicol.loops import compiler, graphs, physical_source
-    from pyamplicol.loops.counterterms import PreparedCountertermModel
-
-    def forbidden(*args, **kwargs):
-        raise AssertionError(
-            "model preparation entered graph/process/numerical construction"
-        )
-
-    for owner, name in (
-        (loop_service, "_graph_plan"),
-        (loop_service, "build_loop_process"),
-        (graphs, "build_loop_process"),
-        (compiler.PreparedLoopRequestModel, "compile"),
-        (PreparedCountertermModel, "process"),
-        (compiler, "source_model_program"),
-        (physical_source, "source_model_program"),
-        (_rusticol._loop, "NativeLoopProgram"),
-    ):
-        monkeypatch.setattr(owner, name, forbidden)
-
-
-def _requests():
-    return ProcessSet((ProcessRequest.parse("e- e+ > u u~"),))
-
-
-def _quiet_phase():
-    from pyamplicol.generation.progress import PhaseHandle
-
-    return PhaseHandle("public-preparation", None, None)
-
-
-@pytest.mark.parametrize("planning", (True, False))
-def test_actual_public_gmu_preparation_owns_exact_source_and_counterterms(
-    gmu_source, monkeypatch, planning
-):
-    from pyamplicol.generation.loop_service import _prepare
-    from pyamplicol.models.loop_preparation import (
-        LoopPreparation,
-        with_loop_preparation,
-    )
-
-    gmu = gmu_source
-    _forbid_process_work(monkeypatch)
-    original_raw = gmu.compiled.raw_loop_model.to_dict()
-    options = _options(gmu)
-    if planning:
-        # The actual public planning path reads the already populated UFO cache.
-        source = ModelSource.from_path(gmu.source, restriction="full")
-        config = resolve_config(_configuration(gmu, preparation=options))
-    else:
-        attached = with_loop_preparation(gmu.compiled, LoopPreparation(**options))
-        source = _compiled_model_from_payload(attached)
-        config = resolve_config(_configuration(gmu, supplied=False))
-        assert config.effective.loop.preparation is None
-        text = config_to_toml(config.effective)
-        serialized = tomllib.loads(text)
-        assert "preparation" not in serialized["loop"]
-        config = resolve_config(serialized)
-    backend = GenerationBackend(config, None)
-    context = _prepare(
-        backend, _requests(), source, planning=planning, phase=_quiet_phase()
-    )
-    prepared = context.prepared[0]
-    assert len(context.expanded) == len(context.prepared) == 1
-    assert context.expanded[0].process_ir.initial_pdgs == (11, -11)
-    assert context.expanded[0].process_ir.final_pdgs == (2, -2)
-    assert prepared.compiled_model is context.resolved.compiled
-    assert prepared.original is context.resolved.compiled.raw_loop_model
-    assert prepared.structure.raw is prepared.declarations.derived
-    assert prepared.model.raw is prepared.structure.raw
-    assert prepared.counterterms.source is prepared.model
-    assert prepared.counterterms.ordinary_model is prepared.structure.native
-    assert not context.resolved.compiled.supported
-    assert context.resolved.compiled.issues == gmu.compiled.issues
-    assert prepared.scope.born_order_bounds == {"QCD": (0, 0), "QED": (0, 2)}
-    assert prepared.scope.loop_order_bounds == {"QCD": (0, 0), "QED": (0, 4)}
-    prepared.scope.require_local_counterterms(prepared.counterterms)
-    assert prepared.counterterms.rules and not prepared.counterterms.unavailable_entries
-    # This stage retains the complete selected local catalogue. Certification
-    # of tensors is checked on matched insertions by NativeModelVirtualProgram;
-    # unused model entries are not claimed to be physically certified here.
-    deferred = tuple(
-        rule
-        for rule in prepared.counterterms.rules.values()
-        if not rule.has_validated_tensor_basis
-    )
-    print(
-        "PREPARATION_TENSOR_SCOPE",
-        json.dumps(
-            {
-                "planning": planning,
-                "selected_rules": len(prepared.counterterms.rules),
-                "deferred_tensor_rules": len(deferred),
-                "deferred_source_vertices": sorted(
-                    {entry.vertex_name for rule in deferred for entry in rule.entries}
-                ),
-            }
-        ),
-    )
-    payload = json.loads(prepared.structure.native.to_json())
-    assert payload["covariant_cut_multiplets"] == options["covariant_multiplets"]
-    assert prepared.structure.diagnostics[0]["field"] == "goldstoneboson"
-    assert (
-        prepared.structure.raw.record("particles", "G-")["fields"]["goldstoneboson"]
-        is False
-    )
-    assert (
-        next(p for p in payload["particles"] if p["name"] == "G-")["goldstoneboson"]
-        is True
-    )
-    for name, value in options["fixed_parameters"].items():
-        expected = (value, "0") if isinstance(value, str) else tuple(value)
-        assert tuple(prepared.structure.fixed_parameters[name]) == expected
-    assert context.preparation.compatibility == "gmu_particle_anti"
-    assert context.source_colors == (None,)
-    assert gmu.compiled.raw_loop_model.to_dict() == original_raw
-
-
-@pytest.mark.parametrize("mode", ("empty-toml", "partial-set"))
-def test_explicit_preparation_replaces_source_record_at_actual_boundary(
-    gmu_source, monkeypatch, mode
-):
-    from pyamplicol.generation.loop_service import _prepare
-    from pyamplicol.models.loop_preparation import (
-        LoopPreparation,
-        with_loop_preparation,
-    )
-
-    gmu = gmu_source
-    _forbid_process_work(monkeypatch)
-    source = _compiled_model_from_payload(
-        with_loop_preparation(gmu.compiled, LoopPreparation(**_options(gmu)))
-    )
-    if mode == "empty-toml":
-        base = resolve_config(_configuration(gmu, preparation={}))
-        text = config_to_toml(base.effective)
-        serialized = tomllib.loads(text)
-        assert "preparation" in serialized["loop"]
-        config = resolve_config(serialized)
-    else:
-        config = resolve_config(
-            _configuration(gmu, supplied=False),
-            overrides=('loop.preparation.fixed_parameters.Gf="0.0000116639"',),
-        )
-    assert config.effective.loop.preparation is not None
-    assert config.effective.loop.preparation.compatibility is None
-    backend = GenerationBackend(config, None)
-    # Missing repair must fail at the real particle-pair authority, rather than
-    # silently retaining the sidecar compatibility profile or partner data.
-    with pytest.raises(ValueError, match="goldstoneboson"):
-        _prepare(backend, _requests(), source, planning=True, phase=_quiet_phase())
-
-
-def test_active_unsupported_source_function_still_rejects(gmu_source, monkeypatch):
-    from pyamplicol.generation.loop_service import _prepare
-    from pyamplicol.models.loop_import import RawLoopModel
-
-    gmu = gmu_source
-    _forbid_process_work(monkeypatch)
-    payload = gmu.compiled.raw_loop_model.to_dict()
-    alpha = next(p for p in payload["collections"]["parameters"] if p["name"] == "aEW")
-    assert alpha["fields"]["nature"] == "internal"
-    alpha["fields"]["value"] = {
-        "kind": "expression",
-        "expression": "unsupported_active_source_helper(Gf)",
-    }
-    compiled = replace(
-        gmu.compiled,
-        raw_loop_model=RawLoopModel.from_dict(payload),
-        _serialized_path=None,
-    )
-    backend = GenerationBackend(
-        resolve_config(_configuration(gmu, preparation=_options(gmu))), None
-    )
-    with pytest.raises(
-        (ValueError, NotImplementedError),
-        match=r"unsupported_active_source_helper|unknown.*function|unsupported.*function",
-    ):
-        _prepare(
-            backend,
-            _requests(),
-            _compiled_model_from_payload(compiled),
-            planning=True,
-            phase=_quiet_phase(),
-        )
-
-
 @pytest.mark.parametrize("planning", (True, False))
 @pytest.mark.parametrize(
     "kind,issue",
@@ -331,75 +142,10 @@ def test_loop_model_resolution_retains_shared_exclusions(
 
 
 @pytest.mark.parametrize("planning", (True, False))
-def test_default_tree_resolution_still_rejects_actual_gmu_registry_issues(
-    gmu_source, planning
-):
+def test_default_tree_resolution_accepts_the_gmu_source(gmu_source, planning):
     backend = GenerationBackend(
         resolve_config(_configuration(gmu_source, tree=True)), None
     )
     resolver = backend._resolve_model_for_plan if planning else backend._resolve_model
-    with pytest.raises(ModelError, match="unknown-functions"):
-        resolver(_compiled_model_from_payload(gmu_source.compiled))
-
-
-def test_full_auto_fallback_reconstructs_actual_base_source_preparation(
-    gmu_source, monkeypatch
-):
-    from pyamplicol.generation.loop_service import _compile_color_operation
-    from pyamplicol.loops.compiler import PreparedLoopRequestModel
-    from pyamplicol.loops.source_color import SourceColorCapabilityUnavailable
-    from pyamplicol.models.loop_preparation import LoopPreparation
-
-    gmu = gmu_source
-    _forbid_process_work(monkeypatch)
-    options = _options(gmu)
-    config = _configuration(gmu, preparation=options)
-    config["color"]["contraction"] = "auto"
-    backend = GenerationBackend(resolve_config(config), None)
-    base = LoopPreparation(**options)
-    context = SimpleNamespace(
-        resolved=SimpleNamespace(compiled=gmu.compiled),
-        corrections=("QED",),
-        preparation=base,
-    )
-    bounds = dict(
-        born_order_bounds={"QCD": (0, 0), "QED": (0, 2)},
-        loop_order_bounds={"QCD": (0, 0), "QED": (0, 4)},
-    )
-    continuation = object()
-
-    def missing(*args, **kwargs):
-        assert kwargs["source_color"] is continuation
-        raise SourceColorCapabilityUnavailable("explicit test continuation unavailable")
-
-    failed = SimpleNamespace(scope=SimpleNamespace(**bounds), compile=missing)
-
-    # Only the final process construction is replaced. The fallback must run
-    # the real structural/scalar/CT preparation from the original source.
-    def return_prepared(owner, incoming, outgoing, **kwargs):
-        assert incoming == (11, -11) and outgoing == (2, -2)
-        assert kwargs["selected_corrections"] == ("QED",)
-        assert kwargs["source_color"] is None
-        return owner
-
-    monkeypatch.setattr(PreparedLoopRequestModel, "compile", return_prepared)
-    entry = SimpleNamespace(
-        process_ir=SimpleNamespace(initial_pdgs=(11, -11), final_pdgs=(2, -2))
-    )
-    direct, reason = _compile_color_operation(
-        backend, context, failed, entry, continuation
-    )
-    assert reason == "explicit test continuation unavailable"
-    assert direct.compiled_model is gmu.compiled
-    assert direct.original is gmu.compiled.raw_loop_model
-    assert direct.structure.diagnostics[0]["field"] == "goldstoneboson"
-    assert (
-        json.loads(direct.structure.native.to_json())["covariant_cut_multiplets"]
-        == options["covariant_multiplets"]
-    )
-    assert direct.scope.born_order_bounds == bounds["born_order_bounds"]
-    assert direct.scope.loop_order_bounds == bounds["loop_order_bounds"]
-    direct.scope.require_local_counterterms(direct.counterterms)
-    for name, value in options["fixed_parameters"].items():
-        expected = (value, "0") if isinstance(value, str) else tuple(value)
-        assert tuple(direct.structure.fixed_parameters[name]) == expected
+    resolved = resolver(_compiled_model_from_payload(gmu_source.compiled))
+    assert resolved.compiled.supported

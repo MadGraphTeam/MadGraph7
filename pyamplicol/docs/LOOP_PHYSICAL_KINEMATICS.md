@@ -31,6 +31,12 @@ massive parameter updates, equal-valued independent masses, all three carriers,
 and malformed saved bindings. The original rounded six-leg RAMBO controls remain
 in the physical regression, alongside exactly on-shell precision controls.
 
+The v2 engine (the only one-loop engine) binds the same invariants without a stored
+assignment: in every loop family an invariant whose leg set is one external leg,
+or whose complement is, takes that leg's squared mass at the point's parameters,
+the exact value its propagators use, in double, DoubleFloat and arbitrary
+precision alike (`loops/v2/families.onshell_leg`; DESIGN §11.1 of the v2 design).
+
 This is a physical-input contract, not an input-repair algorithm. A caller must
 still supply momenta consistent with the declared physical process. General
 input-consistency diagnostics and structured numerical failure/rescue delivery

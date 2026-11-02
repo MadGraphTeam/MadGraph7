@@ -22,6 +22,7 @@ use super::{FastMap as HashMap, FastSet};
 use rayon::prelude::*;
 use serde::Deserialize;
 use std::cmp::Ordering;
+use std::sync::Arc;
 
 /// The colour model's states and the frame policy.
 #[derive(Debug, Clone, Deserialize)]
@@ -50,8 +51,14 @@ pub struct ScheduleInput {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum FramePolicy {
-    /// `schedules.cheapest(lambda mask: 2 ** mask.bit_count(), model)`.
-    Cheapest { model: CostModel },
+    /// `schedules.cheapest(rows, model)` with `rows(mask)` the product of
+    /// the helicity rows of the mask's legs: `leg_rows[i]` for leg `i` (bit
+    /// `i`; the request's helicity count of the leg,
+    /// `generator_input.leg_rows`). Required: no count per leg is assumed.
+    Cheapest {
+        model: CostModel,
+        leg_rows: Vec<u64>,
+    },
     /// Per family (in output order) the frame `(start, reflected)` to use;
     /// only that frame's trie is built.
     Fixed { frames: Vec<Option<(usize, bool)>> },
@@ -137,9 +144,8 @@ pub struct FamilySchedule {
     /// Index of the family in the scheduled list (`ScheduleInput::scaleless`;
     /// by default the family output's admitted families).
     pub family: usize,
-    /// Every skeleton of the family (`family_skeletons`), content ids.
-    pub skeletons: Vec<Skeleton>,
-    /// The view's selection: indices into `skeletons`.
+    /// The view's selection: indices into the family's skeletons
+    /// (`Retained::skeletons`).
     pub viewed: Vec<usize>,
     pub frame: (usize, bool),
     /// Leaves: (index into `viewed`, reading as labels).
@@ -159,19 +165,27 @@ pub struct ScheduleOutput {
     pub schedules: Vec<FamilySchedule>,
 }
 
+/// The interning state of a schedule build: order vectors, contents and
+/// their reflections. A retained build ([`Retained`]) keeps it, so a rebuild
+/// from its skeletons continues the same ids.
+#[derive(Debug, Clone, Default)]
+pub struct ScheduleState {
+    pub(crate) orders: OrderSpace,
+    position_orders: Vec<u32>,
+    position_mask: Vec<LegSet>,
+    pub(crate) contents: Vec<Content>,
+    content_index: HashMap<Content, u32>,
+    /// Per content id: its reflection (`u32::MAX` until computed).
+    reflection: Vec<u32>,
+}
+
 struct Builder<'a> {
     families: &'a FamilyInput,
     output: &'a FamilyOutput,
     input: &'a ScheduleInput,
     /// The scheduled families (`ScheduleInput::scaleless`).
     list: Vec<&'a Family>,
-    orders: OrderSpace,
-    position_orders: Vec<u32>,
-    position_mask: Vec<LegSet>,
-    contents: Vec<Content>,
-    content_index: HashMap<Content, u32>,
-    /// Per content id: its reflection (`u32::MAX` until computed).
-    reflection: Vec<u32>,
+    state: ScheduleState,
 }
 
 fn content_cmp(space: &OrderSpace, a: &Content, b: &Content) -> Ordering {
@@ -190,18 +204,6 @@ impl<'a> Builder<'a> {
         output: &'a FamilyOutput,
         input: &'a ScheduleInput,
     ) -> Result<Self, String> {
-        let list = match &input.scaleless {
-            None => output.families.iter().collect(),
-            Some(indices) => indices
-                .iter()
-                .map(|&index| {
-                    output
-                        .scaleless_families
-                        .get(index)
-                        .ok_or_else(|| format!("no certified-scaleless family {index} to schedule"))
-                })
-                .collect::<Result<Vec<_>, _>>()?,
-        };
         let mut orders = OrderSpace::new();
         let mut position_orders = Vec::with_capacity(output.positions.len());
         let mut position_mask = Vec::with_capacity(output.positions.len());
@@ -218,27 +220,54 @@ impl<'a> Builder<'a> {
             position_orders.push(total);
             position_mask.push(mask);
         }
+        let state = ScheduleState {
+            orders,
+            position_orders,
+            position_mask,
+            ..ScheduleState::default()
+        };
+        Self::resume(families, output, input, state)
+    }
+
+    /// A builder continuing the interning `state` of an earlier build of the
+    /// same family output.
+    fn resume(
+        families: &'a FamilyInput,
+        output: &'a FamilyOutput,
+        input: &'a ScheduleInput,
+        state: ScheduleState,
+    ) -> Result<Self, String> {
+        let list = match &input.scaleless {
+            None => output.families.iter().collect(),
+            Some(indices) => indices
+                .iter()
+                .map(|&index| {
+                    output
+                        .scaleless_families
+                        .get(index)
+                        .ok_or_else(|| format!("no certified-scaleless family {index} to schedule"))
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+        };
+        if state.position_orders.len() != output.positions.len() {
+            return Err("the schedule state belongs to another family output".into());
+        }
         Ok(Self {
             families,
             output,
             input,
             list,
-            orders,
-            position_orders,
-            position_mask,
-            contents: Vec::new(),
-            content_index: HashMap::default(),
-            reflection: Vec::new(),
+            state,
         })
     }
 
     fn intern(&mut self, content: Content) -> u32 {
-        if let Some(&id) = self.content_index.get(&content) {
+        if let Some(&id) = self.state.content_index.get(&content) {
             return id;
         }
-        let id = self.contents.len() as u32;
-        self.content_index.insert(content.clone(), id);
-        self.contents.push(content);
+        let id = self.state.contents.len() as u32;
+        self.state.content_index.insert(content.clone(), id);
+        self.state.contents.push(content);
         id
     }
 
@@ -252,12 +281,12 @@ impl<'a> Builder<'a> {
     }
 
     fn reflect_content(&mut self, id: u32) -> Result<u32, String> {
-        if let Some(&found) = self.reflection.get(id as usize)
+        if let Some(&found) = self.state.reflection.get(id as usize)
             && found != u32::MAX
         {
             return Ok(found);
         }
-        let content = self.contents[id as usize].clone();
+        let content = self.state.contents[id as usize].clone();
         let mut terms: Vec<Position> = content
             .terms
             .iter()
@@ -281,10 +310,12 @@ impl<'a> Builder<'a> {
             terms,
         };
         let mirror = self.intern(reflected);
-        if self.reflection.len() < self.contents.len() {
-            self.reflection.resize(self.contents.len(), u32::MAX);
+        if self.state.reflection.len() < self.state.contents.len() {
+            self.state
+                .reflection
+                .resize(self.state.contents.len(), u32::MAX);
         }
-        self.reflection[id as usize] = mirror;
+        self.state.reflection[id as usize] = mirror;
         Ok(mirror)
     }
 
@@ -298,9 +329,9 @@ impl<'a> Builder<'a> {
     fn ring_cmp(&self, a: &[u32], b: &[u32]) -> Ordering {
         for (x, y) in a.iter().zip(b) {
             let ordering = content_cmp(
-                &self.orders,
-                &self.contents[*x as usize],
-                &self.contents[*y as usize],
+                &self.state.orders,
+                &self.state.contents[*x as usize],
+                &self.state.contents[*y as usize],
             );
             if ordering != Ordering::Equal {
                 return ordering;
@@ -359,8 +390,8 @@ impl<'a> Builder<'a> {
                             options[slot][pick],
                             vertex.loop_in,
                             vertex.loop_out,
-                            self.position_mask[position as usize],
-                            self.position_orders[position as usize],
+                            self.state.position_mask[position as usize],
+                            self.state.position_orders[position as usize],
                         )
                     })
                     .collect();
@@ -455,8 +486,9 @@ impl<'a> Builder<'a> {
             let mut orders = OrderSpace::EMPTY;
             for &content in &contents {
                 orders = self
+                    .state
                     .orders
-                    .add(orders, self.contents[content as usize].orders);
+                    .add(orders, self.state.contents[content as usize].orders);
             }
             out.push(Skeleton {
                 contents,
@@ -465,8 +497,8 @@ impl<'a> Builder<'a> {
                 orders,
             });
         }
-        let space = &self.orders;
-        let table = &self.contents;
+        let space = &self.state.orders;
+        let table = &self.state.contents;
         out.sort_by(|a, b| {
             for (x, y) in a.contents.iter().zip(&b.contents) {
                 let ordering = content_cmp(space, &table[*x as usize], &table[*y as usize]);
@@ -633,16 +665,30 @@ fn build_trie(
     (nodes, rank)
 }
 
+/// The helicity rows of a segment's legs: the product of `leg_rows` over
+/// the mask's legs; None past 128 bits or for a leg without its count.
+fn segment_rows(mask: LegSet, leg_rows: &[u64]) -> Option<u128> {
+    let mut rows: u128 = 1;
+    let mut rest = mask;
+    while rest != 0 {
+        let leg = rest.trailing_zeros() as usize;
+        rows = rows.checked_mul(u128::from(*leg_rows.get(leg)?))?;
+        rest &= rest - 1;
+    }
+    Some(rows)
+}
+
 fn trie_cost(
     nodes: &[TrieNode],
     rank: i64,
     count: usize,
     model: &CostModel,
+    leg_rows: &[u64],
     segments: &SegmentTable,
 ) -> Result<u128, String> {
-    let overflow = || "the schedule-B cost exceeds 128 bits".to_string();
-    let rows =
-        |label: u32| -> Option<u128> { 1u128.checked_shl(segments[label as usize].0.count_ones()) };
+    let overflow =
+        || "the schedule-B cost exceeds 128 bits (or a leg has no helicity count)".to_string();
+    let rows = |label: u32| -> Option<u128> { segment_rows(segments[label as usize].0, leg_rows) };
     let accumulators = nodes.iter().filter(|node| node.depth == count).count() as u128;
     let mut total = model
         .close(rank)
@@ -687,10 +733,8 @@ pub fn build_skeletons(
     for family in 0..builder.list.len() {
         all.push(builder.family_skeletons(family)?);
     }
-    let orders = (0..builder.orders.len() as u32)
-        .map(|id| builder.orders.get(id).clone())
-        .collect();
-    Ok((builder.contents, orders, all))
+    let orders = builder.state.order_vectors();
+    Ok((builder.state.contents, orders, all))
 }
 
 /// Skeletons, the view and the schedule-B tries of every family
@@ -700,13 +744,112 @@ pub fn build_schedules(
     output: &FamilyOutput,
     input: &ScheduleInput,
 ) -> Result<ScheduleOutput, String> {
+    let retained = build_retained(families, output, input)?;
+    Ok(ScheduleOutput {
+        orders: retained.state.order_vectors(),
+        contents: retained.state.contents,
+        labels: retained.labels,
+        schedules: retained.schedules,
+    })
+}
+
+/// A schedule build kept by the arena (`arena.rs`): the colour input it was
+/// built with, every skeleton of the scheduled families (shared with the
+/// rebuilds), the builder's interning state and the view and tries.
+#[derive(Debug)]
+pub struct Retained {
+    pub(crate) states: Vec<Option<Vec<u32>>>,
+    pub(crate) reflected: Vec<u32>,
+    pub(crate) scaleless: Option<Vec<usize>>,
+    /// Built without keep flags: every skeleton was offered to the view, so
+    /// the build is the base of a rebuild ([`rebuild`]).
+    pub(crate) complete: bool,
+    /// Every skeleton of every scheduled family (`family_skeletons`), in the
+    /// scheduled list's order.
+    pub(crate) skeletons: Arc<Vec<Vec<Skeleton>>>,
+    pub(crate) state: ScheduleState,
+    /// `labels[l]`: the content of segment label `l`.
+    pub(crate) labels: Vec<u32>,
+    pub(crate) schedules: Vec<FamilySchedule>,
+}
+
+impl ScheduleState {
+    /// The order vectors by id.
+    pub fn order_vectors(&self) -> Vec<OrderVec> {
+        (0..self.orders.len() as u32)
+            .map(|id| self.orders.get(id).clone())
+            .collect()
+    }
+}
+
+/// `build_schedules`, kept for rebuilds and in-crate readers.
+pub fn build_retained(
+    families: &FamilyInput,
+    output: &FamilyOutput,
+    input: &ScheduleInput,
+) -> Result<Retained, String> {
     let mut builder = Builder::new(families, output, input)?;
     // Skeletons per family (sequential: contents are interned first-seen).
-    let list = builder.list.clone();
-    let mut all: Vec<Vec<Skeleton>> = Vec::with_capacity(list.len());
-    for family in 0..list.len() {
+    let mut all: Vec<Vec<Skeleton>> = Vec::with_capacity(builder.list.len());
+    for family in 0..builder.list.len() {
         all.push(builder.family_skeletons(family)?);
     }
+    let all = Arc::new(all);
+    let (labels, schedules) = view_and_tries(&mut builder, &all)?;
+    Ok(Retained {
+        states: input.states.clone(),
+        reflected: input.reflected.clone(),
+        scaleless: input.scaleless.clone(),
+        complete: input.keep.is_none(),
+        skeletons: all,
+        state: builder.state,
+        labels,
+        schedules,
+    })
+}
+
+/// The schedules of `input` (its keep flags and frame policy) built from the
+/// skeletons of a complete retained build of the same colour states, without
+/// recomputing them: equal to `build_schedules(families, output, input)`
+/// (the LC/NLC prune, `LoopSlice._prune_colour`).
+pub fn rebuild(
+    families: &FamilyInput,
+    output: &FamilyOutput,
+    base: &Retained,
+    input: &ScheduleInput,
+) -> Result<Retained, String> {
+    if !base.complete {
+        return Err("a schedule rebuild needs a build that kept every skeleton".into());
+    }
+    if input.states != base.states
+        || input.reflected != base.reflected
+        || input.scaleless != base.scaleless
+    {
+        return Err("a schedule rebuild needs the colour states and families of its base".into());
+    }
+    let mut builder = Builder::resume(families, output, input, base.state.clone())?;
+    let (labels, schedules) = view_and_tries(&mut builder, &base.skeletons)?;
+    Ok(Retained {
+        states: base.states.clone(),
+        reflected: base.reflected.clone(),
+        scaleless: base.scaleless.clone(),
+        complete: input.keep.is_none(),
+        skeletons: Arc::clone(&base.skeletons),
+        state: builder.state,
+        labels,
+        schedules,
+    })
+}
+
+/// The view (labels first-seen across families, in family order) and the
+/// schedule-B trie of every family with a viewed skeleton.
+fn view_and_tries(
+    builder: &mut Builder<'_>,
+    all: &[Vec<Skeleton>],
+) -> Result<(Vec<u32>, Vec<FamilySchedule>), String> {
+    let input = builder.input;
+    let families = builder.families;
+    let list = builder.list.clone();
     // The view: labels first-seen across families, in family order.
     let mut label_of: HashMap<u32, u32> = HashMap::default();
     let mut labels: Vec<u32> = Vec::new();
@@ -773,7 +916,7 @@ pub fn build_schedules(
     let segments: SegmentTable = labels
         .iter()
         .map(|&content| {
-            let content = &builder.contents[content as usize];
+            let content = &builder.state.contents[content as usize];
             let mass = families.species[content.loop_out as usize]
                 .as_ref()
                 .map_or(u32::MAX, |species| species.mass);
@@ -783,12 +926,11 @@ pub fn build_schedules(
     if segments.iter().any(|segment| segment.1 == u32::MAX) {
         return Err("a content leaves the loop on a field that is not a species".into());
     }
-    let space = &builder.orders;
+    let space = &builder.state.orders;
     let schedules: Vec<Result<Option<FamilySchedule>, String>> = viewed_all
         .into_par_iter()
-        .zip(all.into_par_iter())
         .enumerate()
-        .map(|(family, ((viewed, data), skeletons))| {
+        .map(|(family, (viewed, data))| {
             if viewed.is_empty() {
                 return Ok(None);
             }
@@ -875,8 +1017,8 @@ pub fn build_schedules(
                 }
                 let (nodes, rank) = build_trie(key, &oriented, &data.orders, space, &segments);
                 let cost = match &input.policy {
-                    FramePolicy::Cheapest { model } => {
-                        trie_cost(&nodes, rank, count, model, &segments)?
+                    FramePolicy::Cheapest { model, leg_rows } => {
+                        trie_cost(&nodes, rank, count, model, leg_rows, &segments)?
                     }
                     FramePolicy::Fixed { .. } => 0,
                 };
@@ -888,7 +1030,6 @@ pub fn build_schedules(
                 best.ok_or_else(|| format!("the fixed frame is not a frame of family {family}"))?;
             Ok(Some(FamilySchedule {
                 family,
-                skeletons,
                 viewed,
                 frame,
                 leaves,
@@ -898,18 +1039,48 @@ pub fn build_schedules(
             }))
         })
         .collect();
-    let mut out = ScheduleOutput {
-        labels,
-        ..Default::default()
-    };
+    let mut out = Vec::with_capacity(schedules.len());
     for schedule in schedules {
         if let Some(schedule) = schedule? {
-            out.schedules.push(schedule);
+            out.push(schedule);
         }
     }
-    out.orders = (0..builder.orders.len() as u32)
-        .map(|id| builder.orders.get(id).clone())
-        .collect();
-    out.contents = builder.contents;
-    Ok(out)
+    Ok((labels, out))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::segment_rows;
+
+    #[test]
+    fn segment_rows_are_the_product_of_the_legs_helicity_counts() {
+        // Two rows per leg (massless vectors and fermions).
+        assert_eq!(segment_rows(0b1011, &[2; 4]), Some(8));
+        // A scalar (1), a massive vector (3), a fermion (2), a massive
+        // spin-2 state (5): legs 0..3.
+        let counts = [1, 3, 2, 5];
+        assert_eq!(segment_rows(0b0001, &counts), Some(1));
+        assert_eq!(segment_rows(0b0110, &counts), Some(6));
+        assert_eq!(segment_rows(0b1111, &counts), Some(30));
+        // A leg without its count, and a product past 128 bits.
+        assert_eq!(segment_rows(0b10000, &counts), None);
+        let wide = [u64::MAX; 3];
+        assert_eq!(segment_rows(0b11, &wide), Some(u128::from(u64::MAX).pow(2)));
+        assert_eq!(segment_rows(0b111, &wide), None);
+    }
+
+    #[test]
+    fn the_cheapest_policy_requires_the_legs_helicity_counts() {
+        // No silent two-rows-per-leg default (genericity audit 2, m8).
+        let model = r#"{"fused": 1, "split": 1, "vertex": 1, "seed_fused": 1,
+            "seed_split": 1, "closure": 1, "columns": 1}"#;
+        let without = format!(r#"{{"kind": "cheapest", "model": {model}}}"#);
+        let error = serde_json::from_str::<super::FramePolicy>(&without).unwrap_err();
+        assert!(error.to_string().contains("leg_rows"), "{error}");
+        let with = format!(r#"{{"kind": "cheapest", "model": {model}, "leg_rows": [2, 3]}}"#);
+        let policy: super::FramePolicy = serde_json::from_str(&with).unwrap();
+        assert!(
+            matches!(policy, super::FramePolicy::Cheapest { leg_rows, .. } if leg_rows == [2, 3])
+        );
+    }
 }

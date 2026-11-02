@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: 0BSD
 """Plan v4 artifacts and the public API through the v2 engine (WP2.6).
 
-``loop.engine = "v2"`` generates virtual processes through the shared-recursion
-engine and publishes them as plan v4 processes (``rusticol.loop-runtime.v4``).
+One-loop requests generate virtual processes through the shared-recursion
+engine v2 (the only one-loop engine) and publish them as plan v4 processes
+(``rusticol.loop-runtime.v4``).
 Checks, on the public surface only (TOML card, ``Generator``, ``Runtime``, CLI):
 
 * the inclusive virtual of the legacy O1 controls through the public path
@@ -25,8 +26,9 @@ Checks, on the public surface only (TOML card, ``Generator``, ``Runtime``, CLI):
   member and five-leg records nightly, the full-colour ones also in
   arbitrary precision (60 digits, 1e-40);
 * at non-default model parameters (aS = 0.13, MT = 150) g g > g g (inclusive
-  and the T12 colour correlation) equals a legacy artifact at the same
-  parameters, whether they are passed at load or set afterwards;
+  and the T12 colour correlation) equals the removed legacy engine's frozen
+  values at the same parameters, whether they are passed at load or set
+  afterwards;
 * the pole selection (``PoleSelection``, TOML/CLI/API/results/artifact):
   ``poles="none"`` returns the finite parts with absent poles, also for
   correlated and resolved outputs, from the same artifact that serves
@@ -37,16 +39,15 @@ Checks, on the public surface only (TOML card, ``Generator``, ``Runtime``, CLI):
 * a fresh interpreter loads and evaluates the stored native point inputs
   (``point_inputs = "native-v2"``, WP3.1) with generation forbidden, with
   bitwise-identical binary64 values also after unrelated Symbolica symbols
-  were created; a call that needs the generation objects (correlated and
-  resolved outputs) regenerates the slice and refuses a stored plan that
-  differs from the regenerated one;
+  were created (no call regenerates: ``test_loop_v2_stored_process.py``;
+  a process whose native inputs cannot be exported is refused at
+  generation);
 * the native artifact loader (``load_loop_v2_artifact``) admits each plan v4
   process, cross-checks families, buckets, legs, helicity rows and sectors
   against the declarations, and refuses tampered declarations and digests;
-  the legacy native virtual runtime (the SDK's loader) refuses plan v4 with
-  its reason;
-* ``pyamplicol inspect`` summarizes v2 and legacy loop artifacts (engine,
-  sectors, families, buckets, colour degrees, plan digest);
+* ``pyamplicol inspect`` summarizes v2 loop artifacts (engine, sectors,
+  families, buckets, colour degrees, plan digest); an artifact of the removed
+  legacy engine is refused at load and inspection with the reason;
 * the artifact holds no absolute path, user or host name (relocatable,
   requirements addendum G) and loads from a copy at another path with
   bitwise-identical binary64 values;
@@ -57,16 +58,17 @@ Checks, on the public surface only (TOML card, ``Generator``, ``Runtime``, CLI):
   loop_qcd_qed_sm (scale parameter at LOOP 666, compatibility profile) the
   dry run reports the model preparation's refusal, QCD+QED corrections to
   u u~ > d d~ stop in counterterm admission and g g > g g with QCD and QED
-  corrections equals legacy (nightly);
+  corrections equals the frozen legacy values (nightly);
 * a coloured particle with a width in a tree current (g g > t t~ at the
   default top width) is refused with the fix; with the width fixed to zero
-  g g > t t~ equals the legacy engine at the model's default parameters
-  (60 digits nightly); evaluations refuse unknown parameters, the scale
-  parameter and values other than a generation-fixed one;
-* requests v2 does not cover yet fail with the reason and leave
-  ``loop.engine = "legacy"`` (the default) selectable; the slice request
+  g g > t t~ equals the frozen legacy values at the model's default
+  parameters (60 digits nightly); evaluations refuse unknown parameters, the
+  scale parameter and values other than a generation-fixed one;
+* requests v2 does not cover yet fail with the reason, and a configuration
+  naming the removed ``loop.engine`` is refused; the slice request
   records every ``SliceRequest`` field; a generation run's staged
-  validation reuses its processes; O1 loads regenerate from the record;
+  validation reuses its processes; O1 loads read the stored observable
+  columns (nothing regenerates);
 * a six-gluon plan v4 artifact stays below 20 MB (nightly).
 """
 
@@ -77,6 +79,8 @@ import json
 import math
 import subprocess
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
@@ -151,7 +155,6 @@ accuracy = "{accuracy}"
 contraction = "direct"
 [loop]
 r2_strategy = "model"
-engine = "v2"
 [loop.preparation]
 fixed_parameters = {{MB = "0"}}
 {SCHEME if declared else ""}
@@ -216,7 +219,6 @@ def _assert_inclusive_o1(
 
     fixture = _fixture(name)
     results = fixture["results"]["arbitrary-200"]
-    _forget_generation()
     runtime = Runtime.load(
         artifact, process=process, model_parameters=_parameters(fixture)
     )
@@ -456,23 +458,32 @@ def test_resolved_pole_parts_follow_the_resolved_axes():
 
 
 @pytest.mark.loop_fast
-def test_configuration_selects_the_engine_and_the_runtime_options(tmp_path):
-    from pyamplicol.config import ConfigurationError, LoopEngine, resolve_config
+def test_configuration_refuses_the_engine_and_selects_the_runtime_options(tmp_path):
+    from pyamplicol.config import ConfigurationError, resolve_config
 
     card = tmp_path / "card.toml"
+    for value in ("v2", "legacy"):
+        card.write_text(f'action = "generate"\n[loop]\nengine = "{value}"\n')
+        with pytest.raises(
+            ConfigurationError,
+            match=r"'loop\.engine' was removed: the legacy one-loop engine was "
+            r"removed; v2 .* is the only one-loop engine",
+        ):
+            resolve_config(card)
+    with pytest.raises(ConfigurationError, match=r"'loop\.engine' was removed"):
+        resolve_config(None, action="generate", overrides=("loop.engine=legacy",))
     card.write_text(
-        'action = "generate"\n[loop]\nengine = "v2"\n[evaluation]\npoles = "none"\n'
+        'action = "generate"\n[evaluation]\npoles = "none"\n'
         '[evaluation.stability_checks]\nrotations = ["z:3/5:4/5"]\n'
         "reduction_direction = true\n"
     )
     config = resolve_config(card).effective
-    assert config.loop.engine is LoopEngine.V2
+    assert not hasattr(config.loop, "engine")
     assert config.evaluation.poles is PoleSelection.NONE
     checks = config.evaluation.stability_checks.to_checks()
     assert checks.rotations == (Rotation.about("z", "3/5", "4/5"),)
     assert checks.reduction_direction
     default = resolve_config(None, action="generate").effective
-    assert default.loop.engine is LoopEngine.LEGACY
     assert default.evaluation.poles is PoleSelection.ALL
     assert default.evaluation.stability_checks.to_checks() is None
     for value in ("false", '"both"'):
@@ -501,6 +512,7 @@ def test_slice_request_records_round_trip():
     from pyamplicol.api.errors import ArtifactError
     from pyamplicol.loops.v2.artifact import request_from_record, request_record
     from pyamplicol.loops.v2.assemble import SliceRequest
+    from pyamplicol.loops.v2.selection import Selection
     from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
 
     declaration = LoopColorDeclaration.from_dict(
@@ -515,6 +527,7 @@ def test_slice_request_records_round_trip():
         corrections=("QCD", "QED"),
         fixed_parameters={"MB": "0"},
         particle_veto=(23,),
+        allow_anomalous_veto=True,
         accuracy="lc",
         colour_declaration=declaration,
         scale_parameter="MU_R",
@@ -523,6 +536,10 @@ def test_slice_request_records_round_trip():
         colour_contraction="direct",
         compatibility="gmu_particle_anti",
         counterterms="sites",
+        selection=Selection(((1, -1),), ((1, 2, 3, 4),)),
+        external_photons=(3,),
+        alpha0_conversion="dZe_conversion",
+        alpha0_inverse="ainv0",
     )
     default = SliceRequest("g g > g g", {"QCD": 2}, {"QCD": 4})
     for item in fields(SliceRequest):
@@ -534,6 +551,14 @@ def test_slice_request_records_round_trip():
     assert request_from_record(record) == request
     single = request_record(default)
     assert single["loop_orders"] == {"QCD": 4}
+    # The selection and the photon options are recorded only when set
+    # (requests without them keep their records' bytes).
+    assert not {
+        "selection",
+        "external_photons",
+        "alpha0_conversion",
+        "alpha0_inverse",
+    } & set(single)
     assert request_from_record(single) == default
     with pytest.raises(ArtifactError, match=r"unknown.*future_option"):
         request_from_record({**record, "future_option": 1})
@@ -572,6 +597,72 @@ def test_particle_veto_is_resolved_to_pdg_codes_and_refuses_the_site_oracle():
     assert request.particle_veto == (6, 23)
     with pytest.raises(ArtifactError, match="tree recursion"):
         generate_process(None, replace(request, counterterms="sites"), None)
+
+
+@pytest.mark.loop_physics
+def test_native_export_refusals_fail_the_generation(
+    loop_sm_compiled_model, loop_native, monkeypatch
+):
+    """A process whose native point inputs or observable columns cannot be
+    exported is refused at generation (genericity audit M1; a stored plan v4
+    process never regenerates at load, so there is no plan-only downgrade):
+    a listed feature (``native_trees.NATIVE_EXPORT_REFUSALS``) as a
+    ``GenerationError`` naming it, any other exception of the export as
+    itself; an unlisted feature key is refused."""
+
+    from pyamplicol.api.errors import GenerationError
+    from pyamplicol.correlators import CorrelatorConfig
+    from pyamplicol.loops.v2 import plan_export
+    from pyamplicol.loops.v2.artifact import generate_process
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.loops.v2.native_observables import StoredObservables
+    from pyamplicol.loops.v2.native_trees import NativeExportUnsupported
+    from pyamplicol.models.loading import load_compiled_model
+
+    with pytest.raises(ValueError, match="unknown native export refusal"):
+        NativeExportUnsupported("plan-only", "a downgrade")
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    request = SliceRequest(
+        "d d~ > g g",
+        {"QCD": 2, "QED": 0},
+        {"QCD": 4, "QED": 0},
+        fixed_parameters={"MB": "0"},
+    )
+    slice_ = LoopSlice.generate(compiled, request, loop_native)
+    monkeypatch.setattr(LoopSlice, "generate", lambda *args, **kwargs: slice_)
+
+    def refuse(error):
+        def export(*args, **kwargs):
+            raise error
+
+        return export
+
+    with monkeypatch.context() as patch:
+        patch.setattr(plan_export, "export_plan", refuse(NotImplementedError("plain")))
+        with pytest.raises(NotImplementedError, match=r"^plain$") as raised:
+            generate_process(compiled, request, loop_native)
+        assert not isinstance(raised.value, GenerationError)
+        listed = NativeExportUnsupported("whole-rule-root", "a pole whole-rule root")
+        patch.setattr(plan_export, "export_plan", refuse(listed))
+        with pytest.raises(
+            GenerationError, match=r"native point inputs.*whole-rule-root"
+        ):
+            generate_process(compiled, request, loop_native)
+    # Declared observables whose columns cannot be stored: refused, never
+    # stored without columns.
+    columns = NativeExportUnsupported("observable-columns", "no native components")
+    monkeypatch.setattr(StoredObservables, "export", refuse(columns))
+    record = ROOT / "tests/fixtures/loop/legacy/observables/ddgg_ssgg.json"
+    correlators = CorrelatorConfig.from_json_dict(
+        {
+            "color_correlations": json.loads(record.read_text())["histories"][:1],
+            "spin_correlations": [],
+        }
+    )
+    with pytest.raises(
+        GenerationError, match=r"observable columns.*observable-columns"
+    ):
+        generate_process(compiled, request, loop_native, correlators)
 
 
 @pytest.mark.loop_fast
@@ -628,41 +719,30 @@ def test_loop_orders_follow_the_born_amplitude_orders():
             _v2_scale_parameter(candidates, fixed)
 
 
-@pytest.mark.loop_fast
-def test_a_generation_run_retains_its_processes(monkeypatch):
-    """Staged validation reuses every process of its run: the generation
-    cache keeps them while ``retained`` holds, then trims to its size."""
-
-    from collections import OrderedDict
-
-    from pyamplicol.loops.v2 import artifact
-
-    monkeypatch.setattr(artifact, "_slices", OrderedDict())
-
-    def remember(index: int) -> None:
-        artifact._remember(
-            "model",
-            artifact.GeneratedProcess(None, None, {"process": str(index)}, str(index)),
-        )
-
-    with artifact.retained(6):
-        for index in range(10):
-            remember(index)
-        assert len(artifact._slices) == 10
-    assert len(artifact._slices) == artifact._SLICE_CACHE_SIZE
-    remember(10)
-    assert len(artifact._slices) == artifact._SLICE_CACHE_SIZE
-
-
-def _forget_generation() -> None:
-    """Make the next ``Runtime.load`` regenerate from the artifact's request
-    record, as a fresh interpreter does, instead of reusing this
-    interpreter's generation objects (``artifact._recall``)."""
+@contextmanager
+def _capturing(found: dict) -> Iterator[None]:
+    """Keep every process ``artifact.generate_process`` returns while the
+    block runs (by plan digest), for tests that inspect the generated slices
+    (nothing else keeps them)."""
 
     from pyamplicol.loops.v2 import artifact
 
-    with artifact._slices_lock:
-        artifact._slices.clear()
+    original = artifact.generate_process
+
+    def generate(*args, **kwargs):
+        generated = original(*args, **kwargs)
+        found[generated.plan_sha256] = generated
+        return generated
+
+    artifact.generate_process = generate
+    try:
+        yield
+    finally:
+        artifact.generate_process = original
+
+
+# The processes the ``full_colour`` fixture generated, by plan digest.
+_FULL_COLOUR: dict = {}
 
 
 # ------------------------------------------------------------------ public path
@@ -676,9 +756,10 @@ def full_colour(loop_sm_compiled_model, loop_native, tmp_path_factory):
         ("uux_ddxg", "u u~ > d d~ g"),
         ("tt", "u u~ > t t~"),
     )
-    return _generate(
-        _card(loop_sm_compiled_model, tmp / "artifact", entries), tmp, entries
-    )
+    with _capturing(_FULL_COLOUR):
+        return _generate(
+            _card(loop_sm_compiled_model, tmp / "artifact", entries), tmp, entries
+        )
 
 
 @pytest.fixture(scope="module")
@@ -713,7 +794,7 @@ def test_public_generation_publishes_plan_v4(full_colour):
     assert info["families"] == 42
     assert sum(count for _n, _r, count in info["buckets"]) == 42
     assert info["poles"] == ["all", "none", "uv", "ir"]
-    assert not info["rescue_available"]
+    assert info["rescue_available"] and info["default_rescue_levels"] is None
     execution = json.loads(
         (full_colour / "processes/uux_ddxg/execution.json").read_text()
     )
@@ -722,14 +803,9 @@ def test_public_generation_publishes_plan_v4(full_colour):
     # no counterterm site closure, no veto unless requested (ADDENDUM J).
     assert info["request"]["counterterms"] == "recursion"
     assert info["request"]["particle_veto"] == []
-    from pyamplicol.loops.v2 import artifact
-
-    with artifact._slices_lock:
-        generated = [
-            item.slice
-            for (_model, _record, plan), item in artifact._slices.items()
-            if plan == info["plan_sha256"]
-        ]
+    generated = [
+        item.slice for plan, item in _FULL_COLOUR.items() if plan == info["plan_sha256"]
+    ]
     assert generated
     for slice_ in generated:
         assert slice_.counterterm_program is not None
@@ -744,6 +820,9 @@ def test_public_generation_publishes_plan_v4(full_colour):
     assert record["filters"]["counterterms_inert"] == dict(
         sorted(generated[0].counterterm_program.recursion.inert.items())
     )
+    # No native stage fell back (RUST-MIGRATION rule 2: the record would
+    # name it).
+    assert "native_fallbacks" not in record["filters"]
     physics = runtime.physics
     assert [p.pdg_id for p in physics.external_particles] == [2, -2, 1, -1, 21]
 
@@ -768,7 +847,6 @@ def test_public_particle_veto_equals_njet_five_flavours(
     manifest = load_manifest(output, verify_payloads=True)
     (record,) = manifest.extensions["generation"]["concrete_processes"]
     assert record["filters"]["particle_veto"] == ["t"]
-    _forget_generation()
     runtime = Runtime.load(output, process="gg", model_parameters={"aS": "0.118"})
     assert runtime.inspect()["request"]["particle_veto"] == [6]
     controls = json.loads(
@@ -790,6 +868,52 @@ def test_public_particle_veto_equals_njet_five_flavours(
                 index,
                 key,
             )
+
+
+@pytest.mark.loop_physics
+def test_public_anomalous_veto_is_refused_unless_overridden_and_recorded(
+    loop_sm_compiled_model, loop_native, tmp_path
+):
+    """[U2] through the public path: ``particle_veto = ["t"]`` keeps the
+    axial g g Z R2 of u u~ > e- e+ g from cancelling between the up- and
+    down-type quark loops (two flavours against three) while it cancels
+    with every flavour, so generation is refused by default
+    (``AnomalousVetoError``, naming the counterterm and the override); with
+    ``allow_anomalous_veto = true`` it generates, and the artifact records
+    the override in its request record and in the generation filters next
+    to ``particle_veto``, with the lowered rules and their cells."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.artifacts import load_manifest
+    from pyamplicol.loops.v2.ct_recursion import AnomalousVetoError
+
+    entries = (("uux_emepg", "u u~ > e- e+ g"),)
+    card = _card(loop_sm_compiled_model, tmp_path / "artifact", entries).replace(
+        "emit_api_bundle = false", 'emit_api_bundle = false\nparticle_veto = ["t"]'
+    )
+    refused = tmp_path / "refused"
+    refused.mkdir()
+    with pytest.raises(
+        GenerationError, match=r"\[G G Z\].*R2_GGZ.*allow_anomalous_veto"
+    ) as caught:
+        _generate(card, refused, entries)
+    assert isinstance(caught.value.__cause__, AnomalousVetoError)
+    allowed = card.replace(
+        'particle_veto = ["t"]', 'particle_veto = ["t"]\nallow_anomalous_veto = true'
+    )
+    output = _generate(allowed, tmp_path, entries)
+    manifest = load_manifest(output, verify_payloads=True)
+    (record,) = manifest.extensions["generation"]["concrete_processes"]
+    filters = record["filters"]
+    assert filters["particle_veto"] == ["t"]
+    assert filters["allow_anomalous_veto"] is True
+    lowered = filters["counterterms_anomalous_veto"]
+    assert lowered and all(cells for cells in lowered.values())
+    runtime = Runtime.load(
+        output, process="uux_emepg", model_parameters={"aS": "0.118"}
+    )
+    request = runtime.inspect()["request"]
+    assert request["particle_veto"] == [6] and request["allow_anomalous_veto"] is True
 
 
 @pytest.mark.loop_physics
@@ -1007,15 +1131,12 @@ def test_correlated_and_resolved_calls_split_the_poles(full_colour):
 
 @pytest.mark.loop_physics
 def test_v2_runtime_refuses_what_it_does_not_provide(full_colour):
-    """Undeclared colour histories and spin classes, helicity selectors, direct
-    R2 and a rescue policy are refused; the Born metric ("born") and resolved
-    output need no declaration."""
+    """Undeclared colour histories and spin classes, helicity selectors and
+    direct R2 are refused (a rescue policy outside ``evaluate``:
+    ``test_loop_v2_rescue.py``); the Born metric ("born") and resolved output
+    need no declaration."""
 
     from pyamplicol import Runtime
-    from pyamplicol.api.virtual_results import (
-        VirtualArithmeticSpec,
-        VirtualStabilityPolicy,
-    )
 
     runtime = Runtime.load(full_colour, process="gg", model_parameters=GG_PARAMETERS)
     point = POINT
@@ -1038,13 +1159,6 @@ def test_v2_runtime_refuses_what_it_does_not_provide(full_colour):
         ),
         lambda: runtime.evaluate([point], mu_r2="1000000", helicities=["h0"]),
         lambda: runtime.evaluate([point], mu_r2="1000000", r2_strategy="direct"),
-        lambda: runtime.evaluate(
-            [point],
-            mu_r2="1000000",
-            stability=VirtualStabilityPolicy(
-                (VirtualArithmeticSpec("arbitrary", 40),), "1e-8", "1e-30"
-            ),
-        ),
     ):
         with pytest.raises(CompatibilityError):
             call()
@@ -1058,15 +1172,17 @@ FILLER_SYMBOLS = (0, 141)
 
 
 @pytest.mark.loop_physics
-def test_fresh_interpreter_loads_native_inputs_and_refuses_a_different_plan(
+def test_fresh_interpreter_loads_native_inputs_without_generation(
     full_colour, monkeypatch
 ):
     """A new interpreter loads the artifact's native point inputs and
     evaluates them with generation forbidden (no slice is regenerated),
     giving the same plan and bitwise-identical binary64 Born and virtual
-    values whatever Symbolica symbols it created before; a call that
-    regenerates the slice (the correlated outputs) refuses a stored plan
-    unequal to the regenerated one."""
+    values whatever Symbolica symbols it created before. The correlation
+    catalogue reads the stored observable columns: a load in this
+    interpreter whose generator would give other plan bytes (another
+    build's) never calls it (nothing regenerates,
+    ``test_loop_v2_stored_process.py``)."""
 
     from pyamplicol import Runtime
 
@@ -1106,26 +1222,17 @@ def test_fresh_interpreter_loads_native_inputs_and_refuses_a_different_plan(
         fresh = json.loads(process.stdout.strip().splitlines()[-1])
         assert fresh == expected, fillers
 
-    from pyamplicol.api.errors import ArtifactError
     from pyamplicol.loops.v2 import artifact
 
-    original = artifact.generate_process
-
     def drifted(*args, **kwargs):
-        # Another build's generator: the same process with other plan bytes.
-        generated = original(*args, **kwargs)
-        return artifact.GeneratedProcess(
-            generated.observables,
-            generated.exported,
-            generated.request,
-            generated.plan_json.replace('"schema":4', '"schema": 4'),
-        )
+        raise AssertionError("a load must not generate")
 
-    monkeypatch.setattr(artifact, "_slices", type(artifact._slices)())
     monkeypatch.setattr(artifact, "generate_process", drifted)
     loaded = Runtime.load(full_colour, process="gg")
-    with pytest.raises(ArtifactError, match="differs from the stored one"):
-        loaded.available_color_correlations()
+    # The stored columns serve the catalogue without the generator.
+    assert [item.id for item in loaded.available_color_correlations()] == ["born"]
+    resolved = loaded.evaluate_resolved([POINT], mu_r2="1000000")
+    assert resolved.values
 
 
 def _rewrite_payloads(source: Path, destination: Path, edits) -> Path:
@@ -1196,12 +1303,6 @@ def test_native_loader_admits_plan_v4_and_refuses_tampering(
     assert info["native_admission"]["runtime_capability"] == "rusticol.loop-runtime.v4"
     assert info["plan_bytes"] > 0
 
-    # The legacy virtual runtime, which the standalone SDK wraps, names the
-    # plan v4 loader instead of misreading the artifact.
-    refusal = r"loop-runtime\.v4\) are not evaluated by this runtime"
-    with pytest.raises(ValueError, match=refusal):
-        loop_native.NativeVirtualRuntime(str(full_colour), process="gg")
-
     def shuffle_buckets(physics):
         buckets = physics["metadata"]["buckets"]
         buckets[0][2] += 1
@@ -1214,6 +1315,12 @@ def test_native_loader_admits_plan_v4_and_refuses_tampering(
 
     def native_inputs(execution):
         execution["point_inputs"] = "native"
+        return execution
+
+    def regenerated(execution):
+        # The retired declaration of a process stored without native inputs
+        # (its loads regenerated it; REQUIREMENTS_ADDENDUM G).
+        execution["point_inputs"] = "regenerated-at-load"
         return execution
 
     def unresolved(physics):
@@ -1263,6 +1370,12 @@ def test_native_loader_admits_plan_v4_and_refuses_tampering(
             {"processes/gg/execution.json": native_inputs},
             "unsupported plan v4 execution declaration",
             "unsupported plan v4 execution declaration",
+        ),
+        (
+            "regenerated",
+            {"processes/gg/execution.json": regenerated},
+            "no longer supported .*regenerate the artifact",
+            "no longer supported .*regenerate the artifact",
         ),
         (
             "poles",
@@ -1354,18 +1467,36 @@ def test_inspect_summarizes_v2_loop_artifacts(full_colour):
     assert "rusticol.loop-runtime.v4" in text and "plan v4" in text
 
 
-@pytest.mark.loop_physics
-def test_inspect_summarizes_legacy_loop_artifacts(saved_loop_fixture):
-    from pyamplicol.artifacts import inspect_artifact
+@pytest.mark.loop_fast
+def test_legacy_loop_artifacts_are_refused_with_the_reason(saved_loop_fixture):
+    """An artifact of the removed legacy engine (``rusticol.loop-runtime.v3``)
+    is refused, typed, by the manifest reader, ``Runtime.load`` and
+    ``inspect``: v2 is the only one-loop engine."""
 
-    inspection = inspect_artifact(saved_loop_fixture("sdk-mixed-source"))
-    (process,) = inspection.processes
-    loop = process.loop
-    assert loop is not None and loop.engine == "legacy"
-    assert loop.runtime_capability == "rusticol.loop-runtime.v3"
-    assert loop.families is None and loop.plan_sha256 is None
-    assert len(loop.sectors) == 3 and len(loop.born_orders) == 3
-    assert process.execution_mode == "loop_recurrence"
+    from pyamplicol import Runtime
+    from pyamplicol.api.errors import CompatibilityError
+    from pyamplicol.artifacts import inspect_artifact, load_manifest
+
+    legacy = saved_loop_fixture("sdk-mixed-source")
+    reason = (
+        r"legacy-engine virtual processes \(rusticol\.loop-runtime\.v3\): the "
+        r"legacy one-loop engine was removed; v2 .* is the only one-loop "
+        r"engine; regenerate the artifact"
+    )
+    for load in (
+        lambda: load_manifest(legacy, verify_payloads=False),
+        lambda: Runtime.load(legacy),
+        lambda: inspect_artifact(legacy),
+    ):
+        with pytest.raises(CompatibilityError, match=reason):
+            load()
+    # The artifact writer's own capability check (behind the manifest reader).
+    from pyamplicol.generation.artifact_writer import _required_runtime_capabilities
+
+    with pytest.raises(CompatibilityError, match=reason):
+        _required_runtime_capabilities(
+            {"required_runtime_capabilities": ["rusticol.loop-runtime.v3"]}
+        )
 
 
 @pytest.mark.loop_physics
@@ -1377,20 +1508,22 @@ def test_cli_generates_and_evaluates_through_v2(
     entries = (("gg", "g g > g g"),)
     card = tmp_path / "card.toml"
     output = tmp_path / "artifact"
-    # The card selects the legacy engine; --loop-engine v2 overrides it.
-    card.write_text(
-        _card(loop_sm_compiled_model, output, entries).replace(
-            'engine = "v2"', 'engine = "legacy"'
+    card.write_text(_card(loop_sm_compiled_model, output, entries))
+    # The removed engine option is refused with the reason.
+    for value in ("v2", "legacy"):
+        stderr = io.StringIO()
+        code = run_cli(
+            ("generate", "--card", str(card), "--loop-engine", value, "--dry-run"),
+            stdout=io.StringIO(),
+            stderr=stderr,
         )
-    )
-    engine = ("--loop-engine", "v2")
+        assert code != 0 and "'loop.engine' was removed" in stderr.getvalue()
     stdout, stderr = io.StringIO(), io.StringIO()
     code = run_cli(
         (
             "generate",
             "--card",
             str(card),
-            *engine,
             "--dry-run",
             "--json",
             "--progress",
@@ -1408,9 +1541,15 @@ def test_cli_generates_and_evaluates_through_v2(
     assert coverage["processes"][0]["loop_orders"] == {"QCD": 4, "QED": 0}
     assert coverage["processes"][0]["scale_parameter"] == "MU_R"
     assert coverage["processes"][0]["loop_admission_checked"] is False
+    assert coverage["processes"][0]["native_export_checked"] is False
+    from pyamplicol.loops.v2.native_trees import NATIVE_EXPORT_REFUSALS
+
+    assert [item.split(":")[0] for item in coverage["native_export_refusals"]] == [
+        refusal.key for refusal in NATIVE_EXPORT_REFUSALS
+    ]
     assert not output.exists()
     code = run_cli(
-        ("generate", "--card", str(card), *engine, "--progress", "off"),
+        ("generate", "--card", str(card), "--progress", "off"),
         stdout=io.StringIO(),
         stderr=stderr,
     )
@@ -1560,12 +1699,15 @@ def test_cli_generates_and_evaluates_through_v2(
         ("gg_gg", "g g > g g", "lc"),
         ("tt", "u u~ > t t~", "lc"),
         ("uux_ddxg", "u u~ > d d~ g", "nlc"),
+        ("uux_uuxg", "u u~ > u u~ g", "nlc"),
     ],
 )
 def test_projected_colour_through_v2_equals_legacy_o1(
     loop_sm_colour_model, loop_native, tmp_path, name, expression, accuracy
 ):
-    """LC and NLC projections in binary64 (1e-12) and double-double (1e-24)."""
+    """LC and NLC projections in binary64 (1e-12) and double-double (1e-24),
+    identical-flavour lines included (u u~ > u u~ g: blocks of one colour
+    word and two N_c grades, ``generation.dag_grades``)."""
 
     from pyamplicol import Runtime
 
@@ -1839,46 +1981,27 @@ def test_public_v2_runtime_at_non_default_model_parameters(
     """Every other public-path test runs at loop_sm's defaults (aS = 0.118,
     MT = 173, also the frozen fixtures' values), where a runtime that ignored
     its parameters would pass. At aS = 0.13 and MT = 150, g g > g g at full
-    colour through the v2 artifact of its observables record equals a legacy
-    artifact generated here with the T12 history and evaluated at the same
-    parameters in double-double, at the record's first point: the inclusive
-    virtual and the T12 colour correlation, in binary64 (the user's rule)
-    and double-double (1e-24). Parameters passed at load and through
-    ``set_model_parameters`` give bitwise-identical binary64 values; the
-    resolved rows (double-double) sum to the inclusive value; the Born
-    scales as aS^2 against the defaults. (One history keeps the legacy
-    generation at about a minute: with all of the record's correlators it
-    takes 4-5 min.)"""
+    colour through the v2 artifact of its observables record equals the
+    removed legacy engine's frozen values at the same parameters
+    (double-double, ``legacy/gg_gg_non_default_parameters.json``), at the
+    record's first point: the inclusive virtual and the T12 colour
+    correlation, in binary64 (the user's rule) and double-double (1e-24).
+    Parameters passed at load and through ``set_model_parameters`` give
+    bitwise-identical binary64 values; the resolved rows (double-double) sum
+    to the inclusive value; the Born scales as aS^2 against the defaults."""
 
     from decimal import localcontext
 
     from pyamplicol import Runtime
-    from pyamplicol.correlators import CorrelatedRequest, CorrelatorConfig
+    from pyamplicol.correlators import CorrelatedRequest
 
     record = _observables_record("gg_gg")
-    entries = (("gg", "g g > g g"),)
-    (history,) = (item for item in record["histories"] if item["id"] == "T12")
-    card = _card(loop_sm_compiled_model, tmp_path / "artifact", entries).replace(
-        'engine = "v2"', 'engine = "legacy"'
-    )
-    legacy_artifact = _generate(
-        card.replace("post_build_validation = true", "post_build_validation = false"),
-        tmp_path,
-        entries,
-        CorrelatorConfig.from_json_dict(
-            {"color_correlations": [history], "spin_correlations": []}
-        ),
-    )
+    frozen = _fixture("gg_gg_non_default_parameters")
+    assert frozen["model_parameters"] == NON_DEFAULT_PARAMETERS
     points, scales = record["points"][:1], record["scales_squared"][:1]
+    assert (frozen["points"], frozen["scales_squared"]) == (points, scales)
     requests = {"T12": CorrelatedRequest("T12", {})}
-    legacy = Runtime.load(
-        legacy_artifact, process="gg", model_parameters=NON_DEFAULT_PARAMETERS
-    )
-    reference = {"arithmetic": "double-double"}
-    expected = {
-        "inclusive": legacy.evaluate(points, mu_r2=scales, **reference),
-        **legacy.evaluate_correlated_many(points, requests, mu_r2=scales, **reference),
-    }
+    expected = frozen["results"]
     output = observables_artifact("gg_gg")
     runtime = Runtime.load(
         output, process="gg", model_parameters=NON_DEFAULT_PARAMETERS
@@ -1895,8 +2018,8 @@ def test_public_v2_runtime_at_non_default_model_parameters(
         }
         for label, result in results.items():
             target = {
-                "born": expected[label].born_values,
-                "virtual": expected[label].values,
+                "born": expected[label]["born"],
+                "virtual": expected[label]["virtual"],
             }
             _assert_record(result, target, 0, carrier, label)
         if carrier == "double":
@@ -1981,9 +2104,8 @@ def _assert_public_o1(observables_artifact, name: str, carriers) -> None:
     representative = record["processes"][0][0]
     assert [process["id"] for process in manifest.processes] == [representative]
     points, scales = record["points"], record["scales_squared"]
-    # The first load regenerates from the request record (correlators,
-    # colour declaration); members are re-admitted on that slice.
-    _forget_generation()
+    # Without the generation objects of this interpreter: the loads read the
+    # stored observable columns and the members listed at generation.
     for process, _expression in record["processes"]:
         expected = record["results"]["arbitrary-200"][process]
         runtime = Runtime.load(
@@ -2087,6 +2209,36 @@ def test_finite_only_correlated_and_resolved_from_the_same_artifact(
     assert loop.correlations and loop.resolved
     assert loop.color_correlations == ("casimir", "T12", "T34")
     assert loop.spin_correlations == ((3,), (3, 4))
+
+
+@pytest.mark.loop_fast
+def test_spin_class_on_a_non_vector_leg_is_refused_at_generation(
+    loop_sm_compiled_model, loop_native, tmp_path, monkeypatch
+):
+    """A one-loop spin class on a quark leg, or on a leg the process does not
+    have, is refused at generation with the tree route's rule and message
+    (``generation.correlated``), before any tree is built, not at evaluation
+    (``observables.require_vector_spin_sources``)."""
+
+    import re
+
+    from pyamplicol import CorrelatorConfig
+    from pyamplicol.loops.v2.assemble import LoopSlice
+
+    def unreachable(*_args, **_kwargs):
+        raise AssertionError("the slice was generated before the refusal")
+
+    monkeypatch.setattr(LoopSlice, "generate", unreachable)
+    entries = (("uugg", "u u~ > g g"),)
+    card = _card(loop_sm_compiled_model, tmp_path / "artifact", entries)
+    for spin, reason in (
+        (((1,),), "spin-correlated leg 1 requires a full four-component vector source"),
+        (((3,), (7,)), "spin-correlated leg 7 is absent from"),
+    ):
+        declarations = CorrelatorConfig(spin_correlations=spin)
+        with pytest.raises(GenerationError, match=re.escape(reason)):
+            _generate(card, tmp_path, entries, declarations)
+        assert not (tmp_path / "artifact").exists()
 
 
 # ------------------------------------------------------------------ portability
@@ -2198,14 +2350,14 @@ def test_artifacts_hold_no_host_paths_and_load_relocated(
 
 
 @pytest.mark.loop_physics
-def test_unsupported_requests_name_the_reason_and_keep_legacy(
+def test_unsupported_requests_name_the_reason(
     loop_sm_compiled_model, loop_native, tmp_path
 ):
     """A correction the source model does not expand perturbatively (QED in
-    loop_sm, which the legacy graph generator refuses too; several declared
-    corrections take one loop order each) and the forced seed FFT are
-    refused with their reasons before any generation; the legacy engine
-    stays selectable."""
+    loop_sm; several declared corrections take one loop order each) is
+    refused with its reason before any generation. The dry run of a
+    default-configuration request plans v2 and enumerates no loop diagram.
+    (The forced seed FFT is served: ``test_loop_v2_seed_fft``.)"""
 
     from pyamplicol.api import Generator, ProcessRequest, ProcessSet
     from pyamplicol.config import resolve_config
@@ -2218,10 +2370,6 @@ def test_unsupported_requests_name_the_reason_and_keep_legacy(
             ('loop_coupling_orders = ["QCD"]', 'loop_coupling_orders = ["QCD", "QED"]'),
             r"require declared NLO model support.*\['QED'\]",
         ),
-        (
-            ('contraction = "direct"', 'contraction = "symmetric-group-fft"'),
-            r"contracts seed columns directly.*loop\.engine='legacy'",
-        ),
     ):
         card.write_text(
             _card(loop_sm_compiled_model, tmp_path / "a", entries).replace(*edit)
@@ -2231,14 +2379,12 @@ def test_unsupported_requests_name_the_reason_and_keep_legacy(
             generator.generate(processes, tmp_path / "a")
         assert not (tmp_path / "a").exists()
         assert generator.plan(processes).unsupported_features
-    card.write_text(
-        _card(loop_sm_compiled_model, tmp_path / "b", entries).replace(
-            'engine = "v2"', 'engine = "legacy"'
-        )
-    )
+    card.write_text(_card(loop_sm_compiled_model, tmp_path / "b", entries))
     plan = Generator(resolve_config(card)).plan(processes)
-    assert plan.estimated_coverage.get("engine") is None  # the legacy plan
-    assert plan.estimated_coverage["processes"][0]["loop_graph_count"] > 0
+    assert plan.unsupported_features == ()
+    assert plan.estimated_coverage["engine"] == "v2"
+    assert plan.estimated_coverage["processes"][0]["engine"] == "v2"
+    assert plan.estimated_coverage["processes"][0]["loop_graph_count"] == 0
 
 
 # ------------------------------------------------------- orders, widths, models
@@ -2314,7 +2460,6 @@ def test_mixed_born_orders_take_one_loop_order_per_born_order(
     points = json.loads((ROOT / "tools/loop_reference/uudd_qcd.json").read_text())
     born_key = {_canonical(v): k for k, v in reference["born_orders"].items()}
     loop_key = {_canonical(v): k for k, v in reference["loop_orders"].items()}
-    _forget_generation()
     runtime = Runtime.load(
         tmp_path / "b", process="uudd", model_parameters=GG_PARAMETERS
     )
@@ -2342,15 +2487,6 @@ def test_mixed_born_orders_take_one_loop_order_per_born_order(
     print(f"mixed Born orders: largest sector deviation {worst:.2e}")
 
 
-def _legacy_results(result) -> dict:
-    """A public evaluation in the frozen legacy fixtures' layout."""
-
-    return {
-        "born": [[[str(value), "0"]] for (value,) in result.born_values],
-        "virtual": [[[[str(c), "0"] for c in laurent]] for (laurent,) in result.values],
-    }
-
-
 GGTT = (("ggtt", "g g > t t~"),)
 WT_ZERO = ('fixed_parameters = {MB = "0"}', 'fixed_parameters = {MB = "0", WT = "0"}')
 
@@ -2365,30 +2501,27 @@ def _ggtt_generator(model: Path, tmp_path: Path, output: str, edit=None):
     return Generator(resolve_config(card))
 
 
-def _ggtt_runtimes(model: Path, tmp_path: Path):
-    """g g > t t~ through v2 with WT fixed to zero and through the legacy
-    engine at the model defaults, with the provider reference's exact
-    on-shell points and scales."""
+def _ggtt_runtime(model: Path, tmp_path: Path):
+    """g g > t t~ through v2 with WT fixed to zero, the provider reference's
+    exact on-shell points and scales, and the removed legacy engine's frozen
+    values there at the model defaults (its propagators carried no width)."""
 
     from pyamplicol import Runtime
     from pyamplicol.api import ProcessRequest, ProcessSet
 
     processes = ProcessSet((ProcessRequest.parse("g g > t t~", name="ggtt"),))
     _ggtt_generator(model, tmp_path, "v2", WT_ZERO).generate(processes, tmp_path / "v2")
-    _ggtt_generator(
-        model, tmp_path, "legacy", ('engine = "v2"', 'engine = "legacy"')
-    ).generate(processes, tmp_path / "legacy")
     required = json.loads(
         (ROOT / "tests/fixtures/loop/required/gg_ttx.json").read_text()
     )
     scales = [str(Decimal(mu) ** 2) for mu in required["mu_r"]]
-    runtimes = {
-        engine: Runtime.load(
-            tmp_path / engine, process="ggtt", model_parameters=GG_PARAMETERS
-        )
-        for engine in ("v2", "legacy")
-    }
-    return runtimes, required["points"], scales
+    frozen = _fixture("gg_ttx_model_defaults")
+    assert frozen["model_parameters"] == GG_PARAMETERS
+    assert (frozen["points"], frozen["scales_squared"]) == (required["points"], scales)
+    runtime = Runtime.load(
+        tmp_path / "v2", process="ggtt", model_parameters=GG_PARAMETERS
+    )
+    return runtime, required["points"], scales, frozen["results"]
 
 
 @pytest.mark.loop_physics
@@ -2400,11 +2533,11 @@ def test_coloured_widths_in_tree_currents_are_fixed_to_zero(
     any loop generation, naming the fix (v2 is real on-shell: a width there
     would make the Born, its colour correlations and the virtual
     inconsistent). With WT fixed to zero ([loop.preparation]) the public v2
-    virtual equals the legacy engine's, whose propagators carry no width,
-    evaluated at the model's default parameters (WT = 1.4915 included) at
-    the three exact on-shell points and scales of the provider reference:
-    binary64 1e-12 and double-double 1e-24, against legacy in double-double
-    (60 digits nightly). An evaluation refuses a WT other than the fixed
+    virtual equals the removed legacy engine's frozen values (its propagators
+    carried no width) at the model's default parameters (WT = 1.4915
+    included) at the three exact on-shell points and scales of the provider
+    reference: binary64 1e-12 and double-double 1e-24, against legacy in
+    double-double (60 digits nightly). An evaluation refuses a WT other than the fixed
     zero, the scale parameter and unknown names."""
 
     import re
@@ -2414,9 +2547,10 @@ def test_coloured_widths_in_tree_currents_are_fixed_to_zero(
 
     processes = ProcessSet((ProcessRequest.parse("g g > t t~", name="ggtt"),))
     reason = (
-        r"'ggtt' \([^)]*\): tree currents propagate coloured particles whose "
-        r"width is not fixed to zero: t \(WT\)\..*real on-shell.*"
-        r'fixed_parameters \(WT = "0"\)'
+        r"coloured-width: 'ggtt' \([^)]*\): tree currents propagate coloured "
+        r"particles whose width is not fixed to zero: t \(WT\); fix it in "
+        r'\[loop\.preparation\] fixed_parameters \(WT = "0"\).*'
+        r'model\.restriction = "no_widths".*real on-shell'
     )
     refused = _ggtt_generator(loop_sm_compiled_model, tmp_path, "a")
     (blocker,) = refused.plan(processes).unsupported_features
@@ -2424,11 +2558,8 @@ def test_coloured_widths_in_tree_currents_are_fixed_to_zero(
     with pytest.raises(GenerationError, match=reason):
         refused.generate(processes, tmp_path / "a")
     assert not (tmp_path / "a").exists()
-    runtimes, points, scales = _ggtt_runtimes(loop_sm_compiled_model, tmp_path)
-    results = _legacy_results(
-        runtimes["legacy"].evaluate(points, mu_r2=scales, arithmetic="double-double")
-    )
-    runtime = runtimes["v2"]
+    runtime, points, scales, frozen = _ggtt_runtime(loop_sm_compiled_model, tmp_path)
+    results = frozen["double-double"]
     _assert_legacy(runtime.evaluate(points, mu_r2=scales), results, DOUBLE_TOLERANCE)
     _assert_legacy(
         runtime.evaluate(points, mu_r2=scales, arithmetic="double-double"),
@@ -2451,23 +2582,21 @@ def test_coloured_widths_in_tree_currents_are_fixed_to_zero(
 def test_coloured_width_fixed_to_zero_equals_legacy_at_sixty_digits(
     loop_sm_compiled_model, loop_native, tmp_path
 ):
-    """g g > t t~ with WT fixed to zero against legacy at the model defaults,
-    both at 60 digits (1e-40)."""
+    """g g > t t~ with WT fixed to zero against the frozen legacy values at
+    the model defaults, both at 60 digits (1e-40)."""
 
-    runtimes, points, scales = _ggtt_runtimes(loop_sm_compiled_model, tmp_path)
+    runtime, points, scales, frozen = _ggtt_runtime(loop_sm_compiled_model, tmp_path)
     options = {"arithmetic": "arbitrary", "precision": ARBITRARY_DIGITS}
-    results = _legacy_results(
-        runtimes["legacy"].evaluate(points, mu_r2=scales, **options)
-    )
+    results = frozen["arbitrary-60"]
     _assert_legacy(
-        runtimes["v2"].evaluate(points, mu_r2=scales, **options),
+        runtime.evaluate(points, mu_r2=scales, **options),
         results,
         ARBITRARY_TOLERANCE,
     )
 
 
 def _qed_model_generator(
-    model: Path, tmp_path: Path, name: str, entries, *, engine, fixed='MB = "0"'
+    model: Path, tmp_path: Path, name: str, entries, *, profiled, fixed='MB = "0"'
 ):
     from pyamplicol.api import Generator
     from pyamplicol.config import resolve_config
@@ -2480,8 +2609,8 @@ def _qed_model_generator(
         text.replace(
             'fixed_parameters = {MB = "0"}',
             COMPATIBILITY.replace('{MB = "0"}', f"{{{fixed}}}"),
-        ).replace('engine = "v2"', f'engine = "{engine}"')
-        if engine
+        )
+        if profiled
         else text
     )
     return Generator(resolve_config(card))
@@ -2493,22 +2622,25 @@ def test_qed_declaring_model_names_its_blockers(
 ):
     """MG5_aMC's loop_qcd_qed_sm with QCD and QED corrections through the
     public v2 path (its MU_R, at LHA code LOOP 666, is resolved at the public
-    boundary). Without the compatibility profile both engines refuse its G-
-    Goldstone flag, which the dry run reports from the model preparation.
-    With it, u u~ > d d~ at the card's W and Z widths is refused by the
+    boundary). Without the compatibility profile the structural source
+    repair restores its G- Goldstone flag (MS-MODEL, rule
+    ``antiparticle-goldstone-flag``): the dry run admits the request. With
+    the profile (still accepted), u u~ > d d~ at the card's W and Z widths
+    is refused by the
     electroweak width policy (WP3.2 EWI-0b, the user's decision [U8]: the
     widths fixed to zero, or the complex-mass scheme), before its tree
-    kernels and the counterterm lowering. With those widths fixed to zero it
-    stops at the electroweak counterterms that the tree recursion cannot
-    lower and whose vertices can enter a tree of the request: couplings with
-    the complex-mass scheme's UFO helper recms (WP3.2). There is no site
-    fallback. The unlowerable G0-photon mixing between spins is inert
-    (REQUIREMENTS_ADDENDUM J): the model's tree model absorbs the Goldstones
-    into the massive vectors (``CompiledUFOModel.inactive_goldstone_names``),
-    so it holds no G0 vertex and no tree of any request on this model holds
-    the mixing."""
+    kernels and the counterterm lowering. With those widths fixed to zero
+    its electroweak counterterms are lowered (their CT scalars with the
+    complex-mass scheme's helper recms and the CMS reglog are
+    parameter-program references, WP3.2 EWI-3) and the request generates in
+    't Hooft-Feynman gauge (WP3.2 EWI-4b: W, Z, Goldstones and ghosts on its
+    loop lines), recorded in its generation filters; its Goldstone-vector
+    mixings are lowered as vertex insertions, so none is inert (in unitary
+    gauge the tree model absorbed the Goldstones and the G0-photon mixing
+    was inert, REQUIREMENTS_ADDENDUM J)."""
 
     from pyamplicol.api import ProcessRequest, ProcessSet
+    from pyamplicol.artifacts import load_manifest
     from pyamplicol.loops.v2.ew_policy import ElectroweakWidthError
     from pyamplicol.models.loading import compile_model_source
 
@@ -2518,13 +2650,11 @@ def test_qed_declaring_model_names_its_blockers(
     # (keyed by the model compiler's sources, so a compiler change empties it).
     compile_model_source(loop_qcd_qed_sm_ufo, require_supported=False)
     plain = _qed_model_generator(
-        loop_qcd_qed_sm_ufo, tmp_path, "a", entries, engine=None
+        loop_qcd_qed_sm_ufo, tmp_path, "a", entries, profiled=False
     )
-    assert plain.plan(processes).unsupported_features == (
-        "antiparticle metadata mismatch for G+: goldstoneboson",
-    )
+    assert plain.plan(processes).unsupported_features == ()
     profiled = _qed_model_generator(
-        loop_qcd_qed_sm_ufo, tmp_path, "b", entries, engine="v2"
+        loop_qcd_qed_sm_ufo, tmp_path, "b", entries, profiled=True
     )
     with pytest.raises(
         ElectroweakWidthError,
@@ -2539,17 +2669,16 @@ def test_qed_declaring_model_names_its_blockers(
         tmp_path,
         "c",
         entries,
-        engine="v2",
+        profiled=True,
         fixed='MB = "0", WW = "0", WZ = "0"',
     )
-    with pytest.raises(
-        GenerationError,
-        match=r"counterterm rules the tree recursion cannot lower, whose vertices "
-        r"can enter a tree of the request: .*UFO helper 'recms'",
-    ) as refused:
-        zero_widths.generate(processes, tmp_path / "c")
-    assert "G0" not in str(refused.value)
-    assert not (tmp_path / "c").exists()
+    zero_widths.generate(processes, tmp_path / "c")
+    (record,) = load_manifest(tmp_path / "c").extensions["generation"][
+        "concrete_processes"
+    ]
+    assert record["filters"]["gauge"] == "feynman"
+    inert = record["filters"]["counterterms_inert"]
+    assert not any("between spins" in reason for reason in inert.values()), inert
 
 
 @pytest.mark.loop_nightly
@@ -2558,13 +2687,18 @@ def test_qed_declaring_model_joint_corrections_equal_legacy(
 ):
     """g g > g g with QCD and QED corrections on loop_qcd_qed_sm
     (compatibility profile ``gmu_particle_anti``) through the public v2 path
-    equals the legacy engine: Born and the QCD^6 virtual in binary64 (1e-12)
-    and at 60 digits (1e-40, legacy at 60 digits). v2 also lists the
+    equals the removed legacy engine's frozen values: Born and the QCD^6
+    virtual in binary64 (1e-12) and at 60 digits (1e-40, legacy at 60
+    digits). v2 also lists the
     QCD^4 QED^2 sector, a structural zero (no one-loop g g > g g amplitude of
-    order QCD^2 QED^2), which legacy omits. The electroweak CT rules the tree
-    recursion cannot lower enter no tree of g g > g g: the generation record
-    lists them inert (REQUIREMENTS_ADDENDUM J), the G0-photon mixing among
-    them."""
+    order QCD^2 QED^2), which legacy omits. The request takes 't Hooft-Feynman
+    gauge (WP3.2 EWI-4b, recorded in the generation filters). The electroweak
+    CT rules are lowered (their CT scalars with the complex-mass scheme's
+    helpers are parameter-program references, WP3.2 EWI-3; the
+    Goldstone-vector mixings as vertex insertions, EWI-4b), so no rule is
+    inert for a UFO helper or a mixing between spins (REQUIREMENTS_ADDENDUM
+    J). The referenced CT scalars are native parameter-program outputs, so
+    the v2 artifact stores native point inputs."""
 
     from pyamplicol import Runtime
     from pyamplicol.api import ProcessRequest, ProcessSet
@@ -2572,28 +2706,29 @@ def test_qed_declaring_model_joint_corrections_equal_legacy(
 
     entries = (("gg", "g g > g g"),)
     processes = ProcessSet((ProcessRequest.parse("g g > g g", name="gg"),))
-    runtimes = {}
-    for engine in ("v2", "legacy"):
-        _qed_model_generator(
-            loop_qcd_qed_sm_ufo, tmp_path, engine, entries, engine=engine
-        ).generate(processes, tmp_path / engine)
-        runtimes[engine] = Runtime.load(
-            tmp_path / engine, process="gg", model_parameters=GG_PARAMETERS
+    _qed_model_generator(
+        loop_qcd_qed_sm_ufo, tmp_path, "v2", entries, profiled=True
+    ).generate(processes, tmp_path / "v2")
+    runtimes = {
+        "v2": Runtime.load(
+            tmp_path / "v2", process="gg", model_parameters=GG_PARAMETERS
         )
+    }
     (record,) = load_manifest(tmp_path / "v2").extensions["generation"][
         "concrete_processes"
     ]
+    assert record["filters"]["gauge"] == "feynman"
     inert = record["filters"]["counterterms_inert"]
-    unreachable = {
-        name: reason for name, reason in inert.items() if "enters no tree" in reason
-    }
-    assert "PYAMPLICOL_CT_V306" in unreachable, sorted(inert)
-    assert any("UFO helper 'recms'" in reason for reason in unreachable.values())
-    reference = runtimes["legacy"].evaluate(
-        [POINT], mu_r2="1000000", arithmetic="arbitrary", precision=ARBITRARY_DIGITS
-    )
-    assert [sector.order for sector in reference.sectors] == [(("QCD", 6),)]
-    results = _legacy_results(reference)
+    assert not any(
+        "UFO helper" in reason or "between spins" in reason for reason in inert.values()
+    ), inert
+    # The referenced CT scalars are native parameter-program outputs: no
+    # load-time regeneration (REQUIREMENTS_ADDENDUM G).
+    assert runtimes["v2"].inspect()["point_inputs"] == "native-v2"
+    frozen = _fixture("gg_gg_qcd_qed_sm")
+    assert frozen["model_parameters"] == GG_PARAMETERS
+    assert (frozen["points"], frozen["scales_squared"]) == ([POINT], ["1000000"])
+    results = frozen["results"]["arbitrary-60"]
     for options, tolerance in (
         ({}, DOUBLE_TOLERANCE),
         (

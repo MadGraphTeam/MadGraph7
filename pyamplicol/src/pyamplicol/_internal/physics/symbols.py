@@ -8,7 +8,10 @@ from hashlib import sha256
 from threading import Lock
 from typing import Any
 
-_UFO_CANONICAL_NAMESPACE = "UFO::{}::"
+# A process-global ``UFO::`` head: the namespace ``UFO`` itself, not a name
+# ending in ``UFO`` (a model namespace such as ``model_HC_NLO_X0_UFO::``, from
+# a UFO directory named ``*_UFO``) nor a nested ``...::UFO::`` namespace.
+UFO_HEAD = re.compile(r"(?<![\w:])UFO::(?:\{\}::)?")
 # Symbolica's process-wide symbol table cannot handle concurrent S(...) calls.
 _SYMBOL_CONSTRUCTION_LOCK = Lock()
 _SYMBOL_CACHE: dict[tuple[str, bool], Any] = {}
@@ -57,6 +60,17 @@ def _safe_text_path(text: str) -> str:
     return "::".join(_safe_text_part(part.strip()) for part in text.split("::") if part)
 
 
+@cache
+def _kernel_symbol(
+    namespace: str, kind: int, side: str, marker: str, index: int
+) -> Any:
+    """A kernel's input component (``marker`` empty) or momentum
+    (``"momentum_"``) symbol of a model namespace: about 10^6 lookups per
+    model compile, each one name (``ModelSymbolRegistry.symbol``)."""
+
+    return _symbol(f"{namespace}::compiler::kernel_{kind}_{side}_{marker}{index}")
+
+
 @dataclass(frozen=True)
 class ModelSymbolRegistry:
     """Symbolica names owned by one externally supplied model."""
@@ -78,11 +92,7 @@ class ModelSymbolRegistry:
 
         from symbolica import E
 
-        namespaced = str(source).replace(
-            _UFO_CANONICAL_NAMESPACE,
-            f"{self.namespace}::",
-        )
-        namespaced = namespaced.replace("UFO::", f"{self.namespace}::")
+        namespaced = UFO_HEAD.sub(f"{self.namespace}::", str(source))
         return E(namespaced)
 
     def expression_string(self, source: str) -> str:
@@ -92,12 +102,10 @@ class ModelSymbolRegistry:
         return self.qualified_name(f"compiler::kernel_{int(kind)}_{side}")
 
     def kernel_component(self, kind: int, side: str, index: int) -> Any:
-        return self.symbol(f"compiler::kernel_{int(kind)}_{side}_{int(index)}")
+        return _kernel_symbol(self.namespace, int(kind), side, "", int(index))
 
     def kernel_momentum(self, kind: int, side: str, index: int) -> Any:
-        return self.symbol(
-            f"compiler::kernel_{int(kind)}_{side}_momentum_{int(index)}"
-        )
+        return _kernel_symbol(self.namespace, int(kind), side, "momentum_", int(index))
 
     def contact_leg_tensor_name(self, kind: int, leg: int) -> str:
         return self.qualified_name(

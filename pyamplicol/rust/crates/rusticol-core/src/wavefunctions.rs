@@ -187,7 +187,12 @@ pub(super) fn ext_quark_dirac_massive(
     } else {
         c64((pp3 * 0.5 / pp).sqrt(), 0.0)
     };
-    let chi2 = if pp3 == 0.0 || pp == 0.0 {
+    // At rest (pp = 0) the helicity axis is +z, the limit of the general
+    // branch along +z (HELAS ixxxxx/oxxxxx's rest spinor): chi = (1, 0). A
+    // momentum along -z (pp3 = 0) takes chi = (0, -nh).
+    let chi2 = if pp == 0.0 {
+        c64(0.0, 0.0)
+    } else if pp3 == 0.0 {
         c64(-(nh as f64), 0.0)
     } else {
         let denom = (2.0 * pp * pp3).sqrt();
@@ -233,7 +238,12 @@ pub(super) fn ext_antiquark_dirac_massive(
     } else {
         c64((pp3 * 0.5 / pp).sqrt(), 0.0)
     };
-    let chi2 = if pp3 == 0.0 || pp == 0.0 {
+    // At rest (pp = 0) the helicity axis is +z, the limit of the general
+    // branch along +z (HELAS ixxxxx/oxxxxx's rest spinor): chi = (1, 0). A
+    // momentum along -z (pp3 = 0) takes chi = (0, -nh).
+    let chi2 = if pp == 0.0 {
+        c64(0.0, 0.0)
+    } else if pp3 == 0.0 {
         c64(-(nh as f64), 0.0)
     } else {
         let denom = (2.0 * pp * pp3).sqrt();
@@ -384,9 +394,18 @@ where
     let nh = nsf * i64::from(helicity);
     let integer = |value: i64| energy.from_i64(value);
     let [px, py, pz] = [1, 2, 3].map(|mu| momentum[mu].clone());
-    let pp = (px.clone() * px.clone() + py.clone() * py.clone() + pz.clone() * pz.clone())
-        .sqrt()
-        .norm();
+    // Along the z axis |p| is |pz| exactly. DoubleFloat's square root is not
+    // correctly rounded, so sqrt(pz²) can miss |pz| by an ulp: for p along
+    // -z, |p| + pz below was then a rounding residue instead of zero, which
+    // took the general branch and made the spinor vanish (binary64 and MPFR
+    // keep sqrt(pz²) = |pz|; their values are unchanged).
+    let pp = if is_zero(&px) && is_zero(&py) {
+        pz.norm()
+    } else {
+        (px.clone() * px.clone() + py.clone() * py.clone() + pz.clone() * pz.clone())
+            .sqrt()
+            .norm()
+    };
     let omega1 = (energy.norm() + pp.clone()).sqrt();
     if is_zero(&omega1) {
         return Err(RusticolError::invalid_argument(
@@ -415,7 +434,10 @@ where
             zero.clone(),
         )
     };
-    let chi2 = if is_zero(&pp3) || is_zero(&pp) {
+    // At rest the helicity axis is +z (as the binary64 branch): chi = (1, 0).
+    let chi2 = if is_zero(&pp) {
+        c_generic(zero.clone(), zero.clone())
+    } else if is_zero(&pp3) {
         c_generic(-integer(nh), zero.clone())
     } else {
         let denominator = (two * pp * pp3).sqrt();
@@ -1007,6 +1029,39 @@ mod tests {
         assert!((left.im - right.im).abs() < 1.0e-13);
     }
 
+    /// A massive Dirac spinor at rest (a decaying fermion in its rest frame,
+    /// e.g. t > b w+) is the +z limit of the moving one (HELAS's rest
+    /// spinor): its norm is 2E = 2m. The rest branch had chi = (1, -nh), the
+    /// +z and -z limits at once, and twice the norm (|M|^2 of t > b w+ at
+    /// rest twice its boosted value).
+    #[test]
+    fn massive_dirac_spinor_at_rest_is_the_limit_along_plus_z() {
+        use super::{ext_antiquark_dirac_massive, ext_quark_dirac_massive};
+
+        let mass: f64 = 173.0;
+        for energy_sign in [1.0, -1.0] {
+            let rest = [energy_sign * mass, 0.0, 0.0, 0.0];
+            let pz: f64 = 1.0e-9;
+            let moving = [
+                energy_sign * (mass * mass + pz * pz).sqrt(),
+                0.0,
+                0.0,
+                energy_sign * pz,
+            ];
+            for helicity in [-1, 1] {
+                for spinor in [ext_quark_dirac_massive, ext_antiquark_dirac_massive] {
+                    let at_rest = spinor(rest, helicity, mass);
+                    let norm: f64 = at_rest.iter().map(|z| z.re * z.re + z.im * z.im).sum();
+                    assert!((norm - 2.0 * mass).abs() <= 1.0e-12 * mass, "{norm}");
+                    for (left, right) in at_rest.into_iter().zip(spinor(moving, helicity, mass)) {
+                        assert!((left.re - right.re).abs() <= 1.0e-9, "{left} {right}");
+                        assert!((left.im - right.im).abs() <= 1.0e-9, "{left} {right}");
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn massive_vector_negative_energy_obeys_crossing_convention() {
         let momentum = [13.0, 4.0, 8.0, 8.0];
@@ -1015,6 +1070,52 @@ mod tests {
             let incoming = ext_massive_vector(negate(momentum), -helicity, 5.0);
             for (left, right) in incoming.into_iter().zip(outgoing) {
                 assert_complex_close(left, right);
+            }
+        }
+    }
+
+    /// A massive spinor along -z in DoubleFloat equals binary64's: before the
+    /// exact |p| = |pz| on the axis it vanished (|p| + pz a rounding residue)
+    /// at the b b~ > t t~ reproducer's b (|pz| = 499.97790951201034 GeV, the
+    /// binary64 sqrt(500² - 4.7·4.7), m = 4.7 GeV), cast from its exact
+    /// decimal as the native trees do; whether DoubleFloat's sqrt(pz²) misses
+    /// |pz| from above depends on the value (499.97790951189532 kept it).
+    #[cfg(feature = "loop-v2")]
+    #[test]
+    fn massive_dirac_spinor_along_the_axis_survives_double_float() {
+        use super::ext_dirac_massive_generic;
+        use crate::loop_v2::dress::{cast, parse_rational};
+        use symbolica::domains::float::{DoubleFloat, RealLike};
+
+        let zero = DoubleFloat::from(0.0);
+        let exact = |text: &str| cast(&zero, &parse_rational(text).unwrap());
+        let mass = exact("4.7");
+        for pz in [
+            "499.97790951201034",
+            "-499.97790951201034",
+            "499.97790951189532",
+            "-499.97790951189532",
+        ] {
+            let wide = [exact("500"), zero.clone(), zero.clone(), exact(pz)];
+            let momentum = wide.clone().map(|x| x.to_f64());
+            for antiparticle in [false, true] {
+                for helicity in [-1, 1] {
+                    let narrow = ext_dirac_massive_generic(
+                        &momentum,
+                        helicity,
+                        mass.to_f64(),
+                        antiparticle,
+                    )
+                    .unwrap();
+                    let double =
+                        ext_dirac_massive_generic(&wide, helicity, mass.clone(), antiparticle)
+                            .unwrap();
+                    let size: f64 = narrow.iter().map(|z| z.re.abs() + z.im.abs()).sum();
+                    assert!(size > 1.0, "{narrow:?}");
+                    for (a, b) in narrow.iter().zip(&double) {
+                        assert_complex_close(*a, Complex::new(b.re.to_f64(), b.im.to_f64()));
+                    }
+                }
             }
         }
     }

@@ -218,10 +218,20 @@ def test_native_finite_only_keeps_every_finite_part(executors):
     with poles."""
 
     native, _python = executors("uux_ddxg")
-    # The counterterm program flags the currents of its pole slots, which
-    # finite-only batches skip.
-    steps = native.exported.trees.program["counterterm_trees"]["interactions"]["steps"]
-    assert any(step.get("pole_interactions") for step in steps)
+    # The counterterm program records per current the slots it reaches
+    # (its slot table and masks); finite-only batches skip the currents
+    # that reach pole slots only.
+    ct = native.exported.trees.program["counterterm_trees"]
+    powers = [slot[2] for slot in ct["slots"]]
+    pole_masks = {
+        m
+        for m, mask in enumerate(ct["interactions"]["masks"])
+        if all(powers[s] != 0 for s in mask)
+    }
+    steps = ct["interactions"]["steps"]
+    assert pole_masks and any(
+        mask in pole_masks for step in steps for mask in step["accumulator_masks"]
+    )
     points, scales = _points(PROCESSES["uux_ddxg"][3])
     points, scales = points[:1], scales[:1]
     (full,) = native.evaluate(points, scales, parameters=PARAMETERS)
@@ -675,3 +685,75 @@ def test_closure_simd_widths_are_bitwise_equal(executors, tmp_path, name, stream
     assert outputs[None].count("\n") == 3
     assert outputs["avx2"] == outputs[None]
     assert outputs["baseline"] == outputs[None]
+
+
+@pytest.mark.loop_fast
+def test_canonical_stage_renames_on_text_as_the_replace_oracle():
+    """``assemble._canonical_stage`` with function definitions renames on
+    Symbolica's portable text (M-SM MS-GEN): the same outputs, parameters
+    and definitions as the ``replace_multiple`` passes (the oracle), and the
+    same saved evaluator, on a stage with prefix-sharing input names
+    (``e1``/``e12``), nested and argument-only calls, a default-namespace
+    symbol, a head with attributes (not renamed) and a variable named like
+    no input."""
+
+    from types import SimpleNamespace
+
+    from symbolica import E, Expression, FunctionDefinition, S
+
+    from pyamplicol.loops.v2 import assemble
+
+    inputs = [S(f"msgen_stage::e{i}") for i in range(13)]
+    f, g = S("msgen_stage::f", "msgen_stage::g")
+    sym = S("msgen_stage::h", is_symmetric=True)
+    x, y = S("msgen_stage::x", "msgen_stage::y")
+    plain = S("msgen_plain_symbol")
+    e1, e12 = inputs[1], inputs[12]
+    outputs = [
+        f(e1, f(e12, E("2"))) * g(e12) + sym(e1, e12) * plain,
+        e12**2 - E("1/3") * e1 * f(g(f(e1, e1)), e12) + Expression.I * e12,
+        g(E("msgen_stage::e123")) + e1 / (e12 + 1),
+    ]
+    definitions = [
+        (f, (x, y), x * y + g(x)),
+        (g, (x,), x**2 + e1),
+        (sym, (x, y), x * y + 1),
+    ]
+    stage = SimpleNamespace(
+        output_expressions=outputs,
+        parameter_symbols=inputs,
+        symbolica_functions=definitions,
+    )
+
+    def evaluator(result):
+        canonical, parameters, functions = result
+        return bytes(
+            Expression.evaluator_multiple(
+                canonical,
+                # the symbols that are no stage input stay as they are
+                [*parameters, plain, E("msgen_stage::e123")],
+                functions=[
+                    FunctionDefinition(head, list(arguments), body, inlining="never")
+                    for head, arguments, body in functions
+                ],
+                jit_compile=False,
+            ).save()
+        )
+
+    with assemble.text_canonical_stage(False):
+        oracle = assemble._canonical_stage(stage)
+    with assemble.text_canonical_stage(True):
+        text = assemble._canonical_stage(stage)
+    assert assemble.TEXT_CANONICAL_STAGE is True
+    for got, want in zip(text[0], oracle[0], strict=True):
+        assert got.to_canonical_string() == want.to_canonical_string()
+    assert text[1] == oracle[1]
+    for (head, arguments, body), (head0, arguments0, body0) in zip(
+        text[2], oracle[2], strict=True
+    ):
+        assert (head, arguments) == (head0, arguments0)
+        assert body.to_canonical_string() == body0.to_canonical_string()
+    assert "msgen_stage::e1" not in repr(text[0][0])
+    assert "msgen_stage::h(" in repr(text[0][0])
+    assert "msgen_stage::e123" in repr(text[0][2])
+    assert evaluator(text) == evaluator(oracle)

@@ -71,94 +71,291 @@ def _charge(record):
     return charge
 
 
+# The legacy UFO object library's ``Particle.anti`` (MG5_aMC's loop_qcd_qed_sm
+# and its G_mu variants): positional arguments bind ``self.goldstoneboson`` to
+# the ``line`` parameter, so the constructor default drops the antiparticle's
+# Goldstone flag. A fingerprint of the library code, not of any particle.
+_LEGACY_ANTI_PARAMETERS = (
+    "pdg_code",
+    "name",
+    "antiname",
+    "spin",
+    "color",
+    "mass",
+    "width",
+    "texname",
+    "antitexname",
+    "charge",
+    "loop_particles",
+    "counterterm",
+    "line",
+    "propagating",
+    "goldstoneboson",
+)
+_LEGACY_ANTI_ARGUMENTS = (
+    "-self.pdg_code",
+    "self.antiname",
+    "self.name",
+    "self.spin",
+    "newcolor",
+    "self.mass",
+    "self.width",
+    "self.antitexname",
+    "self.texname",
+    "-self.charge",
+    "self.line",
+    "self.propagating",
+    "self.goldstoneboson",
+)
+
+
+def _lost_goldstone_flag(raw, record) -> bool:
+    """Whether ``record`` is an antiparticle built by the legacy
+    ``Particle.anti`` from a declared Goldstone whose flag it lost, its other
+    conjugation-invariant metadata agreeing with the particle's."""
+
+    b = record["fields"]
+    source = b.get("charge_source", {})
+    call = source.get("anti_constructor", {})
+    if (
+        source.get("kind") != "source-antiparticle-charge"
+        or tuple(call.get("parameters", ())) != _LEGACY_ANTI_PARAMETERS
+        or tuple(call.get("arguments", ())) != _LEGACY_ANTI_ARGUMENTS
+        or ufo_goldstone_flag(b)
+        or b["antiname"] == b["name"]
+    ):
+        return False
+    try:
+        partner = raw.record("particles", b["antiname"])
+    except (KeyError, ValueError):
+        return False
+    a = partner["fields"]
+    return (
+        ufo_goldstone_flag(a)
+        and a["antiname"] == b["name"]
+        and a["pdg_code"] == -b["pdg_code"]
+        and (a["spin"], a["color"]) == (b["spin"], b["color"])
+        and (a["mass"]["name"], a["width"]["name"])
+        == (b["mass"]["name"], b["width"]["name"])
+        and _flag(a, ("Propagating", "propagating", True))
+        == _flag(b, ("Propagating", "propagating", True))
+        and _charge(partner) == -_charge(record)
+    )
+
+
 def _repair(raw, particles, compatibility):
+    """The explicit source-compatibility profile ``gmu_particle_anti``: every
+    antiparticle that lost its Goldstone flag to the legacy ``Particle.anti``
+    (``_lost_goldstone_flag``) gets it back, one diagnostic each. The profile
+    on a source whose flags the structural source repair
+    (``repair_source_declarations``, rule ``GOLDSTONE_FLAG``) has already
+    restored is satisfied as it is; on a source without that defect it is
+    refused."""
+
     if compatibility is None:
         return ()
     if compatibility != "gmu_particle_anti":
         raise ValueError("unknown structural source compatibility profile")
-    positive = raw.record("particles", "G+")
-    negative = raw.record("particles", "G-")
-    a, b = positive["fields"], negative["fields"]
-    source = b.get("charge_source", {})
-    call = source.get("anti_constructor", {})
-    expected_parameters = (
-        "pdg_code",
-        "name",
-        "antiname",
-        "spin",
-        "color",
-        "mass",
-        "width",
-        "texname",
-        "antitexname",
-        "charge",
-        "loop_particles",
-        "counterterm",
-        "line",
-        "propagating",
-        "goldstoneboson",
-    )
-    expected_arguments = (
-        "-self.pdg_code",
-        "self.antiname",
-        "self.name",
-        "self.spin",
-        "newcolor",
-        "self.mass",
-        "self.width",
-        "self.antitexname",
-        "self.texname",
-        "-self.charge",
-        "self.line",
-        "self.propagating",
-        "self.goldstoneboson",
-    )
-    if (
-        tuple(raw.metadata.get("gauge", ())) != (1,)
-        or source.get("kind") != "source-antiparticle-charge"
-        or tuple(call.get("parameters", ())) != expected_parameters
-        or tuple(call.get("arguments", ())) != expected_arguments
-        or (a["name"], a["antiname"], b["name"], b["antiname"])
-        != ("G+", "G-", "G-", "G+")
-        or (a["pdg_code"], b["pdg_code"]) != (251, -251)
-        or (a["spin"], b["spin"], a["color"], b["color"]) != (1, 1, 1, 1)
-        or (
-            a["mass"]["name"],
-            b["mass"]["name"],
-            a["width"]["name"],
-            b["width"]["name"],
-        )
-        != ("MW", "MW", "WW", "WW")
-        or not ufo_goldstone_flag(a)
-        or ufo_goldstone_flag(b)
-        or not _flag(a, ("Propagating", "propagating", True))
-        or not _flag(b, ("Propagating", "propagating", True))
-        or _charge(positive) != 1
-        or _charge(negative) != -1
-    ):
+    repaired = [
+        record
+        for record in raw.collections["particles"]
+        if _lost_goldstone_flag(raw, record)
+    ]
+    if not repaired:
+        if any(
+            item.get("rule") == GOLDSTONE_FLAG
+            for item in raw.metadata.get(SOURCE_REPAIRS_KEY, ())
+        ):
+            return ()
         raise ValueError(
-            "source does not match the recognized Gmu anti metadata mismatch"
+            "source does not match the recognized Gmu anti metadata mismatch "
+            "(an antiparticle of a declared Goldstone that the legacy "
+            "Particle.anti built without the flag)"
         )
-    particles[negative["id"]]["goldstoneboson"] = True
-    return (
-        MappingProxyType(
+    diagnostics = []
+    for record in repaired:
+        particles[record["id"]]["goldstoneboson"] = True
+        diagnostics.append(
+            MappingProxyType(
+                {
+                    "profile": compatibility,
+                    "particle_id": record["id"],
+                    "particle": record["name"],
+                    "field": "goldstoneboson",
+                    "raw": False,
+                    "derived": True,
+                    "reason": _LOST_FLAG_REASON,
+                }
+            )
+        )
+    return tuple(diagnostics)
+
+
+_LOST_FLAG_REASON = (
+    "legacy anti positional arguments bind Goldstone flag to line; constructor "
+    "defaults lose the flag"
+)
+
+
+# Source declarations repaired by structure (never by a particle, vertex or
+# tensor name), recorded in the derived source's metadata and reported with
+# the structure's diagnostics.
+SOURCE_REPAIRS_KEY = "pyamplicol_source_repairs"
+CONSTANT_TENSOR_ARITY = "constant-tensor-slot-arity"
+GOLDSTONE_FLAG = "antiparticle-goldstone-flag"
+
+
+def _slot_spins(record) -> tuple[int, ...]:
+    return tuple(abs(int(spin)) for spin in record["fields"]["spins"])
+
+
+def _constant_structure(record) -> Any:
+    """The exact value of a slot-independent (constant) Lorentz tensor, or
+    None when the structure depends on a slot."""
+
+    from symbolica import AtomType
+
+    value = parse_exact_ufo(record["fields"]["structure"])
+    return value if value.get_type() == AtomType.Num else None
+
+
+def repair_source_declarations(raw: Any, within: Any = None) -> Any:
+    """``raw`` with its structural source defects repaired, or ``raw`` itself
+    when it has none (the rules are idempotent). Two rules, each found by
+    structure (never by a particle, vertex or tensor name):
+
+    * ``GOLDSTONE_FLAG``: an antiparticle that the legacy UFO object
+      library's ``Particle.anti`` built from a declared Goldstone boson
+      without the flag (``_lost_goldstone_flag``: the library's positional
+      arguments bind ``goldstoneboson`` to ``line``; MG5_aMC's
+      loop_qcd_qed_sm and loop_qcd_qed_sm_Gmu) gets the flag back. Particles
+      belong to every request, so ``within`` does not restrict this rule.
+    * ``CONSTANT_TENSOR_ARITY``: a vertex (tree or counterterm) whose
+      particles are all scalars and that references a constant Lorentz
+      tensor with a different number of (scalar) slots means that constant
+      on its own particles: the reference is moved to the model's unique
+      tensor with the vertex's spin signature and the same exact constant.
+      MadLoop 3.7.0's loop_sm declares a four-scalar vertex with the
+      three-slot constant SSS1 next to the four-slot SSSS1 of the same value.
+      Any other slot mismatch is left as declared: a request that reaches it
+      is refused at model preparation with the listed key
+      ``lorentz-slot-arity`` (``build_covariant_structure``), an unreachable
+      one stays inert. ``within``, if given, restricts this rule to those
+      ``(collection, vertex id)`` pairs (the vertices a request reaches).
+
+    Each repair is recorded under ``SOURCE_REPAIRS_KEY`` in the derived
+    source's metadata (the compiled model and the artifact carry it) and in
+    the covariant structure's diagnostics."""
+
+    flags = [
+        record
+        for record in raw.collections["particles"]
+        if _lost_goldstone_flag(raw, record)
+    ]
+    tensors = raw.collections["lorentz_structures"]
+    repairs = []
+    for collection in ("vertices", "counterterm_vertices"):
+        for vertex in raw.collections.get(collection, ()):
+            if within is not None and (collection, vertex["id"]) not in within:
+                continue
+            fields = vertex["fields"]
+            spins = tuple(
+                abs(int(_reference(raw, ref, "particles")["fields"]["spin"]))
+                for ref in fields["particles"]
+            )
+            if set(spins) != {1}:
+                continue
+            for position, ref in enumerate(fields["lorentz"]):
+                old = _reference(raw, ref, "lorentz_structures")
+                if _slot_spins(old) == spins or set(_slot_spins(old)) != {1}:
+                    continue
+                constant = _constant_structure(old)
+                if constant is None:
+                    continue
+                candidates = [
+                    record
+                    for record in tensors
+                    if _slot_spins(record) == spins
+                    and _constant_structure(record) == constant
+                ]
+                if len(candidates) == 1:
+                    repairs.append((collection, vertex, position, old, candidates[0]))
+    if not repairs and not flags:
+        return raw
+    payload = raw.to_dict()
+    diagnostics = list(raw.metadata.get(SOURCE_REPAIRS_KEY, ()))
+    for record in flags:
+        payload["collections"]["particles"][record["id"]]["fields"][
+            "goldstoneboson"
+        ] = True
+        diagnostics.append(
             {
-                "profile": compatibility,
-                "particle_id": negative["id"],
-                "particle": "G-",
+                "rule": GOLDSTONE_FLAG,
+                "collection": "particles",
+                "particle": [record["id"], record["name"]],
                 "field": "goldstoneboson",
-                "raw": False,
+                "original": False,
                 "derived": True,
+                "reason": _LOST_FLAG_REASON,
+            }
+        )
+    for collection, vertex, position, old, new in repairs:
+        target = payload["collections"][collection][vertex["id"]]["fields"]
+        target["lorentz"][position] = {
+            "kind": "reference",
+            "collection": "lorentz_structures",
+            "id": new["id"],
+            "name": new["name"],
+        }
+        diagnostics.append(
+            {
+                "rule": CONSTANT_TENSOR_ARITY,
+                "collection": collection,
+                "vertex": [vertex["id"], vertex["name"]],
+                "lorentz_position": position,
+                "original_lorentz": [old["id"], old["name"]],
+                "derived_lorentz": [new["id"], new["name"]],
                 "reason": (
-                    "legacy anti positional arguments bind Goldstone flag to line; "
-                    "constructor defaults lose the flag"
+                    f"{len(_slot_spins(new))} scalar particles take the model's "
+                    f"{len(_slot_spins(new))}-slot tensor of the same exact "
+                    f"constant, not the {len(_slot_spins(old))}-slot one"
                 ),
             }
-        ),
+        )
+    payload["metadata"][SOURCE_REPAIRS_KEY] = diagnostics
+    return type(raw).from_dict(payload)
+
+
+def with_source_repairs(model: Any) -> Any:
+    """A compiled model whose raw NLO sidecar carries its source repairs
+    (``repair_source_declarations``); the model itself when it has none."""
+
+    from dataclasses import replace
+
+    from pyamplicol.models.loop_import import RawLoopModel
+
+    raw = model.raw_loop_model
+    if not isinstance(raw, RawLoopModel):
+        return model
+    repaired = repair_source_declarations(raw)
+    if repaired is raw:
+        return model
+    return replace(
+        model, raw_loop_model=repaired, _serialized_path=None, _prepared_bundle=None
     )
 
 
 def _validate_pairs(particles):
+    """Particle-antiparticle pairs must be reciprocal and agree in their
+    metadata (the listed refusal ``antiparticle-metadata``; the Goldstone
+    flag MG5_aMC's legacy object library drops is repaired first,
+    ``repair_source_declarations``)."""
+
+    from pyamplicol.loops.v2.refusals import LoopRequestUnsupportedValue
+
+    def refuse(message: str) -> LoopRequestUnsupportedValue:
+        return LoopRequestUnsupportedValue("antiparticle-metadata", message)
+
     by_name = {p["name"]: p for p in particles}
     if len(by_name) != len(particles):
         raise ValueError("ambiguous particle names in structural model")
@@ -166,27 +363,29 @@ def _validate_pairs(particles):
         try:
             anti = by_name[particle["antiname"]]
         except KeyError as exc:
-            raise ValueError("missing source antiparticle") from exc
+            raise refuse(f"missing source antiparticle of {particle['name']}") from exc
         if anti["antiname"] != particle["name"]:
-            raise ValueError("antiparticle names are not reciprocal")
+            raise refuse(f"antiparticle names of {particle['name']} are not reciprocal")
         for key in ("spin", "mass", "width", "propagating", "goldstoneboson"):
             if particle[key] != anti[key]:
-                raise ValueError(
+                raise refuse(
                     f"antiparticle metadata mismatch for {particle['name']}: {key}"
                 )
         self_conjugate = particle is anti
         if not self_conjugate and particle["pdg_code"] != -anti["pdg_code"]:
-            raise ValueError("antiparticle PDG signs differ")
+            raise refuse(f"antiparticle PDG signs of {particle['name']} differ")
         color = particle["color"]
         if anti["color"] != (color if color in (1, 8) else -color):
-            raise ValueError("antiparticle colour representations differ")
+            raise refuse(
+                f"antiparticle colour representations of {particle['name']} differ"
+            )
         for key in ("charge", "ghost_number", "lepton_number"):
             left, right = (
                 parse_exact_ufo(str(particle[key])),
                 parse_exact_ufo(str(anti[key])),
             )
             if left + right != 0:
-                raise ValueError(
+                raise refuse(
                     f"antiparticle metadata mismatch for {particle['name']}: {key}"
                 )
         for key in ("y_charge", "y_charge_right"):
@@ -214,8 +413,8 @@ def build_covariant_structure(
     External parameter defaults never enter numerical caches. Source-resolved
     mass expressions preserve the dependency's structural-zero classification. This
     object is for graph/kernel construction; use its scalar program for numeric
-    binding, including diagnostics. Custom propagators and unspecified gauges
-    require separate certification and are rejected by this bounded adapter.
+    binding, including diagnostics. Custom propagators require separate
+    certification and are rejected by this bounded adapter.
     """
     from symbolica.community import hepkit as hep
     from ufo_model_loader.model import Propagator, SerializableParticle
@@ -223,8 +422,9 @@ def build_covariant_structure(
 
     if request_scope is not None:
         request_scope.require_raw(raw)
-    if 1 not in raw.metadata.get("gauge", ()):
-        raise ValueError("source model does not declare Feynman gauge")
+    # The source's declared gauges are checked per request where its loops
+    # need 't Hooft-Feynman gauge (``ew_policy.require_loop_gauge``): QCD
+    # loops of a unitary-gauge source keep its compiled gauge.
     restriction = raw.metadata.get("restriction", {})
     if restriction.get("card") is not None and not restriction.get("applied", False):
         raise NotImplementedError(
@@ -324,8 +524,11 @@ def build_covariant_structure(
         if fields["spin"] not in (-1, 1, 2, 3):
             raise NotImplementedError("unsupported covariant particle spin")
         if fields["spin"] == 2 and fields["name"] == fields["antiname"]:
-            raise NotImplementedError(
-                "Majorana species are outside the current loop domain"
+            from .v2.refusals import LoopRequestUnsupported
+
+            raise LoopRequestUnsupported(
+                "majorana-fermion",
+                f"the model declares the self-conjugate fermion {fields['name']!r}",
             )
         if fields.get("propagator") is not None:
             raise NotImplementedError("custom source propagator metadata")
@@ -358,6 +561,10 @@ def build_covariant_structure(
             )
         payload["particles"].append(vars(SerializableParticle(**particle)))
     diagnostics = _repair(raw, payload["particles"], compatibility)
+    diagnostics += tuple(
+        MappingProxyType(dict(item))
+        for item in raw.metadata.get(SOURCE_REPAIRS_KEY, ())
+    )
     zero_couplings = tuple(
         name
         for name in coupling_names
@@ -415,6 +622,7 @@ def build_covariant_structure(
     # Classification itself belongs to the native model. Numeric defaults have
     # not entered either the resolved expressions or the structural payload.
     classification = hep.Model.from_json(json.dumps(payload))
+    zero_parameter = any(p["name"] == "ZERO" for p in payload["parameters"])
     for particle in payload["particles"]:
         native = classification.particle(particle["name"])
         proxy = SimpleNamespace(**particle)
@@ -431,16 +639,25 @@ def build_covariant_structure(
                 str(propagator.denominator),
             )
         particle["propagator"] = propagator.name
-        # Native family extraction retains the source mass symbol (apart from
-        # ZERO), including aliases proved structurally massless above. Keep that
-        # same symbolic denominator; the exact source binding supplies its zero.
         denominator = propagator.denominator
         if native.is_massless and native.mass != 0:
-            denominator_proxy = SimpleNamespace(**vars(proxy))
-            denominator_proxy.is_massive = lambda: True
-            denominator = Propagator.from_particle(
-                denominator_proxy, "Feynman"
-            ).denominator
+            # A mass alias proved structurally massless above. The Community
+            # HepKit of the integration kernel (9cdc2949) gives it mass 0 and
+            # exports it as ZERO; the published Community 3.0.2 distribution
+            # keeps the source symbol, which the v2 families would read as a
+            # derived mass of value zero (refused, `_model_masses`). Write ZERO,
+            # so that the native model is the same under both.
+            if zero_parameter:
+                particle["mass"] = "ZERO"
+            else:
+                # No ZERO parameter to name: native family extraction retains
+                # the source symbol; keep that same symbolic denominator (the
+                # exact source binding supplies its zero).
+                denominator_proxy = SimpleNamespace(**vars(proxy))
+                denominator_proxy.is_massive = lambda: True
+                denominator = Propagator.from_particle(
+                    denominator_proxy, "Feynman"
+                ).denominator
         payload["propagators"].append(
             dict(
                 name=propagator.name,
@@ -473,8 +690,12 @@ def build_covariant_structure(
         ]
         spins = tuple(p["fields"]["spin"] for p in source_particles)
         if spins.count(2) > 2:
-            raise NotImplementedError(
-                "four-fermion vertices are outside the current loop domain"
+            from .v2.refusals import LoopRequestUnsupported
+
+            raise LoopRequestUnsupported(
+                "multi-fermion-contact",
+                f"source vertex {record['name']!r} (ID {record['id']}) joins "
+                f"{spins.count(2)} fermions",
             )
         lorentz = []
         for tensor_index in tensor_indices:
@@ -483,12 +704,17 @@ def build_covariant_structure(
             key = (source["id"], spins)
             if key not in lorentz_names:
                 if tuple(map(abs, source["fields"]["spins"])) != tuple(map(abs, spins)):
-                    raise ValueError(
+                    from .v2.refusals import LoopRequestUnsupportedValue
+
+                    # Constant scalar tensors were repaired by the source
+                    # rule (``repair_source_declarations``); this one is not
+                    # (a ``ValueError`` as the untyped refusal it replaces).
+                    raise LoopRequestUnsupportedValue(
+                        "lorentz-slot-arity",
                         f"source vertex {record['name']!r} (ID {record['id']}) "
                         f"uses Lorentz tensor {source['name']!r} with spin slots "
                         f"{tuple(source['fields']['spins'])}, but its particles "
-                        f"require {spins}; prepare a corrected model declaration "
-                        "before loop generation"
+                        f"require {spins}",
                     )
                 name = f"source_lorentz_{source['id']}_{len(lorentz_names)}"
                 lorentz_names[key] = name

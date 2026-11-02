@@ -25,7 +25,17 @@ poles are compared with the providers instead. With ``--inputs python``
 (default) the per-point trees, Born and counterterms are Python inputs; with
 ``--inputs native`` the executor forms the trees, the Born, the counterterm
 and external-field components itself (``native_trees``; the counterterms
-from the slice's counterterm closure) and every point is native.
+from the slice's counterterm closure) and every point is native; a process
+whose trees cannot be exported natively fails (``point_inputs`` null and
+the refusal in the record; such a process cannot be stored either), never
+falls back. Electroweak
+fixtures (``correction`` "EW") are generated on the G_mu UFO (``--ufo`` or
+``PYAMPLICOL_EW_UFO_REFERENCE``, unless ``--model``) with corrections QCD
+and QED, its compatibility profile ``gmu_particle_anti`` and scale
+parameter ``MU_R``, and the fixture's fixed parameters the model has (the
+providers' ``WTau`` is recorded as ignored); their Laurent floor uses the
+fixture's alpha. ``--carrier f64|dd|ap`` (``--digits``) selects the
+evaluation carrier.
 
 ``poles`` validates a process without provider references by other means
 (MASTER_PLAN §0.1): native inputs at ``--points`` exact points
@@ -41,8 +51,10 @@ Usage:
         [--digests] [--export] [--json OUT.json] [--model COMPILED.json]
     python tools/loop_v2_generate.py diff A.json B.json
     python tools/loop_v2_generate.py validate gg_gggg [--points 0 1 2]
-        [--precision double|dd] [--stability] [--inputs python|native]
-        [--json OUT.json]
+        [--carrier f64|dd|ap [--digits 60]] [--stability]
+        [--inputs python|native] [--stages] [--json OUT.json]
+    python tools/loop_v2_generate.py validate gg_ttx_ew [--ufo G_MU_UFO]
+        [--inputs native] [--stages]
     python tools/loop_v2_generate.py poles "g g > g g g g g" --born QCD=5
         [--accuracy fc|lc|nlc] [--points 3] [--rotation] [--tolerance 1e-8]
         [--json OUT.json]
@@ -56,11 +68,14 @@ import json
 import resource
 import sys
 import time
+from collections.abc import Mapping
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:  # the ``tools`` package, run as a script
+    sys.path.insert(0, str(ROOT))
 STAGES = (
     ("assemble", "build_tree_blocks"),
     ("assemble", "_field_level_families"),
@@ -172,18 +187,22 @@ class _Timers:
             setattr(owner, name, self.wrap(attribute, target))
 
 
-def _request(args) -> Any:
+def _request(args, compiled: Any) -> Any:
     from pyamplicol.loops.v2.assemble import SliceRequest
 
     born = {k: int(v) for k, v in (p.split("=") for p in args.born.split(","))}
     loop = {k: v + (2 if k == "QCD" else 0) for k, v in born.items()}
     options: dict[str, Any] = {}
     if args.accuracy != "fc":
-        from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+        from pyamplicol.models.loop_color_declaration import (
+            resolve_loop_color_declaration,
+        )
 
-        declaration = ROOT / "examples/loop/source_colour/loop_sm_qcd_subset.json"
-        options["colour_declaration"] = LoopColorDeclaration.from_dict(
-            json.loads(declaration.read_text())
+        # The model's declaration: for loop_sm the shipped one (MQ-NC), which
+        # covers every counterterm vertex (the example QCD subset does not
+        # cover the closed quark loops with electroweak legs).
+        options["colour_declaration"] = resolve_loop_color_declaration(
+            compiled.raw_loop_model
         )
         options["accuracy"] = args.accuracy
     return SliceRequest(
@@ -205,10 +224,10 @@ def _compiled_model(path: str | None) -> Any:
     import tempfile
     from dataclasses import replace
 
-    from pyamplicol.loops.model_compatibility import (
+    from pyamplicol.models.loading import compile_model_source
+    from tools.loop_reference.model_compatibility import (
         prepare_loop_sm_scalar_declarations,
     )
-    from pyamplicol.models.loading import compile_model_source
 
     ufo = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
     if not ufo:
@@ -237,7 +256,7 @@ def measure(args) -> dict[str, Any]:
     timers.install()
     compiled = _compiled_model(args.model)
     native = load_loop_native()
-    request = _request(args)
+    request = _request(args, compiled)
     start = time.perf_counter()
     slice_ = timers.wrap("LoopSlice.generate", LoopSlice.generate)(
         compiled, request, native
@@ -300,20 +319,69 @@ def validate(args) -> dict[str, Any]:
         assemble._PointEvaluation._stable_coloured_legs = checked
 
 
-def _validate(args) -> dict[str, Any]:
-    from pyamplicol.loops.native import load_loop_native
-    from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
-    from pyamplicol.loops.v2.plan_export import NativeExecutor, export_plan
-    from pyamplicol.loops.v2.stability import Rotation, StabilityChecks
+# The model preparation of electroweak fixtures (``scheme`` "ew-gmu"): the
+# G_mu UFO's compatibility profile (MG5_aMC loses the Goldstone flag of its
+# G-) and its renormalisation scale at LHA code LOOP 666.
+_EW_COMPATIBILITY = "gmu_particle_anti"
+_EW_SCALE_PARAMETER = "MU_R"
 
-    reference = json.loads(
-        (ROOT / "tests/fixtures/loop/required" / f"{args.name}.json").read_text()
+
+def _fixture_model(args, electroweak: bool) -> Any:
+    """The compiled model of a fixture: ``--model`` (compiled JSON), else for
+    an electroweak fixture the G_mu UFO of ``--ufo`` or
+    ``PYAMPLICOL_EW_UFO_REFERENCE`` (compiled into ``PYAMPLICOL_CACHE_DIR``),
+    else loop_sm (``_compiled_model``)."""
+
+    if getattr(args, "model", None) or not electroweak:
+        return _compiled_model(getattr(args, "model", None))
+    import os
+
+    from pyamplicol.models.loading import compile_model_source
+
+    ufo = getattr(args, "ufo", None) or os.environ.get("PYAMPLICOL_EW_UFO_REFERENCE")
+    if not ufo:
+        raise SystemExit("set PYAMPLICOL_EW_UFO_REFERENCE, --ufo or --model")
+    return compile_model_source(Path(ufo), require_supported=False)
+
+
+def _external_parameters(compiled: Any) -> frozenset[str]:
+    raw = compiled.raw_loop_model
+    if raw is None:
+        return frozenset(compiled.parameter_defaults)
+    return frozenset(
+        record["name"]
+        for record in raw.collections["parameters"]
+        if record["fields"].get("nature") == "external"
     )
-    if (
-        set(reference["born_orders"]) - {"QCD", "QED"}
-        or reference["correction"] != "QCD"
-    ):
-        raise SystemExit("validate covers QCD corrections")
+
+
+def _carrier(args) -> tuple[str, Any]:
+    """(name, ``Precision`` or None for binary64) of ``--carrier`` (f64, dd
+    or ap with ``--digits``), else of the older ``--precision``."""
+
+    from pyamplicol.loops.v2.assemble import Precision
+
+    carrier = (
+        getattr(args, "carrier", None)
+        or {"double": "f64", "dd": "dd"}[getattr(args, "precision", "double")]
+    )
+    if carrier == "f64":
+        return carrier, None
+    if carrier == "dd":
+        return carrier, Precision.double_double()
+    return carrier, Precision.arbitrary(int(getattr(args, "digits", None) or 60))
+
+
+def _fixture_request(reference: Mapping[str, Any], compiled: Any, args) -> tuple:
+    """(``SliceRequest``, ignored fixed parameters) of a required fixture on
+    ``compiled``: an electroweak fixture (``correction`` "EW") takes the QCD
+    and QED corrections, the G_mu UFO's compatibility profile and scale
+    parameter (unless ``args`` names others); the fixture's fixed parameters
+    the model lacks (the providers' WTau) are ignored and returned."""
+
+    from pyamplicol.loops.v2.assemble import SliceRequest
+
+    electroweak = reference["correction"] == "EW"
     process = reference["process"].split(" [")[0]
     process = " ".join(t for t in process.split() if "=" not in t)
     born = dict(reference["born_orders"])  # bounds: QED=0 excludes EW Borns
@@ -321,27 +389,58 @@ def _validate(args) -> dict[str, Any]:
     # NJet's massless five-flavour QCD is loop_sm without the top
     # (``test_loop_v2_topfree``); its fixtures name the scheme.
     top_free = reference.get("scheme") == "massless-qcd-nf5"
+    externals = _external_parameters(compiled)
+    fixed = dict(reference.get("fixed_parameters", {"MB": "0"}))
+    ignored = sorted(name for name in fixed if name not in externals)
     request = SliceRequest(
         process,
         born,
         loop,
-        fixed_parameters=dict(reference.get("fixed_parameters", {"MB": "0"})),
+        corrections=("QCD", "QED") if electroweak else ("QCD",),
+        fixed_parameters={k: v for k, v in fixed.items() if k not in ignored},
         particle_veto=(6,) if top_free else (),
+        compatibility=getattr(args, "compatibility", None)
+        or (_EW_COMPATIBILITY if electroweak else None),
+        scale_parameter=getattr(args, "scale_parameter", None)
+        or (_EW_SCALE_PARAMETER if electroweak else None),
     )
+    return request, ignored
+
+
+def _validate(args) -> dict[str, Any]:
+    from pyamplicol.generation.loop_artifact import LOOP_V2_NATIVE_POINT_INPUTS
+    from pyamplicol.loops.native import load_loop_native
+    from pyamplicol.loops.v2.assemble import LoopSlice
+    from pyamplicol.loops.v2.plan_export import NativeExecutor, export_plan
+    from pyamplicol.loops.v2.stability import Rotation, StabilityChecks
+
+    reference = json.loads(
+        (ROOT / "tests/fixtures/loop/required" / f"{args.name}.json").read_text()
+    )
+    electroweak = reference["correction"] == "EW"
+    if set(reference["born_orders"]) - {"QCD", "QED"} or reference[
+        "correction"
+    ] not in ("QCD", "EW"):
+        raise SystemExit("validate covers QCD and EW (QCD + QED) corrections")
+    compiled = _fixture_model(args, electroweak)
+    request, ignored = _fixture_request(reference, compiled, args)
+    process = request.process
     parameters = dict(reference["parameters"])
+    carrier, precision = _carrier(args)
     record: dict[str, Any] = {
         "name": args.name,
         "process": process,
+        "corrections": list(request.corrections),
         "counterterms": request.counterterms,
+        "carrier": carrier,
+        "ignored_fixed_parameters": ignored,
     }
     timers = None
     if getattr(args, "stages", False):
         timers = _Timers()
         timers.install()
     start = time.perf_counter()
-    slice_ = LoopSlice.generate(
-        _compiled_model(args.model), request, load_loop_native()
-    )
+    slice_ = LoopSlice.generate(compiled, request, load_loop_native())
     record["generate_s"] = round(time.perf_counter() - start, 1)
     if timers is not None:
         record["generate_events"] = list(timers.events)
@@ -350,7 +449,17 @@ def _validate(args) -> dict[str, Any]:
     _reset_peak()
     start = time.perf_counter()
     if args.inputs == "native":
-        executor = NativeExecutor(slice_, forward=False, inputs="native")
+        # A process whose tree program cannot be exported natively is refused
+        # at generation (``artifact.generate_process``): with native inputs
+        # requested that is a failure, never a silent fallback (WP3.2 M8).
+        try:
+            executor = NativeExecutor(slice_, forward=False, inputs="native")
+        except NotImplementedError as error:
+            record["point_inputs"] = None
+            record["native_refusal"] = str(error)
+            record["passed"] = False
+            return record
+        record["point_inputs"] = LOOP_V2_NATIVE_POINT_INPUTS
         trees = executor.exported.trees
         record["tree_program_mb"] = round(
             (len(trees.json()) + sum(len(saved) for saved in trees.kernels)) / 1e6, 2
@@ -372,7 +481,6 @@ def _validate(args) -> dict[str, Any]:
     _progress(record, "export_s", "export_peak_gb", "plan_json_mb")
     record["inputs"] = args.inputs
     compared = ("born", "finite", "single_pole", "double_pole")
-    precision = Precision.double_double() if args.precision == "dd" else None
     checks = None
     if args.stability:
         checks = StabilityChecks(
@@ -398,7 +506,13 @@ def _validate(args) -> dict[str, Any]:
         # Totals over the squared-order sectors: the Born, then the virtual's
         # finite part, single and double pole (``PointResult.totals``).
         mine = [float(x) for x in result.totals[:4]]
-        floor = abs(mine[0]) * float(parameters["aS"]) / (2 * 3.141592653589793)
+        # The fixture metric's coupling: alpha for an EW correction.
+        coupling = float(
+            reference["derived_parameters"]["alpha"]
+            if electroweak
+            else parameters["aS"]
+        )
+        floor = abs(mine[0]) * coupling / (2 * 3.141592653589793)
         errors = {}
         for provider, values in reference["rows"][index]["providers"].items():
             errors[provider] = {
@@ -440,6 +554,7 @@ def _validate(args) -> dict[str, Any]:
 # virtual's projection drops.
 _CASIMIRS = {1: Fraction(0), 3: Fraction(4, 3), 6: Fraction(10, 3), 8: Fraction(3)}
 _LEADING_CASIMIRS = {1: Fraction(0), 3: Fraction(3, 2), 6: Fraction(3), 8: Fraction(3)}
+LEADING_CASIMIRS = _LEADING_CASIMIRS  # public: the G1 harness's leading-colour poles
 
 
 def poles(args) -> dict[str, Any]:
@@ -454,7 +569,7 @@ def poles(args) -> dict[str, Any]:
     timers = _Timers()
     timers.install()
     compiled = _compiled_model(args.model)
-    request = _request(args)
+    request = _request(args, compiled)
     record: dict[str, Any] = {
         "process": args.process,
         "born": args.born,
@@ -588,6 +703,17 @@ def main(argv: list[str] | None = None) -> int:
     check.add_argument("name", help="a fixture of tests/fixtures/loop/required")
     check.add_argument("--points", type=int, nargs="*")
     check.add_argument("--precision", choices=("double", "dd"), default="double")
+    check.add_argument(
+        "--carrier",
+        choices=("f64", "dd", "ap"),
+        help="evaluation carrier (overrides --precision); ap takes --digits",
+    )
+    check.add_argument("--digits", type=int, default=60, help="digits of --carrier ap")
+    check.add_argument(
+        "--ufo", help="UFO of an EW fixture (else PYAMPLICOL_EW_UFO_REFERENCE)"
+    )
+    check.add_argument("--compatibility", help="model compatibility profile")
+    check.add_argument("--scale-parameter", help="renormalisation scale parameter")
     check.add_argument("--stability", action="store_true")
     check.add_argument("--inputs", choices=("python", "native"), default="python")
     check.add_argument(

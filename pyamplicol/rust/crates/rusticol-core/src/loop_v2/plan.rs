@@ -23,13 +23,31 @@
 //! [`LoopProgramV4::load`] parses and validates the JSON and derives the
 //! executor tables: segment layouts per content (open-loop and seeded
 //! forms), product tables per (input rank, degree), per-family factor sets
-//! and row links expanded over the observable columns.
+//! and row links expanded over the observable columns. [`read_binary`] loads
+//! the binary plan member ([`binary`]) through the same validation and
+//! derivations.
+//!
+//! Both loads fail closed, with an error, on plans whose derivations would
+//! crash or exhaust the process: before deriving, the bound of the
+//! derivations (`binary::derive`) refuses the values the derivations would
+//! trust beyond the plan's tables (a fused entry's q-degree above its
+//! content's, before the segment layouts whose monomial indices recurse once
+//! per unit of exponent; a decimal weight's power of ten of 2^32 or more;
+//! vertex ids, family and step ranks), and the allocator must grant the
+//! bound's peak (a fallible probe); the tables the derivations size by plan
+//! scalars are reserved fallibly. A member also pays for its derivations
+//! per byte; a JSON is not bounded per byte (it cannot be padded, and its
+//! derivations follow its scalars), so a crafted JSON makes the loader
+//! allocate at most what the allocator grants.
 
 use super::observables::ColumnRows;
 use super::poly::{MonomialProductTable, SegmentEntry, SegmentLayout};
 use crate::{RusticolError, RusticolResult};
 
+pub mod binary;
 mod links;
+mod live;
+pub use binary::{read_binary, read_binary_with};
 use ninjars::fast::tensor_layout::ncoeff;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -51,6 +69,11 @@ fn require(condition: bool, message: &str) -> RusticolResult<()> {
 }
 
 // ------------------------------------------------------------------ file form
+//
+// Every record declares its fields in the order the exporter writes them
+// (`plan_export`, the JSON writer `binary/json.rs`): the Python records'
+// reader (`V2PlanModel.from_program`) refuses keys out of this order, so the
+// native JSON of the records it accepts is `json.dumps`'s.
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -79,6 +102,12 @@ struct PlanFile {
     /// columns); absent when every column keeps every row.
     #[serde(default)]
     column_rows: Option<Vec<Option<Vec<usize>>>>,
+    /// Per observable column the seed-weight column it reads (columns that
+    /// differ only by their rows share one: helicity-resolved columns);
+    /// absent when every column has its own (the seed classes then hold one
+    /// weight list per column).
+    #[serde(default)]
+    column_weights: Option<Vec<usize>>,
 }
 
 /// One exported kernel term: (constant id, monomial as (input, power)).
@@ -168,14 +197,15 @@ struct StepFile {
     trace: i64,
     /// The legs the step leaves open (its rows are restricted to them).
     out: u64,
-    /// Derived by the loader (`links`); checked when written.
-    #[serde(default)]
-    rows: Option<usize>,
     d_alpha: usize,
     d_out: usize,
     degree: usize,
     rank_in: usize,
     edges: Vec<EdgeFile>,
+    /// Derived by the loader (`links`); checked when written (appended by
+    /// the exporter after the other keys).
+    #[serde(default)]
+    rows: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -256,8 +286,8 @@ struct MergedEdgeFile {
     entry: i64,
     parent: i64,
     factor: usize,
-    weight: Option<[String; 2]>,
     links: Vec<u32>,
+    weight: Option<[String; 2]>,
 }
 
 #[derive(Deserialize)]
@@ -793,6 +823,9 @@ pub struct LoopProgramV4 {
     pub columns: usize,
     /// The Born helicity rows each column seeds.
     pub column_rows: ColumnRows,
+    /// The seed-weight column of each observable column (an index into
+    /// every `Seed::columns`).
+    pub column_weights: Vec<usize>,
     pub average: u64,
     pub born_components: usize,
     pub constants: usize,
@@ -815,6 +848,19 @@ pub struct LoopProgramV4 {
     pub products: Vec<MonomialProductTable>,
     /// Loop orders labels used by the families (indices as exported).
     pub order_count: usize,
+    /// The rows of the chunk inputs schedule B reads, when the live-row
+    /// pruning restricts them (`plan/live.rs`); `None`: every row.
+    pub read_rows: Option<ReadRows>,
+}
+
+/// The rows of the chunk inputs schedule B reads (`plan/live.rs`): the
+/// builders leave the others zero.
+#[derive(Clone, Debug)]
+pub struct ReadRows {
+    /// Per fused factor, per content row.
+    pub factors: Vec<Vec<bool>>,
+    /// Per split current, per term row.
+    pub currents: Vec<Vec<bool>>,
 }
 
 struct Tables {
@@ -861,7 +907,7 @@ impl Tables {
 fn expand_links(flat: &[u32], columns: usize) -> RusticolResult<Vec<super::kernels::RowLink>> {
     require(flat.len().is_multiple_of(3), "row links are not triples")?;
     let columns = u32::try_from(columns).map_err(|_| invalid("too many columns"))?;
-    let mut out = Vec::with_capacity(flat.len() / 3 * columns as usize);
+    let mut out = reserved(flat.len() / 3 * columns as usize, "row links")?;
     for link in flat.chunks_exact(3) {
         for o in 0..columns {
             let row = |r: u32| {
@@ -877,6 +923,17 @@ fn expand_links(flat: &[u32], columns: usize) -> RusticolResult<Vec<super::kerne
         }
     }
     Ok(out)
+}
+
+/// An empty list with room for exactly `len` items (`Vec::with_capacity`),
+/// or an error when the allocator refuses it: the loader's tables sized by
+/// plan scalars, beyond the bound's probe of their peak.
+fn reserved<T>(len: usize, what: &str) -> RusticolResult<Vec<T>> {
+    let mut items = Vec::new();
+    items
+        .try_reserve_exact(len)
+        .map_err(|_| invalid(format!("the allocator refuses {len} {what}")))?;
+    Ok(items)
 }
 
 fn exact(value: &str) -> RusticolResult<Rational> {
@@ -1095,7 +1152,8 @@ fn split_candidate(
                 targets.push(BTreeSet::new());
                 groups.len() - 1
             });
-            let mut row_of = vec![None; content.rows];
+            let mut row_of = reserved(content.rows, "content rows")?;
+            row_of.resize(content.rows, None);
             for (k, (row, _blocks)) in term.rows.iter().enumerate() {
                 row_of[*row] = Some(k as u32);
             }
@@ -1173,11 +1231,20 @@ impl LoopProgramV4 {
         Self::load_with(json, FormPolicy::Rule)
     }
 
-    /// [`Self::load`] with an explicit kernel-form policy.
+    /// [`Self::load`] with an explicit kernel-form policy. The derivations
+    /// are bounded (module docs): refused values and an ungranted peak give
+    /// an error before deriving.
     pub fn load_with(json: &[u8], policy: FormPolicy) -> RusticolResult<Self> {
-        let file: PlanFile =
-            serde_json::from_slice(json).map_err(|error| invalid(error.to_string()))?;
-        Self::from_file(file, policy)
+        binary::PlanModel::from_json(json)?.program(policy)
+    }
+
+    /// The derivations of a plan JSON after the bound's refusals, without
+    /// the probe of their peak: the address-space measurement of the bound
+    /// (`tests/loop_v2_plan_derive_bound.rs`), where the probe would be the
+    /// peak. Loaders call [`Self::load`].
+    #[doc(hidden)]
+    pub fn load_unprobed(json: &[u8], policy: FormPolicy) -> RusticolResult<Self> {
+        binary::PlanModel::from_json(json)?.program_unprobed(policy)
     }
 
     fn from_file(file: PlanFile, policy: FormPolicy) -> RusticolResult<Self> {
@@ -1348,6 +1415,9 @@ impl LoopProgramV4 {
                         require(!t.split.is_empty(), "a vertex without split kernels")?;
                         let (vertex, fused) = term_vertex(t, c, &split, width)?;
                         if vertices.len() <= id {
+                            vertices
+                                .try_reserve(id + 1 - vertices.len())
+                                .map_err(|_| invalid("the allocator refuses the vertex table"))?;
                             vertices.resize(id + 1, None);
                         }
                         match &vertices[id] {
@@ -1385,11 +1455,25 @@ impl LoopProgramV4 {
             .into_iter()
             .map(|vertex| vertex.ok_or_else(|| invalid("a vertex id no term defines")))
             .collect::<RusticolResult<Vec<_>>>()?;
+        // Per observable column its seed-weight column: shared (the
+        // file's `column_weights`) or its own.
+        let column_weights = match &file.column_weights {
+            Some(weights) => {
+                require(weights.len() == columns, "column weights")?;
+                weights.clone()
+            }
+            None => (0..columns).collect(),
+        };
+        let weight_columns = column_weights.iter().max().map_or(0, |w| w + 1);
+        require(
+            file.column_weights.is_none() || weight_columns <= columns,
+            "column weights",
+        )?;
         let seed_classes = file
             .seed_classes
             .iter()
             .map(|s| {
-                require(s.columns.len() == columns, "seed columns")?;
+                require(s.columns.len() == weight_columns, "seed columns")?;
                 Ok(Seed {
                     columns: s
                         .columns
@@ -1462,11 +1546,12 @@ impl LoopProgramV4 {
             .as_ref()
             .map(|merged| Self::merged(merged, &shared, &families, &mut tables, &mut split_inputs))
             .transpose()?;
-        Ok(Self {
+        let mut program = Self {
             legs: file.legs,
             rows: file.rows,
             columns,
             column_rows: ColumnRows::new(file.rows, columns, file.column_rows.as_deref())?,
+            column_weights,
             average: file.average,
             born_components: file.born_components,
             constants: file.constants,
@@ -1485,7 +1570,12 @@ impl LoopProgramV4 {
             merged,
             products: tables.tables,
             order_count,
-        })
+            read_rows: None,
+        };
+        // Helicity-resolved and selected columns: the steps keep the rows
+        // their kept Born rows reach (`live`).
+        program.prune_dead_rows();
+        Ok(program)
     }
 
     fn family(

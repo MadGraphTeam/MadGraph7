@@ -2563,6 +2563,7 @@ def _loop_inspection_rows(loop: Mapping[str, object]) -> list[tuple[str, str]]:
                 ),
             )
         )
+
     else:
         rows.append(
             (
@@ -2570,6 +2571,12 @@ def _loop_inspection_rows(loop: Mapping[str, object]) -> list[tuple[str, str]]:
                 f"correlations {'yes' if loop['correlations'] else 'no'}; "
                 f"resolved {'yes' if loop['resolved'] else 'no'}",
             )
+        )
+    # The conventions of an electroweak virtual (WP3.2 EWI-7), when recorded.
+    conventions = cast(Sequence[Sequence[object]], loop.get("conventions") or ())
+    if conventions:
+        rows.append(
+            ("conventions", "; ".join(f"{key} {value}" for key, value in conventions))
         )
     rows.append(("runtime payload", _byte_size(loop["runtime_bytes"])))
     return rows

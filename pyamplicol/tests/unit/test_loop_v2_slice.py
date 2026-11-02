@@ -6,10 +6,16 @@ FeynKit diagrams appear only inside the frozen legacy oracles. The slice
 processes are gg -> gg (massless b), uu~ -> dd~g and the identical-flavour
 sign controls uu~ -> uu~ and uu~ -> uu~g (O13), in binary64 and at 200 bits,
 and the leading- and next-to-leading-colour projections of gg -> gg,
-uu~ -> ggg, uu~ -> dd~g, Drell-Yan and uu~ -> tt~. Oracles:
+uu~ -> ggg, uu~ -> dd~g, Drell-Yan, uu~ -> tt~ and uu~ -> uu~g (identical
+flavours: one colour word reached by trees of two N_c grades, separate blocks
+at LC and NLC, ``generation.dag_grades``). Oracles:
 
 * providers (O8): MadLoop, Recola and OpenLoops within 1e-9 (the
-  required-references metric) for the virtual's three Laurent coefficients;
+  required-references metric) for the virtual's three Laurent coefficients
+  (gg -> gg is M-QCD campaign row A01, ``test_loop_v2_mqcd_default``, and
+  uu~ -> uu~ row A06, ``test_loop_v2_mqcd_nightly*``: double-double within
+  1e-12 of MadLoop in quadruple precision, per squared-order sector and
+  strictly relative per coefficient);
 * legacy (O1): Born and the six components within 1e-12 (binary64) and
   1e-40 (200 bits) of the frozen 200-bit legacy values. The legacy binary64
   values themselves deviate from those by up to ~7e-12 on the five-leg
@@ -191,8 +197,10 @@ def test_massive_quark_line_equals_legacy(slices, carrier):
 
 
 # Controls with legacy LC and NLC projections (``legacy_capture``); Drell-Yan
-# is the photon-only control, so the Z is excluded from its v2 request.
-PROJECTED = ("gg_gg", "uux_ggg", "uux_ddxg", "dy", "tt")
+# is the photon-only control, so the Z is excluded from its v2 request. The
+# legacy engine's formal-N_c colour algebra is independent of the v2 grade
+# split, which uu~ -> uu~g needs (identical-flavour lines).
+PROJECTED = ("gg_gg", "uux_ggg", "uux_ddxg", "dy", "tt", "uux_uuxg")
 DRELL_YAN_PARAMETERS = {"aS": "0.118", "aEWM1": "132.507"}
 
 
@@ -291,13 +299,17 @@ def test_uux_emepgg_colour_projections_are_generable(
     (``test_loop_v2_ew_lines``, nightly); a legacy O1 capture is open."""
 
     from pyamplicol.models.loading import load_compiled_model
-    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
-
-    declaration = LoopColorDeclaration.from_dict(
-        json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
+    from pyamplicol.models.loop_color_declaration import (
+        resolve_loop_color_declaration,
     )
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    # The shipped loop_sm declaration (MQ-NC): the closed quark loops of
+    # g g Z, g g g Z and g g g A reach this request, which the example QCD
+    # subset does not cover (``colour-declaration-coverage``).
+    declaration = resolve_loop_color_declaration(compiled.raw_loop_model)
     LoopSlice.generate(
-        load_compiled_model(loop_sm_compiled_model),
+        compiled,
         SliceRequest(
             "u u~ > e- e+ g g",
             {"QCD": 2, "QED": 2},
@@ -364,13 +376,15 @@ def test_declared_continuation_keeps_full_colour(declared):
 def test_seed_fft_equals_direct_on_the_slice(
     slices, declared, loop_sm_compiled_model, loop_native
 ):
-    """Seed contraction policy (design §7.3): "auto" contracts the certified
-    orbits of gg -> gg with the native symmetric-group FFT in binary64 and
-    reports it; "direct" and the 200-bit carrier contract directly, and
-    every component agrees with the direct contraction to binary64
-    rounding. LC seeds are always direct. An explicit "fft" is honoured in
-    binary64 and refused wherever seeds are contracted directly: LC, exact
-    dressing, arbitrary precision and the native executor."""
+    """Seed contraction policy (design §7.3) of the Python stage: "auto"
+    contracts the certified orbits of gg -> gg with the native
+    symmetric-group FFT in binary64 and reports it; "direct" and the 200-bit
+    carrier contract directly, and every component agrees with the direct
+    contraction to binary64 rounding. LC seeds are always direct. An
+    explicit "fft" is honoured in binary64 and refused wherever the Python
+    stage contracts seeds directly: LC, exact dressing and arbitrary
+    precision; the native executor runs it in every floating carrier
+    (``test_loop_v2_seed_fft``)."""
 
     import dataclasses
 
@@ -416,16 +430,18 @@ def test_seed_fft_equals_direct_on_the_slice(
         )
     with pytest.raises(ValueError, match="binary64 sector seeds only"):
         required.family_numerators(point, scale, parameters=PARAMETERS, exact=True)
-    with pytest.raises(ValueError, match="contracts seeds directly"):
-        NativeExecutor(required)
+    assert NativeExecutor(required).exported.fourier is not None
     leading = declared("gg_gg", "lc")
     assert leading.fourier is None
     forced = dataclasses.replace(
         leading,
         request=dataclasses.replace(leading.request, colour_contraction="fft"),
     )
-    with pytest.raises(ValueError, match="leading-colour"):
+    from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+    with pytest.raises(LoopRequestUnsupported, match="leading-colour") as refused:
         forced._plan_contraction()
+    assert refused.value.key == "forced-seed-fft-unserved"
 
 
 # ----------------------------------------------------------------- O8 providers
@@ -455,9 +471,15 @@ def _provider_rows(loop_reference, name: str) -> list[dict]:
     return [row["providers"] for row in reference["rows"]]
 
 
+# gg -> gg's and uu~ -> uu~'s provider comparisons are the M-QCD campaign's
+# rows A01 and A06 (``tests/fixtures/loop/mqcd/manifest.json``; PLAN §3.2
+# MQ-VALIDATE item 3).
+PROVIDER_SLICE = tuple(name for name in SLICE if name not in ("gg_gg", "uux_uux"))
+
+
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("carrier", tuple(CARRIERS))
-@pytest.mark.parametrize("name", SLICE)
+@pytest.mark.parametrize("name", PROVIDER_SLICE)
 def test_virtual_agrees_with_providers(evaluated, loop_reference, name, carrier):
     rows = _provider_rows(loop_reference, name)
     for index, (result, providers) in enumerate(

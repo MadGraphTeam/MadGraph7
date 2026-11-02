@@ -16,6 +16,7 @@ from typing import Literal
 
 from . import __version__
 from ._internal.versions import verify_native_module
+from .api.errors import NativePlatformError
 
 CheckStatus = Literal["pass", "warning", "fail"]
 
@@ -70,7 +71,14 @@ def _native_check(*, required: bool) -> DiagnosticCheck:
         verify_native_module(native)
         abi_version = int(native.abi_version())
         native_version = str(native.package_version())
-    except (ImportError, AttributeError, TypeError, ValueError, RuntimeError) as exc:
+    except (
+        ImportError,
+        NativePlatformError,
+        AttributeError,
+        TypeError,
+        ValueError,
+        RuntimeError,
+    ) as exc:
         return DiagnosticCheck(
             "rusticol-python",
             "fail" if required else "warning",
@@ -204,6 +212,72 @@ def _physics_check() -> DiagnosticCheck:
     )
 
 
+def _virtual_check() -> DiagnosticCheck:
+    """A one-loop virtual on the shipped loop_sm against MadLoop
+    (``_internal.selftest_virtual``); the Symbolica licence state is always
+    named, so a licence failure is never silent. Generating the virtual
+    needs Symbolica: an evaluation-only installation without it (the f64
+    deployment gate) reports a warning naming why the check did not run."""
+
+    try:
+        import symbolica  # noqa: F401
+    except ImportError as exc:
+        return DiagnosticCheck(
+            "physics-virtual",
+            "warning",
+            "not run: generating the one-loop self-test virtual needs Symbolica "
+            f"({exc})",
+        )
+    try:
+        from .licensing import detect_symbolica_license
+
+        state = detect_symbolica_license(suggest=False, json_mode=True)
+        mode = "licensed" if state.licensed else "restricted single-core"
+    except Exception as exc:
+        return DiagnosticCheck(
+            "physics-virtual", "fail", f"Symbolica unavailable: {exc}"
+        )
+    try:
+        from ._internal.selftest_virtual import run_virtual_self_test
+
+        summary, _worst = run_virtual_self_test()
+    except Exception as exc:
+        return DiagnosticCheck(
+            "physics-virtual",
+            "fail",
+            f"{type(exc).__name__}: {exc} (Symbolica {mode})",
+        )
+    return DiagnosticCheck("physics-virtual", "pass", f"{summary}; Symbolica {mode}")
+
+
+def _prepared_virtual_check() -> DiagnosticCheck:
+    """An electroweak one-loop virtual from the shipped prepared artifact
+    (``_internal.selftest_virtual_ew``: loaded and evaluated, never
+    generated) against MadLoop. Loading a v2 virtual artifact reads its
+    compiled model with Symbolica (no licence needed): an evaluation-only
+    installation without it (the f64 deployment gate) reports a warning
+    naming why the check did not run."""
+
+    try:
+        import symbolica  # noqa: F401
+    except ImportError as exc:
+        return DiagnosticCheck(
+            "physics-virtual-prepared",
+            "warning",
+            "not run: loading the prepared one-loop virtual reads its compiled "
+            f"model with Symbolica ({exc})",
+        )
+    try:
+        from ._internal.selftest_virtual_ew import run_prepared_virtual_self_test
+
+        summary, _worst = run_prepared_virtual_self_test()
+    except Exception as exc:
+        return DiagnosticCheck(
+            "physics-virtual-prepared", "fail", f"{type(exc).__name__}: {exc}"
+        )
+    return DiagnosticCheck("physics-virtual-prepared", "pass", summary)
+
+
 def _symbolica_check() -> DiagnosticCheck:
     try:
         from .licensing import detect_symbolica_license
@@ -251,6 +325,8 @@ def run_self_test() -> DiagnosticReport:
         _native_check(required=True),
         _sdk_check(required=True),
         _physics_check(),
+        _virtual_check(),
+        _prepared_virtual_check(),
     )
     return DiagnosticReport(__version__, checks)
 

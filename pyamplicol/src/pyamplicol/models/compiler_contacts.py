@@ -11,14 +11,15 @@ from dataclasses import replace
 from .._internal.physics.symbols import ModelSymbolRegistry, symbols
 from . import compiler_symbolica as _sym
 from .compiler_kernels import (
+    DenseTensors,
     _as_expression,
     _canonicalize_oriented_kernel_component,
     _component_symbols,
+    _execute_dense_network,
     _function_arguments,
     _input_tensor_expression,
-    _ordered_dense_tensor_components,
     _permutation_sign,
-    _remap_kernel_symbols,
+    _renamed_kernel_text,
     _replace_expression_symbols,
     _spin_axis_labels,
     _spin_dimension,
@@ -100,11 +101,13 @@ def _fuse_contact_finals(
                 sum(
                     (
                         _replace_expression_symbols(
-                            _remap_kernel_symbols(
-                                _sym.E(member.component_expressions[index]),
-                                old_kind=member.kind,
-                                new_kind=first.kind,
-                                model_symbols=model_symbols,
+                            _sym.E(
+                                _renamed_kernel_text(
+                                    member.component_expressions[index],
+                                    old_kind=member.kind,
+                                    new_kind=first.kind,
+                                    model_symbols=model_symbols,
+                                )
                             ),
                             runtime_aliases,
                         )
@@ -149,6 +152,16 @@ def _fuse_contact_finals(
     return tuple(sorted((*passthrough, *fused), key=lambda kernel: kernel.kind))
 
 
+# Contact partial components by (model namespace, Lorentz structure, spins,
+# legs), with the kernel kind they were formed for: the network runs on
+# canonical symbols whose order does not depend on the kind
+# (``compiler_kernels._execute_dense_network``), so another kernel's
+# components are these with its input symbols renamed. Cleared beyond the
+# bound.
+_PARTIALS: dict[tuple[object, ...], tuple[int, tuple[str, ...]]] = {}
+_PARTIALS_BOUND = 1 << 14
+
+
 def _contact_partial_component_expressions(
     term: CompiledVertexTerm,
     particle_by_name: Mapping[str, CompiledParticleRecord],
@@ -159,7 +172,54 @@ def _contact_partial_component_expressions(
     kind: int,
     model_symbols: ModelSymbolRegistry,
 ) -> tuple[str, ...]:
-    library = _sym.TensorLibrary.hep_lib_atom()
+    key = (
+        model_symbols.namespace,
+        term.lorentz_expression,
+        tuple(particle_by_name[name].spin for name in term.particles),
+        left_leg,
+        right_leg,
+        tuple(open_legs),
+    )
+    found = _PARTIALS.get(key)
+    if found is not None:
+        formed, values = found
+        if formed == kind:
+            return values
+        return tuple(
+            _renamed_kernel_text(
+                value,
+                old_kind=formed,
+                new_kind=kind,
+                model_symbols=model_symbols,
+            )
+            for value in values
+        )
+    values = _formed_contact_partial_component_expressions(
+        term,
+        particle_by_name,
+        left_leg=left_leg,
+        right_leg=right_leg,
+        open_legs=open_legs,
+        kind=kind,
+        model_symbols=model_symbols,
+    )
+    if len(_PARTIALS) >= _PARTIALS_BOUND:
+        _PARTIALS.clear()
+    _PARTIALS[key] = (kind, values)
+    return values
+
+
+def _formed_contact_partial_component_expressions(
+    term: CompiledVertexTerm,
+    particle_by_name: Mapping[str, CompiledParticleRecord],
+    *,
+    left_leg: int,
+    right_leg: int,
+    open_legs: tuple[int, ...],
+    kind: int,
+    model_symbols: ModelSymbolRegistry,
+) -> tuple[str, ...]:
+    library = DenseTensors()
     expression = _sym.E(term.lorentz_expression)
     particles = tuple(particle_by_name[name] for name in term.particles)
     expression *= _input_tensor_expression(
@@ -289,6 +349,14 @@ def projected_contact_partial_components(
     return direct if unchanged else projected
 
 
+# Contact final components by (model namespace, spins, auxiliary dimension,
+# legs, auxiliary side, component expansion), with the kernel kind they were
+# formed for (as ``_PARTIALS``: the network runs on canonical symbols, so
+# another kernel's components are these with its input symbols renamed).
+_FINALS: dict[tuple[object, ...], tuple[int, tuple[str, ...]]] = {}
+_FINALS_BOUND = 1 << 14
+
+
 def _contact_final_component_expressions(
     particles: Sequence[CompiledParticleRecord],
     auxiliary: CompiledParticleRecord,
@@ -301,7 +369,58 @@ def _contact_final_component_expressions(
     component_expansion: tuple[tuple[int, int] | None, ...],
     model_symbols: ModelSymbolRegistry,
 ) -> tuple[str, ...]:
-    library = _sym.TensorLibrary.hep_lib_atom()
+    key = (
+        model_symbols.namespace,
+        tuple(particle.spin for particle in particles),
+        compiled_particle_component_dimension(auxiliary),
+        tuple(open_legs),
+        remaining_leg,
+        result_leg,
+        auxiliary_on_left,
+        tuple(component_expansion),
+    )
+    found = _FINALS.get(key)
+    if found is not None:
+        formed, values = found
+        return tuple(
+            _renamed_kernel_text(
+                value,
+                old_kind=formed,
+                new_kind=kind,
+                model_symbols=model_symbols,
+            )
+            for value in values
+        )
+    values = _formed_contact_final_component_expressions(
+        particles,
+        auxiliary,
+        open_legs=open_legs,
+        remaining_leg=remaining_leg,
+        result_leg=result_leg,
+        kind=kind,
+        auxiliary_on_left=auxiliary_on_left,
+        component_expansion=component_expansion,
+        model_symbols=model_symbols,
+    )
+    if len(_FINALS) >= _FINALS_BOUND:
+        _FINALS.clear()
+    _FINALS[key] = (kind, values)
+    return values
+
+
+def _formed_contact_final_component_expressions(
+    particles: Sequence[CompiledParticleRecord],
+    auxiliary: CompiledParticleRecord,
+    *,
+    open_legs: tuple[int, ...],
+    remaining_leg: int,
+    result_leg: int,
+    kind: int,
+    auxiliary_on_left: bool,
+    component_expansion: tuple[tuple[int, int] | None, ...],
+    model_symbols: ModelSymbolRegistry,
+) -> tuple[str, ...]:
+    library = DenseTensors()
     auxiliary_side = "left" if auxiliary_on_left else "right"
     physical_side = "right" if auxiliary_on_left else "left"
     auxiliary_symbols = tuple(
@@ -355,7 +474,7 @@ def _contact_final_component_expressions(
 
 
 def _contact_auxiliary_tensor_expression(
-    library: _sym.TensorLibrary,
+    library: DenseTensors,
     *,
     kind: int,
     side: str,
@@ -376,14 +495,14 @@ def _contact_auxiliary_tensor_expression(
     slots = tuple(
         slot for leg in open_legs for slot in _spin_slots(particles[leg].spin, leg + 1)
     )
-    name = _sym.TensorName(model_symbols.kernel_tensor_name(kind, side))
-    library.register(_sym.Tensor.dense(name(*representations), components))
-    return name(*slots).to_expression()
+    name = model_symbols.kernel_tensor_name(kind, side)
+    library.register_dense(name, representations, components)
+    return _sym.TensorName(name)(*slots).to_expression()
 
 
 def _execute_dense_tensor(
     expression: _sym.Expression,
-    library: _sym.TensorLibrary,
+    library: DenseTensors,
     *,
     axis_labels: Sequence[str],
 ) -> tuple[object, ...]:
@@ -393,12 +512,7 @@ def _execute_dense_tensor(
         # A rank-zero expression with no function indeterminates contains no
         # tensor heads to contract. Spenso need not construct a tensor network.
         return (expression,)
-    network = _sym.TensorNetwork(
-        _sym.as_tensor(expression) if axis_labels else expression, library
-    )
-    network.execute(library=library)
-    result = network.result_tensor(library)
-    return _ordered_dense_tensor_components(result, axis_labels).values
+    return _execute_dense_network(expression, library, axis_labels).values
 
 
 def _contact_auxiliary_color(
@@ -411,7 +525,7 @@ def _contact_auxiliary_color(
     colors = tuple(particle.color for particle in particles)
     if all(color == 1 for color in colors):
         return 1
-    if "f(" in term.color_source or "d(" in term.color_source:
+    if any(head in term.color_source for head in ("f(", "d(", "T(")):
         return 8  # the summed adjoint index of a contact split
     remaining = abs(colors[remaining_leg])
     result = abs(colors[result_leg])
@@ -592,6 +706,7 @@ def _build_contact_decomposition_proof(
             term,
             result_leg,
             model_symbols=model_symbols,
+            particles=source_particles,
         )
         if color_split is None:
             unsupported.append(
@@ -684,7 +799,13 @@ def _contact_decomposition_split_proof(
         "1",
         "UFO::{}::Identity(1,2)",
     }
-    identities = "Identity(" in outer_color_source and not singlets
+    # Identity(pair, X) then a fundamental generator T(X, remaining, result).
+    identity_trilinear = (
+        "Identity(" in outer_color_source and "T(" in final_color_source
+    )
+    identities = (
+        "Identity(" in outer_color_source and not singlets and not identity_trilinear
+    )
     trilinear = "Identity(" in final_color_source and not identities and not singlets
     # A d-symbol (counterterm contacts) is totally symmetric: no parity.
     outer_signed = bool(outer_color_factor) and "f(" in outer_color_source
@@ -755,13 +876,19 @@ def _contact_decomposition_split_proof(
             outer_slot=outer_color_factor.index(color_dummy),
             final_slot=final_color_factor.index(color_dummy),
         )
-        if outer_color_factor and not identities and not trilinear and not singlets
+        if outer_color_factor
+        and not identities
+        and not trilinear
+        and not singlets
+        and not identity_trilinear
         else None
     )
     return CompiledContactDecompositionSplit(
         decomposition_kind=(
             "identity-singlets"
             if singlets
+            else "identity-trilinear"
+            if identity_trilinear
             else "two-identities"
             if identities
             else "trilinear-identity"
@@ -934,6 +1061,7 @@ def _four_point_contact_color_split(
     result_leg: int,
     *,
     model_symbols: ModelSymbolRegistry | None = None,
+    particles: Sequence[CompiledParticleRecord] | None = None,
 ) -> (
     tuple[
         tuple[int, int],
@@ -950,6 +1078,10 @@ def _four_point_contact_color_split(
     | None
 ):
     active_symbols = model_symbols or symbols.model("contact_color_parser")
+    if particles is not None:
+        generator = _generator_singlet_contact_split(term, result_leg, particles)
+        if generator is not None:
+            return generator
     counterterm_split = _counterterm_contact_color_split(term, result_leg)
     if counterterm_split is not None:
         return counterterm_split
@@ -1127,6 +1259,101 @@ def _counterterm_contact_color_split(
         1,
         outer,
         final,
+        dummy,
+        coefficient,
+    )
+
+
+_GENERATOR_COLOUR_FACTOR = re.compile(r"T\((?P<args>-?\d+(?:,-?\d+)*)\)")
+
+
+def _generator_singlet_contact_split(
+    term: CompiledVertexTerm,
+    result_leg: int,
+    particles: Sequence[CompiledParticleRecord],
+) -> (
+    tuple[
+        tuple[int, int],
+        int,
+        str,
+        str,
+        int,
+        int,
+        tuple[int, ...],
+        tuple[int, ...],
+        int,
+        str,
+    ]
+    | None
+):
+    """Split one fundamental generator ``T(a, i, j)`` on a four-point contact
+    whose fourth leg is a colour singlet (a quark pair, a gluon and a singlet:
+    HC_NLO_X0's qq~gX0 R2). The auxiliary carries the adjoint index ``X``
+    and is a boson: for a gluon or singlet result the quark pair joins it,
+    ``T(X, i, j)``, and ``Identity(X, r)`` passes it to the gluon or closes it
+    with the gluon into the singlet; for a quark result the gluon and the
+    singlet join it, ``Identity(a, X)``, and ``T(X, i, j)`` joins it with the
+    other quark into the result. ``particles`` are the contact's legs: the
+    generator's slots must hold an adjoint and a triplet-antitriplet pair and
+    the fourth leg must be a singlet, else None."""
+
+    compact = re.sub(r"\s+|UFO::(?:\{\}::)?", "", term.color_source)
+    numbers, generators = [], []
+    for text in compact.split("*"):
+        match = _GENERATOR_COLOUR_FACTOR.fullmatch(text)
+        if match is not None:
+            generators.append(tuple(int(value) for value in match["args"].split(",")))
+        elif re.fullmatch(r"-?\d+(?:/\d+)?", text):
+            numbers.append(text)
+        else:
+            return None
+    if len(generators) != 1:
+        return None
+    ((*legs,),) = generators
+    if len(legs) != 3 or len(set(legs)) != 3 or not set(legs) < {1, 2, 3, 4}:
+        return None
+    adjoint, triplet, antitriplet = legs
+    (singlet,) = {1, 2, 3, 4} - set(legs)
+    colours = [int(particle.color) for particle in particles]
+    if len(colours) != 4 or (
+        colours[adjoint - 1],
+        abs(colours[triplet - 1]),
+        abs(colours[antitriplet - 1]),
+        colours[singlet - 1],
+    ) != (8, 3, 3, 1):
+        return None
+    result = result_leg + 1
+    dummy = -1
+    coefficient = "*".join(numbers) if numbers else "1"
+    if result in (adjoint, singlet):
+        remaining = singlet if result == adjoint else adjoint
+        final_legs = (adjoint,) if result == singlet else (result,)
+        # The pair in UFO order (antitriplet, triplet): T(3,2,1) on the
+        # partial kernel's (left, right, auxiliary).
+        return (
+            (antitriplet - 1, triplet - 1),
+            remaining - 1,
+            "UFO::{}::T(3,2,1)",
+            "UFO::{}::Identity(1,2)",
+            1,
+            0,
+            (dummy, triplet, antitriplet),
+            (dummy, *final_legs),
+            dummy,
+            coefficient,
+        )
+    remaining = antitriplet if result == triplet else triplet
+    # T(X, i, j) on the final kernel's (auxiliary, remaining, result).
+    final_source = "UFO::{}::T(1,3,2)" if result == triplet else "UFO::{}::T(1,2,3)"
+    return (
+        (adjoint - 1, singlet - 1),
+        remaining - 1,
+        "UFO::{}::Identity(1,2)",
+        final_source,
+        0,
+        1,
+        (adjoint, dummy),
+        (dummy, triplet, antitriplet),
         dummy,
         coefficient,
     )

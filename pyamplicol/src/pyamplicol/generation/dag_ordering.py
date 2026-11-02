@@ -6,6 +6,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
+from ..api.errors import GenerationError
 from ..color.plan import GenericColorPlan, LCColorSector
 from ..models._physics_ir import ContractionIR
 from ..models.base import Model
@@ -34,10 +35,36 @@ def _known_fermion_statistics(model: Model, particle_id: int) -> bool | None:
         return None
 
 
+class DiracWeylClosureUnsupported(GenerationError, ValueError):
+    """The tree lanes' refusal of a Dirac current closing on a Weyl sink
+    (``key`` ``dirac-weyl-closure``, the key the Rust recurrence and
+    on-the-fly lanes refuse the class with, ``recurrence::construct``'s
+    ``DiracWeylClosureGuard``). A ``ValueError`` as the untyped refusal its
+    callers handle. The message starts with ``key``."""
+
+    key = "dirac-weyl-closure"
+
+
+#: The contraction a loop Born DAG records for a Dirac current closing on a
+#: Weyl sink (``_direct_contraction_ir`` with ``loop_born``). Its bases name
+#: no propagator basis and its one component matches no fermion current, so
+#: every tree evaluator refuses the root (the tree lowering validates both);
+#: the loop engine reads only the root's coupling orders, colour sector and
+#: helicities and closes the Born on its own vertex closure.
+DIRAC_WEYL_CLOSURE = ContractionIR(
+    name="dirac-weyl-closure",
+    left_basis="dirac-weyl-closure",
+    right_basis="dirac-weyl-closure",
+    coefficients=((1.0, 0.0),),
+)
+
+
 def _direct_contraction_ir(
     model: Model,
     left: CurrentIndex,
     right: CurrentIndex,
+    *,
+    loop_born: bool = False,
 ) -> ContractionIR | None:
     """The closure contraction of two colour-compatible currents, or ``None``.
 
@@ -47,9 +74,23 @@ def _direct_contraction_ir(
     a chiral vertex joins massive and massless fermions on one line (b -> t
     or t -> b through a W with a massless b, nu_tau -> tau), the line's
     current can reach a massless sink as a Dirac current. Models install no
-    Dirac-Weyl contraction, so such a closure would silently drop its
+    Dirac-Weyl contraction, so a tree closure would silently drop its
     diagrams (b b~ > w+ w- without the t channel, t t~ > b b~ without the W
-    exchange); it fails closed instead.
+    exchange); a tree DAG fails closed instead
+    (``DiracWeylClosureUnsupported``).
+
+    A loop Born DAG (``loop_born``, ``GenericDAGCompiler`` with
+    ``loop_born=True``) records such a closure as a root with the marker
+    contraction ``DIRAC_WEYL_CLOSURE``. The loop engine (``loops.v2``) takes
+    from its Born DAG the colour plan and, per amplitude root, the coupling
+    orders, colour sector and helicities; it never evaluates a root's
+    contraction. Its Born amplitude is its own closure of the tree blocks at
+    a model vertex holding leg 1 (``assemble._born_block_requests``,
+    ``ct_sites.SiteClosure``), whose vertex kernels embed Weyl currents in
+    the Dirac basis, so a line that joins massive and massless fermions
+    through a chiral vertex needs no Dirac-Weyl contraction there. Recording
+    the root keeps its orders and sector (g b > t w- with a massless b has
+    no other root).
     """
 
     contraction = model.direct_contraction_ir(
@@ -63,14 +104,20 @@ def _direct_contraction_ir(
         and (left.chirality == 0) != (right.chirality == 0)
         and model.direct_contraction_ir(left.particle_id, right.particle_id) is not None
     ):
-        raise ValueError(
-            "a Dirac (chirality-0) current cannot close on a Weyl "
-            f"(chirality {left.chirality or right.chirality}) current: particles "
-            f"{left.particle_id} and {right.particle_id}, external labels "
-            f"{left.external_labels} and {right.external_labels}; a fermion line "
-            "that joins massive and massless fermions through a chiral vertex "
-            "(a massive internal or external fermion on a line with a massless "
-            "sink) has no Dirac-Weyl closure contraction"
+        if loop_born:
+            return DIRAC_WEYL_CLOSURE
+        raise DiracWeylClosureUnsupported(
+            f"{DiracWeylClosureUnsupported.key}: a Dirac (chirality-0) current "
+            f"cannot close on a Weyl (chirality {left.chirality or right.chirality}) "
+            "current: "
+            f"particles {left.particle_id} and {right.particle_id}, external "
+            f"labels {left.external_labels} and {right.external_labels}; a "
+            "fermion line that joins massive and massless fermions through a "
+            "chiral vertex (a massive internal or external fermion on a line "
+            "with a massless sink) has no Dirac-Weyl closure contraction. Keep "
+            "the light fermion massive in the tree model (the default "
+            "restriction with its mass fixed to zero) or use the loop engine, "
+            "whose Born closes at a vertex"
         )
     return contraction
 

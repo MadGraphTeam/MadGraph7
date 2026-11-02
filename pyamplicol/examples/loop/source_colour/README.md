@@ -1,5 +1,15 @@
 # Explicit source colour input
 
+pyAmpliCol ships the complete formal-N_c declaration of MG5_aMC 3.7.0's
+`loop_sm` (every counterterm vertex and field factor, under every shipped
+restriction; `pyamplicol/models/loop_color_declarations`), so LC and NLC on
+stock `loop_sm` need no declaration of their own. This directory remains an
+example of explicit provider input, which a model's own metadata carries and
+which takes precedence over the shipped data. Its JSON covers a QCD subset
+only: an LC or NLC request whose counterterms reach a vertex it does not
+cover (e.g. the closed quark loops of `g g Z` in `u u~ > e- e+ g`) is
+refused with the listed key `colour-declaration-coverage`.
+
 These examples use the supplied MadLoop 3.7.0 `models/loop_sm` source, model R2
 rules and UV counterterms in its declared HV convention. The JSON is explicit
 provider-style model input for the actual ordinary, UV, R2 and external-field
@@ -49,6 +59,10 @@ The parallel `gluon_scattering_nlc.toml` card requests NLC.
 Adjust the card paths to your working directory. `prepare_model.py` applies the
 existing checked four-G0 scalar-arity compatibility view, attaches the explicit
 loop and colour declarations, and writes one ordinary compiled-model bundle.
+The view is test support in the checkout's `tools/loop_reference` (neither the
+wheel nor the sdist ships it), so the script runs from a source checkout only:
+the example itself also ships in the wheel (`pyamplicol examples copy`), and a
+copy outside a checkout stops with that message before it reads the model.
 There is no runtime sidecar to keep in sync.
 
 A dry-run prepares model data and graph/order catalogues; it explicitly leaves

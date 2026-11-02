@@ -66,6 +66,19 @@ def lowest_leg(mask: int) -> int:
     return (mask & -mask).bit_length() - 1
 
 
+def onshell_leg(arc: int, full: int) -> int | None:
+    """The external leg whose mass shell fixes the invariant p(arc)^2: the
+    leg of a single-leg arc or of a single-leg complement (momentum
+    conservation), else None. Such an invariant is the leg's squared mass by
+    definition of the external state, never the p^2 of the given (possibly
+    rounded) momenta (design §11.1, on-shell external invariants)."""
+
+    for legs in (arc, full ^ arc):
+        if legs and legs & (legs - 1) == 0:
+            return lowest_leg(legs)
+    return None
+
+
 # --------------------------------------------------------------------------- records
 
 
@@ -395,14 +408,15 @@ class Family:
         return tuple(found[key] for key in sorted(found))
 
     def onshell_bindings(self, legs: Sequence[ExternalLeg]) -> dict[int, MassId]:
-        """Invariants fixed by external masses: arcs of a single leg."""
+        """Invariants fixed by external masses, by the one on-shell rule
+        every carrier evaluates (``onshell_leg``): a single-leg arc or a
+        single-leg complement is that leg's mass shell."""
         full = shifts(self.key)[-1]
-        out = {}
-        for mask in self.invariant_masks():
-            for arc in (mask, full ^ mask):
-                if arc & (arc - 1) == 0:
-                    out[mask] = legs[lowest_leg(arc)].mass
-        return out
+        return {
+            mask: legs[leg].mass
+            for mask in self.invariant_masks()
+            if (leg := onshell_leg(mask, full)) is not None
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -890,6 +904,13 @@ class ModelLoopCatalogue:
     ``veto`` (|PDG| codes, ``particle_veto``) removes those particles from the
     loops: they are no loop species, and no vertex with one of them is a loop
     vertex.
+
+    ``vanishing`` (vertex rule name, coupling orders) are the vertices whose
+    couplings at those orders vanish identically at the model's restriction
+    (``ct_sites.vanishing_loop_vertices``, decided from the coupling values):
+    they are no loop vertices at those orders (fail-closed-2; e.g. a W vertex
+    of a CKM element a diagonal-CKM restriction sets to zero, which the
+    restricted tree model does not hold).
     """
 
     def __init__(
@@ -898,8 +919,10 @@ class ModelLoopCatalogue:
         *,
         species_orders: Mapping[int, frozenset[str]] | None = None,
         veto: Iterable[int] = (),
+        vanishing: Iterable[tuple[str, Orders]] = (),
     ):
         data = model_data(model)
+        vanishing = frozenset(vanishing)
         veto = frozenset(abs(int(pdg)) for pdg in veto)
         vetoed = {p["name"] for p in data["particles"] if abs(p["pdg_code"]) in veto}
         self._species: dict[str, LoopSpecies] = {}
@@ -926,7 +949,8 @@ class ModelLoopCatalogue:
                 if name is not None
             }
             for order in sorted(orders):
-                rules.append((rule, order))
+                if (rule["name"], order) not in vanishing:
+                    rules.append((rule, order))
         if species_orders is None:
             pdg = {p["name"]: abs(p["pdg_code"]) for p in data["particles"]}
             derived: dict[int, set[str]] = defaultdict(set)

@@ -629,6 +629,13 @@ coefficients for higher-precision evaluation; native evaluation continues to
 use their binary64 values.
 This matters when subtracting matrix elements at different multiplicities.
 
+One-loop virtuals of the v2 engine choose their arithmetic with the
+evaluation's `arithmetic` (`"double"`, `"double-double"`, or `"arbitrary"` with
+`precision` digits). Every arithmetic takes each external leg's p² in the loop
+integrals to be its squared mass, so a binary64-rounded point gives the same
+finite part and poles in all three, to binary64's accuracy (see
+[Configuration, the v2 loop engine](configuration.md#the-v2-loop-engine)).
+
 After updating from a version that rounded these definitions during generation,
 regenerate the prepared model and process output: increasing `precision` cannot
 repair coefficients already rounded in an older output. The prepared-model
@@ -688,14 +695,15 @@ For controlled, multi-process comparisons and report generation, use
 
 ## Handle ownership and warnings
 
-### Development virtual artifacts
+### Virtual (one-loop) artifacts
 
-Source-owned loop artifacts can be loaded through the same `Runtime.load`
-entry point when the development `_loop_reduction.NativeVirtualRuntime`
-extension is installed. Directory and direct `artifact.json` paths are accepted.
-The native loader checks the selected process, payloads, coupling orders and
-declared scheme before binding the saved numerical program. Model imports and
-graph generation are not needed to evaluate a saved artifact.
+A one-loop artifact (plan v4 processes of the v2 engine, runtime capability
+`rusticol.loop-runtime.v4`) loads through the same `Runtime.load` entry point.
+Directory and direct `artifact.json` paths are accepted. The native loader
+checks the selected process, payloads, coupling orders and declared scheme and
+binds the saved program; no model import or regeneration happens at load. An
+artifact of the removed legacy engine (`rusticol.loop-runtime.v3`) is refused
+with the reason; regenerate it.
 
 ```python
 from pyamplicol import Runtime
@@ -705,7 +713,6 @@ result = runtime.evaluate(
     momenta,                         # [point, external leg, E/px/py/pz]
     mu_r2="1000000",                 # scalar or one positive value per point
     arithmetic="double-double",      # DoubleFloat; distinct from arbitrary precision
-    r2_strategy="model",
 )
 finite = result.finite               # [point, squared coupling order]
 single_pole = result.single_pole
@@ -722,35 +729,22 @@ output uses `Decimal`, preserving the native carrier's digits. Use
 `arithmetic="arbitrary", precision=70` for 70 decimal digits; when arithmetic is
 omitted, precision 16 chooses double and other digit counts choose arbitrary
 precision. Explicit `double` and `double-double` select their fixed carriers.
+Arithmetic and precision can also be chosen at load time
+(`Runtime.load(path, arithmetic="arbitrary", precision=70, model_parameters=params)`).
 
 Decimal strings and `Decimal` inputs avoid a binary64 conversion. Named model
 parameter updates accept real values or exact `(real, imaginary)` pairs and are
-atomic. Changing arithmetic recomputes from saved exact inputs. `clear()` releases
-numerical workspaces while preserving parameters. `mu_r2` is currently required
-explicitly; it is the renormalization scale squared, not the extra-dimensional
-loop-momentum variable.
+atomic. `mu_r2` is required explicitly; it is the renormalization scale squared.
 
-Arithmetic and precision can also be chosen at load time. For example,
-`Runtime.load(path, arithmetic="arbitrary", precision=70, model_parameters=params)`
-initializes the source parameter state directly in that carrier and uses it as
-the evaluation default. This is necessary when exact inputs are outside the
-binary64 range. Explicit evaluation options override the loaded defaults;
-loading without these options preserves the usual double/16-digit default.
-
-This delivery path currently admits full-colour, inclusive source artifacts
-with model-supplied R2 and UV. `auto` therefore chooses `model`; requesting an
-absent direct branch raises. Resolved output, selectors, correlations, mappings
-and automatic rescue are not yet available through this path. A successful lane
-reports `accuracy_established=False` until a separate accuracy check is available.
-Scheme metadata records a declaration, not certification of arbitrary models.
-`inspect()` exposes conventions, capabilities, exact parameter overrides and
-available arithmetic; evaluator-derived parameter defaults are not materialized
-as `physics.model_parameters` yet.
-
-Public generation/command integration and normal wheel/SDK delivery remain
-separate development gates. The native development build still depends on the
-pending self-contained NinjaRS packaging revision. These limitations do not
-apply to existing tree artifact evaluation.
+`evaluate` also takes `poles` (`"all"`, `"none"` for the finite part only,
+`"uv"`, `"ir"`), `stability_checks` (a `VirtualStabilityChecks`: rotations and
+the reduction-direction and rescaled checks; one estimate per point, none
+without checks) and `on_failure="return"` (a failed point is `None` with its
+reason). Declared colour and spin correlations are served by
+`evaluate_correlated` and `evaluate_correlated_many`, per-helicity and
+per-colour components by `evaluate_resolved`, with the same options. See
+[The v2 loop engine](configuration.md#the-v2-loop-engine) for the generation
+and evaluation settings.
 
 ### Shared handle state
 

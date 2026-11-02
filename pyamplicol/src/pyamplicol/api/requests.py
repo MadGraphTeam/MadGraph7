@@ -155,7 +155,11 @@ class ModelSource:
     ) -> ModelSource:
         """Resolve an external source kind without importing Symbolica."""
 
-        source = Path(os.fspath(path)).expanduser().resolve(strict=False)
+        from pyamplicol._internal.packaged_models import resolve_model_path
+
+        # A bare name of a shipped UFO model ("loop_sm") selects it when no
+        # such path exists.
+        source = resolve_model_path(os.fspath(path))
         if not source.exists():
             raise ModelError(f"model source does not exist: {source}")
         if source.is_dir():
@@ -278,6 +282,8 @@ class ModelSource:
             from .models import _compiled_model_from_payload
 
             return _compiled_model_from_payload(payload)
+        except ModelError:
+            raise  # typed already (e.g. models.source_refusals)
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
             raise ModelError(str(exc)) from exc
 
@@ -381,6 +387,12 @@ class ProcessRequest:
         if not normalized:
             raise ValueError("process expression must not be empty")
         _validate_delimiters(normalized)
+        from pyamplicol.processes.refusals import refuse_madloop_syntax
+
+        # MG5_aMC syntax ([virt=QCD], QED=2, $, /, decay chains, @N) is a
+        # listed refusal (tree and loop alike). A 1 -> n decay ('t > b w+') is
+        # a process, at tree level and at one loop.
+        refuse_madloop_syntax(normalized)
         if ">" not in normalized:
             raise ValueError("process expression must contain '>'")
         for segment in normalized.split(","):

@@ -1,5 +1,5 @@
 {
-  "description": "Gate-G1 benchmark processes (tools/loop_benchmark): the required-references specification format of tools/loop_reference/required_processes.json (same 'qcd' scheme, loop_sm-no_b_mass), with the 2->2 control and the 2->3/2->4 QCD processes that the v2 generator of work/v2-slice produces. 'madloop.export' is the MadLoop export built with MG5's production flags, relative to the reference root (--reference-root); 'openloops.unavailable' records why a process has no OpenLoops library.",
+  "description": "Gate-G1 benchmark processes (tools/loop_benchmark): the required-references specification format of tools/loop_reference/required_processes.json (same 'qcd' scheme, loop_sm-no_b_mass), with the 2->2 control, the 2->3/2->4 QCD processes that the v2 generator of work/v2-slice produces, and the seven-leg rows of MASTER_PLAN \u00a75.7, which the same generator produces since WP3.1 (G-int, integrated at 4e9b5a9e). 'madloop.export' is the MadLoop export built with MG5's production flags, relative to the reference root (--reference-root); 'openloops.unavailable' records why a process has no OpenLoops library. A provider entry with 'matched' could compute the process but has no production-mode timing under HANDOFF \u00a70.1 ('unavailable' gives the reason); 'timing' imports an existing campaign timing (relative to the reference root) instead of running the provider. 'particle_veto' (|PDG| codes) is the request's public particle_veto; 'reference_fixture' names the fixture of tests/fixtures/loop/required the pyAmpliCol run checks its values against when it is not the process's own. The EW row gg_ttxemepg_ew (scheme 'ew-gmu', the G_mu UFO, QCD and QED corrections: the M-SM 2->5 target) is timed and reported, indicative (role 'indicative'; m-sm/PLAN.md \u00a73.2 MS-VALIDATE item 5).",
   "schemes": {
     "qcd": {
       "description": "QCD corrections in the MG5 loop_sm-no_b_mass model: alpha=1/aEWM1 fixed with Gf and MZ (MW derived at tree level), stable top, massless b/tau/light fermions, all widths zero, five-flavour alpha_s renormalization with decoupled top, six quark flavours in loops, Feynman gauge.",
@@ -24,6 +24,34 @@
         "WH": "0"
       },
       "electroweak_inputs": "alpha_fixed",
+      "complex_mass_scheme": false,
+      "active_flavours": 5,
+      "loop_quark_flavours": 6
+    },
+    "ew-gmu": {
+      "description": "Full NLO EW (all one-loop graphs of the selected order, QCD-EW mixed included) in the G_mu scheme with on-shell real masses, matching OpenLoops ew_scheme=1/ew_renorm_scheme=1 and the MG5 loop_qcd_qed_sm_Gmu default restriction (massless light fermions, diagonal CKM). Real on-shell mass renormalization (MadLoop complex_mass_scheme False, Recola set_on_shell_scheme, OpenLoops complex_mass_scheme=0) with all widths zero; stable top; Feynman gauge. Recola's default complex-mass scheme keeps absorptive self-energy parts in its counterterms even at zero widths and is therefore not used.",
+      "madloop_model": "{reference}/models/loop_qcd_qed_sm_Gmu_py3",
+      "parameters": {
+        "aS": "0.118",
+        "Gf": "0.0000116639",
+        "MZ": "91.188",
+        "MW": "80.419",
+        "MH": "125",
+        "MT": "173",
+        "ymt": "173"
+      },
+      "fixed_parameters": {
+        "MB": "0",
+        "ymb": "0",
+        "MTA": "0",
+        "ymtau": "0",
+        "WT": "0",
+        "WW": "0",
+        "WZ": "0",
+        "WH": "0",
+        "WTau": "0"
+      },
+      "electroweak_inputs": "gmu",
       "complex_mass_scheme": false,
       "active_flavours": 5,
       "loop_quark_flavours": 6
@@ -295,6 +323,7 @@
       "scheme": "qcd",
       "madloop": {
         "process": "u u~ > g g g g QED=0 [virt=QCD]",
+        "matched": true,
         "unavailable": "not exported: the MadLoop export of g g > g g g g took 2.4 h, and HANDOFF \u00a70.1 allows no provider generation beyond about 45 minutes"
       },
       "recola": {
@@ -303,6 +332,195 @@
       "openloops": {
         "process": "2 -2 -> 21 21 21 21",
         "library": "ppjjjj"
+      }
+    },
+    {
+      "name": "uux_emepddxg",
+      "pdgs": [
+        2,
+        -2,
+        11,
+        -11,
+        1,
+        -1,
+        21
+      ],
+      "born_orders": {
+        "QCD": 3,
+        "QED": 2
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "u u~ > e- e+ d d~ g QED=2 [virt=QCD]",
+        "export": "runs/required/uux_emepddxg/madloop-export-production-flags"
+      },
+      "recola": {
+        "process": "u u~ -> e- e+ d d~ g"
+      },
+      "openloops": {
+        "process": "2 -2 -> 11 -11 1 -1 21",
+        "library": "pplljjj"
+      }
+    },
+    {
+      "name": "uux_emepggg",
+      "pdgs": [
+        2,
+        -2,
+        11,
+        -11,
+        21,
+        21,
+        21
+      ],
+      "born_orders": {
+        "QCD": 3,
+        "QED": 2
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "u u~ > e- e+ g g g QED=2 [virt=QCD]",
+        "export": "runs/required/uux_emepggg/madloop-export-production-flags"
+      },
+      "recola": {
+        "process": "u u~ -> e- e+ g g g"
+      },
+      "openloops": {
+        "process": "2 -2 -> 11 -11 21 21 21",
+        "library": "pplljjj"
+      }
+    },
+    {
+      "name": "gg_ttxemepg_qcd",
+      "pdgs": [
+        21,
+        21,
+        6,
+        -6,
+        11,
+        -11,
+        21
+      ],
+      "born_orders": {
+        "QCD": 3,
+        "QED": 2
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > t t~ e- e+ g QED=2 [virt=QCD]",
+        "export": "runs/required/gg_ttxemepg_qcd/madloop-export-production-flags"
+      },
+      "recola": {
+        "process": "g g -> t t~ e- e+ g"
+      },
+      "openloops": {
+        "process": "21 21 -> 6 -6 11 -11 21",
+        "library": "ppllttj"
+      }
+    },
+    {
+      "name": "uux_ggggg",
+      "pdgs": [
+        2,
+        -2,
+        21,
+        21,
+        21,
+        21,
+        21
+      ],
+      "born_orders": {
+        "QCD": 5,
+        "QED": 0
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "u u~ > g g g g g QED=0 [virt=QCD]",
+        "export": "runs/required/uux_ggggg/madloop-export",
+        "timing": "runs/required/uux_ggggg/madloop-production-result.json",
+        "rerun": "not re-run: its existing production timing (3 points of the reference campaign, the stream's first three) is used; a 16-point run takes about 1.7 h of initialisation plus 9.5 min per point"
+      },
+      "recola": {
+        "process": "u u~ -> g g g g g",
+        "matched": true,
+        "timing": "runs/required/uux_ggggg/recola-result.json",
+        "unavailable": "no production-mode timing: the existing run (reference campaign, 2026-10-20) computes the IR poles (compute_ir_poles 1); a production-mode run needs a new generation of 2.8 h, beyond HANDOFF \u00a70.1 (45 minutes, or pyAmpliCol's own generation time)"
+      },
+      "openloops": {
+        "process": "2 -2 -> 21 21 21 21 21",
+        "unavailable": "no public OpenLoops library for 2 -> 5 jets"
+      }
+    },
+    {
+      "name": "gg_ggggg",
+      "pdgs": [
+        21,
+        21,
+        21,
+        21,
+        21,
+        21,
+        21
+      ],
+      "born_orders": {
+        "QCD": 5,
+        "QED": 0
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "particle_veto": [
+        6
+      ],
+      "reference_fixture": "gg_ggggg_njet",
+      "scheme_note": "top-free: particle_veto [6] removes the top from the tree currents, loop lines, counterterms and field insertions, so loop_sm with MB = 0 is massless five-flavour QCD with MS-bar alpha_s (NJet's scheme, test_loop_v2_topfree); the finite part is compared with NJet (reference_fixture, its own scale mu_R = 1000 GeV at the stream's first points)",
+      "madloop": {
+        "process": "g g > g g g g g QED=0 [virt=QCD]",
+        "matched": true,
+        "unavailable": "no export: MadLoop's generation exceeds 17 h (colour factors about 89 days by MG5's estimate); stopped under HANDOFF \u00a70.1"
+      },
+      "recola": {
+        "process": "g g -> g g g g g",
+        "matched": true,
+        "unavailable": "no generation: more than 57 h, unfinished at its third attempt; stopped under HANDOFF \u00a70.1"
+      },
+      "openloops": {
+        "process": "21 21 -> 21 21 21 21 21",
+        "unavailable": "no public OpenLoops library for 2 -> 5 jets"
+      }
+    },
+    {
+      "name": "gg_ttxemepg_ew",
+      "pdgs": [
+        21,
+        21,
+        6,
+        -6,
+        11,
+        -11,
+        21
+      ],
+      "born_orders": {
+        "QCD": 3,
+        "QED": 2
+      },
+      "correction": "EW",
+      "scheme": "ew-gmu",
+      "role": "indicative",
+      "scheme_note": "M-SM G1 EW row (m-sm/PLAN.md \u00a73.2 MS-VALIDATE item 5, [U5]): timed and reported, indicative; the EW speed gate binds in M-FINAL after the EW-specific performance work",
+      "madloop": {
+        "process": "g g > t t~ e- e+ g QCD=3 QED=2 [virt=QCD QED] QCD^2==6 QED^2==6",
+        "export": "runs/required/gg_ttxemepg_ew/madloop-export-production-flags"
+      },
+      "recola": {
+        "process": "g g -> t t~ e- e+ g"
+      },
+      "openloops": {
+        "process": "21 21 -> 6 -6 11 -11 21",
+        "library": "ppllttj_ew"
       }
     }
   ]

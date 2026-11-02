@@ -57,6 +57,25 @@ measures it against each coefficient itself, so ``finite`` is the relative
 accuracy of the finite part. Without a requested check no estimate exists:
 ``LoopSlice.evaluate`` then returns ``stability=None``. Escalating the
 precision is the caller's decision.
+
+``RECOMMENDED_CHECKS`` is that configuration with ``default_rotation(0)``
+(a generic axis, as calibrated); it is the estimate of the O1 rule. Two
+weaker choices miss errors by more than ten times their estimate (package
+mq-stab, binary64 against double-double):
+
+* A rotation about the beam axis (z for the collision-frame points of a
+  2 -> n process) leaves both incoming momenta and the energy and p_z of
+  every momentum bitwise unchanged. With the cached reduction check it
+  reported 7.6e-14 for the double pole of u u~ > u u~ e+ e- at the fixture's
+  point 2, whose error is 1.7e-12 (22.8 x); any rotation moving the beams
+  brackets it (error 0.5 x the estimate). The masters are not the cause
+  there: every rotation keeps their exact invariants and so their binary64
+  inputs bitwise.
+* Without the rescaled check no master is evaluated twice: at
+  g g > b b~ h (4FS, m_b = 4.7) the finite part's binary64 error sits in
+  the masters with the light b and is 23-96 x the estimate of every
+  rotation with the cached check; the rescaled check brings it to
+  0.14-0.24 x (7.5 x at the worst point).
 """
 
 from __future__ import annotations
@@ -127,13 +146,65 @@ class Rotation:
         if len(axis) != 3 or not norm or not math.isfinite(angle):
             raise ValueError("a rotation needs a non-zero 3-axis and a finite angle")
         half = angle / 2
-        a, b, c, d = (
-            Fraction(value).limit_denominator(resolution)
-            for value in (
-                math.cos(half),
-                *(math.sin(half) * float(x) / norm for x in axis),
+        return cls._from_quaternion(
+            tuple(
+                Fraction(value).limit_denominator(resolution)
+                for value in (
+                    math.cos(half),
+                    *(math.sin(half) * float(x) / norm for x in axis),
+                )
             )
         )
+
+    @classmethod
+    def from_euler(
+        cls, alpha: float, beta: float, gamma: float, *, resolution: int = 10**12
+    ) -> Rotation:
+        """The exact rotation closest to Rz(gamma) Ry(beta) Rx(alpha)
+        (radians, active right-handed rotations: Rx acts first), gammaloop's
+        ``euler_angles`` convention (``RotationSetting::EulerAngles``).
+
+        The unit quaternion of the composed rotation, qz(gamma) qy(beta)
+        qx(alpha), is rounded once to integers over the common denominator
+        ``resolution``; the Euler-Rodrigues matrix of the integer quaternion
+        is exactly orthogonal, its entries integers over the quaternion's norm
+        (about ``resolution``^2), within about 1e-12 of the floating-point
+        matrix at the default resolution."""
+
+        if not all(math.isfinite(x) for x in (alpha, beta, gamma)):
+            raise ValueError("Euler angles must be finite")
+
+        def half(angle: float, axis: int) -> tuple[float, float, float, float]:
+            q = [math.cos(angle / 2), 0.0, 0.0, 0.0]
+            q[axis] = math.sin(angle / 2)
+            return q[0], q[1], q[2], q[3]
+
+        Quaternion = tuple[float, float, float, float]
+
+        def product(p: Quaternion, q: Quaternion) -> Quaternion:  # Hamilton
+            a1, b1, c1, d1 = p
+            a2, b2, c2, d2 = q
+            return (
+                a1 * a2 - b1 * b2 - c1 * c2 - d1 * d2,
+                a1 * b2 + b1 * a2 + c1 * d2 - d1 * c2,
+                a1 * c2 - b1 * d2 + c1 * a2 + d1 * b2,
+                a1 * d2 + b1 * c2 - c1 * b2 + d1 * a2,
+            )
+
+        quaternion = product(
+            product(half(gamma, _AXES["z"]), half(beta, _AXES["y"])),
+            half(alpha, _AXES["x"]),
+        )
+        return cls._from_quaternion(
+            tuple(Fraction(round(x * resolution)) for x in quaternion)
+        )
+
+    @classmethod
+    def _from_quaternion(cls, quaternion: Sequence[Fraction]) -> Rotation:
+        """The Euler-Rodrigues matrix of a rational quaternion (a, b, c, d),
+        exactly orthogonal for any nonzero quaternion."""
+
+        a, b, c, d = quaternion
         n = a * a + b * b + c * c + d * d
         if not n:
             raise ValueError("the rounded quaternion vanishes; raise the resolution")
@@ -172,6 +243,26 @@ class Rotation:
             ]
             out.append((energy, *rotated))
         return tuple(out)
+
+
+def default_rotation(index: int) -> Rotation:
+    """The ``index``-th default rotation check: exact, deterministic, generic.
+
+    Axes follow a spherical Fibonacci sequence and angles golden-ratio steps
+    of a turn, so no two checks share an axis or a rotation angle, none is a
+    coordinate axis (the beam axis included: module docstring) and none is
+    a symmetry of a typical point. ``Rotation.from_axis_angle`` rounds the
+    quaternion to rationals, which keeps every rotated point exactly on shell.
+    """
+
+    golden = (1 + math.sqrt(5)) / 2
+    z = 1 - (2 * index + 1) / (2 * (index + 2))
+    phi = 2 * math.pi * index / golden
+    radius = math.sqrt(1 - z * z)
+    angle = 2 * math.pi * (((index + 1) / golden) % 1)
+    return Rotation.from_axis_angle(
+        (radius * math.cos(phi), radius * math.sin(phi), z), max(angle, 0.5)
+    )
 
 
 def _determinant(m) -> Fraction:
@@ -219,6 +310,29 @@ class StabilityChecks:
     def frame(self) -> str | None:
         """The re-reduction frame of the reduction check, or None."""
         return FRAMES.get(self.reduction)
+
+
+# The recommended configuration (DESIGN §10.4) and the O1 rule's estimate:
+# one generic rotation and the rescaled reduction check (module docstring).
+RECOMMENDED_CHECKS = StabilityChecks(
+    (default_rotation(0),), reduction_direction=True, rescaled=True
+)
+
+# The default ladder of the built-in rescue (``api.virtual_results.
+# VirtualRescuePolicy()``, ``loops.v2.rescue``), modelled on gammaloop's
+# ``StabilitySettings`` defaults (f64 -> f128 = double-double -> arb, each at
+# 1e-5 with the one rotation ``euler_angles(0.1, 0.2, 0.3)``). Deviations:
+# every level adds the rescaled reduction check (rotations keep every master
+# invariant and cannot see a master integral's own rounding, module
+# docstring); the last level is 57 digits (O15's truth carrier) instead of
+# 1000 bits; the target applies to pyAmpliCol's estimate E.
+RESCUE_ROTATION = "euler:0.1,0.2,0.3"
+RESCUE_TARGET = 1e-5
+DEFAULT_RESCUE: tuple[tuple[str, int | None], ...] = (
+    ("double", None),
+    ("double-double", None),
+    ("arbitrary", 57),
+)
 
 
 def relative(reference: Mapping[Any, Any], absolute: Mapping[Any, Any]) -> float:
@@ -397,16 +511,21 @@ def _at(budget: Any, k: int) -> float:
 
 
 __all__ = [
+    "DEFAULT_RESCUE",
     "FLOOR_UNITS",
     "FRAMES",
+    "RECOMMENDED_CHECKS",
     "REDUCTION",
     "RESCALED",
+    "RESCUE_ROTATION",
+    "RESCUE_TARGET",
     "ROTATION",
     "SAFETY",
     "Budget",
     "Rotation",
     "StabilityChecks",
     "StabilityEstimate",
+    "default_rotation",
     "deviation",
     "differences",
     "per_coefficient",

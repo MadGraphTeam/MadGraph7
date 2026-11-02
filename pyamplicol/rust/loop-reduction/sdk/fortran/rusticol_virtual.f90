@@ -1,4 +1,13 @@
 ! SPDX-License-Identifier: 0BSD
+! Linux glibc floor (SDK README, "glibc floor (Linux)"): a client linked
+! against the shared librusticol_loop_sdk.so of a release native build needs
+! glibc 2.38 or newer (GLIBC_2.38). With gfortran on an older glibc the link
+! fails ("librusticol_loop_sdk.so: undefined reference to
+! `__isoc23_strtol@GLIBC_2.38'"); a client built on glibc 2.38 or newer and run
+! on an older one is stopped by the dynamic loader before the program starts
+! ("libc.so.6: version `GLIBC_2.38' not found (required by
+! .../librusticol_loop_sdk.so)"). Build and run it with gfortran on glibc 2.38
+! or newer, or build the SDK from source on that host.
 module rusticol_virtual
   use, intrinsic :: iso_c_binding
   use, intrinsic :: iso_fortran_env, only: error_unit
@@ -43,7 +52,7 @@ module rusticol_virtual
     type(c_ptr) :: point_ids, mu_r2
     integer(c_size_t) :: scale_count
     integer(c_int32_t) :: resolved
-    type(c_ptr) :: r2_strategy, verification_json
+    type(c_ptr) :: r2_strategy
   end type
   type, bind(C) :: c_spin_sources
     type(c_ptr) :: legs
@@ -82,6 +91,7 @@ module rusticol_virtual
     procedure :: metadata_json
     procedure :: capabilities_json
     procedure :: update_parameters
+    procedure :: set_poles
     procedure :: evaluate
     procedure :: evaluate_correlated
     procedure :: correlation_histories_json
@@ -92,13 +102,6 @@ module rusticol_virtual
     function c_open(path, process, parameters, strategy, output) bind(C, name="rusticol_virtual_open") result(value)
       import
       type(c_ptr), value :: path, process, parameters, strategy
-      type(c_ptr) :: output
-      integer(c_int) :: value
-    end function
-    function c_open_policy(path, process, parameters, strategy, policy, output) &
-        bind(C, name="rusticol_virtual_open_with_policy") result(value)
-      import
-      type(c_ptr), value :: path, process, parameters, strategy, policy
       type(c_ptr) :: output
       integer(c_int) :: value
     end function
@@ -155,6 +158,11 @@ module rusticol_virtual
       import
       type(c_ptr), value :: handle, changes
       integer(c_int64_t) :: revision
+      integer(c_int) :: value
+    end function
+    function c_set_poles(handle, poles) bind(C, name="rusticol_virtual_set_poles") result(value)
+      import
+      type(c_ptr), value :: handle, poles
       integer(c_int) :: value
     end function
     function c_evaluate(handle, request, output) bind(C, name="rusticol_virtual_evaluate") result(value)
@@ -409,14 +417,13 @@ contains
     is_loaded=c_associated(handle_of(self))
   end function
 
-  subroutine load(self,path,process,parameters_json,r2_strategy,ierr,verification_json)
+  subroutine load(self,path,process,parameters_json,r2_strategy,ierr)
     class(virtual_runtime), intent(inout) :: self
     character(*), intent(in) :: path
-    character(*), optional, intent(in) :: process, parameters_json, r2_strategy, verification_json
+    character(*), optional, intent(in) :: process, parameters_json, r2_strategy
     integer(c_int), optional, intent(out) :: ierr
     character(c_char), allocatable, target :: p(:), process_c(:), parameters_c(:), strategy_c(:)
-    character(c_char), allocatable, target :: policy_c(:)
-    type(c_ptr) :: process_p, parameters_p, strategy_p, policy_p, new_handle
+    type(c_ptr) :: process_p, parameters_p, strategy_p, new_handle
     integer(c_int) :: status
     p=cstring(path)
     process_p=c_null_ptr; parameters_p=c_null_ptr; strategy_p=c_null_ptr
@@ -429,11 +436,7 @@ contains
     if (present(r2_strategy)) then
       strategy_c=cstring(r2_strategy); strategy_p=c_loc(strategy_c)
     end if
-    policy_p=c_null_ptr
-    if (present(verification_json)) then
-      policy_c=cstring(verification_json); policy_p=c_loc(policy_c)
-    end if
-    status=c_open_policy(c_loc(p),process_p,parameters_p,strategy_p,policy_p,new_handle)
+    status=c_open(c_loc(p),process_p,parameters_p,strategy_p,new_handle)
     if (status==VIRTUAL_OK) then
       call release(self)
       allocate(self%owner)
@@ -545,30 +548,51 @@ contains
     call finish(status,ierr)
   end function
 
-  subroutine update_parameters(self,exact_json,revision,ierr)
+  ! Plan v4: the whole mapping is validated first, as the Python API's
+  ! set_model_parameters; a value that is not a finite decimal, an unknown
+  ! name, the renormalisation scale's parameter (set per point by mu_r2) or a
+  ! parameter fixed at generation at another value sets
+  ! ierr = RUSTICOL_VIRTUAL_INVALID_ARGUMENT (1), a nonzero imaginary part
+  ! ierr = RUSTICOL_VIRTUAL_RUNTIME_ERROR (3), and changes nothing;
+  ! error_message (optional) then holds the refusal.
+  subroutine update_parameters(self,exact_json,revision,ierr,error_message)
     class(virtual_runtime), intent(inout) :: self
     character(*), intent(in) :: exact_json
     integer(c_int64_t), intent(out) :: revision
     integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable, optional, intent(out) :: error_message
     character(c_char), allocatable, target :: buffer(:)
     buffer=cstring(exact_json)
-    call finish(c_update_parameters(handle_of(self),c_loc(buffer),revision),ierr)
+    call finish(c_update_parameters(handle_of(self),c_loc(buffer),revision),ierr, &
+      error_message=error_message)
   end subroutine
 
-  subroutine evaluate(self,momenta,mu_r2,output,point_ids,resolved,r2_strategy,verification_json,ierr,error_message)
+  ! Pole selection of later evaluations: "all" (default), or for plan v4
+  ! "none" (the finite part, the pole entries quiet NaNs), "uv" (the bare
+  ! loop's UV poles) or "ir" (the renormalised virtual's IR poles).
+  subroutine set_poles(self,poles,ierr)
+    class(virtual_runtime), intent(inout) :: self
+    character(*), intent(in) :: poles
+    integer(c_int), optional, intent(out) :: ierr
+    character(c_char), allocatable, target :: buffer(:)
+    buffer=cstring(poles)
+    call finish(c_set_poles(handle_of(self),c_loc(buffer)),ierr)
+  end subroutine
+
+  subroutine evaluate(self,momenta,mu_r2,output,point_ids,resolved,r2_strategy,ierr,error_message)
     class(virtual_runtime), intent(inout) :: self
     real(c_double), contiguous, target, intent(in) :: momenta(:,:,:), mu_r2(:)
     type(virtual_evaluation), intent(out) :: output
     integer(c_int64_t), contiguous, target, optional, intent(in) :: point_ids(:)
     logical, optional, intent(in) :: resolved
-    character(*), optional, intent(in) :: r2_strategy, verification_json
+    character(*), optional, intent(in) :: r2_strategy
     integer(c_int), optional, intent(out) :: ierr
     character(:), allocatable, optional, intent(out) :: error_message
     type(c_batch_request) :: request
     type(c_ptr) :: result_handle, destination
     type(virtual_shape) :: axes
     type(virtual_evaluation), target :: value
-    character(c_char), allocatable, target :: strategy(:), verification(:)
+    character(c_char), allocatable, target :: strategy(:)
     integer(c_int) :: status, ignored
     integer(c_size_t) :: helicities, colors, points
     axes=self%shape(status)
@@ -598,12 +622,9 @@ contains
     if (present(resolved)) then
       if (resolved) request%resolved=1
     end if
-    request%r2_strategy=c_null_ptr; request%verification_json=c_null_ptr
+    request%r2_strategy=c_null_ptr
     if (present(r2_strategy)) then
       strategy=cstring(r2_strategy); request%r2_strategy=c_loc(strategy)
-    end if
-    if (present(verification_json)) then
-      verification=cstring(verification_json); request%verification_json=c_loc(verification)
     end if
     status=c_evaluate(handle_of(self),request,result_handle)
     if (status/=VIRTUAL_OK) then
@@ -662,13 +683,13 @@ contains
     end if
     call finish(status,ierr,error_message=error_message)
   end subroutine
-  subroutine evaluate_correlated(self,momenta,mu_r2,output,point_ids,r2_strategy,verification_json, &
+  subroutine evaluate_correlated(self,momenta,mu_r2,output,point_ids,r2_strategy, &
       ierr,error_message,spin_legs,spin_vectors)
     class(virtual_runtime), intent(inout) :: self
     real(c_double), contiguous, target, intent(in) :: momenta(:,:,:), mu_r2(:)
     type(virtual_correlated_evaluation), intent(out) :: output
     integer(c_int64_t), contiguous, target, optional, intent(in) :: point_ids(:)
-    character(*), optional, intent(in) :: r2_strategy, verification_json
+    character(*), optional, intent(in) :: r2_strategy
     integer(c_int), optional, intent(out) :: ierr
     character(:), allocatable, optional, intent(out) :: error_message
     integer(c_size_t), contiguous, target, optional, intent(in) :: spin_legs(:)
@@ -679,7 +700,7 @@ contains
     type(c_ptr) :: result_handle, destination
     type(virtual_shape) :: axes
     type(virtual_correlated_evaluation), target :: value
-    character(c_char), allocatable, target :: strategy(:), verification(:)
+    character(c_char), allocatable, target :: strategy(:)
     integer(c_int) :: status, ignored
     integer(c_size_t) :: points
     type(virtual_correlated_shape) :: correlated_axes
@@ -708,12 +729,9 @@ contains
     end if
     if (size(mu_r2,kind=c_size_t)>0) request%mu_r2=c_loc(mu_r2)
     request%resolved=0
-    request%r2_strategy=c_null_ptr; request%verification_json=c_null_ptr
+    request%r2_strategy=c_null_ptr
     if (present(r2_strategy)) then
       strategy=cstring(r2_strategy); request%r2_strategy=c_loc(strategy)
-    end if
-    if (present(verification_json)) then
-      verification=cstring(verification_json); request%verification_json=c_loc(verification)
     end if
     if (present(spin_legs).neqv.present(spin_vectors)) then
       call finish(VIRTUAL_INVALID_ARGUMENT,ierr,'spin_legs and spin_vectors must be supplied together',error_message)

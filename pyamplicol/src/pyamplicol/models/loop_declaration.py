@@ -122,7 +122,12 @@ class LoopModelDeclaration:
         if strategy == "model" and not self.model_r2_complete:
             missing.append("complete model R2 rules")
         if missing:
-            raise ValueError("loop model does not declare " + " and ".join(missing))
+            from pyamplicol.loops.v2.refusals import LoopRequestUnsupportedValue
+
+            raise LoopRequestUnsupportedValue(
+                "loop-model-completion",
+                "loop model does not declare " + " and ".join(missing),
+            )
 
 
 def resolve_loop_model_declaration(
@@ -131,7 +136,9 @@ def resolve_loop_model_declaration(
     *,
     selected_corrections: Sequence[str],
 ) -> LoopModelDeclaration:
-    """Use an explicit whole config declaration, otherwise the source declaration.
+    """Use an explicit whole config declaration, otherwise the source
+    declaration, otherwise the shipped profile of the exact source
+    (``loops.shipped_profiles.shipped_loop_profile``).
 
     Partial config declarations fail; they are never completed from unrelated
     source fields. The chosen declaration covers the selected joint correction
@@ -140,20 +147,35 @@ def resolve_loop_model_declaration(
     declaration = None if configured is None else configured.to_declaration()
     if declaration is None:
         payload = raw.metadata.get(LOOP_DECLARATION_KEY)
-        if payload is None:
-            raise ValueError(
-                "loop model has no explicit scheme/completeness declaration; "
-                "supply [loop.model] and [loop.model.scheme] or model metadata "
-                + LOOP_DECLARATION_KEY
-            )
-        declaration = LoopModelDeclaration.from_dict(payload)
+        if payload is not None:
+            declaration = LoopModelDeclaration.from_dict(payload)
+        else:
+            from pyamplicol.loops.shipped_profiles import shipped_loop_profile
+
+            # A source pyAmpliCol ships the declaration of (by the digest of
+            # its declarations, ``loops.shipped_profiles``), e.g. MG5_aMC's loop_sm.
+            profile = shipped_loop_profile(raw)
+            if profile is None:
+                from pyamplicol.loops.v2.refusals import LoopRequestUnsupportedValue
+
+                raise LoopRequestUnsupportedValue(
+                    "loop-model-declaration",
+                    "loop model has no explicit scheme/completeness declaration; "
+                    "supply [loop.model] and [loop.model.scheme] or model metadata "
+                    + LOOP_DECLARATION_KEY,
+                )
+            declaration = profile.declaration
     missing = set(_corrections(selected_corrections)) - set(
         declaration.loop_coupling_orders
     )
     if missing:
-        raise ValueError(
+        from pyamplicol.loops.v2.refusals import LoopRequestUnsupportedValue
+
+        raise LoopRequestUnsupportedValue(
+            "loop-model-corrections",
             "loop model declaration does not cover selected corrections: "
             + ", ".join(sorted(missing))
+            + f" (it declares {', '.join(declaration.loop_coupling_orders)})",
         )
     return declaration
 

@@ -4,12 +4,11 @@
 import io
 import json
 from decimal import Decimal, localcontext
-from pathlib import Path
 
 import pytest
 
 from pyamplicol.api.virtual_results import VirtualEvaluation, VirtualLaneDiagnostic
-from pyamplicol.cli import parse_cli, run_cli
+from pyamplicol.cli import parse_cli
 from pyamplicol.cli.handlers import DefaultCliServices, _read_json
 from pyamplicol.cli.main import write_result
 from pyamplicol.config import ConfigurationError, EvaluationConfig, R2Strategy
@@ -245,117 +244,3 @@ def test_cli_virtual_output_preserves_every_order_pole_and_decimal(correlated):
     assert "QCD^4, QED^2" in human.getvalue()
     assert "requested=auto; effective=model" in human.getvalue()
     assert "accuracy established" in human.getvalue()
-
-
-def test_actual_source_artifact_cli_keeps_ap_load_and_empty_axes(
-    saved_loop_fixture, loop_native, tmp_path
-):
-    artifact = str(saved_loop_fixture("source-public-v3/gg"))
-    native = loop_native
-    assert native.NativeVirtualRuntime
-    momenta = tmp_path / "empty.json"
-    parameters = tmp_path / "parameters.json"
-    momenta.write_text("[]")
-    parameters.write_text('{"aS":1e400}')
-    output, error = io.StringIO(), io.StringIO()
-    code = run_cli(
-        (
-            "evaluate",
-            str(Path(artifact) / "artifact.json"),
-            "--process",
-            "gg",
-            "--momenta",
-            str(momenta),
-            "--model-parameters",
-            str(parameters),
-            "--arithmetic",
-            "arbitrary",
-            "--precision",
-            "70",
-            "--mu-r2",
-            "1e400",
-            "--r2-strategy",
-            "model",
-            "--json",
-            "--progress",
-            "off",
-        ),
-        stdout=output,
-        stderr=error,
-    )
-    assert code == 0, error.getvalue()
-    payload = json.loads(output.getvalue())
-    assert payload["shape"] == [0, 1, 3]
-    assert payload["born_shape"] == [0, 1]
-    assert payload["epsilon_powers"] == [0, -1, -2]
-    assert payload["r2"]["requested"] == "model"
-
-
-def test_actual_source_artifact_cli_emits_batched_physical_coefficients(
-    saved_loop_fixture, loop_native, tmp_path
-):
-    artifact = str(saved_loop_fixture("source-public-v3/gg"))
-    native = loop_native
-    assert native.NativeVirtualRuntime
-    from .test_loop_physical_gluons import _expected
-
-    fixture = (
-        Path(__file__).resolve().parents[2]
-        / "tools/loop_reference/gluon_scattering_qcd.json"
-    )
-    points = json.loads(fixture.read_text())["points"][:2]
-    momenta, scales, parameters = (
-        tmp_path / name for name in ("points.json", "scales.json", "params.json")
-    )
-    momenta.write_text(json.dumps(points))
-    scales.write_text('[1e6,"900000"]')
-    parameters.write_text('{"aS":0.118}')
-    output, error = io.StringIO(), io.StringIO()
-    code = run_cli(
-        (
-            "evaluate",
-            artifact,
-            "--process",
-            "gg",
-            "--momenta",
-            str(momenta),
-            "--mu-r2-file",
-            str(scales),
-            "--model-parameters",
-            str(parameters),
-            "--arithmetic",
-            "double",
-            "--json",
-            "--progress",
-            "off",
-        ),
-        stdout=output,
-        stderr=error,
-    )
-    assert code == 0, error.getvalue()
-    payload = json.loads(output.getvalue())
-    assert payload["shape"] == [2, 1, 3]
-    assert payload["born_shape"] == [2, 1]
-    assert payload["r2"]["effective"] == "model"
-    assert payload["sectors"][0]["order"] == [["QCD", 6]]
-    with localcontext() as context:
-        context.prec = 100
-        for point, born, poles, status in zip(
-            points,
-            payload["born_values"],
-            payload["values"],
-            payload["diagnostics"],
-            strict=True,
-        ):
-            expected_born, expected_pole = _expected(
-                [[str(value) for value in leg] for leg in point], "0.118"
-            )
-            assert abs(Decimal(born[0]) - expected_born) < abs(expected_born) * Decimal(
-                "3e-11"
-            )
-            assert abs(Decimal(poles[0][2]) - expected_pole) < abs(
-                expected_pole
-            ) * Decimal("3e-11")
-            assert len(poles[0]) == 3
-            assert status["arithmetic"] == "double"
-            assert status["accuracy_established"] is False

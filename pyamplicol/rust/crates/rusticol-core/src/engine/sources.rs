@@ -882,6 +882,98 @@ impl SchemaSources {
         })
     }
 
+    /// The four-component vector sources of the fill: per source its
+    /// 1-based leg label, the start of its value slot and its applied
+    /// crossing phase, the targets of a literal four-vector that replaces
+    /// the leg's wavefunction (the Python lane's
+    /// `native_observables._source_slots`, read from the same records).
+    pub(crate) fn vector_slots(&self) -> Vec<(usize, usize, [f64; 2])> {
+        self.sources
+            .iter()
+            .filter(|source| {
+                source.source_ir.wavefunction_family == GenericWavefunctionFamilyManifest::Vector
+                    && source.value_slot.component_stop == source.value_slot.component_start + 4
+            })
+            .map(|source| {
+                (
+                    source.leg_label,
+                    source.value_slot.component_start,
+                    source.applied_crossing.phase,
+                )
+            })
+            .collect()
+    }
+
+    /// The value slots (component start, stop) of every source of the
+    /// 1-based leg `leg` (each of its helicities), in fill order.
+    pub(crate) fn leg_slots(&self, leg: usize) -> Vec<(usize, usize)> {
+        self.sources
+            .iter()
+            .filter(|source| source.leg_label == leg)
+            .map(|source| {
+                (
+                    source.value_slot.component_start,
+                    source.value_slot.component_stop,
+                )
+            })
+            .collect()
+    }
+
+    /// The squared mass of each of `legs` legs' external states, in leg
+    /// order, by the wavefunctions' own lookup ([`SourceMasses`]): the mass of
+    /// the particle's PDG code, else its antiparticle's, absent = massless.
+    /// Every leg needs a source, and all sources of a leg one mass. `masses`
+    /// holds every massive particle's exact mass: an exact external
+    /// parameter, or the exact value of a derived mass's carrier (its legs'
+    /// invariants are then its square, the value its sources take).
+    pub(crate) fn leg_masses(
+        &self,
+        legs: usize,
+        masses: &BTreeMap<i32, Rational>,
+    ) -> RusticolResult<Vec<Rational>> {
+        let mut out: Vec<Option<Rational>> = vec![None; legs];
+        for source in &self.sources {
+            let index = source
+                .leg_label
+                .checked_sub(1)
+                .filter(|&index| index < legs)
+                .ok_or_else(|| {
+                    RusticolError::invalid_argument(format!(
+                        "generic source {} refers to unknown external label {}",
+                        source.source_id, source.leg_label
+                    ))
+                })?;
+            let identity = &source.source_ir.identity;
+            let mass = masses
+                .get(&identity.pdg_label)
+                .or_else(|| masses.get(&identity.anti_pdg_label))
+                .cloned()
+                .unwrap_or_else(|| Rational::from(0));
+            let square = &mass * &mass;
+            match &out[index] {
+                Some(found) if *found != square => {
+                    return Err(RusticolError::invalid_argument(format!(
+                        "the sources of external label {} disagree on its mass",
+                        source.leg_label
+                    )));
+                }
+                Some(_) => {}
+                None => out[index] = Some(square),
+            }
+        }
+        out.into_iter()
+            .enumerate()
+            .map(|(index, square)| {
+                square.ok_or_else(|| {
+                    RusticolError::invalid_argument(format!(
+                        "external label {} has no source",
+                        index + 1
+                    ))
+                })
+            })
+            .collect()
+    }
+
     /// Binary64 wavefunctions of physical momenta `point` into `row`.
     pub(crate) fn fill_f64(
         &self,

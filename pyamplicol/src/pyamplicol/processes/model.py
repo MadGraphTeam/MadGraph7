@@ -29,6 +29,7 @@ from .ir import (
     SourceOrientation,
     WavefunctionFamily,
 )
+from .refusals import ProcessRequestUnsupported
 
 GOLDSTONE_FLAG_SPELLINGS = ("GoldstoneBoson", "goldstoneboson", "goldstone")
 
@@ -242,12 +243,7 @@ def expand_model_processes(
             raise ValueError("invalid collision format; expected 'initial > final'")
         initial_slots = _expanded_slots(initial_text, aliases, catalog)
         final_slots = _expanded_slots(final_text, aliases, catalog)
-        if len(initial_slots) != 2:
-            raise ValueError(
-                "pyAmpliCol processes require exactly two initial particles"
-            )
-        if not final_slots:
-            raise ValueError("pyAmpliCol processes require at least one final particle")
+        require_external_leg_counts(len(initial_slots), len(final_slots))
         finals: dict[tuple[int, ...], list[tuple[str, ...]]] = {}
         for final in _side_multisets(final_slots):
             key = () if charges is None else charges.total(final)
@@ -258,6 +254,23 @@ def expand_model_processes(
                 concrete = f"{' '.join(initial)} > {' '.join(final)}"
                 expanded.setdefault(concrete, None)
     return tuple(expanded)
+
+
+def require_external_leg_counts(initial: int, final: int) -> None:
+    """A process has one initial particle (a 1 -> n decay, n >= 2) or two (a
+    2 -> n scattering, n >= 1): the same rule for every process, whatever
+    its particles."""
+
+    if initial not in (1, 2):
+        raise ValueError(
+            "pyAmpliCol processes have one initial particle (a 1 -> n decay) or "
+            f"two (a 2 -> n scattering), not {initial}"
+        )
+    if final < 1 or initial + final < 3:
+        raise ValueError(
+            "pyAmpliCol processes need at least three external particles: a "
+            "decay at least two final particles, a scattering at least one"
+        )
 
 
 def _side_multisets(slots: Sequence[tuple[str, ...]]) -> Iterator[tuple[str, ...]]:
@@ -300,10 +313,7 @@ def build_model_process_ir(
         raise ValueError("invalid collision format; expected 'initial > final'")
     initial = tuple(catalog.resolve(token) for token in initial_text.split())
     final = tuple(catalog.resolve(token) for token in final_text.split())
-    if len(initial) != 2 or not final:
-        raise ValueError(
-            "process must have exactly two initial and at least one final particle"
-        )
+    require_external_leg_counts(len(initial), len(final))
     outgoing_initial = tuple(catalog.antiparticle(particle) for particle in initial)
     canonical = f"{' '.join(particle.name for particle in initial)} > " + " ".join(
         particle.name for particle in final
@@ -322,7 +332,7 @@ def build_model_process_ir(
             ),
             *(
                 _model_leg(
-                    label=index + 3,
+                    label=len(initial) + index + 1,
                     side="final",
                     particle=particle,
                     outgoing_particle=particle,
@@ -354,6 +364,21 @@ def _expanded_slots(
     aliases: Mapping[str, Sequence[str]],
     catalog: ModelParticleCatalog,
 ) -> list[tuple[str, ...]]:
+    for bracket in re.findall(r"\[([^\]]*)\]", text):
+        # Model processes have no anonymous brackets; one of non-particles
+        # is MG5_aMC NLO syntax ('[QCD]').
+        unresolved = []
+        for item in bracket.split():
+            try:
+                catalog.resolve(item)
+            except ValueError:
+                unresolved.append(item)
+        if unresolved:
+            raise ProcessRequestUnsupported(
+                "madloop-syntax",
+                f"the bracket [{bracket.strip()}] holds no particles of "
+                f"{catalog.model_name} ('[QCD]' style NLO syntax)",
+            )
     slots: list[tuple[str, ...]] = []
     for token in text.split():
         count, name = _repetition(token)
@@ -409,4 +434,5 @@ __all__ = [
     "build_model_process_ir",
     "expand_model_processes",
     "parse_multiparticle_definitions",
+    "require_external_leg_counts",
 ]

@@ -24,13 +24,9 @@ cross-host acceptance (its docstring), on:
   no load-time regeneration (``point_inputs = "native-v2"``: the native
   programs and the binary64 SymJIT plane application of every saved
   evaluator, storage-v4 IR recompiled at load);
-* the loop SDK (C ABI through ``rusticol_virtual_open``): bitwise equal to the
-  Python API at both locations and usable without a licence by concurrent
-  processes (expected failures until the SDK evaluates plan v4,
-  generation-scale-2); the legacy loop SDK, whose evaluation decodes exact
-  states, runs without a licence in concurrent processes while another
-  process holds the user's restricted permit (pyAmpliCol's Symbolica library
-  key in the native code, crate ``rust/crates/pyamplicol``);
+* the loop SDK (C ABI through ``rusticol_virtual_open``, which dispatches a
+  plan v4 artifact to the native ``V2Runtime``): bitwise equal to the Python
+  API at both locations and usable without a licence by concurrent processes;
 * unlicensed concurrent processes (Symbolica's restricted mode admits one
   thread per user, so any state access of the Rust copy of Symbolica aborts
   while another process holds the permit): two pyAmpliCol processes without
@@ -70,10 +66,6 @@ _spec = importlib.util.spec_from_file_location("loop_artifact_portability", TOOL
 portability = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(portability)
 
-SDK_WITHOUT_V4 = (
-    "the loop SDK refuses plan v4 until generation-scale-2 (V2Runtime and the "
-    "rusticol_virtual_open dispatch)"
-)
 RESTRICTED = "restricted Symbolica"
 # Disables pyAmpliCol's Symbolica library key in the native code
 # (``pyamplicol::DISABLE_VARIABLE``, crate ``rust/crates/pyamplicol``).
@@ -425,12 +417,16 @@ def _held_evaluations(
     carriers: list[tuple[str, int | None]],
     extra_env: dict[str, str] | None = None,
     point: dict | None = None,
+    parameters: dict[str, str] | None = None,
+    poles: str | None = None,
 ) -> tuple[dict, list[subprocess.CompletedProcess]]:
     """One unlicensed ``evaluate`` process per (arithmetic, digits), all at
     once, while ``RestrictedPermit`` holds the user's permit: a process that
     completes touched no Symbolica state needing the permit (the permit
     record's positive control says the hold discriminates). ``point``: the
-    points file's content (default: one of the tool's points)."""
+    points file's content (default: one of the tool's points); ``parameters``:
+    model parameter values every process evaluates at; ``poles``: the pole
+    selection (default: the API's)."""
 
     points = scratch / "points.json"
     points.write_text(json.dumps(point or portability.points(legs, 1)))
@@ -453,6 +449,10 @@ def _held_evaluations(
             ]
             if digits is not None:
                 command += ["--precision", str(digits)]
+            for name, value in (parameters or {}).items():
+                command += ["--parameter", f"{name}={value}"]
+            if poles is not None:
+                command += ["--poles", poles]
             running.append(
                 subprocess.Popen(
                     command,
@@ -530,9 +530,7 @@ def test_tree_c_api_relocates_bitwise_without_a_licence(
 # ------------------------------------------------------------------ loops
 
 
-def _loop_card(
-    model: Path, output: Path, name: str, expression: str, engine: str = "v2"
-) -> str:
+def _loop_card(model: Path, output: Path, name: str, expression: str) -> str:
     return f"""
 action = "generate"
 [model]
@@ -546,7 +544,6 @@ accuracy = "full"
 contraction = "direct"
 [loop]
 r2_strategy = "model"
-engine = "{engine}"
 [loop.preparation]
 fixed_parameters = {{MB = "0"}}
 {SCHEME}
@@ -651,62 +648,145 @@ def test_loop_v4_artifact_loads_without_regeneration(loop_artifact, name):
     assert python["relocated"]["seconds"]["load"] < 0.25 * generation, python
 
 
-# Generates g g > g g in a fresh interpreter from the UFO source with the model
-# cache ``argv[2]`` and writes the SHA-256 of its plan and native members.
+# Generates one process in a fresh interpreter from the UFO source with the
+# model cache ``argv[2]`` and writes the SHA-256 of its plan and native
+# members: ``argv[5]`` "gg_gg" (loop_sm, g g > g g) or a required electroweak
+# fixture (the G_mu UFO, its request as ``tools/loop_v2_generate`` forms it).
 _GENERATE_DIGESTS = """
-import hashlib, json, sys
+import argparse, hashlib, json, sys
 from dataclasses import replace
 from pathlib import Path
-from pyamplicol.loops.model_compatibility import prepare_loop_sm_scalar_declarations
+sys.path.insert(0, sys.argv[4])  # the checkout: tools/loop_reference
 from pyamplicol.loops.native import load_loop_native
 from pyamplicol.loops.v2.artifact import generate_process
 from pyamplicol.loops.v2.assemble import SliceRequest
 from pyamplicol.models.loading import compile_model_source
 
-ufo, cache, out = sys.argv[1:4]
-model = compile_model_source(ufo, cache_dir=Path(cache))
-model = replace(
-    model,
-    raw_loop_model=prepare_loop_sm_scalar_declarations(model.raw_loop_model).derived,
-    _serialized_path=None,
-    _prepared_bundle=None,
-)
-request = SliceRequest(
-    "g g > g g", {"QCD": 2, "QED": 0}, {"QCD": 4, "QED": 0},
-    fixed_parameters={"MB": "0"}, scale_parameter="MU_R",
-)
+ufo, cache, out, root, case = sys.argv[1:6]
+if case == "gg_gg":
+    from tools.loop_reference.model_compatibility import (
+        prepare_loop_sm_scalar_declarations,
+    )
+
+    model = compile_model_source(ufo, cache_dir=Path(cache))
+    model = replace(
+        model,
+        raw_loop_model=prepare_loop_sm_scalar_declarations(
+            model.raw_loop_model
+        ).derived,
+        _serialized_path=None,
+        _prepared_bundle=None,
+    )
+    request = SliceRequest(
+        "g g > g g", {"QCD": 2, "QED": 0}, {"QCD": 4, "QED": 0},
+        fixed_parameters={"MB": "0"}, scale_parameter="MU_R",
+    )
+else:
+    from tools.loop_v2_generate import _fixture_request
+
+    model = compile_model_source(ufo, cache_dir=Path(cache), require_supported=False)
+    reference = json.loads(
+        (Path(root) / "tests/fixtures/loop/required" / f"{case}.json").read_text()
+    )
+    options = argparse.Namespace(compatibility=None, scale_parameter=None)
+    request, _ignored = _fixture_request(reference, model, options)
 generated = generate_process(model, request, load_loop_native())
 plan = generated.plan_json
 plan = plan.encode() if isinstance(plan, str) else plan
 digest = lambda data: hashlib.sha256(data).hexdigest()
 members = generated.native.members()
+# The parameter planes' values at one real row of their inputs (hex).
+from symbolica import Evaluator
+from pyamplicol import _rusticol
+values = {}
+for prefix in ("", "scaleless-"):
+    if prefix + "parameters.symjit" not in members:
+        continue
+    state = bytes(members[prefix + "parameters.bin"])
+    shape = Evaluator.load(state).get_instructions()
+    row = [0.75 + 0.125 * k for k in range(shape.input_count)]
+    flat = _rusticol._evaluate_symjit_plane_application_v2(
+        bytes(members[prefix + "parameters.symjit"]), shape.input_count,
+        shape.output_count, [x for v in row for x in (v, 0.0)], 1,
+    )
+    values[prefix + "parameters.symjit"] = [float(x).hex() for x in flat]
 Path(out).write_text(json.dumps(
-    {"plan": digest(plan), "members": {k: digest(v) for k, v in members.items()}}
+    {"plan": digest(plan), "members": {k: digest(v) for k, v in members.items()},
+     "values": values}
 ))
 """
 
+# Compiles the G_mu UFO into the model cache ``argv[2]`` (the warm cache of
+# the electroweak case).
+_COMPILE_MODEL = """
+import sys
+from pathlib import Path
+from pyamplicol.models.loading import compile_model_source
+
+compile_model_source(sys.argv[1], cache_dir=Path(sys.argv[2]), require_supported=False)
+"""
+
+# case -> (UFO fixture, parameter planes): the electroweak process's
+# parameter program calls the scalar predicates (conditionals of the G_mu
+# counterterms), which made its stored evaluator depend on the model cache
+# before ``scalar_frontend.scalar_predicates`` aligned them.
+_MODEL_CACHE_CASES = {
+    "gg_gg": ("loop_sm_ufo", {"parameters.symjit", "scaleless-parameters.symjit"}),
+    "gg_ttx_ew": ("loop_gmu_ufo", {"parameters.symjit"}),
+}
+
 
 @pytest.mark.loop_physics
+@pytest.mark.parametrize("case", sorted(_MODEL_CACHE_CASES))
 def test_native_members_do_not_depend_on_the_model_cache(
-    loop_sm_ufo, loop_sm_compiled_model, loop_native, tmp_path
+    case, loop_native, request, tmp_path
 ):
-    """g g > g g generated in two fresh interpreters from the UFO source, one
-    with an empty model cache and one with the session's warm cache: the plan
-    and every native member are byte-identical, except the parameter
-    program's plane application, whose SymJIT call tags are random
-    (``SYMJIT_RANDOM_CALL_TAG``, test_symjit_plane_helper_functions.py). The
-    compiled and the cached model list their helper functions in different
-    orders; the parameter program names them in sorted order, so its saved
-    state is the same."""
+    """One process generated in two fresh interpreters from the UFO source,
+    one with an empty model cache and one with a warm cache: the plan and
+    every native member are byte-identical, the parameter programs' saved
+    evaluators and plane applications included (the process's and, with
+    certified-scaleless families, its companion's, which call scalar
+    primitives: SymJIT 2.28.1 and later tag external calls deterministically,
+    siravan/symjit#26; 2.27.3's random tags made them differ), and their
+    values at one real row are bitwise the same. g g > g g (loop_sm, the
+    session's warm cache): the compiled and the cached model list their
+    helper functions in different orders; the parameter program names them
+    in sorted order. g g > t t~ [QCD+QED] (G_mu, a cache compiled first): its
+    parameter program keeps the scalar predicates, which the compiled and the
+    cached model created at different symbol ids; they are aligned
+    (``scalar_frontend.scalar_predicates``), so its saved state is the same."""
 
-    warm = Path(loop_sm_compiled_model).parent / "model-cache"
+    fixture, planes = _MODEL_CACHE_CASES[case]
+    ufo = request.getfixturevalue(fixture)
+    if case == "gg_gg":
+        warm = Path(request.getfixturevalue("loop_sm_compiled_model")).parent
+        warm = warm / "model-cache"
+    else:
+        warm = tmp_path / "warm-cache"
+        script = tmp_path / "compile.py"
+        script.write_text(_COMPILE_MODEL)
+        compiled = subprocess.run(
+            [sys.executable, str(script), str(ufo), str(warm)],
+            capture_output=True,
+            text=True,
+            timeout=1800,
+        )
+        assert compiled.returncode == 0, compiled.stderr[-2000:]
     assert warm.is_dir(), warm
     script = tmp_path / "generate.py"
     script.write_text(_GENERATE_DIGESTS)
     caches = {"cold": tmp_path / "cold-cache", "warm": warm}
     running = {
         name: subprocess.Popen(
-            [sys.executable, str(script), str(loop_sm_ufo), str(cache), f"{name}.json"],
+            [
+                sys.executable,
+                str(script),
+                str(ufo),
+                str(cache),
+                f"{name}.json",
+                str(ROOT),
+                case,
+            ],
             cwd=tmp_path,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -727,7 +807,9 @@ def test_native_members_do_not_depend_on_the_model_cache(
         for name, digest in cold["members"].items()
         if warm_run["members"][name] != digest
     )
-    assert differing in ([], ["parameters.symjit"]), differing
+    assert differing == [], differing
+    assert cold["values"].keys() == planes, cold["values"].keys()
+    assert cold["values"] == warm_run["values"]
 
 
 @pytest.mark.loop_physics
@@ -848,16 +930,10 @@ def loop_sdk_client(tmp_path_factory):
     )
 
 
-def _sdk_evaluates_v4(loop_native) -> bool:
-    return hasattr(loop_native, "evaluate_v2_artifact")
-
-
 @pytest.mark.loop_physics
 def test_loop_v4_sdk_equals_python_bitwise_at_both_locations(
-    request, loop_artifact, loop_sdk_client, loop_native, tmp_path
+    loop_artifact, loop_sdk_client, tmp_path
 ):
-    if not _sdk_evaluates_v4(loop_native):
-        request.applymarker(pytest.mark.xfail(reason=SDK_WITHOUT_V4, strict=True))
     artifact, _, _ = loop_artifact("gg")
     verdict = portability.check(
         artifact, "gg", tmp_path, count=2, client=loop_sdk_client, instances=1
@@ -868,16 +944,140 @@ def test_loop_v4_sdk_equals_python_bitwise_at_both_locations(
 
 
 @pytest.mark.loop_physics
+def test_loop_v4_sdk_selects_poles_like_python(
+    loop_artifact, loop_sdk_client, tmp_path
+):
+    """``rusticol_virtual_set_poles(handle, poles)`` (REQUIREMENTS_ADDENDUM I:
+    the pole option reaches the SDKs): every selection ("all", "none" and
+    the split "uv" and "ir", which run the stored companion of the
+    certified-scaleless families) is bitwise the Python API's, the finite
+    part is the same in all four, and "none" leaves the poles absent (NaN;
+    None in Python)."""
+
+    artifact, _, _ = loop_artifact("gg")
+    points = tmp_path / "points.json"
+    points.write_text(json.dumps(portability.points(4, 2)))
+    records = {
+        poles: portability.sdk(
+            artifact,
+            "gg",
+            points,
+            loop_sdk_client,
+            workdir=tmp_path / f"sdk-{poles}",
+            poles=poles,
+        )
+        for poles in ("all", "none", "uv", "ir")
+    }
+    assert all(r["exit_status"] == [0] for r in records.values()), records
+    finite = None
+    for poles, record in records.items():
+        python = portability.evaluate(artifact, "gg", points, poles=poles)
+        assert record["results"]["born"] == python["results"]["born"], poles
+        sdk = record["results"]["virtual"]
+        here = [[laurent[0] for laurent in point] for point in sdk]
+        assert finite is None or here == finite, poles
+        finite = here
+        if poles == "none":
+            assert here == [
+                [laurent[0] for laurent in point]
+                for point in python["results"]["virtual"]
+            ]
+            assert all(
+                laurent[1:] == ["nan", "nan"] for point in sdk for laurent in point
+            )
+            assert all(
+                laurent[1:] == [None, None]
+                for point in python["results"]["virtual"]
+                for laurent in point
+            )
+        else:
+            assert sdk == python["results"]["virtual"], poles
+    # The split selections differ from "all" in their poles.
+    assert records["uv"]["results"]["virtual"] != records["all"]["results"]["virtual"]
+    assert records["ir"]["results"]["virtual"] != records["uv"]["results"]["virtual"]
+
+
+SDK = ROOT / "rust" / "loop-reduction" / "sdk"
+
+
+@pytest.mark.loop_fast
+def test_loop_sdk_cpp_pole_wrapper_compiles(tmp_path):
+    """The C++ wrapper's ``set_poles`` takes every pole selection (syntax
+    check against the C header; no SDK library needed)."""
+
+    compiler = os.environ.get("CXX") or shutil.which("c++") or shutil.which("g++")
+    if compiler is None:
+        pytest.skip("environment: no C++ compiler (CXX, c++ or g++)")
+    source = tmp_path / "poles.cpp"
+    source.write_text(
+        '#include "rusticol_virtual.hpp"\n'
+        "void select(rusticol::VirtualRuntime &runtime) {\n"
+        '  for (const char *poles : {"all", "none", "uv", "ir"})\n'
+        "    runtime.set_poles(poles);\n"
+        "}\n"
+    )
+    run = subprocess.run(
+        [compiler, "-std=c++17", "-fsyntax-only", f"-I{SDK / 'include'}", str(source)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+
+@pytest.mark.loop_fast
+def test_loop_sdk_fortran_pole_wrapper_compiles(tmp_path):
+    """The Fortran module's ``set_poles`` takes every pole selection (the
+    module compiled, a caller syntax-checked against it)."""
+
+    compiler = os.environ.get("FC") or shutil.which("gfortran")
+    if compiler is None:
+        pytest.skip("environment: no Fortran compiler (FC or gfortran)")
+    module = subprocess.run(
+        [
+            compiler,
+            "-std=f2018",
+            "-c",
+            str(SDK / "fortran" / "rusticol_virtual.f90"),
+            "-J",
+            str(tmp_path),
+            "-o",
+            str(tmp_path / "rusticol_virtual.o"),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert module.returncode == 0, module.stderr
+    source = tmp_path / "poles.f90"
+    source.write_text(
+        "subroutine select(runtime)\n"
+        "  use rusticol_virtual\n"
+        "  type(virtual_runtime), intent(inout) :: runtime\n"
+        '  call runtime%set_poles("all")\n'
+        '  call runtime%set_poles("none")\n'
+        '  call runtime%set_poles("uv")\n'
+        '  call runtime%set_poles("ir")\n'
+        "end subroutine\n"
+    )
+    run = subprocess.run(
+        [compiler, "-std=f2018", "-fsyntax-only", f"-I{tmp_path}", str(source)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+
+@pytest.mark.loop_physics
 def test_loop_v4_sdk_needs_no_symbolica_licence(
-    request, loop_artifact, loop_sdk_client, loop_native, tmp_path
+    loop_artifact, loop_sdk_client, tmp_path
 ):
     """The f64 SDK follows the tree engine's rule: no Symbolica licence, so
     concurrent unlicensed SDK processes (a Monte Carlo farm) all run. A
     Symbolica state access takes the user's single restricted-thread permit,
     so the instances run while another process holds it: any access aborts."""
 
-    if not _sdk_evaluates_v4(loop_native):
-        request.applymarker(pytest.mark.xfail(reason=SDK_WITHOUT_V4, strict=True))
     artifact, _, _ = loop_artifact("gg")
     points = tmp_path / "points.json"
     points.write_text(json.dumps(portability.points(4, 1)))
@@ -911,6 +1111,203 @@ def test_binary64_loop_evaluation_touches_no_symbolica_state(loop_artifact, tmp_
     for run in runs:
         assert run.returncode == 0, run.stdout[-2000:] + run.stderr[-2000:]
         assert RESTRICTED not in run.stdout + run.stderr
+
+
+@pytest.mark.loop_physics
+def test_binary64_parameter_changes_need_no_key(loop_artifact, tmp_path):
+    """Binary64 evaluates the stored parameter program's plane at any model
+    parameters with no Symbolica (DESIGN §12.1 (e)): the translation
+    canonicalises a cut argument's zero imaginary part
+    (``symjit_plane::canonical_cut_row``), so there is
+    nothing to check at run time. g g > g g on loop_sm completes unlicensed
+    with the native key disabled while the permit is held at a new alpha_s,
+    a new top mass and with the Z, W or Higgs width set to 0 (each of which
+    needed the key under the former run-time side check, MS-MASTERS
+    rounds 1-4)."""
+
+    artifact, _, _ = loop_artifact("gg")
+    changes = (
+        {"aS": "0.12"},
+        {"MT": "172"},
+        {"WZ": "0"},
+        {"WW": "0"},
+        {"WH": "0"},
+    )
+    for index, parameters in enumerate(changes):
+        scratch = tmp_path / f"change-{index}"
+        scratch.mkdir()
+        permit, (run,) = _held_evaluations(
+            artifact,
+            "gg",
+            scratch,
+            4,
+            [("double", None)],
+            NO_NATIVE_KEY,
+            parameters=parameters,
+        )
+        assert permit["verified"], permit
+        output = run.stdout[-2000:] + run.stderr[-2000:]
+        assert run.returncode == 0, (parameters, output)
+        assert RESTRICTED not in output, (parameters, output)
+
+
+def _ew_selftest_point(expected: dict, indices) -> dict:
+    """The points file of the shipped EW self-test's MadLoop points
+    ``indices`` (``expected.json``), each at its own scale."""
+
+    return {
+        "schema": portability.SCHEMA,
+        "kind": "points",
+        "legs": 4,
+        "points": [
+            [[float(c).hex() for c in p] for p in expected["points"][k]]
+            for k in indices
+        ],
+        "mu_r2": [float(expected["mu_r2"][k]).hex() for k in indices],
+    }
+
+
+@pytest.mark.loop_physics
+def test_binary64_ew_evaluations_need_no_key(tmp_path):
+    """The shipped EW self-test artifact (e- e+ > e- e+ [QED] on
+    loop_qcd_qed_sm; its counterterms read log(-MZ^2/mu_R^2) and MW's square
+    root of a difference, branch cuts of the parameters) evaluates MadLoop's
+    second and third points at their own scales (mu_R^2 = 4.9e5 and 1.96e6)
+    in binary64 with the native key disabled while the permit is held, for
+    every pole selection (the split selections' regulated pass included),
+    bitwise equal to the keyed run and equal to double-double (the exact
+    states) by the binary64 rule of observables; so are a changed MZ, MW
+    and LogSwitch = 0 (each of which needed the key under the former
+    run-time side check). The per-output check of the stored parameter plane
+    at such values: ``test_ew_parameter_plane_equals_its_state_off_the_``
+    ``generation_values``."""
+
+    from pyamplicol._internal import selftest_virtual_ew as selftest
+
+    root = selftest.fixture_root()
+    artifact = tmp_path / "artifact"
+    shutil.copytree(root / "artifact", artifact)
+    expected = json.loads((root / "expected.json").read_text(encoding="utf-8"))
+    point = _ew_selftest_point(expected, (1, 2))
+
+    def run(name, carrier, env, poles, parameters=None):
+        scratch = tmp_path / name
+        scratch.mkdir()
+        permit, (process,) = _held_evaluations(
+            artifact,
+            selftest.NAME,
+            scratch,
+            4,
+            [(carrier, None)],
+            env,
+            point=point,
+            poles=poles,
+            parameters=parameters,
+        )
+        assert permit["verified"], permit
+        output = process.stdout[-2000:] + process.stderr[-2000:]
+        assert process.returncode == 0, (name, output)
+        assert RESTRICTED not in output, (name, output)
+        return json.loads((scratch / f"0-{carrier}.json").read_text())["results"]
+
+    def agree(binary64, exact):
+        binary64, exact = _leaves(binary64), _leaves(exact)
+        assert len(binary64) == len(exact) > 0
+        scale = max(abs(v) for v in exact)
+        # The binary64 rule of observables (1e-12, HANDOFF §0.5): a cut side
+        # taken differently moves them at O(1e-5) and more.
+        pairs = zip(binary64, exact, strict=True)
+        return all(abs(a - b) <= 1e-12 * scale for a, b in pairs)
+
+    for poles in ("all", "none", "uv", "ir"):
+        off = run(f"{poles}-off", "double", NO_NATIVE_KEY, poles)
+        assert off == run(f"{poles}-keyed", "double", None, poles), poles
+        if poles == "all":
+            assert agree(off, run("all-dd", "double-double", None, "all"))
+    for index, parameters in enumerate(
+        ({"MZ": "91.19"}, {"MW": "80.5"}, {"LogSwitch": "0"})
+    ):
+        off = run(f"change-{index}", "double", NO_NATIVE_KEY, "all", parameters)
+        dd = run(f"change-{index}-dd", "double-double", None, "all", parameters)
+        assert agree(off, dd), parameters
+
+
+@pytest.mark.loop_fast
+def test_ew_parameter_plane_equals_its_state_off_the_generation_values():
+    """The shipped EW self-test artifact's stored binary64 parameter plane
+    equals Symbolica's binary64 evaluation of its exact state output by
+    output (1e-12 of each output's size, the plane check's criterion) at
+    parameter values the generation never saw: new scales, alpha_s and
+    alpha, the epsIR = 0 of the split pole selections' regulated pass,
+    LogSwitch = 0, new masses, and MW = 100 > MZ, which puts MW's square
+    root of a difference on its cut (with SymJIT's own signed zeros the
+    plane took the other side there, output 2; MS-MASTERS round 5 makes the
+    translation take exact arithmetic's side). This is the run-time
+    behaviour: binary64 runs the stored plane unchecked."""
+
+    import numpy as np
+    import symbolica
+
+    from pyamplicol import _rusticol
+    from pyamplicol._internal import selftest_virtual_ew as selftest
+    from pyamplicol._internal.physics.symbols import symbols
+    from pyamplicol.loops.scalar_frontend import _producer_predicate
+    from pyamplicol.loops.v2.artifact import read_native_process, read_plan
+
+    for name in ("truth", "equal", "less", "less_equal", "real_part", "imaginary_part"):
+        symbols.qualified(
+            f"pyamplicol_scalar_v1::{name}", eval={"complex": _producer_predicate(name)}
+        )
+    (pacbin,) = (selftest.fixture_root() / "artifact").glob(
+        "processes/*/loop-runtime.pacbin"
+    )
+    trees = read_native_process(pacbin, read_plan(pacbin)).trees
+    record = trees.program["parameters"]
+    names = list(record["names"])
+    base = {
+        name: float(Fraction(value))
+        for name, value in zip(names, record["defaults"], strict=True)
+    }
+    rows = [[base[name] for name in names]]
+    for change in (
+        {"MU_R": 10.0},
+        {"MU_R": 700.0},
+        {"MU_R": 1400.0},
+        {"MU_R": 1e5},
+        {"aS": 0.05},
+        {"aS": 0.2},
+        {"aEWM1": 132.5},
+        {"epsIR": 0.0},
+        {"LogSwitch": 0.0},
+        {"MT": 172.5},
+        {"MZ": 91.19},
+        {"MW": 100.0},
+    ):
+        assert set(change) <= set(names), change
+        rows.append([{**base, **change}[name] for name in names])
+    evaluator = symbolica.Evaluator.load(trees.parameters)
+    outputs = evaluator.get_instructions().output_count
+    rows = np.ascontiguousarray(rows, dtype=np.complex128)
+    expected = np.asarray(evaluator.evaluate_complex(rows), dtype=np.complex128)
+    expected = expected.reshape(len(rows), outputs)
+    flat = _rusticol._evaluate_symjit_plane_application_v2(
+        trees.planes[-1],
+        len(names),
+        outputs,
+        rows.view(np.float64).ravel().tolist(),
+        len(rows),
+    )
+    got = np.asarray(flat).view(np.complex128).reshape(len(rows), outputs)
+    finite = np.isfinite(expected)
+    scale = np.where(finite, np.abs(expected), 0).max(axis=0)
+    same = (
+        (got == expected)
+        | (np.isnan(got) & np.isnan(expected))
+        | (np.abs(got - expected) <= 1e-12 * scale)
+    )
+    assert same.all(), [(int(r), int(o)) for r, o in np.argwhere(~same)[:8]]
+    # MW = 100 reaches a cut: an output real at the defaults is complex there.
+    assert ((expected[0].imag == 0) & (expected[-1].imag != 0)).any()
 
 
 @pytest.mark.loop_physics
@@ -952,48 +1349,3 @@ def test_unlicensed_extended_precision_loop_evaluations_run_concurrently(
     )
     assert refused.returncode != 0
     assert RESTRICTED in refused.stdout + refused.stderr
-
-
-@pytest.fixture(scope="module")
-def legacy_loop_artifact(loop_sm_compiled_model, tmp_path_factory):
-    """A legacy-engine loop artifact of g g > g g (about 25 s)."""
-
-    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
-    from pyamplicol.config import resolve_config
-
-    root = tmp_path_factory.mktemp("legacy-gg")
-    output = root / "artifact"
-    card = root / "card.toml"
-    card.write_text(
-        _loop_card(loop_sm_compiled_model, output, "gg", "g g > g g", "legacy")
-    )
-    Generator(resolve_config(card)).generate(
-        ProcessSet((ProcessRequest.parse("g g > g g", name="gg"),)), output
-    )
-    return output
-
-
-@pytest.mark.loop_physics
-def test_legacy_loop_sdk_runs_unlicensed_while_the_permit_is_held(
-    legacy_loop_artifact, loop_sdk_client, tmp_path
-):
-    """The loop SDK's evaluation of a legacy artifact decodes Symbolica exact
-    states in the Rust copy of Symbolica: pyAmpliCol's library key unlocks
-    it, so two concurrent SDK processes without a licence complete while
-    another process holds the user's restricted permit."""
-
-    points = tmp_path / "points.json"
-    points.write_text(json.dumps(portability.points(4, 1)))
-    record = portability.sdk(
-        legacy_loop_artifact,
-        "gg",
-        points,
-        loop_sdk_client,
-        licence=False,
-        instances=2,
-        workdir=tmp_path / "sdk",
-        hold_permit=True,
-    )
-    assert record["permit"]["verified"], record["permit"]
-    assert record["exit_status"] == [0, 0], record["stderr"]
-    assert not record["symbolica_restricted"]

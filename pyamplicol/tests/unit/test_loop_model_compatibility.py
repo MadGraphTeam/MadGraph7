@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: 0BSD
-"""The explicit scalar-arity view changes one known source reference only."""
+"""The explicit scalar-arity view (test support) changes one source reference only,
+found structurally."""
 
 import pytest
 
-from pyamplicol.loops.model_compatibility import prepare_loop_sm_scalar_declarations
 from pyamplicol.models.loop_import import RawLoopModel, load_raw_loop_model
+from tools.loop_reference.model_compatibility import prepare_loop_sm_scalar_declarations
 
 pytestmark = pytest.mark.loop_fast
 
@@ -51,21 +52,20 @@ def test_explicit_scalar_view_passes_strict_full_neutral_scope(raw):
         loop_order_bounds={"QCD": 4, "QED": 2},
         fixed_parameters={"MB": "0", "ymb": "0", "MTA": "0", "ymtau": "0"},
     )
-    with pytest.raises(
-        ValueError, match=r"V_1001.*SSS1.*spin slots.*particles require"
-    ):
-        prepare_loop_request_model(raw, **options)
     view = prepare_loop_sm_scalar_declarations(raw)
-    prepared = prepare_loop_request_model(view.derived, **options)
-    vertex = prepared.structure.native.vertex_rule("V_1001")
-    assert len(vertex.particles) == 4
-    tensor = prepared.structure.native.lorentz_structure(vertex.lorentz_structures[0])
-    assert tuple(tensor.spins) == (1, 1, 1, 1)
+    # The production source repair (``repair_source_declarations``, m-qcd
+    # MQ-MODEL) prepares the stock source as the view does.
+    for source in (raw, view.derived):
+        prepared = prepare_loop_request_model(source, **options)
+        vertex = prepared.structure.native.vertex_rule("V_1001")
+        assert len(vertex.particles) == 4
+        tensor = prepared.structure.native.lorentz_structure(
+            vertex.lorentz_structures[0]
+        )
+        assert tuple(tensor.spins) == (1, 1, 1, 1)
 
 
-@pytest.mark.parametrize(
-    "change", ["species", "arity", "old_tensor", "new_tensor", "new_spins"]
-)
+@pytest.mark.parametrize("change", ["arity", "old_tensor", "new_tensor", "new_spins"])
 def test_scalar_arity_view_rejects_other_source_declarations(raw, change):
     payload = raw.to_dict()
     vertex = payload["collections"]["vertices"][raw.record("vertices", "V_1001")["id"]][
@@ -77,12 +77,7 @@ def test_scalar_arity_view_rejects_other_source_declarations(raw, change):
     new = payload["collections"]["lorentz_structures"][
         raw.record("lorentz_structures", "SSSS1")["id"]
     ]["fields"]
-    if change == "species":
-        particle = raw.record("particles", "H")
-        vertex["particles"][0] = dict(
-            kind="reference", collection="particles", id=particle["id"], name="H"
-        )
-    elif change == "arity":
+    if change == "arity":
         vertex["particles"].pop()
     elif change == "old_tensor":
         old["structure"] = "P(-1,1)*P(-1,2)"
@@ -90,5 +85,26 @@ def test_scalar_arity_view_rejects_other_source_declarations(raw, change):
         new["structure"] = "2"
     else:
         new["spins"] = [1, 1, 1, 3]
-    with pytest.raises(ValueError, match="four-G0 arity mismatch"):
+    with pytest.raises(ValueError, match=r"arity mismatch|no unique constant tensor"):
         prepare_loop_sm_scalar_declarations(RawLoopModel.from_dict(payload))
+
+
+def test_scalar_arity_view_is_structural(raw):
+    """Other scalar species, renamed tensors and vertex: the same repair."""
+
+    payload = raw.to_dict()
+    vertex = raw.record("vertices", "V_1001")
+    record = payload["collections"]["vertices"][vertex["id"]]
+    particle = raw.record("particles", "H")
+    record["fields"]["particles"][0] = dict(
+        kind="reference", collection="particles", id=particle["id"], name="H"
+    )
+    record["name"] = "V_renamed"
+    view = prepare_loop_sm_scalar_declarations(RawLoopModel.from_dict(payload))
+    (diagnostic,) = view.diagnostics
+    assert diagnostic["vertex"] == [vertex["id"], "V_renamed"]
+    assert diagnostic["derived_lorentz"][1] == "SSSS1"
+    # Byte-identical to the diagnostic saved artifacts record.
+    assert diagnostic["reason"] == (
+        "four scalar species require the existing four-slot constant tensor"
+    )

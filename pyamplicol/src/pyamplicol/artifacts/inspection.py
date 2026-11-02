@@ -13,7 +13,6 @@ from typing import Any, cast
 
 from pyamplicol._internal.versions import (
     EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
-    LOOP_RUNTIME_CAPABILITY,
     LOOP_V2_RUNTIME_CAPABILITY,
     ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
@@ -100,16 +99,15 @@ class ArtifactAliasInspection:
 class ArtifactLoopInspection:
     """The virtual contribution of one loop process (design §12.3).
 
-    ``engine`` is ``"v2"`` for plan v4 processes (the shared recursion) and
-    ``"legacy"`` for the oracle runtime. ``born_orders`` are the squared Born
-    coupling orders and ``sectors`` the squared coupling-order sectors of the
-    virtual, each a separately returned partial result, with its (Born, loop)
-    amplitude orders. Families, reduction buckets ``(propagators, rank,
-    families)``, the leading N_c degree kept per sector at LC/NLC, the
+    ``engine`` is ``"v2"`` (plan v4 processes of the shared recursion, the
+    only one-loop engine). ``born_orders`` are the squared Born coupling
+    orders and ``sectors`` the squared coupling-order sectors of the virtual,
+    each a separately returned partial result, with its (Born, loop)
+    amplitude orders; then the families, reduction buckets ``(propagators,
+    rank, families)``, the leading N_c degree kept per sector at LC/NLC, the
     schedule, the runtime options, the declared colour histories and spin
     classes, how point inputs are obtained (``point_inputs``) and the plan
-    digest are declared by v2 processes only; ``runtime_bytes`` is the stored
-    runtime PACBIN.
+    digest; ``runtime_bytes`` is the stored runtime PACBIN.
     """
 
     engine: str
@@ -134,6 +132,11 @@ class ArtifactLoopInspection:
     color_correlations: tuple[str, ...] = ()
     spin_correlations: tuple[tuple[int, ...], ...] = ()
     point_inputs: str | None = None
+    # The conventions of an electroweak virtual (WP3.2 EWI-7: regularisation
+    # and lambda_HV, gamma five, gauge, UV, mass and electroweak input
+    # schemes, external photons; from the generation record), (field,
+    # value) pairs; empty otherwise.
+    conventions: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -328,6 +331,24 @@ class ArtifactInspection:
     evaluator_container_member_count: int | None = None
     evaluator_container_unpacked_size_bytes: int | None = None
     process_groups: ArtifactProcessGroupsInspection | None = None
+
+
+def _conventions(value: object, context: str) -> tuple[tuple[str, str], ...]:
+    """The (field, value) pairs of a v2 process's recorded conventions
+    (its generation record's ``conventions``, ``generation.loop_artifact.
+    recorded_conventions``), mappings as sorted ``key=value`` lists; empty
+    when none is recorded."""
+
+    if value is None:
+        return ()
+    out = []
+    for key, item in _mapping(value, f"{context}.conventions").items():
+        if isinstance(item, Mapping):
+            text = ", ".join(f"{k}={v}" for k, v in sorted(item.items()))
+        else:
+            text = str(item)
+        out.append((str(key), text))
+    return tuple(out)
 
 
 def _mapping(value: object, context: str) -> Mapping[str, object]:
@@ -3040,17 +3061,17 @@ def _loop_process_inspection(
     from pyamplicol.generation.loop_artifact import (
         LOOP_PHYSICS_KIND,
         LOOP_RUNTIME_KIND,
+        recorded_conventions,
     )
 
     process_id = str(process["id"])
-    v2 = capability == LOOP_V2_RUNTIME_CAPABILITY
     execution = _json_mapping(execution_path, "process execution manifest")
     if (
         execution.get("kind") != LOOP_RUNTIME_KIND
         or execution.get("process_id") != process_id
-        or execution.get("schema_version") != (4 if v2 else 3)
+        or execution.get("schema_version") != 4
         or execution.get("required_runtime_capabilities") != [capability]
-        or (v2 and execution.get("engine") != "v2")
+        or execution.get("engine") != "v2"
     ):
         raise ArtifactError(
             f"process {process_id} execution record disagrees with {capability}"
@@ -3063,7 +3084,7 @@ def _loop_process_inspection(
     if (
         physics.get("kind") != LOOP_PHYSICS_KIND
         or physics.get("process_id") != process_id
-        or physics.get("schema_version") != (2 if v2 else 1)
+        or physics.get("schema_version") != 2
     ):
         raise ArtifactError(f"{physics_path} is not the loop physics of {process_id}")
     metadata = _mapping(physics.get("metadata"), f"{physics_path}.metadata")
@@ -3082,101 +3103,79 @@ def _loop_process_inspection(
     if len(runtime) != 1 or runtime[0].role != "evaluator-state":
         raise ArtifactError(f"process {process_id} runtime payload is not declared")
     context = f"{physics_path}.metadata"
-    if v2:
-        born = tuple(
-            _orders_text(order, f"{context}.born_orders")
-            for order in _sequence(metadata.get("born_orders"), context)
-        )
-        sectors = _loop_sectors(metadata.get("sectors"), f"{context}.sectors")
-        degrees = metadata.get("color_degrees")
-        loop = ArtifactLoopInspection(
-            engine="v2",
-            runtime_capability=capability,
-            scheme_status=_string(metadata.get("scheme_status"), context),
-            r2_strategy=_string(metadata.get("r2_strategy"), context),
-            arithmetic=tuple(
-                str(value) for value in _sequence(metadata.get("arithmetic"), context)
-            ),
-            born_orders=born,
-            sectors=sectors,
-            correlations=bool(
-                _sequence(metadata.get("color_correlations"), context)
-                or _sequence(metadata.get("spin_correlations"), context)
-            ),
-            resolved=metadata.get("resolved") is True,
-            runtime_bytes=runtime[0].size_bytes,
-            families=_integer(metadata.get("families"), f"{context}.families"),
-            buckets=tuple(
-                (
-                    _integer(bucket[0], f"{context}.buckets"),
-                    _integer(bucket[1], f"{context}.buckets"),
-                    _integer(bucket[2], f"{context}.buckets"),
-                )
-                for bucket in (
-                    _sequence(raw, f"{context}.buckets")
-                    for raw in _sequence(metadata.get("buckets"), context)
-                )
-            ),
-            color_degrees=(
-                None
-                if degrees is None
-                else tuple(
-                    (str(sector), None if degree is None else int(cast(int, degree)))
-                    for sector, degree in _mapping(
-                        degrees, f"{context}.color_degrees"
-                    ).items()
-                )
-            ),
-            color_contraction=_string(metadata.get("color_contraction"), context),
-            schedule=_string(metadata.get("schedule"), context),
-            poles=tuple(
-                _string(value, f"{context}.poles")
-                for value in _sequence(metadata.get("poles"), context)
-            ),
-            stability_checks=tuple(
-                str(value)
-                for value in _sequence(metadata.get("stability_checks"), context)
-            ),
-            rescue_policy=_string(metadata.get("rescue_policy"), context),
-            plan_sha256=_string(execution.get("plan_sha256"), str(execution_path)),
-            color_correlations=tuple(
-                _string(value, f"{context}.color_correlations")
-                for value in _sequence(metadata.get("color_correlations"), context)
-            ),
-            spin_correlations=tuple(
-                tuple(
-                    _integer(leg, f"{context}.spin_correlations")
-                    for leg in _sequence(legs, f"{context}.spin_correlations")
-                )
-                for legs in _sequence(metadata.get("spin_correlations"), context)
-            ),
-            point_inputs=_string(
-                execution.get("point_inputs"), f"{execution_path}.point_inputs"
-            ),
-        )
-    else:
-        orders = _mapping(metadata.get("orders"), f"{context}.orders")
-        born = tuple(
-            _orders_text(
-                _mapping(raw, f"{context}.orders.born").get("order"),
-                f"{context}.orders.born",
+    born = tuple(
+        _orders_text(order, f"{context}.born_orders")
+        for order in _sequence(metadata.get("born_orders"), context)
+    )
+    sectors = _loop_sectors(metadata.get("sectors"), f"{context}.sectors")
+    degrees = metadata.get("color_degrees")
+    loop = ArtifactLoopInspection(
+        engine="v2",
+        runtime_capability=capability,
+        scheme_status=_string(metadata.get("scheme_status"), context),
+        r2_strategy=_string(metadata.get("r2_strategy"), context),
+        arithmetic=tuple(
+            str(value) for value in _sequence(metadata.get("arithmetic"), context)
+        ),
+        born_orders=born,
+        sectors=sectors,
+        correlations=bool(
+            _sequence(metadata.get("color_correlations"), context)
+            or _sequence(metadata.get("spin_correlations"), context)
+        ),
+        resolved=metadata.get("resolved") is True,
+        runtime_bytes=runtime[0].size_bytes,
+        families=_integer(metadata.get("families"), f"{context}.families"),
+        buckets=tuple(
+            (
+                _integer(bucket[0], f"{context}.buckets"),
+                _integer(bucket[1], f"{context}.buckets"),
+                _integer(bucket[2], f"{context}.buckets"),
             )
-            for raw in _sequence(orders.get("born"), f"{context}.orders.born")
-        )
-        loop = ArtifactLoopInspection(
-            engine="legacy",
-            runtime_capability=capability,
-            scheme_status=_string(metadata.get("scheme_status"), context),
-            r2_strategy=_string(metadata.get("r2_strategy"), context),
-            arithmetic=tuple(
-                str(value) for value in _sequence(metadata.get("arithmetic"), context)
-            ),
-            born_orders=born,
-            sectors=_loop_sectors(orders.get("virtual"), f"{context}.orders.virtual"),
-            correlations=bool(metadata.get("correlations")),
-            resolved=bool(metadata.get("resolved")),
-            runtime_bytes=runtime[0].size_bytes,
-        )
+            for bucket in (
+                _sequence(raw, f"{context}.buckets")
+                for raw in _sequence(metadata.get("buckets"), context)
+            )
+        ),
+        color_degrees=(
+            None
+            if degrees is None
+            else tuple(
+                (str(sector), None if degree is None else int(cast(int, degree)))
+                for sector, degree in _mapping(
+                    degrees, f"{context}.color_degrees"
+                ).items()
+            )
+        ),
+        color_contraction=_string(metadata.get("color_contraction"), context),
+        schedule=_string(metadata.get("schedule"), context),
+        poles=tuple(
+            _string(value, f"{context}.poles")
+            for value in _sequence(metadata.get("poles"), context)
+        ),
+        stability_checks=tuple(
+            str(value) for value in _sequence(metadata.get("stability_checks"), context)
+        ),
+        rescue_policy=_string(metadata.get("rescue_policy"), context),
+        plan_sha256=_string(execution.get("plan_sha256"), str(execution_path)),
+        color_correlations=tuple(
+            _string(value, f"{context}.color_correlations")
+            for value in _sequence(metadata.get("color_correlations"), context)
+        ),
+        spin_correlations=tuple(
+            tuple(
+                _integer(leg, f"{context}.spin_correlations")
+                for leg in _sequence(legs, f"{context}.spin_correlations")
+            )
+            for legs in _sequence(metadata.get("spin_correlations"), context)
+        ),
+        point_inputs=_string(
+            execution.get("point_inputs"), f"{execution_path}.point_inputs"
+        ),
+        conventions=_conventions(
+            recorded_conventions(manifest.extensions, process_id), context
+        ),
+    )
     external_pdgs = tuple(
         cast(int, value)
         for value in _sequence(
@@ -3195,9 +3194,30 @@ def _loop_process_inspection(
         computed_color_components=1,
         helicity_coverage="complete",
         color_coverage="complete",
-        aliases=(),
+        aliases=_loop_aliases(process, process_id),
         execution_mode="loop_recurrence",
         loop=loop,
+    )
+
+
+def _loop_aliases(
+    process: Mapping[str, object], process_id: str
+) -> tuple[ArtifactAliasInspection, ...]:
+    """A plan v4 process's published permutation aliases (M-FINAL MF-MAP)."""
+
+    return tuple(
+        ArtifactAliasInspection(
+            id=str(alias["id"]),
+            expression=str(alias["expression"]),
+            representative_id=process_id,
+            external_pdgs=tuple(cast(int, value) for value in alias["external_pdgs"]),
+        )
+        for alias in (
+            _mapping(raw, f"process {process_id}.aliases[{index}]")
+            for index, raw in enumerate(
+                _sequence(process.get("aliases"), f"process {process_id}.aliases")
+            )
+        )
     )
 
 
@@ -3213,9 +3233,7 @@ def _artifact_process_inspection(
             f"process {process['id']} required runtime capabilities",
         )
     )
-    loop = {LOOP_RUNTIME_CAPABILITY, LOOP_V2_RUNTIME_CAPABILITY}.intersection(
-        capabilities
-    )
+    loop = {LOOP_V2_RUNTIME_CAPABILITY}.intersection(capabilities)
     if loop:
         if len(capabilities) != 1:
             raise ArtifactError(

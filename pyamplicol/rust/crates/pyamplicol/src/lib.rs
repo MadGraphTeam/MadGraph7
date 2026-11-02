@@ -19,7 +19,10 @@
 //! or arbitrary precision, the DoubleFloat and arbitrary-precision reduction)
 //! holds one on its thread, and the loop executor's worker threads hold one
 //! for their lifetime ([`unlock_thread`]). Binary64 evaluation of stored
-//! SymJIT applications takes none.
+//! SymJIT applications takes none, except the binary64 reduction of a loop
+//! at the fast engine's absolute thresholds, which runs the generic engine
+//! (`rusticol-loop-reduction`, `runtime::reaches_fast_threshold`) under a
+//! guard.
 //!
 //! A user's own licence (`SYMBOLICA_LICENSE`) is used as before; an expired or
 //! rejected key yields inert guards (Symbolica's rule), so the user's licence

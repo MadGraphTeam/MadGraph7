@@ -17,7 +17,16 @@ synthetic rules that have the other forms:
   massless u quark, whose lines the lowered model then propagates as Dirac
   lines;
 * ``V_PYAMPLICOL_TEST_DS`` and ``V_PYAMPLICOL_TEST_SD``: d-s mixing with a
-  multiple of the slashed momentum, a mixing line between Weyl fields.
+  multiple of the slashed momentum, a mixing line between Weyl fields;
+* ``V_PYAMPLICOL_TEST_TT``: a lone chiral projector (``P_L``) on the massive
+  top with a complex coupling, the form of the electroweak chirality-
+  flipping mass counterterms (``l_vevexMass10``): its clone line's
+  model-supplied propagator holds a projector between the top's own
+  propagators. In g g > t t~ g its P_L - P_R difference is a gamma^5 on the
+  internal top line, whose interference with the Born is the parity-odd
+  epsilon(p1, p2, p3, p4) part, non-zero at a 2 -> 3 point with a complex
+  coupling: the O6 id ``gg_ttxg`` fails if the line takes the other
+  chirality (WP3.2 EWI-4b: projectors in model-supplied propagators).
 
 Oracles: the slice with its counterterms from the recursion equals the slice
 with every rule closed at sites (O6), and, without synthetic rules, a lowered
@@ -92,6 +101,10 @@ PYAMPLICOL_TEST_UUM = Coupling(name = 'PYAMPLICOL_TEST_UUM',
 PYAMPLICOL_TEST_DS = Coupling(name = 'PYAMPLICOL_TEST_DS',
                               value = 'complex(0,1)*G**2/(29*cmath.pi**2)',
                               order = {'QCD':2})
+
+PYAMPLICOL_TEST_TTM = Coupling(name = 'PYAMPLICOL_TEST_TTM',
+                               value = '(1+2*complex(0,1))*G**2*MT/(31*cmath.pi**2)',
+                               order = {'QCD':2})
 """
 
 SYNTHETIC_VERTICES = """
@@ -133,6 +146,14 @@ V_PYAMPLICOL_TEST_SD = CTVertex(name = 'V_PYAMPLICOL_TEST_SD',
                couplings = {(0,0,0):C.PYAMPLICOL_TEST_DS},
                type = 'UVtree')
 
+V_PYAMPLICOL_TEST_TT = CTVertex(name = 'V_PYAMPLICOL_TEST_TT',
+               particles = [ P.t__tilde__, P.t ],
+               color = [ 'Identity(1,2)' ],
+               lorentz = [ L.PYAMPLICOL_TEST_QQM ],
+               loop_particles = [[[P.t,P.G]]],
+               couplings = {(0,0,0):C.PYAMPLICOL_TEST_TTM},
+               type = 'R2')
+
 # The Z couples to quarks through the vector structure only.
 for _vertex in [*all_vertices, *all_CTvertices]:
     _pdgs = [abs(_particle.pdg_code) for _particle in _vertex.particles]
@@ -169,10 +190,10 @@ def two_point_model(loop_sm_ufo, tmp_path_factory):
 
     from dataclasses import replace
 
-    from pyamplicol.loops.model_compatibility import (
+    from pyamplicol.models.loading import compile_model_source
+    from tools.loop_reference.model_compatibility import (
         prepare_loop_sm_scalar_declarations,
     )
-    from pyamplicol.models.loading import compile_model_source
 
     root = tmp_path_factory.mktemp("two-point-model")
     model = compile_model_source(
@@ -239,7 +260,7 @@ def test_two_point_rules_become_clone_lines(two_point_lowering):
     _compiled, prepared, model = two_point_lowering
     synthetic = _synthetic(prepared.counterterms.rules)
     assert set(synthetic.values()) == {
-        f"{SYNTHETIC_PREFIX}{name}" for name in ("AZ", "UU", "DS", "SD")
+        f"{SYNTHETIC_PREFIX}{name}" for name in ("AZ", "UU", "DS", "SD", "TT")
     }
     keys = {rule_key(rule): name for name, rule in prepared.counterterms.rules.items()}
     assert not {keys.get(key) for key in model.residual} & set(synthetic)
@@ -288,6 +309,15 @@ def test_two_point_rules_become_clone_lines(two_point_lowering):
     assert propagators[uu]["pyamplicol_source"] == MODEL_SUPPLIED_PROPAGATOR_SOURCE
     assert uu not in lowered.line_factors and f"{uu}~" not in lowered.line_factors
 
+    (tt,) = {
+        clone
+        for structure, clone in lowered.insertions.items()
+        if structure.lorentz == "PYAMPLICOL_TEST_QQM"
+        and structure.particles == ("t~", "t")
+    }
+    assert propagators[tt]["pyamplicol_source"] == MODEL_SUPPLIED_PROPAGATOR_SOURCE
+    assert "ProjM" in propagators[tt]["numerator"]
+
     (sd,) = line(("s~", "d"))
     assert (lowered.line_fields[sd], lowered.line_fields[f"{sd}~"]) == ("s", "d~")
     assert propagators[sd]["pyamplicol_source"] != MODEL_SUPPLIED_PROPAGATOR_SOURCE
@@ -302,11 +332,18 @@ def test_two_point_rules_become_clone_lines(two_point_lowering):
 # chiral and flipping u terms on its internal line. g g -> u u~ g: the u line
 # terms with a gluon at leg 1 (the line can meet the root). A gluon with the
 # photon-Z line adds the g g Z R2, whose Levi-Civita cell cancels between the
-# quark doublets (``test_loop_v2_ct_cancellation``).
+# quark doublets (``test_loop_v2_ct_cancellation``). With leg 1 the u~
+# (u~ u -> e- e+ a) the internal u line is the other clone of its line. The
+# chiral u terms need both orders of the legs: a clone line's propagator
+# reads Pi's spinor chain from its receiving end (``ct_line_insertions.
+# _reversed_chain``). g g -> t t~ g: the lone P_L on the internal top lines,
+# both clones (module docstring).
 TWO_POINT_O6 = {
     "uux_emep": ("u u~ > e- e+", 0, 2, (0,) * 4, {"AZ"}),
     "uux_emepa": ("u u~ > e- e+ a", 0, 3, (0,) * 5, {"AZ", "UU"}),
+    "uxu_emepa": ("u~ u > e- e+ a", 0, 3, (0,) * 5, {"AZ", "UU"}),
     "gg_uuxg": ("g g > u u~ g", 3, 0, (0,) * 5, {"UU"}),
+    "gg_ttxg": ("g g > t t~ g", 3, 0, (0, 0, 173, 173, 0), {"TT"}),
 }
 
 
@@ -407,7 +444,7 @@ def test_two_point_counterterms_from_recursion_equal_sites(
             )
         )
     }
-    expected = {"AZ": "uv_local", "UU": "r2"}
+    expected = {"AZ": "uv_local", "UU": "r2", "TT": "r2"}
     assert changed >= {expected[vertex] for vertex in TWO_POINT_O6[name][4]}
 
 

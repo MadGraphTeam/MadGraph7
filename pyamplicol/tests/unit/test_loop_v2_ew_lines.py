@@ -6,13 +6,15 @@ Lepton legs (EWI-1). The kernel catalogue takes the loop species the
 families route (``assemble._family_loop_species``; B2: a lepton at leg 1 has
 no counterterm rule at the root to declare them), and the root closure signs
 a colour-singlet fermion line that closes at the root with the tree engine's
-merge sign (``ct_sites.SiteClosure._singlet_root_sign``; B4 at the root):
+merge sign (``conventions.colour_singlet_sign`` in ``ct_sites.SiteClosure``;
+B4 at the root):
 
 * e+ e- > u u~ with the photon and the Z is the massless quark form factor;
 * e- u > e- u (lepton root) equals u e- > u e- (quark root) and legacy;
-* e+ e- > t t~ h, the top Yukawa on loop top lines, equals MadLoop (nightly);
-* a process with two colour-singlet fermion lines (u u~ > e- m- e+ m+) is
-  refused until the Koszul signs between their blocks exist (EWI-5).
+* e+ e- > t t~ h, the top Yukawa on loop top lines, equals MadLoop (nightly).
+
+Processes with several colour-singlet fermion lines (EWI-5):
+``test_loop_v2_ew_leptons``.
 
 W vertices (EWI-2). A vertex whose particles are not closed under
 conjugation has no leg for the tree particles of its currents; the tree
@@ -49,7 +51,6 @@ from types import SimpleNamespace
 import pytest
 
 from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
-from tools.loop_reference import legacy_capture
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "tests" / "fixtures" / "loop"
@@ -180,7 +181,10 @@ def test_conjugate_rules_pair_open_vertices_at_their_orders():
     """A rule closed under conjugation reads itself; [d~ u W-] reads
     [u~ d W+] at the same orders and on the legs of its currents' tree
     particles (incoming field f -> tree particle anti(f)); a missing,
-    ambiguous or multi-colour conjugate, or a ghost leg, is refused."""
+    ambiguous or multi-colour conjugate is refused; a rule with a ghost leg
+    reads itself on its own legs, closed under conjugation or not (WP3.2
+    EWI-7: the ghost Lagrangian pairs no vertex with a Hermitian
+    conjugate)."""
 
     from pyamplicol.loops.v2.conventions import (
         FermionSignError,
@@ -207,8 +211,9 @@ def test_conjugate_rules_pair_open_vertices_at_their_orders():
     assert pairs["V_g"] == "V_g"
     assert pairs["V_dxuW"] == "V_uxdW" and pairs["V_uxdW"] == "V_dxuW"
     assert pairs["V_dxuWg"] is None and pairs["V_uxdWg"] is None
-    assert pairs["V_gh"] is None
+    assert pairs["V_gh"] == "V_gh" and pairs["V_ghx"] == "V_ghx"
     reading = TreeReading(data)
+    assert reading.vertex("V_gh", (2, 1, 3)) == ("V_gh", (2, 1, 3), None)
     # Loop in d~ (leg 1), loop out u~ (its anti on leg 2), the W- block (leg 3).
     assert reading.vertex("V_dxuW", (1, 2, 3)) == ("V_uxdW", (2, 1, 3), {0: 0})
     assert reading.vertex("V_g", (1, 2, 3)) == ("V_g", (2, 1, 3), None)
@@ -252,6 +257,28 @@ def test_conjugate_vertices_need_one_conjugate_with_one_colour_structure():
     )
     with pytest.raises(NotImplementedError, match="several colour structures"):
         several.of(open_)
+
+    # A counterterm vertex split by loop content (one rule per loop group,
+    # MG5_aMC's R2 [W- A G+] per quark pair): each rule's conjugate is the
+    # conjugate vertex's rule of the same loop content (|PDG| per group).
+    def split(name, fields, groups):
+        out = []
+        for index, group in enumerate(groups):
+            (entry,) = entries(name, fields, kind="R2")
+            entry.loop_particles = (group,)
+            entry.loop_group_index = index
+            out.append((f"{name}_{index}", [entry]))
+        return out
+
+    plus = split("V_R2p", ("d~", "u", "W-"), ((24, 23), (2, 1), (4, 3)))
+    minus = split("V_R2m", ("u~", "d", "W+"), ((-24, 23), (2, 1), (4, 3)))
+    pairs = ConjugateVertices([*plus, *minus], data)
+    for (_, rule), (name, conjugate) in zip(plus, minus, strict=True):
+        assert pairs.named(rule) == (name, tuple(conjugate))
+    unpaired = ConjugateVertices([*plus, *split("V_R2m", ("u~", "d", "W+"),
+                                                ((6, 5), (6, 3)))], data)  # fmt: skip
+    with pytest.raises(NotImplementedError, match="0 conjugate rules"):
+        unpaired.named(plus[1][1])
 
 
 @pytest.mark.loop_fast
@@ -336,32 +363,6 @@ def test_lepton_and_quark_roots_agree(loop_sm_compiled_model, loop_native):
     second = quark.evaluate(swapped, LEGACY["mu_r2"], parameters=PARAMETERS)
     _assert_equal_results(first, second)
     _assert_legacy(first, entry)
-
-
-@pytest.mark.loop_fast
-@pytest.mark.parametrize(
-    "process", ["u u~ > e- m- e+ m+", "u u~ > e- e+ m- m+", "u u~ > e- e- e+ e+"]
-)
-def test_two_colour_singlet_fermion_lines_are_refused(
-    loop_sm_compiled_model, loop_native, process
-):
-    """Two lepton lines at a quark root: their blocks' supports interleave
-    in the leg order (u u~ > e- m- e+ m+, and a pairing of e- e- e+ e+),
-    whose Koszul sign neither the root closure nor the loops apply yet
-    (EWI-5); the Born closure was the tree runtime's amplitude times 0.53
-    and 0.34 there. Every such process is refused before any tree is built,
-    wherever its lines sit."""
-
-    from pyamplicol.loops.v2.conventions import FermionSignError
-
-    with pytest.raises(FermionSignError, match="2 colour-singlet fermion lines"):
-        _slice(
-            loop_sm_compiled_model,
-            loop_native,
-            process,
-            {"QCD": 0, "QED": 4},
-            {"QCD": 2, "QED": 4},
-        )
 
 
 # ------------------------------------------------------------------ W lines
@@ -510,10 +511,10 @@ def restricted_loop_sm(loop_sm_ufo, tmp_path_factory):
 
     from dataclasses import replace
 
-    from pyamplicol.loops.model_compatibility import (
+    from pyamplicol.models.loading import compile_model_source, load_compiled_model
+    from tools.loop_reference.model_compatibility import (
         prepare_loop_sm_scalar_declarations,
     )
-    from pyamplicol.models.loading import compile_model_source, load_compiled_model
 
     built = {}
 
@@ -737,15 +738,31 @@ def test_complex_ckm_vertices_are_read_through_their_conjugate_rule(
     _assert_form_factor(slice_, [_two_to_two("0", "0")], ["1000000"])
 
 
-@pytest.mark.loop_physics
-@pytest.mark.parametrize("name", ["udx_epve", "emu_emu"])
+@pytest.mark.parametrize(
+    "name",
+    [
+        *(
+            pytest.param(name, marks=pytest.mark.loop_physics)
+            for name in ("udx_epve", "emu_emu", "udx_wpg", "gu_wpd")
+        ),
+        *(
+            pytest.param(name, marks=pytest.mark.loop_nightly)
+            for name in ("gb_twm", "uux_wpwm", "bbx_wpwm")
+        ),
+    ],
+)
 def test_native_inputs_equal_the_python_inputs(
     loop_sm_compiled_model, loop_native, name
 ):
     """The native per-point inputs (``NativeExecutor(inputs="native")``: tree
     program, Born and counterterm root closures) equal the Python inputs on
-    the conjugate rule's root terms (u d~ > e+ ve) and on a lepton line
-    closing at the root (e- u > e- u), in binary64."""
+    the conjugate rule's root terms (u d~ > e+ ve), on a lepton line closing
+    at the root (e- u > e- u), on external W bosons (loop_sm's MW is a
+    derived parameter: the parameter program forms it per point, and the W
+    legs are bound on its shell, ``test_derived_w_masses_are_bound_on_shell``)
+    and on a Weyl
+    line's factor kappa at a counterterm root copy (g u > w+ d: a scaled
+    coupling slot, ``native_trees._line_factor``), in binary64."""
 
     from pyamplicol.loops.v2.plan_export import NativeExecutor
 
@@ -760,7 +777,10 @@ def test_native_inputs_equal_the_python_inputs(
     )
     native = NativeExecutor(slice_, forward=False, inputs="native")
     python = NativeExecutor(slice_, forward=False, exported=native.exported)
-    points = [entry["point"], _massless_points()[0][0]]
+    points = [entry["point"]]
+    if name in ("udx_epve", "emu_emu"):
+        # A second, massless point (all four legs massless).
+        points.append(_massless_points()[0][0])
     scales = [LEGACY["mu_r2"]] * len(points)
     mine = native.evaluate(points, scales, parameters=PARAMETERS)
     theirs = python.evaluate(points, scales, parameters=PARAMETERS)
@@ -781,6 +801,67 @@ def test_native_inputs_equal_the_python_inputs(
                     strict=True,
                 ):
                     assert abs(float(x) - float(y)) <= TOLERANCE * scale, component
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("name", ["udx_wpg", "gu_wpd"])
+def test_derived_w_masses_are_bound_on_shell(loop_sm_compiled_model, loop_native, name):
+    """loop_sm's MW is a derived parameter. Both lanes bind the W legs on its
+    shell (DESIGN §11.1; genericity audit M2) in every carrier: the Python
+    lane's leg invariant is exactly the square of the MW its wavefunctions
+    take (``TreeRows._model_values`` at the working digits, the slice's one
+    mass evaluator ``assemble._model_masses``), the native lane's is exactly
+    the square of its parameter program's MW carrier value (a binary64 value
+    in binary64), and the two agree to the carrier's rounding; every leg of
+    an external mass is bound to the same exact square in both lanes."""
+
+    import math
+
+    from pyamplicol.loops.v2.assemble import Precision, _leg_masses
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+
+    entry = LEGACY["processes"][name]
+    slice_ = _slice(
+        loop_sm_compiled_model,
+        loop_native,
+        entry["process"],
+        entry["born_orders"],
+        entry["loop_orders"],
+        LEGACY["fixed_parameters"],
+    )
+    native = NativeExecutor(slice_, forward=False, inputs="native")
+    assert native.exported.trees.program["parameters"]["derived_masses"]
+    legs = [leg.mass.mass for leg in slice_.families.legs]
+    (w,) = [k for k, mass in enumerate(legs) if mass == "MW"]
+    parameters = {**LEGACY["fixed_parameters"], **PARAMETERS}
+    rows = slice_.tree_rows
+    (index,) = [
+        k
+        for k, record in enumerate(rows._records)
+        if record.get("runtime_name") == "MW" and record["complex_component"] != "imag"
+    ]
+    carriers = [
+        (Precision.double(), 5e-16),
+        (Precision.double_double(), 1e-30),
+        (Precision.arbitrary(32), 1e-30),
+    ]
+    for precision, rounding in carriers:
+        digits = precision.working_digits
+        python = _leg_masses(slice_, parameters, digits)
+        wavefunction = Fraction(rows._model_values(parameters, digits)[index])
+        assert python[w] == wavefunction**2
+        _plan, bound = native.bound_masses(
+            [entry["point"]], [LEGACY["mu_r2"]], PARAMETERS, precision
+        )
+        for k, mass in enumerate(legs):
+            if k != w:
+                assert bound[k] == python[k], (precision, k, mass)
+        square = bound[w]
+        root = Fraction(math.isqrt(square.numerator), math.isqrt(square.denominator))
+        assert root * root == square
+        if precision.arithmetic == "double":
+            assert Fraction(float(root)) == root
+        assert abs(square - python[w]) <= Fraction(rounding) * python[w]
 
 
 @pytest.mark.loop_physics
@@ -896,13 +977,16 @@ def test_dilepton_two_gluon_colour_projections_are_formal_nc_projections(
 
     from pyamplicol.loops.v2 import assemble, colour
     from pyamplicol.models.loading import load_compiled_model
-    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+    from pyamplicol.models.loop_color_declaration import (
+        resolve_loop_color_declaration,
+    )
 
     fixture = json.loads((FIXTURES / "dilepton-two-gluon.json").read_text())
-    declaration = LoopColorDeclaration.from_dict(
-        json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
-    )
     compiled = load_compiled_model(loop_sm_compiled_model)
+    # The shipped loop_sm declaration (MQ-NC): the closed quark loops of
+    # g g Z / g g A reach this request, which the example QCD subset
+    # (``legacy_capture.COLOUR_DECLARATION``) does not cover.
+    declaration = resolve_loop_color_declaration(compiled.raw_loop_model)
 
     def build(accuracy, prune=True):
         request = SliceRequest(

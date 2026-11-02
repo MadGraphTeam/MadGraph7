@@ -65,12 +65,13 @@ This is the Python reference path of the slice (gate S1); the native executor
 from __future__ import annotations
 
 import copy
+import functools
 import json
 import math
 from collections import defaultdict
-from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Container, Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from decimal import Decimal, localcontext
+from decimal import Decimal, getcontext, localcontext
 from fractions import Fraction
 from itertools import permutations, product
 from typing import Any, Literal, NamedTuple
@@ -116,7 +117,6 @@ from .colour import (
     seed_fourier,
 )
 from .conventions import (
-    FERMION_SPIN,
     LOOP_FACTOR_DENOMINATOR,
     LeafWeights,
     Normalisation,
@@ -129,8 +129,8 @@ from .ct_sites import (
     SiteClosure,
     SiteTerm,
     generate_counterterm_sites,
-    require_one_singlet_line,
     vanishes_identically,
+    vanishing_loop_vertices,
 )
 from .ct_sites import (
     Carrier as SiteCarrier,
@@ -148,29 +148,48 @@ from .families import (
     add_orders,
     generate_families,
     mass_name,
+    onshell_leg,
+    orders_within,
     shifts,
 )
 from .fields import FIELD_COMPONENT, FieldInsertion, external_field_insertions
 from .generator_input import NativeGeneration
 from .poles import (
     ORIGINS,
+    UNTAGGED_PHOTON_CONVENTION,
+    PoleRegulators,
     catani_poles,
+    colour_casimir,
     coupling_value,
     dressed_born,
     exact_charge,
     has_poles,
+    photon_gamma,
     pole_mode,
+    pole_regulators,
     qed_catani_poles,
     qed_coupling,
     qed_gamma,
     reducer_poles,
+    regulated_parameters,
+    sector_predictions,
     sector_sum,
     select_lane,
     select_sector,
+    separated_exchange,
     split_sector,
     splits,
+    strong_beta0,
+    strong_gamma,
 )
 from .poly_affine import MonomialLayout, leg_momentum
+from .refusals import (
+    require_colour_preserving_fermion_lines,
+    require_declared_colour_fields,
+    require_declared_colour_rules,
+    require_labelled_counterterms_for_veto,
+    require_nc_exact,
+)
 from .schedules import (
     STRUCTURED,
     LoopSchedules,
@@ -178,6 +197,7 @@ from .schedules import (
     build_schedules,
     cheapest,
 )
+from .skeletons import Skeleton
 from .stability import (
     ROTATION,
     Budget,
@@ -315,6 +335,17 @@ class _Numbers:
 def _decimal_pi() -> Decimal:
     """pi at the active Decimal precision (Machin's formula)."""
 
+    return +_machin_pi(getcontext().prec)
+
+
+@functools.lru_cache(maxsize=16)
+def _machin_pi(digits: int) -> Decimal:
+    """pi with ``digits + 5`` working digits, once per precision. The series
+    stops at the first term that leaves the rounded sum unchanged (every
+    later term is smaller still): the same sum as running to Decimal
+    underflow, which took ~0.3 s per call (~7e5 terms) on every point of a
+    non-binary64 evaluation."""
+
     def arctan_inverse(x: int) -> Decimal:
         power = total = Decimal(1) / x
         x2, n, sign = x * x, 1, 1
@@ -323,14 +354,14 @@ def _decimal_pi() -> Decimal:
             n += 2
             sign = -sign
             term = power / n
-            if term == 0:
+            following = total + sign * term
+            if following == total:
                 return total
-            total += sign * term
+            total = following
 
     with localcontext() as context:
-        context.prec += 5
-        value = 4 * (4 * arctan_inverse(5) - arctan_inverse(239))
-    return +value
+        context.prec = digits + 5
+        return 4 * (4 * arctan_inverse(5) - arctan_inverse(239))
 
 
 def _decimal_power(base: Decimal, exponent: int) -> Decimal:
@@ -494,11 +525,6 @@ class TreeRows:
         return self._built().amplitude_stage
 
     def _model_values(self, parameters: Mapping[str, str], digits: int) -> list:
-        from symbolica import E
-
-        from pyamplicol._internal.physics.symbols import symbols
-        from pyamplicol.runtime.symbolica_exact import _upcast_complex_inputs
-
         external = {
             record["name"]: Decimal(
                 parameters.get(record["name"], repr(record["default"]))
@@ -506,19 +532,7 @@ class TreeRows:
             for record in self._records
             if record["kind"] == "external_parameter"
         }
-        model_symbols = symbols.model(self.compiled.name)
-        substitutions = dict(
-            zip(
-                (
-                    E(model_symbols.symbol(name).to_canonical_string())
-                    for name in external
-                ),
-                _upcast_complex_inputs(
-                    [(value, Decimal(0)) for value in external.values()], digits
-                ),
-                strict=True,
-            )
-        )
+        substitutions = _substitutions(self.compiled, external, digits)
         derived, values = {}, []
         for record in self._records:
             if record["kind"] == "external_parameter":
@@ -526,10 +540,9 @@ class TreeRows:
                 continue
             name = record["runtime_name"]
             if name not in derived:
-                value = E(self._definitions[name]).evaluate(
-                    substitutions, decimal_digit_precision=digits
+                derived[name] = _definition_value(
+                    self._definitions[name], substitutions, digits
                 )
-                derived[name] = tuple(Decimal(x) for x in value.to_decimal_tuple())
             values.append(derived[name][record["complex_component"] == "imag"])
         return values
 
@@ -678,6 +691,12 @@ def _canonical_symbols(count: int) -> list[Any]:
 
     from pyamplicol._internal.physics.symbols import symbols
 
+    from ..scalar_frontend import scalar_predicates
+
+    if len(_CANONICAL_SYMBOLS) < count:
+        # The scalar predicates precede every canonical block, in their own
+        # aligned block (``scalar_predicates``).
+        scalar_predicates()
     while len(_CANONICAL_SYMBOLS) < count:
         start = len(_CANONICAL_SYMBOLS)
         padding = -len(Expression.get_all_symbol_names()) % _CANONICAL_BLOCK
@@ -712,6 +731,79 @@ def _check_canonical_block(block: list[Any]) -> None:
             f"(got {probe}): the symbol ids are misaligned or Symbolica's term "
             "order changed, so tree stages would depend on the process history"
         )
+
+
+# A stage with function definitions is renamed on Symbolica's portable text
+# (``_renamed_text``: one native pass per expression, linear in its size and
+# in parallel; the renamed text, on short canonical names, parses faster
+# than the original), not by ``replace_multiple`` with a rule per symbol and
+# repeated call passes (46 s of the 2->3 electroweak parameter program, M-SM
+# MS-GEN). Both give the same expressions; the ``replace_multiple`` passes
+# stay the oracle (``text_canonical_stage(False)``).
+TEXT_CANONICAL_STAGE = True
+
+
+def text_canonical_stage(enabled: bool) -> Any:
+    """``TEXT_CANONICAL_STAGE`` set to ``enabled`` for a ``with`` block and
+    restored after it: ``text_canonical_stage(False)`` is the oracle lane."""
+
+    from contextlib import contextmanager
+
+    @contextmanager
+    def switch():
+        global TEXT_CANONICAL_STAGE
+        before = TEXT_CANONICAL_STAGE
+        TEXT_CANONICAL_STAGE = bool(enabled)
+        try:
+            yield
+        finally:
+            TEXT_CANONICAL_STAGE = before
+
+    return switch()
+
+
+def _renamed_text(
+    expressions: Sequence[Any],
+    variables: Mapping[Any, Any],
+    heads: Mapping[Any, Any],
+) -> list[Any]:
+    """``expressions`` with every symbol of ``variables`` and every call of a
+    function of ``heads`` renamed (old -> new symbol): their portable text
+    (``repr``: every namespace but the default one) renamed natively in
+    parallel (``loop_v2::generate::rename``: a token is a maximal run of
+    name characters, ``:``, ``{`` and ``}``, a head when a ``(`` follows it
+    and a variable otherwise) and parsed back, a chunk at a time."""
+
+    from symbolica import E
+
+    native = _loop_native()
+    variable_names = [(repr(old), repr(new)) for old, new in variables.items()]
+    head_names = [(repr(old), repr(new)) for old, new in heads.items()]
+    renamed: list[Any] = []
+    for start in range(0, len(expressions), _RENAME_CHUNK):
+        texts = native.loop_rename_symbols(
+            [repr(e) for e in expressions[start : start + _RENAME_CHUNK]],
+            variable_names,
+            head_names,
+        )
+        renamed.extend(E(text) for text in texts)
+    return renamed
+
+
+# Expressions per native rename call (the parameter program's outputs reach
+# megabytes each on the electroweak UFOs).
+_RENAME_CHUNK = 256
+
+
+@functools.cache
+def _loop_native() -> Any:
+    """The loop extension, verified once per process: ``load_loop_native``
+    checks the native build identity on every call (0.2 s in a source
+    checkout), and a generation's export renames a few hundred stages."""
+
+    from ..native import load_loop_native
+
+    return load_loop_native()
 
 
 def _canonical_stage(stage: Any) -> tuple[list[Any], list[Any], list[Any]]:
@@ -767,6 +859,25 @@ def _canonical_stage(stage: Any) -> tuple[list[Any], list[Any], list[Any]]:
     )
     old = [*parameters, *heads, *arguments]
     renamed = dict(zip(old, _canonical_symbols(len(old)), strict=True))
+    if TEXT_CANONICAL_STAGE:
+        head_set = set(heads)
+        variable_map = {k: v for k, v in renamed.items() if k not in head_set}
+        head_map = {k: v for k, v in renamed.items() if k in head_set}
+        bodies = _renamed_text(
+            [body for _head, _items, body in definitions], variable_map, head_map
+        )
+        return (
+            _renamed_text(stage.output_expressions, variable_map, head_map),
+            [renamed[parameter] for parameter in parameters],
+            [
+                (
+                    renamed.get(head, head),
+                    tuple(renamed[argument] for argument in items),
+                    body,
+                )
+                for (head, items, _body), body in zip(definitions, bodies, strict=True)
+            ],
+        )
     tail = symbols.qualified("pyamplicol_v2_canonical::args___")
     # Two passes: a single ``replace_multiple`` does not descend into a call
     # its head rule replaced, so the arguments of a model-function call kept
@@ -828,6 +939,11 @@ def _exact_u1_subtraction_weights():
 # block current the tree model allows (the families and every result are
 # unchanged, ``tests/unit/test_loop_v2_generate.py``).
 LOOP_BLOCK_REACHABILITY = True
+# The certified-scaleless companion compresses its seeds with the slice's
+# certificates (``LoopSlice._companion_seeds``); False builds its own table
+# (its generic seeds: the oracle). The extended table has no native build
+# stage: a native LC/NLC prune of the companion needs one (next run).
+SHARED_COMPANION_CERTIFICATES = True
 
 
 def _field_level_table(data, process, selection, request, cap=None) -> ModelBlockTable:
@@ -1000,10 +1116,15 @@ def _born_block_requests(
     return frozenset(out)
 
 
-# Schedule-B frame policy of the slice: the cheapest frame by undressed rows
-# (``NativeGeneration.schedules`` runs the same policy natively).
+# Schedule-B frame policy of the slice: the cheapest frame by undressed rows,
+# a segment priced by its legs' helicity rows (``generator_input.leg_rows``;
+# ``NativeGeneration.schedules(leg_rows=...)`` runs the same policy natively).
+# No count per leg is assumed: the rows are the request's.
 _FRAME_MODEL = STRUCTURED
-_FRAME_POLICY = cheapest(lambda mask: 2 ** mask.bit_count(), _FRAME_MODEL)
+
+
+def _frame_policy(rows: Sequence[int]) -> Any:
+    return cheapest(generator_input.frame_rows(rows), _FRAME_MODEL)
 
 
 class SectorSeeds:
@@ -1305,9 +1426,11 @@ class PointResult:
     finite-only mode). ``families`` keeps each reduction lane's raw integrals
     ``(family, loop order, sector) -> Laurent``. ``ir_poles`` is Catani's
     prediction of the virtual's (single, double) poles per sector (the QCD
-    and QED operators, massless and massive legs), ``None`` in finite-only
-    and ``"uv"`` mode, at leading colour and where the operators make no
-    prediction (a correction without one); ``stability`` is ``None``
+    and QED operators, massless and massive legs) for the sectors whose
+    loops the requested corrections complete (``poles.predicted_sectors``;
+    the others are absent), ``None`` in finite-only and ``"uv"`` mode, at
+    leading colour and where the operators make no prediction (a correction
+    without one, or no predicted sector); ``stability`` is ``None``
     unless checks were asked. ``colour_contraction`` is the seed contraction
     used ("direct" or "symmetric-group-fft").
 
@@ -1319,6 +1442,12 @@ class PointResult:
     every renormalised component (``Laurent`` with the combined finite part;
     ``pole_origins["uv"]["virtual"]`` is the renormalised virtual's UV
     part), ``None`` otherwise.
+
+    ``loop_born`` exists with loop-side sources (the asymmetric Ward mode,
+    ``ward``): per squared Born order Re(A0^dagger G A0'), the physical Born
+    bra against the Born amplitude read on the loop side (where a gluon's
+    polarisation is c p_j it vanishes with the tree Ward identity); ``born``
+    and ``totals[0]`` stay the physical Born. ``None`` otherwise.
     """
 
     born: Mapping[Orders, Any]
@@ -1330,6 +1459,7 @@ class PointResult:
     colour_contraction: str = "direct"
     poles: PoleSelection = PoleSelection.ALL
     pole_origins: Mapping[str, Mapping[str, Mapping[Orders, Laurent]]] | None = None
+    loop_born: Mapping[Orders, Any] | None = None
 
     def virtual(self, sector: Orders) -> Laurent:
         return self.components["virtual"][sector]
@@ -1348,13 +1478,24 @@ class SliceRequest:
     process: str
     born_orders: Mapping[str, int]
     loop_orders: Mapping[str, int] | Sequence[Mapping[str, int]]
-    corrections: tuple[str, ...] = ("QCD",)
+    # The correction orders. None (the default): the model's strong
+    # correction, identified by the gluon's vertices (``ew_policy.
+    # request_corrections``; refused for a model without one), resolved by
+    # ``resolve_request`` when the slice is generated. The public routes name
+    # them (``[process] loop_coupling_orders``).
+    corrections: tuple[str, ...] | None = None
     fixed_parameters: Mapping[str, str] = field(default_factory=dict)
     # Vetoed particles (|PDG| codes, ``generation.particle_veto``): removed
     # from every tree vertex of every generation step (Born, blocks, loop
     # vertices and propagators, the counterterm program), and every
     # counterterm term whose loop content holds one is dropped.
     particle_veto: tuple[int, ...] = ()
+    # [U2]: a Levi-Civita counterterm cell the veto keeps from cancelling
+    # that cancels without it (an anomalous veto, e.g. one breaking a quark
+    # doublet) refuses the request (``ct_recursion.AnomalousVetoError``)
+    # unless this override lowers it (``ct_recursion``, "Anomalous vetoes";
+    # the artifact records it).
+    allow_anomalous_veto: bool = False
     accuracy: ColourAccuracy = "full"
     # A source-owned formal-N_c continuation (``LoopColorDeclaration``); LC
     # needs it for the counterterm and field colour grades (design §6.7).
@@ -1381,12 +1522,53 @@ class SliceRequest:
     # recursion over the CT-lowered model (``ct_closure``), "sites" from the
     # site closure of every rule, the permanent oracle (O6).
     counterterms: Literal["recursion", "sites"] = "recursion"
+    # A leading-colour selection (MQ-SELECT, ``selection.Selection``): the
+    # Born helicities of some legs and the colour flows kept, to which the
+    # generation prunes its recursion; None (the default) keeps every
+    # helicity and flow (the request record then has no entry).
+    selection: Any = None
+    # The on-shell external photons that couple with alpha(0) (MG5_aMC's
+    # ``!a!`` tags; m-sm/PLAN.md Q1 (a), ``ew_policy.photon_tags``): "final"
+    # (the default: final-state photons, isolated photons; initial ones are
+    # PDF photons and keep the loops' coupling), "all", "none", or the
+    # 1-based labels of the tagged legs (initial legs allowed). Only a request
+    # that takes the electromagnetic correction converts its tagged photons;
+    # the request record names it only when it is not the default.
+    external_photons: str | tuple[int, ...] = "final"
+    # The model's names of the tagged photons' conversion counterterm
+    # (delta Z_e of the loops' scheme - delta Z_e^alpha(0)) and of its
+    # adjustable 1/alpha(0) (genericity audit 2 G2-m5; ``[loop]
+    # alpha0_conversion_parameter``, ``alpha0_inverse_parameter``): MG5_aMC's
+    # ``eCoup_DGmua0_UV_EW`` and the unique adjustable SLHA SMINPUTS 1
+    # parameter by default. A named 1/alpha(0) whose inverse is the loops'
+    # alpha declares loops that couple with alpha(0): tagged photons then
+    # take neither a rescaling nor a conversion. Recorded only when set.
+    alpha0_conversion: str = ew_policy.ALPHA0_CONVERSION
+    alpha0_inverse: str | None = None
 
     def __post_init__(self) -> None:
+        if self.selection is not None and self.accuracy != "lc":
+            raise ValueError(
+                "helicity and colour-flow selection is a leading-colour option "
+                "(accuracy='lc')"
+            )
+        object.__setattr__(
+            self,
+            "external_photons",
+            ew_policy.photon_tag_option(self.external_photons),
+        )
+        if not isinstance(self.alpha0_conversion, str) or not self.alpha0_conversion:
+            raise ValueError("alpha0_conversion names a counterterm parameter")
+        if self.alpha0_inverse is not None and (
+            not isinstance(self.alpha0_inverse, str) or not self.alpha0_inverse
+        ):
+            raise ValueError("alpha0_inverse names a model parameter or is None")
         veto = tuple(sorted({abs(int(pdg)) for pdg in self.particle_veto}))
         if 0 in veto:
             raise ValueError("particle_veto takes particle PDG codes")
         object.__setattr__(self, "particle_veto", veto)
+        if not isinstance(self.allow_anomalous_veto, bool):
+            raise ValueError("allow_anomalous_veto must be a boolean")
 
     @property
     def exact_loop_orders(self) -> tuple[Mapping[str, int], ...]:
@@ -1407,6 +1589,106 @@ class SliceRequest:
         return bounds
 
 
+def resolve_request(compiled: Any, request: SliceRequest) -> SliceRequest:
+    """``request`` with its correction orders resolved
+    (``ew_policy.request_corrections``) and, for LC and NLC, its colour
+    declaration: the model's own (``resolve_loop_color_declaration``: the
+    source's declaration, else the shipped one of its counterterm vertices,
+    ``models.loop_color_declarations``) when the request names none; its
+    ``particle_veto`` with the ghosts of the vector bosons it removes
+    (``ew_policy.gauge_closed_veto``). Unchanged when it names both and its
+    veto is so closed."""
+
+    if request.corrections is None:
+        request = replace(
+            request, corrections=ew_policy.request_corrections(compiled, request)
+        )
+    if request.particle_veto:
+        # A vetoed vector boson takes its Faddeev-Popov ghosts with it.
+        veto = ew_policy.gauge_closed_veto(compiled, request.particle_veto)
+        if veto != request.particle_veto:
+            request = replace(request, particle_veto=veto)
+    raw = getattr(compiled, "raw_loop_model", None)
+    if (
+        request.accuracy != "full"
+        and request.colour_declaration is None
+        and raw is not None
+    ):
+        from pyamplicol.models.loop_color_declaration import (
+            resolve_loop_color_declaration,
+        )
+
+        declaration = resolve_loop_color_declaration(raw)
+        if declaration is not None:
+            request = replace(request, colour_declaration=declaration)
+    return request
+
+
+def check_model_parameters(
+    parameters: Mapping[str, str],
+    externals: Container[str] | None,
+    scale_parameter: str | None,
+    fixed: Mapping[str, Any],
+    prepared: Container[str] = (),
+) -> dict[str, str]:
+    """The caller's real model parameter values, validated as a whole before
+    any is applied (the Python API's and the SDK's one rule, genericity audit
+    2 M2; ``rusticol_loop_reduction::v2_runtime::checked_parameters`` is its
+    native twin), by name (so a mapping with several refused entries is
+    refused with the same message in every client): an unknown name (not an
+    external parameter of the model, ``externals``; None only for a stored
+    process of an older build, whose record lacks its model's names), the
+    renormalisation scale's parameter (each point's ``mu_r2`` sets it) and a
+    value other than the one a parameter was fixed to at generation
+    (``fixed``, ``LoopSlice.fixed_parameters``: ``[loop.preparation]
+    fixed_parameters`` and those the model preparation fixes, ``prepared``,
+    which the refusal names as such) are refused with a ``ValueError``. A
+    known parameter the process does not read is accepted (it has no
+    effect). An empty name is the Python API reader's ``TypeError``; every
+    value is read first, as the Python API reads it (``runtime.virtual.
+    _number``: a finite decimal number of ASCII text)."""
+
+    from pyamplicol.runtime.virtual import _number
+
+    if any(not isinstance(name, str) or not name for name in parameters):
+        # The Python API's reader's refusal (``runtime.virtual._parameters``).
+        raise TypeError("model parameter names must be nonempty strings")
+    names = sorted(parameters)
+    for name in names:
+        _number(parameters[name], f"parameter {name!r} real part")
+    for name in names:
+        value = parameters[name]
+        if externals is not None and name not in externals:
+            raise ValueError(f"unknown external parameter {name!r}")
+        if name == scale_parameter:
+            raise ValueError(
+                f"{name!r} is the renormalisation scale: pass it per point as mu_r2"
+            )
+        if name in fixed and Decimal(str(value)) != Decimal(str(fixed[name])):
+            raise ValueError(fixed_refusal(name, fixed[name], name in prepared))
+    return dict(parameters)
+
+
+def fixed_refusal(name: str, value: Any, prepared: bool) -> str:
+    """The refusal of a value other than the one ``name`` was fixed to at
+    generation, naming who fixed it: the request (``[loop.preparation]
+    fixed_parameters``) or the model preparation (``prepared``: a scheme
+    constant, e.g. a colour declaration's, which no card entry sets);
+    ``v2_runtime::fixed_refusal`` is its native twin."""
+
+    if prepared:
+        return (
+            f"parameter {name!r} was fixed to {value} at generation by the model "
+            "preparation (a scheme constant, e.g. of the colour declaration); "
+            "it is not a run-time parameter"
+        )
+    return (
+        f"parameter {name!r} was fixed to {value} at generation "
+        "([loop.preparation] fixed_parameters); regenerate the artifact to "
+        "change it"
+    )
+
+
 class RequestModel(NamedTuple):
     """The model preparation of one request (``prepare_request_model``)."""
 
@@ -1423,12 +1705,16 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
     """The model preparation of ``LoopSlice.generate``, before any tree,
     family or loop generation: the source-colour fixed parameters (LC and
     NLC need a colour declaration), the scale and alpha_s parameters,
-    ``prepare_loop_request_model`` and, with a colour declaration,
-    ``prepare_declared_source_color``. The public dry run
+    ``prepare_loop_request_model``, with a colour declaration
+    ``prepare_declared_source_color``, the gauge refusal of an electroweak
+    request (``ew_policy.require_loop_gauge``) and the listed refusal of a
+    veto of loop species on unlabelled counterterms
+    (``refusals.require_labelled_counterterms_for_veto``). The public dry run
     (``Generator.plan``) runs it alone to report its refusals."""
 
     from pyamplicol.loops.compiler import prepare_loop_request_model
 
+    request = resolve_request(compiled, request)
     declaration = request.colour_declaration
     fixed: dict[str, Any] = dict(request.fixed_parameters)
     if declaration is not None:
@@ -1447,14 +1733,17 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
     scale_parameter = _external_parameter(
         compiled, request.scale_parameter, _LHA_SCALE, fixed
     )
+    # alpha_s of the QCD operator of the IR-pole prediction (Catani, WP3.2
+    # EWI-6), one rule for every correction set (genericity audit m2): the
+    # named parameter (``loop.alpha_s_parameter``), which must be an
+    # adjustable external parameter, else the unique adjustable SLHA
+    # SMINPUTS 3 one, else none: the operator then makes no prediction (the
+    # virtual itself does not read it).
     alpha_s_parameter = None
-    if set(request.corrections) == {"QCD"}:
-        alpha_s_parameter = _external_parameter(
-            compiled, request.alpha_s_parameter, _LHA_ALPHA_S, fixed
-        )
-    elif "QCD" in request.corrections:
-        # The QCD operator of a joint request's IR-pole prediction (WP3.2
-        # EWI-6); without an identified alpha_s it makes none.
+    # The strong correction is identified by the gluon's vertices, not by
+    # its order's name (``ew_policy.correction_orders``; genericity m1).
+    strong = ew_policy.correction_orders(compiled, fixed).strong
+    if strong is not None and strong in request.corrections:
         try:
             alpha_s_parameter = _external_parameter(
                 compiled, request.alpha_s_parameter, _LHA_ALPHA_S, fixed
@@ -1478,6 +1767,25 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
         prepared, continuation = prepare_declared_source_color(
             prepared, declaration, scheme=declaration.scheme
         )
+    # The gauge scope (WP3.2 EWI-4b, DESIGN §6.8), refused here so that the
+    # dry run reports it: loops in which massive vectors can run (an
+    # electroweak request, whose gauge ``LoopSlice.generate`` switches, or a
+    # massive vector loop species) need 't Hooft-Feynman gauge; QCD loops of
+    # a unitary-gauge source keep the compiled gauge.
+    ew_policy.require_loop_gauge(
+        compiled, request, prepared.structure.perturbative_species_orders
+    )
+    # A veto reaches the counterterms through their loop-content labels
+    # only: refused where the model's counterterm terms of a requested
+    # correction are not all labelled (``refusals``, listed; WP3.2 EWI-5
+    # interim, EWI-7's [U2] guard), here so that the dry run reports it.
+    require_labelled_counterterms_for_veto(
+        prepared.model.kernels,
+        request.process,
+        request.particle_veto,
+        request.corrections,
+        prepared.structure.perturbative_species_orders,
+    )
     return RequestModel(
         prepared, continuation, fixed, scale_parameter, alpha_s_parameter
     )
@@ -1529,7 +1837,83 @@ class LoopSlice:
     # Born, counterterms and degrees): dressed only by the "uv" and "ir" pole
     # selections, whose bare UV and IR parts they carry (design §12.4).
     scaleless: LoopSlice | None = None
+    # The alpha(0) convention of the tagged on-shell external photons of an
+    # electroweak request (WP3.2 EWI-6b, per leg since MS-PHOTON,
+    # ``ew_policy.ExternalPhotons``; None without a tagged photon): the
+    # point's (alpha(0) / alpha)^n scales every output
+    # (``_PointEvaluation.average``), the conversion is a field insertion.
+    external_photons: ew_policy.ExternalPhotons | None = None
     _cache: dict = field(default_factory=dict, repr=False)
+
+    @property
+    def fixed_parameters(self) -> dict[str, str]:
+        """The external parameters fixed at generation, with their exact
+        values: the request's (``SliceRequest.fixed_parameters``, as given)
+        and the model's external parameters its preparation fixes besides
+        (a colour declaration's external scheme constants,
+        ``source_color_fixed_parameters``), from the set the scalar plans and
+        the counterterm program were built with (``prepared.structure.
+        fixed_parameters``; the names an applied source restriction removed
+        from the model are not parameters a caller can set). Every runtime
+        refuses a caller's other value of any of them and evaluates at these
+        (``check_model_parameters``; the native record's
+        ``fixed_parameters``; genericity audit 2, M2)."""
+
+        found = self._cache.get("fixed-parameters")
+        if found is None:
+            externals = self._external_parameters()
+            found = dict(self.request.fixed_parameters)
+            prepared = self.prepared.structure.fixed_parameters or {}
+            for name, value in prepared.items():
+                if name in found or name not in externals:
+                    continue
+                real, imaginary = (value, "0") if isinstance(value, str) else value
+                if Decimal(imaginary) != 0:
+                    raise ValueError(
+                        f"parameter {name!r} is fixed to a complex value; v2 "
+                        "loop runtimes take real external parameters"
+                    )
+                found[name] = real
+            self._cache["fixed-parameters"] = found
+        return dict(found)
+
+    @property
+    def preparation_fixed_parameters(self) -> frozenset[str]:
+        """The names in ``fixed_parameters`` the model preparation fixed (a
+        colour declaration's scheme constants), not the request."""
+
+        return frozenset(self.fixed_parameters) - frozenset(
+            self.request.fixed_parameters
+        )
+
+    @property
+    def pole_regulators(self) -> PoleRegulators | None:
+        """The model's adjustable pole regulators (``poles.pole_regulators``:
+        epsUV and epsIR of MadLoop's electroweak UFOs), which split the
+        counterterms' poles by origin in the "uv" and "ir" selections; None
+        for a model without them (loop_sm) or with one of them fixed."""
+
+        key = "pole-regulators"
+        if key not in self._cache:
+            self._cache[key] = pole_regulators(
+                self.compiled.ir.parameters,
+                self.fixed_parameters,
+                getattr(self.compiled, "raw_loop_model", None),
+            )
+        return self._cache[key]
+
+    def _external_parameters(self) -> frozenset[str]:
+        """The names of the model's external parameters (those a caller
+        sets)."""
+
+        found = self._cache.get("external-parameters")
+        if found is None:
+            found = self._cache["external-parameters"] = frozenset(
+                record.name
+                for record in self.compiled.ir.parameters
+                if record.nature == "external"
+            )
+        return found
 
     @property
     def site_terms(self) -> Mapping[Any, tuple[SiteTerm | WholeRuleTerm, ...]]:
@@ -1591,14 +1975,34 @@ class LoopSlice:
 
     @classmethod
     def generate(
-        cls, compiled: Any, request: SliceRequest, native: Any, *, prune: bool = True
+        cls,
+        compiled: Any,
+        request: SliceRequest,
+        native: Any,
+        *,
+        prune: bool = True,
+        native_inputs: bool = False,
     ) -> LoopSlice:
         """Build every generation object of ``request`` (no diagram is listed).
 
         ``compiled`` is the compiled loop model and ``native`` the staged loop
         core (``loops.native.load_loop_native``). ``prune=False`` defers the
         LC/NLC colour pruning to the caller (``_prune_colour`` with the seed
-        tables of further observables).
+        tables of further observables). ``native_inputs`` tells that the
+        caller exports the slice's native point inputs (a stored plan v4
+        process, ``artifact.generate_process``): a listed feature their export
+        does not cover (``native_trees.NATIVE_EXPORT_REFUSALS``) is then refused
+        (``NativeExportUnsupported``) as soon as it is known, before the
+        trees are built.
+
+        Listed loop-admission refusals (``refusals.LOOP_ADMISSION_REFUSALS``,
+        typed ``LoopRequestUnsupported``) are raised before the structures they
+        concern are used: a veto of a loop species on a model whose
+        counterterms of the correction are not all labelled with their loop
+        content in the model preparation (``prepare_request_model``, which
+        the dry run runs too), a vertex joining fermions of different sign
+        ownership before any tree, LC/NLC over tree blocks that are not exact
+        in N_c right after the trees.
         """
 
         from pyamplicol.loops.wavefunction import prepare_external_field_rules
@@ -1609,6 +2013,7 @@ class LoopSlice:
             raise ValueError(f"unknown colour accuracy {request.accuracy!r}")
         if request.counterterms not in ("recursion", "sites"):
             raise ValueError(f"unknown counterterm form {request.counterterms!r}")
+        request = resolve_request(compiled, request)
         prepared, continuation, fixed, scale_parameter, alpha_s_parameter = (
             prepare_request_model(compiled, request)
         )
@@ -1622,20 +2027,66 @@ class LoopSlice:
         process = build_model_process_ir(
             request.process, compiled.ir, color_accuracy="full"
         )
-        # The root closure and the loops sign one colour-singlet fermion line
-        # only (``ct_sites.require_one_singlet_line``; WP3.2 EWI-5 lifts it).
-        require_one_singlet_line(process)
+        # Under the complex-mass scheme external states are stable (EW-25,
+        # ``model_cms``): an external particle of a complex pole mass is
+        # refused (``cms-external-width``).
+        from pyamplicol.loops.model_cms import require_stable_external_states
+
+        require_stable_external_states(
+            compiled,
+            (leg.pdg for leg in process.legs if leg.pdg is not None),
+            repr(request.process),
+        )
         # Fail-closed guards of electroweak requests (WP3.2 EWI-0b), before
         # any tree, family or counterterm generation (``ew_policy``).
         electroweak = ew_policy.electroweak(
             compiled, request, structure.perturbative_species_orders
         )
+        photons = None
         if electroweak:
-            ew_policy.require_no_external_photons(compiled, request, process, fixed)
+            # Tagged on-shell external photons couple with alpha(0) (WP3.2
+            # EWI-6b, [U9]; per leg, MS-PHOTON: ``request.external_photons``);
+            # a model that cannot take that convention is refused.
+            photons = ew_policy.external_photon_scheme(
+                compiled, request, process, fixed, structure.perturbative_species_orders
+            )
+            # One gauge throughout (DESIGN §6.8, WP3.2 EWI-4b): Born, blocks,
+            # loop lines and counterterms of a request with electroweak loop
+            # species take 't Hooft-Feynman gauge with explicit Goldstones
+            # and ghosts; QCD-only requests keep the model's gauge.
+            compiled = ew_policy.feynman_gauge_model(compiled, request)
+        else:
+            # A tag list naming a leg that is no on-shell photon is refused
+            # for every request; without the electromagnetic correction the
+            # tags convert nothing (as in MG5_aMC).
+            ew_policy.photon_tags(compiled, request, process, fixed)
+        # A fermion line that changes colour representation (a vertex joining
+        # a coloured and a colour-singlet fermion that a tree or a loop of the
+        # request can use) has no sign in the blocks' conventions: refused
+        # before any tree (``refusals``, listed).
+        require_colour_preserving_fermion_lines(
+            compiled,
+            process,
+            order_limits=(dict(request.born_orders), _block_order_bounds(request)),
+            ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
+            loop_species=_correction_species(structure, request),
+        )
+        # A vertex whose couplings vanish identically at the model's
+        # restriction (a W vertex of a CKM element a diagonal-CKM restriction
+        # sets to zero) contributes nothing and the restricted tree model
+        # holds no colour or Lorentz term of it: it is no loop vertex
+        # (fail-closed-2; decided from the coupling values,
+        # ``ct_sites.restricted_to_zero``, the counterterm root closure's
+        # rule too).
         loop_catalogue = ModelLoopCatalogue(
             data,
             species_orders=structure.perturbative_species_orders,
             veto=request.particle_veto,
+            vanishing=vanishing_loop_vertices(
+                compiled,
+                prepared.model.kernels,
+                (rule["name"] for rule in data["vertex_rules"]),
+            ),
         )
         native_families = "families" in generator_input.NATIVE_STAGES
         model = compiled
@@ -1654,6 +2105,8 @@ class LoopSlice:
                         reachable.block_requests() | born_requests, data
                     )
                 ),
+                # LC and NLC project formal N_c: every block of one grade.
+                u1_grades=request.accuracy != "full",
             )
             if electroweak:
                 # Widths in the Born or the loop-side trees, before their
@@ -1667,7 +2120,18 @@ class LoopSlice:
             # model-supplied propagator) take the full tree kernels: the
             # transverse Yang-Mills ones are then not the Feynman rules
             # (design §3.2 item 2, §6.1). Everything below uses that model.
+            # LC and NLC need N_c-exact tree blocks: refused before any family
+            # or export (``refusals``, listed; every block set the slice uses
+            # passes here).
+            require_nc_exact(blocks, request.accuracy, request.process)
             blocks, kernels = with_ward_kernels(blocks, model, fixed)
+            if request.selection is not None and request.selection.helicities:
+                # A helicity selection keeps the selected rows of every block
+                # (``selection.restrict_rows``): Born rows, frames, dressing
+                # and the tree program follow.
+                from .selection import restrict_rows
+
+                blocks = restrict_rows(blocks, request.selection.helicities)
             table = blocks.block_table(data)
             if native_families:
                 generation = NativeGeneration(table, loop_catalogue, selection, native)
@@ -1717,10 +2181,13 @@ class LoopSlice:
 
         def schedules():
             colour = SeedColour(blocks, data, compiled.ir.vertex_terms)
+            rows = generator_input.leg_rows(blocks)
             if generation is not None and "schedules" in generator_input.NATIVE_STAGES:
-                return colour, generation.schedules(colour, model=_FRAME_MODEL)
+                return colour, generation.schedules(
+                    colour, model=_FRAME_MODEL, leg_rows=rows
+                )
             return colour, build_schedules(
-                families, loop_catalogue, colour, policy=_FRAME_POLICY
+                families, loop_catalogue, colour, policy=_frame_policy(rows)
             )
 
         colour, plan = schedules()
@@ -1743,6 +2210,7 @@ class LoopSlice:
                 selection,
                 blocks.born_orders,
                 veto=request.particle_veto,
+                allow_anomalous_veto=request.allow_anomalous_veto,
                 fixed_parameters=fixed,
                 declaration=declaration,
                 continuation=continuation,
@@ -1752,7 +2220,10 @@ class LoopSlice:
                     tuple(sorted(request.loop_order_bounds.items())),
                     request.compatibility,
                 ),
+                u1_grades=request.accuracy != "full",
             )
+            # Its root terms close on its blocks with their N_c grades too.
+            require_nc_exact(program.blocks.blocks, request.accuracy, request.process)
         sites = (
             # The O6 oracle: every rule closed at sites, witness admission.
             generate_counterterm_sites(
@@ -1767,14 +2238,57 @@ class LoopSlice:
             if program is None
             else CountertermSites((), {}, (), 0)
         )
+        field_rules = prepare_external_field_rules(prepared.counterterms.source)
+        source_field_rules = field_rules
+        alpha0_rules: tuple[Any, ...] = ()
+        if photons is not None and photons.conversion is not None:
+            # alpha(0)'s field-like term on each tagged photon (EWI-6b).
+            alpha0_rules = _alpha0_field_rules(
+                prepared.counterterms.source, photons, process
+            )
+            field_rules = (*field_rules, *alpha0_rules)
         insertions = external_field_insertions(
             table.legs,
-            prepare_external_field_rules(prepared.counterterms.source),
+            field_rules,
             data,
             selection,
             blocks.born_orders,
             forbidden=request.particle_veto,
         )
+        if alpha0_rules:
+            # The conversion is per tagged leg, not per species: an untagged
+            # photon of the same species takes none (MS-PHOTON).
+            ours = {id(rule) for rule in alpha0_rules}
+            tagged = set(photons.legs)
+            insertions = tuple(
+                insertion
+                for insertion in insertions
+                if id(insertion.rule) not in ours or insertion.leg + 1 in tagged
+            )
+        # LC and NLC: every source field factor an external leg takes and
+        # every counterterm rule a site closes needs declared N_c data (the
+        # recursion's rules are checked in ``counterterm_program_blocks``;
+        # ``refusals``, listed; MQ-NC). The alpha(0) photon terms are the
+        # engine's own, not source factors. Full colour (with or without a
+        # declaration) reads the source couplings at N_c = 3: no check.
+        projected = continuation if request.accuracy != "full" else None
+        require_declared_colour_fields(
+            projected,
+            (i for i in insertions if i.rule in source_field_rules),
+            request.process,
+        )
+        if program is None:
+            closed = {id(site.rule) for site in sites.sites}
+            require_declared_colour_rules(
+                projected,
+                {
+                    name: rule
+                    for name, rule in prepared.counterterms.rules.items()
+                    if id(rule) in closed
+                },
+                None,
+                request.process,
+            )
         ordinary = _ordinary_entries(prepared, data)
         root_sites = (*sites.sites, *(() if program is None else program.root_sites))
         # The root closure reads a vertex not closed under conjugation (a W
@@ -1792,6 +2306,16 @@ class LoopSlice:
         entries = [e for site in root_sites for e in site.rule.entries]
         entries += _conjugate_site_entries(root_sites, conjugates, program)
         entries += [e for rows in ordinary for e in rows]
+        # Root vertices read on a Goldstone-vector mixing line's Goldstone
+        # side (WP3.2 EWI-7): their promoted entries.
+        from .ct_closure import promoted_root_entries
+
+        entries += promoted_root_entries(
+            None if program is None else program.blocks,
+            ordinary,
+            lambda rows: rows if conjugates.closed(rows) else conjugates.of(rows),
+            data,
+        )
         _check_declared_loop_species(
             root_sites, _eligible_loop_species(loop_catalogue, selection, data)
         )
@@ -1837,6 +2361,16 @@ class LoopSlice:
             raise NotImplementedError(
                 f"the Born root closure at leg 1 has no terms at the Born "
                 f"orders {sorted(missing)} of the tree program"
+            )
+        inclusive_born = born_terms
+        if request.selection is not None and request.selection.flows is not None:
+            # A leading-colour selection keeps its flows' Born tensors only
+            # (``selection.restrict_born_terms``): the basis, the seed table,
+            # the colour pruning and the Born and counterterm bras follow.
+            from .selection import restrict_born_terms
+
+            born_terms = restrict_born_terms(
+                born_terms, closure.legs, request.selection.flows
             )
         basis = _born_tensors(closure, born_terms)
         seed_table, class_of = build_seed_table(
@@ -1897,7 +2431,10 @@ class LoopSlice:
             generation=generation,
             counterterm_program=program,
             cancelled_cells=cancelled,
+            external_photons=photons,
         )
+        if born_terms is not inclusive_born:
+            slice_._refuse_inexact_flows(inclusive_born)
         if request.accuracy != "full" and prune:
             slice_._prune_colour()
         slice_._plan_contraction()
@@ -1940,17 +2477,22 @@ class LoopSlice:
             # The native stages schedule the companion's subset of their
             # certified-scaleless families (and prune it at LC/NLC below).
             generation = self.generation.scaleless_companion(twin_families)
-            plan = generation.schedules(self.colour, model=_FRAME_MODEL)
+            plan = generation.schedules(
+                self.colour,
+                model=_FRAME_MODEL,
+                leg_rows=generator_input.leg_rows(self.blocks),
+            )
         else:
             plan = build_schedules(
-                twin_families, self.loop_catalogue, self.colour, policy=_FRAME_POLICY
+                twin_families,
+                self.loop_catalogue,
+                self.colour,
+                policy=_frame_policy(generator_input.leg_rows(self.blocks)),
             )
         readings = rx.reading_skeletons(plan)
         for skeleton in readings:
             self.weights.fermion_sign(skeleton)
-        table, class_of = build_seed_table(
-            self.colour, readings, self.basis, compress=self.request.compress_colour
-        )
+        table, class_of = self._companion_seeds(readings)
         twin = replace(
             self,
             families=twin_families,
@@ -1966,6 +2508,49 @@ class LoopSlice:
             twin._prune_colour()
         return twin
 
+    def _companion_seeds(
+        self, readings: Sequence[Skeleton]
+    ) -> tuple[SeedTable, dict[Skeleton, SeedCombination]]:
+        """The seed table of the certified-scaleless companion's readings.
+
+        The companion shares this slice's colour (blocks, vertices, Born
+        basis), so the compressions this slice's table certified
+        (``SeedTable.certificates``: a certificate holds for every skeleton
+        of its kind in the process, by its theorem, ``COMPRESSION_THEOREMS``)
+        compress the companion's readings too (``extend_seed_table`` on an
+        empty table with those certificates): the companion's bubbles with a
+        quartic partner are adjoint rings. On its own (``build_seed_table``)
+        the companion has no single-legged instance to certify them from
+        five legs on (one of its two blocks spans at least two legs), so
+        every reading keeps its generic seed, an exact colour-network
+        reduction each (g g > g g g g: 8,640 readings, 1,080 classes against
+        60; with native-seeds' in-crate reductions 1.44 s against 0.32 s,
+        companion plan 10.1 MB against 8.2 MB; before them 60 s, and about
+        30 min of the g g > g g g g g generation). With
+        ``SHARED_COMPANION_CERTIFICATES`` off it builds its own table (the
+        oracle).
+
+        The extended table records no native build stage, so a native LC/NLC
+        prune (native-seeds' ``prune_switch.patch``, next run) must route the
+        companion's prune through the Python callback or record a build
+        source on the extend path (design §12.4, lean companion).
+        """
+
+        compress = self.request.compress_colour
+        if not SHARED_COMPANION_CERTIFICATES or not compress:
+            return build_seed_table(
+                self.colour, readings, self.basis, compress=compress
+            )
+        empty = SeedTable(
+            self.basis,
+            (),
+            (),
+            (),
+            self.colour.formal_nc,
+            certificates=dict(self.table.certificates),
+        )
+        return extend_seed_table(empty, {}, self.colour, readings, compress=True)
+
     def _plan_contraction(self) -> None:
         """Certify the seed FFT's orbits per ``colour_contraction``."""
 
@@ -1974,14 +2559,22 @@ class LoopSlice:
             raise ValueError(f"unknown colour contraction {policy!r}")
         if policy == "direct":
             return
+        from .refusals import LoopRequestUnsupported
+
         if self.request.accuracy == "lc":
             if policy == "fft":
-                raise ValueError("leading-colour seeds are contracted directly")
+                raise LoopRequestUnsupported(
+                    "forced-seed-fft-unserved",
+                    f"{self.request.process!r}: leading-colour seeds are "
+                    "contracted directly",
+                )
             return
         self.fourier = seed_fourier(self.table)
         if self.fourier is None and policy == "fft":
-            raise ValueError(
-                "the seed table has no certified symmetric-group orbit pair"
+            raise LoopRequestUnsupported(
+                "forced-seed-fft-unserved",
+                f"{self.request.process!r}: the seed table has no certified "
+                "symmetric-group orbit pair",
             )
 
     def _prune_colour(
@@ -1996,6 +2589,10 @@ class LoopSlice:
         """
 
         accuracy = self.request.accuracy
+        selection = self.request.selection
+        # A colour-flow selection's Born basis is its flows' tensors
+        # (``selection.restrict_born_terms``): pruned ring-aware below.
+        ring_aware = selection is not None and selection.flows is not None
         grades = self._born_grades()
         criteria = [(self.table, self.degrees()["virtual"]), *observables]
         live: dict[tuple[int, Orders], bool] = {}
@@ -2016,10 +2613,25 @@ class LoopSlice:
                 )
             return found
 
-        def keep(skeleton) -> bool:
+        def own(skeleton) -> bool:
             return any(
                 class_live(c, skeleton.orders) for c, _x in self.class_of[skeleton]
             )
+
+        keep = own
+        if ring_aware:
+            # The selected flows' basis elements only: a skeleton is kept
+            # when its ring (``SkeletonView`` readings, rotations and the
+            # reflection) is live in the plan's reading of that ring, whose
+            # seed it dresses, or in its own.
+            view = SkeletonView(self.loop_catalogue, self.colour)
+            rings: dict[Any, bool] = {}
+            for reading in rx.reading_skeletons(self.plan):
+                ring = view.view(reading).canonical
+                rings[ring] = rings.get(ring, False) or own(reading)
+
+            def keep(skeleton) -> bool:
+                return rings.get(view.view(skeleton).canonical, False) or own(skeleton)
 
         # Each surviving family keeps its frame, so the pruned schedules dress
         # the remaining skeletons exactly as before (dropped ones contributed
@@ -2130,11 +2742,22 @@ class LoopSlice:
     def _point_parameters(
         self, parameters: Mapping[str, str], scale: Fraction, precision: Precision
     ) -> dict[str, str]:
-        """A point's parameter values: the caller's, the request's fixed
-        parameters and the renormalisation scale (the root of ``scale``)."""
+        """A point's parameter values: the caller's (``check_model_parameters``:
+        unknown names, the scale parameter and a fixed parameter at another
+        value are refused, as by the Python API's and the SDK's runtimes), the
+        fixed parameters (``fixed_parameters``: the request's and those the
+        model preparation fixes) and the renormalisation scale (the root of
+        ``scale``)."""
 
-        values = dict(parameters)
-        values.update(self.request.fixed_parameters)
+        fixed = self.fixed_parameters
+        values = check_model_parameters(
+            parameters,
+            self._external_parameters(),
+            self.scale_parameter,
+            fixed,
+            self.preparation_fixed_parameters,
+        )
+        values.update(fixed)
         digits = precision.working_digits
         values[self.scale_parameter] = _decimal_string(
             _sqrt_fraction(scale, digits), digits
@@ -2358,6 +2981,136 @@ class LoopSlice:
         self._cache["born-grades"] = out
         return out
 
+    def _flow_degrees(
+        self, born_terms: Mapping[Orders, tuple[Any, ...]]
+    ) -> dict[tuple[Any, Any, Orders], int]:
+        """The leading N_c degree of the squared Born's term between two
+        colour flows ``x`` and ``y`` (``selection._item_flow`` keys) per
+        squared Born order ``s``, keyed ``(x, y, s)``, for the Born terms
+        ``born_terms`` (e.g. the unrestricted ones of a colour-flow
+        selection): the slice's grading of the Born (``_born_grades``: an
+        item's N_c power plus its coupling's grades, so the N_c grade split
+        of identical-flavour lines is included) and the exact overlaps of the
+        flows' tensors. Structural, as ``degrees``. Within one Born order the
+        cross term of two distinct flows closes fewer index loops than a
+        flow's own term, so it is below the mean of their own degrees, hence
+        below the leading degree, and only a flow's own term (``x == y``) is
+        graded there; between two Born orders (QCD and electroweak Born
+        amplitudes) a cross term can be leading (u u~ > d d~: the QCD flow
+        (2,4,3,1) with the photon's (2,1,3,4) at QCD^2 QED^2), so every pair
+        of flows is graded there."""
+
+        from .fields import field_definitions
+        from .selection import _item_flow
+
+        _plan, layout = self._scalar_plan(LAURENT_POWERS)
+        missing = {
+            (term.entry.coupling.name, 0)
+            for terms in born_terms.values()
+            for term in terms
+        } - set(layout)
+        if missing:
+            # Couplings only the unselected flows' Born terms bind.
+            _part, extra = self._scalar_part(
+                sorted(missing), field_definitions(self.fields)
+            )
+            layout = {**layout, **extra}
+        keys: dict[Orders, dict[Any, set[tuple[Any, int]]]] = defaultdict(
+            lambda: defaultdict(set)
+        )
+        for order, terms in born_terms.items():
+            for term in terms:
+                grades = {g for g, _c in layout.get((term.entry.coupling.name, 0), ())}
+                for item in term.colour.terms:
+                    keys[order][_item_flow(item)].update(
+                        (item.tensor, item.nc_power + g) for g in grades
+                    )
+        out: dict[tuple[Any, Any, Orders], int] = {}
+        for a, b in product(keys, repeat=2):
+            squared = add_orders(a, b)
+            pairs = ((x, x) for x in keys[a]) if a == b else product(keys[a], keys[b])
+            for x, y in pairs:
+                for left, p in keys[a][x]:
+                    for right, q in keys[b][y]:
+                        for power, value in self.overlaps(left, right).items():
+                            if value:
+                                key = (x, y, squared)
+                                degree = power + p + q
+                                out[key] = max(out.get(key, degree), degree)
+        return out
+
+    def _refuse_inexact_flows(
+        self, inclusive: Mapping[Orders, tuple[Any, ...]]
+    ) -> None:
+        """A colour-flow selection (``selection.restrict_born_terms``) is the
+        evaluation-time selection of its flows only if, at every squared Born
+        order of the unrestricted Born ``inclusive`` (``_flow_degrees``):
+
+        * no selected flow's term with an unselected flow reaches the leading
+          degree there (the restricted Born drops it; possible between two
+          Born orders only): refused, ``interfering-colour-flows``;
+        * the selected flows' terms reach the leading degree there, or none
+          is nonzero (an exact zero there): else they would set a lower
+          degree and return a subleading value, so a selection below the
+          process's leading colour wherever it reaches it is refused,
+          ``subleading-colour-flows``. Next to a leading flow a subleading
+          one contributes exact zeros (the projection keeps the process's
+          degree P, as an evaluation-time selection of it is exactly
+          zero)."""
+
+        from .colour import outer_flow
+        from .refusals import LoopRequestUnsupported
+        from .selection import _item_flow, leading_colour_plan, plan_flows
+
+        degrees = self._flow_degrees(inclusive)
+        kept = {
+            _item_flow(item)
+            for terms in self.born_terms.values()
+            for term in terms
+            for item in term.colour.terms
+        }
+        top: dict[Orders, int] = {}
+        reached: dict[Orders, int] = {}
+        for (x, y, squared), degree in degrees.items():
+            top[squared] = max(top.get(squared, degree), degree)
+            if x in kept and y in kept:
+                reached[squared] = max(reached.get(squared, degree), degree)
+        selected = [list(w) for w in self.request.selection.flows]
+        below = [s for s, degree in sorted(reached.items()) if degree < top[s]]
+        if below or not reached:
+            orders = below or sorted(top)
+            raise LoopRequestUnsupported(
+                "subleading-colour-flows",
+                f"{self.request.process!r}: the selected colour flows "
+                f"{sorted(selected)} are below the process's leading colour at "
+                f"the squared Born orders {[dict(s) for s in orders]}, and no "
+                "selected flow reaches it there",
+            )
+        crossing = {
+            (squared, y if x in kept else x)
+            for (x, y, squared), degree in degrees.items()
+            if (x in kept) != (y in kept) and degree >= top[squared]
+        }
+        if crossing:
+            # The unselected flows by their tree words (a piece of no planar
+            # flow by its strings and traces).
+            representations = {
+                leg.label: leg.representation for leg in self.closure.legs
+            }
+            plan = leading_colour_plan(self.compiled, self.request.process)
+            words = {
+                outer_flow(flow.word, representations): list(flow.word)
+                for flow in plan_flows(plan, ())
+            }
+            named = sorted((s, str(words.get(f, f))) for s, f in crossing)
+            raise LoopRequestUnsupported(
+                "interfering-colour-flows",
+                f"{self.request.process!r}: the selected colour flows "
+                f"{sorted(selected)} interfere at the leading N_c power with the "
+                "unselected flows "
+                + ", ".join(f"{flow} at {dict(s)}" for s, flow in named),
+            )
+
     def degrees(
         self,
         overlaps: Callable[[Any, Any], Mapping[int, Any]] | None = None,
@@ -2375,6 +3128,11 @@ class LoopSlice:
         inclusive = overlaps is None and table is None
         found = self._cache.get("degrees") if inclusive else None
         if found is not None:
+            return found
+        from . import native_cells  # WP3.1 C3 switch: the "degrees" stage
+
+        if inclusive and (found := native_cells.slice_degrees(self)) is not None:
+            self._cache["degrees"] = found
             return found
         overlaps = overlaps or self.overlaps
         table = table or self.table
@@ -2495,6 +3253,18 @@ class LoopSlice:
 
     # -- colour correlations (IR-pole check) ------------------------------------
 
+    def unpredicted_sectors(self) -> dict[Orders, str]:
+        """The squared-order sectors without a Catani prediction and why
+        (``poles.UNPREDICTED_REASONS``, ``poles.sector_predictions``):
+        ``PointResult.ir_poles`` leaves them out, and they are checked
+        against a provider per split order only."""
+
+        return {
+            sector: reason
+            for sector, reason in _sector_predictions(self).items()
+            if reason is not None
+        }
+
     def dipoles(self) -> dict[tuple[int, int], tuple[tuple[Fraction, ...], ...]]:
         """<t|T_i.T_j|t'> at N_c = 3 over the Born tensors, for coloured i != j.
 
@@ -2507,6 +3277,11 @@ class LoopSlice:
 
         found = self._cache.get("dipoles")
         if found is not None:
+            return found
+        from . import dipoles  # WP3.1 C4 switch: the "dipoles" stage
+
+        if (found := dipoles.slice_operators(self)) is not None:
+            self._cache["dipoles"] = found
             return found
         legs = self.basis.legs
         coloured = [leg.label for leg in legs if leg.representation != 1]
@@ -2662,6 +3437,47 @@ class _PointEvaluation:
         self.fixed = dict(fixed or {})
         self._born_and_counterterms(rows, scalars, labels, loop_rows)
         self.rows = loop_rows
+        # What a twin at other parameters needs (``counterterm_twin``).
+        self._twin_inputs = (point, sources, loop_sources, fixed)
+        self.counterterms_uv: dict | None = None
+
+    def counterterm_twin(self) -> _PointEvaluation | None:
+        """The point at the IR regulator 0 (``poles.regulated_parameters``)
+        with pole slots, formed once: its counterterm and field components
+        are this point's counterterms' UV parts (module docstring of
+        ``poles``, "Models with pole regulators"); None for a model without
+        pole regulators."""
+
+        regulators = self.slice.pole_regulators
+        if regulators is None:
+            return None
+        twin = self.__dict__.get("_counterterm_twin")
+        if twin is None:
+            point, sources, loop_sources, fixed = self._twin_inputs
+            with self.numbers.scope():
+                twin = self._counterterm_twin = _PointEvaluation(
+                    self.slice,
+                    point,
+                    self.scale,
+                    regulated_parameters(self.parameters, regulators),
+                    self.numbers,
+                    PoleSelection.ALL,
+                    sources=sources,
+                    loop_sources=loop_sources,
+                    fixed=fixed,
+                )
+        return twin
+
+    def _counterterms_uv(self) -> dict | None:
+        """The UV parts of the counterterm and field components per
+        (component, sector, power) (``counterterm_twin``), or None (no pole
+        regulators: ``poles.split_sector``'s remainder definition)."""
+
+        if self.counterterms_uv is None:
+            twin = self.counterterm_twin()
+            if twin is not None:
+                self.counterterms_uv = twin.counterterms
+        return self.counterterms_uv
 
     def finish(self, retest: str | None) -> _PointEvaluation:
         """Dress (schedule B), reduce and assemble the complete virtual."""
@@ -2703,7 +3519,10 @@ class _PointEvaluation:
 
         slice_, numbers = self.slice, self.numbers
         self.constants = rx.KernelConstants(
-            _kernel_parameters(slice_.compiled, self.parameters), numbers.carrier
+            _constant_parameters(
+                slice_.compiled, self.parameters, numbers.precision.working_digits
+            ),
+            numbers.carrier,
         )
         carrier = self._site_carrier()
         closure = slice_.closure
@@ -2784,6 +3603,8 @@ class _PointEvaluation:
                         numbers,
                     )
         born = defaultdict(lambda: numbers.zero)
+        # The physical bra against the loop side's Born (loop-side sources).
+        loop_born = defaultdict(lambda: numbers.zero)
         counterterms = defaultdict(lambda: numbers.zero)
         self.amplitudes: dict[rx.Row, dict[tuple[int, Orders], Any]] = {}
         self.born_vectors: dict[rx.Row, dict[Orders, dict]] = {}
@@ -2827,6 +3648,11 @@ class _PointEvaluation:
                 born[squared] += interfere(
                     vectors[left], vectors[right], degree_of("born", squared)
                 )
+                if loop_rows is not rows:
+                    ket = self.loop_vectors[row][right]
+                    loop_born[squared] += interfere(
+                        vectors[left], ket, degree_of("born", squared)
+                    )
             loops: dict[tuple[str, int, Orders], dict] = defaultdict(dict)
             for site, terms in slice_.site_terms.items():
                 for term in terms:
@@ -2875,8 +3701,13 @@ class _PointEvaluation:
                             counterterms[FIELD_COMPONENT, sector, power] += (
                                 value + value.conjugate()
                             )
-        average = slice_.normalisation.average
+        average = self.average
         self.born = {order: value.real / average for order, value in born.items()}
+        self.loop_born = (
+            None
+            if loop_rows is rows
+            else {order: value.real / average for order, value in loop_born.items()}
+        )
         self.counterterms = {
             key: value.real / average for key, value in counterterms.items()
         }
@@ -3004,7 +3835,10 @@ class _PointEvaluation:
         )
         constants = (
             rx.KernelConstants(
-                _kernel_parameters(slice_.compiled, self.parameters), carrier
+                _constant_parameters(
+                    slice_.compiled, self.parameters, numbers.precision.working_digits
+                ),
+                carrier,
             )
             if exact
             else self.constants
@@ -3012,7 +3846,8 @@ class _PointEvaluation:
         degrees = (
             slice_.degrees()["virtual"] if slice_.request.accuracy != "full" else {}
         )
-        if seeds is None:
+        own = seeds is None
+        if own:
             seeds = SectorSeeds(
                 slice_.table,
                 slice_.class_of,
@@ -3026,12 +3861,17 @@ class _PointEvaluation:
             )
         self.colour_contraction = getattr(seeds, "algorithm", "direct")
         if (
-            slice_.request.colour_contraction == "fft"
+            own
+            and slice_.request.colour_contraction == "fft"
             and self.colour_contraction != SYMMETRIC_GROUP_FFT
         ):
             # An explicit "fft" requires the FFT: the exact dressing,
-            # DoubleFloat and arbitrary precision (and observable columns)
-            # contract directly, so they refuse instead of falling back.
+            # DoubleFloat and arbitrary precision contract the sector seeds
+            # directly, so they refuse instead of falling back. Observable
+            # columns (``seeds`` given) are contracted directly by design;
+            # a forced FFT refuses them where they are declared or served
+            # (``observables.FORCED_FFT_OBSERVABLES``), and the generation's
+            # validation still runs them as its reference.
             raise ValueError(
                 "colour contraction 'fft' contracts binary64 sector seeds only; "
                 "exact, arbitrary-precision and observable seeds are contracted "
@@ -3135,11 +3975,24 @@ class _PointEvaluation:
         arithmetic = "double" if numbers.double else "arbitrary"
         digits = None if numbers.double else numbers.precision.digits
         lanes, groups = [], []
+        working = numbers.precision.working_digits
         masses = _mass_values(
             slice_.compiled,
             self.parameters,
             {mass for key in numerators for _mask, mass in key[0]},
+            working,
         )
+        onshell = _leg_masses(slice_, self.parameters, working)
+        full = (1 << len(onshell)) - 1
+
+        def invariant(arc: int, a, b):
+            # A single-leg arc is the leg's squared mass (on-shell external
+            # invariants, design §11.1), exactly the value its propagators
+            # take; any other arc is p(arc)^2 of the given momenta.
+            leg = onshell_leg(arc, full)
+            if leg is not None:
+                return onshell[leg]
+            return _minkowski([x - y for x, y in zip(a, b, strict=True)])
 
         def batch(values, lane: int):
             return native.NativeBatch.from_decimal(
@@ -3150,12 +4003,23 @@ class _PointEvaluation:
             working = numbers.precision.working_digits
             return [[_decimal_string(x, working), "0"] for x in values]
 
+        def complex_values(values):
+            # A complex-mass scheme's squared pole masses are complex.
+            working = numbers.precision.working_digits
+            return [
+                [_decimal_string(x.real, working), _decimal_string(x.imag, working)]
+                if isinstance(x, rx.Complex)
+                else [_decimal_string(x, working), "0"]
+                for x in values
+            ]
+
         for (family, loop_order), numerator in sorted(numerators.items()):
             sequence = numerator.sequence
             n = len(sequence)
-            vectors = [leg_momentum(mask, self.incoming) for mask in shifts(sequence)]
+            arcs = shifts(sequence)
+            vectors = [leg_momentum(mask, self.incoming) for mask in arcs]
             matrix = [
-                _minkowski([a - b for a, b in zip(vectors[i], vectors[j], strict=True)])
+                invariant(arcs[i] ^ arcs[j], vectors[i], vectors[j])
                 for i in range(n)
                 for j in range(n)
             ]
@@ -3168,7 +4032,10 @@ class _PointEvaluation:
                     (
                         n,
                         batch(real(x for v in vectors for x in v), lane),
-                        batch(real(masses[mass] for _mask, mass in sequence), lane),
+                        batch(
+                            complex_values(masses[mass] for _mask, mass in sequence),
+                            lane,
+                        ),
                         batch(real([self.scale]), lane),
                         batch(real(matrix), lane),
                         batch([numbers.strings(c) for c in coefficients], lane),
@@ -3232,7 +4099,7 @@ class _PointEvaluation:
 
     def _bare(self, families) -> dict[Orders, Laurent]:
         numbers = self.numbers
-        average = self.slice.normalisation.average
+        average = self.average
         factor = numbers.pair(0, 1) * (
             1 / (LOOP_FACTOR_DENOMINATOR * numbers.pi * numbers.pi * average)
         )
@@ -3261,6 +4128,8 @@ class _PointEvaluation:
                 {lane: Laurent(v[0], v[3], numbers.zero) for lane, v in split.items()}
             )
             origins = {origin: {name: {} for name in COMPONENTS} for origin in ORIGINS}
+            # A model with pole regulators: the counterterms' own UV parts.
+            counterterms_uv = self._counterterms_uv()
         components: dict[str, dict[Orders, Laurent]] = {name: {} for name in COMPONENTS}
         for sector, _pairs in slice_.sectors:
             values = {
@@ -3274,11 +4143,23 @@ class _PointEvaluation:
                     ]
                 )
             if origins is not None:
+                ultraviolet = None
+                if counterterms_uv is not None:
+                    ultraviolet = {
+                        name: Laurent(
+                            *[
+                                counterterms_uv.get((name, sector, power), zero)
+                                for power in LAURENT_POWERS
+                            ]
+                        )
+                        for name in ("r2", "uv_local", FIELD_COMPONENT)
+                    }
                 parts = split_sector(
                     values,
                     bare_uv.get(sector, Laurent(zero, zero, zero)),
                     FIELD_COMPONENT,
                     Laurent,
+                    ultraviolet,
                 )
                 for origin, part in parts.items():
                     for name in COMPONENTS:
@@ -3318,6 +4199,7 @@ class _PointEvaluation:
             colour_contraction=self.colour_contraction,
             poles=self.mode,
             pole_origins=origins,
+            loop_born=self.loop_born,
         )
         self.absolute = self._lane_budget(
             {lane: value.coefficients for lane, value in self.families.items()},
@@ -3345,9 +4227,7 @@ class _PointEvaluation:
         """Per sector, sum_lanes |delta bare| <= 2 |delta Omega| / (16 pi^2
         average) plus the absolute local components."""
 
-        factor = 2 / (
-            LOOP_FACTOR_DENOMINATOR * math.pi**2 * self.slice.normalisation.average
-        )
+        factor = 2 / (LOOP_FACTOR_DENOMINATOR * math.pi**2 * float(self.average))
         width = 3 if self.poles else 1
         budget = {sector: [0.0] * width for sector, _pairs in self.slice.sectors}
         for (_family, _loop, sector), errors in lanes.items():
@@ -3391,6 +4271,50 @@ class _PointEvaluation:
             ]
         return self._lane_budget(lanes, local)
 
+    # -- normalisation -----------------------------------------------------------------
+
+    @property
+    def average(self) -> Any:
+        """The divisor of every output of this point: the slice's spin and
+        colour average and symmetry factor (``Normalisation.average``),
+        divided by (alpha(0) / alpha)^n for n tagged on-shell external photons
+        of an electroweak request (``LoopSlice.external_photons``, WP3.2
+        EWI-6b; per leg, MS-PHOTON):
+        the Born, the loop lanes, the counterterm and field components, the
+        correlators of Catani's operator and the stability budgets all take
+        each photon's coupling e(0) instead of the loops' e. Without such
+        photons it is the slice's average itself (outputs unchanged)."""
+
+        found = self.__dict__.get("_average")
+        if found is None:
+            found = self.__dict__["_average"] = self._scaled_average()
+        return found
+
+    def _scaled_average(self) -> Any:
+        slice_ = self.slice
+        average = slice_.normalisation.average
+        photons = getattr(slice_, "external_photons", None)
+        if photons is None or photons.conversion is None:
+            # No tagged photon, or loops that couple with alpha(0) already.
+            return average
+        values = _kernel_parameters(slice_.compiled, self.parameters)
+        inverse = values.get(photons.alpha0_inverse)
+        if not inverse:
+            raise ValueError(
+                f"the on-shell external photons of {slice_.request.process!r} "
+                f"couple with alpha(0) (WP3.2 EWI-6b): set {photons.alpha0_inverse} "
+                "(1/alpha(0), e.g. 137.035999) among the parameters, not "
+                f"{inverse}"
+            )
+        alpha = self._qed_alpha()
+        if alpha is None:
+            raise ValueError(
+                "alpha of the photon couplings is not real and positive at this point"
+            )
+        numbers = self.numbers
+        ratio = numbers.real(1 / inverse) / alpha
+        return numbers.real(average) / ratio ** len(photons.legs)
+
     # -- IR poles ----------------------------------------------------------------------
 
     def _stable_coloured_legs(self) -> bool:
@@ -3399,9 +4323,10 @@ class _PointEvaluation:
         operators describe stable (real-mass) emitters."""
 
         values = _kernel_parameters(self.slice.compiled, self.parameters)
+        abelian = self._correction_orders().abelian
         charged = (
             _charged_fields(self.slice.compiled)
-            if "QED" in self.slice.request.corrections
+            if abelian is not None and abelian in self.slice.request.corrections
             else frozenset()
         )
         return all(
@@ -3422,9 +4347,23 @@ class _PointEvaluation:
         colour-summed Born). A sector's prediction is their sum
         (``poles.sector_sum``); a correction without an operator, or one of
         them making no prediction, gives none (never a partial sum).
+
+        The strong and the electromagnetic corrections are recognised by the
+        gluon's and the photon's vertices (``ew_policy.correction_orders``),
+        not by their orders' names (genericity audit m1). Only the sectors
+        whose loops the requested corrections complete are predicted
+        (``poles.predicted_sectors``; ``_predicted_sectors``): the mixed
+        QCD x EW sectors of a QCD-only request (MadLoop's loop selection
+        leaves out the gluon-photon boxes) have no prediction and are absent
+        from the mapping; None when no sector is predicted.
         """
 
-        operators = {"QCD": self._qcd_poles, "QED": self._qed_poles}
+        orders = self._correction_orders()
+        operators = {}
+        if orders.strong is not None:
+            operators[orders.strong] = self._qcd_poles
+        if orders.abelian is not None:
+            operators.setdefault(orders.abelian, self._qed_poles)
         predictions = []
         for name in self.slice.request.corrections:
             operator = operators.get(name)
@@ -3432,7 +4371,25 @@ class _PointEvaluation:
             if prediction is None:
                 return None
             predictions.append(prediction)
-        return sector_sum(predictions)
+        predicted = self._predicted_sectors()
+        out = {
+            sector: poles
+            for sector, poles in sector_sum(predictions).items()
+            if sector in predicted
+        }
+        return out or None
+
+    def _correction_orders(self) -> ew_policy.CorrectionOrders:
+        """The slice's strong and electromagnetic orders
+        (``ew_policy.correction_orders``), found once per slice."""
+
+        return _correction_orders(self.slice)
+
+    def _predicted_sectors(self) -> frozenset[Orders]:
+        """The sectors ``_ir_poles`` predicts (``poles.predicted_sectors``),
+        found once per slice."""
+
+        return _predicted_sectors(self.slice)
 
     def _qcd_poles(self) -> dict[Orders, tuple[Any, Any]] | None:
         """The QCD operator per sector (``poles.catani_poles``), or None
@@ -3440,29 +4397,44 @@ class _PointEvaluation:
 
         V_poles = (alpha_s / 2 pi) sum_i sum_{j != i} (1/C_i) (C_i/eps^2 +
         gamma_i/eps) (1 + eps log(mu^2 / |2 p_i.p_j|)) <T_i.T_j> for massless
-        coloured legs, n_f light flavours in gamma_g; massive emitters take
-        the massive form. The legs' masses are the model's runtime values (a
-        symbolic mass bound to 0 is massless), not the p^2 of the given
-        (possibly rounded) momenta.
+        coloured legs, gamma_i by each leg's spin and representation
+        (``poles.strong_gamma``; gamma_g = beta_0 over the request's
+        eligible massless coloured species, ``_strong_beta0``); massive
+        emitters take the massive form. The legs' masses are the model's
+        runtime values (a symbolic mass bound to 0 is massless), not the p^2
+        of the given (possibly rounded) momenta. No prediction for a leg or a
+        loop species the operator does not cover (genericity audit m3).
         """
 
         slice_, numbers = self.slice, self.numbers
-        if slice_.alpha_s_parameter is None:
+        strong = self._correction_orders().strong
+        if slice_.alpha_s_parameter is None or strong is None:
             return None
         legs = {leg.label: leg for leg in slice_.basis.legs}
         coloured = sorted(
             label for label, leg in legs.items() if leg.representation != 1
         )
         values = _kernel_parameters(slice_.compiled, self.parameters)
-        masses = {}
+        beta0 = _strong_beta0(slice_, strong, values)
+        gammas = {}
         for leg in slice_.families.legs:
-            name = leg.mass.mass
-            if name == ZERO:
-                masses[leg.index + 1] = Fraction(0)
-            elif name in values:
-                masses[leg.index + 1] = values[name] ** 2
-            elif leg.index + 1 in coloured:
-                return None
+            label = leg.index + 1
+            if label in coloured:
+                gammas[label] = _strong_leg_gamma(slice_, leg, beta0)
+        # Every leg's mass from the slice's one mass evaluator (an external
+        # mass exactly, a derived one at the working digits; M2).
+        mass_of = _model_masses(
+            slice_.compiled, self.parameters, numbers.precision.working_digits
+        )
+        masses = {
+            leg.index + 1: mass_of(leg.mass.mass) ** 2 for leg in slice_.families.legs
+        }
+        if any(
+            colour_casimir(legs[j].representation) is None
+            or (masses[j] == 0 and gammas[j] is None)
+            for j in coloured
+        ):
+            return None
         dipoles = slice_.dipoles()
         three = Fraction(NC)
         physical = []
@@ -3473,11 +4445,10 @@ class _PointEvaluation:
                 for (tensor, power), value in vector.items():
                     scaled = value * numbers.real(three**power)
                     folded[tensor] = folded.get(tensor, numbers.zero) + scaled
-        light = _light_flavours(slice_.data, values)
         alpha = numbers.real(values[slice_.alpha_s_parameter])
         prefactor = alpha / (2 * numbers.pi)
         mu2 = numbers.real(self.scale)
-        correction = add_orders((("QCD", 2),))
+        correction = add_orders(((strong, 2),))
         out = {}
         for sector, _pairs in slice_.sectors:
 
@@ -3489,7 +4460,7 @@ class _PointEvaluation:
                             if add_orders(a, b, correction) != sector:
                                 continue
                             total += self._sandwich(left, right, dipoles[(i, j)])
-                return total / slice_.normalisation.average
+                return total / self.average
 
             prediction = catani_poles(
                 coloured,
@@ -3498,7 +4469,7 @@ class _PointEvaluation:
                 {label: masses[label] for label in coloured},
                 correlated,
                 casimir=_casimir,
-                gamma=lambda j: _gamma(legs[j].representation, light),
+                gamma=lambda j: gammas[j],
                 mu2=mu2,
                 log=lambda x: _log(x, numbers),
                 real=numbers.real,
@@ -3520,36 +4491,43 @@ class _PointEvaluation:
         prefactor alpha / 2 pi takes alpha of the model's photon couplings at
         this point (``_qed_alpha``: alpha_Gmu in a G_mu model), the coupling
         of the loops. A leg is massless where the model's runtime mass is
-        zero (``ZERO``, a compile-time zero or a value bound to 0). No
-        prediction for a charged leg of unknown mass, a massless charged
-        vector or an on-shell external photon: the engine does not yet couple
-        such a photon with alpha(0), the user's convention [U9] (WP3.2
-        EWI-6b), and ``ew_policy`` refuses electroweak requests with one.
+        zero (``ZERO``, a compile-time zero or a value bound to 0); a derived
+        mass is the slice's one mass evaluator's (``_model_masses``). Tagged
+        on-shell external photons couple with alpha(0) (``LoopSlice.
+        external_photons``, WP3.2 EWI-6b): the Born is the alpha(0) one
+        (``average``) and they add no gamma_gamma. Untagged ones keep the
+        loops' coupling (MS-PHOTON, per leg): each adds -gamma_gamma/eps
+        (``poles.qed_catani_poles``, convention "loop-coupling";
+        ``_photon_gamma``). No prediction for a massless charged vector.
         """
 
         slice_, numbers = self.slice, self.numbers
+        abelian = self._correction_orders().abelian
+        if abelian is None:
+            return None
         compiled = slice_.compiled
         parameters = {record.name: record for record in compiled.ir.parameters}
         records = {record.name: record for record in compiled.ir.particles}
         fixed = slice_.request.fixed_parameters
-        values = _kernel_parameters(compiled, self.parameters)
+        mass_of = _model_masses(
+            compiled, self.parameters, numbers.precision.working_digits
+        )
+        _tagged, untagged = ew_policy.slice_photon_tags(slice_)
         charges: dict[int, Fraction] = {}
         masses: dict[int, Fraction] = {}
         spins: dict[int, int] = {}
         for leg in slice_.families.legs:
             record = records[leg.field]
             if ew_policy.is_photon(record, parameters, fixed):
-                return None
+                continue
             charge = exact_charge(record.charge)
             if charge == 0:
                 continue
             label, name = leg.index + 1, leg.mass.mass
             if name == ZERO or ew_policy.is_zero(name, parameters, {}):
                 masses[label] = Fraction(0)
-            elif name in values:
-                masses[label] = values[name] ** 2
             else:
-                return None
+                masses[label] = mass_of(name) ** 2
             charges[label] = charge
             spins[label] = int(record.spin)
         alpha = self._qed_alpha()
@@ -3558,24 +4536,67 @@ class _PointEvaluation:
         prefactor = alpha / (2 * numbers.pi)
         mu2 = numbers.real(self.scale)
         zero = numbers.real(0)
+        gamma_photon = self._photon_gamma(abelian, mass_of) if untagged else None
         out = {}
         for sector, _pairs in slice_.sectors:
             prediction = qed_catani_poles(
                 charges,
                 {label: self.incoming[label - 1] for label in charges},
                 masses,
-                dressed_born(self.born, sector, "QED", zero),
+                dressed_born(self.born, sector, abelian, zero),
                 gamma=lambda j: qed_gamma(spins[j], charges[j]),
                 mu2=mu2,
                 log=lambda x: _log(x, numbers),
                 real=numbers.real,
                 sqrt=lambda x: math.sqrt(x) if numbers.double else x.sqrt(),
+                photons=len(untagged),
+                gamma_photon=gamma_photon,
+                convention=UNTAGGED_PHOTON_CONVENTION,
             )
             if prediction is None:
                 return None
             single, double = prediction
             out[sector] = (prefactor * single, prefactor * double)
         return out
+
+    def _photon_gamma(self, abelian: str, mass_of: Callable[[str], Any]) -> Fraction:
+        """gamma_gamma of an untagged on-shell external photon
+        (``poles.photon_gamma``): -2/3 sum_f N_c^f Q_f^2 over the fermion
+        species perturbative in the electromagnetic correction, not vetoed,
+        that are massless at this point (a compile-time zero, a value bound
+        to 0, or a runtime value 0), each species once."""
+
+        slice_ = self.slice
+        compiled = slice_.compiled
+        parameters = {record.name: record for record in compiled.ir.parameters}
+        veto = set(slice_.request.particle_veto)
+        orders = slice_.prepared.structure.perturbative_species_orders
+        perturbative = {
+            abs(int(pdg)) for pdg, found in orders.items() if abelian in set(found)
+        }
+        light: dict[int, tuple[Fraction, int]] = {}
+        for record in compiled.ir.particles:
+            pdg = abs(int(record.pdg_code))
+            if (
+                pdg in light
+                or pdg in veto
+                or pdg not in perturbative
+                or int(record.spin) != ew_policy.FERMION_SPIN
+                or int(record.ghost_number) != 0
+            ):
+                continue
+            charge = exact_charge(record.charge)
+            if charge == 0:
+                continue
+            name = str(record.mass)
+            if not (
+                name == ZERO
+                or ew_policy.is_zero(name, parameters, slice_.request.fixed_parameters)
+                or mass_of(name) == 0
+            ):
+                continue
+            light[pdg] = (charge, abs(int(record.color)))
+        return photon_gamma(light.values())
 
     def _qed_alpha(self) -> Any:
         """alpha of the model's photon couplings at this point's parameters
@@ -3649,10 +4670,41 @@ class _NativePoint(_PointEvaluation):
         self.scale = scale
         self.parameters = parameters
         self.born: dict[Orders, Any] = {}
+        # With loop-side sources: the executor's loop-side Born interference.
+        self.loop_born: dict[Orders, Any] | None = None
         self.counterterms: dict = {}
+        # The counterterm and field components with the IR regulator at 0
+        # (a model with pole regulators, split selections): formed by the
+        # executor (``plan_export.NativeExecutor.reduce``).
+        self.counterterms_uv: dict | None = None
         self.native_counterterms = False
         self.colour_contraction = "direct"
         self.retest_families = None
+
+    def counterterm_twin(self) -> None:
+        # A native point has no Python twin: the executor forms its
+        # counterterms at the IR regulator 0 (``counterterms_uv``).
+        if self.slice.pole_regulators is not None:
+            raise ValueError(
+                "a native point's counterterms at the IR regulator 0 are the "
+                "executor's (counterterms_uv), not a Python twin's"
+            )
+        return None
+
+    def _counterterms_uv(self) -> dict | None:
+        if self.counterterms_uv is None and self.slice.pole_regulators is not None:
+            raise ValueError(
+                "the uv and ir pole selections of a model with pole regulators "
+                "need the executor's counterterm components at the IR regulator 0"
+            )
+        return self.counterterms_uv
+
+    def _scaled_average(self) -> Any:
+        # The native trees take the alpha(0) of on-shell external photons in
+        # the photons' sources (``native_trees._parameter_program``'s
+        # ``photons``): every output the executor forms already carries
+        # (alpha(0) / alpha)^n, so the divisor is the slice's average.
+        return self.slice.normalisation.average
 
     def _stable_coloured_legs(self) -> bool:
         # Catani's prediction is not formed natively (WP3.1 I5c).
@@ -3697,6 +4749,7 @@ class _NativePoint(_PointEvaluation):
             dict(self.families),
             None,
             colour_contraction=self.colour_contraction,
+            loop_born=self.loop_born,
         )
         self.absolute = self._lane_budget(
             {lane: value.coefficients for lane, value in self.families.items()}
@@ -3786,24 +4839,43 @@ def _interfere(
 
 
 class _BlockRows:
-    """Tree rows of the slice as ``rx.BlockRows``, as Feynman-rule currents."""
+    """Tree rows of the slice as ``rx.BlockRows``, as Feynman-rule currents,
+    keyed by the contents' block names (``PositionColour.block_names``).
+
+    A row is the sum of the tree blocks of one name, chirality and helicity
+    row: the tree engine splits a field current into several DAG currents
+    whose keys differ only by the flavour flow of their trees (u u~ > w+ w- g:
+    the u current of legs {1, 3, 4} through gamma*/Z* and through a t-channel
+    d), and a loop vertex attaches their sum. ``_index`` holds per row the
+    ``(block, row)`` entries in block order; ``value`` adds their Feynman-rule
+    currents in that order (one entry: its current, as before)."""
 
     def __init__(self, slice_: LoopSlice, rows):
         from .blocks import _NativeFields
+        from .colour import block_name
 
         fields = _NativeFields.of(slice_.data)
         index = slice_._cache.get("block-rows")
         if index is None:
             index = defaultdict(lambda: defaultdict(dict))
-            for block in slice_.blocks.blocks:
+            trees = slice_.blocks
+            for block in trees.blocks:
                 key = block.key
                 if key.auxiliary_kind is not None:
                     continue
                 name = fields.incoming(key.particle_id)["name"]
-                bucket = index[(key.external_mask, name, key.coupling_orders, key.word)]
+                bucket = index[
+                    (
+                        key.external_mask,
+                        name,
+                        key.coupling_orders,
+                        block_name(trees, block),
+                    )
+                ]
                 for row in block.rows:
                     helicities = tuple((label - 1, h) for label, h in row.helicities)
-                    bucket[key.chirality][helicities] = (block, row)
+                    entries = bucket[key.chirality].get(helicities, ())
+                    bucket[key.chirality][helicities] = (*entries, (block, row))
             slice_._cache["block-rows"] = index
         self._index = index
         self._rows = rows
@@ -3813,12 +4885,22 @@ class _BlockRows:
         return {chirality: tuple(rows) for chirality, rows in found.items()}
 
     def value(self, block, word, chirality, row, dimension):
-        tree, entry = self._index[(block.mask, block.field, block.orders, word)][
-            chirality
-        ][row]
-        variant = "source" if tree.is_source else "propagated"
-        sign = tree.wick_sign
-        return tuple(sign * value for value in self._rows[(entry.current_id, variant)])
+        entries = self._index[(block.mask, block.field, block.orders, word)][chirality][
+            row
+        ]
+        total = None
+        for tree, entry in entries:
+            variant = "source" if tree.is_source else "propagated"
+            sign = tree.wick_sign
+            current = tuple(
+                sign * value for value in self._rows[(entry.current_id, variant)]
+            )
+            total = (
+                current
+                if total is None
+                else tuple(a + b for a, b in zip(total, current, strict=True))
+            )
+        return total
 
 
 def _family_loop_species(families: FamilySet, data) -> tuple[int, ...]:
@@ -3846,6 +4928,22 @@ def _family_loop_species(families: FamilySet, data) -> tuple[int, ...]:
     )
     pdg = {entry["name"]: int(entry["pdg_code"]) for entry in data["particles"]}
     return tuple(sorted(pdg[name] for name in names))
+
+
+def _correction_species(structure: Any, request: SliceRequest) -> tuple[int, ...]:
+    """PDG codes (both charge states) of the species perturbative in a
+    requested correction (``perturbative_species_orders``, keyed by |PDG|):
+    the loop lines' species before the catalogue is built."""
+
+    corrections = set(request.corrections)
+    return tuple(
+        sorted(
+            sign * abs(int(pdg))
+            for pdg, orders in structure.perturbative_species_orders.items()
+            if corrections & set(orders)
+            for sign in (1, -1)
+        )
+    )
 
 
 def _eligible_loop_species(
@@ -3985,17 +5083,181 @@ def _kernel_parameters(compiled, parameters: Mapping[str, str]) -> dict[str, Fra
     return values
 
 
-def _mass_values(
-    compiled, parameters: Mapping[str, str], masses: Iterable[Any]
-) -> dict[Any, Fraction]:
-    """Squared real loop masses per mass id (widths are not part of the slice)."""
+def _substitutions(compiled, external: Mapping[str, Decimal], digits: int) -> dict:
+    """The model's external parameter symbols bound to ``external`` (real) at
+    ``digits`` decimal digits, for ``_definition_value``."""
+
+    from symbolica import E
+
+    from pyamplicol._internal.physics.symbols import symbols
+    from pyamplicol.runtime.symbolica_exact import _upcast_complex_inputs
+
+    model_symbols = symbols.model(compiled.name)
+    return dict(
+        zip(
+            (E(model_symbols.symbol(name).to_canonical_string()) for name in external),
+            _upcast_complex_inputs(
+                [(value, Decimal(0)) for value in external.values()], digits
+            ),
+            strict=True,
+        )
+    )
+
+
+def _definition_value(
+    definition: str, substitutions: Mapping[Any, Any], digits: int
+) -> tuple[Decimal, Decimal]:
+    """A derived parameter's resolved definition (in the external parameters)
+    at ``digits`` decimal digits: (real, imaginary)."""
+
+    from symbolica import E
+
+    value = E(definition).evaluate(substitutions, decimal_digit_precision=digits)
+    return tuple(Decimal(x) for x in value.to_decimal_tuple())
+
+
+def _model_masses(
+    compiled,
+    parameters: Mapping[str, str],
+    digits: int,
+    *,
+    pole_masses: bool = False,
+) -> Callable[[str], Any]:
+    """The model's mass parameters at ``parameters``, by name, as exact
+    values: an external parameter its exact value; a derived one (loop_sm's
+    MW, an internal mass of any model) its resolved definition at ``digits``
+    decimal digits (the value ``TreeRows._model_values`` gives the
+    wavefunctions at the working digits), read exactly. The one mass
+    evaluator of the slice: loop propagator masses (``_mass_values``), the
+    legs' on-shell invariants (``_leg_masses``) and Catani's massive emitters
+    (``_PointEvaluation._qcd_poles``, ``_qed_poles``) take the same values,
+    so a derived mass's legs are on the shell its propagators and sources
+    take (DESIGN §11.1). A derived mass must be real and positive, except,
+    with ``pole_masses``, a complex-mass scheme's pole mass (an internal
+    parameter of complex type, ``model_cms``: sqrt(M^2 - i M Gamma) with a
+    positive real part), an exact ``rx.Complex``: loop propagators and the
+    kernel constants take it; external states are stable
+    (``model_cms.require_stable_external_states``), so legs and Catani's
+    emitters never read one."""
 
     values = _kernel_parameters(compiled, parameters)
+    definitions = {
+        record.name: record.resolved_expression
+        for record in compiled.ir.parameters
+        if record.nature == "internal"
+    }
+    complex_typed = {
+        record.name
+        for record in compiled.ir.parameters
+        if record.nature == "internal"
+        and str(getattr(record, "parameter_type", "real")) == "complex"
+    }
+    found: dict[str, Any] = {}
+    substitutions: list[dict] = []
 
+    def mass(name: str) -> Any:
+        if name == ZERO:
+            return Fraction(0)
+        if name in values:
+            return values[name]
+        if name not in found:
+            if name not in definitions:
+                raise KeyError(f"the mass {name!r} is no model parameter")
+            if not substitutions:
+                external = {
+                    record.name: Decimal(
+                        parameters.get(
+                            record.name,
+                            str(compiled.parameter_defaults[record.name][0]),
+                        )
+                    )
+                    for record in compiled.ir.parameters
+                    if record.nature == "external"
+                    and record.name in compiled.parameter_defaults
+                }
+                substitutions.append(_substitutions(compiled, external, digits))
+            real, imaginary = _definition_value(
+                definitions[name], substitutions[0], digits
+            )
+            if real <= 0 or (imaginary != 0 and name not in complex_typed):
+                raise ValueError(
+                    f"the derived mass {name!r} is not real and positive ({real}, "
+                    f"{imaginary})"
+                )
+            found[name] = (
+                Fraction(real)
+                if imaginary == 0
+                else rx.Complex(Fraction(real), Fraction(imaginary))
+            )
+        value = found[name]
+        if isinstance(value, rx.Complex) and not pole_masses:
+            raise ValueError(
+                f"the mass {name!r} is a complex pole mass ({value!r}): an "
+                "external state or a Catani emitter of that mass is unstable "
+                "(cms-external-width)"
+            )
+        return value
+
+    return mass
+
+
+def _squared(value: Any) -> Any:
+    """A mass's square: a ``Fraction``, or an ``rx.Complex`` for a pole mass."""
+
+    return value * value if isinstance(value, rx.Complex) else value**2
+
+
+def _constant_parameters(
+    compiled, parameters: Mapping[str, str], digits: int
+) -> dict[str, Fraction]:
+    """The model parameter values of the kernel constants
+    (``rx.KernelConstants``): every external parameter exactly, and every
+    particle's derived mass the slice's one mass evaluator gives
+    (``_model_masses``; a loop propagator's kernel reads its mass). A derived
+    mass that is not real and positive here is left out (a constant reading
+    it is refused by ``KernelConstants``)."""
+
+    values = _kernel_parameters(compiled, parameters)
+    internal = {
+        record.name for record in compiled.ir.parameters if record.nature == "internal"
+    }
+    derived = sorted({str(record.mass) for record in compiled.ir.particles} & internal)
+    if derived:
+        mass_of = _model_masses(compiled, parameters, digits, pole_masses=True)
+        for name in derived:
+            try:
+                values[name] = mass_of(name)
+            except ValueError:
+                continue
+    return values
+
+
+def _mass_values(
+    compiled, parameters: Mapping[str, str], masses: Iterable[Any], digits: int
+) -> dict[Any, Any]:
+    """Squared loop masses per mass id, a derived mass at ``digits`` decimal
+    digits (``_model_masses``): real (widths are not part of the slice), or
+    a complex-mass scheme's complex pole mass squared (an ``rx.Complex``,
+    M^2 - i M Gamma to the working digits; ``model_cms``)."""
+
+    mass_of = _model_masses(compiled, parameters, digits, pole_masses=True)
     return {
-        mass: Fraction(0) if mass.massless else values[mass.mass] ** 2
+        mass: Fraction(0) if mass.massless else _squared(mass_of(mass.mass))
         for mass in masses
     }
+
+
+def _leg_masses(
+    slice_, parameters: Mapping[str, str], digits: int
+) -> tuple[Fraction, ...]:
+    """Each external leg's squared mass in leg order, the value of the
+    invariants its mass shell fixes (``families.onshell_leg``; DESIGN §11.1):
+    the value ``_mass_values`` gives its mass id (``_model_masses``: a
+    derived mass at ``digits`` decimal digits), 0 for a massless leg (a mass
+    parameter bound to 0 included)."""
+
+    mass_of = _model_masses(slice_.compiled, parameters, digits)
+    return tuple(mass_of(leg.mass.mass) ** 2 for leg in slice_.families.legs)
 
 
 def _charged_fields(compiled) -> frozenset[str]:
@@ -4006,15 +5268,307 @@ def _charged_fields(compiled) -> frozenset[str]:
     )
 
 
-def _light_flavours(data, values: Mapping[str, Fraction]) -> int:
-    """Quark flavours (colour triplets) whose bound mass is zero."""
+def _alpha0_field_rules(source, photons, process) -> tuple[Any, ...]:
+    """The field-like term of the alpha(0) convention (WP3.2 EWI-6b) as an
+    external-field rule of each tagged photon's species (the generation keeps
+    its insertions on the tagged legs only, MS-PHOTON): coefficient
+    -(delta Z_e^{G_mu} - delta Z_e^{alpha(0)}) (the model's conversion
+    parameter ``photons.conversion``; the field component adds 2 Re of the
+    coefficient times the Born per photon leg, MG5_aMC's
+    -2 n_gamma DGmua0 Born), of the electromagnetic correction, with no loop
+    species (no particle_veto applies: ``ew_policy.external_photon_scheme``
+    refuses vetoes of electromagnetically perturbative species)."""
 
-    return sum(
-        1
-        for p in data["particles"]
-        if int(p["spin"]) == FERMION_SPIN
-        and int(p["color"]) == 3
-        and (mass_name(p["mass"]) == ZERO or values.get(p["mass"]) == 0)
+    from pyamplicol.loops.wavefunction import ExternalFieldRule, _laurent
+
+    labels = set(photons.legs)
+    pdgs = {abs(int(leg.pdg)) for leg in process.legs if int(leg.label) in labels}
+    terms = ((0, f"-{photons.conversion}"),)
+    value = {"kind": "mapping", "entries": terms}
+    out = []
+    for particle in source.raw.collections["particles"]:
+        fields = particle["fields"]
+        pdg = int(fields["pdg_code"])
+        if pdg not in pdgs:
+            continue
+        groups = fields.get("loop_particles")
+        coefficient, diagnostic = _laurent(value, source)
+        out.append(
+            ExternalFieldRule(
+                particle["id"],
+                pdg,
+                fields["spin"],
+                fields["color"],
+                photons.correction,
+                # After the model's own loop groups of the photon, if any.
+                len(groups) if isinstance(groups, tuple) else 0,
+                ((),),
+                coefficient,
+                diagnostic,
+                source.scalar_program,
+                terms,
+            )
+        )
+    if {rule.pdg for rule in out} != pdgs:
+        raise ValueError("an external photon species has no source particle record")
+    return tuple(out)
+
+
+def _correction_orders(slice_) -> ew_policy.CorrectionOrders:
+    """``ew_policy.correction_orders`` of a slice's model and fixed
+    parameters, kept in its cache."""
+
+    cache = slice_._cache
+    found = cache.get("correction-orders")
+    if found is None:
+        found = cache["correction-orders"] = ew_policy.correction_orders(
+            slice_.compiled, slice_.request.fixed_parameters
+        )
+    return found
+
+
+def _predicted_sectors(slice_) -> frozenset[Orders]:
+    """The sectors whose IR poles the request's operators predict
+    (``_sector_predictions``)."""
+
+    return frozenset(
+        sector
+        for sector, reason in _sector_predictions(slice_).items()
+        if reason is None
+    )
+
+
+def _sector_predictions(slice_) -> dict[Orders, str | None]:
+    """``poles.sector_predictions`` of the slice (None: predicted, else the
+    typed reason), kept in the slice's cache.
+
+    A tree of an order the Born program does not hold is absent when the
+    order lies within the request's Born bounds (the program holds every
+    tree there), or when an external leg's species has no vertex of the
+    request (vetoed particles excluded) whose coupling orders fit within it
+    (every leg of a tree attaches to one vertex, and powers only add up).
+    Otherwise one tree DAG of the process within that order decides
+    (``artifact.born_amplitude_orders``, compiled as the slice's Born with
+    the request's particle_veto, every coupling order of the request bounded
+    by its power in the order): e+ e- > t t~ h has no tree of order
+    g_s^2 e, which the vertex test alone cannot tell. It runs only for a
+    loop order whose lower tree lies outside the Born program, once per
+    slice, at the first IR-pole prediction. A correction's separated
+    exchanges are ``_born_partitions``'."""
+
+    cache = slice_._cache
+    found = cache.get("sector-predictions")
+    if found is not None:
+        return found
+    compiled, request = slice_.compiled, slice_.request
+    bounds = add_orders(tuple(request.born_orders.items()))
+    named = set(request.born_orders) | {
+        name for orders in request.exact_loop_orders for name in orders
+    }
+    names = {str(record.name): record for record in compiled.ir.particles}
+    veto = set(request.particle_veto)
+    vertices: dict[str, list[Orders]] = defaultdict(list)
+    for term in compiled.ir.vertex_terms:
+        records = [names.get(name) for name in term.particles]
+        if any(r is None or abs(int(r.pdg_code)) in veto for r in records):
+            continue
+        orders = add_orders(term.coupling_orders)
+        for record in records:
+            vertices[str(record.name)].append(orders)
+            vertices[str(record.antiname)].append(orders)
+    legs = [leg.field for leg in slice_.families.legs]
+
+    def tree_exists(order: Orders) -> bool:
+        if orders_within(order, bounds):
+            return False
+        if any(
+            not any(orders_within(orders, order) for orders in vertices[field])
+            for field in legs
+        ):
+            return False
+        from .artifact import born_amplitude_orders
+
+        powers = dict(order)
+        found, _dag = born_amplitude_orders(
+            compiled,
+            request.process,
+            {name: powers.get(name, 0) for name in named | set(powers)},
+            request.particle_veto,
+        )
+        return order in found
+
+    correction_orders = _correction_orders(slice_)
+
+    def separated(name: str, orders: frozenset[Orders]) -> bool:
+        if name == correction_orders.strong:
+            abelian = False
+            charged = frozenset(
+                leg.label for leg in slice_.basis.legs if leg.representation != 1
+            )
+        elif name == correction_orders.abelian:
+            abelian = True
+            charged = frozenset(
+                leg.index + 1
+                for leg in slice_.families.legs
+                if exact_charge(names[leg.field].charge) != 0
+            )
+        else:
+            # A correction without an operator makes no prediction anyway.
+            return False
+        partitions = _born_partitions(slice_, charged)
+        return separated_exchange(
+            (p for order in orders for p in partitions.get(order, ())),
+            abelian=abelian,
+        )
+
+    found = cache["sector-predictions"] = sector_predictions(
+        slice_.sectors,
+        slice_.blocks.born_orders,
+        request.corrections,
+        tree_exists,
+        separated,
+    )
+    return found
+
+
+def _born_partitions(slice_, charged: frozenset[int]) -> dict[Orders, frozenset]:
+    """Per Born amplitude order, the partitions (``poles.Partition``) of its
+    trees: the ``charged`` leg labels grouped by the lines of species that
+    the request's corrections circulate (``perturbative_species_orders``,
+    the loop selection's species condition), kept per slice and leg set.
+
+    A recursion over the Born DAG, never over its trees: per current the
+    set of its trees' (closed components, open component) states, the open
+    one the charged legs its own line joins; a line of a species no
+    requested correction circulates closes it. A root joins the open
+    components of its currents (and of its closure vertex's leg). Without
+    such a line between charged legs every tree has one component, and no
+    state is formed."""
+
+    cache = slice_._cache.setdefault("born-partitions", {})
+    found = cache.get(charged)
+    if found is not None:
+        return found
+    dag = slice_.blocks.born_dag
+    if hasattr(dag, "materialize"):
+        dag = dag.materialize()
+    species = slice_.prepared.structure.perturbative_species_orders or {}
+    corrections = frozenset(slice_.request.corrections)
+    full = (1 << len(slice_.blocks.process.legs)) - 1
+    charged_mask = sum(1 << (label - 1) for label in charged)
+    orders = {root.root_id: root.coupling_orders for root in slice_.blocks.born_roots}
+
+    def closes(node) -> bool:
+        index = node.index
+        return (
+            not node.is_source
+            and index.auxiliary_kind is None
+            and not species.get(abs(int(index.particle_id)), frozenset()) & corrections
+        )
+
+    if not any(
+        closes(node)
+        and node.index.external_mask & charged_mask
+        and (full ^ node.index.external_mask) & charged_mask
+        for node in dag.currents
+    ):
+        one = frozenset({frozenset({charged})} if charged else {frozenset()})
+        found = cache[charged] = {order: one for order in set(orders.values())}
+        return found
+    incoming: dict[int, list[tuple[int, int]]] = defaultdict(list)
+    for interaction in dag.interactions:
+        incoming[interaction.result_id].append(
+            (interaction.left_id, interaction.right_id)
+        )
+    states: dict[int, frozenset] = {}
+    empty: frozenset = frozenset()
+
+    def current(identifier: int) -> frozenset:
+        got = states.get(identifier)
+        if got is not None:
+            return got
+        node = dag.currents[identifier]
+        if node.is_source:
+            label = node.source_leg_label
+            got = frozenset(
+                {(empty, frozenset({label}) if label in charged else empty)}
+            )
+        else:
+            joined = {
+                (closed_l | closed_r, open_l | open_r)
+                for left, right in incoming[identifier]
+                for closed_l, open_l in current(left)
+                for closed_r, open_r in current(right)
+            }
+            if closes(node):
+                joined = {
+                    (closed | frozenset({open_}) if open_ else closed, empty)
+                    for closed, open_ in joined
+                }
+            got = frozenset(joined)
+        states[identifier] = got
+        return got
+
+    out: dict[Orders, set] = defaultdict(set)
+    for root in dag.amplitude_roots:
+        left, right = dag.currents[root.left_id], dag.currents[root.right_id]
+        sink = full ^ (left.index.external_mask | right.index.external_mask)
+        vertex = frozenset(label for label in charged if sink & (1 << (label - 1)))
+        for closed_l, open_l in current(root.left_id):
+            for closed_r, open_r in current(root.right_id):
+                component = open_l | open_r | vertex
+                partition = closed_l | closed_r
+                if component:
+                    partition = partition | frozenset({component})
+                out[orders[root.id]].add(partition)
+    found = cache[charged] = {order: frozenset(p) for order, p in out.items()}
+    return found
+
+
+def _strong_beta0(slice_, strong: str, values: Mapping[str, Any]) -> Fraction | None:
+    """beta_0 of the strong correction (``poles.strong_beta0``) over the
+    request's eligible massless coloured species: perturbative in the strong
+    order, not vetoed, neither ghosts nor the gluon, massless at this point
+    (``ZERO`` or bound to 0); None where it is not covered (genericity
+    audit m3: a vetoed b gives the four-flavour value, a light octet fermion
+    or coloured scalar its own share)."""
+
+    gluons = _correction_orders(slice_).gluons
+    veto = set(slice_.request.particle_veto)
+    # The prepared model's particles (masses restricted to ZERO where the
+    # request's card makes them vanish), once per particle-antiparticle pair.
+    records = {}
+    for record in slice_.data["particles"]:
+        records.setdefault(abs(int(record["pdg_code"])), record)
+    species = []
+    for pdg, orders in slice_.prepared.structure.perturbative_species_orders.items():
+        pdg = abs(int(pdg))
+        record = records.get(pdg)
+        if strong not in set(orders) or pdg in veto or record is None:
+            continue
+        if (
+            abs(int(record["color"])) == 1
+            or int(record.get("ghost_number") or 0) != 0
+            or record["name"] in gluons
+        ):
+            continue
+        mass = record["mass"]
+        if not (mass_name(mass) == ZERO or values.get(mass) == 0):
+            continue
+        real = record["name"] == record.get("antiname")
+        species.append((int(record["spin"]), int(record["color"]), real))
+    return strong_beta0(sorted(species))
+
+
+def _strong_leg_gamma(slice_, leg, beta0: Fraction | None) -> Fraction | None:
+    """gamma_j of a coloured external leg (``poles.strong_gamma``)."""
+
+    record = next(r for r in slice_.data["particles"] if r["name"] == leg.field)
+    return strong_gamma(
+        int(record["spin"]),
+        int(record["color"]),
+        beta0,
+        gauge=record["name"] in _correction_orders(slice_).gluons,
     )
 
 
@@ -4053,17 +5607,10 @@ def _external_parameter(
 
 
 def _casimir(representation: int) -> Fraction:
-    if representation == 8:
-        return Fraction(NC)
-    if abs(representation) == 3:
-        return Fraction(NC * NC - 1, 2 * NC)
-    raise NotImplementedError(f"colour representation {representation}")
-
-
-def _gamma(representation: int, light: int) -> Fraction:
-    if representation == 8:
-        return Fraction(11, 6) * NC - Fraction(2, 3) * Fraction(1, 2) * light
-    return Fraction(3, 2) * _casimir(representation)
+    found = colour_casimir(representation)
+    if found is None:
+        raise NotImplementedError(f"colour representation {representation}")
+    return found
 
 
 class _AdjointOrbits:
@@ -4080,6 +5627,11 @@ class _AdjointOrbits:
     partition the legs, so two sites are related iff each block holds equally
     many legs of each class and the same other legs).
     """
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> _AdjointOrbits:
+        from . import native_cells  # WP3.1 C3 switch: the "orbits" stage
+
+        return super().__new__(native_cells.orbits_class(cls))
 
     def __init__(
         self,

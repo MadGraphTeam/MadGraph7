@@ -18,10 +18,10 @@ Production admits counterterms by the plain tree-level rule
 ``particle_veto``), passed as ``admission`` to ``generate_counterterm_sites``
 for the CT vertices at the root of the closure (``ct_closure``). The site
 closure of every rule, the O6 oracle, keeps MadLoop's matching
-(``set_LoopCT_vertices``, as the legacy ``loops.counterterms.match_counterterms``
-does) as an independent check of that rule, with loop graphs replaced by
-*witnesses*: admitted family routings whose structural rank satisfies
-R >= 2N - 4. A witness signature is the multiset of its attached
+(``set_LoopCT_vertices``, as the removed legacy ``loops.counterterms.
+match_counterterms`` did) as an independent check of that rule, with loop
+graphs replaced by *witnesses*: admitted family routings whose structural
+rank satisfies R >= 2N - 4. A witness signature is the multiset of its attached
 block currents (leg mask, field, orders) plus the summed orders of its loop
 vertices; it is realised by one or more loop-species sets (sorted |PDG| of the
 loop lines, merged closed-loop flavours expanded to their members):
@@ -64,15 +64,38 @@ Colour, kinematics and signs of a site term (design §6.4, §6.6):
   rule, so its kernels and couplings are the conjugate rule's, which differ
   from the vertex's own by complex conjugation and the exchange of chiral
   projectors (``ConjugateVertices``), while its colour stays the incoming
-  reading of the vertex (WP3.2 EWI-2);
+  reading of the vertex (WP3.2 EWI-2). The tree engine reads every vertex
+  with the rows and tree momenta of its particles' currents and their
+  outgoing colour flows; the closure gives each kernel leg the same row and
+  the same block's momentum, but flowing in (the tree momentum negated), and
+  closes the incoming colour. The two readings differ by (-1)^(momentum
+  degree of the kernel) times the transposition sign of the colour, which
+  every term carries (``SiteClosure._reading_sign``), on every vertex, at
+  Born roots, counterterm roots and two-point sites alike (WP3.2 EWI-7b,
+  genericity audit 2 G2-M7). It is 1 on every QCD vertex (``f`` with one
+  momentum; ``d``, generators and metrics without; a quark two-point odd
+  in the momentum and diagonal in colour, whose two block momenta are
+  opposite, as in the earlier reading of its legs) and -1 on every
+  colourless vertex odd in the momenta: W+ W- A/Z, Z H G0, W G H, W G G0,
+  their R2 and UV counterterms, the Goldstone-vector mixings G0-Z, G0-A
+  and G-W at two-point sites (the clone lines read them the same way,
+  ``models.ct_line_insertions._momentum_ratio``), the Levi-Civita R2 of a
+  Z with gluons and the d*f cells of the four-gluon R2 (which sum to
+  zero). The earlier reading kept sign 1 and gave the momenta in UFO-leg
+  order: w+ w- > u u~ had a Born 177 times its time-reversed process's and
+  z h > t t~ a Feynman-gauge Born 20 times its unitary-gauge one. A kernel
+  neither even nor odd in the momenta or a colour without a transposition
+  sign is refused (``ReadingSignError``);
 * ``Block.wick_sign`` turns each block into its Feynman-rule current and the
   root sign completes FeynKit's diagram sign: the parity of the full coloured
   fermion line listing over the product of the blocks' listings
-  (``loops.v2.blocks``). One coloured fermion line may close at the root,
-  and one colour-singlet fermion line: the blocks carry the tree engine's
-  Koszul signs of colour-singlet fermions (``generation/fermion_ordering.py``),
-  so the root completes them with the sign of the merge that joins the
-  line's two ends (``SiteClosure._singlet_root_sign``).
+  (``loops.v2.blocks``). One coloured or colour-singlet fermion line may
+  close at the root. The blocks carry the tree engine's Koszul signs of
+  colour-singlet fermions (``generation/fermion_ordering.py``), so the root
+  completes them as the loops do (``conventions.colour_singlet_sign``): the
+  Koszul sign of the attached blocks' singlet supports in leg order, times
+  the merge sign of the singlet line's two open ends if one closes at the
+  root (WP3.2 EWI-1 for one singlet line, EWI-5 for any number).
 
 Entries whose Lorentz structure the catalogue cannot normalise (a
 Levi-Civita tensor) have no ``ct-site`` kernel. Where the same UFO colour and
@@ -100,7 +123,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from fractions import Fraction
 from functools import reduce
 from itertools import product
@@ -117,6 +140,7 @@ from pyamplicol.color.connections import (
 )
 from pyamplicol.color.contraction_types import NC
 from pyamplicol.color.correlator_matrices import process_color_legs
+from pyamplicol.loops.model import KernelBasisEntry
 
 from .blocks import Block, TreeBlocks, _NativeFields, _parity, identity_pairing_sign
 from .catalogue import (
@@ -135,7 +159,20 @@ from .colour import (
     multiply,
     reduce_network,
 )
-from .conventions import GHOST_SPIN, FermionSignError, closed_under_conjugation
+from .conventions import (
+    GHOST_SPIN,
+    SINGLET_END,
+    FermionSignError,
+    ReadingSignError,
+    closed_under_conjugation,
+    colour_singlet_sign,
+    fermion_end,
+    fermion_ends,
+    open_end_orientation,
+)
+from .conventions import (
+    colour_transposition_sign as _colour_transposition_sign,
+)
 from .families import (
     BlockCurrent,
     BlockTable,
@@ -166,6 +203,9 @@ Cell = tuple[str, int, int, int]
 
 class CountertermCompletenessError(ValueError):
     """A divergent witness is covered neither by a rule nor by a certified zero."""
+
+    # The listed internal refusal (``refusals.LOOP_INTERNAL_REFUSALS``).
+    refusal_key = "counterterm-completeness"
 
 
 # --------------------------------------------------------------------------- records
@@ -786,9 +826,9 @@ class SiteTerm:
 
     ``blocks[i]`` attaches to UFO leg i + 1 with its incoming field, the
     reading of the colour and of the family recursion. The kernel reads the
-    same vertex as the tree engine does: the row of the block
-    ``blocks[kernel_legs[i]]``, whose tree particle is UFO particle i + 1,
-    fills kernel leg i + 1 (module docstring). The term's value is
+    same vertex as the tree engine does: the row and the momentum of the
+    block ``blocks[kernel_legs[i]]``, whose tree particle is UFO particle
+    i + 1, fill kernel leg i + 1 (module docstring). The term's value is
     ``sign * coupling(entry) * kernel(rows, momenta)`` times ``colour``.
     """
 
@@ -798,6 +838,47 @@ class SiteTerm:
     kernel_legs: tuple[int, ...]
     sign: int
     colour: ConnectedColorTensor = field(repr=False)
+
+
+@dataclass(frozen=True, slots=True)
+class PromotedRootEntry(KernelBasisEntry):
+    """A root vertex entry read on a scalar-vector mixing line (WP3.2
+    EWI-7, routed item (v)): its scalar leg ``promoted_leg`` (0-based) takes
+    the line's vector current, contracted with the leg's momentum, exactly as
+    the scalar-side vertex copies of ``models.ct_line_insertions`` do inside
+    the blocks (Lorentz structure ``L * P(mu_k, k)``,
+    ``_promoted_lorentz``). Its key (``collection``) and Lorentz name differ
+    from the entry's; colour, coupling and orders are the entry's. The kernel
+    catalogue builds it from the base structure ``base_lorentz_name``
+    (``catalogue._CatalogueBuilder.add_counterterm_sites``)."""
+
+    promoted_leg: int = -1
+    base_lorentz_name: str = ""
+
+
+def promoted_root_entry(entry: Any, leg: int) -> PromotedRootEntry:
+    """``entry`` with its scalar leg ``leg`` (0-based) promoted to the vector
+    leg of a scalar-vector mixing line (``PromotedRootEntry``)."""
+
+    values = {item.name: getattr(entry, item.name) for item in fields(KernelBasisEntry)}
+    values["collection"] = f"{entry.collection}/promoted-leg-{leg + 1}"
+    values["lorentz_name"] = f"{entry.lorentz_name}__P{leg + 1}"
+    return PromotedRootEntry(
+        **values, promoted_leg=leg, base_lorentz_name=entry.lorentz_name
+    )
+
+
+def _loop_content(entries: Sequence[Any]) -> frozenset | None:
+    """The loop content of a rule's entries, invariant under conjugation:
+    each loop group alternative as its sorted |PDG| codes (None without
+    declared loop particles, e.g. an ordinary vertex)."""
+
+    found = {
+        tuple(sorted(abs(int(pdg)) for pdg in alternative))
+        for entry in entries
+        for alternative in (getattr(entry, "loop_particles", None) or ())
+    }
+    return frozenset(found) if found else None
 
 
 class ConjugateVertices:
@@ -817,7 +898,9 @@ class ConjugateVertices:
     ``groups`` are (name, entries) of one ordinary vertex or counterterm rule
     each (``KernelBasisEntry``, one collection and kind per group). A group's
     conjugate is the group of the same collection, kind and coupling orders on
-    the antiparticles; it must be unique, and both must have one colour
+    the antiparticles (among several, the one with the same loop content:
+    a counterterm vertex split by loop group); it must be unique, and both
+    must have one colour
     structure (the closure keeps the vertex's own colour, the incoming
     reading of the colour seeds, and the pairing of several structures with
     the conjugate's is not established), and neither may have a ghost leg
@@ -856,6 +939,13 @@ class ConjugateVertices:
         first = entries[0]
         names = [self._anti[name] for name in first.particle_names]
         found = self._groups.get(self._key(entries, names), [])
+        if len(found) > 1:
+            # A counterterm vertex split by loop content (one rule per UFO
+            # loop group, e.g. the R2 [W- A G+] of MG5_aMC's NLOCT UFOs, one
+            # per quark pair): Hermiticity pairs each rule with the
+            # conjugate's rule of the same loop content (|PDG| per group).
+            content = _loop_content(entries)
+            found = [item for item in found if _loop_content(item[1]) == content]
         if len(found) != 1:
             raise NotImplementedError(
                 f"{first.vertex_name} [{' '.join(first.particle_names)}] is not "
@@ -910,7 +1000,6 @@ class SiteClosure:
         catalogue: LoopKernelCatalogue,
         conjugates: ConjugateVertices | None = None,
     ):
-        require_one_singlet_line(blocks.process)
         data = model_data(native_model)
         self.tree = blocks
         self.catalogue = catalogue
@@ -919,16 +1008,25 @@ class SiteClosure:
         self._anti = {name: entry["antiname"] for name, entry in self._by_name.items()}
         self.legs = process_color_legs(blocks.process)
         self._representations = {leg.label: leg.representation for leg in self.legs}
-        # Coloured fermion endpoints (label -> all-outgoing representation).
-        self._ends = {
-            leg.label: self._representations[leg.label]
+        # External fermion endpoints: label -> all-outgoing representation
+        # (3 or -3) of a coloured one, ``SINGLET_END`` of a colour-singlet one
+        # (``conventions.fermion_ends``, shared with ``LeafWeights`` and
+        # ``_root_sign``; other representations are refused). Labels rank the
+        # singlet sources as the tree engine's source slots do
+        # (``colour_singlet_sign``).
+        labels = [leg.label for leg in blocks.process.legs]
+        if labels != sorted(labels):
+            raise ValueError("process legs out of label order")
+        self._ends = fermion_ends(
+            (leg.label, self._representations[leg.label])
             for leg in blocks.process.legs
-            if abs(self._representations[leg.label]) == 3
-            and self._fields.by_pdg[int(leg.outgoing_pdg)]["spin"] == 2
-        }
+            if self._fields.by_pdg[int(leg.outgoing_pdg)]["spin"] == 2
+        )
         self._bindings = {
             binding.key: binding for binding in catalogue.counterterm_sites
         }
+        # (entry key, kernel id) -> ``_reading_sign``.
+        self._reading: dict[tuple[Any, int], int] = {}
         self._unsupported = frozenset(
             item.entry_key for item in catalogue.unsupported_counterterms
         )
@@ -966,7 +1064,8 @@ class SiteClosure:
 
     @property
     def fermion_ends(self) -> Mapping[int, int]:
-        """Coloured external fermions: label -> all-outgoing representation."""
+        """External fermions: label -> all-outgoing representation (3, -3)
+        of a coloured one, ``SINGLET_END`` of a colour-singlet one."""
         return MappingProxyType(self._ends)
 
     def terms(
@@ -1033,9 +1132,17 @@ class SiteClosure:
         return {site: frozenset(cells) for site, cells in out.items()}
 
     def vertex_terms(
-        self, entries: Iterable[Any], attachments: Sequence[BlockCurrent]
+        self,
+        entries: Iterable[Any],
+        attachments: Sequence[BlockCurrent],
+        promoted: frozenset[int] = frozenset(),
     ) -> tuple[SiteTerm, ...]:
-        """Terms of the vertex ``entries`` with ``attachments`` on its UFO legs."""
+        """Terms of the vertex ``entries`` with ``attachments`` on its UFO legs.
+
+        ``promoted`` are the ids of blocks that carry the vector current of a
+        scalar-vector mixing line read as its scalar (``ct_closure.CloneLine.
+        promoted``): the kernel leg such a block fills reads it through the
+        entry's promoted copy (``promoted_root_entry``)."""
 
         options = []
         for current in attachments:
@@ -1053,8 +1160,21 @@ class SiteClosure:
         for entry in entries:
             legs = self._kernel_legs(entry, attachments)
             for choice in product(*options):
+                read = entry
+                if promoted:
+                    hits = [
+                        k
+                        for k, index in enumerate(legs)
+                        if choice[index].id in promoted
+                    ]
+                    if len(hits) > 1:
+                        raise ValueError(
+                            f"{entry.vertex_name}: several mixing lines at one root"
+                        )
+                    if hits:
+                        read = promoted_root_entry(entry, hits[0])
                 chiralities = tuple(choice[index].key.chirality for index in legs)
-                key = CountertermSiteKey(*_entry_key(entry), chiralities)
+                key = CountertermSiteKey(*_entry_key(read), chiralities)
                 binding = self._bindings.get(key)
                 if binding is None:
                     if any(chiralities):
@@ -1065,15 +1185,50 @@ class SiteClosure:
                     wick *= block.wick_sign
                 out.append(
                     SiteTerm(
-                        entry,
+                        read,
                         binding,
                         choice,
                         legs,
-                        sign * wick,
+                        sign * wick * self._reading_sign(read, binding),
                         self._colour(colour_entry or entry, attachments, choice),
                     )
                 )
         return tuple(out)
+
+    def _reading_sign(self, entry: Any, binding: Any) -> int:
+        """The sign between the tree engine's reading of a vertex and the
+        root closure's (module docstring, "Colour, kinematics and signs").
+
+        Both readings fill each kernel leg with the block row of its tree
+        particle (``_kernel_legs``; a vertex not closed under conjugation
+        through its conjugate rule, ``read_entries``) and with that block's
+        momentum (``value``, the native closure terms alike), but the tree
+        engine takes the tree momenta and the outgoing colour flows, the
+        closure the momenta flowing in and the incoming colour: every
+        momentum is reversed and every adjoint colour flow transposed (an
+        ``f`` changes sign; ``d``, generators between the swapped ends of a
+        fundamental line, two-index traces and identities do not). The
+        closure value is therefore the tree engine's, the reading of every
+        other vertex of the amplitude, times (-1)^(momentum degree of the
+        kernel) times the colour's transposition sign, on every vertex. A
+        kernel neither even nor odd in the momenta or a colour without a
+        transposition sign is refused (``ReadingSignError`` naming the
+        vertex).
+        """
+
+        key = (_entry_key(entry), binding.kernel_id)
+        found = self._reading.get(key)
+        if found is None:
+            kernel = self.catalogue.kernels[binding.kernel_id]
+            what = (
+                f"vertex {entry.vertex_name} [{' '.join(entry.particle_names)}] "
+                f"(Lorentz structure {entry.lorentz_name}, colour {entry.color})"
+            )
+            found = _momentum_parity(kernel, what) * _colour_transposition_sign(
+                entry.color, what
+            )
+            self._reading[key] = found
+        return found
 
     def read_entries(self, entries: Sequence[Any]) -> tuple[Any, ...]:
         """The entries the root closure reads for a vertex's ``entries``
@@ -1109,15 +1264,16 @@ class SiteClosure:
 
         ``rows[i]`` is the tree row of ``term.blocks[i]`` and ``momenta[i]``
         its tree momentum (the leg-mask momentum, initial legs negated). The
-        kernel takes the rows in its own leg order and the momenta flowing
-        into the vertex. Coupling, sign and colour are not applied.
+        kernel takes the rows and the momenta flowing into the vertex in its
+        own leg order (``term.kernel_legs``). Coupling, sign and colour are
+        not applied.
         """
 
         kernel = self.catalogue.kernels[term.binding.kernel_id]
         currents = [value for index in term.kernel_legs for value in rows[index]]
-        # Momenta keep the physical reading: UFO leg i + 1 carries the momentum
-        # flowing in from the block whose incoming field is its particle.
-        vectors = [-value for momentum in momenta for value in momentum]
+        # Kernel leg i + 1 takes the row and the momentum of the block of its
+        # tree particle, the momentum flowing in (``_reading_sign``).
+        vectors = [-value for index in term.kernel_legs for value in momenta[index]]
         sources = {"block-current": currents, "block-momentum": vectors}
         try:
             values = [sources[item.role][item.component] for item in kernel.inputs]
@@ -1217,27 +1373,49 @@ class SiteClosure:
         return tensor
 
     def _root_sign(self, attachments: Sequence[BlockCurrent]) -> int:
-        """FeynKit diagram parity over the product of the blocks' parities.
+        """FeynKit diagram parity over the product of the blocks' parities,
+        and the Koszul sign of the colour-singlet fermions.
 
         Each block's diagrams are signed by the parity of their coloured
         fermion lines listed (fundamental, antifundamental) with the open end
         last; the ratio to the parity of the full trees depends only on the
         labels, so any pairing (here the identity pairing) represents it.
+        Colour-singlet fermions carry the tree engine's Koszul signs inside
+        the block rows, so the root completes them as the loops do
+        (``conventions.colour_singlet_sign``, design §3.3): the blocks'
+        singlet supports in the order of the root's legs, and the two open
+        ends of a singlet line that closes at the root.
         """
 
         pairs: list[tuple[int, int]] = []
         opened: list[tuple[int, int]] = []  # (open-end representation, partner)
-        singlets: list[BlockCurrent] = []
+        supports: list[tuple[int, ...]] = []
+        singlet_ends: list[tuple[int, str]] = []
         sign = 1
         for current in attachments:
             labels = [label for label in self._ends if current.mask >> (label - 1) & 1]
             starts = [label for label in labels if self._ends[label] == 3]
             stops = [label for label in labels if self._ends[label] == -3]
+            singlets = tuple(
+                label for label in labels if self._ends[label] == SINGLET_END
+            )
+            if singlets:
+                supports.append(singlets)
             entry = self._by_name[current.field]
-            if entry["spin"] == 2 and abs(int(entry["color"])) != 3:
-                singlets.append(current)
-            elif entry["spin"] == 2:
-                (starts if int(entry["color"]) == 3 else stops).append(None)
+            end = (
+                fermion_end(entry["color"], f"fermion block {current.field}")
+                if entry["spin"] == 2
+                else None
+            )
+            if end == SINGLET_END:
+                if not singlets:
+                    raise FermionSignError(
+                        f"a colour-singlet fermion block {current.field} holds no "
+                        "colour-singlet fermion end"
+                    )
+                singlet_ends.append((len(supports) - 1, open_end_orientation(entry)))
+            elif end is not None:
+                (starts if end == 3 else stops).append(None)
             sign *= identity_pairing_sign(starts, stops)
             for start, stop in zip(
                 sorted(starts, key=_open_last),
@@ -1258,101 +1436,15 @@ class SiteClosure:
                     "vertices with more fermion lines need their spinor flow"
                 )
             pairs.append((ends[-3], ends[3]))
-        if singlets:
-            sign *= self._singlet_root_sign(singlets)
+        if singlet_ends and len(singlet_ends) != 2:
+            raise NotImplementedError(
+                "site closure joins one colour-singlet fermion line at the root; "
+                "vertices with more fermion lines need their spinor flow"
+            )
+        if supports:
+            lines = [(*singlet_ends[0], *singlet_ends[1])] if singlet_ends else []
+            sign *= colour_singlet_sign(supports, lines)
         return sign * _parity([label for pair in pairs for label in pair])
-
-    def _singlet_root_sign(self, attachments: Sequence[BlockCurrent]) -> int:
-        """The tree engine's merge sign of a colour-singlet fermion line that
-        closes at the root (design §3.3, WP3.2 EWI-1).
-
-        Colour-singlet fermions carry the tree engine's Koszul signs
-        (``generation/fermion_ordering.py``) inside the block rows, so the
-        root completes them with the sign of the merge that joins the line's
-        two ends, as the tree engine signs that merge: the Koszul sign of the
-        two supports times the orientation sign of the two-fermion kernel.
-        The process has one singlet line (``require_one_singlet_line``), so
-        the merges of the other blocks at the root carry no singlet fermion
-        and no sign.
-        """
-
-        from pyamplicol.generation.fermion_ordering import FermionOrderingSign
-
-        process = self.tree.process
-        legs = _singlet_fermion_legs(process)
-        if len(attachments) != 2:
-            raise NotImplementedError(
-                "a colour-singlet fermion line closing at the root on more than "
-                "two blocks"
-            )
-        ends = [
-            next(leg for leg in legs if current.mask >> (leg.label - 1) & 1)
-            for current in attachments
-        ]
-        if ends[0] is ends[1]:
-            raise NotImplementedError(
-                "a colour-singlet fermion line closing at the root on one block"
-            )
-        ordering = FermionOrderingSign(process, _SingletSignModel(self._fields))
-        return ordering.tree_sign([(ends[0], ends[1])])
-
-
-def _singlet_fermion_legs(process: Any) -> list[Any]:
-    return [
-        leg
-        for leg in process.legs
-        if leg.statistics == "fermion" and leg.color_role == "singlet"
-    ]
-
-
-def require_one_singlet_line(process: Any) -> None:
-    """Refuse a process with more than one colour-singlet fermion line
-    (more than two lepton legs: u u~ > e- e+ m- m+, e+ e- > e+ e-) until
-    WP3.2 EWI-5.
-
-    The tree engine signs every merge of currents whose supports hold
-    colour-singlet fermions with their Koszul sign
-    (``generation/fermion_ordering.py``). Inside a block the rows carry it;
-    between the blocks a root vertex or a loop joins, the closure and the
-    loop's leaf weights would have to supply it. With one singlet line no
-    other block holds a singlet fermion, so the only such merge is the
-    line's own (``SiteClosure._singlet_root_sign``). With two lines the
-    supports of two blocks can interleave in the leg order (u u~ > e- m- e+
-    m+: the supports {3, 5} and {4, 6} have a Koszul sign of -1; e- e- e+ e+
-    has such a pairing too), and the Born and the virtual would be silently
-    wrong (Born closure / tree runtime 0.53 and 0.34 at an exact point), so
-    every such process is refused, wherever its lines sit, before any tree
-    is built.
-    """
-
-    legs = _singlet_fermion_legs(process)
-    if len(legs) > 2:
-        raise FermionSignError(
-            f"{len(legs) // 2} colour-singlet fermion lines (legs "
-            f"{', '.join(str(leg.label) for leg in legs)}): the Koszul signs "
-            "between the blocks that carry them, at the root and in the loop, "
-            "are not implemented yet (WP3.2 EWI-5)"
-        )
-
-
-class _SingletSignModel:
-    """The particle facts ``FermionOrderingSign`` reads, from a native model
-    (the tree engine's classification, ``models.contracts``)."""
-
-    def __init__(self, fields: _NativeFields):
-        self._by_pdg = fields.by_pdg
-
-    def is_fermion(self, particle_id: int) -> bool:
-        return int(self._by_pdg[int(particle_id)]["spin"]) == 2
-
-    def color_rep(self, particle_id: int) -> int:
-        return int(self._by_pdg[int(particle_id)]["color"])
-
-    def source_orientation(self, particle_id: int) -> str:
-        entry = self._by_pdg[int(particle_id)]
-        if entry["name"] == entry["antiname"]:
-            return "self-conjugate"
-        return "particle" if int(entry["pdg_code"]) > 0 else "antiparticle"
 
 
 def _open_last(label: int | None) -> tuple[bool, int]:
@@ -1367,6 +1459,39 @@ def _entry_key(entry: Any) -> tuple[str, int, int, int, int]:
         entry.lorentz_index,
         -1 if entry.loop_group_index is None else entry.loop_group_index,
     )
+
+
+def _momentum_parity(kernel: Any, what: str = "a ct-site kernel") -> int:
+    """(-1)^(momentum degree) of a ``ct-site`` kernel: 1 when its components
+    are even in its block momenta, -1 when odd; mixed parity is refused
+    (``ReadingSignError`` naming ``what``)."""
+
+    from symbolica import E, Replacement
+
+    flipped = [
+        Replacement(E(item.symbol), -E(item.symbol))
+        for item in kernel.inputs
+        if item.role == "block-momentum"
+    ]
+    if not flipped:
+        return 1
+    parities = set()
+    for expression in kernel.exact_expressions:
+        value = E(expression)
+        mirrored = value.replace_multiple(flipped)
+        if (mirrored - value).expand() == E("0"):
+            parities.add(1)
+        elif (mirrored + value).expand() == E("0"):
+            parities.add(-1)
+        else:
+            parities.add(0)
+    if len(parities) != 1 or 0 in parities:
+        raise ReadingSignError(
+            f"{what}: its kernel is neither even nor odd in the block momenta, "
+            "so the root closure has no sign between the tree engine's reading "
+            "of its legs and its own"
+        )
+    return parities.pop()
 
 
 def entry_cell(entry: Any) -> Cell:
@@ -1398,32 +1523,119 @@ def vanishes_identically(compiled: Any, expression: Any) -> bool:
     return resolved_internal_parameters(compiled, value).expand() == zero
 
 
+def restricted_to_zero(compiled: Any, entries: Sequence[Any]) -> bool:
+    """Whether every coupling of a vertex's loop-model ``entries``
+    (``KernelBasisEntry`` rows of ``LoopModelIR.kernels``: one vertex, or one
+    vertex at one coupling order) vanishes identically in the restricted
+    model ``compiled``, so that its tree model holds no term of them: each
+    coupling with the source helpers it calls replaced by their exact bodies
+    (``ScalarFunctionLibrary.inline``; e.g. UFO's ``complexconjugate`` of a
+    CKM element that the restriction sets to zero) and its internal
+    parameters resolved to the restriction's external ones
+    (``vanishes_identically``). The decision reads the coupling values, never
+    vertex, particle or parameter names. False when it cannot be shown (no
+    entries, an internal parameter left unresolved, a helper body that keeps
+    a conditional of the parameters).
+
+    The one rule for vertices a model's restriction removes (fail-closed-2):
+    the loop catalogue leaves them out (``vanishing_loop_vertices``,
+    ``families.ModelLoopCatalogue``) and the counterterm root closure skips
+    them (``ct_closure``, WP3.2 EWI-5)."""
+
+    if not entries:
+        return False
+    try:
+        return all(
+            vanishes_identically(compiled, _inlined_coupling(entry))
+            for entry in entries
+        )
+    except ValueError:  # an internal parameter left unresolved
+        return False
+
+
+def _inlined_coupling(entry: Any) -> Any:
+    """The coupling of a loop-model entry with every source helper call
+    replaced by its exact body (the entry's scalar program's library)."""
+
+    value = entry.scalar_expression().value
+    program = getattr(entry, "scalar_program", None)
+    if program is None:
+        return value
+    return program.library.inline(value, lambda _arguments: True)
+
+
+def vanishing_loop_vertices(
+    compiled: Any, kernels: Iterable[Any], names: Iterable[str] | None = None
+) -> frozenset[tuple[str, Orders]]:
+    """The (vertex name, coupling orders) of the tree vertices of a loop
+    model's ``kernels`` (``LoopModelIR.kernels``; of the vertex names
+    ``names`` only, if given) every coupling of which at those orders
+    vanishes identically at the restriction of ``compiled``
+    (``restricted_to_zero``): such a vertex contributes nothing, and the
+    restricted tree model holds no colour or Lorentz term of it."""
+
+    wanted = None if names is None else frozenset(names)
+    groups: dict[tuple[str, Orders], list[Any]] = defaultdict(list)
+    for entry in kernels:
+        if entry.kind != "tree":
+            continue
+        if wanted is not None and entry.vertex_name not in wanted:
+            continue
+        groups[entry.vertex_name, add_orders(tuple(entry.order))].append(entry)
+    return frozenset(
+        key for key, entries in groups.items() if restricted_to_zero(compiled, entries)
+    )
+
+
 def resolved_internal_parameters(compiled: Any, expression: Any) -> Any:
     """``expression`` (in the model's symbols) with every internal parameter
     replaced by its resolved definition, which the model compiler writes in
     the external parameters alone; fails if one is left."""
 
-    from symbolica import E, Replacement
+    from symbolica import Replacement
 
-    from pyamplicol._internal.physics.symbols import symbols
-
-    model_symbols = symbols.model(compiled.name)
-    definitions = {
-        model_symbols.symbol(record.name): record.resolved_expression
-        for record in compiled.ir.parameters
-        if record.nature == "internal"
-    }
+    definitions = _internal_definitions(compiled)
+    read = set(expression.get_all_symbols(False))
     present = [
-        Replacement(symbol, E(f"({definition})"))
-        for symbol, definition in definitions.items()
-        if expression.contains(symbol)
+        Replacement(symbol, definition)
+        for symbol, definition in definitions
+        if symbol in read
     ]
     if present:
         expression = expression.replace_multiple(present)
-    left = sorted(str(s) for s in definitions if expression.contains(s))
+        read = set(expression.get_all_symbols(False))
+    left = sorted(str(symbol) for symbol, _ in definitions if symbol in read)
     if left:
         raise ValueError(f"internal parameters {left} are not resolved")
     return expression
+
+
+def _internal_definitions(compiled: Any) -> tuple[tuple[Any, Any], ...]:
+    """(symbol, parsed resolved definition) of every internal parameter of
+    ``compiled``, in record order, formed once per parameter table."""
+
+    from symbolica import E
+
+    from pyamplicol._internal.physics.symbols import symbols
+
+    records = compiled.ir.parameters
+    found = _INTERNAL_DEFINITIONS.get(id(records))
+    # The table itself is kept, so its id is not reused while cached.
+    if found is not None and found[0] is records:
+        return found[1]
+    model_symbols = symbols.model(compiled.name)
+    definitions = tuple(
+        (model_symbols.symbol(record.name), E(f"({record.resolved_expression})"))
+        for record in records
+        if record.nature == "internal"
+    )
+    if len(_INTERNAL_DEFINITIONS) >= 64:
+        _INTERNAL_DEFINITIONS.clear()
+    _INTERNAL_DEFINITIONS[id(records)] = (records, definitions)
+    return definitions
+
+
+_INTERNAL_DEFINITIONS: dict[int, tuple[Any, tuple[tuple[Any, Any], ...]]] = {}
 
 
 # ----------------------------------------------------------------- reference values
@@ -1512,6 +1724,8 @@ __all__ = [
     "CountertermSite",
     "CountertermSites",
     "Coverage",
+    "PromotedRootEntry",
+    "ReadingSignError",
     "Signature",
     "SiteClosure",
     "SiteTerm",
@@ -1521,8 +1735,10 @@ __all__ = [
     "entry_cell",
     "generate_counterterm_sites",
     "ghost_partners",
-    "require_one_singlet_line",
+    "promoted_root_entry",
+    "restricted_to_zero",
     "ufo_colour_network",
     "vanishes_identically",
+    "vanishing_loop_vertices",
     "witness_alternatives",
 ]
