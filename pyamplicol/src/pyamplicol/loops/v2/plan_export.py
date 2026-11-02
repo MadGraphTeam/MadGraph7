@@ -159,9 +159,10 @@ class ExportedPlan:
     # The certified seed FFT of the plan's seeds (``fourier_record``; JSON),
     # None when every seed is contracted directly.
     fourier: str | None = None
-    # The native plan model holding the families when they were streamed
-    # (``native_lowering.NATIVE_FAMILIES``; ``program["families"]`` is then
-    # its read-only view), else None.
+    # The native plan model holding the families and contents when they were
+    # streamed (``native_lowering.NATIVE_FAMILIES``; a ``native_lowering.
+    # PlanSource``: ``program["families"]`` and ``["contents"]`` are then its
+    # read-only views; released to the binary member once stored), else None.
     model: Any = None
 
     def json(self) -> str:
@@ -171,6 +172,8 @@ class ExportedPlan:
 
         from . import native_lowering
 
+        if self.streamed and self.model.released:
+            return native_lowering.member_json(self.model.member)
         if native_lowering.NATIVE_JSON or self.streamed:
             return native_lowering.plan_json(self).decode("ascii")
         return self.python_json()
@@ -186,7 +189,7 @@ class ExportedPlan:
         return (
             self.model is not None
             and isinstance(families, native_lowering.NativeFamilies)
-            and families.model is self.model
+            and families.source is self.model
         )
 
     def python_json(self) -> str:
@@ -207,17 +210,24 @@ class ExportedPlan:
 
         from . import native_lowering
 
+        if self.streamed:
+            return self.model.binary()
         return native_lowering.plan_binary(self)
 
     def stored(self) -> str | bytes:
         """The plan as an artifact stores it and the native executor loads
         it (M-FINAL MF-8G-1 item 5): the binary plan member (``binary``),
         or the plan JSON (``json``) when ``native_lowering.BINARY_PLAN`` is
-        off (the oracle; artifacts written before the member)."""
+        off (the oracle; artifacts written before the member). A streamed
+        plan keeps only its member from here on (``PlanSource.release``)."""
 
         from . import native_lowering
 
-        return self.binary() if native_lowering.BINARY_PLAN else self.json()
+        if not native_lowering.BINARY_PLAN:
+            return self.json()
+        if self.streamed:
+            return self.model.release()
+        return self.binary()
 
 
 @dataclass
@@ -1270,7 +1280,9 @@ def export_plan(
         program["column_weights"] = column_weights
     model = None
     if streamed is not None:
-        model = native_lowering.streamed_model(program, streamed, contents_sink)
+        model = native_lowering.PlanSource(
+            native_lowering.streamed_model(program, streamed, contents_sink)
+        )
         program["families"] = native_lowering.NativeFamilies(model)
         program["contents"] = native_lowering.NativeContents(model)
     born_components = tuple(exporter.born_components)

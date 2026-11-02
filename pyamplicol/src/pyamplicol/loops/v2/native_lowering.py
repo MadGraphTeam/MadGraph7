@@ -102,8 +102,45 @@ def plan_model(exported: Any, native: Any | None = None) -> Any:
     plan's own model when its families were streamed (``NATIVE_FAMILIES``)."""
 
     if getattr(exported, "streamed", False):
-        return exported.model
+        return exported.model.model
     return _native(native).V2PlanModel.from_program(_program(exported))
+
+
+class PlanSource:
+    """The native model of a plan whose records were streamed
+    (``ExportedPlan.model``), until the plan is stored: ``release`` keeps its
+    binary member only (the model is several times the member: 0.27 / 0.32
+    GiB for the 15 / 25 MB members of g g > 5g LC and its companion), and
+    ``model`` decodes it again when a reader of records asks (the views, the
+    oracle tests)."""
+
+    def __init__(self, model: Any) -> None:
+        self._model = model
+        self.member: bytes | None = None
+
+    @property
+    def model(self) -> Any:
+        if self._model is None:
+            self._model = _native().V2PlanModel.from_binary(self.member)
+        return self._model
+
+    @property
+    def released(self) -> bool:
+        return self._model is None
+
+    def binary(self) -> bytes:
+        """The binary plan member (formed once)."""
+
+        if self.member is None:
+            self.member = bytes(self._model.binary())
+        return self.member
+
+    def release(self) -> bytes:
+        """The binary plan member, the model dropped."""
+
+        member = self.binary()
+        self._model = None
+        return member
 
 
 def families_builder(native: Any | None = None) -> Any:
@@ -135,16 +172,21 @@ def streamed_model(
 
 
 class _NativeRecords(Sequence[dict[str, Any]]):
-    """A plan list whose records were streamed into the native model: each
-    record decoded from the model when asked (its plan JSON record), nothing
-    kept. Not JSON-serialisable on purpose: ``json.dumps(program)``
-    (``ExportedPlan.python_json()``, the oracle) needs the Python records."""
+    """A plan list whose records were streamed into the native model
+    (``source``, a ``PlanSource``): each record decoded from the model when
+    asked (its plan JSON record), nothing kept. Not JSON-serialisable on
+    purpose: ``json.dumps(program)`` (``ExportedPlan.python_json()``, the
+    oracle) needs the Python records."""
 
     _count = ""
     _json = ""
 
-    def __init__(self, model: Any) -> None:
-        self.model = model
+    def __init__(self, source: PlanSource) -> None:
+        self.source = source
+
+    @property
+    def model(self) -> Any:
+        return self.source.model
 
     def __len__(self) -> int:
         return int(getattr(self.model, self._count)())
@@ -267,6 +309,7 @@ __all__ = [
     "NativeContents",
     "NativeFamilies",
     "PlanLoad",
+    "PlanSource",
     "contents_builder",
     "families_builder",
     "is_member",
