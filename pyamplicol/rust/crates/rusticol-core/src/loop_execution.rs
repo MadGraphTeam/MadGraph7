@@ -426,13 +426,36 @@ pub mod v2 {
             backend: &mut B,
             options: V2Options,
         ) -> RusticolResult<(Vec<PointResult<T>>, Report)> {
+            self.evaluate_families(batch, zero, backend, options, None)
+        }
+
+        /// [`Self::evaluate`] dressing only the families `families` keeps
+        /// (one flag per plan family; None: every family): an evaluation
+        /// whose seeds vanish on the other families (an evaluation-time
+        /// selection's masks, `V2Executor.evaluate`) skips them, and their
+        /// lanes are absent, as a plan without them has none.
+        pub fn evaluate_families<T: Carrier + Real, B: V2Backend<T> + Send>(
+            &self,
+            batch: &V2Batch<T>,
+            zero: &T,
+            backend: &mut B,
+            options: V2Options,
+            families: Option<&[bool]>,
+        ) -> RusticolResult<(Vec<PointResult<T>>, Report)> {
             batch.validate(&self.plan)?;
+            if families.is_some_and(|kept| kept.len() != self.plan.families.len()) {
+                return Err(RusticolError::invalid_argument(
+                    "one family flag per plan family",
+                ));
+            }
             let threads = self.pool.current_num_threads();
             let fourier = self.contraction(options.contraction)?;
             self.pool.install(|| {
                 let (results, mut report) = with_lanes!(
                     self.lanes,
-                    evaluate_lanes::<T>(&self.plan, fourier, batch, zero, backend, options)
+                    evaluate_lanes::<T>(
+                        &self.plan, fourier, batch, zero, backend, options, families
+                    )
                 )?;
                 report.threads = threads;
                 Ok((results, report))
@@ -969,6 +992,7 @@ pub mod v2 {
         zero: &T,
         backend: &mut (impl V2Backend<T> + Send),
         options: V2Options,
+        families: Option<&[bool]>,
     ) -> RusticolResult<(Vec<PointResult<T>>, Report)> {
         let points = batch.points();
         let width = options.poles.width();
@@ -983,7 +1007,15 @@ pub mod v2 {
             ));
         }
         let merged = merged_of(plan, options.schedule)?;
-        let b_families = b_families(plan, merged);
+        let mut b_families = b_families(plan, merged);
+        if let Some(kept) = families {
+            if merged.is_some() {
+                return Err(RusticolError::invalid_argument(
+                    "a family mask runs schedule B (schedule M dresses its merged families together)",
+                ));
+            }
+            b_families.retain(|&f| kept[f]);
+        }
         // The chunk-input budget in reals, and in lane vectors for the
         // bucket chunks' own inputs.
         let input_budget = options.input_budget / std::mem::size_of::<T>().max(1);
@@ -1249,6 +1281,49 @@ pub mod v2 {
                 assert_eq!(value[0], Complex::new(6.0, 0.0));
             }
             assert_eq!(report.counts["reduction lanes"], 3);
+        }
+
+        /// A family mask (an evaluation-time selection, `V2Executor.
+        /// evaluate`'s `families`) dresses and reduces the kept families
+        /// only: the dropped family's lanes are absent, the kept one's are
+        /// bitwise those of the whole evaluation; a mask of the wrong length
+        /// is refused.
+        #[test]
+        fn a_family_mask_dresses_the_kept_families_only() {
+            let text = std::str::from_utf8(PLAN).unwrap().replace("FAMILY", FAMILY);
+            let plan = LoopProgramV4::load(text.as_bytes()).unwrap();
+            let executor = V2Executor::new(Arc::new(plan), DEFAULT_LANES, Some(1)).unwrap();
+            let batch = V2Batch {
+                momenta: vec![[1, 0, 0, 1, 1, 0, 0, -1].map(Rational::from).to_vec()],
+                scales: vec![Rational::from(1)],
+                masses: vec![Rational::from(0)],
+                masses_imaginary: Vec::new(),
+                leg_masses: Vec::new(),
+                constants: vec![Complex::new(2.0, 0.0)],
+                block_rows: vec![Vec::new()],
+                born: vec![vec![Complex::new(1.0, 1.0)]],
+            };
+            let run = |families: Option<&[bool]>| {
+                let mut backend = Failing {
+                    calls: vec![Vec::new()],
+                };
+                executor
+                    .evaluate_families(&batch, &0.0, &mut backend, V2Options::default(), families)
+                    .map(|(results, report)| {
+                        let lanes = report.counts.get("reduction lanes").copied();
+                        (results, lanes.unwrap_or(0))
+                    })
+            };
+            let (every, lanes) = run(None).unwrap();
+            assert_eq!(lanes, 2);
+            let (kept, lanes) = run(Some(&[false, true])).unwrap();
+            assert_eq!(lanes, 1);
+            assert_eq!(kept[0].families.len(), 1);
+            assert_eq!(kept[0].families[0], every[0].families[1]);
+            let (none, lanes) = run(Some(&[false, false])).unwrap();
+            assert_eq!(lanes, 0);
+            assert!(none[0].families.is_empty() && none[0].failures.is_empty());
+            assert!(run(Some(&[true])).is_err());
         }
 
         /// The next bucket chunk reading an input follows the chunks'
