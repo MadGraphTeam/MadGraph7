@@ -272,7 +272,7 @@ class _Exporter:
     slice_: Any
     kinematics: rx.CatalogueKinematics
     rows: tuple[rx.Row, ...]
-    contents: dict[Any, int] = field(default_factory=dict)
+    contents: dict[Any, tuple[int, rx.ContentShape]] = field(default_factory=dict)
     content_records: list[dict] = field(default_factory=list)
     kernels: dict[tuple[int, rx.MassFlips], int] = field(default_factory=dict)
     kernel_records: list[dict] = field(default_factory=list)
@@ -367,10 +367,12 @@ class _Exporter:
         return {"kernel": kernel, "inputs": inputs, "entries": entries}
 
     def content(self, content) -> tuple[int, rx.ContentShape]:
-        shape = self.kinematics.shape(content)
+        # (index, shape) per content: one lookup per step edge (M-FINAL
+        # MF-8G-1; 740k edges at g g > 5g LC for 30k contents).
         found = self.contents.get(content)
         if found is not None:
-            return found, shape
+            return found
+        shape = self.kinematics.shape(content)
         index = {entry: i for i, entry in enumerate(shape.fused)}
         row_index = {row: i for i, row in enumerate(shape.rows)}
         flips = rx.mass_flips(self.kinematics.reading, content)
@@ -408,7 +410,8 @@ class _Exporter:
                     "rows": rows,
                 }
             )
-        found = self.contents[content] = len(self.content_records)
+        found = len(self.content_records)
+        self.contents[content] = (found, shape)
         mask = content.mask
         for row in shape.rows:
             if sum(1 << leg for leg, _h in row) != mask or len(row) != mask.bit_count():

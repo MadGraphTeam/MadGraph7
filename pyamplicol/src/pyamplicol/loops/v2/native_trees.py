@@ -761,6 +761,7 @@ def export_trees(
     block_ids: dict[int, int] = {}
     block_starts: list[list[int | None]] = []
     block_dimensions: list[int] = []
+    block_masks: list[int] = []
 
     unread: set[int] = set()
 
@@ -801,6 +802,7 @@ def export_trees(
         found = block_ids[id(block)] = len(block_starts)
         block_starts.append(starts)
         block_dimensions.append(dimensions.pop())
+        block_masks.append(block.key.external_mask)
         return found
 
     # Closure terms share their input layouts and colour weights (interned).
@@ -816,7 +818,11 @@ def export_trees(
     layout_of: dict[int, tuple[list[list[Any]], int]] = {}
 
     def record(
-        term: Any, kernel: int, inputs: list[list[Any]], contributions: list[list[Any]]
+        term: Any,
+        kernel: int,
+        inputs: list[list[Any]],
+        contributions: list[list[Any]],
+        ids: list[int],
     ) -> dict[str, Any]:
         """A closure term's record: its kernel on the layout of its inputs,
         and per contribution (coupling, component, weight); ``contributions``
@@ -834,8 +840,8 @@ def export_trees(
         return {
             "kernel": kernel,
             "layout": layout,
-            "blocks": [block_id(block) for block in term.blocks],
-            "masks": [block.key.external_mask for block in term.blocks],
+            "blocks": ids,
+            "masks": [block_masks[i] for i in ids],
             "sign": term.sign,
             "contributions": [
                 [
@@ -847,24 +853,31 @@ def export_trees(
             ],
         }
 
-    def readable(term: Any) -> bool:
-        """Whether every block of a closure term has a Born row (a term on a
-        block without one vanishes on every kept row)."""
+    def term_ids(term: Any) -> list[int] | None:
+        """The closure records of a term's blocks, in order; None when a
+        block has no Born row (a term on a block without one vanishes on every
+        kept row; the blocks after it are not registered, as before)."""
 
-        return all(block_id(block) is not None for block in term.blocks)
+        ids = []
+        for block in term.blocks:
+            found = block_id(block)
+            if found is None:
+                return None
+            ids.append(found)
+        return ids
 
     def closure_term(
         term: Any, contributions: list[list[Any]]
     ) -> dict[str, Any] | None:
         """A root-closure term (``ct_sites.SiteTerm``: a vertex closed on
         tree blocks) as a plan kernel on its blocks' rows and momenta; None
-        for a term on a block without a Born row (``readable``)."""
+        for a term on a block without a Born row (``term_ids``)."""
 
-        if not readable(term):
+        ids = term_ids(term)
+        if ids is None:
             return None
 
         kernel = exporter._kernel(term.binding, ())
-        ids = [block_id(block) for block in term.blocks]
         dimensions = tuple(block_dimensions[ids[i]] for i in term.kernel_legs)
         # The inputs follow from the kernel, its legs and their dimensions
         # (shared by the terms of one vertex over its block choices).
@@ -889,16 +902,16 @@ def export_trees(
                 else:
                     raise ValueError(f"a closure kernel reads a {kind} input")
             closure_inputs[key] = inputs
-        return record(term, kernel, inputs, contributions)
+        return record(term, kernel, inputs, contributions, ids)
 
     def whole_term(term: Any, contributions: list[list[Any]]) -> dict[str, Any] | None:
         """A whole-rule continuation term (``assemble.WholeRuleTerm``): its
         sum of products of Minkowski contractions of block rows as a plan
         kernel on the blocks' four components."""
-        if not readable(term):
+        ids = term_ids(term)
+        if ids is None:
             return None
 
-        ids = [block_id(block) for block in term.blocks]
         if any(block_dimensions[i] != 4 for i in ids):
             raise NativeExportUnsupported(
                 "whole-rule-block", "a whole-rule term on a non-vector block"
@@ -910,7 +923,7 @@ def export_trees(
             ]
         found = whole_kernels.get((len(ids), term.pairings))
         if found is not None:
-            return record(term, found, inputs, contributions)
+            return record(term, found, inputs, contributions, ids)
         polynomial: dict[tuple[int, ...], Fraction] = defaultdict(Fraction)
         for coefficient, pairs in term.pairings:
             partial = {(): Fraction(coefficient)}
@@ -946,7 +959,7 @@ def export_trees(
                 }
             )
         whole_kernels[len(ids), term.pairings] = kernel
-        return record(term, kernel, inputs, contributions)
+        return record(term, kernel, inputs, contributions, ids)
 
     terms = []
     born_orders = tuple(sorted(slice_.born_terms))
