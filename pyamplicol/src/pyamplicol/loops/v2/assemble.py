@@ -1994,7 +1994,6 @@ class LoopSlice:
     # -- generation ------------------------------------------------------------
 
     @classmethod
-    @generator_input.full_collections_deferred()
     def generate(
         cls,
         compiled: Any,
@@ -2025,6 +2024,25 @@ class LoopSlice:
         ownership before any tree, LC/NLC over tree blocks that are not exact
         in N_c right after the trees.
         """
+
+        # The cyclic collector's full passes are deferred for the whole
+        # generation (``generator_input.full_collections_deferred``).
+        with generator_input.full_collections_deferred():
+            return cls._generate(
+                compiled, request, native, prune=prune, native_inputs=native_inputs
+            )
+
+    @classmethod
+    def _generate(
+        cls,
+        compiled: Any,
+        request: SliceRequest,
+        native: Any,
+        *,
+        prune: bool,
+        native_inputs: bool,
+    ) -> LoopSlice:
+        """``generate`` with full collections deferred."""
 
         from pyamplicol.loops.wavefunction import prepare_external_field_rules
         from pyamplicol.models.external import CompiledUFOModel
