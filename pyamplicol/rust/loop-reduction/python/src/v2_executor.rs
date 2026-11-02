@@ -224,6 +224,8 @@ struct Filling<T> {
     sources: Option<Vec<rusticol_core::loop_v2::trees::PointSources<T>>>,
     loop_sources: Option<Vec<rusticol_core::loop_v2::trees::LoopSources<T>>>,
     points: usize,
+    /// A selection's row liveness of the tree program (`evaluate_with`).
+    rows: Option<rusticol_core::loop_v2::trees::TreeRows>,
 }
 
 impl<T: Clone> Filling<T> {
@@ -349,6 +351,7 @@ impl Trees {
             sources,
             loop_sources,
             points: scales.len(),
+            rows: None,
         })
     }
 
@@ -419,6 +422,7 @@ impl Trees {
                     sources,
                     loop_sources,
                     chunk,
+                    filling.rows.as_ref(),
                     zero,
                 )
                 .map_err(error)
@@ -866,6 +870,17 @@ where
     let started = std::time::Instant::now();
     let mut filling = trees.prepare(executor, inputs, &batch.scales, &zero)?;
     filling.sources = selection.sources(filling.sources.take(), batch.momenta.len());
+    // The kept rows' liveness (DESIGN §8.5): the dressed families pruned to
+    // the rows they reach and the tree program to what those read.
+    let live = match &selection.rows {
+        Some(rows) => py
+            .detach(|| executor.live_rows(rows, selection.families.as_deref()))
+            .map_err(error)?,
+        None => None,
+    };
+    filling.rows = live
+        .as_ref()
+        .and_then(|live| trees.program.live_rows(executor.plan(), live));
     // The report's "trees" stage: the whole native input fill, then its
     // parts (`TreeInputs::seconds`).
     let mut tree_seconds = started.elapsed().as_secs_f64();
@@ -937,7 +952,9 @@ where
         selection.mask_born(&mut sub.born, &zero)?;
         let families = selection.families.as_deref();
         let (part_results, part_report) = py
-            .detach(|| executor.evaluate_families(&sub, &zero, backend, options, families))
+            .detach(|| {
+                executor.evaluate_families(&sub, &zero, backend, options, families, live.as_ref())
+            })
             .map_err(error)?;
         results.extend(part_results);
         merge_report(&mut report, part_report);

@@ -27,10 +27,11 @@ pub mod v2 {
     pub use crate::loop_v2::fourier::SeedFourier;
     use crate::loop_v2::fourier::seeds_fourier;
     use crate::loop_v2::merged::{DEFAULT_PART_CHUNKS, MergedStats, parts, run_merged};
-    use crate::loop_v2::plan::{LoopProgramV4, Merged};
+    pub use crate::loop_v2::plan::LiveRows;
+    use crate::loop_v2::plan::{Family, LoopProgramV4, Merged};
     use crate::loop_v2::retest::{ReductionCheck, add_to_budget, deviation};
     use crate::loop_v2::seeds::seeds;
-    use crate::loop_v2::trie::run_family;
+    use crate::loop_v2::trie::run_family_on;
     use crate::{RusticolError, RusticolResult};
     use rayon::prelude::*;
     use std::collections::BTreeMap;
@@ -426,14 +427,43 @@ pub mod v2 {
             backend: &mut B,
             options: V2Options,
         ) -> RusticolResult<(Vec<PointResult<T>>, Report)> {
-            self.evaluate_families(batch, zero, backend, options, None)
+            self.evaluate_families(batch, zero, backend, options, None, None)
+        }
+
+        /// The per-call row liveness of an evaluation by schedule B keeping
+        /// the Born rows `rows` (one flag per plan row) and dressing the
+        /// families `families` keeps (None: every family): the families
+        /// pruned to the rows the kept rows reach and the input rows they
+        /// read (`LiveRows`, DESIGN.md §8.5), or None when `rows` drops no
+        /// seeded row. [`Self::evaluate_families`] and the tree fill
+        /// (`TreeProgram::live_rows`) take it.
+        pub fn live_rows(
+            &self,
+            rows: &[bool],
+            families: Option<&[bool]>,
+        ) -> RusticolResult<Option<LiveRows>> {
+            if families.is_some_and(|kept| kept.len() != self.plan.families.len()) {
+                return Err(RusticolError::invalid_argument(
+                    "one family flag per plan family",
+                ));
+            }
+            let mut listed = b_families(&self.plan, None);
+            if let Some(kept) = families {
+                listed.retain(|&f| kept[f]);
+            }
+            self.plan.live_rows(rows, &listed)
         }
 
         /// [`Self::evaluate`] dressing only the families `families` keeps
         /// (one flag per plan family; None: every family): an evaluation
         /// whose seeds vanish on the other families (an evaluation-time
         /// selection's masks, `V2Executor.evaluate`) skips them, and their
-        /// lanes are absent, as a plan without them has none.
+        /// lanes are absent, as a plan without them has none. With `live`
+        /// (`Self::live_rows` of the batch's kept Born rows and the same
+        /// family mask; every other row's Born components vanish) each
+        /// family runs its steps pruned to the live rows and the factors and
+        /// currents are built on the rows those read; families left without
+        /// a step are skipped too.
         pub fn evaluate_families<T: Carrier + Real, B: V2Backend<T> + Send>(
             &self,
             batch: &V2Batch<T>,
@@ -441,6 +471,7 @@ pub mod v2 {
             backend: &mut B,
             options: V2Options,
             families: Option<&[bool]>,
+            live: Option<&LiveRows>,
         ) -> RusticolResult<(Vec<PointResult<T>>, Report)> {
             batch.validate(&self.plan)?;
             if families.is_some_and(|kept| kept.len() != self.plan.families.len()) {
@@ -454,7 +485,7 @@ pub mod v2 {
                 let (results, mut report) = with_lanes!(
                     self.lanes,
                     evaluate_lanes::<T>(
-                        &self.plan, fourier, batch, zero, backend, options, families
+                        &self.plan, fourier, batch, zero, backend, options, families, live
                     )
                 )?;
                 report.threads = threads;
@@ -601,6 +632,7 @@ pub mod v2 {
         size: usize,
         families: &[usize],
         vectors: usize,
+        live: Option<&LiveRows>,
     ) -> Vec<BucketChunk> {
         let bounded = vectors < usize::MAX;
         let lens = [
@@ -623,7 +655,7 @@ pub mod v2 {
                 if families.binary_search(&f).is_err() {
                     continue;
                 }
-                let family = &plan.families[f];
+                let family = family_of(plan, live, f);
                 let ids = [&family.factors, &family.vertices, &family.currents];
                 // The lane vectors `f` adds to a chunk holding the `stamp`ed ids.
                 let new = |seen: &[Vec<u32>; 3], stamp: u32| -> usize {
@@ -666,15 +698,22 @@ pub mod v2 {
         parts
             .into_iter()
             .map(|families| BucketChunk {
-                reads: Reads::of(plan, &families),
+                reads: Reads::of_families(families.iter().map(|&f| family_of(plan, live, f))),
                 families,
             })
             .collect()
     }
 
+    /// Plan family `f`, or its copy pruned to an evaluation's live rows.
+    fn family_of<'a>(plan: &'a LoopProgramV4, live: Option<&'a LiveRows>, f: usize) -> &'a Family {
+        live.and_then(|live| live.family(f))
+            .unwrap_or(&plan.families[f])
+    }
+
     /// Dress every family of `chunk` on one chunk of lanes (schedule B);
     /// `bound`: the chunk's index, the bucket chunks' reads and the reals
     /// the chunk inputs hold where they can (none: unbounded).
+    #[allow(clippy::too_many_arguments)]
     fn dress_families<T: Carrier, const L: usize>(
         plan: &LoopProgramV4,
         chunk: &BucketChunk,
@@ -683,6 +722,7 @@ pub mod v2 {
         data: &LaneData<T, L>,
         report: &mut Report,
         bound: Option<(usize, &ReadChunks, usize)>,
+        live: Option<&LiveRows>,
     ) -> RusticolResult<Vec<FamilyNumerator<T>>> {
         let families = &chunk.families;
         let start = Instant::now();
@@ -715,13 +755,17 @@ pub mod v2 {
         let inputs = &*inputs;
         let runs = families
             .par_iter()
-            .map(|&f| run_family::<T, L>(plan, f, inputs, seeds, data))
+            .map(|&f| run_family_on::<T, L>(plan, f, family_of(plan, live, f), inputs, seeds, data))
             .collect::<RusticolResult<Vec<_>>>()?;
         report.time("dressing", start);
         let peak = runs.iter().map(|run| run.peak_reals).max().unwrap_or(0);
         report.peak("open objects (one family walk)", peak, L);
         report.count("families", families.len() as u64);
-        let steps = || families.iter().flat_map(|&f| &plan.families[f].steps);
+        let steps = || {
+            families
+                .iter()
+                .flat_map(|&f| &family_of(plan, live, f).steps)
+        };
         report.count("steps", steps().count() as u64);
         report.count(
             "split steps",
@@ -765,6 +809,7 @@ pub mod v2 {
                         &seeds,
                         &data,
                         &mut report,
+                        None,
                         None,
                     )?;
                     if let Some(merged) = merged {
@@ -985,6 +1030,7 @@ pub mod v2 {
         report.peak("merged family accumulators", stats.peak_accumulators, lanes);
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn evaluate_lanes<T: Carrier + Real, const L: usize>(
         plan: &LoopProgramV4,
         fourier: Option<&SeedFourier>,
@@ -993,6 +1039,7 @@ pub mod v2 {
         backend: &mut (impl V2Backend<T> + Send),
         options: V2Options,
         families: Option<&[bool]>,
+        live: Option<&LiveRows>,
     ) -> RusticolResult<(Vec<PointResult<T>>, Report)> {
         let points = batch.points();
         let width = options.poles.width();
@@ -1016,6 +1063,17 @@ pub mod v2 {
             }
             b_families.retain(|&f| kept[f]);
         }
+        // The row liveness: the listed families' pruned steps (those left
+        // without a step have a zero numerator and are not dressed).
+        if let Some(live) = live {
+            if merged.is_some() || live.listed() != b_families.as_slice() {
+                return Err(RusticolError::invalid_argument(
+                    "a row liveness of the family mask's schedule-B families",
+                ));
+            }
+            b_families = live.families().to_vec();
+            report.count("live-row links", live.links() as u64);
+        }
         // The chunk-input budget in reals, and in lane vectors for the
         // bucket chunks' own inputs.
         let input_budget = options.input_budget / std::mem::size_of::<T>().max(1);
@@ -1024,7 +1082,8 @@ pub mod v2 {
         } else {
             input_budget / crate::loop_v2::kernels::lane_vector_len(L)
         };
-        let chunks_of_buckets = bucket_chunks(plan, options.chunk_families, &b_families, vectors);
+        let chunks_of_buckets =
+            bucket_chunks(plan, options.chunk_families, &b_families, vectors, live);
         let read_chunks = ReadChunks::of(plan, &chunks_of_buckets);
         let merged_parts = merged
             .map(|merged| parts(merged, options.part_chunks, plan))
@@ -1054,7 +1113,8 @@ pub mod v2 {
             // The contraction alone ("seeds" also gathers the lane data).
             report.time(SEED_CONTRACTION, contraction);
             report.time("seeds", start);
-            let mut inputs = ChunkInputs::new(plan);
+            let mut inputs =
+                ChunkInputs::new(plan).with_rows(live.map(|live| Arc::clone(&live.read)));
             let masses: Vec<Complex<T>> = batch
                 .masses
                 .iter()
@@ -1090,6 +1150,7 @@ pub mod v2 {
                     &data,
                     &mut report,
                     Some((k, &read_chunks, input_budget)),
+                    live,
                 )?;
                 reduction.reduce(&numerators, &mut report)?;
             }
@@ -1308,7 +1369,7 @@ pub mod v2 {
                     calls: vec![Vec::new()],
                 };
                 executor
-                    .evaluate_families(&batch, &0.0, &mut backend, V2Options::default(), families)
+                    .evaluate_families(&batch, &0.0, &mut backend, V2Options::default(), families, None)
                     .map(|(results, report)| {
                         let lanes = report.counts.get("reduction lanes").copied();
                         (results, lanes.unwrap_or(0))

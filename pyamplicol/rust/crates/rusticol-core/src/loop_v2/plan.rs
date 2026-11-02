@@ -48,6 +48,7 @@ pub mod binary;
 mod links;
 mod live;
 pub use binary::{read_binary, read_binary_with};
+pub use live::LiveRows;
 use ninjars::fast::tensor_layout::ncoeff;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};

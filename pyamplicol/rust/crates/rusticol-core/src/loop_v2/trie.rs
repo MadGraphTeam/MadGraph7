@@ -18,7 +18,7 @@
 use super::closure::{FamilyNumerator, trace_into};
 use super::dress::{Carrier, ChunkInputs, LaneData, Pool, dress_edge};
 use super::kernels::{Segment, lane_vector_len, split_edge, split_vertex};
-use super::plan::{Edge, LoopProgramV4, Source, SplitStep, Step};
+use super::plan::{Edge, Family, LoopProgramV4, Source, SplitStep, Step};
 use super::seeds::Seeds;
 use crate::{RusticolError, RusticolResult};
 
@@ -36,7 +36,19 @@ pub fn run_family<T: Carrier, const L: usize>(
     seeds: &Seeds<T>,
     data: &LaneData<T, L>,
 ) -> RusticolResult<FamilyRun<T>> {
-    let family = &plan.families[index];
+    run_family_on(plan, index, &plan.families[index], inputs, seeds, data)
+}
+
+/// [`run_family`] on `family`: plan family `index` or its copy pruned to an
+/// evaluation's live rows (`plan::LiveRows`).
+pub fn run_family_on<T: Carrier, const L: usize>(
+    plan: &LoopProgramV4,
+    index: usize,
+    family: &Family,
+    inputs: &ChunkInputs<T>,
+    seeds: &Seeds<T>,
+    data: &LaneData<T, L>,
+) -> RusticolResult<FamilyRun<T>> {
     let columns = plan.columns;
     let v = lane_vector_len(L);
     let zero = &data.zero;

@@ -33,7 +33,9 @@ use super::{
     Content, Family, LoopProgramV4, ReadRows, Source, Step, StepCost, Vertex, fused_cost,
     step_shape,
 };
+use crate::RusticolResult;
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 impl LoopProgramV4 {
     /// Drop the schedule-B row links, edges and steps that only carry the
@@ -59,6 +61,11 @@ impl LoopProgramV4 {
     /// The content rows of each fused factor and the term rows of each
     /// split current that the kept links of schedule B read.
     fn rows_read(&self) -> ReadRows {
+        self.rows_read_by(self.families.iter())
+    }
+
+    /// [`Self::rows_read`] by the steps of `families` only.
+    fn rows_read_by<'a>(&self, families: impl Iterator<Item = &'a Family>) -> ReadRows {
         let mut factors: Vec<Vec<bool>> = self
             .factors
             .iter()
@@ -69,7 +76,7 @@ impl LoopProgramV4 {
             .iter()
             .map(|&(content, term)| vec![false; self.contents[content].terms[term].rows.len()])
             .collect();
-        for step in self.families.iter().flat_map(|family| &family.steps) {
+        for step in families.flat_map(|family| &family.steps) {
             match &step.split {
                 None => {
                     for edge in &step.edges {
@@ -88,6 +95,113 @@ impl LoopProgramV4 {
             }
         }
         ReadRows { factors, currents }
+    }
+}
+
+/// Per-call row liveness of schedule B (MF-MASKS-ROWS, DESIGN.md §8.5).
+///
+/// An evaluation that keeps some Born rows only (an evaluation-time
+/// selection's `rows` mask on the template plan of a stored process, whose
+/// columns keep every row) seeds zeros on the other rows, as a plan whose
+/// columns keep those rows only does. Per call, each family it dresses is
+/// pruned as the loader prunes such a plan ([`prune_family`] on a copy: the
+/// same forward and backward link liveness, the edges, groups and steps
+/// left without a link dropped, the work and the family's inputs
+/// recounted), and the fused factor and split current rows the kept links
+/// read are recorded ([`Self::read`]), so the call builds, dresses and (its
+/// tree program, `trees_rows.rs`) evaluates what that plan would: the same
+/// kept sums in the same order, less additions of exact zeros, equal
+/// bitwise up to the sign of a zero. A family left without a step has a
+/// zero numerator and is not dressed (its lanes are absent, as under a
+/// family mask). The copies hold the kept links only.
+pub struct LiveRows {
+    /// The kept Born rows, one flag per plan row.
+    pub rows: Vec<bool>,
+    /// The families the call dresses (ascending) and their pruned copies.
+    listed: Vec<usize>,
+    pruned: Vec<Family>,
+    /// The listed families with a step left (ascending).
+    live: Vec<usize>,
+    /// The factor and current rows the kept links read.
+    pub read: Arc<ReadRows>,
+}
+
+impl LiveRows {
+    /// The families the liveness was formed for.
+    pub fn listed(&self) -> &[usize] {
+        &self.listed
+    }
+
+    /// The listed families with a step left.
+    pub fn families(&self) -> &[usize] {
+        &self.live
+    }
+
+    /// Family `f`'s pruned copy (`None`: not listed).
+    pub fn family(&self, f: usize) -> Option<&Family> {
+        self.listed
+            .binary_search(&f)
+            .ok()
+            .map(|index| &self.pruned[index])
+    }
+
+    /// Row links the pruned families keep (`fused` edges and split parts).
+    pub fn links(&self) -> usize {
+        self.pruned
+            .iter()
+            .flat_map(|family| &family.steps)
+            .map(|step| -> usize {
+                match &step.split {
+                    None => step.edges.iter().map(|edge| edge.links.len()).sum(),
+                    Some(split) => split.parts.iter().flatten().map(|p| p.links.len()).sum(),
+                }
+            })
+            .sum()
+    }
+}
+
+impl LoopProgramV4 {
+    /// The row liveness of an evaluation keeping the Born rows `rows` (one
+    /// flag per plan row) and dressing `families` (ascending) by schedule B
+    /// ([`LiveRows`]); `None` when `rows` drops no row a column seeds
+    /// (nothing to prune).
+    pub fn live_rows(&self, rows: &[bool], families: &[usize]) -> RusticolResult<Option<LiveRows>> {
+        super::require(rows.len() == self.rows, "one kept flag per Born row")?;
+        super::require(
+            families.windows(2).all(|pair| pair[0] < pair[1])
+                && families.last().is_none_or(|&f| f < self.families.len()),
+            "ascending plan families",
+        )?;
+        let columns = self.columns;
+        let keeps = |row: usize| self.column_rows.keeps(row / columns, row % columns);
+        let seeded: Vec<bool> = (0..self.rows * columns)
+            .map(|row| rows[row / columns] && keeps(row))
+            .collect();
+        if seeded.iter().enumerate().all(|(row, &seed)| seed == keeps(row)) {
+            return Ok(None);
+        }
+        let pruned: Vec<Family> = families
+            .iter()
+            .map(|&f| {
+                let mut family = self.families[f].clone();
+                prune_family(&mut family, &seeded, columns, &self.contents, &self.vertices);
+                family
+            })
+            .collect();
+        let live = families
+            .iter()
+            .zip(&pruned)
+            .filter(|(_, family)| !family.steps.is_empty())
+            .map(|(&f, _)| f)
+            .collect();
+        let read = Arc::new(self.rows_read_by(pruned.iter()));
+        Ok(Some(LiveRows {
+            rows: rows.to_vec(),
+            listed: families.to_vec(),
+            pruned,
+            live,
+            read,
+        }))
     }
 }
 
@@ -314,7 +428,7 @@ mod tests {
     use crate::loop_v2::dress::{ChunkInputs, LaneData, Reads, V2Batch};
     use crate::loop_v2::plan::{LoopProgramV4, Source};
     use crate::loop_v2::seeds::seeds;
-    use crate::loop_v2::trie::run_family;
+    use crate::loop_v2::trie::{run_family, run_family_on};
     use symbolica::domains::float::Complex;
     use symbolica::domains::rational::Rational;
 
@@ -485,5 +599,95 @@ mod tests {
         assert_eq!(trace.edges[0].links.len(), 1);
         let read = pruned.read_rows.as_ref().unwrap();
         assert_eq!(read.factors, [vec![true, true], vec![true], vec![true]]);
+    }
+
+    /// The links of every step's first edge, per family.
+    fn links_of(families: &[&crate::loop_v2::plan::Family]) -> Vec<Vec<Vec<(u32, u32, u32)>>> {
+        families
+            .iter()
+            .map(|family| {
+                family
+                    .steps
+                    .iter()
+                    .map(|step| {
+                        step.edges[0]
+                            .links
+                            .iter()
+                            .map(|l| (l.output, l.input, l.block))
+                            .collect()
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// A call's row liveness on a plan whose columns keep every row (an
+    /// evaluation-time selection on the template) prunes the families as
+    /// the loader prunes a plan whose columns keep those rows: the same
+    /// links, factor rows and costs; the family without a step left is not
+    /// live; its numerators equal the row-restricted plan's bitwise; a mask
+    /// keeping every row prunes nothing.
+    #[test]
+    fn a_call_keeping_some_rows_prunes_as_the_row_restricted_plan() {
+        let template = plan("null", 1);
+        let restricted = plan("[[0]]", 1);
+        assert!(template.live_rows(&[true, true], &[0, 1]).unwrap().is_none());
+        assert!(template.live_rows(&[true], &[0, 1]).is_err());
+        assert!(template.live_rows(&[true, false], &[1, 0]).is_err());
+        let live = template.live_rows(&[true, false], &[0, 1]).unwrap().unwrap();
+        assert_eq!(live.listed(), [0, 1]);
+        assert_eq!(live.families(), [0]);
+        let pruned: Vec<_> = (0..2).map(|f| live.family(f).unwrap()).collect();
+        let reference: Vec<_> = restricted.families.iter().collect();
+        assert_eq!(links_of(&pruned), links_of(&reference));
+        for (a, b) in pruned.iter().zip(&reference) {
+            assert_eq!(a.factors, b.factors);
+            let costs = |f: &crate::loop_v2::plan::Family| -> Vec<u64> {
+                f.steps.iter().map(|s| s.costs.0.iterations).collect()
+            };
+            assert_eq!(costs(a), costs(b));
+        }
+        let read = restricted.read_rows.as_ref().unwrap();
+        assert_eq!(live.read.factors, read.factors);
+        assert_eq!(live.read.currents, read.currents);
+        assert_eq!(live.links(), 2);
+        // Family 0's numerators on the call's liveness (Born row 1 zero, as
+        // the call's sources make it) = the restricted plan's.
+        const L: usize = 2;
+        let zero = Rational::from(0);
+        let batch = batch(true);
+        let data = LaneData::<Rational, L>::new(&template, &batch, &[0, 1], &zero).unwrap();
+        let seeds = seeds(&template, &data);
+        let mut inputs = ChunkInputs::new(&template).with_rows(Some(live.read.clone()));
+        let reads = Reads::of_families(std::iter::once(live.family(0).unwrap()));
+        inputs.prepare(&template, &data, &reads, &reads);
+        let run = run_family_on::<Rational, L>(
+            &template,
+            0,
+            live.family(0).unwrap(),
+            &inputs,
+            &seeds,
+            &data,
+        )
+        .unwrap();
+        assert_eq!(
+            run.numerator.accumulators,
+            numerators(&restricted, &batch)[0]
+        );
+        assert_eq!(
+            run.numerator.accumulators,
+            numerators(&template, &batch)[0]
+        );
+        // Per column: column 1 keeps row 0 only and the call row 1 only, so
+        // only object row 2 (row 1, column 0) is seeded.
+        let per_column = plan("[null,[0]]", 2);
+        let live = per_column.live_rows(&[false, true], &[0, 1]).unwrap().unwrap();
+        let pairs = |links: &[crate::loop_v2::kernels::RowLink]| -> Vec<(u32, u32)> {
+            links.iter().map(|l| (l.output, l.input)).collect()
+        };
+        let full = &per_column.families[0].steps[0].edges[0].links;
+        let expected: Vec<_> = pairs(full).into_iter().filter(|&(_, input)| input == 2).collect();
+        assert_eq!(expected.len(), 1);
+        assert_eq!(pairs(&live.family(0).unwrap().steps[0].edges[0].links), expected);
     }
 }
