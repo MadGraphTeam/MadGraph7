@@ -67,9 +67,9 @@ NATIVE_FAMILIES = True
 # (``artifact.write_plan``), the native process's plan and the plan every
 # native executor loads (``loop_v2::plan::read_binary``, which
 # ``LoopProgramV4::load`` takes for a member). ``plan_sha256`` digests the
-# stored bytes. Off, the plan JSON is stored and loaded (the oracle; the
-# form of artifacts written before the member, which every reader keeps
-# reading).
+# stored bytes. Off, the plan JSON is stored and loaded (the oracle, which
+# is why every reader also reads a JSON plan; no compatibility promise for
+# older artifacts, AGENTS.md).
 BINARY_PLAN = True
 
 
