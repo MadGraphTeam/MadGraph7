@@ -276,7 +276,7 @@ class TestFKSStandalone(unittest.TestCase):
         pname = os.path.basename(born_dir_sa)
         born_dir_nlo = pjoin(path_nlo, 'SubProcesses', pname)
         for f in ('check_sa_fks.f', 'born_pmass.inc', 'born_links.dat',
-                  'born_charges.inc'):
+                  'born_charges.inc', 'me_frame_sa.inc', 'density_sa_call.inc'):
             shutil.copy(pjoin(born_dir_sa, f), pjoin(born_dir_nlo, f))
         # the plain output lacks the makefile-include stubs that the SA
         # finalize writes; the check_fks target does not use their content
