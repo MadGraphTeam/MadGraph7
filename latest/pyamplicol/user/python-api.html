@@ -1,0 +1,1356 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html"><link rel="next" title="Runtime and Selectors" href="runtime-and-selectors.html"><link rel="prev" title="Command-Line Interface" href="command-line-interface.html">
+        <link rel="canonical" href="https://docs.madgraph.org/latest/pyamplicol/user/python-api.html">
+        <link rel="prefetch" href="../../_static/logo-light.png" as="image">
+        <link rel="prefetch" href="../../_static/logo-dark.png" as="image">
+
+    <!-- Generated with Sphinx 9.0.4 and Furo 2025.12.19 -->
+        <title>Python API - MadGraph7 0.2.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=acfd86a5" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f2f2f2;
+  --color-code-foreground: #1e1e1e;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../index.html"><div class="brand">MadGraph7 0.2.1 documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../index.html">
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo only-light" src="../../_static/logo-light.png" alt="Light Logo"/>
+    <img class="sidebar-logo only-dark" src="../../_static/logo-dark.png" alt="Dark Logo"/>
+  </div>
+  
+  
+</a><form class="sidebar-search-container" method="get" action="../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div>
+<div class="mg7-versions" id="mg7-versions" hidden>
+  <label class="mg7-versions__label" for="mg7-version-select">Version</label>
+  <select id="mg7-version-select" aria-label="Documentation version"></select>
+</div>
+<style>
+  .mg7-versions {
+    margin: 0 var(--sidebar-item-spacing-horizontal, 1rem) .75rem;
+  }
+  .mg7-versions__label {
+    display: block;
+    margin-bottom: .2rem;
+    font-size: var(--font-size--small--2, .75rem);
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--color-foreground-muted);
+  }
+  .mg7-versions select {
+    width: 100%;
+    padding: .3rem .4rem;
+    border-radius: .25rem;
+    font-size: var(--font-size--small, .875rem);
+    color: var(--color-foreground-primary);
+    background: var(--color-background-primary);
+    border: 1px solid var(--color-background-border);
+  }
+</style>
+<script>
+(function () {
+  var current = "latest";
+  var versionRoot = new URL("../../" || "./", window.location.href);
+  var siteRoot = new URL("../", versionRoot);
+
+  fetch(new URL("versions.json", siteRoot).href, { cache: "no-cache" })
+    .then(function (r) {
+      if (!r.ok) throw new Error("status " + r.status);
+      return r.json();
+    })
+    .then(function (data) {
+      var sel = document.getElementById("mg7-version-select");
+      var seen = false;
+
+      (data.versions || []).forEach(function (v) {
+        var opt = document.createElement("option");
+        opt.value = new URL(v.url, siteRoot).href;
+        opt.textContent = v.title || v.name;
+        if (v.name === current) {
+          opt.selected = true;
+          seen = true;
+        }
+        sel.appendChild(opt);
+      });
+
+      if (!seen) {
+        // The build running this page isn't in versions.json (e.g. a
+        // workflow_dispatch dry run). Label it rather than silently
+        // selecting the wrong entry, and don't navigate away from it.
+        var opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = current + " (this build)";
+        opt.selected = true;
+        sel.insertBefore(opt, sel.firstChild);
+      }
+
+      sel.addEventListener("change", function () {
+        // Navigate to the other version's root, not the current page path:
+        // this exact page may not exist in that version.
+        if (sel.value) {
+          window.location.assign(sel.value);
+        }
+      });
+
+      document.getElementById("mg7-versions").hidden = false;
+    })
+    .catch(function () {
+      // No versions.json reachable (local build, or served off-site):
+      // leave the switcher hidden rather than show a broken control.
+    });
+})();
+</script><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Usage</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../first_steps.html">First steps</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../run_card.html">Run card</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../custom_functions.html">Custom functions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../diagram_filters.html">Diagram filters</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../gridpacks.html">Gridpacks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../madevent_to_mg7.html">Coming from MadEvent</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">MadSpace</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../madspace/installation.html">Installation</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../madspace/examples.html">Examples</a><input aria-label="Toggle navigation of Examples" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/examples/simple-mappings.html">Constructing and calling a phase-space mapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/examples/cuts.html">Defining fiducial cuts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/examples/diagram-mapping.html">Building a mapping for a Feynman diagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/examples/integration-order.html">Multiple on-shell configurations and integration order</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/examples/matrix-element.html">Calling a MadGraph-generated matrix element</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/examples/gpu.html">Running on a GPU</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/examples/pdf.html">The built-in PDF interpolator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/examples/integrator.html">Building a simple integrator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/examples/integrator-madnis.html">Neural importance sampling with MadNIS</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/examples/flow-training.html">Fusing RNG, flow, mapping and matrix element into one graph</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../madspace/umami-api.html">UMAMI API</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../madspace/python-api.html">Python API</a><input aria-label="Toggle navigation of Python API" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/ChiliMapping.html">ChiliMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/DiscreteFlow.html">DiscreteFlow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/DiscreteSampler.html">DiscreteSampler</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/DoubleT.html">DoubleT</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/FastRamboMapping.html">FastRamboMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Flow.html">Flow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Invariant.html">Invariant</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Luminosity.html">Luminosity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Mapping.html">Mapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MultiChannelMapping.html">MultiChannelMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/PhaseSpaceMapping.html">PhaseSpaceMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/TPropagatorMapping.html">TPropagatorMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/ThreeBodyDecay.html">ThreeBodyDecay</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/TwoBodyDecay.html">TwoBodyDecay</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/TwoToThreeParticleScattering.html">TwoToThreeParticleScattering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/TwoToTwoParticleScattering.html">TwoToTwoParticleScattering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/VegasMapping.html">VegasMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/BufferUnweighter.html">BufferUnweighter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/CachedPdf.html">CachedPdf</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/CachedScale.html">CachedScale</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/CustomFunction.html">CustomFunction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/CutItem.html">CutItem</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Cuts.html">Cuts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/DifferentialCrossSection.html">DifferentialCrossSection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/DiscreteHistogram.html">DiscreteHistogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/EnergyScale.html">EnergyScale</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/FunctionGenerator.html">FunctionGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/HistItem.html">HistItem</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Integrand.html">Integrand</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MLMClustering.html">MLMClustering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MLMClusteringAlongDiagram.html">MLMClusteringAlongDiagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MLP.html">MLP</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MadnisLoss.html">MadnisLoss</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MatrixElement.html">MatrixElement</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MomentumPreprocessing.html">MomentumPreprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MultiChannelFunction.html">MultiChannelFunction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MultiChannelIntegrand.html">MultiChannelIntegrand</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Observable.html">Observable</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/ObservableHistograms.html">ObservableHistograms</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/ObservableValues.html">ObservableValues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/PartonDensity.html">PartonDensity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/RunningCoupling.html">RunningCoupling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Unweighter.html">Unweighter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/VegasHistogram.html">VegasHistogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/AlphaSGrid.html">AlphaSGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/CustomPdf.html">CustomPdf</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Decay.html">Decay</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Diagram.html">Diagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/LineRef.html">LineRef</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/PdfGrid.html">PdfGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Propagator.html">Propagator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Topology.html">Topology</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/initialize_vegas_grid.html">initialize_vegas_grid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/BatchSize.html">BatchSize</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/DataType.html">DataType</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Function.html">Function</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/FunctionBuilder.html">FunctionBuilder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/FunctionRuntime.html">FunctionRuntime</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Instruction.html">Instruction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/InstructionCall.html">InstructionCall</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Type.html">Type</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Value.html">Value</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/batch_float_array.html">batch_float_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/batch_four_vec_array.html">batch_four_vec_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/fuse_instructions.html">fuse_instructions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/multichannel_batch_size.html">multichannel_batch_size</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/AdamOptimizer.html">AdamOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/ChannelEventGenerator.html">ChannelEventGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Context.html">Context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Device.html">Device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/DiscreteOptimizer.html">DiscreteOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/EventGenerator.html">EventGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/EventHistogramSpec.html">EventHistogramSpec</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/EventHistograms.html">EventHistograms</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/GeneratorConfig.html">GeneratorConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/GeneratorStatus.html">GeneratorStatus</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Histogram.html">Histogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/LHECompleter.html">LHECompleter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/LHEEvent.html">LHEEvent</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/LHEFileWriter.html">LHEFileWriter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/LHEHeader.html">LHEHeader</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/LHEMeta.html">LHEMeta</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/LHEParticle.html">LHEParticle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/LHEProcess.html">LHEProcess</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Logger.html">Logger</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MadnisConfig.html">MadnisConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MadnisTraining.html">MadnisTraining</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MatrixElementApi.html">MatrixElementApi</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MixMaxRandom.html">MixMaxRandom</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MultiMadnisTraining.html">MultiMadnisTraining</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/PdfGroupInfo.html">PdfGroupInfo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/PdfMemberSpec.html">PdfMemberSpec</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/PrettyBox.html">PrettyBox</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/StatusFile.html">StatusFile</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/SubprocArgs.html">SubprocArgs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/SubprocessObservables.html">SubprocessObservables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/SubprocessSystArgs.html">SubprocessSystArgs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/SystematicsCalculator.html">SystematicsCalculator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/SystematicsConfig.html">SystematicsConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Tensor.html">Tensor</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/TrainingArgs.html">TrainingArgs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Variation.html">Variation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/VegasGridOptimizer.html">VegasGridOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Verbosity.html">Verbosity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/available_backends.html">available_backends</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/cpu_device.html">cpu_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/cuda_device.html">cuda_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/default_context.html">default_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/default_cuda_context.html">default_cuda_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/default_hip_context.html">default_hip_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/format_progress.html">format_progress</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/format_si_prefix.html">format_si_prefix</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/format_with_error.html">format_with_error</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/hip_device.html">hip_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/select_combine_channel_index.html">select_combine_channel_index</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/set_lib_path.html">set_lib_path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/set_simd_mode.html">set_simd_mode</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/supported_simd_modes.html">supported_simd_modes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/NamedTypes.html">NamedTypes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/NamedValues.html">NamedValues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/PythonFunction.html">PythonFunction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/get_stream.html">get_stream</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/set_stream.html">set_stream</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/stream.html">stream</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../madspace/cpp-api.html">C++ API</a><input aria-label="Toggle navigation of C++ API" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/ChiliMapping.html">ChiliMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/DiscreteFlow.html">DiscreteFlow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/DiscreteSampler.html">DiscreteSampler</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/DoubleT.html">DoubleT</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/FastRamboMapping.html">FastRamboMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Flow.html">Flow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Invariant.html">Invariant</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Luminosity.html">Luminosity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Mapping.html">Mapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MultiChannelMapping.html">MultiChannelMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/PhaseSpaceMapping.html">PhaseSpaceMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/TPropagatorMapping.html">TPropagatorMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/ThreeBodyDecay.html">ThreeBodyDecay</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/TwoBodyDecay.html">TwoBodyDecay</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/TwoToThreeParticleScattering.html">TwoToThreeParticleScattering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/TwoToTwoParticleScattering.html">TwoToTwoParticleScattering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/VegasMapping.html">VegasMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/BatchSampler.html">BatchSampler</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/BufferUnweighter.html">BufferUnweighter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/CustomFunction.html">CustomFunction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Cuts.html">Cuts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/DifferentialCrossSection.html">DifferentialCrossSection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/DiscreteHistogram.html">DiscreteHistogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/EnergyScale.html">EnergyScale</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/FunctionGenerator.html">FunctionGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/GradientClipper.html">GradientClipper</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Integrand.html">Integrand</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/IntegrandChannelPart.html">IntegrandChannelPart</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/IntegrandCommonPart.html">IntegrandCommonPart</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/IntegrandConcatenator.html">IntegrandConcatenator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MLMClustering.html">MLMClustering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MLMClusteringAlongDiagram.html">MLMClusteringAlongDiagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MLP.html">MLP</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MadnisLoss.html">MadnisLoss</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MatrixElement.html">MatrixElement</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MomentumPreprocessing.html">MomentumPreprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MultiChannelFunction.html">MultiChannelFunction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MultiChannelIntegrand.html">MultiChannelIntegrand</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Observable.html">Observable</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/ObservableHistograms.html">ObservableHistograms</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/ObservableValues.html">ObservableValues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/PartonDensity.html">PartonDensity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/RunningCoupling.html">RunningCoupling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Unweighter.html">Unweighter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/VegasHistogram.html">VegasHistogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/AlphaSGrid.html">AlphaSGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/CustomPdf.html">CustomPdf</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Diagram.html">Diagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/PdfGrid.html">PdfGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Propagator.html">Propagator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Topology.html">Topology</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/initialize_vegas_grid.html">initialize_vegas_grid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/BatchSize.html">BatchSize</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Function.html">Function</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/FunctionBuilder.html">FunctionBuilder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Instruction.html">Instruction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/InstructionCall.html">InstructionCall</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Type.html">Type</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Value.html">Value</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/batch_float_array.html">batch_float_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/batch_four_vec_array.html">batch_four_vec_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/fuse_instructions.html">fuse_instructions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/multichannel_batch_size.html">multichannel_batch_size</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/AdamOptimizer.html">AdamOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/ChannelEventGenerator.html">ChannelEventGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Context.html">Context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/DataLayout.html">DataLayout</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/DerivedSeed.html">DerivedSeed</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Device.html">Device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/DiscreteOptimizer.html">DiscreteOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/EventBuffer.html">EventBuffer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/EventFile.html">EventFile</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/EventGenerator.html">EventGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/EventHistogramSpec.html">EventHistogramSpec</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/EventHistograms.html">EventHistograms</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/EventRecord.html">EventRecord</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/FieldLayout.html">FieldLayout</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/GeneratorBatchJob.html">GeneratorBatchJob</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/GeneratorConfig.html">GeneratorConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/GeneratorStatus.html">GeneratorStatus</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Histogram.html">Histogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/LHECompleter.html">LHECompleter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/LHEEvent.html">LHEEvent</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/LHEFileWriter.html">LHEFileWriter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/LHEHeader.html">LHEHeader</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/LHEMeta.html">LHEMeta</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/LHEParticle.html">LHEParticle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/LHEProcess.html">LHEProcess</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/LOReweightInfo.html">LOReweightInfo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Logger.html">Logger</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MadnisTraining.html">MadnisTraining</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MatrixElementApi.html">MatrixElementApi</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MixMaxRandom.html">MixMaxRandom</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MultiMadnisTraining.html">MultiMadnisTraining</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/PackedTensorView.html">PackedTensorView</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/ParticleRecord.html">ParticleRecord</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/PdfGroupInfo.html">PdfGroupInfo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/PdfMemberSpec.html">PdfMemberSpec</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/PrettyBox.html">PrettyBox</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/ReadyJob.html">ReadyJob</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/ResultQueue.html">ResultQueue</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/RunSeedSkip.html">RunSeedSkip</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/RunningIntegral.html">RunningIntegral</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Runtime.html">Runtime</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Sizes.html">Sizes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/StatusFile.html">StatusFile</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/SubprocessObservables.html">SubprocessObservables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/SubprocessSystArgs.html">SubprocessSystArgs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/SystematicsCalculator.html">SystematicsCalculator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/SystematicsConfig.html">SystematicsConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/TarReader.html">TarReader</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/TarWriter.html">TarWriter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Tensor.html">Tensor</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/TensorView.html">TensorView</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/ThreadPool.html">ThreadPool</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/ThreadResource.html">ThreadResource</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/UmamiFunctions.html">UmamiFunctions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/UnalignedRef.html">UnalignedRef</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Variation.html">Variation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/VegasGridOptimizer.html">VegasGridOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/available_backends.html">available_backends</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/cpu_device.html">cpu_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/cuda_device.html">cuda_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/default_context.html">default_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/default_cuda_context.html">default_cuda_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/default_hip_context.html">default_hip_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/format_progress.html">format_progress</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/format_si_prefix.html">format_si_prefix</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/format_with_error.html">format_with_error</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/hip_device.html">hip_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/select_combine_channel_index.html">select_combine_channel_index</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/set_lib_path.html">set_lib_path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/set_simd_mode.html">set_simd_mode</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/supported_simd_modes.html">supported_simd_modes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/NamedVector.html">NamedVector</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Overloaded.html">Overloaded</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">pyAmpliCol</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../README.html">Start here</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../README.html#install-and-try-it">Install and try it</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../README.html#one-artifact-several-interfaces">One artifact, several interfaces</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../README.html#explore-the-documentation">Explore the documentation</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="installation.html">Installation</a><input aria-label="Toggle navigation of Installation" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="quick-start.html">Quick Start</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples-gallery.html">Examples Gallery</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="gentle-walkthrough.html">Get started: a gentle walkthrough</a><input aria-label="Toggle navigation of Get started: a gentle walkthrough" class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="lc-workloads-and-execution-modes.html">LC workloads and execution modes</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="configuration.html">Configuration</a><input aria-label="Toggle navigation of Configuration" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="models-and-processes.html">Models and Processes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ufo-model-coverage.html">UFO Model Coverage</a></li>
+<li class="toctree-l2"><a class="reference internal" href="process-selection-and-permutations.html">Process Selection and Permutations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="process-grouping.html">Process grouping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generation-modes-and-evaluators.html">Generation Modes and Evaluators</a></li>
+<li class="toctree-l2"><a class="reference internal" href="command-line-interface.html">Command-Line Interface</a></li>
+</ul>
+</li>
+<li class="toctree-l1 current has-children current-page"><a class="current reference internal" href="#">Python API</a><input aria-label="Toggle navigation of Python API" checked="" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="runtime-and-selectors.html">Runtime and Selectors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="native-apis.html">Native APIs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="artifacts-and-portability.html">Artifacts and Portability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="umami-api.html">UMAMI and MadSpace</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../correlators.html">Tree-level spin and colour correlations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../correlator-conventions.html">Conventions for spin- and colour-correlated Born quantities</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="profiling-and-benchmarking.html">Profiling and Benchmarking</a><input aria-label="Toggle navigation of Profiling and Benchmarking" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="release-and-support.html">Release and Support</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="architecture-overview.html">Architecture Overview</a><input aria-label="Toggle navigation of Architecture Overview" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="symbolica-and-licensing.html">Symbolica and Licensing</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../development/README.html">Development Documentation</a><input aria-label="Toggle navigation of Development Documentation" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../development/API_CONTRACT.html">Public API Contract</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../development/CONFIG_CONTRACT.html">Configuration Contract</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../development/ARCHITECTURE_DECISIONS.html">Architecture Decisions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../development/PACKAGING_CONTRACT.html">Packaging And Release Contract</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../development/PHYSICS_EXTRACTION_CONTRACT.html">Physics Extraction Contract</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../development/MODEL_ASSET_PROVENANCE.html">Model Asset Provenance</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../development/model-assets/README.html">Packaged Model Assets</a><input aria-label="Toggle navigation of Packaged Model Assets" class="toctree-checkbox" id="toctree-checkbox-11" name="toctree-checkbox-11" role="switch" type="checkbox"/><label for="toctree-checkbox-11"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../development/model-assets/TRANSFORMATIONS.html">Model Asset Transformations</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../development/ON_THE_FLY_MODE_ARCHITECTURE.html">On-the-fly Mode Architecture and Implementation Record</a></li>
+</ul>
+</li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="../../_sources/pyamplicol/user/python-api.md.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <!-- SPDX-License-Identifier: 0BSD -->
+<section class="tex2jax_ignore mathjax_ignore" id="python-api">
+<h1>Python API<a class="headerlink" href="#python-api" title="Link to this heading">¶</a></h1>
+<p>The public Python interface offers typed services for model compilation,
+process planning/generation, runtime evaluation, Born correlations, selectors,
+and profiling.
+Importing <code class="docutils literal notranslate"><span class="pre">pyamplicol</span></code> is lightweight: Symbolica and model tooling are loaded
+only when the requested operation needs them.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">pyamplicol</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">pyamplicol</span><span class="o">.</span><span class="n">__version__</span><span class="p">)</span>
+</pre></div>
+</div>
+<section id="public-service-map">
+<h2>Public service map<a class="headerlink" href="#public-service-map" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Service</p></th>
+<th class="head"><p>Purpose</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ModelSource</span></code></p></td>
+<td><p>Resolve and compile built-in, JSON, UFO, compiled, or prepared models.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Generator</span></code></p></td>
+<td><p>Plan or generate schema-v3 process artifacts.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Runtime</span></code></p></td>
+<td><p>Load one concrete process and evaluate totals/resolved components.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">CorrelatorConfig</span></code>, <code class="docutils literal notranslate"><span class="pre">ColorCorrelator</span></code></p></td>
+<td><p>Declare allowed spin replacements and named colour operators at generation.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">CorrelatedValue</span></code></p></td>
+<td><p>A correlated result with <code class="docutils literal notranslate"><span class="pre">Decimal</span></code> real and imaginary parts.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">BenchmarkRunner</span></code></p></td>
+<td><p>Profile an artifact or loaded runtime.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">group_processes</span></code></p></td>
+<td><p>Group the subprocesses of an artifact with equal matrix elements.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">generate</span></code>, <code class="docutils literal notranslate"><span class="pre">load</span></code>, <code class="docutils literal notranslate"><span class="pre">benchmark</span></code></p></td>
+<td><p>One-shot convenience functions.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The shipped scripts under
+<a class="reference external" href="https://github.com/MadGraphTeam/pyamplicol/tree/main/examples/python"><code class="docutils literal notranslate"><span class="pre">examples/python/</span></code></a>
+are complete runnable programs.</p>
+</section>
+<section id="plan-and-generate-with-the-built-in-model">
+<h2>Plan and generate with the built-in model<a class="headerlink" href="#plan-and-generate-with-the-built-in-model" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">pyamplicol</span> <span class="kn">import</span> <span class="n">GenerationConfig</span><span class="p">,</span> <span class="n">Generator</span><span class="p">,</span> <span class="n">ModelSource</span>
+
+<span class="n">generator</span> <span class="o">=</span> <span class="n">Generator</span><span class="p">(</span><span class="n">GenerationConfig</span><span class="p">(</span><span class="n">workers</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">ModelSource</span><span class="o">.</span><span class="n">built_in_sm</span><span class="p">()</span>
+
+<span class="n">plan</span> <span class="o">=</span> <span class="n">generator</span><span class="o">.</span><span class="n">plan</span><span class="p">(</span><span class="s2">&quot;d d~ &gt; z g&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">process</span> <span class="ow">in</span> <span class="n">plan</span><span class="o">.</span><span class="n">concrete_processes</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">process</span><span class="o">.</span><span class="n">expression</span><span class="p">)</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">generator</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span>
+    <span class="s2">&quot;d d~ &gt; z g&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;artifacts/builtin_ddbar_to_zg&quot;</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
+    <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;replace&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">output</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">plan()</span></code> resolves the model/process/color/evaluator contract without writing a
+process artifact. <code class="docutils literal notranslate"><span class="pre">generate()</span></code> returns an immutable <code class="docutils literal notranslate"><span class="pre">GenerationResult</span></code> with the
+absolute output, stored process set, schema version, and file inventory.</p>
+<p>The packaged scalar HEFT model uses the same public selector:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">pyamplicol</span> <span class="kn">import</span> <span class="n">Generator</span><span class="p">,</span> <span class="n">ModelSource</span>
+
+<span class="n">heft</span> <span class="o">=</span> <span class="n">ModelSource</span><span class="o">.</span><span class="n">built_in_sm_heft</span><span class="p">()</span>
+<span class="n">Generator</span><span class="p">()</span><span class="o">.</span><span class="n">plan</span><span class="p">(</span><span class="s2">&quot;g g &gt; H g g&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">heft</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Use an explicit <code class="docutils literal notranslate"><span class="pre">HIG</span> <span class="pre">=</span> <span class="pre">1</span></code> coupling-order limit in a resolved run configuration
+when generating the process; see <a class="reference internal" href="models-and-processes.html#built-in-scalar-heft-model"><span class="std std-ref">Models and Processes</span></a>
+and the packaged <code class="docutils literal notranslate"><span class="pre">builtin_sm_heft.toml</span></code> card.</p>
+</section>
+<section id="generate-with-adjoint-fft-contraction">
+<h2>Generate with adjoint FFT contraction<a class="headerlink" href="#generate-with-adjoint-fft-contraction" title="Link to this heading">¶</a></h2>
+<p>The Python API uses the same <code class="docutils literal notranslate"><span class="pre">RunConfig</span></code> and <code class="docutils literal notranslate"><span class="pre">ColorConfig</span></code> fields as TOML and
+the CLI. Defaults <code class="docutils literal notranslate"><span class="pre">contraction=&quot;auto&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">fft_basis=&quot;adjoint&quot;</span></code> try adaptive
+exact FFT for NLC/full recurrence and on-the-fly execution, with direct fallback
+for unsupported FFT plans. This certified pure Yang–Mills example uses DDM:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">pyamplicol</span> <span class="kn">import</span> <span class="n">ColorConfig</span><span class="p">,</span> <span class="n">Generator</span><span class="p">,</span> <span class="n">ModelSource</span><span class="p">,</span> <span class="n">RunConfig</span>
+<span class="kn">from</span> <span class="nn">pyamplicol.config</span> <span class="kn">import</span> <span class="n">EvaluatorConfig</span>
+
+<span class="n">config</span> <span class="o">=</span> <span class="n">RunConfig</span><span class="p">(</span>
+    <span class="n">action</span><span class="o">=</span><span class="s2">&quot;generate&quot;</span><span class="p">,</span>
+    <span class="n">color</span><span class="o">=</span><span class="n">ColorConfig</span><span class="p">(</span><span class="n">accuracy</span><span class="o">=</span><span class="s2">&quot;full&quot;</span><span class="p">),</span>
+    <span class="n">evaluator</span><span class="o">=</span><span class="n">EvaluatorConfig</span><span class="p">(</span><span class="n">execution_mode</span><span class="o">=</span><span class="s2">&quot;recurrence&quot;</span><span class="p">),</span>
+<span class="p">)</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">Generator</span><span class="p">(</span><span class="n">config</span><span class="p">)</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span>
+    <span class="s2">&quot;g g &gt; g g g&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;artifacts/ggg_adjoint_fft&quot;</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="n">ModelSource</span><span class="o">.</span><span class="n">built_in_sm</span><span class="p">(),</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>Select <code class="docutils literal notranslate"><span class="pre">accuracy=&quot;nlc&quot;</span></code> for NLC contraction, or <code class="docutils literal notranslate"><span class="pre">execution_mode=&quot;on-the-fly&quot;</span></code>
+for a compact OTF artifact. The effective configuration can retain <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>
+until per-process selection. LC, compiled/eager execution, and <code class="docutils literal notranslate"><span class="pre">correlators=</span></code>
+use direct contraction and the trace basis under the automatic policy.</p>
+<p>Use <code class="docutils literal notranslate"><span class="pre">ColorConfig(accuracy=&quot;full&quot;,</span> <span class="pre">contraction=&quot;direct&quot;)</span></code> to opt out of FFT;
+direct contraction ignores <code class="docutils literal notranslate"><span class="pre">fft_basis</span></code>. To force FFT and retain errors for
+unsupported plans, set <code class="docutils literal notranslate"><span class="pre">contraction=&quot;symmetric-group-fft&quot;</span></code>, optionally with
+<code class="docutils literal notranslate"><span class="pre">fft_basis=&quot;trace&quot;</span></code> for the original representation. The string <code class="docutils literal notranslate"><span class="pre">&quot;adjoint&quot;</span></code>
+is equivalent to <code class="docutils literal notranslate"><span class="pre">ColorFFTBasis.ADJOINT</span></code> (imported from <code class="docutils literal notranslate"><span class="pre">pyamplicol</span></code>). Explicit
+FFT does not support compiled/eager modes or LC accuracy.</p>
+<p>For certified trees with <code class="docutils literal notranslate"><span class="pre">n</span></code> external gluons, DDM fixes two anchors and reduces
+the trace set from <code class="docutils literal notranslate"><span class="pre">(n-1)!</span></code> orderings to <code class="docutils literal notranslate"><span class="pre">(n-2)!</span></code>, representing the same amplitude.
+Certified single-insertion HEFT also uses DDM; specify explicit coupling orders
+with <code class="docutils literal notranslate"><span class="pre">HIG</span> <span class="pre">=</span> <span class="pre">1</span></code>, as in <code class="docutils literal notranslate"><span class="pre">examples/builtin_sm_heft.toml</span></code>. Quark processes keep exact
+fundamental chains or their products, not a newly assumed JO primitive basis;
+uncertified adjoint interactions retain trace tensors. The saved
+<code class="docutils literal notranslate"><span class="pre">fft_basis_selection</span></code> reports <code class="docutils literal notranslate"><span class="pre">requested</span></code>, <code class="docutils literal notranslate"><span class="pre">actual_basis</span></code>, <code class="docutils literal notranslate"><span class="pre">name</span></code>, <code class="docutils literal notranslate"><span class="pre">reason</span></code>,
+<code class="docutils literal notranslate"><span class="pre">permutation_degree</span></code>, and <code class="docutils literal notranslate"><span class="pre">tensor_count</span></code>, making that choice explicit.
+Forced adjoint FFT cannot be combined with <code class="docutils literal notranslate"><span class="pre">correlators=</span></code>. Runtime totals,
+resolved helicities and native SDK evaluation calls are unchanged. No universal
+speedup is implied.
+In the benchmarked pure-gluon family the adjoint basis was faster than trace
+for six or more external gluons (3.9x per sample at ten gluons); benchmark
+other multiplicities and selector workloads.</p>
+</section>
+<section id="generate-a-named-process-set">
+<h2>Generate a named process set<a class="headerlink" href="#generate-a-named-process-set" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">pyamplicol</span> <span class="kn">import</span> <span class="n">Generator</span><span class="p">,</span> <span class="n">ModelSource</span><span class="p">,</span> <span class="n">ProcessRequest</span><span class="p">,</span> <span class="n">ProcessSet</span>
+
+<span class="n">processes</span> <span class="o">=</span> <span class="n">ProcessSet</span><span class="p">(</span>
+    <span class="n">requests</span><span class="o">=</span><span class="p">(</span>
+        <span class="n">ProcessRequest</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="s2">&quot;u u~ &gt; Z g&quot;</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;uubar_Zg&quot;</span><span class="p">),</span>
+        <span class="n">ProcessRequest</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="s2">&quot;u u~ &gt; Z g g&quot;</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;uubar_Zgg&quot;</span><span class="p">),</span>
+    <span class="p">)</span>
+<span class="p">)</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">Generator</span><span class="p">()</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span>
+    <span class="n">processes</span><span class="p">,</span>
+    <span class="s2">&quot;artifacts/z_ladder&quot;</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="n">ModelSource</span><span class="o">.</span><span class="n">built_in_sm</span><span class="p">(),</span>
+    <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;replace&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>Process names must be unique. For custom aliases and crossing metadata, use
+<code class="docutils literal notranslate"><span class="pre">ProcessAlias</span></code>; runtime expression matching already handles unique
+side-preserving permutations automatically.
+The correlated reference path currently requires identity ordering; these
+permutation facilities apply to ordinary evaluation.</p>
+</section>
+<section id="compile-and-reuse-an-external-model">
+<h2>Compile and reuse an external model<a class="headerlink" href="#compile-and-reuse-an-external-model" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">pyamplicol</span> <span class="kn">import</span> <span class="n">Generator</span><span class="p">,</span> <span class="n">ModelSource</span>
+
+<span class="n">source</span> <span class="o">=</span> <span class="n">ModelSource</span><span class="o">.</span><span class="n">from_path</span><span class="p">(</span>
+    <span class="s2">&quot;models/json/sm/sm.json&quot;</span><span class="p">,</span>
+    <span class="n">restriction</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">source</span><span class="o">.</span><span class="n">compile</span><span class="p">()</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">capabilities</span><span class="o">.</span><span class="n">supported_color_accuracies</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">supported</span><span class="p">)</span>
+
+<span class="n">Generator</span><span class="p">()</span><span class="o">.</span><span class="n">plan</span><span class="p">(</span><span class="s2">&quot;d d~ &gt; z g&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>For a trusted UFO directory:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">source</span> <span class="o">=</span> <span class="n">ModelSource</span><span class="o">.</span><span class="n">from_path</span><span class="p">(</span>
+    <span class="s2">&quot;/path/to/MyUFO&quot;</span><span class="p">,</span>
+    <span class="n">restriction</span><span class="o">=</span><span class="s2">&quot;restrict_default.dat&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">source</span><span class="o">.</span><span class="n">compile</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>UFO modules execute Python while loading. See
+<a class="reference internal" href="models-and-processes.html"><span class="std std-doc">Models and Processes</span></a> for trust, serialization, and
+prepared bundles.</p>
+</section>
+<section id="use-a-fully-resolved-run-card">
+<h2>Use a fully resolved run card<a class="headerlink" href="#use-a-fully-resolved-run-card" title="Link to this heading">¶</a></h2>
+<p>For complex configuration, resolve the same schema used by the CLI and pass the
+result to <code class="docutils literal notranslate"><span class="pre">Generator</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">pyamplicol</span> <span class="kn">import</span> <span class="n">Generator</span><span class="p">,</span> <span class="n">ModelSource</span><span class="p">,</span> <span class="n">ProcessRequest</span><span class="p">,</span> <span class="n">ProcessSet</span>
+<span class="kn">from</span> <span class="nn">pyamplicol.config</span> <span class="kn">import</span> <span class="n">resolve_config</span>
+
+<span class="n">card</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;schema_version&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+    <span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;generate&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;source&quot;</span><span class="p">:</span> <span class="s2">&quot;models/json/sm/sm.json&quot;</span><span class="p">,</span> <span class="s2">&quot;restriction&quot;</span><span class="p">:</span> <span class="s2">&quot;default&quot;</span><span class="p">},</span>
+    <span class="s2">&quot;process&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;entries&quot;</span><span class="p">:</span> <span class="p">[{</span><span class="s2">&quot;expression&quot;</span><span class="p">:</span> <span class="s2">&quot;p p &gt; Z j j&quot;</span><span class="p">}],</span>
+        <span class="s2">&quot;multiparticles&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;p&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;d&quot;</span><span class="p">,</span> <span class="s2">&quot;d~&quot;</span><span class="p">,</span> <span class="s2">&quot;g&quot;</span><span class="p">],</span> <span class="s2">&quot;j&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;d&quot;</span><span class="p">,</span> <span class="s2">&quot;d~&quot;</span><span class="p">,</span> <span class="s2">&quot;g&quot;</span><span class="p">]},</span>
+        <span class="s2">&quot;flavor_scheme&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>
+        <span class="s2">&quot;max_quark_lines&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;color&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;accuracy&quot;</span><span class="p">:</span> <span class="s2">&quot;lc&quot;</span><span class="p">},</span>
+    <span class="s2">&quot;generation&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;output&quot;</span><span class="p">:</span> <span class="s2">&quot;artifacts/pp_zjj&quot;</span><span class="p">,</span> <span class="s2">&quot;mode&quot;</span><span class="p">:</span> <span class="s2">&quot;replace&quot;</span><span class="p">},</span>
+    <span class="s2">&quot;evaluator&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;execution_mode&quot;</span><span class="p">:</span> <span class="s2">&quot;compiled&quot;</span><span class="p">,</span> <span class="s2">&quot;backend&quot;</span><span class="p">:</span> <span class="s2">&quot;jit&quot;</span><span class="p">},</span>
+<span class="p">}</span>
+
+<span class="n">resolution</span> <span class="o">=</span> <span class="n">resolve_config</span><span class="p">(</span><span class="n">card</span><span class="p">)</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">ModelSource</span><span class="o">.</span><span class="n">from_config</span><span class="p">(</span><span class="n">resolution</span><span class="o">.</span><span class="n">effective</span><span class="o">.</span><span class="n">model</span><span class="p">)</span><span class="o">.</span><span class="n">compile</span><span class="p">()</span>
+<span class="n">processes</span> <span class="o">=</span> <span class="n">ProcessSet</span><span class="p">(</span>
+    <span class="nb">tuple</span><span class="p">(</span>
+        <span class="n">ProcessRequest</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">entry</span><span class="o">.</span><span class="n">expression</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">entry</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">resolution</span><span class="o">.</span><span class="n">effective</span><span class="o">.</span><span class="n">process</span><span class="o">.</span><span class="n">entries</span>
+    <span class="p">)</span>
+<span class="p">)</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">Generator</span><span class="p">(</span><span class="n">resolution</span><span class="p">)</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span>
+    <span class="n">processes</span><span class="p">,</span>
+    <span class="n">resolution</span><span class="o">.</span><span class="n">effective</span><span class="o">.</span><span class="n">generation</span><span class="o">.</span><span class="n">output</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
+    <span class="n">mode</span><span class="o">=</span><span class="n">resolution</span><span class="o">.</span><span class="n">effective</span><span class="o">.</span><span class="n">generation</span><span class="o">.</span><span class="n">mode</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>The complete maintained implementation is
+<a class="reference external" href="https://github.com/MadGraphTeam/pyamplicol/blob/main/examples/python/typed_generation.py"><code class="docutils literal notranslate"><span class="pre">examples/python/typed_generation.py</span></code></a>.</p>
+</section>
+<section id="load-a-runtime">
+<h2>Load a runtime<a class="headerlink" href="#load-a-runtime" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">pyamplicol</span> <span class="kn">import</span> <span class="n">Runtime</span>
+
+<span class="n">runtime</span> <span class="o">=</span> <span class="n">Runtime</span><span class="o">.</span><span class="n">load</span><span class="p">(</span>
+    <span class="s2">&quot;artifacts/pp_zjj&quot;</span><span class="p">,</span>
+    <span class="n">process</span><span class="o">=</span><span class="s2">&quot;d d~ &gt; g z g&quot;</span><span class="p">,</span>
+    <span class="n">model_parameters</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;aS&quot;</span><span class="p">:</span> <span class="mf">0.117</span><span class="p">,</span> <span class="s2">&quot;MZ&quot;</span><span class="p">:</span> <span class="mf">91.1876</span><span class="p">},</span>
+<span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">runtime</span><span class="o">.</span><span class="n">artifact_id</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">runtime</span><span class="o">.</span><span class="n">execution_mode</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">runtime</span><span class="o">.</span><span class="n">physics</span><span class="o">.</span><span class="n">process_id</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">runtime</span><span class="o">.</span><span class="n">physics</span><span class="o">.</span><span class="n">process</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">runtime</span><span class="o">.</span><span class="n">representative_process_key</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">runtime</span><span class="o">.</span><span class="n">external_permutation</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">process</span></code> may be a stable process ID, explicit alias ID, exact stored expression,
+or unique permutation-equivalent expression within each side. The loaded
+runtime exposes metadata in the requested public order.
+For correlated evaluation, load the stored process in its generated ordering;
+nonidentity aliases/permutations are not supported by that path yet.</p>
+</section>
+<section id="evaluate-totals-and-resolved-components">
+<h2>Evaluate totals and resolved components<a class="headerlink" href="#evaluate-totals-and-resolved-components" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">import</span> <span class="nn">math</span>
+<span class="kn">from</span> <span class="nn">pathlib</span> <span class="kn">import</span> <span class="n">Path</span>
+
+<span class="n">points</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;data/pp_zjj_momenta.json&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">read_text</span><span class="p">())</span>
+
+<span class="n">totals</span> <span class="o">=</span> <span class="n">runtime</span><span class="o">.</span><span class="n">evaluate</span><span class="p">(</span><span class="n">points</span><span class="p">)</span>
+<span class="n">resolved</span> <span class="o">=</span> <span class="n">runtime</span><span class="o">.</span><span class="n">evaluate_resolved</span><span class="p">(</span><span class="n">points</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">resolved</span><span class="o">.</span><span class="n">helicity_ids</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">resolved</span><span class="o">.</span><span class="n">color_ids</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">optimized</span><span class="p">,</span> <span class="n">explicit</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">totals</span><span class="p">,</span> <span class="n">resolved</span><span class="o">.</span><span class="n">total</span><span class="p">(),</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="k">assert</span> <span class="n">math</span><span class="o">.</span><span class="n">isclose</span><span class="p">(</span><span class="n">optimized</span><span class="o">.</span><span class="n">real</span><span class="p">,</span> <span class="n">explicit</span><span class="o">.</span><span class="n">real</span><span class="p">,</span> <span class="n">rel_tol</span><span class="o">=</span><span class="mf">1e-12</span><span class="p">,</span> <span class="n">abs_tol</span><span class="o">=</span><span class="mf">1e-15</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">math</span><span class="o">.</span><span class="n">isclose</span><span class="p">(</span><span class="n">optimized</span><span class="o">.</span><span class="n">imag</span><span class="p">,</span> <span class="n">explicit</span><span class="o">.</span><span class="n">imag</span><span class="p">,</span> <span class="n">rel_tol</span><span class="o">=</span><span class="mf">1e-12</span><span class="p">,</span> <span class="n">abs_tol</span><span class="o">=</span><span class="mf">1e-15</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Input shape is:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>(point, external particle, [E, px, py, pz])
+</pre></div>
+</div>
+<p>At LC, resolved shape is <code class="docutils literal notranslate"><span class="pre">(point,</span> <span class="pre">helicity,</span> <span class="pre">color_flow)</span></code>. At NLC/full,
+the color dimension has length one because color is contracted.</p>
+</section>
+<section id="retain-completed-otf-preparation">
+<h2>Retain completed OTF preparation<a class="headerlink" href="#retain-completed-otf-preparation" title="Link to this heading">¶</a></h2>
+<p>For an on-the-fly runtime, <code class="docutils literal notranslate"><span class="pre">runtime.save(path)</span></code> writes the completed cache
+left by evaluation or explicit warm-up. In a later program, load the original
+process output with <code class="docutils literal notranslate"><span class="pre">Runtime.load(...)</span></code>, then call <code class="docutils literal notranslate"><span class="pre">runtime.load_cache(path)</span></code>
+before evaluating with the same selectors. Both methods return <code class="docutils literal notranslate"><span class="pre">None</span></code>; the
+restored calculation accepts new momenta and batch sizes while retaining the
+receiving runtime’s model parameters.</p>
+<p>See the <a class="reference internal" href="runtime-and-selectors.html#saving-an-otf-warm-cache"><span class="std std-ref">complete four-gluon example</span></a>
+for generation, saving and restoring, and a check that no queries are rebuilt.
+The cache supplements the original process output; it does not replace it or
+checkpoint an unfinished cold construction.</p>
+</section>
+<section id="evaluate-born-correlations">
+<h2>Evaluate Born correlations<a class="headerlink" href="#evaluate-born-correlations" title="Link to this heading">¶</a></h2>
+<p>Correlations require an explicit <code class="docutils literal notranslate"><span class="pre">Generator.generate(...,</span> <span class="pre">correlators=...)</span></code>
+declaration. They support <strong>LC, NLC and full colour</strong>, through a separate Python
+direct, generic compiled exact executor. <code class="docutils literal notranslate"><span class="pre">color.accuracy</span></code> selects the correlated
+approximation. Supplying <code class="docutils literal notranslate"><span class="pre">correlators</span></code> retains complete underlying amplitudes
+and selects direct contraction and compiled generation. Ordinary generation
+and evaluation remain unchanged.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">pyamplicol</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">ColorCorrelator</span><span class="p">,</span> <span class="n">CorrelatorConfig</span><span class="p">,</span> <span class="n">Generator</span><span class="p">,</span> <span class="n">ModelSource</span><span class="p">,</span> <span class="n">Runtime</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">pyamplicol.config</span> <span class="kn">import</span> <span class="n">ColorConfig</span><span class="p">,</span> <span class="n">RunConfig</span>
+
+<span class="n">declarations</span> <span class="o">=</span> <span class="n">CorrelatorConfig</span><span class="p">(</span>
+    <span class="n">color_correlations</span><span class="o">=</span><span class="p">(</span><span class="n">ColorCorrelator</span><span class="o">.</span><span class="n">dipole</span><span class="p">(</span><span class="s2">&quot;T13&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">),),</span>
+    <span class="n">spin_correlations</span><span class="o">=</span><span class="p">((</span><span class="mi">3</span><span class="p">,),</span> <span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">)),</span>
+<span class="p">)</span>
+<span class="n">generated</span> <span class="o">=</span> <span class="n">Generator</span><span class="p">(</span><span class="n">RunConfig</span><span class="p">(</span><span class="n">color</span><span class="o">=</span><span class="n">ColorConfig</span><span class="p">(</span><span class="n">accuracy</span><span class="o">=</span><span class="s2">&quot;full&quot;</span><span class="p">)))</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span>
+    <span class="s2">&quot;g g &gt; g g&quot;</span><span class="p">,</span> <span class="s2">&quot;artifacts/gg_correlated&quot;</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="n">ModelSource</span><span class="o">.</span><span class="n">built_in_sm</span><span class="p">(),</span> <span class="n">correlators</span><span class="o">=</span><span class="n">declarations</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">correlated_runtime</span> <span class="o">=</span> <span class="n">Runtime</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">generated</span><span class="o">.</span><span class="n">output</span><span class="p">)</span>
+<span class="n">point</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="p">(</span><span class="mi">500</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">500</span><span class="p">),</span> <span class="p">(</span><span class="mi">500</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">500</span><span class="p">),</span>
+    <span class="p">(</span><span class="mi">500</span><span class="p">,</span> <span class="mi">300</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">400</span><span class="p">),</span> <span class="p">(</span><span class="mi">500</span><span class="p">,</span> <span class="o">-</span><span class="mi">300</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">400</span><span class="p">),</span>
+<span class="p">)</span>
+<span class="n">colour</span> <span class="o">=</span> <span class="n">correlated_runtime</span><span class="o">.</span><span class="n">evaluate_correlated</span><span class="p">(</span>
+    <span class="p">(</span><span class="n">point</span><span class="p">,),</span> <span class="n">color_correlation</span><span class="o">=</span><span class="s2">&quot;T13&quot;</span><span class="p">,</span> <span class="n">precision</span><span class="o">=</span><span class="mi">40</span><span class="p">,</span>
+<span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+<span class="n">correlated_runtime</span><span class="o">.</span><span class="n">set_spin_correlation_vectors</span><span class="p">({</span><span class="mi">3</span><span class="p">:</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)})</span>
+<span class="n">spin_colour</span> <span class="o">=</span> <span class="n">correlated_runtime</span><span class="o">.</span><span class="n">evaluate_correlated</span><span class="p">(</span>
+    <span class="p">(</span><span class="n">point</span><span class="p">,),</span> <span class="n">color_correlation</span><span class="o">=</span><span class="s2">&quot;T13&quot;</span><span class="p">,</span> <span class="n">precision</span><span class="o">=</span><span class="mi">40</span><span class="p">,</span>
+<span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">spin_colour</span><span class="o">.</span><span class="n">real</span><span class="p">,</span> <span class="n">spin_colour</span><span class="o">.</span><span class="n">imag</span><span class="p">)</span>  <span class="c1"># Decimal values, not a forced real part.</span>
+<span class="n">correlated_runtime</span><span class="o">.</span><span class="n">set_spin_correlation_vectors</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Instead of explicit colour requests, use
+<code class="docutils literal notranslate"><span class="pre">CorrelatorConfig.all_color(through_order=k,</span> <span class="pre">spin_correlations=...)</span></code> before
+generation to prepare every compatible directed pair of tree-soft connections
+through any positive order <code class="docutils literal notranslate"><span class="pre">k</span></code>. The nonminimal catalogue includes emissions from
+emitted partons and splitting of auxiliary gluons, and grows rapidly with order.
+It adds no kinematic kernels, flavour sums or multiplicity weights. Inspect the
+operators actually stored for a selected process with:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">correlated_runtime</span><span class="o">.</span><span class="n">available_color_correlations</span><span class="p">():</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">entry</span><span class="o">.</span><span class="n">id</span><span class="p">,</span> <span class="n">entry</span><span class="o">.</span><span class="n">order</span><span class="p">,</span> <span class="n">entry</span><span class="o">.</span><span class="n">bra</span><span class="p">,</span> <span class="n">entry</span><span class="o">.</span><span class="n">ket</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>This includes <code class="docutils literal notranslate"><span class="pre">&quot;born&quot;</span></code> and reads the catalogue without initializing amplitude
+evaluation. See the <a class="reference internal" href="../correlators.html"><span class="std std-doc">automatic catalogue guide</span></a>
+for generation and grouped evaluation.</p>
+<p><code class="docutils literal notranslate"><span class="pre">evaluate_correlated(momenta,</span> <span class="pre">*,</span> <span class="pre">color_correlation=&quot;born&quot;,</span> <span class="pre">helicities=None,</span> <span class="pre">precision=16,</span> <span class="pre">arithmetic=&quot;arbitrary&quot;)</span></code> returns one <code class="docutils literal notranslate"><span class="pre">CorrelatedValue</span></code> per point. The reserved ID
+<code class="docutils literal notranslate"><span class="pre">&quot;born&quot;</span></code> uses the Born metric at the requested colour accuracy; other IDs are the declared
+operators. Optional batch-global helicity selectors accept stable IDs or typed
+<code class="docutils literal notranslate"><span class="pre">HelicityConfiguration</span></code> objects. There is no colour-flow or per-point selector
+argument on this method. Normalization, initial-state averages, and
+identical-particle factors are retained, and runtime model-parameter updates
+also apply to correlations.</p>
+<p>For multiple combinations, <code class="docutils literal notranslate"><span class="pre">evaluate_correlated_many(points,</span> <span class="pre">requests)</span></code> takes
+a mapping from your result labels to <code class="docutils literal notranslate"><span class="pre">CorrelatedRequest(color_correlation=...,</span> <span class="pre">spin_vectors=...)</span></code>. Its result is a dictionary of tuples:
+<code class="docutils literal notranslate"><span class="pre">result[request_label][point_index].real</span></code> or <code class="docutils literal notranslate"><span class="pre">.imag</span></code> selects one contraction
+at one phase-space point. Label and point order are preserved. Identical spin
+assignments share their amplitudes across colour operators, and unchanged
+stages can be reused across different assignments. See the
+<a class="reference internal" href="../correlators.html#several-requests-and-several-phase-space-points"><span class="std std-ref">two-axis example</span></a>
+for request-centric and point-centric access. Ordinary <code class="docutils literal notranslate"><span class="pre">evaluate()</span></code> on the
+underlying correlated output remains full-colour; use the correlated <code class="docutils literal notranslate"><span class="pre">&quot;born&quot;</span></code>
+request when comparing its selected LC/NLC approximation.</p>
+<p>The spin-vector mapping uses one-based public leg labels. Each value is a
+literal real or complex <code class="docutils literal notranslate"><span class="pre">(v0,</span> <span class="pre">vx,</span> <span class="pre">vy,</span> <span class="pre">vz)</span></code> vector, broadcast across the batch,
+or one such vector per point. The nonempty key set must exactly match a
+declared spin class: this example permits <code class="docutils literal notranslate"><span class="pre">{3}</span></code> and <code class="docutils literal notranslate"><span class="pre">{3,</span> <span class="pre">4}</span></code>, but not <code class="docutils literal notranslate"><span class="pre">{4}</span></code>.
+Vectors are neither normalized nor projected. They are copied into
+instance-local state; a failed setter preserves the previous state. <code class="docutils literal notranslate"><span class="pre">None</span></code> or
+<code class="docutils literal notranslate"><span class="pre">{}</span></code> resets to ordinary helicity sources; <code class="docutils literal notranslate"><span class="pre">clear()</span></code> releases warmed evaluators
+without resetting vectors. The setter affects <code class="docutils literal notranslate"><span class="pre">evaluate_correlated</span></code> and
+inherited requests in <code class="docutils literal notranslate"><span class="pre">evaluate_correlated_many</span></code>, not <code class="docutils literal notranslate"><span class="pre">evaluate</span></code> or
+<code class="docutils literal notranslate"><span class="pre">evaluate_resolved</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">Decimal</span></code> vector components retain their digits; a <code class="docutils literal notranslate"><span class="pre">(Decimal(real),</span> <span class="pre">Decimal(imaginary))</span></code> pair represents one complex component without first
+rounding it through Python’s binary64 <code class="docutils literal notranslate"><span class="pre">complex</span></code>. For example:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">decimal</span> <span class="kn">import</span> <span class="n">Decimal</span>
+
+<span class="n">zero</span> <span class="o">=</span> <span class="n">Decimal</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">correlated_runtime</span><span class="o">.</span><span class="n">set_spin_correlation_vectors</span><span class="p">({</span><span class="mi">3</span><span class="p">:</span> <span class="p">(</span>
+    <span class="n">zero</span><span class="p">,</span> <span class="n">zero</span><span class="p">,</span>
+    <span class="p">(</span><span class="n">Decimal</span><span class="p">(</span><span class="s2">&quot;1.0000000000000000000000001&quot;</span><span class="p">),</span> <span class="n">Decimal</span><span class="p">(</span><span class="s2">&quot;2e-25&quot;</span><span class="p">)),</span>
+    <span class="n">zero</span><span class="p">,</span>
+<span class="p">)})</span>
+<span class="n">arb</span> <span class="o">=</span> <span class="n">correlated_runtime</span><span class="o">.</span><span class="n">evaluate_correlated</span><span class="p">((</span><span class="n">point</span><span class="p">,),</span> <span class="n">precision</span><span class="o">=</span><span class="mi">80</span><span class="p">)</span>
+<span class="n">dd</span> <span class="o">=</span> <span class="n">correlated_runtime</span><span class="o">.</span><span class="n">evaluate_correlated</span><span class="p">(</span>
+    <span class="p">(</span><span class="n">point</span><span class="p">,),</span> <span class="n">arithmetic</span><span class="o">=</span><span class="s2">&quot;double-double&quot;</span><span class="p">,</span> <span class="n">precision</span><span class="o">=</span><span class="mi">31</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">correlated_runtime</span><span class="o">.</span><span class="n">set_spin_correlation_vectors</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The default is arbitrary precision. Explicit <code class="docutils literal notranslate"><span class="pre">arithmetic=&quot;double-double&quot;</span></code>
+uses genuine DoubleFloat arithmetic throughout sources, evaluation stages,
+normalization and reduction; at most 31 result digits are supported. The same
+keyword and Decimal vector syntax apply to <code class="docutils literal notranslate"><span class="pre">evaluate_correlated_many</span></code> and its
+explicit request vectors. See the <a class="reference internal" href="../correlators.html#decimal-inputs-and-double-double-arithmetic"><span class="std std-ref">grouped precision example</span></a>.</p>
+<p>Artifacts without declarations, append generation, partial source coverage,
+FFT, eager/recurrence/OTF correlated execution, replay reductions, and
+nonidentity process permutations are not supported. Ordered <code class="docutils literal notranslate"><span class="pre">EmitGluon</span></code> and
+<code class="docutils literal notranslate"><span class="pre">SplitGluon</span></code> operations have no fixed order cap; generic NkLO colour-connection
+order is distinct from LC/NLC colour approximations and does not supply a
+complete higher-order subtraction calculation. See <a class="reference internal" href="../correlators.html"><span class="std std-doc">Born Correlations</span></a>
+for the bra-adjoint/ket convention, joint spin contractions, JSON declarations,
+Ward checks, and current limitations.</p>
+<p>The same generated colour catalogue and spin classes are available to the
+<a class="reference internal" href="native-apis.html#correlated-born-evaluations"><span class="std std-ref">C/C++/Fortran/Rust SDKs</span></a>, whose
+correlated evaluation is binary64 and independent of Python/Symbolica.
+The Python methods described here retain their precision-controlled executor.</p>
+</section>
+<section id="select-helicities-and-color-flows">
+<h2>Select helicities and color flows<a class="headerlink" href="#select-helicities-and-color-flows" title="Link to this heading">¶</a></h2>
+<p>Batch-global selectors accept stable IDs or the typed objects exposed by
+<code class="docutils literal notranslate"><span class="pre">runtime.physics</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">selected</span> <span class="o">=</span> <span class="n">runtime</span><span class="o">.</span><span class="n">evaluate</span><span class="p">(</span>
+    <span class="n">points</span><span class="p">,</span>
+    <span class="n">helicities</span><span class="o">=</span><span class="p">[</span><span class="n">runtime</span><span class="o">.</span><span class="n">physics</span><span class="o">.</span><span class="n">helicities</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span>
+    <span class="n">color_flows</span><span class="o">=</span><span class="p">[</span><span class="n">runtime</span><span class="o">.</span><span class="n">physics</span><span class="o">.</span><span class="n">color_flows</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>For one selector per point:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">mixed</span> <span class="o">=</span> <span class="n">runtime</span><span class="o">.</span><span class="n">evaluate</span><span class="p">(</span>
+    <span class="n">points</span><span class="p">,</span>
+    <span class="n">helicity_by_point</span><span class="o">=</span><span class="p">[</span>
+        <span class="n">runtime</span><span class="o">.</span><span class="n">physics</span><span class="o">.</span><span class="n">helicity_ids</span><span class="p">[</span><span class="n">index</span> <span class="o">%</span> <span class="mi">2</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">index</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">points</span><span class="p">))</span>
+    <span class="p">],</span>
+    <span class="n">color_flow_by_point</span><span class="o">=</span><span class="p">[</span>
+        <span class="n">runtime</span><span class="o">.</span><span class="n">physics</span><span class="o">.</span><span class="n">color_flow_ids</span><span class="p">[(</span><span class="n">index</span> <span class="o">//</span> <span class="mi">2</span><span class="p">)</span> <span class="o">%</span> <span class="mi">2</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">index</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">points</span><span class="p">))</span>
+    <span class="p">],</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>Batch-global and per-point selectors are mutually exclusive on the same axis.
+Per-point color selection is LC-only. Rusticol groups mixed selectors while
+returning values in original point order.</p>
+<p>See <a class="reference internal" href="runtime-and-selectors.html"><span class="std std-doc">Runtime and Selectors</span></a> for the complete selector
+contract.</p>
+</section>
+<section id="update-model-parameters">
+<h2>Update model parameters<a class="headerlink" href="#update-model-parameters" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">runtime</span><span class="o">.</span><span class="n">set_model_parameters</span><span class="p">({</span><span class="s2">&quot;aS&quot;</span><span class="p">:</span> <span class="mf">0.1165</span><span class="p">,</span> <span class="s2">&quot;MZ&quot;</span><span class="p">:</span> <span class="mf">91.1876</span><span class="p">})</span>
+<span class="n">runtime</span><span class="o">.</span><span class="n">set_model_parameter</span><span class="p">(</span><span class="s2">&quot;MT&quot;</span><span class="p">,</span> <span class="mf">172.5</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Updates are atomic and refresh dependent derived parameters. Unknown,
+immutable, non-finite, or invalid values reject the entire update.</p>
+<p><code class="docutils literal notranslate"><span class="pre">Runtime.load(...,</span> <span class="pre">model_parameters=...)</span></code> applies a complete mapping before the
+runtime is returned. Complex inputs may be represented as Python complex values.</p>
+</section>
+<section id="group-equivalent-subprocesses">
+<h2>Group equivalent subprocesses<a class="headerlink" href="#group-equivalent-subprocesses" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">pyamplicol.api</span> <span class="kn">import</span> <span class="n">group_processes</span>
+
+<span class="n">summary</span> <span class="o">=</span> <span class="n">group_processes</span><span class="p">(</span><span class="s2">&quot;artifacts/pp_jj&quot;</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">relation</span> <span class="ow">in</span> <span class="n">summary</span><span class="p">[</span><span class="s2">&quot;new_relations&quot;</span><span class="p">]:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">relation</span><span class="p">[</span><span class="s2">&quot;process&quot;</span><span class="p">],</span> <span class="s2">&quot;=&quot;</span><span class="p">,</span> <span class="n">relation</span><span class="p">[</span><span class="s2">&quot;factor&quot;</span><span class="p">],</span> <span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="n">relation</span><span class="p">[</span><span class="s2">&quot;representative&quot;</span><span class="p">])</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">group_processes</span></code> evaluates each group representative stored in
+<code class="docutils literal notranslate"><span class="pre">process-groups.json</span></code> in f64 at three on-shell points, each with its own
+deterministic variation of up to 10% of the external and normalization model
+parameters other than masses and widths. Two subprocesses with the same
+external particle types are grouped when, through a leg permutation (and
+charge conjugation, unless <code class="docutils literal notranslate"><span class="pre">consider_charge_conjugation=False</span></code>), every
+resolved helicity and colour
+component of one is a common rational factor times the other’s; numerator and
+denominator are at most 99 and <code class="docutils literal notranslate"><span class="pre">only_unit_multiplier=True</span></code> accepts only 1.
+Subprocesses generated with a selected helicity or colour subset are never
+grouped. The map is updated in place and rerunning adds nothing; the artifact
+ID and UMAMI files are unchanged. <code class="docutils literal notranslate"><span class="pre">analysis=&quot;none&quot;</span></code> only writes the trivial map
+of an artifact that has none. This is the <code class="docutils literal notranslate"><span class="pre">pyamplicol</span> <span class="pre">group-processes</span></code>
+command; see <a class="reference internal" href="process-grouping.html"><span class="std std-doc">Process Grouping</span></a> for the details.</p>
+</section>
+<section id="precision">
+<h2>Precision<a class="headerlink" href="#precision" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">f64</span> <span class="o">=</span> <span class="n">runtime</span><span class="o">.</span><span class="n">evaluate</span><span class="p">(</span><span class="n">points</span><span class="p">,</span> <span class="n">precision</span><span class="o">=</span><span class="mi">16</span><span class="p">)</span>
+<span class="n">high_precision</span> <span class="o">=</span> <span class="n">runtime</span><span class="o">.</span><span class="n">evaluate</span><span class="p">(</span><span class="n">points</span><span class="p">,</span> <span class="n">precision</span><span class="o">=</span><span class="mi">80</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>For ordinary <code class="docutils literal notranslate"><span class="pre">evaluate</span></code> and <code class="docutils literal notranslate"><span class="pre">evaluate_resolved</span></code>, precision 16 uses the native
+Rusticol runtime without Symbolica computations. Package startup imports
+Symbolica to attempt registration of the pyAmpliCol library key; synchronous
+registration failures retain the personal-license and restricted-mode paths.
+Other positive precision requests load retained exact evaluator state when
+the artifact supports it.
+Decimal input preserves the supplied decimal digits;
+binary64 input cannot gain information merely by requesting more arithmetic
+precision.</p>
+<p><code class="docutils literal notranslate"><span class="pre">evaluate_correlated</span></code> always uses retained Symbolica evaluator states through
+the separate Python exact executor, including at its default precision 16.
+Its default <code class="docutils literal notranslate"><span class="pre">arithmetic=&quot;arbitrary&quot;</span></code> is distinct from the explicit
+<code class="docutils literal notranslate"><span class="pre">arithmetic=&quot;double-double&quot;,</span> <span class="pre">precision=31</span></code> mode; neither is selected by an
+ordinary native SDK precision flag.
+Its real and imaginary results remain <code class="docutils literal notranslate"><span class="pre">Decimal</span></code> values; <code class="docutils literal notranslate"><span class="pre">complex(value)</span></code> is an
+explicit conversion to ordinary double precision.</p>
+<p>Generated C/C++/Fortran/Rust standalone APIs support f64 (<code class="docutils literal notranslate"><span class="pre">precision=16</span></code>) only.</p>
+</section>
+<section id="profile-from-python">
+<h2>Profile from Python<a class="headerlink" href="#profile-from-python" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">pyamplicol</span> <span class="kn">import</span> <span class="n">BenchmarkConfig</span><span class="p">,</span> <span class="n">BenchmarkRunner</span>
+
+<span class="n">config</span> <span class="o">=</span> <span class="n">BenchmarkConfig</span><span class="p">(</span>
+    <span class="n">target_runtime</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+    <span class="n">batch_size</span><span class="o">=</span><span class="mi">128</span><span class="p">,</span>
+    <span class="n">precision</span><span class="o">=</span><span class="mi">16</span><span class="p">,</span>
+    <span class="n">warmup_runs</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+    <span class="n">minimum_samples</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+    <span class="n">color_flow_ids</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;1&quot;</span><span class="p">,),</span>
+<span class="p">)</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">BenchmarkRunner</span><span class="p">(</span><span class="n">config</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">runtime</span><span class="p">,</span> <span class="n">points</span><span class="o">=</span><span class="n">points</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">wall_time_per_point</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">evaluator_time_per_point</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">uncertainty</span><span class="o">.</span><span class="n">standard_error</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">uncertainty</span><span class="o">.</span><span class="n">relative_standard_error</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">BenchmarkResult</span></code> also contains calibrated repetitions, sample count,
+environment metadata, native timing breakdown, stage attribution, and work
+counters when the runtime exposes them.</p>
+<p>The runnable reference is
+<a class="reference external" href="https://github.com/MadGraphTeam/pyamplicol/blob/main/examples/python/benchmark.py"><code class="docutils literal notranslate"><span class="pre">examples/python/benchmark.py</span></code></a>.</p>
+</section>
+<section id="convenience-functions">
+<h2>Convenience functions<a class="headerlink" href="#convenience-functions" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">pyamplicol</span> <span class="kn">import</span> <span class="n">benchmark</span><span class="p">,</span> <span class="n">generate</span><span class="p">,</span> <span class="n">load</span>
+
+<span class="n">generated</span> <span class="o">=</span> <span class="n">generate</span><span class="p">(</span>
+    <span class="s2">&quot;d d~ &gt; z g&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;artifacts/builtin_ddbar_to_zg&quot;</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="n">ModelSource</span><span class="o">.</span><span class="n">built_in_sm</span><span class="p">(),</span>
+    <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;replace&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">runtime</span> <span class="o">=</span> <span class="n">load</span><span class="p">(</span><span class="n">generated</span><span class="o">.</span><span class="n">output</span><span class="p">)</span>
+<span class="n">profile</span> <span class="o">=</span> <span class="n">benchmark</span><span class="p">(</span><span class="n">runtime</span><span class="p">,</span> <span class="n">points</span><span class="o">=</span><span class="n">points</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The class-based services are preferable when reusing configuration, progress
+sinks, compiled models, or loaded runtimes.
+The one-shot <code class="docutils literal notranslate"><span class="pre">generate(...)</span></code> function also accepts the same
+<code class="docutils literal notranslate"><span class="pre">correlators=CorrelatorConfig(...)</span></code> keyword as <code class="docutils literal notranslate"><span class="pre">Generator.generate(...)</span></code>.</p>
+</section>
+<section id="errors">
+<h2>Errors<a class="headerlink" href="#errors" title="Link to this heading">¶</a></h2>
+<p>All public failures derive from <code class="docutils literal notranslate"><span class="pre">PyAmpliColError</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">pyamplicol</span> <span class="kn">import</span> <span class="n">EvaluationError</span><span class="p">,</span> <span class="n">GenerationError</span><span class="p">,</span> <span class="n">PyAmpliColError</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">runtime</span> <span class="o">=</span> <span class="n">Runtime</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">&quot;artifacts/pp_zjj&quot;</span><span class="p">,</span> <span class="n">process</span><span class="o">=</span><span class="s2">&quot;missing&quot;</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">EvaluationError</span> <span class="k">as</span> <span class="n">error</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;could not load runtime: </span><span class="si">{</span><span class="n">error</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Useful subclasses include configuration, model, generation, artifact,
+compatibility, dependency, and evaluation errors. Catch the narrowest type you
+can handle; catch <code class="docutils literal notranslate"><span class="pre">PyAmpliColError</span></code> at an application boundary.</p>
+</section>
+<section id="api-design-notes">
+<h2>API design notes<a class="headerlink" href="#api-design-notes" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>Public result and metadata objects are immutable dataclasses or typed facades.</p></li>
+<li><p>Artifact paths are normalized to absolute paths at service boundaries.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Generator.generate(...,</span> <span class="pre">mode=&quot;error&quot;)</span></code> refuses an existing destination.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Runtime</span></code> is bound to one selected process; load another instance for another
+process in the same multiprocess artifact.</p></li>
+<li><p>Process artifacts are trusted executable inputs. Normal loading validates the
+schema, path confinement, references, target compatibility, and runtime ABI.</p></li>
+<li><p>Use explicit payload validation only for an intentional whole-artifact
+corruption audit; it is not required before every load.</p></li>
+</ul>
+</section>
+<section id="further-reading">
+<h2>Further reading<a class="headerlink" href="#further-reading" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="configuration.html"><span class="std std-doc">Configuration</span></a></p></li>
+<li><p><a class="reference internal" href="generation-modes-and-evaluators.html"><span class="std std-doc">Generation Modes and Evaluators</span></a></p></li>
+<li><p><a class="reference internal" href="runtime-and-selectors.html"><span class="std std-doc">Runtime and Selectors</span></a></p></li>
+<li><p><a class="reference internal" href="../correlators.html"><span class="std std-doc">Born Correlations</span></a></p></li>
+<li><p><a class="reference internal" href="../correlator-conventions.html"><span class="std std-doc">Correlation Conventions</span></a></p></li>
+<li><p><a class="reference internal" href="artifacts-and-portability.html"><span class="std std-doc">Artifacts and Portability</span></a></p></li>
+<li><p><a class="reference internal" href="native-apis.html"><span class="std std-doc">Native APIs</span></a></p></li>
+</ul>
+<!-- Page hierarchy for the MadGraph7 (Sphinx) documentation. -->
+<div class="toctree-wrapper compound">
+</div>
+</section>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="runtime-and-selectors.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">Runtime and Selectors</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="command-line-interface.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">Command-Line Interface</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2025-2026, The MadGraph7 Development Team
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">Python API</a><ul>
+<li><a class="reference internal" href="#public-service-map">Public service map</a></li>
+<li><a class="reference internal" href="#plan-and-generate-with-the-built-in-model">Plan and generate with the built-in model</a></li>
+<li><a class="reference internal" href="#generate-with-adjoint-fft-contraction">Generate with adjoint FFT contraction</a></li>
+<li><a class="reference internal" href="#generate-a-named-process-set">Generate a named process set</a></li>
+<li><a class="reference internal" href="#compile-and-reuse-an-external-model">Compile and reuse an external model</a></li>
+<li><a class="reference internal" href="#use-a-fully-resolved-run-card">Use a fully resolved run card</a></li>
+<li><a class="reference internal" href="#load-a-runtime">Load a runtime</a></li>
+<li><a class="reference internal" href="#evaluate-totals-and-resolved-components">Evaluate totals and resolved components</a></li>
+<li><a class="reference internal" href="#retain-completed-otf-preparation">Retain completed OTF preparation</a></li>
+<li><a class="reference internal" href="#evaluate-born-correlations">Evaluate Born correlations</a></li>
+<li><a class="reference internal" href="#select-helicities-and-color-flows">Select helicities and color flows</a></li>
+<li><a class="reference internal" href="#update-model-parameters">Update model parameters</a></li>
+<li><a class="reference internal" href="#group-equivalent-subprocesses">Group equivalent subprocesses</a></li>
+<li><a class="reference internal" href="#precision">Precision</a></li>
+<li><a class="reference internal" href="#profile-from-python">Profile from Python</a></li>
+<li><a class="reference internal" href="#convenience-functions">Convenience functions</a></li>
+<li><a class="reference internal" href="#errors">Errors</a></li>
+<li><a class="reference internal" href="#api-design-notes">API design notes</a></li>
+<li><a class="reference internal" href="#further-reading">Further reading</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="../../_static/documentation_options.js?v=37f418d5"></script>
+    <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../_static/scripts/furo.js?v=46bd48cc"></script>
+    </body>
+</html>
