@@ -1046,6 +1046,9 @@ class SiteClosure:
         self._colours: dict[tuple, ConnectedColorTensor] = {}
         # (UFO colour, attached fields) -> its colour network.
         self._vertex_networks: dict[tuple, ColourNetwork] = {}
+        self._binding_of: dict[tuple, Any] = {}
+        # id(block) -> (chirality, Wick sign, colour flow) of the blocks read.
+        self._block_props: dict[int, tuple[int, int, Any]] = {}
         # A whole-rule colour network -> its short colour key (``close``).
         self._network_keys: dict[ColourNetwork, tuple[str, int]] = {}
         # Per whole-rule continuation term (by id, with the term kept alive):
@@ -1183,11 +1186,19 @@ class SiteClosure:
         (``site_terms`` closes them, a batch at a time)."""
 
         options = []
+        props = self._block_props
         for current in attachments:
             rows = self._blocks.get(current)
             if not rows:
                 raise ValueError(f"no tree block for {current}")
             options.append(rows)
+            for block in rows:
+                if id(block) not in props:
+                    props[id(block)] = (
+                        block.key.chirality,
+                        block.wick_sign,
+                        block.colour_flow,
+                    )
         sign = self._root_sign(attachments)
         entries = tuple(entries)
         # A vertex read through its conjugate rule keeps its own single
@@ -1195,12 +1206,16 @@ class SiteClosure:
         colour_entry = None if self._self_conjugate(entries) else entries[0]
         entries = self.read_entries(entries)
         fields = tuple(a.field for a in attachments)
+        # (entry key, chiralities) -> its ct-site binding or None.
+        bindings = self._binding_of
         out = []
         for entry in entries:
             legs = self._kernel_legs(entry, attachments)
             key = ((colour_entry or entry).color, fields)
+            entry_key = _entry_key(entry)
             for choice in product(*options):
-                read = entry
+                found = [props[id(block)] for block in choice]
+                read, read_key = entry, entry_key
                 if promoted:
                     hits = [
                         k
@@ -1213,44 +1228,44 @@ class SiteClosure:
                         )
                     if hits:
                         read = promoted_root_entry(entry, hits[0])
-                chiralities = tuple(choice[index].key.chirality for index in legs)
-                site_key = CountertermSiteKey(*_entry_key(read), chiralities)
-                binding = self._bindings.get(site_key)
+                        read_key = _entry_key(read)
+                chiralities = tuple(found[index][0] for index in legs)
+                lookup = (read_key, chiralities)
+                binding = bindings.get(lookup, _UNBOUND)
+                if binding is _UNBOUND:
+                    binding = bindings[lookup] = self._bindings.get(
+                        CountertermSiteKey(*read_key, chiralities)
+                    )
                 if binding is None:
                     if any(chiralities):
                         continue  # a chirality selection rule of this entry
+                    site_key = CountertermSiteKey(*read_key, chiralities)
                     raise ValueError(f"catalogue has no ct-site kernel for {site_key}")
                 wick = 1
-                for block in choice:
-                    wick *= block.wick_sign
+                for item in found:
+                    wick *= item[1]
                 out.append(
                     (
                         read,
                         binding,
                         choice,
                         legs,
-                        sign * wick * self._reading_sign(read, binding),
-                        key,
+                        sign * wick * self._reading_sign(read, binding, read_key),
+                        (key, *[item[2] for item in found]),
                     )
                 )
         return out
 
     def site_terms(self, specs: Sequence[tuple[Any, ...]]) -> tuple[SiteTerm, ...]:
-        """The ``SiteTerm`` of each spec (``vertex_term_specs``), its colour
-        closed on its blocks (one batch for the specs' new colours)."""
+        """The ``SiteTerm`` of each spec (``vertex_term_specs``: its last
+        item is its full colour key), its colour closed on its blocks (one
+        batch for the specs' new colours)."""
 
-        self.prime_colours((key, choice) for _e, _b, choice, _l, _s, key in specs)
+        self._prime_keys((spec[5], spec[2]) for spec in specs)
         colours = self._colours
         return tuple(
-            SiteTerm(
-                read,
-                binding,
-                choice,
-                legs,
-                sign,
-                colours[(key, *(b.colour_flow for b in choice))],
-            )
-            for read, binding, choice, legs, sign, key in specs
+            SiteTerm(read, binding, choice, legs, sign, colours[full])
+            for read, binding, choice, legs, sign, full in specs
         )
 
     def _vertex_network(self, key: tuple) -> ColourNetwork:
@@ -1274,13 +1289,25 @@ class SiteClosure:
         colour's key is its network). Natively in one batch
         (``NATIVE_ROOT_COLOURS``), else one ``_closed`` each (the oracle)."""
 
+        self._prime_keys(
+            (((key, *(b.colour_flow for b in choice)), choice) for key, choice in requests),
+            networks,
+        )
+
+    def _prime_keys(
+        self,
+        requests: Iterable[tuple[tuple, Sequence[Block]]],
+        networks: Callable[[Any], ColourNetwork] | None = None,
+    ) -> None:
+        """``prime_colours`` of requests ``(full colour key, blocks)``, the
+        full key being ``(key, *block colour flows)``."""
+
         network_of = self._vertex_network if networks is None else networks
         colours = self._colours
         missing: dict[tuple, tuple[Any, Sequence[Block]]] = {}
-        for key, choice in requests:
-            full = (key, *(b.colour_flow for b in choice))
+        for full, choice in requests:
             if full not in colours and full not in missing:
-                missing[full] = (key, choice)
+                missing[full] = (full[0], choice)
         if not missing:
             return
         if not NATIVE_ROOT_COLOURS:
@@ -1343,7 +1370,9 @@ class SiteClosure:
         for full, tensor in zip(missing, raw, strict=True):
             self._colours[full] = _native_tensor(tensor, legs)
 
-    def _reading_sign(self, entry: Any, binding: Any) -> int:
+    def _reading_sign(
+        self, entry: Any, binding: Any, entry_key: tuple | None = None
+    ) -> int:
         """The sign between the tree engine's reading of a vertex and the
         root closure's (module docstring, "Colour, kinematics and signs").
 
@@ -1364,7 +1393,7 @@ class SiteClosure:
         vertex).
         """
 
-        key = (_entry_key(entry), binding.kernel_id)
+        key = (entry_key or _entry_key(entry), binding.kernel_id)
         found = self._reading.get(key)
         if found is None:
             kernel = self.catalogue.kernels[binding.kernel_id]
@@ -1607,6 +1636,8 @@ def _open_last(label: int | None) -> tuple[bool, int]:
 
 
 _NATIVE: list[Any] = []
+# A ct-site binding not looked up yet (``vertex_term_specs``).
+_UNBOUND = object()
 
 
 def _loop_native() -> Any:
