@@ -374,6 +374,54 @@ pub fn read_container(bytes: &[u8]) -> RusticolResult<Vec<Section<'_>>> {
     Ok(out)
 }
 
+/// The payload of section `name` of a container read from `stream` (`None`:
+/// absent), reading no further than that section: the head of a stored
+/// container (its first section) is read without inflating the rest
+/// (M-FINAL MF-8G-2 item 2: the Python view of a loaded process reads the
+/// head only). Payloads grow as their bytes arrive (a corrupt length
+/// allocates nothing up front).
+pub fn read_section_from(
+    mut stream: impl std::io::Read,
+    name: &str,
+) -> RusticolResult<Option<Vec<u8>>> {
+    use std::io::Read;
+    fn failed(error: std::io::Error) -> crate::RusticolError {
+        invalid(format!("a tree-program stream: {error}"))
+    }
+    fn exactly(stream: &mut impl Read, length: usize) -> RusticolResult<Vec<u8>> {
+        let mut out = vec![0; length];
+        stream.read_exact(&mut out).map_err(failed)?;
+        Ok(out)
+    }
+    require(exactly(&mut stream, MAGIC.len())? == MAGIC, "not a binary tree program")?;
+    let word = |bytes: Vec<u8>| -> u64 {
+        bytes
+            .iter()
+            .rev()
+            .fold(0u64, |value, &byte| (value << 8) | u64::from(byte))
+    };
+    let count = word(exactly(&mut stream, 4)?);
+    for _ in 0..count {
+        let length = word(exactly(&mut stream, 4)?) as usize;
+        require(length <= 4096, "a tree-program section name")?;
+        let section = String::from_utf8(exactly(&mut stream, length)?)
+            .map_err(|_| invalid("a tree-program section name"))?;
+        let encoding = exactly(&mut stream, 1)?[0];
+        require(encoding == JSON || encoding == BINARY, "a section encoding")?;
+        let payload = word(exactly(&mut stream, 8)?);
+        let mut limited = (&mut stream).take(payload);
+        if section == name {
+            let mut out = Vec::new();
+            limited.read_to_end(&mut out).map_err(failed)?;
+            require(out.len() as u64 == payload, "a truncated tree-program section")?;
+            return Ok(Some(out));
+        }
+        let skipped = std::io::copy(&mut limited, &mut std::io::sink()).map_err(failed)?;
+        require(skipped == payload, "a truncated tree-program section")?;
+    }
+    Ok(None)
+}
+
 /// The binary parts of a container that replace arrays of its JSON parts.
 #[derive(Default)]
 pub struct Overrides {

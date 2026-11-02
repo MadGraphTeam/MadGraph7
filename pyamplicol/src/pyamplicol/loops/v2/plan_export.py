@@ -1406,7 +1406,7 @@ class NativeExecutor:
         exported: ExportedPlan | None = None,
         forms: Literal["rule", "fused", "split"] = "rule",
         merged: MergedGraph | bool = False,
-        plan_json: str | None = None,
+        plan_json: Any = None,
         inputs: Literal["python", "native"] = "python",
         born_squared: bool = True,
         counterterms: bool = True,
@@ -1448,7 +1448,9 @@ class NativeExecutor:
         self.lanes = lanes
         self.threads = threads
         self.forms = forms
-        # ``plan_json``: ``exported.json()`` when the caller already holds it.
+        # ``plan_json``: ``exported.json()`` when the caller already holds it,
+        # or a loaded process's stored plan member (``artifact.StoredMember``,
+        # read by the native executor itself: M-FINAL MF-8G-2 item 2).
         self._plan_json = self.exported.json() if plan_json is None else plan_json
         self._native: dict[tuple[str, int | None, int], Any] = {}
         self._scaleless: list[NativeExecutor | None] = []
@@ -1502,8 +1504,9 @@ class NativeExecutor:
                     )
                     return found
             trees = self.exported.trees.executor_argument() if native_trees else None
+            plan = self._plan_json
             found = self._native[key] = self.slice.native.V2Executor(
-                self._plan_json,
+                plan if isinstance(plan, str) else plan.native(),
                 arithmetic,
                 digits,
                 lanes=lanes,

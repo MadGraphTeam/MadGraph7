@@ -485,6 +485,66 @@ pub fn load_loop_v2_artifact(
     })
 }
 
+/// A zlib member of a stored process's PACBIN (`path`, payload digests
+/// authenticated), inflated, whose payload digest is still `sha256` (hex):
+/// the plan or binary tree program a native executor reads itself instead of
+/// receiving it from the Python view (M-FINAL MF-8G-2 item 2;
+/// `loops/v2/artifact.py` `StoredMember`). A container rewritten since the
+/// process was loaded is refused.
+#[cfg(feature = "loop-v2")]
+pub fn read_loop_v2_stored_member(path: &str, member: &str, sha256: &str) -> RusticolResult<Vec<u8>> {
+    use std::io::Read;
+
+    with_stored_member(path, member, sha256, |payload| {
+        let mut out = Vec::new();
+        flate2::read::ZlibDecoder::new(payload)
+            .read_to_end(&mut out)
+            .map_err(|error| {
+                RusticolError::integrity(format!("{member} is not a zlib stream: {error}"))
+            })?;
+        Ok(out)
+    })
+}
+
+/// Section `section` of a stored binary tree program (as
+/// [`read_loop_v2_stored_member`]), inflating no further than that section
+/// (`loop_v2::trees::binary::read_section_from`; `None`: absent).
+#[cfg(feature = "loop-v2")]
+pub fn read_loop_v2_stored_section(
+    path: &str,
+    member: &str,
+    sha256: &str,
+    section: &str,
+) -> RusticolResult<Option<Vec<u8>>> {
+    with_stored_member(path, member, sha256, |payload| {
+        crate::loop_v2::trees::binary::read_section_from(
+            flate2::read::ZlibDecoder::new(payload),
+            section,
+        )
+    })
+}
+
+/// `read` of the authenticated payload of `member` (the callers' docs).
+#[cfg(feature = "loop-v2")]
+fn with_stored_member<R>(
+    path: &str,
+    member: &str,
+    sha256: &str,
+    read: impl FnOnce(&[u8]) -> RusticolResult<R>,
+) -> RusticolResult<R> {
+    use crate::pacbin::PacbinReader;
+
+    let reader = PacbinReader::open(path)?;
+    let found = reader.member(member)?;
+    let digest: String = found.sha256().iter().map(|b| format!("{b:02x}")).collect();
+    if digest != sha256 {
+        return Err(RusticolError::integrity(format!(
+            "{path}: member {member} changed since the process was loaded; load it again"
+        )));
+    }
+    read(reader.member_bytes(member)?)
+}
+
 /// The native point inputs of an admitted plan v4 process (its declared
 /// `point_inputs` is [`LOOP_V2_NATIVE_POINT_INPUTS`]; `None` otherwise):
 /// read from the process's PACBIN, the zlib JSON members inflated.

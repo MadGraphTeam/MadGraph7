@@ -104,11 +104,16 @@ def _trees_from_members(
     container = members.get(f"{prefix}tree-program.bin")
     if container is not None:
         # A binary tree program: Python reads its head only (the executor
-        # reads the container, ``NativeTrees.executor_argument``).
-        from pyamplicol.loops.native import load_loop_native
+        # reads the container, ``NativeTrees.executor_argument``). A stored
+        # member (``artifact.StoredMember``, a file-backed load) stays in its
+        # PACBIN: only the head is inflated (M-FINAL MF-8G-2 item 2).
+        if isinstance(container, bytes | bytearray | memoryview):
+            from pyamplicol.loops.native import load_loop_native
 
-        container = bytes(container)
-        head = load_loop_native().tree_program_section(container, "head")
+            container = bytes(container)
+            head = load_loop_native().tree_program_section(container, "head")
+        else:
+            head = container.section("head")
         if head is None:
             raise ValueError("a binary tree program without its head")
         program = json.loads(head)
@@ -185,22 +190,32 @@ def _plan_view(
 @dataclass(frozen=True)
 class NativeCompanion:
     """The certified-scaleless companion of a native process: its plan JSON
-    (the artifact's companion plan), its tree program (no Born or
-    counterterm outputs) and its lane labels (``record``: plan family count
-    and loop orders; its columns are the process's sectors)."""
+    (the artifact's companion plan; ``plan`` is its text or, loaded
+    file-backed, its ``artifact.StoredMember``), its tree program (no Born
+    or counterterm outputs) and its lane labels (``record``: plan family
+    count and loop orders; its columns are the process's sectors)."""
 
-    plan_json: str
+    plan: Any
     trees: NativeTrees
     record: Mapping[str, Any]
+
+    @property
+    def plan_json(self) -> str:
+        from .artifact import program_text
+
+        return program_text(self.plan)
 
 
 @dataclass(frozen=True)
 class NativeProcess:
     """The native evaluation of one v2 process: plan, tree program and the
     assembly record (module docstring), with the native companion of its
-    certified-scaleless families when it has them."""
+    certified-scaleless families when it has them. ``plan`` is the plan
+    JSON or, for a process loaded file-backed (``artifact.
+    load_native_process``), its ``artifact.StoredMember``, which the
+    executors read natively (``plan_json`` reads its text on demand)."""
 
-    plan_json: str
+    plan: Any
     trees: NativeTrees
     record: Mapping[str, Any]
     scaleless: NativeCompanion | None = None
@@ -212,6 +227,12 @@ class NativeProcess:
     # kB; ``_stored_dipoles``), for a loaded process's Catani prediction
     # (``dipole_orbits``); None without two coloured legs.
     dipoles: str | None = None
+
+    @property
+    def plan_json(self) -> str:
+        from .artifact import program_text
+
+        return program_text(self.plan)
 
     @classmethod
     def of(cls, executor: Any) -> NativeProcess:
@@ -349,13 +370,14 @@ class NativeProcess:
     @classmethod
     def from_members(
         cls,
-        plan_json: str,
-        members: Mapping[str, bytes],
-        scaleless_json: str | None = None,
+        plan_json: Any,
+        members: Mapping[str, Any],
+        scaleless_json: Any = None,
     ) -> NativeProcess:
         """The process of ``members`` (``members``) for its plan and, when it
         has certified-scaleless families, its companion plan (by default the
-        one ``members`` holds)."""
+        one ``members`` holds). The plans and binary tree programs may be
+        stored members (``artifact.load_native_process``)."""
 
         record = json.loads(members["native-process.json"])
         if record.get("schema") != SCHEMA:
@@ -431,14 +453,14 @@ class NativeProcess:
             twin = self.scaleless
             companion = (
                 _plan_view(twin.record, columns, twin.trees, record["families"]),
-                twin.plan_json,
+                twin.plan,
             )
             view.scaleless = _ProcessView(record, native, externals)
         return NativeExecutor(
             view,
             forward=False,
             exported=_plan_view(record, columns, self.trees),
-            plan_json=self.plan_json,
+            plan_json=self.plan,
             inputs="native",
             scaleless=companion,
             **options,

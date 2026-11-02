@@ -329,8 +329,11 @@ class NativeTrees:
     # ``CELLS``); empty for a JSON program.
     sections: tuple[tuple[str, bytes], ...] = ()
     # A loaded binary tree program's container; ``program`` then holds its
-    # head only (the parts Python reads: parameters, sources, layout).
-    container: bytes | None = None
+    # head only (the parts Python reads: parameters, sources, layout). A
+    # process loaded file-backed holds the container's stored member
+    # (``artifact.StoredMember``) instead, which its executors read natively
+    # (M-FINAL MF-8G-2 item 2).
+    container: Any = None
 
     @property
     def is_binary(self) -> bool:
@@ -343,7 +346,9 @@ class NativeTrees:
         one JSON section per moved key, then the binary sections."""
 
         if self.container is not None:
-            return self.container
+            if isinstance(self.container, bytes):
+                return self.container
+            return self.container.bytes()
         program = self.program
         parts = [
             ("head", 0, _dumps({k: v for k, v in program.items() if k not in SECTION_KEYS}))
@@ -360,7 +365,7 @@ class NativeTrees:
         if self.container is None:
             return decoded_program(self.program, dict(self.sections))
         native = _native()
-        container = self.container
+        container = self.binary()
         index = native.tree_program_index(container)
         program = json.loads(native.tree_program_section(container, "head"))
         sections = {}
@@ -380,11 +385,16 @@ class NativeTrees:
 
     def executor_argument(
         self,
-    ) -> tuple[str | bytes, list[bytes], list[bytes] | None]:
+    ) -> tuple[Any, list[bytes], list[bytes] | None]:
         if self.planes and len(self.planes) != len(self.kernels) + 1:
             raise ValueError("a plane application per saved evaluator")
+        stored = self.container is not None and not isinstance(self.container, bytes)
         return (
-            self.binary() if self.is_binary else self.json(),
+            self.container.native()
+            if stored
+            else self.binary()
+            if self.is_binary
+            else self.json(),
             [*self.kernels, self.parameters],
             list(self.planes) if self.planes else None,
         )
