@@ -71,6 +71,9 @@ pub enum MetricCells {
 /// The interference program of a process.
 pub struct Interference {
     basis: usize,
+    /// Ket tensors (validated at construction; the per-row oracle of the
+    /// tests sizes its `z` by it).
+    #[cfg_attr(not(test), allow(dead_code))]
     tensors: usize,
     cells: MetricCells,
     /// Per Born order, its Born components by N_c power.
