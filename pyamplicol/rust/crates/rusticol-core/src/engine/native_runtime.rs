@@ -4647,7 +4647,7 @@ impl NativeRuntime {
     }
 
     #[cfg(feature = "symbolica-runtime")]
-    fn apply_process_group_factor_high_precision<T>(
+    pub(super) fn apply_process_group_factor_high_precision<T>(
         &self,
         values: &mut [T],
         binary_precision: Option<u32>,
@@ -4925,7 +4925,7 @@ impl NativeRuntime {
     }
 
     #[cfg(feature = "symbolica-runtime")]
-    fn prepare_double_batch(
+    pub(super) fn prepare_double_batch(
         &self,
         momenta: &[String],
         point_count: usize,
@@ -4950,7 +4950,7 @@ impl NativeRuntime {
     }
 
     #[cfg(feature = "symbolica-runtime")]
-    fn prepare_float_batch(
+    pub(super) fn prepare_float_batch(
         &self,
         momenta: &[String],
         point_count: usize,
@@ -5113,7 +5113,7 @@ fn validate_flat_momentum_shape(
 }
 
 #[cfg(feature = "symbolica-runtime")]
-fn format_decimal_values<T: std::fmt::LowerExp>(
+pub(super) fn format_decimal_values<T: std::fmt::LowerExp>(
     values: Vec<T>,
     decimal_digits: u32,
 ) -> Vec<String> {

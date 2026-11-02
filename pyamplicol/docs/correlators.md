@@ -192,7 +192,10 @@ that are rounded when entering DoubleFloat, not when defining the vector.
 Both modes return `Decimal` real/imaginary parts. Supply `Decimal` momenta as
 well when kinematic input accuracy beyond binary64 is needed. Native SDK
 correlated calls are binary64 only; the Python arithmetic selection does not
-change their numerical type.
+change their numerical type. A Rust program linking `rusticol-core` with its
+`symbolica-runtime` feature can also evaluate correlations natively in
+double-double and arbitrary precision
+([Native APIs](user/native-apis.md#correlated-born-evaluations)).
 
 The nonempty set of supplied legs must match a declared class **exactly**.
 Here `{3}` and `{3, 4}` are allowed, but `{4}` is not. Every declared leg must
@@ -387,7 +390,9 @@ exact spin vectors and evaluates all named requests over one batch; see
 The `correlators` development branch provides binary64 correlated evaluation
 in C, C++, Fortran and standalone Rust. These entry points use RustiCol and do
 not load Python or Symbolica. Python's separate executor supports
-double-double and arbitrary precision. See [Native APIs](user/native-apis.md#correlated-born-evaluations)
+double-double and arbitrary precision, and so does RustiCol's
+`NativeRuntime::evaluate_correlated_many_with_precision` (feature
+`symbolica-runtime`). See [Native APIs](user/native-apis.md#correlated-born-evaluations)
 for the language-specific owned request types, catalogue enumeration, spin
 setter and result indexing.
 
@@ -462,7 +467,8 @@ amplitudes and disables helicity-specific zero/parity reductions and current
 reuse that would invalidate arbitrary source vectors. Python correlated
 evaluation uses a separate exact executor over retained Symbolica evaluator
 states. Native SDK correlated evaluation uses RustiCol's binary64 coherent
-amplitude executor. Both share amplitudes and unchanged stages between
+amplitude executor; its double-double and arbitrary-precision counterpart
+evaluates the retained exact stage evaluators. Both share amplitudes and unchanged stages between
 requests and contract the generation-time colour matrices directly; neither
 uses FFT or physical-helicity reductions for the correlated result.
 

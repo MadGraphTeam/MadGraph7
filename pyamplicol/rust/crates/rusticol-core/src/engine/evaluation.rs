@@ -2449,6 +2449,23 @@ impl ExecutionRuntime {
         T: RusticolHighPrecisionNumber,
         Complex<T>: Real + EvaluationDomain,
     {
+        self.evaluate_generic_stages_with_sources(batch, binary_precision, |_, _| Ok(()))
+    }
+
+    #[cfg(feature = "symbolica-runtime")]
+    /// [`Self::evaluate_generic_stages`] with `replace_sources(point, row)` applied to every state
+    /// row after its physical sources are filled (the correlated lane's spin vectors).
+    pub(super) fn evaluate_generic_stages_with_sources<T, F>(
+        &mut self,
+        batch: &[Vec<[T; 4]>],
+        binary_precision: Option<u32>,
+        mut replace_sources: F,
+    ) -> RusticolResult<(Vec<Complex<T>>, RuntimeProfile)>
+    where
+        T: RusticolHighPrecisionNumber,
+        Complex<T>: Real + EvaluationDomain,
+        F: FnMut(usize, &mut [Complex<T>]) -> RusticolResult<()>,
+    {
         if self.stages.is_none() || self.amplitude_stage.is_none() {
             return Err(self.execution_unavailable_error());
         }
@@ -2475,6 +2492,7 @@ impl ExecutionRuntime {
                 row_state,
                 point,
             )?;
+            replace_sources(row, row_state)?;
         }
         let source_fill_elapsed = source_start.elapsed();
 

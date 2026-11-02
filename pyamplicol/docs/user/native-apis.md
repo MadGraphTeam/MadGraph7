@@ -51,10 +51,25 @@ SDK and library, not an older installed release. Declare the operators with
 `Generator.generate(..., correlators=CorrelatorConfig(...))` or
 `generate ... --correlators FILE.json` as in [Born Correlations](../correlators.md).
 
-Native correlated evaluation is **binary64 only**, like the ordinary native
-SDK. It runs in RustiCol without Python or Symbolica. The separate Python
+Native SDK correlated evaluation is **binary64 only**, like the ordinary
+native SDK. It runs in RustiCol without Python or Symbolica. The separate Python
 correlated executor retains Symbolica-backed double-double and arbitrary
 precision; its `precision=16` path also uses that executor.
+
+A Rust program that links `rusticol-core` with its `symbolica-runtime` feature
+(as for `NativeRuntime::evaluate_with_precision`) can evaluate the same
+requests natively in double-double and arbitrary precision:
+`NativeRuntime::evaluate_correlated_many_with_precision(momenta, point_count,
+decimal_digits, requests, helicity_ids)` takes decimal-string momenta
+(`[point][external particle][E,px,py,pz]`), the decimal precision of
+`evaluate_with_precision` (32 selects double-double, 16 binary64, otherwise
+`ceil(digits * log2(10))` bits) and `NativeDecimalCorrelatedRequest`s whose spin
+vectors are `[real, imaginary]` decimal strings per component. It returns
+request-major `[real, imaginary]` decimal strings, `values[request *
+point_count + point]`. Sources, stages, the exact colour weights and the
+contraction are evaluated at the working precision; the normalization constant
+and the process-group factor are the artifact's, exactly as in
+`evaluate_with_precision`.
 
 LC, NLC and full colour are selected at generation for each inserted colour
 matrix, independently of connection order. The underlying amplitudes remain
