@@ -762,6 +762,11 @@ For comparison:
 - Recola needs 2,035 s (gg→gggg) and 10,220 s (uu~→ggggg) to generate on this host;
 - MadLoop needs 285 + 8,354 + 20.6 s for gg→gggg (§1.5).
 
+**Lighter 2→6 generation (M-FINAL mf-8g-1b).**
+- *Root colours.* The counterterm and Born closures (`ct_sites.SiteClosure`) enumerate their root terms as specs and close the new colours a batch at a time natively (`rusticol-core loop_v2/generate/root_colours.rs`, PyO3 `loop_root_colours`: vertex networks and block words as distinct factors, reduced in parallel on the crate's `networks::Reducer`); `NATIVE_ROOT_COLOURS = False` reduces each with `colour.reduce_network`, the oracle (`test_loop_v2_closure_native.py`: root and Born terms and the exported plan and tree program equal). `CountertermClosure.build` at g g > 5g: 95 → 23 s (FC), 59 → 22 s (LC); what remains is the Python term objects the export reads.
+- *Born DAG (R3).* `blocks.loop_born_dag` compiles a request's loop Born DAG once per `born_dag_scope` (the public route's preflight and the slice's tree programs share it), and the slice keeps a `BornDagSummary` (colour plan, roots, propagated species; it recompiles the DAG on demand), so the DAG (≈ 1.2 GB at seven gluons) is released before the counterterm program and the export. The compile itself (≈ 75 s of a 250 s seven-gluon generation) remains: the slice's Born basis is the colour plan's sectors, which the closure's literal tensors do not reproduce once quark lines carry U(1) pieces (u u~ > g g g: 6 sectors, 11 literal tensors), so taking it out needs the native builder's amplitude roots.
+- *LC/NLC prune.* `_prune_colour` rebuilds from the native liveness of the seed stage (`native_seeds.prune_keep`, B1) instead of a Python callback per skeleton (other skeletons read the callback, `_PruneKeep`), and the Born grades look each literal tensor up once.
+
 ---
 
 ## 5. Per-event execution
