@@ -636,7 +636,8 @@ def _constant_text(key: Any, flips: Any) -> str:
 
 
 def _fraction_text(value: Fraction) -> str:
-    value = Fraction(value)
+    if type(value) is not Fraction:
+        value = Fraction(value)
     return str(value.numerator if value.denominator == 1 else value)
 
 
@@ -765,6 +766,8 @@ def export_trees(
     block_masks: list[int] = []
 
     unread: set[int] = set()
+    # Per Born row, leg label -> helicity (read for every block registered).
+    row_helicities = [{leg + 1: h for leg, h in born_row} for born_row in rows]
 
     def block_id(block: Any) -> int | None:
         """The block's closure record; None for a block without a row on any
@@ -784,9 +787,9 @@ def export_trees(
             by_helicity = {row.helicities: row for row in block.rows}
         starts: list[int | None] = []
         dimensions = set()
-        for born_row in rows:
-            helicity = {leg + 1: h for leg, h in born_row}
-            want = tuple(sorted((leg, helicity[leg]) for leg in block.key.labels))
+        labels = block.key.labels
+        for helicity in row_helicities:
+            want = tuple(sorted((leg, helicity[leg]) for leg in labels))
             entry = by_helicity.get(want)
             if entry is None:
                 starts.append(None)

@@ -78,7 +78,8 @@ Arithmetic = Literal["double", "double-double", "arbitrary", "exact"]
 
 
 def _fraction_text(value: Any) -> str:
-    value = Fraction(value)
+    if type(value) is not Fraction:
+        value = Fraction(value)
     if value.denominator == 1:
         return str(value.numerator)
     return f"{value.numerator}/{value.denominator}"
