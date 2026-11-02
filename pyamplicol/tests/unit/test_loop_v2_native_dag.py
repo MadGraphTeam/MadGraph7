@@ -1268,11 +1268,23 @@ def _assert_counterterm_trees_equal(python_blocks, native_blocks):
     dag = program.blocks.blocks.blocks_dag
     assert type(dag) is dag_input.NativeDag
     dag.release()
+    # Under ``native_trees.NATIVE_SECTIONS`` the build emitted the program
+    # while its columns existed (MF-8G-1 item 4): no rebuild; the rebuild
+    # path (no emission) gives the same parts.
+    emitted = dag._answers.get(dag_input._EMISSION) is not None
     before = (dag_input.decode_count(), dag_input.rebuild_count())
     native = _CountertermTrees.of(program, 1234)
     assert dag_input.decode_count() == before[0]
-    assert dag_input.rebuild_count() == before[1] + 1
+    assert dag_input.rebuild_count() == before[1] + (0 if emitted else 1)
     assert dag.released and not dag.decoded
+    # The export takes the emission (its step section is not held after the
+    # export); a later export rebuilds the same parts.
+    assert dag_input._EMISSION not in dag._answers
+    if emitted:
+        rebuilt = _CountertermTrees.of(program, 1234)
+        assert dag_input.rebuild_count() == before[1] + 1 and dag.released
+        assert json.dumps(rebuilt.record) == json.dumps(native.record)
+        assert (rebuilt.saved, rebuilt.steps) == (native.saved, native.steps)
     oracle = _CountertermTrees.of(python, 1234)
     assert json.dumps(native.record) == json.dumps(oracle.record)
     assert snapshot.counterterm_trees_digest(native) == (
@@ -1310,8 +1322,9 @@ def test_native_counterterm_trees_equal_the_oracle(loop_sm_compiled_model):
         )
     native, _oracle = _assert_counterterm_trees_equal(python, blocks)
     # The slot table and the per-slot reachability masks (I5): CT = 0
-    # currents reach every slot, a current with one insertion its slot.
-    record = native.record
+    # currents reach every slot, a current with one insertion its slot
+    # (the steps decoded where ``NATIVE_SECTIONS`` holds them as a section).
+    record = native.full_record()
     assert [slot[0] for slot in record["slots"]] == [
         ct_closure.counterterm_slot_order(*slot) for slot in python.recursion.slots
     ]
@@ -1716,10 +1729,11 @@ def test_switched_generation_is_output_identical_and_decodes_nothing(
     ``LoopSlice.generate`` with the native DAG stage gives the oracle
     stage's S1, S4, S5, S8 (plan bytes, also with native trees), S1', S1'',
     S2 and P digests. Rule 9: the generation and the plan export decode no
-    native DAG; the native-trees export decodes exactly the remaining A5
-    consumer of the consumer table (the loop-block DAG's tree rows,
-    ``RUST-MIGRATION.md`` §3.A): the CT program's interaction program is
-    native (``NATIVE_PROGRAM``)."""
+    native DAG, and neither does the native-trees export: the CT program's
+    interaction program is native (``NATIVE_PROGRAM``) and so is the
+    loop-block DAG's, the last A5 consumer of the consumer table
+    (``RUST-MIGRATION.md`` §3.A; M-FINAL MF-8G-1, ``native_trees.
+    NATIVE_SECTIONS``: no Python ``TreeRows``)."""
 
     from pyamplicol.loops.v2.assemble import SliceRequest
     from pyamplicol.models.loading import load_compiled_model
@@ -1738,9 +1752,9 @@ def test_switched_generation_is_output_identical_and_decodes_nothing(
         compiled, request, loop_native, True
     )
     assert python_decodes == [0, 0, 0]
-    assert decodes == [0, 0, 1]
+    assert decodes == [0, 0, 0]
     assert isinstance(switched.blocks.blocks_dag, dag_input.NativeDag)
     program = switched.counterterm_program.blocks.blocks
     assert isinstance(program.blocks_dag, dag_input.NativeDag)
-    assert switched.blocks.blocks_dag.decoded and not program.blocks_dag.decoded
+    assert not switched.blocks.blocks_dag.decoded and not program.blocks_dag.decoded
     assert digests == expected

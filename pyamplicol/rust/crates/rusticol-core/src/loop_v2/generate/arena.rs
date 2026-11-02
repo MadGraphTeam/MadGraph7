@@ -18,38 +18,63 @@
 //!   accessors below (`contents`, `orders`, `labels`, `schedules`,
 //!   `family_skeletons`, `leaf_skeleton`, `nodes`, `readings`).
 //!
-//! Handles are stable: a build is never removed or changed once added.
+//! Handles are stable: a build is never changed once added. A build no
+//! stage reads any more (the complete build once the LC/NLC prune has
+//! rebuilt from it) can be released ([`Arena::release`]); its handle then
+//! reads as an error and is never reused.
 
 use super::FastMap;
 use super::orders::OrderSpace;
 use super::schedules::{self, Content, FamilySchedule, Retained, Skeleton, TrieNode};
 use std::sync::{Arc, Mutex, PoisonError};
 
-/// The retained builds of one generation, by handle.
+/// The retained builds of one generation, by handle (None: released).
 #[derive(Debug, Default)]
 pub struct Arena {
-    builds: Mutex<Vec<Arc<Retained>>>,
+    builds: Mutex<Vec<Option<Arc<Retained>>>>,
 }
 
 impl Arena {
     /// Keep a build; its handle.
     pub fn insert(&self, build: Retained) -> usize {
         let mut builds = self.builds.lock().unwrap_or_else(PoisonError::into_inner);
-        builds.push(Arc::new(build));
+        builds.push(Some(Arc::new(build)));
         builds.len() - 1
     }
 
     /// The build of a handle.
     pub fn get(&self, handle: usize) -> Result<Arc<Retained>, String> {
-        self.builds
+        match self
+            .builds
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .get(handle)
-            .cloned()
-            .ok_or_else(|| format!("no retained schedule build {handle}"))
+        {
+            Some(Some(build)) => Ok(Arc::clone(build)),
+            Some(None) => Err(format!("schedule build {handle} was released")),
+            None => Err(format!("no retained schedule build {handle}")),
+        }
     }
 
-    /// The number of retained builds.
+    /// Drop the arena's hold on a build: its memory is freed once no reader
+    /// holds it (a rebuild shares only its skeletons, [`super::schedules::
+    /// rebuild`]). Releasing a released handle is a no-op.
+    pub fn release(&self, handle: usize) -> Result<(), String> {
+        match self
+            .builds
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get_mut(handle)
+        {
+            Some(slot) => {
+                slot.take();
+                Ok(())
+            }
+            None => Err(format!("no retained schedule build {handle}")),
+        }
+    }
+
+    /// The number of handles given out (released builds included).
     pub fn len(&self) -> usize {
         self.builds
             .lock()

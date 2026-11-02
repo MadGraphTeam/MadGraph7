@@ -20,7 +20,9 @@ fn require(condition: bool, message: &str) -> RusticolResult<()> {
 
 /// PACBIN member of a v2 loop program (plan v4, DESIGN.md §3.8, §12.1): the
 /// zlib stream of the JSON that `loops/v2/plan_export.py` writes
-/// (`loops/v2/artifact.py` publishes it).
+/// (`loops/v2/artifact.py` publishes it). Artifacts store the binary member
+/// instead ([`LOOP_PROGRAM_V4_BINARY_MEMBER`]); this one is read where no
+/// binary member is stored (artifacts written before it).
 pub const LOOP_PROGRAM_V4_MEMBER: &str = "schedule/loop-plan-v4.json.zlib";
 
 /// PACBIN member of the companion plan v4 of a process's certified-scaleless
@@ -28,29 +30,51 @@ pub const LOOP_PROGRAM_V4_MEMBER: &str = "schedule/loop-plan-v4.json.zlib";
 /// pole selections run it. Absent when the process has no such family.
 pub const LOOP_PROGRAM_V4_SCALELESS_MEMBER: &str = "schedule/loop-plan-v4-scaleless.json.zlib";
 
-/// The plan v4 JSON of an authenticated PACBIN reader (its only caller is the
-/// v4 admission, `loop_artifact::load_loop_v2_artifact`, which validates it as
-/// a `loop_v2::plan::LoopProgramV4`). The member has the plan kind of the v3
-/// runtime; the JSON's schema field selects version 4.
+/// The plan v4 as its binary columnar member (`loop_v2::plan::binary`,
+/// `ExportedPlan.binary()`), zlib stream: the plan's stored form (M-FINAL
+/// MF-8G-1 item 5); `loop_v2::plan::LoopProgramV4::load` reads either form.
+pub const LOOP_PROGRAM_V4_BINARY_MEMBER: &str = "schedule/loop-plan-v4.bin.zlib";
+
+/// The companion plan's binary member (as [`LOOP_PROGRAM_V4_BINARY_MEMBER`]).
+pub const LOOP_PROGRAM_V4_SCALELESS_BINARY_MEMBER: &str =
+    "schedule/loop-plan-v4-scaleless.bin.zlib";
+
+#[cfg(feature = "loop-v2")]
+fn has_member(reader: &PacbinReader, name: &str) -> bool {
+    reader
+        .members()
+        .iter()
+        .any(|member| member.logical_path() == name)
+}
+
+/// The stored plan v4 of an authenticated PACBIN reader: its binary member
+/// where stored, else its JSON (its only caller is the v4 admission,
+/// `loop_artifact::load_loop_v2_artifact`, which digests these bytes and
+/// validates them as a `loop_v2::plan::LoopProgramV4`). The member has the
+/// plan kind of the v3 runtime; the JSON's schema field selects version 4.
 #[cfg(feature = "loop-v2")]
 pub fn read_loop_program_v4_json(reader: &PacbinReader) -> RusticolResult<Vec<u8>> {
+    if has_member(reader, LOOP_PROGRAM_V4_BINARY_MEMBER) {
+        return read_plan_v4_member(reader, LOOP_PROGRAM_V4_BINARY_MEMBER);
+    }
     read_plan_v4_member(reader, LOOP_PROGRAM_V4_MEMBER)
 }
 
-/// The companion plan v4 JSON (`LOOP_PROGRAM_V4_SCALELESS_MEMBER`), or None
-/// when the PACBIN has no such member.
+/// The stored companion plan v4 (its binary member, else
+/// `LOOP_PROGRAM_V4_SCALELESS_MEMBER`), or None when the PACBIN has neither.
 #[cfg(feature = "loop-v2")]
 pub fn read_loop_program_v4_scaleless_json(
     reader: &PacbinReader,
 ) -> RusticolResult<Option<Vec<u8>>> {
-    if !reader
-        .members()
-        .iter()
-        .any(|member| member.logical_path() == LOOP_PROGRAM_V4_SCALELESS_MEMBER)
-    {
-        return Ok(None);
+    for name in [
+        LOOP_PROGRAM_V4_SCALELESS_BINARY_MEMBER,
+        LOOP_PROGRAM_V4_SCALELESS_MEMBER,
+    ] {
+        if has_member(reader, name) {
+            return read_plan_v4_member(reader, name).map(Some);
+        }
     }
-    read_plan_v4_member(reader, LOOP_PROGRAM_V4_SCALELESS_MEMBER).map(Some)
+    Ok(None)
 }
 
 #[cfg(feature = "loop-v2")]

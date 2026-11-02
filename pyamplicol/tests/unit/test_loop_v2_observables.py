@@ -1362,6 +1362,9 @@ scalar_predicates()
 model, unrelated = sys.argv[1], int(sys.argv[2])
 for k in range(unrelated):
     S(f"history::unrelated{k}")
+# The control: a sum of plain symbols made right after the history, in
+# Symbolica's term order (their packed ids move with the unrelated symbols).
+control = str(sum(S(f"history::late{k}") for k in range(400)))
 
 from pyamplicol.loops.native import load_loop_native
 from pyamplicol.loops.v2 import reference_executor
@@ -1409,11 +1412,12 @@ print(
     json.dumps(
         {
             "totals": [[z.real.hex(), z.imag.hex()] for z in values],
-            "program": digest(program),
+            "program": hashlib.sha256(plan.json().encode()).hexdigest(),
             "kernels": digest(program["kernels"]),
             "constants": digest([repr(key) for key in plan.constants]),
             "raw kernels": digest(raw),
             "raw stages": digest(stages),
+            "control": digest(control),
         }
     )
 )
@@ -1434,12 +1438,13 @@ def test_generation_does_not_depend_on_the_process_history(loop_sm_compiled_mode
     in a canonical order (``reference_executor._term_order``), 250 unrelated
     symbols changed 685 of the 1594 exported kernel outputs (term order, 517
     of them, and constant numbering) and moved 6 of the 19 totals (up to
-    7.4e-13 relative; measured). The probe discriminates: the raw tree
-    stages, in Symbolica's order before their canonical renaming, differ
-    after 250. (Since the slice compiles its block rows before the loop
-    kernels, WP2.2, the canonical symbol block's padding absorbs the history
-    for every symbol created later, so the raw kernel records no longer
-    differ either; the canonical kernel order stays the guarantee.)"""
+    7.4e-13 relative; measured). The probe discriminates: a sum of plain
+    symbols made after the history changes its term order after 250 and 300
+    (the control). (Since the slice compiles its block rows before the loop
+    kernels, WP2.2, and the tree program on canonical symbols, MF-8G-1, the
+    canonical symbol blocks' padding absorbs the history in the raw tree
+    stages, and the raw kernel records' order is not fixed from one
+    interpreter to the next; the canonical records stay the guarantee.)"""
 
     import subprocess
     import sys
@@ -1468,8 +1473,16 @@ def test_generation_does_not_depend_on_the_process_history(loop_sm_compiled_mode
         out, err = run.communicate(timeout=900)
         assert run.returncode == 0, err[-4000:]
         outputs.append(json.loads(out.strip().splitlines()[-1]))
-    first, kernel_shift, _tree_shift = outputs
-    assert first["raw stages"] != kernel_shift["raw stages"]
+    first, kernel_shift, tree_shift = outputs
+    # The probe discriminates: the history moves Symbolica's term order of
+    # plain symbols made after it (the control). The generation's raw
+    # (pre-canonical) records are not asserted on: the canonical blocks'
+    # padding absorbs the history in the raw tree stages since MF-8G-1's
+    # native tree program, and the raw kernel records' order is not fixed
+    # from one interpreter to the next (measured: equal or not at random);
+    # the canonical records below are the guarantee.
+    assert first["control"] != kernel_shift["control"]
+    assert first["control"] != tree_shift["control"]
     for output in outputs[1:]:
         for item in ("program", "kernels", "constants", "totals"):
             assert output[item] == first[item], item

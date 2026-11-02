@@ -115,6 +115,93 @@ pub enum KernelUse {
 /// [`Program::weights`].
 pub type Row = [i64; 9];
 
+/// A step's rows, 4 bytes per entry when every entry of the program fits
+/// (MF-8G-1 item 4: the rows exist beside the DAG's columns while the
+/// program is formed), else 8.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Rows {
+    Narrow(Vec<[u32; 9]>),
+    Wide(Vec<Row>),
+}
+
+impl Default for Rows {
+    fn default() -> Self {
+        Rows::Wide(Vec::new())
+    }
+}
+
+impl From<Vec<Row>> for Rows {
+    fn from(rows: Vec<Row>) -> Self {
+        Rows::Wide(rows)
+    }
+}
+
+impl Rows {
+    fn new(narrow: bool) -> Self {
+        if narrow {
+            Rows::Narrow(Vec::new())
+        } else {
+            Rows::Wide(Vec::new())
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            Rows::Narrow(rows) => rows.len(),
+            Rows::Wide(rows) => rows.len(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Row `index`.
+    pub fn get(&self, index: usize) -> Row {
+        match self {
+            Rows::Narrow(rows) => rows[index].map(i64::from),
+            Rows::Wide(rows) => rows[index],
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = Row> + '_ {
+        (0..self.len()).map(|index| self.get(index))
+    }
+
+    /// A row whose entries are non-negative and, in narrow rows, fit 32 bits
+    /// (the program decides the width from its bounds).
+    fn push(&mut self, row: Row) {
+        match self {
+            Rows::Narrow(rows) => rows.push(row.map(|value| {
+                debug_assert!((0..=i64::from(u32::MAX)).contains(&value));
+                value as u32
+            })),
+            Rows::Wide(rows) => rows.push(row),
+        }
+    }
+
+    /// The last row, removed; the buffer shrinks once `slack` rows are
+    /// free behind it (a large buffer gives its tail back to the system).
+    pub fn pop(&mut self, slack: usize) -> Option<Row> {
+        match self {
+            Rows::Narrow(rows) => {
+                let row = rows.pop()?;
+                if rows.capacity() - rows.len() > slack {
+                    rows.shrink_to_fit();
+                }
+                Some(row.map(i64::from))
+            }
+            Rows::Wide(rows) => {
+                let row = rows.pop()?;
+                if rows.capacity() - rows.len() > slack {
+                    rows.shrink_to_fit();
+                }
+                Some(row)
+            }
+        }
+    }
+}
+
 /// One output of a step: `[accumulator, propagator kernel or -1, momentum
 /// start, value start, dimension]`.
 pub type Output = [i64; 5];
@@ -122,7 +209,7 @@ pub type Output = [i64; 5];
 /// One stage of the program (`_interaction_program`'s step).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Step {
-    pub rows: Vec<Row>,
+    pub rows: Rows,
     /// Dimension of each accumulator.
     pub accumulators: Vec<i64>,
     pub outputs: Vec<Output>,
@@ -249,6 +336,12 @@ impl ColumnarDag {
             order_masks[index] = Some(value);
             Ok(value)
         };
+        // Narrow rows when every entry fits 32 bits: starts and momentum
+        // starts are below the momentum slots' end, kernels, accumulators
+        // and weights below the interaction count, dimensions small.
+        let narrow = value_count + 4 * masks.len() as u64 <= u64::from(u32::MAX)
+            && self.interaction_count() as u64 <= u64::from(u32::MAX)
+            && self.c_dimension.iter().all(|&d| u32::try_from(d).is_ok());
         // Stages by result size, interactions in DAG order.
         let mut by_size: std::collections::BTreeMap<u32, Vec<u32>> = Default::default();
         for (k, result) in self.i_result.iter().enumerate() {
@@ -275,6 +368,7 @@ impl ColumnarDag {
                 accumulator_of[*current as usize] = index as u32;
             }
             let mut step = Step {
+                rows: Rows::new(narrow),
                 accumulators: results
                     .iter()
                     .map(|current| self.c_dimension[*current as usize] as i64)
@@ -465,7 +559,8 @@ mod tests {
         // The zero-factor interaction is skipped; -0.0 and 0.0 are one weight.
         assert_eq!(program.steps[1].rows.len(), 1);
         assert_eq!(program.weights, vec![[0.0, 1.0]]);
-        assert_eq!(program.steps[0].rows[0], [0, 0, 4, 4, 4, 20, 24, 0, 0]);
+        assert_eq!(program.steps[0].rows.get(0), [0, 0, 4, 4, 4, 20, 24, 0, 0]);
+        assert!(matches!(program.steps[0].rows, Rows::Narrow(_)));
         assert_eq!(program.steps[1].outputs, vec![[0, 0, 36, 16, 4]]);
         // Current 3 (no insertion) reaches every slot, current 4 slot 1.
         assert_eq!(program.steps[0].accumulator_masks, vec![0]);

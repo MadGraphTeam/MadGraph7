@@ -185,6 +185,121 @@ class NativeExportUnsupported(NotImplementedError):
 # the pruning's bitwise equality, ``tests/unit/test_loop_v2_native_trees.py``).
 PRUNE = True
 
+# M-FINAL MF-8G-1 (rule 1 of the Rust migration: one flag, dispatched in the
+# stage): the binary tree program (``NativeTrees.binary``; rusticol-core
+# ``loop_v2::trees::binary``). Its large arrays are binary sections, never
+# Python lists or one JSON text: the counterterm program's steps come from
+# its native DAG as columns (``V2Program.step_section``) and are pruned
+# natively (``tree_steps_prune``), the counterterm overlap cells are formed
+# natively as a table (``_cell_section``, ``NativeCellTable.section``), and
+# the trees' steps move to a section after their pruning. The process stores
+# the container (``tree-program.bin``) and its executors read it; Python
+# reads only its head at load. False: the JSON program, the oracle
+# (``tests/unit/test_loop_v2_tree_binary.py``: equal after decoding, values
+# bitwise equal).
+NATIVE_SECTIONS = True
+
+# The container's parts (``loop_v2::trees::binary``): the top-level keys
+# stored as JSON sections of their own (the rest is the head), and the
+# binary sections replacing one array of a JSON part.
+SECTION_KEYS = (
+    "interactions",
+    "block_rows",
+    "block_row_terms",
+    "born",
+    "counterterms",
+    "counterterm_trees",
+    "layouts",
+    "weights",
+)
+# Every key of a tree program, in ``export_trees``'s order.
+_PROGRAM_KEYS = (
+    "schema",
+    "legs",
+    "initial",
+    "state_size",
+    "model_offset",
+    "model_count",
+    "momentum_slots",
+    "source_fill",
+    "interactions",
+    "block_rows",
+    "block_row_terms",
+    "born",
+    "parameters",
+    "counterterms",
+    "counterterm_trees",
+    "layouts",
+    "weights",
+)
+TREE_STEPS = "interactions.steps"
+COUNTERTERM_STEPS = "counterterm_trees.interactions.steps"
+CELLS = "counterterms.cells"
+BORN_TERMS = "born.terms"
+COUNTERTERM_TERMS = "counterterms.terms"
+
+
+def _native() -> Any:
+    """The staged loop core, verified once per process
+    (``native_lowering._native``; each ``load_loop_native`` re-verifies the
+    native build, 0.2-0.4 s)."""
+
+    from .native_lowering import _native as loop_core
+
+    return loop_core()
+
+
+def _dumps(value: Any) -> bytes:
+    return json.dumps(value, separators=(",", ":")).encode()
+
+
+def _with_key(record: Mapping[str, Any], key: str, value: Any, after: str) -> dict:
+    """``record`` with ``key`` set to ``value`` right after ``after`` (the
+    oracle's key order)."""
+
+    out: dict[str, Any] = {}
+    for name, item in record.items():
+        if name == key:
+            continue
+        out[name] = item
+        if name == after:
+            out[key] = value
+    if key not in out:
+        out[key] = value
+    return out
+
+
+def decoded_program(
+    program: Mapping[str, Any], sections: Mapping[str, bytes]
+) -> dict[str, Any]:
+    """The JSON program (the oracle's form) of a program whose arrays
+    ``sections`` holds (``NativeTrees.sections``): the steps decoded from
+    their columns, the overlap cells listed from their table (b-major over
+    the basis's own tensors, then over the other ket tensors)."""
+
+    native = _native()
+    out = dict(program)
+    if TREE_STEPS in sections:
+        steps = json.loads(native.tree_steps_json(sections[TREE_STEPS]))
+        out["interactions"] = _with_key(
+            out["interactions"], "steps", steps, "propagators"
+        )
+    if COUNTERTERM_STEPS in sections:
+        ct = dict(out["counterterm_trees"])
+        steps = json.loads(native.tree_steps_json(sections[COUNTERTERM_STEPS]))
+        ct["interactions"] = _with_key(ct["interactions"], "steps", steps, "propagators")
+        out["counterterm_trees"] = ct
+    if CELLS in sections:
+        cells = [list(cell) for cell in native.tree_cells_list(sections[CELLS])]
+        out["counterterms"] = _with_key(out["counterterms"], "cells", cells, "tensors")
+    if BORN_TERMS in sections:
+        terms = json.loads(native.tree_terms_json(sections[BORN_TERMS]))
+        out["born"] = _with_key(out["born"], "terms", terms, "couplings")
+    if COUNTERTERM_TERMS in sections:
+        terms = json.loads(native.tree_terms_json(sections[COUNTERTERM_TERMS]))
+        out["counterterms"] = _with_key(out["counterterms"], "terms", terms, "born")
+    return out
+
 
 @dataclass(frozen=True)
 class NativeTrees:
@@ -213,15 +328,67 @@ class NativeTrees:
     # (generation only, not stored: ``native_observables`` forms the stored
     # columns' overlaps from them).
     ket_tensors: tuple[Any, ...] = ()
+    # The binary sections (name, payload) of the arrays ``program`` omits
+    # (``NATIVE_SECTIONS``: ``TREE_STEPS``, ``COUNTERTERM_STEPS``,
+    # ``CELLS``); empty for a JSON program.
+    sections: tuple[tuple[str, bytes], ...] = ()
+    # A loaded binary tree program's container; ``program`` then holds its
+    # head only (the parts Python reads: parameters, sources, layout).
+    container: bytes | None = None
+
+    @property
+    def is_binary(self) -> bool:
+        """Whether the program is a binary tree program (``binary``)."""
+
+        return self.container is not None or bool(self.sections)
+
+    def binary(self) -> bytes:
+        """The binary tree program (``loop_v2::trees::binary``): the head,
+        one JSON section per moved key, then the binary sections."""
+
+        if self.container is not None:
+            return self.container
+        program = self.program
+        parts = [
+            ("head", 0, _dumps({k: v for k, v in program.items() if k not in SECTION_KEYS}))
+        ]
+        parts += [(key, 0, _dumps(program[key])) for key in SECTION_KEYS if key in program]
+        parts += [(name, 1, bytes(payload)) for name, payload in self.sections]
+        return bytes(_native().tree_program_container(parts))
+
+    def full_program(self) -> dict[str, Any]:
+        """The program in the oracle's JSON form (decoded where binary)."""
+
+        if not self.is_binary:
+            return self.program
+        if self.container is None:
+            return decoded_program(self.program, dict(self.sections))
+        native = _native()
+        container = self.container
+        index = native.tree_program_index(container)
+        program = json.loads(native.tree_program_section(container, "head"))
+        sections = {}
+        for name, encoding in index:
+            if name == "head":
+                continue
+            payload = bytes(native.tree_program_section(container, name))
+            if encoding == 0:
+                program[name] = json.loads(payload)
+            else:
+                sections[name] = payload
+        program = {key: program[key] for key in _PROGRAM_KEYS if key in program}
+        return decoded_program(program, sections)
 
     def json(self) -> str:
-        return json.dumps(self.program, separators=(",", ":"))
+        return json.dumps(self.full_program(), separators=(",", ":"))
 
-    def executor_argument(self) -> tuple[str, list[bytes], list[bytes] | None]:
+    def executor_argument(
+        self,
+    ) -> tuple[str | bytes, list[bytes], list[bytes] | None]:
         if self.planes and len(self.planes) != len(self.kernels) + 1:
             raise ValueError("a plane application per saved evaluator")
         return (
-            self.json(),
+            self.binary() if self.is_binary else self.json(),
             [*self.kernels, self.parameters],
             list(self.planes) if self.planes else None,
         )
@@ -469,7 +636,8 @@ def _constant_text(key: Any, flips: Any) -> str:
 
 
 def _fraction_text(value: Fraction) -> str:
-    value = Fraction(value)
+    if type(value) is not Fraction:
+        value = Fraction(value)
     return str(value.numerator if value.denominator == 1 else value)
 
 
@@ -493,8 +661,18 @@ def export_trees(
     from .assemble import LAURENT_POWERS, _BlockRows, _single
     from .refusals import require_nc_exact
 
-    trees = slice_.tree_rows
-    schema = trees.schema
+    # A5's tree part (``NATIVE_SECTIONS``): the trees' interaction program
+    # from the slice's native blocks DAG, its steps a section, without the
+    # Python ``TreeRows`` and its runtime schema (``_native_tree_program``);
+    # the Python rows stay the oracle (and the path of a tree-engine DAG).
+    native_trees = _native_tree_program(slice_) if NATIVE_SECTIONS else None
+    tree_steps = None
+    if native_trees is None:
+        trees = slice_.tree_rows
+        schema = trees.schema
+    else:
+        trees, interactions, saved, tree_steps = native_trees
+        schema = None
     process = slice_.blocks.process
     labels = sorted(leg.label for leg in process.legs)
     if labels != list(range(1, len(labels) + 1)):
@@ -506,12 +684,16 @@ def export_trees(
     value_count = trees._value_count
     model_count = len(trees._records)
     state_size = max(trees._size, trees._offset + model_count)
-    slots: dict[tuple[int, str], tuple[int, int]] = {}
-    for record in schema["value_storage"]["value_slots"]:
-        key = (int(record["current_id"]), str(record["variant"]))
-        slots.setdefault(
-            key, (int(record["component_start"]), int(record["dimension"]))
-        )
+    slots: Mapping[tuple[int, str], tuple[int, int]]
+    if schema is None:
+        slots = trees.slots
+    else:
+        slots = {}
+        for record in schema["value_storage"]["value_slots"]:
+            key = (int(record["current_id"]), str(record["variant"]))
+            slots.setdefault(
+                key, (int(record["component_start"]), int(record["dimension"]))
+            )
 
     # The counterterm program (WP2.2, ``ct_closure``): a second interaction
     # program on a state of its own, which follows the trees' state in the
@@ -540,13 +722,18 @@ def export_trees(
             raise ValueError(f"tree current {entry.current_id} has no {variant} row")
         return found
 
-    momentum_slots = []
-    for record in schema["momentum_slots"]:
-        mask = 0
-        for label in record["external_labels"]:
-            mask |= 1 << (int(label) - 1)
-        momentum_slots.append([value_count + int(record["component_start"]), mask])
-    interactions, saved = _interaction_program(trees)
+    if schema is None:
+        momentum_slots = trees.momentum_slots
+        source_fill = trees.source_fill
+    else:
+        momentum_slots = []
+        for record in schema["momentum_slots"]:
+            mask = 0
+            for label in record["external_labels"]:
+                mask |= 1 << (int(label) - 1)
+            momentum_slots.append([value_count + int(record["component_start"]), mask])
+        source_fill = schema["source_fill"]
+        interactions, saved = _interaction_program(trees)
     index = _BlockRows(slice_, None)._index
     block_rows = []
     # A row whose block current the tree engine splits into several trees
@@ -576,8 +763,11 @@ def export_trees(
     block_ids: dict[int, int] = {}
     block_starts: list[list[int | None]] = []
     block_dimensions: list[int] = []
+    block_masks: list[int] = []
 
     unread: set[int] = set()
+    # Per Born row, leg label -> helicity (read for every block registered).
+    row_helicities = [{leg + 1: h for leg, h in born_row} for born_row in rows]
 
     def block_id(block: Any) -> int | None:
         """The block's closure record; None for a block without a row on any
@@ -597,9 +787,9 @@ def export_trees(
             by_helicity = {row.helicities: row for row in block.rows}
         starts: list[int | None] = []
         dimensions = set()
-        for born_row in rows:
-            helicity = {leg + 1: h for leg, h in born_row}
-            want = tuple(sorted((leg, helicity[leg]) for leg in block.key.labels))
+        labels = block.key.labels
+        for helicity in row_helicities:
+            want = tuple(sorted((leg, helicity[leg]) for leg in labels))
             entry = by_helicity.get(want)
             if entry is None:
                 starts.append(None)
@@ -616,25 +806,46 @@ def export_trees(
         found = block_ids[id(block)] = len(block_starts)
         block_starts.append(starts)
         block_dimensions.append(dimensions.pop())
+        block_masks.append(block.key.external_mask)
         return found
 
     # Closure terms share their input layouts and colour weights (interned).
     layouts: dict[tuple[tuple[Any, ...], ...], int] = {}
     weights: dict[tuple[str, str, int], int] = {}
+    # The kernel of a whole-rule term's Lorentz structure, per (block count,
+    # metric pairings): the expansion depends on nothing else, and the few
+    # vertex structures repeat over every block choice (M-FINAL MF-8G-1:
+    # 13 of 27 s of the 6-gluon LC export expanded them once per term).
+    whole_kernels: dict[tuple[int, Any], int] = {}
+    closure_inputs: dict[tuple[Any, ...], list[list[Any]]] = {}
+    whole_inputs: dict[int, list[list[Any]]] = {}
+    layout_of: dict[int, tuple[list[list[Any]], int]] = {}
 
     def record(
-        term: Any, kernel: int, inputs: list[list[Any]], contributions: list[list[Any]]
+        term: Any,
+        kernel: int,
+        inputs: list[list[Any]],
+        contributions: list[list[Any]],
+        ids: list[int],
     ) -> dict[str, Any]:
         """A closure term's record: its kernel on the layout of its inputs,
         and per contribution (coupling, component, weight); ``contributions``
         are (coupling, component, weight re, weight im, sqrt(2) power)."""
 
-        layout = layouts.setdefault(tuple(tuple(item) for item in inputs), len(layouts))
+        found = layout_of.get(id(inputs))
+        if found is None or found[0] is not inputs:
+            layout = layouts.setdefault(
+                tuple(tuple(item) for item in inputs), len(layouts)
+            )
+            # Kept with its list, so the id stays that list's.
+            layout_of[id(inputs)] = (inputs, layout)
+        else:
+            layout = found[1]
         return {
             "kernel": kernel,
             "layout": layout,
-            "blocks": [block_id(block) for block in term.blocks],
-            "masks": [block.key.external_mask for block in term.blocks],
+            "blocks": ids,
+            "masks": [block_masks[i] for i in ids],
             "sign": term.sign,
             "contributions": [
                 [
@@ -646,56 +857,77 @@ def export_trees(
             ],
         }
 
-    def readable(term: Any) -> bool:
-        """Whether every block of a closure term has a Born row (a term on a
-        block without one vanishes on every kept row)."""
+    def term_ids(term: Any) -> list[int] | None:
+        """The closure records of a term's blocks, in order; None when a
+        block has no Born row (a term on a block without one vanishes on every
+        kept row; the blocks after it are not registered, as before)."""
 
-        return all(block_id(block) is not None for block in term.blocks)
+        ids = []
+        for block in term.blocks:
+            found = block_id(block)
+            if found is None:
+                return None
+            ids.append(found)
+        return ids
 
     def closure_term(
         term: Any, contributions: list[list[Any]]
     ) -> dict[str, Any] | None:
         """A root-closure term (``ct_sites.SiteTerm``: a vertex closed on
         tree blocks) as a plan kernel on its blocks' rows and momenta; None
-        for a term on a block without a Born row (``readable``)."""
+        for a term on a block without a Born row (``term_ids``)."""
 
-        if not readable(term):
+        ids = term_ids(term)
+        if ids is None:
             return None
 
         kernel = exporter._kernel(term.binding, ())
-        ids = [block_id(block) for block in term.blocks]
-        dimensions = [block_dimensions[ids[i]] for i in term.kernel_legs]
-        current_slots = [
-            (term.kernel_legs[leg], k)
-            for leg, dimension in enumerate(dimensions)
-            for k in range(dimension)
-        ]
-        inputs = []
-        for kind, component, _ in exporter.kernel_records[kernel]["inputs"]:
-            if kind == "current":
-                inputs.append(["current", *current_slots[component]])
-            elif kind == "momentum":
-                # Kernel leg l takes the momentum of the block whose row it
-                # takes (``ct_sites.SiteClosure._reading_sign``).
-                inputs.append(
-                    ["momentum", term.kernel_legs[component // 4], component % 4]
-                )
-            else:
-                raise ValueError(f"a closure kernel reads a {kind} input")
-        return record(term, kernel, inputs, contributions)
+        dimensions = tuple(block_dimensions[ids[i]] for i in term.kernel_legs)
+        # The inputs follow from the kernel, its legs and their dimensions
+        # (shared by the terms of one vertex over its block choices).
+        key = (kernel, tuple(term.kernel_legs), dimensions)
+        inputs = closure_inputs.get(key)
+        if inputs is None:
+            current_slots = [
+                (term.kernel_legs[leg], k)
+                for leg, dimension in enumerate(dimensions)
+                for k in range(dimension)
+            ]
+            inputs = []
+            for kind, component, _ in exporter.kernel_records[kernel]["inputs"]:
+                if kind == "current":
+                    inputs.append(["current", *current_slots[component]])
+                elif kind == "momentum":
+                    # Kernel leg l takes the momentum of the block whose row it
+                    # takes (``ct_sites.SiteClosure._reading_sign``).
+                    inputs.append(
+                        ["momentum", term.kernel_legs[component // 4], component % 4]
+                    )
+                else:
+                    raise ValueError(f"a closure kernel reads a {kind} input")
+            closure_inputs[key] = inputs
+        return record(term, kernel, inputs, contributions, ids)
 
     def whole_term(term: Any, contributions: list[list[Any]]) -> dict[str, Any] | None:
         """A whole-rule continuation term (``assemble.WholeRuleTerm``): its
         sum of products of Minkowski contractions of block rows as a plan
         kernel on the blocks' four components."""
-        if not readable(term):
+        ids = term_ids(term)
+        if ids is None:
             return None
 
-        ids = [block_id(block) for block in term.blocks]
         if any(block_dimensions[i] != 4 for i in ids):
             raise NativeExportUnsupported(
                 "whole-rule-block", "a whole-rule term on a non-vector block"
             )
+        inputs = whole_inputs.get(len(ids))
+        if inputs is None:
+            inputs = whole_inputs[len(ids)] = [
+                ["current", slot, k] for slot in range(len(ids)) for k in range(4)
+            ]
+        found = whole_kernels.get((len(ids), term.pairings))
+        if found is not None:
+            return record(term, found, inputs, contributions, ids)
         polynomial: dict[tuple[int, ...], Fraction] = defaultdict(Fraction)
         for coefficient, pairs in term.pairings:
             partial = {(): Fraction(coefficient)}
@@ -730,8 +962,8 @@ def export_trees(
                     "outputs": [outputs],
                 }
             )
-        inputs = [["current", slot, k] for slot in range(len(ids)) for k in range(4)]
-        return record(term, kernel, inputs, contributions)
+        whole_kernels[len(ids), term.pairings] = kernel
+        return record(term, kernel, inputs, contributions, ids)
 
     terms = []
     born_orders = tuple(sorted(slice_.born_terms))
@@ -784,9 +1016,12 @@ def export_trees(
         _component_metric(slice_, components, squared_orders) if born_squared else None
     )
     counterterms = None
+    # MF-8G-1: the counterterm closure terms go straight into a native term
+    # section (no Python record list kept, no JSON), pruned natively.
+    ct_terms = _native().TreeTermBuilder() if NATIVE_SECTIONS else None
     if with_counterterms:
         counterterms = _counterterm_program(
-            slice_, closure_term, whole_term, components, born_orders
+            slice_, closure_term, whole_term, components, born_orders, ct_terms
         )
     masses = _external_masses(slice_)
     parameters, parameter_evaluator, parameter_outputs = _parameter_program(
@@ -806,7 +1041,7 @@ def export_trees(
         "model_offset": trees._offset,
         "model_count": model_count,
         "momentum_slots": momentum_slots,
-        "source_fill": schema["source_fill"],
+        "source_fill": source_fill,
         "interactions": interactions,
         "block_rows": block_rows,
         **({"block_row_terms": block_row_terms} if block_row_terms else {}),
@@ -833,10 +1068,34 @@ def export_trees(
         "weights": [list(weight) for weight in weights],
     }
     ct_saved = () if ct is None else ct.saved
+    # The binary sections (``NATIVE_SECTIONS``): the counterterm program's
+    # steps and overlap cells as formed natively, then the trees' steps.
+    sections: dict[str, bytes] = {}
+    if tree_steps is not None:
+        sections[TREE_STEPS] = tree_steps
+    if ct is not None and ct.steps is not None:
+        sections[COUNTERTERM_STEPS] = ct.steps
+    if counterterms is not None and counterterms.cells is not None:
+        sections[CELLS] = counterterms.cells
+    if counterterms is not None and ct_terms is not None:
+        sections[COUNTERTERM_TERMS] = bytes(ct_terms.section())
+    del ct_terms
     if PRUNE:
         program, saved, ct_saved = prune_program(
-            program, saved, ct_saved, keep_kets=keep_kets
+            program, saved, ct_saved, keep_kets=keep_kets, sections=sections
         )
+    if NATIVE_SECTIONS and TREE_STEPS not in sections:
+        # The Python rows' steps (a tree-engine DAG): a section from here on.
+        steps = program["interactions"].pop("steps")
+        sections[TREE_STEPS] = bytes(_native().tree_steps_from_json(_dumps(steps)))
+        del steps
+    if NATIVE_SECTIONS:
+        # The closure terms (the Born's and the counterterm closure's, built
+        # in Python until A6's generation side is native) as sections once
+        # pruned: the program keeps no Python term record.
+        terms = program["born"].pop("terms")
+        sections[BORN_TERMS] = bytes(_native().tree_terms_from_json(_dumps(terms)))
+        del terms
     # The kernels the pruned program still uses; their plane applications
     # are compiled after the pruning, so a dropped kernel compiles none.
     kernels = (*saved, *ct_saved)
@@ -860,7 +1119,35 @@ def export_trees(
             {len(kernels): _request_points(slice_, parameters)},
         ),
         () if counterterms is None else counterterms.tensors,
+        tuple(sections.items()),
     )
+
+
+def _native_tree_program(slice_: Any) -> tuple[Any, dict[str, Any], tuple[bytes, ...], bytes] | None:
+    """A5's tree part: the slice's tree rows view (``dag_input.
+    NativeTreeRows``), interaction program (without steps), saved kernels
+    and steps section, from its native blocks DAG (``dag_input.
+    native_tree_rows``, ``native_interaction_program``: every current
+    propagated, as ``LoopSlice.tree_rows``'s ``TreeRows`` propagates them);
+    None where the DAG is the tree engine's or ``dag_input.NATIVE_PROGRAM``
+    is off (the Python ``TreeRows``, the oracle). Released columns are
+    released again after."""
+
+    from . import dag_input
+
+    dag = slice_.blocks.blocks_dag
+    if not dag_input.NATIVE_PROGRAM or type(dag) is not dag_input.NativeDag:
+        return None
+    released = dag.released
+    rows, native = dag_input.native_tree_rows(dag, slice_.compiled)
+    interactions, saved, steps = dag_input.native_interaction_program(
+        rows, native, (), section=True
+    )
+    del native
+    if released:
+        dag.release()
+    assert steps is not None
+    return rows, interactions, saved, steps
 
 
 @dataclass(frozen=True)
@@ -884,19 +1171,34 @@ class _CountertermTrees:
     # ``id`` of every block of the program.
     blocks: frozenset[int]
     fixed: Mapping[str, int]
+    # ``NATIVE_SECTIONS``: the steps' binary section (``record``'s
+    # interaction program omits them); None: they are in ``record``.
+    steps: bytes | None = None
 
     @classmethod
     def of(cls, program: Any, offset: int) -> _CountertermTrees:
         # A5: the interaction program of a native CT DAG, without its decode
         # and runtime schema (``dag_input.NATIVE_PROGRAM``); ``_program`` on
         # the Python rows stays the oracle. Both give the rows, value slots,
-        # momentum slots, source fill, interaction program and saved kernels.
+        # momentum slots, source fill, interaction program and saved kernels;
+        # under ``NATIVE_SECTIONS`` the steps as a binary section (the native
+        # DAG's columns, never Python lists; the oracle's lists encoded).
         from .dag_input import native_counterterm_trees
 
-        native = native_counterterm_trees(program)
-        rows, slots, momentum_slots, source_fill, interactions, saved = (
-            cls._program(program) if native is None else native
-        )
+        native = native_counterterm_trees(program, section=NATIVE_SECTIONS)
+        steps = None
+        if native is None:
+            rows, slots, momentum_slots, source_fill, interactions, saved = (
+                cls._program(program)
+            )
+            if NATIVE_SECTIONS:
+                steps = bytes(
+                    _native().tree_steps_from_json(_dumps(interactions.pop("steps")))
+                )
+        else:
+            rows, slots, momentum_slots, source_fill, interactions, saved, steps = (
+                native
+            )
         model_count = len(rows._records)
         record = {
             "offset": offset,
@@ -916,6 +1218,21 @@ class _CountertermTrees:
             slots,
             frozenset(id(block) for block in program.blocks.blocks.blocks),
             dict(program.recursion.parameter_values(poles=True)),
+            steps,
+        )
+
+    def full_record(self) -> dict[str, Any]:
+        """``record`` with its steps (decoded from ``steps``: the oracle's
+        form)."""
+
+        if self.steps is None:
+            return self.record
+        steps = json.loads(_native().tree_steps_json(self.steps))
+        return _with_key(
+            self.record,
+            "interactions",
+            _with_key(self.record["interactions"], "steps", steps, "propagators"),
+            "slots",
         )
 
     @staticmethod
@@ -957,6 +1274,9 @@ class _Counterterms:
     # The literal colour tensor of every ket tensor (the Born basis first):
     # stored observable columns form their overlaps (``native_observables``).
     tensors: tuple[Any, ...] = ()
+    # ``NATIVE_SECTIONS``: the overlap cells' binary section (``record``
+    # then omits ``cells``; ``_cell_section``).
+    cells: bytes | None = None
 
 
 def _counterterm_program(
@@ -965,6 +1285,7 @@ def _counterterm_program(
     whole_term: Any,
     components: Mapping[tuple[int, Orders, int], int],
     born_orders: Sequence[Orders],
+    terms_sink: Any = None,
 ) -> _Counterterms:
     """The counterterm and external-field components of the native lane, as
     ``assemble._PointEvaluation._born_and_counterterms`` forms them.
@@ -1047,7 +1368,10 @@ def _counterterm_program(
 
     vectors: dict[tuple[str, int, Orders], int] = {}
     ket: dict[tuple[int, int, int], int] = {}
-    terms = []
+    # The closure terms: records, or appended to ``terms_sink`` (a native
+    # ``TreeTermBuilder``, ``NATIVE_SECTIONS``; the record then has no
+    # ``terms`` and ``export_trees`` takes the builder's section).
+    terms: Any = [] if terms_sink is None else terms_sink
 
     # Ket tensor index per literal tensor (one ``_single`` per distinct one).
     index_of: dict[Any, int] = {}
@@ -1217,9 +1541,12 @@ def _counterterm_program(
     # Exact overlaps of the Born basis with every ket tensor, per N_c power:
     # the basis Gram, and the other ket tensors' overlaps counted natively
     # in one batch (``colour.contract_colour`` of unit literal tensors).
+    # Under ``NATIVE_SECTIONS`` all of them natively as one table, never
+    # Python objects (``_cell_section``); the list below is its oracle.
+    cell_section = _cell_section(slice_, literal) if NATIVE_SECTIONS else None
     gram = slice_.basis.gram
     cells = []
-    for b in range(len(basis)):
+    for b in range(len(basis) if cell_section is None else 0):
         for t in range(len(basis)):
             for power, cell in gram[b][t].items():
                 if cell:
@@ -1232,7 +1559,11 @@ def _counterterm_program(
                             _fraction_text(cell.imag),
                         ]
                     )
-    pairs = [(b, t) for b in range(len(basis)) for t in range(len(basis), len(literal))]
+    pairs = [
+        (b, t)
+        for b in range(len(basis) if cell_section is None else 0)
+        for t in range(len(basis), len(literal))
+    ]
     if pairs:
         counted = _trace_overlaps()(
             [overlap_traces(literal[b], literal[t]) for b, t in pairs]
@@ -1257,9 +1588,9 @@ def _counterterm_program(
         "ket": [list(key) for key in ket],
         "vectors": len(vectors),
         "tensors": len(tensors),
-        "cells": cells,
+        **({"cells": cells} if cell_section is None else {}),
         "born": [[b, born_index[order], grade] for b, order, grade in components],
-        "terms": terms,
+        **({"terms": terms} if terms_sink is None else {}),
         "entries": entries,
         "outputs": [power for _component, _s, power in outputs],
         "depth": None if accuracy == "full" else _DEPTH[accuracy],
@@ -1271,7 +1602,108 @@ def _counterterm_program(
             (component, slice_.sectors[s][0], power) for component, s, power in outputs
         ),
         tuple(literal),
+        cell_section,
     )
+
+
+# Ket tensors per native cell table of ``_cell_section``: the engine keeps
+# every generic (structure, basis element) overlap it forms, about 1 kB a
+# cell (g g > 6g LC: 5,040 x ~14 k cells, +30 GB in one table, the export's
+# peak), so the cells are formed in chunks, each on a fresh engine, and the
+# chunks' sections joined (``_join_cell_sections``).
+_CELL_CHUNK = 256
+
+
+def _cell_section(slice_: Any, literal: Sequence[Any]) -> bytes:
+    """The overlap cells of ``_counterterm_program`` as a binary cell
+    section (``loop_v2::trees::binary::CellTable``): ``<b|t>`` of the literal
+    Born basis with every literal ket tensor ``literal`` (the basis first),
+    formed natively (``native_cells.NativeCells``, package C's engine, as
+    ``native_observables._Metrics`` forms a column's) in chunks of
+    ``_CELL_CHUNK`` ket tensors, never decoded to Python."""
+
+    from dataclasses import replace
+
+    from .assemble import _single
+    from .native_cells import NativeCells
+
+    legs = slice_.basis.legs
+    count = len(slice_.basis.tensors)
+    basis = replace(
+        slice_.basis, tensors=tuple(_single(tensor, legs) for tensor in literal[:count])
+    )
+    kets = [_single(tensor, legs) for tensor in literal]
+    parts = [
+        bytes(NativeCells(basis).table(kets[start : start + _CELL_CHUNK]).section())
+        for start in range(0, len(kets), _CELL_CHUNK)
+    ]
+    return parts[0] if len(parts) == 1 else _join_cell_sections(parts)
+
+
+def _join_cell_sections(parts: Sequence[bytes]) -> bytes:
+    """The cell section of the concatenated rows of cell sections on one
+    basis (``CellTable``'s layout: u32 version, u64 basis, u64 tensors, u64
+    distinct cells each a u32 count of (i32 power, text re, text im), then
+    the ids column): the distinct cells renumbered in first-seen order over
+    the joined rows, as one table's section numbers them, so the result is
+    that section byte for byte."""
+
+    import struct
+
+    import numpy as np
+
+    def text(data: bytes, at: int) -> tuple[bytes, int]:
+        (length,) = struct.unpack_from("<I", data, at)
+        return data[at + 4 : at + 4 + length], at + 4 + length
+
+    version = basis = None
+    tensors = 0
+    index: dict[bytes, int] = {}
+    cells: list[bytes] = []
+    ids = []
+    for data in parts:
+        part_version, part_basis, part_tensors, count = struct.unpack_from("<IQQQ", data, 0)
+        at = 28
+        if version is None:
+            version, basis = part_version, part_basis
+        elif (part_version, part_basis) != (version, basis):
+            raise ValueError("cell sections of different bases or versions")
+        local = []
+        for _ in range(count):
+            start = at
+            (entries,) = struct.unpack_from("<I", data, at)
+            at += 4
+            for _ in range(entries):
+                at += 4
+                _re, at = text(data, at)
+                _im, at = text(data, at)
+            cell = data[start:at]
+            found = index.get(cell)
+            if found is None:
+                found = index[cell] = len(cells)
+                cells.append(cell)
+            local.append(found)
+        width = data[at]
+        (length,) = struct.unpack_from("<Q", data, at + 1)
+        dtype = "<u4" if width == 4 else "<u8"
+        column = np.frombuffer(data, dtype=dtype, count=length, offset=at + 9)
+        if at + 9 + length * width != len(data):
+            raise ValueError("trailing bytes in a cell section")
+        ids.append(np.asarray(local, dtype=np.uint64)[column])
+        tensors += part_tensors
+    # First-seen order over the joined ids: renumber by first occurrence.
+    joined = np.concatenate(ids) if ids else np.zeros(0, dtype=np.uint64)
+    _unique, first = np.unique(joined, return_index=True)
+    order = np.argsort(first, kind="stable")
+    rank = np.empty(len(cells), dtype=np.uint64)
+    rank[_unique[order]] = np.arange(len(order), dtype=np.uint64)
+    kept = [cells[int(i)] for i in _unique[order]]
+    renumbered = rank[joined] if len(joined) else joined
+    narrow = len(kept) <= 0xFFFFFFFF and (renumbered.max(initial=0) <= 0xFFFFFFFF)
+    out = [struct.pack("<IQQQ", version, basis, tensors, len(kept)), *kept]
+    out.append(struct.pack("<BQ", 4 if narrow else 8, len(renumbered)))
+    out.append(renumbered.astype("<u4" if narrow else "<u8").tobytes())
+    return b"".join(out)
 
 
 @dataclass(frozen=True)
@@ -2528,6 +2960,7 @@ def prune_program(
     ct_saved: Sequence[bytes],
     *,
     keep_kets: bool = False,
+    sections: dict[str, bytes] | None = None,
 ) -> tuple[dict[str, Any], tuple[bytes, ...], tuple[bytes, ...]]:
     """``program`` without the work no output of it reads; with the saved
     kernel evaluators ``saved`` (the trees') and ``ct_saved`` (the
@@ -2556,14 +2989,20 @@ def prune_program(
     the widest slot of any term on it, marked once per block and Born row
     (not per term), and the interactions are filtered and renumbered
     without copies, so the pass costs a small fraction of the export
-    (design §7.5, Table 7.5c)."""
+    (design §7.5, Table 7.5c).
 
+    ``sections`` (``NATIVE_SECTIONS``) holds the arrays the program omits:
+    the counterterm overlap cells (``CELLS``) are read from their table and
+    the counterterm program's steps (``COUNTERTERM_STEPS``) pruned natively
+    (``tree_steps_prune``), the section replaced in place."""
+
+    sections = {} if sections is None else sections
     counterterms = program.get("counterterms")
     if counterterms is not None and not keep_kets:
         # With stored observable columns (``keep_kets``) every ket component
         # stays: a component the inclusive metric does not read can enter a
         # colour history's interference.
-        _prune_counterterm_terms(counterterms)
+        _prune_counterterm_terms(counterterms, sections.get(CELLS), sections)
     state_size = int(program["state_size"])
     ct = program.get("counterterm_trees")
     offset = state_size if ct is None else int(ct["offset"])
@@ -2595,7 +3034,14 @@ def prune_program(
         widths.append(found)
     block_width = [0] * len(born_blocks)
     terms = program["born"]["terms"]
-    if counterterms is not None:
+    if counterterms is not None and COUNTERTERM_TERMS in sections:
+        # The counterterm closure terms as their section (``export_trees``).
+        block_width = list(
+            _native().tree_terms_block_widths(
+                sections[COUNTERTERM_TERMS], widths, len(born_blocks)
+            )
+        )
+    elif counterterms is not None:
         terms = [*terms, *counterterms["terms"]]
     for term in terms:
         blocks = term["blocks"]
@@ -2615,10 +3061,46 @@ def prune_program(
     )
     if len(saved) != tree_count:
         raise ValueError("the trees' saved kernels and their program differ")
-    saved = _prune_interactions(program["interactions"], tuple(saved), tree_live)
-    if ct is not None:
+    if TREE_STEPS in sections:
+        saved = _prune_step_section(
+            program["interactions"], tuple(saved), tree_live, sections, TREE_STEPS
+        )
+    else:
+        saved = _prune_interactions(program["interactions"], tuple(saved), tree_live)
+    if ct is not None and COUNTERTERM_STEPS in sections:
+        ct_saved = _prune_step_section(
+            ct["interactions"], tuple(ct_saved), ct_live, sections, COUNTERTERM_STEPS
+        )
+    elif ct is not None:
         ct_saved = _prune_interactions(ct["interactions"], tuple(ct_saved), ct_live)
     return program, tuple(saved), tuple(ct_saved)
+
+
+def _prune_step_section(
+    interactions: dict[str, Any],
+    saved: tuple[bytes, ...],
+    live: bytearray,
+    sections: dict[str, bytes],
+    name: str,
+) -> tuple[bytes, ...]:
+    """``_prune_interactions`` of an interaction program whose steps are the
+    binary section ``sections[name]`` (pruned natively, ``tree_steps_prune``,
+    and replaced): the kernel shapes and saved evaluators kept as there."""
+
+    vertex_kernels = len(interactions["kernels"])
+    found = _native().tree_steps_prune(
+        sections[name], live, vertex_kernels, len(interactions["propagators"])
+    )
+    if found is None:
+        return saved
+    section, used, propagators = found
+    sections[name] = bytes(section)
+    interactions["kernels"] = [interactions["kernels"][k] for k in used]
+    interactions["propagators"] = [interactions["propagators"][p] for p in propagators]
+    return (
+        *(saved[k] for k in used),
+        *(saved[vertex_kernels + p] for p in propagators),
+    )
 
 
 def _mark(live: bytearray, start: int, length: int) -> None:
@@ -2690,12 +3172,40 @@ def _live_ket(record: Mapping[str, Any]) -> list[bool]:
     return live
 
 
-def _prune_counterterm_terms(record: dict[str, Any]) -> None:
+def _prune_counterterm_terms(
+    record: dict[str, Any],
+    cells: bytes | None = None,
+    sections: dict[str, bytes] | None = None,
+) -> None:
     """Drop from ``record`` (in place) the ket components no interference
-    reads (``_live_ket``), their contributions and the terms left without
-    any; unchanged if every component is read."""
+    reads (``_live_ket``; with ``cells``, the record's overlap cells as a
+    binary section, its native twin), their contributions and the terms
+    left without any; unchanged if every component is read. Terms held as
+    ``sections[COUNTERTERM_TERMS]`` are pruned there (``tree_terms_prune_ket``,
+    the same rule)."""
 
-    live = _live_ket(record)
+    if cells is None:
+        live = _live_ket(record)
+    else:
+        live = list(
+            _native().tree_cells_live_ket(
+                cells,
+                [tuple(x) for x in record["born"]],
+                [tuple(x) for x in record["entries"]],
+                [tuple(x) for x in record["ket"]],
+                record["depth"],
+            )
+        )
+    if sections is not None and COUNTERTERM_TERMS in sections:
+        sections[COUNTERTERM_TERMS] = bytes(
+            _native().tree_terms_prune_ket(
+                sections[COUNTERTERM_TERMS], [bool(x) for x in live]
+            )
+        )
+        record["ket"] = [
+            c for c, alive in zip(record["ket"], live, strict=True) if alive
+        ]
+        return
     if all(live) and all(term["contributions"] for term in record["terms"]):
         return
     index = [-1] * len(live)
@@ -2854,26 +3364,39 @@ def _component_metric(
     degrees = slice_.degrees()["born"] if accuracy != "full" else {}
     index = {order: s for s, order in enumerate(squared_orders)}
     gram = slice_.basis.gram
+    # The projected value of a Gram cell depends only on the cell, the
+    # components' N_c powers and the squared order's degree: each distinct
+    # (cell, p + q, degree) is formed and formatted once (the Gram's cells
+    # are shared objects, ``native_cells._Decoder``; g g > 6g full colour:
+    # 25.4 M pairs). The output is the loop's below, entry for entry.
+    texts: dict[tuple[int, int, int | None], tuple[str, str] | None] = {}
+    squared_of: dict[tuple[Orders, Orders], Orders] = {}
     out = []
     for (b, left, p), j in components.items():
+        row = gram[b]
         for (b2, right, q), j2 in components.items():
-            squared = add_orders(left, right)
+            squared = squared_of.get((left, right))
+            if squared is None:
+                squared = squared_of[(left, right)] = add_orders(left, right)
             degree = degrees.get(squared)
-            value = _zero_colour()
-            for power, cell in gram[b][b2].items():
-                exponent = power + p + q
-                if kept(exponent, degree, accuracy):
-                    value = value + cell.scaled(Fraction(NC) ** exponent)
-            if value:
-                out.append(
-                    [
-                        index[squared],
-                        j,
-                        j2,
-                        _fraction_text(value.real),
-                        _fraction_text(value.imag),
-                    ]
+            cell_map = row[b2]
+            key = (id(cell_map), p + q, degree)
+            found = texts.get(key, False)
+            if found is False:
+                value = _zero_colour()
+                for power, cell in cell_map.items():
+                    exponent = power + p + q
+                    if kept(exponent, degree, accuracy):
+                        value = value + cell.scaled(Fraction(NC) ** exponent)
+                found = texts[key] = (
+                    (_fraction_text(value.real), _fraction_text(value.imag))
+                    if value
+                    else None
                 )
+                # The cell stays referenced by the Gram, so its id is not
+                # reused while ``texts`` lives.
+            if found is not None:
+                out.append([index[squared], j, j2, *found])
     return out
 
 

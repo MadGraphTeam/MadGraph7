@@ -483,6 +483,20 @@ def _identity(generated, *, fourier: bool = True) -> tuple[str, str, str]:
             }
         native = dataclasses.replace(native, record=record)
     members = native.members()
+    # A binary tree program (M-FINAL MF-8G-1) enters as its decoded JSON
+    # program, the form the pins hold: equal after decoding, byte for byte.
+    companion = native.scaleless
+    for prefix, trees in (
+        ("", native.trees),
+        ("scaleless-", None if companion is None else companion.trees),
+    ):
+        if trees is not None and members.pop(f"{prefix}tree-program.bin", None):
+            members[f"{prefix}tree-program.json"] = trees.json().encode()
+    # The stored dipole orbits (C4, MF-8G-1) postdate the pins.
+    members.pop("dipoles.json", None)
+    # A binary companion plan (MF-8G-1 item 5) enters as its decoded JSON.
+    if companion is not None and members.pop("scaleless-plan.bin", None):
+        members["scaleless-plan.json"] = companion.plan_json.encode()
     native = hashlib.sha256()
     for name in sorted(members):
         if not name.endswith("parameters.symjit"):
