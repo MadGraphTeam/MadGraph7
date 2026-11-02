@@ -26,6 +26,7 @@ entry.
 
 from __future__ import annotations
 
+import ctypes
 import json
 import os
 import shutil
@@ -479,7 +480,6 @@ def test_sdk_capabilities_list_the_extras(artifacts):
     the histories (``born`` first), the spin classes, the helicity rows and
     the three arithmetics; the correlated shape counts every history."""
 
-    import ctypes
 
     build = _staged_sdk()
     sdk = ctypes.CDLL(str(build / "librusticol_loop_sdk.so"))
@@ -607,3 +607,309 @@ def test_the_rust_sdk_extras_follow_the_python_api(artifacts, references, tmp_pa
         )
         assert run.returncode == 0, run.stdout[-4000:] + run.stderr[-4000:]
         _compare(f"rust:{name}", references[name], _parse(output.read_text()))
+
+
+# ------------------------------------------------- C ABI through ctypes
+#
+# The SDK-only paths the language clients above do not take (mf-small3):
+# the double-double and arbitrary-precision virtuals in the "uv" and "ir"
+# pole selections (the companion of the certified-scaleless families, whose
+# lanes the Python API reads at the working digits like every other lane),
+# and the leading-colour resolved rows (per Born helicity row and Born basis
+# element). The C ABI is the Rust SDK's (every wrapper calls it).
+
+
+class _Request(ctypes.Structure):
+    _fields_ = [
+        ("momenta", ctypes.POINTER(ctypes.c_double)),
+        ("momentum_count", ctypes.c_size_t),
+        ("point_count", ctypes.c_size_t),
+        ("point_ids", ctypes.POINTER(ctypes.c_uint64)),
+        ("mu_r2", ctypes.POINTER(ctypes.c_double)),
+        ("scale_count", ctypes.c_size_t),
+        ("resolved", ctypes.c_uint32),
+        ("r2_strategy", ctypes.c_char_p),
+    ]
+
+
+class _Axes(ctypes.Structure):
+    _fields_ = [
+        *(
+            (name, ctypes.c_size_t)
+            for name in (
+                "external_count",
+                "born_orders",
+                "virtual_orders",
+                "helicities",
+                "born_color_components",
+                "virtual_color_components",
+                "epsilon_count",
+            )
+        ),
+        ("resolved_available", ctypes.c_uint32),
+    ]
+
+
+class _ResultShape(ctypes.Structure):
+    _fields_ = [
+        ("requested_points", ctypes.c_size_t),
+        ("successful_points", ctypes.c_size_t),
+        ("born_values", ctypes.c_size_t),
+        ("virtual_values", ctypes.c_size_t),
+        ("resolved", ctypes.c_uint32),
+        ("axes", _Axes),
+    ]
+
+
+class _Sources(ctypes.Structure):
+    _fields_ = [
+        ("legs", ctypes.POINTER(ctypes.c_size_t)),
+        ("leg_count", ctypes.c_size_t),
+        ("values", ctypes.POINTER(ctypes.c_double)),
+        ("value_count", ctypes.c_size_t),
+    ]
+
+
+def _sdk():
+    sdk = ctypes.CDLL(str(_staged_sdk() / "librusticol_loop_sdk.so"))
+    sdk.rusticol_virtual_last_error_message.restype = ctypes.c_char_p
+    return sdk
+
+
+def _error(sdk) -> str:
+    message = sdk.rusticol_virtual_last_error_message()
+    return "" if message is None else message.decode()
+
+
+def _request(points, scales, resolved: bool):
+    flat = [float(c) for point in points for p in point for c in p]
+    momenta = (ctypes.c_double * len(flat))(*flat)
+    mu = (ctypes.c_double * len(scales))(*scales)
+    request = _Request(momenta, len(flat), len(points), None, mu, len(scales))
+    request.resolved = int(resolved)
+    # The arrays stay alive with the request.
+    return request, (momenta, mu)
+
+
+def _open(sdk, artifact: Path, name: str):
+    handle = ctypes.c_void_p()
+    status = sdk.rusticol_virtual_open(
+        str(artifact).encode(), name.encode(), None, None, ctypes.byref(handle)
+    )
+    assert status == 0, _error(sdk)
+    return handle
+
+
+def _sdk_call(sdk, artifact, name, points, poles, arithmetic, digits, resolved):
+    """One ordinary or resolved C ABI evaluation: its double copies and its
+    decimal record (None in binary64)."""
+
+    handle = _open(sdk, artifact, name)
+    try:
+        assert sdk.rusticol_virtual_set_poles(handle, poles.encode()) == 0
+        status = sdk.rusticol_virtual_set_arithmetic(
+            handle, arithmetic.encode(), ctypes.c_uint32(digits or 0)
+        )
+        assert status == 0, _error(sdk)
+        request, _keep = _request(points, SCALES[: len(points)], resolved)
+        result = ctypes.c_void_p()
+        status = sdk.rusticol_virtual_evaluate(
+            handle, ctypes.byref(request), ctypes.byref(result)
+        )
+        assert status == 0, _error(sdk)
+        try:
+            shape = _ResultShape()
+            assert sdk.rusticol_virtual_result_shape(result, ctypes.byref(shape)) == 0
+            assert shape.successful_points == len(points)
+            born = (ctypes.c_double * shape.born_values)()
+            loop = (ctypes.c_double * shape.virtual_values)()
+            assert sdk.rusticol_virtual_result_copy_born(result, born, len(born)) == 0
+            assert sdk.rusticol_virtual_result_copy_virtual(result, loop, len(loop)) == 0
+            needed = ctypes.c_size_t()
+            get = sdk.rusticol_virtual_result_decimal_json
+            assert get(result, None, ctypes.c_size_t(0), ctypes.byref(needed)) == 0
+            buffer = ctypes.create_string_buffer(needed.value)
+            assert get(result, buffer, needed, ctypes.byref(needed)) == 0
+            decimal = json.loads(buffer.value)
+        finally:
+            sdk.rusticol_virtual_result_free(result)
+    finally:
+        sdk.rusticol_virtual_free(handle)
+    return {"born": list(born), "virtual": list(loop), "decimal": decimal}
+
+
+def _python_call(runtime, points, poles, arithmetic, digits, resolved):
+    """The Python API's values of one call in the SDK layout (``references``)."""
+
+    batch = [[[str(Decimal(c)) for c in p] for p in point] for point in points]
+    options = {"mu_r2": [str(Decimal(s)) for s in SCALES[: len(points)]]}
+    options["poles"] = poles
+    if arithmetic != "double":
+        options["arithmetic"] = arithmetic
+    if digits is not None:
+        options["precision"] = digits
+    if resolved:
+        result = runtime.evaluate_resolved(batch, **options)
+        born = [x for b in result.born_values for o in b for row in o for x in row]
+        virtual = [
+            x
+            for v in result.values
+            for sector in v
+            for row in sector
+            for lc in row
+            for x in _laurent(lc)
+        ]
+    else:
+        result = runtime.evaluate(batch, **options)
+        born = [v for b in result.born_values for v in b]
+        virtual = [x for v in result.values for lc in v for x in _laurent(lc)]
+    return {"born": _flat(born), "virtual": _flat(virtual), "complex": False}
+
+
+def _has_companion(artifact: Path, name: str) -> bool:
+    from pyamplicol.loops.native import load_loop_native
+    from pyamplicol.loops.v2.artifact import admit
+
+    found = admit(load_loop_native(), artifact, name)
+    return found["scaleless_plan_sha256"] is not None
+
+
+# (call, arithmetic, digits, poles, resolved, points): the ordinary calls go
+# through the stored plan (``plan_export``), the resolved ones through the
+# stored observable columns (``native_observables``).
+SPLIT_CALLS = [
+    ("ordinary-uv-dd", "double-double", None, "uv", False, 1),
+    ("ordinary-ir-ap", "arbitrary", 32, "ir", False, 1),
+    ("resolved-ir-dd", "double-double", None, "ir", True, 1),
+    ("resolved-uv-ap", "arbitrary", 32, "uv", True, 1),
+]
+
+
+def test_sdk_split_poles_in_extended_precision_equal_the_python_api(artifacts):
+    """Double-double and arbitrary(32) in the "uv" and "ir" selections: the
+    SDK's decimals equal the Python API's ``Decimal`` values exactly (their
+    companion lanes included: read outside the working-digit scope they were
+    rounded at Python's default 28 digits, about 1e-28 off)."""
+
+    from pyamplicol import Runtime
+
+    sdk = _sdk()
+    for name, case in CASES.items():
+        assert _has_companion(artifacts[name], name), name
+        runtime = Runtime.load(artifacts[name], process=name)
+        expected, found = {}, {}
+        for call, arithmetic, digits, poles, resolved, count in SPLIT_CALLS:
+            points = case["points"][:count]
+            expected[call] = _python_call(
+                runtime, points, poles, arithmetic, digits, resolved
+            )
+            found[call] = _sdk_call(
+                sdk, artifacts[name], name, points, poles, arithmetic, digits, resolved
+            )
+        _compare(f"split:{name}", expected, found)
+
+
+LEADING_POINTS = [
+    [[500, 0, 0, 500], [500, 0, 0, -500], [500, 300, 0, 400], [500, -300, 0, -400]],
+    [[500, 0, 0, 500], [500, 0, 0, -500], [500, 0, 400, 300], [500, 0, -400, -300]],
+]
+
+
+@pytest.fixture(scope="module")
+def leading(loop_sm_compiled_model, loop_native, tmp_path_factory):
+    """u u~ > g g at leading colour (two Born basis elements)."""
+
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.config import resolve_config
+
+    root = tmp_path_factory.mktemp("leading")
+    card = root / "card.toml"
+    text = _card(loop_sm_compiled_model, root / "artifact", "u u~ > g g", "uugg")
+    assert text.count('accuracy = "full"') == 1
+    card.write_text(text.replace('accuracy = "full"', 'accuracy = "lc"'))
+    Generator(resolve_config(card)).generate(
+        ProcessSet((ProcessRequest.parse("u u~ > g g", name="uugg"),)),
+        root / "artifact",
+    )
+    return root / "artifact"
+
+
+def test_sdk_leading_colour_resolved_rows_equal_the_python_api(leading):
+    """The SDK's resolved rows at leading colour, per Born helicity row and
+    Born basis element (``basis-<b>``): bitwise the Python API's in binary64
+    (two points, every pole), and its decimals in double-double ("ir")."""
+
+    from pyamplicol import Runtime
+
+    runtime = Runtime.load(leading, process="uugg")
+    probe = runtime.evaluate_resolved(
+        [[[str(c) for c in p] for p in LEADING_POINTS[0]]], mu_r2=str(SCALES[0])
+    )
+    assert len(probe.born_color_ids) > 1
+    assert all(i.startswith("basis-") for i in probe.born_color_ids)
+    sdk = _sdk()
+    calls = [
+        ("lc-resolved", "double", None, "all", 2),
+        ("lc-resolved-ir-dd", "double-double", None, "ir", 1),
+    ]
+    expected, found = {}, {}
+    for call, arithmetic, digits, poles, count in calls:
+        points = LEADING_POINTS[:count]
+        expected[call] = _python_call(runtime, points, poles, arithmetic, digits, True)
+        found[call] = _sdk_call(
+            sdk, leading, "uugg", points, poles, arithmetic, digits, True
+        )
+    _compare("lc:uugg", expected, found)
+
+
+def test_sdk_spin_sources_of_another_length_are_refused(artifacts):
+    """A spin-source buffer that is neither one row nor one row per point is
+    an invalid argument with a message (status 1), never a read past it; one
+    broadcast row is accepted (the safe Rust API's per-point decimal sources
+    have the matching unit test, ``correlated::tests``)."""
+
+    sdk = _sdk()
+    case = CASES["uuddg"]
+    legs = sorted(case["spin"])
+    handle = _open(sdk, artifacts["uuddg"], "uuddg")
+    try:
+        request, _keep = _request(case["points"], SCALES, False)
+        row = [x for leg in legs for pair in case["spin"][leg] for x in pair]
+        for values, status in ((row + [0.0, 0.0], 1), (row, 0)):
+            array = (ctypes.c_double * len(values))(*values)
+            sources = _Sources(
+                (ctypes.c_size_t * len(legs))(*legs),
+                len(legs),
+                array,
+                len(values) // 2,
+            )
+            result = ctypes.c_void_p()
+            found = sdk.rusticol_virtual_evaluate_correlated_with_sources(
+                handle, ctypes.byref(request), ctypes.byref(sources), ctypes.byref(result)
+            )
+            assert found == status, _error(sdk)
+            if status:
+                assert not result.value
+                assert "one row or one row per physical point" in _error(sdk)
+            else:
+                sdk.rusticol_virtual_correlated_result_free(result)
+    finally:
+        sdk.rusticol_virtual_free(handle)
+
+
+def test_umami_extension_version_records_the_options_layout():
+    """``PYAMPLICOL_UMAMI_VIRTUAL_VERSION`` names the options layout: 2 since
+    the virtual C ABI version 2 dropped ``verification_json`` (the file and
+    symbol names keep their ``_v1`` spelling); a layout change must bump it."""
+
+    import re
+
+    header = (SDK / "umami" / "pyamplicol_umami_virtual_v1.h").read_text()
+    (version,) = re.findall(r"#define PYAMPLICOL_UMAMI_VIRTUAL_VERSION (\d+)", header)
+    (body,) = re.findall(
+        r"typedef struct \{(.*?)\} pyamplicol_umami_virtual_v1_options;", header, re.S
+    )
+    members = re.findall(r"(\w+);", re.sub(r"/\*.*?\*/", "", body, flags=re.S))
+    layouts = {"1": ["resolved", "r2_strategy", "verification_json"]}
+    layouts["2"] = ["resolved", "r2_strategy"]
+    assert members == layouts[version] and version == "2"
