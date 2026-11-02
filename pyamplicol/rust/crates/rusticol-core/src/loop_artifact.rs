@@ -487,68 +487,39 @@ pub fn load_loop_v2_artifact(
     })
 }
 
-/// A zlib member of a stored process's PACBIN (`path`, payload digests
-/// authenticated), inflated, whose payload digest is still `sha256` (hex):
-/// the plan or binary tree program a native executor reads itself instead of
+/// A zlib member of a stored process's PACBIN held in memory (its compressed
+/// payload, digest-checked when the process was loaded), inflated: the plan
+/// or binary tree program a native executor inflates itself instead of
 /// receiving it from the Python view (M-FINAL MF-8G-2 item 2;
-/// `loops/v2/artifact.py` `StoredMember`). A container rewritten since the
-/// process was loaded is refused.
+/// `loops/v2/artifact.py` `StoredMember`). The loaded process holds the
+/// compressed bytes, so it no longer depends on the container's path.
 #[cfg(feature = "loop-v2")]
-pub fn read_loop_v2_stored_member(
-    path: &str,
-    member: &str,
-    sha256: &str,
-) -> RusticolResult<Vec<u8>> {
+pub fn inflate_loop_v2_member(member: &str, payload: &[u8]) -> RusticolResult<Vec<u8>> {
     use std::io::Read;
 
-    with_stored_member(path, member, sha256, |payload| {
-        let mut out = Vec::new();
-        flate2::read::ZlibDecoder::new(payload)
-            .read_to_end(&mut out)
-            .map_err(|error| {
-                RusticolError::integrity(format!("{member} is not a zlib stream: {error}"))
-            })?;
-        Ok(out)
-    })
+    let mut out = Vec::new();
+    flate2::read::ZlibDecoder::new(payload)
+        .read_to_end(&mut out)
+        .map_err(|error| {
+            RusticolError::integrity(format!("{member} is not a zlib stream: {error}"))
+        })?;
+    Ok(out)
 }
 
-/// Section `section` of a stored binary tree program (as
-/// [`read_loop_v2_stored_member`]), inflating no further than that section
+/// Section `section` of a compressed binary tree program (as
+/// [`inflate_loop_v2_member`]), inflating no further than that section
 /// (`loop_v2::trees::binary::read_section_from`; `None`: absent).
 #[cfg(feature = "loop-v2")]
-pub fn read_loop_v2_stored_section(
-    path: &str,
+pub fn inflate_loop_v2_section(
     member: &str,
-    sha256: &str,
+    payload: &[u8],
     section: &str,
 ) -> RusticolResult<Option<Vec<u8>>> {
-    with_stored_member(path, member, sha256, |payload| {
-        crate::loop_v2::trees::binary::read_section_from(
-            flate2::read::ZlibDecoder::new(payload),
-            section,
-        )
-    })
-}
-
-/// `read` of the authenticated payload of `member` (the callers' docs).
-#[cfg(feature = "loop-v2")]
-fn with_stored_member<R>(
-    path: &str,
-    member: &str,
-    sha256: &str,
-    read: impl FnOnce(&[u8]) -> RusticolResult<R>,
-) -> RusticolResult<R> {
-    use crate::pacbin::PacbinReader;
-
-    let reader = PacbinReader::open(path)?;
-    let found = reader.member(member)?;
-    let digest: String = found.sha256().iter().map(|b| format!("{b:02x}")).collect();
-    if digest != sha256 {
-        return Err(RusticolError::integrity(format!(
-            "{path}: member {member} changed since the process was loaded; load it again"
-        )));
-    }
-    read(reader.member_bytes(member)?)
+    crate::loop_v2::trees::binary::read_section_from(
+        flate2::read::ZlibDecoder::new(payload),
+        section,
+    )
+    .map_err(|error| RusticolError::integrity(format!("{member}: {error}")))
 }
 
 /// The native point inputs of an admitted plan v4 process (its declared
@@ -778,4 +749,37 @@ fn validate_v2_metadata(metadata: &LoopV2ExecutionMetadata) -> RusticolResult<()
         .all(|x| !x.trim().is_empty()),
         "scheme declarations must be explicit and nonempty",
     )
+}
+
+#[cfg(all(test, feature = "loop-v2"))]
+mod stored_member_tests {
+    use super::{inflate_loop_v2_member, inflate_loop_v2_section};
+    use crate::loop_v2::trees::binary::{BINARY, JSON, write_container};
+
+    #[test]
+    fn a_compressed_member_inflates_whole_or_up_to_a_section() {
+        use std::io::Write;
+
+        let container = write_container(&[
+            ("head", JSON, b"{\"parameters\":[]}"),
+            ("interactions.steps", BINARY, &[7, 0, 0, 0, 1, 2]),
+        ]);
+        let mut encoder =
+            flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::new(6));
+        encoder.write_all(&container).unwrap();
+        let payload = encoder.finish().unwrap();
+        assert_eq!(inflate_loop_v2_member("m", &payload).unwrap(), container);
+        assert_eq!(
+            inflate_loop_v2_section("m", &payload, "interactions.steps")
+                .unwrap()
+                .as_deref(),
+            Some(&[7u8, 0, 0, 0, 1, 2][..])
+        );
+        assert!(inflate_loop_v2_section("m", &payload, "absent").unwrap().is_none());
+        // Not a zlib stream; a cut stream.
+        let error = inflate_loop_v2_member("tree-program.bin.zlib", &container).unwrap_err();
+        assert!(error.to_string().contains("tree-program.bin.zlib"));
+        assert!(inflate_loop_v2_member("m", &payload[..payload.len() / 2]).is_err());
+        assert!(inflate_loop_v2_section("m", &payload[..payload.len() / 2], "absent").is_err());
+    }
 }

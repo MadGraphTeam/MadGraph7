@@ -1113,10 +1113,11 @@ fn numerators_with<T: Exchanged>(
 }
 
 /// A program handed to the executor: its JSON text, its bytes (a binary tree
-/// program), or a stored member `(PACBIN path, logical member, payload
-/// sha256)` (`loops/v2/artifact.py` `StoredMember.native`) that the executor
-/// reads and inflates itself, so a loaded process's Python view holds neither
-/// its plan nor its tree program (M-FINAL MF-8G-2 item 2). Text and bytes are
+/// program or a binary plan member), or a stored member `(logical member,
+/// zlib payload)` (`loops/v2/artifact.py` `StoredMember.native`: the
+/// compressed member a loaded process holds in memory) that the executor
+/// inflates itself, so a loaded process's Python view holds neither its plan
+/// nor its tree program inflated (M-FINAL MF-8G-2 item 2). Text and bytes are
 /// borrowed, not copied.
 fn program_bytes<'a>(source: &'a Bound<'_, PyAny>) -> PyResult<std::borrow::Cow<'a, [u8]>> {
     use std::borrow::Cow;
@@ -1126,32 +1127,31 @@ fn program_bytes<'a>(source: &'a Bound<'_, PyAny>) -> PyResult<std::borrow::Cow<
     if let Ok(bytes) = source.cast::<pyo3::types::PyBytes>() {
         return Ok(Cow::Borrowed(bytes.as_bytes()));
     }
-    let (path, member, sha256): (String, String, String) = source.extract().map_err(|_| {
-        error("a program is its JSON text, its bytes or a stored (path, member, sha256)")
-    })?;
+    let (member, payload): (String, Bound<'_, pyo3::types::PyBytes>) =
+        source.extract().map_err(|_| {
+            error("a program is its JSON text, its bytes or a stored (member, zlib payload)")
+        })?;
+    let payload = payload.as_bytes();
     let out = source
         .py()
-        .detach(|| {
-            rusticol_core::loop_artifact::read_loop_v2_stored_member(&path, &member, &sha256)
-        })
+        .detach(|| rusticol_core::loop_artifact::inflate_loop_v2_member(&member, payload))
         .map_err(error)?;
     Ok(Cow::Owned(out))
 }
 
-/// Section `section` of a stored binary tree program `(path, member,
-/// sha256)`, inflating no further than it (None: absent): the head a loaded
-/// process's Python view reads (`artifact.StoredMember`).
+/// Section `section` of a stored binary tree program `(member, zlib
+/// payload)`, inflating no further than it (None: absent): the head a loaded
+/// process's Python view reads (`artifact.StoredMember.section`).
 #[pyfunction]
 fn stored_tree_program_section<'py>(
     py: Python<'py>,
-    path: &str,
     member: &str,
-    sha256: &str,
+    payload: &[u8],
     section: &str,
 ) -> PyResult<Option<Bound<'py, pyo3::types::PyBytes>>> {
     let found = py
         .detach(|| {
-            rusticol_core::loop_artifact::read_loop_v2_stored_section(path, member, sha256, section)
+            rusticol_core::loop_artifact::inflate_loop_v2_section(member, payload, section)
         })
         .map_err(error)?;
     Ok(found.map(|bytes| pyo3::types::PyBytes::new(py, &bytes)))

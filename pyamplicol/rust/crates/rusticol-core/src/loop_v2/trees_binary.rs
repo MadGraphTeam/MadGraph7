@@ -1680,4 +1680,37 @@ mod tests {
         assert!(matches!(owned.row_columns[0], Column::U32(_)));
         assert_eq!(owned.weights.len(), 2);
     }
+
+    #[test]
+    fn read_section_from_reads_one_section_and_refuses_broken_streams() {
+        let container = write_container(&[
+            ("head", JSON, b"{\"a\":1}"),
+            ("x", BINARY, &[1, 2, 3, 4]),
+            ("y", JSON, b"[]"),
+        ]);
+        let read = |bytes: &[u8], name: &str| read_section_from(bytes, name);
+        // Every section equals the in-memory reader's, the later ones read
+        // after skipping the earlier ones; an absent section is None.
+        for section in read_container(&container).unwrap() {
+            assert_eq!(
+                read(&container[..], &section.name).unwrap().as_deref(),
+                Some(section.payload)
+            );
+        }
+        assert!(read(&container[..], "z").unwrap().is_none());
+        // Bad magic, a bad encoding byte.
+        let mut bad = container.clone();
+        bad[0] ^= 1;
+        assert!(read(&bad[..], "head").is_err());
+        let mut bad = container.clone();
+        bad[MAGIC.len() + 4 + 4 + "head".len()] = 9;
+        assert!(read(&bad[..], "head").is_err());
+        // Truncated: inside the wanted section, inside a skipped one, inside
+        // the section count.
+        let cut = &container[..container.len() - 1];
+        assert!(read(cut, "y").is_err());
+        assert!(read(cut, "z").is_err());
+        assert_eq!(read(cut, "x").unwrap().as_deref(), Some(&[1u8, 2, 3, 4][..]));
+        assert!(read(&container[..MAGIC.len() + 2], "head").is_err());
+    }
 }

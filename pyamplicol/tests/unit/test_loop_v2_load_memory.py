@@ -1,20 +1,24 @@
 # SPDX-License-Identifier: 0BSD
-"""Load memory (M-FINAL MF-8G-2 items 2 and 4): a stored process loads
-file-backed.
+"""Load memory (M-FINAL MF-8G-2 items 2 and 4): a stored process loads its
+plan and binary tree programs compressed.
 
 ``artifact.load_native_process`` reads a ``loop-runtime.pacbin`` as
-``read_native_process`` does, but the plan, the companion plan and the
-binary tree programs stay in the container (``artifact.StoredMember``): the
-native executor reads and inflates them itself (rusticol-core
-``loop_artifact::read_loop_v2_stored_member``), and the Python view holds the
-small members and each tree program's head only (inflated alone,
-``read_loop_v2_stored_section``). The in-memory load is the oracle:
+``read_native_process`` does (one member enumeration,
+``artifact._native_members``), but the plan, the companion plan and the
+binary tree programs stay compressed in memory (``StoredMember``: the
+member's zlib payload): the native executor inflates them itself
+(rusticol-core ``loop_artifact::inflate_loop_v2_member``), and the Python view
+holds the small members and each tree program's head only (inflated alone,
+``inflate_loop_v2_section``). The in-memory load is the oracle:
 
-* the file-backed view holds stored members, reads the same plan text and
-  tree-program head, and decodes to the same tree program;
+* the compressed view reads the same plan text and tree-program head, and
+  decodes to the same tree program;
 * its executors evaluate bitwise as the in-memory ones (no poles, all poles,
   and the "uv" selection that runs the certified-scaleless companion);
-* a container rewritten after the load is refused when an executor reads it.
+* a loaded process does not depend on its container: rewriting, moving or
+  deleting it after the load changes nothing (``Runtime.load`` included);
+* an older build's JSON store (JSON plan member, JSON tree programs) loads
+  and evaluates alike.
 
 The Rust plan's split steps holding their links once and the interned
 interaction weights are covered by the executor's form oracles
@@ -24,6 +28,7 @@ interaction weights are covered by the executor's form oracles
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import shutil
 from decimal import Decimal
@@ -117,16 +122,132 @@ def test_file_backed_load_equals_the_in_memory_load(stored, loop_native):
 
 
 @pytest.mark.loop_fast
-def test_a_container_rewritten_after_the_load_is_refused(stored, loop_native, tmp_path):
-    from pyamplicol.loops.v2.artifact import load_native_process, read_plan, write_plan
+def test_a_loaded_process_does_not_depend_on_its_container(
+    stored, loop_native, tmp_path
+):
+    from pyamplicol.loops.v2.artifact import (
+        load_native_process,
+        read_native_process,
+        read_plan,
+        write_plan,
+    )
 
+    oracle = read_native_process(stored, read_plan(stored))
     path = tmp_path / "loop-runtime.pacbin"
     shutil.copyfile(stored, path)
     loaded = load_native_process(path)
-    # Another stored plan (one more byte, same member) in a valid container.
+    # Another stored plan (one more byte, same member) in a valid container:
+    # the loaded process keeps what it read.
     plan = read_plan(stored)
     write_plan(plan + (" " if isinstance(plan, str) else b" "), path)
-    executor = loaded.executor(loop_native)
     points, scales = _points("required/uux_ddxg.json", 1)
-    with pytest.raises(ValueError, match="changed since the process was loaded"):
+    executor = loaded.executor(loop_native)
+    expected = oracle.executor(loop_native)
+    assert repr(
         executor.evaluate(points, scales, parameters=PARAMETERS, poles="none")
+    ) == repr(expected.evaluate(points, scales, parameters=PARAMETERS, poles="none"))
+    # Deleted: the companion executor ("uv") and the plan text are formed
+    # after the deletion from the members held.
+    path.unlink()
+    assert repr(
+        executor.evaluate(points, scales, parameters=PARAMETERS, poles="uv")
+    ) == repr(expected.evaluate(points, scales, parameters=PARAMETERS, poles="uv"))
+    assert loaded.plan_json == oracle.plan_json
+
+
+@pytest.mark.loop_fast
+def test_a_json_store_loads_as_the_in_memory_one(stored, loop_native, tmp_path):
+    """An older build's store (JSON plan members and JSON tree programs)
+    through ``load_native_process``: the plans stay compressed, the JSON
+    tree programs are inflated, and the values equal the binary store's."""
+
+    from pyamplicol.generation.evaluator_container import PacbinReader
+    from pyamplicol.loops.v2.artifact import (
+        NATIVE_TREES_BINARY_MEMBER,
+        NATIVE_TREES_MEMBER,
+        PLAN_BINARY_MEMBER,
+        PLAN_MEMBER,
+        StoredMember,
+        load_native_process,
+        read_native_process,
+        read_plan,
+        write_plan,
+    )
+
+    memory = read_native_process(stored, read_plan(stored))
+
+    def json_trees(trees):
+        return dataclasses.replace(
+            trees, program=trees.full_program(), sections=(), container=None
+        )
+
+    legacy = dataclasses.replace(
+        memory,
+        plan=memory.plan_json,
+        trees=json_trees(memory.trees),
+        scaleless=dataclasses.replace(
+            memory.scaleless,
+            plan=memory.scaleless.plan_json,
+            trees=json_trees(memory.scaleless.trees),
+        ),
+    )
+    path = tmp_path / "legacy.pacbin"
+    write_plan(legacy.plan, path, legacy, legacy.scaleless.plan)
+    with PacbinReader.open(path) as reader:
+        names = {member.logical_path for member in reader.members}
+    assert PLAN_MEMBER in names and PLAN_BINARY_MEMBER not in names
+    assert any(name.endswith(NATIVE_TREES_MEMBER) for name in names)
+    assert not any(name.endswith(NATIVE_TREES_BINARY_MEMBER) for name in names)
+    loaded = load_native_process(path)
+    assert isinstance(loaded.plan, StoredMember)
+    assert isinstance(loaded.scaleless.plan, StoredMember)
+    assert loaded.plan.text() == memory.plan_json
+    for mine in (loaded.trees, loaded.scaleless.trees):
+        assert mine.container is None and not mine.is_binary
+    assert loaded.trees.program == memory.trees.full_program()
+    assert loaded.record == memory.record
+    points, scales = _points("required/uux_ddxg.json", 2)
+    json_store = loaded.executor(loop_native)
+    binary_store = memory.executor(loop_native)
+    for poles in ("none", "all", "uv"):
+        assert repr(
+            json_store.evaluate(points, scales, parameters=PARAMETERS, poles=poles)
+        ) == repr(
+            binary_store.evaluate(points, scales, parameters=PARAMETERS, poles=poles)
+        )
+
+
+@pytest.mark.loop_fast
+def test_a_loaded_runtime_survives_moving_its_artifact(tmp_path):
+    """``Runtime.load`` (``V2VirtualRuntime``, ``load_native_process``): the
+    executors are built on the first evaluation, after the artifact moved
+    away, and evaluate as a runtime whose artifact stayed in place."""
+
+    from pyamplicol._internal import selftest_virtual_ew as selftest
+
+    root = selftest.fixture_root()
+    expected = json.loads((root / "expected.json").read_text(encoding="utf-8"))
+    artifact = tmp_path / "artifact"
+    shutil.copytree(root / "artifact", artifact)
+    in_place = selftest.evaluate(artifact, expected)
+
+    from pyamplicol import Runtime
+
+    runtime = Runtime.load(artifact, process=selftest.NAME, mute_warnings=True)
+    shutil.move(artifact, tmp_path / "moved")
+    points = [[list(map(float, p)) for p in point] for point in expected["points"]]
+    result = runtime.evaluate(points, mu_r2=[float(x) for x in expected["mu_r2"]])
+    shutil.rmtree(tmp_path / "moved")
+    again = runtime.evaluate(points, mu_r2=[float(x) for x in expected["mu_r2"]])
+    assert repr(again.values) == repr(result.values)
+    moved = [
+        tuple(
+            [sum((complex(v) for v in born), 0j).real]
+            + [
+                sum((complex(getattr(sector, name)) for sector in laurent), 0j).real
+                for name in ("finite", "single_pole", "double_pole")
+            ]
+        )
+        for born, laurent in zip(result.born_values, result.values, strict=True)
+    ]
+    assert moved == in_place
