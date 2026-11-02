@@ -137,21 +137,17 @@ def _inputs(
     return points, formatted_scales
 
 
-# The native parameter program refuses a whole batch when a counterterm
-# coupling is not finite at one point's mu_R^2 in the lane's carrier
-# (``rusticol-core`` ``loop_v2/trees.rs``; e.g. mu_r2 = "1e-400" underflows in
-# binary64).
-_NONFINITE_COUNTERTERM = "a counterterm coupling's diagnostic is not finite"
-
-
 def isolate_scale_failures(
     run: Callable[[list[int]], tuple[list[Any], dict[int, list[str]]]],
     scales: Sequence[str],
 ) -> tuple[list[Any], dict[int, list[str]]]:
     """``run(indices)``, the per-point results and failures of the points
     ``indices`` evaluated as one batch, for every point. If a counterterm
-    coupling is not finite at some mu_R^2 (``_NONFINITE_COUNTERTERM``), the
-    batch runs again per exact mu_R^2, and the points of a failing scale
+    coupling is not finite at some mu_R^2 (the native parameter binding
+    refuses the whole batch with the typed ``NonFiniteCountertermError``, a
+    ``ValueError``: ``rusticol-core`` ``loop_v2/trees.rs``
+    ``nonfinite_counterterm``; e.g. mu_r2 = "1e-400" underflows in binary64),
+    the batch runs again per exact mu_R^2, and the points of a failing scale
     fail alone with that reason, a numerical failure of their own (as the
     Python reference path fails them, ``scalar_bindings.SourceBindingFailure``);
     the other points keep their results."""
@@ -159,7 +155,9 @@ def isolate_scale_failures(
     from fractions import Fraction
 
     def scale_failure(error: ValueError) -> bool:
-        return _NONFINITE_COUNTERTERM in str(error)
+        from pyamplicol.loops.native import load_loop_native
+
+        return isinstance(error, load_loop_native().NonFiniteCountertermError)
 
     try:
         return run(list(range(len(scales))))
@@ -307,6 +305,16 @@ def v2_options(
     return selection, checks
 
 
+def _mapping_kind(member: Any) -> str:
+    """How a ``loops.v2.observables.FlavourMember`` is served: a species
+    substitution (a flavour member, possibly in permuted leg order) or a
+    leg permutation alone (a permutation alias)."""
+
+    if member.species:
+        return "a flavour member" + (" in permuted leg order" if member.alias else "")
+    return "a permutation alias" if member.alias else "a flavour member"
+
+
 class V2ObservablesRuntime:
     """The public virtual-runtime calls over a generated v2 slice's
     observables; the artifact runtime (``loops.v2.artifact.V2VirtualRuntime``)
@@ -353,6 +361,7 @@ class V2ObservablesRuntime:
         precision: int | None = None,
         executor: Literal["native", "python"] = "native",
         member: Any = None,
+        mapping: str | None = None,
         lanes: int | None = None,
         threads: int | None = None,
     ) -> None:
@@ -361,6 +370,9 @@ class V2ObservablesRuntime:
         self._observables = observables
         self._catalogue: Any = None
         self._member = member
+        # How the member is served, for messages (the artifact's selector
+        # knows it; ``_mapping_kind`` otherwise).
+        self._mapping = mapping
         self._executor = executor
         self._native_options = {
             key: value
@@ -840,11 +852,15 @@ class V2ObservablesRuntime:
         return rescue(policy, len(points), level, on_failure=on_failure)
 
     def _refuse_member_selection(self) -> None:
-        if self._member is not None:
-            raise CompatibilityError(
-                "helicity and colour-flow selection of a flavour member is not "
-                "available; select on its representative process"
-            )
+        member = self._member
+        if member is None:
+            return
+        kind = self._mapping or _mapping_kind(member)
+        raise CompatibilityError(
+            f"helicity and colour-flow selection of {kind} ({member.process!r}, "
+            f"served by {member.representative!r}) is not available; select on "
+            "its representative process"
+        )
 
     def _evaluate_selected(
         self,
