@@ -158,6 +158,10 @@ class ExportedPlan:
     # The certified seed FFT of the plan's seeds (``fourier_record``; JSON),
     # None when every seed is contracted directly.
     fourier: str | None = None
+    # The native plan model holding the families when they were streamed
+    # (``native_lowering.NATIVE_FAMILIES``; ``program["families"]`` is then
+    # its read-only view), else None.
+    model: Any = None
 
     def json(self) -> str:
         """The plan JSON, ``json.dumps(program, separators=(",", ":"))``,
@@ -166,13 +170,19 @@ class ExportedPlan:
 
         from . import native_lowering
 
-        if native_lowering.NATIVE_JSON:
+        if native_lowering.NATIVE_JSON or self.model is not None:
             return native_lowering.plan_json(self).decode("ascii")
         return self.python_json()
 
     def python_json(self) -> str:
-        """The plan JSON written by ``json`` (the native writer's oracle)."""
+        """The plan JSON written by ``json`` (the native writer's oracle; a
+        plan whose families were streamed has none, export it with
+        ``native_lowering.NATIVE_FAMILIES`` off)."""
 
+        if self.model is not None:
+            raise ValueError(
+                "a plan with streamed families has no Python family records"
+            )
         return json.dumps(self.program, separators=(",", ":"))
 
     def binary(self) -> bytes:
@@ -1120,14 +1130,31 @@ def export_plan(
     helicities = born_helicities(slice_)
     rows = born_rows(slice_)
     exporter = _Exporter(slice_, kinematics, rows, links=links)
-    families, keys = [], []
+    from . import native_lowering
+
+    # MF-8G-1 item 5: each family record goes to the native model as it is
+    # made (``native_lowering.NATIVE_FAMILIES``); only its loop orders stay.
+    streamed = (
+        native_lowering.families_builder()
+        if native_lowering.NATIVE_FAMILIES and native_lowering.NATIVE_JSON
+        else None
+    )
+    families, keys, family_orders = [], [], []
     for key, schedule in slice_.plan.schedules.items():
         keys.append(key)
-        families.append(exporter.family(key, schedule))
+        record = exporter.family(key, schedule)
+        family_orders.append(record["orders"])
+        if streamed is None:
+            families.append(record)
+        else:
+            streamed.push(record)
+        del record
     orders = tuple(exporter.orders)
     accumulator_of = [
-        {orders[o]: k for k, o in enumerate(record["orders"])} for record in families
+        {orders[o]: k for k, o in enumerate(record_orders)}
+        for record_orders in family_orders
     ]
+    del family_orders
     forward_program = (
         exporter.forward({key: i for i, key in enumerate(keys)}, accumulator_of)
         if forward
@@ -1187,6 +1214,10 @@ def export_plan(
         ]
     if column_weights is not None:
         program["column_weights"] = column_weights
+    model = None
+    if streamed is not None:
+        model = native_lowering.streamed_model(program, streamed)
+        program["families"] = native_lowering.NativeFamilies(model)
     born_components = tuple(exporter.born_components)
     column_seeds = None
     if column_sets is not None:
@@ -1256,6 +1287,7 @@ def export_plan(
         trees=native_trees,
         column_seeds=column_seeds,
         fourier=fourier,
+        model=model,
     )
 
 

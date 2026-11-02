@@ -390,6 +390,13 @@ fn term(out: &mut Out, term: &TermFile) {
     out.byte(b'}');
 }
 
+/// The JSON of one schedule-B family, as the plan JSON writes it.
+pub(super) fn family_json(family: &FamilyFile) -> Vec<u8> {
+    let mut out = Out(Vec::new());
+    self::family(&mut out, family);
+    out.0
+}
+
 fn family(out: &mut Out, family: &FamilyFile) {
     let FamilyFile {
         sequence,
