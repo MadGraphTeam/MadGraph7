@@ -254,14 +254,9 @@ NamedVector<Value> FKSMapping::build_events(
         born_inputs.push_back("discrete", inputs.at("discrete"));
     }
     auto born = _born.build_forward(fb, born_inputs, conditions);
+    // a batch also for a leptonic Born (x1 = x2 = 1), like every output of
+    // PhaseSpaceMapping
     auto x1_born = born.at("x1"), x2_born = born.at("x2");
-    if (_born.leptonic()) {
-        // x1 = x2 = 1 for every point, as a batch, so that the FKS
-        // configurations of a Born combine in a MultiChannelMapping or
-        // MultiChannelFunction (which concatenate their outputs)
-        auto batch_size = fb.batch_size({born.at("momenta")});
-        x1_born = x2_born = fb.full({Value(1.), batch_size});
-    }
     auto det_born = born.at("det");
 
     auto [plus, minus] = born_frame(fb, x1_born, x2_born, conditions);

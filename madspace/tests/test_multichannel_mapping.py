@@ -1,7 +1,9 @@
 """MultiChannelMapping: each slice of the batch goes through its own channel
-mapping, forward and inverse."""
+mapping, forward and inverse, for hadronic and leptonic channels (whose x1 = x2
+= 1 are a batch like every output)."""
 
 import numpy as np
+import pytest
 import torch
 from madspace_testing import to_numpy
 
@@ -10,11 +12,16 @@ import madspace as ms
 PER_CHANNEL = 200
 
 
-def test_channels_forward_and_inverse():
+@pytest.mark.parametrize("leptonic", [False, True], ids=["hadronic", "leptonic"])
+def test_channels_forward_and_inverse(leptonic):
     masses = [0.0, 0.0, 0.0, 0.0, 0.0]
     channels = [
-        ms.PhaseSpaceMapping(masses, 1000.0, mode=ms.PhaseSpaceMapping.rambo),
-        ms.PhaseSpaceMapping(masses, 1000.0, mode=ms.PhaseSpaceMapping.propagator),
+        ms.PhaseSpaceMapping(
+            masses, 1000.0, leptonic=leptonic, mode=ms.PhaseSpaceMapping.rambo
+        ),
+        ms.PhaseSpaceMapping(
+            masses, 1000.0, leptonic=leptonic, mode=ms.PhaseSpaceMapping.propagator
+        ),
     ]
     mapping = ms.MultiChannelMapping(channels)
     count = len(channels)
