@@ -55,6 +55,11 @@ pub mod virtual_amplitudes {
         pub born: Vec<f64>,
         pub virtual_values: Vec<f64>,
         pub diagnostics_json: String,
+        /// Double-double and arbitrary precision: the exact values as decimal
+        /// literals (`{"arithmetic", "digits", "born", "virtual"}`, the Python
+        /// API's `Decimal` values; `born`/`virtual_values` hold their nearest
+        /// doubles); `null` in binary64.
+        pub decimal_json: String,
     }
     #[repr(C)]
     #[derive(Clone, Copy, Debug, Default)]
@@ -86,6 +91,9 @@ pub mod virtual_amplitudes {
         pub diagnostics_json: String,
         pub histories_json: String,
         pub spin_legs_json: String,
+        /// Double-double and arbitrary precision: `[real, imaginary]`
+        /// decimal literals of the exact values; `null` in binary64.
+        pub decimal_json: String,
     }
     #[repr(C)]
     #[derive(Clone, Copy, Default)]
@@ -204,6 +212,16 @@ pub mod virtual_amplitudes {
             let poles = checked_cstring(poles, "pole selection")?;
             // SAFETY: exclusive live handle and owned string.
             check(unsafe { ffi::rusticol_virtual_set_poles(self.handle.as_ptr(), poles.as_ptr()) })
+        }
+        /// Arithmetic of later evaluations, the Python API's `arithmetic=` /
+        /// `precision=`: "double" (default; `digits` 0), "double-double"
+        /// (`digits` 0) or "arbitrary" with `digits` > 0 decimal digits.
+        pub fn set_arithmetic(&mut self, arithmetic: &str, digits: u32) -> Result<()> {
+            let arithmetic = checked_cstring(arithmetic, "arithmetic")?;
+            // SAFETY: exclusive live handle and owned string.
+            check(unsafe {
+                ffi::rusticol_virtual_set_arithmetic(self.handle.as_ptr(), arithmetic.as_ptr(), digits)
+            })
         }
         /// One native bulk call; binary64 inputs are read as their exact values.
         pub fn evaluate(
@@ -436,6 +454,12 @@ pub mod virtual_amplitudes {
                 unsafe { ffi::rusticol_virtual_result_diagnostics_json(handle, out, len, needed) },
                 check,
             )?;
+            let decimal_json = read_string_checked(
+                |out, len, needed|
+                // SAFETY: helper allocates the queried writable string buffer.
+                unsafe { ffi::rusticol_virtual_result_decimal_json(handle, out, len, needed) },
+                check,
+            )?;
             Ok(Evaluation {
                 shape,
                 requested_point_ids,
@@ -444,6 +468,7 @@ pub mod virtual_amplitudes {
                 born,
                 virtual_values,
                 diagnostics_json,
+                decimal_json,
             })
         }
     }
@@ -508,6 +533,13 @@ pub mod virtual_amplitudes {
                 },
                 check,
             )?;
+            let decimal_json = read_string_checked(
+                |out, len, needed| unsafe {
+                    // SAFETY: helper owns the writable queried buffer.
+                    ffi::rusticol_virtual_correlated_result_decimal_json(handle, out, len, needed)
+                },
+                check,
+            )?;
             Ok(CorrelatedEvaluation {
                 shape,
                 requested_point_ids,
@@ -518,6 +550,7 @@ pub mod virtual_amplitudes {
                 diagnostics_json,
                 histories_json,
                 spin_legs_json,
+                decimal_json,
             })
         }
     }
@@ -694,6 +727,23 @@ pub mod virtual_amplitudes {
             pub(super) fn rusticol_virtual_set_poles(
                 handle: *mut c_void,
                 poles: *const c_char,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_set_arithmetic(
+                handle: *mut c_void,
+                arithmetic: *const c_char,
+                digits: u32,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_result_decimal_json(
+                handle: *const c_void,
+                out: *mut c_char,
+                len: usize,
+                needed: *mut usize,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_correlated_result_decimal_json(
+                handle: *const c_void,
+                out: *mut c_char,
+                len: usize,
+                needed: *mut usize,
             ) -> c_int;
             pub(super) fn rusticol_virtual_metadata_json(
                 handle: *const c_void,

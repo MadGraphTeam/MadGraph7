@@ -460,6 +460,34 @@ impl<T: Carrier> LaneStore<T> {
     pub fn reals(&self) -> usize {
         self.values.iter().flatten().map(Vec::len).sum()
     }
+
+    /// Drop the values whose id `keep` refuses.
+    pub fn retain_if(&mut self, keep: impl Fn(usize) -> bool) {
+        for (id, value) in self.values.iter_mut().enumerate() {
+            if value.is_some() && !keep(id) {
+                *value = None;
+            }
+        }
+    }
+
+    /// The built ids not in `keep` (sorted ascending).
+    fn built_except<'a>(&'a self, keep: &'a [usize]) -> impl Iterator<Item = usize> + 'a {
+        self.values
+            .iter()
+            .enumerate()
+            .filter(move |(id, value)| value.is_some() && keep.binary_search(id).is_err())
+            .map(|(id, _)| id)
+    }
+
+    /// The ids of `ids` not built yet.
+    fn unbuilt<'a>(&'a self, ids: &'a [usize]) -> impl Iterator<Item = usize> + 'a {
+        ids.iter().copied().filter(|&id| self.values[id].is_none())
+    }
+
+    /// Drop one value; returns the reals it held.
+    fn take(&mut self, id: usize) -> usize {
+        self.values[id].take().map_or(0, |values| values.len())
+    }
 }
 
 /// Ids of the chunk inputs a set of families reads, each sorted ascending.
@@ -529,6 +557,108 @@ impl<T: Carrier> ChunkInputs<T> {
 
     pub fn reals(&self) -> usize {
         self.factors.reals() + self.vertices.reals() + self.currents.reals()
+    }
+
+    /// `prepare` holding at most `budget` reals where it can (stores 0, 1,
+    /// 2 = factors, vertices, currents): the inputs not `live(store, id)`
+    /// are dropped, then live ones `needed` does not read, the one read
+    /// again latest first (`next(store, id)`: the bucket chunk reading it
+    /// next), until the inputs held and those `needed` builds fit. A dropped
+    /// input is rebuilt when a later chunk reads it, by the same function of
+    /// the same lane data, so values are bitwise those of an unbounded run.
+    /// Returns the inputs dropped early.
+    pub fn prepare_within<const L: usize>(
+        &mut self,
+        plan: &LoopProgramV4,
+        data: &LaneData<T, L>,
+        needed: &Reads,
+        budget: usize,
+        live: impl Fn(usize, usize) -> bool,
+        next: impl Fn(usize, usize) -> usize,
+    ) -> usize {
+        self.factors.retain_if(|id| live(0, id));
+        self.vertices.retain_if(|id| live(1, id));
+        self.currents.retain_if(|id| live(2, id));
+        let held = self.reals();
+        let missing = if held > 0 && budget < usize::MAX {
+            self.missing(plan, needed, L)
+        } else {
+            0
+        };
+        let mut dropped = 0;
+        if held > 0 && held.saturating_add(missing) > budget {
+            let mut evictable: Vec<(usize, usize, usize)> = Vec::new();
+            for (store, (values, keep)) in [
+                (&self.factors, &needed.factors),
+                (&self.vertices, &needed.vertices),
+                (&self.currents, &needed.currents),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                evictable.extend(
+                    values
+                        .built_except(keep)
+                        .map(|id| (next(store, id), store, id)),
+                );
+            }
+            // Latest next read first; ties in store and id order.
+            evictable.sort_unstable_by(|a, b| b.0.cmp(&a.0).then((a.1, a.2).cmp(&(b.1, b.2))));
+            let mut total = held + missing;
+            for (_, store, id) in evictable {
+                if total <= budget {
+                    break;
+                }
+                let values = match store {
+                    0 => &mut self.factors,
+                    1 => &mut self.vertices,
+                    _ => &mut self.currents,
+                };
+                total -= values.take(id);
+                dropped += 1;
+            }
+        }
+        self.factors
+            .build(&needed.factors, |id| build_factor::<T, L>(plan, id, data));
+        self.vertices
+            .build(&needed.vertices, |id| build_vertex::<T, L>(plan, id, data));
+        self.currents
+            .build(&needed.currents, |id| build_current::<T, L>(plan, id, data));
+        dropped
+    }
+
+    /// Reals the inputs of `needed` that are not built yet take on `lanes`
+    /// lanes (the lengths `build_factor`, `build_vertex` and `build_current`
+    /// give them).
+    fn missing(&self, plan: &LoopProgramV4, needed: &Reads, lanes: usize) -> usize {
+        let factors = self
+            .factors
+            .unbuilt(&needed.factors)
+            .map(|id| input_vectors(plan, 0, id));
+        let vertices = self
+            .vertices
+            .unbuilt(&needed.vertices)
+            .map(|id| input_vectors(plan, 1, id));
+        let currents = self
+            .currents
+            .unbuilt(&needed.currents)
+            .map(|id| input_vectors(plan, 2, id));
+        factors.chain(vertices).chain(currents).sum::<usize>() * lane_vector_len(lanes)
+    }
+}
+
+/// Lane vectors of chunk input `id` of `store` (0, 1, 2: fused factor,
+/// split vertex tensor, split current): the lengths `build_factor`,
+/// `build_vertex` and `build_current` give it, per lane vector.
+pub fn input_vectors(plan: &LoopProgramV4, store: usize, id: usize) -> usize {
+    match store {
+        0 => plan.factor_len(id),
+        1 => plan.vertices[plan.vertex_instances[id].0].entries.len(),
+        _ => {
+            let (content, term) = plan.currents[id];
+            let term = &plan.contents[content].terms[term];
+            term.rows.len() * term.width()
+        }
     }
 }
 
