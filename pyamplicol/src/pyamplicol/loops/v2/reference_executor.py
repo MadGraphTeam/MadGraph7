@@ -70,6 +70,7 @@ from decimal import Decimal, localcontext
 from fractions import Fraction
 from itertools import permutations, product
 from math import gcd
+from operator import attrgetter
 from typing import Any, Literal, Protocol
 
 from .catalogue import LoopKernelCatalogue, LoopSegmentBinding, LoopSegmentKey
@@ -1587,10 +1588,20 @@ def reading_skeletons(plan: LoopSchedules) -> list[Skeleton]:
     """Every skeleton of a plan in its F reading and as read by its B trie."""
 
     out = []
+    append = out.append
+    content = plan.view._contents.__getitem__  # ``SkeletonView.content``
+    label = attrgetter("label")
     for schedule in plan.schedules.values():
         for skeleton, ring in schedule.trie.leaves:
-            out.append(skeleton)
-            out.append(_reading(skeleton, [plan.view.content(s.label) for s in ring]))
+            append(skeleton)
+            contents = tuple(map(content, map(label, ring)))
+            append(
+                skeleton
+                if contents == skeleton.contents
+                else Skeleton(
+                    skeleton.family, contents, skeleton.weight, skeleton.multiplicity
+                )
+            )
     return out
 
 

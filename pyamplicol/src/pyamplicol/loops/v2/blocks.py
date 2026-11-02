@@ -7,7 +7,11 @@ Blocks come from the tree engine in loop-request mode
 (``GenericDAGCompiler(loop_blocks=True)``): every U(N) colour-flow ordering of
 every admitted leg set, with the Born-closure pruning replaced by a loop-aware
 reachability test. The Born is the ordinary tree compilation of the same
-process, unchanged, with its roots bucketed by exact coupling order.
+process with its roots bucketed by exact coupling order; generation compiles
+it structurally (``structural_helicities``: one helicity per leg whose source
+states differ in their helicity only), which keeps every colour sector, root
+order and propagated species and drops the helicity copies the loop engine
+never reads (``BornDagSummary.materialize`` compiles the complete DAG).
 
 Conventions a consumer relies on:
 
@@ -144,6 +148,10 @@ if TYPE_CHECKING:
     from .dag_input import NativeDag
 
 BlockClass = Literal["plain", "ward", "spin-source", "counterterm"]
+
+# Generation compiles the loop Born structurally (``structural_helicities``);
+# False compiles the complete Born DAG, the oracle of the structural one.
+STRUCTURAL_BORN = True
 
 # The transverse massless Yang-Mills kernel drops only terms proportional to
 # an input current's self-contraction p.J, so it is exact for blocks built
@@ -454,10 +462,11 @@ class BornDagSummary:
     (``TreeBlocks.summarised``; DESIGN R3, M-FINAL mf-8g-1b): the process,
     the colour plan (``colour.born_basis``), the Born roots
     (``_dag_born_roots``) and the propagated species (``propagated_species``:
-    Ward kernels, widths). The DAG itself, about a quarter of a seven-gluon
-    generation's peak and held through the export, is released;
-    ``materialize`` (and any other attribute, for oracles and tests)
-    recompiles it from its recipe."""
+    Ward kernels, widths), all read from the structural Born DAG
+    (``loop_born_dag``). The DAG itself is released: ``structural`` recompiles
+    the DAG the roots index (``_born_partitions``), ``materialize`` (and any
+    other attribute, for oracles and tests) compiles the complete one, every
+    helicity included, from its recipe."""
 
     process: CanonicalProcessIR
     color_plan: Any
@@ -466,6 +475,7 @@ class BornDagSummary:
     model: Model = field(repr=False)
     recipe: Mapping[str, Any] = field(repr=False)
     _dag: list[GenericDAG] = field(default_factory=list, repr=False)
+    _structural: list[GenericDAG] = field(default_factory=list, repr=False)
 
     def materialize(self) -> GenericDAG:
         if not self._dag:
@@ -476,6 +486,24 @@ class BornDagSummary:
             )
         return self._dag[0]
 
+    def structural(self) -> GenericDAG:
+        """The structural Born DAG the summary was read from (its roots'
+        ids index it), recompiled."""
+
+        if not self._structural:
+            self._structural.append(
+                compile_generic_dag(
+                    self.process,
+                    model=self.model,
+                    loop_born=True,
+                    selected_source_helicities=(
+                        structural_helicities(self.process, self.model) or None
+                    ),
+                    **self.recipe,
+                )
+            )
+        return self._structural[0]
+
     def __getattr__(self, name: str) -> Any:
         if name.startswith("__") or name in (
             "process",
@@ -485,6 +513,7 @@ class BornDagSummary:
             "model",
             "recipe",
             "_dag",
+            "_structural",
         ):
             raise AttributeError(name)
         return getattr(self.materialize(), name)
@@ -736,6 +765,41 @@ def _born_key(
     )
 
 
+def structural_helicities(process: CanonicalProcessIR, model: Model) -> dict[int, int]:
+    """One source helicity (the lowest) per leg whose source states (as the
+    tree compiler declares them, crossed for an incoming leg) differ in their
+    helicity only: a vector, a massive fermion, any leg whose states share
+    one chirality; a massless fermion's states differ in chirality and keep
+    both.
+
+    The tree compiler reads a source's helicity and spin state only as the
+    identity of its own current: every derived current takes its chirality
+    and spin state from the vertex's quantum flows of the inputs'
+    chiralities, and every admission (vertices, colour, orders, the
+    reachability pruning) reads the other index fields. So the compile with
+    these helicities selected builds the complete DAG's currents up to the
+    helicity ancestry of these legs: the same colour plan, the same
+    (colour sector, coupling orders) of the roots and the same propagated
+    species (``propagated_species``), which is all the loop engine reads of
+    its Born DAG (the helicity rows come from the blocks); a seven-gluon
+    Born compiles ~35x faster."""
+
+    selected: dict[int, int] = {}
+    if not STRUCTURAL_BORN:
+        return selected
+    for leg in process.legs:
+        if leg.outgoing_pdg is None:
+            continue
+        source = model._source_ir(int(leg.outgoing_pdg))
+        states = [
+            source.crossing.apply(state) if leg.is_initial else state
+            for state in source.states
+        ]
+        if len(states) > 1 and len({int(state.chirality) for state in states}) == 1:
+            selected[leg.label] = min(int(state.helicity) for state in states)
+    return selected
+
+
 def loop_born_dag(
     process: CanonicalProcessIR,
     model: Model,
@@ -745,8 +809,9 @@ def loop_born_dag(
     ignored_vertex_kinds: Iterable[int] = (),
     progress_callback: DAGProgressCallback | None = None,
 ) -> GenericDAG:
-    """``compile_generic_dag`` of a loop request's Born (``loop_born``: a
-    Dirac current closing on a Weyl sink is a root), or the DAG an open
+    """The structural ``compile_generic_dag`` of a loop request's Born
+    (``loop_born``: a Dirac current closing on a Weyl sink is a root; the
+    helicities of ``structural_helicities`` selected), or the DAG an open
     ``born_dag_scope`` compiled from the same compiled model object,
     process, coupling-order bounds and ignored particles and vertex kinds
     (the compile would rebuild an equal DAG)."""
@@ -768,6 +833,7 @@ def loop_born_dag(
         max_coupling_orders=max_coupling_orders,
         ignored_particle_ids=wanted.ignored_particle_ids,
         ignored_vertex_kinds=wanted.ignored_vertex_kinds,
+        selected_source_helicities=structural_helicities(process, model) or None,
         progress_callback=progress_callback,
         loop_born=True,
     )
@@ -794,9 +860,11 @@ def build_tree_blocks(
     ``born_coupling_orders``, as a tree request compiles it, except that a
     Dirac current closing on a Weyl sink is a root (``loop_born``: the
     marker contraction ``dag_ordering.DIRAC_WEYL_CLOSURE``, which no tree
-    evaluator lowers, where a tree request refuses): the slice reads the
-    Born DAG's colour plan and its roots' orders, sectors and helicities,
-    and closes the Born on the blocks at a vertex holding leg 1. Blocks are
+    evaluator lowers, where a tree request refuses), compiled structurally
+    (``loop_born_dag``, ``structural_helicities``): the slice reads the Born
+    DAG's colour plan, its roots' orders and sectors and its propagated
+    species, and closes the Born on the blocks at a vertex holding leg 1
+    (the helicity rows come from the blocks). Blocks are
     exact colour-flow currents, so they are compiled at full colour whatever
     the requested accuracy; ``block_coupling_orders`` bounds the orders a
     block may carry (the loop-amplitude orders bound it without loss).
@@ -1152,6 +1220,7 @@ def _born_roots(dag: GenericDAG, model: Model) -> tuple[BornRoot, ...]:
 
 __all__ = [
     "KERNEL_VARIANT_BY_BLOCK_CLASS",
+    "STRUCTURAL_BORN",
     "Block",
     "BlockClass",
     "BlockColourFlow",
@@ -1170,6 +1239,7 @@ __all__ = [
     "propagated_species",
     "release_born_dag",
     "requested_loop_blocks",
+    "structural_helicities",
     "u1_grades",
     "vetoed_particle_ids",
     "ward_breaking_fields",

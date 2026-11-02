@@ -582,6 +582,7 @@ def test_born_closure_is_the_tree_runtime_born(slices, name):
 
     from pyamplicol.color.connections import contract_connected_tensor_nc_terms
     from pyamplicol.loops.v2 import assemble
+    from pyamplicol.loops.v2.blocks import _born_roots
     from pyamplicol.loops.v2.colour import born_basis
 
     slice_ = slices(name)
@@ -599,7 +600,9 @@ def test_born_closure_is_the_tree_runtime_born(slices, name):
             precision,
             PoleSelection.ALL,
         )
-        roots = assemble.TreeRows(slice_.blocks.born_dag, slice_.compiled).evaluate(
+        # The complete Born DAG (the slice summarises its structural one).
+        born = slice_.blocks.born_dag.materialize()
+        roots = assemble.TreeRows(born, slice_.compiled).evaluate(
             [[assemble._to_decimal(x) for x in leg] for leg in point],
             closure.parameters,
             numbers,
@@ -617,7 +620,7 @@ def test_born_closure_is_the_tree_runtime_born(slices, name):
             )
 
         runtime: dict = {}
-        for root in slice_.blocks.born_roots:
+        for root in _born_roots(born, slice_.blocks.born_dag.model):
             (value,) = roots[(root.root_id, "amplitude-root")]
             key = (
                 tuple((label - 1, h) for label, h in root.helicities),
