@@ -91,8 +91,7 @@ def _values(results) -> list:
 def test_binary_plan_member_is_the_stored_form(
     loop_sm_compiled_model, loop_native, monkeypatch, tmp_path, name
 ):
-    from pyamplicol.runtime.pacbin import PacbinReader
-
+    from pyamplicol.generation.evaluator_container import PacbinReader
     from pyamplicol.loops.v2 import native_lowering
     from pyamplicol.loops.v2.artifact import (
         PLAN_BINARY_MEMBER,

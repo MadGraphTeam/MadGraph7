@@ -240,9 +240,12 @@ COUNTERTERM_TERMS = "counterterms.terms"
 
 
 def _native() -> Any:
-    from pyamplicol.loops.native import load_loop_native
+    """The staged loop core, verified once per process (``dag_input._native``;
+    each ``load_loop_native`` re-verifies the native build, 0.2-0.4 s)."""
 
-    return load_loop_native()
+    from .dag_input import _native as loop_core
+
+    return loop_core()
 
 
 def _dumps(value: Any) -> bytes:
@@ -803,6 +806,14 @@ def export_trees(
     # Closure terms share their input layouts and colour weights (interned).
     layouts: dict[tuple[tuple[Any, ...], ...], int] = {}
     weights: dict[tuple[str, str, int], int] = {}
+    # The kernel of a whole-rule term's Lorentz structure, per (block count,
+    # metric pairings): the expansion depends on nothing else, and the few
+    # vertex structures repeat over every block choice (M-FINAL MF-8G-1:
+    # 13 of 27 s of the 6-gluon LC export expanded them once per term).
+    whole_kernels: dict[tuple[int, Any], int] = {}
+    closure_inputs: dict[tuple[Any, ...], list[list[Any]]] = {}
+    whole_inputs: dict[int, list[list[Any]]] = {}
+    layout_of: dict[int, tuple[list[list[Any]], int]] = {}
 
     def record(
         term: Any, kernel: int, inputs: list[list[Any]], contributions: list[list[Any]]
@@ -811,7 +822,15 @@ def export_trees(
         and per contribution (coupling, component, weight); ``contributions``
         are (coupling, component, weight re, weight im, sqrt(2) power)."""
 
-        layout = layouts.setdefault(tuple(tuple(item) for item in inputs), len(layouts))
+        found = layout_of.get(id(inputs))
+        if found is None or found[0] is not inputs:
+            layout = layouts.setdefault(
+                tuple(tuple(item) for item in inputs), len(layouts)
+            )
+            # Kept with its list, so the id stays that list's.
+            layout_of[id(inputs)] = (inputs, layout)
+        else:
+            layout = found[1]
         return {
             "kernel": kernel,
             "layout": layout,
@@ -846,24 +865,30 @@ def export_trees(
 
         kernel = exporter._kernel(term.binding, ())
         ids = [block_id(block) for block in term.blocks]
-        dimensions = [block_dimensions[ids[i]] for i in term.kernel_legs]
-        current_slots = [
-            (term.kernel_legs[leg], k)
-            for leg, dimension in enumerate(dimensions)
-            for k in range(dimension)
-        ]
-        inputs = []
-        for kind, component, _ in exporter.kernel_records[kernel]["inputs"]:
-            if kind == "current":
-                inputs.append(["current", *current_slots[component]])
-            elif kind == "momentum":
-                # Kernel leg l takes the momentum of the block whose row it
-                # takes (``ct_sites.SiteClosure._reading_sign``).
-                inputs.append(
-                    ["momentum", term.kernel_legs[component // 4], component % 4]
-                )
-            else:
-                raise ValueError(f"a closure kernel reads a {kind} input")
+        dimensions = tuple(block_dimensions[ids[i]] for i in term.kernel_legs)
+        # The inputs follow from the kernel, its legs and their dimensions
+        # (shared by the terms of one vertex over its block choices).
+        key = (kernel, tuple(term.kernel_legs), dimensions)
+        inputs = closure_inputs.get(key)
+        if inputs is None:
+            current_slots = [
+                (term.kernel_legs[leg], k)
+                for leg, dimension in enumerate(dimensions)
+                for k in range(dimension)
+            ]
+            inputs = []
+            for kind, component, _ in exporter.kernel_records[kernel]["inputs"]:
+                if kind == "current":
+                    inputs.append(["current", *current_slots[component]])
+                elif kind == "momentum":
+                    # Kernel leg l takes the momentum of the block whose row it
+                    # takes (``ct_sites.SiteClosure._reading_sign``).
+                    inputs.append(
+                        ["momentum", term.kernel_legs[component // 4], component % 4]
+                    )
+                else:
+                    raise ValueError(f"a closure kernel reads a {kind} input")
+            closure_inputs[key] = inputs
         return record(term, kernel, inputs, contributions)
 
     def whole_term(term: Any, contributions: list[list[Any]]) -> dict[str, Any] | None:
@@ -878,6 +903,14 @@ def export_trees(
             raise NativeExportUnsupported(
                 "whole-rule-block", "a whole-rule term on a non-vector block"
             )
+        inputs = whole_inputs.get(len(ids))
+        if inputs is None:
+            inputs = whole_inputs[len(ids)] = [
+                ["current", slot, k] for slot in range(len(ids)) for k in range(4)
+            ]
+        found = whole_kernels.get((len(ids), term.pairings))
+        if found is not None:
+            return record(term, found, inputs, contributions)
         polynomial: dict[tuple[int, ...], Fraction] = defaultdict(Fraction)
         for coefficient, pairs in term.pairings:
             partial = {(): Fraction(coefficient)}
@@ -912,7 +945,7 @@ def export_trees(
                     "outputs": [outputs],
                 }
             )
-        inputs = [["current", slot, k] for slot in range(len(ids)) for k in range(4)]
+        whole_kernels[len(ids), term.pairings] = kernel
         return record(term, kernel, inputs, contributions)
 
     terms = []
