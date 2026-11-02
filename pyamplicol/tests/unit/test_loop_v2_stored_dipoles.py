@@ -41,10 +41,10 @@ def test_stored_dipoles_equal_the_slice_operators(
     companion = process_.scaleless
     path = tmp_path / "loop-runtime.pacbin"
     write_plan(
-        process_.plan_json,
+        process_.plan,
         path,
         process_,
-        None if companion is None else companion.plan_json,
+        None if companion is None else companion.plan,
     )
     loaded = read_native_process(path, read_plan(path))
     assert loaded.dipoles == process_.dipoles

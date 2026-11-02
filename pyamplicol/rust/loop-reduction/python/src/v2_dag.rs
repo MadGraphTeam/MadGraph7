@@ -578,11 +578,20 @@ mod tree_binary {
         propagators: usize,
     ) -> PyResult<Option<(Bound<'py, PyBytes>, Vec<usize>, Vec<usize>)>> {
         let mut marks = live.to_vec();
+        // One copy of the section at a time beside the pruned columns: the
+        // decoded steps go before the encoding, the pruned columns before
+        // the Python bytes (MF-8G-1: the counterterm program's section is
+        // the 2->6 export's largest).
         let pruned = py
             .detach(|| {
-                StepColumns::decode(section)?
-                    .prune(&mut marks, kernels, propagators)
-                    .map(|found| found.map(|(c, k, p)| (c.encode(), k, p)))
+                let decoded = StepColumns::decode(section)?;
+                let found = decoded.prune(&mut marks, kernels, propagators)?;
+                drop(decoded);
+                Ok::<_, rusticol_core::RusticolError>(found.map(|(columns, k, p)| {
+                    let encoded = columns.encode();
+                    drop(columns);
+                    (encoded, k, p)
+                }))
             })
             .map_err(failed)?;
         Ok(pruned.map(|(bytes, k, p)| (PyBytes::new(py, &bytes), k, p)))
@@ -668,10 +677,89 @@ pub(super) fn register_tree_binary(module: &Bound<'_, PyModule>) -> PyResult<()>
 /// Closure-term sections of a binary tree program (MF-8G-1).
 mod tree_terms {
     use super::*;
-    use rusticol_core::loop_v2::trees::binary::TermColumns;
+    use rusticol_core::loop_v2::trees::binary::{TermBuilder, TermColumns};
 
     fn failed(error: impl std::fmt::Display) -> PyErr {
         PyValueError::new_err(error.to_string())
+    }
+
+    /// Closure terms gathered one at a time (`TermBuilder`; `native_trees.
+    /// export_trees`'s counterterm closure: no Python record list kept and
+    /// no JSON in between), written as a term section by `section`.
+    #[pyclass]
+    #[derive(Default)]
+    pub(super) struct TreeTermBuilder(TermBuilder);
+
+    #[pymethods]
+    impl TreeTermBuilder {
+        #[new]
+        fn new() -> Self {
+            Self::default()
+        }
+
+        /// Append one closure-term record (``record``'s dict: kernel,
+        /// layout, blocks, masks, sign, contributions).
+        fn append(&mut self, record: &Bound<'_, PyAny>) -> PyResult<()> {
+            let field = |name: &str| record.get_item(name);
+            let contributions: Vec<(usize, usize, usize)> = field("contributions")?
+                .try_iter()?
+                .map(|item| {
+                    let item = item?;
+                    Ok((
+                        item.get_item(0)?.extract()?,
+                        item.get_item(1)?.extract()?,
+                        item.get_item(2)?.extract()?,
+                    ))
+                })
+                .collect::<PyResult<_>>()?;
+            self.0.push(
+                field("kernel")?.extract()?,
+                field("layout")?.extract()?,
+                &field("blocks")?.extract::<Vec<usize>>()?,
+                &field("masks")?.extract::<Vec<u64>>()?,
+                field("sign")?.extract()?,
+                &contributions,
+            );
+            Ok(())
+        }
+
+        fn __len__(&self) -> usize {
+            self.0.len()
+        }
+
+        /// The term section of the appended terms (the builder emptied).
+        fn section<'py>(&mut self, py: Python<'py>) -> Bound<'py, PyBytes> {
+            let terms = std::mem::take(&mut self.0);
+            let out = py.detach(|| terms.finish().encode());
+            PyBytes::new(py, &out)
+        }
+    }
+
+    /// A term section without the ket components `live` does not mark
+    /// (`TermColumns::prune_ket`, `native_trees._prune_counterterm_terms`).
+    #[pyfunction]
+    pub(super) fn tree_terms_prune_ket<'py>(
+        py: Python<'py>,
+        section: &[u8],
+        live: Vec<bool>,
+    ) -> PyResult<Bound<'py, PyBytes>> {
+        let out = py
+            .detach(|| TermColumns::decode(section)?.prune_ket(&live).map(|c| c.encode()))
+            .map_err(failed)?;
+        Ok(PyBytes::new(py, &out))
+    }
+
+    /// Per closure block the widest row prefix a term of the section reads
+    /// (`TermColumns::block_widths`).
+    #[pyfunction]
+    pub(super) fn tree_terms_block_widths(
+        py: Python<'_>,
+        section: &[u8],
+        widths: Vec<Vec<usize>>,
+        blocks: usize,
+    ) -> PyResult<Vec<usize>> {
+        py.detach(|| TermColumns::decode(section)?.block_widths(&widths, blocks))
+            .map_err(failed)
     }
 
     /// The term section of the oracle's JSON closure terms.
@@ -704,5 +792,8 @@ pub(super) fn register_tree_terms(module: &Bound<'_, PyModule>) -> PyResult<()> 
     use tree_terms::*;
     module.add_function(wrap_pyfunction!(tree_terms_from_json, module)?)?;
     module.add_function(wrap_pyfunction!(tree_terms_json, module)?)?;
+    module.add_function(wrap_pyfunction!(tree_terms_prune_ket, module)?)?;
+    module.add_function(wrap_pyfunction!(tree_terms_block_widths, module)?)?;
+    module.add_class::<TreeTermBuilder>()?;
     module.add_function(wrap_pyfunction!(tree_terms_count, module)?)
 }

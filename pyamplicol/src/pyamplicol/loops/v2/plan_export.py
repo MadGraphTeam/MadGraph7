@@ -78,7 +78,8 @@ Arithmetic = Literal["double", "double-double", "arbitrary", "exact"]
 
 
 def _fraction_text(value: Any) -> str:
-    value = Fraction(value)
+    if type(value) is not Fraction:
+        value = Fraction(value)
     if value.denominator == 1:
         return str(value.numerator)
     return f"{value.numerator}/{value.denominator}"
@@ -158,9 +159,10 @@ class ExportedPlan:
     # The certified seed FFT of the plan's seeds (``fourier_record``; JSON),
     # None when every seed is contracted directly.
     fourier: str | None = None
-    # The native plan model holding the families when they were streamed
-    # (``native_lowering.NATIVE_FAMILIES``; ``program["families"]`` is then
-    # its read-only view), else None.
+    # The native plan model holding the families and contents when they were
+    # streamed (``native_lowering.NATIVE_FAMILIES``; a ``native_lowering.
+    # PlanSource``: ``program["families"]`` and ``["contents"]`` are then its
+    # read-only views; released to the binary member once stored), else None.
     model: Any = None
 
     def json(self) -> str:
@@ -170,6 +172,8 @@ class ExportedPlan:
 
         from . import native_lowering
 
+        if self.streamed and self.model.released:
+            return native_lowering.member_json(self.model.member)
         if native_lowering.NATIVE_JSON or self.streamed:
             return native_lowering.plan_json(self).decode("ascii")
         return self.python_json()
@@ -185,7 +189,7 @@ class ExportedPlan:
         return (
             self.model is not None
             and isinstance(families, native_lowering.NativeFamilies)
-            and families.model is self.model
+            and families.source is self.model
         )
 
     def python_json(self) -> str:
@@ -206,7 +210,24 @@ class ExportedPlan:
 
         from . import native_lowering
 
+        if self.streamed:
+            return self.model.binary()
         return native_lowering.plan_binary(self)
+
+    def stored(self) -> str | bytes:
+        """The plan as an artifact stores it and the native executor loads
+        it (M-FINAL MF-8G-1 item 5): the binary plan member (``binary``),
+        or the plan JSON (``json``) when ``native_lowering.BINARY_PLAN`` is
+        off (the oracle; artifacts written before the member). A streamed
+        plan keeps only its member from here on (``PlanSource.release``)."""
+
+        from . import native_lowering
+
+        if not native_lowering.BINARY_PLAN:
+            return self.json()
+        if self.streamed:
+            return self.model.release()
+        return self.binary()
 
 
 @dataclass
@@ -262,7 +283,7 @@ class _Exporter:
     slice_: Any
     kinematics: rx.CatalogueKinematics
     rows: tuple[rx.Row, ...]
-    contents: dict[Any, int] = field(default_factory=dict)
+    contents: dict[Any, tuple[int, rx.ContentShape]] = field(default_factory=dict)
     content_records: list[dict] = field(default_factory=list)
     kernels: dict[tuple[int, rx.MassFlips], int] = field(default_factory=dict)
     kernel_records: list[dict] = field(default_factory=list)
@@ -280,6 +301,13 @@ class _Exporter:
     # (class, loop order) -> seed-class record of the latest ``seed_records``
     # (the seed Fourier record's loop orbits, ``fourier_record``).
     class_records: dict[tuple[int, Orders], int] = field(default_factory=dict)
+    # The native sink of the content records (``native_lowering.
+    # contents_builder``; MF-8G-1 item 5), else None: the records are kept in
+    # ``content_records``. ``content_count`` counts them either way.
+    content_sink: Any = None
+    content_count: int = 0
+    # Row -> (leg mask, leg count), the content row check's.
+    row_masks: dict[Any, tuple[int, int]] = field(default_factory=dict)
 
     # -- kernels ------------------------------------------------------------
 
@@ -318,10 +346,6 @@ class _Exporter:
         self.kernel_records.append({"inputs": inputs, "outputs": outputs})
         return found
 
-    def _block_row(self, slot, part: rx.Row, dimension: int) -> int:
-        key = (slot.block, slot.word, slot.chirality, part, dimension)
-        return self.block_rows.setdefault(key, len(self.block_rows))
-
     # -- contents -----------------------------------------------------------
 
     def _binding(self, binding, index, split: bool, flips: rx.MassFlips) -> dict:
@@ -357,10 +381,13 @@ class _Exporter:
         return {"kernel": kernel, "inputs": inputs, "entries": entries}
 
     def content(self, content) -> tuple[int, rx.ContentShape]:
-        shape = self.kinematics.shape(content)
+        # (index, shape) per content: one lookup per step edge (M-FINAL
+        # MF-8G-1; 740k edges at g g > 5g LC for 30k contents).
         found = self.contents.get(content)
         if found is not None:
-            return found, shape
+            return found
+        shape = self.kinematics.shape(content)
+        block_rows = self.block_rows
         index = {entry: i for i, entry in enumerate(shape.fused)}
         row_index = {row: i for i, row in enumerate(shape.rows)}
         flips = rx.mass_flips(self.kinematics.reading, content)
@@ -372,13 +399,19 @@ class _Exporter:
             if len(dimensions) != 1:
                 raise ValueError(f"content {content.label} mixes block dimensions")
             (dims,) = dimensions
+            # A block row per (slot's block, word and chirality, row part,
+            # dimension), interned inline (4.8 M rows in the g g > 5g LC
+            # companion; MF-8G-1).
+            slots = [(s.block, s.word, s.chirality) for s in term.slots]
             rows = [
                 [
                     row_index[row],
                     [
-                        self._block_row(slot, part, dimension)
-                        for slot, part, dimension in zip(
-                            term.slots, parts, dims, strict=True
+                        block_rows.setdefault(
+                            (block, word, chirality, part, dimension), len(block_rows)
+                        )
+                        for (block, word, chirality), part, dimension in zip(
+                            slots, parts, dims, strict=True
                         )
                     ],
                 ]
@@ -398,23 +431,36 @@ class _Exporter:
                     "rows": rows,
                 }
             )
-        found = self.contents[content] = len(self.content_records)
+        found = self.content_count
+        self.contents[content] = (found, shape)
         mask = content.mask
+        row_masks = self.row_masks
         for row in shape.rows:
-            if sum(1 << leg for leg, _h in row) != mask or len(row) != mask.bit_count():
+            # A row's legs as a mask and their count (rows repeat over
+            # contents: formed once per row).
+            found_mask = row_masks.get(row)
+            if found_mask is None:
+                found_mask = row_masks[row] = (
+                    sum(1 << leg for leg, _h in row),
+                    len(row),
+                )
+            if found_mask != (mask, mask.bit_count()):
                 raise ValueError(f"content {content.label} has a row off its legs")
-        self.content_records.append(
-            {
-                "d_in": shape.loop_in,
-                "d_out": shape.loop_out,
-                "degree": shape.degree,
-                "rows": len(shape.rows),
-                "mask": mask,
-                "row_helicities": [[h for _leg, h in row] for row in shape.rows],
-                "fused": [[b, b2, *e] for b, b2, e in shape.fused],
-                "terms": terms,
-            }
-        )
+        record = {
+            "d_in": shape.loop_in,
+            "d_out": shape.loop_out,
+            "degree": shape.degree,
+            "rows": len(shape.rows),
+            "mask": mask,
+            "row_helicities": [[h for _leg, h in row] for row in shape.rows],
+            "fused": [[b, b2, *e] for b, b2, e in shape.fused],
+            "terms": terms,
+        }
+        if self.content_sink is None:
+            self.content_records.append(record)
+        else:
+            self.content_sink.push(record)
+        self.content_count += 1
         return found, shape
 
     def factor(self, content: int, shift: int) -> int:
@@ -1143,15 +1189,19 @@ def export_plan(
     )
     helicities = born_helicities(slice_)
     rows = born_rows(slice_)
-    exporter = _Exporter(slice_, kinematics, rows, links=links)
     from . import native_lowering
 
-    # MF-8G-1 item 5: each family record goes to the native model as it is
-    # made (``native_lowering.NATIVE_FAMILIES``); only its loop orders stay.
+    # MF-8G-1 item 5: each family and content record goes to the native model
+    # as it is made (``native_lowering.NATIVE_FAMILIES``); only a family's
+    # loop orders stay.
     streamed = (
         native_lowering.families_builder()
         if native_lowering.NATIVE_FAMILIES and native_lowering.NATIVE_JSON
         else None
+    )
+    contents_sink = None if streamed is None else native_lowering.contents_builder()
+    exporter = _Exporter(
+        slice_, kinematics, rows, links=links, content_sink=contents_sink
     )
     families, keys, family_orders = [], [], []
     for key, schedule in slice_.plan.schedules.items():
@@ -1230,8 +1280,11 @@ def export_plan(
         program["column_weights"] = column_weights
     model = None
     if streamed is not None:
-        model = native_lowering.streamed_model(program, streamed)
+        model = native_lowering.PlanSource(
+            native_lowering.streamed_model(program, streamed, contents_sink)
+        )
         program["families"] = native_lowering.NativeFamilies(model)
+        program["contents"] = native_lowering.NativeContents(model)
     born_components = tuple(exporter.born_components)
     column_seeds = None
     if column_sets is not None:
@@ -1410,7 +1463,7 @@ class NativeExecutor:
         inputs: Literal["python", "native"] = "python",
         born_squared: bool = True,
         counterterms: bool = True,
-        scaleless: tuple[ExportedPlan, str] | Callable[[], Any] | None = None,
+        scaleless: tuple[ExportedPlan, str | bytes] | Callable[[], Any] | None = None,
         contraction: Literal["auto", "direct", "fft"] | None = None,
     ):
         if inputs not in ("python", "native"):
@@ -1448,10 +1501,11 @@ class NativeExecutor:
         self.lanes = lanes
         self.threads = threads
         self.forms = forms
-        # ``plan_json``: ``exported.json()`` when the caller already holds it,
-        # or a loaded process's stored plan member (``artifact.StoredMember``,
-        # read by the native executor itself: M-FINAL MF-8G-2 item 2).
-        self._plan_json = self.exported.json() if plan_json is None else plan_json
+        # ``plan_json``: the stored plan (``exported.stored()``: its binary
+        # member, or a plan JSON) when the caller already holds it, or a loaded
+        # process's stored member of either (``artifact.StoredMember``, read by
+        # the native executor itself: M-FINAL MF-8G-2 item 2).
+        self._plan_json = self.exported.stored() if plan_json is None else plan_json
         self._native: dict[tuple[str, int | None, int], Any] = {}
         self._scaleless: list[NativeExecutor | None] = []
         # (exported plan, its JSON) of the companion when the caller holds it
@@ -1506,7 +1560,7 @@ class NativeExecutor:
             trees = self.exported.trees.executor_argument() if native_trees else None
             plan = self._plan_json
             found = self._native[key] = self.slice.native.V2Executor(
-                plan if isinstance(plan, str) else plan.native(),
+                plan if isinstance(plan, str | bytes) else plan.native(),
                 arithmetic,
                 digits,
                 lanes=lanes,

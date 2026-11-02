@@ -51,26 +51,45 @@ from typing import Any
 NATIVE_JSON = True
 
 # M-FINAL MF-8G-1 item 5 (rule 1): ``export_plan`` streams each schedule-B
-# family record into the native model as the exporter makes it
-# (``families_builder``), so the export never holds the Python records of
-# every family; the plan's ``program["families"]`` is then a read-only view
-# that decodes a family from the model when asked (``NativeFamilies``) and
-# ``ExportedPlan.json()`` / ``binary()`` come from that model. Off (or with
-# ``NATIVE_JSON`` off), the Python records stay in the program (the oracle,
+# family record and each content record into the native model as the
+# exporter makes it (``families_builder``, ``contents_builder``), so the
+# export never holds the Python records of every family or content; the
+# plan's ``program["families"]`` and ``program["contents"]`` are then
+# read-only views that decode a record from the model when asked
+# (``NativeFamilies``, ``NativeContents``) and ``ExportedPlan.json()`` /
+# ``binary()`` come from that model. Off (or with ``NATIVE_JSON`` off), the
+# Python records stay in the program (the oracle,
 # ``ExportedPlan.python_json()``).
 NATIVE_FAMILIES = True
 
+# M-FINAL MF-8G-1 item 5: the binary plan member is the plan's stored form
+# (``ExportedPlan.stored()``): an artifact's plan and companion plan members
+# (``artifact.write_plan``), the native process's plan and the plan every
+# native executor loads (``loop_v2::plan::read_binary``, which
+# ``LoopProgramV4::load`` takes for a member). ``plan_sha256`` digests the
+# stored bytes. Off, the plan JSON is stored and loaded (the oracle; the
+# form of artifacts written before the member, which every reader keeps
+# reading).
+BINARY_PLAN = True
 
-def _native(native: Any | None) -> Any:
-    """``native``, else the staged loop core, verified once per process: the
-    one cache of ``dag_input._native`` (each ``load_loop_native`` re-verifies
-    the native build, 0.2-0.4 s)."""
+
+# The staged loop core, verified once per process (each ``load_loop_native``
+# re-verifies the native build, 0.2-0.4 s). Its own cache, not
+# ``dag_input._native``'s: a stored process's readers (``member_json``,
+# ``native_trees``) call it at load, where no generation module runs.
+_LOADED: list[Any] = []
+
+
+def _native(native: Any | None = None) -> Any:
+    """``native``, else the staged loop core (verified once per process)."""
 
     if native is not None:
         return native
-    from .dag_input import _native as loop_core
+    if not _LOADED:
+        from pyamplicol.loops.native import load_loop_native
 
-    return loop_core()
+        _LOADED.append(load_loop_native())
+    return _LOADED[0]
 
 
 def _program(exported: Any) -> Any:
@@ -83,8 +102,45 @@ def plan_model(exported: Any, native: Any | None = None) -> Any:
     plan's own model when its families were streamed (``NATIVE_FAMILIES``)."""
 
     if getattr(exported, "streamed", False):
-        return exported.model
+        return exported.model.model
     return _native(native).V2PlanModel.from_program(_program(exported))
+
+
+class PlanSource:
+    """The native model of a plan whose records were streamed
+    (``ExportedPlan.model``), until the plan is stored: ``release`` keeps its
+    binary member only (the model is several times the member: 0.27 / 0.32
+    GiB for the 15 / 25 MB members of g g > 5g LC and its companion), and
+    ``model`` decodes it again when a reader of records asks (the views, the
+    oracle tests)."""
+
+    def __init__(self, model: Any) -> None:
+        self._model = model
+        self.member: bytes | None = None
+
+    @property
+    def model(self) -> Any:
+        if self._model is None:
+            self._model = _native().V2PlanModel.from_binary(self.member)
+        return self._model
+
+    @property
+    def released(self) -> bool:
+        return self._model is None
+
+    def binary(self) -> bytes:
+        """The binary plan member (formed once)."""
+
+        if self.member is None:
+            self.member = bytes(self._model.binary())
+        return self.member
+
+    def release(self) -> bytes:
+        """The binary plan member, the model dropped."""
+
+        member = self.binary()
+        self._model = None
+        return member
 
 
 def families_builder(native: Any | None = None) -> Any:
@@ -93,31 +149,68 @@ def families_builder(native: Any | None = None) -> Any:
     return _native(native).V2PlanFamilies()
 
 
-def streamed_model(program: dict[str, Any], families: Any, native: Any | None = None) -> Any:
-    """The native model of ``program`` (its ``families`` an empty list) with
-    the streamed ``families`` (``families_builder``, taken)."""
+def contents_builder(native: Any | None = None) -> Any:
+    """An empty ``V2PlanContents``: ``push`` one content record at a time."""
 
-    return _native(native).V2PlanModel.from_program_families(program, families)
+    return _native(native).V2PlanContents()
 
 
-class NativeFamilies(Sequence[dict[str, Any]]):
-    """``program["families"]`` of a plan whose families were streamed: each
-    family decoded from the native model when asked (its plan JSON record),
-    nothing kept. Not JSON-serialisable on purpose: ``json.dumps(program)``
-    (``ExportedPlan.python_json()``, the oracle) needs the Python records."""
+def streamed_model(
+    program: dict[str, Any],
+    families: Any,
+    contents: Any | None = None,
+    native: Any | None = None,
+) -> Any:
+    """The native model of ``program`` (its ``families``, and with
+    ``contents`` its ``contents``, empty lists) with the streamed
+    ``families`` (``families_builder``, taken) and ``contents``
+    (``contents_builder``, taken)."""
 
-    def __init__(self, model: Any) -> None:
-        self.model = model
+    return _native(native).V2PlanModel.from_program_families(
+        program, families, contents
+    )
+
+
+class _NativeRecords(Sequence[dict[str, Any]]):
+    """A plan list whose records were streamed into the native model
+    (``source``, a ``PlanSource``): each record decoded from the model when
+    asked (its plan JSON record), nothing kept. Not JSON-serialisable on
+    purpose: ``json.dumps(program)`` (``ExportedPlan.python_json()``, the
+    oracle) needs the Python records."""
+
+    _count = ""
+    _json = ""
+
+    def __init__(self, source: PlanSource) -> None:
+        self.source = source
+
+    @property
+    def model(self) -> Any:
+        return self.source.model
 
     def __len__(self) -> int:
-        return int(self.model.family_count())
+        return int(getattr(self.model, self._count)())
 
     def __getitem__(self, index: Any) -> Any:
         if isinstance(index, slice):
             return [self[i] for i in range(*index.indices(len(self)))]
         if index < 0:
             index += len(self)
-        return json.loads(bytes(self.model.family_json(index)))
+        return json.loads(bytes(getattr(self.model, self._json)(index)))
+
+
+class NativeFamilies(_NativeRecords):
+    """``program["families"]`` of a plan whose families were streamed."""
+
+    _count = "family_count"
+    _json = "family_json"
+
+
+class NativeContents(_NativeRecords):
+    """``program["contents"]`` of a plan whose contents were streamed."""
+
+    _count = "content_count"
+    _json = "content_json"
 
 
 def plan_model_from_json(exported: Any, native: Any | None = None) -> Any:
@@ -140,6 +233,32 @@ def plan_binary(exported: Any, native: Any | None = None) -> bytes:
     """The binary columnar plan member of an exported plan."""
 
     return bytes(plan_model(exported, native).binary())
+
+
+# The binary plan member's magic (``loop_v2::plan::binary``).
+_MAGIC = b"LOOPPLAN"
+
+
+def is_member(plan: str | bytes) -> bool:
+    """Whether a stored plan is a binary plan member (else a plan JSON, as
+    text or bytes): ``loop_v2::plan::binary::is_binary``'s magic."""
+
+    return not isinstance(plan, str) and bytes(plan[:8]) == _MAGIC
+
+
+def member_json(plan: str | bytes, native: Any | None = None) -> str:
+    """The plan JSON of a stored plan (M-FINAL MF-8G-1 item 5): the text of a
+    JSON, the native model's JSON of a binary member (``V2PlanModel.
+    from_binary(...).json()``, byte for byte the exporter's JSON of the same
+    plan). Formed on each call, never kept: the Python readers that still
+    read plan records (the observable column sets) take it from here."""
+
+    if isinstance(plan, str):
+        return plan
+    data = bytes(plan)
+    if not is_member(data):
+        return data.decode("ascii")
+    return bytes(_native(native).V2PlanModel.from_binary(data).json()).decode("ascii")
 
 
 def plan_encodings(exported: Any, native: Any | None = None) -> tuple[bytes, bytes]:
@@ -184,12 +303,18 @@ def read(data: bytes, native: Any | None = None) -> str:
 
 
 __all__ = [
+    "BINARY_PLAN",
     "NATIVE_FAMILIES",
     "NATIVE_JSON",
+    "NativeContents",
     "NativeFamilies",
     "PlanLoad",
+    "PlanSource",
+    "contents_builder",
     "families_builder",
+    "is_member",
     "load",
+    "member_json",
     "plan_binary",
     "plan_encodings",
     "plan_json",

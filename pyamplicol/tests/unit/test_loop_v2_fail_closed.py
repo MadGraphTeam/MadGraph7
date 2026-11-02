@@ -494,6 +494,9 @@ def _identity(generated, *, fourier: bool = True) -> tuple[str, str, str]:
             members[f"{prefix}tree-program.json"] = trees.json().encode()
     # The stored dipole orbits (C4, MF-8G-1) postdate the pins.
     members.pop("dipoles.json", None)
+    # A binary companion plan (MF-8G-1 item 5) enters as its decoded JSON.
+    if companion is not None and members.pop("scaleless-plan.bin", None):
+        members["scaleless-plan.json"] = companion.plan_json.encode()
     native = hashlib.sha256()
     for name in sorted(members):
         if not name.endswith("parameters.symjit"):

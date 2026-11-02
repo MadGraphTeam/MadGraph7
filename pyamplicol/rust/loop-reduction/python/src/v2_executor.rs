@@ -1060,7 +1060,8 @@ fn stored_tree_program_section<'py>(
 
 #[pymethods]
 impl V2Executor {
-    /// `plan` is the plan v4 (its JSON or a stored member, `program_bytes`).
+    /// `plan` is the plan v4: its binary member (bytes, M-FINAL MF-8G-1 item
+    /// 5), its JSON (text) or a stored member of either (`program_bytes`).
     /// `trees` is a tree program (`loops/v2/native_trees.py`): its JSON, its
     /// binary container or a stored member (`program_bytes`),
     /// the saved exact evaluator of each kernel and of the parameter program
@@ -1105,9 +1106,12 @@ impl V2Executor {
                 ));
             }
         };
+        // The stored plan: its binary member as bytes (M-FINAL MF-8G-1 item
+        // 5), a plan JSON as text, or a stored member of either
+        // (`program_bytes`); `load_with` reads either form.
         let plan = {
-            let json = program_bytes(&plan)?;
-            Arc::new(LoopProgramV4::load_with(&json, policy).map_err(error)?)
+            let data = program_bytes(&plan)?;
+            Arc::new(LoopProgramV4::load_with(&data, policy).map_err(error)?)
         };
         // The program's JSON text, a binary tree program (`loop_v2::trees::
         // binary`, M-FINAL MF-8G-1) or a stored member (`program_bytes`).

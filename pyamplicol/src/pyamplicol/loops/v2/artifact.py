@@ -5,18 +5,23 @@ Format. A v2 virtual process is published in the ordinary schema-v3 artifact
 envelope under the runtime capability ``rusticol.loop-runtime.v4``:
 
 * ``processes/<id>/loop-runtime.pacbin`` holds a member of kind
-  ``LOOP_RUNTIME_PLAN``, ``schedule/loop-plan-v4.json.zlib``: the plan v4
-  program of ``plan_export`` (zlib-compressed JSON, schedule B; the forward
-  oracle F is not stored) that the native ``V2Executor`` validates and runs.
+  ``LOOP_RUNTIME_PLAN``, ``schedule/loop-plan-v4.bin.zlib``: the plan v4
+  program of ``plan_export`` (its binary columnar member, zlib-compressed,
+  M-FINAL MF-8G-1 item 5; schedule B; the forward oracle F is not stored)
+  that the native ``V2Executor`` validates and runs. Artifacts written
+  before the member store the plan JSON, ``schedule/loop-plan-v4.json.zlib``,
+  which every reader still reads.
   Its kernels are exact polynomial term lists interpreted natively
   (``loop_v2/dress.rs``): no compiled code, so nothing depends on the build
   host's CPU features or paths. A process with certified-scaleless families
   also stores their companion plan (``LoopSlice.scaleless``),
-  ``schedule/loop-plan-v4-scaleless.json.zlib``, which only the ``"uv"``
+  ``schedule/loop-plan-v4-scaleless.bin.zlib`` (or ``.json.zlib``), which
+  only the ``"uv"``
   and ``"ir"`` pole selections run (design §12.4): one artifact serves all
   four selections.
 * ``processes/<id>/execution.json`` (schema 4) records the plan's SHA-256
-  (and the companion's, or null), ``point_inputs`` and the generation
+  (of the stored plan's bytes, the member or the JSON; and the companion's,
+  or null), ``point_inputs`` and the generation
   request (process, coupling orders,
   corrections, fixed parameters, colour accuracy and continuation, seed
   contraction, the resolved correlator declarations);
@@ -122,6 +127,11 @@ from pyamplicol.loops.strategy import R2Selection
 from .families import Orders, add_orders
 
 PLAN_MEMBER = "schedule/loop-plan-v4.json.zlib"
+# The binary plan member (``ExportedPlan.binary()``, M-FINAL MF-8G-1 item 5),
+# which a process stores instead of the plan JSON (zlib stream; rusticol-core
+# ``loop_runtime::LOOP_PROGRAM_V4_BINARY_MEMBER``); likewise the companion's.
+PLAN_BINARY_MEMBER = "schedule/loop-plan-v4.bin.zlib"
+SCALELESS_PLAN_BINARY_MEMBER = "schedule/loop-plan-v4-scaleless.bin.zlib"
 # The native point inputs (``native_process.NativeProcess``): its assembly
 # record and tree program (zlib JSON) and saved exact evaluators.
 NATIVE_RECORD_MEMBER = "point-inputs/native-process.json.zlib"
@@ -379,44 +389,80 @@ def require_zero_coloured_widths(
 # --------------------------------------------------------------------- plan file
 
 
-def plan_digest(plan_json: str) -> str:
-    return hashlib.sha256(plan_json.encode()).hexdigest()
+def _plan_bytes(plan: Any) -> bytes:
+    """A stored plan's bytes: a JSON's text encoded, a binary member's bytes,
+    or a stored member's (``StoredMember``, a file-backed process) read."""
+
+    if isinstance(plan, str):
+        return plan.encode()
+    if isinstance(plan, bytes | bytearray | memoryview):
+        return bytes(plan)
+    return plan.bytes()
+
+
+def plan_digest(plan: str | bytes) -> str:
+    """SHA-256 of a stored plan's bytes: its binary plan member, or its JSON
+    (text) for a plan stored as JSON."""
+
+    return hashlib.sha256(_plan_bytes(plan)).hexdigest()
+
+
+def _plan_member(plan: str | bytes, scaleless: bool = False) -> tuple[str, bytes]:
+    """(logical path, bytes) of a stored plan: the binary member's path for a
+    binary plan member, the JSON's for a JSON."""
+
+    from .native_lowering import is_member
+
+    if not isinstance(plan, str | bytes | bytearray | memoryview):
+        plan = _plan_bytes(plan)
+    if is_member(plan):
+        name = SCALELESS_PLAN_BINARY_MEMBER if scaleless else PLAN_BINARY_MEMBER
+    else:
+        name = SCALELESS_PLAN_MEMBER if scaleless else PLAN_MEMBER
+    return name, _plan_bytes(plan)
 
 
 def write_plan(
-    plan_json: str,
+    plan: str | bytes,
     destination: Path,
     native: Any = None,
-    scaleless_json: str | None = None,
+    scaleless: str | bytes | None = None,
 ) -> None:
     """Write the plan v4 PACBIN (its digest is ``GeneratedProcess.plan_sha256``,
-    computed once from the same JSON), with the companion plan of the
+    computed once from the same bytes), with the companion plan of the
     certified-scaleless families when the process has one and, with
     ``native`` (a ``native_process.NativeProcess`` of that plan), its native
-    point inputs."""
+    point inputs. A plan is its binary plan member (``ExportedPlan.
+    stored()``, stored as ``PLAN_BINARY_MEMBER``) or a plan JSON (text,
+    ``PLAN_MEMBER``)."""
 
     from io import BytesIO
 
-    plan = PacbinMemberKind.LOOP_RUNTIME_PLAN
-    state = PacbinMemberKind.SYMBOLICA_EXACT_STATE
-    symjit = PacbinMemberKind.SYMJIT_APPLICATION
-    # (logical path, kind, bytes); JSON members are zlib streams.
-    members = [(PLAN_MEMBER, plan, zlib.compress(plan_json.encode(), 6))]
-    if scaleless_json is not None:
-        members.append(
-            (SCALELESS_PLAN_MEMBER, plan, zlib.compress(scaleless_json.encode(), 6))
-        )
     if native is not None:
-        if native.plan_json != plan_json:
+        if _plan_member(native.plan) != _plan_member(plan):
             raise ValueError("the native point inputs belong to another plan")
         companion = native.scaleless
-        if (companion is None) != (scaleless_json is None) or (
-            companion is not None and companion.plan_json != scaleless_json
+        if (companion is None) != (scaleless is None) or (
+            companion is not None
+            and _plan_member(companion.plan, scaleless=True)
+            != _plan_member(cast(Any, scaleless), scaleless=True)
         ):
             raise ValueError(
                 "the native point inputs store the companion of the stored "
                 "companion plan"
             )
+    plan_kind = PacbinMemberKind.LOOP_RUNTIME_PLAN
+    state = PacbinMemberKind.SYMBOLICA_EXACT_STATE
+    symjit = PacbinMemberKind.SYMJIT_APPLICATION
+    # (logical path, kind, bytes); plan and JSON members are zlib streams.
+    name, data = _plan_member(plan)
+    members = [(name, plan_kind, zlib.compress(data, 6))]
+    if scaleless is not None:
+        name, data = _plan_member(scaleless, scaleless=True)
+        members.append((name, plan_kind, zlib.compress(data, 6)))
+    del data
+    plan = plan_kind
+    if native is not None:
         stored = native.members()
         members.append(
             (
@@ -494,36 +540,59 @@ def write_plan(
     )
 
 
-def read_plan(path: Path, member: str = PLAN_MEMBER) -> str | None:
-    """A plan v4 JSON of a ``loop-runtime.pacbin`` (payload digests checked):
-    the process plan, or with ``member=SCALELESS_PLAN_MEMBER`` the companion
-    plan (None when absent)."""
+def read_plan(path: Path, member: str = PLAN_MEMBER) -> str | bytes | None:
+    """The stored plan v4 of a ``loop-runtime.pacbin`` (payload digests
+    checked): the process plan, or with ``member=SCALELESS_PLAN_MEMBER`` the
+    companion plan (None when absent); its binary plan member (bytes) where
+    the PACBIN stores one (``PLAN_BINARY_MEMBER``), else its JSON (text).
+    ``read_plan_json`` gives the JSON of either."""
 
+    binary = {
+        PLAN_MEMBER: PLAN_BINARY_MEMBER,
+        SCALELESS_PLAN_MEMBER: SCALELESS_PLAN_BINARY_MEMBER,
+    }.get(member)
     with PacbinReader.open(path) as reader:
-        if member != PLAN_MEMBER and member not in {
-            item.logical_path for item in reader.members
-        }:
+        names = {item.logical_path for item in reader.members}
+        if binary in names:
+            found_name = cast(str, binary)
+        elif member != PLAN_MEMBER and member not in names:
             return None
-        found = reader.member(member)
+        else:
+            found_name = member
+        found = reader.member(found_name)
         if found.kind != PacbinMemberKind.LOOP_RUNTIME_PLAN:
             raise ArtifactError("loop runtime member is not a plan v4")
-        compressed = reader.read_member(member, length=found.length)
-    return zlib.decompress(compressed).decode()
+        compressed = reader.read_member(found_name, length=found.length)
+    data = zlib.decompress(compressed)
+    del compressed
+    if found_name == binary:
+        return data
+    return data.decode()
+
+
+def read_plan_json(path: Path, member: str = PLAN_MEMBER) -> str | None:
+    """``read_plan``'s plan as its JSON (a binary plan member's written by the
+    native model, ``native_lowering.member_json``)."""
+
+    from .native_lowering import member_json
+
+    found = read_plan(path, member)
+    return None if found is None else member_json(found)
 
 
 def read_native_process(
-    path: Path, plan_json: str, scaleless_json: str | None = None
+    path: Path, plan: str | bytes, scaleless: str | bytes | None = None
 ) -> Any:
     """The native point inputs of a ``loop-runtime.pacbin`` written with them
-    (``write_plan(..., native)``), for its plan ``plan_json`` and, when the
-    process has certified-scaleless families, its companion plan
-    ``scaleless_json`` (whose native tree program it also holds; read from
+    (``write_plan(..., native)``), for its stored plan ``plan`` (``read_plan``)
+    and, when the process has certified-scaleless families, its companion
+    plan ``scaleless`` (whose native tree program it also holds; read from
     the PACBIN when not given)."""
 
     from .native_process import SCALELESS, NativeProcess
 
-    if scaleless_json is None:
-        scaleless_json = read_plan(path, SCALELESS_PLAN_MEMBER)
+    if scaleless is None:
+        scaleless = read_plan(path, SCALELESS_PLAN_MEMBER)
 
     def read(reader: Any, name: str, kind: PacbinMemberKind) -> bytes:
         member = reader.member(name)
@@ -541,7 +610,7 @@ def read_native_process(
             read(reader, NATIVE_RECORD_MEMBER, json_kind)
         )
         prefixes = [("", NATIVE_INPUTS_PREFIX)]
-        if scaleless_json is not None:
+        if scaleless is not None:
             prefixes.append((SCALELESS, NATIVE_SCALELESS_PREFIX))
         for prefix, base in prefixes:
             if base + NATIVE_TREES_BINARY_MEMBER in names:
@@ -577,7 +646,7 @@ def read_native_process(
                     zlib.decompress(read(reader, name, json_kind))
                 )
     try:
-        return NativeProcess.from_members(plan_json, members, scaleless_json)
+        return NativeProcess.from_members(plan, members, scaleless)
     except ValueError as error:
         raise ArtifactError(f"unreadable native point inputs: {error}") from error
 
@@ -620,7 +689,12 @@ class StoredMember:
         return zlib.decompress(compressed)
 
     def text(self) -> str:
-        return self.bytes().decode()
+        """The plan JSON of a stored plan member (decoded from a binary plan
+        member, ``native_lowering.member_json``)."""
+
+        from .native_lowering import member_json
+
+        return member_json(self.bytes())
 
     def section(self, name: str) -> bytes | None:
         """Section ``name`` of a stored binary tree program, inflating no
@@ -630,12 +704,6 @@ class StoredMember:
 
         found = load_loop_native().stored_tree_program_section(*self.native(), name)
         return None if found is None else bytes(found)
-
-
-def program_text(plan: str | StoredMember) -> str:
-    """The JSON of a plan held as text or as a stored member."""
-
-    return plan if isinstance(plan, str) else plan.text()
 
 
 def load_native_process(path: Path) -> Any:
@@ -670,12 +738,18 @@ def load_native_process(path: Path) -> Any:
                 raise ArtifactError(f"loop runtime member {name!r} has the wrong kind")
             return StoredMember(path, name, member.sha256)
 
-        if PLAN_MEMBER not in index:
+        # The binary plan members where stored (M-FINAL MF-8G-1 item 5), else
+        # the JSON ones (as ``read_plan``).
+        plan_name = PLAN_BINARY_MEMBER if PLAN_BINARY_MEMBER in index else PLAN_MEMBER
+        if plan_name not in index:
             raise ArtifactError("the loop runtime has no plan v4")
-        plan = stored(PLAN_MEMBER)
-        scaleless = (
-            stored(SCALELESS_PLAN_MEMBER) if SCALELESS_PLAN_MEMBER in index else None
+        plan = stored(plan_name)
+        scaleless_name = (
+            SCALELESS_PLAN_BINARY_MEMBER
+            if SCALELESS_PLAN_BINARY_MEMBER in index
+            else SCALELESS_PLAN_MEMBER
         )
+        scaleless = stored(scaleless_name) if scaleless_name in index else None
         members["native-process.json"] = zlib.decompress(
             read(reader, NATIVE_RECORD_MEMBER, json_kind)
         )
@@ -729,17 +803,20 @@ class GeneratedProcess:
     """One process generated through v2: its observables (and slice), plan
     and public catalogue, and the companion plan of its certified-scaleless
     families (``LoopSlice.scaleless``; None without them). Frozen: the
-    digests are cached from the plan JSON."""
+    digests are cached from the stored plans. A stored plan (``plan``,
+    ``scaleless_plan``) is its binary plan member (``ExportedPlan.stored()``,
+    M-FINAL MF-8G-1 item 5) or a plan JSON (text); ``plan_json`` and
+    ``scaleless_plan_json`` give their JSON."""
 
     observables: Any
     exported: Any
     request: Mapping[str, Any]
-    plan_json: str
+    plan: str | bytes
     # The native point inputs (``native_process.NativeProcess``; None only for
     # generation objects that are never stored).
     native: Any = None
     scaleless_exported: Any = None
-    scaleless_plan_json: str | None = None
+    scaleless_plan: str | bytes | None = None
 
     @property
     def slice(self) -> Any:
@@ -755,15 +832,31 @@ class GeneratedProcess:
             )
         return LOOP_V2_NATIVE_POINT_INPUTS
 
+    @property
+    def plan_json(self) -> str:
+        """The plan's JSON (formed from a binary member on each call)."""
+
+        from .native_lowering import member_json
+
+        return member_json(self.plan)
+
+    @property
+    def scaleless_plan_json(self) -> str | None:
+        """The companion plan's JSON, or None without one."""
+
+        from .native_lowering import member_json
+
+        return None if self.scaleless_plan is None else member_json(self.scaleless_plan)
+
     @cached_property
     def plan_sha256(self) -> str:
-        return plan_digest(self.plan_json)
+        return plan_digest(self.plan)
 
     @cached_property
     def scaleless_plan_sha256(self) -> str | None:
-        if self.scaleless_plan_json is None:
+        if self.scaleless_plan is None:
             return None
-        return plan_digest(self.scaleless_plan_json)
+        return plan_digest(self.scaleless_plan)
 
     def executor(self, inputs: str = "python") -> Any:
         """A native executor of the slice on the stored plans; ``inputs=
@@ -774,11 +867,11 @@ class GeneratedProcess:
 
         scaleless = None
         if self.scaleless_exported is not None:
-            scaleless = (self.scaleless_exported, cast(str, self.scaleless_plan_json))
+            scaleless = (self.scaleless_exported, cast(Any, self.scaleless_plan))
         return NativeExecutor(
             self.slice,
             exported=self.exported,
-            plan_json=self.plan_json,
+            plan_json=self.plan,
             scaleless=scaleless,
             inputs=inputs,
         )
@@ -1053,7 +1146,8 @@ def generate_process(
         )
     except NativeExportUnsupported as error:
         raise _not_storable(request, "native point inputs", error) from error
-    plan_json = exported.json()
+    # The stored plan (``ExportedPlan.stored()``: the binary plan member).
+    stored_plan = exported.stored()
     # The companion plan of the certified-scaleless families, which the "uv"
     # and "ir" pole selections run (design §12.4). With native point inputs
     # it is exported with its own tree program (no Born or counterterm
@@ -1080,15 +1174,15 @@ def generate_process(
             )
         except NativeExportUnsupported as error:
             raise _not_storable(request, "companion point inputs", error) from error
-    scaleless_json = None if scaleless is None else scaleless.json()
+    scaleless_plan = None if scaleless is None else scaleless.stored()
     if exported.trees is not None:
         from .native_process import NativeProcess
 
         native = NativeProcess.export(
             observables.slice,
             exported,
-            plan_json,
-            None if scaleless is None else (scaleless, cast(str, scaleless_json)),
+            stored_plan,
+            None if scaleless is None else (scaleless, cast(Any, scaleless_plan)),
         )
         # A column set the native trees cannot form (no native counterterm
         # components) is refused like the point inputs: a correlated or
@@ -1112,10 +1206,10 @@ def generate_process(
         observables,
         exported,
         record,
-        plan_json,
+        stored_plan,
         native=native,
         scaleless_exported=scaleless,
-        scaleless_plan_json=scaleless_json,
+        scaleless_plan=scaleless_plan,
     )
     return generated
 

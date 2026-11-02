@@ -240,9 +240,13 @@ COUNTERTERM_TERMS = "counterterms.terms"
 
 
 def _native() -> Any:
-    from pyamplicol.loops.native import load_loop_native
+    """The staged loop core, verified once per process
+    (``native_lowering._native``; each ``load_loop_native`` re-verifies the
+    native build, 0.2-0.4 s)."""
 
-    return load_loop_native()
+    from .native_lowering import _native as loop_core
+
+    return loop_core()
 
 
 def _dumps(value: Any) -> bytes:
@@ -642,7 +646,8 @@ def _constant_text(key: Any, flips: Any) -> str:
 
 
 def _fraction_text(value: Fraction) -> str:
-    value = Fraction(value)
+    if type(value) is not Fraction:
+        value = Fraction(value)
     return str(value.numerator if value.denominator == 1 else value)
 
 
@@ -768,8 +773,11 @@ def export_trees(
     block_ids: dict[int, int] = {}
     block_starts: list[list[int | None]] = []
     block_dimensions: list[int] = []
+    block_masks: list[int] = []
 
     unread: set[int] = set()
+    # Per Born row, leg label -> helicity (read for every block registered).
+    row_helicities = [{leg + 1: h for leg, h in born_row} for born_row in rows]
 
     def block_id(block: Any) -> int | None:
         """The block's closure record; None for a block without a row on any
@@ -789,9 +797,9 @@ def export_trees(
             by_helicity = {row.helicities: row for row in block.rows}
         starts: list[int | None] = []
         dimensions = set()
-        for born_row in rows:
-            helicity = {leg + 1: h for leg, h in born_row}
-            want = tuple(sorted((leg, helicity[leg]) for leg in block.key.labels))
+        labels = block.key.labels
+        for helicity in row_helicities:
+            want = tuple(sorted((leg, helicity[leg]) for leg in labels))
             entry = by_helicity.get(want)
             if entry is None:
                 starts.append(None)
@@ -808,25 +816,46 @@ def export_trees(
         found = block_ids[id(block)] = len(block_starts)
         block_starts.append(starts)
         block_dimensions.append(dimensions.pop())
+        block_masks.append(block.key.external_mask)
         return found
 
     # Closure terms share their input layouts and colour weights (interned).
     layouts: dict[tuple[tuple[Any, ...], ...], int] = {}
     weights: dict[tuple[str, str, int], int] = {}
+    # The kernel of a whole-rule term's Lorentz structure, per (block count,
+    # metric pairings): the expansion depends on nothing else, and the few
+    # vertex structures repeat over every block choice (M-FINAL MF-8G-1:
+    # 13 of 27 s of the 6-gluon LC export expanded them once per term).
+    whole_kernels: dict[tuple[int, Any], int] = {}
+    closure_inputs: dict[tuple[Any, ...], list[list[Any]]] = {}
+    whole_inputs: dict[int, list[list[Any]]] = {}
+    layout_of: dict[int, tuple[list[list[Any]], int]] = {}
 
     def record(
-        term: Any, kernel: int, inputs: list[list[Any]], contributions: list[list[Any]]
+        term: Any,
+        kernel: int,
+        inputs: list[list[Any]],
+        contributions: list[list[Any]],
+        ids: list[int],
     ) -> dict[str, Any]:
         """A closure term's record: its kernel on the layout of its inputs,
         and per contribution (coupling, component, weight); ``contributions``
         are (coupling, component, weight re, weight im, sqrt(2) power)."""
 
-        layout = layouts.setdefault(tuple(tuple(item) for item in inputs), len(layouts))
+        found = layout_of.get(id(inputs))
+        if found is None or found[0] is not inputs:
+            layout = layouts.setdefault(
+                tuple(tuple(item) for item in inputs), len(layouts)
+            )
+            # Kept with its list, so the id stays that list's.
+            layout_of[id(inputs)] = (inputs, layout)
+        else:
+            layout = found[1]
         return {
             "kernel": kernel,
             "layout": layout,
-            "blocks": [block_id(block) for block in term.blocks],
-            "masks": [block.key.external_mask for block in term.blocks],
+            "blocks": ids,
+            "masks": [block_masks[i] for i in ids],
             "sign": term.sign,
             "contributions": [
                 [
@@ -838,56 +867,77 @@ def export_trees(
             ],
         }
 
-    def readable(term: Any) -> bool:
-        """Whether every block of a closure term has a Born row (a term on a
-        block without one vanishes on every kept row)."""
+    def term_ids(term: Any) -> list[int] | None:
+        """The closure records of a term's blocks, in order; None when a
+        block has no Born row (a term on a block without one vanishes on every
+        kept row; the blocks after it are not registered, as before)."""
 
-        return all(block_id(block) is not None for block in term.blocks)
+        ids = []
+        for block in term.blocks:
+            found = block_id(block)
+            if found is None:
+                return None
+            ids.append(found)
+        return ids
 
     def closure_term(
         term: Any, contributions: list[list[Any]]
     ) -> dict[str, Any] | None:
         """A root-closure term (``ct_sites.SiteTerm``: a vertex closed on
         tree blocks) as a plan kernel on its blocks' rows and momenta; None
-        for a term on a block without a Born row (``readable``)."""
+        for a term on a block without a Born row (``term_ids``)."""
 
-        if not readable(term):
+        ids = term_ids(term)
+        if ids is None:
             return None
 
         kernel = exporter._kernel(term.binding, ())
-        ids = [block_id(block) for block in term.blocks]
-        dimensions = [block_dimensions[ids[i]] for i in term.kernel_legs]
-        current_slots = [
-            (term.kernel_legs[leg], k)
-            for leg, dimension in enumerate(dimensions)
-            for k in range(dimension)
-        ]
-        inputs = []
-        for kind, component, _ in exporter.kernel_records[kernel]["inputs"]:
-            if kind == "current":
-                inputs.append(["current", *current_slots[component]])
-            elif kind == "momentum":
-                # Kernel leg l takes the momentum of the block whose row it
-                # takes (``ct_sites.SiteClosure._reading_sign``).
-                inputs.append(
-                    ["momentum", term.kernel_legs[component // 4], component % 4]
-                )
-            else:
-                raise ValueError(f"a closure kernel reads a {kind} input")
-        return record(term, kernel, inputs, contributions)
+        dimensions = tuple(block_dimensions[ids[i]] for i in term.kernel_legs)
+        # The inputs follow from the kernel, its legs and their dimensions
+        # (shared by the terms of one vertex over its block choices).
+        key = (kernel, tuple(term.kernel_legs), dimensions)
+        inputs = closure_inputs.get(key)
+        if inputs is None:
+            current_slots = [
+                (term.kernel_legs[leg], k)
+                for leg, dimension in enumerate(dimensions)
+                for k in range(dimension)
+            ]
+            inputs = []
+            for kind, component, _ in exporter.kernel_records[kernel]["inputs"]:
+                if kind == "current":
+                    inputs.append(["current", *current_slots[component]])
+                elif kind == "momentum":
+                    # Kernel leg l takes the momentum of the block whose row it
+                    # takes (``ct_sites.SiteClosure._reading_sign``).
+                    inputs.append(
+                        ["momentum", term.kernel_legs[component // 4], component % 4]
+                    )
+                else:
+                    raise ValueError(f"a closure kernel reads a {kind} input")
+            closure_inputs[key] = inputs
+        return record(term, kernel, inputs, contributions, ids)
 
     def whole_term(term: Any, contributions: list[list[Any]]) -> dict[str, Any] | None:
         """A whole-rule continuation term (``assemble.WholeRuleTerm``): its
         sum of products of Minkowski contractions of block rows as a plan
         kernel on the blocks' four components."""
-        if not readable(term):
+        ids = term_ids(term)
+        if ids is None:
             return None
 
-        ids = [block_id(block) for block in term.blocks]
         if any(block_dimensions[i] != 4 for i in ids):
             raise NativeExportUnsupported(
                 "whole-rule-block", "a whole-rule term on a non-vector block"
             )
+        inputs = whole_inputs.get(len(ids))
+        if inputs is None:
+            inputs = whole_inputs[len(ids)] = [
+                ["current", slot, k] for slot in range(len(ids)) for k in range(4)
+            ]
+        found = whole_kernels.get((len(ids), term.pairings))
+        if found is not None:
+            return record(term, found, inputs, contributions, ids)
         polynomial: dict[tuple[int, ...], Fraction] = defaultdict(Fraction)
         for coefficient, pairs in term.pairings:
             partial = {(): Fraction(coefficient)}
@@ -922,8 +972,8 @@ def export_trees(
                     "outputs": [outputs],
                 }
             )
-        inputs = [["current", slot, k] for slot in range(len(ids)) for k in range(4)]
-        return record(term, kernel, inputs, contributions)
+        whole_kernels[len(ids), term.pairings] = kernel
+        return record(term, kernel, inputs, contributions, ids)
 
     terms = []
     born_orders = tuple(sorted(slice_.born_terms))
@@ -976,9 +1026,12 @@ def export_trees(
         _component_metric(slice_, components, squared_orders) if born_squared else None
     )
     counterterms = None
+    # MF-8G-1: the counterterm closure terms go straight into a native term
+    # section (no Python record list kept, no JSON), pruned natively.
+    ct_terms = _native().TreeTermBuilder() if NATIVE_SECTIONS else None
     if with_counterterms:
         counterterms = _counterterm_program(
-            slice_, closure_term, whole_term, components, born_orders
+            slice_, closure_term, whole_term, components, born_orders, ct_terms
         )
     masses = _external_masses(slice_)
     parameters, parameter_evaluator, parameter_outputs = _parameter_program(
@@ -1034,6 +1087,9 @@ def export_trees(
         sections[COUNTERTERM_STEPS] = ct.steps
     if counterterms is not None and counterterms.cells is not None:
         sections[CELLS] = counterterms.cells
+    if counterterms is not None and ct_terms is not None:
+        sections[COUNTERTERM_TERMS] = bytes(ct_terms.section())
+    del ct_terms
     if PRUNE:
         program, saved, ct_saved = prune_program(
             program, saved, ct_saved, keep_kets=keep_kets, sections=sections
@@ -1049,11 +1105,6 @@ def export_trees(
         # pruned: the program keeps no Python term record.
         terms = program["born"].pop("terms")
         sections[BORN_TERMS] = bytes(_native().tree_terms_from_json(_dumps(terms)))
-        if program.get("counterterms") is not None:
-            terms = program["counterterms"].pop("terms")
-            sections[COUNTERTERM_TERMS] = bytes(
-                _native().tree_terms_from_json(_dumps(terms))
-            )
         del terms
     # The kernels the pruned program still uses; their plane applications
     # are compiled after the pruning, so a dropped kernel compiles none.
@@ -1244,6 +1295,7 @@ def _counterterm_program(
     whole_term: Any,
     components: Mapping[tuple[int, Orders, int], int],
     born_orders: Sequence[Orders],
+    terms_sink: Any = None,
 ) -> _Counterterms:
     """The counterterm and external-field components of the native lane, as
     ``assemble._PointEvaluation._born_and_counterterms`` forms them.
@@ -1326,7 +1378,10 @@ def _counterterm_program(
 
     vectors: dict[tuple[str, int, Orders], int] = {}
     ket: dict[tuple[int, int, int], int] = {}
-    terms = []
+    # The closure terms: records, or appended to ``terms_sink`` (a native
+    # ``TreeTermBuilder``, ``NATIVE_SECTIONS``; the record then has no
+    # ``terms`` and ``export_trees`` takes the builder's section).
+    terms: Any = [] if terms_sink is None else terms_sink
 
     # Ket tensor index per literal tensor (one ``_single`` per distinct one).
     index_of: dict[Any, int] = {}
@@ -1545,7 +1600,7 @@ def _counterterm_program(
         "tensors": len(tensors),
         **({"cells": cells} if cell_section is None else {}),
         "born": [[b, born_index[order], grade] for b, order, grade in components],
-        "terms": terms,
+        **({"terms": terms} if terms_sink is None else {}),
         "entries": entries,
         "outputs": [power for _component, _s, power in outputs],
         "depth": None if accuracy == "full" else _DEPTH[accuracy],
@@ -2957,7 +3012,7 @@ def prune_program(
         # With stored observable columns (``keep_kets``) every ket component
         # stays: a component the inclusive metric does not read can enter a
         # colour history's interference.
-        _prune_counterterm_terms(counterterms, sections.get(CELLS))
+        _prune_counterterm_terms(counterterms, sections.get(CELLS), sections)
     state_size = int(program["state_size"])
     ct = program.get("counterterm_trees")
     offset = state_size if ct is None else int(ct["offset"])
@@ -2989,7 +3044,14 @@ def prune_program(
         widths.append(found)
     block_width = [0] * len(born_blocks)
     terms = program["born"]["terms"]
-    if counterterms is not None:
+    if counterterms is not None and COUNTERTERM_TERMS in sections:
+        # The counterterm closure terms as their section (``export_trees``).
+        block_width = list(
+            _native().tree_terms_block_widths(
+                sections[COUNTERTERM_TERMS], widths, len(born_blocks)
+            )
+        )
+    elif counterterms is not None:
         terms = [*terms, *counterterms["terms"]]
     for term in terms:
         blocks = term["blocks"]
@@ -3120,11 +3182,17 @@ def _live_ket(record: Mapping[str, Any]) -> list[bool]:
     return live
 
 
-def _prune_counterterm_terms(record: dict[str, Any], cells: bytes | None = None) -> None:
+def _prune_counterterm_terms(
+    record: dict[str, Any],
+    cells: bytes | None = None,
+    sections: dict[str, bytes] | None = None,
+) -> None:
     """Drop from ``record`` (in place) the ket components no interference
     reads (``_live_ket``; with ``cells``, the record's overlap cells as a
     binary section, its native twin), their contributions and the terms
-    left without any; unchanged if every component is read."""
+    left without any; unchanged if every component is read. Terms held as
+    ``sections[COUNTERTERM_TERMS]`` are pruned there (``tree_terms_prune_ket``,
+    the same rule)."""
 
     if cells is None:
         live = _live_ket(record)
@@ -3138,6 +3206,16 @@ def _prune_counterterm_terms(record: dict[str, Any], cells: bytes | None = None)
                 record["depth"],
             )
         )
+    if sections is not None and COUNTERTERM_TERMS in sections:
+        sections[COUNTERTERM_TERMS] = bytes(
+            _native().tree_terms_prune_ket(
+                sections[COUNTERTERM_TERMS], [bool(x) for x in live]
+            )
+        )
+        record["ket"] = [
+            c for c, alive in zip(record["ket"], live, strict=True) if alive
+        ]
+        return
     if all(live) and all(term["contributions"] for term in record["terms"]):
         return
     index = [-1] * len(live)

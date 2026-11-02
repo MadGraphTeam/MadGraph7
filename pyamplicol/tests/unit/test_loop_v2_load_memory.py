@@ -70,7 +70,7 @@ def stored(loop_sm_compiled_model, loop_native, tmp_path_factory):
     process = NativeProcess.of(NativeExecutor(slice_, forward=False, inputs="native"))
     assert process.trees.is_binary and process.scaleless is not None
     path = tmp_path_factory.mktemp("load-memory") / "loop-runtime.pacbin"
-    write_plan(process.plan_json, path, process, process.scaleless.plan_json)
+    write_plan(process.plan, path, process, process.scaleless.plan)
     return path
 
 
@@ -82,6 +82,7 @@ def test_file_backed_load_equals_the_in_memory_load(stored, loop_native):
         load_native_process,
         read_native_process,
         read_plan,
+        read_plan_json,
     )
 
     memory = read_native_process(stored, read_plan(stored))
@@ -91,9 +92,13 @@ def test_file_backed_load_equals_the_in_memory_load(stored, loop_native):
     assert isinstance(loaded.trees.container, StoredMember)
     assert isinstance(loaded.scaleless.plan, StoredMember)
     assert isinstance(loaded.scaleless.trees.container, StoredMember)
-    assert loaded.plan_json == read_plan(stored)
-    assert loaded.scaleless.plan_json == read_plan(stored, SCALELESS_PLAN_MEMBER)
-    for mine, theirs in ((loaded.trees, memory.trees), (loaded.scaleless.trees, memory.scaleless.trees)):
+    assert loaded.plan.bytes() == memory.plan == read_plan(stored)
+    assert loaded.plan_json == read_plan_json(stored)
+    assert loaded.scaleless.plan_json == read_plan_json(stored, SCALELESS_PLAN_MEMBER)
+    for mine, theirs in (
+        (loaded.trees, memory.trees),
+        (loaded.scaleless.trees, memory.scaleless.trees),
+    ):
         assert mine.program == theirs.program
         assert mine.binary() == theirs.container
         assert mine.json() == theirs.json()
@@ -106,7 +111,9 @@ def test_file_backed_load_equals_the_in_memory_load(stored, loop_native):
     for poles in ("none", "all", "uv"):
         assert repr(
             file_backed.evaluate(points, scales, parameters=PARAMETERS, poles=poles)
-        ) == repr(in_memory.evaluate(points, scales, parameters=PARAMETERS, poles=poles))
+        ) == repr(
+            in_memory.evaluate(points, scales, parameters=PARAMETERS, poles=poles)
+        )
 
 
 @pytest.mark.loop_fast
@@ -116,8 +123,9 @@ def test_a_container_rewritten_after_the_load_is_refused(stored, loop_native, tm
     path = tmp_path / "loop-runtime.pacbin"
     shutil.copyfile(stored, path)
     loaded = load_native_process(path)
-    # Another plan member (one more byte) in a valid container.
-    write_plan(read_plan(stored) + " ", path)
+    # Another stored plan (one more byte, same member) in a valid container.
+    plan = read_plan(stored)
+    write_plan(plan + (" " if isinstance(plan, str) else b" "), path)
     executor = loaded.executor(loop_native)
     points, scales = _points("required/uux_ddxg.json", 1)
     with pytest.raises(ValueError, match="changed since the process was loaded"):
