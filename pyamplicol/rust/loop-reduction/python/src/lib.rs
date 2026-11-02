@@ -9,6 +9,7 @@ mod model_proofs;
 mod stability;
 mod v2;
 mod v2_catalogue;
+mod v2_closure;
 mod v2_colour;
 mod v2_dag;
 mod v2_executor;
@@ -91,6 +92,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<CoefficientEvaluator>()?;
     v2::register(module)?;
     v2_catalogue::register(module)?;
+    v2_closure::register(module)?;
     v2_dag::register(module)?;
     v2_executor::register(module)?;
     v2_export::register(module)?;

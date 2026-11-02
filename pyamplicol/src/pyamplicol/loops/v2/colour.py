@@ -2827,11 +2827,15 @@ def seed_fourier(table: SeedTable) -> SeedFourier | None:
     # relative[h][g] = rank of h^-1 o g
     relative = [[rank[tuple(hinv[i] for i in g)] for g in group] for hinv in inverse]
     kernels: dict[tuple[int, int], tuple[Laurent, ...]] = {}
+    cells = table.cells
     for a, born in enumerate(born_orbits):
         for j, loop in enumerate(loop_orbits):
-            kernel = tuple(_signed(table.cells[c][born[0]], sign) for c, sign in loop)
+            kernel = tuple(_signed(cells[c][born[0]], sign) for c, sign in loop)
+            # sign * cell == kernel[x] iff cell == sign * kernel[x] (sign = +-1):
+            # each kernel cell is negated once, not every compared cell.
+            by_sign = {1: kernel, -1: tuple(_signed(cell, -1) for cell in kernel)}
             if all(
-                _signed(table.cells[c][b], sign) == kernel[relative[h][g]]
+                cells[c][b] == by_sign[sign][relative[h][g]]
                 for h, b in enumerate(born)
                 for g, (c, sign) in enumerate(loop)
             ):

@@ -39,7 +39,7 @@ int main(int argc,char **argv) {
         assert(strstr(capabilities,"signed canonical Born tensor groups"));
         free(capabilities);
     }
-    assert(pyamplicol_umami_virtual_v1_version()==1);
+    assert(pyamplicol_umami_virtual_v1_version()==PYAMPLICOL_UMAMI_VIRTUAL_VERSION);
     const int *supported=NULL; size_t nkeys=0;
     check(pyamplicol_umami_virtual_v1_supported_inputs(&supported,&nkeys)); assert(nkeys==4 && supported[0]==UMAMI_IN_MOMENTA);
     check(pyamplicol_umami_virtual_v1_supported_outputs(&supported,&nkeys)); assert(nkeys==3);

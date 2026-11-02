@@ -194,6 +194,11 @@ COMPONENT_BY_KIND: Mapping[str, str] = {
     "UVmass": "uv_local",
 }
 LAURENT_POWERS = (0, -1, -2)
+# The closed root colours of a closure (``SiteClosure._closed``) reduced in
+# one native call per batch (``rusticol_core::loop_v2::generate::
+# root_colours``, M-FINAL mf-8g-1b); False reduces each in Python
+# (``colour.reduce_network``): the oracle, equal tensor for tensor.
+NATIVE_ROOT_COLOURS = True
 
 Species = tuple[int, ...]
 # (UFO collection, vertex id, colour index, Lorentz index): one coupling cell of
@@ -1039,6 +1044,17 @@ class SiteClosure:
                     BlockCurrent(key.external_mask, field_name, key.coupling_orders)
                 ].append(block)
         self._colours: dict[tuple, ConnectedColorTensor] = {}
+        # (UFO colour, attached fields) -> its colour network.
+        self._vertex_networks: dict[tuple, ColourNetwork] = {}
+        self._binding_of: dict[tuple, Any] = {}
+        # id(block) -> (chirality, Wick sign, colour flow) of the blocks read.
+        self._block_props: dict[int, tuple[int, int, Any]] = {}
+        # A whole-rule colour network -> its short colour key (``close``).
+        self._network_keys: dict[ColourNetwork, tuple[str, int]] = {}
+        # Per whole-rule continuation term (by id, with the term kept alive):
+        # its colour network, metric pairings, N_c grades and parameters
+        # (``assemble._whole_rule_terms``), the same on every site.
+        self.whole_rule_parts: dict[int, tuple[Any, ...]] = {}
         self._conjugates = conjugates
 
     def share_colours(self, other: SiteClosure) -> None:
@@ -1059,6 +1075,9 @@ class SiteClosure:
         ):
             raise ValueError("closures of different processes or models")
         self._colours = other._colours
+        # Their keys: whole-rule networks' short keys index the shared cache.
+        self._network_keys = other._network_keys
+        self._vertex_networks = other._vertex_networks
         if self._conjugates is None:
             self._conjugates = other._conjugates
 
@@ -1073,6 +1092,13 @@ class SiteClosure:
     ) -> tuple[SiteTerm, ...]:
         """Terms of ``site``, without the entries of its ``cancelled`` cells."""
 
+        return self.site_terms(self.term_specs(site, cancelled))
+
+    def term_specs(
+        self, site: CountertermSite, cancelled: Iterable[Cell] = ()
+    ) -> list[tuple[Any, ...]]:
+        """``terms`` before their colours are closed (``vertex_term_specs``)."""
+
         cancelled = frozenset(cancelled)
         entries = tuple(
             entry for entry in site.rule.entries if entry_cell(entry) not in cancelled
@@ -1084,7 +1110,7 @@ class SiteClosure:
                 f"{site.rule_name}: cancelled cells of a vertex read through its "
                 "conjugate rule"
             )
-        return self.vertex_terms(entries, site.blocks)
+        return self.vertex_term_specs(entries, site.blocks)
 
     def cancelled_cells(
         self,
@@ -1144,23 +1170,52 @@ class SiteClosure:
         promoted``): the kernel leg such a block fills reads it through the
         entry's promoted copy (``promoted_root_entry``)."""
 
+        return self.site_terms(
+            self.vertex_term_specs(entries, attachments, promoted)
+        )
+
+    def vertex_term_specs(
+        self,
+        entries: Iterable[Any],
+        attachments: Sequence[BlockCurrent],
+        promoted: frozenset[int] = frozenset(),
+    ) -> list[tuple[Any, ...]]:
+        """``vertex_terms`` before their colours are closed: per term
+        ``(entry, binding, blocks, kernel legs, sign, colour key)``, the
+        colour key naming the vertex colour and the attached fields
+        (``site_terms`` closes them, a batch at a time)."""
+
         options = []
+        props = self._block_props
         for current in attachments:
             rows = self._blocks.get(current)
             if not rows:
                 raise ValueError(f"no tree block for {current}")
             options.append(rows)
+            for block in rows:
+                if id(block) not in props:
+                    props[id(block)] = (
+                        block.key.chirality,
+                        block.wick_sign,
+                        block.colour_flow,
+                    )
         sign = self._root_sign(attachments)
         entries = tuple(entries)
         # A vertex read through its conjugate rule keeps its own single
         # colour structure (``read_entries``).
         colour_entry = None if self._self_conjugate(entries) else entries[0]
         entries = self.read_entries(entries)
+        fields = tuple(a.field for a in attachments)
+        # (entry key, chiralities) -> its ct-site binding or None.
+        bindings = self._binding_of
         out = []
         for entry in entries:
             legs = self._kernel_legs(entry, attachments)
+            key = ((colour_entry or entry).color, fields)
+            entry_key = _entry_key(entry)
             for choice in product(*options):
-                read = entry
+                found = [props[id(block)] for block in choice]
+                read, read_key = entry, entry_key
                 if promoted:
                     hits = [
                         k
@@ -1173,29 +1228,151 @@ class SiteClosure:
                         )
                     if hits:
                         read = promoted_root_entry(entry, hits[0])
-                chiralities = tuple(choice[index].key.chirality for index in legs)
-                key = CountertermSiteKey(*_entry_key(read), chiralities)
-                binding = self._bindings.get(key)
+                        read_key = _entry_key(read)
+                chiralities = tuple(found[index][0] for index in legs)
+                lookup = (read_key, chiralities)
+                binding = bindings.get(lookup, _UNBOUND)
+                if binding is _UNBOUND:
+                    binding = bindings[lookup] = self._bindings.get(
+                        CountertermSiteKey(*read_key, chiralities)
+                    )
                 if binding is None:
                     if any(chiralities):
                         continue  # a chirality selection rule of this entry
-                    raise ValueError(f"catalogue has no ct-site kernel for {key}")
+                    site_key = CountertermSiteKey(*read_key, chiralities)
+                    raise ValueError(f"catalogue has no ct-site kernel for {site_key}")
                 wick = 1
-                for block in choice:
-                    wick *= block.wick_sign
+                for item in found:
+                    wick *= item[1]
                 out.append(
-                    SiteTerm(
+                    (
                         read,
                         binding,
                         choice,
                         legs,
-                        sign * wick * self._reading_sign(read, binding),
-                        self._colour(colour_entry or entry, attachments, choice),
+                        sign * wick * self._reading_sign(read, binding, read_key),
+                        (key, *[item[2] for item in found]),
                     )
                 )
-        return tuple(out)
+        return out
 
-    def _reading_sign(self, entry: Any, binding: Any) -> int:
+    def site_terms(self, specs: Sequence[tuple[Any, ...]]) -> tuple[SiteTerm, ...]:
+        """The ``SiteTerm`` of each spec (``vertex_term_specs``: its last
+        item is its full colour key), its colour closed on its blocks (one
+        batch for the specs' new colours)."""
+
+        self._prime_keys((spec[5], spec[2]) for spec in specs)
+        colours = self._colours
+        return tuple(
+            SiteTerm(read, binding, choice, legs, sign, colours[full])
+            for read, binding, choice, legs, sign, full in specs
+        )
+
+    def _vertex_network(self, key: tuple) -> ColourNetwork:
+        """The UFO colour network of a vertex colour key (colour, fields)."""
+
+        found = self._vertex_networks.get(key)
+        if found is None:
+            source, fields = key
+            colours = [int(self._by_name[name]["color"]) for name in fields]
+            found = self._vertex_networks[key] = ufo_colour_network(source, colours)
+        return found
+
+    def prime_colours(
+        self,
+        requests: Iterable[tuple[Any, Sequence[Block]]],
+        networks: Callable[[Any], ColourNetwork] | None = None,
+    ) -> None:
+        """Close the vertex colour of every request ``(key, blocks)`` not
+        closed yet. ``networks`` gives the colour network of a key (by
+        default a UFO colour key's, ``_vertex_network``; a whole-rule
+        colour's key is its network). Natively in one batch
+        (``NATIVE_ROOT_COLOURS``), else one ``_closed`` each (the oracle)."""
+
+        self._prime_keys(
+            (((key, *(b.colour_flow for b in choice)), choice) for key, choice in requests),
+            networks,
+        )
+
+    def _prime_keys(
+        self,
+        requests: Iterable[tuple[tuple, Sequence[Block]]],
+        networks: Callable[[Any], ColourNetwork] | None = None,
+    ) -> None:
+        """``prime_colours`` of requests ``(full colour key, blocks)``, the
+        full key being ``(key, *block colour flows)``."""
+
+        network_of = self._vertex_network if networks is None else networks
+        colours = self._colours
+        missing: dict[tuple, tuple[Any, Sequence[Block]]] = {}
+        for full, choice in requests:
+            if full not in colours and full not in missing:
+                missing[full] = (full[0], choice)
+        if not missing:
+            return
+        if not NATIVE_ROOT_COLOURS:
+            for key, choice in missing.values():
+                self._closed(key, lambda key=key: network_of(key), choice)
+            return
+        self._native_colours(missing, network_of)
+
+    def _native_colours(
+        self,
+        missing: Mapping[tuple, tuple[Any, Sequence[Block]]],
+        network_of: Callable[[Any], ColourNetwork],
+    ) -> None:
+        """``_closed`` of every ``missing`` request in one native call
+        (``loop_root_colours``): the vertex networks relabelled onto the
+        blocks and the blocks' words as distinct factors."""
+
+        import json
+
+        from .native_seeds import _Networks
+
+        def rename(label):
+            kind, value = label
+            return ("block", value - 1) if kind == "leg" else label
+
+        local: dict[Any, int] = {}
+        factors: list[Any] = []
+        vertex_ids: dict[Any, int] = {}
+        block_ids: dict[tuple, int] = {}
+        contents: list[list[Any]] = []
+        for index, (key, choice) in enumerate(missing.values()):
+            f = vertex_ids.get(key)
+            if f is None:
+                f = vertex_ids[key] = len(factors)
+                network = tuple(p.relabel(rename) for p in network_of(key))
+                factors.append(_Networks.network(network, local))
+            ids = [f]
+            for j, block in enumerate(choice):
+                colour = int(self._fields.by_pdg[block.key.particle_id]["color"])
+                block_key = (block.colour_flow, colour, j)
+                b = block_ids.get(block_key)
+                if b is None:
+                    b = block_ids[block_key] = len(factors)
+                    factors.append(
+                        _Networks.network(
+                            block_colour_network(
+                                block.colour_flow,
+                                self._representations,
+                                colour,
+                                ("block", j),
+                            ),
+                            local,
+                        )
+                    )
+                ids.append(b)
+            contents.append([index, ids])
+        spec = json.dumps({"factors": factors, "contents": contents}, separators=(",", ":"))
+        raw = _loop_native().loop_root_colours(sorted(self._representations), spec)
+        legs = self.legs
+        for full, tensor in zip(missing, raw, strict=True):
+            self._colours[full] = _native_tensor(tensor, legs)
+
+    def _reading_sign(
+        self, entry: Any, binding: Any, entry_key: tuple | None = None
+    ) -> int:
         """The sign between the tree engine's reading of a vertex and the
         root closure's (module docstring, "Colour, kinematics and signs").
 
@@ -1216,7 +1393,7 @@ class SiteClosure:
         vertex).
         """
 
-        key = (_entry_key(entry), binding.kernel_id)
+        key = (entry_key or _entry_key(entry), binding.kernel_id)
         found = self._reading.get(key)
         if found is None:
             kernel = self.catalogue.kernels[binding.kernel_id]
@@ -1324,22 +1501,29 @@ class SiteClosure:
                 raise ValueError(f"no tree block for {current}")
             options.append(rows)
         sign = self._root_sign(attachments)
+        choices = list(product(*options))
+        # The network's colour key, hashed once: a short id per distinct
+        # network (it is large; every choice's cache key holds it).
+        key = self._network_keys.get(network)
+        if key is None:
+            key = self._network_keys[network] = ("network", len(self._network_keys))
+        self.prime_colours(((key, c) for c in choices), lambda _key: network)
+        colours = self._colours
         out = []
-        for choice in product(*options):
+        for choice in choices:
             wick = 1
             for block in choice:
                 wick *= block.wick_sign
-            out.append((choice, sign * wick, self._closed(network, network, choice)))
+            out.append(
+                (choice, sign * wick, colours[(key, *(b.colour_flow for b in choice))])
+            )
         return tuple(out)
 
     def _colour(
         self, entry: Any, attachments: Sequence[BlockCurrent], choice: Sequence[Block]
     ) -> ConnectedColorTensor:
         key = (entry.color, tuple(a.field for a in attachments))
-        colours = [int(self._by_name[a.field]["color"]) for a in attachments]
-        return self._closed(
-            key, lambda: ufo_colour_network(entry.color, colours), choice
-        )
+        return self._closed(key, lambda: self._vertex_network(key), choice)
 
     def _closed(
         self, key: Any, network: Any, choice: Sequence[Block]
@@ -1449,6 +1633,67 @@ class SiteClosure:
 
 def _open_last(label: int | None) -> tuple[bool, int]:
     return (label is None, 0 if label is None else label)
+
+
+_NATIVE: list[Any] = []
+# A ct-site binding not looked up yet (``vertex_term_specs``).
+_UNBOUND = object()
+
+
+def _loop_native() -> Any:
+    """The staged loop core (``loops.native.load_loop_native``), verified
+    once per process."""
+
+    if not _NATIVE:
+        from pyamplicol.loops.native import load_loop_native
+
+        _NATIVE.append(load_loop_native())
+    return _NATIVE[0]
+
+
+def _native_tensor(raw: Sequence[Any], legs: tuple[Any, ...]) -> ConnectedColorTensor:
+    """A natively reduced tensor (``(normalisation, terms)``, the reducer's
+    combined terms in canonical order) as ``native_seeds._decoded`` builds it.
+    Terms already combined (strictly increasing tensor and N_c power, no
+    empty or one-letter trace, no zero) skip ``ConnectedColorTensor``'s
+    combination, which would return them unchanged; any other input takes
+    the validated constructor."""
+
+    from pyamplicol.color.connections import OpenColorString
+
+    normalization, items = raw
+    terms = tuple(
+        TensorTerm(
+            ExactColorCoefficient(_rational(re), _rational(im)),
+            ColorTensor(
+                tuple(OpenColorString(f, tuple(a), af) for f, a, af in strings),
+                tuple(tuple(trace) for trace in traces),
+            ),
+            power,
+        )
+        for re, im, power, strings, traces in items
+    )
+    keys = [(term.tensor, term.nc_power) for term in terms]
+    if (
+        legs == tuple(sorted(legs))
+        and normalization >= 0
+        and all(a < b for a, b in zip(keys, keys[1:]))
+        and all(term.coefficient for term in terms)
+        and all(len(t) > 1 for term in terms for t in term.tensor.traces)
+    ):
+        tensor = object.__new__(ConnectedColorTensor)
+        object.__setattr__(tensor, "legs", legs)
+        object.__setattr__(tensor, "terms", terms)
+        object.__setattr__(tensor, "normalization_power", normalization)
+        return tensor
+    return ConnectedColorTensor(legs, terms, normalization)
+
+
+def _rational(text: str) -> Fraction:
+    """``Fraction(text)`` of the reducer's ``numerator/denominator`` text."""
+
+    numerator, _, denominator = text.partition("/")
+    return Fraction(int(numerator), int(denominator or 1))
 
 
 def _entry_key(entry: Any) -> tuple[str, int, int, int, int]:

@@ -105,7 +105,9 @@ Conventions a consumer relies on:
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 from itertools import combinations, pairwise
 from types import MappingProxyType
@@ -446,6 +448,48 @@ class BornRoot:
     helicities: tuple[tuple[int, int], ...]
 
 
+@dataclass(frozen=True, eq=False)
+class BornDagSummary:
+    """What a slice reads from its loop Born DAG after its tree phase
+    (``TreeBlocks.summarised``; DESIGN R3, M-FINAL mf-8g-1b): the process,
+    the colour plan (``colour.born_basis``), the Born roots
+    (``_dag_born_roots``) and the propagated species (``propagated_species``:
+    Ward kernels, widths). The DAG itself, about a quarter of a seven-gluon
+    generation's peak and held through the export, is released;
+    ``materialize`` (and any other attribute, for oracles and tests)
+    recompiles it from its recipe."""
+
+    process: CanonicalProcessIR
+    color_plan: Any
+    roots: tuple[BornRoot, ...]
+    species: tuple[tuple[int, bool], ...]
+    model: Model = field(repr=False)
+    recipe: Mapping[str, Any] = field(repr=False)
+    _dag: list[GenericDAG] = field(default_factory=list, repr=False)
+
+    def materialize(self) -> GenericDAG:
+        if not self._dag:
+            self._dag.append(
+                compile_generic_dag(
+                    self.process, model=self.model, loop_born=True, **self.recipe
+                )
+            )
+        return self._dag[0]
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("__") or name in (
+            "process",
+            "color_plan",
+            "roots",
+            "species",
+            "model",
+            "recipe",
+            "_dag",
+        ):
+            raise AttributeError(name)
+        return getattr(self.materialize(), name)
+
+
 @dataclass(frozen=True)
 class TreeBlocks:
     """Blocks and Born of one loop request (design §3.2 exports).
@@ -462,7 +506,7 @@ class TreeBlocks:
 
     process: CanonicalProcessIR
     blocks_dag: GenericDAG | NativeDag
-    born_dag: GenericDAG | NativeDag
+    born_dag: GenericDAG | NativeDag | BornDagSummary
     blocks: tuple[Block, ...]
     born_roots: tuple[BornRoot, ...]
     kernel_variant: TreeKernelVariant
@@ -471,6 +515,25 @@ class TreeBlocks:
 
     def blocks_on(self, mask: int) -> tuple[Block, ...]:
         return tuple(block for block in self.blocks if block.key.external_mask == mask)
+
+    def summarised(self, model: Model, recipe: Mapping[str, Any]) -> TreeBlocks:
+        """These blocks with their Born DAG replaced by its
+        ``BornDagSummary`` (``model`` and ``recipe``, the keyword arguments
+        it was compiled with besides process, model and ``loop_born``,
+        recompile it on demand); a DAG of another kind is kept."""
+
+        dag = self.born_dag
+        if not isinstance(dag, GenericDAG):
+            return self
+        summary = BornDagSummary(
+            dag.process,
+            dag.color_plan,
+            self.born_roots,
+            propagated_species(dag),
+            model,
+            dict(recipe),
+        )
+        return replace(self, born_dag=summary)
 
     def with_kernels(self, model: Model) -> TreeBlocks:
         """These trees with the kernels of ``model``, another tree-kernel
@@ -592,6 +655,127 @@ def vetoed_particle_ids(veto: Iterable[int]) -> tuple[int, ...]:
     return tuple(sorted({sign * abs(int(pdg)) for pdg in veto for sign in (1, -1)}))
 
 
+@dataclass(frozen=True, eq=False)
+class _BornDag:
+    """A loop Born DAG with what it was compiled from (``loop_born_dag``)."""
+
+    compiled: Any
+    process: CanonicalProcessIR
+    bounds: tuple[tuple[str, int], ...] | None
+    ignored_particle_ids: tuple[int, ...]
+    ignored_vertex_kinds: tuple[int, ...]
+    dag: GenericDAG
+
+    def matches(self, other: _BornDag) -> bool:
+        return (
+            self.compiled is other.compiled
+            and self.bounds == other.bounds
+            and self.ignored_particle_ids == other.ignored_particle_ids
+            and self.ignored_vertex_kinds == other.ignored_vertex_kinds
+            and self.process == other.process
+        )
+
+
+# The loop Born DAGs compiled in the innermost open ``born_dag_scope``.
+_BORN_DAGS: ContextVar[list[_BornDag] | None] = ContextVar("born_dags", default=None)
+
+
+@contextmanager
+def born_dag_scope() -> Iterator[None]:
+    """Compile each loop Born DAG once inside the scope (``loop_born_dag``):
+    the public route's preflight (``artifact.born_amplitude_orders``) and
+    the request's tree programs (``build_tree_blocks``) share it. Nested
+    scopes share the outermost one's DAGs, which it holds until it closes
+    or a slice releases its own (``release_born_dag``)."""
+
+    if _BORN_DAGS.get() is not None:
+        yield  # one list for the outermost scope and every nested one
+        return
+    token = _BORN_DAGS.set([])
+    try:
+        yield
+    finally:
+        _BORN_DAGS.reset(token)
+
+
+def release_born_dag(dag: Any) -> None:
+    """Drop a Born DAG from the open ``born_dag_scope``: ``dag`` itself, or
+    the DAG a ``BornDagSummary`` summarises (its request's slice keeps the
+    summary, ``TreeBlocks.summarised``), so the scope no longer keeps it
+    alive."""
+
+    scope = _BORN_DAGS.get()
+    if not scope:
+        return
+    if isinstance(dag, BornDagSummary):
+        key = _born_key(dag.process, dag.model, **dag.recipe)
+        scope[:] = [found for found in scope if not found.matches(key)]
+    else:
+        scope[:] = [found for found in scope if found.dag is not dag]
+
+
+def _born_key(
+    process: CanonicalProcessIR,
+    model: Model,
+    *,
+    max_coupling_orders: Mapping[str, int] | None,
+    ignored_particle_ids: Iterable[int] = (),
+    ignored_vertex_kinds: Iterable[int] = (),
+) -> _BornDag:
+    """The compile record (without its DAG) ``loop_born_dag`` matches on."""
+
+    return _BornDag(
+        getattr(model, "compiled", model),
+        process,
+        None
+        if max_coupling_orders is None
+        else tuple(sorted((str(k), int(v)) for k, v in max_coupling_orders.items())),
+        tuple(ignored_particle_ids),
+        tuple(ignored_vertex_kinds),
+        None,  # type: ignore[arg-type]
+    )
+
+
+def loop_born_dag(
+    process: CanonicalProcessIR,
+    model: Model,
+    *,
+    max_coupling_orders: Mapping[str, int] | None,
+    ignored_particle_ids: Iterable[int] = (),
+    ignored_vertex_kinds: Iterable[int] = (),
+    progress_callback: DAGProgressCallback | None = None,
+) -> GenericDAG:
+    """``compile_generic_dag`` of a loop request's Born (``loop_born``: a
+    Dirac current closing on a Weyl sink is a root), or the DAG an open
+    ``born_dag_scope`` compiled from the same compiled model object,
+    process, coupling-order bounds and ignored particles and vertex kinds
+    (the compile would rebuild an equal DAG)."""
+
+    wanted = _born_key(
+        process,
+        model,
+        max_coupling_orders=max_coupling_orders,
+        ignored_particle_ids=ignored_particle_ids,
+        ignored_vertex_kinds=ignored_vertex_kinds,
+    )
+    scope = _BORN_DAGS.get()
+    for found in scope or ():
+        if found.matches(wanted):
+            return found.dag
+    dag = compile_generic_dag(
+        process,
+        model=model,
+        max_coupling_orders=max_coupling_orders,
+        ignored_particle_ids=wanted.ignored_particle_ids,
+        ignored_vertex_kinds=wanted.ignored_vertex_kinds,
+        progress_callback=progress_callback,
+        loop_born=True,
+    )
+    if scope is not None:
+        scope.append(replace(wanted, dag=dag))
+    return dag
+
+
 def build_tree_blocks(
     process: CanonicalProcessIR,
     model: Model,
@@ -622,14 +806,15 @@ def build_tree_blocks(
 
     ignored_particles = tuple(ignored_particle_ids)
     ignored_kinds = tuple(ignored_vertex_kinds)
-    born_dag = compile_generic_dag(
+    # Once per request: an open ``born_dag_scope`` (the public route's
+    # preflight, a second tree program of the same request) holds it.
+    born_dag = loop_born_dag(
         process,
-        model=model,
+        model,
         max_coupling_orders=born_coupling_orders,
         ignored_particle_ids=ignored_particles,
         ignored_vertex_kinds=ignored_kinds,
         progress_callback=progress_callback,
-        loop_born=True,
     )
     kernel_variant = model_tree_kernel_variant(model)
     from .dag_input import loop_request_blocks
@@ -679,6 +864,8 @@ def _dag_born_roots(dag: GenericDAG | NativeDag, model: Model) -> tuple[BornRoot
 
     if isinstance(dag, NativeDag):
         return ()
+    if isinstance(dag, BornDagSummary):
+        return dag.roots
     return _born_roots(dag, model)
 
 
@@ -695,6 +882,8 @@ def propagated_species(
 
     if isinstance(dag, NativeDag):
         return dag.propagated_species()
+    if isinstance(dag, BornDagSummary):
+        return dag.species
     sources = set(dag.sources)
     legs = (1 << len(dag.process.legs)) - 1
     return tuple(
@@ -968,14 +1157,18 @@ __all__ = [
     "BlockColourFlow",
     "BlockKey",
     "BlockRow",
+    "BornDagSummary",
     "BornRoot",
     "RequestedLoopBlocks",
     "TreeBlockTable",
     "TreeBlocks",
     "block_colour_flow",
+    "born_dag_scope",
     "build_tree_blocks",
     "identity_pairing_sign",
+    "loop_born_dag",
     "propagated_species",
+    "release_born_dag",
     "requested_loop_blocks",
     "u1_grades",
     "vetoed_particle_ids",
