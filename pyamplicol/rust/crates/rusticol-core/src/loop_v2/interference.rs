@@ -22,6 +22,7 @@ use super::kernels::dispatched;
 use crate::{RusticolError, RusticolResult};
 use rayon::prelude::*;
 use std::collections::BTreeMap;
+use std::sync::OnceLock;
 use symbolica::domains::float::{Complex, Real};
 use symbolica::domains::rational::Rational;
 
@@ -89,7 +90,14 @@ pub struct Interference {
     depth: Option<i32>,
     /// Epsilon power per output.
     outputs: Vec<i32>,
+    /// [`Interference::keys`] without and with poles, built on first use.
+    keys: [OnceLock<Keys>; 2],
 }
+
+/// The z-sum keys of [`Interference::keys`]: per key `((bra order, bra
+/// group, metric class), ket tensors read)`, and per entry, bra group and
+/// ket group the key's index.
+type Keys = (Vec<((usize, usize, usize), usize)>, Vec<Vec<Vec<usize>>>);
 
 /// Per metric class and basis element: its nonzero (ket tensor, value)
 /// cells.
@@ -127,6 +135,8 @@ fn nc_power(exponent: i32) -> Rational {
 /// each streamed metric row (one pass over a metric class per block and
 /// point instead of per row).
 const ROW_BLOCK: usize = 16;
+// `Interference::rows` picks its lane count among 1, 2, 4, 8 and 16.
+const _: () = assert!(ROW_BLOCK == 16);
 
 /// One point's amplitudes as [`Interference::evaluate`] reads them.
 struct Point<'a, T> {
@@ -141,11 +151,11 @@ struct Point<'a, T> {
 /// `z[t][lane] += x[j][lane] M[b, t]` over the bra components `(b, j)` in
 /// order and each metric row's cells `t < limit` in order (metric rows
 /// ascend in `t`, [`Interference::runtime`]), per lane in the operations of
-/// `Complex<T>`'s `+=` and `*`; `x` holds `conj(A0)`, [`ROW_BLOCK`] lanes per
-/// Born component (real parts and imaginary parts apart).
+/// `Complex<T>`'s `+=` and `*`; `x` holds `conj(A0)`, `R` lanes per Born
+/// component (real parts and imaginary parts apart).
 #[allow(clippy::too_many_arguments)]
 #[inline(always)]
-fn z_sums_body<T: Carrier>(
+fn z_sums_body<T: Carrier, const R: usize>(
     bras: &[(usize, usize)],
     metric: &[Vec<(usize, Complex<T>)>],
     keep_bra: Option<&[bool]>,
@@ -155,7 +165,6 @@ fn z_sums_body<T: Carrier>(
     z_re: &mut [T],
     z_im: &mut [T],
 ) {
-    const R: usize = ROW_BLOCK;
     for &(b, j) in bras {
         if keep_bra.is_some_and(|keep| !keep[b]) {
             continue;
@@ -181,7 +190,7 @@ dispatched! {
     /// binary64 ([`super::kernels::Simd`]; the same operations per lane, so
     /// the same bits).
     #[allow(clippy::too_many_arguments)]
-    fn z_sums<T: Carrier>(
+    fn z_sums<T: Carrier, const R: usize>(
         bras: &[(usize, usize)],
         metric: &[Vec<(usize, Complex<T>)>],
         keep_bra: Option<&[bool]>,
@@ -192,6 +201,18 @@ dispatched! {
         z_im: &mut [T],
     ) => z_sums_body;
 }
+
+/// [`z_sums`] at one lane count.
+type ZSums<T> = fn(
+    &[(usize, usize)],
+    &[Vec<(usize, Complex<T>)>],
+    Option<&[bool]>,
+    &[T],
+    &[T],
+    usize,
+    &mut [T],
+    &mut [T],
+);
 
 fn groups(
     components: impl Iterator<Item = (usize, usize, i32, usize)>,
@@ -311,6 +332,7 @@ impl Interference {
             class_keys,
             depth,
             outputs,
+            keys: Default::default(),
         })
     }
 
@@ -513,7 +535,11 @@ impl Interference {
     /// metric class)` the number of leading ket tensors its kets read (all
     /// a counterterm vector touches; the Born basis for a Born ket), and per
     /// entry, bra group and ket group the key's index.
-    fn keys(&self, poles: bool) -> (Vec<((usize, usize, usize), usize)>, Vec<Vec<Vec<usize>>>) {
+    fn keys(&self, poles: bool) -> &Keys {
+        self.keys[usize::from(poles)].get_or_init(|| self.build_keys(poles))
+    }
+
+    fn build_keys(&self, poles: bool) -> Keys {
         let mut index: BTreeMap<(usize, usize, usize), usize> = BTreeMap::new();
         let mut limits: Vec<usize> = Vec::new();
         let mut per_entry = Vec::with_capacity(self.entries.len());
@@ -590,7 +616,16 @@ impl Interference {
         blocks
             .par_iter()
             .map(|block| {
-                let lanes = ROW_BLOCK;
+                // As many lanes as the block's rows, rounded up to a power
+                // of two (a one-row call does one row's z sums).
+                let lanes = block.len().next_power_of_two().min(ROW_BLOCK);
+                let z_sums: ZSums<T> = match lanes {
+                    1 => z_sums::<T, 1>,
+                    2 => z_sums::<T, 2>,
+                    4 => z_sums::<T, 4>,
+                    8 => z_sums::<T, 8>,
+                    _ => z_sums::<T, ROW_BLOCK>,
+                };
                 // conj(A0) per Born component, one lane per row of the block.
                 let mut x_re = vec![zero.clone(); point.born_width * lanes];
                 let mut x_im = vec![zero.clone(); point.born_width * lanes];
@@ -608,7 +643,7 @@ impl Interference {
                     .map(|&((bra, g, class), limit)| {
                         let mut z_re = vec![zero.clone(); limit * lanes];
                         let mut z_im = vec![zero.clone(); limit * lanes];
-                        z_sums::<T>(
+                        z_sums(
                             &self.bra[bra][g].1,
                             &runtime.metrics[class],
                             keep_bra,
@@ -632,7 +667,7 @@ impl Interference {
                         });
                         let k = &point.ket[row * point.ket_width..][..point.ket_width];
                         let mut out = vec![out_zero.clone(); self.outputs.len()];
-                        for (entry, groups) in self.entries.iter().zip(&per_entry) {
+                        for (entry, groups) in self.entries.iter().zip(per_entry) {
                             if !poles && self.outputs[entry.output] != 0 {
                                 continue;
                             }
@@ -934,7 +969,17 @@ mod tests {
             .map(|_| c(next() % 50, next() % 50))
             .collect();
         let couplings = [c(3, 5), c(40, 2)];
-        let keep_rows: Vec<bool> = (0..rows).map(|row| row % 5 != 3).collect();
+        // 30 kept rows (blocks of 16 and 14), and one, two and three rows
+        // (the lane counts 1, 2 and 4); the real form's 37 rows end in a
+        // block of 5 (8 lanes).
+        let pick =
+            |kept: &[usize]| -> Vec<bool> { (0..rows).map(|row| kept.contains(&row)).collect() };
+        let keep_sets: Vec<Vec<bool>> = vec![
+            (0..rows).map(|row| row % 5 != 3).collect(),
+            pick(&[7]),
+            pick(&[2, 11]),
+            pick(&[0, 5, 36]),
+        ];
         let keep_bra: Vec<bool> = (0..basis).map(|b| b != 2).collect();
         let bits = |values: &[Complex<f64>]| -> Vec<(u64, u64)> {
             values
@@ -960,7 +1005,10 @@ mod tests {
             let runtime = program.runtime(&0.0_f64);
             for poles in [true, false] {
                 for born_ket in [None, Some(loop_side.as_slice())] {
-                    for keep in [None, Some(keep_bra.as_slice())] {
+                    for (keep, keep_rows) in [None, Some(keep_bra.as_slice())]
+                        .into_iter()
+                        .flat_map(|keep| keep_sets.iter().map(move |rows| (keep, rows)))
+                    {
                         let expected = row_by_row(
                             &program,
                             &runtime,
@@ -969,7 +1017,7 @@ mod tests {
                             width,
                             &kets,
                             ket.len(),
-                            &keep_rows,
+                            keep_rows,
                             keep,
                             &couplings,
                             poles,
@@ -987,7 +1035,7 @@ mod tests {
                             width,
                             &kets,
                             ket.len(),
-                            &keep_rows,
+                            keep_rows,
                             keep,
                             &couplings,
                             poles,

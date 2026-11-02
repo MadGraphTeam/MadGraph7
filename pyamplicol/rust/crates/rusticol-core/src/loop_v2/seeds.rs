@@ -44,7 +44,8 @@ enum Key<T> {
 }
 
 impl<T: Carrier> Seeds<T> {
-    /// Lane vectors of one key's value (`rows × columns` per lane vector).
+    /// Reals in one key's value (`rows × columns` lane vectors of
+    /// `2 L` reals each).
     pub fn len(&self) -> usize {
         self.classes.first().map_or(0, Vec::len)
     }

@@ -3915,119 +3915,105 @@ impl<T: Carrier> Closure<'_, T> {
         let v = 2 * L;
         let chunks = points.div_ceil(L);
         let inputs = program.layouts.iter().map(Vec::len).max().unwrap_or(0);
+        let (state, size) = self.states;
+        let (ct_state, ct_size) = self.counterterm_states;
         let wide = super::kernels::Simd::detect::<T>();
-        let gather = Gather::of(program, self.terms);
-        let lanes_of = |chunk: usize| -> [usize; L] {
-            std::array::from_fn(|l| first + (chunk * L + l).min(points - 1))
-        };
-        // The block currents of a group of lane chunks, lane-major per
-        // chunk: as many chunks as fit `Gather::BUDGET` reals (at least
-        // one), so that a small program runs all its (chunk, row) tasks in
-        // one parallel pass and a large one holds one chunk's currents.
-        let per_chunk = gather.values * v;
-        let group = (Gather::BUDGET / per_chunk.max(1)).clamp(1, chunks);
-        let mut currents = vec![zero.clone(); group * per_chunk];
         // Per (lane chunk, row): `width` complex lane vectors.
         let mut sums = vec![zero.clone(); chunks * rows * width * v];
-        for (index, sums) in sums.chunks_mut(group * rows * width * v).enumerate() {
-            let first_chunk = index * group;
-            let count = sums.len() / (rows * width * v);
-            if per_chunk > 0 {
-                currents[..count * per_chunk]
-                    .par_chunks_mut(per_chunk)
-                    .enumerate()
-                    .for_each(|(c, out)| {
-                        let lanes = lanes_of(first_chunk + c);
-                        gather.fill::<T, L>(out, &lanes, self.states, self.counterterm_states);
-                    });
-            }
-            let currents = &currents;
-            sums.par_chunks_mut(width * v).enumerate().for_each_init(
-                || (vec![zero.clone(); inputs * v], Vec::new()),
-                |(x, starts), (task, target)| {
-                    let (c, row) = (task / rows, task % rows);
-                    // A row the program's restriction drops stays zero (`rows`).
-                    if program.closure_rows.as_ref().is_some_and(|kept| !kept[row]) {
-                        return;
+        sums.par_chunks_mut(width * v).enumerate().for_each_init(
+            || (vec![zero.clone(); inputs * v], Vec::new()),
+            |(x, starts), (task, target)| {
+                let (chunk, row) = (task / rows, task % rows);
+                // A row the program's restriction drops stays zero (`rows`).
+                if program.closure_rows.as_ref().is_some_and(|kept| !kept[row]) {
+                    return;
+                }
+                let lanes: [usize; L] =
+                    std::array::from_fn(|l| first + (chunk * L + l).min(points - 1));
+                for term in self.terms {
+                    if self
+                        .active
+                        .is_some_and(|active| term.contributions.iter().all(|(c, ..)| !active[*c]))
+                    {
+                        continue;
                     }
-                    let lanes = lanes_of(first_chunk + c);
-                    let currents = &currents[c * per_chunk..(c + 1) * per_chunk];
-                    for term in self.terms {
-                        if self.active.is_some_and(|active| {
-                            term.contributions.iter().all(|(c, ..)| !active[*c])
-                        }) {
-                            continue;
+                    starts.clear();
+                    for &block in &term.blocks {
+                        match program.blocks[block][row] {
+                            Some(start) => starts.push(start),
+                            None => break,
                         }
-                        starts.clear();
-                        for &block in &term.blocks {
-                            match gather.offsets[block][row] {
-                                Some(start) => starts.push(start),
-                                None => break,
-                            }
-                        }
-                        if starts.len() != term.blocks.len() {
-                            continue;
-                        }
-                        for (input, lane) in program.layouts[term.layout]
-                            .iter()
-                            .zip(x.chunks_exact_mut(v))
-                        {
-                            match *input {
-                                TermInput::Current { slot, component } => {
-                                    let index = starts[slot] + component;
-                                    lane.clone_from_slice(&currents[index * v..(index + 1) * v]);
+                    }
+                    if starts.len() != term.blocks.len() {
+                        continue;
+                    }
+                    for (input, lane) in program.layouts[term.layout]
+                        .iter()
+                        .zip(x.chunks_exact_mut(v))
+                    {
+                        let (re, im) = lane.split_at_mut(L);
+                        match *input {
+                            TermInput::Current { slot, component } => {
+                                let index = starts[slot] + component;
+                                let (values, stride, index) = if index < size {
+                                    (state, size, index)
+                                } else {
+                                    (ct_state, ct_size, index - size)
+                                };
+                                for (l, &point) in lanes.iter().enumerate() {
+                                    let value = &values[point * stride + index];
+                                    re[l] = value.re.clone();
+                                    im[l] = value.im.clone();
                                 }
-                                TermInput::Momentum { slot, mu } => {
-                                    let (re, im) = lane.split_at_mut(L);
-                                    let mask = term.masks[slot];
-                                    for (l, &point) in lanes.iter().enumerate() {
-                                        re[l] = self.momenta[point][mask][mu].clone();
-                                        im[l] = zero.clone();
-                                    }
+                            }
+                            TermInput::Momentum { slot, mu } => {
+                                let mask = term.masks[slot];
+                                for (l, &point) in lanes.iter().enumerate() {
+                                    re[l] = self.momenta[point][mask][mu].clone();
+                                    im[l] = zero.clone();
                                 }
                             }
                         }
-                        let kernel = &self.plan.kernels[term.kernel].outputs[0];
-                        let (mut value_re, mut value_im) = match wide {
-                            // SAFETY: `wide` holds only the features this CPU
-                            // reports (`Simd::detect`).
-                            #[cfg(target_arch = "x86_64")]
-                            super::kernels::Simd::Avx512 => unsafe {
-                                kernel_lanes_avx512::<T, L>(kernel, self.constants, x, zero)
-                            },
-                            #[cfg(target_arch = "x86_64")]
-                            super::kernels::Simd::Avx2 => unsafe {
-                                kernel_lanes_avx2::<T, L>(kernel, self.constants, x, zero)
-                            },
-                            super::kernels::Simd::Baseline => {
-                                kernel_lanes::<T, L>(kernel, self.constants, x, zero)
-                            }
-                        };
-                        if term.sign < 0 {
-                            for l in 0..L {
-                                value_re[l] = -value_re[l].clone();
-                                value_im[l] = -value_im[l].clone();
-                            }
+                    }
+                    let kernel = &self.plan.kernels[term.kernel].outputs[0];
+                    let (mut value_re, mut value_im) = match wide {
+                        // SAFETY: `wide` holds only the features this CPU
+                        // reports (`Simd::detect`).
+                        #[cfg(target_arch = "x86_64")]
+                        super::kernels::Simd::Avx512 => unsafe {
+                            kernel_lanes_avx512::<T, L>(kernel, self.constants, x, zero)
+                        },
+                        #[cfg(target_arch = "x86_64")]
+                        super::kernels::Simd::Avx2 => unsafe {
+                            kernel_lanes_avx2::<T, L>(kernel, self.constants, x, zero)
+                        },
+                        super::kernels::Simd::Baseline => {
+                            kernel_lanes::<T, L>(kernel, self.constants, x, zero)
                         }
-                        for &(coupling, component, weight) in &term.contributions {
-                            if self.active.is_some_and(|active| !active[coupling]) {
-                                continue;
-                            }
-                            let weight = &self.weights[weight];
-                            let (re, im) =
-                                target[component * v..(component + 1) * v].split_at_mut(L);
-                            for (l, &point) in lanes.iter().enumerate() {
-                                let factor = self.couplings[point][coupling].clone() * weight;
-                                re[l] += factor.re.clone() * &value_re[l]
-                                    - factor.im.clone() * &value_im[l];
-                                im[l] += factor.re.clone() * &value_im[l]
-                                    + factor.im.clone() * &value_re[l];
-                            }
+                    };
+                    if term.sign < 0 {
+                        for l in 0..L {
+                            value_re[l] = -value_re[l].clone();
+                            value_im[l] = -value_im[l].clone();
                         }
                     }
-                },
-            );
-        }
+                    for &(coupling, component, weight) in &term.contributions {
+                        if self.active.is_some_and(|active| !active[coupling]) {
+                            continue;
+                        }
+                        let weight = &self.weights[weight];
+                        let (re, im) = target[component * v..(component + 1) * v].split_at_mut(L);
+                        for (l, &point) in lanes.iter().enumerate() {
+                            let factor = self.couplings[point][coupling].clone() * weight;
+                            re[l] +=
+                                factor.re.clone() * &value_re[l] - factor.im.clone() * &value_im[l];
+                            im[l] +=
+                                factor.re.clone() * &value_im[l] + factor.im.clone() * &value_re[l];
+                        }
+                    }
+                }
+            },
+        );
         for (task, target) in sums.chunks_exact(width * v).enumerate() {
             let (chunk, row) = (task / rows, task % rows);
             for l in 0..L.min(points - chunk * L) {
@@ -4042,119 +4028,6 @@ impl<T: Carrier> Closure<'_, T> {
         }
         out
     }
-}
-
-/// The block currents a set of closure terms reads, gathered per lane chunk
-/// into one lane-major array (each current component one complex lane
-/// vector), so a term's inputs are contiguous loads instead of one load per
-/// point's state: per block read and row, the gathered offset of its
-/// current (none where the block has no current in that row) and the
-/// components the terms read.
-struct Gather {
-    /// Per block and row (empty for blocks no term reads).
-    offsets: Vec<Vec<Option<usize>>>,
-    /// (state index, gathered offset, components) per gathered current.
-    regions: Vec<(usize, usize, usize)>,
-    /// Complex values per lane of the gathered array.
-    values: usize,
-}
-
-impl Gather {
-    fn of(program: &TreeProgram, terms: &[Term]) -> Self {
-        let mut components = vec![0usize; program.blocks.len()];
-        let mut read = vec![false; program.blocks.len()];
-        for term in terms {
-            for &block in &term.blocks {
-                read[block] = true;
-            }
-            for input in &program.layouts[term.layout] {
-                if let TermInput::Current { slot, component } = *input {
-                    let block = term.blocks[slot];
-                    components[block] = components[block].max(component + 1);
-                }
-            }
-        }
-        let mut regions = Vec::new();
-        let mut values = 0;
-        let offsets = program
-            .blocks
-            .iter()
-            .enumerate()
-            .map(|(block, starts)| {
-                if !read[block] {
-                    return Vec::new();
-                }
-                starts
-                    .iter()
-                    .map(|start| {
-                        start.map(|start| {
-                            let offset = values;
-                            regions.push((start, offset, components[block]));
-                            values += components[block];
-                            offset
-                        })
-                    })
-                    .collect()
-            })
-            .collect();
-        Self {
-            offsets,
-            regions,
-            values,
-        }
-    }
-
-    /// The gathered currents of the points `lanes` (lane `l` from point
-    /// `lanes[l]`'s state; state indices past the tree state's size read the
-    /// counterterm program's state), in spans of [`Gather::SPAN`] gathered
-    /// values on the rayon pool (copies only).
-    fn fill<T: Clone + Send + Sync, const L: usize>(
-        &self,
-        out: &mut [T],
-        lanes: &[usize; L],
-        (state, size): (&[Complex<T>], usize),
-        (ct_state, ct_size): (&[Complex<T>], usize),
-    ) {
-        let v = 2 * L;
-        out[..self.values * v]
-            .par_chunks_mut(Self::SPAN * v)
-            .enumerate()
-            .for_each(|(span, out)| {
-                let first = span * Self::SPAN;
-                let last = first + out.len() / v;
-                // Regions are laid out in order: the first one ending past
-                // `first`, then on until `last`.
-                let at = self
-                    .regions
-                    .partition_point(|&(_, offset, count)| offset + count <= first);
-                for &(start, offset, count) in &self.regions[at..] {
-                    if offset >= last {
-                        break;
-                    }
-                    for g in first.max(offset)..last.min(offset + count) {
-                        let index = start + g - offset;
-                        let (values, stride, index) = if index < size {
-                            (state, size, index)
-                        } else {
-                            (ct_state, ct_size, index - size)
-                        };
-                        let (re, im) = out[(g - first) * v..(g - first + 1) * v].split_at_mut(L);
-                        for (l, &point) in lanes.iter().enumerate() {
-                            let value = &values[point * stride + index];
-                            re[l] = value.re.clone();
-                            im[l] = value.im.clone();
-                        }
-                    }
-                }
-            });
-    }
-
-    /// Gathered values per task of [`Gather::fill`].
-    const SPAN: usize = 4096;
-
-    /// Reals of gathered currents held at once by [`Closure::lanes`] beyond
-    /// one lane chunk's (32 MiB in binary64).
-    const BUDGET: usize = 1 << 22;
 }
 
 /// The interaction program on the states of a batch: per step, each
