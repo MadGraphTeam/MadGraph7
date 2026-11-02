@@ -993,7 +993,7 @@ def generate_process(
     except NativeExportUnsupported as error:
         raise _not_storable(request, "native point inputs", error) from error
     # The stored plan (``ExportedPlan.stored()``: the binary plan member).
-    plan = exported.stored()
+    stored_plan = exported.stored()
     # The companion plan of the certified-scaleless families, which the "uv"
     # and "ir" pole selections run (design §12.4). With native point inputs
     # it is exported with its own tree program (no Born or counterterm
@@ -1027,7 +1027,7 @@ def generate_process(
         native = NativeProcess.export(
             observables.slice,
             exported,
-            plan,
+            stored_plan,
             None if scaleless is None else (scaleless, cast(Any, scaleless_plan)),
         )
         # A column set the native trees cannot form (no native counterterm
@@ -1052,7 +1052,7 @@ def generate_process(
         observables,
         exported,
         record,
-        plan,
+        stored_plan,
         native=native,
         scaleless_exported=scaleless,
         scaleless_plan=scaleless_plan,
