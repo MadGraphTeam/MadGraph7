@@ -1204,5 +1204,102 @@ KERNELSPEC void kernel_fks_eikonals(
     }
 }
 
+// The collinear factors of sborncol_fsr and sborncol_isr (fks_singular.f):
+// z, the Altarelli-Parisi kernel (1 - z) P(z) / t of AP_reduced and the
+// azimuthal terms of Qterms_reduced_timelike (final-state j) or
+// Qterms_reduced_spacelike (initial-state j), both without the couplings,
+// with t = z s / 4. z = 1 - E_i / (E_i + E_j) in the partonic centre-of-mass
+// frame of the momenta for a final-state j, 1 - xi = 1 - 2 E_i / sqrt(s) for
+// an initial-state one.
+// kind selects the splitting function of AP_reduced (0: g -> g g, 1: g/a ->
+// q q~, 2: q -> q g/a, 3: q -> g/a q) and factors holds, per configuration,
+// the QCD and QED factors of the kernel and of the azimuthal terms.
+template <typename T>
+KERNELSPEC void kernel_fks_splitting_kernels(
+    FIn<T, 2> p,
+    IIn<T, 0> index,
+    IIn<T, 1> fks_i,
+    IIn<T, 1> fks_j,
+    IIn<T, 1> kind,
+    FIn<T, 2> factors,
+    FOut<T, 0> z,
+    FOut<T, 1> ap,
+    FOut<T, 1> q
+) {
+    std::size_t c = single_index(index);
+    std::size_t ii = single_index(fks_i[c]), jj = single_index(fks_j[c]);
+    auto p1 = load_mom<T>(p[0]), p2 = load_mom<T>(p[1]);
+    FourMom<T> p_tot{p1[0] + p2[0], p1[1] + p2[1], p1[2] + p2[2], p1[3] + p2[3]};
+    auto s = lsquare<T>(p_tot);
+    // energies in the centre-of-mass frame, up to the common 1 / sqrt(s)
+    auto e_i = ldot<T>(load_mom<T>(p[ii]), p_tot);
+    bool final_state = jj >= 2;
+    FVal<T> zz;
+    if (final_state) {
+        auto e_j = ldot<T>(load_mom<T>(p[jj]), p_tot);
+        zz = 1. - e_i / (e_i + e_j);
+    } else {
+        zz = 1. - 2. * e_i / s;
+    }
+    auto t = 0.25 * zz * s;
+    auto w = 1. - zz;
+    FVal<T> f_ap;
+    switch (single_index(kind[c])) {
+    case 0:
+        f_ap = w * w / zz + zz + zz * w * w;
+        break;
+    case 1:
+        f_ap = (zz * zz + w * w) * w;
+        break;
+    case 2:
+        f_ap = 1. + zz * zz;
+        break;
+    default:
+        f_ap = (1. + w * w) * w / zz;
+        break;
+    }
+    FVal<T> f_q = final_state ? zz * w * w : w * w / zz;
+    auto factor = factors[c];
+    ap[0] = FVal<T>(factor[0]) * f_ap / t;
+    ap[1] = FVal<T>(factor[1]) * f_ap / t;
+    q[0] = FVal<T>(factor[2]) * f_q / t;
+    q[1] = FVal<T>(factor[3]) * f_q / t;
+    z = zz;
+}
+
+// The transverse direction of the emission k_perp (xij_kperp of genps_fks.f):
+// the momentum of i per unit xi made orthogonal to the Born emitter and to the
+// sum of the incoming Born momenta, normalized to k_perp^2 = -1. In the
+// partonic centre-of-mass frame it is (0, cos phi, sin phi, 0) in the frame of
+// the emitter (the beam axis for an initial-state one), up to its sign.
+template <typename T>
+KERNELSPEC void kernel_fks_transverse_vector(
+    FIn<T, 1> p_i_hat,
+    FIn<T, 2> p_born,
+    IIn<T, 0> index,
+    IIn<T, 1> born_j,
+    FOut<T, 1> k_perp
+) {
+    std::size_t c = single_index(index);
+    auto q = load_mom<T>(p_born[single_index(born_j[c])]);
+    auto p1 = load_mom<T>(p_born[0]), p2 = load_mom<T>(p_born[1]);
+    FourMom<T> P{p1[0] + p2[0], p1[1] + p2[1], p1[2] + p2[2], p1[3] + p2[3]};
+    auto v = load_mom<T>(p_i_hat);
+    // v - a q - b P orthogonal to q and P
+    auto qq = ldot<T>(q, q), qP = ldot<T>(q, P), PP = ldot<T>(P, P);
+    auto vq = ldot<T>(v, q), vP = ldot<T>(v, P);
+    auto det = qq * PP - qP * qP;
+    auto a = (vq * PP - vP * qP) / det;
+    auto b = (vP * qq - vq * qP) / det;
+    FourMom<T> k;
+    for (std::size_t mu = 0; mu < 4; ++mu) {
+        k[mu] = v[mu] - a * q[mu] - b * P[mu];
+    }
+    auto norm = sqrt(max(-lsquare<T>(k), 0.));
+    for (std::size_t mu = 0; mu < 4; ++mu) {
+        k_perp[mu] = norm > 0. ? FVal<T>(k[mu] / norm) : FVal<T>(0.);
+    }
+}
+
 } // namespace kernels
 } // namespace madspace

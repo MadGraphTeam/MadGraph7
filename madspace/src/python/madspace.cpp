@@ -1769,6 +1769,44 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("FKSEikonals::born_pairs")
         );
 
+    py::classh<FKSSplittingKernels, FunctionGenerator>(
+        m, "FKSSplittingKernels", pydoc::doc("FKSSplittingKernels")
+    )
+        .def(
+            py::init<
+                const std::vector<std::size_t>&,
+                const std::vector<std::size_t>&,
+                const nested_vector2<int>&,
+                const nested_vector2<double>&>(),
+            py::arg("i_fks"),
+            py::arg("j_fks"),
+            py::arg("colors"),
+            py::arg("charges"),
+            pydoc::doc("FKSSplittingKernels::FKSSplittingKernels")
+        )
+        .def(
+            "configuration_count",
+            &FKSSplittingKernels::configuration_count,
+            pydoc::doc("FKSSplittingKernels::configuration_count")
+        )
+        .def(
+            "particle_count",
+            &FKSSplittingKernels::particle_count,
+            pydoc::doc("FKSSplittingKernels::particle_count")
+        )
+        .def(
+            "splitting_kind",
+            &FKSSplittingKernels::splitting_kind,
+            py::arg("index"),
+            pydoc::doc("FKSSplittingKernels::splitting_kind")
+        )
+        .def(
+            "factors",
+            &FKSSplittingKernels::factors,
+            py::arg("index"),
+            pydoc::doc("FKSSplittingKernels::factors")
+        );
+
     py::classh<FKSSectorFunction, FunctionGenerator>(
         m, "FKSSectorFunction", pydoc::doc("FKSSectorFunction")
     )

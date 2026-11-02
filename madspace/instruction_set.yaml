@@ -2883,6 +2883,60 @@ fks_eikonals:
   vectorized: False
   desc: "Reduced eikonal factors of eikonal_reduced in fks_singular.f, (p_m p_n) (1 - y) / ((p_m p_i_hat) (p_n p_i_hat)) for the pairs (m, n) of the soft limit of the configuration of the event. For a massless j, (p_j p_i_hat) / (1 - y) is sqrt_s E_j / 2 in the partonic centre-of-mass frame, so that the factors are finite at y = 1. With the colour-linked Borns of the pairs they give the soft limit of xi^2 (1 - y) times the real matrix element."
 
+fks_splitting_kernels:
+  inputs:
+    - name: p
+      type: [float, n, 4]
+      desc: "momenta of the collinear or soft-collinear counter-event, in the order of the real process of the configuration of the event, in any frame"
+    - name: index
+      type: [int]
+      desc: "FKS configuration of the event"
+    - name: fks_i
+      type: [int, single, c]
+      desc: "position of i in the real process of each configuration"
+    - name: fks_j
+      type: [int, single, c]
+      desc: "position of j in the real process of each configuration"
+    - name: kind
+      type: [int, single, c]
+      desc: "splitting function of each configuration: 0 g -> g g, 1 g/a -> q q~, 2 q -> q g/a, 3 q -> g/a q"
+    - name: factors
+      type: [float, single, c, 4]
+      desc: "QCD and QED factors of the Altarelli-Parisi kernel and of the azimuthal terms of each configuration"
+  outputs:
+    - name: z
+      type: [float]
+      desc: "momentum fraction of the splitting"
+    - name: ap
+      type: [float, 2]
+      desc: "QCD and QED Altarelli-Parisi kernels (1 - z) P(z) / t of AP_reduced, without the couplings"
+    - name: q
+      type: [float, 2]
+      desc: "QCD and QED azimuthal terms of Qterms_reduced_timelike or Qterms_reduced_spacelike, without the couplings"
+  vectorized: False
+  desc: "The collinear factors of sborncol_fsr and sborncol_isr in fks_singular.f: z = 1 - E_i / (E_i + E_j) in the partonic centre-of-mass frame for a final-state j, 1 - xi = 1 - 2 E_i / sqrt(s) for an initial-state one, the Altarelli-Parisi kernel of the splitting and its azimuthal terms, timelike for a final-state j and spacelike for an initial-state one, with t = z s / 4 and without the couplings."
+
+fks_transverse_vector:
+  inputs:
+    - name: p_i_hat
+      type: [float, 4]
+      desc: "momentum of i per unit xi at the event"
+    - name: p_born
+      type: [float, n, 4]
+      desc: "momenta of the Born, in any frame"
+    - name: index
+      type: [int]
+      desc: "FKS configuration of the event"
+    - name: born_j
+      type: [int, single, c]
+      desc: "position of the emitter in the Born of each configuration"
+  outputs:
+    - name: k_perp
+      type: [float, 4]
+      desc: "transverse direction of the emission, k_perp^2 = -1"
+  vectorized: False
+  desc: "Transverse direction of the emission (xij_kperp of genps_fks.f): the momentum of i per unit xi made orthogonal to the Born emitter and to the sum of the incoming Born momenta, normalized to k_perp^2 = -1. It is the vector that the spin-correlated Born of a gluon (or photon) emitter is contracted with in the collinear limit, and in the partonic centre-of-mass frame it is (0, cos phi, sin phi, 0) in the frame of the emitter, up to its sign."
+
 fks_beam_boost:
   inputs:
     - name: p

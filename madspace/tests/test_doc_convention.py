@@ -90,6 +90,12 @@ CASES = {
         fks_j_from_i=[[[], [], [], [], [0, 1]]] * 2,
         masses=[[0.0] * 5] * 2,
     ),
+    "FKSSplittingKernels": dict(
+        i_fks=[4, 4],
+        j_fks=[0, 1],
+        colors=[[3, -3, 1, 1, 8]] * 2,
+        charges=[[2 / 3, -2 / 3, -1.0, 1.0, 0.0]] * 2,
+    ),
     "FKSSectorFunction": dict(
         i_fks=[4, 4],
         j_fks=[0, 1],

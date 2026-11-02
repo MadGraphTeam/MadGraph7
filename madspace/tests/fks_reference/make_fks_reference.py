@@ -39,7 +39,11 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
                generated or, for a massive emitter, has no collinear limit),
                eik_pairs, eik_soft (eikonal_reduced at the soft
                counter-event for the pairs (m, n) of sbornsoft, 1-based,
-               in its order; empty where it is not generated),
+               in its order; empty where it is not generated), coll_cnt
+               (at the collinear and soft-collinear counter-events: z, t and
+               AP_reduced, Qterms_reduced_timelike/spacelike as
+               sborncol_fsr/isr call them, QCD over g^2 and QED over
+               gal(1)^2; z = -1 where not generated or j is massive),
                shat_born, tau_born, ycm_born, xbjrk_born, tau_lower_bound,
                and for prefix in (rad, cut): prefix_jac, prefix_jac_cnt,
                prefix_p_ev, prefix_p_cnt, prefix_xi_ev, prefix_xi_hat_ev,
@@ -248,6 +252,9 @@ def parse(text):
             point["eik_pairs"] = [v[1 + 2 * k : 3 + 2 * k] for k in range(v[0])]
         elif key == "EIK":
             point["eik_soft"] = floats(rest)
+        elif key == "COLL":
+            v = floats(rest)
+            point["coll_cnt"] = [v[0:6], v[6:12]]
         elif key == "BORNX":
             v = floats(rest)
             point.update(shat_born=v[0], tau_born=v[1], ycm_born=v[2])

@@ -25,6 +25,7 @@ c that make_fks_reference.py parses.
       include 'fks_info.inc'
       include 'run.inc'
       include 'born_conf.inc'
+      include 'coupl.inc'
       integer i,j,k,ipt,npts,iconf_in,fks_loop,ipass,nmassive,nloop
       double precision x(99),p(0:3,nexternal),wgt,jac_full
       double precision jac_full_cnt(-2:2)
@@ -94,6 +95,13 @@ c that make_fks_reference.py parses.
       integer neik,mm,nn,eik_m(nexternal*nexternal)
      &     ,eik_n(nexternal*nexternal)
       double precision eik(nexternal*nexternal)
+      integer i_type,j_type,m_type
+      double precision ch_i,ch_j,ch_m
+      common/cparticle_types/i_type,j_type,m_type,ch_i,ch_j,ch_m
+      double precision e_i,e_j,zz,tt,ap(2),qq(2),coll(6,2)
+      double precision ybst_til_tolab,ybst_til_tocm,sqrtshat,shat
+      common/parton_cms_stuff/ybst_til_tolab,ybst_til_tocm,sqrtshat
+     &     ,shat
       character*24 fmt
       parameter (fmt='(a,1x,*(es25.17e3,1x))')
 
@@ -232,6 +240,47 @@ c (none where the soft counter-event is not generated)
             write (*,'(a,1x,*(i0,1x))') 'EIKPAIRS',neik,(eik_m(k)
      &           ,eik_n(k),k=1,neik)
             write (*,fmt) 'EIK',(eik(k),k=1,neik)
+c The collinear factors of sborncol_fsr and sborncol_isr at the collinear
+c (k = 1) and soft-collinear (k = 2) counter-events: z, t and AP_reduced and
+c Qterms_reduced_timelike/spacelike without the couplings (QCD over g^2,
+c QED over gal(1)^2); z = -1 where the counter-event is not generated or j
+c is massive
+            do k=1,2
+               coll(1,k)=-1d0
+               do j=2,6
+                  coll(j,k)=0d0
+               enddo
+               if (jac_full.gt.0d0.and.jac_full_cnt(k).gt.0d0.and.
+     &              emass(j_fks).eq.0d0) then
+                  call set_cms_stuff(k)
+                  if (j_fks.gt.nincoming) then
+                     e_i=p1_cnt(0,i_fks,k)
+                     e_j=p1_cnt(0,j_fks,k)
+                     zz=1d0-e_i/(e_i+e_j)
+                     tt=zz*shat/4d0
+                     call AP_reduced(j_type,i_type,ch_j,ch_i,tt,zz,ap)
+                     call Qterms_reduced_timelike(j_type,i_type,ch_j
+     &                    ,ch_i,tt,zz,qq)
+                  else
+                     if (k.eq.1) then
+                        zz=1d0-xi_i_fks_cnt(1)
+                     else
+                        zz=1d0
+                     endif
+                     tt=zz*shat/4d0
+                     call AP_reduced(m_type,i_type,ch_m,ch_i,tt,zz,ap)
+                     call Qterms_reduced_spacelike(m_type,i_type,ch_m
+     &                    ,ch_i,tt,zz,qq)
+                  endif
+                  coll(1,k)=zz
+                  coll(2,k)=tt
+                  coll(3,k)=ap(1)/g**2
+                  coll(4,k)=ap(2)/dble(gal(1))**2
+                  coll(5,k)=qq(1)/g**2
+                  coll(6,k)=qq(2)/dble(gal(1))**2
+               endif
+            enddo
+            write (*,fmt) 'COLL',((coll(j,k),j=1,6),k=1,2)
 c Radiation part alone: rerun generate_FKS_kinematics on the Born of the
 c point with unit Born weights, once with the lower bound on the partonic
 c energy of the real emission that set_tau_min derives from the cuts
