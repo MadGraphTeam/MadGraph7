@@ -34,6 +34,7 @@ import math
 from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -1256,10 +1257,11 @@ def test_public_selectors_generate_the_selection_of_the_inclusive_artifact(artif
         ),
     )
     assert checked.stability is not None and checked.stability[0].relative < 1e-9
-    # A stored selection is one column set formed from the stored resolved
-    # records (``native_observables.selection_parts``): a (row, flow)
-    # selection is its resolved entry, and a flow's set runs only the
-    # families whose seeds it reads.
+    # A stored selection is masks of one call on the selection template
+    # formed once from the stored resolved records
+    # (``native_observables.SelectionTemplate``): a (row, flow) selection is
+    # its resolved entry, and a flow's call runs only the families whose
+    # seeds it reads.
     resolved = inclusive.evaluate_resolved(pts, mu_r2=scales)
     total = inclusive.evaluate(pts, mu_r2=scales)
     flow = anchors[2]
@@ -1301,29 +1303,27 @@ def test_public_selectors_generate_the_selection_of_the_inclusive_artifact(artif
     observables = inclusive._backend._observable_runtime()
 
     def formed(key):
-        """The stored column set the runtime keeps for a selection."""
+        """The masks the runtime keeps for a selection, on the one template
+        column set."""
 
         (found,) = (
-            value.columns
+            value
             for (_kind, column), value in observables._selections.items()
             if column.key == key
         )
         return found
 
     flow_set = formed(lc.column(None, frozenset({b})).key)
-    kept = flow_set.families[0]
-    assert kept is not None and len(kept) < int(flow_set.meta["families"])
-    # Its (row, flow) set's plan keeps the rows that row reaches (the native
-    # live-row pruning, ``plan/live.rs``): a fraction of the flow's dressing
-    # work, on the same families.
+    kept = flow_set.masks.families[0]
+    assert kept is not None and 0 < sum(kept) < len(kept)
+    # Its (row, flow) selection runs the same families and template (no
+    # executor of its own); the rows are seed and interference masks (the
+    # dressing runs every row of the kept families, DESIGN §8.5).
     catalogue = observables.selection_catalogue()
     row_set = formed(lc.column(*catalogue.resolve([rows[1]], [flow.id])).key)
-    assert row_set.families == flow_set.families
-    work = "dressing work (modelled complex MAC per lane)"
-    one_row, every_row = (
-        found.last_report["counts"][work] for found in (row_set, flow_set)
-    )
-    assert 0 < one_row <= every_row / 4, (one_row, every_row)
+    assert row_set.masks.families == flow_set.masks.families
+    assert row_set.columns is flow_set.columns
+    assert sum(row_set.masks.rows) == 1
     _close(
         _summed(
             inclusive.evaluate(pts, mu_r2=scales, color_flows=[a.id]) for a in anchors
@@ -1397,11 +1397,12 @@ def test_the_dry_run_refuses_selected_helicities_the_process_lacks(
 
 @pytest.mark.loop_physics
 def test_evaluation_time_selections_are_kept_most_recently_used(artifacts, monkeypatch):
-    """A loaded artifact keeps the formed column sets of its most recently
-    used evaluation-time selections only (``$PYAMPLICOL_LOOP_SELECTION_CACHE
-    = 2`` here): a third distinct selection releases the least recently used
-    one's set and native executors, a re-formed selection returns bitwise
-    its first value, and ``Runtime.clear`` releases every set."""
+    """A loaded artifact keeps the masks of its most recently used
+    evaluation-time selections only (``$PYAMPLICOL_LOOP_SELECTION_CACHE = 2``
+    here), all on its one selection template: a third distinct selection
+    releases the least recently used one's masks (not the template), a
+    re-formed selection returns bitwise its first value, and
+    ``Runtime.clear`` releases every entry."""
 
     import gc
     import weakref
@@ -1417,14 +1418,198 @@ def test_evaluation_time_selections_are_kept_most_recently_used(artifacts, monke
     first = _values(runtime.evaluate(pts, mu_r2=scales, color_flows=[flows[2]]))
     observables = runtime._backend._observable_runtime()
     (entry,) = observables._selections.items()
-    released = weakref.ref(entry[1].columns)
+    released = weakref.ref(entry[1].masks)
+    template = entry[1].columns
     del entry
     for flow in (flows[3], flows[0]):
         runtime.evaluate(pts, mu_r2=scales, color_flows=[flow])
     assert len(observables._selections) == 2
+    assert all(
+        value.columns is template for _key, value in observables._selections.items()
+    )
     gc.collect()
     assert released() is None
     again = _values(runtime.evaluate(pts, mu_r2=scales, color_flows=[flows[2]]))
     assert again == first and first[0] != 0
     runtime.clear()
     assert observables._selections is None
+
+
+# ------------------------------------------------- one template, per-call masks
+
+
+def _bits(value) -> Any:
+    """A coefficient's bits up to the sign of a zero (binary64: its IEEE
+    bytes; extended carriers: the exact decimal)."""
+
+    import struct
+
+    if isinstance(value, complex):
+        return (_bits(value.real), _bits(value.imag))
+    if isinstance(value, float):
+        return struct.pack("<d", value + 0.0)
+    return Decimal(value) + 0
+
+
+def _totals(results, key) -> list:
+    return [[_bits(x) for x in result[key].totals] for result in results]
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize(
+    ("key", "process", "points"),
+    [("inclusive", "u u~ > d d~ g", "uux_ddxg"), ("gg_ggg", "g g > g g g", "uux_ggg")],
+)
+def test_selections_are_masks_on_one_template(
+    artifacts, monkeypatch, key, process, points
+):
+    """MF-MASKS: a loaded LC process serves every evaluation-time selection
+    with one column set (``native_observables.SelectionTemplate``) and per-
+    call masks of its native executors (``V2Executor.evaluate``'s rows,
+    basis, components, families): after the first selection formed the
+    template, new selections build no native executor and no column set
+    (counted), and each selection's value is the value of its own column set
+    (``selection_parts``, the per-selection path before MF-MASKS) bitwise up
+    to the sign of a zero, in binary64 (also with the "ir" poles, whose
+    companion executor runs the masks too) and double-double: single,
+    several and every helicity row, single, several and every flow, crossed
+    ones, and (u u~ > d d~ g) a flow below the leading colour, whose value is
+    zero and whose call dresses no family."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.loops.v2 import native_observables as no
+    from pyamplicol.runtime.virtual import _inputs
+
+    runtime = Runtime.load(
+        artifacts(key, "", process=process), process="p", model_parameters=PARAMETERS
+    )
+    pts, scales = _points(points, 2)
+    hel = [h.id for h in runtime.physics.helicities]
+    flows = [a.id for a in runtime.physics.born_anchored_color_components]
+    selections = [
+        {"helicities": [hel[1]]},
+        {"helicities": hel[: len(hel) // 2]},
+        {"helicities": hel},
+        {"color_flows": [flows[1]]},
+        {"color_flows": flows[::2]},
+        {"color_flows": flows},
+        {"helicities": [hel[3]], "color_flows": [flows[-1]]},
+        {"helicities": hel[::3], "color_flows": flows[1::2]},
+    ]
+    if process == "u u~ > d d~ g":
+        # (2,1,3,5,4): each quark joined to its own antiquark, below the
+        # leading N_c power.
+        selections.append({"color_flows": ["flow:2,1,3,5,4"]})
+    backend = runtime._backend._observable_runtime()
+    observables = backend._observables
+    built = {"executors": 0, "sets": 0}
+    native = observables.native
+
+    class Native:
+        def __getattr__(self, name):
+            return getattr(native, name)
+
+        def V2Executor(self, *args, **kwargs):
+            built["executors"] += 1
+            return native.V2Executor(*args, **kwargs)
+
+    observables.native = Native()
+    init = no.StoredColumns.__init__
+
+    def counted(self, *args, **kwargs):
+        built["sets"] += 1
+        init(self, *args, **kwargs)
+
+    monkeypatch.setattr(no.StoredColumns, "__init__", counted)
+
+    def executors():
+        """Every executor of the process's column sets (built or derived)."""
+
+        return sum(len(found._native) for found in observables._sets.values())
+
+    runtime.evaluate(pts, mu_r2=scales, **selections[0])
+    assert (built["sets"], built["executors"], executors()) == (1, 1, 1)
+    for selection in selections[1:]:
+        runtime.evaluate(pts, mu_r2=scales, **selection)
+    assert (built["sets"], built["executors"], executors()) == (1, 1, 1)
+    for selection in selections[:3]:
+        runtime.evaluate(pts, mu_r2=scales, poles="ir", **selection)
+    # The "ir" poles add the template's companion executor, once.
+    assert (built["sets"], built["executors"], executors()) == (1, 2, 2)
+    catalogue = backend.selection_catalogue()
+    points_, scales_ = _inputs(pts, scales, backend.external_count)
+    for arithmetic, poles, chosen in (
+        ("double", "all", selections),
+        ("double", "ir", selections[:3] + selections[-2:]),
+        ("double-double", "all", selections[1:4] + selections[-2:]),
+    ):
+        settings = {
+            "parameters": PARAMETERS,
+            "precision": backend._precision(arithmetic, None)[1],
+            "poles": poles,
+            "stability": None,
+        }
+        for selection in chosen:
+            column = lc.column(
+                *catalogue.resolve(
+                    selection.get("helicities"), selection.get("color_flows")
+                )
+            )
+            masked = observables.native_columns(lc.SELECTION, column)
+            oracle = no.StoredColumns(observables, "resolved", selection=column)
+            got = masked.evaluate(points_, scales_, **settings)
+            expected = oracle.evaluate(points_, scales_, **settings)
+            assert _totals(got, column.key) == _totals(expected, column.key), (
+                arithmetic,
+                poles,
+                selection,
+            )
+            if selection.get("color_flows") == ["flow:2,1,3,5,4"]:
+                assert not any(masked.masks.families[0])
+                assert all(x == 0 for x in got[0][column.key].totals)
+    assert built["sets"] > 1  # the oracles' own column sets
+
+
+@pytest.mark.loop_physics
+def test_new_selections_retain_no_native_heap(artifacts):
+    """HANDOFF §9.13 (MF-MASKS): forming a new evaluation-time selection of a
+    loaded process builds nothing native, so 20 new selections (a helicity
+    row and some flows, one point each) grow the resident set by at most
+    0.1 MB each, measured after a collection and ``malloc_trim`` (which
+    returns free heap pages; retained heap stays), after 12 other new
+    selections over every flow (the template, the runtime's selection cache
+    of 8 and the reduction warm up once), on one executor thread (several
+    threads' heaps fragment by a few MB until they settle, whatever the
+    selection). Forming each selection's own column set instead retained
+    about 1-1.6 MB per selection, linearly (``selection_parts``)."""
+
+    import ctypes
+    import gc
+    import os
+
+    from pyamplicol import Runtime
+
+    runtime = Runtime.load(
+        artifacts("inclusive", ""), process="p", model_parameters=PARAMETERS
+    )
+    pts, scales = _points("uux_ddxg")
+    hel = [h.id for h in runtime.physics.helicities]
+    flows = [a.id for a in runtime.physics.born_anchored_color_components]
+    libc = ctypes.CDLL("libc.so.6")
+    page = os.sysconf("SC_PAGE_SIZE")
+
+    def resident() -> int:
+        gc.collect()
+        libc.malloc_trim(0)
+        with open("/proc/self/statm") as handle:
+            return int(handle.read().split()[1]) * page
+
+    runtime._backend._observable_runtime()._native_options["threads"] = 1
+    for k, row in enumerate(hel[:12]):
+        chosen = flows if k % 2 else flows[:2]
+        runtime.evaluate(pts, mu_r2=scales, helicities=[row], color_flows=chosen)
+    before = resident()
+    for row in hel[12:32]:
+        runtime.evaluate(pts, mu_r2=scales, helicities=[row], color_flows=flows[2:])
+    grown = resident() - before
+    assert grown <= 20 * 0.1 * 2**20, grown
