@@ -13,6 +13,11 @@ madgraph/iolibs/export_fks.py):
         real_pdgs: PDG codes of the real process
         real_me, need_color_links, need_charge_links, splitting_type,
         extra_cnt_index
+        real_colors, real_charges: colour representation (1, 3, -3, 8) and
+            electric charge of each particle of the real process
+        fks_j_from_i: for each particle i of the real process, the particles
+            j it forms an FKS pair with (1-based), the pairs whose sector
+            functions partition the phase space of the real process
 
 The functions here turn it into the FKSMappings of a Born mapping, one per
 configuration, or into one FKSConfigurationMapping for all of them, with the

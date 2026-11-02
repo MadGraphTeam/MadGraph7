@@ -257,12 +257,18 @@ class TestFKSConfigurationsJson(unittest.TestCase):
     MadSpace"""
 
     @staticmethod
-    def fksborn(info_list):
+    def fksborn(info_list, real_processes=()):
         legs = [{'id': 2, 'state': False}, {'id': 21, 'state': False},
                 {'id': 2, 'state': True}, {'id': 11, 'state': True},
                 {'id': -11, 'state': True}]
         return SimpleNamespace(born_me={'processes': [{'legs': legs}]},
-                               get_fks_info_list=lambda: info_list)
+                               get_fks_info_list=lambda: info_list,
+                               real_processes=list(real_processes))
+
+    @staticmethod
+    def real(colors, charges, fks_j_from_i):
+        return SimpleNamespace(colors=colors, charges=charges,
+                               fks_j_from_i=fks_j_from_i, isfinite=False)
 
     @staticmethod
     def info(n_me, pdgs, i, j, ij_id, soft):
@@ -278,9 +284,14 @@ class TestFKSConfigurationsJson(unittest.TestCase):
     def test_configurations(self):
         # u g > u e- e+ g, i the gluon off the incoming u, and g g > u e- e+
         # u~, i the u~ off the incoming gluon (which the Born has as a u)
+        charges = [2 / 3, 0., 2 / 3, -1., 1.]
         fksborn = self.fksborn([
             self.info(1, [2, 21, 2, 11, -11, 21], 6, 1, 2, True),
-            self.info(2, [21, 21, 2, 11, -11, -2], 6, 1, 2, False)])
+            self.info(2, [21, 21, 2, 11, -11, -2], 6, 1, 2, False)], [
+            self.real([3, 8, 3, 1, 1, 8], charges + [0.],
+                      {1: [], 2: [], 3: [], 4: [], 5: [], 6: [1, 2, 3]}),
+            self.real([8, 8, 3, 1, 1, -3], [0., 0.] + charges[2:] + [-2 / 3],
+                      {1: [], 2: [], 3: [], 4: [], 5: [], 6: [2]})])
         data = export_fks.get_fks_configurations(fksborn)
         self.assertEqual(data['nincoming'], 2)
         self.assertEqual(data['born_pdgs'], [2, 21, 2, 11, -11])
@@ -288,11 +299,17 @@ class TestFKSConfigurationsJson(unittest.TestCase):
             {'i_fks': 6, 'j_fks': 1, 'ij_pdg': 2,
              'real_pdgs': [2, 21, 2, 11, -11, 21], 'real_me': 1,
              'need_color_links': True, 'need_charge_links': False,
-             'splitting_type': ['QCD'], 'extra_cnt_index': -1},
+             'splitting_type': ['QCD'], 'extra_cnt_index': -1,
+             'real_colors': [3, 8, 3, 1, 1, 8],
+             'real_charges': charges + [0.],
+             'fks_j_from_i': [[], [], [], [], [], [1, 2, 3]]},
             {'i_fks': 6, 'j_fks': 1, 'ij_pdg': 2,
              'real_pdgs': [21, 21, 2, 11, -11, -2], 'real_me': 2,
              'need_color_links': False, 'need_charge_links': False,
-             'splitting_type': ['QCD'], 'extra_cnt_index': -1}])
+             'splitting_type': ['QCD'], 'extra_cnt_index': -1,
+             'real_colors': [8, 8, 3, 1, 1, -3],
+             'real_charges': [0., 0.] + charges[2:] + [-2 / 3],
+             'fks_j_from_i': [[], [], [], [], [], [2]]}])
         exporter = object.__new__(export_fks.ProcessExporterFortranFKS)
         with tempfile.TemporaryDirectory() as path:
             filename = os.path.join(path, 'fks_configurations.json')

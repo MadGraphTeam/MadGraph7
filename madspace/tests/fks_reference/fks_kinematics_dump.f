@@ -48,6 +48,8 @@ c that make_fks_reference.py parses.
       integer fks_j_from_i(nexternal,0:nexternal)
      &     ,particle_type(nexternal),pdg_type(nexternal)
       common /c_fks_inc/fks_j_from_i,particle_type,pdg_type
+      double precision particle_charge(nexternal)
+      common /c_charges/particle_charge
       double precision emass(nexternal)
       common/to_mass/emass
       double precision p1_cnt(0:3,nexternal,-2:2),wgt_cnt(-2:2)
@@ -131,6 +133,15 @@ c that make_fks_reference.py parses.
          write (*,'(a,1x,*(i0,1x))') 'CONF',nFKSprocess,i_fks,j_fks
      &        ,(pdg_type(i),i=1,nexternal)
          write (*,fmt) 'MASS',(emass(i),i=1,nexternal)
+c the FKS information of the configuration (fks_inc_chooser): colour
+c types, charges and FKS pairs of the real process
+         write (*,'(a,1x,*(i0,1x))') 'PTYPE',(particle_type(i),i=1
+     &        ,nexternal)
+         write (*,fmt) 'PCHARGE',(particle_charge(i),i=1,nexternal)
+         do i=1,nexternal
+            write (*,'(a,1x,*(i0,1x))') 'JFROMI',i,(fks_j_from_i(i,j),j=1
+     &           ,fks_j_from_i(i,0))
+         enddo
          do ipt=1,nloop
             do j=1,ndim
                x(j)=ran2()

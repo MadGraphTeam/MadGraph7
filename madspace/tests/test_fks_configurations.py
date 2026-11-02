@@ -5,7 +5,8 @@ subprocess, the fks_configurations.json that MadGraph's FKS exporter writes
 next to fks_info.inc. madspace.fks builds the FKSMappings of a Born mapping
 from it. Their FKS configurations must be those of the Fortran, and the
 pointwise comparison with genps_fks.f (test_fks_counter_events.py) runs on
-them.
+them. The colour types, charges and FKS pairs of the real processes, which the
+sector functions need, must be those of the Fortran's common blocks.
 """
 
 import glob
@@ -70,6 +71,14 @@ def test_configurations_of_the_fortran(path):
             conf["masses"][j_fks] if j_fks >= 2 else 0.0
         )
         assert mapping.particle_count() == len(conf["masses"])
+        # what the sector functions need: the colour types, the charges and
+        # the FKS pairs of the real process, as fks_inc_chooser sets them
+        assert exported["real_colors"] == conf["particle_type"]
+        # (fks_info.inc has the charges to 15 digits)
+        np.testing.assert_allclose(
+            exported["real_charges"], conf["particle_charge"], rtol=0, atol=1e-14
+        )
+        assert exported["fks_j_from_i"] == conf["fks_j_from_i"]
     if len(mappings) > 1:
         mapping = fks_configuration_mapping(born, configurations)
         assert isinstance(mapping, ms.FKSConfigurationMapping)

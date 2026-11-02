@@ -112,6 +112,14 @@ def get_fks_configurations(fksborn):
                 has a soft singularity (QCD, QED)
             splitting_type: the coupling orders of the splitting
             extra_cnt_index: the extra counterterm, -1 for none
+            real_colors: colour representation of each particle of the real
+                process (1, 3, -3, 8), PARTICLE_TYPE_D of fks_info.inc
+            real_charges: electric charge of each particle of the real
+                process, PARTICLE_CHARGE_D
+            fks_j_from_i: for each particle i of the real process (position
+                i - 1), the particles j with which it forms an FKS pair, all
+                1-based, FKS_J_FROM_I_D: the pairs whose sector functions
+                partition the phase space of the real process
 
     The Born is the real process without i, with i + j at the position of j.
     A Born without FKS configurations ([LOonly]) has none, not the fake one
@@ -120,6 +128,12 @@ def get_fks_configurations(fksborn):
     configurations = []
     for info in fksborn.get_fks_info_list():
         fks_info = info['fks_info']
+        real = fksborn.real_processes[info['n_me'] - 1]
+        nexternal = len(info['pdgs'])
+        fks_j_from_i = [[] for _ in range(nexternal)]
+        if not real.isfinite:
+            for i, js in real.fks_j_from_i.items():
+                fks_j_from_i[i - 1] = list(js)
         configurations.append({
             'i_fks': fks_info['i'],
             'j_fks': fks_info['j'],
@@ -130,6 +144,9 @@ def get_fks_configurations(fksborn):
             'need_charge_links': fks_info['need_charge_links'],
             'splitting_type': list(fks_info['splitting_type']),
             'extra_cnt_index': fks_info['extra_cnt_index'],
+            'real_colors': list(real.colors),
+            'real_charges': list(real.charges),
+            'fks_j_from_i': fks_j_from_i,
         })
     return {
         'nincoming': len([leg for leg in born_legs if not leg['state']]),

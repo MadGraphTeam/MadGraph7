@@ -24,7 +24,9 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
     nexternal, nincoming, ndim, lpp, ebeam,
     fks_configurations (the fks_configurations.json the FKS exporter writes
     into the P* directory, with its own conventions, see madspace/fks.py)
-    configs[]: nfks, i_fks, j_fks, pdg, masses, points[]
+    configs[]: nfks, i_fks, j_fks, pdg, masses, particle_type,
+               particle_charge, fks_j_from_i (the common blocks of the
+               configuration after fks_inc_chooser), points[]
     points[]:  x (unit-cube vector, radiation in the last three entries),
                isolsign, jac, jac_cnt (full weight of generate_momenta),
                p_born, p_ev, p_cnt, xi_ev, xi_hat_ev, y_ev, xiimax_ev,
@@ -186,6 +188,15 @@ def parse(text):
                 data["configs"].append(conf)
         elif key == "MASS":
             conf["masses"] = floats(rest)
+        elif key == "PTYPE":
+            conf["particle_type"] = list(map(int, rest))
+        elif key == "PCHARGE":
+            conf["particle_charge"] = floats(rest)
+        elif key == "JFROMI":
+            ints = list(map(int, rest))
+            js = conf.setdefault("fks_j_from_i", [])
+            if len(js) < ints[0]:
+                js.append(ints[1:])
         elif key == "POINT":
             point = {"isolsign": int(rest[2])}
             conf["points"].append(point)
