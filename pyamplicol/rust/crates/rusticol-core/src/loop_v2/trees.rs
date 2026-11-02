@@ -3917,22 +3917,41 @@ impl<T: Carrier> Closure<'_, T> {
         let inputs = program.layouts.iter().map(Vec::len).max().unwrap_or(0);
         let wide = super::kernels::Simd::detect::<T>();
         let gather = Gather::of(program, self.terms);
-        // The block currents of one lane chunk, lane-major.
-        let mut currents = vec![zero.clone(); gather.values * v];
+        let lanes_of = |chunk: usize| -> [usize; L] {
+            std::array::from_fn(|l| first + (chunk * L + l).min(points - 1))
+        };
+        // The block currents of a group of lane chunks, lane-major per
+        // chunk: as many chunks as fit `Gather::BUDGET` reals (at least
+        // one), so that a small program runs all its (chunk, row) tasks in
+        // one parallel pass and a large one holds one chunk's currents.
+        let per_chunk = gather.values * v;
+        let group = (Gather::BUDGET / per_chunk.max(1)).clamp(1, chunks);
+        let mut currents = vec![zero.clone(); group * per_chunk];
         // Per (lane chunk, row): `width` complex lane vectors.
         let mut sums = vec![zero.clone(); chunks * rows * width * v];
-        for (chunk, sums) in sums.chunks_exact_mut(rows * width * v).enumerate() {
-            let lanes: [usize; L] =
-                std::array::from_fn(|l| first + (chunk * L + l).min(points - 1));
-            gather.fill::<T, L>(&mut currents, &lanes, self.states, self.counterterm_states);
+        for (index, sums) in sums.chunks_mut(group * rows * width * v).enumerate() {
+            let first_chunk = index * group;
+            let count = sums.len() / (rows * width * v);
+            if per_chunk > 0 {
+                currents[..count * per_chunk]
+                    .par_chunks_mut(per_chunk)
+                    .enumerate()
+                    .for_each(|(c, out)| {
+                        let lanes = lanes_of(first_chunk + c);
+                        gather.fill::<T, L>(out, &lanes, self.states, self.counterterm_states);
+                    });
+            }
             let currents = &currents;
             sums.par_chunks_mut(width * v).enumerate().for_each_init(
                 || (vec![zero.clone(); inputs * v], Vec::new()),
-                |(x, starts), (row, target)| {
+                |(x, starts), (task, target)| {
+                    let (c, row) = (task / rows, task % rows);
                     // A row the program's restriction drops stays zero (`rows`).
                     if program.closure_rows.as_ref().is_some_and(|kept| !kept[row]) {
                         return;
                     }
+                    let lanes = lanes_of(first_chunk + c);
+                    let currents = &currents[c * per_chunk..(c + 1) * per_chunk];
                     for term in self.terms {
                         if self.active.is_some_and(|active| {
                             term.contributions.iter().all(|(c, ..)| !active[*c])
@@ -4132,6 +4151,10 @@ impl Gather {
 
     /// Gathered values per task of [`Gather::fill`].
     const SPAN: usize = 4096;
+
+    /// Reals of gathered currents held at once by [`Closure::lanes`] beyond
+    /// one lane chunk's (32 MiB in binary64).
+    const BUDGET: usize = 1 << 22;
 }
 
 /// The interaction program on the states of a batch: per step, each

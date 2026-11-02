@@ -580,6 +580,13 @@ impl Interference {
         let (keys, per_entry) = self.keys(poles);
         let czero = Complex::new(zero.clone(), zero.clone());
         let blocks: Vec<&[usize]> = rows.chunks(ROW_BLOCK).collect();
+        // Fewer blocks than threads: a block's z sums and rows also split
+        // on the pool; otherwise they stay on the block's thread.
+        let nested = if blocks.len() < rayon::current_num_threads() {
+            1
+        } else {
+            usize::MAX
+        };
         blocks
             .par_iter()
             .map(|block| {
@@ -595,10 +602,9 @@ impl Interference {
                         x_im[j * lanes + lane] = x.im;
                     }
                 }
-                // The z sums and then the block's rows also run on the pool
-                // (a few row blocks alone leave threads idle).
                 let zs: Vec<(Vec<T>, Vec<T>)> = keys
                     .par_iter()
+                    .with_min_len(nested)
                     .map(|&((bra, g, class), limit)| {
                         let mut z_re = vec![zero.clone(); limit * lanes];
                         let mut z_im = vec![zero.clone(); limit * lanes];
@@ -617,6 +623,7 @@ impl Interference {
                     .collect();
                 block
                     .par_iter()
+                    .with_min_len(nested)
                     .enumerate()
                     .map(|(lane, &row)| {
                         let a = &point.born[row * point.born_width..][..point.born_width];
