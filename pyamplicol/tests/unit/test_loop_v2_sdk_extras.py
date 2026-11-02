@@ -913,3 +913,87 @@ def test_umami_extension_version_records_the_options_layout():
     layouts = {"1": ["resolved", "r2_strategy", "verification_json"]}
     layouts["2"] = ["resolved", "r2_strategy"]
     assert members == layouts[version] and version == "2"
+
+
+WRAPPER = ROOT / "src" / "pyamplicol" / "_sdk" / "rust" / "rusticol.rs"
+WRAPPER_CLIENT = """
+#[path = "{wrapper}"]
+#[allow(dead_code)]
+mod rusticol;
+use rusticol::virtual_amplitudes::Runtime;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {{
+    let args: Vec<String> = std::env::args().collect();
+    let momenta: Vec<f64> = args[3].split(',').map(|v| v.parse().unwrap()).collect();
+    let scale: f64 = args[4].parse()?;
+    let mut runtime = Runtime::open(&args[1], Some(args[2].as_str()), None, None)?;
+    runtime.set_poles("ir")?;
+    assert!(runtime.set_arithmetic("arbitrary", 0).is_err());
+    runtime.set_arithmetic("double-double", 0)?;
+    let points = momenta.len() / (4 * runtime.shape().external_count);
+    let result = runtime.evaluate(&momenta, points, None, &[scale], false, None)?;
+    let bits = |values: &[f64]| -> String {{
+        values.iter().map(|v| v.to_bits().to_string()).collect::<Vec<_>>().join(" ")
+    }};
+    println!("born {{}}", bits(&result.born));
+    println!("virtual {{}}", bits(&result.virtual_values));
+    println!("decimal {{}}", result.decimal_json);
+    Ok(())
+}}
+"""
+
+
+def test_packaged_rust_wrapper_compiles_and_serves_the_extras(artifacts, tmp_path):
+    """The packaged single-file Rust wrapper (``_sdk/rust/rusticol.rs``)
+    compiles and links against the staged loop SDK, and its
+    ``set_arithmetic`` / ``set_poles`` / ``decimal_json`` serve a
+    double-double "ir" virtual equal to the C ABI's (doubles bitwise, the
+    decimal record equal); a refused arithmetic is an error."""
+
+    build = _staged_sdk()
+    source = tmp_path / "wrapper_client.rs"
+    source.write_text(WRAPPER_CLIENT.format(wrapper=WRAPPER))
+    binary = tmp_path / "wrapper-client"
+    subprocess.run(
+        [
+            _compiler("RUSTC", "rustc"),
+            "--edition=2021",
+            "-D",
+            "warnings",
+            str(source),
+            "-o",
+            str(binary),
+            "-L",
+            f"native={build}",
+            "-l",
+            "dylib=rusticol_loop_sdk",
+            "-C",
+            f"link-arg=-Wl,-rpath,{build}",
+        ],
+        check=True,
+        cwd=tmp_path,
+    )
+    case = CASES["uuddg"]
+    point = case["points"][0]
+    run = subprocess.run(
+        [
+            str(binary),
+            str(artifacts["uuddg"]),
+            "uuddg",
+            ",".join(repr(float(c)) for p in point for c in p),
+            repr(SCALES[0]),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=600,
+        check=False,
+    )
+    assert run.returncode == 0, run.stdout[-3000:] + run.stderr[-3000:]
+    lines = dict(line.split(" ", 1) for line in run.stdout.splitlines())
+    expected = _sdk_call(
+        _sdk(), artifacts["uuddg"], "uuddg", [point], "ir", "double-double", None, False
+    )
+    for axis in ("born", "virtual"):
+        found = [int(bits) for bits in lines[axis].split()]
+        assert found == [_bits(v) & (2**64 - 1) for v in expected[axis]], axis
+    assert json.loads(lines["decimal"]) == expected["decimal"]
