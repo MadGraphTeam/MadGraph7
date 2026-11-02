@@ -19,7 +19,7 @@ use super::closure::{FamilyNumerator, trace_into};
 use super::dress::{Carrier, ChunkInputs, LaneData, Pool, dress_edge};
 use super::kernels::{Segment, lane_vector_len, split_edge, split_vertex};
 use super::plan::{Edge, LoopProgramV4, Source, SplitStep, Step};
-use super::seeds::{Seeds, leaf_object};
+use super::seeds::Seeds;
 use crate::{RusticolError, RusticolResult};
 
 /// A family's numerators and the peak of its live open-loop objects (reals).
@@ -55,9 +55,8 @@ pub fn run_family<T: Carrier, const L: usize>(
         let mut source = |edge: &Edge, pool: &mut Pool<T>| -> RusticolResult<Vec<T>> {
             match edge.source {
                 Source::Leaf(leaf) => {
-                    let seed = &seeds.values[family.leaves[leaf].seed];
-                    let mut input = pool.take(seed.len());
-                    leaf_object::<T, L>(seed, &weights[leaf], &mut input);
+                    let mut input = pool.take(seeds.len());
+                    seeds.leaf_into::<L>(family.leaves[leaf].seed, &weights[leaf], &mut input);
                     Ok(input)
                 }
                 Source::Step(child) => outputs[child]
