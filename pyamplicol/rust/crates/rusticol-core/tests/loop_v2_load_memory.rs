@@ -209,8 +209,13 @@ fn report(path: &str) -> Value {
         TreeProgram::load_with_components(&source, &kernels, Some(&planes), &plan, None)
             .expect("tree program")
     });
+    // The binary64 runtime an evaluation builds once (kernels, interaction
+    // and colour weights, interference metrics; SymJIT code is not counted).
+    let (runtime, runtime_live, _) = measured(|| trees.runtime::<f64>(&0.0).expect("runtime"));
+    drop(runtime);
     let out = json!({
         "path": path,
+        "runtime_live_mib": mib(runtime_live),
         "plan_json_mib": mib(plan_bytes as i64),
         "plan_live_mib": mib(plan_live),
         "plan_peak_mib": mib(plan_peak),
