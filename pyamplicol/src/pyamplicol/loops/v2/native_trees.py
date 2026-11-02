@@ -1016,9 +1016,12 @@ def export_trees(
         _component_metric(slice_, components, squared_orders) if born_squared else None
     )
     counterterms = None
+    # MF-8G-1: the counterterm closure terms go straight into a native term
+    # section (no Python record list kept, no JSON), pruned natively.
+    ct_terms = _native().TreeTermBuilder() if NATIVE_SECTIONS else None
     if with_counterterms:
         counterterms = _counterterm_program(
-            slice_, closure_term, whole_term, components, born_orders
+            slice_, closure_term, whole_term, components, born_orders, ct_terms
         )
     masses = _external_masses(slice_)
     parameters, parameter_evaluator, parameter_outputs = _parameter_program(
@@ -1074,6 +1077,9 @@ def export_trees(
         sections[COUNTERTERM_STEPS] = ct.steps
     if counterterms is not None and counterterms.cells is not None:
         sections[CELLS] = counterterms.cells
+    if counterterms is not None and ct_terms is not None:
+        sections[COUNTERTERM_TERMS] = bytes(ct_terms.section())
+    del ct_terms
     if PRUNE:
         program, saved, ct_saved = prune_program(
             program, saved, ct_saved, keep_kets=keep_kets, sections=sections
@@ -1089,11 +1095,6 @@ def export_trees(
         # pruned: the program keeps no Python term record.
         terms = program["born"].pop("terms")
         sections[BORN_TERMS] = bytes(_native().tree_terms_from_json(_dumps(terms)))
-        if program.get("counterterms") is not None:
-            terms = program["counterterms"].pop("terms")
-            sections[COUNTERTERM_TERMS] = bytes(
-                _native().tree_terms_from_json(_dumps(terms))
-            )
         del terms
     # The kernels the pruned program still uses; their plane applications
     # are compiled after the pruning, so a dropped kernel compiles none.
@@ -1284,6 +1285,7 @@ def _counterterm_program(
     whole_term: Any,
     components: Mapping[tuple[int, Orders, int], int],
     born_orders: Sequence[Orders],
+    terms_sink: Any = None,
 ) -> _Counterterms:
     """The counterterm and external-field components of the native lane, as
     ``assemble._PointEvaluation._born_and_counterterms`` forms them.
@@ -1366,7 +1368,10 @@ def _counterterm_program(
 
     vectors: dict[tuple[str, int, Orders], int] = {}
     ket: dict[tuple[int, int, int], int] = {}
-    terms = []
+    # The closure terms: records, or appended to ``terms_sink`` (a native
+    # ``TreeTermBuilder``, ``NATIVE_SECTIONS``; the record then has no
+    # ``terms`` and ``export_trees`` takes the builder's section).
+    terms: Any = [] if terms_sink is None else terms_sink
 
     # Ket tensor index per literal tensor (one ``_single`` per distinct one).
     index_of: dict[Any, int] = {}
@@ -1585,7 +1590,7 @@ def _counterterm_program(
         "tensors": len(tensors),
         **({"cells": cells} if cell_section is None else {}),
         "born": [[b, born_index[order], grade] for b, order, grade in components],
-        "terms": terms,
+        **({"terms": terms} if terms_sink is None else {}),
         "entries": entries,
         "outputs": [power for _component, _s, power in outputs],
         "depth": None if accuracy == "full" else _DEPTH[accuracy],
@@ -2997,7 +3002,7 @@ def prune_program(
         # With stored observable columns (``keep_kets``) every ket component
         # stays: a component the inclusive metric does not read can enter a
         # colour history's interference.
-        _prune_counterterm_terms(counterterms, sections.get(CELLS))
+        _prune_counterterm_terms(counterterms, sections.get(CELLS), sections)
     state_size = int(program["state_size"])
     ct = program.get("counterterm_trees")
     offset = state_size if ct is None else int(ct["offset"])
@@ -3029,7 +3034,14 @@ def prune_program(
         widths.append(found)
     block_width = [0] * len(born_blocks)
     terms = program["born"]["terms"]
-    if counterterms is not None:
+    if counterterms is not None and COUNTERTERM_TERMS in sections:
+        # The counterterm closure terms as their section (``export_trees``).
+        block_width = list(
+            _native().tree_terms_block_widths(
+                sections[COUNTERTERM_TERMS], widths, len(born_blocks)
+            )
+        )
+    elif counterterms is not None:
         terms = [*terms, *counterterms["terms"]]
     for term in terms:
         blocks = term["blocks"]
@@ -3160,11 +3172,17 @@ def _live_ket(record: Mapping[str, Any]) -> list[bool]:
     return live
 
 
-def _prune_counterterm_terms(record: dict[str, Any], cells: bytes | None = None) -> None:
+def _prune_counterterm_terms(
+    record: dict[str, Any],
+    cells: bytes | None = None,
+    sections: dict[str, bytes] | None = None,
+) -> None:
     """Drop from ``record`` (in place) the ket components no interference
     reads (``_live_ket``; with ``cells``, the record's overlap cells as a
     binary section, its native twin), their contributions and the terms
-    left without any; unchanged if every component is read."""
+    left without any; unchanged if every component is read. Terms held as
+    ``sections[COUNTERTERM_TERMS]`` are pruned there (``tree_terms_prune_ket``,
+    the same rule)."""
 
     if cells is None:
         live = _live_ket(record)
@@ -3178,6 +3196,16 @@ def _prune_counterterm_terms(record: dict[str, Any], cells: bytes | None = None)
                 record["depth"],
             )
         )
+    if sections is not None and COUNTERTERM_TERMS in sections:
+        sections[COUNTERTERM_TERMS] = bytes(
+            _native().tree_terms_prune_ket(
+                sections[COUNTERTERM_TERMS], [bool(x) for x in live]
+            )
+        )
+        record["ket"] = [
+            c for c, alive in zip(record["ket"], live, strict=True) if alive
+        ]
+        return
     if all(live) and all(term["contributions"] for term in record["terms"]):
         return
     index = [-1] * len(live)

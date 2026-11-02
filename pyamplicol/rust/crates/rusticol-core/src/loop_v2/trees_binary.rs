@@ -1296,6 +1296,70 @@ pub struct TermColumns {
     pub contributions: (Column, [Column; 3]),
 }
 
+/// Closure terms gathered one at a time into flat columns (`native_trees.
+/// export_trees`'s counterterm closure, M-FINAL MF-8G-1: no Python record
+/// list and no JSON in between); [`TermBuilder::finish`] gives the columns
+/// [`TermColumns::from_files`] gives for the same terms.
+#[derive(Clone, Debug, Default)]
+pub struct TermBuilder {
+    kernel: Vec<u64>,
+    layout: Vec<u64>,
+    sign: Vec<i64>,
+    blocks: (Vec<u64>, Vec<u64>),
+    masks: (Vec<u64>, Vec<u64>),
+    contributions: (Vec<u64>, [Vec<u64>; 3]),
+}
+
+impl TermBuilder {
+    /// Append one term (a closure-term record's fields).
+    pub fn push(
+        &mut self,
+        kernel: usize,
+        layout: usize,
+        blocks: &[usize],
+        masks: &[u64],
+        sign: i32,
+        contributions: &[(usize, usize, usize)],
+    ) {
+        self.kernel.push(kernel as u64);
+        self.layout.push(layout as u64);
+        self.sign.push(i64::from(sign));
+        self.blocks.0.push(blocks.len() as u64);
+        self.blocks.1.extend(blocks.iter().map(|&b| b as u64));
+        self.masks.0.push(masks.len() as u64);
+        self.masks.1.extend_from_slice(masks);
+        self.contributions.0.push(contributions.len() as u64);
+        for &(coupling, component, weight) in contributions {
+            self.contributions.1[0].push(coupling as u64);
+            self.contributions.1[1].push(component as u64);
+            self.contributions.1[2].push(weight as u64);
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.kernel.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.kernel.is_empty()
+    }
+
+    /// The columns of the pushed terms.
+    pub fn finish(self) -> TermColumns {
+        TermColumns {
+            kernel: Column::of(self.kernel),
+            layout: Column::of(self.layout),
+            sign: SignedColumn::of(self.sign),
+            blocks: (Column::of(self.blocks.0), Column::of(self.blocks.1)),
+            masks: (Column::of(self.masks.0), Column::of(self.masks.1)),
+            contributions: (
+                Column::of(self.contributions.0),
+                self.contributions.1.map(Column::of),
+            ),
+        }
+    }
+}
+
 impl TermColumns {
     /// Columns of the oracle's JSON terms.
     pub fn from_json(json: &[u8]) -> RusticolResult<Self> {
@@ -1336,6 +1400,81 @@ impl TermColumns {
 
     pub fn is_empty(&self) -> bool {
         self.kernel.is_empty()
+    }
+
+    /// `native_trees._prune_counterterm_terms` on the columns: the
+    /// contributions of the ket components `live` marks, each component
+    /// renumbered to its rank among the live ones, and only the terms left
+    /// with a contribution (unchanged when every component is live and every
+    /// term has one).
+    pub fn prune_ket(&self, live: &[bool]) -> RusticolResult<TermColumns> {
+        let mut index = vec![u64::MAX; live.len()];
+        let mut next = 0u64;
+        for (k, &alive) in live.iter().enumerate() {
+            if alive {
+                index[k] = next;
+                next += 1;
+            }
+        }
+        let mut out = TermBuilder::default();
+        let (mut b, mut m, mut c) = (0usize, 0usize, 0usize);
+        let [coupling, component, weight] = &self.contributions.1;
+        for k in 0..self.len() {
+            let (nb, nm, nc) = (
+                self.blocks.0.at(k),
+                self.masks.0.at(k),
+                self.contributions.0.at(k),
+            );
+            let mut kept = Vec::with_capacity(nc);
+            for i in c..c + nc {
+                let old = component.at(i);
+                require(old < index.len(), "a contribution's ket component")?;
+                if index[old] != u64::MAX {
+                    kept.push((coupling.at(i), index[old] as usize, weight.at(i)));
+                }
+            }
+            if !kept.is_empty() {
+                let blocks: Vec<usize> = (b..b + nb).map(|i| self.blocks.1.at(i)).collect();
+                let masks: Vec<u64> = (m..m + nm).map(|i| self.masks.1.get(i)).collect();
+                out.push(
+                    self.kernel.at(k),
+                    self.layout.at(k),
+                    &blocks,
+                    &masks,
+                    self.sign.get(k) as i32,
+                    &kept,
+                );
+            }
+            (b, m, c) = (b + nb, m + nm, c + nc);
+        }
+        Ok(out.finish())
+    }
+
+    /// Per closure block the widest prefix of its rows a term reads
+    /// (`native_trees.prune_program`): `widths` per layout the width of each
+    /// slot; `blocks` the closure blocks' count.
+    pub fn block_widths(&self, widths: &[Vec<usize>], blocks: usize) -> RusticolResult<Vec<usize>> {
+        let mut out = vec![0usize; blocks];
+        let mut b = 0usize;
+        for k in 0..self.len() {
+            let nb = self.blocks.0.at(k);
+            let layout = widths
+                .get(self.layout.at(k))
+                .ok_or_else(|| invalid("a closure term's layout"))?;
+            require(
+                layout.len() <= nb,
+                "a closure term's layout reads a slot it has no block for",
+            )?;
+            for (slot, &width) in layout.iter().enumerate() {
+                let block = self.blocks.1.at(b + slot);
+                require(block < blocks, "a closure term's block")?;
+                if width > out[block] {
+                    out[block] = width;
+                }
+            }
+            b += nb;
+        }
+        Ok(out)
     }
 
     /// The terms (`TermFile`s), the reader's form.
