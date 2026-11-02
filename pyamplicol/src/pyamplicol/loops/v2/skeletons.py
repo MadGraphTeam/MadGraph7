@@ -177,11 +177,11 @@ class Skeleton:
     _orders: Orders | None = field(default=None, init=False, repr=False, compare=False)
 
     def __hash__(self) -> int:
+        # Without the weight (a ``Fraction``, slow to hash): equal skeletons
+        # still hash equal.
         if self._hash is None:
             object.__setattr__(
-                self,
-                "_hash",
-                hash((self.family, self.contents, self.weight, self.multiplicity)),
+                self, "_hash", hash((self.family, self.contents, self.multiplicity))
             )
         return self._hash  # type: ignore[return-value]
 

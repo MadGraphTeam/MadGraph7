@@ -628,6 +628,7 @@ def _born_closure_ratio(slice_, point, scale, parameters):
     from pyamplicol.config import PoleSelection
     from pyamplicol.loops.v2 import assemble
     from pyamplicol.loops.v2.assemble import Precision
+    from pyamplicol.loops.v2.blocks import _born_roots
     from pyamplicol.loops.v2.colour import born_basis
 
     point = [[Fraction(x) for x in leg] for leg in point]
@@ -639,7 +640,9 @@ def _born_closure_ratio(slice_, point, scale, parameters):
         closure = slice_._point(
             point, Fraction(scale), parameters, precision, PoleSelection.ALL
         )
-        roots = assemble.TreeRows(slice_.blocks.born_dag, slice_.compiled).evaluate(
+        # The complete Born DAG (the slice summarises its structural one).
+        born = slice_.blocks.born_dag.materialize()
+        roots = assemble.TreeRows(born, slice_.compiled).evaluate(
             [[assemble._to_decimal(x) for x in leg] for leg in point],
             closure.parameters,
             numbers,
@@ -657,7 +660,7 @@ def _born_closure_ratio(slice_, point, scale, parameters):
             )
 
         runtime: dict = {}
-        for root in slice_.blocks.born_roots:
+        for root in _born_roots(born, slice_.blocks.born_dag.model):
             (value,) = roots[(root.root_id, "amplitude-root")]
             key = (
                 tuple((label - 1, h) for label, h in root.helicities),

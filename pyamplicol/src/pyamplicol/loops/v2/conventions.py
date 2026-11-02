@@ -581,13 +581,16 @@ class LeafWeights:
     for it per reading: generation checks every reading of every skeleton
     (F and B, ``fermion_sign``, which refuses fermion lines it does not
     cover), the plan export every F leaf (``__call__``). ``fermion_sign``
-    therefore computes it once per distinct ``contents`` tuple
-    (``_fermion_sign``, the full rule; a refusal is raised again at every
-    call, nothing being kept for it), and a tuple whose contents carry no
-    fermion line takes a fast path: per content, once, its kind
+    therefore computes it once per distinct tuple of what it reads of the
+    contents (``_fermion_sign``, the full rule; a refusal is raised again at
+    every call, nothing being kept for it): per content its loop lines and
+    routing terms (``_reads``), not its colour state, so readings that
+    differ only in colour share it. A tuple whose contents carry no fermion
+    line takes a fast path: per content, once, its kind
     (``_content_kind``), and the tuple's sign is -1 for a closed ghost loop,
     else +1 (WP3.1 D1, RUST-MIGRATION.md §3.D; equal to ``_fermion_sign``
-    on every reading of the controls).
+    on every reading of the controls). ``contents_seen`` lists every content
+    asked about so far.
     """
 
     def __init__(self, native_model: Any, ends: Mapping[int, int]):
@@ -601,8 +604,11 @@ class LeafWeights:
         self._ends = dict(ends)
         # The coloured fermion ends as a leg mask (``_content_kind``).
         self._end_mask = sum(1 << (label - 1) for label in self._ends)
-        self._signs: dict[tuple[Content, ...], int] = {}
-        self._kinds: dict[Content, int] = {}
+        # Per tuple of read ids (``_reads``) its sign; per content its kind
+        # and read id; per read key its id.
+        self._signs: dict[tuple[int, ...], int] = {}
+        self._kinds: dict[Content, tuple[int, int]] = {}
+        self._read_ids: dict[tuple, int] = {}
         self._depends: dict[str, frozenset[str]] = {}
 
     def __call__(self, skeleton: Skeleton, contents: Sequence[Content]) -> Fraction:
@@ -610,26 +616,47 @@ class LeafWeights:
 
     def fermion_sign(self, skeleton: Skeleton) -> int:
         """eps_s of a skeleton (reading-independent), once per distinct
-        ``contents`` tuple (class docstring)."""
+        tuple of what it reads of the contents (class docstring)."""
 
-        contents = skeleton.contents
         kinds = self._kinds
         ghost = True
-        for content in contents:
-            kind = kinds.get(content)
-            if kind is None:
-                kind = kinds[content] = self._content_kind(content)
+        fermionic = False
+        key = []
+        for content in skeleton.contents:
+            found = kinds.get(content)
+            if found is None:
+                found = kinds[content] = self._content_reads(content)
+            kind, read = found
+            key.append(read)
             if kind == _FERMIONIC:
-                break
+                fermionic = True
             ghost = ghost and kind == _GHOST
-        else:
+        if not fermionic:
             # No fermion line: no propagator, closed-loop or line-parity sign
             # and no mass-free coupling to require (``_fermion_sign``).
             return -1 if ghost else 1
-        sign = self._signs.get(contents)
+        reads = tuple(key)
+        sign = self._signs.get(reads)
         if sign is None:
-            sign = self._signs[contents] = self._fermion_sign(skeleton)
+            sign = self._signs[reads] = self._fermion_sign(skeleton)
         return sign
+
+    def contents_seen(self) -> list[Content]:
+        """Every content ``fermion_sign`` was asked about, first seen."""
+
+        return list(self._kinds)
+
+    def _content_reads(self, content: Content) -> tuple[int, int]:
+        """A content's kind (``_content_kind``) and the id of what
+        ``_fermion_sign`` reads of it: its loop lines and its routing terms
+        (vertex rules, block fields and masks), not its colour state, orders
+        or mask (functions of the terms)."""
+
+        read = (content.loop_in, content.loop_out, content.terms)
+        found = self._read_ids.get(read)
+        if found is None:
+            found = self._read_ids[read] = len(self._read_ids)
+        return self._content_kind(content), found
 
     def _content_kind(self, content: Content) -> int:
         """Whether ``_fermion_sign`` reads anything of ``content`` but its

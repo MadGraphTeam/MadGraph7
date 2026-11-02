@@ -572,6 +572,14 @@ class PositionColour:
     words: tuple[tuple[int, ...], ...]
     grades: tuple[int, ...] = ()
 
+    def order_key(self) -> tuple[Any, ...]:
+        """The fields in declaration order: tuples of these keys order as
+        the states do (``order=True`` compares exactly these tuples), at C
+        speed (``generator_input.NativeGeneration`` sorts every state of a
+        generation)."""
+
+        return (self.rule, self.colour_index, self.legs, self.words, self.grades)
+
     @property
     def block_names(self) -> tuple[BlockName, ...]:
         """The name of each attached block among the blocks of its block
@@ -744,8 +752,14 @@ class SeedColour:
                 )
         # The block names of each block current in state order, once.
         self._ordered: dict[tuple[int, str, Orders], tuple[BlockName, ...]] = {}
+        # (rule, legs) -> the legs of the reflected reading (``reflected``).
+        self._reflected_legs: dict[tuple[str, tuple[int, ...]], tuple[int, ...]] = {}
 
     # -- ColourModel ---------------------------------------------------------
+
+    # ``PositionColour.order_key``: sorting by it orders states as their own
+    # comparison does (``generator_input.NativeGeneration._colour_payload``).
+    state_order_key = staticmethod(PositionColour.order_key)
 
     def states(self, position: Position) -> tuple[PositionColour, ...]:
         vertex = position.vertex
@@ -790,14 +804,19 @@ class SeedColour:
         )
 
     def reflected(self, state: PositionColour) -> PositionColour:
-        particles = self._rules[state.rule]["particles"]
-        in_leg, out_leg, *attached = state.legs
-        legs = self._canonical_legs(
-            state.rule,
-            particles[out_leg - 1],
-            particles[in_leg - 1],
-            tuple(particles[leg - 1] for leg in attached),
-        )
+        # The reflected legs depend on the rule and the legs only (many
+        # states share them: they differ in colour index, words and grades).
+        found = (state.rule, state.legs)
+        legs = self._reflected_legs.get(found)
+        if legs is None:
+            particles = self._rules[state.rule]["particles"]
+            in_leg, out_leg, *attached = state.legs
+            legs = self._reflected_legs[found] = self._canonical_legs(
+                state.rule,
+                particles[out_leg - 1],
+                particles[in_leg - 1],
+                tuple(particles[leg - 1] for leg in attached),
+            )
         return PositionColour(
             state.rule, state.colour_index, legs, state.words, state.grades
         )
