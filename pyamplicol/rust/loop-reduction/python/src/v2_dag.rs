@@ -578,11 +578,20 @@ mod tree_binary {
         propagators: usize,
     ) -> PyResult<Option<(Bound<'py, PyBytes>, Vec<usize>, Vec<usize>)>> {
         let mut marks = live.to_vec();
+        // One copy of the section at a time beside the pruned columns: the
+        // decoded steps go before the encoding, the pruned columns before
+        // the Python bytes (MF-8G-1: the counterterm program's section is
+        // the 2->6 export's largest).
         let pruned = py
             .detach(|| {
-                StepColumns::decode(section)?
-                    .prune(&mut marks, kernels, propagators)
-                    .map(|found| found.map(|(c, k, p)| (c.encode(), k, p)))
+                let decoded = StepColumns::decode(section)?;
+                let found = decoded.prune(&mut marks, kernels, propagators)?;
+                drop(decoded);
+                Ok::<_, rusticol_core::RusticolError>(found.map(|(columns, k, p)| {
+                    let encoded = columns.encode();
+                    drop(columns);
+                    (encoded, k, p)
+                }))
             })
             .map_err(failed)?;
         Ok(pruned.map(|(bytes, k, p)| (PyBytes::new(py, &bytes), k, p)))
