@@ -38,14 +38,16 @@ output is the observable column of those rows and basis elements
 keep them only, so a complete set of selections sums to the inclusive value.
 Next-to-leading and full colour expose no selection.
 
-A runtime forms and compiles each distinct evaluation-time selection's
-column set on first use and keeps the ``SELECTION_CACHE_DEFAULT`` most
-recently used (``SelectionCache``; ``$PYAMPLICOL_LOOP_SELECTION_CACHE``
-sets the count, 0 keeps none): a kept selection holds its native plan and
-executors (u u~ > g g g g at leading colour: about 66 MB and 0.9 s of setup
-per (helicity, flow) pair), so sampling many distinct selections stays
-bounded in memory (apart from about 1.5 MB of native heap each formation
-leaves, as any rebuilt native executor does; design §8.5).
+A loaded (stored) process serves every evaluation-time selection with one
+column set, its selection template (``native_observables.SelectionTemplate``,
+formed and compiled on the first selection): a selection is the masks of
+one native call (its rows, flows, the seeds' Born components and the
+families it reads), so a new selection builds no native executor and leaves
+no native heap behind (design §8.5). An in-memory slice forms and compiles a
+new selection's own column. A runtime keeps the ``SELECTION_CACHE_DEFAULT``
+most recently used selections (``SelectionCache``;
+``$PYAMPLICOL_LOOP_SELECTION_CACHE`` sets the count, 0 keeps none): masks on
+a loaded process, the compiled column of an in-memory slice.
 """
 
 from __future__ import annotations
@@ -558,8 +560,9 @@ def selection_cache_size() -> int:
 class SelectionCache:
     """The column runners of a runtime's evaluation-time selections, formed
     on first use: the ``size`` most recently used are kept
-    (``selection_cache_size``), the least recently used dropped first, so
-    their native plans and executors are released (module docstring)."""
+    (``selection_cache_size``), the least recently used dropped first (a
+    loaded process's masks; an in-memory slice's native plan and executors,
+    module docstring)."""
 
     def __init__(self, size: int | None = None) -> None:
         self.size = selection_cache_size() if size is None else int(size)

@@ -836,7 +836,10 @@ class StoredObservableSlice:
             masks = found.template.masks(value)
             if len(masks.wanted) == 1:
                 return _Selection(
-                    found, masks.wanted, masks=masks, rename={masks.wanted[0]: value.key}
+                    found,
+                    masks.wanted,
+                    masks=masks,
+                    rename={masks.wanted[0]: value.key},
                 )
             return _Selection(found, masks.wanted, group=value.key, masks=masks)
         if kind not in KINDS:
@@ -1003,7 +1006,9 @@ def selection_parts(observables: StoredObservableSlice, column: Any) -> _Selecti
     resolved columns, at the cost of one inclusive column rather than of
     every resolved one. Rows whose selected resolved columns read other
     seed-weight columns get a column of their own, summed (``_Selection``
-    group)."""
+    group). Runtimes serve selections by masks on ``SelectionTemplate``;
+    this per-selection set (its own plan and executors) is that template's
+    oracle (``StoredColumns(..., selection=column)``)."""
 
     from .observables import Column
 
@@ -1269,7 +1274,9 @@ class SelectionTemplate:
         self.row_class = [0] * every
         for c, (signature, hs) in enumerate(classes.items()):
             found = dict(signature)
-            kept_rows = None if len(hs) == every else frozenset(self.rows[h] for h in hs)
+            kept_rows = (
+                None if len(hs) == every else frozenset(self.rows[h] for h in hs)
+            )
             key = (TEMPLATE, c)
             for h in hs:
                 self.row_class[h] = c
@@ -1289,7 +1296,11 @@ class SelectionTemplate:
                 for p in range(len(overlays)):
                     template_weights[p].append(
                         sorted(
-                            {w for (_b, lab, q), w in found.items() if lab == label and q == p}
+                            {
+                                w
+                                for (_b, lab, q), w in found.items()
+                                if lab == label and q == p
+                            }
                         )
                     )
         self.classes = tuple(tuple(hs) for hs in classes.values())
@@ -1550,9 +1561,7 @@ class StoredColumns:
         self.set = stored.sets[kind] if parts is None else parts.set
         self.meta = stored.record["sets"][kind] if parts is None else parts.meta
         self.plan = _plan_class()(_ColumnPlanView(observables, kind, parts))
-        self.families = (
-            (None, None) if parts is None or template else parts.families
-        )
+        self.families = (None, None) if parts is None or template else parts.families
         self._native: dict[tuple[str, int | None, int, bool], Any] = {}
         self._plans: dict[bool, str] = {}
         self.last_report: dict[str, Any] | None = None

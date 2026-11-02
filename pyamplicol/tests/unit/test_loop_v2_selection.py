@@ -1424,7 +1424,9 @@ def test_evaluation_time_selections_are_kept_most_recently_used(artifacts, monke
     for flow in (flows[3], flows[0]):
         runtime.evaluate(pts, mu_r2=scales, color_flows=[flow])
     assert len(observables._selections) == 2
-    assert all(value.columns is template for _key, value in observables._selections.items())
+    assert all(
+        value.columns is template for _key, value in observables._selections.items()
+    )
     gc.collect()
     assert released() is None
     again = _values(runtime.evaluate(pts, mu_r2=scales, color_flows=[flows[2]]))
@@ -1507,7 +1509,7 @@ def test_selections_are_masks_on_one_template(
         def __getattr__(self, name):
             return getattr(native, name)
 
-        def V2Executor(self, *args, **kwargs):  # noqa: N802
+        def V2Executor(self, *args, **kwargs):
             built["executors"] += 1
             return native.V2Executor(*args, **kwargs)
 
