@@ -295,6 +295,8 @@ class _Exporter:
     # ``content_records``. ``content_count`` counts them either way.
     content_sink: Any = None
     content_count: int = 0
+    # Row -> (leg mask, leg count), the content row check's.
+    row_masks: dict[Any, tuple[int, int]] = field(default_factory=dict)
 
     # -- kernels ------------------------------------------------------------
 
@@ -332,10 +334,6 @@ class _Exporter:
         found = self.kernels[(binding.kernel_id, flips)] = len(self.kernel_records)
         self.kernel_records.append({"inputs": inputs, "outputs": outputs})
         return found
-
-    def _block_row(self, slot, part: rx.Row, dimension: int) -> int:
-        key = (slot.block, slot.word, slot.chirality, part, dimension)
-        return self.block_rows.setdefault(key, len(self.block_rows))
 
     # -- contents -----------------------------------------------------------
 
@@ -378,6 +376,7 @@ class _Exporter:
         if found is not None:
             return found
         shape = self.kinematics.shape(content)
+        block_rows = self.block_rows
         index = {entry: i for i, entry in enumerate(shape.fused)}
         row_index = {row: i for i, row in enumerate(shape.rows)}
         flips = rx.mass_flips(self.kinematics.reading, content)
@@ -389,13 +388,19 @@ class _Exporter:
             if len(dimensions) != 1:
                 raise ValueError(f"content {content.label} mixes block dimensions")
             (dims,) = dimensions
+            # A block row per (slot's block, word and chirality, row part,
+            # dimension), interned inline (4.8 M rows in the g g > 5g LC
+            # companion; MF-8G-1).
+            slots = [(s.block, s.word, s.chirality) for s in term.slots]
             rows = [
                 [
                     row_index[row],
                     [
-                        self._block_row(slot, part, dimension)
-                        for slot, part, dimension in zip(
-                            term.slots, parts, dims, strict=True
+                        block_rows.setdefault(
+                            (block, word, chirality, part, dimension), len(block_rows)
+                        )
+                        for (block, word, chirality), part, dimension in zip(
+                            slots, parts, dims, strict=True
                         )
                     ],
                 ]
@@ -418,8 +423,17 @@ class _Exporter:
         found = self.content_count
         self.contents[content] = (found, shape)
         mask = content.mask
+        row_masks = self.row_masks
         for row in shape.rows:
-            if sum(1 << leg for leg, _h in row) != mask or len(row) != mask.bit_count():
+            # A row's legs as a mask and their count (rows repeat over
+            # contents: formed once per row).
+            found_mask = row_masks.get(row)
+            if found_mask is None:
+                found_mask = row_masks[row] = (
+                    sum(1 << leg for leg, _h in row),
+                    len(row),
+                )
+            if found_mask != (mask, mask.bit_count()):
                 raise ValueError(f"content {content.label} has a row off its legs")
         record = {
             "d_in": shape.loop_in,
