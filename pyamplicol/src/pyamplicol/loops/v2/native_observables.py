@@ -1282,6 +1282,23 @@ class StoredColumns:
         key = (arithmetic, digits, lanes, twin)
         found = self._native.get(key)
         if found is None:
+            # Another carrier or lane count of the same plan shares an
+            # executor's loaded plan and tree program (``V2Executor.derive``;
+            # one of the same carrier first, whose tree runtime it shares).
+            built = sorted(
+                self._native.items(),
+                key=lambda item: item[0][:2] != (arithmetic, digits),
+            )
+            for (_a, _d, _l, other), base in built:
+                if other == twin:
+                    found = self._native[key] = base.derive(
+                        arithmetic,
+                        digits,
+                        lanes=lanes,
+                        threads=self.threads,
+                        fourier=False,
+                    )
+                    return found
             process = self.observables.process
             native = self.observables.native
             if twin:

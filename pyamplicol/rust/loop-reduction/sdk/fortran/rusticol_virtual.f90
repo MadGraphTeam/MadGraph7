@@ -45,6 +45,8 @@ module rusticol_virtual
     integer(c_int64_t), allocatable :: requested_ids(:), successful_ids(:)
     integer(c_int32_t), allocatable :: statuses(:)
     character(:), allocatable :: diagnostics_json, histories_json, spin_legs_json
+    ! Extended precision: [real, imaginary] decimal literals (JSON); "null" in binary64.
+    character(:), allocatable :: decimal_json
   end type
   type, bind(C) :: c_batch_request
     type(c_ptr) :: momenta
@@ -69,6 +71,9 @@ module rusticol_virtual
     integer(c_int64_t), allocatable :: requested_ids(:), successful_ids(:)
     integer(c_int32_t), allocatable :: statuses(:) ! every requested point
     character(:), allocatable :: diagnostics_json
+    ! Extended precision: {"arithmetic","digits","born","virtual"} decimal
+    ! literals in the C layouts (JSON); "null" in binary64.
+    character(:), allocatable :: decimal_json
   end type
   ! Assignment shares a reference-counted runtime. Calls require exclusive access.
   ! Evaluations own copied arrays and never depend on this runtime's lifetime.
@@ -92,6 +97,7 @@ module rusticol_virtual
     procedure :: capabilities_json
     procedure :: update_parameters
     procedure :: set_poles
+    procedure :: set_arithmetic
     procedure :: evaluate
     procedure :: evaluate_correlated
     procedure :: correlation_histories_json
@@ -158,6 +164,28 @@ module rusticol_virtual
       import
       type(c_ptr), value :: handle, changes
       integer(c_int64_t) :: revision
+      integer(c_int) :: value
+    end function
+    function c_set_arithmetic(handle, arithmetic, digits) bind(C, name="rusticol_virtual_set_arithmetic") result(value)
+      import
+      type(c_ptr), value :: handle, arithmetic
+      integer(c_int32_t), value :: digits
+      integer(c_int) :: value
+    end function
+    function c_result_decimal_json(handle, output, capacity, needed) &
+        bind(C, name="rusticol_virtual_result_decimal_json") result(value)
+      import
+      type(c_ptr), value :: handle, output
+      integer(c_size_t), value :: capacity
+      integer(c_size_t) :: needed
+      integer(c_int) :: value
+    end function
+    function c_correlated_decimal_json(handle, output, capacity, needed) &
+        bind(C, name="rusticol_virtual_correlated_result_decimal_json") result(value)
+      import
+      type(c_ptr), value :: handle, output
+      integer(c_size_t), value :: capacity
+      integer(c_size_t) :: needed
       integer(c_int) :: value
     end function
     function c_set_poles(handle, poles) bind(C, name="rusticol_virtual_set_poles") result(value)
@@ -483,6 +511,10 @@ contains
       status=c_spin_classes_json(handle,c_null_ptr,0_c_size_t,n)
     case(6)
       status=c_correlated_diagnostics(handle,c_null_ptr,0_c_size_t,n)
+    case(9)
+      status=c_result_decimal_json(handle,c_null_ptr,0_c_size_t,n)
+    case(10)
+      status=c_correlated_decimal_json(handle,c_null_ptr,0_c_size_t,n)
     end select
     if (status/=VIRTUAL_OK) return
     allocate(buffer(n))
@@ -503,6 +535,10 @@ contains
       status=c_spin_classes_json(handle,c_loc(buffer),n,n)
     case(6)
       status=c_correlated_diagnostics(handle,c_loc(buffer),n,n)
+    case(9)
+      status=c_result_decimal_json(handle,c_loc(buffer),n,n)
+    case(10)
+      status=c_correlated_decimal_json(handle,c_loc(buffer),n,n)
     end select
     if (status/=VIRTUAL_OK) return
     deallocate(text)
@@ -577,6 +613,22 @@ contains
     character(c_char), allocatable, target :: buffer(:)
     buffer=cstring(poles)
     call finish(c_set_poles(handle_of(self),c_loc(buffer)),ierr)
+  end subroutine
+
+  ! Arithmetic of later evaluations (the Python API's arithmetic=/precision=):
+  ! "double" (default), "double-double", or "arbitrary" with digits > 0
+  ! decimal digits; extended-precision results carry decimal_json.
+  subroutine set_arithmetic(self,arithmetic,digits,ierr)
+    class(virtual_runtime), intent(inout) :: self
+    character(*), intent(in) :: arithmetic
+    integer, optional, intent(in) :: digits
+    integer(c_int), optional, intent(out) :: ierr
+    character(c_char), allocatable, target :: buffer(:)
+    integer(c_int32_t) :: count
+    count=0
+    if (present(digits)) count=int(digits,c_int32_t)
+    buffer=cstring(arithmetic)
+    call finish(c_set_arithmetic(handle_of(self),c_loc(buffer),count),ierr)
   end subroutine
 
   subroutine evaluate(self,momenta,mu_r2,output,point_ids,resolved,r2_strategy,ierr,error_message)
@@ -669,6 +721,7 @@ contains
         status=c_result_copy_statuses(result_handle,destination,size(value%statuses,kind=c_size_t))
       end if
       if (status==VIRTUAL_OK) value%diagnostics_json=read_json(result_handle,3,status)
+      if (status==VIRTUAL_OK) value%decimal_json=read_json(result_handle,9,status)
     end if
     ! Free regardless of copy/query failures; report the original function status.
     ignored=c_result_free(result_handle)
@@ -680,6 +733,7 @@ contains
       call move_alloc(value%successful_ids,output%successful_ids)
       call move_alloc(value%statuses,output%statuses)
       call move_alloc(value%diagnostics_json,output%diagnostics_json)
+      call move_alloc(value%decimal_json,output%decimal_json)
     end if
     call finish(status,ierr,error_message=error_message)
   end subroutine
@@ -792,6 +846,7 @@ contains
       if (status==VIRTUAL_OK) value%diagnostics_json=read_json(result_handle,6,status)
       if (status==VIRTUAL_OK) value%histories_json=read_json(result_handle,5,status)
       if (status==VIRTUAL_OK) value%spin_legs_json=read_json(result_handle,7,status)
+      if (status==VIRTUAL_OK) value%decimal_json=read_json(result_handle,10,status)
     end if
     ! Free regardless of copy/query failures; report the original function status.
     ignored=c_correlated_free(result_handle)
@@ -805,6 +860,7 @@ contains
       call move_alloc(value%diagnostics_json,output%diagnostics_json)
       call move_alloc(value%histories_json,output%histories_json)
       call move_alloc(value%spin_legs_json,output%spin_legs_json)
+      call move_alloc(value%decimal_json,output%decimal_json)
     end if
     call finish(status,ierr,error_message=error_message)
   end subroutine

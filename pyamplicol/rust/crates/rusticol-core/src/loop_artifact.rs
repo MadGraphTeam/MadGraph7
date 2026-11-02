@@ -34,7 +34,6 @@ pub struct LoopSchemeDeclaration {
     pub model_convention: String,
 }
 
-
 fn require(condition: bool, message: &str) -> RusticolResult<()> {
     if condition {
         Ok(())
@@ -571,6 +570,57 @@ pub fn read_loop_v2_native_inputs(
         planes: main.planes,
         scaleless,
     }))
+}
+
+/// The stored observable columns of a plan v4 process with native point
+/// inputs (`loops/v2/native_observables.StoredObservables.members`): every
+/// `point-inputs/observables*.json.zlib` member, inflated, by its name
+/// without the prefix and the `.zlib` suffix (`observables.json`,
+/// `observables-<kind>-seeds.json`, ...); empty when the process stores
+/// none (the SDK's correlated and resolved evaluations read them).
+#[cfg(feature = "loop-v2")]
+pub fn read_loop_v2_observables(
+    artifact: &VerifiedArtifact,
+    loaded: &LoadedLoopV2Artifact,
+) -> RusticolResult<std::collections::BTreeMap<String, Vec<u8>>> {
+    use crate::pacbin::PacbinMemberKind;
+    use std::io::Read;
+
+    let mut out = std::collections::BTreeMap::new();
+    if loaded.point_inputs != LOOP_V2_NATIVE_POINT_INPUTS {
+        return Ok(out);
+    }
+    let root = artifact.root().join(
+        Path::new(&loaded.execution_path)
+            .parent()
+            .unwrap_or(Path::new("")),
+    );
+    let store = artifact.evaluator_payload_store(&root)?;
+    let reader = store.source(&loaded.runtime_path)?.pacbin()?;
+    let start = format!("{LOOP_V2_NATIVE_INPUTS_PREFIX}observables");
+    for member in reader.members() {
+        let name = member.logical_path();
+        let Some(stem) = name
+            .strip_prefix(LOOP_V2_NATIVE_INPUTS_PREFIX)
+            .filter(|_| name.starts_with(&start))
+            .and_then(|rest| rest.strip_suffix(".zlib"))
+            .filter(|rest| rest.ends_with(".json"))
+        else {
+            continue;
+        };
+        require(
+            member.kind() == PacbinMemberKind::LoopRuntimePlan,
+            "native point inputs member of the wrong kind",
+        )?;
+        let mut json = Vec::new();
+        flate2::read::ZlibDecoder::new(reader.member_bytes(name)?)
+            .read_to_end(&mut json)
+            .map_err(|error| {
+                RusticolError::integrity(format!("{name} is not a zlib stream: {error}"))
+            })?;
+        out.insert(stem.to_owned(), json);
+    }
+    Ok(out)
 }
 
 /// The prefix of the process's own tree program members.

@@ -244,6 +244,27 @@ pub unsafe extern "C" fn rusticol_virtual_set_poles(
         Ok(())
     })
 }
+/// The arithmetic of the handle's later evaluations, the Python API's
+/// `arithmetic=` / `precision=`: "double" (NULL, the default; `digits` 0),
+/// "double-double" (`digits` 0) or "arbitrary" with `digits` (> 0) decimal
+/// digits. Extended-precision results keep their exact values as decimal
+/// literals (`rusticol_virtual_result_decimal_json`); their binary64 copies
+/// are the nearest doubles.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_set_arithmetic(
+    handle: *mut VirtualHandle,
+    arithmetic: *const c_char,
+    digits: u32,
+) -> c_int {
+    guard(|| unsafe {
+        let arithmetic = crate::Arithmetic::parse(
+            text(arithmetic)?.unwrap_or("double"),
+            (digits != 0).then_some(digits),
+        )?;
+        mutable(handle)?.0.set_arithmetic(arithmetic)?;
+        Ok(())
+    })
+}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rusticol_virtual_shape(
     handle: *const VirtualHandle,
@@ -421,6 +442,27 @@ pub unsafe extern "C" fn rusticol_virtual_result_diagnostics_json(
     })
 }
 
+/// The exact values of an extended-precision evaluation as JSON
+/// (`{"arithmetic", "digits", "born", "virtual"}`: decimal literals in the
+/// layout of the binary64 copies, absent poles `null`); `null` for a
+/// binary64 result.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_result_decimal_json(
+    result: *const VirtualResult,
+    output: *mut c_char,
+    capacity: usize,
+    needed: *mut usize,
+) -> c_int {
+    guard(|| unsafe {
+        json_string(
+            &reference(result)?.0.decimal_json()?,
+            output,
+            capacity,
+            needed,
+        )
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -454,7 +496,7 @@ pub unsafe extern "C" fn rusticol_virtual_evaluate_correlated(
         *output = ptr::null_mut();
         let request = reference(request)?;
         if request.resolved != 0 {
-            return Err(bad("resolved directed correlations are unavailable"));
+            return Err(bad("resolved correlated evaluations are unavailable"));
         }
         let handle = mutable(handle)?;
         let ids = request_ids(&handle.0, request)?;
@@ -481,7 +523,7 @@ pub unsafe extern "C" fn rusticol_virtual_evaluate_correlated_with_sources(
         *output = ptr::null_mut();
         let request = reference(request)?;
         if request.resolved != 0 {
-            return Err(bad("resolved directed correlations are unavailable"));
+            return Err(bad("resolved correlated evaluations are unavailable"));
         }
         let sources = reference(sources)?;
         let handle = mutable(handle)?;
@@ -626,6 +668,26 @@ pub unsafe extern "C" fn rusticol_virtual_correlated_result_spin_legs_json(
     guard(|| unsafe {
         json_string(
             &reference(result)?.0.spin_legs_json()?,
+            output,
+            capacity,
+            needed,
+        )
+    })
+}
+
+/// The exact values of an extended-precision correlated evaluation as JSON
+/// (`[real, imaginary]` decimal literals in the layout of the complex
+/// copies, absent poles `null`); `null` for a binary64 result.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_correlated_result_decimal_json(
+    result: *const CorrelatedResult,
+    output: *mut c_char,
+    capacity: usize,
+    needed: *mut usize,
+) -> c_int {
+    guard(|| unsafe {
+        json_string(
+            &reference(result)?.0.decimal_json()?,
             output,
             capacity,
             needed,

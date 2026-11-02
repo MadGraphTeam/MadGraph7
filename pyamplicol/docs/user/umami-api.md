@@ -328,15 +328,19 @@ The loop development source also provides an explicitly versioned
 [pyAmpliCol UMAMI virtual extension](../../rust/loop-reduction/sdk/umami/README.md).
 It reuses UMAMI's column-major batch layout and offset/count/stride conventions
 while returning all Born/virtual squared orders, all three Laurent coefficients
-and mandatory point statuses. It makes one bulk call to the shared virtual SDK;
-its resolved-helicity entry points refuse plan v4 (v2 engine) processes with
-the reason, since the legacy engine that served them was removed; it has no
-verification policy (the stability rescue is the Python API's).
+and mandatory point statuses. It makes one bulk call to the shared virtual SDK
+and serves a plan v4 (v2 engine) process's helicity-resolved and colour- and
+spin-correlated outputs from its stored observable columns, in the handle's
+pole selection and arithmetic (`rusticol_virtual_set_arithmetic`: binary64,
+double-double or arbitrary precision; the exact decimals of the extended
+carriers come with the optional diagnostic result), bitwise equal to the Python
+API in binary64; it has no verification policy (the stability rescue is the
+Python API's alone).
 
 This is a pyAmpliCol extension, not standard UMAMI virtual interoperability.
 It adds separate versioned symbols and keys; the tree ABI described above is
 unchanged. Signed virtual values are never sampled as probabilities, and the
 extension does not replace `UMAMI_OUT_MATRIX_ELEMENT` with a finite-only value.
 The current delivery is source-level; ordinary generated `API/umami` bundles do
-not yet include it. Correlations and mapped-process channels remain unsupported
-in this extension.
+not yet include it. Mapped-process channels remain unsupported in this
+extension.

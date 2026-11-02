@@ -80,6 +80,10 @@ use symbolica::evaluate::{BatchExpressionEvaluator, EvaluationDomain};
 /// slot table and per-slot reachability masks, WP3.1 I5).
 pub const TREE_SCHEMA: u32 = 4;
 
+/// Bytes of tree and counterterm-program state one tree fill holds at once
+/// (`TreeProgram::fill_points`): a batch fills that many points at a time.
+pub const TREE_FILL_BUDGET: usize = 4 << 30;
+
 /// A saved exact evaluator with its coefficients cast to binary64, as
 /// [`TreeProgram::runtime`] casts them (the evaluator binary64 would run
 /// without a plane application). Call under the library key.
@@ -1118,6 +1122,35 @@ pub struct TreeBatch<T> {
     pub photon_scales: Vec<T>,
 }
 
+impl<T: Clone> TreeBatch<T> {
+    /// Whether every per-point vector holds `points` points (photon scales:
+    /// or none), so that `select` can cut the batch.
+    pub fn holds(&self, points: usize) -> bool {
+        self.model.len() == points
+            && self.counterterm_couplings.len() == points
+            && self.counterterm_model.len() == points
+            && (self.photon_scales.is_empty() || self.photon_scales.len() == points)
+    }
+
+    /// The inputs of the points `range` of a batch (`holds` its points).
+    pub fn select(&self, range: std::ops::Range<usize>) -> Self {
+        let photon_scales = if self.photon_scales.is_empty() {
+            Vec::new()
+        } else {
+            self.photon_scales[range.clone()].to_vec()
+        };
+        Self {
+            model: self.model[range.clone()].to_vec(),
+            masses: self.masses.clone(),
+            derived_masses: self.derived_masses.clone(),
+            couplings: self.couplings.clone(),
+            counterterm_couplings: self.counterterm_couplings[range.clone()].to_vec(),
+            counterterm_model: self.counterterm_model[range].to_vec(),
+            photon_scales,
+        }
+    }
+}
+
 /// The values a batch's external parameters bind (`TreeProgram::bind`).
 pub struct BoundParameters<T> {
     /// The tree program's per-batch inputs.
@@ -1162,6 +1195,31 @@ pub struct TreeInputs<T> {
     /// (`"trees: closures"`) and the rest (`"trees: interferences"`: block
     /// rows, interferences, Born components and |A0|²).
     pub seconds: Vec<(&'static str, f64)>,
+}
+
+impl<T> TreeInputs<T> {
+    /// Append the inputs of the batch's next points (`TreeProgram::
+    /// inputs_chunked`); the stage seconds add up.
+    pub fn append(&mut self, next: Self) {
+        fn extend<V>(values: &mut Option<Vec<V>>, next: Option<Vec<V>>) {
+            if let (Some(values), Some(next)) = (values, next) {
+                values.extend(next);
+            }
+        }
+        self.block_rows.extend(next.block_rows);
+        self.born.extend(next.born);
+        self.amplitudes.extend(next.amplitudes);
+        extend(&mut self.born_squared, next.born_squared);
+        extend(&mut self.loop_born, next.loop_born);
+        extend(&mut self.counterterms, next.counterterms);
+        extend(&mut self.columns, next.columns);
+        for (stage, seconds) in next.seconds {
+            match self.seconds.iter_mut().find(|(name, _)| *name == stage) {
+                Some((_, total)) => *total += seconds,
+                None => self.seconds.push((stage, seconds)),
+            }
+        }
+    }
 }
 
 /// The carrier form of a program: its kernel evaluators and exact weights.
@@ -2981,8 +3039,144 @@ impl TreeProgram {
     /// kernels (the caller's slice generation; the transverse Yang-Mills
     /// kernel assumes conserved currents). Observable columns are refused
     /// with loop-side sources (they run the inclusive outputs).
+    ///
+    /// The batch is filled `fill_points` points at a time
+    /// ([`TREE_FILL_BUDGET`] of state, `inputs_chunked`).
     #[allow(clippy::too_many_arguments)]
     pub fn inputs_loop_side<T: TreeCarrier>(
+        &self,
+        runtime: &mut TreeRuntime<T>,
+        plan: &LoopProgramV4,
+        batch: &TreeBatch<T>,
+        momenta: &[Vec<Rational>],
+        constants: &[Complex<T>],
+        poles: bool,
+        sources: Option<&[PointSources<T>]>,
+        loop_sources: Option<&[LoopSources<T>]>,
+        zero: &T,
+    ) -> RusticolResult<TreeInputs<T>>
+    where
+        Complex<T>: Real + EvaluationDomain,
+    {
+        let chunk = self.fill_points::<T>(momenta.len(), loop_sources.is_some(), TREE_FILL_BUDGET);
+        self.inputs_chunked(
+            runtime,
+            plan,
+            batch,
+            momenta,
+            constants,
+            poles,
+            sources,
+            loop_sources,
+            chunk,
+            zero,
+        )
+    }
+
+    /// Complex state values one point of a fill holds: the trees' state
+    /// (twice with loop-side sources) and the counterterm program's.
+    pub fn state_values(&self, loop_side: bool) -> usize {
+        self.state_size * (1 + usize::from(loop_side))
+            + self
+                .counterterm_trees
+                .as_ref()
+                .map_or(0, |ct| ct.layout.size)
+    }
+
+    /// Complex values per point of the executor's batch inputs a fill forms:
+    /// the block rows and the plan's Born components.
+    pub fn row_values(&self) -> usize {
+        self.block_rows
+            .iter()
+            .map(|&(_, dimension, _)| dimension)
+            .sum::<usize>()
+            + self.rows * self.plan_components.len()
+    }
+
+    /// Points per tree fill of a batch of `points` points whose states fit
+    /// in `budget` bytes (at least one point; arbitrary-precision limbs
+    /// excluded): a whole number of the root closures' 8-point lane runs
+    /// when 8 points fit (`lane_runs`), the whole batch when it fits.
+    pub fn fill_points<T>(&self, points: usize, loop_side: bool, budget: usize) -> usize {
+        let point = self.state_values(loop_side).max(1) * std::mem::size_of::<Complex<T>>();
+        let fit = (budget / point).max(1);
+        if fit >= points {
+            points.max(1)
+        } else if fit >= 8 {
+            fit / 8 * 8
+        } else {
+            fit
+        }
+    }
+
+    /// `inputs_loop_side` filling `chunk` points at a time: the trees' and
+    /// the counterterm program's states, root closures and interferences of
+    /// one chunk, then the next. Kernel rows are independent and the root
+    /// closures run one point per lane in its scalar order, so every
+    /// point's outputs are bitwise those of a single fill of the batch
+    /// (which a chunk of at least the batch, or per-point inputs of another
+    /// length than the batch, run).
+    #[allow(clippy::too_many_arguments)]
+    pub fn inputs_chunked<T: TreeCarrier>(
+        &self,
+        runtime: &mut TreeRuntime<T>,
+        plan: &LoopProgramV4,
+        batch: &TreeBatch<T>,
+        momenta: &[Vec<Rational>],
+        constants: &[Complex<T>],
+        poles: bool,
+        sources: Option<&[PointSources<T>]>,
+        loop_sources: Option<&[LoopSources<T>]>,
+        chunk: usize,
+        zero: &T,
+    ) -> RusticolResult<TreeInputs<T>>
+    where
+        Complex<T>: Real + EvaluationDomain,
+    {
+        let points = momenta.len();
+        let whole = chunk == 0
+            || chunk >= points
+            || !batch.holds(points)
+            || sources.is_some_and(|sources| sources.len() != points)
+            || loop_sources.is_some_and(|sources| sources.len() != points);
+        if whole {
+            return self.fill_chunk(
+                runtime,
+                plan,
+                batch,
+                momenta,
+                constants,
+                poles,
+                sources,
+                loop_sources,
+                zero,
+            );
+        }
+        let mut out: Option<TreeInputs<T>> = None;
+        for first in (0..points).step_by(chunk) {
+            let range = first..(first + chunk).min(points);
+            let part = self.fill_chunk(
+                runtime,
+                plan,
+                &batch.select(range.clone()),
+                &momenta[range.clone()],
+                constants,
+                poles,
+                sources.map(|sources| &sources[range.clone()]),
+                loop_sources.map(|sources| &sources[range.clone()]),
+                zero,
+            )?;
+            match &mut out {
+                Some(out) => out.append(part),
+                None => out = Some(part),
+            }
+        }
+        Ok(out.expect("a chunked batch has points"))
+    }
+
+    /// One fill of `inputs_loop_side`: every point of `momenta` at once.
+    #[allow(clippy::too_many_arguments)]
+    fn fill_chunk<T: TreeCarrier>(
         &self,
         runtime: &mut TreeRuntime<T>,
         plan: &LoopProgramV4,

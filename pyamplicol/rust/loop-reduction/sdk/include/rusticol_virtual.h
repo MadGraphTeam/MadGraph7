@@ -108,6 +108,17 @@ int rusticol_virtual_update_parameters(rusticol_virtual_handle *handle,
  * in every selection. Plan v1-v3 artifacts accept "all" only.
  */
 int rusticol_virtual_set_poles(rusticol_virtual_handle *handle, const char *poles);
+/* Arithmetic of later evaluations (the Python API's arithmetic=/precision=):
+ * "double" (NULL, the default; digits 0), "double-double" (digits 0) or
+ * "arbitrary" with digits > 0 decimal digits. The extended carriers run the
+ * native executor in their arithmetic and assemble its outputs in Python's
+ * Decimal arithmetic at the working digits (max(digits + 20, 40); 52 for
+ * double-double), as the Python API: their exact values are decimal literals
+ * (rusticol_virtual_result_decimal_json); the double copies are the nearest
+ * binary64 values. Ordinary, resolved and correlated evaluations take it.
+ */
+int rusticol_virtual_set_arithmetic(rusticol_virtual_handle *handle,
+  const char *arithmetic, uint32_t digits);
 int rusticol_virtual_shape(const rusticol_virtual_handle *handle,
   rusticol_virtual_shape_info *output);
 /* JSON size query: output=NULL, capacity=0; needed includes terminal NUL.
@@ -143,10 +154,18 @@ int rusticol_virtual_result_copy_requested_ids(const rusticol_virtual_result *, 
 int rusticol_virtual_result_copy_successful_ids(const rusticol_virtual_result *, uint64_t *, size_t);
 int rusticol_virtual_result_copy_statuses(const rusticol_virtual_result *, uint32_t *, size_t);
 int rusticol_virtual_result_diagnostics_json(const rusticol_virtual_result *, char *, size_t, size_t *);
+/* Extended-precision results: {"arithmetic","digits","born","virtual"} with
+ * decimal literals in the copy layouts (absent poles null); "null" for a
+ * binary64 result. */
+int rusticol_virtual_result_decimal_json(const rusticol_virtual_result *, char *, size_t, size_t *);
 /* Additive grouped complex interface. Ordinary v1 structures and functions are
- * unchanged. Every saved history is evaluated once in the recorded ID order;
+ * unchanged. Every saved history is evaluated once in the recorded ID order
+ * ("born", the inclusive Born metric, first; then the declared histories);
  * request.resolved must be zero. Histories are never summed implicitly.
  * Shape counts below count complex pairs, not individual real components.
+ * Plan v4: the stored observable columns of the process (the Python API's
+ * evaluate_correlated_many, one request per history with the same spin
+ * vectors), in the handle's pole selection and arithmetic.
  */
 typedef struct CorrelatedResult rusticol_virtual_correlated_result;
 typedef struct { double real, imag; } rusticol_virtual_complex64;
@@ -189,6 +208,9 @@ int rusticol_virtual_correlated_result_copy_statuses(const rusticol_virtual_corr
 int rusticol_virtual_correlated_result_diagnostics_json(const rusticol_virtual_correlated_result *, char *, size_t, size_t *);
 int rusticol_virtual_correlated_result_histories_json(const rusticol_virtual_correlated_result *, char *, size_t, size_t *);
 int rusticol_virtual_correlated_result_spin_legs_json(const rusticol_virtual_correlated_result *, char *, size_t, size_t *);
+/* [real, imaginary] decimal literals of an extended-precision correlated
+ * result in the copy layouts (absent poles null); "null" in binary64. */
+int rusticol_virtual_correlated_result_decimal_json(const rusticol_virtual_correlated_result *, char *, size_t, size_t *);
 #ifdef __cplusplus
 }
 #endif

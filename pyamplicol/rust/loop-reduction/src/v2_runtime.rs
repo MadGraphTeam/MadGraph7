@@ -44,8 +44,21 @@
 //! `_assemble`): bitwise the Python API's values. Catani's operator is not
 //! needed for the selection (it is the Python API's separate IR-pole
 //! prediction, `PointResult.ir_poles`, not a part of the values), so it is not
-//! formed here. The stored correlated and resolved columns are not served
-//! here (the Python API evaluates them, without regenerating).
+//! formed here.
+//!
+//! **Carriers** ([`V2Precision`]): binary64 as above, and double-double or
+//! arbitrary precision ([`V2Runtime::evaluate_extended`]), where the tree
+//! program and the executor run in the carrier (`DoubleFloat`, MPFR at the
+//! working digits; the generic reduction engine) and the outputs enter the
+//! assembly as their decimal texts in Python's `Decimal` arithmetic at the
+//! working digits (`v2_decimal`), operation for operation, as the Python
+//! API's `Runtime.evaluate(..., arithmetic=...)`: equal values.
+//!
+//! **Observable columns** (`columns`): the stored correlated, spin-source
+//! and resolved column sets of the process (`loops/v2/native_observables`),
+//! evaluated and assembled as the Python API's `evaluate_correlated_many`
+//! and `evaluate_resolved` in every carrier ([`V2Runtime::evaluate_columns`],
+//! [`V2Runtime::evaluate_columns_extended`]).
 //!
 //! **Model parameters** ([`V2Runtime::set_parameters`]) follow the Python
 //! API (`loops/v2/artifact.V2VirtualRuntime._checked_parameters`): the whole
@@ -73,20 +86,38 @@
 //! `mu_R²` and evaluates each part on its own, so every point equals its
 //! single-point evaluation.
 
-use crate::runtime::{PoleSelection, V2Reducer, V2ReductionBackend};
+mod columns;
+
+pub use columns::{COLUMN_SETS, ColumnPoint, ColumnValues, INCLUSIVE};
+
+use crate::Complex;
+use crate::runtime::{
+    Carrier as DecimalCarrier, PoleSelection, TypedBatch, V2Reducer, V2ReductionBackend,
+    decimal_complex,
+};
+pub use crate::v2_decimal::{Arith, Binary64, C, Decimal, DecimalArith, cadd, cmul, conj};
 use rusticol_core::VerifiedArtifact;
 use rusticol_core::loop_artifact::{
     LOOP_V2_RUNTIME_CAPABILITY, LoadedLoopV2Artifact, LoopV2ExecutionMetadata, LoopV2NativeTrees,
-    load_loop_v2_artifact, read_loop_v2_native_inputs,
+    load_loop_v2_artifact, read_loop_v2_native_inputs, read_loop_v2_observables,
 };
-use rusticol_core::loop_execution::v2::{Contraction, LaneKey, Poles, V2Executor, V2Options};
+use rusticol_core::loop_execution::v2::{
+    Contraction, LaneKey, PointResult, Poles, V2Executor, V2Options,
+};
 use rusticol_core::loop_v2::dress::{V2Batch, parse_rational};
-use rusticol_core::loop_v2::trees::{TreeProgram, TreeRuntime};
+use rusticol_core::loop_v2::plan::LoopProgramV4;
+use rusticol_core::loop_v2::trees::{
+    BoundParameters, PointSources, TreeCarrier, TreeInputs, TreeProgram, TreeRuntime,
+};
 use rusticol_core::{RusticolError, RusticolResult};
 use serde::Deserialize;
-use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
-use symbolica::domains::rational::Rational;
+use std::any::Any;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use symbolica::domains::float::{DoubleFloat, Float, Real};
+pub use symbolica::domains::rational::Rational;
+use symbolica::evaluate::EvaluationDomain;
 
 /// The native assembly record's schema (`native_process.SCHEMA`).
 pub const NATIVE_PROCESS_SCHEMA: u32 = 2;
@@ -98,7 +129,7 @@ const FIELD_COMPONENT: &str = "uv_external_fields";
 /// Laurent powers in coefficient order (finite, 1/ε, 1/ε²).
 const LAURENT_POWERS: [i32; 3] = [0, -1, -2];
 /// The bare virtual's loop factor denominator (`conventions.LOOP_FACTOR_DENOMINATOR`).
-const LOOP_FACTOR_DENOMINATOR: f64 = 16.0;
+const LOOP_FACTOR_DENOMINATOR: i64 = 16;
 /// The artifact's model parameter defaults (`generation/artifact_writer.py`):
 /// every external parameter of the model, by name.
 const MODEL_PARAMETERS_PATH: &str = "model/parameters.json";
@@ -346,8 +377,9 @@ fn model_externals(artifact: &VerifiedArtifact) -> RusticolResult<BTreeSet<Strin
 
 /// One evaluated point: the Born per declared Born order and the complete
 /// virtual per declared sector, `[finite, 1/ε, 1/ε²]` (finite only without
-/// poles), or the executor's failures.
-pub type V2Point = Result<(Vec<f64>, Vec<Vec<f64>>), Vec<String>>;
+/// poles), or the executor's failures; binary64 values by default, Python
+/// `Decimal` values ([`Decimal`]) in double-double and arbitrary precision.
+pub type V2Point<N = f64> = Result<(Vec<N>, Vec<Vec<N>>), Vec<String>>;
 
 /// The pole selection of an evaluation (REQUIREMENTS_ADDENDUM I,
 /// `loops/v2/poles.py`): the renormalised virtual's poles (`All`), the
@@ -365,16 +397,16 @@ pub enum V2Poles {
 }
 
 impl V2Poles {
-    fn poles(self) -> bool {
+    pub(crate) fn poles(self) -> bool {
         self != Self::None
     }
 
-    fn split(self) -> bool {
+    pub(crate) fn split(self) -> bool {
         matches!(self, Self::Uv | Self::Ir)
     }
 
     /// The executor's lane columns.
-    fn lanes(self) -> Poles {
+    pub(crate) fn lanes(self) -> Poles {
         match self {
             Self::All => Poles::All,
             Self::None => Poles::None,
@@ -383,86 +415,360 @@ impl V2Poles {
     }
 }
 
-/// The certified-scaleless companion of a process (its stored plan and tree
-/// program), which only the split selections run; built on first use.
-struct Companion {
-    trees: TreeProgram,
-    runtime: TreeRuntime<f64>,
-    executor: V2Executor,
+/// Decimal digits of the Python API's binary64 tree replay
+/// (`assemble._SYMBOLICA_PRECISION_FLOOR`), the floor of every carrier's
+/// working digits.
+const PRECISION_FLOOR: u32 = 40;
+/// The double-double carrier's nominal digits and the guard digits of the
+/// extended carriers' working digits (`assemble.DOUBLE_DOUBLE_DIGITS`,
+/// `GUARD_DIGITS`).
+const DOUBLE_DOUBLE_DIGITS: u32 = 32;
+const GUARD_DIGITS: u32 = 20;
+
+/// The carrier of an evaluation, the Python API's `assemble.Precision`:
+/// binary64 (the NinjaRS fast engine), double-double, or `digits` decimal
+/// digits of arbitrary precision (MPFR at the working digits); both
+/// extended carriers reduce with the generic engine, and their outputs are
+/// assembled in Python's `Decimal` arithmetic at the working digits
+/// ([`V2Precision::working_digits`]), as the Python API assembles them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum V2Precision {
+    Double,
+    DoubleDouble,
+    Arbitrary(u32),
+}
+
+impl V2Precision {
+    /// `Precision.working_digits`: the decimal digits of the assembly (and
+    /// of the arbitrary-precision carrier).
+    pub fn working_digits(self) -> u32 {
+        match self {
+            Self::Double => PRECISION_FLOOR,
+            Self::DoubleDouble => (DOUBLE_DOUBLE_DIGITS + GUARD_DIGITS).max(PRECISION_FLOOR),
+            Self::Arbitrary(digits) => (digits + GUARD_DIGITS).max(PRECISION_FLOOR),
+        }
+    }
+
+    /// The native carrier's bits (the executor's `bits`, which its decimal
+    /// texts round-trip, `runtime::decimal_complex`).
+    pub fn bits(self) -> RusticolResult<u32> {
+        Ok(match self {
+            Self::Double => 53,
+            Self::DoubleDouble => 106,
+            Self::Arbitrary(_) => Float::decimal_digits_to_bits(f64::from(self.working_digits()))
+                .map_err(|e| invalid(e.to_string()))?,
+        })
+    }
+
+    /// Lanes per chunk (`plan_export.NativeExecutor.lanes_for`): the SIMD
+    /// lanes in binary64; in the extended carriers, whose lanes are scalar
+    /// loops, the smallest power of two holding the batch (at most the SIMD
+    /// lanes).
+    pub fn lanes(self, points: usize) -> usize {
+        if self == Self::Double {
+            return V2_LANES;
+        }
+        let mut lanes = 1;
+        while lanes < points.min(V2_LANES) {
+            lanes *= 2;
+        }
+        lanes
+    }
+
+    /// The reduction backend of the carrier (`v2_executor.backend_of`).
+    fn backend(self) -> RusticolResult<V2ReductionBackend> {
+        let reducer = match self {
+            Self::Double => V2Reducer::new("double", None, "fast", true),
+            Self::DoubleDouble => V2Reducer::new("double-double", None, "generic", true),
+            Self::Arbitrary(_) => {
+                V2Reducer::new("arbitrary", Some(self.working_digits()), "generic", true)
+            }
+        }
+        .map_err(|e| invalid(e.to_string()))?;
+        Ok(V2ReductionBackend {
+            reducer,
+            masters: PoleSelection::BOTH,
+        })
+    }
+}
+
+/// A native carrier of the tree program and the executor (binary64,
+/// `DoubleFloat`, MPFR `Float`), with the assembly arithmetic its outputs
+/// enter (the Python API's): binary64 values as they are, the extended
+/// carriers' through their decimal texts (`runtime::decimal_complex`, the
+/// executor's export) read as `Decimal` at the working digits.
+pub(crate) trait Lift<T>: Arith {
+    fn real(&self, value: &T, bits: u32) -> RusticolResult<Self::N>;
+    fn complex(&self, value: &Complex<T>, bits: u32) -> RusticolResult<C<Self::N>>;
+}
+
+impl Lift<f64> for Binary64 {
+    fn real(&self, value: &f64, _bits: u32) -> RusticolResult<f64> {
+        Ok(*value)
+    }
+    fn complex(&self, value: &Complex<f64>, _bits: u32) -> RusticolResult<C<f64>> {
+        Ok(C::new(value.re, value.im))
+    }
+}
+
+impl<T: DecimalCarrier + Real> Lift<T> for DecimalArith {
+    fn real(&self, value: &T, bits: u32) -> RusticolResult<Decimal> {
+        let [re, _] = decimal_complex(Complex::new(value.clone(), value.zero()), bits);
+        self.context.read(&re).map_err(invalid)
+    }
+    fn complex(&self, value: &Complex<T>, bits: u32) -> RusticolResult<C<Decimal>> {
+        let [re, im] = decimal_complex(value.clone(), bits);
+        Ok(C::new(
+            self.context.read(&re).map_err(invalid)?,
+            self.context.read(&im).map_err(invalid)?,
+        ))
+    }
+}
+
+/// The bounds of a native carrier.
+pub(crate) trait Native:
+    TreeCarrier + Real + TypedBatch + DecimalCarrier + Send + Sync + 'static
+where
+    Complex<Self>: Real + EvaluationDomain,
+    TreeRuntime<Self>: Send,
+{
+}
+
+impl Native for f64 {}
+impl Native for DoubleFloat {}
+impl Native for Float {}
+
+/// One plan with its tree program, evaluated in any carrier: an executor
+/// per lane count and a tree runtime per carrier, each built on first use
+/// (`plan_export.NativeExecutor.native`, one PyO3 executor per carrier and
+/// lane count).
+pub(crate) struct Runner {
+    plan: Arc<LoopProgramV4>,
+    pub(crate) trees: TreeProgram,
+    /// The plan's certified seed FFT record (none: every seed is contracted
+    /// directly).
+    fourier: Option<serde_json::Value>,
+    threads: Option<usize>,
+    executors: BTreeMap<usize, V2Executor>,
+    runtimes: HashMap<V2Precision, Box<dyn Any + Send>>,
+}
+
+impl Runner {
+    pub(crate) fn new(
+        plan: Arc<LoopProgramV4>,
+        trees: TreeProgram,
+        fourier: Option<serde_json::Value>,
+        threads: Option<usize>,
+    ) -> RusticolResult<Self> {
+        Ok(Self {
+            plan,
+            trees,
+            fourier,
+            threads,
+            executors: BTreeMap::new(),
+            runtimes: HashMap::new(),
+        })
+    }
+
+    fn executor(&mut self, lanes: usize) -> RusticolResult<&V2Executor> {
+        if !self.executors.contains_key(&lanes) {
+            let executor = with_fourier(
+                V2Executor::new(self.plan.clone(), lanes, self.threads)?,
+                self.fourier.as_ref(),
+            )?;
+            self.executors.insert(lanes, executor);
+        }
+        Ok(&self.executors[&lanes])
+    }
+
+    /// Bind a batch's parameters and form its native inputs in the carrier
+    /// of `zero` on the executor's pool (`TreeProgram::bind`, then
+    /// `inputs_with`): the bound parameters and the tree inputs.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn fill<T: Native>(
+        &mut self,
+        precision: V2Precision,
+        lanes: usize,
+        values: &[Rational],
+        scales: &[Rational],
+        incoming: &[Vec<Rational>],
+        poles: bool,
+        sources: Option<&[PointSources<T>]>,
+        zero: &T,
+    ) -> RusticolResult<(BoundParameters<T>, TreeInputs<T>)>
+    where
+        Complex<T>: Real + EvaluationDomain,
+        TreeRuntime<T>: Send,
+    {
+        self.executor(lanes)?;
+        if !self.runtimes.contains_key(&precision) {
+            let runtime = self.trees.runtime(zero)?;
+            self.runtimes.insert(precision, Box::new(runtime));
+        }
+        let runtime = self
+            .runtimes
+            .get_mut(&precision)
+            .and_then(|runtime| runtime.downcast_mut::<TreeRuntime<T>>())
+            .ok_or_else(|| invalid("a tree runtime of another carrier"))?;
+        let executor = &self.executors[&lanes];
+        let trees = &self.trees;
+        executor.install(|| -> RusticolResult<_> {
+            let bound = trees.bind(runtime, values, scales, zero)?;
+            let inputs = trees.inputs_with(
+                runtime,
+                executor.plan(),
+                &bound.trees,
+                incoming,
+                &bound.constants,
+                poles,
+                sources,
+                zero,
+            )?;
+            Ok((bound, inputs))
+        })
+    }
+
+    /// Dress and reduce a batch (`V2Executor::evaluate`).
+    pub(crate) fn evaluate<T: Native>(
+        &mut self,
+        lanes: usize,
+        batch: &V2Batch<T>,
+        zero: &T,
+        backend: &mut V2ReductionBackend,
+        options: V2Options,
+    ) -> RusticolResult<Vec<PointResult<T>>>
+    where
+        Complex<T>: Real + EvaluationDomain,
+        TreeRuntime<T>: Send,
+    {
+        let (results, _report) = self
+            .executor(lanes)?
+            .evaluate(batch, zero, backend, options)?;
+        Ok(results)
+    }
+}
+
+/// The executor batch of bound parameters and tree inputs.
+pub(crate) fn v2_batch<T: Clone>(
+    incoming: Vec<Vec<Rational>>,
+    scales: &[Rational],
+    bound: BoundParameters<T>,
+    block_rows: Vec<Vec<Complex<T>>>,
+    born: Vec<Vec<Complex<T>>>,
+) -> V2Batch<T> {
+    V2Batch {
+        momenta: incoming,
+        scales: scales.to_vec(),
+        masses: bound.masses,
+        masses_imaginary: bound.masses_imaginary,
+        // The on-shell external invariants (as the Python binding's).
+        leg_masses: bound.leg_masses,
+        constants: bound.constants,
+        block_rows,
+        born,
+    }
 }
 
 /// Laurent coefficients `[finite, 1/ε, 1/ε²]` added coefficient-wise
 /// (`assemble.Laurent.__add__`).
-fn add(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
+fn add<A: Arith>(arith: &A, a: &[A::N; 3], b: &[A::N; 3]) -> [A::N; 3] {
+    [
+        arith.add(&a[0], &b[0]),
+        arith.add(&a[1], &b[1]),
+        arith.add(&a[2], &b[2]),
+    ]
 }
 
 /// The UV Laurent values `(r2, uv_local, fields)` of the counterterm
 /// components (finite parts unused): the tree program at the IR regulator 0
 /// of a model with pole regulators.
-type CountertermsUv = ([f64; 3], [f64; 3], [f64; 3]);
+pub(crate) type CountertermsUv<N> = ([N; 3], [N; 3], [N; 3]);
 
-/// The selected virtual of one sector in a split selection, from its
-/// combined bare Laurent `bare`, the bare loop's UV Laurent `bare_uv`
-/// (finite part unused), the counterterm components and, for a model with
-/// pole regulators, their UV parts `counterterms_uv`: `poles.split_sector`
-/// then `poles.select_sector`, operation for operation.
-fn split_virtual(
+/// The selected virtual of one sector (or output column) in a split
+/// selection, from its combined bare Laurent `bare`, the bare loop's UV
+/// Laurent `bare_uv` (finite part unused), the counterterm components and,
+/// for a model with pole regulators, their UV parts `counterterms_uv`:
+/// `poles.split_sector` then `poles.select_sector`, operation for operation.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn split_virtual<A: Arith>(
+    arith: &A,
     mode: V2Poles,
-    bare: [f64; 3],
-    bare_uv: [f64; 3],
-    r2: [f64; 3],
-    uv_local: [f64; 3],
-    fields: [f64; 3],
-    counterterms_uv: Option<CountertermsUv>,
-) -> [f64; 3] {
+    bare: [A::N; 3],
+    bare_uv: [A::N; 3],
+    r2: [A::N; 3],
+    uv_local: [A::N; 3],
+    fields: [A::N; 3],
+    counterterms_uv: Option<CountertermsUv<A::N>>,
+) -> [A::N; 3] {
     // The UV (single, double) poles per component: the counterterms' own
     // (pole regulators), else the local counterterms' poles, with the field
     // factors carrying what makes the renormalised virtual UV finite.
-    let poles = |value: [f64; 3]| [value[1], value[2]];
-    let (r2_uv, local_uv, field_uv) = match counterterms_uv {
+    let poles = |value: &[A::N; 3]| [value[1].clone(), value[2].clone()];
+    let (r2_uv, local_uv, field_uv) = match &counterterms_uv {
         Some((r2_uv, local_uv, field_uv)) => (poles(r2_uv), poles(local_uv), poles(field_uv)),
         None => (
-            poles(r2),
-            poles(uv_local),
+            poles(&r2),
+            poles(&uv_local),
             [
-                -(bare_uv[1] + uv_local[1] + r2[1]),
-                -(bare_uv[2] + uv_local[2] + r2[2]),
+                arith.neg(&arith.add(&arith.add(&bare_uv[1], &uv_local[1]), &r2[1])),
+                arith.neg(&arith.add(&arith.add(&bare_uv[2], &uv_local[2]), &r2[2])),
             ],
         ),
     };
-    let part = |value: [f64; 3], uv: [f64; 2]| -> [f64; 3] {
+    let part = |value: &[A::N; 3], uv: &[A::N; 2]| -> [A::N; 3] {
         match mode {
-            V2Poles::Uv => [value[0], uv[0], uv[1]],
-            _ => [value[0], value[1] - uv[0], value[2] - uv[1]],
+            V2Poles::Uv => [value[0].clone(), uv[0].clone(), uv[1].clone()],
+            _ => [
+                value[0].clone(),
+                arith.sub(&value[1], &uv[0]),
+                arith.sub(&value[2], &uv[1]),
+            ],
         }
     };
-    let bare_part = part(bare, [bare_uv[1], bare_uv[2]]);
-    let r2_part = part(r2, r2_uv);
-    let local_part = part(uv_local, local_uv);
-    let field_part = part(fields, field_uv);
-    let uv = add(local_part, field_part);
-    let virtual_part = add(add(bare_part, uv), r2_part);
+    let bare_part = part(&bare, &[bare_uv[1].clone(), bare_uv[2].clone()]);
+    let r2_part = part(&r2, &r2_uv);
+    let local_part = part(&uv_local, &local_uv);
+    let field_part = part(&fields, &field_uv);
+    let uv = add(arith, &local_part, &field_part);
+    let virtual_part = add(arith, &add(arith, &bare_part, &uv), &r2_part);
     match mode {
         // The bare loop's UV poles with the renormalised finite part.
-        V2Poles::Uv => [virtual_part[0], bare_part[1], bare_part[2]],
+        V2Poles::Uv => [
+            virtual_part[0].clone(),
+            bare_part[1].clone(),
+            bare_part[2].clone(),
+        ],
         _ => virtual_part,
     }
 }
 
-/// A plan v4 process with native point inputs, evaluated in binary64.
+/// The complex loop factor `i / (16 π² average)` of the bare virtual
+/// (`numbers.pair(0, 1) * (1 / (16 * pi * pi * average))`).
+pub(crate) fn loop_factor<A: Arith>(arith: &A, average: i64) -> C<A::N> {
+    let denominator = arith.mul(
+        &arith.mul(
+            &arith.mul(&arith.int(LOOP_FACTOR_DENOMINATOR), &arith.pi()),
+            &arith.pi(),
+        ),
+        &arith.int(average),
+    );
+    let f = arith.div(&arith.int(1), &denominator);
+    arith.times_real(&C::new(arith.real_int(0), arith.real_int(1)), &f)
+}
+
+/// A plan v4 process with native point inputs, evaluated in binary64,
+/// double-double or arbitrary precision.
 pub struct V2Runtime {
+    path: PathBuf,
     artifact: LoadedLoopV2Artifact,
     record: NativeRecord,
-    trees: TreeProgram,
-    runtime: TreeRuntime<f64>,
-    executor: V2Executor,
-    backend: V2ReductionBackend,
+    process: Runner,
+    backends: BTreeMap<V2Precision, V2ReductionBackend>,
     /// The stored companion's tree program (none: the process has no
     /// certified-scaleless families) and, once a split selection ran, the
     /// companion itself.
-    scaleless_inputs: Option<LoopV2NativeTrees>,
-    scaleless: Option<Companion>,
+    scaleless_inputs: Option<Arc<LoopV2NativeTrees>>,
+    scaleless: Option<Runner>,
     threads: Option<usize>,
     /// The external parameters of the artifact's model.
     externals: BTreeSet<String>,
@@ -473,6 +779,11 @@ pub struct V2Runtime {
     /// (none: zero), per declared sector its record sector.
     born_index: Vec<Option<usize>>,
     sector_index: Vec<usize>,
+    /// The process's stored tree program (the observable column sets load
+    /// it with their plans).
+    process_inputs: Arc<LoopV2NativeTrees>,
+    /// The stored observable columns, read on first use.
+    observables: Option<columns::Observables>,
 }
 
 /// Whether the artifact at `path` serves its processes through the plan v4
@@ -491,7 +802,8 @@ impl V2Runtime {
         process: Option<&str>,
         threads: Option<usize>,
     ) -> RusticolResult<Self> {
-        let verified = VerifiedArtifact::open(path)?;
+        let path = path.as_ref().to_path_buf();
+        let verified = VerifiedArtifact::open(&path)?;
         let artifact = load_loop_v2_artifact(&verified, process)?;
         let externals = model_externals(&verified)?;
         let native = read_loop_v2_native_inputs(&verified, &artifact)?.ok_or_else(|| {
@@ -518,7 +830,10 @@ impl V2Runtime {
         // parameter the tree program binds (fail closed, as
         // `plan_export._regulated`).
         if let Some(regulators) = &record.pole_regulators
-            && !trees.parameter_names().iter().any(|name| *name == regulators.ir)
+            && !trees
+                .parameter_names()
+                .iter()
+                .any(|name| *name == regulators.ir)
         {
             return Err(invalid(format!(
                 "the pole regulator {:?} is not a parameter of the tree program; \
@@ -526,19 +841,11 @@ impl V2Runtime {
                 regulators.ir
             )));
         }
-        let runtime = trees.runtime(&0.0)?;
-        let executor = with_fourier(
-            V2Executor::new(program, V2_LANES, threads)?,
-            record.fourier.as_ref(),
-        )?;
         if native.scaleless.is_some() != artifact.scaleless_program.is_some() {
             return Err(invalid(
                 "the companion's tree program is stored exactly with its plan",
             ));
         }
-        // The Python API's binary64 backend (`v2_executor.backend_of`).
-        let reducer =
-            V2Reducer::new("double", None, "fast", true).map_err(|e| invalid(e.to_string()))?;
         let metadata = &artifact.metadata;
         let squared: Vec<Orders> = record
             .trees
@@ -579,30 +886,42 @@ impl V2Runtime {
                 "the tree program reads a parameter the model does not declare",
             ));
         }
+        let mut process = Runner::new(program, trees, record.fourier.clone(), threads)?;
+        // The binary64 executor, tree runtime and backend (the Python API's,
+        // `v2_executor.backend_of`) are built at open.
+        process.executor(V2_LANES)?;
+        let runtime = process.trees.runtime(&0.0)?;
+        process
+            .runtimes
+            .insert(V2Precision::Double, Box::new(runtime));
+        let mut backends = BTreeMap::new();
+        backends.insert(V2Precision::Double, V2Precision::Double.backend()?);
         Ok(Self {
+            path,
             artifact,
             record,
-            trees,
-            runtime,
-            executor,
-            backend: V2ReductionBackend {
-                reducer,
-                masters: PoleSelection::BOTH,
-            },
-            scaleless_inputs: native.scaleless,
+            process,
+            backends,
+            scaleless_inputs: native.scaleless.map(Arc::new),
             scaleless: None,
             threads,
             externals,
             parameters: BTreeMap::new(),
             born_index,
             sector_index,
+            process_inputs: Arc::new(LoopV2NativeTrees {
+                trees_json: native.trees_json,
+                evaluators: native.evaluators,
+                planes: native.planes,
+            }),
+            observables: None,
         })
     }
 
     /// The companion of the certified-scaleless families, built on its
     /// first use (`plan_export.NativeExecutor.scaleless`): its plan's
     /// columns are the process's sectors.
-    fn companion(&mut self) -> RusticolResult<Option<&mut Companion>> {
+    fn companion(&mut self) -> RusticolResult<Option<&mut Runner>> {
         if self.scaleless.is_none() {
             let (Some(stored), Some(program)) =
                 (&self.scaleless_inputs, &self.artifact.scaleless_program)
@@ -618,24 +937,17 @@ impl V2Runtime {
                 Some(&stored.planes),
                 program,
             )?;
-            if trees.parameter_names() != self.trees.parameter_names() {
+            if trees.parameter_names() != self.process.trees.parameter_names() {
                 return Err(invalid(
                     "the companion's model parameters differ from the process's",
                 ));
             }
-            let runtime = trees.runtime(&0.0)?;
-            let executor = with_fourier(
-                V2Executor::new(program.clone(), V2_LANES, self.threads)?,
-                self.record
-                    .scaleless
-                    .as_ref()
-                    .and_then(|twin| twin.fourier.as_ref()),
-            )?;
-            self.scaleless = Some(Companion {
-                trees,
-                runtime,
-                executor,
-            });
+            let fourier = self
+                .record
+                .scaleless
+                .as_ref()
+                .and_then(|twin| twin.fourier.clone());
+            self.scaleless = Some(Runner::new(program.clone(), trees, fourier, self.threads)?);
         }
         Ok(self.scaleless.as_mut())
     }
@@ -683,7 +995,7 @@ impl V2Runtime {
         self.record
             .scale_parameter
             .as_deref()
-            .or_else(|| self.trees.scale_parameter())
+            .or_else(|| self.process.trees.scale_parameter())
     }
 
     /// The parameters fixed at generation (the request's and those its model
@@ -721,8 +1033,8 @@ impl V2Runtime {
     /// batch_parameters`): the caller's over the defaults, a fixed parameter
     /// at its fixed value (`set_parameters` admits no other).
     fn parameter_values(&self) -> RusticolResult<Vec<Rational>> {
-        let names = self.trees.parameter_names();
-        let defaults = self.trees.parameter_defaults();
+        let names = self.process.trees.parameter_names();
+        let defaults = self.process.trees.parameter_defaults();
         names
             .iter()
             .zip(defaults)
@@ -739,6 +1051,28 @@ impl V2Runtime {
             .collect()
     }
 
+    /// The parameter values with the model's IR pole regulator at 0 (the
+    /// counterterms' UV parts in the split selections), or None for a model
+    /// without pole regulators.
+    fn regulated_values(&self, values: &[Rational]) -> Option<Vec<Rational>> {
+        let regulators = self.record.pole_regulators.as_ref()?;
+        Some(
+            self.process
+                .trees
+                .parameter_names()
+                .iter()
+                .zip(values)
+                .map(|(name, value)| {
+                    if *name == regulators.ir {
+                        Rational::from(0)
+                    } else {
+                        value.clone()
+                    }
+                })
+                .collect(),
+        )
+    }
+
     /// Whether a batch of mixed `mu_R²` is evaluated per scale: the tree
     /// program (or, in a split selection, the companion's) has Born
     /// couplings, kernel constants or masses that depend on the scale
@@ -751,39 +1085,86 @@ impl V2Runtime {
                 .scale_dependent_shared()
                 .is_some_and(|names| !names.is_empty())
         };
-        if runs(&self.trees) {
+        if runs(&self.process.trees) {
             return Ok(true);
         }
         Ok(mode.split() && self.companion()?.is_some_and(|twin| runs(&twin.trees)))
     }
 
-    /// Evaluate a batch: `momenta` holds per point the physical momenta of
-    /// every leg (`4 × legs` exact decimals, label order), `scales` mu_R² per
-    /// point, `mode` the pole selection. Points fail alone. A batch of a
-    /// model whose Born couplings, kernel constants or masses depend on the
-    /// scale ([`TreeProgram::scale_dependent_shared`]) is evaluated per exact
-    /// `mu_R²` (each point as in a batch of its scale alone).
+    /// Evaluate a batch in binary64: `momenta` holds per point the physical
+    /// momenta of every leg (`4 × legs` exact decimals, label order),
+    /// `scales` mu_R² per point, `mode` the pole selection. Points fail
+    /// alone. A batch of a model whose Born couplings, kernel constants or
+    /// masses depend on the scale ([`TreeProgram::scale_dependent_shared`])
+    /// is evaluated per exact `mu_R²` (each point as in a batch of its scale
+    /// alone).
     pub fn evaluate(
         &mut self,
         momenta: &[Vec<Rational>],
         scales: &[Rational],
         mode: V2Poles,
     ) -> RusticolResult<Vec<V2Point>> {
-        let legs = self.record.legs.len();
-        if momenta.len() != scales.len() {
-            return Err(invalid("one mu_R² per point"));
+        self.partitioned(momenta, scales, mode, |runtime, momenta, scales| {
+            runtime.evaluate_batch(momenta, scales, mode, V2Precision::Double, &0.0, &Binary64)
+        })
+    }
+
+    /// Evaluate a batch in double-double or arbitrary precision
+    /// (`precision`; binary64 is [`V2Runtime::evaluate`]), as `evaluate`:
+    /// the executor runs in the carrier and the outputs are assembled in
+    /// Python's `Decimal` arithmetic at the working digits, as the Python
+    /// API's `Runtime.evaluate(..., arithmetic=...)` assembles them: equal
+    /// values.
+    pub fn evaluate_extended(
+        &mut self,
+        momenta: &[Vec<Rational>],
+        scales: &[Rational],
+        mode: V2Poles,
+        precision: V2Precision,
+    ) -> RusticolResult<Vec<V2Point<Decimal>>> {
+        let arith = DecimalArith::new(precision.working_digits());
+        match precision {
+            V2Precision::Double => Err(invalid("binary64 evaluations are V2Runtime::evaluate's")),
+            V2Precision::DoubleDouble => {
+                self.partitioned(momenta, scales, mode, |runtime, momenta, scales| {
+                    runtime.evaluate_batch(
+                        momenta,
+                        scales,
+                        mode,
+                        precision,
+                        &DoubleFloat::from(0.0),
+                        &arith,
+                    )
+                })
+            }
+            V2Precision::Arbitrary(_) => {
+                let zero = Float::with_val(precision.bits()?, 0);
+                self.partitioned(momenta, scales, mode, |runtime, momenta, scales| {
+                    runtime.evaluate_batch(momenta, scales, mode, precision, &zero, &arith)
+                })
+            }
         }
+    }
+
+    /// The input checks of a batch and its evaluation, per exact `mu_R²`
+    /// where the model needs it (`partitions`).
+    fn partitioned<N>(
+        &mut self,
+        momenta: &[Vec<Rational>],
+        scales: &[Rational],
+        mode: V2Poles,
+        mut batch: impl FnMut(
+            &mut Self,
+            &[Vec<Rational>],
+            &[Rational],
+        ) -> RusticolResult<Vec<V2Point<N>>>,
+    ) -> RusticolResult<Vec<V2Point<N>>> {
+        self.check_batch(momenta, scales)?;
         if momenta.is_empty() {
             return Ok(Vec::new());
         }
-        if momenta.iter().any(|point| point.len() != 4 * legs) {
-            return Err(invalid("momenta need 4 components per leg"));
-        }
-        if scales.iter().any(|scale| *scale <= Rational::from(0)) {
-            return Err(invalid("mu_R² must be positive"));
-        }
         if scales.iter().all(|scale| *scale == scales[0]) || !self.partitions(mode)? {
-            return self.evaluate_batch(momenta, scales, mode);
+            return batch(self, momenta, scales);
         }
         // Exact partition by mu_R² (first-seen order); every part is a batch
         // of one scale.
@@ -796,12 +1177,12 @@ impl V2Runtime {
             });
             parts[part].1.push(index);
         }
-        let mut out: Vec<Option<V2Point>> = vec![None; momenta.len()];
+        let mut out: Vec<Option<V2Point<N>>> = (0..momenta.len()).map(|_| None).collect();
         for (scale, indices) in parts {
             let part_momenta: Vec<Vec<Rational>> =
                 indices.iter().map(|&i| momenta[i].clone()).collect();
             let part_scales = vec![scale.clone(); indices.len()];
-            let points = self.evaluate_batch(&part_momenta, &part_scales, mode)?;
+            let points = batch(self, &part_momenta, &part_scales)?;
             for (index, point) in indices.into_iter().zip(points) {
                 out[index] = Some(point);
             }
@@ -812,16 +1193,29 @@ impl V2Runtime {
             .collect())
     }
 
-    /// One batch through the tree program, the executor and the assembly.
-    fn evaluate_batch(
-        &mut self,
+    /// One mu_R² per point, `4 × legs` components per point, positive
+    /// scales.
+    pub(crate) fn check_batch(
+        &self,
         momenta: &[Vec<Rational>],
         scales: &[Rational],
-        mode: V2Poles,
-    ) -> RusticolResult<Vec<V2Point>> {
-        let poles = mode.poles();
-        // All-incoming momenta: final legs negated.
-        let incoming: Vec<Vec<Rational>> = momenta
+    ) -> RusticolResult<()> {
+        let legs = self.record.legs.len();
+        if momenta.len() != scales.len() {
+            return Err(invalid("one mu_R² per point"));
+        }
+        if momenta.iter().any(|point| point.len() != 4 * legs) {
+            return Err(invalid("momenta need 4 components per leg"));
+        }
+        if scales.iter().any(|scale| *scale <= Rational::from(0)) {
+            return Err(invalid("mu_R² must be positive"));
+        }
+        Ok(())
+    }
+
+    /// All-incoming momenta: final legs negated.
+    pub(crate) fn incoming(&self, momenta: &[Vec<Rational>]) -> Vec<Vec<Rational>> {
+        momenta
             .iter()
             .map(|point| {
                 point
@@ -833,44 +1227,66 @@ impl V2Runtime {
                     })
                     .collect()
             })
-            .collect();
+            .collect()
+    }
+
+    fn backend(&mut self, precision: V2Precision) -> RusticolResult<&mut V2ReductionBackend> {
+        if !self.backends.contains_key(&precision) {
+            self.backends.insert(precision, precision.backend()?);
+        }
+        Ok(self.backends.get_mut(&precision).expect("the backend"))
+    }
+
+    /// One batch through the tree program, the executor and the assembly in
+    /// the carrier of `zero` and the arithmetic `arith`
+    /// (`plan_export.NativeExecutor.reduce`, `assemble._PointEvaluation.
+    /// set_lanes` and `_assemble`, in the same operations and order).
+    fn evaluate_batch<T: Native, A: Lift<T>>(
+        &mut self,
+        momenta: &[Vec<Rational>],
+        scales: &[Rational],
+        mode: V2Poles,
+        precision: V2Precision,
+        zero: &T,
+        arith: &A,
+    ) -> RusticolResult<Vec<V2Point<A::N>>>
+    where
+        Complex<T>: Real + EvaluationDomain,
+        TreeRuntime<T>: Send,
+    {
+        let poles = mode.poles();
+        let bits = precision.bits()?;
+        let lanes = precision.lanes(momenta.len());
+        let incoming = self.incoming(momenta);
         let values = self.parameter_values()?;
-        let zero = 0.0_f64;
         // The tree and closure stages run on the executor's pool (the
         // runtime's `threads` bound), not on the global one.
-        let (trees, runtime, executor) = (&self.trees, &mut self.runtime, &self.executor);
-        let (bound, inputs) = executor.install(|| -> RusticolResult<_> {
-            let bound = trees.bind(runtime, &values, scales, &zero)?;
-            let inputs = trees.inputs(
-                runtime,
-                executor.plan(),
-                &bound.trees,
-                &incoming,
-                &bound.constants,
-                poles,
-                &zero,
-            )?;
-            Ok((bound, inputs))
-        })?;
-        let batch = V2Batch {
-            momenta: incoming.clone(),
-            scales: scales.to_vec(),
-            masses: bound.masses,
-            masses_imaginary: bound.masses_imaginary,
-            // The on-shell external invariants (as the Python binding's).
-            leg_masses: bound.leg_masses,
-            constants: bound.constants,
-            block_rows: inputs.block_rows,
-            born: inputs.born,
-        };
+        let (bound, inputs) = self.process.fill(
+            precision, lanes, &values, scales, &incoming, poles, None, zero,
+        )?;
+        let born = inputs
+            .born_squared
+            .ok_or_else(|| invalid("the tree program forms no |A0|²"))?;
+        let counterterms = inputs
+            .counterterms
+            .ok_or_else(|| invalid("the tree program forms no counterterm components"))?;
+        let batch = v2_batch(
+            incoming.clone(),
+            scales,
+            bound,
+            inputs.block_rows,
+            inputs.born,
+        );
         let options = V2Options {
             poles: mode.lanes(),
             contraction: contraction(&self.artifact.metadata.color_contraction),
             ..V2Options::default()
         };
-        let (results, _report) =
-            self.executor
-                .evaluate(&batch, &zero, &mut self.backend, options)?;
+        self.backend(precision)?;
+        let backend = self.backends.get_mut(&precision).expect("the backend");
+        let results = self
+            .process
+            .evaluate(lanes, &batch, zero, backend, options)?;
         // The companion's seeds take the FFT where certified, never required
         // (`plan_export.NativeExecutor.scaleless`).
         let options = V2Options {
@@ -880,82 +1296,32 @@ impl V2Runtime {
             },
             ..options
         };
-        let born = inputs
-            .born_squared
-            .ok_or_else(|| invalid("the tree program forms no |A0|²"))?;
-        let counterterms = inputs
-            .counterterms
-            .ok_or_else(|| invalid("the tree program forms no counterterm components"))?;
         // A model with pole regulators: the split selections also form the
         // counterterm and field components with the IR regulator at 0, the
         // counterterms' UV parts (`plan_export.NativeExecutor.reduce`).
-        let counterterms_uv = match (&self.record.pole_regulators, mode.split()) {
-            (Some(regulators), true) => {
-                let regulated: Vec<Rational> = trees
-                    .parameter_names()
-                    .iter()
-                    .zip(&values)
-                    .map(|(name, value)| {
-                        if *name == regulators.ir {
-                            Rational::from(0)
-                        } else {
-                            value.clone()
-                        }
-                    })
-                    .collect();
-                let (trees, runtime, executor) = (&self.trees, &mut self.runtime, &self.executor);
-                let inputs = executor.install(|| -> RusticolResult<_> {
-                    let bound = trees.bind(runtime, &regulated, scales, &zero)?;
-                    trees.inputs(
-                        runtime,
-                        executor.plan(),
-                        &bound.trees,
-                        &incoming,
-                        &bound.constants,
-                        true,
-                        &zero,
-                    )
-                })?;
-                Some(
-                    inputs.counterterms.ok_or_else(|| {
+        let counterterms_uv =
+            match (self.regulated_values(&values), mode.split()) {
+                (Some(regulated), true) => {
+                    let (_, inputs) = self.process.fill(
+                        precision, lanes, &regulated, scales, &incoming, true, None, zero,
+                    )?;
+                    Some(inputs.counterterms.ok_or_else(|| {
                         invalid("the tree program forms no counterterm components")
-                    })?,
-                )
-            }
-            _ => None,
-        };
+                    })?)
+                }
+                _ => None,
+            };
         // The split selections also run the companion of the certified-
         // scaleless families on its own tree inputs (schedule B), for the UV
         // residues of its lanes (`plan_export.NativeExecutor.reduce`).
         let twin_results = if mode.split() && self.companion()?.is_some() {
             let twin = self.scaleless.as_mut().expect("the companion is built");
-            let (trees, runtime, executor) = (&twin.trees, &mut twin.runtime, &twin.executor);
-            let (bound, twin_inputs) = executor.install(|| -> RusticolResult<_> {
-                let bound = trees.bind(runtime, &values, scales, &zero)?;
-                let inputs = trees.inputs(
-                    runtime,
-                    executor.plan(),
-                    &bound.trees,
-                    &incoming,
-                    &bound.constants,
-                    true,
-                    &zero,
-                )?;
-                Ok((bound, inputs))
-            })?;
-            let twin_batch = V2Batch {
-                momenta: incoming,
-                scales: scales.to_vec(),
-                masses: bound.masses,
-                masses_imaginary: bound.masses_imaginary,
-                leg_masses: bound.leg_masses,
-                constants: bound.constants,
-                block_rows: twin_inputs.block_rows,
-                born: twin_inputs.born,
-            };
-            let (twin_results, _report) =
-                twin.executor
-                    .evaluate(&twin_batch, &zero, &mut self.backend, options)?;
+            let (bound, inputs) = twin.fill(
+                precision, lanes, &values, scales, &incoming, true, None, zero,
+            )?;
+            let batch = v2_batch(incoming, scales, bound, inputs.block_rows, inputs.born);
+            let backend = self.backends.get_mut(&precision).expect("the backend");
+            let twin_results = twin.evaluate(lanes, &batch, zero, backend, options)?;
             if twin_results.len() != results.len() {
                 return Err(invalid("the companion evaluated another batch"));
             }
@@ -965,12 +1331,10 @@ impl V2Runtime {
         };
         let width = if poles { 3 } else { 1 };
         let lane_width = mode.lanes().width();
-        let average = self.record.average as f64;
-        // Python: numbers.pair(0, 1) * (1 / (16 * pi * pi * average)).
-        let factor =
-            1.0 / (LOOP_FACTOR_DENOMINATOR * std::f64::consts::PI * std::f64::consts::PI * average);
-        // 2 * (complex(0, factor) * sum).real
-        let loop_factor = |(re, im): (f64, f64)| 2.0 * (0.0 * re - factor * im);
+        let factor = loop_factor(arith, self.record.average);
+        let two = arith.int(2);
+        // 2 * (factor * sum).real
+        let bare_of = |sum: &C<A::N>| arith.mul(&two, &cmul(arith, &factor, sum).re);
         let sectors = self.record.sectors.len();
         let outputs: Vec<(String, usize, i32)> = self
             .record
@@ -988,7 +1352,9 @@ impl V2Runtime {
                 Ok((component.clone(), s, *power))
             })
             .collect::<RusticolResult<_>>()?;
-        let zero_pair = (0.0, 0.0);
+        let zero_c = C::new(arith.zero(), arith.zero());
+        // `numbers.real(0)`: the default of an absent component.
+        let real_zero = arith.real_int(0);
         let mut out = Vec::with_capacity(results.len());
         for (index, result) in results.into_iter().enumerate() {
             let twin = twin_results.as_ref().map(|twin| &twin[index]);
@@ -1005,103 +1371,99 @@ impl V2Runtime {
             // the executor's order, the companion's lanes after the
             // process's (`set_lanes`: their combined integrals vanish, only
             // their UV residues are kept).
-            let mut sums: Vec<Option<Vec<(f64, f64)>>> = vec![None; sectors];
-            let mut uv_sums: Vec<Option<[(f64, f64); 3]>> = vec![None; sectors];
-            let mut lanes: Vec<(&LaneKey, &[_], bool)> = result
+            let mut sums: Vec<Option<Vec<C<A::N>>>> = vec![None; sectors];
+            let mut uv_sums: Vec<Option<[C<A::N>; 3]>> = vec![None; sectors];
+            let mut lanes_of: Vec<(&LaneKey, &[Complex<T>], bool)> = result
                 .families
                 .iter()
                 .map(|(key, value)| (key, value.as_slice(), false))
                 .collect();
             if let Some(twin) = twin {
-                lanes.extend(
+                lanes_of.extend(
                     twin.families
                         .iter()
                         .map(|(key, value)| (key, value.as_slice(), true)),
                 );
             }
-            for (key, value, vanishing) in lanes {
+            for (key, value, vanishing) in lanes_of {
                 if key.column >= sectors || value.len() != lane_width {
                     return Err(invalid("an executor lane outside the record's sectors"));
                 }
-                let terms = sums[key.column].get_or_insert_with(|| vec![zero_pair; width]);
+                let lifted = value
+                    .iter()
+                    .map(|z| arith.complex(z, bits))
+                    .collect::<RusticolResult<Vec<_>>>()?;
+                let terms = sums[key.column].get_or_insert_with(|| vec![zero_c.clone(); width]);
                 for (k, term) in terms.iter_mut().enumerate() {
-                    let (re, im) = if vanishing {
-                        zero_pair
-                    } else {
-                        (value[k].re, value[k].im)
-                    };
-                    *term = (term.0 + re, term.1 + im);
+                    let value = if vanishing { &zero_c } else { &lifted[k] };
+                    *term = cadd(arith, term, value);
                 }
                 if mode.split() {
-                    let finite = if vanishing {
-                        zero_pair
-                    } else {
-                        (value[0].re, value[0].im)
-                    };
-                    let uv = (value[3].re, value[3].im);
-                    let terms = uv_sums[key.column].get_or_insert([zero_pair; 3]);
-                    for (term, (re, im)) in terms.iter_mut().zip([finite, uv, zero_pair]) {
-                        *term = (term.0 + re, term.1 + im);
+                    let finite = if vanishing { &zero_c } else { &lifted[0] };
+                    let terms = uv_sums[key.column]
+                        .get_or_insert_with(|| [zero_c.clone(), zero_c.clone(), zero_c.clone()]);
+                    for (term, value) in terms.iter_mut().zip([finite, &lifted[3], &zero_c]) {
+                        *term = cadd(arith, term, value);
                     }
                 }
             }
             // (counterterm component, sector, power) -> value.
-            let table = |values: &[f64]| -> BTreeMap<(&str, usize, i32), f64> {
+            let table = |values: &[T]| -> RusticolResult<BTreeMap<(&str, usize, i32), A::N>> {
                 outputs
                     .iter()
                     .zip(values)
                     .map(|((component, s, power), value)| {
-                        ((component.as_str(), *s, *power), *value)
+                        Ok(((component.as_str(), *s, *power), arith.real(value, bits)?))
                     })
                     .collect()
             };
-            let local = table(&counterterms[index]);
-            let local_uv = counterterms_uv.as_ref().map(|values| table(&values[index]));
+            let local = table(&counterterms[index])?;
+            let local_uv = counterterms_uv
+                .as_ref()
+                .map(|values| table(&values[index]))
+                .transpose()?;
             let value_of =
-                |table: &BTreeMap<(&str, usize, i32), f64>, name: &str, s: usize, k: usize| {
+                |table: &BTreeMap<(&str, usize, i32), A::N>, name: &str, s: usize, k: usize| {
                     table
                         .get(&(name, s, LAURENT_POWERS[k]))
-                        .copied()
-                        .unwrap_or(0.0)
+                        .cloned()
+                        .unwrap_or_else(|| real_zero.clone())
                 };
-            let component =
-                |name: &str, s: usize, k: usize| -> f64 { value_of(&local, name, s, k) };
-            let laurent = |name: &str, s: usize| -> [f64; 3] {
+            let laurent = |table: &BTreeMap<(&str, usize, i32), A::N>, name: &str, s: usize| {
                 [
-                    component(name, s, 0),
-                    component(name, s, 1),
-                    component(name, s, 2),
+                    value_of(table, name, s, 0),
+                    value_of(table, name, s, 1),
+                    value_of(table, name, s, 2),
                 ]
-            };
-            let laurent_uv = |name: &str, s: usize| -> Option<[f64; 3]> {
-                local_uv.as_ref().map(|table| {
-                    [
-                        value_of(table, name, s, 0),
-                        value_of(table, name, s, 1),
-                        value_of(table, name, s, 2),
-                    ]
-                })
             };
             let mut virtual_values = Vec::with_capacity(self.sector_index.len());
             for &s in &self.sector_index {
-                let bare = |k: usize| sums[s].as_ref().map_or(0.0, |terms| loop_factor(terms[k]));
+                let bare = |k: usize| {
+                    sums[s]
+                        .as_ref()
+                        .map_or_else(|| real_zero.clone(), |terms| bare_of(&terms[k]))
+                };
                 if mode.split() {
-                    let bare_uv = |k: usize| uv_sums[s].map_or(0.0, |terms| loop_factor(terms[k]));
-                    let counterterms_uv = match (
-                        laurent_uv("r2", s),
-                        laurent_uv("uv_local", s),
-                        laurent_uv(FIELD_COMPONENT, s),
-                    ) {
-                        (Some(r2), Some(local), Some(fields)) => Some((r2, local, fields)),
-                        _ => None,
+                    let bare_uv = |k: usize| {
+                        uv_sums[s]
+                            .as_ref()
+                            .map_or_else(|| real_zero.clone(), |terms| bare_of(&terms[k]))
                     };
+                    let counterterms_uv = local_uv.as_ref().map(|table| {
+                        (
+                            laurent(table, "r2", s),
+                            laurent(table, "uv_local", s),
+                            laurent(table, FIELD_COMPONENT, s),
+                        )
+                    });
                     let selected = split_virtual(
+                        arith,
                         mode,
                         [bare(0), bare(1), bare(2)],
                         [bare_uv(0), bare_uv(1), bare_uv(2)],
-                        laurent("r2", s),
-                        laurent("uv_local", s),
-                        laurent(FIELD_COMPONENT, s),
+                        laurent(&local, "r2", s),
+                        laurent(&local, "uv_local", s),
+                        laurent(&local, FIELD_COMPONENT, s),
                         counterterms_uv,
                     );
                     virtual_values.push(selected.to_vec());
@@ -1109,16 +1471,24 @@ impl V2Runtime {
                 }
                 let mut values = Vec::with_capacity(width);
                 for k in 0..width {
-                    let uv = component("uv_local", s, k) + component(FIELD_COMPONENT, s, k);
-                    values.push(bare(k) + uv + component("r2", s, k));
+                    let uv = arith.add(
+                        &value_of(&local, "uv_local", s, k),
+                        &value_of(&local, FIELD_COMPONENT, s, k),
+                    );
+                    values
+                        .push(arith.add(&arith.add(&bare(k), &uv), &value_of(&local, "r2", s, k)));
                 }
                 virtual_values.push(values);
             }
             let born_values = self
                 .born_index
                 .iter()
-                .map(|found| found.map_or(0.0, |k| born[index][k]))
-                .collect();
+                .map(|found| match found {
+                    Some(k) => arith.real(&born[index][*k], bits),
+                    // `_zero(carrier)`: 0.0 or Decimal(0).
+                    None => Ok(arith.zero()),
+                })
+                .collect::<RusticolResult<Vec<_>>>()?;
             out.push(Ok((born_values, virtual_values)));
         }
         Ok(out)
@@ -1212,8 +1582,8 @@ mod tests {
         let uv_local = [1.0, -2.0, 0.0];
         let fields = [0.25, 0.75, 0.0];
         let finite = bare[0] + (uv_local[0] + fields[0]) + r2[0];
-        let uv = split_virtual(V2Poles::Uv, bare, bare_uv, r2, uv_local, fields, None);
-        let ir = split_virtual(V2Poles::Ir, bare, bare_uv, r2, uv_local, fields, None);
+        let uv = split_virtual(&Binary64, V2Poles::Uv, bare, bare_uv, r2, uv_local, fields, None);
+        let ir = split_virtual(&Binary64, V2Poles::Ir, bare, bare_uv, r2, uv_local, fields, None);
         // The finite part is the renormalised virtual's in every selection.
         assert_eq!(uv[0], finite);
         assert_eq!(ir[0], finite);
@@ -1231,8 +1601,8 @@ mod tests {
         // (the tree program at the IR regulator 0), so the renormalised
         // virtual's IR poles are bare_IR + CT_IR, with no remainder.
         let given = Some(([0.5, 0.0, 0.0], [1.0, -1.5, 0.0], [0.25, -1.0, 0.0]));
-        let uv = split_virtual(V2Poles::Uv, bare, bare_uv, r2, uv_local, fields, given);
-        let ir = split_virtual(V2Poles::Ir, bare, bare_uv, r2, uv_local, fields, given);
+        let uv = split_virtual(&Binary64, V2Poles::Uv, bare, bare_uv, r2, uv_local, fields, given);
+        let ir = split_virtual(&Binary64, V2Poles::Ir, bare, bare_uv, r2, uv_local, fields, given);
         assert_eq!(uv, [finite, 3.0, 0.0]);
         let parts = [
             (bare[1] - 3.0) + ((uv_local[1] + 1.5) + (fields[1] + 1.0)) + r2[1],
@@ -1331,8 +1701,8 @@ mod tests {
         assert!(checked_parameters([("MU_R", "100")], &externals, None, &fixed, &none).is_ok());
         // A scheme constant the model preparation fixed is named as such.
         let prepared: BTreeSet<String> = ["WT".to_owned()].into();
-        let error = checked_parameters([("WT", "1")], &externals, None, &fixed, &prepared)
-            .unwrap_err();
+        let error =
+            checked_parameters([("WT", "1")], &externals, None, &fixed, &prepared).unwrap_err();
         assert_eq!(error.kind(), RusticolErrorKind::ModelParameter);
         assert_eq!(
             error.message(),
@@ -1353,7 +1723,10 @@ mod tests {
         assert_eq!(spaced[0].1, Rational::from(173));
         let error = check(&[("", "1"), ("MT", "one")]).unwrap_err();
         assert_eq!(error.kind(), RusticolErrorKind::InvalidArgument);
-        assert_eq!(error.message(), "model parameter names must be nonempty strings");
+        assert_eq!(
+            error.message(),
+            "model parameter names must be nonempty strings"
+        );
     }
 
     #[test]
