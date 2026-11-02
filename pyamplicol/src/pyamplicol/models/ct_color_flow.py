@@ -24,9 +24,10 @@ With ``multi_trace`` (the loop-request blocks of the counterterm closure,
   split carries the summed index on a U(N) auxiliary line, so ``d*d`` gains
   the U(1) term ``(2/N_c) delta delta`` (``d_product_u1_term``), which the
   caller subtracts;
-* ``Identity(a,b)*Identity(c,d)`` (or ``Tr``) on four adjoint legs: the pair
-  closes into a colour singlet carrying the closed trace ``tr(tau^a tau^b)``
-  and the other two legs share one colour line.
+* ``Identity(a,b)*Identity(c,d)`` (or ``Tr``) on four adjoint legs, the
+  vertex's other legs colour singlets: the pair closes into a colour singlet
+  carrying the closed trace ``tr(tau^a tau^b)`` and the other two legs share
+  one colour line.
 
 Every other form raises ``UnloweredCountertermColour``: without
 ``multi_trace`` the forms above (the fixed-SU(3) four-gluon R2 and the
@@ -227,12 +228,18 @@ def _adjoint_trilinears(tensors: Sequence[_Factor]) -> bool:
 def _adjoint_identities(
     tensors: Sequence[_Factor], representations: Sequence[int]
 ) -> bool:
-    """Two ``Identity`` factors pairing four adjoint legs."""
+    """Two ``Identity`` factors pairing the four adjoint legs of a vertex
+    whose other legs are colour singlets."""
 
     if any(factor.head != "Identity" for factor in tensors):
         return False
     legs = sorted(index for factor in tensors for index in factor.args)
-    return legs == [1, 2, 3, 4] and all(value == 8 for value in representations)
+    adjoint = [leg for leg, value in enumerate(representations, 1) if value == 8]
+    return (
+        legs == adjoint
+        and len(adjoint) == 4
+        and all(value in (1, 8) for value in representations)
+    )
 
 
 def _quartic_structure_constants(tensors: Sequence[_Factor]) -> bool:
