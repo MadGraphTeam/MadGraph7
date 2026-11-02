@@ -2375,7 +2375,7 @@ def native_interaction_program(
     slots: Sequence[Any] = (),
     *,
     section: bool = False,
-    before_section: Callable[[], None] | None = None,
+    after_dag_reads: Callable[[], None] | None = None,
 ) -> tuple[dict[str, Any], tuple[bytes, ...], bytes | None]:
     """``native_trees._interaction_program`` of ``rows`` and its native
     ``program`` (``native_tree_rows``; its slot masks those of the slot table
@@ -2400,9 +2400,9 @@ def native_interaction_program(
     With ``section`` (``native_trees.NATIVE_SECTIONS``) the steps are not
     Python lists: the record omits them and the third value is their binary
     step section (``V2Program.take_step_section``, M-FINAL MF-8G-1, which
-    takes the steps from ``program``), else None; ``before_section`` is
-    called once nothing but ``program`` is read any more (the emission
-    releases the DAG's columns there)."""
+    takes the steps from ``program``), else None; ``after_dag_reads`` is
+    called once the DAG is not read any more, before the kernels are built
+    (the emission releases the DAG's columns there)."""
 
     from pyamplicol.generation.stage_parameters import (
         _model_symbolica_functions,
@@ -2430,6 +2430,8 @@ def native_interaction_program(
             strict=True,
         )
     )
+    if after_dag_reads is not None:
+        after_dag_reads()
     built: list[tuple[str, list[Any], tuple[Any, ...]]] = []
     for kind, key, item in uses:
         if kind == "kernels":
@@ -2469,8 +2471,6 @@ def native_interaction_program(
     }
     steps = None
     if section:
-        if before_section is not None:
-            before_section()
         steps = bytes(program.take_step_section(texts))
     else:
         record["steps"] = program.steps(texts)
@@ -2499,11 +2499,12 @@ def emit_counterterm_program(dag: NativeDag, compiled: Any, slots: Sequence[Any]
     rows, native = native_tree_rows(
         dag, compiled, slot_orders=[slot[0] for slot in slots]
     )
-    # The columns are released before the step section is formed: the
-    # program holds what it needs, so the section's peak does not stack on
-    # the DAG's (MF-8G-1 item 4).
+    # The columns are released once the program is built and the kernels'
+    # representatives read: the program holds what the kernels and the step
+    # section need, so their peak does not stack on the DAG's (MF-8G-1
+    # item 4).
     interactions, saved, steps = native_interaction_program(
-        rows, native, slots, section=True, before_section=dag.release
+        rows, native, slots, section=True, after_dag_reads=dag.release
     )
     del native
     dag._answers[_EMISSION] = (rows, interactions, saved, steps)
