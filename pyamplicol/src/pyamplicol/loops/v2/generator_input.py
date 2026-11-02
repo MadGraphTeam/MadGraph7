@@ -649,9 +649,14 @@ class NativeGeneration:
                 states.add(mirror)
                 pending.append(mirror)
         # Colour states are totally ordered (checked); typed as Any to sort.
-        ordered: list[Any] = sorted(cast(set[Any], states))
-        if any(not a < b for a, b in itertools.pairwise(ordered)):
+        # A model may name a key whose tuples order as its states do
+        # (``SeedColour.state_order_key``): compared at C speed.
+        order_key = getattr(colour, "state_order_key", None)
+        ordered: list[Any] = sorted(cast(set[Any], states), key=order_key)
+        keys = ordered if order_key is None else list(map(order_key, ordered))
+        if any(not a < b for a, b in itertools.pairwise(keys)):
             raise ValueError("colour states must be totally ordered")
+        del keys
         rank = {state: i for i, state in enumerate(ordered)}
         state_rows: list[list[int] | None] = [None] * len(self._positions)
         for position, found in per_position.items():
