@@ -2370,8 +2370,13 @@ def _retained_functions(
 
 
 def native_interaction_program(
-    rows: NativeTreeRows, program: Any, slots: Sequence[Any] = ()
-) -> tuple[dict[str, Any], tuple[bytes, ...]]:
+    rows: NativeTreeRows,
+    program: Any,
+    slots: Sequence[Any] = (),
+    *,
+    section: bool = False,
+    after_dag_reads: Callable[[], None] | None = None,
+) -> tuple[dict[str, Any], tuple[bytes, ...], bytes | None]:
     """``native_trees._interaction_program`` of ``rows`` and its native
     ``program`` (``native_tree_rows``; its slot masks those of the slot table
     given there, ``slots``): the native steps, and the kernels in their first
@@ -2390,7 +2395,14 @@ def native_interaction_program(
     functions materialise in the same order, and each kernel's expressions
     only reach its own functions, whose rules (and wildcards, numbered by
     definition) do not depend on the functions defined after them; each
-    kernel then keeps the functions it calls (``_retained_functions``)."""
+    kernel then keeps the functions it calls (``_retained_functions``).
+
+    With ``section`` (``native_trees.NATIVE_SECTIONS``) the steps are not
+    Python lists: the record omits them and the third value is their binary
+    step section (``V2Program.take_step_section``, M-FINAL MF-8G-1, which
+    takes the steps from ``program``), else None; ``after_dag_reads`` is
+    called once the DAG is not read any more, before the kernels are built
+    (the emission releases the DAG's columns there)."""
 
     from pyamplicol.generation.stage_parameters import (
         _model_symbolica_functions,
@@ -2418,6 +2430,8 @@ def native_interaction_program(
             strict=True,
         )
     )
+    if after_dag_reads is not None:
+        after_dag_reads()
     built: list[tuple[str, list[Any], tuple[Any, ...]]] = []
     for kind, key, item in uses:
         if kind == "kernels":
@@ -2451,23 +2465,61 @@ def native_interaction_program(
     for real, imag in program.weights():
         weight = _exact_weight(complex(real, imag))
         texts.append((_fraction_text(weight.real), _fraction_text(weight.imag)))
-    record = {
+    record: dict[str, Any] = {
         "kernels": shapes["kernels"],
         "propagators": shapes["propagators"],
-        "steps": program.steps(texts),
     }
+    steps = None
+    if section:
+        steps = bytes(program.take_step_section(texts))
+    else:
+        record["steps"] = program.steps(texts)
     if slots:
         record["masks"] = slot_mask_table(len(slots))
-    return record, (*saved["kernels"], *saved["propagators"])
+    return record, (*saved["kernels"], *saved["propagators"]), steps
 
 
-def native_counterterm_trees(program: Any) -> tuple[Any, ...] | None:
+# M-FINAL MF-8G-1 item 4 (under ``native_trees.NATIVE_SECTIONS``): the
+# counterterm program's interaction program is emitted while its native
+# DAG's columns exist, right after the build (``emit_counterterm_program``,
+# from ``ct_closure.CountertermBlocks.build``), and kept on the handle; the
+# export takes it (``native_counterterm_trees``) instead of rebuilding the
+# released columns, which cost the build's time and memory again over the
+# export's base (g g > 6g at leading colour: 511 s, ~57 GB).
+_EMISSION = ("counterterm-program-emission",)
+
+
+def emit_counterterm_program(dag: NativeDag, compiled: Any, slots: Sequence[Any]) -> None:
+    """Emit the counterterm program of ``dag`` (a native CT DAG whose columns
+    exist) with the slot table ``slots`` (``native_trees.counterterm_slots``)
+    and keep it on the handle (``_EMISSION``): its tree rows view,
+    interaction program (without steps), saved kernels and steps section,
+    as ``native_counterterm_trees`` returns them."""
+
+    rows, native = native_tree_rows(
+        dag, compiled, slot_orders=[slot[0] for slot in slots]
+    )
+    # The columns are released once the program is built and the kernels'
+    # representatives read: the program holds what the kernels and the step
+    # section need, so their peak does not stack on the DAG's (MF-8G-1
+    # item 4).
+    interactions, saved, steps = native_interaction_program(
+        rows, native, slots, section=True, after_dag_reads=dag.release
+    )
+    del native
+    dag._answers[_EMISSION] = (rows, interactions, saved, steps)
+
+
+def native_counterterm_trees(
+    program: Any, *, section: bool = False
+) -> tuple[Any, ...] | None:
     """The parts of ``native_trees._CountertermTrees.of(program, offset)``
     (rows, value slots, momentum slots, source fill, interaction program,
-    saved kernels; ``of`` builds the record and the dataclass from them) from
-    the CT program's native DAG (``NATIVE_PROGRAM``); ``None`` where the
-    program's DAG is the tree engine's (or the flag is off): ``of`` takes the
-    Python ``TreeRows``."""
+    saved kernels, and with ``section`` the steps' binary section, which the
+    interaction program then omits, else None; ``of`` builds the record and
+    the dataclass from them) from the CT program's native DAG
+    (``NATIVE_PROGRAM``); ``None`` where the program's DAG is the tree
+    engine's (or the flag is off): ``of`` takes the Python ``TreeRows``."""
 
     from .native_trees import counterterm_slots
 
@@ -2475,13 +2527,30 @@ def native_counterterm_trees(program: Any) -> tuple[Any, ...] | None:
     if not NATIVE_PROGRAM or type(dag) is not NativeDag:
         return None
     slots = counterterm_slots(program.recursion)
+    emitted = dag._answers.pop(_EMISSION, None) if section else None
+    if emitted is not None:
+        # Emitted at the build (item 4): no rebuild. The export takes the
+        # emission (a later export rebuilds it), so its step section is not
+        # held once the export has pruned it.
+        rows, interactions, saved, steps = emitted
+        return (
+            rows,
+            rows.slots,
+            rows.momentum_slots,
+            rows.source_fill,
+            interactions,
+            saved,
+            steps,
+        )
     released = dag.released
     rows, native = native_tree_rows(
         dag,
         program.recursion.model.lowered.compiled,
         slot_orders=[slot[0] for slot in slots],
     )
-    interactions, saved = native_interaction_program(rows, native, slots)
+    interactions, saved, steps = native_interaction_program(
+        rows, native, slots, section=section
+    )
     del native
     if released:
         # As after generation: the columns are not held to the end.
@@ -2493,6 +2562,7 @@ def native_counterterm_trees(program: Any) -> tuple[Any, ...] | None:
         rows.source_fill,
         interactions,
         saved,
+        steps,
     )
 
 

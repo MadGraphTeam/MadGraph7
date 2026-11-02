@@ -60,3 +60,8 @@ required-features = ["loop-v2"]
 name = "loop_v2_generation"
 harness = false
 required-features = ["loop-v2"]
+
+[[bench]]
+name = "loop_v2_dag"
+harness = false
+required-features = ["loop-v2"]

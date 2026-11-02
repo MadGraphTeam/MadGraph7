@@ -11,6 +11,7 @@
 //!
 //! Floating-point entries travel as their IEEE-754 bit patterns.
 
+use super::recursion::FxMap;
 use super::{DagError, DagResult, Orders};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -193,7 +194,9 @@ pub struct Vertex {
     pub factor: [f64; 2],
     pub swap: bool,
     pub exchange: Option<[f64; 2]>,
-    flows: HashMap<(i8, i8), Vec<Flow>>,
+    // The recursion's per-pair lookups use FxHash (MF-8G-1: the hot loop of
+    // the counterterm DAG; lookups only, so iteration order is never read).
+    flows: FxMap<(i8, i8), Vec<Flow>>,
     pub flavour: FlavourOp,
 }
 
@@ -251,8 +254,8 @@ pub struct DagInput {
     pub vertices: Vec<Vertex>,
     pub classes: Vec<String>,
     by_pdg: HashMap<i64, u32>,
-    by_input: HashMap<(u32, u32), Vec<u32>>,
-    right_particles: HashMap<u32, Vec<u32>>,
+    by_input: FxMap<(u32, u32), Vec<u32>>,
+    right_particles: FxMap<u32, Vec<u32>>,
     pub order_limits: Vec<(String, i64)>,
     pub ignored_particles: Vec<i64>,
     pub sources: Vec<LegSources>,
@@ -341,7 +344,7 @@ impl DagInput {
                 classes.push(v.class.clone());
                 (classes.len() - 1) as u32
             });
-            let mut flows = HashMap::new();
+            let mut flows = FxMap::default();
             for (left, right, rows) in v.flows {
                 flows.insert(
                     (left, right),
@@ -388,14 +391,14 @@ impl DagInput {
                 },
             });
         }
-        let mut by_input = HashMap::new();
+        let mut by_input = FxMap::default();
         for (left, right, rows) in raw.accepting {
             if rows.iter().any(|row| *row as usize >= vertices.len()) {
                 return Err(DagError::Malformed("vertex row out of range".into()));
             }
             by_input.insert((particle(left)?, particle(right)?), rows);
         }
-        let mut right_particles = HashMap::new();
+        let mut right_particles = FxMap::default();
         for (left, rights) in raw.right_particles {
             right_particles.insert(
                 particle(left)?,

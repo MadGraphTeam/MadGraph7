@@ -1114,6 +1114,7 @@ fn numerators_with<T: Exchanged>(
 
 #[pymethods]
 impl V2Executor {
+    /// `plan` is the plan's binary member (bytes) or its JSON (text).
     /// `trees` is a tree program (`loops/v2/native_trees.py`): its JSON,
     /// the saved exact evaluator of each kernel and of the parameter program
     /// (last), and their binary64 SymJIT plane applications in the same order
@@ -1125,14 +1126,14 @@ impl V2Executor {
     #[pyo3(signature = (plan, arithmetic="double", precision=None, *, lanes=16, threads=None, forms="rule", engine="fast", trees=None, columns=None, plan_components=None, fourier=None))]
     #[allow(clippy::too_many_arguments)]
     fn new(
-        plan: &str,
+        plan: Bound<'_, PyAny>,
         arithmetic: &str,
         precision: Option<u32>,
         lanes: usize,
         threads: Option<usize>,
         forms: &str,
         engine: &str,
-        trees: Option<(String, Vec<Vec<u8>>, Option<Vec<Vec<u8>>>)>,
+        trees: Option<(Bound<'_, PyAny>, Vec<Vec<u8>>, Option<Vec<Vec<u8>>>)>,
         columns: Option<String>,
         plan_components: Option<Vec<Option<usize>>>,
         fourier: Option<String>,
@@ -1157,11 +1158,30 @@ impl V2Executor {
                 ));
             }
         };
-        let plan = Arc::new(LoopProgramV4::load_with(plan.as_bytes(), policy).map_err(error)?);
+        // The stored plan: its binary member as bytes (M-FINAL MF-8G-1 item
+        // 5) or a plan JSON as text; `load_with` reads either.
+        let plan = {
+            let data: &[u8] = match plan.cast::<pyo3::types::PyBytes>() {
+                Ok(bytes) => bytes.as_bytes(),
+                Err(_) => plan.extract::<&str>().map_err(error)?.as_bytes(),
+            };
+            Arc::new(LoopProgramV4::load_with(data, policy).map_err(error)?)
+        };
+        // The program's JSON text, or a binary tree program as bytes
+        // (`loop_v2::trees::binary`, M-FINAL MF-8G-1).
+        let trees = trees
+            .map(|(source, kernels, planes)| {
+                let program = match source.cast::<pyo3::types::PyBytes>() {
+                    Ok(bytes) => bytes.as_bytes().to_vec(),
+                    Err(_) => source.extract::<String>().map_err(error)?.into_bytes(),
+                };
+                Ok::<_, PyErr>((program, kernels, planes))
+            })
+            .transpose()?;
         let trees = trees
             .map(|(json, kernels, planes)| {
                 let mut program = TreeProgram::load_with_components(
-                    json.as_bytes(),
+                    &json,
                     &kernels,
                     planes.as_deref(),
                     &plan,

@@ -108,6 +108,19 @@ PROCESSES = {
 SITES = {"gg_ttx", "gg_gg", "gg_ggg"}
 
 
+@pytest.fixture(scope="module", autouse=True)
+def python_family_records():
+    """This module checks the native writer against ``json.dumps`` of the
+    Python records (``ExportedPlan.python_json()``): its exports keep the
+    families' Python records (``NATIVE_FAMILIES`` off, also for the module's
+    shared exports); the streamed form is checked against them by
+    ``test_streamed_families_equal_the_python_records``."""
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(native_lowering, "NATIVE_FAMILIES", False)
+        yield
+
+
 @pytest.fixture(scope="module")
 def slices(loop_sm_compiled_model, loop_native):
     from pyamplicol.models.loading import load_compiled_model
@@ -1172,3 +1185,75 @@ def _fail_closed(native, member: bytes, program: dict, tmp_path: Path) -> None:
             continue
         assert len(rows) > 1 and all("allocator refuses" in r for r in rows[:-1]), rows
         assert rows[-1] == digest, (name, rows)
+
+
+def _streamed_and_oracle(monkeypatch, slice_, **options):
+    monkeypatch.setattr(native_lowering, "NATIVE_FAMILIES", True)
+    streamed = export_plan(slice_, forward=False, **options)
+    monkeypatch.setattr(native_lowering, "NATIVE_FAMILIES", False)
+    oracle = export_plan(slice_, forward=False, **options)
+    return streamed, oracle
+
+
+def check_streamed(streamed, oracle) -> None:
+    """MF-8G-1 item 5: a plan whose families and contents were streamed into
+    the native model writes the oracle's JSON and binary member byte for
+    byte, and its family and content views decode to the oracle's Python
+    records."""
+
+    assert streamed.streamed and not oracle.streamed
+    text = oracle.python_json()
+    assert streamed.json() == text
+    assert streamed.binary() == oracle.binary()
+    for key, kind in (
+        ("families", native_lowering.NativeFamilies),
+        ("contents", native_lowering.NativeContents),
+    ):
+        view = streamed.program[key]
+        assert isinstance(view, kind)
+        assert len(view) == len(oracle.program[key]) > 0
+        assert json.dumps(list(view), separators=(",", ":")) == json.dumps(
+            oracle.program[key], separators=(",", ":")
+        )
+        assert view[-1] == json.loads(json.dumps(oracle.program[key][-1]))
+    with pytest.raises(ValueError, match="streamed families"):
+        streamed.python_json()
+    with pytest.raises(TypeError):
+        json.dumps(streamed.program)
+
+
+@pytest.mark.loop_fast
+def test_streamed_families_equal_the_python_records(slices, monkeypatch):
+    """The streamed families (``NATIVE_FAMILIES``) on g g > t t~ (mass flips)
+    and g g > g g g with its tree program and the certified-scaleless
+    companion's plans."""
+
+    check_streamed(*_streamed_and_oracle(monkeypatch, slices("gg_ttx")))
+    slice_ = slices("gg_ggg")
+    check_streamed(*_streamed_and_oracle(monkeypatch, slice_))
+    companion = slice_.scaleless
+    assert companion is not None
+    check_streamed(
+        *_streamed_and_oracle(
+            monkeypatch,
+            companion,
+            trees=True,
+            born_squared=False,
+            counterterms=False,
+        )
+    )
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("name", ["uux_uuxg", "uux_emepgg"])
+def test_streamed_families_on_quark_lines(slices, monkeypatch, name):
+    """Streamed families on quark lines and the electroweak control."""
+
+    check_streamed(*_streamed_and_oracle(monkeypatch, slices(name)))
+
+
+@pytest.mark.loop_nightly
+def test_streamed_families_six_legs(slices, monkeypatch):
+    """Streamed families at six legs (g g > g g g g)."""
+
+    check_streamed(*_streamed_and_oracle(monkeypatch, slices("gg_gggg")))

@@ -207,6 +207,44 @@ impl NativeCellTable {
         Ok((values, ids))
     }
 
+    /// The table as a binary cell section of a tree program
+    /// (`loop_v2::trees::binary::CellTable`: rows are the ket tensors,
+    /// columns the basis; the distinct cells in first-seen order, as
+    /// `decode`), never decoded to Python (M-FINAL MF-8G-1).
+    fn section<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, pyo3::types::PyBytes>> {
+        use rusticol_core::loop_v2::trees::binary::{CellTable, Column};
+        let out = py.detach(|| {
+            let basis = self.rows.first().map_or(0, Vec::len);
+            if self.rows.iter().any(|row| row.len() != basis) {
+                return Err("a cell table's rows differ in length".to_owned());
+            }
+            let mut shared: FastMap<*const Laurent, u64> = FastMap::default();
+            let mut index: FastMap<&Laurent, u64> = FastMap::default();
+            let mut values = Vec::new();
+            let mut ids = Vec::with_capacity(self.rows.len() * basis);
+            for row in &self.rows {
+                for cell in row {
+                    let id = *shared.entry(Arc::as_ptr(cell)).or_insert_with(|| {
+                        *index.entry(cell.as_ref()).or_insert_with(|| {
+                            values.push(raw_laurent(cell));
+                            values.len() as u64 - 1
+                        })
+                    });
+                    ids.push(id);
+                }
+            }
+            Ok(CellTable {
+                basis,
+                tensors: self.rows.len(),
+                values,
+                ids: Column::of(ids),
+            }
+            .encode())
+        });
+        let out = out.map_err(error)?;
+        Ok(pyo3::types::PyBytes::new(py, &out))
+    }
+
     /// The rows of both tables, in order.
     fn concatenated(&self, other: &NativeCellTable) -> NativeCellTable {
         let mut rows = self.rows.clone();

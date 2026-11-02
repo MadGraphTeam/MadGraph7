@@ -535,15 +535,19 @@ struct TreeFile {
     momentum_slots: Vec<(usize, u64)>,
     source_fill: serde_json::Value,
     /// The interaction program: its kernels' saved evaluators follow in
-    /// order, vertex kernels then propagator kernels.
+    /// order, vertex kernels then propagator kernels. (This and the other
+    /// defaulted parts are sections of a binary tree program, `binary`.)
+    #[serde(default)]
     interactions: InteractionFile,
     /// (state component start, dimension, Wick sign) per plan block row.
+    #[serde(default)]
     block_rows: Vec<(usize, usize, i32)>,
     /// Further (plan block row, state component start, Wick sign) terms of
     /// rows whose block current the tree engine splits into several trees
     /// (by flavour flow): each adds its current to the row, in order.
     #[serde(default)]
     block_row_terms: Vec<(usize, usize, i32)>,
+    #[serde(default)]
     born: BornFile,
     parameters: ParameterFile,
     /// The counterterm and external-field components (none: Born and bare
@@ -557,9 +561,11 @@ struct TreeFile {
     counterterm_trees: Option<CountertermTreesFile>,
     /// Kernel input layouts of the closure terms: ("current", slot,
     /// component) or ("momentum", slot, mu).
+    #[serde(default)]
     layouts: Vec<Vec<(String, usize, usize)>>,
     /// Colour weights of the closure terms: (re, im, sqrt(2) power p), the
     /// weight times 2^(-p/2).
+    #[serde(default)]
     weights: Vec<(String, String, i32)>,
 }
 
@@ -647,7 +653,7 @@ struct CountertermTreesFile {
     interactions: InteractionFile,
 }
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct InteractionFile {
     /// (inputs, outputs, model parameters) per vertex kernel: inputs
@@ -657,6 +663,8 @@ struct InteractionFile {
     /// (inputs, outputs, model parameters) per propagator kernel: inputs
     /// `[value, p, model]`.
     propagators: Vec<(usize, usize, Vec<usize>)>,
+    /// The steps (empty where a binary section holds them, `binary`).
+    #[serde(default)]
     steps: Vec<StepFile>,
     /// A counterterm program's slot sets (indices into its slot table,
     /// `CountertermTreesFile::slots`); each step's `accumulator_masks` index
@@ -697,7 +705,7 @@ struct StepFile {
     accumulator_masks: Vec<usize>,
 }
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct BornFile {
     rows: usize,
@@ -707,6 +715,8 @@ struct BornFile {
     /// Per closure block, per Born row its state component start.
     blocks: Vec<Vec<Option<usize>>>,
     couplings: usize,
+    /// (Empty where a binary section holds them, `binary`.)
+    #[serde(default)]
     terms: Vec<TermFile>,
     /// Per amplitude (basis element, Born order): (component, exact factor).
     amplitudes: Vec<Vec<(usize, String)>>,
@@ -742,12 +752,16 @@ struct CountertermFile {
     vectors: usize,
     /// Ket tensors (the Born basis first).
     tensors: usize,
-    /// (basis element, ket tensor, N_c power, re, im): exact overlaps.
+    /// (basis element, ket tensor, N_c power, re, im): exact overlaps
+    /// (empty where a binary section holds them as a table, `binary`).
+    #[serde(default)]
     cells: Vec<(usize, usize, i32, String, String)>,
     /// (basis element, Born order, N_c power) per Born component.
     born: Vec<(usize, usize, i32)>,
     /// Counterterm closure terms: contributions (coupling slot, ket
     /// component, weight re, weight im, sqrt(2) power).
+    /// (Empty where a binary section holds them, `binary`.)
+    #[serde(default)]
     terms: Vec<TermFile>,
     /// (kind "vector" or "born", bra Born order, vector or ket Born order,
     /// coupling slot, N_c grade, output, sector degree).
@@ -1510,6 +1524,7 @@ fn pole_slot_sets(masks: &[Vec<usize>], powers: &[i32]) -> RusticolResult<Vec<bo
 /// no slot of epsilon power 0.
 fn load_interactions(
     program: InteractionFile,
+    columns: Option<binary::StepColumns>,
     saved: &[Vec<u8>],
     planes: Option<&[Vec<u8>]>,
     state_size: usize,
@@ -1553,44 +1568,51 @@ fn load_interactions(
         shapes.push((*inputs, *outputs));
     }
     let within = |start: usize, length: usize| start + length <= state_size;
-    let mut steps = Vec::with_capacity(program.steps.len());
-    for step in program.steps {
-        let mut offsets = Vec::with_capacity(step.accumulators.len());
+    // One step from its accumulator dimensions, slot sets, rows (kernel,
+    // left, left dimension, right, right dimension, left momentum, right
+    // momentum, accumulator, exact weight) and outputs (accumulator,
+    // propagator or -1, momentum, start, dimension), in either form.
+    let load_step = |accumulators: &[usize],
+                     accumulator_masks: &[usize],
+                     rows: &mut dyn Iterator<Item = RusticolResult<StepRow>>,
+                     step_outputs: &mut dyn Iterator<Item = (usize, i64, usize, usize, usize)>|
+     -> RusticolResult<Step> {
+        let mut offsets = Vec::with_capacity(accumulators.len());
         let mut width = 0;
-        for &dimension in &step.accumulators {
+        for &dimension in accumulators {
             offsets.push(width);
             width += dimension;
         }
         // Per accumulator whether only pole slots read its current.
         let pole: Vec<bool> = if slots.is_some() {
             require(
-                step.accumulator_masks.len() == step.accumulators.len()
-                    && step
-                        .accumulator_masks
+                accumulator_masks.len() == accumulators.len()
+                    && accumulator_masks
                         .iter()
                         .all(|&mask| mask < pole_masks.len()),
                 "accumulator slot masks",
             )?;
-            step.accumulator_masks
+            accumulator_masks
                 .iter()
                 .map(|&mask| pole_masks[mask])
                 .collect()
         } else {
             require(
-                step.accumulator_masks.is_empty(),
+                accumulator_masks.is_empty(),
                 "slot masks outside a counterterm program",
             )?;
-            vec![false; step.accumulators.len()]
+            vec![false; accumulators.len()]
         };
         let mut groups: BTreeMap<usize, Vec<Edge>> = BTreeMap::new();
-        for (kernel, left, ld, right, rd, pl, pr, accumulator, re, im) in step.interactions {
+        for row in rows {
+            let (kernel, left, ld, right, rd, pl, pr, accumulator, weight) = row?;
             let (inputs, outputs, model) = program
                 .kernels
                 .get(kernel)
                 .ok_or_else(|| invalid("interaction kernel index"))?;
             require(
-                accumulator < step.accumulators.len()
-                    && *outputs == step.accumulators[accumulator]
+                accumulator < accumulators.len()
+                    && *outputs == accumulators[accumulator]
                     && *inputs == ld + rd + 8 + model.len()
                     && within(left, ld)
                     && within(right, rd)
@@ -1606,19 +1628,19 @@ fn load_interactions(
                 left_momentum: pl,
                 right_momentum: pr,
                 accumulator: offsets[accumulator],
-                weight: [exact(&re)?, exact(&im)?],
+                weight,
                 pole: pole[accumulator],
             });
         }
-        let mut outputs = Vec::with_capacity(step.outputs.len());
-        for (accumulator, propagator, momentum, start, dimension) in step.outputs {
+        let mut outputs = Vec::new();
+        for (accumulator, propagator, momentum, start, dimension) in step_outputs {
             require(
-                accumulator < step.accumulators.len() && within(start, dimension),
+                accumulator < accumulators.len() && within(start, dimension),
                 "interaction output",
             )?;
             let propagator = if propagator < 0 {
                 require(
-                    step.accumulators[accumulator] == dimension,
+                    accumulators[accumulator] == dimension,
                     "an unpropagated output's dimension",
                 )?;
                 None
@@ -1629,7 +1651,7 @@ fn load_interactions(
                     .get(index)
                     .ok_or_else(|| invalid("propagator index"))?;
                 require(
-                    *inputs == step.accumulators[accumulator] + 4 + model.len()
+                    *inputs == accumulators[accumulator] + 4 + model.len()
                         && *outputs == dimension
                         && within(momentum, 4),
                     "propagator output",
@@ -1645,11 +1667,79 @@ fn load_interactions(
                 pole[accumulator],
             ));
         }
-        steps.push(Step {
+        Ok(Step {
             groups: groups.into_iter().collect(),
             width,
             outputs,
-        });
+        })
+    };
+    let mut steps = Vec::new();
+    match columns {
+        Some(columns) => {
+            // A binary section (`binary::StepColumns`): each distinct weight
+            // parsed once.
+            require(program.steps.is_empty(), "steps in both forms")?;
+            let weights = columns.exact_weights()?;
+            let [o_acc, o_mom, o_start, o_dim] = &columns.output_columns;
+            let r = &columns.row_columns;
+            for range in columns.ranges() {
+                let accumulators: Vec<usize> = (range.accumulators.0..range.accumulators.1)
+                    .map(|k| columns.dimensions.at(k))
+                    .collect();
+                let masks: Vec<usize> = (range.masks.0..range.masks.1)
+                    .map(|k| columns.masks.at(k))
+                    .collect();
+                let mut rows = (range.rows.0..range.rows.1).map(|k| {
+                    Ok((
+                        r[0].at(k),
+                        r[1].at(k),
+                        r[2].at(k),
+                        r[3].at(k),
+                        r[4].at(k),
+                        r[5].at(k),
+                        r[6].at(k),
+                        r[7].at(k),
+                        weights[r[8].at(k)].clone(),
+                    ))
+                });
+                let mut outputs = (range.outputs.0..range.outputs.1).map(|k| {
+                    (
+                        o_acc.at(k),
+                        columns.propagators.get(k),
+                        o_mom.at(k),
+                        o_start.at(k),
+                        o_dim.at(k),
+                    )
+                });
+                steps.push(load_step(&accumulators, &masks, &mut rows, &mut outputs)?);
+            }
+        }
+        None => {
+            for step in program.steps {
+                let mut rows = step.interactions.into_iter().map(
+                    |(kernel, left, ld, right, rd, pl, pr, accumulator, re, im)| {
+                        Ok((
+                            kernel,
+                            left,
+                            ld,
+                            right,
+                            rd,
+                            pl,
+                            pr,
+                            accumulator,
+                            [exact(&re)?, exact(&im)?],
+                        ))
+                    },
+                );
+                let mut outputs = step.outputs.into_iter();
+                steps.push(load_step(
+                    &step.accumulators,
+                    &step.accumulator_masks,
+                    &mut rows,
+                    &mut outputs,
+                )?);
+            }
+        }
     }
     Ok(Interactions {
         saved: saved.to_vec(),
@@ -1659,6 +1749,19 @@ fn load_interactions(
         steps,
     })
 }
+
+/// One interaction of a step as `load_interactions` reads it.
+type StepRow = (
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    [Rational; 2],
+);
 
 /// Validate a parameter program (`ParameterFile`) against the tree program
 /// and the plan; `saved` is its exact evaluator.
@@ -1882,6 +1985,7 @@ fn load_layouts(
 #[allow(clippy::too_many_arguments)]
 fn load_counterterms(
     file: CountertermFile,
+    table: Option<MetricCells>,
     plan: &LoopProgramV4,
     blocks: usize,
     born_components: usize,
@@ -1914,11 +2018,20 @@ fn load_counterterms(
             )
         })
         .collect::<RusticolResult<Vec<_>>>()?;
-    let cells = file
-        .cells
-        .iter()
-        .map(|(b, t, power, re, im)| Ok((*b, *t, *power, [exact(re)?, exact(im)?])))
-        .collect::<RusticolResult<Vec<_>>>()?;
+    // The overlaps of a binary section's table (`binary::CellTable`), else
+    // the record's list.
+    let cells = match table {
+        Some(table) => {
+            require(file.cells.is_empty(), "overlap cells in both forms")?;
+            table
+        }
+        None => MetricCells::List(
+            file.cells
+                .iter()
+                .map(|(b, t, power, re, im)| Ok((*b, *t, *power, [exact(re)?, exact(im)?])))
+                .collect::<RusticolResult<Vec<_>>>()?,
+        ),
+    };
     let entries = file
         .entries
         .iter()
@@ -1946,7 +2059,7 @@ fn load_counterterms(
         basis,
         orders,
         file.tensors,
-        MetricCells::List(cells),
+        cells,
         &file.born,
         &file.ket,
         file.vectors,
@@ -2044,8 +2157,15 @@ impl TreeProgram {
         plan: &LoopProgramV4,
         plan_components: Option<Vec<Option<usize>>>,
     ) -> RusticolResult<Self> {
-        let mut file: TreeFile =
-            serde_json::from_slice(json).map_err(|e| invalid(e.to_string()))?;
+        // A binary tree program (`binary`) or the JSON one (the oracle).
+        let (mut file, overrides) = if binary::is_container(json) {
+            binary::tree_file(json)?
+        } else {
+            (
+                serde_json::from_slice::<TreeFile>(json).map_err(|e| invalid(e.to_string()))?,
+                binary::Overrides::default(),
+            )
+        };
         if let Some(components) = plan_components {
             file.born.plan_components = components;
         }
@@ -2091,6 +2211,7 @@ impl TreeProgram {
         };
         let interactions = load_interactions(
             file.interactions,
+            overrides.tree_steps,
             kernels,
             planes,
             file.state_size,
@@ -2132,6 +2253,7 @@ impl TreeProgram {
                     sources: SchemaSources::from_value(&ct.source_fill)?,
                     interactions: load_interactions(
                         ct.interactions,
+                        overrides.counterterm_steps,
                         counterterm_kernels,
                         counterterm_planes,
                         ct.state_size,
@@ -2142,7 +2264,7 @@ impl TreeProgram {
             }
             None => {
                 require(
-                    counterterm_kernels.is_empty(),
+                    counterterm_kernels.is_empty() && overrides.counterterm_steps.is_none(),
                     "interaction kernel evaluator count",
                 )?;
                 None
@@ -2293,11 +2415,13 @@ impl TreeProgram {
                     .collect::<RusticolResult<Vec<_>>>()
             })
             .transpose()?;
+        let cells = overrides.cells.map(|table| table.metric()).transpose()?;
         let counterterms = file
             .counterterms
             .map(|ct| {
                 load_counterterms(
                     ct,
+                    cells,
                     plan,
                     blocks,
                     born.components,
@@ -4486,6 +4610,9 @@ impl TreeCarrier for Float {
 
 #[path = "trees_rows.rs"]
 mod rows;
+
+#[path = "trees_binary.rs"]
+pub mod binary;
 
 #[cfg(test)]
 #[path = "trees_tests.rs"]

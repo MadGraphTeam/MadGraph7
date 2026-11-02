@@ -10,7 +10,8 @@
 use super::*;
 use pyo3::types::{PyBool, PyBytes, PyDict, PyInt, PyList, PyString, PyTuple};
 use rusticol_core::loop_v2::plan::binary::{
-    OMITTED_WHEN_ABSENT, PlanModel, column_names, is_binary, program_digest, read_binary, read_pool,
+    ContentRecords, FamilyRecords, OMITTED_WHEN_ABSENT, PlanModel, column_names, is_binary,
+    program_digest, read_binary, read_pool,
 };
 use rusticol_core::loop_v2::plan::{FormPolicy, LoopProgramV4};
 use serde::de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor};
@@ -19,6 +20,67 @@ use std::time::Instant;
 /// A plan v4 model (`PlanModel`).
 #[pyclass]
 struct V2PlanModel(PlanModel);
+
+/// The schedule-B families of an export, read one record at a time
+/// (`FamilyRecords`; `plan_export.export_plan` with
+/// `native_lowering.NATIVE_FAMILIES`), taken by
+/// `V2PlanModel.from_program_families`.
+#[pyclass]
+struct V2PlanFamilies(Option<FamilyRecords>);
+
+#[pymethods]
+impl V2PlanFamilies {
+    #[new]
+    fn new() -> Self {
+        Self(Some(FamilyRecords::default()))
+    }
+
+    /// Append one family record (`_Exporter.family`'s), read as the
+    /// program's records are (`from_program`).
+    fn push(&mut self, record: &Bound<'_, PyAny>) -> PyResult<()> {
+        let families = self
+            .0
+            .as_mut()
+            .ok_or_else(|| error("the streamed families were taken"))?;
+        families
+            .push_records(Records(record))
+            .map_err(|failure| error(format!("loop v2 plan family record: {failure}")))
+    }
+
+    fn __len__(&self) -> usize {
+        self.0.as_ref().map_or(0, FamilyRecords::len)
+    }
+}
+
+/// The contents of an export, read one record at a time (`ContentRecords`;
+/// `plan_export._Exporter.content` with `native_lowering.NATIVE_FAMILIES`),
+/// taken by `V2PlanModel.from_program_families(..., contents=)`.
+#[pyclass]
+struct V2PlanContents(Option<ContentRecords>);
+
+#[pymethods]
+impl V2PlanContents {
+    #[new]
+    fn new() -> Self {
+        Self(Some(ContentRecords::default()))
+    }
+
+    /// Append one content record (`_Exporter.content`'s), read as the
+    /// program's records are (`from_program`).
+    fn push(&mut self, record: &Bound<'_, PyAny>) -> PyResult<()> {
+        let contents = self
+            .0
+            .as_mut()
+            .ok_or_else(|| error("the streamed contents were taken"))?;
+        contents
+            .push_records(Records(record))
+            .map_err(|failure| error(format!("loop v2 plan content record: {failure}")))
+    }
+
+    fn __len__(&self) -> usize {
+        self.0.as_ref().map_or(0, ContentRecords::len)
+    }
+}
 
 #[pymethods]
 impl V2PlanModel {
@@ -43,6 +105,62 @@ impl V2PlanModel {
         PlanModel::from_records(Records(program))
             .map(Self)
             .map_err(|failure| error(format!("loop v2 plan records: {failure}")))
+    }
+
+    /// `from_program` of a program whose families were streamed
+    /// (`V2PlanFamilies`, taken; the program's own `families` empty) and,
+    /// with `contents` (`V2PlanContents`, taken), its contents too (the
+    /// program's own `contents` empty).
+    #[staticmethod]
+    #[pyo3(signature = (program, families, contents=None))]
+    fn from_program_families(
+        program: &Bound<'_, PyAny>,
+        families: &Bound<'_, V2PlanFamilies>,
+        contents: Option<&Bound<'_, V2PlanContents>>,
+    ) -> PyResult<Self> {
+        let taken = families
+            .borrow_mut()
+            .0
+            .take()
+            .ok_or_else(|| error("the streamed families were taken"))?;
+        let contents = contents
+            .map(|contents| {
+                contents
+                    .borrow_mut()
+                    .0
+                    .take()
+                    .ok_or_else(|| error("the streamed contents were taken"))
+            })
+            .transpose()?;
+        PlanModel::from_records_with_parts(Records(program), taken, contents)
+            .map(Self)
+            .map_err(|failure| error(format!("loop v2 plan records: {failure}")))
+    }
+
+    /// The number of contents.
+    fn content_count(&self) -> usize {
+        self.0.content_count()
+    }
+
+    /// The JSON of content `index`, as the plan JSON writes it.
+    fn content_json<'py>(&self, py: Python<'py>, index: usize) -> PyResult<Bound<'py, PyBytes>> {
+        self.0
+            .content_json(index)
+            .map(|json| PyBytes::new(py, &json))
+            .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err("content index out of range"))
+    }
+
+    /// The number of schedule-B families.
+    fn family_count(&self) -> usize {
+        self.0.family_count()
+    }
+
+    /// The JSON of family `index`, as the plan JSON writes it.
+    fn family_json<'py>(&self, py: Python<'py>, index: usize) -> PyResult<Bound<'py, PyBytes>> {
+        self.0
+            .family_json(index)
+            .map(|json| PyBytes::new(py, &json))
+            .ok_or_else(|| pyo3::exceptions::PyIndexError::new_err("family index out of range"))
     }
 
     /// The model of a binary plan member.
@@ -547,6 +665,8 @@ impl<'de, 'py, I: Iterator<Item = (Bound<'py, PyAny>, Bound<'py, PyAny>)>> MapAc
 
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<V2PlanModel>()?;
+    module.add_class::<V2PlanFamilies>()?;
+    module.add_class::<V2PlanContents>()?;
     module.add_function(wrap_pyfunction!(v2_plan_load, module)?)?;
     module.add_function(wrap_pyfunction!(v2_plan_read, module)?)?;
     module.add_function(wrap_pyfunction!(v2_plan_read_pool, module)?)
