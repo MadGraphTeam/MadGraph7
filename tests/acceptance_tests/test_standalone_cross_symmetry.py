@@ -3274,7 +3274,7 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
     # good rows before the C-parity reduction (NGOODROWS).
     _NGOODHEL_KNOB = '''\
     if( getenv( "MG_PRINT_NGOODHEL" ) ) printf( " NGOODHEL %d\\n", nGoodHel );
-    if( getenv( "MG_PRINT_NGOODHEL" ) ) printf( " NGOODROWS %d\\n", cNGoodHelRows );
+    if( getenv( "MG_PRINT_NGOODHEL" ) ) printf( " NGOODROWS %d\\n", params.nGoodHelRows );
 '''
 
     def _add_ngoodhel_knob(self, pdir):
