@@ -110,7 +110,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
 
     from_template = {'.': relative_path_list(home_path, ['COPYRIGHT', 'COPYING', 'COPYING.LESSER']),
                      'src': relative_path_list(madmatrix_templates, [
-                         'mgOnGpuFptypes.h', 'mgOnGpuCxtypes.h', 'mgOnGpuVectors.h',
+                         'mgOnGpuFptypes.h', 'mgOnGpuCxtypes.h', 'mgOnGpuVectors.h', 'mgOnGpuInvariants.h',
                          'constexpr_math.h', 'read_slha.h', 'read_slha.cc'
                      ]),
                      'SubProcesses': relative_path_list(madmatrix_templates, ['nvtx.h', 'GpuRuntime.h', 'GpuAbstraction.h', 'color_sum.h', 'color_sum.cc',
@@ -197,11 +197,15 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         """Add what madmatrix.mk needs to know about a host BLAS for the C++
         color sum. Whether a given process actually takes it is decided when
         that process is written out (see cpp_blas_wanted); this only settles
-        whether one could be linked at all."""
+        whether one could be linked at all. Only Accelerate has established
+        evidence for enabling it by default: a generic linkable BLAS can be
+        scalar Netlib, slower than the generated SIMD colour sum. Keep its
+        flags available for an explicit CPPBLAS=hasBlas override."""
 
         replace_dict = super().get_makefile_replace_dict(model)
         flags = self.oneprocessclass.blas_available_flags()
-        replace_dict['cpp_blas_default'] = 'hasBlas' if flags else 'hasNoBlas'
+        replace_dict['cpp_blas_default'] = (
+            'hasBlas' if flags == '-framework Accelerate' else 'hasNoBlas')
         replace_dict['cpp_blas_libflags'] = flags
         return replace_dict
 
@@ -216,7 +220,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
                 os.makedirs(arithmetics_dst, exist_ok=True)
             except os.error:
                 pass
-            for f in ['Double.h', 'basicOPs.h', 'errorFreeOPs.h']:
+            for f in ['Double.h', 'basicOPs.h', 'errorFreeOPs.h', 'Invariant.h']:
                 files.cp(pjoin(arithmetics_src, f), arithmetics_dst)
 
         # Rename Makefile to makefile
@@ -348,7 +352,7 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
         arithmetics_dst = pjoin(self.dir_path, 'src', 'Arithmetics')
         if os.path.isdir(arithmetics_src):
             os.makedirs(arithmetics_dst, exist_ok=True)
-            for name in ('Double.h', 'basicOPs.h', 'errorFreeOPs.h'):
+            for name in ('Double.h', 'basicOPs.h', 'errorFreeOPs.h', 'Invariant.h'):
                 files.cp(pjoin(arithmetics_src, name),
                          pjoin(arithmetics_dst, name))
         self._nlo_model_prepared = True

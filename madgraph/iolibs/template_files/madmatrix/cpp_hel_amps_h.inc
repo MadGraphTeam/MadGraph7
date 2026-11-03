@@ -18,6 +18,7 @@
 #include "mgOnGpuConfig.h"
 
 #include "mgOnGpuVectors.h"
+#include "mgOnGpuInvariants.h"
 
 #include "Parameters.h"
 

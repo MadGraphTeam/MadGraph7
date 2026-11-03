@@ -76,7 +76,8 @@ endif
 
 # Build directory "full" tag (used for build lockfiles to prevent mixing builds with different options)
 # NB: the backend name is used as-is ('simd_128', 'scalar', 'cuda', 'hip'...), see TAG below.
-override DIRTAG := $(BACKEND)_$(FPTYPE)_inl$(HELINL)_hrd$(HRDCOD)
+# Resolve this lazily, after backend and host-BLAS defaults are selected.
+override DIRTAG = $(BACKEND)_$(FPTYPE)_inl$(HELINL)_hrd$(HRDCOD)_cpp$(CPPBLAS)
 
 # Build directory: current directory by default, or build.<BACKEND> if USEBUILDDIR==1
 # NB: using '=' (not ':=') ensures BACKEND is evaluated lazily after the potential 'auto' resolution
@@ -725,7 +726,7 @@ endif
 
 # Build lockfile "full" tag (defines full specification of object-file builds that cannot be intermixed)
 # NB: the backend name is used as-is, so it matches DIRTAG above (there is no common prefix to strip)
-override TAG = $(BACKEND)_$(FPTYPE)_inl$(HELINL)_hrd$(HRDCOD)
+override TAG = $(DIRTAG)
 
 # Export TAG (so that there is no need to check/define it again in src/Makefile)
 export TAG
@@ -778,6 +779,7 @@ processid_short=$(shell basename $(CURDIR))
 
 MADMATRIX_LIB = madmatrix_$(processid_short)_$(BACKEND)
 objects_lib=$(BUILDDIR)/CPPProcess.o $(BUILDDIR)/color_sum.o $(BUILDDIR)/MatrixElementKernels.o $(BUILDDIR)/CrossSectionKernels.o $(BUILDDIR)/umami.o
+MADMATRIX_MODEL_HEADERS = $(wildcard $(SRC)/*.h $(SRC)/Arithmetics/*.h)
 
 # Explicitly define the default goal (this is not necessary as it is the first target, which is implicitly the default goal)
 .DEFAULT_GOAL := all.$(TAG)
@@ -824,11 +826,11 @@ endif
 # incompatible backends (different BACKEND, FPTYPE, etc.) in the same directory.
 # Use USEBUILDDIR=1 to build for multiple backends simultaneously without cleaning.
 ifeq ($(GPUCC),)
-$(BUILDDIR)/%%.o : %%.cc *.h $(SRC)/*.h $(BUILDDIR)/.build.$(TAG)
+$(BUILDDIR)/%%.o : %%.cc *.h $(MADMATRIX_MODEL_HEADERS) $(BUILDDIR)/.build.$(TAG)
 	@if [ ! -d $(BUILDDIR) ]; then echo "mkdir -p $(BUILDDIR)"; mkdir -p $(BUILDDIR); fi
 	$(CXX) $(CPPFLAGS) $(INCFLAGS) $(CXXFLAGS) -c $< -o $@
 else
-$(BUILDDIR)/%%.o : %%.cc *.h $(SRC)/*.h $(BUILDDIR)/.build.$(TAG)
+$(BUILDDIR)/%%.o : %%.cc *.h $(MADMATRIX_MODEL_HEADERS) $(BUILDDIR)/.build.$(TAG)
 	@if [ ! -d $(BUILDDIR) ]; then echo "mkdir -p $(BUILDDIR)"; mkdir -p $(BUILDDIR); fi
 	$(GPUCC) $(CPPFLAGS) $(INCFLAGS) $(GPUFLAGS) -c -x $(GPULANGUAGE) $< -o $@
 endif
@@ -846,7 +848,7 @@ commonlib : $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so
 ifeq ($(MADMATRIX_COMMONLIB_EXTERNAL),1)
 $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so: ;
 else
-$(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so: $(SRC)/*.h $(SRC)/*.cc $(BUILDDIR)/.build.$(TAG)
+$(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so: $(MADMATRIX_MODEL_HEADERS) $(SRC)/*.cc $(BUILDDIR)/.build.$(TAG)
 	$(MAKE) -C $(SRC) BACKEND=$(BACKEND) LIBDIR=$(LIBDIR)
 endif
 

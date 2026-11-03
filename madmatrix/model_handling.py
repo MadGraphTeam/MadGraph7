@@ -731,6 +731,22 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
 
     # AV - modify aloha_writers.ALOHAWriterForCPP method (improve formatting)
     # This is called once per FFV function, i.e. once per WriteALOHA instance?
+    def stable_vector_denominator(self):
+        """The standard three-vector propagator, with explicit complex width.
+
+        Cast the real invariant before adding a scalar complex width: otherwise
+        the scalar/vector conversion overloads are ambiguous for CPU SIMD.
+        """
+        parents = [i for i in range(1, 4) if i != self.outgoing]
+        signs = self.get_momentum_conservation_sign()
+        arguments = ['%s%d.pvec' % (self.particles[i-1], i) for i in parents]
+        arguments += ['static_cast<fptype_denom>(M%d)' % self.outgoing]
+        arguments += ['-1.' if signs[i-1] == '-' else '1.' for i in parents]
+        return ('( static_cast<cxtype_denom_sv>(fp_minkowski_sum2( dP%d, %s ))'
+                ' + cId * static_cast<fptype_denom>(M%d)'
+                ' * static_cast<fptype_denom>(W%d) )' %
+                (self.outgoing, ', '.join(arguments), self.outgoing, self.outgoing))
+
     # It is called by WriteALOHA.write, after get_header_txt, get_declaration_txt, get_momenta_txt, before get_foot_txt
     # This affects 'denom = COUP' in HelAmps_sm.cc
     # This affects 'V1[2] = ' and 'F1[2] = ' in HelAmps_sm.cc
@@ -873,7 +889,16 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                             out.write('\n#ifndef MADARITH_DOUBLEEXPANSION\n')
                         # same formula for all the FPTYPE confs
                         out.write('    const cxtype_denom %(cId)s( 0., 1. );\n' % mydict) # AV
-                        out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / ( ( dP%(i)s[0] * dP%(i)s[0] ) - ( dP%(i)s[1] * dP%(i)s[1] ) - ( dP%(i)s[2] * dP%(i)s[2] ) - ( dP%(i)s[3] * dP%(i)s[3] ) - static_cast<fptype_denom>(M%(i)s) * ( static_cast<fptype_denom>(M%(i)s) - %(cId)s * static_cast<fptype_denom>(W%(i)s) ) );\n' % mydict) # AV
+                        if (not arith_doubleexpansion and not aloha.loop_mode
+                                and not fd_gauge and tuple(self.routine.spins) == (3, 3, 3)):
+                            mydict['stable_denominator'] = self.stable_vector_denominator()
+                            out.write('#if defined(MGONGPU_FPTYPE_DOUBLE) && !defined(MGONGPU_SIMD_DENOM64)\n')
+                            out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / %(stable_denominator)s;\n' % mydict)
+                            out.write('#else\n')
+                            out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / ( ( dP%(i)s[0] * dP%(i)s[0] ) - ( dP%(i)s[1] * dP%(i)s[1] ) - ( dP%(i)s[2] * dP%(i)s[2] ) - ( dP%(i)s[3] * dP%(i)s[3] ) - static_cast<fptype_denom>(M%(i)s) * ( static_cast<fptype_denom>(M%(i)s) - %(cId)s * static_cast<fptype_denom>(W%(i)s) ) );\n' % mydict)
+                            out.write('#endif\n')
+                        else:
+                            out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / ( ( dP%(i)s[0] * dP%(i)s[0] ) - ( dP%(i)s[1] * dP%(i)s[1] ) - ( dP%(i)s[2] * dP%(i)s[2] ) - ( dP%(i)s[3] * dP%(i)s[3] ) - static_cast<fptype_denom>(M%(i)s) * ( static_cast<fptype_denom>(M%(i)s) - %(cId)s * static_cast<fptype_denom>(W%(i)s) ) );\n' % mydict) # AV
                         if arith_doubleexpansion:
                             out.write('#endif\n')
                             out.write('#ifdef MADARITH_DOUBLEEXPANSION\n')
