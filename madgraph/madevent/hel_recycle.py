@@ -188,7 +188,6 @@ def splice_amp_chunks(path):
             for chunk_line in read_amp_chunk_body(chunk):
                 yield chunk_line
 
-
 class Dialect:
     '''The language-specific text layer of the recycler.
 
@@ -346,7 +345,7 @@ class CppDialect(Dialect):
         starts after a balanced <...> and commas inside it are not separators;
       - the result is not always the last argument: an external ends with its
         leg index (`..., aloha_obj[5], 4 );`);
-      - the helicity is `cHel[ihel][k]`, and a scalar external simply has no
+      - the helicity is `hel_sv[k]` (or `cHel[ihel][k]`), and a scalar external simply has no
         helicity argument at all rather than a slot to overwrite;
       - every amplitude writes the same scratch `&amp_fp[0]`, so the row an
         unfolded amplitude belongs to cannot be carried by its name. It is
@@ -369,7 +368,8 @@ class CppDialect(Dialect):
     EXT_END = '//HRENDEXT'
 
     _CALL = re.compile(r'^\s*([A-Za-z_]\w*)\s*[<(]')
-    _HELICITY = re.compile(r'cHel\s*\[\s*ihel\s*\]\s*\[\s*(\d+)\s*\]')
+    # the helicity of leg k: hel_sv[k] (one per SIMD lane), or cHel[ihel][k]
+    _HELICITY = re.compile(r'(?:cHel\s*\[\s*ihel\s*\]|hel_sv)\s*\[\s*(\d+)\s*\]')
     _SLOT = re.compile(r'^&?(?:aloha_obj|amp_fp)\s*\[')
 
     def __init__(self):
@@ -501,7 +501,9 @@ class CppDialect(Dialect):
         return None
 
     def helicity_literal(self, hel):
-        return '%d' % hel
+        # the external wavefunctions take a helicity per SIMD lane (fptype_amp_sv):
+        # the row's own, the same in every lane
+        return '( fptype_amp_sv{} + %d )' % hel
 
     def set_external_helicity(self, args, hel):
         for i, arg in enumerate(args):
@@ -510,12 +512,20 @@ class CppDialect(Dialect):
                 break               # a scalar has none: nothing to replace
         return args
 
-    _AMP_TAG = re.compile(r'//\s*HRAMP\s+(\d+)')
+    _AMP_TAG = re.compile(r'//\s*HRAMP\s+(\d+)(?:\s+(\d+(?:,\d+)*))?')
 
     def amplitude_diagram(self, line, args):
         # the scratch every amplitude writes to cannot say which diagram it is,
         # so the exporter tags the call with it
         return int(self._AMP_TAG.search(line).group(1))
+
+    def amplitude_spins(self, line):
+        '''The spin (2s+1) of each wavefunction argument of an amplitude call,
+        in argument order, as the exporter tagged it; None when it did not.'''
+        match = self._AMP_TAG.search(line)
+        if not match or not match.group(2):
+            return None
+        return tuple(int(spin) for spin in match.group(2).split(','))
 
     # -- line shape ----------------------------------------------------------
     def is_continuation(self, line):
@@ -593,10 +603,34 @@ class CppDialect(Dialect):
         return [Template(fold).safe_substitute(row=row)
                 for fold in self.folds.get(amp.diag_num, ())]
 
+    @staticmethod
+    def peel_components(spin, gauge='U'):
+        """(fermion, components) of the current a P1N leaves on a leg whose
+        wavefunction has spin `spin` (2s+1, as the exporter tags it): the
+        components each member's dot product runs over; None for spin 3/2 and 2,
+        which are not split (as in fortran).
+
+        The spin is the particle's, never read off the routine name: the letters
+        of a Lorentz name (FFV1, VVS1) are a naming convention of the UFO
+        generators, not part of the format. The FD gauge changes two things: a
+        vector has five components, the fifth its Goldstone (which the Goldstone
+        structures of a combined vertex such as VVV1_VSV2_VSS1 write), and a
+        scalar keeps its value in that same fifth component (the fortran
+        CombineAmpFD / CombineAmpS of aloha_functions_fd.f).
+        """
+        fd = gauge == 'FD'
+        if spin == 2:
+            return True, (0, 1, 2, 3)
+        if spin == 3:
+            return False, (0, 1, 2, 3, 4) if fd else (0, 1, 2, 3)
+        if spin == 1:
+            return False, (4,) if fd else (0,)
+        return None
+
     def _whole_amplitude(self, line, amp):
         return [self.apply_args(line, [amp.args]).rstrip('\n')] + self._amp_fold(amp)
 
-    def _p1n_group(self, line, group, peel):
+    def _p1n_group(self, line, group, peel, gauge='U'):
         """One partial contraction shared by a group of amplitudes.
 
         The vertex is evaluated once with the peeled leg left off -- that is
@@ -620,10 +654,16 @@ class CppDialect(Dialect):
         # the vertex writes an amplitude, the current does not: keep the
         # wavefunction and coupling access classes, drop the amplitude one
         access = [access[0], access[-1]]
-        spin = root[peel] if peel < len(root) else None
-        if spin not in ('F', 'V', 'S'):
-            return None                 # spin 2 / 3/2: not split, as in fortran
-        ncomp = 1 if spin == 'S' else 4
+        if root.startswith('ALOHA_'):
+            # a long name ALOHA hashes: its P1N is another hash, not <root>P1N_
+            return None
+        spins = self.amplitude_spins(line)
+        if spins is None or peel >= len(spins):
+            return None
+        peeled = self.peel_components(spins[peel], gauge)
+        if peeled is None:
+            return None
+        fermion, comps = peeled
         args = list(group[0].args)
         args.pop(peel)
         args[-1] = self.P1N_SCRATCH
@@ -632,12 +672,17 @@ class CppDialect(Dialect):
                  % (indent, root, peel + 1, ', '.join(access), ', '.join(args)),
                  '%s  const cxtype_sv* _pt = %s::kernelAccessConst( %s.w );'
                  % (indent, access[0], self.P1N_SCRATCH)]
-        dot = ' + '.join('_pt[%d] * _pw[%d]' % (i, i) for i in range(ncomp))
+        if self.TABLES:
+            table = self._p1n_table(group, peel, indent, access[0], comps,
+                                    fermion)
+            if table is not None:
+                return lines[:2] + table + ['%s}' % indent]
+        dot = ' + '.join('_pt[%d] * _pw[%d]' % (i, i) for i in comps)
         for amp in group:
             peeled = amp.args[peel]
             lines.append('%s  { const cxtype_sv* _pw = %s::kernelAccessConst( %s.w );'
                          % (indent, access[0], peeled))
-            if spin == 'F':
+            if fermion:
                 lines.append('%s    amp_sv[0] = ( %s.flv_index != %s.flv_index'
                              ' || %s.flv_index == -1 ) ? cxzero_sv() : ( %s ); }'
                              % (indent, self.P1N_SCRATCH, peeled,
@@ -647,6 +692,164 @@ class CppDialect(Dialect):
             lines.extend(self._amp_fold(amp))
         lines.append('%s}' % indent)
         return lines
+
+    # -- the tabulated split ---------------------------------------------
+    # At high multiplicity the recycled block is mostly the members of the P1N
+    # groups -- one dot product per member and the member's fold into its row's
+    # color flows -- written out as straight-line code: 90% of the 1.29M
+    # statements of g g > t t~ g g g. That code is run once per event page and
+    # is far bigger than the caches, so it is fetched from memory every time
+    # and the processor idles (IPC 0.7). Written as tables instead -- which
+    # wavefunction and row each member is, which table entry and coefficient
+    # each fold adds to -- the same work is one small loop (hr_p1n_fold in
+    # HelRecyclingTables.h) over data read in order. The folds are read back
+    # from the text the exporter wrote; a group with a fold this does not
+    # recognise keeps the straight-line form.
+    TABLES = True               # the exporter's --hel_recycling_tables
+    _FOLD_JAMP = re.compile(r'^\s*(jampAll_sv|jampTmpAll_sv|ampAll_sv)\[\( (\d+) \* nParity'
+                            r' \+ iParity \) \* (\w+) \+ (\d+)\] ([+-]?)= (.*)amp_sv\[0\];\s*$')
+    _FOLD_NUM = re.compile(r'^\s*numAll_sv\[\( (\d+) \* nParity \+ iParity \)'
+                           r' \* ndiagrams \+ (\d+)\] \+= cxabs2\( amp_sv\[0\] \);\s*$')
+    _FOLD_SKIP = ('if( storeChannelWeights )', '{', '}')
+    _COEF_TEXT = re.compile(r'^[-+0-9.eE*/(), ]*$')
+    _COEF_NAMES = re.compile(r'\b(?:cxtype_amp|cxtype|fptype)\b')
+    # what a fold entry is packed into: kind (2 bits: jampAll_sv, jampTmpAll_sv,
+    # numAll_sv, a store into ampAll_sv), how it adds (2 bits: +=, -=, += real *,
+    # += complex *), the coefficient in the group's own table (8 bits), the
+    # index (20 bits)
+    HR_KINDS = {'jampAll_sv': 0, 'jampTmpAll_sv': 1, 'ampAll_sv': 3}
+    HR_NUM = 2
+    HR_STORE = 3
+    HR_MAX_INDEX = 1 << 20
+    HR_MAX_COEF = 1 << 8
+
+    @classmethod
+    def fold_coefficient(cls, text):
+        """The complex value of the C++ factor in front of amp_sv[0] ('' is 1),
+        or None for anything but numbers and the complex constructors."""
+        text = text.strip()
+        if text.endswith('*'):
+            text = text[:-1].strip()
+        if text in ('', '+'):
+            return complex(1)
+        if text == '-':
+            return complex(-1)
+        if not cls._COEF_TEXT.match(cls._COEF_NAMES.sub('', text)):
+            return None
+        try:
+            value = eval(text, {'__builtins__': {}},
+                         {'cxtype_amp': complex, 'cxtype': complex, 'fptype': float})
+        except Exception:
+            return None
+        return complex(value)
+
+    def parse_fold(self, amp):
+        """[(kind, index, value)] of the fold of `amp` at its row, value None for
+        a multichannel numerator, plus the stride of the jampTmpAll_sv rows (0
+        when unused); or None when a line is not one of the shapes the exporter
+        writes."""
+        row = amp.numbers[0] - 1
+        entries, ntmp = [], 0
+        for line in self._amp_fold(amp):
+            stripped = line.strip()
+            if stripped in self._FOLD_SKIP:
+                continue
+            match = self._FOLD_NUM.match(line)
+            if match:
+                if int(match.group(1)) != row:
+                    return None
+                entries.append((self.HR_NUM, int(match.group(2)), None))
+                continue
+            match = self._FOLD_JAMP.match(line)
+            if not match:
+                return None
+            target, frow, stride, index, sign, factor = match.groups()
+            if int(frow) != row:
+                return None
+            if (target == 'ampAll_sv') != (sign == '' and factor.strip() == ''):
+                return None             # a store, and only a store
+            if target == 'jampAll_sv':
+                if stride != 'njampso':
+                    return None
+            else:
+                if not stride.isdigit() or (ntmp and int(stride) != ntmp):
+                    return None
+                ntmp = int(stride)
+            value = self.fold_coefficient(factor)
+            if value is None:
+                return None
+            entries.append((self.HR_KINDS[target], int(index),
+                            -value if sign == '-' else value))
+        return entries, ntmp
+
+    @classmethod
+    def pack_fold(cls, kind, index, value, coefs):
+        """One fold entry as the 32 bits hr_fold_amp reads, adding its
+        coefficient to `coefs` (the group's table of distinct values) when it
+        needs one; None when it does not fit."""
+        if index >= cls.HR_MAX_INDEX:
+            return None
+        op, coef = 0, 0
+        if value is not None and kind != cls.HR_STORE:
+            if value == 1:
+                op = 0
+            elif value == -1:
+                op = 1
+            else:
+                op = 2 if value.imag == 0 else 3
+                if value not in coefs:
+                    coefs.append(value)
+                coef = coefs.index(value)
+                if coef >= cls.HR_MAX_COEF:
+                    return None
+        return (kind << 30) | (op << 28) | (coef << 20) | index
+
+    @staticmethod
+    def _double(value):
+        text = repr(float(value))
+        return text if ('.' in text or 'e' in text or 'n' in text) else text + '.'
+
+    def _p1n_table(self, group, peel, indent, w_access, comps, fermion):
+        """The members of a P1N group and their folds as tables, and the call
+        that runs them (after the P1N call itself); None when a member cannot be
+        tabulated."""
+        members, folds, coefs, ntmp, table = [], [], [], 0, set()
+        for amp in group:
+            match = self._SLOT_INDEX.fullmatch(amp.args[peel])
+            parsed = self.parse_fold(amp)
+            if match is None or parsed is None:
+                return None
+            entries, stride = parsed
+            if stride:
+                if ntmp and stride != ntmp:
+                    return None
+                ntmp = stride
+            table.update(kind for kind, _index, _value in entries
+                         if kind in (1, self.HR_STORE))
+            if len(table) > 1:
+                return None             # one second table per group
+            packed = [self.pack_fold(kind, index, value, coefs)
+                      for kind, index, value in entries]
+            if any(p is None for p in packed) or len(packed) >= 1 << 16:
+                return None
+            members.append('{ %s, %d, %d }' % (match.group(1), amp.numbers[0] - 1,
+                                               len(packed)))
+            folds.extend(packed)
+        cvalues = []
+        for value in coefs:
+            cvalues += [self._double(value.real), self._double(value.imag)]
+        return ['%s  static constexpr HrMember hrM[] = { %s };'
+                % (indent, ', '.join(members)),
+                '%s  static constexpr unsigned int hrF[] = { %s };'
+                % (indent, ', '.join('0x%xu' % f for f in folds) or '0u'),
+                '%s  static constexpr double hrC[] = { %s };'
+                % (indent, ', '.join(cvalues) or '0.'),
+                '%s  hr_p1n_fold<%s, %d, %s%s>( %s, aloha_obj, hrM, %d, hrF, hrC, %d,'
+                ' jampAll_sv, %s, numAll_sv, iParity, storeChannelWeights );'
+                % (indent, w_access, len(comps), 'true' if fermion else 'false',
+                   ', %d' % comps[0] if comps[0] else '',
+                   self.P1N_SCRATCH, len(members), ntmp or 1,
+                   'ampAll_sv' if self.HR_STORE in table else 'jampTmpAll_sv')]
 
     def render_amplitudes(self, line, new_amps, gauge, amp_splt):
         '''One amplitude, once per helicity row that keeps it: the call into the
@@ -662,7 +865,7 @@ class CppDialect(Dialect):
         peel, groups = plan
         out = []
         for group in groups:
-            split = (self._p1n_group(line, group, peel)
+            split = (self._p1n_group(line, group, peel, gauge)
                      if len(group) >= self.P1N_MIN_SHARING else None)
             if split is None:
                 for amp in group:
@@ -891,7 +1094,7 @@ class MathsObject:
         this_args = copy(old_args)
         wav_names = [w.name for w in wavs]
         this_args[0:len(wavs)] = wav_names
-        # This isn't maximally efficient
+        # This isnt maximally efficient
         # Could take the num from wavs that've been deleted in graph
         return this_args
 
@@ -952,8 +1155,6 @@ class External(MathsObject):
         old_name = dialect.output_name(old_args)
         graph.kill_old(old_name)
 
-        # (the crossing IC(i) factor of a side-changing leg, if any, is
-        # carried by dialect.set_external_helicity)
         hel_leg = dialect.external_helicity_leg(old_args)
         if hel_leg is not None:
             ext_num = hel_leg - 1
@@ -1133,15 +1334,10 @@ class HelicityRecycler():
         Amplitude.max_amp_num = 0
         self.last_category = None
         self.good_elements = good_elements
-        # Both are only ever asked "is this one in you?" -- bad_amps once per
-        # amplitude line, bad_amps_perhel once per (amplitude, helicity
-        # combination). As lists that is a linear scan every time, which was
-        # affordable while they held the handful of identically-zero
-        # amplitudes. The C-parity de-duplication now adds EVERY amplitude of
-        # every dropped mirror row: 128 x 28215 entries on g g > t t~ 4g and
-        # 128 x 126630 on g g > 6g, turning the scan into the dominant cost of
-        # the whole recycling step. Sets make the same question O(1) (tuples:
-        # the C++ warm-up hands the pairs in as lists).
+        # Only ever asked "is it in there": sets, not the lists the callers
+        # hand in. good_helicity asks bad_amps_perhel once per unfolded copy of
+        # every amplitude -- hundreds of thousands of times against 12612 dead
+        # (helicity, amplitude) pairs for g g > g g g g in the axial gauge.
         self.bad_amps = set(bad_amps)
         self.bad_amps_perhel = set(map(tuple, bad_amps_perhel))
 
@@ -1253,7 +1449,7 @@ class HelicityRecycler():
             return 'external'
 
         # Now check for internal
-        # Won't find an internal when no externals have been found...
+        # Wont find a internal when no externals have been found...
         # ... I assume
         if not self.dag.external_wavs:
             return None

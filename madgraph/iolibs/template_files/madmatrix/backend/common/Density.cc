@@ -5,7 +5,9 @@
 // Spin-density matrices for MadSpin (see Density.h for the interface and its
 // conventions). Shared by the C++ backends: the jamps come from the backend's
 // calculate_jamps, one event page at a time, and the color contraction between
-// two helicity combinations is done here, per event, in double precision.
+// two helicity combinations is done here, per event, in double precision. Every
+// call takes a UMAMI handle (umami_initialize), whose parameters it evaluates with,
+// and which keeps the helicity filters and the beam polarisations of these calls.
 
 #include "Density.h"
 
@@ -17,6 +19,7 @@
 #include "ProcessData.h"
 #include "ProcessTables.h" // the crossing table (use_crossing, ncross, cross_pinv)
 #include "SigmaKin.h"      // calculate_jamps, computeDependentCouplings, getHelicities
+#include "UmamiInstance.h"
 
 #include <algorithm>
 #include <cmath>
@@ -59,10 +62,6 @@ namespace madmatrix
       bool hasBase = false;
     };
 
-    // One filter per flavor and helicity structure (the open legs and their
-    // combinations decide which rows contribute, and are part of the key)
-    std::map<std::vector<int>, HelicityFilter> g_filters;
-
     // A growable buffer with the alignment the SIMD kernels need
     template<typename T>
     struct AlignedBuffer
@@ -90,7 +89,7 @@ namespace madmatrix
 
     // Everything a call needs, kept from one call to the next: MadSpin evaluates
     // one point per call, and allocating all of it again every time costs more
-    // than the jamps of a small process. Used under g_mutex.
+    // than the jamps of a small process. Used under DensityState::mutex.
     struct Scratch
     {
       AlignedBuffer<fptype_momenta> momenta;
@@ -105,10 +104,24 @@ namespace madmatrix
       std::vector<size_t> events;
       std::vector<int> key, pos0;
     };
-    Scratch g_scratch;
-    std::mutex g_mutex;
+    // The state of the calls on one UMAMI instance (UmamiInstance::density)
+    struct DensityState
+    {
+      // One filter per flavor and helicity structure (the open legs and their
+      // combinations decide which rows contribute, and are part of the key)
+      std::map<std::vector<int>, HelicityFilter> filters;
+      Scratch scratch;
+      std::mutex mutex;
+      double beampol[2] = { 0., 0. };
+    };
 
-    double g_beampol[2] = { 0., 0. };
+    DensityState& densityState( UmamiInstance& instance )
+    {
+      static std::mutex creation;
+      std::lock_guard<std::mutex> lock( creation );
+      if( !instance.density ) instance.density = std::make_shared<DensityState>();
+      return *static_cast<DensityState*>( instance.density.get() );
+    }
 
     // The color matrix normalised by its denominators, in double precision,
     // full (not triangular): the two jamp vectors contracted are different.
@@ -180,13 +193,13 @@ namespace madmatrix
     // Beam-polarisation weight of helicity row hel, as the Fortran density: the
     // helicities of the incoming legs of the process the flavor id names (a
     // crossing may have moved them into other base slots)
-    inline double beam_polarisation_factor( const short* hel, const CrossView& xv )
+    inline double beam_polarisation_factor( const double* beampol, const short* hel, const CrossView& xv )
     {
       double factor = 1.;
       if( npari != 2 ) return factor; // a 1 -> N process: leg 1 is a resonance, not a beam
       for( int jj = 0; jj < npari; jj++ )
       {
-        const double pol = g_beampol[jj];
+        const double pol = beampol[jj];
         if( std::abs( pol ) <= 1. ) continue;
         factor *= ( xv.physical( hel, jj ) == ( pol > 0 ? 1 : -1 ) ) ? std::abs( pol ) : 2. - std::abs( pol );
       }
@@ -209,10 +222,12 @@ namespace madmatrix
       return denominator > 0. ? 1. / denominator : 0.;
     }
 
-    // Adds the density of nevt events (whole pages of one flavor id each) to inter[nevt][ninter],
+    // Adds the density of nevt events (whole pages of one flavor each) to inter[nevt][ninter],
     // the first nreal of them real and the others padding
     void
-    density_kernel( const fptype_momenta* allmomenta,
+    density_kernel( const ProcessParameters& params,
+                    const double* beampol,
+                    const fptype_momenta* allmomenta,
                     const fptype* allcouplings,
                     const unsigned int* allflavors,
                     const int nevt,
@@ -252,7 +267,7 @@ namespace madmatrix
         for( const int ihel : filter.base )
         {
           if( !scanning && !filter.good[ihel] ) continue;
-          const double polfact = beam_polarisation_factor( hels + ihel * npar, xv );
+          const double polfact = beam_polarisation_factor( beampol, hels + ihel * npar, xv );
           for( int icomb = 0; icomb < nComb; icomb++ )
           {
             short* row = &s.rows[(size_t)icomb * npar];
@@ -260,7 +275,7 @@ namespace madmatrix
             for( int n = 0; n < nChanging; n++ ) row[pos0[n]] = allowHel[icomb * nChanging + n];
             cxtype_amp_sv* jamp_sv = &s.jamps[(size_t)icomb * nParity * njampso];
             for( int i = 0; i < nParity * njampso; i++ ) jamp_sv[i] = cxzero_sv<cxtype_amp_sv>();
-            calculate_jamps( row, allmomenta, allcouplings, allflavors, jamp_sv, false, numerators, denominators, nullptr, ievt00 );
+            calculate_jamps( params, row, nullptr, allmomenta, allcouplings, allflavors, jamp_sv, false, numerators, denominators, nullptr, ievt00 );
           }
           bool nonzero = false;
           for( int iParity = 0; iParity < nParity; iParity++ )
@@ -347,7 +362,8 @@ namespace madmatrix
     // null, holds per event the lab momentum of the frame its momenta are given
     // in (boost_from_rest_frame).
     int
-    evaluate( const size_t count,
+    evaluate( UmamiInstance& instance,
+              const size_t count,
               const double* momenta,
               const double* boosts,
               const double* alpha_s,
@@ -364,8 +380,10 @@ namespace madmatrix
       const unsigned int nflavorId = (unsigned int)( ncross * nmaxflavor );
       for( size_t i = 0; i < count; i++ )
         if( flavor[i] >= nflavorId ) return 3;
-      std::lock_guard<std::mutex> lock( g_mutex );
-      Scratch& s = g_scratch;
+      DensityState& state = densityState( instance );
+      std::lock_guard<std::mutex> lock( state.mutex );
+      const ProcessParameters& params = instance.process.parameters();
+      Scratch& s = state.scratch;
       const int ninter = nComb * ( nComb + 1 ) / 2;
       constexpr size_t neppM = MemoryAccessMomentaBase::neppM;
       std::vector<unsigned int> ids( flavor, flavor + count );
@@ -417,13 +435,13 @@ namespace madmatrix
           // the extended id: calculate_jamps gathers the momenta of a crossing
           flavors[k] = flavorId;
         }
-        computeDependentCouplings( gs, couplings, nevt );
+        computeDependentCouplings( params, gs, couplings, nevt );
         s.key.assign( { (int)flavorId, nChanging } );
         s.key.insert( s.key.end(), s.pos0.begin(), s.pos0.end() );
         s.key.push_back( nComb );
         s.key.insert( s.key.end(), allowHelBase.begin(), allowHelBase.end() );
         s.inter.assign( nevt * ninter, 0. );
-        density_kernel( allmomenta, couplings, flavors, (int)nevt, (int)nreal, nChanging, s.pos0.data(), nComb, allowHelBase.data(), xv, g_filters[s.key], s, s.inter.data() );
+        density_kernel( params, state.beampol, allmomenta, couplings, flavors, (int)nevt, (int)nreal, nChanging, s.pos0.data(), nComb, allowHelBase.data(), xv, state.filters[s.key], s, s.inter.data() );
         for( size_t k = 0; k < nreal; k++ )
           for( int sol = 0; sol < ninter; sol++ )
             out[s.events[k] * ninter + sol] = s.inter[k * ninter + sol] * norm;
@@ -435,7 +453,9 @@ namespace madmatrix
 
 extern "C"
 {
-  int madmatrix_density( size_t count,
+  // All of these take a handle of umami_initialize: its parameters are those used
+  int madmatrix_density( void* handle,
+                         size_t count,
                          const double* momenta,
                          const double* alpha_s,
                          const unsigned int* flavor,
@@ -445,12 +465,13 @@ extern "C"
                          const int* allow_hel,
                          double* inter )
   {
-    if( n_changing < 1 ) return 1;
-    return madmatrix::evaluate( count, momenta, nullptr, alpha_s, flavor, n_changing, pos, n_comb, allow_hel,
+    if( n_changing < 1 || !handle ) return 1;
+    return madmatrix::evaluate( *static_cast<madmatrix::UmamiInstance*>( handle ), count, momenta, nullptr, alpha_s, flavor, n_changing, pos, n_comb, allow_hel,
                                 reinterpret_cast<std::complex<double>*>( inter ) );
   }
 
-  int madmatrix_density_boosted( size_t count,
+  int madmatrix_density_boosted( void* handle,
+                                 size_t count,
                                  const double* momenta,
                                  const double* boosts,
                                  const double* alpha_s,
@@ -461,29 +482,33 @@ extern "C"
                                  const int* allow_hel,
                                  double* inter )
   {
-    if( n_changing < 1 || !boosts ) return 1;
-    return madmatrix::evaluate( count, momenta, boosts, alpha_s, flavor, n_changing, pos, n_comb, allow_hel,
+    if( n_changing < 1 || !boosts || !handle ) return 1;
+    return madmatrix::evaluate( *static_cast<madmatrix::UmamiInstance*>( handle ), count, momenta, boosts, alpha_s, flavor, n_changing, pos, n_comb, allow_hel,
                                 reinterpret_cast<std::complex<double>*>( inter ) );
   }
 
-  int madmatrix_matrix_element( size_t count,
+  int madmatrix_matrix_element( void* handle,
+                                size_t count,
                                 const double* momenta,
                                 const double* alpha_s,
                                 const unsigned int* flavor,
                                 double* me )
   {
+    if( !handle ) return 1;
     std::vector<std::complex<double>> sum( count );
-    const int status = madmatrix::evaluate( count, momenta, nullptr, alpha_s, flavor, 0, nullptr, 1, nullptr, sum.data() );
+    const int status = madmatrix::evaluate( *static_cast<madmatrix::UmamiInstance*>( handle ), count, momenta, nullptr, alpha_s, flavor, 0, nullptr, 1, nullptr, sum.data() );
     if( status != 0 ) return status;
     for( size_t i = 0; i < count; i++ )
       me[i] = sum[i].real();
     return 0;
   }
 
-  void madmatrix_set_beampol( double pol1, double pol2 )
+  void madmatrix_set_beampol( void* handle, double pol1, double pol2 )
   {
-    madmatrix::g_beampol[0] = pol1;
-    madmatrix::g_beampol[1] = pol2;
+    madmatrix::DensityState& state = madmatrix::densityState( *static_cast<madmatrix::UmamiInstance*>( handle ) );
+    std::lock_guard<std::mutex> lock( state.mutex );
+    state.beampol[0] = pol1;
+    state.beampol[1] = pol2;
   }
 
   void madmatrix_process_info( int* info )

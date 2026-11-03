@@ -3,10 +3,9 @@
 // Integrated with the MadGraph7 project in Feb 2026.
 //
 // Backend-owned driver: sigmaKin and everything it calls (calculate_jamps,
-// good-helicity filtering, color/channel selection). Declared here so
-// CPPProcess.cc's constructor/initProc (P1-generated) can call the setters
-// that populate this file's storage, and so umami.cc/MatrixElementKernels.cc
-// can call sigmaKin/computeDependentCouplings.
+// good-helicity filtering, color/channel selection). Declared here so that
+// umami.cc/MatrixElementKernels.cc/Density.cc can call them. They all take the
+// parameters of the process they evaluate (ProcessParameters.h) as an argument.
 
 #ifndef SIGMAKIN_H
 #define SIGMAKIN_H 1
@@ -16,8 +15,11 @@
 
 namespace madmatrix
 {
+  struct ProcessParameters;
+
   __global__ void
-  computeDependentCouplings( const fptype* allgs,  // input: Gs[nevt]
+  computeDependentCouplings( const ProcessParameters& params, // input: parameters of the process
+                             const fptype* allgs,  // input: Gs[nevt]
                              fptype* allcouplings, // output: couplings[nevt*ndcoup*2]
                              const int nevt );     // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
 
@@ -33,7 +35,8 @@ namespace madmatrix
 #endif
 
   void
-  sigmaKin_getGoodHel( const fptype_momenta* allmomenta, // input: momenta[nevt*npar*4]
+  sigmaKin_getGoodHel( const ProcessParameters& params,   // input: parameters of the process
+                       const fptype_momenta* allmomenta, // input: momenta[nevt*npar*4]
                        const fptype* allcouplings,       // input: couplings[nevt*ndcoup*2]
                        const unsigned int* iflavorVec,   // input: index of the flavor combination
                        fptype* allMEs,                   // output: allMEs[nevt], |M|^2 final_avg_over_helicities
@@ -43,11 +46,8 @@ namespace madmatrix
                        const int nevt );                 // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
 
   int                                          // output: nGoodHel (the number of good helicity combinations out of ncomb)
-  sigmaKin_setGoodHel( const bool* isGoodHel ); // input: isGoodHel[ncomb] - host array
-
-  int                    // output: the good helicity rows set by sigmaKin_setGoodHel, before
-                         // the C-parity reduction (0 before): the same count as on GPUs
-  sigmaKin_getNGoodHel();
+  sigmaKin_setGoodHel( ProcessParameters& params, // output: the good helicities of the process
+                       const bool* isGoodHel );  // input: isGoodHel[ncomb] - host array
 
   // A crossing-table row with no phase space at its own masses (a crossed
   // decay lighter than its products, see scan_points in umami.cc): set before
@@ -55,7 +55,8 @@ namespace madmatrix
   void sigmaKin_setNoPhaseSpace( const int cross );
 
   void
-  sigmaKin( const fptype_momenta* allmomenta,  // input: momenta[nevt*npar*4]
+  sigmaKin( const ProcessParameters& params,   // input: parameters of the process
+            const fptype_momenta* allmomenta,  // input: momenta[nevt*npar*4]
             const fptype* allcouplings,        // input: couplings[nevt*ndcoup*2]
             const unsigned int* iflavorVec,    // input: index of the flavor combination
             const fptype* allrndhel,           // input: random numbers[nevt] for helicity selection
@@ -73,25 +74,20 @@ namespace madmatrix
             // input: when the |M|^2 keeps an interference (squared split orders, nampso > 1),
             // choose the helicity on |T_i| and return sign(T_i) * sum_j |T_j| as madevent does,
             // so that the chosen helicity is exact; false returns sum_j T_j (no effect otherwise)
-            const bool sampleSignedHelicity = false );
-
-  // Setters: called once by CPPProcess (P1-generated) to populate this file's
-  // otherwise-internal storage, since it can no longer be written directly
-  // from a different translation unit.
-  void setHelicitiesAndFlavors( const short* tHel, const short* tFlavors );
-  void setIndependentParams( const fptype* tIPD );
-  void setIndependentCouplings( const cxtype* tIPC );
-  void setFlavorCouplings( const int* tIPF_partner1, const int* tIPF_partner2, const cxtype* tIPF_value );
-  void setBsmIndepParam( const double* values, int n );
-  // Window (in widths) of the $-excluded propagators, the run card bw_cutoff
-  void setBwCutoff( const double bwcutoff );
+            const bool sampleSignedHelicity = false,
+            // input: the helicity index [0,ncomb) of each event, which is then evaluated for that
+            // helicity alone (and returns its contribution to the helicity-summed |M|^2, see
+            // umami_matrix_element); nullptr, the default, sums over the good helicities
+            const int* allihel = nullptr );
 
   // What the spin-density matrix (Density.cc) needs on top of sigmaKin: the
   // jamps of one event page for any helicity combination hel[npar], the
   // helicity table cHel[ncomb][npar] (row major) the combinations are built
   // from, and the identical-particle factor of a flavor combination.
   void
-  calculate_jamps( const short* hel,                 // input: helicity of each leg, hel[npar]
+  calculate_jamps( const ProcessParameters& params,  // input: parameters of the process
+                   const short* hel,                 // input: helicity of each leg, hel[npar], of all events (if allihel == nullptr)
+                   const int* allihel,               // input: helicity index [0,ncomb) of each event[nevt] (nullptr: hel for all events)
                    const fptype_momenta* allmomenta, // input: momenta[nevt*npar*4]
                    const fptype* allcouplings,       // input: couplings[nevt*ndcoup*2]
                    const unsigned int* iflavorVec,   // input: indices of the flavor combinations

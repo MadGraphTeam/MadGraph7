@@ -43,6 +43,10 @@ except ImportError:
 
 PROCESSES_FILE = 'madmatrix_processes.json'
 
+# The FPTYPE of the libraries this module builds and loads: the default of
+# madmatrix.mk, made explicit since it is part of the library names
+FPTYPE = 'm'
+
 
 class MadDensityError(Exception):
     pass
@@ -70,7 +74,7 @@ def make_variables(backend='scalar', libtag=''):
     the standalone check_sa.exe) when make runs in SubProcesses. DENSITY=1
     adds Density.o, which only this module calls: other builds of the same
     output (check_sa, mg7) leave it out."""
-    variables = ['PGOAL=lib', 'BACKEND=%s' % backend, 'DENSITY=1']
+    variables = ['PGOAL=lib', 'BACKEND=%s' % backend, 'FPTYPE=%s' % FPTYPE, 'DENSITY=1']
     if libtag:
         variables.append('LIBTAG=%s' % libtag)
     return variables
@@ -81,11 +85,30 @@ def build_command(nb_core=1, backend='scalar', libtag=''):
     return ['make', '-j%d' % max(1, int(nb_core))] + make_variables(backend, libtag)
 
 
+def common_library(output_dir):
+    """The name of the common library of output_dir, with '{libtag}', '{backend}'
+    and '{fptype}' left open, as its process table gives it (the name without the
+    model and FPTYPE for an output whose table predates them)."""
+    try:
+        with open(os.path.join(output_dir, 'SubProcesses', PROCESSES_FILE)) as fsock:
+            data = json.load(fsock)
+    except (IOError, OSError, ValueError):
+        data = {}
+    return data.get('common_library', 'libmadmatrix_common{libtag}_{backend}.so')
+
+
+def common_library_path(output_dir, libtag, backend='scalar'):
+    """The path of the common library of output_dir built with libtag."""
+    return os.path.join(output_dir, 'lib', common_library(output_dir).format(
+        libtag=libtag, backend=backend, fptype=FPTYPE))
+
+
 def find_libtag(output_dir, backend='scalar'):
     """The LIBTAG the libraries of output_dir were built with, read off the
     name of its common library."""
     lib = os.path.join(output_dir, 'lib')
-    prefix, suffix = 'libmadmatrix_common', '_%s.so' % backend
+    prefix, suffix = common_library(output_dir).format(
+        libtag='{libtag}', backend=backend, fptype=FPTYPE).split('{libtag}')
     found = sorted(name[len(prefix):-len(suffix)] for name in
                    (os.listdir(lib) if os.path.isdir(lib) else [])
                    if name.startswith(prefix) and name.endswith(suffix))
@@ -138,17 +161,18 @@ class _Subprocess(object):
         lib.umami_set_parameter.argtypes = [ptr, ctypes.c_char_p, ctypes.c_double, ctypes.c_double]
         lib.umami_set_parameter.restype = cint
         # all the arrays are passed as plain addresses: much cheaper per call
-        # than ctypes pointer objects
-        lib.madmatrix_density.argtypes = [size_t, ptr, ptr, ptr, cint, ptr, cint, ptr, ptr]
+        # than ctypes pointer objects. The first argument is the UMAMI handle
+        # (initialise), whose parameters the library evaluates with.
+        lib.madmatrix_density.argtypes = [ptr, size_t, ptr, ptr, ptr, cint, ptr, cint, ptr, ptr]
         lib.madmatrix_density.restype = cint
         # absent from the libraries built before it was introduced
         self.c_density_boosted = getattr(lib, 'madmatrix_density_boosted', None)
         if self.c_density_boosted is not None:
-            self.c_density_boosted.argtypes = [size_t, ptr, ptr, ptr, ptr, cint, ptr, cint, ptr, ptr]
+            self.c_density_boosted.argtypes = [ptr, size_t, ptr, ptr, ptr, ptr, cint, ptr, cint, ptr, ptr]
             self.c_density_boosted.restype = cint
-        lib.madmatrix_matrix_element.argtypes = [size_t, ptr, ptr, ptr, ptr]
+        lib.madmatrix_matrix_element.argtypes = [ptr, size_t, ptr, ptr, ptr, ptr]
         lib.madmatrix_matrix_element.restype = cint
-        lib.madmatrix_set_beampol.argtypes = [ctypes.c_double, ctypes.c_double]
+        lib.madmatrix_set_beampol.argtypes = [ptr, ctypes.c_double, ctypes.c_double]
         lib.madmatrix_set_beampol.restype = None
         info = (cint * len(self._info_names))()
         lib.madmatrix_process_info(info)
@@ -170,7 +194,7 @@ class _Subprocess(object):
         self.alphas_address = ctypes.addressof(self.alphas)
         self.flavor_address = ctypes.addressof(self.flavor)
 
-    def initialise(self, param_card):
+    def initialise(self, param_card, beampol=None):
         handle = ctypes.c_void_p()
         status = self.lib.umami_initialize(ctypes.byref(handle),
                                            os.fsencode(os.path.abspath(param_card)))
@@ -178,6 +202,11 @@ class _Subprocess(object):
             raise MadDensityError('%s: umami_initialize(%s) failed (status %s)'
                                   % (self.path, param_card, status))
         self.handle = handle
+        if beampol is not None:
+            self.set_beampol(*beampol)
+
+    def set_beampol(self, pol1, pol2):
+        self.lib.madmatrix_set_beampol(self.handle, float(pol1), float(pol2))
 
     def check_initialised(self):
         if self.handle is None:
@@ -242,8 +271,7 @@ class MadDensityLibrary(object):
         self.libtag = libtag
         # the common library first, by its path: the process libraries only name
         # it, and the check of _load has to see it
-        _load(os.path.join(output_dir, 'lib',
-                           'libmadmatrix_common%s_%s.so' % (libtag, backend)))
+        _load(common_library_path(output_dir, libtag, backend))
         self.subprocesses = []
         # raw pdg combination (leg order of the process) -> (subprocess, flavor
         # index), the index an extended one for a crossed process
@@ -255,7 +283,8 @@ class MadDensityLibrary(object):
         self._process_slots = []
         for entry in entries:
             lib_path = os.path.join(output_dir, 'lib',
-                                    entry['library'].format(libtag=libtag, backend=backend))
+                                    entry['library'].format(libtag=libtag, backend=backend,
+                                                            fptype=FPTYPE))
             if not os.path.exists(lib_path):
                 raise MadDensityError('missing %s: build the libraries first (%s in %s)'
                                       % (lib_path, ' '.join(build_command(backend=backend,
@@ -292,6 +321,7 @@ class MadDensityLibrary(object):
                     for leg, pdg in zip(sub.legs, pdgs):
                         self._merged[abs(pdg)] = abs(leg)
         self._card_alphas = 0.118
+        self._beampol = None
 
     @property
     def supports_boost(self):
@@ -305,7 +335,7 @@ class MadDensityLibrary(object):
     def initialise(self, param_card):
         """Read the model parameters (every library has its own copy)."""
         for sub in self.subprocesses:
-            sub.initialise(param_card)
+            sub.initialise(param_card, self._beampol)
         # alpha_s = 0 asks for the value of the param card, as in the Fortran
         try:
             import madgraph.models.check_param_card as check_param_card
@@ -321,9 +351,13 @@ class MadDensityLibrary(object):
             sub.lib.umami_set_parameter(sub.handle, b'bwcutoff', float(value), 0.)
 
     def py_set_beampol(self, pol1, pol2):
-        """Beam polarisation, madevent convention (1 = unpolarised, up to 2)."""
+        """Beam polarisation, madevent convention (1 = unpolarised, up to 2).
+        It belongs to the UMAMI instance of each library: kept for those that
+        initialise() makes afterwards."""
+        self._beampol = (pol1, pol2)
         for sub in self.subprocesses:
-            sub.lib.madmatrix_set_beampol(float(pol1), float(pol2))
+            if sub.handle is not None:
+                sub.set_beampol(pol1, pol2)
 
     # ------------------------------------------------------------------
     # the f2py module's process table
@@ -455,12 +489,12 @@ class MadDensityLibrary(object):
         sub.flavor.value = iflavor
         out = np.empty(hel.ninter, dtype=np.complex128)
         if boost is None:
-            status = sub.c_density(1, buf.buffer_info()[0], sub.alphas_address,
+            status = sub.c_density(sub.handle, 1, buf.buffer_info()[0], sub.alphas_address,
                                    sub.flavor_address, hel.n_changing, hel.pos_address,
                                    hel.n_comb, hel.allow_hel_address, _address(out))
         else:
             boost = array.array('d', boost)
-            status = self._boosted(sub)(1, buf.buffer_info()[0], boost.buffer_info()[0],
+            status = self._boosted(sub)(sub.handle, 1, buf.buffer_info()[0], boost.buffer_info()[0],
                                         sub.alphas_address, sub.flavor_address,
                                         hel.n_changing, hel.pos_address, hel.n_comb,
                                         hel.allow_hel_address, _address(out))
@@ -501,7 +535,7 @@ class MadDensityLibrary(object):
             a_s = np.ascontiguousarray(np.where(alphas[index] > 0, alphas[index],
                                                 self._card_alphas))
             inter = np.empty((len(index), hel.ninter), dtype=np.complex128)
-            status = sub.c_density(len(index), _address(p), _address(a_s), _address(flavors),
+            status = sub.c_density(sub.handle, len(index), _address(p), _address(a_s), _address(flavors),
                                    hel.n_changing, hel.pos_address, hel.n_comb,
                                    hel.allow_hel_address, _address(inter))
             if status != 0:
@@ -520,7 +554,7 @@ class MadDensityLibrary(object):
         sub.alphas.value = self._alphas(alphas)
         sub.flavor.value = iflavor
         me = ctypes.c_double()
-        status = sub.c_matrix_element(1, buf.buffer_info()[0], sub.alphas_address,
+        status = sub.c_matrix_element(sub.handle, 1, buf.buffer_info()[0], sub.alphas_address,
                                       sub.flavor_address, ctypes.addressof(me))
         if status != 0:
             raise MadDensityError('%s: madmatrix_matrix_element refused the request (status %s)'

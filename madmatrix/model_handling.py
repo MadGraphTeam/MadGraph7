@@ -7,6 +7,7 @@
 import os
 import sys
 
+import glob
 import math
 import re
 
@@ -362,8 +363,9 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
     # the custom propagators of a UFO model, whose numerator/denominator are
     # written in terms of model parameters (e.g. the width corrections dWT, dWZ,
     # dWW and dWH of SMEFTsim). aloha_writers.ALOHAWriterForCPP reads them from
-    # the Parameters singleton; that is host-only code, so on GPUs the value has
-    # to be a compile-time constant, i.e. HRDCOD=1 is required there.
+    # the Parameters of the process being evaluated (Parameters::current, set by
+    # calculate_jamps); that is host-only code, so on GPUs the value has to be a
+    # compile-time constant, i.e. HRDCOD=1 is required there.
     def get_model_parameter_txt(self, name):
         """Define a model parameter which the routine body uses"""
         # ALOHA sees the UFO name ('dWT'), the generated Parameters class uses
@@ -379,7 +381,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         return ('#ifdef MGONGPU_HARDCODE_PARAM\n'
                 '    constexpr auto %(var)s = Parameters::%(mdl)s;\n'
                 '#elif !defined MGONGPUCPP_GPUIMPL\n'
-                '    const auto %(var)s = Parameters::getInstance()->%(mdl)s;\n'
+                '    const auto %(var)s = Parameters::current->%(mdl)s;\n'
                 '#else\n'
                 '#error Model parameter %(mdl)s is used inside a HelAmps routine '
                 '(custom propagator) and is not available in device code: rebuild with HRDCOD=1\n'
@@ -831,12 +833,11 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
             if 'L' not in self.tag:
                 # each term of an assembled routine has its own denominator
                 # (they are 'const' declarations in the same scope): 'denomname'
-                # is the bare declared name at denom precision, 'coeff' is the
-                # same value cast down to vertex precision for the wavefunction
-                # formulas below
+                # is already at vertex precision, so the wavefunction formulas
+                # below use it as it is
                 denomsuffix = coup_name[4:] if self.combined_part else ''
                 denomname = 'denom%s' % denomsuffix
-                coeff = 'static_cast<cxtype_amp_sv>(%s)' % denomname
+                coeff = denomname
                 mydict = {}
                 if self.type2def['pointer_coup'] in ['*']:
                     mydict['pre_coup'] = '(*'
@@ -847,44 +848,48 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 mydict['coup'] = coup_name
                 mydict['i'] = self.outgoing
                 if self.nodeclare:
-                    mydict['declnamedenom'] = 'const cxtype_denom_sv %s' % denomname # AV cast down to cxtype_amp_sv in wavefunction formulas
+                    mydict['declnamedenom'] = 'const cxtype_amp_sv %s' % denomname
                 else:
                     mydict['declnamedenom'] = denomname # AV
                     self.declaration.add(('complex', denomname))
                 # Need to add the unary operator before the coupling (OM fix for #825).
                 # pre_coup/post_coup wrap %(coup)s, so open the cast in pre_coup and
                 # close it in post_coup (the Ccoeff sign carrier multiplies from outside).
+                coup_vertex = '%s%s%s' % (mydict['pre_coup'], coup_name, mydict['post_coup'])
                 if has_coup: # but in case where the coupling is not used (one)
                     mydict['pre_coup'] = 'static_cast<fptype_denom>(%s) * static_cast<cxtype_denom_sv>(%s' % (ccoeff, mydict['pre_coup'])
                     mydict['post_coup'] = '%s)' % mydict['post_coup']
                 else:
                     mydict['pre_coup'] = 'static_cast<fptype_denom>(%s' % mydict['pre_coup']
                     mydict['post_coup'] = '%s)' % mydict['post_coup']
+                # Custom denominators: divided at denom precision.
+                prop = lambda den: 'static_cast<cxtype_amp_sv>( %s%s%s / %s )' % (mydict['pre_coup'], coup_name, mydict['post_coup'], den)
+                # Standard propagator: madmatrix::denom keeps only P^2 - Re(m^2) at denom precision.
+                # Qualified: the local variable is also called denom. Without coupling (one): 1 / ( P^2 - m^2 ).
+                coup_args = '%s, %s, ' % (ccoeff, coup_vertex) if has_coup else ''
+                propagator = lambda mass, fn='denom': 'madmatrix::%s( %sdP%s, %s )' % (fn, coup_args, self.outgoing, mass)
                 if not aloha.complex_mass:
                     # This affects 'denom = COUP' in HelAmps_sm.cc
                     if self.routine.denominator:
                         # the P1N routines of the amplitude split carry the
                         # identity propagator, as the integer 1
                         if str(self.routine.denominator) == '1':
-                            out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s;\n' % mydict) # AV
+                            out.write('    %s = static_cast<cxtype_amp_sv>( %s%s%s );\n' % (mydict['declnamedenom'], mydict['pre_coup'], coup_name, mydict['post_coup']))
                         else:
                             mydict['denom'] = self.denominator_in_denom_precision(
                                                    str(self.routine.denominator))
-                            out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / ( %(denom)s );\n' % mydict) # AV
+                            out.write('    %s = %s;\n' % (mydict['declnamedenom'], prop('( %s )' % mydict['denom'])))
                     else:
-                        mydict['cId'] = 'cId'  # once per combined
                         if arith_doubleexpansion:
                             out.write('\n#ifndef MADARITH_DOUBLEEXPANSION\n')
-                        # same formula for all the FPTYPE confs
                         if aloha.t_channel_width:
-                            out.write('    const cxtype_denom %(cId)s( 0., 1. );\n' % mydict) # AV
-                            out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / ( ( dP%(i)s[0] * dP%(i)s[0] ) - ( dP%(i)s[1] * dP%(i)s[1] ) - ( dP%(i)s[2] * dP%(i)s[2] ) - ( dP%(i)s[3] * dP%(i)s[3] ) - static_cast<fptype_denom>(M%(i)s) * ( static_cast<fptype_denom>(M%(i)s) - %(cId)s * static_cast<fptype_denom>(W%(i)s) ) );\n' % mydict) # AV
+                            out.write('    %s = %s;\n' % (mydict['declnamedenom'], propagator('M%(i)s, W%(i)s' % mydict)))
                         else:
                             # spacelike (t-channel) propagator: no pole to
-                            # regulate, so its width is dropped, lane by lane
-                            # (propagator_denom), as in the Fortran ALOHA
-                            # routines (aloha.t_channel_width False)
-                            out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / propagator_denom( ( dP%(i)s[0] * dP%(i)s[0] ) - ( dP%(i)s[1] * dP%(i)s[1] ) - ( dP%(i)s[2] * dP%(i)s[2] ) - ( dP%(i)s[3] * dP%(i)s[3] ), static_cast<fptype_denom>(M%(i)s), static_cast<fptype_denom>(W%(i)s) );\n' % mydict)
+                            # regulate, so its width is dropped, lane by
+                            # lane, as in the Fortran ALOHA routines
+                            # (aloha.t_channel_width False)
+                            out.write('    %s = %s;\n' % (mydict['declnamedenom'], propagator('M%(i)s, W%(i)s' % mydict, 'denom_timelike')))
                         if arith_doubleexpansion:
                             out.write('#endif\n')
                             out.write('#ifdef MADARITH_DOUBLEEXPANSION\n')
@@ -908,9 +913,8 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                     # This affects 'denom = COUP' in HelAmps_sm.cc
                     if arith_doubleexpansion:
                         out.write('\n#ifndef MADARITH_DOUBLEEXPANSION\n')
-                    # the mass is complex here (its square carries -i*M*W), so it
-                    # is cast like the coupling, keeping the imaginary part
-                    out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / ( ( dP%(i)s[0] * dP%(i)s[0] ) - ( dP%(i)s[1] *dP%(i)s[1] ) - ( dP%(i)s[2] * dP%(i)s[2] ) - ( dP%(i)s[3] * dP%(i)s[3] ) - ( static_cast<cxtype_denom_sv>(M%(i)s) * static_cast<cxtype_denom_sv>(M%(i)s) ) );\n' % mydict) # AV
+                    # Complex mass: M carries the width.
+                    out.write('    %s = %s;\n' % (mydict['declnamedenom'], propagator('M%(i)s' % mydict)))
                     if arith_doubleexpansion:
                         out.write('#endif\n')
                         out.write('#ifdef MADARITH_DOUBLEEXPANSION\n')
@@ -1374,7 +1378,29 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
 
     # AV - overload export_cpp.UFOModelConverterCPP method (improve formatting)
     def write_set_parameters(self, params):
-        res = self.super_write_set_parameters_donotfixMajorana(params)
+        # Independent, SLHA-card-level parameters (self.params_ext_names) get
+        # an inline check for a runtime override (e.g. set by name via the
+        # UMAMI set_parameter interface) ahead of their normal SLHA-driven
+        # assignment; every other parameter/coupling is unaffected. NB: this
+        # must NOT be folded into super_write_set_parameters_donotfixMajorana,
+        # since write_hardcoded_parameters() calls that method directly and
+        # requires each parameter's expr to remain a single plain assignment.
+        res_strings = []
+        for param in params:
+            # 'aS' is excluded here even though it is SLHA-card-level: its
+            # assignment is entirely commented out below (by name-matching on
+            # a plain "  aS = ..." line), since this backend always retrieves
+            # alphaS event-by-event (as G) rather than from the param card.
+            # Wrapping it in an override check would break that name-match.
+            if param.name in self.params_ext_names and param.name != 'aS':
+                res_strings.append(
+                    'if (m_param_overrides.find("%s") != m_param_overrides.end())\n'
+                    '%s = m_param_overrides["%s"];\nelse\n%s' %
+                    (param.name, param.name, param.name, param.expr))
+            else:
+                res_strings.append(param.expr)
+        res = "\n".join(res_strings)
+        res = res.replace('ABS(','std::abs(') # for SMEFT #614 and #616
         res = res.replace('(','( ')
         res = res.replace(')',' )')
         res = res.replace('+',' + ')
@@ -1613,6 +1639,31 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         replace_dict['set_independent_couplings'] = self.write_set_parameters(self.coups_indep)
         replace_dict['set_dependent_parameters'] = self.write_set_parameters(self.params_dep)
         replace_dict['set_dependent_couplings'] = self.write_set_parameters(list(self.coups_dep.values()))
+        # NB: unlike the plain (mg7_v5) backend, dependent (aS-dependent) parameters
+        # and couplings are NOT persistent members of this Parameters class at all
+        # (their declarations are commented out above): they are recomputed fresh
+        # every event batch by computeDependentCouplings(), bypassing the Parameters
+        # singleton entirely. Only independent parameters/couplings (and never 'aS',
+        # whose declaration is likewise commented out) can be registered here.
+        # Two separate calls/maps, not one combined list into one map: model
+        # parameters (mdl_*) always stay plain cxsmpl<double> (registered
+        # into m_complex_model_params below), while independent couplings
+        # (GC_*) are cxtype -- FPTYPE-templated, so possibly cxsmpl<float>
+        # -- and go into m_complex_params instead. A single combined
+        # registration into one map only compiled by accident at FPTYPE=m/d
+        # (where cxtype happens to also be cxsmpl<double>) and failed to
+        # compile at FPTYPE=f -- see write_register_parameters()'s own doc
+        # comment.
+        replace_dict['register_parameters'] = \
+                               self.write_register_parameters(
+                                   [p for p in self.params_indep if p.name != 'aS'],
+                                   [n for n in self.params_ext_names if n != 'aS'],
+                                   complex_map_name='m_complex_model_params') + \
+                               '\n' + \
+                               self.write_register_parameters(self.coups_indep, [])
+        replace_dict['register_slha_keys'] = \
+                               self.write_register_slha_keys(
+                                   [e for e in self.params_ext_slha if e[0] != 'aS'])
         print_params_indep = [ line.replace('std::cout','//std::cout') + ' // now retrieved event-by-event (as G) from Fortran (running alphas #373)'
                                if '"aS =' in line else
                                line for line in self.write_print_parameters(self.params_indep).split('\n') ]
@@ -2001,6 +2052,8 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         # process-specific count (ProcessTables::nb_tmp_jamp) rather than
         # hardcoded per-process like the rest of calculate_jamps.
         self._nb_tmp_jamp = getattr(self.helas_call_writer, 'nb_tmp_jamp', 0)
+        replace_dict['refreshExternalMasses_lines'] = \
+                               self.get_refresh_external_masses_lines(self.matrix_elements[0])
         replace_dict['nparams'] = len(self.params2order)
         replace_dict['coupling_list'] = ' '
         replace_dict['hel_amps_cc'] = '#include \"HelAmps_%s.cc\"' % self.model_name # AV
@@ -2164,9 +2217,14 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     # for the same run time, against 808 s inline for a run 13% faster).
     HR_CHUNK_STMTS = 200
     HR_INLINE_MAX = 15000
-    # What the recycled calls read that is local to calculate_all_jamps. The
-    # chunks live in the same translation unit, so the model tables (cIPD, cIPC,
-    # ...) need no plumbing.
+    # The chunks are written into translation units of about this many
+    # statements (HelRecyclingChunks_<k>.cc), which the build compiles in
+    # parallel: in one SigmaKin.cc, g g > t t~ g g g (2.8M statements) is a
+    # single compiler process for the best part of an hour.
+    HR_FILE_STMTS = 20000
+    # What the recycled calls read of calculate_all_jamps and of SigmaKin.cc: the
+    # chunks live in translation units of their own, so the run-time tables of
+    # SigmaKin.cc (cIPD, cFlavors, cBWCUTOFF) are passed along too.
     HR_CHUNK_STATE = [
         ('const fptype_momenta* momenta', 'momenta'),
         ('const fptype* const* COUPs', 'COUPs'),
@@ -2176,6 +2234,8 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ('fptype_amp* amp_fp', 'amp_fp'),
         ('ALOHAOBJ& _p1n', '_p1n'),
         ('cxtype_amp_sv* jampAll_sv', 'jampAll_sv'),
+        ('cxtype_amp_sv* jampTmpAll_sv', 'jampTmpAll_sv'),
+        ('cxtype_amp_sv* ampAll_sv', 'ampAll_sv'),
         ('fptype_amp_sv* numAll_sv', 'numAll_sv'),
         ('const int iParity', 'iParity'),
         ('const bool storeChannelWeights', 'storeChannelWeights'),
@@ -2183,7 +2243,14 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         # (CDPF_ACCESS is HostAccessCouplings on the CPU, see calculate_jamps)
         ('const FLV_COUPLING_ARRAY<nDPF, nMF, HostAccessCouplings::flv_stride>&'
          ' flvCOUPs_dep', 'flvCOUPs_dep'),
+        ('const fptype* cIPD', 'cIPD'),
+        ('const short ( *cFlavors )[npar]', 'cFlavors'),
+        ('const fptype cBWCUTOFF', 'cBWCUTOFF'),
     ]
+    # hidden: every P* library has its own hr_unit_<k>, which must never bind
+    # to another one's; noinline: one call per unit is the point
+    HR_CHUNK_ATTR = '__attribute__( ( noinline, visibility( "hidden" ) ) )'
+    HR_CHUNK_FILE = 'HelRecyclingChunks_%d.cc'
     HR_CHUNK_USING = (
         '    using M_ACCESS [[maybe_unused]] = HostAccessMomenta;\n'
         '    using W_ACCESS [[maybe_unused]] = HostAccessWavefunctions;\n'
@@ -2196,7 +2263,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     # With crossing, the recycled calls also read the per-lane permuted momenta
     # and NSF signs of the crossing preamble (see crossing_preamble_recycled)
     HR_CHUNK_STATE_CROSSING = [
-        ('const fptype* xmom', 'xmom'),
+        ('const fptype_momenta* xmom', 'xmom'),
         ('const fptype_sv* icsign', 'icsign'),
     ]
 
@@ -2206,6 +2273,50 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             return self.HR_CHUNK_STATE + self.HR_CHUNK_STATE_CROSSING
         return self.HR_CHUNK_STATE
 
+    # Above this many statements of code (hr_count_statements: the tables of
+    # the tabulated P1N groups do not count) the recycled block is declined and
+    # the directory keeps the plain code. Recycling makes each wavefunction once
+    # per copy instead of once per row, so it executes fewer instructions, but
+    # as ONE straight run of code per event page, where the plain build loops
+    # over the rows through the same few hundred kB. Once that run no longer
+    # fits in the caches, every page fetches it from memory again and the
+    # instructions per cycle collapse. Measured on an Apple M5 Pro (16 MB L2),
+    # check_sa simd_128, recycled over plain, with the amplitudes as
+    # straight-line code: 1.4x-2.2x up to 183k statements (6 MB of code),
+    # 0.47x at 610k (22 MB), 0.31x at 1.29M (48 MB, g g > t t~ g g g, IPC 0.73
+    # against 5.1). The tables (--hel_recycling_tables, on by default) take
+    # g g > t t~ g g g down to ~100k statements of code, 3.4 MB, and 1.7x
+    # faster than plain; the limit is for what is still bigger than that.
+    # --hel_recycling_max=<n> overrides it, 0 for no limit.
+    HR_MAX_STMTS = 300000
+
+    def hel_recycling_max_stmts(self):
+        """Statements above which the recycled block is declined (0: never),
+        from --hel_recycling_max if given."""
+        options = getattr(self.helas_call_writer, 'cmd_options', None) or {}
+        if 'hel_recycling_max' in options:
+            try:
+                return int(options['hel_recycling_max'])
+            except (TypeError, ValueError):
+                logger.warning('--hel_recycling_max must be an integer; '
+                               'using the default')
+        return self.HR_MAX_STMTS
+
+    def hel_recycling_tables(self):
+        """--hel_recycling_tables: write the P1N groups of the recycled block as
+        tables (default) or as straight-line code (see CppDialect._p1n_table)."""
+        options = getattr(self.helas_call_writer, 'cmd_options', None) or {}
+        return str(options.get('hel_recycling_tables', True)).lower() \
+                                            not in ('false', '0', 'no')
+
+    @staticmethod
+    def hr_count_statements(calls):
+        """Statements of code in a recycled call block: the lines hr_chunk_calls
+        counts, but for the tables of the tabulated P1N groups, which are data
+        and not code (see HelRecyclingTables.h)."""
+        return sum(1 for line in calls.split('\n')
+                   if line.split('//')[0].strip()
+                   and not line.lstrip().startswith('static constexpr'))
     def hel_recycling_chunk_size(self, nstmt):
         """Statements per chunk for a block of `nstmt` statements (0: inline),
         from --hel_recycling_chunk if given."""
@@ -2243,47 +2354,68 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         return chunks
 
     def hr_chunk_calls(self, calls):
-        """(chunk definitions, calls to them) for the recycled call block, or
-        ('', calls) when it is small enough to stay inline."""
+        """(declarations, translation units, calls) for the recycled call block,
+        or ('', [], calls) when it is small enough to stay inline.
+
+        Each unit holds its chunks (static, hr_chunk_<i>) and one function,
+        hr_unit_<k>, that calls them in order: calculate_all_jamps calls the
+        units, so that its own body stays a handful of calls -- with one call
+        per chunk (10570 for g g > t t~ g g g), SigmaKin.cc alone took longer
+        to build than all the chunks together."""
         lines = calls.rstrip('\n').split('\n')
         nstmt = sum(1 for line in lines if line.split('//')[0].strip())
         per_chunk = self.hel_recycling_chunk_size(nstmt)
         if per_chunk <= 0 or nstmt <= per_chunk:
-            return '', calls
+            return '', [], calls
         state = self.hr_chunk_state()
         params = ',\n              '.join('[[maybe_unused]] ' + decl
                                           for decl, _ in state)
+        # the declarations SigmaKin.cc sees leave the names out: there, cIPD &co
+        # are its own tables
+        types = ', '.join(re.sub(r'\b%s\b' % name, '', decl).strip()
+                          for decl, name in state)
         args = ', '.join(name for _, name in state)
-        defs, body = [], []
-        for i, chunk in enumerate(self.hr_split_statements(lines, per_chunk)):
-            # noinline: folding the chunks back into one body is what they avoid
-            defs.append('  __attribute__( ( noinline ) ) static void\n'
-                        '  hr_chunk_%d( %s )\n  {\n%s%s\n  }\n'
-                        % (i, params, self.HR_CHUNK_USING, '\n'.join(chunk)))
-            body.append('      hr_chunk_%d( %s );' % (i, args))
-        logger.debug('hel_recycling: %d statements in %d chunks', nstmt, len(defs))
-        return '\n'.join(defs), '\n'.join(body) + '\n'
-
-    # Only the standalone exporter runs the warm-up (its finalize); any other
-    # output that registered here would leave its directories to the next
-    # standalone output of the session.
-    runs_hel_recycling_warmup = False
+        units, unit, unit_stmts, nchunks = [], [], 0, 0
+        for chunk in self.hr_split_statements(lines, per_chunk):
+            unit.append(chunk)
+            unit_stmts += sum(1 for line in chunk if line.split('//')[0].strip())
+            if unit_stmts >= self.HR_FILE_STMTS:
+                units.append(unit)
+                unit, unit_stmts = [], 0
+        if unit:
+            units.append(unit)
+        decls, texts, body = [], [], []
+        for k, chunks in enumerate(units):
+            defs, calls_k = [], []
+            for chunk in chunks:
+                # noinline: folding the chunks back into one body is what they avoid
+                defs.append('  __attribute__( ( noinline ) ) static void\n'
+                            '  hr_chunk_%d( %s )\n  {\n%s%s\n  }\n'
+                            % (nchunks, params, self.HR_CHUNK_USING, '\n'.join(chunk)))
+                calls_k.append('    hr_chunk_%d( %s );' % (nchunks, args))
+                nchunks += 1
+            defs.append('  %s void\n  hr_unit_%d( %s )\n  {\n%s\n  }\n'
+                        % (self.HR_CHUNK_ATTR, k, params, '\n'.join(calls_k)))
+            texts.append('// --hel_recycling: recycled chunks of calculate_all_jamps, generated by\n'
+                         '// madgraph/madevent/hel_recycle.py (see HelRecycling.inc)\n\n'
+                         '#include "HelRecyclingChunks.h"\n\n'
+                         'namespace madmatrix\n{\n%s}\n' % '\n'.join(defs))
+            decls.append('  %s void hr_unit_%d( %s );' % (self.HR_CHUNK_ATTR, k, types))
+            body.append('      hr_unit_%d( %s );' % (k, args))
+        logger.debug('hel_recycling: %d statements in %d chunks, %d files',
+                     nstmt, nchunks, len(texts))
+        return '\n'.join(decls) + '\n', texts, '\n'.join(body) + '\n'
 
     @property
     def hel_recycling(self):
         """Whether the output command asked for --hel_recycling=True (off by
         default here; madevent's own option of the same name is separate)."""
         options = getattr(self.helas_call_writer, 'cmd_options', None) or {}
-        asked = str(options.get('hel_recycling', False)).lower() \
+        return str(options.get('hel_recycling', False)).lower() \
                                                 in ('true', '1', 'yes')
-        # (ProcessExporterMadMatrix.__init__ says once per output that the
-        # option is ignored)
-        return asked and self.runs_hel_recycling_warmup
 
     def hel_recycling_refusal(self):
         """Why this process cannot be recycled, or None."""
-        if aloha.unitary_gauge == 3:
-            return 'the FD gauge (its five-component wavefunctions)'
         if len(self.matrix_elements) != 1:
             return 'more than one matrix element in the directory'
         so = export_v4.split_order_tables(self.matrix_elements[0])
@@ -2298,6 +2430,26 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         # (_run_hel_recycling_warmups).
         return None
 
+    @staticmethod
+    def hr_jamps_inc(post):
+        """HelRecyclingJamps.inc: the color flows of one row (slot), with
+        jamp_sv the row's color flows -- in the rows mode inside hr_row, once
+        per good helicity, in the others at the end of calculate_all_jamps."""
+        head = ['// --hel_recycling (%s): the color flows of one row (slot), once every'
+                % post['mode'],
+                '// amplitude is made (see calculate_all_jamps)']
+        if post['mode'] == 'fold':
+            head.append('cxtype_amp_sv* jampTmp_sv = jampTmpAll_sv + (size_t)slot * %d;'
+                        % max(post['ntmp'], 1))
+        elif post['mode'] == 'rows':
+            # inside hr_row: numerators_sv is the event's own (nullptr unless
+            # storeChannelWeights), jamp_sv the helicity's color flows
+            head += ['const cxtype_amp_sv* ampRow = ampAll_sv + slot * %d;'
+                     % max(post['namp'], 1)]
+            if post['ntmp'] > 0:
+                head.append('cxtype_amp_sv jampTmp_sv[%d];' % post['ntmp'])
+        return ''.join('      %s\n' % line for line in head + list(post['lines']))
+
     def hr_orig_calls(self, color_amplitudes):
         """The calls of the matrix element in the form the recycler reads.
 
@@ -2311,10 +2463,13 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         amplitudes = matrix_element.get_all_amplitudes()
         numbers = [(amp, amp.get('number')) for amp in amplitudes]
         writer.hr_orig = True
+        writer.hr_jamp_post = dict(writer.HR_POST_EMPTY)
         try:
-            return writer.get_matrix_element_calls(
+            calls = writer.get_matrix_element_calls(
                 matrix_element, color_amplitudes,
                 multi_channel_map=self.multi_channel_map)
+            self._hr_jamp_post = writer.hr_jamp_post
+            return calls
         finally:
             writer.hr_orig = False
             for amp, number in numbers:
@@ -2324,7 +2479,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         """Run the recycler over the hr_orig calls for the good helicities
         (1-based rows of cHel) and the (row, amplitude) pairs that vanish, and
         write HelRecycling.inc and HelRecyclingCalls.inc. Returns the number of
-        rows built."""
+        rows built, or None when the recycled block is declined for its size
+        (hel_recycling_max_stmts): then nothing is written and the directory
+        keeps the plain code."""
         import madgraph.madevent.hel_recycle as hel_recycle
         matrix_element = self.matrix_elements[0]
         all_hel = [tuple(hel) for hel in
@@ -2334,6 +2491,10 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         row_of_hel = [-1] * ncomb
         for compact, full in enumerate(kept):
             row_of_hel[full - 1] = compact
+        post = getattr(self, '_hr_jamp_post', None) or \
+               MadMatrixUFOHelasCallWriter.HR_POST_EMPTY
+        ntmp = post['ntmp'] if post['mode'] == 'fold' else 0
+        namp = post['namp'] if post['mode'] == 'rows' else 0
         orig_path = pjoin(self.path, 'HelRecycling_orig.cc')
         tmpl_path = pjoin(self.path, 'HelRecycling_template.cc')
         out_path = pjoin(self.path, 'HelRecycling_out.cc')
@@ -2344,13 +2505,21 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 '  // --hel_recycling: generated by madgraph/madevent/hel_recycle.py\n'
                 '  constexpr int nHrRows = ${ncomb}; // helicity rows built\n'
                 '  constexpr int hrNwf = ${nwavefuncs}; // wavefunction slots of the recycled build\n'
+                '  constexpr int hrNtmp = %d; // shared color-flow sub-expressions of one row (fold)\n'
+                '  constexpr int hrNamp = %d; // amplitude slots of one row (rows)\n'
                 '  static constexpr int cHrRow[ncomb] = { %s }; // row of each helicity (-1: not built)\n'
+                '%s'
                 '${helicity_lines}\n%s\n${helas_calls}\n'
-                % (', '.join(str(row) for row in row_of_hel), self.HR_CALLS_MARK))
+                % (ntmp, namp, ', '.join(str(row) for row in row_of_hel),
+                   '#define MGONGPU_HR_ROWS 1 // the color flows are made row by row in hr_row\n'
+                   if post['mode'] == 'rows' else '',
+                   self.HR_CALLS_MARK))
+        dialect = hel_recycle.CppDialect()
+        dialect.TABLES = self.hel_recycling_tables()
         recycler = hel_recycle.HelicityRecycler(
                         [str(hel) for hel in kept], [],
                         sorted((int(h), int(a)) for h, a in zero_perhel),
-                        dialect=hel_recycle.CppDialect())
+                        gauge=getattr(self, '_hr_gauge', 'U'), dialect=dialect)
         recycler.hel_filt = True
         recycler.amp_splt = True
         recycler.amp_filt = True
@@ -2369,15 +2538,32 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 except OSError:
                     pass
         header, calls = text.split(self.HR_CALLS_MARK, 1)
-        chunks, calls = self.hr_chunk_calls(calls.lstrip('\n'))
+        nstmt = self.hr_count_statements(calls)
+        limit = self.hel_recycling_max_stmts()
+        if limit > 0 and nstmt > limit:
+            logger.warning('hel_recycling: %s is written WITHOUT recycling: its '
+                'recycled block would be %d statements (%d helicity rows), more '
+                'than --hel_recycling_max=%d. Code that size no longer runs from the '
+                'caches and is slower than the plain build (2x at 22 MB of code). '
+                'Pass --hel_recycling_max=0 to build it anyway.',
+                os.path.basename(self.path), nstmt, len(kept), limit)
+            return None
+        decls, units, calls = self.hr_chunk_calls(calls.lstrip('\n'))
         if getattr(self, 'use_crossing', False):
             # after the cut, so that it stays in calculate_all_jamps and the
             # chunks get its arrays as arguments
             calls = self.helas_call_writer.crossing_preamble_recycled() + calls
+        for stale in glob.glob(pjoin(self.path, self.HR_CHUNK_FILE.replace('%d', '*'))):
+            os.remove(stale)
+        for k, unit in enumerate(units):
+            with open(pjoin(self.path, self.HR_CHUNK_FILE % k), 'w') as fsock:
+                fsock.write(unit)
         with open(pjoin(self.path, 'HelRecycling.inc'), 'w') as fsock:
-            fsock.write(header + '\n' + chunks)
+            fsock.write(header + '\n' + decls)
         with open(pjoin(self.path, 'HelRecyclingCalls.inc'), 'w') as fsock:
             fsock.write(calls)
+        with open(pjoin(self.path, 'HelRecyclingJamps.inc'), 'w') as fsock:
+            fsock.write(self.hr_jamps_inc(post))
         return len(kept)
 
     # AV - modify export_cpp.OneProcessExporterCPP method (fix CPPProcess.cc)
@@ -2399,6 +2585,13 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                                os.path.basename(self.path))
             else:
                 recycle = True
+                self._hr_calls = self.hr_orig_calls(color_amplitudes[0])
+                # FD: a vector's current has a fifth (Goldstone) component and
+                # a scalar's value is that fifth one, which the amplitude split
+                # has to know (CppDialect.peel_components)
+                self._hr_gauge = 'FD' if aloha.unitary_gauge == 3 else 'U'
+                if self not in OneProcessExporterMadMatrix._hr_warmups:
+                    OneProcessExporterMadMatrix._hr_warmups.append(self)
         if self.single_helicities:
             # Crossing symmetry: tell the helas writer to emit the per-event
             # momentum-permutation preamble + NSF-blended external calls. Read at
@@ -2407,6 +2600,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             # recycler reads need it as much as the ordinary ones: without it
             # every crossed lane of the recycled build would be the base process.
             self.helas_call_writer.use_crossing_ic = getattr(self, 'use_crossing', False)
+            self.helas_call_writer.hr_probe = recycle
             try:
                 if recycle:
                     self._hr_calls = self.hr_orig_calls(color_amplitudes[0])
@@ -3040,6 +3234,17 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             initProc_lines.append('    m_masses.push_back( Parameters::%s );' % part.get('mass'))
         return '\n'.join(initProc_lines)
 
+    # Companion to get_initProc_lines: the same external-mass list, but pushed into an
+    # arbitrary "masses" vector instead of m_masses, for CPPProcess::refreshExternalMasses()
+    # (called after umami_set_parameter() overrides a mass so UMAMI_META_MASSES stays in sync;
+    # see madgraph/iolibs/template_files/madmatrix/umami.cc).
+    def get_refresh_external_masses_lines(self, matrix_element):
+        """Get refreshExternalMasses_lines for function definition for CPPProcess::refreshExternalMasses"""
+        lines = ['    // Set external particle masses for this matrix element']
+        for part in matrix_element.get_external_wavefunctions():
+            lines.append('    masses.push_back( m_pars->%s );' % part.get('mass'))
+        return '\n'.join(lines)
+
     # AV - replace the export_cpp.OneProcessExporterCPP method (fix helicity order and improve formatting)
     def get_helicity_matrix(self, matrix_element):
         """Return the Helicity matrix definition lines for this matrix element"""
@@ -3306,8 +3511,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
 class OneProcessExporterMadMatrixStandalone(OneProcessExporterMadMatrix):
 
     p_makefile = 'madmatrix_standalone.mk'
-    # ProcessExporterMadMatrixStandalone.finalize runs the --hel_recycling warm-up
-    runs_hel_recycling_warmup = True
 
 #------------------------------------------------------------------------------------
 
@@ -3334,7 +3537,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
     jamp_orbit = True
     # --hel_recycling. hr_orig: write the calls the way madevent's hel_recycle
     # reads them back (one call per line, every amplitude tagged //HRAMP with its
-    # number and followed by what it adds to the per-row tables, with a ${row}
+    # number and its legs' spins, and followed by what it adds to the per-row tables, with a ${row}
     # hole); see OneProcessExporterMadMatrix.hr_orig_calls. hr_probe: follow every
     # amplitude of the ordinary calls with MG_HR_PROBE_AMP, which only a warm-up
     # build (-DMG_HR_PROBE) compiles to anything.
@@ -3711,12 +3914,31 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                 color[namp][njamp] = coeff
         # Color flows through shared sub-expressions (None to write them out
         # one (color flow, amplitude) pair at a time, as before)
-        # In hr_orig mode every amplitude is folded into its own row of the
-        # recycled tables, so there is nothing for shared sub-expressions to be
-        # shared between.
-        jamp_plan = None if self.hr_orig \
-                    else self.build_jamp_plan(matrix_element, color_amplitudes)
+        # In hr_orig mode they are kept too (hr_jamp_mode): either the color
+        # code below runs as it is once per helicity row on a table of that
+        # row's amplitudes (rows), or every amplitude is folded into its row's
+        # sub-expressions and the rest is done once per row (fold). Without
+        # them (expanded) each amplitude goes into every color flow of every
+        # row it survives in -- 3.4x the plain build's color updates for
+        # g g > t t~ g g g, where no row drops.
+        jamp_plan = self.cached_jamp_plan(matrix_element, color_amplitudes)
         self.nb_tmp_jamp = jamp_plan[0] if jamp_plan else 0
+        hr_mode = self.hr_jamp_mode() if self.hr_orig else None
+        if hr_mode == 'fold':
+            self.hr_jamp_post = dict(self.HR_POST_EMPTY, mode='fold',
+                                     **dict(zip(('ntmp', 'lines'),
+                                                self.hr_post_lines(jamp_plan))))
+        elif hr_mode == 'rows':
+            # the row loop: what calculate_jamps does with each amplitude, read
+            # from the row's table instead of amp_sv[0], and in the same order
+            hr_rows = []
+            hr_namp = max([a.get('number') for a in
+                           matrix_element.get_all_amplitudes()] or [1])
+            self.hr_jamp_post = dict(self.HR_POST_EMPTY, mode='rows',
+                                     ntmp=self.nb_tmp_jamp, namp=hr_namp,
+                                     lines=hr_rows)
+        elif hr_mode == 'expanded':
+            self.hr_jamp_post = dict(self.HR_POST_EMPTY, mode='expanded')
         so_index = self.split_order_index(matrix_element)
         ncolor_jamp = len(color_amplitudes)
         if jamp_plan is not None:
@@ -3826,10 +4048,20 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                 amp_block = [ self.get_amplitude_call(amplitude) ] # AV new: avoid format_call
                 for mother, me_id in sum_original:
                     mother.set('me_id', me_id)
+                if hr_mode == 'rows':
+                    res.extend(self._hr_orig_store(amp_block[0], namp, hr_namp,
+                                                   amplitude))
+                    hr_rows.extend(self._hr_row_lines(
+                        namp, diagram, id_amp in diag_to_config, color,
+                        jamp_captures.get(namp, []) if jamp_plan is not None else None,
+                        jamp_combines.get(namp, []) if jamp_plan is not None else []))
+                    continue
                 if self.hr_orig:
-                    res.extend(self._hr_orig_amplitude(amp_block[0], namp, diagram,
-                                                       id_amp in diag_to_config,
-                                                       color))
+                    res.extend(self._hr_orig_amplitude(
+                        amp_block[0], namp, amplitude, diagram, id_amp in diag_to_config,
+                        color,
+                        jamp_captures.get(namp, []) if hr_mode == 'fold'
+                                                 and jamp_plan is not None else None))
                     continue
                 if self.hr_probe:
                     amp_block.append('MG_HR_PROBE_AMP( %d );' % namp)
@@ -3885,24 +4117,157 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                     # need: they always run, whatever the flavor
                     res.extend(jamp_combines.get(namp, []))
             if len(diagram.get('amplitudes')) == 0 : res.append('// (none)') # AV
-        if jamp_plan is not None:
+        if hr_mode == 'rows' and jamp_plan is not None:
+            hr_rows.extend(jamp_final)
+        if jamp_plan is not None and not self.hr_orig:
             res.append('\n      // *** COLOR FLOWS FROM THE SHARED SUB-EXPRESSIONS ***')
             res.extend(jamp_final)
         ###res.append('\n    // *** END OF DIAGRAMS ***' ) # AV - no longer needed ('COLOR MATRIX BELOW')
         return res
 
-    def _hr_orig_amplitude(self, call, namp, diagram, channel, color):
-        """One amplitude in hr_orig form: the call, tagged with its number (all
-        amplitudes write the one scratch amp_sv[0], so the call itself cannot say
-        which it is), then a //HRFOLD block of what it adds to its helicity row's
+    # the per-row tables the hr_orig folds write: the color flows and the shared
+    # sub-expressions of the color flows, each [nHrRows][nParity][n]
+    _HR_JAMP = re.compile(r'\bjamp_sv\[(\d+)\]')
+    _HR_JAMP_TMP = re.compile(r'\bjampTmp_sv\[(\d+)\]')
+    _HR_ASSIGN = re.compile(r'^(\s*jampTmp_sv\[\d+\]) = ')
+    _HR_AMP = re.compile(r'\bamp_sv\[0\]')
+
+    # What the recycled build does with the color flows (--hel_recycling_jamp):
+    #  rows: as the fortran recycler does (AMP(NCOMB,NGRAPHS) and a loop over
+    #        the rows) -- every amplitude of every row is stored in a per-row
+    #        table (ampAll_sv), and the color flows of the plain build, shared
+    #        sub-expressions and all, run once per row afterwards from it;
+    #  fold: each amplitude is added into its row's shared sub-expressions
+    #        (jampTmpAll_sv) as it is made, the rest is done per row after;
+    #  expanded: each amplitude is added into every color flow of its row.
+    # rows is the default: with the tabulated P1N groups it executes the fewest
+    # instructions of the three on every process measured, is the fastest or
+    # tied with fold on one thread, and is by far the quickest to build of the
+    # two, since its color code is the plain build's, written once (g g > t t~
+    # g g g, check_sa simd_128, cycles against plain: rows 1.67x, fold 1.46x,
+    # expanded 1.01x; build 31 s / 114 s / 16 s, plain 13 s). With every core
+    # busy (mg7, 18 threads) its gain on g g > t t~ g g g shrinks to ~5% while
+    # g g > u u~ g g keeps 1.45x. fold and expanded are kept to compare.
+    HR_JAMP_MODES = ('rows', 'fold', 'expanded')
+    HR_POST_EMPTY = {'mode': 'expanded', 'ntmp': 0, 'namp': 0, 'lines': ()}
+
+    def hr_jamp_mode(self):
+        """--hel_recycling_jamp, rows by default."""
+        options = getattr(self, 'cmd_options', None) or {}
+        mode = str(options.get('hel_recycling_jamp', 'rows')).lower()
+        if mode not in self.HR_JAMP_MODES:
+            logger.warning('--hel_recycling_jamp must be one of %s; using rows',
+                           ', '.join(self.HR_JAMP_MODES))
+            mode = 'rows'
+        return mode
+
+    @staticmethod
+    def _hr_amp_tag(call, namp, amplitude):
+        """The call of amplitude namp, tagged for the recycler: its number (all
+        amplitudes write the one scratch amp_sv[0]) and the spin (2s+1) of the
+        wavefunction each argument is, in argument order -- which the amplitude
+        split needs (CppDialect.peel_components), and which the routine name
+        only says by convention."""
+        return '%s //HRAMP %d %s' % (call.rstrip('\n'), namp,
+                                     ','.join(str(mother.get('spin'))
+                                              for mother in amplitude.get('mothers')))
+
+    def _hr_orig_store(self, call, namp, nslot, amplitude):
+        """One amplitude in hr_orig form for the rows mode: the call, then its
+        store into the row's amplitude table -- nothing else is done with it
+        until the row loop (_hr_row_lines)."""
+        return [self._hr_amp_tag(call, namp, amplitude), '//HRFOLD %d' % namp,
+                'ampAll_sv[( ${row} * nParity + iParity ) * %d + %d] = amp_sv[0];'
+                % (nslot, namp - 1), '//HRENDFOLD']
+
+    def _hr_row_lines(self, namp, diagram, channel, color, captures, combines):
+        """What calculate_jamps does with amplitude namp, for the row loop of
+        the rows mode: amp_sv[0] is the row's ampRow[namp - 1]."""
+        operand = 'ampRow[%d]' % (namp - 1)
+        out = []
+        if channel:
+            out.append('if( storeChannelWeights ) numerators_sv[%d] += cxabs2( %s );'
+                       % (diagram.get('number') - 1, operand))
+        if captures is not None:
+            out += [self._HR_AMP.sub(operand, line.strip())
+                    for line, _target, _first in captures]
+            out += [line.strip() for line in combines]
+            return out
+        for njamp, coeff in color[namp].items():
+            scoeff = OneProcessExporterMadMatrix.coeff(*coeff)
+            if scoeff[0] == '+': scoeff = scoeff[1:]
+            for old_, new_ in (('(', '( '), (')', ' )'), (',', ', '),
+                               ('*', ' * '), ('/', ' / ')):
+                scoeff = scoeff.replace(old_, new_)
+            if scoeff.startswith('-'):
+                out.append('jamp_sv[%s] -= %s%s;' % (njamp, scoeff[1:], operand))
+            else:
+                out.append('jamp_sv[%s] += %s%s;' % (njamp, scoeff, operand))
+        return out
+
+    def cached_jamp_plan(self, matrix_element, color_amplitudes):
+        """build_jamp_plan, once per matrix element: the hr_orig pass and the
+        ordinary one ask for the same plan, and at high multiplicity finding it
+        is most of the generation time."""
+        # the objects themselves, not their id(): the cache holds them alive,
+        # so an id cannot come back for another matrix element
+        flags = (self.jamp_optim_enabled(), self.jamp_orbit_allowed(matrix_element))
+        cache = getattr(self, '_jamp_plan_cache', None)
+        if cache is None or cache[0] is not matrix_element \
+                or cache[1] is not color_amplitudes or cache[2] != flags:
+            cache = (matrix_element, color_amplitudes, flags,
+                     self.build_jamp_plan(matrix_element, color_amplitudes))
+            self._jamp_plan_cache = cache
+        return cache[3]
+
+    @classmethod
+    def hr_post_lines(cls, jamp_plan):
+        """(ntmp, lines): what is left of the color flows of ONE recycled row once
+        every amplitude has been folded into it -- the sub-expressions built out
+        of other sub-expressions, in an order that has each complete before it
+        is read, then the color flows that are combinations of them. They run
+        in place on the row's tables, as jampTmp_sv / jamp_sv, which the folds
+        have only ever added to (the tables start at zero and an amplitude that
+        vanishes at a row is not folded in at all), so every assignment
+        becomes an addition. (0, []) when the color flows share nothing."""
+        if jamp_plan is None:
+            return 0, []
+        ntmp, _captures, combines, final = jamp_plan
+        lines = [cls._HR_ASSIGN.sub(r'\1 += ', line)
+                 for amp in sorted(combines) for line in combines[amp]]
+        return ntmp, lines + list(final)
+
+    def _hr_orig_amplitude(self, call, namp, amplitude, diagram, channel, color,
+                           captures=None):
+        """One amplitude in hr_orig form: the call, tagged with its number and
+        its legs' spins (_hr_amp_tag), then a //HRFOLD block of what it adds to its helicity row's
         tables -- the multichannel numerator and the color flows -- with a
-        ${row} hole the recycler stamps out once per row it survives in."""
-        out = ['%s //HRAMP %d' % (call.rstrip('\n'), namp), '//HRFOLD %d' % namp]
+        ${row} hole the recycler stamps out once per row it survives in.
+
+        With captures (the build_jamp_plan lines of this amplitude) the color
+        flows are added to as the plain build adds to them: into the row's
+        shared sub-expressions (jampTmpAll_sv) and the few color flows it goes
+        to directly; hr_post_lines finishes them per row."""
+        out = [self._hr_amp_tag(call, namp, amplitude), '//HRFOLD %d' % namp]
         slot = '( ${row} * nParity + iParity )'
         if channel:
             out += ['if( storeChannelWeights )', '{',
                     '  numAll_sv[%s * ndiagrams + %i] += cxabs2( amp_sv[0] );'
                     % (slot, diagram.get('number') - 1), '}']
+        if captures is not None:
+            for line, _target, first in captures:
+                if first:
+                    line = line.replace(' = ', ' += ', 1)
+                # the count as a literal: the chunk translation units do not
+                # see HelRecycling.inc, where it is hrNtmp
+                line = self._HR_JAMP_TMP.sub(
+                    r'jampTmpAll_sv[%s * %d + \1]' % (slot, self.nb_tmp_jamp),
+                    line.strip())
+                line = self._HR_JAMP.sub(
+                    r'jampAll_sv[%s * njampso + \1]' % slot, line)
+                out.append(line)
+            out.append('//HRENDFOLD')
+            return out
         for njamp, coeff in color[namp].items():
             scoeff = OneProcessExporterMadMatrix.coeff(*coeff)
             if scoeff[0] == '+': scoeff = scoeff[1:]
@@ -4021,8 +4386,8 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
       cross_gather( (int)( iflavor_ext / (unsigned int)nmaxflavor ), xperm, xic );
 #else
 """ + self.CROSSING_GATHER_HEAD + """      // 2 scratch external wavefunctions for the per-event NSF-sign blend
-      fptype_sv pvec_x[2][np4];
-      cxtype_sv w_x[2][nw6];
+      fptype_momenta_sv pvec_x[2][np4];
+      cxtype_amp_sv w_x[2][nw6];
       ALOHAOBJ aloha_x[2];
       aloha_x[0] = ALOHAOBJ{ pvec_x[0], w_x[0] };
       aloha_x[1] = ALOHAOBJ{ pvec_x[1], w_x[1] };
@@ -4035,7 +4400,8 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
       // Each event's crossing-table row (cross_gather, the base-slot view):
       // base slot s takes the momentum of input slot xperm[s], NSF sign xic[s].
       // A row out of range gathers the identity; its denominator is 0.
-      alignas( mgOnGpu::cppAlign ) fptype xmom[npar * np4 * neppV];
+      // (momenta precision: double for FPTYPE=v, see xblend)
+      alignas( mgOnGpu::cppAlign ) fptype_momenta xmom[npar * np4 * neppV];
       fptype_sv icsign[npar];
 """
     CROSSING_GATHER_LOOP = """      for( int ieppV = 0; ieppV < neppV; ++ieppV )
@@ -4071,7 +4437,8 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         fed the opposite helicity together with the opposite NSF flag, which is
         the same all-outgoing configuration (see sigmaKin, and the Fortran
         APPLY_CROSSING_ROWS). So the two calls are (+nsf, +h) and (-nsf, -h),
-        h = cHel[ihel][s], and the one good-helicity list serves every lane.
+        h = hel_sv[s] (the row's helicity of base leg s, per lane), and the one
+        good-helicity list serves every lane.
         get_amp downstream stays fully SIMD. Scalars carry no helicity, so
         their two calls only differ by the NSF flag. GPU: one event per
         thread, a direct call on the input slot xperm[s] with the helicity and
@@ -4127,13 +4494,13 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         if self.hr_orig:
             return self._crossing_external_orig(one_call, spin, s, me, nsf)
 
-        hel = None if spin == 1 else '(int)cHel[ihel][%d]' % s
+        hel = None if spin == 1 else 'hel_sv[%d]' % s
         lines = ['#ifndef MGONGPUCPP_GPUIMPL']
         lines.append('      ' + one_call(nsf, 'aloha_x[0]', hel))
         lines.append('      ' + one_call(-nsf, 'aloha_x[1]', hel and '-' + hel))
         lines.append('      { const fptype_sv _sp = ( icsign[%d] + (fptype)1. ) * (fptype)0.5;' % s)
         lines.append('        const fptype_sv _sm = ( (fptype)1. - icsign[%d] ) * (fptype)0.5;' % s)
-        lines.append('        for( int _k = 0; _k < np4; _k++ ) pvec_sv[%d][_k] = _sp * pvec_x[0][_k] + _sm * pvec_x[1][_k];' % me)
+        lines.append('        for( int _k = 0; _k < np4; _k++ ) pvec_sv[%d][_k] = xblend( _sp, _sm, pvec_x[0][_k], pvec_x[1][_k] );' % me)
         lines.append('        for( int _k = 0; _k < nw6; _k++ ) w_sv[%d][_k] = _sp * w_x[0][_k] + _sm * w_x[1][_k];' % me)
         lines.append('        aloha_obj[%d].flv_index = aloha_x[0].flv_index; }' % me)
         lines.append('#else')
@@ -4145,7 +4512,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             gpu = '%s( momenta, %+d * xic[%d], cFlavors[iflavor][%d], aloha_obj[%d], xperm[%d] );' % \
                   (routine, nsf, s, s, me, s)
         else:
-            gpu = '%s( momenta, %s, cHel[ihel][%d] * xic[%d], %+d * xic[%d], cFlavors[iflavor][%d], aloha_obj[%d], xperm[%d]%s );' % \
+            gpu = '%s( momenta, %s, hel_sv[%d] * xic[%d], %+d * xic[%d], cFlavors[iflavor][%d], aloha_obj[%d], xperm[%d]%s );' % \
                   (routine, gpu_mass, s, s, nsf, s, s, me, s,
                    ', xperm[%d]' % ref if axial else '')
         lines.append('      ' + self.format_coupling(gpu))
@@ -4163,7 +4530,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         good-helicity table serves every lane. It reaches the slot only through
         aloha_obj (the chunk functions of a big block see nothing else) and
         declares its own scratch."""
-        hel = None if spin == 1 else 'cHel[ihel][%d]' % s
+        hel = None if spin == 1 else 'hel_sv[%d]' % s
         tail_hel = None if spin == 1 else '-( ${hel} )'
         out = 'aloha_obj[${out}]'
         return '\n'.join([
@@ -4177,7 +4544,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             '        const fptype_sv _sp = ( icsign[%d] + (fptype)1. ) * (fptype)0.5;' % s,
             '        const fptype_sv _sm = ( (fptype)1. - icsign[%d] ) * (fptype)0.5;' % s,
             '        cxtype_amp_sv* _w = reinterpret_cast<cxtype_amp_sv*>( %s.w );' % out,
-            '        for( int _k = 0; _k < np4; _k++ ) %s.pvec[_k] = _sp * %s.pvec[_k] + _sm * _px[_k];' % (out, out),
+            '        for( int _k = 0; _k < np4; _k++ ) %s.pvec[_k] = xblend( _sp, _sm, %s.pvec[_k], _px[_k] );' % (out, out),
             '        for( int _k = 0; _k < nw6; _k++ ) _w[_k] = _sp * _w[_k] + _sm * _wx[_k];',
             '      }',
             '//HRENDEXT'])
@@ -4242,10 +4609,10 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             # part of the call key, but the leg number and the mass are wf's own:
             # argument is whichever wavefunction first had this key.
             if argument.get('offshell') and str(wf.get('mass')).upper() != 'ZERO':
-                call = call + 'offshell_mass<M_ACCESS>( m_pars->%%s, momenta, %d ), cHel[ihel][%%d],' \
+                call = call + 'offshell_mass<M_ACCESS>( m_pars->%%s, momenta, %d ), hel_sv[%%d],' \
                     % (wf.get('number_external') - 1)
             else:
-                call = call + 'm_pars->%s, cHel[ihel][%d],'
+                call = call + 'm_pars->%s, hel_sv[%d],'
         else:
             # AV This seems to be for scalars (spin==1???), pass neither mass nor helicity (#351)
             ###call = call + 'm_pars->%s,'

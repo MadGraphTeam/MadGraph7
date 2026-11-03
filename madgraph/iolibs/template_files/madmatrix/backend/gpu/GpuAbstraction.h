@@ -43,6 +43,7 @@
 #define gpuGetSymbolAddress( devPtr, symbol ) checkGpu( cudaGetSymbolAddress( devPtr, symbol ) )
 
 #define gpuSetDevice cudaSetDevice
+#define gpuGetDevice cudaGetDevice
 #define gpuDeviceSynchronize cudaDeviceSynchronize
 #define gpuDeviceReset cudaDeviceReset
 
@@ -115,6 +116,7 @@
 #define gpuGetSymbolAddress( devPtr, symbol ) checkGpu( hipGetSymbolAddress( devPtr, symbol ) )
 
 #define gpuSetDevice hipSetDevice
+#define gpuGetDevice hipGetDevice
 #define gpuDeviceSynchronize hipDeviceSynchronize
 #define gpuDeviceReset hipDeviceReset
 

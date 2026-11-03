@@ -3200,6 +3200,73 @@ class HwUList(histograms_PhysicsObjectList):
 
         raise NameError("no histogram with name: %s" % name)
     
+    @staticmethod
+    def from_pythia8_main164(file_path, scale=1.0):
+        """The differential jet rates written by Pythia8's main164 with
+        Main:InternalAnalysis = on: a <histfile> holding, per run, the
+        histograms log10d01 ... log10d34 of the whole sample, one row per bin
+        with its lower edge and weighted content (and, from a main164 that
+        prints it, its uncertainty), and possibly the same per jet sample
+        (number of matrix-element partons) in <jetsample njet="n"> blocks
+        (InternalAnalysis:jetSamples). Returns the histograms of the first run
+        as a HwUList: the per-sample
+        ones, titled |JETSAMPLE@n as the plots expect, when the file has them,
+        the whole-sample ones otherwise; None when it holds none, or when it is
+        the former MG5aMC_PY8_interface format (whose <run> carries a weight
+        header), which parse_histos_from_PY8_XML_stream reads.
+
+        main164 up to 8.317 writes '<run id="0"">', which no XML parser takes,
+        so the file is read line by line. Every bin is multiplied by scale:
+        main164 fills in mb, each event weighted by sigma / (its own number of
+        events), so a job of a split run needs 1e9 n_job / n_total to give its
+        share in pb."""
+        totals, samples = HwUList([]), HwUList([])
+        current, sample, rows = None, None, []
+
+        def close():
+            if current is None or len(rows) < 2:
+                return
+            width = rows[1][0] - rows[0][0]
+            new_histo = HwU()
+            new_histo.process_histogram_name(
+                current if sample is None else '%s |JETSAMPLE@%d' % (current, sample))
+            new_histo.bins = BinList(weight_labels=['central', 'stat_error'])
+            for row in rows:
+                new_histo.bins.append(Bin((float(row[0]), float(row[0] + width)),
+                    {'central': float(row[1]) * scale,
+                     'stat_error': float(row[2]) * abs(scale) if len(row) > 2 else 0.0}))
+            (totals if sample is None else samples).append(new_histo)
+
+        with open(file_path) as stream:
+            for line in stream:
+                line = line.strip()
+                if line.startswith('<run') and 'header=' in line:
+                    return None
+                if line.startswith('</run'):
+                    break
+                # <jetsample>: main164 with InternalAnalysis:jetSamples;
+                # <jethistograms>: the first MadGraph7 patch of main164
+                block = re.match(r'<(?:jetsample|jethistograms)\s+njet="(-?\d+)"', line)
+                if block:
+                    sample = int(block.group(1))
+                    continue
+                if line.startswith('</jetsample') or line.startswith('</jethistograms'):
+                    sample = None
+                    continue
+                start = re.match(r'<histogram\s+name="([^"]*)"(?:\s+unit="([^"]*)")?', line)
+                if start:
+                    current = '%s %s' % (start.group(1), start.group(2) or '')
+                    rows = []
+                elif line.startswith('</histogram'):
+                    close()
+                    current = None
+                elif current is not None and line:
+                    columns = line.split()
+                    if len(columns) >= 2:
+                        rows.append([float(c) for c in columns[:3]])
+        histos = samples if len(samples) else totals
+        return histos if len(histos) else None
+
     def parse_histos_from_PY8_XML_stream(self, stream, run_id=None, 
             merging_scale=None, accepted_types_order=[], 
             consider_reweights='ALL', raw_labels=False):

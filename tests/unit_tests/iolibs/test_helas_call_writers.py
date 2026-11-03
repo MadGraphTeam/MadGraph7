@@ -1324,11 +1324,11 @@ class AxialGaugeReferenceTest(unittest.TestCase):
                            key=lambda wf: wf.get('number_external'))
         self.assertEqual(
             writer.get_external(externals[0], externals[0]).strip(),
-            'vxxxxxr<M_ACCESS, W_ACCESS>( momenta, 0., cHel[ihel][0], -1, '
+            'vxxxxxr<M_ACCESS, W_ACCESS>( momenta, 0., hel_sv[0], -1, '
             'cFlavors[iflavor][0], aloha_obj[0], 0, 1 );')
         self.assertEqual(
             writer.get_external(externals[2], externals[2]).strip(),
-            'vxxxxxr<M_ACCESS, W_ACCESS>( momenta, 0., cHel[ihel][2], +1, '
+            'vxxxxxr<M_ACCESS, W_ACCESS>( momenta, 0., hel_sv[2], +1, '
             'cFlavors[iflavor][2], aloha_obj[2], 2, 0 );')
 
     def test_massive_vector_keeps_vxxxxx(self):

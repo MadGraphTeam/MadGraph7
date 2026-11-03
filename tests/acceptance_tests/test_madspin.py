@@ -383,8 +383,17 @@ decay z > l+ l-
         # Bounded and with stdin closed so the run never blocks on a prompt.
         # The bound only guards against a hang: the run costs about 100 s of
         # CPU but its wall time follows the machine load (about 210-290 s at a
-        # load average of 100), so a tight bound fails on a busy machine.
+        # load average of 100; 30-110 s on a CI runner, which varies a lot from
+        # one run to the next), so a tight bound fails on a busy machine.
         timeout = 900
+        def log_tail(why):
+            # the mg7 run log lives in a tmp dir CI does not upload: show its
+            # tail in the CI output, so that the reason is visible there
+            with open(log_path) as log_file:
+                lines = log_file.read().splitlines()
+            print('\n===== test_madspin_mixed_flavor_decay_log_summary_mg7: '
+                  'madgraph log tail (%s) =====\n%s' % (why, '\n'.join(lines[-150:])),
+                  file=sys.stderr, flush=True)
         with open(log_path, 'w') as log_file:
             try:
                 return_code = subprocess.call(
@@ -393,18 +402,15 @@ decay z > l+ l-
                     stdin=subprocess.DEVNULL,
                     stdout=log_file, stderr=subprocess.STDOUT, timeout=timeout)
             except subprocess.TimeoutExpired:
+                log_file.flush()
+                log_tail('timed out after %d s' % timeout)
                 load = os.getloadavg() if hasattr(os, 'getloadavg') else None
                 self.fail('mg7 + MadSpin run timed out after %s s (load average'
                           ' %s; is set nevents applied?)' % (timeout, load))
         with open(log_path) as log_file:
             log = log_file.read()
-        # On failure, surface the tail of the mg7 run log (which lives in a tmp
-        # dir CI does not upload) so the reason is visible in the CI output.
         if return_code != 0 or not re.search(r'MadSpin\s+unweight\s+efficiency', log):
-            print('\n===== test_madspin_mixed_flavor_decay_log_summary_mg7: '
-                  'madgraph log tail (rc=%s) =====\n%s'
-                  % (return_code, '\n'.join(log.splitlines()[-150:])),
-                  file=sys.stderr, flush=True)
+            log_tail('rc=%s' % return_code)
         self.assertEqual(return_code, 0)
 
         summary = re.search(

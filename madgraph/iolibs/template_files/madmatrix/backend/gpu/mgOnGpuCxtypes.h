@@ -940,6 +940,7 @@ namespace madmatrix
 #else
   inline __host__ __device__ fptype_amp_sv fpamp_of_mom( const fptype_momenta_sv& p ) { return static_cast<fptype_amp_sv>( p ); }
 #endif
+  inline __host__ __device__ fptype_denom_sv fpdenom_bcast( fptype_denom s ) { return fptype_denom_sv{} + s; }
   template<typename T>
   inline __host__ __device__ fptype_amp fpamp_scalar( const T& x ) { return static_cast<fptype_amp>( x ); }
 
@@ -947,17 +948,6 @@ namespace madmatrix
   // Template version for multi-precision (explicit template parameter required)
   template<typename CX = cxtype>
   inline __host__ __device__ CX cxzero_sv() { return CX{}; }
-
-  // Denominator p^2 - M^2 + i M W of a massive propagator, with the width
-  // kept only where p^2 > 0 (timelike): a spacelike (t-channel) propagator
-  // has no pole to regulate. Used by the ALOHA routines when the width of a
-  // t-channel propagator is dropped (aloha.t_channel_width False, the
-  // default), lane by lane, as the Fortran routines do event by event.
-  inline __host__ __device__ cxtype_denom_sv
-  propagator_denom( const fptype_denom_sv& p2, const fptype_denom M, const fptype_denom W )
-  {
-    return cxtype_denom_sv( p2 - M * M, ( p2 > 0 ) ? M * W : fptype_denom( 0 ) );
-  }
 
   // Functions and operators for cxtype_sv (and multi-precision variant)
   template<typename CX>
