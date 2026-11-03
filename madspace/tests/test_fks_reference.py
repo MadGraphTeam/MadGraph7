@@ -5,6 +5,8 @@ reference for the madspace FKS mappings. These checks only make sure that
 the files are complete and that the conventions the mapping tests rely on
 hold: momenta in the Born partonic c.m. frame, the radiation-only rerun
 reproducing the event, and the counter-events being the expected limits.
+The Born blocks of pyAmpliCol must be the Born of MadFKS and its color-linked
+versions in their conventions.
 """
 
 import glob
@@ -167,3 +169,62 @@ def test_counter_events(data):
                 assert np.allclose(
                     p_coll[spectators], born_as_real[spectators], atol=1e-10 * scale
                 )
+
+
+def sbornsoft_pairs(conf):
+    """The pairs (m, n) of sbornsoft, 1-based in the real process: every
+    unordered pair of the partners of i, a particle with itself where it is
+    massive."""
+    partners = conf["fks_j_from_i"][conf["i_fks"] - 1]
+    return [
+        (m, n)
+        for k, m in enumerate(partners)
+        for n in partners[: k + 1]
+        if m != n or conf["masses"][m - 1] != 0.0
+    ]
+
+
+def test_born_blocks(data):
+    """The Born blocks of pyAmpliCol at the Born of every generated event: the
+    Born of MadFKS (the QCD part of sborn), color-correlated Borns
+    B_mn = <T_m . T_n> B whose sum over n vanishes by color conservation and
+    which are the color-linked Borns of sborn_sf over g^2 (twice those for
+    m = n), and for a gluon emitter the spin-correlated tensor S, transverse
+    to the emitter, with -g_mu,nu S^mu,nu = B, the sum over its physical
+    polarizations."""
+    g2 = data["g"] ** 2
+    assert data["born_blocks"]["alpha_s"] == pytest.approx(g2 / (4 * np.pi), rel=1e-15)
+    born_pdgs = data["fks_configurations"]["born_pdgs"]
+    count = 0
+    for conf in data["configs"]:
+        i_fks, j_fks = conf["i_fks"], conf["j_fks"]
+        born_j = j_fks if j_fks < i_fks else j_fks - 1
+        for point in conf["points"]:
+            assert ("born" in point) == (point["jac"] > 0)
+            if "born" not in point:
+                continue
+            blocks = point["born_blocks"]
+            born = blocks["born"]
+            # the Fortran in double precision, pyAmpliCol in double-double
+            assert born == pytest.approx(point["born"], rel=1e-11)
+            correlated = np.array(blocks["color_correlated"])
+            scale = np.abs(np.diag(correlated)).max()
+            np.testing.assert_allclose(correlated, correlated.T, rtol=0, atol=0)
+            np.testing.assert_allclose(correlated.sum(1), 0, atol=1e-13 * scale)
+            # color links where i is a gluon
+            pairs = sbornsoft_pairs(conf) if conf["pdg"][i_fks - 1] == 21 else []
+            assert len(point["color_links"]) == len(pairs)
+            for (m, n), link in zip(pairs, point["color_links"]):
+                mb, nb = m - (m > i_fks), n - (n > i_fks)
+                expected = correlated[mb - 1, nb - 1] * (0.5 if m == n else 1)
+                assert abs(link / g2 - expected) <= 1e-12 * scale
+            gluon = born_pdgs[born_j - 1] == 21
+            assert ("spin_correlated" in blocks) == gluon
+            if gluon:
+                tensor = np.array(blocks["spin_correlated"])
+                np.testing.assert_allclose(tensor, tensor.T, rtol=0, atol=0)
+                assert -np.trace(METRIC @ tensor) == pytest.approx(born, rel=1e-12)
+                p_j = np.array(point["p_born"][born_j - 1])
+                np.testing.assert_allclose(tensor @ p_j, 0, atol=1e-12 * born * p_j[0])
+            count += 1
+    assert count > 0

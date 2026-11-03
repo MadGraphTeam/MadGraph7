@@ -1,12 +1,16 @@
-"""Reference values of the FKS phase space of MadGraph7's genps_fks.f.
+"""Reference values of the FKS phase space of MadGraph7's genps_fks.f and of
+the subtraction of fks_singular.f.
 
 For every process below, this script generates an
 'output standalone_fortran --fks --limits' directory with MadGraph7, builds
 fks_kinematics_dump.f in its P* directories (linked like test_soft_col_limits)
 and writes the dumped kinematics to madspace/tests/test_data/fks/<name>.json.
-The madspace FKS tests read only the JSON files, so they need no Fortran.
+At the Born of every point it adds the Born and its color-correlated and
+spin-correlated versions from pyAmpliCol (pip install pyamplicol), in the
+conventions that the madspace FKS limits take. The madspace FKS tests read
+only the JSON files, so they need neither Fortran nor pyAmpliCol.
 
-Run from anywhere with a gfortran in the PATH:
+Run from anywhere with a gfortran in the PATH and pyAmpliCol importable:
 
     python madspace/tests/fks_reference/make_fks_reference.py [--points N]
         [--massive M]
@@ -21,14 +25,15 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
 (E, px, py, pz) in the partonic c.m. frame):
 
     process, subprocess, genps_fks_sha (git blob hash of genps_fks.f),
-    nexternal, nincoming, ndim, lpp, ebeam,
+    nexternal, nincoming, ndim, lpp, ebeam, g (the strong coupling of the
+    Fortran), born_blocks (source, alpha_s and top width of the Born blocks),
     subtraction (xicut, xi_s_cut, delta_s, delta_o, delta_i of fks_powers.inc,
     set for some processes away from their defaults, see FKS_POWERS),
     fks_configurations (the fks_configurations.json the FKS exporter writes
     into the P* directory, with its own conventions, see madspace/fks.py)
     configs[]: nfks, i_fks, j_fks, pdg, masses, particle_type,
                particle_charge, fks_j_from_i (the common blocks of the
-               configuration after fks_inc_chooser), points[]
+               configuration after fks_inc_chooser), iden_comp, points[]
     points[]:  x (unit-cube vector, radiation in the last three entries),
                isolsign, jac, jac_cnt (full weight of generate_momenta),
                p_born, p_ev, p_cnt, xi_ev, xi_hat_ev, y_ev, xiimax_ev,
@@ -50,6 +55,15 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
                compute_prefactors_n1body with unit vegas weight),
                fks_symmetry_factor, fks_symmetry_factor_deg, xinorm_ev,
                xinorm_cnt, no_counter_events (where the event is generated),
+               sreal (sreal at the event and at the soft, collinear and
+               soft-collinear counter-events as compute_real_emission and
+               compute_*_counter_term call it, -1 where not generated or, for
+               the collinear ones, j is massive), born (the QCD part of the
+               Born of sborn at p_born) and color_links (sborn_sf for the
+               pairs of sbornsoft, with g^2, empty where i is a quark), both
+               where the event is generated, born_blocks (where the event is
+               generated: born, color_correlated and, for a gluon emitter,
+               spin_correlated of pyAmpliCol at p_born, see born_blocks),
                shat_born, tau_born, ycm_born, xbjrk_born, tau_lower_bound,
                and for prefix in (rad, cut): prefix_jac, prefix_jac_cnt,
                prefix_p_ev, prefix_p_cnt, prefix_xi_ev, prefix_xi_hat_ev,
@@ -71,6 +85,7 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
 import argparse
 import glob
 import json
+import math
 import os
 import re
 import shutil
@@ -303,6 +318,17 @@ def parse(text):
                 )
             )
             data["subtraction"].pop("delta")
+        elif key == "SREAL":
+            point["sreal"] = floats(rest)
+        elif key == "BORN":
+            g, iden_comp, _, born = floats(rest)
+            if data.setdefault("g", g) != g:
+                raise ValueError("g changes from point to point")
+            if conf.setdefault("iden_comp", iden_comp) != iden_comp:
+                raise ValueError("iden_comp changes from point to point")
+            point["born"] = born
+        elif key == "BLINK":
+            point["color_links"] = floats(rest)
         elif key == "BORNX":
             v = floats(rest)
             point.update(shat_born=v[0], tau_born=v[1], ycm_born=v[2])
@@ -312,6 +338,123 @@ def parse(text):
         elif key[:3] in ("RAD", "CUT") and key[3:] in RERUN_KEYS:
             parse_rerun(point, key[:3].lower(), key[3:], rest)
     return data
+
+
+# PDG code -> particle of the built-in Standard Model of pyAmpliCol
+PARTICLES = {1: "d", 2: "u", 3: "s", 4: "c", 5: "b", 6: "t", 11: "e-", 13: "mu-"}
+PARTICLES.update({15: "ta-", 21: "g", 22: "a", 23: "z", 25: "h"})
+
+
+def particle(pdg):
+    if pdg in (21, 22, 23, 25):
+        return PARTICLES[pdg]
+    name = PARTICLES[abs(pdg)]
+    if pdg > 0:
+        return name
+    return name + "~" if abs(pdg) <= 6 else name[:-1] + "+"
+
+
+def colored(pdg):
+    return abs(pdg) <= 6 or pdg == 21
+
+
+def born_runtime(born_pdgs, nincoming, path):
+    """The pyAmpliCol runtime of the Born, with the color correlators of all
+    pairs of colored particles and the spin correlators of every gluon."""
+    import pyamplicol as pa
+    from pyamplicol.config import ColorConfig, RunConfig
+
+    legs = [k + 1 for k, pdg in enumerate(born_pdgs) if colored(pdg)]
+    if not os.path.isdir(path):
+        process = " ".join(particle(pdg) for pdg in born_pdgs[:nincoming])
+        process += " > " + " ".join(particle(pdg) for pdg in born_pdgs[nincoming:])
+        correlators = pa.CorrelatorConfig(
+            color_correlations=tuple(
+                pa.ColorCorrelator.dipole(f"T{a}_{b}", a, b)
+                for k, a in enumerate(legs)
+                for b in legs[k:]
+            ),
+            spin_correlations=tuple(
+                (k + 1,) for k, pdg in enumerate(born_pdgs) if pdg == 21
+            ),
+        )
+        config = RunConfig(action="generate", color=ColorConfig(accuracy="full"))
+        pa.Generator(config).generate(
+            process, path, model=pa.ModelSource.built_in_sm(), correlators=correlators
+        )
+    runtime = pa.Runtime.load(path)
+    if tuple(runtime.external_permutation) != tuple(range(len(born_pdgs))):
+        raise ValueError(f"pyAmpliCol reorders the particles of {born_pdgs}")
+    return runtime, legs
+
+
+def born_blocks(data, path):
+    """The Born at p_born of every point where the event is generated, from
+    pyAmpliCol: the Born B, the color-correlated Borns <T_m . T_n> B of every
+    pair of colored particles (C_m B for m = n, all-outgoing color charges,
+    zero for colorless particles) and, where the emitter of the configuration
+    is a gluon in the Born, the spin-correlated tensor S with
+    B(e) = e^mu e^nu S_mu,nu (contravariant components of e, summed with unit
+    weights) the Born with the real vector e in place of the polarization of
+    the emitter. The parameters are those of the param_card of MadGraph (the
+    defaults of the built-in Standard Model of pyAmpliCol) at the alpha_s of
+    the Fortran, but the top width: MadGraph sets it to zero in t-channel
+    propagators (zerowidth_tchannel), the only ones of the top in these
+    Borns."""
+    import pyamplicol as pa
+
+    configurations = data["fks_configurations"]
+    born_pdgs = configurations["born_pdgs"]
+    runtime, legs = born_runtime(born_pdgs, configurations["nincoming"], path)
+    alpha_s = data["g"] ** 2 / (4 * math.pi)
+    runtime.set_model_parameters(
+        {"normalization.alpha_s_me_check": alpha_s, "particle.6.width": 0.0}
+    )
+    data["born_blocks"] = dict(
+        source=f"pyAmpliCol {pa.package_version()}, built-in Standard Model",
+        alpha_s=alpha_s,
+        top_width=0.0,
+    )
+    n = len(born_pdgs)
+    for conf in data["configs"]:
+        i_fks, j_fks = conf["i_fks"], conf["j_fks"]
+        born_j = j_fks if j_fks < i_fks else j_fks - 1
+        gluon = born_pdgs[born_j - 1] == 21
+        for point in conf["points"]:
+            if "born" not in point:
+                continue
+            requests = {"born": pa.CorrelatedRequest("born", {})}
+            for k, a in enumerate(legs):
+                for b in legs[k:]:
+                    requests[f"T{a}_{b}"] = pa.CorrelatedRequest(f"T{a}_{b}", {})
+            if gluon:
+                # the Born at e = u_mu + u_nu, with the unit vectors u_mu
+                for mu in range(4):
+                    for nu in range(mu, 4):
+                        e = [0.0] * 4
+                        e[mu] = e[nu] = 1.0
+                        requests[f"S{mu}{nu}"] = pa.CorrelatedRequest(
+                            "born", {born_j: tuple(e)}
+                        )
+            values = runtime.evaluate_correlated_many(
+                [point["p_born"]], requests, arithmetic="double-double"
+            )
+            value = {key: float(v[0].real) for key, v in values.items()}
+            correlated = [[0.0] * n for _ in range(n)]
+            for k, a in enumerate(legs):
+                for b in legs[k:]:
+                    correlated[a - 1][b - 1] = value[f"T{a}_{b}"]
+                    correlated[b - 1][a - 1] = value[f"T{a}_{b}"]
+            blocks = dict(born=value["born"], color_correlated=correlated)
+            if gluon:
+                tensor = [[0.0] * 4 for _ in range(4)]
+                for mu in range(4):
+                    for nu in range(4):
+                        diagonal = value[f"S{mu}{mu}"] + value[f"S{nu}{nu}"]
+                        both = value[f"S{min(mu, nu)}{max(mu, nu)}"]
+                        tensor[mu][nu] = both if mu == nu else 0.5 * (both - diagonal)
+                blocks["spin_correlated"] = tensor
+            point["born_blocks"] = blocks
 
 
 def main():
@@ -351,6 +494,7 @@ def main():
             # the FKS configurations as the exporter writes them for madspace
             with open(os.path.join(pdir, "fks_configurations.json")) as f:
                 data["fks_configurations"] = json.load(f)
+            born_blocks(data, os.path.join(work, f"{name}_{sub}_pyamplicol"))
             path = os.path.join(OUT_DIR, f"{name}_{sub}.json")
             with open(path, "w") as f:
                 json.dump(data, f, separators=(",", ":"))

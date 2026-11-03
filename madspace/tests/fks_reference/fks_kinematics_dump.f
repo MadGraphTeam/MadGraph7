@@ -12,7 +12,11 @@ c which runs the full production chain (Born map, FKS radiation,
 c counter-events). The extra points follow in a second pass, so that the
 c first one does not depend on their number. They have y_ij < 0 and xi
 c close to its upper end, where the second solution for the momentum of
-c the emitter (isolsign = -1) is used for part of the range. It then
+c the emitter (isolsign = -1) is used for part of the range. At every
+c point it prints the pieces of the subtraction of fks_singular.f: the
+c sector functions, the factors of the soft and collinear limits, the
+c prefactors, sreal at the event and the counter-events, and the Born
+c with its colour links. It then
 c calls generate_FKS_kinematics again at the same x with xjac0 =
 c xpswgt0 = 1, so that the second set of Jacobians holds the radiation
 c part alone, times compute_flux. Everything is printed with keywords
@@ -122,6 +126,16 @@ c that make_fks_reference.py parses.
       double precision ybst_til_tolab,ybst_til_tocm,sqrtshat,shat
       common/parton_cms_stuff/ybst_til_tolab,ybst_til_tocm,sqrtshat
      &     ,shat
+      include 'orders.inc'
+      complex*16 ans_cnt(2,nsplitorders)
+      common /c_born_cnt/ans_cnt
+      double precision iden_comp
+      common /c_iden_comp/iden_comp
+      logical need_color_links,need_charge_links
+      common /c_need_links/need_color_links,need_charge_links
+      double precision fx(4),born_wgt,blink(nexternal*nexternal)
+      logical calculatedBorn
+      common/ccalculatedBorn/calculatedBorn
       character*24 fmt
       parameter (fmt='(a,1x,*(es25.17e3,1x))')
 
@@ -317,6 +331,58 @@ c (nocntevents as 1 or 0), where the event is generated
      &              ,4),fkssymmetryfactor,fkssymmetryfactorDeg,xinorm_ev
      &              ,(xinorm_cnt(k),k=-2,2),xicut_used,xiScut_used
      &              ,delta_used,deltaS,deltaO,deltaI,s_ev
+            endif
+c The reduced matrix elements of sreal at the event and at the soft,
+c collinear and soft-collinear counter-events, with the arguments of
+c compute_real_emission and compute_*_counter_term (-1 where the momenta
+c are not generated, and for the collinear ones of a massive emitter).
+c As in driver_mintFO.f, the Born is computed anew at every point.
+            calculatedBorn=.false.
+            do k=1,4
+               fx(k)=-1d0
+            enddo
+            if (jac_full.gt.0d0) then
+               call set_cms_stuff(-100)
+               call sreal(p,xi_i_fks_ev,y_ij_fks_ev,fx(1))
+               if (jac_full_cnt(0).gt.0d0) then
+                  call set_cms_stuff(0)
+                  call sreal(p1_cnt(0,1,0),0d0,y_ij_fks_ev,fx(2))
+               endif
+               if (jac_full_cnt(1).gt.0d0.and.emass(j_fks).eq.0d0) then
+                  call set_cms_stuff(1)
+                  call sreal(p1_cnt(0,1,1),xi_i_fks_cnt(1),1d0,fx(3))
+               endif
+               if (jac_full_cnt(2).gt.0d0.and.emass(j_fks).eq.0d0) then
+                  call set_cms_stuff(2)
+                  call sreal(p1_cnt(0,1,2),0d0,1d0,fx(4))
+               endif
+            endif
+            write (*,fmt) 'SREAL',(fx(k),k=1,4)
+c The Born at p_born as sbornsoft and sborncol_fsr call it (the QCD part
+c of the counterterms, ans_cnt(1,qcd_pos), and the sum over the split
+c orders), the colour-linked Borns of sborn_sf for the pairs of
+c sbornsoft in its order (with g^2, where i has colour links), g and
+c iden_comp, where the event is generated
+            if (jac_full.gt.0d0) then
+               call sborn_frame(p_born,born_wgt)
+               write (*,fmt) 'BORN',g,iden_comp,born_wgt
+     &              ,dble(ans_cnt(1,qcd_pos))
+               neik=0
+               if (need_color_links) then
+                  do k=1,fks_j_from_i(i_fks,0)
+                     do j=1,k
+                        mm=fks_j_from_i(i_fks,k)
+                        nn=fks_j_from_i(i_fks,j)
+                        if ((mm.ne.nn .or. emass(mm).ne.0d0) .and.
+     &                       nn.ne.i_fks .and. mm.ne.i_fks) then
+                           neik=neik+1
+                           call sborn_frame(p_born,born_wgt)
+                           call sborn_sf_frame(p_born,mm,nn,blink(neik))
+                        endif
+                     enddo
+                  enddo
+               endif
+               write (*,fmt) 'BLINK',(blink(k),k=1,neik)
             endif
 c Radiation part alone: rerun generate_FKS_kinematics on the Born of the
 c point with unit Born weights, once with the lower bound on the partonic
