@@ -10,10 +10,15 @@ combination of vocabulary colours, e.g. the trace of four adjoint generators
 ``f*f`` and ``Identity*Identity`` pairings of its four adjoint legs.
 
 ``vocabulary_colours`` finds that combination by exact orthogonal projection
-onto candidate products of two adjoint tensors (``f*f``, ``Identity*Identity``,
-``d*d``, ``d*f``, ``f*d`` over every pairing of the adjoint legs) that the tree
+onto candidate colours built from the vocabulary's primitive adjoint tensors
+(``Identity``, ``f``, ``d``): every product of at most two of them (the
+vocabulary's colours have at most two factors) whose open indices are the
+adjoint legs, each once, with at most one summed index -- one primitive on
+all legs (``f(a,b,c)``), two sharing a summed index (``f(-1,a,b)*d(-1,c,d)``)
+or two disjoint ones (``Identity(a,b)*Identity(c,d)``) -- that the tree
 vocabulary admits on the vertex's legs (``tree_colour_source`` decides, so the
-candidates follow the tree compiler, never a leg count): every colour is
+candidates follow the primitives' arities and the tree compiler, never a leg
+count): every colour is
 reduced by the engine's colour algebra to tau traces of its legs
 (``ct_sites.ufo_colour_network``, SU(N_c) Fierz in ``colour.reduce_network``)
 and every overlap is their full contraction (``colour.contract_colour``) at
@@ -31,7 +36,8 @@ use it.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import itertools
+from collections.abc import Iterator, Sequence
 from fractions import Fraction
 from functools import lru_cache
 
@@ -44,13 +50,22 @@ from pyamplicol.color.contraction_types import NC
 
 from .colour import ColourNetwork, contract_colour, reduce_network
 
-# The candidate products, in the order the independent set is kept.
+# The vocabulary's primitive adjoint tensors and their numbers of indices.
+_ARITY = {"f": 3, "Identity": 2, "d": 3}
+# Products of two primitives, in the order the independent set is kept: f*f
+# first, then the identities, then the d-symbol forms (the kept set prefers
+# the forms every contact lowering carries). The first factor holds the first
+# adjoint leg, so (d, f) and (f, d) are different candidates.
 _PRODUCTS = (
     ("f", "f"),
     ("Identity", "Identity"),
     ("d", "d"),
     ("d", "f"),
     ("f", "d"),
+    ("Identity", "f"),
+    ("f", "Identity"),
+    ("Identity", "d"),
+    ("d", "Identity"),
 )
 
 
@@ -88,11 +103,37 @@ def _overlap(
     return total.real, total.imag
 
 
+def _forms(adjoint: Sequence[int]) -> Iterator[str]:
+    """The candidate colours on the adjoint legs (module docstring): one
+    primitive on every leg, or two primitives sharing one summed index or
+    none. ``Identity`` never shares a summed index (``Identity(-1,a)*X(-1,..)``
+    is ``X(a,..)``), and no pair shares two (a multiple of an ``Identity``)."""
+
+    if not adjoint:
+        return
+    first, rest = adjoint[0], tuple(adjoint[1:])
+    for head, arity in _ARITY.items():
+        if arity == len(adjoint):
+            yield f"{head}({','.join(map(str, adjoint))})"
+    for left, right in _PRODUCTS:
+        for summed in (1, 0):
+            if summed and "Identity" in (left, right):
+                continue
+            size = _ARITY[left] - summed
+            if size + _ARITY[right] - summed != len(adjoint):
+                continue
+            prefix = ("-1",) if summed else ()
+            for others in itertools.combinations(rest, size - 1):
+                lhs = (*prefix, *map(str, (first, *others)))
+                rhs = (*prefix, *(str(leg) for leg in rest if leg not in others))
+                yield f"{left}({','.join(lhs)})*{right}({','.join(rhs)})"
+
+
 def _candidates(
     representations: tuple[int, ...], multi_trace: bool
 ) -> tuple[str, ...]:
-    """Products of two adjoint tensors over the pairings of the adjoint legs
-    that the tree vocabulary admits on these legs."""
+    """The candidate colours (``_forms``) the tree vocabulary admits on
+    these legs."""
 
     from pyamplicol.models.ct_color_flow import (
         UnloweredCountertermColour,
@@ -100,28 +141,13 @@ def _candidates(
     )
 
     adjoint = [leg for leg, value in enumerate(representations, 1) if value == 8]
-    if len(adjoint) != 4:
-        return ()
-    first = adjoint[0]
-    pairings = []
-    for partner in adjoint[1:]:
-        pair = (first, partner)
-        other = tuple(leg for leg in adjoint if leg not in pair)
-        pairings.append((pair, other))
     out = []
-    # f*f first, then the identities, then the d-symbol forms: the kept
-    # independent set prefers the forms every contact lowering carries.
-    for left_head, right_head in _PRODUCTS:
-        for (a, b), (c, d) in pairings:
-            if left_head == "Identity":
-                text = f"Identity({a},{b})*Identity({c},{d})"
-            else:
-                text = f"{left_head}(-1,{a},{b})*{right_head}(-1,{c},{d})"
-            try:
-                tree_colour_source(text, representations, multi_trace=multi_trace)
-            except UnloweredCountertermColour:
-                continue
-            out.append(text)
+    for text in _forms(adjoint):
+        try:
+            tree_colour_source(text, representations, multi_trace=multi_trace)
+        except UnloweredCountertermColour:
+            continue
+        out.append(text)
     return tuple(out)
 
 

@@ -61,9 +61,10 @@ Born x CT interference directly; no CT tree and no site is listed:
   d·f and δδ colours of the four-gluon and gggV R2 (``models.ct_color_flow``)
   and the whole-rule colour continuations (``whole_rule_rows``) are lowered,
   and so is a colour outside that vocabulary which is an exact combination
-  of its adjoint pairings at N_c = 3 (``ct_colour_projection``, e.g. the
+  of vocabulary colours on its adjoint legs at N_c = 3
+  (``ct_colour_projection``, e.g. the
   ring of four structure constants of HC_NLO_X0's [G G G G X0] R2; not
-  under a formal-N_c continuation): its vertex terms take the pairings'
+  under a formal-N_c continuation): its vertex terms take those
   colours with the exact factors (``TreeVocabulary.colour_terms``);
   without it (the tree-route form kept as a test of the lowering) they stay
   residual, as the tree runtime has no multi-trace colour sectors.
@@ -268,7 +269,8 @@ class TreeVocabulary:
     (``models.ct_color_flow``), which only loop-request blocks carry.
     ``projected`` (with ``multi_trace``; requests without a formal-N_c
     continuation) also lowers a colour outside the vocabulary that is an exact
-    combination of its adjoint pairings at N_c = 3 (``colour_terms``).
+    combination of vocabulary colours on its adjoint legs at N_c = 3
+    (``colour_terms``).
     """
 
     def __init__(
@@ -293,8 +295,8 @@ class TreeVocabulary:
     def colour_terms(self, entry: Any) -> tuple[tuple[str, Any], ...] | None:
         """The vocabulary colours of ``entry`` with their exact factors:
         its own colour (factor ``None``) when the tree compiler lowers it,
-        else (``projected``) its exact projection onto the adjoint pairings
-        the vocabulary admits on its legs (``ct_colour_projection``); ``None``
+        else (``projected``) its exact projection onto the vocabulary colours
+        of its adjoint legs (``ct_colour_projection``); ``None``
         when it has neither."""
 
         representations = tuple(

@@ -235,11 +235,7 @@ def _adjoint_identities(
         return False
     legs = sorted(index for factor in tensors for index in factor.args)
     adjoint = [leg for leg, value in enumerate(representations, 1) if value == 8]
-    return (
-        legs == adjoint
-        and len(adjoint) == 4
-        and all(value in (1, 8) for value in representations)
-    )
+    return legs == adjoint and all(value in (1, 8) for value in representations)
 
 
 def _quartic_structure_constants(tensors: Sequence[_Factor]) -> bool:

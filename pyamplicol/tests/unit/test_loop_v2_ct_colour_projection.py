@@ -179,6 +179,35 @@ def test_colours_without_a_vocabulary_form_are_not_projected(projection):
 
 
 @pytest.mark.loop_fast
+@pytest.mark.parametrize(
+    ("source", "representations", "expected"),
+    [
+        # tr(T^a T^b T^c) = (d^abc + i f^abc) / 4
+        ("Tr(1,2,3)", (8, 8, 8), [("f(1,2,3)", 0, Fraction(1, 4)), ("d(1,2,3)", Fraction(1, 4), 0)]),
+        ("Tr(3,2,1)", (8, 8, 8, 1), [("f(1,2,3)", 0, Fraction(-1, 4)), ("d(1,2,3)", Fraction(1, 4), 0)]),
+        ("f(1,2,-1)*Tr(-1,3)", (8, 8, 8), [("f(1,2,3)", Fraction(1, 2), 0)]),
+        # f^acd f^bdc = -N delta^ab, d^acd d^bcd = (N^2 - 4)/N delta^ab
+        ("f(1,-1,-2)*f(2,-2,-1)", (8, 8, 1), [("Identity(1,2)", -3, 0)]),
+        ("d(1,-1,-2)*d(2,-1,-2)", (8, 8), [("Identity(1,2)", Fraction(5, 3), 0)]),
+    ],
+)
+def test_colours_on_two_or_three_adjoint_legs_project_onto_one_primitive(
+    projection, source, representations, expected
+):
+    """The candidates follow the primitives' arities, not a leg count: on
+    two or three adjoint legs they are the single primitives the vocabulary
+    admits; five adjoint legs admit no candidate (no vocabulary colour has
+    three factors or an Identity times a structure constant)."""
+
+    found = projection.vocabulary_colours(source, representations)
+    assert [(c, x.real, x.imag) for c, x in found] == expected
+    legs = representations.count(8)
+    assert np.abs(_recombined(found, legs) - _tensor(source, legs)).max() < 1e-12
+    assert projection.vocabulary_colours("Tr(1,2,3,4,5)", (8,) * 5) is None
+    assert projection.vocabulary_colours("Tr(1,2,3,4,5)", (8,) * 5 + (1,)) is None
+
+
+@pytest.mark.loop_fast
 def test_identity_pairs_with_singlet_legs_are_in_the_multi_trace_vocabulary():
     from pyamplicol.models.ct_color_flow import (
         UnloweredCountertermColour,
