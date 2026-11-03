@@ -57,6 +57,34 @@ struct FKSConfiguration {
     bool initial_state() const { return j_fks < 2; }
     /// Position of the emitter in the Born.
     std::size_t born_j_fks() const { return j_fks < i_fks ? j_fks : j_fks - 1; }
+    /**
+     * PDG codes of the Born: the real process without i, with the mother
+     * i + j at the position of j. For a gluon or photon i the mother is j, for
+     * a final-state quark (or lepton) pair the gluon (or photon) it comes
+     * from, and for a final-state i off an incoming j of the same flavor the
+     * gluon (or photon) that enters the Born, else the antiparticle of i.
+     *
+     * @throws std::invalid_argument if i and j come from no splitting.
+     */
+    std::vector<int> born_pdgs() const;
+    /**
+     * Number of FKS pairs of the real process that the configuration stands
+     * for, by the symmetry of identical final-state particles:
+     * @f$f_i f_j@f$ with @f$f_i@f$ the number of final-state particles of the
+     * flavor of i and @f$f_j@f$ that of j, i excluded, or 1 for an incoming
+     * j (fkssymmetryfactor of setfksfactor in fks_singular.f [3]).
+     */
+    double symmetry_factor() const;
+    /**
+     * Ratio of the identical-particle factors of the final states of the Born
+     * and of the real process, by which the Born and its correlated versions
+     * enter the soft and collinear limits of the real matrix element
+     * (iden_comp of setfksfactor in fks_singular.f [3]). Each factor is the
+     * product of @f$k!@f$ over the flavors of @f$k@f$ final-state particles.
+     *
+     * @throws std::invalid_argument as born_pdgs().
+     */
+    double identical_particle_ratio() const;
 };
 
 /**

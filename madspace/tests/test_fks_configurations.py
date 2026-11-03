@@ -158,6 +158,58 @@ def test_fks_configurations_of_the_exporter(path):
         assert data["fks_configurations"]["born_pdgs"][born_j] == exp["ij_pdg"]
 
 
+@pytest.mark.parametrize("path", DATA, ids=[os.path.basename(p)[:-5] for p in DATA])
+def test_symmetry_factors_of_the_fortran(path):
+    """The Born of each configuration is that of the exporter, and its
+    symmetry factor and identical-particle ratio are fkssymmetryfactor and
+    iden_comp of setfksfactor (fks_singular.f) for the real emission."""
+    data = reference(path)
+    configurations = fks_configurations(born_mapping(data), data["fks_configurations"])
+    for config, conf in zip(configurations, data["configs"]):
+        assert config.born_pdgs() == data["fks_configurations"]["born_pdgs"]
+        assert config.identical_particle_ratio() == conf["iden_comp"]
+        factors = {
+            p["fks_symmetry_factor"] for p in conf["points"] if "prefactors" in p
+        }
+        factors |= {
+            p["fks_symmetry_factor_deg"] for p in conf["points"] if "prefactors" in p
+        }
+        assert factors == {config.symmetry_factor()}
+
+
+def test_born_of_splittings():
+    """The mother of i and j: j for a gluon i, a gluon for a final-state quark
+    pair or for a quark off an incoming quark, the antiquark of i off an
+    incoming gluon, and no Born for other pairs."""
+
+    def born(pdgs, i_fks, j_fks):
+        colors = [8 if p == 21 else (3 if p > 0 else -3) for p in pdgs]
+        n = len(pdgs)
+        pairs = [[] for _ in range(n)]
+        pairs[i_fks] = [j_fks]
+        return ms.FKSConfiguration(
+            i_fks=i_fks,
+            j_fks=j_fks,
+            pdgs=pdgs,
+            colors=colors,
+            charges=[0.0] * n,
+            masses=[0.0] * n,
+            fks_j_from_i=pairs,
+        ).born_pdgs()
+
+    assert born([2, -2, 2, -2, 21], 4, 0) == [2, -2, 2, -2]
+    assert born([2, -2, 21, 2, -2], 4, 3) == [2, -2, 21, 21]
+    assert born([2, -2, 21, 21, 2], 4, 0) == [21, -2, 21, 21]
+    assert born([21, -2, 21, 21, 2], 4, 0) == [-2, -2, 21, 21]
+    for pdgs, i_fks, j_fks in [
+        ([2, -2, 21, 2, 2], 4, 3),
+        ([2, -2, 21, 21, 2], 4, 1),
+        ([2, -2, 21, 2, -1], 4, 3),
+    ]:
+        with pytest.raises(ValueError, match="splitting"):
+            born(pdgs, i_fks, j_fks)
+
+
 def test_configuration_mapping_from_configurations():
     """FKSConfigurationMapping from FKSConfigurations is the one from their
     (i_fks, j_fks), and checks that they have the masses of the Born

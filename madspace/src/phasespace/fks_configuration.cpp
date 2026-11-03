@@ -5,6 +5,71 @@
 
 using namespace madspace;
 
+namespace {
+
+constexpr std::size_t INCOMING_COUNT = 2;
+
+// product of k! over the flavors of k particles
+double identical_factor(std::vector<int> pdgs) {
+    std::sort(pdgs.begin(), pdgs.end());
+    double factor = 1.;
+    std::size_t run = 1;
+    for (std::size_t k = 1; k < pdgs.size(); ++k) {
+        run = pdgs.at(k) == pdgs.at(k - 1) ? run + 1 : 1;
+        factor *= static_cast<double>(run);
+    }
+    return factor;
+}
+
+} // namespace
+
+std::vector<int> FKSConfiguration::born_pdgs() const {
+    int pdg_i = pdgs.at(i_fks), pdg_j = pdgs.at(j_fks);
+    // the gauge boson a pair of i and j of opposite flavors comes from
+    int boson = colors.at(i_fks) != 1 ? 21 : 22;
+    int mother;
+    if (pdg_i == 21 || pdg_i == 22) {
+        mother = pdg_j;
+    } else if (!initial_state() && pdg_j == -pdg_i) {
+        mother = boson;
+    } else if (initial_state() && pdg_j == pdg_i) {
+        mother = boson;
+    } else if (initial_state() && (pdg_j == 21 || pdg_j == 22)) {
+        mother = -pdg_i;
+    } else {
+        throw std::invalid_argument(
+            "FKSConfiguration: i_fks and j_fks do not come from a splitting"
+        );
+    }
+    std::vector<int> born;
+    for (std::size_t k = 0; k < pdgs.size(); ++k) {
+        if (k != i_fks) {
+            born.push_back(k == j_fks ? mother : pdgs.at(k));
+        }
+    }
+    return born;
+}
+
+double FKSConfiguration::symmetry_factor() const {
+    auto final_count = [&](int pdg) {
+        return static_cast<double>(
+            std::count(pdgs.begin() + INCOMING_COUNT, pdgs.end(), pdg)
+        );
+    };
+    int pdg_i = pdgs.at(i_fks), pdg_j = pdgs.at(j_fks);
+    double f_j = 1.;
+    if (!initial_state()) {
+        f_j = final_count(pdg_j) - (pdg_i == pdg_j ? 1. : 0.);
+    }
+    return final_count(pdg_i) * f_j;
+}
+
+double FKSConfiguration::identical_particle_ratio() const {
+    auto born = born_pdgs();
+    return identical_factor({born.begin() + INCOMING_COUNT, born.end()}) /
+        identical_factor({pdgs.begin() + INCOMING_COUNT, pdgs.end()});
+}
+
 std::size_t madspace::check_fks_configurations(
     const std::vector<FKSConfiguration>& configurations, const std::string& user
 ) {

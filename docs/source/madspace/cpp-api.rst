@@ -53,9 +53,11 @@ Builders that assemble compute-graph functions for channel weights, energy scale
    cpp/EnergyScale
    cpp/FKSEikonals
    cpp/FKSKinematics
+   cpp/FKSLimits
    cpp/FKSPrefactors
    cpp/FKSSectorFunction
    cpp/FKSSplittingKernels
+   cpp/FKSSubtraction
    cpp/FunctionGenerator
    cpp/GradientClipper
    cpp/Integrand

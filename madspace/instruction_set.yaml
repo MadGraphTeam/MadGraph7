@@ -3017,6 +3017,138 @@ fks_prefactors:
   vectorized: False
   desc: "The prefactors f_r, f_s, f_c, f_dc, f_sc and f_dsc of compute_prefactors_n1body in fks_singular.f, the plus distributions in xi and 1 - y with xicut, xiScut, delta and deltaS, for the Jacobians of the events and counter-events without the factor xi and without the symmetry factors: f_r = 1 / (xi (1 - y)) and f_s = (1 / xi + log(xicut / xi_l) / xi_l) / (1 - y) with xi_l = min(xi_max, xiScut), the collinear ones with xi and xi_max of the collinear counter-event and 32 pi^2 / s for the remnants, zero for a massive emitter."
 
+fks_soft_limit:
+  inputs:
+    - name: eik
+      type: [float, k]
+      desc: "reduced eikonal factors of the pairs of the configuration at the soft counter-event"
+    - name: color_correlated
+      type: [float, m, m]
+      desc: "color-correlated Borns <T_a . T_b> B of the particles a, b of the Born (C_a B for a = b)"
+    - name: alpha_s
+      type: [float]
+      desc: "strong coupling"
+    - name: index
+      type: [int]
+      desc: "FKS configuration of the event"
+    - name: pair_count
+      type: [int, single, c]
+      desc: "number of pairs of each configuration, zero without a soft limit"
+    - name: pair_m
+      type: [int, single, c, k]
+      desc: "position of m of each pair in the Born"
+    - name: pair_n
+      type: [int, single, c, k]
+      desc: "position of n of each pair in the Born"
+    - name: pair_factor
+      type: [float, single, c, k]
+      desc: "factor of each pair, -2 times the identical-particle ratio of the configuration, half that for a particle with itself"
+  outputs:
+    - name: soft
+      type: [float]
+      desc: "soft limit of xi^2 (1 - y) times the real matrix element"
+  vectorized: False
+  desc: "Soft limit of xi^2 (1 - y) times the real matrix element, as sbornsoft in fks_singular.f: 4 pi alpha_s sum_(m, n) f_mn E_mn <T_m . T_n> B over the pairs of the configuration of the event, with the reduced eikonal factors E_mn and f_mn = -2 iden_comp, half that for m = n (whose color-linked Born of MadFKS has a factor 1/2)."
+
+fks_collinear_limit:
+  inputs:
+    - name: born
+      type: [float]
+      desc: "the Born"
+    - name: spin_correlated
+      type: [float]
+      desc: "the Born with the polarization vector of the emitter replaced by k_perp"
+    - name: ap
+      type: [float, 2]
+      desc: "QCD and QED Altarelli-Parisi kernels at the counter-event, without the couplings"
+    - name: q
+      type: [float, 2]
+      desc: "QCD and QED azimuthal terms at the counter-event, without the couplings"
+    - name: alpha_s
+      type: [float]
+      desc: "strong coupling"
+    - name: index
+      type: [int]
+      desc: "FKS configuration of the event"
+    - name: factor
+      type: [float, single, c]
+      desc: "identical-particle ratio of each configuration, zero without a collinear limit"
+  outputs:
+    - name: collinear
+      type: [float]
+      desc: "collinear limit of xi^2 (1 - y) times the real matrix element"
+  vectorized: False
+  desc: "Collinear limit of xi^2 (1 - y) times the real matrix element, as sborncol_fsr and sborncol_isr in fks_singular.f: 4 pi alpha_s iden_comp (AP B + Q (B / 2 - B_kperp)) with the QCD kernels, where B_kperp, the Born with the polarization vector of the emitter replaced by k_perp, enters only where Q is not zero."
+
+fks_subtraction:
+  inputs:
+    - name: real
+      type: [float]
+      desc: "real matrix element times the sector function at the event"
+    - name: soft
+      type: [float]
+      desc: "soft limit times the sector function and the prefactor f_s at the soft counter-event"
+    - name: collinear
+      type: [float]
+      desc: "collinear limit times the sector function and the prefactor f_c at the collinear counter-event"
+    - name: soft_collinear
+      type: [float]
+      desc: "collinear limit times the sector function and the prefactor f_sc at the soft-collinear counter-event"
+    - name: xi
+      type: [float]
+      desc: "xi of the event"
+    - name: xi_hat
+      type: [float]
+      desc: "xi of the event over the upper end of its range"
+    - name: y
+      type: [float]
+      desc: "y of the event"
+    - name: xi_max_s
+      type: [float]
+      desc: "upper end of the range of xi at the soft counter-event"
+    - name: xi_c
+      type: [float]
+      desc: "xi of the collinear counter-event"
+    - name: xi_max_c
+      type: [float]
+      desc: "upper end of the range of xi at the collinear counter-event"
+    - name: weight
+      type: [float]
+      desc: "weight of the event, zero where it is not generated"
+    - name: det_s
+      type: [float]
+      desc: "Jacobian of the soft counter-event, zero where it is not generated"
+    - name: det_c
+      type: [float]
+      desc: "Jacobian of the collinear counter-event, zero where it is not generated"
+    - name: det_sc
+      type: [float]
+      desc: "Jacobian of the soft-collinear counter-event, zero where it is not generated"
+    - name: index
+      type: [int]
+      desc: "FKS configuration of the event"
+    - name: symmetry
+      type: [float, single, c]
+      desc: "symmetry factor of each configuration"
+    - name: options
+      type: [float, single, 2]
+      desc: "xiScut and deltaS of fks_powers.inc"
+  outputs:
+    - name: real_out
+      type: [float]
+      desc: "contribution of the real emission, per unit weight of the event"
+    - name: soft_out
+      type: [float]
+      desc: "contribution of the soft counterterm, per unit Jacobian of its counter-event"
+    - name: collinear_out
+      type: [float]
+      desc: "contribution of the collinear counterterm, per unit Jacobian of its counter-event"
+    - name: soft_collinear_out
+      type: [float]
+      desc: "contribution of the soft-collinear counterterm, per unit Jacobian of its counter-event"
+  vectorized: False
+  desc: "The real emission and its FKS counterterms with their signs, symmetry factors and conditions, as compute_real_emission and compute_soft_counter_term and its siblings in fks_singular.f without the collinear remnants: the soft counterterm where xi_hat xi_max_s <= xiScut and xi <= xiScut, the collinear one where y > 1 - deltaS, the soft-collinear one where both xi_hat xi_max_c and xi_c are below xiScut and y > 1 - deltaS, each zero where its momenta are not generated."
+
 ---
 title: Invariants
 

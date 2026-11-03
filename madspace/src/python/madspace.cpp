@@ -1074,6 +1074,21 @@ PYBIND11_MODULE(_madspace_py, m) {
             "born_j_fks",
             &FKSConfiguration::born_j_fks,
             pydoc::doc("FKSConfiguration::born_j_fks")
+        )
+        .def(
+            "born_pdgs",
+            &FKSConfiguration::born_pdgs,
+            pydoc::doc("FKSConfiguration::born_pdgs")
+        )
+        .def(
+            "symmetry_factor",
+            &FKSConfiguration::symmetry_factor,
+            pydoc::doc("FKSConfiguration::symmetry_factor")
+        )
+        .def(
+            "identical_particle_ratio",
+            &FKSConfiguration::identical_particle_ratio,
+            pydoc::doc("FKSConfiguration::identical_particle_ratio")
         );
 
     py::classh<FKSRadiation, Mapping>(m, "FKSRadiation", pydoc::doc("FKSRadiation"))
@@ -1867,6 +1882,36 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("FKSSplittingKernels::factors")
         );
 
+    py::classh<FKSLimits, FunctionGenerator>(m, "FKSLimits", pydoc::doc("FKSLimits"))
+        .def(
+            py::init<const std::vector<FKSConfiguration>&>(),
+            py::arg("configurations"),
+            pydoc::doc("FKSLimits::FKSLimits")
+        )
+        .def(
+            "configuration_count",
+            &FKSLimits::configuration_count,
+            pydoc::doc("FKSLimits::configuration_count")
+        )
+        .def(
+            "particle_count",
+            &FKSLimits::particle_count,
+            pydoc::doc("FKSLimits::particle_count")
+        )
+        .def("soft", &FKSLimits::soft, py::arg("index"), pydoc::doc("FKSLimits::soft"))
+        .def(
+            "collinear",
+            &FKSLimits::collinear,
+            py::arg("index"),
+            pydoc::doc("FKSLimits::collinear")
+        )
+        .def("eikonals", &FKSLimits::eikonals, pydoc::doc("FKSLimits::eikonals"))
+        .def(
+            "splitting_kernels",
+            &FKSLimits::splitting_kernels,
+            pydoc::doc("FKSLimits::splitting_kernels")
+        );
+
     py::classh<FKSPrefactors, FunctionGenerator>(
         m, "FKSPrefactors", pydoc::doc("FKSPrefactors")
     )
@@ -1933,6 +1978,59 @@ PYBIND11_MODULE(_madspace_py, m) {
             &FKSSectorFunction::pairs,
             py::arg("index"),
             pydoc::doc("FKSSectorFunction::pairs")
+        );
+
+    py::classh<FKSSubtraction, FunctionGenerator>(
+        m, "FKSSubtraction", pydoc::doc("FKSSubtraction")
+    )
+        .def(
+            py::init<
+                const std::vector<FKSConfiguration>&,
+                double,
+                double,
+                double,
+                double,
+                double,
+                double,
+                double,
+                bool,
+                bool,
+                double,
+                double>(),
+            py::arg("configurations"),
+            py::arg("xicut") = 0.5,
+            py::arg("xi_s_cut") = 0.5,
+            py::arg("delta_o") = 1.,
+            py::arg("delta_i") = 1.,
+            py::arg("delta_s") = 1.,
+            py::arg("fks_a") = 1.5,
+            py::arg("fks_b") = 1.5,
+            py::arg("use_energy") = true,
+            py::arg("use_beta") = true,
+            py::arg("h_damp_one") = 0.01,
+            py::arg("h_damp_power") = 1.,
+            pydoc::doc("FKSSubtraction::FKSSubtraction")
+        )
+        .def(
+            "configuration_count",
+            &FKSSubtraction::configuration_count,
+            pydoc::doc("FKSSubtraction::configuration_count")
+        )
+        .def(
+            "particle_count",
+            &FKSSubtraction::particle_count,
+            pydoc::doc("FKSSubtraction::particle_count")
+        )
+        .def(
+            "sector_function",
+            &FKSSubtraction::sector_function,
+            pydoc::doc("FKSSubtraction::sector_function")
+        )
+        .def("limits", &FKSSubtraction::limits, pydoc::doc("FKSSubtraction::limits"))
+        .def(
+            "prefactors",
+            &FKSSubtraction::prefactors,
+            pydoc::doc("FKSSubtraction::prefactors")
         );
 
     py::classh<MultiChannelFunction, FunctionGenerator>(

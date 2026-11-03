@@ -474,5 +474,113 @@ KERNELSPEC void kernel_fks_prefactors(
     f_dsc[3] = g * (1. / x_c + l_xi / xi_lim_c);
 }
 
+// The soft limit of xi^2 (1 - y) times the real matrix element of sbornsoft
+// (fks_singular.f): 4 pi alpha_s sum_(m, n) f_mn E_mn <T_m . T_n> B over the
+// pairs of the configuration, positions in the Born, with f_mn = -2 iden_comp
+// and half that for m = n (the color-linked Born of a particle with itself has
+// a factor 1/2 in MadFKS). A configuration without a soft limit has no pairs.
+template <typename T>
+KERNELSPEC void kernel_fks_soft_limit(
+    FIn<T, 1> eik,
+    FIn<T, 2> color_correlated,
+    FIn<T, 0> alpha_s,
+    IIn<T, 0> index,
+    IIn<T, 1> pair_count,
+    IIn<T, 2> pair_m,
+    IIn<T, 2> pair_n,
+    FIn<T, 2> pair_factor,
+    FOut<T, 0> soft
+) {
+    constexpr double pi = 3.14159265358979323846;
+    std::size_t c = single_index(index);
+    std::size_t count = single_index(pair_count[c]);
+    FVal<T> sum = 0.;
+    for (std::size_t k = 0; k < count; ++k) {
+        std::size_t m = single_index(pair_m[c][k]), n = single_index(pair_n[c][k]);
+        FVal<T> factor = pair_factor[c][k], e = eik[k], b = color_correlated[m][n];
+        sum = sum + factor * e * b;
+    }
+    soft = 4. * pi * FVal<T>(alpha_s) * sum;
+}
+
+// The collinear limit of xi^2 (1 - y) times the real matrix element of
+// sborncol_fsr and sborncol_isr (fks_singular.f) from the QCD kernels:
+// 4 pi alpha_s iden_comp (AP B + Q (B / 2 - B_kperp)), with the Born B_kperp
+// whose emitter has the polarization vector k_perp. In MadFKS the Born that Q
+// multiplies is the helicity-flipped Born times a phase of the azimuth of the
+// emission, which is B / 2 - B_kperp. B_kperp enters only where Q is not zero.
+template <typename T>
+KERNELSPEC void kernel_fks_collinear_limit(
+    FIn<T, 0> born,
+    FIn<T, 0> spin_correlated,
+    FIn<T, 1> ap,
+    FIn<T, 1> q,
+    FIn<T, 0> alpha_s,
+    IIn<T, 0> index,
+    FIn<T, 1> factor,
+    FOut<T, 0> collinear
+) {
+    constexpr double pi = 3.14159265358979323846;
+    std::size_t c = single_index(index);
+    FVal<T> f = factor[c];
+    if (f == 0.) {
+        // no collinear limit (a massive emitter)
+        collinear = 0.;
+        return;
+    }
+    FVal<T> b = born, kernel = ap[0], azimuthal = q[0];
+    FVal<T> value = kernel * b;
+    if (azimuthal != 0.) {
+        value = value + azimuthal * (0.5 * b - FVal<T>(spin_correlated));
+    }
+    collinear = 4. * pi * FVal<T>(alpha_s) * f * value;
+}
+
+// The real emission and its counterterms of compute_real_emission and
+// compute_soft_counter_term and its siblings (fks_singular.f) without the
+// collinear remnants, from the products of the matrix element and its limits
+// with the sector functions and prefactors: signs, symmetry factors and the
+// conditions of each counterterm (options = xiScut, deltaS), zero where its
+// momenta are not generated.
+template <typename T>
+KERNELSPEC void kernel_fks_subtraction(
+    FIn<T, 0> real,
+    FIn<T, 0> soft,
+    FIn<T, 0> collinear,
+    FIn<T, 0> soft_collinear,
+    FIn<T, 0> xi,
+    FIn<T, 0> xi_hat,
+    FIn<T, 0> y,
+    FIn<T, 0> xi_max_s,
+    FIn<T, 0> xi_c,
+    FIn<T, 0> xi_max_c,
+    FIn<T, 0> weight,
+    FIn<T, 0> det_s,
+    FIn<T, 0> det_c,
+    FIn<T, 0> det_sc,
+    IIn<T, 0> index,
+    FIn<T, 1> symmetry,
+    FIn<T, 1> options,
+    FOut<T, 0> real_out,
+    FOut<T, 0> soft_out,
+    FOut<T, 0> collinear_out,
+    FOut<T, 0> soft_collinear_out
+) {
+    std::size_t c = single_index(index);
+    FVal<T> sym = symmetry[c], xi_s_cut = options[0], delta_s = options[1];
+    FVal<T> x = xi, x_hat = xi_hat, x_c = xi_c, yy = y;
+    bool in_y = yy > 1. - delta_s;
+    real_out = FVal<T>(weight) > 0. ? sym * FVal<T>(real) : FVal<T>(0.);
+    bool with_soft =
+        FVal<T>(det_s) > 0. && x_hat * FVal<T>(xi_max_s) <= xi_s_cut && x <= xi_s_cut;
+    soft_out = with_soft ? -sym * FVal<T>(soft) : FVal<T>(0.);
+    bool with_collinear = FVal<T>(det_c) > 0. && in_y;
+    collinear_out = with_collinear ? -sym * FVal<T>(collinear) : FVal<T>(0.);
+    bool with_soft_collinear = FVal<T>(det_sc) > 0. && in_y &&
+        x_hat * FVal<T>(xi_max_c) < xi_s_cut && x_c < xi_s_cut;
+    soft_collinear_out =
+        with_soft_collinear ? sym * FVal<T>(soft_collinear) : FVal<T>(0.);
+}
+
 } // namespace kernels
 } // namespace madspace

@@ -238,6 +238,137 @@ NamedVector<Value> FKSSplittingKernels::build_function_impl(
     return {{"z", z}, {"ap", ap}, {"q_terms", q_terms}, {"k_perp", k_perp}};
 }
 
+namespace {
+
+// the configurations, checked to have QCD splittings
+std::size_t check_qcd_configurations(
+    const std::vector<FKSConfiguration>& configurations, const std::string& user
+) {
+    std::size_t n = check_fks_configurations(configurations, user);
+    for (const auto& config : configurations) {
+        int i_type = config.colors.at(config.i_fks);
+        int j_type = config.colors.at(config.j_fks);
+        if ((i_type != 8 && std::abs(i_type) != 3) ||
+            (j_type != 8 && std::abs(j_type) != 3)) {
+            throw std::invalid_argument(
+                user + ": only QCD splittings, of quarks and gluons, are supported"
+            );
+        }
+        config.born_pdgs();
+    }
+    return n;
+}
+
+} // namespace
+
+FKSLimits::FKSLimits(const std::vector<FKSConfiguration>& configurations) :
+    FunctionGenerator(
+        "FKSLimits",
+        [&] {
+            int n =
+                static_cast<int>(check_qcd_configurations(configurations, "FKSLimits"));
+            return NamedVector<Type>{
+                {"soft_momenta", batch_four_vec_array(n)},
+                {"soft_p_i_hat", batch_four_vec},
+                {"y", batch_float},
+                {"collinear_momenta", batch_four_vec_array(n)},
+                {"soft_collinear_momenta", batch_four_vec_array(n)},
+                {"born", batch_float},
+                {"color_correlated",
+                 Type{DataType::dt_float64, batch_size, {n - 1, n - 1}}},
+                {"spin_correlated", batch_float},
+                {"alpha_s", batch_float},
+                {"fks_index", batch_int},
+            };
+        }(),
+        [&] {
+            // checked here too: the order of the two arguments is unspecified
+            check_qcd_configurations(configurations, "FKSLimits");
+            return NamedVector<Type>{
+                {"soft", batch_float},
+                {"collinear", batch_float},
+                {"soft_collinear", batch_float}
+            };
+        }()
+    ),
+    _eikonals(configurations),
+    _kernels(configurations) {
+    std::size_t largest = _eikonals.max_pair_count();
+    for (std::size_t c = 0; c < configurations.size(); ++c) {
+        const auto& config = configurations.at(c);
+        _fks_i.push_back(config.i_fks);
+        _fks_j.push_back(config.j_fks);
+        double ratio = config.identical_particle_ratio();
+        // only a gluon i has a soft limit
+        auto pairs = _eikonals.born_pairs(c);
+        if (config.colors.at(config.i_fks) != 8) {
+            pairs.clear();
+        }
+        std::vector<me_int_t> ms(largest, 0), ns(largest, 0);
+        std::vector<double> factors(largest, 0.);
+        for (std::size_t k = 0; k < pairs.size(); ++k) {
+            auto [m, n] = pairs.at(k);
+            ms.at(k) = m;
+            ns.at(k) = n;
+            factors.at(k) = (m == n ? -1. : -2.) * ratio;
+        }
+        _pair_count.push_back(pairs.size());
+        _pair_m.push_back(ms);
+        _pair_n.push_back(ns);
+        _pair_factor.push_back(factors);
+        _collinear_factor.push_back(config.masses.at(config.j_fks) == 0. ? ratio : 0.);
+    }
+}
+
+NamedVector<Value> FKSLimits::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    Value index = args.at("fks_index");
+    Value alpha_s = args.at("alpha_s");
+    auto eikonals =
+        _eikonals
+            .build_function(
+                fb,
+                {args.at("soft_momenta"), args.at("soft_p_i_hat"), args.at("y"), index}
+            )
+            .at(0);
+    auto soft = fb.fks_soft_limit(
+        eikonals,
+        args.at("color_correlated"),
+        alpha_s,
+        index,
+        _pair_count,
+        _pair_m,
+        _pair_n,
+        _pair_factor
+    );
+    std::vector<me_int_t> kind;
+    nested_vector2<double> factors;
+    for (std::size_t c = 0; c < configuration_count(); ++c) {
+        kind.push_back(_kernels.splitting_kind(c));
+        factors.push_back(_kernels.factors(c));
+    }
+    NamedVector<Value> result{{"soft", soft}};
+    for (std::string name : {"collinear", "soft_collinear"}) {
+        auto [z, ap, q] = fb.fks_splitting_kernels(
+            args.at(name + "_momenta"), index, _fks_i, _fks_j, kind, factors
+        );
+        result.push_back(
+            name,
+            fb.fks_collinear_limit(
+                args.at("born"),
+                args.at("spin_correlated"),
+                ap,
+                q,
+                alpha_s,
+                index,
+                _collinear_factor
+            )
+        );
+    }
+    return result;
+}
+
 FKSPrefactors::FKSPrefactors(
     const std::vector<FKSConfiguration>& configurations,
     double xicut,

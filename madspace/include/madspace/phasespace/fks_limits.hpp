@@ -183,6 +183,112 @@ private:
 };
 
 /**
+ * The soft and collinear limits of the real matrix element of the FKS
+ * configurations of a Born from the Born and its color-correlated and
+ * spin-correlated versions, as sbornsoft, sborncol_fsr and sborncol_isr in
+ * fks_singular.f give them [2, 3], each event in the configuration of its
+ * `fks_index` (see @ref FKSConfigurationMapping). These are the limits of
+ * @f$\xi^2 (1 - y)@f$ times the real matrix element (sreal at the
+ * counter-events), for QCD splittings.
+ *
+ * With @f$g_s^2 = 4 \pi \alpha_s@f$, the identical-particle ratio @f$r@f$ of
+ * the configuration (FKSConfiguration::identical_particle_ratio()), the Born
+ * @f$B@f$ and its color-correlated versions
+ * @f$B_{mn} = \langle T_m \cdot T_n \rangle B@f$ (all-outgoing color charges,
+ * @f$B_{mm} = C_m B@f$),
+ * @f[
+ *   \text{soft} = -2 r g_s^2 \sum_{(m, n)} w_{mn} \mathcal{E}_{mn} B_{mn},
+ *   \qquad
+ *   \text{collinear} = r g_s^2 \Big[\frac{(1 - z) P(z)}{t} B +
+ *     \frac{Q(z)}{t} \Big(\frac{B}{2} - B_\perp\Big)\Big],
+ * @f]
+ * with the reduced eikonal factors @f$\mathcal{E}_{mn}@f$ of @ref FKSEikonals
+ * at the soft counter-event over the pairs of the configuration in the Born
+ * (FKSEikonals::born_pairs()), @f$w_{mn} = 1@f$ and @f$w_{mm} = 1/2@f$, and
+ * the QCD kernels of @ref FKSSplittingKernels at the collinear or soft-collinear
+ * counter-event. @f$B_\perp@f$ is the Born with the polarization vector of the
+ * emitter (its position FKSConfiguration::born_j_fks() in the Born, a gluon
+ * where @f$Q \ne 0@f$) replaced by @f$k_\perp@f$ of FKSSplittingKernels, a
+ * real vector with @f$k_\perp^2 = -1@f$, with the usual averages and
+ * symmetry factors. The azimuthal average of @f$B_\perp@f$ is @f$B / 2@f$.
+ * The soft limit is zero where i is a quark, the collinear ones are zero for a
+ * massive emitter.
+ *
+ * `batch` is the leading batch dimension and `n` the number of particles of
+ * the real process, incoming included.
+ *
+ * **Arguments**
+ * - `soft_momenta` – `float`, shape `(batch, n, 4)` – momenta of the soft
+ *   counter-event, in the order of the real process of the configuration of
+ *   the event, in any frame.
+ * - `soft_p_i_hat` – `float`, shape `(batch, 4)` – momentum of i per unit
+ *   @f$\xi@f$ at the soft counter-event.
+ * - `y` – `float`, shape `(batch,)` – @f$y@f$ of the event.
+ * - `collinear_momenta`, `soft_collinear_momenta` – `float`, shape
+ *   `(batch, n, 4)` – momenta of the collinear and soft-collinear
+ *   counter-events, in any frame.
+ * - `born` – `float`, shape `(batch,)` – the Born @f$B@f$.
+ * - `color_correlated` – `float`, shape `(batch, n - 1, n - 1)` –
+ *   @f$B_{mn}@f$ for the particles of the Born.
+ * - `spin_correlated` – `float`, shape `(batch,)` – @f$B_\perp@f$, finite.
+ * - `alpha_s` – `float`, shape `(batch,)` – the strong coupling.
+ * - `fks_index` – `int`, shape `(batch,)` – the configuration of the event,
+ *   from 0 to the number of configurations minus one.
+ *
+ * **Returns**
+ * - `soft` – `float`, shape `(batch,)` – the soft limit.
+ * - `collinear`, `soft_collinear` – `float`, shape `(batch,)` – the
+ *   collinear limit at the collinear and at the soft-collinear counter-event.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895
+ * - [2] S. Frixione, Z. Kunszt, A. Signer, "Three-jet cross sections to
+ *   next-to-leading order", https://arxiv.org/abs/hep-ph/9512328
+ * - [3] R. Frederix, S. Frixione, F. Maltoni, T. Stelzer, "Automation of
+ *   next-to-leading order computations in QCD: the FKS subtraction",
+ *   https://arxiv.org/abs/0908.4272
+ */
+class FKSLimits : public FunctionGenerator {
+public:
+    /**
+     * @param configurations  The FKS configurations, in the order of
+     *                        `fks_index`, with QCD splittings.
+     * @throws std::invalid_argument for a splitting that is not one of QCD.
+     */
+    explicit FKSLimits(const std::vector<FKSConfiguration>& configurations);
+    /// Number of configurations.
+    std::size_t configuration_count() const { return _collinear_factor.size(); }
+    /// Number of particles of the real processes, incoming included.
+    std::size_t particle_count() const { return _eikonals.particle_count(); }
+    /// Whether a configuration has a soft limit (i is a gluon).
+    bool soft(std::size_t index) const { return _pair_count.at(index) > 0; }
+    /// Whether a configuration has collinear limits (j is massless).
+    bool collinear(std::size_t index) const {
+        return _collinear_factor.at(index) != 0.;
+    }
+    /// The eikonal factors of the soft limits.
+    const FKSEikonals& eikonals() const { return _eikonals; }
+    /// The kernels of the collinear limits.
+    const FKSSplittingKernels& splitting_kernels() const { return _kernels; }
+
+private:
+    NamedVector<Value> build_function_impl(
+        FunctionBuilder& fb, const NamedVector<Value>& args
+    ) const override;
+
+    FKSEikonals _eikonals;
+    FKSSplittingKernels _kernels;
+    std::vector<me_int_t> _fks_i;
+    std::vector<me_int_t> _fks_j;
+    std::vector<me_int_t> _pair_count;
+    nested_vector2<me_int_t> _pair_m;
+    nested_vector2<me_int_t> _pair_n;
+    nested_vector2<double> _pair_factor;
+    std::vector<double> _collinear_factor;
+};
+
+/**
  * The prefactors of the real emission and its FKS counterterms, as
  * compute_prefactors_n1body in fks_singular.f [2, 3], each event in the
  * configuration of its `fks_index` (see @ref FKSConfigurationMapping).
@@ -211,7 +317,8 @@ private:
  * counter-event). They multiply @f$\xi^2 (1 - y)@f$ times the real matrix
  * element and its limits. The collinear ones vanish for a massive emitter.
  * Whether a counterterm contributes (@f$\xi \le \xi_\mathrm{S,cut}@f$,
- * @f$y > 1 - \delta_S@f$) is left to the integrand, as in MadFKS.
+ * @f$y > 1 - \delta_S@f$) is left to @ref FKSSubtraction, which also adds
+ * the symmetry factors.
  *
  * `batch` is the leading batch dimension and `n` the number of particles of
  * the real process, incoming included.

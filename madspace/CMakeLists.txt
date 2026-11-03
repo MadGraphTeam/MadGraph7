@@ -242,6 +242,7 @@ add_library(
     src/phasespace/fks_mapping.cpp
     src/phasespace/fks_radiation.cpp
     src/phasespace/fks_sector.cpp
+    src/phasespace/fks_subtraction.cpp
     src/phasespace/phasespace.cpp
     src/phasespace/multichannel.cpp
     src/phasespace/madnis.cpp
@@ -306,6 +307,7 @@ add_library(
     include/madspace/phasespace/fks_mapping.hpp
     include/madspace/phasespace/fks_radiation.hpp
     include/madspace/phasespace/fks_sector.hpp
+    include/madspace/phasespace/fks_subtraction.hpp
     include/madspace/phasespace/phasespace.hpp
     include/madspace/phasespace/multichannel.hpp
     include/madspace/phasespace/madnis.hpp

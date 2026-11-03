@@ -30,8 +30,11 @@ final-state emitter, s_hat_min for an incoming one.
 fks_configurations gives the FKSConfigurations that the classes of the FKS
 subtraction take. With them, fks_sector_function builds the sector functions
 S_ij of the configurations, fks_eikonals the eikonal factors of their soft
-limits, fks_splitting_kernels the factors of their collinear limits and
-fks_prefactors the prefactors of the real emission and its counterterms.
+limits, fks_splitting_kernels the factors of their collinear limits,
+fks_prefactors the prefactors of the real emission and its counterterms,
+fks_limits the soft and collinear limits of the real matrix element from the
+Born and its correlated versions, and fks_subtraction the real emission with
+its counterterms.
 """
 
 import json
@@ -43,10 +46,12 @@ from ._madspace_py import (
     FKSConfiguration,
     FKSConfigurationMapping,
     FKSEikonals,
+    FKSLimits,
     FKSMapping,
     FKSPrefactors,
     FKSSectorFunction,
     FKSSplittingKernels,
+    FKSSubtraction,
     Observable,
     fks_sqrt_s_hat_min,
 )
@@ -219,8 +224,9 @@ def fks_configurations(born, configurations):
             read_fks_configurations).
 
     Raises:
-        ValueError: as fks_mappings, and for a configuration of a real process
-            without FKS pairs (a finite one).
+        ValueError: as fks_mappings, for a configuration of a real process
+            without FKS pairs (a finite one), and for a splitting of i and j
+            that does not give the Born.
     """
     born_pdgs = list(configurations["born_pdgs"])
     born_masses = list(born.external_masses())
@@ -233,17 +239,24 @@ def fks_configurations(born, configurations):
             raise ValueError(
                 f"the real process {configuration['real_pdgs']} has no FKS pairs"
             )
-        result.append(
-            FKSConfiguration(
-                i_fks=configuration["i_fks"] - 1,
-                j_fks=configuration["j_fks"] - 1,
-                pdgs=list(configuration["real_pdgs"]),
-                colors=list(configuration["real_colors"]),
-                charges=list(configuration["real_charges"]),
-                masses=real_masses(born_masses, configuration),
-                fks_j_from_i=[[j - 1 for j in js] for js in pairs],
-            )
+        fks_configuration = FKSConfiguration(
+            i_fks=configuration["i_fks"] - 1,
+            j_fks=configuration["j_fks"] - 1,
+            pdgs=list(configuration["real_pdgs"]),
+            colors=list(configuration["real_colors"]),
+            charges=list(configuration["real_charges"]),
+            masses=real_masses(born_masses, configuration),
+            fks_j_from_i=[[j - 1 for j in js] for js in pairs],
         )
+        # the Born that FKSConfiguration infers from the splitting, which sets
+        # the identical-particle ratio of the counterterms
+        if fks_configuration.born_pdgs() != born_pdgs:
+            raise ValueError(
+                f"the splitting of i_fks = {configuration['i_fks']} and "
+                f"j_fks = {configuration['j_fks']} in {configuration['real_pdgs']} "
+                f"does not give the Born {born_pdgs}"
+            )
+        result.append(fks_configuration)
     return result
 
 
@@ -302,3 +315,34 @@ def fks_prefactors(born, configurations, **parameters):
         ValueError: as fks_configurations.
     """
     return FKSPrefactors(fks_configurations(born, configurations), **parameters)
+
+
+def fks_limits(born, configurations):
+    """The FKSLimits of the FKS configurations of a Born, with fks_index as
+    for fks_sector_function.
+
+    Raises:
+        ValueError: as fks_configurations, and for a splitting that is not one
+            of QCD.
+    """
+    return FKSLimits(fks_configurations(born, configurations))
+
+
+def fks_subtraction(born, configurations, **parameters):
+    """The FKSSubtraction of the FKS configurations of a Born, with fks_index
+    as for fks_sector_function.
+
+    Args:
+        born: the PhaseSpaceMapping of the Born process, for its masses, its
+            momenta in the order of born_pdgs.
+        configurations: the content of fks_configurations.json (see
+            read_fks_configurations).
+        parameters: the parameters of fks_powers.inc, those of the subtraction
+            (xicut, xi_s_cut, delta_o, delta_i, delta_s) and of the sector
+            functions (fks_a, fks_b, use_energy, use_beta, h_damp_one,
+            h_damp_power), see FKSSubtraction.
+
+    Raises:
+        ValueError: as fks_limits.
+    """
+    return FKSSubtraction(fks_configurations(born, configurations), **parameters)
