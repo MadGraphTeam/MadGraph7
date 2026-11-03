@@ -258,11 +258,15 @@ def test_final_massless_round_trip():
         p_born, 5, 4, 2, xi_hat, y, r[:, 2], sqrt_s
     )
 
-    # momentum conservation and mass shells
+    # momentum conservation and mass shells. The RAMBO Born itself violates
+    # momentum conservation by up to a few 1e-13 of sqrt(s) for some points,
+    # which the emission passes on.
     scale = 1000.0
-    np.testing.assert_allclose(
-        real[:, 2:].sum(1) / scale, real[:, :2].sum(1) / scale, atol=1e-13
-    )
+
+    def violation(p):
+        return np.abs(p[:, 2:].sum(1) - p[:, :2].sum(1)).max(1) / scale
+
+    assert (violation(real) <= 1e-13 + 2 * violation(p_born)).all()
     m2 = real[..., 0] ** 2 - (real[..., 1:] ** 2).sum(-1)
     np.testing.assert_allclose(m2 / scale**2, 0.0, atol=1e-12)
 

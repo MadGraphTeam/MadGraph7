@@ -144,6 +144,9 @@ def test_matches_genps_fks(data, conf, points, prefix):
     born_again = boost_z(out["born_momenta"], born_masses, -y_born)
     born_dev = np.abs(born_again - field("p_born")).max((1, 2)) / sqrt_s_born
     assert (born_dev <= 1e-12).all()
+    # relative to that, the deviation of the direction of the Born emitter
+    jbar = j_fks if j_fks < i_fks else j_fks - 1
+    direction_dev = sqrt_s_born / field("p_born")[:, jbar, 0]
     if not leptonic:
         np.testing.assert_allclose(out["born_x1"], x_born[:, 0], rtol=1e-12)
         np.testing.assert_allclose(out["born_x2"], x_born[:, 1], rtol=1e-12)
@@ -221,11 +224,14 @@ def test_matches_genps_fks(data, conf, points, prefix):
         cnt = boost_z(out[name + "_momenta"], masses, -y_born)
         diff = np.abs(cnt - p_cnt).max((1, 2)) / scale
         assert (diff <= 1e-13 + 10 * born_dev)[valid].all()
-        # i per unit xi, finite where i is soft (p_i_fks_cnt)
+        # i per unit xi, finite where i is soft (p_i_fks_cnt). Its direction is
+        # set relative to the Born emitter, whose own direction carries the
+        # deviation of the Born divided by its energy (a soft emitter amplifies
+        # it).
         hat = boost_z(out[name + "_p_i_hat"][:, None], [0.0], -y_born)[:, 0]
         hat_scale_cnt = np.sqrt(field("rad_shat_cnt")[:, pos]) / 2
         diff = np.abs(hat - field("rad_p_i_hat_cnt")[:, pos]).max(1) / hat_scale_cnt
-        assert (diff <= 1e-13 + 10 * born_dev)[valid].all()
+        assert (diff <= 1e-13 + 10 * born_dev * direction_dev)[valid].all()
         # its xi and the upper end of the range of xi at its y
         for key, fortran_key in [("_xi", "rad_xi_cnt"), ("_xi_max", "rad_xiimax_cnt")]:
             theirs = field(fortran_key)[:, pos]
