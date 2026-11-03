@@ -439,8 +439,10 @@ class TestCppCrossedExternal(unittest.TestCase):
                 self.dialect.arguments(head), hel)
             wav.args[self.dialect.output_position(wav.args)] = 'aloha_obj[%d]' % (slot - 1)
             text = self.dialect.render_external(head, wav)
-            self.assertIn('m_pars->MT, %d, -1,' % hel, text)
-            self.assertIn('m_pars->MT, -( %d ), +1,' % hel, text)
+            # the helicity per SIMD lane (CppDialect.helicity_literal)
+            lit = '( fptype_amp_sv{} + %d )' % hel
+            self.assertIn('m_pars->MT, %s, -1,' % lit, text)
+            self.assertIn('m_pars->MT, -( %s ), +1,' % lit, text)
             self.assertIn('aloha_obj[%d].pvec[_k]' % (slot - 1), text)
             self.assertIn('icsign[2]', text)
             self.assertNotIn('$', text)
@@ -1350,13 +1352,13 @@ class TestCrossingHelicityFactor(unittest.TestCase):
         self.assertEqual(sorted(copy.hel for copy in copies), [-1, 1])
 
     def test_cpp_takes_no_factor(self):
-        """The C++ dialect writes the bare value"""
+        """The C++ dialect writes the bare value (one per SIMD lane)"""
 
         dialect = hel_recycle.CppDialect()
         line = ('      ixxxxx<M_ACCESS, W_ACCESS>( xmom, m_pars->MT, cHel[ihel][2],'
                 ' -1, cFlavors[iflavor][2], aloha_obj[5], 2 );')
         args = dialect.set_external_helicity(dialect.arguments(line), -1)
-        self.assertEqual(args[2], '-1')
+        self.assertEqual(args[2], '( fptype_amp_sv{} + -1 )')
 
 
 class TestHelRecyclingWarmupDispatch(unittest.TestCase):

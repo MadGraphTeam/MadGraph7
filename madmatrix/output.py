@@ -391,7 +391,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         but not recycled, which is the right way round to fail."""
         exporters = model_handling.OneProcessExporterMadMatrix._hr_warmups
         axial = helas_call_writers.axial_gauge_requested(
-                                        self.opt.get('output_options'))
+                            (getattr(self, 'opt', None) or {}).get('output_options'))
         # only this output's directories, whatever happens: the list is shared
         # by every exporter of the session
         mine = [e for e in exporters if self._is_own_dir(e.path)]
