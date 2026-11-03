@@ -100,7 +100,7 @@ pub const COMPILED_MODEL_SCHEMA_VERSION: u32 = 9;
 pub const PROCESS_ARTIFACT_SCHEMA_VERSION: u32 = 3;
 pub const RUNTIME_PHYSICS_SCHEMA_VERSION: u32 = 1;
 pub const C_ABI_VERSION: u32 = 1;
-pub const SYMBOLICA_SERIALIZATION_ABI: &str = "symbolica-bincode2-v1";
+pub const SYMBOLICA_SERIALIZATION_ABI: &str = "symbolica-bincode2-v2";
 
 /// Unstable implementation details shared with pyAmpliCol's private PyO3
 /// extension and native loop consumer. Absent from ordinary/default builds.

@@ -2629,18 +2629,47 @@ fn load_evaluator_state_bytes(
         Option<JITCompiledEvaluator<Complex<f64>>>,
     );
 
+    let incompatible = |error: &dyn std::fmt::Display| {
+        RusticolError::compatibility(format!(
+            "evaluator state {} does not match Symbolica serialization ABI {}: {error}; regenerate the schema-v3 artifact",
+            display_name,
+            crate::SYMBOLICA_SERIALIZATION_ABI
+        ))
+    };
+    // Python's `Evaluator.save()` envelope: a versioned magic, whether the
+    // producer had native code generation (the JIT members below), the
+    // Symbolica state the evaluator references, then the bincode payload
+    // whose symbols that state maps onto this process's symbols.
+    let Some((&native_code_generation, mut payload)) = bytes
+        .strip_prefix(SAVED_EVALUATOR_MAGIC)
+        .and_then(|rest| rest.split_first())
+    else {
+        return Err(incompatible(&"no saved-evaluator envelope"));
+    };
+    if native_code_generation != 1 {
+        return Err(incompatible(
+            &"saved without native code generation (no JIT members)",
+        ));
+    }
+    // Importing the state registers its symbols: pyAmpliCol's library key.
+    let _unlock = crate::licence::unlock();
+    let state_map =
+        symbolica::state::State::import(&mut payload, None).map_err(|error| incompatible(&error))?;
     let ((_, settings, evaluator, _, jit_complex), consumed) =
-        bincode::decode_from_slice::<SavedEvaluator, _>(bytes, bincode::config::standard())
-            .map_err(|error| {
-                RusticolError::compatibility(format!(
-                    "evaluator state {} does not match Symbolica serialization ABI {}: {error}; regenerate the schema-v3 artifact",
-                    display_name,
-                    crate::SYMBOLICA_SERIALIZATION_ABI
-                ))
-            })?;
-    ensure_evaluator_state_consumed(display_name, bytes.len(), consumed)?;
+        bincode::decode_from_slice_with_context::<_, SavedEvaluator, _>(
+            payload,
+            bincode::config::standard(),
+            state_map,
+        )
+        .map_err(|error| incompatible(&error))?;
+    ensure_evaluator_state_consumed(display_name, payload.len(), consumed)?;
     Ok((settings, evaluator, jit_complex))
 }
+
+/// The leading bytes of Python Symbolica's `Evaluator.save()` (state-aware
+/// envelope, version 1; its final byte is the envelope version).
+#[cfg(feature = "symbolica-runtime")]
+const SAVED_EVALUATOR_MAGIC: &[u8] = b"\xffSYMEVAL\x01";
 
 #[cfg(feature = "symbolica-runtime")]
 pub(crate) fn decode_exact_evaluator_state(

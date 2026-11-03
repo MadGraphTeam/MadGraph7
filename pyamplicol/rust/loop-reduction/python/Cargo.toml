@@ -21,4 +21,4 @@ rusticol-core = { path = "../../crates/rusticol-core", features = ["symbolica-ru
 rusticol-loop-reduction = { path = ".." }
 serde = { workspace = true }
 serde_json = { workspace = true }
-symbolica = { version = "=3.0.1", default-features = false, features = ["integer-gmp", "float-mpfr"] }
+symbolica = { version = "=3.0.2", default-features = false, features = ["integer-gmp", "float-mpfr"] }

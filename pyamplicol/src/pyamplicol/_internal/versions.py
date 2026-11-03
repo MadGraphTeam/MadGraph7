@@ -22,7 +22,7 @@ C_ABI_VERSION = 1
 
 # These are project-owned wire-format identifiers. Dependency source revisions
 # live in the release and contributor locks, outside serialized artifacts.
-SYMBOLICA_SERIALIZATION_ABI = "symbolica-bincode2-v1"
+SYMBOLICA_SERIALIZATION_ABI = "symbolica-bincode2-v2"
 SYMJIT_APPLICATION_ABI = "symjit-application-storage-v4"
 SYMJIT_PLANE_APPLICATION_ABI = "pyamplicol-symjit-plane-application-v2"
 NATIVE_COMPILED_DIRECT_APPLICATION_ABI = (
