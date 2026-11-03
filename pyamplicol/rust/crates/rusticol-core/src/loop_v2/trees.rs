@@ -4182,7 +4182,6 @@ impl<T: Carrier> Closure<'_, T> {
 /// weighted sums accumulate per output current, then each output slot
 /// copies its sum or applies its propagator kernel.
 #[allow(clippy::too_many_arguments)]
-#[allow(clippy::too_many_arguments)]
 fn run_interactions<T: Carrier>(
     program: &Interactions,
     layout: StateLayout,
