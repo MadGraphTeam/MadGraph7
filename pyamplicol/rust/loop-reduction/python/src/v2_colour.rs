@@ -6,7 +6,8 @@
 //! fraction texts; cells stay native in [`NativeCellTable`] handles, which
 //! count their decodes. Nothing here touches Symbolica state.
 use super::*;
-use rusticol_core::loop_v2::dipole_orbits::{Correlator, DipoleOrbits};
+use rusticol_core::loop_v2::dipole_correlations::Correlator;
+use rusticol_core::loop_v2::dipole_orbits::DipoleOrbits;
 use rusticol_core::loop_v2::dress::parse_rational;
 use rusticol_core::loop_v2::generate::FastMap;
 use rusticol_core::loop_v2::generate::cells::{

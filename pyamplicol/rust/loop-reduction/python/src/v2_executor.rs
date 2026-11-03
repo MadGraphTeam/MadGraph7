@@ -24,7 +24,7 @@ use rusticol_core::loop_execution::v2::{
     Contraction, PointNumerators, PointResult, Report, Schedule, V2Executor as Executor, V2Options,
 };
 use crate::v2_colour::NativeDipoleCorrelator;
-use rusticol_core::loop_v2::dipole_orbits::Correlator;
+use rusticol_core::loop_v2::dipole_correlations::Correlator;
 use rusticol_core::loop_v2::dress::{Carrier as V2Carrier, V2Batch, parse_rational};
 use rusticol_core::loop_v2::plan::{FormPolicy, LoopProgramV4};
 use rusticol_core::loop_v2::retest::ReductionCheck;
