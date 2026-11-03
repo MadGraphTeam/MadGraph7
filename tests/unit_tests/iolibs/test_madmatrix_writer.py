@@ -190,6 +190,8 @@ class TestPropagatorDenominators(unittest.TestCase):
     numerator, so madmatrix::denom gets none. In the complex mass scheme the
     mass is complex and carries the width. A custom denominator (axial gauge)
     is still divided in denominator precision, on the momenta-only TMPs.
+    Outside the complex mass scheme the default (aloha.t_channel_width False)
+    keeps the width on the timelike lanes only: madmatrix::denom_timelike.
     """
 
     @classmethod
@@ -197,15 +199,21 @@ class TestPropagatorDenominators(unittest.TestCase):
         import madgraph.models.import_ufo as import_ufo
         cls.model = import_ufo.import_model('sm', options={'apply_flavor_grouping': False})
 
-    def routines(self, request, complex_mass=False, gauge=True):
+    def routines(self, request, complex_mass=False, gauge=True,
+                 t_channel_width=True):
         """{routine name: C++ definition} of the ALOHA routines of *request*
         (the compute_subset format: Lorentz names, tags, off-shell leg) as
-        madmatrix writes them; *gauge* is aloha.unitary_gauge (2 is axial)."""
+        madmatrix writes them; *gauge* is aloha.unitary_gauge (2 is axial).
+        *t_channel_width* is aloha.t_channel_width: True keeps the width of
+        every propagator (madmatrix::denom), the default False only on the
+        timelike lanes (madmatrix::denom_timelike)."""
         import aloha
         import aloha.create_aloha as create_aloha
         from madmatrix import model_handling
-        saved = (aloha.complex_mass, aloha.unitary_gauge, aloha.loop_mode)
+        saved = (aloha.complex_mass, aloha.unitary_gauge, aloha.loop_mode,
+                 aloha.t_channel_width)
         aloha.complex_mass, aloha.unitary_gauge = complex_mass, gauge
+        aloha.t_channel_width = t_channel_width
         try:
             # explicit_combine as in write_aloha_routines outside of the FD gauge
             aloha_model = create_aloha.AbstractALOHAModel.from_model(
@@ -217,7 +225,8 @@ class TestPropagatorDenominators(unittest.TestCase):
                               language=model_handling.MadMatrixALOHAWriter)[1]
                 for routine in dict(aloha_model).values())
         finally:
-            aloha.complex_mass, aloha.unitary_gauge, aloha.loop_mode = saved
+            (aloha.complex_mass, aloha.unitary_gauge, aloha.loop_mode,
+             aloha.t_channel_width) = saved
         # a definition runs from its name, at the start of a line, to the next one
         parts = re.split(r'\n  ([A-Za-z0-9_]+)\(', text)
         return dict(zip(parts[1::2], parts[2::2]))
@@ -236,6 +245,19 @@ class TestPropagatorDenominators(unittest.TestCase):
             for old in ('cxtype_denom_sv denom', 'cId',
                         'static_cast<cxtype_amp_sv>(denom)'):
                 self.assertNotIn(old, body, name)
+
+    def test_spacelike_width_dropped(self):
+        """By default (aloha.t_channel_width False) the width of a propagator
+        is kept on the timelike lanes only, as the Fortran routines do event by
+        event: madmatrix::denom_timelike, with the coupling or without it."""
+        routines = self.routines([(('FFV2',), [], 3), (('FFV2', 'FFV4'), [], 3)],
+                                 t_channel_width=False)
+        self.assertIn('const cxtype_amp_sv denom = madmatrix::denom_timelike'
+                      '( Ccoeff, COUP, dP3, M3, W3 );', routines['FFV2_3'])
+        self.assertIn('const cxtype_amp_sv denom = madmatrix::denom_timelike'
+                      '( dP3, M3, W3 );', routines['FFV2_4_3'])
+        for body in routines.values():
+            self.assertNotIn('madmatrix::denom(', body)
 
     def test_assembled_routine(self):
         """The Z coupling to fermions is assembled from FFV2 and FFV4: the two
