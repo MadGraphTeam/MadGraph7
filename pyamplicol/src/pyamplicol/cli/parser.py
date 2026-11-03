@@ -319,8 +319,9 @@ def _add_color_options(parser: argparse.ArgumentParser) -> None:
         choices=("lc", "nlc", "full", "strict-lc", "strict-nlc"),
         default=argparse.SUPPRESS,
         help=(
-            "lc/nlc: the inherited colour-matrix approximation; strict-lc/"
-            "strict-nlc: the formal 1/N_c expansion (graded output)"
+            "trees: lc/nlc the inherited colour-matrix approximation, "
+            "strict-lc/strict-nlc the formal 1/N_c expansion (graded output); "
+            "one loop: lc/nlc the formal-N_c projection, strict-* refused"
         ),
     )
     parser.add_argument(
