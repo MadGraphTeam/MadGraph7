@@ -220,10 +220,14 @@ graded = false                  # split trees by power of N_c
 | `strict-lc` | One contracted color entry per helicity: the leading N_c degree. |
 | `strict-nlc` | One contracted color entry per helicity and N_c degree (three degrees). |
 
-`lc` and `nlc` are the *inherited* colour approximation: the colour matrix is
-truncated in `N_c` while amplitude coefficients stay at `N_c = 3`, including
-the `1/3` of the U(1)-subtraction (Fierz) pieces that join quark lines.
-`strict-lc` and
+For tree requests, `lc` and `nlc` are the *inherited* colour approximation:
+the colour matrix is truncated in `N_c` while amplitude coefficients stay at
+`N_c = 3`, including the `1/3` of the U(1)-subtraction (Fierz) pieces that join
+quark lines. For one-loop requests, `lc` and `nlc` are the loop engine's
+formal-N_c projection (every U(1)-subtraction piece graded, each squared
+coupling-order sector truncated at its own leading degree; see the one-loop
+section below), and `strict-lc`, `strict-nlc` and `graded` are refused.
+For trees, `strict-lc` and
 `strict-nlc` are the formal 1/N_c expansion of the squared amplitude: every
 U(1)-subtraction piece counts as a power `1/N_c`, LC keeps the leading degree
 `P` and NLC the degrees `P`, `P-1` and `P-2`, and `N_c = 3` is inserted after

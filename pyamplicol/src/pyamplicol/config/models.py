@@ -63,16 +63,19 @@ class ProcessGroupAnalysis(StrEnum):
 
 
 class ColorAccuracy(StrEnum):
-    # The inherited (non-strict) colour approximation: the colour matrix (or,
-    # at one loop, the colour seed table) is truncated in N_c while amplitude
-    # coefficients, including the 1/3 of U(1)-subtraction pieces, stay at
-    # N_c = 3 (``docs/correlator-conventions.md``, "Colour accuracy").
+    # Trees: the inherited (non-strict) colour approximation, the colour matrix
+    # truncated in N_c while amplitude coefficients, including the 1/3 of
+    # U(1)-subtraction pieces, stay at N_c = 3 (``docs/correlator-conventions.md``,
+    # "Colour accuracy"). One loop: the loop engine's formal-N_c projection
+    # (U(1)-subtraction pieces graded, each squared coupling-order sector
+    # truncated at its own leading degree; ``loops.v2.colour``, "Projection").
     LC = "lc"
     NLC = "nlc"
     FULL = "full"
-    # The formal 1/N_c expansion of the squared amplitude: every
-    # U(1)-subtraction piece is graded (degree -1); LC keeps the leading
-    # degree P, NLC the degrees P, P-1 and P-2 (``color.nc_expansion``).
+    # Trees only: the formal 1/N_c expansion of the squared amplitude, every
+    # U(1)-subtraction piece graded (degree -1); LC keeps the reference degree
+    # P = n_g + n_qqbar of the process, NLC the degrees P, P-1 and P-2
+    # (``color.nc_expansion``). One-loop requests refuse them.
     STRICT_LC = "strict-lc"
     STRICT_NLC = "strict-nlc"
 
@@ -562,7 +565,8 @@ class ColorConfig:
     # Report the squared tree split by power of N_c (one contracted colour
     # component per N_c degree of the formal expansion). Always on for
     # ``strict-lc``/``strict-nlc``; ``true`` with ``full`` gives every degree
-    # (the graded full colour). The inherited ``lc``/``nlc`` have no degrees.
+    # (the graded full colour). The inherited tree ``lc``/``nlc`` have no
+    # degrees. Tree requests only.
     graded: bool = field(default=False, metadata=_setting("bool"))
 
     @property
@@ -607,8 +611,9 @@ class ColorConfig:
         if self.graded and self.accuracy in (ColorAccuracy.LC, ColorAccuracy.NLC):
             raise ConfigurationError(
                 "color.graded requires color.accuracy='strict-lc', 'strict-nlc' "
-                f"or 'full': the inherited {str(self.accuracy)!r} approximation "
-                "is not an expansion in N_c"
+                f"or 'full': the tree {str(self.accuracy)!r} is the inherited "
+                "colour approximation, not an expansion in N_c (graded output "
+                "is implemented for tree requests)"
             )
         if self.nc_graded and self.contraction is ColorContraction.SYMMETRIC_GROUP_FFT:
             raise ConfigurationError(

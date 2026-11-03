@@ -24,8 +24,12 @@ emissions of a connection), ``strict-lc`` keeps the degree P,
 ``strict-nlc`` the degrees P, P-1 and P-2, and the graded full colour every
 degree; N_c = 3 is inserted after the truncation. Graded output reports the
 contribution of each kept degree separately; the degrees sum to the total.
-The loop engine's projection follows the same rule (``loops.v2.colour``,
-"Projection"), with its degree read from the exact seed cells.
+Strict and graded colour are tree-only; this module is not used by the loop
+engine. The one-loop ``lc``/``nlc`` are the loop engine's own formal-N_c
+projection (``loops.v2.colour``, "Projection"): the same grading of
+U(1)-subtraction pieces and the same depths, with P the leading degree of
+each squared coupling-order sector (read from its exact seed cells) instead
+of one reference degree per process.
 """
 
 from __future__ import annotations

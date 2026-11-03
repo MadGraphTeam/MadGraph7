@@ -145,9 +145,11 @@ alpha0_conversion_parameter = "eCoup_DGmua0_UV_EW"
 
 [color]
 # color.accuracy: "lc", "nlc", "full", "strict-lc" or "strict-nlc". Default: lc
-# for tree requests, full for one-loop requests. lc/nlc are the inherited
-# colour-matrix approximation (amplitude coefficients at N_c = 3); strict-lc/
-# strict-nlc the formal 1/N_c expansion (leading degree, or three degrees).
+# for tree requests, full for one-loop requests. For trees lc/nlc are the
+# inherited colour-matrix approximation (amplitude coefficients at N_c = 3) and
+# strict-lc/strict-nlc the formal 1/N_c expansion (leading degree, or three
+# degrees); one-loop lc/nlc are the loop engine's formal-N_c projection, and
+# one-loop requests refuse strict-lc/strict-nlc and color.graded.
 accuracy = "lc"
 # color.contraction: "direct" or "symmetric-group-fft". Default direct.
 # The FFT method requires NLC/full with recurrence or on-the-fly execution.
