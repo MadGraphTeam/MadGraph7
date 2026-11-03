@@ -139,24 +139,29 @@ def test_stored_process_forms_catani_from_its_record(slices, loop_native, name):
     assert all(Fraction(gamma) for _label, _rep, gamma in record["legs"])
     python = _evaluate(NativeExecutor(slice_), name, Precision.double())
     _assert_equal_predictions(result, python, 1e-12)
-    # The record holds only where its conditions do: MB was fixed at
-    # generation, a light-flavour mass set nonzero would change n_f.
-    conditions = dict(map(tuple, record["conditions"]))
-    for mass, zero in conditions.items():
-        if zero:
-            moved = executor.evaluate(
-                [PROCESSES[name][2]()[0]],
-                [PROCESSES[name][2]()[1]],
-                parameters={**PARAMETERS, mass: "1"},
-                precision=Precision.double(),
-            )[0]
-            assert moved.ir_poles is None
-            break
+    # The record holds only where its conditions do (the zero-ness of each
+    # adjustable mass the leg masses and n_f read: MT here, MB was fixed at
+    # generation); a flipped one forms no prediction.
+    from pyamplicol.loops.v2 import dipoles
+
+    conditions = [tuple(condition) for condition in record["conditions"]]
+    assert conditions
+    assert dipoles.record_applies(record, {**PARAMETERS, **FIXED})
+    for mass, zero in conditions:
+        assert not dipoles.record_applies(record, {mass: "1" if zero else "0"})
+    mass, zero = conditions[0]
+    point, scale = PROCESSES[name][2]()
+    moved = executor.evaluate(
+        [point],
+        [scale],
+        parameters={**PARAMETERS, mass: "1" if zero else "0"},
+        precision=Precision.double(),
+    )[0]
+    assert moved.ir_poles is None
 
 
 @pytest.mark.loop_physics
 def test_native_correlations_conserve_colour(slices):
-    from pyamplicol.loops.v2 import dipoles
     from pyamplicol.loops.v2.assemble import _casimir
 
     slice_ = slices("uux_ddxg")
@@ -183,4 +188,3 @@ def test_native_correlations_conserve_colour(slices):
         )
         expected = -float(_casimir(representation[i])) * born * average
         assert abs(total - expected) <= 1e-12 * abs(expected)
-    assert isinstance(dipoles.correlator, object)
