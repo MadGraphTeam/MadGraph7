@@ -1,58 +1,45 @@
 # Dependency Modes
 
-The `loop` development branch currently integrates Rust Symbolica 3.0.1,
-Numerica and Graphica from the tested
-[`9cdc294` integration fork](https://github.com/alphal00p/symbolica/commit/9cdc2949cdb153478c1eca0d40690dc0abfc616e),
-and SymJIT 2.28.3. These pins are recorded by Cargo. This is a source integration,
-with Rust 1.96 or newer required; it is not a completed release dependency set.
-The published Python/Community distribution is pinned to 3.0.2 (kernel 3.0.1),
-whose saved evaluators are tested against this core in all three arithmetic
-modes. NinjaRS packaging remains an integration gate.
-SymJIT now writes storage v4, which additionally stores the compiler argument
-capacity. Current producers and consumers require v4; the checked-in prepared
-model and self-test payloads were regenerated with the rebuilt native runtime.
-Older v3 payloads require regeneration, since relabeling metadata does not
-update the binary format.
-The release lock records the actual dependency versions, but the source patches
-still fail the published-crate gate. Publication requires an upstream release
-containing the integration fixes; this branch is not yet publishable.
+The `loop` development branch integrates Rust Symbolica 3.0.2, Numerica and
+Graphica from symbolica-dev/symbolica's `community` branch `36cbac3a` (main
+`9de26e4e` plus the author's merged commits) with one consolidated upstream
+pull request on top: batched evaluation (`BatchExpressionEvaluator`),
+`DualNumber` component views, saved evaluators that hold only the state
+they reference, and correct complex-modulus derivatives in Dual domains. The
+pinned revision is
+[`ab497fae`](https://github.com/ValentinHirschi/symbolica/commit/ab497fae22c5a5e3f33ce77adfa11bb37fa5fca0)
+(branch `pyamplicol/pin-community-36cbac3a`; the PR's own branch
+`pyamplicol/batch-dual-saved-state` is the same five commits on `main`).
+Upstream `main` alone does not build the workspace: NinjaRS and
+`rusticol-core` / `loop-reduction` use the batched evaluator, NinjaRS the
+`DualNumber` trait, and NinjaRS's rank n+2 Dual derivatives need the
+complex-modulus fix; the Python Community modules (FeynKit, HepKit) need the
+`community` branch's `symbolica::utils::resources`. The pin moves to
+upstream once the PR is merged. NinjaRS (`9477bbe0`) and oneloopmaster
+(`31fd9225`) pin the same revision; there is no alphal00p Symbolica fork in the
+graph (`cargo tree -i symbolica` lists one source). SymJIT stays 2.28.3. These
+pins are recorded by Cargo. This is a source integration, with Rust 1.96 or
+newer required; the git `[patch]` still fails the published-crate gate, so the
+branch is not publishable until the PR is in a Symbolica release.
 
-The loop development builds (`work/v2-repin`) use one Symbolica kernel,
-alphal00p 9cdc2949, on both sides:
+The published Python/Community distribution is pinned to **3.0.3**, which the
+author builds from the same `community` branch (without the PR); its
+`Evaluator.save()` envelope is the one the native reads. 3.0.2's raw-bincode
+saves are refused: Symbolica 3.0.2 changed the saved-evaluator and expression
+export formats, so the serialization ABI is `symbolica-bincode2-v2` and every
+stored evaluator state was regenerated.
 
-- **Native:** the Rust pin above.
-- **Python:** a release rebuild of the Community overlay. Only its Symbolica,
-  Numerica and Graphica paths moved, from e679e8c1 to 9cdc2949. The rest of the
-  overlay is unchanged: symbolica_community 17c8aeb with the workspace overlay
-  patch, gammaloop open-duality candidate 0cfb7dbb9, fastSecDec 14a9296, and the
-  same `--locked` lock.
-
-Python-side Float evaluation runs on the Community kernel. That covers
-`loops/v2/assemble.py` `_replay`, `loops/v2/catalogue.py`
-`evaluate_with_precision` and `runtime/symbolica_exact.py`. At e679e8c1 the
-kernel would keep the ±1 product rounding that 9cdc2949 fixes, the bug that
-sent the AP80 CMS box down the wrong branch in the native. The serialized
-evaluator state is identical at both revisions, so the earlier split was
-compatible but not coherent.
-
-The Community gammaloop stays at the overlay's 0cfb7dbb9. The native's FeynKit
-d1904bf2 (recorded by NinjaRS aa6a6307 and 41a4c00) lacks PR155 (dual endpoints) and three
-other overlay fixes. No gammaloop data crosses the native boundary, so the two
-sides can differ there.
-
-Build pair (workspace `builds/`):
-
-- native `loop-native-v2-repin-783aaf47`, digest `b71edd24…`;
-- Community `community-release-python-9cdc2949`, wheel sha256 `149e63a5…`.
-
-Switching Community from e679e8c1 to 9cdc2949 left the legacy O1/O2 captures
-byte-identical. The v2 slice totals moved by at most 9.8e-62 (row-normalized)
-at 200 bits, and binary64 values were bitwise unchanged.
+The development Python kernel is a release build of the Community recipe
+(symbolica-community `39b556c7`, the 3.0.3 recipe, unmodified) with only its
+`[patch]` moved to `ab497fae`: `builds/community-release-python-ab497fae`
+(wheel `builds/community-release-wheels-ab497fae/`, sha256 `9d83825b…`;
+recipe in `BUILD-INFO.json`). Native and Python therefore share one Symbolica
+revision.
 
 pyAmpliCol defaults to published runtime dependencies and release-mode native
 builds. Historical pinned-source candidate machinery is retained, but its
 upstream pins need a coherent update before use with the current tensor APIs.
-Release mode uses Python Symbolica **3.0.2** (Rust kernel 3.0.1) and SymJIT
+Release mode uses Python Symbolica **3.0.3** (Rust kernel 3.0.2) and SymJIT
 **2.28.3** (`release-lock.toml`). Historical candidate mode retains Symbolica
 **3.0.0** and SymJIT **2.26.0** (`contributor-lock.toml`), so the two locks pin
 different versions; version numbers alone do not establish Python API
