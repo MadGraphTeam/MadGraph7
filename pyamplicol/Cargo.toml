@@ -50,14 +50,15 @@ wide = "1.7"
 # 9de26e4e plus the author's merged commits; the Python Community release is
 # built from it, and FeynKit needs its symbolica::utils::resources) with the
 # consolidated upstream PR (batched evaluation, DualNumber component views,
-# saved evaluators that hold only the state they reference) on top, branch
+# saved evaluators that hold only the state they reference, complex-modulus
+# derivatives in Dual domains) on top, branch
 # ValentinHirschi/symbolica pyamplicol/pin-community-36cbac3a. NinjaRS and
 # oneloopmaster pin the same revision; it moves to upstream once the PR is
 # merged. One revision for the kernel and its numerical and graph crates.
 [patch.crates-io]
-symbolica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "a558dfaed8f198dfc4c3652dfb9fe0f7c65b0505" }
-numerica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "a558dfaed8f198dfc4c3652dfb9fe0f7c65b0505" }
-graphica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "a558dfaed8f198dfc4c3652dfb9fe0f7c65b0505" }
+symbolica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "ab497fae22c5a5e3f33ce77adfa11bb37fa5fca0" }
+numerica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "ab497fae22c5a5e3f33ce77adfa11bb37fa5fca0" }
+graphica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "ab497fae22c5a5e3f33ce77adfa11bb37fa5fca0" }
 symbolica-typst-plugin = { git = "https://github.com/symbolica-dev/symbolica-typst-plugin", rev = "57b7455b37c30f4f87353c0073e49f5225e937ab" }
 
 [profile.dev]
