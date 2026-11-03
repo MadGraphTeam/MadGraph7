@@ -4,6 +4,7 @@
 #include "cuts.hpp"
 #include "discrete.hpp"
 #include "fks.hpp"
+#include "fks_subtraction.hpp"
 #include "invariants.hpp"
 #include "kinematics.hpp"
 #include "math.hpp"

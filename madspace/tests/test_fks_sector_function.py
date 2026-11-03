@@ -73,9 +73,7 @@ def test_matches_fks_sij(path):
 
     kinds, momenta, p_i_hat, fks_index, xi, s_fortran = fortran_points(data)
     assert set(kinds) >= {"event", "soft"}
-    (s,) = evaluate(
-        function, momenta, p_i_hat, fks_index=fks_index if count > 1 else None
-    )
+    (s,) = evaluate(function, momenta, p_i_hat, fks_index=fks_index)
     # fks_Sij.f takes the direction of i from its momentum, the energies from
     # frames it boosts into: the same to rounding. Below xi = 1e-6 (tiny) it
     # takes the direction from p_i_fks_cnt, that of i at the soft (or
@@ -87,7 +85,7 @@ def test_matches_fks_sij(path):
     np.testing.assert_allclose(s[small], s_fortran[small], rtol=1e-6)
     assert ((s >= 0.0) & (s <= 1.0)).all()
 
-    # each configuration on its own, without fks_index, as in the batch
+    # each configuration on its own (fks_index 0), as in the batch
     for c in range(count):
         part = fks_index == c
         if count == 1 or not part.any():
@@ -95,7 +93,9 @@ def test_matches_fks_sij(path):
         arguments = function_arguments(data, c)
         single = ms.FKSSectorFunction(*([value] for value in arguments.values()))
         np.testing.assert_allclose(
-            evaluate(single, momenta[part], p_i_hat[part])[0],
+            evaluate(
+                single, momenta[part], p_i_hat[part], fks_index=np.zeros(part.sum())
+            )[0],
             s[part],
             rtol=1e-14,
             atol=0,
@@ -184,7 +184,7 @@ def test_partition_of_unity(data, c, momenta):
             function,
             momenta,
             momenta[:, i],
-            fks_index=np.full(batch, index) if count > 1 else None,
+            fks_index=np.full(batch, index),
         )
         assert ((s >= 0.0) & (s <= 1.0)).all()
         total += s

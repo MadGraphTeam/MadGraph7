@@ -59,7 +59,7 @@ def test_matches_compute_prefactors_n1body(path):
         field("xiimax_cnt", COLLINEAR),
         field("p_cnt", COLLINEAR),
         field("p_cnt", SOFT_COLLINEAR),
-        fks_index=np.array(index) if count > 1 else None,
+        fks_index=np.array(index),
     )
     fortran = {
         key: np.array([p["prefactors"][key] for p in points])

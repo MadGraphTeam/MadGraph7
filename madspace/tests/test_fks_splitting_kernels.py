@@ -71,7 +71,7 @@ def test_matches_sborncol(path):
         momenta,
         p_i_hat,
         p_born,
-        fks_index=fks_index if count > 1 else None,
+        fks_index=fks_index,
     )
     # z from the momenta, as 1 - E_i / (E_i + E_j) or 1 - 2 E_i / sqrt(s)
     np.testing.assert_allclose(z, coll[:, 0], rtol=0, atol=1e-14)
@@ -118,7 +118,7 @@ def test_transverse_vector_matches_xij_kperp(path):
         momenta,
         p_i_hat,
         p_born,
-        fks_index=fks_index if count > 1 else None,
+        fks_index=fks_index,
     )
     sign = np.sign((k_perp * kperp).sum(1))[:, None]
     # to the precision of the transverse part of p_i_hat, eps / sin(theta)

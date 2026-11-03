@@ -2808,6 +2808,29 @@ fks_counter_event_det:
       desc: "det where the counter-event exists, 0 elsewhere"
   desc: "Jacobian of an FKS counter-event, zero where genps_fks.f does not generate it: a soft counter-event needs xi = 0, which a lower bound on the partonic energy of an emission off an incoming parton can exclude, and an event with the first solution for the momentum of a massive emitter; a collinear one needs y = 1, which the bound can exclude. A massive emitter has no collinear counter-events. See @ref FKSRadiation."
 
+fks_beam_boost:
+  inputs:
+    - name: p
+      type: [float, n, 4]
+      desc: "momenta"
+    - name: masses
+      type: [float, single, n]
+      desc: "mass of each particle, or a negative value for a linear boost"
+    - name: plus
+      type: [float]
+      desc: "boost by the rapidity log(plus / minus) / 2"
+    - name: minus
+      type: [float]
+      desc: "see plus"
+  outputs:
+    - name: p_out
+      type: [float, n, 4]
+      desc: "the boosted momenta"
+  desc: "Boost along the beam axis in light-cone components, the smaller one of each momentum from its mass shell, which keeps the relative precision of every momentum in both directions of the boost. Exchanging plus and minus gives the inverse. Unlike @ref boost_beam it does not lose precision when boosting out of the lab frame. See @ref FKSMapping."
+
+---
+title: FKS subtraction
+
 fks_sector_function:
   inputs:
     - name: p
@@ -2993,27 +3016,6 @@ fks_prefactors:
       desc: "prefactors of the collinear remnants at the soft-collinear counter-event"
   vectorized: False
   desc: "The prefactors f_r, f_s, f_c, f_dc, f_sc and f_dsc of compute_prefactors_n1body in fks_singular.f, the plus distributions in xi and 1 - y with xicut, xiScut, delta and deltaS, for the Jacobians of the events and counter-events without the factor xi and without the symmetry factors: f_r = 1 / (xi (1 - y)) and f_s = (1 / xi + log(xicut / xi_l) / xi_l) / (1 - y) with xi_l = min(xi_max, xiScut), the collinear ones with xi and xi_max of the collinear counter-event and 32 pi^2 / s for the remnants, zero for a massive emitter."
-
-fks_beam_boost:
-  inputs:
-    - name: p
-      type: [float, n, 4]
-      desc: "momenta"
-    - name: masses
-      type: [float, single, n]
-      desc: "mass of each particle, or a negative value for a linear boost"
-    - name: plus
-      type: [float]
-      desc: "boost by the rapidity log(plus / minus) / 2"
-    - name: minus
-      type: [float]
-      desc: "see plus"
-  outputs:
-    - name: p_out
-      type: [float, n, 4]
-      desc: "the boosted momenta"
-  desc: "Boost along the beam axis in light-cone components, the smaller one of each momentum from its mass shell, which keeps the relative precision of every momentum in both directions of the boost. Exchanging plus and minus gives the inverse. Unlike @ref boost_beam it does not lose precision when boosting out of the lab frame. See @ref FKSMapping."
-
 
 ---
 title: Invariants

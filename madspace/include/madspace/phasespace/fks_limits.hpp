@@ -41,8 +41,8 @@ namespace madspace {
  * - `p_i_hat` – `float`, shape `(batch, 4)` – momentum of i per unit
  *   @f$\xi@f$ at the soft counter-event.
  * - `y` – `float`, shape `(batch,)` – cosine of the angle between i and j.
- * - `fks_index` – `int`, shape `(batch,)` – the configuration of the event.
- *   Present only for several configurations.
+ * - `fks_index` – `int`, shape `(batch,)` – the configuration of the event,
+ *   from 0 to the number of configurations minus one.
  *
  * **Returns**
  * - `eikonals` – `float`, shape `(batch, k)` – @f$\mathcal{E}_{mn}@f$ of the
@@ -142,8 +142,8 @@ private:
  *   @f$\xi@f$ at the event.
  * - `born_momenta` – `float`, shape `(batch, n - 1, 4)` – momenta of the Born,
  *   in the frame of `p_i_hat`.
- * - `fks_index` – `int`, shape `(batch,)` – the configuration of the event.
- *   Present only for several configurations.
+ * - `fks_index` – `int`, shape `(batch,)` – the configuration of the event,
+ *   from 0 to the number of configurations minus one.
  *
  * **Returns**
  * - `z` – `float`, shape `(batch,)` – momentum fraction of the splitting.
@@ -246,8 +246,8 @@ private:
  * - `collinear_momenta`, `soft_collinear_momenta` – `float`, shape
  *   `(batch, n, 4)` – momenta of the collinear and soft-collinear
  *   counter-events, in any frame.
- * - `fks_index` – `int`, shape `(batch,)` – the configuration of the event.
- *   Present only for several configurations.
+ * - `fks_index` – `int`, shape `(batch,)` – the configuration of the event,
+ *   from 0 to the number of configurations minus one.
  *
  * **Returns**
  * - `f_r`, `f_s`, `f_c`, `f_dc`, `f_sc` – `float`, shape `(batch,)`.

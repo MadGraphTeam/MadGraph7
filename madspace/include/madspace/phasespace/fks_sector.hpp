@@ -47,8 +47,8 @@ namespace madspace {
  *   configuration of the event.
  * - `p_i_hat` – `float`, shape `(batch, 4)` – momentum of i per unit
  *   @f$\xi@f$.
- * - `fks_index` – `int`, shape `(batch,)` – the configuration of the event.
- *   Present only for several configurations.
+ * - `fks_index` – `int`, shape `(batch,)` – the configuration of the event,
+ *   from 0 to the number of configurations minus one.
  *
  * **Returns**
  * - `s` – `float`, shape `(batch,)` – @f$S_{ij}@f$.

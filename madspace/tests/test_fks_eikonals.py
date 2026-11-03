@@ -57,7 +57,7 @@ def test_matches_eikonal_reduced(path):
         np.array(momenta),
         np.array(p_i_hat),
         np.array(y),
-        fks_index=np.array(fks_index) if count > 1 else None,
+        fks_index=np.array(fks_index),
     )
     assert eik.shape == (len(rows), eikonals.max_pair_count())
     for k, (c, pairs_c, fortran_c) in enumerate(zip(fks_index, pairs, fortran)):

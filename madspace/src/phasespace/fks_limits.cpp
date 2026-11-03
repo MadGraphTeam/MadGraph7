@@ -77,9 +77,7 @@ FKSEikonals::FKSEikonals(
                 {"p_i_hat", batch_four_vec},
                 {"y", batch_float},
             };
-            if (i_fks.size() > 1) {
-                args.push_back("fks_index", batch_int);
-            }
+            args.push_back("fks_index", batch_int);
             return args;
         }(),
         [&] {
@@ -139,7 +137,7 @@ NamedVector<Value> FKSEikonals::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
     std::size_t count = configuration_count();
-    Value index = count > 1 ? args.at("fks_index") : Value(static_cast<me_int_t>(0));
+    Value index = args.at("fks_index");
     std::vector<me_int_t> fks_j, pair_count;
     nested_vector2<me_int_t> pair_m, pair_n;
     for (std::size_t c = 0; c < count; ++c) {
@@ -267,9 +265,7 @@ FKSSplittingKernels::FKSSplittingKernels(
                 {"p_i_hat", batch_four_vec},
                 {"born_momenta", batch_four_vec_array(n - 1)},
             };
-            if (count > 1) {
-                args.push_back("fks_index", batch_int);
-            }
+            args.push_back("fks_index", batch_int);
             return args;
         }(),
         {{"z", batch_float},
@@ -302,7 +298,7 @@ NamedVector<Value> FKSSplittingKernels::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
     std::size_t count = configuration_count();
-    Value index = count > 1 ? args.at("fks_index") : Value(static_cast<me_int_t>(0));
+    Value index = args.at("fks_index");
     std::vector<me_int_t> fks_i, fks_j, kind, born_j;
     for (std::size_t c = 0; c < count; ++c) {
         std::size_t i = _i_fks.at(c), j = _j_fks.at(c);
@@ -370,9 +366,7 @@ FKSPrefactors::FKSPrefactors(
                 {"collinear_momenta", batch_four_vec_array(n)},
                 {"soft_collinear_momenta", batch_four_vec_array(n)},
             };
-            if (count > 1) {
-                args.push_back("fks_index", batch_int);
-            }
+            args.push_back("fks_index", batch_int);
             return args;
         }(),
         {{"f_r", batch_float},
@@ -395,7 +389,7 @@ NamedVector<Value> FKSPrefactors::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
     std::size_t count = configuration_count();
-    Value index = count > 1 ? args.at("fks_index") : Value(static_cast<me_int_t>(0));
+    Value index = args.at("fks_index");
     std::vector<me_int_t> collinear;
     std::vector<double> delta;
     for (std::size_t c = 0; c < count; ++c) {

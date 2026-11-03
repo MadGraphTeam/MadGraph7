@@ -87,9 +87,7 @@ FKSSectorFunction::FKSSectorFunction(
                 {"momenta", batch_four_vec_array(n)},
                 {"p_i_hat", batch_four_vec},
             };
-            if (i_fks.size() > 1) {
-                args.push_back("fks_index", batch_int);
-            }
+            args.push_back("fks_index", batch_int);
             return args;
         }(),
         {{"s", batch_float}}
@@ -158,9 +156,7 @@ FKSSectorFunction::pairs(std::size_t index) const {
 NamedVector<Value> FKSSectorFunction::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
-    Value index = configuration_count() > 1
-        ? args.at("fks_index")
-        : Value(static_cast<me_int_t>(0));
+    Value index = args.at("fks_index");
     // the pairs as a (c, n, n) tensor, laid out as Value lays out nested
     // vectors: the first index fastest
     std::size_t count = configuration_count(), n = _particle_count;
