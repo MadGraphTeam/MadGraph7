@@ -373,6 +373,76 @@ def test_generator_contact_with_a_singlet_leg_splits_through_an_adjoint_auxiliar
     assert _four_point_contact_color_split(unrecorded, 3) is None
 
 
+# ------------------------------------------------------------- tree HEFT
+
+
+@pytest.mark.loop_physics
+def test_tree_heft_merges_with_x0_equal_the_madloop_borns(hc_nlo_x0_ufo, tmp_path):
+    """Tree generation (not the loop Born, whose blocks are literal colour
+    orderings) on HC_NLO_X0 (heft): a gluon current merged with the colour
+    singlet x0 through the effective x0 g g vertex enters the tree DAG in one
+    input order also on the shared-LC reflection path (PR #38; before, both
+    orders were merged, the amplitude doubled). At full colour u u~ > x0 g
+    equals the MadLoop 3.7.0 Born of HC03 (cosa = 1; it was 4 times larger),
+    and at lc u u~ > x0 g and g g > x0 g are N_c^2/(N_c^2 - 1) = 9/8 times
+    the full-colour value, as g g > g g g (g g > x0 g was 9/2)."""
+
+    from pyamplicol import Generator, ModelSource, ProcessSet, Runtime
+    from pyamplicol.config import (
+        ColorConfig,
+        EvaluatorConfig,
+        GenerationConfig,
+        ProcessConfig,
+        RunConfig,
+    )
+
+    card = _card()
+    names = {"uux_x0g": ("u u~ > x0 g", "hc03"), "gg_x0g": ("g g > x0 g", "hc02")}
+    values = {}
+    for accuracy in ("full", "lc"):
+        output = tmp_path / accuracy
+        Generator(
+            RunConfig(
+                action="generate",
+                color=ColorConfig(accuracy=accuracy),
+                evaluator=EvaluatorConfig(backend="jit", execution_mode="compiled"),
+                generation=GenerationConfig(workers=1, emit_api_bundle=False),
+                process=ProcessConfig(coupling_order_policy="minimal"),
+            )
+        ).generate(
+            ProcessSet.from_expressions(
+                tuple(expression for expression, _ in names.values()),
+                names=tuple(names),
+            ),
+            output,
+            model=ModelSource.from_path(hc_nlo_x0_ufo, restriction="heft"),
+        )
+        for name, (_, row) in names.items():
+            fixture = json.loads((FIXTURES / f"{row}.json").read_text())
+            (entry,) = [c for c in fixture["cards"] if c["parameters"]["cosa"] == "1"]
+            runtime = Runtime.load(
+                output,
+                process=name,
+                model_parameters={
+                    key: float(value)
+                    for key, value in entry["parameters"].items()
+                    if key not in card["fixed_parameters"]
+                },
+            )
+            points = [
+                [[float(x) for x in leg] for leg in point]
+                for point in fixture["points"]
+            ]
+            values[name, accuracy] = [complex(x).real for x in runtime.evaluate(points)]
+            if accuracy == "full" and name == "uux_x0g":
+                borns = {value["point"]: value["born"] for value in entry["values"]}
+                for k, ours in enumerate(values[name, accuracy]):
+                    assert _relative(ours, borns[k], 0.0) <= 1e-12, (name, k)
+    for name in names:
+        for lc, full in zip(values[name, "lc"], values[name, "full"], strict=True):
+            assert _relative(lc, 9 / 8 * full, 0.0) <= 1e-12, name
+
+
 # ------------------------------------------------------------------ rows
 
 NC = 3.0
