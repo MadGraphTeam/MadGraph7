@@ -4647,6 +4647,88 @@ impl NativeRuntime {
         })
     }
 
+    /// One logical model parameter at `decimal_digits` significant digits:
+    /// the value [`Self::evaluate_with_precision`] uses at that precision.
+    /// 16 digits give the binary64 value. Otherwise an external parameter is
+    /// its binary64 value promoted exactly, and a derived one (couplings, and
+    /// masses such as M_W in the G_mu scheme) comes from the compiled model's
+    /// exact definitions at the working precision: double-double for 32
+    /// digits, else ceil(digits * log2(10)) bits. Momenta built on these
+    /// masses put external particles on the amplitude's mass shell at every
+    /// precision. Returns the real and imaginary parts as decimal strings.
+    #[cfg(feature = "symbolica-runtime")]
+    pub fn model_parameter_value_with_precision(
+        &mut self,
+        name: &str,
+        decimal_digits: u32,
+    ) -> Result<(String, String), RusticolError> {
+        if decimal_digits == 0 {
+            return Err(RusticolError::unsupported_precision(
+                "precision must be a positive number of decimal digits",
+            ));
+        }
+        let (real, imaginary) = self.model_parameter_value(name)?;
+        let parts = if decimal_digits == 16 {
+            format_decimal_values(vec![real, imaginary], decimal_digits)
+        } else {
+            self.ensure_exact_model_parameters()?;
+            if decimal_digits == 32 {
+                let (real, imaginary) = self
+                    .runtime
+                    .generic_model_parameter_value::<DoubleFloat>(name, None)?;
+                format_decimal_values(vec![real, imaginary], decimal_digits)
+            } else {
+                let binary_precision = decimal_digits_to_bits(decimal_digits);
+                let (real, imaginary) = self
+                    .runtime
+                    .generic_model_parameter_value::<Float>(name, Some(binary_precision))?;
+                format_decimal_values(vec![real, imaginary], decimal_digits)
+            }
+        };
+        let [real, imaginary]: [String; 2] = parts
+            .try_into()
+            .map_err(|_| RusticolError::integrity("a parameter value has two components"))?;
+        Ok((real, imaginary))
+    }
+
+    /// The mass of particle `pdg` (PDG code) that [`Self::evaluate_with_precision`]
+    /// gives its external wavefunctions at `decimal_digits` digits, as a
+    /// decimal string: the binary64 mass for 16 digits, otherwise the mass at
+    /// the working precision (a mass that follows a derived parameter is
+    /// derived at that precision, as the couplings are). Momenta built on it
+    /// put the particle on the amplitude's mass shell.
+    #[cfg(feature = "symbolica-runtime")]
+    pub fn particle_mass_with_precision(
+        &mut self,
+        pdg: i32,
+        decimal_digits: u32,
+    ) -> Result<String, RusticolError> {
+        if decimal_digits == 0 {
+            return Err(RusticolError::unsupported_precision(
+                "precision must be a positive number of decimal digits",
+            ));
+        }
+        let binary64 = self.runtime.current_particle_mass(pdg)?;
+        let mut parts = if decimal_digits == 16 {
+            format_decimal_values(vec![binary64], decimal_digits)
+        } else {
+            self.ensure_exact_model_parameters()?;
+            if decimal_digits == 32 {
+                let mass = self.runtime.generic_particle_mass::<DoubleFloat>(pdg, None)?;
+                format_decimal_values(vec![mass], decimal_digits)
+            } else {
+                let binary_precision = decimal_digits_to_bits(decimal_digits);
+                let mass = self
+                    .runtime
+                    .generic_particle_mass::<Float>(pdg, Some(binary_precision))?;
+                format_decimal_values(vec![mass], decimal_digits)
+            }
+        };
+        parts
+            .pop()
+            .ok_or_else(|| RusticolError::integrity("a particle mass has one value"))
+    }
+
     #[cfg(feature = "symbolica-runtime")]
     pub(super) fn apply_process_group_factor_high_precision<T>(
         &self,
