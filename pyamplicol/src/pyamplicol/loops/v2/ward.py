@@ -124,7 +124,8 @@ def require_full_kernels(slice_: Any) -> None:
         raise ValueError(
             "the Ward mode needs the full tree kernels (the transverse "
             "Yang-Mills kernel assumes conserved currents): generate the slice "
-            "with ward.ward_slice; a stored process does not serve it"
+            "with ward.ward_slice; a stored process serves it only when stored "
+            "from such a slice"
         )
 
 
