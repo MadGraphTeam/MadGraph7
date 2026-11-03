@@ -31,6 +31,39 @@ pub struct NativeCorrelatedEvaluation {
     pub values: Vec<[f64; 2]>,
 }
 
+/// Spin vectors of [`NativeDecimalCorrelatedRequest`]: per leg, four complex
+/// components `[real, imaginary]` as decimal strings, parsed at the working
+/// precision. One vector broadcasts; otherwise supply one per point.
+pub type NativeDecimalSpinCorrelationVectors = BTreeMap<usize, Vec<[[String; 2]; 4]>>;
+
+/// One request of [`NativeRuntime::evaluate_correlated_many_with_precision`],
+/// as [`NativeCorrelatedRequest`] with decimal spin vectors.
+#[derive(Clone, Debug)]
+pub struct NativeDecimalCorrelatedRequest {
+    pub color_correlation: String,
+    /// None inherits the runtime setter (its binary64 vectors, exactly); an
+    /// empty map restores physical sources.
+    pub spin_vectors: Option<NativeDecimalSpinCorrelationVectors>,
+}
+
+impl Default for NativeDecimalCorrelatedRequest {
+    fn default() -> Self {
+        Self {
+            color_correlation: "born".into(),
+            spin_vectors: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct NativeDecimalCorrelatedEvaluation {
+    pub point_count: usize,
+    pub request_count: usize,
+    /// Request-major: values[request * point_count + point] = [real, imaginary].
+    pub values: Vec<[String; 2]>,
+    pub decimal_digits: u32,
+}
+
 #[derive(Deserialize)]
 struct Catalogue {
     schema_version: u32,
@@ -99,6 +132,11 @@ struct Matrix {
     id: String,
     sectors: BTreeSet<i64>,
     entries: Vec<(i64, i64, [f64; 2])>,
+    /// The exact weights of `entries` (aligned): [real, imaginary] as
+    /// [numerator, denominator] integer strings, for the double-double and
+    /// arbitrary-precision contraction.
+    #[cfg_attr(not(feature = "symbolica-runtime"), allow(dead_code))]
+    exact_weights: Vec<[[String; 2]; 2]>,
 }
 
 struct Group {
@@ -137,18 +175,31 @@ fn validate_catalogue_artifact_id(loaded: &str, reopened: &str) -> RusticolResul
     Ok(())
 }
 
+/// A matrix coefficient's integer numerator or denominator as its decimal text.
+fn exact_integer_text(value: &Value) -> RusticolResult<String> {
+    let text = match value {
+        Value::String(text) => text.clone(),
+        Value::Number(number) if number.is_i64() || number.is_u64() => number.to_string(),
+        _ => return Err(malformed("matrix coefficient is not an integer")),
+    };
+    let digits = text.strip_prefix('-').unwrap_or(&text);
+    if digits.is_empty() || !digits.bytes().all(|value| value.is_ascii_digit()) {
+        return Err(malformed("matrix coefficient is not an integer"));
+    }
+    Ok(text)
+}
+
+fn exact_rational_text(parts: &[Value; 2]) -> RusticolResult<[String; 2]> {
+    Ok([
+        exact_integer_text(&parts[0])?,
+        exact_integer_text(&parts[1])?,
+    ])
+}
+
 fn rational_f64(parts: &[Value; 2]) -> RusticolResult<f64> {
     let integer = |value: &Value| -> RusticolResult<f64> {
-        let text = match value {
-            Value::String(text) => text.clone(),
-            Value::Number(number) if number.is_i64() || number.is_u64() => number.to_string(),
-            _ => return Err(malformed("matrix coefficient is not an integer")),
-        };
-        let digits = text.strip_prefix('-').unwrap_or(&text);
-        if digits.is_empty() || !digits.bytes().all(|value| value.is_ascii_digit()) {
-            return Err(malformed("matrix coefficient is not an integer"));
-        }
-        text.parse::<f64>()
+        exact_integer_text(value)?
+            .parse::<f64>()
             .ok()
             .filter(|value| value.is_finite())
             .ok_or_else(|| malformed("matrix coefficient exceeds binary64 range"))
@@ -299,6 +350,7 @@ impl CorrelatedRuntime {
             }
             let mut pairs = BTreeSet::new();
             let mut entries = Vec::new();
+            let mut exact_weights = Vec::new();
             for entry in matrix.entries {
                 if !sectors.contains(&entry.left_sector_id)
                     || !sectors.contains(&entry.right_sector_id)
@@ -314,6 +366,10 @@ impl CorrelatedRuntime {
                         rational_f64(&entry.weight.imag)?,
                     ],
                 ));
+                exact_weights.push([
+                    exact_rational_text(&entry.weight.real)?,
+                    exact_rational_text(&entry.weight.imag)?,
+                ]);
             }
             catalogue.push(serde_json::json!({"id":matrix.id,"order":matrix.order,"bra":matrix.bra,"ket":matrix.ket,
                 "color_accuracy":matrix.color_accuracy,"output_legs":matrix.output_legs,"sector_ids":matrix.sector_ids}));
@@ -321,6 +377,7 @@ impl CorrelatedRuntime {
                 id: matrix.id,
                 sectors,
                 entries,
+                exact_weights,
             });
         }
         if !declarations.is_empty() {
@@ -450,17 +507,22 @@ impl CorrelatedRuntime {
         })
     }
 
-    fn validate_vectors(
-        &self,
-        vectors: &NativeSpinCorrelationVectors,
-        point_count: Option<usize>,
-    ) -> RusticolResult<()> {
+    fn validate_spin_class<V>(&self, vectors: &BTreeMap<usize, V>) -> RusticolResult<()> {
         let legs: Vec<_> = vectors.keys().copied().collect();
         if !legs.is_empty() && !self.spin_classes.contains(&legs) {
             return Err(invalid(
                 "this joint spin-correlation class was not declared at generation",
             ));
         }
+        Ok(())
+    }
+
+    fn validate_vectors(
+        &self,
+        vectors: &NativeSpinCorrelationVectors,
+        point_count: Option<usize>,
+    ) -> RusticolResult<()> {
+        self.validate_spin_class(vectors)?;
         for batch in vectors.values() {
             if batch.is_empty()
                 || point_count.is_some_and(|count| batch.len() != 1 && batch.len() != count)
@@ -478,10 +540,12 @@ impl CorrelatedRuntime {
         Ok(())
     }
 
-    fn selected_groups(
+    /// The groups of the selected helicities, one placeholder helicity per
+    /// replaced leg (the keys of `vectors`).
+    fn selected_groups<V>(
         &self,
         ids: Option<&[String]>,
-        vectors: &NativeSpinCorrelationVectors,
+        vectors: &BTreeMap<usize, V>,
     ) -> Vec<usize> {
         let selected = |group: &Group| ids.is_none_or(|ids| ids.contains(&group.helicity_id));
         let spectator = |group: &Group| {
@@ -751,6 +815,405 @@ fn evaluate_many(
     })
 }
 
+/// Guard bits of the wider `Float` in which exact colour weights are formed
+/// before they are rounded to the working precision.
+#[cfg(feature = "symbolica-runtime")]
+const EXACT_WEIGHT_GUARD_BITS: u32 = 64;
+
+#[cfg(feature = "symbolica-runtime")]
+impl NativeRuntime {
+    /// [`Self::evaluate_correlated_many_f64`] in double-double
+    /// (`decimal_digits == 32`) or arbitrary precision (`ceil(decimal_digits ·
+    /// log2 10)` bits; 16 selects binary64), with decimal momenta
+    /// (`[point][external leg][4]`) and spin vectors, as
+    /// [`Self::evaluate_with_precision`]. The stages, the spin-vector source
+    /// replacement, the exact colour weights of the declared correlations and
+    /// the contraction run at the working precision; the normalization and the
+    /// process-group factor are the artifact's, as in
+    /// [`Self::evaluate_with_precision`]. Values are request-major
+    /// (`values[request * point_count + point]`), formatted with
+    /// `decimal_digits` digits.
+    pub fn evaluate_correlated_many_with_precision(
+        &mut self,
+        momenta: &[String],
+        point_count: usize,
+        decimal_digits: u32,
+        requests: &[NativeDecimalCorrelatedRequest],
+        helicity_ids: Option<&[String]>,
+    ) -> RusticolResult<NativeDecimalCorrelatedEvaluation> {
+        if decimal_digits == 0 {
+            return Err(RusticolError::unsupported_precision(
+                "precision must be a positive number of decimal digits",
+            ));
+        }
+        self.ensure_correlated()?;
+        if point_count == 0 {
+            return Err(invalid(
+                "correlated momenta must be finite with shape [point][external leg][4]",
+            ));
+        }
+        let values = if decimal_digits == 16 {
+            let parse = |value: &String| {
+                value.parse::<f64>().map_err(|error| {
+                    invalid(format!(
+                        "could not parse f64 correlated input {value:?}: {error}"
+                    ))
+                })
+            };
+            let momenta = momenta
+                .iter()
+                .map(parse)
+                .collect::<RusticolResult<Vec<_>>>()?;
+            let requests = requests
+                .iter()
+                .map(|request| {
+                    let spin_vectors = request
+                        .spin_vectors
+                        .as_ref()
+                        .map(|vectors| {
+                            vectors
+                                .iter()
+                                .map(|(&leg, batch)| {
+                                    let batch = batch
+                                        .iter()
+                                        .map(|vector| {
+                                            let mut parsed = [[0.0; 2]; 4];
+                                            for (target, [re, im]) in parsed.iter_mut().zip(vector)
+                                            {
+                                                *target = [parse(re)?, parse(im)?];
+                                            }
+                                            Ok(parsed)
+                                        })
+                                        .collect::<RusticolResult<Vec<_>>>()?;
+                                    Ok((leg, batch))
+                                })
+                                .collect::<RusticolResult<NativeSpinCorrelationVectors>>()
+                        })
+                        .transpose()?;
+                    Ok(NativeCorrelatedRequest {
+                        color_correlation: request.color_correlation.clone(),
+                        spin_vectors,
+                    })
+                })
+                .collect::<RusticolResult<Vec<_>>>()?;
+            let evaluation =
+                self.evaluate_correlated_many_f64(&momenta, point_count, &requests, helicity_ids)?;
+            native_runtime::format_decimal_values(
+                evaluation.values.into_iter().flatten().collect(),
+                decimal_digits,
+            )
+        } else if decimal_digits == 32 {
+            self.ensure_exact_model_parameters()?;
+            let batch = self.prepare_double_batch(momenta, point_count)?;
+            let mut values =
+                evaluate_many_generic::<DoubleFloat>(self, &batch, requests, helicity_ids, None)?;
+            self.apply_process_group_factor_high_precision(&mut values, None);
+            native_runtime::format_decimal_values(values, decimal_digits)
+        } else {
+            self.ensure_exact_model_parameters()?;
+            let binary_precision = decimal_digits_to_bits(decimal_digits);
+            let batch = self.prepare_float_batch(momenta, point_count, binary_precision)?;
+            let mut values = evaluate_many_generic::<Float>(
+                self,
+                &batch,
+                requests,
+                helicity_ids,
+                Some(binary_precision),
+            )?;
+            self.apply_process_group_factor_high_precision(&mut values, Some(binary_precision));
+            native_runtime::format_decimal_values(values, decimal_digits)
+        };
+        let mut values = values.into_iter();
+        let values = std::iter::from_fn(|| Some([values.next()?, values.next()?])).collect();
+        Ok(NativeDecimalCorrelatedEvaluation {
+            point_count,
+            request_count: requests.len(),
+            values,
+            decimal_digits,
+        })
+    }
+}
+
+/// Spin vectors of one assignment at the working precision, per leg.
+#[cfg(feature = "symbolica-runtime")]
+type GenericSpinVectors<T> = BTreeMap<usize, Vec<[Complex<T>; 4]>>;
+
+/// The generic-precision counterpart of [`evaluate_many`]: flattened
+/// request-major `[real, imaginary]` values, before the process-group factor.
+#[cfg(feature = "symbolica-runtime")]
+fn evaluate_many_generic<T>(
+    native: &mut NativeRuntime,
+    batch: &[Vec<[T; 4]>],
+    requests: &[NativeDecimalCorrelatedRequest],
+    helicity_ids: Option<&[String]>,
+    binary_precision: Option<u32>,
+) -> RusticolResult<Vec<T>>
+where
+    T: RusticolHighPrecisionNumber,
+    Complex<T>: Real + EvaluationDomain,
+{
+    let point_count = batch.len();
+    if batch
+        .iter()
+        .flatten()
+        .flatten()
+        .any(|value| !value.is_finite())
+    {
+        return Err(invalid(
+            "correlated momenta must be finite with shape [point][external leg][4]",
+        ));
+    }
+    let correlated = native.correlated.as_ref().expect("initialized");
+    if helicity_ids.is_some_and(|ids| {
+        ids.iter()
+            .any(|id| !correlated.known_helicities.contains(id))
+    }) {
+        return Err(invalid("unknown correlated helicity ID"));
+    }
+    // Spin-vector components at the working precision (106 bits for
+    // double-double): decimal inputs keep their digits, the setter's binary64
+    // vectors convert exactly.
+    let bits = binary_precision.unwrap_or(106);
+    let parse = |text: &str| -> RusticolResult<T> {
+        Float::parse(text, Some(bits))
+            .ok()
+            .filter(Float::is_finite)
+            .map(|value| T::from_float(&value, binary_precision))
+            .ok_or_else(|| {
+                invalid(format!(
+                    "spin-vector component {text:?} is not a finite decimal number"
+                ))
+            })
+    };
+    let mut assignments: Vec<GenericSpinVectors<T>> = Vec::new();
+    let mut keys: BTreeMap<Vec<(usize, Vec<String>)>, usize> = BTreeMap::new();
+    let mut routes = Vec::new();
+    for request in requests {
+        let matrix = correlated
+            .matrices
+            .iter()
+            .position(|matrix| matrix.id == request.color_correlation)
+            .ok_or_else(|| {
+                invalid(format!(
+                    "unknown colour correlation ID {:?}",
+                    request.color_correlation
+                ))
+            })?;
+        // Canonicalize broadcast and per-point forms: the key repeats each
+        // point's input text (binary64 setter values by their bits).
+        let per_point = |len: usize, point: usize| if len == 1 { 0 } else { point };
+        let (key, vectors): (Vec<_>, GenericSpinVectors<T>) = match &request.spin_vectors {
+            Some(decimal) => {
+                correlated.validate_spin_class(decimal)?;
+                let mut key = Vec::new();
+                let mut vectors = BTreeMap::new();
+                for (&leg, values) in decimal {
+                    if values.is_empty() || (values.len() != 1 && values.len() != point_count) {
+                        return Err(invalid(
+                            "spin vectors must be finite, with one vector or one per phase-space point",
+                        ));
+                    }
+                    key.push((
+                        leg,
+                        (0..point_count)
+                            .flat_map(|point| {
+                                values[per_point(values.len(), point)]
+                                    .iter()
+                                    .flatten()
+                                    .cloned()
+                            })
+                            .collect(),
+                    ));
+                    let parsed = values
+                        .iter()
+                        .map(|vector| {
+                            let mut components = Vec::with_capacity(4);
+                            for [re, im] in vector {
+                                components.push(Complex::new(parse(re)?, parse(im)?));
+                            }
+                            Ok(components
+                                .try_into()
+                                .unwrap_or_else(|_| unreachable!("four components")))
+                        })
+                        .collect::<RusticolResult<Vec<[Complex<T>; 4]>>>()?;
+                    vectors.insert(leg, parsed);
+                }
+                (key, vectors)
+            }
+            None => {
+                correlated.validate_vectors(&correlated.vectors, Some(point_count))?;
+                let key = correlated
+                    .vectors
+                    .iter()
+                    .map(|(&leg, values)| {
+                        (
+                            leg,
+                            (0..point_count)
+                                .flat_map(|point| {
+                                    values[per_point(values.len(), point)]
+                                        .iter()
+                                        .flatten()
+                                        .map(|value| format!("0x{:016x}", value.to_bits()))
+                                })
+                                .collect(),
+                        )
+                    })
+                    .collect();
+                let vectors = correlated
+                    .vectors
+                    .iter()
+                    .map(|(&leg, values)| {
+                        let converted = values
+                            .iter()
+                            .map(|vector| {
+                                vector.map(|[re, im]| {
+                                    Complex::new(
+                                        T::from_f64_constant(re, binary_precision),
+                                        T::from_f64_constant(im, binary_precision),
+                                    )
+                                })
+                            })
+                            .collect();
+                        (leg, converted)
+                    })
+                    .collect();
+                (key, vectors)
+            }
+        };
+        let assignment = *keys.entry(key).or_insert_with(|| {
+            assignments.push(vectors);
+            assignments.len() - 1
+        });
+        routes.push((assignment, matrix));
+    }
+    let mut values = vec![T::new_zero(); 2 * point_count * requests.len()];
+    if requests.is_empty() {
+        return Ok(values);
+    }
+    // Exact colour weights at the working precision, once per used matrix.
+    let weight_bits = bits + EXACT_WEIGHT_GUARD_BITS;
+    let rational = |[numerator, denominator]: &[String; 2]| -> RusticolResult<T> {
+        let parse = |text: &str| {
+            Float::parse(text, Some(weight_bits))
+                .map_err(|error| malformed(format!("matrix coefficient {text:?}: {error}")))
+        };
+        Ok(T::from_float(
+            &(parse(numerator)? / &parse(denominator)?),
+            binary_precision,
+        ))
+    };
+    let mut weights: BTreeMap<usize, Vec<(i64, i64, T, T)>> = BTreeMap::new();
+    for &(_, matrix) in &routes {
+        if weights.contains_key(&matrix) {
+            continue;
+        }
+        let record = &correlated.matrices[matrix];
+        let entries = record
+            .entries
+            .iter()
+            .zip(&record.exact_weights)
+            .map(|(&(left, right, _), [real, imag])| {
+                Ok((left, right, rational(real)?, rational(imag)?))
+            })
+            .collect::<RusticolResult<Vec<_>>>()?;
+        weights.insert(matrix, entries);
+    }
+    let selected: Vec<_> = assignments
+        .iter()
+        .map(|vectors| correlated.selected_groups(helicity_ids, vectors))
+        .collect();
+    let runtime = &mut native.runtime;
+    let normalization = T::from_f64_constant(runtime.normalization_factor, binary_precision);
+    for (assignment, vectors) in assignments.iter().enumerate() {
+        // Rank-one replacement of every source of a replaced leg, with the
+        // source's crossing phase (±1 or ±i, exact), as
+        // `replace_correlated_sources` of the binary64 lane.
+        let replacements: Vec<_> = runtime
+            .sources
+            .iter()
+            .filter_map(|source| {
+                let batch = vectors.get(&source.leg_label)?;
+                let [pr, pi] = source.applied_crossing.phase;
+                Some((
+                    source.value_slot.component_start,
+                    source.value_slot.component_stop,
+                    batch,
+                    T::from_f64_constant(pr, binary_precision),
+                    T::from_f64_constant(pi, binary_precision),
+                ))
+            })
+            .collect();
+        let (state, _profile) = runtime.evaluate_generic_stages_with_sources(
+            batch,
+            binary_precision,
+            |point, row| {
+                for (start, stop, batch, pr, pi) in &replacements {
+                    if stop.checked_sub(*start) != Some(4) || *stop > row.len() {
+                        return Err(malformed(
+                            "spin correlation requires retained four-component vector sources",
+                        ));
+                    }
+                    let vector = &batch[if batch.len() == 1 { 0 } else { point }];
+                    for (target, value) in row[*start..*stop].iter_mut().zip(vector) {
+                        *target = Complex::new(
+                            value.re.clone() * pr.clone() - value.im.clone() * pi.clone(),
+                            value.re.clone() * pi.clone() + value.im.clone() * pr.clone(),
+                        );
+                    }
+                }
+                Ok(())
+            },
+        )?;
+        let (outputs, _, _) = runtime
+            .amplitude_stage
+            .as_mut()
+            .ok_or_else(|| malformed("missing amplitude stage"))?
+            .evaluate_outputs_generic(point_count, &state, binary_precision)?;
+        let output_length = outputs.len() / point_count;
+        let mut amplitudes = vec![complex_zero::<T>(); selected[assignment].len() * point_count];
+        let mut by_helicity: BTreeMap<&str, BTreeMap<i64, usize>> = BTreeMap::new();
+        for (position, &index) in selected[assignment].iter().enumerate() {
+            let group = &correlated.groups[index];
+            by_helicity
+                .entry(&group.helicity_id)
+                .or_default()
+                .insert(group.sector, position);
+            for &root in &group.roots {
+                for point in 0..point_count {
+                    let value = &outputs[point * output_length + root];
+                    let amplitude = &mut amplitudes[position * point_count + point];
+                    amplitude.re += value.re.clone();
+                    amplitude.im += value.im.clone();
+                }
+            }
+        }
+        for (request, &(_, matrix)) in routes
+            .iter()
+            .enumerate()
+            .filter(|(_, (id, _))| *id == assignment)
+        {
+            for point in 0..point_count {
+                let (mut real, mut imag) = (T::new_zero(), T::new_zero());
+                for sectors in by_helicity.values() {
+                    for (left, right, wr, wi) in &weights[&matrix] {
+                        let a = &amplitudes[sectors[left] * point_count + point];
+                        let b = &amplitudes[sectors[right] * point_count + point];
+                        // conj(a) w b
+                        let xr = a.re.clone() * wr.clone() + a.im.clone() * wi.clone();
+                        let xi = a.re.clone() * wi.clone() - a.im.clone() * wr.clone();
+                        real += xr.clone() * b.re.clone() - xi.clone() * b.im.clone();
+                        imag += xr * b.im.clone() + xi * b.re.clone();
+                    }
+                }
+                let slot = 2 * (request * point_count + point);
+                values[slot] = real * normalization.clone();
+                values[slot + 1] = imag * normalization.clone();
+            }
+        }
+    }
+    Ok(values)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -831,7 +1294,12 @@ mod tests {
                 }
             }
         }
-        assert_eq!(runtime.selected_groups(None, &BTreeMap::new()).len(), 8);
+        assert_eq!(
+            runtime
+                .selected_groups(None, &NativeSpinCorrelationVectors::new())
+                .len(),
+            8
+        );
         let vectors = BTreeMap::from([(1, vec![[[0.0, 0.0]; 4]])]);
         let selected = runtime.selected_groups(None, &vectors);
         assert_eq!(selected.len(), 4);

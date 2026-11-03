@@ -500,12 +500,13 @@ impl ExecutionRuntime {
         Ok(())
     }
 
+    /// Fills the model-parameter block with values already at the working
+    /// precision (`generic_model_parameters`).
     #[cfg(feature = "symbolica-runtime")]
     pub(super) fn fill_model_parameters_row_generic<T>(
         model_parameter_start: usize,
-        model_parameter_values: &[f64],
+        model_parameter_values: &[T],
         row: &mut [Complex<T>],
-        binary_precision: Option<u32>,
     ) -> RusticolResult<()>
     where
         T: RusticolHighPrecisionNumber,
@@ -518,8 +519,7 @@ impl ExecutionRuntime {
             ));
         }
         for (index, value) in model_parameter_values.iter().enumerate() {
-            row[model_parameter_start + index] =
-                c_generic(T::from_f64_constant(*value, binary_precision), T::new_zero());
+            row[model_parameter_start + index] = c_generic(value.clone(), T::new_zero());
         }
         Ok(())
     }

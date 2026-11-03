@@ -3591,6 +3591,8 @@ impl ExecutionRuntime {
                 input_parameter_indices: manifest.input_parameter_indices,
                 outputs: manifest.outputs,
                 evaluator: EvaluatorGroup::load_from_store(&manifest.evaluator, payloads)?,
+                #[cfg(feature = "symbolica-runtime")]
+                exact: None,
             });
             runtime.refresh_derived_model_parameters()?;
         }

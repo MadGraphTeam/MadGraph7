@@ -2449,6 +2449,23 @@ impl ExecutionRuntime {
         T: RusticolHighPrecisionNumber,
         Complex<T>: Real + EvaluationDomain,
     {
+        self.evaluate_generic_stages_with_sources(batch, binary_precision, |_, _| Ok(()))
+    }
+
+    #[cfg(feature = "symbolica-runtime")]
+    /// [`Self::evaluate_generic_stages`] with `replace_sources(point, row)` applied to every state
+    /// row after its physical sources are filled (the correlated lane's spin vectors).
+    pub(super) fn evaluate_generic_stages_with_sources<T, F>(
+        &mut self,
+        batch: &[Vec<[T; 4]>],
+        binary_precision: Option<u32>,
+        mut replace_sources: F,
+    ) -> RusticolResult<(Vec<Complex<T>>, RuntimeProfile)>
+    where
+        T: RusticolHighPrecisionNumber,
+        Complex<T>: Real + EvaluationDomain,
+        F: FnMut(usize, &mut [Complex<T>]) -> RusticolResult<()>,
+    {
         if self.stages.is_none() || self.amplitude_stage.is_none() {
             return Err(self.execution_unavailable_error());
         }
@@ -2458,11 +2475,10 @@ impl ExecutionRuntime {
         let momentum_slots = &self.momentum_slots;
         let external_count = self.external_count;
         let external_is_initial = &self.external_is_initial;
-        let particle_masses = &self.particle_masses;
         let value_parameter_count = self.value_parameter_count;
         let model_parameter_start = self.value_parameter_count + self.momentum_parameter_count;
-        let model_parameter_values = &self.model_parameter_values_f64;
-        let masses = masses_at_precision::<T>(particle_masses, binary_precision);
+        let (model_parameter_values, masses) =
+            self.generic_model_parameters::<T>(binary_precision)?;
 
         let source_start = Instant::now();
         for (row, point) in batch.iter().enumerate() {
@@ -2475,6 +2491,7 @@ impl ExecutionRuntime {
                 row_state,
                 point,
             )?;
+            replace_sources(row, row_state)?;
         }
         let source_fill_elapsed = source_start.elapsed();
 
@@ -2499,9 +2516,8 @@ impl ExecutionRuntime {
                 &mut state[row * self.parameter_count..(row + 1) * self.parameter_count];
             Self::fill_model_parameters_row_generic(
                 model_parameter_start,
-                model_parameter_values,
+                &model_parameter_values,
                 row_state,
-                binary_precision,
             )?;
         }
         let model_parameter_setup_elapsed = model_parameter_start_time.elapsed();
@@ -2935,11 +2951,10 @@ impl ExecutionRuntime {
         let momentum_slots = &self.momentum_slots;
         let external_count = self.external_count;
         let external_is_initial = &self.external_is_initial;
-        let particle_masses = &self.particle_masses;
         let value_parameter_count = self.value_parameter_count;
         let model_parameter_start = self.value_parameter_count + self.momentum_parameter_count;
-        let model_parameter_values = &self.model_parameter_values_f64;
-        let masses = masses_at_precision::<T>(particle_masses, binary_precision);
+        let (model_parameter_values, masses) =
+            self.generic_model_parameters::<T>(binary_precision)?;
 
         let source_start = Instant::now();
         for (row, point) in batch.iter().enumerate() {
@@ -2976,9 +2991,8 @@ impl ExecutionRuntime {
                 &mut state[row * self.parameter_count..(row + 1) * self.parameter_count];
             Self::fill_model_parameters_row_generic(
                 model_parameter_start,
-                model_parameter_values,
+                &model_parameter_values,
                 row_state,
-                binary_precision,
             )?;
         }
         let model_parameter_setup_elapsed = model_parameter_start_time.elapsed();

@@ -4627,6 +4627,7 @@ impl NativeRuntime {
         if self.execution_lane.is_recurrence() {
             return Err(recurrence_parity_pending("higher-precision evaluation"));
         }
+        self.ensure_exact_model_parameters()?;
         if decimal_digits == 32 {
             let batch = self.prepare_double_batch(momenta, point_count)?;
             let (mut values, _profile) = self.runtime.run_double(&batch)?;
@@ -4647,7 +4648,7 @@ impl NativeRuntime {
     }
 
     #[cfg(feature = "symbolica-runtime")]
-    fn apply_process_group_factor_high_precision<T>(
+    pub(super) fn apply_process_group_factor_high_precision<T>(
         &self,
         values: &mut [T],
         binary_precision: Option<u32>,
@@ -4730,6 +4731,7 @@ impl NativeRuntime {
             self.runtime.physics.clone().ok_or_else(|| {
                 RusticolError::artifact("resolved physics metadata is unavailable")
             })?;
+        self.ensure_exact_model_parameters()?;
         let mut evaluation = if decimal_digits == 32 {
             let batch = self.prepare_double_batch(momenta, point_count)?;
             let (mut resolved, _profile) = self.runtime.run_resolved_generic(
@@ -4925,7 +4927,7 @@ impl NativeRuntime {
     }
 
     #[cfg(feature = "symbolica-runtime")]
-    fn prepare_double_batch(
+    pub(super) fn prepare_double_batch(
         &self,
         momenta: &[String],
         point_count: usize,
@@ -4950,7 +4952,7 @@ impl NativeRuntime {
     }
 
     #[cfg(feature = "symbolica-runtime")]
-    fn prepare_float_batch(
+    pub(super) fn prepare_float_batch(
         &self,
         momenta: &[String],
         point_count: usize,
@@ -5113,7 +5115,7 @@ fn validate_flat_momentum_shape(
 }
 
 #[cfg(feature = "symbolica-runtime")]
-fn format_decimal_values<T: std::fmt::LowerExp>(
+pub(super) fn format_decimal_values<T: std::fmt::LowerExp>(
     values: Vec<T>,
     decimal_digits: u32,
 ) -> Vec<String> {
