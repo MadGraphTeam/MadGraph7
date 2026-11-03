@@ -81,7 +81,7 @@ import json
 import math
 import time
 import zlib
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
 from decimal import Decimal
@@ -127,6 +127,7 @@ from pyamplicol.loops.orders import BornLoopPair, VirtualOrderSector, canonical_
 from pyamplicol.loops.strategy import R2Selection
 
 from .families import Orders, add_orders
+from .native_trees import Program, StoredMember, program_bytes
 
 PLAN_MEMBER = "schedule/loop-plan-v4.json.zlib"
 # The binary plan member (``ExportedPlan.binary()``, M-FINAL MF-8G-1 item 5),
@@ -391,23 +392,28 @@ def require_zero_coloured_widths(
 # --------------------------------------------------------------------- plan file
 
 
-def _plan_bytes(plan: str | bytes) -> bytes:
-    return plan.encode() if isinstance(plan, str) else bytes(plan)
+def _plan_bytes(plan: Program) -> bytes:
+    """A stored plan's bytes: a JSON's text encoded, a binary member's bytes,
+    or a loaded process's stored member inflated (``StoredMember``)."""
+
+    return program_bytes(plan)
 
 
-def plan_digest(plan: str | bytes) -> str:
+def plan_digest(plan: Program) -> str:
     """SHA-256 of a stored plan's bytes: its binary plan member, or its JSON
     (text) for a plan stored as JSON."""
 
     return hashlib.sha256(_plan_bytes(plan)).hexdigest()
 
 
-def _plan_member(plan: str | bytes, scaleless: bool = False) -> tuple[str, bytes]:
+def _plan_member(plan: Program, scaleless: bool = False) -> tuple[str, bytes]:
     """(logical path, bytes) of a stored plan: the binary member's path for a
     binary plan member, the JSON's for a JSON."""
 
     from .native_lowering import is_member
 
+    if isinstance(plan, StoredMember):
+        plan = plan.bytes()
     if is_member(plan):
         name = SCALELESS_PLAN_BINARY_MEMBER if scaleless else PLAN_BINARY_MEMBER
     else:
@@ -576,6 +582,80 @@ def read_plan_json(path: Path, member: str = PLAN_MEMBER) -> str | None:
     return None if found is None else member_json(found)
 
 
+def _read_member(reader: Any, name: str, kind: PacbinMemberKind) -> bytes:
+    """The payload of member ``name`` of an open container, of kind ``kind``."""
+
+    member = reader.member(name)
+    if member.kind != kind:
+        raise ArtifactError(f"loop runtime member {name!r} has the wrong kind")
+    return bytes(reader.read_member(name, length=member.length))
+
+
+def _native_members(
+    reader: Any,
+    companion: bool,
+    binary_trees: Callable[[str], bytes | StoredMember],
+) -> dict[str, bytes | StoredMember]:
+    """The native point-input members of an open ``loop-runtime.pacbin``
+    (``NativeProcess.from_members``), the one enumeration of both readers
+    (``read_native_process``, ``load_native_process``): the assembly record;
+    per prefix (the process, and its certified-scaleless companion when
+    ``companion``) the tree program (a binary one as ``binary_trees`` reads
+    it, a JSON one, an older build's, inflated), the parameter program and
+    the kernels with their plane applications; the dipole operators and the
+    observable columns."""
+
+    from .native_process import SCALELESS
+
+    names = {member.logical_path for member in reader.index.members}
+    json_kind = PacbinMemberKind.LOOP_RUNTIME_PLAN
+    state = PacbinMemberKind.SYMBOLICA_EXACT_STATE
+    symjit = PacbinMemberKind.SYMJIT_APPLICATION
+    members: dict[str, bytes | StoredMember] = {}
+    members["native-process.json"] = zlib.decompress(
+        _read_member(reader, NATIVE_RECORD_MEMBER, json_kind)
+    )
+    prefixes = [("", NATIVE_INPUTS_PREFIX)]
+    if companion:
+        prefixes.append((SCALELESS, NATIVE_SCALELESS_PREFIX))
+    for prefix, base in prefixes:
+        if base + NATIVE_TREES_BINARY_MEMBER in names:
+            members[f"{prefix}tree-program.bin"] = binary_trees(
+                base + NATIVE_TREES_BINARY_MEMBER
+            )
+        else:
+            members[f"{prefix}tree-program.json"] = zlib.decompress(
+                _read_member(reader, base + NATIVE_TREES_MEMBER, json_kind)
+            )
+        members[f"{prefix}parameters.bin"] = _read_member(
+            reader, base + NATIVE_PARAMETERS_MEMBER, state
+        )
+        members[f"{prefix}parameters.symjit"] = _read_member(
+            reader, base + NATIVE_PARAMETERS_PLANE_MEMBER, symjit
+        )
+        k = 0
+        while base + NATIVE_KERNEL_MEMBER.format(k) in names:
+            members[f"{prefix}kernel-{k}.bin"] = _read_member(
+                reader, base + NATIVE_KERNEL_MEMBER.format(k), state
+            )
+            members[f"{prefix}kernel-{k}.symjit"] = _read_member(
+                reader, base + NATIVE_KERNEL_PLANE_MEMBER.format(k), symjit
+            )
+            k += 1
+    dipoles = f"{NATIVE_INPUTS_PREFIX}{NATIVE_DIPOLES_MEMBER}"
+    if dipoles in names:
+        members["dipoles.json"] = zlib.decompress(
+            _read_member(reader, dipoles, json_kind)
+        )
+    start = f"{NATIVE_OBSERVABLES_PREFIX}observables"
+    for name in sorted(names):
+        if name.startswith(start) and name.endswith(".json.zlib"):
+            members[name[len(NATIVE_OBSERVABLES_PREFIX) : -len(".zlib")]] = (
+                zlib.decompress(_read_member(reader, name, json_kind))
+            )
+    return members
+
+
 def read_native_process(
     path: Path, plan: str | bytes, scaleless: str | bytes | None = None
 ) -> Any:
@@ -583,64 +663,86 @@ def read_native_process(
     (``write_plan(..., native)``), for its stored plan ``plan`` (``read_plan``)
     and, when the process has certified-scaleless families, its companion
     plan ``scaleless`` (whose native tree program it also holds; read from
-    the PACBIN when not given)."""
+    the PACBIN when not given), every member inflated in memory (the oracle
+    of ``load_native_process``)."""
 
-    from .native_process import SCALELESS, NativeProcess
+    from .native_process import NativeProcess
 
     if scaleless is None:
         scaleless = read_plan(path, SCALELESS_PLAN_MEMBER)
 
-    def read(reader: Any, name: str, kind: PacbinMemberKind) -> bytes:
-        member = reader.member(name)
-        if member.kind != kind:
-            raise ArtifactError(f"loop runtime member {name!r} has the wrong kind")
-        return bytes(reader.read_member(name, length=member.length))
-
-    members: dict[str, bytes] = {}
     with PacbinReader.open(path) as reader:
-        names = {member.logical_path for member in reader.index.members}
-        json_kind = PacbinMemberKind.LOOP_RUNTIME_PLAN
-        state = PacbinMemberKind.SYMBOLICA_EXACT_STATE
-        symjit = PacbinMemberKind.SYMJIT_APPLICATION
-        members["native-process.json"] = zlib.decompress(
-            read(reader, NATIVE_RECORD_MEMBER, json_kind)
+        members = _native_members(
+            reader,
+            scaleless is not None,
+            lambda name: zlib.decompress(
+                _read_member(reader, name, PacbinMemberKind.LOOP_RUNTIME_PLAN)
+            ),
         )
-        prefixes = [("", NATIVE_INPUTS_PREFIX)]
-        if scaleless is not None:
-            prefixes.append((SCALELESS, NATIVE_SCALELESS_PREFIX))
-        for prefix, base in prefixes:
-            if base + NATIVE_TREES_BINARY_MEMBER in names:
-                members[f"{prefix}tree-program.bin"] = zlib.decompress(
-                    read(reader, base + NATIVE_TREES_BINARY_MEMBER, json_kind)
+    try:
+        return NativeProcess.from_members(plan, members, scaleless)
+    except ValueError as error:
+        raise ArtifactError(f"unreadable native point inputs: {error}") from error
+
+
+def load_native_process(path: Path) -> Any:
+    """The native point inputs of a ``loop-runtime.pacbin`` written with them,
+    as ``read_native_process`` reads them (``_native_members``), but the
+    plan, the companion plan and the binary tree programs are read on demand
+    (``StoredMember``, M-FINAL MF-8G-2 item 2): the executors inflate them
+    natively, and the process's Python view inflates the small members only
+    (assembly record, saved evaluators, plane applications, observable
+    columns, dipole operators) and each tree program's head. The container
+    is opened once, here: its payload digests are verified through that
+    handle, which the stored members keep for the process's lifetime and
+    read through (digest checked), so the loaded process does not depend on
+    ``path`` (moving, renaming, deleting or replacing the artifact changes no
+    result; a file rewritten in place is refused). Without positional reads
+    (``os.pread``) the stored members are read here. A JSON tree program (an
+    older build's store) is inflated as ``read_native_process`` inflates
+    it."""
+
+    import os
+
+    from .native_process import NativeProcess
+
+    handle = Path(path).open("rb")  # noqa: SIM115 - kept by the stored members
+    try:
+        with PacbinReader.open(handle) as reader:
+            index = {member.logical_path: member for member in reader.index.members}
+
+            def stored(name: str) -> StoredMember:
+                member = index[name]
+                if member.kind != PacbinMemberKind.LOOP_RUNTIME_PLAN:
+                    raise ArtifactError(
+                        f"loop runtime member {name!r} has the wrong kind"
+                    )
+                if not hasattr(os, "pread"):
+                    kind = PacbinMemberKind.LOOP_RUNTIME_PLAN
+                    data = _read_member(reader, name, kind)
+                    return StoredMember(name, member.sha256, data=data)
+                return StoredMember(
+                    name, member.sha256, handle, member.offset, member.length
                 )
-            else:
-                members[f"{prefix}tree-program.json"] = zlib.decompress(
-                    read(reader, base + NATIVE_TREES_MEMBER, json_kind)
-                )
-            members[f"{prefix}parameters.bin"] = read(
-                reader, base + NATIVE_PARAMETERS_MEMBER, state
+
+            # The binary plan members where stored (M-FINAL MF-8G-1 item 5),
+            # else the JSON ones (as ``read_plan``).
+            plan_name = (
+                PLAN_BINARY_MEMBER if PLAN_BINARY_MEMBER in index else PLAN_MEMBER
             )
-            members[f"{prefix}parameters.symjit"] = read(
-                reader, base + NATIVE_PARAMETERS_PLANE_MEMBER, symjit
+            if plan_name not in index:
+                raise ArtifactError("the loop runtime has no plan v4")
+            plan = stored(plan_name)
+            scaleless_name = (
+                SCALELESS_PLAN_BINARY_MEMBER
+                if SCALELESS_PLAN_BINARY_MEMBER in index
+                else SCALELESS_PLAN_MEMBER
             )
-            k = 0
-            while base + NATIVE_KERNEL_MEMBER.format(k) in names:
-                members[f"{prefix}kernel-{k}.bin"] = read(
-                    reader, base + NATIVE_KERNEL_MEMBER.format(k), state
-                )
-                members[f"{prefix}kernel-{k}.symjit"] = read(
-                    reader, base + NATIVE_KERNEL_PLANE_MEMBER.format(k), symjit
-                )
-                k += 1
-        dipoles = f"{NATIVE_INPUTS_PREFIX}{NATIVE_DIPOLES_MEMBER}"
-        if dipoles in names:
-            members["dipoles.json"] = zlib.decompress(read(reader, dipoles, json_kind))
-        start = f"{NATIVE_OBSERVABLES_PREFIX}observables"
-        for name in sorted(names):
-            if name.startswith(start) and name.endswith(".json.zlib"):
-                members[name[len(NATIVE_OBSERVABLES_PREFIX) : -len(".zlib")]] = (
-                    zlib.decompress(read(reader, name, json_kind))
-                )
+            scaleless = stored(scaleless_name) if scaleless_name in index else None
+            members = _native_members(reader, scaleless is not None, stored)
+    except BaseException:
+        handle.close()
+        raise
     try:
         return NativeProcess.from_members(plan, members, scaleless)
     except ValueError as error:
@@ -1445,11 +1547,9 @@ class V2VirtualRuntime:
         # (``native_observables``). Nothing of a loaded process regenerates
         # (REQUIREMENTS_ADDENDUM G).
         runtime = root / "processes" / process_id / str(execution["runtime_path"])
-        self._native_process = read_native_process(
-            runtime,
-            read_plan(runtime),
-            read_plan(runtime, SCALELESS_PLAN_MEMBER),
-        )
+        # File-backed (M-FINAL MF-8G-2 item 2): the plans and binary tree
+        # programs stay in the PACBIN, read by the native executors.
+        self._native_process = load_native_process(runtime)
         if self._native_process.observables is None:
             raise ArtifactError(
                 "the stored process has no observable columns (an older "
