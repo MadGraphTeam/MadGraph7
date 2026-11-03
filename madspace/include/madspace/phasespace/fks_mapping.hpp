@@ -16,10 +16,10 @@ namespace madspace {
  * The Born mapping, a @ref PhaseSpaceMapping of the Born process of the FKS
  * configuration, gives the Born momenta in the lab frame and the momentum
  * fractions of the Born. They are boosted along the beam axis into the
- * centre-of-mass frame of the Born, where @ref FKSRadiation adds the radiated
+ * center-of-mass frame of the Born, where @ref FKSRadiation adds the radiated
  * parton @f$i@f$ off the emitter @f$j@f$, and the real emission is boosted back
  * into the lab with the same boost (the instruction `fks_beam_boost`, which
- * keeps the precision of the momenta in the centre-of-mass frame for any
+ * keeps the precision of the momenta in the center-of-mass frame for any
  * rapidity). For an incoming emitter the real emission
  * then has the momentum fractions of the real emission, and its incoming
  * momenta are those of the beams times them. The emitter is massive if the
@@ -44,7 +44,7 @@ namespace madspace {
  *
  * With `mirror_beams` the Born mapping takes leg 1 from beam 2 for
  * `mirror_index` 1, along @f$-z@f$, with its momentum fraction x1. The emission
- * needs the first incoming parton along @f$+z@f$, so in the centre-of-mass
+ * needs the first incoming parton along @f$+z@f$, so in the center-of-mass
  * frame of the Born the mirror of the Born mapping (a rotation by @f$\pi@f$
  * about the x axis) turns it around before the emission and back after it,
  * and the frame of the Born follows the beam each leg comes from. The
@@ -80,7 +80,9 @@ namespace madspace {
  * Jacobian of the transformation.
  *
  * **References**
- * - [1] R. Frederix, S. Frixione, F. Maltoni, T. Stelzer, "Automation of
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895
+ * - [2] R. Frederix, S. Frixione, F. Maltoni, T. Stelzer, "Automation of
  *   next-to-leading order computations in QCD: the FKS subtraction",
  *   https://arxiv.org/abs/0908.4272 (Sec. 5)
  */
@@ -105,7 +107,9 @@ public:
     std::size_t discrete_dim() const override { return _born.discrete_dim(); }
     /// Number of particles of the real emission, incoming included.
     std::size_t particle_count() const { return _real_masses.size(); }
+    /// Position of the radiated parton i in the real process.
     std::size_t i_fks() const { return _radiation.i_fks(); }
+    /// Position of the emitter j in the real process.
     std::size_t j_fks() const { return _radiation.j_fks(); }
     /// The Born mapping.
     const PhaseSpaceMapping& born() const { return _born; }
@@ -153,7 +157,7 @@ private:
         bool with_counter_events
     ) const;
     // light-cone components (up to a factor) whose ratio is exp(2 y) for the
-    // rapidity y of the centre-of-mass frame of the Born in the lab frame, from
+    // rapidity y of the center-of-mass frame of the Born in the lab frame, from
     // its momentum fractions (the arguments of fks_beam_boost)
     std::pair<Value, Value> born_frame(
         FunctionBuilder& fb, Value x1, Value x2, const NamedVector<Value>& conditions
@@ -171,7 +175,7 @@ private:
 };
 
 /**
- * Lower bound on the partonic centre-of-mass energy of a real emission from
+ * Lower bound on the partonic center-of-mass energy of a real emission from
  * the cuts on its Born-level objects.
  *
  * The cuts are those that the n final-state objects of the Born process (jets
@@ -181,7 +185,7 @@ private:
  * - the cut on sqrt(s_hat) itself;
  * - the sum of the transverse masses sqrt(m_k^2 + pt_min,k^2) of the
  *   objects, without asking their transverse momenta to balance, which i can
- *   take up (in the partonic centre-of-mass frame sqrt(s_hat) is the sum of
+ *   take up (in the partonic center-of-mass frame sqrt(s_hat) is the sum of
  *   the energies, each object has at least its transverse mass, and a jet is
  *   no lighter than the massless parton it stands for);
  * - the floors of the pair mass cuts: a pair has at least its cut in energy
@@ -257,6 +261,13 @@ double fks_sqrt_s_hat_min(const Cuts& cuts, const std::vector<double>& outgoing_
  *
  * In addition every mapping returns a `weight` (`float`, shape `(batch,)`), the
  * Jacobian of the transformation, that of the configuration of the event.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895
+ * - [2] R. Frederix, S. Frixione, F. Maltoni, T. Stelzer, "Automation of
+ *   next-to-leading order computations in QCD: the FKS subtraction",
+ *   https://arxiv.org/abs/0908.4272 (Sec. 5)
  */
 class FKSConfigurationMapping : public Mapping {
 public:
@@ -412,6 +423,13 @@ private:
  * **Returns**
  * - those of FKSMapping::build_counter_events, in the order of
  *   FKSMapping::counter_event_types.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895
+ * - [2] R. Frederix, S. Frixione, F. Maltoni, T. Stelzer, "Automation of
+ *   next-to-leading order computations in QCD: the FKS subtraction",
+ *   https://arxiv.org/abs/0908.4272 (Sec. 5)
  */
 class FKSKinematics : public FunctionGenerator {
 public:

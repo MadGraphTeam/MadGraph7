@@ -3,7 +3,7 @@ frame.
 
 The emission itself is tested in test_fks_radiation.py, against genps_fks.f
 and to the conditioning of its variables. These tests cover the composition:
-the boosts between the lab frame and the centre-of-mass frame of the Born
+the boosts between the lab frame and the center-of-mass frame of the Born
 (also with a beam rapidity), the incoming momenta of the real emission, the
 round trip through both mappings, and that every FKS configuration covers the
 phase space of the real process once, momentum fractions included.

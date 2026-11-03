@@ -8,7 +8,7 @@
 namespace madspace {
 
 /**
- * The FKS sector functions @f$S_{ij}@f$ of fks_Sij.f, for one FKS
+ * The FKS sector functions @f$S_{ij}@f$ of fks_Sij.f [2, 3], for one FKS
  * configuration or for several, each event in the configuration of its
  * `fks_index` (see @ref FKSConfigurationMapping).
  *
@@ -19,8 +19,8 @@ namespace madspace {
  *   d_{kl} = \Big(\frac{4 E_k E_l}{\hat s}\Big)^a
  *            (1 - \beta_k \beta_l \cos\theta_{kl})^b,
  * @f]
- * with energies and angles in the partonic centre-of-mass frame of the
- * momenta (velocities only for massive particles that are not colour
+ * with energies and angles in the partonic center-of-mass frame of the
+ * momenta (velocities only for massive particles that are not color
  * octets, energies always for octets) and @f$h = h_\mathrm{damp}(E_i / (E_i +
  * E_j))@f$ for a final-state pair @f$(i, j)@f$ of two gluons or photons,
  * @f$h_\mathrm{damp}(z) + h_\mathrm{damp}(1 - z) = 1@f$. The sector functions
@@ -35,8 +35,8 @@ namespace madspace {
  * it is always that of the event, and the two differ by @f$O(\xi)@f$.
  *
  * The momenta can be in any frame. The configurations come from the metadata
- * of the FKS exporter (fks_j_from_i, colours, PDG codes; see madspace.fks), the
- * parameters are those of fks_powers.inc.
+ * of the FKS exporter (fks_j_from_i, colors and PDG codes, see madspace.fks).
+ * The parameters are those of fks_powers.inc.
  *
  * `batch` is the leading batch dimension and `n` the number of particles of
  * the real process, incoming included.
@@ -52,6 +52,15 @@ namespace madspace {
  *
  * **Returns**
  * - `s` – `float`, shape `(batch,)` – @f$S_{ij}@f$.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895
+ * - [2] S. Frixione, Z. Kunszt, A. Signer, "Three-jet cross sections to
+ *   next-to-leading order", https://arxiv.org/abs/hep-ph/9512328
+ * - [3] R. Frederix, S. Frixione, F. Maltoni, T. Stelzer, "Automation of
+ *   next-to-leading order computations in QCD: the FKS subtraction",
+ *   https://arxiv.org/abs/0908.4272
  */
 class FKSSectorFunction : public FunctionGenerator {
 public:
@@ -63,7 +72,7 @@ public:
      * @param fks_j_from_i  For each configuration and each particle i of its
      *                      real process, the particles j it forms an FKS
      *                      pair with, 0-based (FKS_J_FROM_I_D).
-     * @param colors        Colour representation of each particle of the real
+     * @param colors        Color representation of each particle of the real
      *                      process of each configuration (1, 3, -3, 8).
      * @param pdgs          PDG codes of the real process of each
      *                      configuration.
@@ -71,9 +80,9 @@ public:
      *                      configuration.
      * @param fks_a         Power of the energies in d_kl (fks_powers.inc).
      * @param fks_b         Power of the angle in d_kl.
-     * @param use_energy    Energies of particles that are not colour octets in
+     * @param use_energy    Energies of particles that are not color octets in
      *                      d_kl (useenergy).
-     * @param use_beta      Velocities of massive particles that are not colour
+     * @param use_beta      Velocities of massive particles that are not color
      *                      octets in d_kl (usebeta).
      * @param h_damp_one    h_damp is 1 below it and 0 above 1 minus it
      *                      (one_h_damp).

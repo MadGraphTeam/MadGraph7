@@ -6,7 +6,7 @@ namespace madspace {
 namespace kernels {
 
 // FKS radiation as in genps_fks.f of MadGraph (arXiv:0908.4272, Sec. 5). All
-// momenta are in the partonic centre-of-mass frame of the Born, where the
+// momenta are in the partonic center-of-mass frame of the Born, where the
 // incoming momenta add up to (sqrt_s, 0, 0, 0).
 
 inline constexpr double FKS_STINY = 1e-6;
@@ -505,7 +505,7 @@ KERNELSPEC void kernel_fks_final_massive_cluster(
 }
 
 // Emission off an incoming parton. y_beam = beam_sign y is the cosine of the
-// angle between i and the +z axis in the centre-of-mass frame of the real
+// angle between i and the +z axis in the center-of-mass frame of the real
 // emission.
 
 // Upper bound of xi from x <= 1 for the beam with Born fraction x, with
@@ -638,7 +638,7 @@ KERNELSPEC void kernel_fks_initial_radiate(
     auto sq_omx = sqrt(max(omx, EPS2));
     auto rs = rs_born / sq_omx;
 
-    // 2 - xi (1 -+ y_beam) and the longitudinal boost from the centre-of-mass
+    // 2 - xi (1 -+ y_beam) and the longitudinal boost from the center-of-mass
     // frame of the real emission into the Born one
     auto om_m = 2. - xiv * omy_beam;
     auto om_p = 2. - xiv * opy_beam;
@@ -821,7 +821,7 @@ KERNELSPEC void kernel_fks_initial_recoil_boost_inverse(
 
 // Light-cone components E + p_z and E - p_z of p_in1 + p_in2 - p_i, the system
 // recoiling against i in an emission off an incoming parton. It has zero
-// longitudinal momentum in the centre-of-mass frame of the Born, so their
+// longitudinal momentum in the center-of-mass frame of the Born, so their
 // ratio is exp(2 y_born) for the rapidity y_born of that frame. The incoming
 // momenta are along +-z. The smaller light-cone component of i comes from its
 // mass shell, as in @ref fks_initial_cluster.
@@ -846,7 +846,7 @@ KERNELSPEC void kernel_fks_recoil_light_cone(
 // q_+ q_- = m^2 + p_T^2, with the given mass (a negative one means unknown, and
 // that momentum is boosted linearly). Each momentum keeps its relative
 // precision in both components, in either direction of the boost, so the
-// centre-of-mass frame of the Born comes out of the lab frame as precisely as
+// center-of-mass frame of the Born comes out of the lab frame as precisely as
 // it went in, whatever the rapidity. (boost_beam projects onto the mass shell
 // only the momenta whose energy decreases and hands the shifts to the hardest
 // one, which loses up to e^{2|y|} of relative precision in that momentum when
@@ -907,7 +907,7 @@ KERNELSPEC void kernel_fks_counter_event_det(
 
 // The FKS sector functions S_ij of fks_Sij.f. d_kl = (E_k E_l / (sqrt_s / 2)^2)^a
 // (1 - beta_k beta_l cos theta_kl)^b, energies and angles in the partonic
-// centre-of-mass frame of the momenta (written with invariants, so that the
+// center-of-mass frame of the momenta (written with invariants, so that the
 // momenta can be in any frame), and S_ij = h / sum_kl d_ij / d_kl over the
 // FKS pairs (k, l) of the real process, with h = h_damp(E_i / (E_i + E_j))
 // for a final-state pair of two gluons or photons.
@@ -920,7 +920,7 @@ KERNELSPEC FVal<T> fks_frame_energy(FourMom<T> q, FourMom<T> p_tot, FVal<T> rs) 
 
 // d_kl of get_dkl_Sij for the momenta q1, q2 with energies e1, e2 (for the
 // energy factor; q1 can be the momentum of i per unit xi with the energy of
-// i), masses m1, m2 and colour octets o1, o2. With both, the energy of 1 is
+// i), masses m1, m2 and color octets o1, o2. With both, the energy of 1 is
 // in d_kl (d_ij / d_kl of a pair without i), else only that of 2. zero is set
 // where an energy or the angle falls below vtiny, as get_dkl_Sij does.
 template <typename T>
@@ -1208,7 +1208,7 @@ KERNELSPEC void kernel_fks_eikonals(
 // z, the Altarelli-Parisi kernel (1 - z) P(z) / t of AP_reduced and the
 // azimuthal terms of Qterms_reduced_timelike (final-state j) or
 // Qterms_reduced_spacelike (initial-state j), both without the couplings,
-// with t = z s / 4. z = 1 - E_i / (E_i + E_j) in the partonic centre-of-mass
+// with t = z s / 4. z = 1 - E_i / (E_i + E_j) in the partonic center-of-mass
 // frame of the momenta for a final-state j, 1 - xi = 1 - 2 E_i / sqrt(s) for
 // an initial-state one.
 // kind selects the splitting function of AP_reduced (0: g -> g g, 1: g/a ->
@@ -1231,7 +1231,7 @@ KERNELSPEC void kernel_fks_splitting_kernels(
     auto p1 = load_mom<T>(p[0]), p2 = load_mom<T>(p[1]);
     FourMom<T> p_tot{p1[0] + p2[0], p1[1] + p2[1], p1[2] + p2[2], p1[3] + p2[3]};
     auto s = lsquare<T>(p_tot);
-    // energies in the centre-of-mass frame, up to the common 1 / sqrt(s)
+    // energies in the center-of-mass frame, up to the common 1 / sqrt(s)
     auto e_i = ldot<T>(load_mom<T>(p[ii]), p_tot);
     bool final_state = jj >= 2;
     FVal<T> zz;
@@ -1270,7 +1270,7 @@ KERNELSPEC void kernel_fks_splitting_kernels(
 // The transverse direction of the emission k_perp (xij_kperp of genps_fks.f):
 // the momentum of i per unit xi made orthogonal to the Born emitter and to the
 // sum of the incoming Born momenta, normalized to k_perp^2 = -1. In the
-// partonic centre-of-mass frame it is (0, cos phi, sin phi, 0) in the frame of
+// partonic center-of-mass frame it is (0, cos phi, sin phi, 0) in the frame of
 // the emitter (the beam axis for an initial-state one), up to its sign.
 template <typename T>
 KERNELSPEC void kernel_fks_transverse_vector(

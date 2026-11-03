@@ -2,7 +2,7 @@
 counter-events, against genps_fks.f.
 
 Each reference point (see test_fks_reference.py) gives a Born, in its
-centre-of-mass frame, with its momentum fractions and rapidity, and the last
+center-of-mass frame, with its momentum fractions and rapidity, and the last
 three entries of the unit-cube vector. The Born is boosted into the lab and
 mapped back to the random numbers of a RAMBO Born mapping, so that
 FKSKinematics, run on them and on the three random numbers of genps_fks.f, has

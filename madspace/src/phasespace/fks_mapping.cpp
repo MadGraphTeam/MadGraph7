@@ -78,7 +78,7 @@ NamedVector<Type> fks_output_types(const PhaseSpaceMapping& born) {
 }
 
 // the light-cone components (up to a factor) whose ratio is exp(2 y) for the
-// rapidity y of the centre-of-mass frame of the Born in the lab frame, from
+// rapidity y of the center-of-mass frame of the Born in the lab frame, from
 // its momentum fractions (the arguments of fks_beam_boost)
 std::pair<Value, Value> fks_born_frame(
     FunctionBuilder& fb,
@@ -140,7 +140,7 @@ double madspace::fks_sqrt_s_hat_min(
     }
     double bound = std::max(mass_sum, cuts.sqrt_s_min());
 
-    // the transverse masses: in the partonic centre-of-mass frame sqrt(s_hat)
+    // the transverse masses: in the partonic center-of-mass frame sqrt(s_hat)
     // is the sum of the energies, each object has at least its transverse
     // mass. i can take any transverse momentum, so the objects need not
     // balance.
@@ -976,7 +976,7 @@ Mapping::Result FKSConfigurationMapping::build_inverse_impl(
         slot = fb.gather_int(fks_index, _kind_slots);
     }
 
-    // into the centre-of-mass frame of the Born: that of the incoming momenta
+    // into the center-of-mass frame of the Born: that of the incoming momenta
     // for a final-state emitter, of the recoil against i for an incoming one
     ValueVec plus_k, minus_k;
     auto p_lab = fb.unstack(layout);
@@ -1172,7 +1172,7 @@ Mapping::Result FKSMapping::build_inverse_impl(
     auto momenta = inputs.at("momenta");
     auto x1 = inputs.at("x1"), x2 = inputs.at("x2");
 
-    // into the centre-of-mass frame of the Born: that of the incoming momenta
+    // into the center-of-mass frame of the Born: that of the incoming momenta
     // for a final-state emitter, of the recoil against i for an incoming one
     Value plus, minus;
     if (_radiation.initial_state()) {

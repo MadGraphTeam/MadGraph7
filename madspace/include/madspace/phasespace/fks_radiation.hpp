@@ -14,8 +14,8 @@ namespace madspace {
  *
  * Maps a Born phase-space point and three random numbers to the phase space of
  * the real emission, in the FKS parametrization of MadGraph's genps_fks.f
- * [1, 2]. The variables are the energy fraction and the angle of the radiated
- * parton @f$i@f$ to the emitter @f$j@f$ in the centre-of-mass frame of the real
+ * [2, 3]. The variables are the energy fraction and the angle of the radiated
+ * parton @f$i@f$ to the emitter @f$j@f$ in the center-of-mass frame of the real
  * emission,
  * @f[
  *   \xi = \frac{2 E_i}{\sqrt{s}}, \qquad
@@ -47,7 +47,7 @@ namespace madspace {
  * and new momentum fractions @f$x_{1,2}@f$, @f$\phi@f$ is the azimuth of
  * @f$i@f$ about the beam axis, and the final state of the Born is boosted
  * transversely to recoil against @f$i@f$. It keeps zero longitudinal momentum,
- * so the event stays in the centre-of-mass frame of the Born.
+ * so the event stays in the center-of-mass frame of the Born.
  * @f$\xi_\mathrm{max}(y)@f$ is the largest @f$\xi@f$ with @f$x_1 \le 1@f$ and
  * @f$x_2 \le 1@f$. With a lower bound @f$\hat s_\mathrm{min}@f$ on the
  * partonic energy of the real emission (@p s_hat_min), as genps_fks.f derives
@@ -80,7 +80,7 @@ namespace madspace {
  * includes the factor @f$\xi@f$ that genps_fks.f leaves to the FKS
  * distributions.
  *
- * All momenta are in the partonic centre-of-mass frame of the Born, where the
+ * All momenta are in the partonic center-of-mass frame of the Born, where the
  * two incoming momenta of the Born add up to @f$(\sqrt{\bar s}, 0, 0, 0)@f$.
  * Particles are numbered from 0, incoming first, in the order of the real
  * process. The Born momenta are those of the real process without @f$i@f$,
@@ -98,6 +98,9 @@ namespace madspace {
  * - `x1`, `x2` – `float`, shape `(batch,)` – momentum fractions of the Born.
  *   Absent if @p leptonic.
  *
+ * **Conditions**
+ * - None.
+ *
  * **Outputs**
  * - `momenta` – `float`, shape `(batch, n + 1, 4)` – momenta of the real
  *   emission.
@@ -109,9 +112,11 @@ namespace madspace {
  * Jacobian of the transformation.
  *
  * **References**
- * - [1] S. Frixione, Z. Kunszt, A. Signer, "Three-jet cross sections to
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895
+ * - [2] S. Frixione, Z. Kunszt, A. Signer, "Three-jet cross sections to
  *   next-to-leading order", https://arxiv.org/abs/hep-ph/9512328
- * - [2] R. Frederix, S. Frixione, F. Maltoni, T. Stelzer, "Automation of
+ * - [3] R. Frederix, S. Frixione, F. Maltoni, T. Stelzer, "Automation of
  *   next-to-leading order computations in QCD: the FKS subtraction",
  *   https://arxiv.org/abs/0908.4272 (Sec. 5)
  */
@@ -143,11 +148,17 @@ public:
     );
     /// Number of uniform random inputs consumed by the forward mapping (3).
     std::size_t random_dim() const { return 3; }
+    /// Number of particles of the Born, incoming included.
     std::size_t born_particle_count() const { return _born_particle_count; }
+    /// Position of the radiated parton i in the real process.
     std::size_t i_fks() const { return _i_fks; }
+    /// Position of the emitter j in the real process.
     std::size_t j_fks() const { return _j_fks; }
+    /// Whether the mapping has no momentum fractions.
     bool leptonic() const { return _leptonic; }
+    /// Lower bound on the partonic energy squared of the real emission.
     double s_hat_min() const { return _s_hat_min; }
+    /// Mass of the emitter, zero for a massless one.
     double emitter_mass() const { return _emitter_mass; }
     /// Whether the emitter j is an incoming parton.
     bool initial_state() const { return _j_fks < 2; }

@@ -91,7 +91,7 @@ def test_matches_sborncol(path):
 @pytest.mark.parametrize("path", FKS_DATA, ids=FKS_DATA_IDS)
 def test_transverse_vector_matches_xij_kperp(path):
     """k_perp from the momentum of i per unit xi and the Born of genps_fks.f,
-    in the partonic centre-of-mass frame of the Born, is xij_kperp up to its
+    in the partonic center-of-mass frame of the Born, is xij_kperp up to its
     sign, for every emitter."""
     data = reference(path)
     configurations = data["fks_configurations"]

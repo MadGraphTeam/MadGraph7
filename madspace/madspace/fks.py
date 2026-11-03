@@ -13,7 +13,7 @@ madgraph/iolibs/export_fks.py):
         real_pdgs: PDG codes of the real process
         real_me, need_color_links, need_charge_links, splitting_type,
         extra_cnt_index
-        real_colors, real_charges: colour representation (1, 3, -3, 8) and
+        real_colors, real_charges: color representation (1, 3, -3, 8) and
             electric charge of each particle of the real process
         fks_j_from_i: for each particle i of the real process, the particles
             j it forms an FKS pair with (1-based), the pairs whose sector
@@ -75,7 +75,7 @@ def born_of_real(configuration):
 
 
 def sqrt_s_floor(pdgs, sqrt_s_min):
-    """Cuts that only bound the partonic centre-of-mass energy from below."""
+    """Cuts that only bound the partonic center-of-mass energy from below."""
     return Cuts(
         [
             CutItem(
@@ -206,7 +206,7 @@ def real_masses(born_masses, configuration):
 
 
 def configuration_tables(born, configurations):
-    """i_fks, j_fks, fks_j_from_i (0-based), colours, charges, PDG codes and
+    """i_fks, j_fks, fks_j_from_i (0-based), colors, charges, PDG codes and
     masses of the real processes of the configurations of a Born, in their
     order."""
     born_pdgs = list(configurations["born_pdgs"])

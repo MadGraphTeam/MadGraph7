@@ -10,22 +10,22 @@ namespace madspace {
 
 /**
  * The reduced eikonal factors of the soft limit of the FKS configurations of
- * a Born, as eikonal_reduced in fks_singular.f, each event in the
+ * a Born, as eikonal_reduced in fks_singular.f [2, 3], each event in the
  * configuration of its `fks_index` (see @ref FKSConfigurationMapping).
  *
  * Where i becomes soft, the real matrix element times @f$\xi^2 (1 - y)@f$
- * tends to a sum over the pairs @f$(m, n)@f$ of the colour (or charge)
+ * tends to a sum over the pairs @f$(m, n)@f$ of the color (or charge)
  * partners of i,
  * @f[
  *   \xi^2 (1 - y) |M_{n+1}|^2 \to
  *   -2 \sum_{(m, n)} \mathcal{E}_{mn} B_{mn}, \qquad
  *   \mathcal{E}_{mn} = \frac{(p_m p_n) (1 - y)}{(p_m \hat p_i)(p_n \hat p_i)},
  * @f]
- * with the colour-linked Borns @f$B_{mn}@f$ in the conventions of MadFKS
+ * with the color-linked Borns @f$B_{mn}@f$ in the conventions of MadFKS
  * (sbornsoft) and the momentum of i per unit @f$\xi@f$, @f$\hat p_i@f$
  * (`p_i_hat` of @ref FKSKinematics). For a massless j,
  * @f$(p_j \hat p_i) / (1 - y) = \sqrt{s} E_j / 2@f$ in the partonic
- * centre-of-mass frame, so that the factors are finite at @f$y = 1@f$. The
+ * center-of-mass frame, so that the factors are finite at @f$y = 1@f$. The
  * pairs are those of sbornsoft, in its order: every unordered pair of the
  * particles that form an FKS pair with i, a particle with itself only where it
  * is massive. They are evaluated on the momenta of the soft counter-event.
@@ -47,6 +47,15 @@ namespace madspace {
  * **Returns**
  * - `eikonals` – `float`, shape `(batch, k)` – @f$\mathcal{E}_{mn}@f$ of the
  *   pairs of the configuration (see pairs()), zero past them.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895
+ * - [2] S. Frixione, Z. Kunszt, A. Signer, "Three-jet cross sections to
+ *   next-to-leading order", https://arxiv.org/abs/hep-ph/9512328
+ * - [3] R. Frederix, S. Frixione, F. Maltoni, T. Stelzer, "Automation of
+ *   next-to-leading order computations in QCD: the FKS subtraction",
+ *   https://arxiv.org/abs/0908.4272
  */
 class FKSEikonals : public FunctionGenerator {
 public:
@@ -81,7 +90,7 @@ public:
         return _pairs.at(index);
     }
     /// The pairs (m, n) of a configuration as positions in its Born, whose
-    /// colour-linked Borns they multiply (j is at the position of i + j).
+    /// color-linked Borns they multiply (j is at the position of i + j).
     std::vector<std::pair<std::size_t, std::size_t>>
     born_pairs(std::size_t index) const;
 
@@ -100,7 +109,7 @@ private:
 
 /**
  * The collinear factors of the FKS configurations of a Born, as sborncol_fsr
- * and sborncol_isr in fks_singular.f, each event in the configuration of its
+ * and sborncol_isr in fks_singular.f [2, 3], each event in the configuration of its
  * `fks_index` (see @ref FKSConfigurationMapping).
  *
  * Where i becomes collinear to a massless j, the real matrix element times
@@ -114,9 +123,9 @@ private:
  * Qterms_reduced_spacelike (initial-state j) give them, without the couplings
  * (QCD and QED parts apart). The splitting is that of j into i and j for a
  * final-state j, and that of j into i and the mother i + j, which enters the
- * Born, for an initial-state one; its momentum fraction is @f$z = 1 - E_i /
+ * Born, for an initial-state one. Its momentum fraction is @f$z = 1 - E_i /
  * (E_i + E_j)@f$ or @f$z = 1 - \xi = 1 - 2 E_i / \sqrt{s}@f$ in the partonic
- * centre-of-mass frame of the counter-event. The azimuthal terms go with the
+ * center-of-mass frame of the counter-event. The azimuthal terms go with the
  * spin-correlated Born contracted with the transverse direction of the emission
  * @f$k_\perp@f$ (xij_kperp of genps_fks.f): the momentum of i per unit @f$\xi@f$ at the
  * event made orthogonal to the Born emitter and to the sum of the incoming
@@ -142,6 +151,15 @@ private:
  * - `q_terms` – `float`, shape `(batch, 2)` – QCD and QED azimuthal terms.
  * - `k_perp` – `float`, shape `(batch, 4)` – transverse direction of the
  *   emission, in the frame of the momenta.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895
+ * - [2] S. Frixione, Z. Kunszt, A. Signer, "Three-jet cross sections to
+ *   next-to-leading order", https://arxiv.org/abs/hep-ph/9512328
+ * - [3] R. Frederix, S. Frixione, F. Maltoni, T. Stelzer, "Automation of
+ *   next-to-leading order computations in QCD: the FKS subtraction",
+ *   https://arxiv.org/abs/0908.4272
  */
 class FKSSplittingKernels : public FunctionGenerator {
 public:
@@ -150,7 +168,7 @@ public:
      *                 configuration, 0-based.
      * @param j_fks    Position of j in the real process of each
      *                 configuration, 0-based.
-     * @param colors   Colour representation of each particle of the real
+     * @param colors   Color representation of each particle of the real
      *                 process of each configuration (1, 3, -3, 8).
      * @param charges  Electric charge of each particle of the real process of
      *                 each configuration.
@@ -188,7 +206,7 @@ private:
 
 /**
  * The prefactors of the real emission and its FKS counterterms, as
- * compute_prefactors_n1body in fks_singular.f, each event in the
+ * compute_prefactors_n1body in fks_singular.f [2, 3], each event in the
  * configuration of its `fks_index` (see @ref FKSConfigurationMapping).
  *
  * They are the plus distributions in @f$\xi@f$ and @f$1 - y@f$ with their
@@ -234,6 +252,15 @@ private:
  * **Returns**
  * - `f_r`, `f_s`, `f_c`, `f_dc`, `f_sc` – `float`, shape `(batch,)`.
  * - `f_dsc` – `float`, shape `(batch, 4)`.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895
+ * - [2] S. Frixione, Z. Kunszt, A. Signer, "Three-jet cross sections to
+ *   next-to-leading order", https://arxiv.org/abs/hep-ph/9512328
+ * - [3] R. Frederix, S. Frixione, F. Maltoni, T. Stelzer, "Automation of
+ *   next-to-leading order computations in QCD: the FKS subtraction",
+ *   https://arxiv.org/abs/0908.4272
  */
 class FKSPrefactors : public FunctionGenerator {
 public:

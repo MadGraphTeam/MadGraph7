@@ -2345,10 +2345,10 @@ fks_final_massless_radiate:
       desc: "random number for the azimuth of i about the direction of the Born emitter"
     - name: sqrt_s
       type: [float]
-      desc: "partonic centre-of-mass energy of the Born, unchanged by the emission"
+      desc: "partonic center-of-mass energy of the Born, unchanged by the emission"
     - name: p_jbar
       type: [float, 4]
-      desc: "massless Born emitter in the Born centre-of-mass frame"
+      desc: "massless Born emitter in the Born center-of-mass frame"
   outputs:
     - name: p_i
       type: [float, 4]
@@ -2374,13 +2374,13 @@ fks_final_massless_cluster:
   inputs:
     - name: p_i
       type: [float, 4]
-      desc: "FKS parton i in the centre-of-mass frame of the real emission"
+      desc: "FKS parton i in the center-of-mass frame of the real emission"
     - name: p_j
       type: [float, 4]
       desc: "FKS parton j, massless"
     - name: sqrt_s
       type: [float]
-      desc: "partonic centre-of-mass energy"
+      desc: "partonic center-of-mass energy"
   outputs:
     - name: p_jbar
       type: [float, 4]
@@ -2418,7 +2418,7 @@ fks_recoil_boost:
       desc: "Born emitter, along k"
     - name: sqrt_s
       type: [float]
-      desc: "partonic centre-of-mass energy"
+      desc: "partonic center-of-mass energy"
   outputs:
     - name: p_out
       type: [float, n, 4]
@@ -2438,7 +2438,7 @@ fks_recoil_boost_inverse:
       desc: "Born emitter, along k"
     - name: sqrt_s
       type: [float]
-      desc: "partonic centre-of-mass energy"
+      desc: "partonic center-of-mass energy"
   outputs:
     - name: p_out
       type: [float, n, 4]
@@ -2455,10 +2455,10 @@ fks_final_massive_sample:
       desc: "random number for the cosine y of the FKS angle"
     - name: sqrt_s
       type: [float]
-      desc: "partonic centre-of-mass energy"
+      desc: "partonic center-of-mass energy"
     - name: p_jbar
       type: [float, 4]
-      desc: "massive Born emitter in the Born centre-of-mass frame"
+      desc: "massive Born emitter in the Born center-of-mass frame"
     - name: m_j
       type: [float]
       desc: "mass of the emitter"
@@ -2484,7 +2484,7 @@ fks_final_massive_sample_inverse:
       desc: "cosine of the angle between the FKS partons i and j"
     - name: sqrt_s
       type: [float]
-      desc: "partonic centre-of-mass energy"
+      desc: "partonic center-of-mass energy"
     - name: p_jbar
       type: [float, 4]
       desc: "massive Born emitter"
@@ -2516,10 +2516,10 @@ fks_final_massive_radiate:
       desc: "random number for the azimuth of i about the direction of the Born emitter"
     - name: sqrt_s
       type: [float]
-      desc: "partonic centre-of-mass energy of the Born, unchanged by the emission"
+      desc: "partonic center-of-mass energy of the Born, unchanged by the emission"
     - name: p_jbar
       type: [float, 4]
-      desc: "massive Born emitter in the Born centre-of-mass frame"
+      desc: "massive Born emitter in the Born center-of-mass frame"
     - name: m_j
       type: [float]
       desc: "mass of the emitter"
@@ -2557,7 +2557,7 @@ fks_final_massive_cluster:
       desc: "massive FKS parton j"
     - name: sqrt_s
       type: [float]
-      desc: "partonic centre-of-mass energy"
+      desc: "partonic center-of-mass energy"
     - name: m_j
       type: [float]
       desc: "mass of the emitter"
@@ -2602,7 +2602,7 @@ fks_initial_radiate:
       desc: "random number for the azimuth of i about the beam axis"
     - name: sqrt_s
       type: [float]
-      desc: "partonic centre-of-mass energy of the Born"
+      desc: "partonic center-of-mass energy of the Born"
     - name: x1_born
       type: [float]
       desc: "momentum fraction of beam 1 in the Born"
@@ -2618,13 +2618,13 @@ fks_initial_radiate:
   outputs:
     - name: p_in1
       type: [float, 4]
-      desc: "incoming momentum along +z of the real emission, in the Born centre-of-mass frame"
+      desc: "incoming momentum along +z of the real emission, in the Born center-of-mass frame"
     - name: p_in2
       type: [float, 4]
-      desc: "incoming momentum along -z of the real emission, in the Born centre-of-mass frame"
+      desc: "incoming momentum along -z of the real emission, in the Born center-of-mass frame"
     - name: p_i
       type: [float, 4]
-      desc: "FKS parton i, in the Born centre-of-mass frame"
+      desc: "FKS parton i, in the Born center-of-mass frame"
     - name: x1
       type: [float]
       desc: "momentum fraction of beam 1 in the real emission"
@@ -2633,10 +2633,10 @@ fks_initial_radiate:
       desc: "momentum fraction of beam 2 in the real emission"
     - name: xi
       type: [float]
-      desc: "energy fraction 2 E_i / sqrt(s) of i in the centre-of-mass frame of the real emission"
+      desc: "energy fraction 2 E_i / sqrt(s) of i in the center-of-mass frame of the real emission"
     - name: y
       type: [float]
-      desc: "cosine of the angle between i and j in the centre-of-mass frame of the real emission"
+      desc: "cosine of the angle between i and j in the center-of-mass frame of the real emission"
     - name: xi_min
       type: [float]
       desc: "lower bound 1 - sqrt_s^2 / s_hat_min of xi, 0 if the Born is above the bound"
@@ -2649,16 +2649,16 @@ fks_initial_radiate:
     - name: p_i_hat
       type: [float, 4]
       desc: "momentum of i per unit xi, p_i / xi, which stays finite in the soft limit (the p_i_fks of genps_fks.f, at the counter-events too)"
-  desc: "FKS emission off an incoming parton, as generate_momenta_initial of MadGraph's genps_fks.f. The real emission has sqrt(s) = sqrt_s / sqrt(1 - xi), its incoming momenta and i are built in its centre-of-mass frame and boosted along z into the Born centre-of-mass frame, in which the final state of the Born keeps zero longitudinal momentum (see @ref fks_initial_recoil_boost). xi_max is the smaller root of the conditions x1 <= 1 and x2 <= 1, written without the cancellations of genps_fks.f near y -> -1 and x -> 1 (which lose up to 1e-4 relative there). With s_hat_min above the Born, xi >= xi_min = 1 - sqrt_s^2 / s_hat_min and y is restricted to where xi_max(y) >= xi_min, as genps_fks.f does with tau_lower_bound; the map then covers exactly the real emissions with s >= s_hat_min. Evaluated at xi_hat = 0 or y_hat = 1 it gives the soft and collinear counter-events where they exist (xi_min = 0, respectively y = 1 allowed). det_xi stays finite in the soft limit, the Jacobian of the map is xi det_xi."
+  desc: "FKS emission off an incoming parton, as generate_momenta_initial of MadGraph's genps_fks.f. The real emission has sqrt(s) = sqrt_s / sqrt(1 - xi), its incoming momenta and i are built in its center-of-mass frame and boosted along z into the Born center-of-mass frame, in which the final state of the Born keeps zero longitudinal momentum (see @ref fks_initial_recoil_boost). xi_max is the smaller root of the conditions x1 <= 1 and x2 <= 1, written without the cancellations of genps_fks.f near y -> -1 and x -> 1 (which lose up to 1e-4 relative there). With s_hat_min above the Born, xi >= xi_min = 1 - sqrt_s^2 / s_hat_min and y is restricted to where xi_max(y) >= xi_min, as genps_fks.f does with tau_lower_bound; the map then covers exactly the real emissions with s >= s_hat_min. Evaluated at xi_hat = 0 or y_hat = 1 it gives the soft and collinear counter-events where they exist (xi_min = 0, respectively y = 1 allowed). det_xi stays finite in the soft limit, the Jacobian of the map is xi det_xi."
 
 fks_initial_cluster:
   inputs:
     - name: p_in1
       type: [float, 4]
-      desc: "incoming momentum along +z of the real emission, in the Born centre-of-mass frame"
+      desc: "incoming momentum along +z of the real emission, in the Born center-of-mass frame"
     - name: p_in2
       type: [float, 4]
-      desc: "incoming momentum along -z of the real emission, in the Born centre-of-mass frame"
+      desc: "incoming momentum along -z of the real emission, in the Born center-of-mass frame"
     - name: p_i
       type: [float, 4]
       desc: "FKS parton i, massless"
@@ -2677,7 +2677,7 @@ fks_initial_cluster:
   outputs:
     - name: sqrt_s
       type: [float]
-      desc: "partonic centre-of-mass energy of the Born"
+      desc: "partonic center-of-mass energy of the Born"
     - name: x1_born
       type: [float]
       desc: "momentum fraction of beam 1 in the Born"
@@ -2698,7 +2698,7 @@ fks_initial_cluster:
       desc: "energy fraction of i"
     - name: y
       type: [float]
-      desc: "cosine of the angle between i and j in the centre-of-mass frame of the real emission"
+      desc: "cosine of the angle between i and j in the center-of-mass frame of the real emission"
     - name: xi_min
       type: [float]
       desc: "lower bound of xi"
@@ -2714,7 +2714,7 @@ fks_initial_recoil_boost:
   inputs:
     - name: p
       type: [float, n, 4]
-      desc: "final-state momenta of the Born, in its centre-of-mass frame"
+      desc: "final-state momenta of the Born, in its center-of-mass frame"
     - name: xi
       type: [float]
       desc: "energy fraction of the FKS parton i"
@@ -2774,7 +2774,7 @@ fks_recoil_light_cone:
     - name: minus
       type: [float]
       desc: "E - p_z of p_in1 + p_in2 - p_i"
-  desc: "Light-cone components of the system recoiling against i in an FKS emission off an incoming parton. It has zero longitudinal momentum in the centre-of-mass frame of the Born, so plus / minus = exp(2 y) for the rapidity y of that frame in the frame of the inputs. See @ref FKSMapping."
+  desc: "Light-cone components of the system recoiling against i in an FKS emission off an incoming parton. It has zero longitudinal momentum in the center-of-mass frame of the Born, so plus / minus = exp(2 y) for the rapidity y of that frame in the frame of the inputs. See @ref FKSMapping."
 
 fks_counter_event_det:
   inputs:
@@ -2830,7 +2830,7 @@ fks_sector_function:
       desc: "1 where (k, l) is an FKS pair of the real process of the configuration, each pair once"
     - name: octet
       type: [int, single, c, n]
-      desc: "1 for a colour octet, whose energy is always in d_kl"
+      desc: "1 for a color octet, whose energy is always in d_kl"
     - name: aorg
       type: [int, single, c, n]
       desc: "1 for a gluon or a photon: a final-state pair (i, j) of two of them gets h_damp"
@@ -2845,7 +2845,7 @@ fks_sector_function:
       type: [float]
       desc: "the sector function S_ij of the configuration"
   vectorized: False
-  desc: "FKS sector function S_ij of fks_Sij.f, 1 / sum_kl d_ij / d_kl over the FKS pairs (k, l) of the real process with d_kl = (E_k E_l / (sqrt_s / 2)^2)^fks_a (1 - beta_k beta_l cos theta_kl)^fks_b, times h_damp(E_i / (E_i + E_j)) for a final-state pair (i, j) of two gluons or photons. Energies and angles are those in the partonic centre-of-mass frame of the momenta, from invariants. i enters with the direction of p_i_hat and the energy of its momentum in p, so that at a soft counter-event the pairs without i drop out. As in fks_Sij.f, S_ij is zero where an energy or the angle of a pair in a denominator falls below 1e-8."
+  desc: "FKS sector function S_ij of fks_Sij.f, 1 / sum_kl d_ij / d_kl over the FKS pairs (k, l) of the real process with d_kl = (E_k E_l / (sqrt_s / 2)^2)^fks_a (1 - beta_k beta_l cos theta_kl)^fks_b, times h_damp(E_i / (E_i + E_j)) for a final-state pair (i, j) of two gluons or photons. Energies and angles are those in the partonic center-of-mass frame of the momenta, from invariants. i enters with the direction of p_i_hat and the energy of its momentum in p, so that at a soft counter-event the pairs without i drop out. As in fks_Sij.f, S_ij is zero where an energy or the angle of a pair in a denominator falls below 1e-8."
 
 fks_eikonals:
   inputs:
@@ -2857,7 +2857,7 @@ fks_eikonals:
       desc: "momentum of i per unit xi, which gives its direction where i is soft"
     - name: y
       type: [float]
-      desc: "cosine of the angle between i and j in the partonic centre-of-mass frame"
+      desc: "cosine of the angle between i and j in the partonic center-of-mass frame"
     - name: index
       type: [int]
       desc: "FKS configuration of the event"
@@ -2881,7 +2881,7 @@ fks_eikonals:
       type: [float, k]
       desc: "reduced eikonal factor of each pair, zero past the pairs of the configuration"
   vectorized: False
-  desc: "Reduced eikonal factors of eikonal_reduced in fks_singular.f, (p_m p_n) (1 - y) / ((p_m p_i_hat) (p_n p_i_hat)) for the pairs (m, n) of the soft limit of the configuration of the event. For a massless j, (p_j p_i_hat) / (1 - y) is sqrt_s E_j / 2 in the partonic centre-of-mass frame, so that the factors are finite at y = 1. With the colour-linked Borns of the pairs they give the soft limit of xi^2 (1 - y) times the real matrix element."
+  desc: "Reduced eikonal factors of eikonal_reduced in fks_singular.f, (p_m p_n) (1 - y) / ((p_m p_i_hat) (p_n p_i_hat)) for the pairs (m, n) of the soft limit of the configuration of the event. For a massless j, (p_j p_i_hat) / (1 - y) is sqrt_s E_j / 2 in the partonic center-of-mass frame, so that the factors are finite at y = 1. With the color-linked Borns of the pairs they give the soft limit of xi^2 (1 - y) times the real matrix element."
 
 fks_splitting_kernels:
   inputs:
@@ -2914,7 +2914,7 @@ fks_splitting_kernels:
       type: [float, 2]
       desc: "QCD and QED azimuthal terms of Qterms_reduced_timelike or Qterms_reduced_spacelike, without the couplings"
   vectorized: False
-  desc: "The collinear factors of sborncol_fsr and sborncol_isr in fks_singular.f: z = 1 - E_i / (E_i + E_j) in the partonic centre-of-mass frame for a final-state j, 1 - xi = 1 - 2 E_i / sqrt(s) for an initial-state one, the Altarelli-Parisi kernel of the splitting and its azimuthal terms, timelike for a final-state j and spacelike for an initial-state one, with t = z s / 4 and without the couplings."
+  desc: "The collinear factors of sborncol_fsr and sborncol_isr in fks_singular.f: z = 1 - E_i / (E_i + E_j) in the partonic center-of-mass frame for a final-state j, 1 - xi = 1 - 2 E_i / sqrt(s) for an initial-state one, the Altarelli-Parisi kernel of the splitting and its azimuthal terms, timelike for a final-state j and spacelike for an initial-state one, with t = z s / 4 and without the couplings."
 
 fks_transverse_vector:
   inputs:
@@ -2935,7 +2935,7 @@ fks_transverse_vector:
       type: [float, 4]
       desc: "transverse direction of the emission, k_perp^2 = -1"
   vectorized: False
-  desc: "Transverse direction of the emission (xij_kperp of genps_fks.f): the momentum of i per unit xi made orthogonal to the Born emitter and to the sum of the incoming Born momenta, normalized to k_perp^2 = -1. It is the vector that the spin-correlated Born of a gluon (or photon) emitter is contracted with in the collinear limit, and in the partonic centre-of-mass frame it is (0, cos phi, sin phi, 0) in the frame of the emitter, up to its sign."
+  desc: "Transverse direction of the emission (xij_kperp of genps_fks.f): the momentum of i per unit xi made orthogonal to the Born emitter and to the sum of the incoming Born momenta, normalized to k_perp^2 = -1. It is the vector that the spin-correlated Born of a gluon (or photon) emitter is contracted with in the collinear limit, and in the partonic center-of-mass frame it is (0, cos phi, sin phi, 0) in the frame of the emitter, up to its sign."
 
 fks_prefactors:
   inputs:
