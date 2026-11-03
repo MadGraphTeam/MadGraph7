@@ -777,10 +777,9 @@ impl AmplitudeRuntime {
         }
         let helicity_indices = physics.selected_helicity_indices(selected_helicity_ids)?;
         let color_indices = physics.selected_color_indices(selected_color_ids)?;
-        if color_indices.iter().any(|index| *index != 0) {
-            return Err(RusticolError::selector(
-                "color topology replay exposes one contracted color component",
-            ));
+        let mut selected_color_positions = vec![None; physics.manifest.color_components.len()];
+        for (position, index) in color_indices.iter().copied().enumerate() {
+            selected_color_positions[index] = Some(position);
         }
         let mut selected_positions = vec![None; physics.manifest.helicities.len()];
         for (position, index) in helicity_indices.iter().copied().enumerate() {
@@ -841,6 +840,11 @@ impl AmplitudeRuntime {
             )
         })?;
         let entries = contraction.logical_entries().collect::<Vec<_>>();
+        let entry_color_positions = contraction
+            .entry_color_indices(physics)?
+            .into_iter()
+            .map(|index| selected_color_positions[index])
+            .collect::<Vec<_>>();
         for entry in &entries {
             if members_by_group[entry.left_group_index] != members_by_group[entry.right_group_index]
             {
@@ -857,7 +861,10 @@ impl AmplitudeRuntime {
         let group_count = replay.physical_groups.len();
         for row in 0..batch_size {
             let group_row = row * group_count;
-            for entry in &entries {
+            for (entry, color_position) in entries.iter().zip(&entry_color_positions) {
+                let Some(color_position) = *color_position else {
+                    continue;
+                };
                 let left = replay.physical_group_scratch_f64[group_row + entry.left_group_index];
                 let right = replay.physical_group_scratch_f64[group_row + entry.right_group_index];
                 let product = left * right.conj();
@@ -868,8 +875,9 @@ impl AmplitudeRuntime {
                     let Some(position) = selected_positions[*helicity_index] else {
                         continue;
                     };
-                    values[row * component_count + position * color_indices.len()] +=
-                        contribution * weight;
+                    values[row * component_count
+                        + position * color_indices.len()
+                        + color_position] += contribution * weight;
                 }
             }
         }
@@ -1714,17 +1722,16 @@ impl AmplitudeRuntime {
         let mut values = vec![0.0; batch_size * selected_component_count];
 
         if let Some(contraction) = color_contraction.as_mut() {
-            if color_count != 1 || !physics.has_contracted_color_axis() {
-                return Err(RusticolError::invalid_argument(
-                    "resolved NLC/full evaluation requires one contracted color component",
-                ));
-            }
+            let entry_color_positions = contraction
+                .entry_color_indices(physics)?
+                .into_iter()
+                .map(|index| selected_color_positions[index])
+                .collect::<Vec<_>>();
             if raw_sum_groups.len() != contraction.group_count {
                 return Err(RusticolError::invalid_argument(
                     "colour contraction group count does not match coherent groups",
                 ));
             }
-            let selected_contracted_color_position = selected_color_positions[0];
             let mut selected_helicity_weights_by_entry =
                 Vec::with_capacity(contraction.logical_entry_count()?);
             for entry in contraction.logical_entries() {
@@ -1792,9 +1799,10 @@ impl AmplitudeRuntime {
                     }
                     contraction.group_scratch_f64[group_row + group_index] = sum;
                 }
-                for (entry, left_weights) in contraction
+                for ((entry, left_weights), color_position) in contraction
                     .logical_entries()
                     .zip(&selected_helicity_weights_by_entry)
+                    .zip(&entry_color_positions)
                 {
                     let left = contraction.group_scratch_f64[group_row + entry.left_group_index];
                     let right = contraction.group_scratch_f64[group_row + entry.right_group_index];
@@ -1802,7 +1810,7 @@ impl AmplitudeRuntime {
                     let contribution = normalization_factor
                         * entry.symmetry_factor
                         * (entry.weight_re * product.re - entry.weight_im * product.im);
-                    let Some(color_position) = selected_contracted_color_position else {
+                    let Some(color_position) = *color_position else {
                         continue;
                     };
                     for (helicity_position, weight) in left_weights {
@@ -2522,11 +2530,7 @@ impl AmplitudeRuntime {
         let mut full_values = vec![0.0; batch_size * color_count];
 
         if let Some(contraction) = color_contraction.as_mut() {
-            if color_count != 1 || !physics.has_contracted_color_axis() {
-                return Err(RusticolError::invalid_argument(
-                    "resolved NLC/full evaluation requires one contracted color component",
-                ));
-            }
+            let entry_colors = contraction.entry_color_indices(physics)?;
             if raw_sum_groups.len() != contraction.group_count {
                 return Err(RusticolError::invalid_argument(
                     "colour contraction group count does not match coherent groups",
@@ -2552,7 +2556,7 @@ impl AmplitudeRuntime {
                         .iter()
                         .any(|index| root_factors[*index].is_some());
             }
-            for (row, full_value) in full_values.iter_mut().enumerate().take(batch_size) {
+            for row in 0..batch_size {
                 let group_row = row * contraction.group_count;
                 for (group_index, group) in raw_sum_groups.iter().enumerate() {
                     let mut sum = c64(0.0, 0.0);
@@ -2565,7 +2569,7 @@ impl AmplitudeRuntime {
                     }
                     contraction.group_scratch_f64[group_row + group_index] = sum;
                 }
-                for entry in contraction.logical_entries() {
+                for (entry, entry_color) in contraction.logical_entries().zip(&entry_colors) {
                     if !group_active[entry.left_group_index]
                         || !group_active[entry.right_group_index]
                     {
@@ -2574,7 +2578,7 @@ impl AmplitudeRuntime {
                     let left = contraction.group_scratch_f64[group_row + entry.left_group_index];
                     let right = contraction.group_scratch_f64[group_row + entry.right_group_index];
                     let product = left * right.conj();
-                    *full_value += normalization_factor
+                    full_values[row * color_count + entry_color] += normalization_factor
                         * entry.symmetry_factor
                         * (entry.weight_re * product.re - entry.weight_im * product.im);
                 }
@@ -2794,7 +2798,9 @@ impl AmplitudeRuntime {
         }
 
         let reduction = if let Some(contraction) = self.color_contraction.as_ref() {
-            if !physics.has_contracted_color_axis() || physics.manifest.color_components.len() != 1
+            if !physics.has_contracted_color_axis()
+                || (physics.manifest.color_components.len() != 1
+                    && contraction.entry_nc_degrees.is_none())
             {
                 return Err(RusticolError::invalid_argument(
                     "materialized-helicity color contraction requires one contracted color component",
@@ -3340,7 +3346,9 @@ impl AmplitudeRuntime {
             )));
         }
         if let Some(contraction) = color_contraction.as_mut() {
-            if !physics.has_contracted_color_axis() || physics.manifest.color_components.len() != 1
+            if !physics.has_contracted_color_axis()
+                || (physics.manifest.color_components.len() != 1
+                    && contraction.entry_nc_degrees.is_none())
             {
                 return Err(RusticolError::invalid_argument(
                     "materialized-helicity color contraction requires one contracted color component",
@@ -3521,11 +3529,7 @@ impl AmplitudeRuntime {
         let mut full_values = vec![T::new_zero(); batch_size * color_count];
 
         if let Some(contraction) = self.color_contraction.as_ref() {
-            if color_count != 1 || !physics.has_contracted_color_axis() {
-                return Err(RusticolError::invalid_argument(
-                    "resolved NLC/full evaluation requires one contracted color component",
-                ));
-            }
+            let entry_colors = contraction.entry_color_indices(physics)?;
             if self.raw_sum_groups.len() != contraction.group_count {
                 return Err(RusticolError::invalid_argument(
                     "colour contraction group count does not match coherent groups",
@@ -3552,7 +3556,7 @@ impl AmplitudeRuntime {
                         .any(|index| root_factors[*index].is_some());
             }
             let mut group_values = vec![complex_zero::<T>(); batch_size * contraction.group_count];
-            for (row, full_value) in full_values.iter_mut().enumerate() {
+            for row in 0..batch_size {
                 let row_offset = row * self.output_length;
                 let group_row = row * contraction.group_count;
                 for (group_index, group) in self.raw_sum_groups.iter().enumerate() {
@@ -3569,7 +3573,7 @@ impl AmplitudeRuntime {
                     }
                     group_values[group_row + group_index] = sum;
                 }
-                for entry in contraction.logical_entries() {
+                for (entry, entry_color) in contraction.logical_entries().zip(&entry_colors) {
                     if !group_active[entry.left_group_index]
                         || !group_active[entry.right_group_index]
                     {
@@ -3581,9 +3585,10 @@ impl AmplitudeRuntime {
                         left.re.clone() * right.re.clone() + left.im.clone() * right.im.clone();
                     let product_im =
                         left.im.clone() * right.re.clone() - left.re.clone() * right.im.clone();
-                    *full_value += T::from(normalization_factor * entry.symmetry_factor)
-                        * (T::from(entry.weight_re) * product_re
-                            - T::from(entry.weight_im) * product_im);
+                    full_values[row * color_count + entry_color] +=
+                        T::from(normalization_factor * entry.symmetry_factor)
+                            * (T::from(entry.weight_re) * product_re
+                                - T::from(entry.weight_im) * product_im);
                 }
             }
         } else {
@@ -3859,11 +3864,7 @@ impl AmplitudeRuntime {
         let color_count = physics.manifest.color_components.len();
         let mut full_values = vec![T::new_zero(); batch_size * helicity_count * color_count];
         if let Some(contraction) = self.color_contraction.as_ref() {
-            if color_count != 1 || !physics.has_contracted_color_axis() {
-                return Err(RusticolError::invalid_argument(
-                    "resolved NLC/full evaluation requires one contracted color component",
-                ));
-            }
+            let entry_colors = contraction.entry_color_indices(physics)?;
             let mut group_values = vec![complex_zero::<T>(); batch_size * contraction.group_count];
             for row in 0..batch_size {
                 let row_offset = row * self.output_length;
@@ -3876,7 +3877,7 @@ impl AmplitudeRuntime {
                     }
                     group_values[group_row + group_index] = sum;
                 }
-                for entry in contraction.logical_entries() {
+                for (entry, entry_color) in contraction.logical_entries().zip(&entry_colors) {
                     let left_group = &self.raw_sum_groups[entry.left_group_index];
                     let right_group = &self.raw_sum_groups[entry.right_group_index];
                     let left_reduction = physics
@@ -3928,8 +3929,8 @@ impl AmplitudeRuntime {
                         * (T::from(entry.weight_re) * product_re
                             - T::from(entry.weight_im) * product_im);
                     for (helicity_index, weight) in left_weights {
-                        full_values[(row * helicity_count + helicity_index) * color_count] +=
-                            contribution.clone() * T::from(weight);
+                        full_values[(row * helicity_count + helicity_index) * color_count
+                            + entry_color] += contribution.clone() * T::from(weight);
                     }
                 }
             }
@@ -4334,6 +4335,11 @@ pub(crate) fn build_color_contraction_runtime(
             group_index_by_id.len()
         )));
     }
+    if manifest.nc_expansion.is_some() && manifest.repeated_block.is_some() {
+        return Err(RusticolError::invalid_argument(
+            "a colour contraction graded by N_c degree stores expanded entries",
+        ));
+    }
     if let Some(repeated) = manifest.repeated_block.as_ref() {
         if !manifest.entries.is_empty() {
             return Err(RusticolError::invalid_argument(
@@ -4409,7 +4415,19 @@ pub(crate) fn build_color_contraction_runtime(
         )));
     }
     let mut entries = Vec::with_capacity(manifest.entries.len());
+    let mut entry_nc_degrees = Vec::with_capacity(manifest.entries.len());
     for entry in &manifest.entries {
+        match (manifest.nc_expansion.as_ref(), entry.nc_degree) {
+            (Some(expansion), Some(degree)) if expansion.degrees.contains(&degree) => {
+                entry_nc_degrees.push(degree);
+            }
+            (None, None) => {}
+            _ => {
+                return Err(RusticolError::invalid_argument(
+                    "colour contraction entries and the plan's N_c expansion disagree",
+                ));
+            }
+        }
         let left_group_index = *group_index_by_id.get(&entry.left_group_id).ok_or_else(|| {
             RusticolError::invalid_argument(format!(
                 "colour contraction references unknown left group {}",
@@ -4433,6 +4451,26 @@ pub(crate) fn build_color_contraction_runtime(
             weight_im,
             symmetry_factor: entry.symmetry_factor,
         });
+    }
+    if let Some(expansion) = manifest.nc_expansion.as_ref() {
+        if expansion.degrees.is_empty()
+            || expansion.degrees.windows(2).any(|pair| pair[0] <= pair[1])
+            || expansion.degrees[0] > expansion.reference_degree
+            || !matches!(
+                expansion.accuracy.as_str(),
+                "strict-lc" | "strict-nlc" | "full"
+            )
+            || expansion.depth.is_some_and(|depth| depth < 0)
+        {
+            return Err(RusticolError::invalid_argument(
+                "colour contraction has an invalid N_c expansion",
+            ));
+        }
+        return Ok(Some(ColorContractionRuntime::graded(
+            groups,
+            entries,
+            entry_nc_degrees,
+        )));
     }
     Ok(Some(ColorContractionRuntime::new(groups, entries)))
 }

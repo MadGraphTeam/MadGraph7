@@ -63,9 +63,22 @@ class ProcessGroupAnalysis(StrEnum):
 
 
 class ColorAccuracy(StrEnum):
+    # The inherited (non-strict) colour approximation: the colour matrix (or,
+    # at one loop, the colour seed table) is truncated in N_c while amplitude
+    # coefficients, including the 1/3 of U(1)-subtraction pieces, stay at
+    # N_c = 3 (``docs/correlator-conventions.md``, "Colour accuracy").
     LC = "lc"
     NLC = "nlc"
     FULL = "full"
+    # The formal 1/N_c expansion of the squared amplitude: every
+    # U(1)-subtraction piece is graded (degree -1); LC keeps the leading
+    # degree P, NLC the degrees P, P-1 and P-2 (``color.nc_expansion``).
+    STRICT_LC = "strict-lc"
+    STRICT_NLC = "strict-nlc"
+
+    @property
+    def strict(self) -> bool:
+        return self in (ColorAccuracy.STRICT_LC, ColorAccuracy.STRICT_NLC)
 
 
 class ColorContraction(StrEnum):
@@ -546,6 +559,19 @@ class ColorConfig:
         default=ColorFFTBasis.ADJOINT,
         metadata=_setting("str", choices=tuple(ColorFFTBasis)),
     )
+    # Report the squared tree split by power of N_c (one contracted colour
+    # component per N_c degree of the formal expansion). Always on for
+    # ``strict-lc``/``strict-nlc``; ``true`` with ``full`` gives every degree
+    # (the graded full colour). The inherited ``lc``/``nlc`` have no degrees.
+    graded: bool = field(default=False, metadata=_setting("bool"))
+
+    @property
+    def nc_graded(self) -> bool:
+        """Whether the artifact reports its value per N_c degree."""
+
+        return bool(self.graded) or (
+            self.accuracy is not None and ColorAccuracy(self.accuracy).strict
+        )
 
     def __post_init__(self) -> None:
         if self.accuracy is not None:
@@ -573,9 +599,22 @@ class ColorConfig:
             "lc_flow_layout",
             _enum(self.lc_flow_layout, LCFlowLayout, "color.lc_flow_layout"),
         )
+        if not isinstance(self.graded, bool):
+            raise ConfigurationError("color.graded must be a boolean")
         if self.accuracy is None:
             # Validated once ``RunConfig`` resolves the request kind's default.
             return
+        if self.graded and self.accuracy in (ColorAccuracy.LC, ColorAccuracy.NLC):
+            raise ConfigurationError(
+                "color.graded requires color.accuracy='strict-lc', 'strict-nlc' "
+                f"or 'full': the inherited {str(self.accuracy)!r} approximation "
+                "is not an expansion in N_c"
+            )
+        if self.nc_graded and self.contraction is ColorContraction.SYMMETRIC_GROUP_FFT:
+            raise ConfigurationError(
+                "strict and graded colour use the direct colour contraction; "
+                "color.contraction='symmetric-group-fft' is not supported"
+            )
         if (
             self.lc_flow_layout is LCFlowLayout.ALL_FLOW_UNION
             and self.accuracy is not ColorAccuracy.LC
@@ -1654,6 +1693,8 @@ class RunConfig:
                 "generation.particle_veto requires one-loop generation "
                 "(process.loop_coupling_orders)"
             )
+        if self.color.nc_graded:
+            self._validate_nc_expansion(virtual=virtual)
         if (
             self.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
             and self.resolved_execution_mode
@@ -1669,12 +1710,53 @@ class RunConfig:
                 "'loop_recurrence'"
             )
 
+    def _validate_nc_expansion(self, *, virtual: bool) -> None:
+        """Strict and graded tree colour: the formal N_c expansion of the
+        complete full-colour basis, implemented in the compiled lane."""
+
+        if virtual:
+            raise ConfigurationError(
+                "strict and graded colour (color.accuracy='strict-lc' or "
+                "'strict-nlc', color.graded) are implemented for tree requests; "
+                "one-loop requests take color.accuracy='lc', 'nlc' (the loop "
+                "engine's formal-N_c projection) or 'full'"
+            )
+        mode = self.evaluator.execution_mode
+        if mode not in {
+            EvaluatorExecutionMode.AUTO,
+            EvaluatorExecutionMode.COMPILED,
+        }:
+            raise ConfigurationError(
+                "strict and graded tree colour (color.accuracy='strict-lc' or "
+                "'strict-nlc', color.graded) are implemented for "
+                "evaluator.execution_mode='compiled' (the default for them); "
+                f"got {str(mode)!r}"
+            )
+        restricted = [
+            name
+            for name in (
+                "max_color_sectors",
+                "reference_color_order",
+                "selected_color_sector_ids",
+            )
+            if getattr(self.process, name)
+        ]
+        if restricted:
+            raise ConfigurationError(
+                "strict and graded tree colour expand the complete colour basis; "
+                "remove " + ", ".join(f"process.{name}" for name in restricted)
+            )
+
     @property
     def resolved_execution_mode(self) -> EvaluatorExecutionMode:
         if self.evaluator.execution_mode is not EvaluatorExecutionMode.AUTO:
             return self.evaluator.execution_mode
         if self.process.loop_coupling_orders is not None:
             return EvaluatorExecutionMode.LOOP_RECURRENCE
+        if self.color.nc_graded:
+            # Strict and graded tree colour are implemented in the compiled
+            # lane (``_validate_nc_expansion``).
+            return EvaluatorExecutionMode.COMPILED
         return EvaluatorExecutionMode.RECURRENCE
 
     @property

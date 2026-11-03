@@ -316,8 +316,22 @@ def _add_color_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--color-accuracy",
         dest="color.accuracy",
-        choices=("lc", "nlc", "full"),
+        choices=("lc", "nlc", "full", "strict-lc", "strict-nlc"),
         default=argparse.SUPPRESS,
+        help=(
+            "lc/nlc: the inherited colour-matrix approximation; strict-lc/"
+            "strict-nlc: the formal 1/N_c expansion (graded output)"
+        ),
+    )
+    parser.add_argument(
+        "--color-graded",
+        dest="color.graded",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help=(
+            "report trees split by power of N_c (implied by strict-lc and "
+            "strict-nlc; with full colour, every degree)"
+        ),
     )
     contraction = parser.add_mutually_exclusive_group()
     contraction.add_argument(

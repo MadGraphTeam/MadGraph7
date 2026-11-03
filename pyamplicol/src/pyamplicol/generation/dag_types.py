@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
+from ..color.nc_expansion import NcExpansion
 from ..color.plan import (
     ColorTopologyReplayCertificate,
     GenericColorPlan,
@@ -466,6 +467,10 @@ class GenericDAG:
     color_topology_replay: ColorTopologyReplayCertificate | None = None
     helicity_recurrence: HelicityRecurrencePlan | None = None
     helicity_materialization: HelicityMaterialization | None = None
+    # Formal-N_c treatment of the colour sum (strict colour and graded
+    # output, ``color.nc_expansion``): the amplitudes are full colour and
+    # every root has one N_c grade (``generation.dag_grades``).
+    nc_expansion: NcExpansion | None = None
 
     def __post_init__(self) -> None:
         if self.helicity_coverage not in {"complete", "selected"}:
@@ -531,6 +536,15 @@ class GenericDAG:
                     "generic topology replay physical sectors do not match the "
                     "color plan"
                 )
+        if self.nc_expansion is not None and (
+            self.process.color_accuracy != "full"
+            or self.color_coverage != "complete"
+            or selected_color_sector_ids
+            or self.lc_topology_replay is not None
+        ):
+            raise ValueError(
+                "a formal-N_c expansion needs the complete full-colour amplitude basis"
+            )
         if self.helicity_recurrence is not None and (
             self.helicity_coverage != "complete"
             or bool(self.selected_source_helicities)

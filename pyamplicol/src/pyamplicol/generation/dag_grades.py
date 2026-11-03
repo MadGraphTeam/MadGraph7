@@ -188,4 +188,119 @@ def split_u1_grades(dag: GenericDAG) -> GenericDAG:
     )
 
 
-__all__ = ["split_u1_grades", "u1_grade_sets"]
+def split_tree_u1_grades(dag: GenericDAG) -> GenericDAG:
+    """A tree DAG whose currents and amplitude roots have one N_c grade each.
+
+    The tree counterpart of ``split_u1_grades`` for the formal-N_c expansion
+    of tree colour sums (``color.nc_expansion``). A current whose own
+    derivations mix grades becomes one current per grade, labelled by
+    ``ColorState.nc_grade``, each fed by the derivations of that grade (its
+    consumers follow, as their grade sets mix too); every other current keeps
+    its identity, as no colour state needs a block name here. An amplitude
+    root is emitted once per grade of each split input (decreasing, left
+    before right), so the grade of a root is the sum of its inputs' grades
+    (``root_nc_grades``). The sum of a split current's copies is its value,
+    so the colour sum at N_c = 3 is unchanged up to the summation order.
+    """
+
+    currents = dag.currents
+    if not any(
+        current.index.auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND
+        for current in currents
+    ):
+        return dag
+    grade_sets = u1_grade_sets(dag)
+    if all(len(grades) <= 1 for grades in grade_sets):
+        return dag
+    u1 = [
+        current.index.auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND
+        for current in currents
+    ]
+    copies: list[tuple[tuple[int, int], ...]] = []
+    out_currents: list[CurrentNode] = []
+    for current, grades in zip(currents, grade_sets, strict=True):
+        if len(grades) <= 1:
+            new = len(out_currents)
+            copies.append(tuple((grade, new) for grade in grades))
+            out_currents.append(
+                current if current.id == new else replace(current, id=new)
+            )
+            continue
+        ids = []
+        for grade in sorted(grades, reverse=True):
+            new = len(out_currents)
+            index = current.index
+            out_currents.append(
+                replace(
+                    current,
+                    id=new,
+                    index=replace(
+                        index,
+                        color_state=replace(index.color_state, nc_grade=grade),
+                    ),
+                )
+            )
+            ids.append((grade, new))
+        copies.append(tuple(ids))
+    out_interactions: list[InteractionNode] = []
+    for interaction in dag.interactions:
+        targets = dict(copies[interaction.result_id])
+        shift = u1[interaction.result_id]
+        for left_grade, left in copies[interaction.left_id]:
+            for right_grade, right in copies[interaction.right_id]:
+                out_interactions.append(
+                    replace(
+                        interaction,
+                        id=len(out_interactions),
+                        left_id=left,
+                        right_id=right,
+                        result_id=targets[left_grade + right_grade - shift],
+                    )
+                )
+    out_roots = []
+    for root in dag.amplitude_roots:
+        for _left_grade, left in copies[root.left_id]:
+            for _right_grade, right in copies[root.right_id]:
+                out_roots.append(
+                    replace(root, id=len(out_roots), left_id=left, right_id=right)
+                )
+    sources = tuple(copies[source][0][1] for source in dag.sources)
+    return replace(
+        dag,
+        currents=tuple(out_currents),
+        sources=sources,
+        interactions=tuple(out_interactions),
+        amplitude_roots=tuple(out_roots),
+    )
+
+
+def root_nc_grades(dag: GenericDAG) -> dict[int, int]:
+    """The N_c grade of every amplitude root (by root id): the sum of the
+    grades of its two inputs (``split_tree_u1_grades`` makes them unique).
+    """
+
+    if not any(
+        current.index.auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND
+        for current in dag.currents
+    ):
+        return {root.id: 0 for root in dag.amplitude_roots}
+    grade_sets = u1_grade_sets(dag)
+    out: dict[int, int] = {}
+    for root in dag.amplitude_roots:
+        left = grade_sets[root.left_id]
+        right = grade_sets[root.right_id]
+        if len(left) != 1 or len(right) != 1:
+            raise ValueError(
+                f"amplitude root {root.id} mixes N_c grades; split the DAG with "
+                "generation.dag_grades.split_tree_u1_grades"
+            )
+        out[root.id] = next(iter(left)) + next(iter(right))
+    return out
+
+
+__all__ = [
+    "root_nc_grades",
+    "split_tree_u1_grades",
+    "split_u1_grades",
+    "u1_grade_sets",
+]

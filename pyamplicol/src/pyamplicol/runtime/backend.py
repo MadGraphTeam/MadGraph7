@@ -73,7 +73,7 @@ if TYPE_CHECKING:
         EagerExactExecutor | RecurrenceExactExecutor | SymbolicaExactExecutor
     )
 
-_Accuracy = Literal["lc", "nlc", "full"]
+_Accuracy = Literal["lc", "nlc", "full", "strict-lc", "strict-nlc"]
 _ParticleState = Literal["incoming", "outgoing"]
 _ExecutionMode = Literal["compiled", "eager", "recurrence", "on-the-fly"]
 
@@ -500,6 +500,11 @@ def _physics_from_native(value: Any) -> ProcessPhysics:
                 id=str(component.id),
                 index=int(component.index),
                 description=str(component.description),
+                nc_degree=(
+                    None
+                    if getattr(component, "nc_degree", None) is None
+                    else int(component.nc_degree)
+                ),
             )
             for component in value.contracted_color_components
         ),

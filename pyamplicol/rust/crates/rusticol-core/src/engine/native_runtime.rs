@@ -4752,6 +4752,203 @@ impl NativeRuntime {
         Ok(evaluation)
     }
 
+    /// The formal-N_c expansion of a graded artifact (pyAmpliCol
+    /// `color.accuracy = "strict-lc"`/`"strict-nlc"`, or `color.graded` full
+    /// colour): its kept N_c degrees and their contracted colour components.
+    /// `None` for an artifact without N_c degrees (inherited LC/NLC, full).
+    pub fn nc_expansion(&self) -> RusticolResult<Option<NativeNcExpansion>> {
+        let physics = self.physics_v1.get()?;
+        let Some(degrees) = physics.nc_degrees() else {
+            return Ok(None);
+        };
+        let record = physics.extensions.get("nc_expansion").ok_or_else(|| {
+            RusticolError::artifact("graded runtime physics has no nc_expansion record")
+        })?;
+        let accuracy = record
+            .get("accuracy")
+            .and_then(Value::as_str)
+            .ok_or_else(|| RusticolError::artifact("nc_expansion record has no accuracy"))?
+            .to_string();
+        let reference_degree = record
+            .get("reference_degree")
+            .and_then(Value::as_i64)
+            .and_then(|value| i32::try_from(value).ok())
+            .ok_or_else(|| {
+                RusticolError::artifact("nc_expansion record has no reference degree")
+            })?;
+        let recorded = record
+            .get("degrees")
+            .and_then(Value::as_array)
+            .and_then(|values| {
+                values
+                    .iter()
+                    .map(|value| value.as_i64().and_then(|value| i32::try_from(value).ok()))
+                    .collect::<Option<Vec<_>>>()
+            });
+        if recorded.as_ref() != Some(&degrees) {
+            return Err(RusticolError::artifact(
+                "nc_expansion degrees do not match the graded colour components",
+            ));
+        }
+        let mut color_ids = physics
+            .color_components
+            .iter()
+            .map(|component| component.id().to_string())
+            .collect::<Vec<_>>();
+        self.publish_color_ids(&mut color_ids);
+        Ok(Some(NativeNcExpansion {
+            accuracy,
+            reference_degree,
+            degrees,
+            color_ids,
+        }))
+    }
+
+    fn require_nc_degrees(&self) -> RusticolResult<Vec<i32>> {
+        self.physics_v1.get()?.nc_degrees().ok_or_else(|| {
+            RusticolError::compatibility(
+                "graded evaluation needs an artifact generated with color.accuracy='strict-lc' \
+                 or 'strict-nlc', or with color.graded (full colour)",
+            )
+        })
+    }
+
+    /// Evaluate a graded artifact split by power of N_c, summed over the
+    /// selected helicities (all by default): `values[point * degrees + d]` is
+    /// the contribution of N_c degree `degrees[d]` at N_c = 3. The degrees of
+    /// a point sum to [`Self::evaluate_f64`] up to rounding; per helicity,
+    /// [`Self::evaluate_resolved_f64`] reports the degrees as its colour axis.
+    pub fn evaluate_graded_f64(
+        &mut self,
+        momenta: &[f64],
+        point_count: usize,
+        helicity_ids: Option<&[String]>,
+    ) -> RusticolResult<NativeGradedEvaluation> {
+        let degrees = self.require_nc_degrees()?;
+        let resolved = self.evaluate_resolved_f64(momenta, point_count, helicity_ids, None)?;
+        let values = sum_resolved_helicities(
+            resolved.values,
+            resolved.point_count,
+            resolved.helicity_ids.len(),
+            resolved.color_ids.len(),
+            degrees.len(),
+        )?;
+        Ok(NativeGradedEvaluation {
+            values,
+            point_count: resolved.point_count,
+            degrees,
+            helicity_ids: resolved.helicity_ids,
+        })
+    }
+
+    /// [`Self::evaluate_graded_f64`] at `decimal_digits` (32: double-double;
+    /// otherwise arbitrary precision of at least that many digits), compiled
+    /// artifacts only, as [`Self::evaluate_resolved_with_precision`].
+    #[cfg(feature = "symbolica-runtime")]
+    pub fn evaluate_graded_with_precision(
+        &mut self,
+        momenta: &[String],
+        point_count: usize,
+        decimal_digits: u32,
+        helicity_ids: Option<&[String]>,
+    ) -> RusticolResult<NativeDecimalGradedEvaluation> {
+        let degrees = self.require_nc_degrees()?;
+        if decimal_digits == 0 {
+            return Err(RusticolError::unsupported_precision(
+                "precision must be a positive number of decimal digits",
+            ));
+        }
+        if decimal_digits == 16 {
+            let values = momenta
+                .iter()
+                .map(|value| {
+                    value.parse::<f64>().map_err(|error| {
+                        RusticolError::invalid_argument(format!(
+                            "could not parse f64 momentum component {value:?}: {error}"
+                        ))
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let graded = self.evaluate_graded_f64(&values, point_count, helicity_ids)?;
+            let totals = graded.totals();
+            return Ok(NativeDecimalGradedEvaluation {
+                values: format_decimal_values(graded.values, decimal_digits),
+                totals: format_decimal_values(totals, decimal_digits),
+                point_count: graded.point_count,
+                degrees,
+                helicity_ids: graded.helicity_ids,
+                decimal_digits,
+            });
+        }
+        if self.execution_lane.is_eager() {
+            return Err(eager_parity_pending("graded higher-precision evaluation"));
+        }
+        if self.execution_lane.is_recurrence() {
+            return Err(recurrence_parity_pending(
+                "graded higher-precision evaluation",
+            ));
+        }
+        self.validate_selector_capabilities(helicity_ids.is_some(), false)?;
+        let selected_helicities = selector_set(helicity_ids, "helicity")?;
+        let physics =
+            self.runtime.physics.clone().ok_or_else(|| {
+                RusticolError::artifact("resolved physics metadata is unavailable")
+            })?;
+        let helicity_ids_of = |indices: &[usize]| {
+            indices
+                .iter()
+                .map(|index| physics.manifest.helicities[*index].id.clone())
+                .collect::<Vec<_>>()
+        };
+        if decimal_digits == 32 {
+            let batch = self.prepare_double_batch(momenta, point_count)?;
+            let (mut resolved, _profile) = self.runtime.run_resolved_generic(
+                &batch,
+                None,
+                selected_helicities.as_ref(),
+                None,
+            )?;
+            self.apply_process_group_factor_high_precision(&mut resolved.values);
+            let values = sum_resolved_helicities(
+                resolved.values,
+                resolved.point_count,
+                resolved.helicity_indices.len(),
+                resolved.color_indices.len(),
+                degrees.len(),
+            )?;
+            return Ok(decimal_graded_evaluation(
+                values,
+                resolved.point_count,
+                degrees,
+                helicity_ids_of(&resolved.helicity_indices),
+                decimal_digits,
+            ));
+        }
+        let binary_precision = decimal_digits_to_bits(decimal_digits);
+        let batch = self.prepare_float_batch(momenta, point_count, binary_precision)?;
+        let (mut resolved, _profile) = self.runtime.run_resolved_generic(
+            &batch,
+            Some(binary_precision),
+            selected_helicities.as_ref(),
+            None,
+        )?;
+        self.apply_process_group_factor_high_precision(&mut resolved.values);
+        let values = sum_resolved_helicities(
+            resolved.values,
+            resolved.point_count,
+            resolved.helicity_indices.len(),
+            resolved.color_indices.len(),
+            degrees.len(),
+        )?;
+        Ok(decimal_graded_evaluation(
+            values,
+            resolved.point_count,
+            degrees,
+            helicity_ids_of(&resolved.helicity_indices),
+            decimal_digits,
+        ))
+    }
+
     pub fn set_model_parameters(
         &mut self,
         values: &BTreeMap<String, (f64, f64)>,
@@ -5159,6 +5356,75 @@ where
         color_ids,
         decimal_digits,
     })
+}
+
+/// Sum `[point][helicity][color]` resolved values over helicities into
+/// `[point][color]` (the N_c degrees of a graded artifact).
+///
+/// The sums start from the first helicity's values (no separate zero), so an
+/// arbitrary-precision sum keeps the working precision of its terms.
+fn sum_resolved_helicities<T>(
+    values: Vec<T>,
+    point_count: usize,
+    helicity_count: usize,
+    color_count: usize,
+    expected_color_count: usize,
+) -> RusticolResult<Vec<T>>
+where
+    T: Clone + std::ops::AddAssign,
+{
+    if color_count != expected_color_count
+        || helicity_count == 0
+        || values.len() != point_count * helicity_count * color_count
+    {
+        return Err(RusticolError::internal(
+            "graded evaluation returned an inconsistent resolved shape",
+        ));
+    }
+    let mut out = Vec::with_capacity(point_count * color_count);
+    for point in 0..point_count {
+        let row = point * helicity_count * color_count;
+        out.extend(values[row..row + color_count].iter().cloned());
+        for helicity in 1..helicity_count {
+            for color in 0..color_count {
+                out[point * color_count + color] +=
+                    values[row + helicity * color_count + color].clone();
+            }
+        }
+    }
+    Ok(out)
+}
+
+#[cfg(feature = "symbolica-runtime")]
+fn decimal_graded_evaluation<T>(
+    values: Vec<T>,
+    point_count: usize,
+    degrees: Vec<i32>,
+    helicity_ids: Vec<String>,
+    decimal_digits: u32,
+) -> NativeDecimalGradedEvaluation
+where
+    T: Clone + std::ops::AddAssign + std::fmt::LowerExp,
+{
+    let totals = values
+        .chunks(degrees.len().max(1))
+        .map(|point| {
+            let mut iter = point.iter().cloned();
+            let mut total = iter.next().expect("graded evaluation has a degree");
+            for value in iter {
+                total += value;
+            }
+            total
+        })
+        .collect::<Vec<_>>();
+    NativeDecimalGradedEvaluation {
+        values: format_decimal_values(values, decimal_digits),
+        totals: format_decimal_values(totals, decimal_digits),
+        point_count,
+        degrees,
+        helicity_ids,
+        decimal_digits,
+    }
 }
 
 pub(super) fn parse_public_kinematics_point(

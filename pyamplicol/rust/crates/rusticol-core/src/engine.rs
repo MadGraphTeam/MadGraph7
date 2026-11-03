@@ -1729,6 +1729,23 @@ struct GenericColorContractionManifest {
     entries: Vec<GenericColorContractionEntryManifest>,
     #[serde(default)]
     repeated_block: Option<GenericRepeatedColorContractionBlockManifest>,
+    /// A plan graded by power of N_c (strict colour, graded full colour):
+    /// every entry carries its `nc_degree`, one of `degrees`.
+    #[serde(default)]
+    nc_expansion: Option<GenericNcExpansionManifest>,
+}
+
+/// The formal-N_c expansion of a graded colour contraction (pyAmpliCol
+/// `color.nc_expansion`): the kept degrees, decreasing from the reference
+/// degree P.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GenericNcExpansionManifest {
+    accuracy: String,
+    #[serde(default)]
+    depth: Option<i32>,
+    reference_degree: i32,
+    degrees: Vec<i32>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1742,6 +1759,9 @@ struct GenericColorContractionEntryManifest {
     _exact_weight: Option<[String; 4]>,
     #[serde(default = "default_symmetry_factor")]
     symmetry_factor: f64,
+    /// The N_c degree of this term in a graded plan.
+    #[serde(default)]
+    nc_degree: Option<i32>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -2488,6 +2508,10 @@ struct ColorContractionRuntime {
     repeated_block: Option<RepeatedColorContractionBlock>,
     symmetric_group: Option<CompiledSymmetricGroupColorContraction>,
     group_scratch_f64: Vec<Complex<f64>>,
+    /// The N_c degree of every entry of a graded plan, in `entries` order:
+    /// resolved evaluation reports each degree as its own contracted colour
+    /// component; totals sum every entry as before.
+    entry_nc_degrees: Option<Vec<i32>>,
 }
 
 struct CompiledSymmetricGroupColorContraction {
@@ -2552,7 +2576,62 @@ impl ColorContractionRuntime {
             repeated_block,
             symmetric_group: None,
             group_scratch_f64: Vec::new(),
+            entry_nc_degrees: None,
         }
+    }
+
+    /// A plan graded by power of N_c. Its entries stay expanded (no repeated
+    /// block), so `logical_entries` follows `entry_nc_degrees`.
+    fn graded(
+        groups: &[RawSumGroup],
+        entries: Vec<ColorContractionEntry>,
+        entry_nc_degrees: Vec<i32>,
+    ) -> Self {
+        debug_assert_eq!(entries.len(), entry_nc_degrees.len());
+        Self {
+            group_count: groups.len(),
+            entries,
+            repeated_block: None,
+            symmetric_group: None,
+            group_scratch_f64: Vec::new(),
+            entry_nc_degrees: Some(entry_nc_degrees),
+        }
+    }
+
+    /// The colour component of every logical entry, in `logical_entries`
+    /// order: the component of its N_c degree in a graded plan, else the one
+    /// contracted component.
+    fn entry_color_indices(&self, physics: &PhysicsRuntime) -> RusticolResult<Vec<usize>> {
+        let count = self.logical_entry_count()?;
+        let Some(degrees) = self.entry_nc_degrees.as_ref() else {
+            if physics.manifest.color_components.len() != 1 || !physics.has_contracted_color_axis()
+            {
+                return Err(RusticolError::invalid_argument(
+                    "resolved NLC/full evaluation requires one contracted color component",
+                ));
+            }
+            return Ok(vec![0; count]);
+        };
+        let axis = physics.manifest.nc_degrees().ok_or_else(|| {
+            RusticolError::invalid_argument(
+                "a colour contraction graded by N_c degree needs graded resolved physics",
+            )
+        })?;
+        let index_by_degree = axis
+            .iter()
+            .enumerate()
+            .map(|(index, degree)| (*degree, index))
+            .collect::<BTreeMap<_, _>>();
+        degrees
+            .iter()
+            .map(|degree| {
+                index_by_degree.get(degree).copied().ok_or_else(|| {
+                    RusticolError::invalid_argument(format!(
+                        "colour contraction entry of N_c degree {degree} has no colour component"
+                    ))
+                })
+            })
+            .collect()
     }
 
     fn from_repeated_block(
@@ -2587,6 +2666,7 @@ impl ColorContractionRuntime {
             repeated_block: Some(repeated_block),
             symmetric_group: None,
             group_scratch_f64: Vec::new(),
+            entry_nc_degrees: None,
         }
     }
 
@@ -2605,6 +2685,7 @@ impl ColorContractionRuntime {
                 workspace: None,
             }),
             group_scratch_f64: Vec::new(),
+            entry_nc_degrees: None,
         }
     }
 
@@ -4142,6 +4223,53 @@ pub struct NativeDecimalEvaluation {
     pub decimal_digits: u32,
 }
 
+/// The formal-N_c expansion of a graded artifact (strict colour or graded
+/// full colour): the kept degrees, decreasing, and their colour components.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct NativeNcExpansion {
+    /// `strict-lc`, `strict-nlc` or `full` (every degree).
+    pub accuracy: String,
+    /// The reference degree P (n_g + n_qqbar of the process).
+    pub reference_degree: i32,
+    /// Reported degrees, decreasing; `color_ids[d]` is the contracted colour
+    /// component of `degrees[d]` in resolved evaluation.
+    pub degrees: Vec<i32>,
+    pub color_ids: Vec<String>,
+}
+
+/// A squared tree split by power of N_c, summed over the selected helicities.
+#[derive(Clone, Debug, Serialize)]
+pub struct NativeGradedEvaluation {
+    /// Row-major storage with layout `[point][degree]`: the contribution of
+    /// N_c degree `degrees[d]` at N_c = 3. The degrees of a point sum to its
+    /// total.
+    pub values: Vec<f64>,
+    pub point_count: usize,
+    pub degrees: Vec<i32>,
+    pub helicity_ids: Vec<String>,
+}
+
+impl NativeGradedEvaluation {
+    pub fn totals(&self) -> Vec<f64> {
+        self.values
+            .chunks(self.degrees.len().max(1))
+            .map(|point| point.iter().sum())
+            .collect()
+    }
+}
+
+/// [`NativeGradedEvaluation`] at a chosen decimal precision.
+#[derive(Clone, Debug, Serialize)]
+pub struct NativeDecimalGradedEvaluation {
+    /// Row-major storage with layout `[point][degree]`.
+    pub values: Vec<String>,
+    pub totals: Vec<String>,
+    pub point_count: usize,
+    pub degrees: Vec<i32>,
+    pub helicity_ids: Vec<String>,
+    pub decimal_digits: u32,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct NativeDecimalResolvedEvaluation {
     /// Row-major storage with layout `[point][helicity][color]`.
@@ -4740,7 +4868,8 @@ use validation::*;
 mod correlated;
 mod native_runtime;
 pub use correlated::{
-    NativeCorrelatedEvaluation, NativeCorrelatedRequest, NativeSpinCorrelationVectors,
+    NativeCorrelatedEvaluation, NativeCorrelatedRequest, NativeGradedCorrelatedEvaluation,
+    NativeSpinCorrelationVectors,
 };
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
