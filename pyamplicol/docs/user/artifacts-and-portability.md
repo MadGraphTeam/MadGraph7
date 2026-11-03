@@ -286,6 +286,16 @@ Plan for virtual memory and RAM or swap approximately equal to the loaded
 PACBIN size for the handle's lifetime; no temporary filesystem space is
 required.
 
+A loaded one-loop (plan v4) virtual process keeps its `loop-runtime.pacbin`
+open read-only for the runtime's lifetime (one file descriptor per loaded
+process) and reads its plan and tree programs through that descriptor when an
+evaluation first needs them, each read checked against the member's stored
+SHA-256. Moving, renaming, deleting or replacing the artifact after
+`Runtime.load` does not change any result (the descriptor keeps the loaded
+file; regenerating an artifact publishes a new file). Rewriting the loaded
+file in place is detected and refused (load the artifact again). Platforms
+without positional reads read these members at load.
+
 Target-native C++/ASM evaluator libraries use an analogous executable snapshot
 root controlled by `PYAMPLICOL_NATIVE_SNAPSHOT_ROOT`. Its filesystem must
 permit executable mappings.

@@ -70,10 +70,10 @@ import json
 import re
 from collections import OrderedDict, defaultdict
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from fractions import Fraction
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any, BinaryIO, cast
 
 from pyamplicol.color.contraction_types import NC
 
@@ -249,6 +249,124 @@ def _native() -> Any:
     return loop_core()
 
 
+@dataclass(frozen=True, eq=False)
+class StoredMember:
+    """A zlib member of a stored process's ``loop-runtime.pacbin`` that a
+    loaded process reads on demand (M-FINAL MF-8G-2 item 2): its plan, its
+    companion plan and its binary tree programs
+    (``artifact.load_native_process``). The loaded process holds the
+    container's read-only handle (``handle``: opened once at load, its
+    payload digests verified through it, kept for the process's lifetime),
+    the member's place in it and its payload digest. Every read goes through
+    that handle, never the path, and checks the digest (``payload``): moving,
+    renaming, deleting or replacing the artifact after the load changes no
+    result (the handle keeps the loaded file); a file rewritten in place is
+    refused. Where no positional read is available (``os.pread``), ``data``
+    holds the payload read at load instead. The native executor inflates the
+    payload itself (``native()``, rusticol-core
+    ``loop_artifact::inflate_loop_v2_member``); Python inflates it only where
+    a caller needs the bytes (``bytes()``, ``text()``) and a tree program's
+    head (``section``, which inflates no further than that section)."""
+
+    member: str
+    sha256: str
+    handle: BinaryIO | None = field(default=None, repr=False)
+    offset: int = 0
+    length: int = 0
+    data: bytes | None = field(default=None, repr=False)
+
+    def payload(self) -> bytes:
+        """The member's zlib payload, read through the handle (digest
+        checked), or the one read at load."""
+
+        if self.data is not None:
+            return self.data
+        if self.handle is None:
+            raise ValueError(f"stored member {self.member!r} has no source")
+        import os
+
+        fileno = self.handle.fileno()
+        parts = []
+        done = 0
+        while done < self.length:
+            # One positional read per call returns at most ~2 GiB.
+            size = min(self.length - done, 1 << 30)
+            chunk = os.pread(fileno, size, self.offset + done)
+            if not chunk:
+                break
+            parts.append(chunk)
+            done += len(chunk)
+        data = parts[0] if len(parts) == 1 else b"".join(parts)
+        if len(data) != self.length or hashlib.sha256(data).hexdigest() != self.sha256:
+            raise ValueError(
+                f"stored member {self.member!r} changed since the process was "
+                "loaded (its file was rewritten in place); load it again"
+            )
+        return data
+
+    def native(self) -> tuple[str, bytes]:
+        """The executor's argument for the member (``V2Executor``)."""
+
+        return (self.member, self.payload())
+
+    def bytes(self) -> bytes:
+        """The inflated member."""
+
+        import zlib
+
+        return zlib.decompress(self.payload())
+
+    def text(self) -> str:
+        """The plan JSON of a stored plan member (decoded from a binary plan
+        member, ``native_lowering.member_json``)."""
+
+        from .native_lowering import member_json
+
+        return member_json(self.bytes())
+
+    def section(self, name: str) -> bytes | None:
+        """Section ``name`` of a stored binary tree program, inflating no
+        further than it (None: absent)."""
+
+        found = _native().stored_tree_program_section(
+            self.member, self.payload(), name
+        )
+        return None if found is None else bytes(found)
+
+
+# A program as the native executor reads it: a plan JSON (text), a binary plan
+# member or binary tree program (bytes), or a loaded process's stored member
+# of either (``StoredMember``).
+Program = str | bytes | bytearray | memoryview | StoredMember
+
+
+def executor_program(program: Program) -> str | bytes | tuple[str, bytes]:
+    """``program`` as ``V2Executor`` reads it (``plan`` and the program of
+    ``trees``): text and bytes as they are, a stored member as its compressed
+    payload (``StoredMember.native``)."""
+
+    if isinstance(program, StoredMember):
+        return program.native()
+    if isinstance(program, str | bytes):
+        return program
+    if isinstance(program, bytearray | memoryview):
+        return bytes(program)
+    raise TypeError(f"not a stored program: {type(program).__name__}")
+
+
+def program_bytes(program: Program) -> bytes:
+    """The bytes of ``program``: a JSON's text encoded, a binary member's
+    bytes, a stored member inflated."""
+
+    if isinstance(program, StoredMember):
+        return program.bytes()
+    if isinstance(program, str):
+        return program.encode()
+    if isinstance(program, bytes | bytearray | memoryview):
+        return bytes(program)
+    raise TypeError(f"not a stored program: {type(program).__name__}")
+
+
 def _dumps(value: Any) -> bytes:
     return json.dumps(value, separators=(",", ":")).encode()
 
@@ -333,8 +451,11 @@ class NativeTrees:
     # ``CELLS``); empty for a JSON program.
     sections: tuple[tuple[str, bytes], ...] = ()
     # A loaded binary tree program's container; ``program`` then holds its
-    # head only (the parts Python reads: parameters, sources, layout).
-    container: bytes | None = None
+    # head only (the parts Python reads: parameters, sources, layout). A
+    # process loaded by ``artifact.load_native_process`` holds the
+    # container's compressed member (``StoredMember``) instead, which its
+    # executors inflate natively (M-FINAL MF-8G-2 item 2).
+    container: bytes | StoredMember | None = None
 
     @property
     def is_binary(self) -> bool:
@@ -346,6 +467,8 @@ class NativeTrees:
         """The binary tree program (``loop_v2::trees::binary``): the head,
         one JSON section per moved key, then the binary sections."""
 
+        if isinstance(self.container, StoredMember):
+            return self.container.bytes()
         if self.container is not None:
             return self.container
         program = self.program
@@ -364,7 +487,7 @@ class NativeTrees:
         if self.container is None:
             return decoded_program(self.program, dict(self.sections))
         native = _native()
-        container = self.container
+        container = self.binary()
         index = native.tree_program_index(container)
         program = json.loads(native.tree_program_section(container, "head"))
         sections = {}
@@ -384,11 +507,17 @@ class NativeTrees:
 
     def executor_argument(
         self,
-    ) -> tuple[str | bytes, list[bytes], list[bytes] | None]:
+    ) -> tuple[str | bytes | tuple[str, bytes], list[bytes], list[bytes] | None]:
         if self.planes and len(self.planes) != len(self.kernels) + 1:
             raise ValueError("a plane application per saved evaluator")
+        if isinstance(self.container, StoredMember):
+            program: str | bytes | tuple[str, bytes] = self.container.native()
+        elif self.is_binary:
+            program = self.binary()
+        else:
+            program = self.json()
         return (
-            self.binary() if self.is_binary else self.json(),
+            program,
             [*self.kernels, self.parameters],
             list(self.planes) if self.planes else None,
         )

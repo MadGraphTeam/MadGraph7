@@ -653,6 +653,8 @@ struct FastEngine {
     exact: Option<GenericEngine<f64>>,
     /// Lanes reduced by `exact` since the last [`V2Reducer::take_exact_lanes`].
     exact_lanes: u64,
+    /// Lanes per call ([`FAST_CHUNK_LANES`]).
+    chunk_lanes: usize,
 }
 
 impl FastEngine {
@@ -666,6 +668,7 @@ impl FastEngine {
             threshold: fast_engine_threshold(),
             exact: None,
             exact_lanes: 0,
+            chunk_lanes: FAST_CHUNK_LANES,
         })
     }
 
@@ -730,8 +733,34 @@ impl BucketEngine<f64> for FastEngine {
     }
 }
 
+/// Lanes per fast-engine call (M-FINAL MF-8G-2: the evaluation base). The
+/// engine's per-lane workspace (cut data, rows, staged results; about 0.1 MB
+/// per lane at seven propagators) grows to the largest call and stays with
+/// the executor between evaluations: a bucket chunk of 512 families is
+/// 8,192 lanes per point chunk, about 1 GiB kept. Buckets are reduced in
+/// calls of this many lanes; lanes are independent (the shared master cache
+/// returns a key's value whichever call evaluated it), so chunking leaves
+/// every value unchanged.
+pub(super) const FAST_CHUNK_LANES: usize = 1024;
+
 impl FastEngine {
     fn reduce_fast(&mut self, input: &BucketInput<f64>) -> ExecutionResult<Vec<Outcome<f64>>> {
+        let (lanes, chunk) = (input.ids.len(), self.chunk_lanes.max(1));
+        if lanes <= chunk {
+            return self.reduce_lanes(input);
+        }
+        let mut outcomes = Vec::with_capacity(lanes);
+        for start in (0..lanes).step_by(chunk) {
+            let end = (start + chunk).min(lanes);
+            let keep: Vec<bool> = (0..lanes)
+                .map(|lane| (start..end).contains(&lane))
+                .collect();
+            outcomes.extend(self.reduce_lanes(&input.select(&keep))?);
+        }
+        Ok(outcomes)
+    }
+
+    fn reduce_lanes(&mut self, input: &BucketInput<f64>) -> ExecutionResult<Vec<Outcome<f64>>> {
         let (n, rank, lanes) = (input.n, input.rank, input.ids.len());
         let shifts = input
             .shifts
@@ -1183,6 +1212,51 @@ mod tests {
             coefficients: vec![complex(&Float::with_val(256, 1)); lanes],
         };
         (engine, input)
+    }
+
+    /// A bucket reduced in calls of `FAST_CHUNK_LANES` lanes gives the values
+    /// of one call bitwise: tadpoles and massive bubbles of distinct masses
+    /// and shifts, lanes of different calls sharing their masters.
+    #[test]
+    fn fast_chunks_leave_values_unchanged() {
+        for n in [1usize, 2] {
+            let lanes = FAST_CHUNK_LANES + 3;
+            let input = |masses: &[f64]| {
+                let lanes = masses.len() / n;
+                let c = |x: f64| Complex::new(x, 0.0);
+                BucketInput {
+                    n,
+                    rank: 1,
+                    ids: (0..lanes as u64).collect(),
+                    shifts: (0..lanes)
+                        .flat_map(|lane| {
+                            (0..n).flat_map(move |i| {
+                                [0.0, 0.0, 0.0, 250.0 * i as f64 + lane as f64]
+                                    .into_iter()
+                                    .map(c)
+                            })
+                        })
+                        .collect(),
+                    masses: masses.iter().map(|&m| c(m)).collect(),
+                    scales: vec![c(1.0e6); lanes],
+                    s_matrix: vec![c(0.0); lanes * n * n],
+                    coefficients: vec![c(1.0); lanes * ncoeff(1)],
+                }
+            };
+            let masses: Vec<f64> = (0..lanes * n)
+                .map(|k| 29929.0 + 7.0 * (k % 700) as f64)
+                .collect();
+            let mut engine = FastEngine::new(true).unwrap();
+            let chunked = engine.reduce(&input(&masses)).unwrap();
+            let mut whole = FastEngine::new(true).unwrap();
+            whole.chunk_lanes = usize::MAX;
+            let one = whole.reduce(&input(&masses)).unwrap();
+            assert_eq!(chunked.len(), lanes);
+            for lane in 0..lanes {
+                assert_eq!(one[lane].status, chunked[lane].status, "n {n} lane {lane}");
+                assert_eq!(one[lane].value, chunked[lane].value, "n {n} lane {lane}");
+            }
+        }
     }
 
     #[test]
