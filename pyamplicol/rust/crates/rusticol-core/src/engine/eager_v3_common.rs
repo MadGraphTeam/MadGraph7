@@ -604,7 +604,7 @@ pub(super) fn load_eager_color_topology_replay_manifests(
             (0..contraction_entries.row_count as usize)
                 .map(|index| {
                     Ok(GenericColorContractionEntryManifest {
-                        _exact_weight: if include_exact_weights {
+                        exact_weight: if include_exact_weights {
                             eager_exact_color_weight(decoded, weight_ids[index])?
                         } else {
                             None
@@ -644,7 +644,7 @@ pub(super) fn load_eager_color_topology_replay_manifests(
         let repeated_entries = (0..contraction_entries.row_count as usize)
             .map(|index| {
                 Ok(GenericRepeatedColorContractionEntryManifest {
-                    _exact_weight: if include_exact_weights {
+                    exact_weight: if include_exact_weights {
                         eager_exact_color_weight(decoded, weight_ids[index])?
                     } else {
                         None

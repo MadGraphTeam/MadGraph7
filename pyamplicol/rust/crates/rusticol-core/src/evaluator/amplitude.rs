@@ -760,7 +760,7 @@ impl AmplitudeRuntime {
         selected_helicity_ids: Option<&BTreeSet<String>>,
         selected_color_ids: Option<&BTreeSet<String>>,
     ) -> RusticolResult<ResolvedValues<f64>> {
-        let replay = self.color_topology_replay.as_mut().ok_or_else(|| {
+        let replay = self.color_topology_replay.as_ref().ok_or_else(|| {
             RusticolError::integrity(
                 "color topology replay was requested without its amplitude gather",
             )
@@ -770,105 +770,29 @@ impl AmplitudeRuntime {
                 "color topology replay did not materialize every physical amplitude group",
             ));
         }
-        if !physics.has_contracted_color_axis() {
-            return Err(RusticolError::artifact(
-                "color topology replay resolved reduction requires contracted color",
-            ));
-        }
-        let helicity_indices = physics.selected_helicity_indices(selected_helicity_ids)?;
-        let color_indices = physics.selected_color_indices(selected_color_ids)?;
-        if color_indices.iter().any(|index| *index != 0) {
-            return Err(RusticolError::selector(
-                "color topology replay exposes one contracted color component",
-            ));
-        }
-        let mut selected_positions = vec![None; physics.manifest.helicities.len()];
-        for (position, index) in helicity_indices.iter().copied().enumerate() {
-            selected_positions[index] = Some(position);
-        }
-        let index_by_values = physics
-            .manifest
-            .helicities
-            .iter()
-            .map(|helicity| (helicity.values.clone(), helicity.index))
-            .collect::<BTreeMap<_, _>>();
-        let mut members_by_group = Vec::with_capacity(replay.physical_groups.len());
-        for (group, representative) in replay
-            .physical_groups
-            .iter()
-            .zip(&replay.physical_group_helicities)
-        {
-            let mut members = vec![representative.clone()];
-            if group.weight > 1.0 {
-                if group.weight.to_bits() != 2.0f64.to_bits() {
-                    return Err(RusticolError::artifact(
-                        "color topology replay has an unsupported helicity reuse weight",
-                    ));
-                }
-                let flipped = representative
-                    .iter()
-                    .map(|value| -*value)
-                    .collect::<Vec<_>>();
-                if flipped != *representative {
-                    members.push(flipped);
-                }
-            }
-            let mut indexed = Vec::with_capacity(members.len());
-            let mut total_weight = 0.0;
-            for member in members {
-                let index = index_by_values.get(&member).copied().ok_or_else(|| {
-                    RusticolError::artifact(
-                        "color topology replay physical helicity is absent from public metadata",
-                    )
-                })?;
-                let weight = physics.manifest.helicities[index].coefficient;
-                total_weight += weight;
-                indexed.push((index, weight));
-            }
-            if !total_weight.is_finite() || total_weight <= 0.0 {
-                return Err(RusticolError::artifact(
-                    "color topology replay physical helicity has no positive weight",
-                ));
-            }
-            for (_, weight) in &mut indexed {
-                *weight /= total_weight;
-            }
-            members_by_group.push(indexed);
-        }
-        let contraction = replay.color_contraction.as_mut().ok_or_else(|| {
-            RusticolError::integrity(
-                "color topology replay lost its authenticated color contraction",
-            )
-        })?;
-        let entries = contraction.logical_entries().collect::<Vec<_>>();
-        for entry in &entries {
-            if members_by_group[entry.left_group_index] != members_by_group[entry.right_group_index]
-            {
-                return Err(RusticolError::artifact(
-                    "color contraction mixes distinct replayed physical helicities",
-                ));
-            }
-        }
-        let component_count = helicity_indices
-            .len()
-            .checked_mul(color_indices.len())
-            .ok_or_else(|| RusticolError::invalid_argument("resolved shape overflows usize"))?;
+        let layout = ColorReplayResolvedLayout::new(
+            replay,
+            physics,
+            selected_helicity_ids,
+            selected_color_ids,
+        )?;
+        let component_count = layout.component_count()?;
         let mut values = vec![0.0; batch_size * component_count];
         let group_count = replay.physical_groups.len();
         for row in 0..batch_size {
             let group_row = row * group_count;
-            for entry in &entries {
+            for entry in &layout.entries {
                 let left = replay.physical_group_scratch_f64[group_row + entry.left_group_index];
                 let right = replay.physical_group_scratch_f64[group_row + entry.right_group_index];
                 let product = left * right.conj();
                 let contribution = normalization_factor
                     * entry.symmetry_factor
                     * (entry.weight_re * product.re - entry.weight_im * product.im);
-                for (helicity_index, weight) in &members_by_group[entry.left_group_index] {
-                    let Some(position) = selected_positions[*helicity_index] else {
+                for (helicity_index, weight) in &layout.members_by_group[entry.left_group_index] {
+                    let Some(position) = layout.selected_positions[*helicity_index] else {
                         continue;
                     };
-                    values[row * component_count + position * color_indices.len()] +=
+                    values[row * component_count + position * layout.color_indices.len()] +=
                         contribution * weight;
                 }
             }
@@ -876,8 +800,8 @@ impl AmplitudeRuntime {
         Ok(ResolvedValues {
             values,
             point_count: batch_size,
-            helicity_indices,
-            color_indices,
+            helicity_indices: layout.helicity_indices,
+            color_indices: layout.color_indices,
         })
     }
 
@@ -3565,7 +3489,7 @@ impl AmplitudeRuntime {
                             continue;
                         };
                         sum += amplitudes[row_offset + *index].clone()
-                            * c_generic(T::from(factor.re), T::from(factor.im));
+                            * c_generic(T::from_f64_constant(factor.re, binary_precision), T::from_f64_constant(factor.im, binary_precision));
                     }
                     group_values[group_row + group_index] = sum;
                 }
@@ -3581,9 +3505,9 @@ impl AmplitudeRuntime {
                         left.re.clone() * right.re.clone() + left.im.clone() * right.im.clone();
                     let product_im =
                         left.im.clone() * right.re.clone() - left.re.clone() * right.im.clone();
-                    *full_value += T::from(normalization_factor * entry.symmetry_factor)
-                        * (T::from(entry.weight_re) * product_re
-                            - T::from(entry.weight_im) * product_im);
+                    let (weight_re, weight_im) = color_weight_generic::<T>(&entry, binary_precision);
+                    *full_value += T::from_f64_constant(normalization_factor * entry.symmetry_factor, binary_precision)
+                        * (weight_re * product_re - weight_im * product_im);
                 }
             }
         } else {
@@ -3619,7 +3543,7 @@ impl AmplitudeRuntime {
                             continue;
                         };
                         sum += amplitudes[row_offset + *index].clone()
-                            * c_generic(T::from(factor.re), T::from(factor.im));
+                            * c_generic(T::from_f64_constant(factor.re, binary_precision), T::from_f64_constant(factor.im, binary_precision));
                     }
                     let color_weights = reduction
                         .physical_color_ids
@@ -3645,11 +3569,11 @@ impl AmplitudeRuntime {
                             group.id
                         )));
                     }
-                    let contribution = T::from(normalization_factor * group.all_sector_weight)
+                    let contribution = T::from_f64_constant(normalization_factor * group.all_sector_weight, binary_precision)
                         * (sum.re.clone() * sum.re + sum.im.clone() * sum.im);
                     for (color_index, weight) in color_weights {
                         full_values[color_row + color_index] +=
-                            contribution.clone() * T::from(weight / total_color_weight);
+                            contribution.clone() * T::from_f64_constant(weight / total_color_weight, binary_precision);
                     }
                 }
             }
@@ -3779,18 +3703,49 @@ impl AmplitudeRuntime {
     {
         let (evaluated, input_pack_s, evaluator_call_s) =
             self.evaluate_outputs_generic(batch_size, state, binary_precision)?;
+        let raw_sums = Self::contract_groups_generic(
+            &evaluated,
+            batch_size,
+            self.output_length,
+            &self.raw_sum_groups,
+            self.has_coherent_groups,
+            &self.raw_sum_all_sector_weights,
+            self.color_contraction.as_ref(),
+            binary_precision,
+        )?;
+        Ok((raw_sums, input_pack_s, evaluator_call_s))
+    }
+
+    /// Squared amplitude per point from row-major amplitude samples (`output_length` per row):
+    /// the colour contraction of the summed groups, the coherent group sum, or the
+    /// incoherent per-output sum.
+    #[cfg(feature = "symbolica-runtime")]
+    fn contract_groups_generic<T>(
+        evaluated: &[Complex<T>],
+        batch_size: usize,
+        output_length: usize,
+        groups: &[RawSumGroup],
+        has_coherent_groups: bool,
+        all_sector_weights: &[f64],
+        color_contraction: Option<&ColorContractionRuntime>,
+        binary_precision: Option<u32>,
+    ) -> RusticolResult<Vec<T>>
+    where
+        T: RusticolHighPrecisionNumber,
+        Complex<T>: Real + EvaluationDomain,
+    {
         let mut raw_sums = vec![T::new_zero(); batch_size];
-        if let Some(contraction) = self.color_contraction.as_ref() {
-            if self.raw_sum_groups.len() != contraction.group_count {
+        if let Some(contraction) = color_contraction {
+            if groups.len() != contraction.group_count {
                 return Err(RusticolError::invalid_argument(
                     "colour contraction group count does not match coherent groups",
                 ));
             }
             let mut group_values = vec![complex_zero::<T>(); batch_size * contraction.group_count];
             for (row, raw_sum) in raw_sums.iter_mut().enumerate() {
-                let row_offset = row * self.output_length;
+                let row_offset = row * output_length;
                 let group_row = row * contraction.group_count;
-                for (group_index, group) in self.raw_sum_groups.iter().enumerate() {
+                for (group_index, group) in groups.iter().enumerate() {
                     let mut sum = complex_zero::<T>();
                     for index in &group.indices {
                         sum.re += evaluated[row_offset + *index].re.clone();
@@ -3805,17 +3760,17 @@ impl AmplitudeRuntime {
                         left.re.clone() * right.re.clone() + left.im.clone() * right.im.clone();
                     let product_im =
                         left.im.clone() * right.re.clone() - left.re.clone() * right.im.clone();
-                    *raw_sum += T::from(entry.symmetry_factor)
-                        * (T::from(entry.weight_re) * product_re
-                            - T::from(entry.weight_im) * product_im);
+                    let (weight_re, weight_im) = color_weight_generic::<T>(&entry, binary_precision);
+                    *raw_sum += T::from_f64_constant(entry.symmetry_factor, binary_precision)
+                        * (weight_re * product_re - weight_im * product_im);
                 }
             }
-            return Ok((raw_sums, input_pack_s, evaluator_call_s));
+            return Ok(raw_sums);
         }
         for (row, raw_sum) in raw_sums.iter_mut().enumerate() {
-            let row_offset = row * self.output_length;
-            if self.has_coherent_groups {
-                for group in &self.raw_sum_groups {
+            let row_offset = row * output_length;
+            if has_coherent_groups {
+                for group in groups {
                     let mut sum_re = T::new_zero();
                     let mut sum_im = T::new_zero();
                     for index in &group.indices {
@@ -3823,18 +3778,204 @@ impl AmplitudeRuntime {
                         sum_re += value.re.clone();
                         sum_im += value.im.clone();
                     }
-                    *raw_sum += T::from(group.all_sector_weight)
+                    *raw_sum += T::from_f64_constant(group.all_sector_weight, binary_precision)
                         * (sum_re.clone() * sum_re + sum_im.clone() * sum_im);
                 }
                 continue;
             }
-            for index in 0..self.output_length {
+            for index in 0..output_length {
                 let value = &evaluated[row_offset + index];
-                *raw_sum += T::from(self.raw_sum_all_sector_weights[index])
+                *raw_sum += T::from_f64_constant(all_sector_weights[index], binary_precision)
                     * (value.re.clone() * value.re.clone() + value.im.clone() * value.im.clone());
             }
         }
-        Ok((raw_sums, input_pack_s, evaluator_call_s))
+        Ok(raw_sums)
+    }
+
+    /// Number of physical amplitude groups of the contracted-color topology replay.
+    #[cfg(feature = "symbolica-runtime")]
+    pub(crate) fn color_topology_replay_group_count(&self) -> RusticolResult<usize> {
+        self.color_topology_replay
+            .as_ref()
+            .map(|replay| replay.physical_groups.len())
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "color topology replay was requested without its amplitude gather",
+                )
+            })
+    }
+
+    /// Generic-precision counterpart of `gather_color_topology_replay_samples`: routes the
+    /// summed source groups of one relabelled evaluation (row-major `evaluated`, as returned by
+    /// `evaluate_outputs_generic`) to their physical groups, times the route factor.
+    #[cfg(feature = "symbolica-runtime")]
+    pub(crate) fn gather_color_topology_replay_generic<T>(
+        &self,
+        evaluated: &[Complex<T>],
+        batch_size: usize,
+        mapping_index: usize,
+        physical_values: &mut [Complex<T>],
+        covered_groups: &mut [bool],
+        binary_precision: Option<u32>,
+    ) -> RusticolResult<()>
+    where
+        T: RusticolHighPrecisionNumber,
+        Complex<T>: Real + EvaluationDomain,
+    {
+        let replay = self.color_topology_replay.as_ref().ok_or_else(|| {
+            RusticolError::integrity(
+                "color topology replay was requested without its amplitude gather",
+            )
+        })?;
+        let mapping = replay.mappings.get(mapping_index).ok_or_else(|| {
+            RusticolError::integrity(
+                "color topology replay requested an unknown external-label mapping",
+            )
+        })?;
+        let group_count = replay.physical_groups.len();
+        if evaluated.len() != batch_size * self.output_length
+            || physical_values.len() != batch_size * group_count
+            || covered_groups.len() != group_count
+        {
+            return Err(RusticolError::integrity(
+                "color topology replay generic gather shape is inconsistent",
+            ));
+        }
+        for route in &mapping.group_routes {
+            if std::mem::replace(&mut covered_groups[route.target_group_index], true) {
+                return Err(RusticolError::integrity(
+                    "color topology replay attempted to materialize a physical group twice",
+                ));
+            }
+            let source_group = &self.raw_sum_groups[route.source_group_index];
+            let factor_re = T::from_f64_constant(route.factor.re, binary_precision);
+            let factor_im = T::from_f64_constant(route.factor.im, binary_precision);
+            for row in 0..batch_size {
+                let mut sum = complex_zero::<T>();
+                for output_index in &source_group.indices {
+                    let value = &evaluated[row * self.output_length + *output_index];
+                    sum.re += value.re.clone();
+                    sum.im += value.im.clone();
+                }
+                let target = &mut physical_values[row * group_count + route.target_group_index];
+                target.re = sum.re.clone() * factor_re.clone() - sum.im.clone() * factor_im.clone();
+                target.im = sum.re * factor_im.clone() + sum.im * factor_re.clone();
+            }
+        }
+        Ok(())
+    }
+
+    /// Generic-precision counterpart of `reduce_color_topology_replay_f64_into` (before the
+    /// normalization factor).
+    #[cfg(feature = "symbolica-runtime")]
+    pub(crate) fn reduce_color_topology_replay_generic<T>(
+        &self,
+        physical_values: &[Complex<T>],
+        covered_groups: &[bool],
+        batch_size: usize,
+        binary_precision: Option<u32>,
+    ) -> RusticolResult<Vec<T>>
+    where
+        T: RusticolHighPrecisionNumber,
+        Complex<T>: Real + EvaluationDomain,
+    {
+        let replay = self.color_topology_replay.as_ref().ok_or_else(|| {
+            RusticolError::integrity(
+                "color topology replay was requested without its amplitude gather",
+            )
+        })?;
+        if covered_groups.iter().any(|covered| !covered) {
+            return Err(RusticolError::integrity(
+                "color topology replay did not materialize every physical amplitude group",
+            ));
+        }
+        Self::contract_groups_generic(
+            physical_values,
+            batch_size,
+            replay.physical_groups.len(),
+            &replay.physical_groups,
+            true,
+            &replay.unit_weights,
+            replay.color_contraction.as_ref(),
+            binary_precision,
+        )
+    }
+
+    /// Generic-precision counterpart of `reduce_color_topology_replay_f64_resolved`: the
+    /// physical groups routed by `gather_color_topology_replay_generic` are contracted per
+    /// physical helicity, times the normalization factor, in T.
+    #[cfg(feature = "symbolica-runtime")]
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn reduce_color_topology_replay_generic_resolved<T>(
+        &self,
+        physical_values: &[Complex<T>],
+        covered_groups: &[bool],
+        batch_size: usize,
+        binary_precision: Option<u32>,
+        physics: &PhysicsRuntime,
+        normalization_factor: f64,
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<ResolvedValues<T>>
+    where
+        T: RusticolHighPrecisionNumber,
+        Complex<T>: Real + EvaluationDomain,
+    {
+        let replay = self.color_topology_replay.as_ref().ok_or_else(|| {
+            RusticolError::integrity(
+                "color topology replay was requested without its amplitude gather",
+            )
+        })?;
+        let group_count = replay.physical_groups.len();
+        if covered_groups.len() != group_count || covered_groups.iter().any(|covered| !covered) {
+            return Err(RusticolError::integrity(
+                "color topology replay did not materialize every physical amplitude group",
+            ));
+        }
+        if physical_values.len() != batch_size * group_count {
+            return Err(RusticolError::integrity(
+                "color topology replay generic resolved shape is inconsistent",
+            ));
+        }
+        let layout = ColorReplayResolvedLayout::new(
+            replay,
+            physics,
+            selected_helicity_ids,
+            selected_color_ids,
+        )?;
+        let component_count = layout.component_count()?;
+        let constant = |value: f64| T::from_f64_constant(value, binary_precision);
+        let normalization = constant(normalization_factor);
+        let mut values = vec![T::new_zero(); batch_size * component_count];
+        for row in 0..batch_size {
+            let group_row = row * group_count;
+            for entry in &layout.entries {
+                let left = &physical_values[group_row + entry.left_group_index];
+                let right = &physical_values[group_row + entry.right_group_index];
+                // left · conj(right)
+                let product_re =
+                    left.re.clone() * right.re.clone() + left.im.clone() * right.im.clone();
+                let product_im =
+                    left.im.clone() * right.re.clone() - left.re.clone() * right.im.clone();
+                let (weight_re, weight_im) = color_weight_generic::<T>(entry, binary_precision);
+                let contribution = normalization.clone()
+                    * constant(entry.symmetry_factor)
+                    * (weight_re * product_re - weight_im * product_im);
+                for (helicity_index, weight) in &layout.members_by_group[entry.left_group_index] {
+                    let Some(position) = layout.selected_positions[*helicity_index] else {
+                        continue;
+                    };
+                    values[row * component_count + position * layout.color_indices.len()] +=
+                        contribution.clone() * constant(*weight);
+                }
+            }
+        }
+        Ok(ResolvedValues {
+            values,
+            point_count: batch_size,
+            helicity_indices: layout.helicity_indices,
+            color_indices: layout.color_indices,
+        })
     }
 
     #[cfg(feature = "symbolica-runtime")]
@@ -3924,12 +4065,12 @@ impl AmplitudeRuntime {
                     let product_im =
                         left.im.clone() * right.re.clone() - left.re.clone() * right.im.clone();
                     let coefficient = normalization_factor * entry.symmetry_factor;
-                    let contribution = T::from(coefficient)
-                        * (T::from(entry.weight_re) * product_re
-                            - T::from(entry.weight_im) * product_im);
+                    let (weight_re, weight_im) = color_weight_generic::<T>(&entry, binary_precision);
+                    let contribution = T::from_f64_constant(coefficient, binary_precision)
+                        * (weight_re * product_re - weight_im * product_im);
                     for (helicity_index, weight) in left_weights {
                         full_values[(row * helicity_count + helicity_index) * color_count] +=
-                            contribution.clone() * T::from(weight);
+                            contribution.clone() * T::from_f64_constant(weight, binary_precision);
                     }
                 }
             }
@@ -3953,13 +4094,13 @@ impl AmplitudeRuntime {
                         sum_re += evaluated[row_offset + *index].re.clone();
                         sum_im += evaluated[row_offset + *index].im.clone();
                     }
-                    let contribution = T::from(normalization_factor * group.all_sector_weight)
+                    let contribution = T::from_f64_constant(normalization_factor * group.all_sector_weight, binary_precision)
                         * (sum_re.clone() * sum_re + sum_im.clone() * sum_im);
                     for (helicity_index, color_index, weight) in
                         physics.normalized_member_weights(reduction)?
                     {
                         full_values[(row * helicity_count + helicity_index) * color_count
-                            + color_index] += contribution.clone() * T::from(weight);
+                            + color_index] += contribution.clone() * T::from_f64_constant(weight, binary_precision);
                     }
                 }
             }
@@ -4386,12 +4527,19 @@ pub(crate) fn build_color_contraction_runtime(
                     "repeated colour contraction entry index is out of bounds",
                 ));
             }
+            let weight_re = entry.weight.first().copied().unwrap_or(0.0);
+            let weight_im = entry.weight.get(1).copied().unwrap_or(0.0);
             entries.push(ColorContractionEntry {
                 left_group_index: entry.left_group_index,
                 right_group_index: entry.right_group_index,
-                weight_re: entry.weight.first().copied().unwrap_or(0.0),
-                weight_im: entry.weight.get(1).copied().unwrap_or(0.0),
+                weight_re,
+                weight_im,
                 symmetry_factor: entry.symmetry_factor,
+                exact: parse_exact_color_weight(
+                    entry.exact_weight.as_ref(),
+                    weight_re,
+                    weight_im,
+                )?,
             });
         }
         let (walsh_block, c2k_walsh_block) = build_walsh_color_contraction_blocks(
@@ -4432,9 +4580,78 @@ pub(crate) fn build_color_contraction_runtime(
             weight_re,
             weight_im,
             symmetry_factor: entry.symmetry_factor,
+            exact: parse_exact_color_weight(entry.exact_weight.as_ref(), weight_re, weight_im)?,
         });
     }
     Ok(Some(ColorContractionRuntime::new(groups, entries)))
+}
+
+/// The artifact's exact colour weight [re_num, re_den, im_num, im_den], checked against its binary64
+/// value (`None` if the artifact has none).
+fn parse_exact_color_weight(
+    exact: Option<&[String; 4]>,
+    weight_re: f64,
+    weight_im: f64,
+) -> RusticolResult<Option<ExactColorWeight>> {
+    let Some(exact) = exact else {
+        return Ok(None);
+    };
+    const LIMIT: i128 = 1 << 85;
+    let part = |numerator: &str, denominator: &str, binary64: f64| {
+        let parse = |text: &str| {
+            text.parse::<i128>()
+                .ok()
+                .filter(|value| value.abs() < LIMIT)
+                .ok_or_else(|| {
+                    RusticolError::artifact(format!(
+                        "exact colour weight component {text:?} is not an integer below 2^85"
+                    ))
+                })
+        };
+        let (numerator, denominator) = (parse(numerator)?, parse(denominator)?);
+        if denominator <= 0 {
+            return Err(RusticolError::artifact(
+                "exact colour weight has a non-positive denominator",
+            ));
+        }
+        let value = numerator as f64 / denominator as f64;
+        if (value - binary64).abs() > 4.0 * f64::EPSILON * binary64.abs() {
+            return Err(RusticolError::artifact(format!(
+                "exact colour weight {numerator}/{denominator} disagrees with its binary64 value {binary64:e}"
+            )));
+        }
+        Ok((numerator, denominator))
+    };
+    Ok(Some(ExactColorWeight {
+        re: part(&exact[0], &exact[1], weight_re)?,
+        im: part(&exact[2], &exact[3], weight_im)?,
+    }))
+}
+
+/// The colour weight of `entry` at the working precision: the artifact's exact rational when it has
+/// one, else the binary64 value.
+#[cfg(feature = "symbolica-runtime")]
+fn color_weight_generic<T>(entry: &ColorContractionEntry, binary_precision: Option<u32>) -> (T, T)
+where
+    T: RusticolHighPrecisionNumber,
+    Complex<T>: Real + EvaluationDomain,
+{
+    let Some(exact) = entry.exact else {
+        return (
+            T::from_f64_constant(entry.weight_re, binary_precision),
+            T::from_f64_constant(entry.weight_im, binary_precision),
+        );
+    };
+    // |n| < 2^85 splits into two binary64-exact halves, n = high · 2^32 + low.
+    let integer = |n: i128| {
+        let high = T::from_f64_constant((n >> 32) as f64, binary_precision);
+        let low = T::from_f64_constant((n & 0xffff_ffff) as f64, binary_precision);
+        high * T::from_f64_constant(4_294_967_296.0, binary_precision) + low
+    };
+    let rational = |(numerator, denominator): (i128, i128)| {
+        integer(numerator) / integer(denominator)
+    };
+    (rational(exact.re), rational(exact.im))
 }
 
 pub(crate) fn build_compiled_symmetric_group_color_contraction_runtime(
@@ -4686,6 +4903,7 @@ fn build_klein_four_walsh_color_contraction_block(
                     continue;
                 }
                 transformed_entries.push(ColorContractionEntry {
+                    exact: None,
                     left_group_index: character_index * coset_count + left_coset_index,
                     right_group_index: character_index * coset_count + right_coset_index,
                     weight_re: weight,
@@ -4842,6 +5060,7 @@ fn build_c2k_walsh_color_contraction_block(
                     continue;
                 }
                 transformed_entries.push(ColorContractionEntry {
+                    exact: None,
                     left_group_index: character_index * coset_count + left_coset_index,
                     right_group_index: character_index * coset_count + right_coset_index,
                     // The C2^k runtime deliberately applies the unnormalized
@@ -4911,6 +5130,181 @@ pub(crate) fn generic_root_group_id(
         "generic coherent group id for root {} must be an integer or string",
         root.root_id
     )))
+}
+
+/// The helicity bookkeeping of a resolved contracted-color topology replay, shared by the
+/// binary64 and generic-precision reductions: each physical group's public helicities with
+/// their normalized weights (a group of reuse weight 2 also stands for its parity flip), the
+/// output position of every selected helicity, and the contraction entries, which never mix
+/// groups of distinct helicities.
+struct ColorReplayResolvedLayout {
+    helicity_indices: Vec<usize>,
+    color_indices: Vec<usize>,
+    selected_positions: Vec<Option<usize>>,
+    members_by_group: Vec<Vec<(usize, f64)>>,
+    entries: Vec<ColorContractionEntry>,
+}
+
+impl ColorReplayResolvedLayout {
+    fn new(
+        replay: &ColorTopologyReplayAmplitudeRuntime,
+        physics: &PhysicsRuntime,
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<Self> {
+        if !physics.has_contracted_color_axis() {
+            return Err(RusticolError::artifact(
+                "color topology replay resolved reduction requires contracted color",
+            ));
+        }
+        let helicity_indices = physics.selected_helicity_indices(selected_helicity_ids)?;
+        let color_indices = physics.selected_color_indices(selected_color_ids)?;
+        if color_indices.iter().any(|index| *index != 0) {
+            return Err(RusticolError::selector(
+                "color topology replay exposes one contracted color component",
+            ));
+        }
+        let mut selected_positions = vec![None; physics.manifest.helicities.len()];
+        for (position, index) in helicity_indices.iter().copied().enumerate() {
+            selected_positions[index] = Some(position);
+        }
+        let index_by_values = physics
+            .manifest
+            .helicities
+            .iter()
+            .map(|helicity| (helicity.values.clone(), helicity.index))
+            .collect::<BTreeMap<_, _>>();
+        let mut members_by_group = Vec::with_capacity(replay.physical_groups.len());
+        for (group, representative) in replay
+            .physical_groups
+            .iter()
+            .zip(&replay.physical_group_helicities)
+        {
+            let mut members = vec![representative.clone()];
+            if group.weight > 1.0 {
+                if group.weight.to_bits() != 2.0f64.to_bits() {
+                    return Err(RusticolError::artifact(
+                        "color topology replay has an unsupported helicity reuse weight",
+                    ));
+                }
+                let flipped = representative
+                    .iter()
+                    .map(|value| -*value)
+                    .collect::<Vec<_>>();
+                if flipped != *representative {
+                    members.push(flipped);
+                }
+            }
+            let mut indexed = Vec::with_capacity(members.len());
+            let mut total_weight = 0.0;
+            for member in members {
+                let index = index_by_values.get(&member).copied().ok_or_else(|| {
+                    RusticolError::artifact(
+                        "color topology replay physical helicity is absent from public metadata",
+                    )
+                })?;
+                let weight = physics.manifest.helicities[index].coefficient;
+                total_weight += weight;
+                indexed.push((index, weight));
+            }
+            if !total_weight.is_finite() || total_weight <= 0.0 {
+                return Err(RusticolError::artifact(
+                    "color topology replay physical helicity has no positive weight",
+                ));
+            }
+            for (_, weight) in &mut indexed {
+                *weight /= total_weight;
+            }
+            members_by_group.push(indexed);
+        }
+        let contraction = replay.color_contraction.as_ref().ok_or_else(|| {
+            RusticolError::integrity(
+                "color topology replay lost its authenticated color contraction",
+            )
+        })?;
+        let entries = contraction.logical_entries().collect::<Vec<_>>();
+        for entry in &entries {
+            if members_by_group[entry.left_group_index] != members_by_group[entry.right_group_index]
+            {
+                return Err(RusticolError::artifact(
+                    "color contraction mixes distinct replayed physical helicities",
+                ));
+            }
+        }
+        Ok(Self {
+            helicity_indices,
+            color_indices,
+            selected_positions,
+            members_by_group,
+            entries,
+        })
+    }
+
+    fn component_count(&self) -> RusticolResult<usize> {
+        self.helicity_indices
+            .len()
+            .checked_mul(self.color_indices.len())
+            .ok_or_else(|| RusticolError::invalid_argument("resolved shape overflows usize"))
+    }
+}
+
+#[cfg(test)]
+mod exact_color_weight_tests {
+    use super::*;
+
+    fn strings(parts: [&str; 4]) -> [String; 4] {
+        parts.map(str::to_owned)
+    }
+
+    #[test]
+    fn exact_weights_are_parsed_checked_and_exact_at_working_precision() {
+        let exact = parse_exact_color_weight(
+            Some(&strings(["64", "3", "0", "1"])),
+            64.0 / 3.0,
+            0.0,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(exact.re, (64, 3));
+        assert!(parse_exact_color_weight(None, 1.0, 0.0).unwrap().is_none());
+        for (parts, re) in [
+            (["64", "3", "0", "1"], 21.0),
+            (["64", "0", "0", "1"], 0.0),
+            (["6.4", "3", "0", "1"], 2.1),
+            (["1", "-3", "0", "1"], -1.0 / 3.0),
+        ] {
+            assert!(parse_exact_color_weight(Some(&strings(parts)), re, 0.0).is_err());
+        }
+        #[cfg(feature = "symbolica-runtime")]
+        {
+            let entry = ColorContractionEntry {
+                left_group_index: 0,
+                right_group_index: 0,
+                weight_re: 64.0 / 3.0,
+                weight_im: 0.0,
+                symmetry_factor: 1.0,
+                exact: Some(exact),
+            };
+            let (re, im) = color_weight_generic::<Float>(&entry, Some(200));
+            let reference = Float::with_val(200, 64) / Float::with_val(200, 3);
+            assert_eq!(re, reference);
+            assert_eq!(im, Float::with_val(200, 0));
+            let (re, _) = color_weight_generic::<DoubleFloat>(&entry, None);
+            let reference = DoubleFloat::from(64.0) / DoubleFloat::from(3.0);
+            assert_eq!(re, reference);
+            // Large numerators split into exact halves.
+            let large = ColorContractionEntry {
+                exact: Some(ExactColorWeight {
+                    re: ((1 << 70) + 1, 3),
+                    im: (0, 1),
+                }),
+                ..entry
+            };
+            let (re, _) = color_weight_generic::<Float>(&large, Some(200));
+            let numerator = Float::with_val(200, 2f64.powi(70)) + Float::with_val(200, 1);
+            assert_eq!(re, numerator / Float::with_val(200, 3));
+        }
+    }
 }
 
 #[cfg(test)]
