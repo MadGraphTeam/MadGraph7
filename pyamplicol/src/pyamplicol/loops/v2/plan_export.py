@@ -60,6 +60,7 @@ from . import reference_executor as rx
 from .colour import SYMMETRIC_GROUP_FFT, project
 from .families import FamilyKey, Orders
 from .merged import MergedGraph, merged_graph
+from .native_trees import StoredMember, executor_program
 from .poly_affine import size
 from .refusals import require_formal_nc_tables
 from .schedules import forward_graph
@@ -1464,7 +1465,7 @@ class NativeExecutor:
         exported: ExportedPlan | None = None,
         forms: Literal["rule", "fused", "split"] = "rule",
         merged: MergedGraph | bool = False,
-        plan_json: str | bytes | None = None,
+        plan_json: str | bytes | StoredMember | None = None,
         inputs: Literal["python", "native"] = "python",
         born_squared: bool = True,
         counterterms: bool = True,
@@ -1515,7 +1516,9 @@ class NativeExecutor:
         self.threads = threads
         self.forms = forms
         # ``plan_json``: the stored plan (``exported.stored()``: its binary
-        # member, or a plan JSON) when the caller already holds it.
+        # member, or a plan JSON) when the caller already holds it, or a loaded
+        # process's compressed stored member of either (``StoredMember``,
+        # inflated by the native executor itself: M-FINAL MF-8G-2 item 2).
         self._plan_json = self.exported.stored() if plan_json is None else plan_json
         self._native: dict[tuple[str, int | None, int], Any] = {}
         self._scaleless: list[NativeExecutor | None] = []
@@ -1570,7 +1573,7 @@ class NativeExecutor:
                     return found
             trees = self.exported.trees.executor_argument() if native_trees else None
             found = self._native[key] = self.slice.native.V2Executor(
-                self._plan_json,
+                executor_program(self._plan_json),
                 arithmetic,
                 digits,
                 lanes=lanes,

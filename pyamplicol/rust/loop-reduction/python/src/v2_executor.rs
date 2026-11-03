@@ -1152,10 +1152,57 @@ fn numerators_with<T: Exchanged>(
     Ok(export_numerators(numerators, bits))
 }
 
+/// A program handed to the executor: its JSON text, its bytes (a binary tree
+/// program or a binary plan member), or a stored member `(logical member,
+/// zlib payload)` (`loops/v2/artifact.py` `StoredMember.native`: the
+/// compressed member a loaded process holds in memory) that the executor
+/// inflates itself, so a loaded process's Python view holds neither its plan
+/// nor its tree program inflated (M-FINAL MF-8G-2 item 2). Text and bytes are
+/// borrowed, not copied.
+fn program_bytes<'a>(source: &'a Bound<'_, PyAny>) -> PyResult<std::borrow::Cow<'a, [u8]>> {
+    use std::borrow::Cow;
+    if let Ok(text) = source.cast::<pyo3::types::PyString>() {
+        return Ok(Cow::Borrowed(text.to_str()?.as_bytes()));
+    }
+    if let Ok(bytes) = source.cast::<pyo3::types::PyBytes>() {
+        return Ok(Cow::Borrowed(bytes.as_bytes()));
+    }
+    let (member, payload): (String, Bound<'_, pyo3::types::PyBytes>) =
+        source.extract().map_err(|_| {
+            error("a program is its JSON text, its bytes or a stored (member, zlib payload)")
+        })?;
+    let payload = payload.as_bytes();
+    let out = source
+        .py()
+        .detach(|| rusticol_core::loop_artifact::inflate_loop_v2_member(&member, payload))
+        .map_err(error)?;
+    Ok(Cow::Owned(out))
+}
+
+/// Section `section` of a stored binary tree program `(member, zlib
+/// payload)`, inflating no further than it (None: absent): the head a loaded
+/// process's Python view reads (`artifact.StoredMember.section`).
+#[pyfunction]
+fn stored_tree_program_section<'py>(
+    py: Python<'py>,
+    member: &str,
+    payload: &[u8],
+    section: &str,
+) -> PyResult<Option<Bound<'py, pyo3::types::PyBytes>>> {
+    let found = py
+        .detach(|| {
+            rusticol_core::loop_artifact::inflate_loop_v2_section(member, payload, section)
+        })
+        .map_err(error)?;
+    Ok(found.map(|bytes| pyo3::types::PyBytes::new(py, &bytes)))
+}
+
 #[pymethods]
 impl V2Executor {
-    /// `plan` is the plan's binary member (bytes) or its JSON (text).
-    /// `trees` is a tree program (`loops/v2/native_trees.py`): its JSON,
+    /// `plan` is the plan v4: its binary member (bytes, M-FINAL MF-8G-1 item
+    /// 5), its JSON (text) or a stored member of either (`program_bytes`).
+    /// `trees` is a tree program (`loops/v2/native_trees.py`): its JSON, its
+    /// binary container or a stored member (`program_bytes`),
     /// the saved exact evaluator of each kernel and of the parameter program
     /// (last), and their binary64 SymJIT plane applications in the same order
     /// (or None: binary64 then runs the exact states).
@@ -1199,31 +1246,26 @@ impl V2Executor {
             }
         };
         // The stored plan: its binary member as bytes (M-FINAL MF-8G-1 item
-        // 5) or a plan JSON as text; `load_with` reads either.
+        // 5), a plan JSON as text, or a stored member of either
+        // (`program_bytes`); `load_with` reads either form.
         let plan = {
-            let data: &[u8] = match plan.cast::<pyo3::types::PyBytes>() {
-                Ok(bytes) => bytes.as_bytes(),
-                Err(_) => plan.extract::<&str>().map_err(error)?.as_bytes(),
-            };
-            Arc::new(LoopProgramV4::load_with(data, policy).map_err(error)?)
+            let data = program_bytes(&plan)?;
+            Arc::new(LoopProgramV4::load_with(&data, policy).map_err(error)?)
         };
-        // The program's JSON text, or a binary tree program as bytes
-        // (`loop_v2::trees::binary`, M-FINAL MF-8G-1).
+        // The program's JSON text, a binary tree program (`loop_v2::trees::
+        // binary`, M-FINAL MF-8G-1) or a stored member (`program_bytes`).
         let trees = trees
+            .as_ref()
             .map(|(source, kernels, planes)| {
-                let program = match source.cast::<pyo3::types::PyBytes>() {
-                    Ok(bytes) => bytes.as_bytes().to_vec(),
-                    Err(_) => source.extract::<String>().map_err(error)?.into_bytes(),
-                };
-                Ok::<_, PyErr>((program, kernels, planes))
+                Ok::<_, PyErr>((program_bytes(source)?, kernels, planes.as_ref()))
             })
             .transpose()?;
         let trees = trees
             .map(|(json, kernels, planes)| {
                 let mut program = TreeProgram::load_with_components(
                     &json,
-                    &kernels,
-                    planes.as_deref(),
+                    kernels,
+                    planes.map(Vec::as_slice),
                     &plan,
                     plan_components.clone(),
                 )?;
@@ -1930,5 +1972,6 @@ pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     )?;
     module.add_function(wrap_pyfunction!(native_library_key_active, module)?)?;
     module.add_function(wrap_pyfunction!(admit_v2_artifact, module)?)?;
+    module.add_function(wrap_pyfunction!(stored_tree_program_section, module)?)?;
     module.add_function(wrap_pyfunction!(evaluate_v2_artifact, module)?)
 }

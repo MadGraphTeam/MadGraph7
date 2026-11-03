@@ -374,6 +374,60 @@ pub fn read_container(bytes: &[u8]) -> RusticolResult<Vec<Section<'_>>> {
     Ok(out)
 }
 
+/// The payload of section `name` of a container read from `stream` (`None`:
+/// absent), reading no further than that section: the head of a stored
+/// container (its first section) is read without inflating the rest
+/// (M-FINAL MF-8G-2 item 2: the Python view of a loaded process reads the
+/// head only). Payloads grow as their bytes arrive (a corrupt length
+/// allocates nothing up front).
+pub fn read_section_from(
+    mut stream: impl std::io::Read,
+    name: &str,
+) -> RusticolResult<Option<Vec<u8>>> {
+    use std::io::Read;
+    fn failed(error: std::io::Error) -> crate::RusticolError {
+        invalid(format!("a tree-program stream: {error}"))
+    }
+    fn exactly(stream: &mut impl Read, length: usize) -> RusticolResult<Vec<u8>> {
+        let mut out = vec![0; length];
+        stream.read_exact(&mut out).map_err(failed)?;
+        Ok(out)
+    }
+    require(
+        exactly(&mut stream, MAGIC.len())? == MAGIC,
+        "not a binary tree program",
+    )?;
+    let word = |bytes: Vec<u8>| -> u64 {
+        bytes
+            .iter()
+            .rev()
+            .fold(0u64, |value, &byte| (value << 8) | u64::from(byte))
+    };
+    let count = word(exactly(&mut stream, 4)?);
+    for _ in 0..count {
+        let length = word(exactly(&mut stream, 4)?) as usize;
+        require(length <= 4096, "a tree-program section name")?;
+        let section = String::from_utf8(exactly(&mut stream, length)?)
+            .map_err(|_| invalid("a tree-program section name"))?;
+        let encoding = exactly(&mut stream, 1)?[0];
+        require(encoding == JSON || encoding == BINARY, "a section encoding")?;
+        let payload = word(exactly(&mut stream, 8)?);
+        let mut limited = (&mut stream).take(payload);
+        if section == name {
+            let mut out = Vec::new();
+            limited.read_to_end(&mut out).map_err(failed)?;
+            require(
+                out.len() as u64 == payload,
+                "a truncated tree-program section",
+            )?;
+            return Ok(Some(out));
+        }
+        let skipped = std::io::copy(&mut limited, &mut std::io::sink()).map_err(failed)?;
+        require(skipped == payload, "a truncated tree-program section")?;
+    }
+    Ok(None)
+}
+
 /// The binary parts of a container that replace arrays of its JSON parts.
 #[derive(Default)]
 pub struct Overrides {
@@ -1625,5 +1679,38 @@ mod tests {
         assert!(matches!(owned.row_columns[1], Column::U64(_)));
         assert!(matches!(owned.row_columns[0], Column::U32(_)));
         assert_eq!(owned.weights.len(), 2);
+    }
+
+    #[test]
+    fn read_section_from_reads_one_section_and_refuses_broken_streams() {
+        let container = write_container(&[
+            ("head", JSON, b"{\"a\":1}"),
+            ("x", BINARY, &[1, 2, 3, 4]),
+            ("y", JSON, b"[]"),
+        ]);
+        let read = |bytes: &[u8], name: &str| read_section_from(bytes, name);
+        // Every section equals the in-memory reader's, the later ones read
+        // after skipping the earlier ones; an absent section is None.
+        for section in read_container(&container).unwrap() {
+            assert_eq!(
+                read(&container[..], &section.name).unwrap().as_deref(),
+                Some(section.payload)
+            );
+        }
+        assert!(read(&container[..], "z").unwrap().is_none());
+        // Bad magic, a bad encoding byte.
+        let mut bad = container.clone();
+        bad[0] ^= 1;
+        assert!(read(&bad[..], "head").is_err());
+        let mut bad = container.clone();
+        bad[MAGIC.len() + 4 + 4 + "head".len()] = 9;
+        assert!(read(&bad[..], "head").is_err());
+        // Truncated: inside the wanted section, inside a skipped one, inside
+        // the section count.
+        let cut = &container[..container.len() - 1];
+        assert!(read(cut, "y").is_err());
+        assert!(read(cut, "z").is_err());
+        assert_eq!(read(cut, "x").unwrap().as_deref(), Some(&[1u8, 2, 3, 4][..]));
+        assert!(read(&container[..MAGIC.len() + 2], "head").is_err());
     }
 }

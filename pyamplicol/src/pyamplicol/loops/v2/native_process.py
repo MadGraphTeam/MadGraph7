@@ -39,7 +39,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from .families import Orders
-from .native_trees import NativeTrees
+from .native_trees import NativeTrees, Program, StoredMember, program_bytes
 from .poles import PoleRegulators
 
 SCHEMA = 2
@@ -100,16 +100,23 @@ def _trees_members(trees: NativeTrees, prefix: str = "") -> dict[str, bytes]:
 
 
 def _trees_from_members(
-    members: Mapping[str, bytes], meta: Mapping[str, Any], prefix: str = ""
+    members: Mapping[str, bytes | StoredMember],
+    meta: Mapping[str, Any],
+    prefix: str = "",
 ) -> NativeTrees:
     container = members.get(f"{prefix}tree-program.bin")
     if container is not None:
         # A binary tree program: Python reads its head only (the executor
-        # reads the container, ``NativeTrees.executor_argument``).
-        from pyamplicol.loops.native import load_loop_native
+        # reads the container, ``NativeTrees.executor_argument``). A stored
+        # member (``StoredMember``, ``artifact.load_native_process``) stays
+        # compressed: only the head is inflated (M-FINAL MF-8G-2 item 2).
+        if isinstance(container, StoredMember):
+            head = container.section("head")
+        else:
+            from pyamplicol.loops.native import load_loop_native
 
-        container = bytes(container)
-        head = load_loop_native().tree_program_section(container, "head")
+            container = bytes(container)
+            head = load_loop_native().tree_program_section(container, "head")
         if head is None:
             raise ValueError("a binary tree program without its head")
         program = json.loads(head)
@@ -184,28 +191,33 @@ def _plan_view(
     )
 
 
-def _plan_json(plan: str | bytes) -> str:
+def _plan_json(plan: Program) -> str:
     from .native_lowering import member_json
 
-    return member_json(plan)
+    if isinstance(plan, str):
+        return member_json(plan)
+    # A binary plan member's bytes, or a stored member's inflated
+    # (``StoredMember``).
+    return member_json(program_bytes(plan))
 
 
 @dataclass(frozen=True)
 class NativeCompanion:
     """The certified-scaleless companion of a native process: its plan (the
-    artifact's companion plan: a binary plan member or a JSON), its tree
-    program (no Born or counterterm outputs) and its lane labels
-    (``record``: plan family count and loop orders; its columns are the
-    process's sectors)."""
+    artifact's companion plan: a binary plan member or a JSON, or, loaded
+    by ``artifact.load_native_process``, the ``StoredMember`` of either), its
+    tree program
+    (no Born or counterterm outputs) and its lane labels (``record``: plan
+    family count and loop orders; its columns are the process's sectors)."""
 
-    plan: str | bytes
+    plan: str | bytes | StoredMember
     trees: NativeTrees
     record: Mapping[str, Any]
 
     @property
     def plan_json(self) -> str:
-        """The companion plan's JSON (formed from a binary member on each
-        call, ``native_lowering.member_json``)."""
+        """The companion plan's JSON (formed from a binary member, or read
+        from a stored member, on each call, ``native_lowering.member_json``)."""
 
         return _plan_json(self.plan)
 
@@ -216,9 +228,12 @@ class NativeProcess:
     assembly record (module docstring), with the native companion of its
     certified-scaleless families when it has them. ``plan`` is the stored
     plan as the native loader reads it: its binary plan member (M-FINAL
-    MF-8G-1 item 5; ``ExportedPlan.binary()``) or a plan JSON (text)."""
+    MF-8G-1 item 5; ``ExportedPlan.binary()``) or a plan JSON (text), or,
+    for a process loaded by ``artifact.load_native_process``, the compressed
+    ``StoredMember`` of either, which the executors inflate natively (M-FINAL
+    MF-8G-2 item 2)."""
 
-    plan: str | bytes
+    plan: str | bytes | StoredMember
     trees: NativeTrees
     record: Mapping[str, Any]
     scaleless: NativeCompanion | None = None
@@ -233,9 +248,9 @@ class NativeProcess:
 
     @property
     def plan_json(self) -> str:
-        """The plan's JSON (formed from a binary member on each call,
-        ``native_lowering.member_json``): for the Python readers of plan
-        records; the executor reads ``plan`` itself."""
+        """The plan's JSON (formed from a binary member, or read from a
+        stored member, on each call, ``native_lowering.member_json``): for the
+        Python readers of plan records; the executor reads ``plan`` itself."""
 
         return _plan_json(self.plan)
 
@@ -397,13 +412,15 @@ class NativeProcess:
     @classmethod
     def from_members(
         cls,
-        plan: str | bytes,
-        members: Mapping[str, bytes],
-        scaleless: str | bytes | None = None,
+        plan: str | bytes | StoredMember,
+        members: Mapping[str, bytes | StoredMember],
+        scaleless: str | bytes | StoredMember | None = None,
     ) -> NativeProcess:
         """The process of ``members`` (``members``) for its plan and, when it
         has certified-scaleless families, its companion plan (by default the
-        one ``members`` holds); a plan is a binary plan member or a JSON."""
+        one ``members`` holds); a plan is a binary plan member or a JSON. The
+        plans and binary tree programs may be stored members
+        (``StoredMember``, ``artifact.load_native_process``)."""
 
         record = json.loads(members["native-process.json"])
         if record.get("schema") != SCHEMA:
