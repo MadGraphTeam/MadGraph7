@@ -226,6 +226,13 @@ def test_matches_genps_fks(data, conf, points, prefix):
         hat_scale_cnt = np.sqrt(field("rad_shat_cnt")[:, pos]) / 2
         diff = np.abs(hat - field("rad_p_i_hat_cnt")[:, pos]).max(1) / hat_scale_cnt
         assert (diff <= 1e-13 + 10 * born_dev)[valid].all()
+        # its xi and the upper end of the range of xi at its y
+        for key, fortran_key in [("_xi", "rad_xi_cnt"), ("_xi_max", "rad_xiimax_cnt")]:
+            theirs = field(fortran_key)[:, pos]
+            close = np.abs(out[name + key] - theirs) <= (
+                1e-12 * np.abs(theirs) + 10 * born_dev
+            )
+            assert close[valid].all(), key
         if not leptonic:
             x_cnt = field("rad_xbjrk_cnt")[:, pos]
             dx1 = np.abs(out[name + "_x1"] / x_cnt[:, 0] - 1)
@@ -252,7 +259,7 @@ def test_counter_events_of_each_emitter():
         assert keys[13:] == [
             f"{name}_{k}"
             for name in names
-            for k in ["momenta", "x1", "x2", "det", "p_i_hat"]
+            for k in ["momenta", "x1", "x2", "det", "p_i_hat", "xi", "xi_max"]
         ]
     born = ms.PhaseSpaceMapping([0.0, 0.0, 0.0, 0.0], 1000.0, mode="rambo")
     keys = list(ms.FKSMapping(born, 4, 2).counter_event_types().keys())

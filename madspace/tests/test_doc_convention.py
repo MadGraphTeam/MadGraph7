@@ -96,6 +96,15 @@ CASES = {
         colors=[[3, -3, 1, 1, 8]] * 2,
         charges=[[2 / 3, -2 / 3, -1.0, 1.0, 0.0]] * 2,
     ),
+    "FKSPrefactors": dict(
+        j_fks=[0, 1],
+        masses=[[0.0] * 5] * 2,
+        xicut=0.5,
+        xi_s_cut=0.5,
+        delta_o=1.0,
+        delta_i=1.0,
+        delta_s=1.0,
+    ),
     "FKSSectorFunction": dict(
         i_fks=[4, 4],
         j_fks=[0, 1],

@@ -28,7 +28,8 @@ the cuts imply (see fks_sqrt_s_hat_min): a floor of the Born mapping for a
 final-state emitter, s_hat_min for an incoming one. fks_sector_function gives
 the sector functions S_ij of the configurations, from the FKS pairs of their
 real processes, fks_eikonals the eikonal factors of their soft limits and
-fks_splitting_kernels the factors of their collinear limits.
+fks_splitting_kernels the factors of their collinear limits and fks_prefactors
+the prefactors of the real emission and its counterterms.
 """
 
 import json
@@ -40,6 +41,7 @@ from ._madspace_py import (
     FKSConfigurationMapping,
     FKSEikonals,
     FKSMapping,
+    FKSPrefactors,
     FKSSectorFunction,
     FKSSplittingKernels,
     Observable,
@@ -302,3 +304,22 @@ def fks_splitting_kernels(born, configurations):
     return FKSSplittingKernels(
         tables["i_fks"], tables["j_fks"], tables["colors"], tables["charges"]
     )
+
+
+def fks_prefactors(born, configurations, **parameters):
+    """The FKSPrefactors of the FKS configurations of a Born, with fks_index
+    as for fks_sector_function.
+
+    Args:
+        born: the PhaseSpaceMapping of the Born process, for its masses, its
+            momenta in the order of born_pdgs.
+        configurations: the content of fks_configurations.json (see
+            read_fks_configurations).
+        parameters: the parameters of the subtraction of fks_powers.inc
+            (xicut, xi_s_cut, delta_o, delta_i, delta_s), see FKSPrefactors.
+
+    Raises:
+        ValueError: as fks_sector_function.
+    """
+    tables = configuration_tables(born, configurations)
+    return FKSPrefactors(tables["j_fks"], tables["masses"], **parameters)

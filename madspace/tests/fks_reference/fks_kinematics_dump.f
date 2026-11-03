@@ -26,6 +26,7 @@ c that make_fks_reference.py parses.
       include 'run.inc'
       include 'born_conf.inc'
       include 'coupl.inc'
+      include 'fks_powers.inc'
       integer i,j,k,ipt,npts,iconf_in,fks_loop,ipass,nmassive,nloop
       double precision x(99),p(0:3,nexternal),wgt,jac_full
       double precision jac_full_cnt(-2:2)
@@ -99,6 +100,25 @@ c that make_fks_reference.py parses.
       double precision ch_i,ch_j,ch_m
       common/cparticle_types/i_type,j_type,m_type,ch_i,ch_j,ch_m
       double precision e_i,e_j,zz,tt,ap(2),qq(2),coll(6,2)
+      double precision f_r,f_s,f_c,f_dc,f_sc,f_dsc(4)
+      common/factor_n1body/f_r,f_s,f_c,f_dc,f_sc,f_dsc
+      double precision fkssymmetryfactor,fkssymmetryfactorBorn
+     &     ,fkssymmetryfactorDeg
+      integer ngluons,nquarks(-6:6),nphotons
+      common/numberofparticles/fkssymmetryfactor,fkssymmetryfactorBorn
+     &     ,fkssymmetryfactorDeg,ngluons,nquarks,nphotons
+      double precision delta_used
+      common /cdelta_used/delta_used
+      double precision xicut_used
+      common /cxicut_used/xicut_used
+      double precision xiScut_used,xiBSVcut_used
+      common /cxiScut_used/xiScut_used,xiBSVcut_used
+      double precision xinorm_ev
+      common /cxinormev/xinorm_ev
+      double precision xinorm_cnt(-2:2)
+      common /cxinormcnt/xinorm_cnt
+      logical nocntevents
+      common/cnocntevents/nocntevents
       double precision ybst_til_tolab,ybst_til_tocm,sqrtshat,shat
       common/parton_cms_stuff/ybst_til_tolab,ybst_til_tocm,sqrtshat
      &     ,shat
@@ -281,6 +301,23 @@ c is massive
                endif
             enddo
             write (*,fmt) 'COLL',((coll(j,k),j=1,6),k=1,2)
+c The prefactors of the real emission and its counterterms of
+c compute_prefactors_n1body, with unit vegas weight and the Jacobian of the
+c event, its symmetry factors and the parameters of the subtraction
+c (nocntevents as 1 or 0), where the event is generated
+            if (jac_full.gt.0d0) then
+               call set_cms_stuff(-100)
+               call compute_prefactors_n1body(1d0,jac_full)
+               if (nocntevents) then
+                  s_ev=1d0
+               else
+                  s_ev=0d0
+               endif
+               write (*,fmt) 'PREF',f_r,f_s,f_c,f_dc,f_sc,(f_dsc(k),k=1
+     &              ,4),fkssymmetryfactor,fkssymmetryfactorDeg,xinorm_ev
+     &              ,(xinorm_cnt(k),k=-2,2),xicut_used,xiScut_used
+     &              ,delta_used,deltaS,deltaO,deltaI,s_ev
+            endif
 c Radiation part alone: rerun generate_FKS_kinematics on the Born of the
 c point with unit Born weights, once with the lower bound on the partonic
 c energy of the real emission that set_tau_min derives from the cuts

@@ -319,3 +319,109 @@ NamedVector<Value> FKSSplittingKernels::build_function_impl(
     );
     return {{"z", z}, {"ap", ap}, {"q_terms", q_terms}, {"k_perp", k_perp}};
 }
+
+FKSPrefactors::FKSPrefactors(
+    const std::vector<std::size_t>& j_fks,
+    const nested_vector2<double>& masses,
+    double xicut,
+    double xi_s_cut,
+    double delta_o,
+    double delta_i,
+    double delta_s
+) :
+    FunctionGenerator(
+        "FKSPrefactors",
+        [&] {
+            std::size_t count = j_fks.size();
+            if (count == 0 || masses.size() != count) {
+                throw std::invalid_argument(
+                    "FKSPrefactors: one entry per configuration (at least one) in "
+                    "every argument"
+                );
+            }
+            std::size_t n = masses.at(0).size();
+            for (std::size_t c = 0; c < count; ++c) {
+                if (masses.at(c).size() != n) {
+                    throw std::invalid_argument(
+                        "FKSPrefactors: the real processes of the configurations "
+                        "must have the same number of particles"
+                    );
+                }
+                if (j_fks.at(c) >= n) {
+                    throw std::invalid_argument(
+                        "FKSPrefactors: j_fks must be a particle of the real "
+                        "process"
+                    );
+                }
+            }
+            if (!(xicut > 0. && xi_s_cut > 0. && delta_o > 0. && delta_i > 0. &&
+                  delta_s > 0.)) {
+                throw std::invalid_argument(
+                    "FKSPrefactors: the parameters of the subtraction must be "
+                    "positive"
+                );
+            }
+            NamedVector<Type> args{
+                {"xi", batch_float},
+                {"y", batch_float},
+                {"xi_max", batch_float},
+                {"collinear_xi", batch_float},
+                {"collinear_xi_max", batch_float},
+                {"collinear_momenta", batch_four_vec_array(n)},
+                {"soft_collinear_momenta", batch_four_vec_array(n)},
+            };
+            if (count > 1) {
+                args.push_back("fks_index", batch_int);
+            }
+            return args;
+        }(),
+        {{"f_r", batch_float},
+         {"f_s", batch_float},
+         {"f_c", batch_float},
+         {"f_dc", batch_float},
+         {"f_sc", batch_float},
+         {"f_dsc", batch_float_array(4)}}
+    ),
+    _particle_count(masses.at(0).size()),
+    _j_fks(j_fks),
+    _masses(masses),
+    _xicut(xicut),
+    _xi_s_cut(xi_s_cut),
+    _delta_o(delta_o),
+    _delta_i(delta_i),
+    _delta_s(delta_s) {}
+
+NamedVector<Value> FKSPrefactors::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    std::size_t count = configuration_count();
+    Value index = count > 1 ? args.at("fks_index") : Value(static_cast<me_int_t>(0));
+    std::vector<me_int_t> collinear;
+    std::vector<double> delta;
+    for (std::size_t c = 0; c < count; ++c) {
+        std::size_t j = _j_fks.at(c);
+        collinear.push_back(_masses.at(c).at(j) == 0. ? 1 : 0);
+        delta.push_back(j < INCOMING_COUNT ? _delta_i : _delta_o);
+    }
+    auto [f_r, f_s, f_c, f_dc, f_sc, f_dsc] = fb.fks_prefactors(
+        args.at("xi"),
+        args.at("y"),
+        args.at("xi_max"),
+        args.at("collinear_xi"),
+        args.at("collinear_xi_max"),
+        args.at("collinear_momenta"),
+        args.at("soft_collinear_momenta"),
+        index,
+        collinear,
+        delta,
+        std::vector<double>{_xicut, _xi_s_cut, _delta_s}
+    );
+    return {
+        {"f_r", f_r},
+        {"f_s", f_s},
+        {"f_c", f_c},
+        {"f_dc", f_dc},
+        {"f_sc", f_sc},
+        {"f_dsc", f_dsc}
+    };
+}

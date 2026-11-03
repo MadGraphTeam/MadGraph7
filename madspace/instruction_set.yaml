@@ -2937,6 +2937,63 @@ fks_transverse_vector:
   vectorized: False
   desc: "Transverse direction of the emission (xij_kperp of genps_fks.f): the momentum of i per unit xi made orthogonal to the Born emitter and to the sum of the incoming Born momenta, normalized to k_perp^2 = -1. It is the vector that the spin-correlated Born of a gluon (or photon) emitter is contracted with in the collinear limit, and in the partonic centre-of-mass frame it is (0, cos phi, sin phi, 0) in the frame of the emitter, up to its sign."
 
+fks_prefactors:
+  inputs:
+    - name: xi
+      type: [float]
+      desc: "xi of the event"
+    - name: y
+      type: [float]
+      desc: "y of the event"
+    - name: xi_max
+      type: [float]
+      desc: "upper end of the range of xi of the event"
+    - name: xi_c
+      type: [float]
+      desc: "xi of the collinear counter-event"
+    - name: xi_max_c
+      type: [float]
+      desc: "upper end of the range of xi of the collinear counter-event"
+    - name: p_c
+      type: [float, n, 4]
+      desc: "momenta of the collinear counter-event"
+    - name: p_sc
+      type: [float, n, 4]
+      desc: "momenta of the soft-collinear counter-event"
+    - name: index
+      type: [int]
+      desc: "FKS configuration of the event"
+    - name: collinear
+      type: [int, single, c]
+      desc: "1 where the emitter of the configuration is massless, so that it has collinear counterterms"
+    - name: delta
+      type: [float, single, c]
+      desc: "delta of the configuration, deltaO for a final-state emitter and deltaI for an initial-state one"
+    - name: options
+      type: [float, single, 3]
+      desc: "xicut, xiScut and deltaS of fks_powers.inc"
+  outputs:
+    - name: f_r
+      type: [float]
+      desc: "prefactor of the real emission"
+    - name: f_s
+      type: [float]
+      desc: "prefactor of the soft counterterm"
+    - name: f_c
+      type: [float]
+      desc: "prefactor of the collinear counterterm"
+    - name: f_dc
+      type: [float]
+      desc: "prefactor of the collinear remnant at the collinear counter-event"
+    - name: f_sc
+      type: [float]
+      desc: "prefactor of the soft-collinear counterterm"
+    - name: f_dsc
+      type: [float, 4]
+      desc: "prefactors of the collinear remnants at the soft-collinear counter-event"
+  vectorized: False
+  desc: "The prefactors f_r, f_s, f_c, f_dc, f_sc and f_dsc of compute_prefactors_n1body in fks_singular.f, the plus distributions in xi and 1 - y with xicut, xiScut, delta and deltaS, for the Jacobians of the events and counter-events without the factor xi and without the symmetry factors: f_r = 1 / (xi (1 - y)) and f_s = (1 / xi + log(xicut / xi_l) / xi_l) / (1 - y) with xi_l = min(xi_max, xiScut), the collinear ones with xi and xi_max of the collinear counter-event and 32 pi^2 / s for the remnants, zero for a massive emitter."
+
 fks_beam_boost:
   inputs:
     - name: p

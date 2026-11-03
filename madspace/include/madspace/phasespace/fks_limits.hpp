@@ -186,4 +186,94 @@ private:
     nested_vector2<double> _factors;
 };
 
+/**
+ * The prefactors of the real emission and its FKS counterterms, as
+ * compute_prefactors_n1body in fks_singular.f, each event in the
+ * configuration of its `fks_index` (see @ref FKSConfigurationMapping).
+ *
+ * They are the plus distributions in @f$\xi@f$ and @f$1 - y@f$ with their
+ * cuts @f$\xi_\mathrm{cut}@f$, @f$\xi_\mathrm{S,cut}@f$, @f$\delta@f$
+ * (@f$\delta_O@f$ for a final-state emitter, @f$\delta_I@f$ for an
+ * initial-state one) and @f$\delta_S@f$, for the Jacobians of the event and
+ * counter-events without the factor @f$\xi@f$ (`weight / xi` and the `det`s
+ * of @ref FKSKinematics, which hold the width of the range of @f$\xi@f$ that
+ * MadFKS writes as `xinorm`) and without the symmetry factors. With
+ * @f$\xi_l = \min(\xi_\mathrm{max}, \xi_\mathrm{S,cut})@f$,
+ * @f$L_\delta = \log(\delta / \delta_S) / \delta_S@f$ and @f$\xi_c@f$,
+ * @f$\xi_{l,c}@f$, @f$s_c@f$ those of the collinear counter-event,
+ * @f[
+ *   f_r = \frac{1}{\xi (1 - y)}, \quad
+ *   f_s = \Big(\frac{1}{\xi} + \frac{\log(\xi_\mathrm{cut} / \xi_l)}{\xi_l}\Big)
+ *         \frac{1}{1 - y}, \quad
+ *   f_c = \Big(\frac{1}{1 - y} + L_\delta\Big) \frac{1}{\xi_c}, \quad
+ *   f_{sc} = \Big(\frac{1}{1 - y} + L_\delta\Big)
+ *         \Big(\frac{1}{\xi_c} + \frac{\log(\xi_\mathrm{cut} /
+ * \xi_{l,c})}{\xi_{l,c}}\Big),
+ * @f]
+ * and for the collinear remnants @f$f_{dc} = 32 \pi^2 / (s_c \xi_c \delta_S)@f$
+ * and the four @f$f_{dsc}@f$ (with @f$32 \pi^2 / s@f$ of the soft-collinear
+ * counter-event). They multiply @f$\xi^2 (1 - y)@f$ times the real matrix
+ * element and its limits. The collinear ones vanish for a massive emitter.
+ * Whether a counterterm contributes (@f$\xi \le \xi_\mathrm{S,cut}@f$,
+ * @f$y > 1 - \delta_S@f$) is left to the integrand, as in MadFKS.
+ *
+ * `batch` is the leading batch dimension and `n` the number of particles of
+ * the real process, incoming included.
+ *
+ * **Arguments**
+ * - `xi`, `y`, `xi_max` – `float`, shape `(batch,)` – the FKS variables of
+ *   the event.
+ * - `collinear_xi`, `collinear_xi_max` – `float`, shape `(batch,)` –
+ *   @f$\xi@f$ and the upper end of its range at the collinear counter-event.
+ * - `collinear_momenta`, `soft_collinear_momenta` – `float`, shape
+ *   `(batch, n, 4)` – momenta of the collinear and soft-collinear
+ *   counter-events, in any frame.
+ * - `fks_index` – `int`, shape `(batch,)` – the configuration of the event.
+ *   Present only for several configurations.
+ *
+ * **Returns**
+ * - `f_r`, `f_s`, `f_c`, `f_dc`, `f_sc` – `float`, shape `(batch,)`.
+ * - `f_dsc` – `float`, shape `(batch, 4)`.
+ */
+class FKSPrefactors : public FunctionGenerator {
+public:
+    /**
+     * @param j_fks     Position of j in the real process of each
+     *                  configuration, 0-based.
+     * @param masses    Masses of the particles of the real process of each
+     *                  configuration.
+     * @param xicut     The cut of the plus distribution in @f$\xi@f$.
+     * @param xi_s_cut  The upper end of the soft counterterm in @f$\xi@f$
+     *                  (xiScut).
+     * @param delta_o   The cut of the plus distribution in @f$1 - y@f$ for a
+     *                  final-state emitter (deltaO).
+     * @param delta_i   The same for an initial-state emitter (deltaI).
+     * @param delta_s   The lower end of the collinear counterterms in
+     *                  @f$1 - y@f$ (deltaS).
+     */
+    FKSPrefactors(
+        const std::vector<std::size_t>& j_fks,
+        const nested_vector2<double>& masses,
+        double xicut = 0.5,
+        double xi_s_cut = 0.5,
+        double delta_o = 1.,
+        double delta_i = 1.,
+        double delta_s = 1.
+    );
+    /// Number of configurations.
+    std::size_t configuration_count() const { return _j_fks.size(); }
+    /// Number of particles of the real processes, incoming included.
+    std::size_t particle_count() const { return _particle_count; }
+
+private:
+    NamedVector<Value> build_function_impl(
+        FunctionBuilder& fb, const NamedVector<Value>& args
+    ) const override;
+
+    std::size_t _particle_count;
+    std::vector<std::size_t> _j_fks;
+    nested_vector2<double> _masses;
+    double _xicut, _xi_s_cut, _delta_o, _delta_i, _delta_s;
+};
+
 } // namespace madspace

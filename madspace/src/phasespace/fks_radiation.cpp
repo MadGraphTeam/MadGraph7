@@ -291,6 +291,8 @@ NamedVector<Value> FKSRadiation::build_counter_events_impl(
             )
         );
         outputs.push_back(name + "_p_i_hat", cnt.p_i_hat);
+        outputs.push_back(name + "_xi", cnt.xi);
+        outputs.push_back(name + "_xi_max", cnt.xi_max);
     }
     return outputs;
 }

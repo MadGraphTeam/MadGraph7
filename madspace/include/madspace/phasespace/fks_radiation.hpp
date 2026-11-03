@@ -176,10 +176,12 @@ public:
      *   the event, and `k_p_i_hat`, the momentum of i per unit
      *   @f$\xi@f$ (`p_i_fks_cnt`), finite at @f$\xi = 0@f$: the direction
      *   from which i becomes soft, which the sector functions and the eikonal
-     *   factors of the soft limits need. `k_det` is 0 where genps_fks.f does
-     *   not generate the
-     *   counter-event: the soft one for @f$\xi_\mathrm{min} > 0@f$ and for
-     *   the second solution of a massive emitter, the collinear one for
+     *   factors of the soft limits need, and `k_xi`, `k_xi_max`, its
+     *   @f$\xi@f$ (0 where i is soft) and the upper end of the range of
+     *   @f$\xi@f$ at its @f$y@f$ (`xi_i_fks_cnt`, `xiimax_cnt`), which the
+     *   prefactors of the counterterms need. `k_det` is 0 where genps_fks.f
+     *   does not generate the counter-event: the soft one for @f$\xi_\mathrm{min} >
+     * 0@f$ and for the second solution of a massive emitter, the collinear one for
      *   @f$y = 1@f$ outside the range of an incoming emitter with
      *   @p s_hat_min. A massive emitter has no collinear counter-events: their
      *   momenta and momentum fractions are those of the event, their `det` 0.

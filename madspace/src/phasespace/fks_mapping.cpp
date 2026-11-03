@@ -351,6 +351,8 @@ NamedVector<Value> FKSMapping::build_events(
     for (const auto& name : _radiation.counter_events()) {
         to_lab(name + "_", real.at(name + "_det"), outputs);
         outputs.push_back(name + "_p_i_hat", hat_to_lab(real.at(name + "_p_i_hat")));
+        outputs.push_back(name + "_xi", real.at(name + "_xi"));
+        outputs.push_back(name + "_xi_max", real.at(name + "_xi_max"));
     }
     return outputs;
 }
@@ -378,6 +380,8 @@ NamedVector<Type> FKSMapping::counter_event_types() const {
         types.push_back(name + "_x2", batch_float);
         types.push_back(name + "_det", batch_float);
         types.push_back(name + "_p_i_hat", batch_four_vec);
+        types.push_back(name + "_xi", batch_float);
+        types.push_back(name + "_xi_max", batch_float);
     }
     return types;
 }
@@ -585,6 +589,8 @@ NamedVector<Type> FKSConfigurationMapping::counter_event_types() const {
         types.push_back(std::string(name) + "_x2", batch_float);
         types.push_back(std::string(name) + "_det", batch_float);
         types.push_back(std::string(name) + "_p_i_hat", batch_four_vec);
+        types.push_back(std::string(name) + "_xi", batch_float);
+        types.push_back(std::string(name) + "_xi_max", batch_float);
     }
     return types;
 }
@@ -927,6 +933,8 @@ NamedVector<Value> FKSConfigurationMapping::build_events(
         );
         to_lab(name + "_", counter, det, outputs);
         outputs.push_back(name + "_p_i_hat", hat_to_lab(counter.p_i_hat));
+        outputs.push_back(name + "_xi", counter.xi);
+        outputs.push_back(name + "_xi_max", counter.xi_max);
     }
     return outputs;
 }

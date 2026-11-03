@@ -1807,6 +1807,38 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("FKSSplittingKernels::factors")
         );
 
+    py::classh<FKSPrefactors, FunctionGenerator>(
+        m, "FKSPrefactors", pydoc::doc("FKSPrefactors")
+    )
+        .def(
+            py::init<
+                const std::vector<std::size_t>&,
+                const nested_vector2<double>&,
+                double,
+                double,
+                double,
+                double,
+                double>(),
+            py::arg("j_fks"),
+            py::arg("masses"),
+            py::arg("xicut") = 0.5,
+            py::arg("xi_s_cut") = 0.5,
+            py::arg("delta_o") = 1.,
+            py::arg("delta_i") = 1.,
+            py::arg("delta_s") = 1.,
+            pydoc::doc("FKSPrefactors::FKSPrefactors")
+        )
+        .def(
+            "configuration_count",
+            &FKSPrefactors::configuration_count,
+            pydoc::doc("FKSPrefactors::configuration_count")
+        )
+        .def(
+            "particle_count",
+            &FKSPrefactors::particle_count,
+            pydoc::doc("FKSPrefactors::particle_count")
+        );
+
     py::classh<FKSSectorFunction, FunctionGenerator>(
         m, "FKSSectorFunction", pydoc::doc("FKSSectorFunction")
     )

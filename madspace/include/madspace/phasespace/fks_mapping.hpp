@@ -119,10 +119,13 @@ public:
      * - `born_momenta`, `born_x1`, `born_x2`, `born_weight`: the Born mapping;
      * - `xi`, `xi_hat`, `y`, `xi_max`: the FKS variables of the event, see
      *   @ref FKSRadiation::build_counter_events;
+     * - `p_i_hat`: the momentum of i per unit @f$\xi@f$ in the event;
      * - for each counter-event `k` of FKSRadiation::counter_events():
      *   `k_momenta`, `k_x1`, `k_x2` and `k_det`, the Jacobian at the
      *   counter-event without the factor @f$\xi@f$, times the weight of the
-     *   Born (0 where the counter-event does not exist).
+     *   Born (0 where the counter-event does not exist), `k_p_i_hat`, the
+     *   momentum of i per unit @f$\xi@f$, and `k_xi`, `k_xi_max`, its
+     *   @f$\xi@f$ and the upper end of the range of @f$\xi@f$.
      */
     NamedVector<Value> build_counter_events(
         FunctionBuilder& fb,

@@ -1301,5 +1301,72 @@ KERNELSPEC void kernel_fks_transverse_vector(
     }
 }
 
+// The prefactors of the real emission and its counterterms of
+// compute_prefactors_n1body (fks_singular.f), for the Jacobians of the
+// events without the factor xi and without the symmetry factors: the
+// plus distributions in xi and 1 - y with their cuts xicut, xiScut, delta and
+// deltaS. The collinear ones vanish for a massive emitter.
+template <typename T>
+KERNELSPEC void kernel_fks_prefactors(
+    FIn<T, 0> xi,
+    FIn<T, 0> y,
+    FIn<T, 0> xi_max,
+    FIn<T, 0> xi_c,
+    FIn<T, 0> xi_max_c,
+    FIn<T, 2> p_c,
+    FIn<T, 2> p_sc,
+    IIn<T, 0> index,
+    IIn<T, 1> collinear,
+    FIn<T, 1> delta,
+    FIn<T, 1> options,
+    FOut<T, 0> f_r,
+    FOut<T, 0> f_s,
+    FOut<T, 0> f_c,
+    FOut<T, 0> f_dc,
+    FOut<T, 0> f_sc,
+    FOut<T, 1> f_dsc
+) {
+    constexpr double pi = 3.14159265358979323846;
+    std::size_t c = single_index(index);
+    FVal<T> xicut = options[0], xi_s_cut = options[1], delta_s = options[2];
+    FVal<T> omy = 1. - FVal<T>(y);
+    FVal<T> x = xi;
+    f_r = 1. / (x * omy);
+    auto xi_lim = min(FVal<T>(xi_max), xi_s_cut);
+    f_s = (1. / x + log(xicut / xi_lim) / xi_lim) / omy;
+    if (single_index(collinear[c]) == 0) {
+        f_c = 0.;
+        f_dc = 0.;
+        f_sc = 0.;
+        for (std::size_t k = 0; k < 4; ++k) {
+            f_dsc[k] = 0.;
+        }
+        return;
+    }
+    FVal<T> x_c = xi_c;
+    auto l_delta = log(FVal<T>(delta[c]) / delta_s) / delta_s;
+    auto in_y = 1. / omy + l_delta;
+    f_c = in_y / x_c;
+    auto pc1 = load_mom<T>(p_c[0]), pc2 = load_mom<T>(p_c[1]);
+    auto s_c = lsquare<T>(
+        FourMom<T>{pc1[0] + pc2[0], pc1[1] + pc2[1], pc1[2] + pc2[2], pc1[3] + pc2[3]}
+    );
+    f_dc = 32. * pi * pi / (s_c * x_c * delta_s);
+    auto xi_lim_c = min(FVal<T>(xi_max_c), xi_s_cut);
+    auto l_xi = log(xicut / xi_lim_c);
+    f_sc = in_y * (1. / x_c + l_xi / xi_lim_c);
+    auto ps1 = load_mom<T>(p_sc[0]), ps2 = load_mom<T>(p_sc[1]);
+    auto s_sc = lsquare<T>(
+        FourMom<T>{ps1[0] + ps2[0], ps1[1] + ps2[1], ps1[2] + ps2[2], ps1[3] + ps2[3]}
+    );
+    auto g = 32. * pi * pi / (s_sc * delta_s);
+    auto log_cut = log(xicut), log_lim = log(xi_lim_c);
+    f_dsc[0] = g / x_c;
+    f_dsc[1] = g * l_xi / xi_lim_c;
+    // as a product, which vanishes exactly for xi_lim_c = xicut
+    f_dsc[2] = g * (log_cut - log_lim) * (log_cut + log_lim) / (2. * xi_lim_c);
+    f_dsc[3] = g * (1. / x_c + l_xi / xi_lim_c);
+}
+
 } // namespace kernels
 } // namespace madspace

@@ -22,6 +22,8 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
 
     process, subprocess, genps_fks_sha (git blob hash of genps_fks.f),
     nexternal, nincoming, ndim, lpp, ebeam,
+    subtraction (xicut, xi_s_cut, delta_s, delta_o, delta_i of fks_powers.inc,
+    set for some processes away from their defaults, see FKS_POWERS),
     fks_configurations (the fks_configurations.json the FKS exporter writes
     into the P* directory, with its own conventions, see madspace/fks.py)
     configs[]: nfks, i_fks, j_fks, pdg, masses, particle_type,
@@ -44,6 +46,10 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
                AP_reduced, Qterms_reduced_timelike/spacelike as
                sborncol_fsr/isr call them, QCD over g^2 and QED over
                gal(1)^2; z = -1 where not generated or j is massive),
+               prefactors (f_r, f_s, f_c, f_dc, f_sc, f_dsc of
+               compute_prefactors_n1body with unit vegas weight),
+               fks_symmetry_factor, fks_symmetry_factor_deg, xinorm_ev,
+               xinorm_cnt, no_counter_events (where the event is generated),
                shat_born, tau_born, ycm_born, xbjrk_born, tau_lower_bound,
                and for prefix in (rad, cut): prefix_jac, prefix_jac_cnt,
                prefix_p_ev, prefix_p_cnt, prefix_xi_ev, prefix_xi_hat_ev,
@@ -66,6 +72,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -85,6 +92,12 @@ PROCESSES = {
     "pp_epem": ("p p > e+ e- [QCD]", ["P0_uux_emep"]),
     "pp_ttx": ("p p > t t~ [QCD]", ["P0_gg_ttx", "P0_uux_ttx"]),
     "pp_epemj": ("p p > e+ e- j [QCD]", ["P0_uux_emepg", "P0_ug_uemep"]),
+    # the parameters of the subtraction (fks_powers.inc) away from their
+    # defaults, under which some prefactors vanish
+    "pp_epemj_params": ("p p > e+ e- j [QCD]", ["P0_ug_uemep"]),
+}
+FKS_POWERS = {
+    "pp_epemj_params": dict(xicut=0.3, xiScut=0.25, deltaO=0.8, deltaI=0.7, deltaS=0.6),
 }
 
 
@@ -114,6 +127,22 @@ def generate(name, process, work):
         os.path.join(work, f"{name}_src.log"),
     )
     return out
+
+
+def set_fks_powers(out, values):
+    """Sets parameters of SubProcesses/fks_powers.inc, before anything is
+    built."""
+    path = os.path.join(out, "SubProcesses", "fks_powers.inc")
+    with open(path) as f:
+        text = f.read()
+    for key, value in values.items():
+        text, count = re.subn(
+            rf"parameter \({key}=[^)]*\)", f"parameter ({key}={value!r}d0)", text
+        )
+        if count != 1:
+            raise ValueError(f"{key} not found in {path}")
+    with open(path, "w") as f:
+        f.write(text)
 
 
 def dump(pdir, points, massive, log):
@@ -255,6 +284,25 @@ def parse(text):
         elif key == "COLL":
             v = floats(rest)
             point["coll_cnt"] = [v[0:6], v[6:12]]
+        elif key == "PREF":
+            v = floats(rest)
+            point["prefactors"] = dict(
+                zip(["f_r", "f_s", "f_c", "f_dc", "f_sc"], v[0:5]), f_dsc=v[5:9]
+            )
+            point.update(
+                fks_symmetry_factor=v[9],
+                fks_symmetry_factor_deg=v[10],
+                xinorm_ev=v[11],
+                xinorm_cnt=v[12:17],
+                no_counter_events=bool(v[23]),
+            )
+            data["subtraction"] = dict(
+                zip(
+                    ["xicut", "xi_s_cut", "delta", "delta_s", "delta_o", "delta_i"],
+                    v[17:23],
+                )
+            )
+            data["subtraction"].pop("delta")
         elif key == "BORNX":
             v = floats(rest)
             point.update(shat_born=v[0], tau_born=v[1], ycm_born=v[2])
@@ -291,11 +339,13 @@ def main():
     os.makedirs(work, exist_ok=True)
     for name, (process, keep) in PROCESSES.items():
         out = generate(name, process, work)
+        if name in FKS_POWERS:
+            set_fks_powers(out, FKS_POWERS[name])
         for pdir in sorted(glob.glob(os.path.join(out, "SubProcesses", "P*"))):
             sub = os.path.basename(pdir)
             if keep is not None and sub not in keep:
                 continue
-            log = os.path.join(work, f"{sub}.log")
+            log = os.path.join(work, f"{name}_{sub}.log")
             data = parse(dump(pdir, args.points, args.massive, log))
             data.update(process=process, subprocess=sub, genps_fks_sha=genps_fks_sha)
             # the FKS configurations as the exporter writes them for madspace
