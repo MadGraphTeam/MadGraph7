@@ -151,6 +151,7 @@ def test_symjit_plane_export_preserves_shared_outputs_and_matching_digest(
             instructions=program[0],
             temporary_count=program[1],
             constants=program[2],
+            constant_functions=[],
             sub_evaluators=[],
         )
         if structured
