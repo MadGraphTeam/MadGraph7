@@ -68,6 +68,7 @@ inline const char* hipGetErrorString( hipError_t e ) { return e == hipSuccess ? 
 inline hipError_t hipPeekAtLastError() { return hipSuccess; }
 inline hipError_t hipGetLastError() { return hipSuccess; }
 inline hipError_t hipSetDevice( int ) { return hipSuccess; }
+inline hipError_t hipGetDevice( int* device ) { *device = 0; return hipSuccess; } // one host "device"
 inline hipError_t hipDeviceSynchronize() { return hipSuccess; }
 inline hipError_t hipDeviceReset() { return hipSuccess; }
 
