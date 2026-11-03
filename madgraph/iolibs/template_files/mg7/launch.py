@@ -210,6 +210,15 @@ def mlm_pdf_ladder(run_card, mlm_clustering, is_decay=False, leptonic=False):
              or beam["clustering_mean_pdf_ladder"]))
 
 
+def mlm_clustering_history(run_card):
+    """The clustering_history of the scale's MLM clustering. Pinned to
+    all_diagrams under "ckkwl", keeping that scale a function of the momenta."""
+    beam = run_card["beam"]
+    if beam["dynamical_scale_choice"] == "ckkwl":
+        return "all_diagrams"
+    return beam["clustering_history"]
+
+
 def interference_helicities_summed(run_card):
     """Whether [generation] interference_helicity is "summed".
 
@@ -3164,7 +3173,7 @@ class MadgraphSubprocess:
                     ),
                     clustering_history=getattr(
                         ms.MLMClustering.ClusteringHistory,
-                        self.process.run_card["beam"]["clustering_history"],
+                        mlm_clustering_history(self.process.run_card),
                     ),
                     clustering_mean_pdf_ladder=self.process.run_card["beam"][
                         "clustering_mean_pdf_ladder"

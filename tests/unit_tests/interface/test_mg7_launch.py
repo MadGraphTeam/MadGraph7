@@ -2230,6 +2230,14 @@ class MG7CkkwlMergingCutTest(unittest.TestCase):
         card.set('beam.dynamical_scale_choice', 'ckkwl')
         self.assertFalse(self.launch.mlm_pdf_ladder(card, True))
 
+    def test_ckkwl_scale_clusters_over_all_diagrams(self):
+        card = bannermod.RunCardMG7()
+        card.set('beam.clustering_history', 'diagram')
+        card.set('beam.dynamical_scale_choice', 'mlm')
+        self.assertEqual(self.launch.mlm_clustering_history(card), 'diagram')
+        card.set('beam.dynamical_scale_choice', 'ckkwl')
+        self.assertEqual(self.launch.mlm_clustering_history(card), 'all_diagrams')
+
 
 @unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
                      'madspace is not installed')
