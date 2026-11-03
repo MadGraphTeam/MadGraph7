@@ -1,0 +1,4 @@
+weighting_groups_from_json
+==========================
+
+.. doxygenfunction:: madspace::weighting_groups_from_json

@@ -1,0 +1,4 @@
+weighting_groups_to_json
+========================
+
+.. autofunction:: madspace.weighting_groups_to_json

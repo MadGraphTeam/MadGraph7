@@ -283,6 +283,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../custom_functions.html">Custom functions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../diagram_filters.html">Diagram filters</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../gridpacks.html">Gridpacks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../event_stream.html">Streaming events from Python</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../madevent_to_mg7.html">Coming from MadEvent</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">MadSpace</span></p>
@@ -340,6 +341,7 @@
 <li class="toctree-l2"><a class="reference internal" href="MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MLP.html">MLP</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MadnisLoss.html">MadnisLoss</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MappingChannelWeights.html">MappingChannelWeights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MatrixElement.html">MatrixElement</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MomentumPreprocessing.html">MomentumPreprocessing</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MultiChannelFunction.html">MultiChannelFunction</a></li>
@@ -361,6 +363,7 @@
 <li class="toctree-l2"><a class="reference internal" href="PdfGrid.html">PdfGrid</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Propagator.html">Propagator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Topology.html">Topology</a></li>
+<li class="toctree-l2"><a class="reference internal" href="WeightingStep.html">WeightingStep</a></li>
 <li class="toctree-l2"><a class="reference internal" href="initialize_vegas_grid.html">initialize_vegas_grid</a></li>
 <li class="toctree-l2"><a class="reference internal" href="BatchSize.html">BatchSize</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DataType.html">DataType</a></li>
@@ -383,6 +386,7 @@
 <li class="toctree-l2"><a class="reference internal" href="EventGenerator.html">EventGenerator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="EventHistogramSpec.html">EventHistogramSpec</a></li>
 <li class="toctree-l2"><a class="reference internal" href="EventHistograms.html">EventHistograms</a></li>
+<li class="toctree-l2"><a class="reference internal" href="EventStream.html">EventStream</a></li>
 <li class="toctree-l2"><a class="reference internal" href="GeneratorConfig.html">GeneratorConfig</a></li>
 <li class="toctree-l2"><a class="reference internal" href="GeneratorStatus.html">GeneratorStatus</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Histogram.html">Histogram</a></li>
@@ -413,6 +417,7 @@
 <li class="toctree-l2"><a class="reference internal" href="Variation.html">Variation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="VegasGridOptimizer.html">VegasGridOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Verbosity.html">Verbosity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="WeightingGroup.html">WeightingGroup</a></li>
 <li class="toctree-l2"><a class="reference internal" href="available_backends.html">available_backends</a></li>
 <li class="toctree-l2"><a class="reference internal" href="compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpu_device.html">cpu_device</a></li>
@@ -428,6 +433,8 @@
 <li class="toctree-l2"><a class="reference internal" href="set_lib_path.html">set_lib_path</a></li>
 <li class="toctree-l2"><a class="reference internal" href="set_simd_mode.html">set_simd_mode</a></li>
 <li class="toctree-l2"><a class="reference internal" href="supported_simd_modes.html">supported_simd_modes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="weighting_groups_from_json.html">weighting_groups_from_json</a></li>
+<li class="toctree-l2"><a class="reference internal" href="weighting_groups_to_json.html">weighting_groups_to_json</a></li>
 <li class="toctree-l2"><a class="reference internal" href="NamedTypes.html">NamedTypes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="NamedValues.html">NamedValues</a></li>
 <li class="toctree-l2"><a class="reference internal" href="PythonFunction.html">PythonFunction</a></li>
@@ -475,6 +482,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/MLP.html">MLP</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/MadnisLoss.html">MadnisLoss</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/MappingChannelWeights.html">MappingChannelWeights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/MatrixElement.html">MatrixElement</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/MomentumPreprocessing.html">MomentumPreprocessing</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/MultiChannelFunction.html">MultiChannelFunction</a></li>
@@ -488,12 +496,14 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/SubchannelWeights.html">SubchannelWeights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/VegasHistogram.html">VegasHistogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/WeightingStepFunction.html">WeightingStepFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/AlphaSGrid.html">AlphaSGrid</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/CustomPdf.html">CustomPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Diagram.html">Diagram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/PdfGrid.html">PdfGrid</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Propagator.html">Propagator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Topology.html">Topology</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/WeightingStep.html">WeightingStep</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/initialize_vegas_grid.html">initialize_vegas_grid</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/BatchSize.html">BatchSize</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Function.html">Function</a></li>
@@ -519,6 +529,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/EventHistogramSpec.html">EventHistogramSpec</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/EventHistograms.html">EventHistograms</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/EventRecord.html">EventRecord</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/EventStream.html">EventStream</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/FieldLayout.html">FieldLayout</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/GeneratorBatchJob.html">GeneratorBatchJob</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/GeneratorConfig.html">GeneratorConfig</a></li>
@@ -549,6 +560,10 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Runtime.html">Runtime</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Sizes.html">Sizes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/StatusFile.html">StatusFile</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/StepChainResult.html">StepChainResult</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/StepEvents.html">StepEvents</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/StepIntegral.html">StepIntegral</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/StepSettings.html">StepSettings</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/SubprocessObservables.html">SubprocessObservables</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/SubprocessSystArgs.html">SubprocessSystArgs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/SystematicsCalculator.html">SystematicsCalculator</a></li>
@@ -563,6 +578,8 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/UnalignedRef.html">UnalignedRef</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Variation.html">Variation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/VegasGridOptimizer.html">VegasGridOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/WeightingGroup.html">WeightingGroup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/WeightingPipeline.html">WeightingPipeline</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/available_backends.html">available_backends</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/cpu_device.html">cpu_device</a></li>
@@ -578,6 +595,8 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/set_lib_path.html">set_lib_path</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/set_simd_mode.html">set_simd_mode</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/supported_simd_modes.html">supported_simd_modes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/weighting_groups_from_json.html">weighting_groups_from_json</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/weighting_groups_to_json.html">weighting_groups_to_json</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/NamedVector.html">NamedVector</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Overloaded.html">Overloaded</a></li>
 </ul>
@@ -690,8 +709,8 @@
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>contexts</strong> – One context per device to run on.</p></li>
 <li><p><strong>integrand</strong> – The channel’s compiled integrand.</p></li>
-<li><p><strong>event_file</strong> – Path of the weighted event file.</p></li>
-<li><p><strong>weight_file</strong> – Path of the max-weight tracking file.</p></li>
+<li><p><strong>event_file</strong> – Path of the weighted event file; empty for no file (events are only kept in memory).</p></li>
+<li><p><strong>weight_file</strong> – Path of the max-weight tracking file; empty for no file.</p></li>
 <li><p><strong>config</strong> – Generator configuration.</p></li>
 <li><p><strong>subprocess_index</strong> – Index of the owning subprocess.</p></li>
 <li><p><strong>name</strong> – Human-readable channel name.</p></li>
@@ -700,6 +719,19 @@
 </dd>
 </dl>
 <dl class="py method">
+<dt class="sig sig-object py" id="madspace.ChannelEventGenerator.apply_step_truncation_budgets">
+<span class="sig-name descname"><span class="pre">apply_step_truncation_budgets</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.ChannelEventGenerator" title="madspace._madspace_py.ChannelEventGenerator"><span class="pre">madspace._madspace_py.ChannelEventGenerator</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#madspace.ChannelEventGenerator.apply_step_truncation_budgets" title="Link to this definition">¶</a></dt>
+<dd><p>Apply the truncation budget of the current target count to the maxima of the steps, which are updated with the target count of each job.</p>
+<p>Like set_target_count for the first maximum.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="madspace.ChannelEventGenerator.freeze_max_weight_after">
+<span class="sig-name descname"><span class="pre">freeze_max_weight_after</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.ChannelEventGenerator" title="madspace._madspace_py.ChannelEventGenerator"><span class="pre">madspace._madspace_py.ChannelEventGenerator</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">int</span></span></span><a class="headerlink" href="#madspace.ChannelEventGenerator.freeze_max_weight_after" title="Link to this definition">¶</a></dt>
+<dd><p>The freeze count of the first unweighting, see GeneratorConfig::freeze_max_weight_after.</p>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="madspace.ChannelEventGenerator.load">
 <span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">load</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">channel_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">contexts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Sequence</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="Context.html#madspace.Context" title="madspace._madspace_py.Context"><span class="pre">madspace._madspace_py.Context</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">event_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weight_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="GeneratorConfig.html#madspace.GeneratorConfig" title="madspace._madspace_py.GeneratorConfig"><span class="pre">madspace._madspace_py.GeneratorConfig</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#madspace.ChannelEventGenerator" title="madspace._madspace_py.ChannelEventGenerator"><span class="pre">madspace._madspace_py.ChannelEventGenerator</span></a></span></span><a class="headerlink" href="#madspace.ChannelEventGenerator.load" title="Link to this definition">¶</a></dt>
 <dd><p>Reconstruct a generator previously written with save, reopening <code class="docutils literal notranslate"><span class="pre">event_file</span></code> and <code class="docutils literal notranslate"><span class="pre">weight_file</span></code>.</p>
@@ -707,8 +739,20 @@
 
 <dl class="py method">
 <dt class="sig sig-object py" id="madspace.ChannelEventGenerator.load_json">
-<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">load_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">channel_json</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">contexts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Sequence</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="Context.html#madspace.Context" title="madspace._madspace_py.Context"><span class="pre">madspace._madspace_py.Context</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">event_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weight_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="GeneratorConfig.html#madspace.GeneratorConfig" title="madspace._madspace_py.GeneratorConfig"><span class="pre">madspace._madspace_py.GeneratorConfig</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#madspace.ChannelEventGenerator" title="madspace._madspace_py.ChannelEventGenerator"><span class="pre">madspace._madspace_py.ChannelEventGenerator</span></a></span></span><a class="headerlink" href="#madspace.ChannelEventGenerator.load_json" title="Link to this definition">¶</a></dt>
+<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">load_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">channel_json</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">contexts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Sequence</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="Context.html#madspace.Context" title="madspace._madspace_py.Context"><span class="pre">madspace._madspace_py.Context</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">event_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weight_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="GeneratorConfig.html#madspace.GeneratorConfig" title="madspace._madspace_py.GeneratorConfig"><span class="pre">madspace._madspace_py.GeneratorConfig</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#madspace.ChannelEventGenerator" title="madspace._madspace_py.ChannelEventGenerator"><span class="pre">madspace._madspace_py.ChannelEventGenerator</span></a></span></span><a class="headerlink" href="#madspace.ChannelEventGenerator.load_json" title="Link to this definition">¶</a></dt>
 <dd><p>Like load, from the JSON text produced by to_json instead of a file.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="madspace.ChannelEventGenerator.max_overweight_truncation">
+<span class="sig-name descname"><span class="pre">max_overweight_truncation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.ChannelEventGenerator" title="madspace._madspace_py.ChannelEventGenerator"><span class="pre">madspace._madspace_py.ChannelEventGenerator</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#madspace.ChannelEventGenerator.max_overweight_truncation" title="Link to this definition">¶</a></dt>
+<dd><p>The truncation of the first unweighting, see GeneratorConfig::max_overweight_truncation.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="madspace.ChannelEventGenerator.max_weight">
+<span class="sig-name descname"><span class="pre">max_weight</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.ChannelEventGenerator" title="madspace._madspace_py.ChannelEventGenerator"><span class="pre">madspace._madspace_py.ChannelEventGenerator</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#madspace.ChannelEventGenerator.max_weight" title="Link to this definition">¶</a></dt>
+<dd><p>Current maximum-weight estimate, used for unweighting.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -725,9 +769,27 @@
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="madspace.ChannelEventGenerator.set_fixed_step_max_weight">
+<span class="sig-name descname"><span class="pre">set_fixed_step_max_weight</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.ChannelEventGenerator" title="madspace._madspace_py.ChannelEventGenerator"><span class="pre">madspace._madspace_py.ChannelEventGenerator</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">step</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">SupportsInt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_weight</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">SupportsFloat</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#madspace.ChannelEventGenerator.set_fixed_step_max_weight" title="Link to this definition">¶</a></dt>
+<dd><p>Fix the maximum weight of step <code class="docutils literal notranslate"><span class="pre">step</span></code>, like set_fixed_max_weight.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="madspace.ChannelEventGenerator.set_target_count">
+<span class="sig-name descname"><span class="pre">set_target_count</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.ChannelEventGenerator" title="madspace._madspace_py.ChannelEventGenerator"><span class="pre">madspace._madspace_py.ChannelEventGenerator</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_count</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">SupportsInt</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#madspace.ChannelEventGenerator.set_target_count" title="Link to this definition">¶</a></dt>
+<dd><p>Set the target unweighted event count; a smaller target tightens the maximum-weight estimate to the smaller truncation budget.</p>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="madspace.ChannelEventGenerator.status">
 <span class="sig-name descname"><span class="pre">status</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.ChannelEventGenerator" title="madspace._madspace_py.ChannelEventGenerator"><span class="pre">madspace._madspace_py.ChannelEventGenerator</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="GeneratorStatus.html#madspace.GeneratorStatus" title="madspace._madspace_py.GeneratorStatus"><span class="pre">madspace._madspace_py.GeneratorStatus</span></a></span></span><a class="headerlink" href="#madspace.ChannelEventGenerator.status" title="Link to this definition">¶</a></dt>
 <dd><p>Current progress snapshot.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="madspace.ChannelEventGenerator.step_max_weight">
+<span class="sig-name descname"><span class="pre">step_max_weight</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.ChannelEventGenerator" title="madspace._madspace_py.ChannelEventGenerator"><span class="pre">madspace._madspace_py.ChannelEventGenerator</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">step</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">SupportsInt</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#madspace.ChannelEventGenerator.step_max_weight" title="Link to this definition">¶</a></dt>
+<dd><p>Maximum weight of step <code class="docutils literal notranslate"><span class="pre">step</span></code>, counted from 1.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -798,11 +860,18 @@
             <ul>
 <li><a class="reference internal" href="#">ChannelEventGenerator</a><ul>
 <li><a class="reference internal" href="#madspace.ChannelEventGenerator"><code class="docutils literal notranslate"><span class="pre">ChannelEventGenerator</span></code></a><ul>
+<li><a class="reference internal" href="#madspace.ChannelEventGenerator.apply_step_truncation_budgets"><code class="docutils literal notranslate"><span class="pre">ChannelEventGenerator.apply_step_truncation_budgets()</span></code></a></li>
+<li><a class="reference internal" href="#madspace.ChannelEventGenerator.freeze_max_weight_after"><code class="docutils literal notranslate"><span class="pre">ChannelEventGenerator.freeze_max_weight_after()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.ChannelEventGenerator.load"><code class="docutils literal notranslate"><span class="pre">ChannelEventGenerator.load()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.ChannelEventGenerator.load_json"><code class="docutils literal notranslate"><span class="pre">ChannelEventGenerator.load_json()</span></code></a></li>
+<li><a class="reference internal" href="#madspace.ChannelEventGenerator.max_overweight_truncation"><code class="docutils literal notranslate"><span class="pre">ChannelEventGenerator.max_overweight_truncation()</span></code></a></li>
+<li><a class="reference internal" href="#madspace.ChannelEventGenerator.max_weight"><code class="docutils literal notranslate"><span class="pre">ChannelEventGenerator.max_weight()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.ChannelEventGenerator.save"><code class="docutils literal notranslate"><span class="pre">ChannelEventGenerator.save()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.ChannelEventGenerator.set_fixed_max_weight"><code class="docutils literal notranslate"><span class="pre">ChannelEventGenerator.set_fixed_max_weight()</span></code></a></li>
+<li><a class="reference internal" href="#madspace.ChannelEventGenerator.set_fixed_step_max_weight"><code class="docutils literal notranslate"><span class="pre">ChannelEventGenerator.set_fixed_step_max_weight()</span></code></a></li>
+<li><a class="reference internal" href="#madspace.ChannelEventGenerator.set_target_count"><code class="docutils literal notranslate"><span class="pre">ChannelEventGenerator.set_target_count()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.ChannelEventGenerator.status"><code class="docutils literal notranslate"><span class="pre">ChannelEventGenerator.status()</span></code></a></li>
+<li><a class="reference internal" href="#madspace.ChannelEventGenerator.step_max_weight"><code class="docutils literal notranslate"><span class="pre">ChannelEventGenerator.step_max_weight()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.ChannelEventGenerator.to_json"><code class="docutils literal notranslate"><span class="pre">ChannelEventGenerator.to_json()</span></code></a></li>
 </ul>
 </li>
