@@ -343,3 +343,51 @@ def test_quark_initiated_heft_trees_match_the_effective_lagrangian(
             for name, ratio in expected.items():
                 observed = evaluate(name, point) / gg_h
                 assert abs(observed / ratio - 1) <= Decimal("1e-30"), name
+
+
+def test_quark_initiated_heft_trees_agree_across_execution_modes(
+    tmp_path: Path,
+) -> None:
+    """The compiled tree (checked against the effective Lagrangian above),
+    the eager lane and the recurrence lane give one value for d d~ > h g and
+    d~ g > h d~. Before the single-input-order rule held on the reflection
+    path, the eager lane refused these processes (its DAG attached the
+    H g -> g merge twice: overlapping attachment destinations) and the
+    compiled one was 4 times too large; recurrence was right."""
+
+    expressions = ("d d~ > h g", "d~ g > h d~")
+    names = ("ddx_hg", "dxg_hdx")
+    point = (
+        (500.0, 0.0, 0.0, 500.0),
+        (500.0, 0.0, 0.0, -500.0),
+        (507.8125, -295.3125, 0.0, -393.75),
+        (492.1875, 295.3125, 0.0, 393.75),
+    )
+    values: dict[str, dict[str, complex]] = {}
+    for mode in ("compiled", "eager", "recurrence"):
+        output = tmp_path / mode
+        config = RunConfig(
+            action="generate",
+            color=ColorConfig(accuracy="full"),
+            evaluator=EvaluatorConfig(backend="jit", execution_mode=mode),
+            generation=GenerationConfig(workers=1, emit_api_bundle=False),
+            process=ProcessConfig(
+                coupling_order_policy="explicit", max_coupling_orders=_HEFT_ORDERS
+            ),
+        )
+        Generator(config).generate(
+            ProcessSet.from_expressions(expressions, names=names),
+            output,
+            model=ModelSource.built_in_sm_heft(),
+        )
+        values[mode] = {
+            name: complex(Runtime.load(output, process=name).evaluate((point,))[0])
+            for name in names
+        }
+    for mode in ("eager", "recurrence"):
+        for name in names:
+            compiled = values["compiled"][name]
+            assert abs(values[mode][name] - compiled) <= 1e-12 * abs(compiled), (
+                mode,
+                name,
+            )
