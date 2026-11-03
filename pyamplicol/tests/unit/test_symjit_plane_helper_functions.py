@@ -261,16 +261,34 @@ def _plane_adapter(outputs: list[Any], parameters: list[Any]) -> Any:
     )
 
 
-def test_registered_constants_read_as_zero_are_refused() -> None:
-    """Symbolica's Python export writes pi as the constant 0; the plane
-    exporter refuses the program instead of storing wrong values."""
+def test_registered_constants_export_their_binary64_values() -> None:
+    """Symbolica's instruction export holds 0 in the slot of a registered
+    constant (pi) and names the slot in ``constant_functions``; the plane
+    exporter writes the binary64 value there, so the stored application
+    equals Symbolica's evaluator."""
+    import numpy as np
     from symbolica import E, S
+
+    from pyamplicol import _rusticol
 
     x = S("symjit_constant_x")
     adapter = _plane_adapter([E("symbolica::pi") * x + 1, x * x], [x])
-    assert [repr(c) for c in adapter._source_evaluator.get_instructions().constants]
-    with pytest.raises(NativeEvaluationError, match="registered constants"):
-        adapter._export_symjit_plane_application(optimization_level=2)
+    exported = adapter._source_evaluator.get_instructions()
+    (constant,) = exported.constant_functions
+    assert repr(exported.constants[constant.index]) == "0"
+    application, _digest, _target = adapter._export_symjit_plane_application(
+        optimization_level=2
+    )
+    rows = np.ascontiguousarray([[0.5 + 0.25j], [-1.75 + 3j]], dtype=np.complex128)
+    expected = np.asarray(
+        adapter._source_evaluator.evaluate_complex(rows), dtype=np.complex128
+    )
+    values = np.asarray(
+        _rusticol._evaluate_symjit_plane_application_v2(
+            application, 1, 2, rows.view(np.float64).ravel().tolist(), len(rows)
+        )
+    ).view(np.complex128)
+    np.testing.assert_allclose(values, expected.reshape(values.shape), rtol=1e-15)
 
 
 def test_true_zero_constants_export() -> None:

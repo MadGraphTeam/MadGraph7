@@ -40,7 +40,6 @@ from .symbolica_helpers import (
     _safe_symbol_name,
     _symbolica_evaluator_artifact_manifest,
     _symbolica_instruction_program_repr,
-    _verify_symjit_plane_constants,
 )
 from .symbolica_settings import (
     ProgressCallback,
@@ -326,15 +325,6 @@ class _JITSymbolicaEvaluatorAdapter:
             raise NativeEvaluationError(
                 "Rusticol returned an empty or non-bytes direct-arena P-kernel"
             )
-        _verify_symjit_plane_constants(
-            self._source_evaluator,
-            exported,
-            application,
-            rusticol,
-            self.input_len,
-            self.output_len,
-        )
-
         target_info = getattr(rusticol, "target_info", None)
         target: dict[str, object] = {
             "word_bits": struct.calcsize("P") * 8,
