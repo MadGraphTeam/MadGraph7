@@ -3673,7 +3673,7 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
                             'GPU %s of slot %s is not crossed: %s'
                             % (routine, slot, gpu_args))
             if routine != 'sxxxxx':
-                self.assertTrue('cHel[ihel][%s] * xic[%s]' % (slot, slot)
+                self.assertTrue('hel_sv[%s] * xic[%s]' % (slot, slot)
                                 in gpu_args, 'GPU %s of slot %s does not negate '
                                 'the helicity of a crossed leg: %s'
                                 % (routine, slot, gpu_args))
