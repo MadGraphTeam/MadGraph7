@@ -15,7 +15,7 @@ compiled_model = 9
 process_artifact = 3
 runtime_physics = 1
 c_abi = 1
-symbolica_serialization = "symbolica-bincode2-v1"
+symbolica_serialization = "symbolica-bincode2-v2"
 symjit_application = "symjit-application-storage-v4"
 symjit_plane_application = "pyamplicol-symjit-plane-application-v2"
 prepared_model_bundle = 1
@@ -72,7 +72,7 @@ version = "1.17.0"
 
 [[python_dependencies]]
 distribution = "symbolica"
-version = "3.0.2"
+version = "3.0.3"
 
 [[python_dependencies]]
 distribution = "tomli-w"
@@ -84,10 +84,10 @@ version = "1.0.1"
 
 [symbolica]
 python_distribution = "symbolica"
-python_version = "3.0.2"
+python_version = "3.0.3"
 rust_crate = "symbolica"
-rust_version = "3.0.1"
-serialization_abi = "symbolica-bincode2-v1"
+rust_version = "3.0.2"
+serialization_abi = "symbolica-bincode2-v2"
 
 [symjit]
 version = "2.28.3"

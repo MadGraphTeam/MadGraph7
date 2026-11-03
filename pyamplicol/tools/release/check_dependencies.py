@@ -51,7 +51,7 @@ _SHA256 = re.compile(r"[0-9a-f]{64}")
 _GIT_REVISION = re.compile(r"[0-9a-f]{40}")
 _CANONICAL_NAME = re.compile(r"[-_.]+")
 _CANDIDATE_ABIS = {
-    "symbolica_serialization": "symbolica-bincode2-v1",
+    "symbolica_serialization": "symbolica-bincode2-v2",
     "symjit_application": "symjit-application-storage-v4",
     "symjit_plane_application": "pyamplicol-symjit-plane-application-v2",
 }
