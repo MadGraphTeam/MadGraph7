@@ -33,7 +33,14 @@ epem_bbbxbx (eebbbb, channel GF11.0):
   runs in vfold5381 (MG5 3.8.1, aS(MZ)=0.118), as the MINT1 upper envelope
   must be computed with Delta
 
-epem_bbxmummupg (eemumubbg, channel GF11.0):
+epem_bbxmummupg (eemumubbg, channels GF58.0 and GF11.0):
+- GF58.0 is the channel used by default since step 14q. GF11.0 was used until
+  then and it is kept to compare to older results, but it is not representative:
+  it has 0.1% of the ABS integral of all channels (rank 28 of 58). GF58.0 has
+  13.1% (rank 3), negative weights of 24.7% (GF11.0: 37.7%) and a ratio of ABS
+  virtual to ABS integral of 0.238 (GF11.0: 0.297), from the MINT1 logs of
+  run_gen841. The two largest channels, GF34.0 and GF17.0, have about 55%
+  negative weights, so they may be better for studies of negative weights.
 - folding_8_4_1 and folding_1_1_1 come from the default physics runs of
   GEN_proc.sh in vfold5381 (MG5 3.8.1, aS(MZ)=0.118), Events/run_gen841
   and Events/run_gen111 of eemumubbg_vfalt (branch vfold5381cgOldGrids)
