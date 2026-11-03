@@ -1131,6 +1131,20 @@ class GenericDAGCompiler:
                                 left_reflection_reusable or right_reflection_reusable
                             ):
                                 continue
+                            if (
+                                left_reflection_reusable or right_reflection_reusable
+                            ) and not color_engine.singlet_order_allowed(
+                                left.index,
+                                right.index,
+                                vertex,
+                            ):
+                                # The reflection variants below rebuild the
+                                # ordered labels without the colour-singlet
+                                # rule of ``ordered_combination_labels``: a
+                                # merge of a gluon with a colour singlet (the
+                                # HEFT H g -> g) would enter in both input
+                                # orders, doubling the amplitude.
+                                continue
                             order_variants: tuple[
                                 tuple[
                                     tuple[int, ...],

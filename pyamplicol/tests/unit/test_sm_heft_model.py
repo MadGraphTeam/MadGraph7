@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from collections.abc import Mapping
+from decimal import Decimal, localcontext
+from pathlib import Path
 
 import pytest
 
-from pyamplicol import CompiledModel, ModelSource
+from pyamplicol import CompiledModel, Generator, ModelSource, ProcessSet, Runtime
 from pyamplicol._internal.sm_heft import (
     CANONICAL_SM_HEFT_SOURCE,
     SM_HEFT_ALIASES,
@@ -14,6 +17,20 @@ from pyamplicol._internal.sm_heft import (
     packaged_sm_source_path,
 )
 from pyamplicol.api.models import _compiled_model_payload
+from pyamplicol.color.plan import build_color_plan
+from pyamplicol.config import (
+    ColorConfig,
+    EvaluatorConfig,
+    GenerationConfig,
+    ProcessConfig,
+    RunConfig,
+)
+from pyamplicol.generation.dag_compiler import compile_generic_dag
+from pyamplicol.models import CompiledUFOModel
+from pyamplicol.processes.model import build_model_process_ir
+
+_HEFT_ORDERS = {"QCD": 1, "QED": 0, "HIG": 1}
+_PI = Decimal("3.14159265358979323846264338327950288419716939937510582097494")
 
 
 @pytest.fixture(scope="module")
@@ -101,3 +118,105 @@ def test_sm_heft_extension_rejects_record_collisions() -> None:
 
     with pytest.raises(ValueError, match="already defines HEFT parameters"):
         extend_sm_model_payload(base)
+
+
+@pytest.mark.parametrize(
+    ("expression", "accuracy"),
+    (("d d~ > h g", "full"), ("g g > h", "lc"), ("g g > h g", "lc")),
+)
+def test_colour_singlet_merges_enter_the_dag_in_one_input_order(
+    compiled_sm_heft: CompiledModel, expression: str, accuracy: str
+) -> None:
+    """The H g -> g identity vertex combines a gluon with a colour singlet;
+    both input orders are one Feynman vertex and must not both be merged."""
+
+    private = _compiled_model_payload(compiled_sm_heft)
+    process = build_model_process_ir(expression, private.ir, color_accuracy=accuracy)
+    dag = compile_generic_dag(
+        process,
+        model=CompiledUFOModel(private),
+        color_plan=build_color_plan(process, color_accuracy=accuracy),
+        max_coupling_orders=_HEFT_ORDERS,
+    )
+    merges = Counter(
+        (frozenset((interaction.left_id, interaction.right_id)), interaction.result_id)
+        for interaction in dag.interactions
+    )
+    assert merges
+    assert max(merges.values()) == 1
+
+
+def test_quark_initiated_heft_trees_match_the_effective_lagrangian(
+    tmp_path: Path,
+) -> None:
+    """L = -(C/4) H G^a G^a: summed over colours and helicities,
+    |M(g g > H)|^2 = 4 C^2 m_H^4, |M(q q~ > H g)|^2 = 4 g^2 C^2 (t^2 + u^2) / s
+    and by crossing |M(q~ g > H q~)|^2 = 4 g^2 C^2 (s^2 + u^2) / (-t), with
+    t = (p_q~,in - p_q~,out)^2. Ratios to g g > H cancel C."""
+
+    output = tmp_path / "heft_quarks"
+    config = RunConfig(
+        action="generate",
+        color=ColorConfig(accuracy="full"),
+        evaluator=EvaluatorConfig(backend="jit", execution_mode="compiled"),
+        generation=GenerationConfig(workers=1, emit_api_bundle=False),
+        process=ProcessConfig(
+            coupling_order_policy="explicit", max_coupling_orders=_HEFT_ORDERS
+        ),
+    )
+    Generator(config).generate(
+        ProcessSet.from_expressions(
+            ("g g > h", "d d~ > h g", "d~ g > h d~"),
+            names=("gg_h", "ddx_hg", "dxg_hdx"),
+        ),
+        output,
+        model=ModelSource.built_in_sm_heft(),
+    )
+    alpha_s = Decimal("0.125")
+
+    def evaluate(name: str, point: tuple[tuple[Decimal, ...], ...]) -> Decimal:
+        runtime = Runtime.load(output, process=name, model_parameters={"aS": 0.125})
+        return Decimal(str(runtime.evaluate((point,), precision=40)[0]))
+
+    def dot(p: tuple[Decimal, ...], q: tuple[Decimal, ...]) -> Decimal:
+        return p[0] * q[0] - p[1] * q[1] - p[2] * q[2] - p[3] * q[3]
+
+    half_mass = Decimal("62.5")
+    zero = Decimal(0)
+    gg_h = evaluate(
+        "gg_h",
+        (
+            (half_mass, zero, zero, half_mass),
+            (half_mass, zero, zero, -half_mass),
+            (2 * half_mass, zero, zero, zero),
+        ),
+    )
+    # sqrt(s) = 1000 GeV, m_H = 125 GeV: |p| = 492.1875 along two exact directions.
+    beams = (
+        (Decimal(500), zero, zero, Decimal(500)),
+        (Decimal(500), zero, zero, Decimal(-500)),
+    )
+    for x, y, z in (
+        (Decimal("295.3125"), zero, Decimal("393.75")),
+        (Decimal("-236.25"), Decimal("177.1875"), Decimal("-393.75")),
+    ):
+        point = (
+            *beams,
+            (Decimal("507.8125"), -x, -y, -z),
+            (Decimal("492.1875"), x, y, z),
+        )
+        with localcontext() as context:
+            context.prec = 50
+            s = 2 * dot(point[0], point[1])
+            t = -2 * dot(point[0], point[3])
+            u = -2 * dot(point[1], point[3])
+            g_squared = 4 * _PI * alpha_s
+            m_h4 = (2 * half_mass) ** 4
+            # Averages 1/256 (g g), 1/36 (q q~) and 1/96 (q~ g).
+            expected = {
+                "ddx_hg": Decimal(256) / 36 * g_squared * (t * t + u * u) / s / m_h4,
+                "dxg_hdx": Decimal(256) / 96 * g_squared * (s * s + u * u) / -t / m_h4,
+            }
+            for name, ratio in expected.items():
+                observed = evaluate(name, point) / gg_h
+                assert abs(observed / ratio - 1) <= Decimal("1e-30"), name
