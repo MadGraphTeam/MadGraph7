@@ -613,6 +613,9 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     --source       Build from source (non-interactive).")
         logger.info("     -j N/--jobs=N  Parallel compilation jobs (source build;")
         logger.info("                    defaults to the 'nb_core' option).")
+        logger.info("     --system       Install into the active Python environment instead of madspace/install.")
+        logger.info("     --clean        Delete the build and install directories first (full rebuild).")
+        logger.info("     --docs         Generate API docstrings and .pyi stubs (source build, needs doxygen).")
         logger.info("     --cuda         Enable CUDA GPU backend (source build).")
         logger.info("     --hip          Enable HIP/ROCm GPU backend (source build).")
         logger.info("     --openblas     Build OpenBLAS from source (default on Linux/Windows, source build).")
@@ -623,6 +626,27 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     --no-debug     Optimized build, no debug symbols, Release (source build, default).")
         logger.info("     --cuda-arch=ARCHS  Semicolon-separated CUDA compute capabilities, e.g. 75;80;86.")
         logger.info("     --hip-arch=ARCHS   Semicolon-separated HIP architectures, e.g. gfx900;gfx906.")
+        logger.info(" ")
+        logger.info("   \"install pyamplicol [options]\"",'$MG:BOLD')
+        logger.info("   Install pyAmpliCol, the matrix-element generator of the [amplicol] backend.")
+        logger.info("   Without options an interactive installer is launched. Available options:")
+        logger.info("     -y/--yes       Re-install non-interactively using saved settings.")
+        logger.info("     --bin          Install pre-compiled package from PyPI (non-interactive;")
+        logger.info("                    only guaranteed to match this checkout in a release tarball).")
+        logger.info("     --source       Build from source (non-interactive; needs a Rust toolchain,")
+        logger.info("                    which is installed locally if rustup is not available).")
+        logger.info("     -j N/--jobs=N  Parallel compilation jobs (source build;")
+        logger.info("                    defaults to the 'nb_core' option).")
+        logger.info("     --system       Install into the active Python environment instead of pyamplicol/install.")
+        logger.info("     --clean        Delete the build and install directories first (full rebuild).")
+        logger.info("     --build-models Regenerate the prepared models instead of downloading them.")
+        logger.info("   \"install madtrex [options]\"",'$MG:BOLD')
+        logger.info("   Install MadtRex, the event-reweighting library used by MG7, together")
+        logger.info("   with its bundled Rex fork. Requires madspace to be installed first.")
+        logger.info("   Without options an interactive installer is launched. Available options:")
+        logger.info("     -y/--yes       Install non-interactively.")
+        logger.info("     -j N/--jobs=N  Parallel compilation jobs (defaults to the 'nb_core' option).")
+        logger.info("     --clean        Rebuild from scratch.")
 
     def help_display(self):
         logger.info("syntax: display " + "|".join(self._display_opts),'$MG:color:BLUE')
@@ -785,7 +809,12 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("      --jamp_orbit=[True|False]: [madevent|standalone_fortran|mg7] look for the shared color-factor sub-expressions by whole orbits of the color basis symmetry.")
         logger.info("      --t_strategy: [madevent] allows to change ordering strategy for t-channel.")
         logger.info("      --hel_recycling=False: [madevent] forbids helicity recycling optimization")
-        logger.info("      --axial_gauge=True: [madevent|standalone_fortran] build the polarisation of massless vectors in the axial gauge of another external (lightlike) leg, so that whole diagrams vanish (default:False).")
+        logger.info("      --hel_recycling=True: [standalone|mg7] build each wavefunction once per helicity copy instead of once per helicity row, and skip the amplitudes that vanish at a helicity (off by default). CPU/SIMD backends only: a cuda/hip build of the same output is the plain matrix element (the recycled build keeps every amplitude of every helicity of an event, MB per event, where a GPU thread holds one helicity). A CPU build also takes the plain matrix element when the recycled tables exceed HRMAXMB MB per SIMD page (make or environment variable, default 10, 0 for no limit): the recycled build moves a fixed amount of memory per event, which wider SIMD does not make cheaper. The default is tuned for every core of a node busy with one thread each: with two threads per core (SMT) a smaller limit (a few MB) can be faster, with few busy cores a larger one. A warm-up at generation time measures the good helicities and the vanishing amplitudes.")
+        logger.info("      --hel_recycling_chunk=<n>: [standalone|mg7] statements per function when the recycled block is cut up (default 200, 0 keeps it in one piece).")
+        logger.info("      --hel_recycling_jamp=rows|fold|expanded: [standalone|mg7] how the recycled build makes the color flows: rows (default) stores every amplitude per helicity row and runs the plain color code once per row, as the fortran recycler does; fold adds each amplitude into per-row shared sub-expressions; expanded into every color flow.")
+        logger.info("      --hel_recycling_tables=False: [standalone|mg7] write the recycled amplitudes as straight-line code instead of tables (default True; straight-line code stops fitting in the caches on large processes).")
+        logger.info("      --hel_recycling_max=<n>: [standalone|mg7] keep the plain code when the recycled block would exceed n statements, which no longer runs from the caches and is slower (default 300000, 0 for no limit).")
+        logger.info("      --axial_gauge=True: [madevent|standalone_fortran|standalone|mg7] build the polarisation of massless vectors in the axial gauge of another external (lightlike) leg, so that whole diagrams vanish (default:False).")
         logger.info("      --mask=False: [madevent|standalone_fortran] disable flavor-mask optimization for grouped/merged flavors (default:True).")
         logger.info("      --prefix=int|proc: [standalone_fortran] prefix matrix-element routine names (int: M<n>_, proc: process name); generates f2py python-linkable routines.")
         logger.info("      --use_crossing=False: [standalone_fortran|standalone|mg7|madevent] write this output WITHOUT the crossing machinery (on by default, as on the generate line): the crossed subprocesses folded onto their base at generation are written back as their own directories. With it, mg7 evaluates each crossed subprocess with the library of its base (cpu, simd and GPU).")
@@ -3413,7 +3442,7 @@ class CompleteForCmd(cmd.CompleteCmd):
     @cmd.debug()
     def complete_output(self, text, line, begidx, endidx,
                         possible_options = ['f', 'noclean', 'nojpeg'],
-                        possible_options_full = ['-f', '-noclean', '-nojpeg', '--noeps=True','--hel_recycling=False',
+                        possible_options_full = ['-f', '-noclean', '-nojpeg', '--noeps=True','--hel_recycling=False', '--hel_recycling=True', '--hel_recycling_chunk=', '--hel_recycling_max=', '--hel_recycling_jamp=', '--hel_recycling_tables=False',
                                                  '--jamp_optim=', '--jamp_orbit=', '--t_strategy=', '--vector_size=4', '--nb_warp=1',
                                                  '--mask=False', '--prefix=', '--use_crossing=True', '--use_crossing=False',
                                                  '--crossing_table=all', '--axial_gauge=True']):
@@ -3794,12 +3823,26 @@ class CompleteForCmd(cmd.CompleteCmd):
         elif len(args) and args[0] == 'update':
             return self.list_completion(text, ['-f','--timeout='])
         elif len(args) >= 2 and args[1] == 'madspace':
-            options = ['-y', '--yes', '--bin', '--source',
+            options = ['-y', '--yes', '--bin', '--source', '-j', '--jobs=',
+                       '--system', '--clean', '--docs', '--no-docs',
                        '--cuda', '--no-cuda', '--hip', '--no-hip',
                        '--openblas', '--no-openblas',
                        '--simd', '--no-simd',
                        '--debug', '--full-debug', '--no-debug',
                        '--cuda-arch=', '--hip-arch=']
+            for opt in options[:]:
+                if any(a.startswith(opt) for a in args[2:]):
+                    options.remove(opt)
+            return self.list_completion(text, options)
+        elif len(args) >= 2 and args[1] == 'pyamplicol':
+            options = ['-y', '--yes', '--bin', '--source', '-j', '--jobs=',
+                       '--system', '--clean', '--build-models']
+            for opt in options[:]:
+                if any(a.startswith(opt) for a in args[2:]):
+                    options.remove(opt)
+            return self.list_completion(text, options)
+        elif len(args) >= 2 and args[1] == 'madtrex':
+            options = ['-y', '--yes', '--clean', '--jobs=']
             for opt in options[:]:
                 if any(a.startswith(opt) for a in args[2:]):
                     options.remove(opt)
@@ -3859,7 +3902,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _install_opts = ['Delphes', 'ExRootAnalysis',
                      'update', 'Golem95', 'QCDLoop', 'maddm', 'maddump',
                      'looptools', 'cuttools_iregi', 'MadSTR', 'RunningCoupling',
-                     'madspace']
+                     'madspace', 'pyamplicol', 'madtrex']
     
     # The targets below are installed using the HEPToolsInstaller.py script
     _advanced_install_opts = ['pythia8','zlib','boost','lhapdf6','lhapdf5','collier',
@@ -8397,6 +8440,14 @@ This implies that with decay chains:
             logger.warning('Pythia8 is installed but its main164 could not be ' +
                 'compiled, so MadEvent cannot shower with it yet:\n%s' % error)
             return
+        # the main164 an MLM shower uses to split its jet rates per jet sample,
+        # patched if needed: built now rather than at the first MLM shower
+        try:
+            misc.get_pythia8_main164(pythia8_path, jet_sample_djrs=True)
+        except (MadGraph5Error, OSError) as error:
+            logger.info('main164 could not be built to split the jet rates per ' +
+                'jet sample (the DJR plots of MLM showers will show their sum ' +
+                'only):\n%s' % error)
         # the HepMC3 of a Pythia8 built against it (pythia8_hepmc3)
         if not self.options['hepmc3_path'] and misc.find_hepmc(3, [pjoin(prefix, 'hepmc3')]):
             self.options['hepmc3_path'] = pjoin(prefix, 'hepmc3')
@@ -8814,8 +8865,8 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
         elif args[0] == 'cuttools_iregi':
             self.install_cuttools_iregi()
             return
-        elif args[0] == 'madspace':
-            install_script = pjoin(MG5DIR, 'madspace', 'install.py')
+        elif args[0] in ('madspace', 'pyamplicol', 'madtrex'):
+            install_script = pjoin(MG5DIR, args[0], 'install.py')
             install_args = args[1:]
             # The source build compiles in parallel only if it is told how many
             # jobs it may use (see set_build_parallelism in install.py), so hand
@@ -8823,7 +8874,11 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
             if not any(a == '-j' or a.startswith('-j') or a.startswith('--jobs')
                        for a in install_args):
                 install_args = install_args + ['-j', str(self.options['nb_core'])]
-            subprocess.run([sys.executable, install_script] + install_args)
+            result = subprocess.run([sys.executable, install_script] + install_args)
+            if result.returncode != 0:
+                raise self.InvalidCmd('install %s failed (%s exited with code %d): see '
+                                      'its output above' % (args[0], install_script,
+                                                            result.returncode))
             return
 
         plugin = self.install_plugin
@@ -13884,11 +13939,20 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             wanted_lorentz = self._curr_matrix_elements.get_used_lorentz()
             wanted_couplings = self._curr_matrix_elements.get_used_couplings()
 
-            # Standalone --hel_recycling reuses the madevent recycling machinery,
-            # which needs the P1N (amplitude-split) variant of every used routine.
+            # the P1N (amplitude split) routines: madevent's helicity recycling,
+            # the Fortran standalone --hel_recycling (same machinery) and the
+            # C++ one of a madmatrix output asked for --hel_recycling
             sa_hel_recycling = str(getattr(self._curr_exporter, 'cmd_options', {}).get(
                     'hel_recycling', False)).lower() in ('true', '1', 'yes')
-            if (self._export_format == 'madevent' or sa_hel_recycling) and \
+            exporter_opts = (getattr(self._curr_exporter, 'opt', None) or {}).get(
+                                                       'output_options') or {}
+            cpp_recycling = hasattr(getattr(self._curr_exporter,
+                                            'oneprocessclass', None),
+                                    'write_recycled') and \
+                str(exporter_opts.get('hel_recycling', False)).lower() in \
+                                                       ('true', '1', 'yes')
+            if (self._export_format == 'madevent' or sa_hel_recycling or
+                    cpp_recycling) and \
                 not 'no_helrecycling' in flaglist and \
                 not isinstance(self._curr_amps[0], loop_diagram_generation.LoopAmplitude):
                 for (name, flag, out) in wanted_lorentz[:]:
@@ -14391,7 +14455,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         result_file = pjoin(decay_dir, 'decay_widths.json')
         log_file = pjoin(decay_dir, 'decay_widths.log')
         cmd = [sys.executable, pjoin(decay_dir, 'bin', 'generate_events'),
-               '--decay-widths=%s' % result_file, '--precision=%s' % precision]
+               '--decay-widths=%s' % result_file, '--precision=%s' % precision,
+               '--allow-stdin']
         if self.options['nb_core']:
             cmd.append('--nb-core=%s' % self.options['nb_core'])
         with open(log_file, 'w') as log:
