@@ -359,7 +359,12 @@ class NativeProcess:
         # A slice on the full tree kernels (``ward.ward_slice``): its stored
         # process serves the Ward mode (``ward.require_full_kernels``).
         if getattr(slice_.blocks, "kernel_variant", None) == "full":
+            from .ward import gauge_legs
+
             record["kernel_variant"] = "full"
+            # Its massless vector legs (``ward.gauge_legs``): the stored view
+            # has no model data.
+            record["gauge_legs"] = list(gauge_legs(slice_))
         return cls(plan, trees, record, companion, dipoles=_stored_dipoles(slice_))
 
     # -- storage -------------------------------------------------------------
@@ -534,6 +539,9 @@ class _ProcessView:
         self.alpha_s_parameter = record["alpha_s_parameter"]
         # Catani's stored QCD record (``dipoles.catani_record``) or None.
         self.catani = record.get("catani")
+        # The massless vector legs of a process stored from a Ward slice
+        # (``ward.gauge_legs``) or None.
+        self.gauge_legs = record.get("gauge_legs")
         self.pole_regulators = PoleRegulators.from_record(record.get("pole_regulators"))
         self.blocks = SimpleNamespace(
             process=SimpleNamespace(

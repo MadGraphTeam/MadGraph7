@@ -189,8 +189,13 @@ def rotated_ward(rotation: Any, ward: Any) -> Any:
 
 def gauge_legs(slice_: Any) -> tuple[int, ...]:
     """The labels of the slice's external massless vector legs (gluons and
-    photons: the legs whose polarisation the Ward check may replace)."""
+    photons: the legs whose polarisation the Ward check may replace); a
+    stored process's view reads them from its record (``gauge_legs``, written
+    for a process stored from a full-kernel slice; None otherwise)."""
 
+    if not hasattr(slice_, "data"):
+        stored = getattr(slice_, "gauge_legs", None)
+        return () if stored is None else tuple(stored)
     particles = {int(entry["pdg_code"]): entry for entry in slice_.data["particles"]}
     out = []
     for leg in sorted(slice_.blocks.process.legs, key=lambda x: x.label):

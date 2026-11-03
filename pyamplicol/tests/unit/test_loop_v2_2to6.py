@@ -77,6 +77,20 @@ def test_stored_checks_on_a_stored_ward_process(compiled, loop_native):
     )
     _assert_passed(record, catani=True, ward=True)
     assert record["rescue"]["count"] == 0
+    # The Ward store records its massless vector legs (the stored view has no
+    # model data): first, middle and last are checked.
+    assert process.record["gauge_legs"] == [1, 2, 3, 4]
+    assert {tuple(row["legs"]) for row in record["ward"]} == {(1, 3, 4)}
+    # A required prediction that does not form fails the point (here the
+    # record no longer applies at the run's MT).
+    conditions = process.record["catani"]["conditions"]
+    conditions[0] = [conditions[0][0], not conditions[0][1]]
+    failed = check_process(
+        process, loop_native, "gg_gg", "full", points=[0], dd_points=[0]
+    )
+    assert failed["passed"] is False
+    assert [row["catani_formed"] for row in failed["checked"]] == [False]
+    assert [row["passed"] for row in failed["checked"] + failed["dd"]] == [False, False]
 
 
 @pytest.mark.loop_nightly
