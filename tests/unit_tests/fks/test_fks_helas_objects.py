@@ -882,10 +882,15 @@ class testFKSHelasObjects(unittest.TestCase):
         self.assertEqual(restored, helas_process)
 
         incompatible = copy.deepcopy(helas_process)
+        self.assertEqual(incompatible, helas_process)
+        self.assertEqual(helas_process, incompatible)
         incompatible.real_processes[0].fks_infos[0][
             'underlying_born'][0][0] = 82
         incompatible.clear_fks_flavor_map_cache()
         self.assertNotEqual(incompatible, helas_process)
+        self.assertNotEqual(helas_process, incompatible)
+        self.assertRaises(fks_common.FKSProcessError,
+                          incompatible.get_fks_flavor_map)
         self.assertRaises(fks_common.FKSProcessError,
                           helas_process.add_process, incompatible)
 

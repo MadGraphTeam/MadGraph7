@@ -1123,7 +1123,10 @@ class FKSHelasProcess(object):
         for real in  self.real_processes:
             try:
                 reals2.remove(real)
-            except ValueError:
+            except (ValueError, fks_common.FKSProcessError):
+                # A malformed physical mapping cannot be equivalent. Keep
+                # explicit mapping/merge operations responsible for reporting
+                # that error; equality must also work for copied candidates.
                 return False  
 
         self_grouped = bool(self.born_me.get('processes')[0].get(

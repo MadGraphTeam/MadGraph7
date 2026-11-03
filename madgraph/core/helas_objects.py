@@ -6112,6 +6112,13 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         kept_positions = [i for i, diag in enumerate(self.get('diagrams'))
                           if diag.valid_flavors]
 
+        if len(kept_positions) < initial_len:
+            # Virtual-Born exports can copy a color basis while leaving the
+            # base amplitude lazy. Reconstruct it before compacting the HELAS
+            # list, so its diagram positions still match that copied basis.
+            base_amplitude = self.get('base_amplitude')
+            base_diagrams = base_amplitude.get('diagrams')
+
         self['diagrams'] = HelasDiagramList(
             [self.get('diagrams')[i] for i in kept_positions])
         final_len = len(self.get('diagrams'))
@@ -6125,8 +6132,6 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             # basis was built; compacting the HELAS list without rebuilding the
             # base amplitude leaves stale positions and makes JAMP generation
             # index beyond the retained list.
-            base_amplitude = self.get('base_amplitude')
-            base_diagrams = base_amplitude.get('diagrams')
             if len(base_diagrams) == initial_len:
                 base_amplitude.set(
                     'diagrams',
