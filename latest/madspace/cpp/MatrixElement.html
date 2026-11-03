@@ -960,7 +960,13 @@
 <dl class="cpp function">
 <dt class="sig sig-object cpp" id="_CPPv4NK8madspace13MatrixElement14reference_maskEv">
 <span id="_CPPv3NK8madspace13MatrixElement14reference_maskEv"></span><span id="_CPPv2NK8madspace13MatrixElement14reference_maskEv"></span><span id="madspace::MatrixElement::reference_maskC"></span><span class="target" id="classmadspace_1_1MatrixElement_1a0ca5b8c22df680e518c57d358782655e"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">me_int_t</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="sig-name descname"><span class="n"><span class="pre">reference_mask</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace13MatrixElement14reference_maskEv" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Per-particle 0/1 selector of the incoming particles, whose rest frame the me_frame boost starts from; empty when no boost is applied or when it is already the frame me_frame asks for. </p>
+<dd><p>Per-particle 0/1 selector of the incoming particle of a decay, whose rest frame the me_frame boost starts from; empty when no boost is applied, when it is already the frame me_frame asks for, and for a collision, whose me_frame is reached along the beam instead (<a class="reference internal" href="#classmadspace_1_1MatrixElement_1a92331d57e074829a4090958dae271dfe"><span class="std std-ref">along_beam()</span></a>). </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8madspace13MatrixElement10along_beamEv">
+<span id="_CPPv3NK8madspace13MatrixElement10along_beamEv"></span><span id="_CPPv2NK8madspace13MatrixElement10along_beamEv"></span><span id="madspace::MatrixElement::along_beamC"></span><span class="target" id="classmadspace_1_1MatrixElement_1a92331d57e074829a4090958dae271dfe"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">along_beam</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace13MatrixElement10along_beamEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Whether the me_frame boost starts with a boost along the beam axis to zero rapidity of the selected particles, which makes the frame the same from any frame along the beam (two incoming particles, and a frame other than their own rest frame). </p>
 </dd></dl>
 
 </div>
@@ -1067,6 +1073,7 @@
 <li><a class="reference internal" href="#_CPPv4NK8madspace13MatrixElement15external_inputsEv"><code class="docutils literal notranslate"><span class="pre">external_inputs()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4NK8madspace13MatrixElement10frame_maskEv"><code class="docutils literal notranslate"><span class="pre">frame_mask()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4NK8madspace13MatrixElement14reference_maskEv"><code class="docutils literal notranslate"><span class="pre">reference_mask()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8madspace13MatrixElement10along_beamEv"><code class="docutils literal notranslate"><span class="pre">along_beam()</span></code></a></li>
 </ul>
 </li>
 </ul>

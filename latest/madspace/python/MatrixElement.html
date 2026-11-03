@@ -1106,7 +1106,7 @@
 <dl class="py method">
 <dt class="sig sig-object py" id="madspace.MatrixElement.reference_mask">
 <span class="sig-name descname"><span class="pre">reference_mask</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.MatrixElement" title="madspace._madspace_py.MatrixElement"><span class="pre">madspace._madspace_py.MatrixElement</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#madspace.MatrixElement.reference_mask" title="Link to this definition">¶</a></dt>
-<dd><p>Per-particle 0/1 selector of the incoming particles, whose rest frame the me_frame boost starts from; empty when no boost is applied or when it is already the frame me_frame asks for.</p>
+<dd><p>Per-particle 0/1 selector of the incoming particle of a decay, whose rest frame the me_frame boost starts from; empty when no boost is applied, when it is already the frame me_frame asks for, and for a collision, whose me_frame is reached along the beam instead (along_beam()).</p>
 </dd></dl>
 
 <dl class="py attribute">
