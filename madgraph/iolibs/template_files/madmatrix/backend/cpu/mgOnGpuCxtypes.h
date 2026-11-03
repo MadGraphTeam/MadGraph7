@@ -69,6 +69,18 @@ namespace mgOnGpu /* clang-format off */
   {
     return cxsmpl<FP>( c.real(), -c.imag() );
   }
+
+  // Principal square root, as std::sqrt( std::complex ) (branch cut along the negative real axis).
+  // The complex-mass scheme needs it in Parameters.cc, e.g. CMASS_mdl_MT = sqrt( MT^2 - i*MT*WT ),
+  // and its complex couplings then feed further sqrt's (e.g. mdl_cw = sqrt( 1 - mdl_sw2 )).
+  // Host only: model parameters are computed once on the host, never event by event on a device.
+  template<typename FP>
+  inline __host__ cxsmpl<FP>
+  sqrt( const cxsmpl<FP>& c )
+  {
+    const std::complex<FP> s = std::sqrt( std::complex<FP>( c.real(), c.imag() ) );
+    return cxsmpl<FP>( s.real(), s.imag() );
+  }
 } /* clang-format on */
 
 // Expose the cxsmpl class outside the namespace

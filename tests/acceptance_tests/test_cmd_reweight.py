@@ -221,6 +221,49 @@ class TestMECmdRWGT(unittest.TestCase):
         self.assertEqual(nb_event, 4)
         self.assertEqual(nb_grouped_antiparticle, 3)
 
+    def test_reweight_helicity_untabulated_order(self):
+        """helicity-per-helicity reweight of a p p > j j event whose leg
+        ordering the grouped flavor table does not tabulate.
+
+        The fixture's first event is s(-1) d(+1) > d(+1) s(-1): FLAV_TABLE
+        keeps one ordering per class, so all_matrix.f has to re-order the legs
+        (FLAVOR_ORDER_REPAIR). A request for ONE helicity code used to leave
+        that repair off and SMATRIXHEL returned an exact 0, which the reweight
+        reports as "Invalid matrix element" on the ORIGINAL hypothesis. The
+        code now follows the legs (FLAVOR_ORDER_HEL). The other three events
+        (u c > u c, g u > g u, g g > g g) are controls. The change is
+        electroweak only, so this pure-QCD sample must keep its weights.
+        """
+        me_cmd = self.get_MEcmd_process(
+            'p p > j j', pjoin(_pickle_path, 'jj_untabulated_order.lhe.gz'))
+
+        cmd_lines = """
+        launch
+        set sminputs 1 140.0
+        """
+        ff = open(pjoin(self.run_dir, 'Cards', 'reweight_card.dat'), 'w')
+        ff.write(cmd_lines)
+        ff.close()
+
+        if logger.level <= 10:
+            me_cmd.run_cmd('reweight run_01 --from_cards')
+        else:
+            with misc.stdchannel_redirected(sys.stdout, os.devnull):
+                me_cmd.run_cmd('reweight run_01 --from_cards')
+
+        lhe = lhe_parser.EventFile(pjoin(self.run_dir, 'Events', 'run_01',
+                                         'unweighted_events.lhe.gz'))
+        flavors = []
+        for event in lhe:
+            rwgt_data = event.parse_reweight()
+            self.assertIn('rwgt_1', rwgt_data)
+            self.assertAlmostEqual(rwgt_data['rwgt_1'] / event.wgt, 1., 10)
+            flavors.append([p.pid for p in event])
+        # guard the premise: the untabulated ordering is really in the sample,
+        # and it carries helicities (so the per-code route is taken)
+        self.assertEqual(len(flavors), 4)
+        self.assertEqual(flavors[0], [3, 1, 1, 3])
+
     def test_mass_reweighting(self):
         """ testing that we can reweight the tt~ sample when increasing the top mass
         """

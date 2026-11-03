@@ -809,16 +809,17 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("      --jamp_orbit=[True|False]: [madevent|standalone_fortran|mg7] look for the shared color-factor sub-expressions by whole orbits of the color basis symmetry.")
         logger.info("      --t_strategy: [madevent] allows to change ordering strategy for t-channel.")
         logger.info("      --hel_recycling=False: [madevent] forbids helicity recycling optimization")
-        logger.info("      --hel_recycling=True: [standalone|mg7] build each wavefunction once per helicity copy instead of once per helicity row, and skip the amplitudes that vanish at a helicity (off by default). CPU/SIMD backends only: a cuda/hip build of the same output is the plain matrix element (the recycled build keeps every amplitude of every helicity of an event, MB per event, where a GPU thread holds one helicity). A CPU build also takes the plain matrix element when the recycled tables exceed HRMAXMB MB per SIMD page (make or environment variable, default 10, 0 for no limit): the recycled build moves a fixed amount of memory per event, which wider SIMD does not make cheaper. The default is tuned for every core of a node busy with one thread each: with two threads per core (SMT) a smaller limit (a few MB) can be faster, with few busy cores a larger one. A warm-up at generation time measures the good helicities and the vanishing amplitudes.")
-        logger.info("      --hel_recycling_chunk=<n>: [standalone|mg7] statements per function when the recycled block is cut up (default 200, 0 keeps it in one piece).")
+        logger.info("      --hel_recycling=True: [standalone_fortran|standalone|mg7] build each wavefunction once per helicity copy instead of once per helicity row, and skip the amplitudes that vanish at a helicity (off by default). C++: CPU/SIMD backends only: a cuda/hip build of the same output is the plain matrix element (the recycled build keeps every amplitude of every helicity of an event, MB per event, where a GPU thread holds one helicity). A CPU build also takes the plain matrix element when the recycled tables exceed HRMAXMB MB per SIMD page (make or environment variable, default 10, 0 for no limit): the recycled build moves a fixed amount of memory per event, which wider SIMD does not make cheaper. The default is tuned for every core of a node busy with one thread each: with two threads per core (SMT) a smaller limit (a few MB) can be faster, with few busy cores a larger one. A warm-up at generation time measures the good helicities and the vanishing amplitudes.")
+        logger.info("      --hel_recycling_chunk=<n>: [standalone_fortran|standalone|mg7] statements per function when the recycled block is cut up (default 1500 Fortran, 200 C++; 0 keeps it in one piece).")
         logger.info("      --hel_recycling_jamp=rows|fold|expanded: [standalone|mg7] how the recycled build makes the color flows: rows (default) stores every amplitude per helicity row and runs the plain color code once per row, as the fortran recycler does; fold adds each amplitude into per-row shared sub-expressions; expanded into every color flow.")
         logger.info("      --hel_recycling_tables=False: [standalone|mg7] write the recycled amplitudes as straight-line code instead of tables (default True; straight-line code stops fitting in the caches on large processes).")
         logger.info("      --hel_recycling_max=<n>: [standalone|mg7] keep the plain code when the recycled block would exceed n statements, which no longer runs from the caches and is slower (default 300000, 0 for no limit).")
         logger.info("      --axial_gauge=True: [madevent|standalone_fortran|standalone|mg7] build the polarisation of massless vectors in the axial gauge of another external (lightlike) leg, so that whole diagrams vanish (default:False).")
         logger.info("      --mask=False: [madevent|standalone_fortran] disable flavor-mask optimization for grouped/merged flavors (default:True).")
         logger.info("      --prefix=int|proc: [standalone_fortran] prefix matrix-element routine names (int: M<n>_, proc: process name); generates f2py python-linkable routines.")
+        logger.info("      --f2py_per_process=False: [standalone_fortran with --prefix] build the combined all_matrix2py module with only its dispatching entry points (smatrixhel, smatrixhel_idx, py_get_density, ...), without the per-process py_<prefix>* ones: much faster to build for many subprocesses (used by MadSpin).")
         logger.info("      --use_crossing=False: [standalone_fortran|standalone|mg7|madevent] write this output WITHOUT the crossing machinery (on by default, as on the generate line): the crossed subprocesses folded onto their base at generation are written back as their own directories. With it, mg7 evaluates each crossed subprocess with the library of its base (cpu, simd and GPU).")
-        logger.info("      --crossing_table=all: [standalone_fortran|standalone] with the crossing machinery, let the extended flavor index also reach every applicable crossing (each choice of the legs that start in the initial state), not only the crossed subprocesses the generation folded -- e.g. for a single generated process, which folds none.")
+        logger.info("      --crossing_table=all: [standalone_fortran|standalone] with the crossing machinery, let the extended flavor index also reach every applicable crossing (each choice of the legs that start in the initial state), not only the crossed subprocesses the generation folded -- e.g. for a single generated process, which folds none. Only the extended-index entry (smatrixhel_idx) reaches these extra crossings: the Fortran PDG-keyed smatrixhel/density still answer only the generated and folded subprocesses (NaN otherwise).")
         logger.info("      --zerowidth_tchannel=[True|False]: [standalone_fortran|standalone_rw/msP/msF] drop the width of the spacelike (t-channel) propagators as madevent, for this output (default: the option zerowidth_tchannel)")
         logger.info("      --zerowidth_decay=True|False|<pdg>,<pdg>: [standalone_fortran] write the propagators of the final-state particles (of the decaying particle in a 1>N decay) with a zero width; a pdg list restricts to those.")
         logger.info("   Examples:",'$MG:color:GREEN')
@@ -3471,7 +3472,7 @@ class CompleteForCmd(cmd.CompleteCmd):
                 except Exception as error:
                     print(error)
             if 'standalone_fortran' in args:
-                possible_options_full = list(possible_options_full) + ['--prefix=int', '--prefix=proc', '--density=', '--zerowidth_decay=']
+                possible_options_full = list(possible_options_full) + ['--prefix=int', '--prefix=proc', '--density=', '--f2py_per_process=False', '--zerowidth_decay=']
 
             # Directory continuation
             if args[-1].endswith(os.path.sep):
@@ -13216,28 +13217,47 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             originals.append((amp, [record for record in crossed
                                     if not any(record is k for k in kept)],
                               kept))
+        # Each subprocess goes back where the merge_crossing=False generation
+        # lists it (generation_rank, see MultiProcess), crossings between
+        # the bases instead of after all of them. Sorted by number of
+        # diagrams afterwards, as the caller does, the madevent P directories
+        # then come in the --use_crossing=False order, and so get the same
+        # iproc.dat, hence random seeds. Without every rank, the bases keep
+        # their order and the crossings follow.
+        entries = [(amp.get('process'), amp, None, kept)
+                   for amp, _crossed, kept in originals] + \
+                  [(record[0], amp, record, None)
+                   for amp, crossed, _kept in originals for record in crossed]
+        ranks = [getattr(entry[0], 'generation_rank', None)
+                 for entry in entries]
+        if None not in ranks:
+            entries = [entry for _rank, _i, entry in
+                       sorted(zip(ranks, range(len(entries)), entries))]
+
         expanded = diagram_generation.AmplitudeList()
         seen = {}   # fast_proc -> amplitude, for mirror fold
-        for amp, _crossed, kept in originals:
-            amp = copy.copy(amp)
-            if 'crossed_processes' in amp:
-                amp.set('crossed_processes', kept)
-            expanded.append(amp)
-            seen[_fastproc(amp)] = amp
-        for amp, crossed, _kept in originals:
-            for (proc, base_perm, cross_perm) in crossed:
-                xamp = diagram_generation.MultiProcess.\
-                    cross_amplitude(amp, proc, base_perm, cross_perm)
-                xamp.set('crossed_processes', [])
-                fp = _fastproc(xamp)
-                mirror = (fp[1], fp[0]) + fp[2:]
-                if collect_mirror and mirror in seen and \
-                        proc.get_ninitial() == 2:
-                    seen[mirror].set('has_mirror_process', True)
-                    continue
-                xamp.set('has_mirror_process', False)
-                expanded.append(xamp)
-                seen[fp] = xamp
+        for proc, amp, record, kept in entries:
+            if record is None:
+                # a base, with the crossings it still folds
+                amp = copy.copy(amp)
+                if 'crossed_processes' in amp:
+                    amp.set('crossed_processes', kept)
+                expanded.append(amp)
+                seen[_fastproc(amp)] = amp
+                continue
+            _proc, base_perm, cross_perm = record
+            xamp = diagram_generation.MultiProcess.\
+                cross_amplitude(amp, proc, base_perm, cross_perm)
+            xamp.set('crossed_processes', [])
+            fp = _fastproc(xamp)
+            mirror = (fp[1], fp[0]) + fp[2:]
+            if collect_mirror and mirror in seen and \
+                    proc.get_ninitial() == 2:
+                seen[mirror].set('has_mirror_process', True)
+                continue
+            xamp.set('has_mirror_process', False)
+            expanded.append(xamp)
+            seen[fp] = xamp
         return expanded
 
     @staticmethod
@@ -13570,6 +13590,11 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     if self._crossing_needs_expansion(non_dc_amps):
                         non_dc_amps = \
                             self._expand_recorded_crossings(non_dc_amps)
+                        # sorted as self._curr_amps above, which decides the
+                        # P directory order (and iproc.dat)
+                        non_dc_amps.sort(
+                            key=lambda x: x.get_number_of_diagrams(),
+                            reverse=True)
 
                     if not self._output_folds_crossings(decay_chains=True):
                         # Decay chains: the crossing dedup (folding the crossed

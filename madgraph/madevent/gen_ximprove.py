@@ -233,6 +233,14 @@ class gensym(object):
                     all_csym_bad.add(line.split()[2])
                 if 'Amplitude/ZEROAMP:' in line:
                     all_zamp.add(tuple(line.split()[1:3]))
+                # A per-helicity zero amplitude is frame specific: one
+                # diagram can vanish because the beams lie on the z axis
+                # in the survey frame while |M|^2 is Lorentz invariant.
+                # madevent_forhel runs the production auto_dsig, so the
+                # survey frame (partonic CM, or the me_frame boost) is the
+                # one the optim sees later; the optim is not valid for
+                # momenta in any other frame (standalone's hel_warmup
+                # boosts part of its points for that reason).
                 if 'HEL/ZEROAMP:' in line:
                     nb_mat, nb_hel, nb_amp = line.split()[1:4]
                     if (nb_mat, nb_hel) not in all_hel:
@@ -434,17 +442,16 @@ class gensym(object):
                 # sum nothing, but their individual diagrams and JAMPs are not
                 # zero, so letting them into AMP2 (multi-channel) and JAMP2
                 # (colour flow) reweights channel and colour selection -- the
-                # g g > q q~ defect. Gate both on |M|^2 being non-zero, which is
-                # the same test the good-hel filter itself is trained on, so each
-                # caller accumulates over exactly its own good set as the
-                # unrecycled path does.
+                # g g > q q~ defect. A dead config is not always an exact zero:
+                # where diagrams cancel (p p > w+ j) it is left at the rounding
+                # of that cancellation, so AMP2 takes only the configs above
+                # the good-hel cut of the point, the test the filter itself is
+                # trained on, and each caller accumulates over its own good set
+                # as the uncrossed output does (HelicityRecycler.amp2_blocks).
                 # Keyed on the matrix element being shared rather than on the
                 # union having grown: a within-group router's rows already come
                 # with the base's own survey.
-                if shared_me:
-                    recycler.template_dict['dead_row_if'] = \
-                        'IF (TS(%s).NE.0D0) THEN' % recycler.loop_var
-                    recycler.template_dict['dead_row_endif'] = 'ENDIF'
+                recycler.shared_rows = shared_me
                 # In case of bugs you can play around with these:
                 recycler.hel_filt = self.run_card['hel_filtering']
                 recycler.amp_splt = self.run_card['hel_splitamp']
