@@ -16,7 +16,6 @@ mod predicates;
 mod reduction;
 mod stability;
 mod v2_execution;
-mod v2_poles;
 mod v2_reduce;
 mod v2_seeds;
 pub use batch::{Batch, BatchCarrier, Data, shape};
@@ -28,7 +27,6 @@ pub use reduction::{
     DecimalMomentum, PolynomialPlan, RawLane, ReductionBatch, light_mass_needs_invariants,
 };
 pub use v2_execution::{TypedBatch, V2ReductionBackend};
-pub use v2_poles::{UvResidues, uv_residue};
 pub use v2_reduce::{
     FamilyGroup, NATIVE_ONSHELL_THRESHOLD, PoleSelection, Poles, ReduceOptions, ReductionFrame,
     V2Output, V2Reducer, fast_engine_threshold, reaches_fast_threshold, shift_coefficients,

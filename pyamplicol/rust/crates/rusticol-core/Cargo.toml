@@ -32,7 +32,7 @@ brotli = { version = "8.0", optional = true }
 flate2 = { workspace = true, optional = true }
 libloading = { version = "0.9", optional = true }
 libc.workspace = true
-ninjars = { git = "https://github.com/alphal00p/ninjars.git", rev = "9477bbe085fcf46018ef4ad587161c3ee481d0bf", optional = true }
+ninjars = { git = "https://github.com/alphal00p/ninjars.git", rev = "15d1a1870fae0ec37d8e344f3a9c613ca8c71b1e", optional = true }
 # pyAmpliCol's Symbolica library key (the crate named after the package the
 # key is issued for).
 pyamplicol = { path = "../pyamplicol", optional = true }

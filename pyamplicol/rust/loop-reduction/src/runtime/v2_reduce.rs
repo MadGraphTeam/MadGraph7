@@ -84,7 +84,7 @@
 //!
 //! **UV and IR poles (DESIGN.md §12.4).** [`Poles::Split`] appends each
 //! lane's ultraviolet residue, `[finite, 1/ε, 1/ε², 1/ε_UV]`, computed exactly
-//! from the lane's own inputs ([`uv_residue`], also in the check's frame);
+//! from the lane's own inputs (NinjaRS's [`TensorUvResidues`], also in the check's frame);
 //! the combined columns are those of [`Poles::All`] bit for bit, so the
 //! finite part never depends on the selection. NinjaRS 41a4c00 also selects
 //! UV or IR residues at the masters (`ReduceOptions::masters`, oneloopmaster's
@@ -94,9 +94,9 @@
 
 use super::master_cache::{MasterCache, MasterStatistics};
 use super::reduction::{ReductionBatch, Reductions};
-use super::v2_poles::UvResidues;
 use super::*;
 use crate::FourMomentum;
+use ninjars::fast::TensorUvResidues;
 use ninjars::fast::tensor_layout::{block_offset, monomial_index, monomials, ncoeff};
 use ninjars::fast::{
     C64, FastAmplitude, FastInput, FastOptions, FastResult, FastStatus, RMom, TensorNumerator,
@@ -548,12 +548,12 @@ fn reduce_groups<T: Carrier, E: BucketEngine<T>>(
                 * &(0..4).fold(x.one(), |power, _| power * &inverse)
         });
         let width = ncoeff(rank);
-        let residues = (poles == Poles::Split).then(|| UvResidues::new(n, rank));
+        let residues = (poles == Poles::Split).then(|| TensorUvResidues::new(n, rank));
         for (lane, (&(group, row), mut outcome)) in
             members.iter().zip(engine.reduce(&input)?).enumerate()
         {
             if let (Some(residues), true) = (&residues, outcome.value.is_some()) {
-                outcome.uv = Some(residues.residue(
+                outcome.uv = Some(residues.residue_at(
                     &input.shifts[lane * 4 * n..(lane + 1) * 4 * n],
                     &input.masses[lane * n..(lane + 1) * n],
                     &input.coefficients[lane * width..(lane + 1) * width],
