@@ -16,6 +16,9 @@ writes into DIR
   compiled), whose couplings are derived model parameters;
 * ``heft/``: ``g g > h`` of the built-in SM-HEFT (compiled), whose coupling
   G_H is a derived model parameter;
+* ``ufo_w/``: ``u d~ > w+ g``, ``u d~ > w+ h`` and ``u d~ > w+ h g`` of the
+  same UFO model (compiled), whose W mass is a derived model parameter (G_mu
+  scheme);
 * ``reference.json``: the exact integer points and, per built-in process and
   point, the Python exact correlated path (``Runtime.evaluate_correlated_many``,
   arbitrary precision) at ``REFERENCE_DIGITS`` digits, divided by the Python
@@ -173,6 +176,16 @@ def main(root: Path) -> None:
         root / "heft",
         ModelSource.built_in_sm_heft(),
         max_coupling_orders={"QCD": 0, "QED": 0, "HIG": 1},
+    )
+    generate(
+        {
+            "udx_wpg": "u d~ > w+ g",
+            "udx_wph": "u d~ > w+ h",
+            "udx_wphg": "u d~ > w+ h g",
+        },
+        root / "ufo_w",
+        ModelSource.from_path(ufo_root / "sm.json", restriction="no_b_mass"),
+        max_coupling_orders={"QCD": 1, "QED": 2},
     )
     reference = {
         "digits": REFERENCE_DIGITS,

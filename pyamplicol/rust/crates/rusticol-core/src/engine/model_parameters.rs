@@ -226,6 +226,16 @@ impl ExecutionRuntime {
         )
     }
 
+    /// The binary64 mass of particle `pdg` in the runtime that evaluates.
+    pub(super) fn current_particle_mass(&self, pdg: i32) -> RusticolResult<f64> {
+        if let Some(sum_runtime) = self.helicity_sum_runtime.as_deref() {
+            return sum_runtime.current_particle_mass(pdg);
+        }
+        self.particle_masses.get(&pdg).copied().ok_or_else(|| {
+            RusticolError::invalid_argument(format!("particle {pdg} has no mass in this runtime"))
+        })
+    }
+
     fn particle_mass_parameters_for(&self, values: &[f64]) -> BTreeMap<i32, f64> {
         let mut particle_masses = self.particle_masses.clone();
         for (pdg, slot) in self.particle_mass_slots() {
@@ -678,6 +688,64 @@ impl ExecutionRuntime {
             }
         }
         Ok((values, masses))
+    }
+
+    /// The (real, imaginary) value of one logical model parameter in the
+    /// generic paths at `binary_precision` (`None`: double-double), taken
+    /// from [`Self::generic_model_parameters`] of the runtime that evaluates.
+    pub(super) fn generic_model_parameter_value<T>(
+        &self,
+        name: &str,
+        binary_precision: Option<u32>,
+    ) -> RusticolResult<(T, T)>
+    where
+        T: RusticolHighPrecisionNumber,
+        Complex<T>: Real + EvaluationDomain,
+    {
+        if let Some(sum_runtime) = self.helicity_sum_runtime.as_deref() {
+            return sum_runtime.generic_model_parameter_value(name, binary_precision);
+        }
+        let (values, _) = self.generic_model_parameters::<T>(binary_precision)?;
+        let mut real = None;
+        let mut imaginary = T::from_f64_constant(0.0, binary_precision);
+        for parameter in &self.model_parameters {
+            if parameter.runtime_name.as_deref().unwrap_or(&parameter.name) != name {
+                continue;
+            }
+            let value = values
+                .get(parameter.parameter_index)
+                .cloned()
+                .ok_or_else(|| RusticolError::integrity("model-parameter value slot is absent"))?;
+            match parameter.complex_component.as_deref() {
+                Some("imag") => imaginary = value,
+                Some("real") | None => real = Some(value),
+                Some(_) => return Err(RusticolError::integrity("invalid parameter component")),
+            }
+        }
+        real.map(|value| (value, imaginary)).ok_or_else(|| {
+            RusticolError::model_parameter(format!("model parameter {name:?} has no runtime value"))
+        })
+    }
+
+    /// The mass of particle `pdg` that the generic paths give its external
+    /// wavefunctions at `binary_precision` (`None`: double-double), from
+    /// [`Self::generic_model_parameters`] of the runtime that evaluates.
+    pub(super) fn generic_particle_mass<T>(
+        &self,
+        pdg: i32,
+        binary_precision: Option<u32>,
+    ) -> RusticolResult<T>
+    where
+        T: RusticolHighPrecisionNumber,
+        Complex<T>: Real + EvaluationDomain,
+    {
+        if let Some(sum_runtime) = self.helicity_sum_runtime.as_deref() {
+            return sum_runtime.generic_particle_mass(pdg, binary_precision);
+        }
+        let (_, mut masses) = self.generic_model_parameters::<T>(binary_precision)?;
+        masses.remove(&pdg).ok_or_else(|| {
+            RusticolError::invalid_argument(format!("particle {pdg} has no mass in this runtime"))
+        })
     }
 }
 

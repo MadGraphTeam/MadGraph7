@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: 0BSD
 //! Double-double and arbitrary-precision correlated Born quantities
-//! (`NativeRuntime::evaluate_correlated_many_with_precision`), and trees whose
-//! couplings are derived model parameters (`evaluate_with_precision`).
+//! (`NativeRuntime::evaluate_correlated_many_with_precision`), trees whose
+//! couplings are derived model parameters (`evaluate_with_precision`), and
+//! model parameters and particle masses at a given precision
+//! (`model_parameter_value_with_precision`, `particle_mass_with_precision`).
 //!
 //! The fixture holds built-in SM artifacts with every dipole and gluon spin
-//! class declared, UFO SM and built-in SM-HEFT artifacts, exact integer
-//! massless points and the Python exact correlated path's values at those
-//! points. Build it with
+//! class declared, UFO SM artifacts (one set with a W) and built-in SM-HEFT
+//! artifacts, exact integer massless points and the Python exact correlated
+//! path's values at those points. Build it with
 //! `PYTHONPATH=src python rust/crates/rusticol-core/tests/fixtures/correlated_precision.py DIR`
 //! and set `RUSTICOL_CORRELATED_PRECISION_FIXTURE=DIR`.
 //!
@@ -485,4 +487,204 @@ fn heft_tree_with_a_derived_coupling_matches_the_analytic_result_at_256_bits() {
         }
     }
     assert!(failures.is_empty(), "HEFT g g > H deviates: {failures:?}");
+}
+
+/// The G_mu-scheme W mass of the UFO `sm` from the runtime's binary64 inputs,
+/// at the test's working precision:
+/// m_W^2 = m_Z^2 / 2 + sqrt(m_Z^4 / 4 - pi m_Z^2 / (sqrt(2) G_F aEWM1)).
+fn gmu_w_mass(runtime: &NativeRuntime) -> Float {
+    let parameter =
+        |name: &str| Float::with_val(BITS, runtime.model_parameter_value(name).unwrap().0);
+    let (gf, mz, aewm1) = (parameter("Gf"), parameter("MZ"), parameter("aEWM1"));
+    let mz2 = mz.clone() * &mz;
+    ((mz2.clone() * &mz2 / &int(4) - int(1).pi() * &mz2 / (int(2).sqrt() * &gf * &aewm1)).sqrt()
+        + mz2 / &int(2))
+        .sqrt()
+}
+
+/// `model_parameter_value_with_precision`: binary64 at 16 digits, external
+/// parameters promoted exactly, derived ones (here M_W) at the working
+/// precision; the real and imaginary parts of an unknown name are refused.
+#[test]
+fn model_parameters_at_the_working_precision() {
+    let Some(root) = fixture() else {
+        return;
+    };
+    let mut runtime = NativeRuntime::load(root.join("ufo_w"), Some("udx_wpg"), None).unwrap();
+    let exact = gmu_w_mass(&runtime);
+    let (binary64, _) = runtime.model_parameter_value("MW").unwrap();
+    let (sixteen, imaginary) = runtime
+        .model_parameter_value_with_precision("MW", 16)
+        .unwrap();
+    assert_eq!(sixteen.parse::<f64>().unwrap(), binary64);
+    assert_eq!(float(&imaginary), int(0));
+    let mut failures = Vec::new();
+    for (digits, tolerance) in [(DOUBLE_DOUBLE, 1e-31), (BITS_200, 1e-60), (BITS_256, 1e-77)] {
+        let (value, _) = runtime
+            .model_parameter_value_with_precision("MW", digits)
+            .unwrap();
+        let deviation = abs(&(float(&value) / &exact - int(1)));
+        println!("M_W at {digits} digits: relative deviation {deviation:.2e}");
+        if deviation > tolerance {
+            failures.push(format!("{digits} digits: {deviation:e}"));
+        }
+    }
+    let binary64_deviation = abs(&(Float::with_val(BITS, binary64) / &exact - int(1)));
+    println!("M_W in binary64: relative deviation {binary64_deviation:.2e}");
+    // An external parameter is its binary64 value, promoted exactly.
+    let (mz, _) = runtime.model_parameter_value("MZ").unwrap();
+    let (mz_digits, _) = runtime
+        .model_parameter_value_with_precision("MZ", BITS_256)
+        .unwrap();
+    assert_eq!(float(&mz_digits), Float::with_val(BITS, mz));
+    assert!(
+        runtime
+            .model_parameter_value_with_precision("NOT_A_PARAMETER", BITS_256)
+            .is_err()
+    );
+    assert!(failures.is_empty(), "M_W deviates: {failures:?}");
+}
+
+/// A massive or massless momentum of mass `mass` and three-momentum `size n`
+/// (n a unit vector).
+fn on_shell(mass: &Float, size: &Float, n: &[Float; 3]) -> [Float; 4] {
+    [
+        (size.clone() * size + mass.clone() * mass).sqrt(),
+        size.clone() * &n[0],
+        size.clone() * &n[1],
+        size.clone() * &n[2],
+    ]
+}
+
+/// The two-body momentum in the rest frame of a system of mass `root_s`.
+fn two_body_momentum(root_s: &Float, m1: &Float, m2: &Float) -> Float {
+    let s = root_s.clone() * root_s;
+    let (a, b) = (m1.clone() * m1, m2.clone() * m2);
+    let kallen = s.clone() * &s + a.clone() * &a + b.clone() * &b
+        - int(2) * (s.clone() * &a + s.clone() * &b + a.clone() * &b);
+    kallen.sqrt() / (int(2) * root_s)
+}
+
+/// The boost taking a system at rest to the momentum `total` (mass `mass`).
+fn boost(total: &[Float; 4], mass: &Float, p: &[Float; 4]) -> [Float; 4] {
+    let gamma = total[0].clone() / mass;
+    let beta: Vec<Float> = (1..4).map(|i| total[i].clone() / &total[0]).collect();
+    let beta_p = (0..3).fold(int(0), |sum, i| sum + beta[i].clone() * &p[i + 1]);
+    let beta2 = (0..3).fold(int(0), |sum, i| sum + beta[i].clone() * &beta[i]);
+    let factor = if beta2 == int(0) {
+        int(0)
+    } else {
+        (gamma.clone() - int(1)) * &beta_p / &beta2
+    };
+    let mut out = [
+        gamma.clone() * (p[0].clone() + beta_p.clone()),
+        int(0),
+        int(0),
+        int(0),
+    ];
+    for i in 0..3 {
+        out[i + 1] =
+            p[i + 1].clone() + factor.clone() * &beta[i] + gamma.clone() * &beta[i] * &p[0];
+    }
+    out
+}
+
+/// A centre-of-mass point (sqrt(s) = 500) of u d~ > w+ [h] [g] with the W of
+/// mass `mw`, the H of mass `mh`, and its boost along z with beta = 3/5.
+fn w_points(outgoing: &[&str], mw: &Float, mh: &Float) -> [Vec<[Float; 4]>; 2] {
+    let root_s = int(500);
+    let half = int(250);
+    let zero = int(0);
+    let n1 = [int(3) / &int(13), int(4) / &int(13), int(12) / &int(13)];
+    let n2 = [int(2) / &int(7), int(-3) / &int(7), int(6) / &int(7)];
+    let negate = |n: &[Float; 3]| [-n[0].clone(), -n[1].clone(), -n[2].clone()];
+    let masses: Vec<Float> = outgoing
+        .iter()
+        .map(|name| match *name {
+            "w+" => mw.clone(),
+            "h" => mh.clone(),
+            _ => zero.clone(),
+        })
+        .collect();
+    let rest: Vec<[Float; 4]> = if outgoing.len() == 2 {
+        let p = two_body_momentum(&root_s, &masses[0], &masses[1]);
+        vec![
+            on_shell(&masses[0], &p, &negate(&n1)),
+            on_shell(&masses[1], &p, &n1),
+        ]
+    } else {
+        // The gluon recoils against a system X of mass 300 that decays to W H.
+        let mx = int(300);
+        let p = two_body_momentum(&root_s, &mx, &zero);
+        let total = on_shell(&mx, &p, &negate(&n1));
+        let q = two_body_momentum(&mx, &masses[0], &masses[1]);
+        vec![
+            boost(&total, &mx, &on_shell(&masses[0], &q, &n2)),
+            boost(&total, &mx, &on_shell(&masses[1], &q, &negate(&n2))),
+            on_shell(&zero, &p, &n1),
+        ]
+    };
+    let mut point = vec![
+        [half.clone(), zero.clone(), zero.clone(), half.clone()],
+        [half.clone(), zero.clone(), zero.clone(), -half.clone()],
+    ];
+    point.extend(rest);
+    let (gamma, beta_gamma) = (int(5) / &int(4), int(3) / &int(4));
+    let boosted = point
+        .iter()
+        .map(|[e, x, y, z]| {
+            [
+                gamma.clone() * e + beta_gamma.clone() * z,
+                x.clone(),
+                y.clone(),
+                gamma.clone() * z + beta_gamma.clone() * e,
+            ]
+        })
+        .collect();
+    [point, boosted]
+}
+
+/// u d~ > w+ g, u d~ > w+ h and u d~ > w+ h g at a centre-of-mass point and
+/// boosted along z, with the W and the H on the mass shells of
+/// `particle_mass_with_precision`: every tree is Lorentz invariant at 200
+/// bits. (The 16-digit mass is the binary64 one.)
+#[test]
+fn particles_on_the_working_precision_mass_shell_are_lorentz_invariant() {
+    let Some(root) = fixture() else {
+        return;
+    };
+    let mut failures = Vec::new();
+    for (process, outgoing) in [
+        ("udx_wpg", &["w+", "g"][..]),
+        ("udx_wph", &["w+", "h"][..]),
+        ("udx_wphg", &["w+", "h", "g"][..]),
+    ] {
+        let mut runtime = NativeRuntime::load(root.join("ufo_w"), Some(process), None).unwrap();
+        let binary64 = runtime.particle_mass_with_precision(24, 16).unwrap();
+        assert_eq!(
+            binary64.parse::<f64>().unwrap(),
+            runtime.model_parameter_value("MW").unwrap().0
+        );
+        let mw = float(&runtime.particle_mass_with_precision(24, BITS_200).unwrap());
+        let mh = if outgoing.contains(&"h") {
+            float(&runtime.particle_mass_with_precision(25, BITS_200).unwrap())
+        } else {
+            int(0)
+        };
+        let flat: Vec<String> = w_points(outgoing, &mw, &mh)
+            .iter()
+            .flatten()
+            .flat_map(|leg| leg.iter().map(|component| format!("{component:.120e}")))
+            .collect();
+        let values = runtime
+            .evaluate_with_precision(&flat, 2, BITS_200)
+            .unwrap()
+            .values;
+        let asymmetry = abs(&(float(&values[1]) / &float(&values[0]) - int(1)));
+        println!("{process}: boost asymmetry {asymmetry:.2e}");
+        if asymmetry > 1e-55 {
+            failures.push(format!("{process}: {asymmetry:e}"));
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
 }
