@@ -12,7 +12,7 @@ and they tend to those at the soft counter-event as xi goes to zero.
 
 import numpy as np
 import pytest
-from fks_testing import FKS_DATA, FKS_DATA_IDS, evaluate, reference
+from fks_testing import FKS_DATA, FKS_DATA_IDS, configuration, evaluate, reference
 from fks_testing import reference_born_mapping as born_mapping
 
 import madspace as ms
@@ -176,12 +176,20 @@ def test_soft_limit(name):
 
 
 def test_invalid_configurations():
+    pdgs = [2, -2, 11, -11, 21]
+    colors = [3, -3, 1, 1, 8]
     pairs = [[], [], [], [], [0, 1]]
-    masses = [0.0] * 5
     with pytest.raises(ValueError, match="FKS pair"):
         # j = 2 is not a partner of i = 4
-        ms.FKSEikonals([4], [2], [pairs], [masses])
+        ms.FKSEikonals([configuration(4, 2, pdgs, colors, fks_j_from_i=pairs)])
     with pytest.raises(ValueError, match="final-state"):
-        ms.FKSEikonals([1], [0], [pairs], [masses])
+        ms.FKSEikonals([configuration(1, 0, pdgs, colors, fks_j_from_i=pairs)])
     with pytest.raises(ValueError, match="number of particles"):
-        ms.FKSEikonals([4, 4], [0, 1], [pairs, pairs + [[]]], [masses, masses + [0]])
+        ms.FKSEikonals(
+            [
+                configuration(4, 0, pdgs, colors, fks_j_from_i=pairs),
+                configuration(
+                    4, 1, pdgs + [22], colors + [1], fks_j_from_i=pairs + [[]]
+                ),
+            ]
+        )

@@ -15,13 +15,16 @@ import os
 
 import numpy as np
 import pytest
+import torch
 
 import madspace as ms
 from madspace.fks import (
     born_of_real,
     fks_configuration_mapping,
+    fks_configurations,
     fks_mappings,
     read_fks_configurations,
+    real_masses,
 )
 
 DATA = sorted(
@@ -125,3 +128,96 @@ def test_rejects_another_born():
     # a decay
     with pytest.raises(ValueError):
         fks_mappings(born, dict(configurations, nincoming=1))
+
+
+@pytest.mark.parametrize("path", DATA, ids=[os.path.basename(p)[:-5] for p in DATA])
+def test_fks_configurations_of_the_exporter(path):
+    """The FKSConfigurations that the classes of the FKS subtraction take hold
+    the metadata of the exporter with 0-based positions, and the masses of the
+    Born mapping with a massless i."""
+    data = reference(path)
+    born = born_mapping(data)
+    exported = data["fks_configurations"]["configurations"]
+    configurations = fks_configurations(born, data["fks_configurations"])
+    assert len(configurations) == len(exported)
+    for config, exp in zip(configurations, exported):
+        assert (config.i_fks, config.j_fks) == (exp["i_fks"] - 1, exp["j_fks"] - 1)
+        assert config.pdgs == exp["real_pdgs"]
+        assert config.colors == exp["real_colors"]
+        assert config.charges == exp["real_charges"]
+        assert config.fks_j_from_i == [
+            [j - 1 for j in js] for js in exp["fks_j_from_i"]
+        ]
+        assert config.masses == real_masses(born.external_masses(), exp)
+        assert config.particle_count() == len(exp["real_pdgs"])
+        assert config.initial_state() == (exp["j_fks"] <= 2)
+        born_j = config.born_j_fks()
+        assert born_j == (
+            config.j_fks if config.j_fks < config.i_fks else config.j_fks - 1
+        )
+        assert data["fks_configurations"]["born_pdgs"][born_j] == exp["ij_pdg"]
+
+
+def test_configuration_mapping_from_configurations():
+    """FKSConfigurationMapping from FKSConfigurations is the one from their
+    (i_fks, j_fks), and checks that they have the masses of the Born
+    mapping."""
+    data = reference(
+        next(p for p in DATA if os.path.basename(p).startswith("pp_ttx_P0_gg"))
+    )
+    born = born_mapping(data)
+    configurations = fks_configurations(born, data["fks_configurations"])
+    pairs = [(c.i_fks, c.j_fks) for c in configurations]
+    from_configurations = ms.FKSConfigurationMapping(born, configurations)
+    assert from_configurations.configurations() == pairs
+    from_pairs = ms.FKSConfigurationMapping(born, pairs)
+    rng = np.random.default_rng(5)
+    batch = 200
+    r = 0.05 + 0.9 * rng.random((batch, from_pairs.random_dim()))
+    index = rng.integers(0, len(pairs), batch).astype(np.int32)
+    args = [torch.as_tensor(r).to(torch.get_default_device())]
+    conditions = [
+        torch.as_tensor(index, dtype=torch.int32).to(torch.get_default_device())
+    ]
+    for ours, theirs in zip(
+        from_configurations.map_forward(args, conditions),
+        from_pairs.map_forward(args, conditions),
+    ):
+        np.testing.assert_array_equal(
+            torch.as_tensor(ours).cpu().numpy(), torch.as_tensor(theirs).cpu().numpy()
+        )
+    # a top mass that is not the one of the Born mapping
+    wrong = configurations[0]
+    wrong.masses = [m + 1.0 if m > 0 else m for m in wrong.masses]
+    with pytest.raises(ValueError, match="masses"):
+        ms.FKSConfigurationMapping(born, [wrong])
+
+
+def test_checks_of_the_configurations():
+    pdgs = [2, -2, 11, -11, 21]
+    colors = [3, -3, 1, 1, 8]
+
+    def config(**changes):
+        fields = dict(
+            i_fks=4,
+            j_fks=0,
+            pdgs=pdgs,
+            colors=colors,
+            charges=[0.0] * 5,
+            masses=[0.0] * 5,
+            fks_j_from_i=[[], [], [], [], [0, 1]],
+        )
+        fields.update(changes)
+        return ms.FKSConfiguration(**fields)
+
+    assert ms.FKSEikonals([config()]).configuration_count() == 1
+    with pytest.raises(ValueError, match="at least one"):
+        ms.FKSEikonals([])
+    with pytest.raises(ValueError, match="massless"):
+        ms.FKSEikonals([config(masses=[0.0] * 4 + [1.0])])
+    with pytest.raises(ValueError, match="one entry per particle"):
+        ms.FKSEikonals([config(charges=[0.0] * 4)])
+    with pytest.raises(ValueError, match="out of range"):
+        ms.FKSEikonals([config(fks_j_from_i=[[], [], [], [], [0, 5]])])
+    with pytest.raises(ValueError, match="FKS pairs"):
+        ms.FKSEikonals([config(j_fks=2)])

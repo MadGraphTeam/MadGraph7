@@ -25,11 +25,13 @@ configuration, or into one FKSConfigurationMapping for all of them, with the
 emitter is massive where it gives it a mass. With the cuts on the Born-level
 objects, the configurations get the lower bound on the partonic energy that
 the cuts imply (see fks_sqrt_s_hat_min): a floor of the Born mapping for a
-final-state emitter, s_hat_min for an incoming one. fks_sector_function gives
-the sector functions S_ij of the configurations, from the FKS pairs of their
-real processes, fks_eikonals the eikonal factors of their soft limits and
-fks_splitting_kernels the factors of their collinear limits and fks_prefactors
-the prefactors of the real emission and its counterterms.
+final-state emitter, s_hat_min for an incoming one.
+
+fks_configurations gives the FKSConfigurations that the classes of the FKS
+subtraction take. With them, fks_sector_function builds the sector functions
+S_ij of the configurations, fks_eikonals the eikonal factors of their soft
+limits, fks_splitting_kernels the factors of their collinear limits and
+fks_prefactors the prefactors of the real emission and its counterterms.
 """
 
 import json
@@ -38,6 +40,7 @@ import os
 from ._madspace_py import (
     CutItem,
     Cuts,
+    FKSConfiguration,
     FKSConfigurationMapping,
     FKSEikonals,
     FKSMapping,
@@ -205,24 +208,23 @@ def real_masses(born_masses, configuration):
     return masses[:i_fks] + [0.0] + masses[i_fks:]
 
 
-def configuration_tables(born, configurations):
-    """i_fks, j_fks, fks_j_from_i (0-based), colors, charges, PDG codes and
-    masses of the real processes of the configurations of a Born, in their
-    order."""
+def fks_configurations(born, configurations):
+    """The FKSConfigurations of the FKS configurations of a Born, in their
+    order (that of fks_index), with the masses of the Born mapping.
+
+    Args:
+        born: the PhaseSpaceMapping of the Born process, for its masses, its
+            momenta in the order of born_pdgs.
+        configurations: the content of fks_configurations.json (see
+            read_fks_configurations).
+
+    Raises:
+        ValueError: as fks_mappings, and for a configuration of a real process
+            without FKS pairs (a finite one).
+    """
     born_pdgs = list(configurations["born_pdgs"])
     born_masses = list(born.external_masses())
-    tables = {
-        key: []
-        for key in (
-            "i_fks",
-            "j_fks",
-            "fks_j_from_i",
-            "colors",
-            "charges",
-            "pdgs",
-            "masses",
-        )
-    }
+    result = []
     for configuration in checked_configurations(
         born_pdgs, born.particle_count(), configurations
     ):
@@ -231,20 +233,24 @@ def configuration_tables(born, configurations):
             raise ValueError(
                 f"the real process {configuration['real_pdgs']} has no FKS pairs"
             )
-        tables["i_fks"].append(configuration["i_fks"] - 1)
-        tables["j_fks"].append(configuration["j_fks"] - 1)
-        tables["fks_j_from_i"].append([[j - 1 for j in js] for js in pairs])
-        tables["colors"].append(list(configuration["real_colors"]))
-        tables["charges"].append(list(configuration["real_charges"]))
-        tables["pdgs"].append(list(configuration["real_pdgs"]))
-        tables["masses"].append(real_masses(born_masses, configuration))
-    return tables
+        result.append(
+            FKSConfiguration(
+                i_fks=configuration["i_fks"] - 1,
+                j_fks=configuration["j_fks"] - 1,
+                pdgs=list(configuration["real_pdgs"]),
+                colors=list(configuration["real_colors"]),
+                charges=list(configuration["real_charges"]),
+                masses=real_masses(born_masses, configuration),
+                fks_j_from_i=[[j - 1 for j in js] for js in pairs],
+            )
+        )
+    return result
 
 
 def fks_sector_function(born, configurations, **options):
     """The FKSSectorFunction of the FKS configurations of a Born, with
-    fks_index the position of the configuration (nFKSprocess - 1) where there
-    are several, as FKSConfigurationMapping.
+    fks_index the position of the configuration (nFKSprocess - 1), as
+    FKSConfigurationMapping.
 
     Args:
         born: the PhaseSpaceMapping of the Born process, for its masses, its
@@ -255,55 +261,29 @@ def fks_sector_function(born, configurations, **options):
             use_beta, h_damp_one, h_damp_power), see FKSSectorFunction.
 
     Raises:
-        ValueError: as fks_mappings, and for a configuration of a real process
-            without FKS pairs (a finite one).
+        ValueError: as fks_configurations.
     """
-    tables = configuration_tables(born, configurations)
-    return FKSSectorFunction(
-        *(
-            tables[key]
-            for key in ("i_fks", "j_fks", "fks_j_from_i", "colors", "pdgs", "masses")
-        ),
-        **options,
-    )
+    return FKSSectorFunction(fks_configurations(born, configurations), **options)
 
 
 def fks_eikonals(born, configurations):
     """The FKSEikonals of the FKS configurations of a Born, with fks_index as
     for fks_sector_function.
 
-    Args:
-        born: the PhaseSpaceMapping of the Born process, for its masses, its
-            momenta in the order of born_pdgs.
-        configurations: the content of fks_configurations.json (see
-            read_fks_configurations).
-
     Raises:
-        ValueError: as fks_sector_function.
+        ValueError: as fks_configurations.
     """
-    tables = configuration_tables(born, configurations)
-    return FKSEikonals(
-        tables["i_fks"], tables["j_fks"], tables["fks_j_from_i"], tables["masses"]
-    )
+    return FKSEikonals(fks_configurations(born, configurations))
 
 
 def fks_splitting_kernels(born, configurations):
     """The FKSSplittingKernels of the FKS configurations of a Born, with
     fks_index as for fks_sector_function.
 
-    Args:
-        born: the PhaseSpaceMapping of the Born process, for its masses, its
-            momenta in the order of born_pdgs.
-        configurations: the content of fks_configurations.json (see
-            read_fks_configurations).
-
     Raises:
-        ValueError: as fks_sector_function.
+        ValueError: as fks_configurations.
     """
-    tables = configuration_tables(born, configurations)
-    return FKSSplittingKernels(
-        tables["i_fks"], tables["j_fks"], tables["colors"], tables["charges"]
-    )
+    return FKSSplittingKernels(fks_configurations(born, configurations))
 
 
 def fks_prefactors(born, configurations, **parameters):
@@ -319,7 +299,6 @@ def fks_prefactors(born, configurations, **parameters):
             (xicut, xi_s_cut, delta_o, delta_i, delta_s), see FKSPrefactors.
 
     Raises:
-        ValueError: as fks_sector_function.
+        ValueError: as fks_configurations.
     """
-    tables = configuration_tables(born, configurations)
-    return FKSPrefactors(tables["j_fks"], tables["masses"], **parameters)
+    return FKSPrefactors(fks_configurations(born, configurations), **parameters)

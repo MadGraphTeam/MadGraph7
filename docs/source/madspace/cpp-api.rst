@@ -90,6 +90,7 @@ Supporting types shared by the mappings: topologies, cuts, observables and densi
    cpp/AlphaSGrid
    cpp/CustomPdf
    cpp/Diagram
+   cpp/FKSConfiguration
    cpp/PdfGrid
    cpp/Propagator
    cpp/Topology

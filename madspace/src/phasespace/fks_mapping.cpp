@@ -463,6 +463,49 @@ struct FKSConfigurationMapping::Context {
     Value beam_sign;
 };
 
+namespace {
+
+// (i_fks, j_fks) of FKS configurations, whose real processes without i have
+// the masses of the Born mapping
+std::vector<FKSConfigurationMapping::Configuration> configuration_pairs(
+    const PhaseSpaceMapping& born, const std::vector<FKSConfiguration>& configurations
+) {
+    std::size_t n = check_fks_configurations(configurations, "FKSConfigurationMapping");
+    if (n != born.particle_count() + 1) {
+        throw std::invalid_argument(
+            "FKSConfigurationMapping: the real processes must have one particle "
+            "more than the Born mapping"
+        );
+    }
+    auto born_masses = born.external_masses();
+    std::vector<FKSConfigurationMapping::Configuration> pairs;
+    for (const auto& config : configurations) {
+        for (std::size_t k = 0; k < n; ++k) {
+            if (k != config.i_fks &&
+                config.masses.at(k) != born_masses.at(k < config.i_fks ? k : k - 1)) {
+                throw std::invalid_argument(
+                    "FKSConfigurationMapping: the masses of a configuration "
+                    "differ from those of the Born mapping"
+                );
+            }
+        }
+        pairs.push_back({config.i_fks, config.j_fks});
+    }
+    return pairs;
+}
+
+} // namespace
+
+FKSConfigurationMapping::FKSConfigurationMapping(
+    const PhaseSpaceMapping& born,
+    const std::vector<FKSConfiguration>& configurations,
+    double s_hat_min,
+    double sqrt_s_hat_floor
+) :
+    FKSConfigurationMapping(
+        born, configuration_pairs(born, configurations), s_hat_min, sqrt_s_hat_floor
+    ) {}
+
 FKSConfigurationMapping::FKSConfigurationMapping(
     const PhaseSpaceMapping& born,
     const std::vector<Configuration>& configurations,

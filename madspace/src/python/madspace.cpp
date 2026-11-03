@@ -1013,6 +1013,69 @@ PYBIND11_MODULE(_madspace_py, m) {
             "bin_count", &VegasMapping::bin_count, pydoc::doc("VegasMapping::bin_count")
         );
 
+    // Registered before the classes that take it, for their signatures.
+    py::classh<FKSConfiguration>(m, "FKSConfiguration", pydoc::doc("FKSConfiguration"))
+        .def(
+            py::init([](std::size_t i_fks,
+                        std::size_t j_fks,
+                        const std::vector<int>& pdgs,
+                        const std::vector<int>& colors,
+                        const std::vector<double>& charges,
+                        const std::vector<double>& masses,
+                        const nested_vector2<std::size_t>& fks_j_from_i) {
+                return FKSConfiguration{
+                    i_fks, j_fks, pdgs, colors, charges, masses, fks_j_from_i
+                };
+            }),
+            py::arg("i_fks"),
+            py::arg("j_fks"),
+            py::arg("pdgs"),
+            py::arg("colors"),
+            py::arg("charges"),
+            py::arg("masses"),
+            py::arg("fks_j_from_i")
+        )
+        .def_readwrite(
+            "i_fks", &FKSConfiguration::i_fks, pydoc::doc("FKSConfiguration::i_fks")
+        )
+        .def_readwrite(
+            "j_fks", &FKSConfiguration::j_fks, pydoc::doc("FKSConfiguration::j_fks")
+        )
+        .def_readwrite(
+            "pdgs", &FKSConfiguration::pdgs, pydoc::doc("FKSConfiguration::pdgs")
+        )
+        .def_readwrite(
+            "colors", &FKSConfiguration::colors, pydoc::doc("FKSConfiguration::colors")
+        )
+        .def_readwrite(
+            "charges",
+            &FKSConfiguration::charges,
+            pydoc::doc("FKSConfiguration::charges")
+        )
+        .def_readwrite(
+            "masses", &FKSConfiguration::masses, pydoc::doc("FKSConfiguration::masses")
+        )
+        .def_readwrite(
+            "fks_j_from_i",
+            &FKSConfiguration::fks_j_from_i,
+            pydoc::doc("FKSConfiguration::fks_j_from_i")
+        )
+        .def(
+            "particle_count",
+            &FKSConfiguration::particle_count,
+            pydoc::doc("FKSConfiguration::particle_count")
+        )
+        .def(
+            "initial_state",
+            &FKSConfiguration::initial_state,
+            pydoc::doc("FKSConfiguration::initial_state")
+        )
+        .def(
+            "born_j_fks",
+            &FKSConfiguration::born_j_fks,
+            pydoc::doc("FKSConfiguration::born_j_fks")
+        );
+
     py::classh<FKSRadiation, Mapping>(m, "FKSRadiation", pydoc::doc("FKSRadiation"))
         .def(
             py::init<std::size_t, std::size_t, std::size_t, bool, double, double>(),
@@ -1666,6 +1729,17 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("FKSConfigurationMapping::FKSConfigurationMapping")
         )
         .def(
+            py::init<
+                const PhaseSpaceMapping&,
+                const std::vector<FKSConfiguration>&,
+                double,
+                double>(),
+            py::arg("born"),
+            py::arg("configurations"),
+            py::arg("s_hat_min") = 0.,
+            py::arg("sqrt_s_hat_floor") = 0.
+        )
+        .def(
             "born",
             &FKSConfigurationMapping::born,
             pydoc::doc("FKSConfigurationMapping::born")
@@ -1730,15 +1804,8 @@ PYBIND11_MODULE(_madspace_py, m) {
         m, "FKSEikonals", pydoc::doc("FKSEikonals")
     )
         .def(
-            py::init<
-                const std::vector<std::size_t>&,
-                const std::vector<std::size_t>&,
-                const nested_vector3<std::size_t>&,
-                const nested_vector2<double>&>(),
-            py::arg("i_fks"),
-            py::arg("j_fks"),
-            py::arg("fks_j_from_i"),
-            py::arg("masses"),
+            py::init<const std::vector<FKSConfiguration>&>(),
+            py::arg("configurations"),
             pydoc::doc("FKSEikonals::FKSEikonals")
         )
         .def(
@@ -1773,15 +1840,8 @@ PYBIND11_MODULE(_madspace_py, m) {
         m, "FKSSplittingKernels", pydoc::doc("FKSSplittingKernels")
     )
         .def(
-            py::init<
-                const std::vector<std::size_t>&,
-                const std::vector<std::size_t>&,
-                const nested_vector2<int>&,
-                const nested_vector2<double>&>(),
-            py::arg("i_fks"),
-            py::arg("j_fks"),
-            py::arg("colors"),
-            py::arg("charges"),
+            py::init<const std::vector<FKSConfiguration>&>(),
+            py::arg("configurations"),
             pydoc::doc("FKSSplittingKernels::FKSSplittingKernels")
         )
         .def(
@@ -1812,15 +1872,13 @@ PYBIND11_MODULE(_madspace_py, m) {
     )
         .def(
             py::init<
-                const std::vector<std::size_t>&,
-                const nested_vector2<double>&,
+                const std::vector<FKSConfiguration>&,
                 double,
                 double,
                 double,
                 double,
                 double>(),
-            py::arg("j_fks"),
-            py::arg("masses"),
+            py::arg("configurations"),
             py::arg("xicut") = 0.5,
             py::arg("xi_s_cut") = 0.5,
             py::arg("delta_o") = 1.,
@@ -1844,24 +1902,14 @@ PYBIND11_MODULE(_madspace_py, m) {
     )
         .def(
             py::init<
-                const std::vector<std::size_t>&,
-                const std::vector<std::size_t>&,
-                const nested_vector3<std::size_t>&,
-                const nested_vector2<int>&,
-                const nested_vector2<int>&,
-                const nested_vector2<double>&,
+                const std::vector<FKSConfiguration>&,
                 double,
                 double,
                 bool,
                 bool,
                 double,
                 double>(),
-            py::arg("i_fks"),
-            py::arg("j_fks"),
-            py::arg("fks_j_from_i"),
-            py::arg("colors"),
-            py::arg("pdgs"),
-            py::arg("masses"),
+            py::arg("configurations"),
             py::arg("fks_a") = 1.5,
             py::arg("fks_b") = 1.5,
             py::arg("use_energy") = true,

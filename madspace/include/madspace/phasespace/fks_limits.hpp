@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "madspace/phasespace/base.hpp"
+#include "madspace/phasespace/fks_configuration.hpp"
 #include "madspace/util.hpp"
 
 namespace madspace {
@@ -60,22 +61,10 @@ namespace madspace {
 class FKSEikonals : public FunctionGenerator {
 public:
     /**
-     * @param i_fks         Position of i in the real process of each
-     *                      configuration, 0-based.
-     * @param j_fks         Position of j in the real process of each
-     *                      configuration, 0-based.
-     * @param fks_j_from_i  For each configuration and each particle i of its
-     *                      real process, the particles j it forms an FKS
-     *                      pair with, 0-based (FKS_J_FROM_I_D).
-     * @param masses        Masses of the particles of the real process of each
-     *                      configuration.
+     * @param configurations  The FKS configurations, in the order of
+     *                        `fks_index` (their FKS pairs and masses).
      */
-    FKSEikonals(
-        const std::vector<std::size_t>& i_fks,
-        const std::vector<std::size_t>& j_fks,
-        const nested_vector3<std::size_t>& fks_j_from_i,
-        const nested_vector2<double>& masses
-    );
+    explicit FKSEikonals(const std::vector<FKSConfiguration>& configurations);
     /// Number of configurations.
     std::size_t configuration_count() const { return _i_fks.size(); }
     /// Number of particles of the real processes, incoming included.
@@ -164,21 +153,10 @@ private:
 class FKSSplittingKernels : public FunctionGenerator {
 public:
     /**
-     * @param i_fks    Position of i in the real process of each
-     *                 configuration, 0-based.
-     * @param j_fks    Position of j in the real process of each
-     *                 configuration, 0-based.
-     * @param colors   Color representation of each particle of the real
-     *                 process of each configuration (1, 3, -3, 8).
-     * @param charges  Electric charge of each particle of the real process of
-     *                 each configuration.
+     * @param configurations  The FKS configurations, in the order of
+     *                        `fks_index` (their colors and charges).
      */
-    FKSSplittingKernels(
-        const std::vector<std::size_t>& i_fks,
-        const std::vector<std::size_t>& j_fks,
-        const nested_vector2<int>& colors,
-        const nested_vector2<double>& charges
-    );
+    explicit FKSSplittingKernels(const std::vector<FKSConfiguration>& configurations);
     /// Number of configurations.
     std::size_t configuration_count() const { return _i_fks.size(); }
     /// Number of particles of the real processes, incoming included.
@@ -265,22 +243,19 @@ private:
 class FKSPrefactors : public FunctionGenerator {
 public:
     /**
-     * @param j_fks     Position of j in the real process of each
-     *                  configuration, 0-based.
-     * @param masses    Masses of the particles of the real process of each
-     *                  configuration.
-     * @param xicut     The cut of the plus distribution in @f$\xi@f$.
-     * @param xi_s_cut  The upper end of the soft counterterm in @f$\xi@f$
-     *                  (xiScut).
-     * @param delta_o   The cut of the plus distribution in @f$1 - y@f$ for a
-     *                  final-state emitter (deltaO).
-     * @param delta_i   The same for an initial-state emitter (deltaI).
-     * @param delta_s   The lower end of the collinear counterterms in
-     *                  @f$1 - y@f$ (deltaS).
+     * @param configurations  The FKS configurations, in the order of
+     *                        `fks_index` (their emitters and masses).
+     * @param xicut           The cut of the plus distribution in @f$\xi@f$.
+     * @param xi_s_cut        The upper end of the soft counterterm in
+     *                        @f$\xi@f$ (xiScut).
+     * @param delta_o         The cut of the plus distribution in @f$1 - y@f$
+     *                        for a final-state emitter (deltaO).
+     * @param delta_i         The same for an initial-state emitter (deltaI).
+     * @param delta_s         The lower end of the collinear counterterms in
+     *                        @f$1 - y@f$ (deltaS).
      */
     FKSPrefactors(
-        const std::vector<std::size_t>& j_fks,
-        const nested_vector2<double>& masses,
+        const std::vector<FKSConfiguration>& configurations,
         double xicut = 0.5,
         double xi_s_cut = 0.5,
         double delta_o = 1.,

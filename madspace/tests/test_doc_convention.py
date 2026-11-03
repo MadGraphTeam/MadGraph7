@@ -12,6 +12,20 @@ import pytest
 
 import madspace as ms
 
+# u u~ > e- e+ g, with the gluon i forming FKS pairs with both quarks
+FKS_CONFIGURATION = dict(
+    i_fks=4,
+    j_fks=0,
+    pdgs=[2, -2, 11, -11, 21],
+    colors=[3, -3, 1, 1, 8],
+    charges=[2 / 3, -2 / 3, -1.0, 1.0, 0.0],
+    masses=[0.0] * 5,
+    fks_j_from_i=[[], [], [], [], [0, 1]],
+)
+FKS_CONFIGURATIONS = [
+    ms.FKSConfiguration(**dict(FKS_CONFIGURATION, j_fks=j)) for j in [0, 1]
+]
+
 # One representative keyword-argument set per in-scope class. Every key here is
 # a parameter the class comment documents; the call must accept all of them.
 CASES = {
@@ -84,21 +98,11 @@ CASES = {
         s_hat_min=0.0,
         emitter_mass=0.0,
     ),
-    "FKSEikonals": dict(
-        i_fks=[4, 4],
-        j_fks=[0, 1],
-        fks_j_from_i=[[[], [], [], [], [0, 1]]] * 2,
-        masses=[[0.0] * 5] * 2,
-    ),
-    "FKSSplittingKernels": dict(
-        i_fks=[4, 4],
-        j_fks=[0, 1],
-        colors=[[3, -3, 1, 1, 8]] * 2,
-        charges=[[2 / 3, -2 / 3, -1.0, 1.0, 0.0]] * 2,
-    ),
+    "FKSConfiguration": FKS_CONFIGURATION,
+    "FKSEikonals": dict(configurations=FKS_CONFIGURATIONS),
+    "FKSSplittingKernels": dict(configurations=FKS_CONFIGURATIONS),
     "FKSPrefactors": dict(
-        j_fks=[0, 1],
-        masses=[[0.0] * 5] * 2,
+        configurations=FKS_CONFIGURATIONS,
         xicut=0.5,
         xi_s_cut=0.5,
         delta_o=1.0,
@@ -106,12 +110,7 @@ CASES = {
         delta_s=1.0,
     ),
     "FKSSectorFunction": dict(
-        i_fks=[4, 4],
-        j_fks=[0, 1],
-        fks_j_from_i=[[[], [], [], [], [0, 1]]] * 2,
-        colors=[[3, -3, 1, 1, 8]] * 2,
-        pdgs=[[2, -2, 11, -11, 21]] * 2,
-        masses=[[0.0] * 5] * 2,
+        configurations=FKS_CONFIGURATIONS,
         fks_a=1.5,
         fks_b=1.5,
         use_energy=True,

@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "madspace/phasespace/base.hpp"
+#include "madspace/phasespace/fks_configuration.hpp"
 #include "madspace/phasespace/fks_radiation.hpp"
 #include "madspace/phasespace/phasespace.hpp"
 
@@ -293,6 +294,24 @@ public:
     FKSConfigurationMapping(
         const PhaseSpaceMapping& born,
         const std::vector<Configuration>& configurations,
+        double s_hat_min = 0.,
+        double sqrt_s_hat_floor = 0.
+    );
+    /**
+     * @param born              The @ref PhaseSpaceMapping of the Born process,
+     *                          as for the constructor from (i_fks, j_fks).
+     * @param configurations    The FKS configurations, in the order of
+     *                          `fks_index`. Their real processes without i
+     *                          must have the masses of the Born mapping.
+     * @param s_hat_min         Lower bound on the partonic energy squared of
+     *                          the real emission, see @ref FKSRadiation.
+     * @param sqrt_s_hat_floor  Lower bound on sqrt(s_hat) of every real
+     *                          emission that passes the cuts, see the
+     *                          constructor from (i_fks, j_fks).
+     */
+    FKSConfigurationMapping(
+        const PhaseSpaceMapping& born,
+        const std::vector<FKSConfiguration>& configurations,
         double s_hat_min = 0.,
         double sqrt_s_hat_floor = 0.
     );

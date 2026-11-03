@@ -16,11 +16,12 @@ import numpy as np
 import pytest
 from fks_testing import FKS_DATA as DATA
 from fks_testing import FKS_DATA_IDS as IDS
-from fks_testing import evaluate, reference
+from fks_testing import configuration, evaluate, reference
 from fks_testing import reference_born_mapping as born_mapping
+from fks_testing import reference_configurations, with_pair
 
 import madspace as ms
-from madspace.fks import fks_sector_function, real_masses
+from madspace.fks import fks_sector_function
 
 # position k + 2 of the counter-events k = 0, 1, 2 of genps_fks.f
 COUNTER_EVENTS = {"soft": 2, "collinear": 3, "soft_collinear": 4}
@@ -90,8 +91,7 @@ def test_matches_fks_sij(path):
         part = fks_index == c
         if count == 1 or not part.any():
             continue
-        arguments = function_arguments(data, c)
-        single = ms.FKSSectorFunction(*([value] for value in arguments.values()))
+        single = ms.FKSSectorFunction([reference_configurations(data)[c]])
         np.testing.assert_allclose(
             evaluate(
                 single, momenta[part], p_i_hat[part], fks_index=np.zeros(part.sum())
@@ -100,19 +100,6 @@ def test_matches_fks_sij(path):
             rtol=1e-14,
             atol=0,
         )
-
-
-def function_arguments(data, c):
-    configuration = data["fks_configurations"]["configurations"][c]
-    born_masses = born_mapping(data).external_masses()
-    return dict(
-        i_fks=configuration["i_fks"] - 1,
-        j_fks=configuration["j_fks"] - 1,
-        fks_j_from_i=[[j - 1 for j in js] for js in configuration["fks_j_from_i"]],
-        colors=configuration["real_colors"],
-        pdgs=configuration["real_pdgs"],
-        masses=real_masses(born_masses, configuration),
-    )
 
 
 def all_sectors(configuration):
@@ -165,17 +152,9 @@ def test_partition_of_unity(data, c, momenta):
     one on its events, also where the configurations of the Born keep only
     some of them (the others are those of identical particles, or belong to
     other Borns)."""
-    arguments = function_arguments(data, c)
+    config = reference_configurations(data)[c]
     sectors = all_sectors(data["fks_configurations"]["configurations"][c])
-    count = len(sectors)
-    function = ms.FKSSectorFunction(
-        [i for i, _ in sectors],
-        [j for _, j in sectors],
-        [arguments["fks_j_from_i"]] * count,
-        [arguments["colors"]] * count,
-        [arguments["pdgs"]] * count,
-        [arguments["masses"]] * count,
-    )
+    function = ms.FKSSectorFunction([with_pair(config, i, j) for i, j in sectors])
     batch = len(momenta)
     total = np.zeros(batch)
     for index, (i, _) in enumerate(sectors):
@@ -195,25 +174,23 @@ def test_invalid_configurations():
     pdgs = [2, -2, 11, -11, 21]
     pairs = [[], [], [], [], [0, 1]]
     colors = [3, -3, 1, 1, 8]
-    masses = [0.0] * 5
     with pytest.raises(ValueError, match="FKS pairs"):
         # (i, j) = (4, 2) is not an FKS pair
-        ms.FKSSectorFunction([4], [2], [pairs], [colors], [pdgs], [masses])
+        ms.FKSSectorFunction([configuration(4, 2, pdgs, colors, fks_j_from_i=pairs)])
     with pytest.raises(ValueError, match="final-state"):
-        ms.FKSSectorFunction([0], [4], [pairs], [colors], [pdgs], [masses])
+        ms.FKSSectorFunction([configuration(0, 4, pdgs, colors, fks_j_from_i=pairs)])
     with pytest.raises(ValueError, match="twice"):
         # a quark-gluon pair in both orientations
-        ms.FKSSectorFunction(
-            [4], [0], [[[4], [], [], [], [0, 1]]], [colors], [pdgs], [masses]
-        )
+        twice = [[4], [], [], [], [0, 1]]
+        ms.FKSSectorFunction([configuration(4, 0, pdgs, colors, fks_j_from_i=twice)])
     with pytest.raises(ValueError, match="number of particles"):
         ms.FKSSectorFunction(
-            [4, 4],
-            [0, 1],
-            [pairs, pairs + [[]]],
-            [colors, colors + [1]],
-            [pdgs, pdgs + [22]],
-            [masses, masses + [0.0]],
+            [
+                configuration(4, 0, pdgs, colors, fks_j_from_i=pairs),
+                configuration(
+                    4, 1, pdgs + [22], colors + [1], fks_j_from_i=pairs + [[]]
+                ),
+            ]
         )
     born = ms.PhaseSpaceMapping(
         [0.0] * 4, 1000.0, mode=ms.PhaseSpaceMapping.TChannelMode.rambo

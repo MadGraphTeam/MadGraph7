@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "madspace/phasespace/base.hpp"
+#include "madspace/phasespace/fks_configuration.hpp"
 #include "madspace/util.hpp"
 
 namespace madspace {
@@ -34,9 +35,9 @@ namespace madspace {
  * counter-event, where it evaluates the real emission in the soft limit. Here
  * it is always that of the event, and the two differ by @f$O(\xi)@f$.
  *
- * The momenta can be in any frame. The configurations come from the metadata
- * of the FKS exporter (fks_j_from_i, colors and PDG codes, see madspace.fks).
- * The parameters are those of fks_powers.inc.
+ * The momenta can be in any frame. The configurations (see
+ * @ref FKSConfiguration) come from madspace.fks, which builds them from the
+ * metadata of the FKS exporter. The parameters are those of fks_powers.inc.
  *
  * `batch` is the leading batch dimension and `n` the number of particles of
  * the real process, incoming included.
@@ -65,36 +66,21 @@ namespace madspace {
 class FKSSectorFunction : public FunctionGenerator {
 public:
     /**
-     * @param i_fks         Position of i in the real process of each
-     *                      configuration, 0-based.
-     * @param j_fks         Position of j in the real process of each
-     *                      configuration, 0-based.
-     * @param fks_j_from_i  For each configuration and each particle i of its
-     *                      real process, the particles j it forms an FKS
-     *                      pair with, 0-based (FKS_J_FROM_I_D).
-     * @param colors        Color representation of each particle of the real
-     *                      process of each configuration (1, 3, -3, 8).
-     * @param pdgs          PDG codes of the real process of each
-     *                      configuration.
-     * @param masses        Masses of the particles of the real process of each
-     *                      configuration.
-     * @param fks_a         Power of the energies in d_kl (fks_powers.inc).
-     * @param fks_b         Power of the angle in d_kl.
-     * @param use_energy    Energies of particles that are not color octets in
-     *                      d_kl (useenergy).
-     * @param use_beta      Velocities of massive particles that are not color
-     *                      octets in d_kl (usebeta).
-     * @param h_damp_one    h_damp is 1 below it and 0 above 1 minus it
-     *                      (one_h_damp).
-     * @param h_damp_power  Power of h_damp (a_h_damp).
+     * @param configurations  The FKS configurations, in the order of
+     *                        `fks_index` (their FKS pairs, colors, PDG codes
+     *                        and masses).
+     * @param fks_a           Power of the energies in d_kl (fks_powers.inc).
+     * @param fks_b           Power of the angle in d_kl.
+     * @param use_energy      Energies of particles that are not color octets
+     *                        in d_kl (useenergy).
+     * @param use_beta        Velocities of massive particles that are not
+     *                        color octets in d_kl (usebeta).
+     * @param h_damp_one      h_damp is 1 below it and 0 above 1 minus it
+     *                        (one_h_damp).
+     * @param h_damp_power    Power of h_damp (a_h_damp).
      */
     FKSSectorFunction(
-        const std::vector<std::size_t>& i_fks,
-        const std::vector<std::size_t>& j_fks,
-        const nested_vector3<std::size_t>& fks_j_from_i,
-        const nested_vector2<int>& colors,
-        const nested_vector2<int>& pdgs,
-        const nested_vector2<double>& masses,
+        const std::vector<FKSConfiguration>& configurations,
         double fks_a = 1.5,
         double fks_b = 1.5,
         bool use_energy = true,

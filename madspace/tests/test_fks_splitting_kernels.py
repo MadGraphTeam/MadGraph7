@@ -14,7 +14,7 @@ the incoming momenta.
 
 import numpy as np
 import pytest
-from fks_testing import EPS, FKS_DATA, FKS_DATA_IDS, evaluate, reference
+from fks_testing import EPS, FKS_DATA, FKS_DATA_IDS, configuration, evaluate, reference
 from fks_testing import reference_born_mapping as born_mapping
 
 import madspace as ms
@@ -195,44 +195,57 @@ def test_splitting_kinds():
     q -> q g, g -> q q~ and initial-state g -> g g, q -> q g (mother q), q ->
     g q (mother g), g -> q q~ (mother q)."""
     ca, tr, cf = 3.0, 0.5, 4.0 / 3.0
-    # u u~ > e- e+ g g with i = 6 and j = 5 (g), 3 (u... e-), 1 (u)
+    # u u~ > e- e+ g g with (i, j) = (5, 4), (5, 0) and (4, 0)
+    pdgs = [2, -2, 11, -11, 21, 21]
     colors = [3, -3, 1, 1, 8, 8]
     charges = [2 / 3, -2 / 3, -1.0, 1.0, 0.0, 0.0]
-    kernels = ms.FKSSplittingKernels([5, 5, 4], [4, 0, 0], [colors] * 3, [charges] * 3)
+    kernels = ms.FKSSplittingKernels(
+        [
+            configuration(i, j, pdgs, colors, charges)
+            for i, j in [(5, 4), (5, 0), (4, 0)]
+        ]
+    )
     assert [kernels.splitting_kind(c) for c in range(3)] == [0, 2, 2]
     assert kernels.factors(0) == [2 * ca, 0.0, -4 * ca, 0.0]
     assert kernels.factors(1) == pytest.approx([cf, 4 / 9, 0.0, 0.0])
-    # g u > u ... with i = 4 a final u and j = 0 the incoming g: the mother is
-    # a u~ (g -> u u~)
+    # g u > e- e+ u with i = 4 the final u and j = 0 the incoming g: the mother
+    # is a u~ (g -> u u~)
+    pdgs = [21, 2, 11, -11, 2]
     colors = [8, 3, 1, 1, 3]
     charges = [0.0, 2 / 3, -1.0, 1.0, 2 / 3]
-    kernels = ms.FKSSplittingKernels([4], [0], [colors], [charges])
+    kernels = ms.FKSSplittingKernels([configuration(4, 0, pdgs, colors, charges)])
     assert kernels.splitting_kind(0) == 1
     assert kernels.factors(0) == pytest.approx([tr, 3 * 4 / 9, 0.0, 0.0])
-    # u u~ > ... with i = 4 a final u~ and j = 0 the incoming u: the mother is a
-    # g (q -> g q), which has azimuthal terms
+    # u u~ > e- e+ u~ with i = 4 the final u~ and j = 0 the incoming u: the
+    # mother is a g (q -> g q), which has azimuthal terms
+    pdgs = [2, -2, 11, -11, -2]
     colors = [3, -3, 1, 1, -3]
     charges = [2 / 3, -2 / 3, -1.0, 1.0, -2 / 3]
-    kernels = ms.FKSSplittingKernels([4], [0], [colors], [charges])
+    kernels = ms.FKSSplittingKernels([configuration(4, 0, pdgs, colors, charges)])
     assert kernels.splitting_kind(0) == 3
     assert kernels.factors(0) == pytest.approx([cf, 4 / 9, -4 * cf, -4 * 4 / 9])
-    # final-state g -> u u~ with i = 5 the u~ and j = 4 the u
+    # e+ e- > g g u u~, final-state g -> u u~ with i = 5 the u~ and j = 4 the u
+    pdgs = [-11, 11, 21, 21, 2, -2]
     colors = [1, 1, 8, 8, 3, -3]
     charges = [1.0, -1.0, 0.0, 0.0, 2 / 3, -2 / 3]
-    kernels = ms.FKSSplittingKernels([5], [4], [colors], [charges])
+    kernels = ms.FKSSplittingKernels([configuration(5, 4, pdgs, colors, charges)])
     assert kernels.splitting_kind(0) == 1
     assert kernels.factors(0) == pytest.approx([tr, 4 / 3, 4 * tr, 16 / 3])
 
 
 def test_invalid_configurations():
+    pdgs = [2, -2, 11, -11, 21, 2]
     colors = [3, -3, 1, 1, 8, 3]
     charges = [2 / 3, -2 / 3, -1.0, 1.0, 0.0, 2 / 3]
     with pytest.raises(ValueError, match="final state"):
         # a final-state quark i with a gluon j
-        ms.FKSSplittingKernels([5], [4], [colors], [charges])
+        ms.FKSSplittingKernels([configuration(5, 4, pdgs, colors, charges)])
     with pytest.raises(ValueError, match="final-state"):
-        ms.FKSSplittingKernels([1], [0], [colors], [charges])
+        ms.FKSSplittingKernels([configuration(1, 0, pdgs, colors, charges)])
     with pytest.raises(ValueError, match="number of particles"):
         ms.FKSSplittingKernels(
-            [5, 5], [4, 0], [colors, colors[:-1]], [charges, charges[:-1]]
+            [
+                configuration(5, 4, pdgs, colors, charges),
+                configuration(4, 0, pdgs[:-1], colors[:-1], charges[:-1]),
+            ]
         )

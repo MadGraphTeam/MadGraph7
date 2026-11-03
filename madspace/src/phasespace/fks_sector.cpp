@@ -2,74 +2,17 @@
 
 #include <cstdlib>
 #include <stdexcept>
-#include <string>
 
 using namespace madspace;
 
 namespace {
-
-constexpr std::size_t INCOMING_COUNT = 2;
-
-std::size_t checked_particle_count(
-    const std::vector<std::size_t>& i_fks,
-    const std::vector<std::size_t>& j_fks,
-    const nested_vector3<std::size_t>& fks_j_from_i,
-    const nested_vector2<int>& colors,
-    const nested_vector2<int>& pdgs,
-    const nested_vector2<double>& masses
-) {
-    std::size_t count = i_fks.size();
-    if (count == 0) {
-        throw std::invalid_argument(
-            "FKSSectorFunction: needs at least one configuration"
-        );
-    }
-    if (j_fks.size() != count || fks_j_from_i.size() != count ||
-        colors.size() != count || pdgs.size() != count || masses.size() != count) {
-        throw std::invalid_argument(
-            "FKSSectorFunction: one entry per configuration in every argument"
-        );
-    }
-    std::size_t n = pdgs.at(0).size();
-    for (std::size_t c = 0; c < count; ++c) {
-        if (fks_j_from_i.at(c).size() != n || colors.at(c).size() != n ||
-            pdgs.at(c).size() != n || masses.at(c).size() != n) {
-            throw std::invalid_argument(
-                "FKSSectorFunction: the real processes of the configurations must "
-                "have the same number of particles"
-            );
-        }
-        if (i_fks.at(c) < INCOMING_COUNT || i_fks.at(c) >= n || j_fks.at(c) >= n ||
-            i_fks.at(c) == j_fks.at(c)) {
-            throw std::invalid_argument(
-                "FKSSectorFunction: i_fks must be a final-state particle and "
-                "j_fks another particle of the real process"
-            );
-        }
-        for (const auto& js : fks_j_from_i.at(c)) {
-            for (auto j : js) {
-                if (j >= n) {
-                    throw std::invalid_argument(
-                        "FKSSectorFunction: FKS pair out of range"
-                    );
-                }
-            }
-        }
-    }
-    return n;
-}
 
 bool is_aorg(int pdg) { return std::abs(pdg) == 21 || pdg == 22; }
 
 } // namespace
 
 FKSSectorFunction::FKSSectorFunction(
-    const std::vector<std::size_t>& i_fks,
-    const std::vector<std::size_t>& j_fks,
-    const nested_vector3<std::size_t>& fks_j_from_i,
-    const nested_vector2<int>& colors,
-    const nested_vector2<int>& pdgs,
-    const nested_vector2<double>& masses,
+    const std::vector<FKSConfiguration>& configurations,
     double fks_a,
     double fks_b,
     bool use_energy,
@@ -80,36 +23,34 @@ FKSSectorFunction::FKSSectorFunction(
     FunctionGenerator(
         "FKSSectorFunction",
         [&] {
-            std::size_t n = checked_particle_count(
-                i_fks, j_fks, fks_j_from_i, colors, pdgs, masses
-            );
-            NamedVector<Type> args{
+            std::size_t n =
+                check_fks_configurations(configurations, "FKSSectorFunction");
+            return NamedVector<Type>{
                 {"momenta", batch_four_vec_array(n)},
                 {"p_i_hat", batch_four_vec},
+                {"fks_index", batch_int},
             };
-            args.push_back("fks_index", batch_int);
-            return args;
         }(),
         {{"s", batch_float}}
     ),
-    _particle_count(pdgs.at(0).size()),
-    _masses(masses),
+    _particle_count(configurations.at(0).particle_count()),
     _options{
         fks_a, fks_b, use_energy ? 1. : 0., use_beta ? 1. : 0., h_damp_one, h_damp_power
     } {
     std::size_t n = _particle_count;
-    for (std::size_t c = 0; c < i_fks.size(); ++c) {
-        _i_fks.push_back(i_fks.at(c));
-        _j_fks.push_back(j_fks.at(c));
+    for (const auto& config : configurations) {
+        _i_fks.push_back(config.i_fks);
+        _j_fks.push_back(config.j_fks);
+        _masses.push_back(config.masses);
         // each unordered pair once, as the first of its two orientations in
         // fks_j_from_i (ijskip = 1 in fks_Sij.f); the second one is there
         // only for two gluons or photons
         nested_vector2<me_int_t> pairs(n, std::vector<me_int_t>(n, 0));
         for (std::size_t k = 0; k < n; ++k) {
-            for (auto l : fks_j_from_i.at(c).at(k)) {
+            for (auto l : config.fks_j_from_i.at(k)) {
                 if (pairs.at(k).at(l) != 0 || pairs.at(l).at(k) != 0) {
-                    if (pairs.at(k).at(l) != 0 || !is_aorg(pdgs.at(c).at(k)) ||
-                        !is_aorg(pdgs.at(c).at(l))) {
+                    if (pairs.at(k).at(l) != 0 || !is_aorg(config.pdgs.at(k)) ||
+                        !is_aorg(config.pdgs.at(l))) {
                         throw std::invalid_argument(
                             "FKSSectorFunction: an FKS pair appears twice, and "
                             "not as two gluons or photons"
@@ -123,19 +64,11 @@ FKSSectorFunction::FKSSectorFunction(
         _pairs.push_back(pairs);
         std::vector<me_int_t> octet, aorg;
         for (std::size_t k = 0; k < n; ++k) {
-            octet.push_back(colors.at(c).at(k) == 8 ? 1 : 0);
-            aorg.push_back(is_aorg(pdgs.at(c).at(k)) ? 1 : 0);
+            octet.push_back(config.colors.at(k) == 8 ? 1 : 0);
+            aorg.push_back(is_aorg(config.pdgs.at(k)) ? 1 : 0);
         }
         _octet.push_back(octet);
         _aorg.push_back(aorg);
-        bool own_pair = pairs.at(i_fks.at(c)).at(j_fks.at(c)) != 0 ||
-            pairs.at(j_fks.at(c)).at(i_fks.at(c)) != 0;
-        if (!own_pair) {
-            throw std::invalid_argument(
-                "FKSSectorFunction: (i_fks, j_fks) of a configuration must be one "
-                "of the FKS pairs of its real process"
-            );
-        }
     }
 }
 

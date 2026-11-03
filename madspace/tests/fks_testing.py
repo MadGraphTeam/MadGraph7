@@ -118,3 +118,43 @@ def massive_xi_max(real, i_fks, j_fks, m_j):
     xi_1 = lam / (1 - mh2 - mj**2 + sq)
     xi_m = ((1 - mj) ** 2 - mh2) / (1 - mj)
     return np.where(y >= 0, xi_m, xi_1)
+
+
+def reference_configurations(data):
+    """The FKSConfigurations of reference data, as madspace.fks builds them."""
+    from madspace.fks import fks_configurations
+
+    return fks_configurations(reference_born_mapping(data), data["fks_configurations"])
+
+
+def configuration(
+    i_fks, j_fks, pdgs, colors, charges=None, masses=None, fks_j_from_i=None
+):
+    """An FKSConfiguration for the unit tests: massless and neutral unless
+    given, with (i, j) as the only FKS pair unless the pairs are given."""
+    n = len(pdgs)
+    if fks_j_from_i is None:
+        fks_j_from_i = [[] for _ in range(n)]
+        fks_j_from_i[i_fks] = [j_fks]
+    return ms.FKSConfiguration(
+        i_fks=i_fks,
+        j_fks=j_fks,
+        pdgs=list(pdgs),
+        colors=list(colors),
+        charges=list(charges) if charges is not None else [0.0] * n,
+        masses=list(masses) if masses is not None else [0.0] * n,
+        fks_j_from_i=fks_j_from_i,
+    )
+
+
+def with_pair(config, i_fks, j_fks):
+    """The configuration of the same real process with another FKS pair."""
+    return ms.FKSConfiguration(
+        i_fks=i_fks,
+        j_fks=j_fks,
+        pdgs=config.pdgs,
+        colors=config.colors,
+        charges=config.charges,
+        masses=config.masses,
+        fks_j_from_i=config.fks_j_from_i,
+    )

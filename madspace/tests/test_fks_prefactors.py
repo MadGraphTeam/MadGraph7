@@ -15,7 +15,7 @@ one.
 
 import numpy as np
 import pytest
-from fks_testing import FKS_DATA, FKS_DATA_IDS, evaluate, reference
+from fks_testing import FKS_DATA, FKS_DATA_IDS, configuration, evaluate, reference
 from fks_testing import reference_born_mapping as born_mapping
 
 import madspace as ms
@@ -154,10 +154,16 @@ def test_counter_event_xi_on_mapping_events(name):
 
 
 def test_invalid_parameters():
-    masses = [[0.0] * 5]
+    pdgs = [2, -2, 11, -11, 21]
+    colors = [3, -3, 1, 1, 8]
     with pytest.raises(ValueError, match="positive"):
-        ms.FKSPrefactors([0], masses, xicut=0.0)
+        ms.FKSPrefactors([configuration(4, 0, pdgs, colors)], xicut=0.0)
     with pytest.raises(ValueError, match="particle of the real process"):
-        ms.FKSPrefactors([5], masses)
+        ms.FKSPrefactors([configuration(4, 5, pdgs, colors, fks_j_from_i=[[]] * 5)])
     with pytest.raises(ValueError, match="number of particles"):
-        ms.FKSPrefactors([0, 1], masses + [[0.0] * 6])
+        ms.FKSPrefactors(
+            [
+                configuration(4, 0, pdgs, colors),
+                configuration(4, 0, pdgs + [22], colors + [1]),
+            ]
+        )
