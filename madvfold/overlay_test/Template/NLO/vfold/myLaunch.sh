@@ -225,7 +225,8 @@ elif [ "${PROC}" != "${PROC/eemumubbg_}" ]; then
   export ENV_VFOLD_MINT0_NPOINTS=50  # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
   export ENV_VFOLD_MINT1_NPOINTS=50  # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
   # NB: may need to keep ENV_VFOLD_CHANNELS unset to investigate bugs in channel mapping
-  export ENV_VFOLD_CHANNELS="11.0"   # GF channels (space-separated) [DEFAULT: all channels]
+  # Step 14q: GF58.0 (13% of the ABS integral) instead of GF11.0 (0.1%), see vfold/test/grids/README
+  if [ "${ENV_VFOLD_CHANNELS}" == "" ]; then export ENV_VFOLD_CHANNELS="58.0"; fi # GF channels (space-separated) [DEFAULT: all channels]
 elif [ "${PROC}" != "${PROC/ggttg_}" ]; then
   if [ "${ENV_NEVENTS}" == "" ]; then ENV_NEVENTS=10; fi # default 10
   # Step 14n: these can be set in the environment, e.g. to generate the -o test grids
