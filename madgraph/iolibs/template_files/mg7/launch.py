@@ -4216,6 +4216,13 @@ class MG7Cmd(Cmd):
             if error.code not in (None, 0):
                 logger.error(str(error.code))
 
+    def error_handling(self, error, line):
+        """Report the error as any MG5 command does, and remember that a
+        command failed: bin/generate_events then exits with a non-zero status
+        (main), where the report alone left it at 0."""
+        self.command_failed = True
+        return super().error_handling(error, line)
+
     def do_quit(self, line):
         """Leave the mg7 run interface."""
         return super().do_quit(line)
@@ -5929,4 +5936,7 @@ def main() -> None:
         line += " --reweight=%s" % args.reweight_card
     if args.reweight_backend:
         line += " --reweight-backend=%s" % args.reweight_backend
-    MG7Cmd().run_cmd(line)
+    cmd = MG7Cmd()
+    cmd.run_cmd(line)
+    if getattr(cmd, "command_failed", False):
+        sys.exit(1)

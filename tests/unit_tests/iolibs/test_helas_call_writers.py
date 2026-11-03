@@ -17,6 +17,7 @@ from madgraph import core
 
 import copy
 import os
+import re
 
 import aloha
 from madgraph import MG5DIR
@@ -884,10 +885,15 @@ class UFOHELASCallWriterTest(unittest.TestCase):
         return replace_dict['helas_calls'].split('\n'), fortran_model
 
     def test_UFO_fortran_tchannel_width_standalone_rw(self):
-        """Test that the t-channel width is set to zero, using the fk_ tagging
-        of madevent, for the reweighting and MadSpin outputs (standalone_rw,
-        standalone_msP/msF, standalone with --zerowidth_tchannel=True) but not
-        for standalone"""
+        """Test that the t-channel width is flagged as set to zero, using the
+        fk_ tagging of madevent, for the reweighting and MadSpin outputs
+        (standalone_rw, standalone_msP/msF, standalone with
+        --zerowidth_tchannel=True) but not for standalone. The call itself
+        keeps the width: the ALOHA propagator drops it at runtime for a
+        spacelike momentum (aloha.t_channel_width, set at output from the
+        zerowidth_tchannel option or the --zerowidth_tchannel output option),
+        which also holds for every crossing of the matrix element, where a
+        t-channel propagator can be an s-channel one."""
 
         solution =['CALL VXXXXX(P(0,1),zero,NHEL(1),-1,W(1))',
                    'CALL VXXXXX(P(0,2),wmas,NHEL(2),-1,W(2))',
@@ -900,9 +906,6 @@ class UFOHELASCallWriterTest(unittest.TestCase):
                    'CALL VVVV1_3(W(1),W(3),W(4),GC_51,wmas,wwid,W(6))',
                    '# Amplitude(s) for diagram number 2',
                    'CALL VVV1_0(W(2),W(6),W(5),GC_12,AMP(2))']
-        zeroed = list(solution)
-        zeroed[8] = 'CALL VVVV1_3(W(1),W(3),W(4),GC_51,wmas, ZERO,W(6))'
-
         # (format, output options, writer options): t-channel W width zeroed?
         for export_format, output_options, options, zero in [
                 ('standalone_fortran', None, None, False),
@@ -914,8 +917,17 @@ class UFOHELASCallWriterTest(unittest.TestCase):
                 ('standalone_msF', None, None, True)]:
             result, fortran_model = self.get_tchannel_calls(self.mymatrixelement,
                                     export_format, output_options, options)
-            self.assertEqual(zeroed if zero else solution, result)
+            # the crossing machinery (standalone) threads the NSF flags of
+            # the external calls through IC
+            result = [re.sub(r'\*IC\(\d+\)', '', call) for call in result]
+            self.assertEqual(solution, result)
             self.assertEqual(fortran_model.width_tchannel_set_tozero, zero)
+            exporter = export_v4.ProcessExporterFortranSA('',
+                        {'export_format': export_format,
+                         'output_options': output_options or {}},
+                        format=export_format)
+            self.assertEqual(exporter.zero_tchannel_width(),
+                             zero or options is not None)
 
     def test_UFO_fortran_tchannel_width_decay(self):
         """No width is set to zero in a decay (is_t_channel assumes two initial

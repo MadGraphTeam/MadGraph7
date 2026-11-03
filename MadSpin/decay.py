@@ -97,6 +97,29 @@ MS_GLOBAL_FLAG = '-O2'
 MS_GLOBAL_FLAG_MIN_DECAYS = 4
 
 
+_USE_CROSSING_FLAG = re.compile(r'\s--use_crossing(=\S*)?(?=\s|$)')
+
+def without_crossing(commandline):
+    """Pin --use_crossing=False on every generate / add process of
+    `commandline` (';'-separated commands, as MadSpin hands them to exec_cmd).
+
+    MadSpin reaches each matrix element per event flavor, through the entry
+    points taking a FLAVOR array (GET_DENSITY, SMATRIX), and finds it by the
+    processes the matrix element lists: neither can see a crossing folded onto
+    a base. Its production lines are copied from the banner's proc card, so a
+    --use_crossing=True there came back here and folded those subprocesses
+    away. Any flag already on the line is dropped first; [...] (perturbative)
+    lines are left alone, crossing is never applied to them.
+    """
+    out = []
+    for cmd in commandline.split(';'):
+        head = cmd.strip()
+        if head.startswith(('generate', 'add process')) and '[' not in head:
+            cmd = _USE_CROSSING_FLAG.sub('', cmd).rstrip() + \
+                ' --use_crossing=False'
+        out.append(cmd)
+    return ';'.join(out)
+
 class MadSpinError(MadGraph5Error):
     pass
 
@@ -3421,7 +3444,7 @@ class decay_all_events(object):
             else:
                 commandline += 'add process %s; ' % proc
                                
-        commandline = commandline.replace('add process', 'generate',1)
+        commandline = without_crossing(commandline.replace('add process', 'generate',1))
         logger.info(commandline)
         
         mgcmd.exec_cmd(commandline, precmd=True)
@@ -3494,7 +3517,7 @@ class decay_all_events(object):
                     if not proc.strip().startswith(('add','generate')):
                         proc = 'add process %s' % proc
                     commandline += self.get_proc_with_decay(proc, decay_text, mgcmd._curr_model, self.options)
-                commandline = commandline.replace('add process', 'generate',1)
+                commandline = without_crossing(commandline.replace('add process', 'generate',1))
             else:
                 for key in decay_text_correlated:
                     for proc in processes:
@@ -3505,7 +3528,7 @@ class decay_all_events(object):
                         else:
                             one_decay = ', '.join(decay_text_correlated[key])
                         commandline += self.get_proc_with_decay(proc, one_decay, mgcmd._curr_model, self.options)
-                commandline = commandline.replace('add process', 'generate',1)
+                commandline = without_crossing(commandline.replace('add process', 'generate',1))
             logger.info(commandline)
             mgcmd.exec_cmd(commandline, precmd=True)
             # remove decay with 0 branching ratio.
@@ -3572,7 +3595,7 @@ class decay_all_events(object):
                     proc = proc.split("@",1)[0]
                 commandline+="add process %s @%i --no_warning=duplicate;" % (proc,i)
                 i+=1        
-        commandline = commandline.replace('add process', 'generate',1)
+        commandline = without_crossing(commandline.replace('add process', 'generate',1))
         mgcmd.exec_cmd(commandline, precmd=True)
         # remove decay with 0 branching ratio.
         mgcmd.remove_pointless_decay(self.banner.param_card)
@@ -5570,7 +5593,7 @@ class decay_all_events_onshell(decay_all_events):
         # legacy options 'onshell_v1' and 'madspin_v1' store both the production and the decay in a single folder
         if self.options['spinmode'] in ['onshell_v1', 'madspin_v1']:
             commandline += self.get_decay_command()
-            commandline = commandline.replace('add process', 'generate',1)
+            commandline = without_crossing(commandline.replace('add process', 'generate',1))
             mgcmd.exec_cmd(commandline, precmd=True)
 
             # same t-channel widths as madevent (zerowidth_tchannel)
@@ -5582,7 +5605,7 @@ class decay_all_events_onshell(decay_all_events):
             # auto_zero_width_PA: the decayed particles in the production
             # (pdg list), the decaying particle in each decay (True/False)
             zero_width = self.zerowidth_decay_pdgs()
-            commandline_production = commandline.replace('add process', 'generate',1)
+            commandline_production = without_crossing(commandline.replace('add process', 'generate',1))
             backend = self.density_backend(commandline_production, zero_width)
             logger.info(commandline_production)
             mgcmd.exec_cmd(commandline_production, precmd=True)
@@ -5595,7 +5618,7 @@ class decay_all_events_onshell(decay_all_events):
             fill_all_me(self, "production")
 
             commandline_decay = self.get_decay_command()
-            commandline_decay = commandline_decay.replace('add process', 'generate',1)
+            commandline_decay = without_crossing(commandline_decay.replace('add process', 'generate',1))
 
             logger.info(commandline_decay)
             mgcmd.exec_cmd(commandline_decay, precmd=True)

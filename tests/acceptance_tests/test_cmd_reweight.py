@@ -99,8 +99,23 @@ class TestMECmdRWGT(unittest.TestCase):
         files.cp(event, pjoin(self.run_dir,'Events','run_01', 'unweighted_events.lhe.gz'))
         
         mecmd = MECmd.MadEventCmdShell(me_dir=self.run_dir)
-        
+
         return mecmd
+
+    def get_MEcmd_process(self, process, event):
+        """Same as get_MEcmd for an arbitrary process."""
+
+        mycmd = MGCmd.MasterCmd(mgme_dir=MG5DIR)
+        mycmd.use_rawinput = False
+        mycmd.haspiping = False
+        mycmd.run_cmd('import model sm; generate %s; output madevent %s'
+                      % (process, self.run_dir))
+
+        os.mkdir(pjoin(self.run_dir, 'Events', 'run_01'))
+        files.cp(event, pjoin(self.run_dir, 'Events', 'run_01',
+                              'unweighted_events.lhe.gz'))
+
+        return MECmd.MadEventCmdShell(me_dir=self.run_dir)
 
 
     def get_aMCcmd(self, event):
@@ -154,7 +169,58 @@ class TestMECmdRWGT(unittest.TestCase):
             self.assertIn('rwgt_1', rwgt_data)
             self.assertTrue(misc.equal(rwgt_data['rwgt_1'], solutions[i]))
         #misc.sprint(solutions)
-        
+
+    def test_reweight_merged_antiparticle_labels(self):
+        """reweight a p p > w+ j sample whose events sit in the grouped
+        subprocess g q~ > w+ q~.
+
+        Flavor grouping is on by default for reweight, so the generated legs
+        carry the merged codes (81 for the jet group) and that subprocess has
+        get_pdg_order [21,-81,24,-81] -- every grouped leg is an anti-particle,
+        so both merged codes are NEGATIVE. merged_particles is keyed by the
+        positive code only, so a membership test that forgets abs() leaves the
+        -81 labels in place; the fortran flavor mapping then resolves them to
+        "no flavour" and SMATRIXHEL returns an exact 0, which the reweight
+        reports as "Invalid matrix element". 3 of the 4 events in the fixture
+        are in that subprocess (both initial-state orderings, and a second
+        flavor pair), the 4th (g u > w+ d) is an uncrossed control.
+        """
+        me_cmd = self.get_MEcmd_process(
+            'p p > w+ j', pjoin(_pickle_path, 'wpj_merged_antiparticle.lhe.gz'))
+
+        cmd_lines = """
+        launch
+        set sminputs 1 132.0
+        """
+        ff = open(pjoin(self.run_dir, 'Cards', 'reweight_card.dat'), 'w')
+        ff.write(cmd_lines)
+        ff.close()
+
+        if logger.level <= 10:
+            me_cmd.run_cmd('reweight run_01 --from_cards')
+        else:
+            with misc.stdchannel_redirected(sys.stdout, os.devnull):
+                me_cmd.run_cmd('reweight run_01 --from_cards')
+
+        lhe = lhe_parser.EventFile(pjoin(self.run_dir, 'Events', 'run_01',
+                                         'unweighted_events.lhe.gz'))
+        nb_grouped_antiparticle = 0
+        nb_event = 0
+        for event in lhe:
+            nb_event += 1
+            rwgt_data = event.parse_reweight()
+            self.assertIn('rwgt_1', rwgt_data)
+            # the matrix element of the new hypothesis must be a real number:
+            # an exact 0 is the signature of an unresolved merged label
+            self.assertNotEqual(rwgt_data['rwgt_1'], 0.)
+            initial = [p.pid for p in event if p.status == -1]
+            if 21 in initial and any(-6 <= pid < 0 for pid in initial):
+                nb_grouped_antiparticle += 1
+
+        # guard the premise: the fixture must really exercise the subprocess
+        self.assertEqual(nb_event, 4)
+        self.assertEqual(nb_grouped_antiparticle, 3)
+
     def test_mass_reweighting(self):
         """ testing that we can reweight the tt~ sample when increasing the top mass
         """
@@ -197,9 +263,19 @@ class TestMECmdRWGT(unittest.TestCase):
         # tot_mom rest frame before running the chi-finder, which fixes the
         # bug. The reweighted cross-section (235.28 pb) is unchanged; only
         # the per-event redistribution moves.
-        solutions = [216.3128, 237.66434, 344.95146, 293.51502, 229.39839, 295.96741, 336.38095, 434.56802, 182.61499, 404.7172, 488.22656, 154.80405, 264.45706, 373.69582, 229.70129, 474.87946, 322.87016, 394.84998, 84.186446, 118.32093]
+        #
+        # Reference refreshed again on branch claude/fortran-cross-symmetry:
+        # this tree-level p p > t t~ reweight now keeps crossing enabled
+        # (merge_crossing='record' with flavor grouping on), so the production
+        # |M|^2 is evaluated against the crossing-aware/folded SMATRIX instead
+        # of the pre-crossing separate-dir ME. That reorders the helicity sum,
+        # shifting each per-event weight by O(1e-3) absolute (~1e-5 relative) --
+        # above misc.equal's ~1e-3 window, hence the update. The values are
+        # deterministic run-to-run and the reweighted cross-section is still
+        # 235.28 pb; keeping crossing is correct here because this is tree level.
+        solutions = [216.31277, 237.66447, 344.95053, 293.51516, 229.39706, 295.96583, 336.3812, 434.56831, 182.61181, 404.7172, 488.22684, 154.80089, 264.4548, 373.69601, 229.69985, 474.87946, 322.86878, 394.84998, 84.18549, 118.31887]
         for i,event in enumerate(lhe):
-            
+
             rwgt_data = event.parse_reweight()
             #solutions.append(event.wgt)
             self.assertTrue(misc.equal(event.scale, event.get_ht_scale(0.5)))

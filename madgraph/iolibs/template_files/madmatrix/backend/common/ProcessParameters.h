@@ -39,6 +39,7 @@ namespace madmatrix
     fptype bwcutoff = 15.;     // window (in widths) of the $-excluded propagators, the run card bw_cutoff
     int nGoodHel = 0;          // the good helicities: goodHel[0..nGoodHel) index the helicity table
     int goodHel[ProcessData::ncomb] = {};
+    bool csymOk = false;       // cpu/simd: the good helicities are the C-parity representatives, each counted twice
 #ifndef MGONGPU_HARDCODE_PARAM
     // The model parameters these were taken from (host memory), for the HelAmps routines
     // that read a model parameter on CPUs (see Parameters::current)
