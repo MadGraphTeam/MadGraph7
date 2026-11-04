@@ -410,6 +410,15 @@ def test_exports_refuse_projections_over_blocks_not_exact_in_nc(
 # native digest equals the former pin (``FOURIER_FREE``), and its plan and
 # companion digests are unchanged (the plan v4 bytes do not depend on the
 # seed contraction).
+# Re-pinned by mf-symbolica (upstream Symbolica re-pin, community 36cbac3a +
+# symbolica-dev#163 = 20a9da94): the native digests only. Exactly the
+# evaluator members change: every Symbolica-serialised exact evaluator
+# (``kernel-*.bin``, ``*parameters.bin``: the versioned save envelope,
+# serialization ABI symbolica-bincode2-v2) and the SymJIT applications compiled
+# from Symbolica's evaluator export (some ``kernel-*.symjit``: upstream's Horner
+# search); every other member, the plans and the companion plans keep their bytes
+# (per-member digests on d0a54212 + Community 9cdc2949 and on this head);
+# ``FOURIER_FREE`` likewise.
 CONTROLS = {
     "uux_ddxg_lc": ("u u~ > d d~ g", {"QCD": 3, "QED": 0}, "lc"),
     "uux_ddxg_nlc": ("u u~ > d d~ g", {"QCD": 3, "QED": 0}, "nlc"),
@@ -422,39 +431,39 @@ CONTROL_BYTES = {
     "uux_ddxg_lc": (
         "f8595356dbb40148749b9828679d4a368518cb0922e3f680fe8313af978ace95",
         "8c32bb3bc825e3c3fed06ca962091ad64fe3b87ffc636747a0d0482b9ac83fb2",
-        "3771d997dc0a75d410e4ec6a1f30765317e68c0ee2df09e114eccc2f7f083f65",
+        "47795a5882aa2e7237bc69443a5624491b9c5921daa0a591a629bde2f92a510c",
     ),
     "uux_ddxg_nlc": (
         "4cd00549a72bfa194778472289d5af0c31c7dfc471c27d54bd116152eb62e2ad",
         "f27586cffefed6fd94ceaef0155a11590ccba22e423f7014efe0f49457ddb249",
-        "99a27d7b629adf25e46deb4a3a9936bfcd6f0794f88ea3f797c05717841728fb",
+        "1a44e0f388e809a3e891fedba2c0d50fa97bc31905aff25e3006960b69518bd8",
     ),
     "uux_ddxssx_lc": (
         "eadb28c424c1d45046399f8b6dd8832d805c0eb1ffb59906b86ead2927c3d09d",
         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "9cc0b75266b77e6bd39c237496afe8637282573278a064432bc1eeb99dcad1dc",
+        "ada4207ccf65534c4391e2cd367a8108b3714af789628ebb862e89dd4f399ab0",
     ),
     "uux_ddxssx_nlc": (
         "698711e3b9670e135f20719c82041c020bbd846f404ee963eb74b92e186432ab",
         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "a6b26a742d6c3aa1b125e94b3ad5c92e31219f28ffaa1c38881a581621fc9ece",
+        "a1602bb9b150a24c8af8abcd63adfbb2f7a848c02173318c4148998913d07423",
     ),
     "uux_uuxg_full": (
         "a80ff312a2155ddbbc9f02f352b90335427eb9e19b560702e21b5431450cf28e",
         "f3f96c6e2a657899cef204358546e9e6e2d865093ab7a2cda27706af315c6ad5",
-        "3decb1412ce99184479564e7ecbe1fc7583dbd757ba66287a54c5df551e75ffe",
+        "f5f2961c467196eb4991f430c97db9ca71e6b4be0be6fba0c2a5177a4c0eb481",
     ),
     "gg_uuxuux_full": (
         "52aebd812ec8a579a8268de84370f850b69b3a05f83a8cb54fb109eb74620769",
         "50b2f50da81a8619ebb3b2b5dd5b078c6c7aa1fe79727531eaebe2a703793d23",
-        "f814e4f90bbe6ac8ed84b8f4f0f1616d6c45d1b014ef52968934bc88a9117f83",
+        "8d43c9967238a91a8f97d74ac39e6428f0b714f72337bc561552b9d0607c46bc",
     ),
 }
 # The native digests of the controls without their seed Fourier record (the
 # pins before mq-fft).
 FOURIER_FREE = {
     "gg_uuxuux_full": (
-        "4121edeec2a19785a76b8cb34a9e053fc5a132301b3e917a19d787d371056c8a"
+        "e170306cfcbe65db529a6c1eb34a943d95f4ec16fd7c1ec50ce0130e4f5d49f9"
     ),
 }
 

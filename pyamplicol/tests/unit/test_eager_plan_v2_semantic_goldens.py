@@ -641,6 +641,13 @@ def _snapshot(case: _GoldenCase) -> dict[str, object]:
 # preceding goldens on the same source; all 53 kernels are symbolically equal
 # across both versions, and remapping their IDs reproduces every preceding table
 # digest. Counts, layout, selectors, reductions and resolved probes are unchanged.
+# Refreshed for the upstream Symbolica re-pin (Python Community 20a9da94 =
+# symbolica-dev community 36cbac3a + #163, 3.0.3): content-derived kernel IDs are
+# renumbered and some kernels print differently. The base (Community 9cdc2949)
+# reproduces the preceding goldens; every referenced kernel matches one on the new
+# pin bijectively with symbolically equal expressions, and remapping their IDs
+# reproduces every preceding table section. Counts, layout, selectors, reductions
+# and resolved probes are unchanged.
 _EXPECTED: dict[str, dict[str, object]] = {
     "lc-topology-replay": {
         "counts": {
@@ -661,14 +668,14 @@ _EXPECTED: dict[str, dict[str, object]] = {
             "value_slots": 69,
         },
         "digests": {
-            "exact": "c2f94b0e269885590d8867a3d8af07fd84347b91ba1f7114cb230404a24a2ebc",
+            "exact": "7efcf20d39306498e1b0cd41f377d85b1a7c384898149e677ee84b7b49c8c935",
             "layout": "b62b48a5e371e65041aff8f7f0f47ccc6b354a838360b1ba8480de104744d83b",
             "reductions": "3864a2185e4b6613de4cd650431a1cb6a42c224556e73ffb57d471dc5424b6f1",
             "resolved": "4347816ea9472a7c77bd4638259933ac67a562a9fa7478795233da6dc43cab7b",
             "selectors": "e05447b4632d2b06aed2ecc2ecec8526d3aa65e62583ae58f52f4881207435cb",
-            "tables": "45666559b60c51bea36743893b38d6b5ca6078d0d66988f7a402e48e4cc15c64",
+            "tables": "8bb484d8b7802b5fcba28cc215f34631566e4fd71f2811b497aa0bd2440d6e45",
         },
-        "semantic_sha256": "df2162e8459d21569ec63845773909c908277c5adcd38b3f583f4cae5d6be882",
+        "semantic_sha256": "2a5c3d5a2ba9dc05208d355914492ce2d844dbee98387ce3ed83435b1ee359f2",
     },
     "lc-all-flow-union": {
         "counts": {
@@ -689,14 +696,14 @@ _EXPECTED: dict[str, dict[str, object]] = {
             "value_slots": 117,
         },
         "digests": {
-            "exact": "a4e889e7464c81788f9fa87f665333b6f30c29c9dae7b5e7ab858c3d48e4cc8c",
+            "exact": "fca7068e2c7d4f85228fd8cee1b27e34ccb0bb8b7a05b7aad047d73ff9b9386c",
             "layout": "24432cc2b2d22a0c83adaddfe58e0beb1ce8447c5df44417e4b6c7e00fffb690",
             "reductions": "b7d5c3c614f70ad6c4bf7f8afb1b3a0a8a5c33dcae0a0c12d271992928ec3a2a",
             "resolved": "f038d7b438a5b59baabc439fb712dbe3fd455f433f20e9da7490e574acc22927",
             "selectors": "7eafd41c8048e0c0d992c5078af4d67e94a9295688d8166a4962ff129a99b419",
-            "tables": "73f82acd2604b23b2284c391a8b09ff9fff58b82857b463fb841920fcf211022",
+            "tables": "2d37dee8a32a3b5deaf2d6fb99be06af1e726608ee0262f392537b2f6114a068",
         },
-        "semantic_sha256": "8d9bba20f6b7ad2d0fb2ca9bb601a903377c797cd37e20315b5fbdde61d52cee",
+        "semantic_sha256": "46450840e8d658e36b3e600dae8fa23f091c522a761a3a9be5ef2b79e90dab89",
     },
     "nlc-contracted": {
         "counts": {
@@ -717,14 +724,14 @@ _EXPECTED: dict[str, dict[str, object]] = {
             "value_slots": 42,
         },
         "digests": {
-            "exact": "0aeb67c23bf8c2dcde4e57c72d6feb3e92e0b3ce655051991809a4f82133549f",
+            "exact": "6809b2310531177491cb3101f1252443f777a3ed3cf3645e026f5805073bb229",
             "layout": "6c829c0734a995d06f4dcc63bc0967d77bd838c7c733c0ef204f68b4c80ac32a",
             "reductions": "2aac0b41a34bf54335d14337c4cc130f078b11c8a13dce0e5ed7ff2eb7c0bb4d",
             "resolved": "673928032c4063e5aacb8eab41076de0d6c49ea64e56b13c0fa43c149c2c2393",
             "selectors": "72534cf8b4737ba7bbf91913532f6240828386a1cd1d3146b253f44680af0a00",
-            "tables": "4dbd556e6301980f7dfc3431261473eaa27ca8c7cd3821e527b859e35887a5d7",
+            "tables": "59333076379ebb3f8c76fdedb62ef304b687d3be8c90b2315ecc6c53a5dd200a",
         },
-        "semantic_sha256": "451872bf7503e84cfd76ec7b94150faf394e224a8cccdaaea60bc6bddf4cae07",
+        "semantic_sha256": "8fecb56477f278e20519bb9fcf123f74ec60cf13ed6a253c7bc676a8323e7627",
     },
     "full-contracted": {
         "counts": {
@@ -745,14 +752,14 @@ _EXPECTED: dict[str, dict[str, object]] = {
             "value_slots": 42,
         },
         "digests": {
-            "exact": "0aeb67c23bf8c2dcde4e57c72d6feb3e92e0b3ce655051991809a4f82133549f",
+            "exact": "6809b2310531177491cb3101f1252443f777a3ed3cf3645e026f5805073bb229",
             "layout": "71ddc16d027bd79283f4861d26a53e3233faf17f2411db49c9607bd21fbb8318",
             "reductions": "0c27a7a5da29bf9569e5477991283edf65c1acd5e424af9a8a15d828d985dd82",
             "resolved": "19acacf5110579b2c157b48dc5c4aacac3da5b51d76f13658ce4a5cbd73754de",
             "selectors": "6f33e6fbd9d47db7a6f0bb8434606ef5b24eb2c644fd3d03006a35201b89a6d3",
-            "tables": "b461b0e65ab80fee912a72bc671b70d07133522d4b39af77298cd47126a90ae4",
+            "tables": "7c368a7c36fe47d3849f7873dcab477c10945d6d0f3d52c3f2e189cbdf24d1c1",
         },
-        "semantic_sha256": "8fac165d3c55fc17adaca74b0fc331778aefd65c8a54da928e0b543220bdb22d",
+        "semantic_sha256": "48dcec4e4d01f6740f0c53708f1058dde638a5059336b896fd472c17f7e7fc12",
     },
 }
 
