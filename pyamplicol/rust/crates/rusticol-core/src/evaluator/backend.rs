@@ -2652,9 +2652,23 @@ fn load_evaluator_state_bytes(
         ));
     }
     // Importing the state registers its symbols: pyAmpliCol's library key.
+    // A producer symbol defined with other attributes than this process's
+    // (Python Community modules of another FeynKit/Spenso revision than the
+    // native's; Symbolica 3.0.3's saves carry the producer's whole state) is
+    // imported under a fresh name instead of failing the load: the payload's
+    // references follow the state map, and evaluation reads no symbol
+    // attributes. A symbol that conflicts again under that name is refused.
     let _unlock = crate::licence::unlock();
-    let state_map =
-        symbolica::state::State::import(&mut payload, None).map_err(|error| incompatible(&error))?;
+    let state_map = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        symbolica::state::State::import(
+            &mut payload,
+            Some(Box::new(|name: &str| import_conflict_name(name).into())),
+        )
+    }))
+    .map_err(|_| {
+        incompatible(&"a symbol conflicts with this process's also under its import name")
+    })?
+    .map_err(|error| incompatible(&error))?;
     let ((_, settings, evaluator, _, jit_complex), consumed) =
         bincode::decode_from_slice_with_context::<_, SavedEvaluator, _>(
             payload,
@@ -2670,6 +2684,25 @@ fn load_evaluator_state_bytes(
 /// envelope, version 1; its final byte is the envelope version).
 #[cfg(feature = "symbolica-runtime")]
 const SAVED_EVALUATOR_MAGIC: &[u8] = b"\xffSYMEVAL\x01";
+
+/// Suffix of a saved evaluator's symbol imported under a fresh name.
+#[cfg(feature = "symbolica-runtime")]
+const IMPORT_CONFLICT_SUFFIX: &str = "_pyamplicol_import";
+
+/// The import name of a saved evaluator's symbol whose definition conflicts
+/// with this process's: the suffix before its trailing underscores (Symbolica
+/// keeps a symbol's wildcard level on import). A name that already carries the
+/// suffix conflicted again: refused (a panic the loader turns into an error,
+/// as Symbolica's import retries until a name is accepted).
+#[cfg(feature = "symbolica-runtime")]
+fn import_conflict_name(name: &str) -> String {
+    let base = name.trim_end_matches('_');
+    assert!(
+        !base.ends_with(IMPORT_CONFLICT_SUFFIX),
+        "saved-evaluator symbol {name} conflicts under its import name"
+    );
+    format!("{base}{IMPORT_CONFLICT_SUFFIX}{}", &name[base.len()..])
+}
 
 #[cfg(feature = "symbolica-runtime")]
 pub(crate) fn decode_exact_evaluator_state(
@@ -2773,6 +2806,51 @@ sys.stdout.buffer.write(evaluator.save())
         let mut trailing = producer.stdout;
         trailing.push(0);
         assert!(load_evaluator_state_bytes(&trailing, "trailing byte").is_err());
+    }
+
+    /// A producer symbol defined with other tags than this process's (another
+    /// FeynKit/Spenso revision in the Python Community modules) loads under
+    /// its import name, with the same values.
+    #[test]
+    fn python_saved_evaluator_with_a_conflicting_symbol_loads() {
+        let (native,) =
+            symbolica::symbol!("pyamplicol_conflict::q"; tags = ["pyamplicol_conflict::native"]);
+        let python = std::env::var_os("PYAMPLICOL_TEST_PYTHON").unwrap_or_else(|| "python3".into());
+        let producer = std::process::Command::new(python)
+            .env("SYMBOLICA_HIDE_BANNER", "1")
+            .arg("-c")
+            .arg(
+                r#"
+import sys
+from symbolica import E, S, Expression
+q = S('pyamplicol_conflict::q', tags=['pyamplicol_conflict::python'])
+x = S('pyamplicol_conflict::x')
+evaluator = Expression.evaluator_multiple(
+    [q + x/3, q*x + E('1')/7], [q, x], n_cores=1, jit_compile=False)
+sys.stdout.buffer.write(evaluator.save())
+"#,
+            )
+            .output()
+            .expect("launch Python Symbolica producer (or set PYAMPLICOL_TEST_PYTHON)");
+        assert!(
+            producer.status.success(),
+            "Python evaluator producer failed: {}",
+            String::from_utf8_lossy(&producer.stderr)
+        );
+        let (_, exact, _) = load_evaluator_state_bytes(&producer.stdout, "Python Evaluator.save()")
+            .expect("a conflicting producer symbol loads under its import name");
+        evaluate_saved(&exact, Rational::to_f64, 1e-14);
+        assert_eq!(
+            native.get_tags(),
+            &["pyamplicol_conflict::native".to_string()],
+            "this process's symbol keeps its definition"
+        );
+        // A second load reuses the import name's definition.
+        load_evaluator_state_bytes(&producer.stdout, "Python Evaluator.save()")
+            .expect("the import name is reused");
+        assert_eq!(import_conflict_name("q"), "q_pyamplicol_import");
+        assert_eq!(import_conflict_name("x__"), "x_pyamplicol_import__");
+        assert!(std::panic::catch_unwind(|| import_conflict_name("q_pyamplicol_import")).is_err());
     }
 }
 
