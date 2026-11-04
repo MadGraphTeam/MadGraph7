@@ -5,19 +5,22 @@ Graphica from symbolica-dev/symbolica's `community` branch `36cbac3a` (main
 `9de26e4e` plus the author's merged commits) with one consolidated upstream
 pull request on top: batched evaluation (`BatchExpressionEvaluator`),
 `DualNumber` component views, saved evaluators that hold only the state
-they reference, and correct complex-modulus derivatives in Dual domains. The
-pinned revision is
-[`ab497fae`](https://github.com/ValentinHirschi/symbolica/commit/ab497fae22c5a5e3f33ce77adfa11bb37fa5fca0)
-(branch `pyamplicol/pin-community-36cbac3a`; the PR's own branch
-`pyamplicol/batch-dual-saved-state` is the same five commits on `main`).
+they reference, correct complex-modulus derivatives in Dual domains and
+deterministic signs of integer polynomial factors
+([symbolica-dev/symbolica#163](https://github.com/symbolica-dev/symbolica/pull/163),
+base `community`; its six commits also apply cleanly on `main`). The pinned
+revision is the PR head
+[`20a9da94`](https://github.com/ValentinHirschi/symbolica/commit/20a9da94071d7dd64ea5cdd6ed9d6e8f8cefeacc)
+(branch `loop_me_pyamplicol` of ValentinHirschi/symbolica).
 Upstream `main` alone does not build the workspace: NinjaRS and
 `rusticol-core` / `loop-reduction` use the batched evaluator, NinjaRS the
 `DualNumber` trait, and NinjaRS's rank n+2 Dual derivatives need the
-complex-modulus fix; the Python Community modules (FeynKit, HepKit) need the
-`community` branch's `symbolica::utils::resources`. The pin moves to
-upstream once the PR is merged. NinjaRS (`9477bbe0`) and oneloopmaster
-(`31fd9225`) pin the same revision; there is no alphal00p Symbolica fork in the
-graph (`cargo tree -i symbolica` lists one source). SymJIT stays 2.28.3. These
+complex-modulus fix, and NinjaRS's determinism test the deterministic factor
+signs; the Python Community modules (FeynKit, HepKit) need the `community`
+branch's `symbolica::utils::resources`. The pin moves to upstream once the PR
+is merged. NinjaRS (`049530c0`, branch `pyamplicol/symbolica-upstream`) and
+oneloopmaster (main `128ea664`) pin the same revision; there is no alphal00p
+Symbolica fork in the graph (`cargo tree -i symbolica` lists one source). SymJIT stays 2.28.3. These
 pins are recorded by Cargo. This is a source integration, with Rust 1.96 or
 newer required; the git `[patch]` still fails the published-crate gate, so the
 branch is not publishable until the PR is in a Symbolica release.
@@ -31,8 +34,8 @@ stored evaluator state was regenerated.
 
 The development Python kernel is a release build of the Community recipe
 (symbolica-community `39b556c7`, the 3.0.3 recipe, unmodified) with only its
-`[patch]` moved to `ab497fae`: `builds/community-release-python-ab497fae`
-(wheel `builds/community-release-wheels-ab497fae/`, sha256 `9d83825b…`;
+`[patch]` moved to `20a9da94`: `builds/community-release-python-20a9da94`
+(wheel `builds/community-release-wheels-20a9da94/`, sha256 `42c26b2e…`;
 recipe in `BUILD-INFO.json`). Native and Python therefore share one Symbolica
 revision.
 
