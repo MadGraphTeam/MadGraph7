@@ -208,6 +208,9 @@ flow_invert_spline = %(madnis.flow_invert_spline)s
 discrete_hidden_dim = %(madnis.discrete_hidden_dim)s
 discrete_layers = %(madnis.discrete_layers)s
 discrete_activation = %(madnis.discrete_activation)s # options: relu, leaky_relu, elu, gelu, sigmoid, softplus
+# flavours sampled by initial state, final-state content and flavour
+flavor_levels = %(madnis.flavor_levels)s
+flavor_prior_floor = %(madnis.flavor_prior_floor)s # fraction sampled from the prior
 
 # channel weight network
 cwnet_hidden_dim = %(madnis.cwnet_hidden_dim)s

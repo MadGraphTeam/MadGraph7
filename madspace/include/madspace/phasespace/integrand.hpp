@@ -4,6 +4,7 @@
 #include "madspace/phasespace/channel_weights.hpp"
 #include "madspace/phasespace/cross_section.hpp"
 #include "madspace/phasespace/custom_function.hpp"
+#include "madspace/phasespace/discrete_flavor_levels.hpp"
 #include "madspace/phasespace/discrete_flow.hpp"
 #include "madspace/phasespace/discrete_sampler.hpp"
 #include "madspace/phasespace/flow.hpp"
@@ -69,8 +70,8 @@ public:
     /// The optional adaptive reparametrization of the continuous latent space.
     using AdaptiveMapping = std::variant<std::monostate, VegasMapping, Flow>;
     /// The optional adaptive sampler for a set of discrete choices.
-    using AdaptiveDiscrete =
-        std::variant<std::monostate, DiscreteSampler, DiscreteFlow>;
+    using AdaptiveDiscrete = std::
+        variant<std::monostate, DiscreteSampler, DiscreteFlow, DiscreteFlavorLevels>;
     /// The optional parton density: an LHAPDF grid or a user-supplied library.
     using PdfSource = std::variant<std::monostate, PdfGrid, CustomPdf>;
 

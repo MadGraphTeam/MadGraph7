@@ -7275,6 +7275,12 @@ class RunCardMG7(RunCard):
         self.add_toml_param('madnis', 'discrete_activation', "leaky_relu",
             allowed=['relu', 'leaky_relu', 'elu', 'gelu', 'sigmoid', 'softplus'],
             comment="activation function of the discrete-dimension network")
+        self.add_toml_param('madnis', 'flavor_levels', False,
+            comment="sample the flavours in three levels: initial state, final-state "
+                    "content (both learned) and flavour")
+        self.add_toml_param('madnis', 'flavor_prior_floor', 0.05,
+            comment="with flavor_levels, the fraction of the learned levels sampled "
+                    "from their prior")
         self.add_toml_param('madnis', 'cwnet_hidden_dim', 64, auto=True,
             comment="hidden units per layer of the channel weight network")
         self.add_toml_param('madnis', 'cwnet_layers', 3,

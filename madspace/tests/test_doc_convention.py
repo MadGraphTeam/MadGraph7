@@ -81,6 +81,17 @@ CASES = {
         subnet_layers=3,
         subnet_activation=ms.MLP.Activation.leaky_relu,
     ),
+    "DiscreteFlavorLevels": dict(
+        flavor_initials=[0, 0, 1],
+        flavor_contents=[0, 1, 2],
+        flavor_weights=[1.0, 2.0, 1.0],
+        prefix="",
+        condition_dim=2,
+        prior_floor=0.05,
+        subnet_hidden_dim=32,
+        subnet_layers=3,
+        subnet_activation=ms.MLP.Activation.leaky_relu,
+    ),
     "MLP": dict(
         input_dim=4,
         output_dim=2,

@@ -2035,6 +2035,61 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("DiscreteFlow::initialize_globals")
         );
 
+    py::classh<DiscreteFlavorLevels, Mapping>(
+        m, "DiscreteFlavorLevels", pydoc::doc("DiscreteFlavorLevels")
+    )
+        .def(
+            py::init<
+                const std::vector<me_int_t>&,
+                const std::vector<me_int_t>&,
+                const std::vector<double>&,
+                const std::string&,
+                std::size_t,
+                double,
+                std::size_t,
+                std::size_t,
+                MLP::Activation,
+                DataType>(),
+            py::arg("flavor_initials"),
+            py::arg("flavor_contents"),
+            py::arg("flavor_weights"),
+            py::arg("prefix"),
+            py::arg("condition_dim"),
+            py::arg("prior_floor") = 0.,
+            py::arg("subnet_hidden_dim") = 32,
+            py::arg("subnet_layers") = 3,
+            py::arg("subnet_activation") = MLP::leaky_relu,
+            py::arg("subnet_precision") = DataType::dt_float64,
+            pydoc::doc("DiscreteFlavorLevels::DiscreteFlavorLevels")
+        )
+        .def(
+            "flavor_count",
+            &DiscreteFlavorLevels::flavor_count,
+            pydoc::doc("DiscreteFlavorLevels::flavor_count")
+        )
+        .def(
+            "initial_count",
+            &DiscreteFlavorLevels::initial_count,
+            pydoc::doc("DiscreteFlavorLevels::initial_count")
+        )
+        .def(
+            "content_count",
+            &DiscreteFlavorLevels::content_count,
+            pydoc::doc("DiscreteFlavorLevels::content_count")
+        )
+        .def(
+            "condition_dim",
+            &DiscreteFlavorLevels::condition_dim,
+            pydoc::doc("DiscreteFlavorLevels::condition_dim")
+        )
+        .def(
+            "initialize_globals",
+            &DiscreteFlavorLevels::initialize_globals,
+            py::arg("context"),
+            py::arg("seed") = std::nullopt,
+            pydoc::doc("DiscreteFlavorLevels::initialize_globals")
+        );
+
     py::classh<MLMClustering, FunctionGenerator> mlm(m, "MLMClustering");
     add_enum<ScaleScheme>(
         mlm,

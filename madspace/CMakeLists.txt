@@ -254,6 +254,7 @@ add_library(
     src/phasespace/vegas.cpp
     src/phasespace/mlp.cpp
     src/phasespace/flow.cpp
+    src/phasespace/discrete_flavor_levels.cpp
     src/phasespace/discrete_flow.cpp
     src/phasespace/discrete_sampler.cpp
     src/phasespace/channel_weights.cpp
@@ -314,6 +315,7 @@ add_library(
     include/madspace/phasespace/vegas.hpp
     include/madspace/phasespace/mlp.hpp
     include/madspace/phasespace/flow.hpp
+    include/madspace/phasespace/discrete_flavor_levels.hpp
     include/madspace/phasespace/discrete_flow.hpp
     include/madspace/phasespace/discrete_sampler.hpp
     include/madspace/phasespace/channel_weights.hpp

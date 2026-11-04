@@ -716,7 +716,8 @@ NamedVector<Value> Integrand::build_channel_part(
                 [&](const auto& discrete_sym) {
                     ValueVec discrete_condition;
                     using TDiscrete = std::decay_t<decltype(discrete_sym)>;
-                    if constexpr (std::is_same_v<TDiscrete, DiscreteFlow>) {
+                    if constexpr (std::is_same_v<TDiscrete, DiscreteFlow> ||
+                                  std::is_same_v<TDiscrete, DiscreteFlavorLevels>) {
                         if (flow_conditions.size() == 1) {
                             discrete_condition.push_back(flow_conditions.at(0));
                         } else if (flow_conditions.size() > 1) {
@@ -905,7 +906,8 @@ NamedVector<Value> Integrand::build_channel_part(
                 [&](const auto& discrete_flavor) {
                     ValueVec discrete_condition;
                     using TDiscrete = std::decay_t<decltype(discrete_flavor)>;
-                    if constexpr (std::is_same_v<TDiscrete, DiscreteFlow>) {
+                    if constexpr (std::is_same_v<TDiscrete, DiscreteFlow> ||
+                                  std::is_same_v<TDiscrete, DiscreteFlavorLevels>) {
                         if (flow_conditions.size() == 1) {
                             discrete_condition.push_back(flow_conditions.at(0));
                         } else if (flow_conditions.size() > 1) {
@@ -2084,7 +2086,8 @@ NamedVector<Value> IntegrandProbability::build_function_impl(
                 [&](const auto& discrete_sym) {
                     ValueVec discrete_condition;
                     using TDiscrete = std::decay_t<decltype(discrete_sym)>;
-                    if constexpr (std::is_same_v<TDiscrete, DiscreteFlow>) {
+                    if constexpr (std::is_same_v<TDiscrete, DiscreteFlow> ||
+                                  std::is_same_v<TDiscrete, DiscreteFlavorLevels>) {
                         if (flow_conditions.size() == 1) {
                             discrete_condition.push_back(flow_conditions.at(0));
                         } else if (flow_conditions.size() > 1) {
@@ -2114,7 +2117,8 @@ NamedVector<Value> IntegrandProbability::build_function_impl(
                     ++arg_index;
                     ValueVec discrete_condition;
                     using TDiscrete = std::decay_t<decltype(discrete_flavor)>;
-                    if constexpr (std::is_same_v<TDiscrete, DiscreteFlow>) {
+                    if constexpr (std::is_same_v<TDiscrete, DiscreteFlow> ||
+                                  std::is_same_v<TDiscrete, DiscreteFlavorLevels>) {
                         if (flow_conditions.size() == 1) {
                             discrete_condition.push_back(flow_conditions.at(0));
                         } else if (flow_conditions.size() > 1) {
