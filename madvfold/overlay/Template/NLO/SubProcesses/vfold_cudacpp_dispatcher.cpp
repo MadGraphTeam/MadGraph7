@@ -143,6 +143,9 @@ fp_getbsf_t        g_born_getbsf        = nullptr;
 // (10 colour-linked Borns, 16 per-diagram |amp|^2, 2 per-colour |jamp|^2)
 typedef void (*fp_getextras_t)(const int* nevt, double* extras, int* status);
 fp_getextras_t     g_born_getextras     = nullptr;
+// AV road B (step 14g): OPTIONAL accessor for the size of that block
+typedef void (*fp_getnextras_t)(int* nbx);
+fp_getnextras_t    g_born_getnextras    = nullptr;
 bool g_born_initialized = false;
 
 // One slot per possible Real<N>, indexed 1..kMaxRealLibs (index 0 unused).
@@ -224,6 +227,9 @@ void init_born() {
     if (!g_born_getextras) dlerror(); // clear the error state
     std::fprintf(stderr, "[cudacpp_dispatcher] born:   fbridgegetbornextras_ %s\n",
                  g_born_getextras ? "available" : "NOT available");
+    g_born_getnextras =
+        (fp_getnextras_t) dlsym(g_born_handle, "fbridgegetnbornextras_");
+    if (!g_born_getnextras) dlerror(); // clear the error state
 
     g_born_initialized = true;
 }
@@ -335,6 +341,17 @@ void fbridge_born_get_extras_(int* nevt, double* extras, int* status) {
     ensure_born_initialized();
     if (!g_born_getextras) { *status = 2; return; }
     g_born_getextras(nevt, extras, status);
+}
+
+// CALL FBRIDGE_BORN_GET_NBORNEXTRAS(NBX, STATUS)
+// AV road B (step 14g): the size of the block returned by FBRIDGE_BORN_GET_EXTRAS.
+// STATUS=0 on success, 2 if this backend's library does not provide it.
+void fbridge_born_get_nbornextras_(int* nbx, int* status) {
+    ensure_born_initialized();
+    *nbx = 0;
+    if (!g_born_getnextras) { *status = 2; return; }
+    g_born_getnextras(nbx);
+    *status = 0;
 }
 
 // CALL FBRIDGE_REAL_CREATE(WHICH, PBRIDGE, NEVT, NPAR, NP4)

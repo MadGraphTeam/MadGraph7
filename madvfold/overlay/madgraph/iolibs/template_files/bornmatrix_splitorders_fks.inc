@@ -129,12 +129,9 @@ endif
 C AV road B step 9i+9j: in mode C with ENV_VFOLD_SBORN_BRIDGE>0,
 C answer from the Born points already evaluated by cudacpp whenever
 C possible (see vfold_born_batch.f90); everything below is then
-C derived as usual. Not if the mother of the FKS splitting is a
-C gluon (IJ_VALUES>0): cudacpp does not compute the second component
-C of ANS needed for it
-IF (IJ_VALUES(NFKSPROCESS).NE.0) THEN
-  CALL SBORN_SPLITORDERS(P,ANS)
-ELSEIF (.NOT.VFOLD_SBORN_SERVE(P,ANS)) THEN
+C derived as usual. Step 14g: also if the mother of the FKS splitting
+C is massless (IJ_VALUES>0), as cudacpp now computes ANS(2) for it.
+IF (.NOT.VFOLD_SBORN_SERVE(P,ANS,IJ_VALUES(NFKSPROCESS))) THEN
   CALL SBORN_SPLITORDERS(P,ANS)
 ENDIF
 

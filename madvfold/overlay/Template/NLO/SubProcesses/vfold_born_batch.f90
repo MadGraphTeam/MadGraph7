@@ -83,7 +83,7 @@ module vfold_born_batch
        BORN_ORDERS, NLO_ORDERS, QCD_POS, QED_POS, AMP_SPLIT_SIZE, &
        AMP_SPLIT_SIZE_BORN, AMP_SPLIT, AMP_SPLIT_CNT, &
        MAXPROC, NGRAPHS, NCOLOR, MAXFLOW, MAX_BHEL, MAX_BCOL, &
-       MAX_PARTICLES, MAX_BRANCH, LMAXCONFIGS, VFOLD_NBSF
+       MAX_PARTICLES, MAX_BRANCH, LMAXCONFIGS, VFOLD_NBSF, VFOLD_NANS2
   integer, parameter, public :: VECSIZE_BORN_PROTO = 8192 ! matches MAX_FOLDS_PROTO (step 11g: was 4096)
   ! (see the comment on sde_p_batch below; Road B step 9l: was 512=4*128)
   integer, parameter, public :: VECSIZE_SDE_PROTO = 4*VECSIZE_BORN_PROTO
@@ -122,7 +122,10 @@ module vfold_born_batch
   ! slot in bucket b and sv_chain(k) the next older one, so a chain visits
   ! the candidates in the same newest-first order as the linear scan did.
   integer, parameter, public :: SV_NBSF = VFOLD_NBSF ! (private here)
-  integer, parameter, public :: SV_NBX = SV_NBSF + NGRAPHS + NCOLOR
+  ! Step 14g: the block also has (real and imaginary parts) ANS(2) of SBORN for
+  ! each possible massless mother of an FKS splitting (VFOLD_ANS2_INDEX, generated)
+  integer, parameter, public :: SV_NANS2 = VFOLD_NANS2 ! (private here)
+  integer, parameter, public :: SV_NBX = SV_NBSF + NGRAPHS + NCOLOR + 2*SV_NANS2
   integer, parameter, public :: SV_NGRAPHS = NGRAPHS, SV_NCOLOR = NCOLOR ! (both private here)
   ! Road B step 11h: the ring has sv_nring slots, five per entry of the
   ! actual batch (vfold_served_init), at most SV_NSLOT: vfold_born_batch_park
@@ -159,7 +162,10 @@ module vfold_born_batch
   ! the served values and a genuine scalar SBORN, over all served calls
   integer*8, public, save :: sv_ncompared = 0
   double precision, public, save :: sv_maxdiff_me = 0d0, sv_maxdiff_amp2 = 0d0, &
-       sv_maxdiff_jamp2 = 0d0, sv_max_ans2 = 0d0
+       sv_maxdiff_jamp2 = 0d0, sv_max_ans2 = 0d0, sv_maxdiff_ans2 = 0d0
+  ! Step 14g: SBORN calls served with ANS(2) for a massless mother, or not served
+  ! because this mother has no ANS(2) in the block, or not served as genuine ones are forced
+  integer*8, public, save :: sv_nans2_served = 0, sv_nans2_missing = 0, sv_nforced = 0
 
   ! Road B step 7k: Born memo, keyed on (p_born, g, nfksprocess). All folds
   ! of a kpoint share the same p_born, so a repeated Born evaluation can
@@ -400,6 +406,7 @@ contains
         ! Borns, used by sborn_sf.f, see vfold_bsf_served). Should the library not provide
         ! it, fall back to the scalar SBORN priming for the rest of the run.
         if (vfold_sborn_bridge.gt.0) then
+          call vfold_check_nbornextras
           call FBRIDGE_BORN_GET_EXTRAS(vfold_vecsize_used, chunk_x, extras_status)
           if (extras_status.eq.0) then
             do iu = 1, nthis
@@ -1090,6 +1097,7 @@ contains
            rnd(1:vfold_vecsize_used), rnd(1:vfold_vecsize_used), mes(1:vfold_vecsize_used), &
            isel(1:vfold_vecsize_used), isel(1:vfold_vecsize_used), .false.)
       sv_nbridge_sde = sv_nbridge_sde + 1
+      call vfold_check_nbornextras
       call FBRIDGE_BORN_GET_EXTRAS(vfold_vecsize_used, x, status)
       if (status.ne.0) then
         write(6,*) 'WARNING! ENV_VFOLD_SBORN_BRIDGE: SBORN outputs', &
@@ -1105,6 +1113,24 @@ contains
     end subroutine flush_chunk
   end subroutine vfold_served_evaluate_sde
 
+  ! Step 14g: check once that the Born library returns the block expected here
+  ! (a library from another version of the cudacpp plugin may have another size:
+  ! status=2 if it does not say, which is only safe if there is no ANS(2) here)
+  subroutine vfold_check_nbornextras
+    implicit none
+    logical, save :: checked = .false.
+    integer :: nbx, status
+    if (checked) return
+    checked = .true.
+    call FBRIDGE_BORN_GET_NBORNEXTRAS(nbx, status)
+    if ((status.eq.0 .and. nbx.ne.SV_NBX) .or. (status.ne.0 .and. SV_NANS2.gt.0)) then
+      write(6,*) 'ERROR: the cudacpp Born library does not match this process directory', &
+           ' (extras block size expected=', SV_NBX, ' found=', nbx, ' status=', status, &
+           '): regenerate it with the current cudacpp plugin'
+      stop 1
+    endif
+  end subroutine vfold_check_nbornextras
+
   subroutine vfold_served_report
     implicit none
     write(6,*) 'AV: sborn served from cudacpp: hits=', sv_nhit, &
@@ -1118,7 +1144,11 @@ contains
          sv_nhit_scaled, ' (power of g=', sv_gpower, ')'
     if (sv_ncompared.gt.0) write(6,*) 'AV: sborn served vs genuine: compared=', &
          sv_ncompared, ' max rel diff me=', sv_maxdiff_me, ' amp2=', sv_maxdiff_amp2, &
-         ' jamp2=', sv_maxdiff_jamp2, ' max|ans(2)|=', sv_max_ans2
+         ' jamp2=', sv_maxdiff_jamp2, ' max|ans(2)|=', sv_max_ans2, &
+         ' ans(2) (rel to me)=', sv_maxdiff_ans2
+    write(6,*) 'AV: sborn served from cudacpp: with ANS(2) for a massless mother=', &
+         sv_nans2_served, ' not served for a massless mother=', sv_nans2_missing, &
+         ' genuine forced=', sv_nforced ! step 14g
   end subroutine vfold_served_report
 
   ! Road B step 9l: VECSIZE_BORN_PROTO as compiled into this object file
@@ -1172,13 +1202,14 @@ end module vfold_born_batch
 ! SBORN's own code then derives all its other outputs from these exactly
 ! as before. SAVEAMP is not filled, so CALCULATEDBORN is cleared.
 ! Returns .false. (i.e. do the genuine evaluation) for any other point.
-logical function vfold_sborn_serve(p, ans)
+logical function vfold_sborn_serve(p, ans, ij)
   use vfold_mode
   use vfold_born_batch
   implicit none
   include 'nexternal.inc'
   double precision, intent(in) :: p(0:3, nexternal-1)
   double complex, intent(inout) :: ans(2, 0:1) ! (2, 0:NSQAMPSO) with NSQAMPSO=1
+  integer, intent(in) :: ij ! step 14g: the massless mother of the FKS splitting (or 0)
   double precision :: amp2b(SV_NGRAPHS), jamp2b(0:SV_NCOLOR, 0:1) ! NAMPSO=1
   common/to_amps_born/ amp2b, jamp2b
   double precision :: g, all_g
@@ -1186,10 +1217,24 @@ logical function vfold_sborn_serve(p, ans)
   logical :: calculatedBorn
   common/ccalculatedBorn/calculatedBorn
   external sborn_splitorders
-  integer :: k
+  integer :: k, ians2, ix
   double precision :: d, dref, scale, r
+  double complex :: served_ans2
   vfold_sborn_serve = .false.
-  if (vfold_sborn_bridge.le.0 .or. sv_force_genuine) return
+  if (vfold_sborn_bridge.le.0) return
+  if (sv_force_genuine) then
+    sv_nforced = sv_nforced + 1
+    return
+  endif
+  ! Step 14g: a massless mother needs ANS(2), which is in the block if SV_NANS2>0
+  ians2 = 0
+  if (ij.ne.0) then
+    ians2 = vfold_ans2_index(ij)
+    if (ians2.eq.0) then
+      sv_nans2_missing = sv_nans2_missing + 1
+      return
+    endif
+  endif
   scale = 1d0
   if (.not.vfold_served_find(p, g)) then
     ! Road B step 10b: serve by rescaling a point at the same momenta and
@@ -1207,6 +1252,12 @@ logical function vfold_sborn_serve(p, ans)
   endif
   sv_nhit = sv_nhit + 1
   k = sv_last
+  served_ans2 = (0d0, 0d0)
+  if (ians2.gt.0) then
+    ix = SV_NBSF + SV_NGRAPHS + SV_NCOLOR + 2*ians2 - 1
+    served_ans2 = scale * dcmplx(sv_x(ix,k), sv_x(ix+1,k))
+    sv_nans2_served = sv_nans2_served + 1
+  endif
   if (vfold_sborn_bridge.eq.2) then
     ! validation: the genuine evaluation fills ans/amp2b/jamp2b first
     calculatedBorn = .false.
@@ -1221,6 +1272,9 @@ logical function vfold_sborn_serve(p, ans)
     d = maxval(abs(jamp2b(1:SV_NCOLOR,1)-scale*sv_x(SV_NBSF+SV_NGRAPHS+1:SV_NBSF+SV_NGRAPHS+SV_NCOLOR,k)))
     if (dref.gt.0d0) sv_maxdiff_jamp2 = max(sv_maxdiff_jamp2, d/dref)
     sv_max_ans2 = max(sv_max_ans2, abs(ans(2,1)), abs(ans(2,0)))
+    dref = abs(dble(ans(1,1)))
+    ! (only for a massless mother: else JAMPH(1) in born.f is not set, and ANS(2) is meaningless)
+    if (ians2.gt.0 .and. dref.gt.0d0) sv_maxdiff_ans2 = max(sv_maxdiff_ans2, abs(ans(2,1)-served_ans2)/dref)
   endif
   ans(1:2,0:1) = (0d0, 0d0)
   if (scale.eq.1d0) then
@@ -1235,6 +1289,8 @@ logical function vfold_sborn_serve(p, ans)
     jamp2b(1:SV_NCOLOR,1) = scale*sv_x(SV_NBSF+SV_NGRAPHS+1:SV_NBSF+SV_NGRAPHS+SV_NCOLOR,k)
   endif
   ans(1,0) = ans(1,1)
+  ans(2,1) = served_ans2 ! step 14g
+  ans(2,0) = served_ans2
   calculatedBorn = .false.
   vfold_sborn_serve = .true.
 end function vfold_sborn_serve
