@@ -1,6 +1,6 @@
 MINT0/MINT1 grids for the MINT2-only tests (vfold/myLaunch.sh -o).
 
-'output <procdir> --vfold-with-tests' runs madvfold/DEV/setupVfoldTests.sh,
+'output <procdir> --vfold-with-tests' runs madvfold/test/setupVfoldTests.sh,
 which copies <proc>/ from this directory (if it exists) into
 vfold/test/grids of the generated process directory, together with this
 README. <proc> is the name of the process used by MadGraph for its

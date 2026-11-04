@@ -19,6 +19,8 @@
 # by the overlay (madvfold/overlay_test). The test grids are process-specific,
 # so they are not in the overlay, but in madvfold/test/grids/<proc> (step 14e:
 # no longer from the private hand-written directory madvfold/DEV/<proc>_vfalt).
+# This script is in madvfold/test, not in madvfold/DEV, as it is part of codegen
+# (step 14f).
 # The code is built by the first run (./bin/generate_events, e.g. via vfold/myLaunch.sh).
 
 set -e

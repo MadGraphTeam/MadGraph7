@@ -6,7 +6,7 @@ mirror the mg5amcnlo tree, as in `../overlay`. These hooks (e.g. the
 `ENV_VFOLD_CHANNELS` channel restriction and the MINT0/MINT1 overrides)
 are kept separate so that they can be left out of the vfold code.
 
-`--vfold-with-tests` also runs `madvfold/DEV/setupVfoldTests.sh`, which
+`--vfold-with-tests` also runs `madvfold/test/setupVfoldTests.sh`, which
 prepares the process directory for the tests (e.g. relative paths and the
 `vfold/test/grids` from `madvfold/test/grids/<proc>` if present), and builds
 the cudacpp libraries with their unit tests (googletest in `CUDACPP/GTEST`,

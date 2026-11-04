@@ -1010,7 +1010,7 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
 
         # MadVFold: prepare the directory for the vfold tests, if requested
         if vfold_tests:
-            setup = pjoin(MG5DIR, 'madvfold', 'DEV', 'setupVfoldTests.sh')
+            setup = pjoin(MG5DIR, 'madvfold', 'test', 'setupVfoldTests.sh')
             logger.info('MadVFold: run %s %s' % (setup, self._export_dir))
             if subprocess.call([setup, self._export_dir]) != 0:
                 raise MadGraph5Error('MadVFold: %s failed' % setup)
