@@ -37,6 +37,7 @@ accuracy = "lc"
 contraction = "direct"
 lc_flow_layout = "topology-replay"
 fft_basis = "trace"
+graded = false
 
 [generation]
 output = "."
