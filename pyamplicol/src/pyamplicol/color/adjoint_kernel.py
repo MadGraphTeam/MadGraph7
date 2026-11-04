@@ -23,8 +23,10 @@ from itertools import chain, permutations
 import numpy as np
 
 # The largest ladder whose dense kernel is built (two anchors plus the
-# symmetric-group FFT degree of ten), and the size up to which the automatic
-# tree basis choice prefers DDM.  A resource choice, not a cap.
+# symmetric-group FFT degree of ten); larger ladders give the same exact
+# integers from ``ladder_overlap``.  A resource choice, not a cap.  The
+# automatic tree basis choice has its own tuning setting with the same
+# default (``color.adjoint_dense_max_gluons``).
 DENSE_ADJOINT_GLUONS = 12
 _INT64_MAX = int(np.iinfo(np.int64).max)
 

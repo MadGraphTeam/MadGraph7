@@ -172,11 +172,6 @@ def test_post_build_validation_keeps_small_resolved_axes_complete() -> None:
 def test_post_build_validation_slices_large_helicity_color_product(
     monkeypatch,
 ) -> None:
-    monkeypatch.setattr(
-        generation_service,
-        "_MAX_POST_BUILD_RESOLVED_COMPONENTS",
-        100,
-    )
     physics = SimpleNamespace(
         helicities=tuple(
             [
@@ -192,25 +187,24 @@ def test_post_build_validation_slices_large_helicity_color_product(
         contracted_color_components=(),
     )
 
-    assert generation_service._post_build_validation_slices(physics, 1) == (
+    assert generation_service._post_build_validation_slices(physics, 1, 100) == (
         ("selected-helicity", ("h:representative",), ()),
         ("selected-flow", (), ("flow:representative",)),
+    )
+    # generation.validation.max_resolved_components = null: every component.
+    assert generation_service._post_build_validation_slices(physics, 1, None) == (
+        ("complete", (), ()),
     )
 
 
 def test_post_build_validation_always_bounds_each_slice(monkeypatch) -> None:
-    monkeypatch.setattr(
-        generation_service,
-        "_MAX_POST_BUILD_RESOLVED_COMPONENTS",
-        5,
-    )
     physics = SimpleNamespace(
         helicities=tuple(_helicity(f"h:{index}") for index in range(3)),
         color_flows=tuple(_color_flow(f"flow:{index}") for index in range(3)),
         contracted_color_components=(),
     )
 
-    assert generation_service._post_build_validation_slices(physics, 2) == (
+    assert generation_service._post_build_validation_slices(physics, 2, 5) == (
         ("selected-helicity-and-flow", ("h:0",), ("flow:0",)),
     )
 
@@ -219,11 +213,6 @@ def test_post_build_validation_never_evaluates_large_axes_unselected(
     monkeypatch,
     tmp_path,
 ) -> None:
-    monkeypatch.setattr(
-        generation_service,
-        "_MAX_POST_BUILD_RESOLVED_COMPONENTS",
-        100,
-    )
     physics = SimpleNamespace(
         process_id="process",
         helicities=tuple(_helicity(f"h:{index}") for index in range(12)),
@@ -278,7 +267,12 @@ def test_post_build_validation_never_evaluates_large_axes_unselected(
         ),
     )
 
-    GenerationBackend(GenerationConfig(), None)._validate_generated_artifact(
+    GenerationBackend(
+        GenerationConfig(
+            validation=GenerationValidationConfig(max_resolved_components=100)
+        ),
+        None,
+    )._validate_generated_artifact(
         tmp_path,
         ("process",),
         validation_points={"process": (point,)},
@@ -448,3 +442,35 @@ def test_on_the_fly_post_build_validation_requires_canonical_seed_container(
             validation_points={},
             expected_api_bundle_path=None,
         )
+
+
+def test_colour_tuning_bounds_follow_their_settings() -> None:
+    """The automatic DDM basis bound (12 adjoint labels) and the all-colour
+    selector-lane bound (128 sectors) are tuning settings, not caps."""
+
+    from pyamplicol.config import ColorConfig, ConfigurationError
+
+    def backend(**color):
+        run = SimpleNamespace(color=ColorConfig(**color))
+        return SimpleNamespace(
+            _run_config=run,
+            _process_selection=SimpleNamespace(reference_color_order=()),
+        )
+
+    bound = GenerationBackend._fused_selector_sector_bound_exceeded
+    assert bound(backend(), 129) and not bound(backend(), 128)
+    assert not bound(backend(fused_selector_max_sectors=None), 10**6)
+    assert bound(backend(fused_selector_max_sectors=4), 5)
+
+    basis = GenerationBackend._automatic_adjoint_basis_limit
+    process = SimpleNamespace(
+        fundamental_labels=(),
+        antifundamental_labels=(),
+        adjoint_labels=tuple(range(1, 14)),
+    )
+    assert basis(backend(), process) is not None  # 13 > 12: trace basis
+    assert basis(backend(adjoint_dense_max_gluons=13), process) is None
+    with pytest.raises(ConfigurationError, match="adjoint_dense_max_gluons"):
+        ColorConfig(adjoint_dense_max_gluons=-1)
+    with pytest.raises(ConfigurationError, match="max_resolved_components"):
+        GenerationValidationConfig(max_resolved_components=0)

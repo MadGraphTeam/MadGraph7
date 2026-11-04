@@ -568,6 +568,16 @@ class ColorConfig:
     # (the graded full colour). The inherited tree ``lc``/``nlc`` have no
     # degrees. Tree requests only.
     graded: bool = field(default=False, metadata=_setting("bool"))
+    # Tuning (both choices exact): the automatic tree basis prefers the
+    # adjoint (DDM) basis up to this many adjoint labels and the trace basis
+    # above, where the dense DDM metric grows as (n-2)!.
+    adjoint_dense_max_gluons: int = field(default=12, metadata=_setting("int"))
+    # Tuning (results unchanged): the auxiliary all-colour lane for
+    # runtime helicity selection is built up to this many colour sectors
+    # (above, topology replay runs once per sector); null always builds it.
+    fused_selector_max_sectors: int | None = field(
+        default=128, metadata=_setting("int", nullable=True)
+    )
 
     @property
     def nc_graded(self) -> bool:
@@ -605,6 +615,24 @@ class ColorConfig:
         )
         if not isinstance(self.graded, bool):
             raise ConfigurationError("color.graded must be a boolean")
+        object.__setattr__(
+            self,
+            "adjoint_dense_max_gluons",
+            _integer(
+                self.adjoint_dense_max_gluons,
+                "color.adjoint_dense_max_gluons",
+                minimum=0,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "fused_selector_max_sectors",
+            _optional_integer(
+                self.fused_selector_max_sectors,
+                "color.fused_selector_max_sectors",
+                minimum=0,
+            ),
+        )
         if self.accuracy is None:
             # Validated once ``RunConfig`` resolves the request kind's default.
             return
@@ -645,8 +673,23 @@ class GenerationValidationConfig:
     relative_tolerance: float = field(default=1e-12, metadata=_setting("float"))
     absolute_tolerance: float = field(default=1e-300, metadata=_setting("float"))
     post_build_validation: bool = field(default=False, metadata=_setting("bool"))
+    # Post-build validation of compiled artifacts checks every resolved
+    # (sample, helicity, colour) component up to this count and one
+    # helicity and/or flow slice above it; null checks every component.
+    max_resolved_components: int | None = field(
+        default=1_000_000, metadata=_setting("int", nullable=True)
+    )
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "max_resolved_components",
+            _optional_integer(
+                self.max_resolved_components,
+                "generation.validation.max_resolved_components",
+                minimum=1,
+            ),
+        )
         for name in (
             "enabled",
             "post_build_validation",
