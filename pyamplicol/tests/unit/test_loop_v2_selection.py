@@ -1583,12 +1583,15 @@ def test_selections_are_masks_on_one_template(
                 assert all(x == 0 for x in got[0][column.key].totals)
             # MF-MASKS-ROWS: a call keeping some Born rows dresses the
             # families pruned to the rows they reach (``plan::LiveRows``),
-            # one keeping every row the template's families.
+            # one keeping every row the template's families; one helicity
+            # runs pruned copies (the heap gate keeps them).
             counts = masked.columns.last_report["counts"]
             if len(column.rows or ()) in range(1, len(hel)):
                 assert 0 < counts.get("live-row links", 0)
             else:
                 assert "live-row links" not in counts
+            if selection.get("helicities") == [single]:
+                assert 0 < counts["row-pruned families"], selection
     assert built["sets"] > 1  # the oracles' own column sets
 
 
