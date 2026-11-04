@@ -389,6 +389,52 @@ class TestBornGscale(unittest.TestCase):
             self.assertEqual(power, '1' if name in gluon else '0', name)
 
 
+class TestSplitOrdersInfo(unittest.TestCase):
+    """The coupling orders of orders.inc and amp_split_orders.inc, which
+    fks_configurations.json also carries for MadSpace."""
+
+    @classmethod
+    def setUpClass(cls):
+        interface = MGCmd.MasterCmd()
+        interface.do_import('model loop_sm')
+        # three Born orders (QCD^2 = 4, 2, 0), each with its QCD corrections
+        interface.do_generate('u u~ > t t~ QCD^2<=4 QED^2<=4 [real=QCD]')
+        helas = fks_helas.FKSHelasMultiProcess(interface._fks_multi_proc)
+        cls.matrix_element = helas.get_matrix_elements()[0]
+
+    def test_orders(self):
+        info = export_fks.get_split_orders_info(self.matrix_element)
+        self.assertEqual(info['split_orders'], ['QCD', 'QED'])
+        self.assertEqual((info['qcd_pos'], info['qed_pos']), (1, 2))
+        born_count = info['amp_split_size_born']
+        born = info['amp_split_orders'][:born_count]
+        nlo = info['amp_split_orders'][born_count:]
+        self.assertEqual(sorted(born), [[0, 4], [2, 2], [4, 0]])
+        # every NLO combination is one of a Born with two more powers of QCD
+        # or QED (the latter from reals with only an interference)
+        for orders in nlo:
+            self.assertTrue([orders[0] - 2, orders[1]] in born
+                            or [orders[0], orders[1] - 2] in born, orders)
+        self.assertEqual(sorted(nlo), [[0, 6], [2, 4], [4, 2], [6, 0]])
+        data = export_fks.get_fks_configurations(self.matrix_element, info)
+        self.assertEqual(data['orders'], {
+            'split_orders': ['QCD', 'QED'], 'born': born, 'nlo': nlo,
+            'max_born': [info['max_born_orders'][o] for o in ['QCD', 'QED']],
+            'max_nlo': [info['max_nlo_orders'][o] for o in ['QCD', 'QED']]})
+
+    def test_same_as_orders_inc(self):
+        """write_orders_file writes the same combinations."""
+        exporter = object.__new__(export_fks.ProcessExporterFortranFKS)
+        with tempfile.TemporaryDirectory() as path:
+            filename = os.path.join(path, 'orders.inc')
+            amp_split_orders, size, size_born = exporter.write_orders_file(
+                writers.FortranWriter90(filename), self.matrix_element)
+        info = export_fks.get_split_orders_info(self.matrix_element)
+        self.assertEqual([list(o) for o in amp_split_orders],
+                         info['amp_split_orders'])
+        self.assertEqual(size_born, info['amp_split_size_born'])
+
+
 class IOExportFKSTest(IOTests.IOTestManager):
     """Test class for the export fks module"""
 

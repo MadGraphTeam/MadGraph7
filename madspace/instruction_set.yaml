@@ -3039,12 +3039,18 @@ fks_soft_limit:
     - name: eik
       type: [float, k]
       desc: "reduced eikonal factors of the pairs of the configuration at the soft counter-event"
+    - name: born
+      type: [float, b]
+      desc: "the Born per Born order"
     - name: color_correlated
-      type: [float, m, m]
-      desc: "color-correlated Borns <T_a . T_b> B of the particles a, b of the Born (C_a B for a = b)"
+      type: [float, b, m, m]
+      desc: "color-correlated Borns <T_a . T_b> B of the particles a, b of the Born (C_a B for a = b) per Born order"
     - name: alpha_s
       type: [float]
       desc: "strong coupling"
+    - name: alpha
+      type: [float]
+      desc: "QED coupling"
     - name: index
       type: [int]
       desc: "FKS configuration of the event"
@@ -3059,22 +3065,28 @@ fks_soft_limit:
       desc: "position of n of each pair in the Born"
     - name: pair_factor
       type: [float, single, c, k]
-      desc: "factor of each pair, -2 times the identical-particle ratio of the configuration, half that for a particle with itself"
+      desc: "factor of each pair, -2 times the identical-particle ratio of the configuration, half that for a particle with itself, times eta_m Q_m eta_n Q_n for a photon i"
+    - name: coupling
+      type: [int, single, c]
+      desc: "coupling of the splitting of each configuration, 0 QCD and 1 QED"
+    - name: born_index
+      type: [int, single, c, o]
+      desc: "Born order of the counterterms of each configuration at each NLO order, -1 for none"
   outputs:
     - name: soft
-      type: [float]
-      desc: "soft limit of xi^2 (1 - y) times the real matrix element"
+      type: [float, o]
+      desc: "soft limit of xi^2 (1 - y) times the real matrix element per NLO order"
   vectorized: False
-  desc: "Soft limit of xi^2 (1 - y) times the real matrix element, as sbornsoft in fks_singular.f: 4 pi alpha_s sum_(m, n) f_mn E_mn <T_m . T_n> B over the pairs of the configuration of the event, with the reduced eikonal factors E_mn and f_mn = -2 iden_comp, half that for m = n (whose color-linked Born of MadFKS has a factor 1/2)."
+  desc: "Soft limit of xi^2 (1 - y) times the real matrix element per NLO order, as sbornsoft in fks_singular.f: for a gluon i 4 pi alpha_s sum_(m, n) f_mn E_mn <T_m . T_n> B and for a photon i 4 pi alpha sum_(m, n) f_mn E_mn B over the pairs of the configuration of the event, with the reduced eikonal factors E_mn, the Born of the order of the counterterms and f_mn = -2 iden_comp, half that for m = n (whose color-linked Born of MadFKS has a factor 1/2), times eta_m Q_m eta_n Q_n for a photon i with the charges Q and eta = -1 for an incoming particle."
 
 fks_collinear_limit:
   inputs:
     - name: born
-      type: [float]
-      desc: "the Born"
+      type: [float, b]
+      desc: "the Born per Born order"
     - name: spin_correlated
-      type: [float]
-      desc: "the Born with the polarization vector of the emitter replaced by k_perp"
+      type: [float, b]
+      desc: "the Born with the polarization vector of the emitter replaced by k_perp per Born order"
     - name: ap
       type: [float, 2]
       desc: "QCD and QED Altarelli-Parisi kernels at the counter-event, without the couplings"
@@ -3084,27 +3096,39 @@ fks_collinear_limit:
     - name: alpha_s
       type: [float]
       desc: "strong coupling"
+    - name: alpha
+      type: [float]
+      desc: "QED coupling"
     - name: index
       type: [int]
       desc: "FKS configuration of the event"
     - name: factor
       type: [float, single, c]
       desc: "identical-particle ratio of each configuration, zero without a collinear limit"
+    - name: coupling
+      type: [int, single, c]
+      desc: "coupling of the splitting of each configuration, 0 QCD and 1 QED"
+    - name: born_index
+      type: [int, single, c, o]
+      desc: "Born order of the counterterms of each configuration at each NLO order, -1 for none"
   outputs:
     - name: collinear
-      type: [float]
-      desc: "collinear limit of xi^2 (1 - y) times the real matrix element"
+      type: [float, o]
+      desc: "collinear limit of xi^2 (1 - y) times the real matrix element per NLO order"
   vectorized: False
-  desc: "Collinear limit of xi^2 (1 - y) times the real matrix element, as sborncol_fsr and sborncol_isr in fks_singular.f: 4 pi alpha_s iden_comp (AP B + Q (B / 2 - B_kperp)) with the QCD kernels, where B_kperp, the Born with the polarization vector of the emitter replaced by k_perp, enters only where Q is not zero."
+  desc: "Collinear limit of xi^2 (1 - y) times the real matrix element per NLO order, as sborncol_fsr and sborncol_isr in fks_singular.f: 4 pi alpha iden_comp (AP B + Q (B / 2 - B_kperp)) with the kernels and the coupling alpha of the splitting (QCD or QED) and the Born of the order of the counterterms, where B_kperp, the Born with the polarization vector of the emitter replaced by k_perp, enters only where Q is not zero."
 
 fks_collinear_remnants:
   inputs:
     - name: born
-      type: [float]
-      desc: "the Born"
+      type: [float, b]
+      desc: "the Born per Born order"
     - name: alpha_s
       type: [float]
       desc: "strong coupling"
+    - name: alpha
+      type: [float]
+      desc: "QED coupling"
     - name: s_c
       type: [float]
       desc: "sector function at the collinear counter-event"
@@ -3147,30 +3171,42 @@ fks_collinear_remnants:
     - name: kind
       type: [int, single, c]
       desc: "splitting function of each configuration, as for fks_splitting_kernels"
+    - name: coupling
+      type: [int, single, c]
+      desc: "coupling of the splitting of each configuration, 0 QCD and 1 QED"
+    - name: born_index
+      type: [int, single, c, o]
+      desc: "Born order of the counterterms of each configuration at each NLO order, -1 for none"
     - name: factor
       type: [float, single, c]
       desc: "identical-particle ratio of each configuration"
+    - name: ap_factor
+      type: [float, single, c]
+      desc: "color or charge factor of the Altarelli-Parisi kernel of each configuration"
+    - name: dis_factor
+      type: [float, single, c]
+      desc: "color or charge factor of the change to the DIS scheme of each configuration"
     - name: delta
       type: [float, single, c]
       desc: "deltaI of each configuration"
     - name: options
-      type: [float, single, 2]
-      desc: "the PDF scheme (0 MSbar, 1 DIS) and the number of light flavors"
+      type: [float, single, 1]
+      desc: "the PDF scheme (0 MSbar, 1 DIS)"
   outputs:
     - name: collinear
-      type: [float]
-      desc: "collinear remnant at the collinear counter-event"
+      type: [float, o]
+      desc: "collinear remnant at the collinear counter-event per NLO order"
     - name: soft_collinear
-      type: [float]
-      desc: "collinear remnant at the soft-collinear counter-event"
+      type: [float, o]
+      desc: "collinear remnant at the soft-collinear counter-event per NLO order"
   vectorized: False
-  desc: "The collinear remnants of an incoming emitter of sreal_deg, compute_collinear_counter_term and compute_soft_collinear_counter_term in fks_singular.f, with the factorization scale of the beam of the emitter. With N = 4 pi alpha_s B iden_comp / (8 pi^2 z), D_xi = N ((1 - z) P log(s deltaI / (2 mu_F^2)) - (1 - z) P'), D_lxi = 2 N (1 - z) P and the parts K_p, K_l, K_d = -N k_p, k_l, k_d of the change to the DIS scheme (zero in MSbar), the collinear remnant is f_dc (D_xi + K_p + (D_lxi + K_l) log xi_c) at z = 1 - xi_c and s of the collinear counter-event and the soft-collinear one -f_dsc1 (D_xi + K_p + (D_lxi + K_l) log xi_c) - f_dsc2 D_xi - f_dsc3 D_lxi + f_pdf_d K_d + f_pdf_p K_p + f_pdf_l K_l at z = 1 and s of the soft-collinear counter-event. Each is zero where its sector function is."
+  desc: "The collinear remnants of an incoming emitter of sreal_deg, compute_collinear_counter_term and compute_soft_collinear_counter_term in fks_singular.f per NLO order, with the factorization scale of the beam of the emitter and the kernels and coupling of the splitting (QCD or QED). With N = 4 pi alpha B iden_comp / (8 pi^2 z) and the Born of the order of the counterterms, D_xi = N ((1 - z) P log(s deltaI / (2 mu_F^2)) - (1 - z) P'), D_lxi = 2 N (1 - z) P and the parts K_p, K_l, K_d = -N k_p, k_l, k_d of the change to the DIS scheme (zero in MSbar), the collinear remnant is f_dc (D_xi + K_p + (D_lxi + K_l) log xi_c) at z = 1 - xi_c and s of the collinear counter-event and the soft-collinear one -f_dsc1 (D_xi + K_p + (D_lxi + K_l) log xi_c) - f_dsc2 D_xi - f_dsc3 D_lxi + f_pdf_d K_d + f_pdf_p K_p + f_pdf_l K_l at z = 1 and s of the soft-collinear counter-event. Each is zero where its sector function is."
 
 fks_real_emission:
   inputs:
     - name: matrix_element
-      type: [float]
-      desc: "real matrix element at the event"
+      type: [float, o]
+      desc: "real matrix element at the event per NLO order"
     - name: s
       type: [float]
       desc: "sector function at the event"
@@ -3181,11 +3217,11 @@ fks_real_emission:
       type: [float]
       desc: "sector function at the event with the direction of i at the soft-collinear counter-event"
     - name: soft
-      type: [float]
-      desc: "soft limit of xi^2 (1 - y) times the real matrix element at the event"
+      type: [float, o]
+      desc: "soft limit of xi^2 (1 - y) times the real matrix element at the event per NLO order"
     - name: collinear
-      type: [float]
-      desc: "collinear limit of xi^2 (1 - y) times the real matrix element at the event"
+      type: [float, o]
+      desc: "collinear limit of xi^2 (1 - y) times the real matrix element at the event per NLO order"
     - name: xi
       type: [float]
       desc: "xi of the event"
@@ -3209,31 +3245,49 @@ fks_real_emission:
       desc: "tiny of sreal and fks_Sij, below which in xi or 1 - y the real emission is its limit, zero for none"
   outputs:
     - name: real
-      type: [float]
-      desc: "real matrix element times the sector function"
+      type: [float, o]
+      desc: "real matrix element times the sector function per NLO order"
   vectorized: False
-  desc: "The real matrix element times the sector function at the event, with the switches of sreal and fks_Sij: below tiny in 1 - y the collinear limit at the event over xi^2 (1 - y), else below tiny in xi the soft one, in place of the matrix element. For xi <= tiny the sector function takes the direction of i at the soft counter-event, or at the soft-collinear one where also 1 - y < tiny and the emitter is massless. Without that counter-event the event keeps its own direction and matrix element."
+  desc: "The real matrix element per NLO order times the sector function at the event, with the switches of sreal and fks_Sij: below tiny in 1 - y the collinear limit at the event over xi^2 (1 - y), else below tiny in xi the soft one, in place of the matrix element. For xi <= tiny the sector function takes the direction of i at the soft counter-event, or at the soft-collinear one where also 1 - y < tiny and the emitter is massless. Without that counter-event the event keeps its own direction and matrix element."
 
 fks_subtraction:
   inputs:
     - name: real
-      type: [float]
-      desc: "real matrix element times the sector function at the event"
+      type: [float, o]
+      desc: "real matrix element times the sector function at the event per NLO order"
     - name: soft
-      type: [float]
-      desc: "soft limit times the sector function and the prefactor f_s at the soft counter-event"
+      type: [float, o]
+      desc: "soft limit at the soft counter-event per NLO order"
     - name: collinear
-      type: [float]
-      desc: "collinear limit times the sector function and the prefactor f_c at the collinear counter-event"
+      type: [float, o]
+      desc: "collinear limit at the collinear counter-event per NLO order"
     - name: soft_collinear
+      type: [float, o]
+      desc: "collinear limit at the soft-collinear counter-event per NLO order"
+    - name: s_s
       type: [float]
-      desc: "collinear limit times the sector function and the prefactor f_sc at the soft-collinear counter-event"
+      desc: "sector function at the soft counter-event"
+    - name: s_c
+      type: [float]
+      desc: "sector function at the collinear counter-event"
+    - name: s_sc
+      type: [float]
+      desc: "sector function at the soft-collinear counter-event"
+    - name: f_s
+      type: [float]
+      desc: "prefactor of the soft counterterm"
+    - name: f_c
+      type: [float]
+      desc: "prefactor of the collinear counterterm"
+    - name: f_sc
+      type: [float]
+      desc: "prefactor of the soft-collinear counterterm"
     - name: remnant_c
-      type: [float]
-      desc: "collinear remnant at the collinear counter-event"
+      type: [float, o]
+      desc: "collinear remnant at the collinear counter-event per NLO order"
     - name: remnant_sc
-      type: [float]
-      desc: "collinear remnant at the soft-collinear counter-event"
+      type: [float, o]
+      desc: "collinear remnant at the soft-collinear counter-event per NLO order"
     - name: xi
       type: [float]
       desc: "xi of the event"
@@ -3275,19 +3329,19 @@ fks_subtraction:
       desc: "xiScut and deltaS of fks_powers.inc"
   outputs:
     - name: real_out
-      type: [float]
-      desc: "contribution of the real emission, per unit weight of the event"
+      type: [float, o]
+      desc: "contribution of the real emission per NLO order, per unit weight of the event"
     - name: soft_out
-      type: [float]
-      desc: "contribution of the soft counterterm, per unit Jacobian of its counter-event"
+      type: [float, o]
+      desc: "contribution of the soft counterterm per NLO order, per unit Jacobian of its counter-event"
     - name: collinear_out
-      type: [float]
-      desc: "contribution of the collinear counterterm, per unit Jacobian of its counter-event"
+      type: [float, o]
+      desc: "contribution of the collinear counterterm per NLO order, per unit Jacobian of its counter-event"
     - name: soft_collinear_out
-      type: [float]
-      desc: "contribution of the soft-collinear counterterm, per unit Jacobian of its counter-event"
+      type: [float, o]
+      desc: "contribution of the soft-collinear counterterm per NLO order, per unit Jacobian of its counter-event"
   vectorized: False
-  desc: "The real emission and its FKS counterterms with their signs, symmetry factors and conditions, as compute_real_emission and compute_soft_counter_term and its siblings in fks_singular.f, the collinear remnants added to the collinear counterterms: the soft counterterm where xi_hat xi_max_s <= xiScut and xi <= xiScut, the collinear one where y > 1 - deltaS, the soft-collinear one where both xi_hat xi_max_c and xi_c are below xiScut and y > 1 - deltaS, each zero where its momenta are not generated."
+  desc: "The real emission and its FKS counterterms per NLO order with their sector functions, prefactors, signs, symmetry factors and conditions, as compute_real_emission and compute_soft_counter_term and its siblings in fks_singular.f, the collinear remnants added to the collinear counterterms: the soft counterterm where xi_hat xi_max_s <= xiScut and xi <= xiScut, the collinear one where y > 1 - deltaS, the soft-collinear one where both xi_hat xi_max_c and xi_c are below xiScut and y > 1 - deltaS, each zero where its momenta are not generated."
 
 fks_soft_virtual:
   inputs:
@@ -3295,14 +3349,17 @@ fks_soft_virtual:
       type: [float, n, 4]
       desc: "momenta of the Born"
     - name: born
-      type: [float]
-      desc: "the Born"
+      type: [float, b]
+      desc: "the Born per Born order"
     - name: color_correlated
-      type: [float, n, n]
-      desc: "color-correlated Borns <T_a . T_b> B of the particles a, b of the Born (C_a B for a = b)"
+      type: [float, b, n, n]
+      desc: "color-correlated Borns <T_a . T_b> B of the particles a, b of the Born (C_a B for a = b) per Born order"
     - name: alpha_s
       type: [float]
       desc: "strong coupling"
+    - name: alpha
+      type: [float]
+      desc: "QED coupling"
     - name: ren_scale
       type: [float]
       desc: "renormalization scale, also the Ellis-Sexton scale"
@@ -3313,41 +3370,47 @@ fks_soft_virtual:
       type: [float]
       desc: "factorization scale of the second beam"
     - name: casimir
-      type: [float, single, n]
-      desc: "color factor C of each massless gluon (C_A) or quark (C_F) of the Born, zero for the other particles"
+      type: [float, single, 2, n]
+      desc: "QCD and QED factor C of each particle of the Born: C_A and C_F for a massless gluon and quark, Q^2 for a massless charged particle, zero for the other particles"
     - name: gamma
-      type: [float, single, n]
-      desc: "gamma of FKS of each massless gluon or quark, zero for the other particles"
+      type: [float, single, 2, n]
+      desc: "QCD and QED gamma of FKS of each particle of the Born, zero for those without Q terms"
     - name: gamma_prime
-      type: [float, single, n]
-      desc: "gamma' of FKS of each massless gluon or quark, zero for the other particles"
+      type: [float, single, 2, n]
+      desc: "QCD and QED gamma' of FKS of each particle of the Born, zero for those without Q terms"
     - name: masses
       type: [float, single, n]
       desc: "mass of each particle of the Born"
     - name: pair_m
-      type: [int, single, k]
-      desc: "position of m of each pair of color-linked particles in the Born"
+      type: [int, single, 2, k]
+      desc: "position of m of each pair of color-linked (QCD) or charge-linked (QED) particles in the Born"
     - name: pair_n
-      type: [int, single, k]
+      type: [int, single, 2, k]
       desc: "position of n of each pair in the Born"
     - name: pair_factor
-      type: [float, single, k]
-      desc: "factor of each pair, -2 and -1 for a massive particle with itself, zero for padding"
+      type: [float, single, 2, k]
+      desc: "factor of each pair, -2 and -1 for a massive particle with itself, times eta_m Q_m eta_n Q_n for QED, zero for padding"
+    - name: born_index
+      type: [int, single, 2, o]
+      desc: "Born order of the QCD and QED counterterms at each NLO order, -1 for none"
+    - name: ren_factor
+      type: [float, single, o]
+      desc: "b gamma_g at each NLO order with the power b of alpha_s of the Born of its QCD counterterms"
     - name: options
-      type: [float, single, 3]
-      desc: "xicut and deltaO of fks_powers.inc and b gamma_g with the power b of alpha_s of the Born"
+      type: [float, single, 2]
+      desc: "xicut and deltaO of fks_powers.inc"
   outputs:
     - name: soft_virtual
-      type: [float]
-      desc: "the n-body part without the Born and the virtual"
+      type: [float, o]
+      desc: "the n-body part without the Born and the virtual per NLO order"
     - name: ren_coefficient
-      type: [float]
-      desc: "coefficient of log mu_R^2 at a fixed virtual"
+      type: [float, o]
+      desc: "coefficient of log mu_R^2 at a fixed virtual per NLO order"
     - name: fact_coefficients
-      type: [float, 2]
-      desc: "coefficients of log mu_F^2 of the two beams"
+      type: [float, o, 2]
+      desc: "coefficients of log mu_F^2 of the two beams per NLO order"
   vectorized: False
-  desc: "The n-body part of bornsoftvirtual in fks_singular.f without the virtual, for QCD and with the Ellis-Sexton scale at mu_R. With a = alpha_s / (2 pi), it is a B sum_j Q_j over the massless gluons and quarks plus a sum_(m, n) f_mn <T_m . T_n> B I_mn over the pairs of color-linked particles, with the integrated eikonals I_mn of eikonal_Ireg. Q_j = gamma'_j - log(s deltaO / (2 mu_R^2)) (gamma_j - 2 C_j log(2 E_j / (xicut sqrt_s))) + 2 C_j (log^2(2 E_j / sqrt_s) - log^2 xicut) - 2 gamma_j log(2 E_j / sqrt_s) for a final-state parton with its energy in the partonic center-of-mass frame, -log(mu_F^2 / mu_R^2) (gamma_j + 2 C_j log xicut) for an incoming one with the factorization scale of its beam. The coefficients of log mu_R^2 and log mu_F^2 of the weight lines of MadFKS are a b gamma_g B and -a (gamma_j + 2 C_j log xicut) B."
+  desc: "The n-body part of bornsoftvirtual in fks_singular.f without the virtual per NLO order, for QCD and QED and with the Ellis-Sexton scale at mu_R. With a = alpha_s / (2 pi) for QCD and alpha / (2 pi) for QED and the Born B of the order of the counterterms, each is a B sum_j Q_j over the massless particles with Q terms plus a sum_(m, n) f_mn L_mn I_mn over the pairs of linked particles, with L_mn = <T_m . T_n> B for QCD and B for QED and the integrated eikonals I_mn of eikonal_Ireg. Q_j = gamma'_j - log(s deltaO / (2 mu_R^2)) (gamma_j - 2 C_j log(2 E_j / (xicut sqrt_s))) + 2 C_j (log^2(2 E_j / sqrt_s) - log^2 xicut) - 2 gamma_j log(2 E_j / sqrt_s) for a final-state particle with its energy in the partonic center-of-mass frame, -log(mu_F^2 / mu_R^2) (gamma_j + 2 C_j log xicut) for an incoming one with the factorization scale of its beam. The coefficients of log mu_R^2 and log mu_F^2 of the weight lines of MadFKS are a b gamma_g B of QCD and the sum of -a (gamma_j + 2 C_j log xicut) B over QCD and QED."
 
 ---
 title: Invariants

@@ -50,6 +50,11 @@ struct FKSConfiguration {
     /// (FKS_J_FROM_I_D). The pairs (k, l) of all of them partition the phase
     /// space of the real process into the sectors of its configurations.
     nested_vector2<std::size_t> fks_j_from_i;
+    /// The types of the splitting of i and j, "QCD" or "QED" (splitting_type
+    /// of the FKS exporter): the coupling of its soft and collinear limits.
+    /// A second type comes with an extra counterterm, the Born of another
+    /// mother (extra_cnt of MadFKS).
+    std::vector<std::string> splitting_types{"QCD"};
 
     /// Number of particles of the real process, incoming included.
     std::size_t particle_count() const { return pdgs.size(); }
@@ -57,12 +62,17 @@ struct FKSConfiguration {
     bool initial_state() const { return j_fks < 2; }
     /// Position of the emitter in the Born.
     std::size_t born_j_fks() const { return j_fks < i_fks ? j_fks : j_fks - 1; }
+    /// Whether the (first) splitting type is QED, else QCD.
+    bool qed_splitting() const {
+        return !splitting_types.empty() && splitting_types.front() == "QED";
+    }
     /**
      * PDG codes of the Born: the real process without i, with the mother
      * i + j at the position of j. For a gluon or photon i the mother is j, for
-     * a final-state quark (or lepton) pair the gluon (or photon) it comes
-     * from, and for a final-state i off an incoming j of the same flavor the
-     * gluon (or photon) that enters the Born, else the antiparticle of i.
+     * a final-state pair of a particle and its antiparticle the gluon (QCD
+     * splitting) or photon (QED splitting) it comes from, and for a
+     * final-state i off an incoming j of the same flavor the gluon or photon
+     * that enters the Born, else the antiparticle of i.
      *
      * @throws std::invalid_argument if i and j come from no splitting.
      */
@@ -91,7 +101,8 @@ struct FKSConfiguration {
  * Check a list of FKS configurations: at least one, all with real processes of
  * the same number of particles and with every field of that size, i a
  * massless final-state particle, j another particle that forms an FKS pair
- * with it, and FKS pairs within the real process.
+ * with it, FKS pairs within the real process and one or two different
+ * splitting types, each "QCD" or "QED".
  *
  * @param configurations  The configurations.
  * @param user            Name of the caller, for the error messages.
@@ -99,6 +110,68 @@ struct FKSConfiguration {
  */
 std::size_t check_fks_configurations(
     const std::vector<FKSConfiguration>& configurations, const std::string& user
+);
+
+/**
+ * The coupling orders of the FKS subtraction of a Born, as the split orders of
+ * MadFKS give them (orders.inc and amp_split_orders.inc) [1]: the powers of
+ * the couplings of each split order (@f$g_s@f$ for QCD, @f$e@f$ for QED) in
+ * the squared matrix elements. The Born and its correlated versions come per
+ * Born order, the real emission, its counterterms and the n-body part per NLO
+ * order. A splitting of type J (QCD or QED) of the Born of order @f$b@f$ has
+ * counterterms of order @f$b@f$ plus two powers of J, kept where that is at
+ * most `max_nlo` in every split order (keep_order_cnt of born.f).
+ *
+ * madspace.fks reads them from the `orders` entry of fks_configurations.json.
+ * A Born with @f$\alpha_s^b@f$ alone and QCD corrections has one Born and one
+ * NLO order (qcd()).
+ *
+ * **References**
+ * - [1] R. Frederix, S. Frixione, V. Hirschi, D. Pagani, H.-S. Shao,
+ *   M. Zaro, "The automation of next-to-leading order electroweak
+ *   calculations", https://arxiv.org/abs/1804.10017
+ */
+struct FKSCouplingOrders {
+    /// Names of the split orders, as split_orders of orders.inc ("QCD",
+    /// "QED", ...).
+    std::vector<std::string> split_orders;
+    /// Powers of each split order of the orders of the Born (the first
+    /// amp_split_size_born positions of amp_split).
+    nested_vector2<int> born;
+    /// Powers of each split order of the NLO orders (the other positions of
+    /// amp_split).
+    nested_vector2<int> nlo;
+    /// The largest powers of each split order at NLO (nlo_orders).
+    std::vector<int> max_nlo;
+
+    /// Number of Born orders.
+    std::size_t born_count() const { return born.size(); }
+    /// Number of NLO orders.
+    std::size_t nlo_count() const { return nlo.size(); }
+    /**
+     * The NLO order of the counterterms of a splitting of a type of the Born
+     * of an order, -1 where they are not kept.
+     *
+     * @param born_index  The Born order, a position in `born`.
+     * @param type        The splitting type, "QCD" or "QED".
+     * @throws std::invalid_argument if the type is not a split order or the
+     *         order of the counterterms is kept but not one of `nlo`.
+     */
+    int counterterm_order(std::size_t born_index, const std::string& type) const;
+    /// The orders of a Born with @f$\alpha_s^b@f$ alone and QCD corrections:
+    /// the split order QCD, the Born order 2b and the NLO order 2b + 2.
+    static FKSCouplingOrders qcd(int alpha_s_power);
+};
+
+/**
+ * Check coupling orders: at least one Born and one NLO order, each with a
+ * power of every split order, and split orders without repetition.
+ *
+ * @param orders  The coupling orders.
+ * @param user    Name of the caller, for the error messages.
+ */
+void check_fks_coupling_orders(
+    const FKSCouplingOrders& orders, const std::string& user
 );
 
 } // namespace madspace

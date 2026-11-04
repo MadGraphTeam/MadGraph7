@@ -93,7 +93,7 @@ def make_jpeg_async(args):
 #=================================================================================
 # Class for used of the (non-optimized) Loop process
 #=================================================================================
-def get_fks_configurations(fksborn):
+def get_fks_configurations(fksborn, orders=None):
     """The FKS configurations of a Born, as in fks_info.inc, for codes outside
     the Fortran (MadSpace builds its FKS phase-space mappings from them):
 
@@ -120,6 +120,18 @@ def get_fks_configurations(fksborn):
                 i - 1), the particles j with which it forms an FKS pair, all
                 1-based, FKS_J_FROM_I_D: the pairs whose sector functions
                 partition the phase space of the real process
+
+        orders (with the coupling orders of get_split_orders_info):
+            split_orders: names of the split orders, as ordernames of
+                orders.inc
+            born: the coupling combinations of the Born, the powers of each
+                split order in the squared matrix element, in the order of
+                its split-order contributions
+            nlo: those of the NLO contributions, as amp_split_orders.inc after
+                the Born ones
+            max_born, max_nlo: the maximal power of each split order at the
+                Born and at NLO, born_orders and nlo_orders of orders.inc
+                (1000 for no limit)
 
     The Born is the real process without i, with i + j at the position of j.
     A Born without FKS configurations ([LOonly]) has none, not the fake one
@@ -148,10 +160,156 @@ def get_fks_configurations(fksborn):
             'real_charges': list(real.charges),
             'fks_j_from_i': fks_j_from_i,
         })
-    return {
+    data = {
         'nincoming': len([leg for leg in born_legs if not leg['state']]),
         'born_pdgs': [leg['id'] for leg in born_legs],
         'configurations': configurations,
+    }
+    if orders is not None:
+        names = orders['split_orders']
+        born_count = orders['amp_split_size_born']
+        data['orders'] = {
+            'split_orders': list(names),
+            'born': [list(o) for o in orders['amp_split_orders'][:born_count]],
+            'nlo': [list(o) for o in orders['amp_split_orders'][born_count:]],
+            'max_born': [orders['max_born_orders'].get(o, 1000) for o in names],
+            'max_nlo': [orders['max_nlo_orders'].get(o, 1000) for o in names],
+        }
+    return data
+
+
+def get_split_orders_info(matrix_element):
+    """The coupling orders of an FKS matrix element, as orders.inc and
+    amp_split_orders.inc write them: the split orders (their names), the
+    maximal powers of each at the Born and at NLO, the positions of QCD and
+    QED among them (1-based, -1 if absent) and the coupling combinations
+    (powers of each split order) of the amp_split arrays, the Born ones
+    first."""
+    born_orders = {}
+    for ordd, val in matrix_element.born_me['processes'][0]['born_sq_orders'].items():
+        born_orders[ordd] = val 
+
+    nlo_orders = {}
+    for ordd, val in matrix_element.born_me['processes'][0]['squared_orders'].items():
+        nlo_orders[ordd] = val
+
+    split_orders = \
+            matrix_element.born_me['processes'][0]['split_orders']
+
+    pert_orders = \
+            matrix_element.born_me['processes'][0]['perturbation_couplings']
+
+    max_born_orders = {}
+    max_nlo_orders = {}
+
+    model = matrix_element.born_me['processes'][0]['model']
+
+    # first get the max_born_orders
+    if list(born_orders.keys()) == ['WEIGHTED']:
+        # if user has not specified born_orders, check the 'weighted' for each
+        # of the split_orders contributions
+        wgt_ord_max = born_orders['WEIGHTED']
+        squared_orders, amp_orders = matrix_element.born_me.get_split_orders_mapping()
+        for sq_order in squared_orders:
+            # put the numbers in sq_order in a dictionary, with as keys
+            # the corresponding order name
+            ord_dict = {}
+            assert len(sq_order) == len(split_orders) 
+            for o, v in zip(split_orders, list(sq_order)):
+                ord_dict[o] = v
+
+            wgt = sum([v * model.get('order_hierarchy')[o] for \
+                    o, v in ord_dict.items()])
+            if wgt > wgt_ord_max:
+                continue
+
+            for o, v in ord_dict.items():
+                try:
+                    max_born_orders[o] = max(max_born_orders[o], v)
+                except KeyError:
+                    max_born_orders[o] = v
+
+    else:
+        for o in [oo for oo in split_orders if oo != 'WEIGHTED']:
+            try:
+                max_born_orders[o] = born_orders[o]
+            except KeyError:
+                # if the order is not in born_orders set it to 1000
+                max_born_orders[o] = 1000
+            try:
+                max_nlo_orders[o] = nlo_orders[o]
+            except KeyError:
+                # if the order is not in born_orders set it to 1000
+                max_nlo_orders[o] = 1000
+
+    # keep track also of the position of QED, QCD in the order array
+    # might be useful in the fortran code
+    qcd_pos = -1
+    qed_pos = -1
+    if 'QCD' in split_orders:
+        qcd_pos = split_orders.index('QCD') + 1
+    if 'QED' in split_orders:
+        qed_pos = split_orders.index('QED') + 1
+
+    # determine the size of the array that keeps track
+    # of the different split orders, and the position 
+    # of the different split order combinations in this array
+    # to be written in orders_to_amp_split_pos.inc and
+    #                  amp_split_pos_to_orders.inc
+
+    # the number of squared orders of the born ME
+    amp_split_orders = []
+    squared_orders, amp_orders = matrix_element.born_me.get_split_orders_mapping()
+    amp_split_size_born =  len(squared_orders)
+    amp_split_orders += squared_orders
+
+    #then check the real emissions
+    for realme in matrix_element.real_processes:
+        squared_orders, amp_orders = realme.matrix_element.get_split_orders_mapping()
+        for order in squared_orders:
+            if not order in amp_split_orders:
+                amp_split_orders.append(order)
+
+    # check also the virtual 
+    #  may be needed for processes without real emissions, e.g. z > v v 
+    #  Note that for a loop_matrix_element squared_orders has a different format
+    #  (see the description of the get_split_orders_mapping function in loop_helas_objects)
+    try:
+        squared_orders, amp_orders = matrix_element.virt_matrix_element.get_split_orders_mapping()
+        squared_orders = [so[0] for so in squared_orders]
+        for order in squared_orders:
+            if not order in amp_split_orders:
+                amp_split_orders.append(order)
+    except AttributeError:
+        pass
+
+    # special treatment needed for the case when the sudakov
+    # matrix elements are generated. This can be either the case
+    # of LOonly=SDK (no virtual/reals, only sudakov)
+    # or of [QCD SDK] virtual and reals, but of QCD origin.
+    # In both case a coupling combination corresponding to 
+    # born_orders + 2*QED must be added
+    if  matrix_element.ewsudakov:
+        # compute the born orders
+        born_orders = []
+        split_orders = matrix_element.born_me['processes'][0]['split_orders'] 
+        for ordd in split_orders:
+            born_orders.append(matrix_element.born_me['processes'][0]['born_sq_orders'][ordd])
+        # increase the QED order
+        born_orders[split_orders.index('QED')] += 2
+        if tuple(born_orders) not in amp_split_orders:
+            amp_split_orders.append(tuple(born_orders))
+
+    amp_split_size=len(amp_split_orders)
+
+    return {
+        'split_orders': list(split_orders),
+        'max_born_orders': max_born_orders,
+        'max_nlo_orders': max_nlo_orders,
+        'qcd_pos': qcd_pos,
+        'qed_pos': qed_pos,
+        'amp_split_orders': [list(o) for o in amp_split_orders],
+        'amp_split_size_born': amp_split_size_born,
     }
 
 
@@ -665,7 +823,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                                  matrix_element, 
                                  fortran_model)
         self.write_fks_configurations_json('fks_configurations.json',
-                                           matrix_element)
+                                           matrix_element,
+                                           get_split_orders_info(matrix_element))
 
         # update the splitting types
         self.proc_characteristic['splitting_types'] = list(\
@@ -1356,122 +1515,15 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         In particular this file should contain the constraints requested by the user
         for all the orders which are split"""
 
-        born_orders = {}
-        for ordd, val in matrix_element.born_me['processes'][0]['born_sq_orders'].items():
-            born_orders[ordd] = val 
-
-        nlo_orders = {}
-        for ordd, val in matrix_element.born_me['processes'][0]['squared_orders'].items():
-            nlo_orders[ordd] = val
-        
-        split_orders = \
-                matrix_element.born_me['processes'][0]['split_orders']
-
-        pert_orders = \
-                matrix_element.born_me['processes'][0]['perturbation_couplings']
-
-        max_born_orders = {}
-        max_nlo_orders = {}
-
-        model = matrix_element.born_me['processes'][0]['model']
-
-        # first get the max_born_orders
-        if list(born_orders.keys()) == ['WEIGHTED']:
-            # if user has not specified born_orders, check the 'weighted' for each
-            # of the split_orders contributions
-            wgt_ord_max = born_orders['WEIGHTED']
-            squared_orders, amp_orders = matrix_element.born_me.get_split_orders_mapping()
-            for sq_order in squared_orders:
-                # put the numbers in sq_order in a dictionary, with as keys
-                # the corresponding order name
-                ord_dict = {}
-                assert len(sq_order) == len(split_orders) 
-                for o, v in zip(split_orders, list(sq_order)):
-                    ord_dict[o] = v
-
-                wgt = sum([v * model.get('order_hierarchy')[o] for \
-                        o, v in ord_dict.items()])
-                if wgt > wgt_ord_max:
-                    continue
-
-                for o, v in ord_dict.items():
-                    try:
-                        max_born_orders[o] = max(max_born_orders[o], v)
-                    except KeyError:
-                        max_born_orders[o] = v
-
-        else:
-            for o in [oo for oo in split_orders if oo != 'WEIGHTED']:
-                try:
-                    max_born_orders[o] = born_orders[o]
-                except KeyError:
-                    # if the order is not in born_orders set it to 1000
-                    max_born_orders[o] = 1000
-                try:
-                    max_nlo_orders[o] = nlo_orders[o]
-                except KeyError:
-                    # if the order is not in born_orders set it to 1000
-                    max_nlo_orders[o] = 1000
-
-        # keep track also of the position of QED, QCD in the order array
-        # might be useful in the fortran code
-        qcd_pos = -1
-        qed_pos = -1
-        if 'QCD' in split_orders:
-            qcd_pos = split_orders.index('QCD') + 1
-        if 'QED' in split_orders:
-            qed_pos = split_orders.index('QED') + 1
-
-        # determine the size of the array that keeps track
-        # of the different split orders, and the position 
-        # of the different split order combinations in this array
-        # to be written in orders_to_amp_split_pos.inc and
-        #                  amp_split_pos_to_orders.inc
-                          
-        # the number of squared orders of the born ME
-        amp_split_orders = []
-        squared_orders, amp_orders = matrix_element.born_me.get_split_orders_mapping()
-        amp_split_size_born =  len(squared_orders)
-        amp_split_orders += squared_orders
-        
-        #then check the real emissions
-        for realme in matrix_element.real_processes:
-            squared_orders, amp_orders = realme.matrix_element.get_split_orders_mapping()
-            for order in squared_orders:
-                if not order in amp_split_orders:
-                    amp_split_orders.append(order)
-
-        # check also the virtual 
-        #  may be needed for processes without real emissions, e.g. z > v v 
-        #  Note that for a loop_matrix_element squared_orders has a different format
-        #  (see the description of the get_split_orders_mapping function in loop_helas_objects)
-        try:
-            squared_orders, amp_orders = matrix_element.virt_matrix_element.get_split_orders_mapping()
-            squared_orders = [so[0] for so in squared_orders]
-            for order in squared_orders:
-                if not order in amp_split_orders:
-                    amp_split_orders.append(order)
-        except AttributeError:
-            pass
-
-        # special treatment needed for the case when the sudakov
-        # matrix elements are generated. This can be either the case
-        # of LOonly=SDK (no virtual/reals, only sudakov)
-        # or of [QCD SDK] virtual and reals, but of QCD origin.
-        # In both case a coupling combination corresponding to 
-        # born_orders + 2*QED must be added
-        if  matrix_element.ewsudakov:
-            # compute the born orders
-            born_orders = []
-            split_orders = matrix_element.born_me['processes'][0]['split_orders'] 
-            for ordd in split_orders:
-                born_orders.append(matrix_element.born_me['processes'][0]['born_sq_orders'][ordd])
-            # increase the QED order
-            born_orders[split_orders.index('QED')] += 2
-            if tuple(born_orders) not in amp_split_orders:
-                amp_split_orders.append(tuple(born_orders))
-
-        amp_split_size=len(amp_split_orders)
+        info = get_split_orders_info(matrix_element)
+        split_orders = info['split_orders']
+        max_born_orders = info['max_born_orders']
+        max_nlo_orders = info['max_nlo_orders']
+        qcd_pos = info['qcd_pos']
+        qed_pos = info['qed_pos']
+        amp_split_orders = [tuple(o) for o in info['amp_split_orders']]
+        amp_split_size = len(amp_split_orders)
+        amp_split_size_born = info['amp_split_size_born']
 
         text = '! The orders to be integrated for the Born and at NLO\n'
         text += 'integer nsplitorders\n'
@@ -4124,12 +4176,13 @@ Parameters              %(params)s\n\
     #===============================================================================
     # write_fks_configurations_json
     #===============================================================================
-    def write_fks_configurations_json(self, filename, fksborn):
+    def write_fks_configurations_json(self, filename, fksborn, orders=None):
         """Writes fks_configurations.json, the FKS configurations of
-        fks_info.inc for codes outside the Fortran (MadSpace). See
+        fks_info.inc for codes outside the Fortran (MadSpace), with the
+        coupling orders of get_split_orders_info where they are given. See
         get_fks_configurations."""
         with open(filename, 'w') as stream:
-            json.dump(get_fks_configurations(fksborn), stream, indent=1)
+            json.dump(get_fks_configurations(fksborn, orders), stream, indent=1)
 
     #===============================================================================
     # write_fks_info_file
@@ -5685,7 +5738,8 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
                                  matrix_element, 
                                  fortran_model)))
         self.write_fks_configurations_json('fks_configurations.json',
-                                           matrix_element)
+                                           matrix_element,
+                                           get_split_orders_info(matrix_element))
 
         filename = 'leshouche_info.dat'
         nfksconfs,maxproc,maxflow,nexternal=\

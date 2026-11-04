@@ -238,20 +238,43 @@ NamedVector<Value> FKSSplittingKernels::build_function_impl(
     return {{"z", z}, {"ap", ap}, {"q_terms", q_terms}, {"k_perp", k_perp}};
 }
 
-namespace {
-
-// the configurations, checked to have QCD splittings
-std::size_t check_qcd_configurations(
-    const std::vector<FKSConfiguration>& configurations, const std::string& user
+std::size_t madspace::check_splitting_configurations(
+    const std::vector<FKSConfiguration>& configurations,
+    const FKSCouplingOrders& orders,
+    const std::string& user
 ) {
     std::size_t n = check_fks_configurations(configurations, user);
+    check_fks_coupling_orders(orders, user);
     for (const auto& config : configurations) {
-        int i_type = config.colors.at(config.i_fks);
-        int j_type = config.colors.at(config.j_fks);
-        if ((i_type != 8 && std::abs(i_type) != 3) ||
-            (j_type != 8 && std::abs(j_type) != 3)) {
+        if (config.splitting_types.size() != 1) {
             throw std::invalid_argument(
-                user + ": only QCD splittings, of quarks and gluons, are supported"
+                user +
+                ": a configuration with an extra counterterm (two splitting "
+                "types) is not supported"
+            );
+        }
+        const auto& type = config.splitting_types.front();
+        const auto& names = orders.split_orders;
+        if (std::find(names.begin(), names.end(), type) == names.end()) {
+            throw std::invalid_argument(
+                user + ": the splitting type " + type + " is not a split order"
+            );
+        }
+        auto colored = [&](std::size_t k) {
+            int color = config.colors.at(k);
+            return color == 8 || std::abs(color) == 3;
+        };
+        auto electroweak = [&](std::size_t k) {
+            return config.pdgs.at(k) == 22 || config.charges.at(k) != 0.;
+        };
+        bool valid = type == "QCD"
+            ? colored(config.i_fks) && colored(config.j_fks)
+            : electroweak(config.i_fks) && electroweak(config.j_fks);
+        if (!valid) {
+            throw std::invalid_argument(
+                user + ": a " + type +
+                " splitting needs i and j colored (QCD) or photons or "
+                "charged (QED)"
             );
         }
         config.born_pdgs();
@@ -259,64 +282,95 @@ std::size_t check_qcd_configurations(
     return n;
 }
 
-} // namespace
-
-FKSLimits::FKSLimits(const std::vector<FKSConfiguration>& configurations) :
+FKSLimits::FKSLimits(
+    const std::vector<FKSConfiguration>& configurations, const FKSCouplingOrders& orders
+) :
     FunctionGenerator(
         "FKSLimits",
         [&] {
-            int n =
-                static_cast<int>(check_qcd_configurations(configurations, "FKSLimits"));
+            int n = static_cast<int>(
+                check_splitting_configurations(configurations, orders, "FKSLimits")
+            );
+            int b = static_cast<int>(orders.born_count());
             return NamedVector<Type>{
                 {"soft_momenta", batch_four_vec_array(n)},
                 {"soft_p_i_hat", batch_four_vec},
                 {"y", batch_float},
                 {"collinear_momenta", batch_four_vec_array(n)},
                 {"soft_collinear_momenta", batch_four_vec_array(n)},
-                {"born", batch_float},
+                {"born", batch_float_array(b)},
                 {"color_correlated",
-                 Type{DataType::dt_float64, batch_size, {n - 1, n - 1}}},
-                {"spin_correlated", batch_float},
+                 Type{DataType::dt_float64, batch_size, {b, n - 1, n - 1}}},
+                {"spin_correlated", batch_float_array(b)},
                 {"alpha_s", batch_float},
+                {"alpha", batch_float},
                 {"fks_index", batch_int},
             };
         }(),
         [&] {
             // checked here too: the order of the two arguments is unspecified
-            check_qcd_configurations(configurations, "FKSLimits");
+            check_splitting_configurations(configurations, orders, "FKSLimits");
+            int o = static_cast<int>(orders.nlo_count());
             return NamedVector<Type>{
-                {"soft", batch_float},
-                {"collinear", batch_float},
-                {"soft_collinear", batch_float}
+                {"soft", batch_float_array(o)},
+                {"collinear", batch_float_array(o)},
+                {"soft_collinear", batch_float_array(o)}
             };
         }()
     ),
     _eikonals(configurations),
-    _kernels(configurations) {
+    _kernels(configurations),
+    _born_order_count(orders.born_count()),
+    _nlo_order_count(orders.nlo_count()) {
     std::size_t largest = _eikonals.max_pair_count();
     for (std::size_t c = 0; c < configurations.size(); ++c) {
         const auto& config = configurations.at(c);
         _fks_i.push_back(config.i_fks);
         _fks_j.push_back(config.j_fks);
         double ratio = config.identical_particle_ratio();
-        // only a gluon i has a soft limit
+        bool qed = config.qed_splitting();
+        // only a gluon (QCD) or photon (QED) i has a soft limit
         auto pairs = _eikonals.born_pairs(c);
-        if (config.colors.at(config.i_fks) != 8) {
+        auto real_pairs = _eikonals.pairs(c);
+        bool soft = qed
+            ? config.pdgs.at(config.i_fks) == 22
+            : config.colors.at(config.i_fks) == 8;
+        if (!soft) {
             pairs.clear();
         }
+        // eta Q of a particle of the real process, the charge of an outgoing
+        // particle
+        auto charge = [&](std::size_t r) {
+            return (r < 2 ? -1. : 1.) * config.charges.at(r);
+        };
         std::vector<me_int_t> ms(largest, 0), ns(largest, 0);
         std::vector<double> factors(largest, 0.);
         for (std::size_t k = 0; k < pairs.size(); ++k) {
             auto [m, n] = pairs.at(k);
             ms.at(k) = m;
             ns.at(k) = n;
-            factors.at(k) = (m == n ? -1. : -2.) * ratio;
+            double factor = (m == n ? -1. : -2.) * ratio;
+            if (qed) {
+                auto [rm, rn] = real_pairs.at(k);
+                factor *= charge(rm) * charge(rn);
+            }
+            factors.at(k) = factor;
         }
         _pair_count.push_back(pairs.size());
         _pair_m.push_back(ms);
         _pair_n.push_back(ns);
         _pair_factor.push_back(factors);
         _collinear_factor.push_back(config.masses.at(config.j_fks) == 0. ? ratio : 0.);
+        _coupling.push_back(qed ? 1 : 0);
+        // the Born order of the counterterms at each NLO order
+        std::vector<me_int_t> sources(orders.nlo_count(), -1);
+        for (std::size_t b = 0; b < orders.born_count(); ++b) {
+            int o = orders.counterterm_order(b, config.splitting_types.front());
+            if (o >= 0) {
+                sources.at(o) = static_cast<me_int_t>(b);
+            }
+        }
+        _born_index.push_back(sources);
     }
 }
 
@@ -324,7 +378,7 @@ NamedVector<Value> FKSLimits::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
     Value index = args.at("fks_index");
-    Value alpha_s = args.at("alpha_s");
+    Value alpha_s = args.at("alpha_s"), alpha = args.at("alpha");
     auto eikonals =
         _eikonals
             .build_function(
@@ -334,13 +388,17 @@ NamedVector<Value> FKSLimits::build_function_impl(
             .at(0);
     auto soft = fb.fks_soft_limit(
         eikonals,
+        args.at("born"),
         args.at("color_correlated"),
         alpha_s,
+        alpha,
         index,
         _pair_count,
         _pair_m,
         _pair_n,
-        _pair_factor
+        _pair_factor,
+        _coupling,
+        _born_index
     );
     std::vector<me_int_t> kind;
     nested_vector2<double> factors;
@@ -361,8 +419,11 @@ NamedVector<Value> FKSLimits::build_function_impl(
                 ap,
                 q,
                 alpha_s,
+                alpha,
                 index,
-                _collinear_factor
+                _collinear_factor,
+                _coupling,
+                _born_index
             )
         );
     }

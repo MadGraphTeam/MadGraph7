@@ -149,6 +149,8 @@ def test_fks_configurations_of_the_exporter(path):
             [j - 1 for j in js] for js in exp["fks_j_from_i"]
         ]
         assert config.masses == real_masses(born.external_masses(), exp)
+        assert config.splitting_types == exp["splitting_type"]
+        assert config.qed_splitting() == (exp["splitting_type"][0] == "QED")
         assert config.particle_count() == len(exp["real_pdgs"])
         assert config.initial_state() == (exp["j_fks"] <= 2)
         born_j = config.born_j_fks()
@@ -178,12 +180,16 @@ def test_symmetry_factors_of_the_fortran(path):
 
 
 def test_born_of_splittings():
-    """The mother of i and j: j for a gluon i, a gluon for a final-state quark
-    pair or for a quark off an incoming quark, the antiquark of i off an
-    incoming gluon, and no Born for other pairs."""
+    """The mother of i and j: j for a gluon or photon i, a gluon (QCD) or
+    photon (QED) for a final-state pair of a particle and its antiparticle or
+    for a particle off an incoming one of the same flavor, the antiparticle of
+    i off an incoming gluon or photon, and no Born for other pairs."""
 
-    def born(pdgs, i_fks, j_fks):
-        colors = [8 if p == 21 else (3 if p > 0 else -3) for p in pdgs]
+    def born(pdgs, i_fks, j_fks, splitting_types=("QCD",)):
+        colors = [
+            8 if p == 21 else (1 if p in (22, 11, -11) else (3 if p > 0 else -3))
+            for p in pdgs
+        ]
         n = len(pdgs)
         pairs = [[] for _ in range(n)]
         pairs[i_fks] = [j_fks]
@@ -195,12 +201,22 @@ def test_born_of_splittings():
             charges=[0.0] * n,
             masses=[0.0] * n,
             fks_j_from_i=pairs,
+            splitting_types=list(splitting_types),
         ).born_pdgs()
 
     assert born([2, -2, 2, -2, 21], 4, 0) == [2, -2, 2, -2]
     assert born([2, -2, 21, 2, -2], 4, 3) == [2, -2, 21, 21]
     assert born([2, -2, 21, 21, 2], 4, 0) == [21, -2, 21, 21]
     assert born([21, -2, 21, 21, 2], 4, 0) == [-2, -2, 21, 21]
+    qed = ("QED",)
+    assert born([2, -2, 11, -11, 22], 4, 0, qed) == [2, -2, 11, -11]
+    assert born([2, -2, 11, -11, 2, -2], 5, 4, qed) == [2, -2, 11, -11, 22]
+    assert born([2, -2, 22, 11, -11], 4, 3, qed) == [2, -2, 22, 22]
+    assert born([2, 22, 11, -11, 2], 4, 0, qed) == [22, 22, 11, -11]
+    assert born([22, -2, 11, -11, -2], 4, 0, qed) == [2, -2, 11, -11]
+    # the first type sets the mother, the second is that of an extra
+    # counterterm
+    assert born([2, -2, 21, 2, -2], 4, 3, ("QED", "QCD")) == [2, -2, 21, 22]
     for pdgs, i_fks, j_fks in [
         ([2, -2, 21, 2, 2], 4, 3),
         ([2, -2, 21, 21, 2], 4, 1),

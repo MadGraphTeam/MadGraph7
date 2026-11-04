@@ -21,8 +21,9 @@ c collinear limits (below tiny = 1e-6 in xi or 1 - y). At every
 c point it prints the pieces of the subtraction of fks_singular.f: the
 c sector functions, the factors of the soft and collinear limits, the
 c prefactors, sreal at the event and the counter-events, the Born
-c with its colour links, the collinear remnants of sreal_deg and the
-c n-body part of bornsoftvirtual without the virtual. It then
+c with its colour (or charge) links, the collinear remnants of sreal_deg
+c and the n-body part of bornsoftvirtual without the virtual, also per
+c position of the amp_split arrays (the split orders). It then
 c calls generate_FKS_kinematics again at the same x with xjac0 =
 c xpswgt0 = 1, so that the second set of Jacobians holds the radiation
 c part alone, times compute_flux. Everything is printed with keywords
@@ -156,6 +157,13 @@ c that make_fks_reference.py parses.
       integer fold,ifold_counter
       common /cfl/fold,ifold_counter
       double precision bsv(5),bsv_wgt,virt_wgt
+c the same per split order, for the amp_split arrays of fks_singular.f
+      double precision amp_split_soft(amp_split_size)
+      common /to_amp_split_soft/amp_split_soft
+      double precision sreal_o(amp_split_size,4),born_o(amp_split_size,2)
+      double precision link_o(amp_split_size,nexternal*nexternal)
+      double precision deg_o(amp_split_size,6,2),bsv_o(amp_split_size,4)
+      integer ord_o(nsplitorders),iamp
       include '../../Source/PDF/pdf.inc'
       complex*16 ans_cnt(2,nsplitorders)
       common /c_born_cnt/ans_cnt
@@ -188,8 +196,20 @@ c that make_fks_reference.py parses.
       write (*,'(a,1x,*(i0,1x))') 'HEADER',nexternal,nincoming
      &     ,fks_configs,ndim,lpp(1),lpp(2),iconf_in
       write (*,fmt) 'EBEAM',ebeam(1),ebeam(2)
-c the scheme of the PDFs (0 MSbar, 1 DIS) and the number of light flavors
-      write (*,'(a,1x,i0,1x,es25.17e3)') 'SCHEME',pdfscheme,nf
+c the scheme of the PDFs (0 MSbar, 1 DIS), the number of light flavors
+c and the number of massless leptons
+      write (*,'(a,1x,i0,2(1x,es25.17e3))') 'SCHEME',pdfscheme,nf,nl
+c the split orders: amp_split_size, amp_split_size_born, the positions
+c of QCD and QED (-1 if absent), and the powers of each split order of
+c every position of the amp_split arrays; the QED coupling e = gal(1)
+      write (*,'(a,1x,*(i0,1x))') 'ORDERS',amp_split_size
+     &     ,amp_split_size_born,qcd_pos,qed_pos,nsplitorders
+      do iamp=1,amp_split_size
+         call amp_split_pos_to_orders(iamp,ord_o)
+         write (*,'(a,1x,*(i0,1x))') 'AMPSPLIT',iamp,(ord_o(i),i=1
+     &        ,nsplitorders)
+      enddo
+      write (*,fmt) 'COUPL',dble(gal(1))
 
       do ipass=1,3
       write (*,'(a,1x,i0)') 'PASS',ipass
@@ -380,24 +400,34 @@ c As in driver_mintFO.f, the Born is computed anew at every point.
             calculatedBorn=.false.
             do k=1,4
                fx(k)=-1d0
+               do iamp=1,amp_split_size
+                  sreal_o(iamp,k)=0d0
+               enddo
             enddo
             if (jac_full.gt.0d0) then
                call set_cms_stuff(-100)
                call sreal(p,xi_i_fks_ev,y_ij_fks_ev,fx(1))
+               sreal_o(:,1)=amp_split(:)
                if (jac_full_cnt(0).gt.0d0) then
                   call set_cms_stuff(0)
                   call sreal(p1_cnt(0,1,0),0d0,y_ij_fks_ev,fx(2))
+                  sreal_o(:,2)=amp_split(:)
                endif
                if (jac_full_cnt(1).gt.0d0.and.emass(j_fks).eq.0d0) then
                   call set_cms_stuff(1)
                   call sreal(p1_cnt(0,1,1),xi_i_fks_cnt(1),1d0,fx(3))
+                  sreal_o(:,3)=amp_split(:)
                endif
                if (jac_full_cnt(2).gt.0d0.and.emass(j_fks).eq.0d0) then
                   call set_cms_stuff(2)
                   call sreal(p1_cnt(0,1,2),0d0,1d0,fx(4))
+                  sreal_o(:,4)=amp_split(:)
                endif
             endif
             write (*,fmt) 'SREAL',(fx(k),k=1,4)
+c the same per position of amp_split (zero where not generated)
+            write (*,fmt) 'SREALO',((sreal_o(iamp,k),iamp=1
+     &           ,amp_split_size),k=1,4)
 c The Born at p_born as sbornsoft and sborncol_fsr call it (the QCD part
 c of the counterterms, ans_cnt(1,qcd_pos), and the sum over the split
 c orders), the colour-linked Borns of sborn_sf for the pairs of
@@ -407,8 +437,20 @@ c iden_comp, where the event is generated
                call sborn_frame(p_born,born_wgt)
                write (*,fmt) 'BORN',g,iden_comp,born_wgt
      &              ,dble(ans_cnt(1,qcd_pos))
+c the Born per position of amp_split for a QCD and for a QED splitting
+c (amp_split_cnt, at the NLO position the counterterm contributes to)
+               do iamp=1,amp_split_size
+                  born_o(iamp,1)=0d0
+                  born_o(iamp,2)=0d0
+                  if (qcd_pos.gt.0) born_o(iamp,1)=
+     &                 dble(amp_split_cnt(iamp,1,qcd_pos))
+                  if (qed_pos.gt.0) born_o(iamp,2)=
+     &                 dble(amp_split_cnt(iamp,1,qed_pos))
+               enddo
+               write (*,fmt) 'BORNO',((born_o(iamp,k),iamp=1
+     &              ,amp_split_size),k=1,2)
                neik=0
-               if (need_color_links) then
+               if (need_color_links.or.need_charge_links) then
                   do k=1,fks_j_from_i(i_fks,0)
                      do j=1,k
                         mm=fks_j_from_i(i_fks,k)
@@ -418,11 +460,15 @@ c iden_comp, where the event is generated
                            neik=neik+1
                            call sborn_frame(p_born,born_wgt)
                            call sborn_sf_frame(p_born,mm,nn,blink(neik))
+                           link_o(:,neik)=amp_split_soft(:)
                         endif
                      enddo
                   enddo
                endif
                write (*,fmt) 'BLINK',(blink(k),k=1,neik)
+c the colour- (or charge-) linked Borns per position of amp_split
+               write (*,fmt) 'BLINKO',((link_o(iamp,k),iamp=1
+     &              ,amp_split_size),k=1,neik)
             endif
 c The collinear remnants of sreal_deg at the collinear (k = 1) and
 c soft-collinear (k = 2) counter-events of a massless incoming emitter,
@@ -436,6 +482,9 @@ c (sreal_deg reads them), the strong coupling of the Fortran is kept.
             do k=1,2
                do j=1,6
                   deg(j,k)=0d0
+                  do iamp=1,amp_split_size
+                     deg_o(iamp,j,k)=0d0
+                  enddo
                enddo
                if (jac_full.gt.0d0.and.jac_full_cnt(k).gt.0d0.and.
      &              j_fks.le.nincoming.and.emass(j_fks).eq.0d0) then
@@ -455,10 +504,18 @@ c (sreal_deg reads them), the strong coupling of the Fortran is kept.
                      deg(5,k)=deg(5,k)+amp_split_wgtpsch_l(i)
                      deg(6,k)=deg(6,k)+amp_split_wgtpsch_d(i)
                   enddo
+                  deg_o(:,1,k)=amp_split_wgtdegrem_xi(:)
+                  deg_o(:,2,k)=amp_split_wgtdegrem_lxi(:)
+                  deg_o(:,3,k)=amp_split_wgtdegrem_muF(:)
+                  deg_o(:,4,k)=amp_split_wgtpsch_p(:)
+                  deg_o(:,5,k)=amp_split_wgtpsch_l(:)
+                  deg_o(:,6,k)=amp_split_wgtpsch_d(:)
                endif
             enddo
             write (*,fmt) 'DEG',((deg(j,k),j=1,6),k=1,2),q2fact(1)
      &           ,q2fact(2),QES2
+            write (*,fmt) 'DEGO',(((deg_o(iamp,j,k),iamp=1
+     &           ,amp_split_size),j=1,6),k=1,2)
 c The n-body part of bornsoftvirtual at the soft counter-event, where i
 c has colour links (as compute_nbody_noborn calls it for those
 c configurations), without the virtual (fold = 1 keeps its saved value
@@ -474,7 +531,7 @@ c Ellis-Sexton scale)
                bsv(j)=0d0
             enddo
             if (jac_full.gt.0d0.and.jac_full_cnt(0).gt.0d0.and.
-     &           need_color_links) then
+     &           (need_color_links.or.need_charge_links)) then
                call set_cms_stuff(0)
                fold=1
                call bornsoftvirtual(p1_cnt(0,1,0),bsv_wgt,virt_wgt
@@ -489,6 +546,15 @@ c Ellis-Sexton scale)
                enddo
                write (*,fmt) 'BSV',(bsv(j),j=1,5),q2fact(1),q2fact(2)
      &              ,scale**2,QES2
+c per position of amp_split: amp_split after bornsoftvirtual (the Born at
+c its positions plus the n-body part), wgtnstmp, wgtwnstmpmur and
+c wgtwnstmpmuf
+               bsv_o(:,1)=amp_split(:)
+               bsv_o(:,2)=amp_split_wgtnstmp(:)
+               bsv_o(:,3)=amp_split_wgtwnstmpmur(:)
+               bsv_o(:,4)=amp_split_wgtwnstmpmuf(:)
+               write (*,fmt) 'BSVO',((bsv_o(iamp,k),iamp=1
+     &              ,amp_split_size),k=1,4)
             endif
 c Radiation part alone: rerun generate_FKS_kinematics on the Born of the
 c point with unit Born weights, once with the lower bound on the partonic

@@ -94,6 +94,7 @@ Supporting types shared by the mappings: topologies, cuts, observables and densi
    python/Decay
    python/Diagram
    python/FKSConfiguration
+   python/FKSCouplingOrders
    python/LineRef
    python/PdfGrid
    python/Propagator

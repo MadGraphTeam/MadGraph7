@@ -21,10 +21,15 @@ FKS_CONFIGURATION = dict(
     charges=[2 / 3, -2 / 3, -1.0, 1.0, 0.0],
     masses=[0.0] * 5,
     fks_j_from_i=[[], [], [], [], [0, 1]],
+    splitting_types=["QCD"],
 )
 FKS_CONFIGURATIONS = [
     ms.FKSConfiguration(**dict(FKS_CONFIGURATION, j_fks=j)) for j in [0, 1]
 ]
+# its coupling orders, alpha_s alpha^2 at the Born and QCD corrections
+FKS_COUPLING_ORDERS = dict(
+    split_orders=["QCD", "QED"], born=[[2, 4]], nlo=[[4, 4]], max_nlo=[4, 4]
+)
 
 # One representative keyword-argument set per in-scope class. Every key here is
 # a parameter the class comment documents; the call must accept all of them.
@@ -99,11 +104,16 @@ CASES = {
         emitter_mass=0.0,
     ),
     "FKSConfiguration": FKS_CONFIGURATION,
+    "FKSCouplingOrders": FKS_COUPLING_ORDERS,
     "FKSEikonals": dict(configurations=FKS_CONFIGURATIONS),
     "FKSSplittingKernels": dict(configurations=FKS_CONFIGURATIONS),
-    "FKSLimits": dict(configurations=FKS_CONFIGURATIONS),
+    "FKSLimits": dict(
+        configurations=FKS_CONFIGURATIONS,
+        orders=ms.FKSCouplingOrders(**FKS_COUPLING_ORDERS),
+    ),
     "FKSSubtraction": dict(
         configurations=FKS_CONFIGURATIONS,
+        orders=ms.FKSCouplingOrders(**FKS_COUPLING_ORDERS),
         xicut=0.5,
         xi_s_cut=0.5,
         delta_o=1.0,
@@ -121,10 +131,11 @@ CASES = {
     ),
     "FKSSoftVirtual": dict(
         configurations=FKS_CONFIGURATIONS,
-        alpha_s_power=0,
+        orders=ms.FKSCouplingOrders(**FKS_COUPLING_ORDERS),
         xicut=0.5,
         delta_o=1.0,
         n_f=5.0,
+        n_l=3.0,
     ),
     "FKSPrefactors": dict(
         configurations=FKS_CONFIGURATIONS,

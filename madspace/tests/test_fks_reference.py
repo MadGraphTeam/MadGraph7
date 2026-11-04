@@ -68,6 +68,37 @@ def test_emitter_cases_covered():
     assert cases == {"initial", "final_massive", "final_massless"}
 
 
+def test_splitting_cases_covered():
+    """QCD and QED splittings with each kind of emitter and i, also a photon
+    that splits in the final state."""
+    cases = set()
+    for path in FILES:
+        with open(path) as f:
+            data = json.load(f)
+        for conf, fks in zip(
+            data["configs"], data["fks_configurations"]["configurations"]
+        ):
+            j = conf["j_fks"]
+            kind = (
+                "initial"
+                if j <= data["nincoming"]
+                else (
+                    "final_massive" if conf["masses"][j - 1] > 0 else "final_massless"
+                )
+            )
+            boson = conf["pdg"][conf["i_fks"] - 1] in (21, 22)
+            for splitting in fks["splitting_type"]:
+                cases.add((splitting, kind, boson))
+            if fks["ij_pdg"] == 22 and j > data["nincoming"]:
+                cases.add("final photon")
+    for splitting in ["QCD", "QED"]:
+        for kind in ["initial", "final_massive", "final_massless"]:
+            assert (splitting, kind, True) in cases
+        assert (splitting, "initial", False) in cases
+        assert (splitting, "final_massless", False) in cases
+    assert "final photon" in cases
+
+
 def test_event_kinematics(data):
     nin = data["nincoming"]
     count = 0
@@ -186,15 +217,28 @@ def sbornsoft_pairs(conf):
 
 def test_born_blocks(data):
     """The Born blocks of pyAmpliCol at the Born of every generated event: the
-    Born of MadFKS (the QCD part of sborn), color-correlated Borns
-    B_mn = <T_m . T_n> B whose sum over n vanishes by color conservation and
-    which are the color-linked Borns of sborn_sf over g^2 (twice those for
-    m = n), and for a gluon emitter the spin-correlated tensor S, transverse
+    Born of MadFKS (sborn) of its only Born order, at the NLO order of each
+    splitting type of the configurations in amp_split_cnt and its QCD part,
+    color-correlated Borns B_mn = <T_m . T_n> B whose sum over n vanishes by
+    color conservation and which are the color-linked Borns of sborn_sf over
+    g^2 (twice those for m = n) where i is a gluon, the Born that the
+    charge-linked Borns of sborn_sf are eta_m Q_m eta_n Q_n e^2 times (half
+    that for m = n, eta = -1 for an incoming particle) where i is a photon,
+    and for a gluon or photon emitter the spin-correlated tensor S, transverse
     to the emitter, with -g_mu,nu S^mu,nu = B, the sum over its physical
     polarizations."""
-    g2 = data["g"] ** 2
+    g2, e2 = data["g"] ** 2, data["gal"] ** 2
     assert data["born_blocks"]["alpha_s"] == pytest.approx(g2 / (4 * np.pi), rel=1e-15)
     born_pdgs = data["fks_configurations"]["born_pdgs"]
+    orders = data["fks_configurations"]["orders"]
+    assert len(orders["born"]) == 1
+    names = orders["split_orders"]
+    amp_split = data["split_orders"]["amp_split"]
+    types = {
+        t
+        for c in data["fks_configurations"]["configurations"]
+        for t in c["splitting_type"]
+    }
     count = 0
     for conf in data["configs"]:
         i_fks, j_fks = conf["i_fks"], conf["j_fks"]
@@ -206,21 +250,41 @@ def test_born_blocks(data):
             blocks = point["born_blocks"]
             born = blocks["born"]
             # the Fortran in double precision, pyAmpliCol in double-double
-            assert born == pytest.approx(point["born"], rel=1e-11)
+            assert point["born"] == (
+                pytest.approx(born, rel=1e-11) if "QCD" in types else 0.0
+            )
+            for k, name in enumerate(["QCD", "QED"]):
+                born_orders = np.array(point["born_orders"][k])
+                if name not in types:
+                    np.testing.assert_array_equal(born_orders, 0.0)
+                    continue
+                order = list(orders["born"][0])
+                order[names.index(name)] += 2
+                position = amp_split.index(order)
+                assert born_orders[position] == pytest.approx(born, rel=1e-11)
+                assert (np.delete(born_orders, position) == 0.0).all()
             correlated = np.array(blocks["color_correlated"])
             scale = np.abs(np.diag(correlated)).max()
             np.testing.assert_allclose(correlated, correlated.T, rtol=0, atol=0)
             np.testing.assert_allclose(correlated.sum(1), 0, atol=1e-13 * scale)
-            # color links where i is a gluon
-            pairs = sbornsoft_pairs(conf) if conf["pdg"][i_fks - 1] == 21 else []
+            # color links where i is a gluon, charge links where it is a photon
+            pdg_i = conf["pdg"][i_fks - 1]
+            pairs = sbornsoft_pairs(conf) if pdg_i in (21, 22) else []
             assert len(point["color_links"]) == len(pairs)
+            charges = np.array(conf["particle_charge"])
+            charges[:2] *= -1
             for (m, n), link in zip(pairs, point["color_links"]):
-                mb, nb = m - (m > i_fks), n - (n > i_fks)
-                expected = correlated[mb - 1, nb - 1] * (0.5 if m == n else 1)
-                assert abs(link / g2 - expected) <= 1e-12 * scale
-            gluon = born_pdgs[born_j - 1] == 21
-            assert ("spin_correlated" in blocks) == gluon
-            if gluon:
+                if pdg_i == 21:
+                    mb, nb = m - (m > i_fks), n - (n > i_fks)
+                    expected = correlated[mb - 1, nb - 1] * (0.5 if m == n else 1)
+                    assert abs(link / g2 - expected) <= 1e-12 * scale
+                else:
+                    expected = charges[m - 1] * charges[n - 1] * born
+                    expected *= 0.5 if m == n else 1
+                    assert link / e2 == pytest.approx(expected, rel=1e-11)
+            vector = born_pdgs[born_j - 1] in (21, 22)
+            assert ("spin_correlated" in blocks) == vector
+            if vector:
                 tensor = np.array(blocks["spin_correlated"])
                 np.testing.assert_allclose(tensor, tensor.T, rtol=0, atol=0)
                 assert -np.trace(METRIC @ tensor) == pytest.approx(born, rel=1e-12)

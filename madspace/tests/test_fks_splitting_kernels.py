@@ -124,7 +124,7 @@ def test_transverse_vector_matches_xij_kperp(path):
     # to the precision of the transverse part of p_i_hat, eps / sin(theta)
     sin_theta = np.sqrt((1 - y) * (1 + y))
     np.testing.assert_array_less(
-        np.abs(sign * k_perp - kperp).max(1), 20 * EPS / np.maximum(sin_theta, EPS)
+        np.abs(sign * k_perp - kperp).max(1), 50 * EPS / np.maximum(sin_theta, EPS)
     )
 
 

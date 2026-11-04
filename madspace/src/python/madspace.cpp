@@ -1081,9 +1081,17 @@ PYBIND11_MODULE(_madspace_py, m) {
                         const std::vector<int>& colors,
                         const std::vector<double>& charges,
                         const std::vector<double>& masses,
-                        const nested_vector2<std::size_t>& fks_j_from_i) {
+                        const nested_vector2<std::size_t>& fks_j_from_i,
+                        const std::vector<std::string>& splitting_types) {
                 return FKSConfiguration{
-                    i_fks, j_fks, pdgs, colors, charges, masses, fks_j_from_i
+                    i_fks,
+                    j_fks,
+                    pdgs,
+                    colors,
+                    charges,
+                    masses,
+                    fks_j_from_i,
+                    splitting_types
                 };
             }),
             py::arg("i_fks"),
@@ -1092,7 +1100,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("colors"),
             py::arg("charges"),
             py::arg("masses"),
-            py::arg("fks_j_from_i")
+            py::arg("fks_j_from_i"),
+            py::arg("splitting_types") = std::vector<std::string>{"QCD"}
         )
         .def_readwrite(
             "i_fks", &FKSConfiguration::i_fks, pydoc::doc("FKSConfiguration::i_fks")
@@ -1119,6 +1128,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             &FKSConfiguration::fks_j_from_i,
             pydoc::doc("FKSConfiguration::fks_j_from_i")
         )
+        .def_readwrite(
+            "splitting_types",
+            &FKSConfiguration::splitting_types,
+            pydoc::doc("FKSConfiguration::splitting_types")
+        )
         .def(
             "particle_count",
             &FKSConfiguration::particle_count,
@@ -1135,6 +1149,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("FKSConfiguration::born_j_fks")
         )
         .def(
+            "qed_splitting",
+            &FKSConfiguration::qed_splitting,
+            pydoc::doc("FKSConfiguration::qed_splitting")
+        )
+        .def(
             "born_pdgs",
             &FKSConfiguration::born_pdgs,
             pydoc::doc("FKSConfiguration::born_pdgs")
@@ -1148,6 +1167,63 @@ PYBIND11_MODULE(_madspace_py, m) {
             "identical_particle_ratio",
             &FKSConfiguration::identical_particle_ratio,
             pydoc::doc("FKSConfiguration::identical_particle_ratio")
+        );
+
+    py::classh<FKSCouplingOrders>(
+        m, "FKSCouplingOrders", pydoc::doc("FKSCouplingOrders")
+    )
+        .def(
+            py::init([](const std::vector<std::string>& split_orders,
+                        const nested_vector2<int>& born,
+                        const nested_vector2<int>& nlo,
+                        const std::vector<int>& max_nlo) {
+                FKSCouplingOrders orders{split_orders, born, nlo, max_nlo};
+                check_fks_coupling_orders(orders, "FKSCouplingOrders");
+                return orders;
+            }),
+            py::arg("split_orders"),
+            py::arg("born"),
+            py::arg("nlo"),
+            py::arg("max_nlo")
+        )
+        .def_readwrite(
+            "split_orders",
+            &FKSCouplingOrders::split_orders,
+            pydoc::doc("FKSCouplingOrders::split_orders")
+        )
+        .def_readwrite(
+            "born", &FKSCouplingOrders::born, pydoc::doc("FKSCouplingOrders::born")
+        )
+        .def_readwrite(
+            "nlo", &FKSCouplingOrders::nlo, pydoc::doc("FKSCouplingOrders::nlo")
+        )
+        .def_readwrite(
+            "max_nlo",
+            &FKSCouplingOrders::max_nlo,
+            pydoc::doc("FKSCouplingOrders::max_nlo")
+        )
+        .def(
+            "born_count",
+            &FKSCouplingOrders::born_count,
+            pydoc::doc("FKSCouplingOrders::born_count")
+        )
+        .def(
+            "nlo_count",
+            &FKSCouplingOrders::nlo_count,
+            pydoc::doc("FKSCouplingOrders::nlo_count")
+        )
+        .def(
+            "counterterm_order",
+            &FKSCouplingOrders::counterterm_order,
+            py::arg("born_index"),
+            py::arg("type"),
+            pydoc::doc("FKSCouplingOrders::counterterm_order")
+        )
+        .def_static(
+            "qcd",
+            &FKSCouplingOrders::qcd,
+            py::arg("alpha_s_power"),
+            pydoc::doc("FKSCouplingOrders::qcd")
         );
 
     py::classh<FKSRadiation, Mapping>(m, "FKSRadiation", pydoc::doc("FKSRadiation"))
@@ -1942,8 +2018,9 @@ PYBIND11_MODULE(_madspace_py, m) {
 
     py::classh<FKSLimits, FunctionGenerator>(m, "FKSLimits", pydoc::doc("FKSLimits"))
         .def(
-            py::init<const std::vector<FKSConfiguration>&>(),
+            py::init<const std::vector<FKSConfiguration>&, const FKSCouplingOrders&>(),
             py::arg("configurations"),
+            py::arg("orders"),
             pydoc::doc("FKSLimits::FKSLimits")
         )
         .def(
@@ -1956,7 +2033,24 @@ PYBIND11_MODULE(_madspace_py, m) {
             &FKSLimits::particle_count,
             pydoc::doc("FKSLimits::particle_count")
         )
+        .def(
+            "born_order_count",
+            &FKSLimits::born_order_count,
+            pydoc::doc("FKSLimits::born_order_count")
+        )
+        .def(
+            "nlo_order_count",
+            &FKSLimits::nlo_order_count,
+            pydoc::doc("FKSLimits::nlo_order_count")
+        )
         .def("soft", &FKSLimits::soft, py::arg("index"), pydoc::doc("FKSLimits::soft"))
+        .def("qed", &FKSLimits::qed, py::arg("index"), pydoc::doc("FKSLimits::qed"))
+        .def(
+            "born_index",
+            &FKSLimits::born_index,
+            py::arg("index"),
+            pydoc::doc("FKSLimits::born_index")
+        )
         .def(
             "collinear",
             &FKSLimits::collinear,
@@ -2053,6 +2147,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             py::init<
                 const std::vector<FKSConfiguration>&,
+                const FKSCouplingOrders&,
                 double,
                 double,
                 double,
@@ -2068,6 +2163,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 FKSSubtraction::PdfScheme,
                 double>(),
             py::arg("configurations"),
+            py::arg("orders"),
             py::arg("xicut") = 0.5,
             py::arg("xi_s_cut") = 0.5,
             py::arg("delta_o") = 1.,
@@ -2112,15 +2208,17 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             py::init<
                 const std::vector<FKSConfiguration>&,
-                int,
+                const FKSCouplingOrders&,
+                double,
                 double,
                 double,
                 double>(),
             py::arg("configurations"),
-            py::arg("alpha_s_power"),
+            py::arg("orders"),
             py::arg("xicut") = 0.5,
             py::arg("delta_o") = 1.,
             py::arg("n_f") = 5.,
+            py::arg("n_l") = 3.,
             pydoc::doc("FKSSoftVirtual::FKSSoftVirtual")
         )
         .def(
@@ -2129,9 +2227,14 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("FKSSoftVirtual::particle_count")
         )
         .def(
-            "alpha_s_power",
-            &FKSSoftVirtual::alpha_s_power,
-            pydoc::doc("FKSSoftVirtual::alpha_s_power")
+            "born_order_count",
+            &FKSSoftVirtual::born_order_count,
+            pydoc::doc("FKSSoftVirtual::born_order_count")
+        )
+        .def(
+            "nlo_order_count",
+            &FKSSoftVirtual::nlo_order_count,
+            pydoc::doc("FKSSoftVirtual::nlo_order_count")
         );
 
     py::classh<MultiChannelFunction, FunctionGenerator>(

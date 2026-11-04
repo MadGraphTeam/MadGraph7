@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -186,36 +187,44 @@ private:
  * The soft and collinear limits of the real matrix element of the FKS
  * configurations of a Born from the Born and its color-correlated and
  * spin-correlated versions, as sbornsoft, sborncol_fsr and sborncol_isr in
- * fks_singular.f give them [2, 3], each event in the configuration of its
+ * fks_singular.f give them [2, 3, 4], each event in the configuration of its
  * `fks_index` (see @ref FKSConfigurationMapping). These are the limits of
  * @f$\xi^2 (1 - y)@f$ times the real matrix element (sreal at the
- * counter-events), for QCD splittings.
+ * counter-events) per NLO order, for QCD and QED splittings.
  *
- * With @f$g_s^2 = 4 \pi \alpha_s@f$, the identical-particle ratio @f$r@f$ of
- * the configuration (FKSConfiguration::identical_particle_ratio()), the Born
- * @f$B@f$ and its color-correlated versions
- * @f$B_{mn} = \langle T_m \cdot T_n \rangle B@f$ (all-outgoing color charges,
- * @f$B_{mm} = C_m B@f$),
+ * The splitting type of a configuration (FKSConfiguration::splitting_types)
+ * sets the coupling, @f$g^2 = 4 \pi \alpha_s@f$ for QCD and @f$4 \pi \alpha@f$
+ * for QED, and the kernels. Its limits at an NLO order take the Born of the
+ * order that FKSCouplingOrders::counterterm_order() maps to it and are zero
+ * where it maps none. With the identical-particle ratio @f$r@f$ of the
+ * configuration (FKSConfiguration::identical_particle_ratio()) and the Born
+ * @f$B@f$ of that order,
  * @f[
- *   \text{soft} = -2 r g_s^2 \sum_{(m, n)} w_{mn} \mathcal{E}_{mn} B_{mn},
+ *   \text{soft} = -2 r g^2 \sum_{(m, n)} w_{mn} \mathcal{E}_{mn} B_{mn},
  *   \qquad
- *   \text{collinear} = r g_s^2 \Big[\frac{(1 - z) P(z)}{t} B +
+ *   \text{collinear} = r g^2 \Big[\frac{(1 - z) P(z)}{t} B +
  *     \frac{Q(z)}{t} \Big(\frac{B}{2} - B_\perp\Big)\Big],
  * @f]
  * with the reduced eikonal factors @f$\mathcal{E}_{mn}@f$ of @ref FKSEikonals
  * at the soft counter-event over the pairs of the configuration in the Born
  * (FKSEikonals::born_pairs()), @f$w_{mn} = 1@f$ and @f$w_{mm} = 1/2@f$, and
- * the QCD kernels of @ref FKSSplittingKernels at the collinear or soft-collinear
- * counter-event. @f$B_\perp@f$ is the Born with the polarization vector of the
- * emitter (its position FKSConfiguration::born_j_fks() in the Born, a gluon
- * where @f$Q \ne 0@f$) replaced by @f$k_\perp@f$ of FKSSplittingKernels, a
- * real vector with @f$k_\perp^2 = -1@f$, with the usual averages and
- * symmetry factors. The azimuthal average of @f$B_\perp@f$ is @f$B / 2@f$.
- * The soft limit is zero where i is a quark, the collinear ones are zero for a
- * massive emitter.
+ * the kernels of the splitting type of @ref FKSSplittingKernels at the
+ * collinear or soft-collinear counter-event. For a gluon i
+ * @f$B_{mn} = \langle T_m \cdot T_n \rangle B@f$ are the color-correlated
+ * Borns (all-outgoing color charges, @f$B_{mm} = C_m B@f$), for a photon i
+ * @f$B_{mn} = \eta_m Q_m \eta_n Q_n B@f$ with the charges @f$Q@f$ and
+ * @f$\eta = -1@f$ for an incoming particle, 1 otherwise. @f$B_\perp@f$ is the
+ * Born with the polarization vector of the emitter (its position
+ * FKSConfiguration::born_j_fks() in the Born, a gluon or photon where
+ * @f$Q \ne 0@f$) replaced by @f$k_\perp@f$ of FKSSplittingKernels, a real
+ * vector with @f$k_\perp^2 = -1@f$, with the usual averages and symmetry
+ * factors. The azimuthal average of @f$B_\perp@f$ is @f$B / 2@f$. The soft
+ * limit is zero where i is not a gluon or a photon, the collinear ones are
+ * zero for a massive emitter.
  *
- * `batch` is the leading batch dimension and `n` the number of particles of
- * the real process, incoming included.
+ * `batch` is the leading batch dimension, `n` the number of particles of the
+ * real process, incoming included, `b` the number of Born orders and `o` that
+ * of NLO orders.
  *
  * **Arguments**
  * - `soft_momenta` – `float`, shape `(batch, n, 4)` – momenta of the soft
@@ -227,18 +236,22 @@ private:
  * - `collinear_momenta`, `soft_collinear_momenta` – `float`, shape
  *   `(batch, n, 4)` – momenta of the collinear and soft-collinear
  *   counter-events, in any frame.
- * - `born` – `float`, shape `(batch,)` – the Born @f$B@f$.
- * - `color_correlated` – `float`, shape `(batch, n - 1, n - 1)` –
- *   @f$B_{mn}@f$ for the particles of the Born.
- * - `spin_correlated` – `float`, shape `(batch,)` – @f$B_\perp@f$, finite.
+ * - `born` – `float`, shape `(batch, b)` – the Born @f$B@f$ per Born order.
+ * - `color_correlated` – `float`, shape `(batch, b, n - 1, n - 1)` –
+ *   @f$\langle T_m \cdot T_n \rangle B@f$ for the particles of the Born per
+ *   Born order.
+ * - `spin_correlated` – `float`, shape `(batch, b)` – @f$B_\perp@f$ per Born
+ *   order, finite.
  * - `alpha_s` – `float`, shape `(batch,)` – the strong coupling.
+ * - `alpha` – `float`, shape `(batch,)` – the QED coupling.
  * - `fks_index` – `int`, shape `(batch,)` – the configuration of the event,
  *   from 0 to the number of configurations minus one.
  *
  * **Returns**
- * - `soft` – `float`, shape `(batch,)` – the soft limit.
- * - `collinear`, `soft_collinear` – `float`, shape `(batch,)` – the
- *   collinear limit at the collinear and at the soft-collinear counter-event.
+ * - `soft` – `float`, shape `(batch, o)` – the soft limit per NLO order.
+ * - `collinear`, `soft_collinear` – `float`, shape `(batch, o)` – the
+ *   collinear limit at the collinear and at the soft-collinear counter-event
+ *   per NLO order.
  *
  * **References**
  * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
@@ -248,24 +261,45 @@ private:
  * - [3] R. Frederix, S. Frixione, F. Maltoni, T. Stelzer, "Automation of
  *   next-to-leading order computations in QCD: the FKS subtraction",
  *   https://arxiv.org/abs/0908.4272
+ * - [4] R. Frederix, S. Frixione, V. Hirschi, D. Pagani, H.-S. Shao,
+ *   M. Zaro, "The automation of next-to-leading order electroweak
+ *   calculations", https://arxiv.org/abs/1804.10017
  */
 class FKSLimits : public FunctionGenerator {
 public:
     /**
      * @param configurations  The FKS configurations, in the order of
-     *                        `fks_index`, with QCD splittings.
-     * @throws std::invalid_argument for a splitting that is not one of QCD.
+     *                        `fks_index`, with QCD or QED splittings.
+     * @param orders          The coupling orders of the Born and of the
+     *                        real emission.
+     * @throws std::invalid_argument for a splitting that is not one of QCD or
+     *         QED, an extra counterterm or coupling orders without the
+     *         splitting types.
      */
-    explicit FKSLimits(const std::vector<FKSConfiguration>& configurations);
+    FKSLimits(
+        const std::vector<FKSConfiguration>& configurations,
+        const FKSCouplingOrders& orders
+    );
     /// Number of configurations.
     std::size_t configuration_count() const { return _collinear_factor.size(); }
     /// Number of particles of the real processes, incoming included.
     std::size_t particle_count() const { return _eikonals.particle_count(); }
-    /// Whether a configuration has a soft limit (i is a gluon).
+    /// Number of Born orders.
+    std::size_t born_order_count() const { return _born_order_count; }
+    /// Number of NLO orders.
+    std::size_t nlo_order_count() const { return _nlo_order_count; }
+    /// Whether a configuration has a soft limit (i is a gluon or a photon).
     bool soft(std::size_t index) const { return _pair_count.at(index) > 0; }
     /// Whether a configuration has collinear limits (j is massless).
     bool collinear(std::size_t index) const {
         return _collinear_factor.at(index) != 0.;
+    }
+    /// Whether the splitting of a configuration is one of QED, else QCD.
+    bool qed(std::size_t index) const { return _coupling.at(index) == 1; }
+    /// For each NLO order, the Born order of the counterterms of a
+    /// configuration, -1 for none.
+    const std::vector<me_int_t>& born_index(std::size_t index) const {
+        return _born_index.at(index);
     }
     /// The eikonal factors of the soft limits.
     const FKSEikonals& eikonals() const { return _eikonals; }
@@ -279,6 +313,8 @@ private:
 
     FKSEikonals _eikonals;
     FKSSplittingKernels _kernels;
+    std::size_t _born_order_count;
+    std::size_t _nlo_order_count;
     std::vector<me_int_t> _fks_i;
     std::vector<me_int_t> _fks_j;
     std::vector<me_int_t> _pair_count;
@@ -286,7 +322,29 @@ private:
     nested_vector2<me_int_t> _pair_n;
     nested_vector2<double> _pair_factor;
     std::vector<double> _collinear_factor;
+    std::vector<me_int_t> _coupling;
+    nested_vector2<me_int_t> _born_index;
 };
+
+/**
+ * Check FKS configurations with QCD or QED splittings for the limits of the
+ * real matrix element and the coupling orders they come with: those of
+ * check_fks_configurations(), one splitting type per configuration (an extra
+ * counterterm is not supported), whose particles i and j are colored for QCD
+ * and photons or charged for QED, a splitting of i and j that gives a Born,
+ * the coupling orders of check_fks_coupling_orders() with the splitting types
+ * among their split orders.
+ *
+ * @param configurations  The configurations.
+ * @param orders          The coupling orders.
+ * @param user            Name of the caller, for the error messages.
+ * @return                The number of particles of the real processes.
+ */
+std::size_t check_splitting_configurations(
+    const std::vector<FKSConfiguration>& configurations,
+    const FKSCouplingOrders& orders,
+    const std::string& user
+);
 
 /**
  * The prefactors of the real emission and its FKS counterterms, as

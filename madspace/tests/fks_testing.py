@@ -128,7 +128,14 @@ def reference_configurations(data):
 
 
 def configuration(
-    i_fks, j_fks, pdgs, colors, charges=None, masses=None, fks_j_from_i=None
+    i_fks,
+    j_fks,
+    pdgs,
+    colors,
+    charges=None,
+    masses=None,
+    fks_j_from_i=None,
+    splitting_types=("QCD",),
 ):
     """An FKSConfiguration for the unit tests: massless and neutral unless
     given, with (i, j) as the only FKS pair unless the pairs are given."""
@@ -144,6 +151,7 @@ def configuration(
         charges=list(charges) if charges is not None else [0.0] * n,
         masses=list(masses) if masses is not None else [0.0] * n,
         fks_j_from_i=fks_j_from_i,
+        splitting_types=list(splitting_types),
     )
 
 
@@ -157,4 +165,39 @@ def with_pair(config, i_fks, j_fks):
         charges=config.charges,
         masses=config.masses,
         fks_j_from_i=config.fks_j_from_i,
+        splitting_types=config.splitting_types,
     )
+
+
+# the index of the splitting types in born_orders of the reference data
+SPLITTING_TYPES = {"QCD": 0, "QED": 1}
+
+
+def order_positions(data):
+    """The positions of the Born orders and of the NLO orders of the coupling
+    orders of reference data (the orders entry of fks_configurations.json) in
+    the amp_split arrays of the dump."""
+    amp_split = data["split_orders"]["amp_split"]
+    orders = data["fks_configurations"]["orders"]
+    return (
+        [amp_split.index(o) for o in orders["born"]],
+        [amp_split.index(o) for o in orders["nlo"]],
+    )
+
+
+def at_nlo_orders(values, data):
+    """Values of the dump over the positions of amp_split (the last axis) at
+    the NLO orders."""
+    return np.asarray(values)[..., order_positions(data)[1]]
+
+
+def per_born_order(values, data):
+    """Born blocks of pyAmpliCol, which are those of the only Born order of
+    the reference data, with the axis of the Born orders."""
+    assert len(data["fks_configurations"]["orders"]["born"]) == 1
+    return np.asarray(values)[:, None]
+
+
+def alpha(data):
+    """The QED coupling of the Fortran, gal(1)^2 / (4 pi)."""
+    return data["gal"] ** 2 / (4 * np.pi)

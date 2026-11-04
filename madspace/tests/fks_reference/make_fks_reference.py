@@ -33,10 +33,14 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
     subtraction (xicut, xi_s_cut, delta_s, delta_o, delta_i of fks_powers.inc,
     set for some processes away from their defaults, see FKS_POWERS),
     pdf_scheme (pdfscheme of the run_card, 0 MSbar or 1 DIS, see RUN_CARD),
-    n_f (the number of light flavors), scales (mu_f2 of the two beams and
+    n_f (the number of light flavors), n_l (the number of massless
+    leptons), scales (mu_f2 of the two beams and
     qes2, the Ellis-Sexton scale, set by the dump for the collinear
     remnants), soft_virtual_scales (mu_f2 of the two beams, mu_r2 and qes2,
-    set by the dump for bornsoftvirtual),
+    set by the dump for bornsoftvirtual), split_orders (amp_split_size,
+    amp_split_size_born, qcd_pos, qed_pos of orders.inc, 1-based, -1 if
+    absent, and amp_split: the powers of each split order at every position
+    of the amp_split arrays), gal (the QED coupling e of the Fortran),
     fks_configurations (the fks_configurations.json the FKS exporter writes
     into the P* directory, with its own conventions, see madspace/fks.py)
     configs[]: nfks, i_fks, j_fks, pdg, masses, particle_type,
@@ -71,8 +75,9 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
                Born of sborn at p_born) and color_links (sborn_sf for the
                pairs of sbornsoft, with g^2, empty where i is a quark), both
                where the event is generated, born_blocks (where the event is
-               generated: born, color_correlated and, for a gluon emitter,
-               spin_correlated of pyAmpliCol at p_born, see born_blocks),
+               generated: born, color_correlated and, for a gluon or photon
+               emitter, spin_correlated of pyAmpliCol at p_born, see
+               born_blocks),
                collinear_remnants (sreal_deg at the collinear and
                soft-collinear counter-events of a massless incoming
                emitter: wgtdegrem_xi, wgtdegrem_lxi, wgtdegrem_muF and the
@@ -80,8 +85,17 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
                has f_pdf_scheme (f_pdfsch_d, f_pdfsch_p, f_pdfsch_l),
                soft_virtual (bornsoftvirtual at the soft counter-event
                without the virtual, where it is generated and i has colour
-               links: bsv_wgt, born_wgt and the sums over the split orders
-               of wgtnstmp, wgtwnstmpmur, wgtwnstmpmuf),
+               or charge links: bsv_wgt, born_wgt and the sums over the
+               split orders of wgtnstmp, wgtwnstmpmur, wgtwnstmpmuf),
+               and per position of amp_split: sreal_orders (amp_split after
+               the four calls of sreal, zero where not generated),
+               born_orders (amp_split_cnt for a QCD and for a QED
+               splitting), color_links_orders (amp_split_soft for each pair
+               of color_links, which are the charge-linked Borns where i is
+               a photon), collinear_remnants_orders (the six pieces of
+               collinear_remnants per counter-event) and
+               soft_virtual_orders (amp_split after bornsoftvirtual,
+               wgtnstmp, wgtwnstmpmur, wgtwnstmpmuf),
                shat_born, tau_born, ycm_born, xbjrk_born, tau_lower_bound,
                and for prefix in (rad, cut): prefix_jac, prefix_jac_cnt,
                prefix_p_ev, prefix_p_cnt, prefix_xi_ev, prefix_xi_hat_ev,
@@ -108,6 +122,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.realpath(__file__))
@@ -132,6 +147,22 @@ PROCESSES = {
     # emitters of every kind
     "pp_epemj_dis": ("p p > e+ e- j [QCD]", ["P0_ug_uemep"]),
     "pp_ttx_dis": ("p p > t t~ [QCD]", ["P0_gg_ttx"]),
+    # QED corrections: photon emission off quarks and leptons, initial
+    # photons splitting into quarks and quarks into photons
+    "pp_epem_qed": ("p p > e+ e- [QED]", ["P0_uux_emep", "P0_aa_emep"]),
+    # the same in the DIS scheme, for the QED parts of its kernels
+    "pp_epem_qed_dis": ("p p > e+ e- [QED]", ["P0_uux_emep", "P0_aa_emep"]),
+    # a final-state photon that splits into quarks and leptons
+    "pp_epema_qed": ("p p > e+ e- a [QED]", ["P0_uux_emepa"]),
+    # photon emission off massive charged particles
+    "aa_ttx_qed": ("a a > t t~ [QED]", ["P0_aa_ttx"]),
+}
+# the model of the processes that need another one than MadGraph picks
+MODELS = {
+    "pp_epem_qed": "loop_qcd_qed_sm",
+    "pp_epem_qed_dis": "loop_qcd_qed_sm",
+    "pp_epema_qed": "loop_qcd_qed_sm",
+    "aa_ttx_qed": "loop_qcd_qed_sm",
 }
 FKS_POWERS = {
     "pp_epemj_params": dict(xicut=0.3, xiScut=0.25, deltaO=0.8, deltaI=0.7, deltaS=0.6),
@@ -140,6 +171,7 @@ FKS_POWERS = {
 RUN_CARD = {
     "pp_epemj_dis": dict(pdfscheme=1),
     "pp_ttx_dis": dict(pdfscheme=1),
+    "pp_epem_qed_dis": dict(pdfscheme=1),
 }
 
 
@@ -150,12 +182,14 @@ def run(cmd, cwd, log, stdin=None):
         )
 
 
-def generate(name, process, work, run_card=None):
+def generate(name, process, work, run_card=None, model=None):
     out = os.path.join(work, name)
     if not os.path.isdir(os.path.join(out, "SubProcesses")):
         script = os.path.join(work, f"{name}.mg")
         with open(script, "w") as f:
             f.write("set automatic_html_opening False\n")
+            if model:
+                f.write(f"import model {model}\n")
             f.write(f"generate {process}\n")
             f.write(f"output standalone_fortran {out} --fks --limits\n")
         run(
@@ -266,6 +300,15 @@ def parse_rerun(point, prefix, key, rest):
         point[f"{prefix}_p_i_hat_ev"], point[f"{prefix}_p_i_hat_cnt"] = v[0], v[1:6]
 
 
+def per_order(values, data, count=None):
+    """Values the Fortran writes as arrays over the positions of amp_split,
+    one after the other (count of them where it is given), as lists."""
+    size = data["split_orders"]["amp_split_size"]
+    if len(values) % size or (count is not None and len(values) != count * size):
+        raise ValueError(f"{len(values)} values for arrays of {size}")
+    return [values[k : k + size] for k in range(0, len(values), size)]
+
+
 def parse(text):
     data = {"configs": []}
     conf = point = None
@@ -283,6 +326,20 @@ def parse(text):
             data["ebeam"] = floats(rest)
         elif key == "SCHEME":
             data["pdf_scheme"], data["n_f"] = int(rest[0]), float(rest[1])
+            data["n_l"] = float(rest[2])
+        elif key == "ORDERS":
+            size, born_size, qcd_pos, qed_pos, _ = map(int, rest)
+            data["split_orders"] = dict(
+                amp_split_size=size,
+                amp_split_size_born=born_size,
+                qcd_pos=qcd_pos,
+                qed_pos=qed_pos,
+                amp_split=[],
+            )
+        elif key == "AMPSPLIT":
+            data["split_orders"]["amp_split"].append(list(map(int, rest[1:])))
+        elif key == "COUPL":
+            data["gal"] = floats(rest)[0]
         elif key == "CONF":
             # the extra points for massive emitters come in a second pass
             ints = list(map(int, rest))
@@ -372,6 +429,17 @@ def parse(text):
             data["subtraction"].pop("delta")
         elif key == "SREAL":
             point["sreal"] = floats(rest)
+        elif key == "SREALO":
+            point["sreal_orders"] = per_order(floats(rest), data, 4)
+        elif key == "BORNO":
+            point["born_orders"] = per_order(floats(rest), data, 2)
+        elif key == "BLINKO":
+            point["color_links_orders"] = per_order(floats(rest), data)
+        elif key == "DEGO":
+            v = per_order(floats(rest), data, 12)
+            point["collinear_remnants_orders"] = [v[0:6], v[6:12]]
+        elif key == "BSVO":
+            point["soft_virtual_orders"] = per_order(floats(rest), data, 4)
         elif key == "BORN":
             g, iden_comp, _, born = floats(rest)
             if data.setdefault("g", g) != g:
@@ -422,9 +490,14 @@ def colored(pdg):
     return abs(pdg) <= 6 or pdg == 21
 
 
-def born_runtime(born_pdgs, nincoming, path):
+# the massless vector bosons, whose splittings have azimuthal correlations
+VECTORS = (21, 22)
+
+
+def born_runtime(born_pdgs, nincoming, path, model=None):
     """The pyAmpliCol runtime of the Born, with the color correlators of all
-    pairs of colored particles and the spin correlators of every gluon."""
+    pairs of colored particles and the spin correlators of every gluon and
+    photon, in the built-in Standard Model or the given model source."""
     import pyamplicol as pa
     from pyamplicol.config import ColorConfig, RunConfig
 
@@ -439,12 +512,15 @@ def born_runtime(born_pdgs, nincoming, path):
                 for b in legs[k:]
             ),
             spin_correlations=tuple(
-                (k + 1,) for k, pdg in enumerate(born_pdgs) if pdg == 21
+                (k + 1,) for k, pdg in enumerate(born_pdgs) if pdg in VECTORS
             ),
         )
         config = RunConfig(action="generate", color=ColorConfig(accuracy="full"))
         pa.Generator(config).generate(
-            process, path, model=pa.ModelSource.built_in_sm(), correlators=correlators
+            process,
+            path,
+            model=model or pa.ModelSource.built_in_sm(),
+            correlators=correlators,
         )
     runtime = pa.Runtime.load(path)
     if tuple(runtime.external_permutation) != tuple(range(len(born_pdgs))):
@@ -452,30 +528,100 @@ def born_runtime(born_pdgs, nincoming, path):
     return runtime, legs
 
 
-def born_blocks(data, path):
+def param_card(out):
+    """The values of the blocks of the param_card of an output, as
+    {(block, code): value}."""
+    values, block = {}, None
+    with open(os.path.join(out, "Cards", "param_card.dat")) as f:
+        for line in f:
+            fields = line.split("#")[0].split()
+            if not fields:
+                continue
+            if fields[0].lower() == "block":
+                block = fields[1].lower()
+            elif fields[0].lower() == "decay":
+                values[("decay", int(fields[1]))] = float(fields[2])
+            elif block is not None and len(fields) == 2:
+                values[(block, int(fields[0]))] = float(fields[1])
+    return values
+
+
+def ufo_sm_parameters(out):
+    """The external parameters of the sm UFO of MadGraph that give the tree
+    level of loop_qcd_qed_sm at the param_card of an output: the same
+    alpha(M_Z), M_Z, masses and widths, with G_F from its M_W (an input of
+    loop_qcd_qed_sm, derived from G_F in sm)."""
+    card = param_card(out)
+    m_z, m_w = card[("mass", 23)], card[("mass", 24)]
+    alpha = 1 / card[("sminputs", 1)]
+    g_f = (
+        math.pi
+        * alpha
+        * m_z**2
+        / (math.sqrt(2) * (m_z**4 / 4 - (m_w**2 - m_z**2 / 2) ** 2))
+    )
+    return {
+        "aEWM1": card[("sminputs", 1)],
+        "Gf": g_f,
+        "MZ": m_z,
+        "MT": card[("mass", 6)],
+        "MH": card[("mass", 25)],
+        "WT": card[("decay", 6)],
+        "WZ": card[("decay", 23)],
+        "WW": card[("decay", 24)],
+    }
+
+
+def ufo_model(work):
+    """The sm UFO of MadGraph as a pyAmpliCol model source, compiled once into
+    the work directory (pyAmpliCol does not load the counterterm parameters
+    of loop_qcd_qed_sm). In this process: Symbolica refuses a second process
+    under a restricted license."""
+    import pyamplicol as pa
+    from pyamplicol.config import EvaluatorConfig
+
+    pack = os.path.join(work, "sm.pyamplicol-model")
+    if not os.path.exists(pack):
+        source = pa.ModelSource.from_path(os.path.join(MG_ROOT, "models", "sm"))
+        source.compile(prepared_output=pack, evaluator=EvaluatorConfig())
+    return pa.ModelSource.from_path(pack)
+
+
+def born_blocks(data, path, model=None, out=None, work=None):
     """The Born at p_born of every point where the event is generated, from
     pyAmpliCol: the Born B, the color-correlated Borns <T_m . T_n> B of every
     pair of colored particles (C_m B for m = n, all-outgoing color charges,
     zero for colorless particles) and, where the emitter of the configuration
-    is a gluon in the Born, the spin-correlated tensor S with
+    is a gluon or a photon in the Born, the spin-correlated tensor S with
     B(e) = e^mu e^nu S_mu,nu (contravariant components of e, summed with unit
     weights) the Born with the real vector e in place of the polarization of
     the emitter. The parameters are those of the param_card of MadGraph (the
     defaults of the built-in Standard Model of pyAmpliCol) at the alpha_s of
     the Fortran, but the top width: MadGraph sets it to zero in t-channel
     propagators (zerowidth_tchannel), the only ones of the top in these
-    Borns."""
+    Borns. For loop_qcd_qed_sm (MODELS), the sm UFO of MadGraph at the
+    parameters of the output (ufo_sm_parameters), since the built-in Standard
+    Model of pyAmpliCol 1.0.1 is off by a factor 5.27 for every external
+    photon."""
     import pyamplicol as pa
 
     configurations = data["fks_configurations"]
     born_pdgs = configurations["born_pdgs"]
-    runtime, legs = born_runtime(born_pdgs, configurations["nincoming"], path)
     alpha_s = data["g"] ** 2 / (4 * math.pi)
-    runtime.set_model_parameters(
-        {"normalization.alpha_s_me_check": alpha_s, "particle.6.width": 0.0}
-    )
+    if model == "loop_qcd_qed_sm":
+        runtime, legs = born_runtime(
+            born_pdgs, configurations["nincoming"], path, ufo_model(work)
+        )
+        runtime.set_model_parameters(dict(ufo_sm_parameters(out), aS=alpha_s, WT=0.0))
+        source = "sm UFO of MadGraph at the parameters of loop_qcd_qed_sm"
+    else:
+        runtime, legs = born_runtime(born_pdgs, configurations["nincoming"], path)
+        runtime.set_model_parameters(
+            {"normalization.alpha_s_me_check": alpha_s, "particle.6.width": 0.0}
+        )
+        source = "built-in Standard Model"
     data["born_blocks"] = dict(
-        source=f"pyAmpliCol {pa.package_version()}, built-in Standard Model",
+        source=f"pyAmpliCol {pa.package_version()}, {source}",
         alpha_s=alpha_s,
         top_width=0.0,
     )
@@ -483,7 +629,7 @@ def born_blocks(data, path):
     for conf in data["configs"]:
         i_fks, j_fks = conf["i_fks"], conf["j_fks"]
         born_j = j_fks if j_fks < i_fks else j_fks - 1
-        gluon = born_pdgs[born_j - 1] == 21
+        vector = born_pdgs[born_j - 1] in VECTORS
         for point in conf["points"] + conf.get("limit_points", []):
             if "born" not in point:
                 continue
@@ -491,7 +637,7 @@ def born_blocks(data, path):
             for k, a in enumerate(legs):
                 for b in legs[k:]:
                     requests[f"T{a}_{b}"] = pa.CorrelatedRequest(f"T{a}_{b}", {})
-            if gluon:
+            if vector:
                 # the Born at e = u_mu + u_nu, with the unit vectors u_mu
                 for mu in range(4):
                     for nu in range(mu, 4):
@@ -510,7 +656,7 @@ def born_blocks(data, path):
                     correlated[a - 1][b - 1] = value[f"T{a}_{b}"]
                     correlated[b - 1][a - 1] = value[f"T{a}_{b}"]
             blocks = dict(born=value["born"], color_correlated=correlated)
-            if gluon:
+            if vector:
                 tensor = [[0.0] * 4 for _ in range(4)]
                 for mu in range(4):
                     for nu in range(4):
@@ -537,6 +683,9 @@ def main():
         help="points per FKS config close to the soft (and collinear) limit",
     )
     parser.add_argument("--keep", help="keep the generated outputs in this directory")
+    parser.add_argument(
+        "--only", nargs="*", help="regenerate only these processes (names of PROCESSES)"
+    )
     args = parser.parse_args()
 
     # identifies the Fortran the data come from without changing with every
@@ -551,7 +700,9 @@ def main():
     work = args.keep or tempfile.mkdtemp(prefix="fks_reference_")
     os.makedirs(work, exist_ok=True)
     for name, (process, keep) in PROCESSES.items():
-        out = generate(name, process, work, RUN_CARD.get(name))
+        if args.only and name not in args.only:
+            continue
+        out = generate(name, process, work, RUN_CARD.get(name), MODELS.get(name))
         if name in FKS_POWERS:
             set_fks_powers(out, FKS_POWERS[name])
         for pdir in sorted(glob.glob(os.path.join(out, "SubProcesses", "P*"))):
@@ -564,7 +715,8 @@ def main():
             # the FKS configurations as the exporter writes them for madspace
             with open(os.path.join(pdir, "fks_configurations.json")) as f:
                 data["fks_configurations"] = json.load(f)
-            born_blocks(data, os.path.join(work, f"{name}_{sub}_pyamplicol"))
+            pyamplicol_dir = os.path.join(work, f"{name}_{sub}_pyamplicol")
+            born_blocks(data, pyamplicol_dir, MODELS.get(name), out, work)
             path = os.path.join(OUT_DIR, f"{name}_{sub}.json")
             with open(path, "w") as f:
                 json.dump(data, f, separators=(",", ":"))

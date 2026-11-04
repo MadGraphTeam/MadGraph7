@@ -11,13 +11,20 @@ madgraph/iolibs/export_fks.py):
             process, 1-based
         ij_pdg: PDG code of the parton i + j of the Born
         real_pdgs: PDG codes of the real process
-        real_me, need_color_links, need_charge_links, splitting_type,
-        extra_cnt_index
+        splitting_type: the types of the splitting, QCD or QED, a second
+            one with an extra counterterm (extra_cnt_index)
+        real_me, need_color_links, need_charge_links, extra_cnt_index
         real_colors, real_charges: color representation (1, 3, -3, 8) and
             electric charge of each particle of the real process
         fks_j_from_i: for each particle i of the real process, the particles
             j it forms an FKS pair with (1-based), the pairs whose sector
             functions partition the phase space of the real process
+    orders: the coupling orders of orders.inc and amp_split_orders.inc
+        split_orders: the names of the split orders (QCD, QED, ...)
+        born, nlo: the powers of each split order of the Born orders and of
+            the NLO orders, the positions of the amp_split arrays
+        max_born, max_nlo: the largest powers of each split order at the
+            Born and at NLO (born_orders and nlo_orders)
 
 The functions here turn it into the FKSMappings of a Born mapping, one per
 configuration, or into one FKSConfigurationMapping for all of them, with the
@@ -28,7 +35,9 @@ the cuts imply (see fks_sqrt_s_hat_min): a floor of the Born mapping for a
 final-state emitter, s_hat_min for an incoming one.
 
 fks_configurations gives the FKSConfigurations that the classes of the FKS
-subtraction take. With them, fks_sector_function builds the sector functions
+subtraction take and fks_coupling_orders their FKSCouplingOrders, by which
+the Born blocks come per Born order and the real emission, its counterterms
+and the n-body part per NLO order. With them, fks_sector_function builds the sector functions
 S_ij of the configurations, fks_eikonals the eikonal factors of their soft
 limits, fks_splitting_kernels the factors of their collinear limits,
 fks_prefactors the prefactors of the real emission and its counterterms,
@@ -46,6 +55,7 @@ from ._madspace_py import (
     Cuts,
     FKSConfiguration,
     FKSConfigurationMapping,
+    FKSCouplingOrders,
     FKSEikonals,
     FKSLimits,
     FKSMapping,
@@ -249,6 +259,7 @@ def fks_configurations(born, configurations):
             charges=list(configuration["real_charges"]),
             masses=real_masses(born_masses, configuration),
             fks_j_from_i=[[j - 1 for j in js] for js in pairs],
+            splitting_types=list(configuration["splitting_type"]),
         )
         # the Born that FKSConfiguration infers from the splitting, which sets
         # the identical-particle ratio of the counterterms
@@ -260,6 +271,34 @@ def fks_configurations(born, configurations):
             )
         result.append(fks_configuration)
     return result
+
+
+def fks_coupling_orders(configurations):
+    """The FKSCouplingOrders of the FKS configurations of a Born, from the
+    orders entry of fks_configurations.json: the split orders and the powers
+    of each of the Born orders and of the NLO orders, in the order of the
+    amp_split arrays of MadFKS.
+
+    Args:
+        configurations: the content of fks_configurations.json (see
+            read_fks_configurations).
+
+    Raises:
+        ValueError: without the orders entry (an older FKS exporter) or for
+            inconsistent orders.
+    """
+    if "orders" not in configurations:
+        raise ValueError(
+            "fks_configurations.json has no coupling orders, it comes from an "
+            "older FKS exporter"
+        )
+    orders = configurations["orders"]
+    return FKSCouplingOrders(
+        split_orders=list(orders["split_orders"]),
+        born=[list(o) for o in orders["born"]],
+        nlo=[list(o) for o in orders["nlo"]],
+        max_nlo=list(orders["max_nlo"]),
+    )
 
 
 def fks_sector_function(born, configurations, **options):
@@ -321,13 +360,15 @@ def fks_prefactors(born, configurations, **parameters):
 
 def fks_limits(born, configurations):
     """The FKSLimits of the FKS configurations of a Born, with fks_index as
-    for fks_sector_function.
+    for fks_sector_function and the coupling orders of fks_coupling_orders.
 
     Raises:
-        ValueError: as fks_configurations, and for a splitting that is not one
-            of QCD.
+        ValueError: as fks_configurations and fks_coupling_orders, and for a
+            splitting that is not one of QCD or QED or an extra counterterm.
     """
-    return FKSLimits(fks_configurations(born, configurations))
+    return FKSLimits(
+        fks_configurations(born, configurations), fks_coupling_orders(configurations)
+    )
 
 
 def fks_subtraction(born, configurations, **parameters):
@@ -348,10 +389,14 @@ def fks_subtraction(born, configurations, **parameters):
     Raises:
         ValueError: as fks_limits.
     """
-    return FKSSubtraction(fks_configurations(born, configurations), **parameters)
+    return FKSSubtraction(
+        fks_configurations(born, configurations),
+        fks_coupling_orders(configurations),
+        **parameters,
+    )
 
 
-def fks_soft_virtual(born, configurations, alpha_s_power, **parameters):
+def fks_soft_virtual(born, configurations, **parameters):
     """The FKSSoftVirtual of the FKS configurations of a Born, the n-body part
     of the subtraction without the virtual, on the momenta of the Born.
 
@@ -360,13 +405,16 @@ def fks_soft_virtual(born, configurations, alpha_s_power, **parameters):
             momenta in the order of born_pdgs.
         configurations: the content of fks_configurations.json (see
             read_fks_configurations).
-        alpha_s_power: the power of alpha_s of the Born.
-        parameters: xicut and delta_o of fks_powers.inc and the number of
-            light flavors (n_f), see FKSSoftVirtual.
+        parameters: xicut and delta_o of fks_powers.inc and the numbers of
+            light flavors (n_f) and of massless leptons (n_l), see
+            FKSSoftVirtual.
 
     Raises:
-        ValueError: as fks_limits, and without a configuration with a gluon i.
+        ValueError: as fks_limits, and without a configuration with a gluon or
+            photon i.
     """
     return FKSSoftVirtual(
-        fks_configurations(born, configurations), alpha_s_power, **parameters
+        fks_configurations(born, configurations),
+        fks_coupling_orders(configurations),
+        **parameters,
     )

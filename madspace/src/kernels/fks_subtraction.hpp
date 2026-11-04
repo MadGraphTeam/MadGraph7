@@ -487,71 +487,110 @@ KERNELSPEC void kernel_fks_prefactors(
 }
 
 // The soft limit of xi^2 (1 - y) times the real matrix element of sbornsoft
-// (fks_singular.f): 4 pi alpha_s sum_(m, n) f_mn E_mn <T_m . T_n> B over the
-// pairs of the configuration, positions in the Born, with f_mn = -2 iden_comp
-// and half that for m = n (the color-linked Born of a particle with itself has
-// a factor 1/2 in MadFKS). A configuration without a soft limit has no pairs.
+// (fks_singular.f) per NLO order: for a gluon i (coupling 0)
+// 4 pi alpha_s sum_(m, n) f_mn E_mn <T_m . T_n> B, for a photon i (coupling 1)
+// 4 pi alpha sum_(m, n) f_mn E_mn B, over the pairs of the configuration,
+// positions in the Born, with the Born of the order that born_index gives for
+// each NLO order (none for -1). f_mn = -2 iden_comp, half that for m = n (the
+// color-linked Born of a particle with itself has a factor 1/2 in MadFKS),
+// times eta_m Q_m eta_n Q_n for a photon i, with the charges Q and eta = -1
+// for an incoming particle. A configuration without a soft limit has no pairs.
 template <typename T>
 KERNELSPEC void kernel_fks_soft_limit(
     FIn<T, 1> eik,
-    FIn<T, 2> color_correlated,
+    FIn<T, 1> born,
+    FIn<T, 3> color_correlated,
     FIn<T, 0> alpha_s,
+    FIn<T, 0> alpha,
     IIn<T, 0> index,
     IIn<T, 1> pair_count,
     IIn<T, 2> pair_m,
     IIn<T, 2> pair_n,
     FIn<T, 2> pair_factor,
-    FOut<T, 0> soft
+    IIn<T, 1> coupling,
+    IIn<T, 2> born_index,
+    FOut<T, 1> soft
 ) {
     constexpr double pi = 3.14159265358979323846;
     std::size_t c = single_index(index);
     std::size_t count = single_index(pair_count[c]);
-    FVal<T> sum = 0.;
-    for (std::size_t k = 0; k < count; ++k) {
-        std::size_t m = single_index(pair_m[c][k]), n = single_index(pair_n[c][k]);
-        FVal<T> factor = pair_factor[c][k], e = eik[k], b = color_correlated[m][n];
-        sum = sum + factor * e * b;
+    bool qed = single_index(coupling[c]) == 1;
+    FVal<T> g2 = 4. * pi * (qed ? FVal<T>(alpha) : FVal<T>(alpha_s));
+    // the sum without the Born of the charge links
+    FVal<T> charge_sum = 0.;
+    if (qed) {
+        for (std::size_t k = 0; k < count; ++k) {
+            charge_sum = charge_sum + FVal<T>(pair_factor[c][k]) * FVal<T>(eik[k]);
+        }
     }
-    soft = 4. * pi * FVal<T>(alpha_s) * sum;
+    for (std::size_t o = 0; o < soft.size(); ++o) {
+        int b = born_index[c][o];
+        if (b < 0 || count == 0) {
+            soft[o] = 0.;
+            continue;
+        }
+        if (qed) {
+            soft[o] = g2 * charge_sum * FVal<T>(born[b]);
+            continue;
+        }
+        FVal<T> sum = 0.;
+        for (std::size_t k = 0; k < count; ++k) {
+            std::size_t m = single_index(pair_m[c][k]), n = single_index(pair_n[c][k]);
+            sum = sum +
+                FVal<T>(pair_factor[c][k]) * FVal<T>(eik[k]) *
+                    FVal<T>(color_correlated[b][m][n]);
+        }
+        soft[o] = g2 * sum;
+    }
 }
 
 // The collinear limit of xi^2 (1 - y) times the real matrix element of
-// sborncol_fsr and sborncol_isr (fks_singular.f) from the QCD kernels:
-// 4 pi alpha_s iden_comp (AP B + Q (B / 2 - B_kperp)), with the Born B_kperp
-// whose emitter has the polarization vector k_perp. In MadFKS the Born that Q
-// multiplies is the helicity-flipped Born times a phase of the azimuth of the
-// emission, which is B / 2 - B_kperp. B_kperp enters only where Q is not zero.
+// sborncol_fsr and sborncol_isr (fks_singular.f) per NLO order from the
+// kernels of the coupling of the configuration (0 QCD, 1 QED):
+// 4 pi alpha iden_comp (AP B + Q (B / 2 - B_kperp)), with the Born B and
+// the Born B_kperp whose emitter has the polarization vector k_perp of the
+// order that born_index gives for each NLO order (none for -1) and alpha the
+// strong or the QED coupling. In MadFKS the Born that Q multiplies is the
+// helicity-flipped Born times a phase of the azimuth of the emission, which
+// is B / 2 - B_kperp. B_kperp enters only where Q is not zero.
 template <typename T>
 KERNELSPEC void kernel_fks_collinear_limit(
-    FIn<T, 0> born,
-    FIn<T, 0> spin_correlated,
+    FIn<T, 1> born,
+    FIn<T, 1> spin_correlated,
     FIn<T, 1> ap,
     FIn<T, 1> q,
     FIn<T, 0> alpha_s,
+    FIn<T, 0> alpha,
     IIn<T, 0> index,
     FIn<T, 1> factor,
-    FOut<T, 0> collinear
+    IIn<T, 1> coupling,
+    IIn<T, 2> born_index,
+    FOut<T, 1> collinear
 ) {
     constexpr double pi = 3.14159265358979323846;
     std::size_t c = single_index(index);
     FVal<T> f = factor[c];
-    if (f == 0.) {
-        // no collinear limit (a massive emitter)
-        collinear = 0.;
-        return;
+    std::size_t t = single_index(coupling[c]);
+    FVal<T> g2 = 4. * pi * (t == 1 ? FVal<T>(alpha) : FVal<T>(alpha_s));
+    FVal<T> kernel = ap[t], azimuthal = q[t];
+    for (std::size_t o = 0; o < collinear.size(); ++o) {
+        int b = born_index[c][o];
+        if (b < 0 || f == 0.) {
+            // no collinear limit (a massive emitter) or no counterterm
+            collinear[o] = 0.;
+            continue;
+        }
+        FVal<T> born_b = born[b];
+        FVal<T> value = kernel * born_b;
+        if (azimuthal != 0.) {
+            value = value + azimuthal * (0.5 * born_b - FVal<T>(spin_correlated[b]));
+        }
+        collinear[o] = g2 * f * value;
     }
-    FVal<T> b = born, kernel = ap[0], azimuthal = q[0];
-    FVal<T> value = kernel * b;
-    if (azimuthal != 0.) {
-        value = value + azimuthal * (0.5 * b - FVal<T>(spin_correlated));
-    }
-    collinear = 4. * pi * FVal<T>(alpha_s) * f * value;
 }
 
 // (1 - z) P'(z) of AP_reduced_prime (the O(epsilon) part) without its color
-// factor, and the plus (p), log-plus (l) and delta (d) parts of the change
-// of the PDF scheme from MSbar to DIS of xkplus, xklog and xkdelta, with
-// their color factors and n_f, for the splittings of fks_ap_shape
+// or charge factor, for the splittings of fks_ap_shape
 template <typename T>
 KERNELSPEC FVal<T> fks_ap_prime_shape(std::size_t kind, FVal<T> z) {
     auto w = 1. - z;
@@ -567,56 +606,51 @@ KERNELSPEC FVal<T> fks_ap_prime_shape(std::size_t kind, FVal<T> z) {
     }
 }
 
+// The plus (p), log-plus (l) and delta (d) parts of the change of the PDF
+// scheme from MSbar to DIS of xkplus, xklog and xkdelta without their factor,
+// which is -2 n_f T_R for g -> g g, T_R (QCD) or N_c Q^2 (QED, N_c = 1 for a
+// lepton) for g/a -> q q~, C_F or Q^2 for q -> q g/a and minus that for
+// q -> g/a q, for the splittings of fks_ap_shape
 template <typename T>
-KERNELSPEC void fks_dis_kernels(
-    std::size_t kind, FVal<T> x, FVal<T> n_f, FVal<T>& k_p, FVal<T>& k_l, FVal<T>& k_d
-) {
+KERNELSPEC void
+fks_dis_shapes(std::size_t kind, FVal<T> x, FVal<T>& k_p, FVal<T>& k_l, FVal<T>& k_d) {
     constexpr double pi = 3.14159265358979323846;
-    constexpr double tr = 0.5, cf = 4. / 3.;
     auto w = 1. - x;
     auto lx = log(x);
-    auto pqg = x * x + w * w;
-    auto pgq = 1. + x * x;
-    switch (kind) {
-    case 0:
-        k_p = -2. * n_f * tr * w * (-pqg * lx + 8. * x * w - 1.);
-        k_l = -2. * n_f * tr * w * pqg;
+    if (kind < 2) {
+        auto pqg = x * x + w * w;
+        k_p = w * (-pqg * lx + 8. * x * w - 1.);
+        k_l = w * pqg;
         k_d = 0.;
-        break;
-    case 1:
-        k_p = tr * w * (-pqg * lx + 8. * x * w - 1.);
-        k_l = tr * w * pqg;
-        k_d = 0.;
-        break;
-    case 2:
-        k_p = cf * (-1.5 - pgq * lx + w * (3. + 2. * x));
-        k_l = cf * pgq;
-        k_d = -cf * (4.5 + pi * pi / 3.);
-        break;
-    default:
-        k_p = -cf * (-1.5 - pgq * lx + w * (3. + 2. * x));
-        k_l = -cf * pgq;
-        k_d = cf * (4.5 + pi * pi / 3.);
-        break;
+    } else {
+        auto pgq = 1. + x * x;
+        k_p = -1.5 - pgq * lx + w * (3. + 2. * x);
+        k_l = pgq;
+        k_d = -(4.5 + pi * pi / 3.);
     }
 }
 
 // The collinear remnants of an initial-state emitter of sreal_deg and
 // compute_collinear_counter_term / compute_soft_collinear_counter_term
-// (fks_singular.f), with the factorization scale of the beam of the
-// emitter and the QCD kernels: with N = B iden_comp / (8 pi^2 z),
+// (fks_singular.f) per NLO order, with the factorization scale of the beam
+// of the emitter and the kernels of the coupling of the configuration
+// (0 QCD with alpha_s, 1 QED with alpha): with g^2 = 4 pi alpha and
+// N = B iden_comp / (8 pi^2 z), the Born B of the order that born_index gives
+// for each NLO order (none for -1),
 //   D_xi = N g^2 ((1 - z) P log(s delta_I / (2 mu_F^2)) - (1 - z) P'),
 //   D_lxi = 2 N g^2 (1 - z) P,   K_p,l,d = -N g^2 k_p,l,d (zero in MSbar),
-// the collinear one f_dc (D_xi + K_p + (D_lxi + K_l) log xi_c) at z = 1 - xi_c
-// and s of the collinear counter-event, the soft-collinear one
+// with the color or charge factor ap_factor of P and P' and dis_factor of
+// k_p,l,d, the collinear one f_dc (D_xi + K_p + (D_lxi + K_l) log xi_c) at
+// z = 1 - xi_c and s of the collinear counter-event, the soft-collinear one
 // -f_dsc1 (D_xi + K_p + (D_lxi + K_l) log xi_c) - f_dsc2 D_xi - f_dsc3 D_lxi
 // + f_pdf_d K_d + f_pdf_p K_p + f_pdf_l K_l at z = 1 and s of the
 // soft-collinear counter-event. Each is zero where its sector function is
-// (options = pdf_scheme, n_f).
+// (options = pdf_scheme).
 template <typename T>
 KERNELSPEC void kernel_fks_collinear_remnants(
-    FIn<T, 0> born,
+    FIn<T, 1> born,
     FIn<T, 0> alpha_s,
+    FIn<T, 0> alpha,
     FIn<T, 0> s_c,
     FIn<T, 0> s_sc,
     FIn<T, 2> p_c,
@@ -631,28 +665,36 @@ KERNELSPEC void kernel_fks_collinear_remnants(
     IIn<T, 1> remnant,
     IIn<T, 1> beam,
     IIn<T, 1> kind,
+    IIn<T, 1> coupling,
+    IIn<T, 2> born_index,
     FIn<T, 1> factor,
+    FIn<T, 1> ap_factor,
+    FIn<T, 1> dis_factor,
     FIn<T, 1> delta,
     FIn<T, 1> options,
-    FOut<T, 0> collinear,
-    FOut<T, 0> soft_collinear
+    FOut<T, 1> collinear,
+    FOut<T, 1> soft_collinear
 ) {
     constexpr double pi = 3.14159265358979323846;
     std::size_t c = single_index(index);
-    collinear = 0.;
-    soft_collinear = 0.;
+    for (std::size_t o = 0; o < collinear.size(); ++o) {
+        collinear[o] = 0.;
+        soft_collinear[o] = 0.;
+    }
     if (single_index(remnant[c]) == 0) {
         return;
     }
     std::size_t k = single_index(kind[c]);
     bool dis = FVal<T>(options[0]) == 1.;
-    FVal<T> n_f = options[1];
     FVal<T> mu_f =
         single_index(beam[c]) == 0 ? FVal<T>(fact_scale1) : FVal<T>(fact_scale2);
     FVal<T> d = delta[c];
-    // N g^2 for z = 1
-    FVal<T> norm = FVal<T>(born) * FVal<T>(factor[c]) * 4. * pi * FVal<T>(alpha_s) /
-        (8. * pi * pi);
+    FVal<T> g2 =
+        4. * pi * (single_index(coupling[c]) == 1 ? FVal<T>(alpha) : FVal<T>(alpha_s));
+    // N g^2 for z = 1 and a unit Born
+    FVal<T> norm = FVal<T>(factor[c]) * g2 / (8. * pi * pi);
+    FVal<T> color = ap_factor[c], dis_color = dis_factor[c];
+    // the remnants per unit Born
     auto pieces =
         [&](FVal<T> z,
             FVal<T> s,
@@ -663,18 +705,16 @@ KERNELSPEC void kernel_fks_collinear_remnants(
             FVal<T>& k_d) {
             auto n = norm / z;
             auto ap = fks_ap_shape<T>(k, z), ap_prime = fks_ap_prime_shape<T>(k, z);
-            // the color factor of AP_reduced
-            FVal<T> color = k == 0 ? 6. : (k == 1 ? 0.5 : 4. / 3.);
             d_xi = n * color * (ap * log(s * d / (2. * mu_f * mu_f)) - ap_prime);
             d_lxi = 2. * n * color * ap;
             k_p = 0.;
             k_l = 0.;
             k_d = 0.;
             if (dis) {
-                fks_dis_kernels<T>(k, z, n_f, k_p, k_l, k_d);
-                k_p = -n * k_p;
-                k_l = -n * k_l;
-                k_d = -n * k_d;
+                fks_dis_shapes<T>(k, z, k_p, k_l, k_d);
+                k_p = -n * dis_color * k_p;
+                k_l = -n * dis_color * k_l;
+                k_d = -n * dis_color * k_d;
             }
         };
     auto invariant_mass = [](FIn<T, 2> p) {
@@ -685,35 +725,46 @@ KERNELSPEC void kernel_fks_collinear_remnants(
     };
     FVal<T> x_c = xi_c, log_xi = log(x_c);
     FVal<T> d_xi, d_lxi, k_p, k_l, k_d;
+    FVal<T> unit_c = 0., unit_sc = 0.;
     if (FVal<T>(s_c) > 0.) {
         pieces(1. - x_c, invariant_mass(p_c), d_xi, d_lxi, k_p, k_l, k_d);
-        collinear = FVal<T>(f_dc) * (d_xi + k_p + (d_lxi + k_l) * log_xi);
+        unit_c = FVal<T>(f_dc) * (d_xi + k_p + (d_lxi + k_l) * log_xi);
     }
     if (FVal<T>(s_sc) > 0.) {
         pieces(1., invariant_mass(p_sc), d_xi, d_lxi, k_p, k_l, k_d);
-        soft_collinear = -FVal<T>(f_dsc[0]) * (d_xi + k_p + (d_lxi + k_l) * log_xi) -
+        unit_sc = -FVal<T>(f_dsc[0]) * (d_xi + k_p + (d_lxi + k_l) * log_xi) -
             FVal<T>(f_dsc[1]) * d_xi - FVal<T>(f_dsc[2]) * d_lxi +
             FVal<T>(f_pdf[0]) * k_d + FVal<T>(f_pdf[1]) * k_p + FVal<T>(f_pdf[2]) * k_l;
     }
+    for (std::size_t o = 0; o < collinear.size(); ++o) {
+        int b = born_index[c][o];
+        if (b < 0) {
+            continue;
+        }
+        FVal<T> born_b = born[b];
+        collinear[o] = unit_c * born_b;
+        soft_collinear[o] = unit_sc * born_b;
+    }
 }
 
-// The real matrix element times the sector function at the event, with the
-// limits of sreal and fks_Sij (fks_singular.f, fks_Sij.f) below tiny
-// (options[0], zero for none): below tiny in 1 - y the collinear limit at the
-// event over xi^2 (1 - y), else below tiny in xi the soft one, in place of the
-// matrix element, which is then not used. The limits are zero without a soft
-// (or collinear) singularity. For xi <= tiny the sector function has the
-// direction of i at the soft counter-event, at the soft-collinear one where
-// also 1 - y < tiny and j is massless. Without the counter-event (zero det)
-// the event keeps its own direction and matrix element, as fks_Sij.
+// The real matrix element per NLO order times the sector function at the
+// event, with the limits of sreal and fks_Sij (fks_singular.f, fks_Sij.f)
+// below tiny (options[0], zero for none): below tiny in 1 - y the collinear
+// limit at the event over xi^2 (1 - y), else below tiny in xi the soft one, in
+// place of the matrix element, which is then not used. The limits are zero
+// without a soft (or collinear) singularity. For xi <= tiny the sector
+// function has the direction of i at the soft counter-event, at the
+// soft-collinear one where also 1 - y < tiny and j is massless. Without the
+// counter-event (zero det) the event keeps its own direction and matrix
+// element, as fks_Sij.
 template <typename T>
 KERNELSPEC void kernel_fks_real_emission(
-    FIn<T, 0> matrix_element,
+    FIn<T, 1> matrix_element,
     FIn<T, 0> s,
     FIn<T, 0> s_soft,
     FIn<T, 0> s_soft_collinear,
-    FIn<T, 0> soft,
-    FIn<T, 0> collinear,
+    FIn<T, 1> soft,
+    FIn<T, 1> collinear,
     FIn<T, 0> xi,
     FIn<T, 0> y,
     FIn<T, 0> det_s,
@@ -721,7 +772,7 @@ KERNELSPEC void kernel_fks_real_emission(
     IIn<T, 0> index,
     IIn<T, 1> massless,
     FIn<T, 1> options,
-    FOut<T, 0> real
+    FOut<T, 1> real
 ) {
     std::size_t c = single_index(index);
     FVal<T> tiny = options[0], x = xi, omy = 1. - FVal<T>(y);
@@ -736,29 +787,38 @@ KERNELSPEC void kernel_fks_real_emission(
             sector = s_soft;
         }
     }
-    FVal<T> value = matrix_element;
-    if (on && omy < tiny) {
-        value = FVal<T>(collinear) / (x * x * omy);
-    } else if (on && x < tiny && with_soft) {
-        value = FVal<T>(soft) / (x * x * omy);
+    for (std::size_t o = 0; o < real.size(); ++o) {
+        FVal<T> value = matrix_element[o];
+        if (on && omy < tiny) {
+            value = FVal<T>(collinear[o]) / (x * x * omy);
+        } else if (on && x < tiny && with_soft) {
+            value = FVal<T>(soft[o]) / (x * x * omy);
+        }
+        real[o] = sector * value;
     }
-    real = sector * value;
 }
 
 // The real emission and its counterterms of compute_real_emission and
-// compute_soft_counter_term and its siblings (fks_singular.f), from the
-// products of the matrix element and its limits with the sector functions
-// and prefactors and the collinear remnants: signs, symmetry factors and the
-// conditions of each counterterm (options = xiScut, deltaS), zero where its
-// momenta are not generated.
+// compute_soft_counter_term and its siblings (fks_singular.f) per NLO order,
+// from the real emission times the sector function, the limits at the
+// counter-events with their sector functions and prefactors, and the
+// collinear remnants: signs, symmetry factors and the conditions of each
+// counterterm (options = xiScut, deltaS), zero where its momenta are not
+// generated.
 template <typename T>
 KERNELSPEC void kernel_fks_subtraction(
-    FIn<T, 0> real,
-    FIn<T, 0> soft,
-    FIn<T, 0> collinear,
-    FIn<T, 0> soft_collinear,
-    FIn<T, 0> remnant_c,
-    FIn<T, 0> remnant_sc,
+    FIn<T, 1> real,
+    FIn<T, 1> soft,
+    FIn<T, 1> collinear,
+    FIn<T, 1> soft_collinear,
+    FIn<T, 0> s_s,
+    FIn<T, 0> s_c,
+    FIn<T, 0> s_sc,
+    FIn<T, 0> f_s,
+    FIn<T, 0> f_c,
+    FIn<T, 0> f_sc,
+    FIn<T, 1> remnant_c,
+    FIn<T, 1> remnant_sc,
     FIn<T, 0> xi,
     FIn<T, 0> xi_hat,
     FIn<T, 0> y,
@@ -772,27 +832,36 @@ KERNELSPEC void kernel_fks_subtraction(
     IIn<T, 0> index,
     FIn<T, 1> symmetry,
     FIn<T, 1> options,
-    FOut<T, 0> real_out,
-    FOut<T, 0> soft_out,
-    FOut<T, 0> collinear_out,
-    FOut<T, 0> soft_collinear_out
+    FOut<T, 1> real_out,
+    FOut<T, 1> soft_out,
+    FOut<T, 1> collinear_out,
+    FOut<T, 1> soft_collinear_out
 ) {
     std::size_t c = single_index(index);
     FVal<T> sym = symmetry[c], xi_s_cut = options[0], delta_s = options[1];
     FVal<T> x = xi, x_hat = xi_hat, x_c = xi_c, yy = y;
     bool in_y = yy > 1. - delta_s;
-    real_out = FVal<T>(weight) > 0. ? sym * FVal<T>(real) : FVal<T>(0.);
+    bool with_real = FVal<T>(weight) > 0.;
     bool with_soft =
         FVal<T>(det_s) > 0. && x_hat * FVal<T>(xi_max_s) <= xi_s_cut && x <= xi_s_cut;
-    soft_out = with_soft ? -sym * FVal<T>(soft) : FVal<T>(0.);
     bool with_collinear = FVal<T>(det_c) > 0. && in_y;
-    collinear_out =
-        with_collinear ? sym * (FVal<T>(remnant_c) - FVal<T>(collinear)) : FVal<T>(0.);
     bool with_soft_collinear = FVal<T>(det_sc) > 0. && in_y &&
         x_hat * FVal<T>(xi_max_c) < xi_s_cut && x_c < xi_s_cut;
-    soft_collinear_out = with_soft_collinear
-        ? sym * (FVal<T>(soft_collinear) + FVal<T>(remnant_sc))
-        : FVal<T>(0.);
+    FVal<T> soft_factor = FVal<T>(s_s) * FVal<T>(f_s);
+    FVal<T> collinear_factor = FVal<T>(s_c) * FVal<T>(f_c);
+    FVal<T> soft_collinear_factor = FVal<T>(s_sc) * FVal<T>(f_sc);
+    for (std::size_t o = 0; o < real_out.size(); ++o) {
+        real_out[o] = with_real ? sym * FVal<T>(real[o]) : FVal<T>(0.);
+        soft_out[o] = with_soft ? -sym * soft_factor * FVal<T>(soft[o]) : FVal<T>(0.);
+        collinear_out[o] = with_collinear
+            ? sym * (FVal<T>(remnant_c[o]) - collinear_factor * FVal<T>(collinear[o]))
+            : FVal<T>(0.);
+        soft_collinear_out[o] = with_soft_collinear
+            ? sym *
+                (soft_collinear_factor * FVal<T>(soft_collinear[o]) +
+                 FVal<T>(remnant_sc[o]))
+            : FVal<T>(0.);
+    }
 }
 
 // The dilogarithm of a real argument as DDILOG of CERNLIB (fks_singular.f),
@@ -942,86 +1011,129 @@ KERNELSPEC FVal<T> fks_integrated_eikonal(
     return 0.5 * xi0 * l + 0.5 * xi1a;
 }
 
-// The n-body part of bornsoftvirtual (fks_singular.f) without the virtual,
-// for QCD and with the Ellis-Sexton scale at the renormalization scale mu_R:
-// with a = alpha_s / (2 pi), a B sum_j Q_j over the massless gluons and quarks
-// plus a sum_(m, n) f_mn <T_m . T_n> B I_mn over the pairs of color-linked
-// particles, f_mn = -2 and -1 for a massive particle with itself (the
-// color-linked Born of MadFKS has a factor 1/2 there), with the integrated
-// eikonals I_mn of eikonal_Ireg. The Q term of a final-state parton j is
-// gamma'_j - log(s delta_O / (2 mu_R^2)) (gamma_j - 2 C_j log(2 E_j / (xicut
-// sqrt_s))) + 2 C_j (log^2(2 E_j / sqrt_s) - log^2 xicut) - 2 gamma_j log(2 E_j
-// / sqrt_s), with its energy E_j in the partonic center-of-mass frame
-// (written with invariants), that of an incoming one -log(mu_F^2 / mu_R^2)
-// (gamma_j + 2 C_j log xicut) with the factorization scale of its beam. Also
-// the coefficients of log mu_R^2, a b gamma_g B with the power b of alpha_s of
-// the Born, and of log mu_F^2 of each beam, -a (gamma_j + 2 C_j log xicut) B,
-// at a fixed virtual (options = xicut, delta_O, b gamma_g).
+// The n-body part of bornsoftvirtual (fks_singular.f) without the virtual
+// per NLO order, with the Ellis-Sexton scale at the renormalization scale
+// mu_R, for QCD (t = 0, a = alpha_s / (2 pi)) and QED (t = 1,
+// a = alpha / (2 pi)): sum_t a_t (B_t sum_j Q_tj + sum_(m, n) f_tmn L_tmn
+// I_mn), with the Born B_t of the order that born_index[t] gives for each NLO
+// order (none for -1), the Q terms of the massless particles j of type t and
+// the pairs of linked particles of type t with the integrated eikonals I_mn of
+// eikonal_Ireg, L_0mn = <T_m . T_n> B_0 and L_1mn = B_1. f_0mn = -2 and -1 for
+// a massive particle with itself (the color-linked Born of MadFKS has a factor
+// 1/2 there), f_1mn the same times eta_m Q_m eta_n Q_n. The Q term of a
+// final-state particle j is gamma'_j - log(s delta_O / (2 mu_R^2)) (gamma_j -
+// 2 C_j log(2 E_j / (xicut sqrt_s))) + 2 C_j (log^2(2 E_j / sqrt_s) - log^2
+// xicut) - 2 gamma_j log(2 E_j / sqrt_s), with its energy E_j in the partonic
+// center-of-mass frame (written with invariants), that of an incoming one
+// -log(mu_F^2 / mu_R^2) (gamma_j + 2 C_j log xicut) with the factorization
+// scale of its beam. Also the coefficients of log mu_R^2, a_0 ren_factor B_0
+// with ren_factor = b gamma_g for the power b of alpha_s of the Born, and of
+// log mu_F^2 of each beam, -sum_t a_t (gamma_tj + 2 C_tj log xicut) B_t, at a
+// fixed virtual (options = xicut, delta_O).
 template <typename T>
 KERNELSPEC void kernel_fks_soft_virtual(
     FIn<T, 2> momenta,
-    FIn<T, 0> born,
-    FIn<T, 2> color_correlated,
+    FIn<T, 1> born,
+    FIn<T, 3> color_correlated,
     FIn<T, 0> alpha_s,
+    FIn<T, 0> alpha,
     FIn<T, 0> ren_scale,
     FIn<T, 0> fact_scale1,
     FIn<T, 0> fact_scale2,
-    FIn<T, 1> casimir,
-    FIn<T, 1> gamma,
-    FIn<T, 1> gamma_prime,
+    FIn<T, 2> casimir,
+    FIn<T, 2> gamma,
+    FIn<T, 2> gamma_prime,
     FIn<T, 1> masses,
-    IIn<T, 1> pair_m,
-    IIn<T, 1> pair_n,
-    FIn<T, 1> pair_factor,
+    IIn<T, 2> pair_m,
+    IIn<T, 2> pair_n,
+    FIn<T, 2> pair_factor,
+    IIn<T, 2> born_index,
+    FIn<T, 1> ren_factor,
     FIn<T, 1> options,
-    FOut<T, 0> soft_virtual,
-    FOut<T, 0> ren_coefficient,
-    FOut<T, 1> fact_coefficients
+    FOut<T, 1> soft_virtual,
+    FOut<T, 1> ren_coefficient,
+    FOut<T, 2> fact_coefficients
 ) {
     constexpr double pi = 3.14159265358979323846;
-    FVal<T> xicut = options[0], delta_o = options[1], beta = options[2];
+    FVal<T> xicut = options[0], delta_o = options[1];
     auto p1 = load_mom<T>(momenta[0]), p2 = load_mom<T>(momenta[1]);
     FourMom<T> p_tot{p1[0] + p2[0], p1[1] + p2[1], p1[2] + p2[2], p1[3] + p2[3]};
     FVal<T> s = lsquare<T>(p_tot), rs = sqrt(s);
     FVal<T> mu_r = ren_scale, mu_r2 = mu_r * mu_r;
     FVal<T> l_s = log(s / mu_r2), log_xicut = log(xicut);
-    FVal<T> a = FVal<T>(alpha_s) / (2. * pi), b = born;
-    FVal<T> q = 0.;
-    for (std::size_t j = 0; j < 2; ++j) {
-        FVal<T> mu_f = j == 0 ? FVal<T>(fact_scale1) : FVal<T>(fact_scale2);
-        FVal<T> coefficient =
-            -(FVal<T>(gamma[j]) + 2. * FVal<T>(casimir[j]) * log_xicut);
-        fact_coefficients[j] = a * b * coefficient;
-        q = q + coefficient * log(mu_f * mu_f / mu_r2);
-    }
     FVal<T> l_o = log(s * delta_o / (2. * mu_r2));
-    for (std::size_t j = 2; j < momenta.size(); ++j) {
-        FVal<T> c = casimir[j], g = gamma[j], g_prime = gamma_prime[j];
-        if (c == 0.) {
+    for (std::size_t o = 0; o < soft_virtual.size(); ++o) {
+        soft_virtual[o] = 0.;
+        ren_coefficient[o] = 0.;
+        fact_coefficients[o][0] = 0.;
+        fact_coefficients[o][1] = 0.;
+    }
+    for (std::size_t t = 0; t < 2; ++t) {
+        bool used = false;
+        for (std::size_t o = 0; o < soft_virtual.size(); ++o) {
+            used = used || int(born_index[t][o]) >= 0;
+        }
+        if (!used) {
             continue;
         }
-        auto p = load_mom<T>(momenta[j]);
-        FVal<T> l_e = log(2. * fks_frame_energy<T>(p, p_tot, rs) / rs);
-        q = q + g_prime - l_o * (g - 2. * c * (l_e - log_xicut)) +
-            2. * c * (l_e * l_e - log_xicut * log_xicut) - 2. * g * l_e;
-    }
-    FVal<T> eikonal = 0.;
-    for (std::size_t k = 0; k < pair_factor.size(); ++k) {
-        FVal<T> factor = pair_factor[k];
-        if (factor == 0.) {
-            continue;
+        FVal<T> a = (t == 0 ? FVal<T>(alpha_s) : FVal<T>(alpha)) / (2. * pi);
+        // the Q terms and the coefficients of log mu_F^2 per unit Born
+        FVal<T> q = 0.;
+        FVal<T> fact[2];
+        for (std::size_t j = 0; j < 2; ++j) {
+            FVal<T> mu_f = j == 0 ? FVal<T>(fact_scale1) : FVal<T>(fact_scale2);
+            fact[j] = -(FVal<T>(gamma[t][j]) + 2. * FVal<T>(casimir[t][j]) * log_xicut);
+            q = q + fact[j] * log(mu_f * mu_f / mu_r2);
         }
-        std::size_t m = single_index(pair_m[k]), n = single_index(pair_n[k]);
-        auto p_m = load_mom<T>(momenta[m]), p_n = load_mom<T>(momenta[n]);
-        FVal<T> e_m = fks_frame_energy<T>(p_m, p_tot, rs);
-        FVal<T> e_n = fks_frame_energy<T>(p_n, p_tot, rs);
-        FVal<T> i_mn = fks_integrated_eikonal<T>(
-            e_m, e_n, ldot<T>(p_m, p_n), masses[m], masses[n], m == n, l_s, xicut
-        );
-        eikonal = eikonal + factor * FVal<T>(color_correlated[m][n]) * i_mn;
+        for (std::size_t j = 2; j < momenta.size(); ++j) {
+            FVal<T> c = casimir[t][j], g = gamma[t][j], g_prime = gamma_prime[t][j];
+            if (c == 0. && g == 0. && g_prime == 0.) {
+                continue;
+            }
+            auto p = load_mom<T>(momenta[j]);
+            FVal<T> l_e = log(2. * fks_frame_energy<T>(p, p_tot, rs) / rs);
+            q = q + g_prime - l_o * (g - 2. * c * (l_e - log_xicut)) +
+                2. * c * (l_e * l_e - log_xicut * log_xicut) - 2. * g * l_e;
+        }
+        for (std::size_t o = 0; o < soft_virtual.size(); ++o) {
+            int b = born_index[t][o];
+            if (b < 0) {
+                continue;
+            }
+            FVal<T> born_b = born[b];
+            soft_virtual[o] = soft_virtual[o] + a * born_b * q;
+            fact_coefficients[o][0] = fact_coefficients[o][0] + a * born_b * fact[0];
+            fact_coefficients[o][1] = fact_coefficients[o][1] + a * born_b * fact[1];
+            if (t == 0) {
+                ren_coefficient[o] = a * born_b * FVal<T>(ren_factor[o]);
+            }
+        }
+        // the integrated eikonals of the pairs, with the color-linked Born
+        // (QCD) or the Born (QED)
+        for (std::size_t k = 0; k < pair_factor[t].size(); ++k) {
+            FVal<T> factor = pair_factor[t][k];
+            if (factor == 0.) {
+                continue;
+            }
+            std::size_t m = single_index(pair_m[t][k]);
+            std::size_t n = single_index(pair_n[t][k]);
+            auto p_m = load_mom<T>(momenta[m]), p_n = load_mom<T>(momenta[n]);
+            FVal<T> e_m = fks_frame_energy<T>(p_m, p_tot, rs);
+            FVal<T> e_n = fks_frame_energy<T>(p_n, p_tot, rs);
+            FVal<T> i_mn = fks_integrated_eikonal<T>(
+                e_m, e_n, ldot<T>(p_m, p_n), masses[m], masses[n], m == n, l_s, xicut
+            );
+            for (std::size_t o = 0; o < soft_virtual.size(); ++o) {
+                int b = born_index[t][o];
+                if (b < 0) {
+                    continue;
+                }
+                FVal<T> link =
+                    t == 0 ? FVal<T>(color_correlated[b][m][n]) : FVal<T>(born[b]);
+                soft_virtual[o] = soft_virtual[o] + a * factor * link * i_mn;
+            }
+        }
     }
-    soft_virtual = a * (b * q + eikonal);
-    ren_coefficient = a * b * beta;
 }
 
 } // namespace kernels

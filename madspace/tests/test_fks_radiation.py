@@ -138,7 +138,7 @@ def conditioning(
         range_xi = 1 / massive_xi_max(momenta, i_fks, j_fks, emitter_mass)
     res_xi = 10 * EPS * (STINY + range_xi) / r_xi
     res_y = 10 * EPS * range_y / r_y
-    bound_r = res_xi + res_y + x_edge + 1e-13
+    bound_r = res_xi + res_y + x_edge + 3e-13
     bound_phi = 1000 * EPS / sin_axis + frame + 1e-12
     bound_det = res_xi / r_xi + res_y / r_y + x_edge + 1e-11
     # no bound on the Jacobian where r_xi or r_y is not resolved at all

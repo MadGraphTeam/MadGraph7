@@ -26,7 +26,7 @@ double identical_factor(std::vector<int> pdgs) {
 std::vector<int> FKSConfiguration::born_pdgs() const {
     int pdg_i = pdgs.at(i_fks), pdg_j = pdgs.at(j_fks);
     // the gauge boson a pair of i and j of opposite flavors comes from
-    int boson = colors.at(i_fks) != 1 ? 21 : 22;
+    int boson = qed_splitting() ? 22 : 21;
     int mother;
     if (pdg_i == 21 || pdg_i == 22) {
         mother = pdg_j;
@@ -110,6 +110,18 @@ std::size_t madspace::check_fks_configurations(
                 }
             }
         }
+        bool known_types = !c.splitting_types.empty() && c.splitting_types.size() <= 2;
+        for (const auto& type : c.splitting_types) {
+            known_types = known_types && (type == "QCD" || type == "QED");
+        }
+        if (!known_types ||
+            (c.splitting_types.size() == 2 &&
+             c.splitting_types.at(0) == c.splitting_types.at(1))) {
+            fail(
+                "the splitting types of a configuration must be one or two "
+                "different of QCD and QED"
+            );
+        }
         auto pairs_with = [&](std::size_t k, std::size_t l) {
             const auto& partners = c.fks_j_from_i.at(k);
             return std::find(partners.begin(), partners.end(), l) != partners.end();
@@ -122,4 +134,70 @@ std::size_t madspace::check_fks_configurations(
         }
     }
     return n;
+}
+
+int FKSCouplingOrders::counterterm_order(
+    std::size_t born_index, const std::string& type
+) const {
+    auto position = std::find(split_orders.begin(), split_orders.end(), type);
+    if (position == split_orders.end()) {
+        throw std::invalid_argument(
+            "FKSCouplingOrders: the splitting type " + type + " is not a split order"
+        );
+    }
+    std::size_t p = position - split_orders.begin();
+    std::vector<int> order = born.at(born_index);
+    order.at(p) += 2;
+    for (std::size_t k = 0; k < order.size(); ++k) {
+        if (order.at(k) > max_nlo.at(k)) {
+            return -1;
+        }
+    }
+    auto found = std::find(nlo.begin(), nlo.end(), order);
+    if (found == nlo.end()) {
+        throw std::invalid_argument(
+            "FKSCouplingOrders: the counterterms of a " + type +
+            " splitting of a Born order have no NLO order"
+        );
+    }
+    return static_cast<int>(found - nlo.begin());
+}
+
+FKSCouplingOrders FKSCouplingOrders::qcd(int alpha_s_power) {
+    if (alpha_s_power < 0) {
+        throw std::invalid_argument(
+            "FKSCouplingOrders: the power of alpha_s cannot be negative"
+        );
+    }
+    int power = 2 * alpha_s_power;
+    return {{"QCD"}, {{power}}, {{power + 2}}, {power + 2}};
+}
+
+void madspace::check_fks_coupling_orders(
+    const FKSCouplingOrders& orders, const std::string& user
+) {
+    auto fail = [&](const std::string& message) {
+        throw std::invalid_argument(user + ": " + message);
+    };
+    std::size_t n = orders.split_orders.size();
+    if (n == 0 || orders.born.empty() || orders.nlo.empty()) {
+        fail("the coupling orders need split orders and Born and NLO orders");
+    }
+    for (std::size_t k = 0; k < n; ++k) {
+        for (std::size_t l = 0; l < k; ++l) {
+            if (orders.split_orders.at(k) == orders.split_orders.at(l)) {
+                fail("a split order appears twice");
+            }
+        }
+    }
+    bool sizes = orders.max_nlo.size() == n;
+    for (const auto& order : orders.born) {
+        sizes = sizes && order.size() == n;
+    }
+    for (const auto& order : orders.nlo) {
+        sizes = sizes && order.size() == n;
+    }
+    if (!sizes) {
+        fail("every coupling order needs a power of each split order");
+    }
 }
