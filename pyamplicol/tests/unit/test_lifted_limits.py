@@ -95,3 +95,21 @@ def test_simplest_rationals_have_no_denominator_cap() -> None:
         5, 16
     )
     assert simplest_rational_between(Fraction(-1), Fraction(1, 3)) == 0
+
+
+def test_builtin_validation_points_cover_decays() -> None:
+    """Built-in validation kinematics took two beams only."""
+
+    from pyamplicol._internal.physics.types import NativeEvaluationError
+    from pyamplicol.models.builtin.validation import generic_validation_point
+
+    points = generic_validation_point("z > u u~ g")
+    assert [p.pdg for p in points] == [23, 2, -2, 21]
+    assert points[0].momentum == (91.188, 0.0, 0.0, 0.0)
+    for component in range(4):
+        total = sum(float(p.momentum[component]) for p in points[1:])
+        assert abs(total - points[0].momentum[component]) <= 1e-12 * 91.188
+    with pytest.raises(NativeEvaluationError, match="rest frame"):
+        generic_validation_point("z > u u~ g", sqrt_s=100.0)
+    beams = generic_validation_point("u u~ > d d~ g")
+    assert beams[0].momentum == (500.0, 0.0, 0.0, 500.0)
