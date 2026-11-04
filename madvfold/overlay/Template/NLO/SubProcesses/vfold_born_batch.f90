@@ -30,10 +30,26 @@
 !   amp_split, wgt_ME_born : SBORN's own two side-effect outputs (via
 !                /TO_AMP_SPLIT/ and /C_WGT_ME_TREE/ respectively).
 !-------------------------------------------------------------------------
-! Road B step 5. vfold_evaluate_born_batch evaluates the batch in a plain
-! Fortran loop calling SBORN (mode F; modes F and C are identical until the
-! cudacpp Born bridge is added for mode C). wgt_ME_born is also explicitly
-! captured/restored for every entry, not only amp_split.
+! Road B step 5. Born batching and cudacpp offloading.
+! Now vfold_evaluate_born_batch has two different implementations for modes
+! F and C, selected by vfold_use_cudacpp() (vfold_mode.f90).
+! Mode F keeps calling SBORN in a plain Fortran loop, as in step 3.
+! Mode C instead calls the cudacpp Born bridge (vfold_cudacpp_dispatcher.cpp,
+! dlopen-loading a library in lib/cudacpp/build.<backend>_d_inl0_hrd0)
+! once per kpoint, evaluating all VECSIZE_BORN_PROTO slots in one vector
+! call -- unused slots (born_batch_count+1..VECSIZE_BORN_PROTO) are padded
+! by repeating the last real entry's momenta/g (matches eebb_vfold's own
+! chunk-padding technique) and their results are simply never retrieved.
+! Unlike SBORN, the bridge has no amp_split-by-coupling-order breakdown:
+! it returns one combined ME per event, reconstructed into amp_split
+! exactly like eebb_vfold's own compute_born bridge branch does
+! (amp_split(1)=mes, everything else 0 -- correct because Born only ever
+! populates the single QCD^0*QED^4 slot, AMP_SPLIT_SIZE_BORN=1). Unlike
+! the reference, wgt_ME_born is also explicitly set here from the same
+! value (the reference leaves it at whatever SBORN last set it to
+! elsewhere, since the bridge branch never touches it) -- done here so
+! that mode C stays bit-identical to mode F for every value this module
+! hands back, not just the ones the iamp loop directly consumes.
 !-------------------------------------------------------------------------
 ! Road B step 6b. Bug fix in Real batching and cudacpp offloading.
 ! Bug found 2026-09-02, debugging an eebbbb F-vs-C disagreement: mode F's
@@ -48,6 +64,11 @@
 ! (e.g. eebb, BORN_ORDERS QCD=0) but a silent, systematic mis-evaluation
 ! for a process whose Born genuinely depends on alpha_s (e.g. eebbbb,
 ! via t-channel gluon exchange between its two b bbar pairs).
+!-------------------------------------------------------------------------
+! Road B step 7b: the cudacpp bridge is called in chunks of
+! vfold_vecsize_used events (ENV_VFOLD_VECSIZE_USED, default 128), padding only
+! the last chunk. Previously every call evaluated all 128 slots, although
+! a kpoint typically stashes far fewer MEs (one per fold, e.g. 32).
 !-------------------------------------------------------------------------
 
 module vfold_born_batch
@@ -69,7 +90,7 @@ module vfold_born_batch
        p_born_batch(0:3, nexternal-1, VECSIZE_BORN_PROTO)
   double precision, public, save :: amp_split_batch(AMP_SPLIT_SIZE, VECSIZE_BORN_PROTO)
   ! Road B step 7h: SBORN's amplitude cache (SAVEAMP/SAVEMOM, born.f) for
-  ! each stashed entry, restored by vfold_retrieve_born. In F0/F1
+  ! each stashed entry (mode C too since step 7i+7j), restored by vfold_retrieve_born. In F0/F1
   ! the other SBORN calls for the same momenta (e.g. in sbornsoft) reuse
   ! the amplitudes computed by compute_born; without this restore they
   ! would find the amplitudes of the last batch entry and recompute.
@@ -111,6 +132,12 @@ module vfold_born_batch
   double complex, allocatable, public, save :: born_memo_saveamp(:,:,:)
   double precision, allocatable, public, save :: born_memo_savemom(:,:,:)
   integer, public, save :: born_memo_found = 0
+  ! Road B step 5: cudacpp bridge handle for Born (mode C only). Created
+  ! lazily on first use (vfold_evaluate_born_batch); destroyed once per MINT
+  ! phase in mint_module.f90's mint() subroutine, mirroring eebb_vfold's
+  ! own bridge lifecycle (create once per phase, delete when that phase's
+  ! integration loop ends).
+  integer*8, public, save :: bridge_born_batch = 0
   ! New counters that were added to investigate VECSIZE_USED
   integer*8, public, save :: vfold_born_batch_sum = 0
   integer*8, public, save :: vfold_born_batch_ncalls = 0
@@ -131,9 +158,11 @@ module vfold_born_batch
   ! needs the ratio amp2(selected diagram)/sum(amp2 over diagrams).
   ! The true g is stashed and used: g cancels in the ratio, but a
   ! different g changes the rounding, which the FKS subtractions amplify.
-  ! Road B step 7n: it is evaluated with vfold_sde_scalar_eval (scalar
-  ! SBORN with the Born memo), which also fills SBORN's amplitude cache for
-  ! the later sborn calls that rely on it (get_mbar, sbornsoft).
+  ! Road B step 7n: modes F and C both evaluate it with vfold_sde_scalar_eval
+  ! (scalar SBORN with the Born memo), not with the cudacpp bridge: the
+  ! bridge does not fill SBORN's amplitude cache, so the later sborn calls
+  ! that rely on it (get_mbar, sbornsoft) would recompute the amplitudes,
+  ! which costs as much as the whole scalar SDE evaluation.
   ! VECSIZE_SDE_PROTO > VECSIZE_BORN_PROTO: include_multichannel_enhance
   ! may be called several times per fold (imode=1..4).
   ! As in F0/F1 (step 7f), the SDE Born evaluation time goes to tBorn.
@@ -186,10 +215,12 @@ contains
     g_batch(islot) = g
   end subroutine vfold_stash_born
 
-  ! Evaluate once per stashed entry: plain Fortran loop calling SBORN,
-  ! capturing both of its side-effect outputs (amp_split via /TO_AMP_SPLIT/,
-  ! wgt_ME_born via /C_WGT_ME_TREE/) into the batch arrays -- see this
-  ! file's header comment for the g-refresh bugfix.
+  ! Evaluate once per stashed entry. Mode F: plain Fortran loop calling
+  ! SBORN, capturing both of its side-effect outputs (amp_split via
+  ! /TO_AMP_SPLIT/, wgt_ME_born via /C_WGT_ME_TREE/) into the batch
+  ! arrays. Mode C: one vectorized call to the cudacpp Born bridge instead
+  ! (step 5) -- see this file's header comment for the padding/amp_split-
+  ! reconstruction details, and for the g-refresh bugfix in the F branch.
   subroutine vfold_evaluate_born_batch
     implicit none
     ! COMMON /timings/ from timing_variables.inc (fixed-form, so it cannot
@@ -216,40 +247,155 @@ contains
     common/to_savemom/savemom
     double precision :: g, all_g
     common/strong/ g, all_g
-    integer :: i
+    integer :: i, ipad, j
+    logical :: same_as_prev
+    integer :: nuniq, uniq_idx(VECSIZE_BORN_PROTO)
+    double precision :: uniq_p(0:3, nexternal-1, VECSIZE_BORN_PROTO)
+    double precision :: uniq_g(VECSIZE_BORN_PROTO)
+    double precision :: uniq_mes(VECSIZE_BORN_PROTO)
+    double precision :: mes_bv(VECSIZE_BORN_PROTO)
+    double precision :: rnd_bv(VECSIZE_BORN_PROTO)
+    integer :: isel_bv(VECSIZE_BORN_PROTO)
     ! The Born MEs are now evaluated here, not in compute_born: add their
     ! cost to tBorn ("Time spent in Born"), once per batch.
     real :: avtiming_t0, avtiming_t1
+    ! Chunk buffers for the bridge calls, sized to the maximum chunk size.
+    double precision :: chunk_p(0:3,nexternal-1,VECSIZE_BORN_PROTO)
+    double precision :: chunk_g(VECSIZE_BORN_PROTO)
+    double precision :: chunk_mes(VECSIZE_BORN_PROTO)
+    integer :: chunk_start, chunk_end, nthis
 
     if (born_batch_count.eq.0) return
 
     vfold_born_batch_sum = vfold_born_batch_sum + born_batch_count
     vfold_born_batch_ncalls = vfold_born_batch_ncalls + 1
 
-    call cpu_time(avtiming_t0)
-    do i=1,born_batch_count
-      p_born(0:3,1:nexternal-1) = p_born_batch(0:3,1:nexternal-1,i)
-      ! g alone is not enough: SBORN calls HELAS routines using the
-      ! derived complex couplings (GC_1, GC_21, ... in coupl.inc's
-      ! /couplings/ common), not raw g directly -- see header bugfix note.
-      g = g_batch(i)
-      call update_as_param()
-      ! Road B step 7k: evaluate SBORN only for a new (p_born,g,nfks)
-      if (vfold_born_memo_hit(p_born,g)) then
-        call vfold_born_memo_restore
-      else
-        calculatedBorn = .false. ! genuine re-evaluation for a new point
-        call sborn(p_born, wgt_c)
-        call vfold_born_memo_store(p_born,g)
+    if (vfold_use_cudacpp()) then
+      if (bridge_born_batch.eq.0) then
+        if (vfold_vecsize_used.gt.VECSIZE_BORN_PROTO) then
+          write(6,*) 'ERROR: ENV_VFOLD_VECSIZE_USED=', vfold_vecsize_used, &
+                     ' exceeds VECSIZE_BORN_PROTO=', VECSIZE_BORN_PROTO
+          stop 1
+        endif
+        call vfold_tbridge_start ! step 11j
+        call FBRIDGE_BORN_CREATE(bridge_born_batch, vfold_vecsize_used, nexternal-1, 4)
+        call vfold_tbridge_stop
       endif
-      amp_split_batch(1:AMP_SPLIT_SIZE,i) = amp_split(1:AMP_SPLIT_SIZE)
-      wgt_me_born_batch(i) = wgt_me_born
-      ! Road B step 7h: save SBORN's amplitude cache for this entry
-      saveamp_batch(1:NGRAPHS,1:MAX_BHEL,i) = saveamp(1:NGRAPHS,1:MAX_BHEL)
-      savemom_batch(1:nexternal-1,1:2,i) = savemom(1:nexternal-1,1:2)
-    enddo
-    call cpu_time(avtiming_t1)
-    tBorn = tBorn + (avtiming_t1-avtiming_t0)
+      rnd_bv(1:vfold_vecsize_used) = 0d0
+      isel_bv(1:vfold_vecsize_used) = 0
+      call cpu_time(avtiming_t0)
+      ! Road B step 7k: send only the distinct (p_born,g) to the bridge
+      ! (duplicates are consecutive), then scatter the results back.
+      nuniq = 0
+      do i=1,born_batch_count
+        same_as_prev = .false.
+        if (i.gt.1) then
+          same_as_prev = (g_batch(i).eq.g_batch(i-1))
+          if (same_as_prev) then
+            do j=1,nexternal-1
+              if (any(p_born_batch(0:3,j,i).ne.p_born_batch(0:3,j,i-1))) then
+                same_as_prev = .false.
+                exit
+              endif
+            enddo
+          endif
+        endif
+        if (.not.same_as_prev) then
+          nuniq = nuniq + 1
+          uniq_p(0:3,1:nexternal-1,nuniq) = p_born_batch(0:3,1:nexternal-1,i)
+          uniq_g(nuniq) = g_batch(i)
+        endif
+        uniq_idx(i) = nuniq
+      enddo
+      do chunk_start = 1, nuniq, vfold_vecsize_used
+        chunk_end = min(chunk_start + vfold_vecsize_used - 1, nuniq)
+        nthis = chunk_end - chunk_start + 1
+        chunk_p(0:3,1:nexternal-1,1:nthis) = uniq_p(0:3,1:nexternal-1,chunk_start:chunk_end)
+        chunk_g(1:nthis) = uniq_g(chunk_start:chunk_end)
+        do ipad = nthis+1, vfold_vecsize_used
+          chunk_p(0:3,1:nexternal-1,ipad) = chunk_p(0:3,1:nexternal-1,nthis)
+          chunk_g(ipad) = chunk_g(nthis)
+        enddo
+        call FBRIDGE_BORN_SEQUENCE_NOMULTICHANNEL(bridge_born_batch, &
+             chunk_p(:,:,1:vfold_vecsize_used), &
+             chunk_g(1:vfold_vecsize_used), rnd_bv(1:vfold_vecsize_used), rnd_bv(1:vfold_vecsize_used), &
+             chunk_mes(1:vfold_vecsize_used), isel_bv(1:vfold_vecsize_used), isel_bv(1:vfold_vecsize_used), .false.)
+        uniq_mes(chunk_start:chunk_end) = chunk_mes(1:nthis)
+      enddo
+      do i=1,born_batch_count
+        mes_bv(i) = uniq_mes(uniq_idx(i))
+      enddo
+      call cpu_time(avtiming_t1)
+      tBorn = tBorn + (avtiming_t1-avtiming_t0)
+      do i=1,born_batch_count
+        amp_split_batch(1:AMP_SPLIT_SIZE,i) = 0d0
+        amp_split_batch(1,i) = mes_bv(i)
+        wgt_me_born_batch(i) = mes_bv(i)
+      enddo
+      ! Road B step 7i+7j: fill SBORN's amplitude cache for each entry
+      ! (restored by vfold_retrieve_born), as mode F gets it from its own
+      ! SBORN calls. This needs scalar SBORN calls, but only one per
+      ! distinct (p_born,g): all folds of a kpoint share the same p_born,
+      ! and the other entries copy the previous one. g must match too,
+      ! because SAVEAMP depends on the couplings.
+      call cpu_time(avtiming_t0)
+      do i=1,born_batch_count
+        same_as_prev = .false.
+        if (i.gt.1) then
+          same_as_prev = (g_batch(i).eq.g_batch(i-1))
+          if (same_as_prev) then
+            do j=1,nexternal-1
+              if (any(p_born_batch(0:3,j,i).ne.p_born_batch(0:3,j,i-1))) then
+                same_as_prev = .false.
+                exit
+              endif
+            enddo
+          endif
+        endif
+        if (same_as_prev) then
+          saveamp_batch(1:NGRAPHS,1:MAX_BHEL,i) = saveamp_batch(1:NGRAPHS,1:MAX_BHEL,i-1)
+          savemom_batch(1:nexternal-1,1:2,i) = savemom_batch(1:nexternal-1,1:2,i-1)
+        else
+          p_born(0:3,1:nexternal-1) = p_born_batch(0:3,1:nexternal-1,i)
+          g = g_batch(i)
+          call update_as_param()
+          calculatedBorn = .false.
+          call sborn(p_born, wgt_c)
+          ! Road B step 7l: also store it in the Born memo, as in mode F
+          ! (used to re-warm the amplitude cache in the replay walk)
+          call vfold_born_memo_store(p_born, g)
+          saveamp_batch(1:NGRAPHS,1:MAX_BHEL,i) = saveamp(1:NGRAPHS,1:MAX_BHEL)
+          savemom_batch(1:nexternal-1,1:2,i) = savemom(1:nexternal-1,1:2)
+        endif
+      enddo
+      call cpu_time(avtiming_t1)
+      tBorn = tBorn + (avtiming_t1-avtiming_t0)
+    else
+      call cpu_time(avtiming_t0)
+      do i=1,born_batch_count
+        p_born(0:3,1:nexternal-1) = p_born_batch(0:3,1:nexternal-1,i)
+        ! g alone is not enough: SBORN calls HELAS routines using the
+        ! derived complex couplings (GC_1, GC_21, ... in coupl.inc's
+        ! /couplings/ common), not raw g directly -- see header bugfix note.
+        g = g_batch(i)
+        call update_as_param()
+        ! Road B step 7k: evaluate SBORN only for a new (p_born,g,nfks)
+        if (vfold_born_memo_hit(p_born,g)) then
+          call vfold_born_memo_restore
+        else
+          calculatedBorn = .false. ! genuine re-evaluation for a new point
+          call sborn(p_born, wgt_c)
+          call vfold_born_memo_store(p_born,g)
+        endif
+        amp_split_batch(1:AMP_SPLIT_SIZE,i) = amp_split(1:AMP_SPLIT_SIZE)
+        wgt_me_born_batch(i) = wgt_me_born
+        ! Road B step 7h: save SBORN's amplitude cache for this entry
+        saveamp_batch(1:NGRAPHS,1:MAX_BHEL,i) = saveamp(1:NGRAPHS,1:MAX_BHEL)
+        savemom_batch(1:nexternal-1,1:2,i) = savemom(1:nexternal-1,1:2)
+      enddo
+      call cpu_time(avtiming_t1)
+      tBorn = tBorn + (avtiming_t1-avtiming_t0)
+    endif
   end subroutine vfold_evaluate_born_batch
 
   ! Walk 2: retrieve the next cached entry (in the same order it was
@@ -281,8 +427,8 @@ contains
     wgt_me_born = wgt_me_born_batch(born_retrieve_idx)
     f_b = f_b_batch(born_retrieve_idx)
     g = g_batch(born_retrieve_idx)
-    ! Road B step 7h: restore SBORN's amplitude cache for this entry
-    ! (filled by vfold_evaluate_born_batch).
+    ! Road B step 7h, 7i+7j: restore SBORN's amplitude cache for this entry
+    ! (filled by vfold_evaluate_born_batch in both modes F and C).
     ! Step 8o: skip the copy if the cache already holds these momenta.
     if (.not.vfold_born_cache_valid(savemom_batch(1,1,born_retrieve_idx))) then
       saveamp(1:NGRAPHS,1:MAX_BHEL) = saveamp_batch(1:NGRAPHS,1:MAX_BHEL,born_retrieve_idx)
@@ -321,7 +467,7 @@ contains
   end subroutine vfold_stash_sde
 
   ! Road B step 7c+7d: evaluate numerators and denominators of all
-  ! stashed entries with vfold_sde_scalar_eval (step 7n).
+  ! stashed entries with vfold_sde_scalar_eval (modes F and C, step 7n).
   subroutine vfold_evaluate_sde_batch
     implicit none
     real :: tBorn,tIS,tReal,tCount,tFxFx,tf_nb,tf_all,t_as,tr_s,tr_pdf, &

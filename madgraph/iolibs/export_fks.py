@@ -120,7 +120,8 @@ def vfold_linkfiles(opt):
         return []
     return ['vfold_tests.inc', 'vfold_mode.f90', 'vfold_cpu_time.c',
             'vfold_rng_slots.f90', 'vfold_born_batch.f90',
-            'vfold_real_batch.f90', 'vfold_test_born_batch.f90']
+            'vfold_real_batch.f90', 'vfold_test_born_batch.f90',
+            'vfold_cudacpp_dispatcher.cpp']
 
 def vfold_copy_template(opt, dir_path):
     """Overlay the Template/NLO files of the overlay trees on dir_path"""
@@ -723,6 +724,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                                  writers.FortranWriter(filename_lum),
                                    matrix_element, sqsorders_list,
                                    fortran_model)
+        # MadVFold: the cudacpp Real library of each nFKSprocess, if requested
+        if self.opt.get('vfold'):
+            self.write_vfold_real_me_chooser(
+                writers.FortranWriter('vfold_real_me_chooser.f'), matrix_element)
 
         filename = 'nexternal.inc'
         (nexternal, ninitial) = matrix_element.get_nexternal_ninitial()
@@ -2000,6 +2005,35 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         # Write the file
         writer_me.writelines(text)
         writer_lum.writelines(text1)
+        return 0
+
+
+    def write_vfold_real_me_chooser(self, writer, matrix_element):
+        """MadVFold: write vfold_real_me_chooser.f, where NFKS_REAL_LIBRARY(n)
+        is the index N of the cudacpp library real<N> (built from matrix_<N>.f,
+        see vfold/genCudacppSpec.sh) which computes in mode C the real-emission
+        ME of nFKSprocess n: same loop as SMATRIX_REAL in write_real_wrappers"""
+        text = """integer function nfks_real_library(nfksprocess)
+            implicit none
+            integer nfksprocess
+            """
+        if matrix_element.real_processes:
+            for n, info in enumerate(matrix_element.get_fks_info_list()):
+                text += """if (nfksprocess.eq.%(n)d) then
+                    nfks_real_library = %(n_me)d
+                    else""" % {'n': n + 1, 'n_me' : info['n_me']}
+            text += """
+                write(*,*) 'ERROR: invalid n in NFKS_REAL_LIBRARY :', nfksprocess
+                stop\n endif
+                return \n end
+                """
+        else:
+            text += """
+                nfks_real_library = 0
+                return
+                end
+                """
+        writer.writelines(text)
         return 0
 
 

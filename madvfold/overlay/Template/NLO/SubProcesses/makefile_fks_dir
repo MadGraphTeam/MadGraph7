@@ -20,6 +20,12 @@ else
     FJLIBS += $(STDLIB)
 endif
 
+# Road B step 5: CUDACPP libraries are loaded at runtime via dlopen
+# (vfold_cudacpp_dispatcher.cpp). The dispatcher resolves Born/Real .so paths
+# from ENV_VFOLD_CUDACPP_BACKEND/ENV_VFOLD_CUDACPP_BASE at runtime -- see that
+# file's own header comment (ported verbatim from eebb_vfold).
+CUDACPP_DISPATCH_LIBS = -lstdc++ -ldl
+
 NLOLIBS=-L$(LIBDIR) $(libmadloop) $(libcuttools) $(libOLP)
 
 # Uncomment the line below to compile with MadLoop without setting the environment
@@ -49,7 +55,7 @@ FILES= $(patsubst %.f,%.o,$(wildcard parton_lum_*.f)) 			\
          $(patsubst %.f,%.o,$(wildcard  numder*.f)) 			\
 	 momentum_reshuffling.o						\
 	 rescale_alpha_tagged.o						\
-	 fks_Sij.o $(fastjetfortran_madfks) vfold_mode.o vfold_cpu_time.o vfold_rng_slots.o vfold_born_batch.o vfold_test_born_batch.o vfold_real_batch.o fks_singular.o		\
+	 fks_Sij.o $(fastjetfortran_madfks) vfold_mode.o vfold_cpu_time.o vfold_rng_slots.o vfold_cudacpp_dispatcher.o vfold_born_batch.o vfold_test_born_batch.o vfold_real_batch.o vfold_real_me_chooser.o fks_singular.o		\
 	 montecarlocounter.o reweight_xsec.o boostwdir2.o       	\
 	 boost_to_frame.o						\
 	 cluster.o splitorders_stuff.o 			\
@@ -125,6 +131,8 @@ RWGFILES=reweight_xsec_events.o handling_lhe_events.o recmom.o 		\
 	$(CXX) $(CFLAGS) -c -I. -I$(ANADIR) $(FO_INCLUDEPATHS) $^
 %.o: %.cc
 	$(CXX) $(CXXFLAGS) -c -I. $(PYTHIA8INCLUDE) $^ 
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) -c -I. $<
 %.o: $(ANADIR)/%.cc
 	$(CXX) $(CXXFLAGS) -c -I. -I$(ANADIR) $(FO_INCLUDEPATHS) $^
 
@@ -171,7 +179,7 @@ check_poles: $(POLES) $(libmadloop)
 	strip check_poles
 
 madevent_mintMC: $(MINTMC) $(PYTHIA8TARGETS) $(libmadloop) makefile $(LIBS)
-	$(FC) -o madevent_mintMC $(MINTMC) $(PYTHIA8TARGETS) $(NLOLIBS) $(APPLLIBS) $(LINKLIBS) $(FJLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(LDFLAGS) $(PYTHIA8LINKLIBS)
+	$(FC) -o madevent_mintMC $(MINTMC) $(PYTHIA8TARGETS) $(NLOLIBS) $(APPLLIBS) $(LINKLIBS) $(FJLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(LDFLAGS) $(PYTHIA8LINKLIBS) $(CUDACPP_DISPATCH_LIBS)
 	rm handling_lhe_events.o
 	strip madevent_mintMC
 
@@ -190,6 +198,7 @@ libMadLoop.a:
 
 vfold_mode.o: vfold_mode.f90
 vfold_rng_slots.o: vfold_rng_slots.f90 vfold_mode.o
+vfold_cudacpp_dispatcher.o: vfold_cudacpp_dispatcher.cpp
 vfold_born_batch.o: vfold_born_batch.f90 vfold_mode.o
 vfold_test_born_batch.o: vfold_test_born_batch.f90 vfold_born_batch.o
 vfold_real_batch.o: vfold_real_batch.f90 vfold_mode.o

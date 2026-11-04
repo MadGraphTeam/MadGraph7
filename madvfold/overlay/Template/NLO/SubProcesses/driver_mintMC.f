@@ -180,6 +180,7 @@ c
 
       call setup_av_me_mode ! AV (road B step 1): F0/F1/F2/F/C
       call check_av_cpu_time ! AV (road B step 11b): timers vs reference modes
+      call setup_av_vecsize_used ! AV (road B step 7b): cudacpp bridge chunk size
       call setup_av_kpoint_batch ! AV (road B step 9): kpoints per ME batch
       call setup_av_batch_pervn ! AV (road B step 11d): park batches per MINT2 queue
       
@@ -429,7 +430,7 @@ c but keep the original unconditional call in the reference modes F0/F1
       tTot = tAfter-tBefore
       tOther = tTot - (tBorn+tGenPS+tReal+tCount+tIS+tFxFx+tf_nb+tf_all
      $     +t_as+tr_s+tr_pdf+t_plot+t_cuts+t_MC_subt+t_isum+t_p_unw
-     $     +t_write+t_coupl
+     $     +t_write+t_coupl+vfold_tbridge ! AV road B step 11j: + vfold_tbridge
      $     +vfold_tdelta) ! AV road B step 11q: + vfold_tdelta
       write(*,*) 'Time spent in Born : ',tBorn
       write(*,*) 'Time spent in PS_Generation : ',tGenPS
@@ -451,6 +452,7 @@ c but keep the original unconditional call in the reference modes F0/F1
       write(*,*) 'Time spent in Pick_unwgt : ',t_p_unw
       write(*,*) 'Time spent in Write_events : ',t_write
       write(*,*) 'Time spent in AlphaS_dependencies : ',t_coupl
+      write(*,*) 'Time spent in Bridge_create_delete : ',vfold_tbridge ! AV road B step 11j
       write(*,*) 'Time spent in Other_tasks : ',tOther
       write(*,*) 'Time spent in Total : ',tTot
 

@@ -21,12 +21,15 @@
 ! F since step 12k (batched Born/Real MEs over the folds of a kpoint), F2
 ! since step 12l (Born memo), the kpoint batching of F/C (and of the MINT2
 ! candidates of F1/F2/F/C) since step 12m and the per-kpoint memos and lean
-! gathering walk of F2/F/C since step 12n. C runs as F until the cudacpp
-! bridges are added. F1, F2, F and C must all produce bit-identical
-! results, different from those of F0.
+! gathering walk of F2/F/C since step 12n. C evaluates the batched Born
+! and Real MEs with the cudacpp bridges since step 13d. F1, F2 and F must
+! all produce bit-identical results, different from those of F0; C differs
+! from F only by rounding (cudacpp MEs instead of SBORN/SMATRIX_REAL).
 module vfold_mode
   implicit none
   character(len=2), public, save :: vfold_me_mode = 'C '
+  ! Road B step 7b: number of events per cudacpp bridge call
+  integer, public, save :: vfold_vecsize_used = 128
   ! Road B step 9: EVENT (kpoint) batching, orthogonal to vfold_me_mode. Modes
   ! F/C batch the MEs over the folds of one kpoint only (width 1 at folding
   ! 1,1,1). This knob gathers vfold_kpoint_batch whole kpoints per batch, so the
@@ -43,6 +46,13 @@ module vfold_mode
   ! It is 0 if mcatnlo_delta is not set.
   real, public, save :: vfold_tdelta = 0
   real, private, save :: vfold_tdelta_t0 = 0
+
+  ! Road B step 11j: time spent creating and deleting the cudacpp bridges
+  ! (with cuda this includes the GPU initialisation and reset), printed as
+  ! 'Time spent in Bridge_create_delete' and subtracted from Other_tasks.
+  ! It is 0 in modes F0/F1/F2/F (no bridge).
+  real, public, save :: vfold_tbridge = 0
+  real, private, save :: vfold_tbridge_t0 = 0
 
   ! Road B step 11d: with vfold_kpoint_batch>1, MINT2 keeps one candidate queue
   ! per vn (virt, novi, born) but a single set of ME batch buffers, so that
@@ -68,6 +78,19 @@ contains
     vfold_tdelta = vfold_tdelta + (t1-vfold_tdelta_t0)
   end subroutine vfold_tdelta_stop
 
+  ! Road B step 11j: time a bridge create or delete call into vfold_tbridge.
+  subroutine vfold_tbridge_start
+    implicit none
+    call cpu_time(vfold_tbridge_t0)
+  end subroutine vfold_tbridge_start
+
+  subroutine vfold_tbridge_stop
+    implicit none
+    real :: t1
+    call cpu_time(t1)
+    vfold_tbridge = vfold_tbridge + (t1-vfold_tbridge_t0)
+  end subroutine vfold_tbridge_stop
+
   subroutine setup_av_me_mode
     implicit none
     character(len=10) :: getenvvalue
@@ -89,6 +112,22 @@ contains
     endif
     write(6,*) 'AV: ENV_VFOLD_ME_MODE=', vfold_me_mode
   end subroutine setup_av_me_mode
+
+  ! Road B step 7b: read vfold_vecsize_used from ENV_VFOLD_VECSIZE_USED
+  subroutine setup_av_vecsize_used
+    implicit none
+    character(len=10) :: getenvvalue
+    integer :: ios
+    call getenv('ENV_VFOLD_VECSIZE_USED', getenvvalue)
+    if (len_trim(getenvvalue).gt.0) then
+      read(getenvvalue, *, iostat=ios) vfold_vecsize_used
+      if (ios.ne.0 .or. vfold_vecsize_used.le.0) then
+        write(6,*) 'ERROR: invalid ENV_VFOLD_VECSIZE_USED: ', trim(getenvvalue)
+        stop 1
+      endif
+    endif
+    write(6,*) 'AV: vfold_vecsize_used=', vfold_vecsize_used
+  end subroutine setup_av_vecsize_used
 
   ! Mode properties: later steps should test these instead of comparing
   ! vfold_me_mode against explicit lists of mode strings, so that a new mode

@@ -237,6 +237,7 @@ contains
     common /cdump69/dump69
     integer itmax1
     include 'vfold_tests.inc'
+    integer vfold_real_libnum
     integer nkp_batch ! AV (road B step 9): kpoints gathered per ME batch
     call initialise_mint
     if (imode.eq.1 .and. env_fvz_ndump.gt.0) then
@@ -291,6 +292,23 @@ contains
        !AV
        if (imode.eq.1 .and. vfold_tests) write(6,*) 'NEWITER', nit, itmax, ncalls, ncalls0
     enddo
+    ! Road B step 6: destroy the Real bridges (step 8c: one per library)
+    ! at the end of this MINT phase. Reordered (just before step 8i+8j)
+    ! to do this before the Born bridge (whose delete resets the GPU).
+    ! Step 11j: both deletes are timed into vfold_tbridge.
+    call vfold_tbridge_start
+    do vfold_real_libnum=1,MAX_REAL_LIBS
+      if (bridge_real_batch(vfold_real_libnum) .ne. 0) &
+           call FBRIDGE_REAL_DELETE(vfold_real_libnum, bridge_real_batch(vfold_real_libnum))
+      bridge_real_batch(vfold_real_libnum) = 0
+    enddo
+    ! Road B step 5: destroy the Born cudacpp bridge (if it was ever
+    ! created) at the end of this MINT phase -- vfold_evaluate_born_batch
+    ! recreates it lazily on next use, mirroring eebb_vfold's own
+    ! per-phase bridge lifecycle.
+    if (bridge_born_batch .ne. 0) call FBRIDGE_BORN_DELETE(bridge_born_batch)
+    bridge_born_batch = 0
+    call vfold_tbridge_stop
     ! AV road B step 9: report the achieved ME batch width of this MINT
     ! stage (driver_mintMC.f only reports it for imode=2).
     write(6,*) 'AV: MINT imode=', imode, &
