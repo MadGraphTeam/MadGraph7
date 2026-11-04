@@ -310,8 +310,18 @@ contains
     implicit none
     double precision, dimension(nintegrals) :: efrac
     logical :: iterations_done
+    logical dump69
+    common /cdump69/dump69
     call compute_fractional_uncertainty(efrac)
     call print_results_current_iteration(efrac)
+    ! AV road B step 11r: the extra ENV_FVZ_NDUMP iteration (only a few
+    ! points, for the dumps) must not be included in the accumulated results,
+    ! which it would bias: drop it as a large fluctuation would be dropped
+    if (dump69) then
+       write (*,*) 'Dump iteration. Not including iteration in results.'
+       call empty_MC_integer
+       return
+    endif
 ! Keep sampling information even from an iteration rejected for a large
 ! fluctuation: these observations identify channels needing more points.
     call update_channel_sampling
