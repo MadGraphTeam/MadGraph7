@@ -51,6 +51,8 @@ public:
      * @param prefix             Prefix for the trainable global names.
      * @param condition_dim      Width of the conditioning input, nonzero.
      * @param prior_floor        @f$\epsilon@f$, in [0, 1).
+     * @param logit_bound        c > 0 bounds the learned logits to c tanh(x / c),
+     *                           0 leaves them unbounded.
      * @param subnet_hidden_dim  Hidden width of the @ref MLP subnetworks.
      * @param subnet_layers      Number of layers in the subnetworks.
      * @param subnet_activation  Activation of the subnetworks.
@@ -63,6 +65,7 @@ public:
         const std::string& prefix,
         std::size_t condition_dim,
         double prior_floor = 0.,
+        double logit_bound = 0.,
         std::size_t subnet_hidden_dim = 32,
         std::size_t subnet_layers = 3,
         MLP::Activation subnet_activation = MLP::leaky_relu,
@@ -97,7 +100,8 @@ private:
         const NamedVector<Value>& inputs,
         const NamedVector<Value>& conditions
     ) const override;
-    Value mixed(FunctionBuilder& fb, Value logits, Value prior, std::size_t count) const;
+    Value
+    mixed(FunctionBuilder& fb, Value logits, Value prior, std::size_t count) const;
 
     std::vector<me_int_t> _flavor_initials;
     std::vector<me_int_t> _flavor_contents;
@@ -106,6 +110,7 @@ private:
     std::size_t _content_count;
     std::size_t _condition_dim;
     double _prior_floor;
+    double _logit_bound;
     // per initial state, the prior of each content; per content, of each slot
     nested_vector2<double> _content_priors;
     nested_vector2<double> _slot_priors;

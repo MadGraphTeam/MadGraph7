@@ -6,6 +6,8 @@ and flavour, q(f) = q_A(i) q_B(c | i) q_C(f | c).
   times a constant weight per flavour, as the integrand's is.
 - The forward det is 1 / q of the sampled flavour, and the inverse gives q.
 - The flavours are drawn with these probabilities.
+- A logit bound c keeps each level within exp(+-2c) of its prior, however
+  large the learned logits.
 """
 
 import pytest
@@ -22,12 +24,17 @@ CONDITION_DIM = 3
 _prefix_count = 0
 
 
-def levels(prior_floor=0.0):
+def levels(prior_floor=0.0, logit_bound=0.0):
     global _prefix_count
     _prefix_count += 1
     sampler = ms.DiscreteFlavorLevels(
-        INITIALS, CONTENTS, WEIGHTS, f"test_flavor_levels{_prefix_count}",
-        CONDITION_DIM, prior_floor,
+        INITIALS,
+        CONTENTS,
+        WEIGHTS,
+        f"test_flavor_levels{_prefix_count}",
+        CONDITION_DIM,
+        prior_floor,
+        logit_bound,
     )
     sampler.initialize_globals(default_context(), 1)
     return sampler
@@ -43,17 +50,21 @@ def prior(n, seed):
 def evaluate(sampler, random, condition, flavor_prior, flavors):
     count = len(WEIGHTS)
     fb = ms.FunctionBuilder(
-        ms.NamedTypes([
-            ("r", ms.batch_float),
-            ("condition", ms.batch_float_array(CONDITION_DIM)),
-            ("prior", ms.batch_float_array(count)),
-            ("flavor", ms.batch_int),
-        ]),
-        ms.NamedTypes([
-            ("index", ms.batch_int),
-            ("det", ms.batch_float),
-            ("prob", ms.batch_float),
-        ]),
+        ms.NamedTypes(
+            [
+                ("r", ms.batch_float),
+                ("condition", ms.batch_float_array(CONDITION_DIM)),
+                ("prior", ms.batch_float_array(count)),
+                ("flavor", ms.batch_int),
+            ]
+        ),
+        ms.NamedTypes(
+            [
+                ("index", ms.batch_int),
+                ("det", ms.batch_float),
+                ("prob", ms.batch_float),
+            ]
+        ),
     )
     conditions = [fb.input(1), fb.input(2)]
     forward = sampler.build_forward(fb, [fb.input(0)], conditions)
@@ -91,8 +102,13 @@ def test_untrained_levels_reproduce_the_flat_prior(prior_floor):
 def test_forward_and_inverse_agree():
     random, condition, flavor_prior, _ = inputs(2000, 2)
     sampler = levels(0.05)
-    index, det, _ = evaluate(sampler, random, condition, flavor_prior, torch.zeros(
-        len(random), dtype=torch.int32))
+    index, det, _ = evaluate(
+        sampler,
+        random,
+        condition,
+        flavor_prior,
+        torch.zeros(len(random), dtype=torch.int32),
+    )
     _, _, prob = evaluate(sampler, random, condition, flavor_prior, index)
     torch.testing.assert_close(prob * det, torch.ones_like(det))
 
@@ -114,3 +130,26 @@ def test_a_content_shares_its_initial_state():
         ms.DiscreteFlavorLevels([0, 1], [0, 0], [1.0, 1.0], "bad", 2)
     with pytest.raises(ValueError, match="needs a condition"):
         ms.DiscreteFlavorLevels([0, 1], [0, 1], [1.0, 1.0], "bad", 0)
+
+
+def test_logit_bound_limits_the_learned_correction():
+    n = 20_000
+    random, condition, flavor_prior, _ = inputs(n, 4)
+    sampler = levels(logit_bound=1.0)
+    context = default_context()
+    gen = torch.Generator().manual_seed(5)
+    for name in context.global_names():
+        if name.startswith(f"test_flavor_levels{_prefix_count}"):
+            param = context.get_global(name).torch()
+            param += 30.0 * torch.randn(param.shape, generator=gen, dtype=param.dtype)
+    index, det, _ = evaluate(
+        sampler, random, condition, flavor_prior, torch.zeros(n, dtype=torch.int32)
+    )
+    flat = flavor_prior / flavor_prior.sum(dim=1, keepdim=True)
+    ratio = 1.0 / det / flat[torch.arange(n), index.long()]
+    # two learned levels, each within exp(+-2c) of its prior
+    assert ratio.min() >= torch.exp(torch.tensor(-4.0)) * (1 - 1e-12)
+    assert ratio.max() <= torch.exp(torch.tensor(4.0)) * (1 + 1e-12)
+    assert ratio.max() / ratio.min() > 2.0
+    with pytest.raises(ValueError, match="logit_bound"):
+        ms.DiscreteFlavorLevels(INITIALS, CONTENTS, WEIGHTS, "bad", 3, 0.0, -1.0)

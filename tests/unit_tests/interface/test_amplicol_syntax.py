@@ -329,3 +329,53 @@ class AmplicolLaunchResonancesTest(unittest.TestCase):
         widths[6] = 1.5
         with self.assertRaisesRegex(RuntimeError, 'coloured s-channel resonance 6'):
             self.active(masses, widths)
+
+
+class AmplicolLeadingColourFlavoursTest(unittest.TestCase):
+    """The flavours of the leading-colour pass: their sampling prior factors,
+    and the initial_sum and two_lines proofs of concept."""
+
+    def setUp(self):
+        try:
+            from madgraph.mg7 import subprocess_amplicol
+        except ImportError:
+            self.skipTest('madspace is not installed')
+        self.module = subprocess_amplicol
+        flavor = lambda pdgs, factor, mirror, channels: {
+            'index': 0, 'options': [pdgs], 'factor': factor, 'mirror': mirror,
+            'channels': channels}
+        self.meta = {'flavors': [
+            flavor([21, 21, 21, 21], 2., False, [0]),
+            flavor([2, -2, 21, 21], 1., True, [0, 1]),
+            flavor([2, -2, 1, -1], 3., True, [0, 2]),
+            flavor([2, -2, 2, -2], 1., True, [0]),
+            flavor([2, 1, 2, 1], 1., True, [0, 1, 2]),
+        ]}
+        for index, flavor in enumerate(self.meta['flavors']):
+            flavor['index'] = index
+
+    def test_prior_factors_share_the_partner_channels(self):
+        on = self.module.with_prior_factors(self.meta, True)
+        off = self.module.with_prior_factors(self.meta, False)
+        self.assertEqual([f['prior_factor'] for f in on['flavors']],
+                         [2., 0.5, 1.5, 1., 1. / 3])
+        self.assertEqual([f['prior_factor'] for f in off['flavors']],
+                         [2., 1., 3., 1., 1.])
+
+    def test_initial_sum_groups_by_initial_state(self):
+        meta = self.module.with_prior_factors(self.meta, True)
+        summed = self.module.lc_flavors(meta, 'initial_sum')
+        self.assertEqual([f['sum_members'] for f in summed['flavors']],
+                         [[0], [1, 2, 3], [4]])
+        self.assertEqual([f['factor'] for f in summed['flavors']], [2., 5., 1.])
+        self.assertEqual([f['prior_factor'] for f in summed['flavors']],
+                         [2., 3., 1. / 3])
+        self.assertIs(summed['summed_flavors'], meta['flavors'])
+
+    def test_two_lines_drops_three_quark_lines(self):
+        flavors = self.meta['flavors'] + [{
+            'index': 5, 'options': [[2, -2, 1, -1, 3, -3]], 'factor': 1.,
+            'mirror': True, 'channels': [0]}]
+        kept = self.module.lc_flavors({'flavors': flavors}, 'two_lines')
+        self.assertEqual([f['index'] for f in kept['flavors']], [0, 1, 2, 3, 4])
+        self.assertIs(self.module.lc_flavors(self.meta, 'all'), self.meta)

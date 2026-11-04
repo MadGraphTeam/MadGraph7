@@ -185,6 +185,55 @@ def active_resonances(meta: dict, get_mass, get_width) -> dict:
     return {**meta, "phasespace_channels": channels, "flavors": flavors}
 
 
+def quark_lines(pdgs: list[int]) -> int:
+    return sum(1 for pid in pdgs if 0 < abs(pid) <= 6) // 2
+
+
+def with_prior_factors(meta: dict, partner_share: bool) -> dict:
+    """Each flavour's prior factor: its factor, divided by its number of
+    phase-space channels if partner_share (its expected share in this one)."""
+    return {**meta, "flavors": [
+        {
+            **flavor,
+            "prior_factor": flavor.get("factor", len(flavor["options"]))
+            / (len(flavor["channels"]) if partner_share else 1),
+        }
+        for flavor in meta["flavors"]
+    ]}
+
+
+def lc_flavors(meta: dict, mode: str) -> dict:
+    """Proof of concept for the flavours of the leading-colour pass: all of
+    them sampled, those of an initial state (and orientation) summed into one
+    flavour (initial_sum), or only those with at most two quark lines
+    (two_lines, the others neglected without a correction)."""
+    flavors = meta["flavors"]
+    if mode == "all":
+        return meta
+    if mode == "two_lines":
+        kept = [f for f in flavors if quark_lines(f["options"][0]) <= 2]
+        if not kept:
+            raise RuntimeError("lc_flavors = two_lines leaves no flavour")
+        return {**meta, "flavors": kept}
+    groups = {}
+    for i, flavor in enumerate(flavors):
+        key = (tuple(flavor["options"][0][:2]), flavor["mirror"])
+        groups.setdefault(key, []).append(i)
+    summed = [
+        {
+            **flavors[members[0]],
+            # the prior follows the summed factors
+            "factor": sum(
+                flavors[i].get("factor", len(flavors[i]["options"])) for i in members
+            ),
+            "prior_factor": sum(flavors[i].get("prior_factor", 1.) for i in members),
+            "sum_members": members,
+        }
+        for members in groups.values()
+    ]
+    return {**meta, "flavors": summed, "summed_flavors": flavors}
+
+
 def lhe_diagrams(meta: dict) -> tuple[list[tuple[int, tuple]], list[list[float]]]:
     """The diagrams that the LHE writer takes the resonances of an event from,
     one per phase-space channel and resonance charges, and per flavour a mask
@@ -210,6 +259,7 @@ def amplicol_subproc_args(meta: dict, process: MadgraphProcess) -> ms.SubprocArg
     """LHE completion of an AmpliCol subprocess: its diagrams are the
     phase-space channels, with the resonances they map out."""
     meta = active_resonances(meta, process.get_mass, process.get_width)
+    meta = lc_flavors(meta, process.run_card["amplicol"]["lc_flavors"])
     diagrams, _ = lhe_diagrams(meta)
     if diagrams:
         topologies = channel_topologies(meta, process)
@@ -266,6 +316,12 @@ class AmplicolSubprocess(MadgraphSubprocess):
             )
         super().__init__(process, meta, subproc_id, unmerged_meta)
         self.meta = active_resonances(self.meta, process.get_mass, process.get_width)
+        if unmerged_meta is not None and process.run_card["amplicol"]["lc_flavors"] != "all":
+            raise RuntimeError("lc_flavors needs unmerged [amplicol] subprocesses")
+        self.meta = with_prior_factors(
+            self.meta, process.run_card["amplicol"]["prior_partner_share"]
+        )
+        self.meta = lc_flavors(self.meta, process.run_card["amplicol"]["lc_flavors"])
         self.check_flavor_blind_cuts()
 
     def check_flavor_blind_cuts(self):
@@ -336,6 +392,8 @@ class AmplicolSubprocess(MadgraphSubprocess):
         phase-space channels, which are sampled by the subprocesses of the
         flavour's copies."""
         flavors = self.meta["flavors"]
+        # under initial_sum the channel weights follow each summed flavour
+        mask_flavors = self.meta.get("summed_flavors", flavors)
         particle_count = len(self.incoming_masses) + len(self.outgoing_masses)
         mappings = []
         for topology, color_order, _ in channel_topologies(self.meta, self.process):
@@ -351,7 +409,7 @@ class AmplicolSubprocess(MadgraphSubprocess):
                 beam_rapidity=self.process.beam_rapidity,
                 mirror_beams=self.mirror_beams,
             ))
-        if any(flavor["channels"][0] != 0 for flavor in flavors):
+        if any(flavor["channels"][0] != 0 for flavor in mask_flavors):
             raise RuntimeError(
                 "the [amplicol] flavours of a subprocess must sample its first "
                 "phase-space channel: regenerate the output"
@@ -374,7 +432,7 @@ class AmplicolSubprocess(MadgraphSubprocess):
                 mappings[:1],
                 [
                     [float(index in flavor["channels"]) for index in range(len(mappings))]
-                    for flavor in flavors
+                    for flavor in mask_flavors
                 ],
                 [channel for channel, _ in diagrams],
                 diagram_masks,
@@ -386,6 +444,22 @@ class AmplicolSubprocess(MadgraphSubprocess):
             symfact=[None],
             mapping_chan_weights=weights,
         )
+
+    def build_integrands(self, *args, **kwargs) -> list:
+        integrands = super().build_integrands(*args, **kwargs)
+        members = self.meta.get("summed_flavors")
+        for integrand in integrands:
+            if len(self.meta["flavors"]) > 1:
+                integrand.set_flavor_prior_factors(
+                    [flavor["prior_factor"] for flavor in self.meta["flavors"]]
+                )
+            if members is not None:
+                integrand.set_flavor_sum(
+                    [flavor["sum_members"] for flavor in self.meta["flavors"]],
+                    [member["index"] for member in members],
+                    [member.get("factor", len(member["options"])) for member in members],
+                )
+        return integrands
 
     def build_flat_phasespace(self) -> PhaseSpace:
         return self.build_multichannel_phasespace()

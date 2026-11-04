@@ -993,6 +993,7 @@ class MadgraphSubprocess:
                     prefix=f"{prefix}.discrete_flavor_levels",
                     condition_dim=cond_dim,
                     prior_floor=madnis_args["flavor_prior_floor"],
+                    logit_bound=madnis_args["flavor_logit_bound"],
                     subnet_hidden_dim=self.madnis_settings["discrete_hidden_dim"],
                     subnet_layers=madnis_args["discrete_layers"],
                     subnet_activation=self.activation(madnis_args["discrete_activation"]),
@@ -1208,9 +1209,8 @@ class MadgraphSubprocess:
             content = (initial, tuple(sorted(pdgs[2:])))
             flavor_initials.append(initials.setdefault(initial, len(initials)))
             flavor_contents.append(contents.setdefault(content, len(contents)))
-            weights.append(
-                flav.get("factor", len(flav["options"])) * (2. if flav["mirror"] else 1.)
-            )
+            factor = flav.get("prior_factor", flav.get("factor", len(flav["options"])))
+            weights.append(factor * (2. if flav["mirror"] else 1.))
         return flavor_initials, flavor_contents, weights
 
     def build_integrands(

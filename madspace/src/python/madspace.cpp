@@ -2042,6 +2042,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::string&,
                 std::size_t,
                 double,
+                double,
                 std::size_t,
                 std::size_t,
                 MLP::Activation,
@@ -2052,6 +2053,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("prefix"),
             py::arg("condition_dim"),
             py::arg("prior_floor") = 0.,
+            py::arg("logit_bound") = 0.,
             py::arg("subnet_hidden_dim") = 32,
             py::arg("subnet_layers") = 3,
             py::arg("subnet_activation") = MLP::leaky_relu,
@@ -2741,6 +2743,20 @@ PYBIND11_MODULE(_madspace_py, m) {
             "active_flavors",
             &Integrand::active_flavors,
             pydoc::doc("Integrand::active_flavors")
+        )
+        .def(
+            "set_flavor_prior_factors",
+            &Integrand::set_flavor_prior_factors,
+            py::arg("factors"),
+            pydoc::doc("Integrand::set_flavor_prior_factors")
+        )
+        .def(
+            "set_flavor_sum",
+            &Integrand::set_flavor_sum,
+            py::arg("members"),
+            py::arg("member_me_indices"),
+            py::arg("member_factors"),
+            pydoc::doc("Integrand::set_flavor_sum")
         )
         .def_readonly_static(
             "matrix_element_inputs",

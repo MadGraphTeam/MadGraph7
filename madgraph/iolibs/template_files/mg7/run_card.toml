@@ -178,6 +178,11 @@ mode = %(amplicol.mode)s
 # unweighting at leading colour (unweight mode); [generation] sets the second pass
 first_pass_max_overweight_truncation = %(amplicol.first_pass_max_overweight_truncation)s
 first_pass_freeze_max_weight_after = %(amplicol.first_pass_freeze_max_weight_after)s
+# divide each flavour's sampling prior by its number of phase-space channels
+prior_partner_share = %(amplicol.prior_partner_share)s
+# flavours at leading colour: all, initial_sum (summed per initial state) or
+# two_lines (at most two quark lines; proof of concept, no correction)
+lc_flavors = %(amplicol.lc_flavors)s
 
 [multiparticles]
 $multiparticles
@@ -211,6 +216,7 @@ discrete_activation = %(madnis.discrete_activation)s # options: relu, leaky_relu
 # flavours sampled by initial state, final-state content and flavour
 flavor_levels = %(madnis.flavor_levels)s
 flavor_prior_floor = %(madnis.flavor_prior_floor)s # fraction sampled from the prior
+flavor_logit_bound = %(madnis.flavor_logit_bound)s # c tanh(x / c) on the learned logits, 0: off
 
 # channel weight network
 cwnet_hidden_dim = %(madnis.cwnet_hidden_dim)s

@@ -7565,6 +7565,13 @@ class RunCardMG7(RunCard):
             gridpack=True, comment="max_overweight_truncation of the leading-colour unweighting")
         self.add_toml_param('amplicol', 'first_pass_freeze_max_weight_after', 10000,
             gridpack=True, comment="freeze_max_weight_after of the leading-colour unweighting")
+        self.add_toml_param('amplicol', 'prior_partner_share', True,
+            comment="divide each flavour's sampling prior by its number of "
+                    "phase-space channels, its expected share in each")
+        self.add_toml_param('amplicol', 'lc_flavors', "all",
+            allowed=["all", "initial_sum", "two_lines"],
+            comment="flavours at leading colour: all sampled, summed per initial state, "
+                    "or those with at most two quark lines")
 
         # ----------------------------- [madnis] -----------------------
         self.add_toml_param('madnis', 'enable', False, allowed=["auto", True, False], auto=True,
@@ -7593,6 +7600,9 @@ class RunCardMG7(RunCard):
         self.add_toml_param('madnis', 'flavor_prior_floor', 0.05,
             comment="with flavor_levels, the fraction of the learned levels sampled "
                     "from their prior")
+        self.add_toml_param('madnis', 'flavor_logit_bound', 0.0,
+            comment="with flavor_levels, bound c of the learned logits, c tanh(x / c); "
+                    "0: unbounded")
         self.add_toml_param('madnis', 'cwnet_hidden_dim', 64, auto=True,
             comment="hidden units per layer of the channel weight network")
         self.add_toml_param('madnis', 'cwnet_layers', 3,

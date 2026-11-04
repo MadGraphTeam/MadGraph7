@@ -46,6 +46,7 @@ DiscreteFlavorLevels::DiscreteFlavorLevels(
     const std::string& prefix,
     std::size_t condition_dim,
     double prior_floor,
+    double logit_bound,
     std::size_t subnet_hidden_dim,
     std::size_t subnet_layers,
     MLP::Activation subnet_activation,
@@ -64,6 +65,7 @@ DiscreteFlavorLevels::DiscreteFlavorLevels(
     _content_count(index_count(flavor_contents, "content")),
     _condition_dim(checked_condition_dim(condition_dim)),
     _prior_floor(prior_floor),
+    _logit_bound(logit_bound),
     _initial_net(
         condition_dim,
         _initial_count,
@@ -89,6 +91,9 @@ DiscreteFlavorLevels::DiscreteFlavorLevels(
             "DiscreteFlavorLevels: one initial state, content and weight per flavour"
         );
     }
+    if (logit_bound < 0.) {
+        throw std::invalid_argument("DiscreteFlavorLevels: logit_bound >= 0");
+    }
     if (prior_floor < 0. || prior_floor >= 1.) {
         throw std::invalid_argument("DiscreteFlavorLevels: prior_floor in [0, 1)");
     }
@@ -98,7 +103,9 @@ DiscreteFlavorLevels::DiscreteFlavorLevels(
     std::vector<double> initial_weights(_initial_count, 0.);
     for (std::size_t f = 0; f < flavor_count; ++f) {
         if (!(flavor_weights[f] > 0.)) {
-            throw std::invalid_argument("DiscreteFlavorLevels: weights must be positive");
+            throw std::invalid_argument(
+                "DiscreteFlavorLevels: weights must be positive"
+            );
         }
         auto& initial = content_initials.at(flavor_contents[f]);
         if (initial != -1 && initial != flavor_initials[f]) {
@@ -115,7 +122,9 @@ DiscreteFlavorLevels::DiscreteFlavorLevels(
     std::size_t slot_count = 0;
     for (std::size_t c = 0; c < _content_count; ++c) {
         if (content_flavors[c].empty()) {
-            throw std::invalid_argument("DiscreteFlavorLevels: a content has no flavour");
+            throw std::invalid_argument(
+                "DiscreteFlavorLevels: a content has no flavour"
+            );
         }
         slot_count = std::max(slot_count, content_flavors[c].size());
     }
@@ -141,15 +150,22 @@ DiscreteFlavorLevels::DiscreteFlavorLevels(
 Value DiscreteFlavorLevels::mixed(
     FunctionBuilder& fb, Value logits, Value prior, std::size_t count
 ) const {
-    Value learned = fb.softmax_prior(logits, prior);
-    if (_prior_floor == 0.) {
-        return learned;
-    }
     // constant arrays: mul does not broadcast a scalar over the options
     auto batch_size = fb.batch_size({logits});
     auto full = [&](double value) {
         return fb.full({value, batch_size, static_cast<me_int_t>(count)});
     };
+    if (_logit_bound > 0.) {
+        // c tanh(x / c) from scaled_tanh(y) = 4 tanh(y / 4), as in the cwnet
+        logits = fb.mul(
+            fb.scaled_tanh(fb.mul(logits, full(4. / _logit_bound))),
+            full(_logit_bound / 4.)
+        );
+    }
+    Value learned = fb.softmax_prior(logits, prior);
+    if (_prior_floor == 0.) {
+        return learned;
+    }
     Value plain = fb.softmax_prior(full(0.), prior);
     return fb.add(
         fb.mul(learned, full(1. - _prior_floor)), fb.mul(plain, full(_prior_floor))
@@ -176,9 +192,8 @@ Mapping::Result DiscreteFlavorLevels::build_forward_impl(
     auto [initial, initial_det] = fb.sample_discrete_probs(random, initial_probs);
     random = rescaled(fb, random, initial, initial_probs);
 
-    Value content_input = fb.cat(
-        {condition, fb.one_hot(initial, static_cast<me_int_t>(_initial_count))}
-    );
+    Value content_input =
+        fb.cat({condition, fb.one_hot(initial, static_cast<me_int_t>(_initial_count))});
     Value content_probs = mixed(
         fb,
         _content_net.build_function(fb, {content_input}).at(0),
@@ -218,10 +233,10 @@ Mapping::Result DiscreteFlavorLevels::build_inverse_impl(
         initial_prior,
         _initial_count
     );
-    auto [random, initial_prob] = fb.sample_discrete_probs_inverse(initial, initial_probs);
-    Value content_input = fb.cat(
-        {condition, fb.one_hot(initial, static_cast<me_int_t>(_initial_count))}
-    );
+    auto [random, initial_prob] =
+        fb.sample_discrete_probs_inverse(initial, initial_probs);
+    Value content_input =
+        fb.cat({condition, fb.one_hot(initial, static_cast<me_int_t>(_initial_count))});
     Value content_probs = mixed(
         fb,
         _content_net.build_function(fb, {content_input}).at(0),
@@ -229,8 +244,9 @@ Mapping::Result DiscreteFlavorLevels::build_inverse_impl(
         _content_count
     );
     Value content_prob = fb.sample_discrete_probs_inverse(content, content_probs)[1];
-    Value slot_prob =
-        fb.sample_discrete_probs_inverse(slot, fb.gather_vector(content, _slot_priors))[1];
+    Value slot_prob = fb.sample_discrete_probs_inverse(
+        slot, fb.gather_vector(content, _slot_priors)
+    )[1];
     return {
         {input_types().keys(), {random}},
         fb.product({initial_prob, content_prob, slot_prob})
