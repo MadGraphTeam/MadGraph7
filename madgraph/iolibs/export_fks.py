@@ -324,8 +324,11 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
     # I put it here not in optimized one, because I want to use the same make_opts.inc
     def write_make_opts(self, writer, link_tir_libs,tir_libs):
         """ Create the file make_opts which links to the TIR libraries."""
-        file = open(os.path.join(self.mgme_dir,'Template','NLO',
-                                 'Source','make_opts.inc')).read()  
+        # MadVFold: use the vfold version of the file, if requested
+        file = open(vfold_file(self.opt,
+                               pjoin('Template','NLO','Source','make_opts.inc'),
+                               os.path.join(self.mgme_dir,'Template','NLO',
+                                            'Source','make_opts.inc'))).read()
         replace_dict={}
         replace_dict['link_tir_libs']=' '.join(link_tir_libs)
         if 'collier' in replace_dict['link_tir_libs']:
