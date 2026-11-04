@@ -1474,7 +1474,9 @@ def test_selections_are_masks_on_one_template(
     companion executor runs the masks too) and double-double: single,
     several and every helicity row, single, several and every flow, crossed
     ones, and (u u~ > d d~ g) a flow below the leading colour, whose value is
-    zero and whose call dresses no family."""
+    zero and whose call dresses no family. The single helicity (and its
+    flow) is the one with the largest Born on the points, so the
+    row-restricted checks compare non-zero values."""
 
     from pyamplicol import Runtime
     from pyamplicol.loops.v2 import native_observables as no
@@ -1486,20 +1488,6 @@ def test_selections_are_masks_on_one_template(
     pts, scales = _points(points, 2)
     hel = [h.id for h in runtime.physics.helicities]
     flows = [a.id for a in runtime.physics.born_anchored_color_components]
-    selections = [
-        {"helicities": [hel[1]]},
-        {"helicities": hel[: len(hel) // 2]},
-        {"helicities": hel},
-        {"color_flows": [flows[1]]},
-        {"color_flows": flows[::2]},
-        {"color_flows": flows},
-        {"helicities": [hel[3]], "color_flows": [flows[-1]]},
-        {"helicities": hel[::3], "color_flows": flows[1::2]},
-    ]
-    if process == "u u~ > d d~ g":
-        # (2,1,3,5,4): each quark joined to its own antiquark, below the
-        # leading N_c power.
-        selections.append({"color_flows": ["flow:2,1,3,5,4"]})
     backend = runtime._backend._observable_runtime()
     observables = backend._observables
     built = {"executors": 0, "sets": 0}
@@ -1527,9 +1515,35 @@ def test_selections_are_masks_on_one_template(
 
         return sum(len(found._native) for found in observables._sets.values())
 
-    runtime.evaluate(pts, mu_r2=scales, **selections[0])
+    half = {"helicities": hel[: len(hel) // 2]}
+    runtime.evaluate(pts, mu_r2=scales, **half)
     assert (built["sets"], built["executors"], executors()) == (1, 1, 1)
-    for selection in selections[1:]:
+
+    def born(**selection) -> float:
+        """The selection's largest Born magnitude on the points."""
+
+        result = runtime.evaluate(pts, mu_r2=scales, **selection)
+        values = (abs(x) for values in result.born_values for x in values or ())
+        return max(values, default=0.0)
+
+    # The largest (a helicity whose amplitudes vanish leaves rounding).
+    single = max(hel, key=lambda h: born(helicities=[h]))
+    paired = max(flows, key=lambda f: born(helicities=[single], color_flows=[f]))
+    selections = [
+        {"helicities": [single]},
+        half,
+        {"helicities": hel},
+        {"color_flows": [flows[1]]},
+        {"color_flows": flows[::2]},
+        {"color_flows": flows},
+        {"helicities": [single], "color_flows": [paired]},
+        {"helicities": hel[::3], "color_flows": flows[1::2]},
+    ]
+    if process == "u u~ > d d~ g":
+        # (2,1,3,5,4): each quark joined to its own antiquark, below the
+        # leading N_c power.
+        selections.append({"color_flows": ["flow:2,1,3,5,4"]})
+    for selection in selections:
         runtime.evaluate(pts, mu_r2=scales, **selection)
     assert (built["sets"], built["executors"], executors()) == (1, 1, 1)
     for selection in selections[:3]:
@@ -1567,6 +1581,17 @@ def test_selections_are_masks_on_one_template(
             if selection.get("color_flows") == ["flow:2,1,3,5,4"]:
                 assert not any(masked.masks.families[0])
                 assert all(x == 0 for x in got[0][column.key].totals)
+            # MF-MASKS-ROWS: a call keeping some Born rows dresses the
+            # families pruned to the rows they reach (``plan::LiveRows``),
+            # one keeping every row the template's families; one helicity
+            # runs pruned copies (the heap gate keeps them).
+            counts = masked.columns.last_report["counts"]
+            if len(column.rows or ()) in range(1, len(hel)):
+                assert 0 < counts.get("live-row links", 0)
+            else:
+                assert "live-row links" not in counts
+            if selection.get("helicities") == [single]:
+                assert 0 < counts["row-pruned families"], selection
     assert built["sets"] > 1  # the oracles' own column sets
 
 

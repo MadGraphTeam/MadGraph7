@@ -21,9 +21,18 @@
 //! the same values and every kernel row is independent, so every value read
 //! is bitwise the full program's. Without such columns, or when the columns
 //! keep every row, the program runs whole.
+//!
+//! **Per call** (MF-MASKS-ROWS): an evaluation-time selection's kept Born
+//! rows on a template program (`plan::LiveRows`: the dressed families
+//! pruned per call and the factor and current rows they read) give the same
+//! restriction for one call ([`TreeRows`], `TreeProgram::live_rows`): the
+//! interactions and outputs it keeps are flags over the program's own
+//! (the program and its runtime stay whole), run by `run_interactions` in
+//! their order, and the closures skip the other rows, whose Born components
+//! the call's sources zero anyway.
 
 use super::{Interactions, Term, TermInput, TreeProgram};
-use crate::loop_v2::plan::LoopProgramV4;
+use crate::loop_v2::plan::{LiveRows, LoopProgramV4, ReadRows};
 
 /// The Born rows a plan's columns keep and the plan block rows its kept
 /// links read.
@@ -47,6 +56,12 @@ impl Restriction {
         if rows.iter().all(|&kept| kept) {
             return None;
         }
+        Some(Self::reading(plan, rows, read))
+    }
+
+    /// The Born rows `rows` and the plan block rows `read`'s factor and
+    /// current rows read.
+    fn reading(plan: &LoopProgramV4, rows: Vec<bool>, read: &ReadRows) -> Self {
         let mut blocks = vec![false; plan.block_rows.len()];
         let mut mark = |ids: &[usize]| ids.iter().for_each(|&id| blocks[id] = true);
         for (factor, &(content, _shift)) in plan.factors.iter().enumerate() {
@@ -66,8 +81,24 @@ impl Restriction {
                 }
             }
         }
-        Some(Self { rows, blocks })
+        Self { rows, blocks }
     }
+}
+
+/// The interactions and outputs of an interaction program one call keeps:
+/// per step, per kernel group a flag per interaction, and a flag per output
+/// (`liveness`, whose flags `prune` keeps).
+pub(super) struct Liveness {
+    pub(super) steps: Vec<(Vec<Vec<bool>>, Vec<bool>)>,
+}
+
+/// The row liveness of one evaluation's tree fill (module docs): the Born
+/// rows the root closures evaluate and the interactions and outputs of both
+/// interaction programs it keeps.
+pub struct TreeRows {
+    pub(super) closure_rows: Vec<bool>,
+    pub(super) trees: Liveness,
+    pub(super) counterterms: Option<Liveness>,
 }
 
 impl TreeProgram {
@@ -76,6 +107,44 @@ impl TreeProgram {
     /// rows need. Before the program's runtimes are built (their weights
     /// follow its interactions).
     pub(super) fn restrict_rows(&mut self, restriction: Restriction) {
+        let (mut trees, mut counterterms) = self.needed(&restriction);
+        prune(&mut self.interactions, &mut trees);
+        if let Some(ct) = &mut self.counterterm_trees {
+            prune(&mut ct.interactions, &mut counterterms);
+        }
+        self.closure_rows = Some(restriction.rows);
+    }
+
+    /// The row liveness of one evaluation whose schedule-B liveness is
+    /// `live` (`Executor::live_rows`, on `plan`; module docs): None without
+    /// observable columns (no per-point sources zero the dropped rows' Born
+    /// components) or when it keeps every row the program evaluates.
+    pub fn live_rows(&self, plan: &LoopProgramV4, live: &LiveRows) -> Option<TreeRows> {
+        self.columns.as_ref()?;
+        let rows: Vec<bool> = (0..self.rows)
+            .map(|row| {
+                live.rows.get(row).copied().unwrap_or(true)
+                    && self.closure_rows.as_ref().is_none_or(|kept| kept[row])
+            })
+            .collect();
+        if self.closure_rows.as_ref().map_or(rows.iter().all(|&k| k), |kept| &rows == kept) {
+            return None;
+        }
+        let restriction = Restriction::reading(plan, rows, &live.read);
+        let (mut trees, mut counterterms) = self.needed(&restriction);
+        Some(TreeRows {
+            trees: liveness(&self.interactions, &mut trees),
+            counterterms: self
+                .counterterm_trees
+                .as_ref()
+                .map(|ct| liveness(&ct.interactions, &mut counterterms)),
+            closure_rows: restriction.rows,
+        })
+    }
+
+    /// The tree and counterterm state components `restriction` reads: the
+    /// read block rows' slots and the closure terms' inputs on the kept rows.
+    fn needed(&self, restriction: &Restriction) -> (Vec<bool>, Vec<bool>) {
         let size = self.state_size;
         let counterterm_size = self
             .counterterm_trees
@@ -119,11 +188,7 @@ impl TreeProgram {
         if let Some(ct) = &self.counterterms {
             closures(&ct.terms);
         }
-        prune(&mut self.interactions, &mut trees);
-        if let Some(ct) = &mut self.counterterm_trees {
-            prune(&mut ct.interactions, &mut counterterms);
-        }
-        self.closure_rows = Some(restriction.rows);
+        (trees, counterterms)
     }
 }
 
@@ -152,33 +217,67 @@ fn block_slots(
     slots
 }
 
-/// Keep the interactions and outputs of `interactions` that the state
-/// components `needed` (after the program) depend on: backward over the
-/// steps, an output is kept when it writes a needed component (which it
-/// then defines), an interaction when a kept output reads its accumulator
-/// (its inputs are then needed).
-fn prune(interactions: &mut Interactions, needed: &mut [bool]) {
-    for step in interactions.steps.iter_mut().rev() {
+/// The interactions and outputs of `interactions` that the state components
+/// `needed` (after the program) depend on, as flags over the program's own
+/// (the program left whole): backward over the steps, an output is kept
+/// when it writes a needed component (which it then defines), an
+/// interaction when a kept output reads its accumulator (its inputs are then
+/// needed). `needed` is left as what the kept program reads from outside.
+fn liveness(interactions: &Interactions, needed: &mut [bool]) -> Liveness {
+    let mut steps = Vec::with_capacity(interactions.steps.len());
+    for step in interactions.steps.iter().rev() {
         let mut read = vec![false; step.width];
-        step.outputs.retain(
-            |&(accumulator, _propagator, _momentum, start, dimension, _pole)| {
+        let outputs: Vec<bool> = step
+            .outputs
+            .iter()
+            .map(|&(accumulator, _propagator, _momentum, start, dimension, _pole)| {
                 let kept = needed[start..start + dimension].iter().any(|&n| n);
                 if kept {
                     read[accumulator] = true;
                 }
                 kept
-            },
-        );
-        for &(_accumulator, _propagator, _momentum, start, dimension, _pole) in &step.outputs {
+            })
+            .collect();
+        for (output, _) in step.outputs.iter().zip(&outputs).filter(|(_, kept)| **kept) {
+            let &(_accumulator, _propagator, _momentum, start, dimension, _pole) = output;
             needed[start..start + dimension].fill(false);
         }
-        for (_kernel, edges) in &mut step.groups {
-            edges.retain(|edge| read[edge.accumulator as usize]);
-            for edge in edges.iter() {
-                let (left, right) = (edge.left as usize, edge.right as usize);
-                needed[left..left + edge.left_dimension as usize].fill(true);
-                needed[right..right + edge.right_dimension as usize].fill(true);
-            }
+        let groups = step
+            .groups
+            .iter()
+            .map(|(_kernel, edges)| {
+                edges
+                    .iter()
+                    .map(|edge| {
+                        let kept = read[edge.accumulator as usize];
+                        if kept {
+                            let (left, right) = (edge.left as usize, edge.right as usize);
+                            needed[left..left + edge.left_dimension as usize].fill(true);
+                            needed[right..right + edge.right_dimension as usize].fill(true);
+                        }
+                        kept
+                    })
+                    .collect()
+            })
+            .collect();
+        steps.push((groups, outputs));
+    }
+    steps.reverse();
+    Liveness { steps }
+}
+
+/// Keep the interactions and outputs of `interactions` that the state
+/// components `needed` depend on ([`liveness`]'s flags), and drop the
+/// kernel groups left without one.
+fn prune(interactions: &mut Interactions, needed: &mut [bool]) {
+    let live = liveness(interactions, needed);
+    for (step, (groups, outputs)) in interactions.steps.iter_mut().zip(live.steps) {
+        let mut kept = outputs.iter();
+        step.outputs
+            .retain(|_| *kept.next().expect("one flag per output"));
+        for ((_kernel, edges), flags) in step.groups.iter_mut().zip(&groups) {
+            let mut kept = flags.iter();
+            edges.retain(|_| *kept.next().expect("one flag per interaction"));
         }
         step.groups.retain(|(_kernel, edges)| !edges.is_empty());
     }
@@ -187,7 +286,7 @@ fn prune(interactions: &mut Interactions, needed: &mut [bool]) {
 #[cfg(test)]
 mod tests {
     use super::super::{Edge, Interactions, Step};
-    use super::{block_slots, prune};
+    use super::{block_slots, liveness, prune};
     use symbolica::domains::rational::Rational;
 
     fn edge(left: u32, right: u32, accumulator: u32) -> Edge {
@@ -308,5 +407,53 @@ mod tests {
                 .iter()
                 .all(|(e, o)| e.is_empty() && o.is_empty())
         );
+    }
+
+    /// A call's liveness flags keep what `prune` keeps (the program left
+    /// whole) and leave `needed` as `prune` does.
+    #[test]
+    fn liveness_flags_keep_what_prune_keeps() {
+        for slots in [vec![8], vec![9, 1], vec![8, 9], vec![], vec![5, 9]] {
+            let needed_of = || {
+                let mut needed = vec![false; 14];
+                slots.iter().for_each(|&slot| needed[slot] = true);
+                needed
+            };
+            let mut pruned = program();
+            let mut after_prune = needed_of();
+            prune(&mut pruned, &mut after_prune);
+            let whole = program();
+            let mut after_flags = needed_of();
+            let flags = liveness(&whole, &mut after_flags);
+            assert_eq!(after_flags, after_prune, "{slots:?}");
+            let flagged: Vec<(Vec<(usize, usize)>, Vec<usize>)> = whole
+                .steps
+                .iter()
+                .zip(&flags.steps)
+                .map(|(step, (groups, outputs))| {
+                    let edges = step
+                        .groups
+                        .iter()
+                        .zip(groups)
+                        .flat_map(|((kernel, edges), kept)| {
+                            edges
+                                .iter()
+                                .zip(kept)
+                                .filter(|(_, k)| **k)
+                                .map(move |(e, _)| (*kernel, e.left as usize))
+                        })
+                        .collect();
+                    let outputs = step
+                        .outputs
+                        .iter()
+                        .zip(outputs)
+                        .filter(|(_, k)| **k)
+                        .map(|(output, _)| output.3)
+                        .collect();
+                    (edges, outputs)
+                })
+                .collect();
+            assert_eq!(flagged, kept(&pruned), "{slots:?}");
+        }
     }
 }

@@ -22,7 +22,7 @@
 //! product is that of the Python reference executor.
 
 use super::kernels::{RowLink, Segment, clear, fused_edge, lane_vector_len};
-use super::plan::{Content, Family, KernelInput, LoopProgramV4};
+use super::plan::{Content, Family, KernelInput, LoopProgramV4, ReadRows};
 use super::poly::MonomialProductTable;
 use crate::{RusticolError, RusticolResult};
 use std::collections::HashMap;
@@ -501,10 +501,16 @@ pub struct Reads {
 impl Reads {
     /// Everything the schedule-B steps of `families` read.
     pub fn of(plan: &LoopProgramV4, families: &[usize]) -> Self {
+        Self::of_families(families.iter().map(|&f| &plan.families[f]))
+    }
+
+    /// Everything the schedule-B steps of `families` (plan families or
+    /// their per-call pruned copies, `plan::LiveRows`) read.
+    pub fn of_families<'a>(families: impl Iterator<Item = &'a Family> + Clone) -> Self {
         let union = |ids: fn(&Family) -> &[usize]| {
             let mut out: Vec<usize> = families
-                .iter()
-                .flat_map(|&f| ids(&plan.families[f]).iter().copied())
+                .clone()
+                .flat_map(|family| ids(family).iter().copied())
                 .collect();
             out.sort_unstable();
             out.dedup();
@@ -525,6 +531,9 @@ pub struct ChunkInputs<T> {
     pub factors: LaneStore<T>,
     pub vertices: LaneStore<T>,
     pub currents: LaneStore<T>,
+    /// The factor and current rows an evaluation's row liveness reads
+    /// (`plan::LiveRows`; none: the plan's own `read_rows`).
+    rows: Option<std::sync::Arc<ReadRows>>,
 }
 
 impl<T: Carrier> ChunkInputs<T> {
@@ -533,7 +542,15 @@ impl<T: Carrier> ChunkInputs<T> {
             factors: LaneStore::new(plan.factors.len()),
             vertices: LaneStore::new(plan.vertex_instances.len()),
             currents: LaneStore::new(plan.currents.len()),
+            rows: None,
         }
+    }
+
+    /// Build the factor and current rows `rows` reads only (an evaluation's
+    /// row liveness, `plan::LiveRows::read`; the others stay zero).
+    pub fn with_rows(mut self, rows: Option<std::sync::Arc<ReadRows>>) -> Self {
+        self.rows = rows;
+        self
     }
 
     /// Keep the inputs in `live`, then build those in `needed`.
@@ -547,12 +564,13 @@ impl<T: Carrier> ChunkInputs<T> {
         self.factors.retain(&live.factors);
         self.vertices.retain(&live.vertices);
         self.currents.retain(&live.currents);
+        let read = self.rows.as_deref().or(plan.read_rows.as_ref());
         self.factors
-            .build(&needed.factors, |id| build_factor::<T, L>(plan, id, data));
+            .build(&needed.factors, |id| build_factor::<T, L>(plan, id, data, read));
         self.vertices
             .build(&needed.vertices, |id| build_vertex::<T, L>(plan, id, data));
         self.currents
-            .build(&needed.currents, |id| build_current::<T, L>(plan, id, data));
+            .build(&needed.currents, |id| build_current::<T, L>(plan, id, data, read));
     }
 
     pub fn reals(&self) -> usize {
@@ -618,12 +636,13 @@ impl<T: Carrier> ChunkInputs<T> {
                 dropped += 1;
             }
         }
+        let read = self.rows.as_deref().or(plan.read_rows.as_ref());
         self.factors
-            .build(&needed.factors, |id| build_factor::<T, L>(plan, id, data));
+            .build(&needed.factors, |id| build_factor::<T, L>(plan, id, data, read));
         self.vertices
             .build(&needed.vertices, |id| build_vertex::<T, L>(plan, id, data));
         self.currents
-            .build(&needed.currents, |id| build_current::<T, L>(plan, id, data));
+            .build(&needed.currents, |id| build_current::<T, L>(plan, id, data, read));
         dropped
     }
 
@@ -728,11 +747,13 @@ pub fn build_vertex<T: Carrier, const L: usize>(
 }
 
 /// Split current `id` of the plan: per term row, the `width` products `J[ν]`
-/// of the slots' block components.
+/// of the slots' block components; the rows `read` reads only (the plan's
+/// or a call's live rows; none: every row).
 pub fn build_current<T: Carrier, const L: usize>(
     plan: &LoopProgramV4,
     id: usize,
     data: &LaneData<T, L>,
+    read: Option<&ReadRows>,
 ) -> Vec<T> {
     let (content, term) = plan.currents[id];
     let term = &plan.contents[content].terms[term];
@@ -741,10 +762,7 @@ pub fn build_current<T: Carrier, const L: usize>(
     let mut out = vec![data.zero.clone(); term.rows.len() * row_len];
     let mut scratch = vec![data.zero.clone(); v];
     // The rows schedule B reads (all without the live-row pruning).
-    let read = plan
-        .read_rows
-        .as_ref()
-        .map(|rows| rows.currents[id].as_slice());
+    let read = read.map(|rows| rows.currents[id].as_slice());
     for (k, ((_row, blocks), target)) in term
         .rows
         .iter()
@@ -771,6 +789,7 @@ pub fn build_factor<T: Carrier, const L: usize>(
     plan: &LoopProgramV4,
     id: usize,
     data: &LaneData<T, L>,
+    read: Option<&ReadRows>,
 ) -> Vec<T> {
     let (content_index, shift) = plan.factors[id];
     let content = &plan.contents[content_index];
@@ -781,10 +800,7 @@ pub fn build_factor<T: Carrier, const L: usize>(
     let mut scratch = Scratch::<T>::new(&data.zero, v);
     // The content rows schedule B reads (all without the live-row pruning):
     // the others stay zero.
-    let read = plan
-        .read_rows
-        .as_ref()
-        .map(|rows| rows.factors[id].as_slice());
+    let read = read.map(|rows| rows.factors[id].as_slice());
     let reads = |row: usize| read.is_none_or(|read| read[row]);
     for term in &content.terms {
         if let Some(split) = &term.vertex {

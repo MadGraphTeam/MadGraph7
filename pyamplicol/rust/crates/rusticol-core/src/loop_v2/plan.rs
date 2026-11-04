@@ -49,6 +49,7 @@ mod links;
 mod live;
 mod packed;
 pub use binary::{read_binary, read_binary_with};
+pub use live::LiveRows;
 use ninjars::fast::tensor_layout::ncoeff;
 pub use packed::{LinkInterner, PackedLinks, SharedLinks};
 use serde::Deserialize;
