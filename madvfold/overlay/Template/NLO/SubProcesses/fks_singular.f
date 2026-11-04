@@ -68,7 +68,17 @@ c vfold_retrieve_born is still needed to restore amp_split/wgt_ME_born.
       else
         f_b_used = f_b
         g_used = g
-        call sborn_frame(p_born,wgt_c)
+c AV road B step 7k: in F2, reuse the Born memo (vfold_born_batch.f90)
+        if (vfold_use_born_memo()) then
+          if (vfold_born_memo_hit(p_born,g)) then
+            call vfold_born_memo_restore
+          else
+            call sborn_frame(p_born,wgt_c)
+            call vfold_born_memo_store(p_born,g)
+          endif
+        else
+          call sborn_frame(p_born,wgt_c)
+        endif
       endif
 c AV road B step 8p: virt candidates only get here in modes F/C, to keep
 c their Born in the batch: do not add it to the weight lines, as
@@ -1675,7 +1685,17 @@ c sbornsoft call sborn(p_born) later and rely on finding it warm.
 c AV road B step 7f: time this SDE Born evaluation as Born (tBorn), not
 c Nbody_prefactor (tf_nb), as vfold_evaluate_sde_batch does in F/C.
             call cpu_time(avtiming_sde_born_t0)
-            call sborn_frame(p_born,wgt_c)
+c AV road B step 7k: in F2, reuse the Born memo (it also restores amp2)
+            if (vfold_use_born_memo()) then
+              if (vfold_born_memo_hit(p_born,g)) then
+                call vfold_born_memo_restore
+              else
+                call sborn_frame(p_born,wgt_c)
+                call vfold_born_memo_store(p_born,g)
+              endif
+            else
+              call sborn_frame(p_born,wgt_c)
+            endif
             call cpu_time(avtiming_sde_born_t1)
             avtiming_sde_born_dt=avtiming_sde_born_t1-avtiming_sde_born_t0
             tBorn=tBorn+avtiming_sde_born_dt
