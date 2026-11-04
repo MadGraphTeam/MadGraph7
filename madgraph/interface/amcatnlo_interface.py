@@ -1000,6 +1000,13 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
             self._curr_exporter.generate_virtuals_from_OLP(
               self.born_processes_for_olp,self._export_dir,self.options['OLP'])
                 
+        # MadVFold: the widths of the coloured particles in the initial and final states
+        # are set to zero in the param_card: MG5 does the same when it launches an NLO run
+        # (see 'gauge cancellation' in common_run_interface.py), but only in the Fortran
+        # param_card.inc, while the cudacpp libraries of mode C read the param_card
+        if vfold:
+            self.vfold_zero_widths_in_param_card()
+
         # MadVFold: generate and build the cudacpp libraries for mode C
         # (if the cudacpp plugin is installed, else only a warning)
         if vfold:
@@ -1020,6 +1027,26 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
 
         # Reset _export_dir, so we don't overwrite by mistake later
         self._export_dir = None
+
+    def vfold_zero_widths_in_param_card(self):
+        """MadVFold: set to zero in the param_card the widths of the coloured particles
+        in the initial and final states, as MG5 does for the Fortran code of NLO runs"""
+        pdgs = set()
+        for born in self._fks_multi_proc.get('born_processes'):
+            for leg in born.born_amp.get('process').get('legs'):
+                particle = self._curr_model.get_particle(leg.get('id'))
+                if particle.get('color') != 1 and particle.get('width').lower() != 'zero':
+                    pdgs.add(abs(particle.get('pdg_code')))
+        for pdg in sorted(pdgs):
+            logger.info('MadVFold: the width of the particle with PDG id %d is set to zero' % pdg)
+        for card in ['param_card.dat', 'param_card_default.dat']:
+            path = pjoin(self._export_dir, 'Cards', card)
+            text = open(path).read()
+            for pdg in sorted(pdgs):
+                text, nsub = re.subn(r'(?mi)^(DECAY\s+%d\s+)\S+' % pdg, r'\g<1>0.000000e+00', text)
+                if nsub != 1:
+                    raise MadGraph5Error('MadVFold: no width for PDG id %d in %s' % (pdg, path))
+            open(path, 'w').write(text)
 
     # Export a matrix element  
     def export(self, nojpeg = False, main_file_name = "", group_processes=False):
