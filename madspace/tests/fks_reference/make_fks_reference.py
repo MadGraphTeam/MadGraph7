@@ -35,7 +35,8 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
     pdf_scheme (pdfscheme of the run_card, 0 MSbar or 1 DIS, see RUN_CARD),
     n_f (the number of light flavors), scales (mu_f2 of the two beams and
     qes2, the Ellis-Sexton scale, set by the dump for the collinear
-    remnants),
+    remnants), soft_virtual_scales (mu_f2 of the two beams, mu_r2 and qes2,
+    set by the dump for bornsoftvirtual),
     fks_configurations (the fks_configurations.json the FKS exporter writes
     into the P* directory, with its own conventions, see madspace/fks.py)
     configs[]: nfks, i_fks, j_fks, pdg, masses, particle_type,
@@ -77,6 +78,10 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
                emitter: wgtdegrem_xi, wgtdegrem_lxi, wgtdegrem_muF and the
                PDF-scheme parts p, l, d, zero elsewhere), prefactors also
                has f_pdf_scheme (f_pdfsch_d, f_pdfsch_p, f_pdfsch_l),
+               soft_virtual (bornsoftvirtual at the soft counter-event
+               without the virtual, where it is generated and i has colour
+               links: bsv_wgt, born_wgt and the sums over the split orders
+               of wgtnstmp, wgtwnstmpmur, wgtwnstmpmuf),
                shat_born, tau_born, ycm_born, xbjrk_born, tau_lower_bound,
                and for prefix in (rad, cut): prefix_jac, prefix_jac_cnt,
                prefix_p_ev, prefix_p_cnt, prefix_xi_ev, prefix_xi_hat_ev,
@@ -381,6 +386,12 @@ def parse(text):
             point["collinear_remnants"] = [v[0:6], v[6:12]]
             scales = dict(mu_f2=v[12:14], qes2=v[14])
             if data.setdefault("scales", scales) != scales:
+                raise ValueError("the scales change from point to point")
+        elif key == "BSV":
+            v = floats(rest)
+            point["soft_virtual"] = v[0:5]
+            scales = dict(mu_f2=v[5:7], mu_r2=v[7], qes2=v[8])
+            if data.setdefault("soft_virtual_scales", scales) != scales:
                 raise ValueError("the scales change from point to point")
         elif key == "BORNX":
             v = floats(rest)

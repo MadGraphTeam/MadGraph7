@@ -2048,6 +2048,34 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("FKSSubtraction::prefactors")
         );
 
+    py::classh<FKSSoftVirtual, FunctionGenerator>(
+        m, "FKSSoftVirtual", pydoc::doc("FKSSoftVirtual")
+    )
+        .def(
+            py::init<
+                const std::vector<FKSConfiguration>&,
+                int,
+                double,
+                double,
+                double>(),
+            py::arg("configurations"),
+            py::arg("alpha_s_power"),
+            py::arg("xicut") = 0.5,
+            py::arg("delta_o") = 1.,
+            py::arg("n_f") = 5.,
+            pydoc::doc("FKSSoftVirtual::FKSSoftVirtual")
+        )
+        .def(
+            "particle_count",
+            &FKSSoftVirtual::particle_count,
+            pydoc::doc("FKSSoftVirtual::particle_count")
+        )
+        .def(
+            "alpha_s_power",
+            &FKSSoftVirtual::alpha_s_power,
+            pydoc::doc("FKSSoftVirtual::alpha_s_power")
+        );
+
     py::classh<MultiChannelFunction, FunctionGenerator>(
         m, "MultiChannelFunction", pydoc::doc("MultiChannelFunction")
     )

@@ -214,4 +214,118 @@ private:
     double _n_f;
 };
 
+/**
+ * The n-body part of the FKS subtraction without the virtual: the soft and
+ * collinear counterterms of @ref FKSSubtraction integrated over the radiation
+ * (those of an initial-state emitter up to their remnants), as
+ * bornsoftvirtual in fks_singular.f [2, 3] for QCD. It is a function of the
+ * Born alone and takes its blocks as @ref FKSLimits.
+ *
+ * With @f$a = \alpha_s / (2 \pi)@f$, the Born @f$B@f$ and its color-correlated
+ * versions @f$B_{mn} = \langle T_m \cdot T_n \rangle B@f$,
+ * @f[
+ *   \text{soft\_virtual} = a B \sum_j Q_j - 2 a \sum_{m < n} B_{mn} I_{mn}
+ *     - a \sum_m B_{mm} I_{mm},
+ * @f]
+ * the first sum over the massless gluons and quarks, the second over the
+ * pairs of colored particles and the third over the massive colored ones,
+ * with the integrated eikonals @f$I_{mn}@f$ of eikonal_Ireg. With the color
+ * factor @f$C_j@f$ and the @f$\gamma_j@f$ and @f$\gamma'_j@f$ of FKS of a
+ * parton, the Q term of a final-state one is
+ * @f[
+ *   Q_j = \gamma'_j - \log\frac{s \delta_O}{2 \mu_R^2} \Big(\gamma_j -
+ *     2 C_j \log\frac{2 E_j}{\xi_\mathrm{cut} \sqrt{s}}\Big) +
+ *     2 C_j \Big(\log^2\frac{2 E_j}{\sqrt{s}} - \log^2 \xi_\mathrm{cut}\Big)
+ *     - 2 \gamma_j \log\frac{2 E_j}{\sqrt{s}},
+ * @f]
+ * with its energy @f$E_j@f$ in the partonic center-of-mass frame, and that of
+ * an incoming one
+ * @f$Q_j = -\log(\mu_F^2 / \mu_R^2) (\gamma_j + 2 C_j \log \xi_\mathrm{cut})@f$
+ * with the factorization scale of its beam. It is in the normalization of the
+ * Born, so that @f$B@f$ plus soft_virtual plus the finite part of the virtual
+ * in the conventions of MadFKS is the n-body part per unit Born phase space.
+ *
+ * The Ellis-Sexton scale of MadFKS, the scale of the finite part of the
+ * virtual, is @f$\mu_R@f$ here. With the virtual kept at @f$\mu_R@f$, the
+ * scales @f$\mu_R'@f$ and @f$\mu_{F,i}'@f$ of the beams add
+ * @f[
+ *   c_R \log\frac{\mu_R'^2}{\mu_R^2} +
+ *     \sum_i c_{F,i} \log\frac{\mu_{F,i}'^2}{\mu_{F,i}^2},
+ * @f]
+ * with the coefficients of the weight lines of MadFKS,
+ * @f$c_R = a b \gamma_g B@f$ with the power @f$b@f$ of @f$\alpha_s@f$ of the
+ * Born and @f$c_{F,i} = -a (\gamma_i + 2 C_i \log \xi_\mathrm{cut}) B@f$ of
+ * the incoming parton of beam @f$i@f$ (zero for another particle).
+ *
+ * `batch` is the leading batch dimension and `n` the number of particles of
+ * the Born, incoming included.
+ *
+ * **Arguments**
+ * - `momenta` – `float`, shape `(batch, n, 4)` – momenta of the Born, in the
+ *   order of the Born of the configurations, in any frame.
+ * - `born`, `color_correlated` – the Born and its color-correlated versions,
+ *   as for @ref FKSLimits.
+ * - `alpha_s` – `float`, shape `(batch,)` – the strong coupling.
+ * - `ren_scale`, `fact_scale1`, `fact_scale2` – `float`, shape `(batch,)` –
+ *   the renormalization scale and the factorization scales of the two beams,
+ *   as @ref EnergyScale returns them.
+ *
+ * **Returns**
+ * - `soft_virtual` – `float`, shape `(batch,)` – the n-body part without the
+ *   Born and the virtual.
+ * - `ren_coefficient` – `float`, shape `(batch,)` – @f$c_R@f$.
+ * - `fact_coefficients` – `float`, shape `(batch, 2)` – @f$c_{F,i}@f$ of the
+ *   two beams.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895
+ * - [2] S. Frixione, Z. Kunszt, A. Signer, "Three-jet cross sections to
+ *   next-to-leading order", https://arxiv.org/abs/hep-ph/9512328
+ * - [3] R. Frederix, S. Frixione, F. Maltoni, T. Stelzer, "Automation of
+ *   next-to-leading order computations in QCD: the FKS subtraction",
+ *   https://arxiv.org/abs/0908.4272
+ */
+class FKSSoftVirtual : public FunctionGenerator {
+public:
+    /**
+     * @param configurations  The FKS configurations of the Born, with QCD
+     *                        splittings. The pairs of color-linked particles
+     *                        are the soft pairs of the first one with a gluon
+     *                        i.
+     * @param alpha_s_power   The power @f$b@f$ of @f$\alpha_s@f$ of the Born.
+     * @param xicut           The cut of the plus distribution in @f$\xi@f$,
+     *                        see @ref FKSPrefactors.
+     * @param delta_o         The cut of the plus distribution in @f$1 - y@f$
+     *                        for a final-state emitter (deltaO).
+     * @param n_f             The number of light flavors, in @f$\gamma_g@f$
+     *                        and @f$\gamma'_g@f$.
+     * @throws std::invalid_argument for a splitting that is not one of QCD,
+     *         without a configuration with a gluon i or for parameters out of
+     *         their range.
+     */
+    FKSSoftVirtual(
+        const std::vector<FKSConfiguration>& configurations,
+        int alpha_s_power,
+        double xicut = 0.5,
+        double delta_o = 1.,
+        double n_f = 5.
+    );
+    /// Number of particles of the Born, incoming included.
+    std::size_t particle_count() const { return _masses.size(); }
+    /// The power of alpha_s of the Born.
+    int alpha_s_power() const { return _alpha_s_power; }
+
+private:
+    NamedVector<Value> build_function_impl(
+        FunctionBuilder& fb, const NamedVector<Value>& args
+    ) const override;
+
+    int _alpha_s_power;
+    double _xicut, _delta_o, _n_f, _beta;
+    std::vector<double> _masses, _casimir, _gamma, _gamma_prime;
+    std::vector<me_int_t> _pair_m, _pair_n;
+    std::vector<double> _pair_factor;
+};
+
 } // namespace madspace

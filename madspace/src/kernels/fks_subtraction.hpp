@@ -795,5 +795,234 @@ KERNELSPEC void kernel_fks_subtraction(
         : FVal<T>(0.);
 }
 
+// The dilogarithm of a real argument as DDILOG of CERNLIB (fks_singular.f),
+// with its Chebyshev series
+template <typename T>
+KERNELSPEC FVal<T> fks_dilog(FVal<T> x) {
+    constexpr double pi = 3.14159265358979323846;
+    constexpr double pi3 = pi * pi / 3., pi6 = pi * pi / 6., pi12 = pi * pi / 12.;
+    constexpr double c[20] = {
+        0.42996693560813697,
+        0.40975987533077105,
+        -0.01858843665014592,
+        0.00145751084062268,
+        -0.00014304184442340,
+        0.00001588415541880,
+        -0.00000190784959387,
+        0.00000024195180854,
+        -0.00000003193341274,
+        0.00000000434545063,
+        -0.00000000060578480,
+        0.00000000008612098,
+        -0.00000000001244332,
+        0.00000000000182256,
+        -0.00000000000027007,
+        0.00000000000004042,
+        -0.00000000000000610,
+        0.00000000000000093,
+        -0.00000000000000014,
+        0.00000000000000002,
+    };
+    if (x == 1.) {
+        return pi6;
+    }
+    if (x == -1.) {
+        return -pi12;
+    }
+    FVal<T> t = -x, y, s, a;
+    if (t <= -2.) {
+        y = -1. / (1. + t);
+        s = 1.;
+        FVal<T> l1 = log(-t), l2 = log(1. + 1. / t);
+        a = -pi3 + 0.5 * (l1 * l1 - l2 * l2);
+    } else if (t < -1.) {
+        y = -1. - t;
+        s = -1.;
+        a = log(-t);
+        a = -pi6 + a * (a + log(1. + 1. / t));
+    } else if (t <= -0.5) {
+        y = -(1. + t) / t;
+        s = 1.;
+        a = log(-t);
+        a = -pi6 + a * (-0.5 * a + log(1. + t));
+    } else if (t < 0.) {
+        y = -t / (1. + t);
+        s = -1.;
+        FVal<T> l = log(1. + t);
+        a = 0.5 * l * l;
+    } else if (t <= 1.) {
+        y = t;
+        s = 1.;
+        a = 0.;
+    } else {
+        y = 1. / t;
+        s = -1.;
+        FVal<T> l = log(t);
+        a = pi6 + 0.5 * l * l;
+    }
+    FVal<T> h = y + y - 1., alpha = h + h, b0 = 0., b1 = 0., b2 = 0.;
+    for (int k = 19; k >= 0; --k) {
+        b0 = c[k] + alpha * b1 - b2;
+        b2 = b1;
+        b1 = b0;
+    }
+    return -(s * (b0 - h * b2) + a);
+}
+
+// The integrated eikonal I_mn of eikonal_Ireg (fks_singular.f) of the
+// particles m and n with energies e_m, e_n in the partonic center-of-mass
+// frame, p_m . p_n = k and masses mass_m, mass_n, for l_s = log(s / mu^2) and
+// the cut xicut, m = n (same) only for a massive particle. For a massive and
+// a massless particle the massless one is i of eikonal_Ireg, for two massive
+// ones n is.
+template <typename T>
+KERNELSPEC FVal<T> fks_integrated_eikonal(
+    FVal<T> e_m,
+    FVal<T> e_n,
+    FVal<T> k,
+    FVal<T> mass_m,
+    FVal<T> mass_n,
+    bool same,
+    FVal<T> l_s,
+    FVal<T> xicut
+) {
+    constexpr double pi = 3.14159265358979323846;
+    FVal<T> log_xicut = log(xicut);
+    // log(xicut^2 s / mu^2)
+    FVal<T> l = 2. * log_xicut + l_s;
+    if (mass_m == 0. && mass_n == 0.) {
+        FVal<T> r = k / (2. * e_m * e_n);
+        if (fabs(r - 1.) > 1e-6) {
+            FVal<T> lr = log(r);
+            return 0.5 * l * l + l * lr - fks_dilog<T>(r) + 0.5 * lr * lr -
+                log(1. - r) * lr;
+        }
+        return 0.5 * l * l - pi * pi / 6.;
+    }
+    if (mass_m == 0. || mass_n == 0.) {
+        bool m_massless = mass_m == 0.;
+        FVal<T> e_i = m_massless ? e_m : e_n, e_j = m_massless ? e_n : e_m;
+        FVal<T> mass = m_massless ? mass_n : mass_m;
+        FVal<T> beta = sqrt(1. - mass * mass / (e_j * e_j));
+        FVal<T> r = k / (2. * e_i * e_j);
+        FVal<T> lk = log(k / (mass * e_i));
+        FVal<T> lr = log(2. * r / (1. - beta));
+        FVal<T> lb = log((1. + beta) / (1. - beta));
+        return log_xicut * (log_xicut + l_s + 2. * lk) -
+            fks_dilog<T>(1. - (1. + beta) / (2. * r)) +
+            fks_dilog<T>(1. - 2. * r / (1. - beta)) + 0.5 * lr * lr + l_s * lk -
+            pi * pi / 12. + 0.25 * l_s * l_s - 0.25 * lb * lb;
+    }
+    if (same) {
+        FVal<T> beta = sqrt(1. - mass_n * mass_n / (e_n * e_n));
+        if (beta > 1e-6) {
+            return l - log((1. + beta) / (1. - beta)) / beta;
+        }
+        FVal<T> b2 = beta * beta;
+        return l - 2. * (1. + b2 / 3. + b2 * b2 / 5.);
+    }
+    FVal<T> e_i = e_n, e_j = e_m;
+    FVal<T> mi2 = mass_n * mass_n, mj2 = mass_m * mass_m;
+    FVal<T> beta_i = sqrt(1. - mi2 / (e_i * e_i));
+    FVal<T> beta_j = sqrt(1. - mj2 / (e_j * e_j));
+    FVal<T> v = sqrt(1. - mi2 * mj2 / (k * k));
+    FVal<T> al = k * (1. + v) / mi2;
+    FVal<T> t_vl = (al * al * mi2 - mj2) / 2.;
+    FVal<T> t_v = t_vl / (al * e_i - e_j);
+    FVal<T> xi0 = v < 1. ? log((1. + v) / (1. - v)) / v : log(4. * k * k / (mi2 * mj2));
+    auto j1a = [&](FVal<T> x, FVal<T> y) {
+        FVal<T> lxy = log((x - y) / (x + y));
+        return (lxy * lxy + 4. * fks_dilog<T>(1. - (x + y) / t_v) +
+                4. * fks_dilog<T>(1. - (x - y) / t_v)) /
+            (2. * t_vl);
+    };
+    FVal<T> arg1 = al * e_i, arg3 = e_j;
+    FVal<T> xi1a =
+        k * k * (1. + v) / mi2 * (j1a(arg1, arg1 * beta_i) - j1a(arg3, arg3 * beta_j));
+    return 0.5 * xi0 * l + 0.5 * xi1a;
+}
+
+// The n-body part of bornsoftvirtual (fks_singular.f) without the virtual,
+// for QCD and with the Ellis-Sexton scale at the renormalization scale mu_R:
+// with a = alpha_s / (2 pi), a B sum_j Q_j over the massless gluons and quarks
+// plus a sum_(m, n) f_mn <T_m . T_n> B I_mn over the pairs of color-linked
+// particles, f_mn = -2 and -1 for a massive particle with itself (the
+// color-linked Born of MadFKS has a factor 1/2 there), with the integrated
+// eikonals I_mn of eikonal_Ireg. The Q term of a final-state parton j is
+// gamma'_j - log(s delta_O / (2 mu_R^2)) (gamma_j - 2 C_j log(2 E_j / (xicut
+// sqrt_s))) + 2 C_j (log^2(2 E_j / sqrt_s) - log^2 xicut) - 2 gamma_j log(2 E_j
+// / sqrt_s), with its energy E_j in the partonic center-of-mass frame
+// (written with invariants), that of an incoming one -log(mu_F^2 / mu_R^2)
+// (gamma_j + 2 C_j log xicut) with the factorization scale of its beam. Also
+// the coefficients of log mu_R^2, a b gamma_g B with the power b of alpha_s of
+// the Born, and of log mu_F^2 of each beam, -a (gamma_j + 2 C_j log xicut) B,
+// at a fixed virtual (options = xicut, delta_O, b gamma_g).
+template <typename T>
+KERNELSPEC void kernel_fks_soft_virtual(
+    FIn<T, 2> momenta,
+    FIn<T, 0> born,
+    FIn<T, 2> color_correlated,
+    FIn<T, 0> alpha_s,
+    FIn<T, 0> ren_scale,
+    FIn<T, 0> fact_scale1,
+    FIn<T, 0> fact_scale2,
+    FIn<T, 1> casimir,
+    FIn<T, 1> gamma,
+    FIn<T, 1> gamma_prime,
+    FIn<T, 1> masses,
+    IIn<T, 1> pair_m,
+    IIn<T, 1> pair_n,
+    FIn<T, 1> pair_factor,
+    FIn<T, 1> options,
+    FOut<T, 0> soft_virtual,
+    FOut<T, 0> ren_coefficient,
+    FOut<T, 1> fact_coefficients
+) {
+    constexpr double pi = 3.14159265358979323846;
+    FVal<T> xicut = options[0], delta_o = options[1], beta = options[2];
+    auto p1 = load_mom<T>(momenta[0]), p2 = load_mom<T>(momenta[1]);
+    FourMom<T> p_tot{p1[0] + p2[0], p1[1] + p2[1], p1[2] + p2[2], p1[3] + p2[3]};
+    FVal<T> s = lsquare<T>(p_tot), rs = sqrt(s);
+    FVal<T> mu_r = ren_scale, mu_r2 = mu_r * mu_r;
+    FVal<T> l_s = log(s / mu_r2), log_xicut = log(xicut);
+    FVal<T> a = FVal<T>(alpha_s) / (2. * pi), b = born;
+    FVal<T> q = 0.;
+    for (std::size_t j = 0; j < 2; ++j) {
+        FVal<T> mu_f = j == 0 ? FVal<T>(fact_scale1) : FVal<T>(fact_scale2);
+        FVal<T> coefficient =
+            -(FVal<T>(gamma[j]) + 2. * FVal<T>(casimir[j]) * log_xicut);
+        fact_coefficients[j] = a * b * coefficient;
+        q = q + coefficient * log(mu_f * mu_f / mu_r2);
+    }
+    FVal<T> l_o = log(s * delta_o / (2. * mu_r2));
+    for (std::size_t j = 2; j < momenta.size(); ++j) {
+        FVal<T> c = casimir[j], g = gamma[j], g_prime = gamma_prime[j];
+        if (c == 0.) {
+            continue;
+        }
+        auto p = load_mom<T>(momenta[j]);
+        FVal<T> l_e = log(2. * fks_frame_energy<T>(p, p_tot, rs) / rs);
+        q = q + g_prime - l_o * (g - 2. * c * (l_e - log_xicut)) +
+            2. * c * (l_e * l_e - log_xicut * log_xicut) - 2. * g * l_e;
+    }
+    FVal<T> eikonal = 0.;
+    for (std::size_t k = 0; k < pair_factor.size(); ++k) {
+        FVal<T> factor = pair_factor[k];
+        if (factor == 0.) {
+            continue;
+        }
+        std::size_t m = single_index(pair_m[k]), n = single_index(pair_n[k]);
+        auto p_m = load_mom<T>(momenta[m]), p_n = load_mom<T>(momenta[n]);
+        FVal<T> e_m = fks_frame_energy<T>(p_m, p_tot, rs);
+        FVal<T> e_n = fks_frame_energy<T>(p_n, p_tot, rs);
+        FVal<T> i_mn = fks_integrated_eikonal<T>(
+            e_m, e_n, ldot<T>(p_m, p_n), masses[m], masses[n], m == n, l_s, xicut
+        );
+        eikonal = eikonal + factor * FVal<T>(color_correlated[m][n]) * i_mn;
+    }
+    soft_virtual = a * (b * q + eikonal);
+    ren_coefficient = a * b * beta;
+}
+
 } // namespace kernels
 } // namespace madspace

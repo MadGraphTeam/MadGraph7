@@ -33,8 +33,9 @@ S_ij of the configurations, fks_eikonals the eikonal factors of their soft
 limits, fks_splitting_kernels the factors of their collinear limits,
 fks_prefactors the prefactors of the real emission and its counterterms,
 fks_limits the soft and collinear limits of the real matrix element from the
-Born and its correlated versions, and fks_subtraction the real emission with
-its counterterms.
+Born and its correlated versions, fks_subtraction the real emission with
+its counterterms and fks_soft_virtual the n-body part of the subtraction
+without the virtual.
 """
 
 import json
@@ -50,6 +51,7 @@ from ._madspace_py import (
     FKSMapping,
     FKSPrefactors,
     FKSSectorFunction,
+    FKSSoftVirtual,
     FKSSplittingKernels,
     FKSSubtraction,
     Observable,
@@ -347,3 +349,24 @@ def fks_subtraction(born, configurations, **parameters):
         ValueError: as fks_limits.
     """
     return FKSSubtraction(fks_configurations(born, configurations), **parameters)
+
+
+def fks_soft_virtual(born, configurations, alpha_s_power, **parameters):
+    """The FKSSoftVirtual of the FKS configurations of a Born, the n-body part
+    of the subtraction without the virtual, on the momenta of the Born.
+
+    Args:
+        born: the PhaseSpaceMapping of the Born process, for its masses, its
+            momenta in the order of born_pdgs.
+        configurations: the content of fks_configurations.json (see
+            read_fks_configurations).
+        alpha_s_power: the power of alpha_s of the Born.
+        parameters: xicut and delta_o of fks_powers.inc and the number of
+            light flavors (n_f), see FKSSoftVirtual.
+
+    Raises:
+        ValueError: as fks_limits, and without a configuration with a gluon i.
+    """
+    return FKSSoftVirtual(
+        fks_configurations(born, configurations), alpha_s_power, **parameters
+    )

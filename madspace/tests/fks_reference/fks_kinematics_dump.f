@@ -21,7 +21,8 @@ c collinear limits (below tiny = 1e-6 in xi or 1 - y). At every
 c point it prints the pieces of the subtraction of fks_singular.f: the
 c sector functions, the factors of the soft and collinear limits, the
 c prefactors, sreal at the event and the counter-events, the Born
-c with its colour links and the collinear remnants of sreal_deg. It then
+c with its colour links, the collinear remnants of sreal_deg and the
+c n-body part of bornsoftvirtual without the virtual. It then
 c calls generate_FKS_kinematics again at the same x with xjac0 =
 c xpswgt0 = 1, so that the second set of Jacobians holds the radiation
 c part alone, times compute_flux. Everything is printed with keywords
@@ -147,6 +148,14 @@ c that make_fks_reference.py parses.
       double precision f_pdfsch_d,f_pdfsch_p,f_pdfsch_l
       common/factor_pdfsch/f_pdfsch_d,f_pdfsch_p,f_pdfsch_l
       double precision deg(6,2),deg_xi,deg_lxi
+      double precision amp_split_wgtnstmp(amp_split_size),
+     &     amp_split_wgtwnstmpmuf(amp_split_size),
+     &     amp_split_wgtwnstmpmur(amp_split_size)
+      common /to_amp_split_bsv/amp_split_wgtnstmp,
+     &     amp_split_wgtwnstmpmuf,amp_split_wgtwnstmpmur
+      integer fold,ifold_counter
+      common /cfl/fold,ifold_counter
+      double precision bsv(5),bsv_wgt,virt_wgt
       include '../../Source/PDF/pdf.inc'
       complex*16 ans_cnt(2,nsplitorders)
       common /c_born_cnt/ans_cnt
@@ -450,6 +459,37 @@ c (sreal_deg reads them), the strong coupling of the Fortran is kept.
             enddo
             write (*,fmt) 'DEG',((deg(j,k),j=1,6),k=1,2),q2fact(1)
      &           ,q2fact(2),QES2
+c The n-body part of bornsoftvirtual at the soft counter-event, where i
+c has colour links (as compute_nbody_noborn calls it for those
+c configurations), without the virtual (fold = 1 keeps its saved value
+c and leaves ran2 alone): bsv_wgt, born_wgt and the sums over the split
+c orders of wgtnstmp, wgtwnstmpmur and wgtwnstmpmuf, with the scales
+c set here (two factorization scales, the renormalization and the
+c Ellis-Sexton scale)
+            q2fact(1)=150d0**2
+            q2fact(2)=250d0**2
+            scale=120d0
+            QES2=91.188d0**2
+            do j=1,5
+               bsv(j)=0d0
+            enddo
+            if (jac_full.gt.0d0.and.jac_full_cnt(0).gt.0d0.and.
+     &           need_color_links) then
+               call set_cms_stuff(0)
+               fold=1
+               call bornsoftvirtual(p1_cnt(0,1,0),bsv_wgt,virt_wgt
+     &              ,born_wgt)
+               fold=0
+               bsv(1)=bsv_wgt
+               bsv(2)=born_wgt
+               do i=1,amp_split_size
+                  bsv(3)=bsv(3)+amp_split_wgtnstmp(i)
+                  bsv(4)=bsv(4)+amp_split_wgtwnstmpmur(i)
+                  bsv(5)=bsv(5)+amp_split_wgtwnstmpmuf(i)
+               enddo
+               write (*,fmt) 'BSV',(bsv(j),j=1,5),q2fact(1),q2fact(2)
+     &              ,scale**2,QES2
+            endif
 c Radiation part alone: rerun generate_FKS_kinematics on the Born of the
 c point with unit Born weights, once with the lower bound on the partonic
 c energy of the real emission that set_tau_min derives from the cuts

@@ -1,8 +1,33 @@
 #include "madspace/phasespace/fks_subtraction.hpp"
 
+#include <cstdlib>
 #include <stdexcept>
 
+#include "madspace/constants.hpp"
+
 using namespace madspace;
+
+namespace {
+
+constexpr double CA = 3., CF = 4. / 3.;
+
+// the first configuration with a gluon i, whose color links the integrated
+// eikonals take (as bornsoftvirtual those of the first with need_color_links)
+std::size_t
+color_linked_configuration(const std::vector<FKSConfiguration>& configurations) {
+    for (std::size_t c = 0; c < configurations.size(); ++c) {
+        const auto& config = configurations.at(c);
+        if (config.colors.at(config.i_fks) == 8) {
+            return c;
+        }
+    }
+    throw std::invalid_argument(
+        "FKSSoftVirtual: needs a configuration with a gluon i, for the color "
+        "links"
+    );
+}
+
+} // namespace
 
 FKSSubtraction::FKSSubtraction(
     const std::vector<FKSConfiguration>& configurations,
@@ -208,5 +233,108 @@ NamedVector<Value> FKSSubtraction::build_function_impl(
         {"soft", soft},
         {"collinear", collinear},
         {"soft_collinear", soft_collinear}
+    };
+}
+
+FKSSoftVirtual::FKSSoftVirtual(
+    const std::vector<FKSConfiguration>& configurations,
+    int alpha_s_power,
+    double xicut,
+    double delta_o,
+    double n_f
+) :
+    FunctionGenerator(
+        "FKSSoftVirtual",
+        [&] {
+            // the limits check the configurations
+            auto n = static_cast<int>(FKSLimits(configurations).particle_count()) - 1;
+            color_linked_configuration(configurations);
+            if (alpha_s_power < 0) {
+                throw std::invalid_argument(
+                    "FKSSoftVirtual: the power of alpha_s cannot be negative"
+                );
+            }
+            if (!(xicut > 0. && xicut <= 1. && delta_o > 0. && delta_o <= 2. &&
+                  n_f >= 0.)) {
+                throw std::invalid_argument(
+                    "FKSSoftVirtual: xicut must be in (0, 1], delta_o in (0, 2] "
+                    "and n_f not negative"
+                );
+            }
+            return NamedVector<Type>{
+                {"momenta", batch_four_vec_array(n)},
+                {"born", batch_float},
+                {"color_correlated", Type{DataType::dt_float64, batch_size, {n, n}}},
+                {"alpha_s", batch_float},
+                {"ren_scale", batch_float},
+                {"fact_scale1", batch_float},
+                {"fact_scale2", batch_float},
+            };
+        }(),
+        {{"soft_virtual", batch_float},
+         {"ren_coefficient", batch_float},
+         {"fact_coefficients", batch_float_array(2)}}
+    ),
+    _alpha_s_power(alpha_s_power),
+    _xicut(xicut),
+    _delta_o(delta_o),
+    _n_f(n_f) {
+    std::size_t c = color_linked_configuration(configurations);
+    const auto& config = configurations.at(c);
+    double gamma_g = (11. * CA - 2. * n_f) / 6.;
+    double gamma_prime_g = (67. / 9. - 2. * PI * PI / 3.) * CA - 23. * n_f / 18.;
+    double gamma_q = 1.5 * CF;
+    double gamma_prime_q = (6.5 - 2. * PI * PI / 3.) * CF;
+    for (std::size_t r = 0; r < config.particle_count(); ++r) {
+        if (r == config.i_fks) {
+            continue;
+        }
+        // the Born of a gluon i: the real process without it
+        int color = config.colors.at(r);
+        double mass = config.masses.at(r);
+        bool gluon = mass == 0. && color == 8;
+        bool quark = mass == 0. && std::abs(color) == 3;
+        _masses.push_back(mass);
+        _casimir.push_back(gluon ? CA : (quark ? CF : 0.));
+        _gamma.push_back(gluon ? gamma_g : (quark ? gamma_q : 0.));
+        _gamma_prime.push_back(gluon ? gamma_prime_g : (quark ? gamma_prime_q : 0.));
+    }
+    for (auto [m, n] : FKSEikonals(configurations).born_pairs(c)) {
+        _pair_m.push_back(m);
+        _pair_n.push_back(n);
+        _pair_factor.push_back(m == n ? -1. : -2.);
+    }
+    if (_pair_factor.empty()) {
+        _pair_m.push_back(0);
+        _pair_n.push_back(0);
+        _pair_factor.push_back(0.);
+    }
+    _beta = alpha_s_power * gamma_g;
+}
+
+NamedVector<Value> FKSSoftVirtual::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    auto [soft_virtual, ren, fact] = fb.fks_soft_virtual(
+        args.at("momenta"),
+        args.at("born"),
+        args.at("color_correlated"),
+        args.at("alpha_s"),
+        args.at("ren_scale"),
+        args.at("fact_scale1"),
+        args.at("fact_scale2"),
+        _casimir,
+        _gamma,
+        _gamma_prime,
+        _masses,
+        _pair_m,
+        _pair_n,
+        _pair_factor,
+        std::vector<double>{_xicut, _delta_o, _beta}
+    );
+    return {
+        {"soft_virtual", soft_virtual},
+        {"ren_coefficient", ren},
+        {"fact_coefficients", fact}
     };
 }

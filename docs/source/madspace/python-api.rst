@@ -58,6 +58,7 @@ Builders that assemble compute-graph functions for channel weights, energy scale
    python/FKSLimits
    python/FKSPrefactors
    python/FKSSectorFunction
+   python/FKSSoftVirtual
    python/FKSSplittingKernels
    python/FKSSubtraction
    python/FunctionGenerator

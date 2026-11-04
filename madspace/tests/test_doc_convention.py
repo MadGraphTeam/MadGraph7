@@ -119,6 +119,13 @@ CASES = {
         pdf_scheme=ms.FKSSubtraction.PdfScheme.msbar,
         n_f=5.0,
     ),
+    "FKSSoftVirtual": dict(
+        configurations=FKS_CONFIGURATIONS,
+        alpha_s_power=0,
+        xicut=0.5,
+        delta_o=1.0,
+        n_f=5.0,
+    ),
     "FKSPrefactors": dict(
         configurations=FKS_CONFIGURATIONS,
         xicut=0.5,

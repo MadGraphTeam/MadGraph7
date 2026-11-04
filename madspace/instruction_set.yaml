@@ -3275,6 +3275,66 @@ fks_subtraction:
   vectorized: False
   desc: "The real emission and its FKS counterterms with their signs, symmetry factors and conditions, as compute_real_emission and compute_soft_counter_term and its siblings in fks_singular.f, the collinear remnants added to the collinear counterterms: the soft counterterm where xi_hat xi_max_s <= xiScut and xi <= xiScut, the collinear one where y > 1 - deltaS, the soft-collinear one where both xi_hat xi_max_c and xi_c are below xiScut and y > 1 - deltaS, each zero where its momenta are not generated."
 
+fks_soft_virtual:
+  inputs:
+    - name: momenta
+      type: [float, n, 4]
+      desc: "momenta of the Born"
+    - name: born
+      type: [float]
+      desc: "the Born"
+    - name: color_correlated
+      type: [float, n, n]
+      desc: "color-correlated Borns <T_a . T_b> B of the particles a, b of the Born (C_a B for a = b)"
+    - name: alpha_s
+      type: [float]
+      desc: "strong coupling"
+    - name: ren_scale
+      type: [float]
+      desc: "renormalization scale, also the Ellis-Sexton scale"
+    - name: fact_scale1
+      type: [float]
+      desc: "factorization scale of the first beam"
+    - name: fact_scale2
+      type: [float]
+      desc: "factorization scale of the second beam"
+    - name: casimir
+      type: [float, single, n]
+      desc: "color factor C of each massless gluon (C_A) or quark (C_F) of the Born, zero for the other particles"
+    - name: gamma
+      type: [float, single, n]
+      desc: "gamma of FKS of each massless gluon or quark, zero for the other particles"
+    - name: gamma_prime
+      type: [float, single, n]
+      desc: "gamma' of FKS of each massless gluon or quark, zero for the other particles"
+    - name: masses
+      type: [float, single, n]
+      desc: "mass of each particle of the Born"
+    - name: pair_m
+      type: [int, single, k]
+      desc: "position of m of each pair of color-linked particles in the Born"
+    - name: pair_n
+      type: [int, single, k]
+      desc: "position of n of each pair in the Born"
+    - name: pair_factor
+      type: [float, single, k]
+      desc: "factor of each pair, -2 and -1 for a massive particle with itself, zero for padding"
+    - name: options
+      type: [float, single, 3]
+      desc: "xicut and deltaO of fks_powers.inc and b gamma_g with the power b of alpha_s of the Born"
+  outputs:
+    - name: soft_virtual
+      type: [float]
+      desc: "the n-body part without the Born and the virtual"
+    - name: ren_coefficient
+      type: [float]
+      desc: "coefficient of log mu_R^2 at a fixed virtual"
+    - name: fact_coefficients
+      type: [float, 2]
+      desc: "coefficients of log mu_F^2 of the two beams"
+  vectorized: False
+  desc: "The n-body part of bornsoftvirtual in fks_singular.f without the virtual, for QCD and with the Ellis-Sexton scale at mu_R. With a = alpha_s / (2 pi), it is a B sum_j Q_j over the massless gluons and quarks plus a sum_(m, n) f_mn <T_m . T_n> B I_mn over the pairs of color-linked particles, with the integrated eikonals I_mn of eikonal_Ireg. Q_j = gamma'_j - log(s deltaO / (2 mu_R^2)) (gamma_j - 2 C_j log(2 E_j / (xicut sqrt_s))) + 2 C_j (log^2(2 E_j / sqrt_s) - log^2 xicut) - 2 gamma_j log(2 E_j / sqrt_s) for a final-state parton with its energy in the partonic center-of-mass frame, -log(mu_F^2 / mu_R^2) (gamma_j + 2 C_j log xicut) for an incoming one with the factorization scale of its beam. The coefficients of log mu_R^2 and log mu_F^2 of the weight lines of MadFKS are a b gamma_g B and -a (gamma_j + 2 C_j log xicut) B."
+
 ---
 title: Invariants
 
