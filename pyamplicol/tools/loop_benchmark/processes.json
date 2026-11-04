@@ -493,6 +493,75 @@
       }
     },
     {
+      "name": "gg_gggggg",
+      "pdgs": [
+        21,
+        21,
+        21,
+        21,
+        21,
+        21,
+        21,
+        21
+      ],
+      "born_orders": {
+        "QCD": 6,
+        "QED": 0
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "particle_veto": [
+        6
+      ],
+      "scheme_note": "2->6 row (M-FINAL item 1, m-final/PLAN.md \u00a72.1): top-free, particle_veto [6] (the user's Q-A ruling of 2026-10-31 ~14:00: generated and timed with massless quarks only, N_f = 5, as gg_ggggg); no external reference exists at 2->6 (no provider serves it, so no provider entry): acceptance is internal (Catani poles, the recommended stability estimate, Ward), its speed is reported without a gate"
+    },
+    {
+      "name": "uux_gggggg",
+      "pdgs": [
+        2,
+        -2,
+        21,
+        21,
+        21,
+        21,
+        21,
+        21
+      ],
+      "born_orders": {
+        "QCD": 6,
+        "QED": 0
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "particle_veto": [
+        6
+      ],
+      "scheme_note": "2->6 row (M-FINAL item 1, m-final/PLAN.md \u00a72.1): top-free, particle_veto [6] (the user's Q-A ruling of 2026-10-31 ~14:00: generated and timed with massless quarks only, N_f = 5, as gg_ggggg); no external reference exists at 2->6 (no provider serves it, so no provider entry): acceptance is internal (Catani poles, the recommended stability estimate, Ward), its speed is reported without a gate"
+    },
+    {
+      "name": "uux_uuxgggg",
+      "pdgs": [
+        2,
+        -2,
+        2,
+        -2,
+        21,
+        21,
+        21,
+        21
+      ],
+      "born_orders": {
+        "QCD": 6,
+        "QED": 0
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "particle_veto": [
+        6
+      ],
+      "scheme_note": "2->6 row (M-FINAL item 1, m-final/PLAN.md \u00a72.1): top-free, particle_veto [6] (the user's Q-A ruling of 2026-10-31 ~14:00: generated and timed with massless quarks only, N_f = 5, as gg_ggggg); no external reference exists at 2->6 (no provider serves it, so no provider entry): acceptance is internal (Catani poles, the recommended stability estimate, Ward), its speed is reported without a gate"
+    },
+    {
       "name": "gg_ttxemepg_ew",
       "pdgs": [
         21,
