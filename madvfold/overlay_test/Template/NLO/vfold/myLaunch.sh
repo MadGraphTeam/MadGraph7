@@ -95,9 +95,9 @@ fi
 
 # Reduce ENV_FVZ_NDUMP from 50 (eebb) to 5 (eebbbb, eemumubb) to reduce dump sizes
 if [ "${PROC}" != "${PROC/eebb_}" ]; then
-  export ENV_FVZ_NDUMP=50 # dump 50 events as in myLaunch.sh (eebb)
+  if [ "${ENV_FVZ_NDUMP}" == "" ]; then export ENV_FVZ_NDUMP=50; fi # dump 50 events as in myLaunch.sh (eebb)
 else
-  export ENV_FVZ_NDUMP=5 # dump 5 events as in myLaunch.sh (eebbbb, eemumubb)
+  if [ "${ENV_FVZ_NDUMP}" == "" ]; then export ENV_FVZ_NDUMP=5; fi # dump 5 events as in myLaunch.sh (eebbbb, eemumubb)
 fi
 
 # Folding
@@ -228,11 +228,12 @@ elif [ "${PROC}" != "${PROC/eemumubbg_}" ]; then
   export ENV_VFOLD_CHANNELS="11.0"   # GF channels (space-separated) [DEFAULT: all channels]
 elif [ "${PROC}" != "${PROC/ggttg_}" ]; then
   if [ "${ENV_NEVENTS}" == "" ]; then ENV_NEVENTS=10; fi # default 10
-  export ENV_VFOLD_MINT0_NITERS=2    # MINT0 (grid setup) iterations [DEFAULT: 12]
-  export ENV_VFOLD_MINT0_ACC=0.5     # MINT0 accuracy target [DEFAULT: 0.03]
-  export ENV_VFOLD_MINT1_NITERS=2    # MINT1 (upper envelope) iterations [DEFAULT: 12]
-  export ENV_VFOLD_MINT0_NPOINTS=50  # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
-  export ENV_VFOLD_MINT1_NPOINTS=50  # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
+  # Step 14n: these can be set in the environment, e.g. to generate the -o test grids
+  if [ "${ENV_VFOLD_MINT0_NITERS}" == "" ]; then export ENV_VFOLD_MINT0_NITERS=2; fi    # MINT0 (grid setup) iterations [DEFAULT: 12]
+  if [ "${ENV_VFOLD_MINT0_ACC}" == "" ]; then export ENV_VFOLD_MINT0_ACC=0.5; fi        # MINT0 accuracy target [DEFAULT: 0.03]
+  if [ "${ENV_VFOLD_MINT1_NITERS}" == "" ]; then export ENV_VFOLD_MINT1_NITERS=2; fi    # MINT1 (upper envelope) iterations [DEFAULT: 12]
+  if [ "${ENV_VFOLD_MINT0_NPOINTS}" == "" ]; then export ENV_VFOLD_MINT0_NPOINTS=50; fi # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
+  if [ "${ENV_VFOLD_MINT1_NPOINTS}" == "" ]; then export ENV_VFOLD_MINT1_NPOINTS=50; fi # MINT1 points/iter [DEFAULT: -1=auto, can grow to 1000s]
   # NB: ENV_VFOLD_CHANNELS unset for now: all GF channels
 else
   echo "ERROR! Unknown PROC=${PROC}"
