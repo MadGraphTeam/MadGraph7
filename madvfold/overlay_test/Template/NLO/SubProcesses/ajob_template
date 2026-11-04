@@ -109,6 +109,8 @@ TAGTAGTAGTAGTAGTAGTAG for i in 1 ; do
     status=$?
     T="$(($(date +%s)-T))"
     echo "Time in seconds: ${T}" >>log.txt
+    cp -f mint_grids mint_grids_MINT$integration_step  >/dev/null 2>&1
+    cp -f input_app.txt input_app_MINT$integration_step.txt  >/dev/null 2>&1
     cp -f log.txt log_MINT$integration_step.txt  >/dev/null 2>&1
     cp -f res.dat res_$integration_step.dat  >/dev/null 2>&1
     exit $status
