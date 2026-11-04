@@ -478,6 +478,11 @@ def _identity(generated, *, fourier: bool = True) -> tuple[str, str, str]:
 
     sha = lambda data: hashlib.sha256(data).hexdigest()  # noqa: E731
     native = generated.native
+    # Catani's stored QCD record (``dipoles.catani_record``, M-FINAL
+    # MF-8G-3) postdates the pins.
+    if "catani" in native.record:
+        record = {key: value for key, value in native.record.items() if key != "catani"}
+        native = dataclasses.replace(native, record=record)
     if not fourier:
         record = {
             key: value for key, value in native.record.items() if key != "fourier"
