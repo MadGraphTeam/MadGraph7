@@ -50,6 +50,9 @@ module vfold_rng_slots
   ! Step 8q: MINT2's Von Neumann accept/reject draw, as in step 9d (drawn with
   ! the candidate's other event slots, not as a bare ran3 after the batch).
   integer, parameter, public :: ISLOT_EV_UPPER_BOUND      = 8 ! mint_module.f90 check_upper_bound
+  ! Step 14a: the random order of the s-channel invariants (setcuts.f
+  ! sChan_order, once per kpoint: all its choices derive from this number).
+  integer, parameter, public :: ISLOT_EV_SCHAN_ORDER      = 9 ! setcuts.f sChan_order
   integer, parameter, public :: NSLOT_EVENT = 9
 
   ! --- Fold-level slots: drawn once per fold. ---

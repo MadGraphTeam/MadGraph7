@@ -630,6 +630,8 @@ c
 
       subroutine sChan_order(ns_channel,order)
       use mint_module
+      use vfold_mode, only: vfold_use_rng_slots
+      use vfold_rng_slots, only: vfold_newran2, ISLOT_EV_SCHAN_ORDER
       implicit none
       include 'nexternal.inc'
       include 'maxparticles.inc'
@@ -642,7 +644,14 @@ c
       logical done(-nexternal:nexternal)
       external ran2
       save ord
-      if (.not. new_point) then
+c AV: with the vfold RNG slots (all modes but F0), the order is derived from
+c an event slot of this kpoint, so it is recomputed at each call (the saved
+c ord may be that of another kpoint, gathered in between with kpoint batching)
+      logical slots
+      double precision rnd_ev
+      slots = vfold_use_rng_slots()
+      if (slots) rnd_ev = vfold_newran2(ISLOT_EV_SCHAN_ORDER,.false.)
+      if (.not. new_point .and. .not. slots) then
          do j=-1,-ns_channel,-1
             order(j)=ord(j)
          enddo
@@ -663,7 +672,14 @@ c
                pos(npos)=i
             endif
          enddo
-         if (npos.gt.1) then
+         if (npos.gt.1 .and. slots) then
+c AV: one choice among npos, then rescale the rest of rnd_ev to [0,1) for
+c the next choice
+            ipos=min(int(rnd_ev*npos)+1,npos)
+            rnd_ev=min(max(rnd_ev*npos-(ipos-1),0d0),1d0)
+            ord(j)=pos(ipos)
+            done(pos(ipos))=.true.
+         elseif (npos.gt.1) then
             rnd=ran2()
             ipos=min(int(rnd*npos)+1,npos)
             ord(j)=pos(ipos)
