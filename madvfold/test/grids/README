@@ -2,9 +2,13 @@ MINT0/MINT1 grids for the MINT2-only tests (vfold/myLaunch.sh -o).
 
 'output <procdir> --vfold-with-tests' runs madvfold/DEV/setupVfoldTests.sh,
 which copies <proc>/ from this directory (if it exists) into
-vfold/test/grids of the generated process directory <proc>_vfgen, together
-with this README. <proc> is the name of the process directory without
-'_vfgen' (e.g. eebbbb for madvfold/DEV/eebbbb_vfgen).
+vfold/test/grids of the generated process directory, together with this
+README. <proc> is the name of the process used by MadGraph for its
+SubProcesses/P0_<proc> directory, whatever the name of the process
+directory and the order of the particles in the generate command (e.g.
+epem_bbbxbx for 'generate e+ e- > b b~ b b~ [QCD]', also in
+madvfold/DEV/eebbbb_vfgen; the grids are installed only for processes
+with a single P directory).
 
 Each <proc>/folding_<f1>_<f2>_<f3>[_Delta] directory holds, for one
 folding without/with MC@NLO-Delta, only what myLaunch.sh -o uses:
@@ -16,14 +20,14 @@ folding without/with MC@NLO-Delta, only what myLaunch.sh -o uses:
 - <Pdir>/GF<channel>: the grids of the GF channels used in the tests
   (res_1.dat, mint_grids, res_1, grid.MC_integer and results.dat)
 
-eebbbb (channel GF11.0):
+epem_bbbxbx (eebbbb, channel GF11.0):
 - folding_8_4_1 and folding_1_1_1 come from vfold5363 (MG5 3.6.3), which
   took aS(MZ)=0.119 from the PDF set even with lpp=0
 - folding_8_4_1_Delta and folding_1_1_1_Delta come from Delta physics
   runs in vfold5381 (MG5 3.8.1, aS(MZ)=0.118), as the MINT1 upper envelope
   must be computed with Delta
 
-eemumubbg (channel GF11.0):
+epem_bbxmummupg (eemumubbg, channel GF11.0):
 - folding_8_4_1 and folding_1_1_1 come from the default physics runs of
   GEN_proc.sh in vfold5381 (MG5 3.8.1, aS(MZ)=0.118), Events/run_gen841
   and Events/run_gen111 of eemumubbg_vfalt (branch vfold5381cgOldGrids)

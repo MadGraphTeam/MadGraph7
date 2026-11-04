@@ -10,7 +10,9 @@
 # - apply the post-processing of that script that does not need a launch
 # - copy the MINT0/MINT1 test grids (for the -o tests, see
 #   madvfold/test/grids/README) from a grids directory
-#   (default madvfold/test/grids/<proc>), if it exists
+#   (default madvfold/test/grids/<proc>), if it exists, where <proc> is the
+#   name of the process used by MadGraph for its SubProcesses/P0_<proc>
+#   directory (e.g. epem_bbbxbx, not the alias eebbbb)
 # The cudacpp libraries for mode C are generated and built before this, for any
 # 'output --vfold' (vfold/generateCudacpp.sh, see madvfold/README_CUDACPP.md).
 # The .gitignore and the test scripts of the vfold subdirectory are installed
@@ -24,7 +26,7 @@ set -o pipefail
 
 if [ "$1" == "" ] || [ "$3" != "" ]; then
   echo "Usage:   $0 <procdir> [<gridsdir>]"
-  echo "Example: $0 madvfold/DEV/eebbbb_vfgen madvfold/test/grids/eebbbb"
+  echo "Example: $0 madvfold/DEV/eebbbb_vfgen madvfold/test/grids/epem_bbbxbx"
   exit 1
 fi
 mg5dir=$(cd $(dirname $0)/../..; pwd -P)
@@ -32,9 +34,16 @@ procdir=$(cd $1; pwd -P)
 if [ "$2" != "" ]; then
   gridsdir=$(cd $2; pwd -P)
 else
-  proc=$(basename ${procdir}); proc=${proc%_vfgen*} # e.g. eebbbb_vfgen -> eebbbb, epem_bbxbbx_vfgen -> epem_bbxbbx
+  # The name of the process used by MadGraph (step 14e), from its single
+  # SubProcesses/P<n>_<proc> directory (e.g. P0_epem_bbbxbx -> epem_bbbxbx for
+  # 'generate e+ e- > b b~ b b~ [QCD]'), whatever the name of the process directory
+  # (e.g. madvfold/DEV/eebbbb_vfgen) and the order of the particles in the generate
+  # command (MadGraph orders them); no default grids if there are several P dirs
+  pdirs=$(cd ${procdir}/SubProcesses; for d in P*_*; do if [ -d ${d} ]; then echo ${d}; fi; done)
+  proc=
+  if [ "$(echo ${pdirs} | wc -w)" == "1" ]; then proc=${pdirs#P*_}; fi
   gridsdir=${mg5dir}/madvfold/test/grids/${proc}
-  if [ ! -d ${gridsdir} ]; then gridsdir=; fi
+  if [ "${proc}" == "" ] || [ ! -d ${gridsdir} ]; then gridsdir=; fi
 fi
 echo "INFO: setupVfoldTests.sh procdir=${procdir}"
 echo "INFO: setupVfoldTests.sh gridsdir=${gridsdir}"
