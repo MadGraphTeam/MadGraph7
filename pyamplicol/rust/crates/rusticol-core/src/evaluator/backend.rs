@@ -2934,6 +2934,18 @@ sys.stdout.buffer.write(evaluator.save())
             |r| r.to_multi_prec_float(256),
             Float::with_val(256, 1e-60),
         );
+        // The stored form: a whole-state save (PyPI 3.0.3) re-encoded with only
+        // the state it references decodes to the same evaluator; a state-minimal
+        // one (the pinned Community build) is stored as it is.
+        let encoded = |evaluator: &ExpressionEvaluator<Complex<Rational>>| {
+            bincode::encode_to_vec(evaluator, bincode::config::standard()).unwrap()
+        };
+        if let Some(minimal) = state_minimal_saved_evaluator(&producer.stdout).unwrap() {
+            assert!(minimal.len() < producer.stdout.len());
+            let (_, reloaded, _) = load_evaluator_state_bytes(&minimal, "state-minimal").unwrap();
+            assert_eq!(encoded(&reloaded), encoded(&exact));
+            assert_eq!(state_minimal_saved_evaluator(&minimal).unwrap(), None);
+        }
         let mut trailing = producer.stdout;
         trailing.push(0);
         assert!(load_evaluator_state_bytes(&trailing, "trailing byte").is_err());
