@@ -98,6 +98,7 @@ two legs of the same fermion species of a clone.
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -107,8 +108,41 @@ from typing import Any
 from .ct_color_flow import UnloweredCountertermColour, two_point_colour_factor
 
 _SPINS = (1, 2, 3)
-_DUMMY_OFFSET = (1000, 2000, 3000)  # dummies of the two propagators and Pi
-_INNER = (9001, 9002)  # the indices A and B of the composition
+# A composition renames the UFO dummy indices n of the two propagators and of
+# Pi to n + B, n + 2B and n + 3B and names its inner indices A and B 9B + 1 and
+# 9B + 2 (the mixing reading's index 9B + 101), for the stride B of
+# ``_dummy_stride``: 1000 for the usual small negative UFO dummies.
+_DEFAULT_DUMMY_STRIDE = 1000
+_DUMMY = re.compile(r"dummy\(\s*(-?[0-9]+)\s*\)")
+
+
+def _dummy_stride(texts: Sequence[str]) -> int:
+    """The stride B whose renamed dummy ranges and inner indices never meet
+    the dummies of ``texts``: the default 1000 while every dummy is in
+    (-1000, 0) (the ranges n + kB stay below kB), else the smallest
+    power-of-ten multiple of it above twice the largest |dummy| (each range
+    then lies within B / 2 of kB, below 9B)."""
+
+    values = [int(value) for text in texts for value in _DUMMY.findall(str(text))]
+    if all(-_DEFAULT_DUMMY_STRIDE < value < 0 for value in values):
+        return _DEFAULT_DUMMY_STRIDE
+    largest = max(abs(value) for value in values)
+    stride = _DEFAULT_DUMMY_STRIDE
+    while stride <= 2 * largest:
+        stride *= 10
+    return stride
+
+
+def _offsets(stride: int) -> tuple[int, int, int]:
+    """Dummy offsets of the leaving and entering propagators and of Pi."""
+
+    return stride, 2 * stride, 3 * stride
+
+
+def _inner(stride: int) -> tuple[int, int]:
+    """The indices A and B of the composition."""
+
+    return 9 * stride + 1, 9 * stride + 2
 
 
 @dataclass
@@ -192,6 +226,14 @@ def lower_line_insertions(
     particles = {str(item["name"]): item for item in payload["particles"]}
     propagators = {str(item["name"]): item for item in payload["propagators"]}
     lorentz = {str(item["name"]): item for item in payload["lorentz_structures"]}
+    stride = _dummy_stride(
+        [str(item["structure"]) for item in lorentz.values()]
+        + [
+            str(item.get(part, ""))
+            for item in propagators.values()
+            for part in ("numerator", "denominator")
+        ]
+    )
     out = LineInsertions()
 
     def numerator(name: str) -> str:
@@ -254,6 +296,7 @@ def lower_line_insertions(
                     lines[key],
                     [(insertions[term], term) for term in terms],
                     lorentz,
+                    stride,
                 )
             if factor is None or isinstance(factor, str):
                 grown |= names & weyl
@@ -308,6 +351,7 @@ def lower_line_insertions(
                     lorentz,
                     particles,
                     clones[0].into,
+                    stride,
                 )
             ):
                 scales.append(f"{clones[0].name}_X{index}")
@@ -347,10 +391,12 @@ def lower_line_insertions(
                                     lorentz,
                                     particles,
                                     clone.into,
+                                    stride,
                                 ),
                                 strict=True,
                             )
                         ],
+                        stride,
                     ),
                     denominator=(
                         f"({_engine_denominator(entering, particles[clone.into])})"
@@ -737,8 +783,10 @@ def _momentum_ratio(
     legs = list(term.particles)
     spins = [int(particles[name]["spin"]) for name in legs]
     scalar, vector = 1 + spins.index(1), 1 + spins.index(3)
-    momentum, index = _placeholder(), E("UFO::{}::dummy(9101)")
-    structure = E(str(lorentz[term.lorentz]["structure"]))
+    text = str(lorentz[term.lorentz]["structure"])
+    momentum = _placeholder()
+    index = E(f"UFO::{{}}::dummy({9 * _dummy_stride((text,)) + 101})")
+    structure = E(text)
     structure = structure.replace(
         E(f"UFO::{{}}::P(a_,UFO::{{}}::idx(1,{scalar}))"), -momentum(E("a_"))
     ).replace(E(f"UFO::{{}}::P(a_,UFO::{{}}::idx(1,{vector}))"), momentum(E("a_")))
@@ -800,6 +848,7 @@ def _insertion_terms(
     lorentz: Mapping[str, Mapping[str, Any]],
     particles: Mapping[str, Mapping[str, Any]],
     current: str,
+    stride: int,
 ) -> list[tuple[Any, Any]]:
     """``(scale, Pi_t(r -> A, o -> B))`` of every term for a ``current`` line.
 
@@ -810,14 +859,14 @@ def _insertion_terms(
 
     from symbolica import E
 
-    inner = [E(f"UFO::{{}}::dummy({index})") for index in _INNER]
+    inner = [E(f"UFO::{{}}::dummy({index})") for index in _inner(stride)]
     out = []
     for coupling, term in terms:
         legs = list(term.particles)
         receiving = len(legs) - legs[::-1].index(current)  # 1-based UFO leg
         other = 3 - receiving
         structure = _renamed_dummies(
-            E(str(lorentz[term.lorentz]["structure"])), _DUMMY_OFFSET[2]
+            E(str(lorentz[term.lorentz]["structure"])), _offsets(stride)[2]
         )
         momentum = _placeholder()
         structure = structure.replace(
@@ -881,7 +930,7 @@ def _reversed_chain(structure: Any) -> Any:
 
 
 def _line_numerator(
-    entering: str, leaving: str, terms: Sequence[tuple[Any, Any]]
+    entering: str, leaving: str, terms: Sequence[tuple[Any, Any]], stride: int
 ) -> str:
     """``N_out(1, B) Pi(r -> A, o -> B) N_in(A, 2)`` in the payload's syntax."""
 
@@ -890,18 +939,22 @@ def _line_numerator(
     insertion = E("0")
     for scale, structure in terms:
         insertion += scale * structure
-    return _composed(entering, leaving, insertion)
+    return _composed(entering, leaving, insertion, stride)
 
 
-def _composed(entering: str, leaving: str, insertion: Any) -> str:
+def _composed(entering: str, leaving: str, insertion: Any, stride: int) -> str:
     from symbolica import E
 
-    inner = [E(f"UFO::{{}}::dummy({index})") for index in _INNER]
-    first = _with_index(
-        _momenta_as_placeholder(E(leaving)), 2, inner[1], _DUMMY_OFFSET[0]
-    )
+    if _dummy_stride((entering, leaving)) > stride:
+        raise ValueError(
+            "a two-point composition's propagator dummy indices exceed the "
+            f"stride {stride} of its renamed ranges"
+        )
+    inner = [E(f"UFO::{{}}::dummy({index})") for index in _inner(stride)]
+    offsets = _offsets(stride)
+    first = _with_index(_momenta_as_placeholder(E(leaving)), 2, inner[1], offsets[0])
     second = _with_index(
-        _momenta_as_placeholder(E(entering)), 1, inner[0], _DUMMY_OFFSET[1]
+        _momenta_as_placeholder(E(entering)), 1, inner[0], offsets[1]
     )
     # Expanded, one spinor chain or tensor per term. (The unexpanded product
     # once seemed not to finish in ``custom_propagator_components``: that was
@@ -938,6 +991,7 @@ def _line_factor(
     clones: Sequence[_Clone],
     terms: Sequence[tuple[str, Any]],
     lorentz: Mapping[str, Mapping[str, Any]],
+    stride: int,
 ) -> Any:
     """The scalar ``kappa`` with ``P_Y Pi P_X = kappa P`` on a Weyl line.
 
@@ -982,10 +1036,12 @@ def _line_factor(
         line = components(leaving, leaving_denominator, spin)
         denominator = f"({entering_denominator})*({leaving_denominator})"
         for index, (_scale, structure) in enumerate(
-            _insertion_terms(terms, lorentz, particles, clone.into)
+            _insertion_terms(terms, lorentz, particles, clone.into, stride)
         ):
             ratio = _constant_ratio(
-                components(_composed(entering, leaving, structure), denominator, spin),
+                components(
+                    _composed(entering, leaving, structure, stride), denominator, spin
+                ),
                 line,
             )
             if ratio is None:
@@ -998,7 +1054,7 @@ def _line_factor(
         return "two-point insertion differs between the directions of a Weyl line"
     total = None
     for index, (scale, _structure) in enumerate(
-        _insertion_terms(terms, lorentz, particles, clones[0].into)
+        _insertion_terms(terms, lorentz, particles, clones[0].into, stride)
     ):
         term = ratios[index][0] * scale
         total = term if total is None else total + term

@@ -220,7 +220,7 @@ def build_color_contraction_plan(
                         left_sector,
                         right_sector,
                         accuracy=accuracy,
-                        full_col_acc=20,
+                        full_col_acc=None,
                     )
                     factor_cache[sector_pair] = weight
                 if abs(weight) <= 0.0:
@@ -299,7 +299,7 @@ def _build_repeated_color_contraction_block(
                 left_sector,
                 right_sector,
                 accuracy=accuracy,
-                full_col_acc=20,
+                full_col_acc=None,
             )
             if abs(weight) <= 0.0:
                 continue
@@ -553,7 +553,7 @@ def color_contraction_factors(
     left: LCColorSector,
     right: LCColorSector,
     *,
-    full_col_acc: int = 20,
+    full_col_acc: int | None = None,
 ) -> tuple[float, float, float]:
     """Return reference-normalized (LC, NLC, full) colour factors."""
 
@@ -585,7 +585,7 @@ def color_contraction_factor(
     right: LCColorSector,
     *,
     accuracy: str,
-    full_col_acc: int = 20,
+    full_col_acc: int | None = None,
 ) -> float:
     """Return only the requested reference-normalized colour factor."""
 

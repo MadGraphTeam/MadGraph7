@@ -46,8 +46,8 @@ q[r] = p[permutation[r]]
   the UMAMI momentum permutation.
 - A permutation never moves a leg across `>`. It may exchange the two incoming
   legs, as between `d g > d g` and `g u > u g`.
-- `factor` is a signed rational number whose numerator and denominator are at
-  most 99 in absolute value. `--flavor-blind` records factor 1; a
+- `factor` is a signed rational number: the simplest rational within the
+  comparison tolerance of the measured ratio. `--flavor-blind` records factor 1; a
   flavour-blind member gets another factor only when its group is later merged
   numerically. A member that was not generated is evaluated through its
   representative and must have a positive factor; a map that would give one a
@@ -145,8 +145,8 @@ has `(1, 1, 1, 1)`. `--flavor-blind` therefore never puts them in one class.
 
 When several flavours of a subprocess share a type and a profile (`s` and `c`
 in `d d~ > s c s~ c~`), each pairing of them is a valid leg mapping. The first
-mapping pairs them by increasing `|PDG|`. The numerical analysis tries at most
-24 such mappings, and at most 24 conjugated ones.
+mapping pairs them by increasing `|PDG|`. The numerical analysis tries every
+such mapping, then every conjugated one.
 
 ## Charge conjugation
 
@@ -432,7 +432,7 @@ describes every component at all three points:
 | common ratio across points | relative `1e-9` |
 | a point that vanishes entirely on either side | no relation |
 | imaginary part of the ratio | at most `1e-9` of its modulus |
-| recorded factor | rational within `1e-9` relative, numerator and denominator at most 99 in absolute value |
+| recorded factor | the simplest rational within `1e-9` relative (no bound on numerator or denominator) |
 | `--only-unit-multiplier` | only factor 1 is accepted |
 | seed | `20260917`, recorded in the map |
 
@@ -835,8 +835,8 @@ permutations and conjugation flags, all with factor 1, now with basis
   the same subprocess would; values and flow selection agree.
 - The numerical analysis is a test at three f64 points, not a proof: two
   matrix elements that agree at those points within `1e-9` are grouped.
-- The search covers only relations with a rational factor whose numerator
-  and denominator are at most 99, a leg permutation within each side, and
+- The search covers only relations with a rational factor (the simplest
+  rational within the tolerance), a leg permutation within each side, and
   optional charge conjugation with unchanged helicities. It does not cover
   CP-type relations or crossing between the initial and final states.
 - Subprocesses generated with selected helicities or colour flows are never

@@ -31,7 +31,12 @@ from pyamplicol._internal.versions import (
 from pyamplicol.api.errors import ArtifactError
 from pyamplicol.generation.process_grouping import GroupMember, ProcessGroupMap
 
-from .manifest import MANIFEST_NAME, ArtifactManifest, load_manifest
+from .manifest import (
+    MANIFEST_NAME,
+    ArtifactManifest,
+    _process_initial_count,
+    load_manifest,
+)
 from .process_groups import initial_process_groups, read_process_groups
 from .security import confined_path, normalize_relative_path
 
@@ -2478,6 +2483,12 @@ def _physics_inspection(
             raise ArtifactError(
                 f"{relative}.external_particles disagrees with the process arity"
             )
+        # One initial particle (a decay) or two, as the process expression says.
+        initial_count = _process_initial_count(
+            str(process.get("expression")),
+            f"process {process.get('id')}",
+            len(external_pdgs),
+        )
         for index, (raw_external, pdg) in enumerate(
             zip(externals, external_pdgs, strict=True)
         ):
@@ -2502,7 +2513,8 @@ def _physics_inspection(
                 or not isinstance(external.get("pdg"), int)
                 or external.get("pdg") != pdg
                 or external.get("momentum_slot") != index
-                or external.get("role") != ("initial" if index < 2 else "final")
+                or external.get("role")
+                != ("initial" if index < initial_count else "final")
                 or external.get("momentum_components") != ["E", "px", "py", "pz"]
             ):
                 raise ArtifactError(

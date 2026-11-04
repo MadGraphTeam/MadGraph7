@@ -1026,7 +1026,7 @@ def recurrence_exact_color_coefficients(
             left_sector,
             right_sector,
             accuracy=contraction.color_accuracy,
-            full_col_acc=20,
+            full_col_acc=None,
         )
         symmetry = entry.symmetry_factor
         if symmetry not in {1.0, 2.0}:

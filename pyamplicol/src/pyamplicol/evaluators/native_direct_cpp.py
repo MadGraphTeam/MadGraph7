@@ -45,8 +45,10 @@ _DEFAULT_STACK_LIMIT = 64 * 1024
 _SUPPORTED_LANE_WIDTHS = frozenset({2, 4})
 _COMPILER_GATE_DIR_ENV = "PYAMPLICOL_NATIVE_COMPILER_GATE_DIR"
 _COMPILER_GATE_SLOT_COUNT_ENV = "PYAMPLICOL_NATIVE_COMPILER_SLOT_COUNT"
+# Optional wall-time bound of one compiler run (seconds; operational, never part
+# of the evaluator identity). Unset: the compiler runs to completion.
+_COMPILER_TIMEOUT_ENV = "PYAMPLICOL_NATIVE_COMPILER_TIMEOUT_SECONDS"
 _COMPILER_GATE_POLL_SECONDS = 0.05
-_MAX_COMPILER_GATE_SLOTS = 64
 _COMPILER_TERMINATE_GRACE_SECONDS = 0.5
 _COMPILER_KILL_GRACE_SECONDS = 5.0
 
@@ -131,7 +133,8 @@ class NativeDirectCppCompiler:
     optimization_level: int = 3
     native_arch: bool = False
     extra_flags: tuple[str, ...] = ()
-    timeout_seconds: float = 1800.0
+    # None: no wall-time bound (the default); a positive value bounds one run.
+    timeout_seconds: float | None = None
 
     def __post_init__(self) -> None:
         if not self.executable or "\x00" in self.executable:
@@ -140,9 +143,15 @@ class NativeDirectCppCompiler:
             raise NativeEvaluationError(
                 "native DirectApplication compiler optimization must be 0 through 3"
             )
-        if self.timeout_seconds <= 0 or not math.isfinite(self.timeout_seconds):
+        if self.timeout_seconds is not None and (
+            isinstance(self.timeout_seconds, bool)
+            or not isinstance(self.timeout_seconds, int | float)
+            or self.timeout_seconds <= 0
+            or not math.isfinite(self.timeout_seconds)
+        ):
             raise NativeEvaluationError(
-                "native DirectApplication compiler timeout must be finite and positive"
+                "native DirectApplication compiler timeout must be None (no bound) "
+                f"or finite and positive, not {self.timeout_seconds!r}"
             )
         if any(not flag or "\x00" in flag for flag in self.extra_flags):
             raise NativeEvaluationError(
@@ -356,7 +365,7 @@ def compile_native_direct_cpp(
 def _run_native_compiler(
     command: Sequence[str],
     *,
-    timeout_seconds: float,
+    timeout_seconds: float | None,
 ) -> subprocess.CompletedProcess[str]:
     """Run one compiler in a disposable process group with finite cleanup."""
 
@@ -473,9 +482,10 @@ def _native_compiler_gate() -> Iterator[_NativeCompilerGateLease]:
         raise NativeEvaluationError(
             "native DirectApplication compiler gate slot count is invalid"
         ) from error
-    if not 1 <= slot_count <= _MAX_COMPILER_GATE_SLOTS:
+    if slot_count < 1:
         raise NativeEvaluationError(
-            "native DirectApplication compiler gate slot count is invalid"
+            "native DirectApplication compiler gate slot count must be positive, "
+            f"not {slot_count}"
         )
     directory = Path(raw_directory)
     if not directory.is_absolute():
@@ -578,7 +588,29 @@ def compiler_from_symbolica_settings(
         optimization_level=optimization,
         native_arch=native_arch,
         extra_flags=extra_flags,
+        timeout_seconds=_compiler_timeout_from_environment(),
     )
+
+
+def _compiler_timeout_from_environment() -> float | None:
+    """The optional per-run compiler wall-time bound (``None``: unbounded)."""
+
+    raw = os.environ.get(_COMPILER_TIMEOUT_ENV)
+    if raw is None or not raw.strip():
+        return None
+    try:
+        value = float(raw)
+    except ValueError as error:
+        raise NativeEvaluationError(
+            f"{_COMPILER_TIMEOUT_ENV} must be a positive number of seconds, "
+            f"not {raw!r}"
+        ) from error
+    if value <= 0 or not math.isfinite(value):
+        raise NativeEvaluationError(
+            f"{_COMPILER_TIMEOUT_ENV} must be a positive number of seconds, "
+            f"not {raw!r}"
+        )
+    return value
 
 
 def _parameter_accesses(

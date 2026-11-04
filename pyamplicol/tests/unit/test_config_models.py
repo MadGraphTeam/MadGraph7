@@ -43,7 +43,16 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 121
+    assert len(FIELD_REGISTRY) == 124
+    # Tuning settings (no capability bound): defaults of the former literals.
+    assert FIELD_REGISTRY["color.adjoint_dense_max_gluons"].default == 12
+    assert FIELD_REGISTRY["color.fused_selector_max_sectors"].default == 128
+    assert FIELD_REGISTRY["color.fused_selector_max_sectors"].nullable
+    assert (
+        FIELD_REGISTRY["generation.validation.max_resolved_components"].default
+        == 1_000_000
+    )
+    assert FIELD_REGISTRY["generation.validation.max_resolved_components"].nullable
     # MS-PHOTON: the photons' alpha(0) tags (MG5_aMC's !a!).
     assert FIELD_REGISTRY["loop.external_photons"].kind == "choice_or_list_int"
     assert FIELD_REGISTRY["loop.external_photons"].default == "final"

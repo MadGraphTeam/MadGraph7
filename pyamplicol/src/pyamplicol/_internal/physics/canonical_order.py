@@ -86,8 +86,11 @@ def canonical_tensor_names(count: int) -> list[Any]:
     pools' blocks would order by their (history-dependent) positions."""
 
     if count > _BLOCK:
+        # The canonical tensor heads are one aligned block: beyond it a
+        # renaming's order would depend on the block positions (above).
         raise ValueError(
-            f"a canonical renaming with tensor heads is limited to {_BLOCK} symbols"
+            f"a canonical renaming with tensor heads has {count} symbols; its "
+            f"tensor heads share one aligned block of {_BLOCK} canonical symbols"
         )
     with _POOL_LOCK:
         if not _TENSOR_POOL:
