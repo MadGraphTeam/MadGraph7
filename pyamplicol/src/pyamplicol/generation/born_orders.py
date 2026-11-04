@@ -13,10 +13,9 @@ limits admit.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
-from typing import Any
 
 from ..color.plan import GenericColorPlan, build_color_plan
-from ..models.base import CouplingOrders, Model
+from ..models.base import CouplingOrders, Model, Vertex
 from ..processes.ir import CanonicalProcessIR
 from .dag_algorithms import (
     _closure_totals_from_color_plan,
@@ -71,9 +70,11 @@ def dag_born_amplitude_orders(
     every other root contracts its currents directly.
     """
 
-    vertices: dict[tuple[int, tuple[int, ...]], Any] = {}
-    for vertex in model.vertices:
-        vertices.setdefault((int(vertex.kind), tuple(vertex.particles)), vertex)
+    vertices: dict[tuple[int, tuple[int, ...]], Vertex] = {}
+    for model_vertex in model.vertices:
+        vertices.setdefault(
+            (int(model_vertex.kind), tuple(model_vertex.particles)), model_vertex
+        )
     orders: set[CouplingOrders] = set()
     for root in dag.amplitude_roots:
         left = dag.currents[root.left_id].index
@@ -85,7 +86,7 @@ def dag_born_amplitude_orders(
                 )
             )
             continue
-        vertex = (
+        vertex: Vertex | None = (
             None
             if root.vertex_kind is None or root.vertex_particles is None
             else vertices.get((int(root.vertex_kind), tuple(root.vertex_particles)))
