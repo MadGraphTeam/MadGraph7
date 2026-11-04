@@ -31,6 +31,12 @@ author builds from the same `community` branch (without the PR); its
 saves are refused: Symbolica 3.0.2 changed the saved-evaluator and expression
 export formats, so the serialization ABI is `symbolica-bincode2-v2` and every
 stored evaluator state was regenerated.
+Without the PR, 3.0.3 saves the producer's whole Symbolica state, so every
+symbol of the Python process is imported on load; a symbol whose definition
+differs from the native's (the Community modules carry gammaloop `9102f885`,
+the native's FeynKit `d1904bf2`; `gammalooprs::Q` differs in one Spenso tag)
+is imported under a fresh name (`<name>_pyamplicol_import`) instead of
+failing the load (`rusticol-core` `load_evaluator_state_bytes`).
 
 The development Python kernel is a release build of the Community recipe
 (symbolica-community `39b556c7`, the 3.0.3 recipe, unmodified) with only its
