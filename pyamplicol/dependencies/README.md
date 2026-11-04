@@ -36,7 +36,11 @@ symbol of the Python process is imported on load; a symbol whose definition
 differs from the native's (the Community modules carry gammaloop `9102f885`,
 the native's FeynKit `d1904bf2`; `gammalooprs::Q` differs in one Spenso tag)
 is imported under a fresh name (`<name>_pyamplicol_import`) instead of
-failing the load (`rusticol-core` `load_evaluator_state_bytes`).
+failing the load (`rusticol-core` `load_evaluator_state_bytes`). Symbolica
+warns about each imported symbol that lacks the user-defined functions the
+native gave it; the extension routes Symbolica's diagnostics to standard error
+(`rusticol_core::diagnostics`, installed at import), so they never mix with a
+program's standard output (`pyamplicol self-test --json`).
 
 The development Python kernel is a release build of the Community recipe
 (symbolica-community `39b556c7`, the 3.0.3 recipe, unmodified) with only its
