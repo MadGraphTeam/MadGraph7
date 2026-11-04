@@ -66,6 +66,11 @@ def _exact_decimal_sum(values: tuple[Decimal, ...]) -> Decimal:
     return Decimal((int(total < 0), digits, common_exponent))
 
 
+# The colour accuracies an artifact can declare: the inherited LC/NLC
+# approximation, full colour and the strict (formal-N_c) truncations.
+_COLOR_ACCURACIES = ("lc", "nlc", "full", "strict-lc", "strict-nlc")
+
+
 @dataclass(frozen=True, slots=True)
 class ExternalParticle:
     index: int
@@ -143,12 +148,19 @@ class ContractedColorComponent:
     id: str
     index: int
     description: str
+    # The N_c degree whose contribution this component reports, in an
+    # artifact graded by power of N_c (strict colour, graded full colour).
+    nc_degree: int | None = None
 
     def __post_init__(self) -> None:
         if not self.id or not self.description:
             raise ValueError("contracted-color metadata must not be empty")
         if isinstance(self.index, bool) or self.index < 0:
             raise ValueError("contracted-color index must be non-negative")
+        if self.nc_degree is not None and (
+            isinstance(self.nc_degree, bool) or not isinstance(self.nc_degree, int)
+        ):
+            raise ValueError("contracted-color N_c degree must be an integer")
 
 
 @dataclass(frozen=True, slots=True)
@@ -366,7 +378,7 @@ class ProcessPhysics:
 
     process_id: str
     process: str
-    color_accuracy: Literal["lc", "nlc", "full"]
+    color_accuracy: Literal["lc", "nlc", "full", "strict-lc", "strict-nlc"]
     helicity_coverage: str
     color_coverage: str
     color_kind: str
@@ -384,8 +396,11 @@ class ProcessPhysics:
     def __post_init__(self) -> None:
         if not self.process_id or not self.process:
             raise ValueError("process ID and expression must not be empty")
-        if self.color_accuracy not in ("lc", "nlc", "full"):
-            raise ValueError("color accuracy must be 'lc', 'nlc', or 'full'")
+        if self.color_accuracy not in _COLOR_ACCURACIES:
+            raise ValueError(
+                "color accuracy must be 'lc', 'nlc', 'full', 'strict-lc' or "
+                "'strict-nlc'"
+            )
         for name in ("helicity_coverage", "color_coverage", "color_kind"):
             if not getattr(self, name):
                 raise ValueError(f"{name} must not be empty")
@@ -454,8 +469,15 @@ class ProcessPhysics:
             raise ValueError("Born anchors apply only to virtual LC metadata")
         elif self.color_accuracy == "lc" and not color_flows:
             raise ValueError("LC physics metadata requires physical color flows")
-        if self.color_accuracy != "lc" and len(contracted) != 1:
+        graded = bool(contracted) and all(
+            component.nc_degree is not None for component in contracted
+        )
+        if self.color_accuracy != "lc" and len(contracted) != 1 and not graded:
             raise ValueError("NLC/full physics metadata requires one color component")
+        if self.color_accuracy in ("strict-lc", "strict-nlc") and not graded:
+            raise ValueError(
+                "strict colour metadata reports one component per N_c degree"
+            )
         if self.contribution_kind == "virtual" and color_flows:
             raise ValueError(
                 "virtual colour contributions are not positive colour flows"
@@ -528,7 +550,7 @@ class ResolvedEvaluation:
     values: tuple[tuple[tuple[complex | Decimal, ...], ...], ...]
     helicity_ids: tuple[str, ...]
     color_ids: tuple[str, ...]
-    color_accuracy: Literal["lc", "nlc", "full"] = "lc"
+    color_accuracy: Literal["lc", "nlc", "full", "strict-lc", "strict-nlc"] = "lc"
 
     def __post_init__(self) -> None:
         values = tuple(
@@ -544,8 +566,11 @@ class ResolvedEvaluation:
         helicity_ids = tuple(self.helicity_ids)
         color_ids = tuple(self.color_ids)
         expected_colors = len(color_ids)
-        if self.color_accuracy != "lc" and expected_colors != 1:
-            raise ValueError("NLC/full resolved output has one contracted color axis")
+        if self.color_accuracy != "lc" and expected_colors < 1:
+            raise ValueError(
+                "NLC/full resolved output has one contracted color axis (one per "
+                "N_c degree when graded)"
+            )
         for point in values:
             if len(point) != len(helicity_ids):
                 raise ValueError(
@@ -555,8 +580,11 @@ class ResolvedEvaluation:
                 raise ValueError(
                     "resolved values do not match the contracted color dimension"
                 )
-        if self.color_accuracy not in ("lc", "nlc", "full"):
-            raise ValueError("color_accuracy must be 'lc', 'nlc', or 'full'")
+        if self.color_accuracy not in _COLOR_ACCURACIES:
+            raise ValueError(
+                "color_accuracy must be 'lc', 'nlc', 'full', 'strict-lc' or "
+                "'strict-nlc'"
+            )
         object.__setattr__(self, "values", values)
         object.__setattr__(self, "helicity_ids", helicity_ids)
         object.__setattr__(self, "color_ids", color_ids)
@@ -566,7 +594,7 @@ class ResolvedEvaluation:
         return self.color_ids if self.color_accuracy == "lc" else ()
 
     @property
-    def accuracy(self) -> Literal["lc", "nlc", "full"]:
+    def accuracy(self) -> Literal["lc", "nlc", "full", "strict-lc", "strict-nlc"]:
         """Compatibility alias for :attr:`color_accuracy`."""
 
         return self.color_accuracy
@@ -688,6 +716,80 @@ class TreeOrderEvaluation:
                     )
                 )
         return tuple(totals)
+
+
+def _sum_entries(entries: tuple[complex | Decimal, ...]) -> complex | Decimal:
+    """Sum one result axis: exactly for decimals, with ``math.fsum`` else."""
+
+    if entries and isinstance(entries[0], Decimal):
+        return _exact_decimal_sum(cast(tuple[Decimal, ...], entries))
+    return complex(
+        math.fsum(complex(entry).real for entry in entries),
+        math.fsum(complex(entry).imag for entry in entries),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class TreeGradedEvaluation:
+    """Tree values split by power of N_c: ``values[point][degree]``.
+
+    For an artifact graded by power of N_c (``color.accuracy = "strict-lc"``
+    or ``"strict-nlc"``, or full colour with ``color.graded``), the entry of
+    ``degrees[d]`` is the N_c^degree term of the formal 1/N_c expansion of the
+    squared tree, evaluated at N_c = 3 and summed over the selected
+    helicities. ``color_ids[d]`` is that degree's contracted colour component
+    in :meth:`pyamplicol.Runtime.evaluate_resolved`. ``total`` sums the
+    degrees of each point (the truncated, or for graded full colour the
+    complete, colour sum); ``reference_degree`` is the leading degree P.
+    """
+
+    values: tuple[tuple[complex | Decimal, ...], ...]
+    total: tuple[complex | Decimal, ...]
+    degrees: tuple[int, ...]
+    color_ids: tuple[str, ...]
+    color_accuracy: Literal["full", "strict-lc", "strict-nlc"]
+    reference_degree: int
+
+    def __post_init__(self) -> None:
+        degrees = tuple(int(degree) for degree in self.degrees)
+        if not degrees or list(degrees) != sorted(set(degrees), reverse=True):
+            raise ValueError("N_c degrees must be unique and decreasing")
+        if len(tuple(self.color_ids)) != len(degrees):
+            raise ValueError("graded results need one colour component per degree")
+        if self.color_accuracy not in ("full", "strict-lc", "strict-nlc"):
+            raise ValueError("graded results come from strict or full colour")
+        values = tuple(
+            tuple(
+                entry if isinstance(entry, Decimal) else complex(entry)
+                for entry in point
+            )
+            for point in self.values
+        )
+        total = tuple(
+            entry if isinstance(entry, Decimal) else complex(entry)
+            for entry in self.total
+        )
+        if len(values) != len(total):
+            raise ValueError("graded values and totals differ in point count")
+        if any(len(point) != len(degrees) for point in values):
+            raise ValueError("graded values do not match the N_c degree axis")
+        object.__setattr__(self, "values", values)
+        object.__setattr__(self, "total", total)
+        object.__setattr__(self, "degrees", degrees)
+        object.__setattr__(self, "color_ids", tuple(self.color_ids))
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        return len(self.values), len(self.degrees)
+
+    def for_degree(self, degree: int) -> tuple[complex | Decimal, ...]:
+        """Per-point contribution of one N_c degree."""
+
+        try:
+            index = self.degrees.index(int(degree))
+        except ValueError as error:
+            raise ValueError(f"N_c degree {degree} is not reported") from error
+        return tuple(point[index] for point in self.values)
 
 
 @dataclass(frozen=True, slots=True)

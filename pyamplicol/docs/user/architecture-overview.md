@@ -122,7 +122,8 @@ default direct JIT stores a SymJIT application. Prepared recurrence/eager/OTF
 JIT kernels use the portable O2 storage contract.
 
 LC exposes physical color flows; NLC/full expose one contracted color output
-per helicity. The optimized total and resolved tensor are two views of the same
+per helicity, and the strict (formal 1/N_c) or graded artifacts one per
+helicity and N_c degree. The optimized total and resolved tensor are two views of the same
 runtime plan, and `ResolvedEvaluation.total()` must reproduce the optimized
 total.
 

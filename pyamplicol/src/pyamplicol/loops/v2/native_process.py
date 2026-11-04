@@ -363,6 +363,23 @@ class NativeProcess:
                 twin_record["fourier"] = json.loads(twin.fourier)
             record["scaleless"] = twin_record
             companion = NativeCompanion(twin_json, twin.trees, twin_record)
+        # What Catani's QCD operator reads of the slice (``dipoles.
+        # catani_record``; M-FINAL MF-8G-3); absent where the stored route
+        # makes no prediction.
+        from . import dipoles
+
+        catani = dipoles.catani_record(slice_)
+        if catani is not None:
+            record["catani"] = catani
+        # A slice on the full tree kernels (``ward.ward_slice``): its stored
+        # process serves the Ward mode (``ward.require_full_kernels``).
+        if getattr(slice_.blocks, "kernel_variant", None) == "full":
+            from .ward import gauge_legs
+
+            record["kernel_variant"] = "full"
+            # Its massless vector legs (``ward.gauge_legs``): the stored view
+            # has no model data.
+            record["gauge_legs"] = list(gauge_legs(slice_))
         return cls(plan, trees, record, companion, dipoles=_stored_dipoles(slice_))
 
     # -- storage -------------------------------------------------------------
@@ -476,6 +493,9 @@ class NativeProcess:
         record = self.record
         columns = tuple(_orders_of(sector) for sector, _pairs in record["sectors"])
         view = _ProcessView(record, native, externals)
+        # The stored dipole orbits: Catani's colour input when the executor
+        # forms the prediction (``NativeExecutor(catani=True)``).
+        view.stored_dipoles = self.dipoles
         companion = None
         if self.scaleless is not None:
             twin = self.scaleless
@@ -534,6 +554,11 @@ class _ProcessView:
         self.scaleless: _ProcessView | None = None
         self.scale_parameter = record["scale_parameter"]
         self.alpha_s_parameter = record["alpha_s_parameter"]
+        # Catani's stored QCD record (``dipoles.catani_record``) or None.
+        self.catani = record.get("catani")
+        # The massless vector legs of a process stored from a Ward slice
+        # (``ward.gauge_legs``) or None.
+        self.gauge_legs = record.get("gauge_legs")
         self.pole_regulators = PoleRegulators.from_record(record.get("pole_regulators"))
         self.blocks = SimpleNamespace(
             process=SimpleNamespace(
@@ -541,7 +566,9 @@ class _ProcessView:
                     SimpleNamespace(label=label, is_initial=initial, pdg=pdg)
                     for label, initial, pdg in record["legs"]
                 )
-            )
+            ),
+            # "full" for a process stored from a Ward slice (the Ward mode).
+            kernel_variant=record.get("kernel_variant"),
         )
 
     def _point_parameters(

@@ -228,9 +228,10 @@ def test_native_loop_side_inputs_match_python(slices):
 
 def test_ward_mode_refusals(slices, loop_native):
     """The Ward mode fails closed: a slice on the transverse kernels, a stored
-    process (its record carries no kernel variant), a Ward value per point of
-    the wrong count, a quark leg (no vector source; both input paths), and a
-    criterion read from a rotation check."""
+    process of such a slice (its record carries no kernel variant; one stored
+    from a full-kernel slice serves the mode, ``test_loop_v2_2to6``), a Ward
+    value per point of the wrong count, a quark leg (no vector source; both
+    input paths), and a criterion read from a rotation check."""
 
     from pyamplicol.loops.v2.native_process import NativeProcess
 
@@ -242,10 +243,10 @@ def test_ward_mode_refusals(slices, loop_native):
     assert slices("uux_ggg", "transverse").blocks.kernel_variant == "transverse"
     with pytest.raises(ValueError, match="full tree kernels"):
         transverse.evaluate([point], [scale], parameters=PARAMETERS, ward=one)
-    executor = NativeExecutor(slices("uux_ggg"), inputs="native", forward=False)
-    stored = NativeProcess.of(executor).executor(loop_native)
+    stored = NativeProcess.of(transverse).executor(loop_native)
     with pytest.raises(ValueError, match="stored process"):
         stored.evaluate([point], [scale], parameters=PARAMETERS, ward=one)
+    executor = NativeExecutor(slices("uux_ggg"), inputs="native", forward=False)
     with pytest.raises(ValueError, match="one Ward value per point"):
         executor.evaluate([point], [scale], parameters=PARAMETERS, ward=[one, one])
     # A quark leg has no vector source slot in the native trees, and the

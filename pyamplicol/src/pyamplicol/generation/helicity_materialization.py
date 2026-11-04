@@ -304,6 +304,7 @@ def materialize_helicity_recurrence(
     materialized = GenericDAG(
         process=dag.process,
         color_plan=dag.color_plan,
+        nc_expansion=dag.nc_expansion,
         currents=currents,
         sources=tuple(
             target_new_id[old_id]

@@ -46,6 +46,9 @@ class CoherentAmplitudeGroup:
     helicities: tuple[int, ...]
     color_word: tuple[int, ...]
     color_sector_id: int
+    # Minus the number of U(1)-subtraction pieces of the group's trees
+    # (graded artifacts: strict or graded colour, ``generation.dag_grades``).
+    nc_grade: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -411,7 +414,9 @@ class CorrelatedExactExecutor(SymbolicaExactExecutor):
             raise ArtifactError("correlated amplitude output mapping is incomplete")
         groups: list[CoherentAmplitudeGroup] = []
         seen_groups: set[int] = set()
-        physical_groups: dict[tuple[tuple[int, ...], int], CoherentAmplitudeGroup] = {}
+        physical_groups: dict[
+            tuple[tuple[int, ...], int, int], CoherentAmplitudeGroup
+        ] = {}
         physical_roots: dict[int, list[int]] = {}
         descriptors = (
             amplitude.get("coherent_groups")
@@ -439,7 +444,8 @@ class CorrelatedExactExecutor(SymbolicaExactExecutor):
                 for value in cast(Sequence[object], descriptor["color_word"])
             )
             sector = _json_integer(descriptor["color_sector_id"])
-            key = (values, sector)
+            nc_grade = _json_integer(descriptor.get("nc_grade", 0))
+            key = (values, sector, nc_grade)
             physical = physical_groups.get(key)
             if physical is None:
                 physical = CoherentAmplitudeGroup(
@@ -448,6 +454,7 @@ class CorrelatedExactExecutor(SymbolicaExactExecutor):
                     helicities=values,
                     color_word=word,
                     color_sector_id=sector,
+                    nc_grade=nc_grade,
                 )
                 physical_groups[key] = physical
                 groups.append(physical)

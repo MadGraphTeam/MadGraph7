@@ -1441,8 +1441,13 @@ class NativeExecutor:
     component and, with ``counterterms`` (default), the counterterm and
     external-field components and the complete virtual, formed natively from
     the slice's counterterm closure (``native_trees._counterterm_program``);
-    without ``counterterms`` ``virtual`` is absent. Catani's pole prediction
-    (``PointResult.ir_poles``) is not formed natively (WP3.1 I5c).
+    without ``counterterms`` ``virtual`` is absent. With ``catani`` (native
+    inputs) Catani's pole prediction (``PointResult.ir_poles``) is formed
+    from the Born vectors' colour correlations, which the executor contracts
+    over the dipole orbits (the slice's, or a stored process's ``dipoles.
+    json``; ``dipoles.correlator``; M-FINAL MF-8G-3): off by default, as the
+    public runtime reads no prediction; rotated and re-tested evaluations
+    never form it.
 
     ``evaluate(..., ward=...)`` runs the asymmetric Ward mode on either input
     path (``ward``): with native inputs the native trees read each point's
@@ -1466,9 +1471,17 @@ class NativeExecutor:
         counterterms: bool = True,
         scaleless: tuple[ExportedPlan, str | bytes] | Callable[[], Any] | None = None,
         contraction: Literal["auto", "direct", "fft"] | None = None,
+        catani: bool = False,
     ):
         if inputs not in ("python", "native"):
             raise ValueError(f"unknown input path {inputs!r}")
+        if catani and inputs != "native":
+            raise ValueError(
+                "catani forms the native route's prediction; the Python input "
+                "route always forms it"
+            )
+        self.catani = catani
+        self._dipoles: Any = None
         if plan_json is not None and exported is None:
             raise ValueError("plan_json is the serialised exported plan")
         if isinstance(scaleless, tuple) and slice_.scaleless is None:
@@ -1924,6 +1937,7 @@ class NativeExecutor:
             stability.frame,
             schedule,
             wards,
+            catani=self.catani,
         )
         rotated = []
         for k, rotation in enumerate(stability.rotations):
@@ -2066,10 +2080,12 @@ class NativeExecutor:
         retest,
         schedule="B",
         wards=None,
+        catani=False,
     ):
         """Evaluate a batch natively; returns the precision, the per-point
         evaluations (failed points unassembled) and the failures per point
-        index. ``wards``: one Ward value or None per point (``ward``)."""
+        index. ``wards``: one Ward value or None per point (``ward``);
+        ``catani``: form Catani's prediction (native inputs)."""
 
         from .assemble import Precision, _fraction, _Numbers
 
@@ -2081,6 +2097,7 @@ class NativeExecutor:
             for evaluation in evaluations:
                 evaluation.mode = pole_mode(poles)
                 evaluation.poles = has_poles(evaluation.mode)
+                evaluation.catani = catani and self._wants_catani(evaluation)
             if wards is not None:
                 from .ward import loop_vector, ward_leg
 
@@ -2153,11 +2170,15 @@ class NativeExecutor:
             "check": retest is not None,
             "rescale": retest == "rescaled",
         }
+        catani = self.inputs == "native" and any(
+            getattr(evaluation, "catani", False) for evaluation in evaluations
+        )
         output = native.evaluate(
             self._inputs(evaluations, arithmetic),
             schedule=schedule,
             contraction=self.contraction,
             **options,
+            **({"dipoles": self._correlator()} if catani else {}),
         )
         exported = self.exported
         self.last_report = output["report"]
@@ -2269,10 +2290,56 @@ class NativeExecutor:
                             strict=True,
                         )
                     }
+                if catani and evaluation.catani:
+                    from .dipoles import correlations
+
+                    evaluation.correlations = correlations(
+                        output["dipoles"][index],
+                        [leg for leg, _rep in self._dipoles.coloured],
+                        exported.trees.born_orders,
+                        lambda x, numbers=numbers: numbers.real(Decimal(str(x))),
+                    )
                 evaluation.set_lanes(
                     read(lanes), read(checks), scaleless, scaleless_check
                 )
         return failed
+
+    def _wants_catani(self, evaluation: Any) -> bool:
+        """Whether a native point forms Catani's prediction: the request is
+        full colour, the point has poles beyond "uv" and the slice (or the
+        stored process) has dipole operators; the operators themselves decide
+        whether they apply (``_NativePoint._ir_poles``)."""
+
+        return (
+            self.slice.request.accuracy == "full"
+            and evaluation.poles
+            and evaluation.mode != PoleSelection.UV
+            and self._correlator() is not None
+        )
+
+    def _correlator(self) -> Any:
+        """The executor's colour input of Catani's operator (``dipoles.
+        correlator``), built once: from a stored process's dipole orbits
+        (``stored_dipoles`` of its view), else the live slice's (built
+        natively, ``dipoles.build``); None without two coloured legs."""
+
+        if self._dipoles is None:
+            from . import dipoles
+
+            text = getattr(self.slice, "stored_dipoles", None)
+            if text is not None:
+                orbits = dipoles.load(text)
+            elif hasattr(self.slice, "compiled"):
+                legs = [leg for leg in self.slice.basis.legs if leg.representation != 1]
+                orbits = dipoles.build(self.slice) if len(legs) >= 2 else None
+            else:
+                orbits = None
+            self._dipoles = (
+                False
+                if orbits is None
+                else dipoles.correlator(orbits, self.exported.trees)
+            )
+        return self._dipoles or None
 
 
 def _regulated(evaluations: Sequence[Any], regulators: Any, trees: Any) -> list[Any]:

@@ -15,6 +15,13 @@ pub enum ColorAccuracy {
     Lc,
     Nlc,
     Full,
+    /// Leading degree of the formal 1/N_c expansion (U(1)-subtraction pieces
+    /// graded); one contracted colour component per reported N_c degree.
+    #[serde(rename = "strict-lc")]
+    StrictLc,
+    /// Leading three degrees of the formal 1/N_c expansion.
+    #[serde(rename = "strict-nlc")]
+    StrictNlc,
 }
 
 impl ColorAccuracy {
@@ -23,7 +30,14 @@ impl ColorAccuracy {
             Self::Lc => "lc",
             Self::Nlc => "nlc",
             Self::Full => "full",
+            Self::StrictLc => "strict-lc",
+            Self::StrictNlc => "strict-nlc",
         }
+    }
+
+    /// Whether the accuracy is a truncation of the formal 1/N_c expansion.
+    pub fn is_strict(self) -> bool {
+        matches!(self, Self::StrictLc | Self::StrictNlc)
     }
 }
 
@@ -117,6 +131,10 @@ pub struct ContractedColor {
     pub id: String,
     pub index: usize,
     pub description: String,
+    /// The N_c degree whose contribution this component reports, in an
+    /// artifact graded by power of N_c (strict colour, graded full colour).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nc_degree: Option<i32>,
 }
 
 #[derive(Clone, Debug, Decode, Deserialize, PartialEq, Serialize)]
@@ -211,6 +229,22 @@ pub struct ProcessPhysics {
 }
 
 impl ProcessPhysics {
+    /// The N_c degree of every colour component of a graded artifact, in
+    /// component order; `None` unless every component is a contracted colour
+    /// with a degree.
+    pub fn nc_degrees(&self) -> Option<Vec<i32>> {
+        if self.color_components.is_empty() {
+            return None;
+        }
+        self.color_components
+            .iter()
+            .map(|component| match component {
+                ColorComponent::ContractedColor(color) => color.nc_degree,
+                ColorComponent::LcFlow(_) => None,
+            })
+            .collect()
+    }
+
     pub fn from_json(bytes: &[u8], path: &str) -> RusticolResult<Self> {
         let value: Self = serde_json::from_slice(bytes).map_err(|error| {
             RusticolError::serialization(format!(
@@ -456,18 +490,36 @@ impl ProcessPhysics {
                     ));
                 }
             }
-            ColorAccuracy::Nlc | ColorAccuracy::Full => {
-                if self.color_components.len() != 1
+            ColorAccuracy::Nlc
+            | ColorAccuracy::Full
+            | ColorAccuracy::StrictLc
+            | ColorAccuracy::StrictNlc => {
+                if let Some(degrees) = self.nc_degrees() {
+                    // Graded: one contracted component per N_c degree,
+                    // strictly decreasing (strict colour always is).
+                    if degrees.is_empty() || degrees.windows(2).any(|pair| pair[0] <= pair[1]) {
+                        return Err(RusticolError::artifact(
+                            "graded physics requires contracted color components with strictly decreasing N_c degrees",
+                        ));
+                    }
+                    if self.color_accuracy == ColorAccuracy::Nlc {
+                        return Err(RusticolError::artifact(
+                            "the inherited NLC approximation has no N_c degrees",
+                        ));
+                    }
+                } else if self.color_accuracy.is_strict()
+                    || self.color_components.len() != 1
                     || !matches!(
                         self.color_components.first(),
                         Some(ColorComponent::ContractedColor(ContractedColor {
                             index: 0,
+                            nc_degree: None,
                             ..
                         }))
                     )
                 {
                     return Err(RusticolError::artifact(
-                        "NLC/full physics requires exactly one contracted color component",
+                        "NLC/full physics requires exactly one contracted color component; strict colour one per N_c degree",
                     ));
                 }
                 if self.reduction.kind != ReductionKind::ContractedColor

@@ -89,7 +89,7 @@
     "max_vertex_valence": 4,
     "parameter_count": 197,
     "particle_count": 43,
-    "reusable_kernel_evaluation_class_count": 109,
+    "reusable_kernel_evaluation_class_count": 110,
     "signed_kernel_evaluation_relation_count": 116,
     "spins": [
       -1,
@@ -100,7 +100,7 @@
     "supported": true,
     "swapped_kernel_evaluation_relation_count": 262,
     "unlowered_contact_term_count": 0,
-    "verified_kernel_evaluation_class_count": 113,
+    "verified_kernel_evaluation_class_count": 114,
     "vertex_count": 113
   },
   "ir": {
@@ -112227,7 +112227,7 @@
       {
         "color_expression": "spenso::g(spenso::dind(spenso::cof(3,spynso3::ufo_c_2)),spenso::cof(3,spynso3::ufo_c_1))",
         "color_projection_coefficient": [
-          0.3333333333333333,
+          1.0,
           0.0
         ],
         "color_projection_structure": "color-identity",
@@ -112239,14 +112239,14 @@
           "(-1*model_loop_qcd_qed_sm::compiler::{}::kernel_818_left_1*model_loop_qcd_qed_sm::compiler::{}::kernel_818_right_3+-1*model_loop_qcd_qed_sm::compiler::{}::kernel_818_left_2*model_loop_qcd_qed_sm::compiler::{}::kernel_818_right_0+model_loop_qcd_qed_sm::compiler::{}::kernel_818_left_0*model_loop_qcd_qed_sm::compiler::{}::kernel_818_right_2+model_loop_qcd_qed_sm::compiler::{}::kernel_818_left_3*model_loop_qcd_qed_sm::compiler::{}::kernel_818_right_1)*pyamplicol::model::loop_qcd_qed_sm::{}::derived_coupling_5"
         ],
         "contact_orbit_steps": [],
-        "coupling_expression": "1",
+        "coupling_expression": "1/3",
         "coupling_orders": [
           [
             "QCD",
             1
           ]
         ],
-        "evaluation_class": "symbolica-sha256:554242854a324045556740c30865e1f1fc48a69a1d9fb3336018d2a02444670c",
+        "evaluation_class": "symbolica-sha256:dd4b0f912f14f103514615b827f6be6151319a10746f1fe96d938bebcfd89eb1",
         "evaluation_equivalence_verified": true,
         "evaluation_factor": [
           1.0,
@@ -112777,7 +112777,7 @@
       {
         "color_expression": "spenso::g(spenso::dind(spenso::cof(3,spynso3::ufo_c_2)),spenso::cof(3,spynso3::ufo_c_1))",
         "color_projection_coefficient": [
-          0.3333333333333333,
+          1.0,
           0.0
         ],
         "color_projection_structure": "color-identity",
@@ -112789,14 +112789,14 @@
           "(-1*model_loop_qcd_qed_sm::compiler::{}::kernel_823_left_1*model_loop_qcd_qed_sm::compiler::{}::kernel_823_right_3+-1*model_loop_qcd_qed_sm::compiler::{}::kernel_823_left_2*model_loop_qcd_qed_sm::compiler::{}::kernel_823_right_0+model_loop_qcd_qed_sm::compiler::{}::kernel_823_left_0*model_loop_qcd_qed_sm::compiler::{}::kernel_823_right_2+model_loop_qcd_qed_sm::compiler::{}::kernel_823_left_3*model_loop_qcd_qed_sm::compiler::{}::kernel_823_right_1)*pyamplicol::model::loop_qcd_qed_sm::{}::derived_coupling_6"
         ],
         "contact_orbit_steps": [],
-        "coupling_expression": "1",
+        "coupling_expression": "1/3",
         "coupling_orders": [
           [
             "QCD",
             1
           ]
         ],
-        "evaluation_class": "symbolica-sha256:554242854a324045556740c30865e1f1fc48a69a1d9fb3336018d2a02444670c",
+        "evaluation_class": "symbolica-sha256:dd4b0f912f14f103514615b827f6be6151319a10746f1fe96d938bebcfd89eb1",
         "evaluation_equivalence_verified": true,
         "evaluation_factor": [
           1.0,
@@ -113327,7 +113327,7 @@
       {
         "color_expression": "spenso::g(spenso::dind(spenso::cof(3,spynso3::ufo_c_2)),spenso::cof(3,spynso3::ufo_c_1))",
         "color_projection_coefficient": [
-          0.3333333333333333,
+          1.0,
           0.0
         ],
         "color_projection_structure": "color-identity",
@@ -113339,14 +113339,14 @@
           "(-1*model_loop_qcd_qed_sm::compiler::{}::kernel_828_left_1*model_loop_qcd_qed_sm::compiler::{}::kernel_828_right_3+-1*model_loop_qcd_qed_sm::compiler::{}::kernel_828_left_2*model_loop_qcd_qed_sm::compiler::{}::kernel_828_right_0+model_loop_qcd_qed_sm::compiler::{}::kernel_828_left_0*model_loop_qcd_qed_sm::compiler::{}::kernel_828_right_2+model_loop_qcd_qed_sm::compiler::{}::kernel_828_left_3*model_loop_qcd_qed_sm::compiler::{}::kernel_828_right_1)*pyamplicol::model::loop_qcd_qed_sm::{}::derived_coupling_7"
         ],
         "contact_orbit_steps": [],
-        "coupling_expression": "1",
+        "coupling_expression": "1/3",
         "coupling_orders": [
           [
             "QCD",
             1
           ]
         ],
-        "evaluation_class": "symbolica-sha256:554242854a324045556740c30865e1f1fc48a69a1d9fb3336018d2a02444670c",
+        "evaluation_class": "symbolica-sha256:dd4b0f912f14f103514615b827f6be6151319a10746f1fe96d938bebcfd89eb1",
         "evaluation_equivalence_verified": true,
         "evaluation_factor": [
           1.0,
@@ -113877,7 +113877,7 @@
       {
         "color_expression": "spenso::g(spenso::dind(spenso::cof(3,spynso3::ufo_c_2)),spenso::cof(3,spynso3::ufo_c_1))",
         "color_projection_coefficient": [
-          0.3333333333333333,
+          1.0,
           0.0
         ],
         "color_projection_structure": "color-identity",
@@ -113889,14 +113889,14 @@
           "(-1*model_loop_qcd_qed_sm::compiler::{}::kernel_833_left_1*model_loop_qcd_qed_sm::compiler::{}::kernel_833_right_3+-1*model_loop_qcd_qed_sm::compiler::{}::kernel_833_left_2*model_loop_qcd_qed_sm::compiler::{}::kernel_833_right_0+model_loop_qcd_qed_sm::compiler::{}::kernel_833_left_0*model_loop_qcd_qed_sm::compiler::{}::kernel_833_right_2+model_loop_qcd_qed_sm::compiler::{}::kernel_833_left_3*model_loop_qcd_qed_sm::compiler::{}::kernel_833_right_1)*pyamplicol::model::loop_qcd_qed_sm::{}::derived_coupling_8"
         ],
         "contact_orbit_steps": [],
-        "coupling_expression": "1",
+        "coupling_expression": "1/3",
         "coupling_orders": [
           [
             "QCD",
             1
           ]
         ],
-        "evaluation_class": "symbolica-sha256:554242854a324045556740c30865e1f1fc48a69a1d9fb3336018d2a02444670c",
+        "evaluation_class": "symbolica-sha256:dd4b0f912f14f103514615b827f6be6151319a10746f1fe96d938bebcfd89eb1",
         "evaluation_equivalence_verified": true,
         "evaluation_factor": [
           1.0,
@@ -114427,7 +114427,7 @@
       {
         "color_expression": "spenso::g(spenso::dind(spenso::cof(3,spynso3::ufo_c_2)),spenso::cof(3,spynso3::ufo_c_1))",
         "color_projection_coefficient": [
-          0.3333333333333333,
+          1.0,
           0.0
         ],
         "color_projection_structure": "color-identity",
@@ -114439,14 +114439,14 @@
           "(-1*model_loop_qcd_qed_sm::compiler::{}::kernel_838_left_1*model_loop_qcd_qed_sm::compiler::{}::kernel_838_right_3+-1*model_loop_qcd_qed_sm::compiler::{}::kernel_838_left_2*model_loop_qcd_qed_sm::compiler::{}::kernel_838_right_0+model_loop_qcd_qed_sm::compiler::{}::kernel_838_left_0*model_loop_qcd_qed_sm::compiler::{}::kernel_838_right_2+model_loop_qcd_qed_sm::compiler::{}::kernel_838_left_3*model_loop_qcd_qed_sm::compiler::{}::kernel_838_right_1)*pyamplicol::model::loop_qcd_qed_sm::{}::derived_coupling_9"
         ],
         "contact_orbit_steps": [],
-        "coupling_expression": "1",
+        "coupling_expression": "1/3",
         "coupling_orders": [
           [
             "QCD",
             1
           ]
         ],
-        "evaluation_class": "symbolica-sha256:554242854a324045556740c30865e1f1fc48a69a1d9fb3336018d2a02444670c",
+        "evaluation_class": "symbolica-sha256:dd4b0f912f14f103514615b827f6be6151319a10746f1fe96d938bebcfd89eb1",
         "evaluation_equivalence_verified": true,
         "evaluation_factor": [
           1.0,
@@ -114977,7 +114977,7 @@
       {
         "color_expression": "spenso::g(spenso::dind(spenso::cof(3,spynso3::ufo_c_2)),spenso::cof(3,spynso3::ufo_c_1))",
         "color_projection_coefficient": [
-          0.3333333333333333,
+          1.0,
           0.0
         ],
         "color_projection_structure": "color-identity",
@@ -114989,14 +114989,14 @@
           "(-1*model_loop_qcd_qed_sm::compiler::{}::kernel_843_left_1*model_loop_qcd_qed_sm::compiler::{}::kernel_843_right_3+-1*model_loop_qcd_qed_sm::compiler::{}::kernel_843_left_2*model_loop_qcd_qed_sm::compiler::{}::kernel_843_right_0+model_loop_qcd_qed_sm::compiler::{}::kernel_843_left_0*model_loop_qcd_qed_sm::compiler::{}::kernel_843_right_2+model_loop_qcd_qed_sm::compiler::{}::kernel_843_left_3*model_loop_qcd_qed_sm::compiler::{}::kernel_843_right_1)*pyamplicol::model::loop_qcd_qed_sm::{}::derived_coupling_10"
         ],
         "contact_orbit_steps": [],
-        "coupling_expression": "1",
+        "coupling_expression": "1/3",
         "coupling_orders": [
           [
             "QCD",
             1
           ]
         ],
-        "evaluation_class": "symbolica-sha256:554242854a324045556740c30865e1f1fc48a69a1d9fb3336018d2a02444670c",
+        "evaluation_class": "symbolica-sha256:dd4b0f912f14f103514615b827f6be6151319a10746f1fe96d938bebcfd89eb1",
         "evaluation_equivalence_verified": true,
         "evaluation_factor": [
           1.0,
@@ -143772,7 +143772,7 @@
       }
     ]
   },
-  "model_compiler_version": 16,
+  "model_compiler_version": 17,
   "parameter_defaults": {
     "LogSwitch": [
       1.0,
@@ -143838,8 +143838,8 @@
   "producer": {
     "compiled_model_schema_version": 9,
     "contact_decomposition_policy": "ufo-four-point-contact-decomposition-v2",
-    "model_compiler_sha256": "b3e4f11a20b823a293af7b2c29d3cade7286a216b76970396d0900726dccd504",
-    "model_compiler_version": 16,
+    "model_compiler_sha256": "6efa89aa4544fbdb87cc8a7abfa366c32cb79ca9bad0d4e82f37cea6c9b9b632",
+    "model_compiler_version": 17,
     "model_environment_policy": "sanitize-historical-scalar-options-v1",
     "pyamplicol": "1.0.1",
     "symbol_namespace_policy": "model-name-and-pyamplicol-registry-v1",

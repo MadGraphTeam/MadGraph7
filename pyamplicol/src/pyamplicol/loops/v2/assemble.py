@@ -4528,32 +4528,16 @@ class _PointEvaluation:
             for j in coloured
         ):
             return None
-        dipoles = slice_.dipoles()
-        three = Fraction(NC)
-        physical = []
-        for vectors in self.born_vectors.values():
-            physical.append({})
-            for order, vector in vectors.items():
-                folded = physical[-1].setdefault(order, {})
-                for (tensor, power), value in vector.items():
-                    scaled = value * numbers.real(three**power)
-                    folded[tensor] = folded.get(tensor, numbers.zero) + scaled
         alpha = numbers.real(values[slice_.alpha_s_parameter])
         prefactor = alpha / (2 * numbers.pi)
         mu2 = numbers.real(self.scale)
         correction = add_orders(((strong, 2),))
+        sandwiched = self._colour_correlated(correction)
         out = {}
         for sector, _pairs in slice_.sectors:
 
             def correlated(i: int, j: int, sector=sector) -> Any:
-                total = numbers.real(0)
-                for vectors in physical:
-                    for a, left in vectors.items():
-                        for b, right in vectors.items():
-                            if add_orders(a, b, correction) != sector:
-                                continue
-                            total += self._sandwich(left, right, dipoles[(i, j)])
-                return total / self.average
+                return sandwiched(sector, i, j) / self.average
 
             prediction = catani_poles(
                 coloured,
@@ -4573,6 +4557,39 @@ class _PointEvaluation:
             single, double = prediction
             out[sector] = (prefactor * single, prefactor * double)
         return out
+
+    def _colour_correlated(
+        self, correction: Orders
+    ) -> Callable[[Orders, int, int], Any]:
+        """``(sector, i, j) -> <T_i.T_j>`` of the sector's Born
+        interferences (the Born vectors of the amplitude orders a, b with a +
+        b + ``correction`` = sector, cross-order ones included), not divided
+        by the average: the Python Born vectors against the slice's
+        operators (``LoopSlice.dipoles``)."""
+
+        slice_, numbers = self.slice, self.numbers
+        dipoles = slice_.dipoles()
+        three = Fraction(NC)
+        physical = []
+        for vectors in self.born_vectors.values():
+            physical.append({})
+            for order, vector in vectors.items():
+                folded = physical[-1].setdefault(order, {})
+                for (tensor, power), value in vector.items():
+                    scaled = value * numbers.real(three**power)
+                    folded[tensor] = folded.get(tensor, numbers.zero) + scaled
+
+        def sandwiched(sector: Orders, i: int, j: int) -> Any:
+            total = numbers.real(0)
+            for vectors in physical:
+                for a, left in vectors.items():
+                    for b, right in vectors.items():
+                        if add_orders(a, b, correction) != sector:
+                            continue
+                        total += self._sandwich(left, right, dipoles[(i, j)])
+            return total
+
+        return sandwiched
 
     def _qed_poles(self) -> dict[Orders, tuple[Any, Any]] | None:
         """The QED operator per sector (``poles.qed_catani_poles``), or None
@@ -4739,8 +4756,12 @@ class _NativePoint(_PointEvaluation):
     executor forms |A0|^2) and the ``bare`` component per sector, and, when
     the executor forms the counterterm and external-field components
     (``native_counterterms``), every component as ``_PointEvaluation``
-    assembles it, without Catani's pole prediction (WP3.1 I5c). ``slice_``
-    may be a native process's structural view (``native_process``).
+    assembles it. Catani's pole prediction is formed from the executor's
+    colour correlations of the Born vectors over the stored dipole orbits
+    (``correlations``, ``plan_export.NativeExecutor(catani=True)``; M-FINAL
+    MF-8G-3): on a live slice by ``_PointEvaluation``'s operators, on a
+    native process's structural view (``native_process``) by its stored
+    Catani record (``dipoles.catani_record``: massless QCD).
     """
 
     def __init__(self, slice_, point, scale, parameters, numbers):
@@ -4773,6 +4794,12 @@ class _NativePoint(_PointEvaluation):
         self.native_counterterms = False
         self.colour_contraction = "direct"
         self.retest_families = None
+        # Set per batch by the executor: whether to form Catani's prediction
+        # (``catani``) and the Born vectors' colour correlations it reads,
+        # {(bra order, ket order): {(label i, label j): value}}, not divided
+        # by the average (``dipoles.correlations``).
+        self.catani = False
+        self.correlations: dict | None = None
 
     def counterterm_twin(self) -> None:
         # A native point has no Python twin: the executor forms its
@@ -4799,12 +4826,94 @@ class _NativePoint(_PointEvaluation):
         # (alpha(0) / alpha)^n, so the divisor is the slice's average.
         return self.slice.normalisation.average
 
-    def _stable_coloured_legs(self) -> bool:
-        # Catani's prediction is not formed natively (WP3.1 I5c).
-        return False
+    def _live(self) -> bool:
+        """Whether the slice is a live ``LoopSlice`` (not a stored process's
+        structural view)."""
 
-    def _ir_poles(self) -> None:
-        return None
+        return hasattr(self.slice, "compiled")
+
+    def _stable_coloured_legs(self) -> bool:
+        """Whether Catani's prediction applies: formed only from the
+        executor's colour correlations; a live slice then checks its massive
+        emitters' widths (``_PointEvaluation``), a stored process its Catani
+        record's conditions (``dipoles.record_applies``)."""
+
+        if self.correlations is None:
+            return False
+        if self._live():
+            return super()._stable_coloured_legs()
+        from . import dipoles
+
+        return dipoles.record_applies(
+            getattr(self.slice, "catani", None), self.parameters
+        )
+
+    def _ir_poles(self) -> dict[Orders, tuple[Any, Any]] | None:
+        if self.correlations is None:
+            return None
+        if self._live():
+            return super()._ir_poles()
+        return self._stored_qcd_poles()
+
+    def _colour_correlated(
+        self, correction: Orders
+    ) -> Callable[[Orders, int, int], Any]:
+        """The executor's colour correlations (``correlations``) summed over
+        the Born order pairs a, b with a + b + ``correction`` = sector."""
+
+        found = self.correlations or {}
+
+        def sandwiched(sector: Orders, i: int, j: int) -> Any:
+            total = self.numbers.real(0)
+            for (a, b), values in found.items():
+                if add_orders(a, b, correction) == sector:
+                    total += values[i, j]
+            return total
+
+        return sandwiched
+
+    def _stored_qcd_poles(self) -> dict[Orders, tuple[Any, Any]] | None:
+        """Catani's QCD prediction on a stored process (``dipoles.
+        catani_record``: massless coloured legs, gamma_j per leg, the
+        predicted sectors and alpha_s's default), with the executor's colour
+        correlations; None without a record."""
+
+        record = getattr(self.slice, "catani", None)
+        if record is None:
+            return None
+        numbers = self.numbers
+        legs = {
+            int(label): (int(rep), Fraction(gamma))
+            for label, rep, gamma in record["legs"]
+        }
+        coloured = sorted(legs)
+        alpha_s = self.slice.alpha_s_parameter
+        alpha = numbers.real(Fraction(self.parameters.get(alpha_s, record["alpha_s"])))
+        prefactor = alpha / (2 * numbers.pi)
+        mu2 = numbers.real(self.scale)
+        correction = add_orders(((record["strong"], 2),))
+        sandwiched = self._colour_correlated(correction)
+        out = {}
+        for sector in record["predicted"]:
+            sector = tuple((str(name), int(power)) for name, power in sector)
+            prediction = catani_poles(
+                coloured,
+                {label: legs[label][0] for label in coloured},
+                {label: self.incoming[label - 1] for label in coloured},
+                dict.fromkeys(coloured, Fraction(0)),
+                lambda i, j, sector=sector: sandwiched(sector, i, j) / self.average,
+                casimir=_casimir,
+                gamma=lambda j: legs[j][1],
+                mu2=mu2,
+                log=lambda x: _log(x, numbers),
+                real=numbers.real,
+                sqrt=lambda x: math.sqrt(x) if numbers.double else x.sqrt(),
+            )
+            if prediction is None:
+                return None
+            single, double = prediction
+            out[sector] = (prefactor * single, prefactor * double)
+        return out or None
 
     def _assemble(self) -> None:
         if self.native_counterterms:

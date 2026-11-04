@@ -23,6 +23,8 @@ use pyo3::types::PyDict;
 use rusticol_core::loop_execution::v2::{
     Contraction, PointNumerators, PointResult, Report, Schedule, V2Executor as Executor, V2Options,
 };
+use crate::v2_colour::NativeDipoleCorrelator;
+use rusticol_core::loop_v2::dipole_correlations::Correlator;
 use rusticol_core::loop_v2::dress::{Carrier as V2Carrier, V2Batch, parse_rational};
 use rusticol_core::loop_v2::plan::{FormPolicy, LoopProgramV4};
 use rusticol_core::loop_v2::retest::ReductionCheck;
@@ -639,6 +641,10 @@ struct Evaluation {
     /// Per point and observable column its complex outputs (native trees
     /// with observable columns), else None.
     columns: Option<Vec<Vec<Values>>>,
+    /// With `dipoles` (native trees): per point the colour correlations of
+    /// the Born vectors (`Correlator::evaluate`: per sandwich the `c × c`
+    /// values, flattened), else None.
+    dipoles: Option<Vec<Values>>,
     families: Vec<Lanes>,
     check: Option<Vec<Lanes>>,
     bare: Vec<Vec<Values>>,
@@ -688,6 +694,7 @@ fn export_evaluation<T: Exchanged + Real>(
         loop_born,
         counterterms,
         columns,
+        dipoles: None,
         families: results.iter().map(|r| lanes(&r.families)).collect(),
         check: checked.then(|| {
             results
@@ -841,6 +848,7 @@ fn evaluate_with<T: Exchanged + Real + TypedBatch + TreeCarrier + Send + Sync>(
     options: V2Options,
     bounds: Bounds,
     selection: &Selection,
+    dipoles: Option<&Correlator>,
 ) -> PyResult<Evaluation>
 where
     Complex<T>: Real + symbolica::evaluate::EvaluationDomain,
@@ -848,6 +856,11 @@ where
 {
     let batch = batch(inputs, &zero)?;
     if !inputs.contains("parameters")? {
+        if dipoles.is_some() {
+            return Err(error(
+                "dipole correlations need the executor's tree program (native inputs)",
+            ));
+        }
         if !selection.is_empty() {
             return Err(error(
                 "selection masks need the executor's tree program (native inputs)",
@@ -917,6 +930,7 @@ where
     };
     let (mut born, mut loop_born, mut counterterms) = (None, None, None);
     let mut columns: Option<Vec<Vec<Values>>> = None;
+    let mut correlations: Option<Vec<Values>> = None;
     let mut results = Vec::with_capacity(points);
     let mut report = None;
     for first in (0..points.max(1)).step_by(part.max(1)) {
@@ -951,6 +965,30 @@ where
         extend(&mut born, native.born_squared.map(export));
         extend(&mut loop_born, native.loop_born.map(export));
         extend(&mut counterterms, native.counterterms.map(export));
+        if let Some(correlator) = dipoles {
+            // The Born vectors' colour correlations (M-FINAL MF-8G-3), in
+            // the report's "trees: dipoles" stage.
+            let started = std::time::Instant::now();
+            let values = executor
+                .install(|| correlator.evaluate(&native.amplitudes, &zero))
+                .map_err(error)?;
+            extend(
+                &mut correlations,
+                Some(
+                    values
+                        .into_iter()
+                        .map(|sandwiches| sandwiches.concat())
+                        .collect(),
+                )
+                .map(export),
+            );
+            let seconds = started.elapsed().as_secs_f64();
+            tree_seconds += seconds;
+            match tree_parts.iter_mut().find(|(name, _)| *name == "trees: dipoles") {
+                Some((_, total)) => *total += seconds,
+                None => tree_parts.push(("trees: dipoles", seconds)),
+            }
+        }
         if let Some(part) = native.columns {
             columns
                 .get_or_insert_with(Vec::new)
@@ -978,7 +1016,7 @@ where
         report.seconds.insert("row liveness: trees", trees);
     }
     report.seconds.extend(tree_parts);
-    Ok(export_evaluation(
+    let mut evaluation = export_evaluation(
         results,
         report,
         bits,
@@ -986,7 +1024,9 @@ where
         loop_born,
         counterterms,
         columns,
-    ))
+    );
+    evaluation.dipoles = correlations;
+    Ok(evaluation)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1618,7 +1658,11 @@ impl V2Executor {
     /// kept bra Born basis elements, `components` the seeds' kept plan Born
     /// components, `families` the plan families dressed (the others' lanes
     /// are absent): one executor serves every evaluation-time selection.
-    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both", contraction="auto", part_points=None, fill_points=None, input_budget=None, rows=None, basis=None, components=None, families=None))]
+    /// `dipoles` (a `NativeDipoleCorrelator`, native trees only) adds per
+    /// point the Born vectors' colour correlations contracted over the
+    /// stored dipole orbits (`"dipoles"`, the native Catani operator's
+    /// input; report stage "trees: dipoles").
+    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both", contraction="auto", part_points=None, fill_points=None, input_budget=None, rows=None, basis=None, components=None, families=None, dipoles=None))]
     #[allow(clippy::too_many_arguments)]
     fn evaluate(
         &mut self,
@@ -1642,6 +1686,7 @@ impl V2Executor {
         basis: Option<Vec<bool>>,
         components: Option<Vec<bool>>,
         families: Option<Vec<bool>>,
+        dipoles: Option<PyRef<'_, NativeDipoleCorrelator>>,
     ) -> PyResult<Evaluation> {
         let poles = match poles {
             Some(value) => v2::poles_option(&value)?,
@@ -1718,9 +1763,11 @@ impl V2Executor {
         backend.masters = masters;
         let executor = &self.executor;
         let trees = self.trees.as_mut();
+        let dipoles = dipoles.as_ref().map(|d| &*d.correlator);
         match carrier {
             Carriers::Double => evaluate_with(
                 py, executor, trees, backend, inputs, 0.0, bits, options, bounds, selection,
+                dipoles,
             ),
             Carriers::DoubleDouble => evaluate_with(
                 py,
@@ -1733,6 +1780,7 @@ impl V2Executor {
                 options,
                 bounds,
                 selection,
+                dipoles,
             ),
             Carriers::Arbitrary(_) => evaluate_with(
                 py,
@@ -1745,6 +1793,7 @@ impl V2Executor {
                 options,
                 bounds,
                 selection,
+                dipoles,
             ),
             Carriers::Exact => unreachable!("backend_of refuses the exact carrier"),
         }

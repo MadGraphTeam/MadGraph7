@@ -410,6 +410,13 @@ def test_exports_refuse_projections_over_blocks_not_exact_in_nc(
 # native digest equals the former pin (``FOURIER_FREE``), and its plan and
 # companion digests are unchanged (the plan v4 bytes do not depend on the
 # seed contraction).
+# Re-pinned by lp-colour (PR #34, exact U(1)-subtraction weight 1/N_c): every
+# control's native digest only. The weight 1/N_c now enters the vertex
+# coupling (the kernels' coupling expression) instead of the tree program's
+# interaction factor ('1/3' -> '1'); the members that differ from the former
+# pins are exactly kernel-*.bin / kernel-*.symjit of the quark-line vertices
+# and the (companion) tree program, and the plan and companion digests are
+# unchanged.
 CONTROLS = {
     "uux_ddxg_lc": ("u u~ > d d~ g", {"QCD": 3, "QED": 0}, "lc"),
     "uux_ddxg_nlc": ("u u~ > d d~ g", {"QCD": 3, "QED": 0}, "nlc"),
@@ -422,39 +429,39 @@ CONTROL_BYTES = {
     "uux_ddxg_lc": (
         "f8595356dbb40148749b9828679d4a368518cb0922e3f680fe8313af978ace95",
         "8c32bb3bc825e3c3fed06ca962091ad64fe3b87ffc636747a0d0482b9ac83fb2",
-        "3771d997dc0a75d410e4ec6a1f30765317e68c0ee2df09e114eccc2f7f083f65",
+        "0716b30651f724ab0ff78ae874c3e74046a5c92dfe7e92cbd1f737cb743dff5a",
     ),
     "uux_ddxg_nlc": (
         "4cd00549a72bfa194778472289d5af0c31c7dfc471c27d54bd116152eb62e2ad",
         "f27586cffefed6fd94ceaef0155a11590ccba22e423f7014efe0f49457ddb249",
-        "99a27d7b629adf25e46deb4a3a9936bfcd6f0794f88ea3f797c05717841728fb",
+        "761a5511395104b6c60e42f64055f10d62e4028f80cbcc18e5a2d1401a82c4b7",
     ),
     "uux_ddxssx_lc": (
         "eadb28c424c1d45046399f8b6dd8832d805c0eb1ffb59906b86ead2927c3d09d",
         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "9cc0b75266b77e6bd39c237496afe8637282573278a064432bc1eeb99dcad1dc",
+        "3996f8e151ce65fcae02c76df6925ac2ad24cbd84ab016fa9c812343eb462bab",
     ),
     "uux_ddxssx_nlc": (
         "698711e3b9670e135f20719c82041c020bbd846f404ee963eb74b92e186432ab",
         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "a6b26a742d6c3aa1b125e94b3ad5c92e31219f28ffaa1c38881a581621fc9ece",
+        "33ed29a5bf1c63b21193d8449d9b9c6a60c8bc58c645fc3e5c60db7d2754130d",
     ),
     "uux_uuxg_full": (
         "a80ff312a2155ddbbc9f02f352b90335427eb9e19b560702e21b5431450cf28e",
         "f3f96c6e2a657899cef204358546e9e6e2d865093ab7a2cda27706af315c6ad5",
-        "3decb1412ce99184479564e7ecbe1fc7583dbd757ba66287a54c5df551e75ffe",
+        "32d5e455a3875b5fdf5f5ef470ba094fb670a3296cac2a820727e97b9f81a34b",
     ),
     "gg_uuxuux_full": (
         "52aebd812ec8a579a8268de84370f850b69b3a05f83a8cb54fb109eb74620769",
         "50b2f50da81a8619ebb3b2b5dd5b078c6c7aa1fe79727531eaebe2a703793d23",
-        "f814e4f90bbe6ac8ed84b8f4f0f1616d6c45d1b014ef52968934bc88a9117f83",
+        "6f1eeb790aaebe15daa59c49c27e443270829473ae398894254afd83d6da0994",
     ),
 }
 # The native digests of the controls without their seed Fourier record (the
-# pins before mq-fft).
+# pins before mq-fft; re-pinned by lp-colour for PR #34 as above).
 FOURIER_FREE = {
     "gg_uuxuux_full": (
-        "4121edeec2a19785a76b8cb34a9e053fc5a132301b3e917a19d787d371056c8a"
+        "9721bcee34c7e24095708b12dac33f2db4ada9c3d37b00ad2f86b0a448a788e3"
     ),
 }
 
@@ -471,6 +478,11 @@ def _identity(generated, *, fourier: bool = True) -> tuple[str, str, str]:
 
     sha = lambda data: hashlib.sha256(data).hexdigest()  # noqa: E731
     native = generated.native
+    # Catani's stored QCD record (``dipoles.catani_record``, M-FINAL
+    # MF-8G-3) postdates the pins.
+    if "catani" in native.record:
+        record = {key: value for key, value in native.record.items() if key != "catani"}
+        native = dataclasses.replace(native, record=record)
     if not fourier:
         record = {
             key: value for key, value in native.record.items() if key != "fourier"
