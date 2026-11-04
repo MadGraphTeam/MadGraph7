@@ -2389,8 +2389,11 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             file = open(pjoin(_file_path, \
             'iolibs/template_files/bornmatrix_colorlinks_fks.inc')).read()
         elif proc_type=='bhel':
-            file = open(pjoin(_file_path, \
-            'iolibs/template_files/born_hel_splitorders_fks.inc')).read()
+            # MadVFold: use the vfold version of the file, if requested
+            file = open(vfold_file(self.opt,
+            pjoin('madgraph','iolibs','template_files','born_hel_splitorders_fks.inc'),
+            pjoin(_file_path, \
+            'iolibs/template_files/born_hel_splitorders_fks.inc'))).read()
         elif proc_type=='real':
             file = open(pjoin(_file_path, \
             'iolibs/template_files/realmatrix_splitorders_fks.inc')).read()
