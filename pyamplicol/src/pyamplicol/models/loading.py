@@ -992,14 +992,6 @@ def _load_external_model(
     # These imports intentionally live inside the execution boundary so package
     # import, metadata inspection, and built-in-SM planning stay dependency-light.
     _require_ufo_model_loader()
-    # The scalar predicates take their aligned id block before the source's
-    # symbols, as they do when the compiled model comes from the cache (which
-    # creates no symbol): saved evaluators record the ids of the symbols they
-    # reference, so the parameter programs that keep the predicates are then
-    # the same bytes either way (``loops.scalar_frontend.scalar_predicates``).
-    from ..loops.scalar_frontend import scalar_predicates
-
-    scalar_predicates()
     with _sanitized_model_environment():
         from ufo_model_loader.commands import load_model
         from ufo_model_loader.common import JSONLook

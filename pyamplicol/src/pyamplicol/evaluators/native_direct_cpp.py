@@ -32,7 +32,7 @@ from typing import Any
 
 from .._internal.physics.types import NativeEvaluationError
 from .._internal.versions import NATIVE_COMPILED_DIRECT_APPLICATION_ABI
-from .symbolica_helpers import _symbolica_instruction_program
+from .symbolica_helpers import _symbolica_instruction_program, saved_evaluator
 
 _C_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 _DIRECT_MARKER = "// pyAmpliCol genuine native DirectApplication producer v1"
@@ -198,7 +198,7 @@ def render_native_direct_cpp(
         )
     try:
         raw_program = _symbolica_instruction_program(get_instructions())
-        evaluator_state = save()
+        evaluator_state = saved_evaluator(evaluator)
     except Exception as error:
         raise NativeEvaluationError(
             "Symbolica could not expose its optimized evaluator instruction stream"

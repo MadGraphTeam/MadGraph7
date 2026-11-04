@@ -17,33 +17,31 @@ from .._internal.physics.types import NativeEvaluationError
 ComplexOutput = np.ndarray | tuple[np.ndarray, ...]
 
 
-# Python Symbolica's `Evaluator.save()` envelope (magic, then the producer's
-# native-code flag) and, after Symbolica's state header magic (u32) and export
-# format (u16), the header's whole-state flag.
+# Python Symbolica's `Evaluator.save()` envelope: a versioned magic, then the
+# producer's native-code flag, its Symbolica state and the bincode payload.
 _SAVED_EVALUATOR_MAGIC = b"\xffSYMEVAL\x01"
-_WHOLE_STATE_FLAG = len(_SAVED_EVALUATOR_MAGIC) + 1 + 6
 
 
 def saved_evaluator(evaluator: Any) -> bytes:
-    """``evaluator.save()`` with only the Symbolica state the evaluator references.
+    """``evaluator.save()`` in its canonical stored form.
 
-    A Python Symbolica release without symbolica-dev#163 (PyPI 3.0.3) writes
-    the producer's whole Symbolica state into every save: tens of MB per
-    evaluator after a model compile, depending on every symbol the process
-    created, and imported again by every load. The native re-encodes such a
-    save in #163's state-minimal form with its payload unchanged
-    (``state_minimal_saved_evaluator``). Any other save is returned as it is,
-    without the native.
+    Every generation writer stores a Symbolica evaluator through this
+    function, so the stored bytes depend on the evaluator alone, not on the
+    Python Symbolica that produced it nor on the symbols the process created
+    before. The native (``canonical_saved_evaluator``) keeps only the state
+    the evaluator references (a Python Symbolica without symbolica-dev#163,
+    PyPI 3.0.3, saves the process's whole state: tens of MB per evaluator
+    after a model compile) and numbers its symbols canonically (a producer
+    numbers them by its registry); the payload is kept, and the result must
+    decode to the same evaluator. A save without the envelope (no Symbolica
+    state) is returned as it is.
     """
     saved = bytes(evaluator.save())
-    if not (
-        saved.startswith(_SAVED_EVALUATOR_MAGIC)
-        and saved[_WHOLE_STATE_FLAG : _WHOLE_STATE_FLAG + 1] == b"\x01"
-    ):
+    if not saved.startswith(_SAVED_EVALUATOR_MAGIC):
         return saved
     from ..loops.native import load_loop_native
 
-    return bytes(load_loop_native().state_minimal_saved_evaluator(saved))
+    return bytes(load_loop_native().canonical_saved_evaluator(saved))
 
 
 def _symbolica_instruction_program(exported: Any) -> Any:

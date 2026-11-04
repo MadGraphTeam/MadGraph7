@@ -411,7 +411,7 @@ class _CompiledComplexEvaluatorAdapter:
         save = getattr(evaluator, "save", None)
         if callable(save):
             save_started = time.perf_counter()
-            self.evaluator_state_path.write_bytes(save())
+            self.evaluator_state_path.write_bytes(saved_evaluator(evaluator))
             self.build_timing["evaluator_save_s"] = time.perf_counter() - save_started
         else:
             self.evaluator_state_path = None

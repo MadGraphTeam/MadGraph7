@@ -8,7 +8,7 @@ pub(crate) use crossing::*;
 mod backend;
 pub(crate) use backend::{ensure_evaluator_capabilities_supported, evaluator_runtime_capabilities};
 #[cfg(feature = "symbolica-runtime")]
-pub(crate) use backend::{decode_exact_evaluator_state, state_minimal_saved_evaluator};
+pub(crate) use backend::{canonical_saved_evaluator, decode_exact_evaluator_state};
 
 #[cfg(feature = "f64-compiled")]
 #[path = "evaluator/compiled.rs"]

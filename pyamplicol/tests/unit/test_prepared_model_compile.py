@@ -482,6 +482,16 @@ def test_native_direct_complex_contract_matches_exact_arithmetic(
         direct_spec=spec,
     )
     assert manifest["function_name"] == manifest["direct_table"]["function_name"]
+    # The stored exact state is the native's canonical form of the saved
+    # evaluator, and the DirectTable digests it.
+    from pyamplicol.loops.native import load_loop_native
+
+    state = Path(manifest["evaluator_state_path"]).read_bytes()
+    assert bytes(load_loop_native().canonical_saved_evaluator(state)) == state
+    assert (
+        manifest["direct_table"]["evaluator_state_sha256"]
+        == hashlib.sha256(state).hexdigest()
+    )
     manifest_settings = manifest["settings"]
     assert isinstance(manifest_settings, dict)
     assert manifest_settings["compiler_flags"] == []

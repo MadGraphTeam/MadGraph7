@@ -146,12 +146,13 @@ pub mod __private {
         crate::engine::decode_exact_evaluator_state(bytes)
     }
 
-    /// A Python `Evaluator.save()` with only the Symbolica state its evaluator
-    /// references; `None` when it already holds no more (the generation
-    /// writers' canonical form, `pyamplicol.evaluators.symbolica_helpers`).
+    /// A Python `Evaluator.save()` in its canonical stored form (only the
+    /// Symbolica state its evaluator references, numbered canonically);
+    /// `None` when it already is in it (the generation writers' form,
+    /// `pyamplicol.evaluators.symbolica_helpers.saved_evaluator`).
     #[cfg(feature = "symbolica-runtime")]
-    pub fn state_minimal_saved_evaluator(bytes: &[u8]) -> RusticolResult<Option<Vec<u8>>> {
-        crate::engine::state_minimal_saved_evaluator(bytes)
+    pub fn canonical_saved_evaluator(bytes: &[u8]) -> RusticolResult<Option<Vec<u8>>> {
+        crate::engine::canonical_saved_evaluator(bytes)
     }
 
     /// Unstable cold-path bridge for the private PyO3 artifact generator.

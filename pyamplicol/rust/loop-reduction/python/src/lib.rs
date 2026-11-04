@@ -73,20 +73,21 @@ impl CoefficientEvaluator {
     }
 }
 
-/// `saved` (a Python `Evaluator.save()`) with only the Symbolica state its
-/// evaluator references; `saved` itself when it holds no more
-/// (`rusticol_core::__private::state_minimal_saved_evaluator`).
+/// `saved` (a Python `Evaluator.save()`) in its canonical stored form: only
+/// the Symbolica state its evaluator references, numbered canonically;
+/// `saved` itself when it already is in it
+/// (`rusticol_core::__private::canonical_saved_evaluator`).
 #[pyfunction]
-fn state_minimal_saved_evaluator<'py>(
+fn canonical_saved_evaluator<'py>(
     py: Python<'py>,
     saved: Bound<'py, PyBytes>,
 ) -> PyResult<Bound<'py, PyBytes>> {
     let bytes = saved.as_bytes();
     match py
-        .detach(|| rusticol_core::__private::state_minimal_saved_evaluator(bytes))
+        .detach(|| rusticol_core::__private::canonical_saved_evaluator(bytes))
         .map_err(error)?
     {
-        Some(minimal) => Ok(PyBytes::new(py, &minimal)),
+        Some(canonical) => Ok(PyBytes::new(py, &canonical)),
         None => Ok(saved),
     }
 }
@@ -111,7 +112,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     rusticol_core::diagnostics::symbolica_diagnostics_on_stderr();
     batch::register(module)?;
     module.add_class::<CoefficientEvaluator>()?;
-    module.add_function(wrap_pyfunction!(state_minimal_saved_evaluator, module)?)?;
+    module.add_function(wrap_pyfunction!(canonical_saved_evaluator, module)?)?;
     v2::register(module)?;
     v2_catalogue::register(module)?;
     v2_closure::register(module)?;
