@@ -6942,6 +6942,8 @@ c For the MINT folding
       include 'orders.inc'
       logical firsttime
       data firsttime / .true. /
+      logical firsttime_virt
+      data firsttime_virt / .true. /
       logical need_color_links_used, need_charge_links_used
       data need_color_links_used / .false. /
       data need_charge_links_used / .false. /
@@ -7244,6 +7246,14 @@ CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
          if ((ran2().le.virtual_fraction(ichan) .and.
      $        abrv(1:3).ne.'nov').or.abrv(1:4).eq.'virt') then
             call cpu_time(tBefore)
+c AV FIX: the first call of BinothLHA uses a tighter tolerance than all
+c the others (its pole check), so the virtual of the first point would
+c depend on which point is evaluated first. Discard the result of the
+c first call and evaluate that point again, as all other points.
+            if (firsttime_virt) then
+               firsttime_virt=.false.
+               Call binothlha_frame(p_born,born_wgt,virt_wgt)
+            endif
             Call binothlha_frame(p_born,born_wgt,virt_wgt)
             do iamp=1,amp_split_size
                amp_split_virt(iamp)=amp_split_finite_ML(iamp)
