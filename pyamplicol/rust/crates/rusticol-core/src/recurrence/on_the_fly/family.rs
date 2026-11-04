@@ -2079,12 +2079,18 @@ impl OnTheFlyFamilyWorkspaceV1 {
         let parameters = DirectParameterView {
             values_re: self.parameters_re.as_ptr(),
             values_im: self.parameters_im.as_ptr(),
-            value_count: self.parameters_re.len() as u32,
+            value_count: crate::narrow::checked::<u32>(
+                self.parameters_re.len(),
+                "direct parameter count",
+            )?,
         };
         let factors = DirectFactorView {
             values_re: self.factors_re.as_ptr(),
             values_im: self.factors_im.as_ptr(),
-            value_count: self.factors_re.len() as u32,
+            value_count: crate::narrow::checked::<u32>(
+                self.factors_re.len(),
+                "direct factor count",
+            )?,
         };
         validate_direct_views(arena, momenta, parameters, factors)?;
         Ok((arena, momenta, parameters, factors))

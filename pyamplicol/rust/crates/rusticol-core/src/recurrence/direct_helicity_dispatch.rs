@@ -611,9 +611,18 @@ pub(crate) fn encode_recurrence_helicity_dispatch_v1_to_writer<W: Write>(
     writer.u32(parts.amplitude_destination_count)?;
     writer.u32(parts.direct_executor_count)?;
     writer.u32(parts.resolved_helicity_count)?;
-    writer.u32(parts.support_domains.len() as u32)?;
-    writer.u32(parts.row_groups.len() as u32)?;
-    writer.u32(parts.dispatches.len() as u32)?;
+    writer.u32(crate::narrow::checked(
+        parts.support_domains.len(),
+        "dispatch support domains",
+    )?)?;
+    writer.u32(crate::narrow::checked(
+        parts.row_groups.len(),
+        "dispatch row groups",
+    )?)?;
+    writer.u32(crate::narrow::checked(
+        parts.dispatches.len(),
+        "helicity dispatches",
+    )?)?;
     writer.u64(parts.support_words.len() as u64)?;
     writer.u64(parts.dispatch_group_ids.len() as u64)?;
 

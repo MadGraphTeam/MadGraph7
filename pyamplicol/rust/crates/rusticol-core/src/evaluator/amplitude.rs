@@ -2647,12 +2647,13 @@ impl AmplitudeRuntime {
             root_factor_bits,
             color_indices,
         };
-        // Common 384-helicity artifacts fit every schedule; 768-helicity
-        // artifacts have at most 384 non-structural/global-flip primaries and
-        // therefore fit as well. Parent-closure lanes use 192 schedules for the
-        // qq_Z6g artifact. Arbitrary dynamic selector/root-factor combinations
-        // remain capped instead of growing the runtime cache indefinitely.
-        let artifact_plan_capacity = physics.manifest.helicities.len().clamp(16, 512);
+        // The cache holds one plan per helicity of the artifact (at least 16,
+        // a tuning floor for small artifacts): every helicity's default
+        // plan stays cached whatever the multiplicity, while arbitrary
+        // dynamic selector/root-factor combinations stay bounded by the
+        // artifact instead of growing the cache indefinitely. Eviction
+        // only rebuilds a plan (results unchanged).
+        let artifact_plan_capacity = physics.manifest.helicities.len().max(16);
         self.materialized_helicity_direct_total_plan_capacity = self
             .materialized_helicity_direct_total_plan_capacity
             .max(artifact_plan_capacity);
@@ -4640,17 +4641,14 @@ fn parse_exact_color_weight(
     let Some(exact) = exact else {
         return Ok(None);
     };
-    const LIMIT: i128 = 1 << 85;
     let part = |numerator: &str, denominator: &str, binary64: f64| {
         let parse = |text: &str| {
-            text.parse::<i128>()
-                .ok()
-                .filter(|value| value.abs() < LIMIT)
-                .ok_or_else(|| {
-                    RusticolError::artifact(format!(
-                        "exact colour weight component {text:?} is not an integer below 2^85"
-                    ))
-                })
+            text.parse::<i128>().map_err(|_| {
+                RusticolError::artifact(format!(
+                    "exact colour weight component {text:?} is not an integer of the i128 \
+                     exact-weight storage"
+                ))
+            })
         };
         let (numerator, denominator) = (parse(numerator)?, parse(denominator)?);
         if denominator <= 0 {
@@ -4686,11 +4684,23 @@ where
             T::from_f64_constant(entry.weight_im, binary_precision),
         );
     };
-    // |n| < 2^85 splits into two binary64-exact halves, n = high · 2^32 + low.
     let integer = |n: i128| {
-        let high = T::from_f64_constant((n >> 32) as f64, binary_precision);
-        let low = T::from_f64_constant((n & 0xffff_ffff) as f64, binary_precision);
-        high * T::from_f64_constant(4_294_967_296.0, binary_precision) + low
+        let two32 = || T::from_f64_constant(4_294_967_296.0, binary_precision);
+        let limb = |shift: u32| T::from_f64_constant(((n >> shift) & 0xffff_ffff) as f64, binary_precision);
+        if n.unsigned_abs() < 1 << 85 {
+            // Two binary64-exact halves, n = high · 2^32 + low (exact at
+            // 106 bits or more).
+            let high = T::from_f64_constant((n >> 32) as f64, binary_precision);
+            high * two32() + limb(0)
+        } else {
+            // Any i128: four 32-bit limbs, the top one signed (exact at 128
+            // bits or more, correctly rounded steps below).
+            let mut value = T::from_f64_constant((n >> 96) as f64, binary_precision);
+            for shift in [64, 32, 0] {
+                value = value * two32() + limb(shift);
+            }
+            value
+        }
     };
     let rational = |(numerator, denominator): (i128, i128)| {
         integer(numerator) / integer(denominator)
@@ -5356,7 +5366,36 @@ mod exact_color_weight_tests {
             let (re, _) = color_weight_generic::<Float>(&large, Some(200));
             let numerator = Float::with_val(200, 2f64.powi(70)) + Float::with_val(200, 1);
             assert_eq!(re, numerator / Float::with_val(200, 3));
+            // Past the old 2^85 cap: any i128, exact at 200 bits (negative
+            // numerators too).
+            for n in [(1i128 << 100) + 12_345, -(1i128 << 110) - 7, i128::MAX] {
+                let text = n.to_string();
+                let parsed = parse_exact_color_weight(
+                    Some(&strings([text.as_str(), "7", "0", "1"])),
+                    n as f64 / 7.0,
+                    0.0,
+                )
+                .unwrap()
+                .unwrap();
+                let wide = ColorContractionEntry {
+                    exact: Some(parsed),
+                    ..entry
+                };
+                let (re, _) = color_weight_generic::<Float>(&wide, Some(200));
+                let expected = Float::with_val(200, n.unsigned_abs())
+                    * Float::with_val(200, n.signum())
+                    / Float::with_val(200, 7);
+                assert_eq!(re, expected, "{n}");
+            }
         }
+        // Beyond i128: refused, naming the storage.
+        let error = parse_exact_color_weight(
+            Some(&strings(["1".repeat(40).as_str(), "1", "0", "1"])),
+            1e39,
+            0.0,
+        )
+        .unwrap_err();
+        assert!(error.message().contains("i128"), "{error:?}");
     }
 }
 

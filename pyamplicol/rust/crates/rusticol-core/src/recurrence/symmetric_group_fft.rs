@@ -1147,6 +1147,8 @@ fn build_recursive_to_lexicographic(
 }
 
 fn extend_recursive_permutation(child: u64, degree: usize, coset: usize) -> u64 {
+    // Four-bit codes hold degree <= 16; `checked_factorials` admits only
+    // degrees whose order fits the u32 reorder storage (degree <= 12).
     debug_assert!(degree >= 1 && degree <= u64::BITS as usize / 4);
     debug_assert!(coset < degree);
     let mut result = 0_u64;

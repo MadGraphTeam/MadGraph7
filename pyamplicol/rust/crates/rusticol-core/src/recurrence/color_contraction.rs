@@ -24,7 +24,6 @@ const ENTRY_BYTES: usize = 36;
 const EXACT_FACTOR_BYTES: usize = 64;
 // The subgroup order must fit the codec's u32 local-group count.
 const MAX_FACTOR_RANK: u32 = u32::BITS - 1;
-const MAX_SYMMETRIC_GROUP_DEGREE: u32 = 10;
 // A batching target, not a resource limit: a single large lane and explicitly
 // requested workspace growth may exceed it.
 const TARGET_SYMMETRIC_GROUP_LANE_WORKSPACE_BYTES: usize = 512 * 1024 * 1024;
@@ -2262,10 +2261,13 @@ fn decode_factorization(
                     "symmetric-group Fourier factorization requires convolution-kernel storage",
                 ));
             }
-            if !(2..=MAX_SYMMETRIC_GROUP_DEGREE).contains(&factor_rank) {
-                return Err(malformed(format!(
-                    "symmetric-group Fourier degree must be in [2, {MAX_SYMMETRIC_GROUP_DEGREE}]"
-                )));
+            // No degree cap: the FFT plan built for the payload admits the
+            // degree (its group order in the plan's reorder storage, the
+            // same u32 width as the codec's local-group count).
+            if factor_rank < 2 {
+                return Err(malformed(
+                    "symmetric-group Fourier degree must be at least 2",
+                ));
             }
             FactorizedColorContractionKind::SymmetricGroupFourier
         }

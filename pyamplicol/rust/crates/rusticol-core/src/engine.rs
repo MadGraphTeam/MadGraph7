@@ -2567,8 +2567,8 @@ struct ColorContractionEntry {
     exact: Option<ExactColorWeight>,
 }
 
-/// An exact rational colour weight (re_num/re_den, im_num/im_den), with |numerators| and
-/// denominators below 2^85 so that they convert exactly at 106 bits or more.
+/// An exact rational colour weight (re_num/re_den, im_num/im_den) of i128 numbers; below 2^85
+/// they convert exactly at 106 bits or more, any i128 at 128 bits or more.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct ExactColorWeight {
     re: (i128, i128),
