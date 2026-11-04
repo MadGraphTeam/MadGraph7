@@ -893,7 +893,7 @@ impl SeedBuilder {
                 position,
                 single: *single,
                 terms: id,
-                orders: orders.intern(content_orders.clone()),
+                orders: orders.intern(content_orders.clone()).map_err(invalid)?,
             });
         }
         if skeleton_contents
@@ -907,11 +907,12 @@ impl SeedBuilder {
             .map(|span| {
                 skeleton_contents[span[0]..span[1]]
                     .iter()
-                    .fold(OrderSpace::EMPTY, |total, &c| {
+                    .try_fold(OrderSpace::EMPTY, |total, &c| {
                         orders.add(total, contents[c as usize].orders)
                     })
+                    .map_err(invalid)
             })
-            .collect();
+            .collect::<RusticolResult<_>>()?;
         let tensors = spec
             .tensors
             .iter()
@@ -1002,8 +1003,8 @@ impl SeedBuilder {
             builder.existing_orders.push(
                 class_orders
                     .iter()
-                    .map(|o| builder.orders.intern(o.clone()))
-                    .collect(),
+                    .map(|o| builder.orders.intern(o.clone()).map_err(invalid))
+                    .collect::<RusticolResult<_>>()?,
             );
         }
         Ok(builder)
@@ -2022,20 +2023,26 @@ impl SeedBuilder {
             "nlc" => 2,
             other => return Err(invalid(format!("no prune at accuracy {other:?}"))),
         };
-        let mut intern = |o: &Vec<(u16, i64)>| self.orders.intern(o.clone());
+        let mut intern =
+            |o: &Vec<(u16, i64)>| self.orders.intern(o.clone()).map_err(invalid);
         let sectors: Vec<Vec<(u32, u32)>> = spec
             .sectors
             .iter()
-            .map(|pairs| pairs.iter().map(|(a, l)| (intern(a), intern(l))).collect())
-            .collect();
+            .map(|pairs| {
+                pairs
+                    .iter()
+                    .map(|(a, l)| Ok((intern(a)?, intern(l)?)))
+                    .collect::<RusticolResult<_>>()
+            })
+            .collect::<RusticolResult<_>>()?;
         let basis: Vec<Vec<u32>> = spec
             .basis_orders
             .iter()
-            .map(|orders| orders.iter().map(&mut intern).collect())
-            .collect();
+            .map(|orders| orders.iter().map(&mut intern).collect::<RusticolResult<_>>())
+            .collect::<RusticolResult<_>>()?;
         let mut grades: FastMap<(usize, u32), Vec<i64>> = FastMap::default();
         for (b, a, values) in &spec.grades {
-            grades.insert((*b, intern(a)), values.clone());
+            grades.insert((*b, intern(a)?), values.clone());
         }
         for table in &spec.tables {
             if table.degrees.len() != sectors.len() {

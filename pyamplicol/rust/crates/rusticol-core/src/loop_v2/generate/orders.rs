@@ -24,23 +24,26 @@ pub struct OrderSpace {
 impl OrderSpace {
     pub fn new() -> Self {
         let mut space = Self::default();
-        space.intern(Vec::new());
+        space.index.insert(Vec::new(), Self::EMPTY);
+        space.vectors.push(Vec::new());
         space
     }
 
     /// The id of the empty order vector.
     pub const EMPTY: u32 = 0;
 
-    pub fn intern(&mut self, mut orders: OrderVec) -> u32 {
+    /// The id of `orders` (normalised); a new vector beyond the `u32` id
+    /// width is refused, never wrapped.
+    pub fn intern(&mut self, mut orders: OrderVec) -> Result<u32, String> {
         orders.retain(|&(_, power)| power != 0);
         orders.sort_unstable();
         if let Some(&id) = self.index.get(&orders) {
-            return id;
+            return Ok(id);
         }
-        let id = u32::try_from(self.vectors.len()).expect("order vectors fit u32");
+        let id = crate::narrow::checked_str::<u32>(self.vectors.len(), "coupling-order vector id")?;
         self.index.insert(orders.clone(), id);
         self.vectors.push(orders);
-        id
+        Ok(id)
     }
 
     pub fn len(&self) -> usize {
@@ -56,16 +59,16 @@ impl OrderSpace {
     }
 
     /// `add_orders(a, b)`.
-    pub fn add(&mut self, a: u32, b: u32) -> u32 {
+    pub fn add(&mut self, a: u32, b: u32) -> Result<u32, String> {
         if a == Self::EMPTY {
-            return b;
+            return Ok(b);
         }
         if b == Self::EMPTY {
-            return a;
+            return Ok(a);
         }
         let key = if a <= b { (a, b) } else { (b, a) };
         if let Some(&id) = self.sums.get(&key) {
-            return id;
+            return Ok(id);
         }
         let (x, y) = (&self.vectors[a as usize], &self.vectors[b as usize]);
         let mut out = Vec::with_capacity(x.len() + y.len());
@@ -83,9 +86,9 @@ impl OrderSpace {
                 j += 1;
             }
         }
-        let id = self.intern(out);
+        let id = self.intern(out)?;
         self.sums.insert(key, id);
-        id
+        Ok(id)
     }
 
     /// `orders_within(orders, cap)`: every power at most the cap's (absent = 0).
@@ -114,19 +117,21 @@ mod tests {
     #[test]
     fn sums_are_normalised_and_memoised() {
         let mut space = OrderSpace::new();
-        let a = space.intern(vec![(1, 2), (0, 1)]);
-        let b = space.intern(vec![(0, -1), (2, 1)]);
-        let c = space.add(a, b);
+        assert_eq!(space.intern(Vec::new()).unwrap(), OrderSpace::EMPTY);
+        assert_eq!(space.intern(vec![(4, 0)]).unwrap(), OrderSpace::EMPTY);
+        let a = space.intern(vec![(1, 2), (0, 1)]).unwrap();
+        let b = space.intern(vec![(0, -1), (2, 1)]).unwrap();
+        let c = space.add(a, b).unwrap();
         assert_eq!(space.get(c), &vec![(1, 2), (2, 1)]);
-        assert_eq!(space.add(b, a), c);
-        assert_eq!(space.add(OrderSpace::EMPTY, a), a);
+        assert_eq!(space.add(b, a).unwrap(), c);
+        assert_eq!(space.add(OrderSpace::EMPTY, a).unwrap(), a);
         assert!(space.within(c, &vec![(1, 2), (2, 3)]));
         assert!(!space.within(c, &vec![(1, 1), (2, 3)]));
         assert!(space.names_meet(c, &[2]));
         assert!(space.names_meet(c, &[0, 1]));
         assert!(!space.names_meet(c, &[0, 3]));
         // Name ids past any bitmask width.
-        let wide = space.intern(vec![(70, 1), (300, 2)]);
+        let wide = space.intern(vec![(70, 1), (300, 2)]).unwrap();
         assert!(space.names_meet(wide, &[300]));
         assert!(!space.names_meet(wide, &[6, 44]));
     }

@@ -191,17 +191,17 @@ impl<'a> Recursion<'a> {
             .currents
             .iter()
             .map(|current| orders.intern(current.orders.clone()))
-            .collect();
+            .collect::<Result<_, _>>()?;
         let vertex_orders = input
             .vertices
             .iter()
             .map(|vertex| orders.intern(vertex.orders.clone()))
-            .collect();
+            .collect::<Result<_, _>>()?;
         let loop_orders = input
             .loop_orders
             .iter()
             .map(|order| orders.intern(order.clone()))
-            .collect();
+            .collect::<Result<_, _>>()?;
         let mut currents_by_mask: HashMap<LegSet, (usize, usize)> = HashMap::default();
         for (index, current) in input.currents.iter().enumerate() {
             let entry = currents_by_mask
@@ -328,7 +328,7 @@ impl<'a> Recursion<'a> {
         let mut orders = self.vertex_orders[vertex as usize];
         let mut mask = 0;
         for &block in &position.blocks {
-            orders = self.orders.add(orders, self.current_orders[block as usize]);
+            orders = self.orders.add(orders, self.current_orders[block as usize])?;
             mask |= self.input.currents[block as usize].mask;
         }
         let template = &self.input.vertices[vertex as usize];
@@ -395,7 +395,7 @@ impl<'a> Recursion<'a> {
             for position in self.positions(sub, species)? {
                 let data = &self.position_data[position as usize];
                 let (loop_out, position_orders) = (data.loop_out, data.orders);
-                let total = self.orders.add(orders, position_orders);
+                let total = self.orders.add(orders, position_orders)?;
                 if !self.orders.within(total, &self.cap) {
                     continue;
                 }
@@ -559,7 +559,7 @@ pub fn generate_families(input: &FamilyInput) -> Result<FamilyOutput, String> {
                     for position in recursion.positions(sub, species)? {
                         let data = &recursion.position_data[position as usize];
                         let (loop_out, position_orders) = (data.loop_out, data.orders);
-                        let total = recursion.orders.add(orders, position_orders);
+                        let total = recursion.orders.add(orders, position_orders)?;
                         if !recursion.orders.within(total, &recursion.cap) {
                             continue;
                         }

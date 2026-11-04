@@ -209,12 +209,12 @@ impl<'a> Builder<'a> {
         let mut position_mask = Vec::with_capacity(output.positions.len());
         for position in &output.positions {
             let mut total =
-                orders.intern(families.vertices[position.vertex as usize].orders.clone());
+                orders.intern(families.vertices[position.vertex as usize].orders.clone())?;
             let mut mask = 0;
             for &block in &position.blocks {
                 let current = &families.currents[block as usize];
-                let id = orders.intern(current.orders.clone());
-                total = orders.add(total, id);
+                let id = orders.intern(current.orders.clone())?;
+                total = orders.add(total, id)?;
                 mask |= current.mask;
             }
             position_orders.push(total);
@@ -492,7 +492,7 @@ impl<'a> Builder<'a> {
                 orders = self
                     .state
                     .orders
-                    .add(orders, self.state.contents[content as usize].orders);
+                    .add(orders, self.state.contents[content as usize].orders)?;
             }
             out.push(Skeleton {
                 contents,
@@ -1328,9 +1328,9 @@ mod tests {
         };
         let mut space = OrderSpace::new();
         let order_ids = [
-            space.intern(vec![(0, 3)]),
-            space.intern(vec![(0, 2), (1, 1)]),
-            space.intern(vec![(1, 2)]),
+            space.intern(vec![(0, 3)]).unwrap(),
+            space.intern(vec![(0, 2), (1, 1)]).unwrap(),
+            space.intern(vec![(1, 2)]).unwrap(),
         ];
         let segments: SegmentTable = (0..9).map(|l| (1u64 << (l % 7), 0, (l % 3) as i64)).collect();
         for count in 1..=7usize {
@@ -1375,9 +1375,9 @@ mod tests {
         };
         let mut space = OrderSpace::new();
         let order_ids = [
-            space.intern(vec![(0, 3)]),
-            space.intern(vec![(0, 2), (1, 1)]),
-            space.intern(vec![(1, 2)]),
+            space.intern(vec![(0, 3)]).unwrap(),
+            space.intern(vec![(0, 2), (1, 1)]).unwrap(),
+            space.intern(vec![(1, 2)]).unwrap(),
         ];
         let segments: SegmentTable =
             (0..9).map(|l| ((1u64 << (l % 7)) | (1u64 << ((l + 3) % 7)), 0, (l % 3) as i64)).collect();
