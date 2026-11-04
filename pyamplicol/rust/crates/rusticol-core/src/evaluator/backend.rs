@@ -2766,11 +2766,11 @@ pub(crate) fn state_minimal_saved_evaluator(bytes: &[u8]) -> RusticolResult<Opti
             crate::SYMBOLICA_SERIALIZATION_ABI
         ))
     };
-    let decode_head = |payload: &[u8], state_map: StateMap| {
+    let decode_head = |payload: &[u8], state_map: &StateMap| {
         bincode::decode_from_slice_with_context::<_, SavedEvaluatorHead, _>(
             payload,
             bincode::config::standard(),
-            state_map,
+            BorrowedStateMap(state_map),
         )
         .map(|((_, _, evaluator), _)| evaluator)
         .map_err(|error| incompatible(&error))
@@ -2795,18 +2795,39 @@ pub(crate) fn state_minimal_saved_evaluator(bytes: &[u8]) -> RusticolResult<Opti
     }
     let _unlock = crate::licence::unlock();
     crate::source_scalar::register_scalar_primitives();
-    let mut payload = state;
-    let state_map = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        State::import(
-            &mut payload,
-            Some(Box::new(|name: &str| import_conflict_name(name).into())),
-        )
-    }))
-    .map_err(|_| {
-        incompatible(&"a symbol conflicts with this process's also under its import name")
-    })?
-    .map_err(|error| incompatible(&error))?;
-    let evaluator = decode_head(payload, state_map)?;
+    // A producer's consecutive saves mostly carry the same state (one import
+    // of a 30 MB loop_sm state takes about 0.5 s): the last imported section
+    // and its map are kept. The section is self-delimiting, so a save that
+    // starts with it carries exactly it.
+    let mut last = LAST_WHOLE_STATE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let (section, state_map) = match last.take() {
+        Some((section, state_map))
+            if state.len() > section.len() && state.starts_with(&section) =>
+        {
+            (section, state_map)
+        }
+        _ => {
+            let mut rest = state;
+            let state_map = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                State::import(
+                    &mut rest,
+                    Some(Box::new(|name: &str| import_conflict_name(name).into())),
+                )
+            }))
+            .map_err(|_| {
+                incompatible(&"a symbol conflicts with this process's also under its import name")
+            })?
+            .map_err(|error| incompatible(&error))?;
+            (state[..state.len() - rest.len()].to_vec(), state_map)
+        }
+    };
+    let payload = &state[section.len()..];
+    let evaluator = decode_head(payload, &state_map);
+    *last = Some((section, state_map));
+    drop(last);
+    let evaluator = evaluator?;
     let mut symbols = Default::default();
     referenced(&evaluator.export_instructions(), &mut symbols);
     let mut minimal = SAVED_EVALUATOR_MAGIC.to_vec();
@@ -2817,7 +2838,7 @@ pub(crate) fn state_minimal_saved_evaluator(bytes: &[u8]) -> RusticolResult<Opti
 
     let mut reread = &minimal[SAVED_EVALUATOR_MAGIC.len() + 1..payload_start];
     let state_map = State::import(&mut reread, None).map_err(|error| incompatible(&error))?;
-    if encoded(&decode_head(&minimal[payload_start..], state_map)?)? != encoded(&evaluator)? {
+    if encoded(&decode_head(&minimal[payload_start..], &state_map)?)? != encoded(&evaluator)? {
         return Err(incompatible(
             &"its payload depends on state identifiers beyond the referenced symbols",
         ));
@@ -2828,6 +2849,23 @@ pub(crate) fn state_minimal_saved_evaluator(bytes: &[u8]) -> RusticolResult<Opti
 /// Symbolica's state-header flag of a whole-state export (`State::export`).
 #[cfg(feature = "symbolica-runtime")]
 const WHOLE_STATE_EXPORT: u8 = 1;
+
+/// The last whole-state section `state_minimal_saved_evaluator` imported,
+/// with its state map.
+#[cfg(feature = "symbolica-runtime")]
+static LAST_WHOLE_STATE: std::sync::Mutex<Option<(Vec<u8>, symbolica::state::StateMap)>> =
+    std::sync::Mutex::new(None);
+
+/// A borrowed state map as a bincode decoding context.
+#[cfg(feature = "symbolica-runtime")]
+struct BorrowedStateMap<'a>(&'a symbolica::state::StateMap);
+
+#[cfg(feature = "symbolica-runtime")]
+impl symbolica::state::HasStateMap for BorrowedStateMap<'_> {
+    fn get_state_map(&self) -> &symbolica::state::StateMap {
+        self.0
+    }
+}
 
 #[cfg(feature = "symbolica-runtime")]
 pub(crate) fn decode_exact_evaluator_state(
@@ -3040,6 +3078,11 @@ mod state_minimal_tests {
         let minimal = state_minimal_saved_evaluator(&whole)
             .unwrap()
             .expect("a whole-state save is re-encoded");
+        // Again from the kept state (the same section).
+        assert_eq!(
+            state_minimal_saved_evaluator(&whole).unwrap(),
+            Some(minimal.clone())
+        );
         for i in 0..2000 {
             symbol!(format!("pyamplicol_minimal::unrelated{i}"));
         }
