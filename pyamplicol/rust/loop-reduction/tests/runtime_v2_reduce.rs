@@ -1394,7 +1394,9 @@ fn rotated(p: &[f64; 4]) -> [f64; 4] {
 /// a window: a massless rank-3 box with beams along `x` and the outgoing legs
 /// at `θ` from the `z` axis (`s = 4E²`, `t ≈ u ≈ -2E²`, `E = 500`) now agrees
 /// with DoubleFloat in both frames, as the generic engine does, and the two
-/// stability checks see no difference beyond rounding.
+/// stability checks see no difference beyond rounding (measured at the four
+/// angles: fast <= 3.1e-15, rotated <= 2.3e-14, rotation check <= 2.4e-14,
+/// reduction-direction check <= 7.0e-15; bound 1e-13).
 #[test]
 fn the_fast_engine_is_accurate_near_the_beam_axis() {
     let energy = 500_f64;
