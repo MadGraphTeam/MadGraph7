@@ -702,7 +702,7 @@
 <dt class="sig sig-object py" id="madspace.PhaseSpaceMapping">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">madspace.</span></span><span class="sig-name descname"><span class="pre">PhaseSpaceMapping</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#madspace.PhaseSpaceMapping" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="Mapping.html#madspace.Mapping" title="madspace._madspace_py.Mapping"><code class="xref py py-class docutils literal notranslate"><span class="pre">Mapping</span></code></a></p>
-<p>Full <span class="math notranslate nohighlight">\(2 \to n\)</span> phase-space mapping for one diagram topology.</p>
+<p>Full <span class="math notranslate nohighlight">\(2 \to n\)</span> (or <span class="math notranslate nohighlight">\(1 \to n\)</span> decay) phase-space mapping for one diagram topology.</p>
 <p>Assembles a complete mapping from the elementary building blocks along the recursive decomposition of the tree-level phase space (Sec. 2.2 of [1]),</p>
 <div class="math-wrapper docutils container">
 <div class="math notranslate nohighlight">
@@ -713,7 +713,7 @@
 \Big[\textstyle\prod_l \int \mathrm{d}\Phi_{3,l}\Big]
 \Big[\textstyle\prod_m \int \mathrm{d}\Phi^{(\phi,\theta)}_{2,m}\Big].\]</div>
 </div>
-<p>The time-like invariants are sampled with Invariant, the s-channel decays with TwoBodyDecay / ThreeBodyDecay, and the PDF convolution with Luminosity. TChannelMode selects the t-channel strategy. The second constructor takes a flat list of external masses instead of a Topology and is used for the topology-free TChannelMode::rambo and TChannelMode::chili modes.</p>
+<p>The time-like invariants are sampled with Invariant, the s-channel decays with TwoBodyDecay / ThreeBodyDecay (FastRamboMapping for more children), and the PDF convolution with the Luminosity parametrization. TChannelMode selects the t-channel strategy. The second constructor takes a flat list of external masses instead of a Topology and is used for the topology-free TChannelMode::rambo and TChannelMode::chili modes.</p>
 <p><code class="docutils literal notranslate"><span class="pre">batch</span></code> is the leading batch dimension. <code class="docutils literal notranslate"><span class="pre">n_out</span></code> is the number of outgoing particles.</p>
 <p><strong>Inputs</strong></p>
 <ul class="simple">
@@ -731,7 +731,7 @@
 <li><p><code class="docutils literal notranslate"><span class="pre">x1</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – first parton momentum fraction (1 for every event if <code class="docutils literal notranslate"><span class="pre">leptonic</span></code> and for a decay).</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">x2</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – second parton momentum fraction (1 for every event if <code class="docutils literal notranslate"><span class="pre">leptonic</span></code> and for a decay).</p></li>
 </ul>
-<p>In addition every mapping returns a <code class="docutils literal notranslate"><span class="pre">weight</span></code> (<code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code>), the Jacobian of the transformation.</p>
+<p>In addition every mapping returns a <code class="docutils literal notranslate"><span class="pre">det</span></code> (<code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code>), the Jacobian of the transformation.</p>
 <p><strong>References</strong></p>
 <ul class="simple">
 <li><p>[1] T. Heimel, O. Mattelaer, R. Winterhalder, “MadSpace”, <a class="reference external" href="https://arxiv.org/abs/2602.06895">https://arxiv.org/abs/2602.06895</a> (Sec. 2.2)</p></li>
@@ -862,7 +862,7 @@
 <dt class="sig sig-object py" id="madspace.PhaseSpaceMapping.empty">
 <span class="sig-name descname"><span class="pre">empty</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.PhaseSpaceMapping" title="madspace._madspace_py.PhaseSpaceMapping"><span class="pre">madspace._madspace_py.PhaseSpaceMapping</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#madspace.PhaseSpaceMapping.empty" title="Link to this definition">¶</a></dt>
 <dd><p>True when the cuts exclude the whole region this mapping samples: a pair mass cut puts a propagator’s floor at or above the upper end of its on-shell window.</p>
-<p>Every point then fails the cuts, so the channel contributes nothing and should be dropped rather than sampled.</p>
+<p>The channel contributes nothing and can be dropped.</p>
 </dd></dl>
 
 <dl class="py method">

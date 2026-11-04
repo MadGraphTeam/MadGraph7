@@ -712,20 +712,20 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.SubprocArgs.diagram_color_indices">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">diagram_color_indices</span></span><a class="headerlink" href="#madspace.SubprocArgs.diagram_color_indices" title="Link to this definition">¶</a></dt>
-<dd><p>Color-configuration indices available to each diagram.</p>
+<dd><p>Color-configuration indices of each diagram of each channel.</p>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.SubprocArgs.diagram_indices">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">diagram_indices</span></span><a class="headerlink" href="#madspace.SubprocArgs.diagram_indices" title="Link to this definition">¶</a></dt>
-<dd><p>Sampled-diagram index available to each channel.</p>
+<dd><p>Diagram index of each diagram of each channel.</p>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.SubprocArgs.diagram_propagator_pdgs">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">diagram_propagator_pdgs</span></span><a class="headerlink" href="#madspace.SubprocArgs.diagram_propagator_pdgs" title="Link to this definition">¶</a></dt>
-<dd><p>Per-diagram PDG override, indexed like <code class="docutils literal notranslate"><span class="pre">diagram_color_indices</span></code> then by <code class="docutils literal notranslate"><span class="pre">Topology::Decay::flat_propagator_index</span></code>.</p>
-<p>Falls back to <code class="docutils literal notranslate"><span class="pre">Topology::Decay::pdg_id</span></code> if empty.</p>
+<dd><p>Per-diagram PDG override, indexed by channel, diagram within the channel and <code class="docutils literal notranslate"><span class="pre">Topology::Decay::flat_propagator_index</span></code>.</p>
+<p>Falls back to <code class="docutils literal notranslate"><span class="pre">Topology::Decay::pdg_id</span></code> if missing.</p>
 </dd></dl>
 
 <dl class="py property">
@@ -737,7 +737,12 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.SubprocArgs.pdg_color_types">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">pdg_color_types</span></span><a class="headerlink" href="#madspace.SubprocArgs.pdg_color_types" title="Link to this definition">¶</a></dt>
-<dd><p>Color representation (singlet, triplet, octet, …) of each PDG id.</p>
+<dd><p>1 (singlet), 3, -3 or 8; ids not listed count as singlets.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Color representation of each PDG id</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py property">
@@ -755,13 +760,13 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.SubprocArgs.pdg_ids">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">pdg_ids</span></span><a class="headerlink" href="#madspace.SubprocArgs.pdg_ids" title="Link to this definition">¶</a></dt>
-<dd><p>Per-particle PDG id of each sampled flavor configuration.</p>
+<dd><p>PDG ids per particle, for each flavor index and each of its options; one option is chosen at random per event.</p>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.SubprocArgs.permutations">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">permutations</span></span><a class="headerlink" href="#madspace.SubprocArgs.permutations" title="Link to this definition">¶</a></dt>
-<dd><p>Final-state particle permutation of each channel.</p>
+<dd><p>Permutation of the external legs (incoming first) of each diagram of each channel.</p>
 </dd></dl>
 
 <dl class="py property">

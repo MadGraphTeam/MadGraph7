@@ -708,7 +708,7 @@
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>config</strong> – The scale and PDF variations to compute.</p></li>
-<li><p><strong>subproc_args</strong> – Per-subprocess bookkeeping needed to reweight its events; indexed like the subprocess index passed to compute.</p></li>
+<li><p><strong>subproc_args</strong> – Per-subprocess bookkeeping needed to reweight its events; indexed by the events’ subprocess index.</p></li>
 <li><p><strong>nominal_pdf</strong> – The PDF the events were generated with; <code class="docutils literal notranslate"><span class="pre">nullopt</span></code> for leptonic beams.</p></li>
 <li><p><strong>nominal_alpha_s</strong> – The <code class="docutils literal notranslate"><span class="pre">alpha_s</span></code> grid the events were generated with.</p></li>
 <li><p><strong>context</strong> – Context the PDF and <code class="docutils literal notranslate"><span class="pre">alpha_s</span></code> runtimes are built on; a private CPU context if <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>.</p></li>
@@ -745,7 +745,13 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.SystematicsCalculator.members">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">members</span></span><a class="headerlink" href="#madspace.SystematicsCalculator.members" title="Link to this definition">¶</a></dt>
-<dd><p>PDF members actually used (the nominal set’s member 0 first, when it is part of a group).</p>
+<dd><p>the configured ones minus those ignored with a warning.</p>
+<p>The nominal member is not listed.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>PDF members actually used</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py property">
@@ -762,13 +768,13 @@
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>error_type</strong> – LHAPDF <code class="docutils literal notranslate"><span class="pre">ErrorType</span></code> (<code class="docutils literal notranslate"><span class="pre">replicas</span></code>, <code class="docutils literal notranslate"><span class="pre">hessian</span></code>, …).</p></li>
-<li><p><strong>central</strong> – Central value; used when member <code class="docutils literal notranslate"><span class="pre">0</span></code> is absent from <code class="docutils literal notranslate"><span class="pre">member_values</span></code>.</p></li>
+<li><p><strong>central</strong> – Central value; used when member <code class="docutils literal notranslate"><span class="pre">0</span></code> is absent from <code class="docutils literal notranslate"><span class="pre">member_values</span></code> (not used for <code class="docutils literal notranslate"><span class="pre">replicas</span></code>).</p></li>
 <li><p><strong>member_values</strong> – <code class="docutils literal notranslate"><span class="pre">(member</span> <span class="pre">number,</span> <span class="pre">value)</span></code> pairs; member <code class="docutils literal notranslate"><span class="pre">0</span></code> is the central member.</p></li>
 </ul>
 </dd>
 </dl>
 <p>Return:</p>
-<p><code class="docutils literal notranslate"><span class="pre">(central,</span> <span class="pre">up,</span> <span class="pre">down)</span></code>; <code class="docutils literal notranslate"><span class="pre">NaN</span></code> entries when they cannot be computed.</p>
+<p><code class="docutils literal notranslate"><span class="pre">(central,</span> <span class="pre">up,</span> <span class="pre">down)</span></code>; for <code class="docutils literal notranslate"><span class="pre">replicas</span></code> the first entry is the replica mean. <code class="docutils literal notranslate"><span class="pre">NaN</span></code> entries when they cannot be computed.</p>
 </dd></dl>
 
 <dl class="py property">

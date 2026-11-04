@@ -702,13 +702,13 @@
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace20IntegrandProbabilityE">
 <span id="_CPPv3N8madspace20IntegrandProbabilityE"></span><span id="_CPPv2N8madspace20IntegrandProbabilityE"></span><span id="madspace::IntegrandProbability"></span><span class="target" id="classmadspace_1_1IntegrandProbability"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">IntegrandProbability</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><span class="n"><span class="pre">madspace</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="FunctionGenerator.html#_CPPv4N8madspace17FunctionGeneratorE" title="madspace::FunctionGenerator"><span class="n"><span class="pre">FunctionGenerator</span></span></a><a class="headerlink" href="#_CPPv4N8madspace20IntegrandProbabilityE" title="Link to this definition">¶</a><br /></dt>
 <dd><p>The sampling density of an <a class="reference internal" href="Integrand.html#classmadspace_1_1Integrand"><span class="std std-ref">Integrand</span></a> at a given phase-space point. </p>
-<p>Evaluates the probability with which the integrand’s adaptive samplers and channel selection would have produced a given point. Used to compute importance weights when replaying stored events.</p>
+<p>Evaluates the probability with which the integrand’s adaptive samplers and permutation / flavour selection would have produced a given point. Used for the density of stored points in MadNIS training.</p>
 <p><strong>Arguments</strong><ul class="simple">
-<li><p>the latent coordinates and discrete indices of a stored point; see <a class="reference internal" href="Integrand.html#classmadspace_1_1Integrand"><span class="std std-ref">Integrand</span></a>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">latent</span></code>, <code class="docutils literal notranslate"><span class="pre">channel_index_in_group</span></code>, and with an adaptive flavour sampler <code class="docutils literal notranslate"><span class="pre">discrete_flavor_index</span></code> (plus <code class="docutils literal notranslate"><span class="pre">pdf_prior</span></code> if the integrand has one).</p></li>
 </ul>
 </p>
 <p><strong>Returns</strong><ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">probability</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – the sampling density.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">prob</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – the sampling density.</p></li>
 </ul>
 </p>
 <p><strong>References</strong><ul class="simple">

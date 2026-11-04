@@ -724,19 +724,19 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.MadnisConfig.adam_weight_decay">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">adam_weight_decay</span></span><a class="headerlink" href="#madspace.MadnisConfig.adam_weight_decay" title="Link to this definition">¶</a></dt>
-<dd><p>Adam L2 weight-decay coefficient.</p>
+<dd><p>Adam decoupled weight-decay coefficient.</p>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.MadnisConfig.batch_size_offset">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">batch_size_offset</span></span><a class="headerlink" href="#madspace.MadnisConfig.batch_size_offset" title="Link to this definition">¶</a></dt>
-<dd><p>Constant added to every channel’s requested batch size.</p>
+<dd><p>Constant added to the total training batch size, which is split over the active channels.</p>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.MadnisConfig.batch_size_per_channel">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">batch_size_per_channel</span></span><a class="headerlink" href="#madspace.MadnisConfig.batch_size_per_channel" title="Link to this definition">¶</a></dt>
-<dd><p>Minimum training-batch events requested per active channel.</p>
+<dd><p>Training-batch events added to the total per active channel.</p>
 </dd></dl>
 
 <dl class="py property">
@@ -778,7 +778,7 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.MadnisConfig.channel_dropping_threshold">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">channel_dropping_threshold</span></span><a class="headerlink" href="#madspace.MadnisConfig.channel_dropping_threshold" title="Link to this definition">¶</a></dt>
-<dd><p>Minimum integral fraction below which a channel is dropped.</p>
+<dd><p>Channels are dropped, smallest integral first, while their cumulative integral fraction stays at most this (scaled by <code class="docutils literal notranslate"><span class="pre">min(1000</span> <span class="pre">/</span> <span class="pre">batch,</span> <span class="pre">1)</span></code>).</p>
 </dd></dl>
 
 <dl class="py property">
@@ -796,7 +796,7 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.MadnisConfig.fixed_cwnet_fraction">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">fixed_cwnet_fraction</span></span><a class="headerlink" href="#madspace.MadnisConfig.fixed_cwnet_fraction" title="Link to this definition">¶</a></dt>
-<dd><p>Fraction of training spent with the channel-weight network frozen, before it starts training too.</p>
+<dd><p>Fraction of training at the end during which the channel-weight network is frozen.</p>
 </dd></dl>
 
 <dl class="py property">
@@ -820,7 +820,7 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.MadnisConfig.grad_clip_threshold">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">grad_clip_threshold</span></span><a class="headerlink" href="#madspace.MadnisConfig.grad_clip_threshold" title="Link to this definition">¶</a></dt>
-<dd><p>Maximum gradient norm; <code class="docutils literal notranslate"><span class="pre">0</span></code> disables clipping.</p>
+<dd><p>Maximum gradient norm per sqrt(parameter count); <code class="docutils literal notranslate"><span class="pre">0</span></code> disables clipping.</p>
 </dd></dl>
 
 <dl class="py property">
@@ -838,7 +838,7 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.MadnisConfig.log_interval">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">log_interval</span></span><a class="headerlink" href="#madspace.MadnisConfig.log_interval" title="Link to this definition">¶</a></dt>
-<dd><p>Batches between two status-history entries.</p>
+<dd><p>Batches between two status-history entries; also the length of the window averaged by average_loss.</p>
 </dd></dl>
 
 <dl class="py property">
@@ -856,13 +856,13 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.MadnisConfig.softclip_threshold">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">softclip_threshold</span></span><a class="headerlink" href="#madspace.MadnisConfig.softclip_threshold" title="Link to this definition">¶</a></dt>
-<dd><p>Softclip threshold applied to the channel weights; <code class="docutils literal notranslate"><span class="pre">0</span></code> disables it.</p>
+<dd><p>Soft-clipping threshold on the loss contribution; <code class="docutils literal notranslate"><span class="pre">0</span></code> disables it.</p>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.MadnisConfig.uniform_channel_ratio">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">uniform_channel_ratio</span></span><a class="headerlink" href="#madspace.MadnisConfig.uniform_channel_ratio" title="Link to this definition">¶</a></dt>
-<dd><p>Fraction of the training batch drawn uniformly across channels rather than proportionally to their integral.</p>
+<dd><p>Fraction of the training batch drawn uniformly across channels rather than proportionally to their standard deviation.</p>
 </dd></dl>
 
 </dd></dl>

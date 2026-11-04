@@ -703,7 +703,7 @@
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">madspace.</span></span><span class="sig-name descname"><span class="pre">MultiChannelFunction</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.MultiChannelFunction" title="madspace._madspace_py.MultiChannelFunction"><span class="pre">madspace._madspace_py.MultiChannelFunction</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">functions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Sequence</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="FunctionGenerator.html#madspace.FunctionGenerator" title="madspace._madspace_py.FunctionGenerator"><span class="pre">madspace._madspace_py.FunctionGenerator</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_batch_sizes</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#madspace.MultiChannelFunction" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="FunctionGenerator.html#madspace.FunctionGenerator" title="madspace._madspace_py.FunctionGenerator"><code class="xref py py-class docutils literal notranslate"><span class="pre">FunctionGenerator</span></code></a></p>
 <p>Applies one of several channel functions to each slice of the batch.</p>
-<p>The FunctionGenerator counterpart of MultiChannelMapping. The batch is partitioned by the per-channel counts in the <code class="docutils literal notranslate"><span class="pre">batch_sizes</span></code> argument. Each slice is passed through its channel function, and the results are concatenated. All channel functions must share the same argument and return layout, which this class then exposes (Sec. 2.1.1 of [1]).</p>
+<p>The FunctionGenerator counterpart of MultiChannelMapping. The batch is partitioned by the per-channel counts in the <code class="docutils literal notranslate"><span class="pre">batch_sizes</span></code> argument. Each slice is passed through its channel function, and the results are concatenated. All channel functions must share the same argument and return layout, which this class then exposes (Sec. 2.1.1 of [1]). A batch-size argument of the channel functions is replaced by the per-channel size.</p>
 <p><code class="docutils literal notranslate"><span class="pre">batch</span></code> is the leading batch dimension.</p>
 <p><strong>Arguments</strong></p>
 <ul class="simple">
@@ -713,7 +713,7 @@
 <p><strong>Returns</strong></p>
 <ul class="simple">
 <li><p>the returns of the channel functions, plus</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">batch_sizes</span></code> – echoed back, only when <code class="docutils literal notranslate"><span class="pre">return_batch_sizes</span></code> is true.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">batch_sizes</span></code> – the per-channel sizes of the concatenated first return value, only when <code class="docutils literal notranslate"><span class="pre">return_batch_sizes</span></code> is true.</p></li>
 </ul>
 <p><strong>References</strong></p>
 <ul class="simple">
@@ -723,7 +723,7 @@
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>functions</strong> – The per-channel functions.</p></li>
-<li><p><strong>return_batch_sizes</strong> – If true, the <code class="docutils literal notranslate"><span class="pre">batch_sizes</span></code> argument is also returned.</p></li>
+<li><p><strong>return_batch_sizes</strong> – If true, the per-channel batch sizes of the result are also returned.</p></li>
 </ul>
 </dd>
 </dl>

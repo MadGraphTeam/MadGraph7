@@ -702,21 +702,21 @@
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace15DiscreteSamplerE">
 <span id="_CPPv3N8madspace15DiscreteSamplerE"></span><span id="_CPPv2N8madspace15DiscreteSamplerE"></span><span id="madspace::DiscreteSampler"></span><span class="target" id="classmadspace_1_1DiscreteSampler"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">DiscreteSampler</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><span class="n"><span class="pre">madspace</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="Mapping.html#_CPPv4N8madspace7MappingE" title="madspace::Mapping"><span class="n"><span class="pre">Mapping</span></span></a><a class="headerlink" href="#_CPPv4N8madspace15DiscreteSamplerE" title="Link to this definition">¶</a><br /></dt>
 <dd><p>Adaptive sampler for discrete choices. </p>
-<p>Maps one uniform random number per discrete dimension to a category index, using a learned categorical distribution per dimension [1]. The probabilities are compute-graph globals named after <code class="docutils literal notranslate"><span class="pre">prefix</span></code>; call <code class="docutils literal notranslate"><span class="pre">initialize_globals(context)</span></code> once before use. A dimension listed in <code class="docutils literal notranslate"><span class="pre">dims_with_prior</span></code> is instead conditioned on a <code class="docutils literal notranslate"><span class="pre">prior_i</span></code> input.</p>
+<p>Maps one uniform random number per discrete dimension to a category index, using a learned categorical distribution per dimension [1]. The probabilities are compute-graph globals named after <code class="docutils literal notranslate"><span class="pre">prefix</span></code>; call <code class="docutils literal notranslate"><span class="pre">initialize_globals(context)</span></code> once before use. For a dimension listed in <code class="docutils literal notranslate"><span class="pre">dims_with_prior</span></code> the probabilities are multiplied by a <code class="docutils literal notranslate"><span class="pre">prior{d}</span></code> input.</p>
 <p><code class="docutils literal notranslate"><span class="pre">batch</span></code> is the leading batch dimension. <code class="docutils literal notranslate"><span class="pre">d</span></code> indexes the discrete dimensions.</p>
 <p><strong>Inputs</strong><ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">random_i</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – one uniform number per dimension.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">random{d}</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – one uniform number per dimension.</p></li>
 </ul>
 </p>
 <p><strong>Conditions</strong><ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">prior_d</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,</span> <span class="pre">option_counts[d])</span></code> – prior category weights. Present only for the dimensions in <code class="docutils literal notranslate"><span class="pre">dims_with_prior</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">prior{d}</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,</span> <span class="pre">option_counts[d])</span></code> – prior category weights. Present only for the dimensions in <code class="docutils literal notranslate"><span class="pre">dims_with_prior</span></code>.</p></li>
 </ul>
 </p>
 <p><strong>Outputs</strong><ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">index_i</span></code> – <code class="docutils literal notranslate"><span class="pre">int</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – the chosen category per dimension.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">index{d}</span></code> – <code class="docutils literal notranslate"><span class="pre">int</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – the chosen category per dimension.</p></li>
 </ul>
 </p>
-<p>In addition every mapping returns a <code class="docutils literal notranslate"><span class="pre">weight</span></code> (<code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code>), the Jacobian of the transformation.</p>
+<p>In addition every mapping returns a <code class="docutils literal notranslate"><span class="pre">det</span></code> (<code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code>), the Jacobian of the transformation.</p>
 <p><strong>References</strong><ul class="simple">
 <li><p>[1] T. Heimel, O. Mattelaer, R. Winterhalder, “MadSpace”, <a class="reference external" href="https://arxiv.org/abs/2602.06895">https://arxiv.org/abs/2602.06895</a> (Sec. 3.2.2) </p></li>
 </ul>
@@ -731,7 +731,7 @@
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>option_counts</strong> – Number of categories for each discrete dimension. </p></li>
 <li><p><strong>prefix</strong> – Prefix for the probability global names. </p></li>
-<li><p><strong>dims_with_prior</strong> – Dimensions conditioned on a <code class="docutils literal notranslate"><span class="pre">prior_i</span></code> input rather than a learned global. </p></li>
+<li><p><strong>dims_with_prior</strong> – Dimensions whose learned probabilities are multiplied by a <code class="docutils literal notranslate"><span class="pre">prior{d}</span></code> input. </p></li>
 </ul>
 </dd>
 </dl>

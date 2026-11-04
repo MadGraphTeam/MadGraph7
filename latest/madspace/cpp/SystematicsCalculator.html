@@ -712,7 +712,7 @@
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>config</strong> – The scale and PDF variations to compute. </p></li>
-<li><p><strong>subproc_args</strong> – Per-subprocess bookkeeping needed to reweight its events; indexed like the subprocess index passed to <a class="reference internal" href="#classmadspace_1_1SystematicsCalculator_1afc4d3dee7773e6bc6f735ef55d8185cf"><span class="std std-ref">compute</span></a>. </p></li>
+<li><p><strong>subproc_args</strong> – Per-subprocess bookkeeping needed to reweight its events; indexed by the events’ subprocess index. </p></li>
 <li><p><strong>nominal_pdf</strong> – The PDF the events were generated with; <code class="docutils literal notranslate"><span class="pre">nullopt</span></code> for leptonic beams. </p></li>
 <li><p><strong>nominal_alpha_s</strong> – The <code class="docutils literal notranslate"><span class="pre">alpha_s</span></code> grid the events were generated with. </p></li>
 <li><p><strong>context</strong> – <a class="reference internal" href="Context.html#classmadspace_1_1Context"><span class="std std-ref">Context</span></a> the PDF and <code class="docutils literal notranslate"><span class="pre">alpha_s</span></code> runtimes are built on; a private CPU context if <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>. </p></li>
@@ -751,7 +751,8 @@
 <dl class="cpp function">
 <dt class="sig sig-object cpp" id="_CPPv4NK8madspace21SystematicsCalculator7membersEv">
 <span id="_CPPv3NK8madspace21SystematicsCalculator7membersEv"></span><span id="_CPPv2NK8madspace21SystematicsCalculator7membersEv"></span><span id="madspace::SystematicsCalculator::membersC"></span><span class="target" id="classmadspace_1_1SystematicsCalculator_1a018ca915883deb33267518ad17f5abab"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="PdfMemberSpec.html#_CPPv4N8madspace13PdfMemberSpecE" title="madspace::PdfMemberSpec"><span class="n"><span class="pre">PdfMemberSpec</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="sig-name descname"><span class="n"><span class="pre">members</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace21SystematicsCalculator7membersEv" title="Link to this definition">¶</a><br /></dt>
-<dd><p>PDF members actually used (the nominal set’s member 0 first, when it is part of a group). </p>
+<dd><p>PDF members actually used: the configured ones minus those ignored with a warning. </p>
+<p>The nominal member is not listed. </p>
 </dd></dl>
 
 <dl class="cpp function">
@@ -821,12 +822,12 @@
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>error_type</strong> – LHAPDF <code class="docutils literal notranslate"><span class="pre">ErrorType</span></code> (<code class="docutils literal notranslate"><span class="pre">replicas</span></code>, <code class="docutils literal notranslate"><span class="pre">hessian</span></code>, …). </p></li>
-<li><p><strong>central</strong> – Central value; used when member <code class="docutils literal notranslate"><span class="pre">0</span></code> is absent from <code class="docutils literal notranslate"><span class="pre">member_values</span></code>. </p></li>
+<li><p><strong>central</strong> – Central value; used when member <code class="docutils literal notranslate"><span class="pre">0</span></code> is absent from <code class="docutils literal notranslate"><span class="pre">member_values</span></code> (not used for <code class="docutils literal notranslate"><span class="pre">replicas</span></code>). </p></li>
 <li><p><strong>member_values</strong> – <code class="docutils literal notranslate"><span class="pre">(member</span> <span class="pre">number,</span> <span class="pre">value)</span></code> pairs; member <code class="docutils literal notranslate"><span class="pre">0</span></code> is the central member. </p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">(central,</span> <span class="pre">up,</span> <span class="pre">down)</span></code>; <code class="docutils literal notranslate"><span class="pre">NaN</span></code> entries when they cannot be computed. </p>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">(central,</span> <span class="pre">up,</span> <span class="pre">down)</span></code>; for <code class="docutils literal notranslate"><span class="pre">replicas</span></code> the first entry is the replica mean. <code class="docutils literal notranslate"><span class="pre">NaN</span></code> entries when they cannot be computed. </p>
 </dd>
 </dl>
 </dd></dl>

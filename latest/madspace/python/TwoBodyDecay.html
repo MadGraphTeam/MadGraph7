@@ -706,9 +706,9 @@
 <p>Splits a parent momentum <span class="math notranslate nohighlight">\(p_0\)</span> into two on-shell momenta <span class="math notranslate nohighlight">\(p_0 = p_1 + p_2\)</span> [1]. Two-body kinematics fix the energies and three-momentum magnitudes from the masses. The remaining freedom is the polar and azimuthal angles of <span class="math notranslate nohighlight">\(\vec p_1\)</span> in the <span class="math notranslate nohighlight">\(p_0\)</span> rest frame, sampled uniformly,</p>
 <div class="math-wrapper docutils container">
 <div class="math notranslate nohighlight">
-\[\phi = 2\pi\,r_\phi, \qquad \cos\theta = 2\,r_{\cos\theta} - 1.\]</div>
+\[\phi = \pi\,(2 r_\phi - 1), \qquad \cos\theta = 2\,r_{\cos\theta} - 1.\]</div>
 </div>
-<p>The momenta are then boosted back (Sec. 2.2.3 of [1]). The measure is flat in <span class="math notranslate nohighlight">\((\phi, \cos\theta)\)</span>.</p>
+<p>The momenta are then boosted back (Sec. 2.2.3 of [1]). The measure is flat in <span class="math notranslate nohighlight">\((\phi, \cos\theta)\)</span> unless a bound narrows the <span class="math notranslate nohighlight">\(\cos\theta\)</span> range.</p>
 <p><code class="docutils literal notranslate"><span class="pre">batch</span></code> is the leading batch dimension. The masses are inputs here. They are supplied on the forward call and recovered by the inverse.</p>
 <p><strong>Inputs</strong></p>
 <ul class="simple">
@@ -728,7 +728,7 @@
 <li><p><code class="docutils literal notranslate"><span class="pre">momentum1</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,</span> <span class="pre">4)</span></code> – first daughter momentum.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">momentum2</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,</span> <span class="pre">4)</span></code> – second daughter momentum.</p></li>
 </ul>
-<p>In addition every mapping returns a <code class="docutils literal notranslate"><span class="pre">weight</span></code> (<code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code>), the Jacobian of the transformation.</p>
+<p>In addition every mapping returns a <code class="docutils literal notranslate"><span class="pre">det</span></code> (<code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code>), the Jacobian of the transformation.</p>
 <p><strong>References</strong></p>
 <ul class="simple">
 <li><p>[1] T. Heimel, O. Mattelaer, R. Winterhalder, “MadSpace”, <a class="reference external" href="https://arxiv.org/abs/2602.06895">https://arxiv.org/abs/2602.06895</a> (Sec. 2.2.3)</p></li>

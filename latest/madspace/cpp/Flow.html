@@ -716,7 +716,7 @@
 <li><p><code class="docutils literal notranslate"><span class="pre">data</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,</span> <span class="pre">input_dim)</span></code> – the transformed coordinates.</p></li>
 </ul>
 </p>
-<p>In addition every mapping returns a <code class="docutils literal notranslate"><span class="pre">weight</span></code> (<code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code>), the Jacobian of the transformation.</p>
+<p>In addition every mapping returns a <code class="docutils literal notranslate"><span class="pre">det</span></code> (<code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code>), the Jacobian of the transformation.</p>
 <p><strong>References</strong><ul class="simple">
 <li><p>[1] T. Heimel, O. Mattelaer, R. Winterhalder, “MadSpace”, <a class="reference external" href="https://arxiv.org/abs/2602.06895">https://arxiv.org/abs/2602.06895</a> (Sec. 3.2.2)</p></li>
 <li><p>[2] C. Durkan et al., “Neural spline flows”, <a class="reference external" href="https://arxiv.org/abs/1906.04032">https://arxiv.org/abs/1906.04032</a></p></li>
@@ -731,7 +731,7 @@
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>input_dim</strong> – Number of dimensions to transform. </p></li>
+<li><p><strong>input_dim</strong> – Number of dimensions to transform (at least 2). </p></li>
 <li><p><strong>condition_dim</strong> – Width of the conditioning input; <code class="docutils literal notranslate"><span class="pre">0</span></code> for an unconditional flow. </p></li>
 <li><p><strong>prefix</strong> – Prefix for the trainable global names. </p></li>
 <li><p><strong>bin_count</strong> – Number of spline bins per dimension. </p></li>

@@ -736,7 +736,7 @@
 <li><p><code class="docutils literal notranslate"><span class="pre">momentum_i</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,</span> <span class="pre">4)</span></code> – the <code class="docutils literal notranslate"><span class="pre">n_particles</span> <span class="pre">+</span> <span class="pre">2</span></code> momenta (incoming beams first, then outgoing).</p></li>
 </ul>
 </p>
-<p>In addition every mapping returns a <code class="docutils literal notranslate"><span class="pre">weight</span></code> (<code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code>), the Jacobian of the transformation.</p>
+<p>In addition every mapping returns a <code class="docutils literal notranslate"><span class="pre">det</span></code> (<code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code>), the Jacobian of the transformation.</p>
 <p><strong>References</strong><ul class="simple">
 <li><p>[1] T. Heimel, O. Mattelaer, R. Winterhalder, “MadSpace”, <a class="reference external" href="https://arxiv.org/abs/2602.06895">https://arxiv.org/abs/2602.06895</a> (Sec. 2.4)</p></li>
 <li><p><p>[2] E. Bothmann et al., “Efficient phase-space generation for hadron</p>
@@ -759,8 +759,8 @@
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>n_particles</strong> – Number of outgoing particles. </p></li>
-<li><p><strong>y_max</strong> – Per-outgoing-particle maximum rapidity; empty disables the rapidity cut. See <a class="reference internal" href="Cuts.html#classmadspace_1_1Cuts"><span class="std std-ref">Cuts</span></a>. </p></li>
-<li><p><strong>pt_min</strong> – Per-outgoing-particle minimum transverse momentum; empty disables the cut. See <a class="reference internal" href="Cuts.html#classmadspace_1_1Cuts"><span class="std std-ref">Cuts</span></a>. </p></li>
+<li><p><strong>y_max</strong> – Per-outgoing-particle maximum rapidity, one entry per particle; infinity disables the cut. See <a class="reference internal" href="Cuts.html#classmadspace_1_1Cuts"><span class="std std-ref">Cuts</span></a>. </p></li>
+<li><p><strong>pt_min</strong> – Per-outgoing-particle minimum transverse momentum, one entry per particle (the last is unused); 0 disables the cut. See <a class="reference internal" href="Cuts.html#classmadspace_1_1Cuts"><span class="std std-ref">Cuts</span></a>. </p></li>
 </ul>
 </dd>
 </dl>

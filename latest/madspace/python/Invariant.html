@@ -718,7 +718,7 @@ r\,(x_{\max} - m^2)^{1-\nu} + (1 - r)\,(x_{\min} - m^2)^{1-\nu}
 \Big]^{\frac{1}{1-\nu}} + m^2\]</div>
 </div>
 <p>otherwise. A nonzero <code class="docutils literal notranslate"><span class="pre">flat_window</span></code> (with a nonzero <code class="docutils literal notranslate"><span class="pre">width</span></code>) flattens the Breit-Wigner peak: the density is kept outside <span class="math notranslate nohighlight">\(|\sqrt{s} - m| &lt; w\,\Gamma\)</span> and replaced inside by a constant, the mean of its two edge values. This is the mapping of a <code class="docutils literal notranslate"><span class="pre">$</span></code>-excluded propagator, whose matrix element vanishes in that window.</p>
-<p>When <code class="docutils literal notranslate"><span class="pre">mass</span></code> is zero and <code class="docutils literal notranslate"><span class="pre">invariant_min</span></code> is zero, a small auxiliary negative <span class="math notranslate nohighlight">\(m^2 = -a\)</span> is used inside the mapping only. This keeps the power-law and logarithmic forms well defined at the boundary and leaves the physical integrand unchanged. The naive choice <span class="math notranslate nohighlight">\(\nu = 2\)</span> is rarely optimal, so <code class="docutils literal notranslate"><span class="pre">power</span></code> defaults to <code class="docutils literal notranslate"><span class="pre">0.8</span></code>.</p>
+<p>In the power-law and logarithmic forms the pole is shifted to <span class="math notranslate nohighlight">\(m^2 - 0.01\)</span> (in the units of the invariant), which keeps them finite at a boundary on the pole. The naive choice <span class="math notranslate nohighlight">\(\nu = 2\)</span> is rarely optimal; PhaseSpaceMapping uses <span class="math notranslate nohighlight">\(\nu = 0.8\)</span> by default.</p>
 <p><code class="docutils literal notranslate"><span class="pre">batch</span></code> is the leading batch dimension.</p>
 <p><strong>Inputs</strong></p>
 <ul class="simple">
@@ -733,7 +733,7 @@ r\,(x_{\max} - m^2)^{1-\nu} + (1 - r)\,(x_{\min} - m^2)^{1-\nu}
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">invariant</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – the sampled invariant.</p></li>
 </ul>
-<p>In addition every mapping returns a <code class="docutils literal notranslate"><span class="pre">weight</span></code> (<code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code>), the Jacobian of the transformation.</p>
+<p>In addition every mapping returns a <code class="docutils literal notranslate"><span class="pre">det</span></code> (<code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code>), the Jacobian of the transformation.</p>
 <p><strong>References</strong></p>
 <ul class="simple">
 <li><p>[1] T. Heimel, O. Mattelaer, R. Winterhalder, “MadSpace”, <a class="reference external" href="https://arxiv.org/abs/2602.06895">https://arxiv.org/abs/2602.06895</a> (Sec. 2.2.1)</p></li>
@@ -742,7 +742,7 @@ r\,(x_{\max} - m^2)^{1-\nu} + (1 - r)\,(x_{\min} - m^2)^{1-\nu}
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>power</strong> – Exponent <span class="math notranslate nohighlight">\(\nu\)</span> of the <span class="math notranslate nohighlight">\(1/(s - m^2)^\nu\)</span> power-law sampling: <code class="docutils literal notranslate"><span class="pre">0</span></code> is flat, <code class="docutils literal notranslate"><span class="pre">1</span></code> the logarithmic limit, any other value uses <span class="math notranslate nohighlight">\(G_\nu\)</span>. Ignored when <code class="docutils literal notranslate"><span class="pre">width</span></code> is nonzero.</p></li>
-<li><p><strong>mass</strong> – Pole / resonance mass <span class="math notranslate nohighlight">\(m\)</span>; <code class="docutils literal notranslate"><span class="pre">0</span></code> triggers the boundary regularization described above.</p></li>
+<li><p><strong>mass</strong> – Pole / resonance mass <span class="math notranslate nohighlight">\(m\)</span>.</p></li>
 <li><p><strong>width</strong> – Resonance width <span class="math notranslate nohighlight">\(\Gamma\)</span>; a nonzero value selects Breit-Wigner sampling around <code class="docutils literal notranslate"><span class="pre">mass</span></code>.</p></li>
 <li><p><strong>flat_window</strong> – Half-width <span class="math notranslate nohighlight">\(w\)</span>, in units of <code class="docutils literal notranslate"><span class="pre">width</span></code>, of the window in which the Breit-Wigner density is flattened; <code class="docutils literal notranslate"><span class="pre">0</span></code> (the default) keeps the plain Breit-Wigner.</p></li>
 </ul>

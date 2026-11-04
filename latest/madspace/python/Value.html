@@ -703,7 +703,7 @@
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">madspace.</span></span><span class="sig-name descname"><span class="pre">Value</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#madspace.Value" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">pybind11_object</span></code></p>
 <p>A node in a compute graph: a typed tensor that is either a literal constant or a reference to a graph local.</p>
-<p>FunctionBuilder methods take and return <code class="docutils literal notranslate"><span class="pre">Value``s.</span> <span class="pre">A</span> <span class="pre">value</span> <span class="pre">with</span> <span class="pre">``local_index</span> <span class="pre">&gt;=</span> <span class="pre">0</span></code> refers to the output of an earlier instruction. Otherwise <code class="docutils literal notranslate"><span class="pre">literal_value</span></code> holds an inline scalar or dense tensor constant. Scalars and nested <code class="docutils literal notranslate"><span class="pre">std::vector``s</span> <span class="pre">convert</span> <span class="pre">to</span> <span class="pre">a</span> <span class="pre">``Value</span></code> implicitly.</p>
+<p>FunctionBuilder methods take and return <code class="docutils literal notranslate"><span class="pre">Value``s.</span> <span class="pre">A</span> <span class="pre">value</span> <span class="pre">with</span> <span class="pre">``local_index</span> <span class="pre">&gt;=</span> <span class="pre">0</span></code> refers to a local of the function being built (an input, global, registered literal or instruction output). Otherwise <code class="docutils literal notranslate"><span class="pre">literal_value</span></code> holds an inline scalar or dense tensor constant. Scalars and <code class="docutils literal notranslate"><span class="pre">std::vector``s</span> <span class="pre">(also</span> <span class="pre">nested</span> <span class="pre">ones)</span> <span class="pre">convert</span> <span class="pre">to</span> <span class="pre">a</span> <span class="pre">``Value</span></code> implicitly.</p>
 <p>Overloaded function.</p>
 <ol class="arabic simple">
 <li><p>__init__(self: madspace._madspace_py.Value, value: typing.SupportsInt) -&gt; None</p></li>
@@ -720,13 +720,13 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.Value.literal_value">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">literal_value</span></span><a class="headerlink" href="#madspace.Value.literal_value" title="Link to this definition">¶</a></dt>
-<dd><p>Inline constant, or <code class="docutils literal notranslate"><span class="pre">std::monostate</span></code> for a graph local.</p>
+<dd><p>Inline constant, or <code class="docutils literal notranslate"><span class="pre">std::monostate</span></code> for a graph local without constant value.</p>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.Value.local_index">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">local_index</span></span><a class="headerlink" href="#madspace.Value.local_index" title="Link to this definition">¶</a></dt>
-<dd><p>Index of the referenced graph local, or -1 for a literal.</p>
+<dd><p>Index of the referenced graph local, or -1 if not yet registered as one.</p>
 </dd></dl>
 
 <dl class="py property">

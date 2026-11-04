@@ -702,12 +702,12 @@
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace13PartonDensityE">
 <span id="_CPPv3N8madspace13PartonDensityE"></span><span id="_CPPv2N8madspace13PartonDensityE"></span><span id="madspace::PartonDensity"></span><span class="target" id="classmadspace_1_1PartonDensity"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">PartonDensity</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><span class="n"><span class="pre">madspace</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="FunctionGenerator.html#_CPPv4N8madspace17FunctionGeneratorE" title="madspace::FunctionGenerator"><span class="n"><span class="pre">FunctionGenerator</span></span></a><a class="headerlink" href="#_CPPv4N8madspace13PartonDensityE" title="Link to this definition">¶</a><br /></dt>
 <dd><p>Parton-density interpolation as a compute-graph function. </p>
-<p>Interpolates a <a class="reference internal" href="PdfGrid.html#structmadspace_1_1PdfGrid"><span class="std std-ref">PdfGrid</span></a> at the sampled <span class="math notranslate nohighlight">\((x, q)\)</span>, returning <span class="math notranslate nohighlight">\(x f(x, q)\)</span> for the requested flavours; the numerical output agrees with LHAPDF to double precision [1] (Sec. 3.2.3 of [2]). With a <a class="reference internal" href="CustomPdf.html#structmadspace_1_1CustomPdf"><span class="std std-ref">CustomPdf</span></a>, the user-supplied library is called once per requested flavour instead.</p>
+<p>Interpolates a <a class="reference internal" href="PdfGrid.html#structmadspace_1_1PdfGrid"><span class="std std-ref">PdfGrid</span></a> at the sampled <span class="math notranslate nohighlight">\((x, q)\)</span>, returning <span class="math notranslate nohighlight">\(x f(x, q)\)</span> for the requested flavours; the numerical output agrees with LHAPDF to double precision [1] (Sec. 3.2.3 of [2]). With a <a class="reference internal" href="CustomPdf.html#structmadspace_1_1CustomPdf"><span class="std std-ref">CustomPdf</span></a>, the user-supplied library is called for each requested flavour instead.</p>
 <p><code class="docutils literal notranslate"><span class="pre">batch</span></code> is the leading batch dimension.</p>
 <p><strong>Arguments</strong><ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">x</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – momentum fraction.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">q</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – factorization scale.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">flavor_index</span></code> – <code class="docutils literal notranslate"><span class="pre">int</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – which flavour to return. Present only when <code class="docutils literal notranslate"><span class="pre">dynamic_pid</span></code> is true.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">flavor_index</span></code> – <code class="docutils literal notranslate"><span class="pre">int</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – index into <code class="docutils literal notranslate"><span class="pre">pids</span></code> selecting the flavour to return. Present only when <code class="docutils literal notranslate"><span class="pre">dynamic_pid</span></code> is true.</p></li>
 </ul>
 </p>
 <p><strong>Returns</strong><ul class="simple">
@@ -731,7 +731,7 @@
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>grid</strong> – The parton-density grid to interpolate. </p></li>
 <li><p><strong>pids</strong> – PDG ids of the flavours to return. </p></li>
-<li><p><strong>dynamic_pid</strong> – If true, a single flavour selected per event by the <code class="docutils literal notranslate"><span class="pre">flavor_index</span></code> argument is returned. </p></li>
+<li><p><strong>dynamic_pid</strong> – If true, the single flavour of <code class="docutils literal notranslate"><span class="pre">pids</span></code> selected per event by <code class="docutils literal notranslate"><span class="pre">flavor_index</span></code> is returned. </p></li>
 <li><p><strong>prefix</strong> – Prefix for the grid global names. </p></li>
 </ul>
 </dd>
@@ -747,7 +747,7 @@
 <li><p><strong>custom_pdf</strong> – The user-supplied parton density. </p></li>
 <li><p><strong>pids</strong> – PDG ids of the flavours to return. </p></li>
 <li><p><strong>beam_index</strong> – Index of the beam (0 or 1), passed to the library. </p></li>
-<li><p><strong>dynamic_pid</strong> – If true, a single flavour selected per event by the <code class="docutils literal notranslate"><span class="pre">flavor_index</span></code> argument is returned. </p></li>
+<li><p><strong>dynamic_pid</strong> – If true, the single flavour of <code class="docutils literal notranslate"><span class="pre">pids</span></code> selected per event by <code class="docutils literal notranslate"><span class="pre">flavor_index</span></code> is returned. </p></li>
 </ul>
 </dd>
 </dl>

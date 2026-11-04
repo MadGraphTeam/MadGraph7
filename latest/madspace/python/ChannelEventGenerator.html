@@ -709,8 +709,8 @@
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>contexts</strong> – One context per device to run on.</p></li>
 <li><p><strong>integrand</strong> – The channel’s compiled integrand.</p></li>
-<li><p><strong>event_file</strong> – Path of the weighted event file; empty for no file (events are only kept in memory).</p></li>
-<li><p><strong>weight_file</strong> – Path of the max-weight tracking file; empty for no file.</p></li>
+<li><p><strong>event_file</strong> – Path of the event file; empty for no file.</p></li>
+<li><p><strong>weight_file</strong> – Path of the file with the per-event weights, which unweight_file unweights in place; empty for no file.</p></li>
 <li><p><strong>config</strong> – Generator configuration.</p></li>
 <li><p><strong>subprocess_index</strong> – Index of the owning subprocess.</p></li>
 <li><p><strong>name</strong> – Human-readable channel name.</p></li>
@@ -734,7 +734,8 @@
 <dl class="py method">
 <dt class="sig sig-object py" id="madspace.ChannelEventGenerator.load">
 <span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">load</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">channel_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">contexts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Sequence</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="Context.html#madspace.Context" title="madspace._madspace_py.Context"><span class="pre">madspace._madspace_py.Context</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">event_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weight_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="GeneratorConfig.html#madspace.GeneratorConfig" title="madspace._madspace_py.GeneratorConfig"><span class="pre">madspace._madspace_py.GeneratorConfig</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#madspace.ChannelEventGenerator" title="madspace._madspace_py.ChannelEventGenerator"><span class="pre">madspace._madspace_py.ChannelEventGenerator</span></a></span></span><a class="headerlink" href="#madspace.ChannelEventGenerator.load" title="Link to this definition">¶</a></dt>
-<dd><p>Reconstruct a generator previously written with save, reopening <code class="docutils literal notranslate"><span class="pre">event_file</span></code> and <code class="docutils literal notranslate"><span class="pre">weight_file</span></code>.</p>
+<dd><p>Reconstruct a generator previously written with save.</p>
+<p>Creates new, empty <code class="docutils literal notranslate"><span class="pre">event_file</span></code> and <code class="docutils literal notranslate"><span class="pre">weight_file</span></code>.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -796,7 +797,7 @@
 <dt class="sig sig-object py" id="madspace.ChannelEventGenerator.to_json">
 <span class="sig-name descname"><span class="pre">to_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.ChannelEventGenerator" title="madspace._madspace_py.ChannelEventGenerator"><span class="pre">madspace._madspace_py.ChannelEventGenerator</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">include_estimates</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#madspace.ChannelEventGenerator.to_json" title="Link to this definition">¶</a></dt>
 <dd><p>The JSON text that save writes; see load_json.</p>
-<p>With <code class="docutils literal notranslate"><span class="pre">include_estimates</span></code>, the current maximum weight and the integral of the absolute weights are stored as well. load_json then keeps the maximum weight fixed and uses the integral as a prior, see abs_integral_estimate.</p>
+<p>With <code class="docutils literal notranslate"><span class="pre">include_estimates</span></code>, the current maximum weight and, if there are at least two samples, the integrals (signed and absolute) are stored as well. load_json then keeps the maximum weight fixed and uses the integrals as priors, see abs_integral_estimate.</p>
 </dd></dl>
 
 </dd></dl>

@@ -706,13 +706,18 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.Histogram.bin_errors">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">bin_errors</span></span><a class="headerlink" href="#madspace.Histogram.bin_errors" title="Link to this definition">¶</a></dt>
-<dd><p>Standard error per bin.</p>
+<dd><p>Standard error per bin (raw sums of squared weights in a ChannelEventGenerator).</p>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.Histogram.bin_values">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">bin_values</span></span><a class="headerlink" href="#madspace.Histogram.bin_values" title="Link to this definition">¶</a></dt>
-<dd><p>Summed weight per bin, including the under/overflow bins.</p>
+<dd><p>raw sums in a ChannelEventGenerator, normalized by EventGenerator::histograms().</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Weight per bin, including the under/overflow bins</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py property">

@@ -712,7 +712,7 @@
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>subproc_args</strong> – Bookkeeping for every subprocess, indexed like <code class="docutils literal notranslate"><span class="pre">subprocess_index</span></code> in <a class="reference internal" href="#classmadspace_1_1LHECompleter_1a1de0fd81c5281b49b0cce387c5976a5b"><span class="std std-ref">complete_event_data</span></a>. </p></li>
-<li><p><strong>bw_cutoff</strong> – Number of widths within which a propagator is sampled on its Breit-Wigner resonance. </p></li>
+<li><p><strong>bw_cutoff</strong> – A resonance is written to an event only if its invariant mass is within this many widths of its mass. </p></li>
 </ul>
 </dd>
 </dl>
@@ -732,7 +732,7 @@
 <li><p><strong>color_index</strong> – Sampled color configuration. </p></li>
 <li><p><strong>flavor_index</strong> – Sampled flavor assignment. </p></li>
 <li><p><strong>helicity_index</strong> – Sampled helicity configuration. </p></li>
-<li><p><strong>rand_gen</strong> – RNG stream, used to sample resonance masses. </p></li>
+<li><p><strong>rand_gen</strong> – RNG stream, used to pick the flavor option. </p></li>
 </ul>
 </dd>
 </dl>
@@ -741,7 +741,7 @@
 <dl class="cpp function">
 <dt class="sig sig-object cpp" id="_CPPv4NK8madspace12LHECompleter18max_particle_countEv">
 <span id="_CPPv3NK8madspace12LHECompleter18max_particle_countEv"></span><span id="_CPPv2NK8madspace12LHECompleter18max_particle_countEv"></span><span id="madspace::LHECompleter::max_particle_countC"></span><span class="target" id="classmadspace_1_1LHECompleter_1a4d7c8c3381100387e11cf0c002236c7e"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">max_particle_count</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace12LHECompleter18max_particle_countEv" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Largest particle count over every subprocess. </p>
+<dd><p>Largest particle count over every subprocess, including resonances. </p>
 </dd></dl>
 
 <dl class="cpp function">
@@ -782,19 +782,19 @@
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace12LHECompleter11SubprocArgs12permutationsE">
 <span id="_CPPv3N8madspace12LHECompleter11SubprocArgs12permutationsE"></span><span id="_CPPv2N8madspace12LHECompleter11SubprocArgs12permutationsE"></span><span id="madspace::LHECompleter::SubprocArgs::permutations__nested_vector3:std::s:"></span><span class="target" id="structmadspace_1_1LHECompleter_1_1SubprocArgs_1aed3efffe268a0abd6e3ecf7e06ea0af7"></span><span class="n"><span class="pre">nested_vector3</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">permutations</span></span></span><a class="headerlink" href="#_CPPv4N8madspace12LHECompleter11SubprocArgs12permutationsE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Final-state particle permutation of each channel. </p>
+<dd><p>Permutation of the external legs (incoming first) of each diagram of each channel. </p>
 </dd></dl>
 
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace12LHECompleter11SubprocArgs15diagram_indicesE">
 <span id="_CPPv3N8madspace12LHECompleter11SubprocArgs15diagram_indicesE"></span><span id="_CPPv2N8madspace12LHECompleter11SubprocArgs15diagram_indicesE"></span><span id="madspace::LHECompleter::SubprocArgs::diagram_indices__nested_vector2:std::s:"></span><span class="target" id="structmadspace_1_1LHECompleter_1_1SubprocArgs_1a7ae7718b1f85b3b27a619f1e5b686224"></span><span class="n"><span class="pre">nested_vector2</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">diagram_indices</span></span></span><a class="headerlink" href="#_CPPv4N8madspace12LHECompleter11SubprocArgs15diagram_indicesE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Sampled-diagram index available to each channel. </p>
+<dd><p><a class="reference internal" href="Diagram.html#classmadspace_1_1Diagram"><span class="std std-ref">Diagram</span></a> index of each diagram of each channel. </p>
 </dd></dl>
 
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace12LHECompleter11SubprocArgs21diagram_color_indicesE">
 <span id="_CPPv3N8madspace12LHECompleter11SubprocArgs21diagram_color_indicesE"></span><span id="_CPPv2N8madspace12LHECompleter11SubprocArgs21diagram_color_indicesE"></span><span id="madspace::LHECompleter::SubprocArgs::diagram_color_indices__nested_vector3:std::s:"></span><span class="target" id="structmadspace_1_1LHECompleter_1_1SubprocArgs_1a2c70d6feb0080c3a4975081c9d939a7a"></span><span class="n"><span class="pre">nested_vector3</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">diagram_color_indices</span></span></span><a class="headerlink" href="#_CPPv4N8madspace12LHECompleter11SubprocArgs21diagram_color_indicesE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Color-configuration indices available to each diagram. </p>
+<dd><p>Color-configuration indices of each diagram of each channel. </p>
 </dd></dl>
 
 <dl class="cpp var">
@@ -806,7 +806,7 @@
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace12LHECompleter11SubprocArgs15pdg_color_typesE">
 <span id="_CPPv3N8madspace12LHECompleter11SubprocArgs15pdg_color_typesE"></span><span id="_CPPv2N8madspace12LHECompleter11SubprocArgs15pdg_color_typesE"></span><span id="madspace::LHECompleter::SubprocArgs::pdg_color_types__std::unordered_map:i.i:"></span><span class="target" id="structmadspace_1_1LHECompleter_1_1SubprocArgs_1a690ea29f7a57efdb4297b6e9bd9caae8"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">unordered_map</span></span><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">int</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="kt"><span class="pre">int</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">pdg_color_types</span></span></span><a class="headerlink" href="#_CPPv4N8madspace12LHECompleter11SubprocArgs15pdg_color_typesE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Color representation (singlet, triplet, octet, …) of each PDG id. </p>
+<dd><p>Color representation of each PDG id: 1 (singlet), 3, -3 or 8; ids not listed count as singlets. </p>
 </dd></dl>
 
 <dl class="cpp var">
@@ -818,14 +818,14 @@
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace12LHECompleter11SubprocArgs7pdg_idsE">
 <span id="_CPPv3N8madspace12LHECompleter11SubprocArgs7pdg_idsE"></span><span id="_CPPv2N8madspace12LHECompleter11SubprocArgs7pdg_idsE"></span><span id="madspace::LHECompleter::SubprocArgs::pdg_ids__nested_vector3:i:"></span><span class="target" id="structmadspace_1_1LHECompleter_1_1SubprocArgs_1a22c757661d05be70aee00c0c0c2a15de"></span><span class="n"><span class="pre">nested_vector3</span></span><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">int</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">pdg_ids</span></span></span><a class="headerlink" href="#_CPPv4N8madspace12LHECompleter11SubprocArgs7pdg_idsE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Per-particle PDG id of each sampled flavor configuration. </p>
+<dd><p>PDG ids per particle, for each flavor index and each of its options; one option is chosen at random per event. </p>
 </dd></dl>
 
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace12LHECompleter11SubprocArgs23diagram_propagator_pdgsE">
 <span id="_CPPv3N8madspace12LHECompleter11SubprocArgs23diagram_propagator_pdgsE"></span><span id="_CPPv2N8madspace12LHECompleter11SubprocArgs23diagram_propagator_pdgsE"></span><span id="madspace::LHECompleter::SubprocArgs::diagram_propagator_pdgs__nested_vector3:i:"></span><span class="target" id="structmadspace_1_1LHECompleter_1_1SubprocArgs_1a56a0db1fdeb17a5a7c664024d487d6ca"></span><span class="n"><span class="pre">nested_vector3</span></span><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">int</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">diagram_propagator_pdgs</span></span></span><a class="headerlink" href="#_CPPv4N8madspace12LHECompleter11SubprocArgs23diagram_propagator_pdgsE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Per-diagram PDG override, indexed like <code class="docutils literal notranslate"><span class="pre">diagram_color_indices</span></code> then by <code class="docutils literal notranslate"><a class="reference internal" href="Topology.html#structmadspace_1_1Topology_1_1Decay_1ad161b7028f097e1cabb2537a446adc07"><span class="std std-ref"><span class="pre">Topology::Decay::flat_propagator_index</span></span></a></code>. </p>
-<p>Falls back to <code class="docutils literal notranslate"><a class="reference internal" href="Topology.html#structmadspace_1_1Topology_1_1Decay_1a592f7d98dcc1a241b62fb908cfc52f25"><span class="std std-ref"><span class="pre">Topology::Decay::pdg_id</span></span></a></code> if empty. </p>
+<dd><p>Per-diagram PDG override, indexed by channel, diagram within the channel and <code class="docutils literal notranslate"><a class="reference internal" href="Topology.html#structmadspace_1_1Topology_1_1Decay_1ad161b7028f097e1cabb2537a446adc07"><span class="std std-ref"><span class="pre">Topology::Decay::flat_propagator_index</span></span></a></code>. </p>
+<p>Falls back to <code class="docutils literal notranslate"><a class="reference internal" href="Topology.html#structmadspace_1_1Topology_1_1Decay_1a592f7d98dcc1a241b62fb908cfc52f25"><span class="std std-ref"><span class="pre">Topology::Decay::pdg_id</span></span></a></code> if missing. </p>
 </dd></dl>
 
 <dl class="cpp var">

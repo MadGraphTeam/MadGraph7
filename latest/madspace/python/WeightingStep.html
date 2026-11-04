@@ -774,8 +774,8 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.WeightingStep.override_outputs">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">override_outputs</span></span><a class="headerlink" href="#madspace.WeightingStep.override_outputs" title="Link to this definition">¶</a></dt>
-<dd><p>Color, helicity or diagram index outputs that replace the values of the earlier steps.</p>
-<p>Without, an index is taken from the first step whose matrix element returns it.</p>
+<dd><p>Color, helicity or diagram index outputs that replace the values of the integrand or earlier steps.</p>
+<p>Without, an index returned by the matrix elements is only written if neither the integrand nor an earlier step provides it.</p>
 </dd></dl>
 
 <dl class="py method">

@@ -731,7 +731,8 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.EventHistogramSpec.name">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">name</span></span><a class="headerlink" href="#madspace.EventHistogramSpec.name" title="Link to this definition">¶</a></dt>
-<dd><p>Observable name; must match a key of every subprocess’s SubprocessObservables::values, unless from_weight is set.</p>
+<dd><p>Histogram name.</p>
+<p>Observables are matched to specs by position: the n-th spec without from_weight uses the n-th observable of SubprocessObservables::values.</p>
 </dd></dl>
 
 </dd></dl>

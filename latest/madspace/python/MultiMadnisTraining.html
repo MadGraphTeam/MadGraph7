@@ -711,7 +711,7 @@
 <li><p><strong>training_args</strong> – One entry per subprocess.</p></li>
 <li><p><strong>verbosity</strong> – Progress-reporting verbosity.</p></li>
 <li><p><strong>status_file</strong> – Optional status file progress is periodically written to.</p></li>
-<li><p><strong>seed</strong> – Top-level run seed (reusing the run card’s own seed, also used by <code class="docutils literal notranslate"><span class="pre">build_event_generator()</span></code>); each subprocess’s <code class="docutils literal notranslate"><span class="pre">MadnisTraining</span></code> gets a <code class="docutils literal notranslate"><span class="pre">channel_index_offset</span></code> slice of this seed’s stream so their derived seeds don’t collide.</p></li>
+<li><p><strong>seed</strong> – Top-level run seed; each subprocess’s <code class="docutils literal notranslate"><span class="pre">MadnisTraining</span></code> gets a <code class="docutils literal notranslate"><span class="pre">channel_index_offset</span></code> slice so their derived seeds don’t collide.</p></li>
 </ul>
 </dd>
 </dl>

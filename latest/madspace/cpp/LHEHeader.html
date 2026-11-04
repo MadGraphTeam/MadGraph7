@@ -701,8 +701,8 @@
 <dl class="cpp struct">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace9LHEHeaderE">
 <span id="_CPPv3N8madspace9LHEHeaderE"></span><span id="_CPPv2N8madspace9LHEHeaderE"></span><span id="madspace::LHEHeader"></span><span class="target" id="structmadspace_1_1LHEHeader"></span><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">LHEHeader</span></span></span><a class="headerlink" href="#_CPPv4N8madspace9LHEHeaderE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>One <code class="docutils literal notranslate"><span class="pre">&lt;header&gt;</span></code> block of an LHE file’s <code class="docutils literal notranslate"><span class="pre">&lt;init&gt;</span></code> section. </p>
-<p>A free-form, generator-specific block of extra metadata, written verbatim under <code class="docutils literal notranslate"><span class="pre">name</span></code>. <code class="docutils literal notranslate"><span class="pre">escape_content</span></code> XML-escapes <code class="docutils literal notranslate"><span class="pre">content</span></code> before writing it. </p>
+<dd><p>One block in the <code class="docutils literal notranslate"><span class="pre">&lt;header&gt;</span></code> section of an LHE file. </p>
+<p>A free-form block of extra metadata, written as a tag <code class="docutils literal notranslate"><span class="pre">name</span></code> containing <code class="docutils literal notranslate"><span class="pre">content</span></code>. If <code class="docutils literal notranslate"><span class="pre">escape_content</span></code> is set, <code class="docutils literal notranslate"><span class="pre">content</span></code> is wrapped in CDATA. </p>
 <div class="breathe-sectiondef docutils container">
 <p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-members">Public Members</p>
 <dl class="cpp var">
@@ -720,7 +720,7 @@
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace9LHEHeader14escape_contentE">
 <span id="_CPPv3N8madspace9LHEHeader14escape_contentE"></span><span id="_CPPv2N8madspace9LHEHeader14escape_contentE"></span><span id="madspace::LHEHeader::escape_content__b"></span><span class="target" id="structmadspace_1_1LHEHeader_1a7b07a1e2a001828058ecdb898d5726e4"></span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">escape_content</span></span></span><a class="headerlink" href="#_CPPv4N8madspace9LHEHeader14escape_contentE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Whether to XML-escape <code class="docutils literal notranslate"><span class="pre">content</span></code> before writing it. </p>
+<dd><p>Whether to wrap <code class="docutils literal notranslate"><span class="pre">content</span></code> in a CDATA section. </p>
 </dd></dl>
 
 </div>

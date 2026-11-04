@@ -703,13 +703,13 @@
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">madspace.</span></span><span class="sig-name descname"><span class="pre">PartonDensity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#madspace.PartonDensity" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="FunctionGenerator.html#madspace.FunctionGenerator" title="madspace._madspace_py.FunctionGenerator"><code class="xref py py-class docutils literal notranslate"><span class="pre">FunctionGenerator</span></code></a></p>
 <p>Parton-density interpolation as a compute-graph function.</p>
-<p>Interpolates a PdfGrid at the sampled <span class="math notranslate nohighlight">\((x, q)\)</span>, returning <span class="math notranslate nohighlight">\(x f(x, q)\)</span> for the requested flavours; the numerical output agrees with LHAPDF to double precision [1] (Sec. 3.2.3 of [2]). With a CustomPdf, the user-supplied library is called once per requested flavour instead.</p>
+<p>Interpolates a PdfGrid at the sampled <span class="math notranslate nohighlight">\((x, q)\)</span>, returning <span class="math notranslate nohighlight">\(x f(x, q)\)</span> for the requested flavours; the numerical output agrees with LHAPDF to double precision [1] (Sec. 3.2.3 of [2]). With a CustomPdf, the user-supplied library is called for each requested flavour instead.</p>
 <p><code class="docutils literal notranslate"><span class="pre">batch</span></code> is the leading batch dimension.</p>
 <p><strong>Arguments</strong></p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">x</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – momentum fraction.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">q</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – factorization scale.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">flavor_index</span></code> – <code class="docutils literal notranslate"><span class="pre">int</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – which flavour to return. Present only when <code class="docutils literal notranslate"><span class="pre">dynamic_pid</span></code> is true.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">flavor_index</span></code> – <code class="docutils literal notranslate"><span class="pre">int</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – index into <code class="docutils literal notranslate"><span class="pre">pids</span></code> selecting the flavour to return. Present only when <code class="docutils literal notranslate"><span class="pre">dynamic_pid</span></code> is true.</p></li>
 </ul>
 <p><strong>Returns</strong></p>
 <ul class="simple">
@@ -730,7 +730,7 @@ precision era”, <a class="reference external" href="https://arxiv.org/abs/1412
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>grid</strong> – The parton-density grid to interpolate.</p></li>
 <li><p><strong>pids</strong> – PDG ids of the flavours to return.</p></li>
-<li><p><strong>dynamic_pid</strong> – If true, a single flavour selected per event by the <code class="docutils literal notranslate"><span class="pre">flavor_index</span></code> argument is returned.</p></li>
+<li><p><strong>dynamic_pid</strong> – If true, the single flavour of <code class="docutils literal notranslate"><span class="pre">pids</span></code> selected per event by <code class="docutils literal notranslate"><span class="pre">flavor_index</span></code> is returned.</p></li>
 <li><p><strong>prefix</strong> – Prefix for the grid global names.</p></li>
 </ul>
 </dd>
@@ -744,7 +744,7 @@ precision era”, <a class="reference external" href="https://arxiv.org/abs/1412
 <li><p><strong>custom_pdf</strong> – The user-supplied parton density.</p></li>
 <li><p><strong>pids</strong> – PDG ids of the flavours to return.</p></li>
 <li><p><strong>beam_index</strong> – Index of the beam (0 or 1), passed to the library.</p></li>
-<li><p><strong>dynamic_pid</strong> – If true, a single flavour selected per event by the <code class="docutils literal notranslate"><span class="pre">flavor_index</span></code> argument is returned.</p></li>
+<li><p><strong>dynamic_pid</strong> – If true, the single flavour of <code class="docutils literal notranslate"><span class="pre">pids</span></code> selected per event by <code class="docutils literal notranslate"><span class="pre">flavor_index</span></code> is returned.</p></li>
 </ul>
 </dd>
 </dl>

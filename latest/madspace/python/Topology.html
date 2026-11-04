@@ -735,7 +735,7 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.Topology.outgoing_indices">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">outgoing_indices</span></span><a class="headerlink" href="#madspace.Topology.outgoing_indices" title="Link to this definition">¶</a></dt>
-<dd><p>Diagram indices of the outgoing particles, in decay-tree order.</p>
+<dd><p>Decay-tree node index of each outgoing particle, in diagram order.</p>
 </dd></dl>
 
 <dl class="py property">
@@ -747,12 +747,9 @@
 <dl class="py method">
 <dt class="sig sig-object py" id="madspace.Topology.propagator_momentum_terms">
 <span class="sig-name descname"><span class="pre">propagator_momentum_terms</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.Topology" title="madspace._madspace_py.Topology"><span class="pre">madspace._madspace_py.Topology</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">only_decays</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#madspace.Topology.propagator_momentum_terms" title="Link to this definition">¶</a></dt>
-<dd><p>For each propagator, the outgoing momenta summed to form it and the energy window <code class="docutils literal notranslate"><span class="pre">(indices,</span> <span class="pre">e_min,</span> <span class="pre">e_max)</span></code>.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>only_decays</strong> – Restrict the result to the <code class="docutils literal notranslate"><span class="pre">s</span></code>-channel decay nodes.</p>
-</dd>
-</dl>
+<dd><p>For each propagator, a tuple <code class="docutils literal notranslate"><span class="pre">(factors,</span> <span class="pre">mass,</span> <span class="pre">width)</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">factors</span></code> has one entry per external particle (incoming first): +1 or -1 for the momenta summed to form the propagator momentum, 0 otherwise.
+:param only_decays: Restrict the result to the <code class="docutils literal notranslate"><span class="pre">s</span></code>-channel decay nodes.</p>
 </dd></dl>
 
 <dl class="py property">

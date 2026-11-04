@@ -702,7 +702,7 @@
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace18VegasGridOptimizerE">
 <span id="_CPPv3N8madspace18VegasGridOptimizerE"></span><span id="_CPPv2N8madspace18VegasGridOptimizerE"></span><span id="madspace::VegasGridOptimizer"></span><span class="target" id="classmadspace_1_1VegasGridOptimizer"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">VegasGridOptimizer</span></span></span><a class="headerlink" href="#_CPPv4N8madspace18VegasGridOptimizerE" title="Link to this definition">¶</a><br /></dt>
 <dd><p>Refines a <a class="reference internal" href="VegasMapping.html#classmadspace_1_1VegasMapping"><span class="std std-ref">VegasMapping</span></a> grid from accumulated bin statistics. </p>
-<p>The training-time counterpart of <a class="reference internal" href="VegasHistogram.html#classmadspace_1_1VegasHistogram"><span class="std std-ref">VegasHistogram</span></a> — <a class="reference internal" href="#classmadspace_1_1VegasGridOptimizer_1a8d16b811414200a738dab9d55622d861"><span class="std std-ref">add_data</span></a> feeds in the per-bin weight sums accumulated during a warm-up run, and <a class="reference internal" href="#classmadspace_1_1VegasGridOptimizer_1afa74b028098fbad745d6fb51c3c5055d"><span class="std std-ref">optimize</span></a> rewrites the <code class="docutils literal notranslate"><span class="pre">grid_name</span></code> global on every context in <code class="docutils literal notranslate"><span class="pre">contexts</span></code> with the refined grid. </p>
+<p>Counterpart of VegasHistogram: <a class="reference internal" href="#classmadspace_1_1VegasGridOptimizer_1a8d16b811414200a738dab9d55622d861"><span class="std std-ref">add_data</span></a> feeds in the per-bin weight sums and counts it accumulates, and <a class="reference internal" href="#classmadspace_1_1VegasGridOptimizer_1afa74b028098fbad745d6fb51c3c5055d"><span class="std std-ref">optimize</span></a> rewrites the <code class="docutils literal notranslate"><span class="pre">grid_name</span></code> global on every context in <code class="docutils literal notranslate"><span class="pre">contexts</span></code> with the refined grid. </p>
 <div class="breathe-sectiondef docutils container">
 <p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-functions">Public Functions</p>
 <dl class="cpp function">
@@ -713,7 +713,7 @@
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>contexts</strong> – Contexts sharing the grid to refine. </p></li>
 <li><p><strong>grid_name</strong> – Global name of the VEGAS grid. </p></li>
-<li><p><strong>damping</strong> – Damping factor limiting the size of a single update. </p></li>
+<li><p><strong>damping</strong> – Exponent of the damping applied to the normalized bin values; smaller values damp more strongly. </p></li>
 </ul>
 </dd>
 </dl>
@@ -722,7 +722,7 @@
 <dl class="cpp function">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace18VegasGridOptimizer8add_dataE6Tensor6Tensor">
 <span id="_CPPv3N8madspace18VegasGridOptimizer8add_dataE6Tensor6Tensor"></span><span id="_CPPv2N8madspace18VegasGridOptimizer8add_dataE6Tensor6Tensor"></span><span id="madspace::VegasGridOptimizer::add_data__Tensor.Tensor"></span><span class="target" id="classmadspace_1_1VegasGridOptimizer_1a8d16b811414200a738dab9d55622d861"></span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">add_data</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="Tensor.html#_CPPv4N8madspace6TensorE" title="madspace::Tensor"><span class="n"><span class="pre">Tensor</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">weights</span></span>, <a class="reference internal" href="Tensor.html#_CPPv4N8madspace6TensorE" title="madspace::Tensor"><span class="n"><span class="pre">Tensor</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">inputs</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8madspace18VegasGridOptimizer8add_dataE6Tensor6Tensor" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Accumulate one batch of per-bin <code class="docutils literal notranslate"><span class="pre">weights</span></code> and <code class="docutils literal notranslate"><span class="pre">inputs</span></code>; see <a class="reference internal" href="VegasHistogram.html#classmadspace_1_1VegasHistogram"><span class="std std-ref">VegasHistogram</span></a>. </p>
+<dd><p>Accumulate one batch of per-bin weight sums (<code class="docutils literal notranslate"><span class="pre">values</span></code>) and per-bin counts (<code class="docutils literal notranslate"><span class="pre">counts</span></code>) with shape [1, dims, bins]; see <a class="reference internal" href="VegasHistogram.html#classmadspace_1_1VegasHistogram"><span class="std std-ref">VegasHistogram</span></a>. </p>
 </dd></dl>
 
 <dl class="cpp function">

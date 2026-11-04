@@ -703,14 +703,14 @@
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">madspace.</span></span><span class="sig-name descname"><span class="pre">MultiChannelIntegrand</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.MultiChannelIntegrand" title="madspace._madspace_py.MultiChannelIntegrand"><span class="pre">madspace._madspace_py.MultiChannelIntegrand</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">integrands</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Sequence</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="Integrand.html#madspace.Integrand" title="madspace._madspace_py.Integrand"><span class="pre">madspace._madspace_py.Integrand</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_sizes</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#madspace.MultiChannelIntegrand" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="FunctionGenerator.html#madspace.FunctionGenerator" title="madspace._madspace_py.FunctionGenerator"><code class="xref py py-class docutils literal notranslate"><span class="pre">FunctionGenerator</span></code></a></p>
 <p>Evaluates several Integrand channels on one merged batch.</p>
-<p>Partitions the batch by the per-channel counts, runs each Integrand on its slice and concatenates the results, the same pattern as MultiChannelMapping.</p>
+<p>Runs the channel part of each Integrand on its slice of the batch, concatenates the results and runs the common part of the first integrand once on the merged batch.</p>
 <p><strong>Arguments</strong></p>
 <ul class="simple">
-<li><p>the union of the channel integrands’ arguments, plus the per-channel batch sizes.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">batch_sizes</span></code> – the number of events per channel.</p></li>
 </ul>
 <p><strong>Returns</strong></p>
 <ul class="simple">
-<li><p>the concatenated per-event quantities, plus the per-channel sizes when <code class="docutils literal notranslate"><span class="pre">return_sizes</span></code> is set.</p></li>
+<li><p>the per-event quantities of Integrand, plus <code class="docutils literal notranslate"><span class="pre">return_batch_sizes</span></code> when <code class="docutils literal notranslate"><span class="pre">return_sizes</span></code> is set.</p></li>
 </ul>
 <p><strong>References</strong></p>
 <ul class="simple">

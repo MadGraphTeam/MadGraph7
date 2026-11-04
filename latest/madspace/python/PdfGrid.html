@@ -719,7 +719,7 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.PdfGrid.grid_point_count">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">grid_point_count</span></span><a class="headerlink" href="#madspace.PdfGrid.grid_point_count" title="Link to this definition">¶</a></dt>
-<dd><p>Total number of <code class="docutils literal notranslate"><span class="pre">(x,</span> <span class="pre">q)</span></code> grid points.</p>
+<dd><p>Number of <code class="docutils literal notranslate"><span class="pre">(x,</span> <span class="pre">q)</span></code> grid points, including padding, as stored in the coefficient tensor.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -767,19 +767,19 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.PdfGrid.q_count">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">q_count</span></span><a class="headerlink" href="#madspace.PdfGrid.q_count" title="Link to this definition">¶</a></dt>
-<dd><p>Number of scale knots.</p>
+<dd><p>Number of scale knots, counting the knots shared by two regions once.</p>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.PdfGrid.region_sizes">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">region_sizes</span></span><a class="headerlink" href="#madspace.PdfGrid.region_sizes" title="Link to this definition">¶</a></dt>
-<dd><p>Knot counts of the sub-grid regions.</p>
+<dd><p>Number of <code class="docutils literal notranslate"><span class="pre">q</span></code> intervals in each sub-grid region.</p>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.PdfGrid.values">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">values</span></span><a class="headerlink" href="#madspace.PdfGrid.values" title="Link to this definition">¶</a></dt>
-<dd><p>Grid values, indexed by flavour then by <code class="docutils literal notranslate"><span class="pre">(x,</span> <span class="pre">q)</span></code> knot.</p>
+<dd><p>Grid values, indexed by <code class="docutils literal notranslate"><span class="pre">(q,</span> <span class="pre">x)</span></code> grid point (<code class="docutils literal notranslate"><span class="pre">q_index</span> <span class="pre">*</span> <span class="pre">x.size()</span> <span class="pre">+</span> <span class="pre">x_index</span></code>), then by flavour.</p>
 </dd></dl>
 
 <dl class="py property">

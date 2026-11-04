@@ -719,25 +719,25 @@
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace15GeneratorConfig25max_overweight_truncationE">
 <span id="_CPPv3N8madspace15GeneratorConfig25max_overweight_truncationE"></span><span id="_CPPv2N8madspace15GeneratorConfig25max_overweight_truncationE"></span><span id="madspace::GeneratorConfig::max_overweight_truncation__double"></span><span class="target" id="structmadspace_1_1GeneratorConfig_1a191c546ad8cf132ea67a34dd3d11ea52"></span><span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">max_overweight_truncation</span></span></span><a class="headerlink" href="#_CPPv4N8madspace15GeneratorConfig25max_overweight_truncationE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Fraction of the weight distribution’s tail truncated when estimating the unweighting efficiency. </p>
+<dd><p>Overweight tolerated when choosing the maximum weight, as a fraction of the smaller of the target count and <code class="docutils literal notranslate"><span class="pre">freeze_max_weight_after</span></code>. </p>
 </dd></dl>
 
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace15GeneratorConfig23freeze_max_weight_afterE">
 <span id="_CPPv3N8madspace15GeneratorConfig23freeze_max_weight_afterE"></span><span id="_CPPv2N8madspace15GeneratorConfig23freeze_max_weight_afterE"></span><span id="madspace::GeneratorConfig::freeze_max_weight_after__std::s"></span><span class="target" id="structmadspace_1_1GeneratorConfig_1a984a4efbb6155de2b9fd802ff2527da5"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">freeze_max_weight_after</span></span></span><a class="headerlink" href="#_CPPv4N8madspace15GeneratorConfig23freeze_max_weight_afterE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Number of survey events after which the maximum weight estimate is frozen. </p>
+<dd><p>Expected number of unweighted events after which a channel’s maximum weight estimate is frozen. </p>
 </dd></dl>
 
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace15GeneratorConfig16start_batch_sizeE">
 <span id="_CPPv3N8madspace15GeneratorConfig16start_batch_sizeE"></span><span id="_CPPv2N8madspace15GeneratorConfig16start_batch_sizeE"></span><span id="madspace::GeneratorConfig::start_batch_size__std::s"></span><span class="target" id="structmadspace_1_1GeneratorConfig_1a69ff04eee6b31c3aa9efef7785a7c8d5"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">start_batch_size</span></span></span><a class="headerlink" href="#_CPPv4N8madspace15GeneratorConfig16start_batch_sizeE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Initial number of events per generation batch. </p>
+<dd><p>Initial number of events per VEGAS/channel-weight optimization batch. </p>
 </dd></dl>
 
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace15GeneratorConfig14max_batch_sizeE">
 <span id="_CPPv3N8madspace15GeneratorConfig14max_batch_sizeE"></span><span id="_CPPv2N8madspace15GeneratorConfig14max_batch_sizeE"></span><span id="madspace::GeneratorConfig::max_batch_size__std::s"></span><span class="target" id="structmadspace_1_1GeneratorConfig_1ae426f0ccedc4837db9ed8917b966efba"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">max_batch_size</span></span></span><a class="headerlink" href="#_CPPv4N8madspace15GeneratorConfig14max_batch_sizeE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Largest allowed number of events per generation batch. </p>
+<dd><p>Largest number of events per optimization batch (the batch size doubles every iteration up to this value). </p>
 </dd></dl>
 
 <dl class="cpp var">
@@ -767,19 +767,19 @@
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace15GeneratorConfig22optimization_thresholdE">
 <span id="_CPPv3N8madspace15GeneratorConfig22optimization_thresholdE"></span><span id="_CPPv2N8madspace15GeneratorConfig22optimization_thresholdE"></span><span id="madspace::GeneratorConfig::optimization_threshold__double"></span><span class="target" id="structmadspace_1_1GeneratorConfig_1a6c177a1daa2fb03ad6d765ee49ec4ae0"></span><span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">optimization_threshold</span></span></span><a class="headerlink" href="#_CPPv4N8madspace15GeneratorConfig22optimization_thresholdE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Minimum relative improvement counted as progress by <code class="docutils literal notranslate"><span class="pre">optimization_patience</span></code>. </p>
+<dd><p>An iteration counts as progress for <code class="docutils literal notranslate"><span class="pre">optimization_patience</span></code> if the relative standard deviation falls below this fraction of its best value so far. </p>
 </dd></dl>
 
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace15GeneratorConfig14cpu_batch_sizeE">
 <span id="_CPPv3N8madspace15GeneratorConfig14cpu_batch_sizeE"></span><span id="_CPPv2N8madspace15GeneratorConfig14cpu_batch_sizeE"></span><span id="madspace::GeneratorConfig::cpu_batch_size__std::s"></span><span class="target" id="structmadspace_1_1GeneratorConfig_1a256c5447fb2571a36bf9be0eba979e5b"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">cpu_batch_size</span></span></span><a class="headerlink" href="#_CPPv4N8madspace15GeneratorConfig14cpu_batch_sizeE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Batch size used on a CPU device. </p>
+<dd><p>Number of events per job on a CPU device. </p>
 </dd></dl>
 
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace15GeneratorConfig14gpu_batch_sizeE">
 <span id="_CPPv3N8madspace15GeneratorConfig14gpu_batch_sizeE"></span><span id="_CPPv2N8madspace15GeneratorConfig14gpu_batch_sizeE"></span><span id="madspace::GeneratorConfig::gpu_batch_size__std::s"></span><span class="target" id="structmadspace_1_1GeneratorConfig_1a413f2dff646f4c062ebd13e6ebe2d74a"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">gpu_batch_size</span></span></span><a class="headerlink" href="#_CPPv4N8madspace15GeneratorConfig14gpu_batch_sizeE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Batch size used on a GPU device. </p>
+<dd><p>Number of events per job on a GPU device. </p>
 </dd></dl>
 
 <dl class="cpp var">
@@ -791,7 +791,7 @@
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace15GeneratorConfig15write_live_dataE">
 <span id="_CPPv3N8madspace15GeneratorConfig15write_live_dataE"></span><span id="_CPPv2N8madspace15GeneratorConfig15write_live_dataE"></span><span id="madspace::GeneratorConfig::write_live_data__b"></span><span class="target" id="structmadspace_1_1GeneratorConfig_1aed030f810652ea663dcda428a4df5381"></span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">write_live_data</span></span></span><a class="headerlink" href="#_CPPv4N8madspace15GeneratorConfig15write_live_dataE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>If true, periodically write live progress data to disk. </p>
+<dd><p>Not read by the C++ generator. </p>
 </dd></dl>
 
 <dl class="cpp var">
@@ -803,13 +803,13 @@
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace15GeneratorConfig24cut_efficiency_thresholdE">
 <span id="_CPPv3N8madspace15GeneratorConfig24cut_efficiency_thresholdE"></span><span id="_CPPv2N8madspace15GeneratorConfig24cut_efficiency_thresholdE"></span><span id="madspace::GeneratorConfig::cut_efficiency_threshold__double"></span><span class="target" id="structmadspace_1_1GeneratorConfig_1a91cab28aa12692c20003998307422188"></span><span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">cut_efficiency_threshold</span></span></span><a class="headerlink" href="#_CPPv4N8madspace15GeneratorConfig24cut_efficiency_thresholdE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Minimum acceptable fraction of events surviving fiducial cuts before a warning is raised. </p>
+<dd><p>A job repeats its batch until this fraction of its requested events pass the cuts. </p>
 </dd></dl>
 
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace15GeneratorConfig19max_cut_repetitionsE">
 <span id="_CPPv3N8madspace15GeneratorConfig19max_cut_repetitionsE"></span><span id="_CPPv2N8madspace15GeneratorConfig19max_cut_repetitionsE"></span><span id="madspace::GeneratorConfig::max_cut_repetitions__std::s"></span><span class="target" id="structmadspace_1_1GeneratorConfig_1af04998c3c169a849256d6bf4d7c37b23"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">max_cut_repetitions</span></span></span><a class="headerlink" href="#_CPPv4N8madspace15GeneratorConfig19max_cut_repetitionsE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Maximum number of times a batch is resampled to reach <code class="docutils literal notranslate"><span class="pre">cut_efficiency_threshold</span></code>. </p>
+<dd><p>Maximum number of repetitions per job to reach <code class="docutils literal notranslate"><span class="pre">cut_efficiency_threshold</span></code> before an error is raised. </p>
 </dd></dl>
 
 <dl class="cpp var">

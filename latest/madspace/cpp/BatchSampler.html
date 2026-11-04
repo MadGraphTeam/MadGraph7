@@ -701,16 +701,16 @@
 <dl class="cpp class">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace12BatchSamplerE">
 <span id="_CPPv3N8madspace12BatchSamplerE"></span><span id="_CPPv2N8madspace12BatchSamplerE"></span><span id="madspace::BatchSampler"></span><span class="target" id="classmadspace_1_1BatchSampler"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">BatchSampler</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><span class="n"><span class="pre">madspace</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="FunctionGenerator.html#_CPPv4N8madspace17FunctionGeneratorE" title="madspace::FunctionGenerator"><span class="n"><span class="pre">FunctionGenerator</span></span></a><a class="headerlink" href="#_CPPv4N8madspace12BatchSamplerE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Concatenates the per-channel tensors of a multi-channel batch. </p>
-<p>Given one tensor set per channel and the per-channel batch sizes, it packs them into a single contiguous batch (the inverse of the split done inside <a class="reference internal" href="MultiChannelMapping.html#classmadspace_1_1MultiChannelMapping"><span class="std std-ref">MultiChannelMapping</span></a>). Used to assemble a mixed batch for the shared integrand evaluation (see Sec. 3.1 of [1]).</p>
+<dd><p>Draws random batches from per-channel buffers. </p>
+<p>For each channel, picks <code class="docutils literal notranslate"><span class="pre">batch_sizes[i]</span></code> rows at random indices (with replacement) of that channel’s buffered tensors. Used to draw MadNIS training batches from the replay buffer.</p>
 <p><code class="docutils literal notranslate"><span class="pre">batch</span></code> is the leading batch dimension. <code class="docutils literal notranslate"><span class="pre">i</span></code> indexes the channels.</p>
 <p><strong>Arguments</strong><ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">channel&lt;i&gt;_in_&lt;key&gt;</span></code> – the per-channel input tensors.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">batch_sizes</span></code> – the number of entries in each channel.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">channel&lt;i&gt;_in_&lt;key&gt;</span></code> – the buffered tensors of channel <code class="docutils literal notranslate"><span class="pre">i</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">batch_sizes</span></code> – the number of rows to draw for each channel.</p></li>
 </ul>
 </p>
 <p><strong>Returns</strong><ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">channel&lt;i&gt;_out_&lt;key&gt;</span></code> – the concatenated tensors.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">channel&lt;i&gt;_out_&lt;key&gt;</span></code> – the drawn rows, one tensor per input tensor.</p></li>
 </ul>
 </p>
 <p><strong>References</strong><ul class="simple">

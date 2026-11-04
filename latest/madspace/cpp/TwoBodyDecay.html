@@ -706,11 +706,11 @@
 <p><div class="math-wrapper docutils container">
 <div class="math notranslate nohighlight">
 \[
-  \phi = 2\pi\,r_\phi, \qquad \cos\theta = 2\,r_{\cos\theta} - 1.
+  \phi = \pi\,(2 r_\phi - 1), \qquad \cos\theta = 2\,r_{\cos\theta} - 1.
 \]</div>
 </div>
 </p>
-<p>The momenta are then boosted back (Sec. 2.2.3 of [1]). The measure is flat in <span class="math notranslate nohighlight">\((\phi, \cos\theta)\)</span>.</p>
+<p>The momenta are then boosted back (Sec. 2.2.3 of [1]). The measure is flat in <span class="math notranslate nohighlight">\((\phi, \cos\theta)\)</span> unless a bound narrows the <span class="math notranslate nohighlight">\(\cos\theta\)</span> range.</p>
 <p><code class="docutils literal notranslate"><span class="pre">batch</span></code> is the leading batch dimension. The masses are inputs here. They are supplied on the forward call and recovered by the inverse.</p>
 <p><strong>Inputs</strong><ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">random_phi</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – azimuthal-angle random number.</p></li>
@@ -730,7 +730,7 @@
 <li><p><code class="docutils literal notranslate"><span class="pre">momentum2</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,</span> <span class="pre">4)</span></code> – second daughter momentum.</p></li>
 </ul>
 </p>
-<p>In addition every mapping returns a <code class="docutils literal notranslate"><span class="pre">weight</span></code> (<code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code>), the Jacobian of the transformation.</p>
+<p>In addition every mapping returns a <code class="docutils literal notranslate"><span class="pre">det</span></code> (<code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code>), the Jacobian of the transformation.</p>
 <p><strong>References</strong><ul class="simple">
 <li><p>[1] T. Heimel, O. Mattelaer, R. Winterhalder, “MadSpace”, <a class="reference external" href="https://arxiv.org/abs/2602.06895">https://arxiv.org/abs/2602.06895</a> (Sec. 2.2.3) </p></li>
 </ul>

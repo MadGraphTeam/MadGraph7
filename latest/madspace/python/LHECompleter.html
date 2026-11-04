@@ -708,7 +708,7 @@
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>subproc_args</strong> – Bookkeeping for every subprocess, indexed like <code class="docutils literal notranslate"><span class="pre">subprocess_index</span></code> in complete_event_data.</p></li>
-<li><p><strong>bw_cutoff</strong> – Number of widths within which a propagator is sampled on its Breit-Wigner resonance.</p></li>
+<li><p><strong>bw_cutoff</strong> – A resonance is written to an event only if its invariant mass is within this many widths of its mass.</p></li>
 </ul>
 </dd>
 </dl>
@@ -726,7 +726,7 @@
 <li><p><strong>color_index</strong> – Sampled color configuration.</p></li>
 <li><p><strong>flavor_index</strong> – Sampled flavor assignment.</p></li>
 <li><p><strong>helicity_index</strong> – Sampled helicity configuration.</p></li>
-<li><p><strong>rand_gen</strong> – RNG stream, used to sample resonance masses.</p></li>
+<li><p><strong>rand_gen</strong> – RNG stream, used to pick the flavor option.</p></li>
 </ul>
 </dd>
 </dl>
@@ -741,7 +741,7 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.LHECompleter.max_particle_count">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">max_particle_count</span></span><a class="headerlink" href="#madspace.LHECompleter.max_particle_count" title="Link to this definition">¶</a></dt>
-<dd><p>Largest particle count over every subprocess.</p>
+<dd><p>Largest particle count over every subprocess, including resonances.</p>
 </dd></dl>
 
 <dl class="py method">

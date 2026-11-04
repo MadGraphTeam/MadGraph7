@@ -702,7 +702,7 @@
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace5ValueE">
 <span id="_CPPv3N8madspace5ValueE"></span><span id="_CPPv2N8madspace5ValueE"></span><span id="madspace::Value"></span><span class="target" id="structmadspace_1_1Value"></span><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Value</span></span></span><a class="headerlink" href="#_CPPv4N8madspace5ValueE" title="Link to this definition">¶</a><br /></dt>
 <dd><p>A node in a compute graph: a typed tensor that is either a literal constant or a reference to a graph local. </p>
-<p><a class="reference internal" href="FunctionBuilder.html#classmadspace_1_1FunctionBuilder"><span class="std std-ref">FunctionBuilder</span></a> methods take and return <code class="docutils literal notranslate"><a class="reference internal" href="#structmadspace_1_1Value"><span class="std std-ref"><span class="pre">Value</span></span></a></code>s. A value with <code class="docutils literal notranslate"><span class="pre">local_index</span> <span class="pre">&gt;=</span> <span class="pre">0</span></code> refers to the output of an earlier instruction. Otherwise <code class="docutils literal notranslate"><span class="pre">literal_value</span></code> holds an inline scalar or dense tensor constant. Scalars and nested <code class="docutils literal notranslate"><span class="pre">std::vector</span></code>s convert to a <code class="docutils literal notranslate"><a class="reference internal" href="#structmadspace_1_1Value"><span class="std std-ref"><span class="pre">Value</span></span></a></code> implicitly. </p>
+<p><a class="reference internal" href="FunctionBuilder.html#classmadspace_1_1FunctionBuilder"><span class="std std-ref">FunctionBuilder</span></a> methods take and return <code class="docutils literal notranslate"><a class="reference internal" href="#structmadspace_1_1Value"><span class="std std-ref"><span class="pre">Value</span></span></a></code>s. A value with <code class="docutils literal notranslate"><span class="pre">local_index</span> <span class="pre">&gt;=</span> <span class="pre">0</span></code> refers to a local of the function being built (an input, global, registered literal or instruction output). Otherwise <code class="docutils literal notranslate"><span class="pre">literal_value</span></code> holds an inline scalar or dense tensor constant. Scalars and <code class="docutils literal notranslate"><span class="pre">std::vector</span></code>s (also nested ones) convert to a <code class="docutils literal notranslate"><a class="reference internal" href="#structmadspace_1_1Value"><span class="std std-ref"><span class="pre">Value</span></span></a></code> implicitly. </p>
 <div class="breathe-sectiondef docutils container">
 <p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-functions">Public Functions</p>
 <dl class="cpp function">
@@ -760,13 +760,13 @@
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace5Value13literal_valueE">
 <span id="_CPPv3N8madspace5Value13literal_valueE"></span><span id="_CPPv2N8madspace5Value13literal_valueE"></span><span id="madspace::Value::literal_value__LiteralValue"></span><span class="target" id="structmadspace_1_1Value_1aa6e352ef209502c91d21fd0aa055431b"></span><span class="n"><span class="pre">LiteralValue</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">literal_value</span></span></span><a class="headerlink" href="#_CPPv4N8madspace5Value13literal_valueE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Inline constant, or <code class="docutils literal notranslate"><span class="pre">std::monostate</span></code> for a graph local. </p>
+<dd><p>Inline constant, or <code class="docutils literal notranslate"><span class="pre">std::monostate</span></code> for a graph local without constant value. </p>
 </dd></dl>
 
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace5Value11local_indexE">
 <span id="_CPPv3N8madspace5Value11local_indexE"></span><span id="_CPPv2N8madspace5Value11local_indexE"></span><span id="madspace::Value::local_index__i"></span><span class="target" id="structmadspace_1_1Value_1a95bb9170c25fff5996c3f338b3de1b0a"></span><span class="kt"><span class="pre">int</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">local_index</span></span></span><a class="headerlink" href="#_CPPv4N8madspace5Value11local_indexE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Index of the referenced graph local, or -1 for a literal. </p>
+<dd><p>Index of the referenced graph local, or -1 if not yet registered as one. </p>
 </dd></dl>
 
 </div>

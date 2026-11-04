@@ -702,7 +702,7 @@
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace20MultiChannelFunctionE">
 <span id="_CPPv3N8madspace20MultiChannelFunctionE"></span><span id="_CPPv2N8madspace20MultiChannelFunctionE"></span><span id="madspace::MultiChannelFunction"></span><span class="target" id="classmadspace_1_1MultiChannelFunction"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">MultiChannelFunction</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><span class="n"><span class="pre">madspace</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="FunctionGenerator.html#_CPPv4N8madspace17FunctionGeneratorE" title="madspace::FunctionGenerator"><span class="n"><span class="pre">FunctionGenerator</span></span></a><a class="headerlink" href="#_CPPv4N8madspace20MultiChannelFunctionE" title="Link to this definition">¶</a><br /></dt>
 <dd><p>Applies one of several channel functions to each slice of the batch. </p>
-<p>The <a class="reference internal" href="FunctionGenerator.html#classmadspace_1_1FunctionGenerator"><span class="std std-ref">FunctionGenerator</span></a> counterpart of <a class="reference internal" href="MultiChannelMapping.html#classmadspace_1_1MultiChannelMapping"><span class="std std-ref">MultiChannelMapping</span></a>. The batch is partitioned by the per-channel counts in the <code class="docutils literal notranslate"><span class="pre">batch_sizes</span></code> argument. Each slice is passed through its channel function, and the results are concatenated. All channel functions must share the same argument and return layout, which this class then exposes (Sec. 2.1.1 of [1]).</p>
+<p>The <a class="reference internal" href="FunctionGenerator.html#classmadspace_1_1FunctionGenerator"><span class="std std-ref">FunctionGenerator</span></a> counterpart of <a class="reference internal" href="MultiChannelMapping.html#classmadspace_1_1MultiChannelMapping"><span class="std std-ref">MultiChannelMapping</span></a>. The batch is partitioned by the per-channel counts in the <code class="docutils literal notranslate"><span class="pre">batch_sizes</span></code> argument. Each slice is passed through its channel function, and the results are concatenated. All channel functions must share the same argument and return layout, which this class then exposes (Sec. 2.1.1 of [1]). A batch-size argument of the channel functions is replaced by the per-channel size.</p>
 <p><code class="docutils literal notranslate"><span class="pre">batch</span></code> is the leading batch dimension.</p>
 <p><strong>Arguments</strong><ul class="simple">
 <li><p>the arguments of the channel functions, plus</p></li>
@@ -711,7 +711,7 @@
 </p>
 <p><strong>Returns</strong><ul class="simple">
 <li><p>the returns of the channel functions, plus</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">batch_sizes</span></code> – echoed back, only when <code class="docutils literal notranslate"><span class="pre">return_batch_sizes</span></code> is true.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">batch_sizes</span></code> – the per-channel sizes of the concatenated first return value, only when <code class="docutils literal notranslate"><span class="pre">return_batch_sizes</span></code> is true.</p></li>
 </ul>
 </p>
 <p><strong>References</strong><ul class="simple">
@@ -727,7 +727,7 @@
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>functions</strong> – The per-channel functions. </p></li>
-<li><p><strong>return_batch_sizes</strong> – If true, the <code class="docutils literal notranslate"><span class="pre">batch_sizes</span></code> argument is also returned. </p></li>
+<li><p><strong>return_batch_sizes</strong> – If true, the per-channel batch sizes of the result are also returned. </p></li>
 </ul>
 </dd>
 </dl>

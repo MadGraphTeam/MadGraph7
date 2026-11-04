@@ -716,7 +716,7 @@
 <li><p><code class="docutils literal notranslate"><span class="pre">data</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,</span> <span class="pre">dimension)</span></code> – the reparametrized coordinates.</p></li>
 </ul>
 </p>
-<p>In addition every mapping returns a <code class="docutils literal notranslate"><span class="pre">weight</span></code> (<code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code>), the Jacobian of the transformation.</p>
+<p>In addition every mapping returns a <code class="docutils literal notranslate"><span class="pre">det</span></code> (<code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code>), the Jacobian of the transformation.</p>
 <p><strong>References</strong><ul class="simple">
 <li><p>[1] T. Heimel, O. Mattelaer, R. Winterhalder, “MadSpace”, <a class="reference external" href="https://arxiv.org/abs/2602.06895">https://arxiv.org/abs/2602.06895</a> (Sec. 3.2.2)</p></li>
 <li><p>[2] G. P. Lepage, “Adaptive multidimensional integration: VEGAS enhanced”, <a class="reference external" href="https://arxiv.org/abs/2009.05112">https://arxiv.org/abs/2009.05112</a></p></li>
@@ -747,7 +747,7 @@
 <dl class="cpp function">
 <dt class="sig sig-object cpp" id="_CPPv4NK8madspace12VegasMapping18initialize_globalsE10ContextPtr">
 <span id="_CPPv3NK8madspace12VegasMapping18initialize_globalsE10ContextPtr"></span><span id="_CPPv2NK8madspace12VegasMapping18initialize_globalsE10ContextPtr"></span><span id="madspace::VegasMapping::initialize_globals__ContextPtrC"></span><span class="target" id="classmadspace_1_1VegasMapping_1aa4b4823957029ea226d8d6c0cc26e784"></span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">initialize_globals</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">ContextPtr</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">context</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace12VegasMapping18initialize_globalsE10ContextPtr" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Register the grid global on <code class="docutils literal notranslate"><span class="pre">context</span></code>. </p>
+<dd><p>Define the grid global on <code class="docutils literal notranslate"><span class="pre">context</span></code> and fill it with a uniform grid. </p>
 </dd></dl>
 
 <dl class="cpp function">

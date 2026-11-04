@@ -703,7 +703,7 @@
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">madspace.</span></span><span class="sig-name descname"><span class="pre">Function</span></span><a class="headerlink" href="#madspace.Function" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">pybind11_object</span></code></p>
 <p>An immutable compute graph produced by FunctionBuilder.</p>
-<p>A function has named <code class="docutils literal notranslate"><span class="pre">inputs</span></code> and <code class="docutils literal notranslate"><span class="pre">outputs</span></code>, a list of intermediate <code class="docutils literal notranslate"><span class="pre">locals</span></code>, named <code class="docutils literal notranslate"><span class="pre">globals</span></code> for trainable or externally supplied tensors, and the ordered list of InstructionCall that computes the outputs from the inputs. Run one with a <code class="docutils literal notranslate"><span class="pre">FunctionRuntime</span></code>, or <code class="docutils literal notranslate"><span class="pre">save</span></code> it to disk and <code class="docutils literal notranslate"><span class="pre">load</span></code> it back.</p>
+<p>A function has named <code class="docutils literal notranslate"><span class="pre">inputs</span></code> and <code class="docutils literal notranslate"><span class="pre">outputs</span></code>, a list of <code class="docutils literal notranslate"><span class="pre">locals</span></code>, named <code class="docutils literal notranslate"><span class="pre">globals</span></code> for trainable or externally supplied tensors, and the ordered list of InstructionCall that computes the outputs from the inputs. Run one with a <code class="docutils literal notranslate"><span class="pre">FunctionRuntime</span></code>, or <code class="docutils literal notranslate"><span class="pre">save</span></code> it to disk and <code class="docutils literal notranslate"><span class="pre">load</span></code> it back.</p>
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.Function.globals">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">globals</span></span><a class="headerlink" href="#madspace.Function.globals" title="Link to this definition">¶</a></dt>
@@ -736,7 +736,12 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.Function.locals">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">locals</span></span><a class="headerlink" href="#madspace.Function.locals" title="Link to this definition">¶</a></dt>
-<dd><p>Intermediate values, one per instruction output.</p>
+<dd><p>inputs, globals, literals and instruction outputs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>All local values</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py property">

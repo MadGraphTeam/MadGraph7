@@ -858,7 +858,7 @@
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace14MadnisTraining6Config12log_intervalE">
 <span id="_CPPv3N8madspace14MadnisTraining6Config12log_intervalE"></span><span id="_CPPv2N8madspace14MadnisTraining6Config12log_intervalE"></span><span id="madspace::MadnisTraining::Config::log_interval__std::s"></span><span class="target" id="structmadspace_1_1MadnisTraining_1_1Config_1ab18a5f919e15b4844452a0e3e8dcfc19"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">log_interval</span></span></span><a class="headerlink" href="#_CPPv4N8madspace14MadnisTraining6Config12log_intervalE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Batches between two status-history entries. </p>
+<dd><p>Batches between two status-history entries; also the length of the window averaged by <a class="reference internal" href="#classmadspace_1_1MadnisTraining_1a55d439e826d07022af96733e4e754f35"><span class="std std-ref">average_loss</span></a>. </p>
 </dd></dl>
 
 <dl class="cpp var">
@@ -876,7 +876,7 @@
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace14MadnisTraining6Config26channel_dropping_thresholdE">
 <span id="_CPPv3N8madspace14MadnisTraining6Config26channel_dropping_thresholdE"></span><span id="_CPPv2N8madspace14MadnisTraining6Config26channel_dropping_thresholdE"></span><span id="madspace::MadnisTraining::Config::channel_dropping_threshold__double"></span><span class="target" id="structmadspace_1_1MadnisTraining_1_1Config_1af62d7566e005f96cb0bf689bb4c859d8"></span><span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">channel_dropping_threshold</span></span></span><a class="headerlink" href="#_CPPv4N8madspace14MadnisTraining6Config26channel_dropping_thresholdE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Minimum integral fraction below which a channel is dropped. </p>
+<dd><p>Channels are dropped, smallest integral first, while their cumulative integral fraction stays at most this (scaled by <code class="docutils literal notranslate"><span class="pre">min(1000</span> <span class="pre">/</span> <span class="pre">batch,</span> <span class="pre">1)</span></code>). </p>
 </dd></dl>
 
 <dl class="cpp var">
@@ -906,19 +906,19 @@
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace14MadnisTraining6Config17batch_size_offsetE">
 <span id="_CPPv3N8madspace14MadnisTraining6Config17batch_size_offsetE"></span><span id="_CPPv2N8madspace14MadnisTraining6Config17batch_size_offsetE"></span><span id="madspace::MadnisTraining::Config::batch_size_offset__std::s"></span><span class="target" id="structmadspace_1_1MadnisTraining_1_1Config_1a0a9dea412628e226c47287a12f4f5775"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">batch_size_offset</span></span></span><a class="headerlink" href="#_CPPv4N8madspace14MadnisTraining6Config17batch_size_offsetE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Constant added to every channel’s requested batch size. </p>
+<dd><p>Constant added to the total training batch size, which is split over the active channels. </p>
 </dd></dl>
 
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace14MadnisTraining6Config22batch_size_per_channelE">
 <span id="_CPPv3N8madspace14MadnisTraining6Config22batch_size_per_channelE"></span><span id="_CPPv2N8madspace14MadnisTraining6Config22batch_size_per_channelE"></span><span id="madspace::MadnisTraining::Config::batch_size_per_channel__std::s"></span><span class="target" id="structmadspace_1_1MadnisTraining_1_1Config_1ac4b6ff55a3de079ab9066a309420cbc3"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">batch_size_per_channel</span></span></span><a class="headerlink" href="#_CPPv4N8madspace14MadnisTraining6Config22batch_size_per_channelE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Minimum training-batch events requested per active channel. </p>
+<dd><p>Training-batch events added to the total per active channel. </p>
 </dd></dl>
 
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace14MadnisTraining6Config21uniform_channel_ratioE">
 <span id="_CPPv3N8madspace14MadnisTraining6Config21uniform_channel_ratioE"></span><span id="_CPPv2N8madspace14MadnisTraining6Config21uniform_channel_ratioE"></span><span id="madspace::MadnisTraining::Config::uniform_channel_ratio__double"></span><span class="target" id="structmadspace_1_1MadnisTraining_1_1Config_1ae8e5b1a71587925f87d473a9115e2d59"></span><span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">uniform_channel_ratio</span></span></span><a class="headerlink" href="#_CPPv4N8madspace14MadnisTraining6Config21uniform_channel_ratioE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Fraction of the training batch drawn uniformly across channels rather than proportionally to their integral. </p>
+<dd><p>Fraction of the training batch drawn uniformly across channels rather than proportionally to their standard deviation. </p>
 </dd></dl>
 
 <dl class="cpp var">
@@ -948,13 +948,13 @@
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace14MadnisTraining6Config17adam_weight_decayE">
 <span id="_CPPv3N8madspace14MadnisTraining6Config17adam_weight_decayE"></span><span id="_CPPv2N8madspace14MadnisTraining6Config17adam_weight_decayE"></span><span id="madspace::MadnisTraining::Config::adam_weight_decay__double"></span><span class="target" id="structmadspace_1_1MadnisTraining_1_1Config_1a99701cd1b4babd249c717734a182c139"></span><span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">adam_weight_decay</span></span></span><a class="headerlink" href="#_CPPv4N8madspace14MadnisTraining6Config17adam_weight_decayE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Adam L2 weight-decay coefficient. </p>
+<dd><p>Adam decoupled weight-decay coefficient. </p>
 </dd></dl>
 
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace14MadnisTraining6Config19grad_clip_thresholdE">
 <span id="_CPPv3N8madspace14MadnisTraining6Config19grad_clip_thresholdE"></span><span id="_CPPv2N8madspace14MadnisTraining6Config19grad_clip_thresholdE"></span><span id="madspace::MadnisTraining::Config::grad_clip_threshold__double"></span><span class="target" id="structmadspace_1_1MadnisTraining_1_1Config_1af6782dff0d8233ca48ef7b12ea4c84b7"></span><span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">grad_clip_threshold</span></span></span><a class="headerlink" href="#_CPPv4N8madspace14MadnisTraining6Config19grad_clip_thresholdE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Maximum gradient norm; <code class="docutils literal notranslate"><span class="pre">0</span></code> disables clipping. </p>
+<dd><p>Maximum gradient norm per sqrt(parameter count); <code class="docutils literal notranslate"><span class="pre">0</span></code> disables clipping. </p>
 </dd></dl>
 
 <dl class="cpp var">
@@ -990,13 +990,13 @@
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace14MadnisTraining6Config20fixed_cwnet_fractionE">
 <span id="_CPPv3N8madspace14MadnisTraining6Config20fixed_cwnet_fractionE"></span><span id="_CPPv2N8madspace14MadnisTraining6Config20fixed_cwnet_fractionE"></span><span id="madspace::MadnisTraining::Config::fixed_cwnet_fraction__double"></span><span class="target" id="structmadspace_1_1MadnisTraining_1_1Config_1ab8c41ac3f812c4b6acbc42d0f423eb08"></span><span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">fixed_cwnet_fraction</span></span></span><a class="headerlink" href="#_CPPv4N8madspace14MadnisTraining6Config20fixed_cwnet_fractionE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Fraction of training spent with the channel-weight network frozen, before it starts training too. </p>
+<dd><p>Fraction of training at the end during which the channel-weight network is frozen. </p>
 </dd></dl>
 
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace14MadnisTraining6Config18softclip_thresholdE">
 <span id="_CPPv3N8madspace14MadnisTraining6Config18softclip_thresholdE"></span><span id="_CPPv2N8madspace14MadnisTraining6Config18softclip_thresholdE"></span><span id="madspace::MadnisTraining::Config::softclip_threshold__double"></span><span class="target" id="structmadspace_1_1MadnisTraining_1_1Config_1a3904d56d1c3c82918f72d799d213f4e6"></span><span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">softclip_threshold</span></span></span><a class="headerlink" href="#_CPPv4N8madspace14MadnisTraining6Config18softclip_thresholdE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Softclip threshold applied to the channel weights; <code class="docutils literal notranslate"><span class="pre">0</span></code> disables it. </p>
+<dd><p>Soft-clipping threshold on the loss contribution; <code class="docutils literal notranslate"><span class="pre">0</span></code> disables it. </p>
 </dd></dl>
 
 <dl class="cpp var">

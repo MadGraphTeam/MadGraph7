@@ -765,7 +765,7 @@
 <dl class="cpp function">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace14EventGenerator15fix_max_weightsEv">
 <span id="_CPPv3N8madspace14EventGenerator15fix_max_weightsEv"></span><span id="_CPPv2N8madspace14EventGenerator15fix_max_weightsEv"></span><span id="madspace::EventGenerator::fix_max_weights"></span><span class="target" id="classmadspace_1_1EventGenerator_1a30653c476d9be4675256fb604fa9e75b"></span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">fix_max_weights</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8madspace14EventGenerator15fix_max_weightsEv" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Like <a class="reference internal" href="#classmadspace_1_1EventGenerator_1afd1b0ccb9821bf66246e058ebdefdc98"><span class="std std-ref">generate</span></a>, but every channel with a nonzero cross section runs until it has <code class="docutils literal notranslate"><span class="pre">freeze_max_weight_after</span></code> unweighted events, regardless of its share of the cross section, so that its maximum weight is final (see <a class="reference internal" href="ChannelEventGenerator.html#classmadspace_1_1ChannelEventGenerator_1ab11de55e51de8ebda5252cb5b8d1abee"><span class="std std-ref">ChannelEventGenerator::max_weight</span></a>). </p>
+<dd><p>Like <a class="reference internal" href="#classmadspace_1_1EventGenerator_1afd1b0ccb9821bf66246e058ebdefdc98"><span class="std std-ref">generate</span></a>, but every channel with a nonzero cross section runs until it has <code class="docutils literal notranslate"><span class="pre">freeze_max_weight_after</span></code> unweighted events (the largest value of its steps, if higher), regardless of its share of the cross section, so that its maximum weight is final (see <a class="reference internal" href="ChannelEventGenerator.html#classmadspace_1_1ChannelEventGenerator_1ab11de55e51de8ebda5252cb5b8d1abee"><span class="std std-ref">ChannelEventGenerator::max_weight</span></a>). </p>
 <p>The events are not meant to be combined. </p>
 </dd></dl>
 
@@ -778,7 +778,7 @@
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>file_name</strong> – Output file base name. </p></li>
 <li><p><strong>systematics</strong> – Optional; adds the scale/PDF variation weights to the written events (<code class="docutils literal notranslate"><span class="pre">.npy</span></code> columns <code class="docutils literal notranslate"><span class="pre">rwgt_&lt;id&gt;</span></code>). </p></li>
-<li><p><strong>histograms</strong> – Optional; filled with the written events and all their weights (recorded in <code class="docutils literal notranslate"><span class="pre">info.json</span></code>’s <code class="docutils literal notranslate"><span class="pre">&quot;event_histograms&quot;</span></code>). </p></li>
+<li><p><strong>histograms</strong> – Optional; filled with the written events and all their weights (recorded under <code class="docutils literal notranslate"><span class="pre">&quot;event_histograms&quot;</span></code> in the status file). </p></li>
 </ul>
 </dd>
 </dl>

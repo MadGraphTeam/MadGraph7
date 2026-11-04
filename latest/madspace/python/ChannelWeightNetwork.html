@@ -707,7 +707,7 @@
 <p><code class="docutils literal notranslate"><span class="pre">batch</span></code> is the leading batch dimension. <code class="docutils literal notranslate"><span class="pre">c</span></code> is <code class="docutils literal notranslate"><span class="pre">channel_count</span></code>.</p>
 <p><strong>Arguments</strong></p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">input</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,</span> <span class="pre">MomentumPreprocessing::output_dim())</span></code> – the invariant features.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">input</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,</span> <span class="pre">MomentumPreprocessing::output_dim())</span></code> – the preprocessed features.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">prior</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,</span> <span class="pre">c)</span></code> – the prior per-channel weights.</p></li>
 </ul>
 <p><strong>Returns</strong></p>
@@ -728,7 +728,7 @@
 <li><p><strong>layers</strong> – Number of MLP layers.</p></li>
 <li><p><strong>activation</strong> – MLP activation.</p></li>
 <li><p><strong>prefix</strong> – Prefix for the trainable global names.</p></li>
-<li><p><strong>include_preprocessing</strong> – If true, apply MomentumPreprocessing to the input first.</p></li>
+<li><p><strong>include_preprocessing</strong> – Currently unused: the function takes the features computed by the caller with MomentumPreprocessing.</p></li>
 <li><p><strong>precision</strong> – Float type of the MLP.</p></li>
 </ul>
 </dd>

@@ -702,13 +702,13 @@
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace21MultiChannelIntegrandE">
 <span id="_CPPv3N8madspace21MultiChannelIntegrandE"></span><span id="_CPPv2N8madspace21MultiChannelIntegrandE"></span><span id="madspace::MultiChannelIntegrand"></span><span class="target" id="classmadspace_1_1MultiChannelIntegrand"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">MultiChannelIntegrand</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><span class="n"><span class="pre">madspace</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="FunctionGenerator.html#_CPPv4N8madspace17FunctionGeneratorE" title="madspace::FunctionGenerator"><span class="n"><span class="pre">FunctionGenerator</span></span></a><a class="headerlink" href="#_CPPv4N8madspace21MultiChannelIntegrandE" title="Link to this definition">¶</a><br /></dt>
 <dd><p>Evaluates several <a class="reference internal" href="Integrand.html#classmadspace_1_1Integrand"><span class="std std-ref">Integrand</span></a> channels on one merged batch. </p>
-<p>Partitions the batch by the per-channel counts, runs each <a class="reference internal" href="Integrand.html#classmadspace_1_1Integrand"><span class="std std-ref">Integrand</span></a> on its slice and concatenates the results, the same pattern as <a class="reference internal" href="MultiChannelMapping.html#classmadspace_1_1MultiChannelMapping"><span class="std std-ref">MultiChannelMapping</span></a>.</p>
+<p>Runs the channel part of each <a class="reference internal" href="Integrand.html#classmadspace_1_1Integrand"><span class="std std-ref">Integrand</span></a> on its slice of the batch, concatenates the results and runs the common part of the first integrand once on the merged batch.</p>
 <p><strong>Arguments</strong><ul class="simple">
-<li><p>the union of the channel integrands’ arguments, plus the per-channel batch sizes.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">batch_sizes</span></code> – the number of events per channel.</p></li>
 </ul>
 </p>
 <p><strong>Returns</strong><ul class="simple">
-<li><p>the concatenated per-event quantities, plus the per-channel sizes when <code class="docutils literal notranslate"><span class="pre">return_sizes</span></code> is set.</p></li>
+<li><p>the per-event quantities of <a class="reference internal" href="Integrand.html#classmadspace_1_1Integrand"><span class="std std-ref">Integrand</span></a>, plus <code class="docutils literal notranslate"><span class="pre">return_batch_sizes</span></code> when <code class="docutils literal notranslate"><span class="pre">return_sizes</span></code> is set.</p></li>
 </ul>
 </p>
 <p><strong>References</strong><ul class="simple">

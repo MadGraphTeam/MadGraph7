@@ -766,8 +766,8 @@
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace13WeightingStep16override_outputsE">
 <span id="_CPPv3N8madspace13WeightingStep16override_outputsE"></span><span id="_CPPv2N8madspace13WeightingStep16override_outputsE"></span><span id="madspace::WeightingStep::override_outputs__std::vector:MatrixElement::MatrixElementOutput:"></span><span class="target" id="structmadspace_1_1WeightingStep_1a1c75366d7d433769c92d047d165963a4"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="MatrixElement.html#_CPPv4N8madspace13MatrixElementE" title="madspace::MatrixElement"><span class="n"><span class="pre">MatrixElement</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="MatrixElement.html#_CPPv4N8madspace13MatrixElement19MatrixElementOutputE" title="madspace::MatrixElement::MatrixElementOutput"><span class="n"><span class="pre">MatrixElementOutput</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">override_outputs</span></span></span><a class="headerlink" href="#_CPPv4N8madspace13WeightingStep16override_outputsE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Color, helicity or diagram index outputs that replace the values of the earlier steps. </p>
-<p>Without, an index is taken from the first step whose matrix element returns it. </p>
+<dd><p>Color, helicity or diagram index outputs that replace the values of the integrand or earlier steps. </p>
+<p>Without, an index returned by the matrix elements is only written if neither the integrand nor an earlier step provides it. </p>
 </dd></dl>
 
 </div>

@@ -718,13 +718,13 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.GeneratorConfig.cpu_batch_size">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">cpu_batch_size</span></span><a class="headerlink" href="#madspace.GeneratorConfig.cpu_batch_size" title="Link to this definition">¶</a></dt>
-<dd><p>Batch size used on a CPU device.</p>
+<dd><p>Number of events per job on a CPU device.</p>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.GeneratorConfig.cut_efficiency_threshold">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">cut_efficiency_threshold</span></span><a class="headerlink" href="#madspace.GeneratorConfig.cut_efficiency_threshold" title="Link to this definition">¶</a></dt>
-<dd><p>Minimum acceptable fraction of events surviving fiducial cuts before a warning is raised.</p>
+<dd><p>A job repeats its batch until this fraction of its requested events pass the cuts.</p>
 </dd></dl>
 
 <dl class="py property">
@@ -736,13 +736,13 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.GeneratorConfig.freeze_max_weight_after">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">freeze_max_weight_after</span></span><a class="headerlink" href="#madspace.GeneratorConfig.freeze_max_weight_after" title="Link to this definition">¶</a></dt>
-<dd><p>Number of survey events after which the maximum weight estimate is frozen.</p>
+<dd><p>Expected number of unweighted events after which a channel’s maximum weight estimate is frozen.</p>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.GeneratorConfig.gpu_batch_size">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">gpu_batch_size</span></span><a class="headerlink" href="#madspace.GeneratorConfig.gpu_batch_size" title="Link to this definition">¶</a></dt>
-<dd><p>Batch size used on a GPU device.</p>
+<dd><p>Number of events per job on a GPU device.</p>
 </dd></dl>
 
 <dl class="py property">
@@ -754,19 +754,19 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.GeneratorConfig.max_batch_size">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">max_batch_size</span></span><a class="headerlink" href="#madspace.GeneratorConfig.max_batch_size" title="Link to this definition">¶</a></dt>
-<dd><p>Largest allowed number of events per generation batch.</p>
+<dd><p>Largest number of events per optimization batch (the batch size doubles every iteration up to this value).</p>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.GeneratorConfig.max_cut_repetitions">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">max_cut_repetitions</span></span><a class="headerlink" href="#madspace.GeneratorConfig.max_cut_repetitions" title="Link to this definition">¶</a></dt>
-<dd><p>Maximum number of times a batch is resampled to reach <code class="docutils literal notranslate"><span class="pre">cut_efficiency_threshold</span></code>.</p>
+<dd><p>Maximum number of repetitions per job to reach <code class="docutils literal notranslate"><span class="pre">cut_efficiency_threshold</span></code> before an error is raised.</p>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.GeneratorConfig.max_overweight_truncation">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">max_overweight_truncation</span></span><a class="headerlink" href="#madspace.GeneratorConfig.max_overweight_truncation" title="Link to this definition">¶</a></dt>
-<dd><p>Fraction of the weight distribution’s tail truncated when estimating the unweighting efficiency.</p>
+<dd><p>Overweight tolerated when choosing the maximum weight, as a fraction of the smaller of the target count and <code class="docutils literal notranslate"><span class="pre">freeze_max_weight_after</span></code>.</p>
 </dd></dl>
 
 <dl class="py property">
@@ -778,13 +778,13 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.GeneratorConfig.optimization_threshold">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">optimization_threshold</span></span><a class="headerlink" href="#madspace.GeneratorConfig.optimization_threshold" title="Link to this definition">¶</a></dt>
-<dd><p>Minimum relative improvement counted as progress by <code class="docutils literal notranslate"><span class="pre">optimization_patience</span></code>.</p>
+<dd><p>An iteration counts as progress for <code class="docutils literal notranslate"><span class="pre">optimization_patience</span></code> if the relative standard deviation falls below this fraction of its best value so far.</p>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.GeneratorConfig.start_batch_size">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">start_batch_size</span></span><a class="headerlink" href="#madspace.GeneratorConfig.start_batch_size" title="Link to this definition">¶</a></dt>
-<dd><p>Initial number of events per generation batch.</p>
+<dd><p>Initial number of events per VEGAS/channel-weight optimization batch.</p>
 </dd></dl>
 
 <dl class="py property">
@@ -826,7 +826,7 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.GeneratorConfig.write_live_data">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">write_live_data</span></span><a class="headerlink" href="#madspace.GeneratorConfig.write_live_data" title="Link to this definition">¶</a></dt>
-<dd><p>If true, periodically write live progress data to disk.</p>
+<dd><p>Not read by the C++ generator.</p>
 </dd></dl>
 
 </dd></dl>

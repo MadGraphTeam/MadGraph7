@@ -702,7 +702,7 @@
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace10StatusFileE">
 <span id="_CPPv3N8madspace10StatusFileE"></span><span id="_CPPv2N8madspace10StatusFileE"></span><span id="madspace::StatusFile"></span><span class="target" id="classmadspace_1_1StatusFile"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">StatusFile</span></span></span><a class="headerlink" href="#_CPPv4N8madspace10StatusFileE" title="Link to this definition">¶</a><br /></dt>
 <dd><p>Rate-limited JSON status file, merged from possibly multiple sources. </p>
-<p>Lets several parts of a run (or several processes) report progress into the same file without flooding the disk: <a class="reference internal" href="#classmadspace_1_1StatusFile_1ad24febef4784972dc3827287c71b1d83"><span class="std std-ref">write</span></a> merges its argument into the accumulated content and only actually rewrites the file at most every <code class="docutils literal notranslate"><span class="pre">min_interval_sec</span></code>, unless forced. </p>
+<p>Lets several parts of a run report progress into the same file without flooding the disk: <a class="reference internal" href="#classmadspace_1_1StatusFile_1ad24febef4784972dc3827287c71b1d83"><span class="std std-ref">write</span></a> merges its argument into the accumulated content and only actually rewrites the file at most every <code class="docutils literal notranslate"><span class="pre">min_interval_sec</span></code>, unless forced. </p>
 <div class="breathe-sectiondef docutils container">
 <p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-functions">Public Functions</p>
 <dl class="cpp function">

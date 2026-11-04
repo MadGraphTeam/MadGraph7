@@ -719,13 +719,13 @@
 <dl class="cpp function">
 <dt class="sig sig-object cpp" id="_CPPv4NK8madspace7PdfGrid16grid_point_countEv">
 <span id="_CPPv3NK8madspace7PdfGrid16grid_point_countEv"></span><span id="_CPPv2NK8madspace7PdfGrid16grid_point_countEv"></span><span id="madspace::PdfGrid::grid_point_countC"></span><span class="target" id="structmadspace_1_1PdfGrid_1a4cffbf2ef834fc064a083666360cd016"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">grid_point_count</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace7PdfGrid16grid_point_countEv" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Total number of <code class="docutils literal notranslate"><span class="pre">(x,</span> <span class="pre">q)</span></code> grid points. </p>
+<dd><p>Number of <code class="docutils literal notranslate"><span class="pre">(x,</span> <span class="pre">q)</span></code> grid points, including padding, as stored in the coefficient tensor. </p>
 </dd></dl>
 
 <dl class="cpp function">
 <dt class="sig sig-object cpp" id="_CPPv4NK8madspace7PdfGrid7q_countEv">
 <span id="_CPPv3NK8madspace7PdfGrid7q_countEv"></span><span id="_CPPv2NK8madspace7PdfGrid7q_countEv"></span><span id="madspace::PdfGrid::q_countC"></span><span class="target" id="structmadspace_1_1PdfGrid_1a01cf22cde34d35c2f2fcb3383d431a4b"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">q_count</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace7PdfGrid7q_countEv" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Number of scale knots. </p>
+<dd><p>Number of scale knots, counting the knots shared by two regions once. </p>
 </dd></dl>
 
 <dl class="cpp function">
@@ -806,13 +806,13 @@
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace7PdfGrid6valuesE">
 <span id="_CPPv3N8madspace7PdfGrid6valuesE"></span><span id="_CPPv2N8madspace7PdfGrid6valuesE"></span><span id="madspace::PdfGrid::values__std::vector:std::vector:double::"></span><span class="target" id="structmadspace_1_1PdfGrid_1ade38d20f1c18901756d655de225ef2b4"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">double</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">values</span></span></span><a class="headerlink" href="#_CPPv4N8madspace7PdfGrid6valuesE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Grid values, indexed by flavour then by <code class="docutils literal notranslate"><span class="pre">(x,</span> <span class="pre">q)</span></code> knot. </p>
+<dd><p>Grid values, indexed by <code class="docutils literal notranslate"><span class="pre">(q,</span> <span class="pre">x)</span></code> grid point (<code class="docutils literal notranslate"><span class="pre">q_index</span> <span class="pre">*</span> <span class="pre">x.size()</span> <span class="pre">+</span> <span class="pre">x_index</span></code>), then by flavour. </p>
 </dd></dl>
 
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace7PdfGrid12region_sizesE">
 <span id="_CPPv3N8madspace7PdfGrid12region_sizesE"></span><span id="_CPPv2N8madspace7PdfGrid12region_sizesE"></span><span id="madspace::PdfGrid::region_sizes__std::vector:std::s:"></span><span class="target" id="structmadspace_1_1PdfGrid_1ac6a0814f299de83e265c633ef945580e"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">region_sizes</span></span></span><a class="headerlink" href="#_CPPv4N8madspace7PdfGrid12region_sizesE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Knot counts of the sub-grid regions. </p>
+<dd><p>Number of <code class="docutils literal notranslate"><span class="pre">q</span></code> intervals in each sub-grid region. </p>
 </dd></dl>
 
 </div>
