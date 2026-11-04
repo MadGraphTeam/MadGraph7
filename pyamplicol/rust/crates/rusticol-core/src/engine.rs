@@ -1754,9 +1754,10 @@ struct GenericColorContractionEntryManifest {
     left_group_id: i64,
     right_group_id: i64,
     weight: Vec<f64>,
-    // Retained for Python arbitrary precision; native contraction keeps its f64 weight.
-    #[serde(default, rename = "exact_weight")]
-    _exact_weight: Option<[String; 4]>,
+    /// Exact rational weight [re_num, re_den, im_num, im_den], used by the native double-double and
+    /// arbitrary-precision contractions (binary64 uses `weight`).
+    #[serde(default)]
+    exact_weight: Option<[String; 4]>,
     #[serde(default = "default_symmetry_factor")]
     symmetry_factor: f64,
     /// The N_c degree of this term in a graded plan.
@@ -1792,8 +1793,8 @@ struct GenericRepeatedColorContractionEntryManifest {
     left_group_index: usize,
     right_group_index: usize,
     weight: Vec<f64>,
-    #[serde(default, rename = "exact_weight")]
-    _exact_weight: Option<[String; 4]>,
+    #[serde(default)]
+    exact_weight: Option<[String; 4]>,
     #[serde(default = "default_symmetry_factor")]
     symmetry_factor: f64,
 }
@@ -2425,6 +2426,16 @@ where
         out: &mut [Complex<Self>],
         binary_precision: Option<u32>,
     ) -> RusticolResult<()>;
+
+    /// A binary64 constant of the artifact (normalization, colour weight, model parameter,
+    /// mass) at the working precision. The binary64 value itself is exact, but `From<f64>`
+    /// gives a 53-bit `Float`, and a `Float` product is rounded to the smaller precision of its
+    /// factors, so every result would carry only binary64 accuracy.
+    fn from_f64_constant(value: f64, binary_precision: Option<u32>) -> Self;
+
+    /// A value computed in a wider `Float` (an exact constant or a derived model parameter),
+    /// rounded to the working precision (106 bits for `DoubleFloat`).
+    fn from_float(value: &Float, binary_precision: Option<u32>) -> Self;
 }
 
 #[cfg(feature = "symbolica-runtime")]
@@ -2448,6 +2459,14 @@ impl RusticolHighPrecisionNumber for DoubleFloat {
             .expect("double evaluator initialized")
             .evaluate(params, out);
         Ok(())
+    }
+
+    fn from_f64_constant(value: f64, _binary_precision: Option<u32>) -> Self {
+        DoubleFloat::from(value)
+    }
+
+    fn from_float(value: &Float, _binary_precision: Option<u32>) -> Self {
+        value.to_double_float()
     }
 }
 
@@ -2492,6 +2511,21 @@ impl RusticolHighPrecisionNumber for Float {
             .evaluate(params, out);
         Ok(())
     }
+
+    fn from_f64_constant(value: f64, binary_precision: Option<u32>) -> Self {
+        match binary_precision {
+            Some(precision) => Float::with_val(precision, value),
+            None => Float::from(value),
+        }
+    }
+
+    fn from_float(value: &Float, binary_precision: Option<u32>) -> Self {
+        let mut value = value.clone();
+        if let Some(precision) = binary_precision {
+            value.set_prec(precision);
+        }
+        value
+    }
 }
 
 struct RawSumGroup {
@@ -2527,6 +2561,17 @@ struct ColorContractionEntry {
     weight_re: f64,
     weight_im: f64,
     symmetry_factor: f64,
+    /// The artifact's exact rational weight, used by the double-double and arbitrary-precision
+    /// contractions; `weight_re`/`weight_im` are its binary64 values.
+    exact: Option<ExactColorWeight>,
+}
+
+/// An exact rational colour weight (re_num/re_den, im_num/im_den), with |numerators| and
+/// denominators below 2^85 so that they convert exactly at 106 bits or more.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct ExactColorWeight {
+    re: (i128, i128),
+    im: (i128, i128),
 }
 
 /// One color matrix shared by several disconnected contraction components.
@@ -2781,6 +2826,7 @@ struct CanonicalColorContractionEntry {
     weight_re_bits: u64,
     weight_im_bits: u64,
     symmetry_factor_bits: u64,
+    exact: Option<ExactColorWeight>,
 }
 
 fn color_component_root(parent: &mut [usize], mut index: usize) -> usize {
@@ -2889,6 +2935,7 @@ fn repeated_color_contraction_block(
             weight_re_bits: entry.weight_re.to_bits(),
             weight_im_bits: entry.weight_im.to_bits(),
             symmetry_factor_bits: entry.symmetry_factor.to_bits(),
+            exact: entry.exact,
         });
     }
     for component_entries in &mut entries_by_component {
@@ -2910,6 +2957,7 @@ fn repeated_color_contraction_block(
             weight_re: f64::from_bits(entry.weight_re_bits),
             weight_im: f64::from_bits(entry.weight_im_bits),
             symmetry_factor: f64::from_bits(entry.symmetry_factor_bits),
+            exact: entry.exact,
         })
         .collect::<Vec<_>>();
     let singleton_output_indices = component_group_indices
@@ -4561,6 +4609,11 @@ struct ModelParameterEvaluatorRuntime {
     input_parameter_indices: Vec<usize>,
     outputs: Vec<GenericDerivedParameterOutputManifest>,
     evaluator: EvaluatorGroup,
+    /// The outputs' exact definitions for the double-double and
+    /// arbitrary-precision paths, attached on first use
+    /// (`NativeRuntime::ensure_exact_model_parameters`).
+    #[cfg(feature = "symbolica-runtime")]
+    exact: Option<Arc<ExactModelParameterDerivation>>,
 }
 
 struct StageRuntime {
@@ -4861,6 +4914,8 @@ use momentum::*;
 mod sources;
 #[cfg(feature = "symbolica-runtime")]
 pub(crate) use sources::SchemaSources;
+#[cfg(feature = "symbolica-runtime")]
+use sources::{CarrierMasses, masses_at_precision};
 
 mod validation;
 use validation::*;
@@ -4868,7 +4923,9 @@ use validation::*;
 mod correlated;
 mod native_runtime;
 pub use correlated::{
-    NativeCorrelatedEvaluation, NativeCorrelatedRequest, NativeGradedCorrelatedEvaluation,
+    NativeCorrelatedEvaluation, NativeCorrelatedRequest, NativeDecimalCorrelatedEvaluation,
+    NativeDecimalCorrelatedRequest, NativeDecimalSpinCorrelationVectors,
+    NativeGradedCorrelatedEvaluation,
     NativeSpinCorrelationVectors,
 };
 

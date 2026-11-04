@@ -886,7 +886,7 @@ fn exact_color_topology_replay(
                 "left_group_id": entry.left_group_id,
                 "right_group_id": entry.right_group_id,
                 "weight": exact_f64_pair(&entry.weight, "color replay contraction")?,
-                "exact_weight": entry._exact_weight,
+                "exact_weight": entry.exact_weight,
                 "symmetry_factor": exact_number(entry.symmetry_factor),
             }))
         })
@@ -911,7 +911,7 @@ fn exact_color_topology_replay(
                             &entry.weight,
                             "repeated color replay contraction",
                         )?,
-                        "exact_weight": entry._exact_weight,
+                        "exact_weight": entry.exact_weight,
                         "symmetry_factor": exact_number(entry.symmetry_factor),
                     }))
                 })
@@ -1675,6 +1675,7 @@ fn reduction_runtime(
             exact_real_factor(decoded, row.auxiliary_factor_id, "color symmetry factor")?
         };
         entries.push(ColorContractionEntry {
+            exact: None,
             left_group_index: *group_index_by_id.get(&left_id).ok_or_else(|| {
                 RusticolError::integrity("color contraction references an unknown left group")
             })?,

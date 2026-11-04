@@ -4627,10 +4627,11 @@ impl NativeRuntime {
         if self.execution_lane.is_recurrence() {
             return Err(recurrence_parity_pending("higher-precision evaluation"));
         }
+        self.ensure_exact_model_parameters()?;
         if decimal_digits == 32 {
             let batch = self.prepare_double_batch(momenta, point_count)?;
             let (mut values, _profile) = self.runtime.run_double(&batch)?;
-            self.apply_process_group_factor_high_precision(&mut values);
+            self.apply_process_group_factor_high_precision(&mut values, None);
             return Ok(NativeDecimalEvaluation {
                 values: format_decimal_values(values, decimal_digits),
                 decimal_digits,
@@ -4639,15 +4640,101 @@ impl NativeRuntime {
         let binary_precision = decimal_digits_to_bits(decimal_digits);
         let batch = self.prepare_float_batch(momenta, point_count, binary_precision)?;
         let (mut values, _profile) = self.runtime.run_float(&batch, binary_precision)?;
-        self.apply_process_group_factor_high_precision(&mut values);
+        self.apply_process_group_factor_high_precision(&mut values, Some(binary_precision));
         Ok(NativeDecimalEvaluation {
             values: format_decimal_values(values, decimal_digits),
             decimal_digits,
         })
     }
 
+    /// One logical model parameter at `decimal_digits` significant digits:
+    /// the value [`Self::evaluate_with_precision`] uses at that precision.
+    /// 16 digits give the binary64 value. Otherwise an external parameter is
+    /// its binary64 value promoted exactly, and a derived one (couplings, and
+    /// masses such as M_W in the G_mu scheme) comes from the compiled model's
+    /// exact definitions at the working precision: double-double for 32
+    /// digits, else ceil(digits * log2(10)) bits. Momenta built on these
+    /// masses put external particles on the amplitude's mass shell at every
+    /// precision. Returns the real and imaginary parts as decimal strings.
     #[cfg(feature = "symbolica-runtime")]
-    fn apply_process_group_factor_high_precision<T>(&self, values: &mut [T])
+    pub fn model_parameter_value_with_precision(
+        &mut self,
+        name: &str,
+        decimal_digits: u32,
+    ) -> Result<(String, String), RusticolError> {
+        if decimal_digits == 0 {
+            return Err(RusticolError::unsupported_precision(
+                "precision must be a positive number of decimal digits",
+            ));
+        }
+        let (real, imaginary) = self.model_parameter_value(name)?;
+        let parts = if decimal_digits == 16 {
+            format_decimal_values(vec![real, imaginary], decimal_digits)
+        } else {
+            self.ensure_exact_model_parameters()?;
+            if decimal_digits == 32 {
+                let (real, imaginary) = self
+                    .runtime
+                    .generic_model_parameter_value::<DoubleFloat>(name, None)?;
+                format_decimal_values(vec![real, imaginary], decimal_digits)
+            } else {
+                let binary_precision = decimal_digits_to_bits(decimal_digits);
+                let (real, imaginary) = self
+                    .runtime
+                    .generic_model_parameter_value::<Float>(name, Some(binary_precision))?;
+                format_decimal_values(vec![real, imaginary], decimal_digits)
+            }
+        };
+        let [real, imaginary]: [String; 2] = parts
+            .try_into()
+            .map_err(|_| RusticolError::integrity("a parameter value has two components"))?;
+        Ok((real, imaginary))
+    }
+
+    /// The mass of particle `pdg` (PDG code) that [`Self::evaluate_with_precision`]
+    /// gives its external wavefunctions at `decimal_digits` digits, as a
+    /// decimal string: the binary64 mass for 16 digits, otherwise the mass at
+    /// the working precision (a mass that follows a derived parameter is
+    /// derived at that precision, as the couplings are). Momenta built on it
+    /// put the particle on the amplitude's mass shell.
+    #[cfg(feature = "symbolica-runtime")]
+    pub fn particle_mass_with_precision(
+        &mut self,
+        pdg: i32,
+        decimal_digits: u32,
+    ) -> Result<String, RusticolError> {
+        if decimal_digits == 0 {
+            return Err(RusticolError::unsupported_precision(
+                "precision must be a positive number of decimal digits",
+            ));
+        }
+        let binary64 = self.runtime.current_particle_mass(pdg)?;
+        let mut parts = if decimal_digits == 16 {
+            format_decimal_values(vec![binary64], decimal_digits)
+        } else {
+            self.ensure_exact_model_parameters()?;
+            if decimal_digits == 32 {
+                let mass = self.runtime.generic_particle_mass::<DoubleFloat>(pdg, None)?;
+                format_decimal_values(vec![mass], decimal_digits)
+            } else {
+                let binary_precision = decimal_digits_to_bits(decimal_digits);
+                let mass = self
+                    .runtime
+                    .generic_particle_mass::<Float>(pdg, Some(binary_precision))?;
+                format_decimal_values(vec![mass], decimal_digits)
+            }
+        };
+        parts
+            .pop()
+            .ok_or_else(|| RusticolError::integrity("a particle mass has one value"))
+    }
+
+    #[cfg(feature = "symbolica-runtime")]
+    pub(super) fn apply_process_group_factor_high_precision<T>(
+        &self,
+        values: &mut [T],
+        binary_precision: Option<u32>,
+    )
     where
         T: RusticolHighPrecisionNumber,
         Complex<T>: Real + EvaluationDomain,
@@ -4657,8 +4744,8 @@ impl NativeRuntime {
             denominator,
         } = self.process_group_factor();
         if numerator != denominator {
-            let numerator = T::from(numerator as f64);
-            let denominator = T::from(denominator as f64);
+            let numerator = T::from_f64_constant(numerator as f64, binary_precision);
+            let denominator = T::from_f64_constant(denominator as f64, binary_precision);
             for value in values {
                 *value = value.clone() * numerator.clone() / denominator.clone();
             }
@@ -4726,6 +4813,7 @@ impl NativeRuntime {
             self.runtime.physics.clone().ok_or_else(|| {
                 RusticolError::artifact("resolved physics metadata is unavailable")
             })?;
+        self.ensure_exact_model_parameters()?;
         let mut evaluation = if decimal_digits == 32 {
             let batch = self.prepare_double_batch(momenta, point_count)?;
             let (mut resolved, _profile) = self.runtime.run_resolved_generic(
@@ -4734,7 +4822,7 @@ impl NativeRuntime {
                 selected_helicities.as_ref(),
                 selected_colors.as_ref(),
             )?;
-            self.apply_process_group_factor_high_precision(&mut resolved.values);
+            self.apply_process_group_factor_high_precision(&mut resolved.values, None);
             decimal_resolved_evaluation(resolved, &physics.manifest, decimal_digits)?
         } else {
             let binary_precision = decimal_digits_to_bits(decimal_digits);
@@ -4745,7 +4833,10 @@ impl NativeRuntime {
                 selected_helicities.as_ref(),
                 selected_colors.as_ref(),
             )?;
-            self.apply_process_group_factor_high_precision(&mut resolved.values);
+            self.apply_process_group_factor_high_precision(
+                &mut resolved.values,
+                Some(binary_precision),
+            );
             decimal_resolved_evaluation(resolved, &physics.manifest, decimal_digits)?
         };
         self.publish_color_ids(&mut evaluation.color_ids);
@@ -4894,6 +4985,7 @@ impl NativeRuntime {
             self.runtime.physics.clone().ok_or_else(|| {
                 RusticolError::artifact("resolved physics metadata is unavailable")
             })?;
+        self.ensure_exact_model_parameters()?;
         let helicity_ids_of = |indices: &[usize]| {
             indices
                 .iter()
@@ -4908,7 +5000,7 @@ impl NativeRuntime {
                 selected_helicities.as_ref(),
                 None,
             )?;
-            self.apply_process_group_factor_high_precision(&mut resolved.values);
+            self.apply_process_group_factor_high_precision(&mut resolved.values, None);
             let values = sum_resolved_helicities(
                 resolved.values,
                 resolved.point_count,
@@ -4932,7 +5024,7 @@ impl NativeRuntime {
             selected_helicities.as_ref(),
             None,
         )?;
-        self.apply_process_group_factor_high_precision(&mut resolved.values);
+        self.apply_process_group_factor_high_precision(&mut resolved.values, Some(binary_precision));
         let values = sum_resolved_helicities(
             resolved.values,
             resolved.point_count,
@@ -5115,7 +5207,7 @@ impl NativeRuntime {
     }
 
     #[cfg(feature = "symbolica-runtime")]
-    fn prepare_double_batch(
+    pub(super) fn prepare_double_batch(
         &self,
         momenta: &[String],
         point_count: usize,
@@ -5140,7 +5232,7 @@ impl NativeRuntime {
     }
 
     #[cfg(feature = "symbolica-runtime")]
-    fn prepare_float_batch(
+    pub(super) fn prepare_float_batch(
         &self,
         momenta: &[String],
         point_count: usize,
@@ -5303,7 +5395,7 @@ fn validate_flat_momentum_shape(
 }
 
 #[cfg(feature = "symbolica-runtime")]
-fn format_decimal_values<T: std::fmt::LowerExp>(
+pub(super) fn format_decimal_values<T: std::fmt::LowerExp>(
     values: Vec<T>,
     decimal_digits: u32,
 ) -> Vec<String> {

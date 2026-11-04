@@ -12,10 +12,9 @@
 //! vanishes.
 //!
 //! In double-double and arbitrary precision the graded values agree with
-//! binary64; at the working precision itself they need the artifact
-//! constants converted at that precision (MadGraphTeam/pyamplicol#26), so
-//! those checks are `#[ignore]`d until then (`cargo test -- --ignored`).
-//! There the graded total agrees with the ordinary total as the resolved
+//! binary64, and at the working precision itself, with the artifact
+//! constants converted at that precision (MadGraphTeam/pyamplicol#26): there
+//! the graded total agrees with the ordinary total as the resolved
 //! components do (about 5e-58 at 64 digits). The u d > u d shares are
 //! compared with 1e-30: the built-in model's U(1)-subtraction vertex
 //! coupling 1/3 limits that process, full colour included, to about 4e-34.
@@ -26,9 +25,19 @@
 //! --max-coupling-order QCD=2 --max-coupling-order QED=0` and
 //! `RUSTICOL_GRADED_COLOUR_UUX_GG=DIR`, and the same for `u d > u d` with
 //! `RUSTICOL_GRADED_COLOUR_UD_UD`.
+//!
+//! The graded correlated Born quantities of a graded or strict artifact in
+//! double-double and arbitrary precision
+//! (`evaluate_correlated_many_with_precision`, MadGraphTeam/pyamplicol#36)
+//! sum every kept degree as the binary64 contraction does: the U(1)-subtraction
+//! groups of one colour sector enter with their N_c grades, and a strict
+//! truncation drops the terms of the unreported degrees. Build those artifacts
+//! with `PYTHONPATH=src python
+//! rust/crates/rusticol-core/tests/fixtures/graded_correlated.py DIR` and set
+//! `RUSTICOL_GRADED_COLOUR_CORRELATED=DIR`.
 #![cfg(all(feature = "symbolica-runtime", feature = "f64-symjit"))]
 
-use rusticol_core::NativeRuntime;
+use rusticol_core::{NativeCorrelatedRequest, NativeDecimalCorrelatedRequest, NativeRuntime};
 use std::path::PathBuf;
 use symbolica::domains::float::{Float, Real, RealLike};
 
@@ -184,7 +193,6 @@ fn graded_quark_scattering_in_every_precision() {
 }
 
 #[test]
-#[ignore = "needs artifact constants at the working precision (MadGraphTeam/pyamplicol#26)"]
 fn graded_quark_antiquark_to_gluons_at_working_precision() {
     check(
         "u u~ > g g",
@@ -195,7 +203,6 @@ fn graded_quark_antiquark_to_gluons_at_working_precision() {
 }
 
 #[test]
-#[ignore = "needs artifact constants at the working precision (MadGraphTeam/pyamplicol#26)"]
 fn graded_quark_scattering_at_working_precision() {
     check(
         "u d > u d",
@@ -203,4 +210,98 @@ fn graded_quark_scattering_at_working_precision() {
         QUARK_TOLERANCES,
         true,
     );
+}
+
+/// Every correlation of a graded or strict artifact: the binary64 degrees sum
+/// to the binary64 correlated value, double-double and 64 digits agree with
+/// binary64 at 1e-12 and with each other at 1e-27, relative to the Born.
+#[test]
+fn graded_correlations_in_double_double_and_arbitrary_precision() {
+    let Some(root) = std::env::var_os("RUSTICOL_GRADED_COLOUR_CORRELATED").map(PathBuf::from)
+    else {
+        return;
+    };
+    let ids: Vec<String> = std::iter::once("born".to_string())
+        .chain((1..=4).flat_map(|i| (i..=4).map(move |j| format!("T{i}{j}"))))
+        .collect();
+    let flat: Vec<i64> = POINTS.iter().flat_map(|point| momenta(*point)).collect();
+    let binary64 = flat.iter().map(|x| *x as f64).collect::<Vec<_>>();
+    let decimal: Vec<String> = flat.iter().map(ToString::to_string).collect();
+    let count = POINTS.len();
+    for (name, accuracy) in [
+        ("ud_ud-full", "full"),
+        ("ud_ud-strict-nlc", "strict-nlc"),
+        ("uux_gg-full", "full"),
+        ("uux_gg-strict-lc", "strict-lc"),
+    ] {
+        let mut runtime = NativeRuntime::load(root.join(name), None, None).unwrap();
+        let expansion = runtime.nc_expansion().unwrap().expect("a graded artifact");
+        assert_eq!(expansion.accuracy, accuracy);
+        let requests: Vec<_> = ids
+            .iter()
+            .map(|id| NativeCorrelatedRequest {
+                color_correlation: id.clone(),
+                spin_vectors: None,
+            })
+            .collect();
+        let decimal_requests: Vec<_> = ids
+            .iter()
+            .map(|id| NativeDecimalCorrelatedRequest {
+                color_correlation: id.clone(),
+                spin_vectors: None,
+            })
+            .collect();
+        let ordinary = runtime
+            .evaluate_correlated_many_f64(&binary64, count, &requests, None)
+            .unwrap();
+        let precise: Vec<_> = [32, 64]
+            .into_iter()
+            .map(|digits| {
+                runtime
+                    .evaluate_correlated_many_with_precision(
+                        &decimal,
+                        count,
+                        digits,
+                        &decimal_requests,
+                        None,
+                    )
+                    .unwrap()
+            })
+            .collect();
+        let real = |values: &[[String; 2]], index: usize| {
+            Float::parse(&values[index][0], Some(BITS)).unwrap()
+        };
+        for point in 0..count {
+            let born = real(&precise[1].values, point).norm().to_f64();
+            assert!(born > 0.0, "{name}: vanishing Born");
+            for (request, id) in requests.iter().zip(&ids) {
+                let index = ids.iter().position(|value| value == id).unwrap() * count + point;
+                let graded = runtime
+                    .evaluate_correlated_graded_f64(&binary64, count, request, None)
+                    .unwrap();
+                let degrees = graded.degrees.len();
+                let sum: f64 = graded.values[point * degrees..(point + 1) * degrees]
+                    .iter()
+                    .map(|value| value[0])
+                    .sum();
+                let binary = ordinary.values[index][0];
+                assert!(
+                    (sum - binary).abs() <= 1e-13 * born,
+                    "{name} {id}: binary64 degrees {sum:e} vs {binary:e}"
+                );
+                let double = real(&precise[0].values, index);
+                let wide = real(&precise[1].values, index);
+                let to_binary = (double.clone() - Float::with_val(BITS, binary)).norm().to_f64();
+                assert!(
+                    to_binary <= 1e-12 * born,
+                    "{name} {id}: double-double vs binary64 differ by {to_binary:e}"
+                );
+                let to_wide = (wide - double).norm().to_f64();
+                assert!(
+                    to_wide <= 1e-27 * born,
+                    "{name} {id}: double-double vs 64 digits differ by {to_wide:e}"
+                );
+            }
+        }
+    }
 }
