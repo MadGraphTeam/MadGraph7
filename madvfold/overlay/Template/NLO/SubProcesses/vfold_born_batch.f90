@@ -102,6 +102,10 @@ module vfold_born_batch
        savemom_batch(nexternal-1, 2, VECSIZE_BORN_PROTO)
   double precision, public, save :: f_b_batch(VECSIZE_BORN_PROTO)
   double precision, public, save :: g_batch(VECSIZE_BORN_PROTO)
+  ! Step 14c: the nFKSprocess of each entry. SBORN depends on it (IDEN,
+  ! IJ_VALUES, the helicity loop), so the batch must evaluate each entry
+  ! with its own nFKSprocess, not with the one of the last gathered entry.
+  integer, public, save :: nfks_batch(VECSIZE_BORN_PROTO)
   double precision, public, save :: wgt_me_born_batch(VECSIZE_BORN_PROTO)
   integer, public, save :: born_batch_count = 0
 
@@ -260,6 +264,8 @@ contains
     double precision, intent(in) :: f_b, g
     double precision :: p_born(0:3, nexternal-1)
     common /pborn/ p_born
+    integer :: nfksprocess
+    common/c_nfksprocess/nfksprocess
     integer :: islot
     if (born_batch_count.ge.VECSIZE_BORN_PROTO) then
       write(6,*) 'ERROR vfold_stash_born: batch full, VECSIZE_BORN_PROTO=', &
@@ -271,6 +277,7 @@ contains
     p_born_batch(0:3,1:nexternal-1,islot) = p_born(0:3,1:nexternal-1)
     f_b_batch(islot) = f_b
     g_batch(islot) = g
+    nfks_batch(islot) = nfksprocess ! step 14c
   end subroutine vfold_stash_born
 
   ! Evaluate once per stashed entry. Mode F: plain Fortran loop calling
@@ -326,8 +333,11 @@ contains
     ! Road B step 9i+9j: the whole per-event block from cudacpp (see SV_NBX)
     double precision :: chunk_x(SV_NBX, VECSIZE_BORN_PROTO)
     integer :: iu
+    integer :: nfksprocess, nfks_save
+    common/c_nfksprocess/nfksprocess
 
     if (born_batch_count.eq.0) return
+    nfks_save = nfksprocess ! step 14c: restored at the end
 
     vfold_born_batch_sum = vfold_born_batch_sum + born_batch_count
     vfold_born_batch_ncalls = vfold_born_batch_ncalls + 1
@@ -427,7 +437,8 @@ contains
         if (vfold_sborn_bridge.gt.0) exit
         same_as_prev = .false.
         if (i.gt.1) then
-          same_as_prev = (g_batch(i).eq.g_batch(i-1))
+          same_as_prev = (g_batch(i).eq.g_batch(i-1)) .and. &
+               (nfks_batch(i).eq.nfks_batch(i-1)) ! step 14c
           if (same_as_prev) then
             do j=1,nexternal-1
               if (any(p_born_batch(0:3,j,i).ne.p_born_batch(0:3,j,i-1))) then
@@ -443,6 +454,7 @@ contains
         else
           p_born(0:3,1:nexternal-1) = p_born_batch(0:3,1:nexternal-1,i)
           g = g_batch(i)
+          nfksprocess = nfks_batch(i) ! step 14c
           call update_as_param()
           calculatedBorn = .false.
           call sborn(p_born, wgt_c)
@@ -463,6 +475,7 @@ contains
         ! derived complex couplings (GC_1, GC_21, ... in coupl.inc's
         ! /couplings/ common), not raw g directly -- see header bugfix note.
         g = g_batch(i)
+        nfksprocess = nfks_batch(i) ! step 14c
         call update_as_param()
         ! Road B step 7k: evaluate SBORN only for a new (p_born,g,nfks)
         if (vfold_born_memo_hit(p_born,g)) then
@@ -481,6 +494,7 @@ contains
       call cpu_time(avtiming_t1)
       tBorn = tBorn + (avtiming_t1-avtiming_t0)
     endif
+    nfksprocess = nfks_save ! step 14c
   end subroutine vfold_evaluate_born_batch
 
   ! Walk 2: retrieve the next cached entry (in the same order it was
