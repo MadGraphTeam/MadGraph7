@@ -1030,7 +1030,7 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
     let mut current_by_source_row = vec![None; parts.sources.len()];
     let mut current_by_finalization_row = vec![None; parts.finalizations.len()];
     for (index, current) in parts.currents.iter().enumerate() {
-        if current.semantic_current_id != index as u32 {
+        if !crate::narrow::is_index(current.semantic_current_id, index) {
             return Err(invalid(format!(
                 "current {index} has non-canonical semantic ID {}",
                 current.semantic_current_id
@@ -1264,7 +1264,7 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
         let embeddings = &parts.source_embeddings[embedding_start..embedding_end];
         let projections = &parts.source_projections[projection_start..projection_end];
         for (full_component, embedding) in embeddings.iter().enumerate() {
-            if embedding.full_component != full_component as u32 {
+            if !crate::narrow::is_index(embedding.full_component, full_component) {
                 return Err(invalid(format!(
                     "source-dispatch variant {index} embedding is not in full-component order"
                 )));
@@ -1289,7 +1289,7 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
             }
         }
         for (source_component, projection) in projections.iter().enumerate() {
-            if projection.source_component != source_component as u32
+            if !crate::narrow::is_index(projection.source_component, source_component)
                 || projection.full_component >= variant.embedding_count
                 || embeddings[projection.full_component as usize].source_component_or_sentinel
                     != projection.source_component
@@ -1655,7 +1655,7 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
     }
 
     for (index, destination) in parts.amplitude_destinations.iter().enumerate() {
-        if destination.id != index as u32 {
+        if !crate::narrow::is_index(destination.id, index) {
             return Err(invalid(format!(
                 "amplitude destination {index} has non-canonical ID {}",
                 destination.id
@@ -1713,7 +1713,7 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
     }
 
     for (index, helicity) in parts.resolved_helicities.iter().enumerate() {
-        if helicity.id != index as u32 {
+        if !crate::narrow::is_index(helicity.id, index) {
             return Err(invalid(format!(
                 "resolved helicity {index} has non-canonical ID {}",
                 helicity.id
@@ -1759,7 +1759,7 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
             .iter()
             .enumerate()
         {
-            if assignment.source_slot != source_slot as u32 {
+            if !crate::narrow::is_index(assignment.source_slot, source_slot) {
                 return Err(invalid(format!(
                     "resolved helicity {index} source states are not in source-slot order"
                 )));
@@ -1777,7 +1777,7 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
             .iter()
             .enumerate()
         {
-            if selection.source_slot != source_slot as u32 {
+            if !crate::narrow::is_index(selection.source_slot, source_slot) {
                 return Err(invalid(format!(
                     "resolved helicity {index} source selections are not in source-slot order"
                 )));

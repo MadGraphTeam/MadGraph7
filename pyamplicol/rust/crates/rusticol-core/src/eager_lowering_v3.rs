@@ -1628,7 +1628,7 @@ impl EagerLoweringInputV1 {
                 group.representative_interaction_id,
                 "interaction group representative",
             )?;
-            if representative.evaluation_group_id != group_id as u32 {
+            if !crate::narrow::is_index(representative.evaluation_group_id, group_id) {
                 return Err(invalid(format!(
                     "interaction group {group_id} representative has a different group ID"
                 )));
@@ -1648,7 +1648,7 @@ impl EagerLoweringInputV1 {
                 group_has_nonzero_member |= !factor_is_complex_zero(
                     &self.exact_factors[member.evaluation_factor_id as usize],
                 );
-                if member.evaluation_group_id != group_id as u32 {
+                if !crate::narrow::is_index(member.evaluation_group_id, group_id) {
                     return Err(invalid(format!(
                         "interaction {member_id} has group {}, expected {group_id}",
                         member.evaluation_group_id
@@ -3123,7 +3123,10 @@ fn lower_stages(
                 "invocation attachment count",
             )?;
             invocations.push(EagerPlanInvocationRow {
-                evaluation_group_id: *group_id as u32,
+                evaluation_group_id: crate::narrow::checked::<u32>(
+                    *group_id,
+                    "evaluation group id",
+                )?,
                 kernel_id: representative.kernel_id,
                 left_value_slot_id: value_slots[ordered_currents[0] as usize]
                     .input

@@ -694,7 +694,9 @@ fn build_query_family_from_chunks(
                     .zip(trace.current_component_ranges.iter().copied())
                     .enumerate()
                 {
-                    if count == 0 || bases.insert(base, local_id as u32).is_some() {
+                    let local_id =
+                        crate::narrow::checked::<u32>(local_id, "query family local current id")?;
+                    if count == 0 || bases.insert(base, local_id).is_some() {
                         return Err(integrity(
                             "query-local current component ranges are empty or ambiguous",
                         ));

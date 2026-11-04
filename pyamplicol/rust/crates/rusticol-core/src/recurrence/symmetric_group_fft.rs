@@ -195,7 +195,7 @@ impl SymmetricGroupFftPlan {
             maximum_dimension,
             factorials: factorials.into_boxed_slice(),
             levels: levels.into_boxed_slice(),
-            recursive_to_lexicographic: recursive_to_lexicographic.into_boxed_slice(),
+            recursive_to_lexicographic,
             scalar_degree_three: None,
         };
         if degree == 3 {
@@ -1163,9 +1163,8 @@ fn build_recursive_to_lexicographic(
     let order = factorials[degree];
     if u32::try_from(order).is_ok() {
         let mut map = Vec::new();
-        map.try_reserve_exact(order).map_err(|error| {
-            invalid(format!("permutation reorder allocation failed: {error}"))
-        })?;
+        map.try_reserve_exact(order)
+            .map_err(|error| invalid(format!("permutation reorder allocation failed: {error}")))?;
         // Lossless: every rank is below the order, which fits u32.
         visit_recursive_lexicographic_ranks(degree, factorials, |rank| map.push(rank as u32))?;
         validate_reorder_map(map.iter().map(|&value| value as usize), map.len(), order)?;
@@ -1671,7 +1670,11 @@ mod tests {
                 values.push(lexicographic);
             });
             values.sort_unstable();
-            assert_eq!(values, (0..plan.order()).collect::<Vec<_>>(), "degree {degree}");
+            assert_eq!(
+                values,
+                (0..plan.order()).collect::<Vec<_>>(),
+                "degree {degree}"
+            );
             for index in 0..plan.order() {
                 let inverse = plan.inverse_lexicographic_index(index).unwrap();
                 assert_eq!(
@@ -1927,7 +1930,7 @@ mod tests {
         let factorials = checked_factorials(degree).unwrap();
         let order = factorials[degree];
         for rank in [0, 1, 12_345_678_901, order / 3, order - 2, order - 1] {
-            let permutation = lexicographic_unrank(degree, rank, &factorials).unwrap();
+            let permutation = super::lexicographic_unrank(degree, rank, &factorials).unwrap();
             assert_eq!(lexicographic_rank(&permutation, &factorials).unwrap(), rank);
         }
         // Extending a child code by a coset representative ranks consistently.
@@ -1947,11 +1950,17 @@ mod tests {
         // storage at small degree and compare every transform bitwise.
         for degree in [4_usize, 6, 7] {
             let compact = SymmetricGroupFftPlan::new(degree).unwrap();
-            assert!(matches!(compact.recursive_to_lexicographic, ReorderMap::Compact(_)));
+            assert!(matches!(
+                compact.recursive_to_lexicographic,
+                ReorderMap::Compact(_)
+            ));
             let mut wide = SymmetricGroupFftPlan::new(degree).unwrap();
             wide.recursive_to_lexicographic =
                 build_wide_recursive_to_lexicographic(degree, &wide.factorials).unwrap();
-            assert!(matches!(wide.recursive_to_lexicographic, ReorderMap::Wide(_)));
+            assert!(matches!(
+                wide.recursive_to_lexicographic,
+                ReorderMap::Wide(_)
+            ));
             for lanes in [1_usize, 3] {
                 let values = deterministic_values(compact.order() * lanes, degree + lanes);
                 let mut forward_compact = vec![(0.0, 0.0); values.len()];
@@ -1974,7 +1983,12 @@ mod tests {
                 let mut inverse_wide = vec![(0.0, 0.0); values.len()];
                 let mut workspace = compact.workspace(lanes).unwrap();
                 compact
-                    .inverse_lanes(lanes, &forward_compact, &mut inverse_compact, &mut workspace)
+                    .inverse_lanes(
+                        lanes,
+                        &forward_compact,
+                        &mut inverse_compact,
+                        &mut workspace,
+                    )
                     .unwrap();
                 let mut workspace = wide.workspace(lanes).unwrap();
                 wide.inverse_lanes(lanes, &forward_wide, &mut inverse_wide, &mut workspace)

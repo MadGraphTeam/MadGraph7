@@ -328,7 +328,9 @@ impl<'a> Recursion<'a> {
         let mut orders = self.vertex_orders[vertex as usize];
         let mut mask = 0;
         for &block in &position.blocks {
-            orders = self.orders.add(orders, self.current_orders[block as usize])?;
+            orders = self
+                .orders
+                .add(orders, self.current_orders[block as usize])?;
             mask |= self.input.currents[block as usize].mask;
         }
         let template = &self.input.vertices[vertex as usize];

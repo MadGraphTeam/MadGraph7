@@ -763,7 +763,9 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
     // The upper leg boundary only (the leg masks derived below); the loader
     // refuses an empty process itself.
     if file.legs > crate::loop_v2::bounds::MAX_LEGS {
-        return Err(invalid(crate::loop_v2::bounds::leg_count_refusal(file.legs)));
+        return Err(invalid(crate::loop_v2::bounds::leg_count_refusal(
+            file.legs,
+        )));
     }
     require(
         file.helicities.len() == file.legs,

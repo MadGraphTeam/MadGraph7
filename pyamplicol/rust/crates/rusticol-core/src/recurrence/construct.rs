@@ -1049,7 +1049,7 @@ fn validate_pending_reflection_certificates(
     certificates: &[PendingReflectionCertificate],
 ) -> RusticolResult<()> {
     for (index, certificate) in certificates.iter().enumerate() {
-        if certificate.id != index as u32 {
+        if !crate::narrow::is_index(certificate.id, index) {
             return Err(invalid(format!(
                 "pending reflection certificate row {index} has non-dense id {}",
                 certificate.id
@@ -2455,7 +2455,9 @@ impl PreparedClosureSectorCatalog {
         materialized_sector_ids: &BTreeSet<u32>,
     ) -> RusticolResult<Self> {
         let source_count = process.external_legs.len();
-        let full_support = (0..source_count as u32).collect::<Vec<_>>();
+        let full_support =
+            (0..crate::narrow::checked::<u32>(source_count, "external source count")?)
+                .collect::<Vec<_>>();
         let mut sectors = BTreeMap::new();
         let mut v4_trace_sector_by_anchored_word = BTreeMap::new();
         let mut contracted_open_forests = HashSet::<Box<[LCColorComponent]>>::new();
@@ -4122,7 +4124,9 @@ impl LazyStructuralDemandIndex {
             }
         }
 
-        let full_support = (0..source_count as u32).collect::<Vec<_>>();
+        let full_support =
+            (0..crate::narrow::checked::<u32>(source_count, "external source count")?)
+                .collect::<Vec<_>>();
         let mut demanded = BTreeSet::<(Vec<u32>, StructuralState)>::new();
         for sector_id in materialized_sectors.iter().copied() {
             let sector = process
@@ -10199,7 +10203,7 @@ fn complete_closure_target_domain_certificate(
     if ordered_helicities
         .iter()
         .enumerate()
-        .any(|(index, (helicity_id, _))| *helicity_id != index as u32)
+        .any(|(index, (helicity_id, _))| !crate::narrow::is_index(*helicity_id, index))
     {
         return Err(invalid(
             "closure target-domain resolved-helicity IDs are not dense",
@@ -10573,6 +10577,8 @@ fn finish_program(
         .map(|(key, _)| key)
         .map(|key| key.complete_source_states.clone())
         .collect::<BTreeSet<_>>();
+    // Resolved-helicity ids are u32: checked once for the whole set.
+    crate::narrow::checked::<u32>(helicity_keys.len(), "resolved helicity count")?;
     let helicity_ids = helicity_keys
         .iter()
         .cloned()

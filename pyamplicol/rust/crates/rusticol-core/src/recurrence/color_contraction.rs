@@ -2197,7 +2197,7 @@ fn validate_repeated_group_identities(
         let sector_id = sector_by_group[first as usize];
         for (component_id, group_id) in group_ids.iter().copied().enumerate() {
             if sector_by_group[group_id as usize] != sector_id
-                || component_by_group[group_id as usize] != component_id as u32
+                || !crate::narrow::is_index(component_by_group[group_id as usize], component_id)
             {
                 return Err(malformed(
                     "repeated group identities are not local-color-major/component-minor",
@@ -2416,7 +2416,12 @@ fn validate_symmetric_group_convolution(
 
     let mut offset = 0usize;
     for left_channel in 0..channel_count {
-        let left_identity = (left_channel * group_order) as u32;
+        let left_identity = left_channel
+            .checked_mul(group_order)
+            .and_then(|identity| u32::try_from(identity).ok())
+            .ok_or_else(|| {
+                malformed("symmetric-group channel identity exceeds the u32 local-group ids")
+            })?;
         for right_channel in left_channel..channel_count {
             let right_start = right_channel * group_order;
             let expected_symmetry = if left_channel == right_channel {
@@ -2462,7 +2467,7 @@ fn validate_symmetric_group_convolution(
     let mut residual_offset = 0usize;
     for left in 0..local_group_count {
         for right in left..local_group_count {
-            if right < eligible_group_count as u32 {
+            if (right as usize) < eligible_group_count {
                 continue;
             }
             let entry = residual_entries[residual_offset];

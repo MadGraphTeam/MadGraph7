@@ -104,9 +104,25 @@ pub fn checked_str<W: Width>(value: usize, quantity: &'static str) -> Result<W, 
     narrow(value, quantity).map_err(|error| error.to_string())
 }
 
+/// Whether the stored id `id` names position `index` (an index beyond the
+/// id's width never matches; no `as` cast wraps it onto a small id).
+#[inline]
+pub fn is_index<W: Width + PartialEq>(id: W, index: usize) -> bool {
+    W::from_u128(index as u128) == Some(id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_index_past_the_width_names_no_id() {
+        assert!(is_index(7_u32, 7));
+        assert!(!is_index(7_u32, 8));
+        // A wrapping cast would equate these.
+        assert!(!is_index(0_u32, 1_usize << 32));
+        assert!(!is_index(1_u16, 65_537));
+    }
 
     #[test]
     fn values_past_the_width_are_refused_with_the_quantity() {

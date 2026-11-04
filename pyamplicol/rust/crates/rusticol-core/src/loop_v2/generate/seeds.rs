@@ -2023,8 +2023,7 @@ impl SeedBuilder {
             "nlc" => 2,
             other => return Err(invalid(format!("no prune at accuracy {other:?}"))),
         };
-        let mut intern =
-            |o: &Vec<(u16, i64)>| self.orders.intern(o.clone()).map_err(invalid);
+        let mut intern = |o: &Vec<(u16, i64)>| self.orders.intern(o.clone()).map_err(invalid);
         let sectors: Vec<Vec<(u32, u32)>> = spec
             .sectors
             .iter()
@@ -2038,7 +2037,12 @@ impl SeedBuilder {
         let basis: Vec<Vec<u32>> = spec
             .basis_orders
             .iter()
-            .map(|orders| orders.iter().map(&mut intern).collect::<RusticolResult<_>>())
+            .map(|orders| {
+                orders
+                    .iter()
+                    .map(&mut intern)
+                    .collect::<RusticolResult<_>>()
+            })
             .collect::<RusticolResult<_>>()?;
         let mut grades: FastMap<(usize, u32), Vec<i64>> = FastMap::default();
         for (b, a, values) in &spec.grades {

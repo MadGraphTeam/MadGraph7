@@ -1206,7 +1206,7 @@ fn split_candidate(
             let mut row_of = reserved(content.rows, "content rows")?;
             row_of.resize(content.rows, None);
             for (k, (row, _blocks)) in term.rows.iter().enumerate() {
-                row_of[*row] = Some(k as u32);
+                row_of[*row] = Some(crate::narrow::checked::<u32>(k, "content row position")?);
             }
             let links = PackedLinks::collect(|| {
                 edge.links.iter().filter_map(|link| {

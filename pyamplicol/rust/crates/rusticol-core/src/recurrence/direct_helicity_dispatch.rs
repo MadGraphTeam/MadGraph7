@@ -421,7 +421,7 @@ fn validate_dispatch_csr(parts: &DirectHelicityDispatchParts) -> RusticolResult<
     let mut starts = Vec::with_capacity(parts.dispatches.len());
     let mut ends = Vec::with_capacity(parts.dispatches.len());
     for (helicity_id, descriptor) in parts.dispatches.iter().enumerate() {
-        if descriptor.resolved_helicity_id != helicity_id as u32
+        if !crate::narrow::is_index(descriptor.resolved_helicity_id, helicity_id)
             || descriptor.group_id_start != next
         {
             return Err(invalid(format!(
@@ -475,7 +475,7 @@ fn validate_dispatch_csr(parts: &DirectHelicityDispatchParts) -> RusticolResult<
                     .get_mut(helicity_id)
                     .ok_or_else(|| invalid("support mask exceeds the helicity axis"))?;
                 let actual = parts.dispatch_group_ids.get(*cursor).copied();
-                if actual != Some(group_id as u32) {
+                if !actual.is_some_and(|id| crate::narrow::is_index(id, group_id)) {
                     return Err(invalid(format!(
                         "resolved-helicity dispatch {helicity_id} disagrees with support masks at group {group_id}"
                     )));
