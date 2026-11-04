@@ -29,6 +29,13 @@
 !     get_weighted_cell -- MINT2-only (in gen(), not mint())
 !     (check_upper_bound was converted in step 8q)
 !   - setcuts.f:667 -- called once at program startup, not per-event
+!     Step 14a: this was WRONG (sChan_order redraws at each new_point):
+!     converted to ISLOT_EV_SCHAN_ORDER, see setcuts.f
+!   - add_write_info.f fill_icolor_H (two g>gg colour-flow draws) -- not
+!     in this list originally: also called from montecarlocounter.f
+!     complete_xmcsubt (MC@NLO-Delta only) inside the walk.
+!     Step 14b: converted there to ISLOT_FD_ICOLOR_H (one of the spare
+!     fold slots), see vfold_newran2_icolor_h
 !   - montecarlocounter.f assign_emsca_array's two draws are inside a loop
 !     over (i,j) -- a single slot is only correct for the first iteration
 !     (dead code if Delta is disabled: revisit before enabling Delta)
@@ -69,7 +76,21 @@ module vfold_rng_slots
   integer, parameter, public :: ISLOT_FD_VEGAS_X_BORN_1    = 11 ! driver_mintMC.f update_vegas_x, abrv='born' branch (i=nndim-2) -- dormant for eebb_vfalt's current abrv='all' config, converted preemptively 2026-09-02 per exhaustive ran2() audit
   integer, parameter, public :: ISLOT_FD_VEGAS_X_BORN_2    = 12 ! driver_mintMC.f update_vegas_x, abrv='born' branch (i=nndim-1)
   integer, parameter, public :: ISLOT_FD_VEGAS_X_BORN_3    = 13 ! driver_mintMC.f update_vegas_x, abrv='born' branch (i=nndim)
-  integer, parameter, public :: NSLOT_FOLD = 16 ! spares for anything missed in the first audit pass
+  ! Step 14b: fill_icolor_H when called from complete_xmcsubt (Delta), see
+  ! vfold_newran2_icolor_h. This is the first of the three spare slots
+  ! (14-16) that the original design kept "for anything missed in the first
+  ! audit pass": they were already drawn for every fold, so using one does
+  ! not change the random stream (nor any result of the other processes).
+  ! As for all fold slots (e.g. ISLOT_FD_ASSIGN_EMSCA), all calls within one
+  ! fold (repeated calls, all FKS configurations) read the same value. This
+  ! is a choice of the vfold design, not stock behaviour: the stock code
+  ! draws a fresh ran2() at every call. Each call of complete_xmcsubt uses
+  ! at most one such draw (one g>gg branch) and each choice is still 50/50,
+  ! so this should only correlate the choices within a fold, without bias
+  ! (unlike the product of per-dipole Sudakov ratios, for which step 11m
+  ! gave each Delta dipole its own slots). Not verified by a measurement.
+  integer, parameter, public :: ISLOT_FD_ICOLOR_H         = 14 ! add_write_info.f fill_icolor_H (from complete_xmcsubt)
+  integer, parameter, public :: NSLOT_FOLD = 16 ! spares for anything missed in the first audit pass (15-16 still unused)
 
   double precision, public, save :: event_slot(NSLOT_EVENT)
   double precision, public, save :: fold_slot(NSLOT_FOLD)
@@ -99,6 +120,10 @@ module vfold_rng_slots
   ! necessarily retrieving batched MEs (vfold_replay_mode). F1/F2 replay the
   ! slots of a pre-generated MINT2 candidate but evaluate its MEs directly.
   logical, public, save :: vfold_fold_replay = .false.
+  ! Step 14b: set by complete_xmcsubt (montecarlocounter.f) around its call
+  ! of fill_icolor_H (add_write_info.f), which is inside the walk; the other
+  ! call of fill_icolor_H, when writing an accepted event, keeps ran2().
+  logical, public, save :: vfold_icolor_h_in_walk = .false.
 
   ! --- Road B step 8q: independent RANMAR streams (as in step 9d) ---
   ! Stream 1 is the original RANMAR stream (MINT0/MINT1 and all per-event
@@ -325,6 +350,19 @@ contains
       vfold_newran2_delta = fold_slot_delta(k + 2*((i-1) + vfold_delta_ndip*(j-1)))
     endif
   end function vfold_newran2_delta
+
+  ! Step 14b: drop-in replacement for the bare ran2() calls of fill_icolor_H
+  ! (add_write_info.f): the fold slot ISLOT_FD_ICOLOR_H if called inside the
+  ! walk (from complete_xmcsubt), plain ran2() otherwise (event writing, F0).
+  double precision function vfold_newran2_icolor_h()
+    implicit none
+    double precision, external :: ran2
+    if (vfold_icolor_h_in_walk) then
+      vfold_newran2_icolor_h = vfold_newran2(ISLOT_FD_ICOLOR_H, .true.)
+    else
+      vfold_newran2_icolor_h = ran2()
+    endif
+  end function vfold_newran2_icolor_h
 
   ! Drop-in replacement for a bare ran2() call; is_fold selects which slot
   ! array islot indexes into (ignored in F0 mode).

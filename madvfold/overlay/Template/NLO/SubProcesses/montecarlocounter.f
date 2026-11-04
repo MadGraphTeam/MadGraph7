@@ -1503,6 +1503,7 @@ c Finalises the MC counterterm computations performed in xmcsubt(),
 c fills arrays relevant to shower scales, and computes Delta
       subroutine complete_xmcsubt(p,lzone,xmcxsec,xmcxsec2,MCsec
      $     ,probne)
+      use vfold_rng_slots, only: vfold_icolor_h_in_walk ! AV step 14b
       implicit none
       include "born_nhel.inc"
       include 'nFKSconfigs.inc'
@@ -1799,7 +1800,11 @@ c Fake call for initialisation
          MOTHUP_H(2,i)=MOTHUP_D(nFKSprocess,2,i,1)
       enddo
 c Fill selected color configuration into jpart array. 
+c AV step 14b: this call is inside the walk, its colour-flow draws come
+c from a fold slot (see vfold_newran2_icolor_h in vfold_rng_slots.f90)
+      vfold_icolor_h_in_walk=.true.
       call fill_icolor_H(jflow,jpart)
+      vfold_icolor_h_in_walk=.false.
       do i=1,nexternal
         ICOLUP_H(1,i)=jpart(4,i)
         ICOLUP_H(2,i)=jpart(5,i)

@@ -845,6 +845,7 @@ c                  whichever is closer to mass shell
 
 
       subroutine fill_icolor_H(iflow,jpart)
+      use vfold_rng_slots, only: vfold_newran2_icolor_h ! AV step 14b
       implicit none
       include "nexternal.inc"
 c      include 'fks.inc'
@@ -968,7 +969,7 @@ c The following works only if i_fks is always greater than j_fks.
      &              jpart(4,imother),jpart(5,imother)
                stop
             endif
-            if (ran2().gt.0.5d0) then 
+            if (vfold_newran2_icolor_h().gt.0.5d0) then ! AV step 14b
                jpart(4,i_fks)=lc+1
                jpart(5,i_fks)=jpart(5,imother)
                jpart(4,j_fks)=jpart(4,imother)
@@ -1097,7 +1098,7 @@ c The following works only if i_fks is always greater than j_fks.
      &              jpart(4,imother),jpart(5,imother)
                stop
             endif
-            if (ran2().gt.0.5d0) then 
+            if (vfold_newran2_icolor_h().gt.0.5d0) then ! AV step 14b
                jpart(4,i_fks)=lc+1
                jpart(5,i_fks)=jpart(4,imother)
                jpart(4,j_fks)=lc+1

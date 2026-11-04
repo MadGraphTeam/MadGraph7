@@ -216,6 +216,7 @@ pythia8_wrapper.o: pythia8_fortran.o LHAFortran_aMCatNLO.h
 chooser_functions.o: weight_lines.o
 cluster.o: weight_lines.o
 setcuts.o: mint_module.o vfold_rng_slots.o
+add_write_info.o: vfold_rng_slots.o
 genps_fks.o: mint_module.o FKSParams.o
 symmetry_fks_v3.o: mint_module.o
 test_soft_col_limits.o: mint_module.o
