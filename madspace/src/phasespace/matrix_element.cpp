@@ -178,8 +178,7 @@ MatrixElement::MatrixElement(
             return std::vector<me_int_t>();
         }
         if (incoming_count == 0) {
-            // an empty list would build an all-zero mask, which the kernel
-            // reads as "no frame" and passes through
+            // an all-zero mask would be read by the kernel as "no frame"
             throw std::invalid_argument(
                 "a process needs at least one incoming particle to define the "
                 "frame me_frame is reached from"
@@ -191,11 +190,19 @@ MatrixElement::MatrixElement(
         }
         auto mask = particle_mask(particle_count, incoming, "incoming_count");
         // asking for the rest frame of the incoming system is the reference
-        // frame itself: one boost gets there
-        if (mask == _frame_mask) {
+        // frame itself: one boost gets there. A collision does not go through
+        // it at all, see _along_beam.
+        if (mask == _frame_mask || incoming_count == 2) {
             mask.clear();
         }
         return mask;
+    }()),
+    _along_beam([&] {
+        if (_frame_mask.empty() || incoming_count != 2) {
+            return false;
+        }
+        std::vector<me_int_t> incoming{1, 2};
+        return particle_mask(particle_count, incoming, "incoming_count") != _frame_mask;
     }()) {
     auto has_output = [&](MatrixElementOutput output) {
         return std::find(outputs.begin(), outputs.end(), output) != outputs.end();
@@ -287,22 +294,16 @@ NamedVector<Value> MatrixElement::build_function_impl(
         } else if (input == channel_in && _channel >= 0) {
             matrix_args.push_back(fb.full({_channel, fb.batch_size(args.values())}));
         } else if (input == momenta_in && !_frame_mask.empty()) {
-            // Evaluate the matrix element in the frame the run card asked for
-            // (me_frame). Only the matrix element sees the boosted momenta:
-            // everything else -- cuts, scales, momentum fractions, the event
-            // that gets written out -- keeps using the momenta as generated.
-            //
-            // madevent defines that frame as a single boost away from the rest
-            // frame of the incoming system, because that is the frame its
-            // matrix element is handed the momenta in. madspace generates them
-            // in the lab frame instead, so it has to go through that rest frame
-            // rather than boost straight there: two boosts along different
-            // directions do not compose into the boost between the end frames,
-            // and the Wigner rotation left over would rotate the polarisation
-            // axes (it drops out only for a Lorentz invariant matrix element,
-            // which is exactly the case where none of this matters).
+            // Only the matrix element sees the me_frame-boosted momenta; cuts,
+            // scales and the written event use the generated ones.
+            // A collision first boosts along the beam to zero rapidity of the
+            // selection, then into its rest frame, so the result does not depend
+            // on the starting frame (no Wigner rotation). A decay starts from
+            // the rest frame of the decaying particle.
             Value momenta = args.at(arg_index);
-            if (!_reference_mask.empty()) {
+            if (_along_beam) {
+                momenta = fb.boost_to_zero_rapidity(momenta, _frame_mask);
+            } else if (!_reference_mask.empty()) {
                 momenta = fb.boost_to_frame(momenta, _reference_mask);
             }
             matrix_args.push_back(fb.boost_to_frame(momenta, _frame_mask));

@@ -19,7 +19,9 @@ namespace madspace {
  * **Arguments** (a subset, selected by @p inputs)
  * - `momenta` – `float`, shape `(batch, particle_count, 4)`.
  * - `alpha_s` – `float`, shape `(batch,)`.
- * - `flavor`, `helicity`, `diagram`, `channel` – `int`, shape `(batch,)`.
+ * - `flavor`, `helicity`, `diagram`, `channel` – `int`, shape `(batch,)`
+ *   (`channel` is omitted for a fixed @p channel). Further inputs are named as
+ *   in MatrixElementInput.
  * - `random_color`, `random_helicity`, `random_diagram` – `float`, shape
  *   `(batch,)` (omitted when @p sample_random_inputs draws them internally).
  *
@@ -29,6 +31,8 @@ namespace madspace {
  *   squared amplitudes.
  * - `color_index`, `helicity_index`, `diagram_index` – `int`, shape `(batch,)` –
  *   the sampled color, helicity and diagram.
+ * - the custom outputs `cut`, `ren_scale`, `fact_scale1`, `fact_scale2`, `pdf`,
+ *   `bias`, `matrix_element_ratio` – `float`, shape `(batch,)`.
  *
  * **References**
  * - [1] S. Hageböck et al., "Data-parallel leading-order event generation in
@@ -40,7 +44,7 @@ class MatrixElement : public FunctionGenerator {
 public:
     /// A quantity the matrix element can be asked to consume.
     enum MatrixElementInput {
-        momenta_in,           ///< Final-state momenta.
+        momenta_in,           ///< Momenta of all external particles.
         alpha_s_in,           ///< Strong coupling.
         flavor_in,            ///< Flavour assignment.
         random_color_in,      ///< Random number for the color draw.
@@ -88,18 +92,12 @@ public:
      * @param me_frame               One-based indices of the external particles
      *                               whose momentum sum defines the rest frame
      *                               the matrix element is evaluated in (the run
-     *                               card's me_frame). Empty means no boost, so
-     *                               the matrix element sees the momenta in the
-     *                               frame they are generated in.
+     *                               card's me_frame). Empty means no boost.
      * @param incoming_count         How many of the external particles are
-     *                               incoming. The frame is reached the way
-     *                               madevent reaches it, starting from the rest
-     *                               frame of the incoming system (the partonic
-     *                               centre of mass of a collision, the decaying
-     *                               particle's rest frame of a decay): boosts do
-     *                               not commute, so going there straight from
-     *                               the lab frame would leave a Wigner rotation
-     *                               behind and rotate the polarisation axes.
+     *                               incoming (the first ones). With me_frame
+     *                               it fixes the frame the boost starts from,
+     *                               see reference_mask() and along_beam(), to
+     *                               avoid a Wigner rotation as in madevent.
      * @param channel                If non-negative, `channel_in` is passed this
      *                               fixed value instead of being an input.
      */
@@ -159,16 +157,23 @@ public:
     bool sample_random_inputs() const { return _sample_random_inputs; }
     /// The fixed channel passed as `channel_in`, or -1 if it is an input.
     me_int_t channel() const { return _channel; }
-    /// The inputs that must be supplied by the caller (excludes the ones drawn
-    /// internally when @p sample_random_inputs is set and a fixed channel).
+    /// The inputs that must be supplied by the caller (excludes the `random_*`
+    /// ones when they are drawn internally, and `channel_in` for a fixed channel).
     std::vector<MatrixElementInput> external_inputs() const;
     /// Per-particle 0/1 selector built from me_frame, empty if no boost is
     /// applied.
     const std::vector<me_int_t>& frame_mask() const { return _frame_mask; }
-    /// Per-particle 0/1 selector of the incoming particles, whose rest frame
-    /// the me_frame boost starts from; empty when no boost is applied or when
-    /// it is already the frame me_frame asks for.
+    /// Per-particle 0/1 selector of the incoming particle of a decay, whose
+    /// rest frame the me_frame boost starts from; empty when no boost is
+    /// applied, when it is already the frame me_frame asks for, and for a
+    /// collision, whose me_frame is reached along the beam instead
+    /// (along_beam()).
     const std::vector<me_int_t>& reference_mask() const { return _reference_mask; }
+    /// Whether the me_frame boost starts with a boost along the beam axis to
+    /// zero rapidity of the selected particles, which makes the frame the
+    /// same from any frame along the beam (two incoming particles, and a
+    /// frame other than their own rest frame).
+    bool along_beam() const { return _along_beam; }
 
 private:
     NamedVector<Value> build_function_impl(
@@ -184,6 +189,7 @@ private:
     me_int_t _channel;
     std::vector<me_int_t> _frame_mask;
     std::vector<me_int_t> _reference_mask;
+    bool _along_beam;
 };
 
 } // namespace madspace
