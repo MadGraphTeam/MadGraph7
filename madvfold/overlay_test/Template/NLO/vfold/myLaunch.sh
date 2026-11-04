@@ -234,7 +234,9 @@ elif [ "${PROC}" != "${PROC/ggttg_}" ]; then
   if [ "${ENV_VFOLD_MINT1_NITERS}" == "" ]; then export ENV_VFOLD_MINT1_NITERS=2; fi    # MINT1 (upper envelope) iterations [DEFAULT: 12]
   if [ "${ENV_VFOLD_MINT0_NPOINTS}" == "" ]; then export ENV_VFOLD_MINT0_NPOINTS=50; fi # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
   if [ "${ENV_VFOLD_MINT1_NPOINTS}" == "" ]; then export ENV_VFOLD_MINT1_NPOINTS=50; fi # MINT1 points/iter [DEFAULT: -1=auto, can grow to 1000s]
-  # NB: ENV_VFOLD_CHANNELS unset for now: all GF channels
+  # NB: may need to keep ENV_VFOLD_CHANNELS unset to investigate bugs in channel mapping
+  # Step 14o: GF10.0 is the largest channel with virtuals (the -o test grids are for this channel)
+  if [ "${ENV_VFOLD_CHANNELS}" == "" ]; then export ENV_VFOLD_CHANNELS="10.0"; fi # GF channels (space-separated) [DEFAULT: all channels]
 else
   echo "ERROR! Unknown PROC=${PROC}"
   exit 1
