@@ -146,16 +146,20 @@ def test_real_argument_and_stack_contracts_fail_closed() -> None:
     with pytest.raises(NativeEvaluationError, match="metadata is inconsistent"):
         render_native_direct_cpp(inconsistent, _spec())
 
+    # A scratch beyond the stack budget is no refusal: the leaf gets heap
+    # scratch sized from its program (the budget only picks the form).
     bounded = _Evaluator(
         [
             ("mul", ("out", 0), [("param", 0), ("param", 0)], 0),
         ]
     )
-    with pytest.raises(NativeEvaluationError, match="bounded stack contract"):
-        render_native_direct_cpp(
-            bounded,
-            _spec(max_logical_stack_bytes=1),
-        )
+    heap = render_native_direct_cpp(bounded, _spec(max_logical_stack_bytes=1))
+    assert "new (std::nothrow)" in heap.source
+    assert "static_assert(kLogicalStackBytes" not in heap.source
+    stack = render_native_direct_cpp(bounded, _spec())
+    assert "new (std::nothrow)" not in stack.source
+    assert "static_assert(kLogicalStackBytes <= 65536u);" in stack.source
+    assert heap.logical_stack_bytes == stack.logical_stack_bytes
 
 
 def test_compiler_settings_retain_cpp_and_asm_direct_flags() -> None:
@@ -633,3 +637,88 @@ def test_process_stage_adapter_serializes_no_dense_library(tmp_path: Path) -> No
             adapter.evaluator_state_path.name,
         ]
     )
+
+
+def _chain_evaluator(temporaries: int) -> _Evaluator:
+    """A leaf of ``temporaries`` chained temporaries: t0 = p p, t_k =
+    t_{k-1} p + p, out = t_last t0 (complex plane input)."""
+
+    rows: list[tuple[object, ...]] = [
+        ("mul", ("temp", 0), [("param", 0), ("param", 0)], 0)
+    ]
+    for k in range(1, temporaries):
+        rows.append(("mul", ("temp", k), [("temp", k - 1), ("param", 0)], 0))
+        rows.append(("add", ("temp", k), [("temp", k), ("param", 0)], 0))
+    rows.append(("mul", ("out", 0), [("temp", temporaries - 1), ("temp", 0)], 0))
+    return _Evaluator(rows)
+
+
+def _run_direct(artifact: NativeDirectCppArtifact, points: int) -> list[float]:
+    import ctypes
+
+    library = ctypes.CDLL(str(artifact.library_path))
+    entry = getattr(library, "past_stack_cap_direct_application_v1")
+    entry.restype = ctypes.c_int
+    real = (ctypes.c_double * points)(*[0.25 + 0.01 * i for i in range(points)])
+    imag = (ctypes.c_double * points)(*[-0.5 + 0.02 * i for i in range(points)])
+    out_re = (ctypes.c_double * points)()
+    out_im = (ctypes.c_double * points)()
+    inputs = (ctypes.c_void_p * 2)(
+        ctypes.cast(real, ctypes.c_void_p), ctypes.cast(imag, ctypes.c_void_p)
+    )
+    outputs = (ctypes.c_void_p * 2)(
+        ctypes.cast(out_re, ctypes.c_void_p), ctypes.cast(out_im, ctypes.c_void_p)
+    )
+    status = entry(inputs, 2, None, 0, outputs, 2, 0, points)
+    assert status == 0
+    return [*out_re, *out_im]
+
+
+def test_a_leaf_past_the_old_stack_cap_compiles_and_matches_the_stack_form(
+    tmp_path: Path,
+) -> None:
+    """The old producer refused a leaf whose scratch exceeded 64 KiB (1024
+    temporaries + outputs at four lanes); it now compiles with heap scratch
+    and evaluates bitwise as the stack form of the same instructions."""
+
+    import shutil
+
+    if shutil.which("c++") is None:
+        pytest.skip("no C++ compiler on PATH")
+    evaluator = _chain_evaluator(1100)
+    spec = _spec(
+        function_name="past_stack_cap",
+        parameter_kinds=(ParameterKind.COMPLEX_PLANE,),
+        target_triple="x86_64-unknown-linux-gnu",
+        cpu_features=(),
+        simd_lane_width=4,
+    )
+    heap = render_native_direct_cpp(evaluator, spec)
+    assert heap.logical_stack_bytes == (1100 + 1) * 2 * 8 * 4 > 64 * 1024
+    assert "new (std::nothrow)" in heap.source
+    compiler = NativeDirectCppCompiler(optimization_level=3)
+    results = []
+    for name, budget in (("heap", 64 * 1024), ("stack", 1 << 20)):
+        directory = tmp_path / name
+        directory.mkdir()
+        artifact = compile_native_direct_cpp(
+            evaluator,
+            spec=_spec(
+                function_name="past_stack_cap",
+                parameter_kinds=(ParameterKind.COMPLEX_PLANE,),
+                target_triple="x86_64-unknown-linux-gnu",
+                cpu_features=(),
+                simd_lane_width=4,
+                max_logical_stack_bytes=budget,
+            ),
+            compiler=compiler,
+            output_source_path=directory / "past_stack_cap.direct.cpp",
+            output_library_path=directory / "libpast_stack_cap.direct",
+        )
+        source = artifact.source_path.read_text()
+        assert ("new (std::nothrow)" in source) == (name == "heap")
+        # Seven points: one four-lane bundle and a three-point scalar tail.
+        results.append(_run_direct(artifact, 7))
+    heap_values, stack_values = results
+    assert [v.hex() for v in heap_values] == [v.hex() for v in stack_values]
+    assert all(math.isfinite(v) for v in heap_values)

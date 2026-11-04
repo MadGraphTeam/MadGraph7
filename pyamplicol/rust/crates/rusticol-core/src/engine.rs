@@ -1895,7 +1895,6 @@ impl NativeCompiledDirectApplicationManifest {
     ) -> RusticolResult<()> {
         const APPLICATION_ABI: &str = "pyamplicol-native-compiled-direct-application-v1";
         const OUTPUT_SEMANTICS: &str = "factor-free-overwrite";
-        const MAXIMUM_LOGICAL_STACK_BYTES: u32 = 64 * 1024;
 
         if self.application_abi != APPLICATION_ABI {
             return Err(RusticolError::compatibility(format!(
@@ -1946,8 +1945,10 @@ impl NativeCompiledDirectApplicationManifest {
         if self.instruction_count == 0
             || self.input_plane_count == 0
             || !matches!(self.simd_lane_width, 2 | 4)
+            // The scratch size is the program's own (the leaf keeps it on
+            // the stack or allocates it, by size): only its consistency
+            // with the shape is checked below, no size cap.
             || self.logical_stack_bytes == 0
-            || self.logical_stack_bytes > MAXIMUM_LOGICAL_STACK_BYTES
             || self.output_semantics != OUTPUT_SEMANTICS
         {
             return Err(RusticolError::integrity(
@@ -4431,14 +4432,14 @@ pub struct NativeOnTheFlyFamilyProbeV1 {
     pub queries: Vec<NativeOnTheFlyFamilyQueryProbeV1>,
     pub census: crate::recurrence::OnTheFlyQueryFamilyCensusV1,
     pub execution_cache_hit: bool,
-    pub execution_source_calls: u32,
-    pub execution_source_rows: u32,
-    pub execution_contribution_calls: u32,
-    pub execution_contribution_rows: u32,
-    pub execution_finalization_calls: u32,
-    pub execution_finalization_rows: u32,
-    pub execution_closure_calls: u32,
-    pub execution_closure_rows: u32,
+    pub execution_source_calls: u64,
+    pub execution_source_rows: u64,
+    pub execution_contribution_calls: u64,
+    pub execution_contribution_rows: u64,
+    pub execution_finalization_calls: u64,
+    pub execution_finalization_rows: u64,
+    pub execution_closure_calls: u64,
+    pub execution_closure_rows: u64,
     pub cold_prepare_seconds: f64,
     pub benchmark_warmup_repetitions: u32,
     pub benchmark_repetitions: u32,

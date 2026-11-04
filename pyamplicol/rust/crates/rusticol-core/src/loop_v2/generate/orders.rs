@@ -6,7 +6,8 @@
 //! generator input's sorted name table and zero powers dropped, exactly as
 //! `add_orders` normalises them. Ids are assigned first-seen; comparisons of
 //! the vectors themselves (`Vec<(u16, i64)>`) follow Python's tuple order
-//! because name ids are ranks of the sorted names.
+//! because name ids are ranks of the sorted names (any number of names up to
+//! the `u16` id width, which the input's deserialisation checks).
 
 use super::FastMap;
 
@@ -98,11 +99,11 @@ impl OrderSpace {
         })
     }
 
-    /// Bitset of the names with a non-zero power.
-    pub fn names(&self, orders: u32) -> u64 {
+    /// Whether a name with a non-zero power is one of `names` (sorted).
+    pub fn names_meet(&self, orders: u32, names: &[u16]) -> bool {
         self.vectors[orders as usize]
             .iter()
-            .fold(0, |bits, &(name, _)| bits | (1u64 << name))
+            .any(|(name, _)| names.binary_search(name).is_ok())
     }
 }
 
@@ -121,6 +122,12 @@ mod tests {
         assert_eq!(space.add(OrderSpace::EMPTY, a), a);
         assert!(space.within(c, &vec![(1, 2), (2, 3)]));
         assert!(!space.within(c, &vec![(1, 1), (2, 3)]));
-        assert_eq!(space.names(c), 0b110);
+        assert!(space.names_meet(c, &[2]));
+        assert!(space.names_meet(c, &[0, 1]));
+        assert!(!space.names_meet(c, &[0, 3]));
+        // Name ids past any bitmask width.
+        let wide = space.intern(vec![(70, 1), (300, 2)]);
+        assert!(space.names_meet(wide, &[300]));
+        assert!(!space.names_meet(wide, &[6, 44]));
     }
 }

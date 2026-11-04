@@ -198,14 +198,14 @@ pub(crate) struct OnTheFlyFamilyObservedCurrentV1 {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct OnTheFlyQueryFamilyExecutionReportV1 {
     pub(crate) cache_hit: bool,
-    pub(crate) source_calls: u32,
-    pub(crate) source_rows: u32,
-    pub(crate) contribution_calls: u32,
-    pub(crate) contribution_rows: u32,
-    pub(crate) finalization_calls: u32,
-    pub(crate) finalization_rows: u32,
-    pub(crate) closure_calls: u32,
-    pub(crate) closure_rows: u32,
+    pub(crate) source_calls: u64,
+    pub(crate) source_rows: u64,
+    pub(crate) contribution_calls: u64,
+    pub(crate) contribution_rows: u64,
+    pub(crate) finalization_calls: u64,
+    pub(crate) finalization_rows: u64,
+    pub(crate) closure_calls: u64,
+    pub(crate) closure_rows: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -305,11 +305,19 @@ impl OnTheFlyQueryFamilyCensusV1 {
     }
 }
 
+/// A census count increment: the census counts one family's structure in
+/// its u32 ids (checked; a family that large is memory-bound first).
 fn add(value: &mut u32, increment: u32, label: &str) -> RusticolResult<()> {
     *value = value
         .checked_add(increment)
         .ok_or_else(|| invalid(format!("{label} exceeds u32")))?;
     Ok(())
+}
+
+/// An execution-report counter increment: u64 diagnostic accumulators, so
+/// a report never refuses the evaluation it describes.
+fn add_report(value: &mut u64, increment: u32) {
+    *value = value.saturating_add(u64::from(increment));
 }
 
 fn trace_factor(
@@ -2845,36 +2853,24 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
             OnTheFlyQueryFamilyExecutionReportV1::default(),
             |report, role, row_count| match role {
                 DirectExecutorRole::Source => {
-                    add(&mut report.source_calls, 1, "executed source calls")?;
-                    add(&mut report.source_rows, row_count, "executed source rows")
+                    add_report(&mut report.source_calls, 1);
+                    add_report(&mut report.source_rows, row_count);
+                    Ok(())
                 }
                 DirectExecutorRole::Contribution => {
-                    add(
-                        &mut report.contribution_calls,
-                        1,
-                        "executed contribution calls",
-                    )?;
-                    add(
-                        &mut report.contribution_rows,
-                        row_count,
-                        "executed contribution rows",
-                    )
+                    add_report(&mut report.contribution_calls, 1);
+                    add_report(&mut report.contribution_rows, row_count);
+                    Ok(())
                 }
                 DirectExecutorRole::Finalization => {
-                    add(
-                        &mut report.finalization_calls,
-                        1,
-                        "executed finalization calls",
-                    )?;
-                    add(
-                        &mut report.finalization_rows,
-                        row_count,
-                        "executed finalization rows",
-                    )
+                    add_report(&mut report.finalization_calls, 1);
+                    add_report(&mut report.finalization_rows, row_count);
+                    Ok(())
                 }
                 DirectExecutorRole::Closure => {
-                    add(&mut report.closure_calls, 1, "executed closure calls")?;
-                    add(&mut report.closure_rows, row_count, "executed closure rows")
+                    add_report(&mut report.closure_calls, 1);
+                    add_report(&mut report.closure_rows, row_count);
+                    Ok(())
                 }
             },
         )?;
@@ -4002,12 +3998,9 @@ mod tests {
         };
         let record = |report: &mut OnTheFlyQueryFamilyExecutionReportV1, role, row_count| {
             assert_eq!(role, DirectExecutorRole::Contribution);
-            add(&mut report.contribution_calls, 1, "test contribution calls")?;
-            add(
-                &mut report.contribution_rows,
-                row_count,
-                "test contribution rows",
-            )
+            add_report(&mut report.contribution_calls, 1);
+            add_report(&mut report.contribution_rows, row_count);
+            Ok(())
         };
         let stride = bound.workspace.point_stride as usize;
 
@@ -4228,12 +4221,9 @@ mod tests {
         };
         let record = |report: &mut OnTheFlyQueryFamilyExecutionReportV1, role, row_count| {
             assert_eq!(role, DirectExecutorRole::Contribution);
-            add(&mut report.contribution_calls, 1, "test contribution calls")?;
-            add(
-                &mut report.contribution_rows,
-                row_count,
-                "test contribution rows",
-            )
+            add_report(&mut report.contribution_calls, 1);
+            add_report(&mut report.contribution_rows, row_count);
+            Ok(())
         };
 
         let singleton = execute_bound_family(

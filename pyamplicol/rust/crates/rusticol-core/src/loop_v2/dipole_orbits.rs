@@ -137,13 +137,22 @@ fn real(value: Exact, what: &str) -> RusticolResult<Rational> {
     Ok(value.re)
 }
 
-/// The quadratic Casimir at N_c = 3 (`assemble._casimir`).
+/// The quadratic Casimir `C2(R)` at N_c = 3 of a UFO colour representation
+/// (`assemble._casimir`), from the irrep's Dynkin labels `(p, q)` of
+/// SU(N_c): `C2 = (p² + q² + p q + 3 p + 3 q) / 3` with `Tr(T^a T^b) =
+/// δ^ab / 2` (3 and 3̄: 4/3; 8: 3; 6 and 6̄: 10/3). The representations are
+/// those the UFO colour code names (1, ±3, ±6, 8).
 fn casimir(representation: i32) -> RusticolResult<Rational> {
-    match representation {
-        8 => Ok(Rational::from(3)),
-        3 | -3 => Ok(Rational::new(8, 6)),
-        other => Err(invalid(format!("colour representation {other}"))),
-    }
+    let (p, q): (i64, i64) = match representation {
+        1 => (0, 0),
+        3 => (1, 0),
+        -3 => (0, 1),
+        6 => (2, 0),
+        -6 => (0, 2),
+        8 => (1, 1),
+        other => return Err(invalid(format!("colour representation {other}"))),
+    };
+    Ok(Rational::new(p * p + q * q + p * q + 3 * p + 3 * q, 3))
 }
 
 /// Union-find root.
@@ -530,7 +539,11 @@ impl DipoleOrbits {
     /// index (four bytes per entry) keeps the 7-leg comparison cheap.
     pub fn digest(&self) -> RusticolResult<String> {
         use sha2::{Digest, Sha256};
-        let mut ids = filled(self.tuple_count()?, u32::MAX, "value ids")?;
+        let tuples = self.tuple_count()?;
+        // A dense value id is below the tuple count, so below the u32::MAX
+        // placeholder once the count fits u32.
+        crate::narrow::checked::<u32>(tuples, "dipole digest tuple count")?;
+        let mut ids = filled(tuples, u32::MAX, "value ids")?;
         let mut values: Vec<Rational> = Vec::new();
         let mut index: FastMap<Rational, u32> = FastMap::default();
         let (c, n) = (self.coloured.len(), self.basis);
@@ -811,6 +824,21 @@ impl DipoleOrbits {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    #[test]
+    fn casimirs_follow_the_representation() {
+        for (representation, c2) in [
+            (3, Rational::new(4, 3)),
+            (-3, Rational::new(4, 3)),
+            (8, Rational::from(3)),
+            (6, Rational::new(10, 3)),
+            (-6, Rational::new(10, 3)),
+            (1, Rational::from(0)),
+        ] {
+            assert_eq!(casimir(representation).unwrap(), c2, "{representation}");
+        }
+        assert!(casimir(10).is_err());
+    }
 
     pub(crate) fn trace_basis(labels: &[Label]) -> Vec<Tensor> {
         // All single traces of the labels with the first one fixed.

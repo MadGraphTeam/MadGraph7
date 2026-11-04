@@ -37,6 +37,10 @@ from .symbolica_helpers import _symbolica_instruction_program
 _C_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 _DIRECT_MARKER = "// pyAmpliCol genuine native DirectApplication producer v1"
 _DIRECT_FLAGS = 0x3F
+# A tuning default, not a capability bound: a leaf whose logical scratch
+# (temporaries and outputs) fits keeps it on the stack (std::array, the
+# original code); a larger leaf gets heap scratch sized from its program,
+# allocated once per call. Both evaluate the same instructions bitwise.
 _DEFAULT_STACK_LIMIT = 64 * 1024
 _SUPPORTED_LANE_WIDTHS = frozenset({2, 4})
 _COMPILER_GATE_DIR_ENV = "PYAMPLICOL_NATIVE_COMPILER_GATE_DIR"
@@ -215,10 +219,10 @@ def render_native_direct_cpp(
     logical_stack_bytes = (
         (program.temporary_count + spec.output_count) * 2 * 8 * spec.simd_lane_width
     )
-    if logical_stack_bytes > spec.max_logical_stack_bytes:
+    if logical_stack_bytes > 0xFFFF_FFFF:
         raise NativeEvaluationError(
-            "native DirectApplication logical scratch exceeds its bounded stack "
-            f"contract: {logical_stack_bytes} > {spec.max_logical_stack_bytes}"
+            "native DirectApplication logical scratch of "
+            f"{logical_stack_bytes} bytes exceeds the u32 width of its manifest"
         )
 
     state_sha256 = hashlib.sha256(evaluator_state).hexdigest()
@@ -906,13 +910,82 @@ def _render_translation_unit(
         for index in range(spec.output_count)
     )
     del accesses  # accesses are fully compiled into the generated statements.
+    on_stack = logical_stack_bytes <= spec.max_logical_stack_bytes
+    if on_stack:
+        # The original stack form (byte-identical source for such leaves).
+        scratch_assert = (
+            f"static_assert(kLogicalStackBytes <= {spec.max_logical_stack_bytes}u);"
+        )
+        bundle = f"""template <typename Lane>
+inline void evaluate_direct_bundle(
+    const NativeCompiledDirectInputPlaneV1* inputs,
+    const NativeCompiledDirectScalarV1* scalars,
+    const NativeCompiledDirectOutputPlaneV1* outputs,
+    std::uint32_t point
+) noexcept {{
+    std::array<DirectComplex<Lane>, {temporary_extent}> temporary;
+    std::array<DirectComplex<Lane>, {output_extent}> output;
+{statements}
+{stores}
+}}"""
+        loops = """        for (; point < vector_stop; point += kSimdLaneWidth) {
+            evaluate_direct_bundle<DirectVector>(inputs, scalars, outputs, point);
+        }
+        for (; point < point_stop; ++point) {
+            evaluate_direct_bundle<double>(inputs, scalars, outputs, point);
+        }"""
+    else:
+        # Scratch beyond the stack budget: heap scratch sized from the
+        # program, allocated once per call (one block per lane type).
+        scratch_assert = "// Heap scratch: kLogicalStackBytes exceeds the stack budget."
+        bundle = f"""constexpr std::size_t kTemporaryExtent = {temporary_extent}u;
+constexpr std::size_t kOutputExtent = {output_extent}u;
+
+template <typename Lane>
+inline void evaluate_direct_bundle(
+    const NativeCompiledDirectInputPlaneV1* inputs,
+    const NativeCompiledDirectScalarV1* scalars,
+    const NativeCompiledDirectOutputPlaneV1* outputs,
+    std::uint32_t point,
+    DirectComplex<Lane>* __restrict temporary,
+    DirectComplex<Lane>* __restrict output
+) noexcept {{
+{statements}
+{stores}
+}}"""
+        loops = """        if (point < vector_stop) {
+            std::unique_ptr<DirectComplex<DirectVector>[]> scratch(
+                new (std::nothrow)
+                    DirectComplex<DirectVector>[kTemporaryExtent + kOutputExtent]);
+            if (!scratch) {
+                return 7;
+            }
+            for (; point < vector_stop; point += kSimdLaneWidth) {
+                evaluate_direct_bundle<DirectVector>(
+                    inputs, scalars, outputs, point,
+                    scratch.get(), scratch.get() + kTemporaryExtent);
+            }
+        }
+        if (point < point_stop) {
+            std::unique_ptr<DirectComplex<double>[]> scratch(
+                new (std::nothrow) DirectComplex<double>[kTemporaryExtent + kOutputExtent]);
+            if (!scratch) {
+                return 7;
+            }
+            for (; point < point_stop; ++point) {
+                evaluate_direct_bundle<double>(
+                    inputs, scalars, outputs, point,
+                    scratch.get(), scratch.get() + kTemporaryExtent);
+            }
+        }"""
+    includes = "" if on_stack else "#include <memory>\n#include <new>\n"
     return f"""{_DIRECT_MARKER}
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <limits>
-#include <type_traits>
+{includes}#include <type_traits>
 
 #if !defined(__clang__) && !defined(__GNUC__)
 #error "pyAmpliCol native DirectApplication requires Clang or GCC vector extensions"
@@ -927,7 +1000,7 @@ constexpr std::uint32_t kSimdLaneWidth = {spec.simd_lane_width}u;
 constexpr std::uint32_t kInstructionCount = {program.instruction_count}u;
 constexpr std::uint32_t kTemporaryCount = {program.temporary_count}u;
 constexpr std::uint32_t kLogicalStackBytes = {logical_stack_bytes}u;
-static_assert(kLogicalStackBytes <= {spec.max_logical_stack_bytes}u);
+{scratch_assert}
 
 using DirectVector = double __attribute__((vector_size({vector_bytes})));
 
@@ -1061,18 +1134,7 @@ struct NativeCompiledDirectMetadataV1 {{
     std::uint32_t reserved;
 }};
 
-template <typename Lane>
-inline void evaluate_direct_bundle(
-    const NativeCompiledDirectInputPlaneV1* inputs,
-    const NativeCompiledDirectScalarV1* scalars,
-    const NativeCompiledDirectOutputPlaneV1* outputs,
-    std::uint32_t point
-) noexcept {{
-    std::array<DirectComplex<Lane>, {temporary_extent}> temporary;
-    std::array<DirectComplex<Lane>, {output_extent}> output;
-{statements}
-{stores}
-}}
+{bundle}
 
 }}  // namespace pyamplicol_native_direct_{function_name}
 
@@ -1177,12 +1239,7 @@ extern "C" int {function_name}_direct_application_v1(
             (point_count / kSimdLaneWidth) * kSimdLaneWidth;
         const std::uint32_t vector_stop = point_start + vector_points;
         std::uint32_t point = point_start;
-        for (; point < vector_stop; point += kSimdLaneWidth) {{
-            evaluate_direct_bundle<DirectVector>(inputs, scalars, outputs, point);
-        }}
-        for (; point < point_stop; ++point) {{
-            evaluate_direct_bundle<double>(inputs, scalars, outputs, point);
-        }}
+{loops}
         return 0;
     }} catch (...) {{
         return 6;

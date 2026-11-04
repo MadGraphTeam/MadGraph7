@@ -2382,14 +2382,14 @@ fn validate_on_the_fly_family_execution(
     require_cache_hit: bool,
 ) -> RusticolResult<()> {
     if report.cache_hit != require_cache_hit
-        || report.source_calls != census.union_source_executor_call_groups
-        || report.source_rows != census.union_source_rows
-        || report.contribution_calls != census.union_contribution_executor_call_groups
-        || report.contribution_rows != census.union_contribution_rows
-        || report.finalization_calls != census.union_finalization_executor_call_groups
-        || report.finalization_rows != census.union_finalization_rows
-        || report.closure_calls != census.union_closure_executor_call_groups
-        || report.closure_rows != census.union_closure_rows
+        || report.source_calls != u64::from(census.union_source_executor_call_groups)
+        || report.source_rows != u64::from(census.union_source_rows)
+        || report.contribution_calls != u64::from(census.union_contribution_executor_call_groups)
+        || report.contribution_rows != u64::from(census.union_contribution_rows)
+        || report.finalization_calls != u64::from(census.union_finalization_executor_call_groups)
+        || report.finalization_rows != u64::from(census.union_finalization_rows)
+        || report.closure_calls != u64::from(census.union_closure_executor_call_groups)
+        || report.closure_rows != u64::from(census.union_closure_rows)
     {
         return Err(RusticolError::integrity(
             "on-the-fly family execution differs from its prepared census/cache state",

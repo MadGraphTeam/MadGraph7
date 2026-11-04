@@ -4337,8 +4337,12 @@ def _native_compiled_direct_application(
         )
     if result["simd_lane_width"] not in {2, 4}:
         raise ValueError("native DirectApplication SIMD width is unsupported")
-    if result["logical_stack_bytes"] > 64 * 1024:
-        raise ValueError("native DirectApplication logical stack exceeds 64 KiB")
+    # The scratch size is the program's (stack or heap scratch: no size cap);
+    # it must fit the manifest's u32 field.
+    if result["logical_stack_bytes"] > 0xFFFF_FFFF:
+        raise ValueError(
+            "native DirectApplication logical scratch exceeds the u32 manifest field"
+        )
     if result["output_semantics"] != "factor-free-overwrite":
         raise ValueError("native DirectApplication output semantics are incompatible")
     for name in ("source_path", "library_path"):

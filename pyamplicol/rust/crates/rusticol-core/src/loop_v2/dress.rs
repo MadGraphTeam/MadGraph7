@@ -80,10 +80,7 @@ pub fn cast<T: Carrier>(zero: &T, value: &Rational) -> T {
 /// legs: the leg of a single-leg subset or of a single-leg complement
 /// (momentum conservation), else `None` (`families.onshell_leg`).
 pub fn onshell_leg(mask: u64, legs: usize) -> Option<usize> {
-    if legs == 0 || legs >= 64 {
-        return None;
-    }
-    let full = (1u64 << legs) - 1;
+    let full = super::bounds::full_mask(legs)?;
     [mask & full, full ^ (mask & full)]
         .into_iter()
         .find(|&subset| subset != 0 && subset & (subset - 1) == 0)

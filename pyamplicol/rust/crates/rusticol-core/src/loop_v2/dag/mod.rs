@@ -96,6 +96,12 @@ pub(crate) fn unsupported<T>(message: impl Into<String>) -> DagResult<T> {
     Err(DagError::Unsupported(message.into()))
 }
 
+/// `value` as a `u32` id, count or offset (the DAG's compact columns), or
+/// the refusal naming `quantity`; never wrapped.
+pub(crate) fn id32(value: usize, quantity: &'static str) -> DagResult<u32> {
+    crate::narrow::narrow(value, quantity).map_err(|error| DagError::Unsupported(error.to_string()))
+}
+
 /// A current species: particle id, auxiliary kind and quantum-number flow
 /// (all three are functions of the particle id in a model; the table keeps
 /// what the DAG says).
@@ -435,7 +441,7 @@ impl ColumnarDag {
     /// Streaming SHA-256 over the DAG's flat records (rule 6), resolved
     /// through the tables so that interning order does not matter.
     /// The record layout is documented in `loops/v2/dag_input.py`.
-    pub fn digest(&self) -> String {
+    pub fn digest(&self) -> DagResult<String> {
         let mut hash = Sha256::new();
         let mut record = Vec::with_capacity(256);
         hash.update(DIGEST_SCHEMA);
@@ -447,33 +453,33 @@ impl ColumnarDag {
             record.clear();
             let species = &t.species[self.c_species[id] as usize];
             put_i64(&mut record, species.pdg);
-            put_opt_str(&mut record, species.auxiliary.as_deref());
-            put_u32(&mut record, species.quantum_numbers.len() as u32);
+            put_opt_str(&mut record, species.auxiliary.as_deref())?;
+            put_len(&mut record, species.quantum_numbers.len())?;
             for (key, value) in &species.quantum_numbers {
-                put_str(&mut record, key);
-                put_str(&mut record, value);
+                put_str(&mut record, key)?;
+                put_str(&mut record, value)?;
             }
             put_u64(&mut record, self.c_mask[id]);
             put_u64(&mut record, self.c_momentum[id]);
-            put_bytes(&mut record, self.word(id));
+            put_bytes(&mut record, self.word(id))?;
             put_u64(&mut record, self.c_ancestry[id]);
             record.push(self.c_chirality[id] as u8);
             put_i32(&mut record, self.c_spin[id]);
             let flavour = &t.flavours[self.c_flavour[id] as usize];
-            put_u32(&mut record, flavour.len() as u32);
+            put_len(&mut record, flavour.len())?;
             for value in flavour {
                 put_i64(&mut record, *value);
             }
             let colour = &t.colours[self.c_colour[id] as usize];
-            put_str(&mut record, &colour.accuracy);
+            put_str(&mut record, &colour.accuracy)?;
             put_i64(&mut record, colour.sector_id);
-            put_u32(&mut record, colour.line_groups.len() as u32);
+            put_len(&mut record, colour.line_groups.len())?;
             for group in &colour.line_groups {
                 put_i64(&mut record, *group);
             }
-            put_u32(&mut record, colour.basis_key.len() as u32);
+            put_len(&mut record, colour.basis_key.len())?;
             for key in &colour.basis_key {
-                put_str(&mut record, key);
+                put_str(&mut record, key)?;
             }
             if let Some(grade) = colour.nc_grade {
                 // A trace count is never u32::MAX: the marker is unambiguous
@@ -482,15 +488,15 @@ impl ColumnarDag {
                 put_i64(&mut record, grade);
             }
             for parts in [&colour.traces, &colour.lines] {
-                put_u32(&mut record, parts.len() as u32);
+                put_len(&mut record, parts.len())?;
                 for part in parts {
-                    put_bytes(&mut record, part);
+                    put_bytes(&mut record, part)?;
                 }
             }
             let orders = &t.orders[self.c_orders[id] as usize];
-            put_u32(&mut record, orders.len() as u32);
+            put_len(&mut record, orders.len())?;
             for (name, value) in orders {
-                put_str(&mut record, name);
+                put_str(&mut record, name)?;
                 put_i64(&mut record, *value);
             }
             put_i32(&mut record, self.c_dimension[id]);
@@ -516,17 +522,18 @@ impl ColumnarDag {
                 put_u64(&mut record, pair[0].to_bits());
                 put_u64(&mut record, pair[1].to_bits());
             }
-            put_str(&mut record, &vertex.backend);
+            put_str(&mut record, &vertex.backend)?;
             record.push(vertex.full_tensor_network_ready as u8);
             put_i64(&mut record, self.i_group[id]);
             put_u64(&mut record, self.i_factor[id][0].to_bits());
             put_u64(&mut record, self.i_factor[id][1].to_bits());
             hash.update(&record);
         }
-        hash.finalize()
+        Ok(hash
+            .finalize()
             .iter()
             .map(|byte| format!("{byte:02x}"))
-            .collect()
+            .collect())
     }
 }
 
@@ -546,23 +553,31 @@ fn put_i64(out: &mut Vec<u8>, value: i64) {
     out.extend_from_slice(&value.to_le_bytes());
 }
 
-fn put_bytes(out: &mut Vec<u8>, value: &[u8]) {
-    put_u32(out, value.len() as u32);
+/// A record length (u32 in the digest layout), checked.
+fn put_len(out: &mut Vec<u8>, len: usize) -> DagResult<()> {
+    put_u32(out, id32(len, "DAG digest record length")?);
+    Ok(())
+}
+
+fn put_bytes(out: &mut Vec<u8>, value: &[u8]) -> DagResult<()> {
+    put_len(out, value.len())?;
     out.extend_from_slice(value);
+    Ok(())
 }
 
-fn put_str(out: &mut Vec<u8>, value: &str) {
-    put_bytes(out, value.as_bytes());
+fn put_str(out: &mut Vec<u8>, value: &str) -> DagResult<()> {
+    put_bytes(out, value.as_bytes())
 }
 
-fn put_opt_str(out: &mut Vec<u8>, value: Option<&str>) {
+fn put_opt_str(out: &mut Vec<u8>, value: Option<&str>) -> DagResult<()> {
     match value {
         None => out.push(0),
         Some(value) => {
             out.push(1);
-            put_str(out, value);
+            put_str(out, value)?;
         }
     }
+    Ok(())
 }
 
 /// Builds the loop-request DAG of `input` (the JSON of
@@ -586,7 +601,7 @@ pub fn build(input: &input::DagInput) -> DagResult<ColumnarDag> {
         stage_memory("dag reuse", dag.interactions.len());
         signs::apply_colour_flow_signs(input, &mut dag)?;
     }
-    let columns = dag.into_columns(input);
+    let columns = dag.into_columns(input)?;
     stage_memory("dag columns", columns.interaction_count());
     Ok(columns)
 }
@@ -673,7 +688,7 @@ mod tests {
         };
         let bytes = dag.to_bytes();
         let back = ColumnarDag::from_bytes(&bytes).expect("round trip");
-        assert_eq!(back.digest(), dag.digest());
+        assert_eq!(back.digest().unwrap(), dag.digest().unwrap());
         assert_eq!(back.i_factor[0][0].to_bits(), (-0.0f64).to_bits());
         assert_eq!(back.word(2), &[1, 2]);
     }

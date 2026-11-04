@@ -16,6 +16,7 @@
 //! `OpenLoopPolynomial` and `apply_segment` remain the exact reference algebra
 //! of its tests.
 
+pub mod bounds;
 pub mod closure;
 pub mod dag;
 pub mod dipole_correlations;

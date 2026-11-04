@@ -261,14 +261,18 @@ impl<'a> Builder<'a> {
         })
     }
 
-    fn intern(&mut self, content: Content) -> u32 {
+    fn intern(&mut self, content: Content) -> Result<u32, String> {
         if let Some(&id) = self.state.content_index.get(&content) {
-            return id;
+            return Ok(id);
         }
-        let id = self.state.contents.len() as u32;
+        // Content ids stay below the reflection's `u32::MAX` placeholder.
+        let id = crate::narrow::checked_str::<u32>(
+            self.state.contents.len() + 1,
+            "schedule content count",
+        )? - 1;
         self.state.content_index.insert(content.clone(), id);
         self.state.contents.push(content);
-        id
+        Ok(id)
     }
 
     fn antiname(&self, field: u32) -> Result<u32, String> {
@@ -309,7 +313,7 @@ impl<'a> Builder<'a> {
                 .unwrap_or(0),
             terms,
         };
-        let mirror = self.intern(reflected);
+        let mirror = self.intern(reflected)?;
         if self.state.reflection.len() < self.state.contents.len() {
             self.state
                 .reflection
@@ -467,7 +471,7 @@ impl<'a> Builder<'a> {
                     orders,
                     terms,
                     q_degree,
-                }));
+                })?);
             }
             let mut half_weight = false;
             if symmetric {
@@ -618,16 +622,19 @@ fn build_trie(
     orders: &[u32],
     space: &OrderSpace,
     segments: &SegmentTable,
-) -> (Vec<TrieNode>, i64) {
+) -> Result<(Vec<TrieNode>, i64), String> {
     let count = key.len();
     let leaves = oriented.len();
+    // Every id, node and leaf below is at most one per (depth, leaf), below
+    // the `u32::MAX` sentinel of an empty suffix.
+    id_space(count, leaves)?;
     let rank = oriented
         .iter()
         .map(|(_, ring)| ring.iter().map(|&l| segments[l as usize].2).sum::<i64>())
         .max()
         .unwrap_or(0);
     if count == 0 {
-        return (Vec::new(), rank);
+        return Ok((Vec::new(), rank));
     }
     // Interned (orders, head, tail id); the empty suffix of an orders has
     // head and tail u32::MAX. `depth_of[id]` is the depth whose suffix the
@@ -730,7 +737,18 @@ fn build_trie(
             node.edges.sort_unstable();
         }
     }
-    (nodes, rank)
+    Ok((nodes, rank))
+}
+
+/// The ids of a family's trie, at most one per (depth, leaf) of its `count`
+/// propagators and `leaves` leaves, as `u32` below the `u32::MAX` sentinel.
+fn id_space(count: usize, leaves: usize) -> Result<(), String> {
+    let ids = count
+        .checked_add(1)
+        .and_then(|depths| depths.checked_mul(leaves))
+        .and_then(|ids| ids.checked_add(1))
+        .ok_or_else(|| "schedule-B trie ids overflow".to_string())?;
+    crate::narrow::checked_str::<u32>(ids, "schedule-B trie id count").map(|_| ())
 }
 
 /// `schedules.build_trie` transcribed (the oracle of [`build_trie`]).
@@ -872,6 +890,7 @@ fn interned_trie_cost(
     let overflow =
         || "the schedule-B cost exceeds 128 bits (or a leg has no helicity count)".to_string();
     let leaves = oriented.len();
+    id_space(count, leaves)?;
     let rank = oriented
         .iter()
         .map(|(_, ring)| ring.iter().map(|&l| segments[l as usize].2).sum::<i64>())
@@ -1008,8 +1027,9 @@ pub struct Retained {
 impl ScheduleState {
     /// The order vectors by id.
     pub fn order_vectors(&self) -> Vec<OrderVec> {
-        (0..self.orders.len() as u32)
-            .map(|id| self.orders.get(id).clone())
+        // Ids are the interner's own u32 ids (`OrderSpace::intern`).
+        (0..self.orders.len())
+            .map(|id| self.orders.get(id as u32).clone())
             .collect()
     }
 }
@@ -1104,6 +1124,7 @@ fn view_and_tries(
                     continue;
                 }
             }
+            // Labels are distinct u32 contents, so a label id fits u32.
             let mut label = |content: u32, label_of: &mut HashMap<u32, u32>| -> u32 {
                 *label_of.entry(content).or_insert_with(|| {
                     labels.push(content);
@@ -1261,7 +1282,7 @@ fn view_and_tries(
             }
             let (frame, t, _) =
                 best.ok_or_else(|| format!("the fixed frame is not a frame of family {family}"))?;
-            let (nodes, rank) = build_trie(key, &oriented_in(t), &data.orders, space, &segments);
+            let (nodes, rank) = build_trie(key, &oriented_in(t), &data.orders, space, &segments)?;
             let leaves: Vec<(usize, Vec<u32>)> = chosen
                 .iter()
                 .enumerate()
@@ -1326,7 +1347,7 @@ mod tests {
                 let borrowed: Vec<(usize, &[u32])> =
                     rings.iter().map(|(s, r)| (*s, r.as_slice())).collect();
                 let key = vec![(0u64, 0u32); count];
-                let (nodes, rank) = build_trie(&key, &borrowed, &orders, &space, &segments);
+                let (nodes, rank) = build_trie(&key, &borrowed, &orders, &space, &segments).unwrap();
                 let (expected, expected_rank) =
                     build_trie_oracle(&key, &rings, &orders, &space, &segments);
                 assert_eq!(rank, expected_rank);
@@ -1395,7 +1416,7 @@ mod tests {
                 let borrowed: Vec<(usize, &[u32])> =
                     rings.iter().map(|(s, r)| (*s, r.as_slice())).collect();
                 let key = vec![(0u64, 0u32); count];
-                let (nodes, rank) = build_trie(&key, &borrowed, &orders, &space, &segments);
+                let (nodes, rank) = build_trie(&key, &borrowed, &orders, &space, &segments).unwrap();
                 for model in &models {
                     let expected = trie_cost(&nodes, rank, count, model, &leg_rows, &segments);
                     let found =

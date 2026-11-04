@@ -28,7 +28,7 @@ use super::exact::{
 };
 use super::input::{DagInput, Vertex};
 use super::recursion::{Dag, FxMap, FxSet};
-use super::{ColumnarDag, DagError, DagResult, NO_HELICITY, NO_LEG, invalid};
+use super::{ColumnarDag, DagError, DagResult, NO_HELICITY, NO_LEG, id32, invalid};
 use std::collections::HashMap;
 
 /// A vertex kernel's model-certified evaluation symmetry
@@ -654,21 +654,22 @@ pub fn assign_reuse(input: &DagInput, dag: &mut Dag) -> DagResult<()> {
         .iter()
         .map(|current| {
             let key = &current.key;
-            let next = ids.len() as u32;
-            *ids.entry((
-                key.particle,
-                key.mask,
-                key.word,
-                key.ancestry,
-                key.chirality,
-                key.spin,
-                key.flavour,
-                key.orders,
-                current.is_source,
-            ))
-            .or_insert(next)
+            let next = id32(ids.len(), "DAG evaluation-contract id")?;
+            Ok(*ids
+                .entry((
+                    key.particle,
+                    key.mask,
+                    key.word,
+                    key.ancestry,
+                    key.chirality,
+                    key.spin,
+                    key.flavour,
+                    key.orders,
+                    current.is_source,
+                ))
+                .or_insert(next))
         })
-        .collect();
+        .collect::<DagResult<_>>()?;
     let class_ranks = ranks(&input.classes);
     let kernels: Vec<Kernel> = input
         .vertices
@@ -842,23 +843,24 @@ impl ColumnarDag {
         let mut ids = FxMap::default();
         let contracts: Vec<u32> = (0..self.current_count())
             .map(|id| {
-                let next = ids.len() as u32;
-                *ids.entry((
-                    species[self.c_species[id] as usize],
-                    self.c_mask[id],
-                    self.c_momentum[id],
-                    self.word(id),
-                    self.c_ancestry[id],
-                    self.c_chirality[id],
-                    self.c_spin[id],
-                    flavours[self.c_flavour[id] as usize],
-                    orders[self.c_orders[id] as usize],
-                    self.c_dimension[id],
-                    self.c_source[id],
-                ))
-                .or_insert(next)
+                let next = id32(ids.len(), "DAG evaluation-contract id")?;
+                Ok(*ids
+                    .entry((
+                        species[self.c_species[id] as usize],
+                        self.c_mask[id],
+                        self.c_momentum[id],
+                        self.word(id),
+                        self.c_ancestry[id],
+                        self.c_chirality[id],
+                        self.c_spin[id],
+                        flavours[self.c_flavour[id] as usize],
+                        orders[self.c_orders[id] as usize],
+                        self.c_dimension[id],
+                        self.c_source[id],
+                    ))
+                    .or_insert(next))
             })
-            .collect();
+            .collect::<DagResult<_>>()?;
         let view = ColumnarView {
             dag: self,
             kernel,

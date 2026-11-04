@@ -160,6 +160,12 @@ fn fraction_repr(value: &Rational) -> String {
     )
 }
 
+/// `len` as the `u32` id of a seed table's next entry, or the refusal naming
+/// the table (ids are compact `u32`; never wrapped).
+fn id32(len: usize, table: &'static str) -> RusticolResult<u32> {
+    crate::narrow::checked(len, table)
+}
+
 /// Interned exact coefficients; id 0 is one.
 #[derive(Debug, Default)]
 struct Coefficients {
@@ -172,18 +178,19 @@ impl Coefficients {
 
     fn new() -> Self {
         let mut out = Self::default();
-        out.intern(Exact::one());
+        out.index.insert(Exact::one(), Self::ONE);
+        out.values.push(Exact::one());
         out
     }
 
-    fn intern(&mut self, value: Exact) -> u32 {
+    fn intern(&mut self, value: Exact) -> RusticolResult<u32> {
         if let Some(&id) = self.index.get(&value) {
-            return id;
+            return Ok(id);
         }
-        let id = self.values.len() as u32;
+        let id = id32(self.values.len(), "seed coefficient id")?;
         self.index.insert(value.clone(), id);
         self.values.push(value);
-        id
+        Ok(id)
     }
 
     fn get(&self, id: u32) -> &Exact {
@@ -296,7 +303,7 @@ impl Descriptors {
         if let Some(&id) = self.template_index.get(&parts) {
             return Ok(id);
         }
-        let id = self.templates.len() as u32;
+        let id = id32(self.templates.len(), "seed descriptor template id")?;
         self.template_index.insert(parts.clone(), id);
         self.templates.push(parts);
         Ok(id)
@@ -332,7 +339,7 @@ impl Descriptors {
                 text
             }
         };
-        let id = self.items.len() as u32;
+        let id = id32(self.items.len(), "seed descriptor id")?;
         self.index.insert(descriptor.clone(), id);
         self.items.push(descriptor);
         self.reprs.push(repr);
@@ -427,9 +434,9 @@ struct Primitives {
 }
 
 impl Primitives {
-    fn intern(&mut self, primitive: Primitive) -> u32 {
+    fn intern(&mut self, primitive: Primitive) -> RusticolResult<u32> {
         if let Some(&id) = self.index.get(&primitive) {
-            return id;
+            return Ok(id);
         }
         let repr = match &primitive.word {
             Word::Letters(letters) => Some(format!(
@@ -439,11 +446,11 @@ impl Primitives {
             )),
             Word::Ring(_) => None,
         };
-        let id = self.items.len() as u32;
+        let id = id32(self.items.len(), "seed primitive id")?;
         self.index.insert(primitive.clone(), id);
         self.items.push(primitive);
         self.reprs.push(repr);
-        id
+        Ok(id)
     }
 
     fn get(&self, id: u32) -> &Primitive {
@@ -823,7 +830,7 @@ impl SeedBuilder {
         let coefficient_ids = spec
             .coefficients
             .iter()
-            .map(|(re, im)| Ok(coefficients.intern(Exact::parse(re, im)?)))
+            .map(|(re, im)| coefficients.intern(Exact::parse(re, im)?))
             .collect::<RusticolResult<Vec<_>>>()?;
         let mut descriptors = Descriptors::default();
         let templates = spec
@@ -873,10 +880,15 @@ impl SeedBuilder {
                     ))
                 })
                 .collect::<RusticolResult<Vec<_>>>()?;
-            let id = *term_index.entry(terms.clone()).or_insert_with(|| {
-                term_lists.push(terms);
-                (term_lists.len() - 1) as u32
-            });
+            let id = match term_index.get(&terms) {
+                Some(&id) => id,
+                None => {
+                    let id = id32(term_lists.len(), "seed term-list id")?;
+                    term_index.insert(terms.clone(), id);
+                    term_lists.push(terms);
+                    id
+                }
+            };
             contents.push(Content {
                 position,
                 single: *single,
@@ -925,7 +937,9 @@ impl SeedBuilder {
             spec_of: {
                 let mut spec_of = FastMap::default();
                 for (k, &d) in descriptor_ids.iter().enumerate() {
-                    spec_of.entry(d).or_insert(k as u32);
+                    spec_of
+                        .entry(d)
+                        .or_insert(id32(k, "seed descriptor spec id")?);
                 }
                 spec_of
             },
@@ -958,7 +972,7 @@ impl SeedBuilder {
                         Kind::FundamentalTrace
                     },
                     word: Word::Letters(items.clone()),
-                })),
+                })?),
                 2 => {
                     let ring = items
                         .iter()
@@ -972,7 +986,7 @@ impl SeedBuilder {
                     Seed::Primitive(builder.primitives.intern(Primitive {
                         kind: Kind::QuarkRing,
                         word: Word::Ring(ring),
-                    }))
+                    })?)
                 }
                 3 => {
                     let index = items
@@ -1005,8 +1019,9 @@ impl SeedBuilder {
 
     /// The order vectors of the order ids (names are the caller's ids).
     pub fn order_vectors(&self) -> Vec<Vec<(u16, i64)>> {
-        (0..self.orders.len() as u32)
-            .map(|id| self.orders.get(id).clone())
+        // Ids are the interner's own u32 ids (`OrderSpace::intern`).
+        (0..self.orders.len())
+            .map(|id| self.orders.get(id as u32).clone())
             .collect()
     }
 
@@ -1039,14 +1054,14 @@ impl SeedBuilder {
         }
     }
 
-    fn intern_combination(&mut self, combination: Vec<(u32, u32)>) -> u32 {
+    fn intern_combination(&mut self, combination: Vec<(u32, u32)>) -> RusticolResult<u32> {
         if let Some(&id) = self.combination_index.get(&combination) {
-            return id;
+            return Ok(id);
         }
-        let id = self.combinations.len() as u32;
+        let id = id32(self.combinations.len(), "seed combination id")?;
         self.combination_index.insert(combination.clone(), id);
         self.combinations.push(combination);
-        id
+        Ok(id)
     }
 
     /// `sorted(out, key=repr)` for the (primitive, coefficient) pairs of one
@@ -1088,7 +1103,7 @@ impl SeedBuilder {
                     self.primitives.intern(Primitive {
                         kind,
                         word: Word::Ring(rotated),
-                    }),
+                    })?,
                     1,
                 )
             } else {
@@ -1104,7 +1119,7 @@ impl SeedBuilder {
                     self.primitives.intern(Primitive {
                         kind,
                         word: Word::Letters(word),
-                    }),
+                    })?,
                     sign,
                 )
             };
@@ -1131,8 +1146,8 @@ impl SeedBuilder {
                     let mut combination: Vec<(u32, u32)> = out
                         .into_iter()
                         .filter(|(_, c)| !c.is_zero())
-                        .map(|(p, c)| (p, self.coefficients.intern(c)))
-                        .collect();
+                        .map(|(p, c)| Ok((p, self.coefficients.intern(c)?)))
+                        .collect::<RusticolResult<_>>()?;
                     self.sort_combination(&mut combination);
                     return Ok(Some(combination));
                 }
@@ -1176,7 +1191,7 @@ impl SeedBuilder {
             let id = match self.term_index.get(&list) {
                 Some(&id) => id,
                 None => {
-                    let id = self.term_lists.len() as u32;
+                    let id = id32(self.term_lists.len(), "seed term-list id")?;
                     self.term_index.insert(list.clone(), id);
                     self.term_lists.push(list);
                     id
@@ -1190,7 +1205,8 @@ impl SeedBuilder {
             None => {
                 let found = self
                     .product_combination(kind, &key.1)?
-                    .map(|combination| self.intern_combination(combination));
+                    .map(|combination| self.intern_combination(combination))
+                    .transpose()?;
                 self.renamed_memo.insert(key, found);
                 found
             }
@@ -1208,12 +1224,12 @@ impl SeedBuilder {
             let primitive = self.primitives.intern(Primitive {
                 kind,
                 word: Word::Letters(word),
-            });
+            })?;
             let coefficient = if sign == 1 {
                 c
             } else {
                 let negated = self.coefficients.get(c).neg();
-                self.coefficients.intern(negated)
+                self.coefficients.intern(negated)?
             };
             out.push((primitive, coefficient));
         }
@@ -1240,7 +1256,9 @@ impl SeedBuilder {
         } else {
             self.ring_combination(kind, &key.1)?
         };
-        let found = found.map(|combination| self.intern_combination(combination));
+        let found = found
+            .map(|combination| self.intern_combination(combination))
+            .transpose()?;
         self.combination_memo.insert(key, found);
         Ok(found)
     }
@@ -1374,7 +1392,7 @@ impl SeedBuilder {
                 Some(c) => Source::Combination(c),
                 None => {
                     let contents = self.skeleton(s).to_vec();
-                    let next = self.generic_skeletons.len() as u32;
+                    let next = id32(self.generic_skeletons.len(), "generic seed skeleton id")?;
                     let g = *generic_index.entry(contents).or_insert(next);
                     if g == next {
                         self.generic_skeletons.push(s);
@@ -1406,7 +1424,7 @@ impl SeedBuilder {
                     continue;
                 };
                 let (canonical, original, forward) = self.ring_relabelling(&ring)?;
-                let next = self.rings.len() as u32;
+                let next = id32(self.rings.len(), "seed quark-ring id")?;
                 let need = *self.ring_index.entry(canonical).or_insert(next);
                 if need == next {
                     self.rings.push(RingNeed {
@@ -1460,7 +1478,7 @@ impl SeedBuilder {
         let mut orders: Vec<Vec<u32>> = self.existing_orders.clone();
         for (c, &seed) in existing.iter().enumerate() {
             let (key, scale) = keys.key(self, &rings, &generics, seed)?;
-            index.entry(key).or_insert(c as u32);
+            index.entry(key).or_insert(id32(c, "seed class id")?);
             scales.push(scale);
         }
         let mut ratios: FastMap<(u32, u32), u32> = FastMap::default();
@@ -1489,7 +1507,7 @@ impl SeedBuilder {
                 let c = match index.get(&key) {
                     Some(&c) => c,
                     None => {
-                        let c = classes.len() as u32;
+                        let c = id32(classes.len(), "seed class id")?;
                         index.insert(key, c);
                         classes.push(seed);
                         scales.push(scale);
@@ -1512,7 +1530,7 @@ impl SeedBuilder {
                                 .coefficients
                                 .get(pair.0)
                                 .mul(&self.coefficients.get(pair.1).inverse()?);
-                            self.coefficients.intern(value)
+                            self.coefficients.intern(value)?
                         };
                         ratios.insert(pair, f);
                         f
@@ -1530,9 +1548,9 @@ impl SeedBuilder {
             }
             let row: Vec<(u32, u32)> = merged
                 .into_iter()
-                .map(|(c, value)| (c, self.coefficients.intern(value)))
-                .collect();
-            let next = rows.len() as u32;
+                .map(|(c, value)| Ok((c, self.coefficients.intern(value)?)))
+                .collect::<RusticolResult<_>>()?;
+            let next = id32(rows.len(), "seed class-row id")?;
             let id = *row_index.entry(row.clone()).or_insert(next);
             if id == next {
                 rows.push(row);
@@ -1837,14 +1855,14 @@ struct Keys {
 }
 
 impl Keys {
-    fn colour(&mut self, tensor: ColourTensor) -> u32 {
+    fn colour(&mut self, tensor: ColourTensor) -> RusticolResult<u32> {
         if let Some(&id) = self.colour_index.get(&tensor) {
-            return id;
+            return Ok(id);
         }
-        let id = self.colour_tensors.len() as u32;
+        let id = id32(self.colour_tensors.len(), "seed colour-tensor id")?;
         self.colour_index.insert(tensor.clone(), id);
         self.colour_tensors.push(tensor);
-        id
+        Ok(id)
     }
 
     /// `_proportional_key(tensor, rename)`: (key, s) with tensor = s T_key.
@@ -1878,35 +1896,35 @@ impl Keys {
         let key: Vec<(u32, i64, u32)> = terms
             .drain(..)
             .map(|(t, p, c)| {
-                let id = self.colour(t);
-                (id, p, builder.coefficients.intern(c.mul(&inverse)))
+                let id = self.colour(t)?;
+                Ok((id, p, builder.coefficients.intern(c.mul(&inverse))?))
             })
-            .collect();
+            .collect::<RusticolResult<_>>()?;
         let key = (tensor.normalization, key);
-        let next = self.proportional.len() as u32;
+        let next = id32(self.proportional.len(), "proportional seed class id")?;
         let id = *self.proportional.entry(key).or_insert(next);
         Ok((
             ClassKey::Proportional(id),
-            builder.coefficients.intern(first),
+            builder.coefficients.intern(first)?,
         ))
     }
 
     /// Exact equality of generic seeds (no merge).
-    fn exact(&mut self, builder: &mut SeedBuilder, tensor: &Tensor) -> ClassKey {
+    fn exact(&mut self, builder: &mut SeedBuilder, tensor: &Tensor) -> RusticolResult<ClassKey> {
         let terms: Vec<(u32, u32, i64)> = tensor
             .terms
             .iter()
             .map(|(c, t, p)| {
-                (
-                    builder.coefficients.intern(c.clone()),
-                    self.colour(t.clone()),
+                Ok((
+                    builder.coefficients.intern(c.clone())?,
+                    self.colour(t.clone())?,
                     *p,
-                )
+                ))
             })
-            .collect();
+            .collect::<RusticolResult<_>>()?;
         let key = (tensor.normalization, terms);
-        let next = self.exact.len() as u32;
-        ClassKey::Exact(*self.exact.entry(key).or_insert(next))
+        let next = id32(self.exact.len(), "exact seed class id")?;
+        Ok(ClassKey::Exact(*self.exact.entry(key).or_insert(next)))
     }
 
     fn key(
@@ -1937,7 +1955,7 @@ impl Keys {
                 if self.merge {
                     self.proportional(builder, tensor, &[])?
                 } else {
-                    (self.exact(builder, tensor), Coefficients::ONE)
+                    (self.exact(builder, tensor)?, Coefficients::ONE)
                 }
             }
             Seed::Tensor(t) => {
@@ -1945,7 +1963,7 @@ impl Keys {
                 if self.merge {
                     self.proportional(builder, &tensor, &[])?
                 } else {
-                    (self.exact(builder, &tensor), Coefficients::ONE)
+                    (self.exact(builder, &tensor)?, Coefficients::ONE)
                 }
             }
         };

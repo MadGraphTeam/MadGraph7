@@ -292,8 +292,10 @@ fn check_lanes(ids: &[u64], lanes: usize) -> Result<()> {
 /// arbitrary precision `Float` coefficient carriers. Numerical batches stay in
 /// NinjaRS/Symbolica from parameter binding through scalar masters.
 ///
-/// The selected upstream generic coordinator supports any n ≥ 1 and rank ≤ n+2.
-/// μ² has rank weight two. Invalid or repeated topologies are rejected upstream.
+/// The rank admission is NinjaRS's own (`ninjars::RankClass::of`, asked through
+/// `rusticol_core::loop_v2::bounds::rank_refusal`): NinjaRS reduces any n ≥ 1
+/// and rank ≤ n+2. μ² has rank weight two. Invalid or repeated topologies are
+/// rejected upstream.
 pub struct PolynomialReducer<T: NativeFloat>
 where
     Complex<T>: Real + EvaluationDomain,
