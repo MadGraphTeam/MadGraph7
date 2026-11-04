@@ -221,8 +221,17 @@ elif [ "${PROC}" != "${PROC/eemumubbg_}" ]; then
   export ENV_VFOLD_MINT1_NPOINTS=50  # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
   # NB: may need to keep ENV_VFOLD_CHANNELS unset to investigate bugs in channel mapping
   export ENV_VFOLD_CHANNELS="11.0"   # GF channels (space-separated) [DEFAULT: all channels]
+elif [ "${PROC}" != "${PROC/ggttg_}" ]; then
+  if [ "${ENV_NEVENTS}" == "" ]; then ENV_NEVENTS=10; fi # default 10
+  export ENV_VFOLD_MINT0_NITERS=2    # MINT0 (grid setup) iterations [DEFAULT: 12]
+  export ENV_VFOLD_MINT0_ACC=0.5     # MINT0 accuracy target [DEFAULT: 0.03]
+  export ENV_VFOLD_MINT1_NITERS=2    # MINT1 (upper envelope) iterations [DEFAULT: 12]
+  export ENV_VFOLD_MINT0_NPOINTS=50  # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
+  export ENV_VFOLD_MINT1_NPOINTS=50  # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
+  # NB: ENV_VFOLD_CHANNELS unset for now: all GF channels
 else
   echo "ERROR! Unknown PROC=${PROC}"
+  exit 1
 fi
 if [ "${ENV_PHYSICS}" == "1" ]; then
   unset ENV_VFOLD_MINT0_NITERS ENV_VFOLD_MINT0_ACC ENV_VFOLD_MINT1_NITERS ENV_VFOLD_MINT0_NPOINTS ENV_VFOLD_MINT1_NPOINTS ENV_VFOLD_CHANNELS
