@@ -87,7 +87,7 @@ set zerowidth_tchannel F
 ${gencmd}
 output standalone_cudacpp ${procdir}/CUDACPP/${ccSa} ${vfoldopt}
 EOF
-  (cd ${mg5dir}; ./bin/mg5_aMC ${mgfile} > ${procdir}/CUDACPP/${ccSa}.log 2>&1) || { echo "ERROR! generation failed, see CUDACPP/${ccSa}.log"; exit 1; }
+  (cd ${mg5dir}; ./bin/madgraph ${mgfile} > ${procdir}/CUDACPP/${ccSa}.log 2>&1) || { echo "ERROR! generation failed, see CUDACPP/${ccSa}.log"; exit 1; }
   # As in madgraph4gpu CODEGEN/generateAndCompare.sh: keep the generation commands in mg5.in
   sed "s|${procdir}/CUDACPP/||" ${mgfile} > CUDACPP/${ccSa}/mg5.in
   mv ${mgfile} CUDACPP/${ccSa}.log CUDACPP/${ccSa}/
