@@ -8,11 +8,13 @@
 # can be used like the hand-written <proc>_vfalt directories (created by the
 # script copied in <proc>_vfalt/vfold/GEN_<proc>_vfalt.sh):
 # - apply the post-processing of that script that does not need a launch
-# - copy the cudacpp libraries from a reference directory
+# - copy the cudacpp libraries and the MINT0/MINT1 test grids (for the -o
+#   tests, see vfold/test/grids/README) from a reference directory
 #   (default madvfold/DEV/<proc>_vfalt), if it exists
-# The .gitignore is installed by the overlay (madvfold/overlay_test), and so
-# will be the test scripts and grids of the vfold subdirectory: they are not
-# copied from the reference directory.
+# The .gitignore and the test scripts of the vfold subdirectory are installed
+# by the overlay (madvfold/overlay_test): they are not copied from the
+# reference directory. The test grids are process-specific, so they are not
+# in the overlay (for the moment they are taken from the reference directory).
 # The code is built by the first run (./bin/generate_events, e.g. via vfold/myLaunch.sh).
 
 set -e
@@ -62,12 +64,18 @@ sed -i "s|# automatic_html_opening = True|automatic_html_opening = False|" Cards
 
 # Test material from the reference directory
 if [ "${refdir}" == "" ]; then
-  echo "WARNING! No reference directory: cudacpp libraries not copied"
+  echo "WARNING! No reference directory: cudacpp libraries and test grids not copied"
   exit 0
 fi
 # - cudacpp libraries for mode C (see vfold/copyCudacppLibs.sh)
 if [ -d ${refdir}/lib/cudacpp ]; then
   command rm -rf lib/cudacpp
   command cp -dpr ${refdir}/lib/cudacpp lib/cudacpp
+fi
+# - MINT0/MINT1 grids for the -o tests (see vfold/test/grids/README)
+if [ -d ${refdir}/vfold/test/grids ]; then
+  command rm -rf vfold/test/grids
+  mkdir -p vfold/test
+  command cp -dpr ${refdir}/vfold/test/grids vfold/test/grids
 fi
 echo "INFO: setupVfoldTests.sh completed"
