@@ -120,6 +120,10 @@ for tst in ${tsts}; do
   elif [ "${tst}" == "n200f111k1024g1" ]; then
     env="ENV_NEVENTS=200 ENV_FOLDING='1,1,1' ENV_VFOLD_KPOINT_BATCH=1024 ENV_VFOLD_SBORN_GSCALE=1"
     tst2=${tst/k1024g1/k1}
+  elif [ "${tst}" == "n20f111k512g1" ]; then
+    # 10x fewer events: match n20f841 for eemumubbg tests
+    env="ENV_NEVENTS=20 ENV_FOLDING='1,1,1' ENV_VFOLD_KPOINT_BATCH=512 ENV_VFOLD_SBORN_GSCALE=1"
+    tst2=${tst/k512g1/k1}
   elif [ "${tst}" == "n2000f111k512g1" ]; then
     # 10x more events: the fixed GPU init cost becomes negligible and the virtual sample larger
     env="ENV_NEVENTS=2000 ENV_FOLDING='1,1,1' ENV_VFOLD_KPOINT_BATCH=512 ENV_VFOLD_SBORN_GSCALE=1"
