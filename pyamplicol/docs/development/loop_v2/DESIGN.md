@@ -2046,8 +2046,8 @@ These may be pushed to NinjaRS main under the 20 October authorisation (`MASTER_
 6. **Optional** coefficient-major `TensorNumerator` ingress, to avoid the closure transpose.
 7. **Public jets API** for (b2), if stage 2 is gated in: `fast/tensor_jets.rs` is private today.
 8. **Upstream the generic-precision tensor numerator** (`TensorGenericNumerator<T>`, now only in `ninjars-cli/src/case_check/harness.rs:1290`), so that DD/AP ingress needs no Symbolica expression.
-9. **Opt-out of the native masters' absolute on-shell threshold** (`OneLoopNativeMasters::with_onshell_threshold(Option<f64>)`, default unchanged; G2-M3, §11.2 'Absolute thresholds'): minimal PR https://github.com/alphal00p/ninjars/pull/9 (open; `workspace/reports/engine-v2/upstream/ninjars-onshell-threshold/`).
-10. **Threshold-free light-like spinors in the fast engine** (`fast/geometry.rs` `Spinor::new`: no absolute `infrared_eps` window, no √(p⁰ + p³) by cancellation near −z; §11.2 'Other thresholds on the binary64 path'): upstream note `workspace/reports/engine-v2/upstream/ninjars-lightlike-spinor/NOTE.md`, not a PR (it changes the fast engine's bits).
+9. **Opt-out of the native masters' absolute on-shell threshold** (`OneLoopNativeMasters::with_onshell_threshold(Option<f64>)`, default unchanged; G2-M3, §11.2 'Absolute thresholds'): NinjaRS #9, merged on its main 2026-11-03 and pinned since the mf-symbolica re-pin (`workspace/reports/engine-v2/upstream/ninjars-onshell-threshold/`).
+10. **Threshold-free light-like spinors in the fast engine** (`fast/geometry.rs` `Spinor::new`: no absolute `infrared_eps` window, no √(p⁰ + p³) by cancellation near −z; §11.2 'Other thresholds on the binary64 path'): NinjaRS #10 (the larger light-cone component), merged on its main 2026-11-03 and pinned since the mf-symbolica re-pin; it changes the fast engine's bits (upstream note `workspace/reports/engine-v2/upstream/ninjars-lightlike-spinor/NOTE.md`).
 
 ---
 
