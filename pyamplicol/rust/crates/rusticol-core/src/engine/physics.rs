@@ -202,11 +202,15 @@ impl PhysicsRuntime {
         self.select_indices_into(ids, &self.color_index_by_id, "color component", indices)
     }
 
+    /// Whether the colour axis is contracted: one contracted component, or
+    /// one per N_c degree of a graded artifact (strict or graded colour).
     pub(super) fn has_contracted_color_axis(&self) -> bool {
-        matches!(
-            self.manifest.color_components.as_slice(),
-            [PhysicsColorComponentV1::ContractedColor(_)]
-        )
+        !self.manifest.color_components.is_empty()
+            && self
+                .manifest
+                .color_components
+                .iter()
+                .all(|component| matches!(component, PhysicsColorComponentV1::ContractedColor(_)))
     }
 
     pub(super) fn color_is_computed(&self, index: usize) -> bool {

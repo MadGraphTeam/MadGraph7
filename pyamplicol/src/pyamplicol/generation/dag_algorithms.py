@@ -1178,6 +1178,7 @@ def prune_dag_to_required_currents(
     return GenericDAG(
         process=dag.process,
         color_plan=dag.color_plan,
+        nc_expansion=dag.nc_expansion,
         currents=pruned_currents,
         sources=pruned_sources,
         interactions=pruned_interactions,
@@ -1241,6 +1242,7 @@ def prune_global_helicity_flip_equivalent_roots(
         GenericDAG(
             process=dag.process,
             color_plan=dag.color_plan,
+            nc_expansion=dag.nc_expansion,
             currents=dag.currents,
             sources=dag.sources,
             interactions=dag.interactions,
@@ -1708,6 +1710,7 @@ def filter_dag_to_color_sectors(
         return GenericDAG(
             process=dag.process,
             color_plan=dag.color_plan,
+            nc_expansion=dag.nc_expansion,
             currents=(),
             sources=(),
             interactions=(),
@@ -1730,6 +1733,7 @@ def filter_dag_to_color_sectors(
         return GenericDAG(
             process=dag.process,
             color_plan=dag.color_plan,
+            nc_expansion=dag.nc_expansion,
             currents=(),
             sources=(),
             interactions=(),
@@ -1841,6 +1845,7 @@ def filter_dag_to_color_sectors(
     return GenericDAG(
         process=dag.process,
         color_plan=dag.color_plan,
+        nc_expansion=dag.nc_expansion,
         currents=tuple(currents),
         sources=sources,
         interactions=tuple(interactions),
@@ -1880,6 +1885,7 @@ def filter_dag_to_source_helicities(
         GenericDAG(
             process=dag.process,
             color_plan=dag.color_plan,
+            nc_expansion=dag.nc_expansion,
             currents=dag.currents,
             sources=dag.sources,
             interactions=dag.interactions,

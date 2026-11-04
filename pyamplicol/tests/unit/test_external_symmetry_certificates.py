@@ -193,8 +193,7 @@ def renamed_relabelled_reordered_external_sm(
     transformed = deepcopy(raw)
     original_names = sorted(str(particle["name"]) for particle in raw["particles"])
     name_map = {
-        name: f"state_{index:03d}"
-        for index, name in enumerate(original_names, start=1)
+        name: f"state_{index:03d}" for index, name in enumerate(original_names, start=1)
     }
     absolute_ids = sorted(
         {abs(int(particle["pdg_code"])) for particle in transformed["particles"]}
@@ -255,9 +254,7 @@ def renamed_relabelled_reordered_external_sm(
 def color_dummy_relabelled_external_sm(tmp_path_factory: pytest.TempPathFactory):
     raw = json.loads((MODEL_ROOT / "sm.json").read_text(encoding="utf-8"))
     relabelled = deepcopy(raw)
-    vertex = next(
-        item for item in relabelled["vertex_rules"] if item["name"] == "V_37"
-    )
+    vertex = next(item for item in relabelled["vertex_rules"] if item["name"] == "V_37")
     vertex["color_structures"] = [
         "*".join(reversed(source.replace("-1", "-97").split("*")))
         for source in vertex["color_structures"]
@@ -320,9 +317,7 @@ def test_external_sm_symmetries_are_proven_from_compiled_tensors(external_sm) ->
     parity_digests = dict(certificates.parity_kernel_digests)
     yang_mills_digests = dict(certificates.yang_mills_kernel_digests)
     adjoint_digests = dict(certificates.yang_mills_adjoint_digests)
-    reflection_digests = dict(
-        certificates.adjoint_current_reflection_digests
-    )
+    reflection_digests = dict(certificates.adjoint_current_reflection_digests)
     assert set(parity_digests) == certificates.parity_kernel_kinds
     assert set(yang_mills_digests) == certificates.yang_mills_kernel_kinds
     assert set(adjoint_digests) == certificates.yang_mills_adjoint_names
@@ -337,8 +332,7 @@ def test_external_sm_symmetries_are_proven_from_compiled_tensors(external_sm) ->
         )
     )
     assert all(
-        reflection_digests[kind] == parity_digests[kind]
-        for kind in reflection_digests
+        reflection_digests[kind] == parity_digests[kind] for kind in reflection_digests
     )
 
     pure_adjoint = build_model_process_ir("g g > g g", compiled.ir)
@@ -583,16 +577,41 @@ def test_external_sm_derives_fundamental_fierz_auxiliary(external_sm) -> None:
         and auxiliary.name in kernel.particles
         for kernel in synthetic
     )
-    assert {
-        kernel.color_projection_coefficient
-        for kernel in synthetic
-        if kernel.particles[2] == auxiliary.name
-    } == {(1.0 / 3.0, 0.0)}
-    assert {
-        kernel.color_projection_coefficient
-        for kernel in synthetic
-        if kernel.particles[2] != auxiliary.name
-    } == {(1.0, 0.0)}
+    assert {kernel.color_projection_coefficient for kernel in synthetic} == {(1.0, 0.0)}
+    # The 1/N_c of the production is an exact factor of its coupling, not a
+    # binary64 colour coefficient.
+    from symbolica import E
+
+    sources = {
+        (kernel.vertex, kernel.particles): kernel
+        for kernel in compiled.ir.oriented_kernels
+    }
+    productions = [
+        kernel for kernel in synthetic if kernel.particles[2] == auxiliary.name
+    ]
+    assert productions
+    for kernel in productions:
+        source = sources[
+            (
+                kernel.vertex.removesuffix("::u1-subtraction"),
+                (*kernel.particles[:2], "g"),
+            )
+        ]
+        assert (
+            E(kernel.coupling_expression) * 3 - E(source.coupling_expression)
+        ).expand() == E("0")
+    for kernel in synthetic:
+        if kernel.particles[2] != auxiliary.name:
+            source = sources[
+                (
+                    kernel.vertex.removesuffix("::u1-subtraction"),
+                    tuple(
+                        "g" if name == auxiliary.name else name
+                        for name in kernel.particles
+                    ),
+                )
+            ]
+            assert kernel.coupling_expression == source.coupling_expression
 
     propagator = model._propagator_ir(auxiliary.pdg_code)
     assert propagator.kind == "vector"
@@ -736,14 +755,20 @@ def test_route_safe_mixed_line_dag_stays_below_legacy_kernel_count(
     assert external_dag.interaction_evaluation_count == 36_024
     assert builtin_dag.interaction_evaluation_count < legacy_kernel_evaluations
     assert external_dag.interaction_evaluation_count < legacy_kernel_evaluations
-    assert assign_recursive_current_evaluation_reuse(
-        builtin_dag,
-        builtin_model,
-    ) == builtin_dag
-    assert assign_recursive_current_evaluation_reuse(
-        external_dag,
-        external_model,
-    ) == external_dag
+    assert (
+        assign_recursive_current_evaluation_reuse(
+            builtin_dag,
+            builtin_model,
+        )
+        == builtin_dag
+    )
+    assert (
+        assign_recursive_current_evaluation_reuse(
+            external_dag,
+            external_model,
+        )
+        == external_dag
+    )
 
 
 def test_recursive_reuse_keeps_reflected_runtime_routes_distinct(
@@ -909,9 +934,7 @@ def test_external_sm_topology_survives_combined_identity_and_inventory_changes(
     process: str,
 ) -> None:
     compiled, model = external_sm
-    transformed, transformed_model, name_map = (
-        renamed_relabelled_reordered_external_sm
-    )
+    transformed, transformed_model, name_map = renamed_relabelled_reordered_external_sm
 
     assert _production_dag_signature(
         transformed,
@@ -985,9 +1008,7 @@ def test_custom_adjoint_propagator_disables_global_symmetries(external_sm) -> No
     compiled, model = external_sm
     original_yang_mills_kinds = model._symmetry_certificates.yang_mills_kernel_kinds
     propagators = tuple(
-        replace(propagator, custom=True)
-        if propagator.particle == "g"
-        else propagator
+        replace(propagator, custom=True) if propagator.particle == "g" else propagator
         for propagator in compiled.ir.propagators
     )
 

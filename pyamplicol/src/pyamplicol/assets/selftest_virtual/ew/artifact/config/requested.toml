@@ -53,6 +53,7 @@ accuracy = "full"
 contraction = "auto"
 lc_flow_layout = "topology-replay"
 fft_basis = "adjoint"
+graded = false
 
 [generation]
 output = "artifact"

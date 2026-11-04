@@ -621,6 +621,7 @@ pub(super) fn load_eager_color_topology_replay_manifests(
                             symmetry_ids[index],
                             "contraction symmetry",
                         )?,
+                        nc_degree: None,
                     })
                 })
                 .collect::<RusticolResult<Vec<_>>>()?,
@@ -683,6 +684,7 @@ pub(super) fn load_eager_color_topology_replay_manifests(
         includes_color_factor: true,
         entries,
         repeated_block,
+        nc_expansion: None,
     };
     Ok(Some((amplitude_manifest, contraction_manifest)))
 }
@@ -1799,6 +1801,8 @@ fn manifest_color_accuracy(physics: &ProcessPhysicsV1) -> &'static str {
         crate::ColorAccuracy::Lc => "lc",
         crate::ColorAccuracy::Nlc => "nlc",
         crate::ColorAccuracy::Full => "full",
+        crate::ColorAccuracy::StrictLc => "strict-lc",
+        crate::ColorAccuracy::StrictNlc => "strict-nlc",
     }
 }
 

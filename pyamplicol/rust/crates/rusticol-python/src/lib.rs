@@ -178,6 +178,8 @@ struct ContractedColorComponent {
     id: String,
     index: usize,
     description: String,
+    /// The N_c degree this component reports in a graded artifact.
+    nc_degree: Option<i32>,
 }
 
 #[pyclass(module = "pyamplicol._rusticol", frozen, get_all, skip_from_py_object)]
@@ -292,6 +294,7 @@ impl ProcessPhysics {
                     id: color.id.clone(),
                     index: color.index,
                     description: color.description.clone(),
+                    nc_degree: color.nc_degree,
                 }),
                 CoreColorComponent::LcFlow(_) => None,
             })
@@ -2560,6 +2563,7 @@ mod tests {
             id: "contracted".to_string(),
             index: 0,
             description: "fully contracted color".to_string(),
+            nc_degree: None,
         })];
         physics.reduction.kind = ReductionKind::ContractedColor;
         physics.reduction.groups[0].representative_color_id = "contracted".to_string();
