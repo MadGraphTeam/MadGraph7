@@ -408,7 +408,7 @@ def test_vertex_momentum_degree_rejects_unknown_momentum_forms(control):
 
 
 @pytest.mark.loop_fast
-def test_rank_beyond_integrand_reduction_domain_fails(control):
+def test_rank_beyond_the_reducer_admission_fails(control):
     model, catalogue = control
 
     class Raised:
@@ -432,7 +432,8 @@ def test_rank_beyond_integrand_reduction_domain_fails(control):
             base = self.inner.reflected(replace(vertex, q_degree=vertex.q_degree - 2))
             return replace(base, q_degree=base.q_degree + 2)
 
-    with pytest.raises(ValueError, match="N \\+ 2"):
+    # The reducer's own admission (NinjaRS RankClass::of), asked natively.
+    with pytest.raises(ValueError, match=r"NinjaRS reduces rank <= N\+2"):
         _generate(model, Raised(catalogue), ["g", "g"], ["g", "g"], {"QCD": 2})
 
 

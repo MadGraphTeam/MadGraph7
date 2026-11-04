@@ -588,8 +588,9 @@ def test_lexicographic_rank_unrank_matches_itertools_order(degree: int) -> None:
 def test_lexicographic_rank_unrank_rejects_invalid_inputs() -> None:
     symmetric_group_module = importlib.import_module("pyamplicol.color.symmetric_group")
 
+    # No degree cap (degree 11 is admitted): only invalid degrees refuse.
     with pytest.raises(ValueError, match="degree"):
-        symmetric_group_module._lexicographic_permutation_unrank(11, 0)
+        symmetric_group_module._lexicographic_permutation_unrank(-1, 0)
     with pytest.raises(ValueError, match="out of bounds"):
         symmetric_group_module._lexicographic_permutation_unrank(4, math.factorial(4))
     with pytest.raises(ValueError, match="bijection"):
