@@ -15,6 +15,7 @@
      $        ,g_strong(:),wgts(:,:),parton_iproc(:,:),y_bst(:)
      $        ,cpower(:),plot_wgts(:,:),shower_scale(:),unwgt(:,:)
      $        ,bias_wgt(:),shower_scale_a(:,:,:)
+         double precision, allocatable :: xlum69(:) ! AV
          save
       end module weight_lines
 
@@ -188,6 +189,10 @@ c bias_wgt
          allocate(temp1(n_contr))
          temp1(1:max_contr)=bias_wgt
          call move_alloc(temp1,bias_wgt)
+c xlum69                               ! AV
+         allocate(temp1(n_contr))      ! AV
+         temp1(1:max_contr)=xlum69     ! AV
+         call move_alloc(temp1,xlum69) ! AV
 c plot_wgts
          allocate(temp2(max_wgt,n_contr))
          temp2(1:max_wgt,1:max_contr)=plot_wgts
@@ -247,6 +252,7 @@ c update maximum
       allocate(y_bst(1))
       allocate(cpower(1))
       allocate(bias_wgt(1))
+      allocate(xlum69(1)) ! AV
       allocate(plot_wgts(1,1))
       allocate(shower_scale(1))
       allocate(shower_scale_a(1,nexternal,nexternal))
@@ -293,6 +299,7 @@ c update maximum
       if (allocated(y_bst)) deallocate(y_bst)
       if (allocated(cpower)) deallocate(cpower)
       if (allocated(bias_wgt)) deallocate(bias_wgt)
+      if (allocated(xlum69)) deallocate(xlum69) ! AV
       if (allocated(plot_wgts)) deallocate(plot_wgts)
       if (allocated(shower_scale)) deallocate(shower_scale)
       if (allocated(shower_scale_a)) deallocate(shower_scale_a)

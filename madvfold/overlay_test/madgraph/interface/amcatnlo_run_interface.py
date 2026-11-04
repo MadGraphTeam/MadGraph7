@@ -1972,11 +1972,15 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
 
             # Main loop over the three MINT generation steps:
             for mint_step, status in enumerate(mcatnlo_status):
+                print('DEBUG! mint_step=%i'%mint_step)
+                print('DEBUG! status=%s'%status)
                 if options['only_generation'] and mint_step < 2:
                     continue
                 self.update_status(status, level='parton')
                 self.run_all_jobs(jobs_to_run,mint_step,fixed_order=False)
                 self.collect_log_files(jobs_to_run,mint_step)
+                if mint_step == 1:
+                    self.collect_dump_files(jobs_to_run)
                 jobs_to_run,jobs_to_collect=self.collect_the_results(options,req_acc,jobs_to_run, \
                                 jobs_to_collect,mint_step,mode,mode_dict[mode],fixed_order=False)
                 if mint_step+1==2 and nevents==0:
@@ -2753,11 +2757,15 @@ RESTART = %(mint_mode)s
                         job['niters']=int(round(math.sqrt(itmax_fl)))
                         job['npoints']=int(round(job['npoints_done']*itmax_fl/
                                                  round(math.sqrt(itmax_fl))))*2
+                    print('DEBUG!',job['niters'])
+                    print('DEBUG!',job['npoints'])
                     # Add the job to the list of jobs that need to be run
                     jobs_new.append(job)
             return jobs_new
         elif step+1 <= 2:
+            print('DEBUG! step=%i'%step)
             nevents=self.run_card['nevents']
+            print('DEBUG! nevents=%i'%nevents)
             # Total required accuracy for the upper bounding envelope
             if req_acc<0: 
                 req_acc2_inv=nevents
@@ -3224,6 +3232,15 @@ RESTART = %(mint_mode)s
 
         outfile.write('</font>\n</BODY></HTML>\n')
         outfile.close()
+
+    def collect_dump_files(self, jobs):
+        rundir = pjoin(self.me_dir, 'Events', self.run_name) 
+
+        for job in jobs:
+            # put an anchor
+            file=pjoin(job['dirname'],'dump.dat')
+            ###files.cp(file, pjoin(rundir,'dump_%s_GF%s.dat' % (job['p_dir'], job['channel'])))
+            files.mv(file, pjoin(rundir,'dump_%s_GF%s.dat' % (job['p_dir'], job['channel'])))
 
 
     def finalise_run_FO(self,folder_name,jobs):

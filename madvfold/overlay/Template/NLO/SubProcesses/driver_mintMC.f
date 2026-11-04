@@ -89,6 +89,12 @@ c general MadFKS parameters
      &     ,dermax,xi_i_fks_ev_der_max,y_ij_fks_ev_der_max
       integer                     n_MC_subt_diverge
       common/counter_subt_diverge/n_MC_subt_diverge
+      integer env_fvz_itmax, env_fvz_ndump
+      common/envncalls/env_fvz_itmax, env_fvz_ndump
+      character*10 getenvvalue
+      logical dump69
+      common /cdump69/dump69
+c 
 C-----
 C  BEGIN CODE
 C-----  
@@ -141,7 +147,24 @@ c
       call run_printout          !Prints out a summary of the run settings
       call fill_configurations_common
       call check_amp_split 
-c     
+
+      CALL getenv('ENV_FVZ_ITMAX',getenvvalue)
+      if (getenvvalue.ne.'') then
+        read(getenvvalue,*) env_fvz_itmax
+      else
+        env_fvz_itmax = 0 ! keep defaults
+      endif
+      write(6,*) 'ENV_FVZ_ITMAX', env_fvz_itmax
+
+      CALL getenv('ENV_FVZ_NDUMP',getenvvalue)
+      if (getenvvalue.ne.'') then
+        read(getenvvalue,*) env_fvz_ndump
+      else
+        env_fvz_ndump = 0 ! default: skip dump
+      endif
+      write(6,*) 'ENV_FVZ_NDUMP', env_fvz_ndump
+      
+c
 c     Get user input
 c
       write(*,*) "getting user params"
@@ -160,6 +183,15 @@ c Only do the reweighting when actually generating the events
       else
          only_virt=.false.
       endif
+
+      !MZ (AV open it even if ENV_FVZ_SKIP_DUMP is set: empty file)
+      if(imode.eq.1) open(unit=69,file='dump.dat',status='unknown')
+      !AV
+      dump69 = .false.
+      write(6,*) 'DEBUG! ncalls0 (from get_user_param)', ncalls0
+      write(6,*) 'DEBUG! itmax (from get_user_param)', itmax
+      if ( env_fvz_itmax.ne.0 ) itmax = env_fvz_itmax
+      write(6,*) 'DEBUG! itmax (overloaded!)', itmax
 
       if(imode.eq.0)then
         flat_grid=.true.
@@ -382,6 +414,10 @@ c Randomly pick the contribution that will be written in the event file
       write(*,*) 'Time spent in Other_tasks : ',tOther
       write(*,*) 'Time spent in Total : ',tTot
 
+
+      !MZ (AV open it even if ENV_FVZ_SKIP_DUMP is set: empty file)
+      if(imode.eq.1) close(69)
+
       open (unit=12, file='res.dat',status='unknown')
       if (imode.eq.0) then
          write (12,*)ans(1,1),unc(1,1),ans(2,1),unc(2,1),itmax,ncalls0,tTot
@@ -533,7 +569,7 @@ c-----
       write(*,*)'  Enter alpha>0 to set G_azi=0 (no azi corr)'
       read(*,*)alazi,beazi
       write (*,*) 'for G_azi: alpha=',alazi,', beta=',beazi
-      i=2
+      i=2 ! AV: this is the default (but setting i=1 here does NOT disable H events)
       if (i.eq.0) then
          Hevents=.true.
          write (*,*) 'Doing the H-events'
@@ -740,6 +776,20 @@ c
       common /c_vegas_x_fold/x_save,ifold_picked
       integer icolup_s(2,nexternal-1),icolup_h(2,nexternal)
       common /colour_connections/ icolup_s,icolup_h
+
+      !MZ
+      double precision xi_i_fks_ev,y_ij_fks_ev
+      double precision p_i_fks_ev(0:3),p_i_fks_cnt(0:3,-2:2)
+      common/fksvariables/xi_i_fks_ev,y_ij_fks_ev,p_i_fks_ev,p_i_fks_cnt
+      double precision phidump
+      common /tophidump/phidump
+      double precision xi_i_hat_ev,xi_i_hat_cnt(-2:2)
+      common /cxi_i_hat/xi_i_hat_ev,xi_i_hat_cnt
+      !AV
+      double precision xiimax_ev
+      common /cxiimaxev/xiimax_ev
+      logical dump69
+      common /cdump69/dump69
 c
       if (new_point .and. ifl.ne.2) then
          pass_cuts_check=.false.
@@ -782,6 +832,10 @@ c "npNLO".
          wgt_me_born=0d0
          if (ickkw.eq.3) call set_FxFx_scale(0,p)
          call update_vegas_x(xx,x)
+         !AV (ifl=0 for ifold_counter=1; ifl=1 for ifold_counter>1)
+         if (dump69) write(69,*) 'IFOLD', ifold_counter
+         !MZ
+         if (dump69) write(69,*) 'NEWPS', x(1:nndim)
          do i=1,nndim
             x_save(i,ifold_counter)=x(i)
          enddo
@@ -821,6 +875,20 @@ c FKS configurations (for the shower scale) (multiply by
 c 1/proc_map(0,0)*vol1)
          jac=jac/(proc_map(0,0)*vol1)
          call generate_momenta(nndim,iconfig,jac,x,p)
+         !MZ/AV
+         if (dump69) then
+           write(69,*) 'XIYPHI',xi_i_fks_ev,y_ij_fks_ev,phidump
+           write(69,*) 'XIMAX',xiimax_ev
+           write(69,*) 'XIHAT',xi_i_hat_ev,xi_i_hat_cnt(-2),xi_i_hat_cnt(-1),xi_i_hat_cnt(0),xi_i_hat_cnt(1),xi_i_hat_cnt(2)
+           do i = 1, nexternal
+             write(69,*) 'P', i , p(:,i)
+           enddo
+           do i = 1, nexternal-1
+             write(69,*) 'PB', i , p1_cnt(:,i,0)
+           enddo
+           write(69,*)'VEGASWGT', vegas_wgt
+         endif
+
          if (p_born(0,1).lt.0d0) goto 12
          call compute_prefactors_nbody(vegas_wgt)
          call set_cms_stuff(izero)
@@ -867,6 +935,9 @@ c compares all the components of the momenta instead.
             wgt_me_born=0d0
             iFKS=proc_map(proc_map(0,1),i)
             call update_fks_dir(iFKS)
+            if (dump69) then
+                write(69,*)'NFKS',nFKS_picked_nbody,iFKS
+            endif
             jac=1d0/vol1
             probne=1d0
             gfactsf=1.d0

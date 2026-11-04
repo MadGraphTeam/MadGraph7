@@ -210,8 +210,30 @@ contains
     integer, dimension(ndimmax) :: kfold
     double precision, external :: fun
     logical :: enough_points,channel_loop_done
+    integer env_fvz_itmax, env_fvz_ndump
+    common/envncalls/env_fvz_itmax, env_fvz_ndump
+    logical dump69
+    common /cdump69/dump69
+    integer itmax1
     call initialise_mint
-    do while (nit.lt.itmax)
+    if (imode.eq.1 .and. env_fvz_ndump.gt.0) then
+       itmax1 = itmax+1 ! AV add one iteration for dumps (MINT sets nit=itmax when target precision is >
+    else
+       itmax1 = itmax
+    endif
+!   do while (nit.lt.itmax)
+    do while (nit.lt.itmax1) ! AV add one iteration for dumps
+       if (imode.eq.1) then
+          write(6,*) 'DEBUG! nit, itmax1', nit, itmax1
+          write(6,*) 'DEBUG! ncalls0, ncalls', ncalls0, ncalls
+          if(nit.eq.itmax) then             ! AV (new2) this can only happen if itmax1=itmax+1>nit (i.e. requires env_fvz_ndump>0)
+             dump69=.true.                  ! AV (new2) dump only on the last additional iteration
+             ncalls0=env_fvz_ndump              ! AV (new2) number of events to dump in the last additional iteration
+             itmax1=itmax                   ! AV (new2) ensure this additional iteration was the last one [NB: nit is reset to itmax by MINT]
+             write(6,*) 'DEBUG! FINAL ncalls', ncalls
+             write(6,*) 'DEBUG! FINAL ncalls0, ncalls', ncalls0, ncalls
+          endif
+       endif
        call start_iteration
 2      kpoint_iter=kpoint_iter+1
        do kpoint=1,ncalls
@@ -230,6 +252,12 @@ contains
           call combine_results_channels
        endif
        call update_accumulated_results
+       if (env_fvz_ndump.gt.0) then ! AV there is no dump file on unit 69 if ENV_FVZ_NDUMP is 0 or not set
+          !MZ/AV (NEWITER is printed at the end of iteration nit, which takes itmax values in [1,...itmax])
+          if (imode.eq.1) write(69,*) 'NEWITER', nit, itmax, ncalls, ncalls0
+       endif
+       !AV
+       if (imode.eq.1) write(6,*) 'NEWITER', nit, itmax, ncalls, ncalls0
     enddo
     call finalise_mint
   end subroutine mint
@@ -309,6 +337,8 @@ contains
   subroutine prepare_next_iteration
     implicit none
     integer :: kchan,kdim,k_ord_virt
+    integer env_fvz_itmax, env_fvz_ndump
+    common/envncalls/env_fvz_itmax, env_fvz_ndump
     if (double_events) then
 ! Double the number of intervals in the grids if not yet reach the maximum
        if (2*nint_used.le.nintervals) then
@@ -326,7 +356,10 @@ contains
           nint_used_virt=2*nint_used_virt
        endif
 ! double the number of points for the next iteration
-       ncalls0=ncalls0*2
+       !AV (NB this is only called if the initial ncalls0 is -1)
+       write(6,*) 'DEBUG! ncalls0 (last iteration)', ncalls0
+       ncalls0 = ncalls0*2
+       write(6,*) 'DEBUG! ncalls0 (next iteration)', ncalls0
     endif
   end subroutine prepare_next_iteration
   
@@ -849,6 +882,12 @@ contains
     integer, dimension(ndimmax) :: kfold
     double precision :: vol,dx
     double precision, dimension(ndimmax) :: x
+    logical dump69
+    common /cdump69/dump69
+    logical nfold69        ! AV
+    save nfold69           ! AV
+    data nfold69/.true./   ! AV
+    double precision, dimension(0:ndimmax) :: vegasvol ! AV
     call get_channel
 ! find random x, and its random cell
     do kdim=1,ndim
@@ -865,15 +904,29 @@ contains
     kfold(1:ndim)=1
     entry get_random_x_next_fold(x,vol,kfold)
     vol=1d0/vol_chan * wgt_mult
+    vegasvol(0)=vol ! AV
 ! convert 'flat x' ('rand') to 'vegas x' ('x') and include jacobian ('vol')
+    !MZ/AV
+    if (dump69 .and. nfold69) then
+       write(69,*) 'NFOLD', ifold(1:ndim)
+       nfold69 = .false.
+    endif
+    if (dump69) write(69,*) 'FLATX', rand(1:ndim)
     do kdim=1,ndim
        nintcurr=nint_used/ifold(kdim)
        icell(kdim)=ncell(kdim)+(kfold(kdim)-1)*nintcurr
        dx=xgrid(icell(kdim),kdim,ichan)-xgrid(icell(kdim)-1,kdim,ichan)
        vol=vol*dx*nintcurr
+       vegasvol(kdim)=vol ! AV
        x(kdim)=xgrid(icell(kdim)-1,kdim,ichan)+rand(kdim)*dx
        if(imode.eq.0) nhits(icell(kdim),kdim,ichan)=nhits(icell(kdim),kdim,ichan)+1
     enddo
+    ! AV vegas_wgt is the 2nd argument of sigintF(xx,vegas_wgt,ifl,f)
+    ! AV sigintF is the only argument of mint(fun)
+    ! AV mint(fun) calls compute_integrand(fun,x,vol) that internally calls fun(x,vol,...)
+    ! AV mint(fun) previously called get_random_x(x,vol,kfold) where vol is filled (here!)
+    ! AV in the following printout normally VEGASVOL(0)=1 while VEGASVOL(ndim)=VEGASWGT
+    if (dump69) write(69,*) 'VEGASVOL', vegasvol(0:ndim) ! AV
     do k_ord_virt=0,n_ord_virt
        if (use_poly_virtual) then
           call get_polyfit(ichan,k_ord_virt,x(1:ndim-3),polyfit(k_ord_virt))

@@ -773,7 +773,7 @@ c the list of weights using the add_wgt subroutine
         g22=g**(QCD_power)
         if (replace_MC_subt.gt.0d0) then
           wgt1=amp_split(iamp)*s_s/g22*replace_MC_subt
-          call add_wgt(8,orders,-wgt1*f_s_MC_H,0d0,0d0)
+           call add_wgt(8,orders,-wgt1*f_s_MC_H,0d0,0d0)
           wgt1=wgt1*f_s_MC_S
         else
           wgt1=0d0
@@ -2203,9 +2203,14 @@ c or to fill histograms.
       INTEGER              IPROC
       DOUBLE PRECISION PD(0:MAXPROC)
       COMMON /SUBPROC/ PD, IPROC
+      logical dump69
+      common /cdump69/dump69
       parameter (conv=389379660d0) ! conversion to picobarns
       call cpu_time(tBefore)
-      if (icontr.eq.0) return
+!     if (icontr.eq.0) then ! MZ avoid missing ENDPS
+!         if (dump69) write(69,*) 'ENDPS' ! AV moved after WGTS/UNWGTS
+!         return
+!     endif
       virt_found=.false.
 c number of contributions before they are (possibly) increased through a
 c call to separate_flavour_config().
@@ -2253,7 +2258,11 @@ c overwrite the relevant information.]
          wgts(iwgt,i)=xlum * wgt_wo_pdf
          do j=1,iproc
             parton_iproc(j,i)=parton_iproc(j,i) * wgt_wo_pdf
-         enddo
+          enddo
+         if (dump69) xlum69(i)=xlum !AV          
+!        ! MZ (AV: add ifold_cnt)
+!        if (dump69) write(69,*) 'WGT', itype(i), wgts(iwgt,i), nfks(i),
+!    &     xlum/1d15, ifold_cnt(i) ! AV replaced by WGTS/UNWGTS
          if (itype(i).eq.14 .and. .not.virt_found) then
             virt_found=.true.
 c Special for the soft-virtual needed for the virt-tricks. The
@@ -2279,6 +2288,8 @@ c and not be part of the plots nor computation of the cross section.
       enddo
       call cpu_time(tAfter)
       t_as=t_as+(tAfter-tBefore)
+!     ! MZ 
+!     if (dump69) write(69,*) 'ENDPS' ! AV moved after WGTS/UNWGTS
       return
       end
 
@@ -3716,6 +3727,8 @@ c on the imode we should or should not include the virtual corrections.
      $     ,n1body_wgt,tmp_wgt,max_weight
       double precision virtual_over_born
       common /c_vob/   virtual_over_born
+      logical dump69
+      common /cdump69/dump69
       sigint=0d0
       sigint1=0d0
       sigint_ABS=0d0
@@ -3736,6 +3749,24 @@ c on the imode we should or should not include the virtual corrections.
                max_weight=max(max_weight,abs(unwgt(j,i)))
             enddo
          enddo
+         if (dump69) then                              ! AV
+           do i=1, icontr                              ! AV
+             write (69,*) 'WGTS ',                     ! AV
+     $         itype(i),wgts(1,i),nFKS(i),             ! AV
+     $         i,H_event(i),ifold_cnt(i),              ! AV
+     $         niproc(i),icontr_sum(0,i),              ! AV
+     &         xlum69(i)/1d15                          ! AV 
+             if (icontr_sum(0,i).eq.0) cycle           ! AV
+             do j=1,niproc(i)                          ! AV
+               write (69,*) 'UNWGT',                   ! AV
+     $           itype(i),unwgt(j,i),nFKS(i),          ! AV
+     $           i,H_event(i),ifold_cnt(i),            ! AV
+     $           j                                     ! AV
+             enddo                                     ! AV
+           enddo                                       ! AV
+           write (69,*) 'VIRTW', virt_wgt_mint(0)      ! AV sum(UNWGT)+VIRTW=sum(WGTS)
+           write (69,*) 'ENDPS'                        ! AV
+         endif                                         ! AV
 c check the consistency of the results up to machine precision (10^-10 here)
          if (imode.ne.1 .or. only_virt) then
             if (abs((sigint-sigint1)/max_weight).gt.1d-10) then
