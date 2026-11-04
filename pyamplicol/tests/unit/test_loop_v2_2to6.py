@@ -17,7 +17,7 @@ import pytest
 
 from pyamplicol.loops.v2.native_process import NativeProcess
 from pyamplicol.loops.v2.plan_export import NativeExecutor
-from tools.loop_benchmark import pyamplicol_v2
+from tools.loop_benchmark import pyamplicol_v2, streams
 from tools.loop_benchmark.stored_checks import check_process
 
 
@@ -138,3 +138,111 @@ def test_stored_checks_at_seven_gluons(compiled, loop_native, accuracy):
     )
     # Catani's operator is the full-colour prediction.
     _assert_passed(record, catani=accuracy == "full", ward=False)
+
+
+# MF-8Q (the quark 2->6 rows u u~ > 6g and u u~ > u u~ 4g; append-only): the
+# same harness on their lower-multiplicity analogues, Ward with the external
+# gluons, and the user's Q-A ruling that a top-included 2->6 request stays
+# accepted (the timed rows are top-free).
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize("key", ("uux_uuxg", "uux_gggg"))
+def test_stored_checks_on_quark_rows(compiled, loop_native, key):
+    """A quark row stored from the full tree kernels: Catani's poles (native),
+    E, the double pole, binary64 against double-double and Ward with
+    epsilon -> p on its external gluons only (``ward.gauge_legs``)."""
+
+    process = _stored(compiled, loop_native, key, "full", "full")
+    gluons = [
+        leg for leg, pdg in enumerate(streams.spec(key)["pdgs"], start=1) if pdg == 21
+    ]
+    assert process.record["gauge_legs"] == gluons
+    record = check_process(
+        process,
+        loop_native,
+        key,
+        "full",
+        points=[0, 1],
+        dd_points=[0],
+        ward_points=[0],
+        rescue_points=[0, 1, 2, 3],
+        threads=8,
+    )
+    _assert_passed(record, catani=True, ward=True)
+    legs = {leg for row in record["ward"] for leg in row["legs"]}
+    assert legs and legs <= set(gluons)
+
+
+@pytest.mark.loop_nightly
+def test_quark_row_at_leading_colour(compiled, loop_native):
+    """u u~ > 4g at LC (production kernels): E, the double pole with the
+    leading Casimirs and double-double; no Catani operator at LC."""
+
+    process = _stored(compiled, loop_native, "uux_gggg", "lc", "production")
+    record = check_process(
+        process,
+        loop_native,
+        "uux_gggg",
+        "lc",
+        points=[0, 1],
+        dd_points=[0],
+        rescue_points=[0, 1],
+        threads=8,
+    )
+    _assert_passed(record, catani=False, ward=False)
+
+
+_TOP_CARD = """
+action = "generate"
+[model]
+source = {model}
+[process]
+entries = [{{expression={process}, name="p"}}]
+loop_coupling_orders = ["QCD"]
+coupling_order_policy = "minimal"
+[color]
+accuracy = "lc"
+contraction = "direct"
+[loop]
+r2_strategy = "model"
+[loop.preparation]
+fixed_parameters = {{MB = "0"}}
+[generation]
+output = {output}
+emit_api_bundle = false
+[generation.validation]
+post_build_validation = false
+"""
+
+
+@pytest.mark.loop_nightly
+def test_a_top_included_2to6_request_passes_the_dry_run(
+    loop_sm_compiled_model, tmp_path
+):
+    """USER Q-A (2026-10-31): the 2->6 rows are generated and timed top-free,
+    but a request with the top in the loop must stay accepted (no veto-only
+    path, no multiplicity cap): u u~ > 6g without a particle veto passes the
+    public dry run (``Generator.plan``: request and model preparation)."""
+
+    import json
+
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.config import resolve_config
+
+    expression = "u u~ > g g g g g g"
+    card = tmp_path / "card.toml"
+    card.write_text(
+        _TOP_CARD.format(
+            model=json.dumps(str(loop_sm_compiled_model)),
+            process=json.dumps(expression),
+            output=json.dumps(str(tmp_path / "artifact")),
+        )
+    )
+    config = resolve_config(card)
+    assert not config.effective.generation.particle_veto
+    plan = Generator(config).plan(
+        ProcessSet((ProcessRequest.parse(expression, name="p"),))
+    )
+    assert plan.unsupported_features == ()
+    assert [p.expression.lower() for p in plan.concrete_processes] == [expression]
