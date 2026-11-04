@@ -483,6 +483,7 @@ c This subroutine computes the soft-virtual matrix elements and adds its
 c value to the list of weights using the add_wgt subroutine
       use extra_weights
       use mint_module
+      use vfold_mode
       implicit none
       include 'nexternal.inc'
       include 'coupl.inc'
@@ -491,6 +492,19 @@ c value to the list of weights using the add_wgt subroutine
       include 'orders.inc'
       integer orders(nsplitorders)
       integer iamp, i
+c AV step 11e BSV memo: bornsoftvirtual's outputs, saved at the first fold of a kpoint
+      integer fold,ifold_counter
+      common /cfl/fold,ifold_counter
+      integer nFKSprocess
+      common/c_nFKSprocess/nFKSprocess
+      double precision virtual_over_born
+      common/c_vob/virtual_over_born
+      logical bsvm_have
+      integer bsvm_nfks
+      double precision bsvm_p(0:3,nexternal),bsvm_wgt(4),
+     &     bsvm_bsv(amp_split_size,3),bsvm_virt(amp_split_size,3)
+      save bsvm_have,bsvm_nfks,bsvm_p,bsvm_wgt,bsvm_bsv,bsvm_virt
+      data bsvm_have /.false./
       double precision amp_split_virt(amp_split_size),
      &     amp_split_born_for_virt(amp_split_size),
      &     amp_split_avv(amp_split_size)
@@ -544,7 +558,37 @@ c value to the list of weights using the add_wgt subroutine
       call cpu_time(tBefore)
       if (f_nb.eq.0d0) return
       if (xi_i_hat_ev*xiimax_cnt(0) .gt. xiBSVcut_used) return
-      call bornsoftvirtual(p1_cnt(0,1,0),bsv_wgt,virt_wgt,born_wgt)
+c AV step 11e BSV memo (F2/F/C): outputs of bornsoftvirtual are identical
+c for all folds of a kpoint (same p_born and nFKSprocess; the virtual is
+c only computed at fold 0), so compute them at fold 0 and reuse them.
+      if (.not.vfold_is_reference_mode() .and. fold.ne.0 .and. bsvm_have
+     &     .and. nFKSprocess.eq.bsvm_nfks .and.
+     &     all(p1_cnt(:,:,0).eq.bsvm_p)) then
+         bsv_wgt=bsvm_wgt(1)
+         virt_wgt=bsvm_wgt(2)
+         born_wgt=bsvm_wgt(3)
+         virtual_over_born=bsvm_wgt(4)
+         amp_split_wgtnstmp=bsvm_bsv(:,1)
+         amp_split_wgtwnstmpmuf=bsvm_bsv(:,2)
+         amp_split_wgtwnstmpmur=bsvm_bsv(:,3)
+         amp_split_virt=bsvm_virt(:,1)
+         amp_split_born_for_virt=bsvm_virt(:,2)
+         amp_split_avv=bsvm_virt(:,3)
+      else
+         call bornsoftvirtual(p1_cnt(0,1,0),bsv_wgt,virt_wgt,born_wgt)
+         if (.not.vfold_is_reference_mode()) then
+            bsvm_have=.true.
+            bsvm_nfks=nFKSprocess
+            bsvm_p=p1_cnt(:,:,0)
+            bsvm_wgt=(/bsv_wgt,virt_wgt,born_wgt,virtual_over_born/)
+            bsvm_bsv(:,1)=amp_split_wgtnstmp
+            bsvm_bsv(:,2)=amp_split_wgtwnstmpmuf
+            bsvm_bsv(:,3)=amp_split_wgtwnstmpmur
+            bsvm_virt(:,1)=amp_split_virt
+            bsvm_virt(:,2)=amp_split_born_for_virt
+            bsvm_virt(:,3)=amp_split_avv
+         endif
+      endif
       if (ickkw.eq.-1) then
          if (wgtbpower.ne.0) then
             write (*,*) 'ERROR in VETO XSec: bpower should'/

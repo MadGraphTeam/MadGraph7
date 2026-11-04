@@ -34,6 +34,9 @@
       common /c_vegas_x/xvar
       integer            this_config
       common/to_mconfigs/this_config
+c AV road B step 11l: the raw jacobians, for the PS memo (driver_mintMC.f)
+      double precision vfold_gm_jac_raw,vfold_gm_jac_cnt_raw(-2:2)
+      common/c_av_gm_raw/vfold_gm_jac_raw,vfold_gm_jac_cnt_raw
 c     
       call cpu_time(tBefore)
       this_config=iconfig
@@ -56,6 +59,8 @@ c
       enddo
 c
       call generate_momenta_conf_wrapper(ndim,jac,x,itree,qmass,qwidth,p)
+      vfold_gm_jac_raw=jac ! AV step 11l
+      vfold_gm_jac_cnt_raw(-2:2)=jac_cnt(-2:2) ! AV step 11l
 c If the input weight 'wgt' to this subroutine was not equal to one,
 c make sure we update all the (counter-event) jacobians and return also
 c the updated wgt (i.e. the jacobian for the event)

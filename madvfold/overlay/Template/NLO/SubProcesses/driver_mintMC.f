@@ -352,7 +352,12 @@ c Randomly pick the contribution that will be written in the event file
                call include_inverse_bias_wgt(inv_bias)
                weight=event_weight*inv_bias
             endif
-            call fill_rwgt_lines
+c AV road B step 11c: the reweighting lines filled here are only written
+c in the event file (<mgrwgt> block) if doreweight is true (write_event.f),
+c so do not spend ~2 ms per event (internal writes) when they are not used,
+c but keep the original unconditional call in the reference modes F0/F1
+            if (doreweight .or. vfold_is_reference_mode())
+     $           call fill_rwgt_lines
             call finalize_event(x_save(1,ifold_picked),weight,lunlhe
      $           ,putonshell,p_label)
          enddo
@@ -773,6 +778,10 @@ c
       include 'orders.inc'
       include 'fks_info.inc'
       logical firsttime,passcuts,passcuts_nbody,passcuts_n1body
+      logical vfold_passcuts_nbody
+      external vfold_passcuts_nbody
+      logical vfold_gm_memo_restore ! AV road B step 11l
+      external vfold_gm_memo_restore
       integer i,j,ifl,proc_map(0:fks_configs,0:fks_configs)
      $     ,nFKS_picked_nbody,nFKS_in,nFKS_out,izero,ione,itwo,mohdr
      $     ,iFKS,sum
@@ -858,6 +867,7 @@ c "npNLO".
 
       fold=ifl
       if (ifl.eq.0 .or. ifl.eq.1) then
+         call vfold_gm_memo_invalidate ! AV road B step 11l
          if (ifl.eq.0) then
             icontr=0
             virt_wgt_mint(0:amp_split_size)=0d0
@@ -912,6 +922,7 @@ c FKS configurations (for the shower scale) (multiply by
 c 1/proc_map(0,0)*vol1)
          jac=jac/(proc_map(0,0)*vol1)
          call generate_momenta(nndim,iconfig,jac,x,p)
+         call vfold_gm_memo_save(nndim,iconfig,nFKS_picked_nbody,x,p) ! AV step 11l
          !MZ/AV
          if (dump69) then
            write(69,*) 'XIYPHI',xi_i_fks_ev,y_ij_fks_ev,phidump
@@ -929,9 +940,13 @@ c 1/proc_map(0,0)*vol1)
          if (p_born(0,1).lt.0d0) goto 12
          call compute_prefactors_nbody(vegas_wgt)
          call set_cms_stuff(izero)
-         call set_shower_scale_noshape(p,nFKS_picked_nbody*2-1)
+c AV road B step 11k: lean gathering walk, the shower scales and colour
+c connections are only read by code that the gathering walk skips (the
+c replay walk sets them again for every fold before they are used)
+         if (.not. born_gathering)
+     $        call set_shower_scale_noshape(p,nFKS_picked_nbody*2-1)
          if (ickkw.eq.3) call set_FxFx_scale(1,p1_cnt(0,1,0))
-         passcuts_nbody=passcuts(p1_cnt(0,1,0),rwgt)
+         passcuts_nbody=vfold_passcuts_nbody(p1_cnt(0,1,0),rwgt)
          if (passcuts_nbody) then
             pass_cuts_check=.true.
             call set_alphaS(p1_cnt(0,1,0))
@@ -963,9 +978,14 @@ c born_collecting gates -- see vfold_born_batch.f90's header comment.
          endif
 c Update the shower starting scale. This might be updated again below if
 c the nFKSprocess is the same.
+         if (.not. born_gathering) then
          call include_shape_in_shower_scale(p,nFKS_picked_nbody
      $        ,ifold_counter)
          call set_colour_connections(nFKS_picked_nbody,ifold_counter)
+         else
+c AV step 11k: the cms state include_shape_in_shower_scale leaves
+         call set_cms_stuff(mohdr)
+         endif
             
          
  11      continue
@@ -997,7 +1017,9 @@ c compares all the components of the momenta instead.
             gfactcl=1.d0
             MCcntcalled=0
             icolup_s(1,1)=-1    ! set colour connection to -1: i.e., complete_xmcsubt has not been called
-            call generate_momenta(nndim,iconfig,jac,x,p)
+c AV road B step 11l PS memo: same momenta as the n-body call above
+            if (.not.vfold_gm_memo_restore(nndim,iconfig,iFKS,x,p,jac))
+     $           call generate_momenta(nndim,iconfig,jac,x,p)
 c Every contribution has to have a viable set of Born momenta (even if
 c counter-event momenta do not exist).
             if (p_born(0,1).lt.0d0) cycle
@@ -1008,12 +1030,14 @@ c Set the shower scales
                call set_FxFx_scale(0,p) ! reset the FxFx scales
             endif
             call set_cms_stuff(izero)
-            call set_shower_scale_noshape(p,iFKS*2-1)
+            if (.not. born_gathering) ! AV step 11k
+     $           call set_shower_scale_noshape(p,iFKS*2-1)
             if (ickkw.eq.3) then
                call set_FxFx_scale(2,p1_cnt(0,1,0))
             endif
             call set_cms_stuff(mohdr)
-            call set_shower_scale_noshape(p,iFKS*2)
+            if (.not. born_gathering) ! AV step 11k
+     $           call set_shower_scale_noshape(p,iFKS*2)
             if (ickkw.eq.3) then
                if (p(0,1).gt.0d0) then
                   call set_FxFx_scale(3,p)
@@ -1022,7 +1046,7 @@ c Set the shower scales
 c check if event or counter-event passes cuts
             call set_cms_stuff(izero)
             if (ickkw.eq.3) call set_FxFx_scale(-2,p1_cnt(0,1,0))
-            passcuts_nbody=passcuts(p1_cnt(0,1,0),rwgt)
+            passcuts_nbody=vfold_passcuts_nbody(p1_cnt(0,1,0),rwgt)
             call set_cms_stuff(mohdr)
             if (ickkw.eq.3) call set_FxFx_scale(-3,p)
             passcuts_n1body=passcuts(p,rwgt)
@@ -1092,8 +1116,12 @@ c mirrors eebb_vfold's real_collecting precedent exactly.
             endif
 c Update the shower starting scale with the shape from the MC
 c subtraction terms.
+            if (.not. born_gathering) then ! AV step 11k
             call include_shape_in_shower_scale(p,iFKS,ifold_counter)
             call set_colour_connections(iFKS,ifold_counter)
+            else
+            call set_cms_stuff(mohdr)
+            endif
          enddo
  12      continue
       elseif(ifl.eq.2) then
@@ -1526,3 +1554,160 @@ c     if there are no soft singularities at all, just do something trivial
       return
       end
 
+
+c AV road B step 11f passcuts memo (F2/F/C): passcuts of the n-body
+c momenta p1_cnt is called twice per fold and the result is the same
+c for all folds of a kpoint, so keep the last result for the same inputs
+      logical function vfold_passcuts_nbody(p,rwgt)
+      use vfold_mode
+      implicit none
+      include 'nexternal.inc'
+      include 'genps.inc'
+      double precision p(0:3,nexternal),rwgt
+      logical passcuts
+      external passcuts
+      double precision ybst_til_tolab,ybst_til_tocm,sqrtshat,shat
+      common/parton_cms_stuff/ybst_til_tolab,ybst_til_tocm,
+     #                        sqrtshat,shat
+      double precision pmass(nexternal)
+      common/to_mass/pmass
+      integer idup(nexternal,maxproc),mothup(2,nexternal,maxproc),
+     &     icolup(2,nexternal,maxflow),niprocs
+      common /c_leshouche_inc/idup,mothup,icolup,niprocs
+      logical pcm_have,pcm_pass
+      double precision pcm_p(0:3,nexternal),pcm_y,pcm_m(nexternal)
+      integer pcm_id(nexternal)
+      save pcm_have,pcm_pass,pcm_p,pcm_y,pcm_m,pcm_id
+      data pcm_have /.false./
+      if (vfold_is_reference_mode()) then
+         vfold_passcuts_nbody=passcuts(p,rwgt)
+         return
+      endif
+      if (pcm_have .and. ybst_til_tolab.eq.pcm_y .and.
+     &     all(p.eq.pcm_p) .and. all(pmass.eq.pcm_m) .and.
+     &     all(idup(1:nexternal,1).eq.pcm_id)) then
+         rwgt=1d0
+         vfold_passcuts_nbody=pcm_pass
+         return
+      endif
+      vfold_passcuts_nbody=passcuts(p,rwgt)
+      pcm_have=.true.
+      pcm_pass=vfold_passcuts_nbody
+      pcm_p=p
+      pcm_y=ybst_til_tolab
+      pcm_m=pmass
+      pcm_id=idup(1:nexternal,1)
+      end
+
+
+c AV road B step 11l PS memo (F2/F/C): in the n+1 loop of sigintF,
+c generate_momenta is called again with the same nFKSprocess, iconfig
+c and x as the n-body call of the same fold, so it returns the same
+c momenta: restore its outputs instead. Only the input weight jac
+c differs, and generate_momenta applies it last, as a factor on the
+c raw jacobians (vfold_gm_jac_raw, vfold_gm_jac_cnt_raw), as done here.
+c Any other generate_momenta call in between invalidates the memo.
+      subroutine vfold_gm_memo_save(ndim,iconfig,nfks,x,p)
+      use vfold_mode
+      implicit none
+      include 'nexternal.inc'
+      integer ndim,iconfig,nfks
+      double precision x(99),p(0:3,nexternal)
+      double precision p1_cnt(0:3,nexternal,-2:2),wgt_cnt(-2:2)
+      double precision pswgt_cnt(-2:2),jac_cnt(-2:2)
+      common/counterevnts/p1_cnt,wgt_cnt,pswgt_cnt,jac_cnt
+      double precision cms(4)
+      common/parton_cms_stuff/cms
+      double precision vfold_gm_jac_raw,vfold_gm_jac_cnt_raw(-2:2)
+      common/c_av_gm_raw/vfold_gm_jac_raw,vfold_gm_jac_cnt_raw
+      double precision gmm_x(99),gmm_p(0:3,nexternal)
+      double precision gmm_p1_cnt(0:3,nexternal,-2:2)
+      double precision gmm_wgt_cnt(-2:2),gmm_pswgt_cnt(-2:2)
+      double precision gmm_jac_raw,gmm_jac_cnt_raw(-2:2),gmm_cms(4)
+      integer gmm_ndim,gmm_iconfig,gmm_nfks
+      logical gmm_valid,gmm_nbody
+      common/c_av_gm_memo/gmm_x,gmm_p,gmm_p1_cnt,gmm_wgt_cnt,
+     $     gmm_pswgt_cnt,gmm_jac_raw,gmm_jac_cnt_raw,gmm_cms,
+     $     gmm_ndim,gmm_iconfig,gmm_nfks,gmm_valid,gmm_nbody
+      logical nbody
+      common/cnbody/nbody
+      gmm_valid=.not.vfold_is_reference_mode()
+      if (.not.gmm_valid) return
+      gmm_nbody=nbody
+      gmm_ndim=ndim
+      gmm_iconfig=iconfig
+      gmm_nfks=nfks
+      gmm_x(1:ndim)=x(1:ndim)
+      gmm_p=p
+      gmm_p1_cnt=p1_cnt
+      gmm_wgt_cnt=wgt_cnt
+      gmm_pswgt_cnt=pswgt_cnt
+      gmm_jac_raw=vfold_gm_jac_raw
+      gmm_jac_cnt_raw=vfold_gm_jac_cnt_raw
+      gmm_cms=cms
+      return
+      end
+
+      logical function vfold_gm_memo_restore(ndim,iconfig,nfks,x,p,jac)
+      implicit none
+      include 'nexternal.inc'
+      integer ndim,iconfig,nfks,i
+      double precision x(99),p(0:3,nexternal),jac
+      double precision p1_cnt(0:3,nexternal,-2:2),wgt_cnt(-2:2)
+      double precision pswgt_cnt(-2:2),jac_cnt(-2:2)
+      common/counterevnts/p1_cnt,wgt_cnt,pswgt_cnt,jac_cnt
+      double precision cms(4)
+      common/parton_cms_stuff/cms
+      double precision gmm_x(99),gmm_p(0:3,nexternal)
+      double precision gmm_p1_cnt(0:3,nexternal,-2:2)
+      double precision gmm_wgt_cnt(-2:2),gmm_pswgt_cnt(-2:2)
+      double precision gmm_jac_raw,gmm_jac_cnt_raw(-2:2),gmm_cms(4)
+      integer gmm_ndim,gmm_iconfig,gmm_nfks
+      logical gmm_valid,gmm_nbody
+      common/c_av_gm_memo/gmm_x,gmm_p,gmm_p1_cnt,gmm_wgt_cnt,
+     $     gmm_pswgt_cnt,gmm_jac_raw,gmm_jac_cnt_raw,gmm_cms,
+     $     gmm_ndim,gmm_iconfig,gmm_nfks,gmm_valid,gmm_nbody
+      logical nbody
+      common/cnbody/nbody
+      double precision pmass(nexternal)
+      common/to_mass/pmass
+      integer i_fks,j_fks
+      common/fks_indices/i_fks,j_fks
+      vfold_gm_memo_restore=.false.
+      if (.not.gmm_valid) return
+      gmm_valid=.false. ! a miss calls generate_momenta
+      if (ndim.ne.gmm_ndim .or. iconfig.ne.gmm_iconfig .or.
+     $     nfks.ne.gmm_nfks) return
+c Not if nbody changed and j_fks is massless: then generate_momenta also
+c computes the collinear and soft-collinear counter-event momenta in the
+c n+1 loop (nbody=.false.), but not in the n-body call (nbody=.true.)
+      if (nbody.neqv.gmm_nbody .and. pmass(j_fks).eq.0d0) return
+      if (any(x(1:ndim).ne.gmm_x(1:ndim))) return
+      p=gmm_p
+      p1_cnt=gmm_p1_cnt
+      wgt_cnt=gmm_wgt_cnt
+      pswgt_cnt=gmm_pswgt_cnt
+      do i=-2,2
+         jac_cnt(i)=gmm_jac_cnt_raw(i)*jac ! as in generate_momenta
+      enddo
+      jac=jac*gmm_jac_raw ! as in generate_momenta
+      cms=gmm_cms
+      vfold_gm_memo_restore=.true.
+      return
+      end
+
+      subroutine vfold_gm_memo_invalidate
+      implicit none
+      include 'nexternal.inc'
+      double precision gmm_x(99),gmm_p(0:3,nexternal)
+      double precision gmm_p1_cnt(0:3,nexternal,-2:2)
+      double precision gmm_wgt_cnt(-2:2),gmm_pswgt_cnt(-2:2)
+      double precision gmm_jac_raw,gmm_jac_cnt_raw(-2:2),gmm_cms(4)
+      integer gmm_ndim,gmm_iconfig,gmm_nfks
+      logical gmm_valid,gmm_nbody
+      common/c_av_gm_memo/gmm_x,gmm_p,gmm_p1_cnt,gmm_wgt_cnt,
+     $     gmm_pswgt_cnt,gmm_jac_raw,gmm_jac_cnt_raw,gmm_cms,
+     $     gmm_ndim,gmm_iconfig,gmm_nfks,gmm_valid,gmm_nbody
+      gmm_valid=.false.
+      return
+      end

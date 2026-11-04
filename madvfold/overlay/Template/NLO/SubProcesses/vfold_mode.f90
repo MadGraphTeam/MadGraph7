@@ -19,9 +19,10 @@
 !        bridge instead of a plain Fortran loop
 ! MadVFold codegen status: F1 is implemented since step 12j (RNG slots),
 ! F since step 12k (batched Born/Real MEs over the folds of a kpoint), F2
-! since step 12l (Born memo), and the kpoint batching of F/C (and of the
-! MINT2 candidates of F1/F2/F/C) since step 12m. C runs as F until the
-! cudacpp bridges are added. F1, F2, F and C must all produce bit-identical
+! since step 12l (Born memo), the kpoint batching of F/C (and of the MINT2
+! candidates of F1/F2/F/C) since step 12m and the per-kpoint memos and lean
+! gathering walk of F2/F/C since step 12n. C runs as F until the cudacpp
+! bridges are added. F1, F2, F and C must all produce bit-identical
 ! results, different from those of F0.
 module vfold_mode
   implicit none
@@ -127,6 +128,7 @@ contains
   ! Road B step 11b: keep the original code (F0, F1: the reference points)
   ! also for the changes that are not specific to the new modes, such as
   ! the faster timers of step 11a (ENV_VFOLD_CPUTIME<0, see vfold_cpu_time.c)
+  ! and the doreweight gate on fill_rwgt_lines of step 11c (driver_mintMC.f)
   logical function vfold_is_reference_mode()
     implicit none
     vfold_is_reference_mode = .not. (vfold_use_born_memo() .or. vfold_use_batch_api())

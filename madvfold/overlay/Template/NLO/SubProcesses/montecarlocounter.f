@@ -1851,12 +1851,14 @@ c
       call fill_HEPEUP_event(p_lab, wgt, nexternal_now, idup_h,
      &       istup_local, mothup_h, icolup_h, spinup_local,
      &       emsca, scales_for_HEPEUP)
-      xscales=-1d0
-      xmasses=-1d0
-      dzones=.true.
-      xscales2=-1d0
-      xmasses2=-1d0
-      dzones2=.true.
+c AV road B step 11n: reset only the (0:nexternal,0:nexternal) block, the
+c only one read below (the full 0:99 arrays cost ~340 KB of writes per call)
+      xscales(0:nexternal,0:nexternal)=-1d0
+      xmasses(0:nexternal,0:nexternal)=-1d0
+      dzones(0:nexternal,0:nexternal)=.true.
+      xscales2(0:nexternal,0:nexternal)=-1d0
+      xmasses2(0:nexternal,0:nexternal)=-1d0
+      dzones2(0:nexternal,0:nexternal)=.true.
       if (is_pythia_active.eq.0) then
 c Fill masses
          do i=7,20
