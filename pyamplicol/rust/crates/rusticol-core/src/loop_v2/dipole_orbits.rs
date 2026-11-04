@@ -955,9 +955,11 @@ pub(crate) mod tests {
             crafted(|value| value["coloured"][3][0] = 0.into()),
             "distinct labels in leg order",
         );
+        // A sextet has a Casimir (10/3); a representation the colour code
+        // does not name is refused.
         refused(
-            crafted(|value| value["coloured"][0][1] = 6.into()),
-            "colour representation 6",
+            crafted(|value| value["coloured"][0][1] = 10.into()),
+            "colour representation 10",
         );
         refused(
             crafted(|value| {
