@@ -126,14 +126,18 @@ impl LoopProgramV4 {
 ///
 /// Memory: a pruned copy is built fresh at the lengths it keeps (a split
 /// part's list keeping every link stays shared with the template, a shorter
-/// one is packed and interned), and it is kept only when its own heap (its
-/// steps, edges, fused links, groups and parts, `family_bytes`, plus the
-/// shortened part lists it allocates) is at most [`KEPT_SHARE`] of its
-/// family's steps, edges, fused links, groups and parts; a family keeping
-/// more runs whole on the masked seeds (the template's steps, the unpruned
-/// path's values), so the copies of one call hold at most that share of the
-/// dressed families' heap. The executor keeps one liveness and drops it
-/// before it forms another (`V2Executor::live_rows`).
+/// one is packed and interned), and it is kept only when the heap it adds
+/// (its own lists, steps, edges, fused links, groups and parts,
+/// `family_bytes`, plus the shortened part lists it allocates) is at most
+/// [`KEPT_SHARE`] of its family's heap (the same, with the part lists the
+/// family reads); a family keeping more runs whole on the masked seeds (the
+/// template's steps, the unpruned path's values). If the kept copies
+/// together add more than that share of the dressed families' heap (each
+/// shared part list counted once), every family runs whole. A family left
+/// without a step is never dressed. So the copies of one call hold at most
+/// that share of the dressed families' heap, which the chunk inputs of the
+/// rows they no longer read outweigh. The executor keeps one liveness and
+/// drops it before it forms another (`V2Executor::live_rows`).
 pub struct LiveRows {
     /// The kept Born rows, one flag per plan row.
     pub rows: Vec<bool>,
@@ -146,16 +150,20 @@ pub struct LiveRows {
     /// Row links the listed families run (pruned or whole).
     links: usize,
     /// The heap of the pruned copies (`family_bytes` and their shortened
-    /// part lists).
+    /// part lists), and of the listed template families (with the part
+    /// lists they read, each once).
     bytes: usize,
+    dressed: usize,
     /// The factor and current rows the dressed links read.
     pub read: Arc<ReadRows>,
 }
 
 /// The largest share (numerator, denominator) of its family's heap a kept
-/// pruned copy holds ([`LiveRows`]): a copy costs memory in proportion to
-/// what it keeps and saves work in proportion to what it drops.
-pub const KEPT_SHARE: (usize, usize) = (1, 2);
+/// pruned copy adds, and of the dressed families' heap the copies of one
+/// call add ([`LiveRows`]): a copy costs memory in proportion to what it
+/// keeps and saves work in proportion to what it drops, so the narrow masks
+/// that gain most get their copies and a wide mask runs the template's.
+pub const KEPT_SHARE: (usize, usize) = (1, 4);
 
 /// The heap of a family that a pruned copy allocates anew: its sequence,
 /// orders, leaves and input lists, and its steps' edges, fused links, split
@@ -194,6 +202,19 @@ fn family_bytes(family: &Family) -> usize {
             size_of::<Step>() + edges + split
         })
         .sum::<usize>()
+}
+
+/// The heap of the distinct split-part lists of `family` not yet in
+/// `seen` (which then holds them).
+fn list_bytes(family: &Family, seen: &mut HashSet<*const PackedLinks>) -> usize {
+    family
+        .steps
+        .iter()
+        .filter_map(|step| step.split.as_ref())
+        .flat_map(|split| split.parts.iter().flatten())
+        .filter(|part| seen.insert(Arc::as_ptr(&part.links)))
+        .map(|part| part.links.shared_bytes())
+        .sum()
 }
 
 /// Row links of a family's steps (fused edges and split parts).
@@ -240,6 +261,12 @@ impl LiveRows {
         self.bytes
     }
 
+    /// The heap of the listed template families in bytes (with the part
+    /// lists they read, each once): what the copies' share is taken of.
+    pub fn dressed_bytes(&self) -> usize {
+        self.dressed
+    }
+
     /// The listed families that run a pruned copy.
     pub fn pruned(&self) -> usize {
         self.pruned.iter().flatten().count()
@@ -256,8 +283,9 @@ impl LoopProgramV4 {
         self.live_rows_keeping(rows, families, KEPT_SHARE)
     }
 
-    /// [`Self::live_rows`] keeping a pruned copy whose heap is at most
-    /// `share` (numerator, denominator) of its family's.
+    /// [`Self::live_rows`] keeping a pruned copy that adds at most `share`
+    /// (numerator, denominator) of its family's heap, and copies adding at
+    /// most that share of the listed families' heap together.
     pub fn live_rows_keeping(
         &self,
         rows: &[bool],
@@ -280,7 +308,7 @@ impl LoopProgramV4 {
         }
         // One link interner per rayon job: the parts' shortened lists are
         // shared within it (a list keeping every link stays the template's).
-        let pruned: Vec<(Option<Family>, usize, usize)> = families
+        let mut pruned: Vec<(Option<Family>, usize, usize)> = families
             .par_iter()
             .map_init(LinkInterner::default, |interner, &f| {
                 let template = &self.families[f];
@@ -293,7 +321,8 @@ impl LoopProgramV4 {
                     interner,
                 );
                 let bytes = family_bytes(&copy) + lists;
-                if bytes * share.1 <= family_bytes(template) * share.0 {
+                let whole = family_bytes(template) + list_bytes(template, &mut HashSet::new());
+                if copy.steps.is_empty() || bytes * share.1 <= whole * share.0 {
                     let links = family_links(&copy);
                     (Some(copy), links, bytes)
                 } else {
@@ -301,7 +330,22 @@ impl LoopProgramV4 {
                 }
             })
             .collect();
-        fn dressed<'a>(
+        // The copies of the call together: at most `share` of the listed
+        // families' heap, else every family with a step runs whole.
+        let mut seen = HashSet::new();
+        let dressed: usize = families
+            .iter()
+            .map(|&f| family_bytes(&self.families[f]) + list_bytes(&self.families[f], &mut seen))
+            .sum();
+        let copies: usize = pruned.iter().map(|(.., bytes)| bytes).sum();
+        if copies * share.1 > dressed * share.0 {
+            for (&f, entry) in families.iter().zip(&mut pruned) {
+                if entry.0.as_ref().is_some_and(|copy| !copy.steps.is_empty()) {
+                    *entry = (None, family_links(&self.families[f]), 0);
+                }
+            }
+        }
+        fn dressed_family<'a>(
             template: &'a [Family],
             (&f, (copy, ..)): (&usize, &'a (Option<Family>, usize, usize)),
         ) -> &'a Family {
@@ -310,7 +354,7 @@ impl LoopProgramV4 {
         let live = families
             .iter()
             .zip(&pruned)
-            .filter(|&pair| !dressed(&self.families, pair).steps.is_empty())
+            .filter(|&pair| !dressed_family(&self.families, pair).steps.is_empty())
             .map(|(&f, _)| f)
             .collect();
         let read = Arc::new(
@@ -318,7 +362,7 @@ impl LoopProgramV4 {
                 families
                     .iter()
                     .zip(&pruned)
-                    .map(|pair| dressed(&self.families, pair)),
+                    .map(|pair| dressed_family(&self.families, pair)),
             ),
         );
         let links = pruned.iter().map(|(_, links, _)| links).sum();
@@ -330,6 +374,7 @@ impl LoopProgramV4 {
             live,
             links,
             bytes,
+            dressed,
             read,
         }))
     }

@@ -1104,6 +1104,7 @@ pub mod v2 {
             report.count("live-row links", live.links() as u64);
             report.count("row-pruned families", live.pruned() as u64);
             report.count("row-pruned family bytes", live.bytes() as u64);
+            report.count("row-liveness dressed bytes", live.dressed_bytes() as u64);
         }
         // The chunk-input budget in reals, and in lane vectors for the
         // bucket chunks' own inputs.

@@ -1475,7 +1475,7 @@ def test_selections_are_masks_on_one_template(
     several and every helicity row, single, several and every flow, crossed
     ones, and (u u~ > d d~ g) a flow below the leading colour, whose value is
     zero and whose call dresses no family. The single helicity (and its
-    flow) is the first with a non-zero Born on the points, so the
+    flow) is the one with the largest Born on the points, so the
     row-restricted checks compare non-zero values."""
 
     from pyamplicol import Runtime
@@ -1519,14 +1519,16 @@ def test_selections_are_masks_on_one_template(
     runtime.evaluate(pts, mu_r2=scales, **half)
     assert (built["sets"], built["executors"], executors()) == (1, 1, 1)
 
-    def born(**selection) -> bool:
-        """Whether the selection's Born is non-zero on the points."""
+    def born(**selection) -> float:
+        """The selection's largest Born magnitude on the points."""
 
         result = runtime.evaluate(pts, mu_r2=scales, **selection)
-        return any(x != 0 for values in result.born_values for x in values or ())
+        values = (abs(x) for values in result.born_values for x in values or ())
+        return max(values, default=0.0)
 
-    single = next(h for h in hel if born(helicities=[h]))
-    paired = next(f for f in flows if born(helicities=[single], color_flows=[f]))
+    # The largest (a helicity whose amplitudes vanish leaves rounding).
+    single = max(hel, key=lambda h: born(helicities=[h]))
+    paired = max(flows, key=lambda f: born(helicities=[single], color_flows=[f]))
     selections = [
         {"helicities": [single]},
         half,
