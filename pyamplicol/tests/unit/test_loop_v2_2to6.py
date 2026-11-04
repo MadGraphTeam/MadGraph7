@@ -91,6 +91,18 @@ def test_stored_checks_on_a_stored_ward_process(compiled, loop_native):
     assert failed["passed"] is False
     assert [row["catani_formed"] for row in failed["checked"]] == [False]
     assert [row["passed"] for row in failed["checked"] + failed["dd"]] == [False, False]
+    # A count without a gate carries no verdict (the CLI's DONE: 'no verdict').
+    counted = check_process(
+        process,
+        loop_native,
+        "gg_gg",
+        "full",
+        points=[],
+        dd_points=[],
+        rescue_points=[0],
+        require_catani=False,
+    )
+    assert counted["passed"] is None and counted["rescue"]["of"] == 1
 
 
 @pytest.mark.loop_nightly
