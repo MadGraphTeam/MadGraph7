@@ -169,6 +169,14 @@ lc_flow_layout = "topology-replay"
 # component per N_c degree). Always on for strict-lc/strict-nlc; true with full
 # colour reports every degree. Tree requests, compiled execution. Default false.
 graded = false
+# color.adjoint_dense_max_gluons: tuning, no capability bound. The automatic
+# tree basis prefers the (equally exact) DDM basis up to this many adjoint
+# labels and the trace basis above. Default 12.
+adjoint_dense_max_gluons = 12
+# color.fused_selector_max_sectors: tuning, results unchanged. Integer or null
+# (no bound): the auxiliary all-colour lane for runtime helicity selection is
+# built up to this many colour sectors. Default 128.
+fused_selector_max_sectors = 128
 
 [generation]
 # generation.output: Optional artifact output path. Default null.
@@ -205,6 +213,10 @@ absolute_tolerance = 1e-300
 # generation.validation.post_build_validation: Re-open and numerically smoke-test
 # the built evaluator. Default false; structural artifact checks always run.
 post_build_validation = false
+# generation.validation.max_resolved_components: Integer or null. Compiled
+# post-build validation checks every resolved component up to this count and
+# one helicity and/or flow slice above it; null checks every one. Default 1000000.
+max_resolved_components = 1000000
 
 [generation.relation_discovery]
 # generation.relation_discovery.mode: "off", "diagnostic", or
