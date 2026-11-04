@@ -63,17 +63,14 @@ MISC = 'MISC'  # placeholder: all raw labels not used by another row (except Tot
 # Baseline rescaling: show MODE_BASELINE as 'F0*', i.e. rescaled to the
 # kpoints of MODE_BATCHED, because F0 draws different random numbers and
 # does a different amount of work for the same NEVENTS. Each raw label is
-# rescaled by the kpoints that actually pay for it: 'virt' (only virt
-# kpoints compute the virtual), 'novi' (only novi kpoints compute the
-# n+1-body real, MC subtraction and counterterms), or 'all' (the default).
-# The rescaled Total is the sum of the rescaled labels.
+# rescaled by the kpoints that actually pay for it: 'virt' for the virtual
+# (only virt kpoints compute it) or 'novi' (the default) for all others, as
+# almost all of their time is in novi kpoints (step 14h: this is measured,
+# also for the Born, and F0* then agrees with F1 if F0 and F have a different
+# fraction of virt kpoints). The rescaled Total is the sum of the rescaled labels.
 RESCALE_BASELINE = True
 RESCALE_BY = {
     'Virtuals': 'virt',
-    'Reals_evaluation': 'novi',
-    'MCsubtraction': 'novi',
-    'Counter_terms': 'novi',
-    'N1body_prefactor': 'novi',
 }
 
 # Row definitions: (row label, list of raw labels from 'Time spent in X : ...')
@@ -384,7 +381,7 @@ def _rescale_factors(cbase, cref):
 
 def _rescaled_times(times, factors):
     """Rescale each raw label; the new Total is the sum of the rescaled labels."""
-    out = {k: v * factors[RESCALE_BY.get(k, 'all')] for k, v in times.items() if k != 'Total'}
+    out = {k: v * factors[RESCALE_BY.get(k, 'novi')] for k, v in times.items() if k != 'Total'}
     out['Total'] = sum(out.values())
     return out
 
