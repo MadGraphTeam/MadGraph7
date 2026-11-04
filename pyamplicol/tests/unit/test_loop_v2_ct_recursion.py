@@ -1147,21 +1147,6 @@ def test_recursion_equals_site_closure(
         _assert_equal_sites_and_legacy(ct, recursion, runtime, "double")
 
 
-# The tree runtime keeps the U(1)-subtraction colour weight 1/N_c of
-# processes with several quark lines in binary64 (``GenericDAG.color_weight``,
-# wave01-open-minors), so their 200-bit Born is exact to ~1e-17 only.
-# Re-justified (MF-CLEAN): ~1e-17 is far below the ~1e-5 attention threshold
-# (precision is lax), so not a defect; the xfail pins it at the unchanged
-# 200-bit tolerance and flips if the tree weight becomes exact.
-_BINARY64_U1_WEIGHT = pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="tree runtime U(1)-subtraction colour weight is binary64 "
-    "(several quark lines): the 200-bit Born is exact to ~1e-17, below the "
-    "~1e-5 attention threshold, so kept as a pin, not a defect",
-)
-
-
 @pytest.mark.loop_nightly
 @pytest.mark.parametrize(
     "name",
@@ -1169,7 +1154,8 @@ _BINARY64_U1_WEIGHT = pytest.mark.xfail(
         "gg_gg",
         "uux_ggg",
         "dy",
-        pytest.param("uux_ddxg", marks=_BINARY64_U1_WEIGHT),
+        # Several quark lines: the U(1)-subtraction weight 1/N_c is exact.
+        "uux_ddxg",
     ),
 )
 def test_recursion_equals_site_closure_at_200_bits(

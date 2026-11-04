@@ -389,7 +389,7 @@ def _process(value: object, index: int) -> Mapping[str, object]:
         },
     )
     accuracy = raw.get("color_accuracy")
-    if accuracy not in {"lc", "nlc", "full"}:
+    if accuracy not in {"lc", "nlc", "full", "strict-lc", "strict-nlc"}:
         raise ArtifactError(f"{context}.color_accuracy is invalid")
     pdgs = tuple(_sequence(raw.get("external_pdgs"), f"{context}.external_pdgs"))
     if len(pdgs) < 3 or not all(
@@ -878,8 +878,7 @@ def _validate_target_compatibility(
         if target_specific_capabilities:
             raise CompatibilityError(
                 f"{PORTABLE_64LE_TARGET} artifact declares target-specific "
-                "evaluator capabilities: "
-                + ", ".join(target_specific_capabilities)
+                "evaluator capabilities: " + ", ".join(target_specific_capabilities)
             )
         if (
             expected_target is not None

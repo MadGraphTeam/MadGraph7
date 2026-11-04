@@ -31,6 +31,19 @@ pub struct NativeCorrelatedEvaluation {
     pub values: Vec<[f64; 2]>,
 }
 
+/// One correlation of a graded artifact (strict or graded colour) split by
+/// power of N_c.
+#[derive(Clone, Debug)]
+pub struct NativeGradedCorrelatedEvaluation {
+    pub point_count: usize,
+    /// The reported N_c degrees, decreasing from the connection's reference
+    /// degree P = n_g + n_qqbar + r - s.
+    pub degrees: Vec<i32>,
+    /// Point-major: values[point * degrees + d] is the N_c^degrees[d] term at
+    /// N_c = 3; the degrees of a point sum to the ordinary correlated value.
+    pub values: Vec<[f64; 2]>,
+}
+
 #[derive(Deserialize)]
 struct Catalogue {
     schema_version: u32,
@@ -65,6 +78,9 @@ struct GroupRecord {
     helicities: Vec<i32>,
     color_sector_id: i64,
     color_word: Vec<i64>,
+    /// Minus the number of U(1)-subtraction pieces of the group's trees.
+    #[serde(default)]
+    nc_grade: i32,
 }
 
 #[derive(Deserialize)]
@@ -80,6 +96,14 @@ struct MatrixRecord {
     storage: String,
     includes_color_factor: bool,
     entries: Vec<EntryRecord>,
+    /// Strict or graded colour: the reported degrees of the expansion.
+    #[serde(default)]
+    nc_expansion: Option<NcExpansionRecord>,
+}
+
+#[derive(Deserialize)]
+struct NcExpansionRecord {
+    degrees: Vec<i32>,
 }
 
 #[derive(Deserialize)]
@@ -87,6 +111,9 @@ struct EntryRecord {
     left_sector_id: i64,
     right_sector_id: i64,
     weight: WeightRecord,
+    /// The N_c power p of this term of a graded matrix.
+    #[serde(default)]
+    nc_power: Option<i32>,
 }
 
 #[derive(Deserialize)]
@@ -98,13 +125,17 @@ struct WeightRecord {
 struct Matrix {
     id: String,
     sectors: BTreeSet<i64>,
-    entries: Vec<(i64, i64, [f64; 2])>,
+    /// (left sector, right sector, weight, N_c power of a graded term).
+    entries: Vec<(i64, i64, [f64; 2], Option<i32>)>,
+    /// Reported N_c degrees of a graded matrix (decreasing).
+    degrees: Option<Vec<i32>>,
 }
 
 struct Group {
     helicity_id: String,
     helicities: Vec<i32>,
     sector: i64,
+    nc_grade: i32,
     roots: Vec<usize>,
 }
 
@@ -280,8 +311,17 @@ impl CorrelatedRuntime {
         let mut matrices = Vec::new();
         let mut catalogue = Vec::new();
         for matrix in process.matrices {
+            let degrees = matrix
+                .nc_expansion
+                .as_ref()
+                .map(|record| record.degrees.clone());
             if matrix.convention != "su3-literal-tau-physical-charge-all-outgoing-v1"
-                || !["lc", "nlc", "full"].contains(&matrix.color_accuracy.as_str())
+                || !["lc", "nlc", "full", "strict-lc", "strict-nlc"]
+                    .contains(&matrix.color_accuracy.as_str())
+                || (matrix.color_accuracy.starts_with("strict-") && degrees.is_none())
+                || degrees.as_ref().is_some_and(|degrees| {
+                    degrees.is_empty() || degrees.windows(2).any(|pair| pair[0] <= pair[1])
+                })
                 || matrix.storage != "sparse-directed"
                 || !matrix.includes_color_factor
                 || matrix.order != matrix.bra.len()
@@ -302,7 +342,8 @@ impl CorrelatedRuntime {
             for entry in matrix.entries {
                 if !sectors.contains(&entry.left_sector_id)
                     || !sectors.contains(&entry.right_sector_id)
-                    || !pairs.insert((entry.left_sector_id, entry.right_sector_id))
+                    || entry.nc_power.is_some() != degrees.is_some()
+                    || !pairs.insert((entry.left_sector_id, entry.right_sector_id, entry.nc_power))
                 {
                     return Err(malformed("invalid or repeated matrix entry"));
                 }
@@ -313,6 +354,7 @@ impl CorrelatedRuntime {
                         rational_f64(&entry.weight.real)?,
                         rational_f64(&entry.weight.imag)?,
                     ],
+                    entry.nc_power,
                 ));
             }
             catalogue.push(serde_json::json!({"id":matrix.id,"order":matrix.order,"bra":matrix.bra,"ket":matrix.ket,
@@ -321,6 +363,7 @@ impl CorrelatedRuntime {
                 id: matrix.id,
                 sectors,
                 entries,
+                degrees,
             });
         }
         if !declarations.is_empty() {
@@ -393,7 +436,11 @@ impl CorrelatedRuntime {
             {
                 return Err(malformed("invalid coherent root mapping"));
             }
-            let key = (record.helicities.clone(), record.color_sector_id);
+            let key = (
+                record.helicities.clone(),
+                record.color_sector_id,
+                record.nc_grade,
+            );
             let position = if let Some(&position) = physical.get(&key) {
                 if words.get(&key) != Some(&record.color_word) {
                     return Err(malformed("inconsistent coherent colour word"));
@@ -407,6 +454,7 @@ impl CorrelatedRuntime {
                     helicity_id: helicity_id.clone(),
                     helicities: record.helicities,
                     sector: record.color_sector_id,
+                    nc_grade: record.nc_grade,
                     roots: Vec::new(),
                 });
                 position
@@ -433,6 +481,8 @@ impl CorrelatedRuntime {
         if matrices
             .iter()
             .any(|matrix| basis.values().any(|sectors| sectors != &matrix.sectors))
+            || (groups.iter().any(|group| group.nc_grade != 0)
+                && matrices.iter().any(|matrix| matrix.degrees.is_none()))
         {
             return Err(malformed(
                 "coherent groups do not cover the colour matrices",
@@ -568,7 +618,8 @@ impl NativeRuntime {
         self.ensure_correlated()?;
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         {
-            let mut evaluation = evaluate_many(self, momenta, point_count, requests, helicity_ids)?;
+            let (mut evaluation, _graded) =
+                evaluate_many(self, momenta, point_count, requests, helicity_ids)?;
             self.apply_process_group_factor(evaluation.values.as_flattened_mut());
             Ok(evaluation)
         }
@@ -580,7 +631,80 @@ impl NativeRuntime {
             ))
         }
     }
+
+    /// Evaluate one correlation of a graded artifact (pyAmpliCol
+    /// `color.accuracy = "strict-lc"`/`"strict-nlc"`, or `color.graded` full
+    /// colour) split by power of N_c: the term of power p of a matrix entry
+    /// between amplitude groups of N_c grades g_l and g_r enters the degree
+    /// p + g_l + g_r. The degrees of a point sum to
+    /// [`Self::evaluate_correlated_many_f64`] for the same request.
+    pub fn evaluate_correlated_graded_f64(
+        &mut self,
+        momenta: &[f64],
+        point_count: usize,
+        request: &NativeCorrelatedRequest,
+        helicity_ids: Option<&[String]>,
+    ) -> RusticolResult<NativeGradedCorrelatedEvaluation> {
+        self.ensure_correlated()?;
+        let degrees = self
+            .correlated
+            .as_ref()
+            .expect("initialized")
+            .matrices
+            .iter()
+            .find(|matrix| matrix.id == request.color_correlation)
+            .ok_or_else(|| {
+                invalid(format!(
+                    "unknown colour correlation ID {:?}",
+                    request.color_correlation
+                ))
+            })?
+            .degrees
+            .clone()
+            .ok_or_else(|| {
+                RusticolError::compatibility(
+                    "graded correlations need an artifact generated with color.accuracy='strict-lc' \
+                     or 'strict-nlc', or with color.graded (full colour)",
+                )
+            })?;
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        {
+            let (_evaluation, mut graded) = evaluate_many(
+                self,
+                momenta,
+                point_count,
+                std::slice::from_ref(request),
+                helicity_ids,
+            )?;
+            let mut values = graded
+                .pop()
+                .flatten()
+                .ok_or_else(|| RusticolError::internal("graded correlation was not evaluated"))?;
+            self.apply_process_group_factor(values.as_flattened_mut());
+            Ok(NativeGradedCorrelatedEvaluation {
+                point_count,
+                degrees,
+                values,
+            })
+        }
+        #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
+        {
+            let _ = (momenta, point_count, helicity_ids, degrees);
+            Err(RusticolError::compatibility(
+                "native correlations require binary64 compiled-stage support",
+            ))
+        }
+    }
 }
+
+/// Per request of a graded matrix: point-major values per N_c degree.
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+type GradedRequestValues = Vec<Option<Vec<[f64; 2]>>>;
+
+/// Per helicity and colour sector: the (N_c grade, position) of its
+/// amplitude groups.
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+type GroupsBySector<'a> = BTreeMap<&'a str, BTreeMap<i64, Vec<(i32, usize)>>>;
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 fn evaluate_many(
@@ -589,7 +713,7 @@ fn evaluate_many(
     point_count: usize,
     requests: &[NativeCorrelatedRequest],
     helicity_ids: Option<&[String]>,
-) -> RusticolResult<NativeCorrelatedEvaluation> {
+) -> RusticolResult<(NativeCorrelatedEvaluation, GradedRequestValues)> {
     let expected = point_count
         .checked_mul(native.runtime.external_count)
         .and_then(|n| n.checked_mul(4));
@@ -651,12 +775,25 @@ fn evaluate_many(
         routes.push((assignment, matrix));
     }
     let mut values = vec![[0.0; 2]; size];
+    // Per request of a graded matrix: point-major values per N_c degree.
+    let mut graded: GradedRequestValues = routes
+        .iter()
+        .map(|&(_, matrix)| {
+            correlated.matrices[matrix]
+                .degrees
+                .as_ref()
+                .map(|degrees| vec![[0.0; 2]; point_count * degrees.len()])
+        })
+        .collect();
     if requests.is_empty() {
-        return Ok(NativeCorrelatedEvaluation {
-            point_count,
-            request_count: 0,
-            values,
-        });
+        return Ok((
+            NativeCorrelatedEvaluation {
+                point_count,
+                request_count: 0,
+                values,
+            },
+            graded,
+        ));
     }
     let selected: Vec<_> = assignments
         .iter()
@@ -699,13 +836,17 @@ fn evaluate_many(
             }
             let planes = direct.amplitude_planes()?;
             let mut amplitudes = vec![[0.0; 2]; selected[assignment].len() * count];
-            let mut by_helicity: BTreeMap<&str, BTreeMap<i64, usize>> = BTreeMap::new();
+            // Per helicity and colour sector: the (N_c grade, position) of its
+            // amplitude groups (one grade 0 group in an ungraded artifact).
+            let mut by_helicity: GroupsBySector<'_> = BTreeMap::new();
             for (position, &index) in selected[assignment].iter().enumerate() {
                 let group = &correlated.groups[index];
                 by_helicity
                     .entry(&group.helicity_id)
                     .or_default()
-                    .insert(group.sector, position);
+                    .entry(group.sector)
+                    .or_default()
+                    .push((group.nc_grade, position));
                 for &root in &group.roots {
                     let (re, im) = planes.plane_unchecked(root);
                     for point in 0..count {
@@ -719,18 +860,45 @@ fn evaluate_many(
                 .enumerate()
                 .filter(|(_, (id, _))| *id == assignment)
             {
+                let matrix = &correlated.matrices[matrix];
+                let degree_count = matrix.degrees.as_ref().map_or(0, Vec::len);
                 for sectors in by_helicity.values() {
-                    for &(left, right, weight) in &correlated.matrices[matrix].entries {
-                        let a = sectors[&left] * count;
-                        let b = sectors[&right] * count;
-                        for point in 0..count {
-                            let [ar, ai] = amplitudes[a + point];
-                            let [br, bi] = amplitudes[b + point];
-                            let wr = ar * weight[0] + ai * weight[1];
-                            let wi = ar * weight[1] - ai * weight[0];
-                            let value = &mut values[request * point_count + point_start + point];
-                            value[0] += wr * br - wi * bi;
-                            value[1] += wr * bi + wi * br;
+                    for &(left, right, weight, power) in &matrix.entries {
+                        for &(left_grade, a) in &sectors[&left] {
+                            for &(right_grade, b) in &sectors[&right] {
+                                // A graded term enters the degree p + g_l + g_r
+                                // when the matrix reports it.
+                                let slot = match (power, matrix.degrees.as_ref()) {
+                                    (Some(power), Some(degrees)) => {
+                                        let degree = power + left_grade + right_grade;
+                                        match degrees.iter().position(|value| *value == degree) {
+                                            Some(slot) => Some(slot),
+                                            None => continue,
+                                        }
+                                    }
+                                    _ => None,
+                                };
+                                let (a, b) = (a * count, b * count);
+                                for point in 0..count {
+                                    let [ar, ai] = amplitudes[a + point];
+                                    let [br, bi] = amplitudes[b + point];
+                                    let wr = ar * weight[0] + ai * weight[1];
+                                    let wi = ar * weight[1] - ai * weight[0];
+                                    let term = [wr * br - wi * bi, wr * bi + wi * br];
+                                    let value =
+                                        &mut values[request * point_count + point_start + point];
+                                    value[0] += term[0];
+                                    value[1] += term[1];
+                                    if let (Some(slot), Some(graded)) =
+                                        (slot, graded[request].as_mut())
+                                    {
+                                        let value = &mut graded
+                                            [(point_start + point) * degree_count + slot];
+                                        value[0] += term[0];
+                                        value[1] += term[1];
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -740,15 +908,25 @@ fn evaluate_many(
                     value[0] *= runtime.normalization_factor;
                     value[1] *= runtime.normalization_factor;
                 }
+                if let Some(graded) = graded[request].as_mut() {
+                    for value in &mut graded[point_start * degree_count..point_stop * degree_count]
+                    {
+                        value[0] *= runtime.normalization_factor;
+                        value[1] *= runtime.normalization_factor;
+                    }
+                }
             }
         }
         point_start = point_stop;
     }
-    Ok(NativeCorrelatedEvaluation {
-        point_count,
-        request_count: requests.len(),
-        values,
-    })
+    Ok((
+        NativeCorrelatedEvaluation {
+            point_count,
+            request_count: requests.len(),
+            values,
+        },
+        graded,
+    ))
 }
 
 #[cfg(test)]
@@ -826,6 +1004,7 @@ mod tests {
                         helicity_id: format!("{h1},{h2}"),
                         helicities: vec![h1, h2],
                         sector,
+                        nc_grade: 0,
                         roots: vec![],
                     });
                 }

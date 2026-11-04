@@ -29,7 +29,115 @@ from .contraction_types import (
     RepeatedColorContractionBlock,
     SymmetricGroupColorContractionBlock,
 )
+from .nc_expansion import (
+    NcExpansion,
+    color_contraction_laurent,
+    graded_weights,
+    reference_degree,
+)
 from .plan import GenericColorPlan, LCColorSector
+
+
+def build_graded_color_contraction_plan(
+    color_plan: GenericColorPlan,
+    groups: Sequence[ColorGroupDescriptor],
+    expansion: NcExpansion,
+) -> ColorContractionPlan:
+    """The colour sum split by N_c degree (strict colour, graded output).
+
+    ``A_l C[l, r] conj(A_r)`` contributes ``c_p 3^p`` at the degree
+    ``d = p + g_l + g_r`` for every power p of the exact Laurent entry
+    ``C[l, r]`` (``nc_expansion.color_contraction_laurent``) and the N_c
+    grades g of the two groups (``ColorGroupDescriptor.nc_grade``). Only the
+    degrees ``expansion`` keeps at the reference degree P
+    (``nc_expansion.reference_degree``) are stored, one entry per group pair
+    and degree; the stored degrees sum to the truncated colour sum, and for
+    the graded full colour to the full-colour sum. A degree above P would
+    make the truncation ill-defined and fails.
+    """
+
+    if color_plan.color_accuracy != "full" or color_plan.truncated:
+        raise ValueError(
+            "the formal N_c expansion contracts the complete full-colour basis"
+        )
+    reference = reference_degree(color_plan)
+    sector_by_id = {sector.id: sector for sector in color_plan.sectors}
+    descriptors_by_helicity: dict[tuple[object, ...], list[ColorGroupDescriptor]] = {}
+    for descriptor in groups:
+        descriptors_by_helicity.setdefault(descriptor.helicity_key, []).append(
+            descriptor
+        )
+    laurent_cache: dict[tuple[int, int], dict[int, Fraction]] = {}
+    entries: list[ColorContractionEntry] = []
+    degrees: set[int] = set()
+    for helicity_descriptors in descriptors_by_helicity.values():
+        for left_offset, left in enumerate(helicity_descriptors):
+            left_sector = sector_by_id.get(left.sector_id)
+            if left_sector is None:
+                raise ValueError(f"missing colour sector {left.sector_id}")
+            for right in helicity_descriptors[left_offset:]:
+                right_sector = sector_by_id.get(right.sector_id)
+                if right_sector is None:
+                    raise ValueError(f"missing colour sector {right.sector_id}")
+                pair = (left.sector_id, right.sector_id)
+                terms = laurent_cache.get(pair)
+                if terms is None:
+                    terms = laurent_cache[pair] = color_contraction_laurent(
+                        color_plan, left_sector, right_sector
+                    )
+                if not terms:
+                    continue
+                symmetry = 1.0 if left.group_id == right.group_id else 2.0
+                helicity_weight = _common_helicity_weight(left, right)
+                weights = graded_weights(terms, left.nc_grade, right.nc_grade)
+                for degree, weight in sorted(weights.items(), reverse=True):
+                    if degree > reference:
+                        raise ValueError(
+                            f"colour sectors {left.sector_id}, {right.sector_id} "
+                            f"reach N_c degree {degree} above the reference "
+                            f"degree {reference}"
+                        )
+                    if not expansion.kept(degree, reference):
+                        continue
+                    degrees.add(degree)
+                    entries.append(
+                        ColorContractionEntry(
+                            left_group_id=left.group_id,
+                            right_group_id=right.group_id,
+                            weight_re=helicity_weight * float(weight),
+                            symmetry_factor=symmetry,
+                            exact_weight=(
+                                Fraction(helicity_weight) * weight,
+                                Fraction(0),
+                            ),
+                            nc_degree=degree,
+                        )
+                    )
+    return ColorContractionPlan(
+        color_accuracy=expansion.accuracy,
+        supported=True,
+        reason=None,
+        group_count=len(groups),
+        entries=tuple(entries),
+        nc_expansion={
+            **expansion.to_json_dict(),
+            "reference_degree": reference,
+            "degrees": _reported_degrees(expansion, reference, degrees),
+        },
+    )
+
+
+def _reported_degrees(
+    expansion: NcExpansion, reference: int, present: set[int]
+) -> list[int]:
+    """The degrees a graded plan reports, decreasing: every kept degree of a
+    strict truncation (P, or P to P-2), and for the graded full colour every
+    degree from P down to the lowest nonzero one; a degree without entries
+    reports zero."""
+
+    depth = expansion.depth
+    lowest = reference - depth if depth is not None else min(present, default=reference)
+    return list(range(reference, lowest - 1, -1))
 
 
 def build_color_contraction_plan(
@@ -523,6 +631,7 @@ __all__ = [
     "RepeatedColorContractionBlock",
     "SymmetricGroupColorContractionBlock",
     "build_color_contraction_plan",
+    "build_graded_color_contraction_plan",
     "color_contraction_factor",
     "color_contraction_factors",
     "exact_color_contraction_factor",

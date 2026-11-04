@@ -410,6 +410,13 @@ def test_exports_refuse_projections_over_blocks_not_exact_in_nc(
 # native digest equals the former pin (``FOURIER_FREE``), and its plan and
 # companion digests are unchanged (the plan v4 bytes do not depend on the
 # seed contraction).
+# Re-pinned by lp-colour (PR #34, exact U(1)-subtraction weight 1/N_c): every
+# control's native digest only. The weight 1/N_c now enters the vertex
+# coupling (the kernels' coupling expression) instead of the tree program's
+# interaction factor ('1/3' -> '1'); the members that differ from the former
+# pins are exactly kernel-*.bin / kernel-*.symjit of the quark-line vertices
+# and the (companion) tree program, and the plan and companion digests are
+# unchanged.
 # Re-pinned by mf-symbolica (upstream Symbolica re-pin, community 36cbac3a +
 # symbolica-dev#163 = 20a9da94): the native digests only. Exactly the
 # evaluator members change: every Symbolica-serialised exact evaluator
@@ -417,8 +424,8 @@ def test_exports_refuse_projections_over_blocks_not_exact_in_nc(
 # serialization ABI symbolica-bincode2-v2) and the SymJIT applications compiled
 # from Symbolica's evaluator export (some ``kernel-*.symjit``: upstream's Horner
 # search); every other member, the plans and the companion plans keep their bytes
-# (per-member digests on d0a54212 + Community 9cdc2949 and on this head);
-# ``FOURIER_FREE`` likewise.
+# (per-member digests on the slice d5a1f770 + Community 9cdc2949 and on this
+# head); ``FOURIER_FREE`` likewise.
 CONTROLS = {
     "uux_ddxg_lc": ("u u~ > d d~ g", {"QCD": 3, "QED": 0}, "lc"),
     "uux_ddxg_nlc": ("u u~ > d d~ g", {"QCD": 3, "QED": 0}, "nlc"),
@@ -431,39 +438,39 @@ CONTROL_BYTES = {
     "uux_ddxg_lc": (
         "f8595356dbb40148749b9828679d4a368518cb0922e3f680fe8313af978ace95",
         "8c32bb3bc825e3c3fed06ca962091ad64fe3b87ffc636747a0d0482b9ac83fb2",
-        "47795a5882aa2e7237bc69443a5624491b9c5921daa0a591a629bde2f92a510c",
+        "0716b30651f724ab0ff78ae874c3e74046a5c92dfe7e92cbd1f737cb743dff5a",
     ),
     "uux_ddxg_nlc": (
         "4cd00549a72bfa194778472289d5af0c31c7dfc471c27d54bd116152eb62e2ad",
         "f27586cffefed6fd94ceaef0155a11590ccba22e423f7014efe0f49457ddb249",
-        "1a44e0f388e809a3e891fedba2c0d50fa97bc31905aff25e3006960b69518bd8",
+        "761a5511395104b6c60e42f64055f10d62e4028f80cbcc18e5a2d1401a82c4b7",
     ),
     "uux_ddxssx_lc": (
         "eadb28c424c1d45046399f8b6dd8832d805c0eb1ffb59906b86ead2927c3d09d",
         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "ada4207ccf65534c4391e2cd367a8108b3714af789628ebb862e89dd4f399ab0",
+        "3996f8e151ce65fcae02c76df6925ac2ad24cbd84ab016fa9c812343eb462bab",
     ),
     "uux_ddxssx_nlc": (
         "698711e3b9670e135f20719c82041c020bbd846f404ee963eb74b92e186432ab",
         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "a1602bb9b150a24c8af8abcd63adfbb2f7a848c02173318c4148998913d07423",
+        "33ed29a5bf1c63b21193d8449d9b9c6a60c8bc58c645fc3e5c60db7d2754130d",
     ),
     "uux_uuxg_full": (
         "a80ff312a2155ddbbc9f02f352b90335427eb9e19b560702e21b5431450cf28e",
         "f3f96c6e2a657899cef204358546e9e6e2d865093ab7a2cda27706af315c6ad5",
-        "f5f2961c467196eb4991f430c97db9ca71e6b4be0be6fba0c2a5177a4c0eb481",
+        "32d5e455a3875b5fdf5f5ef470ba094fb670a3296cac2a820727e97b9f81a34b",
     ),
     "gg_uuxuux_full": (
         "52aebd812ec8a579a8268de84370f850b69b3a05f83a8cb54fb109eb74620769",
         "50b2f50da81a8619ebb3b2b5dd5b078c6c7aa1fe79727531eaebe2a703793d23",
-        "8d43c9967238a91a8f97d74ac39e6428f0b714f72337bc561552b9d0607c46bc",
+        "6f1eeb790aaebe15daa59c49c27e443270829473ae398894254afd83d6da0994",
     ),
 }
 # The native digests of the controls without their seed Fourier record (the
-# pins before mq-fft).
+# pins before mq-fft; re-pinned by lp-colour for PR #34 as above).
 FOURIER_FREE = {
     "gg_uuxuux_full": (
-        "e170306cfcbe65db529a6c1eb34a943d95f4ec16fd7c1ec50ce0130e4f5d49f9"
+        "9721bcee34c7e24095708b12dac33f2db4ada9c3d37b00ad2f86b0a448a788e3"
     ),
 }
 

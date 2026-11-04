@@ -27,6 +27,7 @@ __all__ = [
     "CorrelatedValue",
     "CorrelatorConfig",
     "EmitGluon",
+    "GradedCorrelatedEvaluation",
     "SplitGluon",
 ]
 
@@ -67,6 +68,45 @@ class CorrelatedValue:
 
     def __complex__(self) -> complex:
         return complex(float(self.real), float(self.imag))
+
+
+@dataclass(frozen=True)
+class GradedCorrelatedEvaluation:
+    """A correlation split by power of N_c: ``values[point][degree]``.
+
+    For an artifact graded by power of N_c (``color.accuracy = "strict-lc"``
+    or ``"strict-nlc"``, or full colour with ``color.graded``), the entry of
+    ``degrees[d]`` is the N_c^degree term of the formal 1/N_c expansion of
+    the correlation, at N_c = 3. ``degrees`` decrease from the connection's
+    reference degree P = n_g + n_qqbar + r - s. ``total`` is the ordinary
+    correlated value (the sum of the reported degrees).
+    """
+
+    degrees: tuple[int, ...]
+    values: tuple[tuple[CorrelatedValue, ...], ...]
+    total: tuple[CorrelatedValue, ...]
+
+    def __post_init__(self) -> None:
+        degrees = tuple(int(degree) for degree in self.degrees)
+        if not degrees or list(degrees) != sorted(set(degrees), reverse=True):
+            raise ValueError("N_c degrees must be unique and decreasing")
+        values = tuple(tuple(point) for point in self.values)
+        if len(values) != len(self.total) or any(
+            len(point) != len(degrees) for point in values
+        ):
+            raise ValueError("graded correlations do not match the degree axis")
+        object.__setattr__(self, "degrees", degrees)
+        object.__setattr__(self, "values", values)
+        object.__setattr__(self, "total", tuple(self.total))
+
+    def for_degree(self, degree: int) -> tuple[CorrelatedValue, ...]:
+        """Per-point contribution of one N_c degree."""
+
+        try:
+            index = self.degrees.index(int(degree))
+        except ValueError as error:
+            raise ValueError(f"N_c degree {degree} is not reported") from error
+        return tuple(point[index] for point in self.values)
 
 
 def _fields(value: object, allowed: set[str], context: str) -> Mapping[str, object]:
@@ -134,12 +174,8 @@ class CorrelatorConfig:
 
     def __post_init__(self) -> None:
         order = self.all_color_through_order
-        if order is not None and (
-            type(order) is not int or order < 1
-        ):
-            raise ValueError(
-                "all_color_through_order must be a positive integer"
-            )
+        if order is not None and (type(order) is not int or order < 1):
+            raise ValueError("all_color_through_order must be a positive integer")
         colors = tuple(self.color_correlations)
         if any(not isinstance(item, ColorCorrelator) for item in colors):
             raise TypeError("color_correlations must contain ColorCorrelator records")

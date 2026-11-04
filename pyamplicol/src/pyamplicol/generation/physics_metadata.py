@@ -8,6 +8,7 @@ from collections.abc import Mapping, Sequence
 from itertools import product
 from typing import Any
 
+from ..color.nc_expansion import nc_degree_color_id
 from ..models.base import Model
 from .contracts import runtime_coupling_parameter_names
 from .dag_types import GenericDAG
@@ -90,7 +91,10 @@ def build_resolved_physics_payload(
         coherent_groups,
         _mapping_sequence(amplitude_stage.get("roots", ())),
     )
-    color_components, group_colors = _color_metadata(dag, coherent_groups)
+    nc_expansion = _nc_expansion_record(dag, amplitude_stage)
+    color_components, group_colors = _color_metadata(
+        dag, coherent_groups, nc_expansion=nc_expansion
+    )
     if native_eager_plan_v3_reduction_groups:
         reduction_groups: list[dict[str, object]] = []
         native_reduction_extension = {
@@ -133,7 +137,7 @@ def build_resolved_physics_payload(
         "kind": "pyamplicol-resolved-physics",
         "process_id": process_id,
         "process": dag.process.process,
-        "color_accuracy": dag.process.color_accuracy,
+        "color_accuracy": public_color_accuracy(dag),
         "coverage": {
             "helicities": dag.helicity_coverage,
             "color": ("complete" if is_lc and lc_color_complete else "selected")
@@ -180,8 +184,41 @@ def build_resolved_physics_payload(
             ),
             **_runtime_selector_extension(dag),
             **native_reduction_extension,
+            **({} if nc_expansion is None else {"nc_expansion": nc_expansion}),
         },
     }
+
+
+def public_color_accuracy(dag: GenericDAG) -> str:
+    """The artifact's colour accuracy: the strict expansion of a strict
+    DAG (``strict-lc``/``strict-nlc``), else the DAG's accuracy (a graded
+    full-colour DAG is full colour)."""
+
+    expansion = dag.nc_expansion
+    if expansion is not None and expansion.accuracy != "full":
+        return expansion.accuracy
+    return str(dag.process.color_accuracy)
+
+
+def _nc_expansion_record(
+    dag: GenericDAG,
+    amplitude_stage: Mapping[str, object],
+) -> dict[str, object] | None:
+    """The graded plan's expansion record (accuracy, depth, reference degree
+    and kept degrees, ``color.contraction.build_graded_color_contraction_plan``).
+    """
+
+    if dag.nc_expansion is None:
+        return None
+    contraction = amplitude_stage.get("color_contraction")
+    record = (
+        contraction.get("nc_expansion") if isinstance(contraction, Mapping) else None
+    )
+    if not isinstance(record, Mapping):
+        raise ValueError(
+            "a formal-N_c expansion needs its graded colour contraction plan"
+        )
+    return dict(record)
 
 
 def build_runtime_model_parameter_records(
@@ -695,7 +732,31 @@ def _possible_helicity_vectors(
 def _color_metadata(
     dag: GenericDAG,
     groups: Sequence[Mapping[str, object]],
+    *,
+    nc_expansion: Mapping[str, object] | None = None,
 ) -> tuple[list[dict[str, object]], dict[int, tuple[str, ...]]]:
+    if nc_expansion is not None:
+        # One contracted component per kept N_c degree (decreasing): the
+        # contribution of that degree at N_c = 3; the components sum to the
+        # total. Every group can contribute to every degree.
+        degrees = [_integer(value) for value in _sequence(nc_expansion["degrees"])]
+        components = [
+            {
+                "kind": "contracted-color",
+                "id": nc_degree_color_id(degree),
+                "index": index,
+                "description": (
+                    f"N_c^{degree} term of the formal N_c expansion of the "
+                    "contracted colour sum, at N_c = 3"
+                ),
+                "nc_degree": degree,
+            }
+            for index, degree in enumerate(degrees)
+        ]
+        identifiers = tuple(component["id"] for component in components)
+        return components, {
+            _integer(group["group_id"]): identifiers for group in groups
+        }
     if dag.process.color_accuracy != "lc":
         identifier = "color:contracted"
         return [
@@ -1036,4 +1097,5 @@ __all__ = [
     "build_resolved_physics_payload",
     "build_runtime_model_parameter_records",
     "build_runtime_normalization",
+    "public_color_accuracy",
 ]

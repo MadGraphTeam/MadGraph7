@@ -17,7 +17,12 @@ from pyamplicol.api.protocols import Momenta
 from pyamplicol.artifacts import load_manifest
 from pyamplicol.artifacts.security import confined_path
 from pyamplicol.color.connections import COLOR_CONNECTION_CONVENTION
-from pyamplicol.correlators import CorrelatedRequest, CorrelatedValue, CorrelatorConfig
+from pyamplicol.correlators import (
+    CorrelatedRequest,
+    CorrelatedValue,
+    CorrelatorConfig,
+    GradedCorrelatedEvaluation,
+)
 from pyamplicol.runtime._double_double import correlated_precision
 from pyamplicol.runtime._native_selection import native_process_selection
 from pyamplicol.runtime.correlated_exact import (
@@ -37,6 +42,8 @@ class _MatrixEntry:
     right: int
     real: Fraction
     imag: Fraction
+    # N_c power p of this term of a graded matrix (strict or graded colour).
+    nc_power: int | None = None
 
 
 @dataclass(frozen=True)
@@ -44,6 +51,9 @@ class _Matrix:
     id: str
     sectors: tuple[int, ...]
     entries: tuple[_MatrixEntry, ...]
+    # Reported N_c degrees (decreasing) of a graded matrix; a term of power p
+    # between groups of grades g_l, g_r has the degree p + g_l + g_r.
+    degrees: tuple[int, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -75,7 +85,8 @@ def _matrix(record: object) -> _Matrix:
             raise ValueError("matrix is not an object")
         if (
             record["convention"] != COLOR_CONNECTION_CONVENTION
-            or record["color_accuracy"] not in {"lc", "nlc", "full"}
+            or record["color_accuracy"]
+            not in {"lc", "nlc", "full", "strict-lc", "strict-nlc"}
             or record["storage"] != "sparse-directed"
             or record["includes_color_factor"] is not True
         ):
@@ -90,19 +101,34 @@ def _matrix(record: object) -> _Matrix:
             or len(set(sectors)) != len(sectors)
         ):
             raise ValueError("invalid colour sector IDs")
+        expansion = record.get("nc_expansion")
+        degrees: tuple[int, ...] | None = None
+        if expansion is not None:
+            degrees = tuple(expansion["degrees"])
+            if (
+                not degrees
+                or any(type(item) is not int for item in degrees)
+                or list(degrees) != sorted(set(degrees), reverse=True)
+            ):
+                raise ValueError("invalid N_c degrees")
+        elif record["color_accuracy"] in {"strict-lc", "strict-nlc"}:
+            raise ValueError("strict colour matrix has no N_c expansion")
         entries = []
-        pairs: set[tuple[int, int]] = set()
+        pairs: set[tuple[int, int, int | None]] = set()
         for item in record["entries"]:
             left, right = item["left_sector_id"], item["right_sector_id"]
+            power = item.get("nc_power")
             if (
                 type(left) is not int
                 or type(right) is not int
                 or left not in sectors
                 or right not in sectors
-                or (left, right) in pairs
+                or (left, right, power) in pairs
+                or (power is None) != (degrees is None)
+                or (power is not None and type(power) is not int)
             ):
                 raise ValueError("invalid or repeated matrix entry")
-            pairs.add((left, right))
+            pairs.add((left, right, power))
             real, imag = item["weight"]["real"], item["weight"]["imag"]
             if any(
                 isinstance(parts, (str, bytes))
@@ -117,9 +143,10 @@ def _matrix(record: object) -> _Matrix:
                     right,
                     Fraction(_exact_integer(real[0]), _exact_integer(real[1])),
                     Fraction(_exact_integer(imag[0]), _exact_integer(imag[1])),
+                    power,
                 )
             )
-        return _Matrix(identifier, sectors, tuple(entries))
+        return _Matrix(identifier, sectors, tuple(entries), degrees)
     except (KeyError, TypeError, ValueError, ZeroDivisionError) as exc:
         raise ArtifactError(f"invalid correlated colour matrix: {exc}") from exc
 
@@ -128,10 +155,24 @@ def _matrix(record: object) -> _Matrix:
 class _ContractionPlan:
     group_count: int
     terms: tuple[tuple[int, int, tuple[Decimal, Decimal]], ...]
+    # The N_c-degree slot of every term of a graded matrix (``degrees``).
+    term_slots: tuple[int, ...] | None = None
+    degrees: tuple[int, ...] | None = None
 
     def evaluate(
         self, batch: CoherentAmplitudeBatch, *, precision: int
     ) -> tuple[CorrelatedValue, ...]:
+        return tuple(
+            point[-1] for point in self.evaluate_graded(batch, precision=precision)
+        )
+
+    def evaluate_graded(
+        self, batch: CoherentAmplitudeBatch, *, precision: int
+    ) -> tuple[tuple[CorrelatedValue, ...], ...]:
+        """Per point: the value of each N_c degree of a graded matrix, then
+        the total (only the total for an ungraded matrix)."""
+
+        slot_count = 0 if self.degrees is None else len(self.degrees)
         results = []
         with localcontext() as context:
             context.prec = _working_precision(precision)
@@ -143,24 +184,35 @@ class _ContractionPlan:
                     )
                 scalar = type(batch.normalization_factor)
                 real, imag = scalar(0), scalar(0)
-                for left, right, weight in self.terms:
+                slots = [[scalar(0), scalar(0)] for _ in range(slot_count)]
+                for index, (left, right, weight) in enumerate(self.terms):
                     a, b = point[left], point[right]
                     # Keep the single-ID multiplication/accumulation order.
                     term = _complex_mul(_complex_mul((a[0], -a[1]), weight), b)
                     real += term[0]
                     imag += term[1]
+                    if self.term_slots is not None:
+                        slot = slots[self.term_slots[index]]
+                        slot[0] += term[0]
+                        slot[1] += term[1]
                 results.append(
-                    (
-                        real * batch.normalization_factor,
-                        imag * batch.normalization_factor,
+                    tuple(
+                        (
+                            part_re * batch.normalization_factor,
+                            part_im * batch.normalization_factor,
+                        )
+                        for part_re, part_im in (*slots, (real, imag))
                     )
                 )
         with localcontext() as context:
             context.prec = precision
             context.rounding = ROUND_HALF_EVEN
             return tuple(
-                CorrelatedValue(+Decimal(real), +Decimal(imag))
-                for real, imag in results
+                tuple(
+                    CorrelatedValue(+Decimal(real), +Decimal(imag))
+                    for real, imag in point
+                )
+                for point in results
             )
 
 
@@ -171,11 +223,20 @@ def _prepare_contraction(
     precision: int,
     scalar: type[Decimal] = Decimal,
 ) -> _ContractionPlan:
-    """Prepare exact weights and indices once, without numerical amplitude state."""
+    """Prepare exact weights and indices once, without numerical amplitude state.
+
+    A graded matrix (strict or graded colour) contracts every N_c grade of
+    each sector's amplitude: its term of power p between groups of grades
+    g_l and g_r enters the degree p + g_l + g_r, if the matrix reports it.
+    """
+    if matrix.degrees is not None:
+        return _prepare_graded_contraction(
+            amplitude_groups, matrix, precision=precision, scalar=scalar
+        )
     groups: dict[str, dict[int, int]] = {}
     for index, group in enumerate(amplitude_groups):
         sectors = groups.setdefault(group.helicity_id, {})
-        if group.color_sector_id in sectors:
+        if group.color_sector_id in sectors or group.nc_grade != 0:
             raise ArtifactError("repeated coherent helicity/colour group")
         sectors[group.color_sector_id] = index
     expected = set(matrix.sectors)
@@ -203,6 +264,49 @@ def _prepare_contraction(
             for left, right, weight in entries
         ),
     )
+
+
+def _prepare_graded_contraction(
+    amplitude_groups: tuple[CoherentAmplitudeGroup, ...],
+    matrix: _Matrix,
+    *,
+    precision: int,
+    scalar: type[Decimal],
+) -> _ContractionPlan:
+    degrees = matrix.degrees
+    assert degrees is not None
+    slot_by_degree = {degree: slot for slot, degree in enumerate(degrees)}
+    groups: dict[str, dict[int, list[tuple[int, int]]]] = {}
+    for index, group in enumerate(amplitude_groups):
+        sectors = groups.setdefault(group.helicity_id, {})
+        graded = sectors.setdefault(group.color_sector_id, [])
+        if any(grade == group.nc_grade for grade, _ in graded):
+            raise ArtifactError("repeated coherent helicity/colour group")
+        graded.append((group.nc_grade, index))
+    expected = set(matrix.sectors)
+    if any(set(indices) != expected for indices in groups.values()):
+        raise ArtifactError("correlated amplitudes do not cover the colour matrix")
+    terms: list[tuple[int, int, tuple[Decimal, Decimal]]] = []
+    slots: list[int] = []
+    with localcontext() as context:
+        context.prec = _working_precision(precision)
+        context.rounding = ROUND_HALF_EVEN
+        for sectors in groups.values():
+            for entry in matrix.entries:
+                weight = (
+                    scalar(entry.real.numerator) / scalar(entry.real.denominator),
+                    scalar(entry.imag.numerator) / scalar(entry.imag.denominator),
+                )
+                for left_grade, left in sectors[entry.left]:
+                    for right_grade, right in sectors[entry.right]:
+                        slot = slot_by_degree.get(
+                            int(cast(int, entry.nc_power)) + left_grade + right_grade
+                        )
+                        if slot is None:
+                            continue
+                        terms.append((left, right, weight))
+                        slots.append(slot)
+    return _ContractionPlan(len(amplitude_groups), tuple(terms), tuple(slots), degrees)
 
 
 def _contract(
@@ -379,6 +483,62 @@ class CorrelatorEvaluator:
         return self._scaled(
             _contract(batch, self._matrices[color_correlation], precision=precision),
             precision,
+        )
+
+    def evaluate_graded(
+        self,
+        momenta: Momenta,
+        *,
+        color_correlation: str = "born",
+        helicities: Sequence[str] | None = None,
+        precision: int = 16,
+        arithmetic: str = "arbitrary",
+    ) -> GradedCorrelatedEvaluation:
+        """``evaluate`` split by the N_c degrees of a graded matrix."""
+
+        if (
+            isinstance(precision, bool)
+            or not isinstance(precision, int)
+            or precision < 1
+        ):
+            raise EvaluationError(
+                "precision must be a positive number of decimal digits"
+            )
+        matrix = self._matrices.get(color_correlation)
+        if not isinstance(color_correlation, str) or matrix is None:
+            raise EvaluationError(
+                f"unknown colour correlation ID {color_correlation!r}"
+            )
+        if matrix.degrees is None:
+            raise CompatibilityError(
+                "graded correlations need an artifact generated with "
+                "color.accuracy='strict-lc' or 'strict-nlc', or with "
+                "color.graded and full colour"
+            )
+        amplitude_precision = correlated_precision(precision, arithmetic)
+        batch = self._select_executor(arithmetic).coherent_amplitudes(
+            momenta,
+            spin_vectors=self._vectors,
+            helicities=helicities,
+            precision=amplitude_precision,
+        )
+        points = _prepare_contraction(
+            batch.groups,
+            matrix,
+            precision=precision,
+            scalar=type(batch.normalization_factor),
+        ).evaluate_graded(batch, precision=precision)
+        columns = [
+            self._scaled(tuple(point[index] for point in points), precision)
+            for index in range(len(matrix.degrees) + 1)
+        ]
+        return GradedCorrelatedEvaluation(
+            degrees=matrix.degrees,
+            values=tuple(
+                tuple(column[point] for column in columns[:-1])
+                for point in range(len(points))
+            ),
+            total=columns[-1],
         )
 
     def _scaled(

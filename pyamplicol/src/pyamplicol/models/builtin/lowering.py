@@ -16,6 +16,7 @@ from ..expressions import (
     _expr_fermion_propagator_dirac,
     _expr_fermion_propagator_weyl,
     _expr_minkowski_dot,
+    _imaginary_unit_for,
     _minkowski_square_expression,
     _number,
 )
@@ -38,6 +39,7 @@ from .expressions import (
     _quark_vector_weyl_data,
     _tensor_gluon_to_gluon_data,
     _two_gluon_to_tensor_data,
+    u1_subtraction_weight,
 )
 from .symbols import symbols
 
@@ -288,7 +290,7 @@ class BuiltinSMLoweringMixin:
                 kernel="fermion_pair_to_vector",
                 input_roles=("fermion", "antifermion"),
                 output_role="vector",
-                coupling_mode="vertex",
+                coupling_mode="fixed",
             )
         if kind in {12, 13, 14, 15}:
             vector_role_map: dict[int, tuple[str, tuple[str, str], str, str]] = {
@@ -621,7 +623,16 @@ class BuiltinSMLoweringMixin:
                 antifermion_chirality=left_chirality,
             )
         if kind == 8:
-            qcd_coupling = (coupling[0], coupling[0])
+            # A structural constant, not a model parameter: the vertex's
+            # coupling is the U(1)-subtraction weight (``definitions``), entered
+            # exactly in symbolic vertices (``u1_subtraction_weight``).
+            if tuple(coupling) != (1.0 / 3.0, 0.0):
+                raise ValueError(
+                    "the QCD U(1)-subtraction current takes the weight 1/3, got "
+                    f"{tuple(coupling)!r}"
+                )
+            weight = u1_subtraction_weight(*left, *right)
+            qcd_coupling = (weight, weight)
             fermion = tuple(left)
             antifermion = tuple(right)
             if len(fermion) == 4 or len(antifermion) == 4:
@@ -737,9 +748,13 @@ class BuiltinSMLoweringMixin:
         current_momentum = tuple(momentum)
         if not metadata.applies_propagator:
             return components
+        # The phases are exact in symbolic currents, as in the fermion
+        # propagators: a Python 1j would round an exact rational coefficient of
+        # the current (the U(1)-subtraction weight 1/3) to binary64.
+        imaginary = _imaginary_unit_for((*components, *current_momentum))
         if metadata.kind == "vector" and metadata.gauge == "feynman":
             denominator = _minkowski_square_expression(current_momentum)
-            prefactor = -1j / denominator
+            prefactor = -imaginary / denominator
             return tuple(component * prefactor for component in components)
         if metadata.kind == "vector" and metadata.gauge == "unitary":
             mass = self.mass(particle_id)
@@ -747,9 +762,9 @@ class BuiltinSMLoweringMixin:
             denominator = (
                 _minkowski_square_expression(current_momentum)
                 - mass * mass
-                + 1j * mass * width
+                + imaginary * mass * width
             )
-            prefactor = -1j / denominator
+            prefactor = -imaginary / denominator
             longitudinal = _expr_minkowski_dot(components, current_momentum) / (
                 mass * mass
             )
@@ -789,9 +804,9 @@ class BuiltinSMLoweringMixin:
             denominator = (
                 _minkowski_square_expression(current_momentum)
                 - mass * mass
-                + 1j * mass * width
+                + imaginary * mass * width
             )
-            prefactor = 1j / denominator
+            prefactor = imaginary / denominator
             return tuple(component * prefactor for component in components)
         raise ValueError(
             f"propagator kind {metadata.kind!r} in gauge {metadata.gauge!r} "
