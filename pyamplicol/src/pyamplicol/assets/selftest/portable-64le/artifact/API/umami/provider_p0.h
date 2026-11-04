@@ -3,7 +3,7 @@
 #include "umami_provider.h"
 #define UMAMI_HAS_ALPHA_S 0
 #define UMAMI_HAS_COLOR_FLOW 1
-#define UMAMI_ARTIFACT_ID "7a93e5a5882d5151c9b9bde4bca23b2aed7b0140547837d8e1f52117fbc5c348"
+#define UMAMI_ARTIFACT_ID "86d01e8e54a6d5de0cbd230ab59641c95ef56a0823c8726f9b57c422d2184ad7"
 static const double umami_masses[] = {0, 0, 91.188000000000002};
 static const int umami_p0_pdgs[] = {1, -1, 23};
 static const char *const umami_p0_helicities[] = {"h:-1,-1,-1", "h:-1,-1,+0", "h:-1,-1,+1", "h:-1,+1,-1", "h:-1,+1,+0", "h:-1,+1,+1", "h:+1,-1,-1", "h:+1,-1,+0", "h:+1,-1,+1", "h:+1,+1,-1", "h:+1,+1,+0", "h:+1,+1,+1"};
