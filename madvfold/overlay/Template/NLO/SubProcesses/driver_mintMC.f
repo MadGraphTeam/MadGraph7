@@ -5,6 +5,7 @@ c**************************************************************************
       use extra_weights
       use mint_module
       use FKSParams
+      use vfold_mode
       implicit none
 C
 C     CONSTANTS
@@ -170,6 +171,8 @@ c
       endif
       write(6,*) 'ENV_FVZ_NDUMP', env_fvz_ndump
       endif
+
+      call setup_av_me_mode ! AV (road B step 1): F0/F1/F2/F/C
       
 c
 c     Get user input

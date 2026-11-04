@@ -118,7 +118,7 @@ def vfold_linkfiles(opt):
     """Files of SubProcesses that the P directories must also link, if --vfold"""
     if not opt.get('vfold'):
         return []
-    return ['vfold_tests.inc']
+    return ['vfold_tests.inc', 'vfold_mode.f90']
 
 def vfold_copy_template(opt, dir_path):
     """Overlay the Template/NLO files of the overlay trees on dir_path"""
