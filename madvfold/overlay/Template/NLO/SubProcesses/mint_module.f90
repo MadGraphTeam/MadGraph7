@@ -66,6 +66,7 @@
 
 module mint_module
   use FKSParams ! contains use_poly_virtual
+  use vfold_rng_slots ! AV (road B step 2): vfold_fill_event_slots/vfold_fill_fold_slots
   implicit none
   integer, parameter, private :: nintervals=32    ! max number of intervals in the integration grids
   integer, parameter, public  :: ndimmax=60       ! max number of dimensions of the integral
@@ -900,6 +901,8 @@ contains
     save nfold69           ! AV
     data nfold69/.true./   ! AV
     double precision, dimension(0:ndimmax) :: vegasvol ! AV
+    call vfold_reset_fold_idx ! AV (road B step 3): true start of a new kpoint
+    call vfold_fill_event_slots ! AV (road B step 2): before get_channel, which consumes a slot
     call get_channel
 ! find random x, and its random cell
     do kdim=1,ndim
@@ -915,6 +918,7 @@ contains
     enddo
     kfold(1:ndim)=1
     entry get_random_x_next_fold(x,vol,kfold)
+    call vfold_fill_fold_slots ! AV (road B step 2): once per fold, hit by both entry points
     vol=1d0/vol_chan * wgt_mult
     vegasvol(0)=vol ! AV
 ! convert 'flat x' ('rand') to 'vegas x' ('x') and include jacobian ('vol')
@@ -1608,7 +1612,7 @@ contains
        endif
        if (ans_chan(0).le.0d0) then
 !     pick one at random (flat)
-          ichan=int(ran3(.false.)*nchans)+1
+          ichan=int(vfold_newran2(ISLOT_EV_CHANNEL,.false.)*nchans)+1 ! AV step 2
           iconfig=iconfigs(ichan)
           vol_chan=1d0/dble(nchans)
        else
@@ -1618,7 +1622,7 @@ contains
              write (*,*) 'ERROR: total should be equal to ans',total,ans_chan(0)
              stop 1
           endif
-          trgt=ans_chan(0)*ran3(.false.)
+          trgt=ans_chan(0)*vfold_newran2(ISLOT_EV_CHANNEL,.false.) ! AV step 2
           total=0d0
           ichan=0
           do while (total.lt.trgt)
@@ -1734,6 +1738,9 @@ contains
        call print_gen_counters
     elseif(gen_mode.eq.1) then
        call increase_gen_counters_before(vn)
+       ! AV road B step 8q: this vn's candidates use their own RANMAR
+       ! stream, meant to give 8q the same random numbers as step 9d.
+       call vfold_rng_use_stream(1+vn)
 10     continue
        new_point=.true.
        if (vn.eq.1) then
@@ -1746,6 +1753,7 @@ contains
        call check_upper_bound(vn,found_point)
        if (.not.found_point) goto 10
        call increase_gen_counters_end(vn)
+       call vfold_rng_use_stream(1) ! back to the per-event decision stream
     else
        write (*,*) "Unknown gen_mode in gen (from mint_module)",gen_mode
        stop 1
@@ -1801,7 +1809,9 @@ contains
           gen_counters(9)=gen_counters(9)+1
        endif
     endif
-    upper_bound=upper_bound*ran3(.false.)
+    ! AV road B step 8q: event-level slot instead of ran3(.false.), drawn
+    ! with this candidate's other event slots, as in step 9d.
+    upper_bound=upper_bound*vfold_newran2(ISLOT_EV_UPPER_BOUND,.false.)
     if (upper_bound.gt.f(1)) then
        gen_counters(10)=gen_counters(10)+1
        found_point=.false.
@@ -1825,6 +1835,17 @@ contains
     integer, dimension(ndimmax) :: kfold
     double precision :: vol,r
     double precision, dimension(ndimmax) :: x
+    ! AV (road B step 2): this is MINT2's own point-generation entry point,
+    ! bypassing get_random_x entirely -- must fill event slots itself,
+    ! before get_channel consumes one. get_random_x_next_fold below fills
+    ! fold slots as usual.
+    ! AV (road B step 3h): bug fix (add missing vfold_reset_fold_idx).
+    ! This bug was originally identified and fixed in eebbbb_vfalt between
+    ! steps 7d and 7e and was later backported to eebb_vfalt as step 3h,
+    ! to fix events.lhe differences in F/C batched mode between 3f and 3g.
+    ! For more details see code comments in the original commit 4d2429e14b.
+    call vfold_reset_fold_idx
+    call vfold_fill_event_slots
     call get_channel
     do kdim=1,ndim
        nintcurr=nintervals/ifold(kdim)

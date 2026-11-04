@@ -225,6 +225,7 @@ C ----------
 
 
 subroutine PickHelicityMC(p,goodhel,hel,ihel_out,vol)
+use vfold_rng_slots
 implicit none
 include 'nexternal.inc'
 INCLUDE 'born_nhel.inc'
@@ -245,7 +246,6 @@ double precision sum_all
 double precision accum, target 
 double precision born_wgt_recomp_direct
 
-double precision ran2
 
 call sborn_hel(p,born_wgt_recomp_direct)
 
@@ -268,7 +268,11 @@ sum_hel(i) = 0d0
 enddo
 
 
-target=ran2()
+C AV road B step 2: draw the helicity of the virtual (mc_hel=1)
+C from a fixed RNG slot (see vfold_rng_slots.f90) instead of a bare
+C ran2(): the position of the BinothLHA calls in the random number
+C stream differs between the vfold modes.
+target=vfold_newran2(ISLOT_FD_VIRT_HELICITY_PICK,.true.)
 ihel=1
 accum=0d0
 

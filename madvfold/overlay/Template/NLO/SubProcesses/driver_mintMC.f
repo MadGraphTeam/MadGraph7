@@ -6,6 +6,7 @@ c**************************************************************************
       use mint_module
       use FKSParams
       use vfold_mode
+      use vfold_rng_slots, only: vfold_delta_slots_init ! AV road B step 11m
       implicit none
 C
 C     CONSTANTS
@@ -244,6 +245,8 @@ c     Prepare the MINT folding
       ifold(ifold_energy)=ixi_i
       ifold(ifold_phi)=iphi_i
       ifold(ifold_yij)=iy_ij
+c AV road B step 11m: one pair of fold slots per dipole for MC@NLO-Delta
+      if (mcatnlo_delta) call vfold_delta_slots_init(nexternal-1)
 
 c*************************************************************
 c     setting of the grids
@@ -1320,6 +1323,7 @@ c     include all quarks (except top quark) and the gluon.
 
       subroutine update_vegas_x(xx,x)
       use mint_module
+      use vfold_rng_slots
       implicit none
       integer i
       double precision xx(ndimmax),x(99),ran2
@@ -1332,8 +1336,12 @@ c     include all quarks (except top quark) and the gluon.
          if (abrv.eq.'born') then
             if(i.le.nndim-3)then
                x(i)=xx(i)
-            elseif(i.le.nndim) then
-               x(i)=ran2()      ! Choose them flat when not including real-emision
+            elseif(i.eq.nndim-2) then
+               x(i)=vfold_newran2(ISLOT_FD_VEGAS_X_BORN_1,.true.)      ! Choose them flat when not including real-emision
+            elseif(i.eq.nndim-1) then
+               x(i)=vfold_newran2(ISLOT_FD_VEGAS_X_BORN_2,.true.)      ! Choose them flat when not including real-emision
+            elseif(i.eq.nndim) then
+               x(i)=vfold_newran2(ISLOT_FD_VEGAS_X_BORN_3,.true.)      ! Choose them flat when not including real-emision
             else
                x(i)=0.d0
             endif

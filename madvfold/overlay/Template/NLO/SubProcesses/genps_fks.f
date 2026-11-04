@@ -503,6 +503,7 @@ c
       subroutine generate_momenta_conf_wrapper(nndim,jac,x,itree,qmass
      $     ,qwidth,p)
       use mint_module
+      use vfold_rng_slots
       implicit none
       include 'nexternal.inc'
       include 'genps.inc'
@@ -739,7 +740,7 @@ c     1st term in eq.70 of the note
             MC_sum_factor=1d0
             if (compute_mapped.and.compute_non_shifted) then
 c     Could add importance sampling here
-               random=ran2()
+               random=vfold_newran2(ISLOT_FD_GENMOM_COINFLIP,.true.) ! AV step 2
                if (random.lt.0.5d0) then
                   compute_mapped=.false.
                else

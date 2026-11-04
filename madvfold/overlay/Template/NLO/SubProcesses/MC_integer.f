@@ -48,6 +48,7 @@ c
 c Written by Rikkert Frederix, 2012.
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       subroutine get_MC_integer(this_dim,niint_thisd,iint,vol)
+      use vfold_rng_slots
       implicit none
       integer iint,i,this_dim
       double precision ran2,rnd,vol
@@ -120,7 +121,7 @@ c Set the arrays in which we accumulate the results to zero
       endif
 c
 c Take a fresh random number and find the corresponding 'iint'
-      rnd=ran2()
+      rnd=vfold_newran2(ISLOT_EV_MC_INTEGER, .false.) ! AV (road B step 2)
       iint=0
       do while (rnd .gt. grid(iint,this_dim))
          iint=iint+1

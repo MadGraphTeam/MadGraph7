@@ -3481,6 +3481,7 @@ c compatibility. It picks a fold randomly, based on the weight of the
 c fold to the sum over all folds. Within a fold, take the weighted
 c average of shower scales for the FKS configurations.
       use weight_lines
+      use vfold_rng_slots
       implicit none
       include 'nexternal.inc'
       include 'nFKSconfigs.inc'
@@ -3539,7 +3540,7 @@ c is given by the ABS cross section to given FKS configuration.
       enddo
       if (temp_wgt_sum.eq.0d0) return
 c Randomly pick one of the folds
-      target=temp_wgt_sum*ran2()
+      target=temp_wgt_sum*vfold_newran2(ISLOT_EV_SHSC_FOLD_PICK,.false.) ! AV step 2
       ifold_accum=0d0
       do ifl=1,ifold_counter
          ifold_accum=ifold_accum+temp_wgt(ifl)
@@ -3566,6 +3567,7 @@ c its contribution without including the born (and nbody_noborn)
 c contributions. (If there are only born (and nbody_noborn)
 c contributions to the picked fold, use the weights of those instead).
       use weight_lines
+      use vfold_rng_slots
       implicit none
       include 'nexternal.inc'
       include 'nFKSconfigs.inc'
@@ -3645,7 +3647,7 @@ c pick the fold at random, weighted by their relative contributions
          wgt_sum=wgt_sum+abs(wgt_fold(ifl))
       enddo
       if (wgt_sum.le.0d0) return
-      target=wgt_sum*ran2()
+      target=wgt_sum*vfold_newran2(ISLOT_EV_SHSC_FOLD_PICK,.false.) ! AV step 2
       wgt_accum=0d0
       do ifl=1,ifold_counter
          wgt_accum=wgt_accum+abs(wgt_fold(ifl))
@@ -3668,7 +3670,7 @@ c that configuration.)
          wgt_sum=wgt_sum+abs(wgt_fold_fks(iFKS,ifl))
       enddo
       if (wgt_sum.ne.0d0) then
-         target=wgt_sum*ran2()
+         target=wgt_sum*vfold_newran2(ISLOT_EV_SHSC_FKS_PICK_A,.false.) ! AV step 2
          wgt_accum=0d0
          do iFKS=1,fks_configs
             wgt_accum=wgt_accum+abs(wgt_fold_fks(iFKS,ifl))
@@ -3687,7 +3689,7 @@ c instead.
             wgt_sum=wgt_sum+abs(wgt_fold_fks_born(iFKS,ifl))
          enddo
          if (wgt_sum.eq.0d0) return
-         target=wgt_sum*ran2()
+         target=wgt_sum*vfold_newran2(ISLOT_EV_SHSC_FKS_PICK_B1,.false.) ! AV step 2
          wgt_accum=0d0
          do iFKS=1,fks_configs
             wgt_accum=wgt_accum+abs(wgt_fold_fks_born(iFKS,ifl))
@@ -6856,6 +6858,7 @@ c
       subroutine bornsoftvirtual(p,bsv_wgt,virt_wgt,born_wgt)
       use extra_weights
       use mint_module
+      use vfold_rng_slots
       implicit none
       include "genps.inc"
       include 'nexternal.inc'
@@ -7248,7 +7251,8 @@ CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
       enddo
 
       if (fold.eq.0) then
-         if ((ran2().le.virtual_fraction(ichan) .and.
+         if ((vfold_newran2(ISLOT_EV_VIRTUAL_FRACTION,.false.) ! AV step 2
+     $        .le.virtual_fraction(ichan) .and.
      $        abrv(1:3).ne.'nov').or.abrv(1:4).eq.'virt') then
             call cpu_time(tBefore)
 c AV FIX: the first call of BinothLHA uses a tighter tolerance than all
