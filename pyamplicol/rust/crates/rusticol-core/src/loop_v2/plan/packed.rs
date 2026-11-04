@@ -111,6 +111,12 @@ impl PackedLinks {
         self.len == 0
     }
 
+    /// The heap one shared list holds: its packed bytes, the list itself
+    /// and the `Arc`'s two counts.
+    pub fn shared_bytes(&self) -> usize {
+        self.bytes.len() + std::mem::size_of::<Self>() + 2 * std::mem::size_of::<usize>()
+    }
+
     /// Column `c`'s bytes.
     fn column(&self, c: usize) -> &[u8] {
         let start: usize = self.widths[..c].iter().map(|&w| usize::from(w)).sum();
