@@ -103,7 +103,7 @@ def test_compare_bounds_by_tolerance_and_estimate(ngluon):
         return {
             "precision": precision,
             "rotation": [5, 3, -2, 7],
-            "rows": [{"index": 0, "virtual_over_born": values}, {"index": 9}],
+            "rows": [{"index": 0, "virtual_over_born": values}],
         }
 
     # Within 10 E (over the Born) of pyAmpliCol's binary64 value: passes.
@@ -123,3 +123,12 @@ def test_compare_bounds_by_tolerance_and_estimate(ngluon):
     assert not ngluon.compare(ours(exact, "dd"), theirs, 1e-12, 10)["passed"]
     # No common point: nothing compared, not passed.
     assert not ngluon.compare({"rows": [{"index": 3}]}, theirs, 1e-9, 10)["passed"]
+    # An NGluon point without its pyAmpliCol row fails the comparison.
+    extra = ours(near)
+    extra["rows"].append({"index": 9})
+    result = ngluon.compare(extra, theirs, 1e-9, 10)
+    assert not result["passed"] and result["unmatched"] == [9]
+    # A double-double point is compared only with a dd row.
+    assert ngluon.compare(ours(dd, "dd"), _checks(born, virtual, estimate), 1e-12, 10)[
+        "unmatched"
+    ] == [0]
