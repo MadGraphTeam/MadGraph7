@@ -34,17 +34,26 @@ stored evaluator state was regenerated.
 Without the PR, 3.0.3 saves the producer's whole Symbolica state: after a
 loop_sm compile about 20-30 MB per evaluator, depending on every symbol the
 Python process ever created. Stored as such, a u u~ > d d~ g loop artifact
-took 4.7 GB instead of 5.5 MB and 29 s instead of 0.3 s to load. Every
-generation writer therefore stores `symbolica_helpers.saved_evaluator`: the
-native re-encodes a whole-state save with only the symbols its evaluator
-references (`rusticol-core` `state_minimal_saved_evaluator`,
-`State::export_symbols`, the form the PR's save writes), the payload byte for
-byte; a state-minimal save (the PR's) is stored unchanged. Generation still
-imports each whole state once into the native: a symbol whose definition
-differs from the native's (the Community modules carry gammaloop `9102f885`,
-the native's FeynKit `d1904bf2`; `gammalooprs::Q` differs in one Spenso tag)
-is imported under a fresh name (`<name>_pyamplicol_import`) instead of
-failing (`load_evaluator_state_bytes`, the same rule on load). Symbolica
+took 4.7 GB instead of 5.5 MB and 29 s instead of 0.3 s to load. And any
+save, the PR's included, numbers the symbols it references by the producer's
+registry, so its bytes depended on the order in which the process created
+namespaces and symbols (a cold or a warm model cache gave different
+`parameters.bin`). Every generation writer therefore stores
+`symbolica_helpers.saved_evaluator`, the native's canonical form
+(`rusticol-core` `canonical_saved_evaluator`): only the symbols the evaluator
+references (a whole state is cut with `State::export_symbols`, the form the
+PR's save writes), their records ordered by name and numbered 0, 1, ...; the
+payload is kept byte for byte (it names its symbols by definition, so the
+numbering only maps the state), and the result must decode to the same
+evaluator. The stored bytes then depend on the evaluator alone, not on the
+producer (PyPI 3.0.3 and the Community build give the same artifact) nor on
+the process history. A section whose symbol data embeds an expression keeps its
+numbering (the expression carries it; no pyAmpliCol evaluator references such
+a symbol). Generation imports each whole state once into the native: a symbol
+whose definition differs from the native's (the Community modules carry
+gammaloop `9102f885`, the native's FeynKit `d1904bf2`; `gammalooprs::Q`
+differs in one Spenso tag) is imported under a fresh name
+(`<name>_pyamplicol_import`) instead of failing (`load_evaluator_state_bytes`, the same rule on load). Symbolica
 warns about each imported symbol that lacks the user-defined functions the
 native gave it; the extension routes Symbolica's diagnostics to standard error
 (`rusticol_core::diagnostics`, installed at import), so they never mix with a
