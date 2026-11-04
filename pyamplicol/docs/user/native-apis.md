@@ -89,7 +89,9 @@ request-major `[real, imaginary]` decimal strings, `values[request *
 point_count + point]`. Sources, stages, the exact colour weights, the
 contraction and derived model parameters are evaluated at the working
 precision; the normalization constant and the process-group factor are the
-artifact's, exactly as in `evaluate_with_precision`.
+artifact's, exactly as in `evaluate_with_precision`. On a graded or strict
+artifact (see above) each value sums the kept N_c degrees, as
+`evaluate_correlated_many_f64` does.
 
 LC, NLC, full colour and the strict `strict-lc`/`strict-nlc` are selected at
 generation for each inserted colour matrix, independently of connection

@@ -12,10 +12,9 @@
 //! vanishes.
 //!
 //! In double-double and arbitrary precision the graded values agree with
-//! binary64; at the working precision itself they need the artifact
-//! constants converted at that precision (MadGraphTeam/pyamplicol#26), so
-//! those checks are `#[ignore]`d until then (`cargo test -- --ignored`).
-//! There the graded total agrees with the ordinary total as the resolved
+//! binary64, and at the working precision itself, with the artifact
+//! constants converted at that precision (MadGraphTeam/pyamplicol#26): there
+//! the graded total agrees with the ordinary total as the resolved
 //! components do (about 5e-58 at 64 digits). The u d > u d shares are
 //! compared with 1e-30: the built-in model's U(1)-subtraction vertex
 //! coupling 1/3 limits that process, full colour included, to about 4e-34.
@@ -194,7 +193,6 @@ fn graded_quark_scattering_in_every_precision() {
 }
 
 #[test]
-#[ignore = "needs artifact constants at the working precision (MadGraphTeam/pyamplicol#26)"]
 fn graded_quark_antiquark_to_gluons_at_working_precision() {
     check(
         "u u~ > g g",
@@ -205,7 +203,6 @@ fn graded_quark_antiquark_to_gluons_at_working_precision() {
 }
 
 #[test]
-#[ignore = "needs artifact constants at the working precision (MadGraphTeam/pyamplicol#26)"]
 fn graded_quark_scattering_at_working_precision() {
     check(
         "u d > u d",
