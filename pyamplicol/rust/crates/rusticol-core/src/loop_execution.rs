@@ -1103,6 +1103,7 @@ pub mod v2 {
             b_families = live.families().to_vec();
             report.count("live-row links", live.links() as u64);
             report.count("row-pruned families", live.pruned() as u64);
+            report.count("row-pruned family bytes", live.bytes() as u64);
         }
         // The chunk-input budget in reals, and in lane vectors for the
         // bucket chunks' own inputs.

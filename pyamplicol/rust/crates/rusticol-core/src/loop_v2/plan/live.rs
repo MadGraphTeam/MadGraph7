@@ -145,6 +145,9 @@ pub struct LiveRows {
     live: Vec<usize>,
     /// Row links the listed families run (pruned or whole).
     links: usize,
+    /// The heap of the pruned copies (`family_bytes` and their shortened
+    /// part lists).
+    bytes: usize,
     /// The factor and current rows the dressed links read.
     pub read: Arc<ReadRows>,
 }
@@ -154,12 +157,19 @@ pub struct LiveRows {
 /// what it keeps and saves work in proportion to what it drops.
 pub const KEPT_SHARE: (usize, usize) = (1, 2);
 
-/// The heap of a family's steps that a pruned copy allocates anew: steps,
-/// edges, fused links, split groups (with their targets), part lists and
-/// parts (the parts' link lists are packed and shared, `plan/packed.rs`).
+/// The heap of a family that a pruned copy allocates anew: its sequence,
+/// orders, leaves and input lists, and its steps' edges, fused links, split
+/// groups (with their targets), part lists and parts (the parts' link lists
+/// are packed and shared, `plan/packed.rs`).
 fn family_bytes(family: &Family) -> usize {
     use std::mem::size_of;
-    family
+    let own = size_of::<Family>()
+        + family.sequence.len() * size_of::<(u64, usize)>()
+        + family.orders.len() * size_of::<usize>()
+        + family.leaves.len() * size_of::<super::Leaf>()
+        + (family.factors.len() + family.vertices.len() + family.currents.len())
+            * size_of::<usize>();
+    own + family
         .steps
         .iter()
         .map(|step| {
@@ -183,7 +193,7 @@ fn family_bytes(family: &Family) -> usize {
             });
             size_of::<Step>() + edges + split
         })
-        .sum()
+        .sum::<usize>()
 }
 
 /// Row links of a family's steps (fused edges and split parts).
@@ -222,6 +232,12 @@ impl LiveRows {
     /// Row links the listed families run (pruned copies or whole families).
     pub fn links(&self) -> usize {
         self.links
+    }
+
+    /// The heap of the pruned copies in bytes (their steps, edges, fused
+    /// links, groups, parts and shortened part lists).
+    pub fn bytes(&self) -> usize {
+        self.bytes
     }
 
     /// The listed families that run a pruned copy.
@@ -264,7 +280,7 @@ impl LoopProgramV4 {
         }
         // One link interner per rayon job: the parts' shortened lists are
         // shared within it (a list keeping every link stays the template's).
-        let pruned: Vec<(Option<Family>, usize)> = families
+        let pruned: Vec<(Option<Family>, usize, usize)> = families
             .par_iter()
             .map_init(LinkInterner::default, |interner, &f| {
                 let template = &self.families[f];
@@ -276,31 +292,44 @@ impl LoopProgramV4 {
                     &self.vertices,
                     interner,
                 );
-                if (family_bytes(&copy) + lists) * share.1 <= family_bytes(template) * share.0 {
+                let bytes = family_bytes(&copy) + lists;
+                if bytes * share.1 <= family_bytes(template) * share.0 {
                     let links = family_links(&copy);
-                    (Some(copy), links)
+                    (Some(copy), links, bytes)
                 } else {
-                    (None, family_links(template))
+                    (None, family_links(template), 0)
                 }
             })
             .collect();
-        let dressed = |(&f, (copy, _)): (&usize, &(Option<Family>, usize))| {
-            copy.as_ref().unwrap_or(&self.families[f])
-        };
+        fn dressed<'a>(
+            template: &'a [Family],
+            (&f, (copy, ..)): (&usize, &'a (Option<Family>, usize, usize)),
+        ) -> &'a Family {
+            copy.as_ref().unwrap_or(&template[f])
+        }
         let live = families
             .iter()
             .zip(&pruned)
-            .filter(|&pair| !dressed(pair).steps.is_empty())
+            .filter(|&pair| !dressed(&self.families, pair).steps.is_empty())
             .map(|(&f, _)| f)
             .collect();
-        let read = Arc::new(self.rows_read_by(families.iter().zip(&pruned).map(dressed)));
-        let links = pruned.iter().map(|(_, links)| links).sum();
+        let read = Arc::new(
+            self.rows_read_by(
+                families
+                    .iter()
+                    .zip(&pruned)
+                    .map(|pair| dressed(&self.families, pair)),
+            ),
+        );
+        let links = pruned.iter().map(|(_, links, _)| links).sum();
+        let bytes = pruned.iter().map(|(.., bytes)| bytes).sum();
         Ok(Some(LiveRows {
             rows: rows.to_vec(),
             listed: families.to_vec(),
-            pruned: pruned.into_iter().map(|(copy, _)| copy).collect(),
+            pruned: pruned.into_iter().map(|(copy, ..)| copy).collect(),
             live,
             links,
+            bytes,
             read,
         }))
     }
