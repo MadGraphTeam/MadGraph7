@@ -33,6 +33,8 @@ case ${proc} in
   eebbbb) gencmd="generate e+ e- > b b~ b b~ [QCD]";;
   eemumubb) gencmd="generate e+ e- > mu+ mu- b b~ [QCD]";;
   eemumubbg) gencmd="generate e+ e- > mu+ mu- b b~ g [QCD]";;
+  ggbbg) gencmd="generate g g > b b~ g [QCD]";;
+  ggttg) gencmd="generate g g > t t~ g [QCD]";;
   *) echo "ERROR! Unknown proc=${proc}"; exit 1;;
 esac
 
