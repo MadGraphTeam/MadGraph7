@@ -10,6 +10,8 @@
 compile_error!("rusticol-core requires at least one evaluator runtime feature");
 
 mod artifact;
+#[cfg(feature = "symbolica-runtime")]
+pub mod diagnostics;
 pub mod direct_arena;
 pub mod eager_layout;
 mod eager_lowering_v3;

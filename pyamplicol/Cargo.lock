@@ -2342,6 +2342,8 @@ dependencies = [
  "symbolica",
  "symjit",
  "thiserror",
+ "tracing",
+ "tracing-subscriber",
  "wide 1.7.1",
 ]
 

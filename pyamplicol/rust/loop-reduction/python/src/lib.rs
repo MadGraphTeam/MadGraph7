@@ -86,8 +86,11 @@ fn _loop_reduction(module: &Bound<'_, PyModule>) -> PyResult<()> {
 /// licence key in the environment, Symbolica's first state access takes the
 /// user's single restricted-thread permit, so an import-time registration made
 /// every second unlicensed pyAmpliCol process abort, tree-only ones included
-/// (requirements addendum G; docs/user/symbolica-and-licensing.md).
+/// (requirements addendum G; docs/user/symbolica-and-licensing.md). Symbolica's
+/// diagnostics are routed to standard error here (no Symbolica state either),
+/// so they never interleave with the program's standard output.
 pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    rusticol_core::diagnostics::symbolica_diagnostics_on_stderr();
     batch::register(module)?;
     module.add_class::<CoefficientEvaluator>()?;
     v2::register(module)?;

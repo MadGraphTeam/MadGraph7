@@ -19,7 +19,7 @@ python-generation-bridge = ["f64-symjit"]
 # Non-default parity seam for the private Python development harness.  This
 # feature is deliberately absent from production/default builds.
 on-the-fly-test-support = ["f64-symjit"]
-symbolica-runtime = ["dep:symbolica", "dep:pyamplicol"]
+symbolica-runtime = ["dep:symbolica", "dep:pyamplicol", "dep:tracing", "dep:tracing-subscriber"]
 # Native core of the loop engine v2: plan v4 and its executor (open-loop
 # polynomials in the NinjaRS tensor layout). Enabled by the loop consumer
 # (rusticol-loop-reduction), so the native extension ships it.
@@ -44,6 +44,9 @@ sha2.workspace = true
 symbolica = { workspace = true, optional = true }
 symjit = { workspace = true, optional = true }
 thiserror.workspace = true
+# Symbolica's diagnostics on standard error (`diagnostics`; Symbolica's versions).
+tracing = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"], optional = true }
 wide.workspace = true
 
 [[bench]]
