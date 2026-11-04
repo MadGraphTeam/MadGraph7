@@ -641,12 +641,13 @@ def build_covariant_structure(
         particle["propagator"] = propagator.name
         denominator = propagator.denominator
         if native.is_massless and native.mass != 0:
-            # A mass alias proved structurally massless above. The Community
-            # HepKit of the integration kernel (9cdc2949) gives it mass 0 and
-            # exports it as ZERO; the published Community 3.0.2 distribution
-            # keeps the source symbol, which the v2 families would read as a
-            # derived mass of value zero (refused, `_model_masses`). Write ZERO,
-            # so that the native model is the same under both.
+            # A mass alias proved structurally massless above. The HepKit of
+            # the pinned Symbolica (the Community build of 20a9da94 and PyPI
+            # 3.0.3, as 9cdc2949 before) gives it mass 0 and exports it as
+            # ZERO; the published Community 3.0.2 distribution kept the source
+            # symbol, which the v2 families would read as a derived mass of
+            # value zero (refused, `_model_masses`). Write ZERO, so that the
+            # native model is the same under either.
             if zero_parameter:
                 particle["mass"] = "ZERO"
             else:
