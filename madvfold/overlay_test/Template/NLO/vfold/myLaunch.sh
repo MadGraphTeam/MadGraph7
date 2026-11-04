@@ -252,7 +252,7 @@ cp SubProcesses/randinit SubProcesses/randinit.original
 cp Cards/param_card.dat Cards/param_card.dat.original
 cp Source/param_card.inc Source/param_card.inc.original
 if [ "$oOpt" == "-o" ]; then # fort.77 (soft/collinear checks in fks_singular.f depends on aS)
-  for f in SubProcesses/P*/fort.77; do cp -p ${f} ${f}.original; done
+  for f in SubProcesses/P*/fort.77; do if [ -f ${f} ]; then cp -p ${f} ${f}.original; fi; done # (not in a new directory before its first build)
 fi
 sed -i "s/.*= nevents/  ${ENV_NEVENTS} = nevents/" Cards/run_card.dat
 sed -i "s/.*= folding/  ${ENV_FOLDING} = folding/" Cards/run_card.dat
@@ -268,7 +268,7 @@ if [ "$oOpt" == "-o" ]; then
   sed -i "s/^ *3 [0-9.e+-]* # aS /    3 ${asmz} # aS /" Cards/param_card.dat
   if ! grep -q "^    3 ${asmz} # aS " Cards/param_card.dat; then
     echo "ERROR! Could not set aS(MZ)=${asmz} in Cards/param_card.dat"
-    for f in Cards/run_card.dat Source/run_card.inc SubProcesses/randinit Cards/param_card.dat Source/param_card.inc SubProcesses/P*/fort.77; do mv ${f}.original ${f}; done
+    for f in Cards/run_card.dat Source/run_card.inc SubProcesses/randinit Cards/param_card.dat Source/param_card.inc SubProcesses/P*/fort.77; do if [ -f ${f}.original ]; then mv ${f}.original ${f}; fi; done
     exit 1
   fi
 fi
@@ -339,9 +339,14 @@ export LD_LIBRARY_PATH=$(cd ../../..; pwd -P)/HEPTools/lib:${LD_LIBRARY_PATH}
 
 # First copy the cudacpp libraries if needed (check if mode is C)
 # Only warn if there is no vfold/copyCudacppLibs.sh (mode C may not use cudacpp yet)
+# Step 14p: only copy them if this has not been done (they are copied at generation)
+# or if they have been rebuilt since then (e.g. with vfold/buildCudacppLibs.sh)
 if [ "${ENV_VFOLD_ME_MODE}" == "C" ]; then
   if [ -f ./vfold/copyCudacppLibs.sh ]; then
-    ./vfold/copyCudacppLibs.sh | tee -a $out
+    if [ ! -f lib/cudacpp/.copied ] || [ -n "$(find CUDACPP -name 'libmg5amc_*.so' -newer lib/cudacpp/.copied -print -quit 2>/dev/null)" ]; then
+      ./vfold/copyCudacppLibs.sh | tee -a $out
+      touch lib/cudacpp/.copied
+    fi
   else
     echo "WARNING! ./vfold/copyCudacppLibs.sh not found: the cudacpp libraries are not copied" | tee -a $out
   fi
@@ -532,7 +537,7 @@ mv SubProcesses/randinit.original SubProcesses/randinit
 mv Cards/param_card.dat.original Cards/param_card.dat
 mv Source/param_card.inc.original Source/param_card.inc
 if [ "$oOpt" == "-o" ]; then
-  for f in SubProcesses/P*/fort.77; do mv ${f}.original ${f}; done
+  for f in SubProcesses/P*/fort.77; do if [ -f ${f}.original ]; then mv ${f}.original ${f}; fi; done
 fi
 if [ "${ENV_MCATNLODELTA}" == "1" ]; then
   mv SubProcesses/pythia8_opts.original SubProcesses/pythia8_opts

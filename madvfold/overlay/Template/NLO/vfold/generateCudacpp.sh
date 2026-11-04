@@ -45,4 +45,5 @@ echo "INFO: build the cudacpp libraries (vfold/buildCudacppLibs.sh, log in CUDAC
 ./vfold/buildCudacppLibs.sh 2>&1 | tee CUDACPP/buildCudacppLibs.log | { grep --line-buffered '^INFO:' || true; } || { echo "ERROR! vfold/buildCudacppLibs.sh failed, see CUDACPP/buildCudacppLibs.log"; exit 1; }
 echo "INFO: copy the cudacpp libraries to lib/cudacpp (vfold/copyCudacppLibs.sh)"
 ./vfold/copyCudacppLibs.sh > CUDACPP/copyCudacppLibs.log 2>&1 || { echo "ERROR! vfold/copyCudacppLibs.sh failed, see CUDACPP/copyCudacppLibs.log"; exit 1; }
+touch lib/cudacpp/.copied # step 14p: vfold/myLaunch.sh does not copy them again unless they are rebuilt
 echo "INFO: generateCudacpp.sh completed (to run in mode C, first: source vfold/setupVfoldDefaults.sh)"
