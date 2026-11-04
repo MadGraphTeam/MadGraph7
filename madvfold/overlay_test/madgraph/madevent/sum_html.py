@@ -774,7 +774,12 @@ def collect_result(cmd, folder_names=[], jobs=None, main_dir=None, apply_symmetr
                         continue
                     if os.path.exists(pjoin(Pdir, 'ajob.no_ps.log')):
                         continue
-                    
+                    # AV: skip the channels excluded by ENV_VFOLD_CHANNELS (see amcatnlo_run_interface.py),
+                    # which have no results.dat
+                    env_channels = os.environ.get('ENV_VFOLD_CHANNELS', '')
+                    if env_channels and name not in env_channels.split():
+                        continue
+
                     for folder in folder_names:
                         if 'G' in folder:
                             dir = folder.replace('*', name)

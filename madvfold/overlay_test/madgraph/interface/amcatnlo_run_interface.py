@@ -2126,6 +2126,15 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
                 try:
                     with open(pjoin(self.me_dir,'SubProcesses',p_dir,'channels.txt')) as chan_file:
                         channels=chan_file.readline().split()
+                    # AV: restrict to a subset of channels for fast dev/timing iteration
+                    # (e.g. some processes have many more channels/GF folders than others,
+                    # each running its own full mint0/mint1/mint2 sequence -- physics
+                    # accuracy is not needed for that use case).
+                    env_channels = os.environ.get('ENV_VFOLD_CHANNELS', '')
+                    if env_channels:
+                        allowed = set(env_channels.split())
+                        channels = [c for c in channels if c in allowed]
+                        logger.info('ENV_VFOLD_CHANNELS=%s: restricting to channels %s' % (env_channels, channels))
                 except IOError:
                     logger.warning('No integration channels found for contribution %s (too large masses/low energy?)' % p_dir)
                     continue
@@ -2200,6 +2209,25 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
                     jobs_to_collect=pickle.load(f)
                     for job in jobs_to_collect:
                         job['dirname']=pjoin(self.me_dir,'SubProcesses',job['dirname'].rsplit('/SubProcesses/',1)[1])
+                # AV: job_status.pkl is written by the initial generation and
+                # therefore lists ALL integration channels. When only a subset
+                # of the channels has been restored (e.g. to rerun a single
+                # channel from previously optimized grids), the missing ones
+                # have no results to read and break the steps that follow.
+                # Keep only the channels that were actually restored, i.e.
+                # those whose MINT1 results file is present.
+                jobs_avail=[job for job in jobs_to_collect
+                            if os.path.exists(pjoin(job['dirname'],'res_1.dat'))]
+                if not jobs_avail:
+                    raise aMCatNLOError(
+                        'No channel with res_1.dat found in %s: cannot rerun '
+                        'from the saved job status' %
+                        pjoin(self.me_dir,'SubProcesses'))
+                if len(jobs_avail) != len(jobs_to_collect):
+                    logger.info('Using %d of the %d channels in job_status.pkl '
+                                '(the others have no res_1.dat)' %
+                                (len(jobs_avail),len(jobs_to_collect)))
+                jobs_to_collect=jobs_avail
                 jobs_to_run=copy.copy(jobs_to_collect)
             except:
                 raise aMCatNLOError('Cannot reconstruct jobs from saved job status in %s' % \
@@ -2278,8 +2306,20 @@ RESTART = %(mint_mode)s
                 job['fold_string']='1 1 1'
             else:
                 job['fold_string']=' '.join(map(str, self.run_card['folding']))
+            # AV: points/iterations per MINT step, overridable via env vars for fast
+            # dev/timing iteration (physics accuracy not needed for that use case).
+            # Defaults below reproduce the original hardcoded '-1 12' with no env vars set.
+            job['nlo_npoints'] = -1
+            job['nlo_niters'] = 12
+            if job['mint_mode'] == 0:
+                if os.environ.get('ENV_VFOLD_MINT0_NPOINTS'): job['nlo_npoints'] = int(os.environ['ENV_VFOLD_MINT0_NPOINTS'])
+                if os.environ.get('ENV_VFOLD_MINT0_NITERS'):  job['nlo_niters']  = int(os.environ['ENV_VFOLD_MINT0_NITERS'])
+                if os.environ.get('ENV_VFOLD_MINT0_ACC'):     job['accuracy']    = float(os.environ['ENV_VFOLD_MINT0_ACC'])
+            elif job['mint_mode'] == 1:
+                if os.environ.get('ENV_VFOLD_MINT1_NPOINTS'): job['nlo_npoints'] = int(os.environ['ENV_VFOLD_MINT1_NPOINTS'])
+                if os.environ.get('ENV_VFOLD_MINT1_NITERS'):  job['nlo_niters']  = int(os.environ['ENV_VFOLD_MINT1_NITERS'])
             content = \
-"""-1 12      ! points, iterations
+"""%(nlo_npoints)s %(nlo_niters)s      ! points, iterations
 %(accuracy)s       ! desired fractional accuracy
 1 -0.1     ! alpha, beta for Gsoft
 -1 -0.1    ! alpha, beta for Gazi
