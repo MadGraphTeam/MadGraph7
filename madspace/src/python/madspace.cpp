@@ -1980,9 +1980,18 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("FKSSectorFunction::pairs")
         );
 
-    py::classh<FKSSubtraction, FunctionGenerator>(
+    py::classh<FKSSubtraction, FunctionGenerator> fks_subtraction(
         m, "FKSSubtraction", pydoc::doc("FKSSubtraction")
-    )
+    );
+    add_enum<FKSSubtraction::PdfScheme>(
+        fks_subtraction,
+        "PdfScheme",
+        {
+            {"msbar", FKSSubtraction::msbar},
+            {"dis", FKSSubtraction::dis},
+        }
+    );
+    fks_subtraction
         .def(
             py::init<
                 const std::vector<FKSConfiguration>&,
@@ -1997,6 +2006,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 bool,
                 double,
                 double,
+                double,
+                FKSSubtraction::PdfScheme,
                 double>(),
             py::arg("configurations"),
             py::arg("xicut") = 0.5,
@@ -2011,6 +2022,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("h_damp_one") = 0.01,
             py::arg("h_damp_power") = 1.,
             py::arg("tiny") = 1e-6,
+            py::arg("pdf_scheme") = FKSSubtraction::msbar,
+            py::arg("n_f") = 5.,
             pydoc::doc("FKSSubtraction::FKSSubtraction")
         )
         .def(

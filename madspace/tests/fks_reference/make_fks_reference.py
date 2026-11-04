@@ -32,6 +32,10 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
     Fortran), born_blocks (source, alpha_s and top width of the Born blocks),
     subtraction (xicut, xi_s_cut, delta_s, delta_o, delta_i of fks_powers.inc,
     set for some processes away from their defaults, see FKS_POWERS),
+    pdf_scheme (pdfscheme of the run_card, 0 MSbar or 1 DIS, see RUN_CARD),
+    n_f (the number of light flavors), scales (mu_f2 of the two beams and
+    qes2, the Ellis-Sexton scale, set by the dump for the collinear
+    remnants),
     fks_configurations (the fks_configurations.json the FKS exporter writes
     into the P* directory, with its own conventions, see madspace/fks.py)
     configs[]: nfks, i_fks, j_fks, pdg, masses, particle_type,
@@ -68,6 +72,11 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
                where the event is generated, born_blocks (where the event is
                generated: born, color_correlated and, for a gluon emitter,
                spin_correlated of pyAmpliCol at p_born, see born_blocks),
+               collinear_remnants (sreal_deg at the collinear and
+               soft-collinear counter-events of a massless incoming
+               emitter: wgtdegrem_xi, wgtdegrem_lxi, wgtdegrem_muF and the
+               PDF-scheme parts p, l, d, zero elsewhere), prefactors also
+               has f_pdf_scheme (f_pdfsch_d, f_pdfsch_p, f_pdfsch_l),
                shat_born, tau_born, ycm_born, xbjrk_born, tau_lower_bound,
                and for prefix in (rad, cut): prefix_jac, prefix_jac_cnt,
                prefix_p_ev, prefix_p_cnt, prefix_xi_ev, prefix_xi_hat_ev,
@@ -114,9 +123,18 @@ PROCESSES = {
     # the parameters of the subtraction (fks_powers.inc) away from their
     # defaults, under which some prefactors vanish
     "pp_epemj_params": ("p p > e+ e- j [QCD]", ["P0_ug_uemep"]),
+    # PDFs in the DIS scheme, for the collinear remnants of initial-state
+    # emitters of every kind
+    "pp_epemj_dis": ("p p > e+ e- j [QCD]", ["P0_ug_uemep"]),
+    "pp_ttx_dis": ("p p > t t~ [QCD]", ["P0_gg_ttx"]),
 }
 FKS_POWERS = {
     "pp_epemj_params": dict(xicut=0.3, xiScut=0.25, deltaO=0.8, deltaI=0.7, deltaS=0.6),
+}
+# parameters of the run_card set away from their defaults
+RUN_CARD = {
+    "pp_epemj_dis": dict(pdfscheme=1),
+    "pp_ttx_dis": dict(pdfscheme=1),
 }
 
 
@@ -127,7 +145,7 @@ def run(cmd, cwd, log, stdin=None):
         )
 
 
-def generate(name, process, work):
+def generate(name, process, work, run_card=None):
     out = os.path.join(work, name)
     if not os.path.isdir(os.path.join(out, "SubProcesses")):
         script = os.path.join(work, f"{name}.mg")
@@ -140,12 +158,30 @@ def generate(name, process, work):
             work,
             os.path.join(work, f"{name}_mg.log"),
         )
+    if run_card:
+        # Source turns the run_card into run_card.inc
+        set_run_card(out, run_card)
     run(
         ["make", "-j8"],
         os.path.join(out, "Source"),
         os.path.join(work, f"{name}_src.log"),
     )
     return out
+
+
+def set_run_card(out, values):
+    """Sets parameters of Cards/run_card.dat, before Source is built."""
+    path = os.path.join(out, "Cards", "run_card.dat")
+    with open(path) as f:
+        text = f.read()
+    for key, value in values.items():
+        text, count = re.subn(
+            rf"^\s*\S+(\s*=\s*{key}\b)", rf" {value}\1", text, flags=re.MULTILINE
+        )
+        if count != 1:
+            raise ValueError(f"{key} not found in {path}")
+    with open(path, "w") as f:
+        f.write(text)
 
 
 def set_fks_powers(out, values):
@@ -240,6 +276,8 @@ def parse(text):
             data["lpp"] = [lpp1, lpp2]
         elif key == "EBEAM":
             data["ebeam"] = floats(rest)
+        elif key == "SCHEME":
+            data["pdf_scheme"], data["n_f"] = int(rest[0]), float(rest[1])
         elif key == "CONF":
             # the extra points for massive emitters come in a second pass
             ints = list(map(int, rest))
@@ -319,6 +357,7 @@ def parse(text):
                 xinorm_cnt=v[12:17],
                 no_counter_events=bool(v[23]),
             )
+            point["prefactors"]["f_pdf_scheme"] = v[24:27]
             data["subtraction"] = dict(
                 zip(
                     ["xicut", "xi_s_cut", "delta", "delta_s", "delta_o", "delta_i"],
@@ -337,6 +376,12 @@ def parse(text):
             point["born"] = born
         elif key == "BLINK":
             point["color_links"] = floats(rest)
+        elif key == "DEG":
+            v = floats(rest)
+            point["collinear_remnants"] = [v[0:6], v[6:12]]
+            scales = dict(mu_f2=v[12:14], qes2=v[14])
+            if data.setdefault("scales", scales) != scales:
+                raise ValueError("the scales change from point to point")
         elif key == "BORNX":
             v = floats(rest)
             point.update(shat_born=v[0], tau_born=v[1], ycm_born=v[2])
@@ -495,7 +540,7 @@ def main():
     work = args.keep or tempfile.mkdtemp(prefix="fks_reference_")
     os.makedirs(work, exist_ok=True)
     for name, (process, keep) in PROCESSES.items():
-        out = generate(name, process, work)
+        out = generate(name, process, work, RUN_CARD.get(name))
         if name in FKS_POWERS:
             set_fks_powers(out, FKS_POWERS[name])
         for pdir in sorted(glob.glob(os.path.join(out, "SubProcesses", "P*"))):

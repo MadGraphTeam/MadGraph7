@@ -116,6 +116,8 @@ CASES = {
         h_damp_one=0.01,
         h_damp_power=1.0,
         tiny=1e-6,
+        pdf_scheme=ms.FKSSubtraction.PdfScheme.msbar,
+        n_f=5.0,
     ),
     "FKSPrefactors": dict(
         configurations=FKS_CONFIGURATIONS,

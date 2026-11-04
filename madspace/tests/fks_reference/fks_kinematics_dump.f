@@ -20,8 +20,8 @@ c end of its range, where sreal and fks_Sij switch to the soft and
 c collinear limits (below tiny = 1e-6 in xi or 1 - y). At every
 c point it prints the pieces of the subtraction of fks_singular.f: the
 c sector functions, the factors of the soft and collinear limits, the
-c prefactors, sreal at the event and the counter-events, and the Born
-c with its colour links. It then
+c prefactors, sreal at the event and the counter-events, the Born
+c with its colour links and the collinear remnants of sreal_deg. It then
 c calls generate_FKS_kinematics again at the same x with xjac0 =
 c xpswgt0 = 1, so that the second set of Jacobians holds the radiation
 c part alone, times compute_flux. Everything is printed with keywords
@@ -133,6 +133,21 @@ c that make_fks_reference.py parses.
       common/parton_cms_stuff/ybst_til_tolab,ybst_til_tocm,sqrtshat
      &     ,shat
       include 'orders.inc'
+      include 'q_es.inc'
+      double precision amp_split_wgtdegrem_xi(amp_split_size),
+     &     amp_split_wgtdegrem_lxi(amp_split_size),
+     &     amp_split_wgtdegrem_muF(amp_split_size)
+      common /to_amp_split_deg/amp_split_wgtdegrem_xi,
+     &     amp_split_wgtdegrem_lxi,amp_split_wgtdegrem_muF
+      double precision amp_split_wgtpsch_p(amp_split_size),
+     &     amp_split_wgtpsch_l(amp_split_size),
+     &     amp_split_wgtpsch_d(amp_split_size)
+      common /to_amp_split_dis/amp_split_wgtpsch_p,
+     &     amp_split_wgtpsch_l,amp_split_wgtpsch_d
+      double precision f_pdfsch_d,f_pdfsch_p,f_pdfsch_l
+      common/factor_pdfsch/f_pdfsch_d,f_pdfsch_p,f_pdfsch_l
+      double precision deg(6,2),deg_xi,deg_lxi
+      include '../../Source/PDF/pdf.inc'
       complex*16 ans_cnt(2,nsplitorders)
       common /c_born_cnt/ans_cnt
       double precision iden_comp
@@ -164,6 +179,8 @@ c that make_fks_reference.py parses.
       write (*,'(a,1x,*(i0,1x))') 'HEADER',nexternal,nincoming
      &     ,fks_configs,ndim,lpp(1),lpp(2),iconf_in
       write (*,fmt) 'EBEAM',ebeam(1),ebeam(2)
+c the scheme of the PDFs (0 MSbar, 1 DIS) and the number of light flavors
+      write (*,'(a,1x,i0,1x,es25.17e3)') 'SCHEME',pdfscheme,nf
 
       do ipass=1,3
       write (*,'(a,1x,i0)') 'PASS',ipass
@@ -343,7 +360,8 @@ c (nocntevents as 1 or 0), where the event is generated
                write (*,fmt) 'PREF',f_r,f_s,f_c,f_dc,f_sc,(f_dsc(k),k=1
      &              ,4),fkssymmetryfactor,fkssymmetryfactorDeg,xinorm_ev
      &              ,(xinorm_cnt(k),k=-2,2),xicut_used,xiScut_used
-     &              ,delta_used,deltaS,deltaO,deltaI,s_ev
+     &              ,delta_used,deltaS,deltaO,deltaI,s_ev,f_pdfsch_d
+     &              ,f_pdfsch_p,f_pdfsch_l
             endif
 c The reduced matrix elements of sreal at the event and at the soft,
 c collinear and soft-collinear counter-events, with the arguments of
@@ -397,6 +415,41 @@ c iden_comp, where the event is generated
                endif
                write (*,fmt) 'BLINK',(blink(k),k=1,neik)
             endif
+c The collinear remnants of sreal_deg at the collinear (k = 1) and
+c soft-collinear (k = 2) counter-events of a massless incoming emitter,
+c summed over the split orders: wgtdegrem_xi, wgtdegrem_lxi,
+c wgtdegrem_muF and the parts p, l and d of the PDF scheme (zero where
+c not generated). The factorization and Ellis-Sexton scales are set here
+c (sreal_deg reads them), the strong coupling of the Fortran is kept.
+            q2fact(1)=200d0**2
+            q2fact(2)=200d0**2
+            QES2=91.188d0**2
+            do k=1,2
+               do j=1,6
+                  deg(j,k)=0d0
+               enddo
+               if (jac_full.gt.0d0.and.jac_full_cnt(k).gt.0d0.and.
+     &              j_fks.le.nincoming.and.emass(j_fks).eq.0d0) then
+                  call set_cms_stuff(k)
+                  if (k.eq.1) then
+                     call sreal_deg(p1_cnt(0,1,1),xi_i_fks_cnt(1),1d0
+     &                    ,deg_xi,deg_lxi)
+                  else
+                     call sreal_deg(p1_cnt(0,1,2),0d0,1d0,deg_xi
+     &                    ,deg_lxi)
+                  endif
+                  do i=1,amp_split_size
+                     deg(1,k)=deg(1,k)+amp_split_wgtdegrem_xi(i)
+                     deg(2,k)=deg(2,k)+amp_split_wgtdegrem_lxi(i)
+                     deg(3,k)=deg(3,k)+amp_split_wgtdegrem_muF(i)
+                     deg(4,k)=deg(4,k)+amp_split_wgtpsch_p(i)
+                     deg(5,k)=deg(5,k)+amp_split_wgtpsch_l(i)
+                     deg(6,k)=deg(6,k)+amp_split_wgtpsch_d(i)
+                  enddo
+               endif
+            enddo
+            write (*,fmt) 'DEG',((deg(j,k),j=1,6),k=1,2),q2fact(1)
+     &           ,q2fact(2),QES2
 c Radiation part alone: rerun generate_FKS_kinematics on the Born of the
 c point with unit Born weights, once with the lower bound on the partonic
 c energy of the real emission that set_tau_min derives from the cuts

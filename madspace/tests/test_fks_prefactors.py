@@ -50,7 +50,7 @@ def test_matches_compute_prefactors_n1body(path):
         values = np.array([p[key] for p in points])
         return values if position is None else values[:, position]
 
-    f_r, f_s, f_c, f_dc, f_sc, f_dsc = evaluate(
+    f_r, f_s, f_c, f_dc, f_sc, f_dsc, f_pdf = evaluate(
         prefactors,
         field("xi_ev"),
         field("y_ev"),
@@ -63,7 +63,7 @@ def test_matches_compute_prefactors_n1body(path):
     )
     fortran = {
         key: np.array([p["prefactors"][key] for p in points])
-        for key in ["f_r", "f_s", "f_c", "f_dc", "f_sc", "f_dsc"]
+        for key in ["f_r", "f_s", "f_c", "f_dc", "f_sc", "f_dsc", "f_pdf_scheme"]
     }
     sym, sym_deg = field("fks_symmetry_factor"), field("fks_symmetry_factor_deg")
     jac, jac_cnt = field("jac"), field("jac_cnt")
@@ -77,22 +77,35 @@ def test_matches_compute_prefactors_n1body(path):
     soft = jac_cnt[:, SOFT] > 0
     collinear = massless & (jac_cnt[:, COLLINEAR] > 0)
     soft_collinear = massless & (jac_cnt[:, SOFT_COLLINEAR] > 0)
-    cases = [
-        ("f_r", f_r, fortran["f_r"], xinorm * jac * sym, jac > 0),
-        ("f_s", f_s, fortran["f_s"], xinorm * jac_cnt[:, SOFT] * sym, soft),
-        ("f_c", f_c, fortran["f_c"], norm_c * sym, collinear),
-        ("f_dc", f_dc, fortran["f_dc"], norm_c * sym_deg, collinear),
-        ("f_sc", f_sc, fortran["f_sc"], norm_sc * sym_deg, soft_collinear),
-    ] + [
-        (
-            f"f_dsc({k + 1})",
-            f_dsc[:, k],
-            fortran["f_dsc"][:, k],
-            norm_sc * sym_deg,
-            soft_collinear,
-        )
-        for k in range(4)
-    ]
+    cases = (
+        [
+            ("f_r", f_r, fortran["f_r"], xinorm * jac * sym, jac > 0),
+            ("f_s", f_s, fortran["f_s"], xinorm * jac_cnt[:, SOFT] * sym, soft),
+            ("f_c", f_c, fortran["f_c"], norm_c * sym, collinear),
+            ("f_dc", f_dc, fortran["f_dc"], norm_c * sym_deg, collinear),
+            ("f_sc", f_sc, fortran["f_sc"], norm_sc * sym_deg, soft_collinear),
+        ]
+        + [
+            (
+                f"f_dsc({k + 1})",
+                f_dsc[:, k],
+                fortran["f_dsc"][:, k],
+                norm_sc * sym_deg,
+                soft_collinear,
+            )
+            for k in range(4)
+        ]
+        + [
+            (
+                f"f_pdfsch({name})",
+                f_pdf[:, k],
+                fortran["f_pdf_scheme"][:, k],
+                norm_sc * sym_deg,
+                soft_collinear,
+            )
+            for k, name in enumerate(["d", "p", "l"])
+        ]
+    )
     for key, ours, theirs, norm, valid in cases:
         # where the Fortran prefactor has its Jacobian and symmetry factor
         valid = valid & (norm != 0)
@@ -101,7 +114,7 @@ def test_matches_compute_prefactors_n1body(path):
             ours[valid], theirs[valid] / norm[valid], rtol=1e-12, err_msg=key
         )
     # no collinear counterterms for a massive emitter
-    for ours in [f_c, f_dc, f_sc, *f_dsc.T]:
+    for ours in [f_c, f_dc, f_sc, *f_dsc.T, *f_pdf.T]:
         np.testing.assert_array_equal(ours[~massless], 0.0)
 
 

@@ -17,7 +17,9 @@ FKSSubtraction::FKSSubtraction(
     bool use_beta,
     double h_damp_one,
     double h_damp_power,
-    double tiny
+    double tiny,
+    PdfScheme pdf_scheme,
+    double n_f
 ) :
     FunctionGenerator(
         "FKSSubtraction",
@@ -50,6 +52,8 @@ FKSSubtraction::FKSSubtraction(
                  Type{DataType::dt_float64, batch_size, {n - 1, n - 1}}},
                 {"spin_correlated", batch_float},
                 {"alpha_s", batch_float},
+                {"fact_scale1", batch_float},
+                {"fact_scale2", batch_float},
                 {"fks_index", batch_int},
             };
         }(),
@@ -65,13 +69,22 @@ FKSSubtraction::FKSSubtraction(
     _prefactors(configurations, xicut, xi_s_cut, delta_o, delta_i, delta_s),
     _xi_s_cut(xi_s_cut),
     _delta_s(delta_s),
-    _tiny(tiny) {
+    _tiny(tiny),
+    _pdf_scheme(pdf_scheme),
+    _n_f(n_f) {
     if (!(tiny >= 0.)) {
         throw std::invalid_argument("FKSSubtraction: tiny cannot be negative");
     }
-    for (const auto& config : configurations) {
+    for (std::size_t c = 0; c < configurations.size(); ++c) {
+        const auto& config = configurations.at(c);
+        bool massless = config.masses.at(config.j_fks) == 0.;
         _symmetry.push_back(config.symmetry_factor());
-        _massless.push_back(config.masses.at(config.j_fks) == 0. ? 1 : 0);
+        _massless.push_back(massless ? 1 : 0);
+        _remnant.push_back(massless && config.initial_state() ? 1 : 0);
+        _beam.push_back(config.initial_state() ? config.j_fks : 0);
+        _kind.push_back(_limits.splitting_kernels().splitting_kind(c));
+        _ratio.push_back(config.identical_particle_ratio());
+        _delta_i.push_back(delta_i);
     }
 }
 
@@ -143,16 +156,39 @@ NamedVector<Value> FKSSubtraction::build_function_impl(
          args.at("soft_collinear_momenta"),
          index}
     );
-    auto counterterm = [&](const std::string& name, const std::string& prefactor) {
-        return fb.mul(
-            fb.mul(sector(name + "_"), prefactors.at(prefactor)), limits.at(name)
-        );
-    };
+    auto s_c = sector("collinear_"), s_sc = sector("soft_collinear_");
+    auto counterterm =
+        [&](const std::string& name, const std::string& prefactor, Value s) {
+            return fb.mul(fb.mul(s, prefactors.at(prefactor)), limits.at(name));
+        };
+    auto [remnant_c, remnant_sc] = fb.fks_collinear_remnants(
+        args.at("born"),
+        args.at("alpha_s"),
+        s_c,
+        s_sc,
+        args.at("collinear_momenta"),
+        args.at("soft_collinear_momenta"),
+        args.at("collinear_xi"),
+        prefactors.at("f_dc"),
+        prefactors.at("f_dsc"),
+        prefactors.at("f_pdf_scheme"),
+        args.at("fact_scale1"),
+        args.at("fact_scale2"),
+        index,
+        _remnant,
+        _beam,
+        _kind,
+        _ratio,
+        _delta_i,
+        std::vector<double>{static_cast<double>(_pdf_scheme), _n_f}
+    );
     auto [real_out, soft, collinear, soft_collinear] = fb.fks_subtraction(
         real,
-        counterterm("soft", "f_s"),
-        counterterm("collinear", "f_c"),
-        counterterm("soft_collinear", "f_sc"),
+        counterterm("soft", "f_s", sector("soft_")),
+        counterterm("collinear", "f_c", s_c),
+        counterterm("soft_collinear", "f_sc", s_sc),
+        remnant_c,
+        remnant_sc,
         args.at("xi"),
         args.at("xi_hat"),
         args.at("y"),

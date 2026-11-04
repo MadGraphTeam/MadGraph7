@@ -12,10 +12,11 @@ namespace madspace {
 
 /**
  * The real emission of the FKS configurations of a Born and its local soft,
- * collinear and soft-collinear counterterms, as compute_real_emission and
- * compute_soft_counter_term and its siblings in fks_singular.f [2, 3] without
- * the collinear remnants, each event in the configuration of its `fks_index`
- * (see @ref FKSConfigurationMapping). It takes the event and counter-events of
+ * collinear and soft-collinear counterterms with the collinear remnants of an
+ * initial-state emitter, as compute_real_emission and
+ * compute_soft_counter_term and its siblings in fks_singular.f [2, 3], each
+ * event in the configuration of its `fks_index` (see
+ * @ref FKSConfigurationMapping). It takes the event and counter-events of
  * @ref FKSKinematics, the real matrix element at the event and the Born
  * blocks of @ref FKSLimits, for QCD splittings.
  *
@@ -27,8 +28,8 @@ namespace madspace {
  * @f[
  *   \text{real} = \sigma S |M_{n+1}|^2, \quad
  *   \text{soft} = -\sigma S_s f_s L_s, \quad
- *   \text{collinear} = -\sigma S_c f_c L_c, \quad
- *   \text{soft\_collinear} = \sigma S_{sc} f_{sc} L_{sc},
+ *   \text{collinear} = \sigma (R_c - S_c f_c L_c), \quad
+ *   \text{soft\_collinear} = \sigma (S_{sc} f_{sc} L_{sc} + R_{sc}),
  * @f]
  * per unit `weight` of the event and per unit `det` of each counter-event, so
  * that their sum times those, the flux and the parton luminosity of each is
@@ -42,6 +43,31 @@ namespace madspace {
  * range of @f$\xi@f$ at the soft and collinear counter-events and
  * @f$\xi_c@f$ of the collinear one. Each contribution is zero where its
  * momenta are not generated (zero `weight` or `det`).
+ *
+ * The collinear remnants @f$R_c@f$ and @f$R_{sc}@f$ of an initial-state
+ * emitter are those of sreal_deg with the prefactors @f$f_{dc}@f$,
+ * @f$f_{dsc}@f$ and those of the PDF scheme of @ref FKSPrefactors. With
+ * @f$N = g_s^2 r B / (8 \pi^2 z)@f$, the identical-particle ratio @f$r@f$ and
+ * the Born @f$B@f$,
+ * @f[
+ *   D_\xi = N \Big[(1 - z) P(z) \log\frac{s \delta_I}{2 \mu_F^2} -
+ *     (1 - z) P'(z)\Big], \qquad
+ *   D_{l\xi} = 2 N (1 - z) P(z),
+ * @f]
+ * with the O(epsilon) part @f$P'@f$ of the splitting function, the
+ * factorization scale @f$\mu_F@f$ of the beam of the emitter and @f$s@f$ of
+ * the counter-event, and the parts @f$K_{p,l,d} = -N k_{p,l,d}@f$ of the
+ * change of the PDF scheme from MSbar (xkplus, xklog, xkdelta, zero in MSbar),
+ * @f[
+ *   R_c = f_{dc} \big[D_\xi + K_p + (D_{l\xi} + K_l) \log \xi_c\big]
+ * @f]
+ * at @f$z = 1 - \xi_c@f$, and at @f$z = 1@f$
+ * @f[
+ *   R_{sc} = -f_{dsc,1} \big[D_\xi + K_p + (D_{l\xi} + K_l) \log \xi_c\big]
+ *     - f_{dsc,2} D_\xi - f_{dsc,3} D_{l\xi} + f_{pdf,d} K_d + f_{pdf,p} K_p
+ *     + f_{pdf,l} K_l.
+ * @f]
+ * They are zero where the sector function of their counter-event is.
  *
  * Close to the limits the real emission is that of sreal and fks_Sij.f.
  * Below `tiny` in @f$1 - y@f$ the collinear limit of @ref FKSLimits at the
@@ -84,6 +110,8 @@ namespace madspace {
  * - `born`, `color_correlated`, `spin_correlated` – the Born and its
  *   color-correlated and spin-correlated versions, as for @ref FKSLimits.
  * - `alpha_s` – `float`, shape `(batch,)` – the strong coupling.
+ * - `fact_scale1`, `fact_scale2` – `float`, shape `(batch,)` – the
+ *   factorization scales of the two beams, as @ref EnergyScale returns them.
  * - `fks_index` – `int`, shape `(batch,)` – the configuration of the event,
  *   from 0 to the number of configurations minus one.
  *
@@ -104,6 +132,12 @@ namespace madspace {
  */
 class FKSSubtraction : public FunctionGenerator {
 public:
+    /// The scheme of the PDFs (pdfscheme of the run_card), which sets the
+    /// collinear remnants of an initial-state emitter.
+    enum PdfScheme {
+        msbar, ///< MSbar.
+        dis    ///< DIS.
+    };
     /**
      * @param configurations  The FKS configurations, in the order of
      *                        `fks_index`, with QCD splittings.
@@ -129,6 +163,9 @@ public:
      * @param tiny            Below it in @f$\xi@f$ or @f$1 - y@f$ the real
      *                        emission is its limit, as tiny of sreal (zero
      *                        for the real matrix element everywhere).
+     * @param pdf_scheme      The scheme of the PDFs.
+     * @param n_f             The number of light flavors, in the DIS
+     *                        remnant of a gluon.
      * @throws std::invalid_argument for a splitting that is not one of QCD
      *         or parameters out of their range.
      */
@@ -145,7 +182,9 @@ public:
         bool use_beta = true,
         double h_damp_one = 0.01,
         double h_damp_power = 1.,
-        double tiny = 1e-6
+        double tiny = 1e-6,
+        PdfScheme pdf_scheme = msbar,
+        double n_f = 5.
     );
     /// Number of configurations.
     std::size_t configuration_count() const { return _symmetry.size(); }
@@ -168,7 +207,11 @@ private:
     FKSPrefactors _prefactors;
     std::vector<double> _symmetry;
     std::vector<me_int_t> _massless;
+    std::vector<me_int_t> _remnant, _beam, _kind;
+    std::vector<double> _ratio, _delta_i;
     double _xi_s_cut, _delta_s, _tiny;
+    PdfScheme _pdf_scheme;
+    double _n_f;
 };
 
 } // namespace madspace

@@ -340,7 +340,8 @@ def fks_subtraction(born, configurations, **parameters):
         parameters: the parameters of fks_powers.inc, those of the subtraction
             (xicut, xi_s_cut, delta_o, delta_i, delta_s) and of the sector
             functions (fks_a, fks_b, use_energy, use_beta, h_damp_one,
-            h_damp_power), and tiny of sreal, see FKSSubtraction.
+            h_damp_power), tiny of sreal, the PDF scheme (pdf_scheme) and the
+            number of light flavors (n_f), see FKSSubtraction.
 
     Raises:
         ValueError: as fks_limits.

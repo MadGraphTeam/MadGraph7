@@ -320,6 +320,23 @@ KERNELSPEC void kernel_fks_eikonals(
 // kind selects the splitting function of AP_reduced (0: g -> g g, 1: g/a ->
 // q q~, 2: q -> q g/a, 3: q -> g/a q) and factors holds, per configuration,
 // the QCD and QED factors of the kernel and of the azimuthal terms.
+// (1 - z) P(z) of AP_reduced without its color factor, for the splittings
+// 0: g -> g g, 1: g/a -> q q~, 2: q -> q g/a, 3: q -> g/a q
+template <typename T>
+KERNELSPEC FVal<T> fks_ap_shape(std::size_t kind, FVal<T> z) {
+    auto w = 1. - z;
+    switch (kind) {
+    case 0:
+        return w * w / z + z + z * w * w;
+    case 1:
+        return (z * z + w * w) * w;
+    case 2:
+        return 1. + z * z;
+    default:
+        return (1. + w * w) * w / z;
+    }
+}
+
 template <typename T>
 KERNELSPEC void kernel_fks_splitting_kernels(
     FIn<T, 2> p,
@@ -349,21 +366,7 @@ KERNELSPEC void kernel_fks_splitting_kernels(
     }
     auto t = 0.25 * zz * s;
     auto w = 1. - zz;
-    FVal<T> f_ap;
-    switch (single_index(kind[c])) {
-    case 0:
-        f_ap = w * w / zz + zz + zz * w * w;
-        break;
-    case 1:
-        f_ap = (zz * zz + w * w) * w;
-        break;
-    case 2:
-        f_ap = 1. + zz * zz;
-        break;
-    default:
-        f_ap = (1. + w * w) * w / zz;
-        break;
-    }
+    FVal<T> f_ap = fks_ap_shape<T>(single_index(kind[c]), zz);
     FVal<T> f_q = final_state ? zz * w * w : w * w / zz;
     auto factor = factors[c];
     ap[0] = FVal<T>(factor[0]) * f_ap / t;
@@ -430,7 +433,8 @@ KERNELSPEC void kernel_fks_prefactors(
     FOut<T, 0> f_c,
     FOut<T, 0> f_dc,
     FOut<T, 0> f_sc,
-    FOut<T, 1> f_dsc
+    FOut<T, 1> f_dsc,
+    FOut<T, 1> f_pdf
 ) {
     constexpr double pi = 3.14159265358979323846;
     std::size_t c = single_index(index);
@@ -446,6 +450,9 @@ KERNELSPEC void kernel_fks_prefactors(
         f_sc = 0.;
         for (std::size_t k = 0; k < 4; ++k) {
             f_dsc[k] = 0.;
+        }
+        for (std::size_t k = 0; k < 3; ++k) {
+            f_pdf[k] = 0.;
         }
         return;
     }
@@ -472,6 +479,11 @@ KERNELSPEC void kernel_fks_prefactors(
     // as a product, which vanishes exactly for xi_lim_c = xicut
     f_dsc[2] = g * (log_cut - log_lim) * (log_cut + log_lim) / (2. * xi_lim_c);
     f_dsc[3] = g * (1. / x_c + l_xi / xi_lim_c);
+    // the delta, plus and log-plus parts of a change of the PDF scheme
+    auto log_s_cut = log(xi_s_cut);
+    f_pdf[0] = g / xi_s_cut;
+    f_pdf[1] = g * log_s_cut / xi_s_cut;
+    f_pdf[2] = g * log_s_cut * log_s_cut / (2. * xi_s_cut);
 }
 
 // The soft limit of xi^2 (1 - y) times the real matrix element of sbornsoft
@@ -536,6 +548,155 @@ KERNELSPEC void kernel_fks_collinear_limit(
     collinear = 4. * pi * FVal<T>(alpha_s) * f * value;
 }
 
+// (1 - z) P'(z) of AP_reduced_prime (the O(epsilon) part) without its color
+// factor, and the plus (p), log-plus (l) and delta (d) parts of the change
+// of the PDF scheme from MSbar to DIS of xkplus, xklog and xkdelta, with
+// their color factors and n_f, for the splittings of fks_ap_shape
+template <typename T>
+KERNELSPEC FVal<T> fks_ap_prime_shape(std::size_t kind, FVal<T> z) {
+    auto w = 1. - z;
+    switch (kind) {
+    case 0:
+        return 0.;
+    case 1:
+        return -2. * z * w * w;
+    case 2:
+        return -w * w;
+    default:
+        return -z * w;
+    }
+}
+
+template <typename T>
+KERNELSPEC void fks_dis_kernels(
+    std::size_t kind, FVal<T> x, FVal<T> n_f, FVal<T>& k_p, FVal<T>& k_l, FVal<T>& k_d
+) {
+    constexpr double pi = 3.14159265358979323846;
+    constexpr double tr = 0.5, cf = 4. / 3.;
+    auto w = 1. - x;
+    auto lx = log(x);
+    auto pqg = x * x + w * w;
+    auto pgq = 1. + x * x;
+    switch (kind) {
+    case 0:
+        k_p = -2. * n_f * tr * w * (-pqg * lx + 8. * x * w - 1.);
+        k_l = -2. * n_f * tr * w * pqg;
+        k_d = 0.;
+        break;
+    case 1:
+        k_p = tr * w * (-pqg * lx + 8. * x * w - 1.);
+        k_l = tr * w * pqg;
+        k_d = 0.;
+        break;
+    case 2:
+        k_p = cf * (-1.5 - pgq * lx + w * (3. + 2. * x));
+        k_l = cf * pgq;
+        k_d = -cf * (4.5 + pi * pi / 3.);
+        break;
+    default:
+        k_p = -cf * (-1.5 - pgq * lx + w * (3. + 2. * x));
+        k_l = -cf * pgq;
+        k_d = cf * (4.5 + pi * pi / 3.);
+        break;
+    }
+}
+
+// The collinear remnants of an initial-state emitter of sreal_deg and
+// compute_collinear_counter_term / compute_soft_collinear_counter_term
+// (fks_singular.f), with the factorization scale of the beam of the
+// emitter and the QCD kernels: with N = B iden_comp / (8 pi^2 z),
+//   D_xi = N g^2 ((1 - z) P log(s delta_I / (2 mu_F^2)) - (1 - z) P'),
+//   D_lxi = 2 N g^2 (1 - z) P,   K_p,l,d = -N g^2 k_p,l,d (zero in MSbar),
+// the collinear one f_dc (D_xi + K_p + (D_lxi + K_l) log xi_c) at z = 1 - xi_c
+// and s of the collinear counter-event, the soft-collinear one
+// -f_dsc1 (D_xi + K_p + (D_lxi + K_l) log xi_c) - f_dsc2 D_xi - f_dsc3 D_lxi
+// + f_pdf_d K_d + f_pdf_p K_p + f_pdf_l K_l at z = 1 and s of the
+// soft-collinear counter-event. Each is zero where its sector function is
+// (options = pdf_scheme, n_f).
+template <typename T>
+KERNELSPEC void kernel_fks_collinear_remnants(
+    FIn<T, 0> born,
+    FIn<T, 0> alpha_s,
+    FIn<T, 0> s_c,
+    FIn<T, 0> s_sc,
+    FIn<T, 2> p_c,
+    FIn<T, 2> p_sc,
+    FIn<T, 0> xi_c,
+    FIn<T, 0> f_dc,
+    FIn<T, 1> f_dsc,
+    FIn<T, 1> f_pdf,
+    FIn<T, 0> fact_scale1,
+    FIn<T, 0> fact_scale2,
+    IIn<T, 0> index,
+    IIn<T, 1> remnant,
+    IIn<T, 1> beam,
+    IIn<T, 1> kind,
+    FIn<T, 1> factor,
+    FIn<T, 1> delta,
+    FIn<T, 1> options,
+    FOut<T, 0> collinear,
+    FOut<T, 0> soft_collinear
+) {
+    constexpr double pi = 3.14159265358979323846;
+    std::size_t c = single_index(index);
+    collinear = 0.;
+    soft_collinear = 0.;
+    if (single_index(remnant[c]) == 0) {
+        return;
+    }
+    std::size_t k = single_index(kind[c]);
+    bool dis = FVal<T>(options[0]) == 1.;
+    FVal<T> n_f = options[1];
+    FVal<T> mu_f =
+        single_index(beam[c]) == 0 ? FVal<T>(fact_scale1) : FVal<T>(fact_scale2);
+    FVal<T> d = delta[c];
+    // N g^2 for z = 1
+    FVal<T> norm = FVal<T>(born) * FVal<T>(factor[c]) * 4. * pi * FVal<T>(alpha_s) /
+        (8. * pi * pi);
+    auto pieces =
+        [&](FVal<T> z,
+            FVal<T> s,
+            FVal<T>& d_xi,
+            FVal<T>& d_lxi,
+            FVal<T>& k_p,
+            FVal<T>& k_l,
+            FVal<T>& k_d) {
+            auto n = norm / z;
+            auto ap = fks_ap_shape<T>(k, z), ap_prime = fks_ap_prime_shape<T>(k, z);
+            // the color factor of AP_reduced
+            FVal<T> color = k == 0 ? 6. : (k == 1 ? 0.5 : 4. / 3.);
+            d_xi = n * color * (ap * log(s * d / (2. * mu_f * mu_f)) - ap_prime);
+            d_lxi = 2. * n * color * ap;
+            k_p = 0.;
+            k_l = 0.;
+            k_d = 0.;
+            if (dis) {
+                fks_dis_kernels<T>(k, z, n_f, k_p, k_l, k_d);
+                k_p = -n * k_p;
+                k_l = -n * k_l;
+                k_d = -n * k_d;
+            }
+        };
+    auto invariant_mass = [](FIn<T, 2> p) {
+        auto p1 = load_mom<T>(p[0]), p2 = load_mom<T>(p[1]);
+        return lsquare<T>(
+            FourMom<T>{p1[0] + p2[0], p1[1] + p2[1], p1[2] + p2[2], p1[3] + p2[3]}
+        );
+    };
+    FVal<T> x_c = xi_c, log_xi = log(x_c);
+    FVal<T> d_xi, d_lxi, k_p, k_l, k_d;
+    if (FVal<T>(s_c) > 0.) {
+        pieces(1. - x_c, invariant_mass(p_c), d_xi, d_lxi, k_p, k_l, k_d);
+        collinear = FVal<T>(f_dc) * (d_xi + k_p + (d_lxi + k_l) * log_xi);
+    }
+    if (FVal<T>(s_sc) > 0.) {
+        pieces(1., invariant_mass(p_sc), d_xi, d_lxi, k_p, k_l, k_d);
+        soft_collinear = -FVal<T>(f_dsc[0]) * (d_xi + k_p + (d_lxi + k_l) * log_xi) -
+            FVal<T>(f_dsc[1]) * d_xi - FVal<T>(f_dsc[2]) * d_lxi +
+            FVal<T>(f_pdf[0]) * k_d + FVal<T>(f_pdf[1]) * k_p + FVal<T>(f_pdf[2]) * k_l;
+    }
+}
+
 // The real matrix element times the sector function at the event, with the
 // limits of sreal and fks_Sij (fks_singular.f, fks_Sij.f) below tiny
 // (options[0], zero for none): below tiny in 1 - y the collinear limit at the
@@ -585,9 +746,9 @@ KERNELSPEC void kernel_fks_real_emission(
 }
 
 // The real emission and its counterterms of compute_real_emission and
-// compute_soft_counter_term and its siblings (fks_singular.f) without the
-// collinear remnants, from the products of the matrix element and its limits
-// with the sector functions and prefactors: signs, symmetry factors and the
+// compute_soft_counter_term and its siblings (fks_singular.f), from the
+// products of the matrix element and its limits with the sector functions
+// and prefactors and the collinear remnants: signs, symmetry factors and the
 // conditions of each counterterm (options = xiScut, deltaS), zero where its
 // momenta are not generated.
 template <typename T>
@@ -596,6 +757,8 @@ KERNELSPEC void kernel_fks_subtraction(
     FIn<T, 0> soft,
     FIn<T, 0> collinear,
     FIn<T, 0> soft_collinear,
+    FIn<T, 0> remnant_c,
+    FIn<T, 0> remnant_sc,
     FIn<T, 0> xi,
     FIn<T, 0> xi_hat,
     FIn<T, 0> y,
@@ -623,11 +786,13 @@ KERNELSPEC void kernel_fks_subtraction(
         FVal<T>(det_s) > 0. && x_hat * FVal<T>(xi_max_s) <= xi_s_cut && x <= xi_s_cut;
     soft_out = with_soft ? -sym * FVal<T>(soft) : FVal<T>(0.);
     bool with_collinear = FVal<T>(det_c) > 0. && in_y;
-    collinear_out = with_collinear ? -sym * FVal<T>(collinear) : FVal<T>(0.);
+    collinear_out =
+        with_collinear ? sym * (FVal<T>(remnant_c) - FVal<T>(collinear)) : FVal<T>(0.);
     bool with_soft_collinear = FVal<T>(det_sc) > 0. && in_y &&
         x_hat * FVal<T>(xi_max_c) < xi_s_cut && x_c < xi_s_cut;
-    soft_collinear_out =
-        with_soft_collinear ? sym * FVal<T>(soft_collinear) : FVal<T>(0.);
+    soft_collinear_out = with_soft_collinear
+        ? sym * (FVal<T>(soft_collinear) + FVal<T>(remnant_sc))
+        : FVal<T>(0.);
 }
 
 } // namespace kernels

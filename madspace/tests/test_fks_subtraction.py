@@ -1,19 +1,20 @@
-"""FKSSubtraction: the real emission and its local FKS counterterms, as
-compute_real_emission and compute_soft_counter_term and its siblings in
-fks_singular.f, without the collinear remnants.
+"""FKSSubtraction: the real emission and its local FKS counterterms with the
+collinear remnants, as compute_real_emission and compute_soft_counter_term
+and its siblings in fks_singular.f.
 
 The reference data (see test_fks_reference.py) store, for each generated
 event, what those routines take: sreal at the event and at the
 counter-events, the sector functions, the prefactors with their Jacobians and
-symmetry factors, and the parameters of the subtraction. FKSSubtraction must
-give their contributions per unit Jacobian (as for FKSPrefactors) from the
-momenta of the event and counter-events, the real matrix element of the
-Fortran and the Born blocks of pyAmpliCol (see test_fks_limits.py), also at
-the events close to the soft limit, where sreal and fks_Sij switch to the
-limit and FKSSubtraction does not use the real matrix element. On events of
-the FKS mappings it is the product of FKSSectorFunction, FKSPrefactors and
-FKSLimits with the conditions of the counterterms, and with the limits at
-the event close to them.
+symmetry factors, the collinear remnants of sreal_deg (also in the DIS
+scheme) and the parameters of the subtraction. FKSSubtraction must give
+their contributions per unit Jacobian (as for FKSPrefactors) from the momenta
+of the event and counter-events, the real matrix element of the Fortran and
+the Born blocks of pyAmpliCol (see test_fks_limits.py), also at the events
+close to the soft limit, where sreal and fks_Sij switch to the limit and
+FKSSubtraction does not use the real matrix element. On events of the FKS
+mappings it is the product of FKSSectorFunction, FKSPrefactors and FKSLimits
+with the conditions of the counterterms and the collinear remnants, and with
+the limits at the event close to them.
 """
 
 import numpy as np
@@ -96,13 +97,99 @@ def born_blocks_of_any_born(data, batch):
     ]
 
 
+def collinear_remnants(
+    born, configurations, out, index, born_args, scales, f, s_c, s_sc, delta_i, dis, n_f
+):
+    """The collinear remnants of sreal_deg for the events of FKSKinematics,
+    in numpy: per unit det of the collinear and soft-collinear
+    counter-events, zero for a final-state or massive emitter."""
+    ca, tr, cf = 3.0, 0.5, 4.0 / 3.0
+    color = np.array([2 * ca, tr, cf, cf])
+    fks = fks_configurations(born, configurations)
+    kernels = fks_limits(born, configurations).splitting_kernels()
+    kind = np.array([kernels.splitting_kind(c) for c in range(len(fks))])[index]
+    remnant = np.array([c.initial_state() and c.masses[c.j_fks] == 0.0 for c in fks])
+    ratio = np.array([c.identical_particle_ratio() for c in fks])[index]
+    beam = np.array([c.j_fks if c.initial_state() else 0 for c in fks])[index]
+    born_value, _, _, alpha_s = born_args
+    mu_f = np.where(beam == 0, scales[0], scales[1])
+    xi_c = out["collinear_xi"]
+
+    def s_hat(momenta):
+        p = momenta[:, 0] + momenta[:, 1]
+        return p[:, 0] ** 2 - (p[:, 1:] ** 2).sum(1)
+
+    def pieces(z, s):
+        w = 1 - z
+        ap = np.choose(
+            kind,
+            [
+                w * w / z + z + z * w * w,
+                (z * z + w * w) * w,
+                1 + z * z,
+                (1 + w * w) * w / z,
+            ],
+        )
+        ap_prime = np.choose(kind, [0 * z, -2 * z * w * w, -w * w, -z * w])
+        n = born_value * ratio * 4 * np.pi * alpha_s / (8 * np.pi**2 * z) * color[kind]
+        d_xi = n * (ap * np.log(s * delta_i / (2 * mu_f**2)) - ap_prime)
+        d_lxi = 2 * n * ap
+        k = np.zeros((3, len(z)))
+        if dis:
+            lx = np.log(z)
+            pqg, pgq = z * z + w * w, 1 + z * z
+            regular = -pqg * lx + 8 * z * w - 1
+            plus = -1.5 - pgq * lx + w * (3 + 2 * z)
+            delta = 4.5 + np.pi**2 / 3
+            k_p = np.choose(
+                kind,
+                [-2 * n_f * tr * w * regular, tr * w * regular, cf * plus, -cf * plus],
+            )
+            k_l = np.choose(
+                kind, [-2 * n_f * tr * w * pqg, tr * w * pqg, cf * pgq, -cf * pgq]
+            )
+            k_d = np.choose(
+                kind, [0 * z, 0 * z, -cf * delta + 0 * z, cf * delta + 0 * z]
+            )
+            k = -n / color[kind] * np.array([k_p, k_l, k_d])
+        return d_xi, d_lxi, k[0], k[1], k[2]
+
+    log_xi = np.log(xi_c)
+    d_xi, d_lxi, k_p, k_l, _ = pieces(1 - xi_c, s_hat(out["collinear_momenta"]))
+    collinear = f["f_dc"] * (d_xi + k_p + (d_lxi + k_l) * log_xi)
+    one = np.ones(len(index))
+    d_xi, d_lxi, k_p, k_l, k_d = pieces(one, s_hat(out["soft_collinear_momenta"]))
+    f_dsc, f_pdf = f["f_dsc"], f["f_pdf"]
+    soft_collinear = (
+        -f_dsc[:, 0] * (d_xi + k_p + (d_lxi + k_l) * log_xi)
+        - f_dsc[:, 1] * d_xi
+        - f_dsc[:, 2] * d_lxi
+        + f_pdf[:, 0] * k_d
+        + f_pdf[:, 1] * k_p
+        + f_pdf[:, 2] * k_l
+    )
+    with_remnant = remnant[index]
+    return (
+        np.where(with_remnant & (s_c > 0), collinear, 0.0),
+        np.where(with_remnant & (s_sc > 0), soft_collinear, 0.0),
+    )
+
+
+def fact_scales(data, batch):
+    """The factorization scales of the two beams of the dump."""
+    return [np.full(batch, np.sqrt(mu_f2)) for mu_f2 in data["scales"]["mu_f2"]]
+
+
 def madfks_contributions(data, rows):
     """The contributions of compute_real_emission and
-    compute_soft_counter_term and its siblings without the collinear
-    remnants, per unit Jacobian of the event (with the factor xi) and of the
-    counter-events, from the values of the Fortran."""
+    compute_soft_counter_term and its siblings with the collinear remnants
+    of sreal_deg at the scales of the dump, per unit Jacobian of the event
+    (with the factor xi) and of the counter-events, from the values of the
+    Fortran."""
     xi_s_cut = data["subtraction"]["xi_s_cut"]
     delta_s = data["subtraction"]["delta_s"]
+    # the coefficients of log(mu_F^2 / QES^2) of the weight lines
+    log_mu_f = np.log(data["scales"]["mu_f2"][0] / data["scales"]["qes2"])
     contributions = []
     for conf, point in rows:
         f = point["prefactors"]
@@ -115,8 +202,12 @@ def madfks_contributions(data, rows):
             real = fx[0] * s_ev * f["f_r"]
         if xi_hat * xi_max[SOFT] <= xi_s_cut and s_cnt[0] > 0 and xi <= xi_s_cut:
             soft = -fx[1] * s_cnt[0] * f["f_s"]
+        # xi of the collinear counter-event, zero for a massive emitter
+        log_xi = np.log(point["xi_cnt"][COLLINEAR]) if massless else 0.0
         if y > 1 - delta_s and massless and s_cnt[1] > 0:
-            collinear = -fx[2] * s_cnt[1] * f["f_c"]
+            d_xi, d_lxi, d_mu_f, k_p, k_l, _ = point["collinear_remnants"][0]
+            remnant = d_xi + k_p + (d_lxi + k_l) * log_xi + d_mu_f * log_mu_f
+            collinear = -fx[2] * s_cnt[1] * f["f_c"] + remnant * f["f_dc"]
         if (
             xi_hat * xi_max[COLLINEAR] < xi_s_cut
             and y > 1 - delta_s
@@ -124,7 +215,17 @@ def madfks_contributions(data, rows):
             and s_cnt[2] > 0
             and point["xi_cnt"][COLLINEAR] < xi_s_cut
         ):
-            soft_collinear = fx[3] * s_cnt[2] * f["f_sc"]
+            d_xi, d_lxi, d_mu_f, k_p, k_l, k_d = point["collinear_remnants"][1]
+            f_dsc, f_pdf = f["f_dsc"], f["f_pdf_scheme"]
+            remnant = (
+                -(d_xi + k_p + (d_lxi + k_l) * log_xi) * f_dsc[0]
+                - (d_xi * f_dsc[1] + d_lxi * f_dsc[2])
+                + k_d * f_pdf[0]
+                + k_p * f_pdf[1]
+                + k_l * f_pdf[2]
+                - d_mu_f * f_dsc[3] * log_mu_f
+            )
+            soft_collinear = fx[3] * s_cnt[2] * f["f_sc"] + remnant
         jac, jac_cnt = point["jac"], point["jac_cnt"]
         xinorm, xinorm_c = point["xinorm_ev"], point["xinorm_cnt"][COLLINEAR]
         norms = [
@@ -143,8 +244,13 @@ def madfks_contributions(data, rows):
 @pytest.mark.parametrize("path", FKS_DATA, ids=FKS_DATA_IDS)
 def test_matches_madfks(path):
     data = reference(path)
+    scheme = ms.FKSSubtraction.PdfScheme
     subtraction = fks_subtraction(
-        born_mapping(data), data["fks_configurations"], **data["subtraction"]
+        born_mapping(data),
+        data["fks_configurations"],
+        **data["subtraction"],
+        pdf_scheme=scheme.dis if data["pdf_scheme"] == 1 else scheme.msbar,
+        n_f=data["n_f"],
     )
     assert subtraction.configuration_count() == len(data["configs"])
     rows = [
@@ -194,6 +300,7 @@ def test_matches_madfks(path):
             field("p_i_hat_cnt", SOFT_COLLINEAR),
             matrix_element,
             *blocks,
+            *fact_scales(data, len(rows)),
             fks_index=index,
         ),
         axis=1,
@@ -232,19 +339,28 @@ def test_matches_madfks(path):
 @pytest.mark.parametrize(
     "name", ["pp_ttx_P0_gg_ttx", "epem_uuxg_P0_epem_uuxg", "pp_epemj_P0_ug_uemep"]
 )
-def test_on_mapping_events(name):
+@pytest.mark.parametrize(
+    "pdf_scheme", list(ms.FKSSubtraction.PdfScheme.__members__.values())
+)
+def test_on_mapping_events(name, pdf_scheme):
     """On events of the FKS mappings, FKSSubtraction is the product of
     FKSSectorFunction, FKSPrefactors and FKSLimits with the signs, symmetry
-    factors and conditions of the counterterms, finite everywhere and zero
-    where an event or counter-event is not generated."""
-    parameters = dict(xicut=0.4, xi_s_cut=0.3, delta_s=0.5)
+    factors and conditions of the counterterms, plus the collinear remnants
+    of an initial-state emitter with the factorization scale of its beam,
+    finite everywhere and zero where an event or counter-event is not
+    generated."""
+    parameters = dict(xicut=0.4, xi_s_cut=0.3, delta_i=0.7, delta_s=0.5)
     data, born, configurations, out, index = mapping_events(name, 43)
-    subtraction = fks_subtraction(born, configurations, **parameters)
+    subtraction = fks_subtraction(
+        born, configurations, **parameters, pdf_scheme=pdf_scheme, n_f=4.0
+    )
     me = 1 / (out["xi"] ** 2 * (1 - out["y"]))
     born_args = born_blocks_of_any_born(data, len(index))
+    # factorization scales that differ between the beams
+    scales = [np.full(len(index), 90.0), np.full(len(index), 140.0)]
     kinematics = [out[key] for key in KINEMATICS]
     real, soft, collinear, soft_collinear = evaluate(
-        subtraction, *kinematics, me, *born_args, fks_index=index
+        subtraction, *kinematics, me, *born_args, *scales, fks_index=index
     )
     # the products of the pieces
     sector = fks_sector_function(born, configurations)
@@ -264,7 +380,7 @@ def test_on_mapping_events(name):
         *born_args,
         fks_index=index,
     )
-    _, f_s, f_c, _, f_sc, _ = evaluate(
+    _, f_s, f_c, f_dc, f_sc, f_dsc, f_pdf = evaluate(
         fks_prefactors(born, configurations, **parameters),
         out["xi"],
         out["y"],
@@ -295,17 +411,40 @@ def test_on_mapping_events(name):
     )
     for ok in [with_soft, with_collinear, with_soft_collinear]:
         assert ok.any() and not ok.all()
+    remnant_c, remnant_sc = collinear_remnants(
+        born,
+        configurations,
+        out,
+        index,
+        born_args,
+        scales,
+        dict(f_dc=f_dc, f_dsc=f_dsc, f_pdf=f_pdf),
+        s["collinear_"],
+        s["soft_collinear_"],
+        parameters["delta_i"],
+        pdf_scheme == ms.FKSSubtraction.PdfScheme.dis,
+        4.0,
+    )
+    initial = np.array([c["j_fks"] <= 2 for c in configurations["configurations"]])
+    assert (remnant_c[initial[index]] != 0).any() or not initial.any()
     expected = [
         np.where(out["weight"] > 0, sym * me * s[""], 0.0),
         np.where(with_soft, -sym * (s["soft_"] * f_s * lim_s), 0.0),
-        np.where(with_collinear, -sym * (s["collinear_"] * f_c * lim_c), 0.0),
         np.where(
-            with_soft_collinear, sym * (s["soft_collinear_"] * f_sc * lim_sc), 0.0
+            with_collinear, sym * (remnant_c - s["collinear_"] * f_c * lim_c), 0.0
+        ),
+        np.where(
+            with_soft_collinear,
+            sym * (s["soft_collinear_"] * f_sc * lim_sc + remnant_sc),
+            0.0,
         ),
     ]
-    for ours, theirs in zip([real, soft, collinear, soft_collinear], expected):
+    # the remnants in another order of the operations
+    for ours, theirs, rtol in zip(
+        [real, soft, collinear, soft_collinear], expected, [1e-15, 1e-15, 1e-13, 1e-13]
+    ):
         assert np.isfinite(ours).all()
-        np.testing.assert_allclose(ours, theirs, rtol=1e-15, atol=0)
+        np.testing.assert_allclose(ours, theirs, rtol=rtol, atol=0)
 
 
 @pytest.mark.parametrize(
@@ -333,11 +472,13 @@ def test_limits_at_the_event(name):
     me = 1 / (xi**2 * omy)
     born_args = born_blocks_of_any_born(data, batch)
     kinematics = [y if key == "y" else out[key] for key in KINEMATICS]
+    scales = [np.full(batch, 100.0)] * 2
     real, *_ = evaluate(
         fks_subtraction(born, configurations),
         *kinematics,
         np.where(switched, np.nan, me),
         *born_args,
+        *scales,
         fks_index=index,
     )
     (plain, *_) = evaluate(
@@ -345,6 +486,7 @@ def test_limits_at_the_event(name):
         *kinematics,
         me,
         *born_args,
+        *scales,
         fks_index=index,
     )
     sector = fks_sector_function(born, configurations)

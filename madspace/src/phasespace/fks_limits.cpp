@@ -404,7 +404,8 @@ FKSPrefactors::FKSPrefactors(
          {"f_c", batch_float},
          {"f_dc", batch_float},
          {"f_sc", batch_float},
-         {"f_dsc", batch_float_array(4)}}
+         {"f_dsc", batch_float_array(4)},
+         {"f_pdf_scheme", batch_float_array(3)}}
     ),
     _particle_count(configurations.at(0).particle_count()),
     _xicut(xicut),
@@ -430,7 +431,7 @@ NamedVector<Value> FKSPrefactors::build_function_impl(
         collinear.push_back(_masses.at(c).at(j) == 0. ? 1 : 0);
         delta.push_back(j < INCOMING_COUNT ? _delta_i : _delta_o);
     }
-    auto [f_r, f_s, f_c, f_dc, f_sc, f_dsc] = fb.fks_prefactors(
+    auto [f_r, f_s, f_c, f_dc, f_sc, f_dsc, f_pdf] = fb.fks_prefactors(
         args.at("xi"),
         args.at("y"),
         args.at("xi_max"),
@@ -449,6 +450,7 @@ NamedVector<Value> FKSPrefactors::build_function_impl(
         {"f_c", f_c},
         {"f_dc", f_dc},
         {"f_sc", f_sc},
-        {"f_dsc", f_dsc}
+        {"f_dsc", f_dsc},
+        {"f_pdf_scheme", f_pdf}
     };
 }

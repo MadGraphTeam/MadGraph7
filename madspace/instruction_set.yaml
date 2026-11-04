@@ -3014,8 +3014,11 @@ fks_prefactors:
     - name: f_dsc
       type: [float, 4]
       desc: "prefactors of the collinear remnants at the soft-collinear counter-event"
+    - name: f_pdf
+      type: [float, 3]
+      desc: "prefactors of the delta, plus and log-plus parts of a change of the PDF scheme at the soft-collinear counter-event"
   vectorized: False
-  desc: "The prefactors f_r, f_s, f_c, f_dc, f_sc and f_dsc of compute_prefactors_n1body in fks_singular.f, the plus distributions in xi and 1 - y with xicut, xiScut, delta and deltaS, for the Jacobians of the events and counter-events without the factor xi and without the symmetry factors: f_r = 1 / (xi (1 - y)) and f_s = (1 / xi + log(xicut / xi_l) / xi_l) / (1 - y) with xi_l = min(xi_max, xiScut), the collinear ones with xi and xi_max of the collinear counter-event and 32 pi^2 / s for the remnants, zero for a massive emitter."
+  desc: "The prefactors f_r, f_s, f_c, f_dc, f_sc and f_dsc of compute_prefactors_n1body in fks_singular.f, the plus distributions in xi and 1 - y with xicut, xiScut, delta and deltaS, for the Jacobians of the events and counter-events without the factor xi and without the symmetry factors: f_r = 1 / (xi (1 - y)) and f_s = (1 / xi + log(xicut / xi_l) / xi_l) / (1 - y) with xi_l = min(xi_max, xiScut), the collinear ones with xi and xi_max of the collinear counter-event and 32 pi^2 / s for the remnants, zero for a massive emitter, and f_pdfsch_d, f_pdfsch_p, f_pdfsch_l, 32 pi^2 / (s deltaS xiScut) times 1, log(xiScut) and log(xiScut)^2 / 2."
 
 fks_soft_limit:
   inputs:
@@ -3080,6 +3083,75 @@ fks_collinear_limit:
   vectorized: False
   desc: "Collinear limit of xi^2 (1 - y) times the real matrix element, as sborncol_fsr and sborncol_isr in fks_singular.f: 4 pi alpha_s iden_comp (AP B + Q (B / 2 - B_kperp)) with the QCD kernels, where B_kperp, the Born with the polarization vector of the emitter replaced by k_perp, enters only where Q is not zero."
 
+fks_collinear_remnants:
+  inputs:
+    - name: born
+      type: [float]
+      desc: "the Born"
+    - name: alpha_s
+      type: [float]
+      desc: "strong coupling"
+    - name: s_c
+      type: [float]
+      desc: "sector function at the collinear counter-event"
+    - name: s_sc
+      type: [float]
+      desc: "sector function at the soft-collinear counter-event"
+    - name: p_c
+      type: [float, n, 4]
+      desc: "momenta of the collinear counter-event"
+    - name: p_sc
+      type: [float, n, 4]
+      desc: "momenta of the soft-collinear counter-event"
+    - name: xi_c
+      type: [float]
+      desc: "xi of the collinear counter-event"
+    - name: f_dc
+      type: [float]
+      desc: "prefactor of the collinear remnant at the collinear counter-event"
+    - name: f_dsc
+      type: [float, 4]
+      desc: "prefactors of the collinear remnants at the soft-collinear counter-event"
+    - name: f_pdf
+      type: [float, 3]
+      desc: "prefactors of the delta, plus and log-plus parts of a change of the PDF scheme"
+    - name: fact_scale1
+      type: [float]
+      desc: "factorization scale of the first beam"
+    - name: fact_scale2
+      type: [float]
+      desc: "factorization scale of the second beam"
+    - name: index
+      type: [int]
+      desc: "FKS configuration of the event"
+    - name: remnant
+      type: [int, single, c]
+      desc: "1 where the emitter of the configuration is incoming and massless"
+    - name: beam
+      type: [int, single, c]
+      desc: "beam of the emitter of each configuration"
+    - name: kind
+      type: [int, single, c]
+      desc: "splitting function of each configuration, as for fks_splitting_kernels"
+    - name: factor
+      type: [float, single, c]
+      desc: "identical-particle ratio of each configuration"
+    - name: delta
+      type: [float, single, c]
+      desc: "deltaI of each configuration"
+    - name: options
+      type: [float, single, 2]
+      desc: "the PDF scheme (0 MSbar, 1 DIS) and the number of light flavors"
+  outputs:
+    - name: collinear
+      type: [float]
+      desc: "collinear remnant at the collinear counter-event"
+    - name: soft_collinear
+      type: [float]
+      desc: "collinear remnant at the soft-collinear counter-event"
+  vectorized: False
+  desc: "The collinear remnants of an incoming emitter of sreal_deg, compute_collinear_counter_term and compute_soft_collinear_counter_term in fks_singular.f, with the factorization scale of the beam of the emitter. With N = 4 pi alpha_s B iden_comp / (8 pi^2 z), D_xi = N ((1 - z) P log(s deltaI / (2 mu_F^2)) - (1 - z) P'), D_lxi = 2 N (1 - z) P and the parts K_p, K_l, K_d = -N k_p, k_l, k_d of the change to the DIS scheme (zero in MSbar), the collinear remnant is f_dc (D_xi + K_p + (D_lxi + K_l) log xi_c) at z = 1 - xi_c and s of the collinear counter-event and the soft-collinear one -f_dsc1 (D_xi + K_p + (D_lxi + K_l) log xi_c) - f_dsc2 D_xi - f_dsc3 D_lxi + f_pdf_d K_d + f_pdf_p K_p + f_pdf_l K_l at z = 1 and s of the soft-collinear counter-event. Each is zero where its sector function is."
+
 fks_real_emission:
   inputs:
     - name: matrix_element
@@ -3142,6 +3214,12 @@ fks_subtraction:
     - name: soft_collinear
       type: [float]
       desc: "collinear limit times the sector function and the prefactor f_sc at the soft-collinear counter-event"
+    - name: remnant_c
+      type: [float]
+      desc: "collinear remnant at the collinear counter-event"
+    - name: remnant_sc
+      type: [float]
+      desc: "collinear remnant at the soft-collinear counter-event"
     - name: xi
       type: [float]
       desc: "xi of the event"
@@ -3195,7 +3273,7 @@ fks_subtraction:
       type: [float]
       desc: "contribution of the soft-collinear counterterm, per unit Jacobian of its counter-event"
   vectorized: False
-  desc: "The real emission and its FKS counterterms with their signs, symmetry factors and conditions, as compute_real_emission and compute_soft_counter_term and its siblings in fks_singular.f without the collinear remnants: the soft counterterm where xi_hat xi_max_s <= xiScut and xi <= xiScut, the collinear one where y > 1 - deltaS, the soft-collinear one where both xi_hat xi_max_c and xi_c are below xiScut and y > 1 - deltaS, each zero where its momenta are not generated."
+  desc: "The real emission and its FKS counterterms with their signs, symmetry factors and conditions, as compute_real_emission and compute_soft_counter_term and its siblings in fks_singular.f, the collinear remnants added to the collinear counterterms: the soft counterterm where xi_hat xi_max_s <= xiScut and xi <= xiScut, the collinear one where y > 1 - deltaS, the soft-collinear one where both xi_hat xi_max_c and xi_c are below xiScut and y > 1 - deltaS, each zero where its momenta are not generated."
 
 ---
 title: Invariants

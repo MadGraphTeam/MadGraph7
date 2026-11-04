@@ -314,9 +314,13 @@ private:
  * @f]
  * and for the collinear remnants @f$f_{dc} = 32 \pi^2 / (s_c \xi_c \delta_S)@f$
  * and the four @f$f_{dsc}@f$ (with @f$32 \pi^2 / s@f$ of the soft-collinear
- * counter-event). They multiply @f$\xi^2 (1 - y)@f$ times the real matrix
- * element and its limits. The collinear ones vanish for a massive emitter.
- * Whether a counterterm contributes (@f$\xi \le \xi_\mathrm{S,cut}@f$,
+ * counter-event), and those of a change of the PDF scheme at the
+ * soft-collinear counter-event, @f$32 \pi^2 / (s \delta_S \xi_\mathrm{S,cut})@f$
+ * times 1, @f$\log \xi_\mathrm{S,cut}@f$ and
+ * @f$\log^2 \xi_\mathrm{S,cut} / 2@f$ (f_pdfsch_d, f_pdfsch_p, f_pdfsch_l). They
+ * multiply @f$\xi^2 (1 - y)@f$ times the real matrix element and its limits. The
+ * collinear ones vanish for a massive emitter. Whether a counterterm contributes
+ * (@f$\xi \le \xi_\mathrm{S,cut}@f$,
  * @f$y > 1 - \delta_S@f$) is left to @ref FKSSubtraction, which also adds
  * the symmetry factors.
  *
@@ -337,6 +341,8 @@ private:
  * **Returns**
  * - `f_r`, `f_s`, `f_c`, `f_dc`, `f_sc` – `float`, shape `(batch,)`.
  * - `f_dsc` – `float`, shape `(batch, 4)`.
+ * - `f_pdf_scheme` – `float`, shape `(batch, 3)` – the delta, plus and
+ *   log-plus prefactors of a change of the PDF scheme.
  *
  * **References**
  * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
