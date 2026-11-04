@@ -9,35 +9,35 @@
 # script copied in <proc>_vfalt/vfold/GEN_<proc>_vfalt.sh):
 # - apply the post-processing of that script that does not need a launch
 # - copy the MINT0/MINT1 test grids (for the -o tests, see
-#   vfold/test/grids/README) from a reference directory
-#   (default madvfold/DEV/<proc>_vfalt), if it exists
+#   madvfold/test/grids/README) from a grids directory
+#   (default madvfold/test/grids/<proc>), if it exists
 # The cudacpp libraries for mode C are generated and built before this, for any
 # 'output --vfold' (vfold/generateCudacpp.sh, see madvfold/README_CUDACPP.md).
 # The .gitignore and the test scripts of the vfold subdirectory are installed
-# by the overlay (madvfold/overlay_test): they are not copied from the
-# reference directory. The test grids are process-specific, so they are not
-# in the overlay (for the moment they are taken from the reference directory).
+# by the overlay (madvfold/overlay_test). The test grids are process-specific,
+# so they are not in the overlay, but in madvfold/test/grids/<proc> (step 14e:
+# no longer from the private hand-written directory madvfold/DEV/<proc>_vfalt).
 # The code is built by the first run (./bin/generate_events, e.g. via vfold/myLaunch.sh).
 
 set -e
 set -o pipefail
 
 if [ "$1" == "" ] || [ "$3" != "" ]; then
-  echo "Usage:   $0 <procdir> [<refdir>]"
-  echo "Example: $0 madvfold/DEV/eebbbb_vfgen madvfold/DEV/eebbbb_vfalt"
+  echo "Usage:   $0 <procdir> [<gridsdir>]"
+  echo "Example: $0 madvfold/DEV/eebbbb_vfgen madvfold/test/grids/eebbbb"
   exit 1
 fi
 mg5dir=$(cd $(dirname $0)/../..; pwd -P)
 procdir=$(cd $1; pwd -P)
 if [ "$2" != "" ]; then
-  refdir=$(cd $2; pwd -P)
+  gridsdir=$(cd $2; pwd -P)
 else
   proc=$(basename ${procdir}); proc=${proc%_vfgen*} # e.g. eebbbb_vfgen -> eebbbb, epem_bbxbbx_vfgen -> epem_bbxbbx
-  refdir=${mg5dir}/madvfold/DEV/${proc}_vfalt
-  if [ ! -d ${refdir} ]; then refdir=; fi
+  gridsdir=${mg5dir}/madvfold/test/grids/${proc}
+  if [ ! -d ${gridsdir} ]; then gridsdir=; fi
 fi
 echo "INFO: setupVfoldTests.sh procdir=${procdir}"
-echo "INFO: setupVfoldTests.sh refdir=${refdir}"
+echo "INFO: setupVfoldTests.sh gridsdir=${gridsdir}"
 cd ${procdir}
 
 # Post-processing from vfold/GEN_<proc>_vfalt.sh (see the comments there)
@@ -75,15 +75,13 @@ echo "treatcards all" > setupVfoldTests.cmd
 ./bin/aMCatNLO setupVfoldTests.cmd > /dev/null
 command rm -f setupVfoldTests.cmd
 
-# Test material from the reference directory
-if [ "${refdir}" == "" ]; then
-  echo "WARNING! No reference directory: test grids not copied"
+# MINT0/MINT1 grids for the -o tests (see madvfold/test/grids/README)
+if [ "${gridsdir}" == "" ]; then
+  echo "WARNING! No grids directory: test grids not copied"
   exit 0
 fi
-# - MINT0/MINT1 grids for the -o tests (see vfold/test/grids/README)
-if [ -d ${refdir}/vfold/test/grids ]; then
-  command rm -rf vfold/test/grids
-  mkdir -p vfold/test
-  command cp -dpr ${refdir}/vfold/test/grids vfold/test/grids
-fi
+command rm -rf vfold/test/grids
+mkdir -p vfold/test
+command cp -dpr ${gridsdir} vfold/test/grids
+command cp -p ${mg5dir}/madvfold/test/grids/README vfold/test/grids/README
 echo "INFO: setupVfoldTests.sh completed"

@@ -8,7 +8,7 @@ are kept separate so that they can be left out of the vfold code.
 
 `--vfold-with-tests` also runs `madvfold/DEV/setupVfoldTests.sh`, which
 prepares the process directory for the tests (e.g. relative paths and the
-`vfold/test/grids` of `madvfold/DEV/<proc>_vfalt` if present), and builds
+`vfold/test/grids` from `madvfold/test/grids/<proc>` if present), and builds
 the cudacpp libraries with their unit tests (googletest in `CUDACPP/GTEST`,
 see `../README_CUDACPP.md`).
 
