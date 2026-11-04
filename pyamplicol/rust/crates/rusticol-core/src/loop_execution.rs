@@ -441,7 +441,8 @@ pub mod v2 {
         /// read (`LiveRows`, DESIGN.md §8.5), or None when `rows` drops no
         /// seeded row. [`Self::evaluate_families`] and the tree fill
         /// (`TreeProgram::live_rows`) take it. The latest one is kept and
-        /// returned again for the same rows and families.
+        /// returned again for the same rows and families (and dropped
+        /// before another one is formed).
         pub fn live_rows(
             &self,
             rows: &[bool],
@@ -456,11 +457,17 @@ pub mod v2 {
             if let Some(kept) = families {
                 listed.retain(|&f| kept[f]);
             }
-            let latest = self.live.lock().ok().and_then(|latest| {
-                latest
+            // A hit returns the latest; a miss drops it first, so one call
+            // never holds two (the pruned copies are the bulk of one).
+            let latest = self.live.lock().ok().and_then(|mut latest| {
+                let hit = latest
                     .as_ref()
                     .filter(|live| live.rows == rows && live.listed() == listed)
-                    .cloned()
+                    .cloned();
+                if hit.is_none() {
+                    *latest = None;
+                }
+                hit
             });
             if latest.is_some() {
                 return Ok(latest);

@@ -31,12 +31,12 @@
 
 use super::super::kernels::RowLink;
 use super::{
-    Content, Edge, Family, LinkInterner, LoopProgramV4, ReadRows, Source, SplitGroup, SplitPart,
-    SplitStep, Step, StepCost, Vertex, fused_cost, step_shape,
+    Content, Edge, Family, LinkInterner, LoopProgramV4, PackedLinks, ReadRows, Source, SplitGroup,
+    SplitPart, SplitStep, Step, StepCost, Vertex, fused_cost, step_shape,
 };
 use crate::RusticolResult;
 use rayon::prelude::*;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::sync::Arc;
 
 impl LoopProgramV4 {
@@ -52,7 +52,7 @@ impl LoopProgramV4 {
             .map(|row| self.column_rows.keeps(row / columns, row % columns))
             .collect();
         for family in &mut self.families {
-            *family = prune_family(
+            (*family, _) = prune_family(
                 family,
                 &seeded,
                 columns,
@@ -127,10 +127,13 @@ impl LoopProgramV4 {
 /// Memory: a pruned copy is built fresh at the lengths it keeps (a split
 /// part's list keeping every link stays shared with the template, a shorter
 /// one is packed and interned), and it is kept only when its own heap (its
-/// steps, edges, fused links, groups and parts: `family_bytes`) is at most
-/// [`KEPT_SHARE`] of its family's; a family keeping more runs whole on the
-/// masked seeds (the template's steps, the unpruned path's values), so the
-/// copies of one call hold at most that share of the dressed families' heap.
+/// steps, edges, fused links, groups and parts, `family_bytes`, plus the
+/// shortened part lists it allocates) is at most [`KEPT_SHARE`] of its
+/// family's steps, edges, fused links, groups and parts; a family keeping
+/// more runs whole on the masked seeds (the template's steps, the unpruned
+/// path's values), so the copies of one call hold at most that share of the
+/// dressed families' heap. The executor keeps one liveness and drops it
+/// before it forms another (`V2Executor::live_rows`).
 pub struct LiveRows {
     /// The kept Born rows, one flag per plan row.
     pub rows: Vec<bool>,
@@ -265,7 +268,7 @@ impl LoopProgramV4 {
             .par_iter()
             .map_init(LinkInterner::default, |interner, &f| {
                 let template = &self.families[f];
-                let copy = prune_family(
+                let (copy, lists) = prune_family(
                     template,
                     &seeded,
                     columns,
@@ -273,7 +276,7 @@ impl LoopProgramV4 {
                     &self.vertices,
                     interner,
                 );
-                if family_bytes(&copy) * share.1 <= family_bytes(template) * share.0 {
+                if (family_bytes(&copy) + lists) * share.1 <= family_bytes(template) * share.0 {
                     let links = family_links(&copy);
                     (Some(copy), links)
                 } else {
@@ -319,7 +322,9 @@ fn sources<'a>(step: &Step, seeded: &'a [bool], live: &'a [Vec<bool>]) -> Vec<&'
 /// (module docs), built fresh: every list of the result is allocated at the
 /// length it keeps, so a pruned family holds its kept links only (a split
 /// part's list that keeps every link stays shared with `family`; a shorter
-/// one is interned in `interner`). The template is read only.
+/// one is interned in `interner`). The template is read only. Also returns
+/// the heap of the shortened part lists the result holds (each once, also
+/// when `interner` had it already: an upper bound of what it allocated).
 fn prune_family(
     family: &Family,
     seeded: &[bool],
@@ -327,7 +332,9 @@ fn prune_family(
     contents: &[Content],
     vertices: &[Vertex],
     interner: &mut LinkInterner,
-) -> Family {
+) -> (Family, usize) {
+    let mut shortened: HashSet<*const PackedLinks> = HashSet::new();
+    let mut lists = 0;
     let steps = &family.steps;
     // Forward: the object rows a kept seed row reaches.
     let mut live: Vec<Vec<bool>> = Vec::with_capacity(steps.len());
@@ -412,6 +419,9 @@ fn prune_family(
                         interner.retain(&mut links, |link| keep(link, input));
                         if links.is_empty() {
                             continue;
+                        }
+                        if !Arc::ptr_eq(&links, &part.links) && shortened.insert(Arc::as_ptr(&links)) {
+                            lists += links.shared_bytes();
                         }
                         if let Source::Step(child) = edge.source {
                             for link in links.iter() {
@@ -517,7 +527,7 @@ fn prune_family(
             }
         }
     }
-    Family {
+    let family = Family {
         sequence: family.sequence.clone(),
         rank: family.rank,
         orders: family.orders.clone(),
@@ -526,7 +536,8 @@ fn prune_family(
         factors: factors.into_iter().collect(),
         vertices: instances.into_iter().collect(),
         currents: currents.into_iter().collect(),
-    }
+    };
+    (family, lists)
 }
 
 /// The items of `items` in a list of their own length.
@@ -885,8 +896,9 @@ mod tests {
     }
 
     /// The executor keeps its latest row liveness and returns it again for
-    /// the same rows and family mask; other rows or masks form a new one,
-    /// and a mask of the wrong length is refused.
+    /// the same rows and family mask; other rows or masks form a new one
+    /// (the latest dropped first), and a mask of the wrong length is
+    /// refused.
     #[test]
     fn the_executor_reuses_its_latest_row_liveness() {
         use crate::loop_execution::v2::V2Executor;
@@ -895,11 +907,15 @@ mod tests {
         let first = executor.live_rows(&[true, false], None).unwrap().unwrap();
         let again = executor.live_rows(&[true, false], None).unwrap().unwrap();
         assert!(Arc::ptr_eq(&first, &again));
+        // `first`, `again` and the executor's one.
+        assert_eq!(Arc::strong_count(&first), 3);
         let masked = executor
             .live_rows(&[true, false], Some(&[true, false]))
             .unwrap()
             .unwrap();
         assert!(!Arc::ptr_eq(&first, &masked));
+        // A miss dropped the executor's before forming the new one.
+        assert_eq!(Arc::strong_count(&first), 2);
         assert_eq!(masked.listed(), [0]);
         let other = executor.live_rows(&[false, true], None).unwrap().unwrap();
         assert_eq!(other.families(), [0, 1]);
