@@ -55,6 +55,10 @@ endif
 FFLAGS+= -ffixed-line-length-132
 # ensure that no-automatic is done
 FFLAGS+= -fno-automatic
+# AV road B step 11t: keep jumps away from 32-byte boundaries (Intel JCC erratum
+# on Skylake-derived CPUs like Cascade Lake), so that timings do not depend on
+# how unrelated code changes shift the alignment of the object code
+FFLAGS+= -Wa,-mbranches-within-32B-boundaries
 
 # Set FC unless it's defined by an environment variable
 ifeq ($(origin FC),default)
