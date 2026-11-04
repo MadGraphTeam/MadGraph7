@@ -1,0 +1,212 @@
+include ../proc_characteristics
+include ../../Source/make_opts
+include ../analyse_opts
+include ../pythia8_opts
+
+LIBDIR = $(abspath ../../lib/)/
+ANADIR = ../../FixedOrderAnalysis/
+HERE := $(dir $(abspath $(firstword $(MAKEFILE_LIST))))
+PDIR := $(strip $(notdir $(patsubst %/,%,$(strip $(HERE)))))
+
+
+#check if fastjet-config is set
+ifdef fastjet_config
+    FASTJET_CONFIG = $(fastjet_config)
+    CXXFLAGS += $(shell $(FASTJET_CONFIG) --cxxflags)
+    FJLIBS += $(shell $(FASTJET_CONFIG) --libs --plugins ) $(STDLIB)
+    fastjetfortran_madfks=fastjetfortran_madfks_full.o fastjet_wrapper.o
+else
+    fastjetfortran_madfks=fastjetfortran_madfks_core.o fjcore.o fastjet_wrapper.o
+    FJLIBS += $(STDLIB)
+endif
+
+NLOLIBS=-L$(LIBDIR) $(libmadloop) $(libcuttools) $(libOLP)
+
+# Uncomment the line below to compile with MadLoop without setting the environment
+# variables 'by hand'
+# NLOLIBS= -L. -lMadLoop -L$(LIBDIR) -lcts
+LINKLIBS = -L$(LIBDIR) -ldhelas -lgeneric -lmodel -lpdf -lgammaUPC -lcernlib $(llhapdf)
+LINKLIBSSUD = -L$(LIBDIR) -ldhelas -lgeneric -lmodel -lcernlib 
+LIBS = $(LIBDIR)libdhelas.a $(LIBDIR)libgeneric.a $(LIBDIR)libmodel.a	\
+$(LIBDIR)libpdf.a $(LIBDIR)libcernlib.a
+
+ifneq ("$(wildcard ../../Source/RUNNING)","")
+    LINKLIBS += -lrunning
+    LIBS += $(LIBDIR)librunning.$(libext) 
+endif
+
+
+
+# Files for all executables
+FILES= $(patsubst %.f,%.o,$(wildcard parton_lum_*.f)) 			\
+	 $(patsubst %.f,%.o,$(wildcard matrix_*.f)) 			\
+	 FKSParams.o real_me_chooser.o chooser_functions.o recmom.o	\
+	 genps_fks.o setcuts.o setscales.o veto_xsec.o		 	\
+	 $(patsubst %.f,%.o,$(wildcard b_sf_???.f)) 			\
+	 born.o sborn_sf.o extra_cnt_wrapper.o				\
+	 $(patsubst %.f,%.o,$(wildcard born_cnt_*.f))			\
+         $(patsubst %.f,%.o,$(wildcard  ewsudakov*.f)) 			\
+         $(patsubst %.f,%.o,$(wildcard  numder*.f)) 			\
+	 momentum_reshuffling.o						\
+	 rescale_alpha_tagged.o						\
+	 fks_Sij.o $(fastjetfortran_madfks) fks_singular.o		\
+	 montecarlocounter.o reweight_xsec.o boostwdir2.o       	\
+	 boost_to_frame.o						\
+	 cluster.o splitorders_stuff.o 			\
+	 iproc_map.o sudakov.o				\
+	 MC_integer.o $(reweight_xsec_events_pdf_dummy)			\
+	 $(pineappl_interface) weight_lines.o mint_module.o polfit.o
+
+FILESSUD= \
+         $(patsubst %.f,%.o,$(wildcard  ewsudakov*.f)) 			\
+         $(patsubst %.f,%.o,$(wildcard  numder*.f)) 			\
+	 born.o born_hel.o momentum_reshuffling.o			\
+ 	 splitorders_stuff.o sa_ewsudakov_dummyfcts.o 
+
+
+# Files needed for mintFO & mintMC
+RUN= $(FO_ANALYSE) $(FILES) cuts.o dummy_fct.o pythia_unlops.o recluster.o 		\
+	fill_MC_mshell.o born_hel.o open_output_files.o			\
+	add_write_info.o madfks_plot.o
+
+# Files for mintFO
+MINTFO= $(RUN) driver_mintFO.o handling_lhe_events.o write_event.o BinothLHA.o pythia8_fortran_dummy.o
+
+# Files for mintMC
+MINTMC= $(RUN) driver_mintMC.o handling_lhe_events.o write_event.o BinothLHA.o
+
+# Files for check_poles
+POLES= $(RUN) check_poles.o BinothLHA.o pythia8_fortran_dummy.o write_event.o handling_lhe_events.o
+
+# Files for check_sudakov
+EWSUD= $(RUN) check_sudakov.o BinothLHA.o
+
+EWSUDSA = sa_ewsudakov.o sub_f2py_ewsudakov.o $(FILESSUD)
+EWSUDLIB = $(FILESSUD)
+
+# Files for the FKS Born building-block standalone (output standalone_fortran --fks).
+# The driver embeds its own get_lo2_orders, so the EW-Sudakov object
+# chain is deliberately left out to keep the link minimal.
+FKSSA = check_sa_fks.o born.o sborn_sf.o				\
+	$(patsubst %.f,%.o,$(wildcard b_sf_???.f))			\
+	splitorders_stuff.o orderstags_glob.o
+
+# Files for check_sudakov_angle2
+EWSUD2= $(RUN) check_sudakov_angle2.o BinothLHA.o
+
+# Files for tests
+TEST= $(RUN) test_soft_col_limits.o BinothLHADummy.o pythia8_fortran_dummy.o write_event.o handling_lhe_events.o
+
+# Files for gensym
+SYM= $(RUN) BinothLHADummy.o symmetry_fks_v3.o write_ajob.o pythia8_fortran_dummy.o write_event.o handling_lhe_events.o 
+
+# Files for event reweighting to get e.g. scale and PDF uncertainties
+RWGFILES=reweight_xsec_events.o handling_lhe_events.o recmom.o 		\
+	$(patsubst %.f,%.o,$(wildcard parton_lum_*.f)) setscales.o	\
+	cuts.o dummy_fct.o $(fastjetfortran_madfks) boostwdir2.o veto_xsec.o	\
+	$(reweight_xsec_events_pdf_dummy) fill_MC_mshell.o cluster.o	\
+	iproc_map.o chooser_functions.o 		\
+	pythia_unlops.o recluster.o splitorders_stuff.o reweight_xsec.o \
+	weight_lines.o orderstags_glob.o
+
+%.o: %.f
+	$(FC) $(FFLAGS) -c -I. -I$(LIBDIR) $<
+%.o: %.f90
+	$(FC) $(FFLAGS) -c -I. -I$(LIBDIR) $<
+%.o: $(ANADIR)/%.f
+	$(FC) $(FFLAGS) -c -I. -I$(ANADIR) $(FO_INCLUDEPATHS) $<
+%.o: %.for
+	$(FC) $(FFLAGS) -c -I. -I$(ANADIR) $<
+%.o: $(ANADIR)/%.for
+	$(FC) $(FFLAGS) -c -I. -I$(ANADIR) $(FO_INCLUDEPATHS) $<
+%.o: %.c
+	$(CXX) $(CFLAGS) -c -I. $^
+%.o: $(ANADIR)/%.c
+	$(CXX) $(CFLAGS) -c -I. -I$(ANADIR) $(FO_INCLUDEPATHS) $^
+%.o: %.cc
+	$(CXX) $(CXXFLAGS) -c -I. $(PYTHIA8INCLUDE) $^ 
+%.o: $(ANADIR)/%.cc
+	$(CXX) $(CXXFLAGS) -c -I. -I$(ANADIR) $(FO_INCLUDEPATHS) $^
+
+gensym: $(SYM)
+	$(FC) $(LDFLAGS) -o gensym $(SYM) $(APPLLIBS) $(LINKLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(FJLIBS)
+	rm fks_singular.o
+	strip gensym
+
+test_soft_col_limits: $(TEST) mint_module.o
+	$(FC) $(LDFLAGS) -o test_soft_col_limits $(TEST) $(APPLLIBS) $(LINKLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(FJLIBS)
+	rm test_soft_col_limits.o
+	strip test_soft_col_limits
+
+check_sudakov: $(EWSUD) $(libmadloop)
+	$(FC) -o check_sudakov $(EWSUD) $(NLOLIBS) $(APPLLIBS) $(LINKLIBS) $(FJLIBS) $(LDFLAGS)
+	strip check_sudakov
+
+ewsudakov_sa: $(EWSUDSA)
+	$(FC) -o ewsudakov_sa $(EWSUDSA) $(LINKLIBS)  $(LDFLAGS)
+	strip ewsudakov_sa
+
+check_fks: $(FKSSA)
+	$(FC) $(FFLAGS) -o check_fks $(FKSSA) $(LINKLIBSSUD) $(LDFLAGS)
+
+$(LIBDIR)/libdhelas.$(dylibext):
+	$(MAKE) -C "$(LIBDIR)/../Source/DHELAS" shared
+$(LIBDIR)/libmodel.$(dylibext):
+	$(MAKE) -C "$(LIBDIR)/../Source/MODEL" shared
+
+libewsud_$(PDIR).$(dylibext): $(LIBDIR)/libdhelas.$(dylibext) $(LIBDIR)/libmodel.$(dylibext) sub_f2py_ewsudakov.o ../../Source/MODEL/*.o            $(LIBDIR)/../Source/kin_functions.o $(LIBDIR)/../Source/ranmar.o
+	gfortran $(DYNLIBFLAG) -o libewsud_$(PDIR).$(dylibext) $(FILESSUD) ../../Source/DHELAS/*.o ../../Source/MODEL/*.o            $(LIBDIR)/../Source/kin_functions.o $(LIBDIR)/../Source/ranmar.o
+
+libsudpy: $(EWSUDLIB) libewsud_$(PDIR).$(dylibext) $(LIBDIR)/libmodel.$(dylibext) $(LIBDIR)/libdhelas.$(dylibext)
+	touch __init__.py
+	#ar rcs libewsud.$(libext) $(EWSUDLIB)
+	LDFLAGS="-Wl,-rpath,$(HERE)" $(F2PY)  -c sub_f2py_ewsudakov.f -L$(HERE) -lewsud_$(PDIR) $(LINKLIBS) -m ewsudpy_$(PDIR)
+
+check_sudakov_angle2: $(EWSUD2) $(libmadloop)
+	$(FC) -o check_sudakov_angle2 $(EWSUD2) $(NLOLIBS) $(APPLLIBS) $(LINKLIBS) $(FJLIBS) $(LDFLAGS)
+	strip check_sudakov_angle2
+
+check_poles: $(POLES) $(libmadloop)
+	$(FC) -o check_poles $(POLES) $(NLOLIBS) $(APPLLIBS) $(LINKLIBS) $(FJLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(LDFLAGS)
+	strip check_poles
+
+madevent_mintMC: $(MINTMC) $(PYTHIA8TARGETS) $(libmadloop) makefile $(LIBS)
+	$(FC) -o madevent_mintMC $(MINTMC) $(PYTHIA8TARGETS) $(NLOLIBS) $(APPLLIBS) $(LINKLIBS) $(FJLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(LDFLAGS) $(PYTHIA8LINKLIBS)
+	rm handling_lhe_events.o
+	strip madevent_mintMC
+
+madevent_mintFO: $(MINTFO) $(libmadloop) makefile $(LIBS)
+	$(FC) -o madevent_mintFO $(MINTFO) $(NLOLIBS) $(APPLLIBS) $(LINKLIBS) $(FJLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(LDFLAGS)
+	rm handling_lhe_events.o
+	strip madevent_mintFO
+
+reweight_xsec_events: $(RWGFILES) makefile $(LIBS)
+	$(FC) -o reweight_xsec_events $(RWGFILES) $(LINKLIBS) $(FJLIBS) $(LDFLAGS)
+	rm handling_lhe_events.o
+	strip reweight_xsec_events
+
+libMadLoop.a:
+	for dir in `ls -d V*`; do cd $$dir; make; cd ../; done
+
+mint_module.o : FKSParams.o
+BinothLHA_OLP.o: FKSParams.o
+BinothLHA.o: FKSParams.o
+reweight_xsec_events.o: weight_lines.o
+fks_singular.o: weight_lines.o mint_module.o
+driver_mintMC.o: weight_lines.o mint_module.o pythia8_control.inc pythia8_control_setup.inc
+driver_mintFO.o: weight_lines.o mint_module.o FKSParams.o
+pythia8_wrapper.o: pythia8_fortran.o LHAFortran_aMCatNLO.h
+chooser_functions.o: weight_lines.o
+cluster.o: weight_lines.o
+setcuts.o: mint_module.o
+genps_fks.o: mint_module.o FKSParams.o
+symmetry_fks_v3.o: mint_module.o
+test_soft_col_limits.o: mint_module.o
+madfks_plot.o: mint_module.o
+write_event.o: mint_module.o
+check_poles.o: mint_module.o
+clean:
+	@rm -f *.o write_ajob_basic reweight_xsec_events madevent_* check_poles\
+	    test_M* gensym
+	for dir in `ls -d V*`; do cd $$dir; make clean; cd ../; done
+
