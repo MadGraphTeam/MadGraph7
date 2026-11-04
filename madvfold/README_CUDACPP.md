@@ -29,7 +29,7 @@ cudacpp step 13a and later), which adds the `--vfold` output option.
 In a process directory generated with `output <dir> --vfold-with-tests`
 (e.g. by `madvfold/DEV/genProc.sh eebbbb`, giving `madvfold/DEV/eebbbb_vfgen`):
 ```
-./vfold/genCudacpp.sh        # create CUDACPP: cudacpp process directories, test, ccache
+./vfold/genCudacpp.sh        # create CUDACPP: cudacpp process directories, test
 ./vfold/buildCudacppLibs.sh  # build the cudacpp libraries in CUDACPP
 ./vfold/copyCudacppLibs.sh   # copy them to lib/cudacpp (vfold/myLaunch.sh does it in mode C)
 ```
@@ -42,6 +42,11 @@ In a process directory generated with `output <dir> --vfold-with-tests`
   from `madvfold/DEV/CUDACPP/test`, including googletest if it was already
   built there (otherwise `make -f cudacpp.mk gtestlibs` clones it from GitHub,
   which needs git and cmake).
+- `buildCudacppLibs.sh` uses ccache (if installed) with the cache directory
+  `CUDACPP/ccache`. If this does not exist, it is created as a symlink to
+  `madvfold/DEV/ccache` (shared by all process directories in `madvfold/DEV`,
+  so that the cache survives the regeneration of a process directory) if that
+  exists, or else as a local directory.
 - `buildCudacppLibs.sh` and `copyCudacppLibs.sh` also work for the hand-written
   `madvfold/DEV/<proc>_vfalt`, whose cudacpp process directories are in
   `madvfold/DEV/CUDACPP` instead of `<proc>/CUDACPP`.

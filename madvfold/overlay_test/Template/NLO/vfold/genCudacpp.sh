@@ -13,8 +13,8 @@
 #   the real-emission processes without it;
 # - test, the googletest build directory used by 'make -f cudacpp.mk gtestlibs'
 #   (found as ../../../test from SubProcesses/P1_<proc>), copied from
-#   <mg5dir>/madvfold/DEV/CUDACPP/test (with googletest, if already built there);
-# - ccache, the ccache directory used by vfold/buildCudacppLibs.sh.
+#   <mg5dir>/madvfold/DEV/CUDACPP/test (with googletest, if already built there).
+# The ccache directory CUDACPP/ccache is created later by vfold/buildCudacppLibs.sh.
 # Then build the libraries with vfold/buildCudacppLibs.sh and copy them to
 # lib/cudacpp with vfold/copyCudacppLibs.sh.
 
@@ -46,7 +46,7 @@ if [ "${ccBornProc}" == "" ]; then
   exit 1
 fi
 
-# Create the test and ccache directories
+# Create the test directory
 mkdir CUDACPP
 devdir=${mg5dir}/madvfold/DEV/CUDACPP
 mkdir CUDACPP/test
@@ -56,9 +56,7 @@ if [ -d ${devdir}/test/googletest ]; then
 else
   echo "WARNING! No googletest in ${devdir}/test: it will be cloned by 'make -f cudacpp.mk gtestlibs'"
 fi
-mkdir CUDACPP/ccache
 command cp -dp ${devdir}/.gitignore CUDACPP
-command cp -dp ${devdir}/ccache/.gitignore CUDACPP/ccache
 
 # Generate the cudacpp process directories
 grep -v '^#' ${spec} | while read tag ccProc gencmd; do

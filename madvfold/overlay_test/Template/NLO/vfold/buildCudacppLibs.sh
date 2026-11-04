@@ -45,7 +45,19 @@ echo "Build the cudacpp libraries in $(pwd)"
 # Use ccache only if it is installed
 if which ccache > /dev/null 2>&1; then export USECCACHE=1; else export USECCACHE=0; fi
 echo USECCACHE=${USECCACHE}
-export CCACHE_DIR=$(pwd -P)/ccache
+# Use the ccache directory ccache next to the cudacpp process directories:
+# if it does not exist, create it as a symlink to ../../ccache if that exists
+# (i.e. <mg5dir>/madvfold/DEV/ccache, shared by all process directories in
+# madvfold/DEV, so that the cache survives the regeneration of a process
+# directory), or else as a local directory
+if [ ! -e ccache ] && [ ! -L ccache ]; then
+  if [ -d ../../ccache ]; then
+    ln -sn ../../ccache ccache
+  else
+    mkdir ccache
+  fi
+fi
+export CCACHE_DIR=$(cd ccache; pwd -P)
 echo CCACHE_DIR=${CCACHE_DIR}
 export FC=gfortran
 export FPTYPE=d
