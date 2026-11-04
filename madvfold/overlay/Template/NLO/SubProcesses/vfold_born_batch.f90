@@ -233,6 +233,7 @@ module vfold_born_batch
   double precision, public, save :: &
        sde_p_batch(0:3, nexternal-1, VECSIZE_SDE_PROTO)
   integer, public, save :: sde_channelid_batch(VECSIZE_SDE_PROTO)
+  integer, public, save :: sde_nfks_batch(VECSIZE_SDE_PROTO) ! step 14l: as nfks_batch (step 14c)
   double precision, public, save :: sde_g_batch(VECSIZE_SDE_PROTO)
   double precision, public, save :: sde_nomc_mes_batch(VECSIZE_SDE_PROTO)
   double precision, public, save :: sde_mc_mes_batch(VECSIZE_SDE_PROTO)
@@ -565,6 +566,8 @@ contains
     double precision, intent(in) :: p_born_in(0:3, nexternal-1)
     integer, intent(in) :: channelid
     double precision, intent(in) :: g_in
+    integer :: nfksprocess
+    common/c_nfksprocess/nfksprocess
     integer :: islot
     if (sde_batch_count.ge.VECSIZE_SDE_PROTO) then
       write(6,*) 'ERROR vfold_stash_sde: batch full, VECSIZE_SDE_PROTO=', &
@@ -575,6 +578,7 @@ contains
     islot = sde_batch_count
     sde_p_batch(0:3,1:nexternal-1,islot) = p_born_in(0:3,1:nexternal-1)
     sde_channelid_batch(islot) = channelid
+    sde_nfks_batch(islot) = nfksprocess
     sde_g_batch(islot) = g_in
   end subroutine vfold_stash_sde
 
@@ -588,10 +592,13 @@ contains
     common/timings/tBorn,tIS,tReal,tCount,tFxFx,tf_nb,tf_all,t_as, &
          tr_s,tr_pdf,t_plot,t_cuts,t_MC_subt,t_isum,t_p_unw,t_write, &
          tOLP,tGenPS,t_ewsud,t_coupl
+    integer :: nfksprocess, nfks_save
+    common/c_nfksprocess/nfksprocess
     integer :: i
     real :: avtiming_t0, avtiming_t1
 
     if (sde_batch_count.eq.0) return
+    nfks_save = nfksprocess
 
     call cpu_time(avtiming_t0)
     ! Road B step 9i+9j: in served mode, first evaluate through the bridge the
@@ -599,10 +606,12 @@ contains
     ! real-emission coupling), so that vfold_sde_scalar_eval is served too.
     if (vfold_use_cudacpp() .and. vfold_sborn_bridge.gt.0) call vfold_served_evaluate_sde
     do i=1,sde_batch_count
+      nfksprocess = sde_nfks_batch(i)
       call vfold_sde_scalar_eval(sde_p_batch(0:3,1:nexternal-1,i), &
            sde_channelid_batch(i), sde_g_batch(i), &
            sde_mc_mes_batch(i), sde_nomc_mes_batch(i))
     enddo
+    nfksprocess = nfks_save
     call cpu_time(avtiming_t1)
     tBorn = tBorn + (avtiming_t1-avtiming_t0)
   end subroutine vfold_evaluate_sde_batch
