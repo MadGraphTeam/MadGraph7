@@ -79,6 +79,21 @@ for mint in ${mints}; do resfiles="res_${mint}.txt $resfiles"; done
 resfiles="summary.txt ${resfiles}"
 resfiles="nevents_unweighted results.dat ${resfiles}"
 
+# Files to diff (dump files: looser tolerance)
+if [ "$oOpt" != "-o" ]; then
+  dmpfilesA="$(cd ${runA}; ls dump*.dat)"
+  dmpfilesB="$(cd ${runB}; ls dump*.dat)"
+  if [ "${dmpfilesA}" != "${dmpfilesB}" ]; then
+    echo "ERROR! Lists of dumpfiles differ"
+    echo ${dmpfilesA}
+    echo ${dmpfilesB}
+    exit 1
+  fi
+  dmpfiles=${dmpfilesA}
+else
+  dmpfiles=
+fi
+
 # Files to diff (LHE result files: stricter tolerance - and fix indentation if required)
 # (ignore the GIT line of the banner: the two runs may come from different branches)
 if [ "${lhe}" == "1" ]; then
@@ -97,21 +112,6 @@ elif [ "${lhe}" == "-1" ]; then # cross-compare v3.8.1 and v3.6.3 LHE files
     | sed "s|  <event>|<event>|" \
     > ${runB}/events.lhe.tmp
   resfiles="events.lhe.tmp ${resfiles}"
-fi
-
-# Files to diff (dump files: looser tolerance)
-if [ "$oOpt" != "-o" ]; then
-  dmpfilesA="$(cd ${runA}; ls dump*.dat)"
-  dmpfilesB="$(cd ${runB}; ls dump*.dat)"
-  if [ "${dmpfilesA}" != "${dmpfilesB}" ]; then
-    echo "ERROR! Lists of dumpfiles differ"
-    echo ${dmpfilesA}
-    echo ${dmpfilesB}
-    exit 1
-  fi
-  dmpfiles=${dmpfilesA}
-else
-  dmpfiles=
 fi
 
 # Diff files
@@ -144,12 +144,13 @@ for file in $resfiles; do
 done
 if [ "${lhe}" != "0" ]; then rm -f ${runA}/events.lhe.tmp ${runB}/events.lhe.tmp; fi
 # Step 11l (PS memo): the n+1 generate_momenta call is skipped, so its JACPDF* dump lines disappear
-# With -dedupJacpdf, drop any JACPDF* block that repeats the previous one within the same NEWPS point
+# With -dedupJacpdf, drop any TAUY+JACPDF* block that repeats the previous one within the same NEWPS point
+# (step 14n: TAUY too, it is only dumped for hadron beams, e.g. ggttg)
 # (bit-identical lines only: this is what a memo hit removes; dumps from step 11l onwards are unchanged)
 dedupJacpdf(){
   awk '
     function flush(){ if (blk != "") { if (blk != prev) { printf "%s", blk; prev = blk }; blk = "" } }
-    $1 ~ /^JACPDF/ { blk = blk $0 "\n"; next }
+    $1 ~ /^(TAUY|JACPDF)/ { blk = blk $0 "\n"; next }
     { flush(); if ($1 == "NEWPS") prev = ""; print }
     END { flush() }'
 }
@@ -166,9 +167,11 @@ for file0 in $dmpfiles; do
   fi
   # NB: rtol for dumps was 1e-5 until run_12* included
   # NB: rtol for dumps becomes 1e-2 as of run_13* included (UNWGT discrepancies)
+  # Step 14n: -nd3 adds an absolute tolerance of 1e-3 GeV for the momenta (e.g. a component
+  # close to 0 of a 192 GeV top in ggttg may have a relative difference above the rtol)
   if [ "${numdiff}" == "3" ]; then
-    echo "=== python3 vfold/numdiff.py ${runA}/${file} ${runB}/${file} --rtol 1e-3 --atol 0"
-    if ! python3 vfold/numdiff.py ${runA}/${file} ${runB}/${file} --rtol 1e-3 --atol 0; then status=1; fi
+    echo "=== python3 vfold/numdiff.py ${runA}/${file} ${runB}/${file} --rtol 1e-3 --atol 1e-3 --atol-lines P,PB"
+    if ! python3 vfold/numdiff.py ${runA}/${file} ${runB}/${file} --rtol 1e-3 --atol 1e-3 --atol-lines P,PB; then status=1; fi
   elif [ "${numdiff}" == "5" ]; then
     echo "=== python3 vfold/numdiff.py ${runA}/${file} ${runB}/${file} --rtol 1e-5 --atol 0"
     if ! python3 vfold/numdiff.py ${runA}/${file} ${runB}/${file} --rtol 1e-5 --atol 0; then status=1; fi

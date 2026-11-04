@@ -12,6 +12,8 @@ Usage:
 Options:
     --rtol FLOAT    Relative tolerance (default: 1e-6)
     --atol FLOAT    Absolute tolerance (default: 0.0)
+    --atol-lines L  Comma-separated labels (first token of a line, e.g. P,PB): use the
+                    absolute tolerance only for these lines, and 0 for all others
     --verbose       Print all compared number pairs, not just failures
     --summary       Print a summary line at the end
 
@@ -42,7 +44,7 @@ def close_enough(a, b, rtol, atol):
     return abs(a - b) <= atol + rtol * max(abs(a), abs(b))
 
 
-def compare_files(path1, path2, rtol, atol, verbose, summary):
+def compare_files(path1, path2, rtol, atol, verbose, summary, atol_lines=None):
     with open(path1) as f1, open(path2) as f2:
         lines1 = f1.readlines()
         lines2 = f2.readlines()
@@ -67,10 +69,14 @@ def compare_files(path1, path2, rtol, atol, verbose, summary):
             n_failed += 1
             continue
 
+        atol_used = atol
+        if atol_lines is not None:
+            tokens = l1.split()
+            atol_used = atol if tokens and tokens[0] in atol_lines else 0.0
         line_ok = True
         for j, ((s1, e1, v1), (s2, e2, v2)) in enumerate(zip(nums1, nums2)):
             n_compared += 1
-            ok = close_enough(v1, v2, rtol, atol)
+            ok = close_enough(v1, v2, rtol, atol_used)
             if not ok:
                 n_failed += 1
                 line_ok = False
@@ -78,7 +84,7 @@ def compare_files(path1, path2, rtol, atol, verbose, summary):
                 rel_diff = abs_diff / max(abs(v1), abs(v2)) if max(abs(v1), abs(v2)) != 0 else 0.0
                 print(f"Line {i+1}, number {j+1}: FAIL  {v1!r} vs {v2!r}"
                       f"  |diff|={abs_diff:.3e}  rel={rel_diff:.3e}"
-                      f"  (rtol={rtol:.1e}, atol={atol:.1e})")
+                      f"  (rtol={rtol:.1e}, atol={atol_used:.1e})")
                 print(f"  < {l1.rstrip()}")
                 print(f"  > {l2.rstrip()}")
             elif verbose:
@@ -102,6 +108,8 @@ def main():
                         help="Relative tolerance (default: 1e-6)")
     parser.add_argument("--atol", type=float, default=0.0,
                         help="Absolute tolerance (default: 0.0)")
+    parser.add_argument("--atol-lines", default=None,
+                        help="Use atol only for lines with these comma-separated labels (default: all lines)")
     parser.add_argument("--verbose", action="store_true",
                         help="Print all compared pairs, not just failures")
     parser.add_argument("--summary", action="store_true", default=True,
@@ -111,7 +119,8 @@ def main():
 
     ok = compare_files(args.file1, args.file2,
                        rtol=args.rtol, atol=args.atol,
-                       verbose=args.verbose, summary=args.summary)
+                       verbose=args.verbose, summary=args.summary,
+                       atol_lines=args.atol_lines.split(",") if args.atol_lines else None)
     sys.exit(0 if ok else 1)
 
 
