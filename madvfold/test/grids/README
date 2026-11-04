@@ -43,3 +43,23 @@ epem_bbxmummupg (eemumubbg, channel GF11.0):
   eebbbb: the f111 -o events are the same with the original job_status.pkl
   and with one built from the f841 one)
 - there are no Delta grids yet: -o with ENV_MCATNLODELTA=1 fails
+
+gg_ttxg (ggttg, channel GF10.0):
+- folding_1_1_1 and folding_8_4_1 come from dedicated short runs of
+  vfold/myLaunch.sh on aicoral92, in mode C/avx2 with ninja, for this channel
+  only and with ENV_FVZ_NDUMP=0: 8 iterations of 20000 points in MINT0, and
+  8 iterations of 80000 (f111, k512) or 20000 (f841, k64) points in MINT1,
+  in 503 s (f111) and 1994 s (f841). The settings are in their LOG.txt.
+- these grids are good enough for the tests, but they are not converged:
+  res_1.dat has 1247 +- 27 pb (f111) and 1490 +- 91 pb (f841), while the last
+  3 iterations of a longer physics run, not yet finished, had an ABS integral
+  of 2075 +- 163 pb. This channel has rare large weights, which only show up
+  with many points. Do not use these grids for physics.
+- GF10.0 was chosen from a test of all channels (500 events, f841, with very
+  short MINT0/MINT1 grids of 50 points): it is the largest channel with
+  virtuals. GF10.0, GF11.0 and GF8.0 have 26.8%, 27.1% and 21.7% of the ABS
+  integral, but only GF10.0 had virt kpoints (57 of 829, 6.9%), and its negative
+  weights (21.6%) are typical. GF11.0 has the highest fraction among them
+  (34.8%), so it may be better for studies of negative weights.
+- aS.txt has 0.118 as in the param_card, but this is not used with a PDF set
+- there are no Delta grids yet: -o with ENV_MCATNLODELTA=1 fails
