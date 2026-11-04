@@ -3011,14 +3011,13 @@ mod state_minimal_tests {
         let encoded = |evaluator: &ExpressionEvaluator<Complex<Rational>>| {
             bincode::encode_to_vec(evaluator, bincode::config::standard()).unwrap()
         };
-        let evaluator =
-            parse!("pyamplicol_minimal::x^2 + pi + cos(pyamplicol_minimal::y)/3")
-                .evaluator(&[
-                    parse!("pyamplicol_minimal::x"),
-                    parse!("pyamplicol_minimal::y"),
-                ])
-                .build()
-                .unwrap();
+        let evaluator = parse!("pyamplicol_minimal::x^2 + pi + cos(pyamplicol_minimal::y)/3")
+            .evaluator(&[
+                parse!("pyamplicol_minimal::x"),
+                parse!("pyamplicol_minimal::y"),
+            ])
+            .build()
+            .unwrap();
         let (whole, payload) = whole_state_save(&evaluator);
         let minimal = state_minimal_saved_evaluator(&whole)
             .unwrap()
@@ -3029,7 +3028,10 @@ mod state_minimal_tests {
         let (later, _) = whole_state_save(&evaluator);
         assert!(later.len() > whole.len() + 2000 * 20);
         // Symbols created since leave the state-minimal bytes unchanged.
-        assert_eq!(state_minimal_saved_evaluator(&later).unwrap(), Some(minimal.clone()));
+        assert_eq!(
+            state_minimal_saved_evaluator(&later).unwrap(),
+            Some(minimal.clone())
+        );
         assert!(minimal.len() < 2048, "{} bytes", minimal.len());
         // The payload is kept; the state-minimal form loads to the same evaluator.
         assert!(minimal.ends_with(&payload));
@@ -3037,7 +3039,10 @@ mod state_minimal_tests {
         assert_eq!(encoded(&loaded), encoded(&evaluator));
         let mut values = loaded.map_coeff(&|c| Complex::new(c.re.to_f64(), c.im.to_f64()));
         let mut output = [Complex::new(0.0, 0.0)];
-        values.evaluate(&[Complex::new(2.0, 0.0), Complex::new(0.5, 0.0)], &mut output);
+        values.evaluate(
+            &[Complex::new(2.0, 0.0), Complex::new(0.5, 0.0)],
+            &mut output,
+        );
         let expected = 4.0 + std::f64::consts::PI + 0.5f64.cos() / 3.0;
         assert!((output[0].re - expected).abs() < 1e-14 && output[0].im == 0.0);
         // A state-minimal save is already canonical.
