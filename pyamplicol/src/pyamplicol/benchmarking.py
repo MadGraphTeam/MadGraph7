@@ -39,14 +39,9 @@ from pyamplicol.reporting import (
 _MAX_SAMPLE_RUNTIME_SECONDS = 0.25
 _MAX_CALIBRATION_BLOCKS = 2
 _MAX_REPETITIONS_PER_SAMPLE = 1_000_000_000
-# The calibrated runtime may be optimistic or the host may speed up after
-# warmup. Keep extending complete blocks, but fail closed if timing changes so
-# drastically that four times the initial plan still cannot reach the target.
-_MAX_TARGET_RUNTIME_SAMPLE_FACTOR = 4
 _CALIBRATION_LOWER_RATIO = 0.8
 _CALIBRATION_UPPER_RATIO = 1.25
 _MIN_CLOCK_INTERVAL_SECONDS = 1.0e-12
-_MAX_NATIVE_PROFILE_SAMPLES = 8
 _LC_TOPOLOGY_REPLAY_LAYOUT = "topology-replay"
 _LC_ALL_FLOW_UNION_LAYOUT = "all-flow-union"
 _LC_TOPOLOGY_REPLAY_PROFILE_RECOMMENDATION = (
@@ -563,21 +558,15 @@ class BenchmarkBackend:
             repetitions = calibration.repetitions_per_sample
             initial_planned_sample_count = calibration.sample_count
             planned_sample_count = initial_planned_sample_count
-            maximum_sample_count = (
-                initial_planned_sample_count * _MAX_TARGET_RUNTIME_SAMPLE_FACTOR
-            )
+            # Without a repeated profiler, the per-stage profile is an extra
+            # single-repetition pass per sample, taken on the configured
+            # minimum number of samples (``benchmark.minimum_samples``).
             native_profile_sample_limit = (
                 planned_sample_count
                 if repeated_profiler is not None
                 else min(
                     planned_sample_count,
-                    max(
-                        1,
-                        min(
-                            self._config.minimum_samples,
-                            _MAX_NATIVE_PROFILE_SAMPLES,
-                        ),
-                    ),
+                    max(1, self._config.minimum_samples),
                 )
             )
             try:
@@ -647,12 +636,9 @@ class BenchmarkBackend:
                         sample_index == planned_sample_count
                         and elapsed < self._config.target_runtime
                     ):
-                        if planned_sample_count >= maximum_sample_count:
-                            raise EvaluationError(
-                                "runtime benchmark could not reach its target "
-                                f"duration of {self._config.target_runtime:g}s "
-                                f"within {maximum_sample_count} complete blocks"
-                            )
+                        # Every block adds its positive wall time, so the
+                        # extension ends once the target duration is reached
+                        # (no cap on the number of blocks).
                         mean_block_seconds = elapsed / len(samples)
                         additional_samples = max(
                             1,
@@ -664,10 +650,7 @@ class BenchmarkBackend:
                                 )
                             ),
                         )
-                        planned_sample_count = min(
-                            maximum_sample_count,
-                            planned_sample_count + additional_samples,
-                        )
+                        planned_sample_count += additional_samples
                         if repeated_profiler is not None:
                             native_profile_sample_limit = planned_sample_count
                     if self._progress is not None:

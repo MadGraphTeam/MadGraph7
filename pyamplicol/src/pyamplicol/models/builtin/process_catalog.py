@@ -286,15 +286,18 @@ def concrete_processes_from_inclusive_enumeration(
     enumeration: ProcessEnumeration,
 ) -> tuple[str, ...]:
     processes: dict[str, None] = {}
+    initial_count = len(enumeration.request.initial_state)
     for group in enumeration.groups:
         for record in group.records:
-            processes.setdefault(_record_to_physical_process(record), None)
+            processes.setdefault(
+                _record_to_physical_process(record, initial_count), None
+            )
     return tuple(sorted(processes, key=_concrete_process_sort_key))
 
 
-def _record_to_physical_process(record: SubprocessRecord) -> str:
-    initial = tuple(ANTI_PARTICLE[p] for p in record.process[:2])
-    final = record.process[2:]
+def _record_to_physical_process(record: SubprocessRecord, initial_count: int) -> str:
+    initial = tuple(ANTI_PARTICLE[p] for p in record.process[:initial_count])
+    final = record.process[initial_count:]
     return f"{' '.join(initial)} > {' '.join(final)}"
 
 

@@ -175,7 +175,7 @@ def test_compiler_settings_retain_cpp_and_asm_direct_flags() -> None:
     assert compiler.optimization_level == 3
     assert compiler.native_arch is True
     assert compiler.extra_flags == ("-fno-math-errno",)
-    assert compiler.timeout_seconds == 1800.0
+    assert compiler.timeout_seconds is None  # no default wall-time cap
 
     asm_compiler = compiler_from_symbolica_settings(
         {
@@ -188,7 +188,70 @@ def test_compiler_settings_retain_cpp_and_asm_direct_flags() -> None:
     assert asm_compiler.optimization_level == 3
     assert asm_compiler.native_arch is False
     assert asm_compiler.extra_flags == ("-fno-math-errno",)
-    assert asm_compiler.timeout_seconds == 1800.0
+    assert asm_compiler.timeout_seconds is None
+
+
+def test_compiler_timeout_is_unbounded_by_default_and_overridable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No default wall-time cap (formerly 1800 s); the operational
+    environment may bound one compiler run, and a bad value is refused."""
+
+    settings = {"compiled_optimization_level": 3}
+    monkeypatch.delenv("PYAMPLICOL_NATIVE_COMPILER_TIMEOUT_SECONDS", raising=False)
+    assert compiler_from_symbolica_settings(settings).timeout_seconds is None
+    assert NativeDirectCppCompiler().timeout_seconds is None
+    monkeypatch.setenv("PYAMPLICOL_NATIVE_COMPILER_TIMEOUT_SECONDS", "7200")
+    assert compiler_from_symbolica_settings(settings).timeout_seconds == 7200.0
+    for raw in ("0", "-1", "inf", "soon"):
+        monkeypatch.setenv("PYAMPLICOL_NATIVE_COMPILER_TIMEOUT_SECONDS", raw)
+        with pytest.raises(NativeEvaluationError, match="positive number"):
+            compiler_from_symbolica_settings(settings)
+    with pytest.raises(NativeEvaluationError, match="compiler timeout"):
+        NativeDirectCppCompiler(timeout_seconds=0.0)
+
+
+def test_native_compiler_gate_accepts_more_than_64_slots(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Any positive slot count is a valid gate (formerly at most 64)."""
+
+    monkeypatch.setenv(
+        "PYAMPLICOL_NATIVE_COMPILER_GATE_DIR", str(tmp_path / "compiler-gate")
+    )
+    monkeypatch.setenv("PYAMPLICOL_NATIVE_COMPILER_SLOT_COUNT", "65")
+
+    def run(
+        command: tuple[str, ...],
+        *,
+        timeout_seconds: float | None,
+    ) -> subprocess.CompletedProcess[str]:
+        assert timeout_seconds is None
+        Path(command[command.index("-o") + 1]).write_bytes(b"native-library")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(
+        "pyamplicol.evaluators.native_direct_cpp._run_native_compiler", run
+    )
+    artifact = compile_native_direct_cpp(
+        _Evaluator([("mul", ("out", 0), [("param", 0), ("param", 0)], 0)]),
+        spec=_spec(),
+        compiler=NativeDirectCppCompiler(),
+        output_source_path=tmp_path / "wide.cpp",
+        output_library_path=tmp_path / "libwide.direct",
+    )
+    assert artifact.compiler_gate_slot_count == 65
+    assert len(tuple((tmp_path / "compiler-gate").glob("slot-*.lock"))) == 65
+    monkeypatch.setenv("PYAMPLICOL_NATIVE_COMPILER_SLOT_COUNT", "0")
+    with pytest.raises(NativeEvaluationError, match="slot count must be positive"):
+        compile_native_direct_cpp(
+            _Evaluator([("mul", ("out", 0), [("param", 0), ("param", 0)], 0)]),
+            spec=_spec(),
+            compiler=NativeDirectCppCompiler(),
+            output_source_path=tmp_path / "zero.cpp",
+            output_library_path=tmp_path / "libzero.direct",
+        )
 
 
 def test_native_direct_cpp_timeout_is_explicit_and_cleans_partial_output(

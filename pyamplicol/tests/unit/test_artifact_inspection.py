@@ -259,3 +259,68 @@ def test_process_group_selection_composes_a_generated_member_permutation(
     assert stored.role == requested.role == "generated member"
     assert stored.permutation == (1, 0, 2, 3)
     assert requested.permutation == (0, 1, 2, 3)
+
+
+def test_on_the_fly_physics_roles_follow_the_process_initial_count(tmp_path) -> None:
+    """A 1 -> n on-the-fly artifact has one initial external particle
+    (formerly two were required: 'external_particles[1] is noncanonical')."""
+
+    import json
+    from types import SimpleNamespace
+
+    import pytest
+
+    from pyamplicol.api.errors import ArtifactError
+    from pyamplicol.artifacts.inspection import (
+        _ON_THE_FLY_PUBLIC_METADATA_KIND,
+        _physics_inspection,
+    )
+
+    def inspect(expression, pdgs, roles):
+        process = {
+            "id": "p",
+            "expression": expression,
+            "external_pdgs": list(pdgs),
+            "physics_path": "physics.json",
+            "color_accuracy": "lc",
+        }
+        (tmp_path / "physics.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "kind": _ON_THE_FLY_PUBLIC_METADATA_KIND,
+                    "process_id": "p",
+                    "process": expression,
+                    "color_accuracy": "lc",
+                    "external_particles": [
+                        {
+                            "index": index,
+                            "label": index + 1,
+                            "particle": str(pdg),
+                            "pdg": pdg,
+                            "role": role,
+                            "momentum_slot": index,
+                            "momentum_components": ["E", "px", "py", "pz"],
+                        }
+                        for index, (pdg, role) in enumerate(
+                            zip(pdgs, roles, strict=True)
+                        )
+                    ],
+                    "model_parameters": [],
+                }
+            )
+        )
+        execution = SimpleNamespace(
+            execution_mode="on-the-fly",
+            physical_helicity_count=4,
+            physical_color_flow_count=1,
+        )
+        return _physics_inspection(
+            SimpleNamespace(root=tmp_path), process, execution
+        )
+
+    decay = inspect("z > u u~ g", (23, 2, -2, 21), ("initial", *["final"] * 3))
+    assert decay.physical_helicities == 4
+    inspect("u u~ > z g", (2, -2, 23, 21), ("initial", "initial", "final", "final"))
+    with pytest.raises(ArtifactError, match=r"external_particles\[1\] is noncanonical"):
+        inspect("z > u u~ g", (23, 2, -2, 21), ("initial", "initial", "final", "final"))
