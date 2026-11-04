@@ -19,6 +19,9 @@ class ColorContractionEntry:
     weight_im: float = 0.0
     symmetry_factor: float = 1.0
     exact_weight: tuple[Fraction, Fraction] | None = None
+    # N_c degree of this term of a graded plan (``nc_expansion``); one group
+    # pair may then have one entry per degree. None in an ungraded plan.
+    nc_degree: int | None = None
 
     def to_json_dict(self) -> dict[str, object]:
         result = {
@@ -29,6 +32,8 @@ class ColorContractionEntry:
         }
         if self.exact_weight is not None:
             result["exact_weight"] = _exact_weight_payload(self.exact_weight)
+        if self.nc_degree is not None:
+            result["nc_degree"] = self.nc_degree
         return result
 
 
@@ -466,6 +471,10 @@ class ColorContractionPlan:
     symmetric_group_block: SymmetricGroupColorContractionBlock | None = None
     destination_by_group: tuple[int, ...] | None = None
     includes_color_factor: bool = True
+    # Formal-N_c expansion of a graded plan (strict colour, graded output):
+    # ``{"accuracy", "depth", "reference_degree", "degrees"}``; every entry
+    # then carries its ``nc_degree``, one of ``degrees``.
+    nc_expansion: dict[str, object] | None = None
 
     def __post_init__(self) -> None:
         storage_count = sum(
@@ -563,6 +572,8 @@ class ColorContractionPlan:
             result["symmetric_group_block"] = self.symmetric_group_block.to_json_dict()
         if self.destination_by_group is not None:
             result["destination_by_group"] = list(self.destination_by_group)
+        if self.nc_expansion is not None:
+            result["nc_expansion"] = dict(self.nc_expansion)
         return result
 
 
@@ -573,3 +584,6 @@ class ColorGroupDescriptor:
     sector_id: int
     word: tuple[int, ...]
     helicity_weight: float
+    # Minus the number of U(1)-subtraction pieces of the group's trees
+    # (``generation.dag_grades``); nonzero only in a graded DAG.
+    nc_grade: int = 0

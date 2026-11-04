@@ -10,11 +10,13 @@ from ..color import (
     ColorContractionPlan,
     ColorGroupDescriptor,
     build_color_contraction_plan,
+    build_graded_color_contraction_plan,
     build_symmetric_group_color_contraction_plan,
 )
 from ..color.plan_types import LCColorSectorReplayPartition
 from ..models.base import Model
 from .contracts import runtime_coupling_parameter_names
+from .dag_grades import root_nc_grades
 from .dag_types import AmplitudeRoot, CurrentNode, GenericDAG
 
 
@@ -138,14 +140,23 @@ def _build_runtime_amplitude_metadata_layout(
     contraction_descriptors = (
         descriptors if replay is None else replay.physical_descriptors
     )
-    contraction = (
-        build_color_contraction_plan(dag.color_plan, contraction_descriptors)
-        if color_contraction == "direct"
-        else build_symmetric_group_color_contraction_plan(
+    if dag.nc_expansion is not None:
+        if color_contraction != "direct":
+            raise ValueError(
+                "the formal N_c expansion uses the direct colour contraction"
+            )
+        contraction: ColorContractionPlan | None = build_graded_color_contraction_plan(
+            dag.color_plan, contraction_descriptors, dag.nc_expansion
+        )
+    elif color_contraction == "direct":
+        contraction = build_color_contraction_plan(
+            dag.color_plan, contraction_descriptors
+        )
+    else:
+        contraction = build_symmetric_group_color_contraction_plan(
             dag.color_plan,
             contraction_descriptors,
         )
-    )
     multiple_lc_sectors = _has_multiple_lc_root_sectors(dag)
     roots: list[dict[str, object]] = []
     group_weights: dict[int, tuple[float, float]] = {}
@@ -206,6 +217,11 @@ def _build_runtime_amplitude_metadata_layout(
                 "color_word": list(descriptor.word),
                 "helicity_weight": helicity_weight,
                 "all_sector_weight": all_sector_weight,
+                **(
+                    {}
+                    if dag.nc_expansion is None
+                    else {"nc_grade": descriptor.nc_grade}
+                ),
             }
         )
 
@@ -267,6 +283,11 @@ class _ColorReplayAmplitudePlan:
                     "color_sector_id": descriptor.sector_id,
                     "color_word": list(descriptor.word),
                     "helicity_weight": descriptor.helicity_weight,
+                    **(
+                        {}
+                        if dag.nc_expansion is None
+                        else {"nc_grade": descriptor.nc_grade}
+                    ),
                 }
             )
         return {
@@ -330,6 +351,7 @@ def _color_topology_replay_amplitudes(
             int,
             tuple[int, ...],
             float,
+            int,
         ]
     ] = []
     for partition in certificate.partitions:
@@ -361,12 +383,13 @@ def _color_topology_replay_amplitudes(
                     int(sector_id),
                     source.word,
                     source.helicity_weight,
+                    source.nc_grade,
                 )
             )
 
     physical_keys = sorted(
         {
-            (helicity_key, sector_id, word, helicity_weight)
+            (helicity_key, sector_id, word, helicity_weight, nc_grade)
             for (
                 _permutation,
                 _source_group_id,
@@ -374,6 +397,7 @@ def _color_topology_replay_amplitudes(
                 sector_id,
                 word,
                 helicity_weight,
+                nc_grade,
             ) in pending_routes
         },
         key=repr,
@@ -386,10 +410,15 @@ def _color_topology_replay_amplitudes(
             sector_id=sector_id,
             word=word,
             helicity_weight=helicity_weight,
+            nc_grade=nc_grade,
         )
-        for group_id, (helicity_key, sector_id, word, helicity_weight) in enumerate(
-            physical_keys
-        )
+        for group_id, (
+            helicity_key,
+            sector_id,
+            word,
+            helicity_weight,
+            nc_grade,
+        ) in enumerate(physical_keys)
     )
     routes_by_mapping: dict[
         tuple[tuple[int, int], ...],
@@ -403,9 +432,10 @@ def _color_topology_replay_amplitudes(
         sector_id,
         word,
         helicity_weight,
+        nc_grade,
     ) in pending_routes:
         target_group_id = physical_id_by_key[
-            (helicity_key, sector_id, word, helicity_weight)
+            (helicity_key, sector_id, word, helicity_weight, nc_grade)
         ]
         routes_by_mapping.setdefault(permutation, []).append(
             _ColorReplayGroupRoute(
@@ -454,6 +484,7 @@ def _append_color_replay_partition_routes(
             int,
             tuple[int, ...],
             float,
+            int,
         ]
     ],
 ) -> None:
@@ -491,6 +522,7 @@ def _append_color_replay_partition_routes(
                     int(sector_id),
                     target_word,
                     source.helicity_weight,
+                    source.nc_grade,
                 )
             )
 
@@ -544,6 +576,7 @@ def _amplitude_groups(
     )
     physical_sources_cache: dict[int, tuple[object, ...]] = {}
     materialized_source_keys = _materialized_root_source_keys(dag)
+    grades = None if dag.nc_expansion is None else root_nc_grades(dag)
 
     def physical_sources(ancestry: int) -> tuple[object, ...]:
         cached = physical_sources_cache.get(ancestry)
@@ -590,7 +623,15 @@ def _amplitude_groups(
         # and a split would drop the interference of, e.g., gluon and
         # electroweak exchanges sharing a colour flow.
         color_key = (left.color_state.accuracy, word or sector_id)
-        key = (source_key or ancestry, color_key)
+        # In a graded DAG the N_c grade is part of the colour coefficient:
+        # the roots of one helicity, colour sector and grade (formal-N_c
+        # expansion, ``nc_expansion``).
+        nc_grade = 0 if grades is None else grades[root.id]
+        key = (
+            (source_key or ancestry, color_key)
+            if grades is None
+            else (source_key or ancestry, color_key, nc_grade)
+        )
         group_id = ids.setdefault(key, len(ids))
         result[root.id] = group_id
         descriptors.setdefault(
@@ -601,6 +642,7 @@ def _amplitude_groups(
                 sector_id=sector_id,
                 word=word,
                 helicity_weight=float(root.helicity_weight),
+                nc_grade=nc_grade,
             ),
         )
     return result, tuple(descriptors[index] for index in sorted(descriptors))

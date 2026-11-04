@@ -1838,6 +1838,7 @@ mod compact_reduction_tests {
                 id: "contracted".to_string(),
                 index: 0,
                 description: "coherent contracted color".to_string(),
+                nc_degree: None,
             })],
             reduction: Reduction {
                 kind: ReductionKind::ContractedColor,

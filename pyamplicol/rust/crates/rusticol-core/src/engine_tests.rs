@@ -134,6 +134,7 @@ pub(super) fn test_physics_runtime(color_accuracy: &str) -> PhysicsRuntime {
                 id: "contracted".to_string(),
                 index: 0,
                 description: "contracted color sum".to_string(),
+                nc_degree: None,
             },
         )]
     } else {
@@ -354,6 +355,7 @@ fn compiled_symmetric_group_rejects_exhaustive_runtime_selector_before_canonical
             workspace: None,
         }),
         group_scratch_f64: Vec::new(),
+        entry_nc_degrees: None,
     };
     let mut runtime = empty_generic_runtime();
     runtime.physics = Some(Arc::new(physics));
@@ -759,6 +761,7 @@ fn alias_test_physics(color_accuracy: &str) -> ProcessPhysicsV1 {
                         id: "color:contracted".to_string(),
                         index: 0,
                         description: "contracted color sum".to_string(),
+                        nc_degree: None,
                     },
                 )],
                 crate::ReductionKind::ContractedColor,
@@ -3044,6 +3047,7 @@ fn compiled_symmetric_group_reducer_binds_group_ids_and_multi_root_odd_tail() {
         includes_color_factor: true,
         entries: Vec::new(),
         repeated_block: None,
+        nc_expansion: None,
     };
 
     let duplicated_destination =
@@ -3475,6 +3479,7 @@ fn compact_repeated_color_manifest_builds_without_expanded_entries() {
             ],
             factorized_block: None,
         }),
+        nc_expansion: None,
     };
     let contraction = build_color_contraction_runtime(Some(&manifest), &groups)
         .unwrap()
@@ -3556,6 +3561,7 @@ fn compact_walsh_color_manifest_matches_expanded_repeated_reduction() {
                 },
             ),
         }),
+        nc_expansion: None,
     };
     let contraction = build_color_contraction_runtime(Some(&manifest), &groups)
         .unwrap()
@@ -3641,6 +3647,7 @@ fn compact_c2k_walsh_h8_manifest_matches_expanded_repeated_reduction() {
                 },
             ),
         }),
+        nc_expansion: None,
     };
     let contraction = build_color_contraction_runtime(Some(&manifest), &groups)
         .unwrap()
@@ -3807,6 +3814,7 @@ fn compact_c2k_walsh_h8_multiple_cosets_matches_expanded_reference() {
                 },
             ),
         }),
+        nc_expansion: None,
     };
     let contraction = build_color_contraction_runtime(Some(&manifest), &groups)
         .unwrap()
@@ -3918,6 +3926,7 @@ fn compact_c2k_walsh_generic_rank_four_matches_expanded_reduction() {
                 },
             ),
         }),
+        nc_expansion: None,
     };
     let contraction = build_color_contraction_runtime(Some(&manifest), &groups)
         .unwrap()
@@ -3970,6 +3979,7 @@ fn compact_walsh_color_manifest_rejects_malformed_or_noninvariant_plans() {
                     GenericFactorizedColorContractionBlockManifest::KleinFourWalsh { cosets },
                 ),
             }),
+            nc_expansion: None,
         }
     };
     let cases = [
@@ -4055,6 +4065,7 @@ fn compact_c2k_walsh_manifest_fails_closed_on_invalid_metadata() {
                     },
                 ),
             }),
+            nc_expansion: None,
         }
     };
     let canonical_coset = vec![(0..8).collect::<Vec<_>>()];
@@ -4141,6 +4152,7 @@ fn compact_repeated_color_manifest_rejects_duplicate_group_mapping() {
             entries: Vec::new(),
             factorized_block: None,
         }),
+        nc_expansion: None,
     };
     let error = match build_color_contraction_runtime(Some(&manifest), &groups) {
         Ok(_) => panic!("duplicate repeated color group mapping must fail"),
@@ -4190,6 +4202,7 @@ fn compact_repeated_color_manifest_rejects_malformed_storage() {
                 includes_color_factor: true,
                 entries: Vec::new(),
                 repeated_block: repeated(vec![1.0], 0),
+                nc_expansion: None,
             },
         ),
         (
@@ -4201,6 +4214,7 @@ fn compact_repeated_color_manifest_rejects_malformed_storage() {
                 includes_color_factor: true,
                 entries: Vec::new(),
                 repeated_block: repeated(vec![1.0, 0.0], 1),
+                nc_expansion: None,
             },
         ),
         (
@@ -4212,12 +4226,14 @@ fn compact_repeated_color_manifest_rejects_malformed_storage() {
                 includes_color_factor: true,
                 entries: vec![GenericColorContractionEntryManifest {
                     exact_weight: None,
+                    nc_degree: None,
                     left_group_id: 10,
                     right_group_id: 10,
                     weight: vec![1.0, 0.0],
                     symmetry_factor: 1.0,
                 }],
                 repeated_block: repeated(vec![1.0, 0.0], 0),
+                nc_expansion: None,
             },
         ),
     ];

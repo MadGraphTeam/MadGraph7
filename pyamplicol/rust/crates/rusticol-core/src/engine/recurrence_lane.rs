@@ -5435,6 +5435,7 @@ mod replay_destination_helicity_tests {
                         id: "contracted".to_string(),
                         index: 0,
                         description: "contracted color".to_string(),
+                        nc_degree: None,
                     },
                 )],
                 reduction: crate::Reduction {
@@ -5939,6 +5940,7 @@ mod order_partial_tests {
                         id: "contracted".to_string(),
                         index: 0,
                         description: "contracted color".to_string(),
+                        nc_degree: None,
                     },
                 )],
                 reduction: crate::Reduction {

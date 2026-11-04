@@ -410,13 +410,13 @@ def test_exports_refuse_projections_over_blocks_not_exact_in_nc(
 # native digest equals the former pin (``FOURIER_FREE``), and its plan and
 # companion digests are unchanged (the plan v4 bytes do not depend on the
 # seed contraction).
-# Re-pinned by lp-precision for PR #34 (exact U(1)-subtraction weight 1/N_c,
-# carried by PR #36): the native digests (and ``FOURIER_FREE``) only. The
-# kernels of the U(1)-subtraction (Fierz auxiliary) vertices carry the exact
-# weight in their coupling instead of their colour coefficient, so those
-# ``kernel-*.bin`` / ``kernel-*.symjit`` members and the tree programs change;
-# the plan and companion digests are unchanged. The slice with #34 alone
-# gives the same seven digests.
+# Re-pinned by lp-colour (PR #34, exact U(1)-subtraction weight 1/N_c): every
+# control's native digest only. The weight 1/N_c now enters the vertex
+# coupling (the kernels' coupling expression) instead of the tree program's
+# interaction factor ('1/3' -> '1'); the members that differ from the former
+# pins are exactly kernel-*.bin / kernel-*.symjit of the quark-line vertices
+# and the (companion) tree program, and the plan and companion digests are
+# unchanged.
 CONTROLS = {
     "uux_ddxg_lc": ("u u~ > d d~ g", {"QCD": 3, "QED": 0}, "lc"),
     "uux_ddxg_nlc": ("u u~ > d d~ g", {"QCD": 3, "QED": 0}, "nlc"),
@@ -458,7 +458,7 @@ CONTROL_BYTES = {
     ),
 }
 # The native digests of the controls without their seed Fourier record (the
-# pins before mq-fft).
+# pins before mq-fft; re-pinned by lp-colour for PR #34 as above).
 FOURIER_FREE = {
     "gg_uuxuux_full": (
         "9721bcee34c7e24095708b12dac33f2db4ada9c3d37b00ad2f86b0a448a788e3"
