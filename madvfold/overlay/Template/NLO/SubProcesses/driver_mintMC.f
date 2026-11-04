@@ -94,6 +94,7 @@ c general MadFKS parameters
       character*10 getenvvalue
       logical dump69
       common /cdump69/dump69
+      include 'vfold_tests.inc'
 c 
 C-----
 C  BEGIN CODE
@@ -148,6 +149,11 @@ c
       call fill_configurations_common
       call check_amp_split 
 
+      ! AV MadVFold: the FVZ dumps (and the ENV_FVZ_* variables) are only
+      ! enabled by 'output --vfold-with-tests' (see vfold_tests.inc)
+      env_fvz_itmax = 0 ! keep defaults
+      env_fvz_ndump = 0 ! default: skip dump
+      if (vfold_tests) then
       CALL getenv('ENV_FVZ_ITMAX',getenvvalue)
       if (getenvvalue.ne.'') then
         read(getenvvalue,*) env_fvz_itmax
@@ -163,6 +169,7 @@ c
         env_fvz_ndump = 0 ! default: skip dump
       endif
       write(6,*) 'ENV_FVZ_NDUMP', env_fvz_ndump
+      endif
       
 c
 c     Get user input
@@ -184,14 +191,17 @@ c Only do the reweighting when actually generating the events
          only_virt=.false.
       endif
 
-      !MZ (AV open it even if ENV_FVZ_SKIP_DUMP is set: empty file)
-      if(imode.eq.1) open(unit=69,file='dump.dat',status='unknown')
+      !MZ (AV: only if ENV_FVZ_NDUMP>0, no empty dump.dat otherwise)
+      if(imode.eq.1 .and. env_fvz_ndump.gt.0)
+     &     open(unit=69,file='dump.dat',status='unknown')
       !AV
       dump69 = .false.
+      if (vfold_tests) then
       write(6,*) 'DEBUG! ncalls0 (from get_user_param)', ncalls0
       write(6,*) 'DEBUG! itmax (from get_user_param)', itmax
       if ( env_fvz_itmax.ne.0 ) itmax = env_fvz_itmax
       write(6,*) 'DEBUG! itmax (overloaded!)', itmax
+      endif
 
       if(imode.eq.0)then
         flat_grid=.true.
@@ -415,8 +425,8 @@ c Randomly pick the contribution that will be written in the event file
       write(*,*) 'Time spent in Total : ',tTot
 
 
-      !MZ (AV open it even if ENV_FVZ_SKIP_DUMP is set: empty file)
-      if(imode.eq.1) close(69)
+      !MZ (AV: only if ENV_FVZ_NDUMP>0, no empty dump.dat otherwise)
+      if(imode.eq.1 .and. env_fvz_ndump.gt.0) close(69)
 
       open (unit=12, file='res.dat',status='unknown')
       if (imode.eq.0) then

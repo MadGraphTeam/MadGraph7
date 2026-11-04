@@ -2207,10 +2207,7 @@ c or to fill histograms.
       common /cdump69/dump69
       parameter (conv=389379660d0) ! conversion to picobarns
       call cpu_time(tBefore)
-!     if (icontr.eq.0) then ! MZ avoid missing ENDPS
-!         if (dump69) write(69,*) 'ENDPS' ! AV moved after WGTS/UNWGTS
-!         return
-!     endif
+      if (icontr.eq.0) return
       virt_found=.false.
 c number of contributions before they are (possibly) increased through a
 c call to separate_flavour_config().

@@ -3239,6 +3239,8 @@ RESTART = %(mint_mode)s
         for job in jobs:
             # put an anchor
             file=pjoin(job['dirname'],'dump.dat')
+            # AV there is no dump.dat if ENV_FVZ_NDUMP is 0 or not set
+            if not os.path.exists(file): continue
             ###files.cp(file, pjoin(rundir,'dump_%s_GF%s.dat' % (job['p_dir'], job['channel'])))
             files.mv(file, pjoin(rundir,'dump_%s_GF%s.dat' % (job['p_dir'], job['channel'])))
 

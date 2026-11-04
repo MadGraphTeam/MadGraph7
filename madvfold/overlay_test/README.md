@@ -9,3 +9,8 @@ are kept separate so that they can be left out of the vfold code.
 `--vfold-with-tests` also runs `madvfold/DEV/setupVfoldTests.sh`, which
 prepares the process directory for the tests (e.g. relative paths, and the
 cudacpp libraries of `madvfold/DEV/<proc>_vfalt` if present).
+
+The Fortran test hooks are not in this tree, but in the files of
+`../overlay`, where they are enabled at compile time by the copy of
+`Template/NLO/SubProcesses/vfold_tests.inc` in this tree
+(`vfold_tests=.true.`), so that each Fortran file exists only once.

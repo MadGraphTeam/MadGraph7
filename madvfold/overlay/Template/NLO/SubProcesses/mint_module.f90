@@ -215,6 +215,7 @@ contains
     logical dump69
     common /cdump69/dump69
     integer itmax1
+    include 'vfold_tests.inc'
     call initialise_mint
     if (imode.eq.1 .and. env_fvz_ndump.gt.0) then
        itmax1 = itmax+1 ! AV add one iteration for dumps (MINT sets nit=itmax when target precision is >
@@ -224,8 +225,8 @@ contains
 !   do while (nit.lt.itmax)
     do while (nit.lt.itmax1) ! AV add one iteration for dumps
        if (imode.eq.1) then
-          write(6,*) 'DEBUG! nit, itmax1', nit, itmax1
-          write(6,*) 'DEBUG! ncalls0, ncalls', ncalls0, ncalls
+          if (vfold_tests) write(6,*) 'DEBUG! nit, itmax1', nit, itmax1
+          if (vfold_tests) write(6,*) 'DEBUG! ncalls0, ncalls', ncalls0, ncalls
           if(nit.eq.itmax) then             ! AV (new2) this can only happen if itmax1=itmax+1>nit (i.e. requires env_fvz_ndump>0)
              dump69=.true.                  ! AV (new2) dump only on the last additional iteration
              ncalls0=env_fvz_ndump              ! AV (new2) number of events to dump in the last additional iteration
@@ -257,7 +258,7 @@ contains
           if (imode.eq.1) write(69,*) 'NEWITER', nit, itmax, ncalls, ncalls0
        endif
        !AV
-       if (imode.eq.1) write(6,*) 'NEWITER', nit, itmax, ncalls, ncalls0
+       if (imode.eq.1 .and. vfold_tests) write(6,*) 'NEWITER', nit, itmax, ncalls, ncalls0
     enddo
     call finalise_mint
   end subroutine mint
@@ -339,6 +340,7 @@ contains
     integer :: kchan,kdim,k_ord_virt
     integer env_fvz_itmax, env_fvz_ndump
     common/envncalls/env_fvz_itmax, env_fvz_ndump
+    include 'vfold_tests.inc'
     if (double_events) then
 ! Double the number of intervals in the grids if not yet reach the maximum
        if (2*nint_used.le.nintervals) then
@@ -357,9 +359,9 @@ contains
        endif
 ! double the number of points for the next iteration
        !AV (NB this is only called if the initial ncalls0 is -1)
-       write(6,*) 'DEBUG! ncalls0 (last iteration)', ncalls0
+       if (vfold_tests) write(6,*) 'DEBUG! ncalls0 (last iteration)', ncalls0
        ncalls0 = ncalls0*2
-       write(6,*) 'DEBUG! ncalls0 (next iteration)', ncalls0
+       if (vfold_tests) write(6,*) 'DEBUG! ncalls0 (next iteration)', ncalls0
     endif
   end subroutine prepare_next_iteration
   

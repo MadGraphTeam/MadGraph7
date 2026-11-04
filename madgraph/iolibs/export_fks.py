@@ -114,6 +114,12 @@ def vfold_file(opt, relpath, stockpath):
             return pjoin(root, relpath)
     return stockpath
 
+def vfold_linkfiles(opt):
+    """Files of SubProcesses that the P directories must also link, if --vfold"""
+    if not opt.get('vfold'):
+        return []
+    return ['vfold_tests.inc']
+
 def vfold_copy_template(opt, dir_path):
     """Overlay the Template/NLO files of the overlay trees on dir_path"""
     for root in vfold_overlays(opt):
@@ -858,6 +864,9 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             linkfiles.append('ewsudakov_functions.f')
         else:
             linkfiles.append('ewsudakov_functions_dummy.f')
+
+        # MadVFold: also link the vfold files, if requested
+        linkfiles += vfold_linkfiles(self.opt)
 
         for file in linkfiles:
             ln('../' + file , '.')
