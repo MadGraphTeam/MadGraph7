@@ -239,7 +239,7 @@ def _prepared_model_files(
                 "bundle_size": len(bundle),
                 "bundle_sha256": hashlib.sha256(bundle).hexdigest(),
                 "dependencies": {
-                    "symbolica_serialization_abi": "symbolica-bincode2-v1",
+                    "symbolica_serialization_abi": "symbolica-bincode2-v2",
                     "symjit_application_abi": "symjit-application-storage-v4",
                     "symjit_plane_application_abi": (
                         "pyamplicol-symjit-plane-application-v2"

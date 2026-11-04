@@ -581,7 +581,7 @@ def test_dependency_snapshot_uses_compact_source_descriptors(
         "version": contributor["symbolica"]["candidate_version"],
         "revision": symbolica_descriptor["revision"],
         "content_sha256": provenance.canonical_sha256(symbolica_descriptor),
-        "serialization_abi": "symbolica-bincode2-v1",
+        "serialization_abi": "symbolica-bincode2-v2",
         "license": "Symbolica proprietary",
     }
     assert payloads["dependency:symjit"] == {
