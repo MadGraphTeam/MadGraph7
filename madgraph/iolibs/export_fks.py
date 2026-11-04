@@ -2419,8 +2419,11 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         replace_dict['nb_temp_jamp'] = nb_temp_jamp
         
         if proc_type=='born':
-            file = open(pjoin(_file_path, \
-            'iolibs/template_files/bornmatrix_splitorders_fks.inc')).read()
+            # MadVFold: use the vfold version of the file, if requested
+            file = open(vfold_file(self.opt,
+            pjoin('madgraph','iolibs','template_files','bornmatrix_splitorders_fks.inc'),
+            pjoin(_file_path, \
+            'iolibs/template_files/bornmatrix_splitorders_fks.inc'))).read()
         elif proc_type=='born_links':
             file = open(pjoin(_file_path, \
             'iolibs/template_files/bornmatrix_colorlinks_fks.inc')).read()
@@ -3213,8 +3216,11 @@ Parameters              %(params)s\n\
             # this is when no color links are there
             replace_dict['iflines_col'] += 'write(*,*) \'Error in sborn_sf, no color links\'\nstop\n'
 
-        file = open(os.path.join(_file_path, \
-                          'iolibs/template_files/sborn_sf_fks.inc')).read()
+        # MadVFold: use the vfold version of the file, if requested
+        file = open(vfold_file(self.opt,
+                          pjoin('madgraph','iolibs','template_files','sborn_sf_fks.inc'),
+                          os.path.join(_file_path, \
+                          'iolibs/template_files/sborn_sf_fks.inc'))).read()
         file = file % replace_dict
         writer.writelines(file)
 
