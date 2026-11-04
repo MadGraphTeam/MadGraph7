@@ -1996,6 +1996,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 bool,
                 bool,
                 double,
+                double,
                 double>(),
             py::arg("configurations"),
             py::arg("xicut") = 0.5,
@@ -2009,6 +2010,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("use_beta") = true,
             py::arg("h_damp_one") = 0.01,
             py::arg("h_damp_power") = 1.,
+            py::arg("tiny") = 1e-6,
             pydoc::doc("FKSSubtraction::FKSSubtraction")
         )
         .def(

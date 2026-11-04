@@ -3,13 +3,14 @@ the Born blocks, as sbornsoft, sborncol_fsr and sborncol_isr in
 fks_singular.f.
 
 The reference data (see test_fks_reference.py) store, for each generated
-event, sreal at its soft, collinear and soft-collinear counter-events, which
-is there the limit of xi^2 (1 - y) times the real matrix element of MadFKS,
-and at its Born the Born blocks of pyAmpliCol: the Born, its color-correlated
-versions and, for a gluon emitter, the tensor of its spin-correlated version.
-From these blocks, with the spin-correlated Born contracted with k_perp of
-FKSSplittingKernels, FKSLimits must give the same on the counter-events. This
-fixes the conventions of the Born blocks that FKSLimits takes.
+event (also those close to the limits), sreal at its soft, collinear and
+soft-collinear counter-events, which is there the limit of xi^2 (1 - y) times
+the real matrix element of MadFKS, and at its Born the Born blocks of
+pyAmpliCol: the Born, its color-correlated versions and, for a gluon emitter,
+the tensor of its spin-correlated version. From these blocks, with the
+spin-correlated Born contracted with k_perp of FKSSplittingKernels, FKSLimits
+must give the same on the counter-events. This fixes the conventions of the
+Born blocks that FKSLimits takes.
 """
 
 import numpy as np
@@ -25,11 +26,12 @@ TINY = 1e-6  # tiny of sreal
 
 
 def generated_points(data):
-    """The configurations and points of the generated events."""
+    """The configurations and points of the generated events, those close to
+    the limits included."""
     return [
         (conf, point)
         for conf in data["configs"]
-        for point in conf["points"]
+        for point in conf["points"] + conf["limit_points"]
         if "born_blocks" in point
     ]
 
@@ -57,6 +59,22 @@ def born_blocks(data, rows):
         np.full(len(rows), data["born_blocks"]["alpha_s"]),
         index,
     )
+
+
+def soft_scale(data, rows):
+    """4 pi alpha_s iden_comp times the sum of the magnitudes of the terms of
+    the soft limit at the soft counter-event, from the eikonal factors of the
+    Fortran: the scale of its rounding where the terms cancel."""
+    alpha_s = data["born_blocks"]["alpha_s"]
+    scale = np.zeros(len(rows))
+    for k, (conf, point) in enumerate(rows):
+        i_fks = conf["i_fks"]
+        correlated = np.array(point["born_blocks"]["color_correlated"])
+        for (m, n), e in zip(point["eik_pairs"], point["eik_soft"]):
+            b = correlated[m - (m > i_fks) - 1, n - (n > i_fks) - 1]
+            scale[k] += (1.0 if m == n else 2.0) * abs(e * b)
+        scale[k] *= 4 * np.pi * alpha_s * conf["iden_comp"]
+    return scale
 
 
 def counter_events(rows):
@@ -97,10 +115,14 @@ def test_matches_sreal(path):
         ("collinear", collinear, sreal[:, 2], sreal[:, 2] != -1.0),
         ("soft_collinear", soft_collinear, sreal[:, 3], sreal[:, 3] != -1.0),
     ]
+    # the terms of the soft limit cancel for massive emitters
+    scales = {"soft": soft_scale(data, rows)}
     for name, ours, theirs, valid in cases:
         assert valid.any() or massive.all(), name
         # the Born of pyAmpliCol and the Fortran agree to 1e-12
-        np.testing.assert_allclose(ours[valid], theirs[valid], rtol=1e-11, err_msg=name)
+        tolerance = 1e-11 * np.abs(theirs) + 1e-13 * scales.get(name, 0.0)
+        deviation = np.abs(ours - theirs)
+        assert (deviation[valid] <= tolerance[valid]).all(), name
     # zero without the limit: i a quark, or a massive emitter
     soft_limit = np.array([limits.soft(c) for c in index], dtype=bool)
     np.testing.assert_array_equal(soft[~soft_limit], 0.0)

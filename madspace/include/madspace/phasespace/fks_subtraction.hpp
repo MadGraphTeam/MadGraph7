@@ -41,10 +41,20 @@ namespace madspace {
  * upper ends @f$\xi_\mathrm{max,s}@f$ and @f$\xi_\mathrm{max,c}@f$ of the
  * range of @f$\xi@f$ at the soft and collinear counter-events and
  * @f$\xi_c@f$ of the collinear one. Each contribution is zero where its
- * momenta are not generated (zero `weight` or `det`). Near the soft and
- * collinear limits MadFKS evaluates the real emission in those limits
- * (below @f$10^{-6}@f$ in @f$\xi@f$ or @f$1 - y@f$), here it is the real
- * matrix element given.
+ * momenta are not generated (zero `weight` or `det`).
+ *
+ * Close to the limits the real emission is that of sreal and fks_Sij.f.
+ * Below `tiny` in @f$1 - y@f$ the collinear limit of @ref FKSLimits at the
+ * event over @f$\xi^2 (1 - y)@f$, else below `tiny` in @f$\xi@f$ the soft
+ * one, with the direction of i at the soft counter-event for the eikonal
+ * factors, in place of `matrix_element`, which is not used there. For
+ * @f$\xi \le@f$ `tiny` the sector function at the event takes the direction
+ * of i at the soft counter-event, at the soft-collinear one where also
+ * @f$1 - y <@f$ `tiny` and j is massless. This keeps the precision of the
+ * real matrix element near the limits out of the result, at the price of an
+ * error of the order of `tiny`. The maps of @f$y@f$ of genps_fks.f and
+ * @ref FKSRadiation have @f$1 - y \ge 10^{-6}@f$, so with the default `tiny`
+ * only the soft switch acts at their events.
  *
  * `batch` is the leading batch dimension and `n` the number of particles of
  * the real process, incoming included.
@@ -70,7 +80,7 @@ namespace madspace {
  * - `collinear_xi`, `collinear_xi_max` – `float`, shape `(batch,)` –
  *   @f$\xi@f$ and the upper end of its range at the collinear counter-event.
  * - `matrix_element` – `float`, shape `(batch,)` – the real matrix element at
- *   the event.
+ *   the event, not used close to the limits (see `tiny`).
  * - `born`, `color_correlated`, `spin_correlated` – the Born and its
  *   color-correlated and spin-correlated versions, as for @ref FKSLimits.
  * - `alpha_s` – `float`, shape `(batch,)` – the strong coupling.
@@ -116,6 +126,9 @@ public:
      * @param h_damp_one      h_damp is 1 below it and 0 above 1 minus it
      *                        (one_h_damp).
      * @param h_damp_power    Power of h_damp (a_h_damp).
+     * @param tiny            Below it in @f$\xi@f$ or @f$1 - y@f$ the real
+     *                        emission is its limit, as tiny of sreal (zero
+     *                        for the real matrix element everywhere).
      * @throws std::invalid_argument for a splitting that is not one of QCD
      *         or parameters out of their range.
      */
@@ -131,7 +144,8 @@ public:
         bool use_energy = true,
         bool use_beta = true,
         double h_damp_one = 0.01,
-        double h_damp_power = 1.
+        double h_damp_power = 1.,
+        double tiny = 1e-6
     );
     /// Number of configurations.
     std::size_t configuration_count() const { return _symmetry.size(); }
@@ -153,7 +167,8 @@ private:
     FKSLimits _limits;
     FKSPrefactors _prefactors;
     std::vector<double> _symmetry;
-    double _xi_s_cut, _delta_s;
+    std::vector<me_int_t> _massless;
+    double _xi_s_cut, _delta_s, _tiny;
 };
 
 } // namespace madspace

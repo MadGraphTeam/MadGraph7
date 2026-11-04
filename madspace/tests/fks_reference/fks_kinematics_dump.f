@@ -5,14 +5,19 @@ c 'output standalone_fortran --fks --limits' process (see
 c make_fks_reference.py) and linked like test_soft_col_limits.
 c
 c Reads from stdin: the number of points per FKS configuration, the
-c Born configuration (iconfig) and the number of extra points per FKS
-c configuration with a massive final-state emitter. For every FKS
+c Born configuration (iconfig), the number of extra points per FKS
+c configuration with a massive final-state emitter and the number of
+c points per FKS configuration close to the limits. For every FKS
 c configuration and point it calls generate_momenta at uniform random x,
 c which runs the full production chain (Born map, FKS radiation,
 c counter-events). The extra points follow in a second pass, so that the
 c first one does not depend on their number. They have y_ij < 0 and xi
 c close to its upper end, where the second solution for the momentum of
-c the emitter (isolsign = -1) is used for part of the range. At every
+c the emitter (isolsign = -1) is used for part of the range. The points
+c close to the limits follow in a third pass, with xi_hat within 1e-8 of
+c its lower end stiny and every second one also with y close to the upper
+c end of its range, where sreal and fks_Sij switch to the soft and
+c collinear limits (below tiny = 1e-6 in xi or 1 - y). At every
 c point it prints the pieces of the subtraction of fks_singular.f: the
 c sector functions, the factors of the soft and collinear limits, the
 c prefactors, sreal at the event and the counter-events, and the Born
@@ -32,6 +37,7 @@ c that make_fks_reference.py parses.
       include 'coupl.inc'
       include 'fks_powers.inc'
       integer i,j,k,ipt,npts,iconf_in,fks_loop,ipass,nmassive,nloop
+      integer nlimit
       double precision x(99),p(0:3,nexternal),wgt,jac_full
       double precision jac_full_cnt(-2:2)
       double precision stot,shat_born,sqrtshat_born,tau_born
@@ -142,6 +148,7 @@ c that make_fks_reference.py parses.
       read (*,*) npts
       read (*,*) iconf_in
       read (*,*) nmassive
+      read (*,*) nlimit
 
       call setrun
       call setpara('param_card.dat')
@@ -158,7 +165,8 @@ c that make_fks_reference.py parses.
      &     ,fks_configs,ndim,lpp(1),lpp(2),iconf_in
       write (*,fmt) 'EBEAM',ebeam(1),ebeam(2)
 
-      do ipass=1,2
+      do ipass=1,3
+      write (*,'(a,1x,i0)') 'PASS',ipass
       do fks_loop=1,fks_configs
          nFKSprocess=fks_loop
          call fks_inc_chooser()
@@ -170,6 +178,8 @@ c that make_fks_reference.py parses.
          call setcuts
          if (ipass.eq.1) then
             nloop=npts
+         elseif (ipass.eq.3) then
+            nloop=nlimit
          elseif (j_fks.gt.nincoming .and. emass(j_fks).gt.0d0) then
             nloop=nmassive
          else
@@ -194,6 +204,9 @@ c types, charges and FKS pairs of the real process
             if (ipass.eq.2) then
                x(ndim-2)=1d0-0.12d0*x(ndim-2)
                x(ndim-1)=0.71d0+0.29d0*x(ndim-1)
+            elseif (ipass.eq.3) then
+               x(ndim-2)=1d-4*x(ndim-2)
+               if (mod(ipt,2).eq.0) x(ndim-1)=1d-4*x(ndim-1)
             endif
             new_point=.true.
             wgt=1d0

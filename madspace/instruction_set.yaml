@@ -3080,6 +3080,54 @@ fks_collinear_limit:
   vectorized: False
   desc: "Collinear limit of xi^2 (1 - y) times the real matrix element, as sborncol_fsr and sborncol_isr in fks_singular.f: 4 pi alpha_s iden_comp (AP B + Q (B / 2 - B_kperp)) with the QCD kernels, where B_kperp, the Born with the polarization vector of the emitter replaced by k_perp, enters only where Q is not zero."
 
+fks_real_emission:
+  inputs:
+    - name: matrix_element
+      type: [float]
+      desc: "real matrix element at the event"
+    - name: s
+      type: [float]
+      desc: "sector function at the event"
+    - name: s_soft
+      type: [float]
+      desc: "sector function at the event with the direction of i at the soft counter-event"
+    - name: s_soft_collinear
+      type: [float]
+      desc: "sector function at the event with the direction of i at the soft-collinear counter-event"
+    - name: soft
+      type: [float]
+      desc: "soft limit of xi^2 (1 - y) times the real matrix element at the event"
+    - name: collinear
+      type: [float]
+      desc: "collinear limit of xi^2 (1 - y) times the real matrix element at the event"
+    - name: xi
+      type: [float]
+      desc: "xi of the event"
+    - name: y
+      type: [float]
+      desc: "y of the event"
+    - name: det_s
+      type: [float]
+      desc: "Jacobian of the soft counter-event, zero where it is not generated"
+    - name: det_sc
+      type: [float]
+      desc: "Jacobian of the soft-collinear counter-event, zero where it is not generated"
+    - name: index
+      type: [int]
+      desc: "FKS configuration of the event"
+    - name: massless
+      type: [int, single, c]
+      desc: "1 where the emitter of the configuration is massless"
+    - name: options
+      type: [float, single, 1]
+      desc: "tiny of sreal and fks_Sij, below which in xi or 1 - y the real emission is its limit, zero for none"
+  outputs:
+    - name: real
+      type: [float]
+      desc: "real matrix element times the sector function"
+  vectorized: False
+  desc: "The real matrix element times the sector function at the event, with the switches of sreal and fks_Sij: below tiny in 1 - y the collinear limit at the event over xi^2 (1 - y), else below tiny in xi the soft one, in place of the matrix element. For xi <= tiny the sector function takes the direction of i at the soft counter-event, or at the soft-collinear one where also 1 - y < tiny and the emitter is massless. Without that counter-event the event keeps its own direction and matrix element."
+
 fks_subtraction:
   inputs:
     - name: real

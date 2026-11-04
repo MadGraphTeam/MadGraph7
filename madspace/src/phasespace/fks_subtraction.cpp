@@ -1,5 +1,7 @@
 #include "madspace/phasespace/fks_subtraction.hpp"
 
+#include <stdexcept>
+
 using namespace madspace;
 
 FKSSubtraction::FKSSubtraction(
@@ -14,7 +16,8 @@ FKSSubtraction::FKSSubtraction(
     bool use_energy,
     bool use_beta,
     double h_damp_one,
-    double h_damp_power
+    double h_damp_power,
+    double tiny
 ) :
     FunctionGenerator(
         "FKSSubtraction",
@@ -61,9 +64,14 @@ FKSSubtraction::FKSSubtraction(
     _limits(configurations),
     _prefactors(configurations, xicut, xi_s_cut, delta_o, delta_i, delta_s),
     _xi_s_cut(xi_s_cut),
-    _delta_s(delta_s) {
+    _delta_s(delta_s),
+    _tiny(tiny) {
+    if (!(tiny >= 0.)) {
+        throw std::invalid_argument("FKSSubtraction: tiny cannot be negative");
+    }
     for (const auto& config : configurations) {
         _symmetry.push_back(config.symmetry_factor());
+        _massless.push_back(config.masses.at(config.j_fks) == 0. ? 1 : 0);
     }
 }
 
@@ -71,13 +79,46 @@ NamedVector<Value> FKSSubtraction::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
     Value index = args.at("fks_index");
-    auto sector = [&](const std::string& prefix) {
+    // the sector function at the momenta of one kinematics with the direction
+    // of i of another (the same by default)
+    auto sector = [&](const std::string& prefix, std::string direction = "") {
+        direction = direction.empty() ? prefix : direction;
         return _sector_function
             .build_function(
-                fb, {args.at(prefix + "momenta"), args.at(prefix + "p_i_hat"), index}
+                fb, {args.at(prefix + "momenta"), args.at(direction + "p_i_hat"), index}
             )
             .at(0);
     };
+    // the limits at the event, where the real emission switches to them, with
+    // the direction of i of the soft counter-event as eikonal_reduced
+    auto event_limits = _limits.build_function(
+        fb,
+        {args.at("momenta"),
+         args.at("soft_p_i_hat"),
+         args.at("y"),
+         args.at("momenta"),
+         args.at("momenta"),
+         args.at("born"),
+         args.at("color_correlated"),
+         args.at("spin_correlated"),
+         args.at("alpha_s"),
+         index}
+    );
+    auto real = fb.fks_real_emission(
+        args.at("matrix_element"),
+        sector(""),
+        sector("", "soft_"),
+        sector("", "soft_collinear_"),
+        event_limits.at("soft"),
+        event_limits.at("collinear"),
+        args.at("xi"),
+        args.at("y"),
+        args.at("soft_det"),
+        args.at("soft_collinear_det"),
+        index,
+        _massless,
+        std::vector<double>{_tiny}
+    );
     auto limits = _limits.build_function(
         fb,
         {args.at("soft_momenta"),
@@ -107,8 +148,8 @@ NamedVector<Value> FKSSubtraction::build_function_impl(
             fb.mul(sector(name + "_"), prefactors.at(prefactor)), limits.at(name)
         );
     };
-    auto [real, soft, collinear, soft_collinear] = fb.fks_subtraction(
-        fb.mul(args.at("matrix_element"), sector("")),
+    auto [real_out, soft, collinear, soft_collinear] = fb.fks_subtraction(
+        real,
         counterterm("soft", "f_s"),
         counterterm("collinear", "f_c"),
         counterterm("soft_collinear", "f_sc"),
@@ -127,7 +168,7 @@ NamedVector<Value> FKSSubtraction::build_function_impl(
         std::vector<double>{_xi_s_cut, _delta_s}
     );
     return {
-        {"real", real},
+        {"real", real_out},
         {"soft", soft},
         {"collinear", collinear},
         {"soft_collinear", soft_collinear}

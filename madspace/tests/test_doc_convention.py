@@ -115,6 +115,7 @@ CASES = {
         use_beta=True,
         h_damp_one=0.01,
         h_damp_power=1.0,
+        tiny=1e-6,
     ),
     "FKSPrefactors": dict(
         configurations=FKS_CONFIGURATIONS,

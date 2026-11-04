@@ -13,12 +13,15 @@ only the JSON files, so they need neither Fortran nor pyAmpliCol.
 Run from anywhere with a gfortran in the PATH and pyAmpliCol importable:
 
     python madspace/tests/fks_reference/make_fks_reference.py [--points N]
-        [--massive M]
+        [--massive M] [--limit L]
 
 Each FKS configuration gets N points at uniform random x, and one with a
 massive final-state emitter M more with y_ij < 0 and xi close to its upper
 end, which cover the second solution for the momentum of the emitter
-(isolsign = -1).
+(isolsign = -1). Each configuration also gets L points close to the soft
+limit, every second one also close to the collinear one, where sreal and
+fks_Sij switch to the limits. They are stored apart, as limit_points, with
+the entries of points.
 
 The JSON layout, with Fortran conventions kept (1-based particle indices,
 counter-event index k = -2..2 stored at position k + 2, momenta as
@@ -33,7 +36,8 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
     into the P* directory, with its own conventions, see madspace/fks.py)
     configs[]: nfks, i_fks, j_fks, pdg, masses, particle_type,
                particle_charge, fks_j_from_i (the common blocks of the
-               configuration after fks_inc_chooser), iden_comp, points[]
+               configuration after fks_inc_chooser), iden_comp, points[],
+               limit_points[] (the same for the points close to the limits)
     points[]:  x (unit-cube vector, radiation in the last three entries),
                isolsign, jac, jac_cnt (full weight of generate_momenta),
                p_born, p_ev, p_cnt, xi_ev, xi_hat_ev, y_ev, xiimax_ev,
@@ -160,14 +164,14 @@ def set_fks_powers(out, values):
         f.write(text)
 
 
-def dump(pdir, points, massive, log):
+def dump(pdir, points, massive, limit, log):
     for f in ["fks_kinematics_dump.f", "makefile_dump"]:
         shutil.copy(os.path.join(HERE, f), pdir)
     run(["make", "-j8", "-f", "makefile_dump", "fks_kinematics_dump"], pdir, log)
     result = subprocess.run(
         ["./fks_kinematics_dump"],
         cwd=pdir,
-        input=f"{points}\n1\n{massive}\n",
+        input=f"{points}\n1\n{massive}\n{limit}\n",
         capture_output=True,
         text=True,
         check=True,
@@ -224,6 +228,7 @@ def parse_rerun(point, prefix, key, rest):
 def parse(text):
     data = {"configs": []}
     conf = point = None
+    limit = False
     for line in text.splitlines():
         fields = line.split()
         if not fields:
@@ -257,9 +262,12 @@ def parse(text):
             js = conf.setdefault("fks_j_from_i", [])
             if len(js) < ints[0]:
                 js.append(ints[1:])
+        elif key == "PASS":
+            # the third pass has the points close to the limits
+            limit = int(rest[0]) == 3
         elif key == "POINT":
             point = {"isolsign": int(rest[2])}
-            conf["points"].append(point)
+            conf.setdefault("limit_points" if limit else "points", []).append(point)
         elif key == "X":
             point["x"] = floats(rest)
         elif key == "JAC":
@@ -420,7 +428,7 @@ def born_blocks(data, path):
         i_fks, j_fks = conf["i_fks"], conf["j_fks"]
         born_j = j_fks if j_fks < i_fks else j_fks - 1
         gluon = born_pdgs[born_j - 1] == 21
-        for point in conf["points"]:
+        for point in conf["points"] + conf.get("limit_points", []):
             if "born" not in point:
                 continue
             requests = {"born": pa.CorrelatedRequest("born", {})}
@@ -466,6 +474,12 @@ def main():
         default=8,
         help="extra points per FKS config with a massive final-state emitter",
     )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=2,
+        help="points per FKS config close to the soft (and collinear) limit",
+    )
     parser.add_argument("--keep", help="keep the generated outputs in this directory")
     args = parser.parse_args()
 
@@ -489,7 +503,7 @@ def main():
             if keep is not None and sub not in keep:
                 continue
             log = os.path.join(work, f"{name}_{sub}.log")
-            data = parse(dump(pdir, args.points, args.massive, log))
+            data = parse(dump(pdir, args.points, args.massive, args.limit, log))
             data.update(process=process, subprocess=sub, genps_fks_sha=genps_fks_sha)
             # the FKS configurations as the exporter writes them for madspace
             with open(os.path.join(pdir, "fks_configurations.json")) as f:
@@ -499,7 +513,10 @@ def main():
             with open(path, "w") as f:
                 json.dump(data, f, separators=(",", ":"))
                 f.write("\n")
-            npts = sum(len(c["points"]) for c in data["configs"])
+            npts = sum(
+                len(c["points"]) + len(c.get("limit_points", []))
+                for c in data["configs"]
+            )
             print(f"{path}: {len(data['configs'])} FKS configs, {npts} points")
     if not args.keep:
         shutil.rmtree(work)

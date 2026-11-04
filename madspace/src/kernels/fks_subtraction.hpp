@@ -536,6 +536,54 @@ KERNELSPEC void kernel_fks_collinear_limit(
     collinear = 4. * pi * FVal<T>(alpha_s) * f * value;
 }
 
+// The real matrix element times the sector function at the event, with the
+// limits of sreal and fks_Sij (fks_singular.f, fks_Sij.f) below tiny
+// (options[0], zero for none): below tiny in 1 - y the collinear limit at the
+// event over xi^2 (1 - y), else below tiny in xi the soft one, in place of the
+// matrix element, which is then not used. The limits are zero without a soft
+// (or collinear) singularity. For xi <= tiny the sector function has the
+// direction of i at the soft counter-event, at the soft-collinear one where
+// also 1 - y < tiny and j is massless. Without the counter-event (zero det)
+// the event keeps its own direction and matrix element, as fks_Sij.
+template <typename T>
+KERNELSPEC void kernel_fks_real_emission(
+    FIn<T, 0> matrix_element,
+    FIn<T, 0> s,
+    FIn<T, 0> s_soft,
+    FIn<T, 0> s_soft_collinear,
+    FIn<T, 0> soft,
+    FIn<T, 0> collinear,
+    FIn<T, 0> xi,
+    FIn<T, 0> y,
+    FIn<T, 0> det_s,
+    FIn<T, 0> det_sc,
+    IIn<T, 0> index,
+    IIn<T, 1> massless,
+    FIn<T, 1> options,
+    FOut<T, 0> real
+) {
+    std::size_t c = single_index(index);
+    FVal<T> tiny = options[0], x = xi, omy = 1. - FVal<T>(y);
+    bool on = tiny > 0.;
+    bool with_soft = FVal<T>(det_s) > 0.;
+    bool with_soft_collinear = FVal<T>(det_sc) > 0. && single_index(massless[c]) != 0;
+    FVal<T> sector = s;
+    if (on && x <= tiny) {
+        if (omy < tiny && with_soft_collinear) {
+            sector = s_soft_collinear;
+        } else if (with_soft) {
+            sector = s_soft;
+        }
+    }
+    FVal<T> value = matrix_element;
+    if (on && omy < tiny) {
+        value = FVal<T>(collinear) / (x * x * omy);
+    } else if (on && x < tiny && with_soft) {
+        value = FVal<T>(soft) / (x * x * omy);
+    }
+    real = sector * value;
+}
+
 // The real emission and its counterterms of compute_real_emission and
 // compute_soft_counter_term and its siblings (fks_singular.f) without the
 // collinear remnants, from the products of the matrix element and its limits

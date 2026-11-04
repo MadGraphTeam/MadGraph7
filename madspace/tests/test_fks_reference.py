@@ -199,7 +199,7 @@ def test_born_blocks(data):
     for conf in data["configs"]:
         i_fks, j_fks = conf["i_fks"], conf["j_fks"]
         born_j = j_fks if j_fks < i_fks else j_fks - 1
-        for point in conf["points"]:
+        for point in conf["points"] + conf["limit_points"]:
             assert ("born" in point) == (point["jac"] > 0)
             if "born" not in point:
                 continue
@@ -228,3 +228,20 @@ def test_born_blocks(data):
                 np.testing.assert_allclose(tensor @ p_j, 0, atol=1e-12 * born * p_j[0])
             count += 1
     assert count > 0
+
+
+def test_limit_points(data):
+    """Every configuration has points close to the soft limit, with xi_hat
+    close to its lower end stiny = 1e-6 (of the range of xi_hat for a
+    massive emitter), where sreal and fks_Sij switch to the soft limit below
+    xi = 1e-6, and the Born blocks there."""
+    switched = 0
+    for conf in data["configs"]:
+        points = conf["limit_points"]
+        assert len(points) >= 2
+        for point in points:
+            assert 0 < point["xi_hat_ev"] <= 1.1e-6
+            if point["jac"] > 0:
+                assert "born_blocks" in point
+                switched += point["xi_ev"] < 1e-6
+    assert switched > 0
