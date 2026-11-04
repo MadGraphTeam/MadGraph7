@@ -49,10 +49,11 @@ MODES = [
     ('Cnone', 'C/none'), ('Csse4', 'C/sse4'), ('Cavx2', 'C/avx2'),
     ('C512y', 'C/512y'), ('C512z', 'C/512z'), ('Ccuda', 'C/cuda'),
     ('Ccudb', 'C/cudb'),  # cuda with BLAS colour sums (CUDACPP_RUNTIME_BLASCOLORSUM=1)
+    ('Ccudbr', 'C/cudbr'),  # step 14n: BLAS colour sums for the Real libraries only
 ]
 
 # GPU columns: the only ones that accept vecsize scans
-MODES_GPU = ('C/cuda', 'C/cudb')
+MODES_GPU = ('C/cuda', 'C/cudb', 'C/cudbr')
 
 # Mode whose run is used for the kpoint and batching sub-headers
 MODE_BATCHED = 'F'
@@ -264,6 +265,8 @@ def read_step(prefix):
             backend = d['env'].get('ENV_VFOLD_CUDACPP_BACKEND')
             if mode == 'C' and backend == 'cuda' and d['env'].get('CUDACPP_RUNTIME_BLASCOLORSUM'):
                 backend = 'cudb'  # cuda with BLAS colour sums
+                if d['env'].get('CUDACPP_RUNTIME_BLASCOLORSUM_VFOLDBORN') == '':
+                    backend = 'cudbr'  # step 14n: only for the Real libraries
             data[mode + ('/' + backend if mode == 'C' and backend else '')] = d
     return data
 
@@ -414,6 +417,8 @@ def build_table(data, step, grouping='default', rescale=RESCALE_BASELINE, isTex=
         subtitles.append('sborn %s: SBORN served from cudacpp, in mode C only%s'
                          % (p['sborn'],
                             ' (and validated against the scalar SBORN)' if p['sborn'] == '2' else ''))
+    if any(n.split('#')[0] == 'C/cudbr' for n in data):
+        subtitles.append('cudbr: cuda backend with BLAS colour sums for the Real libraries only')
     if any(n.split('#')[0] == 'C/cudb' for n in data):
         subtitles.append('cudb: cuda backend with BLAS colour sums (CUDACPP_RUNTIME_BLASCOLORSUM=1)')
     # In tex there is no sborn_gscale row, so say it here (step 10b: a second,

@@ -170,6 +170,40 @@ const char* getenv_or(const char* var, const char* fallback) {
     return (s && *s) ? s : fallback;
 }
 
+// Step 14n: the cudacpp variables that enable BLAS colour sums, separately for each library.
+// CUDACPP_RUNTIME_BLASCOLORSUM (for all libraries) can be overridden for one library by
+// CUDACPP_RUNTIME_BLASCOLORSUM_VFOLD<lib>, with <lib>=BORN, REAL1, REAL2... (the tags in
+// vfold/cudacpp_spec.txt), if this is defined, also if it is empty (BLAS is then off).
+// As in cudacpp, BLAS is on for any non-empty value. The same for CUBLASTF32TENSOR. cudacpp only
+// reads these for the first bridge of each library, and vfold only has one bridge per library.
+void set_blas_env(const std::string& lib) {
+    struct BlasVar { const char* name; bool defined; std::string value; };
+    static BlasVar vars[] = {{"CUDACPP_RUNTIME_BLASCOLORSUM", false, ""},
+                             {"CUDACPP_RUNTIME_CUBLASTF32TENSOR", false, ""}};
+    static bool first = true;
+    if (first) { // keep the values for all libraries, before they are overwritten below
+        first = false;
+        for (BlasVar& var : vars) {
+            const char* s = std::getenv(var.name);
+            if (s) { var.defined = true; var.value = s; }
+        }
+    }
+    for (const BlasVar& var : vars) {
+        const std::string overrideName = std::string(var.name) + "_VFOLD" + lib;
+        const char* s = std::getenv(overrideName.c_str());
+        if (s) {
+            setenv(var.name, s, 1);
+            std::printf("[cudacpp_dispatcher] %s: %s='%s' (from %s)\n", lib.c_str(), var.name, s, overrideName.c_str());
+        } else if (var.defined) {
+            setenv(var.name, var.value.c_str(), 1);
+            std::printf("[cudacpp_dispatcher] %s: %s='%s'\n", lib.c_str(), var.name, var.value.c_str());
+        } else {
+            unsetenv(var.name);
+        }
+    }
+    std::fflush(stdout);
+}
+
 std::string get_lib_dir() {
     const char* backend = getenv_or("ENV_VFOLD_CUDACPP_BACKEND", "512y");
 
@@ -279,6 +313,7 @@ extern "C" {
 // CALL FBRIDGE_BORN_CREATE(PBRIDGE, NEVT, NPAR, NP4)
 void fbridge_born_create_(long long* pbridge, int* nevt, int* npar, int* np4) {
     ensure_born_initialized();
+    set_blas_env("BORN"); // step 14n
     g_born_create(pbridge, nevt, npar, np4);
 }
 
@@ -359,6 +394,7 @@ void fbridge_born_get_nbornextras_(int* nbx, int* status) {
 // header comment) -- loaded lazily on first use for that WHICH.
 void fbridge_real_create_(int* which, long long* pbridge, int* nevt, int* npar, int* np4) {
     ensure_real_initialized(*which);
+    set_blas_env("REAL" + std::to_string(*which)); // step 14n
     g_real_create[*which](pbridge, nevt, npar, np4);
 }
 

@@ -77,7 +77,7 @@ xOpt=
 suffixes=
 for mode in $modes; do
   ENV_VFOLD_ME_MODE=$mode
-  unset CUDACPP_RUNTIME_BLASCOLORSUM
+  unset CUDACPP_RUNTIME_BLASCOLORSUM CUDACPP_RUNTIME_BLASCOLORSUM_VFOLDBORN
   # Step 14h: only F1n and F1c change the MadLoop reduction library of the environment or myLaunch.sh
   mlreduction=${ENV_VFOLD_MLREDUCTION}
   # Validate mode and get suffix
@@ -114,6 +114,12 @@ for mode in $modes; do
     ENV_VFOLD_CUDACPP_BACKEND=cuda
     suffix=Ccudb
     export CUDACPP_RUNTIME_BLASCOLORSUM=1
+  elif [ "${ENV_VFOLD_ME_MODE}" == "Ccudbr" ]; then # step 14n: BLAS for the Real libraries only
+    ENV_VFOLD_ME_MODE=C
+    ENV_VFOLD_CUDACPP_BACKEND=cuda
+    suffix=Ccudbr
+    export CUDACPP_RUNTIME_BLASCOLORSUM=1
+    export CUDACPP_RUNTIME_BLASCOLORSUM_VFOLDBORN=
   else
     echo "WARNING! Skip invalid ENV_VFOLD_ME_MODE=${ENV_VFOLD_ME_MODE}"
     continue

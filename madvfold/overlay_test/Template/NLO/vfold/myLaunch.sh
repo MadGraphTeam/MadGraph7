@@ -28,6 +28,7 @@ while [ "$1" != "" ]; do
     echo "Example: ENV_ISEED=84101 ENV_VFOLD_ME_MODE=F0 $0"
     echo "Example: ENV_VFOLD_MLREDUCTION=ninja ENV_VFOLD_ME_MODE=F1 $0"
     echo "Example: ENV_VFOLD_POLYCACHE=0 ENV_VFOLD_ME_MODE=F1 $0"
+    echo "Example: CUDACPP_RUNTIME_BLASCOLORSUM=1 CUDACPP_RUNTIME_BLASCOLORSUM_VFOLDBORN= ENV_VFOLD_CUDACPP_BACKEND=cuda ENV_VFOLD_ME_MODE=C $0"
     exit 1
   fi
   shift
@@ -459,6 +460,8 @@ dumpENV() {
   echo "ENV_REQACC=${ENV_REQACC}" | tee -a $out
   echo "ENV_ISEED=${ENV_ISEED}" | tee -a $out
   echo "CUDACPP_RUNTIME_BLASCOLORSUM=${CUDACPP_RUNTIME_BLASCOLORSUM}" | tee -a $out
+  # Step 14n: the overrides for each library, only if defined (empty is not the same as unset)
+  (env | grep -E '^CUDACPP_RUNTIME_(BLASCOLORSUM|CUBLASTF32TENSOR)_VFOLD' || true) | sort | tee -a $out
   echo "randinit=${randinit}" | tee -a $out
 }
 

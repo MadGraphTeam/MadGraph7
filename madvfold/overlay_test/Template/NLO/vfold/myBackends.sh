@@ -124,7 +124,7 @@ if [ "$mode" == "--launch" ]; then
   fi
 
   if nvidia-smi -L >& /dev/null; then
-    unset CUDACPP_RUNTIME_BLASCOLORSUM
+    unset CUDACPP_RUNTIME_BLASCOLORSUM CUDACPP_RUNTIME_BLASCOLORSUM_VFOLDBORN
     if [ "$cudascan" == "1" ]; then
       # With step9l parameters stop at vecsize=1024 for kbatch=32
       # With step10b parameters stop at vecsize=2048/4096 for kbatch=64/128
@@ -148,10 +148,17 @@ if [ "$mode" == "--launch" ]; then
         ENV_VFOLD_VECSIZE_USED=${vecsize} ENV_VFOLD_CUDACPP_BACKEND=cuda ENV_VFOLD_ME_MODE=C ./vfold/myLaunch.sh ${oOpt} ${xOpt}
         mv Events/run_01 ${events}Ccuda${vecsize}
       done
+      ###for vecsize in $vecsizesBlas; do
+      ###  # BLAS for Born and Real libraries
+      ###  CUDACPP_RUNTIME_BLASCOLORSUM=1 \
+      ###    ENV_VFOLD_VECSIZE_USED=${vecsize} ENV_VFOLD_CUDACPP_BACKEND=cuda ENV_VFOLD_ME_MODE=C ./vfold/myLaunch.sh ${oOpt} ${xOpt}
+      ###  mv Events/run_01 ${events}Ccudb${vecsize}
+      ###done
       for vecsize in $vecsizesBlas; do
-        CUDACPP_RUNTIME_BLASCOLORSUM=1 \
+        # Step 14n: BLAS for the Real libraries only
+        CUDACPP_RUNTIME_BLASCOLORSUM=1 CUDACPP_RUNTIME_BLASCOLORSUM_VFOLDBORN= \
           ENV_VFOLD_VECSIZE_USED=${vecsize} ENV_VFOLD_CUDACPP_BACKEND=cuda ENV_VFOLD_ME_MODE=C ./vfold/myLaunch.sh ${oOpt} ${xOpt}
-        mv Events/run_01 ${events}Ccudb${vecsize}
+        mv Events/run_01 ${events}Ccudbr${vecsize}
       done
     else
       ENV_VFOLD_CUDACPP_BACKEND=cuda ENV_VFOLD_ME_MODE=C ./vfold/myLaunch.sh ${oOpt} ${xOpt}
