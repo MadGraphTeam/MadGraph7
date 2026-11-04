@@ -1,0 +1,62 @@
+# Override the general .gitignore from mg5amcnlo
+# Start by not ignoring anything
+!*
+
+# Ignore Fortran/C++ build artefacts
+*.o
+*.mod
+*.so
+*.a
+SubProcesses/P*/check_poles
+SubProcesses/P*/gensym
+SubProcesses/P*/madevent_mintMC
+SubProcesses/P*/test_soft_col_limits
+SubProcesses/P*/reweight_xsec_events
+SubProcesses/collect_events
+f90cache*.log
+
+# Keep symlinks to vendor libraries
+!lib/libcts.a
+!lib/mpmodule.mod
+!lib/libiregi.a
+!MCatNLO/lib/libFmcfio.a
+!MCatNLO/lib/libstdhep.a
+
+# Ignore Python build artefacts
+# (but keep reference job_status.pkl)
+*.pkl
+__pycache__
+py.py
+!vfold/test/grids/*/job_status.pkl
+
+# Ignore HTML results
+HTML/run*
+*.html
+
+# Ignore GF* results
+SubProcesses/P*/GF*
+
+# Ignore test results
+SubProcesses/P*/*.log
+
+# Ignore some tarballs
+Events/run_*/RunMaterial.tar.gz
+amcatnlo.tar.gz
+
+# Ignore MadLoop5_resources.tar.gz
+# (this appears in MINT2-only -o runs)
+SubProcesses/P*/MadLoop5_resources.tar.gz
+
+# Ignore the files written by every compilation and launch
+# (they are tracked in the hand-written <proc>_vfalt, committed after a launch)
+Source/maxparticles.inc
+SubProcesses/analyse_opts
+SubProcesses/P*/ajob*
+SubProcesses/P*/channels.txt
+SubProcesses/P*/symfact.dat
+SubProcesses/P*/fort.77
+SubProcesses/P*/fort.78
+SubProcesses/P*/MadLoop5_resources/HelFilter.dat
+check_poles_input.txt
+test_MC_input.txt
+test_ME_input.txt
