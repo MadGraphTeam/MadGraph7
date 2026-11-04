@@ -87,7 +87,7 @@ impl Restriction {
 
 /// The interactions and outputs of an interaction program one call keeps:
 /// per step, per kernel group a flag per interaction, and a flag per output
-/// (`liveness`, the flags `prune` would keep).
+/// (`liveness`, whose flags `prune` keeps).
 pub(super) struct Liveness {
     pub(super) steps: Vec<(Vec<Vec<bool>>, Vec<bool>)>,
 }
@@ -217,8 +217,12 @@ fn block_slots(
     slots
 }
 
-/// The flags of the interactions and outputs `prune` keeps for `needed`,
-/// the program left whole (`needed` as `prune` leaves it).
+/// The interactions and outputs of `interactions` that the state components
+/// `needed` (after the program) depend on, as flags over the program's own
+/// (the program left whole): backward over the steps, an output is kept
+/// when it writes a needed component (which it then defines), an
+/// interaction when a kept output reads its accumulator (its inputs are then
+/// needed). `needed` is left as what the kept program reads from outside.
 fn liveness(interactions: &Interactions, needed: &mut [bool]) -> Liveness {
     let mut steps = Vec::with_capacity(interactions.steps.len());
     for step in interactions.steps.iter().rev() {
@@ -263,32 +267,17 @@ fn liveness(interactions: &Interactions, needed: &mut [bool]) -> Liveness {
 }
 
 /// Keep the interactions and outputs of `interactions` that the state
-/// components `needed` (after the program) depend on: backward over the
-/// steps, an output is kept when it writes a needed component (which it
-/// then defines), an interaction when a kept output reads its accumulator
-/// (its inputs are then needed).
+/// components `needed` depend on ([`liveness`]'s flags), and drop the
+/// kernel groups left without one.
 fn prune(interactions: &mut Interactions, needed: &mut [bool]) {
-    for step in interactions.steps.iter_mut().rev() {
-        let mut read = vec![false; step.width];
-        step.outputs.retain(
-            |&(accumulator, _propagator, _momentum, start, dimension, _pole)| {
-                let kept = needed[start..start + dimension].iter().any(|&n| n);
-                if kept {
-                    read[accumulator] = true;
-                }
-                kept
-            },
-        );
-        for &(_accumulator, _propagator, _momentum, start, dimension, _pole) in &step.outputs {
-            needed[start..start + dimension].fill(false);
-        }
-        for (_kernel, edges) in &mut step.groups {
-            edges.retain(|edge| read[edge.accumulator as usize]);
-            for edge in edges.iter() {
-                let (left, right) = (edge.left as usize, edge.right as usize);
-                needed[left..left + edge.left_dimension as usize].fill(true);
-                needed[right..right + edge.right_dimension as usize].fill(true);
-            }
+    let live = liveness(interactions, needed);
+    for (step, (groups, outputs)) in interactions.steps.iter_mut().zip(live.steps) {
+        let mut kept = outputs.iter();
+        step.outputs
+            .retain(|_| *kept.next().expect("one flag per output"));
+        for ((_kernel, edges), flags) in step.groups.iter_mut().zip(&groups) {
+            let mut kept = flags.iter();
+            edges.retain(|_| *kept.next().expect("one flag per interaction"));
         }
         step.groups.retain(|(_kernel, edges)| !edges.is_empty());
     }

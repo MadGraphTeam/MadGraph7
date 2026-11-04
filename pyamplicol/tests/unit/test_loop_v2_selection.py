@@ -1474,7 +1474,9 @@ def test_selections_are_masks_on_one_template(
     companion executor runs the masks too) and double-double: single,
     several and every helicity row, single, several and every flow, crossed
     ones, and (u u~ > d d~ g) a flow below the leading colour, whose value is
-    zero and whose call dresses no family."""
+    zero and whose call dresses no family. The single helicity (and its
+    flow) is the first with a non-zero Born on the points, so the
+    row-restricted checks compare non-zero values."""
 
     from pyamplicol import Runtime
     from pyamplicol.loops.v2 import native_observables as no
@@ -1486,20 +1488,6 @@ def test_selections_are_masks_on_one_template(
     pts, scales = _points(points, 2)
     hel = [h.id for h in runtime.physics.helicities]
     flows = [a.id for a in runtime.physics.born_anchored_color_components]
-    selections = [
-        {"helicities": [hel[1]]},
-        {"helicities": hel[: len(hel) // 2]},
-        {"helicities": hel},
-        {"color_flows": [flows[1]]},
-        {"color_flows": flows[::2]},
-        {"color_flows": flows},
-        {"helicities": [hel[3]], "color_flows": [flows[-1]]},
-        {"helicities": hel[::3], "color_flows": flows[1::2]},
-    ]
-    if process == "u u~ > d d~ g":
-        # (2,1,3,5,4): each quark joined to its own antiquark, below the
-        # leading N_c power.
-        selections.append({"color_flows": ["flow:2,1,3,5,4"]})
     backend = runtime._backend._observable_runtime()
     observables = backend._observables
     built = {"executors": 0, "sets": 0}
@@ -1527,9 +1515,33 @@ def test_selections_are_masks_on_one_template(
 
         return sum(len(found._native) for found in observables._sets.values())
 
-    runtime.evaluate(pts, mu_r2=scales, **selections[0])
+    half = {"helicities": hel[: len(hel) // 2]}
+    runtime.evaluate(pts, mu_r2=scales, **half)
     assert (built["sets"], built["executors"], executors()) == (1, 1, 1)
-    for selection in selections[1:]:
+
+    def born(**selection) -> bool:
+        """Whether the selection's Born is non-zero on the points."""
+
+        result = runtime.evaluate(pts, mu_r2=scales, **selection)
+        return any(x != 0 for values in result.born_values for x in values or ())
+
+    single = next(h for h in hel if born(helicities=[h]))
+    paired = next(f for f in flows if born(helicities=[single], color_flows=[f]))
+    selections = [
+        {"helicities": [single]},
+        half,
+        {"helicities": hel},
+        {"color_flows": [flows[1]]},
+        {"color_flows": flows[::2]},
+        {"color_flows": flows},
+        {"helicities": [single], "color_flows": [paired]},
+        {"helicities": hel[::3], "color_flows": flows[1::2]},
+    ]
+    if process == "u u~ > d d~ g":
+        # (2,1,3,5,4): each quark joined to its own antiquark, below the
+        # leading N_c power.
+        selections.append({"color_flows": ["flow:2,1,3,5,4"]})
+    for selection in selections:
         runtime.evaluate(pts, mu_r2=scales, **selection)
     assert (built["sets"], built["executors"], executors()) == (1, 1, 1)
     for selection in selections[:3]:

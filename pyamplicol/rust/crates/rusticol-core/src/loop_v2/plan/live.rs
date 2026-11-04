@@ -29,9 +29,10 @@
 //! columns keep every row is left as it is. Schedules F and M keep their own
 //! programs.
 
+use super::super::kernels::RowLink;
 use super::{
-    Content, Family, LinkInterner, LoopProgramV4, ReadRows, Source, Step, StepCost, Vertex,
-    fused_cost, step_shape,
+    Content, Edge, Family, LinkInterner, LoopProgramV4, ReadRows, Source, SplitGroup, SplitPart,
+    SplitStep, Step, StepCost, Vertex, fused_cost, step_shape,
 };
 use crate::RusticolResult;
 use rayon::prelude::*;
@@ -51,7 +52,7 @@ impl LoopProgramV4 {
             .map(|row| self.column_rows.keeps(row / columns, row % columns))
             .collect();
         for family in &mut self.families {
-            prune_family(
+            *family = prune_family(
                 family,
                 &seeded,
                 columns,
@@ -113,26 +114,87 @@ impl LoopProgramV4 {
 /// selection's `rows` mask on the template plan of a stored process, whose
 /// columns keep every row) seeds zeros on the other rows, as a plan whose
 /// columns keep those rows only does. Per call, each family it dresses is
-/// pruned as the loader prunes such a plan ([`prune_family`] on a copy: the
-/// same forward and backward link liveness, the edges, groups and steps
-/// left without a link dropped, the work and the family's inputs
-/// recounted), and the fused factor and split current rows the kept links
-/// read are recorded ([`Self::read`]), so the call builds, dresses and (its
-/// tree program, `trees_rows.rs`) evaluates what that plan would: the same
-/// kept sums in the same order, less additions of exact zeros, equal
-/// bitwise up to the sign of a zero. A family left without a step has a
-/// zero numerator and is not dressed (its lanes are absent, as under a
-/// family mask). The copies hold the kept links only.
+/// pruned as the loader prunes such a plan ([`prune_family`]: the same
+/// forward and backward link liveness, the edges, groups and steps left
+/// without a link dropped, the work and the family's inputs recounted), and
+/// the fused factor and split current rows the dressed links read are
+/// recorded ([`Self::read`]), so the call builds, dresses and (its tree
+/// program, `trees_rows.rs`) evaluates what that plan would: the same kept
+/// sums in the same order, less additions of exact zeros, equal bitwise up
+/// to the sign of a zero. A family left without a step has a zero numerator
+/// and is not dressed (its lanes are absent, as under a family mask).
+///
+/// Memory: a pruned copy is built fresh at the lengths it keeps (a split
+/// part's list keeping every link stays shared with the template, a shorter
+/// one is packed and interned), and it is kept only when its own heap (its
+/// steps, edges, fused links, groups and parts: `family_bytes`) is at most
+/// [`KEPT_SHARE`] of its family's; a family keeping more runs whole on the
+/// masked seeds (the template's steps, the unpruned path's values), so the
+/// copies of one call hold at most that share of the dressed families' heap.
 pub struct LiveRows {
     /// The kept Born rows, one flag per plan row.
     pub rows: Vec<bool>,
-    /// The families the call dresses (ascending) and their pruned copies.
+    /// The families the call dresses (ascending) and their pruned copies
+    /// (`None`: the family runs whole).
     listed: Vec<usize>,
-    pruned: Vec<Family>,
+    pruned: Vec<Option<Family>>,
     /// The listed families with a step left (ascending).
     live: Vec<usize>,
-    /// The factor and current rows the kept links read.
+    /// Row links the listed families run (pruned or whole).
+    links: usize,
+    /// The factor and current rows the dressed links read.
     pub read: Arc<ReadRows>,
+}
+
+/// The largest share (numerator, denominator) of its family's heap a kept
+/// pruned copy holds ([`LiveRows`]): a copy costs memory in proportion to
+/// what it keeps and saves work in proportion to what it drops.
+pub const KEPT_SHARE: (usize, usize) = (1, 2);
+
+/// The heap of a family's steps that a pruned copy allocates anew: steps,
+/// edges, fused links, split groups (with their targets), part lists and
+/// parts (the parts' link lists are packed and shared, `plan/packed.rs`).
+fn family_bytes(family: &Family) -> usize {
+    use std::mem::size_of;
+    family
+        .steps
+        .iter()
+        .map(|step| {
+            let edges: usize = step
+                .edges
+                .iter()
+                .map(|edge| size_of::<Edge>() + edge.links.len() * size_of::<RowLink>())
+                .sum();
+            let split = step.split.as_ref().map_or(0, |split| {
+                let groups: usize = split
+                    .groups
+                    .iter()
+                    .map(|group| size_of::<SplitGroup>() + group.targets.len() * size_of::<u32>())
+                    .sum();
+                let parts: usize = split
+                    .parts
+                    .iter()
+                    .map(|parts| size_of::<Vec<SplitPart>>() + parts.len() * size_of::<SplitPart>())
+                    .sum();
+                groups + parts
+            });
+            size_of::<Step>() + edges + split
+        })
+        .sum()
+}
+
+/// Row links of a family's steps (fused edges and split parts).
+fn family_links(family: &Family) -> usize {
+    family
+        .steps
+        .iter()
+        .map(|step| -> usize {
+            match &step.split {
+                None => step.edges.iter().map(|edge| edge.links.len()).sum(),
+                Some(split) => split.parts.iter().flatten().map(|p| p.links.len()).sum(),
+            }
+        })
+        .sum()
 }
 
 impl LiveRows {
@@ -146,36 +208,43 @@ impl LiveRows {
         &self.live
     }
 
-    /// Family `f`'s pruned copy (`None`: not listed).
+    /// Family `f`'s pruned copy (`None`: not listed, or it runs whole).
     pub fn family(&self, f: usize) -> Option<&Family> {
         self.listed
             .binary_search(&f)
             .ok()
-            .map(|index| &self.pruned[index])
+            .and_then(|index| self.pruned[index].as_ref())
     }
 
-    /// Row links the pruned families keep (`fused` edges and split parts).
+    /// Row links the listed families run (pruned copies or whole families).
     pub fn links(&self) -> usize {
-        self.pruned
-            .iter()
-            .flat_map(|family| &family.steps)
-            .map(|step| -> usize {
-                match &step.split {
-                    None => step.edges.iter().map(|edge| edge.links.len()).sum(),
-                    Some(split) => split.parts.iter().flatten().map(|p| p.links.len()).sum(),
-                }
-            })
-            .sum()
+        self.links
+    }
+
+    /// The listed families that run a pruned copy.
+    pub fn pruned(&self) -> usize {
+        self.pruned.iter().flatten().count()
     }
 }
 
 impl LoopProgramV4 {
     /// The row liveness of an evaluation keeping the Born rows `rows` (one
     /// flag per plan row) and dressing `families` (ascending) by schedule B
-    /// ([`LiveRows`]); `None` when `rows` drops no row a column seeds
-    /// (nothing to prune). The families are pruned in parallel (the
-    /// caller's rayon pool).
+    /// ([`LiveRows`], copies kept up to [`KEPT_SHARE`] of their heap);
+    /// `None` when `rows` drops no row a column seeds (nothing to prune).
+    /// The families are pruned in parallel (the caller's rayon pool).
     pub fn live_rows(&self, rows: &[bool], families: &[usize]) -> RusticolResult<Option<LiveRows>> {
+        self.live_rows_keeping(rows, families, KEPT_SHARE)
+    }
+
+    /// [`Self::live_rows`] keeping a pruned copy whose heap is at most
+    /// `share` (numerator, denominator) of its family's.
+    pub fn live_rows_keeping(
+        &self,
+        rows: &[bool],
+        families: &[usize],
+        share: (usize, usize),
+    ) -> RusticolResult<Option<LiveRows>> {
         super::require(rows.len() == self.rows, "one kept flag per Born row")?;
         super::require(
             families.windows(2).all(|pair| pair[0] < pair[1])
@@ -190,34 +259,45 @@ impl LoopProgramV4 {
         if seeded.iter().enumerate().all(|(row, &seed)| seed == keeps(row)) {
             return Ok(None);
         }
-        let pruned: Vec<Family> = families
+        // One link interner per rayon job: the parts' shortened lists are
+        // shared within it (a list keeping every link stays the template's).
+        let pruned: Vec<(Option<Family>, usize)> = families
             .par_iter()
-            .map(|&f| {
-                let mut family = self.families[f].clone();
-                let mut links = LinkInterner::default();
-                prune_family(
-                    &mut family,
+            .map_init(LinkInterner::default, |interner, &f| {
+                let template = &self.families[f];
+                let copy = prune_family(
+                    template,
                     &seeded,
                     columns,
                     &self.contents,
                     &self.vertices,
-                    &mut links,
+                    interner,
                 );
-                family
+                if family_bytes(&copy) * share.1 <= family_bytes(template) * share.0 {
+                    let links = family_links(&copy);
+                    (Some(copy), links)
+                } else {
+                    (None, family_links(template))
+                }
             })
             .collect();
+        let dressed = |(&f, (copy, _)): (&usize, &(Option<Family>, usize))| {
+            copy.as_ref().unwrap_or(&self.families[f])
+        };
         let live = families
             .iter()
             .zip(&pruned)
-            .filter(|(_, family)| !family.steps.is_empty())
+            .filter(|&pair| !dressed(pair).steps.is_empty())
             .map(|(&f, _)| f)
             .collect();
-        let read = Arc::new(self.rows_read_by(pruned.iter()));
+        let read = Arc::new(self.rows_read_by(families.iter().zip(&pruned).map(dressed)));
+        let links = pruned.iter().map(|(_, links)| links).sum();
         Ok(Some(LiveRows {
             rows: rows.to_vec(),
             listed: families.to_vec(),
-            pruned,
+            pruned: pruned.into_iter().map(|(copy, _)| copy).collect(),
             live,
+            links,
             read,
         }))
     }
@@ -235,22 +315,26 @@ fn sources<'a>(step: &Step, seeded: &'a [bool], live: &'a [Vec<bool>]) -> Vec<&'
         .collect()
 }
 
+/// `family` pruned to the object rows `seeded` reaches and the traces read
+/// (module docs), built fresh: every list of the result is allocated at the
+/// length it keeps, so a pruned family holds its kept links only (a split
+/// part's list that keeps every link stays shared with `family`; a shorter
+/// one is interned in `interner`). The template is read only.
 fn prune_family(
-    family: &mut Family,
+    family: &Family,
     seeded: &[bool],
     columns: usize,
     contents: &[Content],
     vertices: &[Vertex],
     interner: &mut LinkInterner,
-) {
-    let steps = &mut family.steps;
+) -> Family {
+    let steps = &family.steps;
     // Forward: the object rows a kept seed row reaches.
     let mut live: Vec<Vec<bool>> = Vec::with_capacity(steps.len());
-    for step in steps.iter() {
+    for step in steps {
         let inputs = sources(step, seeded, &live);
         let mut out = vec![false; step.rows * columns];
-        let mut mark = |links: &mut dyn Iterator<Item = super::super::kernels::RowLink>,
-                        input: &[bool]| {
+        let mut mark = |links: &mut dyn Iterator<Item = RowLink>, input: &[bool]| {
             for link in links {
                 if input[link.input as usize] {
                     out[link.output as usize] = true;
@@ -275,129 +359,156 @@ fn prune_family(
     }
     // Backward: keep the links from a live row into a row that is read.
     // Every open object feeds exactly one edge, of a later step, so a step's
-    // read rows are complete when the reverse walk reaches it.
+    // read rows are complete when the reverse walk reaches it. Each step is
+    // built with its kept edges, parts and groups (sources still in the
+    // template's numbering), or dropped without an edge left.
     let mut read: Vec<Vec<bool>> = steps
         .iter()
         .map(|step| vec![false; step.rows * columns])
         .collect();
+    let mut kept: Vec<Option<Step>> = Vec::with_capacity(steps.len());
+    kept.resize_with(steps.len(), || None);
     for s in (0..steps.len()).rev() {
-        let wanted = if steps[s].trace.is_some() {
+        let step = &steps[s];
+        let wanted = if step.trace.is_some() {
             live[s].clone()
         } else {
             std::mem::take(&mut read[s])
         };
-        let step = &mut steps[s];
         let inputs = sources(step, seeded, &live);
-        let kept = |link: &super::super::kernels::RowLink, input: &[bool]| {
-            input[link.input as usize] && wanted[link.output as usize]
+        let keep =
+            |link: &RowLink, input: &[bool]| input[link.input as usize] && wanted[link.output as usize];
+        let edge_with = |edge: &Edge, links: Vec<RowLink>| Edge {
+            source: edge.source,
+            factor: edge.factor,
+            content: edge.content,
+            source_rank: edge.source_rank,
+            products: edge.products,
+            links,
         };
-        for (edge, input) in step.edges.iter_mut().zip(&inputs) {
-            edge.links.retain(|link| kept(link, input));
-        }
-        match step.split.as_mut() {
+        let mut edges = Vec::new();
+        let split = match &step.split {
             None => {
-                for edge in &step.edges {
+                for (edge, input) in step.edges.iter().zip(&inputs) {
+                    let links = exact(edge.links.iter().copied().filter(|l| keep(l, input)));
+                    if links.is_empty() {
+                        continue;
+                    }
                     if let Source::Step(child) = edge.source {
-                        for link in &edge.links {
+                        for link in &links {
                             read[child][link.input as usize] = true;
                         }
                     }
+                    edges.push(edge_with(edge, links));
                 }
+                None
             }
             Some(split) => {
-                let mut members: Vec<Vec<(usize, usize)>> = vec![Vec::new(); split.groups.len()];
-                for (e, (parts, input)) in split.parts.iter_mut().zip(&inputs).enumerate() {
-                    for (p, part) in parts.iter_mut().enumerate() {
-                        interner.retain(&mut part.links, |link| kept(link, input));
-                        members[part.group].push((e, p));
-                        if let Source::Step(child) = step.edges[e].source {
-                            for link in part.links.iter() {
+                let mut parts = Vec::new();
+                for ((edge, edge_parts), input) in step.edges.iter().zip(&split.parts).zip(&inputs) {
+                    let mut kept_parts = Vec::new();
+                    for part in edge_parts {
+                        let mut links = Arc::clone(&part.links);
+                        interner.retain(&mut links, |link| keep(link, input));
+                        if links.is_empty() {
+                            continue;
+                        }
+                        if let Source::Step(child) = edge.source {
+                            for link in links.iter() {
                                 read[child][link.input as usize] = true;
                             }
                         }
+                        kept_parts.push(SplitPart {
+                            content: part.content,
+                            term: part.term,
+                            current: part.current,
+                            group: part.group,
+                            links,
+                        });
+                    }
+                    if !kept_parts.is_empty() {
+                        kept_parts.shrink_to_fit();
+                        edges.push(edge_with(edge, Vec::new()));
+                        parts.push(kept_parts);
                     }
                 }
-                // A group's target rows are those its kept part links write.
-                let mut written = vec![false; step.rows * columns];
-                for (group, members) in split.groups.iter_mut().zip(&members) {
-                    let links = || {
-                        members
-                            .iter()
-                            .flat_map(|&(e, p)| split.parts[e][p].links.iter())
-                    };
-                    links().for_each(|link| written[link.output as usize] = true);
-                    group.targets.retain(|&target| written[target as usize]);
-                    links().for_each(|link| written[link.output as usize] = false);
+                // A group's target rows are those its kept part links write;
+                // a group without one goes, the parts' groups renumbered.
+                let mut members: Vec<Vec<(usize, usize)>> = vec![Vec::new(); split.groups.len()];
+                for (e, edge_parts) in parts.iter().enumerate() {
+                    for (p, part) in edge_parts.iter().enumerate() {
+                        members[part.group].push((e, p));
+                    }
                 }
+                let mut written = vec![false; step.rows * columns];
+                let mut renumbered: Vec<Option<usize>> = vec![None; split.groups.len()];
+                let mut groups = Vec::new();
+                for (g, (group, members)) in split.groups.iter().zip(&members).enumerate() {
+                    let links = || members.iter().flat_map(|&(e, p)| parts[e][p].links.iter());
+                    links().for_each(|link| written[link.output as usize] = true);
+                    let targets = exact(group.targets.iter().copied().filter(|&t| written[t as usize]));
+                    links().for_each(|link| written[link.output as usize] = false);
+                    if !targets.is_empty() {
+                        renumbered[g] = Some(groups.len());
+                        groups.push(SplitGroup {
+                            vertex: group.vertex,
+                            shift: group.shift,
+                            instance: group.instance,
+                            products: group.products,
+                            targets,
+                        });
+                    }
+                }
+                for part in parts.iter_mut().flatten() {
+                    part.group = renumbered[part.group].expect("a kept part's group has a target");
+                }
+                groups.shrink_to_fit();
+                parts.shrink_to_fit();
+                Some(SplitStep { groups, parts })
             }
-        }
-    }
-    remove_empty(family, contents, vertices);
-}
-
-/// Whether edge `e` of `step` has a link left.
-fn edge_runs(step: &Step, e: usize) -> bool {
-    match &step.split {
-        None => !step.edges[e].links.is_empty(),
-        Some(split) => split.parts[e].iter().any(|part| !part.links.is_empty()),
-    }
-}
-
-/// Drop the edges without a link (with their split parts), the steps left
-/// without an edge, the split groups without a target row and the parts
-/// without a link; renumber the steps' sources and the parts' groups;
-/// recount the modelled work and the family's inputs.
-///
-/// An edge without a link reads no row of its source: a child step's rows
-/// are read by that edge only (every open object feeds one edge), so the
-/// child has no link left either and goes with it.
-fn remove_empty(family: &mut Family, contents: &[Content], vertices: &[Vertex]) {
-    let old = std::mem::take(&mut family.steps);
-    let mut index: Vec<Option<usize>> = vec![None; old.len()];
-    let mut steps: Vec<Step> = Vec::with_capacity(old.len());
-    for (s, mut step) in old.into_iter().enumerate() {
-        let runs: Vec<bool> = (0..step.edges.len()).map(|e| edge_runs(&step, e)).collect();
-        if !runs.iter().any(|&r| r) {
+        };
+        if edges.is_empty() {
             continue;
         }
-        let mut flags = runs.iter();
-        step.edges
-            .retain(|_| *flags.next().expect("one flag per edge"));
+        edges.shrink_to_fit();
+        kept[s] = Some(Step {
+            seeded: step.seeded,
+            trace: step.trace,
+            rows: step.rows,
+            d_alpha: step.d_alpha,
+            d_out: step.d_out,
+            degree: step.degree,
+            rank_in: step.rank_in,
+            rank_out: step.rank_out,
+            edges,
+            split,
+            costs: step.costs,
+        });
+    }
+    drop(live);
+    // Renumber the kept steps' sources and recount the modelled work and
+    // the family's inputs. An edge with a link reads its child step, which
+    // then has a link left too (every open object feeds one edge).
+    let mut index: Vec<Option<usize>> = vec![None; steps.len()];
+    let mut pruned: Vec<Step> = Vec::with_capacity(kept.iter().flatten().count());
+    for (s, step) in kept.into_iter().enumerate() {
+        let Some(mut step) = step else {
+            continue;
+        };
         for edge in &mut step.edges {
             if let Source::Step(child) = edge.source {
                 let child = index[child].expect("the child of a kept edge is kept");
                 edge.source = Source::Step(child);
             }
         }
-        if let Some(split) = step.split.as_mut() {
-            let mut flags = runs.iter();
-            split
-                .parts
-                .retain(|_| *flags.next().expect("one flag per edge"));
-            let mut renumbered: Vec<Option<usize>> = vec![None; split.groups.len()];
-            let mut groups = Vec::with_capacity(split.groups.len());
-            for (g, group) in std::mem::take(&mut split.groups).into_iter().enumerate() {
-                if !group.targets.is_empty() {
-                    renumbered[g] = Some(groups.len());
-                    groups.push(group);
-                }
-            }
-            split.groups = groups;
-            for parts in &mut split.parts {
-                parts.retain(|part| !part.links.is_empty());
-                for part in parts.iter_mut() {
-                    part.group = renumbered[part.group].expect("a kept part's group has a target");
-                }
-            }
-        }
         step.costs = costs(&step, contents, vertices);
-        index[s] = Some(steps.len());
-        steps.push(step);
+        index[s] = Some(pruned.len());
+        pruned.push(step);
     }
     let mut factors = BTreeSet::new();
     let mut instances = BTreeSet::new();
     let mut currents = BTreeSet::new();
-    for step in &steps {
+    for step in &pruned {
         match &step.split {
             None => factors.extend(step.edges.iter().map(|edge| edge.factor)),
             Some(split) => {
@@ -406,10 +517,23 @@ fn remove_empty(family: &mut Family, contents: &[Content], vertices: &[Vertex]) 
             }
         }
     }
-    family.steps = steps;
-    family.factors = factors.into_iter().collect();
-    family.vertices = instances.into_iter().collect();
-    family.currents = currents.into_iter().collect();
+    Family {
+        sequence: family.sequence.clone(),
+        rank: family.rank,
+        orders: family.orders.clone(),
+        leaves: family.leaves.clone(),
+        steps: pruned,
+        factors: factors.into_iter().collect(),
+        vertices: instances.into_iter().collect(),
+        currents: currents.into_iter().collect(),
+    }
+}
+
+/// The items of `items` in a list of their own length.
+fn exact<T>(items: impl Iterator<Item = T>) -> Vec<T> {
+    let mut list: Vec<T> = items.collect();
+    list.shrink_to_fit();
+    list
 }
 
 /// The modelled work of a pruned step (as the loader counts it,
@@ -658,7 +782,10 @@ mod tests {
         assert!(template.live_rows(&[true, true], &[0, 1]).unwrap().is_none());
         assert!(template.live_rows(&[true], &[0, 1]).is_err());
         assert!(template.live_rows(&[true, false], &[1, 0]).is_err());
-        let live = template.live_rows(&[true, false], &[0, 1]).unwrap().unwrap();
+        let live = template
+            .live_rows_keeping(&[true, false], &[0, 1], (1, 1))
+            .unwrap()
+            .unwrap();
         assert_eq!(live.listed(), [0, 1]);
         assert_eq!(live.families(), [0]);
         let pruned: Vec<_> = (0..2).map(|f| live.family(f).unwrap()).collect();
@@ -705,7 +832,10 @@ mod tests {
         // Per column: column 1 keeps row 0 only and the call row 1 only, so
         // only object row 2 (row 1, column 0) is seeded.
         let per_column = plan("[null,[0]]", 2);
-        let live = per_column.live_rows(&[false, true], &[0, 1]).unwrap().unwrap();
+        let live = per_column
+            .live_rows_keeping(&[false, true], &[0, 1], (1, 1))
+            .unwrap()
+            .unwrap();
         let pairs = |links: &[crate::loop_v2::kernels::RowLink]| -> Vec<(u32, u32)> {
             links.iter().map(|l| (l.output, l.input)).collect()
         };
@@ -713,6 +843,45 @@ mod tests {
         let expected: Vec<_> = pairs(full).into_iter().filter(|&(_, input)| input == 2).collect();
         assert_eq!(expected.len(), 1);
         assert_eq!(pairs(&live.family(0).unwrap().steps[0].edges[0].links), expected);
+        // The copies are allocated at the lengths they keep.
+        let copy = live.family(0).unwrap();
+        assert_eq!(copy.steps.capacity(), copy.steps.len());
+        for step in &copy.steps {
+            assert_eq!(step.edges.capacity(), step.edges.len());
+            for edge in &step.edges {
+                assert_eq!(edge.links.capacity(), edge.links.len());
+            }
+        }
+    }
+
+    /// A family whose pruned copy would keep more than [`KEPT_SHARE`] of
+    /// its heap runs whole on the masked seeds: no copy, its links and the
+    /// rows they read counted; values bitwise the row-restricted plan's.
+    #[test]
+    fn a_family_keeping_most_of_its_links_runs_whole() {
+        let template = plan("null", 1);
+        let restricted = plan("[[0]]", 1);
+        // Family 0 keeps both steps and 2 of its 3 links (whole); family 1
+        // nothing (pruned to no step, not live).
+        let live = template.live_rows(&[true, false], &[0, 1]).unwrap().unwrap();
+        assert!(live.family(0).is_none());
+        assert!(live.family(1).unwrap().steps.is_empty());
+        assert_eq!((live.families(), live.links(), live.pruned()), (&[0][..], 3, 1));
+        assert_eq!(live.read.factors, [vec![true, true], vec![true], vec![false]]);
+        const L: usize = 2;
+        let zero = Rational::from(0);
+        let batch = batch(true);
+        let data = LaneData::<Rational, L>::new(&template, &batch, &[0, 1], &zero).unwrap();
+        let seeds = seeds(&template, &data);
+        let mut inputs = ChunkInputs::new(&template).with_rows(Some(live.read.clone()));
+        let family = &template.families[0];
+        let reads = Reads::of_families(std::iter::once(family));
+        inputs.prepare(&template, &data, &reads, &reads);
+        let run = run_family_on::<Rational, L>(&template, 0, family, &inputs, &seeds, &data).unwrap();
+        assert_eq!(
+            run.numerator.accumulators,
+            numerators(&restricted, &batch)[0]
+        );
     }
 
     /// The executor keeps its latest row liveness and returns it again for

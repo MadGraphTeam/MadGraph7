@@ -1084,8 +1084,9 @@ pub mod v2 {
             }
             b_families.retain(|&f| kept[f]);
         }
-        // The row liveness: the listed families' pruned steps (those left
-        // without a step have a zero numerator and are not dressed).
+        // The row liveness: the listed families' pruned steps, or their own
+        // where a copy would keep most links (those left without a step
+        // have a zero numerator and are not dressed).
         if let Some(live) = live {
             if merged.is_some() || live.listed() != b_families.as_slice() {
                 return Err(RusticolError::invalid_argument(
@@ -1094,6 +1095,7 @@ pub mod v2 {
             }
             b_families = live.families().to_vec();
             report.count("live-row links", live.links() as u64);
+            report.count("row-pruned families", live.pruned() as u64);
         }
         // The chunk-input budget in reals, and in lane vectors for the
         // bucket chunks' own inputs.
