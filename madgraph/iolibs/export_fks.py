@@ -91,6 +91,38 @@ def make_jpeg_async(args):
 
 
 #=================================================================================
+# MadVFold (arXiv:2609.23500): 'output DIR --vfold' overlays the files of
+# madvfold/overlay on the stock ones, and 'output DIR --vfold-with-tests'
+# also those of madvfold/overlay_test (development and test hooks).
+# Both overlay trees mirror the paths of the mg5amcnlo tree.
+#=================================================================================
+def vfold_overlays(opt):
+    """Return the overlay trees to apply, in order (later ones win)"""
+    roots = []
+    if opt.get('vfold'):
+        roots.append(pjoin(MG5DIR, 'madvfold', 'overlay'))
+    if opt.get('vfold_tests'):
+        roots.append(pjoin(MG5DIR, 'madvfold', 'overlay_test'))
+    return roots
+
+def vfold_file(opt, relpath, stockpath):
+    """Return the path of relpath (relative to the mg5amcnlo tree) in the last
+    overlay tree that contains it, or else stockpath"""
+    relpath = os.path.normpath(relpath)
+    for root in reversed(vfold_overlays(opt)):
+        if os.path.isfile(pjoin(root, relpath)):
+            return pjoin(root, relpath)
+    return stockpath
+
+def vfold_copy_template(opt, dir_path):
+    """Overlay the Template/NLO files of the overlay trees on dir_path"""
+    for root in vfold_overlays(opt):
+        if os.path.isdir(pjoin(root, 'Template', 'NLO')):
+            logger.info('MadVFold: overlay %s' % pjoin(root, 'Template', 'NLO'))
+            misc.copytree(pjoin(root, 'Template', 'NLO'), dir_path)
+
+
+#=================================================================================
 # Class for used of the (non-optimized) Loop process
 #=================================================================================
 class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
@@ -126,6 +158,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             misc.copytree(os.path.join(mgme_dir, 'Template', 'NLO'), dir_path, True)
             # misc.copytree since dir_path already exists
             misc.copytree(pjoin(self.mgme_dir, 'Template', 'Common'),dir_path)
+            # MadVFold: overlay the vfold Template/NLO files, if requested
+            vfold_copy_template(self.opt, dir_path)
             
         elif not os.path.isfile(os.path.join(dir_path, 'TemplateVersion.txt')):
             if not mgme_dir:
@@ -337,7 +371,9 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                                  self.dir_path+'/bin/internal/me5_logging.conf')
         
         for cp_file in files_to_copy:
-            cp(pjoin(_file_path,cp_file),
+            # MadVFold: use the vfold version of the file, if requested
+            cp(vfold_file(self.opt, pjoin('madgraph', cp_file),
+                          pjoin(_file_path,cp_file)),
                 pjoin(self.dir_path,'bin','internal',os.path.basename(cp_file)))
 
     def convert_model(self, model, wanted_lorentz = [], 
@@ -5186,6 +5222,8 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
             # misc.copytree since dir_path already exists
             misc.copytree(pjoin(self.mgme_dir, 'Template', 'Common'),
                                dir_path)
+            # MadVFold: overlay the vfold Template/NLO files, if requested
+            vfold_copy_template(self.opt, dir_path)
 
         elif not os.path.isfile(os.path.join(dir_path, 'TemplateVersion.txt')):
             if not mgme_dir:

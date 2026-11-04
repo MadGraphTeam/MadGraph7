@@ -934,6 +934,15 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
         noclean = '-noclean' in args
         force = '-f' in args 
         nojpeg = '-nojpeg' in args
+        # MadVFold (arXiv:2609.23500): vfold code (and development/test hooks)
+        vfold_tests = '--vfold-with-tests' in args
+        vfold = '--vfold' in args or vfold_tests
+        # MadVFold: the overlays are patched copies of the MadGraph7 0.2.1 templates
+        # (madvfold/overlay*), so they cannot be used with any other version
+        if vfold and misc.get_pkg_info()['version'] != '0.2.1':
+            raise MadGraph5Error('MadVFold: output --vfold requires '
+                                 'MadGraph7 0.2.1, this is version %s'
+                                 % misc.get_pkg_info()['version'])
         main_file_name = ""
         try:
             main_file_name = args[args.index('-name') + 1]
@@ -951,6 +960,8 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                       group_subprocesses=group_processes)
 
             self._curr_exporter.pass_information_from_cmd(self)
+            self._curr_exporter.opt['vfold'] = vfold
+            self._curr_exporter.opt['vfold_tests'] = vfold_tests
 
         # check if a dir with the same name already exists
         if not force and not noclean and os.path.isdir(self._export_dir)\
@@ -989,6 +1000,13 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
             self._curr_exporter.generate_virtuals_from_OLP(
               self.born_processes_for_olp,self._export_dir,self.options['OLP'])
                 
+        # MadVFold: prepare the directory for the vfold tests, if requested
+        if vfold_tests:
+            setup = pjoin(MG5DIR, 'madvfold', 'DEV', 'setupVfoldTests.sh')
+            logger.info('MadVFold: run %s %s' % (setup, self._export_dir))
+            if subprocess.call([setup, self._export_dir]) != 0:
+                raise MadGraph5Error('MadVFold: %s failed' % setup)
+
         # Remember that we have done export
         self._done_export = (self._export_dir, self._export_format)
 
