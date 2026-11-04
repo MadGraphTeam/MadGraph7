@@ -10,20 +10,20 @@ namespace madspace {
  * The fully differential cross section @f$f(x)@f$.
  *
  * Assembles the integrand of the phase-space integral: a @ref MatrixElement
- * evaluation multiplied by the flux factor, the @ref PartonDensity values for
- * the two beams, and @f$\alpha_s@f$ from a @ref RunningCoupling, all at the
- * @ref EnergyScale of the event [1]. The `Cached*` variants of the PDF and
+ * evaluation, with @f$\alpha_s@f$ from a @ref RunningCoupling, multiplied by
+ * the flux factor and the @ref PartonDensity values for the two beams, all at
+ * the @ref EnergyScale of the event [1]. The `Cached*` variants of the PDF and
  * scale arguments reuse values already computed elsewhere in the graph.
  *
  * With @p decay the generator instead describes the decay of a single incoming
  * particle. The differential rate is then @f$|M|^2 / (2 M)@f$ with
  * @f$M@f$ = @p cm_energy, in GeV, rather than a hadronic cross section in pb.
- * There are no beams, hence no momentum fractions and no PDFs.
+ * There are no beams, hence no PDFs; declared `x1`, `x2` inputs are ignored.
  *
  * `batch` is the leading batch dimension.
  *
  * **Arguments**
- * - the arguments of @p matrix_element, plus
+ * - the arguments of @p matrix_element except `alpha_s`, plus
  * - `x1`, `x2` – `float`, shape `(batch,)` – parton momentum fractions (when
  *   @p input_momentum_fraction is true).
  * - `pdf_id` – `int`, shape `(batch,)` – selected flavour combination.
@@ -35,6 +35,8 @@ namespace madspace {
  * **Returns**
  * - the return values of @p matrix_element, scaled to the differential cross
  *   section.
+ * - `raw_matrix_element` – `float`, shape `(batch,)` – the squared matrix
+ *   element without PDFs and flux (with @p return_matrix_element).
  *
  * **References**
  * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
@@ -49,7 +51,8 @@ public:
 
     /**
      * @param matrix_element          The squared matrix element.
-     * @param cm_energy                Total collision energy.
+     * @param cm_energy                Total collision energy (the mass of the
+     *                                 decaying particle with @p decay).
      * @param running_coupling         Optional @f$\alpha_s@f$ source.
      * @param energy_scale             An @ref EnergyScale, a `CachedScale` tag,
      *                                 or nothing.
@@ -62,9 +65,8 @@ public:
      *                                 rather than reconstructed.
      * @param decay                    If true, describe the decay of a single
      *                                 incoming particle instead of a collision.
-     * @param matrix_element_output    If true, also return the squared matrix
-     *                                 element itself (before PDFs and flux) as
-     *                                 a last output, `raw_matrix_element`.
+     * @param return_matrix_element    If true, also return the squared matrix
+     *                                 element itself as `raw_matrix_element`.
      */
     DifferentialCrossSection(
         const MatrixElement& matrix_element,
@@ -77,7 +79,7 @@ public:
         const std::variant<std::monostate, PdfGrid, CachedPdf>& pdf2 = std::monostate{},
         bool input_momentum_fraction = true,
         bool decay = false,
-        bool matrix_element_output = false
+        bool return_matrix_element = false
     );
 
     /// The allowed initial-parton flavour combinations.
@@ -90,8 +92,8 @@ public:
     const std::optional<RunningCoupling>& running_coupling() const {
         return _running_coupling;
     }
-    /// Whether the squared matrix element is returned as a last output.
-    bool matrix_element_output() const { return _matrix_element_output; }
+    /// Whether the squared matrix element is returned as `raw_matrix_element`.
+    bool returns_matrix_element() const { return _return_matrix_element; }
 
 private:
     NamedVector<Value> build_function_impl(
@@ -107,7 +109,7 @@ private:
     std::variant<std::monostate, EnergyScale, CachedScale> _energy_scale;
     bool _input_momentum_fraction;
     bool _decay;
-    bool _matrix_element_output;
+    bool _return_matrix_element;
 };
 
 } // namespace madspace

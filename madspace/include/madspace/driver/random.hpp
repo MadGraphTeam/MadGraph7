@@ -32,6 +32,9 @@ struct DerivedSeed {
         madnis_unweight,
         madnis_sample_buffer,
         global_init,
+        // per-event random numbers of the re- and unweighting steps; at most
+        // 16 types fit into the seed
+        weighting_step_random,
     };
 
     std::array<std::uint32_t, 4> seed_parts;
@@ -47,10 +50,9 @@ struct DerivedSeed {
 
 /// Cached MIXMAX state after applying the 64 global-run-seed bits
 /// (`seed_parts[0..1]`, i.e. effective seed bits `[64, 128)`). These bits do
-/// not change within a run, so every @ref MixMaxRandom shares this cache and
-/// only recomputes it when the run seed actually differs, for example when
-/// madspace is driven as a library across several runs. The per-call bits
-/// `[0, 64)` are applied on top by @ref MixMaxRandom.
+/// not change within a run, so each @ref MixMaxRandom keeps this cache and
+/// only recomputes it when the run seed differs from the cached one. The
+/// per-call bits `[0, 64)` are applied on top by @ref MixMaxRandom.
 struct RunSeedSkip {
     std::array<std::uint64_t, mixmax_engine::state_size> state;
     std::uint64_t run_seed = 0;
