@@ -12,25 +12,35 @@
 #   madvfold/README_CUDACPP.md): the Born process <ccproc>.vfold.sa with the --vfold
 #   output option (which also adds the multichannel support needed for the Born),
 #   the real-emission processes <ccproc>.sa without it;
-# - GTEST, the googletest installation shared by the cudacpp unit tests of all
-#   these process directories (their <ccproc>/test/GTEST is created as a symlink
-#   to it by 'make -f cudacpp.mk gtestlibs'): googletest is cloned and built there
-#   by the first build, unless a googletest build is found in
-#   <mg5dir>/madvfold/DEV/CUDACPP (GTEST/googletest or test/googletest) and copied.
+# - only with -tests (for 'output --vfold-with-tests'): GTEST, the googletest
+#   installation shared by the cudacpp unit tests of all these process directories
+#   (their <ccproc>/test/GTEST is created as a symlink to it by 'make -f cudacpp.mk
+#   gtestlibs'): googletest is cloned and built there by the first build, unless a
+#   googletest build is found in <mg5dir>/madvfold/DEV/CUDACPP (GTEST/googletest
+#   or test/googletest) and copied. Without GTEST, buildCudacppLibs.sh builds
+#   the libraries without the cudacpp unit tests.
+# The mg5amcnlo directory <mg5dir> is that of 'output --vfold' (passed by
+# vfold/generateCudacpp.sh), by default ../../.. (<mg5dir>/madvfold/DEV/<proc>).
 # The ccache directory CUDACPP/ccache is created later by vfold/buildCudacppLibs.sh.
 # Then build the libraries with vfold/buildCudacppLibs.sh and copy them to
-# lib/cudacpp with vfold/copyCudacppLibs.sh.
+# lib/cudacpp with vfold/copyCudacppLibs.sh (vfold/generateCudacpp.sh does all three).
 
 set -e
 set -o pipefail
 
 cd $(dirname $0)/..
 procdir=$(pwd -P)
-if [ "$1" != "" ]; then
-  echo "Usage: $0"
+tests=0
+if [ "$1" == "-tests" ]; then tests=1; shift; fi
+if [ "$2" != "" ] || [ "${1:0:1}" == "-" ]; then
+  echo "Usage: $0 [-tests] [<mg5dir>]"
   exit 1
 fi
-mg5dir=$(cd ../../..; pwd -P) # as in vfold/myLaunch.sh (<mg5dir>/madvfold/DEV/<proc>)
+if [ "$1" != "" ]; then
+  mg5dir=$(cd $1; pwd -P)
+else
+  mg5dir=$(cd ../../..; pwd -P) # as in vfold/myLaunch.sh (<mg5dir>/madvfold/DEV/<proc>)
+fi
 if [ ! -f ${mg5dir}/PLUGIN/CUDACPP_OUTPUT/__init__.py ]; then
   echo "ERROR! The cudacpp plugin is not installed in ${mg5dir}/PLUGIN/CUDACPP_OUTPUT (see madvfold/README_CUDACPP.md)"
   exit 1
@@ -49,19 +59,21 @@ if [ "${ccBornProc}" == "" ]; then
   exit 1
 fi
 
-# Create the GTEST directory
+# Create the CUDACPP directory, and the GTEST directory (only with -tests)
 mkdir CUDACPP
 devdir=${mg5dir}/madvfold/DEV/CUDACPP
-mkdir CUDACPP/GTEST
-echo "Shared googletest installation for the cudacpp process directories in CUDACPP" > CUDACPP/GTEST/.keepme
-if [ -d ${devdir}/GTEST/googletest ]; then
-  command cp -dpr ${devdir}/GTEST/googletest CUDACPP/GTEST
-elif [ -d ${devdir}/test/googletest ]; then
-  command cp -dpr ${devdir}/test/googletest CUDACPP/GTEST
-else
-  echo "WARNING! No googletest in ${devdir}: it will be cloned and built by 'make -f cudacpp.mk gtestlibs' (needs git and cmake)"
+if [ "${tests}" == "1" ]; then
+  mkdir CUDACPP/GTEST
+  echo "Shared googletest installation for the cudacpp process directories in CUDACPP" > CUDACPP/GTEST/.keepme
+  if [ -d ${devdir}/GTEST/googletest ]; then
+    command cp -dpr ${devdir}/GTEST/googletest CUDACPP/GTEST
+  elif [ -d ${devdir}/test/googletest ]; then
+    command cp -dpr ${devdir}/test/googletest CUDACPP/GTEST
+  else
+    echo "WARNING! No googletest in ${devdir}: it will be cloned and built by 'make -f cudacpp.mk gtestlibs' (needs git and cmake)"
+  fi
 fi
-command cp -dp ${devdir}/.gitignore CUDACPP
+if [ -f ${devdir}/.gitignore ]; then command cp -dp ${devdir}/.gitignore CUDACPP; fi
 
 # Generate the cudacpp process directories
 grep -v '^#' ${spec} | while read tag ccProc gencmd; do

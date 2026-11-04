@@ -15,7 +15,7 @@ usage() {
   echo "         (default options: --vfold-with-tests; default gendir: madvfold/DEV/<name>_vfgen,"
   echo "         where <name> is built from the particles, e.g. epem_bbxbbx for 'generate e+ e- > b b~ b b~ [QCD]',"
   echo "         or is the alias, e.g. eebbbb; aliases: eebb, eebbbb, eemumubb, eemumubbg)"
-  echo "         (-nocudacppbuild: with --vfold-with-tests, do not build the cudacpp libraries for mode C)"
+  echo "         (-nocudacppbuild: with --vfold or --vfold-with-tests, do not build the cudacpp libraries for mode C)"
   echo "Example: $0 'generate e+ e- > b b~ b b~ [QCD]'"
   echo "Example: $0 eebbbb"
   echo "Example: $0 -opt '' 'generate e+ e- > b b~ [QCD]' /tmp/eebb_stock"
@@ -25,7 +25,7 @@ mg5dir=$(cd $(dirname $0)/../..; pwd -P)
 opts="--vfold-with-tests"
 while [ "$1" != "" ]; do
   if [ "$1" == "-opt" ] && [ "$#" -ge 2 ]; then opts="$2"; shift 2
-  elif [ "$1" == "-nocudacppbuild" ]; then export VFOLD_SETUP_NOCUDACPPBUILD=1; shift # see setupVfoldTests.sh
+  elif [ "$1" == "-nocudacppbuild" ]; then export VFOLD_SETUP_NOCUDACPPBUILD=1; shift # see vfold/generateCudacpp.sh
   elif [ "${1:0:1}" == "-" ]; then usage
   else break; fi
 done

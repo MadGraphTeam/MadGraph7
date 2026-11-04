@@ -28,14 +28,16 @@ in `<proc>/test/GTEST`.
 
 ## Build the cudacpp libraries for a process directory
 
-`output <dir> --vfold-with-tests` (e.g. via
+`output <dir> --vfold` (or `--vfold-with-tests`, e.g. via
 `madvfold/DEV/genProc.sh 'generate e+ e- > b b~ b b~ [QCD]'`, giving
 `madvfold/DEV/epem_bbxbbx_vfgen`) builds the cudacpp libraries for mode C
 automatically, if the cudacpp plugin is installed in `PLUGIN/CUDACPP_OUTPUT`:
-`madvfold/DEV/setupVfoldTests.sh` runs the three scripts below (with their logs
-in `CUDACPP`). They can also be run by hand in the process directory:
+it runs `vfold/generateCudacpp.sh` in the process directory, which runs the
+three scripts below (with their logs in `CUDACPP`); with
+`VFOLD_SETUP_NOCUDACPPBUILD=1` (`genProc.sh -nocudacppbuild`) it only runs the
+first one. They can also be run by hand in the process directory:
 ```
-./vfold/genCudacpp.sh        # create CUDACPP: cudacpp process directories, GTEST
+./vfold/genCudacpp.sh [-tests] # create CUDACPP: cudacpp process directories (GTEST with -tests)
 ./vfold/buildCudacppLibs.sh  # build the cudacpp libraries in CUDACPP
 ./vfold/copyCudacppLibs.sh   # copy them to lib/cudacpp (vfold/myLaunch.sh does it in mode C)
 ```
@@ -44,7 +46,9 @@ in `CUDACPP`). They can also be run by hand in the process directory:
   directory per cudacpp library: the Born process `CUDACPP/<ccproc>.vfold.sa` with
   the `--vfold` option (vfold extensions and multichannel support), the
   real-emission processes `CUDACPP/<ccproc>.sa` without it.
-- `CUDACPP/GTEST` is the googletest installation (for the cudacpp unit tests)
+- `CUDACPP/GTEST` (only with `--vfold-with-tests`, i.e. `genCudacpp.sh
+  -tests`; without it, the libraries are built without the cudacpp unit
+  tests) is the googletest installation (for the cudacpp unit tests)
   shared by these cudacpp process directories: the build of each of them creates
   its `test/GTEST` as a symlink to `../../GTEST` (if `../../GTEST` did not exist,
   `test/GTEST` would be a local directory instead). `genCudacpp.sh` copies an

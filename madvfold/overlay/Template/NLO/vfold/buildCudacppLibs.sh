@@ -70,6 +70,10 @@ echo CCACHE_DIR=${CCACHE_DIR}
 export FC=gfortran
 export FPTYPE=d
 export HASCURAND=hasNoCurand
+# Build the cudacpp unit tests only if there is a googletest directory (GTEST,
+# created by 'vfold/genCudacpp.sh -tests', or test for the old .mad layout)
+if [ -d GTEST ] || [ -d test ]; then usegtest=1; else usegtest=0; export USEGTEST=0; fi
+echo USEGTEST=${usegtest}
 
 # Set up f90cache (disabled to avoid any module-related issues)
 unset F90CACHE_DIR
@@ -107,7 +111,7 @@ if [ "$force" == "2" ]; then
 elif [ "$force" == "1" ]; then
   make -f cudacpp.mk cleanall
 fi
-make -f cudacpp.mk gtestlibs
+if [ "${usegtest}" == "1" ]; then make -f cudacpp.mk gtestlibs; fi
 nj=$(( $(nproc)-1 ))
 make -f cudacpp.mk -j${nj} bldall
 popd > /dev/null

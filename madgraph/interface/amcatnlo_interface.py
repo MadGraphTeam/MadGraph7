@@ -1000,6 +1000,14 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
             self._curr_exporter.generate_virtuals_from_OLP(
               self.born_processes_for_olp,self._export_dir,self.options['OLP'])
                 
+        # MadVFold: generate and build the cudacpp libraries for mode C
+        # (if the cudacpp plugin is installed, else only a warning)
+        if vfold:
+            gencc = pjoin(self._export_dir, 'vfold', 'generateCudacpp.sh')
+            logger.info('MadVFold: run %s' % gencc)
+            if subprocess.call([gencc] + (['-tests'] if vfold_tests else []) + [MG5DIR]) != 0:
+                raise MadGraph5Error('MadVFold: %s failed' % gencc)
+
         # MadVFold: prepare the directory for the vfold tests, if requested
         if vfold_tests:
             setup = pjoin(MG5DIR, 'madvfold', 'DEV', 'setupVfoldTests.sh')

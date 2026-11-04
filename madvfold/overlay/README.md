@@ -15,6 +15,10 @@ Each patched stock file is first added here as a verbatim copy of the
 mg5amcnlo version it is based on, so that `git diff` against that commit
 gives the MadVFold patch set (e.g. to port it to later mg5amcnlo versions).
 
+The scripts in `Template/NLO/vfold` generate and build the cudacpp
+libraries for mode C (see `../README_CUDACPP.md`): `output --vfold` runs
+`vfold/generateCudacpp.sh` in the process directory.
+
 Each file is installed only once: development and test hooks in the
 Fortran code (e.g. the FVZ dumps) are included in the files of this tree,
 but they are disabled at compile time by `SubProcesses/vfold_tests.inc`
