@@ -50,6 +50,20 @@ pub fn rank_refusal(propagators: usize, rank: usize) -> Option<String> {
     }
 }
 
+/// The largest numerator rank the reducer admits over `propagators` loop
+/// propagators (NinjaRS: `propagators + 2`), from [`rank_refusal`]; the
+/// excess above the propagators is a `u8` in NinjaRS's rank classes.
+pub fn largest_rank(propagators: usize) -> usize {
+    let mut rank = propagators;
+    for _ in 0..=u8::MAX {
+        if rank_refusal(propagators, rank + 1).is_some() {
+            break;
+        }
+        rank += 1;
+    }
+    rank
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -74,5 +88,7 @@ mod tests {
             assert!(refusal.contains("NinjaRS reduces rank <= N+2"), "{refusal}");
         }
         assert!(rank_refusal(0, 0).is_some());
+        assert_eq!(largest_rank(4), 6);
+        assert_eq!(largest_rank(64), 66);
     }
 }
