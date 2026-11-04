@@ -3,8 +3,9 @@
 Mode C of MadVFold evaluates the Born and real-emission matrix elements with
 the cudacpp plugin of madgraph4gpu (on CPU with SIMD, or on GPU). This needs
 the MadVFold version of the cudacpp plugin (branch `vfold5381` of madgraph4gpu,
-cudacpp step 13b and later), which adds the `--vfold` output option and
-keeps googletest in `<proc>/test/GTEST`.
+cudacpp step 13c and later), which adds the `--vfold` output option (also
+in `standalone_cudacpp` mode, with multichannel support) and keeps googletest
+in `<proc>/test/GTEST`.
 
 ## Install the cudacpp plugin
 
@@ -27,8 +28,9 @@ keeps googletest in `<proc>/test/GTEST`.
 
 ## Build the cudacpp libraries for a process directory
 
-`output <dir> --vfold-with-tests` (e.g. via `madvfold/DEV/genProc.sh eebbbb`,
-giving `madvfold/DEV/eebbbb_vfgen`) builds the cudacpp libraries for mode C
+`output <dir> --vfold-with-tests` (e.g. via
+`madvfold/DEV/genProc.sh 'generate e+ e- > b b~ b b~ [QCD]'`, giving
+`madvfold/DEV/epem_bbxbbx_vfgen`) builds the cudacpp libraries for mode C
 automatically, if the cudacpp plugin is installed in `PLUGIN/CUDACPP_OUTPUT`:
 `madvfold/DEV/setupVfoldTests.sh` runs the three scripts below (with their logs
 in `CUDACPP`). They can also be run by hand in the process directory:
@@ -38,9 +40,10 @@ in `CUDACPP`). They can also be run by hand in the process directory:
 ./vfold/copyCudacppLibs.sh   # copy them to lib/cudacpp (vfold/myLaunch.sh does it in mode C)
 ```
 - `genCudacpp.sh` reads `vfold/cudacpp_spec.txt` (created by
-  `vfold/genCudacppSpec.sh` if missing) and generates one `madevent_simd`
-  directory per cudacpp library: the Born process with the `--vfold` option,
-  the real-emission processes without it.
+  `vfold/genCudacppSpec.sh` if missing) and generates one `standalone_cudacpp`
+  directory per cudacpp library: the Born process `CUDACPP/<ccproc>.vfold.sa` with
+  the `--vfold` option (vfold extensions and multichannel support), the
+  real-emission processes `CUDACPP/<ccproc>.sa` without it.
 - `CUDACPP/GTEST` is the googletest installation (for the cudacpp unit tests)
   shared by these cudacpp process directories: the build of each of them creates
   its `test/GTEST` as a symlink to `../../GTEST` (if `../../GTEST` did not exist,
@@ -55,10 +58,11 @@ in `CUDACPP`). They can also be run by hand in the process directory:
   exists, or else as a local directory.
 - `buildCudacppLibs.sh` and `copyCudacppLibs.sh` also work for the hand-written
   `madvfold/DEV/<proc>_vfalt`, whose cudacpp process directories are in
-  `madvfold/DEV/CUDACPP` instead of `<proc>/CUDACPP`.
+  `madvfold/DEV/CUDACPP` instead of `<proc>/CUDACPP` (`madevent_simd`
+  directories `<ccproc>.mad`).
 
 The cudacpp unit tests can then be run in each cudacpp process directory, e.g.
 ```
-cd CUDACPP/epem_bbbxbx.mad/SubProcesses/P1_epem_bbbxbx
+cd CUDACPP/epem_bbbxbx.vfold.sa/SubProcesses/P1_Sigma_sm_epem_bbbxbx
 ./build.avx2_d_inl0_hrd0/runTest_cpp.exe
 ```

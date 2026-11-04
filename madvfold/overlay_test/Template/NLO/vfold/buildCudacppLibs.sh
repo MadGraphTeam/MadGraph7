@@ -20,7 +20,7 @@ elif [ "$1" != "" ]; then
 fi
 
 # Read the cudacpp processes for this directory from cudacpp_spec.txt (see genCudacppSpec.sh)
-# NB! Need .mad libraries because .sa libraries are built without multichannel support
+# NB! The Born library needs multichannel support: .vfold.sa (standalone with --vfold) or .mad, not plain .sa
 spec=$(pwd)/vfold/cudacpp_spec.txt
 if [ ! -f ${spec} ]; then
   echo "ERROR! ${spec} not found (create it using ./vfold/genCudacppSpec.sh)"
@@ -35,6 +35,14 @@ fi
 # Print the cudacpp process for a given tag (e.g. real1 -> epem_bbxg)
 function ccProcForTag() {
   awk -v tag=$1 '$1==tag{print $2}' ${spec}
+}
+# The cudacpp process directory for a cudacpp process (relative to the directory with
+# the cudacpp process directories): <ccproc>.vfold.sa for the Born (standalone_cudacpp
+# with --vfold) or <ccproc>.sa for the Real processes (standalone_cudacpp), as created
+# by vfold/genCudacpp.sh, or else <ccproc>.mad (madevent_simd, the layout of
+# madvfold/DEV/CUDACPP for the hand-written madvfold/DEV/<proc>_vfalt)
+function ccProcDir() {
+  if [ -d $1.$2 ]; then echo $1.$2; else echo $1.mad; fi
 }
 
 # Set up build configuration
@@ -91,8 +99,9 @@ if [ -d $cuda_home ]; then
 fi
 
 # Build cudacpp Born libraries
-ccBornMad=${ccBornProc}.mad
-pushd ${ccBornMad}/SubProcesses/P1_${ccBornProc} > /dev/null
+ccBornSa=$(ccProcDir ${ccBornProc} vfold.sa)
+echo "INFO:   build the Born library ${ccBornSa} (all backends) at $(date +%T)"
+pushd $(ls -d ${ccBornSa}/SubProcesses/P1_*) > /dev/null # P1_<ccproc> (.mad) or P1_Sigma_<model>_<ccproc> (.vfold.sa)
 if [ "$force" == "2" ]; then
   make -f cudacpp.mk distclean
 elif [ "$force" == "1" ]; then
@@ -106,14 +115,17 @@ popd > /dev/null
 # Build cudacpp Real libraries
 for tag in ${ccRealTags}; do
   ccRealProc=$(ccProcForTag ${tag})
-  ccRealMad=${ccRealProc}.mad
-  pushd ${ccRealMad}/SubProcesses/P1_${ccRealProc} > /dev/null
+  ccRealSa=$(ccProcDir ${ccRealProc} sa)
+  echo "INFO:   build the Real library ${ccRealSa} (${tag}, all backends) at $(date +%T)"
+  pushd $(ls -d ${ccRealSa}/SubProcesses/P1_*) > /dev/null # P1_<ccproc> (.mad) or P1_Sigma_<model>_<ccproc> (.sa)
   if [ "$force" == "1" ]; then
     make -f cudacpp.mk cleanall
   fi
   make -f cudacpp.mk -j${nj} bldall
   popd > /dev/null
 done
+
+echo "INFO:   cudacpp libraries built at $(date +%T)"
 
 # Sanity check
 echo FC=${FC}

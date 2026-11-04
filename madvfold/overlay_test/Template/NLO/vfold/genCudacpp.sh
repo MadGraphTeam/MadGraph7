@@ -6,11 +6,12 @@
 # Create the CUDACPP subdirectory of this process directory, with the cudacpp
 # process directories needed by mode C (as in madvfold/DEV/CUDACPP for the
 # hand-written <proc>_vfalt):
-# - one madevent_simd process directory for each line of vfold/cudacpp_spec.txt
+# - one standalone_cudacpp process directory for each line of vfold/cudacpp_spec.txt
 #   (created by vfold/genCudacppSpec.sh if it does not exist yet), generated with
 #   the cudacpp plugin installed in <mg5dir>/PLUGIN/CUDACPP_OUTPUT (see
-#   madvfold/README_CUDACPP.md): the Born process with the --vfold output option,
-#   the real-emission processes without it;
+#   madvfold/README_CUDACPP.md): the Born process <ccproc>.vfold.sa with the --vfold
+#   output option (which also adds the multichannel support needed for the Born),
+#   the real-emission processes <ccproc>.sa without it;
 # - GTEST, the googletest installation shared by the cudacpp unit tests of all
 #   these process directories (their <ccproc>/test/GTEST is created as a symlink
 #   to it by 'make -f cudacpp.mk gtestlibs'): googletest is cloned and built there
@@ -65,22 +66,19 @@ command cp -dp ${devdir}/.gitignore CUDACPP
 # Generate the cudacpp process directories
 grep -v '^#' ${spec} | while read tag ccProc gencmd; do
   gencmd=$(echo ${gencmd} | sed "s/^'//; s/'$//")
-  if [ "${tag}" == "born" ]; then vfoldopt=--vfold; else vfoldopt=; fi
-  ccMad=${ccProc}.mad
-  echo "Generate CUDACPP/${ccMad} (${tag}: '${gencmd}' ${vfoldopt})"
-  mgfile=${procdir}/CUDACPP/${ccMad}.mg
+  if [ "${tag}" == "born" ]; then vfoldopt=--vfold; ccSa=${ccProc}.vfold.sa; else vfoldopt=; ccSa=${ccProc}.sa; fi
+  echo "Generate CUDACPP/${ccSa} (${tag}: '${gencmd}' ${vfoldopt})"
+  mgfile=${procdir}/CUDACPP/${ccSa}.mg
   cat > ${mgfile} << EOF
 set stdout_level DEBUG
 set zerowidth_tchannel F
 ${gencmd}
-output madevent_simd ${procdir}/CUDACPP/${ccMad} --hel_recycling=False --vector_size=32 ${vfoldopt}
+output standalone_cudacpp ${procdir}/CUDACPP/${ccSa} ${vfoldopt}
 EOF
-  (cd ${mg5dir}; ./bin/mg5_aMC ${mgfile} > ${procdir}/CUDACPP/${ccMad}.log 2>&1) || { echo "ERROR! generation failed, see CUDACPP/${ccMad}.log"; exit 1; }
-  # As in madgraph4gpu CODEGEN/generateAndCompare.sh: keep the generation commands
-  # in mg5.in and make the directory relocatable (#400)
-  sed "s|${procdir}/CUDACPP/||" ${mgfile} > CUDACPP/${ccMad}/mg5.in
-  sed -i 's/mg5_path/#mg5_path/' CUDACPP/${ccMad}/Cards/me5_configuration.txt
-  mv ${mgfile} CUDACPP/${ccMad}.log CUDACPP/${ccMad}/
+  (cd ${mg5dir}; ./bin/mg5_aMC ${mgfile} > ${procdir}/CUDACPP/${ccSa}.log 2>&1) || { echo "ERROR! generation failed, see CUDACPP/${ccSa}.log"; exit 1; }
+  # As in madgraph4gpu CODEGEN/generateAndCompare.sh: keep the generation commands in mg5.in
+  sed "s|${procdir}/CUDACPP/||" ${mgfile} > CUDACPP/${ccSa}/mg5.in
+  mv ${mgfile} CUDACPP/${ccSa}.log CUDACPP/${ccSa}/
 done
 echo "Generation of CUDACPP completed"
 ls CUDACPP

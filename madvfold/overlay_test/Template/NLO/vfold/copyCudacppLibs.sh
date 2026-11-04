@@ -10,7 +10,7 @@ cd $(dirname $0)/..
 PROC=$(basename $(pwd))
 
 # Read the cudacpp processes for this directory from cudacpp_spec.txt (see genCudacppSpec.sh)
-# NB! Need .mad libraries because .sa libraries are built without multichannel support
+# NB! The Born library needs multichannel support: .vfold.sa (standalone with --vfold) or .mad, not plain .sa
 spec=$(pwd)/vfold/cudacpp_spec.txt
 if [ ! -f ${spec} ]; then
   echo "ERROR! ${spec} not found (create it using ./vfold/genCudacppSpec.sh)"
@@ -25,6 +25,14 @@ fi
 # Print the cudacpp process for a given tag (e.g. real1 -> epem_bbxg)
 function ccProcForTag() {
   awk -v tag=$1 '$1==tag{print $2}' ${spec}
+}
+# The cudacpp process directory for a cudacpp process (relative to the directory with
+# the cudacpp process directories): <ccproc>.vfold.sa for the Born (standalone_cudacpp
+# with --vfold) or <ccproc>.sa for the Real processes (standalone_cudacpp), as created
+# by vfold/genCudacpp.sh, or else <ccproc>.mad (madevent_simd, the layout of
+# madvfold/DEV/CUDACPP for the hand-written madvfold/DEV/<proc>_vfalt)
+function ccProcDir() {
+  if [ -d $1.$2 ]; then echo $1.$2; else echo $1.mad; fi
 }
 
 # Rename+re-soname a group's own common.so to a name unique to that group, and
@@ -65,8 +73,8 @@ echo "Copy the cudacpp libraries from $(cd ${ccDir}; pwd)"
 # Copy cudacpp libraries
 targetDir=lib/cudacpp
 rm -rf ${targetDir}
-ccBornMad=${ccBornProc}.mad
-ccBornDir=${ccDir}/${ccBornMad}/lib
+ccBornSa=$(cd ${ccDir}; ccProcDir ${ccBornProc} vfold.sa)
+ccBornDir=${ccDir}/${ccBornSa}/lib
 for bld in ${ccBornDir}/build.*; do
   bld=$(basename ${bld})
   mkdir -p ${targetDir}/${bld}
@@ -84,8 +92,8 @@ for bld in ${ccBornDir}/build.*; do
   # Real
   for tag in ${ccRealTags}; do
     ccRealProc=$(ccProcForTag ${tag})
-    ccRealMad=${ccRealProc}.mad
-    ccRealDir=${ccDir}/${ccRealMad}/lib
+    ccRealSa=$(cd ${ccDir}; ccProcDir ${ccRealProc} sa)
+    ccRealDir=${ccDir}/${ccRealSa}/lib
     mkdir ${targetDir}/${bld}/${tag}
     cp -dpr ${ccRealDir}/${bld}/libmg5amc_common_*.so ${targetDir}/${bld}/${tag}
     cp -dpr ${ccRealDir}/${bld}/libmg5amc_${ccRealProc}_*.so ${targetDir}/${bld}/${tag}
