@@ -65,7 +65,11 @@ def dag_born_amplitude_orders(
     dag: GenericDAG,
     model: Model,
 ) -> frozenset[CouplingOrders]:
-    """Total coupling orders of the amplitude roots of a compiled DAG."""
+    """Total coupling orders of the amplitude roots of a compiled DAG.
+
+    A vertex closure adds its vertex's orders to those of its two currents;
+    every other root contracts its currents directly.
+    """
 
     vertices: dict[tuple[int, tuple[int, ...]], Any] = {}
     for vertex in model.vertices:
@@ -74,14 +78,18 @@ def dag_born_amplitude_orders(
     for root in dag.amplitude_roots:
         left = dag.currents[root.left_id].index
         right = dag.currents[root.right_id].index
-        if root.vertex_kind is None or root.vertex_particles is None:
+        if root.kind != "vertex-closure":
             orders.add(
                 _combine_coupling_order_tuples(
                     tuple(left.coupling_orders), tuple(right.coupling_orders)
                 )
             )
             continue
-        vertex = vertices.get((int(root.vertex_kind), tuple(root.vertex_particles)))
+        vertex = (
+            None
+            if root.vertex_kind is None or root.vertex_particles is None
+            else vertices.get((int(root.vertex_kind), tuple(root.vertex_particles)))
+        )
         if vertex is None:
             raise ValueError(
                 f"amplitude root {root.id} of {dag.process.process!r} names no "
