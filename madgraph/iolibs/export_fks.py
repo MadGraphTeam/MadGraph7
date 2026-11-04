@@ -3236,7 +3236,7 @@ Parameters              %(params)s\n\
         # fks_common.find_color_links on the Born legs, in the same order)
         # Step 14g: also the index, for each Born leg, of its ANS(2) in the served
         # points, for the possible massless mothers of an FKS splitting, i.e.
-        # the final-state massless coloured legs (0 for the other legs): these
+        # the massless coloured legs, also in the initial state (0 for the other legs): these
         # must be the same legs as in the cudacpp Born library (vfold_bornextras.py)
         if self.opt.get('vfold'):
             process = me.get('processes')[0]
@@ -3245,7 +3245,7 @@ Parameters              %(params)s\n\
             nans2 = 0
             for leg in process.get('legs'):
                 particle = model.get_particle(leg.get('id'))
-                if leg.get('state') and particle.get('mass').lower() == 'zero' \
+                if particle.get('mass').lower() == 'zero' \
                         and particle.get('color') != 1:
                     nans2 += 1
                     ans2_index.append(nans2)
