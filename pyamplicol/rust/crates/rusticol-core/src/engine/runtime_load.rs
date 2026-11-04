@@ -3672,6 +3672,10 @@ impl ExecutionRuntime {
                         stage_evaluators.amplitude_stage.output_length,
                         reduction_footprint,
                     )?;
+                #[cfg(feature = "pacman")]
+                let mut direct = direct;
+                #[cfg(feature = "pacman")]
+                direct.pacman_set_process(&runtime.key);
                 amplitude
                     .prepare_compiled_symmetric_group_workspace(direct.reduction_tile_capacity())?;
                 runtime.stages = Some(stages);

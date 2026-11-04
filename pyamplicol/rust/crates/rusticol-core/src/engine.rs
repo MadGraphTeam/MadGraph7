@@ -4717,6 +4717,21 @@ use evaluation::resolved_f64_totals;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 mod compiled_direct_prototype;
 mod helicity_lane;
+#[cfg(all(
+    feature = "pacman",
+    any(feature = "f64-compiled", feature = "f64-symjit")
+))]
+mod pacman_capture;
+#[cfg(all(
+    feature = "pacman",
+    any(feature = "f64-compiled", feature = "f64-symjit")
+))]
+mod pacman_runner;
+#[cfg(all(
+    feature = "tile-override",
+    any(feature = "f64-compiled", feature = "f64-symjit")
+))]
+mod tile_override;
 use helicity_lane::*;
 mod momentum;
 use momentum::*;
@@ -4834,6 +4849,10 @@ mod evaluator;
 pub(crate) use evaluator::native_direct::tests::count_allocations;
 pub(crate) use evaluator::recurrence_closure_direct::execute_closure_reduce_rows;
 pub(crate) use evaluator::recurrence_intrinsic_direct::execute_interaction_terminal_closures;
+#[cfg(feature = "pacman")]
+pub(crate) use evaluator::recurrence_intrinsic_direct::{
+    pacman_contribution_op, pacman_contribution_scale, pacman_finalization_op,
+};
 #[cfg(all(test, feature = "f64-symjit"))]
 pub(crate) use evaluator::symjit_direct::tests::count_allocations;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]

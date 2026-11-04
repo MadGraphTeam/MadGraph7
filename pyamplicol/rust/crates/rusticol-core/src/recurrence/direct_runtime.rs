@@ -502,11 +502,16 @@ impl DirectRecurrenceExecutionRuntime {
         // allows it, rather than repeatedly running a few lanes.
         let minimum_tiled_points = (DIRECT_RUNTIME_ARENA_ALIGNMENT / size_of::<f64>()) as u32;
         let packed_singleton_capable = executors.packed_singleton_capable();
-        let tile_capacity = workspace_tile.min(
+        #[allow(unused_mut)]
+        let mut tile_capacity = workspace_tile.min(
             u32::try_from(cache_tile)
                 .unwrap_or(u32::MAX)
                 .max(minimum_tiled_points),
         );
+        #[cfg(feature = "pacman")]
+        if let Some(points) = super::direct_backend::pacman_gpu_tile_points()? {
+            tile_capacity = points.max(minimum_tiled_points);
+        }
         let momentum_plane_count = usize::try_from(momentum_form_count)
             .ok()
             .and_then(|forms| forms.checked_mul(usize::from(lorentz_component_count)))
@@ -1670,6 +1675,8 @@ impl DirectRecurrenceExecutionRuntime {
             self.arena
                 .clear_amplitude_active(component_base, component_count)?;
         }
+        #[cfg(feature = "pacman")]
+        super::direct_backend::pacman_note_cleared_amplitudes(amplitude_ranges);
 
         {
             let (current_re, current_im, amplitude_re, amplitude_im) =
@@ -1756,6 +1763,8 @@ impl DirectRecurrenceExecutionRuntime {
                     .expect("profiled direct execution has a start time")
                     .elapsed();
             }
+            #[cfg(feature = "pacman")]
+            super::direct_backend::pacman_forget_cleared_amplitudes();
             result?;
             #[cfg(any(test, feature = "on-the-fly-test-support"))]
             observe_direct_amplitudes_before_replay(

@@ -1504,13 +1504,23 @@ impl RecurrenceNativeRuntime {
                 RecurrenceNativeSelectors::ContractedColorUnion { .. } => unreachable!(),
             };
             let replay_selector = selected_replay.as_deref().unwrap_or(replay_selector);
+            let direct_points = direct_point_count(point_count)?;
+            #[cfg(feature = "pacman")]
+            crate::recurrence::direct_backend::pacman_reduction_begin();
             let direct_output = self
                 .scheduler
                 .execute_replay_tile_from_external_planes::<false>(
                     replay_selector,
-                    direct_point_count(point_count)?,
+                    direct_points,
                     &self.external_momenta[..input_len],
-                )?;
+                );
+            // the GPU kept the amplitudes: reduce them there (the host's planes are stale)
+            #[cfg(feature = "pacman")]
+            let kept = crate::recurrence::direct_backend::pacman_reduction_end();
+            #[cfg(not(feature = "pacman"))]
+            let kept = false;
+            let direct_output = direct_output?;
+            let (mut kept_planes, mut kept_weights) = (Vec::new(), Vec::new());
 
             for amplitude in direct_output.selected_amplitudes() {
                 let amplitude = amplitude?;
@@ -1529,12 +1539,25 @@ impl RecurrenceNativeRuntime {
                     continue;
                 }
                 let weight = helicity_weight * color_weight * normalization_factor;
+                if kept {
+                    kept_planes.push(amplitude.destination.id);
+                    kept_weights.push(weight);
+                    continue;
+                }
                 accumulate_lc_diagonal_amplitude(
                     point_count,
                     weight,
                     |point| (amplitude.real[point], amplitude.imaginary[point]),
                     |point, value| output[tile_start + point] += value,
                 );
+            }
+            #[cfg(feature = "pacman")]
+            if kept {
+                crate::recurrence::direct_backend::pacman_reduce(
+                    &kept_planes,
+                    &kept_weights,
+                    &mut output[tile_start..tile_start + point_count],
+                )?;
             }
             tile_start = tile_stop;
         }
@@ -1741,17 +1764,27 @@ impl RecurrenceNativeRuntime {
                     RecurrenceNativeSelectors::ContractedColorUnion { .. } => unreachable!(),
                 };
                 let replay_selector = selected_replay.as_deref().unwrap_or(replay_selector);
+                let direct_points = u32::try_from(point_count).map_err(|_| {
+                    RusticolError::invalid_argument(
+                        "recurrence point tile exceeds the native u32 ABI",
+                    )
+                })?;
+                #[cfg(feature = "pacman")]
+                crate::recurrence::direct_backend::pacman_reduction_begin();
                 let output = self
                     .scheduler
                     .execute_replay_tile_from_external_planes::<true>(
                         replay_selector,
-                        u32::try_from(point_count).map_err(|_| {
-                            RusticolError::invalid_argument(
-                                "recurrence point tile exceeds the native u32 ABI",
-                            )
-                        })?,
+                        direct_points,
                         &self.external_momenta[..input_len],
-                    )?;
+                    );
+                // the GPU kept the amplitudes: reduce them there (the host's planes are stale)
+                #[cfg(feature = "pacman")]
+                let kept = crate::recurrence::direct_backend::pacman_reduction_end();
+                #[cfg(not(feature = "pacman"))]
+                let kept = false;
+                let output = output?;
+                let (mut kept_planes, mut kept_weights) = (Vec::new(), Vec::new());
 
                 let reduction_started = Instant::now();
                 for amplitude in output.selected_amplitudes() {
@@ -1772,12 +1805,25 @@ impl RecurrenceNativeRuntime {
                         continue;
                     }
                     let weight = helicity_weight * color_weight * common.normalization_factor;
+                    if kept {
+                        kept_planes.push(amplitude.destination.id);
+                        kept_weights.push(weight);
+                        continue;
+                    }
                     accumulate_lc_diagonal_amplitude(
                         point_count,
                         weight,
                         |point| (amplitude.real[point], amplitude.imaginary[point]),
                         |point, value| values[tile_start + point] += value,
                     );
+                }
+                #[cfg(feature = "pacman")]
+                if kept {
+                    crate::recurrence::direct_backend::pacman_reduce(
+                        &kept_planes,
+                        &kept_weights,
+                        &mut values[tile_start..tile_start + point_count],
+                    )?;
                 }
                 reduction += reduction_started.elapsed();
                 tile_start = tile_stop;

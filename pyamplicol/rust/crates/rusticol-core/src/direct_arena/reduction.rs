@@ -82,6 +82,26 @@ impl<'a> DirectAmplitudePlanes<'a> {
         self.shape.component_count()
     }
 
+    /// Active points `start..start + count` as an active tile of `count`
+    /// points (one replay mapping of a tile that holds several).
+    pub(crate) fn rows(self, start: usize, count: usize) -> RusticolResult<Self> {
+        if count == 0
+            || start
+                .checked_add(count)
+                .is_none_or(|stop| stop > self.point_count as usize)
+        {
+            return Err(invalid(
+                "direct amplitude row range exceeds the active tile",
+            ));
+        }
+        Ok(Self {
+            values_re: &self.values_re[start..],
+            values_im: &self.values_im[start..],
+            shape: self.shape,
+            point_count: count as u32,
+        })
+    }
+
     /// Return one active plane without exposing its physical pitch padding.
     ///
     /// Callers validate the component catalog once before entering their hot
