@@ -134,7 +134,12 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
     # expressed in the Born colour basis (see
     # fks_common.born_basis_link_matrices). False restores the former layout:
     # one b_sf_NNN.f per link, each with its own colour basis.
-    born_color_links_in_born = True
+    # MadVFold: 'output --vfold' uses the former layout for now: its batching of
+    # the Born over folds and kpoints restores SAVEAMP/SAVEMOM between walks, but
+    # not the colour density and the caches of bornmatrix_colorlinks_fks.inc.
+    @property
+    def born_color_links_in_born(self):
+        return not self.opt.get('vfold')
 
 #===============================================================================
 # copy the Template in a new directory.
