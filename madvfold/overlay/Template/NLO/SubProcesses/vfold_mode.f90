@@ -24,7 +24,28 @@
 module vfold_mode
   implicit none
   character(len=2), public, save :: vfold_me_mode = 'C '
+
+  ! Road B step 11q: time spent in the MC@NLO-Delta extra work of
+  ! complete_xmcsubt (Pythia8 stopping scales and dead zones, then the Delta
+  ! Sudakov factors), printed as 'Time spent in Delta_Pythia', subtracted
+  ! from MCsubtraction (compute_MC_subt_term) and from Other_tasks.
+  ! It is 0 if mcatnlo_delta is not set.
+  real, public, save :: vfold_tdelta = 0
+  real, private, save :: vfold_tdelta_t0 = 0
 contains
+
+  ! Road B step 11q: time a complete_xmcsubt call into vfold_tdelta.
+  subroutine vfold_tdelta_start
+    implicit none
+    call cpu_time(vfold_tdelta_t0)
+  end subroutine vfold_tdelta_start
+
+  subroutine vfold_tdelta_stop
+    implicit none
+    real :: t1
+    call cpu_time(t1)
+    vfold_tdelta = vfold_tdelta + (t1-vfold_tdelta_t0)
+  end subroutine vfold_tdelta_stop
 
   subroutine setup_av_me_mode
     implicit none
@@ -82,4 +103,29 @@ contains
     implicit none
     vfold_use_born_memo = (vfold_me_mode.eq.'F2')
   end function vfold_use_born_memo
+
+  ! Road B step 11b: keep the original code (F0, F1: the reference points)
+  ! also for the changes that are not specific to the new modes, such as
+  ! the faster timers of step 11a (ENV_VFOLD_CPUTIME<0, see vfold_cpu_time.c)
+  logical function vfold_is_reference_mode()
+    implicit none
+    vfold_is_reference_mode = .not. (vfold_use_born_memo() .or. vfold_use_batch_api())
+  end function vfold_is_reference_mode
+
+  ! Road B step 11b: vfold_cpu_time.c chooses its implementation at the first
+  ! cpu_time call, before setup_av_me_mode, reading ENV_VFOLD_ME_MODE itself
+  ! for ENV_VFOLD_CPUTIME<0: check that it agrees with vfold_is_reference_mode().
+  subroutine check_av_cpu_time
+    implicit none
+    integer, external :: vfold_cpu_time_mode
+    integer :: mode, setting
+    mode = vfold_cpu_time_mode(setting)
+    if (setting.lt.0) then
+      if (vfold_is_reference_mode() .neqv. (mode.eq.0)) then
+        write(6,*) 'ERROR: vfold_cpu_time mode=', mode, ' for ENV_VFOLD_CPUTIME=', &
+             setting, ' in ENV_VFOLD_ME_MODE=', vfold_me_mode
+        stop 1
+      endif
+    endif
+  end subroutine check_av_cpu_time
 end module vfold_mode

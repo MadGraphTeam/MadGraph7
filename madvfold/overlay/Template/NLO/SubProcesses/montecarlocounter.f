@@ -622,6 +622,7 @@ c min(i_fks,j_fks) is the mother of the FKS pair
       
       subroutine compute_xmcsubt_complete(p,probne,gfactsf,gfactcl
      $     ,flagmc,lzone,zhw,nofpartners,xmcxsec)
+      use vfold_mode, only: vfold_tdelta_start, vfold_tdelta_stop ! AV road B step 11q
       implicit none
       include 'nexternal.inc'
       include 'madfks_mcatnlo.inc'
@@ -760,8 +761,13 @@ c min(i_fks,j_fks) is the mother of the FKS pair
       call check_positivity_MCxsec(sumMCsec,xmcxsec,xmcxsec2)
       if (mcatnlo_delta) then
 ! compute and include the Delta Sudakov:
-         if(.not.is_pt_hard) call complete_xmcsubt(p,lzone,xmcxsec
+c AV road B step 11q: time it separately (Delta_Pythia, not MCsubtraction)
+         if(.not.is_pt_hard) then
+            call vfold_tdelta_start
+            call complete_xmcsubt(p,lzone,xmcxsec
      $        ,xmcxsec2,MCsec,probne)
+            call vfold_tdelta_stop
+         endif
       else
 ! assign emsca on statistical basis (don't need flow here): 
          if(.not.is_pt_hard) call assign_emsca_and_flow_statistical(

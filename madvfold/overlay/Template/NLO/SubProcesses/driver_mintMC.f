@@ -173,6 +173,7 @@ c
       endif
 
       call setup_av_me_mode ! AV (road B step 1): F0/F1/F2/F/C
+      call check_av_cpu_time ! AV (road B step 11b): timers vs reference modes
       
 c
 c     Get user input
@@ -404,11 +405,13 @@ c Randomly pick the contribution that will be written in the event file
       tTot = tAfter-tBefore
       tOther = tTot - (tBorn+tGenPS+tReal+tCount+tIS+tFxFx+tf_nb+tf_all
      $     +t_as+tr_s+tr_pdf+t_plot+t_cuts+t_MC_subt+t_isum+t_p_unw
-     $     +t_write+t_coupl)
+     $     +t_write+t_coupl
+     $     +vfold_tdelta) ! AV road B step 11q: + vfold_tdelta
       write(*,*) 'Time spent in Born : ',tBorn
       write(*,*) 'Time spent in PS_Generation : ',tGenPS
       write(*,*) 'Time spent in Reals_evaluation: ',tReal
       write(*,*) 'Time spent in MCsubtraction : ',t_MC_subt
+      write(*,*) 'Time spent in Delta_Pythia : ',vfold_tdelta ! AV road B step 11q
       write(*,*) 'Time spent in Counter_terms : ',tCount
       write(*,*) 'Time spent in Integrated_CT : ',tIS-tOLP
       write(*,*) 'Time spent in Virtuals : ',tOLP      

@@ -1008,6 +1008,7 @@ c value to the list of weights using the add_wgt subroutine
 
       subroutine compute_MC_subt_term(p,passcuts,gfactsf,gfactcl,probne)
       use extra_weights
+      use vfold_mode, only: vfold_tdelta ! AV road B step 11q
       implicit none
 c This subroutine computes the MonteCarlo subtraction terms and adds
 c their values to the list of weights using the add_wgt subroutine. It
@@ -1047,7 +1048,9 @@ c respectively.
       integer get_orders_tag
       integer                     n_MC_subt_diverge
       common/counter_subt_diverge/n_MC_subt_diverge
+      real tdelta0 ! AV road B step 11q
       call cpu_time(tBefore)
+      tdelta0=vfold_tdelta
       call compute_xmcsubt_complete(p,probne,gfactsf,gfactcl,flagmc
      $     ,lzone,zhw,nofpartners,xmcxsec)
       if (f_MC_S.eq.0d0 .and. f_MC_H.eq.0d0) return
@@ -1085,7 +1088,9 @@ c respectively.
          n_MC_subt_diverge=n_MC_subt_diverge+1
       endif
       call cpu_time(tAfter)
-      t_MC_subt=t_MC_subt+(tAfter-tBefore)
+c AV road B step 11q: the Delta time of this call goes to Delta_Pythia
+c (if the early return above is taken, it was not in t_MC_subt anyway)
+      t_MC_subt=t_MC_subt+(tAfter-tBefore)-(vfold_tdelta-tdelta0)
       return
       end
 
