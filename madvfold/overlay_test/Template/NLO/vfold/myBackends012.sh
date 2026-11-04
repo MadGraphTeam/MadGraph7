@@ -14,6 +14,7 @@ usage() {
   echo "Usage:   $0 [--diffonly] [--refbase <refbase>] [--diffmodes '<mode1 mode2...>'] [--modes '<mode1 mode2...>'] <step>"
   echo "Usage:   $0 [--nodiff] [--modes '<mode1 mode2...>'] <step>"
   echo "Example: $0 --modes 'F0 F C' --refbase step2 step3a"
+  echo "Modes:   F1 (ENV_VFOLD_MLREDUCTION as in the environment or myLaunch.sh); F1n, F1c (F1 with ninja, collier)"
   exit 1
 }
 refbase=
@@ -77,11 +78,21 @@ suffixes=
 for mode in $modes; do
   ENV_VFOLD_ME_MODE=$mode
   unset CUDACPP_RUNTIME_BLASCOLORSUM
+  # Step 14h: only F1n and F1c change the MadLoop reduction library of the environment or myLaunch.sh
+  mlreduction=${ENV_VFOLD_MLREDUCTION}
   # Validate mode and get suffix
   if [ "${ENV_VFOLD_ME_MODE}" == "F0" ]; then
     suffix=Z
   elif [ "${ENV_VFOLD_ME_MODE}" == "F1" ]; then
     suffix=S
+  elif [ "${ENV_VFOLD_ME_MODE}" == "F1n" ]; then
+    ENV_VFOLD_ME_MODE=F1
+    mlreduction=ninja
+    suffix=Sn
+  elif [ "${ENV_VFOLD_ME_MODE}" == "F1c" ]; then
+    ENV_VFOLD_ME_MODE=F1
+    mlreduction=collier
+    suffix=Sc
   elif [ "${ENV_VFOLD_ME_MODE}" == "F2" ]; then
     suffix=T
   elif [ "${ENV_VFOLD_ME_MODE}" == "F" ]; then
@@ -120,7 +131,7 @@ for mode in $modes; do
       echo "ERROR! Directory ${events} already exists"
       exit 1
     fi
-    ENV_VFOLD_ME_MODE=${ENV_VFOLD_ME_MODE} ENV_VFOLD_CUDACPP_BACKEND=${ENV_VFOLD_CUDACPP_BACKEND} ./vfold/myLaunch.sh ${xOpt}
+    ENV_VFOLD_MLREDUCTION=${mlreduction} ENV_VFOLD_ME_MODE=${ENV_VFOLD_ME_MODE} ENV_VFOLD_CUDACPP_BACKEND=${ENV_VFOLD_CUDACPP_BACKEND} ./vfold/myLaunch.sh ${xOpt}
     mv Events/run_01 ${events}
   fi
   # Build the code only in the first test then use the existing binaries
@@ -133,6 +144,13 @@ for suffix in $suffixes; do
   if [ "$diffonly" != "-1" ]; then
     # Check that reference directory exists
     eventsref=${evdir}/${refbase}${suffix}
+    # Step 14h: F1n and F1c can also use F1 of the reference, if this used the same library
+    # (older runs do not print ENV_VFOLD_MLREDUCTION, they all used ninja)
+    if [ ! -d ${eventsref} ] && [ -d ${evdir}/${refbase}S ] && { [ "${suffix}" == "Sn" ] || [ "${suffix}" == "Sc" ]; }; then
+      reflib=$(grep -m1 ^ENV_VFOLD_MLREDUCTION= ${evdir}/${refbase}S/LOG.txt | cut -d= -f2)
+      if [ "${reflib}" == "" ]; then reflib=ninja; fi
+      if [ "${suffix}" == "S${reflib:0:1}" ]; then eventsref=${evdir}/${refbase}S; fi
+    fi
     if [ "$(ls -d1 ${eventsref} 2>/dev/null)" == "" ]; then
       echo "ERROR! Reference directory ${eventsref} does not exist"
       exit 1

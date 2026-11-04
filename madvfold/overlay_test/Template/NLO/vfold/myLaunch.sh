@@ -26,6 +26,7 @@ while [ "$1" != "" ]; do
     echo "Example: ENV_MCATNLODELTA=1 ENV_VFOLD_ME_MODE=F0 $0"
     echo "Example: ENV_PHYSICS=1 ENV_REQACC=0.01 ENV_VFOLD_ME_MODE=F0 $0"
     echo "Example: ENV_ISEED=84101 ENV_VFOLD_ME_MODE=F0 $0"
+    echo "Example: ENV_VFOLD_MLREDUCTION=ninja ENV_VFOLD_ME_MODE=F1 $0"
     exit 1
   fi
   shift
@@ -214,6 +215,8 @@ elif [ "${PROC}" != "${PROC/eemumubb_}" ]; then
   export ENV_VFOLD_CHANNELS="11.0"   # GF channels (space-separated) [DEFAULT: all channels]
 elif [ "${PROC}" != "${PROC/eemumubbg_}" ]; then
   if [ "${ENV_NEVENTS}" == "" ]; then ENV_NEVENTS=10; fi # default 10
+  # Step 14h: COLLIER by default, except in physics tests (Ninja amplifies rounding, see ENV_VFOLD_MLREDUCTION below)
+  if [ "${ENV_VFOLD_MLREDUCTION}" == "" ] && [ "${ENV_PHYSICS}" != "1" ]; then export ENV_VFOLD_MLREDUCTION=collier; fi
   export ENV_VFOLD_MINT0_NITERS=2    # MINT0 (grid setup) iterations [DEFAULT: 12]
   export ENV_VFOLD_MINT0_ACC=0.5     # MINT0 accuracy target [DEFAULT: 0.03]
   export ENV_VFOLD_MINT1_NITERS=2    # MINT1 (upper envelope) iterations [DEFAULT: 12]
@@ -347,6 +350,26 @@ fi
 # instance 8192 at folding 1,1,1 and 256 at folding 8,4,1.
 if [ "${ENV_VFOLD_KPOINT_BATCH}" == "" ]; then export ENV_VFOLD_KPOINT_BATCH=1; fi
 
+# Step 14h: MadLoop reduction library, for all modes: ninja (MLReductionLib=6|7|1, the MG5
+# default: Ninja, then COLLIER and CutTools if Ninja is not stable) or collier (MLReductionLib=7).
+# The default is ninja, except for the non-physics tests of the processes which set collier above. With ninja, rounding
+# differences change the virtual, up to 1e-4 and more at some points, as they change which library
+# is used: in eemumubbg, F and each C backend differ. It is also slower if Ninja is often not stable.
+if [ "${ENV_VFOLD_MLREDUCTION}" == "" ]; then export ENV_VFOLD_MLREDUCTION=ninja; fi
+if [ "${ENV_VFOLD_MLREDUCTION}" == "ninja" ]; then
+  mlreductionlib="6|7|1"
+elif [ "${ENV_VFOLD_MLREDUCTION}" == "collier" ]; then
+  mlreductionlib="7"
+else
+  echo "ERROR! Invalid ENV_VFOLD_MLREDUCTION=${ENV_VFOLD_MLREDUCTION} (must be ninja or collier)"
+  exit 1
+fi
+# (both files: the compilation, i.e. without -x, updates the SubProcesses one from the Cards one)
+for f in Cards/MadLoopParams.dat SubProcesses/MadLoopParams.dat; do
+  cp ${f} ${f}.original
+  sed -i "/^#MLReductionLib/{n;s/.*/${mlreductionlib}/}" ${f}
+done
+
 # Road B step 9i/j: SBORN served from cudacpp (mode C only)
 # Road B step 11y: no fused BSF kernel, the colour-linked Borns are also served from cudacpp
 if [ "${ENV_VFOLD_SBORN_BRIDGE}" == "" ]; then export ENV_VFOLD_SBORN_BRIDGE=1; fi
@@ -373,6 +396,7 @@ dumpENV() {
   echo "ENV_VFOLD_KPOINT_BATCH=${ENV_VFOLD_KPOINT_BATCH}" | tee -a $out
   echo "ENV_VFOLD_SBORN_BRIDGE=${ENV_VFOLD_SBORN_BRIDGE}" | tee -a $out
   echo "ENV_VFOLD_SBORN_GSCALE=${ENV_VFOLD_SBORN_GSCALE}" | tee -a $out
+  echo "ENV_VFOLD_MLREDUCTION=${ENV_VFOLD_MLREDUCTION}" | tee -a $out
   echo "ENV_VFOLD_CPUTIME=${ENV_VFOLD_CPUTIME}" | tee -a $out
   echo "ENV_VFOLD_BATCH_PERVN=${ENV_VFOLD_BATCH_PERVN}" | tee -a $out
   echo "ENV_VFOLD_MINT0_ACC=${ENV_VFOLD_MINT0_ACC}" | tee -a $out
@@ -444,6 +468,8 @@ done
 if [ -f ${runDir}/events.lhe.gz ]; then gunzip ${runDir}/events.lhe.gz; fi
 rm -f ${runDir}/RunMaterial.tar.gz
 rm -f ${runDir}/*html
+mv Cards/MadLoopParams.dat.original Cards/MadLoopParams.dat
+mv SubProcesses/MadLoopParams.dat.original SubProcesses/MadLoopParams.dat
 mv Cards/run_card.dat.original Cards/run_card.dat
 mv Source/run_card.inc.original Source/run_card.inc
 mv SubProcesses/randinit.original SubProcesses/randinit

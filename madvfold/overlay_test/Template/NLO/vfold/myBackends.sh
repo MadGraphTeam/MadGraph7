@@ -19,14 +19,18 @@ oOpt=
 step=
 refstep=
 cudascan=0
+ninjaAndCollier=0
 usage() {
-  echo "Usage: $0 <--launch|--launch-o|--launch-o-cudascan> <step>"
+  echo "Usage: $0 [--ninja-and-collier] <--launch|--launch-o|--launch-o-cudascan> <step>"
+  echo "       (--ninja-and-collier: also run F1 with the other MadLoop reduction library)"
   echo "Usage: $0 <--diff|--diff-o> <step>"
   echo "Usage: $0 <--diff2|--diff2-o> <refstep> <step>"
   exit 1
 }
 while [ "$1" != "" ]; do
-  if [ "$mode" == "" ] && [ "$1" == "--launch" ]; then
+  if [ "$1" == "--ninja-and-collier" ]; then
+    ninjaAndCollier=1; shift
+  elif [ "$mode" == "" ] && [ "$1" == "--launch" ]; then
     mode=$1; shift
   elif [ "$mode" == "" ] && [ "$1" == "--launch-o" ]; then
     mode=--launch; oOpt=-o; shift
@@ -84,6 +88,18 @@ if [ "$mode" == "--launch" ]; then
 
   ENV_VFOLD_ME_MODE=F1 ./vfold/myLaunch.sh ${oOpt} ${xOpt}
   mv Events/run_01 ${events}S
+
+  # Step 14h: also F1 with the other MadLoop reduction library, for the timing table only
+  # (in ${events}Sn or ${events}Sc: F1[n] and F1[c], the results are not expected to be the same)
+  if [ "$ninjaAndCollier" == "1" ]; then
+    if [ "$(grep -m1 ^ENV_VFOLD_MLREDUCTION= ${events}S/LOG.txt)" == "ENV_VFOLD_MLREDUCTION=ninja" ]; then
+      other=collier; otherS=Sc
+    else
+      other=ninja; otherS=Sn
+    fi
+    ENV_VFOLD_MLREDUCTION=${other} ENV_VFOLD_ME_MODE=F1 ./vfold/myLaunch.sh ${oOpt} ${xOpt}
+    mv Events/run_01 ${events}${otherS}
+  fi
 
   ENV_VFOLD_ME_MODE=F2 ./vfold/myLaunch.sh ${oOpt} ${xOpt}
   mv Events/run_01 ${events}T

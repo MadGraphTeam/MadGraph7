@@ -13,6 +13,7 @@ PROC=$(basename $(pwd))
 usage() {
   echo "Usage:   $0 [--ref <REF|REF2|REF3|REF4...>] [--diffonly <tag>] [--tsts '<tst1 tst2...>'] <step>"
   echo "         (default: --ref REF4)"
+  echo "         (--ninja-and-collier: also run F1 with the other MadLoop reduction library, see myLaunch.sh)"
   echo "Example: $0 step9j"
   exit 1
 }
@@ -20,8 +21,11 @@ ref=
 diffonly=0
 tag=
 tsts=
+ninjaAndCollier=
 while [ "$1" != "" ]; do
-  if [ "$1" == "--ref" ] && [ "$2" != "" ] && [ "$ref" == "" ]; then
+  if [ "$1" == "--ninja-and-collier" ]; then
+    ninjaAndCollier=--ninja-and-collier; shift
+  elif [ "$1" == "--ref" ] && [ "$2" != "" ] && [ "$ref" == "" ]; then
     ref=$2; shift; shift
   elif [ "$1" == "--diffonly" ] && [ "$2" != "" ] && [ "$diffonly" == "0" ]; then
     diffonly=1; tag=$2; shift; shift
@@ -214,7 +218,7 @@ for tst in ${tsts}; do
     echo "-------------------------------------------------------------------------------" | tee -a $outL
     echo | tee -a $outL
     echo "Launch ${PROC} tests on ${host}:" | tee -a $outL
-    cmd="./vfold/myBackends.sh ${launch} ${refstep}"
+    cmd="./vfold/myBackends.sh ${ninjaAndCollier} ${launch} ${refstep}"
     echo "  ${env} \\" | tee -a $outL
     echo "    ${cmd}" | tee -a $outL
     echo | tee -a $outL

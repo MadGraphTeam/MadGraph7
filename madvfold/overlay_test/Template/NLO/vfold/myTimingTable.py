@@ -43,7 +43,9 @@ import sys
 
 # Directory suffix -> mode name, in column order. Missing modes are skipped.
 MODES = [
-    ('Z', 'F0'), ('S', 'F1'), ('T', 'F2'), ('F', 'F'),
+    ('Z', 'F0'), ('S', 'F1'),
+    ('Sn', 'F1[n]'), ('Sc', 'F1[c]'),  # step 14h: F1 also with the other MadLoop reduction library
+    ('T', 'F2'), ('F', 'F'),
     ('Cnone', 'C/none'), ('Csse4', 'C/sse4'), ('Cavx2', 'C/avx2'),
     ('C512y', 'C/512y'), ('C512z', 'C/512z'), ('Ccuda', 'C/cuda'),
     ('Ccudb', 'C/cudb'),  # cuda with BLAS colour sums (CUDACPP_RUNTIME_BLASCOLORSUM=1)
@@ -249,6 +251,15 @@ def read_step(prefix):
                 d = read_mode(path)
                 if d is not None:
                     data['%s#%d' % (name, num)] = d
+    # Step 14h: F1 with both MadLoop reduction libraries: show them as F1[n] and F1[c], in this order
+    if 'F1' in data and ('F1[n]' in data or 'F1[c]' in data):
+        lib = _mlreduction(data['F1'])
+        data['F1[%s]' % lib[0]] = data.pop('F1')
+        order = [name for _, name in MODES if name not in ('F1[n]', 'F1[c]')]
+        first = order.index('F1')
+        names = sorted(data, key=lambda n: first + (0.1 if n == 'F1[n]' else 0.2) if n in ('F1[n]', 'F1[c]')
+                       else (order.index(n.split('#')[0])))
+        data = {n: data[n] for n in names}
     if not data:
         d = read_mode(prefix)
         if d is not None:
@@ -298,6 +309,12 @@ def _run_params(data):
         'sborn': 'N/A' if _noswitch(cnt, 'sborn_log') else
                  (env.get('ENV_VFOLD_SBORN_BRIDGE') or cnt.get('sborn_log') or '0'),
     }
+
+
+def _mlreduction(d):
+    """MadLoop reduction library of a column (step 14h, ENV_VFOLD_MLREDUCTION):
+    older runs do not have this variable, and they all used the MG5 default, ninja."""
+    return d['env'].get('ENV_VFOLD_MLREDUCTION') or 'ninja'
 
 
 def _vecsize(name, d):
@@ -388,6 +405,7 @@ def build_table(data, step, grouping='default', rescale=RESCALE_BASELINE, isTex=
     bornavgs = [_batch_avg(d, 'born') for d in data.values()]
     realavgs = [_batch_avg(d, 'real') for d in data.values()]
     cputimers = [_cputimer(d) for d in data.values()]
+    mlreductions = [_mlreduction(d) for d in data.values()]
     subtitles = []
     if not isTex:
         if p['bsffused'] == 'N/A' or p['sborn'] == 'N/A':
@@ -418,8 +436,7 @@ def build_table(data, step, grouping='default', rescale=RESCALE_BASELINE, isTex=
         parts = ['%s in %s' % (names.get(t, t), ', '.join(dict.fromkeys(ns)))
                  for t, ns in bytimer.items()]
         if not isTex:
-            subtitles.append('timers: %s (getrusage costs a syscall per timer call, '
-                             'which inflates those columns)' % '; '.join(parts))
+            subtitles.append('timers: %s' % '; '.join(parts))
         else:
             # Shorter in tex, where the subtitle must fit on the page: name the
             # getrusage columns only (the usual case is F0*, F1 vs all others)
@@ -516,10 +533,11 @@ def build_table(data, step, grouping='default', rescale=RESCALE_BASELINE, isTex=
                              % (n, parts, tot))
     if not isTex:
         headrows = [('cudacpp_vecsize', vecsizes), ('sborn_gscale', gscales),
+                    ('ml_reduction', mlreductions),
                     ('born_batch_avg', bornavgs),
                     ('real_batch_avg', realavgs), ('cpu_timer', cputimers)]
     else:
-        headrows = [('cudacpp_vecsize', vecsizes)]
+        headrows = [('cudacpp_vecsize', vecsizes), ('ml_reduction', mlreductions)]
     return {'title': title, 'subtitles': subtitles, 'columns': columns, 'rows': rows,
             'vecsizes': vecsizes, 'colnames': [n.split('#')[0] for n in columns],
             'headrows': headrows}
@@ -533,14 +551,17 @@ def render_text(table, fmt='%7.3f', prefix=None):
     lfmt = '%%-%is'%llen
     out = ['', '='*20 + ' ' + prefix + ' ' + '='*20, '### ' + table['title']]
     out += ['- ' + s for s in table['subtitles']]
-    columns = ['%6s'%col for col in table['colnames']]
-    hline = '|-%s-|'%(llen*'-') + '-%s-|'%(6*'-') * len(columns)
+    # Column width: as many as needed for the header rows (e.g. 7 for 'collier' as of step 14h)
+    width = max([6] + [len(str(v)) for label, values in table['headrows'] for v in values])
+    numfmt = '%%%d%s' % (width + 1, fmt[fmt.index('.'):])
+    columns = [('%%%ds'%width)%col for col in table['colnames']]
+    hline = '|-%s-|'%(llen*'-') + '-%s-|'%(width*'-') * len(columns)
     out += [hline, '| %s | '%(lfmt%modebknd) + ' | '.join(columns) + ' |']
     for label, values in table['headrows']:
-        out.append('| %s | '%(lfmt%label) + ' | '.join('%6s'%v for v in values) + ' |')
+        out.append('| %s | '%(lfmt%label) + ' | '.join(('%%%ds'%width)%v for v in values) + ' |')
     out += [hline]
     for label, values in table['rows']:
-        out.append('| %s |%s |' % (lfmt%label, ' |'.join(fmt % v for v in values)))
+        out.append('| %s |%s |' % (lfmt%label, ' |'.join(numfmt % v for v in values)))
     out += [hline, '']
     return '\n'.join(out) + '\n'
 
