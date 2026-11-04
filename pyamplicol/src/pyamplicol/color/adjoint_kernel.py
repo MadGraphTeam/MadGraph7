@@ -258,7 +258,11 @@ def ladder_overlap(
     right_signs, right_words = _ladder_traces(tuple(position[a] for a in right))
     predecessor = _cyclic_neighbours(left_words, -1)
     successor = _cyclic_neighbours(right_words, 1)
-    totals = np.zeros(n + 1, dtype=np.int64)
+    # Each power collects at most 4^(n-2) signed unit terms: exact int64
+    # while that fits, Python integers beyond (never a silent wrap).
+    totals = np.zeros(
+        n + 1, dtype=np.int64 if 4 ** (n - 2) <= _INT64_MAX else object
+    )
     step = max(1, batch // len(right_words))
     for start in range(0, len(left_words), step):
         block = predecessor[start : start + step]
@@ -269,6 +273,8 @@ def ladder_overlap(
             axis=2,
         ).reshape(-1, n)
         signs = np.outer(left_signs[start : start + step], right_signs).reshape(-1)
+        if totals.dtype == object:
+            signs = signs.astype(object)
         np.add.at(totals, _permutation_cycles(images), signs)
     minimum = _minimum_power(n, accuracy, full_col_acc)
     return sum(
