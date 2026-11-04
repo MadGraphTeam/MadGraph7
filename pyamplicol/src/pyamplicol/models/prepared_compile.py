@@ -1248,6 +1248,7 @@ def _native_split_real_custom_header(
         "#include <cstdint>",
     ]
     if direct_spec is not None:
+        lines.extend(("#include <memory>", "#include <new>"))
         lines.extend(
             (
                 "",
@@ -1361,6 +1362,8 @@ static_assert(offsetof(DirectClosureRow, selector_domain_id) == 32u);
 
 static constexpr std::uint32_t PAC_DIRECT_NONE = 0xffffffffu;
 static constexpr std::uint32_t PAC_DIRECT_INITIALIZE = 1u;
+// A tuning default, not a capability bound: Symbolica scratch up to this
+// many doubles is taken on the stack, a larger one on the heap.
 static constexpr unsigned long PAC_DIRECT_MAX_SCRATCH_DOUBLES = 65536ul;
 
 static inline bool pac_direct_plane_index(
@@ -1548,13 +1551,20 @@ def _native_direct_export(
             "  const unsigned long raw_buffer_len = "
             f"{raw_function_name}_realf64_get_buffer_len();"
         ),
-        ("  if (raw_buffer_len > PAC_DIRECT_MAX_SCRATCH_DOUBLES) return 3;"),
         (
-            "  double* storage = static_cast<double*>("
-            "__builtin_alloca(sizeof(double) * "
-            f"({2 * kernel.input_arity}u + {2 * kernel.output_dimension}u + "
-            "raw_buffer_len)));"
+            "  const unsigned long scratch_len = "
+            f"{2 * kernel.input_arity}u + {2 * kernel.output_dimension}u + "
+            "raw_buffer_len;"
         ),
+        "  std::unique_ptr<double[]> heap_storage;",
+        "  double* storage = nullptr;",
+        "  if (raw_buffer_len <= PAC_DIRECT_MAX_SCRATCH_DOUBLES) {",
+        "    storage = static_cast<double*>("
+        "__builtin_alloca(sizeof(double) * scratch_len));",
+        "  } else {",
+        "    heap_storage.reset(new (std::nothrow) double[scratch_len]);",
+        "    storage = heap_storage.get();",
+        "  }",
         "  if (storage == nullptr) return 3;",
         "  double* split_params = storage;",
         f"  double* split_out = split_params + {2 * kernel.input_arity}u;",

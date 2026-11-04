@@ -748,3 +748,25 @@ def test_single_trace_kernel_quotient_stays_off_for_open_line_channels(
     assert block is not None
     assert block.channel_count == 6
     _assert_dense_reconstruction(color_plan, block)
+
+
+def test_symmetric_group_degrees_past_ten_have_orders_and_ranks() -> None:
+    """No literal degree cap (the old one refused degree 11): orders are
+    computed on demand and lexicographic rank/unrank stay inverse."""
+
+    from pyamplicol.color.symmetric_group import (
+        _lexicographic_permutation_rank,
+        _lexicographic_permutation_unrank,
+        _LexicographicPermutations,
+        _symmetric_group_order,
+    )
+
+    for degree in (11, 12, 13):
+        assert _symmetric_group_order(degree) == math.factorial(degree)
+        assert len(_LexicographicPermutations(degree)) == math.factorial(degree)
+        for rank in (0, 1, math.factorial(degree) // 3, math.factorial(degree) - 1):
+            permutation = _lexicographic_permutation_unrank(degree, rank)
+            assert sorted(permutation) == list(range(degree))
+            assert _lexicographic_permutation_rank(permutation) == rank
+    with pytest.raises(ValueError, match="non-negative"):
+        _symmetric_group_order(-1)

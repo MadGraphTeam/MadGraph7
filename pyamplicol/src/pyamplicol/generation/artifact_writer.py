@@ -2444,7 +2444,7 @@ def _on_the_fly_execution_summary(
             and set(factorization) == {"kind", "rank", "coset_count"}
             and isinstance(factorization_rank, int)
             and not isinstance(factorization_rank, bool)
-            and 2 <= factorization_rank <= 10
+            and factorization_rank >= 2
             and isinstance(factorization_coset_count, int)
             and not isinstance(factorization_coset_count, bool)
             and factorization_coset_count >= 1
@@ -5300,7 +5300,7 @@ def _validate_symmetric_group_fft_provenance(
     component_count = _nonnegative_integer(
         summary.get("component_count"), f"{context} component count", minimum=1
     )
-    if degree > 10 or group_count % component_count:
+    if group_count % component_count:
         raise ValueError(f"{context} FFT group shape is invalid")
     group_order = math.factorial(degree)
     covered_local_group_count = channel_count * group_order

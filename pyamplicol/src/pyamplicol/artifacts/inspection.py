@@ -1523,7 +1523,7 @@ def _recurrence_execution_inspection(
                 or (
                     color_storage == "convolution-kernels"
                     and color_factorization_kind == "symmetric-group-fourier"
-                    and 2 <= color_factorization_rank <= 10
+                    and color_factorization_rank >= 2
                 )
             )
             if not valid_factorization:
@@ -1876,7 +1876,7 @@ def _on_the_fly_color_reference(
             minimum=1,
         )
         symmetric_group_fft = (
-            factorization_kind == "symmetric-group-fourier" and factorization_rank <= 10
+            factorization_kind == "symmetric-group-fourier" and factorization_rank >= 2
         )
         if not symmetric_group_fft:
             raise ArtifactError(
