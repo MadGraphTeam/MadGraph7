@@ -31,9 +31,8 @@ Dependencies use ordinary pinned Git revisions and Cargo's lockfile. No ignored
 reference directory or `upstream` symlink is needed. The standalone workspace
 aligns Symbolica with the application's shared core and uses:
 
-- NinjaRS `049530c05ac6d4f87c4f080e7da8c2ef56ecd690` (branch
-  `pyamplicol/symbolica-upstream`, interim until it is merged into NinjaRS main:
-  main with PRs #7-#12 and the Symbolica and oneloopmaster pins below; UV/IR pole selection through
+- NinjaRS main `b3a29c8577733f384de1c74b48bde5b24c2799d3` (PRs #7-#12 and #14,
+  the Symbolica and oneloopmaster pins below; UV/IR pole selection through
   the master providers, the fast engine's UV residues `fast::tensor_uv`,
   threshold-free light-like spinors).
 - Symbolica, Numerica and Graphica `20a9da94071d7dd64ea5cdd6ed9d6e8f8cefeacc`:

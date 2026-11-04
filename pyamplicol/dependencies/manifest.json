@@ -28,8 +28,8 @@
         "ninjars-symbolica"
       ],
       "url": "https://github.com/alphal00p/ninjars.git",
-      "ref": "branch pyamplicol/symbolica-upstream (interim until it is merged into main)",
-      "revision": "049530c05ac6d4f87c4f080e7da8c2ef56ecd690"
+      "ref": "main",
+      "revision": "b3a29c8577733f384de1c74b48bde5b24c2799d3"
     },
     {
       "name": "oneloopmaster",
