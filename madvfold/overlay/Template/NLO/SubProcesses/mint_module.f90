@@ -166,6 +166,24 @@ module mint_module
   double precision, dimension(ndimmax), private :: rand
   double precision, dimension(0:nintervals,ndimmax) :: xgrid_new
 
+! AV road B step 9: EVENT (kpoint) batching. Per-kpoint copies of the state
+! set by get_random_x that the replay walk needs but the NEXT kpoint's
+! gathering walk would overwrite. The rest is recomputed by the replay walk
+! (those calls are not gated by born_gathering). Step 9b+9c: one set per
+! MINT2 candidate queue (last index = vn, or 1 in MINT1).
+  double precision, dimension(ndimmax,MAX_KPOINTS_PROTO,VFOLD_NVN), private :: kp_x,kp_rand
+  integer, dimension(ndimmax,MAX_KPOINTS_PROTO,VFOLD_NVN), private :: kp_ncell
+  double precision, dimension(MAX_KPOINTS_PROTO,VFOLD_NVN), private :: kp_vol,kp_vol_chan
+  integer, dimension(MAX_KPOINTS_PROTO,VFOLD_NVN), private :: kp_ichan,kp_iconfig,kp_foldstart
+  double precision, dimension(MAX_KPOINTS_PROTO,VFOLD_NVN), private :: kp_upper_bound
+! AV road B step 9b+9c: MINT2 candidate queues, one per vn (see gen).
+  integer, dimension(VFOLD_NVN), private :: mint2_navail=0, mint2_next=1
+! mint2_batch_vn = vn whose candidates are in the ME batch buffers (0 = none).
+  integer, private :: mint2_batch_vn=0
+! AV road B step 11d (ENV_VFOLD_BATCH_PERVN=1): vn whose batch is parked
+! (vfold_mint2_park) and can be brought back without regathering.
+  logical, dimension(VFOLD_NVN), private :: mint2_parked=.false.
+
 ! Common blocks used elsewhere in the code
   integer                                   npoints
   double precision            cross_section
@@ -204,6 +222,8 @@ module mint_module
 contains
 
   subroutine mint(fun)
+    use vfold_born_batch
+    use vfold_real_batch
     implicit none
     integer kpoint
     double precision :: vol
@@ -217,6 +237,7 @@ contains
     common /cdump69/dump69
     integer itmax1
     include 'vfold_tests.inc'
+    integer nkp_batch ! AV (road B step 9): kpoints gathered per ME batch
     call initialise_mint
     if (imode.eq.1 .and. env_fvz_ndump.gt.0) then
        itmax1 = itmax+1 ! AV add one iteration for dumps (MINT sets nit=itmax when target precision is >
@@ -238,12 +259,21 @@ contains
        endif
        call start_iteration
 2      kpoint_iter=kpoint_iter+1
+       ! AV road B step 9: EVENT (kpoint) batching: the gather/evaluate/replay
+       ! boundary moves around a group of kpoints (ME batch nkpoints*nfolds
+       ! wide). vfold_kp_batch_size() is 1 (original loop below) for imode=0,
+       ! modes F0/F1/F2, or ENV_VFOLD_KPOINT_BATCH=1.
+       nkp_batch = vfold_kp_batch_size()
+       if (nkp_batch.gt.1) then
+          call mint_kpoint_loop_batched(fun,nkp_batch)
+       else
        do kpoint=1,ncalls
           new_point=.true.
           call get_random_x(x,vol,kfold)
           call compute_integrand(fun,x,vol)
           call accumulate_the_point(x)
        enddo
+       endif
        call get_amount_of_points(enough_points)
        if (.not.enough_points) goto 2
        if (imode.eq.0 .and. nit.eq.1 .and. double_events) then
@@ -261,6 +291,16 @@ contains
        !AV
        if (imode.eq.1 .and. vfold_tests) write(6,*) 'NEWITER', nit, itmax, ncalls, ncalls0
     enddo
+    ! AV road B step 9: report the achieved ME batch width of this MINT
+    ! stage (driver_mintMC.f only reports it for imode=2).
+    write(6,*) 'AV: MINT imode=', imode, &
+         ' kpoint_batch=', vfold_kp_batch_size(), &
+         ' born_batch_avg=', &
+         dble(vfold_born_batch_sum)/max(1_8,vfold_born_batch_ncalls), &
+         ' born_batch_ncalls=', vfold_born_batch_ncalls, &
+         ' real_batch_avg=', &
+         dble(vfold_real_batch_sum)/max(1_8,vfold_real_batch_ncalls), &
+         ' real_batch_ncalls=', vfold_real_batch_ncalls
     call finalise_mint
   end subroutine mint
 
@@ -870,7 +910,10 @@ contains
     common /cdump69/dump69
     ! contribution to integral
     ifirst=0
-    if(imode.eq.0) then
+    ! AV road B step 11s: in F/C, imode=0 also takes the two-walk branch
+    ! below (the MINT0 job has folding 1,1,1, so its gather and replay
+    ! walks make the same fun calls, ifl=0 then ifl=2, as this branch).
+    if(imode.eq.0 .and. (fixed_order .or. .not. vfold_use_batch_api())) then
        dummy=fun(x,vol,ifirst,f1)
        if (.not. fixed_order) dummy=fun(x,vol,2,f1)
        f(1:nintegrals)=f1(1:nintegrals)
@@ -895,9 +938,11 @@ contains
        dummy=fun(x,vol,ifirst,f1)
        f(1:nintegrals)=f1(1:nintegrals)
     else
-       ! AV road B step 3: F/C -- two walks over the same fold sequence
-       ! (compute_integrand_gather and compute_integrand_replay), with the
-       ! batched evaluation of the Born, Real and SDE MEs in between.
+       ! AV road B step 3: F/C -- two walks over the same fold sequence.
+       ! Step 9: the walks are separate subroutines so that the batch
+       ! boundary can also go around several kpoints
+       ! (mint_kpoint_loop_batched). This branch is the unbatched one-kpoint
+       ! case, also used by MINT2's gen().
        call vfold_reset_born_batch
        call vfold_reset_real_batch
        call vfold_reset_sde_batch
@@ -1019,6 +1064,375 @@ contains
     f(1:nintegrals)=f1(1:nintegrals)
   end subroutine compute_integrand_replay
 
+  ! AV road B step 9: save the state set by get_random_x for this kpoint, so
+  ! its replay walk can rebuild the same x/vol after other kpoints have been
+  ! gathered. Call after get_random_x and before the next one.
+  ! iq = candidate queue: vn in MINT2, 1 in MINT1.
+  subroutine vfold_kp_save_state(ikp,iq,x,vol)
+    implicit none
+    integer, intent(in) :: ikp,iq
+    double precision, intent(in) :: vol
+    double precision, dimension(ndimmax), intent(in) :: x
+    kp_x(1:ndim,ikp,iq) = x(1:ndim)
+    kp_vol(ikp,iq) = vol
+    kp_rand(1:ndim,ikp,iq) = rand(1:ndim)
+    kp_ncell(1:ndim,ikp,iq) = ncell(1:ndim)
+    kp_ichan(ikp,iq) = ichan
+    kp_iconfig(ikp,iq) = iconfig
+    kp_vol_chan(ikp,iq) = vol_chan
+    kp_upper_bound(ikp,iq) = upper_bound ! MINT2: set by the cell generator
+    call vfold_save_event_slots(ikp)
+  end subroutine vfold_kp_save_state
+
+  subroutine vfold_kp_restore_state(ikp,iq,x,vol)
+    implicit none
+    integer, intent(in) :: ikp,iq
+    double precision, intent(out) :: vol
+    double precision, dimension(ndimmax), intent(out) :: x
+    x(1:ndim) = kp_x(1:ndim,ikp,iq)
+    vol = kp_vol(ikp,iq)
+    rand(1:ndim) = kp_rand(1:ndim,ikp,iq)
+    ncell(1:ndim) = kp_ncell(1:ndim,ikp,iq)
+    ichan = kp_ichan(ikp,iq)
+    iconfig = kp_iconfig(ikp,iq)
+    vol_chan = kp_vol_chan(ikp,iq)
+    upper_bound = kp_upper_bound(ikp,iq)
+    call vfold_restore_event_slots(ikp)
+  end subroutine vfold_kp_restore_state
+
+  ! AV road B step 9l: stop if this object and the objects of the modules
+  ! it uses were compiled with different batch capacities (stale objects,
+  ! e.g. from f90cache, whose key does not include the .mod files used).
+  subroutine vfold_check_protos
+    use vfold_born_batch
+    use vfold_real_batch
+    implicit none
+    logical, save :: checked = .false.
+    if (checked) return
+    if (vfold_rng_slots_proto(1).ne.MAX_FOLDS_PROTO .or. &
+         vfold_rng_slots_proto(2).ne.MAX_KPOINTS_PROTO .or. &
+         vfold_born_batch_proto().ne.VECSIZE_BORN_PROTO .or. &
+         vfold_real_batch_proto().ne.VECSIZE_REAL_PROTO) then
+       write(*,*) 'ERROR! mint_module was compiled with different batch capacities', &
+            ' than vfold_rng_slots/vfold_born_batch/vfold_real_batch (stale objects,', &
+            ' e.g. from f90cache: clear the cache and rebuild)'
+       write(*,*) '  mint_module: ', MAX_FOLDS_PROTO, MAX_KPOINTS_PROTO, &
+            VECSIZE_BORN_PROTO, VECSIZE_REAL_PROTO
+       write(*,*) '  modules:     ', vfold_rng_slots_proto(1), vfold_rng_slots_proto(2), &
+            vfold_born_batch_proto(), vfold_real_batch_proto()
+       stop 1
+    endif
+    checked = .true.
+  end subroutine vfold_check_protos
+
+  ! AV road B step 9: max kpoints per batch, capped so that nkpoints*nfolds
+  ! fits the batch buffers and shared fold_slot_history. Returns 1 when
+  ! batching does not apply.
+  integer function vfold_kp_batch_size()
+    use vfold_born_batch
+    implicit none
+    integer :: nfolds,ncap
+    call vfold_check_protos
+    vfold_kp_batch_size = 1
+    ! Road B step 11s: imode=0 (grid setup) is batched too (in F/C, see
+    ! compute_integrand), except for fixed order.
+    if (imode.eq.0 .and. fixed_order) return
+    if (.not. vfold_use_batch_api()) return
+    nfolds = product(ifold(1:ndim))
+    if (nfolds.lt.1) nfolds = 1
+    ncap = min(MAX_FOLDS_PROTO, VECSIZE_BORN_PROTO) / nfolds
+    ncap = min(ncap, MAX_KPOINTS_PROTO)
+    if (ncap.lt.1) ncap = 1
+    vfold_kp_batch_size = min(vfold_kpoint_batch, ncap)
+  end function vfold_kp_batch_size
+
+  ! AV road B step 9: MINT0/MINT1 kpoint loop with the gather/evaluate/replay
+  ! boundary around nb kpoints, so the ME batch is nb*nfolds wide.
+  !
+  ! The batch buffers need no change: stash appends and retrieve reads back
+  ! in the same order, so gathering and replaying kpoints in order lines the
+  ! indices up. The replay draws no fresh random numbers, so the result is
+  ! byte-identical to the unbatched loop.
+  subroutine mint_kpoint_loop_batched(fun,nb_max)
+    use vfold_born_batch
+    use vfold_real_batch
+    implicit none
+    double precision, external :: fun
+    integer, intent(in) :: nb_max
+    integer :: kp0,k,nb
+    integer, dimension(ndimmax) :: kfold
+    double precision :: vol
+    double precision, dimension(ndimmax) :: x
+    logical :: dump69, saved_dump69
+    common /cdump69/dump69
+    do kp0=1,ncalls,nb_max
+       nb = min(nb_max, ncalls-kp0+1)
+       call vfold_reset_born_batch
+       call vfold_reset_real_batch
+       call vfold_reset_sde_batch
+       call vfold_reset_fold_idx ! start of a fresh shared fold history
+       ! ---- walk 1: gather all nb kpoints, evaluating no ME at all ----
+       vfold_kp_hold_fold_idx = .true. ! this loop now owns vfold_fold_idx
+       do k=1,nb
+          kp_foldstart(k,1) = vfold_fold_idx
+          new_point=.true.
+          ! Defer fold 1's dump69 lines to this kpoint's replay walk
+          ! (keeps the per-kpoint interleaving of the dump).
+          saved_dump69 = dump69
+          dump69 = .false.
+          call get_random_x(x,vol,kfold)
+          dump69 = saved_dump69
+          call vfold_kp_save_state(k,1,x,vol)
+          call compute_integrand_gather(fun,x,vol)
+       enddo
+       vfold_kp_hold_fold_idx = .false.
+       ! ---- one wide evaluation for the whole group ----
+       call vfold_evaluate_born_batch
+       call vfold_evaluate_real_batch
+       call vfold_evaluate_sde_batch
+       ! ---- walk 2: replay each kpoint serially, exactly as before ----
+       call vfold_reset_born_retrieve
+       call vfold_reset_real_retrieve
+       call vfold_reset_sde_retrieve
+       do k=1,nb
+          call vfold_kp_restore_state(k,1,x,vol)
+          call compute_integrand_replay(fun,x,vol,kp_foldstart(k,1),.true.)
+          call accumulate_the_point(x)
+       enddo
+    enddo
+  end subroutine mint_kpoint_loop_batched
+
+  ! ------------------------------------------------------------------
+  ! AV road B step 9b+9c: MINT2 candidate batching.
+  ! gen() loops over candidates (Von Neumann accept/reject) until one is
+  ! accepted; this is where most ME evaluations happen. The RNG consumption
+  ! of a candidate is fixed (the accept/reject draw is an event slot), so nq
+  ! candidates can be generated and batch-evaluated before any decision.
+  ! Requirement: F1/F2 and F/C give the same results. So every mode except
+  ! F0 uses the queues and draws the same candidates in the same order; F1/F2
+  ! differ only in how a popped candidate is evaluated (direct single walk
+  ! instead of retrieval from the batch). F0 keeps nq=1.
+  ! ------------------------------------------------------------------
+
+  ! Candidates per MINT2 fill. Unlike vfold_kp_batch_size, F1/F2 are not
+  ! excluded (they must draw the same candidates as F/C).
+  integer function vfold_mint2_queue_size()
+    use vfold_born_batch
+    implicit none
+    integer :: nfolds,ncap
+    call vfold_check_protos
+    vfold_mint2_queue_size = 1
+    if (.not. vfold_use_rng_slots()) return ! F0: untouched baseline, never batched
+    nfolds = vfold_nfolds()
+    ncap = min(MAX_FOLDS_PROTO, VECSIZE_BORN_PROTO) / nfolds
+    ncap = min(ncap, MAX_KPOINTS_PROTO)
+    if (ncap.lt.1) ncap = 1
+    vfold_mint2_queue_size = min(vfold_kpoint_batch, ncap)
+  end function vfold_mint2_queue_size
+
+  integer function vfold_nfolds()
+    implicit none
+    vfold_nfolds = product(ifold(1:ndim))
+    if (vfold_nfolds.lt.1) vfold_nfolds = 1
+  end function vfold_nfolds
+
+  ! Generate nq candidates into queue vn (same draws in all modes); the
+  ! two-walk modes also gather and batch-evaluate their MEs.
+  subroutine vfold_mint2_fill(fun,vn,nq)
+    use vfold_born_batch
+    use vfold_real_batch
+    implicit none
+    double precision, external :: fun
+    integer, intent(in) :: vn,nq
+    integer :: k,kf,nfolds
+    double precision :: vol
+    double precision, dimension(ndimmax) :: x
+    logical :: two_walk
+    logical :: dump69, saved_dump69
+    common /cdump69/dump69
+    two_walk = vfold_use_batch_api()
+    nfolds = vfold_nfolds()
+    vfold_fold_qidx = vn ! this queue's own slot/fold history
+    if (two_walk) then
+       call vfold_mint2_park ! step 11d: before the buffers are overwritten
+       mint2_parked(vn) = .false. ! its queue is empty: any parked copy is stale
+       call vfold_reset_born_batch
+       call vfold_reset_real_batch
+       call vfold_reset_sde_batch
+    endif
+    call vfold_reset_fold_idx
+    vfold_kp_hold_fold_idx = .true. ! this loop owns vfold_fold_idx
+    do k=1,nq
+       kp_foldstart(k,vn) = vfold_fold_idx
+       new_point=.true.
+       ! Defer fold 1's dump69 lines to the pop (per-candidate interleaving).
+       saved_dump69 = dump69
+       dump69 = .false.
+       if (vn.eq.1) then
+          call get_random_cell_flat(x,vol)
+       else
+          call get_weighted_cell(x,vol)
+       endif
+       dump69 = saved_dump69
+       call vfold_kp_save_state(k,vn,x,vol)
+       if (two_walk) then
+          ! Draws the remaining fold slots and stashes the momenta.
+          call compute_integrand_gather(fun,x,vol)
+       else
+          ! F1/F2: draw the remaining fold slots in the same order as the
+          ! gather walk (nothing else in the walk draws), evaluate later.
+          do kf=2,nfolds
+             call vfold_fill_fold_slots
+          enddo
+       endif
+    enddo
+    vfold_kp_hold_fold_idx = .false.
+    if (two_walk) then
+       call vfold_evaluate_born_batch
+       call vfold_evaluate_real_batch
+       call vfold_evaluate_sde_batch
+       call vfold_reset_born_retrieve
+       call vfold_reset_real_retrieve
+       call vfold_reset_sde_retrieve
+       mint2_batch_vn = vn
+    endif
+    mint2_next(vn) = 1
+    mint2_navail(vn) = nq
+  end subroutine vfold_mint2_fill
+
+  ! AV road B step 11d: if ENV_VFOLD_BATCH_PERVN=1 and the queue whose batch is
+  ! in the buffers still has candidates, park a copy of its not-yet-replayed
+  ! entries (vfold_born_batch_park, vfold_real_batch_park) before another vn's
+  ! fill or regather overwrites them, so that vfold_mint2_pop can bring them
+  ! back instead of calling vfold_mint2_regather.
+  subroutine vfold_mint2_park
+    use vfold_born_batch
+    use vfold_real_batch
+    implicit none
+    integer :: vb
+    vb = mint2_batch_vn
+    if (vfold_batch_pervn.le.0 .or. vb.le.0) return
+    if (mint2_navail(vb).le.0) return
+    call vfold_born_batch_park(vb)
+    call vfold_real_batch_park(vb)
+    mint2_parked(vb) = .true.
+  end subroutine vfold_mint2_park
+
+  ! Rebuild the ME batch of queue vn after another vn's fill overwrote the
+  ! buffers: restore each candidate and replay its fold slots, so no random
+  ! numbers are drawn and only the ME work is repeated.
+  subroutine vfold_mint2_regather(fun,vn)
+    use vfold_born_batch
+    use vfold_real_batch
+    implicit none
+    double precision, external :: fun
+    integer, intent(in) :: vn
+    integer :: k,klast
+    integer, dimension(ndimmax) :: kfold
+    double precision :: vol
+    double precision, dimension(ndimmax) :: x
+    logical :: dump69, saved_dump69
+    common /cdump69/dump69
+    vfold_fold_qidx = vn
+    call vfold_reset_born_batch
+    call vfold_reset_real_batch
+    call vfold_reset_sde_batch
+    klast = mint2_next(vn) + mint2_navail(vn) - 1
+    saved_dump69 = dump69
+    dump69 = .false. ! this is a repeat: never dump again
+    do k=mint2_next(vn),klast
+       call vfold_kp_restore_state(k,vn,x,vol)
+       call vfold_set_fold_idx(kp_foldstart(k,vn))
+       vfold_fold_replay = .true.
+       kfold(1:ndim)=1
+       call get_random_x_next_fold(x,vol,kfold) ! reload fold 1, no draw
+       call compute_integrand_gather(fun,x,vol)
+       vfold_fold_replay = .false.
+    enddo
+    dump69 = saved_dump69
+    call vfold_evaluate_born_batch
+    call vfold_evaluate_real_batch
+    call vfold_evaluate_sde_batch
+    call vfold_reset_born_retrieve
+    call vfold_reset_real_retrieve
+    call vfold_reset_sde_retrieve
+    mint2_batch_vn = vn
+  end subroutine vfold_mint2_regather
+
+  ! Finish the next candidate of queue vn, leaving f and upper_bound as the
+  ! unbatched path would for check_upper_bound.
+  subroutine vfold_mint2_pop(fun,vn,x,vol)
+    use vfold_born_batch
+    use vfold_real_batch
+    implicit none
+    double precision, external :: fun
+    integer, intent(in) :: vn
+    double precision :: vol
+    double precision, dimension(ndimmax) :: x
+    integer :: k
+    logical :: two_walk
+    two_walk = vfold_use_batch_api()
+    ! The batch buffers hold one vn's candidates at a time.
+    if (two_walk .and. mint2_batch_vn.ne.vn) then
+       ! Step 11d: park the outgoing batch, then bring this vn's batch back
+       ! if it was parked, else rebuild it (always so if ENV_VFOLD_BATCH_PERVN=0).
+       call vfold_mint2_park
+       if (mint2_parked(vn)) then
+          call vfold_born_batch_unpark(vn)
+          call vfold_real_batch_unpark(vn)
+          mint2_parked(vn) = .false.
+          mint2_batch_vn = vn
+       else
+          call vfold_mint2_regather(fun,vn)
+       endif
+    endif
+    vfold_fold_qidx = vn
+    k = mint2_next(vn)
+    mint2_next(vn) = mint2_next(vn) + 1
+    mint2_navail(vn) = mint2_navail(vn) - 1
+    new_point=.true.
+    call vfold_kp_restore_state(k,vn,x,vol)
+    if (.not. vfold_use_batch_api()) then
+       call compute_integrand_single_replay(fun,x,vol,kp_foldstart(k,vn))
+    else
+       call compute_integrand_replay(fun,x,vol,kp_foldstart(k,vn),.true.)
+    endif
+  end subroutine vfold_mint2_pop
+
+  ! F1/F2's single walk over a candidate filled by vfold_mint2_fill: as in
+  ! compute_integrand's single-walk branch, but with fold slots replayed
+  ! (vfold_fold_replay) and MEs evaluated directly (no vfold_replay_mode).
+  subroutine compute_integrand_single_replay(fun,x,vol,ifold_start)
+    implicit none
+    integer :: ifirst,iret
+    integer, intent(in) :: ifold_start
+    integer, dimension(ndimmax) :: kfold
+    double precision :: dummy,vol
+    double precision, dimension(nintegrals) :: f1
+    double precision, dimension(ndimmax) :: x
+    double precision, external :: fun
+    logical :: dump69, saved_dump69
+    common /cdump69/dump69
+    call vfold_set_fold_idx(ifold_start)
+    vfold_fold_replay = .true.
+    kfold(1:ndim)=1
+    ! Rebuild fold 1 from the restored rand/ncell/ichan (and emit its dump69).
+    call get_random_x_next_fold(x,vol,kfold)
+    ifirst=0
+    f(1:nintegrals)=0d0
+1   continue
+    dummy=fun(x,vol,ifirst,f1)
+    ifirst=1
+    call nextlexi(ifold,kfold,iret)
+    if(iret.eq.0) then
+       call get_random_x_next_fold(x,vol,kfold)
+       goto 1
+    endif
+    ifirst=2
+    dummy=fun(x,vol,ifirst,f1)
+    vfold_fold_replay = .false.
+    f(1:nintegrals)=f1(1:nintegrals)
+  end subroutine compute_integrand_single_replay
   
   subroutine get_random_x(x,vol,kfold)
     implicit none
@@ -1066,7 +1480,8 @@ contains
        vol=vol*dx*nintcurr
        vegasvol(kdim)=vol ! AV
        x(kdim)=xgrid(icell(kdim)-1,kdim,ichan)+rand(kdim)*dx
-       if(imode.eq.0) nhits(icell(kdim),kdim,ichan)=nhits(icell(kdim),kdim,ichan)+1
+       ! AV road B step 11s: count each point once, not again in the replay walk
+       if(imode.eq.0 .and. .not.vfold_fold_replay) nhits(icell(kdim),kdim,ichan)=nhits(icell(kdim),kdim,ichan)+1
     enddo
     ! AV vegas_wgt is the 2nd argument of sigintF(xx,vegas_wgt,ifl,f)
     ! AV sigintF is the only argument of mint(fun)
@@ -1863,7 +2278,12 @@ contains
     double precision, external :: fun
     double precision, dimension(ndimmax) :: x
     double precision :: vol
+    integer :: nq ! AV (road B step 9b+9c): MINT2 candidates per fill
     if (gen_mode.eq.0) then
+       mint2_navail(1:VFOLD_NVN) = 0 ! AV (road B step 9b+9c): empty queues
+       mint2_next(1:VFOLD_NVN) = 1
+       mint2_batch_vn = 0
+       mint2_parked(1:VFOLD_NVN) = .false. ! AV (road B step 11d)
        call initialise_mint_gen
     elseif(gen_mode.eq.3) then
        call print_gen_counters
@@ -1872,17 +2292,34 @@ contains
        ! AV road B step 8q: this vn's candidates use their own RANMAR
        ! stream, meant to give 8q the same random numbers as step 9d.
        call vfold_rng_use_stream(1+vn)
-10     continue
-       new_point=.true.
-       if (vn.eq.1) then
-          call get_random_cell_flat(x,vol)
+       ! AV road B step 9b+9c: MINT2 candidate batching. nq=1 (F0, or
+       ! ENV_VFOLD_KPOINT_BATCH=1) takes the original path, unchanged.
+       nq = vfold_mint2_queue_size()
+       if (nq.le.1) then
+10        continue
+          new_point=.true.
+          if (vn.eq.1) then
+             call get_random_cell_flat(x,vol)
+          else
+             call get_weighted_cell(x,vol)
+          endif
+          call compute_integrand(fun,x,vol)
+          call increase_gen_counters_middle(vn)
+          call check_upper_bound(vn,found_point)
+          if (.not.found_point) goto 10
        else
-          call get_weighted_cell(x,vol)
+          ! The queues survive across gen() calls: a fill of 32 at ~20%
+          ! efficiency holds ~6 events, while gen() returns one. There is
+          ! one queue per vn (vn selects the cell generator and abrv), so no
+          ! candidate is ever discarded, which would also desynchronise the
+          ! random stream from the unbatched run.
+20        continue
+          if (mint2_navail(vn).le.0) call vfold_mint2_fill(fun,vn,nq)
+          call vfold_mint2_pop(fun,vn,x,vol)
+          call increase_gen_counters_middle(vn)
+          call check_upper_bound(vn,found_point)
+          if (.not.found_point) goto 20
        endif
-       call compute_integrand(fun,x,vol)
-       call increase_gen_counters_middle(vn)
-       call check_upper_bound(vn,found_point)
-       if (.not.found_point) goto 10
        call increase_gen_counters_end(vn)
        call vfold_rng_use_stream(1) ! back to the per-event decision stream
     else

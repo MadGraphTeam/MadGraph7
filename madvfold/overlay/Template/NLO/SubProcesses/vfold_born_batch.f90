@@ -147,6 +147,22 @@ module vfold_born_batch
   integer, public, save :: sde_retrieve_idx = 0
   logical, public, save :: sde_gathering = .false.
 
+  ! Road B step 11d (ENV_VFOLD_BATCH_PERVN=1): per-queue copies of the batch
+  ! state parked by vfold_born_batch_park when another MINT2 queue is about to
+  ! overwrite the batch buffers (see vfold_mint2_park in mint_module.f90), so
+  ! that vfold_born_batch_unpark can bring them back instead of regathering.
+  ! Only what the retrieve routines read is parked, and only for the entries
+  ! not retrieved yet (at the same indices). Allocated on first use.
+  integer, parameter :: VFOLD_NPARK = 3 ! one per MINT2 queue (VFOLD_NVN in vfold_rng_slots)
+  type vfold_born_parked_t
+    integer :: born_count = 0, born_idx = 0, sde_count = 0, sde_idx = 0
+    double precision, allocatable :: amp_split(:,:), wgt_me_born(:), f_b(:), g(:)
+    double complex, allocatable :: saveamp(:,:,:)
+    double precision, allocatable :: savemom(:,:,:)
+    double precision, allocatable :: sde_mc_mes(:), sde_nomc_mes(:)
+  end type vfold_born_parked_t
+  type(vfold_born_parked_t), save :: born_parked(VFOLD_NPARK)
+
 contains
 
   ! Stash the momenta currently in /pborn/'s p_born, plus f_b and g
@@ -357,8 +373,75 @@ contains
     sde_retrieve_idx = 0
   end subroutine vfold_reset_sde_retrieve
 
-  ! Road B step 7k: allocate the Born memo with nfold+1 slots, capped at
-  ! BORN_MEMO_MAX_MB (nfold = folds per kpoint). Called once from
+  ! Road B step 11d: park the Born and SDE batch state of MINT2 queue iq
+  ! (the entries not retrieved yet).
+  subroutine vfold_born_batch_park(iq)
+    implicit none
+    integer, intent(in) :: iq
+    integer :: i0, i1
+    associate(pk => born_parked(iq))
+      if (.not.allocated(pk%f_b)) then
+        allocate(pk%amp_split(AMP_SPLIT_SIZE,VECSIZE_BORN_PROTO), &
+             pk%wgt_me_born(VECSIZE_BORN_PROTO), pk%f_b(VECSIZE_BORN_PROTO), &
+             pk%g(VECSIZE_BORN_PROTO), &
+             pk%saveamp(NGRAPHS,MAX_BHEL,VECSIZE_BORN_PROTO), &
+             pk%savemom(nexternal-1,2,VECSIZE_BORN_PROTO), &
+             pk%sde_mc_mes(VECSIZE_SDE_PROTO), pk%sde_nomc_mes(VECSIZE_SDE_PROTO))
+      endif
+      pk%born_count = born_batch_count
+      pk%born_idx = born_retrieve_idx
+      i0 = born_retrieve_idx + 1
+      i1 = born_batch_count
+      if (i1.ge.i0) then
+        pk%amp_split(:,i0:i1) = amp_split_batch(:,i0:i1)
+        pk%wgt_me_born(i0:i1) = wgt_me_born_batch(i0:i1)
+        pk%f_b(i0:i1) = f_b_batch(i0:i1)
+        pk%g(i0:i1) = g_batch(i0:i1)
+        pk%savemom(:,:,i0:i1) = savemom_batch(:,:,i0:i1)
+        pk%saveamp(:,:,i0:i1) = saveamp_batch(:,:,i0:i1)
+      endif
+      pk%sde_count = sde_batch_count
+      pk%sde_idx = sde_retrieve_idx
+      i0 = sde_retrieve_idx + 1
+      i1 = sde_batch_count
+      if (i1.ge.i0) then
+        pk%sde_mc_mes(i0:i1) = sde_mc_mes_batch(i0:i1)
+        pk%sde_nomc_mes(i0:i1) = sde_nomc_mes_batch(i0:i1)
+      endif
+    end associate
+  end subroutine vfold_born_batch_park
+
+  ! Road B step 11d: bring back what vfold_born_batch_park(iq) parked.
+  subroutine vfold_born_batch_unpark(iq)
+    implicit none
+    integer, intent(in) :: iq
+    integer :: i0, i1
+    associate(pk => born_parked(iq))
+      born_batch_count = pk%born_count
+      born_retrieve_idx = pk%born_idx
+      i0 = born_retrieve_idx + 1
+      i1 = born_batch_count
+      if (i1.ge.i0) then
+        amp_split_batch(:,i0:i1) = pk%amp_split(:,i0:i1)
+        wgt_me_born_batch(i0:i1) = pk%wgt_me_born(i0:i1)
+        f_b_batch(i0:i1) = pk%f_b(i0:i1)
+        g_batch(i0:i1) = pk%g(i0:i1)
+        savemom_batch(:,:,i0:i1) = pk%savemom(:,:,i0:i1)
+        saveamp_batch(:,:,i0:i1) = pk%saveamp(:,:,i0:i1)
+      endif
+      sde_batch_count = pk%sde_count
+      sde_retrieve_idx = pk%sde_idx
+      i0 = sde_retrieve_idx + 1
+      i1 = sde_batch_count
+      if (i1.ge.i0) then
+        sde_mc_mes_batch(i0:i1) = pk%sde_mc_mes(i0:i1)
+        sde_nomc_mes_batch(i0:i1) = pk%sde_nomc_mes(i0:i1)
+      endif
+    end associate
+  end subroutine vfold_born_batch_unpark
+
+  ! Road B step 7k: allocate the Born memo with nkp*(nfold+1) slots, capped at
+  ! BORN_MEMO_MAX_MB (nfold = folds per kpoint, nkp = kpoints per batch). Called once from
   ! driver_mintMC.f when the folding is known; if never called, the memo
   ! stays empty and every lookup misses.
   subroutine vfold_born_memo_init(nfold)
@@ -367,7 +450,13 @@ contains
     integer :: want, cap, nkp
     integer*8 :: bytes_per_slot
     if (born_memo_nslot.gt.0) return
-    nkp = 1 ! one kpoint per batch
+    ! With kpoint batching nkp kpoints are in flight at once. p_born is shared
+    ! across the folds of ONE kpoint only, so the memo needs nkp*(nfold+1)
+    ! slots: if smaller, vfold_evaluate_born_batch evicts kpoint 1's entries
+    ! before its replay walk looks them up (MINT1, folding 8,4,1, batch 32:
+    ! MCsubtraction 0.039 -> 0.231, Counter_terms 0.126 -> 0.315).
+    ! nkp is capped as in vfold_kp_batch_size.
+    nkp = max(1, min(vfold_kpoint_batch, VECSIZE_BORN_PROTO/max(nfold,1)))
     want = nkp * (max(nfold,1) + 1)
     bytes_per_slot = &
          int(4*(nexternal-1),8)*8 &                       ! p
@@ -530,5 +619,11 @@ contains
   end subroutine vfold_born_memo_restore
 
 
+  ! Road B step 9l: VECSIZE_BORN_PROTO as compiled into this object file
+  ! (see vfold_rng_slots_proto)
+  integer function vfold_born_batch_proto()
+    implicit none
+    vfold_born_batch_proto = VECSIZE_BORN_PROTO
+  end function vfold_born_batch_proto
 
 end module vfold_born_batch

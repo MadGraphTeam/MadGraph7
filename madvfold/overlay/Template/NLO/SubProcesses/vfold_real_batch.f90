@@ -70,6 +70,14 @@ module vfold_real_batch
   integer, public, save :: nfks_batch(VECSIZE_REAL_PROTO)
   integer, public, save :: real_batch_count = 0
   integer, public, save :: real_retrieve_idx = 0
+  ! Road B step 11d (ENV_VFOLD_BATCH_PERVN=1): per-queue copies of the batch
+  ! state parked by vfold_real_batch_park (see vfold_born_batch_park).
+  integer, parameter :: VFOLD_NPARK_REAL = 3 ! one per MINT2 queue (VFOLD_NVN in vfold_rng_slots)
+  type vfold_real_parked_t
+    integer :: count = 0, idx = 0
+    double precision, allocatable :: mes(:), wgt_me_real(:), amp_split(:,:)
+  end type vfold_real_parked_t
+  type(vfold_real_parked_t), save :: real_parked(VFOLD_NPARK_REAL)
   ! New counters that were added to investigate VECSIZE_USED
   integer*8, public, save :: vfold_real_batch_sum = 0
   integer*8, public, save :: vfold_real_batch_ncalls = 0
@@ -182,4 +190,50 @@ contains
     real_retrieve_idx = 0
   end subroutine vfold_reset_real_retrieve
 
+  ! Road B step 11d: park the Real batch state of MINT2 queue iq (the
+  ! entries not retrieved yet, at the same indices).
+  subroutine vfold_real_batch_park(iq)
+    implicit none
+    integer, intent(in) :: iq
+    integer :: i0, i1
+    associate(pk => real_parked(iq))
+      if (.not.allocated(pk%mes)) allocate(pk%mes(VECSIZE_REAL_PROTO), &
+           pk%wgt_me_real(VECSIZE_REAL_PROTO), pk%amp_split(AMP_SPLIT_SIZE,VECSIZE_REAL_PROTO))
+      pk%count = real_batch_count
+      pk%idx = real_retrieve_idx
+      i0 = real_retrieve_idx + 1
+      i1 = real_batch_count
+      if (i1.ge.i0) then
+        pk%mes(i0:i1) = real_mes_bv(i0:i1)
+        pk%wgt_me_real(i0:i1) = wgt_me_real_bv(i0:i1)
+        pk%amp_split(:,i0:i1) = real_amp_split_bv(:,i0:i1)
+      endif
+    end associate
+  end subroutine vfold_real_batch_park
+
+  ! Road B step 11d: bring back what vfold_real_batch_park(iq) parked.
+  subroutine vfold_real_batch_unpark(iq)
+    implicit none
+    integer, intent(in) :: iq
+    integer :: i0, i1
+    associate(pk => real_parked(iq))
+      real_batch_count = pk%count
+      real_retrieve_idx = pk%idx
+      i0 = real_retrieve_idx + 1
+      i1 = real_batch_count
+      if (i1.ge.i0) then
+        real_mes_bv(i0:i1) = pk%mes(i0:i1)
+        wgt_me_real_bv(i0:i1) = pk%wgt_me_real(i0:i1)
+        real_amp_split_bv(:,i0:i1) = pk%amp_split(:,i0:i1)
+      endif
+    end associate
+  end subroutine vfold_real_batch_unpark
+
+
+  ! Road B step 9l: VECSIZE_REAL_PROTO as compiled into this object file
+  ! (see vfold_rng_slots_proto)
+  integer function vfold_real_batch_proto()
+    implicit none
+    vfold_real_batch_proto = VECSIZE_REAL_PROTO
+  end function vfold_real_batch_proto
 end module vfold_real_batch

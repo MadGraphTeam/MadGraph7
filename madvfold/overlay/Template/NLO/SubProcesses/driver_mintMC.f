@@ -180,6 +180,8 @@ c
 
       call setup_av_me_mode ! AV (road B step 1): F0/F1/F2/F/C
       call check_av_cpu_time ! AV (road B step 11b): timers vs reference modes
+      call setup_av_kpoint_batch ! AV (road B step 9): kpoints per ME batch
+      call setup_av_batch_pervn ! AV (road B step 11d): park batches per MINT2 queue
       
 c
 c     Get user input

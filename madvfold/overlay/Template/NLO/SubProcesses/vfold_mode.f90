@@ -18,13 +18,22 @@
 !   C  = same as F, but Born/Real evaluation is offloaded to the cudacpp
 !        bridge instead of a plain Fortran loop
 ! MadVFold codegen status: F1 is implemented since step 12j (RNG slots),
-! F since step 12k (batched Born/Real MEs over the folds of a kpoint) and
-! F2 since step 12l (Born memo). C runs as F until the cudacpp bridges are
-! added. F1, F2, F and C must all produce bit-identical results, different
-! from those of F0.
+! F since step 12k (batched Born/Real MEs over the folds of a kpoint), F2
+! since step 12l (Born memo), and the kpoint batching of F/C (and of the
+! MINT2 candidates of F1/F2/F/C) since step 12m. C runs as F until the
+! cudacpp bridges are added. F1, F2, F and C must all produce bit-identical
+! results, different from those of F0.
 module vfold_mode
   implicit none
   character(len=2), public, save :: vfold_me_mode = 'C '
+  ! Road B step 9: EVENT (kpoint) batching, orthogonal to vfold_me_mode. Modes
+  ! F/C batch the MEs over the folds of one kpoint only (width 1 at folding
+  ! 1,1,1). This knob gathers vfold_kpoint_batch whole kpoints per batch, so the
+  ! width becomes nkpoints*nfolds.
+  ! Not a new vfold_me_mode letter: gather/evaluate/replay is the same in F and
+  ! C, so C gets it for free. Default 1 = one kpoint per batch, i.e. the
+  ! previous behaviour, but through the new code path.
+  integer, public, save :: vfold_kpoint_batch = 1
 
   ! Road B step 11q: time spent in the MC@NLO-Delta extra work of
   ! complete_xmcsubt (Pythia8 stopping scales and dead zones, then the Delta
@@ -33,6 +42,16 @@ module vfold_mode
   ! It is 0 if mcatnlo_delta is not set.
   real, public, save :: vfold_tdelta = 0
   real, private, save :: vfold_tdelta_t0 = 0
+
+  ! Road B step 11d: with vfold_kpoint_batch>1, MINT2 keeps one candidate queue
+  ! per vn (virt, novi, born) but a single set of ME batch buffers, so that
+  ! a switch to another vn overwrites the batch of the previous one, which
+  ! vfold_mint2_regather must then rebuild (gather walks and MEs again) when
+  ! that vn comes back. ENV_VFOLD_BATCH_PERVN: 0 = regather (default), 1 = park
+  ! a copy of the not-yet-replayed entries of the outgoing batch and bring
+  ! it back instead (vfold_mint2_park in mint_module.f90). Opt-in as it costs
+  ! one more copy of the batch buffers per vn in memory.
+  integer, public, save :: vfold_batch_pervn = 0
 contains
 
   ! Road B step 11q: time a complete_xmcsubt call into vfold_tdelta.
@@ -129,4 +148,34 @@ contains
       endif
     endif
   end subroutine check_av_cpu_time
+
+  subroutine setup_av_kpoint_batch
+    implicit none
+    character(len=10) :: getenvvalue
+    integer :: ios
+    call getenv('ENV_VFOLD_KPOINT_BATCH', getenvvalue)
+    if (len_trim(getenvvalue).gt.0) then
+      read(getenvvalue, *, iostat=ios) vfold_kpoint_batch
+      if (ios.ne.0 .or. vfold_kpoint_batch.le.0) then
+        write(6,*) 'ERROR: invalid ENV_VFOLD_KPOINT_BATCH: ', trim(getenvvalue)
+        stop 1
+      endif
+    endif
+    write(6,*) 'AV: vfold_kpoint_batch=', vfold_kpoint_batch
+  end subroutine setup_av_kpoint_batch
+
+  subroutine setup_av_batch_pervn
+    implicit none
+    character(len=10) :: getenvvalue
+    integer :: ios
+    call getenv('ENV_VFOLD_BATCH_PERVN', getenvvalue)
+    if (len_trim(getenvvalue).gt.0) then
+      read(getenvvalue, *, iostat=ios) vfold_batch_pervn
+      if (ios.ne.0 .or. vfold_batch_pervn.lt.0 .or. vfold_batch_pervn.gt.1) then
+        write(6,*) 'ERROR: invalid ENV_VFOLD_BATCH_PERVN: ', trim(getenvvalue)
+        stop 1
+      endif
+    endif
+    write(6,*) 'AV: vfold_batch_pervn=', vfold_batch_pervn
+  end subroutine setup_av_batch_pervn
 end module vfold_mode
