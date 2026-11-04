@@ -4558,7 +4558,9 @@ class _PointEvaluation:
             out[sector] = (prefactor * single, prefactor * double)
         return out
 
-    def _colour_correlated(self, correction: Orders) -> Callable[[Orders, int, int], Any]:
+    def _colour_correlated(
+        self, correction: Orders
+    ) -> Callable[[Orders, int, int], Any]:
         """``(sector, i, j) -> <T_i.T_j>`` of the sector's Born
         interferences (the Born vectors of the amplitude orders a, b with a +
         b + ``correction`` = sector, cross-order ones included), not divided
@@ -4853,7 +4855,9 @@ class _NativePoint(_PointEvaluation):
             return super()._ir_poles()
         return self._stored_qcd_poles()
 
-    def _colour_correlated(self, correction: Orders) -> Callable[[Orders, int, int], Any]:
+    def _colour_correlated(
+        self, correction: Orders
+    ) -> Callable[[Orders, int, int], Any]:
         """The executor's colour correlations (``correlations``) summed over
         the Born order pairs a, b with a + b + ``correction`` = sector."""
 
@@ -4878,7 +4882,10 @@ class _NativePoint(_PointEvaluation):
         if record is None:
             return None
         numbers = self.numbers
-        legs = {int(label): (int(rep), Fraction(gamma)) for label, rep, gamma in record["legs"]}
+        legs = {
+            int(label): (int(rep), Fraction(gamma))
+            for label, rep, gamma in record["legs"]
+        }
         coloured = sorted(legs)
         alpha_s = self.slice.alpha_s_parameter
         alpha = numbers.real(Fraction(self.parameters.get(alpha_s, record["alpha_s"])))

@@ -1614,6 +1614,18 @@ class ColorEngine:
             label for label in labels if label in self._shared_lc_coloured_labels
         )
 
+    def singlet_order_allowed(
+        self,
+        left_index: CurrentIndex,
+        right_index: CurrentIndex,
+        vertex: Vertex,
+    ) -> bool:
+        """Whether a merge keeps this input order under the colour-singlet
+        rule of :meth:`ordered_combination_labels`: a colour-singlet input on
+        the right of a coloured one, two singlets by their largest label."""
+
+        return self._singlet_order_allowed(left_index, right_index, vertex)
+
     def _singlet_order_allowed(
         self,
         left_index: CurrentIndex,

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import math
+import os
 from fractions import Fraction
 from pathlib import Path
 
@@ -132,3 +133,31 @@ def test_compare_bounds_by_tolerance_and_estimate(ngluon):
     assert ngluon.compare(ours(dd, "dd"), _checks(born, virtual, estimate), 1e-12, 10)[
         "unmatched"
     ] == [0]
+
+
+def test_a_failed_job_leaves_no_child_running(ngluon, monkeypatch, tmp_path):
+    # ``run --jobs 2`` with a stand-in for the NJet binary: job 0 fails as
+    # soon as job 1 runs, job 1 would run for minutes; the driver fails and
+    # job 1 is gone (killed and reaped), the points file removed.
+    fake = tmp_path / "ngluon_lc"
+    fake.write_text(
+        "#!/bin/sh\n"
+        'for a in "$@"; do case "$a" in first=*) first=${a#first=};; esac; done\n'
+        f"cd {tmp_path}\n"
+        # job 0 fails once job 1 runs (at most ~5 s)
+        '[ "$first" = 0 ] && { for i in $(seq 100); do [ -e pid.1 ] && break;'
+        " sleep 0.05; done; exit 3; }\n"
+        "echo $$ > pid.$first.tmp && mv pid.$first.tmp pid.$first\n"
+        "exec sleep 300\n"
+    )
+    fake.chmod(0o755)
+    monkeypatch.setattr(ngluon, "build", lambda njet, scratch: fake)
+    scratch = tmp_path / "scratch"
+    argv = ["run", "gg_gg", "--jobs", "2", "--njet-build", str(tmp_path)]
+    argv += ["--scratch", str(scratch), "--json", str(tmp_path / "out.json")]
+    with pytest.raises(SystemExit, match="ngluon_lc failed"):
+        ngluon.main(argv)
+    with pytest.raises(ProcessLookupError):
+        os.kill(int((tmp_path / "pid.1").read_text()), 0)
+    assert not list(scratch.glob("*.points"))
+    assert not (tmp_path / "out.json").exists()

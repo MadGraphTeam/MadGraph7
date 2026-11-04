@@ -2295,7 +2295,7 @@ class NativeExecutor:
 
                     evaluation.correlations = correlations(
                         output["dipoles"][index],
-                        [label for label, _rep in self._dipoles.coloured],
+                        [leg for leg, _rep in self._dipoles.coloured],
                         exported.trees.born_orders,
                         lambda x, numbers=numbers: numbers.real(Decimal(str(x))),
                     )

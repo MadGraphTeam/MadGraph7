@@ -1172,7 +1172,13 @@ pub(super) fn certifies_lc_direct_total_source(
         .iter()
         .map(|group| group.id)
         .collect::<BTreeSet<_>>();
-    if raw_group_ids != physics.reduction_by_group_id.keys().copied().collect() {
+    if raw_group_ids
+        != physics
+            .reduction_by_group_id
+            .keys()
+            .copied()
+            .collect::<BTreeSet<_>>()
+    {
         return false;
     }
     let mut covered_members = BTreeSet::new();

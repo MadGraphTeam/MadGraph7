@@ -885,7 +885,6 @@ def test_the_rotation_block_times_exact_rotated_copies_and_records_the_contracti
 
     from pyamplicol.loops.v2.plan_export import FFT_SEED_JOBS
     from pyamplicol.loops.v2.stability import default_rotation
-
     from tools.loop_benchmark import pyamplicol_v2
 
     calls: list[tuple[list, list]] = []

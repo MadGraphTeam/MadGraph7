@@ -94,16 +94,38 @@ class ModelSource:
             raise ModelError("compiled model paths must be absolute")
         if isinstance(self.restriction, Path) and not self.restriction.is_absolute():
             raise ModelError("model restriction paths must be absolute")
+        if self.kind == "built-in-sm-heft" and self.restriction is not None:
+            from pyamplicol._internal.sm_heft import (
+                DEFAULT_SM_HEFT_RESTRICTION,
+                sm_heft_restriction,
+            )
+
+            try:
+                restriction = sm_heft_restriction(self.restriction)
+            except ValueError as exc:
+                raise ModelError(str(exc)) from exc
+            # The default card is the plain selector, so its identity and
+            # artifacts are those of ``built_in_sm_heft()``.
+            object.__setattr__(
+                self,
+                "restriction",
+                None if restriction == DEFAULT_SM_HEFT_RESTRICTION else restriction,
+            )
 
     @classmethod
     def built_in_sm(cls) -> ModelSource:
         return cls(kind="built-in-sm")
 
     @classmethod
-    def built_in_sm_heft(cls) -> ModelSource:
-        """Select the packaged Standard Model with scalar HEFT interactions."""
+    def built_in_sm_heft(cls, restriction: str | None = None) -> ModelSource:
+        """Select the packaged Standard Model with scalar HEFT interactions.
 
-        return cls(kind="built-in-sm-heft")
+        ``restriction`` names one of the packaged SM JSON model's
+        ``restrict_<name>.json`` cards (for example ``"no_b_mass"``); ``None``
+        or ``"default"`` selects ``restrict_default.json``.
+        """
+
+        return cls(kind="built-in-sm-heft", restriction=restriction)
 
     @classmethod
     def from_config(cls, config: object) -> ModelSource:
@@ -131,15 +153,11 @@ class ModelSource:
         from pyamplicol._internal.sm_heft import is_sm_heft_alias
 
         if is_sm_heft_alias(config.source):
-            if config.restriction not in (None, "default"):
-                raise ModelError(
-                    "model restrictions cannot be applied to built-in-sm-heft"
-                )
             if not config.simplify:
                 raise ModelError(
                     "simplification cannot be disabled for built-in-sm-heft"
                 )
-            return cls.built_in_sm_heft()
+            return cls.built_in_sm_heft(restriction=config.restriction)
         return cls.from_path(
             config.source,
             restriction=config.restriction,
@@ -301,6 +319,12 @@ def _compile_model_source_payload(
         from pyamplicol._internal.sm_heft import compile_sm_heft_source
 
         return compile_sm_heft_source(
+            # The default selector's call is the one before restrictions.
+            **(
+                {}
+                if source.restriction is None
+                else {"restriction": source.restriction}
+            ),
             cache_dir=cache_dir,
             use_cache=use_cache,
             require_supported=require_supported,
