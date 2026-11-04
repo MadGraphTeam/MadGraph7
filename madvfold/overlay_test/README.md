@@ -7,9 +7,10 @@ mirror the mg5amcnlo tree, as in `../overlay`. These hooks (e.g. the
 are kept separate so that they can be left out of the vfold code.
 
 `--vfold-with-tests` also runs `madvfold/DEV/setupVfoldTests.sh`, which
-prepares the process directory for the tests (e.g. relative paths, and the
-cudacpp libraries and the `vfold/test/grids` of `madvfold/DEV/<proc>_vfalt`
-if present).
+prepares the process directory for the tests (e.g. relative paths, the
+cudacpp libraries built in `CUDACPP` if the cudacpp plugin is installed,
+see `../README_CUDACPP.md`, and the `vfold/test/grids` of
+`madvfold/DEV/<proc>_vfalt` if present).
 
 The generic test scripts (`vfold/myLaunch.sh`, `vfold/myStepTest.sh`,
 `vfold/myBackends012.sh`, `vfold/myTimingTable.py`...) are installed from

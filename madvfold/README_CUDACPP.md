@@ -3,7 +3,8 @@
 Mode C of MadVFold evaluates the Born and real-emission matrix elements with
 the cudacpp plugin of madgraph4gpu (on CPU with SIMD, or on GPU). This needs
 the MadVFold version of the cudacpp plugin (branch `vfold5381` of madgraph4gpu,
-cudacpp step 13a and later), which adds the `--vfold` output option.
+cudacpp step 13b and later), which adds the `--vfold` output option and
+keeps googletest in `<proc>/test/GTEST`.
 
 ## Install the cudacpp plugin
 
@@ -26,10 +27,13 @@ cudacpp step 13a and later), which adds the `--vfold` output option.
 
 ## Build the cudacpp libraries for a process directory
 
-In a process directory generated with `output <dir> --vfold-with-tests`
-(e.g. by `madvfold/DEV/genProc.sh eebbbb`, giving `madvfold/DEV/eebbbb_vfgen`):
+`output <dir> --vfold-with-tests` (e.g. via `madvfold/DEV/genProc.sh eebbbb`,
+giving `madvfold/DEV/eebbbb_vfgen`) builds the cudacpp libraries for mode C
+automatically, if the cudacpp plugin is installed in `PLUGIN/CUDACPP_OUTPUT`:
+`madvfold/DEV/setupVfoldTests.sh` runs the three scripts below (with their logs
+in `CUDACPP`). They can also be run by hand in the process directory:
 ```
-./vfold/genCudacpp.sh        # create CUDACPP: cudacpp process directories, test
+./vfold/genCudacpp.sh        # create CUDACPP: cudacpp process directories, GTEST
 ./vfold/buildCudacppLibs.sh  # build the cudacpp libraries in CUDACPP
 ./vfold/copyCudacppLibs.sh   # copy them to lib/cudacpp (vfold/myLaunch.sh does it in mode C)
 ```
@@ -37,11 +41,13 @@ In a process directory generated with `output <dir> --vfold-with-tests`
   `vfold/genCudacppSpec.sh` if missing) and generates one `madevent_simd`
   directory per cudacpp library: the Born process with the `--vfold` option,
   the real-emission processes without it.
-- The googletest directory `CUDACPP/test` (for the cudacpp unit tests, found as
-  `../../../test` from `CUDACPP/<proc>.mad/SubProcesses/P1_<proc>`) is copied
-  from `madvfold/DEV/CUDACPP/test`, including googletest if it was already
-  built there (otherwise `make -f cudacpp.mk gtestlibs` clones it from GitHub,
-  which needs git and cmake).
+- `CUDACPP/GTEST` is the googletest installation (for the cudacpp unit tests)
+  shared by these cudacpp process directories: the build of each of them creates
+  its `test/GTEST` as a symlink to `../../GTEST` (if `../../GTEST` did not exist,
+  `test/GTEST` would be a local directory instead). `genCudacpp.sh` copies an
+  existing googletest build from `madvfold/DEV/CUDACPP` (`GTEST/googletest` or
+  `test/googletest`) if there is one; otherwise googletest is cloned from GitHub
+  and built by the first build (this needs git and cmake).
 - `buildCudacppLibs.sh` uses ccache (if installed) with the cache directory
   `CUDACPP/ccache`. If this does not exist, it is created as a symlink to
   `madvfold/DEV/ccache` (shared by all process directories in `madvfold/DEV`,

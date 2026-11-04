@@ -1,0 +1,17 @@
+#=== Do not ignore vector.inc ===
+!vector.inc
+
+#=== Compilation ===
+*.o
+*.a
+*.exe
+*.mod
+*.pyc
+*.so
+build.*
+.build.*
+.make_test.lock
+
+#=== Googletest ===
+test/googletest
+GTEST/googletest

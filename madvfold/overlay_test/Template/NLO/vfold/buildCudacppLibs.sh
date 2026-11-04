@@ -104,12 +104,6 @@ make -f cudacpp.mk -j${nj} bldall
 popd > /dev/null
 
 # Build cudacpp Real libraries
-# The cudacpp.mk of the Real processes (generated without --vfold) does not look for
-# googletest in ../../../test (i.e. in test here): pass it as GTEST_ROOT, so that their
-# tests (runTest_*.exe) are also built (googletest was built above for the Born)
-gtestroot=$(ls -d $(pwd -P)/test/googletest/install_* 2>/dev/null | head -1)
-if [ "${gtestroot}" != "" ]; then gtestopt="GTEST_ROOT=${gtestroot}"; else gtestopt=; fi
-echo "Use ${gtestopt} for the Real libraries"
 for tag in ${ccRealTags}; do
   ccRealProc=$(ccProcForTag ${tag})
   ccRealMad=${ccRealProc}.mad
@@ -117,7 +111,7 @@ for tag in ${ccRealTags}; do
   if [ "$force" == "1" ]; then
     make -f cudacpp.mk cleanall
   fi
-  make -f cudacpp.mk -j${nj} ${gtestopt} bldall
+  make -f cudacpp.mk -j${nj} bldall
   popd > /dev/null
 done
 

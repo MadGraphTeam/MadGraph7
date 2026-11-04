@@ -11,9 +11,11 @@
 #   the cudacpp plugin installed in <mg5dir>/PLUGIN/CUDACPP_OUTPUT (see
 #   madvfold/README_CUDACPP.md): the Born process with the --vfold output option,
 #   the real-emission processes without it;
-# - test, the googletest build directory used by 'make -f cudacpp.mk gtestlibs'
-#   (found as ../../../test from SubProcesses/P1_<proc>), copied from
-#   <mg5dir>/madvfold/DEV/CUDACPP/test (with googletest, if already built there).
+# - GTEST, the googletest installation shared by the cudacpp unit tests of all
+#   these process directories (their <ccproc>/test/GTEST is created as a symlink
+#   to it by 'make -f cudacpp.mk gtestlibs'): googletest is cloned and built there
+#   by the first build, unless a googletest build is found in
+#   <mg5dir>/madvfold/DEV/CUDACPP (GTEST/googletest or test/googletest) and copied.
 # The ccache directory CUDACPP/ccache is created later by vfold/buildCudacppLibs.sh.
 # Then build the libraries with vfold/buildCudacppLibs.sh and copy them to
 # lib/cudacpp with vfold/copyCudacppLibs.sh.
@@ -46,15 +48,17 @@ if [ "${ccBornProc}" == "" ]; then
   exit 1
 fi
 
-# Create the test directory
+# Create the GTEST directory
 mkdir CUDACPP
 devdir=${mg5dir}/madvfold/DEV/CUDACPP
-mkdir CUDACPP/test
-command cp -dpr ${devdir}/test/makefile ${devdir}/test/include CUDACPP/test
-if [ -d ${devdir}/test/googletest ]; then
-  command cp -dpr ${devdir}/test/googletest CUDACPP/test
+mkdir CUDACPP/GTEST
+echo "Shared googletest installation for the cudacpp process directories in CUDACPP" > CUDACPP/GTEST/.keepme
+if [ -d ${devdir}/GTEST/googletest ]; then
+  command cp -dpr ${devdir}/GTEST/googletest CUDACPP/GTEST
+elif [ -d ${devdir}/test/googletest ]; then
+  command cp -dpr ${devdir}/test/googletest CUDACPP/GTEST
 else
-  echo "WARNING! No googletest in ${devdir}/test: it will be cloned by 'make -f cudacpp.mk gtestlibs'"
+  echo "WARNING! No googletest in ${devdir}: it will be cloned and built by 'make -f cudacpp.mk gtestlibs' (needs git and cmake)"
 fi
 command cp -dp ${devdir}/.gitignore CUDACPP
 

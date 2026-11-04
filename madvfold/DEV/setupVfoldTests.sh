@@ -8,8 +8,14 @@
 # can be used like the hand-written <proc>_vfalt directories (created by the
 # script copied in <proc>_vfalt/vfold/GEN_<proc>_vfalt.sh):
 # - apply the post-processing of that script that does not need a launch
-# - copy the cudacpp libraries and the MINT0/MINT1 test grids (for the -o
-#   tests, see vfold/test/grids/README) from a reference directory
+# - generate and build the cudacpp libraries for mode C, in <procdir>/CUDACPP
+#   (vfold/genCudacpp.sh and vfold/buildCudacppLibs.sh, logs in CUDACPP), and
+#   copy them to lib/cudacpp (vfold/copyCudacppLibs.sh), if the cudacpp plugin
+#   is installed in PLUGIN/CUDACPP_OUTPUT (see madvfold/README_CUDACPP.md);
+#   with VFOLD_SETUP_NOCUDACPPBUILD=1 (genProc.sh -nocudacppbuild) they
+#   are only generated, not built
+# - copy the MINT0/MINT1 test grids (for the -o tests, see
+#   vfold/test/grids/README) from a reference directory
 #   (default madvfold/DEV/<proc>_vfalt), if it exists
 # The .gitignore and the test scripts of the vfold subdirectory are installed
 # by the overlay (madvfold/overlay_test): they are not copied from the
@@ -73,15 +79,31 @@ echo "treatcards all" > setupVfoldTests.cmd
 ./bin/aMCatNLO setupVfoldTests.cmd > /dev/null
 command rm -f setupVfoldTests.cmd
 
+# The cudacpp libraries for mode C
+# (the vfold scripts expect <procdir> in <mg5dir>/madvfold/DEV, i.e. <mg5dir> = <procdir>/../../..)
+if [ "$(cd ../../..; pwd -P)" != "${mg5dir}" ]; then
+  echo "WARNING! ${procdir} is not in ${mg5dir}/madvfold/DEV: no cudacpp libraries for mode C"
+elif [ -f ${mg5dir}/PLUGIN/CUDACPP_OUTPUT/__init__.py ]; then
+  echo "INFO: generate CUDACPP (vfold/genCudacpp.sh)"
+  ./vfold/genCudacpp.sh > genCudacpp.log 2>&1 || { echo "ERROR! vfold/genCudacpp.sh failed, see genCudacpp.log"; exit 1; }
+  mv genCudacpp.log CUDACPP/
+  if [ "${VFOLD_SETUP_NOCUDACPPBUILD}" == "1" ]; then
+    echo "INFO: cudacpp libraries not built (VFOLD_SETUP_NOCUDACPPBUILD=1): for mode C, run ./vfold/buildCudacppLibs.sh and ./vfold/copyCudacppLibs.sh"
+  else
+    # Show the progress lines of the build (INFO:...), the full output is in the log
+    echo "INFO: build the cudacpp libraries (vfold/buildCudacppLibs.sh, log in CUDACPP/buildCudacppLibs.log)"
+    ./vfold/buildCudacppLibs.sh 2>&1 | tee CUDACPP/buildCudacppLibs.log | { grep --line-buffered '^INFO:' || true; } || { echo "ERROR! vfold/buildCudacppLibs.sh failed, see CUDACPP/buildCudacppLibs.log"; exit 1; }
+    echo "INFO: copy the cudacpp libraries to lib/cudacpp (vfold/copyCudacppLibs.sh)"
+    ./vfold/copyCudacppLibs.sh > CUDACPP/copyCudacppLibs.log 2>&1 || { echo "ERROR! vfold/copyCudacppLibs.sh failed, see CUDACPP/copyCudacppLibs.log"; exit 1; }
+  fi
+else
+  echo "WARNING! The cudacpp plugin is not installed in ${mg5dir}/PLUGIN/CUDACPP_OUTPUT: no cudacpp libraries for mode C (see madvfold/README_CUDACPP.md)"
+fi
+
 # Test material from the reference directory
 if [ "${refdir}" == "" ]; then
-  echo "WARNING! No reference directory: cudacpp libraries and test grids not copied"
+  echo "WARNING! No reference directory: test grids not copied"
   exit 0
-fi
-# - cudacpp libraries for mode C (see vfold/copyCudacppLibs.sh)
-if [ -d ${refdir}/lib/cudacpp ]; then
-  command rm -rf lib/cudacpp
-  command cp -dpr ${refdir}/lib/cudacpp lib/cudacpp
 fi
 # - MINT0/MINT1 grids for the -o tests (see vfold/test/grids/README)
 if [ -d ${refdir}/vfold/test/grids ]; then
