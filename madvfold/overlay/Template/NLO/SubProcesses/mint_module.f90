@@ -1214,6 +1214,7 @@ contains
        call vfold_reset_real_retrieve
        call vfold_reset_sde_retrieve
        do k=1,nb
+          new_point=.true. ! step 14d: as in the unbatched loop (pass_cuts_check)
           call vfold_kp_restore_state(k,1,x,vol)
           call compute_integrand_replay(fun,x,vol,kp_foldstart(k,1),.true.)
           call accumulate_the_point(x)
