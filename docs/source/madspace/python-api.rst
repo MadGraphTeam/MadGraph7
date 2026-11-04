@@ -98,6 +98,7 @@ Supporting types shared by the mappings: topologies, cuts, observables and densi
    python/PdfGrid
    python/Propagator
    python/Topology
+   python/WeightingStep
    python/fks_sqrt_s_hat_min
    python/initialize_vegas_grid
 
@@ -138,6 +139,7 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    python/EventGenerator
    python/EventHistogramSpec
    python/EventHistograms
+   python/EventStream
    python/GeneratorConfig
    python/GeneratorStatus
    python/Histogram
@@ -168,6 +170,7 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    python/Variation
    python/VegasGridOptimizer
    python/Verbosity
+   python/WeightingGroup
    python/available_backends
    python/compute_generation_batch_event_count
    python/cpu_device
@@ -183,6 +186,8 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    python/set_simd_mode
    python/supported_simd_modes
    python/set_lib_path
+   python/weighting_groups_from_json
+   python/weighting_groups_to_json
 
 Utilities
 ---------
