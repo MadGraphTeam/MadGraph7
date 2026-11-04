@@ -76,6 +76,7 @@ from types import SimpleNamespace
 from typing import Any, BinaryIO, cast
 
 from pyamplicol.color.contraction_types import NC
+from pyamplicol.evaluators.symbolica_helpers import saved_evaluator
 
 from .families import Orders, add_orders
 
@@ -2569,7 +2570,7 @@ def _parameter_program(
     keys: list[Any] = [None] * len(outputs)
     for key, index in output_of.items():
         keys[index] = key
-    return record, bytes(evaluator.save()), tuple(keys)
+    return record, saved_evaluator(evaluator), tuple(keys)
 
 
 def _scale_outputs(
@@ -2813,7 +2814,7 @@ def _saved_kernel(
         ],
         jit_compile=False,
     )
-    return bytes(evaluator.save()), [
+    return saved_evaluator(evaluator), [
         len(inputs) + len(model_inputs),
         len(canonical),
         model_inputs,

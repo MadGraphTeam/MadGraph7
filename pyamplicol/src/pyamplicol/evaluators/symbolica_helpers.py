@@ -17,6 +17,21 @@ from .._internal.physics.types import NativeEvaluationError
 ComplexOutput = np.ndarray | tuple[np.ndarray, ...]
 
 
+def saved_evaluator(evaluator: Any) -> bytes:
+    """``evaluator.save()`` with only the Symbolica state the evaluator references.
+
+    A Python Symbolica release without symbolica-dev#163 (PyPI 3.0.3) writes
+    the producer's whole Symbolica state into every save: tens of MB per
+    evaluator after a model compile, depending on every symbol the process
+    created, and imported again by every load. The native re-encodes such a
+    save in #163's state-minimal form with its payload unchanged; a
+    state-minimal save is returned as it is.
+    """
+    from ..loops.native import load_loop_native
+
+    return load_loop_native().state_minimal_saved_evaluator(bytes(evaluator.save()))
+
+
 def _symbolica_instruction_program(exported: Any) -> Any:
     """Extract the linear program from Symbolica's structured instruction export."""
     if isinstance(exported, tuple):
@@ -25,7 +40,11 @@ def _symbolica_instruction_program(exported: Any) -> Any:
         raise NativeEvaluationError(
             "native kernels require inlined Symbolica function bodies"
         )
-    return exported.instructions, exported.temporary_count, _resolved_constants(exported)
+    return (
+        exported.instructions,
+        exported.temporary_count,
+        _resolved_constants(exported),
+    )
 
 
 def _resolved_constants(exported: Any) -> list[Any]:
@@ -60,12 +79,15 @@ def _binary64_constant(constant: Any) -> Any:
     )
     if not (np.isfinite(value.real) and np.isfinite(value.imag)):
         raise NativeEvaluationError(
-            f"the registered Symbolica constant {expression!r} is not finite in binary64"
+            f"the registered Symbolica constant {expression!r} is not finite "
+            "in binary64"
         )
     real, imaginary = Fraction(value.real), Fraction(value.imag)
     exact = E(f"{real.numerator}/{real.denominator}")
     if imaginary:
-        exact = exact + E(f"{imaginary.numerator}/{imaginary.denominator}") * Expression.I
+        exact = (
+            exact + E(f"{imaginary.numerator}/{imaginary.denominator}") * Expression.I
+        )
     return exact
 
 

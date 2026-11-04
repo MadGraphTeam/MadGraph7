@@ -19,7 +19,7 @@ mod v2_lower;
 mod v2_seeds;
 use batch::NativeBatch;
 
-use pyo3::{exceptions::PyValueError, prelude::*};
+use pyo3::{exceptions::PyValueError, prelude::*, types::PyBytes};
 use rusticol_loop_reduction::Complex;
 use symbolica::{
     domains::float::{DoubleFloat, Float},
@@ -73,6 +73,24 @@ impl CoefficientEvaluator {
     }
 }
 
+/// `saved` (a Python `Evaluator.save()`) with only the Symbolica state its
+/// evaluator references; `saved` itself when it holds no more
+/// (`rusticol_core::__private::state_minimal_saved_evaluator`).
+#[pyfunction]
+fn state_minimal_saved_evaluator<'py>(
+    py: Python<'py>,
+    saved: Bound<'py, PyBytes>,
+) -> PyResult<Bound<'py, PyBytes>> {
+    let bytes = saved.as_bytes();
+    match py
+        .detach(|| rusticol_core::__private::state_minimal_saved_evaluator(bytes))
+        .map_err(error)?
+    {
+        Some(minimal) => Ok(PyBytes::new(py, &minimal)),
+        None => Ok(saved),
+    }
+}
+
 #[pymodule]
 fn _loop_reduction(module: &Bound<'_, PyModule>) -> PyResult<()> {
     register(module)
@@ -93,6 +111,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     rusticol_core::diagnostics::symbolica_diagnostics_on_stderr();
     batch::register(module)?;
     module.add_class::<CoefficientEvaluator>()?;
+    module.add_function(wrap_pyfunction!(state_minimal_saved_evaluator, module)?)?;
     v2::register(module)?;
     v2_catalogue::register(module)?;
     v2_closure::register(module)?;

@@ -2704,6 +2704,131 @@ fn import_conflict_name(name: &str) -> String {
     format!("{base}{IMPORT_CONFLICT_SUFFIX}{}", &name[base.len()..])
 }
 
+/// The leading members of a saved evaluator's bincode payload (the native-code
+/// flag, the JIT settings and the exact evaluator); the JIT members follow.
+#[cfg(feature = "symbolica-runtime")]
+type SavedEvaluatorHead = (
+    bool,
+    JITCompilationSettings,
+    ExpressionEvaluator<Complex<Rational>>,
+);
+
+/// A Python `Evaluator.save()` in its state-minimal form, or `None` when it
+/// already is one.
+///
+/// A Python Symbolica release without symbolica-dev#163 (PyPI 3.0.3) writes
+/// the producer's whole Symbolica state into every save: after a model
+/// compile, tens of MB per evaluator, growing with and depending on every
+/// symbol the process ever created, all of it imported again by each load.
+/// Such a save is re-encoded with only the symbols its evaluator references
+/// (`State::export_symbols`, the partial-state form #163's save writes); the
+/// bincode payload is kept byte for byte. That is exact because the payload
+/// names its symbols (instructions and function containers encode a symbol
+/// by name, function tags as canonical strings): only an optimisation hot
+/// start, which the Python API cannot set, would carry state identifiers, and
+/// the evaluator decoded from the result must re-encode to the original's
+/// bytes, else the save is refused.
+#[cfg(feature = "symbolica-runtime")]
+pub(crate) fn state_minimal_saved_evaluator(bytes: &[u8]) -> RusticolResult<Option<Vec<u8>>> {
+    use symbolica::evaluate::Instruction;
+    use symbolica::prelude::AtomCore;
+    use symbolica::state::{State, StateMap};
+
+    fn referenced<T>(
+        exported: &symbolica::evaluate::ExportedInstructions<T>,
+        symbols: &mut impl Extend<symbolica::atom::Symbol>,
+    ) {
+        for instruction in &exported.instructions {
+            if let Instruction::Fun(_, call, _) = instruction {
+                symbols.extend([call.0]);
+                for tag in &call.1 {
+                    symbols.extend(tag.get_all_symbols(true));
+                }
+            }
+        }
+        for constant in &exported.constant_functions {
+            symbols.extend([constant.symbol]);
+            for tag in &constant.tags {
+                symbols.extend(tag.get_all_symbols(true));
+            }
+        }
+        for body in &exported.sub_evaluators {
+            symbols.extend([body.symbol]);
+            for tag in &body.tags {
+                symbols.extend(tag.get_all_symbols(true));
+            }
+            referenced(&body.instructions, symbols);
+        }
+    }
+    let incompatible = |error: &dyn std::fmt::Display| {
+        RusticolError::compatibility(format!(
+            "Python Evaluator.save() does not match Symbolica serialization ABI {}: {error}",
+            crate::SYMBOLICA_SERIALIZATION_ABI
+        ))
+    };
+    let decode_head = |payload: &[u8], state_map: StateMap| {
+        bincode::decode_from_slice_with_context::<_, SavedEvaluatorHead, _>(
+            payload,
+            bincode::config::standard(),
+            state_map,
+        )
+        .map(|((_, _, evaluator), _)| evaluator)
+        .map_err(|error| incompatible(&error))
+    };
+    let encoded = |evaluator: &ExpressionEvaluator<Complex<Rational>>| {
+        bincode::encode_to_vec(evaluator, bincode::config::standard())
+            .map_err(|error| incompatible(&error))
+    };
+
+    let Some((&native_code_generation, state)) = bytes
+        .strip_prefix(SAVED_EVALUATOR_MAGIC)
+        .and_then(|rest| rest.split_first())
+    else {
+        return Err(incompatible(&"no saved-evaluator envelope"));
+    };
+    // The state header: Symbolica's magic (u32), its export format (u16), then
+    // whether the whole state follows (1) or only listed symbols.
+    match state.get(6) {
+        Some(&WHOLE_STATE_EXPORT) => {}
+        Some(_) => return Ok(None),
+        None => return Err(incompatible(&"truncated state header")),
+    }
+    let _unlock = crate::licence::unlock();
+    crate::source_scalar::register_scalar_primitives();
+    let mut payload = state;
+    let state_map = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        State::import(
+            &mut payload,
+            Some(Box::new(|name: &str| import_conflict_name(name).into())),
+        )
+    }))
+    .map_err(|_| {
+        incompatible(&"a symbol conflicts with this process's also under its import name")
+    })?
+    .map_err(|error| incompatible(&error))?;
+    let evaluator = decode_head(payload, state_map)?;
+    let mut symbols = Default::default();
+    referenced(&evaluator.export_instructions(), &mut symbols);
+    let mut minimal = SAVED_EVALUATOR_MAGIC.to_vec();
+    minimal.push(native_code_generation);
+    State::export_symbols(&mut minimal, symbols).map_err(|error| incompatible(&error))?;
+    let payload_start = minimal.len();
+    minimal.extend_from_slice(payload);
+
+    let mut reread = &minimal[SAVED_EVALUATOR_MAGIC.len() + 1..payload_start];
+    let state_map = State::import(&mut reread, None).map_err(|error| incompatible(&error))?;
+    if encoded(&decode_head(&minimal[payload_start..], state_map)?)? != encoded(&evaluator)? {
+        return Err(incompatible(
+            &"its payload depends on state identifiers beyond the referenced symbols",
+        ));
+    }
+    Ok(Some(minimal))
+}
+
+/// Symbolica's state-header flag of a whole-state export (`State::export`).
+#[cfg(feature = "symbolica-runtime")]
+const WHOLE_STATE_EXPORT: u8 = 1;
+
 #[cfg(feature = "symbolica-runtime")]
 pub(crate) fn decode_exact_evaluator_state(
     bytes: &[u8],
@@ -2851,6 +2976,73 @@ sys.stdout.buffer.write(evaluator.save())
         assert_eq!(import_conflict_name("q"), "q_pyamplicol_import");
         assert_eq!(import_conflict_name("x__"), "x_pyamplicol_import__");
         assert!(std::panic::catch_unwind(|| import_conflict_name("q_pyamplicol_import")).is_err());
+    }
+}
+
+#[cfg(all(test, feature = "symbolica-runtime"))]
+mod state_minimal_tests {
+    use super::*;
+    use symbolica::{atom::AtomCore, parse, state::State, symbol};
+
+    /// The save of a Python Symbolica without symbolica-dev#163 (PyPI 3.0.3):
+    /// the envelope, the producer's whole state, then the payload.
+    fn whole_state_save(evaluator: &ExpressionEvaluator<Complex<Rational>>) -> (Vec<u8>, Vec<u8>) {
+        let payload = bincode::encode_to_vec(
+            (
+                true,
+                JITCompilationSettings::default(),
+                evaluator,
+                None::<JITCompiledEvaluator<f64>>,
+                None::<JITCompiledEvaluator<Complex<f64>>>,
+            ),
+            bincode::config::standard(),
+        )
+        .unwrap();
+        let mut bytes = SAVED_EVALUATOR_MAGIC.to_vec();
+        bytes.push(1);
+        State::export(&mut bytes).unwrap();
+        bytes.extend_from_slice(&payload);
+        (bytes, payload)
+    }
+
+    #[test]
+    fn whole_state_saves_keep_only_the_state_their_evaluator_references() {
+        let _unlock = crate::licence::unlock();
+        let encoded = |evaluator: &ExpressionEvaluator<Complex<Rational>>| {
+            bincode::encode_to_vec(evaluator, bincode::config::standard()).unwrap()
+        };
+        let evaluator =
+            parse!("pyamplicol_minimal::x^2 + pi + cos(pyamplicol_minimal::y)/3")
+                .evaluator(&[
+                    parse!("pyamplicol_minimal::x"),
+                    parse!("pyamplicol_minimal::y"),
+                ])
+                .build()
+                .unwrap();
+        let (whole, payload) = whole_state_save(&evaluator);
+        let minimal = state_minimal_saved_evaluator(&whole)
+            .unwrap()
+            .expect("a whole-state save is re-encoded");
+        for i in 0..2000 {
+            symbol!(format!("pyamplicol_minimal::unrelated{i}"));
+        }
+        let (later, _) = whole_state_save(&evaluator);
+        assert!(later.len() > whole.len() + 2000 * 20);
+        // Symbols created since leave the state-minimal bytes unchanged.
+        assert_eq!(state_minimal_saved_evaluator(&later).unwrap(), Some(minimal.clone()));
+        assert!(minimal.len() < 2048, "{} bytes", minimal.len());
+        // The payload is kept; the state-minimal form loads to the same evaluator.
+        assert!(minimal.ends_with(&payload));
+        let (_, loaded, _) = load_evaluator_state_bytes(&minimal, "state-minimal save").unwrap();
+        assert_eq!(encoded(&loaded), encoded(&evaluator));
+        let mut values = loaded.map_coeff(&|c| Complex::new(c.re.to_f64(), c.im.to_f64()));
+        let mut output = [Complex::new(0.0, 0.0)];
+        values.evaluate(&[Complex::new(2.0, 0.0), Complex::new(0.5, 0.0)], &mut output);
+        let expected = 4.0 + std::f64::consts::PI + 0.5f64.cos() / 3.0;
+        assert!((output[0].re - expected).abs() < 1e-14 && output[0].im == 0.0);
+        // A state-minimal save is already canonical.
+        assert_eq!(state_minimal_saved_evaluator(&minimal).unwrap(), None);
+        assert!(state_minimal_saved_evaluator(b"\xffSYMEVAL").is_err());
     }
 }
 

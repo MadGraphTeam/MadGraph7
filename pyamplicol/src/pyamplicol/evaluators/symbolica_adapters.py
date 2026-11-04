@@ -40,6 +40,7 @@ from .symbolica_helpers import (
     _safe_symbol_name,
     _symbolica_evaluator_artifact_manifest,
     _symbolica_instruction_program_repr,
+    saved_evaluator,
 )
 from .symbolica_settings import (
     ProgressCallback,
@@ -184,7 +185,7 @@ class _JITSymbolicaEvaluatorAdapter:
         plane_application_path.write_bytes(plane_application)
         plane_application_export_s = time.perf_counter() - plane_export_started
         state_save_started = time.perf_counter()
-        evaluator_state_path.write_bytes(self._source_evaluator.save())
+        evaluator_state_path.write_bytes(saved_evaluator(self._source_evaluator))
         evaluator_save_s = time.perf_counter() - save_started
         evaluator_state_save_s = time.perf_counter() - state_save_started
         self.application_path = application_path
