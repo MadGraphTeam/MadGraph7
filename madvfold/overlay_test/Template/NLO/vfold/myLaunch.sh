@@ -27,6 +27,7 @@ while [ "$1" != "" ]; do
     echo "Example: ENV_PHYSICS=1 ENV_REQACC=0.01 ENV_VFOLD_ME_MODE=F0 $0"
     echo "Example: ENV_ISEED=84101 ENV_VFOLD_ME_MODE=F0 $0"
     echo "Example: ENV_VFOLD_MLREDUCTION=ninja ENV_VFOLD_ME_MODE=F1 $0"
+    echo "Example: ENV_VFOLD_POLYCACHE=0 ENV_VFOLD_ME_MODE=F1 $0"
     exit 1
   fi
   shift
@@ -385,6 +386,52 @@ if [ "${ENV_VFOLD_CPUTIME}" == "" ]; then export ENV_VFOLD_CPUTIME=-1; fi
 # regathering it later (0=regather as before, 1=park)
 if [ "${ENV_VFOLD_BATCH_PERVN}" == "" ]; then export ENV_VFOLD_BATCH_PERVN=1; fi
 
+# Step 14m: cache of the compilation of the MadLoop polynomial.f, by far the slowest Fortran file
+# (9 of the 13 minutes of the compilation of ggttg), for the regeneration of a process already built.
+# Only this file is cached: it uses no vfold code and its module POLYNOMIAL_CONSTANTS is only used
+# in its V0 directory. The key includes all it depends on, so that an entry can never be stale. Its
+# polynomial.o and polynomial_constants.mod are stored together, in madvfold/DEV/fcache (untracked).
+# Disable it with ENV_VFOLD_POLYCACHE=0. It is only used in directories in madvfold/DEV, without -x.
+polyCacheDir=$(cd ..; pwd)/fcache
+declare -A polyCacheKeys
+polyCacheStamp=
+polyCacheRestore() {
+  if [ "${ENV_VFOLD_POLYCACHE}" == "0" ] || [ "$xOpt" == "-x" ] || [ "$(basename $(cd ..; pwd))" != "DEV" ]; then return; fi
+  local v key entry
+  mkdir -p ${polyCacheDir}
+  for v in SubProcesses/P*/V0_*; do
+    if [ ! -f ${v}/polynomial.f ]; then continue; fi
+    # (the key is computed before the build, which changes Source/make_opts)
+    key=$( (cat ${v}/polynomial.f ${v}/coef_specs.inc ${v}/loop_max_coefs.inc ${v}/makefile Source/make_opts; echo "FC=${FC} FFLAGS=${FFLAGS}"; ${FC:-gfortran} --version | head -1) | md5sum | cut -d' ' -f1)
+    polyCacheKeys[${v}]=${key}
+    entry=${polyCacheDir}/polynomial_${key}
+    if [ -f ${entry}/polynomial.o ] && [ -f ${entry}/polynomial_constants.mod ]; then
+      if [ ! -f ${v}/polynomial.o ] || [ ${v}/polynomial.f -nt ${v}/polynomial.o ]; then
+        cp ${entry}/polynomial.o ${entry}/polynomial_constants.mod ${v}/
+        touch ${v}/polynomial.o ${v}/polynomial_constants.mod
+        echo "FCACHE: polynomial.o restored for ${v} (key ${key})" | tee -a $out
+      fi
+    fi
+  done
+  polyCacheStamp=$(mktemp ${polyCacheDir}/stamp.XXXXXX)
+}
+polyCacheStore() {
+  if [ "${polyCacheStamp}" == "" ]; then return; fi
+  local v entry tmp
+  sleep 1
+  for v in "${!polyCacheKeys[@]}"; do
+    entry=${polyCacheDir}/polynomial_${polyCacheKeys[${v}]}
+    # Only what has been compiled by this build, written atomically
+    if [ ! -d ${entry} ] && [ ${v}/polynomial.o -nt ${polyCacheStamp} ] && [ -f ${v}/polynomial_constants.mod ]; then
+      tmp=$(mktemp -d ${polyCacheDir}/tmp.XXXXXX)
+      cp ${v}/polynomial.o ${v}/polynomial_constants.mod ${tmp}/
+      mv -T ${tmp} ${entry} 2>/dev/null || rm -rf ${tmp}
+      echo "FCACHE: polynomial.o stored for ${v} (key ${polyCacheKeys[${v}]})" | tee -a $out
+    fi
+  done
+  rm -f ${polyCacheStamp}
+}
+
 # Dump function (used twice: before and after generation)
 dumpENV() {
   echo "ENV_NEVENTS=${ENV_NEVENTS}" | tee -a $out
@@ -397,6 +444,7 @@ dumpENV() {
   echo "ENV_VFOLD_SBORN_BRIDGE=${ENV_VFOLD_SBORN_BRIDGE}" | tee -a $out
   echo "ENV_VFOLD_SBORN_GSCALE=${ENV_VFOLD_SBORN_GSCALE}" | tee -a $out
   echo "ENV_VFOLD_MLREDUCTION=${ENV_VFOLD_MLREDUCTION}" | tee -a $out
+  echo "ENV_VFOLD_POLYCACHE=${ENV_VFOLD_POLYCACHE}" | tee -a $out
   echo "ENV_VFOLD_CPUTIME=${ENV_VFOLD_CPUTIME}" | tee -a $out
   echo "ENV_VFOLD_BATCH_PERVN=${ENV_VFOLD_BATCH_PERVN}" | tee -a $out
   echo "ENV_VFOLD_MINT0_ACC=${ENV_VFOLD_MINT0_ACC}" | tee -a $out
@@ -421,9 +469,11 @@ dumpENV
 # Optionally (-o) skip MINT0/MINT1 and go straight to MINT2 generation
 if ls run_*_debug.log >& /dev/null; then echo "WARNING! removing existing run_xx_debug.log files"; rm run_*_debug.log; fi
 if [ -f ME5_debug ]; then echo "WARNING! removing existing ME5_debug file"; rm ME5_debug; fi
+polyCacheRestore
 if ! ./bin/generate_events -f -p ${oOpt} ${xOpt} | tee -a $out; then status=1; fi
 if ls run_*_debug.log >& /dev/null; then echo "ERROR! run_*_debug.log file has been created"; status=1; fi
 if [ -f ME5_debug ]; then echo "ERROR! ME5_debug file has been created"; status=1; fi
+if [ "${status}" == "0" ]; then polyCacheStore; fi
 
 # Dump after generation
 dumpENV
