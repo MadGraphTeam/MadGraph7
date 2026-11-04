@@ -36,7 +36,7 @@ procdir=$(cd $1; pwd -P)
 if [ "$2" != "" ]; then
   refdir=$(cd $2; pwd -P)
 else
-  proc=$(basename ${procdir}); proc=${proc%%_*} # e.g. eebbbb_vfgen -> eebbbb
+  proc=$(basename ${procdir}); proc=${proc%_vfgen*} # e.g. eebbbb_vfgen -> eebbbb, epem_bbxbbx_vfgen -> epem_bbxbbx
   refdir=${mg5dir}/madvfold/DEV/${proc}_vfalt
   if [ ! -d ${refdir} ]; then refdir=; fi
 fi
