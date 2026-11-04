@@ -76,6 +76,7 @@ from pyamplicol.config import (
 )
 from pyamplicol.generation.phase_space import massive_rambo_final_state
 from pyamplicol.generation.process_grouping import GroupingBasis, GroupMember
+from pyamplicol.models.builtin.validation import generic_validation_point
 from pyamplicol.models.prepared import load_prepared_model_bundle
 
 REFERENCE = (
@@ -1114,3 +1115,97 @@ def test_cli_prints_partials_and_rejects_non_recurrence_lanes(
     )
     with pytest.raises(CompatibilityError, match="recurrence artifact"):
         eager.evaluate_orders(reference["points"])
+
+
+# The built-in SM against this UFO 'sm' (same masses and widths of every leg
+# and propagator involved, alpha = 1/132.507, alpha_s = 0.118): fully
+# colourless processes included, whose built-in global coupling factor took the
+# number of colour-singlet legs as its electroweak power (the analytic checks
+# are test_builtin_sm_normalization). The W-pair rows differ for reasons
+# independent of that normalization and stay recorded as strict xfails.
+_BUILTIN_VS_UFO_PROCESSES = (
+    "e+ e- > a a",
+    "e+ e- > a a a",
+    "e+ e- > mu+ mu-",
+    "e+ e- > z h",
+    "e+ e- > z z",
+    "u u~ > a a",
+    "e+ e- > u u~ g",
+    "g g > g g",
+    "e+ e- > w+ w-",
+    "u u~ > w+ w-",
+)
+_BUILTIN_VS_UFO_KNOWN = {
+    "e+ e- > w+ w-": (
+        "the built-in SM has no lepton + W -> neutrino vertex orientation (nor a "
+        "neutrino-Z coupling): the t-channel neutrino exchange is absent in "
+        "every lane"
+    ),
+    "u u~ > w+ w-": (
+        "the built-in recurrence lane differs from the UFO by a point-dependent "
+        "ratio; the built-in compiled lane agrees with it"
+    ),
+}
+
+
+@pytest.fixture(scope="module")
+def builtin_and_ufo_runtimes(
+    sm_model: ModelSource, tmp_path_factory: pytest.TempPathFactory
+) -> tuple[Path, Path]:
+    root = tmp_path_factory.mktemp("builtin-vs-ufo")
+    config = RunConfig(
+        action="generate",
+        model=ModelConfig(cache=False),
+        color=ColorConfig(accuracy="full"),
+        generation=GenerationConfig(
+            workers=1,
+            emit_api_bundle=False,
+            relation_discovery=GenerationRelationDiscoveryConfig(mode="off"),
+            validation=GenerationValidationConfig(
+                enabled=False, samples=1, seed=7, post_build_validation=False
+            ),
+        ),
+        evaluator=EvaluatorConfig(
+            execution_mode="recurrence",
+            optimization=EvaluatorOptimizationConfig(cores=1),
+        ),
+    )
+    artifacts = (root / "built-in", root / "ufo")
+    for artifact, model in zip(
+        artifacts, (ModelSource.built_in_sm(), sm_model), strict=True
+    ):
+        Generator(config).generate(
+            list(_BUILTIN_VS_UFO_PROCESSES), artifact, model=model
+        )
+    return artifacts
+
+
+@pytest.mark.parametrize(
+    "process",
+    [
+        pytest.param(
+            process,
+            marks=pytest.mark.xfail(strict=True, reason=_BUILTIN_VS_UFO_KNOWN[process]),
+        )
+        if process in _BUILTIN_VS_UFO_KNOWN
+        else process
+        for process in _BUILTIN_VS_UFO_PROCESSES
+    ],
+)
+def test_builtin_sm_matches_the_ufo_sm(
+    builtin_and_ufo_runtimes: tuple[Path, Path], process: str
+) -> None:
+    builtin, ufo = (
+        Runtime.load(artifact, process=process) for artifact in builtin_and_ufo_runtimes
+    )
+    points = [
+        [
+            tuple(leg.momentum)
+            for leg in generic_validation_point(process, seed=seed, sqrt_s=500.0)
+        ]
+        for seed in (101, 202, 303)
+    ]
+    for point, (value, expected) in enumerate(
+        zip(builtin.evaluate(points), ufo.evaluate(points), strict=True)
+    ):
+        assert value.real == pytest.approx(expected.real, rel=1e-12), point
