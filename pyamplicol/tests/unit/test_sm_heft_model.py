@@ -243,6 +243,18 @@ def test_prepared_execution_refuses_a_restricted_sm_heft(tmp_path: Path) -> None
         )
 
 
+def test_prepared_execution_refuses_a_restricted_built_in_sm(tmp_path: Path) -> None:
+    """The built-in SM takes no restriction (as from a run card); the refusal
+    does not point to the SM-HEFT's restricted bundles."""
+
+    with pytest.raises(ModelError, match="only be applied to external models"):
+        Generator(_heft_config("recurrence")).generate(
+            ProcessSet.from_expressions(("g g > g g",), names=("gg_gg",)),
+            tmp_path / "sm_recurrence",
+            model=ModelSource(kind="built-in-sm", restriction="no_b_mass"),
+        )
+
+
 @pytest.mark.parametrize(
     ("expression", "accuracy"),
     (("d d~ > h g", "full"), ("g g > h", "lc"), ("g g > h g", "lc")),

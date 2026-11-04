@@ -7827,6 +7827,11 @@ class GenerationBackend:
     @staticmethod
     def _packaged_builtin_prepared_source(source: ModelSource) -> ModelSource:
         source_kind = source.kind
+        if source.restriction is not None and source_kind != "built-in-sm-heft":
+            # As ``ModelSource.from_config`` for ``source = "built-in-sm"``.
+            raise ModelError(
+                "model restrictions can only be applied to external models"
+            )
         if source.restriction is not None:
             raise ModelError(
                 f"the wheel-owned prepared {source_kind} model uses the default "
