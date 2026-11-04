@@ -38,13 +38,13 @@ use symbolica::domains::rational::Rational;
 pub const FORMAT: &str = "pyamplicol-dipole-orbits-1";
 const ADJOINT: i32 = 8;
 
-fn invalid(message: impl Into<String>) -> RusticolError {
+pub(crate) fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::invalid_argument(format!("dipole orbits: {}", message.into()))
 }
 
 /// `len` copies of `value`, allocated fallibly: an index space the host
 /// cannot hold is a typed refusal, not an abort.
-fn filled<T: Clone>(len: usize, value: T, what: &str) -> RusticolResult<Vec<T>> {
+pub(crate) fn filled<T: Clone>(len: usize, value: T, what: &str) -> RusticolResult<Vec<T>> {
     let mut out = Vec::new();
     out.try_reserve_exact(len)
         .map_err(|error| invalid(format!("cannot allocate {len} {what}: {error}")))?;
@@ -809,10 +809,10 @@ impl DipoleOrbits {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    fn trace_basis(labels: &[Label]) -> Vec<Tensor> {
+    pub(crate) fn trace_basis(labels: &[Label]) -> Vec<Tensor> {
         // All single traces of the labels with the first one fixed.
         let legs: Vec<Leg> = labels.iter().map(|&l| (l, ADJOINT)).collect();
         let mut out = Vec::new();

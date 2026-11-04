@@ -165,13 +165,14 @@ def test_rows_are_well_formed(manifest, rows):
             found = mqcd.helicity_reference(row)
             assert found["rows"] and found["rows"][0], name
         # Rule 4's prediction: the Python-input executor's; on the native-
-        # input route (no executor prediction, WP3.1 I5c) the tree engine's
-        # committed correlations, or none without them (status "partial");
-        # none on the public route (its tools-route twin holds rule 4).
+        # input route the executor's from the stored dipole orbits ("native",
+        # M-FINAL MF-8G-3) or the tree engine's committed correlations, or
+        # none without them (status "partial"); none on the public route (its
+        # tools-route twin holds rule 4).
         if row.route == "public":
             assert row.catani == "none", name
         elif row.inputs == "native":
-            assert row.catani in ("tree", "none"), name
+            assert row.catani in ("native", "tree", "none"), name
             assert (row.catani == "tree") == (row.tree_correlations is not None)
         else:
             assert row.catani == "python", name
