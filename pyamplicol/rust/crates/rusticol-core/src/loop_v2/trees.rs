@@ -71,7 +71,7 @@ use crate::engine::{PlaneDescriptor, SchemaSources, SymjitPlaneKernel, SymjitPla
 use crate::{RusticolError, RusticolResult};
 use rayon::prelude::*;
 use serde::Deserialize;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use symbolica::domains::float::{Complex, DoubleFloat, Float, Real};
 use symbolica::domains::rational::Rational;
 use symbolica::evaluate::{BatchExpressionEvaluator, EvaluationDomain};
@@ -797,17 +797,22 @@ enum TermInput {
     Momentum { slot: usize, mu: usize },
 }
 
-/// One interaction of the interaction program.
+/// One interaction of the interaction program: state components and
+/// accumulator offsets as `u32` (M-FINAL MF-8G-2 item 4: a counterterm
+/// program has millions; the loader refuses a program whose state or
+/// accumulator row does not fit).
 struct Edge {
-    left: usize,
-    left_dimension: usize,
-    right: usize,
-    right_dimension: usize,
-    left_momentum: usize,
-    right_momentum: usize,
+    left: u32,
+    left_dimension: u32,
+    right: u32,
+    right_dimension: u32,
+    left_momentum: u32,
+    right_momentum: u32,
     /// Offset of the result's accumulator in the step's accumulator row.
-    accumulator: usize,
-    weight: [Rational; 2],
+    accumulator: u32,
+    /// The exact weight: an index into the program's distinct weights
+    /// (`Interactions::weights`; M-FINAL MF-8G-2 item 4).
+    weight: u32,
     /// Whether only epsilon-pole terms read its result.
     pole: bool,
 }
@@ -837,6 +842,9 @@ struct Interactions {
     /// (inputs, outputs) of each kernel, in the same order.
     shapes: Vec<(usize, usize)>,
     steps: Vec<Step>,
+    /// The distinct exact interaction weights the edges index (a program
+    /// has a handful; each edge holds four bytes instead of two rationals).
+    weights: Vec<[Rational; 2]>,
 }
 
 /// The state of an interaction program: its size and model parameters.
@@ -1248,13 +1256,13 @@ impl<T> TreeInputs<T> {
 pub struct TreeRuntime<T> {
     /// The parameter program.
     parameters: Kernel<T>,
-    /// The interaction program's kernels and, per step and kernel group,
-    /// its interactions' weights.
+    /// The interaction program's kernels and its distinct interaction
+    /// weights (`Interactions::weights`, which each interaction indexes).
     kernels: Vec<Kernel<T>>,
-    edge_weights: Vec<Vec<Vec<Complex<T>>>>,
-    /// The counterterm program's kernels and interaction weights.
+    edge_weights: Vec<Complex<T>>,
+    /// The counterterm program's kernels and distinct interaction weights.
     counterterm_kernels: Vec<Kernel<T>>,
-    counterterm_edge_weights: Vec<Vec<Vec<Complex<T>>>>,
+    counterterm_edge_weights: Vec<Complex<T>>,
     /// The closure terms' colour weights.
     weights: Vec<Complex<T>>,
     /// The Born metric cells (squared order, component, component) with
@@ -1620,14 +1628,15 @@ fn load_interactions(
                     && within(pr, 4),
                 "interaction",
             )?;
+            let narrow = |value: usize| u32::try_from(value).map_err(|_| invalid("interaction"));
             groups.entry(kernel).or_default().push(Edge {
-                left,
-                left_dimension: ld,
-                right,
-                right_dimension: rd,
-                left_momentum: pl,
-                right_momentum: pr,
-                accumulator: offsets[accumulator],
+                left: narrow(left)?,
+                left_dimension: narrow(ld)?,
+                right: narrow(right)?,
+                right_dimension: narrow(rd)?,
+                left_momentum: narrow(pl)?,
+                right_momentum: narrow(pr)?,
+                accumulator: narrow(offsets[accumulator])?,
                 weight,
                 pole: pole[accumulator],
             });
@@ -1674,12 +1683,14 @@ fn load_interactions(
         })
     };
     let mut steps = Vec::new();
+    let mut weights: Vec<[Rational; 2]> = Vec::new();
     match columns {
         Some(columns) => {
             // A binary section (`binary::StepColumns`): each distinct weight
             // parsed once.
             require(program.steps.is_empty(), "steps in both forms")?;
-            let weights = columns.exact_weights()?;
+            weights = columns.exact_weights()?;
+            let distinct = u32::try_from(weights.len()).map_err(|_| invalid("weights"))?;
             let [o_acc, o_mom, o_start, o_dim] = &columns.output_columns;
             let r = &columns.row_columns;
             for range in columns.ranges() {
@@ -1690,6 +1701,10 @@ fn load_interactions(
                     .map(|k| columns.masks.at(k))
                     .collect();
                 let mut rows = (range.rows.0..range.rows.1).map(|k| {
+                    let weight = u32::try_from(r[8].get(k))
+                        .ok()
+                        .filter(|&w| w < distinct)
+                        .ok_or_else(|| invalid("interaction weight index"))?;
                     Ok((
                         r[0].at(k),
                         r[1].at(k),
@@ -1699,7 +1714,7 @@ fn load_interactions(
                         r[5].at(k),
                         r[6].at(k),
                         r[7].at(k),
-                        weights[r[8].at(k)].clone(),
+                        weight,
                     ))
                 });
                 let mut outputs = (range.outputs.0..range.outputs.1).map(|k| {
@@ -1715,20 +1730,22 @@ fn load_interactions(
             }
         }
         None => {
+            // The JSON program (the oracle): each distinct weight interned.
+            let mut index: HashMap<(String, String), u32> = HashMap::new();
             for step in program.steps {
                 let mut rows = step.interactions.into_iter().map(
                     |(kernel, left, ld, right, rd, pl, pr, accumulator, re, im)| {
-                        Ok((
-                            kernel,
-                            left,
-                            ld,
-                            right,
-                            rd,
-                            pl,
-                            pr,
-                            accumulator,
-                            [exact(&re)?, exact(&im)?],
-                        ))
+                        let weight = match index.get(&(re.clone(), im.clone())) {
+                            Some(&found) => found,
+                            None => {
+                                let next = u32::try_from(weights.len())
+                                    .map_err(|_| invalid("too many interaction weights"))?;
+                                weights.push([exact(&re)?, exact(&im)?]);
+                                index.insert((re, im), next);
+                                next
+                            }
+                        };
+                        Ok((kernel, left, ld, right, rd, pl, pr, accumulator, weight))
                     },
                 );
                 let mut outputs = step.outputs.into_iter();
@@ -1747,21 +1764,12 @@ fn load_interactions(
         planes: planes.map(<[Vec<u8>]>::to_vec),
         shapes,
         steps,
+        weights,
     })
 }
 
 /// One interaction of a step as `load_interactions` reads it.
-type StepRow = (
-    usize,
-    usize,
-    usize,
-    usize,
-    usize,
-    usize,
-    usize,
-    usize,
-    [Rational; 2],
-);
+type StepRow = (usize, usize, usize, usize, usize, usize, usize, usize, u32);
 
 /// Validate a parameter program (`ParameterFile`) against the tree program
 /// and the plan; `saved` is its exact evaluator.
@@ -2799,21 +2807,11 @@ impl TreeProgram {
                 })
                 .collect::<RusticolResult<Vec<_>>>()
         };
-        let weights_of = |program: &Interactions| -> Vec<Vec<Vec<Complex<T>>>> {
+        let weights_of = |program: &Interactions| -> Vec<Complex<T>> {
             program
-                .steps
+                .weights
                 .iter()
-                .map(|step| {
-                    step.groups
-                        .iter()
-                        .map(|(_kernel, edges)| {
-                            edges
-                                .iter()
-                                .map(|edge| complex(&edge.weight[0], &edge.weight[1]))
-                                .collect()
-                        })
-                        .collect()
-                })
+                .map(|[re, im]| complex(re, im))
                 .collect()
         };
         let kernels = kernels_of(&self.interactions)?;
@@ -4186,7 +4184,7 @@ fn run_interactions<T: Carrier>(
     program: &Interactions,
     layout: StateLayout,
     kernels: &mut [Kernel<T>],
-    edge_weights: &[Vec<Vec<Complex<T>>>],
+    edge_weights: &[Complex<T>],
     states: &mut [Complex<T>],
     points: usize,
     poles: bool,
@@ -4209,29 +4207,17 @@ where
     };
     let mut parameters = Vec::new();
     let mut outputs = Vec::new();
-    // The weights follow the program's interactions (a runtime built before
-    // a row restriction, `rows`, would not).
+    // The interactions index the program's distinct weights (a row
+    // restriction, `rows`, keeps them).
     require(
-        edge_weights.len() == program.steps.len()
-            && program
-                .steps
-                .iter()
-                .zip(edge_weights)
-                .all(|(step, weights)| {
-                    step.groups.len() == weights.len()
-                        && step
-                            .groups
-                            .iter()
-                            .zip(weights)
-                            .all(|((_, edges), weights)| edges.len() == weights.len())
-                }),
+        edge_weights.len() == program.weights.len(),
         "a tree runtime of another interaction program",
     )?;
     require(
         live.is_none_or(|live| live.steps.len() == program.steps.len()),
         "a row liveness of another interaction program",
     )?;
-    for (s, (step, weights)) in program.steps.iter().zip(edge_weights).enumerate() {
+    for (s, step) in program.steps.iter().enumerate() {
         let kept = live.map(|live| &live.steps[s]);
         if kept.is_some_and(|(groups, outputs)| {
             !outputs.iter().any(|&k| k) && !groups.iter().flatten().any(|&k| k)
@@ -4239,15 +4225,14 @@ where
             continue;
         }
         let mut sums = vec![czero.clone(); points * step.width];
-        for (g, ((kernel, edges), weights)) in step.groups.iter().zip(weights).enumerate() {
+        for (g, (kernel, edges)) in step.groups.iter().enumerate() {
             let active: Vec<(&Edge, &Complex<T>)> = edges
                 .iter()
-                .zip(weights)
                 .enumerate()
-                .filter(|(e, (edge, _))| {
+                .filter(|(e, edge)| {
                     (poles || !edge.pole) && kept.is_none_or(|(groups, _)| groups[g][*e])
                 })
-                .map(|(_, pair)| pair)
+                .map(|(_, edge)| (edge, &edge_weights[edge.weight as usize]))
                 .collect();
             if active.is_empty() {
                 continue;
@@ -4273,16 +4258,15 @@ where
                 parameters.clear();
                 for (edge, _) in chunk {
                     for state in states.chunks_exact(layout.size) {
+                        let (left, right) = (edge.left as usize, edge.right as usize);
+                        let (pl, pr) = (edge.left_momentum as usize, edge.right_momentum as usize);
                         parameters
-                            .extend_from_slice(&state[edge.left..edge.left + edge.left_dimension]);
+                            .extend_from_slice(&state[left..left + edge.left_dimension as usize]);
                         parameters.extend_from_slice(
-                            &state[edge.right..edge.right + edge.right_dimension],
+                            &state[right..right + edge.right_dimension as usize],
                         );
-                        parameters
-                            .extend_from_slice(&state[edge.left_momentum..edge.left_momentum + 4]);
-                        parameters.extend_from_slice(
-                            &state[edge.right_momentum..edge.right_momentum + 4],
-                        );
+                        parameters.extend_from_slice(&state[pl..pl + 4]);
+                        parameters.extend_from_slice(&state[pr..pr + 4]);
                         parameters.extend(model(*kernel).map(|index| state[index].clone()));
                     }
                 }
@@ -4295,7 +4279,7 @@ where
                 for &(edge, weight) in chunk {
                     for point in 0..points {
                         let values = row.next().expect("a kernel row per point");
-                        let target = &mut sums[point * step.width + edge.accumulator..];
+                        let target = &mut sums[point * step.width + edge.accumulator as usize..];
                         for (sum, value) in target.iter_mut().zip(values) {
                             *sum += weight.clone() * value.clone();
                         }
@@ -4411,28 +4395,29 @@ where
         return Ok(());
     }
     let (left, right) = (first.left_dimension, first.right_dimension);
-    let inputs = left + right + 8 + models.len();
     require(
-        plane.input_len() == inputs
-            && active
-                .iter()
-                .all(|(edge, _)| edge.left_dimension == left && edge.right_dimension == right),
+        active
+            .iter()
+            .all(|(edge, _)| edge.left_dimension == left && edge.right_dimension == right),
         "interaction kernel inputs",
     )?;
+    let (left, right) = (left as usize, right as usize);
+    let inputs = left + right + 8 + models.len();
+    require(plane.input_len() == inputs, "interaction kernel inputs")?;
     let width = plane.output_len();
     let size = layout.size;
     for chunk in active.chunks((PLANE_ROWS / points).max(1)) {
         let rows = chunk.len() * points;
         let (planes, stride) = plane.planes(rows);
         fill_planes(planes, stride, 0, left, chunk, states, size, |edge| {
-            edge.left
+            edge.left as usize
         });
         fill_planes(planes, stride, left, right, chunk, states, size, |edge| {
-            edge.right
+            edge.right as usize
         });
         let momenta = left + right;
         fill_planes(planes, stride, momenta, 4, chunk, states, size, |edge| {
-            edge.left_momentum
+            edge.left_momentum as usize
         });
         fill_planes(
             planes,
@@ -4442,7 +4427,7 @@ where
             chunk,
             states,
             size,
-            |edge| edge.right_momentum,
+            |edge| edge.right_momentum as usize,
         );
         for (k, &index) in models.iter().enumerate() {
             fill_planes(
@@ -4463,7 +4448,7 @@ where
         let mut row = 0;
         for &(edge, weight) in chunk {
             for point in 0..points {
-                let target = &mut sums[point * step.width + edge.accumulator..];
+                let target = &mut sums[point * step.width + edge.accumulator as usize..];
                 for (output, sum) in (0..width).zip(target.iter_mut()) {
                     let at = base + 2 * output * stride + row;
                     let value = Complex::new(planes[at].clone(), planes[at + stride].clone());

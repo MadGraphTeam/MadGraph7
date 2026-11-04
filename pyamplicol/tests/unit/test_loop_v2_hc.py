@@ -22,7 +22,15 @@ its ``u u~ > x0 g`` row:
   ``T(a, i, j)`` and whose fourth leg is a colour singlet (HC's qq~gX0 R2)
   splits through a bosonic adjoint auxiliary (``compiler_contacts``:
   the quark pair joins it for a gluon or singlet result, the gluon and the
-  singlet for a quark result), instead of ``unlowered-counterterm``.
+  singlet for a quark result), instead of ``unlowered-counterterm``;
+* P6 (MF-HC05), the five-point R2 [G G G G X0] of ``g g > x0 g g`` carries
+  the trace of four adjoint generators (``f*f*f*f``), outside the tree
+  colour vocabulary: it is projected exactly onto the ``f*f`` and
+  ``Identity*Identity`` pairings of its gluon legs at N_c = 3
+  (``loops.v2.ct_colour_projection``), and the scalar-HEFT contact trees
+  lower ``Identity*Identity`` with a singlet leg (``compiler_contact_trees``);
+  a copy of the model whose R2 colours are rewritten as another multi-trace
+  form (a d-symbol sum) gives the same values.
 
 Nightly, the rows of the card on the downloaded model (FC, QCD corrections,
 model R2, the card's HC scheme declaration, every external parameter given
@@ -30,9 +38,9 @@ per point, zero widths, MU_R = 125 and 91.188 GeV): binary64 Born and
 Laurent coefficients equal MadLoop 3.7.0 (fixtures ``required/hc/``, from
 ``tools/loop_reference/hc_nlo_x0.py``; one squared order per row) within
 1e-5, the poles equal Catani's (at most three coloured partons: the colour
-correlators are Casimirs; the double pole only for HC06, g g > x0 t t~
-with gamma5 top Yukawas), one rotation check passes, and HC02 (rank N+1
-boxes) agrees in double-double.
+correlators are Casimirs; the double pole only for HC05, g g > x0 g g, and
+HC06, g g > x0 t t~ with gamma5 top Yukawas), one rotation check passes,
+and HC02 (rank N+1 boxes) and HC05 agree in double-double.
 """
 
 from __future__ import annotations
@@ -549,42 +557,130 @@ def _check_row(runtime, card: dict, row: dict, *, double_double: bool = False):
 
 
 @pytest.mark.loop_nightly
-@pytest.mark.parametrize("row_id", ["HC01", "HC02", "HC03", "HC04", "HC06"])
+@pytest.mark.parametrize("row_id", ["HC01", "HC02", "HC03", "HC04", "HC05", "HC06"])
 def test_hc_rows_equal_madloop(hc_nlo_x0_ufo, loop_native, tmp_path, row_id):
     card = _card()
     row = _row(card, row_id)
     runtime = _generate(hc_nlo_x0_ufo, card, row, tmp_path)
-    _check_row(runtime, card, row, double_double=row_id == "HC02")
+    _check_row(runtime, card, row, double_double=row_id in ("HC02", "HC05"))
 
 
 # ------------------------------------------------------------------- HC05
 
 
 @pytest.mark.loop_physics
-def test_hc05_five_point_gluon_r2_is_refused_typed(hc_nlo_x0_ufo, loop_native, tmp_path):
-    """HC05, g g > x0 g g (heft, top vetoed), is refused typed: the model's
-    five-point R2 [G G G G X0] has the colour f*f*f*f, which the tree colour
-    flow carries only as a multi-trace state, and its vertex can enter a tree
-    of the request, so the counterterm program refuses it
-    (``unlowered-counterterm``, REQUIREMENTS_ADDENDUM J) before anything is
-    exported (about 10 s). The plan stage builds no counterterm program and
-    cannot see it."""
+def test_hc05_five_point_gluon_r2_is_lowered_and_equals_madloop(
+    hc_nlo_x0_ufo, loop_native, tmp_path
+):
+    """HC05, g g > x0 g g (heft, top vetoed), generates: the model's
+    five-point R2 [G G G G X0] (colour f*f*f*f, the trace of four adjoint
+    generators) enters the counterterm program through its exact f*f and
+    Identity*Identity pairings (P6) instead of the former
+    ``unlowered-counterterm`` refusal. One point at one scale in binary64
+    equals MadLoop per Laurent coefficient (the whole row: nightly)."""
+
+    card = _card()
+    row = _row(card, "HC05")
+    fixture = json.loads((FIXTURES / "hc05.json").read_text())
+    (entry,) = fixture["cards"]
+    value = entry["values"][0]
+    runtime = _generate(hc_nlo_x0_ufo, card, row, tmp_path)
+    runtime.set_model_parameters(
+        {
+            name: number
+            for name, number in entry["parameters"].items()
+            if name not in card["fixed_parameters"]
+        }
+    )
+    point = [[float(x) for x in leg] for leg in fixture["points"][value["point"]]]
+    mu = float(value["mu_r"])
+    result = runtime.evaluate([point], mu_r2=[mu * mu])
+    floor = abs(value["born"]) * float(entry["parameters"]["aS"]) / (2 * math.pi)
+    assert _relative(float(result.born_values[0][0]), value["born"], 0.0) <= TOLERANCE
+    for ours, key in zip(
+        result.values[0][0], ("finite", "single_pole", "double_pole"), strict=True
+    ):
+        assert _relative(float(ours), value[key], floor) <= TOLERANCE, key
+
+
+def _rewritten_ring(a: int, b: int, c: int, d: int) -> str:
+    """The trace of four adjoint generators Tr(F^a F^b F^c F^d) at SU(3) as a
+    d-symbol sum: d^ab d^cd + (d^ad d^bc + d^ac d^bd)/2 + 3/4 (dd - ff)."""
+
+    def pair(x: int, y: int) -> str:
+        return f"{min(x, y)},{max(x, y)}"
+
+    return (
+        f"Identity({pair(a, b)})*Identity({pair(c, d)})"
+        f" + 1/2*Identity({pair(a, d)})*Identity({pair(b, c)})"
+        f" + 1/2*Identity({pair(a, c)})*Identity({pair(b, d)})"
+        f" + 3/4*d(-1,{a},{b})*d(-1,{c},{d}) - 3/4*f(-1,{a},{b})*f(-1,{c},{d})"
+    )
+
+
+@pytest.mark.loop_nightly
+def test_hc05_with_another_multi_trace_r2_colour_equals_madloop(
+    hc_nlo_x0_ufo, loop_native, tmp_path
+):
+    """A synthetic copy of HC_NLO_X0 whose three [G G G G X0] R2 colours
+    (rings of four structure constants) are rewritten as the equal d-symbol
+    sums (``_rewritten_ring``; a d*d product is outside the five-point
+    vocabulary, so the projection takes it apart too) gives HC05 = MadLoop:
+    the lowering reads the colour, not the model or its written form."""
+
+    model = tmp_path / "HC_SYNTHETIC"
+    shutil.copytree(hc_nlo_x0_ufo, model)
+    path = model / "CT_vertices.py"
+    text = path.read_text()
+    for ring, legs in (
+        ("f(1,-1,-2)*f(2,-2,-3)*f(3,-3,-4)*f(4,-4,-1)", (1, 2, 3, 4)),
+        ("f(1,-1,-2)*f(2,-2,-3)*f(4,-3,-4)*f(3,-4,-1)", (1, 2, 4, 3)),
+        ("f(1,-1,-2)*f(3,-2,-3)*f(2,-3,-4)*f(4,-4,-1)", (1, 3, 2, 4)),
+    ):
+        assert text.count(f"'{ring}'") == 1, ring
+        text = text.replace(f"'{ring}'", f"'{_rewritten_ring(*legs)}'")
+    path.write_text(text)
+    card = _card()
+    row = _row(card, "HC05")
+    output = tmp_path / "out"
+    output.mkdir()
+    _check_row(_generate(model, card, row, output), card, row)
+
+
+@pytest.mark.loop_physics
+def test_a_five_point_r2_colour_without_a_vocabulary_form_is_refused_typed(
+    hc_nlo_x0_ufo, loop_native, tmp_path
+):
+    """A synthetic copy of HC_NLO_X0 whose [G G G G X0] R2 colours are single
+    fundamental traces ``Tr(a,b,c,d)``: their charge-conjugation-odd part
+    needs the d*f pairings, which the five-point contact trees do not lower,
+    so the projection finds no vocabulary form and HC05 stays the typed
+    ``unlowered-counterterm`` refusal (REQUIREMENTS_ADDENDUM J), before
+    anything is exported."""
 
     from pyamplicol.api.errors import GenerationError
     from pyamplicol.loops.v2.refusals import LoopEngineRefusal
 
-    row = {
-        "id": "HC05",
-        "process": "g g > x0 g g",
-        "particle_veto": ["t"],
-        "restriction": "heft",
-    }
+    model = tmp_path / "HC_SINGLE_TRACE"
+    shutil.copytree(hc_nlo_x0_ufo, model)
+    path = model / "CT_vertices.py"
+    text = path.read_text()
+    for ring, legs in (
+        ("f(1,-1,-2)*f(2,-2,-3)*f(3,-3,-4)*f(4,-4,-1)", "1,2,3,4"),
+        ("f(1,-1,-2)*f(2,-2,-3)*f(4,-3,-4)*f(3,-4,-1)", "1,2,4,3"),
+        ("f(1,-1,-2)*f(3,-2,-3)*f(2,-3,-4)*f(4,-4,-1)", "1,3,2,4"),
+    ):
+        assert text.count(f"'{ring}'") == 1, ring
+        text = text.replace(f"'{ring}'", f"'Tr({legs})'")
+    path.write_text(text)
+    card = _card()
+    row = _row(card, "HC05")
+    output = tmp_path / "out"
+    output.mkdir()
     with pytest.raises(LoopEngineRefusal) as error:
-        _generate(hc_nlo_x0_ufo, _card(), row, tmp_path)
+        _generate(model, card, row, output)
     assert isinstance(error.value, GenerationError)
     assert error.value.key == "unlowered-counterterm"
     message = str(error.value)
-    assert "[G G G G X0]" in message
-    assert "f(1,-1,-2)*f(2,-2,-3)*f(3,-3,-4)*f(4,-4,-1)" in message
-    assert "multi-trace" in message
-    assert not (tmp_path / "HC05").exists()
+    assert "[G G G G X0]" in message and "Tr(1,2,3,4)" in message
+    assert not (output / "HC05").exists()

@@ -47,9 +47,11 @@ use crate::{RusticolError, RusticolResult};
 pub mod binary;
 mod links;
 mod live;
+mod packed;
 pub use binary::{read_binary, read_binary_with};
 pub use live::LiveRows;
 use ninjars::fast::tensor_layout::ncoeff;
+pub use packed::{LinkInterner, PackedLinks, SharedLinks};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use symbolica::domains::rational::Rational;
@@ -430,11 +432,14 @@ impl Content {
     }
 }
 
-/// A seed term `K × conj(A0[component])`, exact.
+/// A seed term `K × conj(A0[component])`, exact: `weight` indexes the
+/// program's distinct seed weights ([`LoopProgramV4::seed_weights`]; M-FINAL
+/// MF-8G-2 item 4: a term takes eight bytes, a full-colour class has one per
+/// Born component).
 #[derive(Clone, Debug)]
 pub struct SeedTerm {
-    pub component: usize,
-    pub weight: [Rational; 2],
+    pub component: u32,
+    pub weight: u32,
 }
 
 /// A seed class at one loop order: per observable column its terms.
@@ -452,9 +457,30 @@ pub struct SeedKey {
 
 #[derive(Clone, Debug)]
 pub struct Leaf {
-    pub seed: usize,
-    /// Exact leaf weight (automorphism, flavour multiplicity, fermion sign).
-    pub weight: Rational,
+    pub seed: u32,
+    /// Exact leaf weight (automorphism, flavour multiplicity, fermion sign):
+    /// an index into the program's distinct leaf weights
+    /// ([`LoopProgramV4::leaf_weights`]; M-FINAL MF-8G-2 item 4).
+    pub weight: u32,
+}
+
+/// The distinct leaf weights of a plan's families, each text parsed once.
+#[derive(Default)]
+struct LeafWeights<'a> {
+    values: Vec<Rational>,
+    index: HashMap<&'a str, u32>,
+}
+
+impl<'a> LeafWeights<'a> {
+    fn get(&mut self, text: &'a str) -> RusticolResult<u32> {
+        if let Some(&found) = self.index.get(text) {
+            return Ok(found);
+        }
+        let next = u32::try_from(self.values.len()).map_err(|_| invalid("leaf weights"))?;
+        self.values.push(exact(text)?);
+        self.index.insert(text, next);
+        Ok(next)
+    }
 }
 
 /// The source of an edge: a leaf seed or the output of an earlier step.
@@ -473,7 +499,23 @@ pub struct Edge {
     pub content: usize,
     pub source_rank: usize,
     pub products: usize,
+    /// The row links of a fused step's edge. A split step's edges keep none
+    /// once its form is chosen ([`release_split_links`]): its parts hold
+    /// the links it runs ([`SplitPart::links`]).
     pub links: Vec<super::kernels::RowLink>,
+}
+
+/// Release the edges' row links of a step that runs split (M-FINAL MF-8G-2
+/// item 4): the split form reads its parts' links only (`trie`, `merged`),
+/// which repeat the edges' links per routing term, so a loaded plan holds
+/// each split link once. The form choice and the modelled costs have read
+/// them already.
+fn release_split_links(edges: &mut [Edge], split: &Option<SplitStep>) {
+    if split.is_some() {
+        for edge in edges {
+            edge.links = Vec::new();
+        }
+    }
 }
 
 /// The kernel form of a dressing step (DESIGN.md §5.2).
@@ -571,8 +613,10 @@ pub struct SplitPart {
     pub current: usize,
     /// The step group of the term's vertex.
     pub group: usize,
-    /// Row links whose `block` is the term row (its current row).
-    pub links: Vec<super::kernels::RowLink>,
+    /// Row links whose `block` is the term row (its current row), packed
+    /// and shared by the parts with equal links (`plan/packed.rs`; the
+    /// dressing unpacks them per part).
+    pub links: SharedLinks,
 }
 
 /// One schedule-B step: a dressed trie node, or one cut species of a
@@ -842,8 +886,12 @@ pub struct LoopProgramV4 {
     /// components per term row.
     pub currents: Vec<(usize, usize)>,
     pub seed_classes: Vec<Seed>,
+    /// The distinct exact weights of the seed classes' terms.
+    pub seed_weights: Vec<[Rational; 2]>,
     pub seeds: Vec<SeedKey>,
     pub families: Vec<Family>,
+    /// The distinct exact weights of the families' leaves.
+    pub leaf_weights: Vec<Rational>,
     pub forward: Option<Vec<State>>,
     pub merged: Option<Merged>,
     pub products: Vec<MonomialProductTable>,
@@ -867,6 +915,8 @@ pub struct ReadRows {
 struct Tables {
     index: HashMap<(usize, usize), usize>,
     tables: Vec<MonomialProductTable>,
+    /// The split parts' distinct link lists (`plan/packed.rs`).
+    links: LinkInterner,
 }
 
 /// Ids of the split inputs the chosen split steps read.
@@ -1158,14 +1208,12 @@ fn split_candidate(
             for (k, (row, _blocks)) in term.rows.iter().enumerate() {
                 row_of[*row] = Some(k as u32);
             }
-            let links: Vec<_> = edge
-                .links
-                .iter()
-                .filter_map(|link| {
+            let links = PackedLinks::collect(|| {
+                edge.links.iter().filter_map(|link| {
                     row_of[link.block as usize]
                         .map(|block| super::kernels::RowLink { block, ..*link })
                 })
-                .collect();
+            });
             targets[group].extend(links.iter().map(|link| link.output));
             let incoming = if s.seeded { 1 } else { content.d_in };
             iterations += links.len() * cut * incoming * shape.width;
@@ -1174,7 +1222,7 @@ fn split_candidate(
                 term: t,
                 current: 0,
                 group,
-                links,
+                links: tables.links.intern(links),
             });
         }
         parts.push(edge_parts);
@@ -1476,6 +1524,11 @@ impl LoopProgramV4 {
             file.column_weights.is_none() || weight_columns <= columns,
             "column weights",
         )?;
+        // Each distinct weight text parsed and kept once.
+        let mut seed_weights: Vec<[Rational; 2]> = Vec::new();
+        let mut weight_index: HashMap<(&str, &str), u32> = HashMap::new();
+        let born_components =
+            u32::try_from(file.born_components).map_err(|_| invalid("Born components"))?;
         let seed_classes = file
             .seed_classes
             .iter()
@@ -1489,11 +1542,22 @@ impl LoopProgramV4 {
                             terms
                                 .iter()
                                 .map(|(component, re, im)| {
-                                    require(*component < file.born_components, "seed component")?;
-                                    Ok(SeedTerm {
-                                        component: *component,
-                                        weight: [exact(re)?, exact(im)?],
-                                    })
+                                    let component = u32::try_from(*component)
+                                        .ok()
+                                        .filter(|&c| c < born_components)
+                                        .ok_or_else(|| invalid("seed component"))?;
+                                    let weight = match weight_index.get(&(re.as_str(), im.as_str()))
+                                    {
+                                        Some(&found) => found,
+                                        None => {
+                                            let next = u32::try_from(seed_weights.len())
+                                                .map_err(|_| invalid("seed weights"))?;
+                                            seed_weights.push([exact(re)?, exact(im)?]);
+                                            weight_index.insert((re, im), next);
+                                            next
+                                        }
+                                    };
+                                    Ok(SeedTerm { component, weight })
                                 })
                                 .collect::<RusticolResult<Vec<_>>>()
                         })
@@ -1501,6 +1565,7 @@ impl LoopProgramV4 {
                 })
             })
             .collect::<RusticolResult<Vec<_>>>()?;
+        drop(weight_index);
         let seeds = file
             .seeds
             .iter()
@@ -1520,6 +1585,7 @@ impl LoopProgramV4 {
         let mut tables = Tables {
             index: HashMap::new(),
             tables: Vec::new(),
+            links: LinkInterner::default(),
         };
         let mut order_count = 0;
         let mut families = Vec::with_capacity(file.families.len());
@@ -1539,10 +1605,18 @@ impl LoopProgramV4 {
             rows: &rows,
             content_rows: &content_rows,
         };
+        let mut leaf_weights = LeafWeights::default();
         for f in &file.families {
             order_count = order_count.max(f.orders.iter().map(|&o| o + 1).max().unwrap_or(0));
-            families.push(Self::family(f, &shared, &mut tables, &mut split_inputs)?);
+            families.push(Self::family(
+                f,
+                &shared,
+                &mut tables,
+                &mut split_inputs,
+                &mut leaf_weights,
+            )?);
         }
+        let leaf_weights = leaf_weights.values;
         let forward = file
             .forward
             .as_ref()
@@ -1571,8 +1645,10 @@ impl LoopProgramV4 {
             vertex_instances: SplitInputs::ordered(&split_inputs.instances),
             currents: SplitInputs::ordered(&split_inputs.currents),
             seed_classes,
+            seed_weights,
             seeds,
             families,
+            leaf_weights,
             forward,
             merged,
             products: tables.tables,
@@ -1581,15 +1657,16 @@ impl LoopProgramV4 {
         };
         // Helicity-resolved and selected columns: the steps keep the rows
         // their kept Born rows reach (`live`).
-        program.prune_dead_rows();
+        program.prune_dead_rows(&mut tables.links);
         Ok(program)
     }
 
-    fn family(
-        f: &FamilyFile,
+    fn family<'a>(
+        f: &'a FamilyFile,
         shared: &Shared<'_>,
         tables: &mut Tables,
         split_inputs: &mut SplitInputs,
+        leaf_weights: &mut LeafWeights<'a>,
     ) -> RusticolResult<Family> {
         let (file, contents, seeds) = (shared.file, shared.contents, shared.seeds);
         let full = (1u64 << file.legs) - 1;
@@ -1612,8 +1689,8 @@ impl LoopProgramV4 {
             .map(|leaf| {
                 require(leaf.seed < seeds, "leaf seed index")?;
                 Ok(Leaf {
-                    seed: leaf.seed,
-                    weight: exact(&leaf.weight)?,
+                    seed: u32::try_from(leaf.seed).map_err(|_| invalid("leaf seed index"))?,
+                    weight: leaf_weights.get(&leaf.weight)?,
                 })
             })
             .collect::<RusticolResult<Vec<_>>>()?;
@@ -1702,6 +1779,7 @@ impl LoopProgramV4 {
                 rank_in: s.rank_in,
             };
             let (split, costs) = choose_form(&shape, &edges, shared, tables, split_inputs)?;
+            release_split_links(&mut edges, &split);
             match &split {
                 None => factors.extend(edges.iter().map(|edge| edge.factor)),
                 Some(split) => {
@@ -2003,6 +2081,7 @@ impl LoopProgramV4 {
                 rank_in: s.rank_in,
             };
             let (split, costs) = choose_form(&shape, &edges, shared, tables, split_inputs)?;
+            release_split_links(&mut edges, &split);
             states.push(MergedState {
                 step: Step {
                     seeded: s.seeded,

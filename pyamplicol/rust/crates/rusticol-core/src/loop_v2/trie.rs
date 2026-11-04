@@ -58,8 +58,10 @@ pub fn run_family_on<T: Carrier, const L: usize>(
     let weights: Vec<T> = family
         .leaves
         .iter()
-        .map(|leaf| data.cast(&leaf.weight))
+        .map(|leaf| data.cast(&plan.leaf_weights[leaf.weight as usize]))
         .collect();
+    // A split part's row links, unpacked (`plan::PackedLinks`).
+    let mut links = Vec::new();
     for (s, step) in family.steps.iter().enumerate() {
         let mut out = pool.take(step.rows * columns * step.out_row() * v);
         // The source object of an edge: a weighted leaf seed, or a child's
@@ -68,7 +70,11 @@ pub fn run_family_on<T: Carrier, const L: usize>(
             match edge.source {
                 Source::Leaf(leaf) => {
                     let mut input = pool.take(seeds.len());
-                    seeds.leaf_into::<L>(family.leaves[leaf].seed, &weights[leaf], &mut input);
+                    seeds.leaf_into::<L>(
+                        family.leaves[leaf].seed as usize,
+                        &weights[leaf],
+                        &mut input,
+                    );
                     Ok(input)
                 }
                 Source::Step(child) => outputs[child]
@@ -113,7 +119,7 @@ pub fn run_family_on<T: Carrier, const L: usize>(
                             &segment,
                             &input,
                             inputs.currents.get(part.current),
-                            &part.links,
+                            part.links.unpack_into(&mut links),
                             &mut accumulators[part.group],
                         );
                     }

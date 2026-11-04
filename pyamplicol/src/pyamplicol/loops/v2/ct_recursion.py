@@ -59,7 +59,13 @@ Born x CT interference directly; no CT tree and no site is listed:
   and contribute nothing. With
   ``multi_trace`` (the production closure, ``ct_closure``) the d-symbol, d·d,
   d·f and δδ colours of the four-gluon and gggV R2 (``models.ct_color_flow``)
-  and the whole-rule colour continuations (``whole_rule_rows``) are lowered;
+  and the whole-rule colour continuations (``whole_rule_rows``) are lowered,
+  and so is a colour outside that vocabulary which is an exact combination
+  of vocabulary colours on its adjoint legs at N_c = 3
+  (``ct_colour_projection``, e.g. the
+  ring of four structure constants of HC_NLO_X0's [G G G G X0] R2; not
+  under a formal-N_c continuation): its vertex terms take those
+  colours with the exact factors (``TreeVocabulary.colour_terms``);
   without it (the tree-route form kept as a test of the lowering) they stay
   residual, as the tree runtime has no multi-trace colour sectors.
 * **Cancelling cells.** A colour or Lorentz cell of a UFO vertex the tree
@@ -207,24 +213,53 @@ def rule_terms(
     e.g. ``CoefficientLowering.is_zero``.
     """
 
+    return tuple((entry, structure) for entry, structure, _ in rule_rows(rule, is_zero))
+
+
+def rule_rows(
+    rule: Any, is_zero: Any = None, colours: Any = None
+) -> tuple[tuple[Any, CountertermStructure, Any], ...]:
+    """``rule_terms`` with each entry's colour in the tree vocabulary:
+    (entry, lowered vertex term, exact colour factor or ``None`` for 1).
+
+    ``colours`` (``entry -> ((colour, factor), ...)`` or ``None``, e.g.
+    ``TreeVocabulary.colour_terms``) gives an entry's vocabulary colours; an
+    entry it has none for, or without ``colours``, keeps its own colour
+    (factor ``None``).
+    """
+
     is_zero = _coefficient_is_zero if is_zero is None else is_zero
     component = COMPONENT_BY_KIND[rule.kind]
-    return tuple(
-        (
-            entry,
-            CountertermStructure(
-                particles=tuple(entry.particle_names),
-                colour=entry.color,
-                lorentz=entry.lorentz_name,
-                orders=add_orders(tuple(entry.order)),
-                component=component,
-                power=power,
-            ),
-        )
-        for entry in rule.entries
-        for power in COUNTERTERM_POWERS
-        if not is_zero(entry, power)
-    )
+    out = []
+    for entry in rule.entries:
+        found = None if colours is None else colours(entry)
+        for colour, factor in found or ((entry.color, None),):
+            for power in COUNTERTERM_POWERS:
+                if is_zero(entry, power):
+                    continue
+                structure = CountertermStructure(
+                    particles=tuple(entry.particle_names),
+                    colour=colour,
+                    lorentz=entry.lorentz_name,
+                    orders=add_orders(tuple(entry.order)),
+                    component=component,
+                    power=power,
+                )
+                out.append((entry, structure, factor))
+    return tuple(out)
+
+
+def scaled_by_colour(value: Any, factor: Any) -> Any:
+    """``value`` times an exact colour factor (``rule_rows``; ``None`` is 1)."""
+
+    if factor is None:
+        return value
+    from symbolica import E, Expression
+
+    number = E(str(factor.real))
+    if factor.imag:
+        number = number + E(str(factor.imag)) * Expression.I
+    return value * number
 
 
 class TreeVocabulary:
@@ -232,6 +267,10 @@ class TreeVocabulary:
 
     ``multi_trace`` admits the colours whose currents carry closed traces
     (``models.ct_color_flow``), which only loop-request blocks carry.
+    ``projected`` (with ``multi_trace``; requests without a formal-N_c
+    continuation) also lowers a colour outside the vocabulary that is an exact
+    combination of vocabulary colours on its adjoint legs at N_c = 3
+    (``colour_terms``).
     """
 
     def __init__(
@@ -240,15 +279,49 @@ class TreeVocabulary:
         *,
         multi_trace: bool = False,
         whole_rules: bool = False,
+        projected: bool = False,
     ):
         self.compiled = compiled
         self.multi_trace = multi_trace
         self.whole_rules = whole_rules
+        self.projected = projected and multi_trace
         self.particles = {
             str(item["name"]): item for item in compiled.model["particles"]
         }
         self._lorentz: dict[str, str | None] = {}
         self._levi_civita: dict[str, bool] = {}
+        self._colours: dict[tuple[str, tuple[int, ...]], Any] = {}
+
+    def colour_terms(self, entry: Any) -> tuple[tuple[str, Any], ...] | None:
+        """The vocabulary colours of ``entry`` with their exact factors:
+        its own colour (factor ``None``) when the tree compiler lowers it,
+        else (``projected``) its exact projection onto the vocabulary colours
+        of its adjoint legs (``ct_colour_projection``); ``None``
+        when it has neither."""
+
+        representations = tuple(
+            int(self.particles[name]["color"]) for name in entry.particle_names
+        )
+        key = (entry.color, representations)
+        if key not in self._colours:
+            try:
+                tree_colour_source(
+                    entry.color, representations, multi_trace=self.multi_trace
+                )
+                found: Any = ((entry.color, None),)
+            except UnloweredCountertermColour as error:
+                found = error
+                if self.projected:
+                    from .ct_colour_projection import vocabulary_colours
+
+                    projected = vocabulary_colours(
+                        entry.color, representations, multi_trace=True
+                    )
+                    if projected is not None:
+                        found = projected
+            self._colours[key] = found
+        found = self._colours[key]
+        return None if isinstance(found, UnloweredCountertermColour) else found
 
     def rule_reason(self, rule: Any) -> str | None:
         """Why no entry of ``rule`` can enter the tree recursion, or ``None``."""
@@ -292,15 +365,11 @@ class TreeVocabulary:
         return self._cell(entry)[1]
 
     def _cell(self, entry: Any) -> tuple[str | None, bool]:
-        records = [self.particles[name] for name in entry.particle_names]
-        try:
-            tree_colour_source(
-                entry.color,
-                [int(r["color"]) for r in records],
-                multi_trace=self.multi_trace,
+        if self.colour_terms(entry) is None:
+            representations = tuple(
+                int(self.particles[name]["color"]) for name in entry.particle_names
             )
-        except UnloweredCountertermColour as error:
-            return str(error), False
+            return str(self._colours[(entry.color, representations)]), False
         name = entry.lorentz_name
         if name not in self._lorentz:
             self._lorentz[name] = counterterm_lorentz_error(self.compiled, name)
@@ -1440,7 +1509,10 @@ def lower_model_counterterms(
     dirac_fields = frozenset(dirac_fields)
     veto = frozenset(abs(int(pdg)) for pdg in veto)
     vocabulary = TreeVocabulary(
-        compiled, multi_trace=multi_trace, whole_rules=continuation is not None
+        compiled,
+        multi_trace=multi_trace,
+        whole_rules=continuation is not None,
+        projected=continuation is None,
     )
     nc = None if continuation is None else continuation.nc
     coefficients = CoefficientLowering(
@@ -1531,14 +1603,16 @@ def lower_model_counterterms(
                 rows = whole_rule_rows(rule, coefficients)
             else:
                 cells = unlowered_cells(rule, coefficients)
-            for entry, structure in (
-                rule_terms(rule, coefficients.is_zero)
+            for entry, structure, factor in (
+                rule_rows(rule, coefficients.is_zero, vocabulary.colour_terms)
                 if rule.whole_rule_continuation is None
                 else ()
             ):
                 if entry_cell(entry) in cells:
                     continue
-                value = coefficients(entry, structure.power)
+                value = scaled_by_colour(
+                    coefficients(entry, structure.power), factor
+                )
                 rows[structure] = (
                     rows[structure] + value if structure in rows else value
                 )
@@ -2637,10 +2711,14 @@ class _CellSettlement:
         (``rule_terms``), as ``lower_model_counterterms`` forms a rule's rows."""
 
         rows: dict[CountertermStructure, Any] = {}
-        for entry, structure in rule_terms(rule, self.coefficients.is_zero):
+        for entry, structure, factor in rule_rows(
+            rule, self.coefficients.is_zero, self.vocabulary.colour_terms
+        ):
             if entry_cell(entry) != cell:
                 continue
-            value = self.coefficients(entry, structure.power)
+            value = scaled_by_colour(
+                self.coefficients(entry, structure.power), factor
+            )
             rows[structure] = rows[structure] + value if structure in rows else value
         if self.multi_trace:
             rows = _without_u1_terms(rows, self.nc)
@@ -3171,6 +3249,8 @@ __all__ = [
     "decide_constant",
     "lower_model_counterterms",
     "rule_key",
+    "rule_rows",
     "rule_terms",
+    "scaled_by_colour",
     "uncancelled_rules",
 ]

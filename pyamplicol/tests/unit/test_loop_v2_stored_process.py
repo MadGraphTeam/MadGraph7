@@ -755,3 +755,55 @@ def test_binary64_observable_calls_touch_no_symbolica_state(stored, tmp_path):
     for call in calls:
         assert unlicensed[call]["calls"] == {}, (call, unlicensed[call]["calls"])
         assert unlicensed[call]["values"] == licensed[call]["values"], call
+
+
+@pytest.mark.loop_fast
+def test_a_loaded_process_does_not_depend_on_its_artifact_path(stored, tmp_path):
+    """A loaded process reads its plan and tree programs on demand through
+    the handle opened at load (``artifact.load_native_process``), never the
+    path: moved away, another artifact published in its place and the moved
+    copy deleted, every executor built after the move (the "uv"/"ir"
+    companion, colour- and spin-correlated and resolved column sets) gives
+    bitwise the values of a runtime whose artifact stayed in place."""
+
+    import shutil
+    from decimal import Decimal
+
+    from pyamplicol import Runtime
+    from pyamplicol.correlators import CorrelatedRequest
+
+    record = _record("gg_gg")
+    parameters = record["parameters"]
+    points, scales = record["points"][:1], record["scales_squared"][:1]
+    spin = {
+        int(leg): tuple(
+            (Decimal(re), Decimal(im)) for re, im in record["spin_vectors"][k]
+        )
+        for k, leg in enumerate(["3", "4"])
+    }
+    artifact = tmp_path / "artifact"
+    shutil.copytree(stored["gg_gg"], artifact)
+
+    def calls(runtime) -> list[str]:
+        out = []
+        for poles in ("all", "uv", "ir"):
+            result = runtime.evaluate(points, mu_r2=scales, poles=poles)
+            out.append(repr((result.born_values, result.values)))
+        result = runtime.evaluate_correlated(
+            points, color_correlation="T12", mu_r2=scales, poles="uv"
+        )
+        out.append(repr(result.values))
+        result = runtime.evaluate_correlated_many(
+            points, {"spin": CorrelatedRequest("born", spin)}, mu_r2=scales
+        )["spin"]
+        out.append(repr(result.values))
+        result = runtime.evaluate_resolved(points, mu_r2=scales, poles="ir")
+        out.append(repr(result.values))
+        return out
+
+    in_place = calls(Runtime.load(artifact, process="gg", model_parameters=parameters))
+    loaded = Runtime.load(artifact, process="gg", model_parameters=parameters)
+    shutil.move(artifact, tmp_path / "moved")
+    shutil.copytree(stored["gg_plain"], artifact)
+    shutil.rmtree(tmp_path / "moved")
+    assert calls(loaded) == in_place

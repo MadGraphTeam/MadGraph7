@@ -199,6 +199,11 @@ const TREE_KEY: u64 = 40;
 /// The bytes of the one node a B-tree may hold below half full (its root).
 const TREE_ROOT: u64 = 256;
 
+/// The allocation of one shared link list (`plan::SharedLinks`): the `Arc`'s
+/// two counts and the list's header (its bytes are counted as the part's
+/// links).
+const SHARED_LINKS: usize = 2 * size_of::<usize>() + size_of::<super::super::PackedLinks>();
+
 /// The bytes of a B-tree set of `items` keys of at most 8 bytes.
 fn tree(items: u64) -> u64 {
     if items == 0 {
@@ -568,6 +573,9 @@ impl Sizes<'_> {
         let trees = filtered.saturating_mul(TREE_KEY);
         tally.hold_bytes(step, trees.saturating_add(terms.saturating_mul(TREE_ROOT)));
         tally.keep(terms, size_of::<SplitPart>());
+        // Each part's list shared (`plan::LinkInterner`), when it is the first
+        // of its links.
+        tally.keep(terms, SHARED_LINKS);
         let visits = rows.saturating_add(expanded).saturating_mul(terms);
         tally.iterate(visits.saturating_add(self.term_rows[content]));
         terms
@@ -767,18 +775,23 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
     tally.keep_grown(vertex_terms as u64, size_of::<Option<Vertex>>());
     tally.keep_grown(vertex_terms as u64, size_of::<Vertex>());
 
-    // Seed classes and seed keys with their parsed weights.
+    // Seed classes and seed keys with their parsed weights; the classes'
+    // distinct weights (at most one per term) and their index by text.
     tally.keep_grown(file.seed_classes.len() as u64, size_of::<Seed>());
+    let mut seed_terms = 0u64;
     for s in &file.seed_classes {
         tally.keep_grown(s.columns.len() as u64, size_of::<Vec<SeedTerm>>());
         for terms in &s.columns {
             tally.keep_grown(terms.len() as u64, size_of::<SeedTerm>());
+            seed_terms = seed_terms.saturating_add(terms.len() as u64);
             for (_, re, im) in terms {
                 tally.weight(re)?;
                 tally.weight(im)?;
             }
         }
     }
+    tally.keep_grown(seed_terms, size_of::<[Rational; 2]>());
+    tally.map_grown(seed_terms, size_of::<((&str, &str), u32)>());
     tally.keep_grown(file.seeds.len() as u64, size_of::<SeedKey>());
     for key in &file.seeds {
         let size = size_of::<(usize, [Rational; 2])>();
@@ -825,6 +838,11 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
     // per source row (collected); then per step its edges, its split
     // candidate, and the family's factor, vertex and current sets.
     tally.keep(file.families.len() as u64, size_of::<Family>());
+    // The families' distinct leaf weights (at most one per leaf) and their
+    // index by text.
+    let leaves: u64 = file.families.iter().map(|f| f.leaves.len() as u64).sum();
+    tally.keep_grown(leaves, size_of::<Rational>());
+    tally.map_grown(leaves, size_of::<(&str, u32)>());
     let mut largest_rank = 0;
     for f in &file.families {
         require(
@@ -1089,9 +1107,20 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
     }
     tables.finish(&mut tally);
 
+    // The split parts' distinct link lists while the plan loads (one per
+    // part at most, and one per part the live-row pruning shortens, with
+    // its shared list).
+    let parts = sizes.parts;
+    let lists = if file.column_rows.is_some() {
+        tally.keep(parts, SHARED_LINKS);
+        parts.saturating_mul(2)
+    } else {
+        parts
+    };
+    tally.map_grown(lists, size_of::<super::super::SharedLinks>());
+
     // The split inputs (vertex instances and currents: at most one per
     // part) and their ordered lists.
-    let parts = sizes.parts;
     tally.map_grown(parts, size_of::<((usize, u64), usize)>());
     tally.map_grown(parts, size_of::<((usize, usize), usize)>());
     tally.keep(parts, size_of::<(usize, (usize, u64))>());

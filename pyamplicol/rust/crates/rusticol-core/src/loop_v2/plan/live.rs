@@ -30,8 +30,8 @@
 //! programs.
 
 use super::{
-    Content, Family, LoopProgramV4, ReadRows, Source, Step, StepCost, Vertex, fused_cost,
-    step_shape,
+    Content, Family, LinkInterner, LoopProgramV4, ReadRows, Source, Step, StepCost, Vertex,
+    fused_cost, step_shape,
 };
 use crate::RusticolResult;
 use rayon::prelude::*;
@@ -40,8 +40,9 @@ use std::sync::Arc;
 
 impl LoopProgramV4 {
     /// Drop the schedule-B row links, edges and steps that only carry the
-    /// zeros of the Born rows no column keeps (module docs).
-    pub(super) fn prune_dead_rows(&mut self) {
+    /// zeros of the Born rows no column keeps (module docs); the split
+    /// parts' shortened link lists are interned in `links`.
+    pub(super) fn prune_dead_rows(&mut self, links: &mut LinkInterner) {
         if !self.column_rows.restricts() {
             return;
         }
@@ -50,7 +51,14 @@ impl LoopProgramV4 {
             .map(|row| self.column_rows.keeps(row / columns, row % columns))
             .collect();
         for family in &mut self.families {
-            prune_family(family, &seeded, columns, &self.contents, &self.vertices);
+            prune_family(
+                family,
+                &seeded,
+                columns,
+                &self.contents,
+                &self.vertices,
+                links,
+            );
         }
         // The factor and current rows the kept links read (schedules F and
         // M read the plan's chunk inputs too, with links of their own).
@@ -88,7 +96,7 @@ impl LoopProgramV4 {
                 }
                 Some(split) => {
                     for part in split.parts.iter().flatten() {
-                        for link in &part.links {
+                        for link in part.links.iter() {
                             currents[part.current][link.block as usize] = true;
                         }
                     }
@@ -186,7 +194,15 @@ impl LoopProgramV4 {
             .par_iter()
             .map(|&f| {
                 let mut family = self.families[f].clone();
-                prune_family(&mut family, &seeded, columns, &self.contents, &self.vertices);
+                let mut links = LinkInterner::default();
+                prune_family(
+                    &mut family,
+                    &seeded,
+                    columns,
+                    &self.contents,
+                    &self.vertices,
+                    &mut links,
+                );
                 family
             })
             .collect();
@@ -225,6 +241,7 @@ fn prune_family(
     columns: usize,
     contents: &[Content],
     vertices: &[Vertex],
+    interner: &mut LinkInterner,
 ) {
     let steps = &mut family.steps;
     // Forward: the object rows a kept seed row reaches.
@@ -232,7 +249,8 @@ fn prune_family(
     for step in steps.iter() {
         let inputs = sources(step, seeded, &live);
         let mut out = vec![false; step.rows * columns];
-        let mut mark = |links: &[super::super::kernels::RowLink], input: &[bool]| {
+        let mut mark = |links: &mut dyn Iterator<Item = super::super::kernels::RowLink>,
+                        input: &[bool]| {
             for link in links {
                 if input[link.input as usize] {
                     out[link.output as usize] = true;
@@ -242,13 +260,13 @@ fn prune_family(
         match &step.split {
             None => {
                 for (edge, input) in step.edges.iter().zip(&inputs) {
-                    mark(&edge.links, input);
+                    mark(&mut edge.links.iter().copied(), input);
                 }
             }
             Some(split) => {
                 for (parts, input) in split.parts.iter().zip(&inputs) {
                     for part in parts {
-                        mark(&part.links, input);
+                        mark(&mut part.links.iter(), input);
                     }
                 }
             }
@@ -290,10 +308,10 @@ fn prune_family(
                 let mut members: Vec<Vec<(usize, usize)>> = vec![Vec::new(); split.groups.len()];
                 for (e, (parts, input)) in split.parts.iter_mut().zip(&inputs).enumerate() {
                     for (p, part) in parts.iter_mut().enumerate() {
-                        part.links.retain(|link| kept(link, input));
+                        interner.retain(&mut part.links, |link| kept(link, input));
                         members[part.group].push((e, p));
                         if let Source::Step(child) = step.edges[e].source {
-                            for link in &part.links {
+                            for link in part.links.iter() {
                                 read[child][link.input as usize] = true;
                             }
                         }
@@ -395,14 +413,18 @@ fn remove_empty(family: &mut Family, contents: &[Content], vertices: &[Vertex]) 
 }
 
 /// The modelled work of a pruned step (as the loader counts it,
-/// `fused_cost` and `split_candidate`): the fused form's, and the split
-/// form's when the step runs split (a fused step's split alternative is not
-/// recounted).
+/// `fused_cost` and `split_candidate`): the fused form's of a fused step,
+/// and the split form's of a step that runs split (a fused step's split
+/// alternative is not recounted, nor a split step's fused one: its edges
+/// keep no links, `release_split_links`).
 fn costs(step: &Step, contents: &[Content], vertices: &[Vertex]) -> (StepCost, Option<StepCost>) {
-    let fused = fused_cost(step.seeded, step.d_alpha, &step.edges, contents);
     let Some(split) = &step.split else {
-        return (fused, None);
+        return (
+            fused_cost(step.seeded, step.d_alpha, &step.edges, contents),
+            None,
+        );
     };
+    let fused = step.costs.0;
     let rank_in = if step.seeded { 0 } else { step.rank_in };
     let (cut, m_in) = step_shape(step.seeded, step.d_alpha, rank_in);
     let mut iterations = 0;
