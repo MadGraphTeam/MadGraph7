@@ -76,7 +76,8 @@ from pyamplicol.config import (
 )
 from pyamplicol.generation.phase_space import massive_rambo_final_state
 from pyamplicol.generation.process_grouping import GroupingBasis, GroupMember
-from pyamplicol.models.builtin.validation import generic_validation_point
+from pyamplicol.models import BuiltinSMModel
+from pyamplicol.models.builtin.process_ir import build_process_ir
 from pyamplicol.models.prepared import load_prepared_model_bundle
 
 REFERENCE = (
@@ -1119,16 +1120,19 @@ def test_cli_prints_partials_and_rejects_non_recurrence_lanes(
 
 # The built-in SM against this UFO 'sm' (same masses and widths of every leg
 # and propagator involved, alpha = 1/132.507, alpha_s = 0.118): fully
-# colourless processes included, whose built-in global coupling factor took the
-# number of colour-singlet legs as its electroweak power (the analytic checks
-# are test_builtin_sm_normalization). The W-pair rows differ for reasons
-# independent of that normalization and stay recorded as strict xfails.
+# colourless processes, whose built-in global coupling factor took the number
+# of colour-singlet legs as its electroweak power (the analytic checks are
+# test_builtin_sm_normalization), and massive-vector or scalar initial states,
+# which it averaged over two spin states. The W-pair rows differ for reasons
+# independent of the normalization and stay recorded as strict xfails.
 _BUILTIN_VS_UFO_PROCESSES = (
     "e+ e- > a a",
     "e+ e- > a a a",
     "e+ e- > mu+ mu-",
     "e+ e- > z h",
     "e+ e- > z z",
+    "z z > e+ e-",
+    "h z > e+ e-",
     "u u~ > a a",
     "e+ e- > u u~ g",
     "g g > g g",
@@ -1180,6 +1184,27 @@ def builtin_and_ufo_runtimes(
     return artifacts
 
 
+def _on_shell_point(process: str, seed: int, root: float = 500.0) -> list:
+    """Built-in masses: on-shell beams along z and a RAMBO final state."""
+
+    model = BuiltinSMModel()
+    ir = build_process_ir(process)
+    m1, m2 = (model.mass(pdg) for pdg in ir.initial_pdgs)
+    s = root * root
+    p = math.sqrt((s - (m1 + m2) ** 2) * (s - (m1 - m2) ** 2)) / (2 * root)
+    final = massive_rambo_final_state(
+        len(ir.final_pdgs),
+        sqrt_s=root,
+        masses=[model.mass(pdg) for pdg in ir.final_pdgs],
+        seed=seed,
+    )
+    return [
+        [math.hypot(p, m1), 0.0, 0.0, p],
+        [math.hypot(p, m2), 0.0, 0.0, -p],
+        *(list(momentum) for momentum in final),
+    ]
+
+
 @pytest.mark.parametrize(
     "process",
     [
@@ -1198,13 +1223,7 @@ def test_builtin_sm_matches_the_ufo_sm(
     builtin, ufo = (
         Runtime.load(artifact, process=process) for artifact in builtin_and_ufo_runtimes
     )
-    points = [
-        [
-            tuple(leg.momentum)
-            for leg in generic_validation_point(process, seed=seed, sqrt_s=500.0)
-        ]
-        for seed in (101, 202, 303)
-    ]
+    points = [_on_shell_point(process, seed) for seed in (101, 202, 303)]
     for point, (value, expected) in enumerate(
         zip(builtin.evaluate(points), ufo.evaluate(points), strict=True)
     ):

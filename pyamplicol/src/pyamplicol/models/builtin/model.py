@@ -652,18 +652,19 @@ class BuiltinSMModel(BuiltinSMLoweringMixin, BuiltinSMDefinitionMixin, BuiltinMo
         return 3 ** (exponent_twice // 2)
 
     def runtime_normalization_payload(self, dag: Any) -> dict[str, object]:
-        """Preserve the established built-in-SM normalization convention."""
+        """Spin and colour average, identical final states, coupling factor.
+
+        The average counts each initial state's source spin states and colour
+        dimension; the coupling factor's powers are the Born orders.
+        """
 
         initial = tuple(int(pdg) for pdg in dag.process.initial_pdgs)
         final = tuple(int(pdg) for pdg in dag.process.final_pdgs)
         average_factor = 1
         for pdg in initial:
-            if pdg == 21:
-                average_factor *= 16
-            elif 1 <= abs(pdg) <= 6:
-                average_factor *= 6
-            else:
-                average_factor *= 2
+            average_factor *= len(self.source_spin_states(pdg)) * max(
+                1, abs(self.color_rep(pdg))
+            )
         identical_factor = math.prod(
             math.factorial(count) for count in Counter(final).values()
         )
