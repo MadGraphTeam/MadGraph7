@@ -61,6 +61,17 @@ rm -f SubProcesses/*/*/py.py
 sed -i "s|pythia8_path = .*|pythia8_path = ./HEPTools/pythia8|" Cards/amcatnlo_configuration.txt
 sed -i "s|hepmc_path = .*|hepmc_path = ./HEPTools/hepmc|" Cards/amcatnlo_configuration.txt
 sed -i "s|# automatic_html_opening = True|automatic_html_opening = False|" Cards/amcatnlo_configuration.txt
+# - run_card settings of the first launch of vfold/GEN_<proc>_vfalt.mg (the
+#   seed is set by vfold/myLaunch.sh at each run): the results depend on them
+#   (e.g. the parton shower changes the MC counterterms)
+for kv in "10:nevents" "PYTHIA8:parton_shower" "False:MCatNLO_DELTA" "False:reweight_scale" "8, 4, 1:folding"; do
+  sed -i -E "s/^ *[^!=]*= *(${kv#*:})( |!|$)/  ${kv%%:*} = \1\2/I" Cards/run_card.dat
+done
+# - Source/run_card.inc and Source/param_card.inc from the cards (vfold/myLaunch.sh
+#   needs them, otherwise they only exist after a first launch or compilation)
+echo "treatcards all" > setupVfoldTests.cmd
+./bin/aMCatNLO setupVfoldTests.cmd > /dev/null
+command rm -f setupVfoldTests.cmd
 
 # Test material from the reference directory
 if [ "${refdir}" == "" ]; then
