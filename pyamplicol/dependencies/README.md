@@ -46,8 +46,9 @@ PR's save writes), their records ordered by name and numbered 0, 1, ...; the
 payload is kept byte for byte (it names its symbols by definition, so the
 numbering only maps the state), and the result must decode to the same
 evaluator. The stored bytes then depend on the evaluator alone, not on the
-producer (PyPI 3.0.3 and the Community build give the same artifact) nor on
-the process history. A section whose symbol data embeds an expression keeps its
+producer nor on the process history (loop artifacts generated with PyPI 3.0.3
+and with the Community build, the EW self-test included, are byte-identical
+but for `artifact.json`'s creation time and stage timings). A section whose symbol data embeds an expression keeps its
 numbering (the expression carries it; no pyAmpliCol evaluator references such
 a symbol). Generation imports each whole state once into the native: a symbol
 whose definition differs from the native's (the Community modules carry
