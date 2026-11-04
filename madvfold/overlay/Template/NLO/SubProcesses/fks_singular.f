@@ -1905,7 +1905,12 @@ c and the FKS subtractions amplify that.
       call update_as_param()
 c AV road B step 7k: reuse the Born memo (this is only called by the
 c SDE batch of modes F and C; the memo also restores amp2)
-      if (vfold_born_memo_hit(p_born_in,g_in)) then
+c AV road B step 9i+9j: but not with SBORN served from cudacpp (a memo entry
+c would carry an invalid SAVEAMP): there the SBORN call is served
+      if (vfold_sborn_bridge.gt.0) then
+        calculatedBorn=.false.
+        call sborn(p_born_in,wgt_c)
+      elseif (vfold_born_memo_hit(p_born_in,g_in)) then
         call vfold_born_memo_restore
       else
         calculatedBorn=.false. ! genuine re-evaluation for a new point

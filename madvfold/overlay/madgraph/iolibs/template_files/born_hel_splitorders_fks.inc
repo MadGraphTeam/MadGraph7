@@ -37,6 +37,10 @@ C of the fact that they satisfy or not the squared-orders constraints
 
 
 C look for orders which match the born order constraint 
+C AV road B step 9i+9j: SAVEAMP must hold these momenta (not
+C the case when SBORN was served from cudacpp,
+C ENV_VFOLD_SBORN_BRIDGE>0)
+	  CALL VFOLD_ENSURE_SAVEAMP(P)
 	  CALL SBORN_HEL_SPLITORDERS(P,ANS)
 ans_summed = 0d0
   DO J = 1, MAX_BHEL

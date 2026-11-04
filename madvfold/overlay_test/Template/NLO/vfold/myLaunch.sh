@@ -347,14 +347,8 @@ fi
 # instance 8192 at folding 1,1,1 and 256 at folding 8,4,1.
 if [ "${ENV_VFOLD_KPOINT_BATCH}" == "" ]; then export ENV_VFOLD_KPOINT_BATCH=1; fi
 
-# Road B step 9f: fused Born Soft Function (color-linked Born) kernel
-# Default ON for F2/F/Cs and OFF for F0/F1 (ENV_VFOLD_BSF_FUSED=-1) in step9g
-# It was initially OFF for all modes (ENV_VFOLD_BSF_FUSED=0) in step9f
-if [ "${ENV_VFOLD_BSF_FUSED}" == "" ]; then export ENV_VFOLD_BSF_FUSED=-1; fi
-
-# Road B step 9i/j: Born Soft Function offload to cudacpp (mode C only)
-# Setting ENV_VFOLD_SBORN_BRIDGE=1 internally sets ENV_VFOLD_BSF_BRIDGE=1 too
-# This bridge is only enabled for mode C if ENV_VFOLD_BSF_FUSED is on for mode C
+# Road B step 9i/j: SBORN served from cudacpp (mode C only)
+# Road B step 11y: no fused BSF kernel, the colour-linked Borns are also served from cudacpp
 if [ "${ENV_VFOLD_SBORN_BRIDGE}" == "" ]; then export ENV_VFOLD_SBORN_BRIDGE=1; fi
 
 # Road B step 11a: MG5 timers (Fortran cpu_time) via vfold_cpu_time.c
@@ -377,8 +371,6 @@ dumpENV() {
   echo "ENV_VFOLD_ME_MODE=${ENV_VFOLD_ME_MODE}" | tee -a $out
   echo "ENV_VFOLD_VECSIZE_USED=${ENV_VFOLD_VECSIZE_USED}" | tee -a $out
   echo "ENV_VFOLD_KPOINT_BATCH=${ENV_VFOLD_KPOINT_BATCH}" | tee -a $out
-  echo "ENV_VFOLD_BSF_FUSED=${ENV_VFOLD_BSF_FUSED}" | tee -a $out
-  echo "ENV_VFOLD_BSF_BRIDGE=${ENV_VFOLD_BSF_BRIDGE}" | tee -a $out
   echo "ENV_VFOLD_SBORN_BRIDGE=${ENV_VFOLD_SBORN_BRIDGE}" | tee -a $out
   echo "ENV_VFOLD_SBORN_GSCALE=${ENV_VFOLD_SBORN_GSCALE}" | tee -a $out
   echo "ENV_VFOLD_CPUTIME=${ENV_VFOLD_CPUTIME}" | tee -a $out

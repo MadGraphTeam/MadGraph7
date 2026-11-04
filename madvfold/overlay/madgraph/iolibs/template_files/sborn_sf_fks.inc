@@ -25,6 +25,8 @@ C the charge-linked if it is a color singlet
       parameter (zero=0d0)
       double precision amp_split_soft(amp_split_size)
       common /to_amp_split_soft/amp_split_soft
+      logical bsf_served, vfold_bsf_served ! AV road B step 11y
+      external vfold_bsf_served
 
       chargeprod = 0d0
 
@@ -34,6 +36,14 @@ C the charge-linked if it is a color singlet
       endif
 C check if need color or charge links, and include the gs/w**2 term here
       if (need_color_links) then
+C AV road B step 11y: in mode C with SBORN served from
+C cudacpp (ENV_VFOLD_SBORN_BRIDGE>0), take the colour-linked
+C Borns computed by cudacpp for this point if available
+C (VFOLD_BSF_SERVED), else compute them in Fortran: these
+C read SBORN's amplitude cache SAVEAMP, which is not filled
+C when SBORN is served, so make sure that it holds P_BORN
+      bsf_served = vfold_bsf_served(p_born)
+      if (.not.bsf_served) call vfold_ensure_saveamp(p_born)
 %(iflines_col)s
       wgt = wgt_col * g**2
 C update the amp_split_soft, which is summed in sbornsoft

@@ -45,6 +45,11 @@ C
       double precision max_val
       double precision       wgt_ME_born,wgt_ME_real
       common /c_wgt_ME_tree/ wgt_ME_born,wgt_ME_real
+      logical vfold_sborn_serve ! AV road B step 9i+9j
+      external vfold_sborn_serve
+      integer nfksprocess
+      common/c_nfksprocess/nfksprocess
+%(ij_lines)s
 
       double precision amp2b(%(ngraphs)d), jamp2b(0:%(ncolor)d,0:nampso)
       common/to_amps_born/  amp2b,       jamp2b
@@ -121,7 +126,17 @@ endif
  firsttime = .false.
 endif
 
-CALL SBORN_SPLITORDERS(P,ANS)
+C AV road B step 9i+9j: in mode C with ENV_VFOLD_SBORN_BRIDGE>0,
+C answer from the Born points already evaluated by cudacpp whenever
+C possible (see vfold_born_batch.f90); everything below is then
+C derived as usual. Not if the mother of the FKS splitting is a
+C gluon (IJ_VALUES>0): cudacpp does not compute the second component
+C of ANS needed for it
+IF (IJ_VALUES(NFKSPROCESS).NE.0) THEN
+  CALL SBORN_SPLITORDERS(P,ANS)
+ELSEIF (.NOT.VFOLD_SBORN_SERVE(P,ANS)) THEN
+  CALL SBORN_SPLITORDERS(P,ANS)
+ENDIF
 
 C the born to be integrated
 ans_summed = 0d0

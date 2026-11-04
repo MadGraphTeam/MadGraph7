@@ -24,7 +24,8 @@
 ! gathering walk of F2/F/C since step 12n. C evaluates the batched Born
 ! and Real MEs with the cudacpp bridges since step 13d. F1, F2 and F must
 ! all produce bit-identical results, different from those of F0; C differs
-! from F only by rounding (cudacpp MEs instead of SBORN/SMATRIX_REAL).
+! from F only by rounding (cudacpp MEs instead of SBORN/SMATRIX_REAL),
+! also with SBORN served from cudacpp since step 13e.
 module vfold_mode
   implicit none
   character(len=2), public, save :: vfold_me_mode = 'C '
@@ -63,6 +64,31 @@ module vfold_mode
   ! it back instead (vfold_mint2_park in mint_module.f90). Opt-in as it costs
   ! one more copy of the batch buffers per vn in memory.
   integer, public, save :: vfold_batch_pervn = 0
+
+  ! Road B step 9i+9j: in mode C, serve SBORN itself from the cudacpp Born
+  ! library, so that mode C no longer runs a scalar SBORN per point: besides
+  ! the ME and the ten colour-linked Borns, cudacpp also returns AMP2 (for
+  ! the multichannel enhancement) and JAMP2 (for the MC counterterms), also
+  ! at the real-emission coupling. Any other SBORN call is still genuine.
+  ! ENV_VFOLD_SBORN_BRIDGE: 0 = off (default), 1 = on, 2 = on and also run the
+  ! genuine SBORN at every served call and report the largest differences.
+  ! Only used in mode C. Since step 11y the colour-linked Borns are taken from
+  ! the served points in sborn_sf.f (else computed in Fortran, after making sure
+  ! that SBORN's amplitude cache is filled). Falls back to 0 if the backend library does not provide the values
+  ! (e.g. cuda before step 10a). Opt-in as the served values differ by
+  ! rounding.
+  integer, public, save :: vfold_sborn_bridge = 0
+
+  ! Road B step 10b: when SBORN is served from cudacpp, also serve (p,g')
+  ! by rescaling a point served at the same p and another g by (g'/g)**n,
+  ! instead of bridge-evaluating (p,g') too. Exact up to rounding if the
+  ! Born has a single coupling combination (AMP_SPLIT_SIZE_BORN=1), with n
+  ! its QCD order (4 for e+ e- > b b b~ b~). This removes the bridge calls
+  ! for the SDE points at the real-emission coupling g' (one per fold, all
+  ! at the momenta of a Born point of the batch). ENV_VFOLD_SBORN_GSCALE:
+  ! 0 = off (default), 1 = on. Set up in vfold_born_batch.f90, which knows the
+  ! Born coupling orders. Opt-in as the rescaled values differ by rounding.
+  integer, public, save :: vfold_sborn_gscale = 0
 contains
 
   ! Road B step 11q: time a complete_xmcsubt call into vfold_tdelta.
@@ -189,6 +215,30 @@ contains
       endif
     endif
   end subroutine check_av_cpu_time
+
+  subroutine setup_av_sborn_bridge
+    implicit none
+    character(len=10) :: getenvvalue
+    call getenv('ENV_VFOLD_SBORN_BRIDGE', getenvvalue)
+    if (len_trim(getenvvalue).gt.0) then
+      if (getenvvalue.eq.'0') then
+        vfold_sborn_bridge = 0
+      elseif (getenvvalue.eq.'1') then
+        vfold_sborn_bridge = 1
+      elseif (getenvvalue.eq.'2') then
+        vfold_sborn_bridge = 2
+      else
+        write(6,*) 'ERROR: invalid ENV_VFOLD_SBORN_BRIDGE: ', trim(getenvvalue)
+        stop 1
+      endif
+    endif
+    if (vfold_sborn_bridge.gt.0) then
+      if (.not.vfold_use_cudacpp()) then
+        vfold_sborn_bridge = 0 ! only meaningful in mode C
+      endif
+    endif
+    write(6,*) 'AV: vfold_sborn_bridge=', vfold_sborn_bridge
+  end subroutine setup_av_sborn_bridge
 
   subroutine setup_av_kpoint_batch
     implicit none

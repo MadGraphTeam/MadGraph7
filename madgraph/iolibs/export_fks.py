@@ -3196,18 +3196,24 @@ Parameters              %(params)s\n\
             ilink = i+1
             iff = {True : 'if', False : 'elseif'}[i==0]
             m, n = c_link['link']
+            # MadVFold: link ilink from the served points if available (step 11y)
+            if self.opt.get('vfold'):
+                call_sb_sf = ("if (bsf_served) then\n\
+                    call vfold_bsf_served_link(%(ilink)d,wgt_col)\n\
+                    else\n" + call + "\n\
+                    endif\n") % {'ilink': ilink}
+            else:
+                call_sb_sf = call % {'ilink': ilink} + "\n"
             if m != n:
                 replace_dict['iflines_col'] += \
                 "c link partons %(m)d and %(n)d \n\
-                    %(iff)s ((m.eq.%(m)d .and. n.eq.%(n)d).or.(m.eq.%(n)d .and. n.eq.%(m)d)) then \n\
-                    " % {'m':m, 'n': n, 'iff': iff} + \
-                    call % {'ilink': ilink} + "\n"
+                    %(iff)s ((m.eq.%(m)d .and. n.eq.%(n)d).or.(m.eq.%(n)d .and. n.eq.%(m)d)) then \n" \
+                    % {'m':m, 'n': n, 'iff': iff} + call_sb_sf
             else:
                 replace_dict['iflines_col'] += \
                 "c link partons %(m)d and %(n)d \n\
-                    %(iff)s (m.eq.%(m)d .and. n.eq.%(n)d) then \n\
-                    " % {'m':m, 'n': n, 'iff': iff} + \
-                    call % {'ilink': ilink} + "\n"
+                    %(iff)s (m.eq.%(m)d .and. n.eq.%(n)d) then \n" \
+                    % {'m':m, 'n': n, 'iff': iff} + call_sb_sf
 
         
         if replace_dict['iflines_col']:
@@ -3223,6 +3229,14 @@ Parameters              %(params)s\n\
                           'iolibs/template_files/sborn_sf_fks.inc'))).read()
         file = file % replace_dict
         writer.writelines(file)
+
+        # MadVFold: the number of colour-linked Borns, i.e. of the links in the
+        # served points (vfold_born_batch.f90), if requested: it must be the
+        # number of links computed by the cudacpp Born library (both from
+        # fks_common.find_color_links on the Born legs, in the same order)
+        if self.opt.get('vfold'):
+            writers.FortranWriter('vfold_bsf.inc').writelines(
+                'integer vfold_nbsf\nparameter (vfold_nbsf=%d)\n' % nlinks)
 
     
     def get_born_color_link_dict(self, matrix_element):

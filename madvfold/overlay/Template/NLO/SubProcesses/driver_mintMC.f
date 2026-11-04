@@ -183,6 +183,8 @@ c
       call setup_av_vecsize_used ! AV (road B step 7b): cudacpp bridge chunk size
       call setup_av_kpoint_batch ! AV (road B step 9): kpoints per ME batch
       call setup_av_batch_pervn ! AV (road B step 11d): park batches per MINT2 queue
+      call setup_av_sborn_bridge ! AV (road B step 9i+9j): SBORN served from cudacpp in mode C
+      call setup_av_sborn_gscale ! AV (road B step 10b): SBORN at g' by rescaling the Born at g
       
 c
 c     Get user input
@@ -255,6 +257,8 @@ c     Prepare the MINT folding
       ifold(ifold_yij)=iy_ij
 c AV road B step 7k: size the Born memo from the folding
       call vfold_born_memo_init(ixi_i*iy_ij*iphi_i)
+c AV road B step 11h: size the served-point ring from the folding
+      call vfold_served_init(ixi_i*iy_ij*iphi_i)
 c AV road B step 11m: one pair of fold slots per dipole for MC@NLO-Delta
       if (mcatnlo_delta) call vfold_delta_slots_init(nexternal-1)
 
@@ -372,6 +376,7 @@ c but keep the original unconditional call in the reference modes F0/F1
      $        ' real_batch_avg=',
      $        dble(vfold_real_batch_sum)/max(1,vfold_real_batch_ncalls),
      $        ' real_batch_ncalls=', vfold_real_batch_ncalls
+         if (sv_nhit+sv_nmiss.gt.0) call vfold_served_report ! AV road B step 9i+9j
          write (lunlhe,'(a)') "</LesHouchesEvents>"
          close(lunlhe)
       endif

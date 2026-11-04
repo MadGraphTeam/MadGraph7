@@ -199,7 +199,7 @@ libMadLoop.a:
 vfold_mode.o: vfold_mode.f90
 vfold_rng_slots.o: vfold_rng_slots.f90 vfold_mode.o
 vfold_cudacpp_dispatcher.o: vfold_cudacpp_dispatcher.cpp
-vfold_born_batch.o: vfold_born_batch.f90 vfold_mode.o
+vfold_born_batch.o: vfold_born_batch.f90 vfold_mode.o vfold_bsf.inc
 vfold_test_born_batch.o: vfold_test_born_batch.f90 vfold_born_batch.o
 vfold_real_batch.o: vfold_real_batch.f90 vfold_mode.o
 mint_module.o : FKSParams.o vfold_mode.o vfold_rng_slots.o vfold_born_batch.o vfold_real_batch.o

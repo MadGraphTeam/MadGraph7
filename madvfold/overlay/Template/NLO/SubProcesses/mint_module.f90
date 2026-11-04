@@ -319,6 +319,7 @@ contains
          ' real_batch_avg=', &
          dble(vfold_real_batch_sum)/max(1_8,vfold_real_batch_ncalls), &
          ' real_batch_ncalls=', vfold_real_batch_ncalls
+    if (sv_nhit+sv_nmiss.gt.0) call vfold_served_report ! AV road B step 9i+9j
     call finalise_mint
   end subroutine mint
 
