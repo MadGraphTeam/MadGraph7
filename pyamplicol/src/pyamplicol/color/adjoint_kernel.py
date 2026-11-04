@@ -38,15 +38,31 @@ def _check_arguments(
         raise ValueError(f"unknown adjoint colour accuracy {accuracy!r}")
     if type(nc) is not int or nc < 2:
         raise ValueError("adjoint colour kernel requires integer Nc >= 2")
-    if type(full_col_acc) is not int or full_col_acc < 0:
-        raise ValueError("adjoint full-colour accuracy must be nonnegative")
+    if full_col_acc is not None and (
+        type(full_col_acc) is not int or full_col_acc < 0
+    ):
+        raise ValueError("adjoint full-colour accuracy must be None or nonnegative")
 
 
-def _minimum_power(total_gluons: int, accuracy: str, full_col_acc: int) -> int:
+def _minimum_power(
+    total_gluons: int, accuracy: str, full_col_acc: int | None
+) -> int:
     """The lowest U(Nc) trace-pair power kept by an accuracy."""
 
-    depth = 2 * full_col_acc if accuracy == "full" else 2 if accuracy == "nlc" else 0
+    if accuracy == "full":
+        return full_minimum_power(total_gluons, full_col_acc)
+    depth = 2 if accuracy == "nlc" else 0
     return max(total_gluons - depth, 0)
+
+
+def full_minimum_power(coloured_labels: int, full_col_acc: int | None) -> int:
+    """The lowest N_c power a 'full' colour factor keeps: none dropped
+    (``full_col_acc`` None, every caller's default), or the legacy depth of
+    ``2 * full_col_acc`` powers below the leading one."""
+
+    if full_col_acc is None:
+        return 0
+    return max(coloured_labels - 2 * full_col_acc, 0)
 
 
 def _permutation_ranks(rows: np.ndarray) -> np.ndarray:
@@ -97,7 +113,7 @@ def adjoint_color_kernel(
     *,
     accuracy: str = "full",
     nc: int = 3,
-    full_col_acc: int = 20,
+    full_col_acc: int | None = None,
 ) -> np.ndarray:
     """Return an immutable exact relative DDM kernel in lexicographic order.
 
@@ -208,7 +224,7 @@ def ladder_overlap(
     *,
     accuracy: str,
     nc: int = 3,
-    full_col_acc: int = 20,
+    full_col_acc: int | None = None,
     batch: int = 1 << 20,
 ) -> int:
     """One exact DDM overlap <H(left)|H(right)> for any number of gluons.
@@ -266,7 +282,7 @@ def adjoint_color_factor(
     *,
     accuracy: str,
     nc: int = 3,
-    full_col_acc: int = 20,
+    full_col_acc: int | None = None,
 ) -> int:
     """Evaluate one DDM overlap from its middle-label relative permutation.
 

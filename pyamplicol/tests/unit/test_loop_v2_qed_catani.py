@@ -349,8 +349,15 @@ def test_qed_operator_parts():
     assert exact_charge(2 / 3) == Q(2, 3)
     assert exact_charge(-0.3333333333333333) == Q(-1, 3)
     assert exact_charge("-1") == -1
-    with pytest.raises(ValueError, match="not a small rational"):
-        exact_charge(math.pi)
+    # No denominator cap (formerly 1000): millicharges and binary charges
+    # are exact, any finite float maps to a rational that rounds back to it.
+    assert exact_charge(1e-4) == Q(1, 10000)
+    assert exact_charge(-1 / 1024) == Q(-1, 1024)
+    assert exact_charge("1/1024") == Q(1, 1024)
+    assert exact_charge("0.6666666666666666") == Q(3333333333333333, 5 * 10**15)
+    assert float(exact_charge(math.pi)) == math.pi
+    with pytest.raises(ValueError, match="not a finite number"):
+        exact_charge(math.inf)
     charges = {1: Q(-1), 2: Q(1), 3: Q(1), 4: Q(-1)}
     mu2 = 7.0
     single, double = _poles(charges, MOMENTA, MASSLESS, born=2.0, mu2=mu2)

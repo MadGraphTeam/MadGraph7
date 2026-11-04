@@ -69,8 +69,6 @@ from .prepared_catalog_helpers import (
     used_input_descriptors as _used_input_descriptors,
 )
 
-_MAX_DISCOVERED_CURRENT_STATES = 4096
-
 
 @dataclass(frozen=True, slots=True)
 class _Candidate:
@@ -238,17 +236,12 @@ def build_prepared_kernel_catalog(model: Model) -> PreparedKernelCatalog:
                         result_states = chiralities_by_particle.setdefault(
                             int(vertex.particles[2]), set()
                         )
+                        # A fixpoint on the finite set of (particle, model
+                        # chirality) states: each pass adds a new state or
+                        # ends, and each vertex input is visited once.
                         if result_chirality not in result_states:
                             result_states.add(result_chirality)
                             discovered = True
-                            if (
-                                sum(map(len, chiralities_by_particle.values()))
-                                > _MAX_DISCOVERED_CURRENT_STATES
-                            ):
-                                raise PreparedKernelCatalogError(
-                                    "prepared current-state discovery did not "
-                                    "converge within the safety bound"
-                                )
                         closure_ir = model.closure_contraction_ir(
                             vertex.particles[2], result_chirality
                         )

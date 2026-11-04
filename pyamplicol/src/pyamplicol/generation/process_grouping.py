@@ -22,18 +22,19 @@ from __future__ import annotations
 
 import itertools
 import json
+import math
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from fractions import Fraction
 from typing import Any
 
+from .._internal.physics.rationals import simplest_rational_between
+
 PROCESS_GROUPS_PATH = "process-groups.json"
 PROCESS_GROUPS_ROLE = "process-groups"
 PROCESS_GROUPS_KIND = "pyamplicol-process-groups"
 PROCESS_GROUPS_SCHEMA_VERSION = 1
-MAX_RATIONAL = 99
-"""Largest numerator and denominator of a recorded group factor."""
 
 _ZERO_EXPRESSIONS = frozenset({"0", "0.0", "-0", "-0.0", "zero"})
 
@@ -326,9 +327,10 @@ def profile_mappings(
     table: ParticleTable,
     *,
     conjugated: bool = False,
-    limit: int = 24,
+    limit: int | None = None,
 ) -> tuple[LegMapping, ...]:
-    """Leg mappings induced by flavour relabellings, at most ``limit``.
+    """Leg mappings induced by flavour relabellings: all of them, or the
+    first ``limit`` (``flavor_blind_mapping`` takes the first only).
 
     Flavours with the same type and profile can be paired in any order; each
     pairing is one mapping, the first one pairs them by increasing ``|PDG|``.
@@ -346,7 +348,7 @@ def profile_mappings(
     member_groups = _flavour_groups(member_legs)
     keys = list(member_groups)
     choices = [itertools.permutations(member_groups[key]) for key in keys]
-    mappings: list[LegMapping] = []
+    mappings: dict[LegMapping, None] = {}
     for combination in itertools.product(*choices):
         member_order = _profile_order(
             member_legs, dict(zip(keys, combination, strict=True))
@@ -357,9 +359,8 @@ def profile_mappings(
             conjugated=conjugated,
             method="flavor-profile",
         )
-        if mapping not in mappings:
-            mappings.append(mapping)
-        if len(mappings) >= limit:
+        mappings.setdefault(mapping, None)
+        if limit is not None and len(mappings) >= limit:
             break
     return tuple(mappings)
 
@@ -396,16 +397,14 @@ def candidate_mappings(
     table: ParticleTable,
     *,
     consider_charge_conjugation: bool,
-    limit: int = 24,
 ) -> tuple[LegMapping, ...]:
-    """All leg mappings worth testing numerically, most natural first."""
+    """All leg mappings worth testing numerically, most natural first: every
+    flavour relabelling (then its charge conjugate) and the signed-PDG one."""
 
-    mappings = list(profile_mappings(member, representative, table, limit=limit))
+    mappings = list(profile_mappings(member, representative, table))
     if consider_charge_conjugation:
         mappings.extend(
-            profile_mappings(
-                member, representative, table, conjugated=True, limit=limit
-            )
+            profile_mappings(member, representative, table, conjugated=True)
         )
     fallback = signed_pdg_mapping(member, representative, table)
     if fallback is not None and all(
@@ -754,22 +753,19 @@ class ProcessGroupMap:
 
 
 def rational_factor(value: float, *, tolerance: float) -> Fraction | None:
-    """Return ``value`` as a fraction with |numerator|, denominator <= 99."""
+    """``value`` as the simplest rational within its relative ``tolerance``
+    (the precision to which numerical grouping compares matrix elements),
+    with no bound on the numerator or the denominator."""
 
-    if value == 0 or value != value:
+    if value == 0 or not math.isfinite(value):
         return None
-    fraction = Fraction(value).limit_denominator(MAX_RATIONAL)
-    if (
-        fraction == 0
-        or abs(fraction.numerator) > MAX_RATIONAL
-        or abs(float(fraction) - value) > tolerance * abs(value)
-    ):
-        return None
-    return fraction
+    exact = Fraction(value)
+    spread = Fraction(tolerance) * abs(exact)
+    fraction = simplest_rational_between(exact - spread, exact + spread)
+    return None if fraction == 0 else fraction
 
 
 __all__ = [
-    "MAX_RATIONAL",
     "PROCESS_GROUPS_KIND",
     "PROCESS_GROUPS_PATH",
     "PROCESS_GROUPS_ROLE",

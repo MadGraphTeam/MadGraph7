@@ -497,7 +497,7 @@ def build_symmetric_group_color_contraction_plan(
                         left_sector,
                         sector_by_id[right_sector_id],
                         accuracy=accuracy,
-                        full_col_acc=20,
+                        full_col_acc=None,
                     )
                     if cache_key is not None:
                         diagonal_trace_exact[cache_key] = exact
@@ -556,7 +556,7 @@ def build_symmetric_group_color_contraction_plan(
                     sector_by_id[left_sector_id],
                     sector_by_id[local_sector_ids[right_local_index]],
                     accuracy=accuracy,
-                    full_col_acc=20,
+                    full_col_acc=None,
                 )
                 residual_entries.append(
                     ColorContractionTemplateEntry(
@@ -1086,7 +1086,7 @@ def _certify_cross_channel_hermiticity(
                     sector_by_id[right_orbit.sector_ids[0]],
                     sector_by_id[left_orbit.sector_ids[inverse_index]],
                     accuracy=accuracy,
-                    full_col_acc=20,
+                    full_col_acc=None,
                 )
                 if (
                     kernel_exact_by_key[(left_channel, right_channel, relative_index)]
@@ -1152,7 +1152,7 @@ def _certify_sampled_equivariance(
                     left_sector,
                     sector_by_id[right_orbit.sector_ids[right_permutation_index]],
                     accuracy=accuracy,
-                    full_col_acc=20,
+                    full_col_acc=None,
                 )
                 if (
                     kernel_exact_by_key[(left_channel, right_channel, relative_index)]

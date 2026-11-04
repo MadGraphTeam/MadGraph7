@@ -110,6 +110,7 @@ from dataclasses import dataclass
 from fractions import Fraction
 from typing import Any
 
+from pyamplicol._internal.physics.rationals import simplest_rational_for_float
 from pyamplicol.config import PoleSelection
 
 from .families import Orders, add_orders
@@ -717,17 +718,21 @@ def sector_sum(
 
 def exact_charge(charge: float | Fraction | str) -> Fraction:
     """A UFO electric charge as an exact rational: UFO models write charges
-    as Python floats (2/3 -> 0.6666666666666666), so the float is mapped to
-    the nearest fraction with denominator <= 1000 and that fraction must
-    reproduce it to 1e-12."""
+    as Python floats (2/3 -> 0.6666666666666666), so a float is read as the
+    simplest rational inside its rounding interval, with no bound on the
+    denominator (2/3 -> 2/3, 1e-4 -> 1/10000); a string or a Fraction is
+    exact as it is."""
 
     if isinstance(charge, Fraction):
         return charge
-    value = Fraction(charge) if isinstance(charge, str) else Fraction(float(charge))
-    exact = value.limit_denominator(1000)
-    if abs(float(exact) - float(value)) > 1e-12 * max(1.0, abs(float(value))):
-        raise ValueError(f"electric charge {charge!r} is not a small rational")
-    return exact
+    if isinstance(charge, str):
+        return Fraction(charge)
+    try:
+        return simplest_rational_for_float(float(charge))
+    except ValueError as error:
+        raise ValueError(
+            f"electric charge {charge!r} is not a finite number"
+        ) from error
 
 
 def qed_gamma(spin: int, charge: Fraction) -> Fraction | None:

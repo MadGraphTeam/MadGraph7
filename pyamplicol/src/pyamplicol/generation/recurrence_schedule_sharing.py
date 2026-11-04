@@ -1209,7 +1209,8 @@ def _wire_integer(
     ):
         qualifier = "positive " if positive else ""
         raise RecurrenceScheduleSharingError(
-            f"{context} must be a {qualifier}integer no larger than {maximum}"
+            f"{context} must be a {qualifier}integer no larger than {maximum} "
+            f"(its wire field width), not {value!r}"
         )
     return value
 
@@ -2131,8 +2132,10 @@ def encode_recurrence_process_binding(
     executor_pack: RecurrenceProcessExecutorPack,
 ) -> bytes:
     process = _nonempty_text(process_id, "process ID").encode("utf-8")
-    if len(process) > 4096:
-        raise RecurrenceScheduleSharingError("process ID exceeds 4096 UTF-8 bytes")
+    if len(process) > _MISSING_U32:
+        raise RecurrenceScheduleSharingError(
+            f"process ID of {len(process)} UTF-8 bytes exceeds its u32 length field"
+        )
     mask = _single_bit(process_support_mask, "process support mask")
     words = tuple(
         (mask >> shift) & ((1 << 64) - 1)
