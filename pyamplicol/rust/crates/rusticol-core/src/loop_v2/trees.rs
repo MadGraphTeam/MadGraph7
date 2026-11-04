@@ -3094,6 +3094,7 @@ impl TreeProgram {
             sources,
             loop_sources,
             chunk,
+            None,
             zero,
         )
     }
@@ -3153,6 +3154,7 @@ impl TreeProgram {
         sources: Option<&[PointSources<T>]>,
         loop_sources: Option<&[LoopSources<T>]>,
         chunk: usize,
+        rows: Option<&TreeRows>,
         zero: &T,
     ) -> RusticolResult<TreeInputs<T>>
     where
@@ -3174,6 +3176,7 @@ impl TreeProgram {
                 poles,
                 sources,
                 loop_sources,
+                rows,
                 zero,
             );
         }
@@ -3189,6 +3192,7 @@ impl TreeProgram {
                 poles,
                 sources.map(|sources| &sources[range.clone()]),
                 loop_sources.map(|sources| &sources[range.clone()]),
+                rows,
                 zero,
             )?;
             match &mut out {
@@ -3211,6 +3215,7 @@ impl TreeProgram {
         poles: bool,
         sources: Option<&[PointSources<T>]>,
         loop_sources: Option<&[LoopSources<T>]>,
+        rows: Option<&TreeRows>,
         zero: &T,
     ) -> RusticolResult<TreeInputs<T>>
     where
@@ -3228,6 +3233,11 @@ impl TreeProgram {
                 "loop-side sources run the inclusive outputs, not observable columns",
             )?;
         }
+        // A call's row liveness drops rows only its points' sources zero.
+        require(
+            rows.is_none() || (sources.is_some() && loop_sources.is_none()),
+            "a row liveness needs the selection's sources",
+        )?;
         if let Some(sources) = sources {
             require(
                 sources.len() == momenta.len() && self.columns.is_some(),
@@ -3358,6 +3368,7 @@ impl TreeProgram {
                 states,
                 points,
                 true,
+                rows.map(|rows| &rows.trees),
                 &czero,
             )?;
         }
@@ -3402,6 +3413,7 @@ impl TreeProgram {
                     &mut ct_states,
                     points,
                     poles,
+                    rows.and_then(|rows| rows.counterterms.as_ref()),
                     &czero,
                 )?;
                 ct_states
@@ -3440,12 +3452,14 @@ impl TreeProgram {
             (loop_states.as_slice(), self.state_size)
         });
         let counterterm_states = (counterterm_states.as_slice(), counterterm_size);
+        let closure_rows = rows.map(|rows| rows.closure_rows.as_slice());
         let born_closure = |states| {
             self.close(
                 &self.terms,
                 &runtime.weights,
                 &vec![batch.couplings.as_slice(); points],
                 None,
+                closure_rows,
                 self.components,
                 plan,
                 &momenta,
@@ -3469,6 +3483,7 @@ impl TreeProgram {
                     .map(Vec::as_slice)
                     .collect::<Vec<_>>(),
                 (!poles).then_some(ct.finite_slot.as_slice()),
+                closure_rows,
                 ct.components,
                 plan,
                 &momenta,
@@ -3850,6 +3865,7 @@ impl TreeProgram {
         weights: &[Complex<T>],
         couplings: &[&[Complex<T>]],
         active: Option<&[bool]>,
+        rows: Option<&[bool]>,
         width: usize,
         plan: &LoopProgramV4,
         momenta: &[Vec<[T; 4]>],
@@ -3864,6 +3880,7 @@ impl TreeProgram {
             weights,
             couplings,
             active,
+            rows,
             width,
             plan,
             momenta,
@@ -3938,6 +3955,9 @@ struct Closure<'a, T> {
     weights: &'a [Complex<T>],
     couplings: &'a [&'a [Complex<T>]],
     active: Option<&'a [bool]>,
+    /// The Born rows a call's row liveness keeps (`TreeRows`; none: every
+    /// row the program keeps).
+    rows: Option<&'a [bool]>,
     width: usize,
     plan: &'a LoopProgramV4,
     momenta: &'a [Vec<[T; 4]>],
@@ -4046,8 +4066,11 @@ impl<T: Carrier> Closure<'_, T> {
             || (vec![zero.clone(); inputs * v], Vec::new()),
             |(x, starts), (task, target)| {
                 let (chunk, row) = (task / rows, task % rows);
-                // A row the program's restriction drops stays zero (`rows`).
-                if program.closure_rows.as_ref().is_some_and(|kept| !kept[row]) {
+                // A row the program's restriction or the call's row liveness
+                // drops stays zero (`rows`).
+                if program.closure_rows.as_ref().is_some_and(|kept| !kept[row])
+                    || self.rows.is_some_and(|kept| !kept[row])
+                {
                     return;
                 }
                 let lanes: [usize; L] =
@@ -4165,6 +4188,7 @@ fn run_interactions<T: Carrier>(
     states: &mut [Complex<T>],
     points: usize,
     poles: bool,
+    live: Option<&rows::Liveness>,
     czero: &Complex<T>,
 ) -> RusticolResult<()>
 where
@@ -4173,7 +4197,8 @@ where
     // Rows (interaction x point) per kernel call. Without `poles` the
     // interactions and outputs of pole-only currents are skipped; no other
     // current reads them, and kernel rows are independent, so every other
-    // value is bitwise unchanged.
+    // value is bitwise unchanged. So are those a call's row liveness
+    // (`live`, `rows::TreeRows`) drops: nothing it keeps reads them.
     const ROWS: usize = 4096;
     let model = |kernel: usize| {
         program.models[kernel]
@@ -4188,13 +4213,26 @@ where
         edge_weights.len() == program.weights.len(),
         "a tree runtime of another interaction program",
     )?;
-    for step in &program.steps {
+    require(
+        live.is_none_or(|live| live.steps.len() == program.steps.len()),
+        "a row liveness of another interaction program",
+    )?;
+    for (s, step) in program.steps.iter().enumerate() {
+        let kept = live.map(|live| &live.steps[s]);
+        if kept.is_some_and(|(groups, outputs)| {
+            !outputs.iter().any(|&k| k) && !groups.iter().flatten().any(|&k| k)
+        }) {
+            continue;
+        }
         let mut sums = vec![czero.clone(); points * step.width];
-        for (kernel, edges) in &step.groups {
+        for (g, (kernel, edges)) in step.groups.iter().enumerate() {
             let active: Vec<(&Edge, &Complex<T>)> = edges
                 .iter()
-                .filter(|edge| poles || !edge.pole)
-                .map(|edge| (edge, &edge_weights[edge.weight as usize]))
+                .enumerate()
+                .filter(|(e, edge)| {
+                    (poles || !edge.pole) && kept.is_none_or(|(groups, _)| groups[g][*e])
+                })
+                .map(|(_, edge)| (edge, &edge_weights[edge.weight as usize]))
                 .collect();
             if active.is_empty() {
                 continue;
@@ -4249,8 +4287,10 @@ where
                 }
             }
         }
-        for &(accumulator, propagator, momentum, start, dimension, pole) in &step.outputs {
-            if pole && !poles {
+        for (o, &(accumulator, propagator, momentum, start, dimension, pole)) in
+            step.outputs.iter().enumerate()
+        {
+            if (pole && !poles) || kept.is_some_and(|(_, outputs)| !outputs[o]) {
                 continue;
             }
             let Some(kernel) = propagator else {
@@ -4596,6 +4636,7 @@ impl TreeCarrier for Float {
 
 #[path = "trees_rows.rs"]
 mod rows;
+pub use rows::TreeRows;
 
 #[path = "trees_binary.rs"]
 pub mod binary;

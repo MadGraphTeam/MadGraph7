@@ -406,3 +406,4 @@ def test_native_evaluation_with_m_equals_b(slices, name):
     assert reals["merged family accumulators"] > 0
     assert reals["open objects (one merged chunk)"] > 0
     assert report["counts"]["merged states"] > 0
+
