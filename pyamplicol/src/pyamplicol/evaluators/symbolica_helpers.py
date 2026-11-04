@@ -17,6 +17,13 @@ from .._internal.physics.types import NativeEvaluationError
 ComplexOutput = np.ndarray | tuple[np.ndarray, ...]
 
 
+# Python Symbolica's `Evaluator.save()` envelope (magic, then the producer's
+# native-code flag) and, after Symbolica's state header magic (u32) and export
+# format (u16), the header's whole-state flag.
+_SAVED_EVALUATOR_MAGIC = b"\xffSYMEVAL\x01"
+_WHOLE_STATE_FLAG = len(_SAVED_EVALUATOR_MAGIC) + 1 + 6
+
+
 def saved_evaluator(evaluator: Any) -> bytes:
     """``evaluator.save()`` with only the Symbolica state the evaluator references.
 
@@ -24,12 +31,19 @@ def saved_evaluator(evaluator: Any) -> bytes:
     the producer's whole Symbolica state into every save: tens of MB per
     evaluator after a model compile, depending on every symbol the process
     created, and imported again by every load. The native re-encodes such a
-    save in #163's state-minimal form with its payload unchanged; a
-    state-minimal save is returned as it is.
+    save in #163's state-minimal form with its payload unchanged
+    (``state_minimal_saved_evaluator``). Any other save is returned as it is,
+    without the native.
     """
+    saved = bytes(evaluator.save())
+    if not (
+        saved.startswith(_SAVED_EVALUATOR_MAGIC)
+        and saved[_WHOLE_STATE_FLAG : _WHOLE_STATE_FLAG + 1] == b"\x01"
+    ):
+        return saved
     from ..loops.native import load_loop_native
 
-    return load_loop_native().state_minimal_saved_evaluator(bytes(evaluator.save()))
+    return bytes(load_loop_native().state_minimal_saved_evaluator(saved))
 
 
 def _symbolica_instruction_program(exported: Any) -> Any:
