@@ -857,6 +857,8 @@ contains
 
   
   subroutine compute_integrand(fun,x,vol)
+    use vfold_born_batch
+    use vfold_real_batch
     implicit none
     integer :: ifirst,iret
     integer, dimension(ndimmax) :: kfold
@@ -864,13 +866,19 @@ contains
     double precision, dimension(nintegrals) :: f1
     double precision, dimension(ndimmax) :: x
     double precision, external :: fun
+    logical :: dump69, saved_dump69
+    common /cdump69/dump69
     ! contribution to integral
     ifirst=0
     if(imode.eq.0) then
        dummy=fun(x,vol,ifirst,f1)
        if (.not. fixed_order) dummy=fun(x,vol,2,f1)
        f(1:nintegrals)=f1(1:nintegrals)
-    else
+    elseif (.not. vfold_use_batch_api()) then
+       ! AV: original single-walk code, completely unchanged (F0), or the
+       ! same single-walk code with the RNG slots active (F1, F2): born_gathering
+       ! and vfold_replay_mode are never set here, so F1 evaluates each fold
+       ! immediately exactly like F0 and differs only in its RNG stream.
        f(1:nintegrals)=0d0
        kfold(1:ndim)=1
 1      continue
@@ -886,8 +894,131 @@ contains
        ifirst=2
        dummy=fun(x,vol,ifirst,f1)
        f(1:nintegrals)=f1(1:nintegrals)
+    else
+       ! AV road B step 3: F/C -- two walks over the same fold sequence
+       ! (compute_integrand_gather and compute_integrand_replay), with the
+       ! batched evaluation of the Born, Real and SDE MEs in between.
+       call vfold_reset_born_batch
+       call vfold_reset_real_batch
+       call vfold_reset_sde_batch
+       call compute_integrand_gather(fun,x,vol)
+
+       call vfold_evaluate_born_batch
+       call vfold_evaluate_real_batch
+       call vfold_evaluate_sde_batch
+
+       call vfold_reset_born_retrieve
+       call vfold_reset_real_retrieve
+       call vfold_reset_sde_retrieve
+       ! Fold offset 0: this kpoint owns all of fold_slot_history.
+       call compute_integrand_replay(fun,x,vol,0,.false.)
     endif
   end subroutine compute_integrand
+
+  ! AV road B step 3, split out at step 9. Walk 1 of a kpoint: walk every
+  ! fold gathering Born/Real/SDE momenta for batched evaluation
+  ! (born_gathering makes compute_born stash and return early, touching none
+  ! of add_wgt's ambient state).
+  !
+  ! vfold_fold_idx is NOT reset here: get_random_x already reset it and advanced
+  ! it to fold 1, and resetting again would shift every later fold's history
+  ! index by one.
+  !
+  ! dump69 is suppressed while gathering, otherwise dump69-gated writes deep
+  ! in the fold chain (e.g. generate_FKS_kinematics) fire an extra time.
+  !
+  ! The caller resets the batch buffers, once per batch.
+  subroutine compute_integrand_gather(fun,x,vol)
+    use vfold_born_batch
+    use vfold_real_batch
+    implicit none
+    integer :: ifirst,iret
+    integer, dimension(ndimmax) :: kfold
+    double precision :: dummy,vol
+    double precision, dimension(nintegrals) :: f1
+    double precision, dimension(ndimmax) :: x
+    double precision, external :: fun
+    logical :: dump69, saved_dump69
+    common /cdump69/dump69
+    saved_dump69 = dump69
+    dump69 = .false.
+    born_gathering = .true.
+    real_gathering = .true.
+    sde_gathering = .true.
+    ifirst=0
+    f(1:nintegrals)=0d0
+    kfold(1:ndim)=1
+2   continue
+    dummy=fun(x,vol,ifirst,f1)
+    ifirst=1
+    call nextlexi(ifold,kfold,iret)
+    if(iret.eq.0) then
+       call get_random_x_next_fold(x,vol,kfold)
+       goto 2
+    endif
+    ifirst=2
+    dummy=fun(x,vol,ifirst,f1)
+    born_gathering = .false.
+    real_gathering = .false.
+    sde_gathering = .false.
+    dump69 = saved_dump69
+  end subroutine compute_integrand_gather
+
+  ! AV road B step 3, split out at step 9. Walk 2 of a kpoint: rebuild fold 1
+  ! via get_random_x_next_fold (NOT get_random_x, which would draw new
+  ! event-level numbers); rand/ncell must be this kpoint's (a batched caller
+  ! restores them first). vfold_fill_fold_slots (replay mode) re-reads walk 1's
+  ! frozen fold slots.
+  !
+  ! ifold_start: start of this kpoint's slice of fold_slot_history (0 if
+  ! unbatched).
+  !
+  ! No fresh random numbers are drawn, so batching kpoints around this walk
+  ! does not perturb the RNG stream.
+  !
+  ! dump_fold1: who emits fold 1's dump69 lines (FLATX/VEGASVOL). Unbatched
+  ! (.false.): get_random_x already did. Batched (.true.): the caller
+  ! suppressed them at get_random_x time (else all kpoints' FLATX lines would
+  ! come first), so they are emitted here.
+  subroutine compute_integrand_replay(fun,x,vol,ifold_start,dump_fold1)
+    use vfold_born_batch
+    use vfold_real_batch
+    implicit none
+    integer :: ifirst,iret
+    integer, intent(in) :: ifold_start
+    logical, intent(in) :: dump_fold1
+    integer, dimension(ndimmax) :: kfold
+    double precision :: dummy,vol
+    double precision, dimension(nintegrals) :: f1
+    double precision, dimension(ndimmax) :: x
+    double precision, external :: fun
+    logical :: dump69, saved_dump69
+    common /cdump69/dump69
+    call vfold_set_fold_idx(ifold_start)
+    vfold_fold_replay = .true.
+    vfold_replay_mode = .true.
+    kfold(1:ndim)=1
+    saved_dump69 = dump69
+    if (.not.dump_fold1) dump69 = .false.
+    call get_random_x_next_fold(x,vol,kfold)
+    dump69 = saved_dump69
+    ifirst=0
+    f(1:nintegrals)=0d0
+3   continue
+    dummy=fun(x,vol,ifirst,f1)
+    ifirst=1
+    call nextlexi(ifold,kfold,iret)
+    if(iret.eq.0) then
+       call get_random_x_next_fold(x,vol,kfold)
+       goto 3
+    endif
+    ifirst=2
+    dummy=fun(x,vol,ifirst,f1)
+    vfold_replay_mode = .false.
+    vfold_fold_replay = .false.
+    f(1:nintegrals)=f1(1:nintegrals)
+  end subroutine compute_integrand_replay
+
   
   subroutine get_random_x(x,vol,kfold)
     implicit none

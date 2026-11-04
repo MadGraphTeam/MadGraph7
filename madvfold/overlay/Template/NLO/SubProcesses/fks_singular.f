@@ -2,6 +2,8 @@
 c This subroutine computes the Born matrix elements and adds its value
 c to the list of weights using the add_wgt subroutine
       use extra_weights
+      use vfold_born_batch
+      use vfold_rng_slots
       implicit none
       include 'nexternal.inc'
       include 'coupl.inc'
@@ -30,13 +32,52 @@ c to the list of weights using the add_wgt subroutine
       double precision     xiScut_used,xiBSVcut_used
       common /cxiScut_used/xiScut_used,xiBSVcut_used
       double precision g22
+      double precision f_b_used, g_used
       integer get_orders_tag
+      character*4      abrv ! AV road B step 8p
+      common /to_abrv/ abrv ! AV road B step 8p
       call cpu_time(tBefore)
       if (f_b.eq.0d0) return
       if (xi_i_hat_ev*xiimax_cnt(0) .gt. xiBSVcut_used) return
-c Born of the n-body contribution, evaluated in the me_frame rest frame
-c (identity unless the run_card asks for a frame; see boost_to_frame.f).
-      call sborn_frame(p_born,wgt_c)
+c AV road B step 3: gathering walk -- stash momenta+f_b+g for later
+c batched evaluation, skip the ME call and the iamp/add_wgt loop
+c entirely this walk (no ambient add_wgt state is touched here).
+      if (born_gathering) then
+        call vfold_stash_born(f_b, g)
+        call cpu_time(tAfter)
+        tBorn=tBorn+(tAfter-tBefore)
+        return
+      endif
+c AV road B step 3: finishing walk (replay) -- retrieve the
+c batch-evaluated amp_split/wgt_ME_born (already restored into their
+c normal common blocks by vfold_retrieve_born) instead of calling SBORN
+c again. F0, and F/C outside the two-walk structure (should not happen,
+c but kept as a safe fallback), still call SBORN directly and immediately.
+c
+c AV road B step 7c+7d: in the replay walk, use the live f_b and g, not
+c those stashed in walk 1. With SDE batching, f_b in walk 1 includes a
+c placeholder enhance=1; in walk 2 it has the true enhance. The call to
+c vfold_retrieve_born is still needed to restore amp_split/wgt_ME_born.
+      if (vfold_replay_mode) then
+        block
+          double precision f_b_dummy, g_dummy
+          call vfold_retrieve_born(f_b_dummy, g_dummy)
+        end block
+        f_b_used = f_b
+        g_used = g
+      else
+        f_b_used = f_b
+        g_used = g
+        call sborn_frame(p_born,wgt_c)
+      endif
+c AV road B step 8p: virt candidates only get here in modes F/C, to keep
+c their Born in the batch: do not add it to the weight lines, as
+c bornsoftvirtual removes it for virt (the novi sample carries the Born).
+      if (abrv(1:2).eq.'vi') then
+        call cpu_time(tAfter)
+        tBorn=tBorn+(tAfter-tBefore)
+        return
+      endif
       do iamp=1, amp_split_size
         if (amp_split(iamp).eq.0d0) cycle
         call amp_split_pos_to_orders(iamp, orders)
@@ -45,7 +86,7 @@ c (identity unless the run_card asks for a frame; see boost_to_frame.f).
         if (cpower_pos.gt.0) wgtcpower=dble(orders(cpower_pos))
         orders_tag=get_orders_tag(orders)
         amp_pos=iamp
-        wgt1=amp_split(iamp)*f_b/g**(qcd_power)
+        wgt1=amp_split(iamp)*f_b_used/g_used**(qcd_power)
 c     For UPC processes, we only need to fill the Born contribution for
 c     photon-photon initial state
         if ((abs(lpp(1)).eq.2 .and. abs(lpp(2)).eq.2) 
@@ -620,6 +661,7 @@ c This subroutine computes the real-emission matrix elements and adds
 c its value to the list of weights using the add_wgt subroutine
       use extra_weights
       use mint_module, only: fixed_order
+      use vfold_real_batch
       implicit none
       include 'nexternal.inc'
       include 'coupl.inc'
@@ -634,16 +676,50 @@ c its value to the list of weights using the add_wgt subroutine
       external fks_Sij
       integer            i_fks,j_fks
       common/fks_indices/i_fks,j_fks
+      integer            nFKSprocess
+      common/c_nFKSprocess/nFKSprocess
       double precision    xi_i_fks_ev,y_ij_fks_ev,p_i_fks_ev(0:3)
      $                    ,p_i_fks_cnt(0:3,-2:2)
       common/fksvariables/xi_i_fks_ev,y_ij_fks_ev,p_i_fks_ev,p_i_fks_cnt
       double precision     f_r,f_s,f_c,f_dc,f_sc,f_dsc(4)
       common/factor_n1body/f_r,f_s,f_c,f_dc,f_sc,f_dsc
       integer get_orders_tag
+      logical softtest,colltest
+      common/sctests/softtest,colltest
+      double precision tiny
+      logical near_singular_pt
       call cpu_time(tBefore)
       if (f_r.eq.0d0) return
       s_ev = fks_Sij(p,i_fks,j_fks,xi_i_fks_ev,y_ij_fks_ev)
       if (s_ev.le.0.d0) return
+c AV road B step 7g: gate the expensive generic real-emission ME here,
+c like compute_born does for the Born. Previously only sreal() itself
+c was gated, so compute_real_emission still ran in full during the
+c gathering walk (fks_Sij, sreal call chain, cheap near-singular
+c kernels): twice as many calls in F/C as in F0/F1.
+c Only the folds for which sreal() reaches its generic SMATRIX_REAL
+c branch may be stashed here, i.e. this must replicate sreal()'s own
+c near-singular test (same tiny): vfold_stash_real/vfold_retrieve_real
+c pair entries by call order, and in the replay walk vfold_retrieve_real
+c is only reached by those folds. Stashing near-singular folds too
+c shifts all later retrieves onto the wrong momenta (the first
+c attempt at this gate did that: wrong MEs, more MINT2 candidates).
+c Near-singular folds are cheap and still run in both walks.
+c AV road B step 8a: also stash nFKSprocess (SMATRIX_REAL dispatches
+c on it), as the batch is evaluated after the whole gathering walk.
+      if (softtest.or.colltest) then
+         tiny=1d-12
+      else
+         tiny=1d-6
+      endif
+      near_singular_pt = (1d0-y_ij_fks_ev.lt.tiny) .or.
+     $     (xi_i_fks_ev.lt.tiny)
+      if (real_gathering .and. .not.near_singular_pt) then
+         call vfold_stash_real(p, g, nFKSprocess)
+         call cpu_time(tAfter)
+         tReal=tReal+(tAfter-tBefore)
+         return
+      endif
       call sreal(p,xi_i_fks_ev,y_ij_fks_ev,fx_ev)
       do iamp=1, amp_split_size
         if (amp_split(iamp).eq.0d0) cycle
@@ -1506,6 +1582,8 @@ c Initialize hiostograms for fixed order runs
       end
 
       subroutine include_multichannel_enhance(imode)
+      use vfold_born_batch
+      use vfold_rng_slots
       implicit none
       include 'nexternal.inc'
       include 'run.inc'
@@ -1514,6 +1592,7 @@ c Initialize hiostograms for fixed order runs
       include 'timing_variables.inc'
       double precision xnoborn_cnt,xtot,wgt_c,enhance,enhance_real
      $     ,pas(0:3,nexternal)
+      double precision sde_numerator,sde_denominator
       data xnoborn_cnt /0d0/
       integer inoborn_cnt,i,imode
       data inoborn_cnt /0/
@@ -1564,19 +1643,49 @@ c Initialize hiostograms for fixed order runs
       common/ccalculatedBorn/calculatedBorn
       logical use_evpr
       common /to_use_evpr/use_evpr
+      double precision g,all_g
+      common/strong/ g,all_g
+      real avtiming_sde_born_t0, avtiming_sde_born_t1
+      real avtiming_sde_born_dt
 
       call cpu_time(tBefore)
 
 c Compute the multi-channel enhancement factor 'enhance'.
       enhance=1.d0
+      avtiming_sde_born_dt=0.
       if (p_born(0,1).gt.0d0) then
-c Must use the same frame as every other SBORN call in this event: the
-c amplitudes are cached against (E,p_z) and shared. The multi-channel
-c weights stay a partition of unity in any frame, so this is free.
-         call sborn_frame(p_born,wgt_c)
+         if (sde_gathering) then
+c AV road B step 7c+7d: walk 1 stashes the SDE Born, leaving enhance=1
+c (discarded like everything else computed in walk 1); walk 2 retrieves
+c the batch-evaluated ratio instead of calling sborn.
+            call vfold_stash_sde(p_born, mapconfig(this_config,0), g)
+         elseif (vfold_replay_mode) then
+            call vfold_retrieve_sde(sde_numerator,sde_denominator)
+c AV road B step 7l: re-warm SBORN's amplitude cache from the Born memo,
+c as the direct sborn call does in the single-walk modes: get_mbar and
+c sbornsoft call sborn(p_born) later and rely on finding it warm.
+            if (vfold_born_memo_hit(p_born,g)) call vfold_born_memo_restore
+            if (sde_denominator.ne.0d0) then
+               enhance=sde_numerator/sde_denominator
+               enhance=enhance*diagramsymmetryfactor
+            else
+               enhance=0d0
+            endif
+         else
+c AV road B step 7f: time this SDE Born evaluation as Born (tBorn), not
+c Nbody_prefactor (tf_nb), as vfold_evaluate_sde_batch does in F/C.
+            call cpu_time(avtiming_sde_born_t0)
+            call sborn_frame(p_born,wgt_c)
+            call cpu_time(avtiming_sde_born_t1)
+            avtiming_sde_born_dt=avtiming_sde_born_t1-avtiming_sde_born_t0
+            tBorn=tBorn+avtiming_sde_born_dt
+         endif
       elseif(p_born(0,1).lt.0d0)then
          enhance=0d0
       endif
+c AV road B step 7c+7d: the scalar enhance computation and its warnings
+c below only apply when sborn was called above (not in walk 1 or 2).
+      if (.not.(sde_gathering.or.vfold_replay_mode)) then
       if (enhance.eq.0d0)then
          xnoborn_cnt=xnoborn_cnt+1.d0
          if(log10(xnoborn_cnt).gt.inoborn_cnt)then
@@ -1602,6 +1711,7 @@ c weights stay a partition of unity in any frame, so this is free.
          else
             enhance=0d0
          endif
+      endif
       endif
 
 c In the case there is the special phase-space mapping for resonances,
@@ -1687,11 +1797,65 @@ c Compute the multi-channel enhancement factor 'enhance_real'.
          f_pdfsch_l=  f_pdfsch_l  *enhance
       endif
       call cpu_time(tAfter)
-      tf_nb=tf_nb+(tAfter-tBefore)
+c AV road B step 7f: the SDE sborn time was moved to tBorn above
+      tf_nb=tf_nb+(tAfter-tBefore)-avtiming_sde_born_dt
 
       return
       end
       
+
+c AV road B step 7c+7d: evaluation of one stashed SDE entry (modes F, C)
+c (called by vfold_evaluate_sde_batch), as in include_multichannel_enhance:
+c sborn, then numerator=amp2(channelid), denominator=sum of amp2 over
+c diagrams. In fixed-form because it needs fixed-form includes. Uses the
+c stashed true g, not g=1: g cancels in the ratio, but changes rounding
+c and the FKS subtractions amplify that.
+      subroutine vfold_sde_scalar_eval(p_born_in,channelid,g_in,
+     $     numerator,denominator)
+      use vfold_born_batch
+      implicit none
+      include 'nexternal.inc'
+      include 'genps.inc'
+      include 'nFKSconfigs.inc'
+      double precision p_born_in(0:3,nexternal-1)
+      integer channelid
+      double precision g_in
+      double precision numerator,denominator
+      double precision wgt_c
+      integer i
+      double precision pmass(-nexternal:0,lmaxconfigs,0:fks_configs)
+      double precision pwidth(-nexternal:0,lmaxconfigs,0:fks_configs)
+      integer iforest(2,-max_branch:-1,lmaxconfigs,0:fks_configs)
+      integer sprop(-max_branch:-1,lmaxconfigs,0:fks_configs)
+      integer tprid(-max_branch:-1,lmaxconfigs,0:fks_configs)
+      integer mapconfig(0:lmaxconfigs,0:fks_configs)
+      common /c_configurations/pmass,pwidth,iforest,sprop,tprid
+     $     ,mapconfig
+      Double Precision amp2(ngraphs), jamp2(0:ncolor)
+      common/to_amps/  amp2,          jamp2
+      logical calculatedBorn
+      common/ccalculatedBorn/calculatedBorn
+      double precision g, all_g
+      common/strong/ g, all_g
+      g=g_in
+      call update_as_param()
+c AV road B step 7k: reuse the Born memo (this is only called by the
+c SDE batch of modes F and C; the memo also restores amp2)
+      if (vfold_born_memo_hit(p_born_in,g_in)) then
+        call vfold_born_memo_restore
+      else
+        calculatedBorn=.false. ! genuine re-evaluation for a new point
+        call sborn(p_born_in,wgt_c)
+        call vfold_born_memo_store(p_born_in,g_in)
+      endif
+      denominator=0d0
+      do i=1, mapconfig(0,0)
+         denominator=denominator+amp2(mapconfig(i,0))
+      enddo
+      numerator=amp2(channelid)
+      return
+      end
+
 
       subroutine compute_prefactors_n1body(vegas_wgt,jac_ev)
 c Compute all relevant prefactors for the real emission and counter
@@ -4745,6 +4909,8 @@ c Wrapper for the n+1 contribution. Returns the n+1 matrix element
 c squared reduced by the FKS damping factor xi**2*(1-y).
 c Close to the soft or collinear limits it calls the corresponding
 c Born and multiplies with the AP splitting function or eikonal factors.
+      use vfold_real_batch
+      use vfold_rng_slots
       implicit none
       include "nexternal.inc"
       include "coupl.inc"
@@ -4757,6 +4923,9 @@ c Born and multiplies with the AP splitting function or eikonal factors.
 
       integer i_fks,j_fks
       common/fks_indices/i_fks,j_fks
+
+      integer nFKSprocess
+      common/c_nFKSprocess/nFKSprocess
 
       double precision ybst_til_tolab,ybst_til_tocm,sqrtshat,shat
       common/parton_cms_stuff/ybst_til_tolab,ybst_til_tocm,
@@ -4818,9 +4987,25 @@ c has soft singularities
             amp_split(1:amp_split_size) = 0d0
          endif
       else
-         call smatrix_real_frame(pp,wgt)
-         wgt=wgt*xi_i_fks**2*(1d0-y_ij_fks)
-         amp_split(1:amp_split_size) = amp_split(1:amp_split_size)*xi_i_fks**2*(1d0-y_ij_fks)
+         if (real_gathering) then
+c AV road B step 4: gathering walk -- stash momenta+g, skip
+c SMATRIX_REAL (mirrors eebb_vfold's real_collecting).
+            call vfold_stash_real(pp,g,nFKSprocess)
+            wgt=0d0
+            amp_split(1:amp_split_size) = 0d0
+         elseif (vfold_replay_mode) then
+c AV road B step 4: finishing walk (replay) -- retrieve the
+c batch-evaluated SMATRIX_REAL result instead of calling it again.
+c AV road B step 8a: retrieve the full amp_split array, not only slot
+c AMP_SPLIT_SIZE_BORN+1 (SMATRIX_REAL may fill several slots in general).
+            call vfold_retrieve_real(amp_split, wgt)
+            wgt=wgt*xi_i_fks**2*(1d0-y_ij_fks)
+            amp_split(1:amp_split_size) = amp_split(1:amp_split_size)*xi_i_fks**2*(1d0-y_ij_fks)
+         else
+            call smatrix_real_frame(pp,wgt)
+            wgt=wgt*xi_i_fks**2*(1d0-y_ij_fks)
+            amp_split(1:amp_split_size) = amp_split(1:amp_split_size)*xi_i_fks**2*(1d0-y_ij_fks)
+         endif
       endif
 
       return

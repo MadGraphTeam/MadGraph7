@@ -17,10 +17,11 @@
 !        Born/Real evaluation via a plain Fortran loop, no cudacpp bridge)
 !   C  = same as F, but Born/Real evaluation is offloaded to the cudacpp
 !        bridge instead of a plain Fortran loop
-! MadVFold codegen step 12h: only the scaffolding is installed here, so
-! F1, F2, F and C are not yet implemented: all five modes run identical,
-! unmodified code paths, so F0/F1/F2/F/C must all produce bit-identical
-! results. Later steps make F1, F2, F and C actually diverge from F0.
+! MadVFold codegen status: F1 is implemented since step 12j (RNG slots)
+! and F since step 12k (batched Born/Real MEs over the folds of a kpoint).
+! F2 still runs as F1 (the Born memo is only used by F), and C runs as F
+! until the cudacpp bridges are added. F1, F2, F and C must all produce
+! bit-identical results, different from those of F0.
 module vfold_mode
   implicit none
   character(len=2), public, save :: vfold_me_mode = 'C '

@@ -6,6 +6,8 @@ c**************************************************************************
       use mint_module
       use FKSParams
       use vfold_mode
+      use vfold_born_batch
+      use vfold_real_batch
       use vfold_rng_slots, only: vfold_delta_slots_init ! AV road B step 11m
       implicit none
 C
@@ -150,6 +152,9 @@ c
       call run_printout          !Prints out a summary of the run settings
       call fill_configurations_common
       call check_amp_split 
+      ! AV road B step 3: test of the Born batch (--vfold-with-tests),
+      ! a no-op unless ENV_VFOLD_TEST_BORN_BATCH is set
+      if (vfold_tests) call vfold_test_born_batch
 
       ! AV MadVFold: the FVZ dumps (and the ENV_FVZ_* variables) are only
       ! enabled by 'output --vfold-with-tests' (see vfold_tests.inc)
@@ -245,6 +250,8 @@ c     Prepare the MINT folding
       ifold(ifold_energy)=ixi_i
       ifold(ifold_phi)=iphi_i
       ifold(ifold_yij)=iy_ij
+c AV road B step 7k: size the Born memo from the folding
+      call vfold_born_memo_init(ixi_i*iy_ij*iphi_i)
 c AV road B step 11m: one pair of fold slots per dipole for MC@NLO-Delta
       if (mcatnlo_delta) call vfold_delta_slots_init(nexternal-1)
 
@@ -350,6 +357,13 @@ c Randomly pick the contribution that will be written in the event file
          call deallocate_weight_lines
          vn=-1
          call gen(sigintF,3,vn,x) ! print counters generation efficiencies
+         write(6,*) 'AV: mode=', vfold_me_mode,
+     $        ' born_batch_avg=',
+     $        dble(vfold_born_batch_sum)/max(1,vfold_born_batch_ncalls),
+     $        ' born_batch_ncalls=', vfold_born_batch_ncalls,
+     $        ' real_batch_avg=',
+     $        dble(vfold_real_batch_sum)/max(1,vfold_real_batch_ncalls),
+     $        ' real_batch_ncalls=', vfold_real_batch_ncalls
          write (lunlhe,'(a)') "</LesHouchesEvents>"
          close(lunlhe)
       endif
@@ -748,6 +762,8 @@ c
       function sigintF(xx,vegas_wgt,ifl,f)
       use weight_lines
       use mint_module
+      use vfold_born_batch
+      use vfold_rng_slots ! AV road B step 8p: vfold_replay_mode
       implicit none
       include 'nexternal.inc'
       include 'nFKSconfigs.inc'
@@ -918,13 +934,29 @@ c 1/proc_map(0,0)*vol1)
             pass_cuts_check=.true.
             call set_alphaS(p1_cnt(0,1,0))
             call include_multichannel_enhance(1)
-            if (abrv(1:2).ne.'vi') then
+c AV road B step 8p: in the two-walk modes (F/C) also virt candidates
+c call compute_born, so that their Born goes through the batch (it is
+c then a cache hit for the sborn call in bornsoftvirtual).
+c compute_born does not add the Born weight for virt candidates.
+            if (abrv(1:2).ne.'vi' .or. born_gathering .or.
+     $           vfold_replay_mode) then
                call compute_born
+c AV road B step 3: compute_born is self-gating (stashes and returns
+c early during the gathering walk); everything else below it that adds
+c a weight-line contribution must be skipped entirely during gathering,
+c same as the old two-pass architecture's real_collecting/
+c born_collecting gates -- see vfold_born_batch.f90's header comment.
+               if (abrv(1:2).ne.'vi') then
+               if (.not. born_gathering) then
                if(abrv.ne.'born'.and.abrv.ne.'bovi') call compute_ewsudakov
+               endif
+               endif
 
             endif
             if (abrv.ne.'born') then
+               if (.not. born_gathering) then
                call compute_nbody_noborn
+               endif
             endif
          endif
 c Update the shower starting scale. This might be updated again below if
@@ -1001,8 +1033,12 @@ c Include the MonteCarlo subtraction terms
                   if (ickkw.eq.3) call set_FxFx_scale(-3,p)
                   call set_alphaS(p)
                   call include_multichannel_enhance(4)
+c AV road B step 3: skip during the gathering walk, same as the old
+c two-pass architecture's real_collecting gate on this exact call.
+                  if (.not. born_gathering) then
                   call compute_MC_subt_term(p,passcuts_nbody,gfactsf
      $                 ,gfactcl,probne)
+                  endif
                else
 c For UNLOPS all real-emission contributions need to be added to the
 c S-events. Do this by setting probne to 0. For UNLOPS, no MC counter
@@ -1019,6 +1055,10 @@ c by the call to compute_MC_subt_term) through the 'replace_MC_subt'.
                if (ickkw.eq.3) call set_FxFx_scale(-2,p1_cnt(0,1,0))
                call set_alphaS(p1_cnt(0,1,0))
                call include_multichannel_enhance(3)
+c AV road B step 3: skip all three during the gathering walk (their
+c inputs, gfactsf/gfactcl/probne, are stale/unset from a skipped
+c compute_MC_subt_term above, and their result is not used anyway).
+               if (.not. born_gathering) then
                replace_MC_subt=(1d0-gfactsf)*probne
                call compute_soft_counter_term(replace_MC_subt)
                call set_cms_stuff(ione)
@@ -1027,6 +1067,7 @@ c by the call to compute_MC_subt_term) through the 'replace_MC_subt'.
                call set_cms_stuff(itwo)
                replace_MC_subt=(1d0-gfactcl)*(1d0-gfactsf)*probne
                call compute_soft_collinear_counter_term(replace_MC_subt)
+               endif
             endif
 c Include the real-emission contribution.
             if (passcuts_n1body) then
@@ -1035,6 +1076,15 @@ c Include the real-emission contribution.
                if (ickkw.eq.3) call set_FxFx_scale(-3,p)
                call set_alphaS(p)
                call include_multichannel_enhance(2)
+c AV road B step 4: unlike compute_MC_subt_term/the three FKS counter
+c terms above, compute_real_emission must run in BOTH walks -- its own
+c sreal() call is what carries the real_gathering/vfold_replay_mode gate
+c (see vfold_real_batch.f90's header comment). During the gathering walk
+c probne is still its neutral default (1d0, set above and never
+c overwritten since compute_MC_subt_term was skipped), which is safe:
+c sreal() returns amp_split=0 while gathering, so compute_real_emission's
+c own iamp loop (gated on amp_split(iamp).ne.0d0) does nothing anyway --
+c mirrors eebb_vfold's real_collecting precedent exactly.
                sudakov_damp=probne
                call compute_real_emission(p,sudakov_damp)
             endif
@@ -1052,6 +1102,16 @@ c subtraction terms.
             write (*,*) ifold(:)
             stop 1
          endif
+c AV road B step 3: this whole finalisation block (including the
+c dump69-gated WGTS/UNWGT/VIRTW debug output in
+c fill_mint_function_NLOPS) operates on weight_lines' current icontr
+c accumulation. During the gathering walk nothing was ever added to it
+c (every call above that could call add_wgt was skipped), so there is
+c nothing valid to finalise or dump -- skip entirely. f (this
+c function's own return value) is left unset in that case, which is
+c safe: compute_integrand never copies the gathering walk's closing-
+c call f1 into its own returned f(), only the replay walk's.
+      if (.not. born_gathering) then
 c Special check: in rare cases there can be S-event contributions,
 c without a single FKS configuration that contains a soft singularity
 c passing cuts (this only happens if n-body configuration does not pass
@@ -1071,6 +1131,7 @@ c determined which contributions are identical.
          call update_shower_scale_Sevents(ifold_counter,ifold_picked)
          call fill_mint_function_NLOPS(f,n1body_wgt)
          call fill_MC_integer(1,proc_map(0,1),n1body_wgt*vol1)
+      endif
       endif
       return
       end
@@ -1326,8 +1387,7 @@ c     include all quarks (except top quark) and the gluon.
       use vfold_rng_slots
       implicit none
       integer i
-      double precision xx(ndimmax),x(99),ran2
-      external ran2
+      double precision xx(ndimmax),x(99)
       integer         nndim
       common/tosigint/nndim
       character*4      abrv
