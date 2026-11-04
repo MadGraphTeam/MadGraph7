@@ -1382,25 +1382,21 @@ fn rotated(p: &[f64; 4]) -> [f64; 4] {
     [p[0], x, y, z]
 }
 
-/// Ninja's light-like spinors (`ninjars fast/geometry.rs:62-104` at 41a4c00;
-/// DESIGN §11.2 'Other thresholds on the binary64 path'). The fast engine
-/// builds each cut basis' complex vectors from the spinors of two light-like
-/// vectors: within `infrared_eps` (absolute, `1e-9` in the model's units) of
-/// `p⁰ = ±p³` it takes the beam axis' spinor and drops the transverse
-/// momentum, and outside it divides by `√(p⁰ + p³)`, formed by cancellation
-/// near the `-z` axis (relative error ≈ `2.2e-16/θ²` at an angle `θ` from
-/// it). Neither is routed: no mass or invariant is near a threshold. A
-/// massless rank-3 box with beams along `x` and the outgoing legs at `θ` from
-/// the `z` axis (`s = 4E²`, `t ≈ u ≈ -2E²`, `E = 500`; the branch for
-/// `θ < 2e-6`) against the same lanes rotated (momenta and the numerator's
-/// four-vectors): the generic engine agrees with DoubleFloat in both frames,
-/// the fast engine only in the rotated one, and its error is silent (the lane
-/// succeeds) and as large as the two frames' difference, so a rotation check
-/// sees it; the reduction-direction check differs from the direct frame by
-/// more than half the error. Pins the pinned NinjaRS's behaviour (the upstream note
-/// `workspace/reports/engine-v2/upstream/ninjars-lightlike-spinor/`).
+/// The fast engine's light-like spinors near the beam axis (DESIGN §11.2
+/// 'Other thresholds on the binary64 path'). Up to NinjaRS 41a4c00 the fast
+/// engine built each cut basis' complex vectors from spinors that took the z
+/// axis' spinor within `infrared_eps` (absolute, `1e-9` in the model's units)
+/// of `p⁰ = ±p³` and otherwise divided by `√(p⁰ + p³)`, formed by
+/// cancellation near `-z`: on this point it was silently off by 7.1e-10
+/// (θ = 1e-3), 6.2e-6 (1e-5), 8.8e-6 (1e-6) and 8.8e-8 (1e-8), every lane
+/// 'success', and only the rotation and reduction-direction checks saw it.
+/// NinjaRS #10 forms the spinor from the larger light-cone component without
+/// a window: a massless rank-3 box with beams along `x` and the outgoing legs
+/// at `θ` from the `z` axis (`s = 4E²`, `t ≈ u ≈ -2E²`, `E = 500`) now agrees
+/// with DoubleFloat in both frames, as the generic engine does, and the two
+/// stability checks see no difference beyond rounding.
 #[test]
-fn a_rotation_check_sees_ninjas_lightlike_spinor_errors() {
+fn the_fast_engine_is_accurate_near_the_beam_axis() {
     let energy = 500_f64;
     let factors = [
         ([1.3, 0.2, -0.7, 0.4], 2.0e2),
@@ -1412,9 +1408,8 @@ fn a_rotation_check_sees_ninjas_lightlike_spinor_errors() {
         masses: vec![0.; 4],
         rank: 3,
     };
-    // (θ, the fast engine's least error): the cancellation (1e-3, 1e-5) and
-    // the branch (1e-6, 1e-8; measured 7.1e-10, 6.2e-6, 8.8e-6, 8.8e-8).
-    for (angle, least) in [(1e-3, 1e-10), (1e-5, 1e-6), (1e-6, 1e-6), (1e-8, 1e-8)] {
+    // The former cancellation (θ = 1e-3, 1e-5) and branch (1e-6, 1e-8).
+    for angle in [1e-3, 1e-5, 1e-6, 1e-8] {
         let point = [
             [energy, energy, 0., 0.],
             [energy, -energy, 0., 0.],
@@ -1486,17 +1481,16 @@ fn a_rotation_check_sees_ninjas_lightlike_spinor_errors() {
         }
         let (fast, reversed) = run("fast", "double", false);
         let (fast_rotated, _) = run("fast", "double", true);
-        let (wrong, seen) = (error(&fast), relative(&fast, &fast_rotated, 3));
-        assert!(error(&fast_rotated) < 1e-13, "θ = {angle:e}");
-        assert!(wrong > least, "θ = {angle:e}: {wrong:e}");
-        assert!(seen > 0.5 * wrong && seen < 2. * wrong, "θ = {angle:e}");
-        // The reduction-direction check sees it too (measured 1.29 to 2.26
-        // times the error).
+        let (direct, rotated) = (error(&fast), error(&fast_rotated));
+        let seen = relative(&fast, &fast_rotated, 3);
         let direction = relative(&fast, &reversed, 3);
-        assert!(direction > 0.5 * wrong, "θ = {angle:e}: {direction:e}");
         eprintln!(
-            "θ = {angle:e}: fast {wrong:e}, rotation check {seen:e}, \
+            "θ = {angle:e}: fast {direct:e} (rotated {rotated:e}), rotation check {seen:e}, \
              reduction-direction check {direction:e}"
         );
+        assert!(direct < 1e-13, "θ = {angle:e}: {direct:e}");
+        assert!(rotated < 1e-13, "θ = {angle:e}: {rotated:e}");
+        assert!(seen < 1e-13, "θ = {angle:e}: {seen:e}");
+        assert!(direction < 1e-13, "θ = {angle:e}: {direction:e}");
     }
 }
