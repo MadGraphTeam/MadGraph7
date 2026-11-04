@@ -7651,7 +7651,7 @@ class GenerationBackend:
             if source.kind == "built-in-sm" and not self._prepared_execution_enabled:
                 return _ResolvedModel(source, _builtin_sm_model())
             if self._prepared_execution_enabled:
-                source = self._packaged_builtin_prepared_source(source.kind)
+                source = self._packaged_builtin_prepared_source(source)
         source_input: str | Path
         if source.kind == "built-in-sm-heft":
             source_input = "built-in-sm-heft"
@@ -7677,7 +7677,9 @@ class GenerationBackend:
                     )
                 cache_dir = None if run is None else run.model.cache_dir
                 compiled = (
-                    load_cached_sm_heft_source(cache_dir=cache_dir)
+                    load_cached_sm_heft_source(
+                        restriction=source.restriction, cache_dir=cache_dir
+                    )
                     if source.kind == "built-in-sm-heft"
                     else load_cached_model_source(
                         source_input,
@@ -7771,7 +7773,7 @@ class GenerationBackend:
             if source.kind == "built-in-sm" and not self._prepared_execution_enabled:
                 return _ResolvedModel(source, _builtin_sm_model())
             if self._prepared_execution_enabled:
-                source = self._packaged_builtin_prepared_source(source.kind)
+                source = self._packaged_builtin_prepared_source(source)
         source_input: str | Path
         if source.kind == "built-in-sm-heft":
             source_input = "built-in-sm-heft"
@@ -7792,6 +7794,7 @@ class GenerationBackend:
                 cache_dir = None if run is None else run.model.cache_dir
                 compiled = (
                     compile_sm_heft_source(
+                        restriction=source.restriction,
                         cache_dir=cache_dir,
                         use_cache=use_cache,
                     )
@@ -7822,7 +7825,21 @@ class GenerationBackend:
         return _ResolvedModel(source, CompiledUFOModel(compiled), compiled)
 
     @staticmethod
-    def _packaged_builtin_prepared_source(source_kind: str) -> ModelSource:
+    def _packaged_builtin_prepared_source(source: ModelSource) -> ModelSource:
+        source_kind = source.kind
+        if source.restriction is not None and source_kind != "built-in-sm-heft":
+            # As ``ModelSource.from_config`` for ``source = "built-in-sm"``.
+            raise ModelError(
+                "model restrictions can only be applied to external models"
+            )
+        if source.restriction is not None:
+            raise ModelError(
+                f"the wheel-owned prepared {source_kind} model uses the default "
+                f"restriction; for restriction {source.restriction!r} compile a "
+                "prepared bundle with ModelSource.built_in_sm_heft(restriction=...)"
+                ".compile(prepared_output=..., evaluator=...) and pass the returned "
+                "CompiledModel, or use the compiled execution mode"
+            )
         from ..assets.prepared_models import (
             BUILTIN_SM_HEFT_JIT_O2,
             BUILTIN_SM_JIT_O2,
