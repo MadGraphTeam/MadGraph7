@@ -981,25 +981,46 @@ mod tests {
     /// refused.
     #[test]
     fn the_executor_reuses_its_latest_row_liveness() {
-        use crate::loop_execution::v2::V2Executor;
+        use crate::loop_execution::v2::{Schedule, V2Executor};
         use std::sync::Arc;
         let executor = V2Executor::new(Arc::new(plan("null", 1)), 2, Some(1)).unwrap();
-        let first = executor.live_rows(&[true, false], None).unwrap().unwrap();
-        let again = executor.live_rows(&[true, false], None).unwrap().unwrap();
+        let first = executor.live_rows(&[true, false], None, Schedule::B).unwrap().unwrap();
+        let again = executor.live_rows(&[true, false], None, Schedule::B).unwrap().unwrap();
         assert!(Arc::ptr_eq(&first, &again));
         // `first`, `again` and the executor's one.
         assert_eq!(Arc::strong_count(&first), 3);
         let masked = executor
-            .live_rows(&[true, false], Some(&[true, false]))
+            .live_rows(&[true, false], Some(&[true, false]), Schedule::B)
             .unwrap()
             .unwrap();
         assert!(!Arc::ptr_eq(&first, &masked));
         // A miss dropped the executor's before forming the new one.
         assert_eq!(Arc::strong_count(&first), 2);
         assert_eq!(masked.listed(), [0]);
-        let other = executor.live_rows(&[false, true], None).unwrap().unwrap();
+        let other = executor.live_rows(&[false, true], None, Schedule::B).unwrap().unwrap();
         assert_eq!(other.families(), [0, 1]);
-        assert!(executor.live_rows(&[true, true], None).unwrap().is_none());
-        assert!(executor.live_rows(&[true, false], Some(&[true])).is_err());
+        assert!(executor.live_rows(&[true, true], None, Schedule::B).unwrap().is_none());
+        assert!(executor.live_rows(&[true, false], Some(&[true]), Schedule::B).is_err());
+    }
+
+    /// Only schedule B takes a row liveness: schedules M and F dress their
+    /// own programs whole, so a rows mask with them forms none (a liveness
+    /// passed to them is refused); the mask itself still holds.
+    #[test]
+    fn only_schedule_b_forms_a_row_liveness() {
+        use crate::loop_execution::v2::{Schedule, V2Executor};
+        use std::sync::Arc;
+        let executor = V2Executor::new(Arc::new(plan("null", 1)), 2, Some(1)).unwrap();
+        for schedule in [Schedule::M, Schedule::F] {
+            let live = executor.live_rows(&[true, false], None, schedule).unwrap();
+            assert!(live.is_none(), "{schedule:?}");
+        }
+        let live = executor.live_rows(&[true, false], None, Schedule::B).unwrap();
+        assert_eq!(live.unwrap().families(), [0]);
+        assert!(
+            executor
+                .live_rows(&[true, false], Some(&[true]), Schedule::M)
+                .is_err()
+        );
     }
 }

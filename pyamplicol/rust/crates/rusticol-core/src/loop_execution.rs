@@ -434,24 +434,29 @@ pub mod v2 {
             self.evaluate_families(batch, zero, backend, options, None, None)
         }
 
-        /// The per-call row liveness of an evaluation by schedule B keeping
+        /// The per-call row liveness of an evaluation by `schedule` keeping
         /// the Born rows `rows` (one flag per plan row) and dressing the
         /// families `families` keeps (None: every family): the families
         /// pruned to the rows the kept rows reach and the input rows they
         /// read (`LiveRows`, DESIGN.md §8.5), or None when `rows` drops no
-        /// seeded row. [`Self::evaluate_families`] and the tree fill
-        /// (`TreeProgram::live_rows`) take it. The latest one is kept and
-        /// returned again for the same rows and families (and dropped
-        /// before another one is formed).
+        /// seeded row or the schedule is not B (schedules M and F dress
+        /// their own programs whole). [`Self::evaluate_families`] and the
+        /// tree fill (`TreeProgram::live_rows`) take it. The latest one is
+        /// kept and returned again for the same rows and families (and
+        /// dropped before another one is formed).
         pub fn live_rows(
             &self,
             rows: &[bool],
             families: Option<&[bool]>,
+            schedule: Schedule,
         ) -> RusticolResult<Option<Arc<LiveRows>>> {
             if families.is_some_and(|kept| kept.len() != self.plan.families.len()) {
                 return Err(RusticolError::invalid_argument(
                     "one family flag per plan family",
                 ));
+            }
+            if schedule != Schedule::B {
+                return Ok(None);
             }
             let mut listed = b_families(&self.plan, None);
             if let Some(kept) = families {

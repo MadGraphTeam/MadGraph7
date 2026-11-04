@@ -869,12 +869,13 @@ where
     );
     // The kept rows' liveness (DESIGN §8.5): the dressed families pruned to
     // the rows they reach and the tree program to what those read (schedule
-    // B; schedule M dresses its merged families whole).
+    // B only: `V2Executor::live_rows` forms none for schedules M and F).
     let started = std::time::Instant::now();
-    let (live, tree_rows, liveness) = match (&selection.rows, options.schedule) {
-        (Some(rows), Schedule::B) => py
+    let (live, tree_rows, liveness) = match &selection.rows {
+        Some(rows) => py
             .detach(|| {
-                let live = executor.live_rows(rows, selection.families.as_deref())?;
+                let families = selection.families.as_deref();
+                let live = executor.live_rows(rows, families, options.schedule)?;
                 let plan_seconds = started.elapsed().as_secs_f64();
                 let tree_rows = live
                     .as_deref()
@@ -886,7 +887,7 @@ where
                 Ok::<_, rusticol_core::RusticolError>((live, tree_rows, seconds))
             })
             .map_err(error)?,
-        _ => (None, None, None),
+        None => (None, None, None),
     };
     let started = std::time::Instant::now();
     let mut filling = trees.prepare(executor, inputs, &batch.scales, &zero)?;
