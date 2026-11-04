@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from itertools import product
 from types import SimpleNamespace
 from typing import Any
@@ -30,9 +30,10 @@ from ..color import (
     exact_color_contraction_factor,
 )
 from ..color.plan_types import _canonical_open_string_product_key
-from ..models.base import Model, _runtime_particle_parameter_name
+from ..models.base import CouplingOrders, Model, _runtime_particle_parameter_name
 from ..models.recurrence_template import RecurrenceTemplateCatalog
 from ..processes.ir import CanonicalProcessIR
+from .born_orders import RuntimeNormalizationRequest
 from .recurrence_columnar import (
     ExactComplexRationalV1,
     RecurrenceBuilderLogicalInputV1,
@@ -60,13 +61,18 @@ _ZERO_SECTOR_OWNER = 0xFFFF_FFFF
 def build_recurrence_normalization(
     process: CanonicalProcessIR,
     model: Model,
+    born_amplitude_orders: Callable[[], Iterable[CouplingOrders]] | None = None,
 ) -> tuple[RecurrenceNormalizationV1, dict[str, object]]:
-    """Bind the existing process normalization without constructing a DAG."""
+    """Bind the process normalization without constructing a DAG.
 
-    # Existing model implementations inspect only ``dag.process``.  Keep the
-    # compatibility adapter local while preserving the established payload.
+    ``born_amplitude_orders`` supplies, on demand, the coupling orders of the
+    Born amplitudes the generation admits (``born_orders``).
+    """
+
     payload = dict(
-        model.runtime_normalization_payload(SimpleNamespace(process=process))
+        model.runtime_normalization_payload(
+            RuntimeNormalizationRequest(process, born_amplitude_orders)
+        )
     )
     encoded = json.dumps(
         payload,

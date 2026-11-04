@@ -109,6 +109,7 @@ from .artifact_writer import (
     _GenerationConfigProvenance,
     write_schema_v3_artifact,
 )
+from .born_orders import process_born_amplitude_orders
 from .contracts import RuntimeExpressionSchema, StageCompilationInput
 from .dag_algorithms import (
     _infer_minimal_coupling_order_limits_from_color_plan,
@@ -5390,7 +5391,16 @@ class GenerationBackend:
             )
             normalization_started = time.perf_counter()
             normalization_contract, normalization_payload = (
-                build_recurrence_normalization(expanded.process_ir, model)
+                build_recurrence_normalization(
+                    expanded.process_ir,
+                    model,
+                    lambda: process_born_amplitude_orders(
+                        prepared.process,
+                        model=model,
+                        max_coupling_orders=prepared.coupling_order_limits,
+                        color_plan=prepared.restricted_color_plan,
+                    ),
+                )
             )
             profile["normalization"] = time.perf_counter() - normalization_started
             layout = (

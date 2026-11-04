@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import Any, Literal, cast
 
+from ...api.errors import GenerationError
 from .._physics_ir import ContractionIR, ParticleIdentityIR, ParticleOrientation
 from ..base import (
     CouplingOrders,
@@ -666,10 +667,7 @@ class BuiltinSMModel(BuiltinSMLoweringMixin, BuiltinSMDefinitionMixin, BuiltinMo
         identical_factor = math.prod(
             math.factorial(count) for count in Counter(final).values()
         )
-        electroweak_power = (
-            max(1, len(dag.process.singlet_labels)) if dag.process.singlet_labels else 0
-        )
-        qcd_power = max(0, len(dag.process.legs) - 2 - electroweak_power)
+        qcd_power, electroweak_power = _born_coupling_powers(dag)
         return {
             "color_accuracy": dag.process.color_accuracy,
             "color_factor": int(self.leading_color_factor((*initial, *final))),
@@ -800,6 +798,38 @@ class BuiltinSMModel(BuiltinSMLoweringMixin, BuiltinSMDefinitionMixin, BuiltinMo
 
     def coupling_order_hierarchies(self) -> dict[str, int]:
         return {"QCD": 1, "QED": 2}
+
+
+def _born_coupling_powers(request: Any) -> tuple[int, int]:
+    """(QCD, QED) amplitude coupling orders of the request's Born amplitudes.
+
+    The built-in stage evaluators carry no coupling constants; the global
+    factor restores them with these orders as powers. One factor cannot weigh
+    Born amplitudes of different orders against each other, so such a
+    request is refused.
+    """
+
+    process = request.process.process
+    powers: set[tuple[int, int]] = set()
+    for total in request.born_amplitude_orders:
+        orders = {str(name).upper(): int(value) for name, value in total if value}
+        unknown = sorted(set(orders) - {"QCD", "QED"})
+        if unknown:
+            raise GenerationError(
+                f"built-in SM process {process!r} has Born amplitudes of coupling "
+                f"orders {unknown!r} without a built-in normalization"
+            )
+        powers.add((orders.get("QCD", 0), orders.get("QED", 0)))
+    if len(powers) > 1:
+        listed = ", ".join(f"QCD^{qcd} QED^{qed}" for qcd, qed in sorted(powers))
+        raise GenerationError(
+            f"built-in SM process {process!r} has Born amplitudes of several "
+            f"coupling orders ({listed}): its stage evaluators carry no coupling "
+            "constants and its single global coupling factor cannot weigh them "
+            "against each other; restrict process.max_coupling_orders to one "
+            "Born order or use a UFO model"
+        )
+    return next(iter(powers), (0, 0))
 
 
 def _display_name(particle_id: int) -> str:
