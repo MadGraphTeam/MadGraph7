@@ -472,10 +472,7 @@ pub mod v2 {
             if latest.is_some() {
                 return Ok(latest);
             }
-            let live = self
-                .pool
-                .install(|| self.plan.live_rows(rows, &listed))?
-                .map(Arc::new);
+            let live = self.plan.live_rows(rows, &listed)?.map(Arc::new);
             if let (Some(live), Ok(mut latest)) = (&live, self.live.lock()) {
                 *latest = Some(live.clone());
             }

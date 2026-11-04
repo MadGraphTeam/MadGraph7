@@ -35,7 +35,6 @@ use super::{
     SplitPart, SplitStep, Step, StepCost, Vertex, fused_cost, step_shape,
 };
 use crate::RusticolResult;
-use rayon::prelude::*;
 use std::collections::{BTreeSet, HashSet};
 use std::sync::Arc;
 
@@ -133,10 +132,13 @@ impl LoopProgramV4 {
 /// left without a step is never dressed. If the kept copies together would
 /// hold more heap than the dressed families themselves (their own lists,
 /// steps, edges, fused links, split groups and parts, and the part lists
-/// they read, each once; the copies' shortened lists are shared within one
-/// rayon job only), every family runs whole. The executor keeps one
-/// liveness and drops it before it forms another
-/// (`V2Executor::live_rows`).
+/// they read, each once), every family runs whole. The families are pruned
+/// on the calling thread with one link interner, so the copies and the
+/// pruning's scratch sit in one allocator arena and equal shortened lists
+/// are shared across families (a parallel prune spread them over the
+/// worker threads' arenas: about 50 MB more peak on u u~ > g g g g g at
+/// eight threads for 17 MB of copies). The executor keeps one liveness and
+/// drops it before it forms another (`V2Executor::live_rows`).
 pub struct LiveRows {
     /// The kept Born rows, one flag per plan row.
     pub rows: Vec<bool>,
@@ -279,7 +281,7 @@ impl LoopProgramV4 {
     /// flag per plan row) and dressing `families` (ascending) by schedule B
     /// ([`LiveRows`], copies kept up to [`KEPT_SHARE`] of their heap);
     /// `None` when `rows` drops no row a column seeds (nothing to prune).
-    /// The families are pruned in parallel (the caller's rayon pool).
+    /// The families are pruned on the calling thread.
     pub fn live_rows(&self, rows: &[bool], families: &[usize]) -> RusticolResult<Option<LiveRows>> {
         self.live_rows_keeping(rows, families, KEPT_SHARE)
     }
@@ -306,13 +308,14 @@ impl LoopProgramV4 {
         if seeded.iter().enumerate().all(|(row, &seed)| seed == keeps(row)) {
             return Ok(None);
         }
-        // One link interner per rayon job: the parts' shortened lists are
-        // shared within it (a list keeping every link stays the template's).
+        // One link interner: the parts' shortened lists are shared across
+        // the families (a list keeping every link stays the template's).
         // Per listed family: the copy (None: it runs whole), the links it
-        // runs, and the copy's heap.
+        // runs, and the heap the copy adds.
+        let mut interner = LinkInterner::default();
         let mut pruned: Vec<(Option<Family>, usize, usize)> = families
-            .par_iter()
-            .map_init(LinkInterner::default, |interner, &f| {
+            .iter()
+            .map(|&f| {
                 let template = &self.families[f];
                 let (copy, lists) = prune_family(
                     template,
@@ -320,7 +323,7 @@ impl LoopProgramV4 {
                     columns,
                     &self.contents,
                     &self.vertices,
-                    interner,
+                    &mut interner,
                 );
                 let (links, whole) = (family_links(&copy), family_links(template));
                 if copy.steps.is_empty() || links * share.1 <= whole * share.0 {
@@ -401,8 +404,7 @@ fn sources<'a>(step: &Step, seeded: &'a [bool], live: &'a [Vec<bool>]) -> Vec<&'
 /// length it keeps, so a pruned family holds its kept links only (a split
 /// part's list that keeps every link stays shared with `family`; a shorter
 /// one is interned in `interner`). The template is read only. Also returns
-/// the heap of the shortened part lists the result holds (each once, also
-/// when `interner` had it already: an upper bound of what it allocated).
+/// the heap of the shortened part lists it added to `interner`.
 fn prune_family(
     family: &Family,
     seeded: &[bool],
@@ -411,7 +413,6 @@ fn prune_family(
     vertices: &[Vertex],
     interner: &mut LinkInterner,
 ) -> (Family, usize) {
-    let mut shortened: HashSet<*const PackedLinks> = HashSet::new();
     let mut lists = 0;
     let steps = &family.steps;
     // Forward: the object rows a kept seed row reaches.
@@ -494,12 +495,13 @@ fn prune_family(
                     let mut kept_parts = Vec::new();
                     for part in edge_parts {
                         let mut links = Arc::clone(&part.links);
+                        let interned = interner.len();
                         interner.retain(&mut links, |link| keep(link, input));
+                        if interner.len() > interned {
+                            lists += links.shared_bytes();
+                        }
                         if links.is_empty() {
                             continue;
-                        }
-                        if !Arc::ptr_eq(&links, &part.links) && shortened.insert(Arc::as_ptr(&links)) {
-                            lists += links.shared_bytes();
                         }
                         if let Source::Step(child) = edge.source {
                             for link in links.iter() {
