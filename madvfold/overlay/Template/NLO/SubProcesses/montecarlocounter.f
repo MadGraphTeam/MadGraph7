@@ -2574,6 +2574,12 @@ c Stuff to be written (depending on AddInfoLHE) onto the LHE file
       COMMON/C_NFKSPROCESS/NFKSPROCESS
       double precision ran2
       external ran2
+c AV FIX: jpartner is only assigned inside the dampMCsubt.and.wgt.gt.1d-30
+c branches below, but it is always read in the AddInfoLHE block at the end,
+c where jpartner.eq.0 triggers an extra ran2() call. Initialize it, so that
+c the sequence of random numbers does not depend on the value left by the
+c previous call (local variables are static with -fno-automatic).
+      jpartner=0
       if (mcatnlo_delta) then
 c Input check
          do npartner=1,ipartners(0)
