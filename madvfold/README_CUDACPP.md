@@ -65,6 +65,11 @@ first one. They can also be run by hand in the process directory:
   `madvfold/DEV/CUDACPP` instead of `<proc>/CUDACPP` (`madevent_simd`
   directories `<ccproc>.mad`).
 
+To run the process directory in mode C, set the `ENV_VFOLD_*` variables first,
+e.g. with the example values (mode C, avx2 backend, SBORN served from cudacpp)
+of `source vfold/setupVfoldDefaults.sh` (to be tuned to your needs; the test
+scripts such as `vfold/myLaunch.sh` set them themselves).
+
 The cudacpp unit tests can then be run in each cudacpp process directory, e.g.
 ```
 cd CUDACPP/epem_bbbxbx.vfold.sa/SubProcesses/P1_Sigma_sm_epem_bbbxbx

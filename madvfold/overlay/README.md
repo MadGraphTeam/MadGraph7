@@ -17,7 +17,11 @@ gives the MadVFold patch set (e.g. to port it to later mg5amcnlo versions).
 
 The scripts in `Template/NLO/vfold` generate and build the cudacpp
 libraries for mode C (see `../README_CUDACPP.md`): `output --vfold` runs
-`vfold/generateCudacpp.sh` in the process directory.
+`vfold/generateCudacpp.sh` in the process directory. Before running the
+process directory, `source vfold/setupVfoldDefaults.sh` sets example values
+of the `ENV_VFOLD_*` variables read at runtime by the vfold code (mode C
+with the avx2 cudacpp backend, SBORN served from cudacpp): users must tune
+them to their needs.
 
 Each file is installed only once: development and test hooks in the
 Fortran code (e.g. the FVZ dumps) are included in the files of this tree,
