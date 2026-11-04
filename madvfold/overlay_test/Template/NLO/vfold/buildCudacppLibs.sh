@@ -38,8 +38,13 @@ function ccProcForTag() {
 }
 
 # Set up build configuration
-cd ../CUDACPP
-export USECCACHE=1
+# The cudacpp process directories are in CUDACPP (created by vfold/genCudacpp.sh)
+# or else in ../CUDACPP (the layout of the hand-written madvfold/DEV/<proc>_vfalt)
+if [ -d CUDACPP ]; then cd CUDACPP; else cd ../CUDACPP; fi
+echo "Build the cudacpp libraries in $(pwd)"
+# Use ccache only if it is installed
+if which ccache > /dev/null 2>&1; then export USECCACHE=1; else export USECCACHE=0; fi
+echo USECCACHE=${USECCACHE}
 export CCACHE_DIR=$(pwd -P)/ccache
 echo CCACHE_DIR=${CCACHE_DIR}
 export FC=gfortran
@@ -87,6 +92,12 @@ make -f cudacpp.mk -j${nj} bldall
 popd > /dev/null
 
 # Build cudacpp Real libraries
+# The cudacpp.mk of the Real processes (generated without --vfold) does not look for
+# googletest in ../../../test (i.e. in test here): pass it as GTEST_ROOT, so that their
+# tests (runTest_*.exe) are also built (googletest was built above for the Born)
+gtestroot=$(ls -d $(pwd -P)/test/googletest/install_* 2>/dev/null | head -1)
+if [ "${gtestroot}" != "" ]; then gtestopt="GTEST_ROOT=${gtestroot}"; else gtestopt=; fi
+echo "Use ${gtestopt} for the Real libraries"
 for tag in ${ccRealTags}; do
   ccRealProc=$(ccProcForTag ${tag})
   ccRealMad=${ccRealProc}.mad
@@ -94,7 +105,7 @@ for tag in ${ccRealTags}; do
   if [ "$force" == "1" ]; then
     make -f cudacpp.mk cleanall
   fi
-  make -f cudacpp.mk -j${nj} bldall
+  make -f cudacpp.mk -j${nj} ${gtestopt} bldall
   popd > /dev/null
 done
 

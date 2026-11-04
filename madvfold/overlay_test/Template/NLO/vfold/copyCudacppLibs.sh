@@ -57,11 +57,16 @@ function renameCommonLib {
   popd > /dev/null
 }
 
+# The cudacpp process directories are in CUDACPP (created by vfold/genCudacpp.sh)
+# or else in ../CUDACPP (the layout of the hand-written madvfold/DEV/<proc>_vfalt)
+if [ -d CUDACPP ]; then ccDir=CUDACPP; else ccDir=../CUDACPP; fi
+echo "Copy the cudacpp libraries from $(cd ${ccDir}; pwd)"
+
 # Copy cudacpp libraries
 targetDir=lib/cudacpp
 rm -rf ${targetDir}
 ccBornMad=${ccBornProc}.mad
-ccBornDir=../CUDACPP/${ccBornMad}/lib
+ccBornDir=${ccDir}/${ccBornMad}/lib
 for bld in ${ccBornDir}/build.*; do
   bld=$(basename ${bld})
   mkdir -p ${targetDir}/${bld}
@@ -80,7 +85,7 @@ for bld in ${ccBornDir}/build.*; do
   for tag in ${ccRealTags}; do
     ccRealProc=$(ccProcForTag ${tag})
     ccRealMad=${ccRealProc}.mad
-    ccRealDir=../CUDACPP/${ccRealMad}/lib
+    ccRealDir=${ccDir}/${ccRealMad}/lib
     mkdir ${targetDir}/${bld}/${tag}
     cp -dpr ${ccRealDir}/${bld}/libmg5amc_common_*.so ${targetDir}/${bld}/${tag}
     cp -dpr ${ccRealDir}/${bld}/libmg5amc_${ccRealProc}_*.so ${targetDir}/${bld}/${tag}
