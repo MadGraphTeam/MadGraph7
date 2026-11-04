@@ -18,13 +18,21 @@ in `<proc>/test/GTEST`.
    contains a single directory `CUDACPP_OUTPUT`.
    The location where the MadVFold tarball will be kept is still to be decided.
 
-2. Install it in the `PLUGIN` directory of this mg5amcnlo clone:
+2. Install it in the `PLUGIN` directory of this MadGraph7 clone:
    ```
-   tar xzf cudacpp.tar.gz -C PLUGIN
+   cp cudacpp.tar.gz PLUGIN/
+   madvfold/cudacpp_mg7/installPlugin.sh
    ```
+   Do NOT just extract the tarball: the plugin does not load in MadGraph7 as it
+   is, and then `output standalone_cudacpp X` silently creates a madmatrix
+   output in a directory called `standalone_cudacpp`. The script adds the GPU
+   classes which MadGraph7 removed (`export_cpp_gpu.py`) to the plugin's own
+   copy of the MadGraph7 `export_cpp` module, and gives it its own copy of the
+   mg5amcnlo v3.8.1 `aloha_writers.py`: no MadGraph7 module is modified, so
+   madmatrix and all other outputs are not affected.
    This creates `PLUGIN/CUDACPP_OUTPUT`, which MG5aMC then finds as plugin
    `PLUGIN.CUDACPP_OUTPUT` (for the `madevent_simd` output used below). MG5aMC
-   warns that the plugin is not validated with 3.8.1: this is expected.
+   warns that the plugin is not validated with MadGraph7: this is expected.
 
 ## Build the cudacpp libraries for a process directory
 
