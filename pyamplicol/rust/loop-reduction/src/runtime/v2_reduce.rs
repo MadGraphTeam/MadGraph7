@@ -27,10 +27,10 @@
 //! without an on-shell threshold.
 //!
 //! **Absolute thresholds of the fast engine (genericity audit 2, G2-M3).**
-//! On the pinned NinjaRS 41a4c00 the fast path compares inputs with absolute
-//! constants in the model's units: `OneLoopNativeMasters` sets squared masses
-//! and invariants with `|re| + |im| < 1e-9` to zero and a real invariant
-//! within `1e-9` of a real squared mass to that mass
+//! On the pinned NinjaRS (main b3a29c85) the fast path compares inputs with
+//! absolute constants in the model's units: `OneLoopNativeMasters` sets
+//! squared masses and invariants with `|re| + |im| < 1e-9` to zero and a
+//! real invariant within `1e-9` of a real squared mass to that mass
 //! ([`NATIVE_ONSHELL_THRESHOLD`]), and the engine itself skips the bubble of
 //! two massless lines whose invariant is below `FastOptions::infrared_eps`
 //! (`1e-9`) and builds its cut bases from momenta whose square is below it as
@@ -50,10 +50,10 @@
 //! library key on its thread (`pyamplicol::unlock`); every other binary64
 //! lane touches none. Exactly zero
 //! masses and invariants, and invariants exactly equal to a mass (the
-//! executor's on-shell external invariants), never route. The upstream
-//! `OneLoopNativeMasters::with_onshell_threshold(None)` (NinjaRS PR prepared
-//! by package onshell-threshold) removes the masters' part; the engine's
-//! `infrared_eps` part stays a routing rule.
+//! executor's on-shell external invariants), never route. NinjaRS #9 (in the
+//! pinned main) adds `OneLoopNativeMasters::with_onshell_threshold(None)`,
+//! which would remove the masters' part (not adopted: the fast engine keeps
+//! the default); the engine's `infrared_eps` part stays a routing rule.
 //!
 //! **Reduction-direction check.** [`ReductionFrame`] re-reduces the same
 //! numerators in a dihedrally relabelled frame of the propagator cycle, by

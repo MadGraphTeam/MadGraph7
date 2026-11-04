@@ -2895,7 +2895,10 @@ mod python_serialization_tests {
     }
 
     /// Exercise the actual Python producer and this crate's production decoder.
-    /// Requires Python Symbolica when the optional runtime feature is tested.
+    /// Requires Python Symbolica when the optional runtime feature is tested:
+    /// one whose `Evaluator.save()` writes the state-aware envelope (PyPI 3.0.3,
+    /// or the Community build of the pinned revision, `PYTHONPATH` or
+    /// `PYAMPLICOL_TEST_PYTHON`); 3.0.2's raw-bincode saves are refused.
     #[test]
     fn python_saved_evaluator_roundtrips_in_three_precisions() {
         let python = std::env::var_os("PYAMPLICOL_TEST_PYTHON").unwrap_or_else(|| "python3".into());
@@ -2920,7 +2923,10 @@ sys.stdout.buffer.write(evaluator.save())
             String::from_utf8_lossy(&producer.stderr)
         );
         let (_, exact, _) = load_evaluator_state_bytes(&producer.stdout, "Python Evaluator.save()")
-            .expect("decode the installed Python Symbolica evaluator with the shared core");
+            .expect(
+                "decode the installed Python Symbolica evaluator with the shared core \
+                 (Python Symbolica >= 3.0.3 or the pinned Community build)",
+            );
         evaluate_saved(&exact, Rational::to_f64, 1e-14);
         evaluate_saved(&exact, |r| DoubleFloat::from(r), DoubleFloat::from(1e-28));
         evaluate_saved(

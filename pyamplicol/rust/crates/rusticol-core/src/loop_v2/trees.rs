@@ -247,8 +247,7 @@ impl std::fmt::Display for PlaneMismatch {
 /// The plane check: the first disagreement of a plane application with its
 /// evaluator, or `None`. A translation error (a constant or a function read
 /// wrongly) changes an output at O(1), while the two evaluations' rounding
-/// differs by orders of magnitude less (the criterion of the tree engine's
-/// exporter, `symbolica_helpers._verify_symjit_plane_constants`).
+/// differs by orders of magnitude less.
 ///
 /// Its rows: two complex rows off the real axis (real parts in (0.5, 1.5),
 /// imaginary parts of either sign in 0.25..0.75 in magnitude, a deterministic

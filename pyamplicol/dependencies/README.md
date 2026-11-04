@@ -31,12 +31,20 @@ author builds from the same `community` branch (without the PR); its
 saves are refused: Symbolica 3.0.2 changed the saved-evaluator and expression
 export formats, so the serialization ABI is `symbolica-bincode2-v2` and every
 stored evaluator state was regenerated.
-Without the PR, 3.0.3 saves the producer's whole Symbolica state, so every
-symbol of the Python process is imported on load; a symbol whose definition
+Without the PR, 3.0.3 saves the producer's whole Symbolica state: after a
+loop_sm compile about 20-30 MB per evaluator, depending on every symbol the
+Python process ever created. Stored as such, a u u~ > d d~ g loop artifact
+took 4.7 GB instead of 5.5 MB and 29 s instead of 0.3 s to load. Every
+generation writer therefore stores `symbolica_helpers.saved_evaluator`: the
+native re-encodes a whole-state save with only the symbols its evaluator
+references (`rusticol-core` `state_minimal_saved_evaluator`,
+`State::export_symbols`, the form the PR's save writes), the payload byte for
+byte; a state-minimal save (the PR's) is stored unchanged. Generation still
+imports each whole state once into the native: a symbol whose definition
 differs from the native's (the Community modules carry gammaloop `9102f885`,
 the native's FeynKit `d1904bf2`; `gammalooprs::Q` differs in one Spenso tag)
 is imported under a fresh name (`<name>_pyamplicol_import`) instead of
-failing the load (`rusticol-core` `load_evaluator_state_bytes`). Symbolica
+failing (`load_evaluator_state_bytes`, the same rule on load). Symbolica
 warns about each imported symbol that lacks the user-defined functions the
 native gave it; the extension routes Symbolica's diagnostics to standard error
 (`rusticol_core::diagnostics`, installed at import), so they never mix with a
@@ -90,14 +98,14 @@ The developer dashboard retains its pinned Ratatui 0.4.2 build and FFI checkout
 in both lanes; it is not a core runtime dependency.
 
 Release-equivalent builds use exact versions. `release-lock.toml` records Rust
-Symbolica 3.0.1 and SymJIT 2.28.3, and `Cargo.lock` records their resolution:
+Symbolica 3.0.2 and SymJIT 2.28.3, and `Cargo.lock` records their resolution:
 SymJIT from the registry with its checksum; Symbolica, Numerica and Graphica
-from the `9cdc294` integration fork through the root `Cargo.toml`'s
+from `20a9da94` (the PR head above) through the root `Cargo.toml`'s
 `[patch.crates-io]`, the source patch that still fails the published-crate gate
 (see above). The ordinary locked Cargo build is the dependency check; no
 release-only source projections are needed.
 
-Python Symbolica 3.0.2 is published on PyPI; its wheels are recorded in
+Python Symbolica 3.0.3 is published on PyPI; its wheels are recorded in
 `python-runtime-lock.toml`. The required ufo-model-loader 1.0.0
 entry has no published wheel recorded in `python-runtime-lock.toml` yet. After
 the loader is uploaded, record its official PyPI wheel metadata before running
