@@ -100,6 +100,9 @@ _PATH_FIELDS = frozenset(
 )
 _PATH_LIST_FIELDS = frozenset(("payload_paths",))
 _RECURRENCE_PREFLIGHT_PACK_DIGEST = "0" * 63 + "1"
+# DirectFinalizationRow / DirectClosureRow ``component_count`` (std::uint16_t,
+# the Rust Direct-Arena row ABI): checked once per emitted kernel.
+_DIRECT_ROW_COMPONENT_COUNT_MAX = (1 << 16) - 1
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
@@ -1499,6 +1502,13 @@ def _native_direct_export(
         raise PreparedModelBundleError(
             f"native direct kernel {kernel.kernel_id} output exceeds destination "
             "component count"
+        )
+    widest = max(spec.destination_component_counts)
+    if widest > _DIRECT_ROW_COMPONENT_COUNT_MAX:
+        raise PreparedModelBundleError(
+            f"native direct kernel {kernel.kernel_id} destination current has "
+            f"{widest} components, more than the {_DIRECT_ROW_COMPONENT_COUNT_MAX} "
+            "the Direct-Arena row ABI's uint16 component_count field holds"
         )
     if spec.role == "closure" and spec.output_arity != 1:
         raise PreparedModelBundleError(

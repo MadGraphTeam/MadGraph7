@@ -662,7 +662,13 @@ class BuiltinSMModel(BuiltinSMLoweringMixin, BuiltinSMDefinitionMixin, BuiltinMo
             elif 1 <= abs(pdg) <= 6:
                 average_factor *= 6
             else:
-                average_factor *= 2
+                # The physical helicity states of a colour-singlet initial
+                # particle (a decaying W, Z or Higgs as well as a beam): one
+                # for a scalar, three for a massive vector, two otherwise.
+                spin = self.spin(pdg)
+                average_factor *= (
+                    1 if spin == 1 else 3 if spin == 3 and self.mass(pdg) else 2
+                )
         identical_factor = math.prod(
             math.factorial(count) for count in Counter(final).values()
         )
