@@ -2026,7 +2026,7 @@ fn build_helicity_recurrence_runtime_from_view(
         != represented_complete_domains
             .union(&structural_zero_domains)
             .copied()
-            .collect()
+            .collect::<BTreeSet<_>>()
     {
         return Err(RusticolError::artifact(
             "helicity amplitude and structural-zero domains do not cover every complete selector domain",
@@ -2450,7 +2450,7 @@ fn validate_helicity_materialized_source_routes(
             factor: route.factor,
         });
     }
-    if routed_source_ids != schema.sources.keys().copied().collect() {
+    if routed_source_ids != schema.sources.keys().copied().collect::<BTreeSet<_>>() {
         return Err(RusticolError::artifact(
             "helicity materialized source routes do not cover every final runtime source",
         ));

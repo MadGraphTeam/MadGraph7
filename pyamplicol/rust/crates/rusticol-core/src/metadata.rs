@@ -281,7 +281,7 @@ impl ProcessPhysics {
                 )));
             }
         }
-        if momentum_slots != (0..self.external_particles.len()).collect() {
+        if momentum_slots != (0..self.external_particles.len()).collect::<BTreeSet<_>>() {
             return Err(RusticolError::artifact(
                 "external particle momentum slots must form a complete zero-based permutation",
             ));

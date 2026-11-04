@@ -74,11 +74,28 @@ GeV, and has no runtime dependency on a UFO checkout. The effective coupling
 `GH` depends on model parameters (`G`, `vev`, `MH`, and `MT`), not event
 momenta; the momentum factors in the Hgg and Hggg Lorentz tensors are retained.
 Update those external inputs through a runtime parameter card rather than
-treating the derived `GH` as an independent input. The built-in selector uses
-its canonical default restriction and simplification policy.
+treating the derived `GH` as an independent input. The selector always
+simplifies; it applies the packaged SM's `restrict_default.json` unless
+`restriction` names another of its `restrict_<name>.json` cards (`no_b_mass`,
+`no_masses`, `zeromass_ckm`, ...), for example a massless b quark for the
+five-flavour scheme:
+
+```toml
+[model]
+source = "built-in-sm-heft"
+restriction = "no_b_mass"
+```
+
+or `ModelSource.built_in_sm_heft(restriction="no_b_mass")`, or
+`--model built-in-sm-heft --restriction no_b_mass`. The restriction is part of
+the compiled model's identity (source digest, cache key and the artifact's
+`model.restriction`); `"default"` is the plain selector.
 
 The wheel-owned portable JIT O2 pack makes `eager`, `recurrence`, and
-`on-the-fly` execution available directly from this selector. Compiled mode
+`on-the-fly` execution available directly from this selector with the default
+restriction. For another restriction those modes need an explicitly prepared
+bundle (`ModelSource.built_in_sm_heft(restriction=...).compile(prepared_output=...,
+evaluator=...)`); compiled mode compiles the restricted model directly. Compiled mode
 supports the `jit`, `asm`, and `cpp` evaluator backends. Explicitly prepared
 HEFT bundles can likewise use any of those backends. `builtin_sm_heft`,
 `sm-heft`, and `sm_heft` are accepted as configuration aliases.
