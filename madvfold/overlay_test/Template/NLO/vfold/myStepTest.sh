@@ -124,6 +124,10 @@ for tst in ${tsts}; do
   elif [ "${tst}" == "n200f111k1024g1" ]; then
     env="ENV_NEVENTS=200 ENV_FOLDING='1,1,1' ENV_VFOLD_KPOINT_BATCH=1024 ENV_VFOLD_SBORN_GSCALE=1"
     tst2=${tst/k1024g1/k1}
+  elif [ "${tst}" == "n100f111k512g1" ]; then
+    # Step 14p: 5x more events than n20f111k512g1, to compare to n100f841k64g1 (e.g. ggttg: about 2 virtual events)
+    env="ENV_NEVENTS=100 ENV_FOLDING='1,1,1' ENV_VFOLD_KPOINT_BATCH=512 ENV_VFOLD_SBORN_GSCALE=1"
+    tst2=${tst/k512g1/k1}
   elif [ "${tst}" == "n20f111k512g1" ]; then
     # 10x fewer events: match n20f841 for eemumubbg tests
     env="ENV_NEVENTS=20 ENV_FOLDING='1,1,1' ENV_VFOLD_KPOINT_BATCH=512 ENV_VFOLD_SBORN_GSCALE=1"
@@ -181,6 +185,10 @@ for tst in ${tsts}; do
     env="ENV_NEVENTS=200 ENV_FOLDING='8,4,1' ENV_VFOLD_KPOINT_BATCH=32 ENV_VFOLD_SBORN_GSCALE=1"
     tst2=${tst/k32g1/k1}
     step2=step8n
+  elif [ "${tst}" == "n100f841k64g1" ]; then
+    # Step 14p: 5x more events than n20f841k64g1, to compare to n100f111k512g1 (e.g. ggttg: about 2 virtual events)
+    env="ENV_NEVENTS=100 ENV_FOLDING='8,4,1' ENV_VFOLD_KPOINT_BATCH=64 ENV_VFOLD_SBORN_GSCALE=1"
+    tst2=${tst/k64g1/k1}
   elif [ "${tst}" == "n200f841k64g1" ]; then
     env="ENV_NEVENTS=200 ENV_FOLDING='8,4,1' ENV_VFOLD_KPOINT_BATCH=64 ENV_VFOLD_SBORN_GSCALE=1"
     tst2=${tst/k64g1/k1}
