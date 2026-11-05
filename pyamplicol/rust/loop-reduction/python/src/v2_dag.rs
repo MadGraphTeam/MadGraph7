@@ -344,9 +344,7 @@ impl V2Dag {
                     rows: block
                         .rows
                         .into_iter()
-                        .map(|(helicities, current)| {
-                            Ok((assignments.intern(helicities)?, current))
-                        })
+                        .map(|(helicities, current)| Ok((assignments.intern(helicities)?, current)))
                         .collect::<PyResult<_>>()?,
                     connection_sign: block.connection_sign,
                     pairing_sign: block.pairing_sign,
@@ -626,10 +624,8 @@ mod tree_binary {
         ket: Vec<(usize, usize, i32)>,
         depth: Option<i32>,
     ) -> PyResult<Vec<bool>> {
-        py.detach(|| {
-            CellTable::decode(section)?.live_ket(&born, &entries, &ket, depth)
-        })
-        .map_err(failed)
+        py.detach(|| CellTable::decode(section)?.live_ket(&born, &entries, &ket, depth))
+            .map_err(failed)
     }
 }
 
@@ -747,7 +743,11 @@ mod tree_terms {
         live: Vec<bool>,
     ) -> PyResult<Bound<'py, PyBytes>> {
         let out = py
-            .detach(|| TermColumns::decode(section)?.prune_ket(&live).map(|c| c.encode()))
+            .detach(|| {
+                TermColumns::decode(section)?
+                    .prune_ket(&live)
+                    .map(|c| c.encode())
+            })
             .map_err(failed)?;
         Ok(PyBytes::new(py, &out))
     }

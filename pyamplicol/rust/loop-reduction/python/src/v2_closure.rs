@@ -20,9 +20,7 @@ fn loop_root_colours(
     spec: &str,
 ) -> PyResult<Vec<(i64, Vec<RawTerm>)>> {
     let spec: FactoredSpec = serde_json::from_str(spec).map_err(error)?;
-    let tensors = py
-        .detach(|| reduce_factored(&spec, &legs))
-        .map_err(error)?;
+    let tensors = py.detach(|| reduce_factored(&spec, &legs)).map_err(error)?;
     Ok(tensors.iter().map(raw_tensor).collect())
 }
 

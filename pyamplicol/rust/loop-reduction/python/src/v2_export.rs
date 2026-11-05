@@ -31,7 +31,10 @@ type TermTuple = (
 type KernelItem = (Vec<String>, Vec<(String, usize)>, Vec<(String, String)>);
 
 fn rational(value: &Rational) -> RationalTuple {
-    (value.numerator().to_string(), value.denominator().to_string())
+    (
+        value.numerator().to_string(),
+        value.denominator().to_string(),
+    )
 }
 
 fn base(value: Base) -> BaseTuple {
@@ -45,7 +48,10 @@ fn base(value: Base) -> BaseTuple {
 
 fn term(reading: TermReading) -> TermTuple {
     (
-        (rational(&reading.coefficient.0), rational(&reading.coefficient.1)),
+        (
+            rational(&reading.coefficient.0),
+            rational(&reading.coefficient.1),
+        ),
         reading
             .powers
             .into_iter()

@@ -103,7 +103,10 @@ fn v4_parameter_updates_follow_the_python_api() {
         .update_parameters(&overrides(&[("", "1"), ("MT", "one")]))
         .unwrap_err();
     assert_eq!(error.kind(), RusticolErrorKind::InvalidArgument);
-    assert_eq!(error.message(), "model parameter names must be nonempty strings");
+    assert_eq!(
+        error.message(),
+        "model parameter names must be nonempty strings"
+    );
     assert_eq!(values(&mut runtime), before);
     // The fixed WT at its fixed value and a parameter the process does not
     // read change nothing; aS does.

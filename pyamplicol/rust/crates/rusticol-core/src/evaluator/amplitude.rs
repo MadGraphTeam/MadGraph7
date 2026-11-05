@@ -781,8 +781,7 @@ impl AmplitudeRuntime {
         let group_count = replay.physical_groups.len();
         for row in 0..batch_size {
             let group_row = row * group_count;
-            for (entry, color_position) in
-                layout.entries.iter().zip(&layout.entry_color_positions)
+            for (entry, color_position) in layout.entries.iter().zip(&layout.entry_color_positions)
             {
                 let Some(color_position) = *color_position else {
                     continue;
@@ -3492,7 +3491,10 @@ impl AmplitudeRuntime {
                             continue;
                         };
                         sum += amplitudes[row_offset + *index].clone()
-                            * c_generic(T::from_f64_constant(factor.re, binary_precision), T::from_f64_constant(factor.im, binary_precision));
+                            * c_generic(
+                                T::from_f64_constant(factor.re, binary_precision),
+                                T::from_f64_constant(factor.im, binary_precision),
+                            );
                     }
                     group_values[group_row + group_index] = sum;
                 }
@@ -3508,11 +3510,13 @@ impl AmplitudeRuntime {
                         left.re.clone() * right.re.clone() + left.im.clone() * right.im.clone();
                     let product_im =
                         left.im.clone() * right.re.clone() - left.re.clone() * right.im.clone();
-                    let (weight_re, weight_im) = color_weight_generic::<T>(&entry, binary_precision);
+                    let (weight_re, weight_im) =
+                        color_weight_generic::<T>(&entry, binary_precision);
                     full_values[row * color_count + entry_color] += T::from_f64_constant(
                         normalization_factor * entry.symmetry_factor,
                         binary_precision,
-                    ) * (weight_re * product_re - weight_im * product_im);
+                    ) * (weight_re * product_re
+                        - weight_im * product_im);
                 }
             }
         } else {
@@ -3548,7 +3552,10 @@ impl AmplitudeRuntime {
                             continue;
                         };
                         sum += amplitudes[row_offset + *index].clone()
-                            * c_generic(T::from_f64_constant(factor.re, binary_precision), T::from_f64_constant(factor.im, binary_precision));
+                            * c_generic(
+                                T::from_f64_constant(factor.re, binary_precision),
+                                T::from_f64_constant(factor.im, binary_precision),
+                            );
                     }
                     let color_weights = reduction
                         .physical_color_ids
@@ -3574,11 +3581,13 @@ impl AmplitudeRuntime {
                             group.id
                         )));
                     }
-                    let contribution = T::from_f64_constant(normalization_factor * group.all_sector_weight, binary_precision)
-                        * (sum.re.clone() * sum.re + sum.im.clone() * sum.im);
+                    let contribution = T::from_f64_constant(
+                        normalization_factor * group.all_sector_weight,
+                        binary_precision,
+                    ) * (sum.re.clone() * sum.re + sum.im.clone() * sum.im);
                     for (color_index, weight) in color_weights {
-                        full_values[color_row + color_index] +=
-                            contribution.clone() * T::from_f64_constant(weight / total_color_weight, binary_precision);
+                        full_values[color_row + color_index] += contribution.clone()
+                            * T::from_f64_constant(weight / total_color_weight, binary_precision);
                     }
                 }
             }
@@ -3765,7 +3774,8 @@ impl AmplitudeRuntime {
                         left.re.clone() * right.re.clone() + left.im.clone() * right.im.clone();
                     let product_im =
                         left.im.clone() * right.re.clone() - left.re.clone() * right.im.clone();
-                    let (weight_re, weight_im) = color_weight_generic::<T>(&entry, binary_precision);
+                    let (weight_re, weight_im) =
+                        color_weight_generic::<T>(&entry, binary_precision);
                     *raw_sum += T::from_f64_constant(entry.symmetry_factor, binary_precision)
                         * (weight_re * product_re - weight_im * product_im);
                 }
@@ -3954,8 +3964,7 @@ impl AmplitudeRuntime {
         let mut values = vec![T::new_zero(); batch_size * component_count];
         for row in 0..batch_size {
             let group_row = row * group_count;
-            for (entry, color_position) in
-                layout.entries.iter().zip(&layout.entry_color_positions)
+            for (entry, color_position) in layout.entries.iter().zip(&layout.entry_color_positions)
             {
                 let Some(color_position) = *color_position else {
                     continue;
@@ -4072,7 +4081,8 @@ impl AmplitudeRuntime {
                     let product_im =
                         left.im.clone() * right.re.clone() - left.re.clone() * right.im.clone();
                     let coefficient = normalization_factor * entry.symmetry_factor;
-                    let (weight_re, weight_im) = color_weight_generic::<T>(&entry, binary_precision);
+                    let (weight_re, weight_im) =
+                        color_weight_generic::<T>(&entry, binary_precision);
                     let contribution = T::from_f64_constant(coefficient, binary_precision)
                         * (weight_re * product_re - weight_im * product_im);
                     for (helicity_index, weight) in left_weights {
@@ -4102,13 +4112,16 @@ impl AmplitudeRuntime {
                         sum_re += evaluated[row_offset + *index].re.clone();
                         sum_im += evaluated[row_offset + *index].im.clone();
                     }
-                    let contribution = T::from_f64_constant(normalization_factor * group.all_sector_weight, binary_precision)
-                        * (sum_re.clone() * sum_re + sum_im.clone() * sum_im);
+                    let contribution = T::from_f64_constant(
+                        normalization_factor * group.all_sector_weight,
+                        binary_precision,
+                    ) * (sum_re.clone() * sum_re + sum_im.clone() * sum_im);
                     for (helicity_index, color_index, weight) in
                         physics.normalized_member_weights(reduction)?
                     {
                         full_values[(row * helicity_count + helicity_index) * color_count
-                            + color_index] += contribution.clone() * T::from_f64_constant(weight, binary_precision);
+                            + color_index] +=
+                            contribution.clone() * T::from_f64_constant(weight, binary_precision);
                     }
                 }
             }
@@ -4548,11 +4561,7 @@ pub(crate) fn build_color_contraction_runtime(
                 weight_re,
                 weight_im,
                 symmetry_factor: entry.symmetry_factor,
-                exact: parse_exact_color_weight(
-                    entry.exact_weight.as_ref(),
-                    weight_re,
-                    weight_im,
-                )?,
+                exact: parse_exact_color_weight(entry.exact_weight.as_ref(), weight_re, weight_im)?,
             });
         }
         let (walsh_block, c2k_walsh_block) = build_walsh_color_contraction_blocks(
@@ -4686,7 +4695,9 @@ where
     };
     let integer = |n: i128| {
         let two32 = || T::from_f64_constant(4_294_967_296.0, binary_precision);
-        let limb = |shift: u32| T::from_f64_constant(((n >> shift) & 0xffff_ffff) as f64, binary_precision);
+        let limb = |shift: u32| {
+            T::from_f64_constant(((n >> shift) & 0xffff_ffff) as f64, binary_precision)
+        };
         if n.unsigned_abs() < 1 << 85 {
             // Two binary64-exact halves, n = high · 2^32 + low (exact at
             // 106 bits or more).
@@ -4702,9 +4713,8 @@ where
             value
         }
     };
-    let rational = |(numerator, denominator): (i128, i128)| {
-        integer(numerator) / integer(denominator)
-    };
+    let rational =
+        |(numerator, denominator): (i128, i128)| integer(numerator) / integer(denominator);
     (rational(exact.re), rational(exact.im))
 }
 
@@ -5321,13 +5331,10 @@ mod exact_color_weight_tests {
 
     #[test]
     fn exact_weights_are_parsed_checked_and_exact_at_working_precision() {
-        let exact = parse_exact_color_weight(
-            Some(&strings(["64", "3", "0", "1"])),
-            64.0 / 3.0,
-            0.0,
-        )
-        .unwrap()
-        .unwrap();
+        let exact =
+            parse_exact_color_weight(Some(&strings(["64", "3", "0", "1"])), 64.0 / 3.0, 0.0)
+                .unwrap()
+                .unwrap();
         assert_eq!(exact.re, (64, 3));
         assert!(parse_exact_color_weight(None, 1.0, 0.0).unwrap().is_none());
         for (parts, re) in [

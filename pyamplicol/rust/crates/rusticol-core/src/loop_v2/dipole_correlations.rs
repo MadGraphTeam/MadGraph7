@@ -48,7 +48,9 @@ impl Correlator {
             .iter()
             .any(|&(b, o, _)| b >= orbits.basis || o >= orders)
         {
-            return Err(invalid("a Born component outside the basis or the Born orders"));
+            return Err(invalid(
+                "a Born component outside the basis or the Born orders",
+            ));
         }
         if sandwiches.iter().any(|&(a, b)| a >= orders || b >= orders) {
             return Err(invalid("a sandwich outside the Born orders"));
@@ -149,18 +151,20 @@ fn overlap<T: Carrier>(
 ) -> RusticolResult<Vec<T>> {
     let mut out = filled(n * n, zero.clone(), "Born overlaps")?;
     let rows = bra.len() / n.max(1);
-    out.par_chunks_mut(n.max(1)).enumerate().for_each(|(b, line)| {
-        for r in 0..rows {
-            let x = &bra[r * n + b];
-            if x.re == *zero && x.im == *zero {
-                continue;
+    out.par_chunks_mut(n.max(1))
+        .enumerate()
+        .for_each(|(b, line)| {
+            for r in 0..rows {
+                let x = &bra[r * n + b];
+                if x.re == *zero && x.im == *zero {
+                    continue;
+                }
+                for (b2, slot) in line.iter_mut().enumerate() {
+                    let y = &ket[r * n + b2];
+                    *slot += x.re.clone() * y.re.clone() + x.im.clone() * y.im.clone();
+                }
             }
-            for (b2, slot) in line.iter_mut().enumerate() {
-                let y = &ket[r * n + b2];
-                *slot += x.re.clone() * y.re.clone() + x.im.clone() * y.im.clone();
-            }
-        }
-    });
+        });
     Ok(out)
 }
 
@@ -178,8 +182,7 @@ mod tests {
         // components: every (b, order) once plus a graded duplicate of some.
         let labels = [1, 2, 3, 4, 5];
         let legs: Vec<Leg> = labels.iter().map(|&l| (l, ADJOINT)).collect();
-        let orbits =
-            DipoleOrbits::build(&legs, &trace_basis(&labels), &[labels.to_vec()]).unwrap();
+        let orbits = DipoleOrbits::build(&legs, &trace_basis(&labels), &[labels.to_vec()]).unwrap();
         let (c, n) = (orbits.coloured.len(), orbits.basis);
         let mut components = Vec::new();
         for b in 0..n {

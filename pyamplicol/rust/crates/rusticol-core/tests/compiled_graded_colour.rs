@@ -291,7 +291,9 @@ fn graded_correlations_in_double_double_and_arbitrary_precision() {
                 );
                 let double = real(&precise[0].values, index);
                 let wide = real(&precise[1].values, index);
-                let to_binary = (double.clone() - Float::with_val(BITS, binary)).norm().to_f64();
+                let to_binary = (double.clone() - Float::with_val(BITS, binary))
+                    .norm()
+                    .to_f64();
                 assert!(
                     to_binary <= 1e-12 * born,
                     "{name} {id}: double-double vs binary64 differ by {to_binary:e}"

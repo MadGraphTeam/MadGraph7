@@ -913,8 +913,7 @@ pub(crate) fn real_axis_sensitive_outputs(
     // Per slot: (depends on the inputs, real-axis sensitive).
     let mut temporaries = vec![(false, false); program.temporaries];
     let mut outputs = vec![(false, false); exported.output_count];
-    let read = |slot: &Slot, temporaries: &[(bool, bool)], outputs: &[(bool, bool)]| match *slot
-    {
+    let read = |slot: &Slot, temporaries: &[(bool, bool)], outputs: &[(bool, bool)]| match *slot {
         Slot::Param(_) => (true, false),
         Slot::Const(_) => (false, false),
         Slot::Temp(i) => temporaries.get(i).copied().unwrap_or((true, true)),

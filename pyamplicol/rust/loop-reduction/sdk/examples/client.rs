@@ -23,17 +23,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         (4, 3, 3)
     );
     assert_eq!((axes.epsilon_count, axes.resolved_available), (3, 1));
-    assert!(runtime
-        .metadata_json()?
-        .contains("\"epsilon_powers\":[0,-1,-2]"));
+    assert!(
+        runtime
+            .metadata_json()?
+            .contains("\"epsilon_powers\":[0,-1,-2]")
+    );
     assert!(!runtime.capabilities_json()?.is_empty());
     let point = [
         500., 0., 0., 500., 500., 0., 0., -500., 500., 300., 0., 400., 500., -300., 0., -400.,
     ];
     let mut momenta = point.repeat(3);
     let ids = [91, 4, 70];
-    let inclusive =
-        runtime.evaluate(&momenta, 3, Some(&ids), &[1e6, 9e5, 1e6], false, None)?;
+    let inclusive = runtime.evaluate(&momenta, 3, Some(&ids), &[1e6, 9e5, 1e6], false, None)?;
     let resolved = runtime.evaluate(&momenta, 3, Some(&ids), &[1e6, 9e5, 1e6], true, None)?;
     assert_eq!(inclusive.successful_point_ids, ids);
     assert_eq!(resolved.requested_point_ids, ids);
@@ -97,9 +98,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert!(!partial.diagnostics_json.is_empty());
     let empty = runtime.evaluate(&[], 0, None, &[], true, None)?;
     assert!(empty.born.is_empty() && empty.virtual_values.is_empty() && empty.statuses.is_empty());
-    assert!(runtime
-        .evaluate(&point, 1, Some(&ids), &[1e6], false, None)
-        .is_err());
+    assert!(
+        runtime
+            .evaluate(&point, 1, Some(&ids), &[1e6], false, None)
+            .is_err()
+    );
     let error = runtime
         .evaluate(&point, 1, None, &[0.], false, None)
         .err()
@@ -109,8 +112,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     runtime.clear()?;
     drop(runtime);
     assert_eq!(inclusive.born.len(), 9); // owned values survive runtime destruction
-    println!(
-        "native safe Rust mixed-order/resolved/failures/lifetime controls passed"
-    );
+    println!("native safe Rust mixed-order/resolved/failures/lifetime controls passed");
     Ok(())
 }

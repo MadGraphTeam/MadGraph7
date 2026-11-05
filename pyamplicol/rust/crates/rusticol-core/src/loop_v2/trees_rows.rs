@@ -127,7 +127,11 @@ impl TreeProgram {
                     && self.closure_rows.as_ref().is_none_or(|kept| kept[row])
             })
             .collect();
-        if self.closure_rows.as_ref().map_or(rows.iter().all(|&k| k), |kept| &rows == kept) {
+        if self
+            .closure_rows
+            .as_ref()
+            .map_or(rows.iter().all(|&k| k), |kept| &rows == kept)
+        {
             return None;
         }
         let restriction = Restriction::reading(plan, rows, &live.read);
@@ -230,13 +234,15 @@ fn liveness(interactions: &Interactions, needed: &mut [bool]) -> Liveness {
         let outputs: Vec<bool> = step
             .outputs
             .iter()
-            .map(|&(accumulator, _propagator, _momentum, start, dimension, _pole)| {
-                let kept = needed[start..start + dimension].iter().any(|&n| n);
-                if kept {
-                    read[accumulator] = true;
-                }
-                kept
-            })
+            .map(
+                |&(accumulator, _propagator, _momentum, start, dimension, _pole)| {
+                    let kept = needed[start..start + dimension].iter().any(|&n| n);
+                    if kept {
+                        read[accumulator] = true;
+                    }
+                    kept
+                },
+            )
             .collect();
         for (output, _) in step.outputs.iter().zip(&outputs).filter(|(_, kept)| **kept) {
             let &(_accumulator, _propagator, _momentum, start, dimension, _pole) = output;

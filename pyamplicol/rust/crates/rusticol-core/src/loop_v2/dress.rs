@@ -562,12 +562,14 @@ impl<T: Carrier> ChunkInputs<T> {
         self.vertices.retain(&live.vertices);
         self.currents.retain(&live.currents);
         let read = self.rows.as_deref().or(plan.read_rows.as_ref());
-        self.factors
-            .build(&needed.factors, |id| build_factor::<T, L>(plan, id, data, read));
+        self.factors.build(&needed.factors, |id| {
+            build_factor::<T, L>(plan, id, data, read)
+        });
         self.vertices
             .build(&needed.vertices, |id| build_vertex::<T, L>(plan, id, data));
-        self.currents
-            .build(&needed.currents, |id| build_current::<T, L>(plan, id, data, read));
+        self.currents.build(&needed.currents, |id| {
+            build_current::<T, L>(plan, id, data, read)
+        });
     }
 
     pub fn reals(&self) -> usize {
@@ -634,12 +636,14 @@ impl<T: Carrier> ChunkInputs<T> {
             }
         }
         let read = self.rows.as_deref().or(plan.read_rows.as_ref());
-        self.factors
-            .build(&needed.factors, |id| build_factor::<T, L>(plan, id, data, read));
+        self.factors.build(&needed.factors, |id| {
+            build_factor::<T, L>(plan, id, data, read)
+        });
         self.vertices
             .build(&needed.vertices, |id| build_vertex::<T, L>(plan, id, data));
-        self.currents
-            .build(&needed.currents, |id| build_current::<T, L>(plan, id, data, read));
+        self.currents.build(&needed.currents, |id| {
+            build_current::<T, L>(plan, id, data, read)
+        });
         dropped
     }
 

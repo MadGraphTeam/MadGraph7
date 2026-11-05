@@ -4714,7 +4714,9 @@ impl NativeRuntime {
         } else {
             self.ensure_exact_model_parameters()?;
             if decimal_digits == 32 {
-                let mass = self.runtime.generic_particle_mass::<DoubleFloat>(pdg, None)?;
+                let mass = self
+                    .runtime
+                    .generic_particle_mass::<DoubleFloat>(pdg, None)?;
                 format_decimal_values(vec![mass], decimal_digits)
             } else {
                 let binary_precision = decimal_digits_to_bits(decimal_digits);
@@ -4734,8 +4736,7 @@ impl NativeRuntime {
         &self,
         values: &mut [T],
         binary_precision: Option<u32>,
-    )
-    where
+    ) where
         T: RusticolHighPrecisionNumber,
         Complex<T>: Real + EvaluationDomain,
     {
@@ -5024,7 +5025,10 @@ impl NativeRuntime {
             selected_helicities.as_ref(),
             None,
         )?;
-        self.apply_process_group_factor_high_precision(&mut resolved.values, Some(binary_precision));
+        self.apply_process_group_factor_high_precision(
+            &mut resolved.values,
+            Some(binary_precision),
+        );
         let values = sum_resolved_helicities(
             resolved.values,
             resolved.point_count,

@@ -14,7 +14,9 @@ fn require(condition: bool, message: &str) -> RusticolResult<()> {
     if condition {
         Ok(())
     } else {
-        Err(RusticolError::compatibility(format!("loop runtime plan: {message}")))
+        Err(RusticolError::compatibility(format!(
+            "loop runtime plan: {message}"
+        )))
     }
 }
 

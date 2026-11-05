@@ -326,7 +326,10 @@ fn plane_mismatch_names_the_output_row_and_part() {
     assert_eq!(first_mismatch(&expected, &got, 3), None);
     expected[1].im = 0.0;
     got[1].im = 3e-12;
-    assert_eq!(first_mismatch(&expected, &got, 3).map(|m| m.output), Some(1));
+    assert_eq!(
+        first_mismatch(&expected, &got, 3).map(|m| m.output),
+        Some(1)
+    );
     let text = PlaneMismatch {
         output: 3,
         probe: PlaneProbe::NoRealPoint,

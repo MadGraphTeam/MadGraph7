@@ -420,7 +420,11 @@ fn row_restricted_plan(families: usize, helicities: usize, columns: usize, kept:
     plan["column_rows"] = (0..columns)
         .map(|c| {
             let first = (c * kept) % helicities;
-            json!((first..first + kept).map(|r| r % helicities).collect::<Vec<_>>())
+            json!(
+                (first..first + kept)
+                    .map(|r| r % helicities)
+                    .collect::<Vec<_>>()
+            )
         })
         .collect();
     plan
@@ -428,9 +432,12 @@ fn row_restricted_plan(families: usize, helicities: usize, columns: usize, kept:
 
 #[test]
 fn row_restricted_columns_stay_within_the_bound() {
-    for (families, helicities, columns, kept) in
-        [(400, 2, 2, 1), (8, 256, 4, 3), (64, 64, 16, 1), (40, 16, 2, 8)]
-    {
+    for (families, helicities, columns, kept) in [
+        (400, 2, 2, 1),
+        (8, 256, 4, 3),
+        (64, 64, 16, 1),
+        (40, 16, 2, 8),
+    ] {
         let plan = row_restricted_plan(families, helicities, columns, kept);
         let name = format!("row-restricted {families} x {helicities} x {columns} x {kept}");
         measure(&name, &text(&plan));

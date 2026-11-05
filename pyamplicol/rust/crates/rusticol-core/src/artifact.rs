@@ -626,12 +626,15 @@ impl EvaluatorPayloadSource {
             Self::AuthenticatedFile { root, payload } => {
                 let digest = parse_sha256(&payload.sha256, "runtime PACBIN digest")?;
                 PacbinReader::open_file_with_sha256(
-                    open_checked_payload(root, payload)?, &root.join(&payload.path), &digest,
+                    open_checked_payload(root, payload)?,
+                    &root.join(&payload.path),
+                    &digest,
                 )
             }
-            Self::Packed { container, logical_path } => {
-                PacbinReader::from_bytes(container.member_bytes(logical_path)?.to_vec())
-            }
+            Self::Packed {
+                container,
+                logical_path,
+            } => PacbinReader::from_bytes(container.member_bytes(logical_path)?.to_vec()),
         }
     }
 

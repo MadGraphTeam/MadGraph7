@@ -10,7 +10,6 @@ pub fn decimal_rational(value: &str) -> ExecutionResult<Rational> {
     rusticol_core::source_scalar::decimal_rational(value).map_err(error)
 }
 
-
 fn convert<T: BatchCarrier>(
     values: &[Complex<Rational>],
     prototype: T,

@@ -317,7 +317,10 @@ impl<'a> Reader<'a> {
         }
     }
     pub fn done(&self) -> RusticolResult<()> {
-        require(self.at == self.data.len(), "trailing bytes in a tree-program section")
+        require(
+            self.at == self.data.len(),
+            "trailing bytes in a tree-program section",
+        )
     }
 }
 
@@ -606,9 +609,8 @@ impl StepColumns {
             weights,
             ..Default::default()
         };
-        let unsigned = |value: i64| {
-            u64::try_from(value).map_err(|_| invalid("a negative step entry"))
-        };
+        let unsigned =
+            |value: i64| u64::try_from(value).map_err(|_| invalid("a negative step entry"));
         for step in steps {
             out.rows.push(step.rows.len() as u64);
             for row in step.rows.iter() {
@@ -672,8 +674,8 @@ impl StepColumns {
                     used.push(weights[w].clone());
                 }
                 for (k, value) in row[..8].iter().enumerate() {
-                    let value = u64::try_from(*value)
-                        .map_err(|_| invalid("a negative step entry"))?;
+                    let value =
+                        u64::try_from(*value).map_err(|_| invalid("a negative step entry"))?;
                     wide[k] |= value > u64::from(u32::MAX);
                 }
             }
@@ -683,9 +685,8 @@ impl StepColumns {
             weights: used,
             ..Default::default()
         };
-        let unsigned = |value: i64| {
-            u64::try_from(value).map_err(|_| invalid("a negative step entry"))
-        };
+        let unsigned =
+            |value: i64| u64::try_from(value).map_err(|_| invalid("a negative step entry"));
         let mut dimensions = Vec::new();
         let mut outs: [Vec<u64>; 4] = Default::default();
         let mut propagators = Vec::new();
@@ -744,9 +745,7 @@ impl StepColumns {
     /// Columns of the oracle's JSON steps (`_interaction_program`'s
     /// `steps`; the weight texts interned in first use).
     pub fn from_json(json: &[u8]) -> RusticolResult<Self> {
-        Self::from_files(
-            serde_json::from_slice(json).map_err(|e| invalid(format!("steps: {e}")))?,
-        )
+        Self::from_files(serde_json::from_slice(json).map_err(|e| invalid(format!("steps: {e}")))?)
     }
 
     /// Columns of JSON steps (`StepFile`s; the weight texts interned in
@@ -845,7 +844,10 @@ impl StepColumns {
         require(
             self.row_columns.iter().all(|c| c.len() as u64 == rows)
                 && self.dimensions.len() as u64 == accumulators
-                && self.output_columns.iter().all(|c| c.len() as u64 == outputs)
+                && self
+                    .output_columns
+                    .iter()
+                    .all(|c| c.len() as u64 == outputs)
                 && self.propagators.len() as u64 == outputs
                 && self.masks.len() as u64 == masks,
             "step column lengths",
@@ -876,7 +878,9 @@ impl StepColumns {
             out.column(column);
         }
         out.signed(&self.propagators);
-        out.column(&Column::of(self.masked.iter().map(|&m| u64::from(m)).collect()));
+        out.column(&Column::of(
+            self.masked.iter().map(|&m| u64::from(m)).collect(),
+        ));
         out.column(&self.masks);
         out.bytes
     }
@@ -1020,7 +1024,10 @@ impl StepColumns {
         for range in &ranges {
             for k in range.outputs.0..range.outputs.1 {
                 let (start, dimension) = (o_start.at(k), o_dim.at(k));
-                require(start + dimension <= size, "a tree program read lies outside its state")?;
+                require(
+                    start + dimension <= size,
+                    "a tree program read lies outside its state",
+                )?;
                 if written[start..start + dimension].iter().any(|&w| w) {
                     return Ok(None);
                 }
@@ -1056,7 +1063,10 @@ impl StepColumns {
                     continue;
                 }
                 for (start, length) in [(r[1].at(k), r[2].at(k)), (r[3].at(k), r[4].at(k))] {
-                    require(start + length <= size, "an interaction reads a current outside its state")?;
+                    require(
+                        start + length <= size,
+                        "an interaction reads a current outside its state",
+                    )?;
                     live[start..start + length].fill(1);
                 }
             }
@@ -1072,8 +1082,7 @@ impl StepColumns {
             .map(|p| p as usize)
             .collect();
         require(
-            used.iter().all(|&k| k < kernels)
-                && used_propagators.iter().all(|&p| p < propagators),
+            used.iter().all(|&k| k < kernels) && used_propagators.iter().all(|&p| p < propagators),
             "an interaction kernel index",
         )?;
         let mut kernel_of = vec![u64::MAX; kernels];
@@ -1107,8 +1116,11 @@ impl StepColumns {
         let mut masks = Vec::new();
         for (s, range) in ranges.iter().enumerate() {
             let (accumulators, accumulator_of) = accumulator_map(range);
-            out.rows
-                .push((range.rows.0..range.rows.1).filter(|&k| row_kept[k]).count() as u64);
+            out.rows.push(
+                (range.rows.0..range.rows.1)
+                    .filter(|&k| row_kept[k])
+                    .count() as u64,
+            );
             out.accumulators.push(accumulators.len() as u64);
             dimensions.extend(
                 accumulators
@@ -1128,7 +1140,11 @@ impl StepColumns {
             let masked = self.masked[s];
             out.masked.push(masked);
             if masked {
-                masks.extend(accumulators.iter().map(|&a| self.masks.get(range.masks.0 + a)));
+                masks.extend(
+                    accumulators
+                        .iter()
+                        .map(|&a| self.masks.get(range.masks.0 + a)),
+                );
             }
         }
         // The row columns one at a time (the rows dominate a counterterm
@@ -1621,7 +1637,8 @@ impl TermColumns {
             if k > 0 {
                 out.push(',');
             }
-            let list = |values: &mut dyn Iterator<Item = String>| values.collect::<Vec<_>>().join(",");
+            let list =
+                |values: &mut dyn Iterator<Item = String>| values.collect::<Vec<_>>().join(",");
             let _ = write!(
                 out,
                 "{{\"kernel\":{},\"layout\":{},\"blocks\":[{}],\"masks\":[{}],\"sign\":{},\"contributions\":[{}]}}",
@@ -1630,10 +1647,12 @@ impl TermColumns {
                 list(&mut term.blocks.iter().map(|b| b.to_string())),
                 list(&mut term.masks.iter().map(|m| m.to_string())),
                 term.sign,
-                list(&mut term
-                    .contributions
-                    .iter()
-                    .map(|(a, b, c)| format!("[{a},{b},{c}]"))),
+                list(
+                    &mut term
+                        .contributions
+                        .iter()
+                        .map(|(a, b, c)| format!("[{a},{b},{c}]"))
+                ),
             );
         }
         out.push(']');
@@ -1663,7 +1682,9 @@ mod tests {
                 accumulator_masks: vec![0, 3],
             },
             Step {
-                rows: crate::loop_v2::dag::program::Rows::Narrow(vec![[1, 16, 4, 20, 4, 112, 116, 0, 2]]),
+                rows: crate::loop_v2::dag::program::Rows::Narrow(vec![[
+                    1, 16, 4, 20, 4, 112, 116, 0, 2,
+                ]]),
                 accumulators: vec![4],
                 outputs: vec![[0, 1, 120, 24, 4]],
                 accumulator_masks: vec![],
@@ -1710,7 +1731,10 @@ mod tests {
         let cut = &container[..container.len() - 1];
         assert!(read(cut, "y").is_err());
         assert!(read(cut, "z").is_err());
-        assert_eq!(read(cut, "x").unwrap().as_deref(), Some(&[1u8, 2, 3, 4][..]));
+        assert_eq!(
+            read(cut, "x").unwrap().as_deref(),
+            Some(&[1u8, 2, 3, 4][..])
+        );
         assert!(read(&container[..MAGIC.len() + 2], "head").is_err());
     }
 }

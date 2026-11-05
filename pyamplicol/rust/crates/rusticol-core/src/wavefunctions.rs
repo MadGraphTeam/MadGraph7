@@ -1100,13 +1100,9 @@ mod tests {
             let momentum = wide.clone().map(|x| x.to_f64());
             for antiparticle in [false, true] {
                 for helicity in [-1, 1] {
-                    let narrow = ext_dirac_massive_generic(
-                        &momentum,
-                        helicity,
-                        mass.to_f64(),
-                        antiparticle,
-                    )
-                    .unwrap();
+                    let narrow =
+                        ext_dirac_massive_generic(&momentum, helicity, mass.to_f64(), antiparticle)
+                            .unwrap();
                     let double =
                         ext_dirac_massive_generic(&wide, helicity, mass.clone(), antiparticle)
                             .unwrap();

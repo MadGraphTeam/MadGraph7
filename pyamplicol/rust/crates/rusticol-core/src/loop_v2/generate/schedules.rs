@@ -1286,7 +1286,12 @@ fn view_and_tries(
             let leaves: Vec<(usize, Vec<u32>)> = chosen
                 .iter()
                 .enumerate()
-                .map(|(index, row)| (index, data.readings[index][row[t].expect("checked")].clone()))
+                .map(|(index, row)| {
+                    (
+                        index,
+                        data.readings[index][row[t].expect("checked")].clone(),
+                    )
+                })
                 .collect();
             Ok(Some(FamilySchedule {
                 family,
@@ -1332,7 +1337,9 @@ mod tests {
             space.intern(vec![(0, 2), (1, 1)]).unwrap(),
             space.intern(vec![(1, 2)]).unwrap(),
         ];
-        let segments: SegmentTable = (0..9).map(|l| (1u64 << (l % 7), 0, (l % 3) as i64)).collect();
+        let segments: SegmentTable = (0..9)
+            .map(|l| (1u64 << (l % 7), 0, (l % 3) as i64))
+            .collect();
         for count in 1..=7usize {
             for skeletons in [1usize, 5, 40, 300] {
                 let orders: Vec<u32> = (0..skeletons)
@@ -1340,14 +1347,17 @@ mod tests {
                     .collect();
                 let rings: Vec<(usize, Vec<u32>)> = (0..2 * skeletons)
                     .map(|leaf| {
-                        let ring = (0..count).map(|_| next(4 + count as u64 % 5) as u32).collect();
+                        let ring = (0..count)
+                            .map(|_| next(4 + count as u64 % 5) as u32)
+                            .collect();
                         (leaf % skeletons, ring)
                     })
                     .collect();
                 let borrowed: Vec<(usize, &[u32])> =
                     rings.iter().map(|(s, r)| (*s, r.as_slice())).collect();
                 let key = vec![(0u64, 0u32); count];
-                let (nodes, rank) = build_trie(&key, &borrowed, &orders, &space, &segments).unwrap();
+                let (nodes, rank) =
+                    build_trie(&key, &borrowed, &orders, &space, &segments).unwrap();
                 let (expected, expected_rank) =
                     build_trie_oracle(&key, &rings, &orders, &space, &segments);
                 assert_eq!(rank, expected_rank);
@@ -1379,8 +1389,15 @@ mod tests {
             space.intern(vec![(0, 2), (1, 1)]).unwrap(),
             space.intern(vec![(1, 2)]).unwrap(),
         ];
-        let segments: SegmentTable =
-            (0..9).map(|l| ((1u64 << (l % 7)) | (1u64 << ((l + 3) % 7)), 0, (l % 3) as i64)).collect();
+        let segments: SegmentTable = (0..9)
+            .map(|l| {
+                (
+                    (1u64 << (l % 7)) | (1u64 << ((l + 3) % 7)),
+                    0,
+                    (l % 3) as i64,
+                )
+            })
+            .collect();
         let models = [
             CostModel {
                 fused: 200,
@@ -1409,14 +1426,17 @@ mod tests {
                     .collect();
                 let rings: Vec<(usize, Vec<u32>)> = (0..2 * skeletons)
                     .map(|leaf| {
-                        let ring = (0..count).map(|_| next(4 + count as u64 % 5) as u32).collect();
+                        let ring = (0..count)
+                            .map(|_| next(4 + count as u64 % 5) as u32)
+                            .collect();
                         (leaf % skeletons, ring)
                     })
                     .collect();
                 let borrowed: Vec<(usize, &[u32])> =
                     rings.iter().map(|(s, r)| (*s, r.as_slice())).collect();
                 let key = vec![(0u64, 0u32); count];
-                let (nodes, rank) = build_trie(&key, &borrowed, &orders, &space, &segments).unwrap();
+                let (nodes, rank) =
+                    build_trie(&key, &borrowed, &orders, &space, &segments).unwrap();
                 for model in &models {
                     let expected = trie_cost(&nodes, rank, count, model, &leg_rows, &segments);
                     let found =

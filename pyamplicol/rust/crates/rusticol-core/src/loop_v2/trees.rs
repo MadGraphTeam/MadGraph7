@@ -336,7 +336,11 @@ fn off_axis_probes(inputs: usize, rows: usize) -> Vec<Complex<f64>> {
     (0..rows * inputs)
         .map(|k| {
             let n = (k + 1) as f64;
-            let sign = if (k / inputs.max(1)) % 2 == 0 { 1.0 } else { -1.0 };
+            let sign = if (k / inputs.max(1)) % 2 == 0 {
+                1.0
+            } else {
+                -1.0
+            };
             Complex::new(
                 0.5 + (0.618_033_988_749_894_8 * n).fract(),
                 sign * (0.25 + 0.5 * (0.754_877_666_246_692_7 * n).fract()),
@@ -3744,7 +3748,9 @@ impl TreeProgram {
             .flat_map(|&leg| sources.leg_slots(leg))
             .collect();
         require(
-            slots.iter().all(|&(start, stop)| start <= stop && stop <= size),
+            slots
+                .iter()
+                .all(|&(start, stop)| start <= stop && stop <= size),
             "a photon source slot outside the state",
         )?;
         for (state, scale) in states.chunks_exact_mut(size).zip(&batch.photon_scales) {

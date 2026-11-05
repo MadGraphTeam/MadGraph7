@@ -121,7 +121,10 @@ impl Kernel {
         if !unknown.is_empty() {
             // Python's list repr of the names.
             let names: Vec<String> = unknown.iter().map(|s| format!("'{s}'")).collect();
-            return Err(format!("unknown symbols [{}] in a kernel", names.join(", ")));
+            return Err(format!(
+                "unknown symbols [{}] in a kernel",
+                names.join(", ")
+            ));
         }
         let pairs = symbols
             .iter()
@@ -192,7 +195,9 @@ fn exact_number(view: AtomView<'_>) -> Result<(Rational, Rational), String> {
     };
     match n.get_coeff_view().to_owned() {
         Coefficient::Complex(c) => Ok((c.re, c.im)),
-        _ => Err(format!("kernel coefficient {view} is not an exact complex rational")),
+        _ => Err(format!(
+            "kernel coefficient {view} is not an exact complex rational"
+        )),
     }
 }
 
@@ -231,7 +236,12 @@ impl<'k, 'c> Reading<'k, 'c> {
 
     /// `_TermReading.read`: add `atom^exponent`; `distributed` marks a
     /// fractional power already pushed through a product or a power.
-    fn read(&mut self, atom: AtomView<'_>, exponent: &Rational, distributed: bool) -> Result<(), String> {
+    fn read(
+        &mut self,
+        atom: AtomView<'_>,
+        exponent: &Rational,
+        distributed: bool,
+    ) -> Result<(), String> {
         match atom {
             AtomView::Mul(m) => {
                 let fractional = !exponent.is_integer();
@@ -299,7 +309,12 @@ impl<'k, 'c> Reading<'k, 'c> {
     }
 
     /// `_TermReading._opaque`: a parameter-only sum or function, kept whole.
-    fn opaque(&mut self, atom: AtomView<'_>, exponent: &Rational, distributed: bool) -> Result<(), String> {
+    fn opaque(
+        &mut self,
+        atom: AtomView<'_>,
+        exponent: &Rational,
+        distributed: bool,
+    ) -> Result<(), String> {
         let owned = atom.to_owned();
         if !self.cache.factors.contains_key(&owned) {
             let found = self.kernel.opaque(atom);
@@ -421,7 +436,10 @@ pub fn kernel_term_readings(
     jobs: &[KernelTermsJob],
     threads: Option<usize>,
 ) -> RusticolResult<Vec<KernelTermsResult>> {
-    let kernels = jobs.iter().map(Kernel::new).collect::<RusticolResult<Vec<_>>>()?;
+    let kernels = jobs
+        .iter()
+        .map(Kernel::new)
+        .collect::<RusticolResult<Vec<_>>>()?;
     let tasks: Vec<(usize, &str)> = jobs
         .iter()
         .enumerate()
@@ -505,19 +523,30 @@ mod tests {
         }
         let sqrt = sqrt.unwrap();
         assert!(sqrt.positive.contains(&Base::Param("M".into())));
-        assert!(sqrt.powers.contains(&(Base::Prime(Integer::from(2)), rational("1/2"))));
-        assert!(sqrt.powers.contains(&(Base::Param("M".into()), rational("1/2"))));
+        assert!(
+            sqrt.powers
+                .contains(&(Base::Prime(Integer::from(2)), rational("1/2")))
+        );
+        assert!(
+            sqrt.powers
+                .contains(&(Base::Param("M".into()), rational("1/2")))
+        );
         let pi = pi.unwrap();
         assert_eq!(pi.coefficient, (rational("0"), rational("1")));
         assert_eq!(pi.powers, vec![(Base::Pi, rational("1"))]);
         // (g + m)^(-1/3): kept whole with its fractional power.
         let term = &outputs[2][0];
-        let expected = parse("(mfrust::g+mfrust::m)^(-1/3)").unwrap().to_canonical_string();
+        let expected = parse("(mfrust::g+mfrust::m)^(-1/3)")
+            .unwrap()
+            .to_canonical_string();
         let pairs = vec![
             (canonical("mfrust::g"), "G".to_owned()),
             (canonical("mfrust::m"), "M".to_owned()),
         ];
-        assert_eq!(term.powers, vec![(Base::Expr(expected, pairs), rational("1"))]);
+        assert_eq!(
+            term.powers,
+            vec![(Base::Expr(expected, pairs), rational("1"))]
+        );
     }
 
     #[test]
@@ -534,12 +563,23 @@ mod tests {
         .unwrap();
         assert_eq!(
             results[0],
-            Err(format!("kernel not polynomial in {}", canonical("mfrust::x")))
+            Err(format!(
+                "kernel not polynomial in {}",
+                canonical("mfrust::x")
+            ))
         );
         assert_eq!(
             results[1],
-            Err(format!("unknown symbol {} in a kernel", canonical("mfrust::z")))
+            Err(format!(
+                "unknown symbol {} in a kernel",
+                canonical("mfrust::z")
+            ))
         );
-        assert!(results[2].clone().unwrap_err().starts_with("symbolic exponent in"));
+        assert!(
+            results[2]
+                .clone()
+                .unwrap_err()
+                .starts_with("symbolic exponent in")
+        );
     }
 }

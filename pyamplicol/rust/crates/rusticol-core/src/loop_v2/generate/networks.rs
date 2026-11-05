@@ -522,7 +522,12 @@ pub(crate) fn fierz_terms(
         None => FierzMap::new(),
         Some((power, key)) => {
             let mut out = FierzMap::new();
-            fierz_add(&mut out, &fierz_reduce(key, &is_sentinel, &mut memo), power, 1);
+            fierz_add(
+                &mut out,
+                &fierz_reduce(key, &is_sentinel, &mut memo),
+                power,
+                1,
+            );
             out
         }
     };

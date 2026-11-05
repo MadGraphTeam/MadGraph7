@@ -764,8 +764,7 @@ mod stored_member_tests {
             ("head", JSON, b"{\"parameters\":[]}"),
             ("interactions.steps", BINARY, &[7, 0, 0, 0, 1, 2]),
         ]);
-        let mut encoder =
-            flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::new(6));
+        let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::new(6));
         encoder.write_all(&container).unwrap();
         let payload = encoder.finish().unwrap();
         assert_eq!(inflate_loop_v2_member("m", &payload).unwrap(), container);
@@ -775,7 +774,11 @@ mod stored_member_tests {
                 .as_deref(),
             Some(&[7u8, 0, 0, 0, 1, 2][..])
         );
-        assert!(inflate_loop_v2_section("m", &payload, "absent").unwrap().is_none());
+        assert!(
+            inflate_loop_v2_section("m", &payload, "absent")
+                .unwrap()
+                .is_none()
+        );
         // Not a zlib stream; a cut stream.
         let error = inflate_loop_v2_member("tree-program.bin.zlib", &container).unwrap_err();
         assert!(error.to_string().contains("tree-program.bin.zlib"));

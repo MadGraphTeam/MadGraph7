@@ -448,12 +448,18 @@ mod tests {
             (0, literal(&["0"; 8])),
         ] {
             let error = spin_rows(&BTreeMap::from([(leg, values)]), 2).unwrap_err();
-            assert_eq!(error.kind(), rusticol_core::RusticolErrorKind::InvalidArgument);
+            assert_eq!(
+                error.kind(),
+                rusticol_core::RusticolErrorKind::InvalidArgument
+            );
         }
         let message = spin_rows(&BTreeMap::from([(4, literal(&["1"; 4]))]), 2)
             .unwrap_err()
             .to_string();
-        assert!(message.contains("leg 4 holds 4") && message.contains("(8)"), "{message}");
+        assert!(
+            message.contains("leg 4 holds 4") && message.contains("(8)"),
+            "{message}"
+        );
         // No sources: the physical states, whatever the point count.
         assert!(spin_rows(&BTreeMap::new(), 3).unwrap().is_empty());
     }

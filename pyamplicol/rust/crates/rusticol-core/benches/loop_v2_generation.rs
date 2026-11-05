@@ -59,7 +59,9 @@ fn main() {
         build_skeletons(&input, &output, &payload).expect("skeletons")
     });
     let count: usize = skeletons.2.iter().map(Vec::len).sum();
-    let (t_build, build) = best(reps, || build_retained(&input, &output, &payload).expect("build"));
+    let (t_build, build) = best(reps, || {
+        build_retained(&input, &output, &payload).expect("build")
+    });
     let mut digest = Sha256::new();
     for schedule in build.schedules() {
         digest.update(format!(

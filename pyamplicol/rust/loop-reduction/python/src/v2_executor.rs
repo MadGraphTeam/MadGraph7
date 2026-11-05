@@ -18,12 +18,12 @@
 //! from each point's mu_R²); it has no `constants`, `masses`, `leg_masses`,
 //! `block_rows` or `born`.
 use super::*;
+use crate::v2_colour::NativeDipoleCorrelator;
 use pyo3::IntoPyObject;
 use pyo3::types::PyDict;
 use rusticol_core::loop_execution::v2::{
     Contraction, PointNumerators, PointResult, Report, Schedule, V2Executor as Executor, V2Options,
 };
-use crate::v2_colour::NativeDipoleCorrelator;
 use rusticol_core::loop_v2::dipole_correlations::Correlator;
 use rusticol_core::loop_v2::dress::{Carrier as V2Carrier, V2Batch, parse_rational};
 use rusticol_core::loop_v2::plan::{FormPolicy, LoopProgramV4};
@@ -984,7 +984,10 @@ where
             );
             let seconds = started.elapsed().as_secs_f64();
             tree_seconds += seconds;
-            match tree_parts.iter_mut().find(|(name, _)| *name == "trees: dipoles") {
+            match tree_parts
+                .iter_mut()
+                .find(|(name, _)| *name == "trees: dipoles")
+            {
                 Some((_, total)) => *total += seconds,
                 None => tree_parts.push(("trees: dipoles", seconds)),
             }
@@ -1223,9 +1226,7 @@ fn stored_tree_program_section<'py>(
     section: &str,
 ) -> PyResult<Option<Bound<'py, pyo3::types::PyBytes>>> {
     let found = py
-        .detach(|| {
-            rusticol_core::loop_artifact::inflate_loop_v2_section(member, payload, section)
-        })
+        .detach(|| rusticol_core::loop_artifact::inflate_loop_v2_section(member, payload, section))
         .map_err(error)?;
     Ok(found.map(|bytes| pyo3::types::PyBytes::new(py, &bytes)))
 }

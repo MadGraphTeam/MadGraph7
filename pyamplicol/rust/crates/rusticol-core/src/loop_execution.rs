@@ -1403,7 +1403,14 @@ pub mod v2 {
                     calls: vec![Vec::new()],
                 };
                 executor
-                    .evaluate_families(&batch, &0.0, &mut backend, V2Options::default(), families, None)
+                    .evaluate_families(
+                        &batch,
+                        &0.0,
+                        &mut backend,
+                        V2Options::default(),
+                        families,
+                        None,
+                    )
                     .map(|(results, report)| {
                         let lanes = report.counts.get("reduction lanes").copied();
                         (results, lanes.unwrap_or(0))

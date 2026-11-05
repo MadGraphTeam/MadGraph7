@@ -4926,8 +4926,7 @@ mod native_runtime;
 pub use correlated::{
     NativeCorrelatedEvaluation, NativeCorrelatedRequest, NativeDecimalCorrelatedEvaluation,
     NativeDecimalCorrelatedRequest, NativeDecimalSpinCorrelationVectors,
-    NativeGradedCorrelatedEvaluation,
-    NativeSpinCorrelationVectors,
+    NativeGradedCorrelatedEvaluation, NativeSpinCorrelationVectors,
 };
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
@@ -5040,9 +5039,10 @@ pub(crate) use evaluator::recurrence_intrinsic_direct::execute_interaction_termi
 pub(crate) use evaluator::symjit_direct::tests::count_allocations;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 pub(crate) use evaluator::symjit_eager_direct;
-#[cfg(any(test, feature = "python-generation-bridge"))]
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 pub(crate) use evaluator::symjit_plane::{
-    compile_symbolica_program_to_plane_application_bytes, evaluate_plane_application_bytes,
+    PlaneDescriptor, SymjitPlaneKernel, SymjitPlaneLayout, symjit_cpu_features,
+    symjit_host_cpu_supported,
 };
 #[cfg(all(
     feature = "symbolica-runtime",
@@ -5051,10 +5051,9 @@ pub(crate) use evaluator::symjit_plane::{
 pub(crate) use evaluator::symjit_plane::{
     compile_symbolica_evaluator_to_plane_application_bytes, real_axis_sensitive_outputs,
 };
-#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[cfg(any(test, feature = "python-generation-bridge"))]
 pub(crate) use evaluator::symjit_plane::{
-    PlaneDescriptor, SymjitPlaneKernel, SymjitPlaneLayout, symjit_cpu_features,
-    symjit_host_cpu_supported,
+    compile_symbolica_program_to_plane_application_bytes, evaluate_plane_application_bytes,
 };
 use evaluator::*;
 #[cfg(feature = "symbolica-runtime")]
@@ -5062,9 +5061,9 @@ pub(crate) use evaluator::{canonical_saved_evaluator, decode_exact_evaluator_sta
 
 #[path = "wavefunctions.rs"]
 mod wavefunctions;
-use wavefunctions::*;
 #[cfg(feature = "symbolica-runtime")]
 pub(crate) use wavefunctions::massless_dirac_batch;
+use wavefunctions::*;
 
 #[cfg(test)]
 #[path = "engine_tests.rs"]

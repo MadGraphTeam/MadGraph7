@@ -109,7 +109,9 @@ fn own_entry(name: &str) -> RusticolResult<(u16, Vec<u8>)> {
     };
     let symbol = var.get_symbol();
     if symbol.get_name() != name {
-        return Err(invalid(format!("{name:?} is not a fully qualified symbol name")));
+        return Err(invalid(format!(
+            "{name:?} is not a fully qualified symbol name"
+        )));
     }
     let mut header = Vec::new();
     atom.export(&mut header).map_err(io)?;

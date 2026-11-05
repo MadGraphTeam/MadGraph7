@@ -24,9 +24,9 @@ mod error;
 #[cfg(feature = "symbolica-runtime")]
 mod licence;
 #[cfg(feature = "symbolica-runtime")]
-pub mod loop_execution;
-#[cfg(feature = "symbolica-runtime")]
 pub mod loop_artifact;
+#[cfg(feature = "symbolica-runtime")]
+pub mod loop_execution;
 #[cfg(feature = "symbolica-runtime")]
 pub mod loop_runtime;
 #[cfg(feature = "loop-v2")]

@@ -62,7 +62,10 @@ fn compiled_color_topology_replay_totals_in_double_double_and_arbitrary_precisio
 
     let flat: Vec<i64> = POINTS.iter().flat_map(|point| momenta(*point)).collect();
     let binary64 = runtime
-        .evaluate_f64(&flat.iter().map(|x| *x as f64).collect::<Vec<_>>(), POINTS.len())
+        .evaluate_f64(
+            &flat.iter().map(|x| *x as f64).collect::<Vec<_>>(),
+            POINTS.len(),
+        )
         .unwrap();
     let decimal: Vec<String> = flat.iter().map(ToString::to_string).collect();
     for (digits, tolerance) in [(32, 1e-27), (64, 1e-58)] {

@@ -60,12 +60,20 @@ fn derived_particle_mass_follows_the_external_inputs() {
         .unwrap();
     let mw = runtime.model_parameter_value("MW").unwrap().0;
     let mh = runtime.model_parameter_value("MH").unwrap().0;
-    assert!((mw - default_mw).abs() > 1e-2, "the inputs must move MW ({default_mw} -> {mw})");
-    let at = |runtime: &mut NativeRuntime, y: f64| runtime.evaluate_f64(&momenta(mw, mh, y), 1).unwrap()[0];
+    assert!(
+        (mw - default_mw).abs() > 1e-2,
+        "the inputs must move MW ({default_mw} -> {mw})"
+    );
+    let at = |runtime: &mut NativeRuntime, y: f64| {
+        runtime.evaluate_f64(&momenta(mw, mh, y), 1).unwrap()[0]
+    };
     let rest = at(&mut runtime, 0.0);
     for y in [0.5, -1.0] {
         let boosted = at(&mut runtime, y);
         let violation = (boosted / rest - 1.0).abs();
-        assert!(violation < 1e-12, "|M|^2 changes by {violation:e} under a boost with rapidity {y}");
+        assert!(
+            violation < 1e-12,
+            "|M|^2 changes by {violation:e} under a boost with rapidity {y}"
+        );
     }
 }

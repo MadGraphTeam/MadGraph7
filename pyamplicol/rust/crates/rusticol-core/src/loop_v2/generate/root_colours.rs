@@ -48,9 +48,7 @@ pub fn reduce_factored(spec: &FactoredSpec, legs: &[i64]) -> RusticolResult<Vec<
                             .ok_or_else(|| invalid("a content refers to an unknown factor"))
                     })
                     .collect::<RusticolResult<Vec<&Network>>>()?;
-                reducer
-                    .reduce(&networks::multiply(parts))
-                    .map_err(invalid)
+                reducer.reduce(&networks::multiply(parts)).map_err(invalid)
             },
         )
         .collect()

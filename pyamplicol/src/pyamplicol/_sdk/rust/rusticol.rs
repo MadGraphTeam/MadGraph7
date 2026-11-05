@@ -220,7 +220,11 @@ pub mod virtual_amplitudes {
             let arithmetic = checked_cstring(arithmetic, "arithmetic")?;
             // SAFETY: exclusive live handle and owned string.
             check(unsafe {
-                ffi::rusticol_virtual_set_arithmetic(self.handle.as_ptr(), arithmetic.as_ptr(), digits)
+                ffi::rusticol_virtual_set_arithmetic(
+                    self.handle.as_ptr(),
+                    arithmetic.as_ptr(),
+                    digits,
+                )
             })
         }
         /// One native bulk call; binary64 inputs are read as their exact values.
