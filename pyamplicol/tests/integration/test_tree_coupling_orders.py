@@ -1244,7 +1244,7 @@ def test_builtin_sm_matches_the_ufo_sm(
     for point, (value, expected) in enumerate(
         zip(builtin.evaluate(points), ufo.evaluate(points), strict=True)
     ):
-        assert value.real == pytest.approx(expected.real, rel=1e-12), point
+        assert value.real == pytest.approx(expected.real, rel=1e-12, abs=0.0), point
 
 
 @pytest.mark.parametrize("process", _GAUGE_SELF_COUPLING_PROCESSES)
@@ -1261,4 +1261,4 @@ def test_builtin_sm_gauge_self_couplings_match_in_the_compiled_lane(
     for point, (value, expected) in enumerate(
         zip(compiled.evaluate(points), ufo.evaluate(points), strict=True)
     ):
-        assert value.real == pytest.approx(expected.real, rel=1e-12), point
+        assert value.real == pytest.approx(expected.real, rel=1e-12, abs=0.0), point

@@ -1433,9 +1433,12 @@ class Model:
     def vertex_closure_allowed(self, vertex: Vertex) -> bool:
         """Return whether a scalar vertex result represents a vacuum closure.
 
-        The legacy built-in model uses auxiliary scalar result particles for a
-        few contact interactions. Generic UFO particles are ordinary currents
-        unless their compiled lowering explicitly introduces such an auxiliary.
+        A model may let a vertex close the full current on the sink leg, with
+        a closure contraction of its result particle (``closure_contraction_ir``),
+        instead of reaching it as a current. The shipped model families do not:
+        the built-in SM carries its auxiliary contact scalars inside the
+        currents and UFO catalogs reach every vertex as a current; both
+        return False.
         """
 
         return True

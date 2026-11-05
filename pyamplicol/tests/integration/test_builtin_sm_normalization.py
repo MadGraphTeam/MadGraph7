@@ -169,7 +169,10 @@ def _assert_analytic(runtime: Runtime, process: str) -> None:
     for point, value in zip(points, runtime.evaluate(points), strict=True):
         expected = _ANALYTIC[process](point)
         assert value.imag == 0.0
-        assert value.real == pytest.approx(expected, rel=1e-12), (process, point)
+        assert value.real == pytest.approx(expected, rel=1e-12, abs=0.0), (
+            process,
+            point,
+        )
 
 
 @pytest.fixture(scope="module")
@@ -201,7 +204,7 @@ def test_runtime_alpha_change_rescales_the_colourless_born(
     points = _points()
     for point, value in zip(points, runtime.evaluate(points), strict=True):
         expected = _annihilation_to_photons(point, alpha=2 * ALPHA)
-        assert value.real == pytest.approx(expected, rel=1e-12)
+        assert value.real == pytest.approx(expected, rel=1e-12, abs=0.0)
 
 
 @pytest.mark.parametrize("execution_mode", ("eager", "compiled", "on-the-fly"))

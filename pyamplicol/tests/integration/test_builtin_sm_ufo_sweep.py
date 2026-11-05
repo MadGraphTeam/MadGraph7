@@ -9,11 +9,14 @@ every 1 -> 2 decay, a 2 -> 3 / 1 -> 3 sample and electroweak exchange between
 quark lines at explicit coupling orders. The committed reference
 (``tests/fixtures/tree/builtin-sm-ufo-sm.json``, MG5 sm with its no_masses
 restriction, the built-in masses, widths and couplings) gives the UFO value
-at two points, or null where the UFO sm has no tree amplitude. Each lane of
-the built-in SM must reproduce every value to 1e-10 and refuse every null
-with a ``GenerationError``. The nightly variant runs each of the 901
-relabelling representatives of the 2 -> 2 processes in every lane against
-the live UFO sm.
+at two points, null where the UFO sm has no tree amplitude, or the typed
+refusal the UFO sm raises for a process it cannot serve (``refusal``;
+``"refused: dirac-weyl-closure"``: a massive top on a line with a massless
+b, an engine-wide limitation of the tree lanes). Each lane of the built-in
+SM must reproduce every value to 1e-10 relative and refuse every other entry
+as the UFO sm does. The nightly variant runs each of the 901 relabelling
+representatives of the 2 -> 2 processes in every lane against the live UFO
+sm.
 """
 
 from __future__ import annotations
@@ -33,6 +36,7 @@ from tools.developer.builtin_sm_ufo_sweep import (
     nightly_processes,
     on_shell_points,
     reference_processes,
+    refusal,
     run_config,
     split_entry,
 )
@@ -41,8 +45,14 @@ REFERENCE = Path(__file__).resolve().parents[1] / "fixtures/tree/builtin-sm-ufo-
 NIGHTLY_SHARDS = 16
 
 
-def _reference() -> dict[str, list[float] | None]:
+def _reference() -> dict[str, list[float] | str | None]:
     return json.loads(REFERENCE.read_text(encoding="utf-8"))["processes"]
+
+
+def _served(reference: dict[str, list[float] | str | None]) -> dict[str, list[float]]:
+    return {
+        entry: value for entry, value in reference.items() if isinstance(value, list)
+    }
 
 
 _QUARKS = frozenset({"d", "u", "s", "c", "b", "t"})
@@ -112,7 +122,8 @@ def _mismatches(
     return [
         f"{entry}: built-in {values[entry]} UFO {reference}"
         for entry, reference in expected.items()
-        if entry in values and values[entry] != pytest.approx(reference, rel=1e-10)
+        if entry in values
+        and values[entry] != pytest.approx(reference, rel=1e-10, abs=0.0)
     ]
 
 
@@ -122,21 +133,20 @@ def test_the_reference_holds_the_generated_processes() -> None:
 
 @pytest.mark.parametrize("execution_mode", LANES)
 def test_builtin_sm_matches_the_ufo_sm(execution_mode: str, tmp_path: Path) -> None:
-    served = {entry: value for entry, value in _reference().items() if value}
+    served = _served(_reference())
     values = _lane_values(list(served), execution_mode, tmp_path)
     assert not _mismatches(served, values)
 
 
-def test_builtin_sm_refuses_what_the_ufo_sm_has_no_tree_amplitude_for(
-    tmp_path: Path,
-) -> None:
-    """Refusals come from process selection and the Born-order sweep, which
-    every lane shares; the compiled lane reaches them without a prepared
-    bundle."""
+def test_builtin_sm_refuses_what_the_ufo_sm_refuses(tmp_path: Path) -> None:
+    """A process without a tree amplitude is refused by process selection or
+    the Born-order sweep, which every lane shares, and a typed refusal of the
+    UFO sm comes with the same key; the compiled lane reaches both without a
+    prepared bundle."""
 
-    served = []
+    different = []
     for index, (entry, value) in enumerate(_reference().items()):
-        if value is not None:
+        if isinstance(value, list):
             continue
         process, orders = split_entry(entry)
         try:
@@ -145,10 +155,13 @@ def test_builtin_sm_refuses_what_the_ufo_sm_has_no_tree_amplitude_for(
                 tmp_path / f"artifact-{index}",
                 model=ModelSource.built_in_sm(),
             )
-        except GenerationError:
+        except GenerationError as exc:
+            if refusal(exc) == value:
+                continue
+            different.append(f"{entry}: {refusal(exc)} ({exc}), UFO sm {value}")
             continue
-        served.append(entry)
-    assert not served
+        different.append(f"{entry}: served, UFO sm {value}")
+    assert not different
 
 
 @pytest.fixture(scope="module")
@@ -178,16 +191,15 @@ def test_builtin_sm_matches_the_live_ufo_sm_nightly(
         entry: evaluate(entry, live_ufo_sm, "compiled", tmp_path / f"ufo-{index}")
         for index, entry in enumerate(entries)
     }
-    served = {entry: value for entry, value in reference.items() if value}
+    served = _served(reference)
     failures = []
     for execution_mode in LANES:
         values = _lane_values(list(served), execution_mode, tmp_path / execution_mode)
         failures += [f"{execution_mode} {line}" for line in _mismatches(served, values)]
     for index, entry in enumerate(entry for entry in entries if entry not in served):
-        if evaluate(
+        built_in = evaluate(
             entry, ModelSource.built_in_sm(), "compiled", tmp_path / f"b-{index}"
-        ):
-            failures.append(
-                f"compiled {entry}: served, the UFO sm has no tree amplitude"
-            )
+        )
+        if built_in != reference[entry]:
+            failures.append(f"compiled {entry}: {built_in}, UFO sm {reference[entry]}")
     assert not failures

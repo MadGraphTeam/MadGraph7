@@ -14,7 +14,9 @@ each class.
 The reference is the UFO ``sm`` of MG5_aMC 3.7.0 with its ``no_masses``
 restriction (massless b and tau, as built in), compiled lane, binary64, at
 two RAMBO points per process (``on_shell_points``); ``None`` marks a process
-without a tree amplitude. Writing the committed reference::
+without a tree amplitude, ``"refused: <key>"`` one the UFO sm refuses with a
+typed engine refusal (``refusal``; ``dirac-weyl-closure``: a massive top on a
+line with a massless b). Writing the committed reference::
 
     python tools/developer/builtin_sm_ufo_sweep.py reference \\
         --madgraph "$WORKSPACE/reference/sources/MG5_aMC_v3_7_0" \\
@@ -299,9 +301,23 @@ def run_config(execution_mode: str, orders: dict[str, int] | None = None):
     )
 
 
+def refusal(exc: BaseException) -> str | None:
+    """``"refused: <key>"`` for a ``GenerationError`` caused by a typed engine
+    refusal (an exception with a ``key``) of a process with a tree amplitude,
+    ``None`` for one without a tree amplitude."""
+
+    cause: BaseException | None = exc
+    while cause is not None:
+        key = getattr(cause, "key", None)
+        if isinstance(key, str):
+            return f"refused: {key}"
+        cause = cause.__cause__ or cause.__context__
+    return None
+
+
 def evaluate(entry: str, model, execution_mode: str, artifact: Path):
-    """|M|^2 of a reference entry at ``on_shell_points``, or ``None`` when
-    generation is refused with a ``GenerationError`` (no tree amplitude)."""
+    """|M|^2 of a reference entry at ``on_shell_points``, or, when generation
+    raises a ``GenerationError``, its ``refusal``."""
 
     from pyamplicol import Generator, Runtime
     from pyamplicol.api.errors import GenerationError
@@ -311,8 +327,8 @@ def evaluate(entry: str, model, execution_mode: str, artifact: Path):
         Generator(run_config(execution_mode, orders)).generate(
             [process], artifact, model=model, mode="replace"
         )
-    except GenerationError:
-        return None
+    except GenerationError as exc:
+        return refusal(exc)
     runtime = Runtime.load(artifact, process=process)
     return [value.real for value in runtime.evaluate(on_shell_points(process))]
 
