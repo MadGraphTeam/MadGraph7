@@ -23,7 +23,7 @@ import os
 import numpy as np
 import pytest
 import torch
-from fks_testing import EPS, massive_fortran_precision
+from fks_testing import massive_fortran_precision
 from madspace_testing import default_context
 
 import madspace as ms
@@ -136,10 +136,12 @@ def test_matches_genps_fks(data, conf, points, prefix):
         if value.ndim == 0:
             out[key] = np.full(batch, value)
 
-    # The Born comes back through the round trip of RAMBO and the boosts of
-    # PhaseSpaceMapping, so it differs from that of genps_fks.f by up to 1e-12
-    # of its energy (the conditioning of the round trip), and the emission off
-    # it by about as much.
+    # The Born comes back through the round trip of the Born mapping and the
+    # boosts of PhaseSpaceMapping, so it differs from that of genps_fks.f by up
+    # to 1e-12 of its energy, and the emission off it by about as much. The
+    # inverse of the 2 -> 2 scattering of the Born mapping resolves its random
+    # number of |t| only to a few 1e-12 on some points (not an FKS effect), and
+    # all comparisons below scale with this deviation.
     sqrt_s_born = np.sqrt(field("shat_born"))
     born_again = boost_z(out["born_momenta"], born_masses, -y_born)
     born_dev = np.abs(born_again - field("p_born")).max((1, 2)) / sqrt_s_born
@@ -222,11 +224,13 @@ def test_matches_genps_fks(data, conf, points, prefix):
             continue
         p_cnt = field("rad_p_cnt")[:, pos]
         cnt = boost_z(out[name + "_momenta"], masses, -y_born)
-        diff = np.abs(cnt - p_cnt).max((1, 2)) / scale
-        # the rounding of the momenta in the lab, of energies up to
-        # exp(|y_born|) times those of the Born frame
-        lab = 10 * EPS * np.exp(np.abs(y_born))
-        assert (diff <= 1e-13 + 10 * born_dev + lab)[valid].all()
+        # in units of its hardest particle: in the frame of the Born, the
+        # collinear counter-event of an incoming emitter has energies up to
+        # 1 / (1 - xi) times those of the Born at its own xi (that at y = 1),
+        # far above those of the event (1393 GeV against 60 GeV on one point)
+        scale_cnt = p_cnt[..., 0].max(1)
+        diff = np.abs(cnt - p_cnt).max((1, 2)) / scale_cnt
+        assert (diff <= 1e-13 + 10 * born_dev)[valid].all()
         # i per unit xi, finite where i is soft (p_i_fks_cnt). Its direction is
         # set relative to the Born emitter, whose own direction carries the
         # deviation of the Born divided by its energy (a soft emitter amplifies

@@ -92,9 +92,12 @@ def conditioning(
     for an incoming one. For a final-state emitter it is also resolved only to
     eps / sin(theta_jbar) through the azimuth of the Born emitter, which sets
     the frame of phi and is ill defined for an emitter close to the beam axis.
-    For an incoming emitter xi_max vanishes like 1 - x of the Born when an x of
-    the Born approaches 1, which a double resolves only to eps / (1 - x)
-    relative. With a lower bound s_hat_min on the partonic energy, xi_hat =
+    genps_fks.f builds the directions of a final-state i and j from their
+    angles to k = p_i + p_j, that of j from a cosine close to 1 where i is
+    soft, which resolves y only to eps |k| / |p_i| absolute and r_y to that
+    over 4 r_y. For an incoming emitter xi_max vanishes like 1 - x of the Born
+    when an x of the Born approaches 1, which a double resolves only to
+    eps / (1 - x) relative. With a lower bound s_hat_min on the partonic energy, xi_hat =
     (xi - xi_min) / (xi_max - xi_min) is resolved to eps xi / (xi_max - xi_min)
     and the position of y in its range to eps / (y_upp - y_low), and both
     widths vanish at the edges of the range of y. For a massive emitter the
@@ -138,7 +141,11 @@ def conditioning(
         range_xi = 1 / massive_xi_max(momenta, i_fks, j_fks, emitter_mass)
     res_xi = 10 * EPS * (STINY + range_xi) / r_xi
     res_y = 10 * EPS * range_y / r_y
-    bound_r = res_xi + res_y + x_edge + 3e-13
+    if j_fks >= 2:
+        # the direction of j from its angle to k = p_i + p_j
+        k = np.linalg.norm(axis, axis=1) / np.linalg.norm(p_i, axis=1)
+        res_y = res_y + 10 * EPS * k / (4 * r_y)
+    bound_r = res_xi + res_y + x_edge + 1e-13
     bound_phi = 1000 * EPS / sin_axis + frame + 1e-12
     bound_det = res_xi / r_xi + res_y / r_y + x_edge + 1e-11
     # no bound on the Jacobian where r_xi or r_y is not resolved at all

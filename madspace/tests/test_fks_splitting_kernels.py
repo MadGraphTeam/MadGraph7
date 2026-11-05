@@ -88,6 +88,12 @@ def test_matches_sborncol(path):
         assert (deviation <= rtol * np.abs(coll[:, column])).all(), column
 
 
+def born_position(conf):
+    """Position of the emitter in the Born, 0-based."""
+    i_fks, j_fks = conf["i_fks"] - 1, conf["j_fks"] - 1
+    return j_fks if j_fks < i_fks else j_fks - 1
+
+
 @pytest.mark.parametrize("path", FKS_DATA, ids=FKS_DATA_IDS)
 def test_transverse_vector_matches_xij_kperp(path):
     """k_perp from the momentum of i per unit xi and the Born of genps_fks.f,
@@ -109,10 +115,12 @@ def test_transverse_vector_matches_xij_kperp(path):
                     point["p_born"],
                     conf["nfks"] - 1,
                     point["kperp"],
-                    point["y_ev"],
+                    born_position(conf),
                 )
             )
-    momenta, p_i_hat, p_born, fks_index, kperp, y = (np.array(c) for c in zip(*rows))
+    momenta, p_i_hat, p_born, fks_index, kperp, born_j = (
+        np.array(c) for c in zip(*rows)
+    )
     *_, k_perp = evaluate(
         kernels,
         momenta,
@@ -121,10 +129,20 @@ def test_transverse_vector_matches_xij_kperp(path):
         fks_index=fks_index,
     )
     sign = np.sign((k_perp * kperp).sum(1))[:, None]
-    # to the precision of the transverse part of p_i_hat, eps / sin(theta)
-    sin_theta = np.sqrt((1 - y) * (1 + y))
+    # to the precision of the part of p_i_hat transverse to the axis of the
+    # emission, eps / sin(theta): the beam for an incoming emitter (theta from
+    # y), the Born emitter i + j for a final-state one, which is closer to i
+    # than j is where j is soft
+    axis = np.zeros((len(rows), 3))
+    axis[:, 2] = 1.0
+    final = np.array([c >= 2 for c in born_j])
+    axis[final] = p_born[final, born_j[final], 1:]
+    p_i = p_i_hat[:, 1:]
+    sin_theta = np.linalg.norm(np.cross(p_i, axis), axis=1) / (
+        np.linalg.norm(p_i, axis=1) * np.linalg.norm(axis, axis=1)
+    )
     np.testing.assert_array_less(
-        np.abs(sign * k_perp - kperp).max(1), 50 * EPS / np.maximum(sin_theta, EPS)
+        np.abs(sign * k_perp - kperp).max(1), 20 * EPS / np.maximum(sin_theta, EPS)
     )
 
 
