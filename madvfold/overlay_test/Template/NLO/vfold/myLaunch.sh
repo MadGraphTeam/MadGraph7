@@ -537,6 +537,9 @@ mv Source/run_card.inc.original Source/run_card.inc
 mv SubProcesses/randinit.original SubProcesses/randinit
 mv Cards/param_card.dat.original Cards/param_card.dat
 mv Source/param_card.inc.original Source/param_card.inc
+# The libraries built for -o have the aS(MZ) of the grids, and the restored files are older
+# than them: force a rebuild in the next run (else a plain run uses that aS)
+if [ "$oOpt" == "-o" ]; then touch Source/param_card.inc; fi
 if [ "$oOpt" == "-o" ]; then
   for f in SubProcesses/P*/fort.77; do if [ -f ${f}.original ]; then mv ${f}.original ${f}; fi; done
 fi
