@@ -76,6 +76,8 @@ from pyamplicol.config import (
 )
 from pyamplicol.generation.phase_space import massive_rambo_final_state
 from pyamplicol.generation.process_grouping import GroupingBasis, GroupMember
+from pyamplicol.models import BuiltinSMModel
+from pyamplicol.models.builtin.process_ir import build_process_ir
 from pyamplicol.models.prepared import load_prepared_model_bundle
 
 REFERENCE = (
@@ -1114,3 +1116,149 @@ def test_cli_prints_partials_and_rejects_non_recurrence_lanes(
     )
     with pytest.raises(CompatibilityError, match="recurrence artifact"):
         eager.evaluate_orders(reference["points"])
+
+
+# The built-in SM against this UFO 'sm' (same masses and widths of every leg
+# and propagator involved, alpha = 1/132.507, alpha_s = 0.118): fully
+# colourless processes and decays, whose built-in global coupling factor took
+# the number of colour-singlet legs as its electroweak power (the analytic
+# checks are test_builtin_sm_normalization), massive-vector or scalar initial
+# states, which it averaged over two spin states, and the electroweak gauge
+# self-interactions. The recurrence lane (this fixture's lane) counted both
+# input orientations of every W W A / W W Z vertex and of the quartic-contact
+# tensor currents (a a > w+ w- 16 times the UFO), and the lepton table lacked
+# the neutrino's Z coupling and the lepton + W -> neutrino orientations
+# (e+ e- > w+ w- had no t-channel neutrino exchange in any lane).
+_BUILTIN_VS_UFO_PROCESSES = (
+    "e+ e- > a a",
+    "e+ e- > a a a",
+    "e+ e- > mu+ mu-",
+    "e+ e- > z h",
+    "e+ e- > z z",
+    "z z > e+ e-",
+    "h z > e+ e-",
+    "z > e+ e-",
+    "u u~ > a a",
+    "e+ e- > u u~ g",
+    "g g > g g",
+    "e+ e- > w+ w-",
+    "u u~ > w+ w-",
+    "a a > w+ w-",
+    "u d~ > w+ z",
+    "e+ e- > w+ w- z",
+    "u d~ > w+ w+ w-",
+    "e+ e- > ve ve~",
+)
+# Triple and quartic (W W A A, W W A Z, W W Z Z, W W W W through the tensor
+# currents) gauge vertices, also checked in the compiled lane.
+_GAUGE_SELF_COUPLING_PROCESSES = (
+    "a a > w+ w-",
+    "e+ e- > w+ w-",
+    "u u~ > w+ w-",
+    "u d~ > w+ z",
+    "e+ e- > w+ w- z",
+    "u d~ > w+ w+ w-",
+)
+
+
+def _builtin_vs_ufo_config(execution_mode: str) -> RunConfig:
+    return RunConfig(
+        action="generate",
+        model=ModelConfig(cache=False),
+        color=ColorConfig(accuracy="full"),
+        generation=GenerationConfig(
+            workers=1,
+            emit_api_bundle=False,
+            relation_discovery=GenerationRelationDiscoveryConfig(mode="off"),
+            validation=GenerationValidationConfig(
+                enabled=False, samples=1, seed=7, post_build_validation=False
+            ),
+        ),
+        evaluator=EvaluatorConfig(
+            execution_mode=execution_mode,
+            optimization=EvaluatorOptimizationConfig(cores=1),
+        ),
+    )
+
+
+@pytest.fixture(scope="module")
+def builtin_and_ufo_runtimes(
+    sm_model: ModelSource, tmp_path_factory: pytest.TempPathFactory
+) -> tuple[Path, Path]:
+    root = tmp_path_factory.mktemp("builtin-vs-ufo")
+    config = _builtin_vs_ufo_config("recurrence")
+    artifacts = (root / "built-in", root / "ufo")
+    for artifact, model in zip(
+        artifacts, (ModelSource.built_in_sm(), sm_model), strict=True
+    ):
+        Generator(config).generate(
+            list(_BUILTIN_VS_UFO_PROCESSES), artifact, model=model
+        )
+    return artifacts
+
+
+@pytest.fixture(scope="module")
+def builtin_compiled_gauge_runtime(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    artifact = tmp_path_factory.mktemp("builtin-compiled-gauge") / "artifact"
+    Generator(_builtin_vs_ufo_config("compiled")).generate(
+        list(_GAUGE_SELF_COUPLING_PROCESSES),
+        artifact,
+        model=ModelSource.built_in_sm(),
+    )
+    return artifact
+
+
+def _on_shell_point(process: str, seed: int, root: float = 500.0) -> list:
+    """Built-in masses: a RAMBO final state of on-shell beams along z at
+    sqrt(s) = ``root``, or of a decaying particle at rest."""
+
+    model = BuiltinSMModel()
+    ir = build_process_ir(process)
+    initial = [model.mass(pdg) for pdg in ir.initial_pdgs]
+    if len(initial) == 1:
+        root = initial[0]
+    final = massive_rambo_final_state(
+        len(ir.final_pdgs),
+        sqrt_s=root,
+        masses=[model.mass(pdg) for pdg in ir.final_pdgs],
+        seed=seed,
+    )
+    if len(initial) == 1:
+        beams = [[root, 0.0, 0.0, 0.0]]
+    else:
+        m1, m2 = initial
+        s = root * root
+        p = math.sqrt((s - (m1 + m2) ** 2) * (s - (m1 - m2) ** 2)) / (2 * root)
+        beams = [[math.hypot(p, m1), 0.0, 0.0, p], [math.hypot(p, m2), 0.0, 0.0, -p]]
+    return [*beams, *(list(momentum) for momentum in final)]
+
+
+@pytest.mark.parametrize("process", _BUILTIN_VS_UFO_PROCESSES)
+def test_builtin_sm_matches_the_ufo_sm(
+    builtin_and_ufo_runtimes: tuple[Path, Path], process: str
+) -> None:
+    builtin, ufo = (
+        Runtime.load(artifact, process=process) for artifact in builtin_and_ufo_runtimes
+    )
+    points = [_on_shell_point(process, seed) for seed in (101, 202, 303)]
+    for point, (value, expected) in enumerate(
+        zip(builtin.evaluate(points), ufo.evaluate(points), strict=True)
+    ):
+        assert value.real == pytest.approx(expected.real, rel=1e-12, abs=0.0), point
+
+
+@pytest.mark.parametrize("process", _GAUGE_SELF_COUPLING_PROCESSES)
+def test_builtin_sm_gauge_self_couplings_match_in_the_compiled_lane(
+    builtin_and_ufo_runtimes: tuple[Path, Path],
+    builtin_compiled_gauge_runtime: Path,
+    process: str,
+) -> None:
+    """Recurrence = compiled = UFO sm for the triple and quartic gauge vertices."""
+
+    compiled = Runtime.load(builtin_compiled_gauge_runtime, process=process)
+    ufo = Runtime.load(builtin_and_ufo_runtimes[1], process=process)
+    points = [_on_shell_point(process, seed) for seed in (101, 202, 303)]
+    for point, (value, expected) in enumerate(
+        zip(compiled.evaluate(points), ufo.evaluate(points), strict=True)
+    ):
+        assert value.real == pytest.approx(expected.real, rel=1e-12, abs=0.0), point

@@ -1,11 +1,13 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import hashlib
 import importlib
 import inspect
 import json
 import math
 import os
+import warnings
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from copy import deepcopy
@@ -1891,6 +1893,53 @@ class _ProcessGroupExactExecutor:
         return self._inner._diagnostic_project_onshell(momenta, precision=precision)
 
 
+def builtin_model_source_digest() -> str:
+    """The built-in SM source digest an artifact records, as
+    ``models.loading._source_digest('built-in-sm', ...)``, without importing
+    the model."""
+
+    implementation = hashlib.sha256()
+    root = Path(__file__).resolve().parents[1] / "models" / "builtin"
+    for path in sorted(root.glob("*.py")):
+        implementation.update(path.name.encode("utf-8") + b"\0")
+        implementation.update(path.read_bytes())
+        implementation.update(b"\0")
+    digest = hashlib.sha256(b"built-in-sm\0")
+    digest.update(implementation.hexdigest().encode("ascii"))
+    return digest.hexdigest()
+
+
+def _warn_on_older_builtin_model(manifest_root: Path) -> None:
+    """Warn when a built-in-SM artifact comes from another built-in SM source.
+
+    Its values are those of that implementation: built-in-SM tree values were
+    corrected in November 2026 (fully colourless processes, the electroweak
+    gauge and Higgs self-interactions, electroweak currents between quark
+    lines), and an older artifact keeps reproducing the old ones.
+    """
+
+    try:
+        compiled = json.loads(
+            (manifest_root / "model" / "compiled-model.json").read_text(
+                encoding="utf-8"
+            )
+        )
+    except (OSError, ValueError):
+        return
+    source = compiled.get("source") if isinstance(compiled, Mapping) else None
+    if not isinstance(source, Mapping) or source.get("kind") != "built-in-sm":
+        return
+    if source.get("digest") != builtin_model_source_digest():
+        warnings.warn(
+            f"artifact {manifest_root} was generated with another built-in SM "
+            "source; its values follow that implementation (built-in SM tree "
+            "values were corrected in November 2026): regenerate it with this "
+            "pyAmpliCol to use the current built-in SM",
+            UserWarning,
+            stacklevel=3,
+        )
+
+
 def load_runtime_backend(
     artifact: os.PathLike[str] | str,
     *,
@@ -1933,6 +1982,8 @@ def load_runtime_backend(
         if (manifest_root / MANIFEST_NAME).is_file()
         else None
     )
+    if not mute_warnings:
+        _warn_on_older_builtin_model(manifest_root)
     capabilities = (
         ()
         if manifest is None

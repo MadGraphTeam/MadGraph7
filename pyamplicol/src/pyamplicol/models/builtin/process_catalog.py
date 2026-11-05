@@ -270,8 +270,18 @@ def process_uses_inclusive_labels(process: str) -> bool:
 
 
 def request_allows_charged_current(request: ParsedProcess) -> bool:
-    """Return whether built-in request quantum numbers imply charged-current flow."""
+    """Return whether built-in request quantum numbers imply charged-current flow.
 
+    A concrete request names every flavour: whether a W exchange connects
+    them (u d~ > c s~, u s > d c) is a question for its tree amplitudes, not
+    for this inclusive-enumeration pre-filter, which keeps a quark-flavour
+    changing jet subprocess only when the request implies a W.
+    """
+
+    if request.jet_count == 0 and not any(
+        particle in {"p", "j"} for particle in request.initial_state
+    ):
+        return True
     if "w+" in request.rest or "w-" in request.rest:
         return True
     non_qcd_rest = [

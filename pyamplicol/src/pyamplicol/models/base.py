@@ -5,7 +5,7 @@ import math
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from ._physics_ir import (
     ContractionIR,
@@ -26,6 +26,9 @@ from .contact_decomposition import (
     CompiledContactOrbitCertificate,
     CompiledContactOrbitStep,
 )
+
+if TYPE_CHECKING:
+    from ..generation.born_orders import RuntimeNormalizationRequest
 
 
 @dataclass(frozen=True)
@@ -965,10 +968,16 @@ class Model:
         name = provider(int(particle_id))
         return None if name is None else str(name)
 
-    def runtime_normalization_payload(self, dag: Any) -> dict[str, object]:
-        """Return model-owned averaging, symmetry, color, and coupling factors."""
+    def runtime_normalization_payload(
+        self, request: RuntimeNormalizationRequest
+    ) -> dict[str, object]:
+        """Return model-owned averaging, symmetry, color, and coupling factors.
 
-        del dag
+        ``request`` carries the process and, on demand, the coupling orders
+        of its Born amplitudes.
+        """
+
+        del request
         raise NotImplementedError("model does not define runtime normalization")
 
     def runtime_normalization_parameter_defaults(self) -> Mapping[str, float]:
@@ -1424,9 +1433,12 @@ class Model:
     def vertex_closure_allowed(self, vertex: Vertex) -> bool:
         """Return whether a scalar vertex result represents a vacuum closure.
 
-        The legacy built-in model uses auxiliary scalar result particles for a
-        few contact interactions. Generic UFO particles are ordinary currents
-        unless their compiled lowering explicitly introduces such an auxiliary.
+        A model may let a vertex close the full current on the sink leg, with
+        a closure contraction of its result particle (``closure_contraction_ir``),
+        instead of reaching it as a current. The shipped model families do not:
+        the built-in SM carries its auxiliary contact scalars inside the
+        currents and UFO catalogs reach every vertex as a current; both
+        return False.
         """
 
         return True

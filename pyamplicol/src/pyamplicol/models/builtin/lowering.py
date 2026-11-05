@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 from typing import Any
 
 from .._physics_ir import PropagatorIR
@@ -48,9 +49,21 @@ def _as_dirac_current(
     current: tuple[Any, ...],
     chirality: int,
 ) -> tuple[Any, ...]:
+    """A Weyl fermion-pair input in the Dirac basis of the pair kernels.
+
+    A propagated (or external) chirality -1 spinor occupies the lower half
+    of the built-in Dirac spinor, the half the left-handed coupling of the
+    Dirac pair kernel reads (its Weyl kernel pairs chirality -1 fermions
+    with chirality +1 antifermions through the same coupling). The output
+    embedding ``_embed_weyl_current_in_dirac`` places a vertex current, whose
+    spinor index the gamma matrix has flipped, the other way round. Only a
+    pair that joins a massive and a massless fermion meets this: the top and
+    the b in the W current (t b~ > u d~ came out wrong).
+    """
+
     if len(current) == 4:
         return current
-    return _embed_weyl_current_in_dirac(current, chirality)
+    return _embed_weyl_current_in_dirac(current, -chirality)
 
 
 class BuiltinSMLoweringMixin:
@@ -465,6 +478,38 @@ class BuiltinSMLoweringMixin:
         if input_order is not None:
             return VertexEvaluationEquivalence(
                 class_id="builtin-sm:scalar-vector-to-vector",
+                input_order=input_order,
+            )
+
+        # The electroweak gauge and scalar kernels with two same-dimension
+        # inputs: three-vector currents and the vector-pair tensor are
+        # antisymmetric, the vector-pair and scalar-pair scalar currents
+        # symmetric under input exchange. The model table lists both
+        # orientations of each vertex (the antisymmetric ones with opposite
+        # couplings), which a recurrence parent pair must receive once.
+        exchange_factors = {
+            12: (-1.0, 0.0),
+            13: (-1.0, 0.0),
+            17: (1.0, 0.0),
+            20: (1.0, 0.0),
+        }
+        exchange_factor = exchange_factors.get(kind)
+        if exchange_factor is not None:
+            return replace(
+                super().vertex_evaluation_equivalence(kind),
+                input_exchange_factor=exchange_factor,
+            )
+
+        electroweak_tensor_orientations = {
+            14: ((0, 1), (1.0, 0.0)),
+            15: ((1, 0), (-1.0, 0.0)),
+        }
+        relation = electroweak_tensor_orientations.get(kind)
+        if relation is not None:
+            input_order, factor = relation
+            return VertexEvaluationEquivalence(
+                class_id="builtin-sm:electroweak-tensor-vector-to-vector",
+                factor=factor,
                 input_order=input_order,
             )
 

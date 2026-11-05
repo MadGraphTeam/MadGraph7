@@ -974,6 +974,16 @@ def _infer_minimal_coupling_order_limits_from_color_plan(
         ignored_particle_ids=ignored_particle_ids,
         ignored_vertex_kinds=ignored_vertex_kinds,
     )
+    return _minimal_coupling_order_limits_from_totals(totals, model=model)
+
+
+def _minimal_coupling_order_limits_from_totals(
+    totals: Sequence[CouplingOrders],
+    *,
+    model: Model,
+) -> dict[str, int]:
+    """The minimal-order envelope of closure totals, by model hierarchy."""
+
     if not totals:
         return {}
     hierarchies = {

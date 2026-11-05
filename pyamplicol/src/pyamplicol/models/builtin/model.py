@@ -6,8 +6,9 @@ from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
+from ...api.errors import GenerationError
 from .._physics_ir import ContractionIR, ParticleIdentityIR, ParticleOrientation
 from ..base import (
     CouplingOrders,
@@ -29,6 +30,9 @@ from .definitions import BuiltinSMDefinitionMixin
 from .expressions import _builtin_vertex_result_chiralities
 from .lowering import BuiltinSMLoweringMixin
 from .process_catalog import PDGS
+
+if TYPE_CHECKING:
+    from ...generation.born_orders import RuntimeNormalizationRequest
 
 _ELECTRIC_CHARGE_BY_PARTICLE = {
     1: "-1/3",
@@ -650,34 +654,28 @@ class BuiltinSMModel(BuiltinSMLoweringMixin, BuiltinSMDefinitionMixin, BuiltinMo
             raise ValueError(f"non-integer leading-color exponent for {tuple(process)}")
         return 3 ** (exponent_twice // 2)
 
-    def runtime_normalization_payload(self, dag: Any) -> dict[str, object]:
-        """Preserve the established built-in-SM normalization convention."""
+    def runtime_normalization_payload(
+        self, request: RuntimeNormalizationRequest
+    ) -> dict[str, object]:
+        """Spin and colour average, identical final states, coupling factor.
 
-        initial = tuple(int(pdg) for pdg in dag.process.initial_pdgs)
-        final = tuple(int(pdg) for pdg in dag.process.final_pdgs)
+        The average counts each initial state's source spin states and colour
+        dimension; the coupling factor's powers are the Born orders.
+        """
+
+        initial = tuple(int(pdg) for pdg in request.process.initial_pdgs)
+        final = tuple(int(pdg) for pdg in request.process.final_pdgs)
         average_factor = 1
         for pdg in initial:
-            if pdg == 21:
-                average_factor *= 16
-            elif 1 <= abs(pdg) <= 6:
-                average_factor *= 6
-            else:
-                # The physical helicity states of a colour-singlet initial
-                # particle (a decaying W, Z or Higgs as well as a beam): one
-                # for a scalar, three for a massive vector, two otherwise.
-                spin = self.spin(pdg)
-                average_factor *= (
-                    1 if spin == 1 else 3 if spin == 3 and self.mass(pdg) else 2
-                )
+            average_factor *= len(self.source_spin_states(pdg)) * max(
+                1, abs(self.color_rep(pdg))
+            )
         identical_factor = math.prod(
             math.factorial(count) for count in Counter(final).values()
         )
-        electroweak_power = (
-            max(1, len(dag.process.singlet_labels)) if dag.process.singlet_labels else 0
-        )
-        qcd_power = max(0, len(dag.process.legs) - 2 - electroweak_power)
+        qcd_power, electroweak_power = _born_coupling_powers(request)
         return {
-            "color_accuracy": dag.process.color_accuracy,
+            "color_accuracy": request.process.color_accuracy,
             "color_factor": int(self.leading_color_factor((*initial, *final))),
             "average_factor": average_factor,
             "identical_factor": identical_factor,
@@ -702,6 +700,22 @@ class BuiltinSMModel(BuiltinSMLoweringMixin, BuiltinSMDefinitionMixin, BuiltinMo
     def skip_duplicate_vertex_orientation(self, vertex: Vertex) -> bool:
         """Skip mirrored model-table entries already covered by DAG sweeps."""
 
+        return False
+
+    def vertex_closure_allowed(self, vertex: Vertex) -> bool:
+        """No vacuum closures: every built-in contact is a current.
+
+        The auxiliary scalars 125-127 carry the four-point H / V contacts
+        inside the currents (a current of the other three legs reaches the
+        contact), so a closure of the full current with the sink through one
+        more vertex is no diagram of the process: the compiled lane drops it
+        by its extra coupling order, and in the recurrence lane it reached
+        the direct lowering as a closure without contraction coefficients
+        (h h > h h, z z > z z, w+ w- > w+ w- were refused). As for UFO
+        models.
+        """
+
+        del vertex
         return False
 
     def vertex_coupling_orders(self, vertex: Vertex) -> CouplingOrders:
@@ -806,6 +820,45 @@ class BuiltinSMModel(BuiltinSMLoweringMixin, BuiltinSMDefinitionMixin, BuiltinMo
 
     def coupling_order_hierarchies(self) -> dict[str, int]:
         return {"QCD": 1, "QED": 2}
+
+
+def _born_coupling_powers(request: RuntimeNormalizationRequest) -> tuple[int, int]:
+    """(QCD, QED) amplitude coupling orders of the request's Born amplitudes.
+
+    The built-in stage evaluators include the local vertex couplings but not
+    the overall g_s and e; the global factor restores those with these orders
+    as powers. One factor cannot weigh Born amplitudes of different orders
+    against each other, so such a request is refused, as is one without any
+    Born amplitude.
+    """
+
+    process = request.process.process
+    powers: set[tuple[int, int]] = set()
+    for total in request.born_amplitude_orders:
+        orders = {str(name).upper(): int(value) for name, value in total if value}
+        unknown = sorted(set(orders) - {"QCD", "QED"})
+        if unknown:
+            raise GenerationError(
+                f"built-in SM process {process!r} has Born amplitudes of coupling "
+                f"orders {unknown!r} without a built-in normalization"
+            )
+        powers.add((orders.get("QCD", 0), orders.get("QED", 0)))
+    if len(powers) > 1:
+        listed = ", ".join(f"QCD^{qcd} QED^{qed}" for qcd, qed in sorted(powers))
+        raise GenerationError(
+            f"built-in SM process {process!r} has Born amplitudes of several "
+            f"coupling orders ({listed}): its stage evaluators carry no coupling "
+            "constants and its single global coupling factor cannot weigh them "
+            "against each other; restrict process.max_coupling_orders to one "
+            "Born order or use a UFO model"
+        )
+    if not powers:
+        raise GenerationError(
+            f"built-in SM process {process!r} has no model-supported tree-level "
+            "amplitudes (no Born amplitude whose coupling orders could set its "
+            "global coupling factor)"
+        )
+    return next(iter(powers))
 
 
 def _display_name(particle_id: int) -> str:
