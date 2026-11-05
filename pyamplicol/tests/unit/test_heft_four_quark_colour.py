@@ -4,7 +4,7 @@
 Colour-flow gluons are U(N) currents; between fermion lines the U(1) part is
 subtracted by an auxiliary that only fermion vertices absorb. The identity of
 the H g g vertex couples to that part, so its gluon legs must be projected onto
-SU(N) also at tree level (``models.compiler_color_flow.u1_coupling_vertices``).
+SU(N) also at tree level (``models.compiler_color_flow.u1_singlet_identity_vertices``).
 """
 
 from __future__ import annotations
@@ -13,12 +13,18 @@ from decimal import Decimal, localcontext
 from pathlib import Path
 
 from pyamplicol import Generator, ModelSource, ProcessSet, Runtime
+from pyamplicol._internal.sm_heft import compile_sm_heft_source
 from pyamplicol.config import (
     ColorConfig,
     EvaluatorConfig,
     GenerationConfig,
     ProcessConfig,
     RunConfig,
+)
+from pyamplicol.models.compiler_entry import compile_ufo_model_ir
+from pyamplicol.models.contracts import (
+    U1_PROJECTION_SUFFIX,
+    U1_SUBTRACTION_PREFIX,
 )
 
 _PI = Decimal("3.14159265358979323846264338327950288419716939937510582097494")
@@ -148,3 +154,38 @@ def test_four_quark_heft_trees_project_the_internal_gluons_onto_su_n(
                 / (4 * (2 * half_mass) ** 4)
             )
         assert abs(observed / expected - 1) <= Decimal("1e-30")
+
+
+def test_projected_vertices_get_no_singlet_identity_copies() -> None:
+    """The H g g identity gets the auxiliary copies of
+    ``synthesize_u1_singlet_identities`` (two stages ``aux H -> aux``, one
+    closing ``aux aux -> H``) unless its gluon legs are projected by
+    ``synthesize_u1_projections`` (``u1_projected_vertices``, e.g. the R2
+    G G H counterterm of loop_sm in the counterterm closure): never both."""
+
+    payload = dict(compile_sm_heft_source().model)
+    keep = {"g", "H", "u", "u~"}
+    payload["vertex_rules"] = [
+        rule for rule in payload["vertex_rules"] if set(rule["particles"]) <= keep
+    ]
+    assert any(rule["name"] == "V_HEFT_HGG" for rule in payload["vertex_rules"])
+
+    def singlet_copies(projected: frozenset[str]) -> list[tuple[str, ...]]:
+        ir = compile_ufo_model_ir(payload, u1_projected_vertices=projected)
+        return sorted(
+            kernel.particles
+            for kernel in ir.oriented_kernels
+            if kernel.vertex == f"V_HEFT_HGG{U1_PROJECTION_SUFFIX}"
+            and all(
+                name == "H" or name.startswith(U1_SUBTRACTION_PREFIX)
+                for name in kernel.particles
+            )
+        )
+
+    auxiliary = f"{U1_SUBTRACTION_PREFIX}g"
+    assert singlet_copies(frozenset()) == [
+        ("H", auxiliary, auxiliary),
+        (auxiliary, "H", auxiliary),
+        (auxiliary, auxiliary, "H"),
+    ]
+    assert singlet_copies(frozenset({"V_HEFT_HGG"})) == []

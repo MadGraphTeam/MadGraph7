@@ -329,11 +329,15 @@ def compile_ufo_model_ir(
     )
     # Identity vertices between two gluons and colour singlets (the HEFT H g g
     # vertex) carry the U(1) subtraction of the gluons through: nothing else
-    # subtracts it there at tree level.
+    # subtracts it there at tree level. The vertices of
+    # ``u1_projected_vertices`` (e.g. the R2 G G H counterterm of loop_sm in
+    # the counterterm closure) have their gluon legs projected by
+    # ``synthesize_u1_projections`` instead, never by both.
     particles, oriented_kernels = synthesize_u1_singlet_identities(
         particles,
         oriented_kernels,
-        vertices=u1_singlet_identity_vertices(particles, oriented_kernels),
+        vertices=u1_singlet_identity_vertices(particles, oriented_kernels)
+        - frozenset(u1_projected_vertices),
         model_symbols=model_symbols,
     )
     if u1_projected_vertices:
