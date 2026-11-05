@@ -1075,25 +1075,29 @@ PYBIND11_MODULE(_madspace_py, m) {
     // Registered before the classes that take it, for their signatures.
     py::classh<FKSConfiguration>(m, "FKSConfiguration", pydoc::doc("FKSConfiguration"))
         .def(
-            py::init([](std::size_t i_fks,
-                        std::size_t j_fks,
-                        const std::vector<int>& pdgs,
-                        const std::vector<int>& colors,
-                        const std::vector<double>& charges,
-                        const std::vector<double>& masses,
-                        const nested_vector2<std::size_t>& fks_j_from_i,
-                        const std::vector<std::string>& splitting_types) {
-                return FKSConfiguration{
-                    i_fks,
-                    j_fks,
-                    pdgs,
-                    colors,
-                    charges,
-                    masses,
-                    fks_j_from_i,
-                    splitting_types
-                };
-            }),
+            py::init(
+                [](std::size_t i_fks,
+                   std::size_t j_fks,
+                   const std::vector<int>& pdgs,
+                   const std::vector<int>& colors,
+                   const std::vector<double>& charges,
+                   const std::vector<double>& masses,
+                   const nested_vector2<std::size_t>& fks_j_from_i,
+                   const std::vector<std::string>& splitting_types,
+                   const std::vector<bool>& tags) {
+                    return FKSConfiguration{
+                        i_fks,
+                        j_fks,
+                        pdgs,
+                        colors,
+                        charges,
+                        masses,
+                        fks_j_from_i,
+                        splitting_types,
+                        tags
+                    };
+                }
+            ),
             py::arg("i_fks"),
             py::arg("j_fks"),
             py::arg("pdgs"),
@@ -1101,7 +1105,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("charges"),
             py::arg("masses"),
             py::arg("fks_j_from_i"),
-            py::arg("splitting_types") = std::vector<std::string>{"QCD"}
+            py::arg("splitting_types") = std::vector<std::string>{"QCD"},
+            py::arg("tags") = std::vector<bool>{}
         )
         .def_readwrite(
             "i_fks", &FKSConfiguration::i_fks, pydoc::doc("FKSConfiguration::i_fks")
@@ -1132,6 +1137,15 @@ PYBIND11_MODULE(_madspace_py, m) {
             "splitting_types",
             &FKSConfiguration::splitting_types,
             pydoc::doc("FKSConfiguration::splitting_types")
+        )
+        .def_readwrite(
+            "tags", &FKSConfiguration::tags, pydoc::doc("FKSConfiguration::tags")
+        )
+        .def(
+            "tagged",
+            &FKSConfiguration::tagged,
+            py::arg("index"),
+            pydoc::doc("FKSConfiguration::tagged")
         )
         .def(
             "particle_count",

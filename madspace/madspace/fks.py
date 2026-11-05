@@ -13,6 +13,8 @@ madgraph/iolibs/export_fks.py):
         real_pdgs: PDG codes of the real process
         splitting_type: the types of the splitting, QCD or QED, a second
             one with an extra counterterm (extra_cnt_index)
+        real_tags: whether each particle of the real process is tagged (an
+            identified photon, !a!), absent from older exporters
         real_me, need_color_links, need_charge_links, extra_cnt_index
         real_colors, real_charges: color representation (1, 3, -3, 8) and
             electric charge of each particle of the real process
@@ -260,6 +262,7 @@ def fks_configurations(born, configurations):
             masses=real_masses(born_masses, configuration),
             fks_j_from_i=[[j - 1 for j in js] for js in pairs],
             splitting_types=list(configuration["splitting_type"]),
+            tags=[bool(tag) for tag in configuration.get("real_tags", [])],
         )
         # the Born that FKSConfiguration infers from the splitting, which sets
         # the identical-particle ratio of the counterterms

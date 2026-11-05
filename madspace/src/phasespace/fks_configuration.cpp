@@ -110,6 +110,9 @@ std::size_t madspace::check_fks_configurations(
                 }
             }
         }
+        if (!c.tags.empty() && c.tags.size() != n) {
+            fail("the tags of a configuration must be none or one per particle");
+        }
         bool known_types = !c.splitting_types.empty() && c.splitting_types.size() <= 2;
         for (const auto& type : c.splitting_types) {
             known_types = known_types && (type == "QCD" || type == "QED");

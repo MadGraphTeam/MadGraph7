@@ -55,6 +55,9 @@ struct FKSConfiguration {
     /// A second type comes with an extra counterterm, the Born of another
     /// mother (extra_cnt of MadFKS).
     std::vector<std::string> splitting_types{"QCD"};
+    /// Whether each particle of the real process is tagged (PARTICLE_TAG_D),
+    /// an identified photon (!a!) that does not split, empty for none.
+    std::vector<bool> tags;
 
     /// Number of particles of the real process, incoming included.
     std::size_t particle_count() const { return pdgs.size(); }
@@ -62,6 +65,8 @@ struct FKSConfiguration {
     bool initial_state() const { return j_fks < 2; }
     /// Position of the emitter in the Born.
     std::size_t born_j_fks() const { return j_fks < i_fks ? j_fks : j_fks - 1; }
+    /// Whether a particle of the real process is tagged.
+    bool tagged(std::size_t index) const { return !tags.empty() && tags.at(index); }
     /// Whether the (first) splitting type is QED, else QCD.
     bool qed_splitting() const {
         return !splitting_types.empty() && splitting_types.front() == "QED";
@@ -101,8 +106,8 @@ struct FKSConfiguration {
  * Check a list of FKS configurations: at least one, all with real processes of
  * the same number of particles and with every field of that size, i a
  * massless final-state particle, j another particle that forms an FKS pair
- * with it, FKS pairs within the real process and one or two different
- * splitting types, each "QCD" or "QED".
+ * with it, FKS pairs within the real process, one or two different
+ * splitting types, each "QCD" or "QED", and tags for none or all particles.
  *
  * @param configurations  The configurations.
  * @param user            Name of the caller, for the error messages.

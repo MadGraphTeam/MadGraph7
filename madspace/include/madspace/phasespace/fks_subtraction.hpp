@@ -267,7 +267,8 @@ private:
  * @f$C_j = 0@f$, @f$\gamma_j = -2 (3 \sum_q Q_q^2 + n_l) / 3@f$ and
  * @f$\gamma'_j = -23 (3 \sum_q Q_q^2 + n_l) / 9@f$, the sum over the
  * @f$n_f@f$ light quarks, down-type first, and @f$n_l@f$ massless leptons.
- * The photons are untagged (no particle_tag). The result is in the
+ * Tagged photons (FKSConfiguration::tags, identified photons !a!) have no Q
+ * terms, as in bornsoftvirtual. The result is in the
  * normalization of the Born, so that @f$B@f$ plus soft_virtual plus the finite
  * part of the virtual in the conventions of MadFKS is the n-body part per unit
  * Born phase space.

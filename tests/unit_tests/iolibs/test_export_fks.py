@@ -266,8 +266,10 @@ class TestFKSConfigurationsJson(unittest.TestCase):
                                real_processes=list(real_processes))
 
     @staticmethod
-    def real(colors, charges, fks_j_from_i):
+    def real(colors, charges, fks_j_from_i, tags=None):
+        tags = tags if tags is not None else [False] * len(colors)
         return SimpleNamespace(colors=colors, charges=charges,
+                               particle_tags=tags,
                                fks_j_from_i=fks_j_from_i, isfinite=False)
 
     @staticmethod
@@ -289,7 +291,8 @@ class TestFKSConfigurationsJson(unittest.TestCase):
             self.info(1, [2, 21, 2, 11, -11, 21], 6, 1, 2, True),
             self.info(2, [21, 21, 2, 11, -11, -2], 6, 1, 2, False)], [
             self.real([3, 8, 3, 1, 1, 8], charges + [0.],
-                      {1: [], 2: [], 3: [], 4: [], 5: [], 6: [1, 2, 3]}),
+                      {1: [], 2: [], 3: [], 4: [], 5: [], 6: [1, 2, 3]},
+                      [False, False, False, True, False, False]),
             self.real([8, 8, 3, 1, 1, -3], [0., 0.] + charges[2:] + [-2 / 3],
                       {1: [], 2: [], 3: [], 4: [], 5: [], 6: [2]})])
         data = export_fks.get_fks_configurations(fksborn)
@@ -302,6 +305,7 @@ class TestFKSConfigurationsJson(unittest.TestCase):
              'splitting_type': ['QCD'], 'extra_cnt_index': -1,
              'real_colors': [3, 8, 3, 1, 1, 8],
              'real_charges': charges + [0.],
+             'real_tags': [False, False, False, True, False, False],
              'fks_j_from_i': [[], [], [], [], [], [1, 2, 3]]},
             {'i_fks': 6, 'j_fks': 1, 'ij_pdg': 2,
              'real_pdgs': [21, 21, 2, 11, -11, -2], 'real_me': 2,
@@ -309,6 +313,7 @@ class TestFKSConfigurationsJson(unittest.TestCase):
              'splitting_type': ['QCD'], 'extra_cnt_index': -1,
              'real_colors': [8, 8, 3, 1, 1, -3],
              'real_charges': [0., 0.] + charges[2:] + [-2 / 3],
+             'real_tags': [False] * 6,
              'fks_j_from_i': [[], [], [], [], [], [2]]}])
         exporter = object.__new__(export_fks.ProcessExporterFortranFKS)
         with tempfile.TemporaryDirectory() as path:

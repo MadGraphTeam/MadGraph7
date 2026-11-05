@@ -176,6 +176,63 @@ def test_qed_has_no_running():
     np.testing.assert_allclose(fact_doubled, 2.0 * fact, rtol=1e-14)
 
 
+def test_tagged_photons():
+    """A tagged photon (an identified one, !a!) has no Q terms: tagging the
+    photon of the Born of u u~ > e- e+ a removes a B Q_a, with the gamma and
+    gamma' of the photon from n_f and n_l, and nothing else."""
+    data = reference(FKS_DATA[FKS_DATA_IDS.index("pp_epema_qed_P0_uux_emepa")])
+    rows, args = rows_and_arguments(data)
+    born = born_mapping(data)
+    configurations = fks_configurations(born, data["fks_configurations"])
+    orders = fks_coupling_orders(data["fks_configurations"])
+    photon = data["fks_configurations"]["born_pdgs"].index(22)
+    tagged = []
+    for config in configurations:
+        # the Born photon in the real process, after i, unless it is the
+        # emitter j split into a pair (which a tagged photon never is)
+        position = photon if photon < config.i_fks else photon + 1
+        assert not config.tagged(position)
+        if config.pdgs[position] == 22:
+            config.tags = [k == position for k in range(config.particle_count())]
+            assert config.tagged(position)
+        else:
+            assert config.j_fks == position
+        tagged.append(config)
+    assert configurations[0].pdgs[configurations[0].i_fks] == 22
+    subtraction = data["subtraction"]
+    parameters = dict(
+        xicut=subtraction["xicut"],
+        delta_o=subtraction["delta_o"],
+        n_f=data["n_f"],
+        n_l=data["n_l"],
+    )
+    value, ren, fact = evaluate(soft_virtual(data), *args)
+    value_tagged, ren_tagged, fact_tagged = evaluate(
+        ms.FKSSoftVirtual(tagged, orders, **parameters), *args
+    )
+    # the photon is in the final state, so the coefficients stay
+    np.testing.assert_array_equal(ren_tagged, ren)
+    np.testing.assert_array_equal(fact_tagged, fact)
+    momenta = args[0]
+    p_tot = momenta[:, 0] + momenta[:, 1]
+    s = p_tot[:, 0] ** 2 - (p_tot[:, 1:] ** 2).sum(1)
+    p = momenta[:, photon]
+    energy = (p[:, 0] * p_tot[:, 0] - (p[:, 1:] * p_tot[:, 1:]).sum(1)) / np.sqrt(s)
+    charges = sum(
+        4 / 9 if f % 2 == 0 else 1 / 9 for f in range(1, round(data["n_f"]) + 1)
+    )
+    gamma = -(3 * charges + data["n_l"]) * 2 / 3
+    gamma_prime = -(3 * charges + data["n_l"]) * 23 / 9
+    mu_r2 = args[5] ** 2
+    l_o = np.log(s * subtraction["delta_o"] / (2 * mu_r2))
+    l_e = np.log(2 * energy / np.sqrt(s))
+    q_photon = gamma_prime - l_o * gamma - 2 * gamma * l_e
+    a = args[4] / (2 * np.pi)
+    np.testing.assert_allclose(
+        (value - value_tagged)[:, 0], a * args[1][:, 0] * q_photon, rtol=1e-12
+    )
+
+
 def test_parameters():
     data = reference(FKS_DATA[FKS_DATA_IDS.index("pp_ttx_P0_gg_ttx")])
     born = born_mapping(data)

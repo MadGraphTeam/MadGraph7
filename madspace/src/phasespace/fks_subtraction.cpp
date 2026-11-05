@@ -353,7 +353,8 @@ FKSSoftVirtual::FKSSoftVirtual(
         double mass = config.masses.at(r), charge = config.charges.at(r);
         bool gluon = mass == 0. && color == 8;
         bool quark = mass == 0. && std::abs(color) == 3;
-        bool photon = mass == 0. && config.pdgs.at(r) == 22;
+        // a tagged photon (an identified one, !a!) has no Q terms
+        bool photon = mass == 0. && config.pdgs.at(r) == 22 && !config.tagged(r);
         bool charged = mass == 0. && charge != 0.;
         double q2 = charge * charge;
         _masses.push_back(mass);

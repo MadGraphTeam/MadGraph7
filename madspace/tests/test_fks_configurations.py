@@ -150,6 +150,7 @@ def test_fks_configurations_of_the_exporter(path):
         ]
         assert config.masses == real_masses(born.external_masses(), exp)
         assert config.splitting_types == exp["splitting_type"]
+        assert config.tags == exp.get("real_tags", [])
         assert config.qed_splitting() == (exp["splitting_type"][0] == "QED")
         assert config.particle_count() == len(exp["real_pdgs"])
         assert config.initial_state() == (exp["j_fks"] <= 2)

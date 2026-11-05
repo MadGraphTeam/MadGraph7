@@ -116,6 +116,8 @@ def get_fks_configurations(fksborn, orders=None):
                 process (1, 3, -3, 8), PARTICLE_TYPE_D of fks_info.inc
             real_charges: electric charge of each particle of the real
                 process, PARTICLE_CHARGE_D
+            real_tags: whether each particle of the real process is tagged
+                (!a! for an identified photon), PARTICLE_TAG_D
             fks_j_from_i: for each particle i of the real process (position
                 i - 1), the particles j with which it forms an FKS pair, all
                 1-based, FKS_J_FROM_I_D: the pairs whose sector functions
@@ -158,6 +160,7 @@ def get_fks_configurations(fksborn, orders=None):
             'extra_cnt_index': fks_info['extra_cnt_index'],
             'real_colors': list(real.colors),
             'real_charges': list(real.charges),
+            'real_tags': [bool(tag) for tag in real.particle_tags],
             'fks_j_from_i': fks_j_from_i,
         })
     data = {
