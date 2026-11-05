@@ -838,8 +838,9 @@ def _born_coupling_powers(request: RuntimeNormalizationRequest) -> tuple[int, in
         )
     if not powers:
         raise GenerationError(
-            f"built-in SM process {process!r} has no Born amplitude whose "
-            "coupling orders could set its global coupling factor"
+            f"built-in SM process {process!r} has no model-supported tree-level "
+            "amplitudes (no Born amplitude whose coupling orders could set its "
+            "global coupling factor)"
         )
     return next(iter(powers))
 

@@ -19,9 +19,12 @@ from ..models.base import CouplingOrders, Model, Vertex
 from ..processes.ir import CanonicalProcessIR
 from .dag_algorithms import (
     _closure_totals_from_color_plan,
-    _infer_minimal_coupling_order_limits_from_color_plan,
+    _minimal_coupling_order_limits_from_totals,
 )
-from .dag_reachability import _combine_coupling_order_tuples
+from .dag_reachability import (
+    _combine_coupling_order_tuples,
+    _coupling_orders_within_limits,
+)
 from .dag_types import GenericDAG
 
 
@@ -114,8 +117,10 @@ def process_born_amplitude_orders(
 ) -> frozenset[CouplingOrders]:
     """Total coupling orders of the closures a generation admits, pre-DAG.
 
-    ``max_coupling_orders`` are the generation's limits; ``minimal`` first
-    narrows them to the minimal-order envelope, as generation does.
+    ``max_coupling_orders`` are the generation's limits; ``minimal`` narrows
+    them to the minimal-order envelope, as generation does. Coupling orders
+    only grow along a recursion, so the closures within the envelope are the
+    envelope's subset of those within the limits: one sweep serves both.
     """
 
     if color_plan is None:
@@ -126,22 +131,18 @@ def process_born_amplitude_orders(
                 model.lc_trace_reflection_equivalence_is_proven(process)
             ),
         )
-    limits = dict(max_coupling_orders or {})
-    if minimal:
-        limits = (
-            _infer_minimal_coupling_order_limits_from_color_plan(
-                process,
-                model=model,
-                color_plan=color_plan,
-                max_coupling_orders=limits or None,
-            )
-            or limits
-        )
-    return frozenset(
-        _closure_totals_from_color_plan(
-            process,
-            model=model,
-            color_plan=color_plan,
-            max_coupling_orders=limits or None,
-        )
+    totals = _closure_totals_from_color_plan(
+        process,
+        model=model,
+        color_plan=color_plan,
+        max_coupling_orders=dict(max_coupling_orders or {}) or None,
     )
+    if minimal:
+        envelope = _minimal_coupling_order_limits_from_totals(totals, model=model)
+        if envelope:
+            totals = tuple(
+                total
+                for total in totals
+                if _coupling_orders_within_limits(total, envelope)
+            )
+    return frozenset(totals)
