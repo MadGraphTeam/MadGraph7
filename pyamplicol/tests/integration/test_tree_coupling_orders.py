@@ -1120,11 +1120,12 @@ def test_cli_prints_partials_and_rejects_non_recurrence_lanes(
 
 # The built-in SM against this UFO 'sm' (same masses and widths of every leg
 # and propagator involved, alpha = 1/132.507, alpha_s = 0.118): fully
-# colourless processes, whose built-in global coupling factor took the number
-# of colour-singlet legs as its electroweak power (the analytic checks are
-# test_builtin_sm_normalization), and massive-vector or scalar initial states,
-# which it averaged over two spin states. The W-pair rows differ for reasons
-# independent of the normalization and stay recorded as strict xfails.
+# colourless processes and decays, whose built-in global coupling factor took
+# the number of colour-singlet legs as its electroweak power (the analytic
+# checks are test_builtin_sm_normalization), and massive-vector or scalar
+# initial states, which it averaged over two spin states. The W-pair rows
+# differ for reasons independent of the normalization and stay recorded as
+# strict xfails.
 _BUILTIN_VS_UFO_PROCESSES = (
     "e+ e- > a a",
     "e+ e- > a a a",
@@ -1133,22 +1134,32 @@ _BUILTIN_VS_UFO_PROCESSES = (
     "e+ e- > z z",
     "z z > e+ e-",
     "h z > e+ e-",
+    "z > e+ e-",
     "u u~ > a a",
     "e+ e- > u u~ g",
     "g g > g g",
     "e+ e- > w+ w-",
     "u u~ > w+ w-",
+    "a a > w+ w-",
+)
+# The built-in recurrence lane (this comparison's lane) gives a a > w+ w-
+# 16 times and e+ e- > w+ w- 4 times the built-in compiled lane, whose
+# a a > w+ w- equals the UFO: a factor 2 per W W photon / Z gauge coupling.
+_RECURRENCE_GAUGE_VERTICES = (
+    "the built-in recurrence lane carries a factor 2 per W W photon / Z gauge "
+    "coupling (the built-in compiled lane agrees with the UFO)"
 )
 _BUILTIN_VS_UFO_KNOWN = {
     "e+ e- > w+ w-": (
         "the built-in SM has no lepton + W -> neutrino vertex orientation (nor a "
         "neutrino-Z coupling): the t-channel neutrino exchange is absent in "
-        "every lane"
+        f"every lane; and {_RECURRENCE_GAUGE_VERTICES}"
     ),
     "u u~ > w+ w-": (
-        "the built-in recurrence lane differs from the UFO by a point-dependent "
-        "ratio; the built-in compiled lane agrees with it"
+        f"{_RECURRENCE_GAUGE_VERTICES}: the doubled s-channel interferes with "
+        "the t-channel quark exchange, a point-dependent ratio"
     ),
+    "a a > w+ w-": f"{_RECURRENCE_GAUGE_VERTICES}: 16 times the UFO",
 }
 
 
@@ -1185,24 +1196,28 @@ def builtin_and_ufo_runtimes(
 
 
 def _on_shell_point(process: str, seed: int, root: float = 500.0) -> list:
-    """Built-in masses: on-shell beams along z and a RAMBO final state."""
+    """Built-in masses: a RAMBO final state of on-shell beams along z at
+    sqrt(s) = ``root``, or of a decaying particle at rest."""
 
     model = BuiltinSMModel()
     ir = build_process_ir(process)
-    m1, m2 = (model.mass(pdg) for pdg in ir.initial_pdgs)
-    s = root * root
-    p = math.sqrt((s - (m1 + m2) ** 2) * (s - (m1 - m2) ** 2)) / (2 * root)
+    initial = [model.mass(pdg) for pdg in ir.initial_pdgs]
+    if len(initial) == 1:
+        root = initial[0]
     final = massive_rambo_final_state(
         len(ir.final_pdgs),
         sqrt_s=root,
         masses=[model.mass(pdg) for pdg in ir.final_pdgs],
         seed=seed,
     )
-    return [
-        [math.hypot(p, m1), 0.0, 0.0, p],
-        [math.hypot(p, m2), 0.0, 0.0, -p],
-        *(list(momentum) for momentum in final),
-    ]
+    if len(initial) == 1:
+        beams = [[root, 0.0, 0.0, 0.0]]
+    else:
+        m1, m2 = initial
+        s = root * root
+        p = math.sqrt((s - (m1 + m2) ** 2) * (s - (m1 - m2) ** 2)) / (2 * root)
+        beams = [[math.hypot(p, m1), 0.0, 0.0, p], [math.hypot(p, m2), 0.0, 0.0, -p]]
+    return [*beams, *(list(momentum) for momentum in final)]
 
 
 @pytest.mark.parametrize(

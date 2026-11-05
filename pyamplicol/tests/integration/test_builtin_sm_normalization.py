@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: 0BSD
 """Tree normalization of the built-in SM against analytic QED and Z exchange.
 
-The built-in stage evaluators carry no coupling constants: the global factor
-(4 pi alpha_s)^QCD (8 pi alpha)^QED restores them, with the coupling orders
-of the Born amplitudes as powers (``generation.born_orders``). The powers
-used to be the number of colour-singlet legs, which equals the QED order only
-when the process has coloured legs: every fully colourless process came out
-(8 pi alpha)^2 = 4 e^4 too small (a factor 27.797 at alpha = 1/132.507).
+The built-in stage evaluators include the local vertex couplings but not the
+overall g_s and e: the global factor (4 pi alpha_s)^QCD (8 pi alpha)^QED
+restores them, with the coupling orders of the Born amplitudes as powers
+(``generation.born_orders``). The powers used to be the number of
+colour-singlet legs, which equals the QED order only when the process has
+coloured legs: every fully colourless process came out (8 pi alpha)^2 = 4 e^4
+too small (a factor 27.797 at alpha = 1/132.507), colourless decays such as
+z > e+ e- included.
 The built-in-vs-UFO comparison is
 ``test_tree_coupling_orders.test_builtin_sm_matches_the_ufo_sm``.
 """
@@ -39,7 +41,7 @@ from pyamplicol.models.builtin.process_ir import build_process_ir
 ALPHA = 1.0 / 132.507
 SIN_W = 0.47143025548407230
 MZ, WZ = 91.188, 2.441404
-_COLOURLESS = ("e+ e- > a a", "mu+ mu- > a a", "e+ e- > mu+ mu-")
+_COLOURLESS = ("e+ e- > a a", "mu+ mu- > a a", "e+ e- > mu+ mu-", "z > e+ e-")
 
 
 def _config(
@@ -64,9 +66,15 @@ def _config(
     )
 
 
-def _points() -> list[list[tuple[float, float, float, float]]]:
-    """Massless 2 -> 2 points: on the Z peak, above it and far below it."""
+def _points(process: str = "") -> list[list[tuple[float, float, float, float]]]:
+    """Massless 2 -> 2 points: on the Z peak, above it and far below it; for
+    a decay, the decaying particle at rest at its mass and three angles."""
 
+    if process.startswith("z >"):
+        return [
+            _decay_point(theta, phi)
+            for theta, phi in ((0.7, 0.3), (2.1, 1.1), (1.3, 2.0))
+        ]
     points = []
     for energy, theta, phi in ((45.594, 0.7, 0.3), (250.0, 2.1, 1.1), (5.0, 1.3, 2.0)):
         x = energy * math.sin(theta) * math.cos(phi)
@@ -81,6 +89,14 @@ def _points() -> list[list[tuple[float, float, float, float]]]:
             ]
         )
     return points
+
+
+def _decay_point(theta: float, phi: float) -> list[tuple[float, float, float, float]]:
+    energy = MZ / 2
+    x = energy * math.sin(theta) * math.cos(phi)
+    y = energy * math.sin(theta) * math.sin(phi)
+    z = energy * math.cos(theta)
+    return [(MZ, 0.0, 0.0, 0.0), (energy, x, y, z), (energy, -x, -y, -z)]
 
 
 def _invariant(a, b) -> float:
@@ -120,15 +136,36 @@ def _lepton_pair_with_z(point) -> float:
     return same * u * u + opposite * t * t
 
 
+def _z_to_lepton_pair(point) -> float:
+    """z > l+ l- (massless): (2/3) MZ^2 e^2 (g_L^2 + g_R^2) / (s_w c_w)^2,
+    averaged over the three Z helicities, at any decay angle; g_L = T3 - Q s_w^2
+    and g_R = -Q s_w^2 with Q = -1, T3 = -1/2."""
+
+    del point
+    cos_w = math.sqrt(1 - SIN_W**2)
+    charge, isospin = -1.0, -0.5
+    left, right = isospin - charge * SIN_W**2, -charge * SIN_W**2
+    return (
+        (2 / 3)
+        * MZ**2
+        * 4
+        * math.pi
+        * ALPHA
+        * (left**2 + right**2)
+        / (SIN_W * cos_w) ** 2
+    )
+
+
 _ANALYTIC = {
     "e+ e- > a a": _annihilation_to_photons,
     "mu+ mu- > a a": _annihilation_to_photons,
     "e+ e- > mu+ mu-": _lepton_pair_with_z,
+    "z > e+ e-": _z_to_lepton_pair,
 }
 
 
 def _assert_analytic(runtime: Runtime, process: str) -> None:
-    points = _points()
+    points = _points(process)
     for point, value in zip(points, runtime.evaluate(points), strict=True):
         expected = _ANALYTIC[process](point)
         assert value.imag == 0.0
