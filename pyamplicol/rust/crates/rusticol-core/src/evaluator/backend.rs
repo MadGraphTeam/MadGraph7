@@ -3111,8 +3111,9 @@ sys.stdout.buffer.write(evaluator.save())
             .expect("launch Python Symbolica producer (or set PYAMPLICOL_TEST_PYTHON)");
         assert!(
             producer.status.success(),
-            "Python evaluator producer failed: {}",
-            String::from_utf8_lossy(&producer.stderr)
+            "Python evaluator producer failed: {}{}",
+            String::from_utf8_lossy(&producer.stderr),
+            String::from_utf8_lossy(&producer.stdout)
         );
         let (_, exact, _) = load_evaluator_state_bytes(&producer.stdout, "Python Evaluator.save()")
             .expect(
@@ -3149,8 +3150,6 @@ sys.stdout.buffer.write(evaluator.save())
     /// its import name, with the same values.
     #[test]
     fn python_saved_evaluator_with_a_conflicting_symbol_loads() {
-        let (native,) =
-            symbolica::symbol!("pyamplicol_conflict::q"; tags = ["pyamplicol_conflict::native"]);
         let python = std::env::var_os("PYAMPLICOL_TEST_PYTHON").unwrap_or_else(|| "python3".into());
         let producer = std::process::Command::new(python)
             .env("SYMBOLICA_HIDE_BANNER", "1")
@@ -3170,9 +3169,14 @@ sys.stdout.buffer.write(evaluator.save())
             .expect("launch Python Symbolica producer (or set PYAMPLICOL_TEST_PYTHON)");
         assert!(
             producer.status.success(),
-            "Python evaluator producer failed: {}",
-            String::from_utf8_lossy(&producer.stderr)
+            "Python evaluator producer failed: {}{}",
+            String::from_utf8_lossy(&producer.stderr),
+            String::from_utf8_lossy(&producer.stdout)
         );
+        // Defined after the producer ran: an unlicensed (restricted) Symbolica
+        // admits one process at a time.
+        let (native,) =
+            symbolica::symbol!("pyamplicol_conflict::q"; tags = ["pyamplicol_conflict::native"]);
         let (_, exact, _) = load_evaluator_state_bytes(&producer.stdout, "Python Evaluator.save()")
             .expect("a conflicting producer symbol loads under its import name");
         evaluate_saved(&exact, Rational::to_f64, 1e-14);
