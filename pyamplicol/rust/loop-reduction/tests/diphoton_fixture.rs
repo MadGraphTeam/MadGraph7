@@ -13,10 +13,7 @@ use symbolica::{
 };
 
 fn fixture() -> Value {
-    serde_json::from_str(include_str!(
-        "../../../tools/loop_reference/diphoton_r2.json"
-    ))
-    .unwrap()
+    serde_json::from_str(include_str!("fixtures/diphoton_r2.json")).unwrap()
 }
 
 fn check<T: NativeFloat>(prototype: T, digits: u64)

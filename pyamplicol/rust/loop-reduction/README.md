@@ -97,7 +97,7 @@ and epsilon-sector ordering. They establish only these anchors, not the full
 scalar-integral domain or process-level correctness.
 
 `cargo test --locked --test diphoton_fixture` connects the independent Community
-dimensional-algebra fixture in `tools/loop_reference/diphoton_r2.json` to the
+dimensional-algebra fixture in `tests/fixtures/diphoton_r2.json` to the
 reducer. It preserves rational inputs and verifies the evanescent remainder in
 all three arithmetic modes, including changing batch sizes and epsilon-sector
 assembly. This internal fixture does not enable loop-induced production.
