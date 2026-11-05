@@ -83,6 +83,7 @@ grep -v '^#' ${spec} | while read tag ccProc gencmd; do
   mgfile=${procdir}/CUDACPP/${ccSa}.mg
   cat > ${mgfile} << EOF
 set stdout_level DEBUG
+set apply_flavor_grouping False --no_save
 set zerowidth_tchannel F
 ${gencmd}
 output standalone_cudacpp ${procdir}/CUDACPP/${ccSa} ${vfoldopt}
