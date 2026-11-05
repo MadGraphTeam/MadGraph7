@@ -144,7 +144,9 @@ jobs:
       group: "pyamplicol-symbolica-${{ startsWith(matrix.runner, 'macos-') && matrix.runner || format('{0}-{1}', matrix.runner, github.run_id) }}"
       cancel-in-progress: false
       queue: max
-    timeout-minutes: 90
+    # The Intel macOS consumer builds the bootstrap wheel from source and needs
+    # more than 90 minutes on macos-15-intel (cancelled at 90 twice).
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
