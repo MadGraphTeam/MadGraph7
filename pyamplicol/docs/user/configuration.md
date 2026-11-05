@@ -210,7 +210,16 @@ contraction = "auto"            # auto, direct, or symmetric-group-fft
 fft_basis = "adjoint"           # trace or adjoint; used by FFT contraction
 lc_flow_layout = "topology-replay"
 graded = false                  # split trees by power of N_c
+adjoint_dense_max_gluons = 12   # tuning: automatic DDM basis up to this size
+fused_selector_max_sectors = 128 # tuning: all-colour selector lane bound
 ```
+
+The last two are tuning settings with no effect on capability: above
+`adjoint_dense_max_gluons` adjoint labels the automatic tree basis prefers the
+(equally exact) trace basis, and above `fused_selector_max_sectors` colour
+sectors no auxiliary all-colour lane is built for runtime helicity selection
+(topology replay then runs once per sector; omit the key's bound with
+`--set color.fused_selector_max_sectors=null` to always build it).
 
 | Accuracy | Resolved color output |
 | --- | --- |
@@ -420,6 +429,7 @@ seed = 12345
 relative_tolerance = 1e-12
 absolute_tolerance = 1e-300
 post_build_validation = false
+max_resolved_components = 1000000  # null: check every resolved component
 ```
 
 Generation validation checks symbolic/numerical construction before

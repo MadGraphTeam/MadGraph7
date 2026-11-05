@@ -23,8 +23,10 @@ from itertools import chain, permutations
 import numpy as np
 
 # The largest ladder whose dense kernel is built (two anchors plus the
-# symmetric-group FFT degree of ten), and the size up to which the automatic
-# tree basis choice prefers DDM.  A resource choice, not a cap.
+# symmetric-group FFT degree of ten); larger ladders give the same exact
+# integers from ``ladder_overlap``.  A resource choice, not a cap.  The
+# automatic tree basis choice has its own tuning setting with the same
+# default (``color.adjoint_dense_max_gluons``).
 DENSE_ADJOINT_GLUONS = 12
 _INT64_MAX = int(np.iinfo(np.int64).max)
 
@@ -38,15 +40,31 @@ def _check_arguments(
         raise ValueError(f"unknown adjoint colour accuracy {accuracy!r}")
     if type(nc) is not int or nc < 2:
         raise ValueError("adjoint colour kernel requires integer Nc >= 2")
-    if type(full_col_acc) is not int or full_col_acc < 0:
-        raise ValueError("adjoint full-colour accuracy must be nonnegative")
+    if full_col_acc is not None and (
+        type(full_col_acc) is not int or full_col_acc < 0
+    ):
+        raise ValueError("adjoint full-colour accuracy must be None or nonnegative")
 
 
-def _minimum_power(total_gluons: int, accuracy: str, full_col_acc: int) -> int:
+def _minimum_power(
+    total_gluons: int, accuracy: str, full_col_acc: int | None
+) -> int:
     """The lowest U(Nc) trace-pair power kept by an accuracy."""
 
-    depth = 2 * full_col_acc if accuracy == "full" else 2 if accuracy == "nlc" else 0
+    if accuracy == "full":
+        return full_minimum_power(total_gluons, full_col_acc)
+    depth = 2 if accuracy == "nlc" else 0
     return max(total_gluons - depth, 0)
+
+
+def full_minimum_power(coloured_labels: int, full_col_acc: int | None) -> int:
+    """The lowest N_c power a 'full' colour factor keeps: none dropped
+    (``full_col_acc`` None, every caller's default), or the legacy depth of
+    ``2 * full_col_acc`` powers below the leading one."""
+
+    if full_col_acc is None:
+        return 0
+    return max(coloured_labels - 2 * full_col_acc, 0)
 
 
 def _permutation_ranks(rows: np.ndarray) -> np.ndarray:
@@ -97,7 +115,7 @@ def adjoint_color_kernel(
     *,
     accuracy: str = "full",
     nc: int = 3,
-    full_col_acc: int = 20,
+    full_col_acc: int | None = None,
 ) -> np.ndarray:
     """Return an immutable exact relative DDM kernel in lexicographic order.
 
@@ -208,7 +226,7 @@ def ladder_overlap(
     *,
     accuracy: str,
     nc: int = 3,
-    full_col_acc: int = 20,
+    full_col_acc: int | None = None,
     batch: int = 1 << 20,
 ) -> int:
     """One exact DDM overlap <H(left)|H(right)> for any number of gluons.
@@ -240,7 +258,11 @@ def ladder_overlap(
     right_signs, right_words = _ladder_traces(tuple(position[a] for a in right))
     predecessor = _cyclic_neighbours(left_words, -1)
     successor = _cyclic_neighbours(right_words, 1)
-    totals = np.zeros(n + 1, dtype=np.int64)
+    # Each power collects at most 4^(n-2) signed unit terms: exact int64
+    # while that fits, Python integers beyond (never a silent wrap).
+    totals = np.zeros(
+        n + 1, dtype=np.int64 if 4 ** (n - 2) <= _INT64_MAX else object
+    )
     step = max(1, batch // len(right_words))
     for start in range(0, len(left_words), step):
         block = predecessor[start : start + step]
@@ -251,6 +273,8 @@ def ladder_overlap(
             axis=2,
         ).reshape(-1, n)
         signs = np.outer(left_signs[start : start + step], right_signs).reshape(-1)
+        if totals.dtype == object:
+            signs = signs.astype(object)
         np.add.at(totals, _permutation_cycles(images), signs)
     minimum = _minimum_power(n, accuracy, full_col_acc)
     return sum(
@@ -266,7 +290,7 @@ def adjoint_color_factor(
     *,
     accuracy: str,
     nc: int = 3,
-    full_col_acc: int = 20,
+    full_col_acc: int | None = None,
 ) -> int:
     """Evaluate one DDM overlap from its middle-label relative permutation.
 

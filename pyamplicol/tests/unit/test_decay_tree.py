@@ -274,3 +274,115 @@ emit_api_bundle = false
     for momenta in ([[float(x) for x in leg] for leg in rotated], boosted):
         (value,) = runtime.evaluate([momenta])
         assert abs(complex(value - reference)) <= 1e-12 * abs(reference), row
+
+
+# ------------------------------------------------------- built-in SM decays
+
+SM_UFO = ROOT / "src/pyamplicol/assets/models/json/sm"
+
+
+@pytest.fixture(scope="module")
+def ufo_sm_ir():
+    from pyamplicol.models import compile_model_source
+
+    return compile_model_source(
+        SM_UFO / "sm.json",
+        restriction=str((SM_UFO / "restrict_default.json").resolve()),
+        use_cache=False,
+    ).ir
+
+
+def _legs(ir):
+    return [
+        (
+            leg.label,
+            leg.side,
+            leg.pdg,
+            leg.outgoing_pdg,
+            leg.color_role,
+            leg.statistics,
+            leg.wavefunction_family,
+        )
+        for leg in ir.legs
+    ]
+
+
+@pytest.mark.parametrize(
+    "expression",
+    ["t > b w+", "h > b b~", "z > u u~ g", "w+ > u d~", "u u~ > d d~ g", "g g > t t~"],
+)
+def test_builtin_sm_parses_decays_like_the_model_neutral_path(expression, ufo_sm_ir):
+    """The built-in SM process parser takes one initial particle (a decay)
+    or two, as the model-neutral one (formerly exactly two): the same legs,
+    sides and labels."""
+
+    from pyamplicol.models.builtin.process_ir import build_process_ir
+    from pyamplicol.models.builtin.process_selection import (
+        enumerate_generic_process_set,
+    )
+    from pyamplicol.processes.model import build_model_process_ir
+
+    builtin = build_process_ir(expression)
+    assert _legs(builtin) == _legs(build_model_process_ir(expression, ufo_sm_ir))
+    (entry,) = enumerate_generic_process_set(expression).entries
+    assert entry.process == expression
+
+
+def test_builtin_sm_refuses_processes_without_one_or_two_initial_particles():
+    from pyamplicol.models.builtin.process_enumeration import ProcessEnumerator
+
+    for expression in ("u u~ g > z", "t >", "t > b"):
+        with pytest.raises(ValueError, match="pyAmpliCol processes"):
+            ProcessEnumerator().parse(expression)
+
+
+@pytest.mark.parametrize(
+    ("expression", "masses"),
+    [
+        ("w+ > u d~", ("80.41900244575616", "0", "0")),
+        ("z > u u~ g", ("91.188", "0", "0", "0")),
+    ],
+)
+def test_builtin_sm_decays_equal_the_model_neutral_path(expression, masses, tmp_path):
+    """A decay generated with model.source = 'built-in-sm' equals the shipped
+    sm UFO (default restriction, the same parameters) at exact rest-frame
+    points: the decaying particle is incoming and averaged over its own
+    helicity states (three for a massive vector)."""
+
+    from pyamplicol import Generator, ModelSource, ProcessSet, Runtime
+    from pyamplicol.config import (
+        ColorConfig,
+        EvaluatorConfig,
+        GenerationConfig,
+        RunConfig,
+    )
+
+    def generate(model, tag):
+        output = tmp_path / tag
+        config = RunConfig(
+            action="generate",
+            color=ColorConfig(accuracy="full"),
+            evaluator=EvaluatorConfig(backend="jit", execution_mode="compiled"),
+            generation=GenerationConfig(workers=1, emit_api_bundle=False),
+        )
+        Generator(config).generate(
+            ProcessSet.from_expressions((expression,), names=("p",)),
+            output,
+            model=model,
+        )
+        return Runtime.load(output, process="p")
+
+    builtin = generate(ModelSource.built_in_sm(), "builtin")
+    ufo = generate(
+        ModelSource.from_path(SM_UFO / "sm.json", restriction="default"), "ufo"
+    )
+    states = [particle.state for particle in builtin.physics.external_particles]
+    assert states == ["incoming"] + ["outgoing"] * (len(masses) - 1)
+    points = [
+        [[float(x) for x in leg] for leg in point]
+        for point in _toolkit().generate([Fraction(m) for m in masses], 2)
+    ]
+    for value, reference in zip(
+        builtin.evaluate(points), ufo.evaluate(points), strict=True
+    ):
+        assert abs(value - reference) <= 1e-12 * abs(reference), expression

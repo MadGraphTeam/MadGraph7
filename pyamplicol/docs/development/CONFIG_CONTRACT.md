@@ -67,6 +67,9 @@ fields; its CLI defaults `analyze_process_groups` to `numerical`.
 - `contraction: auto | direct | symmetric-group-fft = auto`
 - `fft_basis: trace | adjoint = adjoint`
 - `lc_flow_layout: topology-replay | all-flow-union = topology-replay`
+- `adjoint_dense_max_gluons: int >= 0 = 12` (tuning: automatic DDM basis bound)
+- `fused_selector_max_sectors: int >= 0 | null = 128` (tuning: all-colour
+  helicity-selector lane bound; null builds it for any sector count)
 
 LC generation always includes complete physical flow coverage. Runtime flow
 selectors are configured under `evaluation` or `benchmark`; internal sector,
@@ -117,6 +120,9 @@ process has a smaller basis or faster runtime.
 - `relative_tolerance: float = 1e-12`
 - `absolute_tolerance: float = 1e-300`
 - `post_build_validation: bool = false`
+- `max_resolved_components: int >= 1 | null = 1000000` (compiled post-build
+  validation checks every component up to it, one helicity/flow slice above;
+  null checks every component)
 
 ### Relation Discovery
 

@@ -583,6 +583,53 @@ def test_crossed_processes_share_only_through_an_exact_bijection() -> None:
     assert second.remap == remap
 
 
+def _identical_gluons(count: int) -> tuple[RecurrenceExternalLegV1, ...]:
+    return tuple(
+        RecurrenceExternalLegV1(
+            source_slot=slot,
+            public_label=slot + 1,
+            physical_pdg=21,
+            outgoing_pdg=21,
+            is_initial=False,
+            is_fermionic=False,
+            source_states=(
+                _source_state(state_template_id=2, public_helicity=1, momentum_sign=1),
+            ),
+            momentum_mask=1 << slot,
+            support_mask=1,
+        )
+        for slot in range(count)
+    )
+
+
+def test_source_bijections_are_enumerated_lazily_without_a_cap() -> None:
+    """Eight identical legs have 8! = 40320 candidate bijections (formerly
+    none above 4096): they come lazily in permutation order, and the sector
+    alignment pins them to the one an accepted relation can use."""
+
+    import itertools
+
+    legs = _identical_gluons(8)
+    candidates = schedule_sharing._source_slot_bijections(legs, legs, forced={})
+    assert next(candidates) == tuple(range(8))
+    assert sum(1 for _ in itertools.islice(candidates, 5039)) == 5039
+    assert next(candidates) == next(itertools.islice(
+        itertools.permutations(range(8)), 5040, None
+    ))
+    pinned = {slot: (slot + 1) % 8 for slot in range(8)}
+    assert list(
+        schedule_sharing._source_slot_bijections(legs, legs, forced=pinned)
+    ) == [tuple((slot + 1) % 8 for slot in range(8))]
+    partial = {0: 3}
+    assert all(
+        mapping[0] == 3
+        for mapping in schedule_sharing._source_slot_bijections(
+            legs, legs, forced=partial
+        )
+    )
+    assert list(schedule_sharing._source_slot_bijections(legs, legs, forced=None)) == []
+
+
 def test_isomorphic_processes_do_not_share_different_sharing_domains() -> None:
     root = _crossed_logical(target=False)
     target = _crossed_logical(target=True)

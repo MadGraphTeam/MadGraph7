@@ -253,6 +253,8 @@ _ProcessInput = TypeVar("_ProcessInput")
 _ProcessOutput = TypeVar("_ProcessOutput")
 _MISSING_PROCESS_RESULT = object()
 _LOGGER = logging.getLogger("pyamplicol.generation")
+# Defaults of color.fused_selector_max_sectors and
+# generation.validation.max_resolved_components (tuning, no capability).
 _MAX_FUSED_HELICITY_SELECTOR_SECTORS = 128
 _MAX_POST_BUILD_RESOLVED_COMPONENTS = 1_000_000
 _EAGER_LOWERING_RESULT_KIND = "pyamplicol-eager-runtime-lowering-result"
@@ -353,15 +355,18 @@ _RECURRENCE_PROFILE_LOCK = Lock()
 def _post_build_validation_slices(
     physics: ProcessPhysics,
     sample_count: int,
+    max_components: int | None = _MAX_POST_BUILD_RESOLVED_COMPONENTS,
 ) -> tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...]:
-    """Keep resolved-output validation below a bounded component count."""
+    """Keep resolved-output validation below ``max_components`` resolved
+    components (``generation.validation.max_resolved_components``); None
+    validates every component."""
 
     helicities = physics.helicities
     color_flows = physics.color_flows
     contracted = physics.contracted_color_components
     color_count = len(color_flows) or len(contracted)
     full_component_count = sample_count * len(helicities) * color_count
-    if full_component_count <= _MAX_POST_BUILD_RESOLVED_COMPONENTS:
+    if max_components is None or full_component_count <= max_components:
         return (("complete", (), ()),)
 
     helicity = next(
@@ -373,7 +378,7 @@ def _post_build_validation_slices(
     )
     helicity_ids = (str(helicity.id),)
     slices: list[tuple[str, tuple[str, ...], tuple[str, ...]]] = []
-    if sample_count * color_count <= _MAX_POST_BUILD_RESOLVED_COMPONENTS:
+    if sample_count * color_count <= max_components:
         slices.append(("selected-helicity", helicity_ids, ()))
 
     if color_flows:
@@ -382,7 +387,7 @@ def _post_build_validation_slices(
             color_flows[0],
         )
         color_flow_ids = (str(color_flow.id),)
-        if sample_count * len(helicities) <= _MAX_POST_BUILD_RESOLVED_COMPONENTS:
+        if sample_count * len(helicities) <= max_components:
             slices.append(("selected-flow", (), color_flow_ids))
         if not slices:
             slices.append(("selected-helicity-and-flow", helicity_ids, color_flow_ids))
@@ -7427,6 +7432,7 @@ class GenerationBackend:
                             _post_build_validation_slices(
                                 runtime.physics,
                                 len(samples),
+                                validation.max_resolved_components,
                             )
                         )
                     )
@@ -8147,6 +8153,19 @@ class GenerationBackend:
         )
         return best_general_fft_basis(process, ddm_proven=ddm_proven).actual_basis
 
+    def _fused_selector_sector_bound_exceeded(self, sector_count: int) -> bool:
+        """Whether the colour-sector count exceeds the tuning bound of the
+        auxiliary all-colour helicity-selector lane
+        (``color.fused_selector_max_sectors``; None: no bound)."""
+
+        run = self._run_config
+        bound = (
+            _MAX_FUSED_HELICITY_SELECTOR_SECTORS
+            if run is None
+            else run.color.fused_selector_max_sectors
+        )
+        return bound is not None and sector_count > bound
+
     def _automatic_adjoint_basis_limit(self, process: CanonicalProcessIR) -> str | None:
         """Known representation limits must not make automatic requests fail."""
 
@@ -8155,10 +8174,9 @@ class GenerationBackend:
             return None
         if process.fundamental_labels or process.antifundamental_labels:
             return None
-        from ..color.adjoint_kernel import DENSE_ADJOINT_GLUONS
-
         labels = tuple(sorted(process.adjoint_labels))
-        if len(labels) > DENSE_ADJOINT_GLUONS:
+        # A tuning choice between two exact bases (color.adjoint_dense_max_gluons).
+        if len(labels) > run.color.adjoint_dense_max_gluons:
             return "The dense adjoint metric size prefers the original trace basis."
         reference = self._process_selection.reference_color_order
         if labels and reference and set(reference) == set(labels):
@@ -8594,7 +8612,9 @@ class GenerationBackend:
             or parent.selected_source_helicities
             or parent.helicity_coverage != "complete"
             or replay is None
-            or len(parent.color_plan.sectors) > _MAX_FUSED_HELICITY_SELECTOR_SECTORS
+            or self._fused_selector_sector_bound_exceeded(
+                len(parent.color_plan.sectors)
+            )
         ):
             return None
 
