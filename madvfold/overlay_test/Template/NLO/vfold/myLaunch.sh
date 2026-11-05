@@ -185,9 +185,9 @@ if [ "${PROC}" != "${PROC/eebb_}" ]; then
   export ENV_VFOLD_MINT0_ACC=0.5     # MINT0 accuracy target [DEFAULT: 0.03]
   export ENV_VFOLD_MINT1_NITERS=2    # MINT1 (upper envelope) iterations [DEFAULT: 12]
   export ENV_VFOLD_MINT0_NPOINTS=500 # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
-  export ENV_VFOLD_MINT1_NPOINTS=500 # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
+  export ENV_VFOLD_MINT1_NPOINTS=500 # MINT1 points/iter [DEFAULT: -1=auto, can grow to 1000s]
   ###unset ENV_VFOLD_CHANNELS        # GF channels (space-separated) [DEFAULT: all channels]
-  export ENV_VFOLD_CHANNELS="2.0"    # GF channels (space-separated) [DEFAULT: all channels]
+  if [ "${ENV_VFOLD_CHANNELS}" == "" ]; then export ENV_VFOLD_CHANNELS="2.0"; fi # GF channels (space-separated) [DEFAULT: all channels]
 elif [ "${PROC}" != "${PROC/eebbbb_}" ]; then
   if [ "${ENV_NEVENTS}" == "" ]; then
     if [ "${ofld}" == "841" ]; then
@@ -203,18 +203,18 @@ elif [ "${PROC}" != "${PROC/eebbbb_}" ]; then
   export ENV_VFOLD_MINT0_ACC=0.5     # MINT0 accuracy target [DEFAULT: 0.03]
   export ENV_VFOLD_MINT1_NITERS=2    # MINT1 (upper envelope) iterations [DEFAULT: 12]
   export ENV_VFOLD_MINT0_NPOINTS=50  # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
-  export ENV_VFOLD_MINT1_NPOINTS=50  # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
+  export ENV_VFOLD_MINT1_NPOINTS=50  # MINT1 points/iter [DEFAULT: -1=auto, can grow to 1000s]
   # NB: may need to keep ENV_VFOLD_CHANNELS unset to investigate bugs in channel mapping
-  export ENV_VFOLD_CHANNELS="11.0"   # GF channels (space-separated) [DEFAULT: all channels]
+  if [ "${ENV_VFOLD_CHANNELS}" == "" ]; then export ENV_VFOLD_CHANNELS="11.0"; fi   # GF channels (space-separated) [DEFAULT: all channels]
 elif [ "${PROC}" != "${PROC/eemumubb_}" ]; then
   if [ "${ENV_NEVENTS}" == "" ]; then ENV_NEVENTS=10; fi # default 10
   export ENV_VFOLD_MINT0_NITERS=2    # MINT0 (grid setup) iterations [DEFAULT: 12]
   export ENV_VFOLD_MINT0_ACC=0.5     # MINT0 accuracy target [DEFAULT: 0.03]
   export ENV_VFOLD_MINT1_NITERS=2    # MINT1 (upper envelope) iterations [DEFAULT: 12]
   export ENV_VFOLD_MINT0_NPOINTS=50  # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
-  export ENV_VFOLD_MINT1_NPOINTS=50  # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
+  export ENV_VFOLD_MINT1_NPOINTS=50  # MINT1 points/iter [DEFAULT: -1=auto, can grow to 1000s]
   # NB: may need to keep ENV_VFOLD_CHANNELS unset to investigate bugs in channel mapping
-  export ENV_VFOLD_CHANNELS="11.0"   # GF channels (space-separated) [DEFAULT: all channels]
+  if [ "${ENV_VFOLD_CHANNELS}" == "" ]; then export ENV_VFOLD_CHANNELS="11.0"; fi   # GF channels (space-separated) [DEFAULT: all channels]
 elif [ "${PROC}" != "${PROC/eemumubbg_}" ]; then
   if [ "${ENV_NEVENTS}" == "" ]; then ENV_NEVENTS=10; fi # default 10
   # Step 14h: COLLIER by default, except in physics tests (Ninja amplifies rounding, see ENV_VFOLD_MLREDUCTION below)
@@ -223,7 +223,7 @@ elif [ "${PROC}" != "${PROC/eemumubbg_}" ]; then
   export ENV_VFOLD_MINT0_ACC=0.5     # MINT0 accuracy target [DEFAULT: 0.03]
   export ENV_VFOLD_MINT1_NITERS=2    # MINT1 (upper envelope) iterations [DEFAULT: 12]
   export ENV_VFOLD_MINT0_NPOINTS=50  # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
-  export ENV_VFOLD_MINT1_NPOINTS=50  # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
+  export ENV_VFOLD_MINT1_NPOINTS=50  # MINT1 points/iter [DEFAULT: -1=auto, can grow to 1000s]
   # NB: may need to keep ENV_VFOLD_CHANNELS unset to investigate bugs in channel mapping
   # Step 14q: GF58.0 (13% of the ABS integral) instead of GF11.0 (0.1%), see vfold/test/grids/README
   if [ "${ENV_VFOLD_CHANNELS}" == "" ]; then export ENV_VFOLD_CHANNELS="58.0"; fi # GF channels (space-separated) [DEFAULT: all channels]
