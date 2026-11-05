@@ -4163,11 +4163,18 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
     # Customized constructor
     def __init__(self, amplitude=None, optimization=1,
-                 decay_ids=[], gen_color=True):
+                 decay_ids=[], gen_color=True, enumerate_all_flavors=None):
         """Constructor for the HelasMatrixElement. In particular allows
         generating a HelasMatrixElement from an Amplitude, with
         automatic generation of the necessary wavefunctions
         """
+
+        # FKS identifies an emitter/spectator before mapping a real row back
+        # to its Born. Permuting equal grouped legs is not an equivalence at
+        # that stage. Set the instance policy before eager flavor population;
+        # standalone/LO callers retain their existing class-level default.
+        if enumerate_all_flavors is not None:
+            self.enumerate_all_flavors = bool(enumerate_all_flavors)
 
         if amplitude != None:
             if isinstance(amplitude, diagram_generation.Amplitude):

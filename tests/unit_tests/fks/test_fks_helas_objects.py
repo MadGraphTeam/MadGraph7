@@ -37,6 +37,7 @@ import madgraph.core.diagram_generation as diagram_generation
 import copy
 import array
 import pickle
+from unittest.mock import patch
 import madgraph.models.import_ufo as import_ufo
 from madgraph import MG5DIR
 
@@ -965,6 +966,115 @@ class testFKSHelasObjects(unittest.TestCase):
         self.assertTrue(matrix_element.born_me.get_color_amplitudes())
         self.assertTrue(all(entry['born_pdgs'] == [2, -2, 24, -24]
                             for entry in matrix_element.get_fks_flavor_map()))
+
+    @patch.object(helas_objects.HelasMatrixElement,
+                  'enumerate_all_flavors', False)
+    def test_grouped_wj_runtime_preserves_fks_flavor_order(self):
+        """Runtime W+j metadata must retain every ungrouped physical class.
+
+        Sorting flavour assignments before selecting the FKS mother can discard
+        the only assignment mapping a real channel to its physical Born row.
+        Exercise the actual Les Houches writer, rather than the larger in-memory
+        amplitude alias set.
+        """
+        import tempfile
+        import math
+        from collections import Counter
+        from madgraph.iolibs import export_fks
+
+        exporter = export_fks.ProcessExporterFortranFKS.__new__(
+            export_fks.ProcessExporterFortranFKS)
+        coverage = {}
+        sectors = {}
+        grouped_entries = []
+
+        def normalized_sector(element, real, pdgs, born, info):
+            pdgs, born = tuple(pdgs), tuple(born)
+            i, j = info['i'], info['j']
+            real_den = exporter.get_flavor_denominator_factors(
+                real.matrix_element, physical_rows=[pdgs])[0]
+            born_den = exporter.get_flavor_denominator_factors(
+                element.born_me, physical_rows=[born])[0]
+            identical_real = math.prod(math.factorial(n)
+                                       for n in Counter(pdgs[2:]).values())
+            identical_born = math.prod(math.factorial(n)
+                                       for n in Counter(born[2:]).values())
+            fac_i = pdgs[2:].count(pdgs[i - 1])
+            fac_j = (1 if j <= 2 else pdgs[2:].count(pdgs[j - 1]) -
+                     (pdgs[i - 1] == pdgs[j - 1]))
+            return (pdgs, born, i, j, info['ij'],
+                    tuple(info['splitting_type']), info['need_color_links'],
+                    info['need_charge_links'], real_den, born_den,
+                    fac_i, fac_j, identical_real, identical_born)
+
+        for grouped in (False, True):
+            interface = MGCmd.MasterCmd()
+            interface.no_notification()
+            for line in [
+                    'set apply_flavor_grouping %s --no_save' % grouped,
+                    'set low_mem_multicore_nlo_generation False --no_save',
+                    'import model loop_sm-no_b_mass',
+                    'define p = g u c d s b u~ c~ d~ s~ b~',
+                    'define j = p',
+                    'generate p p > w+ j [real=QCD]']:
+                interface.exec_cmd(line, errorhandling=False)
+            elements = fks_helas.FKSHelasMultiProcess(
+                interface._fks_multi_proc).get_matrix_elements()
+            rows = []
+            sector_rows = []
+            for element in elements:
+                if grouped:
+                    for entry in element.get_fks_flavor_map(False):
+                        sector_rows.append(normalized_sector(
+                            element, element.real_processes[entry['n_me'] - 1],
+                            entry['real_pdgs'], entry['born_pdgs'],
+                            entry['fks_info']))
+                else:
+                    for real in element.real_processes:
+                        for info in real.fks_infos:
+                            for proc in real.matrix_element['processes']:
+                                legs = fks_common.to_fks_legs(copy.deepcopy(
+                                    proc.get_legs_with_decays()), proc['model'])
+                                pdgs = tuple(leg['id'] for leg in legs)
+                                mothers = fks_common.combine_ij(
+                                    legs[info['i'] - 1], legs[info['j'] - 1],
+                                    proc['model'], {}, pert='QCD')
+                                self.assertEqual(len(mothers), 1)
+                                born = [pdg for number, pdg in enumerate(pdgs, 1)
+                                        if number not in (info['i'], info['j'])]
+                                born.insert(info['ij'] - 1, mothers[0]['id'])
+                                sector_rows.append(normalized_sector(
+                                    element, real, pdgs, born, info))
+            sectors[grouped] = Counter(sector_rows)
+            with tempfile.TemporaryDirectory() as directory:
+                for index, element in enumerate(elements):
+                    path = os.path.join(directory, 'leshouche_%d.dat' % index)
+                    exporter.write_leshouche_info_file(path, element)
+                    with open(path) as stream:
+                        rows.extend(tuple(map(int, line.split()[3:]))
+                                    for line in stream if line.startswith('I'))
+                    if grouped:
+                        grouped_entries.extend(element.get_fks_flavor_map())
+            coverage[grouped] = {
+                (tuple(sorted(row[:2])), tuple(sorted(row[2:])))
+                for row in rows}
+        self.assertEqual(len(coverage[False]), 54)
+        self.assertEqual(coverage[True], coverage[False])
+        # Preserve ordered emitter/spectator multiplicities and every physical
+        # spin/color/identical-particle normalization, not just particle sets.
+        self.assertEqual(sum(sectors[False].values()), 152)
+        self.assertEqual(sectors[True], sectors[False])
+        self.assertTrue(all(count == 1 for count in sectors[True].values()))
+        needed = [entry for entry in grouped_entries
+                  if entry['real_pdgs'] == [-3, -3, 24, -4, -3]
+                  and entry['born_pdgs'] == [-3, 21, 24, -4]
+                  and entry['fks_info']['i'] == 5
+                  and entry['fks_info']['j'] == 2]
+        self.assertTrue(needed)
+        self.assertTrue(all(entry['real_flavor_index'] > 0 and
+                            entry['born_flavor_index'] > 0 for entry in needed))
+        # Per-NLO-instance policy must not change the standalone/LO class default.
+        self.assertFalse(helas_objects.HelasMatrixElement.enumerate_all_flavors)
 
     def test_grouped_mixed_wj_physical_maps(self):
         """Mixed QCD/QED W+j keeps only executable physical FKS classes."""

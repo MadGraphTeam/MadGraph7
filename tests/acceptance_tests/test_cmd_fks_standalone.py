@@ -1013,6 +1013,116 @@ C     batched one reuses, as set_goodhel does in a run
                 current = None
         return records
 
+    def test_fks_standalone_wj_all_ordered_real_sectors(self):
+        """All 152 physical W+j sectors match ungrouped totals/components.
+
+        Six channels used to disappear before export. Exercise their real
+        amplitudes as well as the identical-final-state normalization controls
+        on sixteen deterministic massive-W phase-space points.
+        """
+        import random
+        import math
+        from madgraph.various.rambo import RAMBO, FortranList
+
+        old_random_state = random.getstate()
+        random.seed(20261105)
+        masses = FortranList(3)
+        masses[1], masses[2], masses[3] = 80.419, 0., 0.
+        points = []
+        try:
+            for unused in range(16):
+                final, unused_weight = RAMBO(3, 1000., masses)
+                points.append([[500., 0., 0., 500.],
+                               [500., 0., 0., -500.]] + [
+                    [final[4, i], final[1, i], final[2, i], final[3, i]]
+                    for i in range(1, 4)])
+        finally:
+            random.setstate(old_random_state)
+        driver = """      PROGRAM CHECK_ORDERED_WJ
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INCLUDE 'orders.inc'
+      INCLUDE 'nFKSconfigs.inc'
+      INTEGER K,J,M,N,NFKSPROCESS
+      DOUBLE PRECISION P(0:3,NEXTERNAL),WGT
+      DOUBLE PRECISION RET(AMP_SPLIT_SIZE)
+      COMMON/C_NFKSPROCESS/NFKSPROCESS
+      INCLUDE 'fks_info.inc'
+      CALL SETPARA('param_card.dat')
+      READ(*,*) N
+      DO K=1,N
+        READ(*,*) NFKSPROCESS
+        DO J=1,NEXTERNAL
+          READ(*,*) (P(M,J),M=0,3)
+        ENDDO
+        CALL SMATRIX_REAL(P,RET,WGT)
+        WRITE(*,*) 'VALUE',K,FKS_I_D(NFKSPROCESS),
+     $    FKS_J_D(NFKSPROCESS),WGT,RET
+      ENDDO
+      END
+"""
+        comparisons = {}
+        for grouped in (False, True):
+            path = pjoin(self.tmpdir, 'wj_ordered_%s' % grouped)
+            cmd = self._new_cmd()
+            for line in [
+                    'set apply_flavor_grouping %s --no_save' % grouped,
+                    'set low_mem_multicore_nlo_generation False --no_save',
+                    'import model loop_sm-no_b_mass',
+                    'define p = g u c d s b u~ c~ d~ s~ b~',
+                    'define j = p', 'generate p p > w+ j [real=QCD]',
+                    'output standalone_fortran --fks --limits %s' % path]:
+                self._run(cmd, line)
+            misc.compile(cwd=pjoin(path, 'Source'))
+            records = {}
+            for sub in sorted(glob.glob(pjoin(path, 'SubProcesses', 'P*'))):
+                with open(pjoin(sub, 'leshouche_info.dat')) as stream:
+                    rows = [(int(words[1]), tuple(map(int, words[3:])))
+                            for line in stream if line.startswith('I')
+                            for words in [line.split()]]
+                inputs = []
+                binding = []
+                for row, pdgs in rows:
+                    for point_index, momenta in enumerate(points):
+                        binding.append((point_index, pdgs))
+                        inputs.append(str(row))
+                        inputs.extend(' '.join('%.17e' % x for x in p)
+                                      for p in momenta)
+                inputs = str(len(binding)) + '\n' + '\n'.join(inputs) + '\n'
+                with open(pjoin(sub, 'check_ordered_wj.f'), 'w') as stream:
+                    stream.write(driver)
+                objects = [os.path.basename(p)[:-2] + '.o' for p in
+                           sorted(glob.glob(pjoin(sub, 'matrix_*.f')))]
+                objects += ['real_me_chooser.o', 'splitorders_stuff.o',
+                            'check_ordered_wj.o']
+                misc.compile(objects, cwd=sub)
+                executable = pjoin(sub, 'check_ordered_wj')
+                subprocess.check_call(['gfortran', '-o', executable] + objects +
+                    ['-L' + pjoin(path, 'lib'), '-ldhelas', '-lmodel'], cwd=sub)
+                output = subprocess.check_output([executable], input=inputs,
+                    cwd=sub, text=True, stderr=subprocess.STDOUT)
+                for line in output.splitlines():
+                    words = line.split()
+                    if not words or words[0] != 'VALUE':
+                        continue
+                    point_index, pdgs = binding[int(words[1]) - 1]
+                    key = (point_index, pdgs, int(words[2]), int(words[3]))
+                    self.assertNotIn(key, records)
+                    records[key] = tuple(self._fortran_float(x)
+                                         for x in words[4:])
+            self.assertEqual(len(records), 152 * 16)
+            comparisons[grouped] = records
+        self.assertEqual(set(comparisons[True]), set(comparisons[False]))
+        for key, expected in comparisons[False].items():
+            actual = comparisons[True][key]
+            self.assertEqual(len(actual), len(expected))
+            scale = max(map(abs, expected[1:]))
+            for got, reference in zip(actual, expected):
+                self.assertTrue(math.isfinite(got) and math.isfinite(reference))
+                self.assertAlmostEqual(got, reference,
+                    delta=max(abs(reference) * 1e-12, scale * 1e-12, 1e-30),
+                    msg='point/PDGs/i/j %s' % (key,))
+
     def test_fks_standalone_grouped_mixed_wj_tree_values(self):
         """Grouped mixed-QCD/QED W+j real and extra-counterterm rows match
         fixed-flavour output, including physical metadata and repeated calls."""
@@ -1077,8 +1187,11 @@ C     batched one reuses, as set_goodhel does in a run
 
         self.assertEqual(grouped[target_pdgs[0]][0]['indices'],
                          (1, 1, 1, 1))
+        # Ordered real-flavour preservation inserts the previously discarded
+        # permutations before this physical row; its amplitude/CT references
+        # above are unchanged.
         self.assertEqual(grouped[target_pdgs[1]][0]['indices'],
-                         (3, 1, 1, 1))
+                         (5, 1, 1, 1))
         self.assertEqual(reference[target_pdgs[0]][0]['indices'],
                          (1, 1, 0, 1))
         self.assertEqual(reference[target_pdgs[1]][0]['indices'],

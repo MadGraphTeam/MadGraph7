@@ -33,6 +33,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+import copy
 
 from madgraph import MG5DIR
 import madgraph.interface.master_interface as MGCmd
@@ -149,6 +150,94 @@ class TestNLORealFortranOracle(unittest.TestCase):
         digest = hashlib.sha256(contents).hexdigest()
         self.assertEqual(digest, case['param_card']['sha256'])
         return output_path
+
+    def _case_for_output(self, name, output_path):
+        """Rebind transient row numbers without changing the trusted oracle.
+
+        Ordered NLO-real flavours restore six W+j sectors that were absent
+        from the original fixture. Every original numerical value remains a
+        fixed reference; only its generated row/local index is resolved anew.
+        Added sectors use a separately recorded native Fortran control on the
+        same fixed points, in addition to independent all-sector QCD/limit tests.
+        """
+        original = self.oracle['cases'][name]
+        if name != 'grouped_mixed_wj':
+            return original
+        case = copy.deepcopy(original)
+        subproc = pjoin(output_path, 'SubProcesses', case['subprocess'])
+        with open(pjoin(subproc, 'fks_info.inc')) as stream:
+            flat = ' '.join(line[6:].strip() for line in stream
+                            if line and line[0].upper() != 'C')
+        def array_values(name):
+            match = re.search(r'DATA\s+' + name + r'\s*/([^/]+)/', flat, re.I)
+            self.assertIsNotNone(match, name)
+            return [int(x) for x in re.findall(r'-?\d+', match.group(1))]
+        topology = array_values('FKS_TOPOLOGY_D')
+        flavours = array_values('REAL_FLAVOR_INDEX_D')
+        pdgs = {int(row): tuple(map(int, re.findall(r'-?\d+', values)))
+                for row, values in re.findall(
+                    r'DATA\s*\(PDG_TYPE_D\((\d+),\s*IPOS\).*?/([^/]+)/',
+                    flat, re.I)}
+        row_to_me, unused_counts = self._real_me_contract(subproc)
+        rows = {(me, topology[row - 1], pdgs[row]): row
+                for row, me in row_to_me.items()}
+        self.assertEqual(len(rows), len(row_to_me))
+        old_keys = {(r['real_me_id'], r['topology'], tuple(r['pdgs']))
+                    for r in case['records']}
+        restored_pdgs = {(1, 4, 24, 3, 1), (2, 4, 24, 3, 2),
+                         (3, 2, 24, 1, 3), (4, 2, 24, 1, 4),
+                         (5, 2, 24, 1, 5), (5, 4, 24, 3, 5)}
+        restored_keys = {(3, 5, p) for p in restored_pdgs}
+        self.assertEqual(set(rows), old_keys | restored_keys)
+        self.assertEqual(len(row_to_me), 36)
+        for record in case['records']:
+            row = rows[(record['real_me_id'], record['topology'],
+                        tuple(record['pdgs']))]
+            record['fks_row'] = row
+            record['fortran_flavour_index'] = flavours[row - 1]
+            self.assertGreater(record['fortran_flavour_index'], 0)
+        case['selected_rows'] = sorted(row_to_me)
+        manifest_path = pjoin(subproc, 'nlo_real_manifest.json')
+        if os.path.isfile(manifest_path):
+            with open(manifest_path) as stream:
+                manifest = json.load(stream)
+            reals = {r['id']: r for r in manifest['real_matrix_elements']}
+            for row, me in row_to_me.items():
+                self.assertEqual(reals[me]['local_flavours'][flavours[row - 1] - 1],
+                                 list(pdgs[row]))
+        if os.path.isfile(pjoin(subproc, 'nlo_real_offload.f90')):
+            executable = self._compile_routed_driver(
+                output_path, case, backend='fortran')
+            output = subprocess.check_output([executable],
+                input=self._driver_input(case['points']), cwd=subproc,
+                stderr=subprocess.STDOUT).decode(errors='replace')
+            self.assertIn('using Fortran fallback', output)
+            self.assertNotIn('offload initialized', output)
+            native = self._parse_driver_output(output, len(case['split_order_names']))
+        else:
+            native = self._compile_and_run(output_path, case)
+        retained = [r for r in native if
+                    (r['real_me_id'], r['topology'], tuple(r['pdgs'])) in old_keys]
+        self._assert_case(case, retained)
+        added = [r for r in native if
+                 (r['real_me_id'], r['topology'], tuple(r['pdgs'])) in restored_keys]
+        self.assertEqual(len(added), 6 * len(case['points']))
+        self.assertEqual(len(native), 36 * len(case['points']))
+        added_keys = [(r['point'], r['real_me_id'], r['topology'], tuple(r['pdgs']))
+                      for r in added]
+        self.assertEqual(len(set(added_keys)), len(added_keys))
+        self.assertEqual(set(added_keys), {
+            (point['id'], me, top, physical)
+            for point in case['points'] for me, top, physical in restored_keys})
+        case['records'].extend(added)
+        # This applies finite-value, physical input and every local/global sum
+        # invariant to the restored controls before they can become references.
+        self._assert_case(case, native)
+        with open(pjoin(output_path, 'restored_wj_native_reference.json'), 'w') as stream:
+            json.dump({'scope': 'Six restored sectors; original JSON/numerical '
+                                'references unchanged; same-point native control',
+                       'records': added}, stream, indent=2)
+        return case
 
     def _real_me_contract(self, subproc):
         """Read the authoritative FKS-row -> real-ME and local-size maps."""
@@ -408,6 +497,7 @@ class TestNLORealFortranOracle(unittest.TestCase):
     def _run_production_case(self, name, test_fallback=False):
         case = self.oracle['cases'][name]
         output_path = self._generate_case(name, madmatrix=True)
+        case = self._case_for_output(name, output_path)
         scalar = self._compile_routed_driver(output_path, case)
         scalar_output = self._run_routed_driver(scalar, case)
         self.assertIn('MG7 NLO real offload initialized: backend=scalar',
@@ -623,6 +713,7 @@ class TestNLORealFortranOracle(unittest.TestCase):
     def _run_case(self, name):
         case = self.oracle['cases'][name]
         output_path = self._generate_case(name)
+        case = self._case_for_output(name, output_path)
         actual = self._compile_and_run(output_path, case)
         self._assert_case(case, actual)
 
@@ -638,6 +729,7 @@ class TestNLORealFortranOracle(unittest.TestCase):
         starts at the second point."""
         case = self.oracle['cases'][name]
         output_path = self._generate_case(name)
+        case = self._case_for_output(name, output_path)
         actual = self._compile_and_run(output_path, case,
                                        fortran_vector=True)
         self._assert_case(case, actual)
@@ -781,6 +873,7 @@ class TestNLORealFortranOracle(unittest.TestCase):
     def _run_simd_case(self, name, check_compaction=False):
         case = self.oracle['cases'][name]
         output_path = self._generate_case(name, madmatrix=True)
+        case = self._case_for_output(name, output_path)
         for backend, width in self._host_simd_backends():
             with self.subTest(backend=backend):
                 self._check_simd_case(output_path, case, backend, width,
@@ -808,16 +901,11 @@ class TestNLORealFortranOracle(unittest.TestCase):
         try:
             # Alternate physical rows sharing a real ME to catch stale SIMD
             # flavour pages, then cover short/full/nonmultiple page counts.
-            selected_rows = [manifest['fks_rows'][0]]
-            first_real = selected_rows[0]['real_me_id']
-            for candidate in manifest['fks_rows'][1:]:
-                if (candidate['real_me_id'] == first_real and
-                        candidate['madmatrix_flavour_index'] !=
-                        selected_rows[0]['madmatrix_flavour_index']):
-                    selected_rows.append(candidate)
-                    break
+            selected_rows = manifest['fks_rows']
+            # Include restored four-quark sectors as well as the first real
+            # ME; every physical row and all sixteen points need SIMD coverage.
             counts = sorted(set((1, max(1, width - 1), width,
-                                 width + 1, 2 * width - 1)))
+                                 width + 1, 2 * width - 1, len(case['points']))))
             for row in selected_rows:
                 row_records = [record for record in case['records']
                                if record['fks_row'] == row['fks_row']]
@@ -1123,6 +1211,7 @@ class TestNLORealFortranOracle(unittest.TestCase):
         self._require_cuda()
         case = self.oracle['cases']['grouped_mixed_wj']
         output_path = self._generate_case('grouped_mixed_wj', madmatrix=True)
+        case = self._case_for_output('grouped_mixed_wj', output_path)
         process_path = pjoin(
             output_path, 'SubProcesses', case['subprocess'])
         with open(pjoin(process_path, 'nlo_real_manifest.json')) as stream:
@@ -1153,6 +1242,7 @@ class TestNLORealFortranOracle(unittest.TestCase):
         case = self.oracle['cases'][name]
         output_path = self._generate_case(
             name, madmatrix=True, low_memory=low_memory)
+        case = self._case_for_output(name, output_path)
         process_path = pjoin(
             output_path, 'SubProcesses', case['subprocess'])
         manifest_path = pjoin(process_path, 'nlo_real_manifest.json')

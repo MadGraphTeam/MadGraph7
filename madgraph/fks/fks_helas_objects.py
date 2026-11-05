@@ -86,7 +86,8 @@ def async_generate_real(args):
         logger.debug(msg)
         return []
 
-    helasreal = helas_objects.HelasMatrixElement(amplitude)
+    helasreal = helas_objects.HelasMatrixElement(
+        amplitude, enumerate_all_flavors=True)
     logger.info('Generating real %s' % \
             real_amp.process.nice_string(print_weighted=False).replace('Process', 'process'))
 
@@ -305,7 +306,8 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
             if fksmulti['real_amplitudes']:
                 logger.info('Generating real emission matrix-elements...')
                 self['real_matrix_elements'] = self.generate_matrix_elements(
-                        copy.copy(fksmulti['real_amplitudes']), combine_matrix_elements = False)
+                        copy.copy(fksmulti['real_amplitudes']), combine_matrix_elements=False,
+                        matrix_element_opts={'enumerate_all_flavors': True})
             else:
                 self['real_matrix_elements'] = helas_objects.HelasMatrixElementList()
 
@@ -1262,7 +1264,8 @@ class FKSHelasRealProcess(object): #test written
                 else:
                     logger.info('generating matrix element...')
                     self.matrix_element = helas_objects.HelasMatrixElement(
-                                                      fksrealproc.amplitude, **opts)
+                                                      fksrealproc.amplitude,
+                                                      **dict(opts, enumerate_all_flavors=True))
                     #generate the color for the real
                     self.matrix_element.get('color_basis').build(
                                         self.matrix_element.get('base_amplitude'))
