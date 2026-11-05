@@ -8,7 +8,7 @@ of the stock mg5amcnlo ones or in addition to them (see `vfold_overlays` in
 - `madgraph/iolibs/template_files/<file>` replaces the template used to
   write the files of the P directories (only where `export_fks.py` asks
   `vfold_file` for it: `born_hel_splitorders_fks.inc` for `born_hel.f`,
-  `bornmatrix_splitorders_fks.inc` for `born.f`, `sborn_sf_fks.inc` for
+  `bornmatrix_colorlinks_fks.inc` for `born.f`, `sborn_sf_fks.inc` for
   `sborn_sf.f`).
 
 Each patched stock file is first added here as a verbatim copy of the

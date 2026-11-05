@@ -1913,7 +1913,7 @@ c would carry an invalid SAVEAMP): there the SBORN call is served
       elseif (vfold_born_memo_hit(p_born_in,g_in)) then
         call vfold_born_memo_restore
       else
-        calculatedBorn=.false. ! genuine re-evaluation for a new point
+        call vfold_born_memo_missed ! step 15j
         call sborn(p_born_in,wgt_c)
         call vfold_born_memo_store(p_born_in,g_in)
       endif

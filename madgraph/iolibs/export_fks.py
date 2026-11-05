@@ -142,12 +142,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
     # expressed in the Born colour basis (see
     # fks_common.born_basis_link_matrices). False restores the former layout:
     # one b_sf_NNN.f per link, each with its own colour basis.
-    # MadVFold: 'output --vfold' uses the former layout for now: its batching of
-    # the Born over folds and kpoints restores SAVEAMP/SAVEMOM between walks, but
-    # not the colour density and the caches of bornmatrix_colorlinks_fks.inc.
-    @property
-    def born_color_links_in_born(self):
-        return not self.opt.get('vfold')
+    born_color_links_in_born = True
 
 #===============================================================================
 # copy the Template in a new directory.
@@ -2418,14 +2413,14 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         replace_dict['nb_temp_jamp'] = nb_temp_jamp
         
         if proc_type=='born':
+            file = open(pjoin(_file_path, \
+            'iolibs/template_files/bornmatrix_splitorders_fks.inc')).read()
+        elif proc_type=='born_links':
             # MadVFold: use the vfold version of the file, if requested
             file = open(vfold_file(self.opt,
-            pjoin('madgraph','iolibs','template_files','bornmatrix_splitorders_fks.inc'),
+            pjoin('madgraph','iolibs','template_files','bornmatrix_colorlinks_fks.inc'),
             pjoin(_file_path, \
-            'iolibs/template_files/bornmatrix_splitorders_fks.inc'))).read()
-        elif proc_type=='born_links':
-            file = open(pjoin(_file_path, \
-            'iolibs/template_files/bornmatrix_colorlinks_fks.inc')).read()
+            'iolibs/template_files/bornmatrix_colorlinks_fks.inc'))).read()
         elif proc_type=='bhel':
             # MadVFold: use the vfold version of the file, if requested
             file = open(vfold_file(self.opt,

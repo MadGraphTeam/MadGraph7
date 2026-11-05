@@ -489,7 +489,7 @@ contains
         if (vfold_born_memo_hit(p_born,g)) then
           call vfold_born_memo_restore
         else
-          calculatedBorn = .false. ! genuine re-evaluation for a new point
+          call vfold_born_memo_missed ! genuine re-evaluation for a new point (step 15j)
           call sborn(p_born, wgt_c)
           call vfold_born_memo_store(p_born,g)
         endif
@@ -523,6 +523,8 @@ contains
     common/to_saveamp/saveamp
     double precision :: savemom(nexternal-1, 2)
     common/to_savemom/savemom
+    logical :: check_born_amps, born_checks_amps
+    common /c_born_amps_check/ check_born_amps, born_checks_amps
     born_retrieve_idx = born_retrieve_idx + 1
     if (born_retrieve_idx.gt.born_batch_count) then
       write(6,*) 'ERROR vfold_retrieve_born: born_retrieve_idx=', &
@@ -539,16 +541,49 @@ contains
     ! Step 8o: skip the copy if the cache already holds these momenta.
     ! Step 9i+9j: in served mode there is no snapshot, so invalidate the cache
     ! instead (a later genuine SBORN recomputes it).
+    ! Step 15j: with the stock Born reuse, CALCULATEDBORN stays set when only g
+    ! changed, so equal momenta are not enough to skip the copy.
     if (vfold_use_cudacpp() .and. vfold_sborn_bridge.gt.0) then
       calculatedBorn = .false.
     else
-      if (.not.vfold_born_cache_valid(savemom_batch(1,1,born_retrieve_idx))) then
+      if (born_checks_amps .or. .not.vfold_born_cache_valid(savemom_batch(1,1,born_retrieve_idx))) then
         saveamp(1:NGRAPHS,1:MAX_BHEL) = saveamp_batch(1:NGRAPHS,1:MAX_BHEL,born_retrieve_idx)
         savemom(1:nexternal-1,1:2) = savemom_batch(1:nexternal-1,1:2,born_retrieve_idx)
       endif
       calculatedBorn = .true.
+      call vfold_mark_born_rho_stale
+      if (born_checks_amps) & ! step 15j
+        call born_amps_restored(p_born_batch(0:3,1:nexternal-1,born_retrieve_idx))
     endif
   end subroutine vfold_retrieve_born
+
+  ! Step 15j: the Born memo missed for the current (p,g). With the stock Born reuse,
+  ! let SBORN compare them with its cached amplitudes: at the same momenta it only
+  ! rescales them to the new g (gscale). Otherwise, recompute everything.
+  subroutine vfold_born_memo_missed
+    implicit none
+    logical :: calculatedBorn
+    common/ccalculatedBorn/calculatedBorn
+    logical :: check_born_amps, born_checks_amps
+    common /c_born_amps_check/ check_born_amps, born_checks_amps
+    if (born_checks_amps) then
+      check_born_amps = .true.
+    else
+      calculatedBorn = .false.
+    endif
+  end subroutine vfold_born_memo_missed
+
+  ! Step 15d: with the colour-linked Borns of MadGraph7 in born.f (SB_SF_LINK), the
+  ! links are traces of the colour density RHO left by the last genuine SBORN. When
+  ! SAVEAMP is restored without calling SBORN (replay and memo), RHO belongs to another
+  ! point: vfold_ensure_saveamp rebuilds it from SAVEAMP only if the links are needed.
+  subroutine vfold_mark_born_rho_stale
+    implicit none
+    logical :: born_cache_ok
+    integer :: born_cache_nfks
+    common /c_born_cache/ born_cache_ok, born_cache_nfks
+    born_cache_ok = .false.
+  end subroutine vfold_mark_born_rho_stale
 
   subroutine vfold_reset_born_batch
     implicit none
@@ -948,6 +983,8 @@ contains
     saveamp(1:NGRAPHS,1:MAX_BHEL) = born_memo_saveamp(1:NGRAPHS,1:MAX_BHEL,k)
     savemom(1:nexternal-1,1:2) = born_memo_savemom(1:nexternal-1,1:2,k)
     calculatedBorn = .true.
+    call vfold_mark_born_rho_stale
+    call born_amps_restored(born_memo_p(0:3,1:nexternal-1,k)) ! step 15j
   end subroutine vfold_born_memo_restore
 
   ! Road B step 9i+9j: keep one bridge-evaluated Born point for VFOLD_SBORN_SERVE.
@@ -1397,6 +1434,12 @@ subroutine vfold_ensure_saveamp(p)
   double precision :: s_amp2b(SV_NGRAPHS), s_jamp2b(0:SV_NCOLOR, 0:1)
   double precision :: dummy
   integer :: j
+  logical :: born_cache_ok
+  integer :: born_cache_nfks
+  common /c_born_cache/ born_cache_ok, born_cache_nfks
+  double complex :: ans_rho(2, 0:1) ! (2, 0:NSQAMPSO) with NSQAMPSO=1, as in vfold_sborn_serve
+  logical :: check_born_amps, born_checks_amps
+  common /c_born_amps_check/ check_born_amps, born_checks_amps
   if (calculatedBorn) then
     do j = 1, nexternal-1
       if (savemom(j,1).ne.p(0,j) .or. savemom(j,2).ne.p(3,j)) exit
@@ -1408,7 +1451,18 @@ subroutine vfold_ensure_saveamp(p)
     ! nFKSprocess, and in served mode there may have been none (all-zero
     ! helicity weights: PICKHELICITYMC loops forever, the links vanish)
     if (j.gt.nexternal-1) then ! valid
-      if (vfold_sborn_bridge.le.0 .or. sv_saveamp_nfks.eq.nfksprocess) return
+      if (vfold_sborn_bridge.le.0 .or. sv_saveamp_nfks.eq.nfksprocess) then
+        ! step 15d: RHO from SAVEAMP, if stale
+        ! step 15j: or if the stock Born reuse has a pending check (e.g. g changed)
+        if (.not.born_cache_ok .or. born_cache_nfks.ne.nfksprocess .or. check_born_amps) then
+          s_amp2b = amp2b
+          s_jamp2b = jamp2b
+          call sborn_splitorders(p, ans_rho)
+          amp2b = s_amp2b
+          jamp2b = s_jamp2b
+        endif
+        return
+      endif
     endif
   endif
   s_amp_split = amp_split

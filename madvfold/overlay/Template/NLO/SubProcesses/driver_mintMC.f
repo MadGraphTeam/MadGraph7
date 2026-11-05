@@ -176,6 +176,7 @@ c
       endif
 
       call setup_av_me_mode ! AV (road B step 1): F0/F1/F2/F/C
+      call setup_av_mg7bornnoopt ! AV (step 15i): stock Born reuse off?
       call check_av_cpu_time ! AV (road B step 11b): timers vs reference modes
       call setup_av_vecsize_used ! AV (road B step 7b): cudacpp bridge chunk size
       call setup_av_kpoint_batch ! AV (road B step 9): kpoints per ME batch

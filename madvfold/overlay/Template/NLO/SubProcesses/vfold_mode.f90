@@ -140,6 +140,31 @@ contains
   end subroutine setup_av_me_mode
 
   ! Road B step 7b: read vfold_vecsize_used from ENV_VFOLD_VECSIZE_USED
+  ! Step 15i: stock MadGraph7 keeps the cached Born amplitudes if the momenta and the
+  ! couplings are unchanged, and rescales them if only alpha_S changed (gscale).
+  ! Step 15j: this is on in F0, F1, F2 and F (the memo and the replay restore the cached
+  ! amplitudes, and tell SBORN so, see BORN_AMPS_RESTORED). It is off in C, where it makes
+  ! no difference to the results (cudacpp serves the Borns).
+  ! ENV_VFOLD_MG7BORNNOOPT=1 also switches it off in F0, F1, F2 and F at run time, for
+  ! development (F1, F2 and F are then bit-identical, as in mg5amcnlo).
+  subroutine setup_av_mg7bornnoopt
+    implicit none
+    character(len=10) :: getenvvalue
+    logical :: check_born_amps, born_checks_amps
+    common /c_born_amps_check/ check_born_amps, born_checks_amps
+    if (vfold_use_cudacpp()) born_checks_amps = .false.
+    call getenv('ENV_VFOLD_MG7BORNNOOPT', getenvvalue)
+    if (len_trim(getenvvalue).gt.0) then
+      if (getenvvalue.eq.'1') then
+        born_checks_amps = .false.
+      elseif (getenvvalue.ne.'0') then
+        write(6,*) 'ERROR: invalid ENV_VFOLD_MG7BORNNOOPT: ', trim(getenvvalue)
+        stop 1
+      endif
+    endif
+    write(6,*) 'AV: born_checks_amps=', born_checks_amps
+  end subroutine setup_av_mg7bornnoopt
+
   subroutine setup_av_vecsize_used
     implicit none
     character(len=10) :: getenvvalue
