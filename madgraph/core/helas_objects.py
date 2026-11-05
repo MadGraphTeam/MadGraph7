@@ -5662,22 +5662,6 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                             if wf.get('onium')])
         return (nexternal - self.get_nonia(), ninitial - len(initial_onia))
 
-    def get_onia_incoming(self):
-        """For each bound state, in the order of get_onia_pairs, whether it
-        is incoming (a decaying onium)."""
-
-        external_wfs = sorted([wf for wf in self.get_all_wavefunctions()
-                               if not wf.get('mothers') and wf.get('onium')],
-                              key=lambda wf: wf.get('number_external'))
-        incoming = []
-        seen = set()
-        for wf in external_wfs:
-            index = wf.get('onium').get('index')
-            if index not in seen:
-                seen.add(index)
-                incoming.append(wf.get('leg_state') == False)
-        return incoming
-
     def get_external_masses(self):
         """Gives the list of the strings corresponding to the masses of the
         external particles."""
