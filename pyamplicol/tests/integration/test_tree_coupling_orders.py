@@ -1122,10 +1122,13 @@ def test_cli_prints_partials_and_rejects_non_recurrence_lanes(
 # and propagator involved, alpha = 1/132.507, alpha_s = 0.118): fully
 # colourless processes and decays, whose built-in global coupling factor took
 # the number of colour-singlet legs as its electroweak power (the analytic
-# checks are test_builtin_sm_normalization), and massive-vector or scalar
-# initial states, which it averaged over two spin states. The W-pair rows
-# differ for reasons independent of the normalization and stay recorded as
-# strict xfails.
+# checks are test_builtin_sm_normalization), massive-vector or scalar initial
+# states, which it averaged over two spin states, and the electroweak gauge
+# self-interactions. The recurrence lane (this fixture's lane) counted both
+# input orientations of every W W A / W W Z vertex and of the quartic-contact
+# tensor currents (a a > w+ w- 16 times the UFO), and the lepton table lacked
+# the neutrino's Z coupling and the lepton + W -> neutrino orientations
+# (e+ e- > w+ w- had no t-channel neutrino exchange in any lane).
 _BUILTIN_VS_UFO_PROCESSES = (
     "e+ e- > a a",
     "e+ e- > a a a",
@@ -1141,34 +1144,23 @@ _BUILTIN_VS_UFO_PROCESSES = (
     "e+ e- > w+ w-",
     "u u~ > w+ w-",
     "a a > w+ w-",
+    "u d~ > w+ z",
+    "e+ e- > w+ w- z",
+    "e+ e- > ve ve~",
 )
-# The built-in recurrence lane (this comparison's lane) gives a a > w+ w-
-# 16 times and e+ e- > w+ w- 4 times the built-in compiled lane, whose
-# a a > w+ w- equals the UFO: a factor 2 per W W photon / Z gauge coupling.
-_RECURRENCE_GAUGE_VERTICES = (
-    "the built-in recurrence lane carries a factor 2 per W W photon / Z gauge "
-    "coupling (the built-in compiled lane agrees with the UFO)"
+# Triple and quartic (W W A A, W W A Z, W W Z Z through the tensor currents)
+# gauge vertices, also checked in the compiled lane.
+_GAUGE_SELF_COUPLING_PROCESSES = (
+    "a a > w+ w-",
+    "e+ e- > w+ w-",
+    "u u~ > w+ w-",
+    "u d~ > w+ z",
+    "e+ e- > w+ w- z",
 )
-_BUILTIN_VS_UFO_KNOWN = {
-    "e+ e- > w+ w-": (
-        "the built-in SM has no lepton + W -> neutrino vertex orientation (nor a "
-        "neutrino-Z coupling): the t-channel neutrino exchange is absent in "
-        f"every lane; and {_RECURRENCE_GAUGE_VERTICES}"
-    ),
-    "u u~ > w+ w-": (
-        f"{_RECURRENCE_GAUGE_VERTICES}: the doubled s-channel interferes with "
-        "the t-channel quark exchange, a point-dependent ratio"
-    ),
-    "a a > w+ w-": f"{_RECURRENCE_GAUGE_VERTICES}: 16 times the UFO",
-}
 
 
-@pytest.fixture(scope="module")
-def builtin_and_ufo_runtimes(
-    sm_model: ModelSource, tmp_path_factory: pytest.TempPathFactory
-) -> tuple[Path, Path]:
-    root = tmp_path_factory.mktemp("builtin-vs-ufo")
-    config = RunConfig(
+def _builtin_vs_ufo_config(execution_mode: str) -> RunConfig:
+    return RunConfig(
         action="generate",
         model=ModelConfig(cache=False),
         color=ColorConfig(accuracy="full"),
@@ -1181,10 +1173,18 @@ def builtin_and_ufo_runtimes(
             ),
         ),
         evaluator=EvaluatorConfig(
-            execution_mode="recurrence",
+            execution_mode=execution_mode,
             optimization=EvaluatorOptimizationConfig(cores=1),
         ),
     )
+
+
+@pytest.fixture(scope="module")
+def builtin_and_ufo_runtimes(
+    sm_model: ModelSource, tmp_path_factory: pytest.TempPathFactory
+) -> tuple[Path, Path]:
+    root = tmp_path_factory.mktemp("builtin-vs-ufo")
+    config = _builtin_vs_ufo_config("recurrence")
     artifacts = (root / "built-in", root / "ufo")
     for artifact, model in zip(
         artifacts, (ModelSource.built_in_sm(), sm_model), strict=True
@@ -1193,6 +1193,17 @@ def builtin_and_ufo_runtimes(
             list(_BUILTIN_VS_UFO_PROCESSES), artifact, model=model
         )
     return artifacts
+
+
+@pytest.fixture(scope="module")
+def builtin_compiled_gauge_runtime(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    artifact = tmp_path_factory.mktemp("builtin-compiled-gauge") / "artifact"
+    Generator(_builtin_vs_ufo_config("compiled")).generate(
+        list(_GAUGE_SELF_COUPLING_PROCESSES),
+        artifact,
+        model=ModelSource.built_in_sm(),
+    )
+    return artifact
 
 
 def _on_shell_point(process: str, seed: int, root: float = 500.0) -> list:
@@ -1220,18 +1231,7 @@ def _on_shell_point(process: str, seed: int, root: float = 500.0) -> list:
     return [*beams, *(list(momentum) for momentum in final)]
 
 
-@pytest.mark.parametrize(
-    "process",
-    [
-        pytest.param(
-            process,
-            marks=pytest.mark.xfail(strict=True, reason=_BUILTIN_VS_UFO_KNOWN[process]),
-        )
-        if process in _BUILTIN_VS_UFO_KNOWN
-        else process
-        for process in _BUILTIN_VS_UFO_PROCESSES
-    ],
-)
+@pytest.mark.parametrize("process", _BUILTIN_VS_UFO_PROCESSES)
 def test_builtin_sm_matches_the_ufo_sm(
     builtin_and_ufo_runtimes: tuple[Path, Path], process: str
 ) -> None:
@@ -1241,5 +1241,22 @@ def test_builtin_sm_matches_the_ufo_sm(
     points = [_on_shell_point(process, seed) for seed in (101, 202, 303)]
     for point, (value, expected) in enumerate(
         zip(builtin.evaluate(points), ufo.evaluate(points), strict=True)
+    ):
+        assert value.real == pytest.approx(expected.real, rel=1e-12), point
+
+
+@pytest.mark.parametrize("process", _GAUGE_SELF_COUPLING_PROCESSES)
+def test_builtin_sm_gauge_self_couplings_match_in_the_compiled_lane(
+    builtin_and_ufo_runtimes: tuple[Path, Path],
+    builtin_compiled_gauge_runtime: Path,
+    process: str,
+) -> None:
+    """Recurrence = compiled = UFO sm for the triple and quartic gauge vertices."""
+
+    compiled = Runtime.load(builtin_compiled_gauge_runtime, process=process)
+    ufo = Runtime.load(builtin_and_ufo_runtimes[1], process=process)
+    points = [_on_shell_point(process, seed) for seed in (101, 202, 303)]
+    for point, (value, expected) in enumerate(
+        zip(compiled.evaluate(points), ufo.evaluate(points), strict=True)
     ):
         assert value.real == pytest.approx(expected.real, rel=1e-12), point

@@ -187,6 +187,58 @@ def test_builtin_higgs_vector_kernel_orientations_are_exact_aliases() -> None:
     assert vector_scalar == pytest.approx(scalar_vector, rel=0.0, abs=0.0)
 
 
+def test_builtin_electroweak_gauge_kernel_exchange_identities_are_exact() -> None:
+    """The input-exchange identities the recurrence uses to keep one of the
+    two table orientations of every W W A / W W Z vertex, quartic-contact
+    tensor current and vector- or scalar-pair scalar current."""
+
+    model = BuiltinSMModel()
+    left = (1.0 + 2.0j, -0.5j, 3.0, -2.0 + 0.25j)
+    right = (0.75, 1.5 - 0.5j, -1.0j, 2.25)
+    left_momentum = (5.0, 1.0, -2.0, 0.5)
+    right_momentum = (4.0, -0.5, 1.5, -1.0)
+    coupling = (model.neutral_gauge_coupling(), 0.0)
+
+    def evaluate(kind: int, first, second, **momenta) -> tuple[complex, ...]:
+        return model.vertex_component_expression(
+            kind,
+            first,
+            second,
+            result_particle_id=23,
+            result_chirality=0,
+            coupling=coupling,
+            **momenta,
+        )
+
+    three_vector = evaluate(
+        12, left, right, left_momentum=left_momentum, right_momentum=right_momentum
+    )
+    swapped = evaluate(
+        12, right, left, left_momentum=right_momentum, right_momentum=left_momentum
+    )
+    assert swapped == pytest.approx(tuple(-value for value in three_vector))
+    tensor = evaluate(13, left, right)
+    assert evaluate(13, right, left) == pytest.approx(tuple(-v for v in tensor))
+    assert evaluate(15, left, tensor) == pytest.approx(
+        tuple(-value for value in evaluate(14, tensor, left))
+    )
+    assert evaluate(17, right, left) == pytest.approx(evaluate(17, left, right))
+    assert evaluate(20, (0.5 - 1.5j,), (2.0 + 0.25j,)) == pytest.approx(
+        evaluate(20, (2.0 + 0.25j,), (0.5 - 1.5j,))
+    )
+
+    for kind, factor in ((12, -1.0), (13, -1.0), (17, 1.0), (20, 1.0)):
+        assert model.vertex_evaluation_equivalence(kind).input_exchange_factor == (
+            factor,
+            0.0,
+        )
+    tensor_vector = model.vertex_evaluation_equivalence(14)
+    vector_tensor = model.vertex_evaluation_equivalence(15)
+    assert tensor_vector.class_id == vector_tensor.class_id
+    assert (tensor_vector.input_order, tensor_vector.factor) == ((0, 1), (1.0, 0.0))
+    assert (vector_tensor.input_order, vector_tensor.factor) == ((1, 0), (-1.0, 0.0))
+
+
 @pytest.mark.parametrize("kind,result_particle_id", ((10, 6), (11, -6)))
 @pytest.mark.parametrize("chirality", (-1, 1))
 def test_builtin_charged_current_embeds_weyl_input_in_massive_dirac_output(
@@ -230,7 +282,7 @@ def test_model_builtin_compiles_to_canonical_records_without_replacing_path() ->
 
     assert compiled.name == "built-in-sm"
     assert len(compiled.ir.particles) == 38
-    assert len(compiled.ir.vertex_terms) == 211
+    assert len(compiled.ir.vertex_terms) == 259
     assert compiled.ir.oriented_kernels == ()
     assert compiled.source["kind"] == "built-in-sm"
     assert compiled.source["source_name"] is None

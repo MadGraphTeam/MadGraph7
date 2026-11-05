@@ -389,6 +389,46 @@ def test_verified_scalar_vector_transition_mirrors_are_not_double_counted() -> N
     } == {(0, -1), (0, 0), (0, 1)}
 
 
+def test_builtin_transitions_apply_once_per_unordered_parent_pair() -> None:
+    """The recurrence applies every transition of an unordered parent pair.
+
+    The built-in table lists both input orientations of its colour-singlet
+    vertices, the antisymmetric W W A / W W Z currents with opposite
+    couplings: one transition per pair of distinct parent states and spins
+    survives (both used to, a factor 2 per gauge vertex)."""
+
+    model = BuiltinSMModel()
+    catalog = build_recurrence_template_catalog(
+        model,
+        build_prepared_kernel_catalog(model),
+        compiled_model_digest=_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PACK_DIGEST,
+    )
+    states = {state.template_id: state.particle_id for state in catalog.current_states}
+    flows = {flow.template_id: flow for flow in catalog.quantum_flows}
+    applications: dict[object, int] = {}
+    gauge_rows = 0
+    for transition in catalog.transitions:
+        flow = flows[transition.quantum_flow_template_id]
+        parents = tuple(
+            (states[state_id], spin)
+            for state_id, spin in zip(
+                flow.input_state_template_ids, flow.input_spin_states, strict=True
+            )
+        )
+        if parents[0][0] == parents[1][0]:
+            continue
+        key = (
+            frozenset(parents),
+            states[transition.result_state_template_id],
+            flow.result_spin_state,
+        )
+        applications[key] = applications.get(key, 0) + 1
+        gauge_rows += {abs(particle) for particle, _ in parents} <= {22, 23, 24}
+    assert gauge_rows
+    assert {key: count for key, count in applications.items() if count > 1} == {}
+
+
 def test_concatenate_keep_alias_retains_canonical_parent_order() -> None:
     one = ExactComplexRationalV1.one()
 
