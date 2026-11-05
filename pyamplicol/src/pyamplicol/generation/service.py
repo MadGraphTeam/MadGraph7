@@ -69,7 +69,7 @@ from ..color.plan import (
     build_lc_topology_replay_plan,
 )
 from ..models.adjoint_color_certificate import adjoint_tree_color_basis_is_proven
-from ..models.base import Model
+from ..models.base import CouplingOrders, Model
 from ..models.loading import CompiledModel as _CompiledModelPayload
 from ..models.prepared import PreparedKernelPack, PreparedModelBundle
 from ..models.prepared_target import PreparedTargetError, validate_prepared_target
@@ -112,7 +112,8 @@ from .artifact_writer import (
 from .born_orders import process_born_amplitude_orders
 from .contracts import RuntimeExpressionSchema, StageCompilationInput
 from .dag_algorithms import (
-    _infer_minimal_coupling_order_limits_from_color_plan,
+    _closure_totals_from_color_plan,
+    _minimal_coupling_order_limits_from_totals,
     contributing_color_sector_ids,
     filter_dag_to_color_sectors,
     has_model_supported_amplitudes,
@@ -2760,6 +2761,9 @@ class _PreparedProcessConstruction:
     materialized_sector_ids: frozenset[int] | None
     coupling_order_limits: Mapping[str, int]
     topology_replay: LCColorTopologyReplayPlan | ColorTopologyReplayCertificate | None
+    # The minimal-order inference's closure totals over ``restricted_color_plan``
+    # within the requested limits, when it ran over that plan.
+    closure_totals: tuple[CouplingOrders, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -5404,6 +5408,7 @@ class GenerationBackend:
                         model=model,
                         max_coupling_orders=prepared.coupling_order_limits,
                         color_plan=prepared.restricted_color_plan,
+                        closure_totals=prepared.closure_totals,
                     ),
                 )
             )
@@ -8497,6 +8502,7 @@ class GenerationBackend:
                 f"process {process.process!r} has no usable color plan: {detail}"
             )
         limits = self._coupling_order_limits
+        closure_totals = None
         run = self._run_config
         if run is not None and run.process.coupling_order_policy == "minimal":
             if (
@@ -8504,11 +8510,14 @@ class GenerationBackend:
                 and selection.reference_color_order is None
                 and complete_color_plan.color_accuracy == process.color_accuracy
             ):
-                inferred = _infer_minimal_coupling_order_limits_from_color_plan(
+                closure_totals = _closure_totals_from_color_plan(
                     process,
                     model=model,
                     color_plan=complete_color_plan,
                     max_coupling_orders=limits or None,
+                )
+                inferred = _minimal_coupling_order_limits_from_totals(
+                    closure_totals, model=model
                 )
             else:
                 inferred = infer_minimal_coupling_order_limits(
@@ -8557,6 +8566,9 @@ class GenerationBackend:
             materialized_sector_ids=materialized_sector_ids,
             coupling_order_limits=MappingProxyType(dict(limits)),
             topology_replay=replay_plan,
+            closure_totals=(
+                closure_totals if color_plan is complete_color_plan else None
+            ),
         )
 
     def _validate_lc_flow_layout(self, selection: _ProcessSelection) -> None:
