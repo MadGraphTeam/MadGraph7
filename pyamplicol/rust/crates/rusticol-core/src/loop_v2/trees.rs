@@ -2181,10 +2181,8 @@ impl TreeProgram {
             file.schema == TREE_SCHEMA,
             "unsupported tree-program schema",
         )?;
-        require(
-            file.legs == plan.legs && file.legs > 0 && file.legs < 64,
-            "leg count",
-        )?;
+        super::bounds::check_legs(file.legs).map_err(invalid)?;
+        require(file.legs == plan.legs, "leg count")?;
         require(file.initial.len() == file.legs, "initial flags")?;
         require(
             file.model_offset + file.model_count <= file.state_size,
@@ -2840,13 +2838,19 @@ impl TreeProgram {
             .counterterms
             .as_ref()
             .map(|ct| ct.interference.runtime(zero));
-        let metric = self.metric.as_ref().map(|entries| {
-            let index = |i: usize| u32::try_from(i).expect("a Born metric index fits 32 bits");
-            entries
-                .iter()
-                .map(|(s, l, r, [re, im])| (index(*s), index(*l), index(*r), complex(re, im)))
-                .collect()
-        });
+        let metric = self
+            .metric
+            .as_ref()
+            .map(|entries| {
+                let index = |i: usize| crate::narrow::checked::<u32>(i, "Born metric index");
+                entries
+                    .iter()
+                    .map(|(s, l, r, [re, im])| {
+                        Ok((index(*s)?, index(*l)?, index(*r)?, complex(re, im)))
+                    })
+                    .collect::<RusticolResult<_>>()
+            })
+            .transpose()?;
         let columns = self
             .columns
             .as_ref()

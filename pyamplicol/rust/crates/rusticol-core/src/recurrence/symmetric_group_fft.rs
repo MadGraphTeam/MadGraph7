@@ -103,9 +103,63 @@ pub struct SymmetricGroupFftPlan {
     maximum_dimension: usize,
     factorials: Box<[usize]>,
     levels: Box<[SymmetricGroupLevel]>,
-    recursive_to_lexicographic: Box<[u32]>,
+    recursive_to_lexicographic: ReorderMap,
     scalar_degree_three: Option<ScalarDegreeThreeTransform>,
 }
+
+/// The recursive-to-lexicographic gather of one plan.
+///
+/// Indices are below the group order, so four bytes per index suffice
+/// whenever the order fits `u32` (degree <= 12, the common case); larger
+/// orders keep one `usize` per index. The width is chosen from the order, so
+/// it never limits the degree.
+#[derive(Debug)]
+enum ReorderMap {
+    Compact(Box<[u32]>),
+    Wide(Box<[usize]>),
+}
+
+impl ReorderMap {
+    /// Call `visit(recursive, lexicographic)` for every index, in recursive
+    /// order (one dispatch per walk, not per index).
+    #[inline]
+    fn for_each(&self, mut visit: impl FnMut(usize, usize)) {
+        match self {
+            Self::Compact(values) => {
+                for (recursive, &lexicographic) in values.iter().enumerate() {
+                    // Lossless: the value is below the order, which fits usize.
+                    visit(recursive, lexicographic as usize);
+                }
+            }
+            Self::Wide(values) => {
+                for (recursive, &lexicographic) in values.iter().enumerate() {
+                    visit(recursive, lexicographic);
+                }
+            }
+        }
+    }
+}
+
+/// The largest degree whose group order `m!` fits `usize` (20 on 64-bit
+/// targets): the plan's own admission (its elements are addressed by usize).
+const fn largest_admitted_degree() -> usize {
+    let mut degree = 0_usize;
+    let mut order = 1_usize;
+    loop {
+        match order.checked_mul(degree + 1) {
+            Some(next) => {
+                order = next;
+                degree += 1;
+            }
+            None => return degree,
+        }
+    }
+}
+
+// The permutation codes hold one byte per value and rank with a u64 used-set:
+// both cover every degree the order admits, so neither is a separate bound.
+const _: () = assert!(largest_admitted_degree() <= u64::BITS as usize);
+const _: () = assert!(largest_admitted_degree() <= u8::MAX as usize + 1);
 
 /// Load-time compiled scalar Fourier rows for the smallest non-abelian group.
 ///
@@ -141,7 +195,7 @@ impl SymmetricGroupFftPlan {
             maximum_dimension,
             factorials: factorials.into_boxed_slice(),
             levels: levels.into_boxed_slice(),
-            recursive_to_lexicographic: recursive_to_lexicographic.into_boxed_slice(),
+            recursive_to_lexicographic,
             scalar_degree_three: None,
         };
         if degree == 3 {
@@ -194,9 +248,11 @@ impl SymmetricGroupFftPlan {
         &self.levels
     }
 
-    /// Map recursive coset-order indices to lexicographic image-permutation indices.
-    pub fn recursive_to_lexicographic(&self) -> &[u32] {
-        &self.recursive_to_lexicographic
+    /// Call `visit(recursive, lexicographic)` for every group element: the
+    /// map from recursive coset-order indices to lexicographic
+    /// image-permutation indices, in recursive order.
+    pub fn for_each_recursive_to_lexicographic(&self, visit: impl FnMut(usize, usize)) {
+        self.recursive_to_lexicographic.for_each(visit);
     }
 
     /// Return the lexicographic index of the inverse of one indexed permutation.
@@ -212,11 +268,12 @@ impl SymmetricGroupFftPlan {
             )));
         }
         let permutation = lexicographic_unrank(self.degree, index, &self.factorials)?;
-        let mut inverse_code = 0_u64;
+        let mut inverse = vec![0_u8; self.degree];
         for (position, value) in permutation[..self.degree].iter().copied().enumerate() {
-            inverse_code |= (position as u64) << (4 * usize::from(value));
+            // Lossless: the degree is admitted, so positions fit a byte.
+            inverse[usize::from(value)] = position as u8;
         }
-        lexicographic_rank(inverse_code, self.degree, &self.factorials)
+        lexicographic_rank(&inverse, &self.factorials)
     }
 
     /// Allocate mutable scratch for at most `lane_capacity` innermost lanes.
@@ -265,16 +322,14 @@ impl SymmetricGroupFftPlan {
             return Ok(());
         }
 
-        for (recursive_index, lexicographic_index) in
-            self.recursive_to_lexicographic.iter().copied().enumerate()
-        {
-            let source = usize::try_from(lexicographic_index)
-                .map_err(|_| internal("symmetric-group reorder index exceeds usize"))?
-                * active_lanes;
-            let target = recursive_index * active_lanes;
-            workspace.buffer[target..target + active_lanes]
-                .copy_from_slice(&values[source..source + active_lanes]);
-        }
+        let buffer = &mut workspace.buffer;
+        self.recursive_to_lexicographic
+            .for_each(|recursive_index, lexicographic_index| {
+                let source = lexicographic_index * active_lanes;
+                let target = recursive_index * active_lanes;
+                buffer[target..target + active_lanes]
+                    .copy_from_slice(&values[source..source + active_lanes]);
+            });
 
         let mut current_is_workspace = true;
         for current_degree in 2..=self.degree {
@@ -447,14 +502,14 @@ impl SymmetricGroupFftPlan {
         }
         // Transpose the original lexicographic-to-recursive gather. The map
         // is a bijection, so every output lane is overwritten exactly once.
-        for (recursive_index, &lexicographic_index) in
-            self.recursive_to_lexicographic.iter().enumerate()
-        {
-            let source = recursive_index * active_lanes;
-            let target = lexicographic_index as usize * active_lanes;
-            values[target..target + active_lanes]
-                .copy_from_slice(&workspace.buffer[source..source + active_lanes]);
-        }
+        let buffer = &workspace.buffer;
+        self.recursive_to_lexicographic
+            .for_each(|recursive_index, lexicographic_index| {
+                let source = recursive_index * active_lanes;
+                let target = lexicographic_index * active_lanes;
+                values[target..target + active_lanes]
+                    .copy_from_slice(&buffer[source..source + active_lanes]);
+            });
         Ok(())
     }
 }
@@ -1079,24 +1134,23 @@ fn build_young_generators(
 }
 
 fn checked_factorials(degree: usize) -> RusticolResult<Vec<usize>> {
+    // The plan's only degree admission: the group order m! must fit usize
+    // (every element is addressed by a usize index).
+    if degree > largest_admitted_degree() {
+        return Err(invalid(format!(
+            "symmetric-group order {degree}! overflows usize (largest admitted degree {})",
+            largest_admitted_degree()
+        )));
+    }
     let mut factorials = Vec::new();
     factorials
-        .try_reserve_exact(
-            degree
-                .checked_add(1)
-                .ok_or_else(|| invalid("factorial table size overflows usize"))?,
-        )
+        .try_reserve_exact(degree + 1)
         .map_err(|error| invalid(format!("factorial table allocation failed: {error}")))?;
     factorials.push(1_usize);
     for factor in 1..=degree {
         let value = factorials[factor - 1]
             .checked_mul(factor)
             .ok_or_else(|| invalid("symmetric-group order overflows usize"))?;
-        if value > u32::MAX as usize {
-            return Err(invalid(
-                "symmetric-group order exceeds compact reorder-index capacity",
-            ));
-        }
         factorials.push(value);
     }
     Ok(factorials)
@@ -1105,36 +1159,69 @@ fn checked_factorials(degree: usize) -> RusticolResult<Vec<usize>> {
 fn build_recursive_to_lexicographic(
     degree: usize,
     factorials: &[usize],
-) -> RusticolResult<Vec<u32>> {
-    if degree == 0 {
-        return Ok(vec![0]);
+) -> RusticolResult<ReorderMap> {
+    let order = factorials[degree];
+    if u32::try_from(order).is_ok() {
+        let mut map = Vec::new();
+        map.try_reserve_exact(order)
+            .map_err(|error| invalid(format!("permutation reorder allocation failed: {error}")))?;
+        // Lossless: every rank is below the order, which fits u32.
+        visit_recursive_lexicographic_ranks(degree, factorials, |rank| map.push(rank as u32))?;
+        validate_reorder_map(map.iter().map(|&value| value as usize), map.len(), order)?;
+        Ok(ReorderMap::Compact(map.into_boxed_slice()))
+    } else {
+        build_wide_recursive_to_lexicographic(degree, factorials)
     }
-    let mut child_codes = vec![0_u64];
-    let mut final_map = Vec::new();
+}
+
+fn build_wide_recursive_to_lexicographic(
+    degree: usize,
+    factorials: &[usize],
+) -> RusticolResult<ReorderMap> {
+    let order = factorials[degree];
+    let mut map = Vec::new();
+    map.try_reserve_exact(order)
+        .map_err(|error| invalid(format!("permutation reorder allocation failed: {error}")))?;
+    visit_recursive_lexicographic_ranks(degree, factorials, |rank| map.push(rank))?;
+    validate_reorder_map(map.iter().copied(), map.len(), order)?;
+    Ok(ReorderMap::Wide(map.into_boxed_slice()))
+}
+
+/// Visit the lexicographic rank of every element of `S_degree` in recursive
+/// coset order. Codes are kept one byte per value, `degree` bytes per code.
+fn visit_recursive_lexicographic_ranks(
+    degree: usize,
+    factorials: &[usize],
+    mut visit: impl FnMut(usize),
+) -> RusticolResult<()> {
+    if degree == 0 {
+        visit(0);
+        return Ok(());
+    }
+    let mut child_codes: Vec<u8> = Vec::new();
+    let mut code = vec![0_u8; degree];
     for current_degree in 1..=degree {
-        let order = factorials[current_degree];
+        let child_degree = current_degree - 1;
+        let child_count = factorials[child_degree];
         let is_final = current_degree == degree;
         let mut next_codes = Vec::new();
-        if is_final {
-            final_map.try_reserve_exact(order).map_err(|error| {
-                invalid(format!("permutation reorder allocation failed: {error}"))
-            })?;
-        } else {
+        if !is_final {
+            let bytes = factorials[current_degree]
+                .checked_mul(current_degree)
+                .ok_or_else(|| invalid("permutation-code storage overflows usize"))?;
             next_codes
-                .try_reserve_exact(order)
+                .try_reserve_exact(bytes)
                 .map_err(|error| invalid(format!("permutation-code allocation failed: {error}")))?;
         }
         for coset in 0..current_degree {
-            for child_code in child_codes.iter().copied() {
-                let code = extend_recursive_permutation(child_code, current_degree, coset);
+            for child in 0..child_count {
+                let child_code = &child_codes[child * child_degree..(child + 1) * child_degree];
+                let code = &mut code[..current_degree];
+                extend_recursive_permutation(child_code, coset, code);
                 if is_final {
-                    let rank = lexicographic_rank(code, current_degree, factorials)?;
-                    final_map.push(
-                        u32::try_from(rank)
-                            .map_err(|_| internal("lexicographic rank exceeds u32"))?,
-                    );
+                    visit(lexicographic_rank(code, factorials)?);
                 } else {
-                    next_codes.push(code);
+                    next_codes.extend_from_slice(code);
                 }
             }
         }
@@ -1142,41 +1229,43 @@ fn build_recursive_to_lexicographic(
             child_codes = next_codes;
         }
     }
-    validate_reorder_map(&final_map, factorials[degree])?;
-    Ok(final_map)
+    Ok(())
 }
 
-fn extend_recursive_permutation(child: u64, degree: usize, coset: usize) -> u64 {
-    debug_assert!(degree >= 1 && degree <= u64::BITS as usize / 4);
-    debug_assert!(coset < degree);
-    let mut result = 0_u64;
-    for position in 0..degree - 1 {
-        let child_value = ((child >> (4 * position)) & 0xf) as usize;
-        let value = if child_value < coset {
+/// Extend a permutation of `S_{d-1}` (`child`, one byte per value) by the
+/// coset representative `coset` of `S_d / S_{d-1}` into `code` (length `d`).
+fn extend_recursive_permutation(child: &[u8], coset: usize, code: &mut [u8]) {
+    debug_assert_eq!(code.len(), child.len() + 1);
+    debug_assert!(coset < code.len());
+    for (slot, &child_value) in code.iter_mut().zip(child) {
+        *slot = if usize::from(child_value) < coset {
             child_value
         } else {
             child_value + 1
         };
-        result |= (value as u64) << (4 * position);
     }
-    result | (coset as u64) << (4 * (degree - 1))
+    // Lossless: the coset is below the admitted degree, which fits a byte.
+    code[child.len()] = coset as u8;
 }
 
-fn lexicographic_rank(code: u64, degree: usize, factorials: &[usize]) -> RusticolResult<usize> {
-    let mut used = 0_u16;
+/// The lexicographic rank of a permutation of `0..code.len()`, one byte per
+/// value (the degree is admitted, so its u64 used-set covers every value).
+fn lexicographic_rank(code: &[u8], factorials: &[usize]) -> RusticolResult<usize> {
+    let degree = code.len();
+    let mut used = 0_u64;
     let mut rank = 0_usize;
-    for position in 0..degree {
-        let value = ((code >> (4 * position)) & 0xf) as usize;
-        if value >= degree || used & (1_u16 << value) != 0 {
+    for (position, &value) in code.iter().enumerate() {
+        let value = usize::from(value);
+        if value >= degree || used & (1_u64 << value) != 0 {
             return Err(internal("recursive permutation code is invalid"));
         }
-        let smaller_mask = (1_u16 << value) - 1;
+        let smaller_mask = (1_u64 << value) - 1;
         let used_smaller = (used & smaller_mask).count_ones() as usize;
         let unused_smaller = value - used_smaller;
         rank = rank
             .checked_add(unused_smaller * factorials[degree - position - 1])
             .ok_or_else(|| internal("lexicographic permutation rank overflows usize"))?;
-        used |= 1_u16 << value;
+        used |= 1_u64 << value;
     }
     Ok(rank)
 }
@@ -1214,17 +1303,19 @@ fn lexicographic_unrank(
     Ok(permutation)
 }
 
-fn validate_reorder_map(values: &[u32], order: usize) -> RusticolResult<()> {
-    if values.len() != order {
+fn validate_reorder_map(
+    values: impl Iterator<Item = usize>,
+    length: usize,
+    order: usize,
+) -> RusticolResult<()> {
+    if length != order {
         return Err(internal("permutation reorder map has the wrong length"));
     }
     let mut seen = Vec::new();
     seen.try_reserve_exact(order)
         .map_err(|error| invalid(format!("reorder validation allocation failed: {error}")))?;
     seen.resize(order, false);
-    for value in values.iter().copied() {
-        let index = usize::try_from(value)
-            .map_err(|_| internal("permutation reorder index exceeds usize"))?;
+    for index in values {
         if index >= order || std::mem::replace(&mut seen[index], true) {
             return Err(internal("permutation reorder map is not bijective"));
         }
@@ -1573,11 +1664,15 @@ mod tests {
     fn reorder_map_is_a_lexicographic_bijection() {
         for degree in 0..=8 {
             let plan = SymmetricGroupFftPlan::new(degree).unwrap();
-            let mut values = plan.recursive_to_lexicographic().to_vec();
+            let mut values = Vec::new();
+            plan.for_each_recursive_to_lexicographic(|recursive, lexicographic| {
+                assert_eq!(recursive, values.len());
+                values.push(lexicographic);
+            });
             values.sort_unstable();
             assert_eq!(
                 values,
-                (0..plan.order() as u32).collect::<Vec<_>>(),
+                (0..plan.order()).collect::<Vec<_>>(),
                 "degree {degree}"
             );
             for index in 0..plan.order() {
@@ -1809,19 +1904,98 @@ mod tests {
     }
 
     #[test]
-    fn degree_admission_follows_reorder_storage_capacity() {
+    #[cfg(target_pointer_width = "64")]
+    fn degree_admission_is_the_group_order_in_usize() {
         // Admission must not allocate a factorial-size plan merely to test
-        // the integer boundary. Both orders exceed the former degree-ten cap.
-        assert_eq!(checked_factorials(11).unwrap()[11], 39_916_800);
+        // the integer boundary. Orders past the former u32 reorder storage
+        // (degree 13 and up) are admitted; only an order beyond usize is not.
         assert_eq!(checked_factorials(12).unwrap()[12], 479_001_600);
-        assert!(
-            checked_factorials(13)
-                .unwrap_err()
-                .to_string()
-                .contains("reorder-index capacity")
-        );
-        assert!(SymmetricGroupFftPlan::new(13).is_err());
+        assert_eq!(checked_factorials(13).unwrap()[13], 6_227_020_800);
+        let largest = largest_admitted_degree();
+        assert!(largest >= 12);
+        let factorials = checked_factorials(largest).unwrap();
+        assert!(factorials[largest].checked_mul(largest + 1).is_none());
+        let refusal = checked_factorials(largest + 1).unwrap_err().to_string();
+        assert!(refusal.contains("overflows usize"), "{refusal}");
+        assert!(SymmetricGroupFftPlan::new(largest + 1).is_err());
         assert!(checked_factorials(usize::MAX).is_err());
+    }
+
+    #[test]
+    #[cfg(target_pointer_width = "64")]
+    fn permutation_codes_hold_degrees_past_sixteen() {
+        // The former four-bit codes held degree <= 16 (debug-asserted only).
+        let degree = largest_admitted_degree();
+        assert!(degree > 16);
+        let factorials = checked_factorials(degree).unwrap();
+        let order = factorials[degree];
+        for rank in [0, 1, 12_345_678_901, order / 3, order - 2, order - 1] {
+            let permutation = super::lexicographic_unrank(degree, rank, &factorials).unwrap();
+            assert_eq!(lexicographic_rank(&permutation, &factorials).unwrap(), rank);
+        }
+        // Extending a child code by a coset representative ranks consistently.
+        let child: Vec<u8> = (0..degree as u8 - 1).rev().collect();
+        let mut code = vec![0_u8; degree];
+        extend_recursive_permutation(&child, degree - 1, &mut code);
+        assert_eq!(code[degree - 1] as usize, degree - 1);
+        assert!(lexicographic_rank(&code, &factorials).is_ok());
+        let mut repeated = code.clone();
+        repeated[0] = repeated[1];
+        assert!(lexicographic_rank(&repeated, &factorials).is_err());
+    }
+
+    #[test]
+    fn wide_reorder_storage_transforms_bitwise_like_compact_storage() {
+        // Orders past u32 keep one usize per reorder index; force that
+        // storage at small degree and compare every transform bitwise.
+        for degree in [4_usize, 6, 7] {
+            let compact = SymmetricGroupFftPlan::new(degree).unwrap();
+            assert!(matches!(
+                compact.recursive_to_lexicographic,
+                ReorderMap::Compact(_)
+            ));
+            let mut wide = SymmetricGroupFftPlan::new(degree).unwrap();
+            wide.recursive_to_lexicographic =
+                build_wide_recursive_to_lexicographic(degree, &wide.factorials).unwrap();
+            assert!(matches!(
+                wide.recursive_to_lexicographic,
+                ReorderMap::Wide(_)
+            ));
+            for lanes in [1_usize, 3] {
+                let values = deterministic_values(compact.order() * lanes, degree + lanes);
+                let mut forward_compact = vec![(0.0, 0.0); values.len()];
+                let mut forward_wide = vec![(0.0, 0.0); values.len()];
+                let mut workspace = compact.workspace(lanes).unwrap();
+                compact
+                    .forward_lanes(lanes, &values, &mut forward_compact, &mut workspace)
+                    .unwrap();
+                let mut workspace = wide.workspace(lanes).unwrap();
+                wide.forward_lanes(lanes, &values, &mut forward_wide, &mut workspace)
+                    .unwrap();
+                let bits = |values: &[SymmetricGroupComplex64]| {
+                    values
+                        .iter()
+                        .map(|value| (value.0.to_bits(), value.1.to_bits()))
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(bits(&forward_compact), bits(&forward_wide));
+                let mut inverse_compact = vec![(0.0, 0.0); values.len()];
+                let mut inverse_wide = vec![(0.0, 0.0); values.len()];
+                let mut workspace = compact.workspace(lanes).unwrap();
+                compact
+                    .inverse_lanes(
+                        lanes,
+                        &forward_compact,
+                        &mut inverse_compact,
+                        &mut workspace,
+                    )
+                    .unwrap();
+                let mut workspace = wide.workspace(lanes).unwrap();
+                wide.inverse_lanes(lanes, &forward_wide, &mut inverse_wide, &mut workspace)
+                    .unwrap();
+                assert_eq!(bits(&inverse_compact), bits(&inverse_wide));
+            }
+        }
     }
 
     fn deterministic_values(count: usize, salt: usize) -> Vec<SymmetricGroupComplex64> {

@@ -266,8 +266,13 @@ fn primary_local_color_destination_map(
             let sector = *sectors.get(group_id).ok_or_else(|| {
                 RusticolError::integrity("primary color group has no physical sector")
             })? as usize;
-            if components.get(group_id).copied() != Some(component as u32)
-                || contraction.owner_by_sector().get(sector).copied() != Some(sector as u32)
+            if !components
+                .get(group_id)
+                .is_some_and(|&id| crate::narrow::is_index(id, component))
+                || !contraction
+                    .owner_by_sector()
+                    .get(sector)
+                    .is_some_and(|&id| crate::narrow::is_index(id, sector))
                 || owner_sector.is_some_and(|expected| expected != sector)
             {
                 return Err(RusticolError::integrity(

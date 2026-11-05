@@ -750,6 +750,12 @@ def build_recurrence_color_contraction(
                 set(certified_structural_zero_sector_ids),
             ),
         )
+        # Auto keeps the FFT whenever certified orbits exist: from the plan's
+        # own sizes its exact kernel holds channels^2 * m! entries (plus the
+        # residual rows both forms share) against the direct metric's
+        # (channels * m!)^2, and its per-point work grows like m! against
+        # (m!)^2, so the direct form is never the cheaper one and no degree
+        # or size threshold is needed. ``color.contraction`` overrides it.
         if contraction == "auto" and not contraction_plan.supported:
             contraction_plan = build_color_contraction_plan(
                 color_plan, tuple(descriptors)

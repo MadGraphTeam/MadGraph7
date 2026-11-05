@@ -119,6 +119,7 @@ impl Readings {
             .contents
             .iter()
             .map(|&content| {
+                // Distinct u32 contents: a dense id fits u32.
                 *index.entry(content).or_insert_with(|| {
                     used.push(content);
                     (used.len() - 1) as u32

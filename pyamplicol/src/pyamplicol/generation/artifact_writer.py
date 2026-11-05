@@ -2444,7 +2444,7 @@ def _on_the_fly_execution_summary(
             and set(factorization) == {"kind", "rank", "coset_count"}
             and isinstance(factorization_rank, int)
             and not isinstance(factorization_rank, bool)
-            and 2 <= factorization_rank <= 10
+            and factorization_rank >= 2
             and isinstance(factorization_coset_count, int)
             and not isinstance(factorization_coset_count, bool)
             and factorization_coset_count >= 1
@@ -4337,8 +4337,12 @@ def _native_compiled_direct_application(
         )
     if result["simd_lane_width"] not in {2, 4}:
         raise ValueError("native DirectApplication SIMD width is unsupported")
-    if result["logical_stack_bytes"] > 64 * 1024:
-        raise ValueError("native DirectApplication logical stack exceeds 64 KiB")
+    # The scratch size is the program's (stack or heap scratch: no size cap);
+    # it must fit the manifest's u32 field.
+    if result["logical_stack_bytes"] > 0xFFFF_FFFF:
+        raise ValueError(
+            "native DirectApplication logical scratch exceeds the u32 manifest field"
+        )
     if result["output_semantics"] != "factor-free-overwrite":
         raise ValueError("native DirectApplication output semantics are incompatible")
     for name in ("source_path", "library_path"):
@@ -5296,7 +5300,7 @@ def _validate_symmetric_group_fft_provenance(
     component_count = _nonnegative_integer(
         summary.get("component_count"), f"{context} component count", minimum=1
     )
-    if degree > 10 or group_count % component_count:
+    if group_count % component_count:
         raise ValueError(f"{context} FFT group shape is invalid")
     group_order = math.factorial(degree)
     covered_local_group_count = channel_count * group_order

@@ -314,14 +314,11 @@ impl OnTheFlyCompactSelectorAdapterV1 {
                 "trace-reflection folding is valid only for a pure single-trace LC domain",
             ));
         }
+        let anchor_count = crate::narrow::checked::<u32>(anchors.len(), "LC selector anchors")?;
         let mut adapter = Self {
             external_permutation: external_permutation.to_vec().into_boxed_slice(),
-            representative_to_public: (0..anchors.len() as u32)
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
-            public_to_representative: (0..anchors.len() as u32)
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
+            representative_to_public: (0..anchor_count).collect::<Vec<_>>().into_boxed_slice(),
+            public_to_representative: (0..anchor_count).collect::<Vec<_>>().into_boxed_slice(),
             public_label_by_representative_label: public_slot_by_label
                 .keys()
                 .copied()

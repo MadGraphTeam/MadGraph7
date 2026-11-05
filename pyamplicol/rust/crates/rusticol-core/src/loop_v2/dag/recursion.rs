@@ -16,7 +16,7 @@ use super::input::{DagInput, FlavourOp};
 use super::reuse::{Kernel, canonical_kernel_evaluation};
 use super::{
     ColourState, ColumnarDag, DagError, DagResult, NO_HELICITY, NO_LEG, Orders, Species, Tables,
-    VertexKey, invalid, unsupported,
+    VertexKey, id32, invalid, unsupported,
 };
 use std::collections::HashMap;
 use std::hash::{BuildHasherDefault, Hash, Hasher};
@@ -84,14 +84,14 @@ impl<T: Eq + Hash + Clone> Default for Interner<T> {
 }
 
 impl<T: Eq + Hash + Clone> Interner<T> {
-    pub fn intern(&mut self, value: T) -> u32 {
+    pub fn intern(&mut self, value: T) -> DagResult<u32> {
         if let Some(id) = self.ids.get(&value) {
-            return *id;
+            return Ok(*id);
         }
-        let id = self.values.len() as u32;
+        let id = id32(self.values.len(), "DAG table id")?;
         self.ids.insert(value.clone(), id);
         self.values.push(value);
-        id
+        Ok(id)
     }
 
     pub fn get(&self, id: u32) -> &T {
@@ -214,11 +214,11 @@ impl Dag {
         is_source: bool,
         leg: i32,
         helicity: i32,
-    ) -> u32 {
+    ) -> DagResult<u32> {
         if let Some(id) = table.ids.get(&key) {
-            return *id;
+            return Ok(*id);
         }
-        let id = self.currents.len() as u32;
+        let id = id32(self.currents.len(), "DAG current id")?;
         table.ids.insert(key, id);
         self.currents.push(Current {
             key,
@@ -232,7 +232,7 @@ impl Dag {
             .entry((key.mask, key.particle))
             .or_default()
             .push(id);
-        id
+        Ok(id)
     }
 
     /// The columns of the finished DAG (`GenericDAG` currents, sources and
@@ -243,7 +243,7 @@ impl Dag {
     /// zeroed, so their pages are committed only as they are written, and
     /// the rows' buffer shrinks behind the cursor, so the conversion holds
     /// about one copy of the interactions instead of two.
-    pub fn into_columns(mut self, input: &DagInput) -> ColumnarDag {
+    pub fn into_columns(mut self, input: &DagInput) -> DagResult<ColumnarDag> {
         let mut species_ids: FxMap<u32, u32> = FxMap::default();
         let mut tables = Tables {
             flavours: std::mem::take(&mut self.flavours.values),
@@ -273,14 +273,19 @@ impl Dag {
         for current in &self.currents {
             let key = &current.key;
             let particle = &input.particles[key.particle as usize];
-            let species = *species_ids.entry(key.particle).or_insert_with(|| {
-                tables.species.push(Species {
-                    pdg: particle.pdg,
-                    auxiliary: particle.auxiliary.clone(),
-                    quantum_numbers: particle.quantum_numbers.clone(),
-                });
-                (tables.species.len() - 1) as u32
-            });
+            let species = match species_ids.get(&key.particle) {
+                Some(&species) => species,
+                None => {
+                    let species = id32(tables.species.len(), "DAG species id")?;
+                    tables.species.push(Species {
+                        pdg: particle.pdg,
+                        auxiliary: particle.auxiliary.clone(),
+                        quantum_numbers: particle.quantum_numbers.clone(),
+                    });
+                    species_ids.insert(key.particle, species);
+                    species
+                }
+            };
             dag.c_species.push(species);
             dag.c_mask.push(key.mask);
             dag.c_momentum.push(key.mask);
@@ -295,23 +300,26 @@ impl Dag {
             dag.c_leg.push(current.leg);
             dag.c_helicity.push(current.helicity);
             dag.c_words.extend_from_slice(self.words.get(key.word));
-            dag.c_word_offsets.push(dag.c_words.len() as u32);
+            dag.c_word_offsets
+                .push(id32(dag.c_words.len(), "DAG word-label offset")?);
         }
         self.currents = Vec::new();
         dag.sources = std::mem::take(&mut self.sources);
         // The vertex table in the rows' first use, as before.
         let mut vertex_ids: FxMap<u32, u32> = FxMap::default();
         for interaction in &self.interactions {
-            vertex_ids.entry(interaction.vertex).or_insert_with(|| {
-                let vertex = &input.vertices[interaction.vertex as usize];
-                tables.vertices.push(VertexKey {
-                    kind: vertex.kind,
-                    particles: vertex.pdgs,
-                    backend: vertex.backend.clone(),
-                    full_tensor_network_ready: vertex.full_tensor_network_ready,
-                });
-                (tables.vertices.len() - 1) as u32
+            if vertex_ids.contains_key(&interaction.vertex) {
+                continue;
+            }
+            let id = id32(tables.vertices.len(), "DAG vertex id")?;
+            let vertex = &input.vertices[interaction.vertex as usize];
+            tables.vertices.push(VertexKey {
+                kind: vertex.kind,
+                particles: vertex.pdgs,
+                backend: vertex.backend.clone(),
+                full_tensor_network_ready: vertex.full_tensor_network_ready,
             });
+            vertex_ids.insert(interaction.vertex, id);
         }
         let m = self.interactions.len();
         dag.i_vertex = vec![0; m];
@@ -341,7 +349,7 @@ impl Dag {
             }
         }
         dag.tables = tables;
-        dag
+        Ok(dag)
     }
 }
 
@@ -380,7 +388,7 @@ pub fn compile(input: &DagInput) -> DagResult<Dag> {
         by_mask: FxMap::default(),
         by_mask_particle: FxMap::default(),
     };
-    let empty_orders = dag.orders.intern(Vec::new());
+    let empty_orders = dag.orders.intern(Vec::new())?;
     // `_build_sources`: one helicity-ancestry bit per (leg, colour, state).
     let mut next_bit = 0u32;
     for sources in &input.sources {
@@ -389,8 +397,8 @@ pub fn compile(input: &DagInput) -> DagResult<Dag> {
             .iter()
             .find(|leg| leg.label == sources.label)
             .ok_or_else(|| DagError::Malformed(format!("source leg {}", sources.label)))?;
-        let flavour = dag.flavours.intern(vec![leg.pdg]);
-        let word = dag.words.intern(vec![leg.label]);
+        let flavour = dag.flavours.intern(vec![leg.pdg])?;
+        let word = dag.words.intern(vec![leg.label])?;
         for (sector_id, line_groups) in &sources.colours {
             let colour = dag.colours.intern(ColourState {
                 accuracy: input.accuracy.clone(),
@@ -400,7 +408,7 @@ pub fn compile(input: &DagInput) -> DagResult<Dag> {
                 traces: Vec::new(),
                 lines: Vec::new(),
                 nc_grade: None,
-            });
+            })?;
             for state in &sources.states {
                 if next_bit >= 64 {
                     return unsupported("more than 64 source states (helicity ancestry bits)");
@@ -417,7 +425,7 @@ pub fn compile(input: &DagInput) -> DagResult<Dag> {
                     word,
                 };
                 next_bit += 1;
-                let id = dag.add_or_get(&mut table, key, true, leg.label as i32, state.helicity);
+                let id = dag.add_or_get(&mut table, key, true, leg.label as i32, state.helicity)?;
                 dag.sources.push(id);
             }
         }
@@ -511,7 +519,7 @@ pub fn compile(input: &DagInput) -> DagResult<Dag> {
                                         .into_iter()
                                         .filter(|(_, value)| *value != 0)
                                         .collect();
-                                    let id = dag.orders.intern(combined);
+                                    let id = dag.orders.intern(combined)?;
                                     order_cache
                                         .insert((left.key.orders, right.key.orders, row), id);
                                     id
@@ -537,7 +545,8 @@ pub fn compile(input: &DagInput) -> DagResult<Dag> {
                                         dag.words.get(right.key.word),
                                         vertex,
                                     )
-                                    .map(|labels| dag.words.intern(labels));
+                                    .map(|labels| dag.words.intern(labels))
+                                    .transpose()?;
                                 label_cache.insert(label_key, labels);
                                 labels
                             }
@@ -589,9 +598,9 @@ pub fn compile(input: &DagInput) -> DagResult<Dag> {
                                                      external_labels",
                                                 );
                                             }
-                                            dag.words.intern(open)
+                                            dag.words.intern(open)?
                                         };
-                                        Some((dag.colours.intern(state), word))
+                                        Some((dag.colours.intern(state)?, word))
                                     }
                                 };
                                 combine_cache.insert(combined_key, found);
@@ -608,7 +617,7 @@ pub fn compile(input: &DagInput) -> DagResult<Dag> {
                             Some(flavour) => *flavour,
                             None => {
                                 let flavour = match vertex.flavour {
-                                    FlavourOp::Constant => dag.flavours.intern(vec![result_pdg]),
+                                    FlavourOp::Constant => dag.flavours.intern(vec![result_pdg])?,
                                     FlavourOp::Left | FlavourOp::Right => {
                                         let source = if vertex.flavour == FlavourOp::Left {
                                             left.key.flavour
@@ -621,7 +630,7 @@ pub fn compile(input: &DagInput) -> DagResult<Dag> {
                                         } else {
                                             let mut flow = flow.clone();
                                             flow.push(result_pdg);
-                                            dag.flavours.intern(flow)
+                                            dag.flavours.intern(flow)?
                                         }
                                     }
                                 };
@@ -645,7 +654,7 @@ pub fn compile(input: &DagInput) -> DagResult<Dag> {
                                 word,
                             };
                             let result =
-                                dag.add_or_get(&mut table, key, false, NO_LEG, NO_HELICITY);
+                                dag.add_or_get(&mut table, key, false, NO_LEG, NO_HELICITY)?;
                             let vertex_weight =
                                 vertex.colour_weight.clone().map_err(DagError::Invalid)?;
                             let weight =

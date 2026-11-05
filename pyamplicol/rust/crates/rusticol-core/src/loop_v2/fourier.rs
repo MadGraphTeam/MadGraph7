@@ -164,21 +164,26 @@ impl SeedFourier {
             serde_json::from_slice(json).map_err(|e| invalid(format!("{e}")))?;
         require(file.schema == FOURIER_SCHEMA, "unsupported schema")?;
         require(file.degree >= 2, "the group degree must be at least 2")?;
-        // The tower's own admission bounds the degree (its reorder storage).
+        // The tower's own admission bounds the degree (its group order in usize).
         let fft = SymmetricGroupFftPlan::new(file.degree)?;
         let group = fft.order();
         let degree = file.degree;
-        let elements: Vec<Vec<usize>> = (0..group).map(|r| unrank(degree, r)).collect();
-        let inverses: Vec<Vec<usize>> = elements
-            .iter()
-            .map(|p| {
-                let mut inverse = vec![0; degree];
-                for (i, &x) in p.iter().enumerate() {
-                    inverse[x] = i;
-                }
-                inverse
-            })
-            .collect();
+        // Every element and its inverse, `degree` entries each, in two flat
+        // tables (the record's orbits already hold `group` entries apiece).
+        let table = group
+            .checked_mul(degree)
+            .ok_or_else(|| invalid("the permutation tables overflow usize"))?;
+        let mut elements = Vec::with_capacity(table);
+        let mut inverses = vec![0; table];
+        for r in 0..group {
+            let p = unrank(degree, r);
+            for (i, &x) in p.iter().enumerate() {
+                inverses[r * degree + x] = i;
+            }
+            elements.extend_from_slice(&p);
+        }
+        let element = |g: usize| &elements[g * degree..(g + 1) * degree];
+        let inverse_of = |h: usize| &inverses[h * degree..(h + 1) * degree];
         let weight_columns = program.column_weights.iter().max().map_or(0, |w| w + 1);
         let classes = program.seed_classes.len();
         // Per (record, weight column): component -> exact weight (summed).
@@ -273,7 +278,7 @@ impl SeedFourier {
                 {
                     let row = weight_of(r0, job.column);
                     for h in 0..group {
-                        let x = relative(&inverses[h], &elements[g0], &mut scratch);
+                        let x = relative(inverse_of(h), element(g0), &mut scratch);
                         if let Some(w) = born[a][h].and_then(|j| row.get(&j)) {
                             kernel[x] = if negative0 {
                                 [-w[0].clone(), -w[1].clone()]
@@ -293,7 +298,7 @@ impl SeedFourier {
                     records.insert(r);
                     let row = weight_of(r, job.column);
                     for h in 0..group {
-                        let x = relative(&inverses[h], &elements[g], &mut scratch);
+                        let x = relative(inverse_of(h), element(g), &mut scratch);
                         let w = born[a][h].and_then(|j| row.get(&j)).unwrap_or(&zero);
                         let k = &kernel[x];
                         let equal = if negative {
@@ -641,11 +646,12 @@ fn forward<T: Carrier>(
     zero: &T,
 ) {
     let total = fft.order();
-    for (recursive, &lexicographic) in fft.recursive_to_lexicographic().iter().enumerate() {
-        let source = lexicographic as usize * lanes;
-        work.buffer[recursive * lanes..(recursive + 1) * lanes]
+    let buffer = &mut work.buffer;
+    fft.for_each_recursive_to_lexicographic(|recursive, lexicographic| {
+        let source = lexicographic * lanes;
+        buffer[recursive * lanes..(recursive + 1) * lanes]
             .clone_from_slice(&values[source..source + lanes]);
-    }
+    });
     let levels = fft.levels();
     let mut in_buffer = true;
     for degree in 2..levels.len() {
@@ -742,11 +748,12 @@ fn inverse<T: Carrier>(
     if !in_buffer {
         work.buffer.clone_from_slice(values);
     }
-    for (recursive, &lexicographic) in fft.recursive_to_lexicographic().iter().enumerate() {
-        let target = lexicographic as usize * lanes;
+    let buffer = &work.buffer;
+    fft.for_each_recursive_to_lexicographic(|recursive, lexicographic| {
+        let target = lexicographic * lanes;
         values[target..target + lanes]
-            .clone_from_slice(&work.buffer[recursive * lanes..(recursive + 1) * lanes]);
-    }
+            .clone_from_slice(&buffer[recursive * lanes..(recursive + 1) * lanes]);
+    });
 }
 
 // ------------------------------------------------------------- the seeds

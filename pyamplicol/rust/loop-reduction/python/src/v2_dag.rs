@@ -82,14 +82,15 @@ struct Assignments {
 }
 
 impl Assignments {
-    fn intern(&mut self, helicities: Assignment) -> u32 {
+    fn intern(&mut self, helicities: Assignment) -> PyResult<u32> {
         if let Some(found) = self.index.get(&helicities) {
-            return *found;
+            return Ok(*found);
         }
-        let id = self.table.len() as u32;
+        let id = rusticol_core::narrow::narrow(self.table.len(), "helicity assignment id")
+            .map_err(|error| PyValueError::new_err(error.to_string()))?;
         self.index.insert(helicities.clone(), id);
         self.table.push(helicities);
-        id
+        Ok(id)
     }
 }
 
@@ -289,8 +290,8 @@ impl V2Dag {
     }
 
     /// Streaming SHA-256 of the DAG's flat records (S1′/S1″ DAG part).
-    fn digest(&self, py: Python<'_>) -> String {
-        py.detach(|| self.dag.digest())
+    fn digest(&self, py: Python<'_>) -> PyResult<String> {
+        py.detach(|| self.dag.digest()).map_err(dag_error)
     }
 
     /// The blocks (`loops/v2/blocks._blocks`) for `dag_input.block_input`,
@@ -308,11 +309,11 @@ impl V2Dag {
         let mut assignments = Assignments::default();
         let blocks = raw
             .into_iter()
-            .map(|block| {
+            .map(|block| -> PyResult<PyBlock> {
                 let id = block.key_current as usize;
                 let species = &t.species[self.dag.c_species[id] as usize];
                 let colour = &t.colours[self.dag.c_colour[id] as usize];
-                PyBlock {
+                Ok(PyBlock {
                     key_current: block.key_current,
                     mask: self.dag.c_mask[id],
                     pdg: block.clone_field.unwrap_or(species.pdg),
@@ -343,13 +344,15 @@ impl V2Dag {
                     rows: block
                         .rows
                         .into_iter()
-                        .map(|(helicities, current)| (assignments.intern(helicities), current))
-                        .collect(),
+                        .map(|(helicities, current)| {
+                            Ok((assignments.intern(helicities)?, current))
+                        })
+                        .collect::<PyResult<_>>()?,
                     connection_sign: block.connection_sign,
                     pairing_sign: block.pairing_sign,
-                }
+                })
             })
-            .collect();
+            .collect::<PyResult<Vec<_>>>()?;
         Ok((blocks, assignments.table))
     }
 

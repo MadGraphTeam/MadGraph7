@@ -794,7 +794,7 @@ def _validate_symmetric_group_convolution(
     entries: Sequence[_RawColorEntry],
     factors: Sequence[_ExactColorFactor],
 ) -> None:
-    if factor_kind != _FACTOR_SYMMETRIC_GROUP_FOURIER or not 2 <= degree <= 10:
+    if factor_kind != _FACTOR_SYMMETRIC_GROUP_FOURIER or degree < 2:
         raise ArtifactError(
             "convolution color storage requires symmetric-group metadata"
         )

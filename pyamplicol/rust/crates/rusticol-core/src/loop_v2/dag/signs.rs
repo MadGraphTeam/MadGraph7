@@ -20,7 +20,7 @@
 
 use super::input::{DagInput, SignContract};
 use super::recursion::{CurrentKey, Dag, FxMap};
-use super::{DagError, DagResult, FERMION_LINE_REPRESENTATION, invalid, refused};
+use super::{DagError, DagResult, FERMION_LINE_REPRESENTATION, id32, invalid, refused};
 
 /// `_fermion_input_orientation_sign`. A merge of fermions of different sign
 /// ownership (a coloured and a colour-singlet one: a fermion line changing
@@ -247,15 +247,15 @@ pub fn apply_connection_signs(input: &DagInput, dag: &mut Dag) -> DagResult<()> 
         .currents
         .iter()
         .map(|current| {
-            let next = blocks.len() as u32;
-            *blocks
+            let next = id32(blocks.len(), "DAG sign-block id")?;
+            Ok(*blocks
                 .entry(CurrentKey {
                     ancestry: 0,
                     ..current.key
                 })
-                .or_insert(next)
+                .or_insert(next))
         })
-        .collect();
+        .collect::<DagResult<_>>()?;
     let order = size_order(dag.interactions.len(), |k| {
         dag.currents[dag.interactions[k].result as usize]
             .key
@@ -327,15 +327,16 @@ mod tests {
         let block_of: Vec<u32> = (0..current_count)
             .map(|id| {
                 let key = block(id);
-                match ids.iter().position(|seen| *seen == key) {
-                    Some(dense) => dense as u32,
+                let dense = match ids.iter().position(|seen| *seen == key) {
+                    Some(dense) => dense,
                     None => {
                         ids.push(key);
-                        (ids.len() - 1) as u32
+                        ids.len() - 1
                     }
-                }
+                };
+                super::super::id32(dense, "DAG sign-block id")
             })
-            .collect();
+            .collect::<super::DagResult<_>>()?;
         let order = size_order(merges.len(), |k| size(merges[k].2));
         connection_parities(
             |id| id < 4,

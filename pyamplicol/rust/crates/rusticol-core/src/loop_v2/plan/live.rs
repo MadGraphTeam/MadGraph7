@@ -305,7 +305,11 @@ impl LoopProgramV4 {
         let seeded: Vec<bool> = (0..self.rows * columns)
             .map(|row| rows[row / columns] && keeps(row))
             .collect();
-        if seeded.iter().enumerate().all(|(row, &seed)| seed == keeps(row)) {
+        if seeded
+            .iter()
+            .enumerate()
+            .all(|(row, &seed)| seed == keeps(row))
+        {
             return Ok(None);
         }
         // One link interner: the parts' shortened lists are shared across
@@ -462,8 +466,9 @@ fn prune_family(
             std::mem::take(&mut read[s])
         };
         let inputs = sources(step, seeded, &live);
-        let keep =
-            |link: &RowLink, input: &[bool]| input[link.input as usize] && wanted[link.output as usize];
+        let keep = |link: &RowLink, input: &[bool]| {
+            input[link.input as usize] && wanted[link.output as usize]
+        };
         let edge_with = |edge: &Edge, links: Vec<RowLink>| Edge {
             source: edge.source,
             factor: edge.factor,
@@ -491,7 +496,8 @@ fn prune_family(
             }
             Some(split) => {
                 let mut parts = Vec::new();
-                for ((edge, edge_parts), input) in step.edges.iter().zip(&split.parts).zip(&inputs) {
+                for ((edge, edge_parts), input) in step.edges.iter().zip(&split.parts).zip(&inputs)
+                {
                     let mut kept_parts = Vec::new();
                     for part in edge_parts {
                         let mut links = Arc::clone(&part.links);
@@ -536,7 +542,13 @@ fn prune_family(
                 for (g, (group, members)) in split.groups.iter().zip(&members).enumerate() {
                     let links = || members.iter().flat_map(|&(e, p)| parts[e][p].links.iter());
                     links().for_each(|link| written[link.output as usize] = true);
-                    let targets = exact(group.targets.iter().copied().filter(|&t| written[t as usize]));
+                    let targets = exact(
+                        group
+                            .targets
+                            .iter()
+                            .copied()
+                            .filter(|&t| written[t as usize]),
+                    );
                     links().for_each(|link| written[link.output as usize] = false);
                     if !targets.is_empty() {
                         renumbered[g] = Some(groups.len());
@@ -870,7 +882,12 @@ mod tests {
     fn a_call_keeping_some_rows_prunes_as_the_row_restricted_plan() {
         let template = plan("null", 1);
         let restricted = plan("[[0]]", 1);
-        assert!(template.live_rows(&[true, true], &[0, 1]).unwrap().is_none());
+        assert!(
+            template
+                .live_rows(&[true, true], &[0, 1])
+                .unwrap()
+                .is_none()
+        );
         assert!(template.live_rows(&[true], &[0, 1]).is_err());
         assert!(template.live_rows(&[true, false], &[1, 0]).is_err());
         let live = template
@@ -916,10 +933,7 @@ mod tests {
             run.numerator.accumulators,
             numerators(&restricted, &batch)[0]
         );
-        assert_eq!(
-            run.numerator.accumulators,
-            numerators(&template, &batch)[0]
-        );
+        assert_eq!(run.numerator.accumulators, numerators(&template, &batch)[0]);
         // Per column: column 1 keeps row 0 only and the call row 1 only, so
         // only object row 2 (row 1, column 0) is seeded.
         let per_column = plan("[null,[0]]", 2);
@@ -931,9 +945,15 @@ mod tests {
             links.iter().map(|l| (l.output, l.input)).collect()
         };
         let full = &per_column.families[0].steps[0].edges[0].links;
-        let expected: Vec<_> = pairs(full).into_iter().filter(|&(_, input)| input == 2).collect();
+        let expected: Vec<_> = pairs(full)
+            .into_iter()
+            .filter(|&(_, input)| input == 2)
+            .collect();
         assert_eq!(expected.len(), 1);
-        assert_eq!(pairs(&live.family(0).unwrap().steps[0].edges[0].links), expected);
+        assert_eq!(
+            pairs(&live.family(0).unwrap().steps[0].edges[0].links),
+            expected
+        );
         // The copies are allocated at the lengths they keep.
         let copy = live.family(0).unwrap();
         assert_eq!(copy.steps.capacity(), copy.steps.len());
@@ -954,11 +974,20 @@ mod tests {
         let restricted = plan("[[0]]", 1);
         // Family 0 keeps both steps and 2 of its 3 links (whole); family 1
         // nothing (pruned to no step, not live).
-        let live = template.live_rows(&[true, false], &[0, 1]).unwrap().unwrap();
+        let live = template
+            .live_rows(&[true, false], &[0, 1])
+            .unwrap()
+            .unwrap();
         assert!(live.family(0).is_none());
         assert!(live.family(1).unwrap().steps.is_empty());
-        assert_eq!((live.families(), live.links(), live.pruned()), (&[0][..], 3, 1));
-        assert_eq!(live.read.factors, [vec![true, true], vec![true], vec![false]]);
+        assert_eq!(
+            (live.families(), live.links(), live.pruned()),
+            (&[0][..], 3, 1)
+        );
+        assert_eq!(
+            live.read.factors,
+            [vec![true, true], vec![true], vec![false]]
+        );
         const L: usize = 2;
         let zero = Rational::from(0);
         let batch = batch(true);
@@ -968,7 +997,8 @@ mod tests {
         let family = &template.families[0];
         let reads = Reads::of_families(std::iter::once(family));
         inputs.prepare(&template, &data, &reads, &reads);
-        let run = run_family_on::<Rational, L>(&template, 0, family, &inputs, &seeds, &data).unwrap();
+        let run =
+            run_family_on::<Rational, L>(&template, 0, family, &inputs, &seeds, &data).unwrap();
         assert_eq!(
             run.numerator.accumulators,
             numerators(&restricted, &batch)[0]
@@ -984,8 +1014,14 @@ mod tests {
         use crate::loop_execution::v2::{Schedule, V2Executor};
         use std::sync::Arc;
         let executor = V2Executor::new(Arc::new(plan("null", 1)), 2, Some(1)).unwrap();
-        let first = executor.live_rows(&[true, false], None, Schedule::B).unwrap().unwrap();
-        let again = executor.live_rows(&[true, false], None, Schedule::B).unwrap().unwrap();
+        let first = executor
+            .live_rows(&[true, false], None, Schedule::B)
+            .unwrap()
+            .unwrap();
+        let again = executor
+            .live_rows(&[true, false], None, Schedule::B)
+            .unwrap()
+            .unwrap();
         assert!(Arc::ptr_eq(&first, &again));
         // `first`, `again` and the executor's one.
         assert_eq!(Arc::strong_count(&first), 3);
@@ -997,10 +1033,22 @@ mod tests {
         // A miss dropped the executor's before forming the new one.
         assert_eq!(Arc::strong_count(&first), 2);
         assert_eq!(masked.listed(), [0]);
-        let other = executor.live_rows(&[false, true], None, Schedule::B).unwrap().unwrap();
+        let other = executor
+            .live_rows(&[false, true], None, Schedule::B)
+            .unwrap()
+            .unwrap();
         assert_eq!(other.families(), [0, 1]);
-        assert!(executor.live_rows(&[true, true], None, Schedule::B).unwrap().is_none());
-        assert!(executor.live_rows(&[true, false], Some(&[true]), Schedule::B).is_err());
+        assert!(
+            executor
+                .live_rows(&[true, true], None, Schedule::B)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            executor
+                .live_rows(&[true, false], Some(&[true]), Schedule::B)
+                .is_err()
+        );
     }
 
     /// Only schedule B takes a row liveness: schedules M and F dress their
@@ -1015,7 +1063,9 @@ mod tests {
             let live = executor.live_rows(&[true, false], None, schedule).unwrap();
             assert!(live.is_none(), "{schedule:?}");
         }
-        let live = executor.live_rows(&[true, false], None, Schedule::B).unwrap();
+        let live = executor
+            .live_rows(&[true, false], None, Schedule::B)
+            .unwrap();
         assert_eq!(live.unwrap().families(), [0]);
         assert!(
             executor

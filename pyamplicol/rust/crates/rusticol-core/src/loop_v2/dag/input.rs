@@ -12,7 +12,7 @@
 //! Floating-point entries travel as their IEEE-754 bit patterns.
 
 use super::recursion::FxMap;
-use super::{DagError, DagResult, Orders};
+use super::{DagError, DagResult, Orders, id32};
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -299,7 +299,10 @@ impl DagInput {
         let mut by_pdg = HashMap::new();
         let mut particles = Vec::with_capacity(raw.particles.len());
         for p in raw.particles {
-            if by_pdg.insert(p.pdg, particles.len() as u32).is_some() {
+            if by_pdg
+                .insert(p.pdg, id32(particles.len(), "DAG particle id")?)
+                .is_some()
+            {
                 return Err(DagError::Malformed(format!("particle {} repeated", p.pdg)));
             }
             particles.push(Particle {
@@ -340,10 +343,15 @@ impl DagInput {
                     v.kind
                 )));
             }
-            let class = *class_ids.entry(v.class.clone()).or_insert_with(|| {
-                classes.push(v.class.clone());
-                (classes.len() - 1) as u32
-            });
+            let class = match class_ids.get(&v.class) {
+                Some(&class) => class,
+                None => {
+                    let class = id32(classes.len(), "DAG vertex class id")?;
+                    classes.push(v.class.clone());
+                    class_ids.insert(v.class.clone(), class);
+                    class
+                }
+            };
             let mut flows = FxMap::default();
             for (left, right, rows) in v.flows {
                 flows.insert(
@@ -412,10 +420,11 @@ impl DagInput {
         let mut legs = Vec::with_capacity(raw.legs.len());
         let mut full_mask = 0u64;
         for (slot, leg) in raw.legs.into_iter().enumerate() {
-            if leg.label == 0 || leg.label > 64 {
+            if leg.label == 0 || usize::from(leg.label) > crate::loop_v2::bounds::MAX_LEGS {
                 return Err(DagError::Unsupported(format!(
-                    "leg label {} (masks hold at most 64 legs)",
-                    leg.label
+                    "leg label {}: the loop engine's u64 leg masks hold labels 1 to {}",
+                    leg.label,
+                    crate::loop_v2::bounds::MAX_LEGS
                 )));
             }
             full_mask |= label_bit(leg.label);

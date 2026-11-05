@@ -36,6 +36,7 @@ pub(super) struct RowSpace {
 impl RowSpace {
     pub(super) fn new(file: &PlanFile) -> RusticolResult<Self> {
         let legs = file.legs;
+        let all = super::super::bounds::check_legs(legs).map_err(invalid)?;
         require(
             file.helicities.len() == legs,
             "plan helicities per leg differ from its legs",
@@ -74,7 +75,7 @@ impl RowSpace {
             stride,
             radix,
             digits,
-            all: (1u64 << legs) - 1,
+            all,
             rows: file.rows,
         })
     }

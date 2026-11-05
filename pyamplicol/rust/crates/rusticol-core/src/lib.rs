@@ -32,6 +32,7 @@ pub mod loop_v2;
 mod metadata;
 #[cfg(feature = "symbolica-runtime")]
 pub mod model_proofs;
+pub mod narrow;
 pub mod pacbin;
 pub mod recurrence;
 pub mod scalar_primitives;

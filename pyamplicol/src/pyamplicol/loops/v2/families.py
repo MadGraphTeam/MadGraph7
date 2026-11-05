@@ -62,6 +62,18 @@ def orders_within(orders: Orders, cap: Orders) -> bool:
     return all(power <= bound.get(name, 0) for name, power in orders)
 
 
+@cache
+def reducer_rank_refusal(propagators: int, rank: int) -> str | None:
+    """``None`` if the reducer reduces a numerator of ``rank`` over
+    ``propagators`` loop propagators, else its refusal: the reducer's own
+    admission (NinjaRS ``RankClass::of``, through the native module), which
+    the plan loader and the runtime reducer ask too."""
+
+    from pyamplicol.loops.native import load_loop_native
+
+    return load_loop_native().reducer_rank_refusal(propagators, rank)
+
+
 def lowest_leg(mask: int) -> int:
     return (mask & -mask).bit_length() - 1
 
@@ -696,11 +708,9 @@ class _Recursion:
                 state = graph.extend(state, position)
             closures.append(Closure(state, symmetric, self.multiplicity.get(cut, 1)))
             rank = max(rank, sum(p.vertex.q_degree for p in positions))
-        if rank > len(key) + 2:
-            raise ValueError(
-                f"family {key} has structural rank {rank} > N + 2, outside "
-                "the integrand-reduction domain"
-            )
+        refusal = reducer_rank_refusal(len(key), rank)
+        if refusal is not None:
+            raise ValueError(f"family {key} has structural rank {rank}: {refusal}")
         return Family(key, rank, tuple(closures))
 
     def _close(self, cut, positions, admitted, rejected) -> None:

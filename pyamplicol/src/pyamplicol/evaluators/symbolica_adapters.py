@@ -676,7 +676,12 @@ def _native_direct_application_manifest(
         or source.scalar_input_count < 0
         or source.simd_lane_width not in {2, 4}
         or source.logical_stack_bytes < 1
-        or source.logical_stack_bytes > 64 * 1024
+        or source.logical_stack_bytes > 0xFFFF_FFFF
+        or source.logical_stack_bytes
+        != (source.temporary_count + source.output_plane_count // 2)
+        * 2
+        * 8
+        * source.simd_lane_width
         or len(source.evaluator_state_sha256) != 64
     ):
         raise NativeEvaluationError(

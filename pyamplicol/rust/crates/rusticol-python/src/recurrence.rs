@@ -2294,7 +2294,7 @@ fn resolved_helicities_from_direct_plan(
         .iter()
         .enumerate()
         .map(|(index, row)| {
-            if row.id != index as u32 {
+            if !rusticol_core::narrow::is_index(row.id, index) {
                 return Err(invalid(format!(
                     "direct resolved helicity {index} has non-canonical ID {}",
                     row.id

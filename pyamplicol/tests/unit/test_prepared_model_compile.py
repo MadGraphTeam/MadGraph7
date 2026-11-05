@@ -296,7 +296,10 @@ def test_native_split_real_header_exports_only_direct_abis() -> None:
     assert "static_assert(sizeof(DirectArenaView) == 56u)" in header
     assert "static_assert(sizeof(DirectClosureRow) == 40u)" in header
     assert "PAC_DIRECT_MAX_SCRATCH_DOUBLES" in header
-    assert "raw_buffer_len > PAC_DIRECT_MAX_SCRATCH_DOUBLES" in header
+    # The scratch budget picks stack or heap scratch; no size refusal.
+    assert "raw_buffer_len <= PAC_DIRECT_MAX_SCRATCH_DOUBLES" in header
+    assert "new (std::nothrow) double[scratch_len]" in header
+    assert "raw_buffer_len > PAC_DIRECT_MAX_SCRATCH_DOUBLES" not in header
     asm_header = prepared_compile._native_split_real_custom_header(
         kernel,
         raw_function_name="prepared_split",
