@@ -12,7 +12,7 @@ from .contracts import (
 )
 
 if TYPE_CHECKING:
-    pass
+    from ..generation.born_orders import RuntimeNormalizationRequest
 
 from . import compiler_symbolica as _sym
 from .external_helpers import (
@@ -35,9 +35,11 @@ class ExternalModelKernelMixin:
         except KeyError as exc:
             raise KeyError(f"unknown runtime model parameter {name!r}") from exc
 
-    def runtime_normalization_payload(self, dag: Any) -> dict[str, object]:
-        initial_pdgs = tuple(int(pdg) for pdg in dag.process.initial_pdgs)
-        final_pdgs = tuple(int(pdg) for pdg in dag.process.final_pdgs)
+    def runtime_normalization_payload(
+        self, request: RuntimeNormalizationRequest
+    ) -> dict[str, object]:
+        initial_pdgs = tuple(int(pdg) for pdg in request.process.initial_pdgs)
+        final_pdgs = tuple(int(pdg) for pdg in request.process.final_pdgs)
         average_factor = 1
         for pdg in initial_pdgs:
             average_factor *= len(self.source_spin_states(pdg))
@@ -49,7 +51,7 @@ class ExternalModelKernelMixin:
             (*initial_pdgs, *final_pdgs)
         )
         return {
-            "color_accuracy": dag.process.color_accuracy,
+            "color_accuracy": request.process.color_accuracy,
             "color_factor": float(color_factor),
             "average_factor": float(average_factor),
             "identical_factor": float(identical_factor),

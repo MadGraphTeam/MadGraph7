@@ -6,7 +6,7 @@ from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from ...api.errors import GenerationError
 from .._physics_ir import ContractionIR, ParticleIdentityIR, ParticleOrientation
@@ -30,6 +30,9 @@ from .definitions import BuiltinSMDefinitionMixin
 from .expressions import _builtin_vertex_result_chiralities
 from .lowering import BuiltinSMLoweringMixin
 from .process_catalog import PDGS
+
+if TYPE_CHECKING:
+    from ...generation.born_orders import RuntimeNormalizationRequest
 
 _ELECTRIC_CHARGE_BY_PARTICLE = {
     1: "-1/3",
@@ -651,15 +654,17 @@ class BuiltinSMModel(BuiltinSMLoweringMixin, BuiltinSMDefinitionMixin, BuiltinMo
             raise ValueError(f"non-integer leading-color exponent for {tuple(process)}")
         return 3 ** (exponent_twice // 2)
 
-    def runtime_normalization_payload(self, dag: Any) -> dict[str, object]:
+    def runtime_normalization_payload(
+        self, request: RuntimeNormalizationRequest
+    ) -> dict[str, object]:
         """Spin and colour average, identical final states, coupling factor.
 
         The average counts each initial state's source spin states and colour
         dimension; the coupling factor's powers are the Born orders.
         """
 
-        initial = tuple(int(pdg) for pdg in dag.process.initial_pdgs)
-        final = tuple(int(pdg) for pdg in dag.process.final_pdgs)
+        initial = tuple(int(pdg) for pdg in request.process.initial_pdgs)
+        final = tuple(int(pdg) for pdg in request.process.final_pdgs)
         average_factor = 1
         for pdg in initial:
             average_factor *= len(self.source_spin_states(pdg)) * max(
@@ -668,9 +673,9 @@ class BuiltinSMModel(BuiltinSMLoweringMixin, BuiltinSMDefinitionMixin, BuiltinMo
         identical_factor = math.prod(
             math.factorial(count) for count in Counter(final).values()
         )
-        qcd_power, electroweak_power = _born_coupling_powers(dag)
+        qcd_power, electroweak_power = _born_coupling_powers(request)
         return {
-            "color_accuracy": dag.process.color_accuracy,
+            "color_accuracy": request.process.color_accuracy,
             "color_factor": int(self.leading_color_factor((*initial, *final))),
             "average_factor": average_factor,
             "identical_factor": identical_factor,
@@ -801,13 +806,14 @@ class BuiltinSMModel(BuiltinSMLoweringMixin, BuiltinSMDefinitionMixin, BuiltinMo
         return {"QCD": 1, "QED": 2}
 
 
-def _born_coupling_powers(request: Any) -> tuple[int, int]:
+def _born_coupling_powers(request: RuntimeNormalizationRequest) -> tuple[int, int]:
     """(QCD, QED) amplitude coupling orders of the request's Born amplitudes.
 
-    The built-in stage evaluators carry no coupling constants; the global
-    factor restores them with these orders as powers. One factor cannot weigh
-    Born amplitudes of different orders against each other, so such a
-    request is refused.
+    The built-in stage evaluators include the local vertex couplings but not
+    the overall g_s and e; the global factor restores those with these orders
+    as powers. One factor cannot weigh Born amplitudes of different orders
+    against each other, so such a request is refused, as is one without any
+    Born amplitude.
     """
 
     process = request.process.process
@@ -830,7 +836,12 @@ def _born_coupling_powers(request: Any) -> tuple[int, int]:
             "against each other; restrict process.max_coupling_orders to one "
             "Born order or use a UFO model"
         )
-    return next(iter(powers), (0, 0))
+    if not powers:
+        raise GenerationError(
+            f"built-in SM process {process!r} has no Born amplitude whose "
+            "coupling orders could set its global coupling factor"
+        )
+    return next(iter(powers))
 
 
 def _display_name(particle_id: int) -> str:

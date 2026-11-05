@@ -5,7 +5,7 @@ import math
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from ._physics_ir import (
     ContractionIR,
@@ -26,6 +26,9 @@ from .contact_decomposition import (
     CompiledContactOrbitCertificate,
     CompiledContactOrbitStep,
 )
+
+if TYPE_CHECKING:
+    from ..generation.born_orders import RuntimeNormalizationRequest
 
 
 @dataclass(frozen=True)
@@ -965,10 +968,16 @@ class Model:
         name = provider(int(particle_id))
         return None if name is None else str(name)
 
-    def runtime_normalization_payload(self, dag: Any) -> dict[str, object]:
-        """Return model-owned averaging, symmetry, color, and coupling factors."""
+    def runtime_normalization_payload(
+        self, request: RuntimeNormalizationRequest
+    ) -> dict[str, object]:
+        """Return model-owned averaging, symmetry, color, and coupling factors.
 
-        del dag
+        ``request`` carries the process and, on demand, the coupling orders
+        of its Born amplitudes.
+        """
+
+        del request
         raise NotImplementedError("model does not define runtime normalization")
 
     def runtime_normalization_parameter_defaults(self) -> Mapping[str, float]:
