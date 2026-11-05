@@ -49,13 +49,23 @@ C, C++, Fortran and Rust SDKs. See
 
 The built-in Standard Model now equals the UFO `sm` (`no_masses`
 restriction) at tree level. Processes without coloured legs (`e+ e- > a a`,
-`z > e+ e-`) were too small by 1/(8 π α)² ≈ 27.8; massive vector and Higgs
-initial states are averaged over their own spin states; the recurrence mode
-counted every W W photon and W W Z vertex twice; and the lepton and neutrino
-currents, the electroweak exchange between quark lines and the H H V V and
-four-Higgs contacts were incomplete. Artifacts generated with an older
-built-in SM load with a warning; regenerate them. See
+`e+ e- > mu+ mu-`) were too small by 1/(8 π α)² ≈ 27.8; massive vector and
+Higgs initial states are averaged over their own spin states; the recurrence
+mode counted every W W photon and W W Z vertex twice; and the lepton and
+neutrino currents, the electroweak exchange between quark lines and the
+H H V V and four-Higgs contacts were incomplete. Artifacts written by 1.0.1
+are refused by 1.0.2, whose runtime admits only artifacts of its own package
+version: regenerate them. A 1.0.2 artifact generated with a built-in SM
+source from before these fixes (a development build) loads with a warning
+and keeps the old values. See
 [Built-in Standard Model](models-and-processes.md#built-in-standard-model).
+
+Four-quark HEFT trees on `built-in-sm-heft` and on UFO HEFT models were too
+large, because the H g g vertex did not subtract the U(1) part of its
+internal gluons: 9/8 times for `q q~ > H q' q'~` and its crossings, other
+factors with identical quark flavours or more gluons (1.36 for
+`u u~ > H d d~ g`); fixed in
+[#40](https://github.com/MadGraphTeam/pyamplicol/pull/40).
 
 Processes with one initial particle (1 -> n decays, `t > b w+`) are served
 at tree level on UFO models and on the built-in SM (`z > e+ e-`), and at one
