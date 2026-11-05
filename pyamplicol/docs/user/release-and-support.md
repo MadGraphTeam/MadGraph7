@@ -35,6 +35,48 @@ Version 1.0.1 uses published Symbolica 3.0.0, SymJIT 2.26.4 and
 ufo-model-loader 1.0.0, as recorded in the dependency lockfiles. No local
 dependency source patches or unpublished wheels are needed.
 
+## 1.0.2 release
+
+Version `1.0.2` adds one-loop virtual matrix elements on the v2 engine:
+QCD corrections on MG5_aMC's `loop_sm`, and QCD, electroweak and joint
+corrections on the shipped `loop_qcd_qed_sm` and `loop_qcd_qed_sm_Gmu`
+models, with finite parts and poles per squared coupling order, in binary64,
+double-double or arbitrary precision. They load through `Runtime.load` and the
+C, C++, Fortran and Rust SDKs. See
+[One-loop QCD on loop_sm](loop-sm-and-madloop.md),
+[One-loop QCD+QED](electroweak-and-madloop.md) and
+[virtual artifacts](runtime-and-selectors.md#virtual-one-loop-artifacts).
+
+The built-in Standard Model now equals the UFO `sm` (`no_masses`
+restriction) at tree level. Processes without coloured legs (`e+ e- > a a`,
+`z > e+ e-`) were too small by 1/(8 π α)² ≈ 27.8; massive vector and Higgs
+initial states are averaged over their own spin states; the recurrence mode
+counted every W W photon and W W Z vertex twice; and the lepton and neutrino
+currents, the electroweak exchange between quark lines and the H H V V and
+four-Higgs contacts were incomplete. Artifacts generated with an older
+built-in SM load with a warning; regenerate them. See
+[Built-in Standard Model](models-and-processes.md#built-in-standard-model).
+
+Processes with one initial particle (1 -> n decays, `t > b w+`) are served
+at tree level on UFO models and on the built-in SM (`z > e+ e-`), and at one
+loop on the loop models; decay chains and loop-induced decays are refused.
+Mechanical hard-coded limits were lifted: the loop rank is the reduction
+backend's; the colour-FFT degree, grouping factors and flavour mappings,
+charges (now exact rationals) and full-colour N_c powers are uncapped; and
+the native C++ compile has no default timeout. The remaining tuning bounds are
+settings
+(`color.adjoint_dense_max_gluons`, `color.fused_selector_max_sectors`,
+`generation.validation.max_resolved_components`).
+
+Version `1.0.2` uses Python Symbolica 3.0.3 from PyPI (or a Symbolica
+Community build of symbolica-dev's `community` branch with
+symbolica-dev/symbolica#163), and the native code builds Symbolica from that
+branch and pull request at a pinned revision. It also uses SymJIT 2.28.3,
+ufo-model-loader 1.0.1, and NinjaRS and oneloopmaster from their `main`
+branches for the one-loop reduction. The model compiler version is 17:
+compiled models, prepared `.pyamplicol-model` bundles and one-loop artifacts
+written by an earlier version are refused; regenerate them.
+
 ## 1.0.1 release
 
 Version `1.0.1` adds process grouping for multiprocess outputs. Subprocesses

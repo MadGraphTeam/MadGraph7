@@ -2031,7 +2031,7 @@ dependencies = [
 
 [[package]]
 name = "pyamplicol"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "symbolica",
 ]
@@ -2316,7 +2316,7 @@ dependencies = [
 
 [[package]]
 name = "rusticol-capi"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "rusticol-core",
  "rusticol-loop-sdk",
@@ -2325,7 +2325,7 @@ dependencies = [
 
 [[package]]
 name = "rusticol-core"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "bincode",
  "brotli",
@@ -2389,7 +2389,7 @@ dependencies = [
 
 [[package]]
 name = "rusticol-python"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "flate2",
  "num-bigint",
