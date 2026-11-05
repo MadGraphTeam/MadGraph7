@@ -1146,16 +1146,18 @@ _BUILTIN_VS_UFO_PROCESSES = (
     "a a > w+ w-",
     "u d~ > w+ z",
     "e+ e- > w+ w- z",
+    "u d~ > w+ w+ w-",
     "e+ e- > ve ve~",
 )
-# Triple and quartic (W W A A, W W A Z, W W Z Z through the tensor currents)
-# gauge vertices, also checked in the compiled lane.
+# Triple and quartic (W W A A, W W A Z, W W Z Z, W W W W through the tensor
+# currents) gauge vertices, also checked in the compiled lane.
 _GAUGE_SELF_COUPLING_PROCESSES = (
     "a a > w+ w-",
     "e+ e- > w+ w-",
     "u u~ > w+ w-",
     "u d~ > w+ z",
     "e+ e- > w+ w- z",
+    "u d~ > w+ w+ w-",
 )
 
 
