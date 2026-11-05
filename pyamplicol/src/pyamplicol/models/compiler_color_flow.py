@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 
 from .._internal.physics.symbols import ModelSymbolRegistry
@@ -619,70 +619,15 @@ def synthesize_u1_projections(
         *,
         produce: bool = False,
     ) -> None:
-        kind = next_kind + len(synthetic)
-        representations = tuple(
-            1 if name.startswith(U1_IDENTITY_PREFIX) else particle_by_name[name].color
-            for name in new_particles
-        )
-        coloured = tuple(
-            index + 1
-            for index, representation in enumerate(representations)
-            if abs(representation) != 1
-        )
-        color_source = (
-            f"UFO::Identity({coloured[0]},{coloured[1]})" if len(coloured) == 2 else "1"
-        )
-        coupling = _sym.E(kernel.coupling_expression)
-        if produce:
-            coupling = coupling * _sym.E("1/3")
-        source_legs = tuple(
-            -1 if new != old else leg
-            for new, old, leg in zip(
-                new_particles,
-                kernel.particles,
-                kernel.source_particle_legs,
-                strict=True,
-            )
-        )
-        synthetic_kernel = CompiledOrientedKernel(
-            kind=kind,
-            term_id=kernel.term_id,
-            vertex=f"{kernel.vertex}{U1_PROJECTION_SUFFIX}",
-            particles=new_particles,
-            source_particle_legs=source_legs,  # type: ignore[arg-type]
-            component_expressions=tuple(
-                _canonicalize_oriented_kernel_component(
-                    _remap_kernel_symbols(
-                        _sym.E(component),
-                        old_kind=kernel.kind,
-                        new_kind=kind,
-                        model_symbols=model_symbols,
-                    )
-                ).to_canonical_string()
-                for component in kernel.component_expressions
-            ),
-            coupling_expression=coupling.to_canonical_string(),
-            coupling_orders=kernel.coupling_orders,
-            runtime_parameters=kernel.runtime_parameters,
-            color_source=color_source,
-            color_expression=normalize_color_expression(
-                color_source, representations
-            ).expression,
-            color_projection_structure="color-identity",
-            color_projection_coefficient=(float(weight.real), float(weight.imag)),
-            lc_color_normalization_power=kernel.lc_color_normalization_power,
-            term_ids=kernel.term_ids,
-            lc_recurrence_color_rule_kind="color-identity",
-        )
         synthetic.append(
-            replace(
-                synthetic_kernel,
-                lc_color_transition_terms=compile_lc_color_transition_terms(
-                    synthetic_kernel,
-                    representations,  # type: ignore[arg-type]
-                    proof_source="u1-projection-v1",
-                    provenance=(("source-kernel-kind", str(kernel.kind)),),
-                ),
+            _u1_synthetic_kernel(
+                kernel,
+                new_particles,
+                weight,
+                kind=next_kind + len(synthetic),
+                particle_by_name=particle_by_name,
+                model_symbols=model_symbols,
+                produce=produce,
             )
         )
 
@@ -755,6 +700,196 @@ def synthesize_u1_projections(
     if not synthetic:
         return tuple(particles), tuple(kernels)
     return (*particles, *identity_of.values()), (*kernels, *synthetic)
+
+
+def _u1_synthetic_kernel(
+    kernel: CompiledOrientedKernel,
+    new_particles: tuple[str, str, str],
+    weight: complex,
+    *,
+    kind: int,
+    particle_by_name: Mapping[str, CompiledParticleRecord],
+    model_symbols: ModelSymbolRegistry,
+    produce: bool = False,
+) -> CompiledOrientedKernel:
+    """A copy of an oriented stage on other particles with an identity colour
+    rule and colour weight ``weight`` (``produce``: times the exact ``1/3`` of
+    a U(1)-subtraction production), reusing its compiled Lorentz/coupling
+    kernel."""
+
+    representations = tuple(
+        1 if name.startswith(U1_IDENTITY_PREFIX) else particle_by_name[name].color
+        for name in new_particles
+    )
+    coloured = tuple(
+        index + 1
+        for index, representation in enumerate(representations)
+        if abs(representation) != 1
+    )
+    color_source = (
+        f"UFO::Identity({coloured[0]},{coloured[1]})" if len(coloured) == 2 else "1"
+    )
+    coupling = _sym.E(kernel.coupling_expression)
+    if produce:
+        coupling = coupling * _sym.E("1/3")
+    source_legs = tuple(
+        -1 if new != old else leg
+        for new, old, leg in zip(
+            new_particles,
+            kernel.particles,
+            kernel.source_particle_legs,
+            strict=True,
+        )
+    )
+    synthetic_kernel = CompiledOrientedKernel(
+        kind=kind,
+        term_id=kernel.term_id,
+        vertex=f"{kernel.vertex}{U1_PROJECTION_SUFFIX}",
+        particles=new_particles,
+        source_particle_legs=source_legs,  # type: ignore[arg-type]
+        component_expressions=tuple(
+            _canonicalize_oriented_kernel_component(
+                _remap_kernel_symbols(
+                    _sym.E(component),
+                    old_kind=kernel.kind,
+                    new_kind=kind,
+                    model_symbols=model_symbols,
+                )
+            ).to_canonical_string()
+            for component in kernel.component_expressions
+        ),
+        coupling_expression=coupling.to_canonical_string(),
+        coupling_orders=kernel.coupling_orders,
+        runtime_parameters=kernel.runtime_parameters,
+        color_source=color_source,
+        color_expression=normalize_color_expression(
+            color_source, representations
+        ).expression,
+        color_projection_structure="color-identity",
+        color_projection_coefficient=(float(weight.real), float(weight.imag)),
+        lc_color_normalization_power=kernel.lc_color_normalization_power,
+        term_ids=kernel.term_ids,
+        lc_recurrence_color_rule_kind="color-identity",
+    )
+    return replace(
+        synthetic_kernel,
+        lc_color_transition_terms=compile_lc_color_transition_terms(
+            synthetic_kernel,
+            representations,  # type: ignore[arg-type]
+            proof_source="u1-projection-v1",
+            provenance=(("source-kernel-kind", str(kernel.kind)),),
+        ),
+    )
+
+
+def _u1_auxiliaries(
+    particles: Sequence[CompiledParticleRecord],
+) -> dict[str, CompiledParticleRecord]:
+    """The U(1)-subtraction auxiliary of each gluon that has one."""
+
+    return {
+        particle.name.removeprefix(U1_SUBTRACTION_PREFIX): particle
+        for particle in particles
+        if particle.auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND
+        and particle.name.startswith(U1_SUBTRACTION_PREFIX)
+    }
+
+
+def u1_singlet_identity_vertices(
+    particles: Sequence[CompiledParticleRecord],
+    kernels: Sequence[CompiledOrientedKernel],
+) -> frozenset[str]:
+    """Base names of the vertex rules with an identity between two gluons and
+    colour singlets otherwise, e.g. the HEFT ``H g g`` vertex ``delta^{ab}``.
+
+    The identity couples to the U(1) part of colour-flow gluons, which only
+    fermion vertices subtract; ``synthesize_u1_singlet_identities`` carries
+    that subtraction through these vertices.
+    """
+
+    particle_by_name = {particle.name: particle for particle in particles}
+    gluons = _u1_auxiliaries(particles)
+    return frozenset(
+        kernel.vertex.split("::", 1)[0]
+        for kernel in kernels
+        if kernel.lc_recurrence_color_rule_kind == "color-identity"
+        and sum(1 for name in kernel.particles if name in gluons) == 2
+        and all(
+            name in gluons
+            or (
+                particle_by_name[name].color == 1
+                and particle_by_name[name].auxiliary_kind is None
+            )
+            for name in kernel.particles
+        )
+    )
+
+
+def synthesize_u1_singlet_identities(
+    particles: Sequence[CompiledParticleRecord],
+    kernels: Sequence[CompiledOrientedKernel],
+    *,
+    vertices: frozenset[str],
+    model_symbols: ModelSymbolRegistry,
+) -> tuple[tuple[CompiledParticleRecord, ...], tuple[CompiledOrientedKernel, ...]]:
+    """Carry the U(1) subtraction of colour-flow gluons through the identity
+    stages of ``vertices`` (``u1_singlet_identity_vertices``).
+
+    Between fermion lines the tree recursion carries a gluon as its U(N)
+    current plus the U(1)-subtraction auxiliary of
+    ``synthesize_fundamental_fierz_auxiliaries``, which fermion vertices produce
+    with the weight ``c / N`` and absorb with ``c``: the singlet term
+    ``-1/N`` of a gluon exchange takes its sign from the auxiliary line, which
+    is opposite to the gluon line. An identity stage maps the SU(N) current
+    onto itself, so the auxiliary passes it as well:
+
+    * a stage ``G S -> G`` (``S`` colour singlets) gets the copy
+      ``aux S -> aux``; the auxiliary now runs over two lines, whose sign the
+      copy's weight ``-w`` (``w`` the stage's) restores;
+    * a closing ``G G -> S`` contracts the SU(N) currents,
+      ``tr(G_1 G_2) - tr(G_1) tr(G_2) / N``: the copy ``aux aux -> S`` with
+      weight ``-N w`` (two auxiliary lines, each ``1/N`` of a trace). The tree
+      recursion closes on a coloured leg, so this stage carries currents only
+      where the singlet is internal (two insertions of the vertex).
+
+    Every copy is a colour singlet. Without them the U(1) part of an internal
+    gluon between two fermion lines passes the vertex: ``N^2 / (N^2 - 1)``
+    times too much in e.g. ``q q~ > H q' q'~``.
+    """
+
+    if not vertices:
+        return tuple(particles), tuple(kernels)
+    particle_by_name = {particle.name: particle for particle in particles}
+    auxiliary_of = _u1_auxiliaries(particles)
+    next_kind = max((kernel.kind for kernel in kernels), default=-1) + 1
+    synthetic: list[CompiledOrientedKernel] = []
+    for kernel in kernels:
+        if (
+            kernel.vertex.split("::", 1)[0] not in vertices
+            or kernel.lc_recurrence_color_rule_kind != "color-identity"
+            or sum(1 for name in kernel.particles if name in auxiliary_of) != 2
+        ):
+            continue
+        names = tuple(
+            auxiliary_of[name].name if name in auxiliary_of else name
+            for name in kernel.particles
+        )
+        # -w through a stage, -N w on a closing (N = 3, as the exact 1/3 of the
+        # auxiliaries' production).
+        weight = -_vertex_weight(kernel)
+        if kernel.particles[2] not in auxiliary_of:
+            weight *= 3
+        synthetic.append(
+            _u1_synthetic_kernel(
+                kernel,
+                names,  # type: ignore[arg-type]
+                weight,
+                kind=next_kind + len(synthetic),
+                particle_by_name=particle_by_name,
+                model_symbols=model_symbols,
+            )
+        )
+    return tuple(particles), (*kernels, *synthetic)
 
 
 def _vertex_weight(kernel: CompiledOrientedKernel) -> complex:
@@ -831,4 +966,6 @@ __all__ = [
     "U1_SUBTRACTION_PREFIX",
     "synthesize_fundamental_fierz_auxiliaries",
     "synthesize_u1_projections",
+    "synthesize_u1_singlet_identities",
+    "u1_singlet_identity_vertices",
 ]

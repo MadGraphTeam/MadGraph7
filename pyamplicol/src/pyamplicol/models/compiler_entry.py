@@ -17,6 +17,8 @@ from .compiler_color_flow import (
     compile_lc_color_transition_terms,
     synthesize_fundamental_fierz_auxiliaries,
     synthesize_u1_projections,
+    synthesize_u1_singlet_identities,
+    u1_singlet_identity_vertices,
 )
 from .compiler_contact_trees import (
     _compile_color_singlet_contact_trees,
@@ -323,6 +325,15 @@ def compile_ufo_model_ir(
         particles,
         oriented_kernels,
         propagators,
+        model_symbols=model_symbols,
+    )
+    # Identity vertices between two gluons and colour singlets (the HEFT H g g
+    # vertex) carry the U(1) subtraction of the gluons through: nothing else
+    # subtracts it there at tree level.
+    particles, oriented_kernels = synthesize_u1_singlet_identities(
+        particles,
+        oriented_kernels,
+        vertices=u1_singlet_identity_vertices(particles, oriented_kernels),
         model_symbols=model_symbols,
     )
     if u1_projected_vertices:
