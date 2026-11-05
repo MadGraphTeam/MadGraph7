@@ -23,6 +23,10 @@ ANNOUNCEMENT:
          time-reversal checks).
        - Bug fix: "set onia_card ..." when launching madevent was refused (the merged
          launch question did not offer the onia card).
+       - Bug fix: a P-wave onium (almost) at rest, e.g. a decaying one with the 1d-14
+         momentum genps.f gives it, lost the precision of its orbital derivative: the
+         summed |M|^2 varied by a few per cent with the orientation. It is now put
+         exactly at rest when |p| < 1d-8 E.
    OM: bin/madgraph, bin/madevent, bin/aMCatNLO and bin/generate_events (madevent, aMC@NLO
        and mg7 outputs) no longer read their commands, or the answers to the questions of
        a command given on the command line, from a pipe or a redirected file (e.g.

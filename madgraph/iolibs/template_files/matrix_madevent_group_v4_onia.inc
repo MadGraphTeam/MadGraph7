@@ -452,6 +452,18 @@ C     A bound state is put on the sum of the masses of its constituents
         MATRIX%(proc_id)s = 0D0
         RETURN
       ENDIF
+C     A bound state (almost) at rest is put exactly at rest: with a tiny
+C     but non-zero momentum (e.g. the 1d-14 that genps.f gives a decaying
+C     particle) the helicity spinors of its constituents depend on a
+C     direction defined by rounding, and the derivative of a P wave
+C     loses all precision (terms in 1/|p| cancel).
+      DO I = 1, NONIA
+        QQ = ONIA(I)
+        IF (P_RESH(1,QQ)**2+P_RESH(2,QQ)**2+P_RESH(3,QQ)**2.LT.
+     &      (1D-8*P_RESH(0,QQ))**2) THEN
+          P_RESH(1:3,QQ) = 0D0
+        ENDIF
+      ENDDO
 
 C     The constituents share the bound-state momentum by their masses
       DO I = 1, NEXTERNAL+NONIA
