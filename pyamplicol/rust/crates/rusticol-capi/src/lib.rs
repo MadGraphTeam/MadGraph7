@@ -1940,8 +1940,14 @@ mod tests {
         };
         assert_eq!(status, RUSTICOL_STATUS_OK);
         let json = unsafe { CStr::from_ptr(buffer.as_ptr()) }.to_str().unwrap();
+        let mut advertised = serde_json::from_str::<Vec<String>>(json).unwrap();
+        // `cargo test --workspace` unifies features, so another member can switch
+        // on rusticol-core's `symbolica-runtime` in this test build. The static C
+        // API itself is built without it and never advertises the legacy container.
+        advertised
+            .retain(|capability| capability != "symbolica.legacy-jit-container.complex-f64.v1");
         assert_eq!(
-            serde_json::from_str::<Vec<String>>(json).unwrap(),
+            advertised,
             vec![
                 "compiled-plane-arena-v1".to_string(),
                 "eager-direct-arena-v1".to_string(),
