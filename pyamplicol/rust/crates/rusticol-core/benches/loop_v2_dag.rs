@@ -84,6 +84,6 @@ fn main() {
             "total",
             columns.interaction_count()
         );
-        println!("digest {}", columns.digest());
+        println!("digest {}", columns.digest().expect("digest"));
     }
 }
