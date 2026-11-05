@@ -24,8 +24,8 @@ KERNELSPEC void kernel_uniform_invariant_inverse(
 template <typename T>
 KERNELSPEC void kernel_breit_wigner_invariant(
     FIn<T, 0> r,
-    FIn<T, 0> mass,
-    FIn<T, 0> width,
+    FSIn<T, 0> mass,
+    FSIn<T, 0> width,
     FIn<T, 0> s_min,
     FIn<T, 0> s_max,
     FOut<T, 0> s,
@@ -46,8 +46,8 @@ KERNELSPEC void kernel_breit_wigner_invariant(
 template <typename T>
 KERNELSPEC void kernel_breit_wigner_invariant_inverse(
     FIn<T, 0> s,
-    FIn<T, 0> mass,
-    FIn<T, 0> width,
+    FSIn<T, 0> mass,
+    FSIn<T, 0> width,
     FIn<T, 0> s_min,
     FIn<T, 0> s_max,
     FOut<T, 0> r,
@@ -71,9 +71,9 @@ KERNELSPEC void kernel_breit_wigner_invariant_inverse(
 // piling its points up at the pole.
 template <typename T>
 KERNELSPEC void flat_window_segments(
-    FIn<T, 0> mass,
-    FIn<T, 0> width,
-    FIn<T, 0> window,
+    FVal<T> mass,
+    FVal<T> width,
+    FVal<T> window,
     FIn<T, 0> s_min,
     FIn<T, 0> s_max,
     FVal<T>& m2,
@@ -109,9 +109,9 @@ KERNELSPEC void flat_window_segments(
 template <typename T>
 KERNELSPEC void kernel_flat_window_breit_wigner_invariant(
     FIn<T, 0> r,
-    FIn<T, 0> mass,
-    FIn<T, 0> width,
-    FIn<T, 0> window,
+    FSIn<T, 0> mass,
+    FSIn<T, 0> width,
+    FSIn<T, 0> window,
     FIn<T, 0> s_min,
     FIn<T, 0> s_max,
     FOut<T, 0> s,
@@ -129,7 +129,8 @@ KERNELSPEC void kernel_flat_window_breit_wigner_invariant(
     auto in_flat = t < w1 + w2;
     auto _s = where(in_lo, s_bw_lo, where(in_flat, s_flat, s_bw_hi));
     auto d = _s - m2;
-    auto f = where(in_lo, 1. / (d * d + gm * gm), where(in_flat, c, 1. / (d * d + gm * gm)));
+    auto f =
+        where(in_lo, 1. / (d * d + gm * gm), where(in_flat, c, 1. / (d * d + gm * gm)));
     s = _s;
     gs = w_tot / f;
 }
@@ -137,9 +138,9 @@ KERNELSPEC void kernel_flat_window_breit_wigner_invariant(
 template <typename T>
 KERNELSPEC void kernel_flat_window_breit_wigner_invariant_inverse(
     FIn<T, 0> s,
-    FIn<T, 0> mass,
-    FIn<T, 0> width,
-    FIn<T, 0> window,
+    FSIn<T, 0> mass,
+    FSIn<T, 0> width,
+    FSIn<T, 0> window,
     FIn<T, 0> s_min,
     FIn<T, 0> s_max,
     FOut<T, 0> r,
@@ -155,7 +156,9 @@ KERNELSPEC void kernel_flat_window_breit_wigner_invariant_inverse(
     auto in_lo = s < a;
     auto in_flat = s < b;
     auto cdf = where(
-        in_lo, (y - y_min) / gm, where(in_flat, w1 + c * (s - a), w1 + w2 + (y - y_b) / gm)
+        in_lo,
+        (y - y_min) / gm,
+        where(in_flat, w1 + c * (s - a), w1 + w2 + (y - y_b) / gm)
     );
     auto f = where(in_lo, bw, where(in_flat, c, bw));
     r = cdf / w_tot;
@@ -165,7 +168,7 @@ KERNELSPEC void kernel_flat_window_breit_wigner_invariant_inverse(
 template <typename T>
 KERNELSPEC void kernel_stable_invariant(
     FIn<T, 0> r,
-    FIn<T, 0> mass,
+    FSIn<T, 0> mass,
     FIn<T, 0> s_min,
     FIn<T, 0> s_max,
     FOut<T, 0> s,
@@ -182,7 +185,7 @@ KERNELSPEC void kernel_stable_invariant(
 template <typename T>
 KERNELSPEC void kernel_stable_invariant_inverse(
     FIn<T, 0> s,
-    FIn<T, 0> mass,
+    FSIn<T, 0> mass,
     FIn<T, 0> s_min,
     FIn<T, 0> s_max,
     FOut<T, 0> r,
@@ -201,8 +204,8 @@ KERNELSPEC void kernel_stable_invariant_inverse(
 template <typename T>
 KERNELSPEC void kernel_stable_invariant_nu(
     FIn<T, 0> r,
-    FIn<T, 0> mass,
-    FIn<T, 0> nu,
+    FSIn<T, 0> mass,
+    FSIn<T, 0> nu,
     FIn<T, 0> s_min,
     FIn<T, 0> s_max,
     FOut<T, 0> s,
@@ -223,8 +226,8 @@ KERNELSPEC void kernel_stable_invariant_nu(
 template <typename T>
 KERNELSPEC void kernel_stable_invariant_nu_inverse(
     FIn<T, 0> s,
-    FIn<T, 0> mass,
-    FIn<T, 0> nu,
+    FSIn<T, 0> mass,
+    FSIn<T, 0> nu,
     FIn<T, 0> s_min,
     FIn<T, 0> s_max,
     FOut<T, 0> r,

@@ -162,7 +162,7 @@ public:
 
   // Print a message the first few times. Insert in database.
   void errorMsg(string messageIn) {
-    // Recover number of times message occured. Also inserts new string.
+    // Recover number of times message occurred. Also inserts new string.
     int times = messages[messageIn];
     ++messages[messageIn];
     // Print message the first few times.
@@ -1726,13 +1726,13 @@ inline int JetMatchingMadgraph::matchPartonsToJetsLight() {
     if ( nCLjets > nRequested ) return MORE_JETS;
   } else {
 
-    // For FxFx, in the non-highest multipicity, all jets need to matched to
+    // For FxFx, in the non-highest multiplicity, all jets need to matched to
     // partons. For nCLjets > nRequested, this is not possible. Hence, we can
     // veto here already.
     // if ( doFxFx && nRequested < nJetMax && nCLjets > nRequested )
     //Step-FxFx-5:Change the nRequested to npNLO() in the first condition
     //Before in Step-FxFx-3 it was nRequested=npNLO() for FxFx
-    //This way we correctly select the non-highest multipicity regardless the nRequested
+    //This way we correctly select the non-highest multiplicity regardless the nRequested
      if ( doFxFx && npNLO() < nJetMax && nCLjets > nRequested )
       return MORE_JETS;
 
@@ -1869,7 +1869,7 @@ inline int JetMatchingMadgraph::matchPartonsToJetsLight() {
 //      return UNMATCHED_PARTON;
       //Step-FxFx-6:Change the nRequested to npNLO() in the first condition (like in Step-FxFx-5)
       //Before in Step-FxFx-3 it was nRequested=npNLO() for FxFx
-      //This way we correctly select the non-highest multipicity regardless the nRequested
+      //This way we correctly select the non-highest multiplicity regardless the nRequested
       if ( npNLO() <  nJetMax && nMatched != nRequested )
         return UNMATCHED_PARTON;
       if ( npNLO() == nJetMax && nMatched <  nRequested )

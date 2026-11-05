@@ -198,7 +198,7 @@ class FortranWriter(FileWriter):
     number_re = re.compile(r'^(?P<num>\d+)\s+(?P<rest>.*)')
     line_cont_char = '$'
     comment_char = 'c'
-    uniformcase = True #force everyting to be lower/upper case 
+    uniformcase = True #force everything to be lower/upper case
     downcase = False
     line_length = 71
     max_split = 20
@@ -693,7 +693,7 @@ class CPPWriter(FileWriter):
                 res_lines.extend(self.write_line(myline))
             return res_lines
 
-        # Check if line starts with keyword with parentesis
+        # Check if line starts with keyword with parentheses
         for key in self.indent_par_keywords.keys():
             if re.search(key, myline):
                 # Step through to find end of parenthesis

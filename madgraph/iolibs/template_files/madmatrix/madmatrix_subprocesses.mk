@@ -74,14 +74,16 @@ cleanall_targets := $(addprefix cleanall@,$(SUBDIRS))
 
 #-------------------------------------------------------------------------------
 
-# Target: build the library of every subprocess (this is the default goal)
+# Target: build the library of every subprocess (this is the default goal).
+# PGOAL is the goal handed to each of them, their default one if empty: 'make
+# PGOAL=lib' builds the libraries without the standalone check_sa.exe.
 all: $(build_targets)
 
 # The common library must exist before any subprocess links against it: making
 # it a prerequisite of every 'build@<dir>' target has make build it exactly once
 # and wait for it before starting the fan-out.
 $(build_targets): build@%%: commonlib
-	+$(SUBMAKE) -C $*
+	+$(SUBMAKE) -C $* $(PGOAL)
 
 # Target: build a single subprocess ("make P1_gg_ttx")
 $(SUBDIRS): %%: build@%%

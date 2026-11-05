@@ -22,7 +22,7 @@ from __future__ import absolute_import
 import sys
 if sys.version_info < (3, 12):
     sys.exit('MadGraph/MadEvent 5 works only with python 3.12 or later.\n\
-               Please upgrate your version of python.')
+               Please upgrade your version of Python.')
 
     
 import os

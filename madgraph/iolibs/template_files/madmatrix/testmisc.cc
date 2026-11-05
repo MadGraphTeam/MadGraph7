@@ -85,13 +85,13 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testmisc )
     //std::cout << f << std::endl << boolTF( f == 1 ) << std::endl;
     //EXPECT_TRUE_sv( f == 1 ); // this fails for vectors! TFFF
 #ifndef MGONGPU_CPPSIMD
-    EXPECT_TRUE_sv( f == 1 ); // this succeds: T
+    EXPECT_TRUE_sv( f == 1 ); // this succeeds: T
 #else
-    EXPECT_TRUE( ( f == 1 )[0] ); // this succeds: TFFF[0]
+    EXPECT_TRUE( ( f == 1 )[0] ); // this succeeds: TFFF[0]
     EXPECT_TRUE( ( f[0] == 1 ) );
     for( int i = 1; i < neppV; i++ )
     {
-      EXPECT_TRUE( !( ( f == 1 )[i] ) ); // this succeds: FTTT[i>=1]
+      EXPECT_TRUE( !( ( f == 1 )[i] ) ); // this succeeds: FTTT[i>=1]
       EXPECT_TRUE( ( f[i] == 0 ) );      // equals 0, not 1
     }
 #endif
@@ -366,7 +366,7 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testmisc )
           << "x=" << x << ", x(0to2Pi)=" << mapIn0to2Pi( x ) << ", istep=" << istep;
       else
       {
-        // Allow tan(x)=-inf if ctan(x)=+inf and viceversa
+        // Allow tan(x)=-inf if ctan(x)=+inf and vice-versa
         EXPECT_GT( std::abs( std::tan( x ) ), taninf )
           << "x=" << x << ", x(0to2Pi)=" << mapIn0to2Pi( x ) << ", istep=" << istep;
         /*
@@ -473,7 +473,7 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testmisc )
             << std::setprecision( 40 ) << "x=" << x << ", x(0to2Pi)=" << mapIn0to2Pi( x ) << ",\n istep=" << istep << ", distance4=" << distance4( x );
         else
         {
-          // Allow tan(x)=-inf if ctan(x)=+inf and viceversa
+          // Allow tan(x)=-inf if ctan(x)=+inf and vice-versa
           EXPECT_GT( std::abs( std::tan( x ) ), taninf )
             << std::setprecision( 40 ) << "x=" << x << ", x(0to2Pi)=" << mapIn0to2Pi( x ) << ",\n istep=" << istep << ", distance4=" << distance4( x );
           /*

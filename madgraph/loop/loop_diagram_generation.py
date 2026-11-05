@@ -71,7 +71,7 @@ class LoopAmplitude(diagram_generation.Amplitude):
         # This is in principle equal to self['born_diagram']==[] but it can be 
         # that for some reason the born diagram can be generated but do not
         # contribute.
-        # This will decide wether the virtual is squared against the born or
+        # This will decide whether the virtual is squared against the born or
         # itself.
         self['has_born'] = True
         # This where the structures obtained for this amplitudes are stored
@@ -82,12 +82,17 @@ class LoopAmplitude(diagram_generation.Amplitude):
         # subsequent diagram generation runs.
         self.lcutpartemployed=[]
 
-    def __init__(self, argument=None, loop_filter=None):
+    def __init__(self, argument=None, loop_filter=None, diagram_filter=False,
+                                                    loop_diagram_filter=False):
         """Allow initialization with Process.
         If loop_filter is not None, then it will be applied to all subsequent
-        diagram generation from this LoopAmplitude."""
+        diagram generation from this LoopAmplitude.
+        diagram_filter (--diagram_filter) is applied to the Born diagrams and,
+        loop_diagram_filter to the loop diagrams, see generate_diagrams."""
         
         self.loop_filter = loop_filter
+        self.diagram_filter = diagram_filter
+        self.loop_diagram_filter = loop_diagram_filter
         
         if isinstance(argument, base_objects.Process):
             super(LoopAmplitude, self).__init__()
@@ -599,8 +604,19 @@ class LoopAmplitude(diagram_generation.Amplitude):
                 res.append('%s=*'%order)
         return ','.join(res)
 
-    def generate_diagrams(self, loop_filter=None, diagram_filter=None):
+    def generate_diagrams(self, loop_filter=None, diagram_filter=None,
+                                                    loop_diagram_filter=None):
         """ Generates all diagrams relevant to this Loop Process """
+
+        # Without argument, use the filters given at initialization (separately
+        # for the Born and the loop diagrams); a --diagram_filter given here
+        # applies to both
+        if diagram_filter is None:
+            diagram_filter = self.diagram_filter
+            if loop_diagram_filter is None:
+                loop_diagram_filter = self.loop_diagram_filter
+        elif loop_diagram_filter is None:
+            loop_diagram_filter = diagram_filter
 
         # Description of the algorithm to guess the leading contribution.
         # The summed weighted order of each diagram will be compared to 
@@ -619,7 +635,7 @@ class LoopAmplitude(diagram_generation.Amplitude):
         #  12, 10, 8 and 6
         # So, now we take the largest weighted order at born level, 4, and add two
         # times the largest weight in the hierarchy among the order for which we
-        # consider loop perturbation, in this case 2*2 wich gives us a 
+        # consider loop perturbation, in this case 2*2 which gives us a
         # target_weighted_order of 8. based on this we will now keep all born 
         # contributions and exclude the NLO contributions (QED=6) and (QED=4,QCD=2)        
         
@@ -640,7 +656,7 @@ class LoopAmplitude(diagram_generation.Amplitude):
         user_orders=copy.copy(self['process']['orders'])
         # First generate the born diagram if the user asked for it
         if self['process']['has_born']:
-            bornsuccessful = self.generate_born_diagrams()
+            bornsuccessful = self.generate_born_diagrams(diagram_filter)
             ldg_debug_info("# born diagrams after first generation",\
                                                      len(self['born_diagrams']))
         else:
@@ -886,6 +902,12 @@ class LoopAmplitude(diagram_generation.Amplitude):
         # Discard diagrams which are zero because of Furry theorem
         self.remove_Furry_loops(model,self['structure_repository'])
        
+        # Filter selected with --diagram_filter (the Born diagrams were already
+        # filtered at generation)
+        if loop_diagram_filter:
+            self['loop_diagrams'] = self.apply_user_filter(
+                                 self['loop_diagrams'], loop_diagram_filter)
+
         # Apply here some user-defined filter.
         # For expert only, you can edit your own filter by modifying the
         # user_filter() function which by default does nothing but in which you
@@ -1008,7 +1030,7 @@ class LoopAmplitude(diagram_generation.Amplitude):
     def print_split_order_infos(self):
         """This function is solely for monitoring purposes. It reports what are
         the coupling order combination which are obtained with the diagram 
-        genarated and among those which ones correspond to those selected by 
+        generated and among those which ones correspond to those selected by
         the process definition and which ones are the extra combinations which
         comes as a byproduct of the computation of the desired one. The typical
         example is that if you ask for d d~ > u u~ QCD^2==2 [virt=QCD, QED],
@@ -1118,11 +1140,12 @@ class LoopAmplitude(diagram_generation.Amplitude):
                [sqSO for sqSO in loop_sqSOs if sqSO not in loop_considered])
                   
 
-    def generate_born_diagrams(self):
+    def generate_born_diagrams(self, diagram_filter=False):
         """ Generates all born diagrams relevant to this NLO Process """
 
         bornsuccessful, self['born_diagrams'] = \
-                       diagram_generation.Amplitude.generate_diagrams(self,True)
+                       diagram_generation.Amplitude.generate_diagrams(self,True,
+                                                  diagram_filter=diagram_filter)
         
         return bornsuccessful
 
@@ -1334,7 +1357,7 @@ class LoopAmplitude(diagram_generation.Amplitude):
                    inter.get('loop_particles')==[[]]):
                 UVCTvertex_interactions.append(inter)
         
-        # Temporarly give the tagging order 'UVCT_SPECIAL' to those interactions
+        # Temporarily give the tagging order 'UVCT_SPECIAL' to those interactions
         self['process']['model'].get('order_hierarchy')['UVCT_SPECIAL']=0
         self['process']['model'].get('coupling_orders').add('UVCT_SPECIAL')
         for inter in UVCTvertex_interactions:
@@ -1611,7 +1634,7 @@ class LoopAmplitude(diagram_generation.Amplitude):
                             CT_added[trackingKeyLoopPart].append(CTID)
                         except KeyError:
                             CT_added[trackingKeyLoopPart] = [CTID, ]
-            # Now make sure that the CT vertices added are cannonically ordered
+            # Now make sure that the CT vertices added are canonically ordered
             # (using coupling names and color and lorenz strings)
             # This plays a role when doing comparisons for potential merging of 
             # identical processes (i.e. Identical HelasMatrixElement where only 
@@ -1674,7 +1697,7 @@ class LoopAmplitude(diagram_generation.Amplitude):
                     # We have candidate
                     depths=(looplegs[0]['depth'],looplegs[1]['depth'])
                     if (0 in depths) and (-1 not in depths) and depths!=(0,0):   
-                        # Check that the PDG of the outter particle in the 
+                        # Check that the PDG of the outer particle in the
                         # wavefunction renormalization bubble is equal to the
                         # one of the inner particle.
                         continue
@@ -1737,7 +1760,7 @@ class LoopAmplitude(diagram_generation.Amplitude):
 
     def check_squared_orders(self, sq_order_constrains, user_squared_orders=None):
         """ Filters the diagrams according to the constraints on the squared
-            orders in argument and wether the process has a born or not. """
+            orders in argument and whether the process has a born or not. """
 
         diagRef=base_objects.DiagramList()
         AllLoopDiagrams=base_objects.DiagramList(self['loop_diagrams']+\
@@ -1792,7 +1815,7 @@ class LoopAmplitude(diagram_generation.Amplitude):
                                         diagRef,{neg_order:target_order},
                                         {neg_order:sqorders_types[neg_order]})
     
-            # If there is no Born, then the situation is completely analoguous
+            # If there is no Born, then the situation is completely analogous
             # to the tree level case since it is simply Loop*Loop
             else:
                 AllLoopDiagrams, target_order = \

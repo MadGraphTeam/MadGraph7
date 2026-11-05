@@ -17,7 +17,7 @@ import madgraph.models.model_reader as model_reader
 import madgraph.core.base_objects as base_objects
 import madgraph.various.misc as misc
 class ParamCardWriterError(Exception):
-    """ a error class for this file """
+    """ an error class for this file """
 
 def cmp_to_key(mycmp):
     'Convert a cmp= function into a key= function'
@@ -42,7 +42,7 @@ def cmp_to_key(mycmp):
 
 
 class ParamCardWriter(object):
-    """ A class for writting an update param_card for a given model """
+    """ A class for writing an update param_card for a given model """
 
     header = \
     "######################################################################\n" + \
@@ -67,7 +67,7 @@ class ParamCardWriter(object):
         """ model is a valid MG5 model, filepath is the path were to write the
         param_card.dat """
 
-        # Compute the value of all dependant parameter
+        # Compute the value of all dependent parameter
         if isinstance(model, model_reader.ModelReader):
             self.model = model
         else:
@@ -323,7 +323,7 @@ class ParamCardWriter(object):
         pretext += "## Those values should be edited following the \n"
         pretext += "## analytical expression. MG5 ignores those values \n"
         pretext += "## but they are important for interfacing the output of MG5\n"
-        pretext += "## to external program such as Pythia.\n"
+        pretext += "## to external programs such as Pythia.\n"
         self.fsock.write(pretext + text)                
         
     

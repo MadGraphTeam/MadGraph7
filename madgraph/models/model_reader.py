@@ -50,7 +50,7 @@ class ModelReader(loop_base_objects.LoopModel):
     """
 
     def default_setup(self):
-        """The particles is changed to ParticleList"""
+        """The particles are changed to ParticleList"""
         self['coupling_dict'] = {}
         self['parameter_dict'] = {}
         super(ModelReader, self).default_setup()
@@ -124,7 +124,7 @@ class ModelReader(loop_base_objects.LoopModel):
                     fail =  False
                 
                 if not missing_block:
-                    logger.warning("Unknow type of information in the card: %s" % unknow_block)
+                    logger.warning("Unknown type of information in the card: %s" % unknow_block)
                     fail = False
                 elif self['name'].startswith('mssm-') or self['name'] == 'mssm':
                     if not missing_set:

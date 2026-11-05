@@ -36,18 +36,26 @@ private:
 /// Owning handle to a `Runtime`.
 using RuntimePtr = std::unique_ptr<Runtime>;
 /// Compile `function` into a callable @ref Runtime for `context`'s device.
-/// `concurrent` allows several `Runtime`s to share one compilation cache.
+/// `concurrent` lets the CPU runtime run independent instructions concurrently on
+/// the context's thread pool; the GPU runtime ignores it.
 RuntimePtr
 build_runtime(const Function& function, ContextPtr context, bool concurrent = true);
-/// Names of the compute backends (CPU, CUDA, HIP, ...) built into this
-/// installation.
+/// Names of the CPU backend variants usable on this host ("cpu_scalar",
+/// "cpu_vec128", "cpu_vec256", ...); GPU backends are not listed.
 std::vector<std::string> available_backends();
 DevicePtr cpu_device();
 DevicePtr cuda_device(std::size_t index = 0);
 DevicePtr hip_device(std::size_t index = 0);
 /// Directory to load the generated backend shared libraries from.
 void set_lib_path(const std::string& lib_path);
-/// Width, in elements, of the SIMD vector used by the CPU backend's kernels.
-void set_simd_vector_size(int vector_size);
+/// SIMD mode of the CPU backend: "scalar", "simd_128" (ARM), "simd_256" (AVX2),
+/// "avx512y" (AVX512 with 256-bit vectors), "simd_512" (AVX512) or "auto" (simd_512,
+/// then simd_256 on x86 and scalar on ARM, where the vectorized mode is currently
+/// slower). Defaults to $MADSPACE_SIMD_MODE or "auto". Must be set before the CPU
+/// backend is first used; afterwards, requesting a different mode throws.
+void set_simd_mode(const std::string& simd_mode);
+/// SIMD modes supported by this build on this host (without "auto"), ordered by
+/// increasing vector width; see @ref set_simd_mode.
+std::vector<std::string> supported_simd_modes();
 
 } // namespace madspace

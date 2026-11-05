@@ -10,7 +10,7 @@ that
 - with flat s23 sampling the block weight becomes exactly independent of r_s23,
 - without the map the edge peak is still there,
 - forward and inverse agree, with and without cuts,
-- ColorOrderedMapping integrates to the same volume either way, with cuts.
+- ColorOrderedMapping, which always uses the map, integrates to the volume.
 """
 
 import math
@@ -72,7 +72,7 @@ def test_flat_weight_is_constant():
 
 @pytest.mark.parametrize("s_power", [0.8, 1.0])
 def test_weight_bounded_with_importance_sampling(s_power):
-    """With 1/s23^nu importance sampling the weight is no longer constant,
+    """With 1/s23^nu importance sampling the weight is not constant,
     but it must stay finite and bounded out to the edges of the range."""
     *_, det = block_weights(R_S23, arcsine=True, s_power=s_power)
     assert torch.all(torch.isfinite(det)) and torch.all(det > 0)
@@ -116,7 +116,7 @@ def test_round_trip_at_the_edges(s_power):
     """With the arcsine map the position in the s23 range is carried as u and
     1 - u in both directions, never through s23 itself, so r_s23 is recovered
     to the precision of the momenta also within 1e-12 of the edges, where
-    going through s23 left an absolute error of ~1e-8."""
+    going through s23 would lose absolute precision."""
     edge = 10.0 ** -torch.arange(6.0, 13.0)
     r_s23 = torch.cat([edge, 1.0 - edge])
     mapping, inputs, conditions, det = block_weights(
@@ -128,20 +128,15 @@ def test_round_trip_at_the_edges(s_power):
     assert torch.max(torch.abs(det * det_inv - 1.0)) < 1e-9
 
 
-CUTS = dict(
-    pt_min=[20.0] * 4,
-    m_inv_min=[[0.0 if i == j else 10.0 for j in range(4)] for i in range(4)],
-    dr_min=[[0.0 if i == j else 0.4 for j in range(4)] for i in range(4)],
-)
-
-
-def sample(color_order, arcsine, seed, n, cuts=None):
+def sample(color_order, seed, n, cuts=None):
     """Weights of ColorOrderedMapping for the massless n-body phase space at
     1 TeV, zero outside the cuts if given."""
     cuts = cuts or {}
     cm_energy = 1000.0
     n_out = len(color_order) - 2
-    mapping = ms.ColorOrderedMapping(color_order, arcsine_s23=arcsine, **cuts)
+    mapping = ms.ColorOrderedMapping(
+        ms.ColorOrderedMapping.Options(color_order), **cuts
+    )
     g = generator(seed)
     r = rand((n, mapping.random_dim()), generator=g)
     d = randint(0, 2, (n, mapping.discrete_dim()), generator=g, dtype=torch.int32)
@@ -179,21 +174,6 @@ def test_color_ordered_massless_volume(color_order):
     """The analytic massless 4-body volume, (pi/2)^3 s^2 / 12, with the map."""
     volume = (math.pi / 2) ** 3 * 1000.0**4 / 12
     means = [
-        sample(color_order, True, seed, 1_000_000).mean().item()
-        for seed in range(200, 204)
+        sample(color_order, seed, 1_000_000).mean().item() for seed in range(200, 204)
     ]
     assert sum(means) / len(means) / volume == pytest.approx(1.0, abs=0.02)
-
-
-def test_color_ordered_cut_volume_unchanged():
-    """With cuts the sampled s23 range is a part of the kinematic one and the
-    map only covers that part. The fiducial volume must not change."""
-    order = [0, 2, 3, 4, 5, 1]
-    n = 1_000_000
-    on = torch.cat([sample(order, True, s, n, CUTS) for s in range(300, 304)])
-    off = torch.cat([sample(order, False, s, n, CUTS) for s in range(310, 314)])
-    err = math.hypot(
-        on.std(correction=0).item() / math.sqrt(len(on)),
-        off.std(correction=0).item() / math.sqrt(len(off)),
-    )
-    assert abs(on.mean() - off.mean()).item() < 4.0 * err

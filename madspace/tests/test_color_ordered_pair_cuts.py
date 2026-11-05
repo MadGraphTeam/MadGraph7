@@ -3,9 +3,9 @@
 In color_ordered mode PhaseSpaceMapping reorders the pairwise invariant-mass
 and delta-R cut matrices of Cuts (indexed by outgoing position) into the order
 of the t-channel children and passes them to ColorOrderedMapping, which turns
-them into floors on the invariants it samples. A stray extra increment in the
-loop building that reordering once skipped every odd child, so any pair cut
-involving the second, fourth, ... child silently never reached the mapping.
+them into floors on the invariants it samples. The tests guard against the
+reordering skipping every odd child, which would silently drop any pair cut
+involving the second, fourth, ... child.
 
 The process is e+ e- > d u s c: leptonic, so every random number goes straight
 to the t-channel mapping and PhaseSpaceMapping returns exactly the momenta of a
@@ -79,7 +79,7 @@ def psm_momenta(order, cut_items, r, d):
         leptonic=True,
         mode=PSM.color_ordered,
         cuts=ms.Cuts(cut_items),
-        color_order=order,
+        color_ordered=ms.ColorOrderedMapping.Options(order),
     )
     assert mapping.random_dim() == r.shape[1]
     assert mapping.discrete_dim() == d.shape[1]
@@ -88,7 +88,9 @@ def psm_momenta(order, cut_items, r, d):
 
 
 def co_momenta(order, pt_min, m_inv_min, dr_min, r, d):
-    mapping = ms.ColorOrderedMapping(order, 0.8, 0.8, pt_min, m_inv_min, dr_min)
+    mapping = ms.ColorOrderedMapping(
+        ms.ColorOrderedMapping.Options(order), pt_min, m_inv_min, dr_min
+    )
     n = r.shape[0]
     inputs = [r[:, i].contiguous() for i in range(r.shape[1])]
     inputs += [d[:, j].contiguous() for j in range(d.shape[1])]
@@ -137,7 +139,7 @@ def test_pair_cut_reaches_color_ordered_mapping(
     """PhaseSpaceMapping must hand ColorOrderedMapping the full pair-cut
     matrices: its momenta equal those of a ColorOrderedMapping built by hand
     with the cut, and differ from one built without it."""
-    probe = ms.ColorOrderedMapping(order)
+    probe = ms.ColorOrderedMapping(ms.ColorOrderedMapping.Options(order))
     r, d = random_inputs(probe.random_dim(), probe.discrete_dim(), 2000, SEED)
 
     p_psm = psm_momenta(order, cut_items, r, d)
@@ -145,14 +147,11 @@ def test_pair_cut_reaches_color_ordered_mapping(
     no_pair = matrix([], 0.0)
     p_without = co_momenta(order, pt_min, no_pair, no_pair, r, d)
 
-    # Near degenerate configurations the extra operations in
-    # PhaseSpaceMapping can be amplified past ATOL, so allow a few points.
+    # Near degenerate configurations rounding can exceed ATOL, so allow a few points.
     assert same_points(p_psm, p_with).double().mean() > 0.99
 
-    # Without the comparison below the test would pass for a cut that does
-    # not affect this topology at all, and prove nothing. A floor only moves
-    # the points where it lies above the kinematic one: all of them for the
-    # pair masses here, about half for the delta-R cut.
+    # Guards against a cut that does not affect this topology at all; a floor
+    # only moves points where it lies above the kinematic bound.
     assert same_points(p_with, p_without).double().mean() < 0.9
 
 
@@ -163,7 +162,7 @@ def sample(order, cuts, n, seed):
         leptonic=True,
         mode=PSM.color_ordered,
         cuts=cuts,
-        color_order=order,
+        color_ordered=ms.ColorOrderedMapping.Options(order),
     )
     r, d = random_inputs(mapping.random_dim(), mapping.discrete_dim(), n, seed)
     inputs = [r, d] if mapping.discrete_dim() else [r]

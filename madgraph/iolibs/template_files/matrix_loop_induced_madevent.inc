@@ -47,7 +47,7 @@ C ARGUMENTS
 C  
     REAL*8 P(0:3,NEXTERNAL),ANS
 c
-c global (due to reading writting) 
+c global (due to reading writing)
 c
         LOGICAL GOODHEL(NCOMB)
 	INTEGER NTRY
@@ -74,7 +74,7 @@ C   This stores the different between the full matrix element squared and the su
     REAL*8 , ALLOCATABLE :: PREC_FOUND(:)
 	INTEGER ML_RET_CODE
     INTEGER ML_ANS_DIMENSION
-C Prec_found ans ans_ml are saved so that they don't have to be re-allocated everytime
+C Prec_found ans ans_ml are saved so that they don't have to be re-allocated every time
 	SAVE ML_ANS_DIMENSION,ANS_ML,PREC_FOUND
 
     DATA IDUM /-1/
@@ -142,14 +142,14 @@ C Unless this is the first iteration, make sure to never double check the helici
 C       The double check is turned off here even for the first iteration because the further iteration would anyway be wrong since the new HelFilter is not output. We keep it here as it can be used for diagnostics, for example by triggering a crash if the double-check fails instead of trying to recompute the filter.
         CALL SET_FORBID_HEL_DOUBLECHECK(.True.)
 	  ENDIF
-C So that TIR integrals can be reused accross helicity configuration.
+C So that TIR integrals can be reused across helicity configuration.
 C Notice that ITR integrals for rotated PS points (i.e. which is part of MadLoop's default stabiliy test procedure), will not work. This is why one should always keep the MadLoop parameter 'NRotations_DP' set to 0 in this case.
 C Of course this is only necessary when using MadLoop for several helicity for the same PS point
       IF ((.not.FORCE_ML_Helicity_Sum).and.ISUM_HEL.eq.0) THEN
 	    CALL %(ml_prefix)sSET_AUTOMATIC_CACHE_CLEARING(.FALSE.)
 	  ENDIF
       CALL %(ml_prefix)sGET_ANSWER_DIMENSION(ML_ANS_DIMENSION)
-C In case there is an initialization phase for MadLoop (i.e. everytime except when MC over helicity and disabling the Loop filter, which is the default.
+C In case there is an initialization phase for MadLoop (i.e. every time except when MC over helicity and disabling the Loop filter, which is the default.
 	  CALL %(ml_prefix)sFORCE_STABILITY_CHECK(.TRUE.)
       ALLOCATE(ANS_ML(0:3,0:ML_ANS_DIMENSION))
 	  ALLOCATE(PREC_FOUND(0:ML_ANS_DIMENSION))

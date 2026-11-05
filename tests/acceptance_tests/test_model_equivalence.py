@@ -242,8 +242,8 @@ class CompareMG4WithUFOModel(unit_tests.TestCase):
             
     
     def check_particles(self, mg4_part, ufo_part):
-        """ check that the internal definition for a particle comming from mg4 or
-        comming from the UFO are the same """
+        """ check that the internal definition for a particle coming from mg4 or
+        coming from the UFO are the same """
         
         not_equiv = ['charge', 'mass','width',
                         'texname','antitexname','line']
@@ -277,8 +277,8 @@ class CompareMG4WithUFOModel(unit_tests.TestCase):
         
         
     def check_interactions(self, mg4_vertex, ufo_vertex, vname):
-        """ check that the internal definition for a particle comming from mg4 or
-        comming from the UFO are the same """
+        """ check that the internal definition for a particle coming from mg4 or
+        coming from the UFO are the same """
                 
         # Checking only the color
         mg4_color = mg4_vertex.get('color')

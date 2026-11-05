@@ -74,7 +74,7 @@ code, and everything below is one file inside it.
 `Cards/run_card.toml`, section by section. The ones you will actually touch
 are marked.
 
-  [run]             seed, device (cpu/gpu), cpu_mode, simd_vector_size,
+  [run]             seed, device (cpu/gpu), cpu_mode, madspace_cpu_mode,
                     the thread pools, output_format, verbosity          <-
   [beam]            beam energies, PDF
   [generation]      events, the survey iterations and target precision,
@@ -168,7 +168,8 @@ sets `[run] seed`, and so does editing the run card directly.
 documentation maps the old names onto the new sections.
 
 **Gridpacks** work here too, via the `[gridpack]` section. The "Gridpacks"
-page of the documentation describes them.
+page of the documentation describes them, including `bin/event_stream.py`, a
+Python API that streams events in memory.
 
 %(see_also)s
 

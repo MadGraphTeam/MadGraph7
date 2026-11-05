@@ -138,7 +138,7 @@ namespace madmatrix
     for( size_t ievt = 0; ievt < nevt(); ++ievt )
     {
       // Clas. RAMBO returns [E,px,py,pz] vector per ex. particle
-      // own RNG, intial final once
+      // own RNG, initial final once
       // For reproducibility betwn fptype = FP32/FP64 generation in FP64
       double wgt = 0.;
       const std::vector<std::vector<double>> point =

@@ -969,12 +969,13 @@ class Amplitude(base_objects.PhysicsObject):
         # two incoming particles interchanged has been generated
         self['has_mirror_process'] = False
 
-    def __init__(self, argument=None):
-        """Allow initialization with Process"""
+    def __init__(self, argument=None, diagram_filter=False):
+        """Allow initialization with Process; the diagrams are then generated,
+        selected by diagram_filter (see apply_user_filter) if it is set"""
         if isinstance(argument, base_objects.Process):
             super(Amplitude, self).__init__()
             self.set('process', argument)
-            self.generate_diagrams()
+            self.generate_diagrams(diagram_filter=diagram_filter)
         elif argument != None:
             # call the mother routine
             super(Amplitude, self).__init__(argument)
@@ -1037,7 +1038,7 @@ class Amplitude(base_objects.PhysicsObject):
         return self.get('process').get_ninitial()
 
     def has_loop_process(self):
-        """ Returns wether this amplitude has a loop process."""
+        """ Returns whether this amplitude has a loop process."""
         
         return self.get('process').get('perturbation_couplings')
 
@@ -1123,7 +1124,7 @@ class Amplitude(base_objects.PhysicsObject):
            len([leg for leg in legs if leg.is_outgoing_fermion(model)]):
             if not returndiag:
                 self['diagrams'] = res
-                raise InvalidCmd('The number of of incoming/outcoming fermions are different')
+                raise InvalidCmd('The numbers of incoming/outgoing fermions are different')
             else:
                 return False, res
 
@@ -1267,7 +1268,7 @@ class Amplitude(base_objects.PhysicsObject):
             lastvx = -1
             # For decay chain processes, there is an "artificial"
             # extra vertex corresponding to particle 1=1, so we need
-            # to exclude the two last vertexes.
+            # to exclude the two last vertices.
             if is_decay_proc: lastvx = -2
             ninitial = len([leg for leg in process.get('legs') if leg.get('state') == False])
             # Check required s-channels for each list in required_s_channels
@@ -1366,7 +1367,7 @@ class Amplitude(base_objects.PhysicsObject):
             res = self.apply_squared_order_constraints(res)
 
         if diagram_filter:
-            res = self.apply_user_filter(res)
+            res = self.apply_user_filter(res, diagram_filter)
 
         # 4 gluon specials demo (dedicated aloha not implemented yet)
         #if True:
@@ -1503,28 +1504,25 @@ class Amplitude(base_objects.PhysicsObject):
 
         return res
 
-    def apply_user_filter(self, diag_list):
-        """Applies the user specified squared order constraints on the diagram
-        list in argument."""
+    def apply_user_filter(self, diag_list, diagram_filter=True):
+        """Applies the user diagram filter on the diagram list in argument.
+        diagram_filter is either a function remove_diag(diag, model) provided
+        by a plugin (--diagram_filter=PLUGINNAME) or True to use the one of
+        PLUGIN/user_filter.py."""
 
-        if True:
+        if callable(diagram_filter):
+            # function provided by a plugin (--diagram_filter=PLUGINNAME)
+            remove_diag = diagram_filter
+        elif diagram_filter is True:
             remove_diag = misc.plugin_import('user_filter', 
                                              'user filter required to be defined in PLUGIN/user_filter.py with the function remove_diag(ONEDIAG) which returns True if the diagram has to be removed',
                                              fcts=['remove_diag'])
         else:
-            #example and simple tests
-            def remove_diag(diag, model=None):
-                for vertex in diag['vertices']: #last 
-                    if vertex['id'] == 0: #special final vertex
-                        continue 
-                    if vertex['legs'][-1]['number'] < 3: #this means T-channel
-                        if abs(vertex['legs'][-1]['id']) <6:
-                            return True
-                return False                
+            raise MadGraph5Error('Invalid diagram filter %r: expected True or '
+                                 'a function remove_diag(diag, model).' % (diagram_filter,))
 
         res = diag_list.__class__()                
         nb_removed = 0
-        misc.sprint('Diagram filter is ON', type(diag_list))
         model = self['process']['model'] 
         for diag in diag_list:
             if remove_diag(diag, model):
@@ -2442,7 +2440,7 @@ class DecayChainAmplitude(Amplitude):
         return misc.make_unique(decay_ids)
     
     def has_loop_process(self):
-        """ Returns wether this amplitude has a loop process."""
+        """ Returns whether this amplitude has a loop process."""
         return self['amplitudes'].has_any_loop_process()
     
     def get_amplitudes(self):
@@ -2501,7 +2499,7 @@ class MultiProcess(base_objects.PhysicsObject):
                  loop_filter=None, diagram_filter=None, merge_crossing=False):
         """Allow initialization with ProcessDefinition or
         ProcessDefinitionList
-        optimize allows to use param_card information. (usefull for 1-.N)"""
+        optimize allows to use param_card information. (useful for 1-.N)"""
 
         if isinstance(argument, base_objects.ProcessDefinition):
             super(MultiProcess, self).__init__()
@@ -2520,7 +2518,7 @@ class MultiProcess(base_objects.PhysicsObject):
         self['ignore_six_quark_processes'] = ignore_six_quark_processes
         self['use_numerical'] = optimize
         self['loop_filter'] = loop_filter
-        self['diagram_filter'] = diagram_filter # only True/False so far
+        self['diagram_filter'] = diagram_filter # True (PLUGIN/user_filter.py) or a plugin function
         self['merge_crossing'] = merge_crossing
         
         if isinstance(argument, base_objects.ProcessDefinition) or \

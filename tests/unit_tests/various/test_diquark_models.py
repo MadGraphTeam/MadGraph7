@@ -169,7 +169,7 @@ class TestColorSextetModel(unittest.TestCase):
         myamp = diagram_generation.Amplitude(myproc)
         matrix_element = helas_objects.HelasMatrixElement(myamp)
         
-        # First build a color representation dictionnary
+        # First build a color representation dictionary
         repr_dict = {}
         for l in myleglist:
             repr_dict[l.get('number')] = \
@@ -221,7 +221,7 @@ class TestColorSextetModel(unittest.TestCase):
         myamp = diagram_generation.Amplitude(myproc)
         matrix_element = helas_objects.HelasMatrixElement(myamp)
         
-        # First build a color representation dictionnary
+        # First build a color representation dictionary
         repr_dict = {}
         for l in myleglist:
             repr_dict[l.get('number')] = \
@@ -276,7 +276,7 @@ class TestColorSextetModel(unittest.TestCase):
         self.assertEqual(len(myamp.get('diagrams')), 5)
         matrix_element = helas_objects.HelasMatrixElement(myamp)
         
-        # First build a color representation dictionnary
+        # First build a color representation dictionary
         repr_dict = {}
         for l in myleglist:
             repr_dict[l.get('number')] = \
@@ -312,7 +312,7 @@ class TestColorSextetModel(unittest.TestCase):
         myamp = diagram_generation.Amplitude(myproc)
         matrix_element = helas_objects.HelasMatrixElement(myamp)
         
-        # First build a color representation dictionnary
+        # First build a color representation dictionary
         repr_dict = {}
         for l in myleglist:
             repr_dict[l.get('number')] = \
@@ -460,7 +460,7 @@ class TestColorTripletModel(unittest.TestCase):
         myamp = diagram_generation.Amplitude(myproc)
         matrix_element = helas_objects.HelasMatrixElement(myamp)
         
-        # First build a color representation dictionnary
+        # First build a color representation dictionary
         repr_dict = {}
         for l in myleglist:
             repr_dict[l.get('number')] = \
@@ -502,7 +502,7 @@ class TestColorTripletModel(unittest.TestCase):
         self.assertEqual(len(myamp.get('diagrams')), 5)
         matrix_element = helas_objects.HelasMatrixElement(myamp)
         
-        # First build a color representation dictionnary
+        # First build a color representation dictionary
         repr_dict = {}
         for l in myleglist:
             repr_dict[l.get('number')] = \

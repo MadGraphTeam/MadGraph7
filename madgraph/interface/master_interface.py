@@ -33,7 +33,7 @@ root_path = os.path.split(os.path.dirname(os.path.realpath( __file__ )))[0]
 root_path = os.path.split(root_path)[0]
 sys.path.insert(0, root_path)
 
-#usefull shortcut
+#useful shortcut
 pjoin = os.path.join
 
 import madgraph
@@ -178,6 +178,10 @@ class Switcher(object):
         space_before = re.compile(r"(?P<carac>\S)(?P<tag>[\\[\\]/\,\\$\\>|])(?P<carac2>\S)")
         line2 = space_before.sub(r'\g<carac> \g<tag> \g<carac2>', line)       
         
+        # a matrix-element backend bracket like [amplicol] is a tree process
+        if MGcmd.split_backend_line(re.split(r'\s\-\-', line, 1)[0])[1]:
+            return ('tree', None, [])
+
         # Use regular expressions to extract the loop mode (if present) and its
         # option, specified in the line with format [ option = loop_orders ] or
         # [ loop_orders ] which implicitly select the 'all' option.
@@ -853,7 +857,7 @@ class MasterCmdWeb(MGcmd.MadGraphCmdWeb, Switcher, LoopCmd.LoopInterfaceWeb):
         else:
             # put default options since 
             # in the web the local file is not used
-            # in download the default file is more usefull
+            # in download the default file is more useful
             files.cp(misc.install_config_file(MG5DIR), args[1])
             
     def do_install(self, line):

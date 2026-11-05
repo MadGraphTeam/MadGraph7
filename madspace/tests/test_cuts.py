@@ -1,3 +1,6 @@
+"""Cut volume of PhaseSpaceMapping modes (with and without the cuts handed to the
+mapping) against RAMBO with the cuts applied afterwards."""
+
 import math
 from dataclasses import dataclass
 
@@ -6,9 +9,6 @@ import torch
 from madspace_testing import generator, rand, randint
 
 import madspace as ms
-
-# from typing import List, Optional
-
 
 PSM = ms.PhaseSpaceMapping
 
@@ -39,10 +39,6 @@ class Config:
     mode: any
     color_order: list[int] | None
     piped: bool
-
-
-# def _mode_name(mode):
-#     return str(mode).rsplit(".", 1)[-1]
 
 
 def _n_jets(pids_out):
@@ -125,7 +121,9 @@ def _cut_volume(
         CM_ENERGY,
         mode=mode,
         leptonic=True,
-        color_order=color_order,
+        color_ordered=(
+            None if color_order is None else ms.ColorOrderedMapping.Options(color_order)
+        ),
         cuts=_cuts(pids, pt_min) if piped else None,
     )
 

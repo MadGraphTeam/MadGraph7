@@ -148,7 +148,7 @@ C     reset the amp_split array
       DO I = 1, NSQAMPSO
         IF (KEEP_ORDER(I)) THEN
           ANS_SUMMED = ANS_SUMMED + ANS(1,I)
-C         keep track of the separate pieces correspoinding to
+C         keep track of the separate pieces corresponding to
 C          different coupling combinations
           DO J = 1, NSPLITORDERS
             AMP_ORDERS(J) = GETORDPOWFROMINDEX_B(J, I)
@@ -163,7 +163,7 @@ C     this is to avoid fake non-zero contributions
       WGT_ME_BORN=ANS_SUMMED
 
 C     fill the amp2 and jamp2 arrays
-      AMP2(1:NGRAPHS)=AMP2B(1:NGRAPHS)  ! amp2 just needs to be copyed
+      AMP2(1:NGRAPHS)=AMP2B(1:NGRAPHS)  ! amp2 just needs to be copied
 
       DO I = 0, INT(JAMP2B(0,0))
         JAMP2(I)=0D0

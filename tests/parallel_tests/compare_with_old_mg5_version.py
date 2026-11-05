@@ -606,7 +606,7 @@ class OLDMG5Comparator(unittest.TestCase):
                              filename = "short_cs_sm3.log")        
         
     ############################################################################    
-    #  ROUTINE FOR CHECKING THE PARRALEL TEST
+    #  ROUTINE FOR CHECKING THE PARALLEL TEST
     ############################################################################           
     def test_mg5_minitest_sm(self):
         """Test a minimal list of sm 2->2 processes, mainly to test the test"""

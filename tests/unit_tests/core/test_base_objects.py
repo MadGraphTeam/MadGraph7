@@ -147,7 +147,7 @@ class ParticleTest(unittest.TestCase):
             for x in test['right_list']:
                 self.assertTrue(temp_part.set(test['prop'], x))
             for x in test['wrong_list']:
-                self.assertFalse(temp_part.set(test['prop'], x), '%s not allowd for %s ' %(x, test['prop']))
+                self.assertFalse(temp_part.set(test['prop'], x), '%s not allowed for %s ' %(x, test['prop']))
 
     def test_representation(self):
         """Test particle object string representation."""

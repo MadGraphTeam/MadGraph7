@@ -54,7 +54,7 @@ def define_model():
 #===============================================================================
 class TestDrawingOption(unittest.TestCase):
     """Sanity check for all combination of option. This check on a small sample
-    of diagram that no line have zero lenght and that we don't have any line 
+    of diagram that no line have zero length and that we don't have any line
     crossing for any combination of option."""
 
     def setUp(self):

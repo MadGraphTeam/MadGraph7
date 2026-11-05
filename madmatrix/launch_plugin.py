@@ -169,7 +169,7 @@ class CPPRunCard(banner_mod.RunCardLO):
             super().write_one_include_file(output_dir, incname, output_file)
 
     def check_validity(self):
-        """ensure that PLUGIN information are consistent"""
+        """ensure that PLUGIN information is consistent"""
         super().check_validity()
         if self['SDE_strategy'] != 1:
             logger.warning('SDE_strategy different of 1 is not supported with SMD/GPU mode')

@@ -19,7 +19,7 @@ def _color_order(n_out, mode):
     """Single-chain color order for color_ordered mode; None otherwise."""
     if mode != ms.PhaseSpaceMapping.color_ordered:
         return None
-    return [0] + [i + 2 for i in range(n_out)] + [1]
+    return ms.ColorOrderedMapping.Options([0] + [i + 2 for i in range(n_out)] + [1])
 
 
 def _fwd_inputs(mapping, rng, n):
@@ -95,7 +95,7 @@ def test_t_channel_masses(masses, rng, mode):
         masses,
         CM_ENERGY,
         mode=mode,
-        color_order=_color_order(len(masses) - 2, mode),
+        color_ordered=_color_order(len(masses) - 2, mode),
     )
     inputs, r, _ = _fwd_inputs(mapping, rng, BATCH_SIZE)
     p_ext, x1, x2, det = mapping.map_forward(inputs)
@@ -110,11 +110,9 @@ def test_t_channel_masses(masses, rng, mode):
     m_ext = torch.sqrt(
         torch.clamp(p_ext[:, :, 0] ** 2 - torch.sum(p_ext[:, :, 1:] ** 2, dim=2), min=0)
     )
-    # The massless on-shell reconstruction m = sqrt(E^2 - |p|^2) has an FP floor
-    # that scales with the particle energy (~2e-6 * E); the deep color_ordered
-    # boost chains reach it for a few high-energy boundary events. Shallower
-    # modes stay well under the flat 1e-3, so only color_ordered needs the
-    # energy-scaled term (a genuine kinematic error would exceed it ~1000x).
+    # m = sqrt(E^2 - |p|^2) has a rounding floor that scales with the energy;
+    # the deep color_ordered boost chains reach it for a few high-energy events,
+    # so only color_ordered gets the energy-scaled tolerance.
     abs_tol = 1e-3
     if mode == ms.PhaseSpaceMapping.color_ordered:
         abs_tol = 1e-3 + 2e-6 * torch.abs(p_ext[:, :, 0])
@@ -128,7 +126,7 @@ def test_t_channel_incoming(masses, rng, mode):
         masses,
         CM_ENERGY,
         mode=mode,
-        color_order=_color_order(len(masses) - 2, mode),
+        color_ordered=_color_order(len(masses) - 2, mode),
     )
     inputs, r, _ = _fwd_inputs(mapping, rng, BATCH_SIZE)
     p_ext, x1, x2, det = mapping.map_forward(inputs)
@@ -163,7 +161,7 @@ def test_t_channel_momentum_conservation(masses, rng, mode):
         masses,
         CM_ENERGY,
         mode=mode,
-        color_order=_color_order(len(masses) - 2, mode),
+        color_ordered=_color_order(len(masses) - 2, mode),
     )
     inputs, r, _ = _fwd_inputs(mapping, rng, BATCH_SIZE)
     p_ext, x1, x2, det = mapping.map_forward(inputs)
@@ -185,7 +183,7 @@ def test_t_channel_inverse(masses, rng, mode):
         CM_ENERGY,
         mode=mode,
         invariant_power=0.3,
-        color_order=_color_order(len(masses) - 2, mode),
+        color_ordered=_color_order(len(masses) - 2, mode),
     )
     inputs, r, disc = _fwd_inputs(mapping, rng, BATCH_SIZE)
     p_ext, x1, x2, det = mapping.map_forward(inputs)
@@ -204,8 +202,8 @@ def test_t_channel_inverse(masses, rng, mode):
     det_inv = out[-1]
     r_inv = out[0]
     one_batch = torch.ones_like(det)
-    # Continuous randoms round-trip; the discrete int channel (color_ordered)
-    # is checked for exact bin/solution recovery separately.
+    # Continuous randoms round-trip; the discrete choices (color_ordered) are
+    # recovered exactly.
     assert_approx(r_inv, r, abs=1e-3, rel=1e-3)
     assert_approx(det * det_inv, one_batch, rel=1e-5)
     if disc is not None:
@@ -228,7 +226,7 @@ def test_t_channel_phase_space_volume(particle_count, energy, rng, mode):
             energy,
             mode=mode,
             leptonic=False,
-            color_order=co,
+            color_ordered=co,
         )
     else:
         mapping = ms.PhaseSpaceMapping(
@@ -236,13 +234,13 @@ def test_t_channel_phase_space_volume(particle_count, energy, rng, mode):
             energy,
             mode=mode,
             leptonic=True,
-            color_order=co,
+            color_ordered=co,
         )
     sample_count = 100000
     inputs, r, _ = _fwd_inputs(mapping, rng, sample_count)
     *rest, det = mapping.map_forward(inputs)
-    # det is the per-branch Jacobian; the solution multiplicity (2 per 2->3 peel)
-    # is owned externally now, so apply 2^discrete_dim to recover the full volume.
+    # det is the per-branch Jacobian; multiply by 2^discrete_dim (two solutions
+    # per 2->3 step) to get the full volume.
     det = det * 2.0 ** mapping.discrete_dim()
     ps_volume = (
         (2 * math.pi) ** (4 - 3 * particle_count)
@@ -263,7 +261,8 @@ def test_t_channel_phase_space_volume(particle_count, energy, rng, mode):
 # (beams cyclically adjacent -> all outgoing on one side). These cases also
 # exercise *two-sided* splits (set1 and set2 both non-empty), which build a
 # genuinely different t-channel topology, and a range of discrete-peel counts
-# (discrete_dim grows by one for every set with > 2 outgoing partons).
+# (one discrete choice per 2->3 step: each peel after the first, and a
+# two-particle side when the other side is not empty).
 # ColorOrderedMapping is never constructed directly here -- only through
 # PhaseSpaceMapping, which is the only entry point it is meant to have.
 # ---------------------------------------------------------------------------
@@ -290,7 +289,7 @@ def test_color_ordered_color_orders(rng, color_order, out_masses, _label):
         CM_ENERGY,
         mode=ms.PhaseSpaceMapping.color_ordered,
         invariant_power=0.3,
-        color_order=color_order,
+        color_ordered=ms.ColorOrderedMapping.Options(color_order),
     )
     # random_dim is color-order invariant; discrete_dim tracks the peel count.
     assert mapping.random_dim() == 3 * len(out_masses) - 2

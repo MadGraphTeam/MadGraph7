@@ -310,3 +310,44 @@ class TestDiagramSymmetry(unittest.TestCase):
             self.assertAlmostEqual(amp, new_amp, 10)
             
         
+
+
+class TestDiagramSymmetryMergedFlavor(unittest.TestCase):
+    """find_symmetry for a matrix element with several flavor rows (merged
+    particles): a permutation of identical legs is a symmetry only if it
+    maps every row onto itself."""
+
+    @classmethod
+    def setUpClass(cls):
+        import madgraph.interface.master_interface as Cmd
+        cls.cmd = Cmd.MasterCmd()
+        cls.cmd.exec_cmd('import model sm')
+        cls.cmd.exec_cmd('define q = u d')
+        cls.cmd.exec_cmd('define qx = u~ d~')
+
+    def find_symmetry(self, line):
+        self.cmd.exec_cmd('generate %s' % line)
+        mes = helas_objects.HelasMultiProcess(
+            self.cmd._curr_amps).get_matrix_elements()
+        self.assertEqual(len(mes), 1)
+        return diagram_symmetry.find_symmetry(mes[0], check_flavor_rows=True)
+
+    def test_find_symmetry_uq_zuq(self):
+        """u q > z u q: swapping the final quarks holds for u u but not
+        u d, so no config is symmetric (symfact used to fold channel 2
+        onto 1 with weight 2: the non-grouped cross-section was 4.5% high)"""
+
+        symmetry, perms, ident_perms = self.find_symmetry('u q > z u q')
+        self.assertEqual(symmetry, [1] * 8)
+        self.assertEqual(ident_perms, [[0, 1, 2, 3, 4]])
+
+        symmetry, perms, ident_perms = self.find_symmetry('u u > z u u')
+        self.assertEqual(symmetry, [2, -1, 2, 2, -3, -4, 2, -7])
+        self.assertEqual(ident_perms, [[0, 1, 2, 3, 4], [0, 1, 2, 4, 3]])
+
+    def test_find_symmetry_qqx_zgg(self):
+        """q qx > z g g: the gluons are identical in every flavor row"""
+
+        symmetry, perms, ident_perms = self.find_symmetry('q qx > z g g')
+        self.assertEqual(symmetry, [2, -1, 1, 2, 2, -4, -5, 1])
+        self.assertEqual(ident_perms, [[0, 1, 2, 3, 4], [0, 1, 2, 4, 3]])
