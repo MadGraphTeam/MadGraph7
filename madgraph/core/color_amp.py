@@ -762,7 +762,7 @@ class ColorBasis(dict):
         """Do the color projection for a given onium"""
         if len(pid_numbers) != 2 or len(pid_charges) != 2:
             raise ColorBasis.ColorBasisError("Only the projection of two particles is supported")
-        if pid_charges==(1,-1):
+        if pid_charges in [(1,-1), (-1,1)]:
             if charge != 1:
                 raise ColorBasis.ColorBasisError("Only color singlet is possible when charges=%d,%d"%pid_charges)
             projector_str = color_algebra.ColorString([color_algebra.ColorOne()])
@@ -810,13 +810,17 @@ class ColorBasis(dict):
                         for part in amplitude.get('process').get('model').get('particles'):
                             if part.get('pdg_code') == l.get('id'): color = part.get('color')
                             if part.get('pdg_code') == -l.get('id'): color = -part.get('color')
-                        onium_color = color
+                        # an incoming (anti)quark carries the index of an
+                        # outgoing (anti)antiquark in the colour strings
+                        onium_color = color if l.get('state') else -color
                         onium_number = l.get('number')
                     else:
                         onium = False
                         for part in amplitude.get('process').get('model').get('particles'):
                             if part.get('pdg_code') == l.get('id'): color = part.get('color')
                             if part.get('pdg_code') == -l.get('id'): color = -part.get('color')
+                        if not l.get('state'):
+                            color = -color
                         pid_color_numbers.append([(onium_color,color),(onium_number,l.get('number')),l.get('onium').get('C')])
 
             if pid_color_numbers: self.OniaColorProjection(colorize_dict, pid_color_numbers)

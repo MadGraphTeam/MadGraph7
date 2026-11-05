@@ -2650,6 +2650,91 @@ class TestCmdShell2(unittest.TestCase,
             self.assertTrue(passed)
 
          
+    @staticmethod
+    def _onia_check_me(proc_dir, momenta=None):
+        """Build ./check of a standalone directory and return its matrix
+        element, at the momenta given (written to PS.input) if any."""
+
+        subprocess.check_call(['make'], cwd=proc_dir, stdout=subprocess.DEVNULL)
+        if momenta is not None:
+            with open(pjoin(proc_dir, 'PS.input'), 'w') as fsock:
+                for p in momenta:
+                    fsock.write(' '.join('%.17e' % x for x in p) + '\n')
+        output = subprocess.check_output(['./check'], cwd=proc_dir).decode()
+        match = re.search(r'Matrix element\s*=\s*([0-9Ee\+\-\.]+)', output)
+        return float(match.group(1))
+
+    def test_onia_decay_standalone(self):
+        """Onium decays in standalone: the |M|^2 of n > X Y is the time
+        reverse of the production X Y > n (validated against HELAC-Onia) at
+        the same momenta, for S and P waves, colour singlet and octet; and the
+        decay output carries one incoming particle and the decay averages."""
+
+        import glob
+        import math
+        import madgraph.interface.master_interface as MGCmd
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('import model sm_onia-c_mass')
+        mc = 1.55   # mdl_MC of sm_onia-c_mass; the onium at m1+m2
+        M = 2 * mc
+
+        # P -> k1 k2 at rest, in a generic direction
+        k = M / 2
+        nx, ny, nz = 0.36, -0.48, 0.80
+        k1 = [k, k * nx, k * ny, k * nz]
+        k2 = [k, -k * nx, -k * ny, -k * nz]
+        P = [M, 0., 0., 0.]
+
+        # (decay, production, IDEN decay, IDEN production, (2J_H+1)/(2J_n+1))
+        cases = [('etac(1|1S01) > g g', 'g g > etac(1|1S01)', 2, 256, 1),
+                 ('chic2(1|3P21) > a a', 'a a > chic2(1|3P21)', 10, 4, 1),
+                 ('Jpsi(1|3S18) > u u~', 'u u~ > Jpsi(1|3S18)', 3, 36, 1),
+                 ('Jpsi(1|1S08) > g g', 'g g > Jpsi(1|1S08)', 2, 256, 3)]
+        for decay, production, iden_d, iden_p, jratio in cases:
+            values = []
+            for proc, moms, iden in [(decay, [P, k1, k2], iden_d),
+                                     (production, [k1, k2, P], iden_p)]:
+                if os.path.isdir(self.out_dir):
+                    shutil.rmtree(self.out_dir)
+                mg_cmd.exec_cmd('generate %s' % proc)
+                mg_cmd.exec_cmd('output standalone_fortran %s -f' % self.out_dir)
+                proc_dir = glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*'))[0]
+                matrix = open(pjoin(proc_dir, 'matrix.f')).read()
+                self.assertIn('DATAIDEN/%d/' % iden, matrix.replace(' ', ''))
+                nexternal = open(pjoin(proc_dir, 'nexternal.inc')).read()
+                values.append(self._onia_check_me(proc_dir, moms) * iden)
+                if proc == decay:
+                    self.assertIn('PARAMETER (NINCOMING=1)', nexternal)
+                    onia = open(pjoin(proc_dir, 'onia.inc')).read()
+                    self.assertIn('DATA (ONIA_IN(I),I=1,1)/1/', onia)
+                    pmass = open(pjoin(proc_dir, 'pmass.inc')).read()
+                    self.assertIn('ONIA_DECAY_MASS', pmass)
+                    card = open(pjoin(self.out_dir, 'Cards', 'onia_card.dat')).read()
+                    self.assertIn('Block onia_decay', card)
+            # the decay LDME is <O^H>/(2J_H+1), production divides by 2J_n+1
+            dec, pro = values[0] * jratio, values[1]
+            self.assertLess(abs(dec - pro) / max(abs(dec), abs(pro)), 1e-12,
+                            '%s: %s against %s' % (decay, dec, pro))
+
+        # Gamma(eta_c -> g g) = 8 alpha_s^2 |R(0)|^2 / (3 M^2), from the LDME
+        # of the card: <O^H> = 2 N_c (2J+1) |R(0)|^2 / (4 pi)
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        mg_cmd.exec_cmd('generate etac(1|1S01) > g g')
+        mg_cmd.exec_cmd('output standalone_fortran %s -f' % self.out_dir)
+        proc_dir = glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*'))[0]
+        me = self._onia_check_me(proc_dir, [P, k1, k2])
+        card = open(pjoin(self.out_dir, 'Cards', 'onia_card.dat')).read()
+        ldme = float(re.search(r'^\s*441\s+([0-9.Ee+-]+)', card, re.M).group(1))
+        r2 = ldme * 4 * math.pi / 6
+        alphas = 0.118
+        width = me * (M / 2) / (8 * math.pi * M ** 2)
+        expected = 8 * alphas ** 2 * r2 / (3 * M ** 2)
+        self.assertLess(abs(width - expected) / expected, 1e-10)
+
     def test_standalone_density(self):
         """test that standalone density is working"""
 

@@ -5,6 +5,22 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   HS: onium decays and onium production in particle decays (LO NRQCD/NRQED, S and P
+       waves, colour singlet and octet, with 'output madevent' and 'output
+       standalone_fortran'):
+       - a bound state can now be the decaying particle, e.g. "generate etac > g g",
+         "generate chic2(1|3P21) > a a", "generate Ps(1|3S1) > a a a"; the decay LDME is
+         the production LDME of the onia card by vacuum saturation, <O^H>/(2J_H+1).
+         Its mass is m1+m2 by default; "set onia_card onia_decay 1 1" uses the
+         onium_mass of the card (the decay products are rescaled onto the
+         constituent kinematics for the matrix element).
+       - onia produced in 1 -> N decays, e.g. "generate z > Jpsi(1|3S11) a",
+         "generate t > w+ Bc-(1|1S01) c": the momentum reshuffling works at the fixed
+         mass of the decaying particle (it also checks the particle at position 2,
+         which it skipped), and madevent has the integration channels of a decay.
+       - an incoming onium with a second incoming particle ("Jpsi(1|3S11) g > g g") is
+         accepted by 'output standalone_fortran' only (a matrix element, used for the
+         time-reversal checks).
    OM: bin/madgraph, bin/madevent, bin/aMCatNLO and bin/generate_events (madevent, aMC@NLO
        and mg7 outputs) no longer read their commands, or the answers to the questions of
        a command given on the command line, from a pipe or a redirected file (e.g.

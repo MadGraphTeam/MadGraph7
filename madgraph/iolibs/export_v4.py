@@ -1863,12 +1863,25 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
         onium = -1
         onium_mass = 0
         counter = 0
+        # constituent masses of every bound state
+        constituent_masses = {}
+        for wf in matrix_element.get_external_wavefunctions():
+            if wf.get('onium'):
+                constituent_masses.setdefault(wf.get('onium').get('index'), []).append(
+                    model.get('particle_dict')[wf.get('pdg_code')].get('mass'))
         for wf in matrix_element.get_external_wavefunctions():
             mass = model.get('particle_dict')[wf.get('pdg_code')].get('mass')
             if wf.get('onium'):
                 if onium == -1:
                     onium = wf.get('onium').get('index')
                     mass = "mdl_M%i"%abs(wf.get('onium').get('id'))
+                    if wf.get('leg_state') == False:
+                        # a decaying onium: m1+m2 unless the onia card
+                        # (Block onia_decay) asks for its onium_mass
+                        msum = "+".join("abs(%s)" % m for m in
+                                        constituent_masses[onium]
+                                        if m.lower() != 'zero') or "0d0"
+                        mass = "MERGE(%s,%s,ONIA_DECAY_MASS.GT.0.5D0)" % (mass, msum)
                 elif onium == wf.get('onium').get('index'):
                     onium = -1
                     counter += 1
@@ -1935,6 +1948,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
         l = []
         j = []
         c = []
+        incoming = []
+        jh2 = []
         onia = [0]*nonia
         onium = -1
         onium_mass = 0
@@ -1950,6 +1965,10 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
                     else:
                         pairs.append(-(wf.get('onium').get('index')+1))
                     n.append(wf.get('onium').get('N'))
+                    # a decaying onium, and 2J_H+1 of its hadron: the last
+                    # digit of the PDG code of every Fock state
+                    incoming.append(1 if wf.get('leg_state') == False else 0)
+                    jh2.append(abs(wf.get('onium').get('id')) % 10)
                     s.append(wf.get('onium').get('S'))
                     l.append(wf.get('onium').get('L'))
                     j.append(wf.get('onium').get('J'))
@@ -1989,6 +2008,11 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
                          (nonia,",".join(str(x) for x in j)))
         lines.append("DATA (C_ONIA(i),i=1,%d)/%s/" % \
                          (nonia,",".join(str(x) for x in c)))
+        lines.append("\nINTEGER ONIA_IN(NONIA), JH2_ONIA(NONIA)")
+        lines.append("DATA (ONIA_IN(i),i=1,%d)/%s/" % \
+                         (nonia,",".join(str(x) for x in incoming)))
+        lines.append("DATA (JH2_ONIA(i),i=1,%d)/%s/" % \
+                         (nonia,",".join(str(x) for x in jh2)))
 
         # Write the file
         writer.writelines(lines)
@@ -4689,21 +4713,18 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
     def export_onia_files(self, matrix_elements):
         """Configure the files/link of the process according to the model"""
 
-        contains_onia = False
-        if isinstance(matrix_elements, group_subprocs.SubProcessGroupList):
-            for matrix_element in matrix_elements:
-                for me in matrix_element.get('matrix_elements'):
-                    if me.get_nonia() > 0:
-                        contains_onia = True
-                        break
-                if contains_onia:
-                    break
+        contains_onia = any(me.get_nonia() > 0 for me in
+                            self.iter_onia_matrix_elements(matrix_elements))
 
         if contains_onia:
 
             (onia_info, onia_ids) = self.get_onia_info(matrix_elements)
+            decaying = any(leg.get('onium') and leg.get('state') == False
+                           for me in self.iter_onia_matrix_elements(matrix_elements)
+                           for proc in me.get('processes')
+                           for leg in proc.get('legs'))
 
-            self.create_onia_card(onia_info)
+            self.create_onia_card(onia_info, decaying=decaying)
 
             filename = pjoin(self.dir_path, 'Source', 'MODEL', 'ldme.inc')
             self.write_ldme_file(writers.FortranWriter(filename),
@@ -4735,8 +4756,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
 
 
 
-    def create_onia_card(self, onia_info):
-        """ """
+    def create_onia_card(self, onia_info, decaying=False):
+        """Write Cards/onia_card.dat: the LDMEs and masses of the bound
+        states, and for a decaying onium the choice of its mass."""
 
         shutil.copy(pjoin(self.mgme_dir, 'Template/Common/Cards/onia_card.dat'),
                                pjoin(self.dir_path,'Cards'))
@@ -4760,6 +4782,15 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
                         f.write('Block onium_mass\n')
                         for onium_info in onia_info:
                             f.write('   {id:7}  {value:.16f}   # mass for {name}\n'.format(id=onium_info[0],name=onium_info[1],value=onium_info[2]))
+                        if decaying:
+                            f.write('#*********************************************************************\n')
+                            f.write('# Mass of a decaying onium (phase space and flux)                     *\n')
+                            f.write('#  0 = m1+m2, the sum of its constituent masses (LO NRQCD)          *\n')
+                            f.write('#  1 = its onium_mass above; the decay products are then rescaled   *\n')
+                            f.write('#      onto the constituent kinematics for the matrix element       *\n')
+                            f.write('#*********************************************************************\n')
+                            f.write('Block onia_decay\n')
+                            f.write('         1  0   # onia_decay_mass\n')
                     shutil.copy(pjoin(self.dir_path, 'Cards',card + '_default.dat'),
                                    pjoin(self.dir_path, 'Cards', card + '.dat'))
                 except IOError:
@@ -4767,11 +4798,26 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
 
 
 
+    @staticmethod
+    def iter_onia_matrix_elements(matrix_elements):
+        """The matrix elements of an output, grouped
+        (SubProcessGroupList) or not (HelasMultiProcess, a list)."""
+
+        if isinstance(matrix_elements, group_subprocs.SubProcessGroupList):
+            for group in matrix_elements:
+                for me in group.get('matrix_elements'):
+                    yield me
+        elif isinstance(matrix_elements, helas_objects.HelasMultiProcess):
+            for me in matrix_elements.get_matrix_elements():
+                yield me
+        else:
+            for me in matrix_elements:
+                yield me
+
     def get_onia_info(self, matrix_elements):
 
         info = []
-        for matrix_element in matrix_elements:
-            for me in matrix_element.get('matrix_elements'):
+        for me in self.iter_onia_matrix_elements(matrix_elements):
                 for proc in me.get('processes'):
                     for leg in proc.get('legs'):
                         if leg.get('onium'):
@@ -4804,6 +4850,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
                             (",".join(str(x) for x in ldmes)))
             lines.append("COMMON/ONIUM_MASS/ %s"% \
                             (",".join(str(x) for x in masses)))
+            # mass of a decaying onium: 0 = m1+m2 (default), 1 = onium_mass
+            lines.append("DOUBLE PRECISION ONIA_DECAY_MASS")
+            lines.append("COMMON/ONIA_DECAY/ONIA_DECAY_MASS")
 
         # Write the file
         writer.writelines(lines)
@@ -4819,6 +4868,10 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
 
         for onium_id in onia_ids:
             lines.append("CALL LHA_GET_REAL(NONIA,ONIA,VALUE,'mdl_M{id}',mdl_M{id},-1D0)".format(id=onium_id))
+
+        if onia_ids:
+            # only written for a decaying onium: silent when absent
+            lines.append("CALL LHA_GET_REAL_SILENT(NONIA,ONIA,VALUE,'onia_decay_mass',ONIA_DECAY_MASS,0D0)")
 
         # Write the file
         writer.writelines(lines)
@@ -4836,6 +4889,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
                 for onium_id in onia_ids:
                     f.write("\nonium_mass {id} mdl_M{id}\n".format(id=onium_id))
 
+                if onia_ids:
+                    f.write("\nonia_decay 1 onia_decay_mass\n")
+
         else:
             raise MadGraph5Error("LDMEs cannot be added to 'ident_card.dat'")
 
@@ -4844,6 +4900,16 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
     #===========================================================================
     # Onia helper methods
     #===========================================================================
+
+    def get_onia_reshuffle_body(self):
+        """The body of RESHUFFLE_MOMENTA, shared by the four onium
+        templates (standalone and madevent, S and P wave): only the name of
+        the routine differs between them, so the templates keep the
+        SUBROUTINE line and take the rest from here."""
+
+        with open(pjoin(_file_path, 'iolibs', 'template_files',
+                        'onia_reshuffle_momenta.inc')) as fsock:
+            return fsock.read()
 
     def get_ldme_product(self, matrix_element):
 
@@ -5922,8 +5988,14 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         
 
 
-        # Generate diagrams
-        if not 'noeps' in self.opt['output_options'] or self.opt['output_options']['noeps'] != 'True':
+        # Generate diagrams. The drawer handles one or two incoming legs: an
+        # incoming onium with a second incoming particle (a matrix element for
+        # validation only) has three, so its diagrams are not drawn.
+        if matrix_element.get_nexternal_ninitial(constituents=True)[1] > 2:
+            logger.info("No Feynman diagrams drawn for %s: three incoming legs "
+                        "(an incoming onium is drawn as its two constituents)." %
+                        matrix_element.get('processes')[0].nice_string())
+        elif not 'noeps' in self.opt['output_options'] or self.opt['output_options']['noeps'] != 'True':
             filename = pjoin(dirpath, "matrix.ps")
             plot = draw.MultiEpsDiagramDrawer(matrix_element.get('base_amplitude').\
                                                  get('diagrams'),
@@ -6382,6 +6454,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                 replace_dict['helas_calls'] = replace_dict['helas_calls'].replace(old, new)
             replace_dict['ldme_perturbative'] = self.get_ldme_perturbative(matrix_element)
             replace_dict['ldme_product'] = self.get_ldme_product(matrix_element)
+            replace_dict['onia_reshuffle_body'] = self.get_onia_reshuffle_body()
 
         process = matrix_element.get('processes')[0]
         sym_data = self._get_broken_symmetry_data(process, ninitial)
@@ -8302,6 +8375,7 @@ class ProcessExporterFortranME(ProcessExporterFortran):
             ldme_product = self.get_ldme_product(matrix_element)
             replace_dict['ldme_perturbative'] = ldme_perturbative
             replace_dict['ldme_product'] = ldme_product
+            replace_dict['onia_reshuffle_body'] = self.get_onia_reshuffle_body()
 
 
         #adding the support for the fake width (forbidding too small width)
@@ -9170,7 +9244,8 @@ c           This is dummy particle used in multiparticle vertices
     #===========================================================================
     def write_configs_file_from_onia_diagrams(self, writer, configs, mapconfigs,
                                          nexternal, ninitial, model,
-                                         onia_pairs=None, alpha_s_powers=None):
+                                         onia_pairs=None, alpha_s_powers=None,
+                                         parent_id=None):
         """Write the actual configs.inc file.
 
         configs is the diagrams corresponding to configs (each
@@ -9207,6 +9282,19 @@ c           This is dummy particle used in multiparticle vertices
                 # Only 3-vertices allowed in configs.inc
                 continue
             nconfigs += 1
+
+            if ninitial == 1:
+                # A decay: the flat s-channel chain is the whole topology.
+                # The constituent diagrams cannot give it (with a decaying
+                # onium they even have two incoming legs), so the channels
+                # handed to props.inc and decayBW.inc are this chain too.
+                lines.extend(self.get_onia_decay_config_lines(
+                    nconfigs, mapconfigs[iconfig], nexternal, parent_id))
+                nqcd_list.append(self.get_onia_config_nqcd(helas_diags,
+                                                           alpha_s_powers))
+                s_and_t_channels.append([self.get_onia_decay_schannels(
+                    nexternal, parent_id), [], 2])
+                continue
 
             # Need s- and t-channels for all subprocesses, including
             # those that don't contribute to this config
@@ -9264,22 +9352,8 @@ c           This is dummy particle used in multiparticle vertices
             # process the power of the left x right product instead, given
             # per subprocess in alpha_s_powers (see
             # interference_alpha_s_power)
-            nqcd = 0
-            for isub, h in enumerate(helas_diags):
-                if h:
-                    power = alpha_s_powers[isub] if alpha_s_powers else None
-                    if power is not None:
-                        nqcd = power
-                    else:
-                        try:
-                            nqcd = h.calculate_orders()['QCD']
-                        except KeyError:
-                            pass
-                    break
-                else:
-                    continue
-
-            nqcd_list.append(nqcd)
+            nqcd_list.append(self.get_onia_config_nqcd(helas_diags,
+                                                       alpha_s_powers))
 
             leg1 = nexternal
             leg2 = nexternal-1
@@ -9303,6 +9377,69 @@ c           This is dummy particle used in multiparticle vertices
         writer.writelines(lines)
 
         return s_and_t_channels, nqcd_list
+
+    @staticmethod
+    def get_onia_config_nqcd(helas_diags, alpha_s_powers):
+        """Number of QCD couplings of an onium config, i.e. the power of
+        alpha_s of the events of this channel; for an interference process
+        the power of the left x right product instead, given per subprocess
+        in alpha_s_powers (see interference_alpha_s_power)."""
+
+        nqcd = 0
+        for isub, h in enumerate(helas_diags):
+            if h:
+                power = alpha_s_powers[isub] if alpha_s_powers else None
+                if power is not None:
+                    nqcd = power
+                else:
+                    try:
+                        nqcd = h.calculate_orders()['QCD']
+                    except KeyError:
+                        pass
+                break
+        return nqcd
+
+    @staticmethod
+    def get_onia_decay_config_lines(iconf, diagram, nexternal, parent_id):
+        """configs.inc lines of one channel of a 1 -> N decay with onia.
+
+        As genps.f expects for a decay, there are nexternal-2 s-channel
+        vertices: a chain over the final-state particles (nexternal,
+        nexternal-1, ..., 2) whose last vertex is the decaying particle
+        itself, with the t-channel strategy of the decays (2)."""
+
+        lines = ["# Diagram %d" % diagram,
+                 "data mapconfig(%d)/%d/" % (iconf, diagram),
+                 "data tstrategy(%d)/2/" % iconf]
+        leg1, leg2 = nexternal, nexternal - 1
+        nvert = nexternal - 2
+        for i in range(1, nvert + 1):
+            prop = parent_id if (i == nvert and parent_id) else 21
+            lines.append("data (iforest(i,%d,%d),i=1,2)/%d,%d/" %
+                         (-i, iconf, leg1, leg2))
+            lines.append("data (sprop(i,%d,%d),i=1,1)/%d/" % (-i, iconf, prop))
+            lines.append("data tprid(%d,%d)/0/" % (-i, iconf))
+            leg1, leg2 = -i, leg2 - 1
+        return lines
+
+    @staticmethod
+    def get_onia_decay_schannels(nexternal, parent_id):
+        """The s-channel vertices of get_onia_decay_config_lines, as
+        props.inc and decayBW.inc read them: massless propagators along the
+        chain (as its sprop 21), the decaying particle at its end."""
+
+        vertices = []
+        leg1, leg2 = nexternal, nexternal - 1
+        nvert = nexternal - 2
+        for i in range(1, nvert + 1):
+            prop = parent_id if (i == nvert and parent_id) else 21
+            legs = base_objects.LegList([
+                base_objects.Leg({'id': 21, 'number': leg1, 'state': True}),
+                base_objects.Leg({'id': 21, 'number': leg2, 'state': True}),
+                base_objects.Leg({'id': prop, 'number': -i, 'state': True})])
+            vertices.append(base_objects.Vertex({'id': 0, 'legs': legs}))
+            leg1, leg2 = -i, leg2 - 1
+        return vertices
     
 
 
@@ -10711,12 +10848,18 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
                            "process' lines to avoid it."
                            % subproc_group.get('name'))
         if onia_pairs:
+            # the decaying particle of a 1 -> N process: an onium (its two
+            # constituents are the first two legs) or an elementary particle
+            first_leg = matrix_elements[0].get('processes')[0].get('legs')[0]
+            parent_id = abs(first_leg.get('onium').get('id')) \
+                        if first_leg.get('onium') else first_leg.get('id')
             return len(diagrams), \
                self.write_configs_file_from_onia_diagrams(writer, diagrams,
                                                 config_numbers,
                                                 nexternal, ninitial,
                                                      model,onia_pairs,
-                                                alpha_s_powers=alpha_s_powers)
+                                                alpha_s_powers=alpha_s_powers,
+                                                parent_id=parent_id)
         else:
             return len(diagrams), \
                self.write_configs_file_from_diagrams(writer, diagrams,

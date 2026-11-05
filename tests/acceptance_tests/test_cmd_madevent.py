@@ -2655,6 +2655,96 @@ class TestMECmdShell(unittest.TestCase):
         )
 
 
+    @staticmethod
+    def _onia_card_value(card, block, key):
+        """A value of the onia card (Block <block>, entry <key>)."""
+        text = open(card).read()
+        body = re.search(r'(?ims)^block\s+%s\b(.*?)(?=^block|\Z)' % block, text).group(1)
+        return float(re.search(r'^\s*%s\s+([0-9.Ee+-]+)' % key, body, re.M).group(1))
+
+    def test_onium_decay_width(self):
+        """Onium decays in madevent: Gamma(eta_c -> gamma gamma) at LO NRQCD,
+        12 e_c^4 alpha^2 |R(0)|^2 / M^2 with M = 2 m_c by default, and with the
+        physical mass of the onia card (Block onia_decay) the 2-body width
+        scales as M/M_phys."""
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('import model sm_onia-c_mass')
+        mg_cmd.exec_cmd('generate etac(1|1S01) > a a')
+        mg_cmd.exec_cmd('output madevent %s/' % self.run_dir)
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+        card = pjoin(self.run_dir, 'Cards', 'onia_card.dat')
+        self.assertEqual(self._onia_card_value(card, 'onia_decay', 1), 0)
+
+        self.do('generate_events -f')
+        width = self.cmd_line.results.current['cross']
+        mc, alpha = 1.55, 1 / 132.507
+        M = 2 * mc
+        r2 = self._onia_card_value(card, 'ldme', 441) * 4 * math.pi / 6
+        expected = 12 * (2. / 3) ** 4 * alpha ** 2 * r2 / M ** 2
+        self.assertLess(abs(width - expected) / expected, 1e-4,
+                        '%s against %s' % (width, expected))
+
+        # the physical mass: flux and phase space at M_phys
+        mphys = self._onia_card_value(card, 'onium_mass', 441)
+        text = open(card).read()
+        text = re.sub(r'(?m)^(\s*1\s+)0(\s+# onia_decay_mass)', r'\g<1>1\2', text)
+        open(card, 'w').write(text)
+        self.do('generate_events -f')
+        width2 = self.cmd_line.results.current['cross']
+        self.assertLess(abs(width2 / width - M / mphys), 1e-4,
+                        '%s / %s against %s' % (width2, width, M / mphys))
+
+    def test_onium_production_in_decay(self):
+        """Onia produced in a decay: Gamma(Z -> eta_c gamma) through the vector
+        coupling of the Z, (2/3) M Gamma(eta_c -> gamma gamma) (v_c/(e_c s_W
+        c_W))^2 (m_Z^2 - M^2)/m_Z^3; with the physical onium mass the momenta
+        are reshuffled at the fixed Z mass, and the 2-body width follows the
+        physical phase space."""
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('import model sm_onia-c_mass')
+        mg_cmd.exec_cmd('generate z > etac(1|1S01) a')
+        mg_cmd.exec_cmd('output madevent %s/' % self.run_dir)
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+        card = pjoin(self.run_dir, 'Cards', 'onia_card.dat')
+        # the onium at m1+m2: no reshuffling
+        mphys = self._onia_card_value(card, 'onium_mass', 441)
+        text = open(card).read()
+        open(card, 'w').write(re.sub(r'(?m)^(\s*441\s+)[0-9.Ee+-]+(\s+# mass)',
+                                     r'\g<1>3.1\2', text))
+        self.do('generate_events -f')
+        width = self.cmd_line.results.current['cross']
+
+        mc, alpha, mz, gf = 1.55, 1 / 132.507, 91.188, 1.16639e-5
+        M = 2 * mc
+        mw = math.sqrt(mz ** 2 / 2 + math.sqrt(mz ** 4 / 4 - alpha * math.pi * mz ** 2 / (gf * math.sqrt(2))))
+        sw2 = 1 - mw ** 2 / mz ** 2
+        vc = 0.25 - 2. / 3 * sw2
+        r2 = self._onia_card_value(card, 'ldme', 441) * 4 * math.pi / 6
+        gaa = 12 * (2. / 3) ** 4 * alpha ** 2 * r2 / M ** 2
+        expected = 2. / 3 * M * gaa * (vc / (2. / 3)) ** 2 / (sw2 * (1 - sw2)) \
+                   * (mz ** 2 - M ** 2) / mz ** 3
+        self.assertLess(abs(width - expected) / expected, 1e-4,
+                        '%s against %s' % (width, expected))
+
+        # physical mass: reshuffled matrix element, physical phase space
+        text = re.sub(r'(?m)^(\s*441\s+)[0-9.Ee+-]+(\s+# mass)',
+                      r'\g<1>%r\2' % mphys, open(card).read())
+        open(card, 'w').write(text)
+        self.do('generate_events -f')
+        width2 = self.cmd_line.results.current['cross']
+        ratio = (mz ** 2 - mphys ** 2) / (mz ** 2 - M ** 2)
+        self.assertLess(abs(width2 / width - ratio), 1e-4,
+                        '%s / %s against %s' % (width2, width, ratio))
+
+
     def test_customised_madevent_via_run_card(self):
         """checking various advanced functionality of customization
            - set run_card entry via input/default_run_card_lo.dat

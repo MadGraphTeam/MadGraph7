@@ -909,6 +909,68 @@ c     spin triplet
       return
       end
 
+      subroutine onia_proj_in(p1, m1, nhel1, p2, m2, nhel2, p3, m3,
+     $       nhel3, spin, proj)
+c
+c This subroutine computes the spin projector for an incoming onium
+c (a decaying bound state). The amplitude carries u(p1) and vbar(p2) of
+c the incoming constituents; the projector completes them with ubar(p1)
+c and v(p2): ubar(p1) Gamma' v(p2)/(2 sqrt(2 m1 m2)), Gamma' =
+c gamma0 Gamma^dagger gamma0, i.e. -gamma5 for spin 0 and eps-slash(p3)
+c (not conjugated: an incoming polarisation) for spin 1.
+c
+c input:
+c       real    p1(0:3)        : four-momentum of constituent particle
+c       real    p2(0:3)        : four-momentum of constituent anti-particle
+c       real    p3(0:3)        : four-momentum of onium state
+c       real    m1, m2, m3     : masses
+c       integer nhel1, nhel2   : helicities of the constituents
+c       integer nhel3          : helicity of the onium state
+c       integer spin           : spin of the onium state
+c
+c output:
+c       complex proj           : value of the projector
+c
+      use ALOHA_OBJECT
+      implicit none
+      double precision p1(0:3), p2(0:3), p3(0:3)
+      double precision m1, m2, m3
+      integer nhel1, nhel2, nhel3
+      integer spin
+      double complex proj
+
+      type(aloha) fi,fo,vc
+      double complex ci, tmp
+      parameter( ci = dcmplx(0.0d0,1.0d0) )
+
+c     ubar(p1) and v(p2): the constituents are never flavour grouped
+      call oxxxxx(p1,m1,nhel1,+1,1,fo)
+      call ixxxxx(p2,m2,nhel2,-1,1,fi)
+
+      if (spin.eq.0) then
+c     spin singlet: gamma0 gamma5^dagger gamma0 = -gamma5
+
+         tmp = fi%W(1)*fo%W(1)+fi%W(2)*fo%W(2)-fi%W(3)*fo%W(3)
+     &         -fi%W(4)*fo%W(4)
+
+      elseif (spin.eq.1) then
+c     spin triplet
+         call vxxxxx(p3,m3,nhel3,-1,vc)
+
+         tmp = (fi%W(1)*fo%W(4)-fi%W(3)*fo%W(2))*(vc%W(2)+ci*vc%W(3))+
+     &         (fi%W(2)*fo%W(3)-fi%W(4)*fo%W(1))*(vc%W(2)-ci*vc%W(3))+
+     &         (fi%W(1)*fo%W(3)+fi%W(4)*fo%W(2))*(vc%W(1)+vc%W(4))+
+     &         (fi%W(2)*fo%W(4)+fi%W(3)*fo%W(1))*(vc%W(1)-vc%W(4))
+      else
+         print *,"spin projector not yet implemented"
+         stop
+      endif
+
+      proj = 0.5d0/SQRT(2d0*m1*m2)*tmp
+
+      return
+      end
+
       subroutine boostx(p,q , pboost)
 c
 c This subroutine performs the Lorentz boost of a four-momentum.  The

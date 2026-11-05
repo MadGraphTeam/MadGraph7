@@ -790,6 +790,13 @@ jobs:
             ./tests/test_manager.py test_quarkonium_production -pA -t0 -l INFO
             ./tests/test_manager.py test_leptonium_production -pA -t0 -l INFO
 
+      - name: test onium decays and onium production in decays
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_onia_decay_standalone -pA -t0 -l INFO
+            ./tests/test_manager.py test_onium_decay_width -pA -t0 -l INFO
+            ./tests/test_manager.py test_onium_production_in_decay -pA -t0 -l INFO
+
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
