@@ -10132,6 +10132,38 @@ C       This is dummy particle used in multiparticle vertices
 
 """)
 
+class OniaDecayConfigsTest(unittest.TestCase):
+    """The madevent integration channels of a 1 -> N process with onia:
+    nexternal-2 s-channel vertices (as genps.f expects for a decay), the last
+    one being the decaying particle, and the same chain for props.inc and
+    decayBW.inc."""
+
+    def test_decay_chain_lines(self):
+        E = export_v4.ProcessExporterFortranME
+        # 1 -> 2: one vertex, the parent itself
+        lines = E.get_onia_decay_config_lines(1, 1, 3, 23)
+        self.assertIn('data tstrategy(1)/2/', lines)
+        self.assertIn('data (iforest(i,-1,1),i=1,2)/3,2/', lines)
+        self.assertIn('data (sprop(i,-1,1),i=1,1)/23/', lines)
+        # 1 -> 3: (4,3) then (-1,2) on the parent
+        lines = E.get_onia_decay_config_lines(2, 5, 4, 6)
+        self.assertIn('data mapconfig(2)/5/', lines)
+        self.assertIn('data (iforest(i,-1,2),i=1,2)/4,3/', lines)
+        self.assertIn('data (sprop(i,-1,2),i=1,1)/21/', lines)
+        self.assertIn('data (iforest(i,-2,2),i=1,2)/-1,2/', lines)
+        self.assertIn('data (sprop(i,-2,2),i=1,1)/6/', lines)
+        self.assertFalse(any('-3,' in l for l in lines))
+
+    def test_decay_schannels(self):
+        E = export_v4.ProcessExporterFortranME
+        verts = E.get_onia_decay_schannels(5, 441)
+        self.assertEqual(len(verts), 3)
+        self.assertEqual([v.get('legs')[-1].get('number') for v in verts], [-1, -2, -3])
+        self.assertEqual([v.get('legs')[-1].get('id') for v in verts], [21, 21, 441])
+        self.assertEqual([[l.get('number') for l in v.get('legs')[:2]] for v in verts],
+                         [[5, 4], [-1, 3], [-2, 2]])
+
+
 class AlohaFortranWriterTest(unittest.TestCase):
     """ A basic test to see if the Aloha Fortran Writer is working """
     

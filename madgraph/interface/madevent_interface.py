@@ -1009,7 +1009,9 @@ class AskRunEditCard(common_run.AskforEditCardWithSwitch, AskRun,
 
     switch_class = AskRun
     always_cards = ['param_card.dat', 'run_card.dat']
-    optional_cards = ['MadLoopParams.dat']
+    # the onia card (bound states) has no switch: offered when present, so
+    # that 'set onia_card ldme ...' works when launching
+    optional_cards = ['MadLoopParams.dat', 'onia_card.dat']
     switch_cards = [
         {'card': 'pythia8_card.dat', 'key': 'shower',
          'on': lambda s: s['shower'] == 'Pythia8', 'set': 'Pythia8'},
