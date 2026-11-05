@@ -899,8 +899,11 @@ time.sleep(30)
             "64",
             "--poll-interval",
             "0.02",
+            # Generous: the watchdog returns as soon as the tree is gone, and a
+            # loaded runner may not schedule the child's SIGTERM handler within
+            # one second (SIGKILL would then cut its marker write short).
             "--terminate-grace",
-            "1",
+            "10",
             "--",
             sys.executable,
             str(parent),
@@ -911,7 +914,7 @@ time.sleep(30)
         check=False,
         capture_output=True,
         text=True,
-        timeout=15,
+        timeout=30,
     )
 
     assert completed.returncode == watchdog.MEMORY_LIMIT_EXIT_CODE
