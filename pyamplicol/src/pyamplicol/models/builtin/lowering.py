@@ -49,9 +49,21 @@ def _as_dirac_current(
     current: tuple[Any, ...],
     chirality: int,
 ) -> tuple[Any, ...]:
+    """A Weyl fermion-pair input in the Dirac basis of the pair kernels.
+
+    A propagated (or external) chirality -1 spinor occupies the lower half
+    of the built-in Dirac spinor, the half the left-handed coupling of the
+    Dirac pair kernel reads (its Weyl kernel pairs chirality -1 fermions
+    with chirality +1 antifermions through the same coupling). The output
+    embedding ``_embed_weyl_current_in_dirac`` places a vertex current, whose
+    spinor index the gamma matrix has flipped, the other way round. Only a
+    pair that joins a massive and a massless fermion meets this: the top and
+    the b in the W current (t b~ > u d~ came out wrong).
+    """
+
     if len(current) == 4:
         return current
-    return _embed_weyl_current_in_dirac(current, chirality)
+    return _embed_weyl_current_in_dirac(current, -chirality)
 
 
 class BuiltinSMLoweringMixin:

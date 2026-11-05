@@ -1597,6 +1597,8 @@ def _build_transitions(
             binding.key.coupling,
         )
         _validate_vertex_binding_against_model(model, binding, vertex)
+        if _binding_output_vanishes(binding):
+            continue
         kernel = _kernel(kernels, binding.kernel_id, "vertex")
         if kernel.contract_kind != "vertex":
             raise PreparedKernelCatalogError(
@@ -2024,6 +2026,23 @@ def _current_word_reflection_proof(
         expression_digests=expression_digests,
         witness_digest=_digest(witness),
     )
+
+
+def _binding_output_vanishes(binding: PreparedVertexBinding) -> bool:
+    """Whether a binding's callable output is identically zero.
+
+    A callable linear in one coupling component factors that component out
+    of its output (``output_factor_source``); a vertex whose component is
+    exactly zero (the W's right-handed coupling, reached by the right-handed
+    states of a massive Dirac top) contributes nothing, and the native
+    lowering refuses a zero output factor, so it gets no transition.
+    """
+
+    source = binding.output_factor_source
+    if source not in ("coupling-real", "coupling-imag"):
+        return False
+    component = binding.key.coupling[0 if source == "coupling-real" else 1]
+    return float(component) == 0.0
 
 
 def _canonical_transition_alias_key(

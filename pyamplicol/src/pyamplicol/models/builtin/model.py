@@ -702,6 +702,22 @@ class BuiltinSMModel(BuiltinSMLoweringMixin, BuiltinSMDefinitionMixin, BuiltinMo
 
         return False
 
+    def vertex_closure_allowed(self, vertex: Vertex) -> bool:
+        """No vacuum closures: every built-in contact is a current.
+
+        The auxiliary scalars 125-127 carry the four-point H / V contacts
+        inside the currents (a current of the other three legs reaches the
+        contact), so a closure of the full current with the sink through one
+        more vertex is no diagram of the process: the compiled lane drops it
+        by its extra coupling order, and in the recurrence lane it reached
+        the direct lowering as a closure without contraction coefficients
+        (h h > h h, z z > z z, w+ w- > w+ w- were refused). As for UFO
+        models.
+        """
+
+        del vertex
+        return False
+
     def vertex_coupling_orders(self, vertex: Vertex) -> CouplingOrders:
         """Classify built-in SM vertices by UFO-style coupling order."""
 
