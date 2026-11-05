@@ -31,14 +31,20 @@ Dependencies use ordinary pinned Git revisions and Cargo's lockfile. No ignored
 reference directory or `upstream` symlink is needed. The standalone workspace
 aligns Symbolica with the application's shared core and uses:
 
-- NinjaRS `41a4c00e7635e3ab188fc26bacf0aae6941e8082` (UV/IR pole selection through the
-  master providers; the fast engine refuses separated poles).
-- Symbolica, Numerica and Graphica `9cdc2949cdb153478c1eca0d40690dc0abfc616e`,
-  the owner's integration revision published on
-  `https://github.com/alphal00p/symbolica`.
+- NinjaRS main `b3a29c8577733f384de1c74b48bde5b24c2799d3` (PRs #7-#12 and #14,
+  the Symbolica and oneloopmaster pins below; UV/IR pole selection through
+  the master providers, the fast engine's UV residues `fast::tensor_uv`,
+  threshold-free light-like spinors).
+- Symbolica, Numerica and Graphica `20a9da94071d7dd64ea5cdd6ed9d6e8f8cefeacc`:
+  symbolica-dev/symbolica `community` 36cbac3a plus the consolidated upstream
+  PR symbolica-dev/symbolica#163 (batched evaluation, `DualNumber` views,
+  state-minimal evaluator saves, complex-modulus Dual derivatives,
+  deterministic integer factor signs), branch `loop_me_pyamplicol` of
+  `https://github.com/ValentinHirschi/symbolica` (see `dependencies/README.md`).
 - FeynKit `d1904bf2bd5bf4f26969a73b415095e941a55610`, the owner's coherent
   dependency revision recorded by NinjaRS.
-- oneloopmaster `5b710437ada83cbc6e8c6d51e56f7d6ee6a0edb5` (per-evaluator `PoleSelection`).
+- oneloopmaster `128ea6645f2811e6179068b98731501292841409` (its main with the
+  same Symbolica pin; per-evaluator `PoleSelection`).
 
 From this crate's directory, using the shared workspace environment:
 
@@ -70,7 +76,7 @@ removing a coordinator multiplicity limit is not universal master certification.
 The AP80 zero-width box boundary is resolved on these pins: through Symbolica
 e679e8c1 numerically equal sqrt-square and decimal-reparsed masses yielded
 opposite finite imaginary signs, both with `success` status; Symbolica 9cdc2949
-makes both take the reparsed branch (a `Float` product with an exact ±1 no
+(and upstream since 3.0.2, `Float::unit_sign`) makes both take the reparsed branch (a `Float` product with an exact ±1 no
 longer rounds the one extra bit of a square root away). No numerical snapping or
 local master replacement is used.
 
@@ -161,7 +167,7 @@ dependency, so its normal builds do not require the `upstream` symlink.
 - Broad B0/C0/D0 analytic continuation, threshold and complex-mass validation
   remain upstream readiness gates. Passing A0 and μ² C0 is insufficient.
   The AP80 real-mass box branch defect of Symbolica e679e8c1 is resolved by
-  9cdc2949 (see above). This consumer does not normalize precision metadata
+  9cdc2949 and upstream 3.0.2 (see above). This consumer does not normalize precision metadata
   or substitute a scalar integral.
 - Native batching is established by the called interfaces, but end-to-end
   throughput, SIMD coverage and the MadLoop/Recola/OpenLoops performance

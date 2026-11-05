@@ -25,7 +25,7 @@ def _module(name, relative):
     return module
 
 
-def _wheel(tmp_path, version="3.0.2"):
+def _wheel(tmp_path, version="3.0.3"):
     path = tmp_path / f"symbolica-{version}-cp39-abi3-linux_x86_64.whl"
     # This is only a filename/configuration boundary test. Pip validates actual
     # wheels; the independent installed-package smoke uses the genuine build.
@@ -37,9 +37,9 @@ def test_existing_wheel_preserves_distribution_kernel_split_and_release_guard(tm
     wheel = _wheel(tmp_path)
     assert existing_community_wheel(ROOT, wheel) == wheel
     packages = tomllib.loads((ROOT / "Cargo.lock").read_text())["package"]
-    assert next(p["version"] for p in packages if p["name"] == "symbolica") == "3.0.1"
-    with pytest.raises(RuntimeError, match=r"symbolica==3\.0\.2"):
-        existing_community_wheel(ROOT, _wheel(tmp_path, "3.0.1"))
+    assert next(p["version"] for p in packages if p["name"] == "symbolica") == "3.0.2"
+    with pytest.raises(RuntimeError, match=r"symbolica==3\.0\.3"):
+        existing_community_wheel(ROOT, _wheel(tmp_path, "3.0.2"))
     gate = _module("locked_candidate_gate", "tools/release/check_dependencies.py")
     assert gate.check(candidate=True, symbolica_wheel=wheel) == []
     assert any(
@@ -76,7 +76,7 @@ def test_existing_wheel_overlay_uses_canonical_cargo_and_generated_build_info(
         )
         assert actual["patch"] == original["patch"]
         native = tomllib.loads((overlay / "Cargo.lock").read_text())["package"]
-        assert next(p["version"] for p in native if p["name"] == "symbolica") == "3.0.1"
+        assert next(p["version"] for p in native if p["name"] == "symbolica") == "3.0.2"
         build = json.loads((overlay / "src/pyamplicol/_build_info.json").read_text())
         assert build["publishable"] is False
         assert build["native_build_inputs_sha256"] == identity

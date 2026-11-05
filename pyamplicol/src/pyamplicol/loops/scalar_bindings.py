@@ -16,6 +16,7 @@ from types import MappingProxyType
 from typing import Any
 
 from .._internal.physics.symbols import symbols as symbol_registry
+from ..evaluators.symbolica_helpers import saved_evaluator
 from .model_expressions import LaurentExpression
 from .scalar_frontend import ScalarExpression, ScalarProgram, lower_scalar_program
 
@@ -69,9 +70,9 @@ class ScalarBindingPlan:
     )
 
     def evaluator_bytes(self):
-        return self.program.library.evaluator(
-            self.expressions, self.input_symbols
-        ).save()
+        return saved_evaluator(
+            self.program.library.evaluator(self.expressions, self.input_symbols)
+        )
 
     @property
     def prepared(self):
@@ -117,8 +118,12 @@ class PreparedScalarBindings:
             plan.outputs,
             tuple(plan.fixed_parameters.items()),
             plan.evaluator_bytes(),
-            library.evaluator(plan.defaults, ()).save() if plan.defaults else None,
-            library.evaluator(guards, plan.input_symbols).save() if guards else None,
+            saved_evaluator(library.evaluator(plan.defaults, ()))
+            if plan.defaults
+            else None,
+            saved_evaluator(library.evaluator(guards, plan.input_symbols))
+            if guards
+            else None,
         )
 
     def bind(

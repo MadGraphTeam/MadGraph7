@@ -35,12 +35,12 @@ in the production path (native executor, native inputs):
   on the fast engine in MeV (1e-6);
 * a power-of-ten scan of the units (g g > t t~ in the default tier,
   u u~ > d d~ g nightly; nothing routed): small units and the GeV-like range
-  keep the virtual and its estimate, while large factors with the beams along
-  z do not, which strict xfails pin: NinjaRS's light-like spinors take a beam
-  along -z, formed with a rounding residue above their absolute 1e-9 window,
-  in a cancelling form (silently 6-22 % off with checks off; the rescaled
-  check's false alarm on an exact value); the exact 90-degree rotation that
-  takes the beams off the z axis holds at the same factors;
+  keep the virtual and its estimate, and so do large factors with the beams
+  along z since NinjaRS #10 (light-like spinors from the larger light-cone
+  component, no 1e-9 window; before it a beam along -z, formed with a rounding
+  residue, took a cancelling form: silently 6-22 % off with checks off, and a
+  false alarm of the rescaled check on an exact value), as does the exact
+  90-degree rotation that takes the beams off the z axis;
 * where oneloopmaster's binary64 masters cannot evaluate the light lanes
   (g g > g g: a box of four light lines, D0 not finite), the point fails with
   the master's reason instead of taking the massless integral, and
@@ -303,17 +303,6 @@ UNIT_POINTS = {
         700.0**2,
     ),
 }
-# Owner of the large-unit defect (DESIGN §11.2 'Other thresholds'): the
-# strict xfails below turn into failures when the fix is pinned.
-NINJA_SPINORS = (
-    "pinned NinjaRS 41a4c00, fast/geometry.rs Spinor::new: a beam along -z "
-    "formed as a difference of loop shifts carries a rounding residue in "
-    "p0 + p3, below infrared_eps (1e-9, absolute) in GeV-like units and above "
-    "it at large energies in the model's units, where the cancelling "
-    "sqrt(p0 + p3) form divides rounding noise by its root (O(10 %) silent "
-    "errors); routed to the light-like spinor fix, "
-    "workspace/reports/engine-v2/upstream/ninjars-lightlike-spinor/NOTE.md"
-)
 
 
 def _x90(point):
@@ -363,14 +352,8 @@ def unit_references(executors):
     return reference
 
 
-def _units(name, factor, frame="z", *, defect=None, nightly=False):
+def _units(name, factor, frame="z", *, nightly=False):
     marks = []
-    if defect is not None:
-        marks.append(
-            pytest.mark.xfail(
-                strict=True, raises=AssertionError, reason=f"{defect}: {NINJA_SPINORS}"
-            )
-        )
     if nightly:
         marks.append(pytest.mark.loop_nightly)
     return pytest.param(
@@ -384,14 +367,14 @@ def _units(name, factor, frame="z", *, defect=None, nightly=False):
     [
         _units("gg_ttx", 1e-6),
         _units("gg_ttx", 1e5),
-        _units("gg_ttx", 7e5, defect="22 % off, checks off"),
-        _units("gg_ttx", 1e6, defect="value exact; rescaled check 0.43"),
+        _units("gg_ttx", 7e5),
+        _units("gg_ttx", 1e6),
         _units("gg_ttx", 7e5, "x90"),
-        _units("gg_ttx", 3e7, defect="9.7 % off, checks off", nightly=True),
+        _units("gg_ttx", 3e7, nightly=True),
         _units("gg_ttx", 3e7, "x90", nightly=True),
         _units("uux_ddxg", 1e-6, nightly=True),
-        _units("uux_ddxg", 1e4, defect="6.8 % off, checks off", nightly=True),
-        _units("uux_ddxg", 1e6, defect="5.7 % off, checks off", nightly=True),
+        _units("uux_ddxg", 1e4, nightly=True),
+        _units("uux_ddxg", 1e6, nightly=True),
         _units("uux_ddxg", 1e6, "x90", nightly=True),
     ],
 )
@@ -402,12 +385,11 @@ def test_power_of_ten_units_keep_the_virtual_and_its_estimate(
     DoubleFloat in GeV: with checks off, the virtual over the Born within
     tenfold the GeV evaluation's own estimate (or 1e-12); with the rescaled
     reduction check, an estimate below 1e-9. Small units and the GeV-like
-    range hold. With the beams along z, large factors do not (strict xfails,
-    NINJA_SPINORS: silently wrong values, a false alarm of the rescaled check
-    on an exact value, whose frame is 0.7 times the inputs); the exact
+    range hold, and with the beams along z so do large factors since NinjaRS
+    #10 (before it: silently wrong values and a false alarm of the rescaled
+    check on an exact value, from the beam axis' light-like spinor); the exact
     rotation of the same points by 90 degrees about x, which takes the beams
-    off the z axis, holds at the same factors: the defect is the beam axis'
-    spinor, not the units of the masses or invariants."""
+    off the z axis, holds at the same factors."""
 
     executor = executors(name)
     double_double, gev_estimate = unit_references(name, frame)

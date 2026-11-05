@@ -2629,17 +2629,396 @@ fn load_evaluator_state_bytes(
         Option<JITCompiledEvaluator<Complex<f64>>>,
     );
 
+    let incompatible = |error: &dyn std::fmt::Display| {
+        RusticolError::compatibility(format!(
+            "evaluator state {} does not match Symbolica serialization ABI {}: {error}; regenerate the schema-v3 artifact",
+            display_name,
+            crate::SYMBOLICA_SERIALIZATION_ABI
+        ))
+    };
+    // Python's `Evaluator.save()` envelope: a versioned magic, whether the
+    // producer had native code generation (the JIT members below), the
+    // Symbolica state the evaluator references, then the bincode payload
+    // whose symbols that state maps onto this process's symbols.
+    let Some((&native_code_generation, mut payload)) = bytes
+        .strip_prefix(SAVED_EVALUATOR_MAGIC)
+        .and_then(|rest| rest.split_first())
+    else {
+        return Err(incompatible(&"no saved-evaluator envelope"));
+    };
+    if native_code_generation != 1 {
+        return Err(incompatible(
+            &"saved without native code generation (no JIT members)",
+        ));
+    }
+    // Importing the state registers its symbols: pyAmpliCol's library key.
+    // A producer symbol defined with other attributes than this process's
+    // (Python Community modules of another FeynKit/Spenso revision than the
+    // native's; Symbolica 3.0.3's saves carry the producer's whole state) is
+    // imported under a fresh name instead of failing the load: the payload's
+    // references follow the state map, and evaluation reads no symbol
+    // attributes. A symbol that conflicts again under that name is refused.
+    let _unlock = crate::licence::unlock();
+    let state_map = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        symbolica::state::State::import(
+            &mut payload,
+            Some(Box::new(|name: &str| import_conflict_name(name).into())),
+        )
+    }))
+    .map_err(|_| {
+        incompatible(&"a symbol conflicts with this process's also under its import name")
+    })?
+    .map_err(|error| incompatible(&error))?;
     let ((_, settings, evaluator, _, jit_complex), consumed) =
-        bincode::decode_from_slice::<SavedEvaluator, _>(bytes, bincode::config::standard())
-            .map_err(|error| {
-                RusticolError::compatibility(format!(
-                    "evaluator state {} does not match Symbolica serialization ABI {}: {error}; regenerate the schema-v3 artifact",
-                    display_name,
-                    crate::SYMBOLICA_SERIALIZATION_ABI
-                ))
-            })?;
-    ensure_evaluator_state_consumed(display_name, bytes.len(), consumed)?;
+        bincode::decode_from_slice_with_context::<_, SavedEvaluator, _>(
+            payload,
+            bincode::config::standard(),
+            state_map,
+        )
+        .map_err(|error| incompatible(&error))?;
+    ensure_evaluator_state_consumed(display_name, payload.len(), consumed)?;
     Ok((settings, evaluator, jit_complex))
+}
+
+/// The leading bytes of Python Symbolica's `Evaluator.save()` (state-aware
+/// envelope, version 1; its final byte is the envelope version).
+#[cfg(feature = "symbolica-runtime")]
+const SAVED_EVALUATOR_MAGIC: &[u8] = b"\xffSYMEVAL\x01";
+
+/// Suffix of a saved evaluator's symbol imported under a fresh name.
+#[cfg(feature = "symbolica-runtime")]
+const IMPORT_CONFLICT_SUFFIX: &str = "_pyamplicol_import";
+
+/// The import name of a saved evaluator's symbol whose definition conflicts
+/// with this process's: the suffix before its trailing underscores (Symbolica
+/// keeps a symbol's wildcard level on import). A name that already carries the
+/// suffix conflicted again: refused (a panic the loader turns into an error,
+/// as Symbolica's import retries until a name is accepted).
+#[cfg(feature = "symbolica-runtime")]
+fn import_conflict_name(name: &str) -> String {
+    let base = name.trim_end_matches('_');
+    assert!(
+        !base.ends_with(IMPORT_CONFLICT_SUFFIX),
+        "saved-evaluator symbol {name} conflicts under its import name"
+    );
+    format!("{base}{IMPORT_CONFLICT_SUFFIX}{}", &name[base.len()..])
+}
+
+/// The leading members of a saved evaluator's bincode payload (the native-code
+/// flag, the JIT settings and the exact evaluator); the JIT members follow.
+#[cfg(feature = "symbolica-runtime")]
+type SavedEvaluatorHead = (
+    bool,
+    JITCompilationSettings,
+    ExpressionEvaluator<Complex<Rational>>,
+);
+
+/// A Python `Evaluator.save()` in its canonical stored form, or `None` when it
+/// already is in it.
+///
+/// The canonical form depends on the evaluator alone: neither on the Python
+/// Symbolica that produced it nor on the symbols the producing process (or
+/// this one) created before.
+/// - A Python Symbolica release without symbolica-dev#163 (PyPI 3.0.3) writes
+///   the producer's whole Symbolica state into every save: after a model
+///   compile, tens of MB per evaluator, all of it imported again by each
+///   load. Such a save keeps only the symbols its evaluator references
+///   (`State::export_symbols`, the partial-state form #163's save writes).
+/// - The symbol records of the partial-state section are ordered by name and
+///   numbered 0, 1, ... (`canonically_numbered_section`). A producer numbers
+///   them by its registry, which depends on every namespace and symbol the
+///   process created first.
+///
+/// The bincode payload is kept byte for byte. Renumbering is exact because
+/// the identifiers only map stored expressions onto symbols and the payload
+/// stores none: instructions and function containers encode a symbol by its
+/// definition, function tags as canonical strings (only an optimisation hot
+/// start, which the Python API cannot set, would hold expressions). A section
+/// whose symbol data embeds expressions keeps its numbering, which those
+/// expressions carry. The evaluator decoded from the result must re-encode to
+/// the original's bytes, else the save is refused.
+#[cfg(feature = "symbolica-runtime")]
+pub(crate) fn canonical_saved_evaluator(bytes: &[u8]) -> RusticolResult<Option<Vec<u8>>> {
+    use std::borrow::Cow;
+    use symbolica::evaluate::Instruction;
+    use symbolica::prelude::AtomCore;
+    use symbolica::state::{State, StateMap};
+
+    fn referenced<T>(
+        exported: &symbolica::evaluate::ExportedInstructions<T>,
+        symbols: &mut impl Extend<symbolica::atom::Symbol>,
+    ) {
+        for instruction in &exported.instructions {
+            if let Instruction::Fun(_, call, _) = instruction {
+                symbols.extend([call.0]);
+                for tag in &call.1 {
+                    symbols.extend(tag.get_all_symbols(true));
+                }
+            }
+        }
+        for constant in &exported.constant_functions {
+            symbols.extend([constant.symbol]);
+            for tag in &constant.tags {
+                symbols.extend(tag.get_all_symbols(true));
+            }
+        }
+        for body in &exported.sub_evaluators {
+            symbols.extend([body.symbol]);
+            for tag in &body.tags {
+                symbols.extend(tag.get_all_symbols(true));
+            }
+            referenced(&body.instructions, symbols);
+        }
+    }
+    let incompatible = |error: &dyn std::fmt::Display| {
+        RusticolError::compatibility(format!(
+            "Python Evaluator.save() does not match Symbolica serialization ABI {}: {error}",
+            crate::SYMBOLICA_SERIALIZATION_ABI
+        ))
+    };
+    // Imports a state section as the loader does (a producer symbol defined
+    // otherwise than this process's under its import name); returns its
+    // length and map.
+    let import = |section: &[u8]| {
+        let mut rest = section;
+        let state_map = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            State::import(
+                &mut rest,
+                Some(Box::new(|name: &str| import_conflict_name(name).into())),
+            )
+        }))
+        .map_err(|_| {
+            incompatible(&"a symbol conflicts with this process's also under its import name")
+        })?
+        .map_err(|error| incompatible(&error))?;
+        Ok::<_, RusticolError>((section.len() - rest.len(), state_map))
+    };
+    let decode_head = |payload: &[u8], state_map: &StateMap| {
+        bincode::decode_from_slice_with_context::<_, SavedEvaluatorHead, _>(
+            payload,
+            bincode::config::standard(),
+            BorrowedStateMap(state_map),
+        )
+        .map(|((_, _, evaluator), _)| evaluator)
+        .map_err(|error| incompatible(&error))
+    };
+    let encoded = |evaluator: &ExpressionEvaluator<Complex<Rational>>| {
+        bincode::encode_to_vec(evaluator, bincode::config::standard())
+            .map_err(|error| incompatible(&error))
+    };
+
+    let Some((&native_code_generation, state)) = bytes
+        .strip_prefix(SAVED_EVALUATOR_MAGIC)
+        .and_then(|rest| rest.split_first())
+    else {
+        return Err(incompatible(&"no saved-evaluator envelope"));
+    };
+    // The state header: Symbolica's magic (u32), its export format (u16), then
+    // whether the whole state follows (1) or only listed symbols.
+    let Some(header) = state.get(..STATE_HEADER_LEN) else {
+        return Err(incompatible(&"truncated state header"));
+    };
+    let whole = header[STATE_HEADER_LEN - 1] == WHOLE_STATE_EXPORT;
+    let _unlock = crate::licence::unlock();
+    crate::source_scalar::register_scalar_primitives();
+    let (section_len, evaluator) = if whole {
+        // A producer's consecutive saves mostly carry the same state (one
+        // import of a 30 MB loop_sm state takes about 0.5 s): the last
+        // imported section and its map are kept. The section is
+        // self-delimiting, so a save that starts with it carries exactly it.
+        let mut last = LAST_WHOLE_STATE
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (section, state_map) = match last.take() {
+            Some((section, state_map))
+                if state.len() > section.len() && state.starts_with(&section) =>
+            {
+                (section, state_map)
+            }
+            _ => {
+                let (len, state_map) = import(state)?;
+                (state[..len].to_vec(), state_map)
+            }
+        };
+        let len = section.len();
+        let evaluator = decode_head(&state[len..], &state_map);
+        *last = Some((section, state_map));
+        (len, evaluator?)
+    } else {
+        let (len, state_map) = import(state)?;
+        (len, decode_head(&state[len..], &state_map)?)
+    };
+    let payload = &state[section_len..];
+    // A whole state, or a partial one in another export format than this
+    // build's, is written again with only the referenced symbols.
+    let minimal: Cow<[u8]> =
+        if whole || header[4..STATE_HEADER_LEN - 1] != native_export_format()?[..] {
+            let mut symbols = Default::default();
+            referenced(&evaluator.export_instructions(), &mut symbols);
+            let mut section = Vec::new();
+            State::export_symbols(&mut section, symbols).map_err(|error| incompatible(&error))?;
+            Cow::Owned(section)
+        } else {
+            Cow::Borrowed(&state[..section_len])
+        };
+    let section =
+        match canonically_numbered_section(&minimal).map_err(|error| incompatible(&error))? {
+            Some(numbered) => numbered,
+            None => minimal.into_owned(),
+        };
+    if section[..] == state[..section_len] {
+        return Ok(None);
+    }
+    let mut canonical = SAVED_EVALUATOR_MAGIC.to_vec();
+    canonical.push(native_code_generation);
+    canonical.extend_from_slice(&section);
+    canonical.extend_from_slice(payload);
+
+    let (len, state_map) = import(&section)?;
+    if len != section.len() || encoded(&decode_head(payload, &state_map)?)? != encoded(&evaluator)?
+    {
+        return Err(incompatible(
+            &"its payload depends on state identifiers beyond the referenced symbols",
+        ));
+    }
+    Ok(Some(canonical))
+}
+
+/// The length of Symbolica's state header: its magic (u32), export format
+/// (u16) and whole-state flag (u8).
+#[cfg(feature = "symbolica-runtime")]
+const STATE_HEADER_LEN: usize = 7;
+
+/// This build's state export format (`State::export_symbols` of no symbol).
+#[cfg(feature = "symbolica-runtime")]
+fn native_export_format() -> RusticolResult<[u8; 2]> {
+    static FORMAT: std::sync::OnceLock<[u8; 2]> = std::sync::OnceLock::new();
+    if let Some(format) = FORMAT.get() {
+        return Ok(*format);
+    }
+    let mut empty = Vec::new();
+    symbolica::state::State::export_symbols(&mut empty, Default::default())
+        .map_err(|error| RusticolError::compatibility(error.to_string()))?;
+    Ok(*FORMAT.get_or_init(|| [empty[4], empty[5]]))
+}
+
+/// A partial-state section of this build's export format with its symbol
+/// records ordered by namespace and name and numbered 0, 1, ...; `None` when
+/// `section_records` keeps its numbering.
+#[cfg(feature = "symbolica-runtime")]
+fn canonically_numbered_section(section: &[u8]) -> std::io::Result<Option<Vec<u8>>> {
+    let Some(mut records) = section_records(section)? else {
+        return Ok(None);
+    };
+    records.sort_unstable();
+    numbered_section(
+        &section[..STATE_HEADER_LEN],
+        records.into_iter().map(|(_, _, record)| record),
+    )
+    .map(Some)
+}
+
+/// The symbol records (namespace, name, definition without the index) of a
+/// partial-state section of this build's export format: a count, then per
+/// symbol an index (u32) and its definition, then no finite fields and no
+/// variable lists. `None` when a symbol's data embeds an expression (whose
+/// symbol identifiers would have to follow a renumbering) or the section
+/// holds finite fields or variable lists.
+#[cfg(feature = "symbolica-runtime")]
+fn section_records(section: &[u8]) -> std::io::Result<Option<Vec<(&[u8], &[u8], &[u8])>>> {
+    use std::io::{Error, ErrorKind, Read};
+    use symbolica::atom::{UserData, UserDataKey};
+
+    fn embeds_expression(data: &UserData) -> bool {
+        match data {
+            UserData::Atom(_) => true,
+            UserData::List(items) => items.iter().any(embeds_expression),
+            UserData::Map(map) => map.iter().any(|(key, value)| {
+                matches!(key, UserDataKey::Atom(_)) || embeds_expression(value)
+            }),
+            _ => false,
+        }
+    }
+    fn take<const N: usize>(rest: &mut &[u8]) -> std::io::Result<[u8; N]> {
+        let mut value = [0; N];
+        rest.read_exact(&mut value)?;
+        Ok(value)
+    }
+    fn string<'a>(rest: &mut &'a [u8]) -> std::io::Result<&'a [u8]> {
+        let len = u32::from_le_bytes(take(rest)?) as usize;
+        let value = rest
+            .get(..len)
+            .ok_or_else(|| Error::from(ErrorKind::UnexpectedEof))?;
+        *rest = &rest[len..];
+        Ok(value)
+    }
+
+    let mut rest = section
+        .get(STATE_HEADER_LEN..)
+        .ok_or_else(|| Error::from(ErrorKind::UnexpectedEof))?;
+    let count = u64::from_le_bytes(take(&mut rest)?);
+    let mut records = Vec::new();
+    for _ in 0..count {
+        take::<4>(&mut rest)?;
+        let start = rest;
+        // Symbol::export: name, namespace, flags (u8, u32), tags, aliases,
+        // user data, whether the definition is exportable (u8).
+        let name = string(&mut rest)?;
+        let namespace = string(&mut rest)?;
+        take::<5>(&mut rest)?;
+        for _ in 0..2 {
+            for _ in 0..u16::from_le_bytes(take(&mut rest)?) {
+                string(&mut rest)?;
+            }
+        }
+        if embeds_expression(&UserData::read(&mut rest)?) {
+            return Ok(None);
+        }
+        take::<1>(&mut rest)?;
+        records.push((namespace, name, &start[..start.len() - rest.len()]));
+    }
+    // No finite fields, no variable lists, nothing after.
+    Ok((rest == [0; 16]).then_some(records))
+}
+
+/// A partial-state section: `header`, then `records` (symbol definitions)
+/// numbered 0, 1, ... in their order, no finite fields, no variable lists.
+#[cfg(feature = "symbolica-runtime")]
+fn numbered_section<'a>(
+    header: &[u8],
+    records: impl ExactSizeIterator<Item = &'a [u8]>,
+) -> std::io::Result<Vec<u8>> {
+    let mut section = header.to_vec();
+    section.extend_from_slice(&(records.len() as u64).to_le_bytes());
+    for (index, record) in records.enumerate() {
+        let index = u32::try_from(index)
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+        section.extend_from_slice(&index.to_le_bytes());
+        section.extend_from_slice(record);
+    }
+    section.extend_from_slice(&[0; 16]);
+    Ok(section)
+}
+
+/// Symbolica's state-header flag of a whole-state export (`State::export`).
+#[cfg(feature = "symbolica-runtime")]
+const WHOLE_STATE_EXPORT: u8 = 1;
+
+/// The last whole-state section `canonical_saved_evaluator` imported,
+/// with its state map.
+#[cfg(feature = "symbolica-runtime")]
+static LAST_WHOLE_STATE: std::sync::Mutex<Option<(Vec<u8>, symbolica::state::StateMap)>> =
+    std::sync::Mutex::new(None);
+
+/// A borrowed state map as a bincode decoding context.
+#[cfg(feature = "symbolica-runtime")]
+struct BorrowedStateMap<'a>(&'a symbolica::state::StateMap);
+
+#[cfg(feature = "symbolica-runtime")]
+impl symbolica::state::HasStateMap for BorrowedStateMap<'_> {
+    fn get_state_map(&self) -> &symbolica::state::StateMap {
+        self.0
+    }
 }
 
 #[cfg(feature = "symbolica-runtime")]
@@ -2708,7 +3087,10 @@ mod python_serialization_tests {
     }
 
     /// Exercise the actual Python producer and this crate's production decoder.
-    /// Requires Python Symbolica when the optional runtime feature is tested.
+    /// Requires Python Symbolica when the optional runtime feature is tested:
+    /// one whose `Evaluator.save()` writes the state-aware envelope (PyPI 3.0.3,
+    /// or the Community build of the pinned revision, `PYTHONPATH` or
+    /// `PYAMPLICOL_TEST_PYTHON`); 3.0.2's raw-bincode saves are refused.
     #[test]
     fn python_saved_evaluator_roundtrips_in_three_precisions() {
         let python = std::env::var_os("PYAMPLICOL_TEST_PYTHON").unwrap_or_else(|| "python3".into());
@@ -2733,7 +3115,10 @@ sys.stdout.buffer.write(evaluator.save())
             String::from_utf8_lossy(&producer.stderr)
         );
         let (_, exact, _) = load_evaluator_state_bytes(&producer.stdout, "Python Evaluator.save()")
-            .expect("decode the installed Python Symbolica evaluator with the shared core");
+            .expect(
+                "decode the installed Python Symbolica evaluator with the shared core \
+                 (Python Symbolica >= 3.0.3 or the pinned Community build)",
+            );
         evaluate_saved(&exact, Rational::to_f64, 1e-14);
         evaluate_saved(&exact, |r| DoubleFloat::from(r), DoubleFloat::from(1e-28));
         evaluate_saved(
@@ -2741,9 +3126,259 @@ sys.stdout.buffer.write(evaluator.save())
             |r| r.to_multi_prec_float(256),
             Float::with_val(256, 1e-60),
         );
+        // The stored (canonical) form of the installed Python Symbolica's save,
+        // whole-state (PyPI 3.0.3) or state-minimal (the pinned Community
+        // build), decodes to the same evaluator.
+        let encoded = |evaluator: &ExpressionEvaluator<Complex<Rational>>| {
+            bincode::encode_to_vec(evaluator, bincode::config::standard()).unwrap()
+        };
+        let stored = canonical_saved_evaluator(&producer.stdout)
+            .unwrap()
+            .unwrap_or_else(|| producer.stdout.clone());
+        assert!(stored.len() <= producer.stdout.len());
+        let (_, reloaded, _) = load_evaluator_state_bytes(&stored, "canonical").unwrap();
+        assert_eq!(encoded(&reloaded), encoded(&exact));
+        assert_eq!(canonical_saved_evaluator(&stored).unwrap(), None);
         let mut trailing = producer.stdout;
         trailing.push(0);
         assert!(load_evaluator_state_bytes(&trailing, "trailing byte").is_err());
+    }
+
+    /// A producer symbol defined with other tags than this process's (another
+    /// FeynKit/Spenso revision in the Python Community modules) loads under
+    /// its import name, with the same values.
+    #[test]
+    fn python_saved_evaluator_with_a_conflicting_symbol_loads() {
+        let (native,) =
+            symbolica::symbol!("pyamplicol_conflict::q"; tags = ["pyamplicol_conflict::native"]);
+        let python = std::env::var_os("PYAMPLICOL_TEST_PYTHON").unwrap_or_else(|| "python3".into());
+        let producer = std::process::Command::new(python)
+            .env("SYMBOLICA_HIDE_BANNER", "1")
+            .arg("-c")
+            .arg(
+                r#"
+import sys
+from symbolica import E, S, Expression
+q = S('pyamplicol_conflict::q', tags=['pyamplicol_conflict::python'])
+x = S('pyamplicol_conflict::x')
+evaluator = Expression.evaluator_multiple(
+    [q + x/3, q*x + E('1')/7], [q, x], n_cores=1, jit_compile=False)
+sys.stdout.buffer.write(evaluator.save())
+"#,
+            )
+            .output()
+            .expect("launch Python Symbolica producer (or set PYAMPLICOL_TEST_PYTHON)");
+        assert!(
+            producer.status.success(),
+            "Python evaluator producer failed: {}",
+            String::from_utf8_lossy(&producer.stderr)
+        );
+        let (_, exact, _) = load_evaluator_state_bytes(&producer.stdout, "Python Evaluator.save()")
+            .expect("a conflicting producer symbol loads under its import name");
+        evaluate_saved(&exact, Rational::to_f64, 1e-14);
+        assert_eq!(
+            native.get_tags(),
+            &["pyamplicol_conflict::native".to_string()],
+            "this process's symbol keeps its definition"
+        );
+        // A second load reuses the import name's definition.
+        load_evaluator_state_bytes(&producer.stdout, "Python Evaluator.save()")
+            .expect("the import name is reused");
+        assert_eq!(import_conflict_name("q"), "q_pyamplicol_import");
+        assert_eq!(import_conflict_name("x__"), "x_pyamplicol_import__");
+        assert!(std::panic::catch_unwind(|| import_conflict_name("q_pyamplicol_import")).is_err());
+    }
+}
+
+#[cfg(all(test, feature = "symbolica-runtime"))]
+mod canonical_save_tests {
+    use super::*;
+    use symbolica::{atom::AtomCore, parse, state::State, symbol};
+
+    fn envelope(section: &[u8], payload: &[u8]) -> Vec<u8> {
+        let mut bytes = SAVED_EVALUATOR_MAGIC.to_vec();
+        bytes.push(1);
+        bytes.extend_from_slice(section);
+        bytes.extend_from_slice(payload);
+        bytes
+    }
+
+    fn payload(evaluator: &ExpressionEvaluator<Complex<Rational>>) -> Vec<u8> {
+        bincode::encode_to_vec(
+            (
+                true,
+                JITCompilationSettings::default(),
+                evaluator,
+                None::<JITCompiledEvaluator<f64>>,
+                None::<JITCompiledEvaluator<Complex<f64>>>,
+            ),
+            bincode::config::standard(),
+        )
+        .unwrap()
+    }
+
+    /// The save of a Python Symbolica without symbolica-dev#163 (PyPI 3.0.3):
+    /// the envelope, the producer's whole state, then the payload.
+    fn whole_state_save(evaluator: &ExpressionEvaluator<Complex<Rational>>) -> Vec<u8> {
+        let mut section = Vec::new();
+        State::export(&mut section).unwrap();
+        envelope(&section, &payload(evaluator))
+    }
+
+    /// The save of the pinned Community build (#163): the referenced symbols
+    /// numbered by the producer's registry.
+    fn registry_numbered_save(evaluator: &ExpressionEvaluator<Complex<Rational>>) -> Vec<u8> {
+        let mut symbols = Vec::new();
+        for instruction in &evaluator.export_instructions().instructions {
+            if let symbolica::evaluate::Instruction::Fun(_, call, _) = instruction {
+                symbols.push(call.0);
+            }
+        }
+        for constant in &evaluator.export_instructions().constant_functions {
+            symbols.push(constant.symbol);
+        }
+        let mut section = Vec::new();
+        State::export_symbols(&mut section, symbols.into_iter().collect()).unwrap();
+        envelope(&section, &payload(evaluator))
+    }
+
+    /// The indices of a canonical save's symbol records and the section.
+    fn indices_and_section(saved: &[u8]) -> (Vec<u32>, &[u8], Vec<(&[u8], &[u8], &[u8])>) {
+        let state = &saved[SAVED_EVALUATOR_MAGIC.len() + 1..];
+        let mut rest = state;
+        State::import(&mut rest, None).unwrap();
+        let section = &state[..state.len() - rest.len()];
+        let records = section_records(section).unwrap().unwrap();
+        let mut indices = Vec::new();
+        let mut at = STATE_HEADER_LEN + 8;
+        for (_, _, record) in &records {
+            indices.push(u32::from_le_bytes(section[at..at + 4].try_into().unwrap()));
+            at += 4 + record.len();
+        }
+        (indices, section, records)
+    }
+
+    fn evaluator() -> ExpressionEvaluator<Complex<Rational>> {
+        parse!("pyamplicol_canonical::x^2 + pi + cos(pyamplicol_canonical::y)/3 + sqrt(pyamplicol_canonical::x) + log(pyamplicol_canonical::y)")
+            .evaluator(&[
+                parse!("pyamplicol_canonical::x"),
+                parse!("pyamplicol_canonical::y"),
+            ])
+            .build()
+            .unwrap()
+    }
+
+    #[test]
+    fn stored_saves_depend_only_on_their_evaluator() {
+        let _unlock = crate::licence::unlock();
+        let encoded = |evaluator: &ExpressionEvaluator<Complex<Rational>>| {
+            bincode::encode_to_vec(evaluator, bincode::config::standard()).unwrap()
+        };
+        let evaluator = evaluator();
+        let whole = whole_state_save(&evaluator);
+        let canonical = canonical_saved_evaluator(&whole)
+            .unwrap()
+            .expect("a whole-state save is re-encoded");
+        // Only the referenced symbols, ordered by namespace and name and
+        // numbered 0, 1, ... (the registry numbers the built-ins otherwise).
+        let (indices, section, records) = indices_and_section(&canonical);
+        assert_eq!(indices, (0..records.len() as u32).collect::<Vec<_>>());
+        assert!(records.windows(2).all(|pair| pair[0] < pair[1]));
+        let names: Vec<_> = records
+            .iter()
+            .map(|(_, name, _)| String::from_utf8_lossy(name))
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "symbolica::cos",
+                "symbolica::log",
+                "symbolica::sqrt",
+                "symbolica::𝜋"
+            ]
+        );
+        assert!(canonical.len() < 2048, "{} bytes", canonical.len());
+        assert!(canonical.ends_with(&payload(&evaluator)));
+        // The same bytes from a state-minimal save numbered by the producer's
+        // registry (the Community form), from one numbered by any other
+        // registry (another process history: other identifiers, another
+        // order), from the kept whole state, and after unrelated symbols in
+        // new namespaces.
+        let registry = registry_numbered_save(&evaluator);
+        assert_ne!(registry, canonical);
+        assert_eq!(
+            canonical_saved_evaluator(&registry).unwrap(),
+            Some(canonical.clone())
+        );
+        let mut foreign = section[..STATE_HEADER_LEN].to_vec();
+        foreign.extend_from_slice(&(records.len() as u64).to_le_bytes());
+        for (k, (_, _, record)) in records.iter().rev().enumerate() {
+            foreign.extend_from_slice(&(0x000a_0016 + 3 * k as u32).to_le_bytes());
+            foreign.extend_from_slice(record);
+        }
+        foreign.extend_from_slice(&[0; 16]);
+        let foreign = envelope(&foreign, &payload(&evaluator));
+        assert_eq!(
+            canonical_saved_evaluator(&foreign).unwrap(),
+            Some(canonical.clone())
+        );
+        assert_eq!(
+            canonical_saved_evaluator(&whole).unwrap(),
+            Some(canonical.clone())
+        );
+        for i in 0..2000 {
+            symbol!(format!("pyamplicol_canonical_{}::unrelated{i}", i % 7));
+        }
+        let later = whole_state_save(&evaluator);
+        assert!(later.len() > whole.len() + 2000 * 20);
+        assert_eq!(
+            canonical_saved_evaluator(&later).unwrap(),
+            Some(canonical.clone())
+        );
+        assert_eq!(
+            canonical_saved_evaluator(&registry_numbered_save(&evaluator)).unwrap(),
+            Some(canonical.clone())
+        );
+        // The canonical form loads to the same evaluator and values.
+        let (_, loaded, _) = load_evaluator_state_bytes(&canonical, "canonical save").unwrap();
+        assert_eq!(encoded(&loaded), encoded(&evaluator));
+        let mut values = loaded.map_coeff(&|c| Complex::new(c.re.to_f64(), c.im.to_f64()));
+        let mut output = [Complex::new(0.0, 0.0)];
+        values.evaluate(
+            &[Complex::new(2.0, 0.0), Complex::new(0.5, 0.0)],
+            &mut output,
+        );
+        let expected =
+            4.0 + std::f64::consts::PI + 0.5f64.cos() / 3.0 + 2.0f64.sqrt() + 0.5f64.ln();
+        assert!((output[0].re - expected).abs() < 1e-14 && output[0].im == 0.0);
+        assert_eq!(canonical_saved_evaluator(&canonical).unwrap(), None);
+        assert!(canonical_saved_evaluator(b"\xffSYMEVAL").is_err());
+    }
+
+    /// A symbol whose data embeds an expression keeps the section's numbering:
+    /// the expression's identifiers would have to follow it.
+    #[test]
+    fn sections_whose_symbol_data_embeds_expressions_keep_their_numbering() {
+        let _unlock = crate::licence::unlock();
+        let plain = symbol!("pyamplicol_canonical::plain");
+        let datum = symbol!(
+            "pyamplicol_canonical::datum",
+            data = symbolica::atom::UserData::Atom(parse!("pyamplicol_canonical::z"))
+        );
+        let section = |symbols: &[symbolica::atom::Symbol]| {
+            let mut section = Vec::new();
+            State::export_symbols(&mut section, symbols.iter().copied().collect()).unwrap();
+            section
+        };
+        assert!(
+            canonically_numbered_section(&section(&[plain]))
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(
+            canonically_numbered_section(&section(&[plain, datum])).unwrap(),
+            None
+        );
     }
 }
 

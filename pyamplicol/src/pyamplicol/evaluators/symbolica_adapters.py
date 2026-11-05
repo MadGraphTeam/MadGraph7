@@ -40,7 +40,7 @@ from .symbolica_helpers import (
     _safe_symbol_name,
     _symbolica_evaluator_artifact_manifest,
     _symbolica_instruction_program_repr,
-    _verify_symjit_plane_constants,
+    saved_evaluator,
 )
 from .symbolica_settings import (
     ProgressCallback,
@@ -185,7 +185,7 @@ class _JITSymbolicaEvaluatorAdapter:
         plane_application_path.write_bytes(plane_application)
         plane_application_export_s = time.perf_counter() - plane_export_started
         state_save_started = time.perf_counter()
-        evaluator_state_path.write_bytes(self._source_evaluator.save())
+        evaluator_state_path.write_bytes(saved_evaluator(self._source_evaluator))
         evaluator_save_s = time.perf_counter() - save_started
         evaluator_state_save_s = time.perf_counter() - state_save_started
         self.application_path = application_path
@@ -326,15 +326,6 @@ class _JITSymbolicaEvaluatorAdapter:
             raise NativeEvaluationError(
                 "Rusticol returned an empty or non-bytes direct-arena P-kernel"
             )
-        _verify_symjit_plane_constants(
-            self._source_evaluator,
-            exported,
-            application,
-            rusticol,
-            self.input_len,
-            self.output_len,
-        )
-
         target_info = getattr(rusticol, "target_info", None)
         target: dict[str, object] = {
             "word_bits": struct.calcsize("P") * 8,
@@ -420,7 +411,7 @@ class _CompiledComplexEvaluatorAdapter:
         save = getattr(evaluator, "save", None)
         if callable(save):
             save_started = time.perf_counter()
-            self.evaluator_state_path.write_bytes(save())
+            self.evaluator_state_path.write_bytes(saved_evaluator(evaluator))
             self.build_timing["evaluator_save_s"] = time.perf_counter() - save_started
         else:
             self.evaluator_state_path = None

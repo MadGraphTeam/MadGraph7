@@ -19,7 +19,7 @@ mod v2_lower;
 mod v2_seeds;
 use batch::NativeBatch;
 
-use pyo3::{exceptions::PyValueError, prelude::*};
+use pyo3::{exceptions::PyValueError, prelude::*, types::PyBytes};
 use rusticol_loop_reduction::Complex;
 use symbolica::{
     domains::float::{DoubleFloat, Float},
@@ -73,6 +73,25 @@ impl CoefficientEvaluator {
     }
 }
 
+/// `saved` (a Python `Evaluator.save()`) in its canonical stored form: only
+/// the Symbolica state its evaluator references, numbered canonically;
+/// `saved` itself when it already is in it
+/// (`rusticol_core::__private::canonical_saved_evaluator`).
+#[pyfunction]
+fn canonical_saved_evaluator<'py>(
+    py: Python<'py>,
+    saved: Bound<'py, PyBytes>,
+) -> PyResult<Bound<'py, PyBytes>> {
+    let bytes = saved.as_bytes();
+    match py
+        .detach(|| rusticol_core::__private::canonical_saved_evaluator(bytes))
+        .map_err(error)?
+    {
+        Some(canonical) => Ok(PyBytes::new(py, &canonical)),
+        None => Ok(saved),
+    }
+}
+
 #[pymodule]
 fn _loop_reduction(module: &Bound<'_, PyModule>) -> PyResult<()> {
     register(module)
@@ -86,10 +105,14 @@ fn _loop_reduction(module: &Bound<'_, PyModule>) -> PyResult<()> {
 /// licence key in the environment, Symbolica's first state access takes the
 /// user's single restricted-thread permit, so an import-time registration made
 /// every second unlicensed pyAmpliCol process abort, tree-only ones included
-/// (requirements addendum G; docs/user/symbolica-and-licensing.md).
+/// (requirements addendum G; docs/user/symbolica-and-licensing.md). Symbolica's
+/// diagnostics are routed to standard error here (no Symbolica state either),
+/// so they never interleave with the program's standard output.
 pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    rusticol_core::diagnostics::symbolica_diagnostics_on_stderr();
     batch::register(module)?;
     module.add_class::<CoefficientEvaluator>()?;
+    module.add_function(wrap_pyfunction!(canonical_saved_evaluator, module)?)?;
     v2::register(module)?;
     v2_catalogue::register(module)?;
     v2_closure::register(module)?;

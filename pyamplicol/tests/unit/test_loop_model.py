@@ -147,14 +147,14 @@ def test_real_qcd_basis_preserves_four_gluon_groups_and_uv_poles(qcd_model):
         assert entry.coupling.value.coefficient(-1) == 0
     # The first active basis is Metric(1,4)*Metric(2,3). Materialize it through
     # the native tensor library and check a timelike and a spacelike component.
+    # Its axes are the four legs' slots in the tensor library's canonical
+    # order (which Symbolica versions may change); read them in leg order.
     local_tensor = catalogue.lower(quartic[0]).lorentz
-    assert [str(axis.index) for axis in local_tensor.axes] == [
-        "hedge(0,1)",
-        "hedge(3,1)",
-        "hedge(1,1)",
-        "hedge(2,1)",
-    ]
-    components = local_tensor.permute_axes([0, 2, 3, 1]).to_tensor()
+    names = [str(axis.index) for axis in local_tensor.axes]
+    legs = [f"hedge({leg},1)" for leg in range(4)]
+    assert sorted(names) == legs
+    order = [names.index(name) for name in legs]
+    components = local_tensor.permute_axes(order).to_tensor()
     assert components[[0, 0, 0, 0]] == 1
     assert components[[0, 1, 1, 0]] == -1
     assert components[[0, 1, 0, 1]] == 0

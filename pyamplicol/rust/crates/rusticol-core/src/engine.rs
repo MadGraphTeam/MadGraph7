@@ -5058,7 +5058,7 @@ pub(crate) use evaluator::symjit_plane::{
 };
 use evaluator::*;
 #[cfg(feature = "symbolica-runtime")]
-pub(crate) use evaluator::decode_exact_evaluator_state;
+pub(crate) use evaluator::{canonical_saved_evaluator, decode_exact_evaluator_state};
 
 #[path = "wavefunctions.rs"]
 mod wavefunctions;

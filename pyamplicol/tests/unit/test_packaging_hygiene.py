@@ -78,7 +78,7 @@ def test_contributor_and_release_locks_share_compatibility_abi(
     lock = root / "dependencies" / "contributor-lock.toml"
     lock.write_text(
         lock.read_text(encoding="utf-8").replace(
-            'symbolica_serialization = "symbolica-bincode2-v1"',
+            'symbolica_serialization = "symbolica-bincode2-v2"',
             'symbolica_serialization = "incompatible-test-abi"',
             1,
         ),

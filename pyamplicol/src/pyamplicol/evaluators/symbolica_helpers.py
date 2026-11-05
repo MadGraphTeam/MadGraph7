@@ -17,6 +17,33 @@ from .._internal.physics.types import NativeEvaluationError
 ComplexOutput = np.ndarray | tuple[np.ndarray, ...]
 
 
+# Python Symbolica's `Evaluator.save()` envelope: a versioned magic, then the
+# producer's native-code flag, its Symbolica state and the bincode payload.
+_SAVED_EVALUATOR_MAGIC = b"\xffSYMEVAL\x01"
+
+
+def saved_evaluator(evaluator: Any) -> bytes:
+    """``evaluator.save()`` in its canonical stored form.
+
+    Every generation writer stores a Symbolica evaluator through this
+    function, so the stored bytes depend on the evaluator alone, not on the
+    Python Symbolica that produced it nor on the symbols the process created
+    before. The native (``canonical_saved_evaluator``) keeps only the state
+    the evaluator references (a Python Symbolica without symbolica-dev#163,
+    PyPI 3.0.3, saves the process's whole state: tens of MB per evaluator
+    after a model compile) and numbers its symbols canonically (a producer
+    numbers them by its registry); the payload is kept, and the result must
+    decode to the same evaluator. A save without the envelope (no Symbolica
+    state) is returned as it is.
+    """
+    saved = bytes(evaluator.save())
+    if not saved.startswith(_SAVED_EVALUATOR_MAGIC):
+        return saved
+    from ..loops.native import load_loop_native
+
+    return bytes(load_loop_native().canonical_saved_evaluator(saved))
+
+
 def _symbolica_instruction_program(exported: Any) -> Any:
     """Extract the linear program from Symbolica's structured instruction export."""
     if isinstance(exported, tuple):
@@ -25,7 +52,55 @@ def _symbolica_instruction_program(exported: Any) -> Any:
         raise NativeEvaluationError(
             "native kernels require inlined Symbolica function bodies"
         )
-    return exported.instructions, exported.temporary_count, exported.constants
+    return (
+        exported.instructions,
+        exported.temporary_count,
+        _resolved_constants(exported),
+    )
+
+
+def _resolved_constants(exported: Any) -> list[Any]:
+    """The exported exact constants with every registered constant or
+    fixed-argument function slot (pi, ...) holding its binary64 value.
+
+    Symbolica's instruction export holds a placeholder 0 in such a slot and
+    lists the slot in ``constant_functions`` (function, tags, exact
+    arguments). The value is the one Symbolica's own binary64 evaluator reads,
+    stored as the exact rational of that double so both consumers (SymJIT and
+    the direct C++ export) read it back bitwise.
+    """
+    constants = list(exported.constants)
+    for constant in exported.constant_functions:
+        constants[constant.index] = _binary64_constant(constant)
+    return constants
+
+
+def _binary64_constant(constant: Any) -> Any:
+    from fractions import Fraction
+
+    from symbolica import E, Expression
+
+    arguments = [*constant.tags, *constant.arguments]
+    function = constant.function
+    expression = function(*arguments) if arguments else function
+    value = complex(
+        np.asarray(
+            expression.evaluator([]).evaluate_complex(np.zeros((1, 0))),
+            dtype=np.complex128,
+        ).ravel()[0]
+    )
+    if not (np.isfinite(value.real) and np.isfinite(value.imag)):
+        raise NativeEvaluationError(
+            f"the registered Symbolica constant {expression!r} is not finite "
+            "in binary64"
+        )
+    real, imaginary = Fraction(value.real), Fraction(value.imag)
+    exact = E(f"{real.numerator}/{real.denominator}")
+    if imaginary:
+        exact = (
+            exact + E(f"{imaginary.numerator}/{imaginary.denominator}") * Expression.I
+        )
+    return exact
 
 
 def _symbolica_instruction_program_repr(exported: Any) -> str:
@@ -53,7 +128,8 @@ def _symbolica_instruction_program_repr(exported: Any) -> str:
         instructions, temporary_count, constants = _InlinedProgram(exported).result()
     else:
         instructions = [_quote_function_name(row) for row in exported.instructions]
-        temporary_count, constants = exported.temporary_count, exported.constants
+        temporary_count = exported.temporary_count
+        constants = _resolved_constants(exported)
     serialized_constants = ", ".join(
         re.sub(r"(?<![0-9])\U0001d456", "1\U0001d456", repr(value))
         for value in constants
@@ -127,7 +203,7 @@ class _InlinedProgram:
 
     def __init__(self, exported: Any):
         self.rows: list[Any] = []
-        self.constants = list(exported.constants)
+        self.constants = _resolved_constants(exported)
         self.temporary_count = exported.temporary_count
         self.next_label = 1 + max(_instruction_labels(exported.instructions), default=0)
         self._inline_all(exported)
@@ -198,7 +274,7 @@ class _InlinedProgram:
         output_base = temporary_base + body.temporary_count
         self.temporary_count = output_base + body.output_count
         constant_base = len(self.constants)
-        self.constants.extend(body.constants)
+        self.constants.extend(_resolved_constants(body))
         label_offset = self.next_label
         self.next_label += 1 + max(_instruction_labels(body.instructions), default=0)
 
@@ -225,66 +301,6 @@ def _map_slots(row: Any, slot_of: Any) -> tuple[Any, ...]:
         else:
             mapped.append(value)
     return tuple(mapped)
-
-
-def _has_zero_constant(exported: Any) -> bool:
-    if isinstance(exported, tuple):
-        return any(repr(value) == "0" for value in exported[2])
-    return any(repr(value) == "0" for value in exported.constants) or any(
-        _has_zero_constant(sub.evaluator) for sub in exported.sub_evaluators
-    )
-
-
-def _verify_symjit_plane_constants(
-    evaluator: Any,
-    exported: Any,
-    application: bytes,
-    rusticol: Any,
-    input_len: int,
-    output_len: int,
-) -> None:
-    """Refuse a plane application that reads a registered constant as zero.
-
-    Symbolica's Python instruction export writes the slots of registered
-    constants and fixed-argument functions (pi, e, ...) as the constant 0 and
-    does not say which they are (the Rust export's ``constant_functions`` is
-    not exposed). A program without a zero constant carries none. Otherwise
-    the stored application, through the production loader, is compared with
-    Symbolica at two fixed real points: a constant read as zero changes an
-    output at O(1), rounding stays orders of magnitude below the bound.
-    """
-    if not _has_zero_constant(exported):
-        return
-    rows = 0.5 + np.random.default_rng(0x5EED).random((2, input_len))
-    rows = np.ascontiguousarray(rows, dtype=np.complex128)
-    expected = np.asarray(evaluator.evaluate_complex(rows), dtype=np.complex128)
-    values = np.asarray(
-        rusticol._evaluate_symjit_plane_application_v2(
-            application,
-            input_len,
-            output_len,
-            rows.view(np.float64).ravel().tolist(),
-            len(rows),
-        ),
-        dtype=np.float64,
-    ).view(np.complex128)
-    expected = expected.reshape(values.shape)
-    finite = np.abs(expected[np.isfinite(expected)])
-    scale = float(finite.max()) if finite.size else 0.0
-    difference = np.abs(values - expected)
-    agree = (
-        (values == expected)
-        | (np.isnan(values) & np.isnan(expected))
-        | (difference <= 1e-6 * np.abs(expected))
-        | (difference <= 1e-12 * scale)
-    )
-    if not agree.all():
-        raise NativeEvaluationError(
-            "the SymJIT plane application disagrees with Symbolica: Symbolica's "
-            "instruction export writes registered constants (pi, e, ...) as 0; "
-            "keep such programs on the Symbolica evaluator or pass the constant "
-            "as a parameter"
-        )
 
 
 def _complex128_parameter_rows(parameter_rows: Any) -> np.ndarray:

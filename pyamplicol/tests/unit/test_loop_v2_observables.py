@@ -1952,9 +1952,11 @@ def assert_native_estimates_follow_the_api(generate, carrier: str) -> None:
     from pyamplicol.loops.v2.observables import NativeObservables
     from pyamplicol.loops.v2.plan_export import NativeExecutor
     from pyamplicol.loops.v2.stability import (
+        FRAMES,
         REDUCTION,
         RESCALED,
         ROTATION,
+        SAFETY,
         Budget,
         Rotation,
         StabilityChecks,
@@ -2004,7 +2006,16 @@ def assert_native_estimates_follow_the_api(generate, carrier: str) -> None:
             }
             for name in names:
                 _assert_budgets_equal(mine.budgets[name], theirs.budgets[name], unit)
-            _assert_budgets_equal(mine.absolute, theirs.absolute, unit)
+            # E = SAFETY x (largest rotation budget + reduction budgets) + a
+            # floor of the same S: the checks' slack propagates through it.
+            terms = any(name not in FRAMES for name in names) + sum(
+                name in FRAMES for name in names
+            )
+            combined = {
+                sector: Budget(tuple(SAFETY * terms * x for x in budget.coefficients))
+                for sector, budget in unit.items()
+            }
+            _assert_budgets_equal(mine.absolute, theirs.absolute, combined)
             assert (mine.families is None) == (theirs.families is None)
             if theirs.families is not None:
                 assert len(mine.families) == len(theirs.families)

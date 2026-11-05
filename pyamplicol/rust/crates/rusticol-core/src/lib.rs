@@ -10,6 +10,8 @@
 compile_error!("rusticol-core requires at least one evaluator runtime feature");
 
 mod artifact;
+#[cfg(feature = "symbolica-runtime")]
+pub mod diagnostics;
 pub mod direct_arena;
 pub mod eager_layout;
 mod eager_lowering_v3;
@@ -103,7 +105,7 @@ pub const COMPILED_MODEL_SCHEMA_VERSION: u32 = 9;
 pub const PROCESS_ARTIFACT_SCHEMA_VERSION: u32 = 3;
 pub const RUNTIME_PHYSICS_SCHEMA_VERSION: u32 = 1;
 pub const C_ABI_VERSION: u32 = 1;
-pub const SYMBOLICA_SERIALIZATION_ABI: &str = "symbolica-bincode2-v1";
+pub const SYMBOLICA_SERIALIZATION_ABI: &str = "symbolica-bincode2-v2";
 
 /// Unstable implementation details shared with pyAmpliCol's private PyO3
 /// extension and native loop consumer. Absent from ordinary/default builds.
@@ -144,6 +146,15 @@ pub mod __private {
         >,
     > {
         crate::engine::decode_exact_evaluator_state(bytes)
+    }
+
+    /// A Python `Evaluator.save()` in its canonical stored form (only the
+    /// Symbolica state its evaluator references, numbered canonically);
+    /// `None` when it already is in it (the generation writers' form,
+    /// `pyamplicol.evaluators.symbolica_helpers.saved_evaluator`).
+    #[cfg(feature = "symbolica-runtime")]
+    pub fn canonical_saved_evaluator(bytes: &[u8]) -> RusticolResult<Option<Vec<u8>>> {
+        crate::engine::canonical_saved_evaluator(bytes)
     }
 
     /// Unstable cold-path bridge for the private PyO3 artifact generator.

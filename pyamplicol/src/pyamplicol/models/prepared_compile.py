@@ -41,7 +41,10 @@ from ..evaluators.symbolica_compile import (
     _compile_symbolica_outputs,
     _symbolica_evaluator_kwargs,
 )
-from ..evaluators.symbolica_helpers import _symbolica_evaluator_artifact_manifest
+from ..evaluators.symbolica_helpers import (
+    _symbolica_evaluator_artifact_manifest,
+    saved_evaluator,
+)
 from ..evaluators.symbolica_settings import SymbolicaEvaluatorSettings
 from .base import Model
 from .loading import CompiledModel
@@ -878,7 +881,7 @@ def _compile_native_split_real_kernel(
         raise PreparedModelBundleError(
             f"prepared native kernel {kernel.kernel_id} cannot retain exact state"
         )
-    evaluator_state_bytes = save()
+    evaluator_state_bytes = saved_evaluator(exact_evaluator)
     if not isinstance(evaluator_state_bytes, bytes) or not evaluator_state_bytes:
         raise PreparedModelBundleError(
             f"prepared native kernel {kernel.kernel_id} returned invalid exact state"

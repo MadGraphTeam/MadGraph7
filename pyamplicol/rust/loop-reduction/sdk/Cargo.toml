@@ -17,4 +17,4 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [dev-dependencies]
-symbolica = { version = "=3.0.1", default-features = false, features = ["integer-gmp", "float-mpfr"] }
+symbolica = { version = "=3.0.2", default-features = false, features = ["integer-gmp", "float-mpfr"] }

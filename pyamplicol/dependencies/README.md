@@ -1,58 +1,76 @@
 # Dependency Modes
 
-The `loop` development branch currently integrates Rust Symbolica 3.0.1,
-Numerica and Graphica from the tested
-[`9cdc294` integration fork](https://github.com/alphal00p/symbolica/commit/9cdc2949cdb153478c1eca0d40690dc0abfc616e),
-and SymJIT 2.28.3. These pins are recorded by Cargo. This is a source integration,
-with Rust 1.96 or newer required; it is not a completed release dependency set.
-The published Python/Community distribution is pinned to 3.0.2 (kernel 3.0.1),
-whose saved evaluators are tested against this core in all three arithmetic
-modes. NinjaRS packaging remains an integration gate.
-SymJIT now writes storage v4, which additionally stores the compiler argument
-capacity. Current producers and consumers require v4; the checked-in prepared
-model and self-test payloads were regenerated with the rebuilt native runtime.
-Older v3 payloads require regeneration, since relabeling metadata does not
-update the binary format.
-The release lock records the actual dependency versions, but the source patches
-still fail the published-crate gate. Publication requires an upstream release
-containing the integration fixes; this branch is not yet publishable.
+The `loop` development branch integrates Rust Symbolica 3.0.2, Numerica and
+Graphica from symbolica-dev/symbolica's `community` branch `36cbac3a` (main
+`9de26e4e` plus the author's merged commits) with one consolidated upstream
+pull request on top: batched evaluation (`BatchExpressionEvaluator`),
+`DualNumber` component views, saved evaluators that hold only the state
+they reference, correct complex-modulus derivatives in Dual domains and
+deterministic signs of integer polynomial factors
+([symbolica-dev/symbolica#163](https://github.com/symbolica-dev/symbolica/pull/163),
+base `community`; its six commits also apply cleanly on `main`). The pinned
+revision is the PR head
+[`20a9da94`](https://github.com/ValentinHirschi/symbolica/commit/20a9da94071d7dd64ea5cdd6ed9d6e8f8cefeacc)
+(branch `loop_me_pyamplicol` of ValentinHirschi/symbolica).
+Upstream `main` alone does not build the workspace: NinjaRS and
+`rusticol-core` / `loop-reduction` use the batched evaluator, NinjaRS the
+`DualNumber` trait, and NinjaRS's rank n+2 Dual derivatives need the
+complex-modulus fix, and NinjaRS's determinism test the deterministic factor
+signs; the Python Community modules (FeynKit, HepKit) need the `community`
+branch's `symbolica::utils::resources`. The pin moves to upstream once the PR
+is merged. NinjaRS (main `b3a29c85`, PR #14) and
+oneloopmaster (main `128ea664`) pin the same revision; there is no alphal00p
+Symbolica fork in the graph (`cargo tree -i symbolica` lists one source). SymJIT stays 2.28.3. These
+pins are recorded by Cargo. This is a source integration, with Rust 1.96 or
+newer required; the git `[patch]` still fails the published-crate gate, so the
+branch is not publishable until the PR is in a Symbolica release.
 
-The loop development builds (`work/v2-repin`) use one Symbolica kernel,
-alphal00p 9cdc2949, on both sides:
+The published Python/Community distribution is pinned to **3.0.3**, which the
+author builds from the same `community` branch (without the PR); its
+`Evaluator.save()` envelope is the one the native reads. 3.0.2's raw-bincode
+saves are refused: Symbolica 3.0.2 changed the saved-evaluator and expression
+export formats, so the serialization ABI is `symbolica-bincode2-v2` and every
+stored evaluator state was regenerated.
+Without the PR, 3.0.3 saves the producer's whole Symbolica state: after a
+loop_sm compile about 20-30 MB per evaluator, depending on every symbol the
+Python process ever created. Stored as such, a u u~ > d d~ g loop artifact
+took 4.7 GB instead of 5.5 MB and 29 s instead of 0.3 s to load. And any
+save, the PR's included, numbers the symbols it references by the producer's
+registry, so its bytes depended on the order in which the process created
+namespaces and symbols (a cold or a warm model cache gave different
+`parameters.bin`). Every generation writer therefore stores
+`symbolica_helpers.saved_evaluator`, the native's canonical form
+(`rusticol-core` `canonical_saved_evaluator`): only the symbols the evaluator
+references (a whole state is cut with `State::export_symbols`, the form the
+PR's save writes), their records ordered by name and numbered 0, 1, ...; the
+payload is kept byte for byte (it names its symbols by definition, so the
+numbering only maps the state), and the result must decode to the same
+evaluator. The stored bytes then depend on the evaluator alone, not on the
+producer nor on the process history (loop artifacts generated with PyPI 3.0.3
+and with the Community build, the EW self-test included, are byte-identical
+but for `artifact.json`'s creation time and stage timings). A section whose symbol data embeds an expression keeps its
+numbering (the expression carries it; no pyAmpliCol evaluator references such
+a symbol). Generation imports each whole state once into the native: a symbol
+whose definition differs from the native's (the Community modules carry
+gammaloop `9102f885`, the native's FeynKit `d1904bf2`; `gammalooprs::Q`
+differs in one Spenso tag) is imported under a fresh name
+(`<name>_pyamplicol_import`) instead of failing (`load_evaluator_state_bytes`, the same rule on load). Symbolica
+warns about each imported symbol that lacks the user-defined functions the
+native gave it; the extension routes Symbolica's diagnostics to standard error
+(`rusticol_core::diagnostics`, installed at import), so they never mix with a
+program's standard output (`pyamplicol self-test --json`).
 
-- **Native:** the Rust pin above.
-- **Python:** a release rebuild of the Community overlay. Only its Symbolica,
-  Numerica and Graphica paths moved, from e679e8c1 to 9cdc2949. The rest of the
-  overlay is unchanged: symbolica_community 17c8aeb with the workspace overlay
-  patch, gammaloop open-duality candidate 0cfb7dbb9, fastSecDec 14a9296, and the
-  same `--locked` lock.
-
-Python-side Float evaluation runs on the Community kernel. That covers
-`loops/v2/assemble.py` `_replay`, `loops/v2/catalogue.py`
-`evaluate_with_precision` and `runtime/symbolica_exact.py`. At e679e8c1 the
-kernel would keep the ±1 product rounding that 9cdc2949 fixes, the bug that
-sent the AP80 CMS box down the wrong branch in the native. The serialized
-evaluator state is identical at both revisions, so the earlier split was
-compatible but not coherent.
-
-The Community gammaloop stays at the overlay's 0cfb7dbb9. The native's FeynKit
-d1904bf2 (recorded by NinjaRS aa6a6307 and 41a4c00) lacks PR155 (dual endpoints) and three
-other overlay fixes. No gammaloop data crosses the native boundary, so the two
-sides can differ there.
-
-Build pair (workspace `builds/`):
-
-- native `loop-native-v2-repin-783aaf47`, digest `b71edd24…`;
-- Community `community-release-python-9cdc2949`, wheel sha256 `149e63a5…`.
-
-Switching Community from e679e8c1 to 9cdc2949 left the legacy O1/O2 captures
-byte-identical. The v2 slice totals moved by at most 9.8e-62 (row-normalized)
-at 200 bits, and binary64 values were bitwise unchanged.
+The development Python kernel is a release build of the Community recipe
+(symbolica-community `39b556c7`, the 3.0.3 recipe, unmodified) with only its
+`[patch]` moved to `20a9da94`: `builds/community-release-python-20a9da94`
+(wheel `builds/community-release-wheels-20a9da94/`, sha256 `42c26b2e…`;
+recipe in `BUILD-INFO.json`). Native and Python therefore share one Symbolica
+revision.
 
 pyAmpliCol defaults to published runtime dependencies and release-mode native
 builds. Historical pinned-source candidate machinery is retained, but its
 upstream pins need a coherent update before use with the current tensor APIs.
-Release mode uses Python Symbolica **3.0.2** (Rust kernel 3.0.1) and SymJIT
+Release mode uses Python Symbolica **3.0.3** (Rust kernel 3.0.2) and SymJIT
 **2.28.3** (`release-lock.toml`). Historical candidate mode retains Symbolica
 **3.0.0** and SymJIT **2.26.0** (`contributor-lock.toml`), so the two locks pin
 different versions; version numbers alone do not establish Python API
@@ -90,14 +108,14 @@ The developer dashboard retains its pinned Ratatui 0.4.2 build and FFI checkout
 in both lanes; it is not a core runtime dependency.
 
 Release-equivalent builds use exact versions. `release-lock.toml` records Rust
-Symbolica 3.0.1 and SymJIT 2.28.3, and `Cargo.lock` records their resolution:
+Symbolica 3.0.2 and SymJIT 2.28.3, and `Cargo.lock` records their resolution:
 SymJIT from the registry with its checksum; Symbolica, Numerica and Graphica
-from the `9cdc294` integration fork through the root `Cargo.toml`'s
+from `20a9da94` (the PR head above) through the root `Cargo.toml`'s
 `[patch.crates-io]`, the source patch that still fails the published-crate gate
 (see above). The ordinary locked Cargo build is the dependency check; no
 release-only source projections are needed.
 
-Python Symbolica 3.0.2 is published on PyPI; its wheels are recorded in
+Python Symbolica 3.0.3 is published on PyPI; its wheels are recorded in
 `python-runtime-lock.toml`. The required ufo-model-loader 1.0.0
 entry has no published wheel recorded in `python-runtime-lock.toml` yet. After
 the loader is uploaded, record its official PyPI wheel metadata before running

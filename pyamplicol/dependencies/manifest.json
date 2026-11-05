@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "note": "Non-registry source dependencies of the Rust workspace and the Python Community build; Cargo.toml / Cargo.lock are authoritative for the Rust graph.",
+  "dependencies": [
+    {
+      "name": "symbolica",
+      "crates": [
+        "symbolica",
+        "numerica",
+        "graphica"
+      ],
+      "url": "https://github.com/ValentinHirschi/symbolica.git",
+      "branch": "loop_me_pyamplicol",
+      "revision": "20a9da94071d7dd64ea5cdd6ed9d6e8f8cefeacc",
+      "base": {
+        "url": "https://github.com/symbolica-dev/symbolica.git",
+        "branch": "community",
+        "revision": "36cbac3a555d4b93b9601706f1d2f32629770ae6"
+      },
+      "pull_request": "https://github.com/symbolica-dev/symbolica/pull/163",
+      "note": "community 36cbac3a + the consolidated PR (6 commits); moves to upstream once merged"
+    },
+    {
+      "name": "ninjars",
+      "crates": [
+        "ninjars",
+        "ninjars-graph",
+        "ninjars-symbolica"
+      ],
+      "url": "https://github.com/alphal00p/ninjars.git",
+      "ref": "main",
+      "revision": "b3a29c8577733f384de1c74b48bde5b24c2799d3"
+    },
+    {
+      "name": "oneloopmaster",
+      "crates": [
+        "oneloop"
+      ],
+      "url": "https://github.com/alphal00p/oneloopmaster.git",
+      "ref": "main",
+      "revision": "128ea6645f2811e6179068b98731501292841409"
+    },
+    {
+      "name": "feynkit",
+      "crates": [
+        "feynkit-kinematics"
+      ],
+      "url": "https://github.com/alphal00p/gammaloop.git",
+      "branch": "feynkit",
+      "revision": "d1904bf2bd5bf4f26969a73b415095e941a55610"
+    },
+    {
+      "name": "symbolica-community",
+      "role": "Python Symbolica (development Community build)",
+      "url": "https://github.com/symbolica-dev/symbolica-community.git",
+      "revision": "39b556c7d7dcc919f61d125f60ff83f8d49f7ac3",
+      "patch": "[patch.crates-io] symbolica/numerica/graphica -> ValentinHirschi/symbolica 20a9da94071d7dd64ea5cdd6ed9d6e8f8cefeacc",
+      "release_lock": "PyPI symbolica 3.0.3 (dependencies/release-lock.toml)"
+    }
+  ]
+}

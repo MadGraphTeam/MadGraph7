@@ -83,6 +83,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias, cast
 
 from ..._internal.physics.symbols import ModelSymbolRegistry, symbols
+from ...evaluators.symbolica_helpers import saved_evaluator
 from ...models import compiler_symbolica as _sym
 from ...models.compiler_entry import compile_ufo_model_ir
 from ...models.compiler_kernels import (
@@ -498,7 +499,7 @@ class LoopKernelEvaluator:
         )
 
     def exact_state(self) -> bytes:
-        return bytes(self.evaluator.save())
+        return saved_evaluator(self.evaluator)
 
 
 def compile_loop_kernel(kernel: PreparedKernelSpec) -> LoopKernelEvaluator:

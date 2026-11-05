@@ -27,10 +27,10 @@
 //! without an on-shell threshold.
 //!
 //! **Absolute thresholds of the fast engine (genericity audit 2, G2-M3).**
-//! On the pinned NinjaRS 41a4c00 the fast path compares inputs with absolute
-//! constants in the model's units: `OneLoopNativeMasters` sets squared masses
-//! and invariants with `|re| + |im| < 1e-9` to zero and a real invariant
-//! within `1e-9` of a real squared mass to that mass
+//! On the pinned NinjaRS (main b3a29c85) the fast path compares inputs with
+//! absolute constants in the model's units: `OneLoopNativeMasters` sets
+//! squared masses and invariants with `|re| + |im| < 1e-9` to zero and a
+//! real invariant within `1e-9` of a real squared mass to that mass
 //! ([`NATIVE_ONSHELL_THRESHOLD`]), and the engine itself skips the bubble of
 //! two massless lines whose invariant is below `FastOptions::infrared_eps`
 //! (`1e-9`) and builds its cut bases from momenta whose square is below it as
@@ -50,10 +50,10 @@
 //! library key on its thread (`pyamplicol::unlock`); every other binary64
 //! lane touches none. Exactly zero
 //! masses and invariants, and invariants exactly equal to a mass (the
-//! executor's on-shell external invariants), never route. The upstream
-//! `OneLoopNativeMasters::with_onshell_threshold(None)` (NinjaRS PR prepared
-//! by package onshell-threshold) removes the masters' part; the engine's
-//! `infrared_eps` part stays a routing rule.
+//! executor's on-shell external invariants), never route. NinjaRS #9 (in the
+//! pinned main) adds `OneLoopNativeMasters::with_onshell_threshold(None)`,
+//! which would remove the masters' part (not adopted: the fast engine keeps
+//! the default); the engine's `infrared_eps` part stays a routing rule.
 //!
 //! **Reduction-direction check.** [`ReductionFrame`] re-reduces the same
 //! numerators in a dihedrally relabelled frame of the propagator cycle, by
@@ -84,7 +84,7 @@
 //!
 //! **UV and IR poles (DESIGN.md §12.4).** [`Poles::Split`] appends each
 //! lane's ultraviolet residue, `[finite, 1/ε, 1/ε², 1/ε_UV]`, computed exactly
-//! from the lane's own inputs ([`uv_residue`], also in the check's frame);
+//! from the lane's own inputs (NinjaRS's [`TensorUvResidues`], also in the check's frame);
 //! the combined columns are those of [`Poles::All`] bit for bit, so the
 //! finite part never depends on the selection. NinjaRS 41a4c00 also selects
 //! UV or IR residues at the masters (`ReduceOptions::masters`, oneloopmaster's
@@ -94,9 +94,9 @@
 
 use super::master_cache::{MasterCache, MasterStatistics};
 use super::reduction::{ReductionBatch, Reductions};
-use super::v2_poles::UvResidues;
 use super::*;
 use crate::FourMomentum;
+use ninjars::fast::TensorUvResidues;
 use ninjars::fast::tensor_layout::{block_offset, monomial_index, monomials, ncoeff};
 use ninjars::fast::{
     C64, FastAmplitude, FastInput, FastOptions, FastResult, FastStatus, RMom, TensorNumerator,
@@ -548,12 +548,12 @@ fn reduce_groups<T: Carrier, E: BucketEngine<T>>(
                 * &(0..4).fold(x.one(), |power, _| power * &inverse)
         });
         let width = ncoeff(rank);
-        let residues = (poles == Poles::Split).then(|| UvResidues::new(n, rank));
+        let residues = (poles == Poles::Split).then(|| TensorUvResidues::new(n, rank));
         for (lane, (&(group, row), mut outcome)) in
             members.iter().zip(engine.reduce(&input)?).enumerate()
         {
             if let (Some(residues), true) = (&residues, outcome.value.is_some()) {
-                outcome.uv = Some(residues.residue(
+                outcome.uv = Some(residues.residue_at(
                     &input.shifts[lane * 4 * n..(lane + 1) * 4 * n],
                     &input.masses[lane * n..(lane + 1) * n],
                     &input.coefficients[lane * width..(lane + 1) * width],

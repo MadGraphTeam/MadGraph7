@@ -664,6 +664,14 @@ def _snapshot(case: _GoldenCase) -> dict[str, object]:
 # renumber (tables, exact) in every case; the referenced kernels' signatures
 # and exact expressions are unchanged, as are counts, layout, reductions,
 # selectors and the exact-rational resolved probes.
+# Refreshed for the upstream Symbolica re-pin (Python Community 20a9da94 =
+# symbolica-dev community 36cbac3a + #163, 3.0.3): content-derived kernel IDs are
+# renumbered and some kernels print differently. The base (the slice d5a1f770 with
+# Community 9cdc2949) reproduces the preceding goldens; every referenced kernel
+# matches one on the new pin bijectively with symbolically equal expressions, and
+# remapping their IDs reproduces every preceding table section. Counts, layout,
+# selectors, reductions and resolved probes are unchanged. Values recomputed on
+# the merged tree (mf-norm + mf-symbolica integration).
 _EXPECTED: dict[str, dict[str, object]] = {
     "lc-topology-replay": {
         "counts": {

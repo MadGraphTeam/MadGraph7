@@ -685,22 +685,16 @@ recomputes the masters (`rescaled = true`; Python
 `VirtualStabilityChecks(..., reduction_direction=True, rescaled=True)`), does. Use that check for light loops, and `double-double`
 where binary64 fails.
 
-**Units and the beam axis in binary64.** One absolute constant of the fast
-binary64 engine remains until an upstream fix (NinjaRS): its light-like spinors
-take a momentum within 1e-9, in the model's units, of the z axis as lying on
-it, and form the others with a square root that cancels near the -z axis. In
-GeV-like units this is harmless for beams along z. With energies of order 1e6
-or more in the model's units (keV or eV units, or MeV with multi-TeV beams) the
-rounding of a beam along z exceeds that window, and a `double` virtual can be
-silently off by several per cent with the checks off (measured 3-22 % for
-`u u~ > d d~ g` and `g g > t t~` with every momentum and dimensionful
-parameter scaled from GeV by factors from 1e4 to 1e9);
-the stability checks see most such points but not all, and can flag correct
-ones. For `double`, use units in which the energies stay below about 1e6 (GeV
-for collider energies), or `double-double`. In any units, a final-state leg
-within about 1e-3 rad of the z axis can lose up to about 1e-5 of relative
-accuracy silently; use a rotation or the reduction-direction check for such
-kinematics.
+**Units and the beam axis in binary64.** The fast binary64 engine has no
+absolute constant tied to the beam axis or to the units: its light-like
+spinors are formed from the larger light-cone component, with no window
+around the z axis (NinjaRS #10). With every momentum and dimensionful
+parameter scaled from GeV by factors from 1e-6 to 3e7 (`g g > t t~`,
+`u u~ > d d~ g`, beams along z or rotated off it), a `double` virtual keeps
+its value and its stability estimate, and a final-state leg between 1e-8 and
+1e-3 rad from the z axis loses no accuracy (the rotation and
+reduction-direction checks agree to about 2e-14). Light internal masses are
+the exception above.
 
 **Native libraries and glibc.** On Linux, the native libraries built from a
 checkout with `tools/developer/build_loop_native.py` (`_rusticol.so`,
