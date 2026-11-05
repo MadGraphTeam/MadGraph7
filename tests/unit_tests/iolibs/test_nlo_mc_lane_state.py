@@ -113,7 +113,11 @@ class TestMCLaneState(unittest.TestCase):
       common/cnbody/nbody
       logical calculatedBorn
       common/ccalculatedBorn/calculatedBorn
+      logical check_born_amps,born_checks_amps
+      common/c_born_amps_check/check_born_amps,born_checks_amps
       vector_size=4
+      check_born_amps=.false.
+      born_checks_amps=.false.
       lane_nbody=(/3,1,4,2/)
       lane_vol1=0.25d0
       lane_born_vol1=1d0
