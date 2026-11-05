@@ -220,23 +220,52 @@ def test_every_execution_mode_normalizes_the_colourless_born(
     _assert_analytic(Runtime.load(tmp_path / "artifact"), process)
 
 
-def test_born_amplitudes_of_several_coupling_orders_are_refused() -> None:
+def test_born_amplitudes_of_several_coupling_orders_are_refused(
+    tmp_path: Path,
+) -> None:
     """One global factor cannot weigh Born amplitudes of different orders
-    against each other. (The built-in vertex set yields one Born order for
-    the processes tried, u u~ > d d~ with QED <= 2 included: its quark lines
-    absorb electroweak currents but do not emit them, so the refusal is
-    checked on the normalization request directly.)"""
+    against each other: u u~ > d d~ with the gluon and the photon, Z and W
+    exchanges between its quark lines is refused in every lane, naming them."""
 
+    if importlib.util.find_spec("pyamplicol._rusticol") is None:
+        pytest.skip("the Rusticol extension has not been built")
+    orders = ProcessConfig(
+        coupling_order_policy="explicit", max_coupling_orders={"QCD": 2, "QED": 2}
+    )
+    for execution_mode in ("compiled", "recurrence"):
+        with pytest.raises(GenerationError, match=r"QCD\^0 QED\^2, QCD\^2 QED\^0"):
+            Generator(_config(execution_mode, orders)).generate(
+                "u u~ > d d~",
+                tmp_path / execution_mode,
+                model=ModelSource.built_in_sm(),
+            )
     model = BuiltinSMModel()
     process = build_process_ir("u u~ > d d~")
-    request = RuntimeNormalizationRequest(
-        process, lambda: ((("QCD", 2),), (("QED", 2),))
-    )
-    with pytest.raises(GenerationError, match="several coupling orders"):
-        model.runtime_normalization_payload(request)
     single = RuntimeNormalizationRequest(process, lambda: ((("QCD", 2),),))
     payload = model.runtime_normalization_payload(single)
     assert (payload["qcd_coupling_power"], payload["electroweak_coupling_power"]) == (
         2,
         0,
     )
+
+
+def test_an_artifact_of_another_built_in_sm_source_warns_at_load(
+    colourless_artifact: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Artifacts keep the values of the built-in SM that generated them; one
+    from another built-in source warns that it should be regenerated."""
+
+    import warnings
+
+    from pyamplicol.models.loading import _source_digest
+    from pyamplicol.runtime import backend
+
+    assert backend.builtin_model_source_digest() == _source_digest(
+        "built-in-sm", "built-in-sm"
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        Runtime.load(colourless_artifact, process="e+ e- > a a")
+    monkeypatch.setattr(backend, "builtin_model_source_digest", lambda: "0" * 64)
+    with pytest.warns(UserWarning, match="another built-in SM source"):
+        Runtime.load(colourless_artifact, process="e+ e- > a a")

@@ -29,7 +29,7 @@ def test_model_builtin_sm_preserves_production_tables_and_couplings() -> None:
     model = BuiltinSMModel()
 
     assert len(model.particles) == 24
-    assert len(model.vertices) == 259
+    assert len(model.vertices) == 313
     assert model.sin_weak == 0.47143025548407230
     assert model.mass(23) == 91.188
     assert model.width(23) == 2.441404
@@ -43,6 +43,25 @@ def test_model_builtin_sm_preserves_production_tables_and_couplings() -> None:
         "normalization.alpha_s_me_check": model.alpha_s_me_check,
         "normalization.alpha_ew": model.alpha_ew,
     }
+
+
+def test_model_builtin_fermions_emit_every_current_they_absorb() -> None:
+    """f + V -> f' (kind 10) comes with V + f -> f' (23) and the fusion
+    f' + f~ -> V (21); f~ + V -> f~' (11) with V + f~ -> f~' (24). The quark
+    lines lacked 21, 23 and 24 for the photon, Z and W: no electroweak exchange
+    between two quark lines (u u~ > d d~ at QED^2, u d~ > c s~) in any lane."""
+
+    model = BuiltinSMModel()
+    table = {
+        (vertex.kind, vertex.particles): vertex.coupling for vertex in model.vertices
+    }
+    for (kind, (fermion, boson, result)), coupling in table.items():
+        if kind == 10:
+            anti = model.anti_particle(fermion)
+            assert table.get((23, (boson, fermion, result))) == coupling
+            assert table.get((21, (result, anti, boson))) == coupling
+        if kind == 11:
+            assert table.get((24, (boson, fermion, result))) == coupling
 
 
 def test_model_builtin_lowering_metadata_uses_owned_symbol_names() -> None:
@@ -250,11 +269,7 @@ def test_builtin_charged_current_embeds_weyl_input_in_massive_dirac_output(
     fermion = (1.25 - 0.5j, -0.75 + 2.0j)
     vector = (2.0, -1.0j, 0.5 + 0.25j, -3.0)
     coupling = (0.7 - 0.1j, -0.4 + 0.2j)
-    padded = (
-        (0j, 0j, *fermion)
-        if chirality == -1
-        else (*fermion, 0j, 0j)
-    )
+    padded = (0j, 0j, *fermion) if chirality == -1 else (*fermion, 0j, 0j)
 
     mixed = model.vertex_component_expression(
         kind,
@@ -277,12 +292,54 @@ def test_builtin_charged_current_embeds_weyl_input_in_massive_dirac_output(
     assert mixed == pytest.approx(dirac)
 
 
+@pytest.mark.parametrize("kind", (21, 22))
+@pytest.mark.parametrize("weyl_side", (0, 1))
+@pytest.mark.parametrize("chirality", (-1, 1))
+def test_builtin_fermion_pair_embeds_a_weyl_input_as_the_absorption_kernels(
+    kind: int, weyl_side: int, chirality: int
+) -> None:
+    """A W current from a massive Dirac top and a massless Weyl b: the Weyl
+    input sits in the Dirac half the absorption kernels give it (above)."""
+
+    model = BuiltinSMModel()
+    dirac = (0.3 + 0.2j, -1.1j, 0.8, 0.25 - 0.6j)
+    weyl = (1.25 - 0.5j, -0.75 + 2.0j)
+    padded = (0j, 0j, *weyl) if chirality == -1 else (*weyl, 0j, 0j)
+    coupling = (0.7 - 0.1j, -0.4 + 0.2j)
+    inputs = [dirac, weyl]
+    chiralities = [0, chirality]
+    if weyl_side == 0:
+        inputs.reverse()
+        chiralities.reverse()
+    mixed = model.vertex_component_expression(
+        kind,
+        inputs[0],
+        inputs[1],
+        result_particle_id=24,
+        result_chirality=0,
+        left_chirality=chiralities[0],
+        right_chirality=chiralities[1],
+        coupling=coupling,
+    )
+    inputs[weyl_side] = padded
+    full = model.vertex_component_expression(
+        kind,
+        inputs[0],
+        inputs[1],
+        result_particle_id=24,
+        result_chirality=0,
+        coupling=coupling,
+    )
+
+    assert mixed == pytest.approx(full)
+
+
 def test_model_builtin_compiles_to_canonical_records_without_replacing_path() -> None:
     compiled = compile_model_source("built-in-sm", use_cache=False)
 
     assert compiled.name == "built-in-sm"
     assert len(compiled.ir.particles) == 38
-    assert len(compiled.ir.vertex_terms) == 259
+    assert len(compiled.ir.vertex_terms) == 313
     assert compiled.ir.oriented_kernels == ()
     assert compiled.source["kind"] == "built-in-sm"
     assert compiled.source["source_name"] is None
