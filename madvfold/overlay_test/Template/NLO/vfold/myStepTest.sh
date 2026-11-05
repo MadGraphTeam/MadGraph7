@@ -11,10 +11,11 @@ PROC=$(basename $(pwd))
 
 # Command line arguments
 usage() {
-  echo "Usage:   $0 [--ref <REF|REF2|REF3|REF4...>] [--diffonly <tag>] [--tsts '<tst1 tst2...>'] <step>"
-  echo "         (default: --ref REF4)"
+  echo "Usage:   $0 --ref <REF<n>/<tag>> [--diffonly] [--tsts '<tst1 tst2...>'] [--ninja-and-collier] <step>"
+  echo "         (--ref: results in Events/REF<n>/<tag>, e.g. --ref REF4/GOLD; no default)"
+  echo "         (--diffonly: no launch, only diff and timing table of existing results in Events/REF<n>/<tag>)"
   echo "         (--ninja-and-collier: also run F1 with the other MadLoop reduction library, see myLaunch.sh)"
-  echo "Example: $0 step9j"
+  echo "Example: $0 --ref REF4/GOLD step14s"
   exit 1
 }
 ref=
@@ -27,8 +28,8 @@ while [ "$1" != "" ]; do
     ninjaAndCollier=--ninja-and-collier; shift
   elif [ "$1" == "--ref" ] && [ "$2" != "" ] && [ "$ref" == "" ]; then
     ref=$2; shift; shift
-  elif [ "$1" == "--diffonly" ] && [ "$2" != "" ] && [ "$diffonly" == "0" ]; then
-    diffonly=1; tag=$2; shift; shift
+  elif [ "$1" == "--diffonly" ] && [ "$diffonly" == "0" ]; then
+    diffonly=1; shift
   elif [ "$1" == "--tsts" ] && [ "$2" != "" ] && [ "$tsts" == "" ]; then
     tsts=$2; shift; shift
   elif [ "$step" == "" ]; then
@@ -62,34 +63,25 @@ else
   exit 1
 fi
 
-# Define ref if not yet defined (REF4 is the default since the codegen steps)
-if [ "${ref}" == "" ]; then ref=REF4; fi
-if ! [[ "${ref}" =~ ^REF[0-9]*$ ]]; then
-  echo "ERROR! Invalid ref=${ref} must be REF<n> (e.g. REF, REF2, REF3, REF4)"
+# The reference set and the tag of the results directory Events/REF<n>/<tag> (step 14s: no default,
+# e.g. REF4/GOLD; before, the tag was derived from the names of the developers' machines)
+if [ "${ref}" == "" ]; then
+  echo "ERROR! --ref REF<n>/<tag> is required (e.g. --ref REF4/GOLD)"
+  usage
+fi
+if ! [[ "${ref}" =~ ^REF[0-9]*/[A-Za-z0-9_.-]+$ ]]; then
+  echo "ERROR! Invalid --ref ${ref} must be REF<n>/<tag> (e.g. REF4/GOLD)"
+  exit 1
+fi
+tag=${ref#*/}
+ref=${ref%%/*}
+if [ "${diffonly}" == "1" ] && [ ! -d Events/${ref}/${tag} ]; then
+  echo "ERROR! Directory Events/${ref}/${tag} does not exist"
   exit 1
 fi
 
 # Define tsts if not yet defined
 if [ "${tsts}" == "" ]; then tsts=${tstsDef}; fi
-
-# Define tag based on the host node if not yet defined
-if [ "${tag}" == "" ]; then
-  host=$(hostname)
-  host=${host%.cern.ch}
-  if [ "${host}" == "aicoral92" ]; then
-    tag=DEV9
-  elif [ "${host}" == "itgold91" ]; then
-    tag=GOLD
-  elif [ "${host}" == "itscrd90" ]; then
-    tag=CUDA
-  else
-    echo "ERROR! Unknown host=${host}"
-    exit 1
-  fi
-elif [ ! -d Events/${ref}/${tag} ]; then
-  echo "ERROR! Directory Events/${ref}/${tag} does not exist"
-  exit 1
-fi
 
 # Loop over all tests
 status=0
@@ -128,6 +120,10 @@ for tst in ${tsts}; do
     # Step 14p: 5x more events than n20f111k512g1, to compare to n100f841k64g1 (e.g. ggttg: about 2 virtual events)
     env="ENV_NEVENTS=100 ENV_FOLDING='1,1,1' ENV_VFOLD_KPOINT_BATCH=512 ENV_VFOLD_SBORN_GSCALE=1"
     tst2=${tst/k512g1/k1}
+  elif [ "${tst}" == "n50f111k512g1" ]; then
+    # Step 14s: 2x fewer events than n100f111k512g1, to compare to n50f841k64g1 (e.g. ggttg with the step 14t grids)
+    env="ENV_NEVENTS=50 ENV_FOLDING='1,1,1' ENV_VFOLD_KPOINT_BATCH=512 ENV_VFOLD_SBORN_GSCALE=1"
+    tst2=${tst/k512g1/k1}
   elif [ "${tst}" == "n20f111k512g1" ]; then
     # 10x fewer events: match n20f841 for eemumubbg tests
     env="ENV_NEVENTS=20 ENV_FOLDING='1,1,1' ENV_VFOLD_KPOINT_BATCH=512 ENV_VFOLD_SBORN_GSCALE=1"
@@ -160,6 +156,10 @@ for tst in ${tsts}; do
   elif [ "${tst}" == "n20f841k128g1" ]; then
     env="ENV_NEVENTS=20 ENV_FOLDING='8,4,1' ENV_VFOLD_KPOINT_BATCH=128 ENV_VFOLD_SBORN_GSCALE=1"
     tst2=${tst/k128g1/k1}
+  elif [ "${tst}" == "n50f841k64g1" ]; then
+    # Step 14s: 2x fewer events than n100f841k64g1, to compare to n50f111k512g1 (e.g. ggttg with the step 14t grids)
+    env="ENV_NEVENTS=50 ENV_FOLDING='8,4,1' ENV_VFOLD_KPOINT_BATCH=64 ENV_VFOLD_SBORN_GSCALE=1"
+    tst2=${tst/k64g1/k1}
   elif [ "${tst}" == "n100f841k1" ]; then
     env="ENV_NEVENTS=100 ENV_FOLDING='8,4,1' ENV_VFOLD_KPOINT_BATCH=1"
     tst2=${tst}
@@ -225,7 +225,7 @@ for tst in ${tsts}; do
     echo | tee -a $outL
     echo "-------------------------------------------------------------------------------" | tee -a $outL
     echo | tee -a $outL
-    echo "Launch ${PROC} tests on ${host}:" | tee -a $outL
+    echo "Launch ${PROC} tests on $(hostname):" | tee -a $outL
     cmd="./vfold/myBackends.sh ${ninjaAndCollier} ${launch} ${refstep}"
     echo "  ${env} \\" | tee -a $outL
     echo "    ${cmd}" | tee -a $outL
