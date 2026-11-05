@@ -33,9 +33,10 @@ epem_bbbxbx (eebbbb, channel GF11.0):
   runs in vfold5381 (MG5 3.8.1, aS(MZ)=0.118), as the MINT1 upper envelope
   must be computed with Delta
 
-epem_bbxmummupg (eemumubbg, channels GF58.0 and GF11.0):
-- GF58.0 is the channel used by default since step 14q. GF11.0 was used until
-  then and it is kept to compare to older results, but it is not representative:
+epem_bbxmummupg (eemumubbg, channel GF58.0):
+- GF58.0 is the channel used since step 14q. GF11.0 was used until then (its
+  grids were removed in step 14s, they are in the git history and in the branch
+  vfold5381cgOldGrids), but it is not representative:
   it has 0.1% of the ABS integral of all channels (rank 28 of 58). GF58.0 has
   13.1% (rank 3), negative weights of 24.7% (GF11.0: 37.7%) and a ratio of ABS
   virtual to ABS integral of 0.238 (GF11.0: 0.297), from the MINT1 logs of

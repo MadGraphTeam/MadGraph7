@@ -247,6 +247,18 @@ if [ "${ENV_PHYSICS}" == "1" ]; then
   # No dumps: the extra MINT1 dump iteration is included in the MINT1 results and biases them
   export ENV_FVZ_NDUMP=0
 fi
+# Check that the -o grids exist for the selected channels (before changing any card)
+if [ "$oOpt" == "-o" ] && [ "${ENV_VFOLD_CHANNELS}" != "" ]; then
+  for Pdir in $(cd SubProcesses; ls -d P*); do
+    for gf in ${ENV_VFOLD_CHANNELS}; do
+      if [ ! -d ${refgen}/${Pdir}/GF${gf} ]; then
+        echo "ERROR! No -o grids for channel GF${gf} (missing directory ${refgen}/${Pdir}/GF${gf})"
+        echo "Available channels: $(ls ${refgen}/${Pdir} 2>/dev/null | tr '\n' ' ')"
+        exit 1
+      fi
+    done
+  done
+fi
 cp Cards/run_card.dat Cards/run_card.dat.original
 cp Source/run_card.inc Source/run_card.inc.original
 cp SubProcesses/randinit SubProcesses/randinit.original
