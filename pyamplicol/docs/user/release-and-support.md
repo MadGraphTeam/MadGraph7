@@ -73,9 +73,10 @@ Community build of symbolica-dev's `community` branch with
 symbolica-dev/symbolica#163), and the native code builds Symbolica from that
 branch and pull request at a pinned revision. It also uses SymJIT 2.28.3,
 ufo-model-loader 1.0.1, and NinjaRS and oneloopmaster from their `main`
-branches for the one-loop reduction. The model compiler version is 17:
-compiled models, prepared `.pyamplicol-model` bundles and one-loop artifacts
-written by an earlier version are refused; regenerate them.
+branches for the one-loop reduction. Tree and one-loop process artifacts
+load only in the version that wrote them, and the model compiler version is
+now 17: regenerate artifacts, compiled models and prepared
+`.pyamplicol-model` bundles written by an earlier version.
 
 ## 1.0.1 release
 
