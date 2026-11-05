@@ -7,9 +7,6 @@ import os
 import tomllib
 from pathlib import Path
 
-from packaging.requirements import Requirement
-from packaging.utils import parse_wheel_filename
-
 ENVIRONMENT = "PYAMPLICOL_CANDIDATE_SYMBOLICA_WHEEL"
 
 
@@ -25,6 +22,11 @@ def existing_community_wheel(
     value = os.environ.get(ENVIRONMENT) if value is None else value
     if value is None:
         return None
+    # Imported here: dependencies/install_dependencies.py imports this module
+    # on a bare interpreter, and only this opt-in lane needs packaging.
+    from packaging.requirements import Requirement
+    from packaging.utils import parse_wheel_filename
+
     wheel = Path(value).expanduser().resolve()
     if not wheel.is_file():
         raise RuntimeError(f"existing Community wheel is missing: {wheel}")
