@@ -22,6 +22,8 @@ from itertools import chain, permutations
 
 import numpy as np
 
+from .colour_powers import full_minimum_power
+
 # The largest ladder whose dense kernel is built (two anchors plus the
 # symmetric-group FFT degree of ten); larger ladders give the same exact
 # integers from ``ladder_overlap``.  A resource choice, not a cap.  The
@@ -55,16 +57,6 @@ def _minimum_power(
         return full_minimum_power(total_gluons, full_col_acc)
     depth = 2 if accuracy == "nlc" else 0
     return max(total_gluons - depth, 0)
-
-
-def full_minimum_power(coloured_labels: int, full_col_acc: int | None) -> int:
-    """The lowest N_c power a 'full' colour factor keeps: none dropped
-    (``full_col_acc`` None, every caller's default), or the legacy depth of
-    ``2 * full_col_acc`` powers below the leading one."""
-
-    if full_col_acc is None:
-        return 0
-    return max(coloured_labels - 2 * full_col_acc, 0)
 
 
 def _permutation_ranks(rows: np.ndarray) -> np.ndarray:

@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from fractions import Fraction
 from functools import lru_cache
 
-from .adjoint_kernel import full_minimum_power
+from .colour_powers import full_minimum_power
 from .contraction_trace import (
     _check_nlc,
     _check_nlc_one_open_line,
