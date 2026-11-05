@@ -339,3 +339,49 @@ class BuiltinSMDefinitionMixin:
                     ),
                 ]
             )
+            # The neutrino's neutral current and the remaining charged-current
+            # orientations: every lepton pair fuses to its gauge boson in both
+            # input orders, and a lepton absorbs a gauge boson from either
+            # side, as the charged leptons and photon / Z above. A colour-
+            # singlet pair may meet in either order, so a missing orientation
+            # silently drops diagrams (e+ e- > w+ w- lost its t-channel
+            # neutrino exchange and was not gauge invariant).
+            ccc = (self.charged_current_coupling(), 0.0)
+            vertices.extend(
+                [
+                    Vertex(
+                        21, (neutrino, -neutrino, 23), self.z_fermion_coupling(neutrino)
+                    ),
+                    Vertex(
+                        22,
+                        (-neutrino, neutrino, 23),
+                        self.z_fermion_coupling(-neutrino),
+                    ),
+                    Vertex(
+                        10, (neutrino, 23, neutrino), self.z_fermion_coupling(neutrino)
+                    ),
+                    Vertex(
+                        11,
+                        (-neutrino, 23, -neutrino),
+                        self.z_fermion_coupling(-neutrino),
+                    ),
+                    Vertex(
+                        23, (23, neutrino, neutrino), self.z_fermion_coupling(neutrino)
+                    ),
+                    Vertex(
+                        24,
+                        (23, -neutrino, -neutrino),
+                        self.z_fermion_coupling(-neutrino),
+                    ),
+                    Vertex(21, (neutrino, -charged, 24), ccc),
+                    Vertex(22, (-neutrino, charged, -24), ccc),
+                    Vertex(10, (charged, 24, neutrino), ccc),
+                    Vertex(10, (neutrino, -24, charged), ccc),
+                    Vertex(11, (-charged, -24, -neutrino), ccc),
+                    Vertex(11, (-neutrino, 24, -charged), ccc),
+                    Vertex(23, (24, charged, neutrino), ccc),
+                    Vertex(23, (-24, neutrino, charged), ccc),
+                    Vertex(24, (-24, -charged, -neutrino), ccc),
+                    Vertex(24, (24, -neutrino, -charged), ccc),
+                ]
+            )

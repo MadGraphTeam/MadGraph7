@@ -29,7 +29,7 @@ def test_model_builtin_sm_preserves_production_tables_and_couplings() -> None:
     model = BuiltinSMModel()
 
     assert len(model.particles) == 24
-    assert len(model.vertices) == 211
+    assert len(model.vertices) == 259
     assert model.sin_weak == 0.47143025548407230
     assert model.mass(23) == 91.188
     assert model.width(23) == 2.441404
