@@ -45,6 +45,12 @@ echo "" | tee -a $out
 echo "EXECUTING: $0 ${ARGS}" | tee -a $out
 echo "" | tee -a $out
 
+# Set up ccache (otherwise $HOME/.ccache is used): as in buildCudacppLibs.sh, use the
+# directory shared by all process directories, if there is one, or else a local one
+if [ ! -d ../ccache ]; then mkdir -p ccache; export CCACHE_DIR=$(cd ccache; pwd -P)
+else export CCACHE_DIR=$(cd ../ccache; pwd -P); fi
+echo CCACHE_DIR=${CCACHE_DIR} | tee -a $out
+
 # Set up f90cache (disabled to avoid any module-related issues)
 unset F90CACHE_DIR
 unset F90CACHE_LOGFILE
