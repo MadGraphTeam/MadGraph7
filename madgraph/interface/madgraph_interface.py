@@ -8125,6 +8125,16 @@ This implies that with decay chains:
 
                 logger.info(f"Defined boundstate {boundstate_label} = {bound_state}")
 
+    def generated_processes(self):
+        """The processes of the generated amplitudes, decay chains unrolled: a
+        DecayChainAmplitude has no 'process' of its own."""
+
+        for amp in self._curr_amps or []:
+            amps = amp.get_amplitudes() if hasattr(amp, 'get_amplitudes') else [amp]
+            for one_amp in amps:
+                if isinstance(one_amp, dict) and 'process' in one_amp:
+                    yield one_amp.get('process')
+
     def has_onium_amplitude(self):
         """True if one of the generated processes has a bound state."""
 
@@ -12610,10 +12620,10 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # particle there is no physical cross section (no onium beam), only
         # the matrix element, which serves the time-reversal checks.
         if self._export_format != 'standalone_fortran' and any(
-                amp.get_ninitial_physical() > 1 and any(
+                proc.get_ninitial_physical() > 1 and any(
                     leg.get('onium') and leg.get('state') == False
-                    for leg in amp.get('process').get('legs'))
-                for amp in self._curr_amps):
+                    for leg in proc.get('legs'))
+                for proc in self.generated_processes()):
             raise self.InvalidCmd("An incoming onium with a second incoming "
                     "particle can only be written out with 'output "
                     "standalone_fortran' (a matrix element without a cross "
@@ -12824,8 +12834,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             # Bound states are the exception: the Fock states of one physical
             # onium share the process id by construction (they add up to its
             # width), and only the grouped exporter writes onium output.
-            has_onia = any(leg.get('onium') for amp in self._curr_amps
-                           for leg in amp.get('process').get('legs'))
+            has_onia = self.has_onium_amplitude()
             if self._curr_amps and self._curr_amps[0].get_ninitial_physical() == 1 and \
                                   len(self._curr_amps)>1 and not has_onia:
                 
@@ -12852,8 +12861,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # Only the grouped madevent exporter writes the onium files (onia.inc,
         # the onia card, the onium channels): refuse the plain one.
         if not group_processes and self._export_format == 'madevent' and \
-           any(leg.get('onium') for amp in self._curr_amps
-               for leg in amp.get('process').get('legs')):
+           self.has_onium_amplitude():
             raise self.InvalidCmd("Bound states (onia) need grouped subprocesses "
                 "with 'output madevent': set group_subprocesses to Auto or True.")
     
