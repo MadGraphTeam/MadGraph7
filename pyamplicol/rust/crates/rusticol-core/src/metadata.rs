@@ -284,7 +284,7 @@ impl ProcessPhysics {
                 "runtime physics has an invalid process or coverage value",
             ));
         }
-        validate_public_id(&self.process_id, "process id")?;
+        validate_process_id(&self.process_id, "process id")?;
         let expected_components = ["E", "px", "py", "pz"];
         let mut momentum_slots = BTreeSet::new();
         for (index, particle) in self.external_particles.iter().enumerate() {
@@ -613,9 +613,21 @@ impl ProcessPhysics {
     }
 }
 
+/// A process id: a public id that also names a path component (255 bytes,
+/// the file-name limit of the supported platforms).
+fn validate_process_id(value: &str, description: &str) -> RusticolResult<()> {
+    if value.len() > 255 {
+        return Err(RusticolError::artifact(format!(
+            "invalid {description} {value:?}: a path-component id holds at most 255 bytes"
+        )));
+    }
+    validate_public_id(value, description)
+}
+
+/// A public id's characters. Helicity, colour and reduction-group ids grow
+/// with the legs (`h:+1,-1,...`, `flow:...`) and name no path: no length cap.
 fn validate_public_id(value: &str, description: &str) -> RusticolResult<()> {
     let valid = !value.is_empty()
-        && value.len() <= 255
         && value.bytes().enumerate().all(|(index, byte)| {
             byte.is_ascii_alphanumeric()
                 || (index > 0 && matches!(byte, b'.' | b'_' | b':' | b'+' | b',' | b'~' | b'-'))

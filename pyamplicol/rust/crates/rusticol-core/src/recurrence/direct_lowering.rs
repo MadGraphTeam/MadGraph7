@@ -220,6 +220,8 @@ impl PreparedDirectExecutorCatalog {
                 )));
             }
         }
+        // The count is a u32 (`direct_executor_count`), checked once here.
+        u32_len("prepared direct executor count", roles_by_id.len())?;
         let executor_roles = roles_by_id
             .into_values()
             .collect::<Vec<_>>()
@@ -236,6 +238,7 @@ impl PreparedDirectExecutorCatalog {
     }
 
     pub fn direct_executor_count(&self) -> u32 {
+        // Checked to fit u32 at construction.
         self.executor_roles.len() as u32
     }
 

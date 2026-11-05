@@ -2607,7 +2607,7 @@ fn materialized_helicity_direct_total_plan_cache_is_artifact_bounded() {
             )
             .unwrap();
     }
-    let expected_capacity = physics.manifest.helicities.len().clamp(16, 512);
+    let expected_capacity = physics.manifest.helicities.len().max(16);
     assert_eq!(
         amplitude.materialized_helicity_direct_total_plan_capacity,
         expected_capacity

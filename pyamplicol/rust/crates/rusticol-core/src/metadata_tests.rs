@@ -112,3 +112,18 @@ fn momentum_slots_must_be_a_complete_permutation() {
     assert_eq!(error.kind(), crate::RusticolErrorKind::Artifact);
     assert!(error.to_string().contains("momentum slot"));
 }
+
+#[test]
+fn leg_dependent_public_ids_have_no_length_cap() {
+    // A 100-leg helicity id (3n + 1 characters) is past the old 255-byte cap.
+    let helicity = format!("h:{}", vec!["+1"; 100].join(","));
+    assert!(helicity.len() > 255);
+    validate_public_id(&helicity, "helicity id").unwrap();
+    validate_public_id(&format!("flow:{}", vec!["7"; 200].join(",")), "color id").unwrap();
+    // A process id names a path component: 255 bytes at most.
+    validate_process_id(&"p".repeat(255), "process id").unwrap();
+    let error = validate_process_id(&"p".repeat(256), "process id").unwrap_err();
+    assert!(error.message().contains("255 bytes"), "{error:?}");
+    assert!(validate_public_id("", "helicity id").is_err());
+    assert!(validate_public_id("h:+1/2", "helicity id").is_err());
+}

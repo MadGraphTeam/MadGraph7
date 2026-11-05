@@ -1798,7 +1798,7 @@ impl DirectSingletonContributionFanoutProgram {
             }
             groups[group_index] = Some(DirectSingletonFanoutGroup {
                 direct_executor_id: group.direct_executor_id,
-                row_count: rows.len() as u32,
+                row_count: crate::narrow::checked::<u32>(rows.len(), "singleton fanout rows")?,
                 step_start,
                 step_count,
                 raw,

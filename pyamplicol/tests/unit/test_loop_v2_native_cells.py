@@ -364,9 +364,11 @@ def test_stored_dipole_orbits_are_validated(slices):
     for legs in (
         [coloured[0], *coloured[:-1]],
         [*coloured[1:], coloured[0]],
-        [[coloured[0][0], 6], *coloured[1:]],
+        # A sextet has a Casimir (C2 = 10/3); a representation the colour
+        # code does not name is refused.
+        [[coloured[0][0], 10], *coloured[1:]],
     ):
-        with pytest.raises(ValueError, match=r"leg order|representation 6"):
+        with pytest.raises(ValueError, match=r"leg order|representation 10"):
             dipoles.operators(dipoles.load(json.dumps(dict(stored, coloured=legs))))
 
 

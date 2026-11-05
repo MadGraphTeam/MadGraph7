@@ -2887,25 +2887,22 @@ fn merge_execution_report(
         return Ok(());
     };
     target.cache_hit &= report.cache_hit;
-    macro_rules! checked_add_report_field {
+    // Diagnostic counters summed over the point tiles: u64 accumulators
+    // (saturating, unreachable at 2^64), so a diagnostic never refuses an
+    // evaluation.
+    macro_rules! add_report_field {
         ($field:ident) => {
-            target.$field = target.$field.checked_add(report.$field).ok_or_else(|| {
-                RusticolError::invalid_argument(concat!(
-                    "on-the-fly contracted execution report ",
-                    stringify!($field),
-                    " exceeds u32"
-                ))
-            })?;
+            target.$field = target.$field.saturating_add(report.$field);
         };
     }
-    checked_add_report_field!(source_calls);
-    checked_add_report_field!(source_rows);
-    checked_add_report_field!(contribution_calls);
-    checked_add_report_field!(contribution_rows);
-    checked_add_report_field!(finalization_calls);
-    checked_add_report_field!(finalization_rows);
-    checked_add_report_field!(closure_calls);
-    checked_add_report_field!(closure_rows);
+    add_report_field!(source_calls);
+    add_report_field!(source_rows);
+    add_report_field!(contribution_calls);
+    add_report_field!(contribution_rows);
+    add_report_field!(finalization_calls);
+    add_report_field!(finalization_rows);
+    add_report_field!(closure_calls);
+    add_report_field!(closure_rows);
     Ok(())
 }
 
@@ -3006,14 +3003,16 @@ fn profile_from_report(
     point_count: u32,
     report: OnTheFlyQueryFamilyExecutionReportV1,
 ) -> RuntimeProfile {
-    let calls = u64::from(report.source_calls)
-        + u64::from(report.contribution_calls)
-        + u64::from(report.finalization_calls)
-        + u64::from(report.closure_calls);
-    let rows = u64::from(report.source_rows)
-        + u64::from(report.contribution_rows)
-        + u64::from(report.finalization_rows)
-        + u64::from(report.closure_rows);
+    let calls = report
+        .source_calls
+        .saturating_add(report.contribution_calls)
+        .saturating_add(report.finalization_calls)
+        .saturating_add(report.closure_calls);
+    let rows = report
+        .source_rows
+        .saturating_add(report.contribution_rows)
+        .saturating_add(report.finalization_rows)
+        .saturating_add(report.closure_rows);
     direct_profile_from_delta(
         total,
         parameter_setup,
@@ -3022,14 +3021,14 @@ fn profile_from_report(
         DirectProfileDelta {
             direct_execution: execution,
             execution: DirectExecutionCounters {
-                source_calls: u64::from(report.source_calls),
-                source_rows: u64::from(report.source_rows),
-                contribution_calls: u64::from(report.contribution_calls),
-                contribution_rows: u64::from(report.contribution_rows),
-                finalization_calls: u64::from(report.finalization_calls),
-                finalization_rows: u64::from(report.finalization_rows),
-                closure_calls: u64::from(report.closure_calls),
-                closure_rows: u64::from(report.closure_rows),
+                source_calls: report.source_calls,
+                source_rows: report.source_rows,
+                contribution_calls: report.contribution_calls,
+                contribution_rows: report.contribution_rows,
+                finalization_calls: report.finalization_calls,
+                finalization_rows: report.finalization_rows,
+                closure_calls: report.closure_calls,
+                closure_rows: report.closure_rows,
                 ..DirectExecutionCounters::default()
             },
             traffic: DirectArenaTrafficCounters {

@@ -166,7 +166,9 @@ struct Recursion<'a> {
     orders: OrderSpace,
     cap: OrderVec,
     loop_orders: Vec<u32>,
-    corrections: u64,
+    /// The correction order names, sorted and distinct (any number of
+    /// coupling-order names: no name bitmask).
+    corrections: Vec<u16>,
     eligible: Vec<bool>,
     current_orders: Vec<u32>,
     currents_by_mask: HashMap<LegSet, (usize, usize)>,
@@ -181,43 +183,25 @@ struct Recursion<'a> {
 
 impl<'a> Recursion<'a> {
     fn new(input: &'a FamilyInput) -> Result<Self, String> {
-        let legs = input.legs.len();
-        if legs == 0 || legs > 64 {
-            return Err(format!(
-                "the native family recursion takes 1..=64 legs, not {legs}"
-            ));
-        }
-        let names = input
-            .corrections
-            .iter()
-            .chain(input.cap.iter().map(|(name, _)| name))
-            .copied()
-            .max()
-            .unwrap_or(0);
-        if names >= 64 {
-            return Err("more than 64 coupling-order names".into());
-        }
-        let full = if legs == 64 {
-            u64::MAX
-        } else {
-            (1u64 << legs) - 1
-        };
+        let full = super::super::bounds::check_legs(input.legs.len())?;
+        // Block currents are `u32` ids below (`attachments`).
+        crate::narrow::checked_str::<u32>(input.currents.len(), "family block-current count")?;
         let mut orders = OrderSpace::new();
         let current_orders = input
             .currents
             .iter()
             .map(|current| orders.intern(current.orders.clone()))
-            .collect();
+            .collect::<Result<_, _>>()?;
         let vertex_orders = input
             .vertices
             .iter()
             .map(|vertex| orders.intern(vertex.orders.clone()))
-            .collect();
+            .collect::<Result<_, _>>()?;
         let loop_orders = input
             .loop_orders
             .iter()
             .map(|order| orders.intern(order.clone()))
-            .collect();
+            .collect::<Result<_, _>>()?;
         let mut currents_by_mask: HashMap<LegSet, (usize, usize)> = HashMap::default();
         for (index, current) in input.currents.iter().enumerate() {
             let entry = currents_by_mask
@@ -241,10 +225,12 @@ impl<'a> Recursion<'a> {
             orders,
             cap,
             loop_orders,
-            corrections: input
-                .corrections
-                .iter()
-                .fold(0, |bits, &name| bits | (1u64 << name)),
+            corrections: {
+                let mut names = input.corrections.clone();
+                names.sort_unstable();
+                names.dedup();
+                names
+            },
             eligible,
             current_orders,
             currents_by_mask,
@@ -283,6 +269,7 @@ impl<'a> Recursion<'a> {
         if fields.len() == 1 {
             for index in self.currents(mask) {
                 if self.input.currents[index].field == fields[0] {
+                    // Below the block-current count (checked in `new`).
                     out.push(vec![index as u32]);
                 }
             }
@@ -311,7 +298,7 @@ impl<'a> Recursion<'a> {
                             if self.input.currents[index].field == name {
                                 for tail in &tails {
                                     let mut item = Vec::with_capacity(tail.len() + 1);
-                                    item.push(index as u32);
+                                    item.push(index as u32); // checked count
                                     item.extend_from_slice(tail);
                                     out.push(item);
                                 }
@@ -333,19 +320,21 @@ impl<'a> Recursion<'a> {
         out
     }
 
-    fn intern_position(&mut self, vertex: u32, blocks: Vec<u32>) -> u32 {
+    fn intern_position(&mut self, vertex: u32, blocks: Vec<u32>) -> Result<u32, String> {
         let position = Position { vertex, blocks };
         if let Some(&id) = self.position_index.get(&position) {
-            return id;
+            return Ok(id);
         }
         let mut orders = self.vertex_orders[vertex as usize];
         let mut mask = 0;
         for &block in &position.blocks {
-            orders = self.orders.add(orders, self.current_orders[block as usize]);
+            orders = self
+                .orders
+                .add(orders, self.current_orders[block as usize])?;
             mask |= self.input.currents[block as usize].mask;
         }
         let template = &self.input.vertices[vertex as usize];
-        let id = self.positions.len() as u32;
+        let id = crate::narrow::checked_str(self.positions.len(), "family position id")?;
         self.position_data.push(PositionData {
             mask,
             orders,
@@ -354,13 +343,13 @@ impl<'a> Recursion<'a> {
         });
         self.position_index.insert(position.clone(), id);
         self.positions.push(position);
-        id
+        Ok(id)
     }
 
     /// `_positions(mask, species)`.
-    fn positions(&mut self, mask: LegSet, species: u32) -> Vec<u32> {
+    fn positions(&mut self, mask: LegSet, species: u32) -> Result<Vec<u32>, String> {
         if let Some(found) = self.by_mask_species.get(&(mask, species)) {
-            return found.clone();
+            return Ok(found.clone());
         }
         let size = mask.count_ones() as usize;
         let mut out = Vec::new();
@@ -377,7 +366,7 @@ impl<'a> Recursion<'a> {
             }
             let attached = template.attached.clone();
             for blocks in self.attachments(mask, &attached) {
-                let id = self.intern_position(vertex, blocks);
+                let id = self.intern_position(vertex, blocks)?;
                 if self
                     .orders
                     .within(self.position_data[id as usize].orders, &self.cap)
@@ -387,22 +376,28 @@ impl<'a> Recursion<'a> {
             }
         }
         self.by_mask_species.insert((mask, species), out.clone());
-        out
+        Ok(out)
     }
 
     /// `_closable(remaining, species, cut, orders)`.
-    fn closable(&mut self, remaining: LegSet, species: u32, cut: u32, orders: u32) -> bool {
+    fn closable(
+        &mut self,
+        remaining: LegSet,
+        species: u32,
+        cut: u32,
+        orders: u32,
+    ) -> Result<bool, String> {
         let key = (remaining, species, cut, orders);
         if let Some(&found) = self.closable.get(&key) {
-            return found;
+            return Ok(found);
         }
         let mut result = false;
         let mut sub = remaining;
         'outer: while sub != 0 {
-            for position in self.positions(sub, species) {
+            for position in self.positions(sub, species)? {
                 let data = &self.position_data[position as usize];
                 let (loop_out, position_orders) = (data.loop_out, data.orders);
-                let total = self.orders.add(orders, position_orders);
+                let total = self.orders.add(orders, position_orders)?;
                 if !self.orders.within(total, &self.cap) {
                     continue;
                 }
@@ -411,7 +406,7 @@ impl<'a> Recursion<'a> {
                         result = true;
                         break 'outer;
                     }
-                } else if self.closable(remaining ^ sub, loop_out, cut, total) {
+                } else if self.closable(remaining ^ sub, loop_out, cut, total)? {
                     result = true;
                     break 'outer;
                 }
@@ -419,7 +414,7 @@ impl<'a> Recursion<'a> {
             sub = (sub - 1) & remaining;
         }
         self.closable.insert(key, result);
-        result
+        Ok(result)
     }
 
     fn mass_of_species(&self, field: u32) -> Result<u32, String> {
@@ -563,10 +558,10 @@ pub fn generate_families(input: &FamilyInput) -> Result<FamilyOutput, String> {
             let mut sub = remaining;
             while sub != 0 {
                 if node != ROOT || sub & first != 0 {
-                    for position in recursion.positions(sub, species) {
+                    for position in recursion.positions(sub, species)? {
                         let data = &recursion.position_data[position as usize];
                         let (loop_out, position_orders) = (data.loop_out, data.orders);
-                        let total = recursion.orders.add(orders, position_orders);
+                        let total = recursion.orders.add(orders, position_orders)?;
                         if !recursion.orders.within(total, &recursion.cap) {
                             continue;
                         }
@@ -582,9 +577,14 @@ pub fn generate_families(input: &FamilyInput) -> Result<FamilyOutput, String> {
                                 positions.push(position);
                                 close(&recursion, cut, positions, &mut admitted, &mut rejected)?;
                             }
-                        } else if recursion.closable(remaining ^ sub, loop_out, cut, total) {
+                        } else if recursion.closable(remaining ^ sub, loop_out, cut, total)? {
+                            // Node ids stay below the ROOT sentinel (u32::MAX).
+                            let id = crate::narrow::checked_str::<u32>(
+                                nodes.len() + 1,
+                                "family prefix node count",
+                            )? - 1;
                             nodes.push((node, position));
-                            stack.push(((nodes.len() - 1) as u32, used | sub, loop_out, total));
+                            stack.push((id, used | sub, loop_out, total));
                         }
                     }
                 }
@@ -596,29 +596,34 @@ pub fn generate_families(input: &FamilyInput) -> Result<FamilyOutput, String> {
     keys.sort_unstable();
     let mut output = FamilyOutput::default();
     let mut states: HashMap<(i64, u32), u32> = HashMap::default();
-    let mut intern = |output: &mut FamilyOutput, parent: i64, label: u32, species: u32| -> u32 {
-        *states.entry((parent, label)).or_insert_with(|| {
+    let mut intern =
+        |output: &mut FamilyOutput, parent: i64, label: u32, species: u32| -> Result<u32, String> {
+            if let Some(&state) = states.get(&(parent, label)) {
+                return Ok(state);
+            }
+            let state =
+                crate::narrow::checked_str(output.state_parent.len(), "family prefix state id")?;
             output.state_parent.push(parent);
             output
                 .state_position
                 .push(if parent < 0 { u32::MAX } else { label });
             output.state_species.push(species);
-            (output.state_parent.len() - 1) as u32
-        })
-    };
+            states.insert((parent, label), state);
+            Ok(state)
+        };
     let mut family = |output: &mut FamilyOutput,
                       key: FamilyKey,
                       routings: Vec<(u32, Vec<u32>, bool)>|
-     -> Family {
+     -> Result<Family, String> {
         let mut closures = Vec::with_capacity(routings.len());
         let mut rank = 0;
         for (cut, positions, symmetric) in routings {
-            let mut state = intern(output, -1, cut, cut);
+            let mut state = intern(output, -1, cut, cut)?;
             let mut degree = 0;
             for position in positions {
                 let data = &recursion.position_data[position as usize];
                 degree += data.q_degree;
-                state = intern(output, i64::from(state), position, data.loop_out);
+                state = intern(output, i64::from(state), position, data.loop_out)?;
             }
             rank = rank.max(degree);
             closures.push(Closure {
@@ -627,11 +632,11 @@ pub fn generate_families(input: &FamilyInput) -> Result<FamilyOutput, String> {
                 multiplicity: input.multiplicity.get(cut as usize).copied().unwrap_or(1),
             });
         }
-        Family {
+        Ok(Family {
             key,
             rank,
             closures,
-        }
+        })
     };
     let mut scaleless = Vec::new();
     for key in keys {
@@ -642,12 +647,12 @@ pub fn generate_families(input: &FamilyInput) -> Result<FamilyOutput, String> {
             scaleless.push((key, routings));
             continue;
         }
-        let built = family(&mut output, key, routings);
+        let built = family(&mut output, key, routings)?;
         output.families.push(built);
     }
     // The scaleless families after every admitted one.
     for (key, routings) in scaleless {
-        let built = family(&mut output, key, routings);
+        let built = family(&mut output, key, routings)?;
         output.scaleless_families.push(built);
     }
     let mut logged: Vec<(FamilyKey, Rejection)> = rejected.into_iter().collect();
@@ -688,21 +693,22 @@ fn close(
     let masks: Vec<LegSet> = positions.iter().map(|&id| data(id).mask).collect();
     let mut masses = Vec::with_capacity(count);
     let mut species_ok = true;
-    let mut vertex_names = 0u64;
+    let mut vertex_corrected = false;
+    let corrections = recursion.corrections.as_slice();
     for &id in &positions {
         let species = recursion.species(data(id).loop_out)?;
         masses.push(recursion.mass_of_species(data(id).loop_out)?);
-        let bits = species
+        species_ok &= species
             .perturbative
             .iter()
-            .fold(0u64, |bits, &name| bits | (1u64 << name));
-        species_ok &= bits & recursion.corrections != 0;
-        vertex_names |= recursion
-            .orders
-            .names(recursion.vertex_orders[recursion.positions[id as usize].vertex as usize]);
+            .any(|name| corrections.binary_search(name).is_ok());
+        vertex_corrected |= recursion.orders.names_meet(
+            recursion.vertex_orders[recursion.positions[id as usize].vertex as usize],
+            corrections,
+        );
     }
     let key = canonical_family_key(&masks, &masses);
-    if !(species_ok && vertex_names & recursion.corrections != 0) {
+    if !(species_ok && vertex_corrected) {
         return Ok(());
     }
     if let Some(reason) = recursion.selection_rejection(&positions)? {

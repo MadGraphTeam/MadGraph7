@@ -62,8 +62,9 @@
 //! second fused-entry check):
 //! - a vertex id at or beyond the number of terms that carry one (the loader
 //!   requires every id up to the largest to be defined by a term);
-//! - a family reading of more entries than legs, or a family rank above its
-//!   propagators + 2;
+//! - a family reading of more entries than legs, or a family rank the
+//!   reducer does not admit (`bounds::rank_refusal`: NinjaRS reduces rank
+//!   <= N+2);
 //! - a schedule-B step whose output rank `rank_in + degree` exceeds its
 //!   family's rank (a trace step's is checked, and an open step's output
 //!   feeds a later step's input rank); a schedule-M state above the largest
@@ -74,11 +75,13 @@
 //!   `tensor_layout::monomial_index` computes recursively, one call per unit
 //!   of exponent (an exponent of 2^20 overflows the stack before the check,
 //!   and exponents summing to 2^32 wrap the layout's `u32` degree to 0);
-//! - a fused entry of q-degree [`RANKS`] or more, whatever its content's
+//! - a fused entry of q-degree above the largest rank the reducer admits
+//!   over the plan's legs (`bounds::largest_rank`), whatever its content's
 //!   degree: not implied for a content no step reads, whose degree nothing
-//!   checks, but no plan has one (a content's degree is at most its step's,
-//!   at most its family's rank, at most legs + 2 < 66), and the recursion
-//!   above has no other bound;
+//!   checks, but no plan has one (a content's degree is at most a family's
+//!   rank, the family of a pruned selection's content included, and a family
+//!   has at most one propagator per leg), and the recursion above has no
+//!   other bound;
 //! - a decimal weight whose power of ten is 2^32 or more (numerica panics).
 
 use super::super::links::Row;
@@ -100,12 +103,6 @@ use symbolica::domains::rational::Rational;
 /// (five to seven legs, one observable column); a plan needing more (tens of
 /// columns at seven legs) gets a padded member.
 pub const DERIVED_PER_BYTE: u64 = 8192;
-
-/// The largest rank or degree a monomial table of a valid plan can have, and
-/// the bound of a fused entry's q-degree: a family rank is at most its
-/// propagators + 2, and a family has at most one propagator per leg
-/// (`legs < 64`).
-pub const RANKS: usize = 66;
 
 /// GMP's allocations, summed, per byte and bit of length of a
 /// multi-precision weight's numbers (`Tally::weight`; measured at most 4.9).
@@ -459,21 +456,44 @@ fn ncoeff(rank: u64) -> u64 {
 /// A helicity row restricted to legs (`links::Row`).
 const ROW: usize = size_of::<Row>();
 
-/// The (rank, degree) pairs whose monomial tables the derivations build.
+/// The (rank, degree) pairs whose monomial tables the derivations build,
+/// tracked for ranks and degrees up to the largest rank the reducer admits
+/// over the plan's legs (the largest any table of a valid plan has).
 struct Tables {
-    /// Fused edge tables `(source rank, content degree)`.
-    pairs: [[bool; RANKS]; RANKS],
+    /// The tracked ranks and degrees: `0..width`.
+    width: usize,
+    /// Fused edge tables `(source rank, content degree)`, row-major.
+    pairs: Vec<bool>,
     /// Per input rank of a candidate split step, the largest degree of its
     /// vertices (a vertex's degree is at most its content's).
-    split: [Option<usize>; RANKS],
-    /// Tables beyond [`RANKS`], counted per use.
+    split: Vec<Option<usize>>,
+    /// Tables beyond the tracked width, counted per use.
     beyond: u64,
 }
 
 impl Tables {
+    fn new(largest_rank: usize) -> RusticolResult<Self> {
+        let width = largest_rank
+            .checked_add(1)
+            .ok_or_else(|| invalid("the largest admitted rank"))?;
+        let cells = width
+            .checked_mul(width)
+            .ok_or_else(|| invalid("the largest admitted rank"))?;
+        let mut pairs = buffer(cells)?;
+        pairs.resize(cells, false);
+        let mut split = buffer(width)?;
+        split.resize(width, None);
+        Ok(Self {
+            width,
+            pairs,
+            split,
+            beyond: 0,
+        })
+    }
+
     fn pair(&mut self, tally: &mut Tally, rank: usize, degree: usize) {
-        if rank < RANKS && degree < RANKS {
-            self.pairs[rank][degree] = true;
+        if rank < self.width && degree < self.width {
+            self.pairs[rank * self.width + degree] = true;
         } else {
             // Beyond any valid plan (forward states only): counted per use.
             tally.products(rank as u64, degree as u64);
@@ -482,7 +502,7 @@ impl Tables {
     }
 
     fn split(&mut self, tally: &mut Tally, rank: usize, degree: usize) {
-        if rank < RANKS && degree < RANKS {
+        if rank < self.width && degree < self.width {
             let most = &mut self.split[rank];
             *most = Some(most.map_or(degree, |d| d.max(degree)));
         } else {
@@ -494,7 +514,7 @@ impl Tables {
     /// The tables, the list holding them and their index.
     fn finish(&self, tally: &mut Tally) {
         let mut count = self.beyond;
-        for (rank, degrees) in self.pairs.iter().enumerate() {
+        for (rank, degrees) in self.pairs.chunks_exact(self.width).enumerate() {
             for (degree, &used) in degrees.iter().enumerate() {
                 let split = self.split[rank].is_some_and(|most| degree <= most);
                 if used || split {
@@ -617,7 +637,8 @@ fn rows_of(counts: &[u64], mask: u64) -> u64 {
 }
 
 /// One content (`from_file`'s contents loop): its fused entries refused
-/// beyond its degree or [`RANKS`] (module docs), its two segment layouts
+/// beyond its degree or the largest admitted rank (module docs), its two
+/// segment layouts
 /// (entries and monomial indices kept, one repeated-entry set at a time),
 /// its terms' copies, and per vertex term the vertex `term_vertex` builds:
 /// its entries, their index and the content's fused-entry index
@@ -627,12 +648,13 @@ fn content(
     c: &ContentFile,
     vertex_terms: usize,
     named: &mut Vec<u64>,
+    largest_rank: usize,
 ) -> RusticolResult<(u64, u64)> {
     for e in &c.fused {
         let degree: u64 = e[2..].iter().map(|&x| u64::from(x)).sum();
         require(
-            degree <= c.degree as u64 && degree < RANKS as u64,
-            "a fused entry's q-degree above its content's",
+            degree <= c.degree as u64 && degree <= largest_rank as u64,
+            "a fused entry's q-degree above its content's or the reducer's largest rank",
         )?;
     }
     let fused = c.fused.len() as u64;
@@ -738,10 +760,32 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
         column_rows: _,
         column_weights: _,
     } = file;
+    // The upper leg boundary only (the leg masks derived below); the loader
+    // refuses an empty process itself.
+    if file.legs > crate::loop_v2::bounds::MAX_LEGS {
+        return Err(invalid(crate::loop_v2::bounds::leg_count_refusal(
+            file.legs,
+        )));
+    }
     require(
-        file.legs < 64 && file.helicities.len() == file.legs,
+        file.helicities.len() == file.legs,
         "plan helicities per leg differ from its legs",
     )?;
+    // The families' readings and ranks (the reducer's admission), and the
+    // largest family rank (merged states); every monomial table and fused
+    // entry is bounded by the largest rank the reducer admits over the legs.
+    let admitted_rank = crate::loop_v2::bounds::largest_rank(file.legs);
+    let mut largest_rank = 0;
+    for f in &file.families {
+        require(
+            f.sequence.len() <= file.legs,
+            "a family reading of more entries than legs",
+        )?;
+        if let Some(refusal) = crate::loop_v2::bounds::rank_refusal(f.sequence.len(), f.rank) {
+            return Err(invalid(format!("family rank: {refusal}")));
+        }
+        largest_rank = largest_rank.max(f.rank);
+    }
     let mut tally = Tally::default();
     let counts: Vec<u64> = file.helicities.iter().map(|h| h.len() as u64).collect();
     let (rows, columns) = (file.rows as u64, file.columns as u64);
@@ -768,7 +812,7 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
     let mut named = buffer::<u64>(most_rows.max().unwrap_or(0))?;
     tally.keep(file.contents.len() as u64, size_of::<Content>());
     for c in &file.contents {
-        let (rows_here, most) = content(&mut tally, c, vertex_terms, &mut named)?;
+        let (rows_here, most) = content(&mut tally, c, vertex_terms, &mut named, admitted_rank)?;
         term_rows.push(rows_here);
         multiplicity.push(most);
     }
@@ -826,11 +870,7 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
         multiplicity,
         parts: 0,
     };
-    let mut tables = Tables {
-        pairs: [[false; RANKS]; RANKS],
-        split: [None; RANKS],
-        beyond: 0,
-    };
+    let mut tables = Tables::new(admitted_rank)?;
 
     // Schedule B. Per family (`links::derive`, temporary for the family):
     // the Born rows, per step its output rows (at most its source rows and
@@ -843,13 +883,7 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
     let leaves: u64 = file.families.iter().map(|f| f.leaves.len() as u64).sum();
     tally.keep_grown(leaves, size_of::<Rational>());
     tally.map_grown(leaves, size_of::<(&str, u32)>());
-    let mut largest_rank = 0;
     for f in &file.families {
-        require(
-            f.sequence.len() <= file.legs && f.rank <= f.sequence.len() + 2,
-            "family rank exceeds propagators + 2",
-        )?;
-        largest_rank = largest_rank.max(f.rank);
         tally.keep_grown(f.leaves.len() as u64, size_of::<Leaf>());
         for leaf in &f.leaves {
             tally.weight(&leaf.weight)?;

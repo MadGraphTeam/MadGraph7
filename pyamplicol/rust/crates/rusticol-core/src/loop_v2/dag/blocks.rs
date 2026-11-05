@@ -22,7 +22,9 @@
 //! can be grouped for a DAG the native builder made or one Python encoded.
 
 use super::recursion::FxMap;
-use super::{ColumnarDag, DagError, DagResult, FERMION_LINE_REPRESENTATION, invalid, refused};
+use super::{
+    ColumnarDag, DagError, DagResult, FERMION_LINE_REPRESENTATION, id32, invalid, refused,
+};
 use serde::Deserialize;
 use std::collections::{BTreeSet, HashMap};
 
@@ -559,15 +561,16 @@ impl ColumnarDag {
         let mut block_of: Vec<u32> = Vec::with_capacity(self.current_count());
         for id in 0..self.current_count() {
             let key = key(id);
+            let current = id32(id, "DAG current id")?;
             match index.get(&key) {
                 Some(block) => {
-                    members[*block].1.push(id as u32);
-                    block_of.push(*block as u32);
+                    members[*block].1.push(current);
+                    block_of.push(id32(*block, "DAG block id")?);
                 }
                 None => {
-                    block_of.push(members.len() as u32);
+                    block_of.push(id32(members.len(), "DAG block id")?);
                     index.insert(key, members.len());
-                    members.push((id as u32, vec![id as u32]));
+                    members.push((current, vec![current]));
                 }
             }
         }

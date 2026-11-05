@@ -215,8 +215,6 @@ class SymmetricGroupColorContractionBlock:
             raise ValueError("symmetric-group degree must be an integer")
         if self.degree < 2:
             raise ValueError("symmetric-group degree must be at least two")
-        if self.degree > 10:
-            raise ValueError("symmetric-group degree exceeds the supported maximum 10")
         if self.component_count < 1:
             raise ValueError("symmetric-group color contraction requires a component")
         if not self.component_group_ids:

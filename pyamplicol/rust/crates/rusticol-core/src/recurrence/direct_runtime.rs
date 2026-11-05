@@ -2240,7 +2240,7 @@ impl DirectRecurrenceExecutionRuntime {
                 )
             })?;
         for (source_slot, selection) in selections.iter().enumerate() {
-            if selection.source_slot != source_slot as u32 {
+            if !crate::narrow::is_index(selection.source_slot, source_slot) {
                 return Err(RusticolError::integrity(
                     "direct recurrence union source selections are not in source-slot order",
                 ));
@@ -2549,7 +2549,10 @@ fn selected_replay_destination_program(
             }
             row_groups.push(DirectRowGroupDescriptor {
                 row_start: start as u64,
-                row_count: (row - start) as u32,
+                row_count: crate::narrow::checked::<u32>(
+                    row - start,
+                    "direct row-group row count",
+                )?,
                 ..*group
             });
         }

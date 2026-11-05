@@ -585,11 +585,8 @@ fn buckets<T: Carrier>(groups: &[Lanes<'_, T>]) -> ExecutionResult<Buckets> {
                 &lanes.coefficients[row * width..(row + 1) * width],
                 lanes.rank,
             );
-            if rank > lanes.n + 2 {
-                return Err(error(format!(
-                    "numerator rank {rank} exceeds propagators + 2 = {}",
-                    lanes.n + 2
-                )));
+            if let Some(refusal) = rusticol_core::loop_v2::bounds::rank_refusal(lanes.n, rank) {
+                return Err(error(refusal));
             }
             buckets
                 .entry((lanes.n, rank))

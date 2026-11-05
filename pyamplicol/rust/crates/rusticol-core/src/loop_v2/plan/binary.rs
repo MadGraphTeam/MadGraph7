@@ -124,7 +124,7 @@
 mod derive;
 mod json;
 
-pub use derive::{DERIVED_PER_BYTE, DeriveBound, RANKS, margin};
+pub use derive::{DERIVED_PER_BYTE, DeriveBound, margin};
 pub use json::OMITTED_WHEN_ABSENT;
 
 use super::{
@@ -2501,10 +2501,13 @@ mod tests {
         // before the loader checks its content's degree (a stack overflow at
         // 2^20), exponents whose u32 sum wraps to 0, and a degree beyond any
         // family's rank that its unread content allows.
+        // Past the largest rank the reducer admits over the plan's legs.
+        let beyond = born_rows_plan(4, 1, 1).legs;
+        let beyond = u32::try_from(crate::loop_v2::bounds::largest_rank(beyond) + 1).unwrap();
         for (name, exponents, degree) in [
             ("fused exponent", [0, 0, 0, 1 << 20], 0),
             ("fused wrap", [0, 1 << 31, 1 << 31, 0], 0),
-            ("fused rank", [0, 0, 0, RANKS as u32], 1000),
+            ("fused rank", [0, 0, 0, beyond], 1000),
         ] {
             let mut fused = born_rows_plan(4, 1, 1);
             let mut unread = ContentFile::fresh();

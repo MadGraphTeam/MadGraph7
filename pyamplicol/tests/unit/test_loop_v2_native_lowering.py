@@ -882,7 +882,7 @@ def _derivation_bombs(native, program: dict) -> dict[str, tuple[bytes, str]]:
         bombs[f"{name} json"] = (_text(plan), refused)
     for name, plan, expected in (
         ("vertex 2^40", vertex, "a vertex id beyond the terms"),
-        ("family rank 1e6", rank, "family rank exceeds propagators"),
+        ("family rank 1e6", rank, "NinjaRS reduces rank <= N+2"),
         ("fused exponent 2^20", exponent, "q-degree above its content's"),
     ):
         bombs[name] = (member(plan), expected)

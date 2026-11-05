@@ -70,6 +70,7 @@ from .families import (
     Position,
     PrefixGraph,
     _closed_loop_classes,
+    reducer_rank_refusal,
     retest_relabelling,
 )
 from .schedules import (
@@ -576,10 +577,10 @@ class NativeGeneration:
             out = {}
             for raw, rank, closures in raws:
                 key = _key(tables, raw)
-                if rank > len(key) + 2:
+                refusal = reducer_rank_refusal(len(key), rank)
+                if refusal is not None:
                     raise ValueError(
-                        f"family {key} has structural rank {rank} > N + 2, "
-                        "outside the integrand-reduction domain"
+                        f"family {key} has structural rank {rank}: {refusal}"
                     )
                 out[key] = Family(
                     key,

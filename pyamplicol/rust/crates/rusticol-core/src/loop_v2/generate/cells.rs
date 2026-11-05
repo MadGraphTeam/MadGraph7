@@ -558,7 +558,10 @@ pub fn contract(left: &Tensor, right: &Tensor) -> RusticolResult<Laurent> {
             "bra and ket connections must have identical typed output legs",
         ));
     }
-    let power = left.normalization + right.normalization;
+    let power = left
+        .normalization
+        .checked_add(right.normalization)
+        .ok_or_else(|| invalid("a colour normalisation power exceeds u32"))?;
     if power % 2 == 1 {
         return Err(invalid(
             "bra/ket normalization has an odd inverse sqrt(2) power",
@@ -678,11 +681,14 @@ pub fn connect(tensor: &Tensor, emissions: &[Emission]) -> RusticolResult<Tensor
         terms = combine_terms(next);
         legs.push((emitted, ADJOINT));
     }
-    Ok(Tensor::connected(
-        legs,
-        terms,
-        tensor.normalization + emissions.len() as u32,
-    ))
+    let normalization = crate::narrow::checked::<u32>(emissions.len(), "colour emissions")
+        .and_then(|count| {
+            tensor
+                .normalization
+                .checked_add(count)
+                .ok_or_else(|| invalid("a colour normalisation power exceeds u32"))
+        })?;
+    Ok(Tensor::connected(legs, terms, normalization))
 }
 
 /// The SU(N_c) completeness relation on the two occurrences of `label` in a

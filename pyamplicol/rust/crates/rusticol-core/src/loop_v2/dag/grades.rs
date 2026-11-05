@@ -22,7 +22,7 @@
 
 use super::input::DagInput;
 use super::recursion::{Current, Dag, FxMap, Interaction};
-use super::{ColourState, DagResult, invalid};
+use super::{ColourState, DagResult, id32, invalid};
 
 /// A current's key without its helicity ancestry: its block.
 type BlockKey = (u32, u64, i8, i32, u32, u32, u32, u32);
@@ -113,7 +113,7 @@ fn split_by_grade(dag: &mut Dag, u1: &[bool]) -> DagResult<()> {
     let mut first = Vec::with_capacity(dag.currents.len());
     let mut currents: Vec<Current> = Vec::with_capacity(dag.currents.len());
     for ((current, set), graded) in dag.currents.iter().zip(&sets).zip(&graded) {
-        first.push(currents.len() as u32);
+        first.push(id32(currents.len(), "graded DAG current id")?);
         if !graded {
             currents.push(*current);
             continue;
@@ -127,10 +127,13 @@ fn split_by_grade(dag: &mut Dag, u1: &[bool]) -> DagResult<()> {
             copy.key.colour = dag.colours.intern(ColourState {
                 nc_grade: Some(-(k as i64)),
                 ..state.clone()
-            });
+            })?;
             currents.push(copy);
         }
     }
+    // Every copy id below (a current's first id plus its grade's rank) is
+    // below the copies' count.
+    id32(currents.len(), "graded DAG current count")?;
     let copy_id = |current: u32, k: u32| -> u32 {
         let set = sets[current as usize];
         first[current as usize] + (set & ((1u64 << k) - 1)).count_ones()
@@ -223,15 +226,17 @@ mod tests {
         // Particles: 0 a quark, 1 a gluon, 2 the U(1)-subtraction auxiliary.
         let u1 = [false, false, true];
         let mut dag = Dag::default();
-        dag.colours.intern(ColourState {
-            accuracy: "full".into(),
-            sector_id: 0,
-            line_groups: vec![],
-            basis_key: vec![],
-            traces: vec![],
-            lines: vec![],
-            nc_grade: None,
-        });
+        dag.colours
+            .intern(ColourState {
+                accuracy: "full".into(),
+                sector_id: 0,
+                line_groups: vec![],
+                basis_key: vec![],
+                traces: vec![],
+                lines: vec![],
+                nc_grade: None,
+            })
+            .unwrap();
         // 0, 1, 2, 3: sources; 4 = gluon(0, 1), 5 = U(1)(0, 1);
         // 6 = quark from 4 + 2 (grade 0) and from 5 + 2 (grade -1): mixed;
         // 7 = quark from 6 + 3: mixed through its input.
@@ -306,15 +311,17 @@ mod tests {
     fn blocks_mixing_grades_over_helicities_are_labelled() {
         let u1 = [false, false, true];
         let mut dag = Dag::default();
-        dag.colours.intern(ColourState {
-            accuracy: "full".into(),
-            sector_id: 0,
-            line_groups: vec![],
-            basis_key: vec![],
-            traces: vec![],
-            lines: vec![],
-            nc_grade: None,
-        });
+        dag.colours
+            .intern(ColourState {
+                accuracy: "full".into(),
+                sector_id: 0,
+                line_groups: vec![],
+                basis_key: vec![],
+                traces: vec![],
+                lines: vec![],
+                nc_grade: None,
+            })
+            .unwrap();
         // 4 = gluon(0, 1) and 5 = U(1)(0, 2): for one helicity of leg 3 the
         // block of 6 is reached through the gluon only, for the other (7,
         // another ancestry) through the U(1) piece only.

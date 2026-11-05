@@ -24,7 +24,6 @@ const ENTRY_BYTES: usize = 36;
 const EXACT_FACTOR_BYTES: usize = 64;
 // The subgroup order must fit the codec's u32 local-group count.
 const MAX_FACTOR_RANK: u32 = u32::BITS - 1;
-const MAX_SYMMETRIC_GROUP_DEGREE: u32 = 10;
 // A batching target, not a resource limit: a single large lane and explicitly
 // requested workspace growth may exceed it.
 const TARGET_SYMMETRIC_GROUP_LANE_WORKSPACE_BYTES: usize = 512 * 1024 * 1024;
@@ -2198,7 +2197,7 @@ fn validate_repeated_group_identities(
         let sector_id = sector_by_group[first as usize];
         for (component_id, group_id) in group_ids.iter().copied().enumerate() {
             if sector_by_group[group_id as usize] != sector_id
-                || component_by_group[group_id as usize] != component_id as u32
+                || !crate::narrow::is_index(component_by_group[group_id as usize], component_id)
             {
                 return Err(malformed(
                     "repeated group identities are not local-color-major/component-minor",
@@ -2262,10 +2261,13 @@ fn decode_factorization(
                     "symmetric-group Fourier factorization requires convolution-kernel storage",
                 ));
             }
-            if !(2..=MAX_SYMMETRIC_GROUP_DEGREE).contains(&factor_rank) {
-                return Err(malformed(format!(
-                    "symmetric-group Fourier degree must be in [2, {MAX_SYMMETRIC_GROUP_DEGREE}]"
-                )));
+            // No degree cap: the FFT plan built for the payload admits the
+            // degree (its group order in the plan's reorder storage, the
+            // same u32 width as the codec's local-group count).
+            if factor_rank < 2 {
+                return Err(malformed(
+                    "symmetric-group Fourier degree must be at least 2",
+                ));
             }
             FactorizedColorContractionKind::SymmetricGroupFourier
         }
@@ -2414,7 +2416,12 @@ fn validate_symmetric_group_convolution(
 
     let mut offset = 0usize;
     for left_channel in 0..channel_count {
-        let left_identity = (left_channel * group_order) as u32;
+        let left_identity = left_channel
+            .checked_mul(group_order)
+            .and_then(|identity| u32::try_from(identity).ok())
+            .ok_or_else(|| {
+                malformed("symmetric-group channel identity exceeds the u32 local-group ids")
+            })?;
         for right_channel in left_channel..channel_count {
             let right_start = right_channel * group_order;
             let expected_symmetry = if left_channel == right_channel {
@@ -2460,7 +2467,7 @@ fn validate_symmetric_group_convolution(
     let mut residual_offset = 0usize;
     for left in 0..local_group_count {
         for right in left..local_group_count {
-            if right < eligible_group_count as u32 {
+            if (right as usize) < eligible_group_count {
                 continue;
             }
             let entry = residual_entries[residual_offset];

@@ -73,7 +73,7 @@ fn main() {
             lap("colour-flow signs", dag.interactions.len(), &mut stages);
         }
         let currents = dag.currents.len();
-        let columns = dag.into_columns(&input);
+        let columns = dag.into_columns(&input).expect("columns");
         lap("columns", columns.interaction_count(), &mut stages);
         let seconds = total.elapsed().as_secs_f64();
         for (stage, time, count) in &stages {

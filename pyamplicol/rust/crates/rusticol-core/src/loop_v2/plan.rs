@@ -1206,7 +1206,7 @@ fn split_candidate(
             let mut row_of = reserved(content.rows, "content rows")?;
             row_of.resize(content.rows, None);
             for (k, (row, _blocks)) in term.rows.iter().enumerate() {
-                row_of[*row] = Some(k as u32);
+                row_of[*row] = Some(crate::narrow::checked::<u32>(k, "content row position")?);
             }
             let links = PackedLinks::collect(|| {
                 edge.links.iter().filter_map(|link| {
@@ -1304,10 +1304,8 @@ impl LoopProgramV4 {
 
     fn from_file(file: PlanFile, policy: FormPolicy) -> RusticolResult<Self> {
         require(file.schema == PLAN_SCHEMA, "unsupported plan schema")?;
-        require(
-            file.legs > 0 && file.legs < 64 && file.rows > 0 && file.columns > 0,
-            "empty process",
-        )?;
+        super::bounds::check_legs(file.legs).map_err(invalid)?;
+        require(file.rows > 0 && file.columns > 0, "empty process")?;
         require(file.average > 0, "normalisation divisor must be positive")?;
         let columns = file.columns;
         let kernels = file
@@ -1669,7 +1667,7 @@ impl LoopProgramV4 {
         leaf_weights: &mut LeafWeights<'a>,
     ) -> RusticolResult<Family> {
         let (file, contents, seeds) = (shared.file, shared.contents, shared.seeds);
-        let full = (1u64 << file.legs) - 1;
+        let full = super::bounds::check_legs(file.legs).map_err(invalid)?;
         let mut covered = 0u64;
         for &(mask, mass) in &f.sequence {
             require(
@@ -1679,10 +1677,9 @@ impl LoopProgramV4 {
             covered |= mask;
         }
         require(covered == full, "family reading does not cover every leg")?;
-        require(
-            f.rank <= f.sequence.len() + 2,
-            "family rank exceeds propagators + 2",
-        )?;
+        if let Some(refusal) = super::bounds::rank_refusal(f.sequence.len(), f.rank) {
+            return Err(invalid(format!("family rank: {refusal}")));
+        }
         let leaves = f
             .leaves
             .iter()
