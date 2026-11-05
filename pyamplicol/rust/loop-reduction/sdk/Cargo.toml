@@ -10,6 +10,16 @@ publish = false
 name = "rusticol_loop_sdk"
 crate-type = ["rlib", "staticlib", "cdylib"]
 
+[features]
+# The Rust example client links the combined C ABI archive by hand (README:
+# `cargo rustc --example client --features c-abi-examples -- -l static=rusticol_capi`),
+# so `cargo test --workspace` must not try to link it on its own.
+c-abi-examples = []
+
+[[example]]
+name = "client"
+required-features = ["c-abi-examples"]
+
 [dependencies]
 rusticol-loop-reduction = { path = ".." }
 rusticol-core = { path = "../../crates/rusticol-core", features = ["symbolica-runtime", "python-generation-bridge"] }

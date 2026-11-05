@@ -53,12 +53,13 @@ their Cargo example targets link the same combined archive:
 
 ```sh
 cargo build --locked -p rusticol-capi
-cargo rustc --locked -p rusticol-loop-sdk --example client -- \
+cargo rustc --locked -p rusticol-loop-sdk --example client --features c-abi-examples -- \
   -L native=target/debug -l static=rusticol_capi
 ```
 
-Plain `cargo build --examples` compiles them but cannot resolve the C ABI,
-because the wrapper deliberately has no Cargo dependency on this crate.
+The example sits behind the `c-abi-examples` feature: a plain `cargo build
+--examples` or `cargo test --workspace` cannot resolve the C ABI, because the
+wrapper deliberately has no Cargo dependency on this crate, so it skips it.
 
 The archive includes the required GMP/MPFR code and the existing
 Symbolica/NinjaRS/master providers. It does not link PyO3 or require a Python
