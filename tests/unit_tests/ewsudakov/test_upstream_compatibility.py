@@ -378,7 +378,7 @@ class TestOptionalNumpy(unittest.TestCase):
         script = self.blocker + (
             "import unittest\n"
             "from tests.test_manager import TestFinder\n"
-            "finder = TestFinder(package='tests/unit_tests/ewsudakov', expression=[\n"
+            "finder = TestFinder(package='tests/unit_tests', expression=[\n"
             "    'test_upper_triangle_is_not_conjugated',\n"
             "    'test_pure_states_give_squared_amplitude',\n"
             "    'test_complete_input_covers_all_channels_and_xis',\n"
@@ -388,15 +388,16 @@ class TestOptionalNumpy(unittest.TestCase):
             "    'test_processes_load_distinct_native_modules',\n"
             "    'test_numeric_allocation_is_deterministic',\n"
             "    'test_directory_name_does_not_override_metadata',\n"
+            "    'test_no_event_is_lost_after_leaving_the_loop',\n"
             "])\n"
             "names = list(finder)\n"
-            "assert len(names) == 9, names\n"
+            "assert len(names) == 10, names\n"
             "suite = unittest.defaultTestLoader.loadTestsFromNames(names)\n"
             "result = unittest.TestResult()\n"
             "suite.run(result)\n"
             "assert result.wasSuccessful(), (result.errors, result.failures)\n"
-            "assert result.testsRun == 9, result.testsRun\n"
-            "assert len(result.skipped) == 7, result.skipped\n"
+            "assert result.testsRun == 10, result.testsRun\n"
+            "assert len(result.skipped) == 8, result.skipped\n"
         )
         result = subprocess.run(
             [sys.executable, "-c", script, MG5DIR],
