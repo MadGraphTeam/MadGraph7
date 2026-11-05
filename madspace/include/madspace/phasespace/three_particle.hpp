@@ -40,7 +40,7 @@ namespace madspace {
  * - `momentum1`, `momentum2`, `momentum3` – `float`, shape `(batch, 4)` – the
  *   daughter momenta.
  *
- * In addition every mapping returns a `weight` (`float`, shape `(batch,)`), the
+ * In addition every mapping returns a `det` (`float`, shape `(batch,)`), the
  * Jacobian of the transformation.
  *
  * **References**
@@ -96,6 +96,18 @@ private:
  * selects one of the two @f$\cos\phi@f$ branches. See Sec. 2.2.5 of [1],
  * following [2, 3].
  *
+ * On its kinematic range @f$\tilde s_i@f$ is linear in @f$\cos\phi@f$, and
+ * @f$8\sqrt{-\Delta_4} = \sqrt{\lambda}\,(\tilde s^{\max} - \tilde s^{\min})
+ * \,|\sin\phi|@f$, so the measure is flat in @f$\phi@f$. Any density in
+ * @f$\tilde s_i@f$ that is finite at the kinematic limits leaves an
+ * integrable @f$1/|\sin\phi|@f$ in the weight, whose variance diverges
+ * logarithmically. With @p arcsine_s23 (the default) the random number of
+ * @f$\tilde s_i@f$ is first mapped by an arcsine map that is flat in
+ * @f$\phi/2@f$ between the limits of the sampled range, and only then handed
+ * to the power-law sampling of @ref Invariant (a Breit-Wigner is not
+ * supported there). The weight stays bounded at the kinematic limits, and
+ * the importance sampling of @f$\tilde s_i@f$ is kept.
+ *
  * `batch` is the leading batch dimension.
  *
  * **Inputs**
@@ -108,7 +120,8 @@ private:
  *
  * **Conditions**
  * - `momentum_in1` – `float`, shape `(batch, 4)` – first incoming momentum.
- * - `momentum_in2` – `float`, shape `(batch, 4)` – second incoming momentum.
+ * - `momentum_in2` – `float`, shape `(batch, 4)` – second incoming momentum;
+ *   `momentum12`, the system p1 + p2, when @p p12_condition is true.
  * - `momentum3` – `float`, shape `(batch, 4)` – recoil momentum defining the
  *   scattering plane.
  * - `etmin_1`, `etmin_2` – `float`, shape `(batch,)` – transverse-energy cuts.
@@ -122,7 +135,7 @@ private:
  * - `momentum1`, `momentum2` – `float`, shape `(batch, 4)` – the two resolved
  *   momenta.
  *
- * In addition every mapping returns a `weight` (`float`, shape `(batch,)`), the
+ * In addition every mapping returns a `det` (`float`, shape `(batch,)`), the
  * Jacobian of the transformation.
  *
  * **References**
@@ -148,6 +161,36 @@ public:
      * @param has_cut           If true, the `etmin_*`, `drcut` and `s23_min_cut`
      *                          conditions restrict the invariants to the region
      *                          passing the cuts; see @ref Cuts.
+     * @param arcsine_s23       If true, remap the random number of
+     *                          @f$\tilde s@f$ with the arcsine map in
+     *                          @f$\phi@f$ before the invariant sampling, which
+     *                          removes the @f$1/|\sin\phi|@f$ edge peak of the
+     *                          weight. Power-law sampling only: requires
+     *                          @p s_width = 0 (no resonance is expected in
+     *                          this block).
+     * @param p12_condition     If true, the second condition is the outgoing
+     *                          system `momentum12` = p1 + p2 itself instead
+     *                          of the second incoming momentum. A caller that
+     *                          holds it more precisely than pa + pb - p3 (a
+     *                          soft system next to the beams) keeps that
+     *                          precision.
+     * @param incoming_recoil   If true, `momentum3` is an incoming momentum
+     *                          k (the other beam), and the second invariant is
+     *                          the momentum transfer @f$(p_2 - k)^2 \le 0@f$
+     *                          instead of @f$(p_2 + p_3)^2@f$; its absolute
+     *                          value is sampled. With @p has_cut it is bounded
+     *                          by @f$|(p_2 - k)^2| \ge \texttt{etmin\_2}^2 - m_2^2@f$,
+     *                          the `drcut` and `s23_min_cut` conditions are
+     *                          not used. Requires @p p12_condition. AmpliCol
+     *                          builds a side of two particles this way, with
+     *                          the opposite beam as the previous emission.
+     * @param cut_aware_branch  With @p has_cut, form both azimuthal solutions
+     *                          and keep the one passing the transverse-energy
+     *                          floors `etmin_1`, `etmin_2` (AmpliCol's
+     *                          gen23_one_step): `discrete_choice` only picks
+     *                          when both pass. The weight assumes
+     *                          `discrete_choice` is sampled uniformly; with a
+     *                          learned distribution of it, leave this off.
      */
     TwoToThreeParticleScattering(
         double t_invariant_power = 0,
@@ -156,7 +199,11 @@ public:
         double s_invariant_power = 0,
         double s_mass = 0,
         double s_width = 0,
-        bool has_cut = false
+        bool has_cut = false,
+        bool arcsine_s23 = true,
+        bool p12_condition = false,
+        bool incoming_recoil = false,
+        bool cut_aware_branch = false
     );
 
     /// Number of discrete inputs (1): which of the two two-body solutions.
@@ -174,9 +221,26 @@ private:
         const NamedVector<Value>& conditions
     ) const override;
 
+    std::array<Value, 3>
+    split_conditions(FunctionBuilder& fb, const NamedVector<Value>& conditions) const;
+    // Sampled and kinematic range of the second invariant: s23 itself, or
+    // |(p2 - k)^2| for an incoming recoil. Arguments: the kinematic range of
+    // s23, the squared mass of p2 and the conditions.
+    std::array<Value, 4> sampling_ranges(
+        FunctionBuilder& fb,
+        Value s23_min,
+        Value s23_max,
+        Value m2_squared,
+        const NamedVector<Value>& conditions
+    ) const;
     Invariant _t_invariant;
     Invariant _s_invariant;
+    double _s_power, _s_mass;
     bool _has_cut;
+    bool _arcsine_s23;
+    bool _p12_condition;
+    bool _incoming_recoil;
+    bool _cut_aware_branch;
 };
 
 } // namespace madspace

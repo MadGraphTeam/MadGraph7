@@ -459,7 +459,7 @@ class WriteALOHA:
 
     
     def make_declaration_list(self):
-        """ make the list of declaration nedded by the header """
+        """ make the list of declaration needed by the header """
         
         declare_list = []
         
@@ -892,6 +892,13 @@ class ALOHAWriterForFortran(WriteALOHA):
         """Formatting the variable name to Fortran format"""
         
         if isinstance(name, aloha_lib.ExtVariable):
+            if name.lower() == 'bwcutoff':
+                # an argument of the $-veto (P1D) routine, not a model
+                # parameter: including the MODEL files for it breaks the
+                # flavour-merged output, whose coupl.inc declares
+                # FLV_COUPLING without the 'use model_object' that only the
+                # M-tagged routines write
+                return name
             # external parameter nothing to do but handling model prefix
             self.has_model_parameter = True
             if name.lower() in ['pi', 'as', 'mu_r', 'aewm1','g','bwcutoff']:
@@ -919,7 +926,7 @@ class ALOHAWriterForFortran(WriteALOHA):
         return name
   
     def change_number_format(self, number):
-        """Formating the number"""
+        """Formatting the number"""
 
         def isinteger(x):
             try:
@@ -1334,7 +1341,7 @@ class ALOHAWriterForFortran(WriteALOHA):
         Only used when the merged routine can not be built (see write_combined).
         """
 
-        # Set some usefull command
+        # Set some useful command
         if offshell is None:
             sym = 1
             offshell = self.offshell
@@ -1345,7 +1352,7 @@ class ALOHAWriterForFortran(WriteALOHA):
         # write head - momenta - body - foot
         text = StringIO()
         routine = StringIO()
-        data = {} # for the formating of the line
+        data = {} # for the formatting of the line
                     
         # write header 
         new_couplings = ['COUP%s' % (i+1) for i in range(len(lor_names)+1)]
@@ -1743,14 +1750,34 @@ def combine_name(name, other_names, outgoing, tag=None, unknown_tag=False):
 
     def myHash(target_string):
         suffix = ''
-        if '%(propa)s' in target_string:
-            target_string = target_string.replace('%(propa)s','')
-            suffix = '%(propa)s'
-            
+        # the call sites fill 'propa' (wavefunctions) or 'tags' (amplitudes)
+        # afterwards: the placeholder is not part of the routine name that
+        # ALOHA hashes, so it must not enter the hash either
+        for placeholder in ('%(propa)s', '%(tags)s'):
+            if placeholder not in target_string:
+                continue
+            if len(target_string.replace(placeholder,''))<50:
+                # keep the placeholder where it is: it can sit before a
+                # propagator tag (see join_tag)
+                return target_string
+            target_string = target_string.replace(placeholder,'')
+            suffix = placeholder
+            break
+
         if len(target_string)<50:
             return '%s%s' % (target_string, suffix)
         else:
             return 'ALOHA_%s%s' % (str(hash(target_string.lower())).replace('-','m'), suffix)
+
+    def join_tag(tag, placeholder):
+        # get_routine_name writes the propagator tag LAST, after the
+        # FLV_Coupling 'M' flag that the placeholder expands to: a $-excluded
+        # (P1D) flavour wavefunction is defined as FFV6_2MP1D_3, not
+        # FFV6_2P1DM_3.
+        tag = list(tag) if tag else []
+        if tag and tag[-1].startswith('P'):
+            return ''.join(tag[:-1]) + placeholder + tag[-1]
+        return ''.join(tag) + placeholder
 
     if tag:
         # same normalisation as get_routine_name, which sorts the tag before
@@ -1787,12 +1814,12 @@ def combine_name(name, other_names, outgoing, tag=None, unknown_tag=False):
                 routine += '_%s' % id2
     
     if routine:
-        if tag is not None:
-            routine += ''.join(tag)
         if unknown_tag and outgoing:
-            routine += '%(propa)s'
+            routine += join_tag(tag, '%(propa)s')
         elif unknown_tag:
-            routine += '%(tags)s'
+            routine += join_tag(tag, '%(tags)s')
+        elif tag is not None:
+            routine += ''.join(tag)
         if outgoing is not None:
             return myHash(routine)+'_%s' % outgoing
 #            return routine +'_%s' % outgoing
@@ -1813,7 +1840,7 @@ def combine_name(name, other_names, outgoing, tag=None, unknown_tag=False):
             else:
                 name = short_name
     if unknown_tag and outgoing:
-        addon += '%(propa)s'
+        addon = join_tag(tag, '%(propa)s') if tag is not None else addon + '%(propa)s'
     elif unknown_tag:
         # For an amplitude (outgoing == 0) the caller fills 'propa' with '' and
         # puts the FLV_Coupling flag ('M') into 'tags' instead -- see
@@ -1821,7 +1848,7 @@ def combine_name(name, other_names, outgoing, tag=None, unknown_tag=False):
         # through 'propa'. Same convention as the FFV1_2 scheme above, which
         # has been guarded this way for a while. Without it the call site
         # emits FFV2_FFS1_0 while ALOHA writes FFV2_FFS1M_0.
-        addon += '%(tags)s'
+        addon = join_tag(tag, '%(tags)s') if tag is not None else addon + '%(tags)s'
 
 #    if outgoing is not None:
 #        return '_'.join((name,) + tuple(other_names)) + addon + '_%s' % outgoing
@@ -1861,7 +1888,7 @@ class ALOHAWriterForCPP(WriteALOHA):
     
     
     def change_number_format(self, number):
-        """Formating the number"""
+        """Formatting the number"""
 
         def isinteger(x):
             try:
@@ -2404,7 +2431,7 @@ class ALOHAWriterForCPP(WriteALOHA):
     def write_combined_cc(self, lor_names, offshell=None, sym=True, mode=''):
         "Return the content of the .cc file linked to multiple lorentz call."
 
-        # Set some usefull command
+        # Set some useful command
         if offshell is None:
             offshell = self.offshell
               
@@ -2413,7 +2440,7 @@ class ALOHAWriterForCPP(WriteALOHA):
         # write head - momenta - body - foot
         text = StringIO()
         routine = StringIO()
-        data = {} # for the formating of the line
+        data = {} # for the formatting of the line
                    
         # write header 
         new_couplings = ['COUP%s' % (i+1) for i in range(len(lor_names)+1)]
@@ -2501,7 +2528,7 @@ class ALOHAWriterForCPP(WriteALOHA):
     def write_combined(self, lor_names, mode='', offshell=None, **opt):
         """Write the .h and .cc files associated to the combined file"""
 
-        # Set some usefull command
+        # Set some useful command
         if offshell is None:
             sym = 1
             offshell = self.offshell  
@@ -2523,7 +2550,7 @@ class ALOHAWriterForCPP(WriteALOHA):
             self.mode = 'self'
         h_text.write(self.get_h_text(couplings=couplings))
         
-        #ADD SYMETRY
+        #ADD SYMMETRY
         if sym:
             for elem in self.routine.symmetries:
                 self.mode = 'no_include'
@@ -2773,7 +2800,7 @@ class ALOHAWriterForPython(WriteALOHA):
     def change_var_format(self, name): 
         """Formatting the variable name to Python format
         start to count at zero. 
-        No neeed to define the variable in python -> no need to keep track of 
+        No need to define the variable in Python -> no need to keep track of
         the various variable
         """
         
@@ -3116,7 +3143,7 @@ class ALOHAWriterForPython(WriteALOHA):
     def write_combined(self, lor_names, mode='self', offshell=None):
         """Write routine for combine ALOHA call (more than one coupling)"""
         
-        # Set some usefull command
+        # Set some useful command
         if offshell is None:
             sym = 1
             offshell = self.offshell  
@@ -3125,7 +3152,7 @@ class ALOHAWriterForPython(WriteALOHA):
         name = combine_name(self.routine.name, lor_names, offshell, self.tag)
         # write head - momenta - body - foot
         text = StringIO()
-        data = {} # for the formating of the line
+        data = {} # for the formatting of the line
                     
         # write header 
         new_couplings = ['COUP%s' % (i+1) for i in range(len(lor_names)+1)]
@@ -3167,7 +3194,7 @@ class ALOHAWriterForPython(WriteALOHA):
         
         text.write(self.get_foot_txt(combine=True))
 
-        #ADD SYMETRY
+        #ADD SYMMETRY
         if sym:
             for elem in self.routine.symmetries:
                 text.write(self.write_combined(lor_names, mode, elem))
@@ -3254,7 +3281,7 @@ class WriterFactory(object):
 #c      Include Model parameter / coupling
 #       include \"../MODEL/input.inc\"
 #       include \"../MODEL/coupl.inc\"
-#c      Defintion of the arguments       
+#c      Definition of the arguments
 #%(definitions)s
 #       
 #c      enter HERE the code corresponding to your function.

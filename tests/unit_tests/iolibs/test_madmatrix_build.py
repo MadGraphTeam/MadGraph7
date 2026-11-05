@@ -14,7 +14,7 @@ class TestHostBlasBuild(unittest.TestCase):
     def policy(self, flags):
         exporter = object.__new__(output.ProcessExporterMadMatrix)
         with mock.patch.object(export_cpp.ProcessExporterCPP,
-                               'get_makefile_replace_dict', return_value={}), \
+                               'get_makefile_replace_dict', return_value={'model': 'test'}), \
              mock.patch.object(exporter.oneprocessclass,
                                'blas_available_flags', return_value=flags):
             return exporter.get_makefile_replace_dict(None)
@@ -93,6 +93,10 @@ class TestHostBlasBuild(unittest.TestCase):
             arithmetic = root / 'src/Arithmetics'
             process.mkdir(parents=True)
             arithmetic.mkdir(parents=True)
+            for relative in ('backend/cpu', 'backend/common', 'src/rambo', 'src'):
+                folder = root/relative
+                folder.mkdir(parents=True, exist_ok=True)
+                (folder/'fixture.h').write_text('// Dependency fixture\n')
             self.makefile(process)
             sources = [process/'CPPProcess.cc', process/'CPPProcess.h',
                        arithmetic/'Invariant.h']
@@ -105,7 +109,7 @@ class TestHostBlasBuild(unittest.TestCase):
             build.mkdir()
             marker = build/('.build.'+tag)
             marker.touch()
-            for source in sources + [marker]:
+            for source in sources + list(root.rglob('fixture.h')) + [marker]:
                 os.utime(source, (1600000000, 1600000000))
             target = build/'CPPProcess.o'
             target.touch()

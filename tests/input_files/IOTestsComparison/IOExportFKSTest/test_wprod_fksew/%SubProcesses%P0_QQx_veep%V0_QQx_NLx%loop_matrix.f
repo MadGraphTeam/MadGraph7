@@ -63,19 +63,30 @@ C
       INTEGER NBORNAMPS
       PARAMETER (NBORNAMPS=1)
       INTEGER    NLOOPS, NLOOPGROUPS, NCTAMPS
-      PARAMETER (NLOOPS=41, NLOOPGROUPS=27, NCTAMPS=7)
+      PARAMETER (NLOOPS=38, NLOOPGROUPS=29, NCTAMPS=15)
       INTEGER    NLOOPAMPS
-      PARAMETER (NLOOPAMPS=48)
+      PARAMETER (NLOOPAMPS=53)
       INTEGER    NCOLORROWS
       PARAMETER (NCOLORROWS=NLOOPAMPS)
       INTEGER    NEXTERNAL
       PARAMETER (NEXTERNAL=4)
       INTEGER NVIRTUAL_FLAVORS
       PARAMETER (NVIRTUAL_FLAVORS=225)
+C     HelFilter.dat and LoopFilter.dat describe one virtual flavour:
+C     FILTER_FLAV_IDX, the only one evaluated with this output. It is 0
+C     when the evaluated flavours are unknown: the filters are off.
+      INTEGER FILTER_FLAV_IDX
+      PARAMETER (FILTER_FLAV_IDX=-1)
+C     It is -1 when several flavours are evaluated. Each of them then
+C     has its own check phase and filters, written to the files
+C     HelFilter_<flavour>.dat and LoopFilter_<flavour>.dat, and kept
+C     in its own filter slot while other flavours are evaluated.
+      INTEGER NFILTER_SLOTS
+      PARAMETER (NFILTER_SLOTS=2)
       INTEGER NINITIAL
       PARAMETER (NINITIAL=2)
       INTEGER    NWAVEFUNCS,NLOOPWAVEFUNCS
-      PARAMETER (NWAVEFUNCS=9,NLOOPWAVEFUNCS=88)
+      PARAMETER (NWAVEFUNCS=6,NLOOPWAVEFUNCS=82)
       INTEGER    NCOMB
       PARAMETER (NCOMB=16)
       REAL*8     ZERO
@@ -154,7 +165,7 @@ C
       REAL*8 P(0:3,NEXTERNAL)
 C     DP_RES STORES THE DOUBLE PRECISION RESULT OBTAINED FROM
 C      DIFFERENT EVALUATION METHODS IN ORDER TO ASSESS STABILITY.
-C     THE STAB_STAGE COUNTER I CORRESPONDANCE GOES AS FOLLOWS
+C     THE STAB_STAGE COUNTER CORRESPONDENCE GOES AS FOLLOWS
 C     I=1 -> ORIGINAL PS, CTMODE=1
 C     I=2 -> ORIGINAL PS, CTMODE=2, (ONLY WITH CTMODERUN=-1)
 C     I=3 -> PS WITH ROTATION 1, CTMODE=1, (ONLY WITH CTMODERUN=-2)
@@ -285,8 +296,8 @@ C     in which case neither is its quadruple precision version.
       LOGICAL LOOPLIBS_QPAVAILABLE(0:7)
       DATA LOOPLIBS_QPAVAILABLE /.FALSE.,.TRUE.,.FALSE.,.FALSE.
      $ ,.FALSE.,.FALSE.,.TRUE.,.FALSE./
-C     PS CAN POSSIBILY BE PASSED THROUGH IMPROVE_PS BUT IS NOT
-C      MODIFIED FOR THE PURPOSE OF THE STABILITY TEST
+C     PS CAN POSSIBLY BE PASSED THROUGH IMPROVE_PS BUT IS NOT MODIFIED
+C      FOR THE PURPOSE OF THE STABILITY TEST
 C     EVEN THOUGH THEY ARE PUT IN COMMON BLOCK, FOR NOW THEY ARE NOT
 C      USED ANYWHERE ELSE
       REAL*8 PS(0:3,NEXTERNAL)
@@ -316,6 +327,37 @@ C     Typically, the hel_offset is 10000
       INTEGER GOODHEL(NCOMB)
       LOGICAL GOODAMP(NSQUAREDSO,NLOOPGROUPS)
       COMMON/FILTERS/GOODAMP,GOODHEL,HELOFFSET
+C     FILTER_SLOT maps a virtual flavour to its filter slot (0 if it
+C     is never evaluated), which keeps the filter state of the flavour
+C     while another one is evaluated. LOADED_FILTER_FLAV is the
+C     flavour in use.
+      INTEGER FILTER_SLOT(NVIRTUAL_FLAVORS)
+      DATA FILTER_SLOT/0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+     $ ,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0
+     $ ,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+     $ ,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+     $ ,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+     $ ,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+     $ ,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+     $ ,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0/
+      INTEGER LOADED_FILTER_FLAV,ISLOT
+      DATA LOADED_FILTER_FLAV/0/
+      CHARACTER*64 FILTER_NAME
+      LOGICAL SLOT_USED(NFILTER_SLOTS)
+      DATA SLOT_USED/NFILTER_SLOTS*.FALSE./
+      INTEGER SLOT_NTRY(NFILTER_SLOTS),SLOT_NATTEMPTS(NFILTER_SLOTS)
+      LOGICAL SLOT_FOUNDHELFILTER(NFILTER_SLOTS)
+      LOGICAL SLOT_FOUNDLOOPFILTER(NFILTER_SLOTS)
+      LOGICAL SLOT_CHECKPHASE(NFILTER_SLOTS)
+      LOGICAL SLOT_HELDOUBLECHECKED(NFILTER_SLOTS)
+      LOGICAL SLOT_DONEHELDOUBLECHECK(NFILTER_SLOTS)
+      INTEGER SLOT_GOODHEL(NCOMB,NFILTER_SLOTS)
+      LOGICAL SLOT_GOODAMP(NSQUAREDSO,NLOOPGROUPS,NFILTER_SLOTS)
+      LOGICAL SLOT_LOOPFILTERBUFF(NSQUAREDSO,NLOOPGROUPS,NFILTER_SLOTS)
+      SAVE SLOT_NTRY,SLOT_NATTEMPTS,SLOT_FOUNDHELFILTER
+      SAVE SLOT_FOUNDLOOPFILTER,SLOT_CHECKPHASE,SLOT_HELDOUBLECHECKED
+      SAVE SLOT_DONEHELDOUBLECHECK,SLOT_GOODHEL,SLOT_GOODAMP
+      SAVE SLOT_LOOPFILTERBUFF
 
       INTEGER HELPICKED
       DATA HELPICKED/-1/
@@ -481,6 +523,12 @@ C     ----------
         ANS=0.0D0
         RETURN
       ENDIF
+      IF (FILTER_FLAV_IDX.GT.0.AND.FLAV_IDX.NE.FILTER_FLAV_IDX) THEN
+        WRITE(*,*) '##E03 ERROR The MadLoop filters describe the'
+     $   //' virtual flavour ',FILTER_FLAV_IDX,' only, not flavour '
+     $   ,FLAV_IDX
+        STOP 1
+      ENDIF
       CALL GET_VIRTUAL_FLAVOR(FLAV_IDX,FLAVOR)
       ACTIVE_VIRTUAL_FLAVOR_INDEX=FLAV_IDX
 
@@ -501,11 +549,11 @@ C      pmass.inc
         CALL SETMADLOOPPATH(TMP)
         CALL JOINPATH(MLPATH,PARAMFNAME,PARAMFN)
         CALL MADLOOPPARAMREADER(PARAMFN,.TRUE.)
-        IF (NVIRTUAL_FLAVORS.GT.1) THEN
+        IF (FILTER_FLAV_IDX.EQ.0) THEN
 C         A single MadLoop filter file cannot represent several
 C          physical flavours.
-C         Keep every loop/helicity active for grouped virtual matrix
-C          elements.
+C         Keep every loop/helicity active when the flavours are
+C          unknown.
           USELOOPFILTER=.FALSE.
           HELICITYFILTERLEVEL=0
           DOUBLECHECKHELICITYFILTER=.FALSE.
@@ -693,6 +741,63 @@ C      helicity is asked
         CALL SET_N_EVALS(N_DP_EVAL,N_QP_EVAL)
       ENDIF
 
+C     Switch to the filters of the virtual flavour FLAV_IDX, after
+C      saving
+C     those of the flavour evaluated before. A flavour evaluated for
+C      the
+C     first time reads its own filter files, or else starts its own
+C      check
+C     phase.
+      IF (FLAV_IDX.NE.LOADED_FILTER_FLAV) THEN
+        IF (LOADED_FILTER_FLAV.NE.0) THEN
+          ISLOT=FILTER_SLOT(LOADED_FILTER_FLAV)
+          SLOT_NTRY(ISLOT)=NTRY
+          SLOT_NATTEMPTS(ISLOT)=NATTEMPTS
+          SLOT_FOUNDHELFILTER(ISLOT)=FOUNDHELFILTER
+          SLOT_FOUNDLOOPFILTER(ISLOT)=FOUNDLOOPFILTER
+          SLOT_CHECKPHASE(ISLOT)=CHECKPHASE
+          SLOT_HELDOUBLECHECKED(ISLOT)=HELDOUBLECHECKED
+          SLOT_DONEHELDOUBLECHECK(ISLOT)=DONEHELDOUBLECHECK
+          SLOT_GOODHEL(:,ISLOT)=GOODHEL(:)
+          SLOT_GOODAMP(:,:,ISLOT)=GOODAMP(:,:)
+          SLOT_LOOPFILTERBUFF(:,:,ISLOT)=LOOPFILTERBUFF(:,:)
+        ENDIF
+        ISLOT=FILTER_SLOT(FLAV_IDX)
+        IF (ISLOT.EQ.0) THEN
+          WRITE(*,*) '##E03 ERROR The MadLoop filters are not set up'
+     $     //' for the virtual flavour ',FLAV_IDX
+          STOP 1
+        ENDIF
+        IF (SLOT_USED(ISLOT)) THEN
+          NTRY=SLOT_NTRY(ISLOT)
+          NATTEMPTS=SLOT_NATTEMPTS(ISLOT)
+          FOUNDHELFILTER=SLOT_FOUNDHELFILTER(ISLOT)
+          FOUNDLOOPFILTER=SLOT_FOUNDLOOPFILTER(ISLOT)
+          CHECKPHASE=SLOT_CHECKPHASE(ISLOT)
+          HELDOUBLECHECKED=SLOT_HELDOUBLECHECKED(ISLOT)
+          DONEHELDOUBLECHECK=SLOT_DONEHELDOUBLECHECK(ISLOT)
+          GOODHEL(:)=SLOT_GOODHEL(:,ISLOT)
+          GOODAMP(:,:)=SLOT_GOODAMP(:,:,ISLOT)
+          LOOPFILTERBUFF(:,:)=SLOT_LOOPFILTERBUFF(:,:,ISLOT)
+        ELSE
+          SLOT_USED(ISLOT)=.TRUE.
+          NTRY=0
+          NATTEMPTS=0
+          FOUNDHELFILTER=.TRUE.
+          FOUNDLOOPFILTER=.TRUE.
+          CHECKPHASE=.TRUE.
+          HELDOUBLECHECKED=.FALSE.
+          DONEHELDOUBLECHECK=.FALSE.
+          LOOPFILTERBUFF(:,:)=.FALSE.
+        ENDIF
+        CALL JOINPATH(MLPATH,PROC_PREFIX,TMP)
+        WRITE(FILTER_NAME,'(A,I0,A)') 'HelFilter_',FLAV_IDX,'.dat'
+        CALL JOINPATH(TMP,FILTER_NAME,HELFILTERFN)
+        WRITE(FILTER_NAME,'(A,I0,A)') 'LoopFilter_',FLAV_IDX,'.dat'
+        CALL JOINPATH(TMP,FILTER_NAME,LOOPFILTERFN)
+        LOADED_FILTER_FLAV=FLAV_IDX
+      ENDIF
+
       IF(NTRY.EQ.0) THEN
         HELDOUBLECHECKED=(.NOT.DOUBLECHECKHELICITYFILTER)
      $   .OR.(HELICITYFILTERLEVEL.EQ.0)
@@ -806,7 +911,7 @@ C        therefore guarantee any precision
         CTMODEINIT_BU=CTMODEINIT
 C       So either one choses quad precision directly
 C       CTMODEINIT=4
-C       Or, because this is very slow, we keep the orignal value. The
+C       Or, because this is very slow, we keep the original value. The
 C        accuracy returned is -1 and tells the MC that he should not
 C        trust the evaluation for checks.
         CTMODEINIT=CTMODEINIT_BU
@@ -1152,8 +1257,8 @@ C     Make sure that no NaN is present in the result
 
       IF (CHECKPHASE.OR.(.NOT.HELDOUBLECHECKED)) THEN
         IF((USERHEL.EQ.-1).OR.(USERHEL.EQ.HELPICKED)) THEN
-C         Make sure that that no polarization constraint filters out
-C          this helicity
+C         Make sure that no polarization constraint filters out this
+C          helicity
           IF (POLARIZATIONS(0,0).EQ.-1.OR.IS_HEL_SELECTED(HELPICKED))
      $      THEN
 C           TO KEEP TRACK OF THE FINAL ANSWER TO BE RETURNED DURING
@@ -1261,7 +1366,7 @@ C              support exactly identical Hels.)
                 ENDDO
               ENDIF
 C             In all cases, from now on this helicity will be computed
-C              independantly of the others.
+C              independently of the others.
 C             In particular, it is the only thing to do if the
 C              helicity was flagged not contributing.
               GOODHEL(HELPICKED)=1
@@ -1302,8 +1407,8 @@ C         DOUBLE CHECK THE HELICITY FILTER
               WRITE(*,*) '##W15 Helicity filter could not be'
      $         //' successfully double checked.'
               WRITE(*,*) '##One reason for this is that you might have'
-     $         //' changed sensible parameters which affected what are'
-     $         //' the zero helicity configurations.'
+     $         //' changed sensitive parameters which affected what'
+     $         //' are the zero helicity configurations.'
               WRITE(*,*) '##MadLoop will try to reset the Helicity'
      $         //' filter with the next PS points it receives.'
               NTRY=0
@@ -1318,8 +1423,8 @@ C         DOUBLE CHECK THE HELICITY FILTER
               WRITE(*,*) '##W15 Helicity filter could not be'
      $         //' successfully double checked.'
               WRITE(*,*) '##One reason for this is that you might have'
-     $         //' changed sensible parameters which affected the'
-     $         //' helicity dependance relations.'
+     $         //' changed sensitive parameters which affected the'
+     $         //' helicity dependence relations.'
               WRITE(*,*) '##MadLoop will try to reset the Helicity'
      $         //' filter with the next PS points it receives.'
               NTRY=0
@@ -1816,7 +1921,7 @@ C
 C     CONSTANTS
 C     
       INTEGER    NLOOPGROUPS
-      PARAMETER (NLOOPGROUPS=27)
+      PARAMETER (NLOOPGROUPS=29)
       INTEGER    NSQUAREDSO
       PARAMETER (NSQUAREDSO=1)
 C     
@@ -1836,7 +1941,7 @@ C     BEGIN CODE
 C     ----------
       IF(ABS(REFERENCE_VALUE).EQ.0.0D0) THEN
         ISZERO=.FALSE.
-        WRITE(*,*) '##E02 ERRROR Reference value for comparison is'
+        WRITE(*,*) '##E02 ERROR Reference value for comparison is'
      $   //' zero.'
         STOP 1
       ELSE
@@ -2243,7 +2348,7 @@ C
 C     CONSTANTS
 C     
       INTEGER    NLOOPAMPS
-      PARAMETER (NLOOPAMPS=48)
+      PARAMETER (NLOOPAMPS=53)
 C     
 C     ARGUMENTS
 C     
@@ -2261,7 +2366,8 @@ C
       DATA (LOOPAMPORDERS(I),I= 31, 35) /    2,    2,    2,    2,    2/
       DATA (LOOPAMPORDERS(I),I= 36, 40) /    2,    2,    2,    2,    2/
       DATA (LOOPAMPORDERS(I),I= 41, 45) /    2,    2,    2,    2,    2/
-      DATA (LOOPAMPORDERS(I),I= 46, 48) /    2,    2,    2/
+      DATA (LOOPAMPORDERS(I),I= 46, 50) /    2,    2,    2,    2,    2/
+      DATA (LOOPAMPORDERS(I),I= 51, 53) /    2,    2,    2/
 C     -----------
 C     BEGIN CODE
 C     -----------

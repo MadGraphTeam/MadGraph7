@@ -26,6 +26,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import json
 from collections import defaultdict
 
@@ -120,7 +121,15 @@ class UFOModelConverterCPP(object):
         self.params_dep = []   # base_objects.ModelVariable
         self.params_indep = [] # base_objects.ModelVariable
         self.coups_flv_dep = []    # (name, object, [couplings])
-        self.coups_flv_indep = []  # (name, object, [couplings]) 
+        self.coups_flv_indep = []  # (name, object, [couplings])
+        self.params_ext_names = [] # names of independent parameters read directly
+                                    # from the SLHA card (as opposed to internal
+                                    # parameters/couplings derived from them);
+                                    # these are the only ones settable by name
+                                    # at runtime (e.g. via the UMAMI interface)
+        self.params_ext_slha = []  # (name, lhablock.lower(), lhacode) for the same
+                                    # parameters, so they can also be addressed by
+                                    # their SLHA card location (block + index)
         self.p_to_cpp = parsers.UFOExpressionParserCPP()
 
         # Prepare parameters and couplings for writeout in C++
@@ -183,6 +192,18 @@ class UFOModelConverterCPP(object):
                               % (param.name, param.lhablock.lower(), param.value.real)
             else:
                 raise MadGraph5Error("Only support for SLHA blocks with 1 or 2 indices")
+            # Track which independent parameters were read directly from the
+            # SLHA card (as opposed to internal parameters derived from them):
+            # these are the only ones settable by name at runtime (e.g. via
+            # the UMAMI set_parameter interface). NB: this list is consumed
+            # only by write_set_parameters() below, not by param.expr itself,
+            # since other UFOModelConverterCPP subclasses (e.g. the MadMatrix/
+            # cudacpp backend) read param.expr directly for purposes (like
+            # generating hardcoded/constexpr parameter mirrors) that require
+            # it to remain a single plain assignment.
+            self.params_ext_names.append(param.name)
+            self.params_ext_slha.append((param.name, param.lhablock.lower(),
+                                          list(param.lhacode)))
             self.params_indep.insert(0,
                                    base_objects.ModelVariable(param.name,
                                                    expression,
@@ -313,6 +334,14 @@ class UFOModelConverterCPP(object):
         replace_dict['set_flv_couplings'] = \
                                 self.write_flv_couplings(self.coups_flv_indep)
 
+        replace_dict['register_parameters'] = \
+                               self.write_register_parameters(
+                                   self.params_indep + self.params_dep + \
+                                   self.coups_indep + list(self.coups_dep.values()),
+                                   self.params_ext_names)
+        replace_dict['register_slha_keys'] = \
+                               self.write_register_slha_keys(self.params_ext_slha)
+
         replace_dict['print_independent_parameters'] = \
                                self.write_print_parameters(self.params_indep)
         replace_dict['print_independent_couplings'] = \
@@ -359,11 +388,21 @@ class UFOModelConverterCPP(object):
     def write_set_parameters(self, params):
         """Write out the lines of independent parameters"""
 
-        # For each parameter, write name = expr;
+        # For each parameter, write name = expr;, unless a runtime override
+        # was set by name for this (necessarily independent, SLHA-card-level)
+        # parameter (e.g. via the UMAMI set_parameter interface), in which
+        # case the override takes precedence over the value read from the
+        # param card
 
         res_strings = []
         for param in params:
-            res_strings.append("%s" % param.expr)
+            if param.name in self.params_ext_names:
+                res_strings.append(
+                    "if (m_param_overrides.find(\"%s\") != m_param_overrides.end())\n"
+                    "%s = m_param_overrides[\"%s\"];\nelse\n%s" %
+                    (param.name, param.name, param.name, param.expr))
+            else:
+                res_strings.append("%s" % param.expr)
 
         # Correct width sign for Majorana particles (where the width
         # and mass need to have the same sign)        
@@ -375,6 +414,55 @@ class UFOModelConverterCPP(object):
                                    {"width": particle.get('width')})
 
         return "\n".join(res_strings)
+
+    def write_register_parameters(self, params, ext_names, complex_map_name='m_complex_params'):
+        """Write out the code that registers name->pointer entries for every
+        scalar parameter and coupling (independent or dependent), and marks
+        which independent parameters were read directly from the SLHA card
+        (as opposed to being derived internally). This lookup-by-name table
+        backs runtime access to parameters/couplings, e.g. through the UMAMI
+        set_parameter/get_parameter interface. FLV_COUPLING entries are
+        skipped: they are not simple scalar values.
+
+        complex_map_name: which C++ map a complex-valued param's pointer
+        gets registered into (default 'm_complex_params'). Model parameters
+        (mdl_*) and derived couplings (GC_*) are *not* interchangeable
+        here in the mg7/madmatrix backend: couplings are declared cxtype
+        (which the caller may have templated to a non-double precision --
+        see model_handling.py's own 'cxsmpl<double>' -> 'cxtype' rewrite
+        for independent couplings specifically), while parameters always
+        stay plain cxsmpl<double> for numerical accuracy (matching
+        m_real_params' own always-double real-parameter pointers) -- so a
+        caller registering both groups needs two separate calls, one per
+        map, each with its own C++ declaration of matching pointer type;
+        passing both groups into a single call/map only compiles by
+        accident whenever cxtype happens to resolve to cxsmpl<double> too
+        (FPTYPE=m/d), and fails to compile at FPTYPE=f."""
+
+        lines = []
+        for param in params:
+            if not hasattr(param, 'type'):
+                continue
+            map_name = 'm_real_params' if param.type == 'real' \
+                       else complex_map_name
+            lines.append('%s["%s"] = &%s;' % (map_name, param.name, param.name))
+        for name in ext_names:
+            lines.append('m_settable_params.insert("%s");' % name)
+
+        return "\n".join(lines)
+
+    def write_register_slha_keys(self, params_ext_slha):
+        """Write out the code that registers a lookup from SLHA (block, index[,
+        index2]) key strings to parameter names, so that a settable parameter
+        can also be addressed by its location in the SLHA param card (e.g. "mass
+        6") rather than only by its model name (e.g. "mdl_MT")."""
+
+        lines = []
+        for name, block, lhacode in params_ext_slha:
+            key = block + "".join(" %d" % i for i in lhacode)
+            lines.append('m_slha_key_to_name["%s"] = "%s";' % (key, name))
+
+        return "\n".join(lines)
 
     def _assert_flv_couplings_supported(self, params):
         """Refuse, with a clear and actionable message, the merged-flavor
@@ -475,8 +563,8 @@ class UFOModelConverterCPP(object):
             template_h_files = self.read_aloha_template_files(ext = 'h')
             template_cc_files = self.read_aloha_template_files(ext = 'cc')
 
-        aloha_model = create_aloha.AbstractALOHAModel(self.model.get('name'),
-                                                      explicit_combine=True)
+        aloha_model = create_aloha.AbstractALOHAModel.from_model(self.model,
+                                                        explicit_combine=True)
         aloha_model.add_Lorentz_object(self.model.get('lorentz'))
         
         if self.wanted_lorentz:
@@ -1052,6 +1140,8 @@ class OneProcessExporterCPP(object):
         replace_dict['initProc_lines'] = \
                                 self.get_initProc_lines(self.matrix_elements[0],
                                                         color_amplitudes)
+        replace_dict['refreshMasses_lines'] = \
+                                self.get_refresh_masses_lines(self.matrix_elements[0])
         replace_dict['reset_jamp_lines'] = \
                                      self.get_reset_jamp_lines(color_amplitudes)
         replace_dict['sigmaKin_lines'], other_replace = \
@@ -1136,6 +1226,17 @@ class OneProcessExporterCPP(object):
         initProc_lines.append("jamp2 = new double[%d];" % len(color_amplitudes[0]))
 
         return "\n".join(initProc_lines)
+
+    # Companion to get_initProc_lines: the same external-mass push_back list, without the
+    # jamp2 allocation (jamp2 is allocated once in the constructor and must not be
+    # reallocated every time CPPProcess::refreshMasses() re-populates mME).
+    def get_refresh_masses_lines(self, matrix_element):
+        """Get refreshMasses_lines for function definition for CPPProcess::refreshMasses"""
+
+        lines = []
+        for part in matrix_element.get_external_wavefunctions():
+            lines.append("mME.push_back(pars.%s);" % part.get('mass'))
+        return "\n".join(lines)
 
     def get_reset_jamp_lines(self, color_amplitudes):
         """Get lines to reset jamps"""
@@ -2499,7 +2600,7 @@ class OneProcessExporterPythia8(OneProcessExporterCPP):
                 # If no color basis, just output trivial color flow
                 res_lines.append("setColAcol(%s);" % ",".join(["0"]*2*self.nfinal))
             else:
-                # Else, build a color representation dictionnary
+                # Else, build a color representation dictionary
                 repr_dict = {}
                 legs = proc.get_legs_with_decays()
                 for l in legs:
@@ -2551,7 +2652,7 @@ class OneProcessExporterPythia8(OneProcessExporterCPP):
                 # If no color basis, just output trivial color flow
                 res_lines.append("setColAcol(%s);" % ",".join(["0"]*2*self.nfinal))
             else:
-                # Else, build a color representation dictionnary
+                # Else, build a color representation dictionary
                 repr_dict = {}
                 legs = proc.get_legs_with_decays()
                 legs[0:2] = [legs[1],legs[0]]
@@ -2665,6 +2766,9 @@ class ProcessExporterCPP(VirtualExporter):
         
         #place holder to pass information to the run_interface
         self.proc_characteristic = banner_mod.ProcCharacteristic()    
+        output_options = self.opt.get('output_options')
+        self.proc_characteristic['density_matrix'] = \
+            isinstance(output_options, dict) and 'density' in output_options
 
     def copy_template(self, model):
         """Prepare export_dir as standalone_cpp directory, including:
@@ -2687,9 +2791,13 @@ class ProcessExporterCPP(VirtualExporter):
                 except os.error as error:
                     logger.warning(error.strerror + " " + self.dir_path)
     
-            # Write param_card
-            open(os.path.join("Cards","param_card.dat"), 'w').write(\
-                                                       model.write_param_card())
+            # Write param_card, and keep a pristine copy of it beside the
+            # one the user edits: that is what `set param_card default` at the
+            # launch question restores, and what says which values a run was
+            # not the model's own. The Fortran standalone has always done it.
+            card = model.write_param_card()
+            for name in ("param_card.dat", "param_card_default.dat"):
+                open(os.path.join("Cards", name), 'w').write(card)
 
     
             # Copy the needed src files
@@ -3188,6 +3296,46 @@ class UFOModelConverterPythia8(UFOModelConverterCPP):
         return OneProcessExporterPythia8.read_template_file(*args, **opts)
 
 
+def mg7_launcher_source(interpreter, mg5_dir):
+    """The text of bin/generate_events for an mg7 output.
+
+    `interpreter` is the python MadGraph7 itself is running: a run needs the
+    packages of *that* environment (matplotlib for the plots, the LHAPDF
+    bindings, madspace), which the "python3" of the PATH may well not have.
+    It is written as the shebang and, because a shebang is only a default --
+    it is bypassed by "python3 bin/generate_events" and ignored by the kernel
+    when the path is too long -- the script also re-executes itself through it
+    when it finds it is running somewhere else.
+
+    The path is deliberately NOT resolved through its symlinks: in a virtual
+    environment sys.executable points at the environment, and the base
+    interpreter it links to does not see the environment's site-packages.
+
+    Pinning it costs no portability that this directory had: it already holds
+    an absolute MG5DIR. The gridpack is the portable artefact, and keeps its
+    "/usr/bin/env python3".
+    """
+
+    interpreter = os.path.normpath(interpreter) if interpreter else ''
+    return (
+        "#! %s\n" % (interpreter or "/usr/bin/env python3")
+        + "import sys, os\n"
+        + "_INTERPRETER = %r\n" % interpreter
+        + "if _INTERPRETER and os.path.exists(_INTERPRETER) \\\n"
+          "        and os.path.normpath(sys.executable or '') != _INTERPRETER:\n"
+          "    os.execv(_INTERPRETER, [_INTERPRETER,\n"
+          "                            os.path.abspath(__file__)] + sys.argv[1:])\n"
+        + "sys.path.append(%r)\n" % mg5_dir
+        + "from madgraph.mg7.launch import main\n"
+          "if __name__ == '__main__':\n"
+          "    os.chdir(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))\n"
+          "    try:\n"
+          "        main()\n"
+          "    except KeyboardInterrupt:\n"
+          "        pass\n"
+    )
+
+
 class ProcessExporterMG7(ProcessExporterCPP):
     """ Extends the standalone CPP exporter to add files needed to run madevent7 / madnis """
 
@@ -3206,9 +3354,20 @@ class ProcessExporterMG7(ProcessExporterCPP):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.me_lib_format = args[1].get("me_lib_format", None)
+        self.me_lib_format = args[1].get("me_lib_format", None) or pjoin("SubProcesses", "{process_id}", "api.so")
         self.process_info = []
         self.merged_subprocesses = defaultdict(list)
+        # Lazy import: madgraph.iolibs.export_mg7 imports export_cpp itself, so a top-level
+        # import here would be circular. Without this, oneprocessclass silently falls back
+        # to the base ProcessExporterCPP.oneprocessclass (OneProcessExporterCPP), which lacks
+        # the .name attribute (and other MG7-specific behaviour) generate_subprocess_directory
+        # needs. Only apply the fallback when nothing more specific was set: subclasses such
+        # as madmatrix.output.ProcessExporterMadMatrix set their own oneprocessclass (with the
+        # coloramps.h/epoch_process_id.h/color_sum.cc/makefile-symlink logic in
+        # OneProcessExporterMadMatrix.generate_process_files()) and that must not be clobbered.
+        if self.oneprocessclass is OneProcessExporterCPP:
+            from madgraph.iolibs import export_mg7
+            self.oneprocessclass = export_mg7.OneProcessExporterMG7
 
     def generate_subprocess_directory(
         self, matrix_element, cpp_helas_call_writer, proc_number=None
@@ -3223,6 +3382,13 @@ class ProcessExporterMG7(ProcessExporterCPP):
         # Create the directory PN_xx_xxxxx in the specified path
         proc_dir_name = process_exporter_mg7.name
         dirpath = pjoin(self.dir_path, 'SubProcesses', proc_dir_name)
+        # self.model/self.model_name aren't reliably set on this class by the
+        # time subprocess directories are generated (see eg
+        # write_check_sa_cpp()'s own "self.model may not be set yet" fallback
+        # above); the matrix element's own model is always available though,
+        # and is what %(model)s in template_Sub_make/template_src_make is
+        # substituted from too (via copy_template()'s model parameter).
+        model = matrix_element.get('processes')[0].get('model')
 
         try:
             os.mkdir(dirpath)
@@ -3239,7 +3405,6 @@ class ProcessExporterMG7(ProcessExporterCPP):
         # Generate SVG Feynman diagrams (diagrams.svg + diagrams.json)
         if not self.opt.get('output_options', {}).get('noeps') == 'True':
             svg_stem = pjoin(dirpath, 'diagrams')
-            model = matrix_element.get('processes')[0].get('model')
             diagrams = matrix_element.get('base_amplitude').get('diagrams')
             logger.info('Generating Feynman diagrams for %s' %
                         matrix_element.get('processes')[0].nice_string())
@@ -3247,7 +3412,17 @@ class ProcessExporterMG7(ProcessExporterCPP):
                                                   model=model, amplitude=True)
             plot.draw()
 
-        me_lib_path = self.me_lib_format.format(process_id = proc_dir_name)
+        # me_lib_format may (eg madmatrix/output.py's ProcessExporterMadMatrix)
+        # carry a {model} placeholder alongside {process_id}, resolved here to
+        # the same sanitized model name template_Sub_make's %(model)s uses;
+        # harmless (str.format ignores unused kwargs) for exporters whose
+        # me_lib_format has no {model} placeholder at all.
+        # kept for the exporters that name the libraries elsewhere too (the
+        # process table of madmatrix/output.py's standalone exporter)
+        self.lib_model_name = self.get_model_name(model.get('name'))
+        me_lib_path = self.me_lib_format.format(
+            process_id=proc_dir_name, model=self.lib_model_name
+        )
         # Store the path relative to the process directory (like me_path): an
         # absolute path would break as soon as the process directory is moved.
         rel_dirpath = pjoin('SubProcesses', proc_dir_name)
@@ -3265,19 +3440,32 @@ class ProcessExporterMG7(ProcessExporterCPP):
         with misc.chdir(self.dir_path):
             madnis_bin = os.path.join("bin", "generate_events")
             with open(madnis_bin, "w") as f:
+                f.write(mg7_launcher_source(sys.executable, MG5DIR))
+            os.chmod(madnis_bin, 0o755)
+
+            npy_bin = os.path.join("bin", "npy_to_lhe")
+            with open(npy_bin, "w") as f:
                 f.write(
                     "#! /usr/bin/env python3\n"
                     "import sys, os\n"
                     f"sys.path.append('{MG5DIR}')\n"
-                    "from madgraph.iolibs.template_files.mg7.launch import main\n"
+                    "from madgraph.mg7.npy_to_lhe import main\n"
                     "if __name__ == '__main__':\n"
-                    "    os.chdir(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))\n"
-                    "    try:\n"
-                    "        main()\n"
-                    "    except KeyboardInterrupt:\n"
-                    "        pass\n"
+                    "    main(me_dir=os.path.dirname(os.path.dirname(os.path.realpath(__file__))))\n"
                 )
-            os.chmod(madnis_bin, 0o755)
+            os.chmod(npy_bin, 0o755)
+
+            custom_bin = os.path.join("bin", "init_custom_func")
+            with open(custom_bin, "w") as f:
+                f.write(
+                    "#! /usr/bin/env python3\n"
+                    "import sys, os\n"
+                    f"sys.path.append('{MG5DIR}')\n"
+                    "from madgraph.mg7.init_custom_func import main\n"
+                    "if __name__ == '__main__':\n"
+                    "    sys.exit(main(me_dir=os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))\n"
+                )
+            os.chmod(custom_bin, 0o755)
 
     # Recorded in Cards/me5_configuration.txt: the tools a run needs but cannot
     # rediscover on its own. LHAPDF above all -- bin/generate_events may be
@@ -3400,6 +3588,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
         return merged_subproc_info
 
     def finalize(self, matrix_elements=None, history='', *args, **kwargs):
+        self.export_amplicol()
         file_name = os.path.normpath(os.path.join(
             self.dir_path, "SubProcesses", "subprocesses.json"
         ))
@@ -3446,8 +3635,46 @@ class ProcessExporterMG7(ProcessExporterCPP):
 
     def pass_information_from_cmd(self, cmd):
         """Capture the process definitions from the command interface; needed to
-        generate the MadAnalysis5 default cards at output time."""
+        generate the MadAnalysis5 default cards at output time, and the
+        [amplicol] processes."""
         self.proc_defs = getattr(cmd, '_curr_proc_defs', None)
+        self.amplicol_defs = getattr(cmd, '_curr_amplicol_defs', None) or []
+        # without MG diagrams there is no madmatrix code to write or build
+        self.has_madmatrix = bool(cmd._curr_amps) or not self.amplicol_defs
+        self.amplicol_model = cmd._curr_model
+        self.amplicol_multiparticles = dict(getattr(cmd, '_multiparticles', {}))
+        # how pyamplicol is installed if it is missing
+        self.amplicol_install = {
+            'interactive': bool(getattr(cmd, 'use_rawinput', False)),
+            'jobs': getattr(cmd, 'options', {}).get('nb_core'),
+        }
+
+    def amplicol_processes(self):
+        """MG processes standing for the [amplicol] processes (built once: for
+        p p it is the product of all initial-state flavours)."""
+        if not getattr(self, 'amplicol_defs', None):
+            return []
+        cached = getattr(self, '_amplicol_processes', None)
+        if cached is None or cached[0] is not self.amplicol_defs:
+            import madgraph.iolibs.export_amplicol as export_amplicol
+            cached = (self.amplicol_defs, export_amplicol.representative_processes(
+                self.amplicol_defs, self.amplicol_model))
+            self._amplicol_processes = cached
+        return cached[1]
+
+    def export_amplicol(self):
+        """The [amplicol] processes, as subprocesses after the madmatrix ones."""
+        if not getattr(self, 'amplicol_defs', None):
+            return
+        import madgraph.iolibs.export_amplicol as export_amplicol
+        for entry in export_amplicol.export_amplicol_processes(
+                self.dir_path, self.amplicol_defs, self.amplicol_model,
+                self.amplicol_multiparticles,
+                **getattr(self, 'amplicol_install', {})):
+            # never merged with another subprocess
+            self.merged_subprocesses[('amplicol', len(self.process_info))].append(
+                (len(self.process_info), []))
+            self.process_info.append(entry)
 
     def create_ma5_default_cards(self, matrix_elements, history):
         """Call MadAnalysis5 to write process-tailored default analysis cards
@@ -3496,6 +3723,31 @@ class ProcessExporterMG7(ProcessExporterCPP):
         except (Exception, SystemExit) as error:
             logger.warning('MadAnalysis5 default card generation failed: %s', error)
 
+    def write_model_reference(self, model):
+        """Write SubProcesses/model.txt: the reference `import model`
+        understands (line 1) and a hash of the model's python source (line 2),
+        so that the runtime can reload the model and detect one that changed
+        since output."""
+
+        try:
+            try:
+                model_path = model.get('modelpath')
+                model_hash = misc.hash_model_files(model_path)
+            except Exception:
+                model_path, model_hash = None, None
+            # the restriction is part of the model the process was
+            # generated with ('sm-no_b_mass' is not 'sm'), so store the
+            # reference that reproduces it, not the bare UFO directory.
+            try:
+                model_ref = model.get('modelpath+restriction')
+            except Exception:
+                model_ref = model_path or model.get('name')
+            if model_ref:
+                with open(pjoin(self.dir_path, 'SubProcesses', 'model.txt'), 'w') as f:
+                    f.write(model_ref + '\n' + (model_hash or '') + '\n')
+        except Exception as error:
+            logger.debug('could not record the model: %s', error)
+
     def create_run_card(self, matrix_elements, history):
         """Write Cards/run_card.toml from the run_card.toml template via
         banner.RunCardMG7, applying process-dependent defaults."""
@@ -3512,35 +3764,22 @@ class ProcessExporterMG7(ProcessExporterCPP):
                              for me in matrix_elements['matrix_elements']]
         except (KeyError, TypeError):
             processes = None
+        amplicol_procs = self.amplicol_processes()
+        amplicol = bool(amplicol_procs)
+        if amplicol:
+            processes = (processes or []) + [amplicol_procs]
 
         if processes:
             run_card.create_default_for_process(self.proc_characteristic,
-                                                history, processes)
+                                                history, processes,
+                                                amplicol=amplicol)
             # persist the model so the runtime can reload it: to compute the
             # widths set to 'auto' in the param_card (and recompute them at
             # each scan point) and to reset the parameters the model derives
             # from the free ones (launch.MG7Cmd.get_model). A hash of the
             # model's python source is stored on the second line so the runtime
             # can detect a model that changed since output.
-            try:
-                model = processes[0][0].get('model')
-                try:
-                    model_path = model.get('modelpath')
-                    model_hash = misc.hash_model_files(model_path)
-                except Exception:
-                    model_path, model_hash = None, None
-                # the restriction is part of the model the process was
-                # generated with ('sm-no_b_mass' is not 'sm'), so store the
-                # reference that reproduces it, not the bare UFO directory.
-                try:
-                    model_ref = model.get('modelpath+restriction')
-                except Exception:
-                    model_ref = model_path or model.get('name')
-                if model_ref:
-                    with open(pjoin(self.dir_path, 'SubProcesses', 'model.txt'), 'w') as f:
-                        f.write(model_ref + '\n' + (model_hash or '') + '\n')
-            except Exception as error:
-                logger.debug('could not record the model: %s', error)
+            self.write_model_reference(processes[0][0].get('model'))
 
         template = pjoin(_file_path, 'iolibs', 'template_files',
                          'mg7', 'run_card.toml')
@@ -3566,8 +3805,13 @@ class ProcessExporterMG7(ProcessExporterCPP):
         else:
             me_list = []
 
-        procs = []
-        qcd_orders = set()
+        procs = list(self.amplicol_processes())
+        amplicol_nexternal = max((len(p.get('legs')) for p in procs), default=0)
+        qcd_orders = set(entry['qcd_power'] for entry in self.process_info
+                         if entry.get('backend') == 'amplicol')
+        if procs:
+            pc['nexternal'] = max(pc['nexternal'], amplicol_nexternal)
+            pc['ninitial'] = 2
         for me in me_list:
             if not me.get('processes'):
                 continue
@@ -3580,11 +3824,34 @@ class ProcessExporterMG7(ProcessExporterCPP):
             # Never let this break the output: on any surprise just fall back to
             # -1 (systematics then simply cannot reconstruct the reweighting).
             try:
-                for diagram in me.get('diagrams'):
-                    qcd_orders.add(diagram.calculate_orders().get('QCD', 0))
+                me_qcd_orders = [diagram.calculate_orders().get('QCD', 0)
+                                 for diagram in me.get('diagrams')]
+                qcd_orders.update(me_qcd_orders)
             except Exception as error:
                 logger.debug('could not determine the QCD order: %s', error)
                 qcd_orders.add(None)
+                me_qcd_orders = []
+            # the number of jets an MLM matching has to match in the shower
+            # (Pythia8's JetMatching:nJetMax), as export_v4.write_auto_dsig_file
+            # counts it: light coloured final-state partons, at most the QCD
+            # order of the amplitude
+            try:
+                model = me.get('processes')[0].get('model')
+
+                def is_light_parton(pid):
+                    particle = model.get_particle(pid)
+                    return (particle is not None
+                            and particle.get('mass') == 'ZERO'
+                            and particle.get('color') > 1)
+
+                n_partons = max(
+                    len([1 for pid in proc.get_final_ids() if is_light_parton(pid)])
+                    for proc in me.get('processes'))
+                pc['max_n_matched_jets'] = max(
+                    pc['max_n_matched_jets'],
+                    min(max(me_qcd_orders, default=0), n_partons))
+            except Exception as error:
+                logger.debug('could not count the matched jets: %s', error)
 
         # a single value of alpha_s (uniform QCD power) lets systematics
         # reconstruct the LO reweighting info without an <mgrwt> block
@@ -3611,7 +3878,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
 
 def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
     """ Determine which Export class is required. cmd is the command 
-        interface containing all potential usefull information.
+        interface containing all potential useful information.
     """
 
     opt = dict(cmd.options)

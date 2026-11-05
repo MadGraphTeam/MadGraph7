@@ -156,7 +156,7 @@ c     Resolve via the ME's own forward lookup on the FLAVOR array instead.
       elseif (mode.eq.2) then
          maxweight=temp      ! unweight decay config   
       elseif (mode.eq.3) then
-         continue      ! just retrun the value of M_full   
+         continue      ! just return the value of M_full
       else
            write(*,*) ranu,ranc,rancd,rancm,iranmr,jranmr
          call flush()
@@ -723,7 +723,7 @@ c Set one_body to true if it s a 2->1 process at the Born (i.e. 2->2 for the n+1
 c      write(*,*) 'ns_channel ',ns_channel 
 c      write(*,*) 'nt_channel ',nt_channel 
 
-      ! first fill the new itree for the the legs in the decay part
+      ! first fill the new itree for the legs in the decay part
       do i=-(ns_channel_decay),-1       
          itree_full(1,i) = idecay(1,i)
          itree_full(2,i) = idecay(2,i)
@@ -822,7 +822,7 @@ c
 c        MODIF March 5, 2014 (P.A.) 
 c        overwrite last t-channel invariant to avoid numerical unstabilities
 c        This is crucial if the last t-channel propa is connected to two massless particles
-c        (one inital + one final particles) which are colinear -> t ~ 0
+c        (one initial + one final particle) which are collinear -> t ~ 0
 c        Indeed, in that case the extraction of t in the previous loop may return a positive 
 c        value: in that case, the code will always fail to generate momenta !!!
 
@@ -1064,7 +1064,7 @@ c     STEP 1: generate the initial momenta
 
 c      write(*,*) 'nbranch' 
 c      write(*,*) nbranch 
-      ! P.A.: Shat needs to be generated accoding to a BW distribution
+      ! P.A.: Shat needs to be generated according to a BW distribution
       smax=min(stot*0.99D0,(qmass(-nbranch+1)+BWcut*qwidth(-nbranch+1))**2 )
       smin=max(0.1d0,(qmass(-nbranch+1)-BWcut*qwidth(-nbranch+1))**2 )
       xm02=qmass(-nbranch+1)**2
@@ -1704,7 +1704,7 @@ c
       p1(2) = pt*sin(phi)
 c
       call rotxxx(p1,pa_cms,p1)          !Rotate back to pa_cms frame
-      call boostx(p1,ptot,p1)            !boost back to lab fram
+      call boostx(p1,ptot,p1)            !boost back to lab frame
       do i=0,3
          pr(i)=pa(i)-p1(i)               !Return remainder of momentum
       enddo
@@ -1929,34 +1929,23 @@ C     -----------------------------------------
 
       DOUBLE PRECISION P1(0:3,NEXTERNAL)
       DOUBLE PRECISION P2(0:3,NEXTERNAL)
-      DOUBLE PRECISION PBOOST(0:3)
+      DOUBLE PRECISION QZ(0:3), QT(0:3), PTMP(0:3)
       integer frame_id
 
       integer ids(nexternal)
-      integer i,j
-      Pboost(0)= 0d0
-      Pboost(1)= 0d0
-      Pboost(2)= 0d0
-      Pboost(3)= 0d0
+      integer i
 
 c     uncompress
       call mapid(frame_id, ids)
-c     find the boost momenta --sum of particles--
-      do i=1,nexternal
-       if (ids(i).eq.1)then
-c             write (999,*) (Pboost(j), j=0,3)
-            do j=0,3
-                   Pboost(j) = Pboost(j) + P1(j,i)
-            enddo
-         endif
-      enddo
-      do j=1,3
-          Pboost(j) = -1 * Pboost(j)
-      enddo
-       
-c              write (999,*) (Pboost(j), j=0,3)
+c     The events come in the lab frame. A single boost from there to the
+c     selected particles would not reach the frame madevent, madspace and
+c     aMC@NLO use (Wigner rotation); a boost along z then a transverse one
+c     does, from any frame along the beam. See get_me_frame_boosts in
+c     Template/Common/Source/impose_frame_rest.f.
+      call get_me_frame_boosts(ids, nexternal, nincoming, p1, qz, qt)
       do i=1, nexternal
-         call boostx(p1(0,i), pboost, p2(0,i))
+         call boostx(p1(0,i), qz, ptmp)
+         call boostx(ptmp, qt, p2(0,i))
       enddo
 
 c     A single selected particle has to end up *exactly* at rest, not at
@@ -2008,34 +1997,20 @@ C     -----------------------------------------
 
       DOUBLE PRECISION P1(0:3,*)
       DOUBLE PRECISION P2(0:3,*)
-      DOUBLE PRECISION PBOOST(0:3)
+      DOUBLE PRECISION QZ(0:3), QT(0:3), PTMP(0:3)
       integer frame_id, nexternal_prod
 
       integer ids(nexternal_prod)
-      integer i,j
-      Pboost(0)= 0d0
-      Pboost(1)= 0d0
-      Pboost(2)= 0d0
-      Pboost(3)= 0d0
+      integer i
 
 c     uncompress
       call mapid_prod(frame_id, ids,nexternal_prod)
-c     find the boost momenta --sum of particles--
-      do i=1,nexternal_prod
-       if (ids(i).eq.1)then
-c             write (999,*) (Pboost(j), j=0,3)
-            do j=0,3
-                   Pboost(j) = Pboost(j) + P1(j,i)
-            enddo
-         endif
-      enddo
-      do j=1,3
-          Pboost(j) = -1 * Pboost(j)
-      enddo
-
-c              write (999,*) (Pboost(j), j=0,3)
+c     same frame as boost_to_frame above
+      call get_me_frame_boosts(ids, nexternal_prod, nincoming, p1,
+     &     qz, qt)
       do i=1, nexternal_prod
-         call boostx(p1(0,i), pboost, p2(0,i))
+         call boostx(p1(0,i), qz, ptmp)
+         call boostx(ptmp, qt, p2(0,i))
       enddo
 
 c     A single selected particle has to end up *exactly* at rest, not at

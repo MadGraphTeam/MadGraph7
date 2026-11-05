@@ -280,6 +280,7 @@ Back to the model. Give a name to a set of particles:
 %(p)s define v = w+ w- z a
 """ % {'p': P},
      title='a detour: check gauge',
+     entry='check gauge p p > e+ e-',
      hint="`check gauge PROCESS`, for instance `check gauge p p > e+ e-`.",
      on_failure="`check` compares a *process* between two computations, so it "
                 "needs one. Try:\n  check gauge p p > e+ e-",

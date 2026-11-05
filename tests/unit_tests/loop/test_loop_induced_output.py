@@ -72,7 +72,7 @@ import madgraph.iolibs.export_v4 as export_v4
 import madgraph.loop.loop_diagram_generation as loop_diagram_generation
 import madgraph.loop.loop_exporters as loop_exporters
 import madgraph.loop.loop_helas_objects as loop_helas_objects
-import models.import_ufo as import_ufo
+import madgraph.models.import_ufo as import_ufo
 
 from madgraph import InvalidCmd, MadGraph5Error, MG5DIR
 

@@ -17,9 +17,9 @@ script=refine_splitted.sh
 # Argument
 # 1st argument the Directory name
 grid_directory=$1;
-# 2st argument Directory where to find the grid input
+# 2nd argument Directory where to find the grid input
 base_directory=$2; 
-# 3st argument the offset
+# 3rd argument the offset
 offset=$3;
 
 

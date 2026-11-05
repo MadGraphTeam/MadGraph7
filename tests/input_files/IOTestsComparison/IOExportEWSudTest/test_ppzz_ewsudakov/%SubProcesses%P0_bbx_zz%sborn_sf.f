@@ -38,7 +38,7 @@ C      term here
       IF (NEED_COLOR_LINKS) THEN
 C       link partons 1 and 2 
         IF ((M.EQ.1 .AND. N.EQ.2).OR.(M.EQ.2 .AND. N.EQ.1)) THEN
-          CALL SB_SF_001(P_BORN,WGT_COL)
+          CALL SB_SF_LINK(P_BORN,1,WGT_COL)
         ENDIF
 
         WGT = WGT_COL * G**2

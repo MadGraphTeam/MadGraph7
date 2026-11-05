@@ -29,11 +29,16 @@ namespace madspace {
  *   \Big]^{\frac{1}{1-\nu}} + m^2
  * @f]
  *
- * otherwise. When @p mass is zero and `invariant_min` is zero, a small
- * auxiliary negative @f$m^2 = -a@f$ is used inside the mapping only. This keeps
- * the power-law and logarithmic forms well defined at the boundary and leaves
- * the physical integrand unchanged. The naive choice @f$\nu = 2@f$ is rarely
- * optimal, so @p power defaults to `0.8`.
+ * otherwise. A nonzero @p flat_window (with a nonzero @p width) flattens the
+ * Breit-Wigner peak: the density is kept outside
+ * @f$|\sqrt{s} - m| < w\,\Gamma@f$ and replaced inside by a constant, the
+ * mean of its two edge values. This is the mapping of a `$`-excluded
+ * propagator, whose matrix element vanishes in that window.
+ *
+ * In the power-law and logarithmic forms the pole is shifted to
+ * @f$m^2 - 0.01@f$ (in the units of the invariant), which keeps them finite
+ * at a boundary on the pole. The naive choice @f$\nu = 2@f$ is rarely
+ * optimal; @ref PhaseSpaceMapping uses @f$\nu = 0.8@f$ by default.
  *
  * `batch` is the leading batch dimension.
  *
@@ -47,7 +52,7 @@ namespace madspace {
  * **Outputs**
  * - `invariant` – `float`, shape `(batch,)` – the sampled invariant.
  *
- * In addition every mapping returns a `weight` (`float`, shape `(batch,)`), the
+ * In addition every mapping returns a `det` (`float`, shape `(batch,)`), the
  * Jacobian of the transformation.
  *
  * **References**
@@ -60,12 +65,16 @@ public:
      * @param power  Exponent @f$\nu@f$ of the @f$1/(s - m^2)^\nu@f$ power-law
      *               sampling: `0` is flat, `1` the logarithmic limit, any other
      *               value uses @f$G_\nu@f$. Ignored when @p width is nonzero.
-     * @param mass   Pole / resonance mass @f$m@f$; `0` triggers the boundary
-     *               regularization described above.
+     * @param mass   Pole / resonance mass @f$m@f$.
      * @param width  Resonance width @f$\Gamma@f$; a nonzero value selects
      *               Breit-Wigner sampling around @p mass.
+     * @param flat_window  Half-width @f$w@f$, in units of @p width, of the
+     *               window in which the Breit-Wigner density is flattened;
+     *               `0` (the default) keeps the plain Breit-Wigner.
      */
-    Invariant(double power = 0, double mass = 0, double width = 0);
+    Invariant(
+        double power = 0, double mass = 0, double width = 0, double flat_window = 0
+    );
 
 private:
     Result build_forward_impl(
@@ -79,7 +88,7 @@ private:
         const NamedVector<Value>& conditions
     ) const override;
 
-    double _power, _mass, _width;
+    double _power, _mass, _width, _flat_window;
 };
 
 } // namespace madspace

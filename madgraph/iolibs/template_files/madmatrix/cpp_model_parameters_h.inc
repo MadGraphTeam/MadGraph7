@@ -17,7 +17,9 @@
 #include "mgOnGpuConfig.h"
 
 #include "mgOnGpuCxtypes.h"
+#ifdef MGONGPU_HAS_VECTORS_H // the simd backend (see its mgOnGpuConfig.h)
 #include "mgOnGpuVectors.h"
+#endif
 
 #include "constexpr_math.h"
 
@@ -32,12 +34,12 @@
 
 #include "read_slha.h"
 
-// NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
+#include <map>
+#include <set>
+#include <string>
+
+//One namespace. Split ber backend.
+namespace madmatrix
 {
   // Define FLV_COUPLING struct
   struct FLV_COUPLING {
@@ -62,7 +64,10 @@ namespace mg5amcCpu
   {
   public:
 
-    static Parameters* getInstance();
+    // The model parameters of the process whose matrix element this thread evaluates (set by
+    // calculate_jamps): the HelAmps routines that read a model parameter (the custom propagators
+    // of a UFO model) take it from there. Each CPPProcess owns its own Parameters.
+    static thread_local const Parameters* current;
 
     // Define "zero"
     double zero, ZERO;
@@ -107,24 +112,84 @@ namespace mg5amcCpu
     static constexpr int nBsmIndepParam = %(nbsmip)i;
     %(hasbsmip)sdouble mdl_bsmIndepParam[nBsmIndepParam];
 
+    // Set the value of an independent, SLHA-card-level parameter by name at
+    // runtime (overriding the value read from the param card), and recompute
+    // every parameter/coupling that depends on it. Returns false if "name" is
+    // not the name of a settable independent parameter (e.g. it names an
+    // internal parameter derived from others, or a coupling, neither of which
+    // can be set directly since they would just be recomputed from the
+    // underlying parameters on the next call).
+    // "name" may be either the parameter's model name (e.g. "mdl_MT") or its
+    // SLHA card location, given as "<block> <index> [<index2>]" (e.g. "mass
+    // 6"); the block name is matched case-insensitively.
+    bool setParameterByName( std::string name, double real, double imag );
+    // Retrieve the current value of any independent parameter or coupling by
+    // name (real or complex; "name" accepts the same two forms as
+    // setParameterByName). NB: dependent (aS-dependent) parameters and
+    // couplings are not stored here at all in this backend (they are
+    // recomputed fresh every event batch by computeDependentCouplings()), so
+    // they cannot be retrieved by name; only independent ones can. Returns
+    // false if "name" is unknown.
+    bool getParameterByName( std::string name, double* real, double* imag );
+    // Drop all overrides previously set via setParameterByName(), so that the
+    // next setIndependentParameters(slha) call starts from a clean slate (e.g.
+    // when (re-)initializing from a param card). Does not itself recompute
+    // anything; the caller is expected to call setIndependentParameters()/
+    // setIndependentCouplings() afterward (as initProc() does).
+    void resetParameterOverrides();
+
   private:
 
-    static Parameters* instance;
+    // If "name" is of the form "<block> <index> [<index2>]", resolve it (via
+    // m_slha_key_to_name) to the corresponding parameter's model name and
+    // return true; otherwise leave "resolved" untouched and return false.
+    bool resolveSlhaKey( const std::string& name, std::string& resolved ) const;
+
+    // Name-keyed lookup tables populated by registerParameters(), backing
+    // setParameterByName()/getParameterByName() above.
+    void registerParameters();
+    std::map<std::string, double*> m_real_params;
+    // Two separate maps, not one: independent *couplings* (eg GC_72 below)
+    // are declared cxtype, which resolves to cxsmpl<float> at FPTYPE=f, so
+    // this map's value_type has to be cxtype too (a mismatched hardcoded
+    // cxsmpl<double> here fails to compile the moment any coupling is
+    // actually registered below, eg complex effective couplings like
+    // ggH's) -- while independent model *parameters* (eg mdl_I1x33) always
+    // stay plain cxsmpl<double>, matching m_real_params' own always-double
+    // real parameters, and go into m_complex_model_params below instead;
+    // see write_register_parameters()'s own doc comment (export_cpp.py)
+    // for why these can't share one map/type.
+    std::map<std::string, cxtype*> m_complex_params;
+    std::map<std::string, cxsmpl<double>*> m_complex_model_params;
+    std::set<std::string> m_settable_params;
+    std::map<std::string, double> m_param_overrides;
+    std::map<std::string, std::string> m_slha_key_to_name;
+    SLHAReader m_slha;
   };
 
-} // end namespace mg5amcGpu/mg5amcCpu
+  // Generic readers for initProc: dereference an array of pointer-to-Parameters-member
+  // (a per-process compile-time table) into a matching array of tIPD/tIPC values.
+  template<int N>
+  inline void gatherFptype( const Parameters* pars, double Parameters::* const ( &members )[N], fptype ( &out )[N] )
+  {
+    for( int i = 0; i < N; ++i ) out[i] = (fptype)( pars->*members[i] );
+  }
+
+  template<int N>
+  inline void gatherCxtype( const Parameters* pars, cxtype Parameters::* const ( &members )[N], cxtype ( &out )[N] )
+  {
+    for( int i = 0; i < N; ++i ) out[i] = cxmake( pars->*members[i] );
+  }
+
+} // end namespace madmatrix
 
 #else%(eftwarn1)s
 
 #include <cassert>
 #include <limits>
 
-// NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
+//One namespace. Split ber backend.
+namespace madmatrix
 {
   // Hardcoded constexpr physics parameters
   namespace Parameters // keep the same name rather than HardcodedParameters for simplicity
@@ -156,18 +221,14 @@ namespace mg5amcCpu
     %(hasbsmip)s__device__ constexpr double mdl_bsmIndepParam[nBsmIndepParam] = { %(bsmip)s };
   }
 
-} // end namespace mg5amcGpu/mg5amcCpu
+} // end namespace madmatrix
 
 #endif
 
 //==========================================================================
 
-// NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
+//One namespace. Split ber backend.
+namespace madmatrix
 {
   namespace Parameters_dependentCouplings
   {
@@ -257,7 +318,7 @@ namespace mg5amcCpu
   }
 #pragma GCC diagnostic pop
 
-} // end namespace mg5amcGpu/mg5amcCpu
+} // end namespace madmatrix
 
 //==========================================================================
 

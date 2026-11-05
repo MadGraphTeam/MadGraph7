@@ -1,4 +1,4 @@
-C Set of subroutines to project the Feynman diagrama amplitudes AMPL onto the color flow space.
+C Set of subroutines to project the Feynman diagram amplitudes AMPL onto the color flow space.
 
       SUBROUTINE %(proc_prefix)sCOMPUTE_COLOR_FLOWS(HEL_MULT,DO_CUMULATIVE)
       IMPLICIT NONE
@@ -532,7 +532,7 @@ C The configurations are not necessarily consecutive when grouping subprocesses.
         DO J=1,NSQUAREDSO
 C For the multi-channeling, it is in general better to ignore the squared order constraints (which, if they are any, would restrict the AMP2 quantities to be coming from the interference terms only).  
          IF (.TRUE.) THEN
-C Chosing the if statement below instead would as a result to apply the squared order constraints to the AMP2 quantities given to MadEvent for the multichanneling.
+C Choosing the if statement below instead would as a result to apply the squared order constraints to the AMP2 quantities given to MadEvent for the multichanneling.
 c         IF (CHOSEN_SO_CONFIGS(I)) THEN
             AMP2(config_index_map(i))=AMP2(config_index_map(i))+DABS(AMP2_ALL(1,i,J))
           ENDIF
@@ -882,7 +882,7 @@ END SUBROUTINE
 ## }
 
 C This subroutine resets to 0 the common arrays JAMPL, JAMPB and possibly JAMPL_FOR_AMP2 if used
-c The common array JAMPL_ALL is reseted to 0 in the previous subroutine
+c The common array JAMPL_ALL is reset to 0 in the previous subroutine
 SUBROUTINE %(proc_prefix)sREINITIALIZE_JAMPS()
 implicit none
 C  
@@ -1137,7 +1137,7 @@ C Here we setup GOODHEL. If GOODHEL(H) = -10000, its JAMP is 0 so we can skip al
         ENDDO
       ELSE
         WRITE(*,*) '### ERROR The parameter HelicityFilterLevel only accepts values of 0 and 1. The value was set to', HelicityFilterLevel
-C       We cant stop the code here because in the initialisation phase, HelicityFilterLevel = 2.
+C       We cannot stop the code here because in the initialisation phase, HelicityFilterLevel = 2.
       ENDIF
 
 c     Here we determine which helicity state we want to compute and which position it has in the JAMPL_ALL structure

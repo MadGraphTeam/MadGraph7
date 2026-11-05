@@ -309,7 +309,7 @@ C ----------
 C BEGIN CODE
 C ----------
 
-C don't chache for extra counterterms
+C don't cache for extra counterterms
       calculatedBorn=.false.
       FLAVOR(:) = 1
       glu_ij = ij_values(nfksprocess)

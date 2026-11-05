@@ -40,7 +40,7 @@ import madgraph.core.diagram_generation as diagram_generation
 import madgraph.loop.loop_base_objects as loop_base_objects
 import madgraph.loop.loop_diagram_generation as loop_diagram_generation
 import madgraph.iolibs.save_load_object as save_load_object
-import models.import_ufo as models
+import madgraph.models.import_ufo as models
 from madgraph import MadGraph5Error
 
 _file_path = os.path.dirname(os.path.realpath(__file__))
@@ -959,7 +959,7 @@ class LoopDiagramGenerationTest(unittest.TestCase):
             #                                  legend=myloopamplitude.get('process').input_string())
             #plot.draw(opt=options)
 
-            ### This is to display some informations
+            ### This is to display some information
             #mydiag1=myloopamplitude.get('loop_diagrams')[0]
             #mydiag2=myloopamplitude.get('loop_diagrams')[5]      
             #print "I got tag for diag 1=",mydiag1['canonical_tag']

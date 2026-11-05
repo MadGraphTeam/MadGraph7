@@ -32,7 +32,7 @@ import madgraph.various.misc as misc
 from madgraph import MadGraph5Error
 import vendor.ply.lex as lex
 import vendor.ply.yacc as yacc
-import models.check_param_card as check_param_card
+import madgraph.models.check_param_card as check_param_card
 
 logger = logging.getLogger('madgraph.ufo_parsers')
 if madgraph.ordering:
@@ -52,12 +52,10 @@ class UFOExpressionParser(object):
     def __init__(self, **kw):
         """Initialize the lex and yacc"""
 
-        modname = self.__class__.__name__
         self.debugfile = os.path.devnull
-        self.tabmodule = os.path.join(root_path, "iolibs",  modname + "_" + "parsetab.py")
         lex.lex(module=self, debug=0)
         self.y=yacc.yacc(module=self, debug=0, debugfile=self.debugfile,
-                  tabmodule=self.tabmodule)
+                  write_tables=0)
         
     def parse(self, buf):
         """Parse the string buf"""
@@ -303,7 +301,7 @@ class UFOExpressionParserFortran(UFOExpressionParser):
     builtin_equiv = {'abs': 'ABS',
                      'bool': 'LOGICAL',
                      'float': 'REAL',
-                     #'complex': 'COMPLEX', handle separatly
+                     #'complex': 'COMPLEX', handle separately
                      'int': 'INTEGER',
                      'min': 'MIN',
                      'max': 'MAX'
@@ -772,7 +770,7 @@ class UFOExpressionParserCPP(UFOExpressionParser):
     builtin_equiv = {'abs': 'ABS',
                      'bool': 'bool',
                      'float': 'float',
-                     #'complex': 'COMPLEX', handle separatly
+                     #'complex': 'COMPLEX', handle separately
                      'int': 'int',
                      'min': 'min',
                      'max': 'max'
@@ -900,7 +898,7 @@ class UFOExpressionParserCPP(UFOExpressionParser):
 class UFOExpressionParserPythonIF(UFOExpressionParser):
     """An ad hoc parser for UFO algebraic expressions with if statement, outputting
     Python-style code, with the conditional 'if' expressions simplified using
-    pre-defined set of variables specified when instanciating this parser."""
+    pre-defined set of variables specified when instantiating this parser."""
 
     logical_equiv = {'==':'==',
                      '>=':'>=',
@@ -914,7 +912,7 @@ class UFOExpressionParserPythonIF(UFOExpressionParser):
     builtin_equiv = {'abs': 'abs',
                      'bool': 'bool',
                      'float': 'float',
-                     #'complex': 'COMPLEX', handle separatly
+                     #'complex': 'COMPLEX', handle separately
                      'int': 'int',
                      'min': 'min',
                      'max': 'max'

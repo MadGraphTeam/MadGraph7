@@ -39,7 +39,7 @@ import logging
 import madgraph.interface.extended_cmd as extended_cmd
 import madgraph.various.misc as misc
 from madgraph.interface.tutorials._style import to_terminal
-from madgraph.interface.tutorials.session import Exercise
+from madgraph.interface.tutorials.session import Exercise, replay_line
 
 logger_tuto = logging.getLogger('tutorial')
 logger = logging.getLogger('madgraph')
@@ -49,6 +49,18 @@ def emit(text):
     """Print one tutorial block, in the format the tutorial logger frames."""
 
     logger_tuto.info(to_terminal(text).replace('\n', '\n\t'))
+
+
+# The prompt while a tutorial runs says where the reader is -- `TUTO [syntax]
+# 3/14>` -- in the colours of the MG7 prompt it replaces.
+TUTORIAL_PROMPT = "\001\033[1;94m\002TUTO [%s] %d/%d> \001\033[0m\002"
+
+
+def tutorial_prompt(session):
+    """The prompt for `session`: its name, and step X of Y (1-based)."""
+
+    done, total = session.progress()
+    return TUTORIAL_PROMPT % (session.tutorial.name, done, total)
 
 
 class TutorialMixin(object):
@@ -81,8 +93,10 @@ class TutorialMixin(object):
             return
         self._tutorial_failed_line = line
 
+        # what the current step waits for is its own solution (before the
+        # intro, there is no current step yet); next_step's is the one after
         expected = None
-        step = session.next_step
+        step = session.current or session.next_step
         if step is not None:
             expected = step.get_solution(self)
 
@@ -101,6 +115,16 @@ class TutorialMixin(object):
         emit(text)
 
     def postcmd(self, stop, line):
+        stop = self._tutorial_postcmd(stop, line)
+        # after every command, not only the ones that move the tutorial: the
+        # LO/NLO switch resets the prompt, and `back`/`skip` move without a step
+        # firing
+        session = getattr(self, '_tutorial_session', None)
+        if session is not None:
+            self.prompt = tutorial_prompt(session)
+        return stop
+
+    def _tutorial_postcmd(self, stop, line):
         stop = super(TutorialMixin, self).postcmd(stop, line)
         if stop is False:
             return False
@@ -137,6 +161,12 @@ class TutorialMixin(object):
             return stop
 
         index, step = found
+        # a lesson built on state the command was meant to leave: it did not,
+        # so say what is missing and stay where we are (Step.gate)
+        refusal = step.refusal(self, line)
+        if refusal is not None:
+            emit(refusal)
+            return stop
         if step.setup:
             step.setup(self)
 
@@ -190,8 +220,9 @@ class TutorialMixin(object):
         if step is None:
             return
         solution = step.get_solution(self)
-        if step.hint:
-            emit(step.hint)
+        hint = step.get_hint(self)
+        if hint:
+            emit(hint)
         elif solution:
             emit("Try:\n%s%s" % (self._tutorial_prompt_text(), solution))
         else:
@@ -227,10 +258,13 @@ class TutorialMixin(object):
         emit(session.current.render(self))
 
     def do_skip(self, line):
-        """Not in help: skip the current tutorial step"""
+        """Not in help: skip the current tutorial step, or `skip N` to go to
+        step N"""
         session = self._tutorial_session_or_warn()
         if session is None:
             return
+        if line.strip():
+            return self._tutorial_jump(session, line.strip())
         step = session.next_step
         if step is None:
             emit("That was the last step of this tutorial.\n"
@@ -238,6 +272,73 @@ class TutorialMixin(object):
             return
         session.advance(session.index + 1)
         emit(step.render(self))
+
+    def _tutorial_jump(self, session, number):
+        """`skip N`: go to step N, rebuilding the state it expects.
+
+        The commands the reader would have typed to get there are run for them
+        -- the process definitions and the outputs; a `launch` or a `check`
+        only prints or takes minutes, and no later step needs it -- and then
+        step N is shown as if its own command had just fired it.
+        """
+
+        steps = session.tutorial.steps
+        try:
+            target = int(number) - 1
+        except ValueError:
+            emit("`skip` takes a step number -- `tutorial index` lists them.")
+            return
+        if not 0 <= target < len(steps):
+            emit("There is no step %s: this tutorial has %d. `tutorial index` "
+                 "lists them." % (number, len(steps)))
+            return
+        if steps[target].sticky:
+            emit("Step %d answers a command in place rather than being a "
+                 "lesson of its own, so there is nothing to go to. `tutorial "
+                 "index` lists the steps." % (target + 1))
+            return
+
+        # an exercise is current while the reader answers it, which is once
+        # the step before it has passed: rebuild that, then show the question
+        exercise = isinstance(steps[target], Exercise)
+        reach = target - 1 if exercise else target
+
+        commands = []
+        if session.tutorial.order == 'sequence' and reach > 0:
+            commands = session.path_to(reach)
+            if commands is None:
+                emit("Step %d cannot be reached by replaying the commands "
+                     "before it -- it is shown when the step before is "
+                     "completed. `tutorial index` lists the steps."
+                     % (target + 1))
+                return
+
+        ran, skipped = [], []
+        for command in commands:
+            line = replay_line(command)
+            if line is None:
+                skipped.append(command)
+                continue
+            try:
+                self.exec_cmd(line, printcmd=False, precmd=True)
+            except Exception as error:
+                emit("Getting to step %d stopped at `%s`: %s\nThe tutorial "
+                     "stays where it was." % (target + 1, command, error))
+                return
+            ran.append(line)
+
+        report = "Step %d of %d." % (target + 1, len(steps))
+        if ran:
+            report += " To get here, this ran:\n" + "\n".join(
+                "  %s" % line for line in ran)
+        if skipped:
+            report += ("\nand skipped what only prints or runs, which no "
+                       "later step needs:\n" + "\n".join(
+                           "  %s" % line for line in skipped))
+        session.advance(reach)
+        emit(report)
+        emit(steps[target].question if exercise
+             else steps[target].render(self))
 
     # -- helpers ---------------------------------------------------------------
 
@@ -296,11 +397,12 @@ def attach(interface, session):
     """Start `session` on `interface`, splicing the mixin in if needed."""
 
     if not is_attached(interface):
+        interface._tutorial_saved_prompt = getattr(interface, 'prompt', None)
         interface._tutorial_base_class = interface.__class__
         interface.__class__ = _wrap(interface.__class__)
         _suspend_crash_on_error(interface)
     interface._tutorial_session = session
-    _arm_question_hooks(session)
+    _arm_question_hooks(session, interface)
     return session
 
 
@@ -315,6 +417,10 @@ def detach(interface):
             interface.__class__ = base
         interface._tutorial_base_class = None
         _restore_crash_on_error(interface)
+        saved = getattr(interface, '_tutorial_saved_prompt', None)
+        if saved is not None:
+            interface.prompt = saved
+        interface._tutorial_saved_prompt = None
     _disarm_question_hooks()
     return session
 
@@ -357,7 +463,7 @@ def mixin_command_names():
     return [name for name in vars(TutorialMixin) if name.startswith('do_')]
 
 
-def _arm_question_hooks(session):
+def _arm_question_hooks(session, interface=None):
     """Let the running tutorial speak at any question, and stop the clock.
 
     Both are module-level switches in extended_cmd because a question is often
@@ -366,17 +472,27 @@ def _arm_question_hooks(session):
     at.
     """
 
-    extended_cmd.question_hint = lambda: _question_hint(session)
+    extended_cmd.question_hint = lambda: _question_hint(session, interface)
+    extended_cmd.question_progress = \
+        lambda line: _question_progress(session, line, interface)
     extended_cmd.suppress_timeout = True
 
 
 def _disarm_question_hooks():
     extended_cmd.question_hint = None
+    extended_cmd.question_progress = None
     extended_cmd.suppress_timeout = False
 
 
-def _question_hint(session):
+def _question_hint(session, interface=None):
     """The current step's hint, styled, or None to keep the generic line."""
 
-    hint = session.question_hint()
+    hint = session.question_hint(interface)
     return to_terminal(hint) if hint else None
+
+
+def _question_progress(session, line, interface=None):
+    """What the current step says about an answer just given, styled."""
+
+    text = session.question_progress(line, interface)
+    return to_terminal(text) if text else None

@@ -2,7 +2,7 @@
 
 For each documented ``Mapping`` subclass under ``phasespace/``, construct it
 with every parameter its docstring names passed **by keyword**. This fails if a
-binding drops a constructor argument (as ``DoubleT`` did with ``has_cut``) or
+binding drops a constructor argument (e.g. ``has_cut`` of ``DoubleT``) or
 renames one away from the header, keeping the rendered Parameters list honest.
 """
 
@@ -51,12 +51,11 @@ CASES = {
     "FastRamboMapping": dict(n_particles=4, massless=True, com=True),
     "TPropagatorMapping": dict(integration_order=[0], invariant_power=0.8, pt_min=[]),
     "ColorOrderedMapping": dict(
-        color_order=[0, 1, 2, 3],
-        t_invariant_power=0.8,
-        s_invariant_power=0.8,
+        options=ms.ColorOrderedMapping.Options([0, 1, 2, 3]),
         pt_min=[],
         m_inv_min=[],
         dr_min=[],
+        y_max=[],
     ),
     "MultiChannelMapping": dict(
         mappings=[ms.TwoBodyDecay(com=True), ms.TwoBodyDecay(com=True)]
@@ -132,12 +131,12 @@ def test_phasespace_mapping_both_constructors():
         invariant_power=0.8,
         mode=ms.PhaseSpaceMapping.TChannelMode.rambo,
         cuts=None,
-        color_order=None,
+        color_ordered=None,
     )
 
 
 def test_matrix_element_index_is_not_diagram_count():
-    """`MatrixElement.matrix_element_index` was bound to `diagram_count`."""
+    """`matrix_element_index` and `diagram_count` are separate parameters."""
     me = ms.MatrixElement(
         matrix_element_index=3,
         particle_count=4,

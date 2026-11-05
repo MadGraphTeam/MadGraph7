@@ -143,7 +143,7 @@ class IOTest(object):
         self.procdef = procdef
         self.helasModel = helasModel
         self.exporter_name = exporter
-        # Security mesure
+        # Security measure
         if not str(path.dirname(_file_path)) in str(outputPath) and \
                                         not str(outputPath).startswith('/tmp/'):
             raise MadGraph5Error("OutputPath must be within MG directory or"+\
@@ -187,7 +187,7 @@ class IOTest(object):
                 
     @staticmethod
     def remove_f77_function_from_file(path, function=[]):
-        """remove a subroutine/function of a file. (usefull to restric the IOTest)"""
+        """remove a subroutine/function of a file. (useful to restric the IOTest)"""
         
         if not isinstance(function, list):
             function= [function.lower()]
@@ -413,6 +413,25 @@ class IOTestManager(unittest.TestCase):
             helper is.  Canonicalize each file independently in first-use
             order so IO tests still detect a wrong helper reference.
             """
+            # Suffix width can also move a closing parenthesis onto a fixed-
+            # form continuation line. Compare those complete CALL statements
+            # before renaming, preserving punctuation and helper reuse.
+            lines = text.split('\n')
+            normalized = []
+            index = 0
+            while index < len(lines):
+                end = index + 1
+                if re.match(r'^ {6,}CALL\b', lines[index], re.I):
+                    while end < len(lines) and re.match(r'^ {5}[^ 0]', lines[end]):
+                        end += 1
+                statement = ''.join([lines[index].rstrip()] +
+                                    [line[6:].strip() for line in lines[index+1:end]])
+                if re.search(r'\bFLV_[0-9]+\b', statement):
+                    normalized.append(statement)
+                else:
+                    normalized.extend(lines[index:end])
+                index = end
+            text = '\n'.join(normalized)
             identifiers = {}
 
             def replace(match):
@@ -523,7 +542,7 @@ class IOTestManager(unittest.TestCase):
         return '\n'.join(kept)
 
 #    def test_IOTests(self):
-#        """ A test function in the mother so that all childs automatically run
+#        """ A test function in the mother so that all children automatically run
 #        their tests when scanned with the test_manager. """
 #        
 #        # Set it to True if you want info during the regular test_manager.py runs

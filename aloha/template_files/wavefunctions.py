@@ -679,7 +679,7 @@ def irxxxx(p, mass, nhel, nsr):
     
 
     if ( nhel >= -1 ):
-        # constract spinor+ 
+        # contract spinor+
         fip = [0] * 4
         sf, omega, sfomeg, chi = [0, 0], [0,0], [0,0], [0,0]
         nh = nsr
@@ -740,7 +740,7 @@ def irxxxx(p, mass, nhel, nsr):
                 #fip(4) = complex( rZero )
             
     if ( nhel <= 1 ):
-        # constract spinor- 
+        # contract spinor-
         fim = [0] * 4
         sf, omega, sfomeg, chi = [0, 0], [0,0], [0,0], [0,0]
         nh = -nsr
@@ -802,7 +802,7 @@ def irxxxx(p, mass, nhel, nsr):
       
     
 
-    # recurent relation put her for optimization
+    # recurrent relation put her for optimization
     cond1  = (pt == 0 and p[3] >= 0)
     cond2  = (pt == 0 and p[3] < 0)
     
@@ -941,7 +941,7 @@ def orxxxx(p, mass, nhel, nsr):
             #   e0[2] = complex( rZero )
 
     if nhel >= -1:
-        #constract spinor+ 
+        #contract spinor+
         nh = nsr
         sqm, fop, omega, sf, sfomeg = [0]*2,[0]*4,[0]*2,[0]*2,[0]*2
         chi = [0]*2
@@ -1009,7 +1009,7 @@ def orxxxx(p, mass, nhel, nsr):
          
     
     if ( nhel < 2 ):
-        # constract spinor+ 
+        # contract spinor+
         sqm, fom, omega, sf, sfomeg = [0]*2,[0]*4,[0]*2,[0]*2,[0]*2
         chi = [0]*2
 

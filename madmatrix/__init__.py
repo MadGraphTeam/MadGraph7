@@ -30,9 +30,8 @@ else:
     #    Example: new_output = {'myformat': MYCLASS}
     #    allows the command "output myformat PATH" in madgraph.
     #    MYCLASS should inherit from class madgraph.iolibs.export_v4.VirtualExporter
-    from . import output, trex
-    new_output = { 'standalone_trex' : trex.TREX_ProcessExporter }
-    new_reweight = {'madtrex': trex.TREX_ReweightInterface}
+    from . import output
+    new_output = {}
 
     # 2. Define new way to handle the cluster.
     #    Example: new_cluster = {'mycluster': MYCLUSTERCLASS}
@@ -60,6 +59,12 @@ else:
     # NB! Do not use '(1,00,01)' here: leading zeros in decimal integer literals are not permitted in python (#1013)
     __version__ = (1,1,1)
 
+    # MadGraph7 versions supported by this plugin
+    minimal_mg7_version = (0,2,0)
+    maximal_mg7_version = (1000,1000,1000)
+    latest_validated_mg7_version = (0,2,1)
+
+    # MG5_aMC@NLO versions supported by this plugin (not used by MadGraph7)
     minimal_mg5amcnlo_version = (3,6,4)
     maximal_mg5amcnlo_version = (1000,1000,1000)
     latest_validated_version = (3,6,5)

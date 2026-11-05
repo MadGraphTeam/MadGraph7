@@ -23,6 +23,7 @@ from __future__ import absolute_import
 
 import glob
 import ctypes
+import ctypes.util
 import hashlib
 import json
 import math
@@ -48,6 +49,12 @@ class TestNLORealFortranOracle(unittest.TestCase):
     """Generate and replay scalar Fortran real-ME reference records."""
 
     maxDiff = None
+
+    @staticmethod
+    def _library_path(output_path, manifest, real, backend, fptype='d', libtag=''):
+        return pjoin(output_path, 'lib', 'libmadmatrix%s_%s_%s_%s_%s.so' % (
+            libtag, manifest['library_model'], real['library_process_id'],
+            backend, fptype))
 
     @classmethod
     def setUpClass(cls):
@@ -133,7 +140,13 @@ class TestNLORealFortranOracle(unittest.TestCase):
                 self.assertIn("include 'nlo_real_backend.inc'", stream.read())
         param_card = pjoin(output_path, 'Cards', 'param_card.dat')
         with open(param_card, 'rb') as stream:
-            digest = hashlib.sha256(stream.read()).hexdigest()
+            contents = stream.read()
+        # Upstream corrected this comment's grammar after the oracle was
+        # recorded. Preserve the exact byte-level physics fixture otherwise.
+        contents = contents.replace(
+            b'## to external programs such as Pythia.\n',
+            b'## to external program such as Pythia.\n')
+        digest = hashlib.sha256(contents).hexdigest()
         self.assertEqual(digest, case['param_card']['sha256'])
         return output_path
 
@@ -417,9 +430,7 @@ class TestNLORealFortranOracle(unittest.TestCase):
             with open(pjoin(process_path, 'nlo_real_manifest.json')) as stream:
                 manifest = json.load(stream)
             real = manifest['real_matrix_elements'][1]
-            library = pjoin(
-                output_path, 'lib',
-                'libmadmatrix_%s_scalar.so' % real['library_process_id'])
+            library = self._library_path(output_path, manifest, real, 'scalar')
             missing = library + '.missing'
             os.rename(library, missing)
             try:
@@ -664,21 +675,24 @@ class TestNLORealFortranOracle(unittest.TestCase):
         return bridge
 
     @staticmethod
-    def _host_simd_backend():
-        """Return a host SIMD backend supported by current MadMatrix rules."""
+    def _host_simd_backends():
+        """Exercise every available split SIMD width, including odd batches."""
         flags = ''
         try:
             with open('/proc/cpuinfo') as stream:
                 flags = stream.read()
         except IOError:
             pass
-        if 'avx512vl' in flags:
-            return 'avx512y', 4
+        backends = []
         if 'avx2' in flags:
-            return 'simd_256', 4
-        if 'sse4_2' in flags:
-            return 'simd_128', 2
-        raise unittest.SkipTest('no supported host SIMD backend')
+            backends.append(('simd_256', 4))
+        if 'avx512f' in flags:
+            backends.append(('simd_512', 8))
+        if not backends and 'sse4_2' in flags:
+            backends.append(('simd_128', 2))
+        if not backends:
+            raise unittest.SkipTest('no supported host SIMD backend')
+        return backends
 
     def _compile_batch_wrapper_driver(self, output_path, case, backend,
                                       row, records, active):
@@ -767,12 +781,18 @@ class TestNLORealFortranOracle(unittest.TestCase):
     def _run_simd_case(self, name, check_compaction=False):
         case = self.oracle['cases'][name]
         output_path = self._generate_case(name, madmatrix=True)
+        for backend, width in self._host_simd_backends():
+            with self.subTest(backend=backend):
+                self._check_simd_case(output_path, case, backend, width,
+                                      check_compaction)
+
+    def _check_simd_case(self, output_path, case, backend, width,
+                         check_compaction=False):
         process_path = pjoin(
             output_path, 'SubProcesses', case['subprocess'])
         with open(pjoin(process_path, 'nlo_real_manifest.json')) as stream:
             manifest = json.load(stream)
         rows = {row['fks_row']: row for row in manifest['fks_rows']}
-        backend, width = self._host_simd_backend()
         subprocess.check_call([
             'make', '-f', 'nlo_real.mk', 'BACKEND=%s' % backend,
             'FPTYPE=d', '-j2'], cwd=process_path)
@@ -900,8 +920,7 @@ class TestNLORealFortranOracle(unittest.TestCase):
         for real in manifest['real_matrix_elements']:
             records = [record for record in case['records']
                        if record['real_me_id'] == real['id']]
-            library = ctypes.CDLL(pjoin(output_path, 'lib',
-                'libmadmatrix_%s_cuda.so' % real['library_process_id']))
+            library = ctypes.CDLL(self._library_path(output_path, manifest, real, 'cuda'))
             library.umami_initialize.argtypes = [
                 ctypes.POINTER(ctypes.c_void_p), ctypes.c_char_p]
             library.umami_initialize.restype = ctypes.c_int
@@ -914,6 +933,13 @@ class TestNLORealFortranOracle(unittest.TestCase):
                 ctypes.c_size_t, ctypes.POINTER(ctypes.c_int),
                 ctypes.POINTER(ctypes.c_void_p)]
             library.umami_matrix_element.restype = ctypes.c_int
+            ldd = subprocess.check_output(['ldd', library._name], text=True)
+            runtimes = [line.split('=>')[1].split()[0]
+                        for line in ldd.splitlines()
+                        if 'libcudart' in line and '=>' in line]
+            runtime = ctypes.CDLL(runtimes[0] if runtimes else
+                                  ctypes.util.find_library('cudart') or
+                                  '/usr/local/cuda/lib64/libcudart.so')
             handle = ctypes.c_void_p()
             self.assertEqual(library.umami_initialize(ctypes.byref(handle),
                 pjoin(output_path, 'Cards', 'param_card.dat').encode()), 0)
@@ -922,7 +948,11 @@ class TestNLORealFortranOracle(unittest.TestCase):
                     batch = [records[(i + 7 * sequence) % len(records)]
                              for i in range(count)]
                     answers = []
-                    for stride, offset in ((count, 0), (count + 7, 3)):
+                    # Dense Fortran host bridge, generic dense device buffers,
+                    # strided default stream, and explicit asynchronous stream.
+                    for stride, offset, device, explicit_stream in (
+                            (count, 0, False, False), (count, 0, True, False),
+                            (count + 7, 3, True, False), (count + 7, 3, True, True)):
                         nexternal = manifest['nexternal']
                         momenta = (ctypes.c_double * (4 * nexternal * stride))()
                         coupling = (ctypes.c_double * stride)()
@@ -937,16 +967,50 @@ class TestNLORealFortranOracle(unittest.TestCase):
                                 for component in range(4):
                                     momenta[stride * (nexternal * component + particle)
                                             + offset + event] = point['momenta'][particle][component]
-                        keys = (ctypes.c_int * 3)(0, 9, 2)
+                        keys = (ctypes.c_int * 3)(0, 15, 2)
                         inputs = (ctypes.c_void_p * 3)(*[
                             ctypes.cast(array, ctypes.c_void_p)
                             for array in (momenta, coupling, flavour)])
-                        output_keys = (ctypes.c_int * 1)(6)
+                        output_keys = (ctypes.c_int * 1)(13)
                         outputs = (ctypes.c_void_p * 1)(
                             ctypes.cast(output, ctypes.c_void_p))
-                        self.assertEqual(library.umami_matrix_element(
-                            handle, count, stride, offset, 3, keys, inputs,
-                            1, output_keys, outputs), 0)
+                        pointers = []
+                        stream = ctypes.c_void_p()
+                        try:
+                            if device:
+                                # The generic GPU ABI reads/writes device
+                                # buffers and returns before kernels finish.
+                                for host in (momenta, coupling, flavour, output):
+                                    pointer = ctypes.c_void_p()
+                                    size = ctypes.c_size_t(ctypes.sizeof(host))
+                                    self.assertEqual(runtime.cudaMalloc(
+                                        ctypes.byref(pointer), size), 0)
+                                    pointers.append(pointer)
+                                    self.assertEqual(runtime.cudaMemcpy(
+                                        pointer, ctypes.cast(host, ctypes.c_void_p),
+                                        size, 1), 0)
+                                inputs = (ctypes.c_void_p * 3)(
+                                    *[pointer.value for pointer in pointers[:3]])
+                                outputs[0] = pointers[3].value
+                            if explicit_stream:
+                                self.assertEqual(runtime.cudaStreamCreateWithFlags(
+                                    ctypes.byref(stream), 1), 0)
+                                output_keys = (ctypes.c_int * 2)(13, 5)
+                                outputs = (ctypes.c_void_p * 2)(
+                                    pointers[3].value, stream.value)
+                            self.assertEqual(library.umami_matrix_element(
+                                handle, count, stride, offset, 3, keys, inputs,
+                                len(output_keys), output_keys, outputs), 0)
+                            if device:
+                                self.assertEqual(runtime.cudaStreamSynchronize(stream), 0)
+                                self.assertEqual(runtime.cudaMemcpy(
+                                    ctypes.cast(output, ctypes.c_void_p), pointers[3],
+                                    ctypes.c_size_t(ctypes.sizeof(output)), 2), 0)
+                        finally:
+                            if stream:
+                                self.assertEqual(runtime.cudaStreamDestroy(stream), 0)
+                            for pointer in pointers:
+                                self.assertEqual(runtime.cudaFree(pointer), 0)
                         values = list(output)[offset:offset + count]
                         for actual, record in zip(values, batch):
                             expected = record['local_squared_orders'][0]['value']
@@ -956,7 +1020,8 @@ class TestNLORealFortranOracle(unittest.TestCase):
                             for i, value in enumerate(output)
                             if not offset <= i < offset + count))
                         answers.append(values)
-                    self.assertEqual(answers[0], answers[1])
+                    for answer in answers[1:]:
+                        self.assertEqual(answers[0], answer)
             finally:
                 self.assertEqual(library.umami_free(handle), 0)
 
@@ -1051,9 +1116,7 @@ class TestNLORealFortranOracle(unittest.TestCase):
         self.assertFalse(os.path.exists(
             pjoin(process_path, 'libnlo_real_bridge.so')))
         for real in manifest['real_matrix_elements']:
-            self.assertFalse(glob.glob(pjoin(
-                output_path, 'lib', 'libmadmatrix_%s_*.so' %
-                real['library_process_id'])))
+            self.assertFalse(glob.glob(self._library_path(output_path, manifest, real, '*', fptype='*', libtag='*')))
 
     def _run_cuda_mixed_case(self):
         """Use CUDA only for one-order reals and log all split-order fallback."""
@@ -1078,14 +1141,10 @@ class TestNLORealFortranOracle(unittest.TestCase):
             self.assertIn(
                 'MG7 NLO real GPU fallback: real_me_id=%d' % real['id'],
                 text)
-            library = pjoin(
-                output_path, 'lib', 'libmadmatrix_%s_cuda.so' %
-                real['library_process_id'])
+            library = self._library_path(output_path, manifest, real, 'cuda')
             self.assertFalse(os.path.exists(library), library)
         for real in supported:
-            library = pjoin(
-                output_path, 'lib', 'libmadmatrix_%s_cuda.so' %
-                real['library_process_id'])
+            library = self._library_path(output_path, manifest, real, 'cuda')
             self.assertTrue(os.path.isfile(library), library)
 
     def _run_madmatrix_case(self, name, low_memory=False):
@@ -1100,7 +1159,7 @@ class TestNLORealFortranOracle(unittest.TestCase):
         with open(manifest_path) as stream:
             manifest = json.load(stream)
 
-        self.assertEqual(manifest['version'], 1)
+        self.assertEqual(manifest['version'], 2)
         self.assertEqual(manifest['nexternal'], len(case['points'][0]['momenta']))
         self.assertEqual(manifest['split_order_names'],
                          case['split_order_names'])

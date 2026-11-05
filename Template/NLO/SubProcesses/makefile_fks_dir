@@ -3,6 +3,10 @@ include ../../Source/make_opts
 include ../analyse_opts
 include ../pythia8_opts
 
+# Optional routing fragments add build-identity targets before gensym below.
+# Keep the ordinary FKS default target independent of those fragments.
+.DEFAULT_GOAL := gensym
+
 LIBDIR = $(abspath ../../lib/)/
 MODDIR = ../../Source/MODEL/
 ANADIR = ../../FixedOrderAnalysis/
@@ -23,7 +27,7 @@ endif
 
 NLOLIBS=-L$(LIBDIR) $(libmadloop) $(libcuttools) $(libOLP)
 
-# Uncomment the line below to compile with MadLoop without setting the environnement 
+# Uncomment the line below to compile with MadLoop without setting the environment
 # variables 'by hand'
 # NLOLIBS= -L. -lMadLoop -L$(LIBDIR) -lcts
 LINKLIBS = -L$(LIBDIR) -ldhelas -lgeneric -lmodel -lpdf -lgammaUPC -lcernlib $(llhapdf)

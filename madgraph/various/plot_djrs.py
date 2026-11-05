@@ -137,7 +137,7 @@ ratio_frame.plot(h_0j.get('bins'), ratio, linestyle='steps')
 
 
 ################################################################################
-#  SETTING SOME STYLE IMPROVMENT FOR THE PLOT
+#  SETTING SOME STYLE IMPROVEMENT FOR THE PLOT
 ################################################################################
 # Some final style processing of matplotlib
 main_frame.legend(ncol=2, prop={'size':12}, loc=4)

@@ -1,6 +1,7 @@
 #include "nlo_real_bridge.h"
 
 #include "nlo_real_bridge_config.h"
+#include "nlo_real_build_identity.h"
 #include "umami.h"
 
 #include <dlfcn.h>
@@ -62,7 +63,9 @@ namespace
   {
     std::string path = directory;
     if( !path.empty() && path.back() != '/' ) path += '/';
-    return path + "libmadmatrix_" + process + "_" + backend + ".so";
+    return path + "libmadmatrix" + MG7_NLO_REAL_LIBTAG + "_" +
+      MG7_NLO_LIBRARY_MODEL + "_" + process + "_" + backend + "_" +
+      MG7_NLO_REAL_FPTYPE + ".so";
   }
 
   std::string relative_to_bridge( const char* relative )
@@ -146,7 +149,7 @@ extern "C"
               real.get_meta( UMAMI_META_PARTICLE_COUNT,
                              &real.particle_count ) != UMAMI_SUCCESS )
             throw std::runtime_error( "incomplete UMAMI metadata in " + path );
-          if( major != UMAMI_MAJOR_VERSION || minor < 1 )
+          if( major != UMAMI_MAJOR_VERSION || minor < 3 )
             throw std::runtime_error( "incompatible UMAMI ABI in " + path );
           if( !fingerprint || std::string( fingerprint ) != config.fingerprint )
             throw std::runtime_error( "process fingerprint mismatch in " + path );

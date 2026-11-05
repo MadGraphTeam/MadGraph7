@@ -30,7 +30,7 @@ import madgraph.various.misc as misc
 import madgraph.core.base_objects as base_objects
 import madgraph.core.color_amp as color_amp
 import madgraph.core.diagram_generation as diagram_generation
-import models.import_ufo as import_ufo
+import madgraph.models.import_ufo as import_ufo
 from madgraph import MadGraph5Error, InvalidCmd
 #===============================================================================
 # AmplitudeTest

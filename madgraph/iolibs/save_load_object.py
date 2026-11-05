@@ -58,7 +58,7 @@ def pickle_object(fsock, object, bypass_error=False, **opts):
         
         
 class UnPickler(pickle.Unpickler):
-    """Treat problem of librarie"""
+    """Treat problem of libraries"""
     
     def __init__(self, *args, **opts):
         pickle.Unpickler.__init__(self, *args, **opts)

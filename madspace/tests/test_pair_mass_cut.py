@@ -18,12 +18,14 @@ Three things are pinned down:
     is a consequence of the cut and not an extra cut of its own.
 """
 
+import functools
 import json
 import math
 import os
 
-import numpy as np
-import pytest
+import phasespace_helpers
+import torch
+from phasespace_helpers import invariant_mass
 
 import madspace as ms
 
@@ -68,16 +70,7 @@ def mapping(cuts=None):
     return ms.PhaseSpaceMapping(load_topology(), CM_ENERGY, cuts=cuts)
 
 
-def sample(mapping, seed=SEED, n=BATCH_SIZE):
-    rng = np.random.default_rng(seed)
-    p_ext, _x1, _x2, det = mapping.map_forward([rng.random((n, mapping.random_dim()))])
-    return np.asarray(p_ext), np.asarray(det)
-
-
-def invariant_mass(p, i, j):
-    total = p[:, i, :] + p[:, j, :]
-    m2 = total[:, 0] ** 2 - np.sum(total[:, 1:] ** 2, axis=1)
-    return np.sqrt(np.maximum(m2, 0.0))
+sample = functools.partial(phasespace_helpers.sample, seed=SEED, n=BATCH_SIZE)
 
 
 # --------------------------------------------------------------------------
@@ -89,10 +82,12 @@ def test_obs_pair_mass_is_the_invariant_mass_of_the_pair():
     p_ext, _ = sample(mapping())
     O = ms.Observable
     observable = O(PIDS, O.obs_pair_mass, [TOP_PIDS])
-    computed = np.asarray(observable(p_ext)).reshape(p_ext.shape[0], -1)
+    computed = observable(p_ext).reshape(p_ext.shape[0], -1)
     # the two tops are the only pair the selection can form
     assert computed.shape[1] == 1
-    assert computed[:, 0] == pytest.approx(invariant_mass(p_ext, 2, 3), rel=1e-9)
+    torch.testing.assert_close(
+        computed[:, 0], invariant_mass(p_ext, 2, 3), rtol=1e-9, atol=1e-12
+    )
 
 
 def test_obs_pair_mass_is_not_the_single_particle_mass():
@@ -100,13 +95,13 @@ def test_obs_pair_mass_is_not_the_single_particle_mass():
     return the top mass for every event and make the cut meaningless."""
     p_ext, _ = sample(mapping())
     O = ms.Observable
-    pair = np.asarray(O(PIDS, O.obs_pair_mass, [TOP_PIDS])(p_ext)).reshape(-1)
-    single = np.asarray(O(PIDS, O.obs_mass, [TOP_PIDS])(p_ext)).reshape(
-        p_ext.shape[0], -1
+    pair = O(PIDS, O.obs_pair_mass, [TOP_PIDS])(p_ext).reshape(-1)
+    single = O(PIDS, O.obs_mass, [TOP_PIDS])(p_ext).reshape(p_ext.shape[0], -1)
+    torch.testing.assert_close(
+        single, torch.full_like(single, M_TOP), rtol=1e-6, atol=1e-12
     )
-    assert single == pytest.approx(M_TOP, rel=1e-6)
-    assert np.all(pair > 2 * M_TOP - 1e-6)
-    assert np.median(pair) > 2.2 * M_TOP
+    assert torch.all(pair > 2 * M_TOP - 1e-6)
+    assert pair.median() > 2.2 * M_TOP
 
 
 # --------------------------------------------------------------------------
@@ -130,7 +125,7 @@ def test_without_the_cut_the_same_region_is_mostly_wasted():
     above has stopped proving anything."""
     p_ext, _ = sample(mapping())
     pair = invariant_mass(p_ext, 2, 3)
-    assert np.mean(pair < PAIR_MASS_CUT) > 0.5
+    assert (pair < PAIR_MASS_CUT).double().mean() > 0.5
 
 
 def test_cut_volume_is_unchanged_by_the_boundary():
@@ -139,17 +134,18 @@ def test_cut_volume_is_unchanged_by_the_boundary():
     cut or only the filtering does."""
     p_free, det_free = sample(mapping(), seed=SEED)
     passes = invariant_mass(p_free, 2, 3) >= PAIR_MASS_CUT
-    finite = np.isfinite(det_free) & np.all(np.isfinite(p_free), axis=(1, 2))
-    external = np.where(passes & finite, det_free, 0.0)
+    external = torch.where(
+        passes, phasespace_helpers.finite_weight(p_free, det_free), 0.0
+    )
 
     p_cut, det_cut = sample(mapping(cuts=pair_mass_cuts(PAIR_MASS_CUT)), seed=SEED + 1)
-    finite_cut = np.isfinite(det_cut) & np.all(np.isfinite(p_cut), axis=(1, 2))
-    piped = np.where(finite_cut, det_cut, 0.0)
+    piped = phasespace_helpers.finite_weight(p_cut, det_cut)
 
-    mean_external = external.mean()
-    mean_piped = piped.mean()
+    mean_external = external.mean().item()
+    mean_piped = piped.mean().item()
     error = math.sqrt(
-        external.std() ** 2 / len(external) + piped.std() ** 2 / len(piped)
+        external.std(correction=0).item() ** 2 / len(external)
+        + piped.std(correction=0).item() ** 2 / len(piped)
     )
     assert error > 0.0
     assert abs(mean_external - mean_piped) < 5.0 * error
@@ -161,6 +157,6 @@ def test_cut_volume_is_a_real_fraction_of_the_total():
     _, det_free = sample(mapping())
     p_free, det_full = sample(mapping())
     passes = invariant_mass(p_free, 2, 3) >= PAIR_MASS_CUT
-    kept = np.where(passes & np.isfinite(det_full), det_full, 0.0).mean()
-    total = np.where(np.isfinite(det_full), det_full, 0.0).mean()
+    kept = torch.where(passes & torch.isfinite(det_full), det_full, 0.0).mean()
+    total = torch.where(torch.isfinite(det_full), det_full, 0.0).mean()
     assert 0.01 < kept / total < 0.95

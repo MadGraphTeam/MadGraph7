@@ -120,7 +120,7 @@ if 0:
         )
 
     def test_collect_dir_with_restriction_file(self):
-        " TestFinder.collect_dir pass corectly restriction rule on file "
+        " TestFinder.collect_dir pass correctly restriction rule on file "
         self.testmodule.restrict_to('test_test_finder.py')
         self.assertIn(
             'tests.unit_tests.various.test_test_finder.' + \
@@ -129,7 +129,7 @@ if 0:
         )
 
     def test_collect_dir_with_restriction_file2(self):
-        " TestFinder.collect_dir pass corectly restriction rule on file "
+        " TestFinder.collect_dir pass correctly restriction rule on file "
         self.testmodule.restrict_to('./tests/unit_tests/various/' + 
                                     'test_test_finder.py')
         self.assertIn(
@@ -139,7 +139,7 @@ if 0:
         )
 
     def test_collect_dir_with_restriction_class(self):
-        " TestFinder.collect_dir pass corectly restriction rule on class "
+        " TestFinder.collect_dir pass correctly restriction rule on class "
 
         self.testmodule.restrict_to('TestTestFinder')
         self.assertIn(
@@ -149,7 +149,7 @@ if 0:
         )
 
     def test_collect_dir_with_restriction_fct(self):
-        " TestFinder.collect_dir pass corectly restriction rule on fct "
+        " TestFinder.collect_dir pass correctly restriction rule on fct "
 
         self.testmodule.restrict_to('test_check_valid.*')
         self.assertNotIn(
@@ -202,7 +202,7 @@ if 0:
             self.assertTrue(name.startswith('test'))
 
     def test_output_are_function(self):
-        """ TestFinder.collect_function returns test funcions only """
+        """ TestFinder.collect_function returns test functions only """
         self.testmodule.collect_function(TestTestFinder)
         collect = unittest.TestLoader()
         for test_fct in self.testmodule:

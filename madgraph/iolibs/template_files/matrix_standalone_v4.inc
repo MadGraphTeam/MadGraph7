@@ -157,7 +157,7 @@ C     This is because depending on the MC setup the initial PS points have back-
 C     for which some of the spin-2 helicity configurations are zero. But they are no longer zero
 C     if the point is boosted on the z-axis. Remember that HELAS helicity amplitudes are no longer
 C     lorentz invariant with expternal spin-2 particles (only the helicity sum is).
-C     For this reason, we simply remove the filterin when there is only three external particles.
+C     For this reason, we simply remove the filtering when there is only three external particles.
       IF (NEXTERNAL.LE.3) THEN
         DO IHEL=1,NCOMB
           DO J=1,NFLAV
@@ -341,6 +341,8 @@ C
       COMPLEX*16 DUM0,DUM1
       DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/
       double precision bwcutoff
+      double precision standalone_bwcutoff
+      common/to_standalone_bwcutoff/standalone_bwcutoff
 %(flavor_mask_decl)s
 C
 C GLOBAL VARIABLES
@@ -349,7 +351,15 @@ C
 %(global_variable)s
 C
 C
-      bwcutoff=15 ! use if $ syntax is defined in the process
+C     $-syntax propagators veto |m-M| < bwcutoff*Gamma. That has to be the
+C     window the events were generated with (run_card bwcutoff); a caller
+C     such as MadSpin or the reweighting sets it through SET_BWCUTOFF.
+C     Zero (nothing set it) keeps the historical default of 15.
+      if (standalone_bwcutoff.gt.0d0) then
+        bwcutoff = standalone_bwcutoff
+      else
+        bwcutoff = 15d0
+      endif
 %(flavor_mask_setup)s
 %(helas_calls)s
 %(amp2_lines)s
@@ -788,7 +798,7 @@ C     ROUTINE FOR F2PY to read the benchmark point.
       IMPLICIT NONE
       CHARACTER*512 PATH
 CF2PY INTENT(IN) :: PATH
-      call setpara(PATH)  !first call to setup the paramaters
+      call setpara(PATH)  !first call to set up the parameters
       return
       end
 

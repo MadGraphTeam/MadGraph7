@@ -76,13 +76,21 @@ class CitationLogger(object):
     def __init__(self):
         self._seen = set()
         self._path = None
-        self._resolved = False
+        self._directory = None
 
     def _logfile(self):
-        """Return the per-process log path, or None if tracking is disabled."""
-        if not self._resolved:
-            self._resolved = True
-            directory = os.environ.get(ENV_VAR)
+        """Return the per-process log path, or None if tracking is disabled.
+
+        The environment variable is re-read on every call: a single Python
+        process (e.g. the mg5 prompt) can launch several runs, each with its
+        own citation directory, and may cite before the first one is set up.
+        """
+        directory = os.environ.get(ENV_VAR) or None
+        if directory != self._directory:
+            # new run: forget what was recorded for the previous one
+            self._directory = directory
+            self._seen = set()
+            self._path = None
             if directory:
                 try:
                     if not os.path.isdir(directory):
@@ -92,7 +100,6 @@ class CitationLogger(object):
                     self._path = os.path.join(directory, name)
                 except (OSError, IOError) as error:
                     logger.debug('citation tracking disabled: %s', error)
-                    self._path = None
         return self._path
 
     def cite(self, key, context=''):
@@ -104,13 +111,13 @@ class CitationLogger(object):
         """
         if not key:
             return
+        path = self._logfile()
+        if not path:
+            return
         record = (key, context)
         if record in self._seen:
             return
         self._seen.add(record)
-        path = self._logfile()
-        if not path:
-            return
         try:
             with open(path, 'a') as fsock:
                 fsock.write('%s\t%s\n' % (key, context))

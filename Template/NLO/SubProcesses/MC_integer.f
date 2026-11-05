@@ -119,7 +119,7 @@ c Set the arrays in which we accumulate the results to zero
          enddo
       endif
 c
-c Take a fresh random number and find the correponding 'iint'
+c Take a fresh random number and find the corresponding 'iint'
       rnd=ran2()
       iint=0
       do while (rnd .gt. grid(iint,this_dim))

@@ -125,26 +125,23 @@ namespace mgOnGpu
       }
       else
       {
-        // NB: 'setw' affects only the next field (of any type)
         ostr << std::setprecision( 6 ); // set precision (default=6): affects all floats
         ostr << std::fixed;             // fixed format: affects all floats
+        // aligned keys whatever key length.
+        const auto line = [&]( const std::string& key, float seconds )
+        {
+          ostr << std::left << std::setw( maxsize ) << key << std::right << " : "
+               << std::setw( 12 ) << seconds << " sec" << std::endl;
+        };
         for( auto ip: m_partitionTimers )
-          ostr << std::setw( maxsize ) << ip.first << " : "
-               << std::setw( 12 ) << ip.second << " sec" << std::endl;
-        ostr << std::setw( maxsize ) << totalKey << " : "
-             << std::setw( 12 ) << total << " sec" << std::endl
-             << std::setw( maxsize ) << total123Key << " : "
-             << std::setw( 12 ) << total123 << " sec" << std::endl
-             << std::setw( maxsize ) << total23Key << " : "
-             << std::setw( 12 ) << total23 << " sec" << std::endl
-             << std::setw( maxsize ) << total1Key << " : "
-             << std::setw( 12 ) << total1 << " sec" << std::endl
-             << std::setw( maxsize ) << total2Key << " : "
-             << std::setw( 12 ) << total2 << " sec" << std::endl
-             << std::setw( maxsize ) << total3Key << " : "
-             << std::setw( 12 ) << total3 << " sec" << std::endl
-             << std::setw( maxsize ) << total3aKey << " : "
-             << std::setw( 12 ) << total3a << " sec" << std::endl;
+          line( ip.first, ip.second );
+        line( totalKey, total );
+        line( total123Key, total123 );
+        line( total23Key, total23 );
+        line( total1Key, total1 );
+        line( total2Key, total2 );
+        line( total3Key, total3 );
+        line( total3aKey, total3a );
         ostr << std::defaultfloat; // default format: affects all floats
       }
     }

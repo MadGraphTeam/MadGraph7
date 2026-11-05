@@ -201,7 +201,7 @@ public:
 
 protected:
 
-  // User-written routine that does the intialization and fills heprup_out.
+  // User-written routine that does the initialization and fills heprup_out.
   virtual bool fillHepRup() {return false;}
 
   // User-written routine that does the event generation and fills hepeup_out.
@@ -230,7 +230,7 @@ class MyLHAupFortran : public LHAupFortran_aMCatNLO {
     initialised = false;
   }
 
-  //the common blocks should be alredy filled at the fortran level
+  //the common blocks should be already filled at the fortran level
   //so simply return true
   bool fillHepRup(){
     initialised = true;
@@ -685,7 +685,7 @@ public:
 
   bool canVetoProcessLevel() { return true; }
   bool doVetoProcessLevel(Event& process) {
-    // Initailize and store resonance decay products.
+    // Initialize and store resonance decay products.
     nISR = nFSR = 0;
     lhawriterPtr->setProcessPtr(&process);
     bareEvent(process,true);
@@ -765,7 +765,7 @@ public:
     event[4].status(-21);
 
     for ( int i = 0; i < state.size(); ++i) {
-      // Careful when builing the sub-events: A particle that is currently
+      // Careful when building the sub-events: A particle that is currently
       // intermediate in one system could be the pirogenitor of another
       // system, i.e. when resonance decays are present. In this case, the
       // intermediate particle in the current system should be final. 

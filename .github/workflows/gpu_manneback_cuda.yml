@@ -32,7 +32,7 @@ on:
       time_limit:
         description: 'Slurm --time of the allocation (all CI jobs together)'
         type: string
-        default: '02:00:00'
+        default: '00:30:00'
       extra_sbatch:
         description: 'Extra sbatch options, space separated, no quotes (e.g. --qos=preemptible)'
         type: string
@@ -41,6 +41,10 @@ on:
         description: 'Keep the run directory on the cluster after a successful run'
         type: boolean
         default: false
+      interference:
+        description: 'Also run the interference (squared split-order) checks'
+        type: boolean
+        default: true
 
 # one run at a time per cluster; a newer pending run replaces an older pending one
 concurrency:
@@ -49,6 +53,11 @@ concurrency:
 
 jobs:
   manneback:
+    # a called workflow gets at most the permissions of its caller: actions: write for its
+    # watchdog, which cancels the run when the Slurm allocation ends before stop_runner ran
+    permissions:
+      contents: read
+      actions: write
     uses: ./.github/workflows/gpu_runner_ci.yml
     with:
       cluster: manneback
@@ -60,9 +69,9 @@ jobs:
       gres: ${{ inputs.gres || 'gpu:1' }}
       gpu_arch: ${{ inputs.gpu_arch }}
       nevents: ${{ inputs.nevents || '10000' }}
-      time_limit: ${{ inputs.time_limit || '02:00:00' }}
+      # 30 min, not 20 as on lemaitre4: the runner set-up and checkout are sometimes slow here
+      time_limit: ${{ inputs.time_limit || '00:30:00' }}
       extra_sbatch: ${{ inputs.extra_sbatch }}
       keep_workdir: ${{ inputs.keep_workdir || false }}
-    # needed for the called workflow to see the CECI_KEY secret of its `ceci-gpu`
-    # environment (the repository itself has no other secrets)
-    secrets: inherit
+      # on push (no inputs) always; on "Run workflow" as ticked (default ticked)
+      interference: ${{ github.event_name == 'push' || inputs.interference }}

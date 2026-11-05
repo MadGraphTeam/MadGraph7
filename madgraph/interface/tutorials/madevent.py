@@ -23,7 +23,7 @@ from __future__ import absolute_import
 
 import madgraph.interface.tutorials as tutorials
 from madgraph.interface.tutorials.session import (Step, Tutorial,
-                                                  output_name)
+                                                  counts_line, output_name)
 
 P = 'MG7>'
 RUN = 'MY_MADEVENT_RUN'
@@ -52,18 +52,19 @@ Start with a process:
      title='welcome',
      solution='generate p p > t t~'),
 
-Step('generate', """
-Nothing special so far -- the process line is the same whichever output you
-ask for. The difference is in the next command, where you name the format:
+Step('generate', lambda interface: """
+%(counts)sNothing special so far -- the process line is the same whichever
+output you ask for. The difference is in the next command, where you name the
+format:
 
 %(p)s output madevent %(run)s
-""" % {'p': P, 'run': RUN},
+""" % {'p': P, 'run': RUN, 'counts': counts_line(interface)},
      title='generate a process',
      hint="Name the format explicitly: `output madevent DIRNAME`.",
      solution='output madevent %s' % RUN),
 
 Step('output', lambda interface: """
-This is the layout a lot of existing code expects:
+That wrote `%(run)s`. This is the layout a lot of existing code expects:
 
   Cards/run_card.dat     beams, cuts, scales, PDF, number of events
   Cards/param_card.dat   masses, widths, couplings
@@ -78,13 +79,12 @@ in brings its own card, which is why there are so many of them. A card only
 takes effect once you rename `X_card_default.dat` to `X_card.dat`, or answer
 yes when the run offers to edit it.
 
-%(p)s launch %(run)s
-
 `launch` will ask which cards you want to edit and then run
 `bin/generate_events` for you -- the same thing you would get by running that
-script yourself from inside the directory. For a first run, change nothing.
+script yourself from inside the directory. For a first run, change nothing,
+and Ctrl-C stops a long run and returns you here.
 
-(Ctrl-C stops a long run and returns you here.)
+%(p)s launch %(run)s
 """ % {'p': P, 'run': output_name(interface, RUN)},
      title='produce the output',
      solution=lambda interface: 'launch %s' % output_name(interface, RUN)),
@@ -164,6 +164,9 @@ that mass feeds. Nothing warns you.
      solution='history my_madevent_run.dat'),
 
 Step('history', lambda interface: """
+That file replays the session -- `import command my_madevent_run.dat`, or
+`./bin/madgraph my_madevent_run.dat` from a shell.
+
 What else lives on this path:
 
   * **The tools.** MadSpin (decays with spin correlations), `systematics`

@@ -28,14 +28,14 @@ from madgraph import MG4DIR, MG5DIR, MadGraph5Error
 
 import madgraph.core.base_objects as base_objects
 import madgraph.iolibs.export_v4 as export_v4
-import models.import_ufo as import_ufo
+import madgraph.models.import_ufo as import_ufo
 import madgraph.iolibs.files as files
 import madgraph.iolibs.import_v4 as import_v4
 import madgraph.iolibs.ufo_expression_parsers as ufo_expression_parsers
 import madgraph.various.misc as misc
 from madgraph.iolibs import save_load_object
 
-import  models.check_param_card as check_param_card 
+import madgraph.models.check_param_card as check_param_card 
 
 logger = logging.getLogger('madgraph.test.model')
 pjoin = os.path.join
@@ -242,8 +242,8 @@ class CompareMG4WithUFOModel(unit_tests.TestCase):
             
     
     def check_particles(self, mg4_part, ufo_part):
-        """ check that the internal definition for a particle comming from mg4 or
-        comming from the UFO are the same """
+        """ check that the internal definition for a particle coming from mg4 or
+        coming from the UFO are the same """
         
         not_equiv = ['charge', 'mass','width',
                         'texname','antitexname','line']
@@ -277,8 +277,8 @@ class CompareMG4WithUFOModel(unit_tests.TestCase):
         
         
     def check_interactions(self, mg4_vertex, ufo_vertex, vname):
-        """ check that the internal definition for a particle comming from mg4 or
-        comming from the UFO are the same """
+        """ check that the internal definition for a particle coming from mg4 or
+        coming from the UFO are the same """
                 
         # Checking only the color
         mg4_color = mg4_vertex.get('color')

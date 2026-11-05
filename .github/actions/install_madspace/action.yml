@@ -22,7 +22,9 @@ runs:
     - name: madspace cache key
       run: |
         echo "MS_PY=$(python3 -c 'import sys;print(f"{sys.version_info.major}{sys.version_info.minor}")')" >> $GITHUB_ENV
-        echo "MS_VARIANT=${{ inputs.enable_docs == 'true' && '-docs' || '' }}" >> $GITHUB_ENV
+        # -simd: the install includes the SIMD CPU backends; a separate suffix so
+        # that a cached install from before SIMD was enabled is never restored
+        echo "MS_VARIANT=${{ inputs.enable_docs == 'true' && '-docs' || '' }}-simd" >> $GITHUB_ENV
       shell: bash
 
     # madspace/install is the local prefix the mg7 runtime expects (see

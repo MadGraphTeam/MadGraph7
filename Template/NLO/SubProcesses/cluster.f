@@ -699,11 +699,11 @@ c If mother and daughter have the same ID, remove one of them
                   ida(j)=itree(j,i)
                   if(ida(j).lt.0) then
                      if (sprop(i).eq.sprop(ida(j))) then
-                        idenpart=ida(j) ! mother and daugher have same ID
+                        idenpart=ida(j) ! mother and daughter have same ID
                      endif
                   elseif (ida(j).gt.0) then
                      if (sprop(i).eq.ipdg(ida(j))) then
-                        idenpart=ida(j) ! mother and daugher have same ID
+                        idenpart=ida(j) ! mother and daughter have same ID
                      endif
                   endif
                enddo
@@ -773,7 +773,7 @@ c propagators.
                endif
             enddo
             if (.not.in_conf) then
-c s-channel is not in iconf. Set it as a invalid configuration
+c s-channel is not in iconf. Set it as an invalid configuration
                valid_conf(iconf)=.false.
                nvalid=nvalid-1
             endif
@@ -998,7 +998,7 @@ c cluster_pdg). This allows for easy access to PDG numbers etc.
       subroutine update_cluster_scales(nbr,p_inter,cluster_scales
      $     ,cluster_pdg,cluster_ij,iord)
 c Updates the clustering scale to be abs(2*p1.p2) for clusterings that
-c involve exaclty 2 QCD partons. This will be the correct hard scale in
+c involve exactly 2 QCD partons. This will be the correct hard scale in
 c the Sudakov Form Factors (for both massless and massive quarks and
 c gluons).
       implicit none
@@ -1059,7 +1059,7 @@ c particles, and the mother [cluster_pdg(0,0)] is the outgoing one.
          cluster_pdg(0,0)=ipdg(3)
          return
       endif
-      ! Loop over all the clusterings. Everytime there is a cluster with
+      ! Loop over all the clusterings. Every time there is a cluster with
       ! any of the two incoming lines, update the cluster_pdg(1:2,0)
       do i=1,nbr
          cij=cluster_ij(i)
@@ -2143,7 +2143,7 @@ c     don't rotate if nothing to rotate
 
       double precision function dj_clus(p1,p2)
 c***************************************************************************
-c     Uses Durham algorythm to calculate the y value for two partons
+c     Uses Durham algorithm to calculate the y value for two partons
 c     If collision type is hh, hadronic jet measure is used
 c       y_{ij} = 2min[p_{i,\perp}^2,p_{j,\perp}^2]/S
 c                  (cosh(\eta_i-\eta_j)-cos(\phi_1-\phi_2))
@@ -2200,7 +2200,7 @@ c***************************************************************************
       
       double precision function DJB_clus(p1)
 c***************************************************************************
-c     Uses kt algorythm to calculate the y value for one parton
+c     Uses kt algorithm to calculate the y value for one parton
 c       y_i    = p_{i,\perp}^2/S
 c***************************************************************************
       implicit none

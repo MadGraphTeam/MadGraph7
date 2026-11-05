@@ -144,6 +144,9 @@ PROCESSES = [
 # processes generated with 'set apply_flavor_grouping False'
 UNGROUPED_PROCESSES = set(spec['process'] for spec in PROCESSES
                           if not spec.get('grouping', True))
+# The upstream coupling-cache regression exercises the scalar string-coupling
+# capability. Grouped caller-owned amplitude snapshots have separate coverage.
+UNGROUPED_PROCESSES.add('u u~ > t t~ QCD^2<=4 QED^2<=4 [real=QCD]')
 
 
 class TestFKSStandalone(unittest.TestCase):
@@ -429,6 +432,7 @@ class TestFKSStandalone(unittest.TestCase):
         self.assertEqual(set(os.path.basename(item) for item in born_dirs),
                          set(expected))
         for born_dir in born_dirs:
+            self._instrument_physical_flavour_cache(born_dir)
             points = self.parse_check_fks_points(self._run_check_fks(
                 born_dir, points=2, seed=(1802, 9373), calls=3))
             self.assertEqual(len(points), 2)
@@ -635,6 +639,67 @@ class TestFKSStandalone(unittest.TestCase):
                 msg='%s FKS row %d %s' %
                     (record['subprocess'], record['configuration'],
                      record['pdgs']))
+
+    @staticmethod
+    def _instrument_physical_flavour_cache(born_dir):
+        """Probe A -> B -> A without manual invalidation in the real Born."""
+        path = pjoin(born_dir, 'check_sa_fks.f')
+        with open(path) as stream:
+            driver = stream.read()
+        needle = '        CALL GET_MOMENTA(SQRTS,PMASS,P)\n'
+        assert driver.count(needle) == 1
+        driver = driver.replace(needle, needle +
+                                '        CALL TEST_FLAVOUR_CACHE(P)\n', 1)
+        driver += '''
+      subroutine test_flavour_cache(p)
+      implicit none
+      include 'genps.inc'
+      include 'nexternal.inc'
+      include 'born_nhel.inc'
+      include 'nFKSconfigs.inc'
+      include 'fks_info.inc'
+      include 'orders.inc'
+      double precision p(0:3,nexternal-1),a,b,again,link_a,link_again
+      double precision amp2(ngraphs),jamp2(0:ncolor),ret(amp_split_size)
+      double precision ref(amp_split_size),scale,worst
+      double complex cnt(2,nsplitorders)
+      double complex retcnt(amp_split_size,2,nsplitorders)
+      double complex saved_a(ngraphs,max_bhel),saved_b(ngraphs,max_bhel)
+      double complex original_a(ngraphs,max_bhel)
+      logical calculatedBorn
+      common/ccalculatedBorn/calculatedBorn
+      integer nfksprocess,previous
+      common/c_nfksprocess/nfksprocess
+      if (NBORN_FLAVOR_CONFIGS.lt.2) stop 94
+      previous=nfksprocess
+      nfksprocess=BORN_FKS_CONFIG_D(1)
+      calculatedBorn=.false.
+      call sborn_amp(p,amp2,jamp2,ret,retcnt,a,cnt,saved_a)
+      ref=ret
+      original_a=saved_a
+      call sb_sf_001(p,link_a,retcnt,saved_a)
+c Keep CALCULATEDBORN set: production must reject the other physical row.
+      nfksprocess=BORN_FKS_CONFIG_D(2)
+      call sborn_amp(p,amp2,jamp2,ret,retcnt,b,cnt,saved_b)
+      if (a.eq.b) stop 95
+      if (any(saved_a.ne.original_a)) stop 96
+c Consume A while the global cache still holds B.
+      nfksprocess=BORN_FKS_CONFIG_D(1)
+      call sb_sf_001(p,link_again,retcnt,saved_a)
+      worst=abs(link_a-link_again)/max(abs(link_a),1d-300)
+      call sborn_amp(p,amp2,jamp2,ret,retcnt,again,cnt,saved_b)
+      scale=max(maxval(abs(ref)),1d-300)
+      worst=max(worst,maxval(abs(ret-ref))/scale)
+      worst=max(worst,abs(a-again)/max(abs(a),1d-300))
+      write(*,*) 'PHYSICAL FLAVOUR CACHE WORST',worst
+      if (worst.gt.1d-12) stop 97
+      nfksprocess=previous
+      calculatedBorn=.false.
+      end
+'''
+        with open(path, 'w') as stream:
+            stream.write(driver)
+        misc.compile(['check_fks'], cwd=born_dir)
 
     # Point 1 of the real-emission throughput benchmark (RAMBO at sqrt(s) =
     # 1 TeV, seed 12345, momenta in the order of g g > g g g g) and |M|^2 of
@@ -1334,6 +1399,122 @@ C     batched one reuses, as set_goodhel does in a run
         names = [os.path.basename(d) for d in born_dirs]
         for name in ('P0_gQ_wpQ', 'P0_aQ_wpQ', 'P0_QQx_wpg', 'P0_QQx_wpa'):
             self.assertIn(name, names)
+
+
+    def test_fks_born_gscale_mixed_orders(self):
+        """gscale (rescaling the cached Born amplitudes when only alpha_S
+        changed) agrees with a fresh evaluation for a mixed-order Born.
+
+        u u~ > t t~ with QCD^2<=4 QED^2<=4 has two amplitude split orders
+        (the gluon diagram of QCD order 2, the photon and Z ones of order
+        0) and three squared ones (QCD 4, 2, 0), each rescaled with its
+        own power. The driver (tests/input_files/fks_born_gscale_driver.f)
+        alternates g at fixed momenta for every FKS configuration and
+        compares every split-order piece, the Born tilde, AMP2/JAMP2 and
+        the colour links with a fresh evaluation, through the fast path
+        (result cache rescaled) and the two loop paths (colour sums
+        redone on the rescaled amplitudes). A QED coupling changed
+        together with g must make SBORN discard the cache. A counter put
+        at the born_gscale call makes sure the rescaling really ran."""
+        path = pjoin(self.tmpdir, 'uux_ttx_mixed')
+        # --limits: full run setup (built-in PDF, dummy analysis), the
+        # driver links the same objects as test_soft_col_limits
+        self._output_fks_sa('u u~ > t t~ QCD^2<=4 QED^2<=4 [real=QCD]',
+                            'loop_sm', path, limits=True)
+        born_dir = pjoin(path, 'SubProcesses', 'P0_uux_ttx')
+        born_f = pjoin(born_dir, 'born.f')
+        text = open(born_f).read()
+        # the Born really is mixed: two amplitude split orders
+        self.assertIn('PARAMETER (NAMPSO=2, NSQAMPSO=3)', text)
+        self.assertIn('DATA (SQSOQCD(I),I=1,3) /4,2,0/', text)
+        # the QED coupling changed in the refusal mode must be one the
+        # Born checks, otherwise the refusal would be vacuous
+        qed_coupling = 'GC_2'
+        self.assertIn('SAVED_COUP(1)=%s\n' % qed_coupling, text)
+        with open(pjoin(born_dir, 'born_links.dat')) as stream:
+            nlinks = int(stream.readline())
+
+        # count the rescalings (test-only instrumentation; the Fortran
+        # writer upper-cases and re-indents the template lines)
+        for old, new in (
+                (r'^( *)SAVE SAVED_G\n',
+                 r'\g<0>\1INTEGER NGSCALE_TEST\n'
+                 r'\1COMMON /C_GSCALE_TEST/ NGSCALE_TEST\n'),
+                (r'^( *)CALL BORN_GSCALE\(RPOW, *BORN_CACHE_ANS\)\n',
+                 r'\g<0>\1NGSCALE_TEST=NGSCALE_TEST+1\n')):
+            text, count = re.subn(old, new, text,
+                                  flags=re.IGNORECASE | re.MULTILINE)
+            self.assertEqual(count, 1, old)
+        open(born_f, 'w').write(text)
+
+        driver = open(pjoin(os.path.dirname(os.path.dirname(
+            os.path.realpath(__file__))), 'input_files',
+            'fks_born_gscale_driver.f')).read()
+        driver = driver.replace('QED_COUPLING', qed_coupling).replace(
+            'NLINKS_VALUE', str(nlinks))
+        # The explicit-array exporter keeps one source per link. Adapt only
+        # this test driver's scalar convenience API, preserving every link
+        # comparison and all upstream rescaling/refusal assertions.
+        driver += '''
+      subroutine sb_sf_link(p,ilink,w)
+      implicit none
+      include 'genps.inc'
+      include 'nexternal.inc'
+      include 'born_nhel.inc'
+      include 'orders.inc'
+      double precision p(0:3,nexternal-1),w
+      integer ilink
+      double complex saveamp(ngraphs,max_bhel)
+      common /to_saveamp/ saveamp
+      double complex ret(amp_split_size,2,nsplitorders)
+'''
+        for ilink in range(1, nlinks + 1):
+            driver += ('      %s (ilink.eq.%d) then\n'
+                       '        call sb_sf_%03d(p,w,ret,saveamp)\n' %
+                       ('if' if ilink == 1 else 'elseif', ilink, ilink))
+        driver += '      else\n      stop 97\n      endif\n      end\n'
+        open(pjoin(born_dir, 'test_born_gscale.f'), 'w').write(driver)
+        makefile = open(pjoin(born_dir, 'makefile')).read()
+        makefile += (
+            '\nGSCALETEST= $(RUN) test_born_gscale.o BinothLHADummy.o '
+            'pythia8_fortran_dummy.o write_event.o handling_lhe_events.o\n'
+            'test_born_gscale: $(GSCALETEST) mint_module.o\n'
+            '\t$(FC) $(LDFLAGS) -o test_born_gscale $(GSCALETEST) '
+            '$(APPLLIBS) $(LINKLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) '
+            '$(FJLIBS)\n'
+            'test_born_gscale.o: mint_module.o\n')
+        open(pjoin(born_dir, 'makefile_gscale'), 'w').write(makefile)
+        misc.compile(['-f', 'makefile_gscale', 'test_born_gscale'],
+                     cwd=born_dir)
+        out = subprocess.check_output(
+            [pjoin(born_dir, 'test_born_gscale')], cwd=born_dir,
+            stderr=subprocess.STDOUT).decode(errors='replace')
+
+        npoints = int(re.search(r'GSCALE NPOINTS\s+(\d+)', out).group(1))
+        self.assertGreater(npoints, 1, out)
+        modes = {}
+        for mode, worst, count in re.findall(
+                r'GSCALE MODE\s+(\d)\s+(\S+)\s+(\d+)', out):
+            modes[int(mode)] = (float(worst), int(count))
+        self.assertEqual(sorted(modes), [0, 1, 2, 3], out)
+        for mode in (0, 1, 2):
+            worst, count = modes[mode]
+            # every point went through the rescaling ...
+            self.assertEqual(count, npoints, 'mode %d: %s' % (mode, out))
+            # ... and agrees with the fresh evaluation
+            self.assertLess(worst, 1e-12, 'mode %d: %s' % (mode, out))
+        worst, count = modes[3]
+        # refusal: never rescaled, identical to a fresh evaluation with
+        # the changed coupling, which does change the Born
+        self.assertEqual(count, 0, out)
+        self.assertEqual(worst, 0., out)
+        shift = float(re.search(r'GSCALE REFUSAL_SHIFT\s+(\S+)',
+                                out).group(1))
+        self.assertGreater(shift, 1e-6, out)
+        snapshot = float(re.search(r'GSCALE SAVED_SNAPSHOT\s+(\S+)',
+                                   out).group(1))
+        self.assertLess(snapshot, 1e-12, out)
+
 
 
 if __name__ == '__main__':

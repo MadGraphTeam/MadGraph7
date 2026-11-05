@@ -43,7 +43,7 @@ import madgraph.loop.loop_exporters as loop_exporters
 import madgraph.iolibs.export_v4 as export_v4
 import madgraph.iolibs.save_load_object as save_load_object
 import madgraph.iolibs.helas_call_writers as helas_call_writers
-import models.import_ufo as import_ufo
+import madgraph.models.import_ufo as import_ufo
 import madgraph.various.misc as misc
 import tests.IOTests as IOTests
 import tests.unit_tests.loop.test_loop_exporters as test_loop_exporters

@@ -211,7 +211,7 @@ C     ----------
             ENDDO
 C           Default value of the kinematic matrix
             S_MAT(I,J)=DIFFSQ-M2L(I)-M2L(J)
-C           And we now test various thresholds. Normaly, at most one
+C           And we now test various thresholds. Normally, at most one
 C            applies.
             IF(ABS(M2L(I)).NE.0.0D0)THEN
               IF(ABS((DIFFSQ-M2L(I))/M2L(I)).LT.OSTHRES)THEN
@@ -290,7 +290,7 @@ C     ----------
             ENDDO
 C           Default value of the kinematic matrix
             S_MAT(I,J)=DIFFSQ-M2L(I)-M2L(J)
-C           And we now test various thresholds. Normaly, at most one
+C           And we now test various thresholds. Normally, at most one
 C            applies.
             IF(ABS(M2L(I)).NE.0.0E0_16)THEN
               IF(ABS((DIFFSQ-M2L(I))/M2L(I)).LT.OSTHRES)THEN
@@ -333,9 +333,9 @@ C            component
       INTEGER    NLOOPLINE
       PARAMETER (NLOOPLINE=2)
       INTEGER    NWAVEFUNCS
-      PARAMETER (NWAVEFUNCS=9)
+      PARAMETER (NWAVEFUNCS=6)
       INTEGER    NLOOPGROUPS
-      PARAMETER (NLOOPGROUPS=27)
+      PARAMETER (NLOOPGROUPS=29)
       INTEGER    NCOMB
       PARAMETER (NCOMB=16)
 C     These are constants related to the split orders
@@ -466,9 +466,9 @@ C         Tensor Integral Reduction is used
       INTEGER    NLOOPLINE
       PARAMETER (NLOOPLINE=3)
       INTEGER    NWAVEFUNCS
-      PARAMETER (NWAVEFUNCS=9)
+      PARAMETER (NWAVEFUNCS=6)
       INTEGER    NLOOPGROUPS
-      PARAMETER (NLOOPGROUPS=27)
+      PARAMETER (NLOOPGROUPS=29)
       INTEGER    NCOMB
       PARAMETER (NCOMB=16)
 C     These are constants related to the split orders
@@ -601,9 +601,9 @@ C         Tensor Integral Reduction is used
       INTEGER    NLOOPLINE
       PARAMETER (NLOOPLINE=4)
       INTEGER    NWAVEFUNCS
-      PARAMETER (NWAVEFUNCS=9)
+      PARAMETER (NWAVEFUNCS=6)
       INTEGER    NLOOPGROUPS
-      PARAMETER (NLOOPGROUPS=27)
+      PARAMETER (NLOOPGROUPS=29)
       INTEGER    NCOMB
       PARAMETER (NCOMB=16)
 C     These are constants related to the split orders
@@ -738,9 +738,9 @@ C         Tensor Integral Reduction is used
       INTEGER    NLOOPLINE
       PARAMETER (NLOOPLINE=1)
       INTEGER    NWAVEFUNCS
-      PARAMETER (NWAVEFUNCS=9)
+      PARAMETER (NWAVEFUNCS=6)
       INTEGER    NLOOPGROUPS
-      PARAMETER (NLOOPGROUPS=27)
+      PARAMETER (NLOOPGROUPS=29)
       INTEGER    NCOMB
       PARAMETER (NCOMB=16)
 C     These are constants related to the split orders

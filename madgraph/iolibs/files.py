@@ -103,8 +103,8 @@ def append_to_file(filename, myfunct, *args):
 # check piclke validity
 #===============================================================================
 def is_uptodate(picklefile, path_list=None, min_time=1343682423):
-    """Check if the pickle files is uptodate compare to a list of files. 
-    If no files are given, the pickle files is checked against it\' current 
+    """Check if the pickle file is up-to-date compared to a list of files.
+    If no files are given, the pickle file is checked against its current
     directory"""
     
     if not os.path.exists(picklefile):

@@ -12,4 +12,4 @@
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
 #
 ################################################################################
-"""All class/routines linked to fks substraction scheme."""
+"""All class/routines linked to fks subtraction scheme."""

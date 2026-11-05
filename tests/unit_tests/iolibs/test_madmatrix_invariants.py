@@ -90,6 +90,12 @@ int main() {
 @unittest.skipUnless(shutil.which('g++'), 'requires a C++ compiler')
 class TestInvariantInterfaces(unittest.TestCase):
     """Compile the actual writer expression with the production type headers."""
+    @staticmethod
+    def header_flags(templates, backend):
+        variant = 'gpu' if backend == 'cuda' else ('cpu' if backend == 'scalar' else 'simd')
+        return ['-I'+str(templates/'backend'/variant),
+                '-I'+str(templates/'backend/common'), '-I'+str(templates)]
+
     def test_runtime_mixed_lanes_signed_parents_and_width(self):
         from madmatrix.model_handling import MadMatrixALOHAWriter
         writer = object.__new__(MadMatrixALOHAWriter)
@@ -105,10 +111,16 @@ class TestInvariantInterfaces(unittest.TestCase):
                  ([-32.000000001, 0., 0., -32.], [32., 0., 0., -32.], 64.),
                  ([-128., 16., 8., 32.], [64., 4., 2., -16.], 0.),
                  ([-128., 16., 8., 32.], [64., 4., 2., -16.], 64.)]
-        source_text = '''#include "mgOnGpuInvariants.h"
+        source_text = '''#include "mgOnGpuConfig.h"
+#ifdef MGONGPU_HAS_VECTORS_H
+#include "mgOnGpuVectors.h"
+#else
+#include "mgOnGpuCxtypes.h"
+#endif
+#include "MadMatrixDenom.h"
 #include <iostream>
 #include <iomanip>
-using namespace mg5amcCpu;
+using namespace madmatrix;
 int main() {
   double a[4][4], b[4][4], mass;
   while(std::cin >> mass) {
@@ -128,7 +140,7 @@ int main() {
     }
     const fptype M1=mass, W1=1.25;
     const cxtype_denom cId(0,1);
-    const cxtype_denom_sv value = '''+expression+''';
+    const cxtype_amp_sv value = '''+expression+''';
     const auto real=cxreal(value), imag=cximag(value);
     const auto ordinary=dP1[0]*dP1[0]-dP1[1]*dP1[1]-dP1[2]*dP1[2]-dP1[3]*dP1[3]-M1*M1;
     for(int lane=0;lane<neppV;++lane) {
@@ -153,16 +165,15 @@ int main() {
                 backends.append(('avx512', ['-march=skylake-avx512', '-mprefer-vector-width=512', '-DMGONGPU_PVW512']))
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
-            for header in templates.glob('*.h'):
-                shutil.copy2(header, directory/header.name)
             shutil.copytree(templates/'Arithmetics', directory/'Arithmetics')
             source = directory/'runtime.cc'; source.write_text(source_text)
             for backend, flags in backends:
                 executable = directory/backend
-                subprocess.run(['g++', '-std=c++17', '-O3', '-ffast-math', *flags,
+                compiled = subprocess.run(['g++', '-std=c++17', '-O3', '-ffast-math', *flags,
                     '-DMGONGPU_FPTYPE_DOUBLE', '-DMGONGPU_FPTYPE2_DOUBLE',
-                    '-I'+str(directory), str(source), '-o', str(executable)],
-                    capture_output=True, text=True, check=True, timeout=60)
+                    *self.header_flags(templates, backend), str(source), '-o', str(executable)],
+                    capture_output=True, text=True, timeout=60)
+                self.assertEqual(compiled.returncode, 0, compiled.stderr)
                 for rotation in range(4):
                     selected = cases[rotation:]+cases[:rotation]
                     for mass in (0., 64.):
@@ -197,21 +208,25 @@ int main() {
         templates = Path(__file__).resolve().parents[3] / 'madgraph/iolibs/template_files/madmatrix'
         with tempfile.TemporaryDirectory() as directory:
             directory = Path(directory)
-            for header in templates.glob('*.h'):
-                shutil.copy2(header, directory/header.name)
             (directory/'Arithmetics').mkdir()
             shutil.copy2(templates/'Arithmetics/Invariant.h', directory/'Arithmetics/Invariant.h')
             source = directory/'probe.cc'
             source.write_text('''#ifdef __CUDACC__
 #include <cuda_runtime.h>
 #endif
-#include "mgOnGpuInvariants.h"
-#ifdef MGONGPUCPP_GPUIMPL
-using namespace mg5amcGpu;
-__global__ void probe(cxtype_denom_sv* out, const fptype_momenta_sv* input) {
+#include "mgOnGpuConfig.h"
+#ifdef MGONGPU_HAS_VECTORS_H
+#include "mgOnGpuVectors.h"
 #else
-using namespace mg5amcCpu;
-cxtype_denom_sv probe(const fptype_momenta_sv* input) {
+#include "mgOnGpuCxtypes.h"
+#endif
+#include "MadMatrixDenom.h"
+#ifdef MGONGPUCPP_GPUIMPL
+using namespace madmatrix;
+__global__ void probe(cxtype_amp_sv* out, const fptype_momenta_sv* input) {
+#else
+using namespace madmatrix;
+cxtype_amp_sv probe(const fptype_momenta_sv* input) {
 #endif
   struct Vector { fptype_momenta_sv pvec[4]; } V1, V2, V3;
   for(int k=0;k<4;++k) { V2.pvec[k]=input[k]; V3.pvec[k]=input[k+4]; V1.pvec[k]=V2.pvec[k]+V3.pvec[k]; }
@@ -219,10 +234,9 @@ cxtype_denom_sv probe(const fptype_momenta_sv* input) {
   const fptype M1=64, W1=1;
   const cxtype_denom cId(0,1);
 #if defined(MGONGPU_FPTYPE_DOUBLE) && !defined(MGONGPU_SIMD_DENOM64)
-  const cxtype_denom_sv value = '''+expression+''';
+  const cxtype_amp_sv value = '''+expression+''';
 #else
-  const cxtype_denom_sv value = dP1[0]*dP1[0]-dP1[1]*dP1[1]-dP1[2]*dP1[2]-dP1[3]*dP1[3]
-      - static_cast<fptype_denom>(M1)*(static_cast<fptype_denom>(M1)-cId*static_cast<fptype_denom>(W1));
+  const cxtype_amp_sv value = virtuality(dP1, mass2(M1,W1));
 #endif
 #ifdef MGONGPUCPP_GPUIMPL
   out[0]=value;
@@ -245,7 +259,7 @@ cxtype_denom_sv probe(const fptype_momenta_sv* input) {
                 for defines, precision in precisions:
                     with self.subTest(backend=backend, precision=precision):
                         result = subprocess.run(['g++','-std=c++17','-O3','-ffast-math',
-                            *flags,*['-D'+name for name in defines],'-I'+str(directory),
+                            *flags,*['-D'+name for name in defines],*self.header_flags(templates, backend),
                             '-fsyntax-only',str(source)],capture_output=True,text=True,timeout=60)
                         self.assertEqual(result.returncode, 0, result.stderr)
             if shutil.which('nvcc'):
@@ -253,6 +267,6 @@ cxtype_denom_sv probe(const fptype_momenta_sv* input) {
                 result=subprocess.run(['nvcc','-std=c++17','--use_fast_math',
                     '-allow-unsupported-compiler','-arch=sm_90',
                     '-DMGONGPU_FPTYPE_DOUBLE','-DMGONGPU_FPTYPE2_DOUBLE',
-                    '-I'+str(directory),'-c',str(cuda),'-o',str(directory/'probe.o')],
+                    *self.header_flags(templates, 'cuda'),'-c',str(cuda),'-o',str(directory/'probe.o')],
                     capture_output=True,text=True,timeout=90)
                 self.assertEqual(result.returncode,0,result.stderr)

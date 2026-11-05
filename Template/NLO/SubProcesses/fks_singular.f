@@ -654,6 +654,7 @@ C wrt the hard matrix element. Relevant for lepton collisions.
 c This subroutine computes the real-emission matrix elements and adds
 c its value to the list of weights using the add_wgt subroutine
       use extra_weights
+      use mint_module, only: fixed_order
       implicit none
       include 'nexternal.inc'
       include 'coupl.inc'
@@ -663,10 +664,12 @@ c its value to the list of weights using the add_wgt subroutine
 
       double precision ret_amp_split(amp_split_size)
 
+      include 'run.inc'
       integer orders(nsplitorders)
       integer iamp
       double precision s_ev,fks_Sij,p(0:3,nexternal),wgt1,fx_ev
-     $     ,sudakov_damp
+     $     ,sudakov_damp,real_channel_soft_fraction
+      external real_channel_soft_fraction
       external fks_Sij
       integer            i_fks,j_fks
       common/fks_indices/i_fks,j_fks
@@ -690,6 +693,13 @@ C      call sreal(p,xi_i_fks_ev,y_ij_fks_ev,fx_ev,ret_amp_split)
         orders_tag=get_orders_tag(orders)
         amp_pos=iamp
         wgt1=ret_amp_split(iamp)*s_ev*f_r/g**(qcd_power)
+c MadFKS section 6.3: only the real event is damped. Local subtraction
+c terms already have f=1 in their singular limits. Keep this separate
+c from Sudakov damping, whose complement uses n-body kinematics.
+        if (fixed_order.and.real_channels_x0.gt.0d0.and.
+     $      real_channels_x0.lt.1d0) then
+           wgt1=wgt1*real_channel_soft_fraction(p)
+        endif
         if (sudakov_damp.gt.0d0) then
           call add_wgt(1,orders,wgt1*sudakov_damp,0d0,0d0,0d0,fx_ev)
         endif
@@ -701,6 +711,52 @@ C      call sreal(p,xi_i_fks_ev,y_ij_fks_ev,fx_ev,ret_amp_split)
       tReal=tReal+(tAfter-tBefore)
       return
       end
+
+      double precision function real_channel_soft_fraction(p)
+c Smooth non-hard fraction; callers on the legacy path never need it.
+      implicit none
+      include 'nexternal.inc'
+      include 'run.inc'
+      double precision p(0:3,nexternal),real_channel_invariant,x
+      external real_channel_invariant
+      integer i_fks,j_fks
+      common /fks_indices/ i_fks,j_fks
+      double precision ybst_til_tolab,ybst_til_tocm,sqrtshat,shat
+      common /parton_cms_stuff/ ybst_til_tolab,ybst_til_tocm,
+     $                         sqrtshat,shat
+      real_channel_soft_fraction=1d0
+      if (.not.(real_channels_x0.gt.0d0.and.
+     $          real_channels_x0.lt.1d0)) return
+      x=max(0d0,2d0*real_channel_invariant(p,i_fks,j_fks)/shat)
+      real_channel_soft_fraction=real_channels_x0**2/
+     $                         (real_channels_x0**2+x**2)
+      return
+      end
+
+      double precision function real_channel_invariant(p,i,j)
+c Stable on-shell k_i.k_j, including arbitrarily small soft/collinear
+c separations. The legacy dot helper deliberately rounds small values
+c to zero and would impose an artificial cutoff on the hard remainder.
+      implicit none
+      include 'nexternal.inc'
+      include 'coupl.inc'
+      integer i,j
+      double precision p(0:3,nexternal),pmass(nexternal),vi,vj
+      double precision zero
+      parameter (zero=0d0)
+      include 'pmass.inc'
+      vi=sqrt(sum(p(1:3,i)**2))
+      vj=sqrt(sum(p(1:3,j)**2))
+      if (vi.eq.0d0.or.vj.eq.0d0) then
+         real_channel_invariant=p(0,i)*p(0,j)
+      else
+         real_channel_invariant=pmass(i)**2*p(0,j)/(p(0,i)+vi)
+     $        +vi*pmass(j)**2/(p(0,j)+vj)
+     $        +0.5d0*vi*vj*sum((p(1:3,i)/vi-p(1:3,j)/vj)**2)
+      endif
+      return
+      end
+
 
       subroutine compute_soft_counter_term(replace_MC_subt,ret_amp_split,fx_s)
 c This subroutine computes the soft counter term and adds its value to
@@ -1468,13 +1524,7 @@ c i.e. all the nbody contributions.
       common/crndec/rndec
 C
       call cpu_time(tBefore)
-c Random numbers to be used in the plotting routine: these numbers will
-c not change between events, counter events and n-body contributions.
-      if(needrndec)then
-         do i=1,10
-            rndec(i)=ran2()
-         enddo
-      endif
+      call initialize_weight_analysis
       call set_cms_stuff(0)
 c f_* multiplication factors for Born and nbody
       f_b=jac_cnt(0)*xinorm_ev/(min(xiimax_ev,xiBSVcut_used)*shat/(16
@@ -1485,6 +1535,46 @@ c f_* multiplication factors for Born and nbody
       return
       end
 
+
+      subroutine initialize_weight_analysis
+c Shared initialization also needed in jobs integrating only hard real.
+      use extra_weights
+      use mint_module
+      implicit none
+      include 'nexternal.inc'
+      include 'run.inc'
+      include 'pineappl_common.inc'
+      integer i,j,orders(nsplitorders)
+      logical firsttime,pineappl,needrndec
+      data firsttime /.true./
+      parameter (needrndec=.false.)
+      common /for_pineappl/ pineappl
+      double precision ran2,rndec(10)
+      external ran2
+      common /crndec/ rndec
+c Random numbers to be used in the plotting routine: these numbers will
+c not change between events, counter events and n-body contributions.
+      if(needrndec)then
+         do i=1,10
+            rndec(i)=ran2()
+         enddo
+      endif
+      if (firsttime) then
+         if (pineappl) then 
+         ! PineAPPL stuff
+         appl_amp_split_size = amp_split_size
+           do j=1,amp_split_size
+             call amp_split_pos_to_orders(j, orders)
+             appl_qcdpower(j) = orders(qcd_pos)
+             appl_qedpower(j) = orders(qed_pos)
+           enddo
+         endif
+c Initialize hiostograms for fixed order runs
+         if (fixed_order) call initplot
+         firsttime=.false.
+      endif
+      return
+      end
 
       subroutine include_multichannel_enhance(imode,born_amp2,ev_amp2,norad_amp2)
       implicit none
@@ -1939,6 +2029,7 @@ c        contribution
       use weight_lines
       use extra_weights
       use FKSParams
+      use mint_module, only: fixed_order
       implicit none
       include 'nexternal.inc'
       include 'run.inc'
@@ -1975,6 +2066,8 @@ c        contribution
       integer     fold,ifold_counter
       common /cfl/fold,ifold_counter
       integer ntagph
+      integer real_channel_type
+      common /c_real_channel_type/ real_channel_type
       double precision resc
       integer get_n_tagged_photons
       double precision get_rescale_alpha_factor
@@ -1990,7 +2083,7 @@ C Apply user-defined (in FKS_params.dat) contribution type filters if necessary
       if (VetoedContributionTypes(0).gt.0) then
         do i=1,VetoedContributionTypes(0)
           if (type.eq.VetoedContributionTypes(i)) then
-C This contribution was explicitely vetoed out by the user. Skip it.
+C This contribution was explicitly vetoed out by the user. Skip it.
             return
           endif
         enddo
@@ -2089,7 +2182,12 @@ c matrix elements
       wgt_ME_tree(2,icontr)=wgt_real
       do i=1,nexternal
          do j=0,3
-            if (p1_cnt(0,1,0).gt.0d0.and.type.ne.5) then
+            if (fixed_order.and.real_channel_type.eq.1.and.
+     $          type.eq.1) then
+c The hard remainder has no underlying Born counterevent. Its auxiliary
+c record is the real event itself; never read ungenerated Born momenta.
+               momenta_m(j,i,1,icontr)=p_ev(j,i)
+            elseif (p1_cnt(0,1,0).gt.0d0.and.type.ne.5) then
                momenta_m(j,i,1,icontr)=p1_cnt(j,i,0)
             elseif (p1_cnt(0,1,1).gt.0d0) then
                momenta_m(j,i,1,icontr)=p1_cnt(j,i,1)
@@ -2303,7 +2401,7 @@ c and not be part of the plots nor computation of the cross section.
 c Include the weight from the bias_wgt_function to all the contributions
 c in icontr. This only changes the weight of the central value (after
 c inclusion of alphaS and parton luminosity). Both for 'wgts(1,icontr)'
-c as well as the the 'parton_iproc(1:niproc(icontr),icontr)', since
+c as well as the 'parton_iproc(1:niproc(icontr),icontr)', since
 c these are the ones used in MINT as well as for unweighting. Also the
 c 'virt_wgt_mint' and 'born_wgt_mint' are updated. Furthermore, to
 c include the weight also in the 'wgt' array that contain the
@@ -2610,7 +2708,7 @@ c           Keep GeV's for decay processes (no conv. factor needed)
                      parton_pdg_uborn(k,j,ict)=22
                    else
                      write (*,*) 'set_pdg_codes ',
-     &                'ERROR#1 in PDG assigment for underlying Born'
+     &                'ERROR#1 in PDG assignment for underlying Born'
                      stop 1
                    endif
                  else
@@ -2622,7 +2720,7 @@ c           Keep GeV's for decay processes (no conv. factor needed)
                      parton_pdg_uborn(k,j,ict)=22
                    else
                      write (*,*) 'set_pdg_codes ',
-     &                'ERROR#2 in PDG assigment for underlying Born'
+     &                'ERROR#2 in PDG assignment for underlying Born'
                      stop 1
                    endif
                  endif
@@ -2634,7 +2732,7 @@ c           Keep GeV's for decay processes (no conv. factor needed)
                  parton_pdg_uborn(k,j,ict)=-idup_d(iFKS,fks_i_d(iFKS),j)
                else
                  write (*,*) 'set_pdg_codes ',
-     &                'ERROR#3 in PDG assigment for underlying Born'
+     &                'ERROR#3 in PDG assignment for underlying Born'
                  stop 1
                endif
             elseif(k.lt.fks_i_d(iFKS)) then
@@ -2914,7 +3012,7 @@ c add the weights to the array
 
       subroutine fill_pineappl_weights(vegas_wgt)
 c Fills the FineAPPL weights of pineappl_common.inc. This subroutine assumes
-c that there is an unique PS configuration: at most one Born, one real
+c that there is a unique PS configuration: at most one Born, one real
 c and one set of counter terms. Among other things, this means that one
 c must do MC over FKS directories.
       use weight_lines
@@ -3436,7 +3534,7 @@ c include it here!
 
       
       subroutine update_shower_scale_Sevents(ifold_counter,ifold_picked)
-c When contributions from various FKS configrations are summed together
+c When contributions from various FKS configurations are summed together
 c for the S-events (see the sum_identical_contributions subroutine), we
 c need to update the shower starting scale (because it is not
 c necessarily the same for all of these summed FKS configurations and/or
@@ -4035,7 +4133,7 @@ c$$$         ifold_picked=ifold_cnt(icontr_picked)
          colour_connections(1:2,1:nexternal)=icolour_con(1:2,1:nexternal
      $        ,icontr_picked)
 c Determine if we need to write the granny (based only on the special
-c mapping in genps_fks) randomly, weighted by the seperate contributions
+c mapping in genps_fks) randomly, weighted by the separate contributions
 c that are summed together in a single S-event.
          do i=1,fks_configs
             tmp_wgt(i)=0d0
@@ -6793,6 +6891,9 @@ c Particle types (=color/charges) of i_fks, j_fks and fks_mother
       common /c_extra_cnt/iextra_cnt, isplitorder_born, isplitorder_cnt
       logical calculatedBorn
       common/ccalculatedBorn/calculatedBorn
+      logical check_born_amps, born_checks_amps
+      common/c_born_amps_check/check_born_amps,born_checks_amps
+      logical discard_born
 
 C keep track of each split orders
       integer iamp
@@ -8959,6 +9060,8 @@ c
       common/sctests/softtest,colltest
 
       integer config_fks,i,j,fac1,fac2,kchan
+      integer real_channel_type
+      common /c_real_channel_type/ real_channel_type
       logical match_to_shower
 
       double precision fkssymmetryfactor,fkssymmetryfactorBorn,
@@ -9292,6 +9395,12 @@ c Setup the FKS symmetry factors.
          endif
       endif
 
+      if (fixed_order.and.real_channel_type.eq.1) then
+c Hard channels enumerate each eligible real topology once. Their IDs
+c are unrelated to the Born configuration numbers in symfact.dat.
+         diagramsymmetryfactor=1d0
+         return
+      endif
       if (firsttime) then
 c Check to see if this channel needs to be included in the multi-channeling
          do kchan=1,nchans
@@ -9474,7 +9583,7 @@ c granny is part of the chain
             granny_chain_fks(igranny_fks(nFKSprocess,ichan),nFKSprocess,ichan)
      &           =.true.
 c loop from the granny to the external particles. If mother was part of
-c the granny chain, so are the daugthers.
+c the granny chain, so are the daughters.
             do i=igranny_fks(nFKSprocess,ichan),-1
                if (granny_chain_fks(i,nFKSprocess,ichan)) then
                   granny_chain_fks(iforest(1,i,iconf),nFKSprocess,ichan) =
@@ -9680,4 +9789,12 @@ c     reset the default dynamical_scale_choice
       enddo
       mapconfig_in(0)=mapconfig(0)
       return
+      end
+
+      block data real_channel_job_defaults
+c Shared code is also linked by MC@NLO, where there are no hard jobs.
+      implicit none
+      integer real_channel_type
+      common /c_real_channel_type/ real_channel_type
+      data real_channel_type /0/
       end

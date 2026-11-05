@@ -740,7 +740,7 @@ class MEComparator(object):
             return mystr + " " * (length - len(mystr))
 
     def output_result(self, filename=None, tolerance=3e-06, skip_zero=True):
-        """Output result as a nicely formated table. If filename is provided,
+        """Output result as a nicely formatted table. If filename is provided,
         write it to the file, else to the screen. Tolerance can be adjusted."""
 
         proc_col_size = 17
@@ -846,7 +846,7 @@ class MEComparatorGauge(MEComparator):
     formats."""
     
     def output_result(self, filename=None, tolerance=3e-06, skip_zero=True):
-        """Output result as a nicely formated table. If filename is provided,
+        """Output result as a nicely formatted table. If filename is provided,
         write it to the file, else to the screen. Tolerance can be adjusted."""
 
         proc_col_size = 18

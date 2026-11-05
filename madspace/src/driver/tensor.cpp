@@ -1,5 +1,8 @@
 #include "madspace/driver/tensor.hpp"
 
+#include <algorithm>
+#include <variant>
+
 using namespace madspace;
 
 Tensor Tensor::select(std::size_t axis, std::size_t index) const {
@@ -227,4 +230,123 @@ std::size_t Tensor::init_stride() {
     }
     impl->contiguous_dims = impl->shape.size();
     return stride_prod * dtype_size();
+}
+
+Tensor Tensor::cast(DataType dtype) const {
+    Tensor source = cpu().contiguous();
+    if (source.dtype() == dtype) {
+        return source;
+    }
+    Tensor target(dtype, source.shape());
+    std::size_t count = source.shape().product();
+    auto convert = [&]<typename From>(From* from) {
+        switch (dtype) {
+        case DataType::dt_int32:
+            std::copy_n(from, count, static_cast<me_int_t*>(target.data()));
+            break;
+        case DataType::dt_float32:
+            std::copy_n(from, count, static_cast<float*>(target.data()));
+            break;
+        case DataType::dt_float64:
+            std::copy_n(from, count, static_cast<double*>(target.data()));
+            break;
+        default:
+            throw std::invalid_argument("invalid dtype in cast");
+        }
+    };
+    switch (source.dtype()) {
+    case DataType::dt_int32:
+        convert(static_cast<me_int_t*>(source.data()));
+        break;
+    case DataType::dt_float32:
+        convert(static_cast<float*>(source.data()));
+        break;
+    case DataType::dt_float64:
+        convert(static_cast<double*>(source.data()));
+        break;
+    default:
+        throw std::invalid_argument("invalid dtype in cast");
+    }
+    return target;
+}
+
+Tensor Tensor::simd_padded_literal(
+    const LiteralValue& value, std::size_t lanes, DevicePtr device
+) {
+    auto unpadded = [&]() -> Tensor {
+        return std::visit(
+            Overloaded{
+                [&](const TensorValue& tensor_value) {
+                    return Tensor(tensor_value, device);
+                },
+                [&](std::monostate) -> Tensor {
+                    throw std::invalid_argument("empty literal");
+                },
+                [&](auto scalar) { return Tensor(scalar, device); },
+            },
+            value
+        );
+    };
+    if (lanes <= 1) {
+        return unpadded();
+    }
+
+    // shape (with the batch dimension of size one) and flat column-major values
+    Sizes shape{1};
+    std::variant<std::vector<me_int_t>, std::vector<double>> values;
+    if (auto scalar = std::get_if<me_int_t>(&value)) {
+        values = std::vector<me_int_t>{*scalar};
+    } else if (auto scalar = std::get_if<double>(&value)) {
+        values = std::vector<double>{*scalar};
+    } else if (auto tensor_value = std::get_if<TensorValue>(&value)) {
+        for (int size : std::get<0>(*tensor_value)) {
+            shape.push_back(size);
+        }
+        values = std::get<1>(*tensor_value);
+    } else {
+        return unpadded();
+    }
+    std::size_t count = std::visit([](auto& vec) { return vec.size(); }, values);
+    if (count * lanes > max_simd_padded_size) {
+        return unpadded();
+    }
+
+    // element j of lane l is stored at l + lanes * j
+    auto [dtype, buffer] = std::visit(
+        [&]<typename T>(const std::vector<T>& vec) {
+            auto dtype = dtype_of<T>();
+            std::vector<T> padded(count * lanes);
+            for (std::size_t j = 0; j < count; ++j) {
+                std::fill_n(padded.begin() + j * lanes, lanes, vec[j]);
+            }
+            Tensor buffer(dtype, {count * lanes}, device);
+            device->memcpy(buffer.data(), padded.data(), padded.size() * sizeof(T));
+            return std::make_pair(dtype, buffer);
+        },
+        values
+    );
+    Sizes stride(shape.size());
+    std::size_t stride_prod = lanes;
+    for (std::size_t i = 1; i < shape.size(); ++i) {
+        stride[i] = stride_prod;
+        stride_prod *= shape[i];
+    }
+    Tensor ret(new TensorImpl{
+        dtype,
+        shape,
+        device,
+        buffer.data(),
+        false,
+        std::nullopt,
+        buffer.impl,
+        1,
+        stride,
+        1
+    });
+    ret.impl->simd_padded = true;
+    // non-negative integer scalars double as batch sizes, see the scalar constructor
+    if (auto scalar = std::get_if<me_int_t>(&value); scalar && *scalar >= 0) {
+        ret.impl->batch_sizes.push_back(*scalar);
+    }
+    return ret;
 }

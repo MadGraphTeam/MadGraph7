@@ -38,7 +38,7 @@ C
     integer SELECTED_HEL, SELECTED_COL, IVEC
     integer iflav
 c
-c global (due to reading writting)
+c global (due to reading writing)
 c 
 C   Good-helicity filter is per (helicity, flavor): a helicity that is zero for
 C   one merged flavor but non-zero for another must not be dropped, so

@@ -299,6 +299,7 @@ C SMATRIX%(proc_prefix)s_SPLITORDERS_VEC, see BLOCK DATA HELFILTER%(proc_prefix)
       LOGICAL GOODHEL(NCOMB,HEL_CONFIGS),HELREADY(HEL_CONFIGS)
       INTEGER T_IDENT(NCOMB,HEL_CONFIGS)
       COMMON /TO_HELFILTER%(proc_prefix)s/GOODHEL,T_IDENT,HELREADY
+      include 'real_matrix_weights.inc'
 %(den_factor_line)s
 C ----------
 C BEGIN CODE
@@ -307,6 +308,7 @@ C ----------
       %(hel_index_setup)s
 %(flavor_den_factor_setup)s
       NTRY(HEL_INDEX)=NTRY(HEL_INDEX)+1
+      if (get_real_diagram_weights) real_amp2(:)=0d0
       DO I=0,NSQAMPSO
       	ANS(I) = 0D0	  
       ENDDO
@@ -355,6 +357,17 @@ C add to the sum of helicities
           ENDIF
         ENDIF
       ENDDO
+C the diagram weights sum over the helicities computed after the
+C first point (good ones, not identical to an earlier one), also
+C at the first point, so that they depend on P only
+      IF (NTRY(HEL_INDEX).LT.2 .AND. get_real_diagram_weights) THEN
+        real_amp2(:)=0d0
+        DO IHEL=1,NCOMB
+          IF (GOODHEL(IHEL,HEL_INDEX) .AND. T_IDENT(IHEL,HEL_INDEX).LE.0) THEN
+            CALL MATRIX_%(proc_prefix)s(P,NHEL(1,IHEL),FLAV_IDX,T)
+          ENDIF
+        ENDDO
+      ENDIF
 C GOODHEL and T_IDENT do not change after the first point
       HELREADY(HEL_INDEX)=.TRUE.
       DO I=1,NSQAMPSO			
@@ -518,6 +531,7 @@ C
       type(aloha) W(NWAVEFUNCS)
       COMPLEX*16 TMP_JAMP(%(nb_temp_jamp)i)
 %(flavor_mask_decl)s
+      include 'real_matrix_weights.inc'
 C
 C FUNCTION
 C
@@ -533,6 +547,9 @@ C ----------
       FLAVOR(:) = 1
 %(flavor_mask_setup)s
 %(helas_calls)s
+      if (get_real_diagram_weights) then
+%(real_amp2_lines)s
+      endif
 %(jamp_lines)s
 
       RES(:) = 0d0

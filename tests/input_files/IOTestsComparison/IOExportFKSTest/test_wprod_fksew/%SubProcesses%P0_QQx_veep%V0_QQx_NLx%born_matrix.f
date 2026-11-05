@@ -236,7 +236,7 @@ C     if the point is boosted on the z-axis. Remember that HELAS
 C      helicity amplitudes are no longer
 C     lorentz invariant with expternal spin-2 particles (only the
 C      helicity sum is).
-C     For this reason, we simply remove the filterin when there is
+C     For this reason, we simply remove the filtering when there is
 C      only three external particles.
       IF (NEXTERNAL.LE.3) THEN
         GOODHEL(:,:) = .TRUE.
@@ -490,7 +490,7 @@ C     Rebuild FLAVOR(NEXTERNAL) from the resolved flavor index.
       CALL OXXXXX(P(0,2),ZERO,NHEL(2),-1, FLAVOR(2),W(2))
       CALL OXXXXX(P(0,3),ZERO,NHEL(3),+1, FLAVOR(3),W(3))
       CALL IXXXXX(P(0,4),ZERO,NHEL(4),-1, FLAVOR(4),W(4))
-      CALL FFV2MP0_3(W(1),W(2),FLV_189,DCMPLX(CMASS_MDL_MW),W(5))
+      CALL FFV2MP0_3(W(1),W(2),FLV_399,DCMPLX(CMASS_MDL_MW),W(5))
 C     Amplitude(s) for diagram number 1
       CALL FFV2_0(W(4),W(3),W(5),GC_124,AMP(1))
 
@@ -907,7 +907,7 @@ C     ROUTINE FOR F2PY to read the benchmark point.
       IMPLICIT NONE
       CHARACTER*512 PATH
 CF2PY INTENT(IN) :: PATH
-      CALL SETPARA(PATH)  !first call to setup the paramaters
+      CALL SETPARA(PATH)  !first call to set up the parameters
       RETURN
       END
 

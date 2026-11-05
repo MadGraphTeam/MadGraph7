@@ -40,7 +40,7 @@ class LoopColorBasis(color_amp.ColorBasis):
 
     def __init__(self, compute_loop_nc = False):
         """ Defines the instance attribute compute_loop_nc.
-        The compute_loop_nc sets wheter independent tracking of Nc power coming
+        The compute_loop_nc sets whether independent tracking of Nc power coming
         from the color loop trace is necessary or not (it is time consuming)."""
 
         self.compute_loop_nc = compute_loop_nc
@@ -76,7 +76,7 @@ class LoopColorBasis(color_amp.ColorBasis):
         # Append it to all color strings for this diagram.
         for CS in colorize_dict.values():
             # The double full_simplify() below brings significantly slowdown
-            # so that it should be used only when loop_Nc_power is actuall used.
+            # so that it should be used only when loop_Nc_power is actually used.
             if self.compute_loop_nc:
                 # We first compute the NcPower of this ColorString before
                 # *before* the loop color flow is sewed together.
@@ -101,7 +101,7 @@ class LoopColorBasis(color_amp.ColorBasis):
                 CS.loop_Nc_power =  max_CS_loop_diag_Nc_power - \
                                                        max_CS_lcut_diag_Nc_power
             else:
-                # When not computing loop_nc (whcih is typically used for now
+                # When not computing loop_nc (which is typically used for now
                 # only when doing LoopInduced + Madevent, we set the
                 # CS.loop_Nc_power to None so that it will cause problems if used.
                 CS.loop_Nc_power = None

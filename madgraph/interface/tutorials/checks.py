@@ -17,7 +17,8 @@
 from __future__ import absolute_import
 
 import madgraph.interface.tutorials as tutorials
-from madgraph.interface.tutorials.session import Step, Tutorial
+from madgraph.interface.tutorials.session import (Step, Tutorial,
+                                                  check_line, model_line)
 
 P = 'MG7>'
 PROC = 'p p > e+ e-'
@@ -49,20 +50,22 @@ load a model for you. `generate` quietly imports the SM if nothing is loaded;
      title='welcome',
      solution='import model sm'),
 
-Step('import_model', """
-Now the cheapest check:
+Step('import_model', lambda interface: """
+%(model)sThat is all `check` was waiting for. Every check below compares the
+model against itself, which is why none of them will start without one.
 
+Now the cheapest of them:
 %(p)s check permutation %(proc)s
-""" % {'p': P, 'proc': PROC},
+""" % {'p': P, 'proc': PROC, 'model': model_line(interface)},
      title='load a model first',
      hint="`check` needs a model loaded explicitly, unlike `generate`.",
      solution='check permutation %s' % PROC),
 
-Step('check', """
-That regenerated the process with the external legs relabelled and compared
-|M|^2 across the permutations. A relabelling cannot change physics, so any
-disagreement is a bug -- in the model, in the colour or helicity bookkeeping,
-or in MG7 itself.
+Step('check', lambda interface: """
+%(verdict)sThat regenerated the process with the external legs relabelled
+and compared |M|^2 across the permutations. A relabelling cannot change
+physics, so any disagreement is a bug -- in the model, in the colour or
+helicity bookkeeping, or in MG7 itself.
 
 Read the columns: min, max, relative difference, verdict. What matters is the
 relative difference. Machine precision is around 1e-16; anything up to 1e-10
@@ -70,7 +73,7 @@ or so is fine, and 1e-3 is a bug however confident the "Passed" looks.
 
 Next, the sharpest one:
 %(p)s check gauge %(proc)s
-""" % {'p': P, 'proc': PROC},
+""" % {'p': P, 'proc': PROC, 'verdict': check_line(interface)},
      title='permutation',
      hint="`check permutation PROCESS`",
      solution='check gauge %s' % PROC),
@@ -108,9 +111,10 @@ something to verify:
      solution='check flavor %s' % PROC),
 
 Step('check', """
-Sixteen rows: every flavour the merged matrix element serves, each compared
-against the same thing computed without grouping. All matching to machine
-precision means the merging is doing what it claims.
+One row per flavour the merged matrix element serves -- sixteen of them for
+this process, and `Summary: 16/16 passed` under them -- each compared against
+the same thing computed without any grouping. All of them matching to machine
+precision is what says the merging is doing only what it claims to.
 
 The rest of the family:
 

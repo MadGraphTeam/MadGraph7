@@ -20,10 +20,12 @@ Remove each ``expectedFailure`` only when its complete contract is implemented.
 from __future__ import absolute_import
 
 import json
+import ctypes
 import math
 import os
 import re
 import shutil
+import subprocess
 import tempfile
 import unittest
 
@@ -35,6 +37,7 @@ from madmatrix import output as madmatrix_output
 
 MANIFEST_TOP_LEVEL_KEYS = {
     'version',
+    'library_model',
     'process_id',
     'nexternal',
     'split_order_names',
@@ -152,7 +155,7 @@ class TestNLORealOffloadContract(unittest.TestCase):
     def test_nlo_real_manifest_schema_is_versioned(self):
         """The generated row/ME/order map has a stable first-version schema."""
 
-        self.assertEqual(madmatrix_output.NLO_REAL_MANIFEST_VERSION, 1)
+        self.assertEqual(madmatrix_output.NLO_REAL_MANIFEST_VERSION, 2)
         self.assertEqual(
             set(madmatrix_output.NLO_REAL_MANIFEST_TOP_LEVEL_KEYS),
             MANIFEST_TOP_LEVEL_KEYS)
@@ -178,9 +181,27 @@ class TestNLORealOffloadContract(unittest.TestCase):
             with open(path) as stream:
                 header = stream.read()
             self.assertRegex(
-                header, r'#define\s+UMAMI_MINOR_VERSION\s+1\b')
+                header, r'#define\s+UMAMI_MINOR_VERSION\s+3\b')
             for symbol in required:
                 self.assertIn(symbol, header)
+
+    @unittest.skipUnless(shutil.which('gcc'), 'requires a C11 compiler')
+    def test_umami_extensions_preserve_upstream_numeric_keys(self):
+        """Appended NLO keys must never alias upstream minor-version2 keys."""
+        source = '''#include "umami.h"
+_Static_assert(UMAMI_IN_PARTICLE_COUNT==9,"upstream inputs");
+_Static_assert(UMAMI_IN_BEAM_INDEX==14,"upstream inputs");
+_Static_assert(UMAMI_IN_G_STRONG==15,"NLO input");
+_Static_assert(UMAMI_OUT_CUT==6,"upstream outputs");
+_Static_assert(UMAMI_OUT_MATRIX_ELEMENT_RATIO==12,"upstream outputs");
+_Static_assert(UMAMI_OUT_SQUARED_ORDERS==13,"NLO output");
+_Static_assert(UMAMI_MINOR_VERSION==3,"additive ABI");
+'''
+        for path in self._umami_headers():
+            compiled = subprocess.run(['gcc', '-std=c11', '-x', 'c',
+                '-I'+os.path.dirname(path), '-fsyntax-only', '-'],
+                input=source, text=True, capture_output=True)
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
 
     def test_generated_nlo_bridge_has_the_frozen_c_abi(self):
         """Fortran calls one exception-safe, dynamically loaded C adapter."""
@@ -210,6 +231,98 @@ class TestNLORealOffloadContract(unittest.TestCase):
         )
         for prototype in prototypes:
             self.assertRegex(header, prototype)
+
+    @unittest.skipUnless(shutil.which('g++') and shutil.which('make'),
+                         'requires C++ and make')
+    def test_bridge_rebuild_binds_model_precision_and_library_tag(self):
+        """Changing build identity must load the newly selected actual DSO."""
+        exporter = object.__new__(madmatrix_output.ProcessExporterMadMatrixNLOReal)
+        manifest = {'library_model': 'fixture_plus_model', 'nexternal': 4,
+                    'real_matrix_elements': [{
+                        'library_process_id': 'PMM_B1_R1',
+                        'process_fingerprint': 'fixture',
+                        'local_squared_orders': [[4]],
+                        'local_flavours': [[1, -1, 21, 21]],
+                        'backend_capabilities': {'cuda': True}}]}
+        with tempfile.TemporaryDirectory() as root:
+            directory = os.path.join(root, 'SubProcesses', 'P0_fixture')
+            os.makedirs(directory)
+            exporter._write_bridge_config(manifest, directory)
+            exporter._write_nlo_build_fragment(manifest, directory)
+            process = os.path.join(root, 'SubProcesses', 'PMM_B1_R1')
+            os.makedirs(process)
+            with open(os.path.join(process, 'makefile'), 'w') as stream:
+                stream.write('.PHONY: all\nall:\n\t@:\n')
+            source = os.path.join(directory, 'fixture.cc')
+            with open(source, 'w') as stream:
+                stream.write('''#include "umami.h"
+extern "C" {
+UmamiStatus umami_get_meta(UmamiMetaKey key, void* value) {
+  switch(key) {
+    case UMAMI_META_ABI_MAJOR_VERSION: *static_cast<int*>(value)=UMAMI_MAJOR_VERSION; break;
+    case UMAMI_META_ABI_MINOR_VERSION: *static_cast<int*>(value)=UMAMI_MINOR_VERSION; break;
+    case UMAMI_META_PROCESS_FINGERPRINT: *static_cast<const char**>(value)="fixture"; break;
+    case UMAMI_META_PARTICLE_COUNT: *static_cast<int*>(value)=4; break;
+    case UMAMI_META_SQUARED_ORDER_COUNT: *static_cast<int*>(value)=1; break;
+    default: return UMAMI_ERROR_UNSUPPORTED_META;
+  }
+  return UMAMI_SUCCESS;
+}
+UmamiStatus umami_initialize(UmamiHandle* handle, const char*) {
+  *handle=reinterpret_cast<void*>(1); return UMAMI_SUCCESS;
+}
+UmamiStatus umami_free(UmamiHandle) { return UMAMI_SUCCESS; }
+UmamiStatus umami_matrix_element(UmamiHandle, size_t, size_t, size_t,
+  size_t, const UmamiInputKey*, const void* const*, size_t,
+  const UmamiOutputKey*, void* const* outputs) {
+  *static_cast<double*>(outputs[0])=FIXTURE_VALUE; return UMAMI_SUCCESS;
+}
+}
+''')
+            for iteration, (fptype, tag, value) in enumerate((
+                    ('d', '_a', 1), ('m', '_b', 2), ('d', '_a', 1))):
+                library = os.path.join(directory,
+                    'libmadmatrix%s_fixture_plus_model_PMM_B1_R1_scalar_%s.so' %
+                    (tag, fptype))
+                subprocess.run(['g++', '-std=c++17', '-shared', '-fPIC', '-I.',
+                                '-DFIXTURE_VALUE=%d' % value, source, '-o', library],
+                               cwd=directory, check=True, capture_output=True)
+                command = ['make', '-f', 'nlo_real_offload.mk',
+                           '.nlo_real_scalar_%s%s_cpp.stamp' % (fptype, tag),
+                           'CXX=g++', 'NLO_REAL_FPTYPE='+fptype,
+                           'NLO_REAL_LIBTAG='+tag]
+                built = subprocess.run(command, cwd=directory, text=True,
+                                       capture_output=True)
+                self.assertEqual(built.returncode, 0, built.stdout+built.stderr)
+                bridge_path = os.path.join(directory, 'libnlo_real_bridge.so')
+                saved = os.path.join(directory, 'bridge%d.so' % iteration)
+                shutil.copy2(bridge_path, saved)
+                bridge = ctypes.CDLL(saved)
+                bridge.mg7_nlo_real_initialize.argtypes = [
+                    ctypes.POINTER(ctypes.c_void_p), ctypes.c_char_p,
+                    ctypes.c_char_p, ctypes.c_char_p]
+                bridge.mg7_nlo_real_evaluate.argtypes = [
+                    ctypes.c_void_p, ctypes.c_int, ctypes.c_size_t,
+                    ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_double),
+                    ctypes.POINTER(ctypes.c_int32), ctypes.POINTER(ctypes.c_double)]
+                bridge.mg7_nlo_real_finalize.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
+                context = ctypes.c_void_p()
+                self.assertEqual(bridge.mg7_nlo_real_initialize(
+                    ctypes.byref(context), b'unused', directory.encode(), b'scalar'), 0)
+                try:
+                    momenta = (ctypes.c_double * 16)()
+                    coupling = (ctypes.c_double * 1)(1.)
+                    flavour = (ctypes.c_int32 * 1)(0)
+                    result = (ctypes.c_double * 1)()
+                    self.assertEqual(bridge.mg7_nlo_real_evaluate(
+                        context, 1, 1, momenta, coupling, flavour, result), 0)
+                    self.assertEqual(result[0], value)
+                finally:
+                    self.assertEqual(bridge.mg7_nlo_real_finalize(ctypes.byref(context)), 0)
+                previous = os.stat(bridge_path).st_mtime_ns
+                subprocess.run(command, cwd=directory, check=True,
+                               capture_output=True)
+                self.assertEqual(os.stat(bridge_path).st_mtime_ns, previous)
 
     def test_run_card_selects_nlo_real_backend(self):
         """The real-ME backend is a run-card setting (design section 4.1)

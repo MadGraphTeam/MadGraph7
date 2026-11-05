@@ -161,6 +161,9 @@ class MG7ReproducibilityTest(unittest.TestCase):
         mg.exec_cmd('set automatic_html_opening False --no_save')
         mg.exec_cmd('generate %s' % _PROCESS)
         mg.exec_cmd('output mg7 %s' % run_dir)
+        # the hashes are taken on the LHE file; npy is the default output
+        self._set_run_card(pjoin(run_dir, 'Cards', 'run_card.toml'),
+                           **{'run.output_format': 'lhe'})
         return run_dir
 
     def _set_run_card(self, toml_path, **settings):
