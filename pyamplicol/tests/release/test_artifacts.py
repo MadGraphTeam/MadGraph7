@@ -63,6 +63,9 @@ _LEGAL_FILES = (
     "THIRD_PARTY_NOTICES.md",
     "licenses/Symbolica.txt",
     "licenses/SymJIT.txt",
+    "licenses/NinjaRS.txt",
+    "licenses/oneloopmaster.txt",
+    "licenses/GammaLoop-crates.txt",
 )
 _COMPILED_MODEL_KIND = "pyamplicol-compiled-model"
 _BUILTIN_MODEL_SOURCE_KIND = "built-in-sm"

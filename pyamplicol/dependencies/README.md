@@ -18,7 +18,7 @@ Upstream `main` alone does not build the workspace: NinjaRS and
 complex-modulus fix, and NinjaRS's determinism test the deterministic factor
 signs; the Python Community modules (FeynKit, HepKit) need the `community`
 branch's `symbolica::utils::resources`. The pin moves to upstream once the PR
-is merged. NinjaRS (main `b3a29c85`, PR #14) and
+is merged. NinjaRS (`36e30a49`: main `b3a29c85`, PR #14, plus its 0BSD relicence) and
 oneloopmaster (main `128ea664`) pin the same revision; there is no alphal00p
 Symbolica fork in the graph (`cargo tree -i symbolica` lists one source). SymJIT stays 2.28.3. These
 pins are recorded by Cargo. This is a source integration, with Rust 1.96 or
