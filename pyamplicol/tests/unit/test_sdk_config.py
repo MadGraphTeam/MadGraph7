@@ -82,6 +82,39 @@ def test_sdk_info_returns_a_complete_native_link_line(
     assert info.cargo_encoded_rust_flags.split("\x1f") == list(info.rust_flags)
 
 
+def test_shipped_shared_libraries_are_linked_by_path_with_a_run_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = _sdk(tmp_path)
+    names = ("libmpc.3.dylib", "libmpfr.6.dylib", "libgmp.10.dylib")
+    for name in names:
+        (root / "lib" / name).write_bytes(b"dylib")
+    link = json.loads((root / "link.json").read_text(encoding="utf-8"))
+    link["shared_libraries"] = [f"lib/{name}" for name in names]
+    (root / "link.json").write_text(json.dumps(link), encoding="utf-8")
+    monkeypatch.setattr(config, "_resource_root", lambda: root)
+    monkeypatch.setattr(config, "_package_version", lambda: "0.1.0")
+
+    info = config.load_sdk_info()
+    lib = root / "lib"
+    assert info.link_flags == (
+        str(lib / "librusticol_capi.a"),
+        *(str(lib / name) for name in names),
+        f"-Wl,-rpath,{lib}",
+        "-lSystem",
+        "-lm",
+        "-framework",
+        "Security",
+    )
+    assert info.to_json()["shared_libraries"] == [str(lib / name) for name in names]
+
+    link["shared_libraries"] = ["../../outside.dylib"]
+    (root / "link.json").write_text(json.dumps(link), encoding="utf-8")
+    with pytest.raises(config.SdkUnavailableError, match="escapes"):
+        config.load_sdk_info()
+
+
 def test_rustflags_cli_emits_shell_safe_rustc_arguments(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
