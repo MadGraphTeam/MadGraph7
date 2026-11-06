@@ -495,6 +495,25 @@ def _consume_wheel_settings(
     return config_settings
 
 
+def _distribution_wheel_features() -> str:
+    """Return pyproject's Maturin features plus the shared arithmetic runtime.
+
+    A ``--features`` build argument replaces ``[tool.maturin] features``
+    instead of extending it, so the list is repeated here from its one source.
+    """
+
+    try:
+        with (ROOT / "pyproject.toml").open("rb") as stream:
+            features = tomllib.load(stream)["tool"]["maturin"].get("features", [])
+    except (KeyError, OSError, TypeError, tomllib.TOMLDecodeError) as error:
+        raise RuntimeError("pyproject.toml has no readable [tool.maturin]") from error
+    if not isinstance(features, list) or not all(
+        isinstance(feature, str) and feature for feature in features
+    ):
+        raise RuntimeError("[tool.maturin] features must be a list of names")
+    return ",".join(dict.fromkeys((*features, arithmetic.CARGO_FEATURE)))
+
+
 def _release_wheel_config_settings(
     config_settings: Mapping[str, Any] | None,
     *,
@@ -529,7 +548,12 @@ def _release_wheel_config_settings(
         # The wheel size limit (tools/release MAX_WHEEL_BYTES) is close: the
         # strongest deflate level costs seconds and saves about 1 MB.
         arguments.extend(
-            ("--features", arithmetic.CARGO_FEATURE, "--compression-level", "9")
+            (
+                "--features",
+                _distribution_wheel_features(),
+                "--compression-level",
+                "9",
+            )
         )
     if not arguments:
         return config_settings

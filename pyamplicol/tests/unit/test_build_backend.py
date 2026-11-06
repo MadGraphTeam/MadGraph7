@@ -277,9 +277,14 @@ def test_distribution_wheel_links_the_shared_arithmetic_runtime(
         "frontend.setting": "preserved",
     }
     assert backend.build_wheel("dist", supplied) == "pyamplicol.whl"
+    with (ROOT / "pyproject.toml").open("rb") as stream:
+        features = tomllib.load(stream)["tool"]["maturin"]["features"]
+    # Maturin's --features replaces pyproject's list: it is repeated in full
+    # (the numpy-gated bindings were missing from a release-way wheel).
+    assert "numpy" in features
     arguments = [
         "--features",
-        backend.arithmetic.CARGO_FEATURE,
+        ",".join((*features, backend.arithmetic.CARGO_FEATURE)),
         "--compression-level",
         "9",
     ]
@@ -297,6 +302,18 @@ def test_distribution_wheel_links_the_shared_arithmetic_runtime(
         "shared_arithmetic": True,
     }
     assert supplied["pyamplicol.distribution-wheel"] == "true"
+
+
+def test_distribution_wheel_features_refuse_an_invalid_maturin_list(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.maturin]\nfeatures = "numpy"\n', encoding="utf-8"
+    )
+    monkeypatch.setattr(backend, "ROOT", tmp_path)
+
+    with pytest.raises(RuntimeError, match="must be a list of names"):
+        backend._distribution_wheel_features()
 
 
 def test_distribution_and_host_wheel_settings_are_exclusive() -> None:
