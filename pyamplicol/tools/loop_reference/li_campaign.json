@@ -76,7 +76,13 @@
      ],
      "points": 3,
      "max_provider_pair_relative_error": 6.064633446689958e-13,
-     "status": "pass"
+     "status": "pass",
+     "reports": {
+      "heft_ratio": {
+       "value": "1.0000181734729515057",
+       "expected": "1.0000171513388472896"
+      }
+     }
     },
     {
      "process": "li_gg_h_tb",
@@ -91,7 +97,13 @@
      ],
      "points": 3,
      "max_provider_pair_relative_error": 6.798001021017121e-13,
-     "status": "pass"
+     "status": "pass",
+     "reports": {
+      "heft_ratio": {
+       "value": "1.0000181734729515057",
+       "expected": "1.0000171513388472896"
+      }
+     }
     }
    ]
   },
@@ -933,7 +945,21 @@
    "runs": [
     {
      "process": "li_gg_zzg",
-     "status": "no reference yet"
+     "fixture": "required/li/li_gg_zzg.json",
+     "madloop_process": "g g > z z g [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 8.111188016292407e-08,
+     "status": "pass",
+     "provider_timing_records": [
+      "required/li/timing/li_gg_zzg-providers-madloop-opp.json",
+      "required/li/timing/li_gg_zzg-providers.json"
+     ]
     }
    ]
   },
