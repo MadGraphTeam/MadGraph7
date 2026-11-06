@@ -113,5 +113,30 @@ def test_split_shards_partition_the_test_ids(tmp_path, licensed):
         assert code == 0, output
         assert ("2 at a time" in output) is licensed
         seen += [line.split()[-1] for line in output.splitlines() if "] exit 0" in line]
-        assert set(json.loads(record.read_text())) <= {"test_a.py", "test_c.py"}
+        durations = json.loads(record.read_text())["durations"]
+        assert set(durations) <= {"test_a.py", "test_c.py"}
+        record.rename(tmp_path / f"record-{shard[0]}.json")
     assert sorted(seen) == ["test_a.py::test_one", "test_a.py::test_two", "test_c.py"]
+    records = [str(tmp_path / "record-1.json"), str(tmp_path / "record-2.json")]
+    code, output = _run(tmp_path, *records, "--merge", "--record", str(record))
+    assert code == 0, output
+    assert "2 records: 3 units, 3 tests executed, 0 skipped, 0 failed" in output
+    assert set(json.loads(record.read_text())["durations"]) == {
+        "test_a.py",
+        "test_c.py",
+    }
+    code, output = _run(tmp_path, *records, "--merge", "--min-executed", "4")
+    assert code == 1, output
+    assert "::error::3 tests executed (at least 4 required), 0 failed" in output
+
+
+def test_excluded_and_unmatched_globs_select_nothing(tmp_path):
+    code, output = _run(
+        tmp_path, "test_[ab].py", "--exclude", "test_[ab].py", "--marker", "slow"
+    )
+    assert code == 1, output
+    assert "::error::no test selected" in output
+    assert "collected" not in output
+    code, output = _run(tmp_path, "test_none*.py", "--marker", "slow")
+    assert code == 1, output
+    assert "collected" not in output

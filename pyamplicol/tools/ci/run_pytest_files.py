@@ -15,7 +15,9 @@ The run fails when a unit fails, with ``--require-each`` when a unit executes
 no test (every selected test skipped: a vacuous unit), and when fewer than
 ``--min-executed`` tests ran in total; an empty selection fails unless
 ``--allow-empty`` gives the notice that makes it a pass. ``--record`` writes
-the units' wall times as a ``--durations`` file.
+the counts and the files' wall times (a ``--durations`` input); ``--merge``
+sums the records of the shards of one run and applies ``--min-executed`` to
+the total.
 """
 
 from __future__ import annotations
@@ -172,6 +174,44 @@ def _summary(results: list[Result], notes: list[str]) -> None:
         stream.write("|---|---|---|---|---|---|---|\n" + "\n".join(rows) + "\n")
 
 
+_COUNTS = ("units", "executed", "skipped", "failed")
+
+
+def _write_record(path: Path, **record: object) -> None:
+    path.write_text(json.dumps(record, indent=1, sort_keys=True) + "\n")
+
+
+def _merge(args: argparse.Namespace) -> int:
+    """Sum shard records: the totals, one line, and the --min-executed check."""
+
+    totals = dict.fromkeys(_COUNTS, 0)
+    durations: dict[str, float] = {}
+    for name in args.targets:
+        record = json.loads(Path(name).read_text())
+        for key in _COUNTS:
+            totals[key] += record[key]
+        for path, seconds in record["durations"].items():
+            durations[path] = round(durations.get(path, 0.0) + seconds, 1)
+    line = (
+        f"{len(args.targets)} records: {totals['units']} units, "
+        f"{totals['executed']} tests executed, {totals['skipped']} skipped, "
+        f"{totals['failed']} failed"
+    )
+    print(line)
+    if path := os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(path, "a") as stream:
+            stream.write(line + "\n")
+    if args.record:
+        _write_record(args.record, **totals, durations=durations)
+    if totals["failed"] or totals["executed"] < args.min_executed:
+        print(
+            f"::error::{totals['executed']} tests executed (at least "
+            f"{args.min_executed} required), {totals['failed']} failed"
+        )
+        return 1
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("targets", nargs="+", help="test files, globs or node ids")
@@ -181,8 +221,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--deselect", action="append", default=[])
     parser.add_argument("--shard", default="1/1", help="K/N")
-    parser.add_argument("--durations", type=Path, help="JSON: seconds per file")
-    parser.add_argument("--record", type=Path, help="write the units' wall times")
+    parser.add_argument(
+        "--exclude", action="append", default=[], help="glob: drop matching files"
+    )
+    parser.add_argument("--durations", type=Path, help="a --record file")
+    parser.add_argument("--record", type=Path, help="write counts and wall times")
+    parser.add_argument(
+        "--merge",
+        action="store_true",
+        help="the targets are --record files (shards): sum and check them",
+    )
     parser.add_argument("--jobs", type=int, default=1)
     parser.add_argument("--min-executed", type=int, default=1)
     parser.add_argument(
@@ -202,13 +250,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     for node in args.deselect:
         pytest_args += ["--deselect", node]
 
-    targets = _targets(args.targets)
+    if args.merge:
+        return _merge(args)
+    targets = [
+        target
+        for target in _targets(args.targets)
+        if not any(
+            Path(target.split("::", 1)[0]).match(pattern) for pattern in args.exclude
+        )
+    ]
     units = targets
-    if args.marker or args.split:
+    if targets and (args.marker or args.split):
         ids, line = _collect(args.python, targets, pytest_args)
         units = _units(ids, args.split)
         print(f"collected: {line} -> {len(units)} units from {len(targets)} targets")
-    durations = json.loads(args.durations.read_text()) if args.durations else {}
+    durations = (
+        json.loads(args.durations.read_text())["durations"] if args.durations else {}
+    )
     units = _shard(units, args.shard, durations)
     if not units:
         if args.allow_empty is not None:
@@ -270,7 +328,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         for result in results:
             path = result.unit.split("::", 1)[0]
             recorded[path] = round(recorded.get(path, 0.0) + result.seconds, 1)
-        args.record.write_text(json.dumps(recorded, indent=1, sort_keys=True) + "\n")
+        _write_record(
+            args.record,
+            units=len(results),
+            executed=executed,
+            skipped=sum(r.skipped for r in results),
+            failed=sum(r.failed for r in results),
+            durations=recorded,
+        )
     for problem in problems:
         print(f"::error::{problem}")
     return 1 if problems else 0
