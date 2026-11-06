@@ -115,9 +115,10 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   (``assemble.reachable_loop_orders``, PLAN §1.2, Q13);
   ``loop-induced-colour-accuracy`` an LC or NLC loop-induced request (full
   colour only, Q8); ``loop-induced-include-pending`` (configuration) the
-  ``include`` value until it lands; ``loop-induced-engine-pending`` the
-  generation of an admitted loop-induced process until the amplitude-mode
-  engine lands (never a silent zero). Widths (Q7): a loop-induced request
+  ``include`` value until it lands. An admitted loop-induced process is
+  generated in amplitude mode (m-lit LIT-AMP, ``induced``; an exact colour
+  zero such as ``h > g a`` is stored with its colour-zero record and
+  evaluates to an exact 0). Widths (Q7): a loop-induced request
   admits fixed widths in every tree propagator (no Born, so no Catani
   mismatch, and the UV counterterm vertices multiply the same widthful
   tree propagators), loop propagators stay widthless; ``coloured-width``
@@ -340,19 +341,6 @@ LOOP_ADMISSION_REFUSALS = (
         "color.accuracy = 'full' (the one-loop default)",
         "m-lit LIT-REQ (Q8 (a))",
         "none",
-    ),
-    LoopAdmissionRefusal(
-        "loop-induced-engine-pending",
-        "the generation of a loop-induced process (|A_loop|^2): the request is "
-        "routed and its loop orders inferred (the dry run lists them), but the "
-        "amplitude-mode generation has not landed",
-        "never a silent zero: generation refuses until the loop-induced engine "
-        "(amplitude seeds, native amplitude sum, canonical squaring) serves it",
-        "the dry run (Generator.plan) for the request's kind and loop orders; "
-        "process.loop_induced = 'skip' leaves the loop-induced members of a "
-        "multiparticle request out",
-        "m-lit LIT-REQ",
-        "m-lit LIT-AMP (the loop-induced vertical slice)",
     ),
     LoopAdmissionRefusal(
         "coloured-width",

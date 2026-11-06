@@ -1665,9 +1665,8 @@ class SliceRequest:
     Born amplitude within ``born_orders`` (then the coupling-order limits
     within which none exists) and the request serves |A_loop|^2 at the exact
     loop orders ``loop_orders`` (``loop_service.loop_induced_orders``),
-    squared orders l + l' (loop x loop sectors), full colour only (Q8 (a)).
-    Its generation is refused (``loop-induced-engine-pending``) until the
-    amplitude-mode engine lands."""
+    squared orders l + l' (loop x loop sectors), full colour only (Q8 (a)),
+    generated in amplitude mode (m-lit LIT-AMP, ``induced``)."""
 
     process: str
     born_orders: Mapping[str, int]
@@ -2705,7 +2704,14 @@ class LoopSlice:
         if request.contribution == "loop-induced":
             induced.bind(slice_, generation=generation)
         slice_._plan_contraction()
-        slice_.scaleless = slice_._scaleless_companion()
+        # The certified-scaleless companion serves the "uv" and "ir" pole
+        # selections only, which a loop-induced result does not admit (its UV
+        # and IR parts are not additive in |A|^2, m-lit PLAN §2.a.7).
+        slice_.scaleless = (
+            None
+            if request.contribution == "loop-induced"
+            else slice_._scaleless_companion()
+        )
         return slice_
 
     def _scaleless_companion(self, prune: bool | None = None) -> LoopSlice | None:
@@ -3023,7 +3029,7 @@ class LoopSlice:
         estimate = StabilityEstimate.from_checks(
             reference.result.components["virtual"],
             budgets,
-            scale=reference.absolute,
+            scale=reference.stability_scale(),
             roundoff=precision.unit_roundoff,
             families=reference.family_deviations,
         )
@@ -3788,6 +3794,14 @@ class _PointEvaluation:
             if twin is not None:
                 self.counterterms_uv = twin.counterterms
         return self.counterterms_uv
+
+    def stability_scale(self) -> dict:
+        """The scale S of the stability estimate's floor per sector
+        (``StabilityEstimate.from_checks``): ``absolute``, or a loop-induced
+        point's term floor, formed on first use (``induced.scale``)."""
+        if self.slice.amplitude is not None:
+            return induced.stability_scale(self)
+        return self.absolute
 
     def finish(self, retest: str | None) -> _PointEvaluation:
         """Dress (schedule B), reduce and assemble the complete virtual."""

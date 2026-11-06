@@ -43,6 +43,8 @@ numerically.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
+from fractions import Fraction
 from typing import Any
 
 from . import reference_executor as rx
@@ -95,10 +97,14 @@ def bind(slice_: Any, *, generation: Any = None) -> None:
     request = slice_.request
     keys = _DegreeKeys(slice_, orbits=False)
     kets = {order for order, found in keys.counterterms.items() if found}
-    tensors = sorted({tensor for found in keys.counterterms.values() for tensor, _p in found})
+    tensors = sorted(
+        {tensor for found in keys.counterterms.values() for tensor, _p in found}
+    )
     basis = amplitude_basis(slice_.table, tensors)
     slice_.amplitude = basis
-    requested = {add_orders(tuple(orders.items())) for orders in request.exact_loop_orders}
+    requested = {
+        add_orders(tuple(orders.items())) for orders in request.exact_loop_orders
+    }
     live = {
         order
         for c, row in enumerate(basis.cells_at_three())
@@ -143,6 +149,95 @@ def bind(slice_: Any, *, generation: Any = None) -> None:
                     "colour zero)",
                 )
     slice_.colour_zero_orders = frozenset(zero)
+
+
+@dataclass(frozen=True)
+class StoredAmplitude:
+    """The amplitude basis of a stored loop-induced process (its native
+    record's ``amplitude``, ``amplitude_record``): what the native route
+    reads of ``colour.AmplitudeBasis`` (the basis size, the full-colour
+    metric at N_c = 3, the elements the counterterm kets carry), the map of
+    the tree program's counterterm ket components onto the basis
+    (``ket_map``), the helicity rows of the amplitude-mode plan and the
+    exact colour-zero loop orders (RULED Q13's colour-zero record)."""
+
+    size: int
+    metric: tuple[tuple[Any, ...], ...]
+    counterterms: tuple[int, ...]
+    ket_map: tuple[tuple[int, int, Orders, int], ...]
+    rows: tuple[rx.Row, ...]
+    colour_zero_orders: frozenset[Orders]
+
+    def __len__(self) -> int:
+        return self.size
+
+    def metric_at_three(self) -> tuple[tuple[Any, ...], ...]:
+        return self.metric
+
+    @property
+    def colour_zero(self) -> bool:
+        """No coefficient cell and no counterterm ket: every amplitude
+        component vanishes by colour algebra (the record's
+        ``colour_zero_orders`` name the orders)."""
+
+        return self.size == 0 or (
+            not self.counterterms and bool(self.colour_zero_orders)
+        )
+
+    @classmethod
+    def from_record(cls, record: Mapping[str, Any]) -> StoredAmplitude:
+        from pyamplicol.color.connections import ExactColorCoefficient
+
+        def orders(value) -> Orders:
+            return tuple((str(name), int(power)) for name, power in value)
+
+        return cls(
+            int(record["size"]),
+            tuple(
+                tuple(
+                    ExactColorCoefficient(Fraction(re), Fraction(im)) for re, im in row
+                )
+                for row in record["metric"]
+            ),
+            tuple(int(t) for t in record["counterterms"]),
+            tuple(
+                (int(t), int(k), orders(order), int(nc))
+                for t, k, order, nc in record["ket_map"]
+            ),
+            tuple(tuple(enumerate(int(h) for h in row)) for row in record["rows"]),
+            frozenset(orders(order) for order in record["colour_zero_orders"]),
+        )
+
+
+def amplitude_record(slice_: Any, exported: Any) -> dict[str, Any]:
+    """The amplitude record of a stored loop-induced process
+    (``native_process.NativeProcess.export``; ``StoredAmplitude``): exact
+    rationals as strings, loop orders as [name, power] lists; no path, user
+    or host enters it."""
+
+    basis = slice_.amplitude
+
+    def orders(value: Orders) -> list[list[Any]]:
+        return [[name, power] for name, power in value]
+
+    mapping = (
+        ket_map(slice_, exported.trees)
+        if exported.trees.program.get("counterterms")
+        else []
+    )
+    return {
+        "size": len(basis),
+        "metric": [
+            [[str(cell.real), str(cell.imag)] for cell in row]
+            for row in basis.metric_at_three()
+        ],
+        "counterterms": list(basis.counterterms),
+        "ket_map": [[t, k, orders(order), nc] for t, k, order, nc in mapping],
+        "rows": [[h for _leg, h in row] for row in exported.rows],
+        "colour_zero_orders": [
+            orders(order) for order in sorted(slice_.colour_zero_orders)
+        ],
+    }
 
 
 def kappa(pair: tuple[Orders, Orders]) -> int:
@@ -372,6 +467,8 @@ def finish(evaluation: Any, retest: str | None) -> Any:
         seeds = AmplitudeSeeds(slice_, rows, evaluation.numbers)
         execution = evaluation.dress(seeds=seeds)
         evaluation._reduce(execution.numerators, retest, columns=labels)
+        # The term scale's numerator coefficients (``term_values``).
+        evaluation.amplitude_numerators = execution.numerators
     evaluation._assemble()
     return evaluation
 
@@ -382,9 +479,9 @@ def read_native(
     """Read the native amplitude sum of point ``index`` of an amplitude-mode
     evaluation (``NativeExecutor.reduce``): per (loop order, row) the bare
     amplitude vectors (``native_bare``), with a check their re-test budget
-    (``native_budget``: (i/16 pi^2) sum_f |delta Omega_f| per t and k) and the
-    pre-cancellation scale (``native_scale``); binary64 squares natively
-    (``native_square``)."""
+    (``native_budget``: (i/16 pi^2) sum_f |delta Omega_f| per t and k) and,
+    when the executor formed it, the term scale (``native_terms``,
+    ``term_values``); binary64 squares natively (``native_square``)."""
 
     size = exported.amplitude
     columns = len(exported.rows) * size
@@ -404,15 +501,22 @@ def read_native(
         if budget is None
         else vectors(budget[index], lambda values: [float(x) for x in values])
     )
-    evaluation.native_scale = vectors(
-        output["amplitude_scale"][index], lambda values: [float(x) for x in values]
+    terms = output.get("amplitude_scale")
+    evaluation.native_terms = (
+        None
+        if terms is None
+        else vectors(terms[index], lambda values: [float(x) for x in values])
     )
     evaluation.native_square = numbers.double
     evaluation.amplitude_rows = tuple(exported.rows)
     kets = output.get("counterterm_kets")
     if kets is not None:
         evaluation.native_kets = native_kets(
-            evaluation.slice, exported, carrier(kets[index]), numbers, width_of(evaluation)
+            evaluation.slice,
+            exported,
+            carrier(kets[index]),
+            numbers,
+            width_of(evaluation),
         )
 
 
@@ -449,10 +553,13 @@ def native_kets(
 ) -> dict[tuple[Orders, rx.Row], list[list[Any]]]:
     """A^CT per (loop order, row) from a point's native counterterm kets
     (``V2Executor.evaluate``'s ``counterterm_kets``: rows x ket components,
-    the program's layout) on the amplitude basis at N_c = 3 (``ket_map``;
-    the native twin of ``counterterm_kets``)."""
+    the program's layout) on the amplitude basis at N_c = 3 (``ket_map``,
+    or a stored process's recorded map; the native twin of
+    ``counterterm_kets``)."""
 
-    mapping = exported.__dict__.get("_ket_map")
+    mapping = getattr(slice_.amplitude, "ket_map", None)
+    if mapping is None:
+        mapping = exported.__dict__.get("_ket_map")
     if mapping is None:
         mapping = exported.__dict__["_ket_map"] = ket_map(slice_, exported.trees)
     components = len(mapping)
@@ -510,7 +617,12 @@ def assemble(evaluation: Any) -> None:
         gram = metric(slice_, numbers)
         if getattr(evaluation, "native_square", False):
             squared = native_square(
-                total, gram, slice_.sectors, rows, width, evaluation.average,
+                total,
+                gram,
+                slice_.sectors,
+                rows,
+                width,
+                evaluation.average,
                 slice_.native,
             )
         else:
@@ -552,7 +664,9 @@ def native_square(
     for the Python API and the SDK): dense slots (loop order, row, t) over
     the sectors' loop orders (zero where absent)."""
 
-    orders = sorted({order for _sector, pairs in sectors for pair in pairs for order in pair})
+    orders = sorted(
+        {order for _sector, pairs in sectors for pair in pairs for order in pair}
+    )
     slot = {order: k for k, order in enumerate(orders)}
     size = len(gram)
     zero = [[0.0, 0.0]] * width
@@ -574,7 +688,8 @@ def native_square(
         values, len(rows), size, width, metric_values, pairs, float(average)
     )
     return {
-        sector: tuple(totals) for (sector, _pairs), totals in zip(sectors, squared, strict=True)
+        sector: tuple(totals)
+        for (sector, _pairs), totals in zip(sectors, squared, strict=True)
     }
 
 
@@ -592,7 +707,10 @@ def _deviations(direct, other, size, width, numbers):
         b = other.get(key)
         out[key] = [
             [
-                abs((a[t][k] if a is not None else zero) - (b[t][k] if b is not None else zero))
+                abs(
+                    (a[t][k] if a is not None else zero)
+                    - (b[t][k] if b is not None else zero)
+                )
                 for k in range(width)
             ]
             for t in range(size)
@@ -642,7 +760,9 @@ def quadratic_budget(evaluation: Any, errors: Mapping) -> dict:
         vector = errors.get(key)
         if vector is None:
             return [0.0] * width
-        return [_bound_norm([vector[t][k] for t in range(size)], gram) for k in range(width)]
+        return [
+            _bound_norm([vector[t][k] for t in range(size)], gram) for k in range(width)
+        ]
 
     out = {}
     for sector, pairs in slice_.sectors:
@@ -667,8 +787,9 @@ def lane_errors(evaluation: Any, lanes: Mapping) -> dict:
     (order, row), t and k from per-lane absolute deviations (no
     cancellation between families)."""
 
-    from .conventions import LOOP_FACTOR_DENOMINATOR
     import math
+
+    from .conventions import LOOP_FACTOR_DENOMINATOR
 
     width = 3 if evaluation.poles else 1
     size = len(evaluation.slice.amplitude)
@@ -682,11 +803,11 @@ def lane_errors(evaluation: Any, lanes: Mapping) -> dict:
 
 
 def budgets(evaluation: Any) -> None:
-    """The stability inputs of a loop-induced point: ``absolute`` (the scale
-    S of the estimate's floor), ``retest_budget`` and ``family_deviations``
-    from the reduction re-test (quadratic in the colour-metric norm)."""
+    """The re-test inputs of a loop-induced point's stability estimate:
+    ``retest_budget`` and ``family_deviations`` (quadratic in the
+    colour-metric norm). The scale S of the estimate's floor is formed on
+    demand (``stability_scale``: it costs the term scale's reductions)."""
 
-    zero_lane = None
     evaluation.family_deviations = None
     evaluation.retest_budget = None
     native = getattr(evaluation, "native_budget", None)
@@ -703,8 +824,7 @@ def budgets(evaluation: Any) -> None:
         evaluation.retest_budget = quadratic_budget(
             evaluation, lane_errors(evaluation, deviations)
         )
-    del zero_lane
-    evaluation.absolute = scale(evaluation)
+    evaluation.absolute = None
 
 
 def rotation_budget(direct: Any, rotated: Any) -> dict:
@@ -774,53 +894,217 @@ def rotation_budget(direct: Any, rotated: Any) -> dict:
     return quadratic_budget(direct, errors)
 
 
+def term_values(evaluation: Any) -> dict:
+    """Per (loop order, row) the term scale of the bare amplitude per basis
+    element t and Laurent coefficient k, sum_f sum_alpha |N_{f,h,t,alpha}|
+    |I_{f,alpha,k}| / 16pi^2 (m-lit DECISIONS 2026-11-06 ~09:00 (1)): the
+    size of each amplitude component before the reduction's own
+    cancellations, from the tensor moments I_{f,alpha} (the integral of
+    monomial alpha of family f, one unit-numerator reduction per monomial,
+    family and point; TIRust's moments). The native executor forms it on
+    request (``V2Options::term_scale``, ``native_terms``); the Python
+    reference reduces the unit numerators of its own dressing (the oracle).
+    Cached on the evaluation."""
+
+    found = getattr(evaluation, "term_cache", None)
+    if found is not None:
+        return found
+    native = getattr(evaluation, "native_bare", None)
+    if native is not None:
+        terms = getattr(evaluation, "native_terms", None)
+        if terms is None:
+            raise ValueError(
+                "a native loop-induced point has no term scale: the executor "
+                "forms it with the stability checks (term_scale)"
+            )
+        evaluation.term_cache = terms
+        return terms
+    out: dict = {}
+    numerators = getattr(evaluation, "amplitude_numerators", None) or {}
+    if numerators:
+        moments = _moments(evaluation, numerators)
+        out = _term_sums(evaluation, numerators, moments)
+    evaluation.term_cache = out
+    return out
+
+
+def _moments(evaluation: Any, numerators: Mapping) -> dict:
+    """I_{f,alpha} per (family f, numerator frame) and monomial alpha, as
+    Laurent coefficient lists: the unit numerators of one of the family's
+    loop orders in that frame (the integrals depend on the propagators and
+    the frame alone) reduced through the evaluation's own reducer
+    (``_PointEvaluation._groups``)."""
+
+    from dataclasses import replace
+
+    from .poles import reducer_poles
+
+    numbers = evaluation.numbers
+    units = {}
+    frames = {}
+    for (family, order), numerator in sorted(numerators.items()):
+        if (family, numerator.frame) in frames:
+            continue
+        frames[(family, numerator.frame)] = (family, order)
+        size = len(numerator.columns[0])
+        one, zero = numbers.pair(1), numbers.zero
+        units[(family, order)] = replace(
+            numerator,
+            columns=tuple(
+                tuple(one if m == alpha else zero for m in range(size))
+                for alpha in range(size)
+            ),
+        )
+    width = max(len(numerator.columns) for numerator in units.values())
+    lanes, groups = evaluation._groups(units, 0, list(range(width)))
+    arithmetic = "double" if numbers.double else "arbitrary"
+    digits = None if numbers.double else numbers.precision.digits
+    reducer = evaluation.slice.native.V2Reducer(
+        arithmetic, digits, "fast" if numbers.double else "generic"
+    )
+    direct, _check = reducer.reduce(
+        groups, poles=reducer_poles(evaluation.mode), check=False, rescale=False
+    )
+    frame_of = {key: frame for (_family, frame), key in frames.items()}
+    out: dict = {}
+    for (family, order, alpha), batch in zip(lanes, direct, strict=True):
+        key = (family, frame_of[(family, order)])
+        out.setdefault(key, {})[alpha] = evaluation._values(batch, alpha)
+    return out
+
+
+def _term_sums(evaluation: Any, numerators: Mapping, moments: Mapping) -> dict:
+    """``term_values`` of the Python reference from its numerators (columns
+    (row, t), ``column_labels``) and the families' moments."""
+
+    import math
+
+    from .conventions import LOOP_FACTOR_DENOMINATOR
+
+    width = width_of(evaluation)
+    size = len(evaluation.slice.amplitude)
+    rows = rows_of(evaluation)
+    factor = 1 / (LOOP_FACTOR_DENOMINATOR * math.pi**2)
+    out: dict = {}
+    for (family, order), numerator in sorted(numerators.items()):
+        integrals = moments[(family, numerator.frame)]
+        for column, coefficients in enumerate(numerator.columns):
+            if not any(coefficients):
+                continue
+            row, t = rows[column // size], column % size
+            cell = out.setdefault((order, row), [[0.0] * width for _ in range(size)])[t]
+            for alpha, value in enumerate(coefficients):
+                if not value:
+                    continue
+                magnitude = float(abs(value))
+                for k in range(width):
+                    cell[k] += factor * magnitude * float(abs(integrals[alpha][k]))
+    return out
+
+
+def row_scales(evaluation: Any) -> dict:
+    """The per-row term floor of every (loop order, row): per Laurent
+    coefficient k, S_k(h) = max(S_term,k(h), S_term,0(h)) with S_term,k(h) =
+    sum_t T_{h,t,k} sqrt(G_tt) + ||A^CT_{h,k}||_G (``term_values`` T; m-lit
+    DECISIONS 2026-11-06 ~09:00 (1)). The floor by the row's own finite
+    order covers order-k numerator content that cancels in the dressing
+    (gg>hh, gg>zz 1/eps^2); the term scale covers families that integrate
+    to zero by themselves (Landau-Yang), where scales measured after the
+    integration are themselves at rounding. Cached on the evaluation."""
+
+    found = getattr(evaluation, "row_scale_cache", None)
+    if found is not None:
+        return found
+    terms = term_values(evaluation)
+    gram = evaluation.gram
+    numbers = evaluation.numbers
+    width = width_of(evaluation)
+    size = len(evaluation.slice.amplitude)
+    roots = [max(float(complex(gram[t][t]).real), 0.0) ** 0.5 for t in range(size)]
+    kets = evaluation.counterterm_vectors
+    out = {}
+    for key in dict.fromkeys([*terms, *kets]):
+        vector = terms.get(key)
+        ket = kets.get(key)
+        values = []
+        for k in range(width):
+            value = 0.0
+            if vector is not None:
+                value = sum(vector[t][k] * roots[t] for t in range(size))
+            if ket is not None:
+                value += float(g_norm([ket[t][k] for t in range(size)], gram, numbers))
+            values.append(value)
+        out[key] = [max(value, values[0]) for value in values]
+    evaluation.row_scale_cache = out
+    return out
+
+
 def scale(evaluation: Any) -> dict:
-    """The scale S of the estimate's floor per sector and coefficient: the
-    square of the pre-cancellation amplitude sizes, sum_h (sum_f
-    ||(i/16pi^2) Omega_f||_G + ||A^CT||_G)^2 / avg per Laurent order of the
-    product (PLAN §2.a.8), with colour-metric bounds."""
+    """The scale S of the estimate's floor per sector and coefficient
+    (``StabilityEstimate.from_checks``' ``scale``): the |A|^2-level product
+    of the per-row term floors, sum_pairs kappa sum_h sum_{i+j=k} S_{l,h,i}
+    S_{l',h,j} / avg (``row_scales``; PLAN §2.a.8 with the DECISIONS ~09:00
+    (1) scale), so that a numerical zero is reported as "zero within the
+    estimate" (RULED Q13: no zero is declared)."""
 
     from .stability import Budget
 
-    numbers = evaluation.numbers
-    slice_ = evaluation.slice
-    width = 3 if evaluation.poles else 1
-    size = len(slice_.amplitude)
-    gram = evaluation.gram
-    native = getattr(evaluation, "native_scale", None)
-    errors = (
-        lane_errors(
-            evaluation,
-            {lane: value.coefficients for lane, value in evaluation.families.items()},
-        )
-        if native is None
-        else {key: [list(cell) for cell in vector] for key, vector in native.items()}
-    )
-    kets = evaluation.counterterm_vectors
-    for key, vector in kets.items():
-        cell = errors.setdefault(key, [[0.0] * width for _ in range(size)])
-        for t in range(size):
-            for k in range(width):
-                cell[t][k] += abs(complex(vector[t][k]))
+    scales = row_scales(evaluation)
+    width = width_of(evaluation)
     rows = rows_of(evaluation)
     average = float(evaluation.average)
     out = {}
-    for sector, pairs in slice_.sectors:
+    for sector, pairs in evaluation.slice.sectors:
         totals = [0.0] * width
         for pair in sorted(pairs):
             left, right = pair
             for row in rows:
-                a = errors.get((left, row))
-                b = errors.get((right, row))
+                a = scales.get((left, row))
+                b = scales.get((right, row))
                 if a is None or b is None:
                     continue
-                na = [_bound_norm([a[t][k] for t in range(size)], gram) for k in range(width)]
-                nb = [_bound_norm([b[t][k] for t in range(size)], gram) for k in range(width)]
                 for k in range(width):
                     for i in range(k + 1):
-                        totals[k] += kappa(pair) * na[i] * nb[k - i]
+                        totals[k] += kappa(pair) * a[i] * b[k - i]
         out[sector] = Budget(tuple(value / average for value in totals))
-    del numbers
+    return out
+
+
+def stability_scale(evaluation: Any) -> dict:
+    """``scale`` of a point (formed on first use: the Python reference
+    reduces its unit numerators then; a native point needs the executor's
+    term scale, requested with the stability checks)."""
+
+    if evaluation.absolute is None:
+        evaluation.absolute = scale(evaluation)
+    return evaluation.absolute
+
+
+def finiteness(evaluation: Any) -> dict:
+    """The amplitude-level finiteness ratio per (loop order, row): max over
+    the pole coefficients k = 1, 2 of ||a_{-k}||_G / S_k(h), the residue of
+    the amplitude's poles against the row's term floor (``row_scales``;
+    PLAN §2.a.7 L3 with the DECISIONS 2026-11-06 ~09:00 (1) scale). A
+    one-loop amplitude with no tree is IR finite and UV finite after
+    renormalisation, so the ratio is of the order of the carrier's unit
+    roundoff (0 for a row with no amplitude). Empty without poles."""
+
+    width = width_of(evaluation)
+    if width == 1:
+        return {}
+    scales = row_scales(evaluation)
+    gram = evaluation.gram
+    numbers = evaluation.numbers
+    size = len(evaluation.slice.amplitude)
+    out = {}
+    for key, vector in evaluation.amplitude_vectors.items():
+        ratio = 0.0
+        for k in range(1, width):
+            residue = float(g_norm([vector[t][k] for t in range(size)], gram, numbers))
+            if residue:
+                bound = scales.get(key, [0.0] * width)[k]
+                ratio = max(ratio, residue / bound if bound else float("inf"))
+        out[key] = ratio
     return out
 
 

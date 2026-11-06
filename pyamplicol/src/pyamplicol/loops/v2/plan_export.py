@@ -1614,6 +1614,10 @@ class NativeExecutor:
         # Amplitude-mode plans: also return the raw reduction lanes (an
         # oracle and diagnostic; by default only the amplitudes).
         self.raw_lanes = False
+        # Amplitude-mode plans: the next ``reduce`` also forms the term scale
+        # (``V2Options::term_scale``; ``evaluate`` sets it for the reference
+        # evaluation of a stability estimate).
+        self.term_scale = False
 
     def native(
         self,
@@ -2016,17 +2020,23 @@ class NativeExecutor:
                 require_full_kernels(self.slice)
             else:
                 wards = None
-        precision, evaluations, failures = self._evaluated(
-            points,
-            scales,
-            parameters,
-            precision,
-            poles,
-            stability.frame,
-            schedule,
-            wards,
-            catani=self.catani,
-        )
+        # A loop-induced estimate's floor is the term scale (``induced.
+        # scale``), formed by the reference evaluation's executor call.
+        self.term_scale = self.exported.amplitude is not None and stability.enabled
+        try:
+            precision, evaluations, failures = self._evaluated(
+                points,
+                scales,
+                parameters,
+                precision,
+                poles,
+                stability.frame,
+                schedule,
+                wards,
+                catani=self.catani,
+            )
+        finally:
+            self.term_scale = False
         rotated = []
         for k, rotation in enumerate(stability.rotations):
             moved = [
@@ -2063,7 +2073,7 @@ class NativeExecutor:
             estimate = StabilityEstimate.from_checks(
                 components.get("virtual", components["bare"]),
                 budgets,
-                scale=reference.absolute,
+                scale=reference.stability_scale(),
                 roundoff=precision.unit_roundoff,
                 families=reference.family_deviations,
             )
@@ -2261,6 +2271,8 @@ class NativeExecutor:
         if self.exported.amplitude is not None and self.raw_lanes:
             # Amplitude mode returns its raw lanes only on request.
             options["raw_lanes"] = True
+        if self.exported.amplitude is not None and self.term_scale:
+            options["term_scale"] = True
         catani = self.inputs == "native" and any(
             getattr(evaluation, "catani", False) for evaluation in evaluations
         )

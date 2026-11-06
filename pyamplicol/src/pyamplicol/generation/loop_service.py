@@ -1277,9 +1277,6 @@ def _plan_v2(backend, processes, blockers, *, model=None):
                         "native_export_checked": False,
                     }
                 )
-            pending = _engine_pending(requests, context.colour_zero)
-            if pending is not None:
-                blockers = (*blockers, pending)
         except (ValueError, TypeError, RuntimeError, ImportError, PyAmpliColError) as e:
             # A listed key first (``refusals.keyed_error``).
             blockers = (str(keyed_error(e)),)
@@ -1380,34 +1377,6 @@ def _loop_induced_coverage(
         "loop_admission_checked": False,
         "native_export_checked": False,
     }
-
-
-def _engine_pending(requests, colour_zero):
-    """The listed ``loop-induced-engine-pending`` blocker of the loop-induced
-    requests among ``requests``, or None: they are routed and dry-run, and
-    their generation is refused until the amplitude-mode engine lands (m-lit
-    LIT-AMP lifts it; never a silent zero). An exact colour zero
-    (``colour_zero`` names all its loop orders; ``_loop_induced_request``)
-    is marked."""
-
-    from pyamplicol.loops.v2.refusals import ListedBlocker
-
-    pending = [
-        repr(request.process)
-        + (
-            " (an exact colour zero)"
-            if len(zero) == len(request.exact_loop_orders)
-            else ""
-        )
-        for request, zero in zip(requests, colour_zero, strict=True)
-        if request.contribution == "loop-induced"
-    ]
-    if not pending:
-        return None
-    return ListedBlocker(
-        "loop-induced-engine-pending",
-        "loop-induced processes are not generated yet: " + ", ".join(pending),
-    )
 
 
 # The artifact extension of the skipped members of multiparticle requests
@@ -1564,11 +1533,6 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
             # Only the scope keeps the Born DAGs (each slice releases its own).
             context, requests, _released, skipped = _born_members(backend, context)
             del _released
-            # Loop-induced processes are routed, not generated yet (m-lit
-            # LIT-AMP lifts this; never a silent zero).
-            pending = _engine_pending(requests, context.colour_zero)
-            if pending is not None:
-                raise pending.error()
         native = load_loop_native()
         compiled = context.resolved.compiled
         validation = backend._generation_config.validation
@@ -1621,6 +1585,9 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                                 color_contraction=request.colour_contraction,
                                 color_correlations=process.color_correlations(),
                                 spin_correlations=process.spin_correlations(),
+                                # Loop-induced: kind, interference, poles
+                                # (m-lit LIT-AMP; absent for a virtual).
+                                **process.contribution(),
                             ),
                             validation_point=build_process_validation_point(
                                 entry.process_ir,

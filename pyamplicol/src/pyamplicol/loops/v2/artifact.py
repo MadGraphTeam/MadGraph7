@@ -833,6 +833,25 @@ class GeneratedProcess:
             inputs=inputs,
         )
 
+    def contribution(self) -> dict[str, Any]:
+        """The metadata of a loop-induced process (``contribution_kind``,
+        ``interference`` and the pole selections it serves; m-lit PLAN
+        §2.a.9), empty for a Born-interfered one (its metadata keeps the
+        defaults and its bytes)."""
+
+        if getattr(self.slice, "amplitude", None) is None:
+            return {}
+        from pyamplicol.generation.loop_artifact import (
+            LOOP_INDUCED_INTERFERENCE,
+            LOOP_INDUCED_POLES,
+        )
+
+        return {
+            "contribution_kind": "loop-induced",
+            "interference": LOOP_INDUCED_INTERFERENCE,
+            "poles": LOOP_INDUCED_POLES,
+        }
+
     def born_orders(self) -> tuple[tuple[tuple[str, int], ...], ...]:
         amplitudes = tuple(self.slice.blocks.born_orders)
         return tuple(
@@ -1092,7 +1111,10 @@ def generate_process(
     # loaded process regenerates.
     from .native_observables import column_plans
 
-    plans = column_plans(observables)
+    # A loop-induced process has no Born: its observable columns (colour and
+    # spin correlations, resolved output) are m-lit LIT-OBS's.
+    induced = getattr(observables.slice, "amplitude", None) is not None
+    plans = {} if induced else column_plans(observables)
     try:
         # With declared observables every counterterm ket component stays in
         # the tree program (``native_observables``: a colour history can read
@@ -1152,13 +1174,14 @@ def generate_process(
 
         from .native_observables import StoredObservables
 
-        try:
-            stored_columns = StoredObservables.export(
-                observables, exported, native, plans, scaleless
-            )
-        except NativeExportUnsupported as error:
-            raise _not_storable(request, "observable columns", error) from error
-        native = replace(native, observables=stored_columns)
+        if not induced:
+            try:
+                stored_columns = StoredObservables.export(
+                    observables, exported, native, plans, scaleless
+                )
+            except NativeExportUnsupported as error:
+                raise _not_storable(request, "observable columns", error) from error
+            native = replace(native, observables=stored_columns)
     resolved = CorrelatorConfig(
         tuple(observables.histories), tuple(observables.spin_classes)
     )
@@ -1557,7 +1580,9 @@ class V2VirtualRuntime:
         # File-backed (M-FINAL MF-8G-2 item 2): the plans and binary tree
         # programs stay in the PACBIN, read by the native executors.
         self._native_process = load_native_process(runtime)
-        if self._native_process.observables is None:
+        # A loop-induced process stores no observable columns yet (LIT-OBS).
+        self._induced = "amplitude" in self._native_process.record
+        if self._native_process.observables is None and not self._induced:
             raise ArtifactError(
                 "the stored process has no observable columns (an older "
                 "build's artifact); regenerate the artifact"
@@ -1623,6 +1648,13 @@ class V2VirtualRuntime:
         from .native_observables import StoredObservableSlice
         from .observables import FORCED_FFT_OBSERVABLES
 
+        if self._induced:
+            # m-lit LIT-OBS serves them (full observable parity, RULED Q9).
+            raise CompatibilityError(
+                "the colour-, spin- and helicity-resolved outputs of a "
+                "loop-induced process are not served yet; evaluate the "
+                "inclusive |A_loop|^2"
+            )
         if self._execution["request"]["colour_contraction"] == "fft":
             # The stored observable columns are contracted directly.
             raise CompatibilityError(FORCED_FFT_OBSERVABLES)
@@ -1932,6 +1964,14 @@ class V2VirtualRuntime:
             stability_checks=stability_checks,
             on_failure=on_failure,
         )
+        if selection.value not in self._metadata["poles"]:
+            # A loop-induced process serves "all" and "none" (its UV and IR
+            # parts are not additive in |A|^2, m-lit PLAN §2.a.7).
+            raise CompatibilityError(
+                f"the pole selection {selection.value!r} is not served by this "
+                f"{self._metadata['contribution_kind']} process (it serves "
+                f"{list(self._metadata['poles'])})"
+            )
         # v2_options refused direct R2.
         r2 = self._default_r2 if r2_strategy is None else R2Strategy(r2_strategy)
         carrier, setting = (
@@ -2182,6 +2222,9 @@ class V2VirtualRuntime:
             poles=poles,
             stability=tuple(estimates) if checks.enabled else None,
             pole_parts=tuple(parts) if splits_poles(poles) else None,
+            contribution=cast(
+                Literal["virtual", "loop-induced"], self._metadata["contribution_kind"]
+            ),
         )
 
     def _contraction(self, results: Sequence[Any]) -> VirtualColorContraction:
