@@ -155,10 +155,9 @@ def test_provider_timing_records(name):
         "colour flows and squaring"}
     opp = json.loads((FIXTURES / "timing" / f"{name}-providers-madloop-opp.json").read_text())
     assert opp["providers"]["madloop"]["madloop_params"]["MLReductionLib"] == "6|7|1"
-    # The one-helicity column (MadEvent mode): inline, or a separate record for
-    # the rows the first delivery timed.
-    separate = FIXTURES / "timing" / f"{name}-providers-madloop-one-helicity.json"
-    one = (json.loads(separate.read_text())["providers"]["madloop"] if separate.exists() else madloop)["one_helicity"]
+    # The one-helicity column (MadEvent mode); one record per row, so the
+    # summary table finds one production timing per provider.
+    one = madloop["one_helicity"]
     assert one["madloop_params"]["MLReductionLib"] == "7|6|1"
     assert 0 < one["mean_seconds_per_call"] and one["calls"] == sum(one["kept_helicities_per_point"])
     assert all(0 < kept <= one["helicities"] for kept in one["kept_helicities_per_point"])

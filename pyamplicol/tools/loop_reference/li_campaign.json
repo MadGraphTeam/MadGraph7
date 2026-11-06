@@ -335,7 +335,6 @@
       0.23430656447421563
      ],
      "provider_timing_records": [
-      "required/li/timing/li_gg_hh-providers-madloop-one-helicity.json",
       "required/li/timing/li_gg_hh-providers-madloop-opp.json",
       "required/li/timing/li_gg_hh-providers.json"
      ],
@@ -343,8 +342,8 @@
       "openloops": 2.5597,
       "recola": 1.584,
       "madloop": 0.9974,
-      "madloop_6|7|1": 1.9944,
-      "madloop_one_helicity": 0.6917
+      "madloop_one_helicity": 0.6917,
+      "madloop_6|7|1": 1.9944
      }
     }
    ]
@@ -595,7 +594,6 @@
       0.23430656447421563
      ],
      "provider_timing_records": [
-      "required/li/timing/li_gg_hh-providers-madloop-one-helicity.json",
       "required/li/timing/li_gg_hh-providers-madloop-opp.json",
       "required/li/timing/li_gg_hh-providers.json"
      ],
@@ -603,8 +601,8 @@
       "openloops": 2.5597,
       "recola": 1.584,
       "madloop": 0.9974,
-      "madloop_6|7|1": 1.9944,
-      "madloop_one_helicity": 0.6917
+      "madloop_one_helicity": 0.6917,
+      "madloop_6|7|1": 1.9944
      }
     }
    ]
@@ -1009,7 +1007,6 @@
      "max_provider_pair_relative_error": 3.757466748247552e-11,
      "status": "pass",
      "provider_timing_records": [
-      "required/li/timing/li_gg_hgg-providers-madloop-one-helicity.json",
       "required/li/timing/li_gg_hgg-providers-madloop-opp.json",
       "required/li/timing/li_gg_hgg-providers.json"
      ],
@@ -1017,8 +1014,8 @@
       "openloops": 27.8308,
       "recola": 25.9618,
       "madloop": 85.666,
-      "madloop_6|7|1": 286.8611,
-      "madloop_one_helicity": 9.6855
+      "madloop_one_helicity": 9.6855,
+      "madloop_6|7|1": 286.8611
      }
     }
    ]
@@ -1048,7 +1045,6 @@
      "max_provider_pair_relative_error": 8.111188016292407e-08,
      "status": "pass",
      "provider_timing_records": [
-      "required/li/timing/li_gg_zzg-providers-madloop-one-helicity.json",
       "required/li/timing/li_gg_zzg-providers-madloop-opp.json",
       "required/li/timing/li_gg_zzg-providers.json"
      ],
@@ -1056,8 +1052,8 @@
       "openloops": 187.1737,
       "recola": 178.7152,
       "madloop": 720.7524,
-      "madloop_6|7|1": 2594.0994,
-      "madloop_one_helicity": 16.2712
+      "madloop_one_helicity": 16.2712,
+      "madloop_6|7|1": 2594.0994
      }
     },
     {
@@ -1525,7 +1521,7 @@
   },
   {
    "row": "LI-51",
-   "processes": "g g > e+ e- mu+ mu- g (2->5 stretch)",
+   "processes": "g g > e+ e- mu+ mu- g or g g > h g g g g (2->5 stretch: the first is run)",
    "references": "ML, OL ppllllj2 (added library), RC",
    "checks": [
     "L1"
