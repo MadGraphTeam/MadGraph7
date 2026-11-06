@@ -2084,14 +2084,16 @@ fn evaluate_v2_artifact(
 /// (`rusticol_core::loop_v2::interference::square_amplitudes`, the native
 /// binary64 square of RULED Q41; DD and arbitrary precision square the
 /// exported vectors in Python's `Decimal`, `loops/v2/induced.square`).
-/// `amplitudes` per (loop order, row, basis element) slot its Laurent
-/// coefficients as `[re, im]` pairs; `metric` `G` row-major; `sectors` per
-/// sector its `(l, l')` loop-order slot pairs.
+/// `amplitudes` per (loop order, row, basis element) slot (`orders` loop
+/// orders) its Laurent coefficients as `[re, im]` pairs; `metric` `G`
+/// row-major; `sectors` per sector its `(l, l')` loop-order slot pairs.
 #[pyfunction]
-#[pyo3(signature = (amplitudes, rows, basis, width, metric, sectors, average))]
+#[pyo3(signature = (amplitudes, orders, rows, basis, width, metric, sectors, average))]
+#[allow(clippy::too_many_arguments)]
 fn square_amplitudes(
     py: Python<'_>,
     amplitudes: Vec<Vec<[f64; 2]>>,
+    orders: usize,
     rows: usize,
     basis: usize,
     width: usize,
@@ -2110,6 +2112,7 @@ fn square_amplitudes(
     py.detach(|| {
         rusticol_core::loop_v2::interference::square_amplitudes(
             &amplitudes,
+            orders,
             rows,
             basis,
             width,

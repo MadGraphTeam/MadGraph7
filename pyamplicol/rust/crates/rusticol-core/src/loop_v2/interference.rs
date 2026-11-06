@@ -718,12 +718,15 @@ pub type AmplitudeSectors = Vec<Vec<(usize, usize)>>;
 /// to the sector's coefficient; each total divided by `average` at the end.
 ///
 /// `amplitudes[(l * rows + h) * basis + t]` holds `width` Laurent
-/// coefficients ([finite, 1/ε, 1/ε²]; finite only: one); `metric` is
-/// `G_{tt'}` row-major (`basis²` values, full colour at N_c = 3, real
-/// symmetric positive semidefinite). Full colour only: no grade, no
-/// truncation (RULED Q8).
+/// coefficients ([finite, 1/ε, 1/ε²]; finite only: one) for `orders` loop
+/// orders; `metric` is `G_{tt'}` row-major (`basis²` values, full colour at
+/// N_c = 3, real symmetric positive semidefinite). Full colour only: no
+/// grade, no truncation (RULED Q8). An empty basis (an exact colour zero)
+/// squares to 0.
+#[allow(clippy::too_many_arguments)]
 pub fn square_amplitudes<T: Real>(
     amplitudes: &[Vec<Complex<T>>],
+    orders: usize,
     rows: usize,
     basis: usize,
     width: usize,
@@ -734,13 +737,11 @@ pub fn square_amplitudes<T: Real>(
     if metric.len() != basis * basis {
         return Err(invalid("the amplitude metric is basis x basis"));
     }
-    if basis == 0 || rows == 0 {
-        return Err(invalid("an amplitude square needs rows and a basis"));
-    }
-    if amplitudes.len() % (rows * basis) != 0 || amplitudes.iter().any(|cell| cell.len() != width) {
+    if amplitudes.len() != orders * rows * basis
+        || amplitudes.iter().any(|cell| cell.len() != width)
+    {
         return Err(invalid("amplitudes per (loop order, row, basis element)"));
     }
-    let orders = amplitudes.len() / (rows * basis);
     if sectors.iter().flatten().any(|&(l, r)| l > r || r >= orders) {
         return Err(invalid("a sector pair outside the amplitude's loop orders"));
     }
@@ -791,7 +792,7 @@ mod tests {
             vec![c(1.0, 1.0), c(0.5, 0.0), c(0.0, 0.0)],
             vec![c(2.0, 0.0), c(0.0, 0.0), c(0.0, 0.0)],
         ];
-        let squared = square_amplitudes(&a, 1, 2, 3, &metric, &[vec![(0, 0)]], &4.0).unwrap();
+        let squared = square_amplitudes(&a, 1, 1, 2, 3, &metric, &[vec![(0, 0)]], &4.0).unwrap();
         // a0^dag G a0 = 2|1+i|^2 + 2 Re((1-i) 2) + 2 * 4 = 4 + 4 + 8 = 16.
         assert_eq!(squared[0][0], 16.0 / 4.0);
         // 2 Re(a0^dag G a1): G a1 = (1, 0.5); conj(a0).(G a1) = (1-i) + 1.
@@ -801,9 +802,12 @@ mod tests {
         // Two loop orders: the cross pair is 2 Re(a^dag G b).
         let mut two = a.clone();
         two.extend(a.iter().cloned());
-        let cross = square_amplitudes(&two, 1, 2, 3, &metric, &[vec![(0, 1)]], &4.0).unwrap();
+        let cross = square_amplitudes(&two, 2, 1, 2, 3, &metric, &[vec![(0, 1)]], &4.0).unwrap();
         assert_eq!(cross[0][0], 2.0 * 16.0 / 4.0);
-        assert!(square_amplitudes(&a, 1, 2, 3, &metric, &[vec![(0, 1)]], &4.0).is_err());
+        assert!(square_amplitudes(&a, 1, 1, 2, 3, &metric, &[vec![(0, 1)]], &4.0).is_err());
+        // An empty basis (an exact colour zero) squares to 0.
+        let empty = square_amplitudes::<f64>(&[], 1, 4, 0, 3, &[], &[vec![(0, 0)]], &4.0).unwrap();
+        assert_eq!(empty, vec![vec![0.0; 3]]);
     }
 
     fn r(n: i64) -> Rational {

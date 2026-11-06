@@ -1337,7 +1337,13 @@ impl LoopProgramV4 {
             )?;
         }
         super::bounds::check_legs(file.legs).map_err(invalid)?;
-        require(file.rows > 0 && file.columns > 0, "empty process")?;
+        // An amplitude-mode plan of an exact colour zero (no coefficient
+        // cell and no counterterm ket: an empty amplitude basis, e.g.
+        // h > g a, Tr T^a = 0) has no column: its |A|^2 is 0.
+        require(
+            file.rows > 0 && (file.columns > 0 || amplitude),
+            "empty process",
+        )?;
         require(file.average > 0, "normalisation divisor must be positive")?;
         let columns = file.columns;
         let kernels = file
