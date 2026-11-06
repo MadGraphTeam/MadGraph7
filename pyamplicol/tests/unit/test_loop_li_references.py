@@ -86,18 +86,21 @@ def test_loop_induced_specification_and_fixture(name):
             assert min(v for k, v in errors.items() if "analytic" in k) <= 1e-9
 
 
+def _with_madloop_reference(name):
+    # A reference without MadLoop records why (unavailable, or a 45-minute
+    # miss): test_loop_induced_specification_and_fixture.
+    path = FIXTURES / f"{name}.json"
+    return path.exists() and "madloop" in json.loads(path.read_text())["providers"]
+
+
 @pytest.mark.parametrize(
     "name",
     [n for n in _li_processes()
-     if not required_spec.load_process(required_spec.DEFAULT_SPEC, n).get("zero")])
+     if not required_spec.load_process(required_spec.DEFAULT_SPEC, n).get("zero") and _with_madloop_reference(n)])
 def test_single_helicity_rows_sum_to_the_summed_value(name):
     # Q39: |A(h)|^2/avg (MadLoop's USERHEL value / HELAVGFACTOR) sums to the
     # helicity-summed value; a stale USERHEL would break the sum from point 2 on.
     data = _fixture(name)
-    if "madloop" not in data["providers"] or "madloop-helicities" in data["misses_45_min"]:
-        # No MadLoop reference, or its every-helicity run missed the 45-minute
-        # rule and the helicity-summed run is the reference (a 2->4 row).
-        pytest.skip(f"{name}: no MadLoop single-helicity rows ({data['misses_45_min']})")
     for row in data["rows"]:
         helicity = row.get("per_helicity")
         assert helicity, f"{name}: no single-helicity rows"

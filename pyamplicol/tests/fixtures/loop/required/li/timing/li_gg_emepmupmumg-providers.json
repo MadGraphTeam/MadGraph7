@@ -449,6 +449,7 @@
     "initial_call_seconds": 0.063847874
    },
    "process_wall_seconds": 2.260685933055356,
+   "values_excluded": "width convention: Recola's on-shell scheme with widths is not MG5/OpenLoops' fixed-width scheme (qcd-widths); its values are ~1e-3 off MadLoop = OpenLoops (8e-4 to 1.4e-3 at the reference points), so they are no reference (all three agree to 2e-13 under the complex-mass scheme, LI-C1). Its timing is of the same process and production work; whether it counts as a matched provider for the speed gate is lit-perf's / the coordinator's call",
    "harness_wall_seconds": 2.532769192941487
   },
   "madloop": {

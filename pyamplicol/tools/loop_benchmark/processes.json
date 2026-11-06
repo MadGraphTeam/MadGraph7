@@ -1198,7 +1198,8 @@
       },
       "recola": {
         "process": "g g -> e+ e- mu+ mu-",
-        "note": "timed (same process and production work); its on-shell-scheme width convention differs from MG5/OpenLoops' fixed widths at 1e-4 to 1e-3, so the reference fixture excludes its values"
+        "note": "timed (same process and production work); its on-shell-scheme width convention differs from MG5/OpenLoops' fixed widths at 1e-4 to 1e-3, so the reference fixture excludes its values",
+        "values_excluded": "width convention: Recola's on-shell scheme with widths is not MG5/OpenLoops' fixed-width scheme (qcd-widths); its values are ~1e-3 off MadLoop = OpenLoops (8e-4 to 1.4e-3 at the reference points), so they are no reference (all three agree to 2e-13 under the complex-mass scheme, LI-C1). Its timing is of the same process and production work; whether it counts as a matched provider for the speed gate is lit-perf's / the coordinator's call"
       },
       "openloops": {
         "process": "21 21 -> -11 11 -13 13",
@@ -1270,7 +1271,14 @@
         "export": "runs/li/li_gg_zzzz/madloop-export"
       },
       "recola": {
-        "process": "g g -> Z Z Z Z"
+        "process": "g g -> Z Z Z Z",
+        "value_exceptions": {
+          "points": [
+            7,
+            13
+          ],
+          "reason": "Recola is numerically unstable at stream points 7 and 13 (sqrt s = 500; a Z pair 6.0 and 0.4 GeV above the ZZ threshold, a Z at pT 12 and 6 GeV): an exact rotation moves its value by +136 % and -24 % and its single pole is 1.1-1.5 times its finite part, so its values there (3.54e-9, 1.39e-7) are no reference; its timing stays valid. MadLoop's values there (1.0930e-10, 1.4241e-8) are COLLIER's alone (the 6|7|1 run falls back to COLLIER there, status 217; MadLoop's own estimates 1.6e-9, 4.3e-11): no second provider validates them. Stream point 3 (= reference point 3) is uncertain at ~1e-4 between the providers (tests/fixtures/loop/required/li/li_gg_zzzz.json l1_caution)"
+        }
       },
       "openloops": {
         "unavailable": "no OpenLoops ls library serves g g > z z z z (public channel database of OpenLoops 2.1.5, 2026-11-06); row ML/RC only (PLAN \u00a73.2)"
@@ -1313,7 +1321,8 @@
       },
       "recola": {
         "process": "g g -> e+ e- mu+ mu- g",
-        "note": "timed (same process and production work); its on-shell-scheme width convention differs from MG5/OpenLoops' fixed widths at 1e-4 to 1e-3, so the reference fixture excludes its values"
+        "note": "timed (same process and production work); its on-shell-scheme width convention differs from MG5/OpenLoops' fixed widths at 1e-4 to 1e-3, so the reference fixture excludes its values",
+        "values_excluded": "width convention: Recola's on-shell scheme with widths is not MG5/OpenLoops' fixed-width scheme (qcd-widths); its values are ~1e-3 off MadLoop = OpenLoops (8e-4 to 1.4e-3 at the reference points), so they are no reference (all three agree to 2e-13 under the complex-mass scheme, LI-C1). Its timing is of the same process and production work; whether it counts as a matched provider for the speed gate is lit-perf's / the coordinator's call"
       },
       "openloops": {
         "process": "21 21 -> -11 11 -13 13 21",

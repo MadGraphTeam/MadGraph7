@@ -307,10 +307,10 @@
     ],
     "method": "loop-induced: (stage totals of the points twice - once) / n, same warm-up"
    },
-   "harness_wall_seconds": 1902.960897833109,
    "one_helicity": {
     "miss": "45-minute rule: the one-helicity column (324 helicities, each called alone with MadLoop's caches cleared, after each point's summed call) did not finish within 45 minutes, neither after the summed timing and stage split of one run (cut after 14 min of one-helicity calls) nor in a run of its own (summed timing, then 35 min of one-helicity calls; lit-ref-b time_1hel.sh, timeout 2700 s)"
-   }
+   },
+   "harness_wall_seconds": 1902.960897833109
   },
   "openloops": {
    "provider": "openloops",
@@ -576,6 +576,13 @@
     "initial_call_seconds": 5.73884043
    },
    "process_wall_seconds": 114.03069390309975,
+   "value_exceptions": {
+    "points": [
+     7,
+     13
+    ],
+    "reason": "Recola is numerically unstable at stream points 7 and 13 (sqrt s = 500; a Z pair 6.0 and 0.4 GeV above the ZZ threshold, a Z at pT 12 and 6 GeV): an exact rotation moves its value by +136 % and -24 % and its single pole is 1.1-1.5 times its finite part, so its values there (3.54e-9, 1.39e-7) are no reference; its timing stays valid. MadLoop's values there (1.0930e-10, 1.4241e-8) are COLLIER's alone (the 6|7|1 run falls back to COLLIER there, status 217; MadLoop's own estimates 1.6e-9, 4.3e-11): no second provider validates them. Stream point 3 (= reference point 3) is uncertain at ~1e-4 between the providers (tests/fixtures/loop/required/li/li_gg_zzzz.json l1_caution)"
+   },
    "harness_wall_seconds": 114.35707754991017
   }
  },

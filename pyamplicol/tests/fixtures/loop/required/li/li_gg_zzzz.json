@@ -247,7 +247,12 @@
           ]
         }
       },
-      "provider_pair_relative_errors": {}
+      "provider_pair_relative_errors": {},
+      "secondary_relative_deviations": {
+        "madloop-production-opp": 1.692103912246213e-08,
+        "madloop-production": 3.92687287522459e-09,
+        "recola-rotated": 3.363742004644225e-08
+      }
     },
     {
       "value": 2.6035357608468703e-15,
@@ -265,7 +270,12 @@
           ]
         }
       },
-      "provider_pair_relative_errors": {}
+      "provider_pair_relative_errors": {},
+      "secondary_relative_deviations": {
+        "madloop-production-opp": 5.4769201665139345e-08,
+        "madloop-production": 1.17410066026098e-07,
+        "recola-rotated": 2.6339268962919293e-09
+      }
     },
     {
       "value": 1.0229009742037474e-15,
@@ -283,7 +293,13 @@
           ]
         }
       },
-      "provider_pair_relative_errors": {}
+      "provider_pair_relative_errors": {},
+      "secondary_relative_deviations": {
+        "madloop-production-opp": 5.182442003574132e-06,
+        "madloop-production": 4.407835902861121e-05,
+        "recola-rotated": 6.63458256960059e-05
+      },
+      "l1_caution": "secondary run(s) madloop-production 4.4e-05, recola-rotated 6.6e-05 deviate beyond L1 (1e-05) from the reference at this point: the reference is uncertain here at the L1 level (see secondary_relative_deviations, the secondary runs' accuracy and the providers' pole_over_value)"
     }
   ],
   "max_provider_pair_relative_error": 0.0,
@@ -356,7 +372,154 @@
       ]
     }
   },
-  "secondary_runs": {},
+  "secondary_runs": {
+    "madloop-production-opp": {
+      "settings": {
+        "timing_record": "required/li/timing/li_gg_zzzz-providers-madloop-opp.json",
+        "record_provider": "madloop",
+        "stream_points": [
+          1,
+          2,
+          3
+        ],
+        "mode": "loop-induced, the export's card (warm-up past the initialisation), production: MLStabThres and the default stability test, MG5 production Fortran flags, COLLIERGlobalCache as in production (below 7 legs)",
+        "MadLoopParams": {
+          "MLReductionLib": "6|7|1",
+          "COLLIERGlobalCache": "-1",
+          "MLStabThres": "1.000000d-03",
+          "ImprovePSPoint": "2"
+        }
+      },
+      "max_relative_deviation_from_reference": 5.182442003574132e-06,
+      "relative_deviation_from_reference": [
+        1.692103912246213e-08,
+        5.4769201665139345e-08,
+        5.182442003574132e-06
+      ],
+      "seconds": [
+        96.5557299,
+        96.6266762,
+        96.8162202
+      ],
+      "statuses": [
+        216,
+        216,
+        216
+      ],
+      "initial_call_seconds": null,
+      "initialization_calls": null,
+      "accuracy": [
+        4.264063269350717e-10,
+        4.640840416651263e-09,
+        3.597057291066005e-08
+      ]
+    },
+    "madloop-production": {
+      "settings": {
+        "timing_record": "required/li/timing/li_gg_zzzz-providers.json",
+        "record_provider": "madloop",
+        "stream_points": [
+          1,
+          2,
+          3
+        ],
+        "mode": "loop-induced, the export's card (warm-up past the initialisation), production: MLStabThres and the default stability test, MG5 production Fortran flags, COLLIERGlobalCache as in production (below 7 legs)",
+        "MadLoopParams": {
+          "MLReductionLib": "7|6|1",
+          "COLLIERGlobalCache": "-1",
+          "MLStabThres": "1.000000d-03",
+          "ImprovePSPoint": "2"
+        }
+      },
+      "max_relative_deviation_from_reference": 4.407835902861121e-05,
+      "relative_deviation_from_reference": [
+        3.92687287522459e-09,
+        1.17410066026098e-07,
+        4.407835902861121e-05
+      ],
+      "seconds": [
+        19.7842794,
+        19.9302313,
+        19.6904374
+      ],
+      "statuses": [
+        217,
+        217,
+        217
+      ],
+      "initial_call_seconds": null,
+      "initialization_calls": null,
+      "accuracy": [
+        3.4461565186752896e-08,
+        5.575447864554398e-07,
+        4.041484835915016e-06
+      ]
+    },
+    "recola-rotated": {
+      "settings": {
+        "recola_tree": "${LOOP_REFERENCE_ROOT}/sources/recola2-2.3.0",
+        "commands": [
+          "mass W 80.4190024457561601055171371731 0",
+          "mass Z 91.188 0",
+          "mass H 125 0",
+          "mass top 173 0",
+          "mass bottom 0 0",
+          "mass charm 0 0",
+          "mass strange 0 0",
+          "mass up 0 0",
+          "mass down 0 0",
+          "mass tau 0 0",
+          "mass muon 0 0",
+          "mass electron 0 0",
+          "alpha0 0.00754677111397888413442308708219",
+          "onshell",
+          "alphas 0.118 1000 5",
+          "legs 6",
+          "loop_induced",
+          "loop_gs 2",
+          "pow_nlo 2",
+          "process g g -> Z Z Z Z",
+          "generate"
+        ],
+        "collier_cache": "on",
+        "dynamic_settings": 1,
+        "compute_ir_poles": 1
+      },
+      "max_relative_deviation_from_reference": 6.63458256960059e-05,
+      "relative_deviation_from_reference": [
+        3.363742004644225e-08,
+        2.6339268962919293e-09,
+        6.63458256960059e-05
+      ],
+      "seconds": [
+        14.3624183,
+        14.5900621,
+        14.3273125
+      ],
+      "statuses": [
+        null,
+        null,
+        null
+      ],
+      "initial_call_seconds": 15.1775506,
+      "initialization_calls": null,
+      "points_rotation": "exact rational rotation R = Rx(cos 3/5, sin 4/5) Ry(cos 4/5, sin 3/5) of every momentum (beams included)",
+      "pole_over_value": [
+        [
+          1.5143733050903368e-09,
+          2.405519589981004e-10
+        ],
+        [
+          1.8391336463724112e-08,
+          1.3064084948613143e-09
+        ],
+        [
+          3.472704986330132e-06,
+          1.1219000496653523e-12
+        ]
+      ]
+    }
+  },
   "unavailable": {
     "openloops": "no OpenLoops ls library serves g g > z z z z (public channel database of OpenLoops 2.1.5, 2026-11-06); row ML/RC only (PLAN \u00a73.2)"
   },
@@ -365,5 +528,5 @@
     "madloop-summed": "45-minute rule: the helicity-summed MadLoop reference alone (no per-helicity rows, the points in 3 parallel blocks) did not finish within 2700 s either",
     "madloop": "45-minute rule: madloop did not finish within 2700 s"
   },
-  "note": "four equal masses without massless partners: supplied points"
+  "note": "four equal masses without massless partners: supplied points. The reference is Recola alone (MadLoop missed the 45-minute rule, no OpenLoops library); secondary runs: MadLoop production binary64 (7|6|1 and 6|7|1, from the provider timing record, whose stream points 1-3 are these points) and Recola at exactly rotated points. Points 1 and 2 agree to <= 1.2e-7. Point 3 (sqrt s = 1500) is uncertain at ~1e-4 (Recola rotated 6.6e-5, MadLoop 7|6|1 4.4e-5 with its own estimate 4.0e-6, 6|7|1 5.2e-6; Recola's pole/value 3.6e-6 understates it): not a reference at L1 there (l1_caution)"
 }

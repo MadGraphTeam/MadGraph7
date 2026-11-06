@@ -2800,7 +2800,7 @@
       "recola": {"process": "g g -> Z Z Z Z"},
       "openloops": {"unavailable": "no OpenLoops ls library serves g g > z z z z (public channel database of OpenLoops 2.1.5, 2026-11-06); row ML/RC only (PLAN §3.2)"},
       "points": {"tool": "supplied_points.py", "family": "regular", "sqrt_s": ["500", "900", "1500"]},
-      "note": "four equal masses without massless partners: supplied points"
+      "note": "four equal masses without massless partners: supplied points. The reference is Recola alone (MadLoop missed the 45-minute rule, no OpenLoops library); secondary runs: MadLoop production binary64 (7|6|1 and 6|7|1, from the provider timing record, whose stream points 1-3 are these points) and Recola at exactly rotated points. Points 1 and 2 agree to <= 1.2e-7. Point 3 (sqrt s = 1500) is uncertain at ~1e-4 (Recola rotated 6.6e-5, MadLoop 7|6|1 4.4e-5 with its own estimate 4.0e-6, 6|7|1 5.2e-6; Recola's pole/value 3.6e-6 understates it): not a reference at L1 there (l1_caution)"
     },
     {
       "name": "li_gg_emepmupmum_cms",
