@@ -526,7 +526,11 @@ def _release_wheel_config_settings(
             ("--compatibility", "linux" if host_wheel else "manylinux_2_28")
         )
     if distribution:
-        arguments.extend(("--features", arithmetic.CARGO_FEATURE))
+        # The wheel size limit (tools/release MAX_WHEEL_BYTES) is close: the
+        # strongest deflate level costs seconds and saves about 1 MB.
+        arguments.extend(
+            ("--features", arithmetic.CARGO_FEATURE, "--compression-level", "9")
+        )
     if not arguments:
         return config_settings
     settings = dict(config_settings or {})

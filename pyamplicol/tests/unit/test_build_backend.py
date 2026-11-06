@@ -277,7 +277,12 @@ def test_distribution_wheel_links_the_shared_arithmetic_runtime(
         "frontend.setting": "preserved",
     }
     assert backend.build_wheel("dist", supplied) == "pyamplicol.whl"
-    arguments = ["--features", backend.arithmetic.CARGO_FEATURE]
+    arguments = [
+        "--features",
+        backend.arithmetic.CARGO_FEATURE,
+        "--compression-level",
+        "9",
+    ]
     if platform_name == "linux":
         # A distribution wheel is always a repaired manylinux wheel on Linux.
         arguments = ["--compatibility", "manylinux_2_28", *arguments]
