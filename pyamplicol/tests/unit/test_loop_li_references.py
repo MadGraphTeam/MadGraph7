@@ -158,6 +158,9 @@ def test_provider_timing_records(name):
     # The one-helicity column (MadEvent mode); one record per row, so the
     # summary table finds one production timing per provider.
     one = madloop["one_helicity"]
+    if "miss" in one:  # g g > z z z z: 324 helicity calls per point
+        assert "45-minute rule" in one["miss"]
+        return
     assert one["madloop_params"]["MLReductionLib"] == "7|6|1"
     assert 0 < one["mean_seconds_per_call"] and one["calls"] == sum(one["kept_helicities_per_point"])
     assert all(0 < kept <= one["helicities"] for kept in one["kept_helicities_per_point"])
