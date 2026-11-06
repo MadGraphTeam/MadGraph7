@@ -17,7 +17,7 @@
   "timing": "the export's own card (MLReductionLib 7|6|1, COLLIER UV/IR poles off, HelicityFilterLevel 2, MLStabThres); a 6|7|1 (OPP) column; tools/loop_benchmark providers --madloop-stages",
   "single_helicity": "|A(h)|^2/avg (Q39) = MadLoop's USERHEL value / HELAVGFACTOR"
  },
- "conventions": "|A_loop|^2 summed over final and averaged over initial helicities and colours, with the final identical-particle factor; physical couplings; widths zero outside the complex-mass rows",
+ "conventions": "|A_loop|^2 summed over final and averaged over initial helicities and colours, with the final identical-particle factor; physical couplings; widths zero except in the complex-mass rows (LI-C1) and the fixed-width four-lepton rows (LI-43, LI-51, scheme qcd-widths)",
  "rows": [
   {
    "row": "LI-B1",
@@ -337,7 +337,14 @@
      "provider_timing_records": [
       "required/li/timing/li_gg_hh-providers-madloop-opp.json",
       "required/li/timing/li_gg_hh-providers.json"
-     ]
+     ],
+     "provider_ms_per_point": {
+      "openloops": 2.5597,
+      "recola": 1.584,
+      "madloop": 0.9974,
+      "madloop_one_helicity": 0.6917,
+      "madloop_6|7|1": 1.9944
+     }
     }
    ]
   },
@@ -356,7 +363,7 @@
   {
    "row": "LI-Z1b",
    "processes": "numerical Furry zeros g g > a a a, g g > h a",
-   "references": "zero within estimate (provider values recorded)",
+   "references": "zero within estimate (provider values recorded); g g > a a a: Recola only (MG5 removes Furry loops by rule)",
    "checks": [
     "L8"
    ],
@@ -377,6 +384,22 @@
      "max_provider_pair_relative_error": 0.0,
      "status": "zero row",
      "unavailable": {
+      "openloops": "zero row: no designated OpenLoops ls library (PLAN \u00a74.1 LI-Z*)"
+     }
+    },
+    {
+     "process": "li_gg_aaa",
+     "fixture": "required/li/li_gg_aaa.json",
+     "madloop_process": "g g > a a a [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 0.0,
+     "status": "zero row",
+     "unavailable": {
+      "madloop": "MG5 generates no diagram (NoDiagramException): its loop generation removes closed-fermion loops with an odd number of vector couplings by Furry's theorem (madgraph/loop/loop_diagram_generation.py, remove_Furry_loops), a rule-based zero (Q13); Recola's numerical values are the reference",
       "openloops": "zero row: no designated OpenLoops ls library (PLAN \u00a74.1 LI-Z*)"
      }
     }
@@ -573,7 +596,14 @@
      "provider_timing_records": [
       "required/li/timing/li_gg_hh-providers-madloop-opp.json",
       "required/li/timing/li_gg_hh-providers.json"
-     ]
+     ],
+     "provider_ms_per_point": {
+      "openloops": 2.5597,
+      "recola": 1.584,
+      "madloop": 0.9974,
+      "madloop_one_helicity": 0.6917,
+      "madloop_6|7|1": 1.9944
+     }
     }
    ]
   },
@@ -878,15 +908,41 @@
   {
    "row": "LI-E4",
    "processes": "e+ e- > g g g [QED]",
-   "references": "ML, RC",
+   "references": "ML, RC (no OpenLoops ls library)",
    "checks": [
     "L1"
    ],
    "backends": "N, T",
    "tier": "2->3 gate",
    "gated": true,
-   "owner": "lit-ref-b",
-   "runs": []
+   "runs": [
+    {
+     "process": "li_emep_ggg",
+     "fixture": "required/li/li_emep_ggg.json",
+     "madloop_process": "e+ e- > g g g [sqrvirt=QCD]",
+     "scheme": "ew-gmu",
+     "providers": [
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 1.3856148660756935e-08,
+     "status": "pass",
+     "unavailable": {
+      "openloops": "no designated OpenLoops loop-squared (ls) library serves this process (PLAN \u00a74.1, Q34 = (b))"
+     },
+     "provider_timing_records": [
+      "required/li/timing/li_emep_ggg-providers-madloop-opp.json",
+      "required/li/timing/li_emep_ggg-providers.json"
+     ],
+     "provider_ms_per_point": {
+      "recola": 4.5071,
+      "madloop": 15.6682,
+      "madloop_one_helicity": 1.8018,
+      "madloop_6|7|1": 45.7641
+     }
+    }
+   ]
   },
   {
    "row": "LI-31",
@@ -898,8 +954,33 @@
    "backends": "N, T",
    "tier": "2->3 gate",
    "gated": true,
-   "owner": "lit-ref-b",
-   "runs": []
+   "runs": [
+    {
+     "process": "li_gg_hhh",
+     "fixture": "required/li/li_gg_hhh.json",
+     "madloop_process": "g g > h h h [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 8.422945577566693e-12,
+     "status": "pass",
+     "provider_timing_records": [
+      "required/li/timing/li_gg_hhh-providers-madloop-opp.json",
+      "required/li/timing/li_gg_hhh-providers.json"
+     ],
+     "provider_ms_per_point": {
+      "openloops": 23.6438,
+      "recola": 5.9077,
+      "madloop": 9.1369,
+      "madloop_one_helicity": 9.0848,
+      "madloop_6|7|1": 33.3091
+     }
+    }
+   ]
   },
   {
    "row": "LI-32",
@@ -928,14 +1009,21 @@
      "provider_timing_records": [
       "required/li/timing/li_gg_hgg-providers-madloop-opp.json",
       "required/li/timing/li_gg_hgg-providers.json"
-     ]
+     ],
+     "provider_ms_per_point": {
+      "openloops": 27.8308,
+      "recola": 25.9618,
+      "madloop": 85.666,
+      "madloop_one_helicity": 9.6855,
+      "madloop_6|7|1": 286.8611
+     }
     }
    ]
   },
   {
    "row": "LI-33",
    "processes": "g g > z z g, g g > a a g, g g > w+ w- g",
-   "references": "ML, OL ppvvj2, RC (g g > a a g, g g > w+ w- g: lit-ref-b)",
+   "references": "ML, OL ppvvj2 (zzggg, aaggg, wwxggg), RC",
    "checks": [
     "L1"
    ],
@@ -959,7 +1047,64 @@
      "provider_timing_records": [
       "required/li/timing/li_gg_zzg-providers-madloop-opp.json",
       "required/li/timing/li_gg_zzg-providers.json"
-     ]
+     ],
+     "provider_ms_per_point": {
+      "openloops": 187.1737,
+      "recola": 178.7152,
+      "madloop": 720.7524,
+      "madloop_one_helicity": 16.2712,
+      "madloop_6|7|1": 2594.0994
+     }
+    },
+    {
+     "process": "li_gg_aag",
+     "fixture": "required/li/li_gg_aag.json",
+     "madloop_process": "g g > a a g [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 1.5234165472615768e-11,
+     "status": "pass",
+     "provider_timing_records": [
+      "required/li/timing/li_gg_aag-providers-madloop-opp.json",
+      "required/li/timing/li_gg_aag-providers.json"
+     ],
+     "provider_ms_per_point": {
+      "openloops": 54.9885,
+      "recola": 48.2174,
+      "madloop": 200.9411,
+      "madloop_one_helicity": 13.8595,
+      "madloop_6|7|1": 671.8919
+     }
+    },
+    {
+     "process": "li_gg_wpwmg",
+     "fixture": "required/li/li_gg_wpwmg.json",
+     "madloop_process": "g g > w+ w- g [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 4.321693600681685e-08,
+     "status": "pass",
+     "provider_timing_records": [
+      "required/li/timing/li_gg_wpwmg-providers-madloop-opp.json",
+      "required/li/timing/li_gg_wpwmg-providers.json"
+     ],
+     "provider_ms_per_point": {
+      "openloops": 86.8514,
+      "recola": 69.8034,
+      "madloop": 346.8069,
+      "madloop_one_helicity": 18.8157,
+      "madloop_6|7|1": 1267.7178
+     }
     }
    ]
   },
@@ -973,34 +1118,185 @@
    "backends": "N, T",
    "tier": "2->3 gate",
    "gated": true,
-   "owner": "lit-ref-b",
-   "runs": []
+   "runs": [
+    {
+     "process": "li_gg_zzz",
+     "fixture": "required/li/li_gg_zzz.json",
+     "madloop_process": "g g > z z z [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 2.483727314580626e-10,
+     "status": "pass",
+     "provider_timing_records": [
+      "required/li/timing/li_gg_zzz-providers-madloop-opp.json",
+      "required/li/timing/li_gg_zzz-providers.json"
+     ],
+     "provider_ms_per_point": {
+      "openloops": 152.2364,
+      "recola": 134.8964,
+      "madloop": 558.0826,
+      "madloop_one_helicity": 10.8254,
+      "madloop_6|7|1": 2110.8893
+     }
+    }
+   ]
   },
   {
    "row": "LI-35",
    "processes": "g g > h z g, g g > a g g, g g > z g g",
-   "references": "ML, OL, RC",
+   "references": "ML, OL pphzj2 hzggg / ppajj2 agggg (added library), RC; g g > z g g: ML, RC (no OpenLoops ls library)",
    "checks": [
     "L1"
    ],
    "backends": "N, T",
    "tier": "2->3 gate",
    "gated": true,
-   "owner": "lit-ref-b",
-   "runs": []
+   "runs": [
+    {
+     "process": "li_gg_hzg",
+     "fixture": "required/li/li_gg_hzg.json",
+     "madloop_process": "g g > h z g [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 1.861976638967292e-13,
+     "status": "pass",
+     "provider_timing_records": [
+      "required/li/timing/li_gg_hzg-providers-madloop-opp.json",
+      "required/li/timing/li_gg_hzg-providers.json"
+     ],
+     "provider_ms_per_point": {
+      "openloops": 36.4693,
+      "recola": 19.3957,
+      "madloop": 73.998,
+      "madloop_one_helicity": 7.4755,
+      "madloop_6|7|1": 271.2237
+     }
+    },
+    {
+     "process": "li_gg_agg",
+     "fixture": "required/li/li_gg_agg.json",
+     "madloop_process": "g g > a g g [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 3.672726680423071e-11,
+     "status": "pass",
+     "provider_timing_records": [
+      "required/li/timing/li_gg_agg-providers-madloop-opp.json",
+      "required/li/timing/li_gg_agg-providers.json"
+     ],
+     "provider_ms_per_point": {
+      "openloops": 81.853,
+      "recola": 77.3709,
+      "madloop": 252.1466,
+      "madloop_one_helicity": 16.5062,
+      "madloop_6|7|1": 803.6189
+     }
+    },
+    {
+     "process": "li_gg_zgg",
+     "fixture": "required/li/li_gg_zgg.json",
+     "madloop_process": "g g > z g g [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 6.914633941120251e-10,
+     "status": "pass",
+     "unavailable": {
+      "openloops": "no OpenLoops ls library serves g g > z g g: the public channel database of OpenLoops 2.1.5 (proclib/channels_public.rinfo, 2026-11-06) has zgg/zggg (ppvj2) but no zgggg channel; row ML/RC only (PLAN \u00a73.2)"
+     },
+     "provider_timing_records": [
+      "required/li/timing/li_gg_zgg-providers-madloop-opp.json",
+      "required/li/timing/li_gg_zgg-providers.json"
+     ],
+     "provider_ms_per_point": {
+      "recola": 117.0766,
+      "madloop": 476.2856,
+      "madloop_one_helicity": 20.2186,
+      "madloop_6|7|1": 1392.338
+     }
+    }
+   ]
   },
   {
    "row": "LI-36",
    "processes": "u u~ > h g g, u u~ > d d~ h (QED <= 1)",
-   "references": "ML, OL, RC",
+   "references": "ML, OL pphjj2 uuxhgg / uuxddxh, RC (mandatory for u u~ > d d~ h)",
    "checks": [
     "L1"
    ],
    "backends": "N, T",
    "tier": "2->3 gate",
    "gated": true,
-   "owner": "lit-ref-b",
-   "runs": []
+   "runs": [
+    {
+     "process": "li_uux_hgg",
+     "fixture": "required/li/li_uux_hgg.json",
+     "madloop_process": "u u~ > h g g QED=1 [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 1.6778764213710955e-10,
+     "status": "pass",
+     "provider_timing_records": [
+      "required/li/timing/li_uux_hgg-providers-madloop-opp.json",
+      "required/li/timing/li_uux_hgg-providers.json"
+     ],
+     "provider_ms_per_point": {
+      "openloops": 2.7893,
+      "recola": 1.6333,
+      "madloop": 2.7857,
+      "madloop_one_helicity": 0.885,
+      "madloop_6|7|1": 7.3633
+     }
+    },
+    {
+     "process": "li_uux_ddxh",
+     "fixture": "required/li/li_uux_ddxh.json",
+     "madloop_process": "u u~ > d d~ h QED=1 [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 4.0344664051664115e-11,
+     "status": "pass",
+     "provider_timing_records": [
+      "required/li/timing/li_uux_ddxh-providers-madloop-opp.json",
+      "required/li/timing/li_uux_ddxh-providers.json"
+     ],
+     "provider_ms_per_point": {
+      "openloops": 0.2864,
+      "recola": 0.5496,
+      "madloop": 0.1454,
+      "madloop_one_helicity": 0.0558,
+      "madloop_6|7|1": 0.2627
+     }
+    }
+   ]
   },
   {
    "row": "LI-37",
@@ -1050,76 +1346,269 @@
   {
    "row": "LI-41",
    "processes": "g g > h h g g",
-   "references": "P15 point 1.3033633142042775e-12 GeV^-4; ML, OL",
+   "references": "ML, OL pphhjj2 hhgggg, RC; the P15 point 1.3033633142042775e-12 GeV^-4 is lit-val's",
    "checks": [
     "L1"
    ],
    "backends": "N, T",
    "tier": "2->4 gate",
    "gated": true,
-   "owner": "lit-ref-b",
-   "runs": []
+   "runs": [
+    {
+     "process": "li_gg_hhgg",
+     "fixture": "required/li/li_gg_hhgg.json",
+     "madloop_process": "g g > h h g g [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 1.169831442993775e-07,
+     "status": "pass",
+     "provider_timing_records": [
+      "required/li/timing/li_gg_hhgg-providers-madloop-opp.json",
+      "required/li/timing/li_gg_hhgg-providers.json"
+     ],
+     "provider_ms_per_point": {
+      "openloops": 588.6527,
+      "recola": 203.3559,
+      "madloop": 671.4508,
+      "madloop_one_helicity": 194.608,
+      "madloop_6|7|1": 2516.8302
+     }
+    }
+   ]
   },
   {
    "row": "LI-42",
    "processes": "g g > h g g g",
-   "references": "ML (45-min rule), OL",
+   "references": "ML, OL pphjjj2 hggggg, RC",
    "checks": [
     "L1"
    ],
    "backends": "N, T",
    "tier": "2->4 gate",
    "gated": true,
-   "owner": "lit-ref-b",
-   "runs": []
+   "runs": [
+    {
+     "process": "li_gg_hggg",
+     "fixture": "required/li/li_gg_hggg.json",
+     "madloop_process": "g g > h g g g [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 1.9556157701473907e-11,
+     "status": "pass",
+     "provider_timing_records": [
+      "required/li/timing/li_gg_hggg-providers-madloop-opp.json",
+      "required/li/timing/li_gg_hggg-providers.json"
+     ],
+     "provider_ms_per_point": {
+      "openloops": 875.841,
+      "recola": 587.5001,
+      "madloop": 1975.0507,
+      "madloop_one_helicity": 192.8551,
+      "madloop_6|7|1": 7069.8376
+     }
+    }
+   ]
   },
   {
    "row": "LI-43",
    "processes": "g g > e+ e- mu+ mu-",
-   "references": "OL ppllll2, ML",
+   "references": "ML, OL ppllll2 (fixed widths; Recola's width convention differs: excluded, deviation recorded)",
    "checks": [
     "L1"
    ],
    "backends": "N, T",
    "tier": "2->4 gate",
    "gated": true,
-   "owner": "lit-ref-b",
-   "runs": []
+   "runs": [
+    {
+     "process": "li_gg_emepmupmum",
+     "fixture": "required/li/li_gg_emepmupmum.json",
+     "madloop_process": "g g > e+ e- mu+ mu- [sqrvirt=QCD]",
+     "scheme": "qcd-widths",
+     "providers": [
+      "madloop",
+      "openloops"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 7.308294389523149e-14,
+     "status": "pass",
+     "excluded": {
+      "recola": "Recola's on-shell scheme with non-zero widths is not the fixed-width scheme of MG5 and OpenLoops: 3.0e-4 to 8.4e-4 relative at the three points (1.3e-4 to 1.0e-3 at the 16 timing stream points; of the same order also with set_onshell_mass_z/w_rcl input, a scratch check on 2026-11-06), while under the complex-mass scheme all three agree to 2e-13 (li_gg_emepmupmum_cms); the measured deviation is recorded"
+     },
+     "provider_timing_records": [
+      "required/li/timing/li_gg_emepmupmum-providers-madloop-opp.json",
+      "required/li/timing/li_gg_emepmupmum-providers.json"
+     ],
+     "provider_ms_per_point": {
+      "openloops": 6.7004,
+      "recola": 3.7911,
+      "madloop": 33.5102,
+      "madloop_one_helicity": 3.3537,
+      "madloop_6|7|1": 104.1935
+     },
+     "provider_value_notes": {
+      "recola": {
+       "values_excluded": "width convention: Recola's on-shell scheme with widths is not MG5/OpenLoops' fixed-width scheme (qcd-widths); its values are 3.0e-4 to 8.4e-4 at the reference points and 1.3e-4 to 1.0e-3 at the 16 stream points off MadLoop = OpenLoops, so they are no reference (all three agree to 2e-13 under the complex-mass scheme, li_gg_emepmupmum_cms). Its timing is of the same process and production work; whether it counts as a matched provider for the speed gate is lit-perf's / the coordinator's call"
+      }
+     }
+    }
+   ]
   },
   {
    "row": "LI-44",
    "processes": "g g > a a g g, g g > z z z z",
-   "references": "OL, ML",
+   "references": "ML, OL ppaajj2 aagggg (added library), RC; g g > z z z z: ML, RC (no OpenLoops ls library)",
    "checks": [
     "L1"
    ],
    "backends": "N, T",
    "tier": "2->4 optional",
-   "gated": false,
-   "owner": "lit-ref-b",
-   "runs": []
+   "gated": true,
+   "runs": [
+    {
+     "process": "li_gg_aagg",
+     "fixture": "required/li/li_gg_aagg.json",
+     "madloop_process": "g g > a a g g [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 3.999314159238268e-09,
+     "status": "pass",
+     "misses_45_min": {
+      "madloop-summed": "45-minute rule: the helicity-summed MadLoop reference alone (no per-helicity rows, the points in 3 parallel blocks) did not finish within 2700 s either",
+      "madloop": "45-minute rule: madloop did not finish within 2700 s"
+     },
+     "provider_timing_records": [
+      "required/li/timing/li_gg_aagg-providers-madloop-opp.json",
+      "required/li/timing/li_gg_aagg-providers.json"
+     ],
+     "provider_ms_per_point": {
+      "openloops": 2040.3608,
+      "recola": 1692.0993,
+      "madloop": 5903.3235,
+      "madloop_one_helicity": 284.6967,
+      "madloop_6|7|1": 23644.6403
+     }
+    },
+    {
+     "process": "li_gg_zzzz",
+     "fixture": "required/li/li_gg_zzzz.json",
+     "madloop_process": "g g > z z z z [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 0.0,
+     "status": "single provider",
+     "unavailable": {
+      "openloops": "no OpenLoops ls library serves g g > z z z z (public channel database of OpenLoops 2.1.5, 2026-11-06); row ML/RC only (PLAN \u00a73.2)"
+     },
+     "misses_45_min": {
+      "madloop-summed": "45-minute rule: the helicity-summed MadLoop reference alone (no per-helicity rows, the points in 3 parallel blocks) did not finish within 2700 s either",
+      "madloop": "45-minute rule: madloop did not finish within 2700 s"
+     },
+     "secondary_runs": {
+      "madloop-production-opp": 5.182442003574132e-06,
+      "madloop-production": 4.407835902861121e-05,
+      "recola-rotated": 6.63458256960059e-05
+     },
+     "l1_caution_points": [
+      3
+     ],
+     "provider_timing_records": [
+      "required/li/timing/li_gg_zzzz-providers-madloop-opp.json",
+      "required/li/timing/li_gg_zzzz-providers.json"
+     ],
+     "provider_ms_per_point": {
+      "madloop": 19903.1962,
+      "recola": 5097.2582,
+      "madloop_6|7|1": 95790.1791
+     },
+     "provider_timing_misses": {
+      "madloop_one_helicity": "45-minute rule: the one-helicity column (324 helicities, each called alone with MadLoop's caches cleared, after each point's summed call) did not finish within 45 minutes, neither after the summed timing and stage split of one run (cut after 14 min of one-helicity calls) nor in a run of its own (summed timing, then 35 min of one-helicity calls; lit-ref-b time_1hel.sh, timeout 2700 s)"
+     },
+     "provider_value_notes": {
+      "recola": {
+       "value_exceptions": {
+        "points": [
+         7,
+         13
+        ],
+        "reason": "Recola is numerically unstable at stream points 7 and 13 (sqrt s = 500; a Z pair 6.0 and 0.4 GeV above the ZZ threshold, a Z at pT 12 and 6 GeV): an exact rotation moves its value by +136 % and -24 % and its single pole is 1.1-1.5 times its finite part, so its values there (3.54e-9, 1.39e-7) are no reference; its timing stays valid. MadLoop's values there (1.0930e-10, 1.4241e-8) are COLLIER's alone (the 6|7|1 run falls back to COLLIER there, status 217; MadLoop's own estimates 1.6e-9, 4.3e-11): no second provider validates them. Stream point 3 (= reference point 3) is uncertain at ~1e-4 between the providers (tests/fixtures/loop/required/li/li_gg_zzzz.json l1_caution)"
+       }
+      }
+     }
+    }
+   ]
   },
   {
    "row": "LI-51",
-   "processes": "g g > e+ e- mu+ mu- g or g g > h g g g g",
-   "references": "OL / internal",
+   "processes": "g g > e+ e- mu+ mu- g or g g > h g g g g (2->5 stretch: the first is run)",
+   "references": "ML, OL ppllllj2 (added library), RC",
    "checks": [
     "L1"
    ],
    "backends": "N, T",
    "tier": "2->5 stretch",
-   "gated": false,
-   "owner": "lit-ref-b",
-   "runs": []
+   "gated": true,
+   "runs": [
+    {
+     "process": "li_gg_emepmupmumg",
+     "fixture": "required/li/li_gg_emepmupmumg.json",
+     "madloop_process": "g g > e+ e- mu+ mu- g [sqrvirt=QCD]",
+     "scheme": "qcd-widths",
+     "providers": [
+      "madloop",
+      "openloops"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 1.4000205569842991e-12,
+     "status": "pass",
+     "excluded": {
+      "recola": "Recola's on-shell scheme with non-zero widths is not the fixed-width scheme of MG5 and OpenLoops (as for li_gg_emepmupmum: 1.7e-4 to 3.6e-4 relative to OpenLoops here); the measured deviation is recorded"
+     },
+     "provider_timing_records": [
+      "required/li/timing/li_gg_emepmupmumg-providers-madloop-opp.json",
+      "required/li/timing/li_gg_emepmupmumg-providers.json"
+     ],
+     "provider_ms_per_point": {
+      "openloops": 251.947,
+      "recola": 62.9286,
+      "madloop": 1197.7977,
+      "madloop_one_helicity": 121.2828,
+      "madloop_6|7|1": 3563.6311
+     },
+     "provider_value_notes": {
+      "recola": {
+       "values_excluded": "width convention: Recola's on-shell scheme with widths is not MG5/OpenLoops' fixed-width scheme (qcd-widths); its values are 1.7e-4 to 3.6e-4 at the reference points and 5.1e-5 to 1.1e-3 at the 16 stream points off MadLoop = OpenLoops, so they are no reference (as on LI-43). Its timing is of the same process and production work; whether it counts as a matched provider for the speed gate is lit-perf's / the coordinator's call"
+      }
+     }
+    }
+   ]
   },
   {
    "row": "LI-X1",
-   "processes": "one EFT row with rank > N+2",
-   "references": "ML (TIR)",
+   "processes": "rank > N+2 execution check: EFT examples with two dimension-6 insertions (Q24 open)",
+   "references": "none (USER 2026-11-06 ~14:55): run-only through TIRust, which must go through and agree with NinjaRS wherever NinjaRS serves (NinjaRS refuses rank > N+2: those families are TIRust-only); no benchmark, no correctness or gauge claim, no MadLoop TIR reference. Why the planned MadLoop row was not produced: HC_NLO_X0 declares QNP expansion_order = 1, so an amplitude carries one x0 vertex and its loops reach rank N+1 at most (the heft g g > x0 g export: MAXRANK 5 at N = 4; g g > x0 x0 x0 QNP=3 is capped at QNP=1 and has no diagram), and one dimension-6 insertion stays at rank <= N+1 in Feynman gauge",
    "checks": [
-    "L1"
+    "run",
+    "L6"
    ],
-   "backends": "T",
+   "backends": "T (N where it serves)",
    "tier": "EFT",
    "gated": false,
    "owner": "lit-eft",
@@ -1141,7 +1630,7 @@
   {
    "row": "LI-C1",
    "processes": "complex-mass scheme rows (Q7)",
-   "references": "RC, ML, OL where designated; AN with complex masses (g g > a a, a a > a a); g g > a a g, g g > e+ e- mu+ mu-, e+ e- > g g g under CMS: lit-ref-b",
+   "references": "RC, ML, OL where designated; AN with complex masses (g g > a a, a a > a a)",
    "checks": [
     "L1",
     "L2"
@@ -1195,6 +1684,50 @@
      ],
      "points": 3,
      "max_provider_pair_relative_error": 2.92676441143172e-12,
+     "status": "pass"
+    },
+    {
+     "process": "li_gg_aag_cms",
+     "fixture": "required/li/li_gg_aag_cms.json",
+     "madloop_process": "g g > a a g [sqrvirt=QCD]",
+     "scheme": "ew-gmu-cms",
+     "providers": [
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 2.445106704482689e-11,
+     "status": "pass"
+    },
+    {
+     "process": "li_emep_ggg_cms",
+     "fixture": "required/li/li_emep_ggg_cms.json",
+     "madloop_process": "e+ e- > g g g [sqrvirt=QCD]",
+     "scheme": "ew-gmu-cms",
+     "providers": [
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 1.4821690159804056e-08,
+     "status": "pass",
+     "unavailable": {
+      "openloops": "no designated OpenLoops loop-squared (ls) library serves this process (PLAN \u00a74.1, Q34 = (b))"
+     }
+    },
+    {
+     "process": "li_gg_emepmupmum_cms",
+     "fixture": "required/li/li_gg_emepmupmum_cms.json",
+     "madloop_process": "g g > e+ e- mu+ mu- [sqrvirt=QCD]",
+     "scheme": "ew-gmu-cms",
+     "providers": [
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 1.8422372584414642e-13,
      "status": "pass"
     }
    ]

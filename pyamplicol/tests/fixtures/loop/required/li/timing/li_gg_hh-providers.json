@@ -752,7 +752,43 @@
     ],
     "method": "loop-induced: (stage totals of the points twice - once) / n, same warm-up"
    },
-   "harness_wall_seconds": 2.849738479126245
+   "harness_wall_seconds": 2.849738479126245,
+   "one_helicity": {
+    "mean_seconds_per_call": 0.00069167771875,
+    "median_seconds_per_call": 0.00047250199999999997,
+    "min_seconds_per_call": 0.000264621,
+    "max_seconds_per_call": 0.006862776,
+    "calls": 64,
+    "helicities": 4,
+    "kept_helicities_per_point": [
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4
+    ],
+    "summed_mean_seconds_per_point_same_run": 0.0010980034375,
+    "madloop_params": {
+     "MLReductionLib": "7|6|1",
+     "COLLIERGlobalCache": "-1",
+     "MLStabThres": "1.000000d-03",
+     "ImprovePSPoint": "2"
+    },
+    "process_wall_seconds": 0.1029205780941993,
+    "method": "per point: the helicity-summed call, then each helicity alone (SLOOPMATRIXHEL_THRES, caches cleared per call); mean over the calls of the helicities MadLoop keeps (non-zero value)",
+    "run": "a later run (lit-ref-b) on core 182, the 16 stream points; its own helicity-summed mean 0.7642 ms per point"
+   }
   }
  }
 }
