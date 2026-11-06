@@ -246,6 +246,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--output", type=Path, help="logs and JUnit reports")
     parser.add_argument("--python", default=sys.executable)
+    parser.add_argument("--list", action="store_true", help="print the units only")
     argv = list(sys.argv[1:] if argv is None else argv)
     cut = argv.index("--") if "--" in argv else len(argv)
     args = parser.parse_args(argv[:cut])
@@ -279,6 +280,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"::error::no test selected by {shlex.join(args.targets)}")
         return 1
 
+    if args.list:
+        print("\n".join(units))
+        return 0
     licensed = bool(os.environ.get("SYMBOLICA_LICENSE"))
     jobs = max(1, args.jobs) if licensed else 1
     output = args.output or Path(tempfile.mkdtemp(prefix="pytest-files-"))

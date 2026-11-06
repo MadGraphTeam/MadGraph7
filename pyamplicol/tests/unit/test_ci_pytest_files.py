@@ -126,6 +126,9 @@ def test_split_shards_partition_the_test_ids(tmp_path, licensed):
         "test_a.py",
         "test_c.py",
     }
+    code, output = _run(tmp_path, "test_a.py", "--split", "test_a.py", "--list")
+    assert code == 0, output
+    assert output.splitlines()[1:] == ["test_a.py::test_one", "test_a.py::test_two"]
     code, output = _run(tmp_path, *records, "--merge", "--min-executed", "4")
     assert code == 1, output
     assert "::error::3 tests executed (at least 4 required), 0 failed" in output

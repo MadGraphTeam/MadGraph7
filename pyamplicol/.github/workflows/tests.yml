@@ -310,8 +310,10 @@ jobs:
 
   # The loop Python default tier: every loop-marked test (LOOP_MARKERS) but
   # loop_nightly, which tests/conftest.py skips without the licence, one
-  # process per test file (test_loop_v2_ct_closure.py one per test id),
-  # sharded by the wall times of tools/ci/loop_durations.json.
+  # process per test file (test_loop_v2_ct_closure.py one per test id), one
+  # at a time (peaks up to ~7.3 GiB on a 16 GB runner), in 8 shards balanced
+  # by the wall times of tools/ci/loop_durations.json (4.4 h serial locally,
+  # ~33 min per shard).
   loop-shard:
     name: Loop default tier (shard ${{ matrix.shard }})
     needs: [licence, loop-runtime]
@@ -360,6 +362,13 @@ jobs:
           sudo apt-get install --no-install-recommends -y g++ gfortran make
           python dependencies/install_dependencies.py --wheel-directory .artifacts/loop-runtime
           .venv/bin/python -m pip install "mpmath==1.3.0"
+      # Deselected (35 of 2558 ids at ca602436), each listed below in order:
+      # 26 need inputs a runner does not have: the sgluon NLO and HC NLO UFO
+      # downloads, the MadGraph source (MG5_aMC v3.7.0 runs), the saved PACBIN
+      # controls and the unpatched UFOmodeldb 6ca4b120 copies; 9 (sdk_extras,
+      # the stored-process DD / arbitrary calls) differ at ~1e-30 relative
+      # under PyPI symbolica 3.0.3 and pass with the Community build
+      # 20a9da94 (symbolica-dev/symbolica#163): drop these with that release.
       - name: Run the loop default tier (shard ${{ matrix.shard }}, 30 GiB RSS limit)
         if: needs.licence.outputs.licensed == 'true'
         env:
@@ -373,10 +382,29 @@ jobs:
           --exclude "tests/unit/test_loop_v2_induced*.py"
           --exclude "tests/unit/test_loop_v2_li_*.py"
           --split tests/unit/test_loop_v2_ct_closure.py
-          @DESELECT@
+          --deselect tests/unit/test_loop_adjoint_scalar_counterterms.py::test_np_zero_is_exact_source_selection_not_particle_or_arity_pruning
+          --deselect tests/unit/test_loop_graphs.py::test_optional_madloop_graph_selection_matches_native_catalogue
+          --deselect "tests/unit/test_loop_model_cms.py::test_parameters_and_couplings_equal_mg5_complex_mass_model["
+          --deselect tests/unit/test_loop_model_cms.py::test_tree_model_view_equals_mg5_complex_mass_model
+          --deselect tests/unit/test_loop_v2_artifact.py::test_legacy_loop_artifacts_are_refused_with_the_reason
+          --deselect "tests/unit/test_loop_v2_ew_gauge.py::test_feynman_gauge_trees_equal_unitary_gauge["
+          --deselect "tests/unit/test_loop_v2_ew_gauge.py::test_slavnov_taylor_identities["
+          --deselect tests/unit/test_loop_v2_hc.py::test_tree_heft_merges_with_x0_equal_the_madloop_borns
+          --deselect tests/unit/test_loop_v2_hc.py::test_hc05_five_point_gluon_r2_is_lowered_and_equals_madloop
+          --deselect tests/unit/test_loop_v2_hc.py::test_a_five_point_r2_colour_without_a_vocabulary_form_is_refused_typed
+          --deselect tests/unit/test_loop_v2_msm_manifest.py::test_r2_rule_finds_madloop_omissions_structurally
+          --deselect "tests/unit/test_loop_v2_ufodb_models.py::test_shipped_model_is_patched_ufodb_and_older_copies_share_its_profile["
+          --deselect "tests/unit/test_loop_v2_ufodb_models.py::test_the_issue_1_patch_changes_what_it_says["
+          --deselect tests/unit/test_loop_v2_ufodb_models.py::test_gmu_charge_counterterm_has_its_b_mass_term
+          --deselect "tests/unit/test_loop_v2_sdk_extras.py::test_sdk_extras_equal_the_python_api["
+          --deselect tests/unit/test_loop_v2_sdk_extras.py::test_sdk_split_poles_in_extended_precision_equal_the_python_api
+          --deselect tests/unit/test_loop_v2_sdk_extras.py::test_sdk_leading_colour_resolved_rows_equal_the_python_api
+          --deselect "tests/unit/test_loop_v2_stored_process.py::test_stored_process_call_regenerates_nothing[double-double]"
+          --deselect "tests/unit/test_loop_v2_stored_process.py::test_stored_process_call_regenerates_nothing[arbitrary]"
+          --deselect "tests/unit/test_loop_v2_stored_process.py::test_stored_process_call_regenerates_nothing[colour-double-double]"
           --durations tools/ci/loop_durations.json
           --shard ${{ matrix.shard }}/${{ strategy.job-total }}
-          --jobs 2 --require-each
+          --require-each
           --output "$RUNNER_TEMP/loop-units"
           --record "$RUNNER_TEMP/loop-record-${{ matrix.shard }}.json"
           -- -p no:cacheprovider
@@ -476,7 +504,7 @@ jobs:
           "tests/unit/test_loop_v2_induced*.py"
           "tests/unit/test_loop_v2_li_*.py"
           --marker "(loop_fast or loop_physics) and not loop_nightly"
-          --jobs 2 --require-each
+          --require-each
           --allow-missing "no loop-induced test file yet (tests/unit/test_loop_v2_induced*.py, tests/unit/test_loop_v2_li_*.py): passes until lit-req (M-LIT) lands the first ones"
           -- -p no:cacheprovider
 
