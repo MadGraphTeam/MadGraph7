@@ -280,14 +280,15 @@ def _typed_link_arguments(
 
 
 def _stripped_archive(archive: Path, destination: Path, target: str) -> Path:
-    """Copy the archive without debug info or LLVM bitcode.
+    """Copy the archive without debug info, LLVM bitcode or unneeded symbols.
 
     The ``sdk`` profile compiles every crate without LTO bitcode, but the
-    precompiled Rust standard library carries bitcode and line tables. Neither
-    is used by a C, C++ or Fortran linker (the usual strip of a distributed
-    static library); symbols stay intact. GNU strip does it on ELF targets;
-    Apple's strip trails Rust's LLVM (see ``_scan_archive_symbols``), so the
-    macOS archive is shipped as built.
+    precompiled Rust standard library carries bitcode and line tables, and
+    every object keeps local symbols that no relocation references. None of
+    them is used by a C, C++, Fortran or Rust linker; global symbols and the
+    symbols relocations need stay (``strip --strip-unneeded``). GNU strip does
+    it on ELF targets; Apple's strip trails Rust's LLVM (see
+    ``_scan_archive_symbols``), so the macOS archive is shipped as built.
     """
 
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -296,7 +297,7 @@ def _stripped_archive(archive: Path, destination: Path, target: str) -> Path:
         return destination
     command = [
         "strip",
-        "--strip-debug",
+        "--strip-unneeded",
         "--remove-section=.llvmbc",
         "--remove-section=.llvmcmd",
         "--enable-deterministic-archives",
