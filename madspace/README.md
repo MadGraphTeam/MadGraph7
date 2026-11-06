@@ -55,6 +55,9 @@ CMake at an nvCOMP install with `nvcomp_ROOT`:
 nvcomp_ROOT=/path/to/nvcomp python madspace/install.py --source --system --cuda
 ```
 
+`run.lhe_gzip_algorithm` picks the nvCOMP algorithm, from 0 (fastest) to 5 (smallest
+output, the default).
+
 hipCOMP has no gzip compressor, so HIP builds compress LHE output on the CPU.
 
 The build directory `madspace/build` is kept between builds, so you can run `make` there

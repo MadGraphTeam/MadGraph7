@@ -3523,10 +3523,11 @@ PYBIND11_MODULE(_madspace_py, m) {
         );
     py::classh<LHEFileWriter>(m, "LHEFileWriter", pydoc::doc("LHEFileWriter"))
         .def(
-            py::init<const std::string&, const LHEMeta&, DevicePtr>(),
+            py::init<const std::string&, const LHEMeta&, DevicePtr, int>(),
             py::arg("file_name"),
             py::arg("meta"),
             py::arg("gzip_device") = nullptr,
+            py::arg("gzip_algorithm") = default_gzip_algorithm,
             pydoc::doc("LHEFileWriter::LHEFileWriter")
         )
         .def(
@@ -4458,6 +4459,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("systematics") = nullptr,
             py::arg("histograms") = nullptr,
             py::arg("gzip_device") = nullptr,
+            py::arg("gzip_algorithm") = default_gzip_algorithm,
             pydoc::doc("EventGenerator::combine_to_lhe")
         )
         .def("status", &EventGenerator::status, pydoc::doc("EventGenerator::status"))

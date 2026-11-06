@@ -62,7 +62,7 @@ public:
         double weight_decay
     ) const override;
 #ifdef MADSPACE_NVCOMP
-    std::unique_ptr<GzipCompressor> gzip_compressor() const override;
+    std::unique_ptr<GzipCompressor> gzip_compressor(int algorithm) const override;
 #endif
 
     GpuDevice(const GpuDevice&) = delete;

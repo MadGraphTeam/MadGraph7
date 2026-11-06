@@ -367,7 +367,8 @@ public:
     LHEFileWriter(
         const std::string& file_name,
         const LHEMeta& meta,
-        DevicePtr gzip_device = nullptr
+        DevicePtr gzip_device = nullptr,
+        int gzip_algorithm = default_gzip_algorithm
     );
     /// Append `event` as one `<event>` block.
     void write(const LHEEvent& event);

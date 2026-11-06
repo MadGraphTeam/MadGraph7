@@ -837,7 +837,8 @@ void EventGenerator::combine_to_lhe(
     const LHEMeta& meta,
     SystematicsCalculator* systematics,
     EventHistograms* histograms,
-    DevicePtr gzip_device
+    DevicePtr gzip_device,
+    int gzip_algorithm
 ) {
     reset_start_time();
     _systematics = systematics;
@@ -872,7 +873,7 @@ void EventGenerator::combine_to_lhe(
             full_meta.headers.push_back({"initrwgt", _systematics->initrwgt(), false});
         }
     }
-    LHEFileWriter event_file(file_name, full_meta, gzip_device);
+    LHEFileWriter event_file(file_name, full_meta, gzip_device, gzip_algorithm);
     std::size_t event_count = 0;
     std::size_t last_update_count = 0;
     bool done = false;

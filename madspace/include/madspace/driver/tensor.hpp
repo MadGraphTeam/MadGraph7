@@ -309,10 +309,15 @@ public:
         double bias_corr2_sqrt,
         double weight_decay
     ) const = 0;
-    /// Gzip compressor running on this device, or null if this build has none.
-    virtual std::unique_ptr<GzipCompressor> gzip_compressor() const { return nullptr; }
+    /// Gzip compressor running on this device with the given algorithm (see
+    /// @ref default_gzip_algorithm), or null if this build has none.
+    virtual std::unique_ptr<GzipCompressor> gzip_compressor(int) const {
+        return nullptr;
+    }
     /// Whether @ref gzip_compressor returns a compressor.
-    bool supports_gzip() const { return gzip_compressor() != nullptr; }
+    bool supports_gzip() const {
+        return gzip_compressor(default_gzip_algorithm) != nullptr;
+    }
 };
 
 /// Non-owning handle to a @ref Device.

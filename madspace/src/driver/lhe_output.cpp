@@ -917,10 +917,13 @@ void madspace::from_json(
 }
 
 LHEFileWriter::LHEFileWriter(
-    const std::string& file_name, const LHEMeta& meta, DevicePtr gzip_device
+    const std::string& file_name,
+    const LHEMeta& meta,
+    DevicePtr gzip_device,
+    int gzip_algorithm
 ) {
     if (gzip_device != nullptr) {
-        _compressor = gzip_device->gzip_compressor();
+        _compressor = gzip_device->gzip_compressor(gzip_algorithm);
         if (!_compressor) {
             throw std::invalid_argument(
                 "gzip_device has no gzip compressor (madspace built without nvCOMP?)"

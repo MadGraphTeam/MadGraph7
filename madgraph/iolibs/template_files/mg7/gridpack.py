@@ -282,7 +282,8 @@ def main() -> None:
         # before combine_to_lhe writes the <init> block
         event_generator.combine_to_lhe(
             lhe_path, lhe_completer, build_lhe_meta(event_generator.status(), seed),
-            systematics, gzip_device=gzip_device
+            systematics, gzip_device=gzip_device,
+            gzip_algorithm=run_args.get("lhe_gzip_algorithm", 5)
         )
         if gzip_device is None:
             compress_lhe(lhe_path, run_args.get("use_pigz", "auto"),

@@ -13,8 +13,6 @@ namespace {
 
 // 64 KiB is the largest chunk nvCOMP's gzip compressor takes and its fastest.
 constexpr std::size_t chunk_bytes = 1 << 16;
-// Best ratio nvCOMP offers (beats zlib -6 on LHE text), ~0.5 GB/s on an H100.
-constexpr int gzip_algorithm = 5;
 
 void check_nvcomp(nvcompStatus_t status, const char* what) {
     if (status != nvcompSuccess) {
@@ -91,8 +89,13 @@ private:
 /// D2H copy of the packed gzip members per call.
 class NvcompGzipCompressor : public GzipCompressor {
 public:
-    explicit NvcompGzipCompressor(const GpuDevice& device) : _device(device) {
-        _options.algorithm = gzip_algorithm;
+    NvcompGzipCompressor(const GpuDevice& device, int algorithm) : _device(device) {
+        if (algorithm < 0 || algorithm > 5) {
+            throw std::invalid_argument(
+                std::format("nvCOMP gzip algorithm must be 0 to 5, got {}", algorithm)
+            );
+        }
+        _options.algorithm = algorithm;
         nvcompAlignmentRequirements_t alignment;
         check_nvcomp(
             nvcompBatchedGzipCompressGetRequiredAlignments(_options, &alignment),
@@ -273,6 +276,6 @@ private:
 
 } // namespace
 
-std::unique_ptr<GzipCompressor> GpuDevice::gzip_compressor() const {
-    return std::make_unique<NvcompGzipCompressor>(*this);
+std::unique_ptr<GzipCompressor> GpuDevice::gzip_compressor(int algorithm) const {
+    return std::make_unique<NvcompGzipCompressor>(*this, algorithm);
 }

@@ -5,6 +5,9 @@
 
 namespace madspace {
 
+/// nvCOMP gzip algorithm, 0 (fastest) to 5 (smallest output); 3 currently acts as 2.
+inline constexpr int default_gzip_algorithm = 5;
+
 /**
  * Gzip compressor for event output, obtained from @ref Device::gzip_compressor.
  *

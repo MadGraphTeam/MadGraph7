@@ -1888,7 +1888,8 @@ class MadgraphProcess:
             )
             self.event_generator.combine_to_lhe(
                 lhe_path, self.lhe_completer,
-                self.build_lhe_meta(), systematics, histograms, gzip_device
+                self.build_lhe_meta(), systematics, histograms, gzip_device,
+                self.run_card["run"]["lhe_gzip_algorithm"]
             )
             if gzip_device is None:
                 misc.gzip(lhe_path, forceexternal=True)
