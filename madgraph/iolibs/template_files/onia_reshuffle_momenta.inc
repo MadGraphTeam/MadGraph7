@@ -203,7 +203,11 @@ C         system the onia carry all of it.
 
         IF (NELEM.GT.0) THEN
           PAR_KX(0) = EPSILON(PAR_SQRTS,MREC,PAR_MIN(1))
-          PAR_KX(1:3) = PI(PAR_SQRTS,PAR_MIN(1),MREC)*HAD_KX(1:3)/SQRT(PABS2(HAD_KX))
+          IF (SQRT(PABS2(HAD_KX)).GT.TINY) THEN
+            PAR_KX(1:3) = PI(PAR_SQRTS,PAR_MIN(1),MREC)*HAD_KX(1:3)/SQRT(PABS2(HAD_KX))
+          ELSE
+            PAR_KX(1:3) = 0D0
+          ENDIF
         ENDIF
 
         IF (NELEM.GT.1) THEN
@@ -275,8 +279,12 @@ C
 C         ----------
 C         BEGIN CODE
 C         ----------
+C         A mass below the rounding of E^2-|p|^2 is zero: relative to the
+C         energy (an absolute cut-off would zero the invariant mass of a
+C         nearly collinear recoil system, whose rest frame then has an
+C         infinite boost)
           MASS = P(0)*P(0)-P(1)*P(1)-P(2)*P(2)-P(3)*P(3)
-          IF (ABS(MASS).LT.1D-07) THEN
+          IF (MASS.LT.1D-14*P(0)*P(0)) THEN
             MASS = 0D0
           ELSE
             MASS = SQRT(MASS)
@@ -294,10 +302,9 @@ C
 C         ----------
 C         BEGIN CODE
 C         ----------
+C         Exact: a cut-off would give a soft massless particle zero energy
+C         and a non-zero momentum (off shell) in the rescale of a decay
           PABS2 = P(1)*P(1)+P(2)*P(2)+P(3)*P(3)
-          IF (ABS(PABS2).LT.1D-07) THEN
-            PABS2 = 0D0
-          ENDIF
           RETURN
         END
 

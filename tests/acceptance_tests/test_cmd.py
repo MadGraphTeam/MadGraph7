@@ -2735,6 +2735,31 @@ class TestCmdShell2(unittest.TestCase,
         expected = 8 * alphas ** 2 * r2 / (3 * M ** 2)
         self.assertLess(abs(width - expected) / expected, 1e-10)
 
+        # a decaying onium at its physical mass (Block onia_decay): the decay
+        # products are rescaled onto m1+m2 in its rest frame. A soft gluon
+        # must stay on shell: the |M|^2 of Jpsi > g g g is smooth as one gluon
+        # goes soft (it was 1d37 below 3d-4 GeV, from a cut-off on |p|^2)
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        mg_cmd.exec_cmd('generate Jpsi(1|3S11) > g g g')
+        mg_cmd.exec_cmd('output standalone_fortran %s -f' % self.out_dir)
+        proc_dir = glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*'))[0]
+        card = pjoin(self.out_dir, 'Cards', 'onia_card.dat')
+        text = open(card).read()
+        text = re.sub(r'(?m)^(\s*443\s+)[0-9.Ee+-]+(\s+# mass)', r'\g<1>3.0969\2', text)
+        text = re.sub(r'(?m)^(\s*1\s+)0(\s+# onia_decay_mass)', r'\g<1>1\2', text)
+        open(card, 'w').write(text)
+        Mphys = 3.0969
+        g2 = [1.5484078569, -0.79031221670, 0.68500128333, 1.1418172942]
+        soft = [1.4442820687e-4, 1.2633814623e-4, -0.57265598391e-4, 0.40234698810e-4]
+        values = []
+        for scale in (1., 1e-3, 1e-6):
+            g3 = [x * scale for x in soft]
+            g1 = [Mphys - g2[0] - g3[0]] + [-(g2[i] + g3[i]) for i in (1, 2, 3)]
+            values.append(self._onia_check_me(proc_dir, [[Mphys, 0., 0., 0.], g1, g2, g3]))
+        for v in values[1:]:
+            self.assertLess(abs(v / values[0] - 1), 1e-3, values)
+
     def test_onia_decay_channels(self):
         """The madevent channels of a 1 -> N process with onia follow the
         propagators of their diagram, over the physical final state:
