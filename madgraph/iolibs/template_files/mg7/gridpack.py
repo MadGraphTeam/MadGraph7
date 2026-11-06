@@ -39,21 +39,20 @@ def resolve_verbosity(verbosity: str) -> str:
 
 
 def compress_lhe(path: str, use_pigz="auto", cpu_threads: int = -1) -> None:
-    """Compress the completed LHE with the same size/tool policy as misc.gzip.
+    """Compress the completed LHE with pigz, else gzip, else in-process gzip.
 
     A gridpack must be runnable without a MadGraph installation. Its run card
     carries the compression preference, and positive CPU pool sizes also bound
     pigz's worker count.
     """
-    if os.path.getsize(path) > 256e6:
-        pigz = shutil.which("pigz") if use_pigz is not False else None
-        tool = pigz or shutil.which("gzip")
-        if tool:
-            command = [tool]
-            if pigz and cpu_threads > 0:
-                command += ["-p", str(cpu_threads)]
-            subprocess.run(command + ["-f", path], check=True)
-            return
+    pigz = shutil.which("pigz") if use_pigz is not False else None
+    tool = pigz or shutil.which("gzip")
+    if tool:
+        command = [tool]
+        if pigz and cpu_threads > 0:
+            command += ["-p", str(cpu_threads)]
+        subprocess.run(command + ["-f", path], check=True)
+        return
 
     with open(path, "rb") as fin, \
             gzip.open(path + ".gz", "wb", compresslevel=6) as fout:
@@ -272,15 +271,22 @@ def main() -> None:
                          build_lhe_meta(event_generator.status(), seed, systematics))
     elif output_format == "lhe":
         lhe_completer = load_lhe_completer()
-        lhe_path = os.path.join(run_path, "events.lhe")
+        gzip_device = None
+        if run_args.get("lhe_compression", "auto") == "auto":
+            gzip_device = next((context.device() for context in contexts
+                                if context.device().supports_gzip()), None)
+        lhe_path = os.path.join(
+            run_path, "events.lhe.gz" if gzip_device else "events.lhe"
+        )
         # the cross section is known once generate() has converged, which is
         # before combine_to_lhe writes the <init> block
         event_generator.combine_to_lhe(
             lhe_path, lhe_completer, build_lhe_meta(event_generator.status(), seed),
-            systematics
+            systematics, gzip_device=gzip_device
         )
-        compress_lhe(lhe_path, run_args.get("use_pigz", "auto"),
-                     args.cpu_thread_pool_size)
+        if gzip_device is None:
+            compress_lhe(lhe_path, run_args.get("use_pigz", "auto"),
+                         args.cpu_thread_pool_size)
     else:
         raise ValueError("Unknown output format")
     if systematics is not None:

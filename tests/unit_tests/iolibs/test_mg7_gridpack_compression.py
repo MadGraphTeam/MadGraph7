@@ -39,24 +39,23 @@ class TestGridpackCompression(unittest.TestCase):
     def setUpClass(cls):
         cls.gridpack = _gridpack_module()
 
-    def test_small_file_uses_python_gzip(self):
+    def test_without_tools_uses_python_gzip(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "events.lhe")
             data = b"<LesHouchesEvents>\n<event>\n1\n</event>\n" * 100
             with open(path, "wb") as out:
                 out.write(data)
-            with mock.patch.object(self.gridpack.subprocess, "run") as run:
+            with mock.patch.object(self.gridpack.shutil, "which", return_value=None), \
+                 mock.patch.object(self.gridpack.subprocess, "run") as run:
                 self.gridpack.compress_lhe(path, True, 2)
             run.assert_not_called()
             self.assertFalse(os.path.exists(path))
             with gzip.open(path + ".gz", "rb") as inp:
                 self.assertEqual(inp.read(), data)
 
-    def test_large_file_respects_pigz_preference_and_threads(self):
+    def test_respects_pigz_preference_and_threads(self):
         path = "/tmp/events.lhe"
-        with mock.patch.object(self.gridpack.os.path, "getsize",
-                               return_value=257_000_000), \
-             mock.patch.object(self.gridpack.shutil, "which",
+        with mock.patch.object(self.gridpack.shutil, "which",
                                side_effect=lambda name: "/usr/bin/" + name), \
              mock.patch.object(self.gridpack.subprocess, "run") as run:
             self.gridpack.compress_lhe(path, "auto", 3)
@@ -74,9 +73,7 @@ class TestGridpackCompression(unittest.TestCase):
             data = b"<event> 1 2 3 4 5 </event>\n" * 1000
             with open(path, "wb") as out:
                 out.write(data)
-            with mock.patch.object(self.gridpack.os.path, "getsize",
-                                   return_value=257_000_000):
-                self.gridpack.compress_lhe(path, True, 2)
+            self.gridpack.compress_lhe(path, True, 2)
             self.assertFalse(os.path.exists(path))
             with gzip.open(path + ".gz", "rb") as inp:
                 self.assertEqual(inp.read(), data)

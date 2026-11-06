@@ -115,13 +115,15 @@ public:
         EventHistograms* histograms = nullptr
     );
     /// Like @ref combine_to_lhe_npy, writing a complete LHE file with @p meta
-    /// as its `<init>` header instead of a `.npy` file.
+    /// as its `<init>` header instead of a `.npy` file. With @p gzip_device the
+    /// file is gzip-compressed on that device (see @ref Device::supports_gzip).
     void combine_to_lhe(
         const std::string& file_name,
         LHECompleter& lhe_completer,
         const LHEMeta& meta = {},
         SystematicsCalculator* systematics = nullptr,
-        EventHistograms* histograms = nullptr
+        EventHistograms* histograms = nullptr,
+        DevicePtr gzip_device = nullptr
     );
     /// Combined progress snapshot over every channel.
     GeneratorStatus status() const { return _status; }

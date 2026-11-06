@@ -2,14 +2,18 @@
 
 #include <array>
 #include <fstream>
+#include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
 #include <nlohmann/json.hpp>
 
+#include "madspace/driver/gzip.hpp"
 #include "madspace/driver/random.hpp"
+#include "madspace/driver/tensor.hpp"
 #include "madspace/driver/thread_pool.hpp"
 #include "madspace/phasespace/topology.hpp"
 #include "madspace/util.hpp"
@@ -351,23 +355,40 @@ void from_json(const nlohmann::json& j, LHECompleter::PropagatorData& prop_data)
  * Streams events to an LHE file.
  *
  * Opens `file_name`, writes the `<init>` header built from `meta`, and lets
- * @ref write append one `<event>` block at a time; the destructor closes the
- * `</LesHouchesEvents>` tag.
+ * @ref write append one `<event>` block at a time; @ref close (or the
+ * destructor) closes the `</LesHouchesEvents>` tag. With a `gzip_device` the
+ * file is gzip-compressed on that device: the text is buffered and compressed
+ * in large batches, which a GPU compressor needs to be efficient.
  */
 class LHEFileWriter {
 public:
-    /// Opens `file_name` and writes its `<init>` header from `meta`.
-    LHEFileWriter(const std::string& file_name, const LHEMeta& meta);
+    /// Opens `file_name` and writes its `<init>` header from `meta`. Throws if
+    /// `gzip_device` is given but has no gzip compressor.
+    LHEFileWriter(
+        const std::string& file_name,
+        const LHEMeta& meta,
+        DevicePtr gzip_device = nullptr
+    );
     /// Append `event` as one `<event>` block.
     void write(const LHEEvent& event);
     /// Append `str` to the file verbatim, unescaped.
     void write_string(const std::string& str);
-    /// Closes the file, appending the closing `</LesHouchesEvents>` tag.
+    /// Append the closing `</LesHouchesEvents>` tag, flush and close the file.
+    /// Throws if writing failed; later calls do nothing.
+    void close();
+    /// Calls @ref close.
     ~LHEFileWriter();
 
 private:
+    static constexpr std::size_t compress_flush_bytes = 64ull << 20;
+
+    void emit(std::string_view text);
+    void flush_compressed();
+
     std::ofstream _file_stream;
-    std::string _buffer;
+    std::unique_ptr<GzipCompressor> _compressor;
+    std::string _pending;
+    std::string _compressed;
 };
 
 } // namespace madspace
