@@ -658,8 +658,9 @@ struct Evaluation {
     /// Per point and slot `Σ_f |ΔΩ_f| / (16π²)` per coefficient (binary64
     /// reals), when a check ran.
     amplitude_budget: Option<Vec<Vec<Vec<f64>>>>,
-    /// Per point and slot `Σ_f |Ω_f| / (16π²)` per coefficient (binary64
-    /// reals), amplitude-mode plans only.
+    /// With `term_scale`, per point and slot the term scale
+    /// `Σ_f Σ_α |N_α| |I_α| / (16π²)` per coefficient (binary64 reals;
+    /// `PointResult::amplitude_scale`), else None.
     amplitude_scale: Option<Vec<Vec<Vec<f64>>>>,
     /// Amplitude-mode plans with native trees and counterterms: per point
     /// the counterterm kets (`TreeInputs::kets`: rows × ket components in
@@ -736,7 +737,8 @@ fn export_evaluation<T: Exchanged + Real>(
             })
             .collect()
     });
-    let amplitude_scale = amplitude.then(|| {
+    let scaled = results.iter().any(|r| !r.amplitude_scale.is_empty());
+    let amplitude_scale = scaled.then(|| {
         results
             .iter()
             .map(|r| {
@@ -1739,9 +1741,11 @@ impl V2Executor {
     /// input; report stage "trees: dipoles"). An amplitude-mode plan
     /// (schema 5, loop-induced) returns per point `amplitudes` (per (loop
     /// order, column) slot the bare loop amplitude `i/(16π²) Σ_f Ω_f`),
-    /// with a check `amplitude_check` and `amplitude_budget`; its raw
+    /// with a check `amplitude_check` and `amplitude_budget`, with
+    /// `term_scale` the slots' term scale `amplitude_scale` (one
+    /// unit-numerator reduction per monomial, family and point); its raw
     /// lanes only with `raw_lanes`.
-    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both", contraction="auto", part_points=None, fill_points=None, input_budget=None, rows=None, basis=None, components=None, families=None, dipoles=None, raw_lanes=false))]
+    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both", contraction="auto", part_points=None, fill_points=None, input_budget=None, rows=None, basis=None, components=None, families=None, dipoles=None, raw_lanes=false, term_scale=false))]
     #[allow(clippy::too_many_arguments)]
     fn evaluate(
         &mut self,
@@ -1767,6 +1771,7 @@ impl V2Executor {
         families: Option<Vec<bool>>,
         dipoles: Option<PyRef<'_, NativeDipoleCorrelator>>,
         raw_lanes: bool,
+        term_scale: bool,
     ) -> PyResult<Evaluation> {
         let poles = match poles {
             Some(value) => v2::poles_option(&value)?,
@@ -1793,6 +1798,7 @@ impl V2Executor {
                 _ => return Err(error("contraction must be auto, direct or fft")),
             },
             raw_lanes,
+            term_scale,
             ..V2Options::default()
         };
         if let Some(chunk) = chunk_families {
