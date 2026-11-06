@@ -17,7 +17,7 @@
   "timing": "the export's own card (MLReductionLib 7|6|1, COLLIER UV/IR poles off, HelicityFilterLevel 2, MLStabThres); a 6|7|1 (OPP) column; tools/loop_benchmark providers --madloop-stages",
   "single_helicity": "|A(h)|^2/avg (Q39) = MadLoop's USERHEL value / HELAVGFACTOR"
  },
- "conventions": "|A_loop|^2 summed over final and averaged over initial helicities and colours, with the final identical-particle factor; physical couplings; widths zero outside the complex-mass rows",
+ "conventions": "|A_loop|^2 summed over final and averaged over initial helicities and colours, with the final identical-particle factor; physical couplings; widths zero except in the complex-mass rows (LI-C1) and the fixed-width four-lepton rows (LI-43, LI-51, scheme qcd-widths)",
  "rows": [
   {
    "row": "LI-B1",
@@ -1443,7 +1443,7 @@
      "max_provider_pair_relative_error": 7.308294389523149e-14,
      "status": "pass",
      "excluded": {
-      "recola": "Recola's on-shell scheme with non-zero widths is not the fixed-width scheme of MG5 and OpenLoops: 8e-4 to 1.4e-3 relative at the three points (also with set_onshell_mass_z/w_rcl input, a scratch check on 2026-11-06), while under the complex-mass scheme all three agree to 2e-13 (li_gg_emepmupmum_cms); the measured deviation is recorded"
+      "recola": "Recola's on-shell scheme with non-zero widths is not the fixed-width scheme of MG5 and OpenLoops: 3.0e-4 to 8.4e-4 relative at the three points (1.3e-4 to 1.0e-3 at the 16 timing stream points; of the same order also with set_onshell_mass_z/w_rcl input, a scratch check on 2026-11-06), while under the complex-mass scheme all three agree to 2e-13 (li_gg_emepmupmum_cms); the measured deviation is recorded"
      },
      "provider_timing_records": [
       "required/li/timing/li_gg_emepmupmum-providers-madloop-opp.json",
@@ -1455,6 +1455,11 @@
       "madloop": 33.5102,
       "madloop_one_helicity": 3.3537,
       "madloop_6|7|1": 104.1935
+     },
+     "provider_value_notes": {
+      "recola": {
+       "values_excluded": "width convention: Recola's on-shell scheme with widths is not MG5/OpenLoops' fixed-width scheme (qcd-widths); its values are 3.0e-4 to 8.4e-4 at the reference points and 1.3e-4 to 1.0e-3 at the 16 stream points off MadLoop = OpenLoops, so they are no reference (all three agree to 2e-13 under the complex-mass scheme, li_gg_emepmupmum_cms). Its timing is of the same process and production work; whether it counts as a matched provider for the speed gate is lit-perf's / the coordinator's call"
+      }
      }
     }
    ]
@@ -1468,7 +1473,7 @@
    ],
    "backends": "N, T",
    "tier": "2->4 optional",
-   "gated": false,
+   "gated": true,
    "runs": [
     {
      "process": "li_gg_aagg",
@@ -1516,6 +1521,14 @@
       "madloop-summed": "45-minute rule: the helicity-summed MadLoop reference alone (no per-helicity rows, the points in 3 parallel blocks) did not finish within 2700 s either",
       "madloop": "45-minute rule: madloop did not finish within 2700 s"
      },
+     "secondary_runs": {
+      "madloop-production-opp": 5.182442003574132e-06,
+      "madloop-production": 4.407835902861121e-05,
+      "recola-rotated": 6.63458256960059e-05
+     },
+     "l1_caution_points": [
+      3
+     ],
      "provider_timing_records": [
       "required/li/timing/li_gg_zzzz-providers-madloop-opp.json",
       "required/li/timing/li_gg_zzzz-providers.json"
@@ -1527,6 +1540,17 @@
      },
      "provider_timing_misses": {
       "madloop_one_helicity": "45-minute rule: the one-helicity column (324 helicities, each called alone with MadLoop's caches cleared, after each point's summed call) did not finish within 45 minutes, neither after the summed timing and stage split of one run (cut after 14 min of one-helicity calls) nor in a run of its own (summed timing, then 35 min of one-helicity calls; lit-ref-b time_1hel.sh, timeout 2700 s)"
+     },
+     "provider_value_notes": {
+      "recola": {
+       "value_exceptions": {
+        "points": [
+         7,
+         13
+        ],
+        "reason": "Recola is numerically unstable at stream points 7 and 13 (sqrt s = 500; a Z pair 6.0 and 0.4 GeV above the ZZ threshold, a Z at pT 12 and 6 GeV): an exact rotation moves its value by +136 % and -24 % and its single pole is 1.1-1.5 times its finite part, so its values there (3.54e-9, 1.39e-7) are no reference; its timing stays valid. MadLoop's values there (1.0930e-10, 1.4241e-8) are COLLIER's alone (the 6|7|1 run falls back to COLLIER there, status 217; MadLoop's own estimates 1.6e-9, 4.3e-11): no second provider validates them. Stream point 3 (= reference point 3) is uncertain at ~1e-4 between the providers (tests/fixtures/loop/required/li/li_gg_zzzz.json l1_caution)"
+       }
+      }
      }
     }
    ]
@@ -1540,7 +1564,7 @@
    ],
    "backends": "N, T",
    "tier": "2->5 stretch",
-   "gated": false,
+   "gated": true,
    "runs": [
     {
      "process": "li_gg_emepmupmumg",
@@ -1567,6 +1591,11 @@
       "madloop": 1197.7977,
       "madloop_one_helicity": 121.2828,
       "madloop_6|7|1": 3563.6311
+     },
+     "provider_value_notes": {
+      "recola": {
+       "values_excluded": "width convention: Recola's on-shell scheme with widths is not MG5/OpenLoops' fixed-width scheme (qcd-widths); its values are 1.7e-4 to 3.6e-4 at the reference points and 5.1e-5 to 1.1e-3 at the 16 stream points off MadLoop = OpenLoops, so they are no reference (as on LI-43). Its timing is of the same process and production work; whether it counts as a matched provider for the speed gate is lit-perf's / the coordinator's call"
+      }
      }
     }
    ]

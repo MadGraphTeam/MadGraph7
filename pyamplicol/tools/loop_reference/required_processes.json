@@ -2767,7 +2767,7 @@
       "correction": "QCD",
       "scheme": "qcd-widths",
       "madloop": {"process": "g g > e+ e- mu+ mu- [sqrvirt=QCD]"},
-      "recola": {"process": "g g -> e+ e- mu+ mu-", "unavailable": "Recola's on-shell scheme with non-zero widths is not the fixed-width scheme of MG5 and OpenLoops: 8e-4 to 1.4e-3 relative at the three points (also with set_onshell_mass_z/w_rcl input, a scratch check on 2026-11-06), while under the complex-mass scheme all three agree to 2e-13 (li_gg_emepmupmum_cms); the measured deviation is recorded"},
+      "recola": {"process": "g g -> e+ e- mu+ mu-", "unavailable": "Recola's on-shell scheme with non-zero widths is not the fixed-width scheme of MG5 and OpenLoops: 3.0e-4 to 8.4e-4 relative at the three points (1.3e-4 to 1.0e-3 at the 16 timing stream points; of the same order also with set_onshell_mass_z/w_rcl input, a scratch check on 2026-11-06), while under the complex-mass scheme all three agree to 2e-13 (li_gg_emepmupmum_cms); the measured deviation is recorded"},
       "openloops": {"process": "21 21 -> -11 11 -13 13", "library": "ppllll2"},
       "points": {"tool": "exact_points.py"},
       "note": "fixed widths in the tree propagators (Z, H; Q7), stable top in the loop"

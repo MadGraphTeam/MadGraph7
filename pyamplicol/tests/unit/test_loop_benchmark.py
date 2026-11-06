@@ -2310,3 +2310,117 @@ def test_report_builder_loop_induced_table_markers_backend_floor_and_reports(
     )
     with pytest.raises(ValueError, match="neither registry rows"):
         build()
+
+
+def test_madloop_columns_share_the_production_run_setup(tmp_path, monkeypatch):
+    # The production column and the one-helicity column build and prepare
+    # their run directories alike (Born-less driver for a loop-induced
+    # process); the toolkit is replaced by stand-ins.
+    import contextlib
+    import types
+
+    built = []
+
+    class References:
+        def madloop_build_flags(self, export, mg5):
+            return {"production_build": True, "export_make_opts": {"GLOBAL_FLAG": "-O"}}
+
+        def build_madloop(self, export, run, flag):
+            built.append(("born-interfered", run.name, flag))
+            return run / "driver", []
+
+        def point_lines(self, points):
+            return ["point"] * len(points["points"])
+
+        def run_native(self, command, stdin, run, log, cpu):
+            return "", 1.0
+
+        def parse_rows(self, stdout, provider, count):
+            return [{"seconds": 0.5}] * count, {}
+
+        def madloop_helicities(self, export):
+            return [(1, 1), (1, -1)]
+
+        def madloop_process_dir(self, export):
+            return export
+
+    class Li:
+        def build_madloop(self, export, run, flag):
+            built.append(("loop-induced", run.name, flag))
+            return run / "driver", ["repair"]
+
+        def helavg_factor(self, process):
+            return 4, None
+
+        def parse_madloop(self, stdout, count, helavg):
+            kept = {"seconds": 0.1, "value": 1.0}
+            filtered = {"seconds": 0.0, "value": 0.0}
+            return [{"seconds": 0.5, "per_helicity": [kept, filtered]}] * count, None
+
+    card = {"MadLoopParams": {"MLReductionLib": "7|6|1"}}
+    monkeypatch.setattr(providers, "_references", References)
+    monkeypatch.setattr(providers, "_li_references", Li)
+    monkeypatch.setattr(providers, "_relocated_madloop_build", contextlib.nullcontext)
+    monkeypatch.setattr(
+        providers,
+        "_prepare_madloop",
+        lambda *args: (card, {"on": True, "reason": "test"}),
+    )
+    monkeypatch.setattr(
+        providers, "_madloop_header", lambda spec, run, count: f"{count}\n"
+    )
+    trees = types.SimpleNamespace(mg5=tmp_path, root=tmp_path)
+    points = {"points": [[], []]}
+    loop_induced = {"loop_induced": True}
+    result = providers.madloop(loop_induced, points, tmp_path / "a", 0, tmp_path, trees)
+    one = providers.madloop_one_helicity(
+        loop_induced, points, tmp_path / "a", 0, tmp_path, trees
+    )
+    providers.madloop({}, points, tmp_path / "b", 0, tmp_path, trees)
+    assert built == [
+        ("loop-induced", "madloop-run", "-O"),
+        ("loop-induced", "madloop-one-helicity-run", "-O"),
+        ("born-interfered", "madloop-run", "-O"),
+    ]
+    assert (
+        result["qp_model_repairs"] == ["repair"]
+        and result["madloop_params"] == card["MadLoopParams"]
+    )
+    assert (one["calls"], one["helicities"], one["kept_helicities_per_point"]) == (
+        2,
+        2,
+        [1, 1],
+    )
+    assert one["madloop_params"] == card["MadLoopParams"]
+
+
+def test_provider_records_carry_the_specification_value_annotations(
+    tmp_path, monkeypatch
+):
+    # A provider whose values the specification excepts at some stream
+    # points (or excludes) keeps that annotation beside its timing.
+    import json
+    import types
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(providers, "Trees", lambda options: None)
+    monkeypatch.setattr(
+        providers,
+        "recola",
+        lambda *args: {"provider": "recola", "mean_seconds_per_point": 1.0},
+    )
+    options = types.SimpleNamespace(
+        process="li_gg_zzzz",
+        points=2,
+        work=tmp_path / "work",
+        json=tmp_path / "record.json",
+        cpu=0,
+        providers=["recola"],
+    )
+    assert providers.main(options) == 0
+    entry = json.loads(options.json.read_text())["providers"]["recola"]
+    assert (
+        entry["value_exceptions"]
+        == streams.spec("li_gg_zzzz")["recola"]["value_exceptions"]
+    )
+    assert entry["value_exceptions"]["points"] == [7, 13]

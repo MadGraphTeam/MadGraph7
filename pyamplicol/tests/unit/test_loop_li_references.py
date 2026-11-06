@@ -64,11 +64,15 @@ def test_loop_induced_specification_and_fixture(name):
     if spec.get("zero"):
         assert data["zero_row"] and data["passed"] is None
         return
+    _check_secondary_runs(data)
     compared = [p for p in data["providers"]]
     if len(compared) < 2:
         # A single reference only where the others missed the 45-minute rule
-        # (recorded) or serve no such process (specification).
+        # (recorded) or serve no such process (specification); it carries an
+        # independent secondary run (another library, a rotated frame) at
+        # every point.
         assert data["misses_45_min"] and data["passed"] is False, name
+        assert data["secondary_runs"], f"{name}: a single reference without a secondary run"
         return
     assert data["passed"]
     assert data["max_provider_pair_relative_error"] <= L1
@@ -84,6 +88,31 @@ def test_loop_induced_specification_and_fixture(name):
         for row in data["rows"]:
             errors = row["provider_pair_relative_errors"]
             assert min(v for k, v in errors.items() if "analytic" in k) <= 1e-9
+
+
+def _check_secondary_runs(data):
+    """Secondary runs record their per-point deviation from the reference; a
+    point where one exceeds L1 carries an ``l1_caution`` (and only such a
+    point); production values taken from a timing record equal that record's
+    values at the stream points that are the reference points."""
+    for label, run in data["secondary_runs"].items():
+        assert len(run["relative_deviation_from_reference"]) == len(data["rows"]), label
+        source = (run.get("settings") or {}).get("timing_record")
+        if source:
+            record = json.loads((FIXTURES.parent.parent / source).read_text())
+            stream = json.loads((ROOT / "tools" / "loop_benchmark" / "streams" / f"{data['name']}.json").read_text())
+            rows = record["providers"][run["settings"]["record_provider"]]["rows"]
+            for index, (point, number) in enumerate(zip(data["points"], run["settings"]["stream_points"])):
+                assert stream["points"][number - 1] == point, (label, index)
+                value = rows[number - 1]["finite"]
+                assert run["relative_deviation_from_reference"][index] == pytest.approx(
+                    abs(value - data["rows"][index]["value"]) / max(abs(value), abs(data["rows"][index]["value"])),
+                    rel=1e-12), (label, index)
+    if data.get("zero_row"):
+        return
+    for index, row in enumerate(data["rows"]):
+        beyond = [k for k, v in row.get("secondary_relative_deviations", {}).items() if v > L1]
+        assert bool(beyond) == ("l1_caution" in row), (data["name"], index + 1)
 
 
 def _with_madloop_reference(name):
@@ -122,6 +151,9 @@ def test_the_campaign_manifest_is_current_and_covers_every_reference():
                 assert row["tier"] in ("2->4 optional", "2->5 stretch") and run["misses_45_min"], (row["row"], run)
                 continue
             assert run["status"] in ("pass", "zero row"), (row["row"], run)
+    # PLAN §4.1: the 2->4 optional rows are gated where run and matched, the
+    # 2->5 stretch if a provider matches (both have provider timings).
+    assert {r["row"] for r in manifest["rows"] if r["gated"]} >= {"LI-41", "LI-42", "LI-43", "LI-44", "LI-51"}
     # Every 2->3 row of PLAN §4.1 has its references (lit-ref-b).
     three = {run["process"] for row in manifest["rows"] if row["tier"] == "2->3 gate" for run in row["runs"]}
     assert {"li_emep_ggg", "li_gg_hhh", "li_gg_hgg", "li_gg_zzg", "li_gg_aag", "li_gg_wpwmg", "li_gg_zzz",
@@ -158,6 +190,7 @@ def test_provider_timing_records(name):
         "colour flows and squaring"}
     opp = json.loads((FIXTURES / "timing" / f"{name}-providers-madloop-opp.json").read_text())
     assert opp["providers"]["madloop"]["madloop_params"]["MLReductionLib"] == "6|7|1"
+    _check_provider_values(spec, record, opp)
     # The one-helicity column (MadEvent mode); one record per row, so the
     # summary table finds one production timing per provider.
     one = madloop["one_helicity"]
@@ -167,6 +200,42 @@ def test_provider_timing_records(name):
     assert one["madloop_params"]["MLReductionLib"] == "7|6|1"
     assert 0 < one["mean_seconds_per_call"] and one["calls"] == sum(one["kept_helicities_per_point"])
     assert all(0 < kept <= one["helicities"] for kept in one["kept_helicities_per_point"])
+
+
+def _check_provider_values(spec, record, opp):
+    """The providers' finite values in a timing record (MadLoop 6|7|1 from its
+    own record included) agree within MadLoop's production stability
+    threshold (the record's MLStabThres, lax), except a provider whose values
+    the specification excludes (``values_excluded``, e.g. a width convention)
+    and the stream points it excepts (``value_exceptions``, 1-based); the
+    record carries those annotations, and every excepted point is a real
+    outlier."""
+    madloop = record["providers"]["madloop"]
+    tolerance = float(madloop["madloop_params"]["MLStabThres"].lower().replace("d", "e"))
+    values, exceptions = {}, {}
+    for provider, entry in record["providers"].items():
+        for field in ("values_excluded", "value_exceptions"):
+            assert entry.get(field) == spec[provider].get(field), (record["process"], provider, field)
+        if "rows" not in entry or entry.get("values_excluded"):
+            continue
+        values[provider] = [row["finite"] for row in entry["rows"]]
+        exceptions[provider] = set(entry.get("value_exceptions", {}).get("points", ()))
+        assert not exceptions[provider] or entry["value_exceptions"]["reason"]
+    values["madloop 6|7|1"] = [row["finite"] for row in opp["providers"]["madloop"]["rows"]]
+    exceptions["madloop 6|7|1"] = set()
+
+    def deviation(a, b, index):
+        x, y = values[a][index], values[b][index]
+        return abs(x - y) / max(abs(x), abs(y))
+
+    names = sorted(values)
+    for index in range(record["points"]):
+        kept = [n for n in names if index + 1 not in exceptions[n]]
+        for i, a in enumerate(kept):
+            for b in kept[i + 1:]:
+                assert deviation(a, b, index) <= tolerance, (record["process"], index + 1, a, b)
+        for name in set(names) - set(kept):
+            assert all(deviation(name, other, index) > tolerance for other in kept), (record["process"], index + 1)
 
 
 def test_references_py_refuses_a_loop_induced_specification(tmp_path, monkeypatch):

@@ -1198,8 +1198,8 @@
       },
       "recola": {
         "process": "g g -> e+ e- mu+ mu-",
-        "note": "timed (same process and production work); its on-shell-scheme width convention differs from MG5/OpenLoops' fixed widths at 1e-4 to 1e-3, so the reference fixture excludes its values",
-        "values_excluded": "width convention: Recola's on-shell scheme with widths is not MG5/OpenLoops' fixed-width scheme (qcd-widths); its values are ~1e-3 off MadLoop = OpenLoops (8e-4 to 1.4e-3 at the reference points), so they are no reference (all three agree to 2e-13 under the complex-mass scheme, LI-C1). Its timing is of the same process and production work; whether it counts as a matched provider for the speed gate is lit-perf's / the coordinator's call"
+        "note": "timed (same process and production work); its on-shell-scheme width convention differs from MG5/OpenLoops' fixed widths at 5e-5 to 1.1e-3, so the reference fixture excludes its values",
+        "values_excluded": "width convention: Recola's on-shell scheme with widths is not MG5/OpenLoops' fixed-width scheme (qcd-widths); its values are 3.0e-4 to 8.4e-4 at the reference points and 1.3e-4 to 1.0e-3 at the 16 stream points off MadLoop = OpenLoops, so they are no reference (all three agree to 2e-13 under the complex-mass scheme, li_gg_emepmupmum_cms). Its timing is of the same process and production work; whether it counts as a matched provider for the speed gate is lit-perf's / the coordinator's call"
       },
       "openloops": {
         "process": "21 21 -> -11 11 -13 13",
@@ -1321,8 +1321,8 @@
       },
       "recola": {
         "process": "g g -> e+ e- mu+ mu- g",
-        "note": "timed (same process and production work); its on-shell-scheme width convention differs from MG5/OpenLoops' fixed widths at 1e-4 to 1e-3, so the reference fixture excludes its values",
-        "values_excluded": "width convention: Recola's on-shell scheme with widths is not MG5/OpenLoops' fixed-width scheme (qcd-widths); its values are ~1e-3 off MadLoop = OpenLoops (8e-4 to 1.4e-3 at the reference points), so they are no reference (all three agree to 2e-13 under the complex-mass scheme, LI-C1). Its timing is of the same process and production work; whether it counts as a matched provider for the speed gate is lit-perf's / the coordinator's call"
+        "note": "timed (same process and production work); its on-shell-scheme width convention differs from MG5/OpenLoops' fixed widths at 5e-5 to 1.1e-3, so the reference fixture excludes its values",
+        "values_excluded": "width convention: Recola's on-shell scheme with widths is not MG5/OpenLoops' fixed-width scheme (qcd-widths); its values are 1.7e-4 to 3.6e-4 at the reference points and 5.1e-5 to 1.1e-3 at the 16 stream points off MadLoop = OpenLoops, so they are no reference (as on LI-43). Its timing is of the same process and production work; whether it counts as a matched provider for the speed gate is lit-perf's / the coordinator's call"
       },
       "openloops": {
         "process": "21 21 -> -11 11 -13 13 21",

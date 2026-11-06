@@ -3750,7 +3750,7 @@
   "unavailable": {},
   "excluded": {
     "recola": {
-      "reason": "Recola's on-shell scheme with non-zero widths is not the fixed-width scheme of MG5 and OpenLoops: 8e-4 to 1.4e-3 relative at the three points (also with set_onshell_mass_z/w_rcl input, a scratch check on 2026-11-06), while under the complex-mass scheme all three agree to 2e-13 (li_gg_emepmupmum_cms); the measured deviation is recorded",
+      "reason": "Recola's on-shell scheme with non-zero widths is not the fixed-width scheme of MG5 and OpenLoops: 3.0e-4 to 8.4e-4 relative at the three points (1.3e-4 to 1.0e-3 at the 16 timing stream points; of the same order also with set_onshell_mass_z/w_rcl input, a scratch check on 2026-11-06), while under the complex-mass scheme all three agree to 2e-13 (li_gg_emepmupmum_cms); the measured deviation is recorded",
       "relative_deviation_from_reference": [
         0.0003032177246626509,
         0.000838632582009722,
