@@ -327,6 +327,10 @@ model with `--jit-compress` or `--no-jit-compress`.
 | pyAmpliCol and project Rusticol source | Public package/runtime implementation | BSD Zero Clause License (`0BSD`). |
 | Symbolica | Symbolic generation and Python exact runtime | Proprietary Symbolica Software License Agreement; project redistribution permission is documented separately. |
 | SymJIT | Native JIT application runtime | MIT License. |
+| NinjaRS | One-loop integrand reduction, linked into the native libraries | BSD Zero Clause License (`0BSD`). |
+| oneloopmaster | One-loop scalar integrals, linked into the native libraries | Declares MIT, provisionally (a transcription of OneLOop, GPL-3.0-or-later); see `licenses/oneloopmaster.txt`. |
+| GammaLoop crates (FeynKit, Spenso, Idenso, linnet) | Loop kinematics and tensor algebra, linked into the native libraries | MIT OR Apache-2.0, MIT, or GammaLoop's no-restrictions license per crate; the vendored `dot-parser` declares GPL-2.0-or-later. |
+| Other linked Rust crates (including Rug with GMP, MPFR and MPC) | Native dependencies | Their own licenses, reproduced under `licenses/rust/`; GMP, MPFR and MPC are LGPL-3.0-or-later. |
 | UFO model loader | External UFO loading | MIT License. |
 | Bundled SM/scalar/scalar-gravity assets | Example/model data | Asset-specific provenance and reproduced terms in `PROVENANCE.toml` and `licenses/`. |
 | Optional original Fortran AmpliCol checkout | Independent campaign oracle | Not bundled in wheels or sdists; its upstream metadata/terms remain separate. |
