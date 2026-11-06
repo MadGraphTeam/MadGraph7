@@ -187,6 +187,8 @@ from .poles import (
 )
 from .poly_affine import MonomialLayout, leg_momentum
 from .refusals import (
+    LoopRequestUnsupported,
+    LoopRequestUnsupportedValue,
     require_colour_preserving_fermion_lines,
     require_declared_colour_fields,
     require_declared_colour_rules,
@@ -1054,6 +1056,161 @@ def _field_level_families(
     return generate_families(table, catalogue, selection)
 
 
+def _loop_catalogue(compiled, prepared, data, request) -> ModelLoopCatalogue:
+    """The loop vertex catalogue of a request (``LoopSlice.generate``): the
+    prepared structure's vertices and perturbative species, without the
+    vetoed particles and without the vertices whose couplings vanish
+    identically at the model's restriction (fail-closed-2;
+    ``ct_sites.vanishing_loop_vertices``)."""
+
+    return ModelLoopCatalogue(
+        data,
+        species_orders=prepared.structure.perturbative_species_orders,
+        veto=request.particle_veto,
+        vanishing=vanishing_loop_vertices(
+            compiled,
+            prepared.model.kernels,
+            (rule["name"] for rule in data["vertex_rules"]),
+        ),
+    )
+
+
+class ReachableLoopOrders(NamedTuple):
+    """The exact coupling orders a loop-induced request's one-loop
+    recursion reaches (``reachable_loop_orders``), both reachable (Q4 (a)).
+
+    ``amplitude``: the orders of the closed routings of an admitted or
+    certified-scaleless family. ``colour_zero``: the other orders, each
+    reached only by routings the selection convention drops for a single
+    coloured attachment (``families.selection_rejection``,
+    ``COLOUR_ZERO_REJECTION``): such a loop's colour factor is the trace of
+    one generator (an invariant tensor with one index of a nontrivial
+    irreducible representation), which vanishes exactly in any model, so
+    the amplitude at these orders is an exact colour zero (m-lit PLAN §1.2,
+    RULED Q13: the one exact-zero mechanism; ``h > g a``, ``z > g a``)."""
+
+    amplitude: frozenset[Orders]
+    colour_zero: frozenset[Orders]
+
+    @property
+    def orders(self) -> frozenset[Orders]:
+        return self.amplitude | self.colour_zero
+
+
+# The selection-convention reason of an exact colour zero (Tr T^a = 0).
+COLOUR_ZERO_REJECTION = "single-coloured-attachment"
+
+
+def reachable_loop_orders(
+    compiled: Any,
+    request: SliceRequest,
+    bounds: Mapping[str, int],
+    *,
+    model: RequestModel | None = None,
+    native: Any = None,
+) -> ReachableLoopOrders:
+    """The exact coupling orders of every one-loop amplitude of ``request``'s
+    process that the field-level loop family recursion (design §3.2 item 1,
+    ``_field_level_families``) reaches for its corrections (MadLoop's joint
+    selection, ``LoopEligibility``) within ``bounds`` (m-lit LIT-REQ, Q4
+    (a)), split into the orders with a loop amplitude and the exact colour
+    zeros (``ReachableLoopOrders``). The other rejections of the selection
+    convention (external wave-function corrections, VEV tadpoles) are no
+    loop amplitude. Nothing numerical decides it.
+
+    An order ``bounds`` does not name is bounded by the data: cutting the
+    loop line leaves a tree of n + 2 legs, so its power is at most that of
+    such a tree (``_tree_order_bounds``); the targets are every order of
+    that box (its size is the product of bound + 1 over the orders with a
+    nonzero bound: small for the SM's two; a many-order model would want
+    the recursion's selection in box form, ``LoopOrderSelection`` with its
+    cap alone, a change of the recursion and its native twin). The
+    recursion logs a rejected family without its orders, and
+    an admitted routing of a family drops the family's log, so the colour
+    zeros are found by recursions on the targets without an amplitude
+    order, halved while a group logs a single coloured attachment (one
+    extra run when it logs none, about 2 k log2 T for k colour-zero orders
+    among T targets). A family whose first logged routing at an order has
+    another reason hides a colour-zero routing of that family there
+    (conservative: the order is then not reached). ``model`` is the
+    request's ``prepare_request_model`` (prepared here when None);
+    ``native`` the loop core for the native recursion
+    (``generator_input.NativeGeneration``), None for the Python recursion
+    (its oracle). The request's own loop orders are not read."""
+
+    from pyamplicol.processes.model import build_model_process_ir
+
+    request = resolve_request(compiled, request)
+    if model is None:
+        model = prepare_request_model(compiled, request)
+    data = json.loads(model.prepared.structure.native.to_json())
+    process = build_model_process_ir(
+        request.process, compiled.ir, color_accuracy="full"
+    )
+    names = sorted(
+        {str(name) for entry in data["couplings"] for name, _power in entry["orders"]}
+        | {str(name) for name in bounds}
+    )
+    derived = _tree_order_bounds(data, len(process.legs) + 2, names)
+    box = {
+        name: min(int(bounds.get(name, derived.get(name, 0))), derived.get(name, 0))
+        for name in names
+    }
+    targets = frozenset(
+        add_orders(tuple(zip(names, powers, strict=True)))
+        for powers in product(*(range(box[name] + 1) for name in names))
+        if any(powers)
+    )
+    if not targets or not request.corrections:
+        return ReachableLoopOrders(frozenset(), frozenset())
+    corrections = frozenset(request.corrections)
+    catalogue = _loop_catalogue(compiled, model.prepared, data, request)
+
+    def recursion(orders: Iterable[Orders]) -> FamilySet:
+        return _field_level_families(
+            data,
+            process,
+            catalogue,
+            LoopOrderSelection(corrections, frozenset(orders)),
+            request,
+            native,
+        )
+
+    def reached(families: FamilySet) -> set[Orders]:
+        return {
+            add_orders(*(position.orders for position in families.routing(closure)[1]))
+            for group in (families.families, families.scaleless_families)
+            for family in group.values()
+            for closure in family.closures
+        }
+
+    found = recursion(targets)
+    amplitude = reached(found)
+    colour_zero: set[Orders] = set()
+    rest = tuple(sorted(targets - amplitude))
+    groups: list[tuple[tuple[Orders, ...], FamilySet | None]] = [
+        (rest, None if amplitude else found)
+    ]
+    while groups:
+        group, families = groups.pop()
+        if not group:
+            continue
+        if families is None:
+            families = recursion(group)
+        # A group holds no amplitude order, so it admits no routing.
+        amplitude |= reached(families)
+        if not any(
+            entry.reason == COLOUR_ZERO_REJECTION for entry in families.rejected
+        ):
+            continue
+        if len(group) == 1:
+            colour_zero.update(group)
+            continue
+        half = len(group) // 2
+        groups.extend(((group[half:], None), (group[:half], None)))
+    return ReachableLoopOrders(frozenset(amplitude), frozenset(colour_zero - amplitude))
+
+
 def _born_block_requests(
     table: ModelBlockTable, data, born_orders: Mapping[str, int]
 ) -> frozenset[BlockCurrent]:
@@ -1489,12 +1646,28 @@ class PointResult:
 # --------------------------------------------------------------------- slice
 
 
+# The contributions a slice request serves (m-lit PLAN §1.2, §2.a.10): the
+# Born x virtual interference 2 Re(conj(A0) A1) ("virtual"), or the
+# loop-squared matrix element |A_loop|^2 of a process without a Born
+# amplitude within its coupling-order limits ("loop-induced").
+Contribution = Literal["virtual", "loop-induced"]
+CONTRIBUTIONS: tuple[str, ...] = ("virtual", "loop-induced")
+
+
 @dataclass(frozen=True)
 class SliceRequest:
     """A loop request of the slice: a process, the bounds of its Born coupling
     orders and the exact coupling orders of its loop amplitude, or a sequence
     of several (mixed squared-order sectors, e.g. QCD corrections to QCD and
-    electroweak Born currents)."""
+    electroweak Born currents).
+
+    ``contribution`` = "loop-induced" (m-lit LIT-REQ): the process has no
+    Born amplitude within ``born_orders`` (then the coupling-order limits
+    within which none exists) and the request serves |A_loop|^2 at the exact
+    loop orders ``loop_orders`` (``loop_service.loop_induced_orders``),
+    squared orders l + l' (loop x loop sectors), full colour only (Q8 (a)).
+    Its generation is refused (``loop-induced-engine-pending``) until the
+    amplitude-mode engine lands."""
 
     process: str
     born_orders: Mapping[str, int]
@@ -1566,8 +1739,24 @@ class SliceRequest:
     # take neither a rescaling nor a conversion. Recorded only when set.
     alpha0_conversion: str = ew_policy.ALPHA0_CONVERSION
     alpha0_inverse: str | None = None
+    # The contribution served (``Contribution``): the request record names
+    # it only for a loop-induced request (``artifact.OPTIONAL_REQUEST_DEFAULTS``),
+    # so Born-interfered records keep their bytes.
+    contribution: Contribution = "virtual"
 
     def __post_init__(self) -> None:
+        if self.contribution not in CONTRIBUTIONS:
+            raise ValueError(
+                f"unknown contribution {self.contribution!r}; expected one of "
+                f"{list(CONTRIBUTIONS)}"
+            )
+        if self.contribution == "loop-induced" and self.accuracy != "full":
+            # Full colour only for loop-induced processes (m-lit Q8 (a)).
+            raise LoopRequestUnsupportedValue(
+                "loop-induced-colour-accuracy",
+                f"{self.process!r} is loop-induced and requests "
+                f"accuracy={self.accuracy!r}",
+            )
         if self.selection is not None and self.accuracy != "lc":
             raise ValueError(
                 "helicity and colour-flow selection is a leading-colour option "
@@ -2053,6 +2242,17 @@ class LoopSlice:
             raise ValueError(f"unknown colour accuracy {request.accuracy!r}")
         if request.counterterms not in ("recursion", "sites"):
             raise ValueError(f"unknown counterterm form {request.counterterms!r}")
+        if request.contribution == "loop-induced":
+            # m-lit LIT-REQ: routed and dry-run, not generated until the
+            # amplitude-mode engine lands (never a silent zero). LIT-AMP lifts
+            # this guard (it keeps ``with_ward_kernels`` on the loop-induced
+            # path: a coloured widthful tree propagator takes the full Ward
+            # kernels, Q7).
+            raise LoopRequestUnsupported(
+                "loop-induced-engine-pending",
+                f"{request.process!r} (loop orders "
+                f"{[dict(orders) for orders in request.exact_loop_orders]})",
+            )
         request = resolve_request(compiled, request)
         prepared, continuation, fixed, scale_parameter, alpha_s_parameter = (
             prepare_request_model(compiled, request)
@@ -2118,16 +2318,7 @@ class LoopSlice:
         # (fail-closed-2; decided from the coupling values,
         # ``ct_sites.restricted_to_zero``, the counterterm root closure's
         # rule too).
-        loop_catalogue = ModelLoopCatalogue(
-            data,
-            species_orders=structure.perturbative_species_orders,
-            veto=request.particle_veto,
-            vanishing=vanishing_loop_vertices(
-                compiled,
-                prepared.model.kernels,
-                (rule["name"] for rule in data["vertex_rules"]),
-            ),
-        )
+        loop_catalogue = _loop_catalogue(compiled, prepared, data, request)
         native_families = "families" in generator_input.NATIVE_STAGES
         model = compiled
 

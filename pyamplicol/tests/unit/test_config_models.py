@@ -43,7 +43,15 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 124
+    assert len(FIELD_REGISTRY) == 125
+    # m-lit LIT-REQ: loop-induced routing (Q2 (b)).
+    assert FIELD_REGISTRY["process.loop_induced"].default == "auto"
+    assert FIELD_REGISTRY["process.loop_induced"].choices == (
+        "auto",
+        "skip",
+        "only",
+        "include",
+    )
     # Tuning settings (no capability bound): defaults of the former literals.
     assert FIELD_REGISTRY["color.adjoint_dense_max_gluons"].default == 12
     assert FIELD_REGISTRY["color.fused_selector_max_sectors"].default == 128

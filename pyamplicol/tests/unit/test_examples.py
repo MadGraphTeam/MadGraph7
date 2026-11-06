@@ -82,6 +82,7 @@ def _documented_payload(text: str) -> dict[str, object]:
 _VIRTUAL_ONLY_LEAVES = frozenset(
     {
         "process.loop_coupling_orders",
+        "process.loop_induced",
         "evaluation.arithmetic",
         "evaluation.correlated_requests",
         "evaluation.mu_r2",

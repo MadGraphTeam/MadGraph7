@@ -493,10 +493,12 @@ def _blocker(model, expression, tmp_path, *, restriction=None, fixed=None):
 @pytest.mark.parametrize(
     "key,expression,restriction,fixed",
     [
-        ("loop-induced", "g g > h h", None, None),
+        # Loop-induced processes are routed loop-induced (m-lit LIT-REQ,
+        # ``test_loop_v2_induced_request.py``); their generation is pending.
+        ("loop-induced-engine-pending", "g g > h h", None, None),
         # A loop-induced decay (M-FINAL MF-DEC-2: one-loop decays with a
         # Born are served).
-        ("loop-induced", "h > g g", None, None),
+        ("loop-induced-engine-pending", "h > g g", None, None),
         ("coloured-width", "g g > t t~", None, {"WZ": "0"}),
     ],
 )

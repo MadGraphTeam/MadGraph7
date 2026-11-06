@@ -451,7 +451,7 @@ rounding). Decay chains (`t > b w+, w+ > e+ ve`), `$` and `@N` are refused
 same averaging, the decaying particle at its real mass with zero own width
 and MadLoop's conventions for it (amputated loops, its field renormalisation
 real on-shell from the model's counterterms); a loop-induced decay
-(`h > g g`) is `loop-induced`. The built-in Standard Model serves tree-level
+(`h > g g`) is routed loop-induced (`process.loop_induced`). The built-in Standard Model serves tree-level
 decays too (`z > e+ e-`, `w+ > e+ ve`).
 
 ## Multiparticles
