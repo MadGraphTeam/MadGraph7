@@ -2145,7 +2145,7 @@
       "correction": "QCD",
       "scheme": "qcd-nf5",
       "madloop": {"process": "g g > a a / t [sqrvirt=QCD]"},
-      "recola": {"process": "g g -> A A", "switchoff": [["A", "t", "t~"]]},
+      "recola": {"process": "g g -> A A", "unavailable": "Recola cannot remove the top loop: switchoff_coupling3_rcl(A, t, t~) removes the tree vertex only, the top R2 vertices stay (2e-2 here, measured)"},
       "openloops": {"process": "21 21 -> 22 22", "library": "ppvv2"},
       "points": {"tool": "exact_points.py"},
       "analytic": ["gg_aa_massless"],
@@ -2206,7 +2206,7 @@
       "recola": {"process": "g g -> H H"},
       "openloops": {"process": "21 21 -> 25 25", "library": "pphh2"},
       "points": {"tool": "exact_points.py", "scale_window": ["300", "1500"]},
-      "analytic": ["gg_hh_let"],
+      "analytic_limit": ["gg_hh_let"],
       "note": "the gg_hh_let oracle is the m_t -> infinity limit (LI-A7), compared only in an m_t extrapolation"
     },
     {
