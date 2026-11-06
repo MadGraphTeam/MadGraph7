@@ -42,20 +42,94 @@ are contracted at N_c = 3). No colour declaration enters it, so the
 renormalised virtual's poles at N against it test the counterterms' UV N_c
 dependence. At N_c = 1, where C_F vanishes, and with ``"catani": false`` the
 operator is not patched and ``ir_poles`` is null.
+
+The scan processes of one test process run at most ``concurrent_processes()``
+at once, all its scans together (``run_bounded``).
 """
 
 from __future__ import annotations
 
 import json
 import os
+import resource
 import subprocess
 import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from fractions import Fraction
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+PROCESSES_VARIABLE = "PYAMPLICOL_TEST_SUBPROCESSES"
+
+
+def _usable_cpus() -> int:
+    try:
+        return max(1, len(os.sched_getaffinity(0)))
+    except (AttributeError, OSError):
+        return max(1, os.cpu_count() or 1)
+
+
+def _available_memory() -> int | None:
+    """``MemAvailable`` in bytes (Linux), else None."""
+
+    try:
+        with open("/proc/meminfo", encoding="ascii") as meminfo:
+            for line in meminfo:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) * 1024
+    except OSError:
+        return None
+    return None
+
+
+def concurrent_processes() -> int:
+    """How many scan processes this test process runs at once.
+
+    ``PYAMPLICOL_TEST_SUBPROCESSES`` (a positive integer) when set. Otherwise
+    one per CPU this process may run on, a scan process being CPU-bound (more
+    only add memory, one generation each: 13 at once, one per N, held 16 GiB
+    of a 4-core 16 GB CI runner and its runner died), and no more than the
+    available memory (Linux ``MemAvailable``) holds at this test process's
+    peak resident size each. Rule 7 generates the request before its scan
+    regenerates it at other N, so there the estimate errs high (A12: a
+    2.2 GiB test process, 1.2 GiB per scan process)."""
+
+    configured = os.environ.get(PROCESSES_VARIABLE, "").strip()
+    if configured:
+        try:
+            count = int(configured)
+        except ValueError:
+            count = 0
+        if count < 1:
+            raise ValueError(
+                f"{PROCESSES_VARIABLE}={configured!r}: expected a positive integer"
+            )
+        return count
+    bound = _usable_cpus()
+    available = _available_memory()
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
+    if available is not None and peak > 0:
+        bound = min(bound, max(1, available // peak))
+    return bound
+
+
+_SLOTS: threading.BoundedSemaphore | None = None
+_SLOTS_LOCK = threading.Lock()
+
+
+def run_bounded(command, **options) -> subprocess.CompletedProcess:
+    """``subprocess.run(command, **options)`` once fewer than
+    ``concurrent_processes()`` (fixed at this test process's first scan) of
+    its scan processes run."""
+
+    global _SLOTS
+    with _SLOTS_LOCK:
+        if _SLOTS is None:
+            _SLOTS = threading.BoundedSemaphore(concurrent_processes())
+    with _SLOTS:
+        return subprocess.run(command, **options)
 
 
 def exact_point(masses) -> list[list[str]]:
@@ -93,15 +167,15 @@ def request_spec(
 
 def scan(model, spec, values, precision, cache) -> dict[str, dict]:
     """The ``request`` entry of ``spec`` at each N of ``values`` (one process
-    each, concurrently, each with its own ``PYAMPLICOL_CACHE_DIR`` under
-    ``cache``): N -> its JSON."""
+    each, concurrently within ``run_bounded``'s bound, each with its own
+    ``PYAMPLICOL_CACHE_DIR`` under ``cache``): N -> its JSON."""
 
     def run(n):
         environment = dict(
             os.environ,
             PYAMPLICOL_CACHE_DIR=str(cache / f"nc-{n.replace('/', '_')}"),
         )
-        process = subprocess.run(
+        process = run_bounded(
             [
                 sys.executable,
                 "-m",

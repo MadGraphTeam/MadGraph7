@@ -4,15 +4,20 @@
 The release natives built by ``tools/developer/build_loop_native.py`` need
 ``GLIBC_2.38`` at most and no glibc ABI marker (the build compiles its C
 dependencies with the traditional TLS dialect, so no ``GLIBC_ABI_GNU2_TLS``).
-A toolchain change that moves that floor fails
-``test_staged_natives_stay_within_the_documented_glibc_floor`` (the measured
-requirement is pinned exactly, so the documented floor follows it) instead of
-users. Before ``pyamplicol._rusticol`` is loaded, every glibc version it needs
-is looked up in the version definitions of the glibc libraries this process
-has loaded; a missing one raises ``NativePlatformError``, and the dynamic
+The documented floor is what a build with the repository's toolchain needs
+(GCC 15 compiles the C dependencies as C23, whose ``strtol`` binds
+``__isoc23_strtol@GLIBC_2.38``); a staged native from any other build host
+may need less (Ubuntu 24.04's GCC 13: ``GLIBC_2.35``) but never more. A
+toolchain change that raises the requirement above the floor, or adds an ABI
+marker, fails ``test_staged_natives_stay_within_the_documented_glibc_floor``
+on any build host instead of users; each build records its measured
+requirement in its ``build-info.json`` (``glibc_version_needs``). Before
+``pyamplicol._rusticol`` is loaded, every glibc version it needs is looked up
+in the version definitions of the glibc libraries this process has loaded; a
+missing one raises ``NativePlatformError``, and the dynamic
 loader's own missing-version error becomes the same error. Libraries and
 "older" C libraries with chosen versions are linked here against stub shared
-objects (any C toolchain, whatever its glibc), so only the floor pin and the
+objects (any C toolchain, whatever its glibc), so only the floor check and the
 readelf cross-check depend on the staged native. The build script's pin of the
 C dependencies' TLS dialect is checked against a gnu2-default compiler wrapper.
 """
@@ -66,7 +71,7 @@ def _staged_build() -> Path:
     return build
 
 
-def _assert_documented_floor(path: Path) -> None:
+def _assert_within_documented_floor(path: Path) -> None:
     names = native_loader.glibc_version_requirements(path)
     assert names, f"{path} declares no glibc version requirement"
     markers = [name for name in names if native_loader.numbered_release(name) is None]
@@ -78,8 +83,8 @@ def _assert_documented_floor(path: Path) -> None:
     )
     newest = max(names, key=lambda name: native_loader.numbered_release(name) or ())
     release = native_loader.numbered_release(newest)
-    assert release == DOCUMENTED_FLOOR, (
-        f"{path} needs {newest} at most, not the documented floor GLIBC_2.38: "
+    assert release <= DOCUMENTED_FLOOR, (
+        f"{path} needs {newest}, above the documented floor GLIBC_2.38: "
         "update DOCUMENTED_FLOOR, docs/user/installation.md, the SDK README and "
         "headers, and DESIGN §12.1"
     )
@@ -235,7 +240,7 @@ def _readelf_requirements(path: Path) -> tuple[str, ...]:
 def test_staged_natives_stay_within_the_documented_glibc_floor() -> None:
     build = _staged_build()
     for name in NATIVES:
-        _assert_documented_floor(build / name)
+        _assert_within_documented_floor(build / name)
 
 
 def test_elf_requirements_match_readelf(stubs) -> None:
@@ -253,13 +258,20 @@ def test_elf_requirements_match_readelf(stubs) -> None:
         assert sorted(requirements or ()) == list(_readelf_requirements(path))
 
 
-def test_the_floor_pin_fails_on_a_changed_requirement_or_an_abi_marker(stubs) -> None:
-    _assert_documented_floor(stubs.library("GLIBC_2.2.5", "GLIBC_2.38"))
-    for changed in ("GLIBC_2.39", "GLIBC_2.37"):
-        with pytest.raises(AssertionError, match=rf"needs {changed} at most, not"):
-            _assert_documented_floor(stubs.library("GLIBC_2.2.5", changed))
-    with pytest.raises(AssertionError, match=r"needs \['GLIBC_ABI_GNU2_TLS'\]"):
-        _assert_documented_floor(stubs.library("GLIBC_2.2.5", "GLIBC_ABI_GNU2_TLS"))
+def test_the_floor_check_fails_above_the_floor_or_on_an_abi_marker(stubs) -> None:
+    """A build host's lower requirement passes (Ubuntu 24.04: ``GLIBC_2.35``);
+    one above the floor and any ABI marker fail, at or below the floor too."""
+
+    for within in ("GLIBC_2.38", "GLIBC_2.37", "GLIBC_2.35"):
+        _assert_within_documented_floor(stubs.library("GLIBC_2.2.5", within))
+    for above in ("GLIBC_2.39", "GLIBC_3.0"):
+        with pytest.raises(AssertionError, match=rf"needs {above}, above the"):
+            _assert_within_documented_floor(stubs.library("GLIBC_2.2.5", above))
+    for numbered in ("GLIBC_2.2.5", "GLIBC_2.35"):
+        with pytest.raises(AssertionError, match=r"needs \['GLIBC_ABI_GNU2_TLS'\]"):
+            _assert_within_documented_floor(
+                stubs.library(numbered, "GLIBC_ABI_GNU2_TLS")
+            )
 
 
 def test_a_version_the_running_glibc_lacks_is_refused_before_loading(stubs) -> None:

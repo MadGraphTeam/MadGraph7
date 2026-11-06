@@ -7,6 +7,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import struct
 import subprocess
 import sys
@@ -858,6 +859,7 @@ def test_low_limit_terminates_child_process_tree(tmp_path: Path) -> None:
     child.write_text(
         """
 import os
+import re
 import signal
 import sys
 import time
@@ -963,10 +965,26 @@ def test_tests_workflow_guards_every_heavy_validation_phase() -> None:
     assert "psutil" not in workflow
     guarded = "tools/ci/memory_watchdog.py --limit-gib 30 --"
     # The installer stages the native runtime within its guarded invocation.
-    # Restricted-mode and ordinary integration checks use separate invocations;
-    # the licensed loop jobs guard their build, test and tir invocations (the
-    # tir tests: the workspace, then the Python-producer tests in a loop).
-    assert workflow.count(guarded) == 14
+    # Restricted-mode and ordinary integration checks use separate invocations.
+    assert workflow.count(guarded) == 8
+    # The licensed loop jobs guard their build, test and tir invocations (the
+    # tir tests: the workspace, then the Python-producer tests in a loop) at
+    # what their 16 GB runner holds, in each job after the licence gate.
+    loop_guarded = "tools/ci/memory_watchdog.py --limit-gib 12 --"
+    assert workflow.count(loop_guarded) == 6
+    head, gate, loop_jobs = workflow.partition("\n  licence:\n")
+    assert gate and loop_guarded not in head and guarded not in loop_jobs
+    jobs = dict(
+        block.split(":\n", 1)
+        for block in re.split(r"\n  (?=[a-z][a-z0-9-]*:\n)", loop_jobs)[1:]
+    )
+    assert {name: body.count(loop_guarded) for name, body in jobs.items()} == {
+        "loop-runtime": 1,
+        "loop-shard": 1,
+        "loop": 0,
+        "loop-induced": 1,
+        "tir": 3,
+    }
     for heavy_command in (
         "dependencies/install_dependencies.py",
         "tests/unit/test_generation_execution_schema.py",
