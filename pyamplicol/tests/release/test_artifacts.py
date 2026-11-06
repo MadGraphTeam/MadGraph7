@@ -66,6 +66,16 @@ _LEGAL_FILES = (
     "licenses/NinjaRS.txt",
     "licenses/oneloopmaster.txt",
     "licenses/GammaLoop-crates.txt",
+    # GMP, MPFR and MPC: LGPL-3.0-or-later and the GPL-3.0 text it incorporates,
+    # from the gmp-mpfr-sys release Cargo.lock pins.
+    *(
+        f"licenses/rust/gmp-mpfr-sys-{package['version']}/LICENSE-{kind}.md"
+        for package in tomllib.loads(
+            (ROOT / "Cargo.lock").read_text(encoding="utf-8")
+        )["package"]
+        if package["name"] == "gmp-mpfr-sys"
+        for kind in ("LGPL", "GPL")
+    ),
 )
 _COMPILED_MODEL_KIND = "pyamplicol-compiled-model"
 _BUILTIN_MODEL_SOURCE_KIND = "built-in-sm"
@@ -2278,6 +2288,7 @@ def test_sdist_rejects_mismatched_symjit_cargo_source(tmp_path: Path) -> None:
     "missing_member",
     [
         "build_backend/_pyamplicol_build.py",
+        "build_backend/arithmetic.py",
         "build_backend/sdk.py",
         "docs/user/installation.md",
         "examples/data/pp_zjj_momenta.json",

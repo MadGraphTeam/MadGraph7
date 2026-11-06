@@ -29,6 +29,9 @@ class SdkInfo:
     rust_source: Path
     system_libraries: tuple[str, ...]
     frameworks: tuple[str, ...]
+    # Shared libraries shipped next to the archive (a distribution wheel's
+    # GMP, MPFR and MPC), in link order; linked by path with a run path.
+    shared_libraries: tuple[Path, ...] = ()
 
     @property
     def cflags(self) -> tuple[str, ...]:
@@ -36,11 +39,18 @@ class SdkInfo:
 
     @property
     def link_flags(self) -> tuple[str, ...]:
+        shared = tuple(str(path) for path in self.shared_libraries)
+        run_paths = tuple(
+            f"-Wl,-rpath,{directory}"
+            for directory in dict.fromkeys(
+                path.parent for path in self.shared_libraries
+            )
+        )
         libraries = tuple(f"-l{name}" for name in self.system_libraries)
         frameworks = tuple(
             token for name in self.frameworks for token in ("-framework", name)
         )
-        return (str(self.library), *libraries, *frameworks)
+        return (str(self.library), *shared, *run_paths, *libraries, *frameworks)
 
     @property
     def rust_flags(self) -> tuple[str, ...]:
@@ -60,6 +70,7 @@ class SdkInfo:
         payload["library"] = str(self.library)
         payload["fortran_source"] = str(self.fortran_source)
         payload["rust_source"] = str(self.rust_source)
+        payload["shared_libraries"] = [str(path) for path in self.shared_libraries]
         payload["cflags"] = list(self.cflags)
         payload["link_flags"] = list(self.link_flags)
         payload["rust_flags"] = list(self.rust_flags)
@@ -144,6 +155,10 @@ def load_sdk_info() -> SdkInfo:
         ),
         system_libraries=tuple(map(str, link.get("system_libraries", []))),
         frameworks=tuple(map(str, link.get("frameworks", []))),
+        shared_libraries=tuple(
+            _confined(root, str(relative))
+            for relative in link.get("shared_libraries", [])
+        ),
     )
 
 

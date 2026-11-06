@@ -14,6 +14,7 @@ from _artifacts import audit_sdist, audit_wheel
 from _common import (
     CANDIDATE_ARTIFACTS,
     DIST,
+    DISTRIBUTION_WHEEL_SETTINGS,
     ROOT,
     ReleaseError,
     build_mode,
@@ -56,7 +57,7 @@ def _build(
 ) -> None:
     command: list[str | Path] = [python, "-m", "build"]
     if wheel:
-        command.append("--wheel")
+        command.extend(("--wheel", *DISTRIBUTION_WHEEL_SETTINGS))
     if sdist:
         command.append("--sdist")
     command.extend(("--outdir", destination))
