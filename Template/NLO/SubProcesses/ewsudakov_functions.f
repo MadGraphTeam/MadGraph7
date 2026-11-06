@@ -1279,8 +1279,16 @@ C goldstones, they behave like left handed leptons (charged); neutrals mix
       Integer sud_mod
       COMMON /to_sud_mod/ sud_mod
 
+      logical FAV4
+      COMMON /to_FAV4/ FAV4
+
       if (sud_mod.eq.0.or.sud_mod.eq.2) then
         sdk_ia_diag = -sdk_charge(pdg,hel,ifsign)
+c the charge of a charged Goldstone boson carries a factor i without
+c FAV4, which sdk_chargesq and sdk_iz_diag remove as well. The photon
+c coupling is that of the W boson.
+        if (.not.FAV4.and.abs(pdg).eq.251)
+     $    sdk_ia_diag = sdk_ia_diag / DCMPLX(0d0,1d0)
         return
       elseif (sud_mod.eq.1) then
         sdk_ia_diag = 0
@@ -1964,7 +1972,7 @@ c      double complex smallL_rij_over_s, bigL_rij_over_s
            endif
         enddo
 
-        get_qcd_lo2 = CMPLX(logfromLOip1,0d0)
+        get_qcd_lo2 = DCMPLX(logfromLOip1,0d0)
 
       elseif (sud_mod.eq.1.or.sud_mod.eq.0) then
 
@@ -1983,7 +1991,7 @@ c      double complex smallL_rij_over_s, bigL_rij_over_s
            endif
         enddo
 
-        get_qcd_lo2 = CMPLX(logfromLOip1,0d0)
+        get_qcd_lo2 = DCMPLX(logfromLOip1,0d0)
 
 c      elseif (sud_mod.eq.0) then  
 c      TOBE modified 
