@@ -1242,34 +1242,57 @@ class ProbeResult:
         return self.worst <= ESTIMATE_FACTOR
 
 
-def _probe_evaluation(
-    executor, point, scale, parameters, precision, ward, frame, term_scale=False
-):
-    """One point on ``executor`` with the reduction re-test in ``frame``
-    (None: none, a rotation check's run), the raw lanes (``rotation_errors``
-    sums its deviations over them) and, with ``term_scale``, the term scale:
-    (the carrier's precision, the evaluation)."""
+def _probe_runs(executor, runs, scale, parameters, precision, frame, term_scale=False):
+    """One native batch of probe runs, (point, Ward value or None) each, at
+    one scale, with the reduction re-test in ``frame`` (None: none), the raw
+    lanes (``rotation_errors`` sums its deviations over them) and, with
+    ``term_scale``, the term scale: (the carrier's precision, the
+    evaluations). The points of a batch run concurrently."""
 
+    wards = [ward for _point, ward in runs]
     executor.term_scale = term_scale
     raw, executor.raw_lanes = executor.raw_lanes, True
     try:
         precision, evaluations, failures = executor._evaluated(
-            [point],
-            [scale],
+            [point for point, _ward in runs],
+            [scale] * len(runs),
             dict(parameters or {}),
             precision,
             "all",
             frame,
             "B",
-            None if ward is None else [ward],
+            None if all(ward is None for ward in wards) else wards,
         )
     finally:
         executor.term_scale = False
         executor.raw_lanes = raw
     if failures:
-        raise ArithmeticError(f"the probe point failed: {failures[0]}")
-    (evaluation,) = evaluations
-    return precision, evaluation
+        index = min(failures)
+        raise ArithmeticError(f"the probe point failed: {failures[index]}")
+    return precision, evaluations
+
+
+def physical_floors(
+    executor: Any,
+    point: Sequence[Sequence[Any]],
+    scale: Any,
+    parameters: Mapping[str, str] | None = None,
+) -> dict:
+    """The row term floors (``row_scales``) of the physical amplitude at a
+    point, from a binary64 run with the term scale: a scale is a magnitude,
+    which binary64 gives far better than the x10 rule needs, while the term
+    scale's unit-numerator reductions (C(R + 4, 4) per family) cost 51 s in
+    double-double against 3 s in binary64 on g g > z z g. Where the
+    numerators cancel term by term (a Furry zero) the floor is rounding in
+    either carrier; the rotation budget carries those probes
+    (``rotation_errors``)."""
+
+    from .assemble import Precision
+
+    _carrier, (evaluation,) = _probe_runs(
+        executor, [(point, None)], scale, parameters, Precision.double(), None, True
+    )
+    return row_scales(evaluation)
 
 
 def ward_floors(physical: Mapping, leg: int) -> dict:
@@ -1324,71 +1347,112 @@ def probe(
       m-lit Q7). The residue is measured against the PHYSICAL amplitude's
       term floor (``ward_floors``; ``physical``: the row floors of the
       physical evaluation at the same point, ``ProbeResult.scales`` of its
-      finiteness probe, evaluated here when not given), as ``ward.py``'s
+      finiteness probe, ``physical_floors`` when not given), as ``ward.py``'s
       criterion measures against the physical evaluation: the substituted
       amplitude's own floor can be at rounding (the numerators of g g > h
       vanish term by term), which would make its estimate meaningless.
 
     ``checks`` (``stability.StabilityChecks``; default the calibrated
     ``RECOMMENDED_CHECKS``: the rescaled reduction re-test and one generic
-    rotation) are the estimate's checks: the re-test runs with the term
-    scale, each rotation re-evaluates the rotated point (a Ward value
+    rotation) are the estimate's checks: the re-test runs at the probe's
+    precision, each rotation re-evaluates the rotated point (a Ward value
     rotates with it, ``ward.rotated_ward``) and enters by
     ``rotation_errors``, which also covers residues that are rounding of a
     cancellation inside the family numerators (a Furry zero), where the
     term floor is at rounding itself."""
 
+    (result,) = probes(
+        executor,
+        point,
+        scale,
+        [ward],
+        parameters=parameters,
+        precision=precision,
+        checks=checks,
+        physical=physical,
+    )
+    return result
+
+
+def probes(
+    executor: Any,
+    point: Sequence[Sequence[Any]],
+    scale: Any,
+    wards: Sequence[Any],
+    *,
+    parameters: Mapping[str, str] | None = None,
+    precision: Any = None,
+    checks: Any = None,
+    physical: Mapping | None = None,
+) -> list[ProbeResult]:
+    """``probe`` for every Ward value of ``wards`` (None: the finiteness
+    probe) at one point: the probes' runs in one native batch with the
+    re-test, their rotated runs in another without it."""
+
     from .assemble import Precision, _fraction
     from .stability import RECOMMENDED_CHECKS
+    from .ward import rotated_ward, ward_leg
 
     precision = precision or Precision.double_double()
     checks = RECOMMENDED_CHECKS if checks is None else checks
     frame = checks.frame
     if frame is None:
-        raise ValueError("a probe needs the reduction re-test (its term scale)")
-    # The term floor is the physical amplitude's: a Ward run reads the
-    # physical run's (``physical``) and forms no term scale of its own.
-    carrier, evaluation = _probe_evaluation(
-        executor, point, scale, parameters, precision, ward, frame, ward is None
+        raise ValueError("a probe needs the reduction re-test")
+    exact = tuple(tuple(_fraction(x) for x in p) for p in point)
+    moved = [rotation.apply(exact) for rotation in checks.rotations]
+    # Two batches: the probes' runs with the re-test, their rotated runs
+    # without it (a rotation compares values, ``rotation_errors``).
+    carrier, evaluations = _probe_runs(
+        executor, [(point, ward) for ward in wards], scale, parameters, precision, frame
     )
-    turned = []
-    for rotation in checks.rotations:
-        moved = rotation.apply(tuple(tuple(_fraction(x) for x in p) for p in point))
-        if ward is None:
-            rotated_ward = None
-        else:
-            from .ward import rotated_ward as rotate
-
-            rotated_ward = rotate(rotation, ward)
-        _carrier, run = _probe_evaluation(
-            executor, moved, scale, parameters, precision, rotated_ward, None
+    rotated = []
+    if moved:
+        _carrier, rotated = _probe_runs(
+            executor,
+            [
+                (turned, None if ward is None else rotated_ward(rotation, ward))
+                for ward in wards
+                for rotation, turned in zip(checks.rotations, moved, strict=True)
+            ],
+            scale,
+            parameters,
+            precision,
+            None,
         )
-        turned.append(rotation_errors(evaluation, run))
-    if ward is None:
-        scales = row_scales(evaluation)
-        floors = scales
-    else:
-        from .ward import ward_leg
-
-        if physical is None:
-            _carrier, reference = _probe_evaluation(
-                executor, point, scale, parameters, precision, None, frame, True
+    # The term floor is the physical amplitude's, a magnitude: formed once in
+    # binary64 (``physical_floors``; in double-double the term scale's unit
+    # reductions would dominate the probe's cost) and shared by the Ward
+    # probes of the point (``physical``).
+    if physical is None:
+        physical = physical_floors(executor, point, scale, parameters)
+    stride = len(moved)
+    out = []
+    for index, ward in enumerate(wards):
+        evaluation = evaluations[index]
+        turned = [
+            rotation_errors(evaluation, run)
+            for run in rotated[index * stride : (index + 1) * stride]
+        ]
+        floors = physical if ward is None else ward_floors(physical, ward_leg(ward))
+        estimates = amplitude_estimates(
+            evaluation, carrier.unit_roundoff, floors, turned
+        )
+        first = 0 if ward is not None else 1
+        ratios = {}
+        for key, entries in estimates.items():
+            ratio = 0.0
+            for residue, estimate in entries[first:]:
+                if residue:
+                    ratio = max(ratio, residue / estimate if estimate else float("inf"))
+            ratios[key] = ratio
+        out.append(
+            ProbeResult(
+                "ward" if ward is not None else "finiteness",
+                ratios,
+                MappingProxyType(physical),
             )
-            physical = row_scales(reference)
-        scales = physical
-        floors = ward_floors(physical, ward_leg(ward))
-    estimates = amplitude_estimates(evaluation, carrier.unit_roundoff, floors, turned)
-    first = 0 if ward is not None else 1
-    ratios = {}
-    for key, entries in estimates.items():
-        ratio = 0.0
-        for residue, estimate in entries[first:]:
-            if residue:
-                ratio = max(ratio, residue / estimate if estimate else float("inf"))
-        ratios[key] = ratio
-    return ProbeResult(
-        "ward" if ward is not None else "finiteness", ratios, MappingProxyType(scales)
-    )
+        )
+    return out
 
 
 # ------------------------------------------------- generation-time probes
@@ -1623,8 +1687,6 @@ def generation_probes(
     point, distance = lifted[index]
     executor = NativeExecutor(target, forward=False, inputs="native")
     scale = _point_scale(point, sum(1 for leg in blocks.process.legs if leg.is_initial))
-    finite = probe(executor, point, scale, precision=precision)
-    results = [("finiteness", None, finite)]
     # One Ward probe per external gauge-boson species (its first leg; Bose
     # symmetry relates the others) at c = 1: the amplitude is linear in the
     # substituted vector, so c = i (needed where an interference takes a
@@ -1634,22 +1696,16 @@ def generation_probes(
     for leg in gauge_legs(target):
         first.setdefault(species[leg], leg)
     legs = sorted(first.values())
-    for leg in legs:
-        ward = gauge_ward(leg, (1, 0), point)
-        results.append(
-            (
-                "ward",
-                leg,
-                probe(
-                    executor,
-                    point,
-                    scale,
-                    precision=precision,
-                    ward=ward,
-                    physical=finite.scales,
-                ),
-            )
-        )
+    found = probes(
+        executor,
+        point,
+        scale,
+        [None, *(gauge_ward(leg, (1, 0), point) for leg in legs)],
+        precision=precision,
+    )
+    results = [("finiteness", None, found[0])] + [
+        ("ward", leg, result) for leg, result in zip(legs, found[1:], strict=True)
+    ]
     finiteness = results[0][2]
     wards = [result for kind, _, result in results if kind == "ward"]
     record: dict[str, Any] = {
@@ -1743,9 +1799,11 @@ __all__ = [
     "kappa",
     "loop_sectors",
     "metric",
+    "physical_floors",
     "probe",
     "probe_point",
     "probe_request",
+    "probes",
     "rotation_errors",
     "row_scales",
     "scale",
