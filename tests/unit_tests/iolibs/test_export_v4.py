@@ -10254,6 +10254,18 @@ class OniaDecayConfigsTest(unittest.TestCase):
         self.assertEqual(self.E.get_onia_decay_vertices(cands, 4, 23),
                          [(4, 3, 22), (-1, 2, 23)])
 
+    def test_ambiguous_inexact_invariants(self):
+        # etab > g* g* > Jpsi c c~ (legs 2 Jpsi, 3 c, 4 c~): each gluon carries
+        # one constituent of the J/psi, m(Jpsi c) and m(Jpsi c~) overlap and
+        # neither is preferred: the chain
+        cands = [(frozenset([2, 3]), False, 21), (frozenset([2, 4]), False, 21)]
+        self.assertEqual(self.E.get_onia_decay_vertices(cands, 4, 551),
+                         [(4, 3, 21), (-1, 2, 551)])
+        # an exact invariant still decides
+        cands.append((frozenset([2, 4]), True, -4))
+        self.assertEqual(self.E.get_onia_decay_vertices(cands, 4, 551),
+                         [(4, 2, -4), (-1, 3, 551)])
+
     def test_nested_tree(self):
         cands = [(frozenset([2, 3]), True, 4), (frozenset([4, 5, 6]), True, 23),
                  (frozenset([5, 6]), False, 21)]

@@ -3136,6 +3136,17 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
                      matrix_element.get('diagrams') if diag.get_vertex_leg_numbers()!=[]]
         minvert = min(vert_list) if vert_list!=[] else 0
 
+        # A 1 -> N process with onia: an amplitude that enters no colour flow
+        # (a single gluon making a colour-singlet onium) contributes nothing,
+        # but |AMP|^2 is taken before the colour projection. It gets no
+        # multi-channel weight, else its channel, which maps the invariants of
+        # its own diagram, would integrate the |M|^2 of the other diagrams.
+        contributing = None
+        if ninitial == 1 and matrix_element.get_nonia():
+            contributing = set(number for col_amp in
+                               matrix_element.get_color_amplitudes()
+                               for coef, number in col_amp if coef[1] != 0)
+
         ret_lines = []
         if config_map:
             # In this case, we need to sum up all amplitudes that have
@@ -3158,13 +3169,16 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
                 # a P-wave bound state: the amplitude is a dual number and
                 # only its top component is the physical one
                 amp_addon = "%COMP(2**NPWAVE-1)" if aloha.dual_mode else ""
+                amps = [a for a in sum([diagrams[idiag].get('amplitudes')
+                                        for idiag in config_to_diag_dict[config]], [])
+                        if contributing is None or a.get('number') in contributing]
+                if not amps:
+                    continue
                 amp = "+".join(["AMP(%(num)d)%(addon)s" %
                                 {"num": slots[a.get('number')] if slots
                                  else a.get('number'),
-                                 "addon": amp_addon} for a in \
-                                  sum([diagrams[idiag].get('amplitudes') for \
-                                       idiag in config_to_diag_dict[config]], [])])
-                
+                                 "addon": amp_addon} for a in amps])
+
                 # Not using \sum |M|^2 anymore since this creates troubles
                 # when ckm is not diagonal due to the JIM mechanism.
                 if '+' in amp:
@@ -9481,15 +9495,25 @@ c           This is dummy particle used in multiparticle vertices
         the final-state legs 2..nexternal, the last one being the decaying
         particle (pdg parent_id). The tree keeps the candidate invariants
         (get_onia_decay_candidates) that nest in or are disjoint from those
-        already kept, exact ones first, then the smaller ones; the legs left
+        already kept, exact ones first, then the smaller ones; an inexact
+        one that overlaps another inexact one is not kept. The legs left
         over are joined in a chain from the highest leg number, which with
         no candidates is the whole tree: (n, n-1), (-1, n-2), ..., (., 2)."""
 
         finals = frozenset(range(2, nexternal + 1))
+        # two overlapping invariants of propagators that carry one onium
+        # constituent each (the two gluons of etab > g* g* > Jpsi c cbar):
+        # neither is preferred, so neither is kept
+        inexact = set(c[0] for c in candidates if not c[1])
+        def ambiguous(legs):
+            return any(o & legs and not (o <= legs or legs <= o)
+                       for o in inexact)
         kept = {}
         for legs, exact, pdg in sorted(candidates, key=lambda c:
                                        (not c[1], len(c[0]), sorted(c[0]))):
             if legs in kept or not legs < finals:
+                continue
+            if not exact and ambiguous(legs):
                 continue
             if all(legs <= k or k <= legs or not legs & k for k in kept):
                 kept[legs] = pdg

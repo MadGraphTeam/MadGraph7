@@ -2786,6 +2786,17 @@ class TestCmdShell2(unittest.TestCase,
         self.assertTrue(all(set(c[0][:2]) <= set([2, 3, 4]) for c in chans.values()))
         self.assertEqual(len(set(tuple(sorted(c[0][:2])) for c in chans.values())), 3)
 
+        # a diagram that enters no colour flow (a single gluon making the
+        # colour-singlet Upsilon) has a channel but no multi-channel weight
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        mg_cmd.exec_cmd('generate t > w+ Upsilon(1|3S11) b QED=1')
+        mg_cmd.exec_cmd('output madevent %s -f -nojpeg' % self.out_dir)
+        proc_dir = glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*'))[0]
+        self.assertEqual(len(channels(proc_dir)), 4)
+        amp2 = re.findall(r'AMP2\((\d+)\)=AMP2', open(pjoin(proc_dir, 'matrix1.f')).read())
+        self.assertEqual(sorted(int(n) for n in amp2), [1, 4])
+
     def test_standalone_density(self):
         """test that standalone density is working"""
 
