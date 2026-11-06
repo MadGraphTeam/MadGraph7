@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import re
 from copy import deepcopy
+from pathlib import Path
 from types import SimpleNamespace
 
 from tools.performance_report.arena_profile import (
@@ -255,3 +257,80 @@ def test_missing_or_mismatched_source_tree_is_rejected() -> None:
 
     assert "provenance.report_measured_source_tree" in fields
     assert "provenance.report_source_clean" in fields
+
+
+# The one-loop benchmark report keeps only the essentials (user 2026-11-06
+# ~13:25: "keep this document to the essential with mostly just the relevant
+# tables"; docs/performance_reports/loop/README.md): the two summary tables
+# first, then only what is needed to read them, newest measurements only.
+LOOP_REPORT = (
+    Path(__file__).resolve().parents[2] / "docs" / "performance_reports" / "loop"
+)
+# Its items in order: Table 1 (Born-interfered), Figure 1 (Table 1 against the
+# gate), Table 2 (loop-induced), Table 3 (the gate and stage numbers behind
+# Table 1's chips and bars) and the reading guide.
+LOOP_REPORT_ITEMS = (
+    "tab:summary",
+    "fig:gate",
+    "tab:summary-li",
+    "tab:gate",
+    "reading",
+)
+# What the report no longer prints: milestone names and narratives, and the
+# history fields of the campaign records (earlier runs, previous milestones).
+LOOP_REPORT_HISTORY = re.compile(
+    r"milestone|earlier_runs|previous_|retime|history", re.IGNORECASE
+)
+
+
+def _loop_report_code() -> str:
+    """benchmarks.typ without its comment lines."""
+    lines = (LOOP_REPORT / "benchmarks.typ").read_text(encoding="utf-8").splitlines()
+    return "\n".join(line for line in lines if not line.lstrip().startswith("//"))
+
+
+def test_loop_report_renders_only_the_two_summary_files() -> None:
+    code = _loop_report_code()
+
+    assert sorted(re.findall(r'json\("([^"]+)"\)', code)) == [
+        "data/summary-li.json",
+        "data/summary.json",
+    ]
+    assert not re.search(r"#(?:include|import)\b|\b(?:read|csv|yaml|toml|image)\(", code)
+
+
+def test_loop_report_holds_the_summary_tables_first_and_only_their_readers() -> None:
+    code = _loop_report_code()
+
+    labels = re.findall(r"[)\]]\s*<([a-z][a-z0-9:-]*)>", code)
+    assert tuple(labels) == LOOP_REPORT_ITEMS
+    # No numbered section: one unnumbered heading, the reading guide.
+    assert not re.search(r"(?m)^\s*=+\s", code)
+    assert re.findall(r"#heading\(([^)]*)\)\[([^\]]*)\]", code) == [
+        ("numbering: none", "Reading the tables")
+    ]
+    assert not LOOP_REPORT_HISTORY.search(code)
+
+
+def test_loop_report_tables_state_their_provenance_in_one_line() -> None:
+    code = _loop_report_code()
+
+    # Table 1's first row names the configuration (engine revision, native
+    # build and digest, date) and the host; Table 2's its records' or the
+    # engine's, the providers' host and the date.
+    table1 = code[code.index("#let header-prov") : code.index("<tab:summary>")]
+    assert "native-of(x)" in code and '"native_digest"' in code
+    assert "sm.host" in table1 and "header-prov" in table1.split("table.header(")[1]
+    table2 = code[code.index("#let li-head") : code.index("<tab:summary-li>")]
+    for field in ("li-meta.date", "li-hosts", "native-of(li-engine)", "native-of(x)"):
+        assert field in table2
+    assert "li-head" in table2.split("table.header(")[1]
+
+
+def test_loop_report_readme_states_the_essentials_rule() -> None:
+    readme = (LOOP_REPORT / "README.md").read_text(encoding="utf-8")
+
+    for label in LOOP_REPORT_ITEMS:
+        assert f"`<{label}>`" in readme
+    assert "The essentials rule" in readme
+
