@@ -45,7 +45,9 @@ instrumentation.
   a generate-only record is no gate input;
 * the report builder labels the gate tool's 5 ms floor with the registry's
   threshold rule and stops on a disagreement, and gives a row without a
-  gate its rotation and Ward checks (addendum H);
+  gate its rotation and Ward checks (addendum H); it carries each summary
+  table's provenance line (engine revision, native build and digest, host,
+  date);
 * a user acceptance of a check's points above its tolerance marks exactly
   those points on the validation cell (the check and its tolerance stay)
   and stops the build when its claims do not hold;
@@ -1775,6 +1777,107 @@ def test_a_campaign_timed_on_tool_revisions_of_its_slice_revision(monkeypatch):
     g1["slice_tool_revisions"] = "cccccccc"
     with pytest.raises(ValueError, match="no configuration is recorded"):
         builder._sides(g1)
+
+
+def test_report_builder_gives_each_summary_table_its_provenance(
+    tmp_path, monkeypatch
+):
+    """The report's essentials rule (user 2026-11-06 ~13:25): each summary
+    table states its provenance in one line (engine revision, native build
+    and digest, host, date), so the builder carries them: Table 1's
+    configurations the G1 campaign's native build and digest beside its
+    revision and date (meta: host); the loop-induced table the engine's
+    native build while no record of its own names one, each record's
+    native build and digest on its cell, and each provider timing record's
+    host on its provider entries."""
+
+    import json
+
+    builder = _report_builder()
+    monkeypatch.setattr(builder, "_check_tool_revisions", lambda g1: None)
+    cfg = {
+        "revision": "a" * 40,
+        "branch": "HEAD",
+        "inputs": "native",
+        "accuracy": "full",
+        "schedule": "B",
+        "lanes": 16,
+    }
+    g1 = {
+        "date": "2026-11-06",
+        "slice_revision": "a" * 8,
+        "slice_build": "loop-native-test",
+        "slice_native_digest": "d" * 64,
+        "processes": [{"key": "gg_gg", "pyamplicol": {"native/full": cfg}}],
+    }
+    ms = {"development_records": {"conditions": "test", "short": "test"}}
+    meas = {"required_native": {"branch": "work/test", "processes": {}}}
+    recency = builder.Recency(tmp_path, {"revisions": [], "ancestors": []})
+    configurations = builder._configurations(g1, ms, meas, [], recency)
+    integrated = configurations["integrated"]
+    assert integrated["revision"] == "a" * 8
+    assert integrated["native_build"] == "loop-native-test"
+    assert integrated["native_digest"] == "d" * 64
+    assert integrated["date"] == "2026-11-06"
+
+    ms = _loop_induced_milestone(_loop_induced_registry())
+    ms["native_build"] = {"name": "loop-native-li", "digest": "e" * 8, "source": "x"}
+    data = tmp_path / "data"
+    data.mkdir()
+    record = {
+        "key": "gg_hgg",
+        "revision": "bbbbbbbb",
+        "backend": "tirust",
+        "batch": 128,
+        "seconds_per_point": 0.003,
+        "generation": {"seconds": 12.0, "peak_gib": 0.5},
+        "native_build": "loop-native-li-run",
+        "native_digest": "f" * 64,
+        "source": "test/gg_hgg",
+    }
+    (data / "li-timing.json").write_text(json.dumps({"records": [record]}))
+    timing = tmp_path / "tests" / "fixtures" / "loop" / "required" / "li" / "t.json"
+    timing.parent.mkdir(parents=True)
+    timing.write_text(
+        json.dumps(
+            {
+                "kind": "providers",
+                "host": "testhost",
+                "providers": {"openloops": {"median_seconds_per_point": 0.01}},
+            }
+        )
+    )
+    # lit-ref's manifest: every registry row, one reference run with a
+    # provider timing record for g g > h g g.
+    rows_m = [
+        {"row": f"LI-{r['key']}", "processes": r["process"], "runs": []}
+        for r in ms["loop_induced"]["rows"]
+    ]
+    hgg = next(m for m in rows_m if m["row"] == "LI-gg_hgg")
+    hgg["runs"] = [
+        {
+            "process": "li_gg_hgg",
+            "madloop_process": "g g > h g g [sqrvirt=QCD]",
+            "provider_timing_records": ["required/li/t.json"],
+        }
+    ]
+    manifest = tmp_path / builder.LI_CAMPAIGN
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(json.dumps({"rows": rows_m}))
+    recency = builder.Recency(tmp_path, ms["ancestry"])
+    out = builder.build_loop_induced(ms, recency, data=data, repo=tmp_path)
+    assert out["meta"]["native_build_on_loop"] == {
+        "name": "loop-native-li",
+        "digest": "e" * 8,
+    }
+    assert out["meta"]["date"] == "2026-11-06"
+    rows = {r["key"]: r for g in out["groups"] for r in g["rows"]}
+    cell = rows["gg_hgg"]["timing"]
+    assert cell["revision"] == "bbbbbbbb"
+    assert cell["native_build"] == "loop-native-li-run"
+    assert cell["native_digest"] == "f" * 64
+    openloops = rows["gg_hgg"]["providers"]["providers"]["openloops"]
+    assert openloops["host"] == "testhost"
 
 
 def test_an_imported_madloop_timing_takes_the_specified_exports_generation(
