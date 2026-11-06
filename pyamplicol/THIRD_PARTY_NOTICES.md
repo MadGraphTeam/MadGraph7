@@ -83,14 +83,13 @@ license is reproduced in `licenses/NinjaRS.txt`.
 
 oneloopmaster (<https://github.com/alphal00p/oneloopmaster>, Rust crate
 `oneloop`) supplies the one-loop scalar integrals and is linked from the
-revision pinned in `rust/loop-reduction/Cargo.toml` and `Cargo.lock`. Its
-manifest declares the MIT License and has no license file; its README calls
-that identifier provisional, because the crate is a transcription of OneLOop
-by Andreas van Hameren (GPL-3.0-or-later) and the permission for its intended
-distribution or relicensing has not been recorded as granted.
-`licenses/oneloopmaster.txt` records the declaration, the OneLOop credits its
-README asks for and the MIT text; the GPL version 3 text is in
-`licenses/GPL-3.0.txt`.
+revision pinned in `rust/loop-reduction/Cargo.toml` and `Cargo.lock`. It is
+distributed under the BSD Zero Clause License since its relicensing commit
+`37d9a9b3` (formerly a provisional MIT identifier); the grant covers the whole
+project, including the pinned revision. oneloopmaster is a Rust/Symbolica
+transcription of OneLOop by Andreas van Hameren, who gave his permission for
+its distribution and relicensing. `licenses/oneloopmaster.txt` reproduces the
+license and the OneLOop credits its README asks for.
 
 ## GammaLoop Crates (FeynKit)
 

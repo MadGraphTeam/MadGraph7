@@ -30,7 +30,7 @@
       "url": "https://github.com/alphal00p/ninjars.git",
       "ref": "main",
       "revision": "36e30a49418e1b6a8b54ee774a920e3a9483b00d",
-      "note": "b3a29c85 (PR #14) + the 0BSD relicence commit; merged into main"
+      "note": "b3a29c85 (PR #14) + the 0BSD relicence commit; it reaches main through the merge commit 1ef7b7ae, which the coordinator pushes before this pin lands"
     },
     {
       "name": "oneloopmaster",
@@ -39,7 +39,8 @@
       ],
       "url": "https://github.com/alphal00p/oneloopmaster.git",
       "ref": "main",
-      "revision": "128ea6645f2811e6179068b98731501292841409"
+      "revision": "128ea6645f2811e6179068b98731501292841409",
+      "note": "relicensed under 0BSD by 37d9a9b3 (a fast-forward of this revision on main, pushed by the coordinator); the grant covers this revision"
     },
     {
       "name": "feynkit",

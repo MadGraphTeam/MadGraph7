@@ -66,7 +66,6 @@ _LEGAL_FILES = (
     "licenses/NinjaRS.txt",
     "licenses/oneloopmaster.txt",
     "licenses/GammaLoop-crates.txt",
-    "licenses/GPL-3.0.txt",
 )
 _COMPILED_MODEL_KIND = "pyamplicol-compiled-model"
 _BUILTIN_MODEL_SOURCE_KIND = "built-in-sm"
