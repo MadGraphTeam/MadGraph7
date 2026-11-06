@@ -451,6 +451,7 @@
   "max_provider_pair_relative_error": 6.798001021017121e-13,
   "rule": "PLAN \u00a74.0 L1: provider agreement <= 1e-05 relative (lax); digits recorded",
   "passed": true,
+  "zero_row": false,
   "providers": {
     "madloop": {
       "provider": "madloop",
@@ -759,10 +760,17 @@
       "timing_scope": "single thread pinned; untimed warm-up (MadLoop: past its initialisation), then each point timed once; not a benchmark campaign",
       "settings": {
         "oracle": "gg_h",
-        "dps": 50
+        "dps": 50,
+        "limit": false
+      },
+      "reports": {
+        "heft_ratio": [
+          "1.0000181734729515057",
+          "1.0000171513388472896"
+        ]
       },
       "version": "li_analytic.py (mpmath)",
-      "process_wall_seconds": 0.0011567841283977032,
+      "process_wall_seconds": 0.0013652450870722532,
       "evaluation_seconds": [
         null,
         null,
