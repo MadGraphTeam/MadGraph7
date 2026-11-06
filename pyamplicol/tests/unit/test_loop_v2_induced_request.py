@@ -573,8 +573,10 @@ def test_colour_zeros_are_routed_as_exact_colour_zeros(tmp_path):
     entries = (("hga", "h > g a"), ("zga", "z > g a"), ("pphh", "p p > h h"))
     plan = _plan(tmp_path, entries)
     assert _keys(plan) == ["loop-induced-engine-pending"]
-    assert "'H > G A' (an exact colour zero)" in plan.unsupported_features[0]
-    assert "'G G > H H'," in plan.unsupported_features[0]
+    pending = plan.unsupported_features[0]
+    assert "'H > G A' (an exact colour zero)" in pending
+    assert "'G G > H H'" in pending
+    assert "'G G > H H' (an exact colour zero)" not in pending
     assert plan.estimated_coverage["skipped_members"] == ()
     records = {
         record["process"].casefold(): record for record in _induced(plan).values()
