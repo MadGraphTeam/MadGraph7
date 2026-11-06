@@ -2391,7 +2391,13 @@ impl TreeProgram {
                 )
             })
             .collect::<RusticolResult<Vec<_>>>()?;
-        require(born.orders > 0, "Born orders")?;
+        // A loop-induced (amplitude-mode) program has no Born: no orders, no
+        // components and no amplitudes (its rows' unit Born components are
+        // the plan's, `TreeProgram::inputs`).
+        require(
+            born.orders > 0 || (plan.amplitude && born.components == 0),
+            "Born orders",
+        )?;
         let amplitudes = born
             .amplitudes
             .iter()
@@ -2404,7 +2410,11 @@ impl TreeProgram {
                     .collect::<RusticolResult<Vec<_>>>()
             })
             .collect::<RusticolResult<Vec<_>>>()?;
-        require(amplitudes.len() % born.orders == 0, "amplitude rows")?;
+        require(
+            amplitudes.len() % born.orders.max(1) == 0
+                && (born.orders > 0 || amplitudes.is_empty()),
+            "amplitude rows",
+        )?;
         for pairs in &born.squared {
             require(
                 pairs
@@ -2413,7 +2423,7 @@ impl TreeProgram {
                 "squared Born orders",
             )?;
         }
-        let basis = amplitudes.len() / born.orders;
+        let basis = amplitudes.len() / born.orders.max(1);
         let metric = born
             .metric
             .map(|entries| {
