@@ -65,7 +65,12 @@ def test_loop_induced_specification_and_fixture(name):
         assert data["zero_row"] and data["passed"] is None
         return
     compared = [p for p in data["providers"]]
-    assert len(compared) >= 2 and data["passed"]
+    if len(compared) < 2:
+        # A single reference only where the others missed the 45-minute rule
+        # (recorded) or serve no such process (specification).
+        assert data["misses_45_min"] and data["passed"] is False, name
+        return
+    assert data["passed"]
     assert data["max_provider_pair_relative_error"] <= L1
     for provider in ("recola", "openloops"):
         if spec.get(provider, {}).get("unavailable"):
@@ -110,6 +115,9 @@ def test_the_campaign_manifest_is_current_and_covers_every_reference():
         if row["tier"] in ("analytic", "2->2", "1->3", "zeros", "EW") or "gate" in row["tier"]:
             assert row["runs"] or row.get("owner") or row["row"] == "LI-Z1", row["row"]
         for run in row["runs"]:
+            if run["status"] == "single provider":
+                assert row["tier"] in ("2->4 optional", "2->5 stretch") and run["misses_45_min"], (row["row"], run)
+                continue
             assert run["status"] in ("pass", "zero row"), (row["row"], run)
     # Every 2->3 row of PLAN §4.1 has its references (lit-ref-b).
     three = {run["process"] for row in manifest["rows"] if row["tier"] == "2->3 gate" for run in row["runs"]}
@@ -128,7 +136,9 @@ def test_every_two_to_three_gate_row_has_provider_timings():
 
 @pytest.mark.parametrize("name", TIMED)
 def test_provider_timing_records(name):
-    spec = required_spec.load_process(required_spec.DEFAULT_SPEC, name)
+    # The benchmark specification decides what is timed (Recola is timed on the
+    # four-lepton rows although its width convention excludes its values).
+    spec = required_spec.load_process(ROOT / "tools" / "loop_benchmark" / "processes.json", name)
     record = json.loads((FIXTURES / "timing" / f"{name}-providers.json").read_text())
     assert record["process"] == name and record["points"] == 16
     assert not re.search(r"/(shared|home|tmp)/", json.dumps(record)), "absolute path left in the record"
