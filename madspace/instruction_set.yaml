@@ -2891,11 +2891,11 @@ mlm_clustering_hadronic:
       type: [int, single]
       desc:
     - name: beam_flags
-      type: [int, single]
-      desc:
+      type: [int]
+      desc: per event, as the clustering class of its flavour can change it
     - name: jet_leg_mask
-      type: [int, single]
-      desc:
+      type: [int]
+      desc: per event, as beam_flags
     - name: parton_line_scheme
       type: [int, single]
       desc:
@@ -3014,11 +3014,11 @@ mlm_clustering_leptonic:
       type: [int, single]
       desc:
     - name: beam_flags
-      type: [int, single]
-      desc:
+      type: [int]
+      desc: per event, as the clustering class of its flavour can change it
     - name: jet_leg_mask
-      type: [int, single]
-      desc:
+      type: [int]
+      desc: per event, as beam_flags
     - name: parton_line_scheme
       type: [int, single]
       desc:

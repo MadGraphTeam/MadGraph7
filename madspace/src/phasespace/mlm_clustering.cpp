@@ -612,6 +612,98 @@ std::vector<int> append_state_layout(
     return first_indices;
 }
 
+NamedVector<Type> mlm_arg_types(std::size_t n_out) {
+    return {{"momenta", batch_four_vec_array(n_out + 2)}};
+}
+
+NamedVector<Type> mlm_return_types(std::size_t n_out) {
+    return {
+        {"ren_scale", batch_float},
+        {"fact_scale1", batch_float},
+        {"fact_scale2", batch_float},
+        {"outgoing_scales", batch_float_array(n_out)},
+        {"diagram_index", batch_int},
+        {"xqcut_weight", batch_float},
+        {"alphas_scales", batch_float_array(n_out - 1)},
+        {"alphas_weight", batch_float},
+        // The scale the beam density itself is evaluated at. Not the same as
+        // fact_scale under pdf reweighting: madevent drops the density low on
+        // the clustering ladder and walks it back up, so the reported
+        // factorisation scale and the one the pdf is asked for differ.
+        {"pdf_scale1", batch_float},
+        {"pdf_scale2", batch_float},
+        // One slot per clustering that can put a pdf ratio on a beam line,
+        // plus one per beam for the 2 -> 1 root, which lies on both.
+        {"pdf_rw_flavor", batch_int_array(n_out + 1)},
+        {"pdf_rw_x", batch_float_array(n_out + 1)},
+        {"pdf_rw_q_num", batch_float_array(n_out + 1)},
+        {"pdf_rw_q_den", batch_float_array(n_out + 1)},
+        {"pdf_rw_active", batch_float_array(n_out + 1)},
+        {"pdf_rw_beam", batch_float_array(n_out + 1)},
+        // the beam line's momentum fraction before each step's z, which
+        // madevent books for its systematics
+        {"pdf_rw_x_prev", batch_float_array(n_out + 1)}
+    };
+}
+
+void check_external_count(std::size_t n_ext) {
+    if (n_ext > n_ext_max) {
+        throw std::invalid_argument(
+            std::format(
+                "MLM clustering supports at most {} external particles, got {}",
+                n_ext_max,
+                n_ext
+            )
+        );
+    }
+}
+
+// The beam flags and the jet / octet leg mask the kernel takes, from the pdg
+// ids of the external legs (empty: every leg a gluon).
+std::pair<int, int> leg_flags(
+    const std::vector<int>& external_pdg_ids,
+    std::size_t n_ext,
+    const std::unordered_map<int, int>& pdg_color_types,
+    int max_jet_flavor
+) {
+    bool have_pdg_ids = external_pdg_ids.size() > 0;
+    int beam_flags = 0, jet_leg_mask = 0;
+    // madevent seeds its walk with the flavour of each beam: qcdline from
+    // isqcd(beam) and partonline from the same. Bake those two bits per beam
+    // in, since they are a property of the subprocess.
+    for (int beam = 0; beam < 2; ++beam) {
+        int pdg = have_pdg_ids ? external_pdg_ids.at(beam) : 21;
+        if (color_rep(pdg, pdg_color_types) != 1) {
+            beam_flags |= 1 << (2 * beam);
+        }
+        if (is_jet_pdg(pdg, max_jet_flavor)) {
+            beam_flags |= 1 << (2 * beam + 1);
+        }
+        // The flavour class the pdf reweighting starts each beam line at,
+        // stored as class + 1 so that 0 means "not a parton" and the chain
+        // never starts. A beam that is a parton is by construction either the
+        // gluon or its own class, so this needs no lookup.
+        int beam_class = !have_pdg_ids || !is_parton_pdg(pdg) ? flavor_class_none
+            : std::abs(pdg) == 21
+            ? flavor_class_gluon
+            : flavor_class_beam1 + beam;
+        beam_flags |= (beam_class + 1) << (8 * (beam + 1));
+    }
+    for (std::size_t leg = 0; leg < n_ext; ++leg) {
+        int pdg = have_pdg_ids ? external_pdg_ids.at(leg) : 21;
+        if (is_jet_pdg(pdg, max_jet_flavor)) {
+            jet_leg_mask |= 1 << leg;
+        }
+        // The high half carries octet-ness for the same leg. The kernel needs
+        // both and n_ext_max is 12, so one word holds them without another
+        // kernel argument.
+        if (is_octet_pdg(pdg, pdg_color_types)) {
+            jet_leg_mask |= 1 << (leg + 16);
+        }
+    }
+    return {beam_flags, jet_leg_mask};
+}
+
 } // namespace
 
 MLMClustering::MLMClustering(
@@ -637,41 +729,8 @@ MLMClustering::MLMClustering(
 ) :
     FunctionGenerator(
         "MLMClustering",
-        {{"momenta",
-          batch_four_vec_array(topologies.at(0).outgoing_masses().size() + 2)}},
-        {{"ren_scale", batch_float},
-         {"fact_scale1", batch_float},
-         {"fact_scale2", batch_float},
-         {"outgoing_scales",
-          batch_float_array(topologies.at(0).outgoing_masses().size())},
-         {"diagram_index", batch_int},
-         {"xqcut_weight", batch_float},
-         {"alphas_scales",
-          batch_float_array(topologies.at(0).outgoing_masses().size() - 1)},
-         {"alphas_weight", batch_float},
-         // The scale the beam density itself is evaluated at. Not the same as
-         // fact_scale under pdf reweighting: madevent drops the density low on
-         // the clustering ladder and walks it back up, so the reported
-         // factorisation scale and the one the pdf is asked for differ.
-         {"pdf_scale1", batch_float},
-         {"pdf_scale2", batch_float},
-         // One slot per clustering that can put a pdf ratio on a beam line,
-         // plus one per beam for the 2 -> 1 root, which lies on both.
-         {"pdf_rw_flavor",
-          batch_int_array(topologies.at(0).outgoing_masses().size() + 1)},
-         {"pdf_rw_x", batch_float_array(topologies.at(0).outgoing_masses().size() + 1)},
-         {"pdf_rw_q_num",
-          batch_float_array(topologies.at(0).outgoing_masses().size() + 1)},
-         {"pdf_rw_q_den",
-          batch_float_array(topologies.at(0).outgoing_masses().size() + 1)},
-         {"pdf_rw_active",
-          batch_float_array(topologies.at(0).outgoing_masses().size() + 1)},
-         {"pdf_rw_beam",
-          batch_float_array(topologies.at(0).outgoing_masses().size() + 1)},
-         // the beam line's momentum fraction before each step's z, which
-         // madevent books for its systematics
-         {"pdf_rw_x_prev",
-          batch_float_array(topologies.at(0).outgoing_masses().size() + 1)}}
+        mlm_arg_types(topologies.at(0).outgoing_masses().size()),
+        mlm_return_types(topologies.at(0).outgoing_masses().size())
     ),
     _cm_energy(cm_energy),
     _jet_scale_scheme(jet_scale_scheme),
@@ -689,15 +748,7 @@ MLMClustering::MLMClustering(
     _jet_radius(jet_radius),
     _hadronic(hadronic) {
     std::size_t n_ext = topologies.at(0).outgoing_masses().size() + 2;
-    if (n_ext > n_ext_max) {
-        throw std::invalid_argument(
-            std::format(
-                "MLM clustering supports at most {} external particles, got {}",
-                n_ext_max,
-                n_ext
-            )
-        );
-    }
+    check_external_count(n_ext);
     bool have_pdg_ids = external_pdg_ids.size() > 0;
     if (have_pdg_ids && external_pdg_ids.size() != n_ext) {
         throw std::invalid_argument(
@@ -706,41 +757,8 @@ MLMClustering::MLMClustering(
             )
         );
     }
-
-    // madevent seeds its walk with the flavour of each beam: qcdline from
-    // isqcd(beam) and partonline from the same. Bake those two bits per beam
-    // in, since they are a property of the subprocess.
-    for (int beam = 0; beam < 2; ++beam) {
-        int pdg = have_pdg_ids ? external_pdg_ids.at(beam) : 21;
-        if (color_rep(pdg, pdg_color_types) != 1) {
-            _beam_flags |= 1 << (2 * beam);
-        }
-        if (is_jet_pdg(pdg, max_jet_flavor)) {
-            _beam_flags |= 1 << (2 * beam + 1);
-        }
-        // The flavour class the pdf reweighting starts each beam line at,
-        // stored as class + 1 so that 0 means "not a parton" and the chain
-        // never starts. A beam that is a parton is by construction either the
-        // gluon or its own class, so this needs no lookup.
-        int beam_class = !have_pdg_ids || !is_parton_pdg(pdg) ? flavor_class_none
-            : std::abs(pdg) == 21
-            ? flavor_class_gluon
-            : flavor_class_beam1 + beam;
-        _beam_flags |= (beam_class + 1) << (8 * (beam + 1));
-    }
-
-    for (std::size_t leg = 0; leg < n_ext; ++leg) {
-        int pdg = have_pdg_ids ? external_pdg_ids.at(leg) : 21;
-        if (is_jet_pdg(pdg, max_jet_flavor)) {
-            _jet_leg_mask |= 1 << leg;
-        }
-        // The high half carries octet-ness for the same leg. The kernel needs
-        // both and n_ext_max is 12, so one word holds them without another
-        // kernel argument.
-        if (is_octet_pdg(pdg, pdg_color_types)) {
-            _jet_leg_mask |= 1 << (leg + 16);
-        }
-    }
+    std::tie(_beam_flags, _jet_leg_mask) =
+        leg_flags(external_pdg_ids, n_ext, pdg_color_types, max_jet_flavor);
 
     nested_vector2<int> valid_diags(1 << n_ext);
     std::vector<LineMeta> mask_meta(1 << n_ext);
@@ -1020,6 +1038,173 @@ MLMClustering::MLMClustering(
     }
 }
 
+MLMClustering::MLMClustering(
+    std::vector<ClusteringClass> classes,
+    std::vector<me_int_t> flavor_classes,
+    std::vector<double> external_masses,
+    double cm_energy,
+    JetScaleScheme jet_scale_scheme,
+    ScaleScheme scale_scheme,
+    std::unordered_map<int, int> pdg_color_types,
+    double xqcut,
+    double bw_cutoff,
+    double jet_radius,
+    bool hadronic,
+    int max_jet_flavor,
+    PartonLineScheme parton_line_scheme,
+    AlphasScheme alphas_scheme,
+    bool pdf_reweighting,
+    ClusteringMeasure clustering_measure,
+    bool clustering_mean_pdf_ladder
+) :
+    FunctionGenerator(
+        "MLMClustering",
+        mlm_arg_types(external_masses.size() - 2),
+        mlm_return_types(external_masses.size() - 2)
+    ),
+    _external_masses(external_masses),
+    _cm_energy(cm_energy),
+    _jet_scale_scheme(jet_scale_scheme),
+    _scale_scheme(scale_scheme),
+    _parton_line_scheme(parton_line_scheme),
+    _alphas_scheme(alphas_scheme),
+    _pdf_reweighting(pdf_reweighting),
+    _clustering_mean_pdf_ladder(clustering_mean_pdf_ladder),
+    _clustering_measure(clustering_measure),
+    _clustering_history(ClusteringHistory::all_diagrams),
+    _beam_flags(0),
+    _jet_leg_mask(0),
+    _flavor_classes(std::move(flavor_classes)),
+    _xqcut(xqcut),
+    _bw_cutoff(bw_cutoff),
+    _jet_radius(jet_radius),
+    _hadronic(hadronic) {
+    std::size_t n_ext = _external_masses.size();
+    check_external_count(n_ext);
+    if (n_ext < 3 || classes.empty()) {
+        throw std::invalid_argument(
+            "MLM clustering needs three or more external particles and a class"
+        );
+    }
+    if (_flavor_classes.empty()) {
+        _flavor_classes = {0};
+    }
+    for (me_int_t index : _flavor_classes) {
+        if (index < 0 || index >= static_cast<me_int_t>(classes.size())) {
+            throw std::invalid_argument(
+                std::format("flavour class {} out of range", index)
+            );
+        }
+    }
+
+    std::vector<int> masks;
+    for (std::size_t i = 0; i < n_ext; ++i) {
+        masks.push_back(1 << i);
+    }
+    int full_mask = (1 << n_ext) - 1;
+    std::map<std::pair<double, double>, int> bw_indices;
+    // compiled layout (as if at offset 0) and leg flags -> offset of the copy kept
+    std::map<std::tuple<std::vector<me_int_t>, int, int>, me_int_t> compiled;
+    for (auto& cls : classes) {
+        if (cls.external_pdg_ids.size() != n_ext) {
+            throw std::invalid_argument(
+                std::format(
+                    "expected {} external pdg ids, got {}",
+                    n_ext,
+                    cls.external_pdg_ids.size()
+                )
+            );
+        }
+        if (cls.diagrams.empty()) {
+            throw std::invalid_argument("a clustering class needs a diagram");
+        }
+        auto [beam_flags, jet_leg_mask] =
+            leg_flags(cls.external_pdg_ids, n_ext, pdg_color_types, max_jet_flavor);
+
+        nested_vector2<int> valid_diags(1 << n_ext);
+        std::vector<LineMeta> mask_meta(1 << n_ext);
+        std::map<std::pair<int, int>, std::vector<int>> line_pdgs;
+        for (std::size_t leg = 0; leg < n_ext; ++leg) {
+            set_mask_meta(
+                mask_meta,
+                1 << leg,
+                {.mass = _external_masses.at(leg),
+                 .width = 0.,
+                 .pdg_id = cls.external_pdg_ids.at(leg)}
+            );
+        }
+        std::vector<int> all_diags;
+        for (int diag = 0; auto& lines : cls.diagrams) {
+            all_diags.push_back(diag);
+            for (auto& line : lines) {
+                bool initial = (line.mask & 3) != 0;
+                if (line.mask <= 0 || line.mask >= full_mask ||
+                    std::popcount(static_cast<unsigned int>(line.mask)) < 2 ||
+                    (line.mask & 3) == 3) {
+                    throw std::invalid_argument(
+                        std::format("invalid clustering line mask {}", line.mask)
+                    );
+                }
+                // a spacelike line is never resonant
+                LineMeta meta{
+                    .mass = line.mass,
+                    .width = initial ? 0. : line.width,
+                    .pdg_id = line.pdg_id
+                };
+                valid_diags.at(line.mask).push_back(diag);
+                set_mask_meta(mask_meta, line.mask, meta);
+                line_pdgs[{diag, line.mask}].push_back(line.pdg_id);
+            }
+            ++diag;
+        }
+
+        CompileContext ctx{
+            .valid_diags = valid_diags,
+            .mask_meta = mask_meta,
+            .bw_masses = _bw_masses,
+            .bw_widths = _bw_widths,
+            .bw_indices = bw_indices,
+            .pdg_color_types = pdg_color_types,
+            .have_pdg_ids = true,
+            .max_jet_flavor = max_jet_flavor,
+            .beam_pdg = {cls.external_pdg_ids.at(0), cls.external_pdg_ids.at(1)},
+            .absolute_pdgs = _pdf_absolute_pdgs,
+            .line_pdgs = line_pdgs,
+            .has_same_flavor = _has_same_flavor,
+        };
+        nested_vector2<StateItem> states{{}};
+        std::map<StateKey, int> state_map;
+        std::set<int> dead_states;
+        state_map[{masks, all_diags}] = 0;
+        if (n_ext == 3) {
+            append_terminal_items(states.at(0), all_diags);
+        } else {
+            find_clusterings(ctx, masks, all_diags, states, state_map, dead_states, 0);
+        }
+        if (states.at(0).size() == 0) {
+            throw std::logic_error(
+                "MLM clustering found no valid clustering for a class"
+            );
+        }
+
+        std::vector<me_int_t> layout;
+        append_state_layout(layout, states);
+        auto key = std::tuple{std::move(layout), beam_flags, jet_leg_mask};
+        auto [found, inserted] = compiled.try_emplace(
+            key, static_cast<me_int_t>(_cluster_state_machine.size())
+        );
+        if (inserted) {
+            append_state_layout(_cluster_state_machine, states);
+        }
+        _class_start_states.push_back(found->second);
+        _class_beam_flags.push_back(beam_flags);
+        _class_jet_leg_masks.push_back(jet_leg_mask);
+    }
+    // the flags of the topology constructor's single class
+    _beam_flags = _class_beam_flags.at(_flavor_classes.at(0));
+    _jet_leg_mask = _class_jet_leg_masks.at(_flavor_classes.at(0));
+}
+
 NamedVector<Value> MLMClustering::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
@@ -1083,7 +1268,21 @@ NamedVector<Value> MLMClustering::build_kernel(
     const std::vector<me_int_t>& leg_flavors
 ) const {
     std::array<Value, 17> mlm_out;
-    Value random = fb.squeeze(fb.random(fb.batch_size({momenta}), 1));
+    auto batch_size = fb.batch_size({momenta});
+    Value random = fb.squeeze(fb.random(batch_size, 1));
+    Value beam_flags, jet_leg_mask;
+    if (_class_start_states.empty()) {
+        beam_flags = fb.full({static_cast<me_int_t>(_beam_flags), batch_size});
+        jet_leg_mask = fb.full({static_cast<me_int_t>(_jet_leg_mask), batch_size});
+    } else {
+        // before the flavour is known, the class of the first flavour
+        Value cls = flavor_index
+            ? fb.gather_int(flavor_index, _flavor_classes)
+            : fb.full({_flavor_classes.at(0), batch_size});
+        start_state = fb.gather_int(cls, _class_start_states);
+        beam_flags = fb.gather_int(cls, _class_beam_flags);
+        jet_leg_mask = fb.gather_int(cls, _class_jet_leg_masks);
+    }
     // Without the flavours of the event a single row of zeros, which leaves
     // every clustering allowed: the history over the union of all diagrams.
     if (!flavor_index || leg_flavors.empty()) {
@@ -1107,8 +1306,8 @@ NamedVector<Value> MLMClustering::build_kernel(
             static_cast<me_int_t>(_jet_scale_scheme),
             _xqcut,
             static_cast<me_int_t>(_scale_scheme),
-            static_cast<me_int_t>(_beam_flags),
-            static_cast<me_int_t>(_jet_leg_mask),
+            beam_flags,
+            jet_leg_mask,
             static_cast<me_int_t>(_parton_line_scheme),
             static_cast<me_int_t>(_alphas_scheme),
             // 2: the ladder under clustering_mean too (see the kernel)
@@ -1135,8 +1334,8 @@ NamedVector<Value> MLMClustering::build_kernel(
             static_cast<me_int_t>(_jet_scale_scheme),
             _xqcut,
             static_cast<me_int_t>(_scale_scheme),
-            static_cast<me_int_t>(_beam_flags),
-            static_cast<me_int_t>(_jet_leg_mask),
+            beam_flags,
+            jet_leg_mask,
             static_cast<me_int_t>(_parton_line_scheme),
             static_cast<me_int_t>(_alphas_scheme),
             // 2: the ladder under clustering_mean too (see the kernel)

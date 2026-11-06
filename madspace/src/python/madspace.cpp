@@ -2087,6 +2087,26 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("DiscreteFlow::initialize_globals")
         );
 
+    py::classh<ClusteringLine>(m, "ClusteringLine")
+        .def(
+            py::init<int, int, double, double>(),
+            py::arg("mask"),
+            py::arg("pdg_id"),
+            py::arg("mass") = 0.,
+            py::arg("width") = 0.
+        )
+        .def_readonly("mask", &ClusteringLine::mask)
+        .def_readonly("pdg_id", &ClusteringLine::pdg_id)
+        .def_readonly("mass", &ClusteringLine::mass)
+        .def_readonly("width", &ClusteringLine::width);
+    py::classh<ClusteringClass>(m, "ClusteringClass")
+        .def(
+            py::init<std::vector<int>, nested_vector2<ClusteringLine>>(),
+            py::arg("external_pdg_ids"),
+            py::arg("diagrams")
+        )
+        .def_readonly("external_pdg_ids", &ClusteringClass::external_pdg_ids)
+        .def_readonly("diagrams", &ClusteringClass::diagrams);
     py::classh<MLMClustering, FunctionGenerator> mlm(m, "MLMClustering");
     add_enum<ScaleScheme>(
         mlm,
@@ -2179,6 +2199,45 @@ PYBIND11_MODULE(_madspace_py, m) {
            py::arg("clustering_history") = ClusteringHistory::all_diagrams,
            py::arg("clustering_mean_pdf_ladder") = true
     )
+        .def(
+            py::init<
+                std::vector<ClusteringClass>,
+                std::vector<me_int_t>,
+                std::vector<double>,
+                double,
+                JetScaleScheme,
+                ScaleScheme,
+                std::unordered_map<int, int>,
+                double,
+                double,
+                double,
+                bool,
+                int,
+                PartonLineScheme,
+                AlphasScheme,
+                bool,
+                ClusteringMeasure,
+                bool>(),
+            py::arg("classes"),
+            py::arg("flavor_classes"),
+            py::arg("external_masses"),
+            py::arg("cm_energy"),
+            py::arg("jet_scale_scheme") = JetScaleScheme::production,
+            py::arg("scale_scheme") = ScaleScheme::clustering_mean,
+            py::arg("pdg_color_types") = std::unordered_map<int, int>{},
+            py::arg("xqcut") = 0.,
+            py::arg("bw_cutoff") = 15.,
+            py::arg("jet_radius") = 1.0,
+            py::arg("hadronic") = true,
+            py::arg("max_jet_flavor") = 4,
+            py::arg("parton_line_scheme") = PartonLineScheme::goodjet,
+            py::arg("alphas_scheme") = AlphasScheme::per_vertex,
+            py::arg("pdf_reweighting") = true,
+            py::arg("clustering_measure") = ClusteringMeasure::fxfx,
+            py::arg("clustering_mean_pdf_ladder") = true
+        )
+        .def_property_readonly("class_start_states", &MLMClustering::class_start_states)
+        .def_property_readonly("flavor_classes", &MLMClustering::flavor_classes)
         .def_property_readonly("pdf_absolute_pdgs", &MLMClustering::pdf_absolute_pdgs)
         .def_property_readonly("clustering_measure", &MLMClustering::clustering_measure)
         .def_property_readonly("clustering_history", &MLMClustering::clustering_history)
