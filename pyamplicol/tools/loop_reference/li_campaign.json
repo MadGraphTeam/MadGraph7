@@ -1,0 +1,1177 @@
+{
+ "description": "M-LIT loop-induced validation matrix (workspace/reports/engine-v2/m-lit/PLAN.md \u00a74): the rows of \u00a74.1 with their reference runs (tools/loop_reference/run_li.sh, li_references.py; work directories $LOOP_REFERENCE_ROOT/runs/li/<process>/) and the committed fixtures tests/fixtures/loop/required/li/<process>.json (paths below tests/fixtures/loop/). Written by make_li_campaign.py.",
+ "rules": {
+  "L1": "provider: binary64 |A|^2 vs MadLoop (QP-checked, target 1e-11) / Recola / OpenLoops <= 1e-5 relative",
+  "L2": "analytic: DD/AP vs the mpmath oracle <= 1e-12 relative (binary64 <= 1e-9 at stable points)",
+  "L3": "finiteness: combined poles per (loop, helicity) <= 10 E against the pre-reduction term floor (DECISIONS 2026-11-06 ~09:00 (1))",
+  "L4": "Ward: per (loop, helicity) at zero widths (complex masses kept under CMS) <= 10 E",
+  "L5": "rotation: ADDENDUM C rotations <= 10 E",
+  "L6": "backend: NinjaRS vs TIRust |A|^2 <= 10 max(E_N, E_T) binary64; DD/AP within 1e-24",
+  "L7": "carrier: DD vs AP <= 1e-24",
+  "L8": "zeros: numerical by default (Q13): |A|^2 <= 10 E_abs in binary64 and DD; exact 0 only for vanishing colour coefficients",
+  "L9": "limits: HEFT / LET / crossing / symmetry identities as stated per row",
+  "N0": "non-regression of the Born-interfered plans and outputs"
+ },
+ "madloop_settings": {
+  "reference": "standalone [sqrvirt=...] export at MG5's production Fortran flags; target accuracy 1e-11 (stability test forced on every call, QP rescue through CutTools/Ninja), HelicityFilterLevel = 0, every helicity (SLOOPMATRIXHEL_THRES, USERHEL reset after the rows), warm-up >= CheckCycle + 1 calls",
+  "timing": "the export's own card (MLReductionLib 7|6|1, COLLIER UV/IR poles off, HelicityFilterLevel 2, MLStabThres); a 6|7|1 (OPP) column; tools/loop_benchmark providers --madloop-stages",
+  "single_helicity": "|A(h)|^2/avg (Q39) = MadLoop's USERHEL value / HELAVGFACTOR"
+ },
+ "conventions": "|A_loop|^2 summed over final and averaged over initial helicities and colours, with the final identical-particle factor; physical couplings; widths zero outside the complex-mass rows",
+ "rows": [
+  {
+   "row": "LI-B1",
+   "processes": "every Born-interfered campaign row (G1, M-QCD, M-SM, decays, HC)",
+   "references": "NinjaRS in-tree + the stored Born-interfered ML/RC fixtures",
+   "checks": [
+    "L6"
+   ],
+   "backends": "N vs T",
+   "tier": "backend",
+   "gated": false,
+   "owner": "lit-tir",
+   "runs": []
+  },
+  {
+   "row": "LI-B2",
+   "processes": "single-monomial tensor coefficients N = 1..6, R <= N+2",
+   "references": "COLLIER 1.2.8 TNten_cll (MadLoop mapping), NinjaRS, AP",
+   "checks": [
+    "basis",
+    "sign",
+    "normalisation",
+    "poles"
+   ],
+   "backends": "T",
+   "tier": "backend",
+   "gated": false,
+   "owner": "lit-tir",
+   "runs": []
+  },
+  {
+   "row": "LI-A1",
+   "processes": "g g > h (t; t + b at m_b = 4.7)",
+   "references": "AN (Spira) = the gate; HEFT ratio reported; ML, OL pphj2, RC",
+   "checks": [
+    "L1",
+    "L2",
+    "L3",
+    "L4",
+    "L5"
+   ],
+   "backends": "N, T",
+   "tier": "analytic",
+   "gated": false,
+   "runs": [
+    {
+     "process": "li_gg_h",
+     "fixture": "required/li/li_gg_h.json",
+     "madloop_process": "g g > h [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "analytic",
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 6.064633446689958e-13,
+     "status": "pass"
+    },
+    {
+     "process": "li_gg_h_tb",
+     "fixture": "required/li/li_gg_h_tb.json",
+     "madloop_process": "g g > h [sqrvirt=QCD]",
+     "scheme": "qcd-4fs",
+     "providers": [
+      "analytic",
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 6.798001021017121e-13,
+     "status": "pass"
+    }
+   ]
+  },
+  {
+   "row": "LI-A2",
+   "processes": "h > g g",
+   "references": "AN (crossing of A1); ML, RC",
+   "checks": [
+    "L1",
+    "L2",
+    "L3",
+    "L4",
+    "L5"
+   ],
+   "backends": "N, T",
+   "tier": "analytic",
+   "gated": false,
+   "runs": [
+    {
+     "process": "li_h_gg",
+     "fixture": "required/li/li_h_gg.json",
+     "madloop_process": "h > g g [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "analytic",
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 5.744399671878349e-13,
+     "status": "pass",
+     "unavailable": {
+      "openloops": "decay: the designated OpenLoops ls libraries are 2 -> n scattering libraries"
+     }
+    }
+   ]
+  },
+  {
+   "row": "LI-A3",
+   "processes": "h > a a [QED]",
+   "references": "AN (Djouadi); ML, RC",
+   "checks": [
+    "L1",
+    "L2",
+    "L3",
+    "L4",
+    "L5"
+   ],
+   "backends": "N, T",
+   "tier": "analytic",
+   "gated": false,
+   "runs": [
+    {
+     "process": "li_h_aa",
+     "fixture": "required/li/li_h_aa.json",
+     "madloop_process": "h > a a [sqrvirt=QED]",
+     "scheme": "ew-gmu",
+     "providers": [
+      "analytic",
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 1.6675921452061477e-13,
+     "status": "pass",
+     "unavailable": {
+      "openloops": "decay: the designated OpenLoops ls libraries are 2 -> n scattering libraries"
+     }
+    }
+   ]
+  },
+  {
+   "row": "LI-A4",
+   "processes": "h > z a [QED]; e+ e- > h a [QED]",
+   "references": "AN (Djouadi/Spira I1, I2) for h > z a; ML, RC",
+   "checks": [
+    "L1",
+    "L2",
+    "L3",
+    "L4",
+    "L5"
+   ],
+   "backends": "N, T",
+   "tier": "analytic",
+   "gated": false,
+   "runs": [
+    {
+     "process": "li_h_za",
+     "fixture": "required/li/li_h_za.json",
+     "madloop_process": "h > z a [sqrvirt=QED]",
+     "scheme": "ew-gmu",
+     "providers": [
+      "analytic",
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 6.68329950771409e-14,
+     "status": "pass",
+     "unavailable": {
+      "openloops": "decay: the designated OpenLoops ls libraries are 2 -> n scattering libraries"
+     }
+    },
+    {
+     "process": "li_emep_ha",
+     "fixture": "required/li/li_emep_ha.json",
+     "madloop_process": "e+ e- > h a [sqrvirt=QED]",
+     "scheme": "ew-gmu",
+     "providers": [
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 5.425994168862401e-15,
+     "status": "pass",
+     "unavailable": {
+      "openloops": "no designated OpenLoops loop-squared (ls) library serves this process (PLAN \u00a74.1, Q34 = (b))"
+     }
+    }
+   ]
+  },
+  {
+   "row": "LI-A5",
+   "processes": "g g > a a (5 massless + top; massless separately)",
+   "references": "AN (GPR / Glover-van der Bij massive box + Bern et al. massless box); ML, OL ppvv2, RC (RC not for nf5)",
+   "checks": [
+    "L3",
+    "L1",
+    "L2"
+   ],
+   "backends": "N, T",
+   "tier": "analytic",
+   "gated": false,
+   "runs": [
+    {
+     "process": "li_gg_aa",
+     "fixture": "required/li/li_gg_aa.json",
+     "madloop_process": "g g > a a [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "analytic",
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 2.1329334700469794e-14,
+     "status": "pass"
+    },
+    {
+     "process": "li_gg_aa_nf5",
+     "fixture": "required/li/li_gg_aa_nf5.json",
+     "madloop_process": "g g > a a / t [sqrvirt=QCD]",
+     "scheme": "qcd-nf5",
+     "providers": [
+      "analytic",
+      "madloop",
+      "openloops"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 1.7809085150494784e-14,
+     "status": "pass",
+     "excluded": {
+      "recola": "Recola cannot remove the top loop: switchoff_coupling3_rcl(A, t, t~) removes the tree vertex only, the top R2 vertices stay (2e-2 here, measured)"
+     }
+    }
+   ]
+  },
+  {
+   "row": "LI-A6",
+   "processes": "a a > a a [QED], complete (fermion + W/G/ghost loops)",
+   "references": "AN (Karplus-Neuman/Glover-van der Bij + Jikia-Tkabladze via GPR); RC (mandatory), ML",
+   "checks": [
+    "L1",
+    "L2"
+   ],
+   "backends": "N, T",
+   "tier": "analytic",
+   "gated": false,
+   "owner": "lit-ew",
+   "runs": [
+    {
+     "process": "li_aa_aa",
+     "fixture": "required/li/li_aa_aa.json",
+     "madloop_process": "a a > a a [sqrvirt=QED]",
+     "scheme": "ew-gmu",
+     "providers": [
+      "analytic",
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 1.1872661939373688e-14,
+     "status": "pass",
+     "unavailable": {
+      "openloops": "no designated OpenLoops loop-squared (ls) library serves this process (PLAN \u00a74.1, Q34 = (b))"
+     }
+    }
+   ]
+  },
+  {
+   "row": "LI-A7",
+   "processes": "large m_t: g g > h g, u u~ > h g, g g > h g g vs HEFT trees; g g > h h vs the LET",
+   "references": "built-in-sm-heft trees (pyAmpliCol); LET (li_analytic gg_hh_let, a limit only)",
+   "checks": [
+    "L9"
+   ],
+   "backends": "N, T",
+   "tier": "analytic",
+   "gated": false,
+   "owner": "lit-val",
+   "runs": [
+    {
+     "process": "li_gg_hh",
+     "fixture": "required/li/li_gg_hh.json",
+     "madloop_process": "g g > h h [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 2.4813156564462466e-13,
+     "status": "pass",
+     "limit_oracle_ratios": [
+      3.9474998014824862,
+      0.5695263874300927,
+      0.23430656447421563
+     ],
+     "provider_timing_records": [
+      "required/li/timing/li_gg_hh-providers-madloop-opp.json",
+      "required/li/timing/li_gg_hh-providers.json"
+     ]
+    }
+   ]
+  },
+  {
+   "row": "LI-Z1",
+   "processes": "exact colour zeros h > g a, z > g a",
+   "references": "exact 0 (MG5 generates no diagram: NoDiagramException)",
+   "checks": [
+    "L8"
+   ],
+   "backends": "N, T",
+   "tier": "zeros",
+   "gated": false,
+   "runs": []
+  },
+  {
+   "row": "LI-Z1b",
+   "processes": "numerical Furry zeros g g > a a a, g g > h a",
+   "references": "zero within estimate (provider values recorded)",
+   "checks": [
+    "L8"
+   ],
+   "backends": "N, T",
+   "tier": "zeros",
+   "gated": false,
+   "runs": [
+    {
+     "process": "li_gg_ha",
+     "fixture": "required/li/li_gg_ha.json",
+     "madloop_process": "g g > h a [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 0.0,
+     "status": "zero row",
+     "unavailable": {
+      "openloops": "zero row: no designated OpenLoops ls library (PLAN \u00a74.1 LI-Z*)"
+     }
+    }
+   ]
+  },
+  {
+   "row": "LI-Z2",
+   "processes": "integrated zeros g g > z, z > g g, e+ e- > g g",
+   "references": "zero within estimate (provider values recorded)",
+   "checks": [
+    "L8"
+   ],
+   "backends": "N, T",
+   "tier": "zeros",
+   "gated": false,
+   "runs": [
+    {
+     "process": "li_gg_z",
+     "fixture": "required/li/li_gg_z.json",
+     "madloop_process": "g g > z [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 0.0,
+     "status": "zero row",
+     "unavailable": {
+      "openloops": "zero row: no designated OpenLoops ls library (PLAN \u00a74.1 LI-Z*)"
+     }
+    },
+    {
+     "process": "li_z_gg",
+     "fixture": "required/li/li_z_gg.json",
+     "madloop_process": "z > g g [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 0.0,
+     "status": "zero row",
+     "unavailable": {
+      "openloops": "decay: the designated OpenLoops ls libraries are 2 -> n scattering libraries"
+     }
+    },
+    {
+     "process": "li_emep_gg",
+     "fixture": "required/li/li_emep_gg.json",
+     "madloop_process": "e+ e- > g g [sqrvirt=QCD]",
+     "scheme": "ew-gmu",
+     "providers": [
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 0.0,
+     "status": "zero row",
+     "unavailable": {
+      "openloops": "zero row: no designated OpenLoops ls library (PLAN \u00a74.1 LI-Z*)"
+     }
+    }
+   ]
+  },
+  {
+   "row": "LI-W1/L1/P1/C1/S1",
+   "processes": "Ward, rotations/boosts, amplitude poles, crossing, N_f multiplicity",
+   "references": "identities (pyAmpliCol)",
+   "checks": [
+    "L3",
+    "L4",
+    "L5",
+    "L9"
+   ],
+   "backends": "N, T",
+   "tier": "identities",
+   "gated": false,
+   "owner": "lit-val",
+   "runs": []
+  },
+  {
+   "row": "LI-21",
+   "processes": "g g > z z",
+   "references": "ML, OL ppvv2 zzgg, RC",
+   "checks": [
+    "L1"
+   ],
+   "backends": "N, T",
+   "tier": "2->2",
+   "gated": false,
+   "runs": [
+    {
+     "process": "li_gg_zz",
+     "fixture": "required/li/li_gg_zz.json",
+     "madloop_process": "g g > z z [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 3.243024096948593e-12,
+     "status": "pass"
+    }
+   ]
+  },
+  {
+   "row": "LI-22",
+   "processes": "g g > w+ w-",
+   "references": "ML, OL ppvv2 wwxgg, RC",
+   "checks": [
+    "L1"
+   ],
+   "backends": "N, T",
+   "tier": "2->2",
+   "gated": false,
+   "runs": [
+    {
+     "process": "li_gg_wpwm",
+     "fixture": "required/li/li_gg_wpwm.json",
+     "madloop_process": "g g > w+ w- [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 9.533700516293962e-13,
+     "status": "pass"
+    }
+   ]
+  },
+  {
+   "row": "LI-23",
+   "processes": "g g > z a",
+   "references": "ML, OL ppvv2 azgg, RC",
+   "checks": [
+    "L1"
+   ],
+   "backends": "N, T",
+   "tier": "2->2",
+   "gated": false,
+   "runs": [
+    {
+     "process": "li_gg_za",
+     "fixture": "required/li/li_gg_za.json",
+     "madloop_process": "g g > z a [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 5.479220414735715e-14,
+     "status": "pass"
+    }
+   ]
+  },
+  {
+   "row": "LI-24",
+   "processes": "g g > h h",
+   "references": "ML, OL pphh2 hhgg, RC; LET",
+   "checks": [
+    "L1",
+    "L9"
+   ],
+   "backends": "N, T",
+   "tier": "2->2",
+   "gated": false,
+   "runs": [
+    {
+     "process": "li_gg_hh",
+     "fixture": "required/li/li_gg_hh.json",
+     "madloop_process": "g g > h h [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 2.4813156564462466e-13,
+     "status": "pass",
+     "limit_oracle_ratios": [
+      3.9474998014824862,
+      0.5695263874300927,
+      0.23430656447421563
+     ],
+     "provider_timing_records": [
+      "required/li/timing/li_gg_hh-providers-madloop-opp.json",
+      "required/li/timing/li_gg_hh-providers.json"
+     ]
+    }
+   ]
+  },
+  {
+   "row": "LI-25",
+   "processes": "g g > h z",
+   "references": "ML, OL pphz2 hzgg, RC",
+   "checks": [
+    "L1"
+   ],
+   "backends": "N, T",
+   "tier": "2->2",
+   "gated": false,
+   "runs": [
+    {
+     "process": "li_gg_hz",
+     "fixture": "required/li/li_gg_hz.json",
+     "madloop_process": "g g > h z [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 1.5368873543653496e-13,
+     "status": "pass"
+    }
+   ]
+  },
+  {
+   "row": "LI-26",
+   "processes": "g g > h g, u u~ > h g, u g > h u",
+   "references": "ML, OL pphj2 hggg / uuxhg (u g > h u by crossing), RC",
+   "checks": [
+    "L1"
+   ],
+   "backends": "N, T",
+   "tier": "2->2",
+   "gated": false,
+   "runs": [
+    {
+     "process": "li_gg_hg",
+     "fixture": "required/li/li_gg_hg.json",
+     "madloop_process": "g g > h g [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 7.32781290953991e-15,
+     "status": "pass"
+    },
+    {
+     "process": "li_uux_hg",
+     "fixture": "required/li/li_uux_hg.json",
+     "madloop_process": "u u~ > h g QED=1 [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 7.1008640164351905e-15,
+     "status": "pass"
+    },
+    {
+     "process": "li_ug_hu",
+     "fixture": "required/li/li_ug_hu.json",
+     "madloop_process": "u g > h u QED=1 [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 7.971100339674076e-15,
+     "status": "pass"
+    }
+   ]
+  },
+  {
+   "row": "LI-27",
+   "processes": "g g > z g, g g > a g",
+   "references": "ML, OL ppvj2 zggg / aggg, RC",
+   "checks": [
+    "L1"
+   ],
+   "backends": "N, T",
+   "tier": "2->2",
+   "gated": false,
+   "runs": [
+    {
+     "process": "li_gg_zg",
+     "fixture": "required/li/li_gg_zg.json",
+     "madloop_process": "g g > z g [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 2.6203692806849237e-13,
+     "status": "pass"
+    },
+    {
+     "process": "li_gg_ag",
+     "fixture": "required/li/li_gg_ag.json",
+     "madloop_process": "g g > a g [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 6.772967442928136e-14,
+     "status": "pass"
+    }
+   ]
+  },
+  {
+   "row": "LI-E1",
+   "processes": "h > a a, h > z a (= LI-A3/A4)",
+   "references": "= LI-A3/A4",
+   "checks": [
+    "L1",
+    "L2"
+   ],
+   "backends": "N, T",
+   "tier": "EW",
+   "gated": false,
+   "owner": "lit-ew",
+   "runs": [
+    {
+     "process": "li_h_aa",
+     "fixture": "required/li/li_h_aa.json",
+     "madloop_process": "h > a a [sqrvirt=QED]",
+     "scheme": "ew-gmu",
+     "providers": [
+      "analytic",
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 1.6675921452061477e-13,
+     "status": "pass",
+     "unavailable": {
+      "openloops": "decay: the designated OpenLoops ls libraries are 2 -> n scattering libraries"
+     }
+    },
+    {
+     "process": "li_h_za",
+     "fixture": "required/li/li_h_za.json",
+     "madloop_process": "h > z a [sqrvirt=QED]",
+     "scheme": "ew-gmu",
+     "providers": [
+      "analytic",
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 6.68329950771409e-14,
+     "status": "pass",
+     "unavailable": {
+      "openloops": "decay: the designated OpenLoops ls libraries are 2 -> n scattering libraries"
+     }
+    }
+   ]
+  },
+  {
+   "row": "LI-E2",
+   "processes": "a a > a a (= LI-A6), a a > h, a a > z z, a a > h h",
+   "references": "ML, RC (RC mandatory); AN for a a > h (crossing of LI-A3)",
+   "checks": [
+    "L1"
+   ],
+   "backends": "N, T",
+   "tier": "EW",
+   "gated": false,
+   "owner": "lit-ew",
+   "runs": [
+    {
+     "process": "li_aa_aa",
+     "fixture": "required/li/li_aa_aa.json",
+     "madloop_process": "a a > a a [sqrvirt=QED]",
+     "scheme": "ew-gmu",
+     "providers": [
+      "analytic",
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 1.1872661939373688e-14,
+     "status": "pass",
+     "unavailable": {
+      "openloops": "no designated OpenLoops loop-squared (ls) library serves this process (PLAN \u00a74.1, Q34 = (b))"
+     }
+    },
+    {
+     "process": "li_aa_h",
+     "fixture": "required/li/li_aa_h.json",
+     "madloop_process": "a a > h [sqrvirt=QED]",
+     "scheme": "ew-gmu",
+     "providers": [
+      "analytic",
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 1.7754350681432176e-13,
+     "status": "pass",
+     "unavailable": {
+      "openloops": "no designated OpenLoops loop-squared (ls) library serves this process (PLAN \u00a74.1, Q34 = (b))"
+     }
+    },
+    {
+     "process": "li_aa_zz",
+     "fixture": "required/li/li_aa_zz.json",
+     "madloop_process": "a a > z z [sqrvirt=QED]",
+     "scheme": "ew-gmu",
+     "providers": [
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 1.7152407510397884e-14,
+     "status": "pass",
+     "unavailable": {
+      "openloops": "no designated OpenLoops loop-squared (ls) library serves this process (PLAN \u00a74.1, Q34 = (b))"
+     }
+    },
+    {
+     "process": "li_aa_hh",
+     "fixture": "required/li/li_aa_hh.json",
+     "madloop_process": "a a > h h [sqrvirt=QED]",
+     "scheme": "ew-gmu",
+     "providers": [
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 6.045469640933347e-15,
+     "status": "pass",
+     "unavailable": {
+      "openloops": "no designated OpenLoops loop-squared (ls) library serves this process (PLAN \u00a74.1, Q34 = (b))"
+     }
+    }
+   ]
+  },
+  {
+   "row": "LI-E3",
+   "processes": "e+ e- > h a, e+ e- > h h [QED]",
+   "references": "ML, RC (RC mandatory for e+ e- > h h)",
+   "checks": [
+    "L1"
+   ],
+   "backends": "N, T",
+   "tier": "EW",
+   "gated": false,
+   "owner": "lit-ew",
+   "runs": [
+    {
+     "process": "li_emep_ha",
+     "fixture": "required/li/li_emep_ha.json",
+     "madloop_process": "e+ e- > h a [sqrvirt=QED]",
+     "scheme": "ew-gmu",
+     "providers": [
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 5.425994168862401e-15,
+     "status": "pass",
+     "unavailable": {
+      "openloops": "no designated OpenLoops loop-squared (ls) library serves this process (PLAN \u00a74.1, Q34 = (b))"
+     }
+    },
+    {
+     "process": "li_emep_hh",
+     "fixture": "required/li/li_emep_hh.json",
+     "madloop_process": "e+ e- > h h [sqrvirt=QED]",
+     "scheme": "ew-gmu",
+     "providers": [
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 1.196848753926776e-14,
+     "status": "pass",
+     "unavailable": {
+      "openloops": "no designated OpenLoops loop-squared (ls) library serves this process (PLAN \u00a74.1, Q34 = (b))"
+     }
+    }
+   ]
+  },
+  {
+   "row": "LI-E4",
+   "processes": "e+ e- > g g g [QED]",
+   "references": "ML, RC",
+   "checks": [
+    "L1"
+   ],
+   "backends": "N, T",
+   "tier": "2->3 gate",
+   "gated": true,
+   "owner": "lit-ref-b",
+   "runs": []
+  },
+  {
+   "row": "LI-31",
+   "processes": "g g > h h h",
+   "references": "ML, OL pphhh2, RC; supplied points",
+   "checks": [
+    "L1"
+   ],
+   "backends": "N, T",
+   "tier": "2->3 gate",
+   "gated": true,
+   "owner": "lit-ref-b",
+   "runs": []
+  },
+  {
+   "row": "LI-32",
+   "processes": "g g > h g g",
+   "references": "ML, OL pphjj2 hgggg, RC",
+   "checks": [
+    "L1"
+   ],
+   "backends": "N, T",
+   "tier": "2->3 gate",
+   "gated": true,
+   "runs": [
+    {
+     "process": "li_gg_hgg",
+     "fixture": "required/li/li_gg_hgg.json",
+     "madloop_process": "g g > h g g [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 3.757466748247552e-11,
+     "status": "pass",
+     "provider_timing_records": [
+      "required/li/timing/li_gg_hgg-providers-madloop-opp.json",
+      "required/li/timing/li_gg_hgg-providers.json"
+     ]
+    }
+   ]
+  },
+  {
+   "row": "LI-33",
+   "processes": "g g > z z g, g g > a a g, g g > w+ w- g",
+   "references": "ML, OL ppvvj2, RC (g g > a a g, g g > w+ w- g: lit-ref-b)",
+   "checks": [
+    "L1"
+   ],
+   "backends": "N, T",
+   "tier": "2->3 gate",
+   "gated": true,
+   "runs": [
+    {
+     "process": "li_gg_zzg",
+     "status": "no reference yet"
+    }
+   ]
+  },
+  {
+   "row": "LI-34",
+   "processes": "g g > z z z",
+   "references": "ML, OL ppvvv2, RC; supplied points",
+   "checks": [
+    "L1"
+   ],
+   "backends": "N, T",
+   "tier": "2->3 gate",
+   "gated": true,
+   "owner": "lit-ref-b",
+   "runs": []
+  },
+  {
+   "row": "LI-35",
+   "processes": "g g > h z g, g g > a g g, g g > z g g",
+   "references": "ML, OL, RC",
+   "checks": [
+    "L1"
+   ],
+   "backends": "N, T",
+   "tier": "2->3 gate",
+   "gated": true,
+   "owner": "lit-ref-b",
+   "runs": []
+  },
+  {
+   "row": "LI-36",
+   "processes": "u u~ > h g g, u u~ > d d~ h (QED <= 1)",
+   "references": "ML, OL, RC",
+   "checks": [
+    "L1"
+   ],
+   "backends": "N, T",
+   "tier": "2->3 gate",
+   "gated": true,
+   "owner": "lit-ref-b",
+   "runs": []
+  },
+  {
+   "row": "LI-37",
+   "processes": "h > g g g, z > g g g",
+   "references": "ML, RC",
+   "checks": [
+    "L1"
+   ],
+   "backends": "N, T",
+   "tier": "1->3",
+   "gated": false,
+   "runs": [
+    {
+     "process": "li_h_ggg",
+     "fixture": "required/li/li_h_ggg.json",
+     "madloop_process": "h > g g g [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 6.552559598305095e-12,
+     "status": "pass",
+     "unavailable": {
+      "openloops": "decay: the designated OpenLoops ls libraries are 2 -> n scattering libraries"
+     }
+    },
+    {
+     "process": "li_z_ggg",
+     "fixture": "required/li/li_z_ggg.json",
+     "madloop_process": "z > g g g [sqrvirt=QCD]",
+     "scheme": "qcd",
+     "providers": [
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 3.1980629783601413e-11,
+     "status": "pass",
+     "unavailable": {
+      "openloops": "decay: the designated OpenLoops ls libraries are 2 -> n scattering libraries"
+     }
+    }
+   ]
+  },
+  {
+   "row": "LI-41",
+   "processes": "g g > h h g g",
+   "references": "P15 point 1.3033633142042775e-12 GeV^-4; ML, OL",
+   "checks": [
+    "L1"
+   ],
+   "backends": "N, T",
+   "tier": "2->4 gate",
+   "gated": true,
+   "owner": "lit-ref-b",
+   "runs": []
+  },
+  {
+   "row": "LI-42",
+   "processes": "g g > h g g g",
+   "references": "ML (45-min rule), OL",
+   "checks": [
+    "L1"
+   ],
+   "backends": "N, T",
+   "tier": "2->4 gate",
+   "gated": true,
+   "owner": "lit-ref-b",
+   "runs": []
+  },
+  {
+   "row": "LI-43",
+   "processes": "g g > e+ e- mu+ mu-",
+   "references": "OL ppllll2, ML",
+   "checks": [
+    "L1"
+   ],
+   "backends": "N, T",
+   "tier": "2->4 gate",
+   "gated": true,
+   "owner": "lit-ref-b",
+   "runs": []
+  },
+  {
+   "row": "LI-44",
+   "processes": "g g > a a g g, g g > z z z z",
+   "references": "OL, ML",
+   "checks": [
+    "L1"
+   ],
+   "backends": "N, T",
+   "tier": "2->4 optional",
+   "gated": false,
+   "owner": "lit-ref-b",
+   "runs": []
+  },
+  {
+   "row": "LI-51",
+   "processes": "g g > e+ e- mu+ mu- g or g g > h g g g g",
+   "references": "OL / internal",
+   "checks": [
+    "L1"
+   ],
+   "backends": "N, T",
+   "tier": "2->5 stretch",
+   "gated": false,
+   "owner": "lit-ref-b",
+   "runs": []
+  },
+  {
+   "row": "LI-X1",
+   "processes": "one EFT row with rank > N+2",
+   "references": "ML (TIR)",
+   "checks": [
+    "L1"
+   ],
+   "backends": "T",
+   "tier": "EFT",
+   "gated": false,
+   "owner": "lit-eft",
+   "runs": []
+  },
+  {
+   "row": "LI-O1",
+   "processes": "correlated, colour-resolved and single-helicity outputs",
+   "references": "RC loop-induced colour correlations; identities",
+   "checks": [
+    "sum_h"
+   ],
+   "backends": "N, T",
+   "tier": "observables",
+   "gated": false,
+   "owner": "lit-obs",
+   "runs": []
+  },
+  {
+   "row": "LI-C1",
+   "processes": "complex-mass scheme rows (Q7)",
+   "references": "RC, ML, OL where designated; AN with complex masses (g g > a a, a a > a a); g g > a a g, g g > e+ e- mu+ mu-, e+ e- > g g g under CMS: lit-ref-b",
+   "checks": [
+    "L1",
+    "L2"
+   ],
+   "backends": "N, T",
+   "tier": "EW",
+   "gated": false,
+   "owner": "lit-ew",
+   "runs": [
+    {
+     "process": "li_gg_aa_cms",
+     "fixture": "required/li/li_gg_aa_cms.json",
+     "madloop_process": "g g > a a [sqrvirt=QCD]",
+     "scheme": "ew-gmu-cms",
+     "providers": [
+      "analytic",
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 4.900408799217293e-14,
+     "status": "pass"
+    },
+    {
+     "process": "li_aa_aa_cms",
+     "fixture": "required/li/li_aa_aa_cms.json",
+     "madloop_process": "a a > a a [sqrvirt=QED]",
+     "scheme": "ew-gmu-cms",
+     "providers": [
+      "analytic",
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 5.517757503418341e-07,
+     "status": "pass",
+     "unavailable": {
+      "openloops": "no designated OpenLoops loop-squared (ls) library serves this process (PLAN \u00a74.1, Q34 = (b))"
+     }
+    },
+    {
+     "process": "li_gg_zz_cms",
+     "fixture": "required/li/li_gg_zz_cms.json",
+     "madloop_process": "g g > z z [sqrvirt=QCD]",
+     "scheme": "ew-gmu-cms",
+     "providers": [
+      "madloop",
+      "openloops",
+      "recola"
+     ],
+     "points": 3,
+     "max_provider_pair_relative_error": 2.92676441143172e-12,
+     "status": "pass"
+    }
+   ]
+  }
+ ]
+}
