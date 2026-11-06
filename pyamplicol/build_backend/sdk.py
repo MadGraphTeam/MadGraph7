@@ -285,23 +285,25 @@ def _stripped_archive(archive: Path, destination: Path, target: str) -> Path:
     The ``sdk`` profile compiles every crate without LTO bitcode, but the
     precompiled Rust standard library carries bitcode and line tables. Neither
     is used by a C, C++ or Fortran linker (the usual strip of a distributed
-    static library); symbols stay intact.
+    static library); symbols stay intact. GNU strip does it on ELF targets;
+    Apple's strip trails Rust's LLVM (see ``_scan_archive_symbols``), so the
+    macOS archive is shipped as built.
     """
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     if "apple-darwin" in target:
-        command = ["strip", "-S", "-o", str(destination), str(archive)]
-    else:
-        command = [
-            "strip",
-            "--strip-debug",
-            "--remove-section=.llvmbc",
-            "--remove-section=.llvmcmd",
-            "--enable-deterministic-archives",
-            "-o",
-            str(destination),
-            str(archive),
-        ]
+        shutil.copy2(archive, destination)
+        return destination
+    command = [
+        "strip",
+        "--strip-debug",
+        "--remove-section=.llvmbc",
+        "--remove-section=.llvmcmd",
+        "--enable-deterministic-archives",
+        "-o",
+        str(destination),
+        str(archive),
+    ]
     completed = subprocess.run(command, check=False, capture_output=True, text=True)
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout).strip()
