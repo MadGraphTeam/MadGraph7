@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: 0BSD
 """The loop-induced reference fixtures and campaign manifest (M-LIT LIT-REF).
 
 The fixtures ``tests/fixtures/loop/required/li/<process>.json`` are merged
