@@ -225,6 +225,9 @@ OPTIONAL_REQUEST_DEFAULTS: dict[str, object] = {
     "external_photons": "final",
     "alpha0_conversion": "eCoup_DGmua0_UV_EW",
     "alpha0_inverse": None,
+    # m-lit LIT-REQ: the served contribution, named only for a loop-induced
+    # request (Born-interfered records keep their bytes).
+    "contribution": "virtual",
 }
 
 
@@ -1067,12 +1070,16 @@ def generate_process(
     # schedule B, and F's section is over half of the plan (gg -> gggg: 52 of
     # 98 MB of JSON).
     blocks = observables.slice.blocks
-    require_zero_coloured_widths(
-        repr(request.process),
-        (blocks.blocks_dag, blocks.born_dag),
-        observables.slice.compiled,
-        request.fixed_parameters,
-    )
+    if request.contribution != "loop-induced":
+        # A loop-induced request admits fixed widths in its tree propagators
+        # (m-lit Q7: no Born, so no Catani mismatch; the UV counterterm
+        # vertices multiply the same widthful tree propagators).
+        require_zero_coloured_widths(
+            repr(request.process),
+            (blocks.blocks_dag, blocks.born_dag),
+            observables.slice.compiled,
+            request.fixed_parameters,
+        )
     # The plan carries the native point inputs (``native_process``): the tree
     # program with the Born, counterterm and field components, so a load
     # needs no regeneration. A process whose tree program cannot be exported

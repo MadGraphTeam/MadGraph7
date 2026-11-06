@@ -186,6 +186,8 @@ from .poles import (
 )
 from .poly_affine import MonomialLayout, leg_momentum
 from .refusals import (
+    LoopRequestUnsupported,
+    LoopRequestUnsupportedValue,
     require_colour_preserving_fermion_lines,
     require_declared_colour_fields,
     require_declared_colour_rules,
@@ -1488,12 +1490,28 @@ class PointResult:
 # --------------------------------------------------------------------- slice
 
 
+# The contributions a slice request serves (m-lit PLAN §1.2, §2.a.10): the
+# Born x virtual interference 2 Re(conj(A0) A1) ("virtual"), or the
+# loop-squared matrix element |A_loop|^2 of a process without a Born
+# amplitude within its coupling-order limits ("loop-induced").
+Contribution = Literal["virtual", "loop-induced"]
+CONTRIBUTIONS: tuple[str, ...] = ("virtual", "loop-induced")
+
+
 @dataclass(frozen=True)
 class SliceRequest:
     """A loop request of the slice: a process, the bounds of its Born coupling
     orders and the exact coupling orders of its loop amplitude, or a sequence
     of several (mixed squared-order sectors, e.g. QCD corrections to QCD and
-    electroweak Born currents)."""
+    electroweak Born currents).
+
+    ``contribution`` = "loop-induced" (m-lit LIT-REQ): the process has no
+    Born amplitude within ``born_orders`` (then the coupling-order limits
+    within which none exists) and the request serves |A_loop|^2 at the exact
+    loop orders ``loop_orders`` (``loop_service.loop_induced_orders``),
+    squared orders l + l' (loop x loop sectors), full colour only (Q8 (a)).
+    Its generation is refused (``loop-induced-engine-pending``) until the
+    amplitude-mode engine lands."""
 
     process: str
     born_orders: Mapping[str, int]
@@ -1565,8 +1583,24 @@ class SliceRequest:
     # take neither a rescaling nor a conversion. Recorded only when set.
     alpha0_conversion: str = ew_policy.ALPHA0_CONVERSION
     alpha0_inverse: str | None = None
+    # The contribution served (``Contribution``): the request record names
+    # it only for a loop-induced request (``artifact.OPTIONAL_REQUEST_DEFAULTS``),
+    # so Born-interfered records keep their bytes.
+    contribution: Contribution = "virtual"
 
     def __post_init__(self) -> None:
+        if self.contribution not in CONTRIBUTIONS:
+            raise ValueError(
+                f"unknown contribution {self.contribution!r}; expected one of "
+                f"{list(CONTRIBUTIONS)}"
+            )
+        if self.contribution == "loop-induced" and self.accuracy != "full":
+            # Full colour only for loop-induced processes (m-lit Q8 (a)).
+            raise LoopRequestUnsupportedValue(
+                "loop-induced-colour-accuracy",
+                f"{self.process!r} is loop-induced and requests "
+                f"accuracy={self.accuracy!r}",
+            )
         if self.selection is not None and self.accuracy != "lc":
             raise ValueError(
                 "helicity and colour-flow selection is a leading-colour option "
@@ -2052,6 +2086,17 @@ class LoopSlice:
             raise ValueError(f"unknown colour accuracy {request.accuracy!r}")
         if request.counterterms not in ("recursion", "sites"):
             raise ValueError(f"unknown counterterm form {request.counterterms!r}")
+        if request.contribution == "loop-induced":
+            # m-lit LIT-REQ: routed and dry-run, not generated until the
+            # amplitude-mode engine lands (never a silent zero). LIT-AMP lifts
+            # this guard (it keeps ``with_ward_kernels`` on the loop-induced
+            # path: a coloured widthful tree propagator takes the full Ward
+            # kernels, Q7).
+            raise LoopRequestUnsupported(
+                "loop-induced-engine-pending",
+                f"{request.process!r} (loop orders "
+                f"{[dict(orders) for orders in request.exact_loop_orders]})",
+            )
         request = resolve_request(compiled, request)
         prepared, continuation, fixed, scale_parameter, alpha_s_parameter = (
             prepare_request_model(compiled, request)
