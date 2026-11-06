@@ -752,6 +752,26 @@ The rapidity bounds are only valid when the two incoming momenta are the beams i
 </dl>
 </dd></dl>
 
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8madspace26TwoToTwoParticleScattering25build_inverse_with_massesER15FunctionBuilderRK8ValueVecRK8ValueVec5Value5Value">
+<span id="_CPPv3NK8madspace26TwoToTwoParticleScattering25build_inverse_with_massesER15FunctionBuilderRK8ValueVecRK8ValueVec5Value5Value"></span><span id="_CPPv2NK8madspace26TwoToTwoParticleScattering25build_inverse_with_massesER15FunctionBuilderRK8ValueVecRK8ValueVec5Value5Value"></span><span id="madspace::TwoToTwoParticleScattering::build_inverse_with_masses__FunctionBuilderR.ValueVecCR.ValueVecCR.Value.ValueC"></span><span class="target" id="classmadspace_1_1TwoToTwoParticleScattering_1aac511f15f5f96853f154ccb2888e8fad"></span><a class="reference internal" href="NamedVector.html#_CPPv4I0EN8madspace11NamedVectorE" title="madspace::NamedVector"><span class="n"><span class="pre">NamedVector</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="Value.html#_CPPv4N8madspace5ValueE" title="madspace::Value"><span class="n"><span class="pre">Value</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">build_inverse_with_masses</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="FunctionBuilder.html#_CPPv4N8madspace15FunctionBuilderE" title="madspace::FunctionBuilder"><span class="n"><span class="pre">FunctionBuilder</span></span></a><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">fb</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">ValueVec</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">inputs</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">ValueVec</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">conditions</span></span>, <a class="reference internal" href="Value.html#_CPPv4N8madspace5ValueE" title="madspace::Value"><span class="n"><span class="pre">Value</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">m1</span></span>, <a class="reference internal" href="Value.html#_CPPv4N8madspace5ValueE" title="madspace::Value"><span class="n"><span class="pre">Value</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">m2</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace26TwoToTwoParticleScattering25build_inverse_with_massesER15FunctionBuilderRK8ValueVecRK8ValueVec5Value5Value" title="Link to this definition">¶</a><br /></dt>
+<dd><p>The inverse map with the masses of the outgoing momenta given, as the forward map takes them. </p>
+<p>The range of <span class="math notranslate nohighlight">\(|t|\)</span> then follows from these masses, as in the forward map, rather than from the squares of the momenta, whose rounding (of order the machine epsilon times the squared energy, also for massless momenta) moves the lower end of the range, by up to <span class="math notranslate nohighlight">\((s - m_b^2) / s\)</span> times as much for an incoming <span class="math notranslate nohighlight">\(p_b\)</span> of mass <span class="math notranslate nohighlight">\(m_b\)</span>, as the last steps of a t-channel chain have (<a class="reference internal" href="TPropagatorMapping.html#classmadspace_1_1TPropagatorMapping"><span class="std std-ref">TPropagatorMapping</span></a>). The outputs <code class="docutils literal notranslate"><span class="pre">mass1</span></code> and <code class="docutils literal notranslate"><span class="pre">mass2</span></code> are still those of the momenta.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>inputs</strong> – <code class="docutils literal notranslate"><span class="pre">momentum1</span></code> and <code class="docutils literal notranslate"><span class="pre">momentum2</span></code>, as for the positional <a class="reference internal" href="Mapping.html#classmadspace_1_1Mapping_1a466a24fd7fdd6f3d639634336d8b4b33"><span class="std std-ref">build_inverse()</span></a>. </p></li>
+<li><p><strong>conditions</strong> – The conditions, in the order of <a class="reference internal" href="Mapping.html#classmadspace_1_1Mapping_1aaa83c18f8a361aa09473162a44eb3685"><span class="std std-ref">condition_types()</span></a>. </p></li>
+<li><p><strong>m1</strong> – Mass of <code class="docutils literal notranslate"><span class="pre">momentum1</span></code>, <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code>. </p></li>
+<li><p><strong>m2</strong> – Mass of <code class="docutils literal notranslate"><span class="pre">momentum2</span></code>, <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code>. </p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The outputs of <a class="reference internal" href="Mapping.html#classmadspace_1_1Mapping_1a466a24fd7fdd6f3d639634336d8b4b33"><span class="std std-ref">build_inverse()</span></a>. </p>
+</dd>
+</dl>
+</dd></dl>
+
 </div>
 </dd></dl>
 
@@ -815,6 +835,7 @@ The rapidity bounds are only valid when the two incoming momenta are the beams i
 <li><a class="reference internal" href="#">TwoToTwoParticleScattering</a><ul>
 <li><a class="reference internal" href="#_CPPv4N8madspace26TwoToTwoParticleScatteringE"><code class="docutils literal notranslate"><span class="pre">madspace::TwoToTwoParticleScattering</span></code></a><ul>
 <li><a class="reference internal" href="#_CPPv4N8madspace26TwoToTwoParticleScattering26TwoToTwoParticleScatteringEbdddbddd"><code class="docutils literal notranslate"><span class="pre">TwoToTwoParticleScattering()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8madspace26TwoToTwoParticleScattering25build_inverse_with_massesER15FunctionBuilderRK8ValueVecRK8ValueVec5Value5Value"><code class="docutils literal notranslate"><span class="pre">build_inverse_with_masses()</span></code></a></li>
 </ul>
 </li>
 </ul>
