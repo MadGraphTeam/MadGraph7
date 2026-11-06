@@ -4425,6 +4425,33 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("EventGenerator::stop_requested")
         )
         .def(
+            "set_target_count",
+            &EventGenerator::set_target_count,
+            py::arg("target_count"),
+            pydoc::doc("EventGenerator::set_target_count")
+        )
+        .def(
+            "set_thread_count",
+            &EventGenerator::set_thread_count,
+            py::arg("thread_count"),
+            pydoc::doc("EventGenerator::set_thread_count")
+        )
+        .def(
+            "cpu_thread_count",
+            &EventGenerator::cpu_thread_count,
+            pydoc::doc("EventGenerator::cpu_thread_count")
+        )
+        .def(
+            "stop_estimate",
+            &EventGenerator::stop_estimate,
+            pydoc::doc("EventGenerator::stop_estimate")
+        )
+        .def(
+            "redraw_progress",
+            &EventGenerator::redraw_progress,
+            pydoc::doc("EventGenerator::redraw_progress")
+        )
+        .def(
             "optimize",
             &EventGenerator::optimize,
             py::call_guard<py::gil_scoped_release>(),

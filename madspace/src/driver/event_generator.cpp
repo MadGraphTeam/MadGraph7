@@ -256,6 +256,7 @@ void EventGenerator::run_generate(GenerateMode mode) {
             finish_stopped_generation();
             break;
         }
+        apply_pending_changes();
 
         update_integral_fractions();
         // only with the steps drained, they are not in the commit order of the jobs
@@ -660,6 +661,81 @@ void EventGenerator::update_integral() {
 
 void EventGenerator::update_integral_status() {
     sum_channel_status(_channels, _status);
+}
+
+void EventGenerator::apply_pending_changes() {
+    if (_pending_thread_count) {
+        for (auto& context : _contexts) {
+            if (context->device()->device_type() == DeviceType::cpu) {
+                context->thread_pool().set_thread_count(*_pending_thread_count);
+            }
+        }
+        Logger::info(std::format("CPU thread count set to {}", *_pending_thread_count));
+        _pending_thread_count.reset();
+    }
+    if (_pending_target_count && _generate_mode == GenerateMode::events) {
+        Logger::info(
+            std::format(
+                "requested events changed from {} to {}",
+                _config.target_count,
+                *_pending_target_count
+            )
+        );
+        _config.target_count = *_pending_target_count;
+        _status.count_target = *_pending_target_count;
+        _pending_target_count.reset();
+    }
+}
+
+std::size_t EventGenerator::cpu_thread_count() const {
+    for (auto& context : _contexts) {
+        if (context->device()->device_type() == DeviceType::cpu) {
+            return context->thread_pool().thread_count();
+        }
+    }
+    return 0;
+}
+
+std::tuple<std::size_t, std::string, double> EventGenerator::stop_estimate() const {
+    // the shares as update_integral_fractions() computes them
+    double total_estimate = 0.;
+    for (auto& channel : _channels) {
+        total_estimate += channel->abs_integral_estimate();
+    }
+    std::size_t target_count = _config.target_count;
+    std::string limiting_name;
+    double limiting_fraction = 0.;
+    // empty if no channel limits the configured target
+    for (auto& channel : _channels) {
+        double fraction = channel->abs_integral_estimate() / total_estimate;
+        if (!(fraction > 0)) {
+            continue;
+        }
+        // the fixed point of finish_stopped_generation()'s first loop
+        std::size_t channel_target = channel->status().count_target;
+        double count = channel->count_after_target(channel_target);
+        while (count < channel_target) {
+            channel_target = static_cast<std::size_t>(count);
+            count = channel->count_after_target(channel_target);
+        }
+        std::size_t channel_limit = static_cast<std::size_t>(count / fraction);
+        if (channel_limit < target_count) {
+            target_count = channel_limit;
+            limiting_name = channel->status().name;
+            limiting_fraction = fraction;
+        }
+    }
+    return {target_count, limiting_name, limiting_fraction};
+}
+
+void EventGenerator::redraw_progress() const {
+    if (_config.verbosity != Verbosity::pretty) {
+        return;
+    }
+    _pretty_box_upper.print_first();
+    if (_channels.size() > 1) {
+        _pretty_box_lower.print_first();
+    }
 }
 
 void EventGenerator::finish_stopped_generation() {

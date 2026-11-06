@@ -6,6 +6,8 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <string>
+#include <tuple>
 #include <vector>
 
 #include <nlohmann/json.hpp>
@@ -54,6 +56,31 @@ public:
     static void request_stop(bool stop = true) { _stop_requested = stop; }
     /// Whether @ref request_stop asked the generation to stop.
     static bool stop_requested() { return _stop_requested; }
+    /// Change the number of events @ref generate aims for. It takes effect once
+    /// the batches in flight are committed, as do the shares of the channels.
+    void set_target_count(std::size_t target_count) {
+        _pending_target_count = target_count;
+    }
+    /// Change the thread count of the CPU contexts. It takes effect once the
+    /// batches in flight are committed, as the per-thread resources cannot grow
+    /// while jobs use them.
+    void set_thread_count(std::size_t thread_count) {
+        _pending_thread_count = thread_count;
+    }
+    /// Thread count of the first CPU context, 0 without one.
+    std::size_t cpu_thread_count() const;
+    /**
+     * Estimate the events that @ref request_stop would keep now, without
+     * changing anything: the channel with the fewest events for its share of
+     * the integral limits the total (see @ref generate).
+     *
+     * @return The event count, the name of the limiting channel and its share
+     *         of the integral.
+     */
+    std::tuple<std::size_t, std::string, double> stop_estimate() const;
+    /// Print the progress boxes again (pretty verbosity only), after something
+    /// else was written to the terminal during @ref generate.
+    void redraw_progress() const;
 
     /**
      * @param contexts    One context per device to run on, shared by every
@@ -161,6 +188,9 @@ private:
     };
     inline static std::function<void(void)> _abort_check_function = [] {};
     inline static std::atomic<bool> _stop_requested = false;
+    // set_target_count() and set_thread_count(), applied between rounds
+    std::optional<std::size_t> _pending_target_count;
+    std::optional<std::size_t> _pending_thread_count;
 
     GeneratorConfig _config;
     std::vector<std::shared_ptr<ChannelEventGenerator>> _channels;
@@ -255,6 +285,8 @@ private:
     );
     // After request_stop(): lower the target until every channel has its share.
     void finish_stopped_generation();
+    // Apply set_target_count() and set_thread_count(), with no job in flight.
+    void apply_pending_changes();
     void update_counts();
     void reset_start_time();
     void add_timing_data(const std::string& key);
