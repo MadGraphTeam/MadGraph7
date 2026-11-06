@@ -143,14 +143,12 @@ def test_matches_genps_fks(data, conf, points, prefix):
 
     # The Born comes back through the round trip of the Born mapping and the
     # boosts of PhaseSpaceMapping, so it differs from that of genps_fks.f by up
-    # to 1e-12 of its energy, and the emission off it by about as much. The
-    # inverse of the 2 -> 2 scattering of the Born mapping resolves its random
-    # number of |t| only to a few 1e-12 on some points (not an FKS effect), and
-    # all comparisons below scale with this deviation.
+    # to 2e-13 of its energy, and the emission off it by about as much. All
+    # comparisons below scale with this deviation.
     sqrt_s_born = np.sqrt(field("shat_born"))
     born_again = boost_z(out["born_momenta"], born_masses, -y_born)
     born_dev = np.abs(born_again - field("p_born")).max((1, 2)) / sqrt_s_born
-    assert (born_dev <= 3e-12).all()
+    assert (born_dev <= 3e-13).all()
     # relative to that, the deviation of the direction of the Born emitter
     jbar = j_fks if j_fks < i_fks else j_fks - 1
     direction_dev = sqrt_s_born / field("p_born")[:, jbar, 0]
