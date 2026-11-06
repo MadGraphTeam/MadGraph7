@@ -522,8 +522,10 @@ def _v2_blockers(backend) -> tuple[str, ...]:
     """Configurations the v2 engine does not cover.
 
     Requests are refused per process, before any loop generation, by
-    ``_v2_request`` (no Born amplitude, undeclared corrections, coloured
-    widths in the Born currents, an unidentified scale parameter) and
+    ``_member`` / ``_v2_request`` / ``_loop_induced_request`` (undeclared
+    corrections, coloured widths in the Born currents of a Born-interfered
+    request, an unidentified scale parameter, the loop-induced routing of
+    ``_born_members``) and
     ``loops.v2.assemble.prepare_request_model`` (the model preparation);
     the generator fails closed with its own reason on what it does not
     admit (e.g. chiral loop-fermion vertices, WP3.2)."""

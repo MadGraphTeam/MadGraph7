@@ -173,6 +173,28 @@ renormalisation is the model's, real on-shell (MadLoop's convention: the
 absorptive part of its self-energy at its mass is dropped). Decay chains
 (`t > b w+, w+ > e+ ve`) are refused (`madloop-syntax`).
 
+A one-loop request (`process.loop_coupling_orders`) routes its concrete
+processes without a Born amplitude within their coupling-order limits
+(loop-induced: `g g > h`, `g g > z z`, `h > g g`, MG5_aMC's `[noborn=QCD]`;
+the matrix element is the loop-squared |A_loop|^2) by `process.loop_induced`:
+
+| Value | Served |
+| --- | --- |
+| `"auto"` (default) | a request none of whose processes has a Born is served loop-induced; in a mixed request (`p p > z z`) the Born members are served and the Born-less ones (`g g > z z`) skipped with a typed `loop-induced` record |
+| `"skip"` | nothing loop-induced; a purely loop-induced request is refused (`loop-induced`) |
+| `"only"` | only the Born-less processes, loop-induced; the Born members are skipped (`born-in-loop-induced-mode`, refused for a request without a Born-less member) |
+| `"include"` | both kinds as separate contributions, never summed (not served yet: `loop-induced-include-pending`) |
+
+A loop-induced process takes the lowest loop-amplitude orders its loops reach
+(`coupling_order_policy = "minimal"`, by the model's coupling hierarchy; with
+`"explicit"` every order within `process.max_coupling_orders`), full colour only
+(`loop-induced-colour-accuracy`), and fixed widths in its tree propagators
+(the complex-mass scheme, when on, applies everywhere and keeps external states
+stable). A Born-less process that reaches no loop amplitude is refused, or
+skipped in a multiparticle request (`no-loop-amplitude`). The dry run lists the
+kind, the inferred loop orders and their loop x loop sectors; generation is
+refused (`loop-induced-engine-pending`) until the loop-induced engine lands.
+
 `flavor_scheme`, `max_quark_lines`, and coupling-order settings constrain that
 expansion. Coupling-order names come from the selected model: the generic
 engine treats them as model-defined filtering and scheduling data and does not
