@@ -1321,63 +1321,33 @@ NamedVector<Value> MLMClustering::build_kernel(
     std::vector<me_int_t> flavor_table = leg_flavors.empty()
         ? std::vector<me_int_t>(_external_masses.size(), 0)
         : leg_flavors;
-    if (_hadronic) {
-        mlm_out = fb.mlm_clustering_hadronic(
-            momenta,
-            random,
-            start_state,
-            state_machine,
-            _external_masses,
-            _bw_masses,
-            _bw_widths,
-            _bw_cutoff,
-            _jet_radius,
-            _cm_energy,
-            static_cast<me_int_t>(_jet_scale_scheme),
-            _xqcut,
-            static_cast<me_int_t>(_scale_scheme),
-            beam_flags,
-            jet_leg_mask,
-            static_cast<me_int_t>(_parton_line_scheme),
-            static_cast<me_int_t>(_alphas_scheme),
-            // 2: the ladder under clustering_mean too (see the kernel)
-            static_cast<me_int_t>(
-                _pdf_reweighting ? (_clustering_mean_pdf_ladder ? 2 : 1) : 0
-            ),
-            static_cast<me_int_t>(_clustering_measure),
-            history_mode,
-            flavor_index,
-            flavor_table
-        );
-    } else {
-        mlm_out = fb.mlm_clustering_leptonic(
-            momenta,
-            random,
-            start_state,
-            state_machine,
-            _external_masses,
-            _bw_masses,
-            _bw_widths,
-            _bw_cutoff,
-            _jet_radius,
-            _cm_energy,
-            static_cast<me_int_t>(_jet_scale_scheme),
-            _xqcut,
-            static_cast<me_int_t>(_scale_scheme),
-            beam_flags,
-            jet_leg_mask,
-            static_cast<me_int_t>(_parton_line_scheme),
-            static_cast<me_int_t>(_alphas_scheme),
-            // 2: the ladder under clustering_mean too (see the kernel)
-            static_cast<me_int_t>(
-                _pdf_reweighting ? (_clustering_mean_pdf_ladder ? 2 : 1) : 0
-            ),
-            static_cast<me_int_t>(_clustering_measure),
-            history_mode,
-            flavor_index,
-            flavor_table
-        );
+    // the layouts of MLM_SHIFT_* and MLM_PARAM_* in kernels/mlm.hpp
+    me_int_t flags = static_cast<me_int_t>(_jet_scale_scheme) << 0 |
+        static_cast<me_int_t>(_scale_scheme) << 2 |
+        static_cast<me_int_t>(_parton_line_scheme) << 4 |
+        static_cast<me_int_t>(_alphas_scheme) << 6 |
+        // 2: the ladder under clustering_mean too (see the kernel)
+        (_pdf_reweighting ? (_clustering_mean_pdf_ladder ? 2 : 1) : 0) << 8 |
+        static_cast<me_int_t>(_clustering_measure) << 10 | history_mode << 12 |
+        static_cast<me_int_t>(_hadronic) << 14;
+    std::vector<double> parameters{_bw_cutoff, _jet_radius, _cm_energy, _xqcut};
+    for (auto [mass, width] : zip(_bw_masses, _bw_widths)) {
+        parameters.push_back(mass);
+        parameters.push_back(width);
     }
+    mlm_out = fb.mlm_clustering(
+        momenta,
+        random,
+        start_state,
+        state_machine,
+        _external_masses,
+        parameters,
+        flags,
+        beam_flags,
+        jet_leg_mask,
+        flavor_index,
+        flavor_table
+    );
     return {return_types().keys(), {mlm_out.begin(), mlm_out.end()}};
 }
 

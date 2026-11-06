@@ -303,6 +303,23 @@ KERNELSPEC void update_momenta(
     }
 }
 
+// Layout of the flags input (MLMClustering::build_kernel): two bits per field.
+constexpr int MLM_FLAG_MASK = 3;
+constexpr int MLM_SHIFT_JET_SCALE_SCHEME = 0;
+constexpr int MLM_SHIFT_SCALE_SCHEME = 2;
+constexpr int MLM_SHIFT_PARTON_LINE_SCHEME = 4;
+constexpr int MLM_SHIFT_ALPHAS_SCHEME = 6;
+constexpr int MLM_SHIFT_PDF_REWEIGHTING = 8;
+constexpr int MLM_SHIFT_CLUSTERING_MEASURE = 10;
+constexpr int MLM_SHIFT_HISTORY_MODE = 12;
+constexpr int MLM_SHIFT_HADRONIC = 14;
+// Layout of the parameters input, the Breit-Wigner (mass, width) pairs last.
+constexpr int MLM_PARAM_BW_CUTOFF = 0;
+constexpr int MLM_PARAM_JET_RADIUS = 1;
+constexpr int MLM_PARAM_CM_ENERGY = 2;
+constexpr int MLM_PARAM_XQCUT = 3;
+constexpr int MLM_PARAM_BW = 4;
+
 // One clustering history, walked from start_state: 0 is the root of the
 // state machine over every diagram, anything else the root of the one compiled
 // for a single diagram. Writes every output and returns the number of outgoing
@@ -313,20 +330,19 @@ KERNELSPEC int mlm_clustering_walk(
     FIn<T, 0> random,
     IIn<T, 1> state_machine,
     FIn<T, 1> external_masses,
-    FIn<T, 1> bw_masses,
-    FIn<T, 1> bw_widths,
-    FIn<T, 0> bw_cutoff,
-    FIn<T, 0> jet_radius,
-    FIn<T, 0> cm_energy,
-    IIn<T, 0> jet_scale_scheme,
-    FIn<T, 0> xqcut,
-    IIn<T, 0> scale_scheme,
-    IIn<T, 0> beam_flags,
-    IIn<T, 0> jet_leg_mask,
-    IIn<T, 0> parton_line_scheme,
-    IIn<T, 0> alphas_scheme,
-    IIn<T, 0> pdf_reweighting,
-    IIn<T, 0> clustering_measure,
+    FIn<T, 1> parameters,
+    double bw_cutoff,
+    double jet_radius,
+    double cm_energy,
+    int jet_scale_scheme,
+    double xqcut,
+    int scale_scheme,
+    int beam_flags,
+    int jet_leg_mask,
+    int parton_line_scheme,
+    int alphas_scheme,
+    int pdf_reweighting,
+    int clustering_measure,
     IIn<T, 0> flavor_index,
     IIn<T, 1> leg_flavors,
     FOut<T, 0> ren_scale,
@@ -428,8 +444,8 @@ KERNELSPEC int mlm_clustering_walk(
         bool resonant = false;
         if (mass_index != 0) {
             FVal<T> prop_m2 = lsquare<T>(momentum_sum);
-            FVal<T> mass = bw_masses[mass_index - 1];
-            FVal<T> width = bw_widths[mass_index - 1];
+            FVal<T> mass = parameters[MLM_PARAM_BW + 2 * (mass_index - 1)];
+            FVal<T> width = parameters[MLM_PARAM_BW + 2 * (mass_index - 1) + 1];
             FVal<T> half_window = FVal<T>(bw_cutoff) * width;
             FVal<T> m_min = max(mass - half_window, 0.0);
             FVal<T> m_max = mass + half_window;
@@ -1437,27 +1453,16 @@ constexpr int HISTORY_DIAGRAM = 1;
 constexpr int HISTORY_MADEVENT = 2;
 
 template <typename T>
-KERNELSPEC void mlm_clustering(
+KERNELSPEC void kernel_mlm_clustering(
     FIn<T, 2> momenta,
     FIn<T, 0> random,
     IIn<T, 0> start_state,
     IIn<T, 1> state_machine,
     FIn<T, 1> external_masses,
-    FIn<T, 1> bw_masses,
-    FIn<T, 1> bw_widths,
-    FIn<T, 0> bw_cutoff,
-    FIn<T, 0> jet_radius,
-    FIn<T, 0> cm_energy,
-    IIn<T, 0> jet_scale_scheme,
-    FIn<T, 0> xqcut,
-    IIn<T, 0> scale_scheme,
+    FIn<T, 1> parameters,
+    IIn<T, 0> flags,
     IIn<T, 0> beam_flags,
     IIn<T, 0> jet_leg_mask,
-    IIn<T, 0> parton_line_scheme,
-    IIn<T, 0> alphas_scheme,
-    IIn<T, 0> pdf_reweighting,
-    IIn<T, 0> clustering_measure,
-    IIn<T, 0> history_mode,
     IIn<T, 0> flavor_index,
     IIn<T, 1> leg_flavors,
     FOut<T, 0> ren_scale,
@@ -1476,29 +1481,30 @@ KERNELSPEC void mlm_clustering(
     FOut<T, 1> pdf_rw_q_den,
     FOut<T, 1> pdf_rw_active,
     FOut<T, 1> pdf_rw_beam,
-    FOut<T, 1> pdf_rw_x_prev,
-    bool hadronic
+    FOut<T, 1> pdf_rw_x_prev
 ) {
+    int flag_word = flags;
+    auto flag = [&](int shift) { return (flag_word >> shift) & MLM_FLAG_MASK; };
+    int history_mode = flag(MLM_SHIFT_HISTORY_MODE);
     auto walk = [&](int start) {
         return mlm_clustering_walk<T>(
             momenta,
             random,
             state_machine,
             external_masses,
-            bw_masses,
-            bw_widths,
-            bw_cutoff,
-            jet_radius,
-            cm_energy,
-            jet_scale_scheme,
-            xqcut,
-            scale_scheme,
+            parameters,
+            parameters[MLM_PARAM_BW_CUTOFF],
+            parameters[MLM_PARAM_JET_RADIUS],
+            parameters[MLM_PARAM_CM_ENERGY],
+            flag(MLM_SHIFT_JET_SCALE_SCHEME),
+            parameters[MLM_PARAM_XQCUT],
+            flag(MLM_SHIFT_SCALE_SCHEME),
             beam_flags,
             jet_leg_mask,
-            parton_line_scheme,
-            alphas_scheme,
-            pdf_reweighting,
-            clustering_measure,
+            flag(MLM_SHIFT_PARTON_LINE_SCHEME),
+            flag(MLM_SHIFT_ALPHAS_SCHEME),
+            flag(MLM_SHIFT_PDF_REWEIGHTING),
+            flag(MLM_SHIFT_CLUSTERING_MEASURE),
             flavor_index,
             leg_flavors,
             ren_scale,
@@ -1519,7 +1525,7 @@ KERNELSPEC void mlm_clustering(
             pdf_rw_beam,
             pdf_rw_x_prev,
             start,
-            hadronic
+            flag(MLM_SHIFT_HADRONIC) != 0
         );
     };
     int start = start_state;
@@ -1586,178 +1592,6 @@ KERNELSPEC void mlm_clustering(
     } else {
         walk(start);
     }
-}
-
-template <typename T>
-KERNELSPEC void kernel_mlm_clustering_hadronic(
-    FIn<T, 2> momenta,
-    FIn<T, 0> random,
-    IIn<T, 0> start_state,
-    IIn<T, 1> state_machine,
-    FIn<T, 1> external_masses,
-    FIn<T, 1> bw_masses,
-    FIn<T, 1> bw_widths,
-    FIn<T, 0> bw_cutoff,
-    FIn<T, 0> jet_radius,
-    FIn<T, 0> cm_energy,
-    IIn<T, 0> jet_scale_scheme,
-    FIn<T, 0> xqcut,
-    IIn<T, 0> scale_scheme,
-    IIn<T, 0> beam_flags,
-    IIn<T, 0> jet_leg_mask,
-    IIn<T, 0> parton_line_scheme,
-    IIn<T, 0> alphas_scheme,
-    IIn<T, 0> pdf_reweighting,
-    IIn<T, 0> clustering_measure,
-    IIn<T, 0> history_mode,
-    IIn<T, 0> flavor_index,
-    IIn<T, 1> leg_flavors,
-    FOut<T, 0> ren_scale,
-    FOut<T, 0> fact_scale1,
-    FOut<T, 0> fact_scale2,
-    FOut<T, 1> outgoing_scales,
-    IOut<T, 0> diagram_index,
-    FOut<T, 0> xqcut_weight,
-    FOut<T, 1> alphas_scales,
-    FOut<T, 0> alphas_weight,
-    FOut<T, 0> pdf_scale1,
-    FOut<T, 0> pdf_scale2,
-    IOut<T, 1> pdf_rw_flavor,
-    FOut<T, 1> pdf_rw_x,
-    FOut<T, 1> pdf_rw_q_num,
-    FOut<T, 1> pdf_rw_q_den,
-    FOut<T, 1> pdf_rw_active,
-    FOut<T, 1> pdf_rw_beam,
-    FOut<T, 1> pdf_rw_x_prev
-) {
-    mlm_clustering<T>(
-        momenta,
-        random,
-        start_state,
-        state_machine,
-        external_masses,
-        bw_masses,
-        bw_widths,
-        bw_cutoff,
-        jet_radius,
-        cm_energy,
-        jet_scale_scheme,
-        xqcut,
-        scale_scheme,
-        beam_flags,
-        jet_leg_mask,
-        parton_line_scheme,
-        alphas_scheme,
-        pdf_reweighting,
-        clustering_measure,
-        history_mode,
-        flavor_index,
-        leg_flavors,
-        ren_scale,
-        fact_scale1,
-        fact_scale2,
-        outgoing_scales,
-        diagram_index,
-        xqcut_weight,
-        alphas_scales,
-        alphas_weight,
-        pdf_scale1,
-        pdf_scale2,
-        pdf_rw_flavor,
-        pdf_rw_x,
-        pdf_rw_q_num,
-        pdf_rw_q_den,
-        pdf_rw_active,
-        pdf_rw_beam,
-        pdf_rw_x_prev,
-        true
-    );
-}
-
-template <typename T>
-KERNELSPEC void kernel_mlm_clustering_leptonic(
-    FIn<T, 2> momenta,
-    FIn<T, 0> random,
-    IIn<T, 0> start_state,
-    IIn<T, 1> state_machine,
-    FIn<T, 1> external_masses,
-    FIn<T, 1> bw_masses,
-    FIn<T, 1> bw_widths,
-    FIn<T, 0> bw_cutoff,
-    FIn<T, 0> jet_radius,
-    FIn<T, 0> cm_energy,
-    IIn<T, 0> jet_scale_scheme,
-    FIn<T, 0> xqcut,
-    IIn<T, 0> scale_scheme,
-    IIn<T, 0> beam_flags,
-    IIn<T, 0> jet_leg_mask,
-    IIn<T, 0> parton_line_scheme,
-    IIn<T, 0> alphas_scheme,
-    IIn<T, 0> pdf_reweighting,
-    IIn<T, 0> clustering_measure,
-    IIn<T, 0> history_mode,
-    IIn<T, 0> flavor_index,
-    IIn<T, 1> leg_flavors,
-    FOut<T, 0> ren_scale,
-    FOut<T, 0> fact_scale1,
-    FOut<T, 0> fact_scale2,
-    FOut<T, 1> outgoing_scales,
-    IOut<T, 0> diagram_index,
-    FOut<T, 0> xqcut_weight,
-    FOut<T, 1> alphas_scales,
-    FOut<T, 0> alphas_weight,
-    FOut<T, 0> pdf_scale1,
-    FOut<T, 0> pdf_scale2,
-    IOut<T, 1> pdf_rw_flavor,
-    FOut<T, 1> pdf_rw_x,
-    FOut<T, 1> pdf_rw_q_num,
-    FOut<T, 1> pdf_rw_q_den,
-    FOut<T, 1> pdf_rw_active,
-    FOut<T, 1> pdf_rw_beam,
-    FOut<T, 1> pdf_rw_x_prev
-) {
-    mlm_clustering<T>(
-        momenta,
-        random,
-        start_state,
-        state_machine,
-        external_masses,
-        bw_masses,
-        bw_widths,
-        bw_cutoff,
-        jet_radius,
-        cm_energy,
-        jet_scale_scheme,
-        xqcut,
-        scale_scheme,
-        beam_flags,
-        jet_leg_mask,
-        parton_line_scheme,
-        alphas_scheme,
-        pdf_reweighting,
-        clustering_measure,
-        history_mode,
-        flavor_index,
-        leg_flavors,
-        ren_scale,
-        fact_scale1,
-        fact_scale2,
-        outgoing_scales,
-        diagram_index,
-        xqcut_weight,
-        alphas_scales,
-        alphas_weight,
-        pdf_scale1,
-        pdf_scale2,
-        pdf_rw_flavor,
-        pdf_rw_x,
-        pdf_rw_q_num,
-        pdf_rw_q_den,
-        pdf_rw_active,
-        pdf_rw_beam,
-        pdf_rw_x_prev,
-        false
-    );
 }
 
 } // namespace kernels
