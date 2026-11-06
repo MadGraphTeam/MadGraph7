@@ -875,6 +875,18 @@ LOOP_INTERNAL_REFUSALS = (
         "engine fix per case",
     ),
     LoopAdmissionRefusal(
+        "loop-induced-probe",
+        "a loop-induced process whose generation-time finiteness or Ward "
+        "probe exceeds ten times its own estimate (induced.ProbeFailure)",
+        "a loop-induced amplitude is finite and gauge invariant: its poles "
+        "and its Ward residues vanish within rounding (m-lit Q12)",
+        "report the request (a missing family, counterterm or R2 vertex); "
+        "generation.allow_failed_probes = true stores it with the failure "
+        "recorded",
+        "v2 engine",
+        "engine or model fix per case",
+    ),
+    LoopAdmissionRefusal(
         "counterterm-completeness",
         "a divergent witness covered neither by a counterterm rule nor by a "
         "certified zero (ct_sites.CountertermCompletenessError)",

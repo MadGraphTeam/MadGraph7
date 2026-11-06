@@ -423,6 +423,7 @@ def test_internal_and_engine_errors_keep_their_keys():
         UnloweredCountertermError,
     )
     from pyamplicol.loops.v2.ct_sites import CountertermCompletenessError
+    from pyamplicol.loops.v2.induced import ProbeFailure
     from pyamplicol.loops.v2.native_trees import (
         NATIVE_EXPORT_REFUSALS,
         NativeExportUnsupported,
@@ -443,6 +444,7 @@ def test_internal_and_engine_errors_keep_their_keys():
         CountertermCouplingError: "counterterm-coupling",
         LoopKernelCatalogueError: "loop-kernel-catalogue",
         CountertermCompletenessError: "counterterm-completeness",
+        ProbeFailure: "loop-induced-probe",
     }
     assert sorted(internal.values()) == sorted(listed_internal_keys())
     for cls, key in internal.items():

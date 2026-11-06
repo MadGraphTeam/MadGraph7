@@ -43,8 +43,9 @@ numerically.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from fractions import Fraction
+from types import MappingProxyType
 from typing import Any
 
 from . import reference_executor as rx
@@ -1107,14 +1108,17 @@ def finiteness(evaluation: Any) -> dict:
 ESTIMATE_FACTOR = 10
 
 
-def amplitude_estimates(evaluation: Any, roundoff: float) -> dict:
+def amplitude_estimates(
+    evaluation: Any, roundoff: float, scales: Mapping | None = None
+) -> dict:
     """Per (loop order, row) and Laurent coefficient k the pair (||a_k||_G,
     E_k): the amplitude's colour-metric norm and its absolute estimate E_k =
     SAFETY x ||delta a_k||_G + FLOOR_UNITS x u x S_k(h) (``stability``'s
     combination at the amplitude level, PLAN §2.a.8), with ||delta a_k||_G
     bounded by the reduction re-test's per-component deviations
     (``native_budget``, or the Python lanes' ``family_deviations``; no two
-    families cancel) and S_k(h) the row's term floor (``row_scales``).
+    families cancel) and S_k(h) the row's term floor (``row_scales``, or
+    ``scales``: a Ward probe's are the physical amplitude's, ``probe``).
     Needs the reduction re-test and the term scale (``probe``)."""
 
     from .stability import FLOOR_UNITS, SAFETY
@@ -1125,7 +1129,8 @@ def amplitude_estimates(evaluation: Any, roundoff: float) -> dict:
         if deviations is None:
             raise ValueError("an amplitude estimate needs the reduction re-test")
         errors = lane_errors(evaluation, deviations)
-    scales = row_scales(evaluation)
+    if scales is None:
+        scales = row_scales(evaluation)
     gram = evaluation.gram
     numbers = evaluation.numbers
     width = width_of(evaluation)
@@ -1166,10 +1171,14 @@ class ProbeResult:
     the largest ratio |residue| / E over the probed Laurent coefficients
     (``amplitude_estimates``) and whether every ratio is within
     ``ESTIMATE_FACTOR`` (the x10 rule; pass/fail from the probe's own
-    estimate, never a fixed tolerance, m-lit Q12)."""
+    estimate, never a fixed tolerance, m-lit Q12); ``scales`` are the
+    physical amplitude's row term floors the estimates stand on."""
 
     kind: str
     ratios: Mapping[tuple[Orders, rx.Row], float]
+    scales: Mapping[tuple[Orders, rx.Row], Sequence[float]] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
 
     @property
     def worst(self) -> float:
@@ -1178,6 +1187,49 @@ class ProbeResult:
     @property
     def passed(self) -> bool:
         return self.worst <= ESTIMATE_FACTOR
+
+
+def _probe_evaluation(executor, point, scale, parameters, precision, ward, frame):
+    """One point on ``executor`` with the reduction re-test in ``frame`` and
+    the term scale: (the carrier's precision, the evaluation)."""
+
+    executor.term_scale = True
+    try:
+        precision, evaluations, failures = executor._evaluated(
+            [point],
+            [scale],
+            dict(parameters or {}),
+            precision,
+            "all",
+            frame,
+            "B",
+            None if ward is None else [ward],
+        )
+    finally:
+        executor.term_scale = False
+    if failures:
+        raise ArithmeticError(f"the probe point failed: {failures[0]}")
+    (evaluation,) = evaluations
+    return precision, evaluation
+
+
+def ward_floors(physical: Mapping, leg: int) -> dict:
+    """The term floors a Ward probe of leg ``leg`` (1-based) stands on: per
+    (loop order, row) the largest physical floor over the rows that differ
+    from it only in that leg's helicity (the substituted leg reads one
+    vector for every helicity, so its rows repeat the same amplitude)."""
+
+    out: dict = {}
+    for (order, row), values in physical.items():
+        key = (order, tuple((i, 0 if i == leg - 1 else h) for i, h in row))
+        found = out.get(key)
+        out[key] = (
+            list(values) if found is None else [max(a, b) for a, b in zip(found, values)]
+        )
+    return {
+        (order, row): out[(order, tuple((i, 0 if i == leg - 1 else h) for i, h in row))]
+        for order, row in physical
+    }
 
 
 def probe(
@@ -1189,6 +1241,7 @@ def probe(
     precision: Any = None,
     ward: Any = None,
     frame: str = "reversed",
+    physical: Mapping | None = None,
 ) -> ProbeResult:
     """The finiteness probe (``ward`` None) or the amplitude-level Ward
     probe of a loop-induced point on a native executor of its slice
@@ -1207,31 +1260,36 @@ def probe(
       vertex shows here (invisible to the poles). The slice must be on the
       full tree kernels (``ward.ward_slice``). Widths enter the probe as
       the caller's parameters (zero widths outside the complex-mass scheme,
-      m-lit Q7).
+      m-lit Q7). The residue is measured against the PHYSICAL amplitude's
+      term floor (``ward_floors``; ``physical``: the row floors of the
+      physical evaluation at the same point, ``ProbeResult.scales`` of its
+      finiteness probe, evaluated here when not given), as ``ward.py``'s
+      criterion measures against the physical evaluation: the substituted
+      amplitude's own floor can be at rounding (the numerators of g g > h
+      vanish term by term), which would make its estimate meaningless.
 
     The reduction re-test in ``frame`` and the term scale run with it."""
 
     from .assemble import Precision
 
     precision = precision or Precision.double_double()
-    executor.term_scale = True
-    try:
-        precision, evaluations, failures = executor._evaluated(
-            [point],
-            [scale],
-            dict(parameters or {}),
-            precision,
-            "all",
-            frame,
-            "B",
-            None if ward is None else [ward],
-        )
-    finally:
-        executor.term_scale = False
-    if failures:
-        raise ArithmeticError(f"the probe point failed: {failures[0]}")
-    (evaluation,) = evaluations
-    estimates = amplitude_estimates(evaluation, precision.unit_roundoff)
+    carrier, evaluation = _probe_evaluation(
+        executor, point, scale, parameters, precision, ward, frame
+    )
+    if ward is None:
+        scales = row_scales(evaluation)
+        floors = scales
+    else:
+        from .ward import ward_leg
+
+        if physical is None:
+            _carrier, reference = _probe_evaluation(
+                executor, point, scale, parameters, precision, None, frame
+            )
+            physical = row_scales(reference)
+        scales = physical
+        floors = ward_floors(physical, ward_leg(ward))
+    estimates = amplitude_estimates(evaluation, carrier.unit_roundoff, floors)
     first = 0 if ward is not None else 1
     ratios = {}
     for key, entries in estimates.items():
@@ -1240,7 +1298,317 @@ def probe(
             if residue:
                 ratio = max(ratio, residue / estimate if estimate else float("inf"))
         ratios[key] = ratio
-    return ProbeResult("ward" if ward is not None else "finiteness", ratios)
+    return ProbeResult(
+        "ward" if ward is not None else "finiteness", ratios, MappingProxyType(scales)
+    )
+
+
+# ------------------------------------------------- generation-time probes
+
+
+class ProbeFailure(ArithmeticError):
+    """A generation-time probe of a loop-induced request outside ten times
+    its own estimate (m-lit Q12: generation fails unless overridden)."""
+
+    refusal_key = "loop-induced-probe"
+
+
+def probe_request(slice_: Any) -> tuple[Any, tuple[str, ...]]:
+    """The request of the generation-time probe slice and the widths it
+    zeroes (m-lit Q7): outside the complex-mass scheme every external width
+    parameter of the model that is not zero is fixed to 0 (a fixed width in
+    a tree propagator breaks the Ward identity of an external photon or
+    gluon line it attaches to, so the probe would fail spuriously); under
+    the complex-mass scheme the widths stay (the scheme is gauge invariant).
+    The production artifact keeps its widths."""
+
+    from dataclasses import replace
+
+    from pyamplicol.loops.model_cms import convention_record
+
+    from .ew_policy import is_zero
+
+    compiled, request = slice_.compiled, slice_.request
+    if convention_record(compiled) is not None:
+        return request, ()
+    parameters = {record.name: record for record in compiled.ir.parameters}
+    fixed = request.fixed_parameters
+    widths = sorted(
+        {
+            str(record.width)
+            for record in compiled.ir.particles
+            if str(record.width) in parameters
+            and parameters[str(record.width)].nature == "external"
+            and not is_zero(str(record.width), parameters, fixed)
+        }
+    )
+    if not widths:
+        return request, ()
+    zeroed = {**dict(fixed), **dict.fromkeys(widths, "0")}
+    return replace(request, fixed_parameters=zeroed), tuple(widths)
+
+
+def probe_point(
+    slice_: Any, momenta: Sequence[Sequence[float]], digits: int
+) -> tuple[list[list[str]], float | None]:
+    """A probe point of the slice's process lifted from a binary64 phase-space
+    point (``generation.validation``: decays at rest, scatterings in the
+    centre-of-mass frame with the beams along +-z), with momentum
+    conservation exact and every mass shell within 10^-digits relative, so
+    the probe's residues measure the amplitude, not the point.
+
+    The final three-momenta are read exactly, the last one replaced by minus
+    the sum of the others; a scattering's final energies are the on-shell
+    ones and its beams carry their total along +-z; a decay's final momenta
+    are scaled (Newton, at ``digits``) so that their energies add up to the
+    decaying mass. Masses are the slice's (``assemble._leg_masses`` at the
+    generation parameters). Returns the decimal strings and the point's
+    smallest relative distance |s_I - M^2| / M^2 over the invariants of
+    every leg subset I with 2 <= |I| <= n - 2 (a tree propagator's) and
+    every massive particle of the model (None without such a subset)."""
+
+    from decimal import Decimal, localcontext
+    from itertools import combinations
+
+    from .assemble import _leg_masses
+
+    legs = sorted(slice_.blocks.process.legs, key=lambda leg: leg.label)
+    count = sum(1 for leg in legs if leg.is_initial)
+    squares = _leg_masses(slice_, slice_.request.fixed_parameters, digits + 10)
+    with localcontext() as context:
+        context.prec = digits + 10
+
+        def exact(value: Any) -> Fraction:
+            return value if isinstance(value, Fraction) else Fraction(value)
+
+        def root(value: Fraction) -> Fraction:
+            if value <= 0:
+                return Fraction(0)
+            return exact(
+                Decimal(value.numerator).sqrt() / Decimal(value.denominator).sqrt()
+            )
+
+        final = [
+            [Fraction(float(x)) for x in momentum[1:]] for momentum in momenta[count:]
+        ]
+        final[-1] = [-sum(p[i] for p in final[:-1]) for i in range(3)]
+        spatial = [sum(x * x for x in p) for p in final]
+        masses = squares[count:]
+
+        def energies(scale: Fraction) -> list[Fraction]:
+            return [
+                root(scale * scale * q + m) for q, m in zip(spatial, masses, strict=True)
+            ]
+
+        scale = Fraction(1)
+        if count == 1:
+            target = root(squares[0])
+            for _ in range(digits):
+                values = energies(scale)
+                error = sum(values) - target
+                slope = sum(
+                    scale * q / e for q, e in zip(spatial, values, strict=True) if e
+                )
+                if not slope:
+                    break
+                step = exact(Decimal(error.numerator) / Decimal(error.denominator))
+                step = exact(
+                    Decimal(step.numerator)
+                    / Decimal(step.denominator)
+                    / (Decimal(slope.numerator) / Decimal(slope.denominator))
+                )
+                scale -= step
+                if abs(step) <= Fraction(1, 10 ** (digits + 5)) * abs(scale):
+                    break
+        values = energies(scale)
+        final_momenta = [
+            [e, *(scale * x for x in p)] for e, p in zip(values, final, strict=True)
+        ]
+        total = sum(values)
+        if count == 1:
+            initial = [[total, Fraction(0), Fraction(0), Fraction(0)]]
+        else:
+            first, second = squares[0], squares[1]
+            energy = (total * total + first - second) / (2 * total)
+            pz = root(energy * energy - first)
+            initial = [
+                [energy, Fraction(0), Fraction(0), pz],
+                [total - energy, Fraction(0), Fraction(0), -pz],
+            ]
+        point = [*initial, *final_momenta]
+        massive = sorted(
+            {
+                square
+                for square in (
+                    _particle_square(slice_, record, digits)
+                    for record in slice_.compiled.ir.particles
+                )
+                if square
+            }
+        )
+        outgoing = [
+            [(-x if index < count else x) for x in p] for index, p in enumerate(point)
+        ]
+        distance = None
+        for size in range(2, len(point) - 1):
+            for subset in combinations(range(len(point)), size):
+                p = [sum(outgoing[i][mu] for i in subset) for mu in range(4)]
+                invariant = p[0] * p[0] - p[1] * p[1] - p[2] * p[2] - p[3] * p[3]
+                for square in massive:
+                    gap = float(abs(invariant - square) / square)
+                    distance = gap if distance is None else min(distance, gap)
+        text = [
+            [
+                str(Decimal(x.numerator) / Decimal(x.denominator))
+                if x.denominator != 1
+                else str(x.numerator)
+                for x in p
+            ]
+            for p in point
+        ]
+    return text, distance
+
+
+def _particle_square(slice_: Any, record: Any, digits: int) -> Fraction | None:
+    """A model particle's squared mass at the generation parameters (None if
+    massless or not a real mass, e.g. a complex-mass scheme's pole mass)."""
+
+    from .assemble import _model_masses
+
+    mass = str(record.mass)
+    try:
+        value = _model_masses(
+            slice_.compiled, slice_.request.fixed_parameters, digits
+        )(mass)
+    except (KeyError, ValueError):
+        return None
+    if not isinstance(value, Fraction) or not value:
+        return None
+    return value * value
+
+
+def generation_probes(
+    slice_: Any,
+    compiled: Any,
+    native: Any,
+    candidates: Sequence[Sequence[Sequence[float]]],
+    *,
+    allow_failure: bool = False,
+    precision: Any = None,
+) -> dict[str, Any]:
+    """The generation-time probes of a loop-induced slice (m-lit Q12, PLAN
+    §2.a.7 items 5-6), in double-double by default: the finiteness probe and,
+    on every external massless gauge-boson leg (gluons and photons), the
+    amplitude-level Ward probe epsilon_j -> c p_j / E_j for c = 1 and i, on
+    a slice of the request generated on the full tree kernels at zero widths
+    outside the complex-mass scheme (``probe_request``; the production slice
+    itself when it already is one). The point is the candidate binary64
+    point (``candidates``, the generation's validation points) farthest from
+    every tree pole, lifted by ``probe_point``. A probe passes within ten
+    times its own estimate (``ESTIMATE_FACTOR``); a failure raises
+    ``ProbeFailure`` unless ``allow_failure`` (recorded). An exact colour
+    zero has nothing to probe. Massive external vectors take no Ward probe
+    here (their Goldstone-equivalence and both-gauges checks are LIT-EW's).
+
+    Returns the record the artifact stores (``generation_filters``)."""
+
+    from .assemble import Precision
+    from .plan_export import NativeExecutor
+    from .ward import WARD_FACTORS, gauge_legs, gauge_ward, ward_slice
+
+    if slice_.amplitude.colour_zero:
+        return {"exact_colour_zero": True}
+    precision = precision or Precision.double_double()
+    request, zeroed = probe_request(slice_)
+    blocks = slice_.blocks
+    if zeroed or getattr(blocks, "kernel_variant", None) != "full":
+        target = ward_slice(compiled, request, native)
+    else:
+        target = slice_
+    digits = 2 * precision.working_digits
+    lifted = [probe_point(target, momenta, digits) for momenta in candidates]
+    index = max(
+        range(len(lifted)),
+        key=lambda i: float("inf") if lifted[i][1] is None else lifted[i][1],
+    )
+    point, distance = lifted[index]
+    executor = NativeExecutor(target, forward=False, inputs="native")
+    scale = _point_scale(point, sum(1 for leg in blocks.process.legs if leg.is_initial))
+    finite = probe(executor, point, scale, precision=precision)
+    results = [("finiteness", None, finite)]
+    legs = gauge_legs(target)
+    for leg in legs:
+        for factor in WARD_FACTORS:
+            ward = gauge_ward(leg, factor, point)
+            results.append(
+                (
+                    "ward",
+                    (leg, factor),
+                    probe(
+                        executor,
+                        point,
+                        scale,
+                        precision=precision,
+                        ward=ward,
+                        physical=finite.scales,
+                    ),
+                )
+            )
+    finiteness = results[0][2]
+    wards = [result for kind, _, result in results if kind == "ward"]
+    record: dict[str, Any] = {
+        "precision": precision.arithmetic,
+        "widths": "complex-mass" if not zeroed and _complex_mass(slice_) else "zero",
+        **({"zeroed_widths": list(zeroed)} if zeroed else {}),
+        "candidate": index,
+        "pole_distance": None if distance is None else _short(distance),
+        "finiteness": {"worst": _short(finiteness.worst), "passed": finiteness.passed},
+        "ward": {
+            "legs": list(legs),
+            "worst": _short(max((r.worst for r in wards), default=0.0)),
+            "passed": all(r.passed for r in wards),
+        },
+    }
+    failed = [
+        f"{kind} probe"
+        + ("" if where is None else f" (leg {where[0]}, c = {where[1]})")
+        + f": {result.worst:.3g} times its estimate"
+        for kind, where, result in results
+        if not result.passed
+    ]
+    if failed:
+        record["failed"] = failed
+        if not allow_failure:
+            raise ProbeFailure(
+                f"{slice_.request.process!r}: the loop-induced generation-time "
+                f"probes failed ({'; '.join(failed)}; pass within "
+                f"{ESTIMATE_FACTOR} times the probe's own estimate, m-lit Q12): "
+                "a missing family or counterterm (finiteness) or R2 vertex "
+                "(Ward). generation.allow_failed_probes = true stores the "
+                "artifact anyway, with the failure recorded"
+            )
+        record["allowed_failure"] = True
+    return record
+
+
+def _short(value: float) -> float | str:
+    """A ratio for the artifact record: three significant digits (a JSON
+    number), "inf" for an infinite one."""
+
+    return float(f"{value:.3g}") if value != float("inf") else "inf"
+
+
+def _complex_mass(slice_: Any) -> bool:
+    from pyamplicol.loops.model_cms import convention_record
+
+    return convention_record(slice_.compiled) is not None
+
+
+def _point_scale(point: Sequence[Sequence[str]], initial: int) -> Fraction:
+    """The probe's mu_R^2: the squared invariant mass of the initial state."""
+
+    total = [sum(Fraction(p[mu]) for p in point[:initial]) for mu in range(4)]
+    return total[0] ** 2 - total[1] ** 2 - total[2] ** 2 - total[3] ** 2
 
 
 def g_norm(vector: Sequence[Any], gram: Sequence[Sequence[Any]], numbers: Any) -> Any:

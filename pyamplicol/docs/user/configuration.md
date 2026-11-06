@@ -200,6 +200,16 @@ Generation stores |A_loop|^2 at full colour (artifact capability
 `rusticol.loop-runtime.v5`); `Runtime.evaluate` returns a `VirtualEvaluation`
 with `contribution = "loop-induced"`, empty Born fields and the poles
 `"all"` or `"none"` (their vanishing is a finiteness cross-check).
+Generation probes every loop-induced process in double-double at one point
+(the validation point farthest from the tree poles, lifted to exact momentum
+conservation), on its full tree kernels with every width fixed to zero (the
+complex-mass scheme keeps its complex masses): the amplitude's poles must
+vanish (finiteness) and, for every external gluon or photon, the amplitude
+with its polarisation replaced by its momentum (Ward: R2 completeness), each
+within ten times the probe's own estimate. A failure refuses the process
+(`loop-induced-probe`); `[generation] allow_failed_probes = true` (CLI
+`--allow-failed-probes`) stores it anyway. The outcome is recorded in the
+artifact's generation filters (`loop_induced_probes`).
 
 `flavor_scheme`, `max_quark_lines`, and coupling-order settings constrain that
 expansion. Coupling-order names come from the selected model: the generic

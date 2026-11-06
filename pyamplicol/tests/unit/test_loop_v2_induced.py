@@ -22,7 +22,11 @@ li``, MadLoop / Recola / OpenLoops and the mpmath oracles of
   amplitude-level finiteness and Ward probes pass within ten times their
   own estimates on the per-row term floor (m-lit DECISIONS 2026-11-06
   ~09:00 (1)), whose native and Python forms agree; a non-gauge vector
-  fails the Ward probe (it discriminates);
+  fails the Ward probe (it discriminates); the generation-time probes
+  (double-double, zero widths, full kernels) pass, and a failed one refuses
+  generation unless allowed;
+* the result transport is O(rows x T) per point: no reduction lanes reach
+  Python unless requested;
 * h > g a is an exact colour zero with its record (every loop has a single
   coloured attachment, Tr T^a = 0), g g > h a and g g > a a a are
   numerical zeros within their absolute estimates;
@@ -320,7 +324,7 @@ def test_binary64_equals_madloop_the_oracle_and_the_python_route(li, name, analy
 
 @pytest.mark.loop_physics
 @pytest.mark.parametrize(
-    "name", [name for name, analytic in ROWS if analytic and name != "li_gg_aa"]
+    "name", [name for name, analytic in ROWS if analytic]
 )
 def test_double_double_equals_the_analytic_oracle(li, name):
     from pyamplicol.loops.v2.assemble import Precision
@@ -489,6 +493,39 @@ def test_poles_vanish_within_the_stability_estimate(li, name):
 
 
 @pytest.mark.loop_physics
+def test_result_transport_is_rows_times_basis(li):
+    """PLAN §2.a.4 / Done (6): an amplitude-mode point hands Python its
+    amplitude vectors only (loop orders x rows x T slots), no reduction
+    lanes; the raw lanes come only on request (``raw_lanes``, the oracle
+    route), with the same values."""
+
+    from pyamplicol.loops.v2.assemble import Precision
+
+    name = "li_gg_hg"
+    fixture = _fixture(name)
+    _point, _scale, parameters = li.point(name)
+    points = fixture["points"]
+    scales = [str(Fraction(mu) ** 2) for mu in fixture["mu_r"]]
+    executor = li.executor(name, "native")
+    exported = executor.exported
+    default = executor.evaluate(
+        points, scales, parameters=parameters, precision=Precision.double()
+    )
+    slots = len(exported.orders) * len(exported.rows) * exported.amplitude
+    lanes = executor.last_report["counts"]["reduction lanes"]
+    assert lanes > slots and all(not result.families for result in default)
+    executor.raw_lanes = True
+    try:
+        raw = executor.evaluate(
+            points, scales, parameters=parameters, precision=Precision.double()
+        )
+    finally:
+        executor.raw_lanes = False
+    assert sum(len(result.families) for result in raw) == lanes
+    assert [r.totals for r in raw] == [r.totals for r in default]
+
+
+@pytest.mark.loop_physics
 def test_amplitude_mode_plans_are_schema_5_and_seeded_plans_schema_4(li):
     from pyamplicol.loops.v2.plan_export import (
         AMPLITUDE_PLAN_SCHEMA,
@@ -635,6 +672,64 @@ def test_ward_probe_passes_and_discriminates(li):
 
 
 @pytest.mark.loop_physics
+def test_generation_probes_pass_at_zero_widths_on_the_full_kernels(li):
+    """m-lit Q12 / Q7, PLAN §2.a.7: the generation-time probes of g g > h g
+    at the model's widths (none fixed): on a probe slice with the widths
+    fixed to zero on the full tree kernels, in double-double at the
+    candidate farthest from the tree poles (lifted to exact momentum
+    conservation), the finiteness probe and the Ward probes of the three
+    gluons pass within ten times their estimates."""
+
+    from pyamplicol.loops.v2 import induced
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+
+    compiled = li.model("no_b_mass")
+    orders = {"QCD": 3, "QED": 1}
+    slice_ = LoopSlice.generate(
+        compiled,
+        SliceRequest("g g > h g", orders, orders, contribution="loop-induced"),
+        li.native,
+    )
+    points = _fixture("li_gg_hg")["points"]
+    candidates = [[[float(x) for x in p] for p in point] for point in points]
+    record = induced.generation_probes(slice_, compiled, li.native, candidates)
+    assert record["precision"] == "double-double" and record["widths"] == "zero"
+    assert record["zeroed_widths"] == ["WH", "WT", "WW", "WZ"]
+    distances = [
+        induced.probe_point(slice_, point, 64)[1] for point in candidates
+    ]
+    assert record["candidate"] == distances.index(max(distances))
+    assert record["finiteness"]["passed"] and record["ward"]["passed"]
+    assert record["ward"]["legs"] == [1, 2, 4] and "failed" not in record
+
+
+@pytest.mark.loop_physics
+def test_a_failed_generation_probe_refuses_unless_allowed(li, monkeypatch):
+    """A non-gauge vector in place of c p_j / E_j fails the Ward probe of
+    g g > h: generation refuses (``ProbeFailure``, the internal key
+    ``loop-induced-probe``) unless the failure is allowed, which records
+    it; the exact colour zero h > g a has nothing to probe."""
+
+    from pyamplicol.loops.v2 import induced, ward
+    from pyamplicol.loops.v2.refusals import LoopEngineRefusal, keyed_error
+
+    slice_ = li.slice("li_gg_h")
+    compiled = li.model("no_b_mass")
+    candidates = [[[float(x) for x in p] for p in li.point("li_gg_h")[0]]]
+    control = (("1", "0"), ("0", "0"), ("1", "0"), ("0", "0"))
+    monkeypatch.setattr(ward, "gauge_ward", lambda leg, factor, point: (leg, control))
+    with pytest.raises(induced.ProbeFailure, match="ward probe") as refused:
+        induced.generation_probes(slice_, compiled, li.native, candidates)
+    typed = keyed_error(refused.value)
+    assert isinstance(typed, LoopEngineRefusal) and typed.key == "loop-induced-probe"
+    allowed = induced.generation_probes(
+        slice_, compiled, li.native, candidates, allow_failure=True
+    )
+    assert allowed["allowed_failure"] and allowed["failed"]
+    assert allowed["finiteness"]["passed"] and not allowed["ward"]["passed"]
+
+
+@pytest.mark.loop_physics
 def test_g_g_to_a_a_a_is_zero_within_its_absolute_estimate(li):
     """g g > a a a (Furry: the quark loop's two orientations cancel) is
     served numerically (Q13: no Furry-by-rule zero): |A|^2 lies within ten
@@ -728,6 +823,15 @@ def test_public_route_generates_loads_and_relocates(li, tmp_path):
     assert manifest["runtime"]["required_runtime_capabilities"] == [
         "rusticol.loop-runtime.v5"
     ]
+    # m-lit Q12: the generation-time probes, recorded per process.
+    records = {
+        record["id"]: record["filters"]
+        for record in manifest["extensions"]["generation"]["concrete_processes"]
+    }
+    probes = records["gg_h"]["loop_induced_probes"]
+    assert probes["finiteness"]["passed"] and probes["ward"]["passed"]
+    assert probes["ward"]["legs"] == [1, 2]
+    assert records["h_ga"]["loop_induced_probes"] == {"exact_colour_zero": True}
     point, scale, parameters = li.point("li_gg_h")
     runtime = Runtime.load(output, process="gg_h", model_parameters=parameters)
     info = runtime.inspect()

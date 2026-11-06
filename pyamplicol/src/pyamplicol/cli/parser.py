@@ -427,6 +427,17 @@ def _add_generation_options(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--allow-failed-probes",
+        dest="generation.allow_failed_probes",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "loop-induced processes: store a process whose generation-time "
+            "finiteness or Ward probe failed, refused by default; recorded in "
+            "the artifact"
+        ),
+    )
+    parser.add_argument(
         "--validation",
         dest="generation.validation.enabled",
         action=argparse.BooleanOptionalAction,
