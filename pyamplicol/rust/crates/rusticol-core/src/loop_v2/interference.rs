@@ -704,9 +704,107 @@ impl Interference {
     }
 }
 
+/// The loop x loop sectors of a loop-induced |A|² (M-LIT LIT-AMP): per
+/// squared-order sector its pairs `(l, l')` of loop-order slots, `l <= l'`,
+/// sorted; weight 1 for `l == l'`, 2 (`2 Re`) otherwise.
+pub type AmplitudeSectors = Vec<Vec<(usize, usize)>>;
+
+/// |A|² of loop-induced amplitude vectors per sector and Laurent coefficient
+/// in the canonical squaring order (DESIGN.md §7.10; the Python oracle
+/// `loops/v2/induced.square` runs the same operations): per sector, per
+/// pair `(l, l')` in order, per helicity row `h`, per coefficient `k`, the
+/// convolution `Σ_{i+j=k} Σ_t conj(a_{l,h,t,i}) Σ_{t'} G_{tt'} a_{l',h,t',j}`
+/// (rows, then `t`, then `t'`), its real part times the pair's weight added
+/// to the sector's coefficient; each total divided by `average` at the end.
+///
+/// `amplitudes[(l * rows + h) * basis + t]` holds `width` Laurent
+/// coefficients ([finite, 1/ε, 1/ε²]; finite only: one); `metric` is
+/// `G_{tt'}` row-major (`basis²` values, full colour at N_c = 3, real
+/// symmetric positive semidefinite). Full colour only: no grade, no
+/// truncation (RULED Q8).
+pub fn square_amplitudes<T: Real>(
+    amplitudes: &[Vec<Complex<T>>],
+    rows: usize,
+    basis: usize,
+    width: usize,
+    metric: &[Complex<T>],
+    sectors: &[Vec<(usize, usize)>],
+    average: &T,
+) -> RusticolResult<Vec<Vec<T>>> {
+    if metric.len() != basis * basis {
+        return Err(invalid("the amplitude metric is basis x basis"));
+    }
+    if basis == 0 || rows == 0 {
+        return Err(invalid("an amplitude square needs rows and a basis"));
+    }
+    if amplitudes.len() % (rows * basis) != 0 || amplitudes.iter().any(|cell| cell.len() != width) {
+        return Err(invalid("amplitudes per (loop order, row, basis element)"));
+    }
+    let orders = amplitudes.len() / (rows * basis);
+    if sectors.iter().flatten().any(|&(l, r)| l > r || r >= orders) {
+        return Err(invalid("a sector pair outside the amplitude's loop orders"));
+    }
+    let zero = average.zero();
+    let complex_zero = Complex::new(zero.clone(), zero.clone());
+    let mut out = Vec::with_capacity(sectors.len());
+    for pairs in sectors {
+        let mut totals = vec![zero.clone(); width];
+        for &(left, right) in pairs {
+            let weight = zero.from_usize(if left == right { 1 } else { 2 });
+            for h in 0..rows {
+                let a = &amplitudes[(left * rows + h) * basis..][..basis];
+                let b = &amplitudes[(right * rows + h) * basis..][..basis];
+                for (k, slot) in totals.iter_mut().enumerate() {
+                    let mut total = complex_zero.clone();
+                    for i in 0..=k {
+                        let j = k - i;
+                        for (t, left_cell) in a.iter().enumerate() {
+                            let mut inner = complex_zero.clone();
+                            for (u, right_cell) in b.iter().enumerate() {
+                                inner += metric[t * basis + u].clone() * &right_cell[j];
+                            }
+                            total += left_cell[i].conj() * &inner;
+                        }
+                    }
+                    *slot += weight.clone() * &total.re;
+                }
+            }
+        }
+        out.push(totals.into_iter().map(|x| x / average).collect());
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The canonical square: one row, two basis elements with metric
+    /// [[2, 1], [1, 2]], one loop order, poles: [finite, 1/eps, 1/eps^2]
+    /// convolve; a cross pair weighs 2.
+    #[test]
+    fn amplitude_square_is_the_metric_bilinear() {
+        let c = |re: f64, im: f64| Complex::new(re, im);
+        let metric = [c(2.0, 0.0), c(1.0, 0.0), c(1.0, 0.0), c(2.0, 0.0)];
+        // a = (1 + i, 2) finite, (0.5, 0) single pole, zero double pole.
+        let a = vec![
+            vec![c(1.0, 1.0), c(0.5, 0.0), c(0.0, 0.0)],
+            vec![c(2.0, 0.0), c(0.0, 0.0), c(0.0, 0.0)],
+        ];
+        let squared = square_amplitudes(&a, 1, 2, 3, &metric, &[vec![(0, 0)]], &4.0).unwrap();
+        // a0^dag G a0 = 2|1+i|^2 + 2 Re((1-i) 2) + 2 * 4 = 4 + 4 + 8 = 16.
+        assert_eq!(squared[0][0], 16.0 / 4.0);
+        // 2 Re(a0^dag G a1): G a1 = (1, 0.5); conj(a0).(G a1) = (1-i) + 1.
+        assert_eq!(squared[0][1], 2.0 * 2.0 / 4.0);
+        // a1^dag G a1 = 2 * 0.25.
+        assert_eq!(squared[0][2], 0.5 / 4.0);
+        // Two loop orders: the cross pair is 2 Re(a^dag G b).
+        let mut two = a.clone();
+        two.extend(a.iter().cloned());
+        let cross = square_amplitudes(&two, 1, 2, 3, &metric, &[vec![(0, 1)]], &4.0).unwrap();
+        assert_eq!(cross[0][0], 2.0 * 16.0 / 4.0);
+        assert!(square_amplitudes(&a, 1, 2, 3, &metric, &[vec![(0, 1)]], &4.0).is_err());
+    }
 
     fn r(n: i64) -> Rational {
         Rational::from(n)

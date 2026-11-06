@@ -109,6 +109,12 @@ pub mod v2 {
         /// when read again (`ChunkInputs::prepare_within`; heap limbs of
         /// arbitrary-precision reals excluded).
         pub input_budget: usize,
+        /// Amplitude-mode plans (`LoopProgramV4::amplitude`): also return
+        /// every raw reduction lane ([`PointResult::families`], and the
+        /// re-test's), a diagnostic and oracle; by default a point returns
+        /// only its amplitudes, their re-test and budget (O(rows x basis)
+        /// values per loop order). Seeded plans always return their lanes.
+        pub raw_lanes: bool,
     }
 
     impl Default for V2Options {
@@ -121,6 +127,7 @@ pub mod v2 {
                 part_chunks: DEFAULT_PART_CHUNKS,
                 contraction: Contraction::Auto,
                 input_budget: DEFAULT_INPUT_BUDGET,
+                raw_lanes: false,
             }
         }
     }
@@ -227,15 +234,34 @@ pub mod v2 {
     /// One point of an evaluation.
     #[derive(Clone)]
     pub struct PointResult<T> {
-        /// Raw Laurent integrals of every reduced lane.
+        /// Raw Laurent integrals of every reduced lane (amplitude-mode
+        /// plans: only with [`V2Options::raw_lanes`]).
         pub families: Vec<(LaneKey, Vec<Complex<T>>)>,
-        /// The re-test integrals, when a check was asked.
+        /// The re-test integrals, when a check was asked (amplitude-mode
+        /// plans: only with [`V2Options::raw_lanes`]).
         pub check: Option<Vec<(LaneKey, Vec<Complex<T>>)>>,
         /// Per observable column, the bare virtual `2 Re(i/(16π² avg) ΣΩ)`
-        /// per Laurent coefficient.
+        /// per Laurent coefficient (empty for amplitude-mode plans).
         pub bare: Vec<Vec<T>>,
-        /// Per observable column, the re-test error budget.
+        /// Per observable column, the re-test error budget (seeded plans).
         pub budget: Option<Vec<Vec<T>>>,
+        /// Amplitude-mode plans (loop-induced, M-LIT LIT-AMP): per loop
+        /// order and column, at `order * columns + column`, the bare loop
+        /// amplitude `a = i/(16π²) Σ_f Ω_f` per Laurent coefficient, the
+        /// families summed in lane order (family, then column); empty for
+        /// seeded plans.
+        pub amplitudes: Vec<Vec<Complex<T>>>,
+        /// The re-test's amplitudes, when a check was asked.
+        pub amplitude_check: Option<Vec<Vec<Complex<T>>>>,
+        /// Per loop order and column `Σ_f |Ω_f − Ω'_f| / (16π²)` per
+        /// coefficient: the amplitude's re-test budget in which no two
+        /// families cancel (the caller forms the quadratic budget of |A|²
+        /// with the counterterm kets and the colour metric).
+        pub amplitude_budget: Option<Vec<Vec<T>>>,
+        /// Per loop order and column `Σ_f |Ω_f| / (16π²)` per coefficient:
+        /// the amplitude's size before the families cancel (the floor of
+        /// the stability estimate's scale; empty for seeded plans).
+        pub amplitude_scale: Vec<Vec<T>>,
         /// Numerical failures; a failed point has no values.
         pub failures: Vec<String>,
     }
@@ -1220,8 +1246,30 @@ pub mod v2 {
                     check: None,
                     bare: Vec::new(),
                     budget: None,
+                    amplitudes: Vec::new(),
+                    amplitude_check: None,
+                    amplitude_budget: None,
+                    amplitude_scale: Vec::new(),
                     failures: std::mem::take(&mut failures[point]),
                 });
+                continue;
+            }
+            if plan.amplitude {
+                let mut lanes = std::mem::take(&mut families[point]);
+                lanes.sort_by_key(|(key, _)| *key);
+                let mut tests = options.check.map(|_| {
+                    let mut tests = std::mem::take(&mut checks[point]);
+                    tests.sort_by_key(|(key, _)| *key);
+                    tests
+                });
+                results.push(amplitude_result(
+                    plan,
+                    &zero,
+                    width,
+                    lanes,
+                    tests.take(),
+                    options.raw_lanes,
+                ));
                 continue;
             }
             let mut sums =
@@ -1264,11 +1312,81 @@ pub mod v2 {
                 check,
                 bare,
                 budget,
+                amplitudes: Vec::new(),
+                amplitude_check: None,
+                amplitude_budget: None,
+                amplitude_scale: Vec::new(),
                 failures: Vec::new(),
             });
         }
         report.count("points", points as u64);
         Ok((results, report))
+    }
+
+    /// The loop amplitude of an amplitude-mode point (M-LIT LIT-AMP, the
+    /// native amplitude sum): per (loop order, column) `i/(16π²) Σ_f Ω_f`
+    /// over the point's lanes sorted by key (families in plan order), the
+    /// re-test's amplitude and the budget `Σ_f |ΔΩ_f| / (16π²)` when a
+    /// check ran, the scale `Σ_f |Ω_f| / (16π²)`; the raw lanes kept only
+    /// when asked (`raw_lanes`).
+    fn amplitude_result<T: Real>(
+        plan: &LoopProgramV4,
+        zero: &T,
+        width: usize,
+        lanes: Vec<(LaneKey, Vec<Complex<T>>)>,
+        tests: Option<Vec<(LaneKey, Vec<Complex<T>>)>>,
+        raw_lanes: bool,
+    ) -> PointResult<T> {
+        let pi = zero.pi();
+        let scale = zero.one() / (zero.from_usize(16) * &pi * &pi);
+        let factor = Complex::new(zero.clone(), scale.clone());
+        let slots = plan.order_count * plan.columns;
+        let slot = |key: &LaneKey| key.order * plan.columns + key.column;
+        let sum = |lanes: &[(LaneKey, Vec<Complex<T>>)]| {
+            let mut out = vec![vec![Complex::new(zero.clone(), zero.clone()); width]; slots];
+            for (key, value) in lanes {
+                for (s, z) in out[slot(key)].iter_mut().zip(value) {
+                    *s += z;
+                }
+            }
+            for amplitude in &mut out {
+                for z in amplitude.iter_mut() {
+                    *z = factor.clone() * &*z;
+                }
+            }
+            out
+        };
+        let amplitudes = sum(&lanes);
+        let mut amplitude_scale = vec![vec![zero.clone(); width]; slots];
+        for (key, value) in &lanes {
+            for (s, z) in amplitude_scale[slot(key)].iter_mut().zip(value) {
+                *s += scale.clone() * &z.norm().re;
+            }
+        }
+        let (amplitude_check, amplitude_budget) = match &tests {
+            Some(tests) => {
+                let mut budget = vec![vec![zero.clone(); width]; slots];
+                for ((key, direct), (other, test)) in lanes.iter().zip(tests) {
+                    debug_assert_eq!(key, other);
+                    for (b, d) in budget[slot(key)].iter_mut().zip(deviation(direct, test)) {
+                        *b += scale.clone() * &d;
+                    }
+                }
+                (Some(sum(tests)), Some(budget))
+            }
+            None => (None, None),
+        };
+        PointResult {
+            families: if raw_lanes { lanes } else { Vec::new() },
+            check: tests.filter(|_| raw_lanes),
+            bare: Vec::new(),
+            budget: None,
+            amplitudes,
+            amplitude_check,
+            amplitude_budget,
+            amplitude_scale,
+            failures: Vec::new(),
+        }
     }
 
     #[cfg(test)]

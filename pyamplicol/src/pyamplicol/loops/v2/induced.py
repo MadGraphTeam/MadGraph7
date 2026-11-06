@@ -374,6 +374,40 @@ def finish(evaluation: Any, retest: str | None) -> Any:
     return evaluation
 
 
+def read_native(
+    evaluation: Any, output: Mapping, index: int, exported: Any, carrier, numbers
+) -> None:
+    """Read the native amplitude sum of point ``index`` of an amplitude-mode
+    evaluation (``NativeExecutor.reduce``): per (loop order, row) the bare
+    amplitude vectors (``native_bare``), with a check their re-test budget
+    (``native_budget``: (i/16 pi^2) sum_f |delta Omega_f| per t and k) and the
+    pre-cancellation scale (``native_scale``); binary64 squares natively
+    (``native_square``)."""
+
+    size = exported.amplitude
+    columns = len(exported.rows) * size
+
+    def vectors(slots, read):
+        out = {}
+        for o, order in enumerate(exported.orders):
+            for r, row in enumerate(exported.rows):
+                base = o * columns + r * size
+                out[(order, row)] = [read(slots[base + t]) for t in range(size)]
+        return out
+
+    evaluation.native_bare = vectors(output["amplitudes"][index], carrier)
+    budget = output.get("amplitude_budget")
+    evaluation.native_budget = (
+        None
+        if budget is None
+        else vectors(budget[index], lambda values: [float(x) for x in values])
+    )
+    evaluation.native_scale = vectors(
+        output["amplitude_scale"][index], lambda values: [float(x) for x in values]
+    )
+    evaluation.native_square = numbers.double
+
+
 def assemble(evaluation: Any) -> None:
     """``_PointEvaluation._assemble`` of a loop-induced point: the amplitude
     vectors a = a_bare + A^CT per (loop order, row) (kept as
@@ -389,14 +423,25 @@ def assemble(evaluation: Any) -> None:
     width = 3 if evaluation.poles else 1
     size = len(slice_.amplitude)
     rows = rows_of(evaluation)
+    native = getattr(evaluation, "native_bare", None)
     with numbers.scope():
-        bare = bare_amplitudes(evaluation.families, size, numbers, width)
+        bare = (
+            bare_amplitudes(evaluation.families, size, numbers, width)
+            if native is None
+            else native
+        )
         kets = counterterm_kets(slice_, evaluation.site_vectors, numbers, width)
         total = add_amplitudes(bare, kets, numbers=numbers, size=size, width=width)
         gram = metric(slice_, numbers)
-        squared = square(
-            total, gram, slice_.sectors, rows, width, numbers, evaluation.average
-        )
+        if getattr(evaluation, "native_square", False):
+            squared = native_square(
+                total, gram, slice_.sectors, rows, width, evaluation.average,
+                slice_.native,
+            )
+        else:
+            squared = square(
+                total, gram, slice_.sectors, rows, width, numbers, evaluation.average
+            )
         zero = numbers.real(0)
         virtual = {sector: Laurent(*values) for sector, values in squared.items()}
         totals = [zero]
@@ -416,6 +461,46 @@ def assemble(evaluation: Any) -> None:
         poles=evaluation.mode,
     )
     budgets(evaluation)
+
+
+def native_square(
+    amplitudes: Mapping[tuple[Orders, rx.Row], Sequence[Sequence[Any]]],
+    gram: Sequence[Sequence[Any]],
+    sectors: Sequence[tuple[Orders, frozenset[tuple[Orders, Orders]]]],
+    rows: Sequence[rx.Row],
+    width: int,
+    average: Any,
+    native: Any,
+) -> dict[Orders, tuple[float, ...]]:
+    """``square`` of binary64 amplitude vectors by the native canonical
+    square (``square_amplitudes``, the one Rust implementation of RULED Q41
+    for the Python API and the SDK): dense slots (loop order, row, t) over
+    the sectors' loop orders (zero where absent)."""
+
+    orders = sorted({order for _sector, pairs in sectors for pair in pairs for order in pair})
+    slot = {order: k for k, order in enumerate(orders)}
+    size = len(gram)
+    zero = [[0.0, 0.0]] * width
+    values = []
+    for order in orders:
+        for row in rows:
+            vector = amplitudes.get((order, row))
+            for t in range(size):
+                if vector is None:
+                    values.append(zero)
+                    continue
+                values.append([[z.real, z.imag] for z in vector[t][:width]])
+    metric_values = [[complex(x).real, complex(x).imag] for line in gram for x in line]
+    pairs = [
+        sorted((slot[left], slot[right]) for left, right in pairs)
+        for _sector, pairs in sectors
+    ]
+    squared = native.square_amplitudes(
+        values, len(rows), size, width, metric_values, pairs, float(average)
+    )
+    return {
+        sector: tuple(totals) for (sector, _pairs), totals in zip(sectors, squared, strict=True)
+    }
 
 
 def _absolute(vector, numbers):
@@ -529,7 +614,10 @@ def budgets(evaluation: Any) -> None:
     zero_lane = None
     evaluation.family_deviations = None
     evaluation.retest_budget = None
-    if evaluation.retest_families is not None:
+    native = getattr(evaluation, "native_budget", None)
+    if native is not None:
+        evaluation.retest_budget = quadratic_budget(evaluation, native)
+    elif evaluation.retest_families:
         deviations = {}
         for lane, value in evaluation.families.items():
             other = evaluation.retest_families[lane].coefficients
@@ -591,12 +679,17 @@ def rotation_budget(direct: Any, rotated: Any) -> dict:
                 abs(y * phases[row] - x) for x, y in zip(a, b, strict=True)
             )
         errors = lane_errors(direct, deviations)
-        for key in dict.fromkeys(
-            [*direct.counterterm_vectors, *rotated.counterterm_vectors]
+        # Without raw lanes (the native amplitude sum) the bare amplitudes
+        # themselves are compared, per (loop order, row, t).
+        parts = [(direct.counterterm_vectors, rotated.counterterm_vectors)]
+        if not direct.families and getattr(direct, "native_bare", None) is not None:
+            parts.append((direct.bare_vectors, rotated.bare_vectors))
+        for key, a, b in (
+            (key, mine.get(key), theirs.get(key))
+            for mine, theirs in parts
+            for key in dict.fromkeys([*mine, *theirs])
         ):
             _order, row = key
-            a = direct.counterterm_vectors.get(key)
-            b = rotated.counterterm_vectors.get(key)
             cell = errors.setdefault(key, [[0.0] * width for _ in range(size)])
             for t in range(size):
                 for k in range(width):
@@ -619,9 +712,14 @@ def scale(evaluation: Any) -> dict:
     width = 3 if evaluation.poles else 1
     size = len(slice_.amplitude)
     gram = evaluation.gram
-    errors = lane_errors(
-        evaluation,
-        {lane: value.coefficients for lane, value in evaluation.families.items()},
+    native = getattr(evaluation, "native_scale", None)
+    errors = (
+        lane_errors(
+            evaluation,
+            {lane: value.coefficients for lane, value in evaluation.families.items()},
+        )
+        if native is None
+        else {key: [list(cell) for cell in vector] for key, vector in native.items()}
     )
     kets = evaluation.counterterm_vectors
     for key, vector in kets.items():

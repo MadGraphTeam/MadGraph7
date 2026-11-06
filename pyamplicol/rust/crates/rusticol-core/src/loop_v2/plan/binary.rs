@@ -130,8 +130,8 @@ pub use json::OMITTED_WHEN_ABSENT;
 use super::{
     BindingFile, ClosureFile, ContentFile, EdgeFile, EntryFile, FamilyFile, FormPolicy,
     ForwardFile, KernelFile, LeafFile, LoopProgramV4, MergedClosureFile, MergedEdgeFile,
-    MergedFile, MergedStateFile, PLAN_SCHEMA, PlanFile, SeedFile, SeedKeyFile, SplitFile,
-    StateFile, StepFile, TermFile, invalid, require,
+    MergedFile, MergedStateFile, PlanFile, SeedFile, SeedKeyFile, SplitFile, StateFile, StepFile,
+    TermFile, invalid, require,
 };
 use crate::RusticolResult;
 use rayon::prelude::*;
@@ -313,6 +313,10 @@ impl PlanModel {
         let mut reader = Reader::new(bytes)?;
         let mut file = PlanFile::fresh();
         visit_plan(&mut reader, &mut file)?;
+        require(
+            file.schema == reader.schema,
+            "binary plan: header schema differs from the plan's",
+        )?;
         reader.finish()?;
         Ok(Self {
             file,
@@ -333,7 +337,7 @@ impl PlanModel {
         // A plan the bound refuses gets no padding for it: its reader
         // refuses it alike.
         let derived = derive::bound(&self.file).map_or(0, |bound| bound.cost());
-        writer.finish(derived)
+        writer.finish(derived, self.file.schema)
     }
 
     /// An upper bound of what the loader's derivations allocate and iterate
@@ -350,7 +354,10 @@ impl PlanModel {
     /// margin) before deriving (module docs, "Bounded derivation").
     pub fn program(self, policy: FormPolicy) -> RusticolResult<LoopProgramV4> {
         // A plan of another schema is refused as such before its bound.
-        require(self.file.schema == PLAN_SCHEMA, "unsupported plan schema")?;
+        require(
+            super::admitted_schema(self.file.schema),
+            "unsupported plan schema",
+        )?;
         let bound = derive::bound(&self.file)?;
         if let Some(member) = self.member {
             require(
@@ -365,7 +372,10 @@ impl PlanModel {
     /// [`Self::program`] without the probe of the derivations' peak (the
     /// bound's refusals kept): `LoopProgramV4::load_unprobed`.
     pub(super) fn program_unprobed(self, policy: FormPolicy) -> RusticolResult<LoopProgramV4> {
-        require(self.file.schema == PLAN_SCHEMA, "unsupported plan schema")?;
+        require(
+            super::admitted_schema(self.file.schema),
+            "unsupported plan schema",
+        )?;
         derive::bound(&self.file)?;
         LoopProgramV4::from_file(self.file, policy)
     }
@@ -1348,7 +1358,7 @@ impl Writer {
 
     /// The member, padded so that it pays for its decoded size and for its
     /// derivations' bound `derived`.
-    fn finish(mut self, derived: u64) -> RusticolResult<Vec<u8>> {
+    fn finish(mut self, derived: u64, schema: u32) -> RusticolResult<Vec<u8>> {
         let strings = std::mem::take(&mut self.strings);
         let mut decoded = self.decoded;
         let mut charge = |bytes: usize| decoded = decoded.saturating_add(bytes as u64);
@@ -1386,7 +1396,9 @@ impl Writer {
         })?;
         out.extend_from_slice(&MAGIC);
         out.extend_from_slice(&FORMAT.to_le_bytes());
-        out.extend_from_slice(&PLAN_SCHEMA.to_le_bytes());
+        // The plan's own schema (4 seeded, 5 amplitude mode; the header
+        // value of every seeded member is unchanged).
+        out.extend_from_slice(&schema.to_le_bytes());
         out.extend_from_slice(&(COLUMN_NAMES.len() as u32).to_le_bytes());
         out.extend_from_slice(&0u32.to_le_bytes());
         out.extend_from_slice(&decoded.to_le_bytes());
@@ -1559,6 +1571,8 @@ struct Reader<'a> {
     skip: bool,
     /// The threads the read decodes with ([`read_threads`]).
     threads: usize,
+    /// The header's plan schema (the decoded `schema` must equal it).
+    schema: u32,
 }
 
 /// The decoded size a member declares and the part of it charged so far.
@@ -1734,10 +1748,8 @@ impl<'a> Reader<'a> {
             u32_at(&mut bytes)? == FORMAT,
             "binary plan: unsupported format",
         )?;
-        require(
-            u32_at(&mut bytes)? == PLAN_SCHEMA,
-            "unsupported plan schema",
-        )?;
+        let schema = u32_at(&mut bytes)?;
+        require(super::admitted_schema(schema), "unsupported plan schema")?;
         require(
             u32_at(&mut bytes)? as usize == COLUMN_NAMES.len(),
             "binary plan: column count of another format",
@@ -1797,6 +1809,7 @@ impl<'a> Reader<'a> {
             tables: Vec::new(),
             skip: false,
             threads,
+            schema,
         };
         // The string table, charged as the writer charges it; a string takes
         // its bytes from what the byte column still holds.
@@ -1935,7 +1948,7 @@ impl<'a> Reader<'a> {
         };
         *items = buffer;
         items.resize_with(len, T::fresh);
-        let (cursors, strings) = (&self.cursors, &self.strings);
+        let (cursors, strings, schema) = (&self.cursors, &self.strings, self.schema);
         let decoded = items
             .par_chunks_mut(chunk)
             .zip(starts.par_windows(2))
@@ -1956,6 +1969,7 @@ impl<'a> Reader<'a> {
                     tables: Vec::new(),
                     skip: false,
                     threads,
+                    schema,
                 };
                 reader.restore(start);
                 for record in records {
@@ -2426,7 +2440,8 @@ mod tests {
     /// Born row), `columns` observable columns.
     fn born_rows_plan(legs: usize, edges: usize, columns: usize) -> PlanFile {
         let mut file = PlanFile::fresh();
-        (file.schema, file.legs, file.rows, file.columns) = (PLAN_SCHEMA, legs, 1 << legs, columns);
+        (file.schema, file.legs, file.rows, file.columns) =
+            (super::super::PLAN_SCHEMA, legs, 1 << legs, columns);
         file.helicities = vec![vec![-1, 1]; legs];
         let mut content = ContentFile::fresh();
         (content.rows, content.row_helicities) = (1, vec![Vec::new()]);
