@@ -257,17 +257,16 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.merge:
         return _merge(args)
-    targets = [
-        target
-        for target in _targets(args.targets)
-        if not any(
-            Path(target.split("::", 1)[0]).match(pattern) for pattern in args.exclude
-        )
-    ]
+
+    def kept(unit: str) -> bool:
+        path = Path(unit.split("::", 1)[0])
+        return not any(path.match(pattern) for pattern in args.exclude)
+
+    targets = [target for target in _targets(args.targets) if kept(target)]
     units = targets
     if targets and (args.marker or args.split):
         ids, line = _collect(args.python, targets, pytest_args)
-        units = _units(ids, args.split)
+        units = [unit for unit in _units(ids, args.split) if kept(unit)]
         print(f"collected: {line} -> {len(units)} units from {len(targets)} targets")
     durations = (
         json.loads(args.durations.read_text())["durations"] if args.durations else {}

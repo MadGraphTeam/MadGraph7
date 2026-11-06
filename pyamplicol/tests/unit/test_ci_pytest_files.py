@@ -131,6 +131,16 @@ def test_split_shards_partition_the_test_ids(tmp_path, licensed):
     assert "::error::3 tests executed (at least 4 required), 0 failed" in output
 
 
+def test_exclusions_apply_to_the_files_collected_from_a_directory(tmp_path):
+    (tmp_path / "sub").mkdir()
+    code, output = _run(
+        tmp_path, ".", "--marker", "not slow", "--exclude", "test_[bcd].py"
+    )
+    assert code == 0, output
+    assert "-> 1 units from 1 targets" in output
+    assert "1 units, 1 tests executed" in output
+
+
 def test_excluded_and_unmatched_globs_select_nothing(tmp_path):
     code, output = _run(
         tmp_path, "test_[ab].py", "--exclude", "test_[ab].py", "--marker", "slow"
