@@ -320,11 +320,56 @@ constexpr int MLM_PARAM_CM_ENERGY = 2;
 constexpr int MLM_PARAM_XQCUT = 3;
 constexpr int MLM_PARAM_BW = 4;
 
+// The outputs of the kernel, as the walk writes them.
+template <typename T>
+struct MlmViewOutputs {
+    FOut<T, 0> ren_scale;
+    FOut<T, 0> fact_scale1;
+    FOut<T, 0> fact_scale2;
+    FOut<T, 1> outgoing_scales;
+    IOut<T, 0> diagram_index;
+    FOut<T, 0> xqcut_weight;
+    FOut<T, 1> alphas_scales;
+    FOut<T, 0> alphas_weight;
+    FOut<T, 0> pdf_scale1;
+    FOut<T, 0> pdf_scale2;
+    IOut<T, 1> pdf_rw_flavor;
+    FOut<T, 1> pdf_rw_x;
+    FOut<T, 1> pdf_rw_q_num;
+    FOut<T, 1> pdf_rw_q_den;
+    FOut<T, 1> pdf_rw_active;
+    FOut<T, 1> pdf_rw_beam;
+    FOut<T, 1> pdf_rw_x_prev;
+};
+
+// The same outputs held locally, for a walk that may not be the one kept.
+template <typename T>
+struct MlmLocalOutputs {
+    FVal<T> ren_scale;
+    FVal<T> fact_scale1;
+    FVal<T> fact_scale2;
+    FVal<T> outgoing_scales[N_EXT_MAX];
+    IVal<T> diagram_index;
+    FVal<T> xqcut_weight;
+    FVal<T> alphas_scales[N_EXT_MAX];
+    FVal<T> alphas_weight;
+    FVal<T> pdf_scale1;
+    FVal<T> pdf_scale2;
+    IVal<T> pdf_rw_flavor[N_EXT_MAX];
+    FVal<T> pdf_rw_x[N_EXT_MAX];
+    FVal<T> pdf_rw_q_num[N_EXT_MAX];
+    FVal<T> pdf_rw_q_den[N_EXT_MAX];
+    FVal<T> pdf_rw_active[N_EXT_MAX];
+    FVal<T> pdf_rw_beam[N_EXT_MAX];
+    FVal<T> pdf_rw_x_prev[N_EXT_MAX];
+};
+
 // One clustering history, walked from start_state: 0 is the root of the
 // state machine over every diagram, anything else the root of the one compiled
 // for a single diagram. Writes every output and returns the number of outgoing
-// legs the history calls merging jets.
-template <typename T>
+// legs the history calls merging jets. Outputs is MlmViewOutputs or
+// MlmLocalOutputs.
+template <typename T, typename Outputs>
 KERNELSPEC int mlm_clustering_walk(
     FIn<T, 2> momenta,
     FIn<T, 0> random,
@@ -345,26 +390,27 @@ KERNELSPEC int mlm_clustering_walk(
     int clustering_measure,
     IIn<T, 0> flavor_index,
     IIn<T, 1> leg_flavors,
-    FOut<T, 0> ren_scale,
-    FOut<T, 0> fact_scale1,
-    FOut<T, 0> fact_scale2,
-    FOut<T, 1> outgoing_scales,
-    IOut<T, 0> diagram_index,
-    FOut<T, 0> xqcut_weight,
-    FOut<T, 1> alphas_scales,
-    FOut<T, 0> alphas_weight,
-    FOut<T, 0> pdf_scale1,
-    FOut<T, 0> pdf_scale2,
-    IOut<T, 1> pdf_rw_flavor,
-    FOut<T, 1> pdf_rw_x,
-    FOut<T, 1> pdf_rw_q_num,
-    FOut<T, 1> pdf_rw_q_den,
-    FOut<T, 1> pdf_rw_active,
-    FOut<T, 1> pdf_rw_beam,
-    FOut<T, 1> pdf_rw_x_prev,
+    Outputs& out,
     int start_state,
     bool hadronic
 ) {
+    auto& ren_scale = out.ren_scale;
+    auto& fact_scale1 = out.fact_scale1;
+    auto& fact_scale2 = out.fact_scale2;
+    auto& outgoing_scales = out.outgoing_scales;
+    auto& diagram_index = out.diagram_index;
+    auto& xqcut_weight = out.xqcut_weight;
+    auto& alphas_scales = out.alphas_scales;
+    auto& alphas_weight = out.alphas_weight;
+    auto& pdf_scale1 = out.pdf_scale1;
+    auto& pdf_scale2 = out.pdf_scale2;
+    auto& pdf_rw_flavor = out.pdf_rw_flavor;
+    auto& pdf_rw_x = out.pdf_rw_x;
+    auto& pdf_rw_q_num = out.pdf_rw_q_num;
+    auto& pdf_rw_q_den = out.pdf_rw_q_den;
+    auto& pdf_rw_active = out.pdf_rw_active;
+    auto& pdf_rw_beam = out.pdf_rw_beam;
+    auto& pdf_rw_x_prev = out.pdf_rw_x_prev;
     // we do not support SIMD for now, so we can assume simple types
     static_assert(std::is_same_v<IVal<T>, int>);
     static_assert(std::is_same_v<FVal<T>, double>);
@@ -1486,7 +1532,26 @@ KERNELSPEC void kernel_mlm_clustering(
     int flag_word = flags;
     auto flag = [&](int shift) { return (flag_word >> shift) & MLM_FLAG_MASK; };
     int history_mode = flag(MLM_SHIFT_HISTORY_MODE);
-    auto walk = [&](int start) {
+    MlmViewOutputs<T> views{
+        ren_scale,
+        fact_scale1,
+        fact_scale2,
+        outgoing_scales,
+        diagram_index,
+        xqcut_weight,
+        alphas_scales,
+        alphas_weight,
+        pdf_scale1,
+        pdf_scale2,
+        pdf_rw_flavor,
+        pdf_rw_x,
+        pdf_rw_q_num,
+        pdf_rw_q_den,
+        pdf_rw_active,
+        pdf_rw_beam,
+        pdf_rw_x_prev,
+    };
+    auto walk = [&](auto& outputs, int start) {
         return mlm_clustering_walk<T>(
             momenta,
             random,
@@ -1507,23 +1572,7 @@ KERNELSPEC void kernel_mlm_clustering(
             flag(MLM_SHIFT_CLUSTERING_MEASURE),
             flavor_index,
             leg_flavors,
-            ren_scale,
-            fact_scale1,
-            fact_scale2,
-            outgoing_scales,
-            diagram_index,
-            xqcut_weight,
-            alphas_scales,
-            alphas_weight,
-            pdf_scale1,
-            pdf_scale2,
-            pdf_rw_flavor,
-            pdf_rw_x,
-            pdf_rw_q_num,
-            pdf_rw_q_den,
-            pdf_rw_active,
-            pdf_rw_beam,
-            pdf_rw_x_prev,
+            outputs,
             start,
             flag(MLM_SHIFT_HADRONIC) != 0
         );
@@ -1531,66 +1580,36 @@ KERNELSPEC void kernel_mlm_clustering(
     int start = start_state;
     if (history_mode == HISTORY_MADEVENT && start != 0) {
         // setclscales clusters over every graph first and keeps that history
-        // unless its jet count differs from the channel's graph. Both walks write
-        // all outputs, so the channel walk's outputs are saved and restored if it wins.
-        int diagram_jets = walk(start);
+        // unless its jet count differs from the channel's graph.
+        MlmLocalOutputs<T> diagram, every;
+        int diagram_jets = walk(diagram, start);
+        auto& kept = walk(every, 0) != diagram_jets ? diagram : every;
         int n_part = momenta.size();
-        FVal<T> kept_ren = ren_scale, kept_fact1 = fact_scale1,
-                kept_fact2 = fact_scale2, kept_xqcut = xqcut_weight,
-                kept_alphas = alphas_weight, kept_pdf1 = pdf_scale1,
-                kept_pdf2 = pdf_scale2;
-        IVal<T> kept_diagram = diagram_index;
-        FVal<T> kept_outgoing[N_EXT_MAX], kept_alphas_scales[N_EXT_MAX];
-        IVal<T> kept_rw_flavor[N_EXT_MAX];
-        FVal<T> kept_rw_x[N_EXT_MAX], kept_rw_q_num[N_EXT_MAX],
-            kept_rw_q_den[N_EXT_MAX], kept_rw_active[N_EXT_MAX],
-            kept_rw_beam[N_EXT_MAX], kept_rw_x_prev[N_EXT_MAX];
+        views.ren_scale = kept.ren_scale;
+        views.fact_scale1 = kept.fact_scale1;
+        views.fact_scale2 = kept.fact_scale2;
+        views.diagram_index = kept.diagram_index;
+        views.xqcut_weight = kept.xqcut_weight;
+        views.alphas_weight = kept.alphas_weight;
+        views.pdf_scale1 = kept.pdf_scale1;
+        views.pdf_scale2 = kept.pdf_scale2;
         for (int i = 0; i < n_part - 2; ++i) {
-            kept_outgoing[i] = outgoing_scales[i];
+            views.outgoing_scales[i] = kept.outgoing_scales[i];
         }
         for (int i = 0; i < n_part - 3; ++i) {
-            kept_alphas_scales[i] = alphas_scales[i];
+            views.alphas_scales[i] = kept.alphas_scales[i];
         }
         for (int i = 0; i < n_part - 1; ++i) {
-            kept_rw_flavor[i] = pdf_rw_flavor[i];
-            kept_rw_x[i] = pdf_rw_x[i];
-            kept_rw_q_num[i] = pdf_rw_q_num[i];
-            kept_rw_q_den[i] = pdf_rw_q_den[i];
-            kept_rw_active[i] = pdf_rw_active[i];
-            kept_rw_beam[i] = pdf_rw_beam[i];
-        }
-        for (int i = 0; i < n_part - 1; ++i) {
-            kept_rw_x_prev[i] = pdf_rw_x_prev[i];
-        }
-        if (walk(0) != diagram_jets) {
-            ren_scale = kept_ren;
-            fact_scale1 = kept_fact1;
-            fact_scale2 = kept_fact2;
-            xqcut_weight = kept_xqcut;
-            alphas_weight = kept_alphas;
-            pdf_scale1 = kept_pdf1;
-            pdf_scale2 = kept_pdf2;
-            diagram_index = kept_diagram;
-            for (int i = 0; i < n_part - 2; ++i) {
-                outgoing_scales[i] = kept_outgoing[i];
-            }
-            for (int i = 0; i < n_part - 3; ++i) {
-                alphas_scales[i] = kept_alphas_scales[i];
-            }
-            for (int i = 0; i < n_part - 1; ++i) {
-                pdf_rw_flavor[i] = kept_rw_flavor[i];
-                pdf_rw_x[i] = kept_rw_x[i];
-                pdf_rw_q_num[i] = kept_rw_q_num[i];
-                pdf_rw_q_den[i] = kept_rw_q_den[i];
-                pdf_rw_active[i] = kept_rw_active[i];
-                pdf_rw_beam[i] = kept_rw_beam[i];
-            }
-            for (int i = 0; i < n_part - 1; ++i) {
-                pdf_rw_x_prev[i] = kept_rw_x_prev[i];
-            }
+            views.pdf_rw_flavor[i] = kept.pdf_rw_flavor[i];
+            views.pdf_rw_x[i] = kept.pdf_rw_x[i];
+            views.pdf_rw_q_num[i] = kept.pdf_rw_q_num[i];
+            views.pdf_rw_q_den[i] = kept.pdf_rw_q_den[i];
+            views.pdf_rw_active[i] = kept.pdf_rw_active[i];
+            views.pdf_rw_beam[i] = kept.pdf_rw_beam[i];
+            views.pdf_rw_x_prev[i] = kept.pdf_rw_x_prev[i];
         }
     } else {
-        walk(start);
+        walk(views, start);
     }
 }
 
