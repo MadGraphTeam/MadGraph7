@@ -59,6 +59,37 @@ intend to use:
 
 See [Native APIs](native-apis.md) for the generated driver workflow.
 
+### GMP, MPFR and MPC in the wheels
+
+The wheels carry GMP 6.3.0, MPFR 4.2.2 and MPC 1.4.1 (GNU LGPL version 3 or
+later, see `THIRD_PARTY_NOTICES.md`) as separate shared libraries, linked
+dynamically and replaceable by any interface-compatible build:
+
+| Platform | Python extension | C SDK |
+| --- | --- | --- |
+| Linux | `pyamplicol.libs/libgmp-pyamplicol-<hash>.so.10`, `libmpfr-pyamplicol-<hash>.so.6`, `libmpc-pyamplicol-<hash>.so.3` | `pyamplicol/_sdk/lib/libgmp-pyamplicol.so.10`, `libmpfr-pyamplicol.so.6`, `libmpc-pyamplicol.so.3` |
+| macOS | `pyamplicol.dylibs/libgmp.10.dylib`, `libmpfr.6.dylib`, `libmpc.3.dylib` | `pyamplicol/_sdk/lib/` (same names, `@rpath` install names) |
+
+The Linux libraries use their own sonames, so neither the extension nor an SDK
+consumer can bind a system `libgmp.so.10` by accident. The C SDK archive
+`librusticol_capi.a` contains no copy of these libraries. `rusticol-config
+--libs` (which the generated drivers' Makefiles use) prints everything a
+C, C++ or Fortran consumer links against: the archive, the three shared
+libraries by path (dependents first), a run path to their directory, and the
+target's system libraries. On Linux, for example:
+
+```text
+<site-packages>/pyamplicol/_sdk/lib/librusticol_capi.a
+<site-packages>/pyamplicol/_sdk/lib/libmpc-pyamplicol.so.3
+<site-packages>/pyamplicol/_sdk/lib/libmpfr-pyamplicol.so.6
+<site-packages>/pyamplicol/_sdk/lib/libgmp-pyamplicol.so.10
+-Wl,-rpath,<site-packages>/pyamplicol/_sdk/lib -lgcc_s -lutil -lrt -lpthread -lm -ldl -lc
+```
+
+`rusticol-config --rustflags` gives the same flags as `-C link-arg=...` for a
+Rust consumer. A consumer that is moved away from the environment it was
+linked in needs the three libraries next to it or on its library path.
+
 ## Native libraries and glibc
 
 On Linux, every native library records the glibc symbol versions it needs (its
@@ -149,9 +180,18 @@ python -m pip install .
 A source build requires:
 
 - Python 3.11 or newer;
-- Rust 1.89 or newer;
-- a C/C++ toolchain;
+- Rust 1.96 or newer (the workspace `rust-version`);
+- a C/C++ toolchain, `make` and `m4` (GMP, MPFR and MPC are compiled from
+  the sources of the locked `gmp-mpfr-sys` crate);
 - network access to the release-locked Python, Cargo, and SymJIT inputs.
+
+A local source build links GMP, MPFR and MPC statically into its own native
+libraries (`gmp-mpfr-sys`'s default); it is not meant for redistribution.
+Distribution wheels (`tools/release/build_release_artifacts.py`, which passes
+the backend setting `pyamplicol.distribution-wheel=true`) instead build the
+three libraries as shared libraries and bundle them as described in
+[GMP, MPFR and MPC in the wheels](#gmp-mpfr-and-mpc-in-the-wheels); on Linux
+that build runs in a manylinux 2.28 environment and needs `patchelf`.
 
 The repository-pinned CI toolchain may be newer than the minimum supported
 Rust version. A Fortran compiler remains optional unless you build a Fortran
