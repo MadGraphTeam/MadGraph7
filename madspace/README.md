@@ -47,6 +47,19 @@ python madspace/install.py --source --system --hip --simd --debug
 Run `python madspace/install.py --help` for the full list of options. The options of the
 last build are remembered, so `--source --system -y` rebuilds with the same settings.
 
+If [nvCOMP](https://developer.nvidia.com/nvcomp) 5 is found, the CUDA backend also
+gzip-compresses LHE output on the GPU (`run.lhe_compression = "auto"` in MadGraph7). Point
+CMake at an nvCOMP install with `nvcomp_ROOT`:
+
+```sh
+nvcomp_ROOT=/path/to/nvcomp python madspace/install.py --source --system --cuda
+```
+
+`run.lhe_gzip_algorithm` picks the nvCOMP algorithm, from 0 (fastest) to 5 (smallest
+output, the default).
+
+hipCOMP has no gzip compressor, so HIP builds compress LHE output on the CPU.
+
 The build directory `madspace/build` is kept between builds, so you can run `make` there
 directly for faster incremental builds during development. Note that this does not update
 the Python module itself, for which the install command has to be run again.

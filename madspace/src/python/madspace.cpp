@@ -356,6 +356,9 @@ PYBIND11_MODULE(_madspace_py, m) {
     );
 
     py::classh<Device> device(m, "Device", pydoc::doc("Device"));
+    device.def(
+        "supports_gzip", &Device::supports_gzip, pydoc::doc("Device::supports_gzip")
+    );
     m.def(
         "cpu_device",
         &cpu_device,
@@ -3520,9 +3523,11 @@ PYBIND11_MODULE(_madspace_py, m) {
         );
     py::classh<LHEFileWriter>(m, "LHEFileWriter", pydoc::doc("LHEFileWriter"))
         .def(
-            py::init<const std::string&, const LHEMeta&>(),
+            py::init<const std::string&, const LHEMeta&, DevicePtr, int>(),
             py::arg("file_name"),
             py::arg("meta"),
+            py::arg("gzip_device") = nullptr,
+            py::arg("gzip_algorithm") = default_gzip_algorithm,
             pydoc::doc("LHEFileWriter::LHEFileWriter")
         )
         .def(
@@ -3536,7 +3541,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             &LHEFileWriter::write_string,
             py::arg("str"),
             pydoc::doc("LHEFileWriter::write_string")
-        );
+        )
+        .def("close", &LHEFileWriter::close, pydoc::doc("LHEFileWriter::close"));
 
     m.def(
         "format_si_prefix",
@@ -4452,6 +4458,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg_v("meta", LHEMeta{}, "LHEMeta()"),
             py::arg("systematics") = nullptr,
             py::arg("histograms") = nullptr,
+            py::arg("gzip_device") = nullptr,
+            py::arg("gzip_algorithm") = default_gzip_algorithm,
             pydoc::doc("EventGenerator::combine_to_lhe")
         )
         .def("status", &EventGenerator::status, pydoc::doc("EventGenerator::status"))
