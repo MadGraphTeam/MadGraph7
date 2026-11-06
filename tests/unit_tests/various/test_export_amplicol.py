@@ -38,6 +38,7 @@ class TestGenerationInProcess(unittest.TestCase):
         with mock.patch.object(export_amplicol, 'check_pyamplicol',
                                return_value={'version': '0', 'source_hash': 'h'}), \
                 mock.patch.object(export_amplicol, 'model_job', return_value={}), \
+                mock.patch.object(export_amplicol, 'clustering_model', return_value={}), \
                 mock.patch('madgraph.iolibs.amplicol_generation.generate', generate):
             return export_amplicol.export_amplicol_processes(tmp, [], None)
 

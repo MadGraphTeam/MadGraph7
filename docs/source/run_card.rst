@@ -181,7 +181,9 @@ See :doc:`gridpacks` for details.
     HT/4`` is a shortcut that sets this parameter and ``scale_factor`` to give
     :math:`H_T/4`. ``ckkwl`` is the clustering scale of the diagram, without the
     :math:`\alpha_s` and PDF reweighting of MLM merging: MadEvent's default ``-1`` for a
-    CKKW-L merged sample, where Pythia8 does that reweighting.
+    CKKW-L merged sample, where Pythia8 does that reweighting. An ``[amplicol]`` event is
+    clustered along the planar diagrams of its leading-colour flow, which differ from the
+    diagrams a madmatrix event is clustered along.
 
 ``scale_factor`` (``1.0``)
     Factor applied to the dynamical scale. Fixed scales are not affected. With the default
@@ -356,7 +358,9 @@ VEGAS grids adapt the phase-space sampling during the survey.
 
 ``ptlund`` (``0.0``)
     CKKW-L merging with Pythia8: the smallest Pythia8 evolution :math:`p_T` over all ISR and
-    FSR splittings that can produce a merging parton. ``0`` disables it.
+    FSR splittings that can produce a merging parton. ``0`` disables it. An ``[amplicol]``
+    subprocess usually groups flavours that split differently (quarks and gluons), which
+    this cut cannot tell apart: use ``ktdurham`` there.
 
 ``dparameter`` (``0.4``)
     :math:`D` of the hadron-collider ``ktdurham`` measure, Pythia8's ``Merging:Dparameter``.

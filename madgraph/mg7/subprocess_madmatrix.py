@@ -359,46 +359,54 @@ class MadgraphSubprocess:
         madevent's dynamical_scale_choice -1 central scale: no merging cut and
         no alpha_s / pdf ladder, which Pythia8 applies itself."""
         ckkwl = getattr(self.process, "ckkwl_scale", False)
-        mc_data = self.build_multi_channel_data()
         beam = self.process.run_card["beam"]
-        all_pids = (clean_pids(self.meta["incoming"])
-                    + clean_pids(self.meta["outgoing"]))
+        options = dict(
+            cm_energy=self.process.e_cm,
+            jet_scale_scheme=getattr(
+                ms.MLMClustering.JetScaleScheme, beam["jet_scale_scheme"]),
+            scale_scheme=getattr(
+                ms.MLMClustering.ScaleScheme,
+                "madevent" if ckkwl else beam["scale_scheme"]),
+            xqcut=0.0 if ckkwl else self.process.run_card["phasespace"]["xqcut"],
+            bw_cutoff=self.process.run_card["phasespace"]["bw_cutoff"],
+            jet_radius=beam["jet_radius"],
+            hadronic=not self.process.leptonic,
+            max_jet_flavor=beam["max_jet_flavor"],
+            parton_line_scheme=getattr(
+                ms.MLMClustering.PartonLineScheme, beam["parton_line_scheme"]),
+            alphas_scheme=getattr(
+                ms.MLMClustering.AlphasScheme,
+                "none" if ckkwl else beam["alphas_reweighting"]),
+            pdf_reweighting=False if ckkwl else beam["pdf_reweighting"],
+            clustering_measure=getattr(
+                ms.MLMClustering.ClusteringMeasure, beam["clustering_measure"]),
+            clustering_mean_pdf_ladder=beam["clustering_mean_pdf_ladder"],
+        )
         return ms.EnergyScale(
-            ms.MLMClustering(
-                topologies=[topo[0] for topo in mc_data.topologies],
-                permutations=mc_data.permutations,
-                diagram_indices=mc_data.diagram_indices,
-                cm_energy=self.process.e_cm,
-                jet_scale_scheme=getattr(
-                    ms.MLMClustering.JetScaleScheme, beam["jet_scale_scheme"]),
-                scale_scheme=getattr(
-                    ms.MLMClustering.ScaleScheme,
-                    "madevent" if ckkwl else beam["scale_scheme"]),
-                pdg_color_types={
-                    int(key): value
-                    for key, value in self.meta["pdg_color_types"].items()
-                },
-                xqcut=0.0 if ckkwl else self.process.run_card["phasespace"]["xqcut"],
-                bw_cutoff=self.process.run_card["phasespace"]["bw_cutoff"],
-                jet_radius=beam["jet_radius"],
-                hadronic=not self.process.leptonic,
-                external_pdg_ids=all_pids,
-                max_jet_flavor=beam["max_jet_flavor"],
-                parton_line_scheme=getattr(
-                    ms.MLMClustering.PartonLineScheme, beam["parton_line_scheme"]),
-                alphas_scheme=getattr(
-                    ms.MLMClustering.AlphasScheme,
-                    "none" if ckkwl else beam["alphas_reweighting"]),
-                pdf_reweighting=False if ckkwl else beam["pdf_reweighting"],
-                clustering_measure=getattr(
-                    ms.MLMClustering.ClusteringMeasure, beam["clustering_measure"]),
-                clustering_history=getattr(
-                    ms.MLMClustering.ClusteringHistory,
-                    mlm_clustering_history(self.process.run_card)),
-                clustering_mean_pdf_ladder=beam["clustering_mean_pdf_ladder"],
-            ),
+            self.build_mlm_clustering(options),
             min_scale=min_scale,
             max_scale=max_scale,
+        )
+
+    def build_mlm_clustering(self, options: dict):
+        """The ms.MLMClustering of the subprocess with the given run card
+        options, along its Feynman diagrams."""
+        mc_data = self.build_multi_channel_data()
+        all_pids = (clean_pids(self.meta["incoming"])
+                    + clean_pids(self.meta["outgoing"]))
+        return ms.MLMClustering(
+            topologies=[topo[0] for topo in mc_data.topologies],
+            permutations=mc_data.permutations,
+            diagram_indices=mc_data.diagram_indices,
+            pdg_color_types={
+                int(key): value
+                for key, value in self.meta["pdg_color_types"].items()
+            },
+            external_pdg_ids=all_pids,
+            clustering_history=getattr(
+                ms.MLMClustering.ClusteringHistory,
+                mlm_clustering_history(self.process.run_card)),
+            **options,
         )
 
     def load_matrix_elements(self, api_path_formats, member_metas):
