@@ -62,6 +62,23 @@ class ProcessGroupAnalysis(StrEnum):
     NUMERICAL = "numerical"
 
 
+class LoopInducedPolicy(StrEnum):
+    """How a one-loop request serves processes without a Born amplitude
+    within their coupling-order limits (loop-induced, |A_loop|^2; m-lit
+    PLAN Q2 (b)): ``auto`` (the default) serves a request none of whose
+    concrete processes has a Born loop-induced and skips the Born-less
+    members of a mixed multiparticle request with a typed record; ``skip``
+    serves nothing loop-induced (a purely loop-induced request is refused);
+    ``only`` serves only the members without a Born (the others are skipped
+    with a typed record); ``include`` serves both kinds as separate
+    contributions, never summed (refused until it lands)."""
+
+    AUTO = "auto"
+    SKIP = "skip"
+    ONLY = "only"
+    INCLUDE = "include"
+
+
 class ColorAccuracy(StrEnum):
     # Trees: the inherited (non-strict) colour approximation, the colour matrix
     # truncated in N_c while amplitude coefficients, including the 1/3 of
@@ -412,6 +429,10 @@ class ProcessConfig:
     loop_coupling_orders: tuple[str, ...] | None = field(
         default=None, metadata=_setting("list_str", nullable=True)
     )
+    loop_induced: LoopInducedPolicy = field(
+        default=LoopInducedPolicy.AUTO,
+        metadata=_setting("str", choices=tuple(LoopInducedPolicy)),
+    )
     max_color_sectors: int | None = field(
         default=None, metadata=_setting("int", nullable=True)
     )
@@ -494,6 +515,11 @@ class ProcessConfig:
             object.__setattr__(
                 self, "loop_coupling_orders", tuple(sorted(set(corrections)))
             )
+        object.__setattr__(
+            self,
+            "loop_induced",
+            _enum(self.loop_induced, LoopInducedPolicy, "process.loop_induced"),
+        )
         object.__setattr__(
             self,
             "max_color_sectors",
@@ -1740,6 +1766,14 @@ class RunConfig:
             raise ConfigurationError(
                 "generation.particle_veto requires one-loop generation "
                 "(process.loop_coupling_orders)"
+            )
+        if not virtual and self.process.loop_induced in (
+            LoopInducedPolicy.ONLY,
+            LoopInducedPolicy.INCLUDE,
+        ):
+            raise ConfigurationError(
+                f"process.loop_induced = {str(self.process.loop_induced)!r} "
+                "requires one-loop generation (process.loop_coupling_orders)"
             )
         if self.color.nc_graded:
             self._validate_nc_expansion(virtual=virtual)
