@@ -808,6 +808,30 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("Luminosity::Luminosity")
         );
 
+    py::classh<LeptonLuminosity, Mapping>(
+        m, "LeptonLuminosity", pydoc::doc("LeptonLuminosity")
+    )
+        .def(
+            py::init<double, double, double, bool>(),
+            py::arg("s_lab"),
+            py::arg("beta"),
+            py::arg("s_hat_min") = 0.,
+            py::arg("s_hat_min_condition") = false,
+            pydoc::doc("LeptonLuminosity::LeptonLuminosity")
+        )
+        .def("s_lab", &LeptonLuminosity::s_lab, pydoc::doc("LeptonLuminosity::s_lab"))
+        .def("beta", &LeptonLuminosity::beta, pydoc::doc("LeptonLuminosity::beta"))
+        .def(
+            "s_hat_min",
+            &LeptonLuminosity::s_hat_min,
+            pydoc::doc("LeptonLuminosity::s_hat_min")
+        )
+        .def(
+            "s_hat_min_condition",
+            &LeptonLuminosity::s_hat_min_condition,
+            pydoc::doc("LeptonLuminosity::s_hat_min_condition")
+        );
+
     py::classh<TwoBodyDecay, Mapping>(m, "TwoBodyDecay", pydoc::doc("TwoBodyDecay"))
         .def(
             py::init<bool, double, double, double>(),
@@ -1788,6 +1812,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 bool,
                 std::optional<double>,
+                bool,
                 bool>(),
             py::arg("topology"),
             py::arg("cm_energy"),
@@ -1801,6 +1826,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("mirror_beams") = false,
             py::arg("s_hat_power") = std::nullopt,
             py::arg("sqrt_s_hat_min_condition") = false,
+            py::arg("sqrt_s_hat_condition") = false,
             pydoc::doc("PhaseSpaceMapping::PhaseSpaceMapping")
         )
         .def(
@@ -1815,6 +1841,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 bool,
                 std::optional<double>,
+                bool,
                 bool>(),
             py::arg("external_masses"),
             py::arg("cm_energy"),
@@ -1827,6 +1854,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("mirror_beams") = false,
             py::arg("s_hat_power") = std::nullopt,
             py::arg("sqrt_s_hat_min_condition") = false,
+            py::arg("sqrt_s_hat_condition") = false,
             pydoc::doc("PhaseSpaceMapping::PhaseSpaceMapping#2")
         )
         .def(
@@ -1863,6 +1891,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             "sqrt_s_hat_min_condition",
             &PhaseSpaceMapping::sqrt_s_hat_min_condition,
             pydoc::doc("PhaseSpaceMapping::sqrt_s_hat_min_condition")
+        )
+        .def(
+            "sqrt_s_hat_condition",
+            &PhaseSpaceMapping::sqrt_s_hat_condition,
+            pydoc::doc("PhaseSpaceMapping::sqrt_s_hat_condition")
         )
         .def("cuts", &PhaseSpaceMapping::cuts, pydoc::doc("PhaseSpaceMapping::cuts"))
         .def("empty", &PhaseSpaceMapping::empty, pydoc::doc("PhaseSpaceMapping::empty"))
@@ -1920,11 +1953,13 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const PhaseSpaceMapping&,
                 const std::vector<FKSConfigurationMapping::Configuration>&,
                 double,
-                double>(),
+                double,
+                const std::optional<LeptonLuminosity>&>(),
             py::arg("born"),
             py::arg("configurations"),
             py::arg("s_hat_min") = 0.,
             py::arg("sqrt_s_hat_floor") = 0.,
+            py::arg("luminosity") = std::nullopt,
             pydoc::doc("FKSConfigurationMapping::FKSConfigurationMapping")
         )
         .def(
@@ -1932,11 +1967,18 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const PhaseSpaceMapping&,
                 const std::vector<FKSConfiguration>&,
                 double,
-                double>(),
+                double,
+                const std::optional<LeptonLuminosity>&>(),
             py::arg("born"),
             py::arg("configurations"),
             py::arg("s_hat_min") = 0.,
-            py::arg("sqrt_s_hat_floor") = 0.
+            py::arg("sqrt_s_hat_floor") = 0.,
+            py::arg("luminosity") = std::nullopt
+        )
+        .def(
+            "luminosity",
+            &FKSConfigurationMapping::luminosity,
+            pydoc::doc("FKSConfigurationMapping::luminosity")
         )
         .def(
             "born",
@@ -2068,10 +2110,19 @@ PYBIND11_MODULE(_madspace_py, m) {
 
     py::classh<FKSLimits, FunctionGenerator>(m, "FKSLimits", pydoc::doc("FKSLimits"))
         .def(
-            py::init<const std::vector<FKSConfiguration>&, const FKSCouplingOrders&>(),
+            py::init<
+                const std::vector<FKSConfiguration>&,
+                const FKSCouplingOrders&,
+                bool>(),
             py::arg("configurations"),
             py::arg("orders"),
+            py::arg("collinear_born") = false,
             pydoc::doc("FKSLimits::FKSLimits")
+        )
+        .def(
+            "collinear_born",
+            &FKSLimits::collinear_born,
+            pydoc::doc("FKSLimits::collinear_born")
         )
         .def(
             "configuration_count",
@@ -2204,6 +2255,12 @@ PYBIND11_MODULE(_madspace_py, m) {
         {
             {"msbar", FKSSubtraction::msbar},
             {"dis", FKSSubtraction::dis},
+            {"eta", FKSSubtraction::eta},
+            {"beta", FKSSubtraction::beta},
+            {"mixed", FKSSubtraction::mixed},
+            {"nobeta", FKSSubtraction::nobeta},
+            {"delta", FKSSubtraction::delta},
+            {"upc", FKSSubtraction::upc},
         }
     );
     fks_subtraction
@@ -2224,7 +2281,9 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 double,
                 FKSSubtraction::PdfScheme,
-                double>(),
+                double,
+                const std::vector<double>&,
+                bool>(),
             py::arg("configurations"),
             py::arg("orders"),
             py::arg("xicut") = 0.5,
@@ -2241,6 +2300,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("tiny") = 1e-6,
             py::arg("pdf_scheme") = FKSSubtraction::msbar,
             py::arg("n_f") = 5.,
+            py::arg("upc_radii") = std::vector<double>{},
+            py::arg("collinear_born") = false,
             pydoc::doc("FKSSubtraction::FKSSubtraction")
         )
         .def(

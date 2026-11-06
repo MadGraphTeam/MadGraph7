@@ -15,6 +15,12 @@ constexpr std::size_t INCOMING_COUNT = 2;
 
 const PhaseSpaceMapping&
 checked_born(const PhaseSpaceMapping& born, std::size_t j_fks) {
+    if (born.sqrt_s_hat_condition()) {
+        throw std::invalid_argument(
+            "FKSMapping: a Born mapping with the sqrt_s_hat condition belongs to "
+            "lepton beams, see FKSConfigurationMapping"
+        );
+    }
     // A final-state emitter leaves s_hat of the Born unchanged, so a floor on
     // it (from fks_sqrt_s_hat_min) bounds the real emission too. An incoming
     // emitter raises s_hat, its Born has to cover everything below.
@@ -53,7 +59,8 @@ emitter_mass(const PhaseSpaceMapping& born, std::size_t i_fks, std::size_t j_fks
     return masses.at(j_fks);
 }
 
-NamedVector<Type> fks_input_types(const PhaseSpaceMapping& born) {
+NamedVector<Type>
+fks_input_types(const PhaseSpaceMapping& born, std::size_t extra = 3) {
     const auto& born_types = born.input_types();
     auto names = born_types.keys();
     NamedVector<Type> types;
@@ -62,19 +69,26 @@ NamedVector<Type> fks_input_types(const PhaseSpaceMapping& born) {
         types.push_back(
             name,
             name == "random"
-                ? batch_float_array(born.random_dim() + 3)
+                ? batch_float_array(born.random_dim() + extra)
                 : born_types.at(k)
         );
     }
     return types;
 }
 
-NamedVector<Type> fks_output_types(const PhaseSpaceMapping& born) {
-    return {
+NamedVector<Type> fks_output_types(const PhaseSpaceMapping& born, bool lepton = false) {
+    NamedVector<Type> types{
         {"momenta", batch_four_vec_array(born.particle_count() + 1)},
         {"x1", batch_float},
         {"x2", batch_float},
     };
+    // with lepton PDFs 1 - x, which the momentum fractions close to 1 do not
+    // resolve
+    if (lepton) {
+        types.push_back("one_minus_x1", batch_float);
+        types.push_back("one_minus_x2", batch_float);
+    }
+    return types;
 }
 
 // the light-cone components (up to a factor) whose ratio is exp(2 y) for the
@@ -395,8 +409,30 @@ const Mapping& as_mapping(const FKSKinematics::Configurations& mapping) {
 const PhaseSpaceMapping& checked_configuration_born(
     const PhaseSpaceMapping& born,
     const std::vector<FKSConfigurationMapping::Configuration>& configurations,
-    double sqrt_s_hat_floor
+    double sqrt_s_hat_floor,
+    const std::optional<LeptonLuminosity>& luminosity
 ) {
+    if (luminosity &&
+        (!born.leptonic() || !born.sqrt_s_hat_condition() ||
+         born.beam_rapidity() != 0. || born.mirror_beams())) {
+        throw std::invalid_argument(
+            "FKSConfigurationMapping: with a lepton luminosity the Born mapping "
+            "must be leptonic, with the sqrt_s_hat condition, without a beam "
+            "rapidity and without mirrored beams"
+        );
+    }
+    if (luminosity && !luminosity->s_hat_min_condition()) {
+        throw std::invalid_argument(
+            "FKSConfigurationMapping: the lepton luminosity needs the s_hat_min "
+            "condition (s_hat_min_condition)"
+        );
+    }
+    if (!luminosity && born.sqrt_s_hat_condition()) {
+        throw std::invalid_argument(
+            "FKSConfigurationMapping: a Born mapping with the sqrt_s_hat "
+            "condition needs a lepton luminosity"
+        );
+    }
     if (configurations.empty()) {
         throw std::invalid_argument(
             "FKSConfigurationMapping: needs at least one configuration"
@@ -418,7 +454,9 @@ const PhaseSpaceMapping& checked_configuration_born(
             return config.second >= INCOMING_COUNT;
         }
     );
-    if (sqrt_s_hat_floor > 0. && final_emitter && !born.sqrt_s_hat_min_condition()) {
+    // with a lepton luminosity the floor is that of the luminosity
+    if (sqrt_s_hat_floor > 0. && final_emitter && !luminosity &&
+        !born.sqrt_s_hat_min_condition()) {
         throw std::invalid_argument(
             "FKSConfigurationMapping: a floor on sqrt(s_hat) needs a Born mapping "
             "with the sqrt_s_hat_min condition (sqrt_s_hat_min_condition)"
@@ -432,7 +470,7 @@ NamedVector<Type> configuration_conditions(const PhaseSpaceMapping& born) {
     const auto& born_conditions = born.condition_types();
     auto names = born_conditions.keys();
     for (std::size_t k = 0; k < born_conditions.size(); ++k) {
-        if (names.at(k) != "sqrt_s_hat_min") {
+        if (names.at(k) != "sqrt_s_hat_min" && names.at(k) != "sqrt_s_hat") {
             conditions.push_back(names.at(k), born_conditions.at(k));
         }
     }
@@ -456,11 +494,14 @@ struct FKSConfigurationMapping::Context {
     Value r_phi;
     // per event, of its configuration: the Born emitter (final-state
     // emitters), the emitter mass (massive ones), s_hat_min and the beam
-    // (incoming ones)
+    // (incoming ones; for lepton beams s_hat_min is the lower end of the
+    // energy squared of the Born)
     Value p_jbar;
     Value emitter_mass;
     Value s_hat_min;
     Value beam_sign;
+    // the weight of the Born
+    Value born_det;
 };
 
 namespace {
@@ -500,43 +541,65 @@ FKSConfigurationMapping::FKSConfigurationMapping(
     const PhaseSpaceMapping& born,
     const std::vector<FKSConfiguration>& configurations,
     double s_hat_min,
-    double sqrt_s_hat_floor
+    double sqrt_s_hat_floor,
+    const std::optional<LeptonLuminosity>& luminosity
 ) :
     FKSConfigurationMapping(
-        born, configuration_pairs(born, configurations), s_hat_min, sqrt_s_hat_floor
+        born,
+        configuration_pairs(born, configurations),
+        s_hat_min,
+        sqrt_s_hat_floor,
+        luminosity
     ) {}
 
 FKSConfigurationMapping::FKSConfigurationMapping(
     const PhaseSpaceMapping& born,
     const std::vector<Configuration>& configurations,
     double s_hat_min,
-    double sqrt_s_hat_floor
+    double sqrt_s_hat_floor,
+    const std::optional<LeptonLuminosity>& luminosity
 ) :
     Mapping(
         "FKSConfigurationMapping",
         fks_input_types(
-            checked_configuration_born(born, configurations, sqrt_s_hat_floor)
+            checked_configuration_born(
+                born, configurations, sqrt_s_hat_floor, luminosity
+            ),
+            luminosity ? 5 : 3
         ),
-        fks_output_types(born),
+        fks_output_types(born, luminosity.has_value()),
         configuration_conditions(born)
     ),
     _born(born),
     _configurations(configurations),
     _s_hat_min(s_hat_min),
     _sqrt_s_hat_floor(sqrt_s_hat_floor),
+    _luminosity(luminosity),
     _born_masses(born.external_masses()) {
     std::size_t n = born.particle_count();
     _layout_masses = _born_masses;
     _layout_masses.push_back(0.);
+    // the final-state masses of the Born bound its energy from below
+    double mass_sum = 0.;
+    for (std::size_t b = INCOMING_COUNT; b < n; ++b) {
+        mass_sum += std::max(_born_masses.at(b), 0.);
+    }
     std::vector<EmitterKind> kind_of;
     for (auto [i_fks, j_fks] : configurations) {
         // FKSRadiation checks the positions, and the mass of the emitter is
-        // that FKSMapping gives it
+        // that FKSMapping gives it. With lepton beams an incoming emitter
+        // radiates without the projection of the event, which keeps the
+        // momentum fractions.
         double mass = emitter_mass(born, i_fks, j_fks);
-        double radiation_s_hat_min = j_fks < INCOMING_COUNT
+        bool fixed = luminosity && j_fks < INCOMING_COUNT;
+        double radiation_s_hat_min = j_fks < INCOMING_COUNT && !luminosity
             ? std::max(s_hat_min, sqrt_s_hat_floor * sqrt_s_hat_floor)
+            : luminosity
+            ? 0.
             : s_hat_min;
-        FKSRadiation(n, i_fks, j_fks, born.leptonic(), radiation_s_hat_min, mass);
+        FKSRadiation(
+            n, i_fks, j_fks, born.leptonic() && !fixed, radiation_s_hat_min, mass
+        );
         auto kind = j_fks < INCOMING_COUNT ? incoming
             : mass > 0.
             ? massive_final
@@ -544,7 +607,17 @@ FKSConfigurationMapping::FKSConfigurationMapping(
         kind_of.push_back(kind);
         _emitter_masses.push_back(mass);
         _born_floors.push_back(j_fks < INCOMING_COUNT ? 0. : sqrt_s_hat_floor);
-        _radiation_s_hat_min.push_back(radiation_s_hat_min);
+        double born_s_min = j_fks < INCOMING_COUNT
+            ? mass_sum * mass_sum
+            : std::pow(std::max(sqrt_s_hat_floor, mass_sum), 2);
+        if (luminosity && !(born_s_min < luminosity->s_lab())) {
+            throw std::invalid_argument(
+                "FKSConfigurationMapping: the lower end of the energy of the Born "
+                "is above that of the beams"
+            );
+        }
+        _born_s_min.push_back(born_s_min);
+        _radiation_s_hat_min.push_back(fixed ? born_s_min : radiation_s_hat_min);
         _beam_signs.push_back(j_fks == 1 ? -1. : 1.);
         _collinear_exists.push_back(kind == massive_final ? 0. : 1.);
 
@@ -635,14 +708,25 @@ NamedVector<Type> FKSConfigurationMapping::counter_event_types() const {
         types.push_back(std::string(name) + "_xi", batch_float);
         types.push_back(std::string(name) + "_xi_max", batch_float);
     }
+    if (_luminosity) {
+        types.push_back("one_minus_x1", batch_float);
+        types.push_back("one_minus_x2", batch_float);
+        types.push_back("collinear_born_momenta", batch_four_vec_array(n));
+    }
     return types;
 }
 
 NamedVector<Value> FKSConfigurationMapping::born_conditions(
-    FunctionBuilder& fb, const NamedVector<Value>& conditions
+    FunctionBuilder& fb,
+    const NamedVector<Value>& conditions,
+    const std::optional<Value>& sqrt_s
 ) const {
     NamedVector<Value> born_conditions;
     for (const auto& name : _born.condition_types().keys()) {
+        if (name == "sqrt_s_hat") {
+            born_conditions.push_back(name, sqrt_s.value());
+            continue;
+        }
         born_conditions.push_back(
             name,
             name == "sqrt_s_hat_min"
@@ -651,6 +735,17 @@ NamedVector<Value> FKSConfigurationMapping::born_conditions(
         );
     }
     return born_conditions;
+}
+
+NamedVector<Value> FKSConfigurationMapping::fixed_born(
+    FunctionBuilder& fb,
+    const NamedVector<Value>& born_inputs,
+    const NamedVector<Value>& conditions,
+    Value sqrt_s
+) const {
+    return _born.build_forward(
+        fb, born_inputs, born_conditions(fb, conditions, sqrt_s)
+    );
 }
 
 Value FKSConfigurationMapping::pick(
@@ -719,6 +814,38 @@ FKSConfigurationMapping::Emission FKSConfigurationMapping::pick_emission(
         pick(fb, field(&Emission::det_xi), slot),
         pick(fb, field(&Emission::rat), slot),
         fb.unstack(pick_rows(fb, p_i_hat, 1, fks_index)).at(0),
+        pick(fb, field(&Emission::born_det), slot),
+    };
+}
+
+FKSConfigurationMapping::Emission FKSConfigurationMapping::build_fixed_emission(
+    FunctionBuilder& fb,
+    const Context& context,
+    Value xi_hat,
+    Value y_var,
+    const FixedBorn& born
+) const {
+    const auto& c = context;
+    auto [p_i, xi, xi_max, sqrt_s_rec, det_xi, p_i_hat] = fb.fks_initial_fixed_radiate(
+        xi_hat, y_var, c.r_phi, c.sqrt_s, c.s_hat_min, c.beam_sign
+    );
+    auto boosted =
+        fb.unstack(fb.fks_initial_fixed_boost(fb.stack(born.final_state), p_i_hat, xi));
+    // the incoming momenta of the real emission, those of the Born at sqrt(s)
+    ValueVec layout(c.incoming);
+    layout.insert(layout.end(), boosted.begin(), boosted.end());
+    layout.push_back(p_i);
+    return {
+        fb.stack(layout),
+        c.x1,
+        c.x2,
+        xi,
+        y_var,
+        xi_max,
+        det_xi,
+        Value(1.),
+        p_i_hat,
+        born.det
     };
 }
 
@@ -768,7 +895,8 @@ FKSConfigurationMapping::Emission FKSConfigurationMapping::build_emission(
             xi_max,
             det_xi,
             Value(1.),
-            p_i_hat
+            p_i_hat,
+            c.born_det
         };
     }
     Value p_i, p_j, xi, xi_max, det_xi, rat(1.), p_i_hat;
@@ -807,7 +935,7 @@ FKSConfigurationMapping::Emission FKSConfigurationMapping::build_emission(
         fb.permute_momenta(fb.stack(rows), _emission_into_place, c.fks_index)
     );
     auto layout = fb.stack(ValueVec(placed.begin(), placed.end() - 1));
-    return {layout, c.x1, c.x2, xi, y_var, xi_max, det_xi, rat, p_i_hat};
+    return {layout, c.x1, c.x2, xi, y_var, xi_max, det_xi, rat, p_i_hat, c.born_det};
 }
 
 NamedVector<Value> FKSConfigurationMapping::build_events(
@@ -816,23 +944,51 @@ NamedVector<Value> FKSConfigurationMapping::build_events(
     const NamedVector<Value>& conditions,
     bool with_counter_events
 ) const {
-    bool boosted = !_born.leptonic() || _born.beam_rapidity() != 0.;
+    bool lepton = _luminosity.has_value();
+    bool boosted = lepton || !_born.leptonic() || _born.beam_rapidity() != 0.;
     auto fks_index = conditions.at("fks_index");
     auto r = fb.unstack(inputs.at("random"));
     std::size_t n_born = _born.random_dim();
+    // the random numbers of the emission follow those of the Born and of the
+    // luminosity
+    std::size_t n_before = n_born + (lepton ? 2 : 0);
     NamedVector<Value> born_inputs{
         {"random", fb.stack(ValueVec(r.begin(), r.begin() + n_born))}
     };
     if (discrete_dim() > 0) {
         born_inputs.push_back("discrete", inputs.at("discrete"));
     }
-    auto born = _born.build_forward(fb, born_inputs, born_conditions(fb, conditions));
-    auto x1_born = born.at("x1"), x2_born = born.at("x2");
+
+    // the momentum fractions and the Born at the partonic energy: of the
+    // luminosity and the Born mapping at its energy for lepton beams, of the
+    // Born mapping else
+    Value x1_born, x2_born, det_lumi(1.), omx1, omx2, s_born_min, sqrt_s_lumi;
+    NamedVector<Value> born;
+    if (lepton) {
+        s_born_min = fb.gather(fks_index, _born_s_min);
+        auto lumi = _luminosity->build_forward(
+            fb, ValueVec{r.at(n_born), r.at(n_born + 1)}, ValueVec{s_born_min}
+        );
+        x1_born = lumi.at("x1");
+        x2_born = lumi.at("x2");
+        omx1 = lumi.at("one_minus_x1");
+        omx2 = lumi.at("one_minus_x2");
+        det_lumi = lumi.at("det");
+        sqrt_s_lumi = fb.sqrt(lumi.at("s_hat"));
+        born = fixed_born(fb, born_inputs, conditions, sqrt_s_lumi);
+    } else {
+        born = _born.build_forward(fb, born_inputs, born_conditions(fb, conditions));
+        x1_born = born.at("x1");
+        x2_born = born.at("x2");
+    }
     auto det_born = born.at("det");
 
-    auto [plus, minus] = fks_born_frame(fb, _born, x1_born, x2_born, conditions);
+    Value plus = x1_born, minus = x2_born;
+    if (!lepton) {
+        std::tie(plus, minus) = fks_born_frame(fb, _born, x1_born, x2_born, conditions);
+    }
     auto born_cm = born.at("momenta");
-    if (boosted) {
+    if (boosted && !lepton) {
         born_cm = fb.fks_beam_boost(born_cm, Value(_born_masses), minus, plus);
     }
     born_cm = fks_standard_orientation(fb, _born, born_cm, conditions);
@@ -845,8 +1001,9 @@ NamedVector<Value> FKSConfigurationMapping::build_events(
     c.final_state = ValueVec(p_born.begin() + INCOMING_COUNT, p_born.end());
     c.x1 = x1_born;
     c.x2 = x2_born;
-    c.sqrt_s = fb.obs_sqrt_s(born_cm);
-    c.r_phi = r.at(n_born + 2);
+    c.sqrt_s = lepton ? sqrt_s_lumi : fb.obs_sqrt_s(born_cm);
+    c.r_phi = r.at(n_before + 2);
+    c.born_det = det_born;
     if (has(massless_final) || has(massive_final)) {
         c.p_jbar =
             fb.unstack(fb.permute_momenta(born_cm, _emitter_first, fks_index)).at(0);
@@ -864,7 +1021,7 @@ NamedVector<Value> FKSConfigurationMapping::build_events(
     }
 
     // xi_hat and y (y_hat for an incoming emitter) of each kind of emitter
-    auto r_xi = r.at(n_born), r_y = r.at(n_born + 1);
+    auto r_xi = r.at(n_before), r_y = r.at(n_before + 1);
     ValueVec xi_hat_k, y_k, det_sample_k;
     std::optional<std::tuple<Value, Value, Value>> plain_sample;
     for (auto kind : _kinds) {
@@ -888,14 +1045,41 @@ NamedVector<Value> FKSConfigurationMapping::build_events(
     auto xi_hat = pick(fb, xi_hat_k, slot);
     auto det_sample = pick(fb, det_sample_k, slot);
 
+    // with lepton beams an incoming emitter radiates off the Born of the
+    // energy it leaves (that of the event, also for the collinear
+    // counter-event) and off the Born at sqrt(s) (the soft ones)
+    bool fixed = lepton && has(incoming);
+    FixedBorn born_at_s{c.final_state, det_born}, born_at_rec;
+    if (fixed) {
+        std::size_t k =
+            std::find(_kinds.begin(), _kinds.end(), incoming) - _kinds.begin();
+        [[maybe_unused]] auto [p_i, xi, xi_max, sqrt_s_rec, det_xi, p_i_hat] =
+            fb.fks_initial_fixed_radiate(
+                xi_hat_k.at(k), y_k.at(k), c.r_phi, c.sqrt_s, c.s_hat_min, c.beam_sign
+            );
+        auto born_rec = fixed_born(fb, born_inputs, conditions, sqrt_s_rec);
+        auto p_rec = fb.unstack(born_rec.at("momenta"));
+        born_at_rec = {
+            ValueVec(p_rec.begin() + INCOMING_COUNT, p_rec.end()), born_rec.at("det")
+        };
+    }
+    auto emission = [&](EmitterKind kind, Value xi_hat_kind, Value y_kind, bool soft) {
+        if (fixed && kind == incoming) {
+            return build_fixed_emission(
+                fb, c, xi_hat_kind, y_kind, soft ? born_at_s : born_at_rec
+            );
+        }
+        return build_emission(fb, c, kind, xi_hat_kind, y_kind);
+    };
+
     std::vector<Emission> event_k;
     for (auto [kind, xi_hat_kind, y_kind] : zip(_kinds, xi_hat_k, y_k)) {
-        event_k.push_back(build_emission(fb, c, kind, xi_hat_kind, y_kind));
+        event_k.push_back(emission(kind, xi_hat_kind, y_kind, false));
     }
     auto event = pick_emission(fb, event_k, slot, fks_index);
 
     // into the lab frame, in the order of the real process, with the weights
-    // times the weight of the Born
+    // times the weight of the Born (and of the luminosity of lepton beams)
     auto to_lab =
         [&](const std::string& prefix,
             const Emission& emission,
@@ -912,20 +1096,30 @@ NamedVector<Value> FKSConfigurationMapping::build_events(
             );
             out.push_back(prefix + "x1", emission.x1);
             out.push_back(prefix + "x2", emission.x2);
+            auto born_weight =
+                lepton ? fb.mul(det_lumi, emission.born_det) : Value(det_born);
             out.push_back(
-                prefix + (prefix.empty() ? "weight" : "det"), fb.mul(det_born, det)
+                prefix + (prefix.empty() ? "weight" : "det"), fb.mul(born_weight, det)
             );
         };
     NamedVector<Value> outputs;
     auto weight = fb.mul(fb.mul(event.xi, event.det_xi), det_sample);
     to_lab("", event, weight, outputs);
     if (!with_counter_events) {
+        if (lepton) {
+            outputs.push_back("one_minus_x1", omx1);
+            outputs.push_back("one_minus_x2", omx2);
+        }
         return outputs;
     }
-    outputs.push_back("born_momenta", born.at("momenta"));
+    auto born_lab = born.at("momenta");
+    if (lepton) {
+        born_lab = fb.fks_beam_boost(born_lab, Value(_born_masses), plus, minus);
+    }
+    outputs.push_back("born_momenta", born_lab);
     outputs.push_back("born_x1", x1_born);
     outputs.push_back("born_x2", x2_born);
-    outputs.push_back("born_weight", det_born);
+    outputs.push_back("born_weight", lepton ? fb.mul(det_lumi, det_born) : det_born);
     outputs.push_back("xi", event.xi);
     outputs.push_back("xi_hat", xi_hat);
     outputs.push_back("y", event.y);
@@ -944,6 +1138,7 @@ NamedVector<Value> FKSConfigurationMapping::build_events(
     if (has(massive_final)) {
         collinear_exists = fb.gather(fks_index, _collinear_exists);
     }
+    std::optional<Emission> collinear_event;
     for (std::string name : {"soft", "collinear", "soft_collinear"}) {
         bool soft = name != "collinear", collinear = name != "soft";
         std::vector<Emission> counter_k;
@@ -954,12 +1149,11 @@ NamedVector<Value> FKSConfigurationMapping::build_events(
             counter_k.push_back(
                 collinear && kind == massive_final
                     ? event_kind
-                    : build_emission(
-                          fb,
-                          c,
+                    : emission(
                           kind,
                           soft ? Value(0.) : xi_hat_kind,
-                          collinear ? Value(1.) : y_kind
+                          collinear ? Value(1.) : y_kind,
+                          soft
                       )
             );
         }
@@ -978,6 +1172,55 @@ NamedVector<Value> FKSConfigurationMapping::build_events(
         outputs.push_back(name + "_p_i_hat", hat_to_lab(counter.p_i_hat));
         outputs.push_back(name + "_xi", counter.xi);
         outputs.push_back(name + "_xi_max", counter.xi_max);
+        if (name == "collinear") {
+            collinear_event = counter;
+        }
+    }
+    if (lepton) {
+        outputs.push_back("one_minus_x1", omx1);
+        outputs.push_back("one_minus_x2", omx2);
+        // the Born of the collinear limit: for an incoming emitter the
+        // collinear counter-event without i and with j - i = (1 - xi) j, else
+        // the Born
+        Value collinear_born = born_lab;
+        if (fixed) {
+            // the candidates in the c.m. frame one after the other, j from
+            // the first beam, from the second, and the Born, and per
+            // configuration its own first
+            std::size_t n = _born_masses.size();
+            auto rows = fb.unstack(collinear_event->momenta);
+            auto p_i = rows.back();
+            ValueVec finals(rows.begin() + INCOMING_COUNT, rows.end() - 1);
+            ValueVec all{fb.sub(rows.at(0), p_i), rows.at(1)};
+            all.insert(all.end(), finals.begin(), finals.end());
+            all.push_back(rows.at(0));
+            all.push_back(fb.sub(rows.at(1), p_i));
+            all.insert(all.end(), finals.begin(), finals.end());
+            all.insert(all.end(), p_born.begin(), p_born.end());
+            nested_vector2<me_int_t> table;
+            for (auto [i_fks, j_fks] : _configurations) {
+                std::size_t first = j_fks < INCOMING_COUNT ? j_fks * n : 2 * n;
+                std::vector<me_int_t> order;
+                for (std::size_t k = 0; k < n; ++k) {
+                    order.push_back(first + k);
+                }
+                for (std::size_t k = 0; k < all.size(); ++k) {
+                    if (k < first || k >= first + n) {
+                        order.push_back(k);
+                    }
+                }
+                table.push_back(order);
+            }
+            auto picked =
+                fb.unstack(fb.permute_momenta(fb.stack(all), table, fks_index));
+            collinear_born = fb.fks_beam_boost(
+                fb.stack(ValueVec(picked.begin(), picked.begin() + n)),
+                Value(_born_masses),
+                plus,
+                minus
+            );
+        }
+        outputs.push_back("collinear_born_momenta", collinear_born);
     }
     return outputs;
 }
@@ -988,12 +1231,16 @@ Mapping::Result FKSConfigurationMapping::build_forward_impl(
     const NamedVector<Value>& conditions
 ) const {
     auto events = build_events(fb, inputs, conditions, false);
-    return {
-        {{"momenta", events.at("momenta")},
-         {"x1", events.at("x1")},
-         {"x2", events.at("x2")}},
-        events.at("weight")
+    NamedVector<Value> outputs{
+        {"momenta", events.at("momenta")},
+        {"x1", events.at("x1")},
+        {"x2", events.at("x2")}
     };
+    if (_luminosity) {
+        outputs.push_back("one_minus_x1", events.at("one_minus_x1"));
+        outputs.push_back("one_minus_x2", events.at("one_minus_x2"));
+    }
+    return {outputs, events.at("weight")};
 }
 
 NamedVector<Value> FKSConfigurationMapping::build_counter_events(
@@ -1009,7 +1256,8 @@ Mapping::Result FKSConfigurationMapping::build_inverse_impl(
     const NamedVector<Value>& inputs,
     const NamedVector<Value>& conditions
 ) const {
-    bool boosted = !_born.leptonic() || _born.beam_rapidity() != 0.;
+    bool lepton = _luminosity.has_value();
+    bool boosted = lepton || !_born.leptonic() || _born.beam_rapidity() != 0.;
     std::size_t n = _born_masses.size();
     auto fks_index = conditions.at("fks_index");
     auto layout = fb.permute_momenta(inputs.at("momenta"), _layout_order, fks_index);
@@ -1017,6 +1265,18 @@ Mapping::Result FKSConfigurationMapping::build_inverse_impl(
     Value slot;
     if (_kinds.size() > 1) {
         slot = fb.gather_int(fks_index, _kind_slots);
+    }
+    if (lepton) {
+        return build_lepton_inverse(
+            fb,
+            layout,
+            x1,
+            x2,
+            inputs.at("one_minus_x1"),
+            inputs.at("one_minus_x2"),
+            slot,
+            conditions
+        );
     }
 
     // into the center-of-mass frame of the Born: that of the incoming momenta
@@ -1168,6 +1428,128 @@ Mapping::Result FKSConfigurationMapping::build_inverse_impl(
         outputs.push_back("discrete", born.at("discrete"));
     }
     return {outputs, fb.mul(born.at("det"), pick(fb, det_k, slot))};
+}
+
+Mapping::Result FKSConfigurationMapping::build_lepton_inverse(
+    FunctionBuilder& fb,
+    Value layout,
+    Value x1,
+    Value x2,
+    Value omx1,
+    Value omx2,
+    Value slot,
+    const NamedVector<Value>& conditions
+) const {
+    std::size_t n = _born_masses.size();
+    auto fks_index = conditions.at("fks_index");
+    // into the partonic c.m. frame, which keeps the momentum fractions
+    auto real_cm = fb.fks_beam_boost(layout, Value(_layout_masses), x2, x1);
+    auto p = fb.unstack(real_cm);
+    auto p_i = p.at(n);
+    ValueVec final_state(p.begin() + INCOMING_COUNT, p.end() - 1);
+    auto s_born_min = fb.gather(fks_index, _born_s_min);
+    auto s_lab = _luminosity->s_lab();
+    auto s_hat = fb.mul(fb.mul(x1, x2), s_lab);
+    auto sqrt_s = fb.sqrt(s_hat);
+
+    Value p_j, emitter_mass, beam_sign;
+    if (has(massless_final) || has(massive_final)) {
+        p_j = fb.unstack(fb.permute_momenta(real_cm, _layout_emitter_first, fks_index))
+                  .at(0);
+    }
+    if (has(massive_final)) {
+        emitter_mass = fb.gather(fks_index, _emitter_masses);
+    }
+    if (has(incoming)) {
+        beam_sign = fb.gather(fks_index, _beam_signs);
+    }
+
+    // the Born in its c.m. frame, its energy, the random numbers and the
+    // inverse weight of the emission, for each kind of emitter
+    ValueVec born_k, sqrt_s_k, r_xi_k, r_y_k, r_phi_k, det_k;
+    for (auto kind : _kinds) {
+        if (kind == incoming) {
+            auto [xi_hat, y, r_phi, xi, sqrt_s_rec, det_xi_inv] =
+                fb.fks_initial_fixed_cluster(p_i, sqrt_s, s_born_min, beam_sign);
+            auto [r_xi, r_y, det_sample_inv] = fb.fks_xi_y_sample_inverse(xi_hat, y);
+            // the direction of i, which the boost takes
+            auto rest = fb.unstack(
+                fb.fks_initial_fixed_boost_inverse(fb.stack(final_state), p_i, xi)
+            );
+            auto [p_in1, p_in2] = fb.com_p_in(sqrt_s_rec);
+            ValueVec born{p_in1, p_in2};
+            born.insert(born.end(), rest.begin(), rest.end());
+            born_k.push_back(fb.stack(born));
+            sqrt_s_k.push_back(sqrt_s_rec);
+            r_xi_k.push_back(r_xi);
+            r_y_k.push_back(r_y);
+            r_phi_k.push_back(r_phi);
+            det_k.push_back(fb.div(fb.mul(det_xi_inv, det_sample_inv), xi));
+            continue;
+        }
+        Value p_jbar, r_xi, r_y, r_phi, xi, det_xi_inv, det_sample_inv;
+        if (kind == massive_final) {
+            auto [p_jbar_m, xi_hat, y, r_phi_m, xi_m, xi_max, xi_norm, det_m] =
+                fb.fks_final_massive_cluster(p_i, p_j, sqrt_s, emitter_mass);
+            auto [r_xi_m, r_y_m, det] = fb.fks_final_massive_sample_inverse(
+                xi_hat, y, sqrt_s, p_jbar_m, emitter_mass
+            );
+            p_jbar = p_jbar_m;
+            r_phi = r_phi_m;
+            xi = xi_m;
+            det_xi_inv = det_m;
+            r_xi = r_xi_m;
+            r_y = r_y_m;
+            det_sample_inv = det;
+        } else {
+            auto [p_jbar_m, xi_hat, y, r_phi_m, xi_m, xi_max, det_m] =
+                fb.fks_final_massless_cluster(p_i, p_j, sqrt_s);
+            auto [r_xi_m, r_y_m, det] = fb.fks_xi_y_sample_inverse(xi_hat, y);
+            p_jbar = p_jbar_m;
+            r_phi = r_phi_m;
+            xi = xi_m;
+            det_xi_inv = det_m;
+            r_xi = r_xi_m;
+            r_y = r_y_m;
+            det_sample_inv = det;
+        }
+        auto boosted_final = fb.unstack(fb.fks_recoil_boost_inverse(
+            fb.stack(final_state), fb.add(p_i, p_j), p_jbar, sqrt_s
+        ));
+        ValueVec rows{p.at(0), p.at(1)};
+        rows.insert(rows.end(), boosted_final.begin(), boosted_final.end());
+        rows.push_back(p_jbar);
+        auto placed =
+            fb.unstack(fb.permute_momenta(fb.stack(rows), _jbar_into_place, fks_index));
+        born_k.push_back(fb.stack(ValueVec(placed.begin(), placed.end() - 1)));
+        sqrt_s_k.push_back(sqrt_s);
+        r_xi_k.push_back(r_xi);
+        r_y_k.push_back(r_y);
+        r_phi_k.push_back(r_phi);
+        det_k.push_back(fb.div(fb.mul(det_xi_inv, det_sample_inv), xi));
+    }
+    auto born_cm = pick_rows(fb, born_k, n, fks_index);
+    auto born = _born.build_inverse(
+        fb,
+        {{"momenta", born_cm}, {"x1", Value(1.)}, {"x2", Value(1.)}},
+        born_conditions(fb, conditions, pick(fb, sqrt_s_k, slot))
+    );
+    auto lumi = _luminosity->build_inverse(
+        fb, ValueVec{x1, x2, s_hat, omx1, omx2}, ValueVec{s_born_min}
+    );
+    auto r = fb.unstack(born.at("random"));
+    r.push_back(lumi.at("r1"));
+    r.push_back(lumi.at("r2"));
+    r.push_back(pick(fb, r_xi_k, slot));
+    r.push_back(pick(fb, r_y_k, slot));
+    r.push_back(pick(fb, r_phi_k, slot));
+    NamedVector<Value> outputs{{"random", fb.stack(r)}};
+    if (discrete_dim() > 0) {
+        outputs.push_back("discrete", born.at("discrete"));
+    }
+    return {
+        outputs, fb.mul(fb.mul(born.at("det"), lumi.at("det")), pick(fb, det_k, slot))
+    };
 }
 
 FKSKinematics::FKSKinematics(const Configurations& mapping) :

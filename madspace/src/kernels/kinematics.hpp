@@ -689,6 +689,49 @@ KERNELSPEC void kernel_x1x2_to_r_window(
     det = s_lab / (squeeze * log_tau_abs);
 }
 
+// The momentum fraction of a lepton beam from a random number, as generate_x_ee
+// of genps_fks.f samples it for a lepton PDF that behaves as (1 - x)^(beta - 1)
+// (lpp = +-3, +-4 of MadGraph): with a = 1 / (1 - beta),
+// x = x_min + (1 - x_min) (1 - r^a) and 1 - x = (1 - x_min) r^a, which
+// stays exact for x close to 1, at least the smallest normal double. The
+// Jacobian dx / dr = a (1 - x_min) r^(a - 1) = a (1 - x_min)^(1 - beta)
+// (1 - x)^beta contains (1 - x)^beta, which cancels the peak of the PDF. It
+// comes from 1 - x, which stays a normal double where r^(a - 1) does not.
+template <typename T>
+KERNELSPEC void kernel_lepton_x_sample(
+    FIn<T, 0> r,
+    FIn<T, 0> x_min,
+    FSIn<T, 0> beta,
+    FOut<T, 0> x,
+    FOut<T, 0> one_minus_x,
+    FOut<T, 0> det
+) {
+    FVal<T> rv = r, xm = x_min;
+    auto omb = 1. - beta;
+    auto a = 1. / omb;
+    auto ra = pow(rv, a);
+    auto width = 1. - xm;
+    auto omx = max(width * ra, 2.2250738585072014e-308);
+    x = (1. - ra) * width + xm;
+    one_minus_x = omx;
+    det = a * pow(width, omb) * pow(omx, 1. - omb);
+}
+
+template <typename T>
+KERNELSPEC void kernel_lepton_x_sample_inverse(
+    FIn<T, 0> one_minus_x,
+    FIn<T, 0> x_min,
+    FSIn<T, 0> beta,
+    FOut<T, 0> r,
+    FOut<T, 0> det
+) {
+    FVal<T> omx = max(FVal<T>(one_minus_x), 2.2250738585072014e-308), xm = x_min;
+    auto omb = 1. - beta;
+    auto width = 1. - xm;
+    r = pow(min(omx / width, 1.), omb);
+    det = omb / (pow(width, omb) * pow(omx, 1. - omb));
+}
+
 template <typename T>
 KERNELSPEC void kernel_diff_cross_section(
     FIn<T, 0> x1,

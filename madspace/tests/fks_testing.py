@@ -222,15 +222,27 @@ def extra_born_offsets(data):
     return offsets, position
 
 
-def born_inputs(data, rows, k_perp):
+def has_collinear_born(data):
+    """Whether reference data have the Born of the collinear counter-event
+    apart (lepton PDFs, where an incoming emitter radiates without the
+    projection of the event)."""
+    return any(
+        "collinear_born_blocks" in point
+        for conf in data["configs"]
+        for point in conf["points"] + conf.get("limit_points", [])
+    )
+
+
+def born_inputs(data, rows, k_perp, key="born_blocks"):
     """born and spin_correlated per Born input (the Born orders, then the
     orders of the Born of each extra counterterm, see
     FKSCouplingOrders.born_input_count), with the tensors of the
     spin-correlated Borns contracted with k_perp (zero where there are none),
     and color_correlated per Born order, from the Born blocks of pyAmpliCol
-    at the points of the rows (configuration, point) of reference data. The
-    Born of an extra counterterm is that of the configuration of the point,
-    zero elsewhere."""
+    at the points of the rows (configuration, point) of reference data, those
+    of key where a point has them (collinear_born_blocks for the Born of the
+    collinear counter-event). The Born of an extra counterterm is that of the
+    configuration of the point, zero elsewhere."""
     configurations = data["fks_configurations"]["configurations"]
     count = len(data["fks_configurations"]["orders"]["born"])
     offsets, total = extra_born_offsets(data)
@@ -239,7 +251,7 @@ def born_inputs(data, rows, k_perp):
     spin = np.zeros((len(rows), total))
     color = np.zeros((len(rows), count, n, n))
     for k, (conf, point) in enumerate(rows):
-        blocks = point["born_blocks"]
+        blocks = point.get(key, point["born_blocks"])
 
         def contracted(block):
             tensor = np.array(block.get("spin_correlated", np.zeros((4, 4))))

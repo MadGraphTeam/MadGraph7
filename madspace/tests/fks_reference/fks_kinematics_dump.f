@@ -6,8 +6,13 @@ c make_fks_reference.py) and linked like test_soft_col_limits.
 c
 c Reads from stdin: the number of points per FKS configuration, the
 c Born configuration (iconfig), the number of extra points per FKS
-c configuration with a massive final-state emitter and the number of
-c points per FKS configuration close to the limits. For every FKS
+c configuration with a massive final-state emitter, the number of
+c points per FKS configuration close to the limits and the lpp of both
+c beams (0 keeps those of the run_card, 3 for lepton PDFs, whose
+c run_card the Source of an NLO output does not take). With lepton PDFs
+c an incoming emitter radiates without the projection of the event
+c (generate_noevpr_kinematics), and the dump also prints the luminosity
+c and the Born of each counter-event (see NOEVPR and BORNREC below). For every FKS
 c configuration and point it calls generate_momenta at uniform random x,
 c which runs the full production chain (Born map, FKS radiation,
 c counter-events). The extra points follow in a second pass, so that the
@@ -149,6 +154,16 @@ c that make_fks_reference.py parses.
       double precision f_pdfsch_d,f_pdfsch_p,f_pdfsch_l
       common/factor_pdfsch/f_pdfsch_d,f_pdfsch_p,f_pdfsch_l
       double precision deg(6,2),deg_xi,deg_lxi
+      double precision psch_o(amp_split_size,3,2,7)
+      integer isch,ischeme_save
+      integer lpp_in
+      logical use_evpr
+      common /to_use_evpr/use_evpr
+      double precision omx_ee(2)
+      common /to_ee_omx1/omx_ee
+      double precision p_born_coll(0:3,nexternal-1)
+      common/pborn_coll/p_born_coll
+      double precision srec_k(4),wrec_k(4),prec_k(0:3,nexternal-1,4)
       double precision amp_split_wgtnstmp(amp_split_size),
      &     amp_split_wgtwnstmpmuf(amp_split_size),
      &     amp_split_wgtwnstmpmur(amp_split_size)
@@ -185,8 +200,13 @@ c the same per split order, for the amp_split arrays of fks_singular.f
       read (*,*) iconf_in
       read (*,*) nmassive
       read (*,*) nlimit
+      read (*,*) lpp_in
 
       call setrun
+      if (lpp_in.ne.0) then
+         lpp(1)=lpp_in
+         lpp(2)=lpp_in
+      endif
       call setpara('param_card.dat')
       call fill_configurations_common
       softtest=.false.
@@ -271,6 +291,30 @@ c types, charges and FKS pairs of the real process
             write (*,fmt) 'JAC',jac_full,(jac_full_cnt(k),k=-2,2)
             write (*,fmt) 'PBORN',((p_born_l(j,i),j=0,3),i=1
      &           ,nexternal-1)
+c Without the projection of the event (lepton PDFs and an incoming
+c emitter): 1, tau_Born_lower_bound, the momentum fractions and 1 - x of
+c generate_ee_tau_y, and the Born of the collinear counter-event
+c (p_born_coll). Then for the event, the soft, collinear and
+c soft-collinear counter-event (k = -100, 0, 1, 2): the energy squared
+c of its Born (s_rec = (1 - xi) shat), the weight of generate_momenta_born
+c at it with unit Jacobians (Kajantie's normalization) and its momenta in
+c their rest frame.
+            if (jac_full.gt.0d0.and..not.use_evpr) then
+               write (*,fmt) 'NOEVPR',1d0,tau_Born_lower_bound
+     &              ,xbjrk_ev(1),xbjrk_ev(2),omx_ee(1),omx_ee(2)
+               write (*,fmt) 'PBORNCOLL',((p_born_coll(j,i),j=0,3),i=1
+     &              ,nexternal-1)
+               srec_k(1)=shat_ev*(1d0-xi_i_fks_ev)
+               srec_k(2)=shat_ev
+               srec_k(3)=shat_ev*(1d0-xi_i_fks_cnt(1))
+               srec_k(4)=shat_ev
+               call born_at_srec(x,srec_k,wrec_k,prec_k)
+               do k=1,4
+                  write (*,'(a,1x,i0,1x,*(es25.17e3,1x))') 'BORNREC',k
+     &                 ,srec_k(k),wrec_k(k),((prec_k(j,i,k),j=0,3),i=1
+     &                 ,nexternal-1)
+               enddo
+            endif
             write (*,fmt) 'PEV',((p_ev(j,i),j=0,3),i=1,nexternal)
             do k=-2,2
                write (*,'(a,1x,i0,1x,*(es25.17e3,1x))') 'PCNT',k
@@ -410,20 +454,24 @@ c As in driver_mintFO.f, the Born is computed anew at every point.
             enddo
             if (jac_full.gt.0d0) then
                call set_cms_stuff(-100)
+               if (.not.use_evpr) calculatedBorn=.false.
                call sreal(p,xi_i_fks_ev,y_ij_fks_ev,fx(1))
                sreal_o(:,1)=amp_split(:)
                if (jac_full_cnt(0).gt.0d0) then
                   call set_cms_stuff(0)
+                  if (.not.use_evpr) calculatedBorn=.false.
                   call sreal(p1_cnt(0,1,0),0d0,y_ij_fks_ev,fx(2))
                   sreal_o(:,2)=amp_split(:)
                endif
                if (jac_full_cnt(1).gt.0d0.and.emass(j_fks).eq.0d0) then
                   call set_cms_stuff(1)
+                  if (.not.use_evpr) calculatedBorn=.false.
                   call sreal(p1_cnt(0,1,1),xi_i_fks_cnt(1),1d0,fx(3))
                   sreal_o(:,3)=amp_split(:)
                endif
                if (jac_full_cnt(2).gt.0d0.and.emass(j_fks).eq.0d0) then
                   call set_cms_stuff(2)
+                  if (.not.use_evpr) calculatedBorn=.false.
                   call sreal(p1_cnt(0,1,2),0d0,1d0,fx(4))
                   sreal_o(:,4)=amp_split(:)
                endif
@@ -438,6 +486,7 @@ c orders), the colour-linked Borns of sborn_sf for the pairs of
 c sbornsoft in its order (with g^2, where i has colour links), g and
 c iden_comp, where the event is generated
             if (jac_full.gt.0d0) then
+               if (.not.use_evpr) calculatedBorn=.false.
                call sborn_frame(p_born,born_wgt)
                write (*,fmt) 'BORN',g,iden_comp,born_wgt
      &              ,dble(ans_cnt(1,qcd_pos))
@@ -460,6 +509,7 @@ c other mother of a quark pair), zero without one
                   extra_o(iamp,2)=0d0
                enddo
                if (iextra_cnt.gt.0) then
+                  if (.not.use_evpr) calculatedBorn=.false.
                   call extra_cnt_frame(p_born,iextra_cnt,ans_extra_cnt)
                   do iamp=1,amp_split_size
                      if (qcd_pos.gt.0) extra_o(iamp,1)=
@@ -479,6 +529,7 @@ c other mother of a quark pair), zero without one
                         if ((mm.ne.nn .or. emass(mm).ne.0d0) .and.
      &                       nn.ne.i_fks .and. mm.ne.i_fks) then
                            neik=neik+1
+                           if (.not.use_evpr) calculatedBorn=.false.
                            call sborn_frame(p_born,born_wgt)
                            call sborn_sf_frame(p_born,mm,nn,blink(neik))
                            link_o(:,neik)=amp_split_soft(:)
@@ -511,9 +562,11 @@ c (sreal_deg reads them), the strong coupling of the Fortran is kept.
      &              j_fks.le.nincoming.and.emass(j_fks).eq.0d0) then
                   call set_cms_stuff(k)
                   if (k.eq.1) then
+                     if (.not.use_evpr) calculatedBorn=.false.
                      call sreal_deg(p1_cnt(0,1,1),xi_i_fks_cnt(1),1d0
      &                    ,deg_xi,deg_lxi)
                   else
+                     if (.not.use_evpr) calculatedBorn=.false.
                      call sreal_deg(p1_cnt(0,1,2),0d0,1d0,deg_xi
      &                    ,deg_lxi)
                   endif
@@ -537,6 +590,41 @@ c (sreal_deg reads them), the strong coupling of the Fortran is kept.
      &           ,q2fact(2),QES2
             write (*,fmt) 'DEGO',(((deg_o(iamp,j,k),iamp=1
      &           ,amp_split_size),j=1,6),k=1,2)
+c The parts p, l and d of the PDF scheme of sreal_deg per position of
+c amp_split for each scheme 1 to 7 of pdfscheme (DIS, the leptonic eta,
+c beta, mixed, nobeta and delta, UPC), at the collinear (k = 1) and
+c soft-collinear (k = 2) counter-events, at the scales above. The nuclei
+c of UPC are set here: xiAI = 1 and RAI = 31 and 35 GeV^-1.
+            ischeme_save=pdfscheme
+            xiAI(1)=1d0
+            xiAI(2)=1d0
+            RAI(1)=31d0
+            RAI(2)=35d0
+            psch_o(:,:,:,:)=0d0
+            do k=1,2
+               if (jac_full.gt.0d0.and.jac_full_cnt(k).gt.0d0.and.
+     &              j_fks.le.nincoming.and.emass(j_fks).eq.0d0) then
+                  call set_cms_stuff(k)
+                  do isch=1,7
+                     pdfscheme=isch
+                     if (k.eq.1) then
+                        if (.not.use_evpr) calculatedBorn=.false.
+                        call sreal_deg(p1_cnt(0,1,1),xi_i_fks_cnt(1),1d0
+     &                       ,deg_xi,deg_lxi)
+                     else
+                        if (.not.use_evpr) calculatedBorn=.false.
+                        call sreal_deg(p1_cnt(0,1,2),0d0,1d0,deg_xi
+     &                       ,deg_lxi)
+                     endif
+                     psch_o(:,1,k,isch)=amp_split_wgtpsch_p(:)
+                     psch_o(:,2,k,isch)=amp_split_wgtpsch_l(:)
+                     psch_o(:,3,k,isch)=amp_split_wgtpsch_d(:)
+                  enddo
+               endif
+            enddo
+            pdfscheme=ischeme_save
+            write (*,fmt) 'PSCHO',((((psch_o(iamp,j,k,isch),iamp=1
+     &           ,amp_split_size),j=1,3),k=1,2),isch=1,7)
 c The n-body part of bornsoftvirtual at the soft counter-event, where i
 c has colour links (as compute_nbody_noborn calls it for those
 c configurations), without the virtual (fold = 1 keeps its saved value
@@ -555,6 +643,7 @@ c Ellis-Sexton scale)
      &           (need_color_links.or.need_charge_links)) then
                call set_cms_stuff(0)
                fold=1
+               if (.not.use_evpr) calculatedBorn=.false.
                call bornsoftvirtual(p1_cnt(0,1,0),bsv_wgt,virt_wgt
      &              ,born_wgt)
                fold=0
@@ -583,7 +672,8 @@ c energy of the real emission that set_tau_min derives from the cuts
 c (tau_lower_bound, which restricts xi and y for an initial-state emitter;
 c the CUT entries) and once without it (the FKS map itself; the RAD
 c entries).
-            if (jac_full.gt.0d0 .and. p_born_l(0,1).gt.0d0) then
+            if (jac_full.gt.0d0 .and. p_born_l(0,1).gt.0d0 .and.
+     &           use_evpr) then
                do j=0,3
                   pb(j)=p_born_l(j,1)+p_born_l(j,2)
                enddo
@@ -655,4 +745,70 @@ c stale. (ycm_cnt(0) is stale for the second fold of a massive j_fks.)
          enddo
       enddo
       enddo
+      end
+
+
+      subroutine born_at_srec(x,srec,wrec,prec)
+c The Born of generate_noevpr_kinematics at each energy squared srec(k):
+c generate_momenta_born with the random numbers x of the point and unit
+c Jacobians, its weight and its momenta in their rest frame. The commons
+c it writes (p_born, p_born_l, p_born_ev) are restored.
+      implicit none
+      include 'genps.inc'
+      include 'nexternal.inc'
+      double precision x(99),srec(4),wrec(4),prec(0:3,nexternal-1,4)
+      double precision p_born(0:3,nexternal-1)
+      common/pborn/p_born
+      double precision p_born_l(0:3,nexternal-1)
+      common/pborn_l/p_born_l
+      double precision p_born_ev(0:3,nexternal-1)
+      common/pborn_ev/p_born_ev
+      double precision qmass_common(-nexternal:0),qwidth_common(
+     &     -nexternal:0)
+      common /c_qmass_qwidth/qmass_common,qwidth_common
+      double precision pmass(nexternal)
+      common /to_mass/pmass
+      integer i_fks,j_fks
+      common/fks_indices/i_fks,j_fks
+      integer itree_c(2,-max_branch:-1)
+      integer ns_channel,nt_channel,ionebody,nbranch
+      logical one_body
+      common/born_trees/itree_c,ns_channel,nt_channel,ionebody,nbranch
+     &     ,one_body
+      double precision save_b(0:3,nexternal-1),save_l(0:3,nexternal-1)
+     &     ,save_e(0:3,nexternal-1)
+      double precision m(-max_branch:max_particles)
+      double precision s(-max_branch:max_particles),m_born(nexternal-1)
+      double precision granny_m2_red(-1:1),totmass,xpswgt,xjac
+      integer i,k
+      save_b(:,:)=p_born(:,:)
+      save_l(:,:)=p_born_l(:,:)
+      save_e(:,:)=p_born_ev(:,:)
+      do k=1,4
+         m(:)=0d0
+         s(:)=0d0
+         do i=1,nexternal-1
+            if (i.lt.i_fks) then
+               m(i)=pmass(i)
+            else
+               m(i)=pmass(i+1)
+            endif
+         enddo
+         totmass=0d0
+         do i=nincoming+1,nexternal-1
+            totmass=totmass+m(i)
+         enddo
+         granny_m2_red(:)=-99d99
+         xpswgt=1d0
+         xjac=1d0
+         call generate_momenta_born(x,srec(k),sqrt(srec(k)),totmass,m,s
+     &        ,qmass_common,qwidth_common,granny_m2_red,.false.,m_born
+     &        ,xpswgt,xjac)
+         wrec(k)=xpswgt*xjac
+         prec(:,:,k)=p_born_l(:,:)
+      enddo
+      p_born(:,:)=save_b(:,:)
+      p_born_l(:,:)=save_l(:,:)
+      p_born_ev(:,:)=save_e(:,:)
+      return
       end

@@ -785,6 +785,49 @@ x1x2_to_r_window:
       desc: "Jacobian of the mapping"
   desc: "Inverse of `r_to_x1x2_window`. See @ref PhaseSpaceMapping."
 
+lepton_x_sample:
+  inputs:
+    - name: r
+      type: [float]
+      desc: "random number in [0, 1]"
+    - name: x_min
+      type: [float]
+      desc: "lower end of the momentum fraction"
+    - name: beta
+      type: [float, single]
+      desc: "exponent of the sampling, (1 - x)^(beta - 1)"
+  outputs:
+    - name: x
+      type: [float]
+      desc: "momentum fraction of the beam"
+    - name: one_minus_x
+      type: [float]
+      desc: "1 - x, exact close to x = 1"
+    - name: det
+      type: [float]
+      desc: "Jacobian of the mapping"
+  desc: "Maps a random number to the momentum fraction of a lepton beam as generate_x_ee of genps_fks.f, 1 - x = (1 - x_min) r^(1 / (1 - beta)). See @ref LeptonLuminosity."
+
+lepton_x_sample_inverse:
+  inputs:
+    - name: one_minus_x
+      type: [float]
+      desc: "1 - x of the momentum fraction of the beam"
+    - name: x_min
+      type: [float]
+      desc: "lower end of the momentum fraction"
+    - name: beta
+      type: [float, single]
+      desc: "exponent of the sampling, (1 - x)^(beta - 1)"
+  outputs:
+    - name: r
+      type: [float]
+      desc: "random number in [0, 1]"
+    - name: det
+      type: [float]
+      desc: "Jacobian of the mapping"
+  desc: "Inverse of lepton_x_sample. See @ref LeptonLuminosity."
+
 diff_cross_section:
   inputs:
     - name: x1
@@ -2770,6 +2813,116 @@ fks_initial_recoil_boost_inverse:
       desc: "the final-state momenta of the Born"
   desc: "Inverse of @ref fks_initial_recoil_boost."
 
+fks_initial_fixed_radiate:
+  inputs:
+    - name: xi_hat
+      type: [float]
+      desc: "energy fraction of i over its upper end"
+    - name: y
+      type: [float]
+      desc: "cosine of the angle between i and the incoming emitter j"
+    - name: r_phi
+      type: [float]
+      desc: "random number for the azimuth of i about the beam axis"
+    - name: sqrt_s
+      type: [float]
+      desc: "partonic energy of the real emission"
+    - name: s_born_min
+      type: [float]
+      desc: "lower end of the energy squared of the Born"
+    - name: beam_sign
+      type: [float]
+      desc: "+1 if j comes from beam 1 (along +z), -1 if from beam 2"
+  outputs:
+    - name: p_i
+      type: [float, 4]
+      desc: "momentum of i in the partonic center-of-mass frame"
+    - name: xi
+      type: [float]
+      desc: "energy fraction of i"
+    - name: xi_max
+      type: [float]
+      desc: "upper end of xi, 1 - s_born_min / s"
+    - name: sqrt_s_rec
+      type: [float]
+      desc: "energy of the Born, sqrt((1 - xi) s)"
+    - name: det_xi
+      type: [float]
+      desc: "phase space of i per unit xi, xi_hat, y and r_phi"
+    - name: p_i_hat
+      type: [float, 4]
+      desc: "momentum of i per unit xi"
+  desc: "The emission off an incoming parton without the projection of the event onto the Born (generate_momenta_initial_noevpr of genps_fks.f), at fixed partonic energy and momentum fractions. See @ref FKSConfigurationMapping."
+
+fks_initial_fixed_cluster:
+  inputs:
+    - name: p_i
+      type: [float, 4]
+      desc: "momentum of i in the partonic center-of-mass frame"
+    - name: sqrt_s
+      type: [float]
+      desc: "partonic energy of the real emission"
+    - name: s_born_min
+      type: [float]
+      desc: "lower end of the energy squared of the Born"
+    - name: beam_sign
+      type: [float]
+      desc: "+1 if j comes from beam 1 (along +z), -1 if from beam 2"
+  outputs:
+    - name: xi_hat
+      type: [float]
+      desc: "energy fraction of i over its upper end"
+    - name: y
+      type: [float]
+      desc: "cosine of the angle between i and the incoming emitter j"
+    - name: r_phi
+      type: [float]
+      desc: "random number for the azimuth of i"
+    - name: xi
+      type: [float]
+      desc: "energy fraction of i"
+    - name: sqrt_s_rec
+      type: [float]
+      desc: "energy of the Born"
+    - name: det_xi
+      type: [float]
+      desc: "inverse of det_xi of fks_initial_fixed_radiate"
+  desc: "Inverse of @ref fks_initial_fixed_radiate."
+
+fks_initial_fixed_boost:
+  inputs:
+    - name: p
+      type: [float, n, 4]
+      desc: "final-state momenta of the Born in its rest frame"
+    - name: p_i_hat
+      type: [float, 4]
+      desc: "momentum of i per unit xi"
+    - name: xi
+      type: [float]
+      desc: "energy fraction of i"
+  outputs:
+    - name: p_out
+      type: [float, n, 4]
+      desc: "the momenta in the partonic center-of-mass frame of the real emission"
+  desc: "The boost of boost_born_momenta_noevpr (genps_fks.f) of the Born of @ref fks_initial_fixed_radiate from its rest frame into the partonic center-of-mass frame, where it recoils against i."
+
+fks_initial_fixed_boost_inverse:
+  inputs:
+    - name: p
+      type: [float, n, 4]
+      desc: "final-state momenta of the real emission without i"
+    - name: p_i_hat
+      type: [float, 4]
+      desc: "momentum of i per unit xi"
+    - name: xi
+      type: [float]
+      desc: "energy fraction of i"
+  outputs:
+    - name: p_out
+      type: [float, n, 4]
+      desc: "the final-state momenta of the Born in its rest frame"
+  desc: "Inverse of @ref fks_initial_fixed_boost."
+
 fks_recoil_light_cone:
   inputs:
     - name: p_in1
@@ -3123,6 +3276,9 @@ fks_collinear_remnants:
     - name: born
       type: [float, b]
       desc: "the Born per Born input (the Born orders, then those of the extra counterterms)"
+    - name: collinear_born
+      type: [float, b]
+      desc: "the Born per Born input at the collinear counter-event"
     - name: alpha_s
       type: [float]
       desc: "strong coupling"
@@ -3153,6 +3309,9 @@ fks_collinear_remnants:
     - name: f_pdf
       type: [float, 3]
       desc: "prefactors of the delta, plus and log-plus parts of a change of the PDF scheme"
+    - name: ren_scale
+      type: [float]
+      desc: "renormalization scale, the Ellis-Sexton scale of the UPC scheme"
     - name: fact_scale1
       type: [float]
       desc: "factorization scale of the first beam"
@@ -3183,15 +3342,15 @@ fks_collinear_remnants:
     - name: ap_factor
       type: [float, single, c, 2]
       desc: "color or charge factor of the Altarelli-Parisi kernel of each splitting type of each configuration"
-    - name: dis_factor
+    - name: scheme_factor
       type: [float, single, c, 2]
-      desc: "color or charge factor of the change to the DIS scheme of each splitting type of each configuration"
+      desc: "color or charge factor of the change of the PDF scheme of each splitting type of each configuration, zero where the scheme does not change it"
     - name: delta
       type: [float, single, c]
       desc: "deltaI of each configuration"
     - name: options
-      type: [float, single, 1]
-      desc: "the PDF scheme (0 MSbar, 1 DIS)"
+      type: [float, single, 3]
+      desc: "the PDF scheme (0 MSbar, 1 DIS, 2 eta, 3 beta, 4 mixed, 5 nobeta, 6 delta, 7 UPC), then xi_A^2 R_A^2 of the nuclei of the two beams for UPC"
   outputs:
     - name: collinear
       type: [float, o]
@@ -3200,7 +3359,7 @@ fks_collinear_remnants:
       type: [float, o]
       desc: "collinear remnant at the soft-collinear counter-event per NLO order"
   vectorized: False
-  desc: "The collinear remnants of an incoming emitter of sreal_deg, compute_collinear_counter_term and compute_soft_collinear_counter_term in fks_singular.f per NLO order, with the factorization scale of the beam of the emitter, summed over the splitting types of the configuration (the second with the Born of the extra counterterm) with their kernels and couplings (QCD or QED). With N = 4 pi alpha B iden_comp / (8 pi^2 z) and the Born input of the counterterms, D_xi = N ((1 - z) P log(s deltaI / (2 mu_F^2)) - (1 - z) P'), D_lxi = 2 N (1 - z) P and the parts K_p, K_l, K_d = -N k_p, k_l, k_d of the change to the DIS scheme (zero in MSbar), the collinear remnant is f_dc (D_xi + K_p + (D_lxi + K_l) log xi_c) at z = 1 - xi_c and s of the collinear counter-event and the soft-collinear one -f_dsc1 (D_xi + K_p + (D_lxi + K_l) log xi_c) - f_dsc2 D_xi - f_dsc3 D_lxi + f_pdf_d K_d + f_pdf_p K_p + f_pdf_l K_l at z = 1 and s of the soft-collinear counter-event. Each is zero where its sector function is."
+  desc: "The collinear remnants of an incoming emitter of sreal_deg, compute_collinear_counter_term and compute_soft_collinear_counter_term in fks_singular.f per NLO order, with the factorization scale of the beam of the emitter, summed over the splitting types of the configuration (the second with the Born of the extra counterterm) with their kernels and couplings (QCD or QED). With N = 4 pi alpha B iden_comp / (8 pi^2 z) and the Born input of the counterterms (at the collinear counter-event that of collinear_born), D_xi = N ((1 - z) P log(s deltaI / (2 mu_F^2)) - (1 - z) P'), D_lxi = 2 N (1 - z) P and the parts K_p, K_l, K_d = -N k_p, k_l, k_d of the change of the PDF scheme (xkplus, xklog, xkdelta, zero in MSbar), the collinear remnant is f_dc (D_xi + K_p + (D_lxi + K_l) log xi_c) at z = 1 - xi_c and s of the collinear counter-event and the soft-collinear one -f_dsc1 (D_xi + K_p + (D_lxi + K_l) log xi_c) - f_dsc2 D_xi - f_dsc3 D_lxi + f_pdf_d K_d + f_pdf_p K_p + f_pdf_l K_l at z = 1 and s of the soft-collinear counter-event. Each is zero where its sector function is."
 
 fks_real_emission:
   inputs:

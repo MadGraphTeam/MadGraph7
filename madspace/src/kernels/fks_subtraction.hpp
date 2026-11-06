@@ -619,26 +619,73 @@ KERNELSPEC FVal<T> fks_ap_prime_shape(std::size_t kind, FVal<T> z) {
 }
 
 // The plus (p), log-plus (l) and delta (d) parts of the change of the PDF
-// scheme from MSbar to DIS of xkplus, xklog and xkdelta without their factor,
-// which is -2 n_f T_R for g -> g g, T_R (QCD) or N_c Q^2 (QED, N_c = 1 for a
-// lepton) for g/a -> q q~, C_F or Q^2 for q -> q g/a and minus that for
-// q -> g/a q, for the splittings of fks_ap_shape
+// scheme from MSbar of xkplus, xklog and xkdelta (fks_singular.f) without
+// their factor, for the splittings of fks_ap_shape and the schemes of
+// pdfscheme: 1 DIS, 2 eta, 3 beta, 4 mixed, 5 nobeta, 6 delta (the leptonic
+// ones of eMELA), 7 UPC. The factor is
+// - DIS: -2 n_f T_R for g -> g g, T_R (QCD) or N_c Q^2 (QED, N_c = 1 for a
+//   lepton) for g/a -> q q~, C_F or Q^2 for q -> q g/a and minus that for
+//   q -> g/a q;
+// - eta to delta: C_F or Q^2 of the mother for q -> q g/a, and for delta also
+//   C_F or Q^2 of i for q -> g/a q, zero for the other splittings;
+// - UPC: N_c Q^2 for a -> q q~ (QED), zero for the other splittings.
+// upc_log is log(mu^2 xi_A^2 R_A^2) of UPC, with the Ellis-Sexton scale mu and
+// the nucleus of the beam of the emitter.
 template <typename T>
-KERNELSPEC void
-fks_dis_shapes(std::size_t kind, FVal<T> x, FVal<T>& k_p, FVal<T>& k_l, FVal<T>& k_d) {
+KERNELSPEC void fks_scheme_shapes(
+    int scheme,
+    std::size_t kind,
+    FVal<T> x,
+    FVal<T> upc_log,
+    FVal<T>& k_p,
+    FVal<T>& k_l,
+    FVal<T>& k_d
+) {
     constexpr double pi = 3.14159265358979323846;
     auto w = 1. - x;
-    auto lx = log(x);
-    if (kind < 2) {
-        auto pqg = x * x + w * w;
-        k_p = w * (-pqg * lx + 8. * x * w - 1.);
-        k_l = w * pqg;
-        k_d = 0.;
-    } else {
-        auto pgq = 1. + x * x;
-        k_p = -1.5 - pgq * lx + w * (3. + 2. * x);
-        k_l = pgq;
-        k_d = -(4.5 + pi * pi / 3.);
+    auto pgq = 1. + x * x;
+    k_p = 0.;
+    k_l = 0.;
+    k_d = 0.;
+    if (scheme == 1) {
+        auto lx = log(x);
+        if (kind < 2) {
+            auto pqg = x * x + w * w;
+            k_p = w * (-pqg * lx + 8. * x * w - 1.);
+            k_l = w * pqg;
+        } else {
+            k_p = -1.5 - pgq * lx + w * (3. + 2. * x);
+            k_l = pgq;
+            k_d = -(4.5 + pi * pi / 3.);
+        }
+    } else if (scheme >= 2 && scheme <= 6 && kind == 2) {
+        // (1 - x) (1 + x) as a product, exact at x = 1
+        auto w_x = w * (1. + x);
+        k_l = 2. * pgq;
+        switch (scheme) {
+        case 2:
+            k_p = -w_x;
+            k_d = -3.5;
+            break;
+        case 3:
+            k_d = -3.5;
+            break;
+        case 4:
+            k_p = -w_x;
+            k_d = -2.;
+            break;
+        case 5:
+            k_p = 2. - w_x;
+            k_d = -2.;
+            break;
+        default:
+            k_p = pgq;
+            k_d = -2.;
+        }
+    } else if (scheme == 6 && kind == 3) {
+        k_p = w * (1. + w * w) / x * (2. * log(x) + 1.);
+    } else if (scheme == 7 && kind == 1) {
+        k_p = -w * (x * x + w * w) * upc_log;
     }
 }
 
@@ -649,19 +696,23 @@ fks_dis_shapes(std::size_t kind, FVal<T> x, FVal<T>& k_p, FVal<T>& k_l, FVal<T>&
 // second for the extra counterterm) with the kernels of their couplings
 // (0 QCD with alpha_s, 1 QED with alpha, -1 none): with g^2 = 4 pi alpha and
 // N = B iden_comp / (8 pi^2 z), the Born input B that born_index gives for
-// each NLO order (none for -1),
+// each NLO order (none for -1), at the collinear counter-event that of
+// collinear_born (p_born_coll without the projection of the event),
 //   D_xi = N g^2 ((1 - z) P log(s delta_I / (2 mu_F^2)) - (1 - z) P'),
 //   D_lxi = 2 N g^2 (1 - z) P,   K_p,l,d = -N g^2 k_p,l,d (zero in MSbar),
-// with the color or charge factor ap_factor of P and P' and dis_factor of
-// k_p,l,d, the collinear one f_dc (D_xi + K_p + (D_lxi + K_l) log xi_c) at
-// z = 1 - xi_c and s of the collinear counter-event, the soft-collinear one
+// with the color or charge factor ap_factor of P and P' and scheme_factor of
+// k_p,l,d (fks_scheme_shapes), the collinear one
+// f_dc (D_xi + K_p + (D_lxi + K_l) log xi_c) at z = 1 - xi_c and s of the
+// collinear counter-event, the soft-collinear one
 // -f_dsc1 (D_xi + K_p + (D_lxi + K_l) log xi_c) - f_dsc2 D_xi - f_dsc3 D_lxi
 // + f_pdf_d K_d + f_pdf_p K_p + f_pdf_l K_l at z = 1 and s of the
 // soft-collinear counter-event. Each is zero where its sector function is
-// (options = pdf_scheme).
+// (options = pdf_scheme, then xi_A^2 R_A^2 of the nuclei of the two beams for
+// UPC, with the renormalization scale as the Ellis-Sexton scale).
 template <typename T>
 KERNELSPEC void kernel_fks_collinear_remnants(
     FIn<T, 1> born,
+    FIn<T, 1> collinear_born,
     FIn<T, 0> alpha_s,
     FIn<T, 0> alpha,
     FIn<T, 0> s_c,
@@ -672,6 +723,7 @@ KERNELSPEC void kernel_fks_collinear_remnants(
     FIn<T, 0> f_dc,
     FIn<T, 1> f_dsc,
     FIn<T, 1> f_pdf,
+    FIn<T, 0> ren_scale,
     FIn<T, 0> fact_scale1,
     FIn<T, 0> fact_scale2,
     IIn<T, 0> index,
@@ -682,7 +734,7 @@ KERNELSPEC void kernel_fks_collinear_remnants(
     IIn<T, 3> born_index,
     FIn<T, 2> factor,
     FIn<T, 2> ap_factor,
-    FIn<T, 2> dis_factor,
+    FIn<T, 2> scheme_factor,
     FIn<T, 1> delta,
     FIn<T, 1> options,
     FOut<T, 1> collinear,
@@ -698,11 +750,16 @@ KERNELSPEC void kernel_fks_collinear_remnants(
         return;
     }
     std::size_t k = single_index(kind[c]);
-    bool dis = FVal<T>(options[0]) == 1.;
-    FVal<T> mu_f =
-        single_index(beam[c]) == 0 ? FVal<T>(fact_scale1) : FVal<T>(fact_scale2);
+    int scheme = static_cast<int>(FVal<T>(options[0]));
+    std::size_t b = single_index(beam[c]);
+    FVal<T> mu_f = b == 0 ? FVal<T>(fact_scale1) : FVal<T>(fact_scale2);
+    FVal<T> upc_log = 0.;
+    if (scheme == 7) {
+        FVal<T> mu_r = ren_scale;
+        upc_log = log(mu_r * mu_r * FVal<T>(options[1 + b]));
+    }
     FVal<T> d = delta[c];
-    FVal<T> norm, color, dis_color;
+    FVal<T> norm, color, scheme_color;
     // the remnants per unit Born
     auto pieces =
         [&](FVal<T> z,
@@ -719,11 +776,11 @@ KERNELSPEC void kernel_fks_collinear_remnants(
             k_p = 0.;
             k_l = 0.;
             k_d = 0.;
-            if (dis) {
-                fks_dis_shapes<T>(k, z, k_p, k_l, k_d);
-                k_p = -n * dis_color * k_p;
-                k_l = -n * dis_color * k_l;
-                k_d = -n * dis_color * k_d;
+            if (scheme_color != 0.) {
+                fks_scheme_shapes<T>(scheme, k, z, upc_log, k_p, k_l, k_d);
+                k_p = -n * scheme_color * k_p;
+                k_l = -n * scheme_color * k_l;
+                k_d = -n * scheme_color * k_d;
             }
         };
     auto invariant_mass = [](FIn<T, 2> p) {
@@ -742,7 +799,7 @@ KERNELSPEC void kernel_fks_collinear_remnants(
         // N g^2 for z = 1 and a unit Born
         norm = FVal<T>(factor[c][entry]) * g2 / (8. * pi * pi);
         color = ap_factor[c][entry];
-        dis_color = dis_factor[c][entry];
+        scheme_color = scheme_factor[c][entry];
         FVal<T> d_xi, d_lxi, k_p, k_l, k_d;
         FVal<T> unit_c = 0., unit_sc = 0.;
         if (FVal<T>(s_c) > 0.) {
@@ -761,9 +818,9 @@ KERNELSPEC void kernel_fks_collinear_remnants(
             if (b < 0) {
                 continue;
             }
-            FVal<T> born_b = born[b];
-            collinear[o] = FVal<T>(collinear[o]) + unit_c * born_b;
-            soft_collinear[o] = FVal<T>(soft_collinear[o]) + unit_sc * born_b;
+            FVal<T> born_c = collinear_born[b], born_sc = born[b];
+            collinear[o] = FVal<T>(collinear[o]) + unit_c * born_c;
+            soft_collinear[o] = FVal<T>(soft_collinear[o]) + unit_sc * born_sc;
         }
     }
 }

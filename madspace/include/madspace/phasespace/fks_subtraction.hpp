@@ -61,7 +61,7 @@ namespace madspace {
  * factorization scale @f$\mu_F@f$ of the beam of the emitter and @f$s@f$ of
  * the counter-event, and the parts @f$K_{p,l,d} = -N k_{p,l,d}@f$ of the
  * change of the PDF scheme from MSbar (xkplus, xklog, xkdelta, zero in MSbar,
- * with their QED parts for a QED splitting),
+ * with their QED parts for a QED splitting, see PdfScheme),
  * @f[
  *   R_c = f_{dc} \big[D_\xi + K_p + (D_{l\xi} + K_l) \log \xi_c\big]
  * @f]
@@ -114,10 +114,18 @@ namespace madspace {
  * - `born`, `color_correlated`, `spin_correlated` – the Born and its
  *   color-correlated and spin-correlated versions per Born input (per Born
  *   order for the color-correlated ones), as for @ref FKSLimits.
+ * - `collinear_born`, `collinear_spin_correlated` – the Born and its
+ *   spin-correlated version per Born input at the Born of the collinear
+ *   counter-event (`collinear_born_momenta` of
+ *   FKSConfigurationMapping::build_counter_events), which the collinear
+ *   limits at the event and at the collinear counter-event and the collinear
+ *   remnant there take. Present only with `collinear_born` (lepton beams).
  * - `alpha_s` – `float`, shape `(batch,)` – the strong coupling.
  * - `alpha` – `float`, shape `(batch,)` – the QED coupling.
- * - `fact_scale1`, `fact_scale2` – `float`, shape `(batch,)` – the
- *   factorization scales of the two beams, as @ref EnergyScale returns them.
+ * - `ren_scale`, `fact_scale1`, `fact_scale2` – `float`, shape `(batch,)` –
+ *   the renormalization scale (the Ellis-Sexton scale of the UPC scheme) and
+ *   the factorization scales of the two beams, as @ref EnergyScale returns
+ *   them.
  * - `fks_index` – `int`, shape `(batch,)` – the configuration of the event,
  *   from 0 to the number of configurations minus one.
  *
@@ -141,11 +149,29 @@ namespace madspace {
  */
 class FKSSubtraction : public FunctionGenerator {
 public:
-    /// The scheme of the PDFs (pdfscheme of the run_card), which sets the
-    /// collinear remnants of an initial-state emitter.
+    /**
+     * The scheme of the PDFs (pdfscheme of the run_card), which sets the
+     * collinear remnants of an initial-state emitter: the parts
+     * @f$k_{p,l,d}@f$ of xkplus, xklog and xkdelta in fks_singular.f, per
+     * splitting of the mother m of the Born into j and i. The leptonic schemes
+     * of eMELA change only m -> m + gluon or photon (q -> q g/a), the delta
+     * scheme also a gluon or photon m from a fermion j, and UPC only a photon
+     * j into a fermion pair. Their kernels take the color or charge factor of
+     * the splitting, @f$C_F@f$ or @f$Q^2@f$ (@f$N_c Q^2@f$ for UPC).
+     */
     enum PdfScheme {
-        msbar, ///< MSbar.
-        dis    ///< DIS.
+        msbar,  ///< MSbar, no change.
+        dis,    ///< DIS.
+        eta,    ///< Leptonic eta scheme.
+        beta,   ///< Leptonic beta scheme.
+        mixed,  ///< Leptonic mixed scheme.
+        nobeta, ///< Leptonic nobeta scheme, for LL lepton PDFs.
+        delta,  ///< Leptonic delta scheme, for NLL lepton PDFs.
+        upc     ///< Photons of ultraperipheral collisions of nuclei, with the
+                ///< plus part @f$-(1 - x) (x^2 + (1 - x)^2) \log(\mu^2
+                ///< \xi_A^2 R_A^2)@f$ for a photon j into a fermion pair, at
+                ///< the Ellis-Sexton scale @f$\mu@f$ (the renormalization
+                ///< scale) and the nucleus of the beam of j.
     };
     /**
      * @param configurations  The FKS configurations, in the order of
@@ -177,6 +203,12 @@ public:
      * @param pdf_scheme      The scheme of the PDFs.
      * @param n_f             The number of light flavors, in the DIS
      *                        remnant of a gluon.
+     * @param upc_radii       For the UPC scheme, @f$\xi_A R_A@f$ of the
+     *                        nucleus of each beam in GeV@f$^{-1}@f$ (xiAI
+     *                        times RAI of run.inc, from get_nucleus_RA). Not
+     *                        used by the other schemes.
+     * @param collinear_born  Take the Born of the collinear counter-event
+     *                        apart, for lepton beams (see @ref FKSLimits).
      * @throws std::invalid_argument as @ref FKSLimits or for parameters out
      *         of their range.
      */
@@ -196,7 +228,9 @@ public:
         double h_damp_power = 1.,
         double tiny = 1e-6,
         PdfScheme pdf_scheme = msbar,
-        double n_f = 5.
+        double n_f = 5.,
+        const std::vector<double>& upc_radii = {},
+        bool collinear_born = false
     );
     /// Number of configurations.
     std::size_t configuration_count() const { return _symmetry.size(); }
@@ -221,10 +255,11 @@ private:
     std::vector<me_int_t> _massless;
     std::vector<me_int_t> _remnant, _beam, _kind;
     nested_vector2<me_int_t> _coupling;
-    nested_vector2<double> _ratio, _ap_factor, _dis_factor;
+    nested_vector2<double> _ratio, _ap_factor, _scheme_factor;
     std::vector<double> _delta_i;
     double _xi_s_cut, _delta_s, _tiny;
     PdfScheme _pdf_scheme;
+    std::vector<double> _upc_radii;
 };
 
 /**

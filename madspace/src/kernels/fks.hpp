@@ -819,6 +819,128 @@ KERNELSPEC void kernel_fks_initial_recoil_boost_inverse(
     fks_initial_recoil_boost<T>(p, xi, y, r_phi, FVal<T>(beam_sign), -1., p_out);
 }
 
+// The emission off an incoming parton without the projection of the event onto
+// the Born, for lepton PDFs (generate_momenta_initial_noevpr of genps_fks.f):
+// the real emission keeps the partonic energy sqrt(s) and the momentum
+// fractions of the event, and the Born, of energy squared s_rec = (1 - xi) s,
+// recoils against i. In the partonic center-of-mass frame i has the energy
+// xi sqrt(s) / 2, the cosine y to the beam of the emitter (beam_sign 1 along
+// +z, -1 along -z) and the azimuth 2 pi r_phi, with xi = xi_hat xi_max and
+// xi_max = 1 - s_born_min / s. det_xi is the phase space of i per unit xi,
+// xi_hat, y and r_phi, 2 pi xi_max s / (4 pi)^3.
+template <typename T>
+KERNELSPEC void kernel_fks_initial_fixed_radiate(
+    FIn<T, 0> xi_hat,
+    FIn<T, 0> y,
+    FIn<T, 0> r_phi,
+    FIn<T, 0> sqrt_s,
+    FIn<T, 0> s_born_min,
+    FIn<T, 0> beam_sign,
+    FOut<T, 1> p_i,
+    FOut<T, 0> xi,
+    FOut<T, 0> xi_max,
+    FOut<T, 0> sqrt_s_rec,
+    FOut<T, 0> det_xi,
+    FOut<T, 1> p_i_hat
+) {
+    constexpr double norm = 2. * PI / ((4. * PI) * (4. * PI) * (4. * PI));
+    FVal<T> xh = xi_hat, yv = y, rp = r_phi, rs = sqrt_s, sign(beam_sign);
+    auto s = rs * rs;
+    auto xm = max(1. - FVal<T>(s_born_min) / s, 0.);
+    auto xiv = xh * xm;
+    // as a product, exact at y = +-1
+    auto sth = sqrt(max((1. - yv) * (1. + yv), 0.));
+    auto phi = 2. * PI * rp;
+    auto eh = 0.5 * rs;
+    FourMom<T> hat{eh, eh * sth * cos(phi), eh * sth * sin(phi), sign * eh * yv};
+    store_mom<T>(p_i_hat, hat);
+    store_mom<T>(
+        p_i, FourMom<T>{xiv * hat[0], xiv * hat[1], xiv * hat[2], xiv * hat[3]}
+    );
+    xi = xiv;
+    xi_max = xm;
+    sqrt_s_rec = rs * sqrt(max(1. - xiv, 0.));
+    det_xi = norm * xm * s;
+}
+
+// fks_initial_fixed_radiate from the momentum p_i of i in the partonic
+// center-of-mass frame of energy sqrt(s): xi_hat, y, r_phi and xi, sqrt(s_rec)
+// and 1 / det_xi.
+template <typename T>
+KERNELSPEC void kernel_fks_initial_fixed_cluster(
+    FIn<T, 1> p_i,
+    FIn<T, 0> sqrt_s,
+    FIn<T, 0> s_born_min,
+    FIn<T, 0> beam_sign,
+    FOut<T, 0> xi_hat,
+    FOut<T, 0> y,
+    FOut<T, 0> r_phi,
+    FOut<T, 0> xi,
+    FOut<T, 0> sqrt_s_rec,
+    FOut<T, 0> det_xi
+) {
+    constexpr double norm = 2. * PI / ((4. * PI) * (4. * PI) * (4. * PI));
+    FVal<T> rs = sqrt_s, sign(beam_sign);
+    auto pi = load_mom<T>(p_i);
+    auto s = rs * rs;
+    auto xm = max(1. - FVal<T>(s_born_min) / s, 0.);
+    auto xiv = 2. * pi[0] / rs;
+    auto len = sqrt(max(pi[1] * pi[1] + pi[2] * pi[2] + pi[3] * pi[3], EPS2));
+    auto rphi = atan2(pi[2], pi[1]) / (2. * PI);
+    xi_hat = xiv / max(xm, EPS2);
+    y = sign * pi[3] / len;
+    r_phi = where(rphi < 0., rphi + 1., rphi);
+    xi = xiv;
+    sqrt_s_rec = rs * sqrt(max(1. - xiv, 0.));
+    det_xi = 1. / max(norm * xm * s, EPS2);
+}
+
+// The boost of boost_born_momenta_noevpr (genps_fks.f) of momenta p from the
+// rest frame of the Born of fks_initial_fixed_radiate into the partonic
+// center-of-mass frame of the real emission, where the Born recoils against i
+// (direction 1), or back (-1): along the direction of i, given by its momentum
+// per unit xi p_i_hat, with cosh = (1 - xi / 2) / sqrt(1 - xi) and
+// sinh = xi / (2 sqrt(1 - xi)), cosh - 1 as a quotient, exact for small xi.
+template <typename T>
+KERNELSPEC void fks_initial_fixed_boost(
+    FIn<T, 2> p, FIn<T, 1> p_i_hat, FIn<T, 0> xi, FVal<T> direction, FOut<T, 2> p_out
+) {
+    FVal<T> xiv = xi;
+    auto hat = load_mom<T>(p_i_hat);
+    auto len = sqrt(max(hat[1] * hat[1] + hat[2] * hat[2] + hat[3] * hat[3], EPS2));
+    auto d1 = hat[1] / len, d2 = hat[2] / len, d3 = hat[3] / len;
+    auto rt = sqrt(max(1. - xiv, EPS2));
+    auto half = 1. - 0.5 * xiv;
+    auto ch = half / rt;
+    auto chmo = 0.25 * xiv * xiv / (rt * (half + rt));
+    auto sh = direction * 0.5 * xiv / rt;
+    for (std::size_t i = 0; i < p.size(); ++i) {
+        auto p_i = p[i];
+        auto p_out_i = p_out[i];
+        FVal<T> en = p_i[0], q1 = p_i[1], q2 = p_i[2], q3 = p_i[3];
+        auto pz = q1 * d1 + q2 * d2 + q3 * d3;
+        auto shift = pz * chmo - en * sh;
+        p_out_i[0] = en * ch - pz * sh;
+        p_out_i[1] = q1 + d1 * shift;
+        p_out_i[2] = q2 + d2 * shift;
+        p_out_i[3] = q3 + d3 * shift;
+    }
+}
+
+template <typename T>
+KERNELSPEC void kernel_fks_initial_fixed_boost(
+    FIn<T, 2> p, FIn<T, 1> p_i_hat, FIn<T, 0> xi, FOut<T, 2> p_out
+) {
+    fks_initial_fixed_boost<T>(p, p_i_hat, xi, 1., p_out);
+}
+
+template <typename T>
+KERNELSPEC void kernel_fks_initial_fixed_boost_inverse(
+    FIn<T, 2> p, FIn<T, 1> p_i_hat, FIn<T, 0> xi, FOut<T, 2> p_out
+) {
+    fks_initial_fixed_boost<T>(p, p_i_hat, xi, -1., p_out);
+}
+
 // Light-cone components E + p_z and E - p_z of p_in1 + p_in2 - p_i, the system
 // recoiling against i in an emission off an incoming parton. It has zero
 // longitudinal momentum in the center-of-mass frame of the Born, so their

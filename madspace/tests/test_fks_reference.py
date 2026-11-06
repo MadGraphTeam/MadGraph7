@@ -365,8 +365,10 @@ def test_limit_points(data):
     """Every configuration has points close to the soft limit, with xi_hat
     close to its lower end stiny = 1e-6 (of the range of xi_hat for a
     massive emitter), where sreal and fks_Sij switch to the soft limit below
-    xi = 1e-6, and the Born blocks there."""
+    xi = 1e-6, and the Born blocks there. They switch where xi_max is enough
+    below 1, which it is not with massless recoils (e+ e- > mu+ mu- a)."""
     switched = 0
+    reachable = False
     for conf in data["configs"]:
         points = conf["limit_points"]
         assert len(points) >= 2
@@ -375,4 +377,5 @@ def test_limit_points(data):
             if point["jac"] > 0:
                 assert "born_blocks" in point
                 switched += point["xi_ev"] < 1e-6
-    assert switched > 0
+                reachable |= point["xiimax_ev"] < 0.99
+    assert switched > 0 or not reachable

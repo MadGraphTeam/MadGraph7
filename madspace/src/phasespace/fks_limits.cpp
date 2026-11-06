@@ -294,7 +294,9 @@ std::size_t madspace::check_splitting_configurations(
 }
 
 FKSLimits::FKSLimits(
-    const std::vector<FKSConfiguration>& configurations, const FKSCouplingOrders& orders
+    const std::vector<FKSConfiguration>& configurations,
+    const FKSCouplingOrders& orders,
+    bool collinear_born
 ) :
     FunctionGenerator(
         "FKSLimits",
@@ -304,7 +306,7 @@ FKSLimits::FKSLimits(
             );
             int b = static_cast<int>(orders.born_count());
             int inputs = static_cast<int>(orders.born_input_count());
-            return NamedVector<Type>{
+            NamedVector<Type> types{
                 {"soft_momenta", batch_four_vec_array(n)},
                 {"soft_p_i_hat", batch_four_vec},
                 {"y", batch_float},
@@ -314,10 +316,15 @@ FKSLimits::FKSLimits(
                 {"color_correlated",
                  Type{DataType::dt_float64, batch_size, {b, n - 1, n - 1}}},
                 {"spin_correlated", batch_float_array(inputs)},
-                {"alpha_s", batch_float},
-                {"alpha", batch_float},
-                {"fks_index", batch_int},
             };
+            if (collinear_born) {
+                types.push_back("collinear_born", batch_float_array(inputs));
+                types.push_back("collinear_spin_correlated", batch_float_array(inputs));
+            }
+            types.push_back("alpha_s", batch_float);
+            types.push_back("alpha", batch_float);
+            types.push_back("fks_index", batch_int);
+            return types;
         }(),
         [&] {
             // checked here too: the order of the two arguments is unspecified
@@ -334,7 +341,8 @@ FKSLimits::FKSLimits(
     _kernels(configurations),
     _born_order_count(orders.born_count()),
     _born_input_count(orders.born_input_count()),
-    _nlo_order_count(orders.nlo_count()) {
+    _nlo_order_count(orders.nlo_count()),
+    _collinear_born(collinear_born) {
     std::size_t largest = _eikonals.max_pair_count();
     for (std::size_t c = 0; c < configurations.size(); ++c) {
         const auto& config = configurations.at(c);
@@ -463,11 +471,13 @@ NamedVector<Value> FKSLimits::build_function_impl(
         auto [z, ap, q] = fb.fks_splitting_kernels(
             args.at(name + "_momenta"), index, _fks_i, _fks_j, kind, factors
         );
+        // the collinear counter-event can have a Born of its own
+        bool own = _collinear_born && name == "collinear";
         result.push_back(
             name,
             fb.fks_collinear_limit(
-                args.at("born"),
-                args.at("spin_correlated"),
+                args.at(own ? "collinear_born" : "born"),
+                args.at(own ? "collinear_spin_correlated" : "spin_correlated"),
                 ap,
                 q,
                 alpha_s,

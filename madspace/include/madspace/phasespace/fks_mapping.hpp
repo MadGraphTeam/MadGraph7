@@ -1,11 +1,13 @@
 #pragma once
 
+#include <optional>
 #include <variant>
 #include <vector>
 
 #include "madspace/phasespace/base.hpp"
 #include "madspace/phasespace/fks_configuration.hpp"
 #include "madspace/phasespace/fks_radiation.hpp"
+#include "madspace/phasespace/luminosity.hpp"
 #include "madspace/phasespace/phasespace.hpp"
 
 namespace madspace {
@@ -41,7 +43,8 @@ namespace madspace {
  *
  * Cuts belong to the real emission and the counter-events, not to the Born, so
  * the Born mapping must have none, except a floor on @f$\sqrt{\hat s}@f$ for
- * a final-state emitter (see fks_sqrt_s_hat_min).
+ * a final-state emitter (see fks_sqrt_s_hat_min). Lepton beams need an
+ * @ref FKSConfigurationMapping with a @ref LeptonLuminosity.
  *
  * With `mirror_beams` the Born mapping takes leg 1 from beam 2 for
  * `mirror_index` 1, along @f$-z@f$, with its momentum fraction x1. The emission
@@ -237,13 +240,40 @@ double fks_sqrt_s_hat_min(const Cuts& cuts, const std::vector<double>& outgoing_
  * alternative, with the configurations as channels, is a
  * @ref MultiChannelMapping of the FKSMappings.
  *
+ * **Lepton beams.** With a @ref LeptonLuminosity the momentum fractions come
+ * from it, and the Born mapping is leptonic with the `sqrt_s_hat` condition,
+ * evaluated at the partonic energy that each event needs. This is the mapping
+ * of genps_fks.f for lepton PDFs (lpp = +-3, +-4). A final-state emitter
+ * radiates off the Born at the energy of the luminosity as above, with its
+ * floor. An incoming emitter radiates without the projection of the event
+ * onto the Born (generate_noevpr_kinematics): the real emission and all its
+ * counter-events keep the momentum fractions and the partonic energy
+ * @f$\sqrt{s}@f$, i has the energy @f$\xi \sqrt{s} / 2@f$ and the cosine
+ * @f$y@f$ to the beam of the emitter in the partonic center-of-mass frame, and
+ * the Born, mapped at @f$s_\mathrm{rec} = (1 - \xi) s@f$ in its rest frame,
+ * is boosted along @f$-\vec p_i@f$ to recoil against i
+ * (`fks_initial_fixed_radiate`, `fks_initial_fixed_boost`). Then
+ * @f$\xi = \hat\xi \xi_\mathrm{max}@f$ with
+ * @f$\xi_\mathrm{max} = 1 - s_\mathrm{min} / s@f$ and the lower end
+ * @f$s_\mathrm{min}@f$ of the energy squared of the Born. The event and the
+ * collinear counter-event have the Born at @f$s_\mathrm{rec}@f$, the soft
+ * ones the Born at @f$s@f$, which is also the Born of the n-body part. The
+ * collinear limit then takes the Born at the momenta of the collinear
+ * counter-event with @f$j - i@f$ for j (p_born_coll of fks_singular.f), the
+ * `collinear_born_momenta` of build_counter_events(). @f$s_\mathrm{min}@f$ is
+ * the bound of the luminosity, per configuration as tau_Born_lower_bound of
+ * genps_fks.f: @p sqrt_s_hat_floor squared for a final-state emitter, the
+ * squared sum of the final-state masses of the Born for an incoming one, at
+ * least the latter. The Breit-Wigner channel of generate_ee_tau_y, which
+ * goes back to the projection of the event, is not part of it.
+ *
  * `batch` is the leading batch dimension and `n` the number of particles of
  * the Born, incoming included.
  *
  * **Inputs**
  * - `random` – `float`, shape `(batch, random_dim())` – the random numbers of
- *   the Born mapping, then @f$r_\xi@f$, @f$r_y@f$ and @f$r_\phi@f$ of the
- *   emission.
+ *   the Born mapping, then those of the luminosity (with lepton beams), then
+ *   @f$r_\xi@f$, @f$r_y@f$ and @f$r_\phi@f$ of the emission.
  * - `discrete` – `int`, shape `(batch, discrete_dim())` – the discrete channel
  *   choices of the Born mapping. Present only when it has any.
  *
@@ -259,6 +289,10 @@ double fks_sqrt_s_hat_min(const Cuts& cuts, const std::vector<double>& outgoing_
  *   configuration.
  * - `x1`, `x2` – `float`, shape `(batch,)` – momentum fractions of the real
  *   emission.
+ * - `one_minus_x1`, `one_minus_x2` – `float`, shape `(batch,)` – 1 - x1
+ *   and 1 - x2, with lepton beams only. The inverse takes the momentum
+ *   fractions from them, since a lepton PDF puts most of them so close to 1
+ *   that a double holds no digit of 1 - x.
  *
  * In addition every mapping returns a `weight` (`float`, shape `(batch,)`), the
  * Jacobian of the transformation, that of the configuration of the event.
@@ -290,12 +324,20 @@ public:
      *                          fks_sqrt_s_hat_min gives it: the floor of the
      *                          Born for a final-state emitter, and raising
      *                          @p s_hat_min for an incoming one.
+     * @param luminosity        For lepton beams, the @ref LeptonLuminosity of
+     *                          the momentum fractions, with the `s_hat_min`
+     *                          condition. The Born mapping is then leptonic,
+     *                          with the `sqrt_s_hat` condition, no beam
+     *                          rapidity and no mirrored beams, and an incoming
+     *                          emitter radiates without the projection of the
+     *                          event (@p s_hat_min is not used).
      */
     FKSConfigurationMapping(
         const PhaseSpaceMapping& born,
         const std::vector<Configuration>& configurations,
         double s_hat_min = 0.,
-        double sqrt_s_hat_floor = 0.
+        double sqrt_s_hat_floor = 0.,
+        const std::optional<LeptonLuminosity>& luminosity = std::nullopt
     );
     /**
      * @param born              The @ref PhaseSpaceMapping of the Born process,
@@ -308,12 +350,15 @@ public:
      * @param sqrt_s_hat_floor  Lower bound on sqrt(s_hat) of every real
      *                          emission that passes the cuts, see the
      *                          constructor from (i_fks, j_fks).
+     * @param luminosity        For lepton beams, see the constructor from
+     *                          (i_fks, j_fks).
      */
     FKSConfigurationMapping(
         const PhaseSpaceMapping& born,
         const std::vector<FKSConfiguration>& configurations,
         double s_hat_min = 0.,
-        double sqrt_s_hat_floor = 0.
+        double sqrt_s_hat_floor = 0.,
+        const std::optional<LeptonLuminosity>& luminosity = std::nullopt
     );
     /// The Born mapping.
     const PhaseSpaceMapping& born() const { return _born; }
@@ -323,8 +368,13 @@ public:
     double s_hat_min() const { return _s_hat_min; }
     /// The lower bound on sqrt(s_hat) from the cuts.
     double sqrt_s_hat_floor() const { return _sqrt_s_hat_floor; }
-    /// Number of random numbers, those of the Born mapping and three.
-    std::size_t random_dim() const { return _born.random_dim() + 3; }
+    /// The luminosity of lepton beams, if any.
+    const std::optional<LeptonLuminosity>& luminosity() const { return _luminosity; }
+    /// Number of random numbers, those of the Born mapping, two of the
+    /// luminosity of lepton beams and three of the emission.
+    std::size_t random_dim() const {
+        return _born.random_dim() + (_luminosity ? 5 : 3);
+    }
     /// Number of discrete channel choices of the Born mapping.
     std::size_t discrete_dim() const override { return _born.discrete_dim(); }
     /// Number of particles of the real emission, incoming included.
@@ -333,7 +383,11 @@ public:
      * Add the real emission, its Born and its FKS counter-events to @p fb, each
      * event in the configuration of its `fks_index`, at the inputs and
      * conditions of the forward map. Returns those of
-     * FKSMapping::build_counter_events.
+     * FKSMapping::build_counter_events, and with lepton beams also
+     * `one_minus_x1` and `one_minus_x2` of the luminosity (those of the event
+     * and of every counter-event) and `collinear_born_momenta`, the Born that
+     * the collinear limit takes: for an incoming emitter the momenta of the
+     * collinear counter-event without i, with @f$j - i@f$ for j, else the Born.
      */
     NamedVector<Value> build_counter_events(
         FunctionBuilder& fb,
@@ -349,9 +403,16 @@ public:
 
 private:
     // the emission of every kind of emitter the configurations have, in the
-    // layout of the Born momenta with i appended, in the Born c.m. frame
+    // layout of the Born momenta with i appended, in the Born c.m. frame, and
+    // the weight of the Born it radiates off
     struct Emission {
         Value momenta, x1, x2, xi, y, xi_max, det_xi, rat, p_i_hat;
+        Value born_det = Value(1.);
+    };
+    // the final state and the weight of a Born of lepton beams
+    struct FixedBorn {
+        ValueVec final_state;
+        Value det;
     };
     // what the emissions of an event need
     struct Context;
@@ -366,21 +427,52 @@ private:
         const NamedVector<Value>& inputs,
         const NamedVector<Value>& conditions
     ) const override;
+    // the inverse with lepton beams, from the momenta in the layout
+    Result build_lepton_inverse(
+        FunctionBuilder& fb,
+        Value layout,
+        Value x1,
+        Value x2,
+        Value omx1,
+        Value omx2,
+        Value slot,
+        const NamedVector<Value>& conditions
+    ) const;
     NamedVector<Value> build_events(
         FunctionBuilder& fb,
         const NamedVector<Value>& inputs,
         const NamedVector<Value>& conditions,
         bool with_counter_events
     ) const;
-    // the conditions of the Born mapping, its floor read at fks_index
-    NamedVector<Value>
-    born_conditions(FunctionBuilder& fb, const NamedVector<Value>& conditions) const;
+    // the conditions of the Born mapping, its floor read at fks_index and the
+    // partonic energy sqrt_s of lepton beams
+    NamedVector<Value> born_conditions(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& conditions,
+        const std::optional<Value>& sqrt_s = std::nullopt
+    ) const;
     Emission build_emission(
         FunctionBuilder& fb,
         const Context& context,
         EmitterKind kind,
         Value xi_hat,
         Value y_var
+    ) const;
+    // the emission off an incoming parton of lepton beams, without the
+    // projection of the event, off the Born of the energy it leaves
+    Emission build_fixed_emission(
+        FunctionBuilder& fb,
+        const Context& context,
+        Value xi_hat,
+        Value y_var,
+        const FixedBorn& born
+    ) const;
+    // the Born mapping at the partonic energy sqrt_s (lepton beams)
+    NamedVector<Value> fixed_born(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& born_inputs,
+        const NamedVector<Value>& conditions,
+        Value sqrt_s
     ) const;
     // per event the value of the kind of its emitter
     Value pick(FunctionBuilder& fb, const ValueVec& by_kind, Value slot) const;
@@ -400,6 +492,10 @@ private:
     std::vector<Configuration> _configurations;
     double _s_hat_min;
     double _sqrt_s_hat_floor;
+    std::optional<LeptonLuminosity> _luminosity;
+    // per configuration the lower end of the energy squared of the Born of
+    // lepton beams
+    std::vector<double> _born_s_min;
     std::vector<double> _born_masses;
     // the masses in the layout: those of the Born, then 0 for i
     std::vector<double> _layout_masses;

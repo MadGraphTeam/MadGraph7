@@ -239,7 +239,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     double beam_rapidity,
     bool mirror_beams,
     std::optional<double> s_hat_power,
-    bool sqrt_s_hat_min_condition
+    bool sqrt_s_hat_min_condition,
+    bool sqrt_s_hat_condition
 ) :
     Mapping(
         "PhaseSpaceMapping",
@@ -278,6 +279,9 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             if (sqrt_s_hat_min_condition) {
                 conditions.push_back("sqrt_s_hat_min", batch_float);
             }
+            if (sqrt_s_hat_condition) {
+                conditions.push_back("sqrt_s_hat", batch_float);
+            }
             return conditions;
         }()
     ),
@@ -292,6 +296,7 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     _beam_rapidity(beam_rapidity),
     _mirror_beams(mirror_beams),
     _sqrt_s_hat_min_condition(sqrt_s_hat_min_condition),
+    _sqrt_s_hat_condition(sqrt_s_hat_condition),
     _leptonic(leptonic),
     // A decay has no beams to sample momentum fractions for: the root
     // virtuality is fixed at the decaying particle's mass (passed as
@@ -316,6 +321,16 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     }
     if ((_beam_rapidity != 0. || _mirror_beams) && _topology.is_decay()) {
         throw std::invalid_argument("a decay has no beams to give a rapidity");
+    }
+    if (sqrt_s_hat_condition &&
+        (!leptonic || _topology.is_decay() ||
+         (t_channel_mode == PhaseSpaceMapping::chili &&
+          _topology.t_propagator_count() > 0))) {
+        // chili samples the momentum fractions itself
+        throw std::invalid_argument(
+            "PhaseSpaceMapping: the sqrt_s_hat condition needs a leptonic 2 -> n "
+            "mapping that is not in the chili mode"
+        );
     }
     if (_two_to_one && _topology.outgoing_masses().at(0) <= 0.) {
         // s_hat = m^2 = 0 is outside the luminosity (tau = 0)
@@ -746,7 +761,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     double beam_rapidity,
     bool mirror_beams,
     std::optional<double> s_hat_power,
-    bool sqrt_s_hat_min_condition
+    bool sqrt_s_hat_min_condition,
+    bool sqrt_s_hat_condition
 ) :
     PhaseSpaceMapping(
         Topology([&] {
@@ -801,7 +817,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         beam_rapidity,
         mirror_beams,
         s_hat_power,
-        sqrt_s_hat_min_condition
+        sqrt_s_hat_min_condition,
+        sqrt_s_hat_condition
     ) {}
 
 Mapping::Result PhaseSpaceMapping::build_forward_impl(
@@ -889,7 +906,7 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
         data.mass2 = mass * mass;
     }
     auto& root_data = decay_data.at(0);
-    root_data.max_mass = _sqrt_s_lab;
+    root_data.max_mass = partonic_energy(conditions);
 
     // sample decay s-invariants, following the integration order
     std::size_t invariant_index = 0;
@@ -913,6 +930,9 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
             data.mass2 = invariant["invariant"];
             data.mass = fb.sqrt(data.mass2.value());
             dets.push_back(invariant["det"]);
+        } else if (decay_index == 0 && _sqrt_s_hat_condition) {
+            data.mass = conditions.at("sqrt_s_hat");
+            data.mass2 = fb.square(data.mass.value());
         } else if (decay_index == 0) {
             data.mass2 = _sqrt_s_lab * _sqrt_s_lab;
             data.mass = _sqrt_s_lab;
@@ -1067,6 +1087,10 @@ std::vector<double> PhaseSpaceMapping::external_masses() const {
     return lab_masses(_topology, _permutations);
 }
 
+Value PhaseSpaceMapping::partonic_energy(const NamedVector<Value>& conditions) const {
+    return _sqrt_s_hat_condition ? conditions.at("sqrt_s_hat") : Value(_sqrt_s_lab);
+}
+
 Value PhaseSpaceMapping::to_lab(
     FunctionBuilder& fb,
     Value momenta,
@@ -1171,7 +1195,7 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
         data.momentum = momentum;
     }
     auto& root_data = decay_data.at(0);
-    root_data.max_mass = _sqrt_s_lab;
+    root_data.max_mass = partonic_energy(conditions);
 
     // go through decays and recover random numbers from momenta
     ValueVec random_out_reversed;
@@ -1291,6 +1315,9 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
                     .build_inverse(fb, {data.mass2.value()}, {s_min, s_max});
             random_out.push_back(invariant["random"]);
             dets.push_back(invariant["det"]);
+        } else if (decay_index == 0 && _sqrt_s_hat_condition) {
+            data.mass = conditions.at("sqrt_s_hat");
+            data.mass2 = fb.square(data.mass.value());
         } else if (decay_index == 0) {
             data.mass2 = _sqrt_s_lab * _sqrt_s_lab;
             data.mass = _sqrt_s_lab;

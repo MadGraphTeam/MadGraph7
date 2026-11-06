@@ -188,7 +188,9 @@ def fks_mappings(born, configurations, s_hat_min=0.0, cuts=None):
     return mappings
 
 
-def fks_configuration_mapping(born, configurations, s_hat_min=0.0, cuts=None):
+def fks_configuration_mapping(
+    born, configurations, s_hat_min=0.0, cuts=None, luminosity=None
+):
     """The FKSConfigurationMapping of the FKS configurations of a Born, with
     fks_index the position of the configuration (nFKSprocess - 1): all
     configurations in one pass, each event in that of its fks_index, as the
@@ -208,6 +210,11 @@ def fks_configuration_mapping(born, configurations, s_hat_min=0.0, cuts=None):
             bound (fks_sqrt_s_hat_min) is the floor of the Born for a
             final-state emitter and raises s_hat_min for an incoming one. They
             stay to be applied to the real emission and the counter-events.
+        luminosity: for lepton beams, the LeptonLuminosity of the momentum
+            fractions, with s_hat_min_condition=True, and born leptonic with
+            sqrt_s_hat_condition=True. An incoming emitter then radiates
+            without the projection of the event, see
+            FKSConfigurationMapping.
 
     Raises:
         ValueError: as fks_mappings, and if a floor needs the
@@ -224,7 +231,11 @@ def fks_configuration_mapping(born, configurations, s_hat_min=0.0, cuts=None):
         0.0 if cuts is None else fks_sqrt_s_hat_min(cuts, born.external_masses()[2:])
     )
     return FKSConfigurationMapping(
-        born, pairs, s_hat_min=s_hat_min, sqrt_s_hat_floor=floor
+        born,
+        pairs,
+        s_hat_min=s_hat_min,
+        sqrt_s_hat_floor=floor,
+        luminosity=luminosity,
     )
 
 
@@ -380,16 +391,20 @@ def fks_prefactors(born, configurations, **parameters):
     return FKSPrefactors(fks_configurations(born, configurations), **parameters)
 
 
-def fks_limits(born, configurations):
+def fks_limits(born, configurations, collinear_born=False):
     """The FKSLimits of the FKS configurations of a Born, with fks_index as
-    for fks_sector_function and the coupling orders of fks_coupling_orders.
+    for fks_sector_function and the coupling orders of fks_coupling_orders,
+    with the Born of the collinear counter-event apart for lepton beams
+    (collinear_born).
 
     Raises:
         ValueError: as fks_configurations and fks_coupling_orders, and for a
             splitting that is not one of QCD or QED or an extra counterterm.
     """
     return FKSLimits(
-        fks_configurations(born, configurations), fks_coupling_orders(configurations)
+        fks_configurations(born, configurations),
+        fks_coupling_orders(configurations),
+        collinear_born,
     )
 
 
@@ -405,8 +420,11 @@ def fks_subtraction(born, configurations, **parameters):
         parameters: the parameters of fks_powers.inc, those of the subtraction
             (xicut, xi_s_cut, delta_o, delta_i, delta_s) and of the sector
             functions (fks_a, fks_b, use_energy, use_beta, h_damp_one,
-            h_damp_power), tiny of sreal, the PDF scheme (pdf_scheme) and the
-            number of light flavors (n_f), see FKSSubtraction.
+            h_damp_power), tiny of sreal, the PDF scheme (pdf_scheme), the
+            number of light flavors (n_f), for the UPC scheme xi_A R_A of the
+            nuclei of the beams (upc_radii), and for lepton beams the Born of
+            the collinear counter-event apart (collinear_born), see
+            FKSSubtraction.
 
     Raises:
         ValueError: as fks_limits.

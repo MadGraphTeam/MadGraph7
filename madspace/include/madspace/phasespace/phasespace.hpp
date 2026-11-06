@@ -54,7 +54,10 @@ namespace madspace {
  *   `permutation_index`.
  * - `sqrt_s_hat_min` – `float`, shape `(batch,)` – lower bound on sqrt(s_hat)
  *   of the event. Present only when `sqrt_s_hat_min_condition` is set; it
- *   comes last.
+ *   follows `mirror_index`.
+ * - `sqrt_s_hat` – `float`, shape `(batch,)` – the partonic energy of the
+ *   event, in place of `cm_energy`, for a leptonic mapping. Present only when
+ *   `sqrt_s_hat_condition` is set; it comes last.
  *
  * **Outputs**
  * - `momenta` – `float`, shape `(batch, n_out + 2, 4)` – all momenta (incoming
@@ -128,6 +131,13 @@ public:
      *                         it raises the lower end of the s_hat the
      *                         luminosity mapping samples and sets the weight
      *                         of an event below it to zero.
+     * @param sqrt_s_hat_condition  Add the `sqrt_s_hat` condition, the
+     *                         partonic energy of each event, for a leptonic
+     *                         mapping (not in the chili mode). It takes the
+     *                         place of @p cm_energy, which stays for the
+     *                         checks of the constructor, so that the Born of
+     *                         an FKS emission can be mapped at the energy
+     *                         that the emission leaves it.
      */
     PhaseSpaceMapping(
         const Topology& topology,
@@ -141,7 +151,8 @@ public:
         double beam_rapidity = 0.,
         bool mirror_beams = false,
         std::optional<double> s_hat_power = std::nullopt,
-        bool sqrt_s_hat_min_condition = false
+        bool sqrt_s_hat_min_condition = false,
+        bool sqrt_s_hat_condition = false
     );
 
     /**
@@ -189,6 +200,13 @@ public:
      *                         it raises the lower end of the s_hat the
      *                         luminosity mapping samples and sets the weight
      *                         of an event below it to zero.
+     * @param sqrt_s_hat_condition  Add the `sqrt_s_hat` condition, the
+     *                         partonic energy of each event, for a leptonic
+     *                         mapping (not in the chili mode). It takes the
+     *                         place of @p cm_energy, which stays for the
+     *                         checks of the constructor, so that the Born of
+     *                         an FKS emission can be mapped at the energy
+     *                         that the emission leaves it.
      */
     PhaseSpaceMapping(
         const std::vector<double>& external_masses,
@@ -201,7 +219,8 @@ public:
         double beam_rapidity = 0.,
         bool mirror_beams = false,
         std::optional<double> s_hat_power = std::nullopt,
-        bool sqrt_s_hat_min_condition = false
+        bool sqrt_s_hat_min_condition = false,
+        bool sqrt_s_hat_condition = false
     );
 
     /**
@@ -245,6 +264,8 @@ public:
     bool mirror_beams() const { return _mirror_beams; }
     /// Whether the mapping takes the `sqrt_s_hat_min` condition.
     bool sqrt_s_hat_min_condition() const { return _sqrt_s_hat_min_condition; }
+    /// Whether the mapping takes the `sqrt_s_hat` condition.
+    bool sqrt_s_hat_condition() const { return _sqrt_s_hat_condition; }
     /// Whether the PDF convolution is skipped (`x1` = `x2` = 1).
     bool leptonic() const { return _leptonic; }
     /// Masses of the particles in the order of the output momenta, the beams
@@ -290,6 +311,9 @@ private:
         Value x2,
         const NamedVector<Value>& conditions
     ) const;
+    // the energy of the beams of a leptonic mapping: cm_energy or the
+    // sqrt_s_hat condition
+    Value partonic_energy(const NamedVector<Value>& conditions) const;
 
     Topology _topology;
     Cuts _cuts;
@@ -298,6 +322,7 @@ private:
     double _beam_rapidity;
     bool _mirror_beams;
     bool _sqrt_s_hat_min_condition;
+    bool _sqrt_s_hat_condition;
     bool _leptonic;
     bool _map_luminosity;
     bool _two_to_one;

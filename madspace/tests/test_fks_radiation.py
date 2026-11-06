@@ -136,7 +136,9 @@ def conditioning(
         range_y = 2 / width_y
         x_edge = 10 * EPS * xi_max / width_xi / (1 - np.maximum(*x_born))
     elif x_born is not None:
-        x_edge = 10 * EPS / (1 - np.maximum(x_born[0], x_born[1]))
+        # genps_fks.f can round an x of lepton beams above 1 (from tau and
+        # the rapidity): no bound there
+        x_edge = 10 * EPS / np.maximum(1 - np.maximum(x_born[0], x_born[1]), 0.0)
     if emitter_mass > 0:
         range_xi = 1 / massive_xi_max(momenta, i_fks, j_fks, emitter_mass)
     res_xi = 10 * EPS * (STINY + range_xi) / r_xi

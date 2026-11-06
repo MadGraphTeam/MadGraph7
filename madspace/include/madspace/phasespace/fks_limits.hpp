@@ -250,6 +250,12 @@ private:
  *   Born order.
  * - `spin_correlated` – `float`, shape `(batch, B)` – @f$B_\perp@f$ per Born
  *   input, finite.
+ * - `collinear_born`, `collinear_spin_correlated` – `float`, shape
+ *   `(batch, B)` – @f$B@f$ and @f$B_\perp@f$ at the Born of the collinear
+ *   counter-event, which the collinear limit there takes. Present only with
+ *   `collinear_born` (lepton beams, where the Born of an incoming emitter
+ *   differs between the soft and the collinear counter-events, see
+ *   @ref FKSConfigurationMapping).
  * - `alpha_s` – `float`, shape `(batch,)` – the strong coupling.
  * - `alpha` – `float`, shape `(batch,)` – the QED coupling.
  * - `fks_index` – `int`, shape `(batch,)` – the configuration of the event,
@@ -280,13 +286,17 @@ public:
      *                        `fks_index`, with QCD or QED splittings.
      * @param orders          The coupling orders of the Born and of the
      *                        real emission.
+     * @param collinear_born  Take the Born of the collinear counter-event
+     *                        apart (`collinear_born` and
+     *                        `collinear_spin_correlated`), for lepton beams.
      * @throws std::invalid_argument for a splitting that is not one of QCD or
      *         QED, an extra counterterm that the coupling orders do not have
      *         or coupling orders without the splitting types.
      */
     FKSLimits(
         const std::vector<FKSConfiguration>& configurations,
-        const FKSCouplingOrders& orders
+        const FKSCouplingOrders& orders,
+        bool collinear_born = false
     );
     /// Number of configurations.
     std::size_t configuration_count() const { return _collinear_factor.size(); }
@@ -299,6 +309,8 @@ public:
     std::size_t born_input_count() const { return _born_input_count; }
     /// Number of NLO orders.
     std::size_t nlo_order_count() const { return _nlo_order_count; }
+    /// Whether the collinear counter-event takes a Born of its own.
+    bool collinear_born() const { return _collinear_born; }
     /// Whether a configuration has a soft limit (i is a gluon or a photon).
     bool soft(std::size_t index) const { return _pair_count.at(index) > 0; }
     /// Whether a configuration has collinear limits (j is massless).
@@ -338,6 +350,7 @@ private:
     std::size_t _born_order_count;
     std::size_t _born_input_count;
     std::size_t _nlo_order_count;
+    bool _collinear_born;
     std::vector<me_int_t> _fks_i;
     std::vector<me_int_t> _fks_j;
     std::vector<me_int_t> _pair_count;

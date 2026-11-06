@@ -26,6 +26,7 @@ from fks_testing import (
     configuration,
     evaluate,
     extra_born_madfks_factor,
+    has_collinear_born,
     order_positions,
     reference,
 )
@@ -49,11 +50,14 @@ def generated_points(data):
     ]
 
 
-def born_blocks(data, rows):
+def born_blocks(data, rows, collinear=False):
     """born, color_correlated, spin_correlated (born_inputs), alpha_s and
     alpha of the points, with the tensors of the spin-correlated Borns (zero
     where the emitter is not a gluon or a photon) contracted with k_perp of
-    FKSSplittingKernels at the event, and their fks_index."""
+    FKSSplittingKernels at the event, and their fks_index. With collinear and
+    reference data of lepton PDFs (has_collinear_born) also the Born and the
+    spin-correlated Born of the collinear counter-event after
+    spin_correlated, as FKSLimits takes them with collinear_born."""
     index = np.array([conf["nfks"] - 1 for conf, _ in rows], dtype=np.int32)
     kernels = fks_splitting_kernels(born_mapping(data), data["fks_configurations"])
     *_, k_perp = evaluate(
@@ -63,8 +67,12 @@ def born_blocks(data, rows):
         np.array([point["p_born"] for _, point in rows]),
         fks_index=index,
     )
+    blocks = list(born_inputs(data, rows, k_perp))
+    if collinear and has_collinear_born(data):
+        born_c, _, spin_c = born_inputs(data, rows, k_perp, "collinear_born_blocks")
+        blocks += [born_c, spin_c]
     return (
-        *born_inputs(data, rows, k_perp),
+        *blocks,
         np.full(len(rows), data["born_blocks"]["alpha_s"]),
         np.full(len(rows), alpha(data)),
         index,
@@ -107,13 +115,17 @@ def counter_events(rows):
 @pytest.mark.parametrize("path", FKS_DATA, ids=FKS_DATA_IDS)
 def test_matches_sreal(path):
     data = reference(path)
-    limits = fks_limits(born_mapping(data), data["fks_configurations"])
+    limits = fks_limits(
+        born_mapping(data),
+        data["fks_configurations"],
+        collinear_born=has_collinear_born(data),
+    )
     assert limits.configuration_count() == len(data["configs"])
     orders = data["fks_configurations"]["orders"]
     assert limits.born_order_count() == len(orders["born"])
     assert limits.nlo_order_count() == len(orders["nlo"])
     rows = generated_points(data)
-    *blocks, index = born_blocks(data, rows)
+    *blocks, index = born_blocks(data, rows, collinear=True)
     soft, collinear, soft_collinear = evaluate(
         limits, *counter_events(rows), *blocks, fks_index=index
     )

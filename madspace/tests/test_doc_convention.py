@@ -43,6 +43,9 @@ CASES = {
         mass=0.0,
         width=0.0,
     ),
+    "LeptonLuminosity": dict(
+        s_lab=1.0e6, beta=0.975, s_hat_min=1.0e4, s_hat_min_condition=False
+    ),
     "TwoBodyDecay": dict(com=True),
     "TwoToTwoParticleScattering": dict(
         com=True, invariant_power=0.0, mass=0.0, width=0.0, has_cut=False
@@ -85,6 +88,7 @@ CASES = {
         configurations=[(4, 2), (4, 3)],
         s_hat_min=0.0,
         sqrt_s_hat_floor=100.0,
+        luminosity=None,
     ),
     "FKSKinematics": dict(
         mapping=ms.FKSMapping(
@@ -110,6 +114,7 @@ CASES = {
     "FKSLimits": dict(
         configurations=FKS_CONFIGURATIONS,
         orders=ms.FKSCouplingOrders(**FKS_COUPLING_ORDERS),
+        collinear_born=False,
     ),
     "FKSSubtraction": dict(
         configurations=FKS_CONFIGURATIONS,
@@ -128,6 +133,8 @@ CASES = {
         tiny=1e-6,
         pdf_scheme=ms.FKSSubtraction.PdfScheme.msbar,
         n_f=5.0,
+        upc_radii=[],
+        collinear_born=False,
     ),
     "FKSSoftVirtual": dict(
         configurations=FKS_CONFIGURATIONS,
@@ -242,6 +249,7 @@ def test_phasespace_mapping_both_constructors():
         mirror_beams=False,
         s_hat_power=None,
         sqrt_s_hat_min_condition=True,
+        sqrt_s_hat_condition=False,
     )
 
 

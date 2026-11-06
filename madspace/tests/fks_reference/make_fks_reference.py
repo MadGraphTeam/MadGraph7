@@ -94,9 +94,20 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
                extra counterterm, zero without one), color_links_orders (amp_split_soft for each pair
                of color_links, which are the charge-linked Borns where i is
                a photon), collinear_remnants_orders (the six pieces of
-               collinear_remnants per counter-event) and
+               collinear_remnants per counter-event),
+               scheme_remnants_orders (the parts p, l and d of the PDF
+               scheme of sreal_deg per counter-event for each of the
+               schemes 1 to 7 of pdfscheme, with xiAI = 1 and RAI = 31 and
+               35 GeV^-1 of the nuclei of UPC) and
                soft_virtual_orders (amp_split after bornsoftvirtual,
                wgtnstmp, wgtwnstmpmur, wgtwnstmpmuf),
+               with lepton PDFs (LEPTON_PDFS) where an incoming emitter
+               radiates without the projection of the event: noevpr
+               (tau_born_lower_bound, x and 1 - x of the luminosity, and
+               born_rec: s_rec, the weight of generate_momenta_born and the
+               Born momenta in their rest frame for the event and the soft,
+               collinear and soft-collinear counter-events), p_born_coll and
+               collinear_born_blocks (the Born blocks at p_born_coll),
                shat_born, tau_born, ycm_born, xbjrk_born, tau_lower_bound,
                and for prefix in (rad, cut): prefix_jac, prefix_jac_cnt,
                prefix_p_ev, prefix_p_cnt, prefix_xi_ev, prefix_xi_hat_ev,
@@ -166,6 +177,10 @@ PROCESSES = {
         "p p > a j QED^2<=4 QCD^2<=2 [QCD QED]",
         ["P0_gu_ua", "P0_uux_ag"],
     ),
+    # lepton PDFs (LEPTON_PDFS): photon emission off the incoming leptons
+    # without the projection of the event, beside final-state emitters
+    "epem_uuxg_mix": ("e+ e- > u u~ g QED^2<=6 QCD^2<=2 [QCD QED]", None),
+    "epem_mumu_qed": ("e+ e- > mu+ mu- [QED]", None),
 }
 # the model of the processes that need another one than MadGraph picks
 MODELS = {
@@ -175,7 +190,12 @@ MODELS = {
     "aa_ttx_qed": "loop_qcd_qed_sm",
     "uux_uux_mix": "loop_qcd_qed_sm",
     "pp_aj_mix": "loop_qcd_qed_sm",
+    "epem_uuxg_mix": "loop_qcd_qed_sm",
+    "epem_mumu_qed": "loop_qcd_qed_sm",
 }
+# the processes with lepton PDFs, lpp of both beams: the Source of an NLO
+# output takes no run_card with them, so the dump sets it
+LEPTON_PDFS = {"epem_uuxg_mix": 3, "epem_mumu_qed": 3}
 FKS_POWERS = {
     "pp_epemj_params": dict(xicut=0.3, xiScut=0.25, deltaO=0.8, deltaI=0.7, deltaS=0.6),
 }
@@ -251,14 +271,14 @@ def set_fks_powers(out, values):
         f.write(text)
 
 
-def dump(pdir, points, massive, limit, log):
+def dump(pdir, points, massive, limit, log, lpp=0):
     for f in ["fks_kinematics_dump.f", "makefile_dump"]:
         shutil.copy(os.path.join(HERE, f), pdir)
     run(["make", "-j8", "-f", "makefile_dump", "fks_kinematics_dump"], pdir, log)
     result = subprocess.run(
         ["./fks_kinematics_dump"],
         cwd=pdir,
-        input=f"{points}\n1\n{massive}\n{limit}\n",
+        input=f"{points}\n1\n{massive}\n{limit}\n{lpp}\n",
         capture_output=True,
         text=True,
         check=True,
@@ -452,6 +472,24 @@ def parse(text):
         elif key == "DEGO":
             v = per_order(floats(rest), data, 12)
             point["collinear_remnants_orders"] = [v[0:6], v[6:12]]
+        elif key == "NOEVPR":
+            v = floats(rest)
+            point["noevpr"] = dict(
+                tau_born_lower_bound=v[1], x=v[2:4], one_minus_x=v[4:6]
+            )
+        elif key == "PBORNCOLL":
+            point["p_born_coll"] = momenta(floats(rest))
+        elif key == "BORNREC":
+            v = floats(rest[1:])
+            point["noevpr"].setdefault("born_rec", []).append(
+                dict(s_rec=v[0], weight=v[1], p_born=momenta(v[2:]))
+            )
+        elif key == "PSCHO":
+            v = per_order(floats(rest), data, 42)
+            point["scheme_remnants_orders"] = [
+                [v[6 * scheme + 3 * k : 6 * scheme + 3 * k + 3] for k in range(2)]
+                for scheme in range(7)
+            ]
         elif key == "BSVO":
             point["soft_virtual_orders"] = per_order(floats(rest), data, 4)
         elif key == "BORN":
@@ -751,13 +789,13 @@ def born_blocks(data, path, model=None, out=None, work=None):
         )
         value = {k: float(v[0].real) for k, v in values.items()}
         blocks = dict(born=value["born"])
-        if legs:
-            correlated = [[0.0] * n for _ in range(n)]
-            for k, a in enumerate(legs):
-                for b in legs[k:]:
-                    correlated[a - 1][b - 1] = value[f"T{a}_{b}"]
-                    correlated[b - 1][a - 1] = value[f"T{a}_{b}"]
-            blocks["color_correlated"] = correlated
+        # zero for a Born without colored particles
+        correlated = [[0.0] * n for _ in range(n)]
+        for k, a in enumerate(legs):
+            for b in legs[k:]:
+                correlated[a - 1][b - 1] = value[f"T{a}_{b}"]
+                correlated[b - 1][a - 1] = value[f"T{a}_{b}"]
+        blocks["color_correlated"] = correlated
         if vector:
             tensor = [[0.0] * 4 for _ in range(4)]
             for mu in range(4):
@@ -812,6 +850,15 @@ def born_blocks(data, path, model=None, out=None, work=None):
                     evaluate(pdgs, *extras[extra], point["p_born"], born_j)
                 ]
             point["born_blocks"] = blocks
+            if "p_born_coll" in point:
+                if several or extra >= 0:
+                    raise NotImplementedError(
+                        "the Born of the collinear counter-event of a Born of "
+                        "several orders or with an extra counterterm"
+                    )
+                point["collinear_born_blocks"] = evaluate(
+                    born_pdgs, *born, point["p_born_coll"], born_j
+                )
 
 
 def main():
@@ -857,7 +904,16 @@ def main():
             if keep is not None and sub not in keep:
                 continue
             log = os.path.join(work, f"{name}_{sub}.log")
-            data = parse(dump(pdir, args.points, args.massive, args.limit, log))
+            data = parse(
+                dump(
+                    pdir,
+                    args.points,
+                    args.massive,
+                    args.limit,
+                    log,
+                    LEPTON_PDFS.get(name, 0),
+                )
+            )
             data.update(process=process, subprocess=sub, genps_fks_sha=genps_fks_sha)
             # the FKS configurations as the exporter writes them for madspace
             with open(os.path.join(pdir, "fks_configurations.json")) as f:

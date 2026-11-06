@@ -45,6 +45,37 @@ std::size_t born_configuration(const std::vector<FKSConfiguration>& configuratio
     return c;
 }
 
+// The factor of the kernels of the PDF scheme (fks_scheme_shapes) of a
+// splitting of a kind (fks_ap_shape) and a coupling with the factor ap_factor
+// of its Altarelli-Parisi kernel, as xkplus, xklog and xkdelta select them,
+// zero where the scheme does not change it
+double scheme_factor(
+    FKSSubtraction::PdfScheme scheme,
+    int kind,
+    std::size_t coupling,
+    double ap_factor,
+    double n_f
+) {
+    switch (scheme) {
+    case FKSSubtraction::dis:
+        if (kind == 0) {
+            return coupling == QCD ? -2. * n_f * TR : 0.;
+        }
+        return kind == 3 ? -ap_factor : ap_factor;
+    case FKSSubtraction::eta:
+    case FKSSubtraction::beta:
+    case FKSSubtraction::mixed:
+    case FKSSubtraction::nobeta:
+        return kind == 2 ? ap_factor : 0.;
+    case FKSSubtraction::delta:
+        return kind == 2 || kind == 3 ? ap_factor : 0.;
+    case FKSSubtraction::upc:
+        return kind == 1 && coupling == QED ? ap_factor : 0.;
+    default:
+        return 0.;
+    }
+}
+
 } // namespace
 
 FKSSubtraction::FKSSubtraction(
@@ -63,7 +94,9 @@ FKSSubtraction::FKSSubtraction(
     double h_damp_power,
     double tiny,
     PdfScheme pdf_scheme,
-    double n_f
+    double n_f,
+    const std::vector<double>& upc_radii,
+    bool collinear_born
 ) :
     FunctionGenerator(
         "FKSSubtraction",
@@ -74,7 +107,7 @@ FKSSubtraction::FKSSubtraction(
             auto b = static_cast<int>(orders.born_count());
             auto inputs = static_cast<int>(orders.born_input_count());
             auto o = static_cast<int>(orders.nlo_count());
-            return NamedVector<Type>{
+            NamedVector<Type> types{
                 {"momenta", batch_four_vec_array(n)},
                 {"weight", batch_float},
                 {"xi", batch_float},
@@ -99,12 +132,17 @@ FKSSubtraction::FKSSubtraction(
                 {"color_correlated",
                  Type{DataType::dt_float64, batch_size, {b, n - 1, n - 1}}},
                 {"spin_correlated", batch_float_array(inputs)},
-                {"alpha_s", batch_float},
-                {"alpha", batch_float},
-                {"fact_scale1", batch_float},
-                {"fact_scale2", batch_float},
-                {"fks_index", batch_int},
             };
+            if (collinear_born) {
+                types.push_back("collinear_born", batch_float_array(inputs));
+                types.push_back("collinear_spin_correlated", batch_float_array(inputs));
+            }
+            for (const auto& name :
+                 {"alpha_s", "alpha", "ren_scale", "fact_scale1", "fact_scale2"}) {
+                types.push_back(name, batch_float);
+            }
+            types.push_back("fks_index", batch_int);
+            return types;
         }(),
         [&] {
             auto o = static_cast<int>(orders.nlo_count());
@@ -119,17 +157,33 @@ FKSSubtraction::FKSSubtraction(
     _sector_function(
         configurations, fks_a, fks_b, use_energy, use_beta, h_damp_one, h_damp_power
     ),
-    _limits(configurations, orders),
+    _limits(configurations, orders, collinear_born),
     _prefactors(configurations, xicut, xi_s_cut, delta_o, delta_i, delta_s),
     _xi_s_cut(xi_s_cut),
     _delta_s(delta_s),
     _tiny(tiny),
-    _pdf_scheme(pdf_scheme) {
+    _pdf_scheme(pdf_scheme),
+    _upc_radii(2, 1.) {
     if (!(tiny >= 0.)) {
         throw std::invalid_argument("FKSSubtraction: tiny cannot be negative");
     }
     if (!(n_f >= 0.)) {
         throw std::invalid_argument("FKSSubtraction: n_f cannot be negative");
+    }
+    if (pdf_scheme < msbar || pdf_scheme > upc) {
+        throw std::invalid_argument("FKSSubtraction: unknown PDF scheme");
+    }
+    if (pdf_scheme == upc) {
+        if (upc_radii.size() != 2 ||
+            !std::all_of(upc_radii.begin(), upc_radii.end(), [](double r) {
+                return r > 0. && std::isfinite(r);
+            })) {
+            throw std::invalid_argument(
+                "FKSSubtraction: the UPC scheme needs a positive xi_A R_A for "
+                "each beam"
+            );
+        }
+        _upc_radii = upc_radii;
     }
     const auto& kernels = _limits.splitting_kernels();
     for (std::size_t c = 0; c < configurations.size(); ++c) {
@@ -138,10 +192,10 @@ FKSSubtraction::FKSSubtraction(
         int kind = kernels.splitting_kind(c);
         // per splitting type (the second for the extra counterterm) the
         // coupling, the Born inputs, the identical-particle ratio, the color
-        // or charge factor of AP_reduced and that of the kernels of the DIS
+        // or charge factor of AP_reduced and that of the kernels of the PDF
         // scheme, xkplus, xklog and xkdelta
         std::vector<me_int_t> couplings(2, -1);
-        std::vector<double> ratios(2, 0.), ap_factors(2, 0.), dis_factors(2, 0.);
+        std::vector<double> ratios(2, 0.), ap_factors(2, 0.), scheme_factors(2, 0.);
         for (std::size_t s = 0; s < 2; ++s) {
             int coupling = _limits.coupling(c, s);
             if (coupling < 0) {
@@ -152,9 +206,7 @@ FKSSubtraction::FKSSubtraction(
             couplings.at(s) = static_cast<me_int_t>(t);
             ratios.at(s) = config.identical_particle_ratio(s);
             ap_factors.at(s) = ap_factor;
-            dis_factors.at(s) = kind == 0
-                ? (t == QCD ? -2. * n_f * TR : 0.)
-                : (kind == 3 ? -ap_factor : ap_factor);
+            scheme_factors.at(s) = scheme_factor(pdf_scheme, kind, t, ap_factor, n_f);
         }
         _symmetry.push_back(config.symmetry_factor());
         _massless.push_back(massless ? 1 : 0);
@@ -164,7 +216,7 @@ FKSSubtraction::FKSSubtraction(
         _coupling.push_back(couplings);
         _ratio.push_back(ratios);
         _ap_factor.push_back(ap_factors);
-        _dis_factor.push_back(dis_factors);
+        _scheme_factor.push_back(scheme_factors);
         _delta_i.push_back(delta_i);
     }
 }
@@ -183,11 +235,12 @@ NamedVector<Value> FKSSubtraction::build_function_impl(
             )
             .at(0);
     };
+    bool collinear_born = _limits.collinear_born();
     auto limit_arguments =
         [&](const std::string& soft,
             const std::string& collinear,
             const std::string& soft_collinear) {
-            return std::vector<Value>{
+            std::vector<Value> arguments{
                 args.at(soft + "momenta"),
                 args.at("soft_p_i_hat"),
                 args.at("y"),
@@ -196,10 +249,15 @@ NamedVector<Value> FKSSubtraction::build_function_impl(
                 args.at("born"),
                 args.at("color_correlated"),
                 args.at("spin_correlated"),
-                args.at("alpha_s"),
-                args.at("alpha"),
-                index
             };
+            if (collinear_born) {
+                arguments.push_back(args.at("collinear_born"));
+                arguments.push_back(args.at("collinear_spin_correlated"));
+            }
+            arguments.push_back(args.at("alpha_s"));
+            arguments.push_back(args.at("alpha"));
+            arguments.push_back(index);
+            return arguments;
         };
     // the limits at the event, where the real emission switches to them, with
     // the direction of i of the soft counter-event as eikonal_reduced
@@ -236,6 +294,7 @@ NamedVector<Value> FKSSubtraction::build_function_impl(
     auto s_c = sector("collinear_"), s_sc = sector("soft_collinear_");
     auto [remnant_c, remnant_sc] = fb.fks_collinear_remnants(
         args.at("born"),
+        args.at(collinear_born ? "collinear_born" : "born"),
         args.at("alpha_s"),
         args.at("alpha"),
         s_c,
@@ -246,6 +305,7 @@ NamedVector<Value> FKSSubtraction::build_function_impl(
         prefactors.at("f_dc"),
         prefactors.at("f_dsc"),
         prefactors.at("f_pdf_scheme"),
+        args.at("ren_scale"),
         args.at("fact_scale1"),
         args.at("fact_scale2"),
         index,
@@ -256,9 +316,13 @@ NamedVector<Value> FKSSubtraction::build_function_impl(
         _limits.born_index_table(),
         _ratio,
         _ap_factor,
-        _dis_factor,
+        _scheme_factor,
         _delta_i,
-        std::vector<double>{static_cast<double>(_pdf_scheme)}
+        std::vector<double>{
+            static_cast<double>(_pdf_scheme),
+            _upc_radii.at(0) * _upc_radii.at(0),
+            _upc_radii.at(1) * _upc_radii.at(1)
+        }
     );
     auto [real_out, soft, collinear, soft_collinear] = fb.fks_subtraction(
         real,

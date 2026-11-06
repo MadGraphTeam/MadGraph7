@@ -12,7 +12,8 @@ counter-events, boosted back into the frame of the Born, must then be those of
 genps_fks.f (the rad_ entries, and the cut_ ones with the lower bound on the
 partonic energy), with their Jacobians in the conventions of
 test_fks_kernels.py and test_fks_radiation.py, and its counter-events must be
-generated exactly where genps_fks.f generates them.
+generated exactly where genps_fks.f generates them. Lepton PDFs have their
+own mapping, see test_fks_lepton.py.
 """
 
 import glob
@@ -75,6 +76,10 @@ def cases():
     for path in DATA:
         with open(path) as f:
             data = json.load(f)
+        if abs(data["lpp"][0]) in (3, 4):
+            # lepton PDFs, whose momentum fractions close to 1 the luminosity
+            # of a hadronic Born mapping resolves poorly: see test_fks_lepton.py
+            continue
         nin = data["nincoming"]
         for conf in data["configs"]:
             points = [p for p in conf["points"] if p["jac"] > 0 and "rad_jac" in p]
