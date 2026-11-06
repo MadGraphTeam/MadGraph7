@@ -2797,6 +2797,65 @@ class TestCmdShell2(unittest.TestCase,
         amp2 = re.findall(r'AMP2\((\d+)\)=AMP2', open(pjoin(proc_dir, 'matrix1.f')).read())
         self.assertEqual(sorted(int(n) for n in amp2), [1, 4])
 
+    def test_onia_production_channels(self):
+        """The madevent channels of a 2 -> N process with onia follow the s-
+        and t-channels of their diagram over the physical legs, and props.inc
+        follows them: g g > Jpsi g has the t-channel gluon exchange, and in
+        e+ e- > Jpsi c c~ the c (c~) propagator carrying J/psi c (c~) has the
+        charm mass; diagrams that enter no colour flow get no weight."""
+
+        import glob
+        import madgraph.interface.master_interface as MGCmd
+
+        def channels(proc_dir):
+            text = open(pjoin(proc_dir, 'configs.inc')).read()
+            out = {}
+            for m in re.finditer(r'IFOREST\(I,(-\d+),(\d+)\),I=1,2\)/(-?\d+),(-?\d+)/\s*\n\s*'
+                                 r'(?:DATA \(SPROP\(I,-\d+,\d+\),I=1,1\)/(-?\d+)/\s*\n\s*'
+                                 r'DATA TPRID\(-\d+,\d+\)/0/|DATA TPRID\(-\d+,\d+\)/(\d+)/)', text):
+                out.setdefault(int(m.group(2)), []).append(
+                    (int(m.group(3)), int(m.group(4)),
+                     ('s', int(m.group(5))) if m.group(5) else ('t', int(m.group(6)))))
+            return out
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('import model sm_onia-c_mass')
+
+        # legs: 1, 2 gluons, 3 J/psi, 4 gluon
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        mg_cmd.exec_cmd('generate g g > Jpsi(1|3S11) g')
+        mg_cmd.exec_cmd('output madevent %s -f -nojpeg' % self.out_dir)
+        proc_dir = glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*'))[0]
+        chans = channels(proc_dir)
+        topologies = set(tuple(c) for c in chans.values())
+        self.assertIn(((4, 3, ('s', 21)),), topologies)
+        self.assertIn(((1, 4, ('t', 21)), (-1, 3, ('t', 21))), topologies)
+        self.assertIn(((1, 3, ('t', 21)), (-1, 4, ('t', 21))), topologies)
+        matrix = open(pjoin(proc_dir, 'matrix1.f')).read()
+        self.assertLess(len(re.findall(r'AMP2\(\d+\)=AMP2', matrix)), len(chans))
+
+        # legs: 3 J/psi, 4 c, 5 c~
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        mg_cmd.exec_cmd('generate e+ e- > Jpsi(1|3S11) c c~')
+        mg_cmd.exec_cmd('output madevent %s -f -nojpeg' % self.out_dir)
+        proc_dir = glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*'))[0]
+        chans = channels(proc_dir)
+        props = dict(((int(v), int(c)), m.strip().upper()) for v, c, m in re.findall(
+            r'PRMASS\((-\d+),(\d+)\)\s*=\s*(\S+)', open(pjoin(proc_dir, 'props.inc')).read()))
+        for iconf, verts in chans.items():
+            self.assertIn(verts[-1][2], [('s', 22), ('s', 23)])
+            for ivert, (d1, d2, (kind, pdg)) in enumerate(verts, 1):
+                if abs(pdg) == 4:
+                    # J/psi with the c or the c~
+                    self.assertIn(sorted([d1, d2]), [[3, 4], [3, 5]])
+                    self.assertEqual(props[(-ivert, iconf)], 'ABS(MDL_MC)')
+                elif pdg == 21:
+                    self.assertEqual(props[(-ivert, iconf)], 'ZERO')
+
     def test_standalone_density(self):
         """test that standalone density is working"""
 

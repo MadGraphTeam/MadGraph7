@@ -10274,6 +10274,69 @@ class OniaDecayConfigsTest(unittest.TestCase):
         self.assertEqual(len(verts), 6 - 2)
 
 
+class OniaProductionChannelsTest(unittest.TestCase):
+    """The madevent channels of a 2 -> N process with onia: the s- and
+    t-channels of each constituent diagram over the physical legs. Two
+    constituents of one onium on two branches of the t-channel line make the
+    branches between them one block."""
+
+    E = export_v4.ProcessExporterFortranME
+
+    @staticmethod
+    def verts(spec):
+        """[(daughter, daughter, out, id)] -> VertexList"""
+        out = base_objects.VertexList()
+        for d1, d2, number, pdg in spec:
+            out.append(base_objects.Vertex({'id': 0, 'legs': base_objects.LegList(
+                [base_objects.Leg({'id': 21, 'number': d1}),
+                 base_objects.Leg({'id': 21, 'number': d2}),
+                 base_objects.Leg({'id': pdg, 'number': number})])}))
+        return out
+
+    @staticmethod
+    def flat(vs):
+        return [tuple([l.get('number') for l in v.get('legs')] + [v.get('legs')[-1].get('id')])
+                for v in vs]
+
+    # g g > Jpsi g: legs 1, 2 gluons, 3 c and 4 c~ (the J/psi, physical 3), 5 g (4)
+    ggjg = {1: 1, 2: 2, 3: 3, 4: 3, 5: 4}
+
+    def test_t_channel_gluon(self):
+        # g > g g* off leg 1, then a charm line: the c~ and c branches merge
+        s, t = self.E.get_onia_physical_channels(
+            [], self.verts([(1, 5, -1, 21), (-1, 4, -2, -4), (-2, 3, -3, 21)]),
+            [], self.ggjg)
+        self.assertEqual(self.flat(s), [])
+        self.assertEqual(self.flat(t), [(1, 4, -1, 21), (-1, 3, -2, 21)])
+
+    def test_quark_line_through_the_onium(self):
+        # the c and c~ at both ends of the t-channel line: one block, an
+        # s-channel diagram
+        s, t = self.E.get_onia_physical_channels(
+            [], self.verts([(1, 3, -1, 4), (-1, 5, -2, 4), (-2, 4, -3, 21)]),
+            [], self.ggjg)
+        self.assertEqual(self.flat(s), [(4, 3, -1, 21)])
+        self.assertEqual(self.flat(t), [(1, -1, -2, 21)])
+
+    def test_onium_on_one_branch(self):
+        s, t = self.E.get_onia_physical_channels(
+            self.verts([(4, 3, -1, 21)]), self.verts([(1, 5, -2, 21), (-2, -1, -3, 21)]),
+            [], self.ggjg)
+        self.assertEqual(self.flat(s), [])
+        self.assertEqual(self.flat(t), [(1, 4, -1, 21), (-1, 3, -2, 21)])
+
+    def test_s_channel_with_candidates(self):
+        # e+ e- > a* > Jpsi c c~: legs 3, 4 the J/psi (3), 5 c (4), 6 c~ (5);
+        # the c~* carries J/psi c~, the photon everything
+        leg_map = {1: 1, 2: 2, 3: 3, 4: 3, 5: 4, 6: 5}
+        cands = [(frozenset([3, 5]), True, -4), (frozenset([3, 4, 5]), True, 22)]
+        s, t = self.E.get_onia_physical_channels(
+            self.verts([(4, 3, -1, 21), (6, -1, -2, -4), (5, -2, -3, 22)]),
+            self.verts([(1, -3, -4, -11)]), cands, leg_map)
+        self.assertEqual(self.flat(s), [(5, 3, -1, -4), (-1, 4, -2, 22)])
+        self.assertEqual(self.flat(t), [(1, -2, -3, -11)])
+
+
 class AlohaFortranWriterTest(unittest.TestCase):
     """ A basic test to see if the Aloha Fortran Writer is working """
     

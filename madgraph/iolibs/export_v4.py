@@ -3136,13 +3136,13 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
                      matrix_element.get('diagrams') if diag.get_vertex_leg_numbers()!=[]]
         minvert = min(vert_list) if vert_list!=[] else 0
 
-        # A 1 -> N process with onia: an amplitude that enters no colour flow
-        # (a single gluon making a colour-singlet onium) contributes nothing,
+        # A process with onia: an amplitude that enters no colour flow (a
+        # single gluon making a colour-singlet onium) contributes nothing,
         # but |AMP|^2 is taken before the colour projection. It gets no
         # multi-channel weight, else its channel, which maps the invariants of
         # its own diagram, would integrate the |M|^2 of the other diagrams.
         contributing = None
-        if ninitial == 1 and matrix_element.get_nonia():
+        if matrix_element.get_nonia():
             contributing = set(number for col_amp in
                                matrix_element.get_color_amplitudes()
                                for coef, number in col_amp if coef[1] != 0)
@@ -9321,6 +9321,48 @@ c           This is dummy particle used in multiparticle vertices
                     vertices), [], 2])
                 continue
 
+            # A 2 -> N process: the s- and t-channels of the diagram over
+            # the physical legs (get_onia_production_channels)
+            isub, diag = [(i, d) for i, d in enumerate(helas_diags) if d][0]
+            channels = self.get_onia_production_channels(
+                diag, onia_leg_maps[isub], model, new_pdg) \
+                if onia_leg_maps else None
+            if channels:
+                schannels, tchannels = channels
+                tstrat = self.opt.get('t_strategy', 0)
+                tchannels, tchannels_strategy = \
+                    ProcessExporterFortranME.reorder_tchannels(tchannels,
+                                                               tstrat, self.model)
+                s_and_t_channels.append([schannels, tchannels,
+                                         tchannels_strategy])
+                lines.append("# Diagram %d" % (mapconfigs[iconfig]))
+                lines.append("data mapconfig(%d)/%d/" % (nconfigs,
+                                                         mapconfigs[iconfig]))
+                lines.append("data tstrategy(%d)/%d/" % (nconfigs,
+                                                         tchannels_strategy))
+                nqcd_list.append(self.get_onia_config_nqcd(helas_diags,
+                                                           alpha_s_powers))
+                allchannels = [(v, True) for v in schannels]
+                if len(tchannels) > 1:
+                    allchannels += [(v, False) for v in tchannels]
+                for vert, is_s in allchannels:
+                    daughters = [l.get('number') for l in vert.get('legs')[:-1]]
+                    last = vert.get('legs')[-1]
+                    lines.append("data (iforest(i,%d,%d),i=1,%d)/%s/" % (
+                        last.get('number'), nconfigs, len(daughters),
+                        ",".join([str(d) for d in daughters])))
+                    if is_s:
+                        lines.append("data (sprop(i,%d,%d),i=1,1)/%d/" % (
+                            last.get('number'), nconfigs, last.get('id')))
+                        lines.append("data tprid(%d,%d)/0/" % (
+                            last.get('number'), nconfigs))
+                    else:
+                        lines.append("data tprid(%d,%d)/%d/" % (
+                            last.get('number'), nconfigs, abs(last.get('id'))))
+                        lines.append("data (sprop(i,%d,%d),i=1,1)/0/" % (
+                            last.get('number'), nconfigs))
+                continue
+
             # Need s- and t-channels for all subprocesses, including
             # those that don't contribute to this config
             empty_verts = []
@@ -9425,10 +9467,13 @@ c           This is dummy particle used in multiparticle vertices
         return nqcd
 
     @staticmethod
-    def get_onia_decay_candidates(diagram, leg_map):
-        """The physical invariants that the propagators of a 1 -> N diagram
-        with onia depend on, as [(legs, exact, pdg)]: legs is the frozenset
-        of physical final-state legs on one side of the propagator.
+    def get_onia_decay_candidates(diagram, leg_map, ninitial=1):
+        """The physical invariants that the s-channel propagators of a
+        diagram with onia depend on, as [(legs, exact, pdg)]: legs is the
+        frozenset of physical final-state legs on one side of the
+        propagator (all of them for the propagator of the whole final
+        state). In a 2 -> N process (ninitial=2) a propagator with one beam
+        on each side is a t-channel one: get_onia_production_channels.
 
         leg_map is HelasMatrixElement.get_onia_leg_map(). A propagator is
         exact if it carries whole particles: its virtuality is then the
@@ -9439,9 +9484,20 @@ c           This is dummy particle used in multiparticle vertices
         which is the one mapped, through a massless propagator (pdg 21). A
         massive one is not: its pole need not sit at the threshold of that
         invariant (the top of t > t* g*, t* > w+ b in t > w+ Bc- c is near its
-        pole where the gluon is soft, at large m(w+ Bc-))."""
+        pole where the gluon is soft, at large m(w+ Bc-)).
 
-        incoming = set(leg for leg, phys in leg_map.items() if phys == 1)
+        With the physical onium masses the matrix element is evaluated at
+        reshuffled momenta, while the channels sample the physical phase
+        space. The reshuffling keeps the invariant masses of the
+        elementary final-state particles (they recoil as one system) and the
+        directions in the centre-of-mass frame; an invariant with an onium
+        in it is rescaled smoothly and keeps its threshold region, so it is
+        mapped all the same."""
+
+        incoming = set(leg for leg, phys in leg_map.items() if phys <= ninitial)
+        # a single physical incoming particle: its constituents, if any,
+        # are those of a decaying onium
+        one_incoming = len(set(leg_map[leg] for leg in incoming)) == 1
         outgoing = set(leg_map) - incoming
         finals = frozenset(leg_map[leg] for leg in outgoing)
         constituents = {}
@@ -9474,11 +9530,14 @@ c           This is dummy particle used in multiparticle vertices
             elif inc == incoming:
                 # the decaying particle(s) on this side: the other side
                 side, exact = outgoing - below, True
-            else:
+            elif one_incoming:
                 # one constituent of a decaying onium
                 side, exact = below & outgoing, False
+            else:
+                # a t-channel propagator
+                continue
             legs = frozenset(leg_map[leg] for leg in side)
-            if len(legs) < 2 or legs == finals:
+            if len(legs) < 2:
                 continue
             exact = exact and all(constituents[p] <= side for p in legs)
             if not exact and str(wf.get('mass')).lower() != 'zero':
@@ -9493,50 +9552,154 @@ c           This is dummy particle used in multiparticle vertices
 
         As genps.f expects for a decay, there are nexternal-2 vertices over
         the final-state legs 2..nexternal, the last one being the decaying
-        particle (pdg parent_id). The tree keeps the candidate invariants
+        particle (pdg parent_id): get_onia_tree over all of them."""
+
+        vertices = []
+        ProcessExporterFortranME.get_onia_tree(
+            candidates, frozenset(range(2, nexternal + 1)), parent_id, vertices)
+        return vertices
+
+    @staticmethod
+    def get_onia_tree(candidates, node, root_pdg, vertices):
+        """Append to vertices, as (daughter, daughter, pdg) numbered on from
+        -len(vertices)-1, the s-channel tree over the physical legs node
+        (a frozenset), and return the number of its root (the leg itself
+        for a single leg). The root has the pdg root_pdg.
+
+        The tree keeps the candidate invariants inside node
         (get_onia_decay_candidates) that nest in or are disjoint from those
         already kept, exact ones first, then the smaller ones; an inexact
         one that overlaps another inexact one is not kept. The legs left
         over are joined in a chain from the highest leg number, which with
         no candidates is the whole tree: (n, n-1), (-1, n-2), ..., (., 2)."""
 
-        finals = frozenset(range(2, nexternal + 1))
+        inside = [c for c in candidates if c[0] < node]
         # two overlapping invariants of propagators that carry one onium
         # constituent each (the two gluons of etab > g* g* > Jpsi c cbar):
         # neither is preferred, so neither is kept
-        inexact = set(c[0] for c in candidates if not c[1])
+        inexact = set(c[0] for c in inside if not c[1])
         def ambiguous(legs):
             return any(o & legs and not (o <= legs or legs <= o)
                        for o in inexact)
         kept = {}
-        for legs, exact, pdg in sorted(candidates, key=lambda c:
+        for legs, exact, pdg in sorted(inside, key=lambda c:
                                        (not c[1], len(c[0]), sorted(c[0]))):
-            if legs in kept or not legs < finals:
+            if legs in kept:
                 continue
             if not exact and ambiguous(legs):
                 continue
             if all(legs <= k or k <= legs or not legs & k for k in kept):
                 kept[legs] = pdg
 
-        vertices = []
-        def build(node):
-            if len(node) == 1:
-                return next(iter(node))
-            inner = [k for k in kept if k < node]
+        def build(sub):
+            if len(sub) == 1:
+                return next(iter(sub))
+            inner = [k for k in kept if k < sub]
             children = [k for k in inner if not any(k < o for o in inner)]
             covered = frozenset().union(*children)
-            children += [frozenset([leg]) for leg in node - covered]
+            children += [frozenset([leg]) for leg in sub - covered]
             numbers = [build(c) for c in
                        sorted(children, key=max, reverse=True)]
             current = numbers[0]
             for number in numbers[1:-1]:
                 vertices.append((current, number, 21))
                 current = -len(vertices)
-            pdg = parent_id if node == finals else kept[node]
+            pdg = root_pdg if sub == node else kept[sub]
             vertices.append((current, numbers[-1], pdg or 21))
             return -len(vertices)
-        build(finals)
-        return vertices
+        return build(node)
+
+    @staticmethod
+    def get_onia_production_channels(diagram, leg_map, model, new_pdg):
+        """The s- and t-channel vertices of one channel of a 2 -> N process
+        with onia, over the physical legs, in the format of
+        get_s_and_t_channels (s-channels from -1 on, then the t-channel
+        chain from leg 1; one t-vertex only for an s-channel diagram).
+
+        The t-channel chain of the constituent diagram attaches branches
+        along the line from leg 1 to leg 2. The two constituents of an
+        onium on two branches make the branches between them one block
+        (the t-channel propagators between them carry part of the onium:
+        no invariant of the physical phase space). The t-channel
+        propagators between blocks are kept, each block gets the s-channel
+        tree of get_onia_tree, with the propagator of the whole block when
+        there is one. The momentum reshuffling keeps the directions in the
+        centre-of-mass frame, so a t-channel peak stays where it is mapped
+        (see get_onia_decay_candidates for the s-channels)."""
+
+        schan, tchan = diagram.get('amplitudes')[0].get_s_and_t_channels(
+                                                        2, model, new_pdg)
+        candidates = ProcessExporterFortranME.get_onia_decay_candidates(
+                                                    diagram, leg_map, 2)
+        return ProcessExporterFortranME.get_onia_physical_channels(
+                                        schan, tchan, candidates, leg_map)
+
+    @staticmethod
+    def get_onia_physical_channels(schan, tchan, candidates, leg_map):
+        """get_onia_production_channels from the s- and t-channels of the
+        constituent diagram (get_s_and_t_channels) and the candidate
+        invariants (get_onia_decay_candidates). None if the t-channel line
+        is not a chain of vertices with one branch each."""
+
+        leaves = {}
+        def leaf(number):
+            return leaves.get(number, frozenset([number]))
+        for vert in schan:
+            legs = vert.get('legs')
+            leaves[legs[-1].get('number')] = frozenset().union(
+                *[leaf(l.get('number')) for l in legs[:-1]])
+
+        # the branches along the t-channel line, each with the t-channel
+        # propagator that follows it (the last one stands for leg 2)
+        blocks = []
+        line = 1
+        for vert in tchan:
+            numbers = [l.get('number') for l in vert.get('legs')[:-1]]
+            branch = [n for n in numbers if n != line]
+            if len(branch) != 1:
+                return None
+            blocks.append([leaf(branch[0]), vert.get('legs')[-1].get('id')])
+            line = vert.get('legs')[-1].get('number')
+        first_id = tchan[0].get('legs')[0].get('id')
+
+        def phys(legs):
+            return frozenset(leg_map[leg] for leg in legs)
+        merged = True
+        while merged:
+            merged = False
+            for i in range(len(blocks)):
+                for j in range(len(blocks) - 1, i, -1):
+                    if phys(blocks[i][0]) & phys(blocks[j][0]):
+                        blocks[i:j + 1] = [[frozenset().union(
+                            *[b[0] for b in blocks[i:j + 1]]), blocks[j][1]]]
+                        merged = True
+                        break
+                if merged:
+                    break
+
+        whole = dict((c[0], c[2]) for c in candidates if c[1])
+        svertices, tops = [], []
+        for legs, tid in blocks:
+            node = phys(legs)
+            tops.append(ProcessExporterFortranME.get_onia_tree(
+                candidates, node, whole.get(node, 21), svertices))
+
+        def leg(pdg, number, state=True):
+            return base_objects.Leg({'id': pdg, 'number': number,
+                                     'state': state})
+        schannels = base_objects.VertexList()
+        for i, (d1, d2, pdg) in enumerate(svertices, 1):
+            schannels.append(base_objects.Vertex({'id': 0, 'legs':
+                base_objects.LegList([leg(21, d1), leg(21, d2), leg(pdg, -i)])}))
+        tchannels = base_objects.VertexList()
+        line, line_id = 1, first_id
+        for k, (top, (legs, tid)) in enumerate(zip(tops, blocks), 1):
+            number = -(len(svertices) + k)
+            tchannels.append(base_objects.Vertex({'id': 0, 'legs':
+                base_objects.LegList([leg(line_id, line, False), leg(21, top),
+                                      leg(tid, number, False)])}))
+            line, line_id = number, tid
+        return schannels, tchannels
 
     @staticmethod
     def get_onia_decay_config_lines(iconf, diagram, vertices):

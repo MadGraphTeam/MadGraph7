@@ -22,6 +22,13 @@ ANNOUNCEMENT:
          on (the two constituents of an onium count as the bound state), so the
          fragmentation peaks of a strongly boosted onium (z > Bc+ b c~ far above
          the Z mass) are sampled.
+       - madevent channels of onium production (2 -> N) follow the s- and t-channels of
+         each diagram over the physical particles, e.g. the t-channel gluon of
+         "g g > Jpsi(1|3S11) g" (they were one identical s-channel chain, with props.inc
+         taken from the constituent diagrams and not matching it); diagrams that enter
+         no colour flow (a single gluon making a colour-singlet onium) get no
+         multi-channel weight. With the default dynamical_scale_choice -1 the clustering
+         scale of 2 -> 3 and higher onium processes follows these channels too.
        - an incoming onium with a second incoming particle ("Jpsi(1|3S11) g > g g") is
          accepted by 'output standalone_fortran' only (a matrix element, used for the
          time-reversal checks).
