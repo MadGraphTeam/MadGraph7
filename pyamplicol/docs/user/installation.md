@@ -67,8 +67,12 @@ dynamically and replaceable by any interface-compatible build:
 
 | Platform | Python extension | C SDK |
 | --- | --- | --- |
-| Linux | `pyamplicol.libs/libgmp-pyamplicol-<hash>.so.10`, `libmpfr-pyamplicol-<hash>.so.6`, `libmpc-pyamplicol-<hash>.so.3` | `pyamplicol/_sdk/lib/libgmp-pyamplicol.so.10`, `libmpfr-pyamplicol.so.6`, `libmpc-pyamplicol.so.3` |
-| macOS | `pyamplicol.dylibs/libgmp.10.dylib`, `libmpfr.6.dylib`, `libmpc.3.dylib` | `pyamplicol/_sdk/lib/` (same names, `@rpath` install names) |
+| Linux | `pyamplicol.libs/libgmp-pyamplicol-<hash>.so.10`, `libmpfr-pyamplicol-<hash>.so.6` | `pyamplicol/_sdk/lib/libgmp-pyamplicol.so.10`, `libmpfr-pyamplicol.so.6`, `libmpc-pyamplicol.so.3` |
+| macOS | `pyamplicol.dylibs/libgmp.10.dylib`, `libmpfr.6.dylib` (and `libmpc.3.dylib` when the extension links it) | `pyamplicol/_sdk/lib/libgmp.10.dylib`, `libmpfr.6.dylib`, `libmpc.3.dylib` (`@rpath` install names) |
+
+The wheel repair bundles only the libraries the extension links (on Linux,
+GMP and MPFR); the C SDK ships all three because its link line names all
+three.
 
 The Linux libraries use their own sonames, so neither the extension nor an SDK
 consumer can bind a system `libgmp.so.10` by accident. The C SDK archive

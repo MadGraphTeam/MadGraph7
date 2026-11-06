@@ -78,8 +78,8 @@ incorporates, and the libraries' own `COPYING` files are in
 `licenses/rust/gmp-mpfr-sys-1.7.1/` and `licenses/rust/rug-1.30.0/`.
 
 The binary wheels link GMP, MPFR and MPC dynamically. They ship them as
-separate, unmodified shared libraries that can be replaced by any
-interface-compatible build: in `pyamplicol.libs/` (Linux; the libraries carry
+separate shared libraries, built from unmodified sources, that can be replaced
+by any interface-compatible build: in `pyamplicol.libs/` (Linux; the libraries carry
 the sonames `libgmp-pyamplicol.so.10`, `libmpfr-pyamplicol.so.6` and
 `libmpc-pyamplicol.so.3` plus the hash suffix of the wheel repair) or
 `pyamplicol.dylibs/` (macOS) for the Python extension, and in
