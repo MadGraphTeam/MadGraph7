@@ -308,7 +308,7 @@ def test_f2_oracle_gives_twice_the_square(li, name):
         evaluation = slice_._point(
             tuple(tuple(Fraction(x) for x in p) for p in point),
             scale,
-            slice_._point_parameters(parameters, scale, precision),
+            parameters,
             precision,
             "none",
         ).finish(None)
@@ -584,11 +584,12 @@ def test_ward_probe_passes_and_discriminates(li):
 def test_g_g_to_a_a_a_is_zero_within_its_absolute_estimate(li):
     """g g > a a a (Furry: the quark loop's two orientations cancel) is
     served numerically (Q13: no Furry-by-rule zero): |A|^2 lies within ten
-    times its absolute estimate, whose floor is the term scale, and the
-    cancellation is that of the carrier: |A|^2 is ~u^2 of the squared term
-    scale."""
+    times its absolute estimate. The two orientations of a quark loop are
+    dressed into one family numerator, so here the numerator coefficients
+    themselves cancel and the term scale is of the size of the rounding too:
+    the estimate rests on the rotation and re-test budgets, which see that
+    cancellation's rounding."""
 
-    from pyamplicol.loops.v2 import induced
     from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
     from pyamplicol.loops.v2.plan_export import NativeExecutor
     from pyamplicol.loops.v2.stability import RECOMMENDED_CHECKS
@@ -614,11 +615,6 @@ def test_g_g_to_a_a_a_is_zero_within_its_absolute_estimate(li):
     estimate = result.stability.absolute[sector].coefficients[0]
     total = abs(float(_total(result)))
     assert total <= 10 * estimate
-    evaluation = _evaluation(
-        executor, point, Fraction(1000) ** 2, {}, Precision.double()
-    )
-    (term,) = induced.scale(evaluation).values()
-    assert total <= 1e-20 * term.coefficients[0]
 
 
 # ------------------------------------------------------------ public route

@@ -2071,7 +2071,9 @@ class NativeExecutor:
                 budgets[stability.reduction] = reference.retest_budget
             components = reference.result.components
             estimate = StabilityEstimate.from_checks(
-                components.get("virtual", components["bare"]),
+                components["virtual"]
+                if "virtual" in components
+                else components["bare"],
                 budgets,
                 scale=reference.stability_scale(),
                 roundoff=precision.unit_roundoff,
