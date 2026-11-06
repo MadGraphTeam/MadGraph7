@@ -43,7 +43,9 @@ Loop tests carry one cost marker: `loop_fast` (unit and saved-control checks),
 additionally `deferred_direct_r2` and are deselected unless named in `-m`. Run
 `just test-loop loop_fast` (or another marker expression) after staging the
 native runtime, with `SYMBOLICA_LICENSE` set; without it loop tests skip rather
-than abort. `tests/conftest.py` resolves external inputs once: UFO models and
+than abort, or fail with `PYAMPLICOL_REQUIRE_SYMBOLICA_LICENSE=1` (the licensed
+CI jobs of `.github/workflows/tests.yml`, which also fail on a skipped loop
+test). `tests/conftest.py` resolves external inputs once: UFO models and
 MadGraph default to the reference checkout/workspace and are overridden by the
 documented `PYAMPLICOL_*` variables, saved PACBIN/artifact controls come from
 `PYAMPLICOL_LOOP_SAVED_FIXTURES` (default `<workspace>/fixtures`), and provider
