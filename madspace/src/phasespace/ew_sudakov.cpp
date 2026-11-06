@@ -197,9 +197,17 @@ public:
         return -v / std::sqrt(_sw2 * _cw2);
     }
 
-    // sdk_ia_diag
+    // sdk_ia_diag, without the factor i of the charge of a charged Goldstone
+    // boson (as sdk_iz_diag): it couples to the photon as its W boson
     complex ia(int pdg, int ifsign) const {
-        return _sud_mod == 1 ? complex(0.) : -charge(pdg, ifsign);
+        if (_sud_mod == 1) {
+            return 0.;
+        }
+        complex v = -charge(pdg, ifsign);
+        if (std::abs(pdg) == 251) {
+            v /= I;
+        }
+        return v;
     }
 
     // sdk_iz2_diag
