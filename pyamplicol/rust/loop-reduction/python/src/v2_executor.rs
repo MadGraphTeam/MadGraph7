@@ -661,6 +661,10 @@ struct Evaluation {
     /// Per point and slot `Σ_f |Ω_f| / (16π²)` per coefficient (binary64
     /// reals), amplitude-mode plans only.
     amplitude_scale: Option<Vec<Vec<Vec<f64>>>>,
+    /// Amplitude-mode plans with native trees and counterterms: per point
+    /// the counterterm kets (`TreeInputs::kets`: rows × ket components in
+    /// the counterterm program's layout), else None.
+    counterterm_kets: Option<Vec<Values>>,
     failures: Vec<Vec<String>>,
     report: ReportObject,
 }
@@ -748,6 +752,7 @@ fn export_evaluation<T: Exchanged + Real>(
         amplitude_check,
         amplitude_budget,
         amplitude_scale,
+        counterterm_kets: None,
         born,
         loop_born,
         counterterms,
@@ -987,6 +992,7 @@ where
         }
     };
     let (mut born, mut loop_born, mut counterterms) = (None, None, None);
+    let mut kets: Option<Vec<Values>> = None;
     let mut columns: Option<Vec<Vec<Values>>> = None;
     let mut correlations: Option<Vec<Values>> = None;
     let mut results = Vec::with_capacity(points);
@@ -1023,6 +1029,15 @@ where
         extend(&mut born, native.born_squared.map(export));
         extend(&mut loop_born, native.loop_born.map(export));
         extend(&mut counterterms, native.counterterms.map(export));
+        extend(
+            &mut kets,
+            native.kets.map(|points| {
+                points
+                    .iter()
+                    .map(|values| T::export(values, bits))
+                    .collect()
+            }),
+        );
         if let Some(correlator) = dipoles {
             // The Born vectors' colour correlations (M-FINAL MF-8G-3), in
             // the report's "trees: dipoles" stage.
@@ -1087,6 +1102,7 @@ where
         columns,
     );
     evaluation.dipoles = correlations;
+    evaluation.counterterm_kets = kets;
     Ok(evaluation)
 }
 

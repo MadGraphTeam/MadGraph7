@@ -1223,6 +1223,12 @@ pub struct TreeInputs<T> {
     /// interferences, then the counterterm and field ones, these divided by
     /// the average); none without columns.
     pub columns: Option<Vec<Vec<Vec<Complex<T>>>>>,
+    /// Amplitude-mode plans (loop-induced, M-LIT LIT-AMP) with counterterms:
+    /// per point the counterterm kets themselves, `rows × components` values
+    /// in the counterterm program's ket layout ((ket tensor, vector, N_c
+    /// power) per component, `native_trees._counterterm_program`), the loop
+    /// amplitude's counterterm part before any squaring; none otherwise.
+    pub kets: Option<Vec<Vec<Complex<T>>>>,
     /// Wall seconds per stage: the interaction programs (`"trees:
     /// programs"`, with the states), the Born and counterterm root closures
     /// (`"trees: closures"`) and the rest (`"trees: interferences"`: block
@@ -1242,6 +1248,7 @@ impl<T> TreeInputs<T> {
         self.block_rows.extend(next.block_rows);
         self.born.extend(next.born);
         self.amplitudes.extend(next.amplitudes);
+        extend(&mut self.kets, next.kets);
         extend(&mut self.born_squared, next.born_squared);
         extend(&mut self.loop_born, next.loop_born);
         extend(&mut self.counterterms, next.counterterms);
@@ -3443,6 +3450,8 @@ impl TreeProgram {
                 .as_ref()
                 .map(|_| Vec::with_capacity(points)),
             columns: self.columns.as_ref().map(|_| Vec::with_capacity(points)),
+            kets: (plan.amplitude && self.counterterms.is_some())
+                .then(|| Vec::with_capacity(points)),
             seconds: Vec::with_capacity(3),
         };
         out.seconds
@@ -3646,12 +3655,22 @@ impl TreeProgram {
                 );
             }
             let mut born = Vec::with_capacity(self.rows * self.plan_components.len());
-            for row in amplitudes.chunks_exact(self.components) {
-                for component in &self.plan_components {
-                    born.push(component.map_or_else(|| czero.clone(), |j| row[j].clone()));
+            if plan.amplitude {
+                // Amplitude mode (R1): the plan's one unit Born component per
+                // row, the seeds reading c_{c,t} directly.
+                let one = Complex::new(zero.one(), zero.zero());
+                born.resize(self.rows * plan.born_components, one);
+            } else {
+                for row in amplitudes.chunks_exact(self.components) {
+                    for component in &self.plan_components {
+                        born.push(component.map_or_else(|| czero.clone(), |j| row[j].clone()));
+                    }
                 }
             }
             out.born.push(born);
+            if let Some(out) = &mut out.kets {
+                out.push(kets.get(index).cloned().unwrap_or_default());
+            }
             if let Some(squared) = &mut out.born_squared {
                 let metric = runtime.metric.as_ref().expect("a runtime Born metric");
                 squared.push(self.squared(runtime, metric, &amplitudes, &amplitudes, zero));
