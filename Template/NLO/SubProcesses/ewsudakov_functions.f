@@ -1964,7 +1964,7 @@ c      double complex smallL_rij_over_s, bigL_rij_over_s
            endif
         enddo
 
-        get_qcd_lo2 = CMPLX(logfromLOip1,0d0)
+        get_qcd_lo2 = DCMPLX(logfromLOip1,0d0)
 
       elseif (sud_mod.eq.1.or.sud_mod.eq.0) then
 
@@ -1983,7 +1983,7 @@ c      double complex smallL_rij_over_s, bigL_rij_over_s
            endif
         enddo
 
-        get_qcd_lo2 = CMPLX(logfromLOip1,0d0)
+        get_qcd_lo2 = DCMPLX(logfromLOip1,0d0)
 
 c      elseif (sud_mod.eq.0) then  
 c      TOBE modified 
