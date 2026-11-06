@@ -239,6 +239,13 @@ jobs:
   # The jobs that report results run unless the run is cancelled and fail
   # when a job they need did not succeed (a skipped job would read as
   # passed in a required status check).
+  # Their memory watchdog limit is what the 16 GB ubuntu-24.04 runner holds:
+  # 12 GiB of process-tree RSS (shared pages counted per process, so at most
+  # as much physical memory), leaving the OS and the runner service ~3 GiB of
+  # its ~15.6 GiB; above it the watchdog stops the step with its process-tree
+  # diagnostics instead of the runner dying (16.25 GiB in Tests run
+  # 42193403733, shard 3). Peaks there: <= 8.1 GiB per shard, native build
+  # 5.9 GiB.
   licence:
     name: Symbolica licence gate (loop jobs)
     runs-on: ubuntu-24.04
@@ -303,10 +310,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y gcc make m4
-      - name: Build the loop native runtime once for the loop jobs (30 GiB RSS limit)
+      - name: Build the loop native runtime once for the loop jobs (12 GiB RSS limit)
         if: needs.licence.outputs.licensed == 'true'
         run: >-
-          python tools/ci/memory_watchdog.py --limit-gib 30 --
+          python tools/ci/memory_watchdog.py --limit-gib 12 --
           python tools/developer/build_loop_native.py build "$RUNNER_TEMP/loop-native"
           --target-dir "$RUNNER_TEMP/cargo-loop-native"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -324,7 +331,9 @@ jobs:
   # The loop Python default tier: every loop-marked test (LOOP_MARKERS) but
   # loop_nightly, which tests/conftest.py skips without the licence, one
   # process per test file (test_loop_v2_ct_closure.py one per test id), one
-  # at a time (peaks up to ~7.3 GiB on a 16 GB runner), in 8 shards balanced
+  # at a time (process-tree peaks up to ~8.1 GiB, a test process and its
+  # children together; the N_c scans' processes run at most one per CPU,
+  # tests/unit/loop_nc_scan.run_bounded), in 8 shards balanced
   # by the wall times of tools/ci/loop_durations.json (4.4 h serial locally).
   # A skipped test fails its shard (none skips in this tier with its inputs).
   loop-shard:
@@ -413,7 +422,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/src
           SYMBOLICA_LICENSE: ${{ secrets.SYMBOLICA_LICENSE }}
         run: >-
-          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
+          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 12 --
           .venv/bin/python tools/ci/run_pytest_files.py tests
           --marker "(loop_fast or loop_physics) and not loop_nightly"
           --exclude "tests/unit/test_loop_v2_induced*.py"
@@ -576,7 +585,7 @@ jobs:
           python dependencies/install_dependencies.py --dependencies-only
           .venv/bin/python tools/developer/build_loop_native.py stage "$RUNNER_TEMP/loop-native"
           .venv/bin/python -m pip install "mpmath==1.3.0"
-      - name: Run the loop-induced default tier (30 GiB RSS limit)
+      - name: Run the loop-induced default tier (12 GiB RSS limit)
         if: needs.licence.outputs.licensed == 'true'
         env:
           # One model cache for the job's processes (atomic writes).
@@ -585,7 +594,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/src
           SYMBOLICA_LICENSE: ${{ secrets.SYMBOLICA_LICENSE }}
         run: >-
-          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
+          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 12 --
           .venv/bin/python tools/ci/run_pytest_files.py
           "tests/unit/test_loop_v2_induced*.py"
           "tests/unit/test_loop_v2_li_*.py"
@@ -670,14 +679,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y g++ gfortran make
           python dependencies/install_dependencies.py --dependencies-only
-      - name: Check the Rust workspace with the tir features (30 GiB RSS limit)
+      - name: Check the Rust workspace with the tir features (12 GiB RSS limit)
         if: steps.tir.outputs.run == 'true'
         run: |
           .venv/bin/python tools/release/run_cargo.py --mode release -- fmt --all --check
-          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 -- \
+          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 12 -- \
             .venv/bin/python tools/release/run_cargo.py --mode release -- \
             clippy --workspace --all-targets --locked --features "$TIR_FEATURES"
-      - name: Test the Rust workspace with the tir features (30 GiB RSS limit)
+      - name: Test the Rust workspace with the tir features (12 GiB RSS limit)
         if: steps.tir.outputs.run == 'true'
         env:
           # Empty on fork pull requests: then unset (restricted Symbolica).
@@ -686,13 +695,13 @@ jobs:
         run: |
           if [ -z "$SYMBOLICA_LICENSE" ]; then unset SYMBOLICA_LICENSE; fi
           serialization=engine::evaluator::backend::python_serialization_tests
-          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 -- \
+          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 12 -- \
             .venv/bin/python tools/release/run_cargo.py --mode release -- \
             test --workspace --locked --features "$TIR_FEATURES" -- \
             --skip python_serialization_tests --test-threads=1
           for name in python_saved_evaluator_roundtrips_in_three_precisions \
             python_saved_evaluator_with_a_conflicting_symbol_loads; do
-            .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 -- \
+            .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 12 -- \
               .venv/bin/python tools/release/run_cargo.py --mode release -- \
               test --workspace --locked --features "$TIR_FEATURES" --lib -- \
               --exact "$serialization::$name"
