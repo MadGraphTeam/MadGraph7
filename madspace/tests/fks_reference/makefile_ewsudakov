@@ -1,0 +1,8 @@
+# Links dump_ewsudakov against the objects of ewsudakov_sa.
+# Used from the P* directory as 'make -f makefile_ewsudakov dump_ewsudakov'.
+include makefile
+
+DUMPSUD = $(subst sa_ewsudakov.o,dump_ewsudakov.o dump_ewsudakov_calls.o,$(EWSUDSA))
+
+dump_ewsudakov: $(DUMPSUD)
+	$(FC) -o $@ $(DUMPSUD) $(LINKLIBS) $(LDFLAGS)

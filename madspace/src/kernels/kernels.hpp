@@ -3,6 +3,7 @@
 #include "chili.hpp"
 #include "cuts.hpp"
 #include "discrete.hpp"
+#include "ew_sudakov.hpp"
 #include "fks.hpp"
 #include "fks_subtraction.hpp"
 #include "invariants.hpp"

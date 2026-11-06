@@ -144,6 +144,9 @@ def get_fks_configurations(fksborn, orders=None):
                 of its Born, in the order of its split-order contributions
                 (SQSPLITORDERS of born_cnt_<n>.f)
 
+        ewsudakov (with --ewsudakov, see get_ewsudakov_info): the matrix
+            elements of the Sudakov approximation of the EW corrections
+
     The Born is the real process without i, with i + j at the position of j.
     A Born without FKS configurations ([LOonly]) has none, not the fake one
     of fks_info.inc."""
@@ -194,7 +197,119 @@ def get_fks_configurations(fksborn, orders=None):
                 [list(o) for o in me.get_split_orders_mapping()[0]]
                 for me in extra_cnt_me_list],
         }
+    if getattr(fksborn, 'ewsudakov', False):
+        data['ewsudakov'] = get_ewsudakov_info(fksborn)
     return data
+
+
+def get_ewsudakov_lo(fksborn):
+    """Whether the Born of an FKS matrix element generated with --ewsudakov
+    has a LO1 and a LO2, as ewsudakov_haslo.inc: the LO1 is the only
+    coupling combination of the Born within its orders (born_sq_orders), the
+    LO2 the one with two powers of QCD less and two of QED more. Returns
+    has_lo1, has_lo2, their positions in amp_split (1-based, -100 for none)
+    and their coupling combinations (None for none).
+    Raises MadGraph5Error for a Born with more than one coupling combination
+    within its orders."""
+    squared_orders_born, amp_orders = fksborn.born_me.get_split_orders_mapping()
+    split_orders = fksborn.born_me['processes'][0]['split_orders']
+    born_orders = [fksborn.born_me['processes'][0]['born_sq_orders'][ordd]
+                   for ordd in split_orders]
+
+    # check that there is at most one coupling combination
+    # that satisfies the born_orders constraints
+    # (this is a limitation of the current implementation of the EW sudakov
+    nborn = 0
+    for orders in squared_orders_born:
+        if all([orders[i] <= born_orders[i] for i in range(len(born_orders))]):
+            nborn += 1
+
+    if nborn > 1:
+        raise MadGraph5Error("ERROR: Sudakov approximation does not support cases where" + \
+                " the Born has more than one coupling combination, found %d)" % nborn)
+
+    # now we can see if the process has a LO1
+    has_lo1 = bool(nborn)
+    if has_lo1:
+        lo1_pos = squared_orders_born.index(tuple(born_orders)) + 1
+    else:
+        lo1_pos = -100
+
+    # now determine the LO2 orders
+    lo2_orders = list(born_orders)
+    lo2_orders[split_orders.index('QCD')] += -2
+    lo2_orders[split_orders.index('QED')] += 2
+
+    has_lo2 = tuple(lo2_orders) in squared_orders_born
+
+    if has_lo2:
+        lo2_pos = squared_orders_born.index(tuple(lo2_orders)) + 1
+    else:
+        lo2_pos = -100
+
+    return {'has_lo1': has_lo1, 'has_lo2': has_lo2,
+            'lo1_pos': lo1_pos, 'lo2_pos': lo2_pos,
+            'lo1': born_orders if has_lo1 else None,
+            'lo2': lo2_orders if has_lo2 else None}
+
+
+def get_ewsudakov_info(fksborn):
+    """The matrix elements of the Sudakov approximation of the EW corrections
+    to the Born of an FKS matrix element generated with --ewsudakov, as
+    ewsudakov_wrapper.f calls them:
+
+        scheme: the scheme of the parameter renormalisation, 'gmu' for a
+            model with Gmu in its name, 'alpha_mz' otherwise (numder_*.f)
+        has_lo1, has_lo2, lo1, lo2: the LO1 and the LO2 of the Born, see
+            get_ewsudakov_lo, lo1 and lo2 their coupling combinations (null
+            for none)
+        helicities: the helicities of the Born, NHEL of ewsudakov_wrapper.f
+        goldstone[]: the matrix elements with Goldstone bosons in place of
+            longitudinal W and Z bosons (ewsudakov_goldstone_me_<n>.f, n =
+            position + 1). A helicity of the Born takes the first one whose
+            legs all have helicity 0, the Born where none has.
+            legs: the replaced particles, 1-based positions in the Born
+            pdgs: PDG codes of its process
+        interference[]: the interferences of the base amplitude with one with
+            particles replaced by isospin partners (ewsudakov_me_<n>.f, n =
+            position + 1)
+            type: cew (Z and photon, the LSC and C terms), iz1 (one Higgs
+                and neutral Goldstone), iz2 (two of them), ipm2 (two
+                particles with their charge changed, the SSC terms)
+            base: the base amplitude, 0 for the Born, n for goldstone[n - 1]
+            legs: the replaced particles, 1-based positions in the Born
+            old_pdgs, new_pdgs: their PDG codes before and after
+            pdgs: PDG codes of its process"""
+    born_me = fksborn.born_me
+    lo = get_ewsudakov_lo(fksborn)
+    model = born_me['processes'][0]['model']
+    sudakov = fksborn.sudakov_matrix_elements
+    goldstone = [me for me in sudakov if me['type'] == 'goldstone']
+    others = [me for me in sudakov if me['type'] != 'goldstone']
+
+    def pdgs(me):
+        return [leg['id'] for leg in me['matrix_element']['processes'][0]['legs']]
+
+    # write_sudakov_me pads the PDG codes of the replaced particles with zeros
+    def replaced(me, k):
+        return list(me['pdgs'][k][:len(me['legs'])])
+
+    return {
+        'scheme': 'gmu' if 'Gmu' in model.get('name') else 'alpha_mz',
+        'has_lo1': lo['has_lo1'],
+        'has_lo2': lo['has_lo2'],
+        'lo1': lo['lo1'],
+        'lo2': lo['lo2'],
+        'helicities': [list(hel) for hel in born_me.get_helicity_matrix()],
+        'goldstone': [{'legs': [leg['number'] for leg in me['legs']],
+                       'pdgs': pdgs(me)} for me in goldstone],
+        'interference': [{'type': me['type'],
+                          'base': me['base_amp'],
+                          'legs': [leg['number'] for leg in me['legs']],
+                          'old_pdgs': replaced(me, 0),
+                          'new_pdgs': replaced(me, 1),
+                          'pdgs': pdgs(me)} for me in others],
+    }
 
 
 def get_split_orders_info(matrix_element):
@@ -3705,47 +3820,9 @@ Parameters              %(params)s\n\
         """
 
         if matrix_element.ewsudakov:
-            # get the coupling combination of the born
-            squared_orders_born, amp_orders = matrix_element.born_me.get_split_orders_mapping()
-            split_orders = \
-                    matrix_element.born_me['processes'][0]['split_orders']
-
-            # compute the born orders
-            born_orders = []
-            split_orders = matrix_element.born_me['processes'][0]['split_orders'] 
-            for ordd in split_orders:
-                born_orders.append(matrix_element.born_me['processes'][0]['born_sq_orders'][ordd])
-
-            # check that there is at most one coupling combination
-            # that satisfies the born_orders constraints 
-            # (this is a limitation of the current implementation of the EW sudakov
-            nborn = 0
-            for orders in squared_orders_born:
-                if all([orders[i] <= born_orders[i] for i in range(len(born_orders))]):
-                    nborn += 1
-
-            if nborn > 1:
-                raise MadGraph5Error("ERROR: Sudakov approximation does not support cases where" + \
-                        " the Born has more than one coupling combination, found %d)" % nborn)
-
-            # now we can see if the process has a LO1
-            has_lo1 = bool(nborn)
-            if has_lo1:
-                lo1_pos = squared_orders_born.index(tuple(born_orders)) + 1
-            else:
-                lo1_pos = -100
-
-            # now determine the LO2 orders
-            lo2_orders = born_orders
-            lo2_orders[split_orders.index('QCD')] += -2
-            lo2_orders[split_orders.index('QED')] += 2
-
-            has_lo2 = tuple(lo2_orders) in squared_orders_born
-
-            if has_lo2:
-                lo2_pos = squared_orders_born.index(tuple(lo2_orders)) + 1
-            else:
-                lo2_pos = -100
+            lo = get_ewsudakov_lo(matrix_element)
+            has_lo1, has_lo2 = lo['has_lo1'], lo['has_lo2']
+            lo1_pos, lo2_pos = lo['lo1_pos'], lo['lo2_pos']
         else:
             has_lo1 = False
             has_lo2 = False

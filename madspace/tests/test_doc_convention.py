@@ -161,6 +161,37 @@ CASES = {
         h_damp_one=0.01,
         h_damp_power=1.0,
     ),
+    "EWSudakovAmplitude": dict(
+        type="ipm2", base=0, legs=[0, 2], old_pdgs=[2, 1], new_pdgs=[1, 2]
+    ),
+    "EWSudakovProcess": dict(
+        pdgs=[2, -2, 1, -1],
+        helicities=[[-1, 1, -1, 1]],
+        goldstone=[],
+        interference=[],
+        has_lo1=True,
+        has_lo2=False,
+        lo2_qcd_power=0,
+        incoming=2,
+    ),
+    "EWSudakovParameters": dict(
+        mw=80.4,
+        mz=91.2,
+        mh=125.0,
+        mt=173.0,
+        alpha=1 / 132.5,
+        gf=1.166e-5,
+        scheme=ms.EWSudakovScheme.gmu,
+        mb=0.0,
+    ),
+    "EWSudakovMode": dict(sud_mod=1, s_to_rij=False, rij_ge_mw=True),
+    "EWSudakov": dict(
+        process=ms.EWSudakovProcess(pdgs=[2, -2, 1, -1], helicities=[[-1, 1, -1, 1]]),
+        parameters=ms.EWSudakovParameters(
+            mw=80.4, mz=91.2, mh=125.0, mt=173.0, alpha=1 / 132.5
+        ),
+        modes=[ms.EWSudakovMode()],
+    ),
     "FastRamboMapping": dict(n_particles=4, massless=True, com=True),
     "TPropagatorMapping": dict(integration_order=[0], invariant_power=0.8, pt_min=[]),
     "ColorOrderedMapping": dict(

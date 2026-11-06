@@ -3571,6 +3571,57 @@ fks_soft_virtual:
   vectorized: False
   desc: "The n-body part of bornsoftvirtual in fks_singular.f without the virtual per NLO order, for QCD and QED and with the Ellis-Sexton scale at mu_R. With a = alpha_s / (2 pi) for QCD and alpha / (2 pi) for QED and the Born B of the order of the counterterms, each is a B sum_j Q_j over the massless particles with Q terms plus a sum_(m, n) f_mn L_mn I_mn over the pairs of linked particles, with L_mn = <T_m . T_n> B for QCD and B for QED and the integrated eikonals I_mn of eikonal_Ireg. Q_j = gamma'_j - log(s deltaO / (2 mu_R^2)) (gamma_j - 2 C_j log(2 E_j / (xicut sqrt_s))) + 2 C_j (log^2(2 E_j / sqrt_s) - log^2 xicut) - 2 gamma_j log(2 E_j / sqrt_s) for a final-state particle with its energy in the partonic center-of-mass frame, -log(mu_F^2 / mu_R^2) (gamma_j + 2 C_j log xicut) for an incoming one with the factorization scale of its beam. The coefficients of log mu_R^2 and log mu_F^2 of the weight lines of MadFKS are a b gamma_g B of QCD and the sum of -a (gamma_j + 2 C_j log xicut) B over QCD and QED."
 
+ew_sudakov:
+  inputs:
+    - name: momenta
+      type: [float, n, 4]
+      desc: "momenta of the Born"
+    - name: diagonal
+      type: [float, h]
+      desc: "|M_h|^2 of the base amplitude of each helicity combination at the LO1"
+    - name: lo2
+      type: [float, h]
+      desc: "the same at the LO2"
+    - name: derivatives
+      type: [float, h, 6]
+      desc: "derivatives of diagonal with respect to the parameters of numder_*.f"
+    - name: interference
+      type: [float, t, 2]
+      desc: "real and imaginary parts of the interferences of the interference terms at the LO1"
+    - name: alpha_s
+      type: [float]
+      desc: "strong coupling"
+    - name: ren_scale
+      type: [float]
+      desc: "renormalization scale"
+    - name: signs
+      type: [float, single, n]
+      desc: "-1 for an incoming particle, 1 for an outgoing one"
+    - name: modes
+      type: [int, single, m, 2]
+      desc: "s_to_rij and rij_ge_mw of each mode"
+    - name: diagonal_coefficients
+      type: [float, single, m, h, c]
+      desc: "factors of the logarithms (L, l, then F and G of every pair (i, j) with j < i) in the coefficient of each helicity combination in each mode, the real and imaginary part of each one after the other"
+    - name: interference_coefficients
+      type: [float, single, m, t, c]
+      desc: "the same for each interference term"
+    - name: par_coefficients
+      type: [float, single, 6]
+      desc: "parameter renormalisation of each derivative per unit l"
+    - name: qcd_coefficients
+      type: [float, single, 2]
+      desc: "factors of log(mu_R^2 / m_t^2) and log(s / m_t^2) of the QCD part per unit alpha_s / (2 pi)"
+    - name: options
+      type: [float, single, 4]
+      desc: "M_W^2, M_Z^2, m_t^2 and alpha / (4 pi)"
+  outputs:
+    - name: sudakov
+      type: [float, m]
+      desc: "the Sudakov approximation of the EW corrections in each mode"
+  vectorized: False
+  desc: "The Sudakov approximation of the EW corrections of ewsudakov_wrapper.f and ewsudakov_functions.f, without the factor f_b / g^k of compute_ewsudakov. With a = alpha / (4 pi), L = a log^2(s / M_W^2), l = a log(s / M_W^2) and for every pair the invariant r of sdk_get_invariants (set to +-M_W^2 below it in size with rij_ge_mw), ell = log(|r| / s) and i pi = -i pi for r > 0, F = 2 l (ell + i pi) + a (ell^2 + 2 ell i pi) and G = 2 a ell log(M_W^2 / M_Z^2), the second terms only with s_to_rij. The coefficients C are the combinations of these with the factors of the tables, and the correction is 2 Re(sum_h C_h diagonal_h + sum_t C_t interference_t) + l sum_h sum_p par_p derivatives_hp + 2 Q sum_h lo2_h with Q = alpha_s / (2 pi) (q_1 log(mu_R^2 / m_t^2) + q_2 log(s / m_t^2))."
+
 ---
 title: Invariants
 

@@ -35,6 +35,17 @@ madgraph/iolibs/export_fks.py):
             Born and at NLO (born_orders and nlo_orders)
         extra_born: for each extra counterterm, the powers of each split
             order of the orders of its Born
+    ewsudakov: with --ewsudakov, the matrix elements of the Sudakov
+        approximation of the EW corrections (see get_ewsudakov_info)
+        scheme: the scheme of the parameter renormalisation, gmu or alpha_mz
+        has_lo1, has_lo2, lo1, lo2: whether the Born has a LO1 and a LO2,
+            and the powers of each split order of them (null for none)
+        helicities: the helicities of the Born
+        goldstone[]: the amplitudes with Goldstone bosons, each with legs
+            (the replaced particles, 1-based) and pdgs (its process)
+        interference[]: the interferences, each with type (cew, iz1, iz2 or
+            ipm2), base (0 the Born, k the Goldstone amplitude k), legs,
+            old_pdgs, new_pdgs and pdgs
 
 The functions here turn it into the FKSMappings of a Born mapping, one per
 configuration, or into one FKSConfigurationMapping for all of them, with the
@@ -55,7 +66,8 @@ fks_prefactors the prefactors of the real emission and its counterterms,
 fks_limits the soft and collinear limits of the real matrix element from the
 Born and its correlated versions, fks_subtraction the real emission with
 its counterterms and fks_soft_virtual the n-body part of the subtraction
-without the virtual.
+without the virtual. ew_sudakov builds the EWSudakov of the Sudakov
+approximation of the EW corrections from the ewsudakov entry.
 """
 
 import json
@@ -64,6 +76,10 @@ import os
 from ._madspace_py import (
     CutItem,
     Cuts,
+    EWSudakov,
+    EWSudakovAmplitude,
+    EWSudakovMode,
+    EWSudakovProcess,
     FKSConfiguration,
     FKSConfigurationMapping,
     FKSCouplingOrders,
@@ -458,3 +474,85 @@ def fks_soft_virtual(born, configurations, **parameters):
         fks_coupling_orders(configurations),
         **parameters,
     )
+
+
+def ew_sudakov_process(configurations):
+    """The EWSudakovProcess of a Born, from the ewsudakov entry of
+    fks_configurations.json, with the 0-based positions of madspace.
+
+    Args:
+        configurations: the content of fks_configurations.json (see
+            read_fks_configurations).
+
+    Raises:
+        ValueError: without the ewsudakov entry (a process without
+            --ewsudakov or an older FKS exporter).
+    """
+    if "ewsudakov" not in configurations:
+        raise ValueError(
+            "fks_configurations.json has no ewsudakov entry, the process has no "
+            "--ewsudakov or comes from an older FKS exporter"
+        )
+    info = configurations["ewsudakov"]
+    born = list(configurations["born_pdgs"])
+    goldstone = []
+    for amp in info["goldstone"]:
+        legs = [leg - 1 for leg in amp["legs"]]
+        goldstone.append(
+            EWSudakovAmplitude(
+                type="goldstone",
+                legs=legs,
+                old_pdgs=[born[leg] for leg in legs],
+                new_pdgs=[amp["pdgs"][leg] for leg in legs],
+            )
+        )
+    interference = [
+        EWSudakovAmplitude(
+            type=amp["type"],
+            base=amp["base"],
+            legs=[leg - 1 for leg in amp["legs"]],
+            old_pdgs=list(amp["old_pdgs"]),
+            new_pdgs=list(amp["new_pdgs"]),
+        )
+        for amp in info["interference"]
+    ]
+    split_orders = configurations.get("orders", {}).get("split_orders", ["QCD", "QED"])
+    lo2_qcd_power = info["lo2"][split_orders.index("QCD")] if info["has_lo2"] else 0
+    return EWSudakovProcess(
+        pdgs=born,
+        helicities=[list(h) for h in info["helicities"]],
+        goldstone=goldstone,
+        interference=interference,
+        has_lo1=info["has_lo1"],
+        has_lo2=info["has_lo2"],
+        lo2_qcd_power=lo2_qcd_power,
+        incoming=configurations["nincoming"],
+    )
+
+
+def ew_sudakov(configurations, parameters, modes=None):
+    """The EWSudakov of a Born, the Sudakov approximation of its EW
+    corrections, from the ewsudakov entry of fks_configurations.json.
+
+    Args:
+        configurations: the content of fks_configurations.json (see
+            read_fks_configurations).
+        parameters: the EWSudakovParameters. Their scheme must be that of the
+            entry.
+        modes: the EWSudakovModes, by default those of compute_ewsudakov
+            (sud_mod 0 and 1).
+
+    Raises:
+        ValueError: as ew_sudakov_process, and for parameters in another
+            scheme than that of the process.
+    """
+    process = ew_sudakov_process(configurations)
+    scheme = configurations["ewsudakov"]["scheme"]
+    if parameters.scheme.name != scheme:
+        raise ValueError(
+            f"the parameters are in the scheme {parameters.scheme.name}, the "
+            f"process in {scheme}"
+        )
+    if modes is None:
+        modes = [EWSudakovMode(sud_mod=0), EWSudakovMode(sud_mod=1)]
+    return EWSudakov(process, parameters, modes)

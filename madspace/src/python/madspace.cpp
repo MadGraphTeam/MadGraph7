@@ -2361,6 +2361,230 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("FKSSoftVirtual::nlo_order_count")
         );
 
+    py::classh<EWSudakovAmplitude>(
+        m, "EWSudakovAmplitude", pydoc::doc("EWSudakovAmplitude")
+    )
+        .def(
+            py::init([](const std::string& type,
+                        std::size_t base,
+                        const std::vector<std::size_t>& legs,
+                        const std::vector<int>& old_pdgs,
+                        const std::vector<int>& new_pdgs) {
+                return EWSudakovAmplitude{type, base, legs, old_pdgs, new_pdgs};
+            }),
+            py::arg("type"),
+            py::arg("base") = 0,
+            py::arg("legs") = std::vector<std::size_t>{},
+            py::arg("old_pdgs") = std::vector<int>{},
+            py::arg("new_pdgs") = std::vector<int>{}
+        )
+        .def_readwrite(
+            "type", &EWSudakovAmplitude::type, pydoc::doc("EWSudakovAmplitude::type")
+        )
+        .def_readwrite(
+            "base", &EWSudakovAmplitude::base, pydoc::doc("EWSudakovAmplitude::base")
+        )
+        .def_readwrite(
+            "legs", &EWSudakovAmplitude::legs, pydoc::doc("EWSudakovAmplitude::legs")
+        )
+        .def_readwrite(
+            "old_pdgs",
+            &EWSudakovAmplitude::old_pdgs,
+            pydoc::doc("EWSudakovAmplitude::old_pdgs")
+        )
+        .def_readwrite(
+            "new_pdgs",
+            &EWSudakovAmplitude::new_pdgs,
+            pydoc::doc("EWSudakovAmplitude::new_pdgs")
+        );
+
+    py::classh<EWSudakovProcess>(m, "EWSudakovProcess", pydoc::doc("EWSudakovProcess"))
+        .def(
+            py::init([](const std::vector<int>& pdgs,
+                        const nested_vector2<int>& helicities,
+                        const std::vector<EWSudakovAmplitude>& goldstone,
+                        const std::vector<EWSudakovAmplitude>& interference,
+                        bool has_lo1,
+                        bool has_lo2,
+                        int lo2_qcd_power,
+                        std::size_t incoming) {
+                return EWSudakovProcess{
+                    pdgs,
+                    incoming,
+                    helicities,
+                    goldstone,
+                    interference,
+                    has_lo1,
+                    has_lo2,
+                    lo2_qcd_power
+                };
+            }),
+            py::arg("pdgs"),
+            py::arg("helicities"),
+            py::arg("goldstone") = std::vector<EWSudakovAmplitude>{},
+            py::arg("interference") = std::vector<EWSudakovAmplitude>{},
+            py::arg("has_lo1") = true,
+            py::arg("has_lo2") = false,
+            py::arg("lo2_qcd_power") = 0,
+            py::arg("incoming") = 2
+        )
+        .def_readwrite(
+            "pdgs", &EWSudakovProcess::pdgs, pydoc::doc("EWSudakovProcess::pdgs")
+        )
+        .def_readwrite(
+            "incoming",
+            &EWSudakovProcess::incoming,
+            pydoc::doc("EWSudakovProcess::incoming")
+        )
+        .def_readwrite(
+            "helicities",
+            &EWSudakovProcess::helicities,
+            pydoc::doc("EWSudakovProcess::helicities")
+        )
+        .def_readwrite(
+            "goldstone",
+            &EWSudakovProcess::goldstone,
+            pydoc::doc("EWSudakovProcess::goldstone")
+        )
+        .def_readwrite(
+            "interference",
+            &EWSudakovProcess::interference,
+            pydoc::doc("EWSudakovProcess::interference")
+        )
+        .def_readwrite(
+            "has_lo1",
+            &EWSudakovProcess::has_lo1,
+            pydoc::doc("EWSudakovProcess::has_lo1")
+        )
+        .def_readwrite(
+            "has_lo2",
+            &EWSudakovProcess::has_lo2,
+            pydoc::doc("EWSudakovProcess::has_lo2")
+        )
+        .def_readwrite(
+            "lo2_qcd_power",
+            &EWSudakovProcess::lo2_qcd_power,
+            pydoc::doc("EWSudakovProcess::lo2_qcd_power")
+        );
+
+    add_enum<EWSudakovScheme>(
+        m,
+        "EWSudakovScheme",
+        {
+            {"alpha_mz", EWSudakovScheme::alpha_mz},
+            {"gmu", EWSudakovScheme::gmu},
+        },
+        "",
+        pydoc::doc("EWSudakovScheme")
+    );
+
+    py::classh<EWSudakovParameters>(
+        m, "EWSudakovParameters", pydoc::doc("EWSudakovParameters")
+    )
+        .def(
+            py::init([](double mw,
+                        double mz,
+                        double mh,
+                        double mt,
+                        double alpha,
+                        double gf,
+                        EWSudakovScheme scheme,
+                        double mb) {
+                return EWSudakovParameters{mw, mz, mh, mt, mb, alpha, gf, scheme};
+            }),
+            py::arg("mw"),
+            py::arg("mz"),
+            py::arg("mh"),
+            py::arg("mt"),
+            py::arg("alpha"),
+            py::arg("gf") = 1.16639e-5,
+            py::arg("scheme") = EWSudakovScheme::gmu,
+            py::arg("mb") = 0.
+        )
+        .def_readwrite(
+            "mw", &EWSudakovParameters::mw, pydoc::doc("EWSudakovParameters::mw")
+        )
+        .def_readwrite(
+            "mz", &EWSudakovParameters::mz, pydoc::doc("EWSudakovParameters::mz")
+        )
+        .def_readwrite(
+            "mh", &EWSudakovParameters::mh, pydoc::doc("EWSudakovParameters::mh")
+        )
+        .def_readwrite(
+            "mt", &EWSudakovParameters::mt, pydoc::doc("EWSudakovParameters::mt")
+        )
+        .def_readwrite(
+            "mb", &EWSudakovParameters::mb, pydoc::doc("EWSudakovParameters::mb")
+        )
+        .def_readwrite(
+            "alpha",
+            &EWSudakovParameters::alpha,
+            pydoc::doc("EWSudakovParameters::alpha")
+        )
+        .def_readwrite(
+            "gf", &EWSudakovParameters::gf, pydoc::doc("EWSudakovParameters::gf")
+        )
+        .def_readwrite(
+            "scheme",
+            &EWSudakovParameters::scheme,
+            pydoc::doc("EWSudakovParameters::scheme")
+        );
+
+    py::classh<EWSudakovMode>(m, "EWSudakovMode", pydoc::doc("EWSudakovMode"))
+        .def(
+            py::init([](int sud_mod, bool s_to_rij, bool rij_ge_mw) {
+                return EWSudakovMode{sud_mod, s_to_rij, rij_ge_mw};
+            }),
+            py::arg("sud_mod") = 0,
+            py::arg("s_to_rij") = true,
+            py::arg("rij_ge_mw") = true
+        )
+        .def_readwrite(
+            "sud_mod", &EWSudakovMode::sud_mod, pydoc::doc("EWSudakovMode::sud_mod")
+        )
+        .def_readwrite(
+            "s_to_rij", &EWSudakovMode::s_to_rij, pydoc::doc("EWSudakovMode::s_to_rij")
+        )
+        .def_readwrite(
+            "rij_ge_mw",
+            &EWSudakovMode::rij_ge_mw,
+            pydoc::doc("EWSudakovMode::rij_ge_mw")
+        );
+
+    py::classh<EWSudakov, FunctionGenerator>(m, "EWSudakov", pydoc::doc("EWSudakov"))
+        .def(
+            py::init<
+                const EWSudakovProcess&,
+                const EWSudakovParameters&,
+                const std::vector<EWSudakovMode>&>(),
+            py::arg("process"),
+            py::arg("parameters"),
+            py::arg("modes") =
+                std::vector<EWSudakovMode>{{0, true, true}, {1, true, true}},
+            pydoc::doc("EWSudakov::EWSudakov")
+        )
+        .def(
+            "particle_count",
+            &EWSudakov::particle_count,
+            pydoc::doc("EWSudakov::particle_count")
+        )
+        .def(
+            "helicity_count",
+            &EWSudakov::helicity_count,
+            pydoc::doc("EWSudakov::helicity_count")
+        )
+        .def("mode_count", &EWSudakov::mode_count, pydoc::doc("EWSudakov::mode_count"))
+        .def(
+            "helicity_bases",
+            &EWSudakov::helicity_bases,
+            pydoc::doc("EWSudakov::helicity_bases")
+        )
+        .def(
+            "interference_terms",
+            &EWSudakov::interference_terms,
+            pydoc::doc("EWSudakov::interference_terms")
+        );
+
     py::classh<MultiChannelFunction, FunctionGenerator>(
         m, "MultiChannelFunction", pydoc::doc("MultiChannelFunction")
     )

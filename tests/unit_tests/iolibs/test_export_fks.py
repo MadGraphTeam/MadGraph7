@@ -354,6 +354,72 @@ class TestFKSConfigurationsJson(unittest.TestCase):
             'nlo': [[2, 6], [4, 4], [0, 8]], 'max_born': [2, 6],
             'max_nlo': [4, 8], 'extra_born': [[[0, 6]]]})
 
+    @staticmethod
+    def sudakov_born(pdgs, squared_orders, born_sq_orders, model, helicities):
+        """A Born matrix element of --ewsudakov: its process, split orders and
+        helicities."""
+        legs = [{'id': pdg, 'state': k >= 2} for k, pdg in enumerate(pdgs)]
+        process = {'legs': legs, 'split_orders': ['QCD', 'QED'],
+                   'born_sq_orders': born_sq_orders,
+                   'model': {'name': model}}
+        return type('SudakovBorn', (), {
+            '__getitem__': lambda self, key: {'processes': [process]}[key],
+            'get_split_orders_mapping': lambda self: (squared_orders, []),
+            'get_helicity_matrix': lambda self: helicities})()
+
+    def test_ewsudakov(self):
+        # u u~ > w+ w- with the Goldstone amplitude of both W bosons and one
+        # interference of each kind
+        helicities = [[1, -1, 0, 0], [-1, 1, 1, -1]]
+        fksborn = self.fksborn([])
+        fksborn.born_me = self.sudakov_born(
+            [2, -2, 24, -24], [(0, 4)], {'QCD': 0, 'QED': 4},
+            'loop_qcd_qed_sm_Gmu_forSudakov', helicities)
+
+        def me(pdgs):
+            legs = [{'id': pdg} for pdg in pdgs]
+            return {'matrix_element': {'processes': [{'legs': legs}]}}
+
+        fksborn.sudakov_matrix_elements = [
+            dict(me([2, -2, 251, -251]), type='goldstone', base_amp=0,
+                 legs=[{'number': 3}, {'number': 4}],
+                 pdgs=[[24, -24], [251, -251]]),
+            dict(me([1, -1, 24, -24]), type='ipm2', base_amp=0,
+                 legs=[{'number': 1}, {'number': 2}], pdgs=[[2, -2], [1, -1]]),
+            # as write_sudakov_me leaves them, padded with zeros
+            dict(me([2, -2, 25, -251]), type='iz1', base_amp=1,
+                 legs=[{'number': 3}], pdgs=[[251, 0], [25, 0]]),
+        ]
+        fksborn.ewsudakov = True
+        data = export_fks.get_fks_configurations(fksborn)
+        self.assertEqual(data['ewsudakov'], {
+            'scheme': 'gmu', 'has_lo1': True, 'has_lo2': False,
+            'lo1': [0, 4], 'lo2': None, 'helicities': helicities,
+            'goldstone': [{'legs': [3, 4], 'pdgs': [2, -2, 251, -251]}],
+            'interference': [
+                {'type': 'ipm2', 'base': 0, 'legs': [1, 2],
+                 'old_pdgs': [2, -2], 'new_pdgs': [1, -1],
+                 'pdgs': [1, -1, 24, -24]},
+                {'type': 'iz1', 'base': 1, 'legs': [3],
+                 'old_pdgs': [251], 'new_pdgs': [25],
+                 'pdgs': [2, -2, 25, -251]}]})
+        # a LO2, alpha(MZ) scheme
+        fksborn.born_me = self.sudakov_born(
+            [2, -2, 6, -6], [(4, 0), (2, 2), (0, 4)], {'QCD': 4, 'QED': 0},
+            'loop_qcd_qed_sm_forSudakov', helicities)
+        fksborn.sudakov_matrix_elements = []
+        data = export_fks.get_fks_configurations(fksborn)['ewsudakov']
+        self.assertEqual(
+            [data[k] for k in ['scheme', 'has_lo1', 'has_lo2', 'lo1', 'lo2']],
+            ['alpha_mz', True, True, [4, 0], [2, 2]])
+        self.assertEqual(export_fks.get_ewsudakov_lo(fksborn)['lo2_pos'], 2)
+        # more than one coupling combination within the orders of the Born
+        fksborn.born_me = self.sudakov_born(
+            [2, -2, 6, -6], [(4, 0), (2, 2)], {'QCD': 4, 'QED': 2},
+            'loop_qcd_qed_sm_forSudakov', helicities)
+        self.assertRaises(export_fks.MadGraph5Error,
+                          export_fks.get_fks_configurations, fksborn)
+
 
 class TestBornGscale(unittest.TestCase):
     """gscale: when only alpha_S changed, born.f rescales its cached Born
@@ -451,7 +517,8 @@ class TestSplitOrdersInfo(unittest.TestCase):
         self.assertEqual(data['orders'], {
             'split_orders': ['QCD', 'QED'], 'born': born, 'nlo': nlo,
             'max_born': [info['max_born_orders'][o] for o in ['QCD', 'QED']],
-            'max_nlo': [info['max_nlo_orders'][o] for o in ['QCD', 'QED']]})
+            'max_nlo': [info['max_nlo_orders'][o] for o in ['QCD', 'QED']],
+            'extra_born': []})
 
     def test_same_as_orders_inc(self):
         """write_orders_file writes the same combinations."""
