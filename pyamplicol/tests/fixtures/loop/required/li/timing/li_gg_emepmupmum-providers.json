@@ -1,0 +1,794 @@
+{
+ "kind": "providers",
+ "process": "li_gg_emepmupmum",
+ "cpu": 139,
+ "host": "itphlies",
+ "points": 16,
+ "timing_scope": "single pinned core; point 1 once untimed, then points 2..n, 1 timed one by one with the driver's own timer; OpenLoops and Recola on core 139, MadLoop (with its stage split and one-helicity column) on core 140, concurrently",
+ "providers": {
+  "openloops": {
+   "provider": "openloops",
+   "mode": "production: truepoles 0 (Collier cache, I-operator poles, default stability)",
+   "version": "OpenLoops 2.1.5",
+   "library": {
+    "name": "ppllll2",
+    "loops": "ls",
+    "git_revision": "4d20a80d",
+    "process_api_version": "2",
+    "date": "2025-11-18-22-12-48",
+    "hash": "138d020b919289490d6eabf3fe4308d9"
+   },
+   "commands": [
+    "int truepoles 0",
+    "int polenorm 0",
+    "int ct_on 1",
+    "int r2_on 1",
+    "int iop_on 0",
+    "int nf 6",
+    "int nq_nondecoupled 5",
+    "int ew_scheme 1",
+    "int ew_renorm_scheme 1",
+    "int complex_mass_scheme 0",
+    "double gmu 0.0000116639",
+    "double mass(23) 91.188",
+    "double width(23) 2.441404",
+    "double mass(24) 80.4190024457561601055171371731",
+    "double width(24) 2.0476",
+    "double mass(25) 125",
+    "double width(25) 0.00638233934",
+    "double mass(6) 173",
+    "double width(6) 0",
+    "double mass(5) 0",
+    "double width(5) 0",
+    "double mass(4) 0",
+    "double mass(15) 0",
+    "double mass(13) 0",
+    "double mass(11) 0",
+    "double alpha_s 0.118",
+    "register 12 21 21 -> -11 11 -13 13"
+   ],
+   "install_path": "OpenLoopsPath = the OpenLoops tree",
+   "points": 16,
+   "mean_seconds_per_point": 0.0067004474375,
+   "median_seconds_per_point": 0.0066417005,
+   "min_seconds_per_point": 0.006537445,
+   "max_seconds_per_point": 0.007510759,
+   "rows": [
+    {
+     "born": 0.0,
+     "finite": 2.139279780506377e-17,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 6.661338147750939e-16,
+     "seconds": 0.006641696
+    },
+    {
+     "born": 0.0,
+     "finite": 7.437774650718751e-17,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 1.84297022087776e-14,
+     "seconds": 0.007510759
+    },
+    {
+     "born": 0.0,
+     "finite": 2.241513371983559e-17,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 2.55351295663786e-14,
+     "seconds": 0.006785206
+    },
+    {
+     "born": 0.0,
+     "finite": 1.652734215009004e-14,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 4.218847493575595e-15,
+     "seconds": 0.006613805
+    },
+    {
+     "born": 0.0,
+     "finite": 7.200701016074534e-16,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 5.839773109528323e-14,
+     "seconds": 0.006597605
+    },
+    {
+     "born": 0.0,
+     "finite": 5.745721299352714e-17,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 4.085620730620576e-14,
+     "seconds": 0.006537445
+    },
+    {
+     "born": 0.0,
+     "finite": 2.0381974911690128e-16,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 2.6645352591003757e-15,
+     "seconds": 0.006588355
+    },
+    {
+     "born": 0.0,
+     "finite": 1.3929403137425647e-16,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 8.393286066166183e-14,
+     "seconds": 0.006546235
+    },
+    {
+     "born": 0.0,
+     "finite": 1.2881968145143575e-16,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 1.3322676295501878e-15,
+     "seconds": 0.006657666
+    },
+    {
+     "born": 0.0,
+     "finite": 1.15181210526195e-16,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 8.659739592076221e-15,
+     "seconds": 0.006591425
+    },
+    {
+     "born": 0.0,
+     "finite": 2.076584007647578e-15,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 5.10702591327572e-14,
+     "seconds": 0.006670165
+    },
+    {
+     "born": 0.0,
+     "finite": 4.540983272229707e-16,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 3.9968028886505635e-14,
+     "seconds": 0.006715956
+    },
+    {
+     "born": 0.0,
+     "finite": 1.3369326544664485e-14,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 5.645706124823846e-12,
+     "seconds": 0.006641705
+    },
+    {
+     "born": 0.0,
+     "finite": 1.5489366620113265e-16,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 1.5187850976872141e-13,
+     "seconds": 0.006776815
+    },
+    {
+     "born": 0.0,
+     "finite": 9.401884426242828e-17,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 4.953815135877448e-13,
+     "seconds": 0.006736686
+    },
+    {
+     "born": 0.0,
+     "finite": 1.7271432656166599e-16,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 3.581579477440755e-13,
+     "seconds": 0.006595635
+    }
+   ],
+   "setup": {
+    "start_seconds": 2.4701e-05,
+    "initial_call_seconds": 0.032272994
+   },
+   "process_wall_seconds": 0.35317417001351714,
+   "harness_wall_seconds": 1.2643842238467187
+  },
+  "recola": {
+   "provider": "recola",
+   "mode": "production: compute_ir_poles 0, Collier global cache on (below 7 legs)",
+   "version": "Recola2 (tree recola2-2.3.0) / libcollier.so 1.2.8 / libmodelfile.so 2.2.3 / librecola.so 2.2.5",
+   "collier_cache": {
+    "on": true,
+    "collier": "1.2.8",
+    "reason": "below 7 legs"
+   },
+   "libraries": {
+    "libcollier.so": "sources/COLLIER-1.2.8/libcollier.so",
+    "libmodelfile.so": "models/SM_2.2.3/libmodelfile.so",
+    "librecola.so": "sources/recola2-2.3.0/librecola.so"
+   },
+   "commands": [
+    "mass W 80.4190024457561601055171371731 2.0476",
+    "mass Z 91.188 2.441404",
+    "mass H 125 0.00638233934",
+    "mass top 173 0",
+    "mass bottom 0 0",
+    "mass charm 0 0",
+    "mass strange 0 0",
+    "mass up 0 0",
+    "mass down 0 0",
+    "mass tau 0 0",
+    "mass muon 0 0",
+    "mass electron 0 0",
+    "alpha0 0.00754677111397888413442308708219",
+    "onshell",
+    "alphas 0.118 1000 5",
+    "legs 6",
+    "loop_induced",
+    "loop_gs 2",
+    "pow_nlo 2",
+    "process g g -> e+ e- mu+ mu-",
+    "irpoles 0",
+    "generate"
+   ],
+   "finite_convention": "Recola (Gamma(1+eps)); MadLoop's adds pi^2/6 D",
+   "points": 16,
+   "mean_seconds_per_point": 0.0037910508125000002,
+   "median_seconds_per_point": 0.003703114,
+   "min_seconds_per_point": 0.003634154,
+   "max_seconds_per_point": 0.004370327,
+   "rows": [
+    {
+     "born": 0.0,
+     "finite": 2.1399286448009935e-17,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.003903945,
+     "raw": {
+      "born": 0.0,
+      "finite": 2.1399286448009935e-17,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 7.444017446289715e-17,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.004370327,
+     "raw": {
+      "born": 0.0,
+      "finite": 7.444017446289715e-17,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 2.2422657490195228e-17,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.004121226,
+     "raw": {
+      "born": 0.0,
+      "finite": 2.2422657490195228e-17,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 1.65252446448985e-14,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.003746454,
+     "raw": {
+      "born": 0.0,
+      "finite": 1.65252446448985e-14,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 7.197639684791604e-16,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.003672764,
+     "raw": {
+      "born": 0.0,
+      "finite": 7.197639684791604e-16,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 5.751544711029205e-17,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.003700654,
+     "raw": {
+      "born": 0.0,
+      "finite": 5.751544711029205e-17,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 2.0364901954247122e-16,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.003634154,
+     "raw": {
+      "born": 0.0,
+      "finite": 2.0364901954247122e-16,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 1.3917658377095266e-16,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.003685645,
+     "raw": {
+      "born": 0.0,
+      "finite": 1.3917658377095266e-16,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 1.2871219180810373e-16,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.003659204,
+     "raw": {
+      "born": 0.0,
+      "finite": 1.2871219180810373e-16,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 1.1513637192897995e-16,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.003703774,
+     "raw": {
+      "born": 0.0,
+      "finite": 1.1513637192897995e-16,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 2.075259076913902e-15,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.003689894,
+     "raw": {
+      "born": 0.0,
+      "finite": 2.075259076913902e-15,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 4.540101593374938e-16,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.003723834,
+     "raw": {
+      "born": 0.0,
+      "finite": 4.540101593374938e-16,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 1.33659908847761e-14,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.003739505,
+     "raw": {
+      "born": 0.0,
+      "finite": 1.33659908847761e-14,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 1.547767291851281e-16,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.003697214,
+     "raw": {
+      "born": 0.0,
+      "finite": 1.547767291851281e-16,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 9.398305018448288e-17,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.003702454,
+     "raw": {
+      "born": 0.0,
+      "finite": 9.398305018448288e-17,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 1.7256974442404642e-16,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.003905765,
+     "raw": {
+      "born": 0.0,
+      "finite": 1.7256974442404642e-16,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    }
+   ],
+   "setup": {
+    "generation_seconds": 0.20941882,
+    "initial_call_seconds": 0.004694358
+   },
+   "process_wall_seconds": 0.2879347410053015,
+   "harness_wall_seconds": 0.5432632369920611
+  },
+  "madloop": {
+   "provider": "madloop",
+   "loop_induced": true,
+   "mode": "loop-induced, the export's card (warm-up past the initialisation), production: MLStabThres and the default stability test, MG5 production Fortran flags, COLLIERGlobalCache as in production (below 7 legs)",
+   "version": "MadLoop/MG5_aMC 3.7.0",
+   "export": "${LOOP_REFERENCE_ROOT}/runs/li/li_gg_emepmupmum/madloop-export",
+   "collier_cache": {
+    "on": true,
+    "collier": "1.2.9",
+    "reason": "below 7 legs"
+   },
+   "madloop_params": {
+    "MLReductionLib": "7|6|1",
+    "COLLIERGlobalCache": "-1",
+    "MLStabThres": "1.000000d-03",
+    "ImprovePSPoint": "2"
+   },
+   "fortran_flags": {
+    "GLOBAL_FLAG": "-O",
+    "ALOHA_FLAG": "",
+    "MATRIX_FLAG": ""
+   },
+   "qp_model_repairs": [
+    "added KIND=16 to 19 CMPLX calls in MP_ functions",
+    "replaced 6 TWOPII pi literals 3.14169258478796109557151794433593750E0_16 by 3.14159265358979323846264338327950288E0_16"
+   ],
+   "points": 16,
+   "mean_seconds_per_point": 0.033510171875,
+   "median_seconds_per_point": 0.033803844,
+   "min_seconds_per_point": 0.030663927,
+   "max_seconds_per_point": 0.034424601,
+   "rows": [
+    {
+     "born": 0.0,
+     "finite": 2.1392797805063892e-17,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 2.0266883884529147e-13,
+     "status": 217,
+     "seconds": 0.033585879,
+     "total_all_orders": [
+      0.0,
+      2.1392797805063892e-17,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 7.437774650718208e-17,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 7.656308408072331e-14,
+     "status": 217,
+     "seconds": 0.033716229,
+     "total_all_orders": [
+      0.0,
+      7.437774650718208e-17,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 2.2415133719834822e-17,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 2.4044123152403573e-13,
+     "status": 217,
+     "seconds": 0.033806239,
+     "total_all_orders": [
+      0.0,
+      2.2415133719834822e-17,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 1.6527342150086567e-14,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 1.3689152530566225e-13,
+     "status": 217,
+     "seconds": 0.033680219,
+     "total_all_orders": [
+      0.0,
+      1.6527342150086567e-14,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 7.200701016074584e-16,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 2.5388988429995883e-13,
+     "status": 217,
+     "seconds": 0.03393673,
+     "total_all_orders": [
+      0.0,
+      7.200701016074584e-16,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 5.74572129935189e-17,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 1.4396706205147828e-12,
+     "status": 217,
+     "seconds": 0.033884509,
+     "total_all_orders": [
+      0.0,
+      5.74572129935189e-17,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 2.038197491169093e-16,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 1.8976981586280484e-13,
+     "status": 217,
+     "seconds": 0.03407714,
+     "total_all_orders": [
+      0.0,
+      2.038197491169093e-16,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 1.3929403137429254e-16,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 1.5578086596605722e-11,
+     "status": 217,
+     "seconds": 0.034158801,
+     "total_all_orders": [
+      0.0,
+      1.3929403137429254e-16,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 1.288196814514349e-16,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 1.1424641093044164e-13,
+     "status": 217,
+     "seconds": 0.034424601,
+     "total_all_orders": [
+      0.0,
+      1.288196814514349e-16,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 1.1518121052617733e-16,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 4.5074112424840806e-13,
+     "status": 217,
+     "seconds": 0.03388202,
+     "total_all_orders": [
+      0.0,
+      1.1518121052617733e-16,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 2.076584007648289e-15,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 9.230039980848546e-12,
+     "status": 217,
+     "seconds": 0.031933732,
+     "total_all_orders": [
+      0.0,
+      2.076584007648289e-15,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 4.540983272230169e-16,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 5.8630595963709664e-15,
+     "status": 217,
+     "seconds": 0.033801449,
+     "total_all_orders": [
+      0.0,
+      4.540983272230169e-16,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 1.3369326544477864e-14,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 5.322686084088721e-10,
+     "status": 217,
+     "seconds": 0.033104996,
+     "total_all_orders": [
+      0.0,
+      1.3369326544477864e-14,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 1.5489366620116536e-16,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 1.871647755385308e-12,
+     "status": 217,
+     "seconds": 0.03383866,
+     "total_all_orders": [
+      0.0,
+      1.5489366620116536e-16,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 9.401884426226764e-17,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 2.548168148622816e-11,
+     "status": 217,
+     "seconds": 0.030663927,
+     "total_all_orders": [
+      0.0,
+      9.401884426226764e-17,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 1.7271432656161496e-16,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 8.745061817561729e-12,
+     "status": 217,
+     "seconds": 0.033667619,
+     "total_all_orders": [
+      0.0,
+      1.7271432656161496e-16,
+      0.0,
+      0.0
+     ]
+    }
+   ],
+   "setup": {
+    "split_order_indices": [
+     1,
+     1,
+     1
+    ],
+    "initial_call_seconds": 0.345616561,
+    "initialization_calls": 8
+   },
+   "process_wall_seconds": 0.8920063201803714,
+   "stages": {
+    "stages_seconds_per_point": {
+     "loop numerator coefficients": 0.028341980006250003,
+     "Born and counterterm HELAS": 0.0001649029873125,
+     "reduction and masters": 0.005183688806250001,
+     "colour flows and squaring": 5.105053418749999e-05
+    },
+    "residual_seconds_per_point": 3.951810350000251e-05,
+    "instrumented_seconds_per_point": 0.0337811404375,
+    "points": 16,
+    "calls_per_point": [
+     32.0,
+     32.0,
+     32.0,
+     64.0
+    ],
+    "method": "loop-induced: (stage totals of the points twice - once) / n, same warm-up"
+   },
+   "one_helicity": {
+    "mean_seconds_per_call": 0.0033537097695312498,
+    "median_seconds_per_call": 0.0030275615,
+    "min_seconds_per_call": 0.00270273,
+    "max_seconds_per_call": 0.006083083,
+    "calls": 256,
+    "helicities": 64,
+    "kept_helicities_per_point": [
+     16,
+     16,
+     16,
+     16,
+     16,
+     16,
+     16,
+     16,
+     16,
+     16,
+     16,
+     16,
+     16,
+     16,
+     16,
+     16
+    ],
+    "summed_mean_seconds_per_point_same_run": 0.037707631,
+    "madloop_params": {
+     "MLReductionLib": "7|6|1",
+     "COLLIERGlobalCache": "-1",
+     "MLStabThres": "1.000000d-03",
+     "ImprovePSPoint": "2"
+    },
+    "process_wall_seconds": 1.8495413509663194,
+    "method": "per point: the helicity-summed call, then each helicity alone (SLOOPMATRIXHEL_THRES, caches cleared per call); mean over the calls of the helicities MadLoop keeps (non-zero value)"
+   },
+   "harness_wall_seconds": 9.738908231956884
+  }
+ },
+ "madloop_cpu": 140
+}

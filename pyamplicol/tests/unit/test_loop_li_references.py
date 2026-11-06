@@ -89,8 +89,10 @@ def test_single_helicity_rows_sum_to_the_summed_value(name):
     # Q39: |A(h)|^2/avg (MadLoop's USERHEL value / HELAVGFACTOR) sums to the
     # helicity-summed value; a stale USERHEL would break the sum from point 2 on.
     data = _fixture(name)
-    if "madloop" not in data["providers"]:
-        pytest.skip(f"{name}: no MadLoop reference ({data['misses_45_min'].get('madloop')})")
+    if "madloop" not in data["providers"] or "madloop-helicities" in data["misses_45_min"]:
+        # No MadLoop reference, or its every-helicity run missed the 45-minute
+        # rule and the helicity-summed run is the reference (a 2->4 row).
+        pytest.skip(f"{name}: no MadLoop single-helicity rows ({data['misses_45_min']})")
     for row in data["rows"]:
         helicity = row.get("per_helicity")
         assert helicity, f"{name}: no single-helicity rows"
