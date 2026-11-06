@@ -279,6 +279,36 @@ def _typed_link_arguments(
     return result
 
 
+def _stripped_archive(archive: Path, destination: Path, target: str) -> Path:
+    """Copy the archive without debug info or LLVM bitcode.
+
+    The ``sdk`` profile compiles every crate without LTO bitcode, but the
+    precompiled Rust standard library carries bitcode and line tables. Neither
+    is used by a C, C++ or Fortran linker (the usual strip of a distributed
+    static library); symbols stay intact.
+    """
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if "apple-darwin" in target:
+        command = ["strip", "-S", "-o", str(destination), str(archive)]
+    else:
+        command = [
+            "strip",
+            "--strip-debug",
+            "--remove-section=.llvmbc",
+            "--remove-section=.llvmcmd",
+            "--enable-deterministic-archives",
+            "-o",
+            str(destination),
+            str(archive),
+        ]
+    completed = subprocess.run(command, check=False, capture_output=True, text=True)
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout).strip()
+        raise RuntimeError(f"stripping the Rusticol static archive failed: {detail}")
+    return destination
+
+
 def _scan_archive(path: Path) -> None:
     """Reject embedded host paths that would make the SDK non-relocatable.
 
@@ -608,6 +638,9 @@ def build_sdk(
         shared_libraries=(
             arithmetic_module.LINK_ORDER if arithmetic is not None else ()
         ),
+    )
+    archive = _stripped_archive(
+        archive, target_dir.parent / "sdk-archive" / archive.name, target
     )
     shipped = tuple(link.pop("shared", ()))
     shared_files = (

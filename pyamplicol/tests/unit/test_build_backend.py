@@ -321,9 +321,7 @@ def test_bootstrap_wheel_is_never_a_distribution_wheel(
 
 def test_shared_arithmetic_is_built_only_for_wheels() -> None:
     with pytest.raises(RuntimeError, match="only for wheels"):
-        backend._from_overlay(
-            lambda: None, with_sdk=False, shared_arithmetic=True
-        )
+        backend._from_overlay(lambda: None, with_sdk=False, shared_arithmetic=True)
 
 
 def test_candidate_and_non_linux_wheels_preserve_frontend_settings(
@@ -437,11 +435,14 @@ def test_release_bootstrap_wheel_uses_the_producer_platform(
         return "pyamplicol.whl"
 
     monkeypatch.setattr(backend, "_from_overlay", delegated)
-    assert backend.build_release_prepared_model_bootstrap_wheel(
-        "dist",
-        bootstrap_context="test",
-        config_settings={"frontend.setting": "preserved"},
-    ) == "pyamplicol.whl"
+    assert (
+        backend.build_release_prepared_model_bootstrap_wheel(
+            "dist",
+            bootstrap_context="test",
+            config_settings={"frontend.setting": "preserved"},
+        )
+        == "pyamplicol.whl"
+    )
     expected: dict[str, object] = {"frontend.setting": "preserved"}
     if platform_name == "linux":
         expected["maturin.build-args"] = ["--compatibility", "linux"]
@@ -1107,9 +1108,7 @@ def test_candidate_source_revision_ignores_untracked_copied_campaign_anywhere(
 
     tracked = checkout / "src/runtime.py"
     tracked.write_text("VALUE = 2\n", encoding="utf-8")
-    assert (
-        backend._clean_source_revision(allow_generated_report_outputs=True) is None
-    )
+    assert backend._clean_source_revision(allow_generated_report_outputs=True) is None
 
 
 def test_candidate_source_revision_rejects_incomplete_untracked_campaign(
@@ -1527,9 +1526,7 @@ def test_archive_overlay_without_git_history_uses_pruned_allowlist(
     source = tmp_path / "archive"
     retained = {
         Path("build_backend/backend.py"): "archive = True\n",
-        Path("src/pyamplicol/_profiling_campaign/pyAmpliCol.tex"): (
-            "maintained TeX\n"
-        ),
+        Path("src/pyamplicol/_profiling_campaign/pyAmpliCol.tex"): ("maintained TeX\n"),
         Path("release_assets/prepared_models/README.md"): "release store\n",
         Path("src/pyamplicol/_sdk/config.py"): "maintained SDK config\n",
         Path("src/rusticol_config/__init__.py"): "standalone SDK config\n",
@@ -1550,8 +1547,7 @@ def test_archive_overlay_without_git_history_uses_pruned_allowlist(
         Path("src/pyamplicol/_profiling_campaign/pyAmpliCol.synctex.gz"),
         Path("docs/performance_reports/macbook_M3/pyAmpliCol.toc"),
         Path(
-            "src/pyamplicol/_profiling_campaign/campaign_artifacts/"
-            "private-attempt.bin"
+            "src/pyamplicol/_profiling_campaign/campaign_artifacts/private-attempt.bin"
         ),
         Path("src/pyamplicol.egg-info/PKG-INFO"),
         Path("src/pyamplicol/_rusticol.abi3.so"),
@@ -1603,9 +1599,7 @@ def test_release_prepared_store_is_outside_native_build_identity(
 ) -> None:
     cargo = tmp_path / "Cargo.toml"
     cargo.write_text("[workspace]\n", encoding="utf-8")
-    (tmp_path / "pyproject.toml").write_bytes(
-        (ROOT / "pyproject.toml").read_bytes()
-    )
+    (tmp_path / "pyproject.toml").write_bytes((ROOT / "pyproject.toml").read_bytes())
     before = backend._native_build_inputs_digest(tmp_path)
     store = tmp_path / "release_assets" / "prepared_models"
     store.mkdir(parents=True)
@@ -1836,6 +1830,7 @@ def test_sdk_build_references_the_python_owned_safe_rust_wrapper(
         sdk, "_typed_link_arguments", lambda _tokens, _target, **_kwargs: link
     )
     monkeypatch.setattr(sdk, "_scan_archive", lambda _archive: None)
+    monkeypatch.setattr(sdk, "_stripped_archive", lambda archive, *_args: archive)
     monkeypatch.setattr(sdk, "_scan_archive_symbols", lambda _archive: None)
     monkeypatch.setattr(
         sdk, "_validate_archive_linkage", lambda *_args, **_kwargs: None
@@ -1877,9 +1872,9 @@ def test_sdk_build_references_the_python_owned_safe_rust_wrapper(
 
 
 def test_python_extension_rebuilds_and_refreshes_embedded_sdk() -> None:
-    build_script = (
-        ROOT / "rust/crates/rusticol-python/build.rs"
-    ).read_text(encoding="utf-8")
+    build_script = (ROOT / "rust/crates/rusticol-python/build.rs").read_text(
+        encoding="utf-8"
+    )
 
     assert "PYAMPLICOL_NATIVE_BUILD_INPUTS_SHA256" in build_script
     assert "remove_dir_all(&sdk_output)" in build_script
@@ -2282,6 +2277,7 @@ def test_sdk_with_the_shared_arithmetic_runtime_ships_and_links_it(
         sdk, "_native_tokens", lambda _stderr: ["-lmpc", "-lmpfr", "-lgmp", "-lc"]
     )
     monkeypatch.setattr(sdk, "_scan_archive", lambda _archive: None)
+    monkeypatch.setattr(sdk, "_stripped_archive", lambda archive, *_args: archive)
     monkeypatch.setattr(sdk, "_scan_archive_symbols", lambda _archive: None)
     monkeypatch.setattr(
         sdk,
@@ -2309,6 +2305,52 @@ def test_sdk_with_the_shared_arithmetic_runtime_ships_and_links_it(
         ("mpc", "mpfr", "gmp"), link["shared_libraries"], strict=True
     ):
         assert (staging / relative).read_bytes() == libraries[name].read_bytes()
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux")
+    or any(
+        shutil.which(tool) is None
+        for tool in ("cc", "ar", "strip", "readelf", "objcopy", "nm")
+    ),
+    reason="needs a GNU ELF toolchain",
+)
+def test_shipped_sdk_archive_drops_debug_info_and_bitcode(tmp_path: Path) -> None:
+    source = tmp_path / "member.c"
+    source.write_text("int rusticol_probe(void) { return 7; }\n", encoding="utf-8")
+    member = tmp_path / "member.o"
+    subprocess.run(["cc", "-g", "-c", str(source), "-o", str(member)], check=True)
+    subprocess.run(
+        [
+            "objcopy",
+            "--add-section",
+            f".llvmbc={source}",
+            str(member),
+        ],
+        check=True,
+    )
+    archive = tmp_path / "librusticol_capi.a"
+    subprocess.run(["ar", "rcs", str(archive), str(member)], check=True)
+
+    stripped = sdk._stripped_archive(
+        archive, tmp_path / "out" / archive.name, "x86_64-unknown-linux-gnu"
+    )
+
+    sections = subprocess.run(
+        ["readelf", "-S", "-W", str(stripped)],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert ".debug_info" not in sections and ".llvmbc" not in sections
+    symbols = subprocess.run(
+        ["nm", "--defined-only", str(stripped)],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert "rusticol_probe" in symbols
+    assert archive.read_bytes() != stripped.read_bytes()
 
 
 def test_static_archive_byte_scan_ignores_random_python_text(tmp_path: Path) -> None:

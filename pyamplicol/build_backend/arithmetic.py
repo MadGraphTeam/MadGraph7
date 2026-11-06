@@ -268,7 +268,13 @@ def build(
         _run(configure, cwd=tree, env=step_environment)
         _run(["make", f"-j{jobs}"], cwd=tree, env=step_environment)
         _run(["make", "check", f"-j{jobs}"], cwd=tree, env=step_environment)
-        _run(["make", "install"], cwd=tree, env=step_environment)
+        # install-strip drops the static symbol tables (dynamic symbols stay);
+        # macOS's strip has no shared-library-safe default, so plain install.
+        _run(
+            ["make", "install-strip" if linux else "install"],
+            cwd=tree,
+            env=step_environment,
+        )
         for archive in library.glob("*.la"):
             # Without libtool archives, dependants link -l<name> plainly and
             # libtool hardcodes no build-prefix run path into them.
