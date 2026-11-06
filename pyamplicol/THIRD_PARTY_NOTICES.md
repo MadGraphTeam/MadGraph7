@@ -61,9 +61,12 @@ Symbolica Python package, which remains subject to Symbolica's terms.
 
 The license files of every linked crates.io crate are reproduced under
 `licenses/rust/<crate>-<version>/`; a crate published without a license file
-has a `LICENSE-NOTE` there. GMP, MPFR and MPC are distributed under the GNU
-Lesser General Public License version 3 or later; their license texts are in
-`licenses/rust/gmp-mpfr-sys-1.7.1/`. The crates distributed under the Mozilla
+has a `LICENSE-NOTE` there; `tools/release/rust_licence_inventory.py` checks
+this against the crates linked on every release target. GMP, MPFR and MPC,
+and the Rust crates `rug` 1.30.0 and `gmp-mpfr-sys` 1.7.1 that wrap and build
+them, are distributed under the GNU Lesser General Public License version 3
+or later; their license texts are in `licenses/rust/gmp-mpfr-sys-1.7.1/` and
+`licenses/rust/rug-1.30.0/`. The crates distributed under the Mozilla
 Public License 2.0 (`colored`, `option-ext`, `smartstring`) are used
 unmodified; their sources are published on crates.io.
 
@@ -86,7 +89,8 @@ that identifier provisional, because the crate is a transcription of OneLOop
 by Andreas van Hameren (GPL-3.0-or-later) and the permission for its intended
 distribution or relicensing has not been recorded as granted.
 `licenses/oneloopmaster.txt` records the declaration, the OneLOop credits its
-README asks for, and the license texts.
+README asks for and the MIT text; the GPL version 3 text is in
+`licenses/GPL-3.0.txt`.
 
 ## GammaLoop Crates (FeynKit)
 

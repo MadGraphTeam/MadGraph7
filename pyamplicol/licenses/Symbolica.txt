@@ -1,6 +1,8 @@
-Symbolica Proprietary Terms And Redistribution Permission
+Symbolica Terms (Symbolica Source-Available License 1.0) And Redistribution
+Permission
 
-SPDX identifier: LicenseRef-Symbolica-Proprietary
+SPDX identifier: LicenseRef-Symbolica-Proprietary (pyAmpliCol's local
+identifier for Symbolica's proprietary, source-available terms)
 
 Upstream terms: the complete License.md of the linked Symbolica revision
 20a9da94071d7dd64ea5cdd6ed9d6e8f8cefeacc (symbolica-dev/symbolica community

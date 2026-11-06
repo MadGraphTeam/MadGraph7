@@ -12,8 +12,10 @@ crate's manifest at that revision:
   license field; GammaLoop's top-level license applies ("There are no usage
   restrictions for GammaLoop", reproduced in licenses/GammaLoop.txt).
 
-No crate directory contains its own license file; the revision's only license
-file is the top-level one. pyAmpliCol uses the crates declaring
+None of these linked crates has a license file of its own; for them the
+top-level license file applies (other crates of the revision, for example
+crates/linnet-py and tydenso, which pyAmpliCol does not link, carry their own).
+pyAmpliCol uses the crates declaring
 "MIT OR Apache-2.0" under the MIT License, whose text follows. linnet depends
 on the vendored dot-parser 0.5.1 (GPL-2.0-or-later), recorded in
 licenses/rust/dot-parser-0.5.1/.

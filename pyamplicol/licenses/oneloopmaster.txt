@@ -15,8 +15,7 @@ grant of rights to the original code.
 
 OneLOop (Copyright (C) 2015 Andreas van Hameren) is distributed under the GNU
 General Public License, version 3 or (at your option) any later version. The
-GPL version 3 text is reproduced in
-licenses/rust/gmp-mpfr-sys-1.7.1/gmp-6.3.0-c/COPYING.
+GPL version 3 text is reproduced in licenses/GPL-3.0.txt.
 
 The README asks users to credit the original work:
 
