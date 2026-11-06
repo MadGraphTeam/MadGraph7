@@ -161,6 +161,7 @@ _FORBIDDEN_STATIC_RUNTIME_MARKERS = (
 # Symbols that only a linked-in copy of the C arithmetic runtime defines
 # (GMP: __gmp*, MPFR: mpfr_* and __gmpfr*, MPC: mpc_*), and Malachite's crates.
 _STATIC_RUNTIME_SYMBOL_PREFIXES = ("mpfr_", "mpc_")
+_BINDING_CRATE = b"gmp_mpfr_sys"
 _STATIC_RUNTIME_SYMBOL_PARTS = ("__gmp", "malachite")
 _COMMON_SYSTEM_LIBRARIES = {"c", "dl", "m", "pthread", "resolv", "rt", "util"}
 _SYSTEM_LIBRARIES = {
@@ -1634,6 +1635,7 @@ int main(void) {{
 def _symbol_names(path: Path, *arguments: str) -> set[str] | None:
     """Return ``nm`` symbol names, or None if no ``nm`` reads the file."""
 
+    path = path.resolve()
     candidates: list[str] = []
     for candidate in (
         os.environ.get("LLVM_NM"),
@@ -1667,14 +1669,39 @@ def _runtime_symbol(name: str) -> bool:
     )
 
 
+def _marker_outside_symbol_names(
+    data: bytes, lowered: bytes, marker: bytes, names: set[bytes]
+) -> bool:
+    """Whether ``marker`` occurs other than inside one of the file's symbol names.
+
+    Symbol and section names are NUL-terminated strings; a name may be stored
+    as the tail of a longer string (``.text.<name>``, string-table suffix
+    sharing), so an occurrence is covered when a suffix of its string that
+    starts at or before it is a known name.
+    """
+
+    offset = 0
+    while (index := lowered.find(marker, offset)) >= 0:
+        offset = index + 1
+        start = data.rfind(b"\0", 0, index) + 1
+        end = data.find(b"\0", index)
+        end = len(data) if end < 0 else end
+        if not any(data[cut:end] in names for cut in range(start, index + 1)):
+            return True
+    return False
+
+
 def _scan_static_runtime_families(path: Path, description: str) -> None:
     """Reject a linked-in copy of GMP, MPFR, MPC or Malachite.
 
     Distribution wheels link GMP, MPFR and MPC (LGPL-3.0-or-later) as shared
     libraries a user can replace, so the extension and the C SDK archive may
     import their symbols but must contain no copy of them: no symbol of theirs
-    may be defined, and no runtime marker may remain once the names the file
-    imports (and nowhere defines) are taken out of its bytes.
+    may be defined, and no runtime marker may remain once the file's own
+    symbol names (imports, and the Rust binding crate ``gmp_mpfr_sys``'s
+    mangled names) are taken out of its bytes. A stripped binary keeps no
+    symbol of a linked-in copy, but its strings (assertion texts, source
+    paths) still match.
     """
 
     data = path.read_bytes()
@@ -1691,14 +1718,15 @@ def _scan_static_runtime_families(path: Path, description: str) -> None:
     undefined = _symbol_names(path, "-u") or set()
     if elf_shared_object:
         undefined |= _symbol_names(path, "-D", "-u") or set()
-    scanned = data
-    for name in sorted(undefined - defined, key=len, reverse=True):
-        scanned = scanned.replace(name.encode() + b"\0", b"\0")
-    lowered = scanned.lower()
+    names = {name.encode() for name in undefined | defined}
+    # The Rust FFI binding crate gmp_mpfr_sys (its object and symbol names)
+    # is linked like every Rust crate; its identifier is not the C runtime.
+    # Masked at equal length so that offsets into ``data`` stay valid.
+    lowered = data.lower().replace(_BINDING_CRATE, b"\0" * len(_BINDING_CRATE))
     found = [
         marker
         for marker in _FORBIDDEN_STATIC_RUNTIME_MARKERS
-        if marker.encode() in lowered
+        if _marker_outside_symbol_names(data, lowered, marker.encode(), names)
     ]
     if found:
         raise ArtifactError(

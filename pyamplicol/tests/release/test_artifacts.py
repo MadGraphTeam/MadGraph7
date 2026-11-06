@@ -1558,6 +1558,14 @@ def _compile(tmp_path: Path, name: str, source: str, *arguments: str) -> Path:
     return output
 
 
+def test_static_runtime_scan_ignores_the_rust_binding_crate_name(
+    tmp_path: Path,
+) -> None:
+    binary = tmp_path / "native-artifact"
+    binary.write_bytes(b"gmp_mpfr_sys-0123.gmp_mpfr_sys.4567-cgu.0.rcgu.o/\n")
+    _scan_static_runtime_families(binary, "test artifact")
+
+
 @pytest.mark.skipif(not _ELF_TOOLS, reason="needs an ELF C toolchain")
 def test_static_runtime_scan_accepts_imported_arithmetic_symbols(
     tmp_path: Path,
