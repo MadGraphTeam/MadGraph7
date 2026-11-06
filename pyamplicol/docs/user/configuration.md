@@ -183,17 +183,21 @@ the matrix element is the loop-squared |A_loop|^2) by `process.loop_induced`:
 | `"auto"` (default) | a request none of whose processes has a Born is served loop-induced; in a mixed request (`p p > z z`) the Born members are served and the Born-less ones (`g g > z z`) skipped with a typed `loop-induced` record |
 | `"skip"` | nothing loop-induced; a purely loop-induced request is refused (`loop-induced`) |
 | `"only"` | only the Born-less processes, loop-induced; the Born members are skipped (`born-in-loop-induced-mode`, refused for a request without a Born-less member) |
-| `"include"` | both kinds as separate contributions, never summed (not served yet: `loop-induced-include-pending`) |
+| `"include"` | both kinds of a mixed request as separate contributions, never summed (not served yet: `loop-induced-include-pending`; separate process entries already get both kinds in one plan under `"auto"`) |
 
 A loop-induced process takes the lowest loop-amplitude orders its loops reach
 (`coupling_order_policy = "minimal"`, by the model's coupling hierarchy; with
 `"explicit"` every order within `process.max_coupling_orders`), full colour only
 (`loop-induced-colour-accuracy`), and fixed widths in its tree propagators
 (the complex-mass scheme, when on, applies everywhere and keeps external states
-stable). A Born-less process that reaches no loop amplitude is refused, or
-skipped in a multiparticle request (`no-loop-amplitude`). The dry run lists the
-kind, the inferred loop orders and their loop x loop sectors; generation is
-refused (`loop-induced-engine-pending`) until the loop-induced engine lands.
+stable). A process every loop of which has a single coloured attachment
+(`h > g a`, `z > g a`: Tr T^a = 0) is an exact colour zero and served as
+such. A Born-less process that reaches no loop at all is refused, or skipped
+in a multiparticle request (`no-loop-amplitude`). The dry run lists the kind,
+the inferred loop orders and their loop x loop sectors, the loop orders that
+are exact colour zeros (`colour_zero_loop_orders`, `exact_colour_zero`);
+generation is refused (`loop-induced-engine-pending`) until the loop-induced
+engine lands.
 
 `flavor_scheme`, `max_quark_lines`, and coupling-order settings constrain that
 expansion. Coupling-order names come from the selected model: the generic
