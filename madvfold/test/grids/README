@@ -26,6 +26,12 @@ folding without/with MC@NLO-Delta, only what myLaunch.sh -o uses:
 - <Pdir>/GF<channel>: the grids of the GF channels used in the tests
   (res_1.dat, mint_grids, res_1, grid.MC_integer and results.dat)
 
+New grids can be created with madvfold/test/makeGrids.sh (step 14s), for
+one folding and by default for all GF channels, with one plain run of
+vfold/myLaunch.sh in mode C: it installs them both here and in the process
+directory (existing grids are renamed as .BAK<date>), with the LOG.txt of
+that run. The grids below that are older than step 14s were created by hand.
+
 epem_bbbxbx (eebbbb, channel GF11.0):
 - folding_8_4_1 and folding_1_1_1 come from vfold5363 (MG5 3.6.3), which
   took aS(MZ)=0.119 from the PDF set even with lpp=0

@@ -61,3 +61,11 @@ SubProcesses/P*/MadLoop5_resources/HelFilter.dat
 check_poles_input.txt
 test_MC_input.txt
 test_ME_input.txt
+
+# Ignore the run directories of every launch
+# (but keep the test references written by vfold/myStepTest.sh in Events/REF*)
+Events/run_*
+
+# Ignore the logs and the backup grids of madvfold/test/makeGrids.sh
+makeGrids_*.out
+vfold/test/grids/*.BAK*
