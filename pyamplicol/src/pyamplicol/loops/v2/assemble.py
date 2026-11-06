@@ -88,7 +88,7 @@ from pyamplicol.color.connections import (
 from pyamplicol.color.contraction_types import NC
 from pyamplicol.config import PoleSelection
 
-from . import ew_policy, generator_input
+from . import ew_policy, generator_input, induced
 from . import reference_executor as rx
 from .blocks import (
     TreeBlocks,
@@ -2053,6 +2053,15 @@ class LoopSlice:
     # point's (alpha(0) / alpha)^n scales every output
     # (``_PointEvaluation.average``), the conversion is a field insertion.
     external_photons: ew_policy.ExternalPhotons | None = None
+    # Loop-induced requests (``request.contribution``, M-LIT LIT-AMP): the
+    # amplitude basis T of the loop amplitude (``colour.AmplitudeBasis``:
+    # coefficient cells c_{c,t} and the full-colour metric), None for a
+    # Born-interfered slice; and the requested loop orders whose amplitude
+    # is an exact colour zero (every loop there has a single coloured
+    # attachment, ``COLOUR_ZERO_REJECTION``, and no counterterm ket; RULED
+    # Q13's one exact mechanism, ``induced``).
+    amplitude: Any = None
+    colour_zero_orders: frozenset[Orders] = frozenset()
     _cache: dict = field(default_factory=dict, repr=False)
 
     @property
@@ -2242,17 +2251,6 @@ class LoopSlice:
             raise ValueError(f"unknown colour accuracy {request.accuracy!r}")
         if request.counterterms not in ("recursion", "sites"):
             raise ValueError(f"unknown counterterm form {request.counterterms!r}")
-        if request.contribution == "loop-induced":
-            # m-lit LIT-REQ: routed and dry-run, not generated until the
-            # amplitude-mode engine lands (never a silent zero). LIT-AMP lifts
-            # this guard (it keeps ``with_ward_kernels`` on the loop-induced
-            # path: a coloured widthful tree propagator takes the full Ward
-            # kernels, Q7).
-            raise LoopRequestUnsupported(
-                "loop-induced-engine-pending",
-                f"{request.process!r} (loop orders "
-                f"{[dict(orders) for orders in request.exact_loop_orders]})",
-            )
         request = resolve_request(compiled, request)
         prepared, continuation, fixed, scale_parameter, alpha_s_parameter = (
             prepare_request_model(compiled, request)
@@ -2566,9 +2564,15 @@ class LoopSlice:
         _check_declared_loop_species(
             root_sites, _eligible_loop_species(loop_catalogue, selection, data)
         )
+        loop_species = _family_loop_species(families, data)
+        if not loop_species and request.contribution == "loop-induced":
+            # No admitted family (an exact colour zero at every requested
+            # loop order, checked below): the counterterm program's kernels
+            # still need the correction's loop species.
+            loop_species = _eligible_loop_species(loop_catalogue, selection, data)
         catalogue = build_loop_kernel_catalogue(
             compiled,
-            loop_species=_family_loop_species(families, data),
+            loop_species=loop_species,
             counterterm_entries=list({id(e): e for e in entries}.values()),
         )
         closure = SiteClosure(blocks, data, catalogue, conjugates)
@@ -2625,6 +2629,15 @@ class LoopSlice:
         )
         born_orders = blocks.born_orders
         sectors: dict[Orders, set[tuple[Orders, Orders]]] = defaultdict(set)
+        if request.contribution == "loop-induced":
+            if born_orders:
+                raise LoopRequestUnsupported(
+                    "born-in-loop-induced-mode",
+                    f"{request.process!r} has a Born amplitude at "
+                    f"{sorted(born_orders)} within its coupling-order limits",
+                )
+            # Loop x loop sectors (m-lit PLAN §1.3).
+            sectors.update(induced.loop_sectors(selection.loop_orders))
         for a in born_orders:
             for b in selection.loop_orders:
                 sectors[add_orders(a, b)].add((a, b))
@@ -2664,9 +2677,14 @@ class LoopSlice:
                 # The executor bounds a node's rank by its inputs' rank plus
                 # the largest degree of its edges.
                 max(
-                    node.rank_in + max(segment.q_degree for segment, _ in node.edges)
-                    for schedule in plan.schedules.values()
-                    for node in schedule.trie.nodes
+                    (
+                        node.rank_in
+                        + max(segment.q_degree for segment, _ in node.edges)
+                        for schedule in plan.schedules.values()
+                        for node in schedule.trie.nodes
+                    ),
+                    # A loop-induced exact colour zero has no family.
+                    default=0,
                 ),
             ),
             native=native,
@@ -2684,6 +2702,8 @@ class LoopSlice:
             slice_._refuse_inexact_flows(inclusive_born)
         if request.accuracy != "full" and prune:
             slice_._prune_colour()
+        if request.contribution == "loop-induced":
+            induced.bind(slice_, generation=generation)
         slice_._plan_contraction()
         slice_.scaleless = slice_._scaleless_companion()
         return slice_
@@ -3771,6 +3791,9 @@ class _PointEvaluation:
 
     def finish(self, retest: str | None) -> _PointEvaluation:
         """Dress (schedule B), reduce and assemble the complete virtual."""
+        if self.slice.amplitude is not None:
+            # Loop-induced: R1 amplitude seeds, |A|^2 (``induced``).
+            return induced.finish(self, retest)
         self._reduce(self.dress().numerators, retest)
         self._assemble()
         return self
@@ -4404,6 +4427,9 @@ class _PointEvaluation:
         }
 
     def _assemble(self) -> None:
+        if self.slice.amplitude is not None:
+            induced.assemble(self)
+            return
         slice_, numbers = self.slice, self.numbers
         width = 3 if self.poles else 1
         zero = numbers.real(0)
@@ -4538,6 +4564,8 @@ class _PointEvaluation:
         default 28 digits, which put a spurious 1e-28 relative floor under
         every double-double and arbitrary-precision rotation budget."""
 
+        if self.slice.amplitude is not None:
+            return induced.rotation_budget(self, rotated)
         zero = Laurent(*[self.numbers.zero] * (3 if self.poles else 1))
         with self.numbers.scope():
             lanes = {
