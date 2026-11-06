@@ -986,7 +986,10 @@ void LHEFileWriter::close() {
         return;
     }
     emit("</LesHouchesEvents>\n");
-    flush_compressed();
+    if (_compressor) {
+        start_compression();
+        write_compressed();
+    }
     _file_stream.close();
     if (!_file_stream) {
         throw std::runtime_error("Writing the LHE file failed");
@@ -1002,16 +1005,24 @@ void LHEFileWriter::emit(std::string_view text) {
     }
     _pending += text;
     if (_pending.size() >= compress_flush_bytes) {
-        flush_compressed();
+        start_compression();
     }
 }
 
-void LHEFileWriter::flush_compressed() {
-    if (_pending.empty()) {
+void LHEFileWriter::start_compression() {
+    write_compressed();
+    std::swap(_pending, _in_flight);
+    _pending.clear();
+    _compression = std::async(std::launch::async, [this] {
+        _compressed.clear();
+        _compressor->compress(_in_flight, _compressed);
+    });
+}
+
+void LHEFileWriter::write_compressed() {
+    if (!_compression.valid()) {
         return;
     }
-    _compressed.clear();
-    _compressor->compress(_pending, _compressed);
+    _compression.get();
     _file_stream.write(_compressed.data(), _compressed.size());
-    _pending.clear();
 }
