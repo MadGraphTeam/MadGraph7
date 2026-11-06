@@ -1515,6 +1515,18 @@
      "misses_45_min": {
       "madloop-summed": "45-minute rule: the helicity-summed MadLoop reference alone (no per-helicity rows, the points in 3 parallel blocks) did not finish within 2700 s either",
       "madloop": "45-minute rule: madloop did not finish within 2700 s"
+     },
+     "provider_timing_records": [
+      "required/li/timing/li_gg_zzzz-providers-madloop-opp.json",
+      "required/li/timing/li_gg_zzzz-providers.json"
+     ],
+     "provider_ms_per_point": {
+      "madloop": 19903.1962,
+      "recola": 5097.2582,
+      "madloop_6|7|1": 95790.1791
+     },
+     "provider_timing_misses": {
+      "madloop_one_helicity": "45-minute rule: the one-helicity column (324 helicities, each called alone with MadLoop's caches cleared, after each point's summed call) did not finish within 45 minutes, neither after the summed timing and stage split of one run (cut after 14 min of one-helicity calls) nor in a run of its own (summed timing, then 35 min of one-helicity calls; lit-ref-b time_1hel.sh, timeout 2700 s)"
      }
     }
    ]
