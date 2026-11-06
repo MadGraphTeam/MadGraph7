@@ -43,9 +43,14 @@ jobs:
           tests/unit/test_config_models.py
           tests/unit/test_config_resolution.py
           -q
-      - name: Check the CI memory watchdog
+      - name: Check the CI tools and the loop-test licence switch
         if: matrix.python-version == '3.11'
-        run: python -m pytest tests/unit/test_ci_memory_watchdog.py -q
+        run: >-
+          python -m pytest
+          tests/unit/test_ci_memory_watchdog.py
+          tests/unit/test_ci_pytest_files.py
+          tests/unit/test_conftest_licence_switch.py
+          -q
 
   source-contracts:
     name: Python 3.11 source and release contracts
@@ -138,16 +143,16 @@ jobs:
         # Keep native compiler/panic diagnostics visible even if Python aborts.
         run: >-
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
-          .venv/bin/python -m pytest
+          .venv/bin/python tools/ci/run_pytest_files.py
           tests/integration/test_multilanguage_api.py
           tests/integration/test_correlated_native_sdk.py
           tests/integration/test_otf_cache_native_sdk.py
           tests/integration/test_umami_api.py
-          -q -s
+          -- -s
       - name: Run focused Python unit checks (30 GiB RSS limit)
         run: |
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 -- \
-            .venv/bin/python -m pytest \
+            .venv/bin/python tools/ci/run_pytest_files.py \
             tests/unit/test_api_requests.py \
             tests/unit/test_api_bundle.py \
             tests/unit/test_umami_metadata.py \
@@ -184,25 +189,24 @@ jobs:
             tests/unit/test_model_loading.py \
             tests/unit/test_sdk_config.py \
             tests/unit/test_selftest_fixture.py \
-            tests/unit/test_symbolica_exact.py \
-            -q
+            tests/unit/test_symbolica_exact.py
       - name: Run eager prepared-model and runtime unit checks (30 GiB RSS limit)
         run: >-
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
-          .venv/bin/python -m pytest
+          .venv/bin/python tools/ci/run_pytest_files.py
           tests/unit/test_eager_*.py
           tests/unit/test_model_source_prepared_compile.py
           tests/unit/test_packaged_prepared_model*.py
           tests/unit/test_prepared_*.py
-          -q
       - name: Run focused generation and runtime integration (30 GiB RSS limit)
         # Collection of the ordinary integration batch initializes Symbolica.
-        # The restricted child must run first with an uninitialized parent.
+        # The restricted child must run first with an uninitialized parent;
+        # the others run one process per file, one at a time.
         run: |
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 -- \
             .venv/bin/python -m pytest tests/integration/test_spenso_restricted_mode.py -q
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 -- \
-            .venv/bin/python -m pytest \
+            .venv/bin/python tools/ci/run_pytest_files.py \
             tests/integration/test_schema_v3_generation_runtime.py \
             tests/integration/test_exact_precision_normalization.py \
             tests/integration/test_sm_heft_backends.py \
@@ -213,8 +217,7 @@ jobs:
             tests/integration/test_otf_cache.py \
             tests/integration/test_adjoint_fft_runtime.py \
             tests/integration/test_generalized_adjoint_fft_runtime.py \
-            tests/integration/test_recurrence_generation_runtime.py::test_ufo_sm_recurrence_refreshes_real_and_complex_derived_couplings \
-            -q
+            tests/integration/test_recurrence_generation_runtime.py::test_ufo_sm_recurrence_refreshes_real_and_complex_derived_couplings
       - name: Check Rust workspace (30 GiB RSS limit)
         run: >-
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
@@ -227,3 +230,334 @@ jobs:
         run: |
           .venv/bin/python -m pyamplicol self-test --json
           .venv/bin/python -m pytest tests/integration/test_examples.py -q
+
+  # Licensed loop jobs (M-LIT lit-ci, RULED Q32). The repository secret
+  # SYMBOLICA_LICENSE reaches only the steps that run Symbolica, through their
+  # own env:. Fork pull requests get no secret: the gate below then says so
+  # and the licensed jobs skip their build and test steps; on pushes,
+  # same-repository pull requests and dispatches an empty secret fails here.
+  licence:
+    name: Symbolica licence gate (loop jobs)
+    runs-on: ubuntu-24.04
+    outputs:
+      licensed: ${{ steps.licence.outputs.licensed }}
+    steps:
+      - name: Require the SYMBOLICA_LICENSE secret
+        id: licence
+        env:
+          SYMBOLICA_LICENSE: ${{ secrets.SYMBOLICA_LICENSE }}
+          FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: |
+          if [ "$FORK" = true ]; then
+            echo "::notice title=Licensed loop jobs skipped::fork pull request: GitHub passes it no SYMBOLICA_LICENSE secret, so the loop, loop-induced and tir jobs skip their build and test steps (they run on pushes, same-repository pull requests and workflow_dispatch)"
+            echo "licensed=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$SYMBOLICA_LICENSE" ]; then
+            echo "::error title=SYMBOLICA_LICENSE is empty::the repository secret SYMBOLICA_LICENSE is missing or empty on this $GITHUB_EVENT_NAME run; without it every loop test would be skipped"
+            exit 1
+          else
+            echo "licensed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  loop-runtime:
+    name: Loop runtime wheel (published dependencies)
+    needs: licence
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_INCREMENTAL: "0"
+      PYAMPLICOL_BUILD_MODE: release
+      PYTHONDONTWRITEBYTECODE: "1"
+      SYMBOLICA_HIDE_BANNER: "1"
+    steps:
+      - name: Skip without the licence
+        if: needs.licence.outputs.licensed != 'true'
+        run: |
+          echo "::notice::fork pull request without SYMBOLICA_LICENSE (licence gate): the loop runtime wheel is not built"
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            dependencies/release-lock.toml
+            dependencies/contributor-lock.toml
+            dependencies/python-runtime-lock.toml
+      - uses: dtolnay/rust-toolchain@46511b1c83438f0dd37c02d843619ece5a4abb5b # 1.97.1
+      - name: Cache Cargo downloads
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-cargo-1.97.1-${{ hashFiles('Cargo.lock', 'dependencies/contributor-lock.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-1.97.1-
+      - name: Build the published-dependency wheel once for the loop jobs (30 GiB RSS limit)
+        if: needs.licence.outputs.licensed == 'true'
+        run: >-
+          python tools/ci/memory_watchdog.py --limit-gib 30 --
+          python dependencies/install_dependencies.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: needs.licence.outputs.licensed == 'true'
+        with:
+          name: loop-runtime-wheel
+          path: .artifacts/development-release/pyamplicol-*.whl
+          if-no-files-found: error
+          retention-days: 1
+
+  # The loop Python default tier: every loop-marked test (LOOP_MARKERS) but
+  # loop_nightly, which tests/conftest.py skips without the licence, one
+  # process per test file (test_loop_v2_ct_closure.py one per test id),
+  # sharded by the wall times of tools/ci/loop_durations.json.
+  loop-shard:
+    name: Loop default tier (shard ${{ matrix.shard }})
+    needs: [licence, loop-runtime]
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    env:
+      PYAMPLICOL_BUILD_MODE: release
+      PYAMPLICOL_REQUIRE_SYMBOLICA_LICENSE: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+      SYMBOLICA_HIDE_BANNER: "1"
+      # The three patched loop UFOs are the shipped model assets.
+      PYAMPLICOL_NLO_UFO_REFERENCE: ${{ github.workspace }}/src/pyamplicol/assets/models/ufo/loop_sm
+      PYAMPLICOL_EW_UFO_REFERENCE: ${{ github.workspace }}/src/pyamplicol/assets/models/ufo/loop_qcd_qed_sm_Gmu
+      PYAMPLICOL_EW_NLO_UFO_REFERENCE: ${{ github.workspace }}/src/pyamplicol/assets/models/ufo/loop_qcd_qed_sm
+    steps:
+      - name: Skip without the licence
+        if: needs.licence.outputs.licensed != 'true'
+        run: |
+          echo "::notice title=Loop tests skipped::fork pull request without SYMBOLICA_LICENSE (licence gate): the loop default tier does not run"
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            dependencies/release-lock.toml
+            dependencies/contributor-lock.toml
+            dependencies/python-runtime-lock.toml
+      - uses: dtolnay/rust-toolchain@46511b1c83438f0dd37c02d843619ece5a4abb5b # 1.97.1
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        if: needs.licence.outputs.licensed == 'true'
+        with:
+          name: loop-runtime-wheel
+          path: .artifacts/loop-runtime
+      - name: Install the loop runtime wheel and the toolchains of the loop tests
+        if: needs.licence.outputs.licensed == 'true'
+        # mpmath: the arbitrary-precision oracles of tools/loop_reference.
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y g++ gfortran make
+          python dependencies/install_dependencies.py --wheel-directory .artifacts/loop-runtime
+          .venv/bin/python -m pip install "mpmath==1.3.0"
+      - name: Run the loop default tier (shard ${{ matrix.shard }}, 30 GiB RSS limit)
+        if: needs.licence.outputs.licensed == 'true'
+        env:
+          # One model cache for the shard's processes (atomic writes).
+          PYAMPLICOL_CACHE_DIR: ${{ runner.temp }}/pyamplicol-cache
+          SYMBOLICA_LICENSE: ${{ secrets.SYMBOLICA_LICENSE }}
+        run: >-
+          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
+          .venv/bin/python tools/ci/run_pytest_files.py tests
+          --marker "(loop_fast or loop_physics) and not loop_nightly"
+          --exclude "tests/unit/test_loop_v2_induced*.py"
+          --exclude "tests/unit/test_loop_v2_li_*.py"
+          --split tests/unit/test_loop_v2_ct_closure.py
+          @DESELECT@
+          --durations tools/ci/loop_durations.json
+          --shard ${{ matrix.shard }}/${{ strategy.job-total }}
+          --jobs 2 --require-each
+          --output "$RUNNER_TEMP/loop-units"
+          --record "$RUNNER_TEMP/loop-record-${{ matrix.shard }}.json"
+          -- -p no:cacheprovider
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: needs.licence.outputs.licensed == 'true'
+        with:
+          name: loop-record-${{ matrix.shard }}
+          path: ${{ runner.temp }}/loop-record-${{ matrix.shard }}.json
+          if-no-files-found: error
+          retention-days: 7
+
+  loop:
+    name: loop (licensed loop Python default tier)
+    needs: [licence, loop-shard]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Skip without the licence
+        if: needs.licence.outputs.licensed != 'true'
+        run: |
+          echo "::notice title=Loop tests skipped::fork pull request without SYMBOLICA_LICENSE (licence gate): no loop test ran"
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        if: needs.licence.outputs.licensed == 'true'
+        with:
+          pattern: loop-record-*
+          path: loop-records
+          merge-multiple: true
+      - name: Count the loop tests executed by all shards
+        if: needs.licence.outputs.licensed == 'true'
+        run: >-
+          python3 tools/ci/run_pytest_files.py --merge loop-records/*.json
+          --record loop-durations.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: needs.licence.outputs.licensed == 'true'
+        with:
+          name: loop-durations
+          path: loop-durations.json
+          if-no-files-found: error
+          retention-days: 30
+
+  # Loop-induced tests (M-LIT): the default tier of test_loop_v2_induced*.py
+  # and test_loop_v2_li_*.py; no such file before lit-req is a pass with a
+  # notice, a file without a selected test fails.
+  loop-induced:
+    name: loop-induced (licensed loop-induced default tier)
+    needs: [licence, loop-runtime]
+    runs-on: ubuntu-24.04
+    env:
+      PYAMPLICOL_BUILD_MODE: release
+      PYAMPLICOL_REQUIRE_SYMBOLICA_LICENSE: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+      SYMBOLICA_HIDE_BANNER: "1"
+      PYAMPLICOL_NLO_UFO_REFERENCE: ${{ github.workspace }}/src/pyamplicol/assets/models/ufo/loop_sm
+      PYAMPLICOL_EW_UFO_REFERENCE: ${{ github.workspace }}/src/pyamplicol/assets/models/ufo/loop_qcd_qed_sm_Gmu
+      PYAMPLICOL_EW_NLO_UFO_REFERENCE: ${{ github.workspace }}/src/pyamplicol/assets/models/ufo/loop_qcd_qed_sm
+    steps:
+      - name: Skip without the licence
+        if: needs.licence.outputs.licensed != 'true'
+        run: |
+          echo "::notice title=Loop-induced tests skipped::fork pull request without SYMBOLICA_LICENSE (licence gate): the loop-induced tests do not run"
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            dependencies/release-lock.toml
+            dependencies/contributor-lock.toml
+            dependencies/python-runtime-lock.toml
+      - uses: dtolnay/rust-toolchain@46511b1c83438f0dd37c02d843619ece5a4abb5b # 1.97.1
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        if: needs.licence.outputs.licensed == 'true'
+        with:
+          name: loop-runtime-wheel
+          path: .artifacts/loop-runtime
+      - name: Install the loop runtime wheel and the toolchains of the loop tests
+        if: needs.licence.outputs.licensed == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y g++ gfortran make
+          python dependencies/install_dependencies.py --wheel-directory .artifacts/loop-runtime
+          .venv/bin/python -m pip install "mpmath==1.3.0"
+      - name: Run the loop-induced default tier (30 GiB RSS limit)
+        if: needs.licence.outputs.licensed == 'true'
+        env:
+          # One model cache for the shard's processes (atomic writes).
+          PYAMPLICOL_CACHE_DIR: ${{ runner.temp }}/pyamplicol-cache
+          SYMBOLICA_LICENSE: ${{ secrets.SYMBOLICA_LICENSE }}
+        run: >-
+          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
+          .venv/bin/python tools/ci/run_pytest_files.py
+          "tests/unit/test_loop_v2_induced*.py"
+          "tests/unit/test_loop_v2_li_*.py"
+          --marker "(loop_fast or loop_physics) and not loop_nightly"
+          --jobs 2 --require-each
+          --allow-missing "no loop-induced test file yet (tests/unit/test_loop_v2_induced*.py, tests/unit/test_loop_v2_li_*.py): passes until lit-req (M-LIT) lands the first ones"
+          -- -p no:cacheprovider
+
+  # iregi-rust (TIRust) behind the `tir` cargo feature (M-LIT lit-dep). The
+  # job is switched off while TIR_FEATURES is empty: lit-dep sets it to the
+  # cargo feature list (e.g. <crate>/tir) and fits the runner to lit-tirust-0's
+  # d0.rs measurement. A declared `tir` feature with the job off fails.
+  tir:
+    name: tir (Rust workspace with --features tir)
+    needs: licence
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_INCREMENTAL: "0"
+      PYAMPLICOL_BUILD_MODE: release
+      PYTHONDONTWRITEBYTECODE: "1"
+      SYMBOLICA_HIDE_BANNER: "1"
+      TIR_FEATURES: ""
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Decide whether the tir checks run
+        id: tir
+        env:
+          LICENSED: ${{ needs.licence.outputs.licensed }}
+        run: |
+          declared=$(grep -rlE '^[[:space:]]*tir[[:space:]]*=' --include=Cargo.toml Cargo.toml rust || true)
+          if [ -z "$TIR_FEATURES" ]; then
+            if [ -n "$declared" ]; then
+              echo "::error title=tir job switched off::a tir cargo feature is declared ($declared) but TIR_FEATURES is empty in tests.yml"
+              exit 1
+            fi
+            echo "::notice title=tir job switched off::TIR_FEATURES is empty in tests.yml (no tir cargo feature yet); lit-dep (M-LIT) switches the job on"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          elif [ "$LICENSED" != true ]; then
+            echo "::notice title=tir checks skipped::fork pull request without SYMBOLICA_LICENSE (licence gate): the tir checks do not run"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        if: steps.tir.outputs.run == 'true'
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            dependencies/release-lock.toml
+            dependencies/contributor-lock.toml
+            dependencies/python-runtime-lock.toml
+      - uses: dtolnay/rust-toolchain@46511b1c83438f0dd37c02d843619ece5a4abb5b # 1.97.1
+        if: steps.tir.outputs.run == 'true'
+      - name: Cache Cargo downloads
+        if: steps.tir.outputs.run == 'true'
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-cargo-1.97.1-${{ hashFiles('Cargo.lock', 'dependencies/contributor-lock.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-1.97.1-
+      - name: Install the published Python dependencies and toolchains
+        if: steps.tir.outputs.run == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y g++ gfortran make
+          python dependencies/install_dependencies.py --dependencies-only
+      - name: Check the Rust workspace with the tir features (30 GiB RSS limit)
+        if: steps.tir.outputs.run == 'true'
+        run: |
+          .venv/bin/python tools/release/run_cargo.py --mode release -- fmt --all --check
+          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 -- \
+            .venv/bin/python tools/release/run_cargo.py --mode release -- \
+            clippy --workspace --all-targets --locked --features "$TIR_FEATURES"
+      - name: Test the Rust workspace with the tir features (30 GiB RSS limit)
+        if: steps.tir.outputs.run == 'true'
+        env:
+          SYMBOLICA_LICENSE: ${{ secrets.SYMBOLICA_LICENSE }}
+        run: >-
+          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
+          .venv/bin/python tools/release/run_cargo.py --mode release --
+          test --workspace --locked --features "$TIR_FEATURES" -- --test-threads=1
