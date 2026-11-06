@@ -895,12 +895,12 @@ def loop_induced_orders(
     request's bounds (``reachable``; ``assemble.reachable_loop_orders``).
 
     ``explicit``: every reachable order (``process.max_coupling_orders``
-    bounds the amplitude orders). ``minimal``: the reachable orders within
-    the envelope of the lowest ones by the model's coupling hierarchy (the
-    weighted degree sum(hierarchy * power)), as the tree policy's envelope
-    of its lowest closure totals (MG5_aMC guesses the squared WEIGHTED order
-    from the lowest loop diagram, ``loop_diagram_generation.py``). Squared
-    orders are the loop x loop pairs l + l'. A mapping for one order, else
+    bounds the amplitude orders). ``minimal``: the lowest reachable ones by
+    the model's coupling hierarchy, i.e. every reachable order of the least
+    weighted degree sum(hierarchy * power) (as MG5_aMC, which bounds the
+    WEIGHTED order by that of its lowest loop diagram,
+    ``loop_diagram_generation.py``). Squared orders are the loop x loop
+    pairs l + l'. A mapping for one order, else
     a sequence by degree; every mapping names ``names`` and every reached
     coupling (zero powers kept). Refused (``ValueError``) without a
     reachable order: the caller's ``no-loop-amplitude``."""
@@ -917,16 +917,7 @@ def loop_induced_orders(
 
     if str(policy) == "minimal":
         lowest = min(map(degree, found))
-        envelope: dict[str, int] = {}
-        for orders in found:
-            if degree(orders) == lowest:
-                for name, power in orders:
-                    envelope[name] = max(envelope.get(name, 0), power)
-        found = [
-            orders
-            for orders in found
-            if all(power <= envelope.get(name, 0) for name, power in orders)
-        ]
+        found = [orders for orders in found if degree(orders) == lowest]
     elif str(policy) != "explicit":
         raise ValueError(f"unknown coupling-order policy {policy!r}")
     keys = sorted({*map(str, names), *(name for orders in found for name, _ in orders)})

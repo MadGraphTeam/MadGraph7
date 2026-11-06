@@ -199,8 +199,8 @@ def test_loop_induced_key_in_every_configuration_surface(tmp_path):
 @pytest.mark.loop_fast
 def test_loop_induced_orders_minimal_and_explicit():
     """``loop_induced_orders``: ``explicit`` keeps every reachable order;
-    ``minimal`` the reachable orders within the envelope of the lowest ones
-    by the hierarchy (the tree policy's envelope rule); zero powers named."""
+    ``minimal`` every reachable order of the least weighted degree by the
+    hierarchy (MG5_aMC's WEIGHTED bound); zero powers named."""
 
     from pyamplicol.generation.loop_service import loop_induced_orders
 
@@ -214,13 +214,12 @@ def test_loop_induced_orders_minimal_and_explicit():
     weights = {"QCD": 1, "QED": 2}
     a = (("QCD", 2), ("QED", 1))  # degree 4
     b = (("QED", 2),)  # degree 4
-    c = (("QCD", 2), ("QED", 2))  # degree 6, within the envelope (2, 2)
-    d = (("QCD", 4), ("QED", 1))  # degree 6, outside it
+    c = (("QCD", 2), ("QED", 2))  # degree 6
+    d = (("QCD", 4), ("QED", 1))  # degree 6
     reached = [d, c, b, a]
     assert loop_induced_orders(reached, policy="minimal", hierarchy=weights) == (
         {"QCD": 2, "QED": 1},
         {"QCD": 0, "QED": 2},
-        {"QCD": 2, "QED": 2},
     )
     assert loop_induced_orders(reached, policy="explicit", hierarchy=weights) == (
         {"QCD": 2, "QED": 1},
