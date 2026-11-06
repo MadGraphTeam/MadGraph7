@@ -507,14 +507,15 @@ KERNELSPEC void kernel_fks_soft_limit(
     IIn<T, 2> pair_m,
     IIn<T, 2> pair_n,
     FIn<T, 2> pair_factor,
-    IIn<T, 1> coupling,
-    IIn<T, 2> born_index,
+    IIn<T, 2> coupling,
+    IIn<T, 3> born_index,
     FOut<T, 1> soft
 ) {
     constexpr double pi = 3.14159265358979323846;
     std::size_t c = single_index(index);
     std::size_t count = single_index(pair_count[c]);
-    bool qed = single_index(coupling[c]) == 1;
+    // the soft limit has the splitting of the Born only
+    bool qed = single_index(coupling[c][0]) == 1;
     FVal<T> g2 = 4. * pi * (qed ? FVal<T>(alpha) : FVal<T>(alpha_s));
     // the sum without the Born of the charge links
     FVal<T> charge_sum = 0.;
@@ -524,7 +525,7 @@ KERNELSPEC void kernel_fks_soft_limit(
         }
     }
     for (std::size_t o = 0; o < soft.size(); ++o) {
-        int b = born_index[c][o];
+        int b = born_index[c][0][o];
         if (b < 0 || count == 0) {
             soft[o] = 0.;
             continue;
@@ -546,13 +547,15 @@ KERNELSPEC void kernel_fks_soft_limit(
 
 // The collinear limit of xi^2 (1 - y) times the real matrix element of
 // sborncol_fsr and sborncol_isr (fks_singular.f) per NLO order from the
-// kernels of the coupling of the configuration (0 QCD, 1 QED):
-// 4 pi alpha iden_comp (AP B + Q (B / 2 - B_kperp)), with the Born B and
-// the Born B_kperp whose emitter has the polarization vector k_perp of the
-// order that born_index gives for each NLO order (none for -1) and alpha the
-// strong or the QED coupling. In MadFKS the Born that Q multiplies is the
-// helicity-flipped Born times a phase of the azimuth of the emission, which
-// is B / 2 - B_kperp. B_kperp enters only where Q is not zero.
+// kernels of the couplings of the splitting types of the configuration (0
+// QCD, 1 QED, -1 none; the second for the extra counterterm): the sum over
+// them of 4 pi alpha iden_comp (AP B + Q (B / 2 - B_kperp)), with the Born
+// B and the Born B_kperp whose emitter has the polarization vector k_perp
+// of the Born input that born_index gives for each NLO order (none for -1)
+// and alpha the strong or the QED coupling. In MadFKS the Born that Q
+// multiplies is the helicity-flipped Born times a phase of the azimuth of the
+// emission, which is B / 2 - B_kperp. B_kperp enters only where Q is not
+// zero.
 template <typename T>
 KERNELSPEC void kernel_fks_collinear_limit(
     FIn<T, 1> born,
@@ -562,30 +565,39 @@ KERNELSPEC void kernel_fks_collinear_limit(
     FIn<T, 0> alpha_s,
     FIn<T, 0> alpha,
     IIn<T, 0> index,
-    FIn<T, 1> factor,
-    IIn<T, 1> coupling,
-    IIn<T, 2> born_index,
+    FIn<T, 2> factor,
+    IIn<T, 2> coupling,
+    IIn<T, 3> born_index,
     FOut<T, 1> collinear
 ) {
     constexpr double pi = 3.14159265358979323846;
     std::size_t c = single_index(index);
-    FVal<T> f = factor[c];
-    std::size_t t = single_index(coupling[c]);
-    FVal<T> g2 = 4. * pi * (t == 1 ? FVal<T>(alpha) : FVal<T>(alpha_s));
-    FVal<T> kernel = ap[t], azimuthal = q[t];
     for (std::size_t o = 0; o < collinear.size(); ++o) {
-        int b = born_index[c][o];
-        if (b < 0 || f == 0.) {
-            // no collinear limit (a massive emitter) or no counterterm
-            collinear[o] = 0.;
+        collinear[o] = 0.;
+    }
+    for (std::size_t entry = 0; entry < 2; ++entry) {
+        int type = coupling[c][entry];
+        FVal<T> f = factor[c][entry];
+        if (type < 0) {
             continue;
         }
-        FVal<T> born_b = born[b];
-        FVal<T> value = kernel * born_b;
-        if (azimuthal != 0.) {
-            value = value + azimuthal * (0.5 * born_b - FVal<T>(spin_correlated[b]));
+        std::size_t t = static_cast<std::size_t>(type);
+        FVal<T> g2 = 4. * pi * (t == 1 ? FVal<T>(alpha) : FVal<T>(alpha_s));
+        FVal<T> kernel = ap[t], azimuthal = q[t];
+        for (std::size_t o = 0; o < collinear.size(); ++o) {
+            int b = born_index[c][entry][o];
+            if (b < 0 || f == 0.) {
+                // no collinear limit (a massive emitter) or no counterterm
+                continue;
+            }
+            FVal<T> born_b = born[b];
+            FVal<T> value = kernel * born_b;
+            if (azimuthal != 0.) {
+                value =
+                    value + azimuthal * (0.5 * born_b - FVal<T>(spin_correlated[b]));
+            }
+            collinear[o] = FVal<T>(collinear[o]) + g2 * f * value;
         }
-        collinear[o] = g2 * f * value;
     }
 }
 
@@ -633,10 +645,11 @@ fks_dis_shapes(std::size_t kind, FVal<T> x, FVal<T>& k_p, FVal<T>& k_l, FVal<T>&
 // The collinear remnants of an initial-state emitter of sreal_deg and
 // compute_collinear_counter_term / compute_soft_collinear_counter_term
 // (fks_singular.f) per NLO order, with the factorization scale of the beam
-// of the emitter and the kernels of the coupling of the configuration
-// (0 QCD with alpha_s, 1 QED with alpha): with g^2 = 4 pi alpha and
-// N = B iden_comp / (8 pi^2 z), the Born B of the order that born_index gives
-// for each NLO order (none for -1),
+// of the emitter, summed over the splitting types of the configuration (the
+// second for the extra counterterm) with the kernels of their couplings
+// (0 QCD with alpha_s, 1 QED with alpha, -1 none): with g^2 = 4 pi alpha and
+// N = B iden_comp / (8 pi^2 z), the Born input B that born_index gives for
+// each NLO order (none for -1),
 //   D_xi = N g^2 ((1 - z) P log(s delta_I / (2 mu_F^2)) - (1 - z) P'),
 //   D_lxi = 2 N g^2 (1 - z) P,   K_p,l,d = -N g^2 k_p,l,d (zero in MSbar),
 // with the color or charge factor ap_factor of P and P' and dis_factor of
@@ -665,11 +678,11 @@ KERNELSPEC void kernel_fks_collinear_remnants(
     IIn<T, 1> remnant,
     IIn<T, 1> beam,
     IIn<T, 1> kind,
-    IIn<T, 1> coupling,
-    IIn<T, 2> born_index,
-    FIn<T, 1> factor,
-    FIn<T, 1> ap_factor,
-    FIn<T, 1> dis_factor,
+    IIn<T, 2> coupling,
+    IIn<T, 3> born_index,
+    FIn<T, 2> factor,
+    FIn<T, 2> ap_factor,
+    FIn<T, 2> dis_factor,
     FIn<T, 1> delta,
     FIn<T, 1> options,
     FOut<T, 1> collinear,
@@ -689,11 +702,7 @@ KERNELSPEC void kernel_fks_collinear_remnants(
     FVal<T> mu_f =
         single_index(beam[c]) == 0 ? FVal<T>(fact_scale1) : FVal<T>(fact_scale2);
     FVal<T> d = delta[c];
-    FVal<T> g2 =
-        4. * pi * (single_index(coupling[c]) == 1 ? FVal<T>(alpha) : FVal<T>(alpha_s));
-    // N g^2 for z = 1 and a unit Born
-    FVal<T> norm = FVal<T>(factor[c]) * g2 / (8. * pi * pi);
-    FVal<T> color = ap_factor[c], dis_color = dis_factor[c];
+    FVal<T> norm, color, dis_color;
     // the remnants per unit Born
     auto pieces =
         [&](FVal<T> z,
@@ -724,26 +733,38 @@ KERNELSPEC void kernel_fks_collinear_remnants(
         );
     };
     FVal<T> x_c = xi_c, log_xi = log(x_c);
-    FVal<T> d_xi, d_lxi, k_p, k_l, k_d;
-    FVal<T> unit_c = 0., unit_sc = 0.;
-    if (FVal<T>(s_c) > 0.) {
-        pieces(1. - x_c, invariant_mass(p_c), d_xi, d_lxi, k_p, k_l, k_d);
-        unit_c = FVal<T>(f_dc) * (d_xi + k_p + (d_lxi + k_l) * log_xi);
-    }
-    if (FVal<T>(s_sc) > 0.) {
-        pieces(1., invariant_mass(p_sc), d_xi, d_lxi, k_p, k_l, k_d);
-        unit_sc = -FVal<T>(f_dsc[0]) * (d_xi + k_p + (d_lxi + k_l) * log_xi) -
-            FVal<T>(f_dsc[1]) * d_xi - FVal<T>(f_dsc[2]) * d_lxi +
-            FVal<T>(f_pdf[0]) * k_d + FVal<T>(f_pdf[1]) * k_p + FVal<T>(f_pdf[2]) * k_l;
-    }
-    for (std::size_t o = 0; o < collinear.size(); ++o) {
-        int b = born_index[c][o];
-        if (b < 0) {
+    for (std::size_t entry = 0; entry < 2; ++entry) {
+        int type = coupling[c][entry];
+        if (type < 0) {
             continue;
         }
-        FVal<T> born_b = born[b];
-        collinear[o] = unit_c * born_b;
-        soft_collinear[o] = unit_sc * born_b;
+        FVal<T> g2 = 4. * pi * (type == 1 ? FVal<T>(alpha) : FVal<T>(alpha_s));
+        // N g^2 for z = 1 and a unit Born
+        norm = FVal<T>(factor[c][entry]) * g2 / (8. * pi * pi);
+        color = ap_factor[c][entry];
+        dis_color = dis_factor[c][entry];
+        FVal<T> d_xi, d_lxi, k_p, k_l, k_d;
+        FVal<T> unit_c = 0., unit_sc = 0.;
+        if (FVal<T>(s_c) > 0.) {
+            pieces(1. - x_c, invariant_mass(p_c), d_xi, d_lxi, k_p, k_l, k_d);
+            unit_c = FVal<T>(f_dc) * (d_xi + k_p + (d_lxi + k_l) * log_xi);
+        }
+        if (FVal<T>(s_sc) > 0.) {
+            pieces(1., invariant_mass(p_sc), d_xi, d_lxi, k_p, k_l, k_d);
+            unit_sc = -FVal<T>(f_dsc[0]) * (d_xi + k_p + (d_lxi + k_l) * log_xi) -
+                FVal<T>(f_dsc[1]) * d_xi - FVal<T>(f_dsc[2]) * d_lxi +
+                FVal<T>(f_pdf[0]) * k_d + FVal<T>(f_pdf[1]) * k_p +
+                FVal<T>(f_pdf[2]) * k_l;
+        }
+        for (std::size_t o = 0; o < collinear.size(); ++o) {
+            int b = born_index[c][entry][o];
+            if (b < 0) {
+                continue;
+            }
+            FVal<T> born_b = born[b];
+            collinear[o] = FVal<T>(collinear[o]) + unit_c * born_b;
+            soft_collinear[o] = FVal<T>(soft_collinear[o]) + unit_sc * born_b;
+        }
     }
 }
 

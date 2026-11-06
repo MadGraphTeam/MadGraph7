@@ -22,8 +22,8 @@ from fks_testing import (
     FKS_DATA_IDS,
     alpha,
     at_nlo_orders,
+    born_inputs,
     evaluate,
-    per_born_order,
     reference,
 )
 from fks_testing import reference_born_mapping as born_mapping
@@ -54,16 +54,22 @@ def rows_and_arguments(data):
     couplings and the scales of the dump, with the renormalization scale at
     the Ellis-Sexton scale."""
     rows = [(c, p) for c, p in generated_points(data) if "soft_virtual" in p]
+    if len(data["fks_configurations"]["orders"]["born"]) > 1:
+        # the reference has color-correlated Borns per order only where i is
+        # a gluon (fortran_orders of make_fks_reference.py)
+        rows = [(c, p) for c, p in rows if c["pdg"][c["i_fks"] - 1] == 21]
     momenta = np.array(
         [np.delete(np.array(p["p_cnt"][SOFT]), c["i_fks"] - 1, axis=0) for c, p in rows]
     )
-    blocks = [p["born_blocks"] for _, p in rows]
+    # the Born orders only, without the extra counterterms
+    born, color, _ = born_inputs(data, rows, np.zeros((len(rows), 4)))
+    born = born[:, : color.shape[1]]
     scales = data["soft_virtual_scales"]
     batch = len(rows)
     return rows, [
         momenta,
-        per_born_order([b["born"] for b in blocks], data),
-        per_born_order([b["color_correlated"] for b in blocks], data),
+        born,
+        color,
         np.full(batch, data["born_blocks"]["alpha_s"]),
         np.full(batch, alpha(data)),
         np.full(batch, np.sqrt(scales["qes2"])),
@@ -93,8 +99,9 @@ def test_matches_bornsoftvirtual(path):
     scales = data["soft_virtual_scales"]
     log_mu_r = np.log(scales["mu_r2"] / scales["qes2"])
     log_mu_f = np.log(np.array(scales["mu_f2"]) / scales["qes2"])
-    # the Born of pyAmpliCol and the Fortran agree to 1e-12
-    np.testing.assert_allclose(args[1][:, 0], born, rtol=1e-11, atol=0)
+    # the Born of pyAmpliCol and the Fortran agree to 1e-12, summed over the
+    # Born orders
+    np.testing.assert_allclose(args[1].sum(1), born, rtol=1e-11, atol=0)
     tolerance = 1e-11 * np.abs(born)[:, None]
     assert (np.abs(value + ren * log_mu_r - bsv_o) <= tolerance).all()
     # wgtnstmp drops the logarithms of mu_R and of the factorization scale

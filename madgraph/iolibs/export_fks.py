@@ -122,6 +122,12 @@ def get_fks_configurations(fksborn, orders=None):
                 i - 1), the particles j with which it forms an FKS pair, all
                 1-based, FKS_J_FROM_I_D: the pairs whose sector functions
                 partition the phase space of the real process
+        extra_counterterms[]: the Borns of the extra counterterms
+            (born_cnt_<n>.f, n = position + 1), which configurations with a
+            second splitting type use for it (extra_cnt_index), for a pair of
+            a quark and its antiquark that comes from a gluon or a photon:
+            born_pdgs: PDG codes of the Born of the other mother, in the order
+                of the Born (cnt_pdg of extra_cnt_wrapper.f)
 
         orders (with the coupling orders of get_split_orders_info):
             split_orders: names of the split orders, as ordernames of
@@ -134,6 +140,9 @@ def get_fks_configurations(fksborn, orders=None):
             max_born, max_nlo: the maximal power of each split order at the
                 Born and at NLO, born_orders and nlo_orders of orders.inc
                 (1000 for no limit)
+            extra_born: for each extra counterterm, the coupling combinations
+                of its Born, in the order of its split-order contributions
+                (SQSPLITORDERS of born_cnt_<n>.f)
 
     The Born is the real process without i, with i + j at the position of j.
     A Born without FKS configurations ([LOonly]) has none, not the fake one
@@ -163,10 +172,14 @@ def get_fks_configurations(fksborn, orders=None):
             'real_tags': [bool(tag) for tag in real.particle_tags],
             'fks_j_from_i': fks_j_from_i,
         })
+    extra_cnt_me_list = getattr(fksborn, 'extra_cnt_me_list', [])
     data = {
         'nincoming': len([leg for leg in born_legs if not leg['state']]),
         'born_pdgs': [leg['id'] for leg in born_legs],
         'configurations': configurations,
+        'extra_counterterms': [
+            {'born_pdgs': [leg['id'] for leg in me['processes'][0]['legs']]}
+            for me in extra_cnt_me_list],
     }
     if orders is not None:
         names = orders['split_orders']
@@ -177,6 +190,9 @@ def get_fks_configurations(fksborn, orders=None):
             'nlo': [list(o) for o in orders['amp_split_orders'][born_count:]],
             'max_born': [orders['max_born_orders'].get(o, 1000) for o in names],
             'max_nlo': [orders['max_nlo_orders'].get(o, 1000) for o in names],
+            'extra_born': [
+                [list(o) for o in me.get_split_orders_mapping()[0]]
+                for me in extra_cnt_me_list],
         }
     return data
 

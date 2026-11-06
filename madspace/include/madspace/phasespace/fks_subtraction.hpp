@@ -50,7 +50,8 @@ namespace madspace {
  * @f$f_{dsc}@f$ and those of the PDF scheme of @ref FKSPrefactors. With
  * @f$N = g^2 r B / (8 \pi^2 z)@f$, the coupling @f$g^2@f$ of the splitting
  * type (see @ref FKSLimits), the identical-particle ratio @f$r@f$ and the Born
- * @f$B@f$ of the order of the counterterms,
+ * @f$B@f$ of the order of the counterterms, summed over both splitting types
+ * of a configuration with an extra counterterm (the second with its Born),
  * @f[
  *   D_\xi = N \Big[(1 - z) P(z) \log\frac{s \delta_I}{2 \mu_F^2} -
  *     (1 - z) P'(z)\Big], \qquad
@@ -111,8 +112,8 @@ namespace madspace {
  * - `matrix_element` – `float`, shape `(batch, o)` – the real matrix element
  *   at the event per NLO order, not used close to the limits (see `tiny`).
  * - `born`, `color_correlated`, `spin_correlated` – the Born and its
- *   color-correlated and spin-correlated versions per Born order, as for
- *   @ref FKSLimits.
+ *   color-correlated and spin-correlated versions per Born input (per Born
+ *   order for the color-correlated ones), as for @ref FKSLimits.
  * - `alpha_s` – `float`, shape `(batch,)` – the strong coupling.
  * - `alpha` – `float`, shape `(batch,)` – the QED coupling.
  * - `fact_scale1`, `fact_scale2` – `float`, shape `(batch,)` – the
@@ -218,9 +219,10 @@ private:
     FKSPrefactors _prefactors;
     std::vector<double> _symmetry;
     std::vector<me_int_t> _massless;
-    std::vector<me_int_t> _remnant, _beam, _kind, _coupling;
-    nested_vector2<me_int_t> _born_index;
-    std::vector<double> _ratio, _ap_factor, _dis_factor, _delta_i;
+    std::vector<me_int_t> _remnant, _beam, _kind;
+    nested_vector2<me_int_t> _coupling;
+    nested_vector2<double> _ratio, _ap_factor, _dis_factor;
+    std::vector<double> _delta_i;
     double _xi_s_cut, _delta_s, _tiny;
     PdfScheme _pdf_scheme;
 };

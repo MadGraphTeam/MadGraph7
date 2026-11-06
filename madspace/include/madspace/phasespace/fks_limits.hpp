@@ -196,9 +196,14 @@ private:
  * sets the coupling, @f$g^2 = 4 \pi \alpha_s@f$ for QCD and @f$4 \pi \alpha@f$
  * for QED, and the kernels. Its limits at an NLO order take the Born of the
  * order that FKSCouplingOrders::counterterm_order() maps to it and are zero
- * where it maps none. With the identical-particle ratio @f$r@f$ of the
- * configuration (FKSConfiguration::identical_particle_ratio()) and the Born
- * @f$B@f$ of that order,
+ * where it maps none. A configuration with an extra counterterm (a quark pair
+ * from a gluon or a photon, extra_cnt of MadFKS [4]) has the collinear limits
+ * of both splitting types, the second one with the Born of the extra
+ * counterterm (FKSConfiguration::born_pdgs() of the second type) of the order
+ * that FKSCouplingOrders::extra_counterterm_order() maps to the NLO order, and
+ * no soft limit. With the identical-particle ratio @f$r@f$ of the
+ * configuration and its Born (FKSConfiguration::identical_particle_ratio())
+ * and the Born @f$B@f$ of that order,
  * @f[
  *   \text{soft} = -2 r g^2 \sum_{(m, n)} w_{mn} \mathcal{E}_{mn} B_{mn},
  *   \qquad
@@ -223,8 +228,10 @@ private:
  * zero for a massive emitter.
  *
  * `batch` is the leading batch dimension, `n` the number of particles of the
- * real process, incoming included, `b` the number of Born orders and `o` that
- * of NLO orders.
+ * real process, incoming included, `b` the number of Born orders, `B` that of
+ * the Born inputs (FKSCouplingOrders::born_input_count(): the Born orders,
+ * then the orders of the Born of each extra counterterm) and `o` that of NLO
+ * orders.
  *
  * **Arguments**
  * - `soft_momenta` – `float`, shape `(batch, n, 4)` – momenta of the soft
@@ -236,12 +243,13 @@ private:
  * - `collinear_momenta`, `soft_collinear_momenta` – `float`, shape
  *   `(batch, n, 4)` – momenta of the collinear and soft-collinear
  *   counter-events, in any frame.
- * - `born` – `float`, shape `(batch, b)` – the Born @f$B@f$ per Born order.
+ * - `born` – `float`, shape `(batch, B)` – the Born @f$B@f$ per Born input,
+ *   those of the extra counterterms of other configurations unused.
  * - `color_correlated` – `float`, shape `(batch, b, n - 1, n - 1)` –
  *   @f$\langle T_m \cdot T_n \rangle B@f$ for the particles of the Born per
  *   Born order.
- * - `spin_correlated` – `float`, shape `(batch, b)` – @f$B_\perp@f$ per Born
- *   order, finite.
+ * - `spin_correlated` – `float`, shape `(batch, B)` – @f$B_\perp@f$ per Born
+ *   input, finite.
  * - `alpha_s` – `float`, shape `(batch,)` – the strong coupling.
  * - `alpha` – `float`, shape `(batch,)` – the QED coupling.
  * - `fks_index` – `int`, shape `(batch,)` – the configuration of the event,
@@ -273,8 +281,8 @@ public:
      * @param orders          The coupling orders of the Born and of the
      *                        real emission.
      * @throws std::invalid_argument for a splitting that is not one of QCD or
-     *         QED, an extra counterterm or coupling orders without the
-     *         splitting types.
+     *         QED, an extra counterterm that the coupling orders do not have
+     *         or coupling orders without the splitting types.
      */
     FKSLimits(
         const std::vector<FKSConfiguration>& configurations,
@@ -286,21 +294,35 @@ public:
     std::size_t particle_count() const { return _eikonals.particle_count(); }
     /// Number of Born orders.
     std::size_t born_order_count() const { return _born_order_count; }
+    /// Number of Born inputs, the Born orders and those of the extra
+    /// counterterms.
+    std::size_t born_input_count() const { return _born_input_count; }
     /// Number of NLO orders.
     std::size_t nlo_order_count() const { return _nlo_order_count; }
     /// Whether a configuration has a soft limit (i is a gluon or a photon).
     bool soft(std::size_t index) const { return _pair_count.at(index) > 0; }
     /// Whether a configuration has collinear limits (j is massless).
     bool collinear(std::size_t index) const {
-        return _collinear_factor.at(index) != 0.;
+        return _collinear_factor.at(index).at(0) != 0.;
     }
-    /// Whether the splitting of a configuration is one of QED, else QCD.
-    bool qed(std::size_t index) const { return _coupling.at(index) == 1; }
-    /// For each NLO order, the Born order of the counterterms of a
-    /// configuration, -1 for none.
-    const std::vector<me_int_t>& born_index(std::size_t index) const {
-        return _born_index.at(index);
+    /// Whether the (first) splitting of a configuration is one of QED, else
+    /// QCD.
+    bool qed(std::size_t index) const { return coupling(index) == 1; }
+    /// The coupling of a splitting type of a configuration (0 for the Born, 1
+    /// for the extra counterterm): 0 QCD, 1 QED, -1 for none.
+    int coupling(std::size_t index, std::size_t splitting = 0) const {
+        return static_cast<int>(_coupling.at(index).at(splitting));
     }
+    /// For each NLO order, the Born input of the counterterms of a splitting
+    /// type of a configuration (0 for the Born, a Born order, 1 for the extra
+    /// counterterm), -1 for none.
+    const std::vector<me_int_t>&
+    born_index(std::size_t index, std::size_t splitting = 0) const {
+        return _born_index.at(index).at(splitting);
+    }
+    /// born_index() of every configuration and both splitting types as a
+    /// constant of shape (configurations, 2, NLO orders) for the kernels.
+    Value born_index_table() const;
     /// The eikonal factors of the soft limits.
     const FKSEikonals& eikonals() const { return _eikonals; }
     /// The kernels of the collinear limits.
@@ -314,6 +336,7 @@ private:
     FKSEikonals _eikonals;
     FKSSplittingKernels _kernels;
     std::size_t _born_order_count;
+    std::size_t _born_input_count;
     std::size_t _nlo_order_count;
     std::vector<me_int_t> _fks_i;
     std::vector<me_int_t> _fks_j;
@@ -321,19 +344,19 @@ private:
     nested_vector2<me_int_t> _pair_m;
     nested_vector2<me_int_t> _pair_n;
     nested_vector2<double> _pair_factor;
-    std::vector<double> _collinear_factor;
-    std::vector<me_int_t> _coupling;
-    nested_vector2<me_int_t> _born_index;
+    nested_vector2<double> _collinear_factor;
+    nested_vector2<me_int_t> _coupling;
+    nested_vector3<me_int_t> _born_index;
 };
 
 /**
  * Check FKS configurations with QCD or QED splittings for the limits of the
  * real matrix element and the coupling orders they come with: those of
- * check_fks_configurations(), one splitting type per configuration (an extra
- * counterterm is not supported), whose particles i and j are colored for QCD
- * and photons or charged for QED, a splitting of i and j that gives a Born,
- * the coupling orders of check_fks_coupling_orders() with the splitting types
- * among their split orders.
+ * check_fks_configurations(), splitting types whose particles i and j are
+ * colored for QCD and photons or charged for QED, a splitting of i and j
+ * that gives a Born for each, an extra counterterm of the coupling orders for
+ * a quark i only, and the coupling orders of check_fks_coupling_orders() with
+ * the splitting types among their split orders.
  *
  * @param configurations  The configurations.
  * @param orders          The coupling orders.

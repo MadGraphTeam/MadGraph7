@@ -15,6 +15,7 @@ import os
 
 import numpy as np
 import pytest
+from fks_testing import extra_born_madfks_factor
 
 FILES = sorted(
     glob.glob(
@@ -216,80 +217,146 @@ def sbornsoft_pairs(conf):
 
 
 def test_born_blocks(data):
-    """The Born blocks of pyAmpliCol at the Born of every generated event: the
-    Born of MadFKS (sborn) of its only Born order, at the NLO order of each
-    splitting type of the configurations in amp_split_cnt and its QCD part,
-    color-correlated Borns B_mn = <T_m . T_n> B whose sum over n vanishes by
-    color conservation and which are the color-linked Borns of sborn_sf over
-    g^2 (twice those for m = n) where i is a gluon, the Born that the
-    charge-linked Borns of sborn_sf are eta_m Q_m eta_n Q_n e^2 times (half
-    that for m = n, eta = -1 for an incoming particle) where i is a photon,
-    and for a gluon or photon emitter the spin-correlated tensor S, transverse
-    to the emitter, with -g_mu,nu S^mu,nu = B, the sum over its physical
-    polarizations."""
+    """The Born blocks of pyAmpliCol at the Born of every generated event, per
+    Born order (whose sums the totals are): the Born of MadFKS (sborn), at the
+    NLO order of each splitting type of the configurations in amp_split_cnt
+    (MadFKS keeps the orders within nlo_orders and drops those below 1e-12 of
+    the largest) and the sum of these for QCD, color-correlated Borns
+    B_mn = <T_m . T_n> B whose sum over n vanishes by color conservation and
+    whose sums are the color-linked Borns of sborn_sf over g^2 (twice those
+    for m = n) where i is a gluon, Borns that the charge-linked Borns of
+    sborn_sf are eta_m Q_m eta_n Q_n e^2 times (half that for m = n, eta = -1
+    for an incoming particle) where i is a photon, and for a gluon or photon
+    emitter the spin-correlated tensor S, transverse to the emitter, with
+    -g_mu,nu S^mu,nu = B, the sum over its physical polarizations. The same
+    for the Born of an extra counterterm with its second splitting type
+    (extra_cnt_frame)."""
     g2, e2 = data["g"] ** 2, data["gal"] ** 2
     assert data["born_blocks"]["alpha_s"] == pytest.approx(g2 / (4 * np.pi), rel=1e-15)
-    born_pdgs = data["fks_configurations"]["born_pdgs"]
-    orders = data["fks_configurations"]["orders"]
-    assert len(orders["born"]) == 1
+    exported = data["fks_configurations"]
+    born_pdgs = exported["born_pdgs"]
+    orders = exported["orders"]
     names = orders["split_orders"]
     amp_split = data["split_orders"]["amp_split"]
-    types = {
-        t
-        for c in data["fks_configurations"]["configurations"]
-        for t in c["splitting_type"]
-    }
+    types = {t for c in exported["configurations"] for t in c["splitting_type"][:1]}
+
+    def shifted(order, name):
+        # the NLO order of the counterterms of a splitting type, None where
+        # they are beyond nlo_orders
+        order = list(order)
+        order[names.index(name)] += 2
+        return order if all(p <= m for p, m in zip(order, orders["max_nlo"])) else None
+
+    def check_orders(values, per_order, born_orders, name, factor=1.0):
+        # amp_split_cnt of a splitting type from the Borns of the orders
+        values = np.array(values)
+        expected = np.zeros(len(amp_split))
+        largest = factor * max(abs(b["born"]) for b in per_order)
+        for order, block in zip(born_orders, per_order):
+            target = shifted(order, name)
+            if target is not None and factor * abs(block["born"]) > 1e-12 * largest:
+                expected[amp_split.index(target)] += factor * block["born"]
+        np.testing.assert_allclose(values, expected, rtol=1e-11, atol=2e-12 * largest)
+
+    def check_tensor(block, p_j):
+        tensor = np.array(block["spin_correlated"])
+        np.testing.assert_allclose(tensor, tensor.T, rtol=0, atol=0)
+        scale = max(abs(block["born"]), np.abs(tensor).max())
+        assert abs(-np.trace(METRIC @ tensor) - block["born"]) <= 1e-12 * scale
+        np.testing.assert_allclose(tensor @ p_j, 0, atol=1e-12 * scale * p_j[0])
+
     count = 0
-    for conf in data["configs"]:
+    for conf, configuration in zip(data["configs"], exported["configurations"]):
         i_fks, j_fks = conf["i_fks"], conf["j_fks"]
         born_j = j_fks if j_fks < i_fks else j_fks - 1
+        extra = configuration.get("extra_cnt_index", -1)
         for point in conf["points"] + conf["limit_points"]:
             assert ("born" in point) == (point["jac"] > 0)
             if "born" not in point:
                 continue
             blocks = point["born_blocks"]
+            per_order = blocks.get("orders", [blocks])
+            assert len(per_order) == len(orders["born"])
             born = blocks["born"]
+            # the orders of a Born of several orders come from the Fortran
+            # (fortran_orders of make_fks_reference.py), their sums from
+            # pyAmpliCol
+            assert born == pytest.approx(sum(b["born"] for b in per_order), rel=1e-11)
+            if len(per_order) > 1 and conf["pdg"][i_fks - 1] == 21:
+                summed = np.sum([b["color_correlated"] for b in per_order], axis=0)
+                scale = np.abs(np.diag(summed)).max()
+                np.testing.assert_allclose(
+                    summed, blocks["color_correlated"], rtol=0, atol=1e-11 * scale
+                )
             # the Fortran in double precision, pyAmpliCol in double-double
+            qcd = sum(
+                b["born"]
+                for o, b in zip(orders["born"], per_order)
+                if shifted(o, "QCD") is not None
+            )
             assert point["born"] == (
-                pytest.approx(born, rel=1e-11) if "QCD" in types else 0.0
+                pytest.approx(qcd, rel=1e-11) if "QCD" in types else 0.0
             )
             for k, name in enumerate(["QCD", "QED"]):
-                born_orders = np.array(point["born_orders"][k])
-                if name not in types:
-                    np.testing.assert_array_equal(born_orders, 0.0)
+                if name not in names:
+                    np.testing.assert_array_equal(point["born_orders"][k], 0.0)
                     continue
-                order = list(orders["born"][0])
-                order[names.index(name)] += 2
-                position = amp_split.index(order)
-                assert born_orders[position] == pytest.approx(born, rel=1e-11)
-                assert (np.delete(born_orders, position) == 0.0).all()
+                check_orders(point["born_orders"][k], per_order, orders["born"], name)
+            p_j = np.array(point["p_born"][born_j - 1])
+            for block in per_order:
+                correlated = np.array(block["color_correlated"])
+                scale = max(np.abs(np.diag(correlated)).max(), abs(block["born"]))
+                np.testing.assert_allclose(correlated, correlated.T, rtol=0, atol=0)
+                np.testing.assert_allclose(correlated.sum(1), 0, atol=1e-13 * scale)
             correlated = np.array(blocks["color_correlated"])
             scale = np.abs(np.diag(correlated)).max()
-            np.testing.assert_allclose(correlated, correlated.T, rtol=0, atol=0)
-            np.testing.assert_allclose(correlated.sum(1), 0, atol=1e-13 * scale)
-            # color links where i is a gluon, charge links where it is a photon
+            # color links where i is a gluon, charge links where it is a photon,
+            # with the orders of the counterterms of its splitting type
             pdg_i = conf["pdg"][i_fks - 1]
             pairs = sbornsoft_pairs(conf) if pdg_i in (21, 22) else []
             assert len(point["color_links"]) == len(pairs)
+            kept = [
+                b
+                for o, b in zip(orders["born"], per_order)
+                if shifted(o, "QCD" if pdg_i == 21 else "QED") is not None
+            ]
             charges = np.array(conf["particle_charge"])
             charges[:2] *= -1
             for (m, n), link in zip(pairs, point["color_links"]):
                 if pdg_i == 21:
                     mb, nb = m - (m > i_fks), n - (n > i_fks)
-                    expected = correlated[mb - 1, nb - 1] * (0.5 if m == n else 1)
+                    linked = sum(b["color_correlated"][mb - 1][nb - 1] for b in kept)
+                    expected = linked * (0.5 if m == n else 1)
                     assert abs(link / g2 - expected) <= 1e-12 * scale
                 else:
-                    expected = charges[m - 1] * charges[n - 1] * born
+                    expected = (
+                        charges[m - 1] * charges[n - 1] * sum(b["born"] for b in kept)
+                    )
                     expected *= 0.5 if m == n else 1
                     assert link / e2 == pytest.approx(expected, rel=1e-11)
             vector = born_pdgs[born_j - 1] in (21, 22)
             assert ("spin_correlated" in blocks) == vector
             if vector:
-                tensor = np.array(blocks["spin_correlated"])
-                np.testing.assert_allclose(tensor, tensor.T, rtol=0, atol=0)
-                assert -np.trace(METRIC @ tensor) == pytest.approx(born, rel=1e-12)
-                p_j = np.array(point["p_born"][born_j - 1])
-                np.testing.assert_allclose(tensor @ p_j, 0, atol=1e-12 * born * p_j[0])
+                for block in per_order:
+                    check_tensor(block, p_j)
+            # the Born of the extra counterterm, with a gluon or photon emitter
+            assert ("extra" in blocks) == (extra >= 0)
+            if extra >= 0:
+                extra_orders = orders["extra_born"][extra]
+                assert len(blocks["extra"]) == len(extra_orders)
+                name = configuration["splitting_type"][1]
+                k = ["QCD", "QED"].index(name)
+                # MadFKS divides it by the identical-particle factor of the
+                # Born, which iden_comp compensates
+                check_orders(
+                    point["extra_born_orders"][k],
+                    blocks["extra"],
+                    extra_orders,
+                    name,
+                    extra_born_madfks_factor(data, extra),
+                )
+                for block in blocks["extra"]:
+                    check_tensor(block, p_j)
             count += 1
     assert count > 0
 

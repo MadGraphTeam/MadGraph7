@@ -204,9 +204,17 @@ def test_final_massless_matches_genps_fks(name, nfks, data, conf, points):
         p_ev[:, i_fks], p_ev[:, j_fks], sqrt_s
     )
     r_xi2, r_y2, _ = xi_y_sample_inverse(xi_hat2, y2)
-    np.testing.assert_allclose(
-        np.stack([r_xi2, r_y2, r_phi2], 1), r, rtol=0, atol=1e-12
+    # genps_fks.f builds the direction of j from a cosine close to 1 where i
+    # is soft (and that of i where j is soft), which resolves y to
+    # eps |k| (1 / |p_i| + 1 / |p_j|), k = p_i + p_j, and r_y to that over
+    # 4 r_y (as the conditioning of test_fks_radiation.py)
+    k = np.linalg.norm(p_ev[:, i_fks, 1:] + p_ev[:, j_fks, 1:], axis=1)
+    k = k / np.linalg.norm(p_ev[:, i_fks, 1:], axis=1) + k / np.linalg.norm(
+        p_ev[:, j_fks, 1:], axis=1
     )
+    tolerance = np.full((len(points), 3), 1e-12)
+    tolerance[:, 1] += 10 * EPS * k / (4 * r[:, 1])
+    assert (np.abs(np.stack([r_xi2, r_y2, r_phi2], 1) - r) <= tolerance).all()
     jb = j_fks if j_fks < i_fks else j_fks - 1
     np.testing.assert_allclose(
         p_jbar / sqrt_s[:, None], p_born[:, jb] / sqrt_s[:, None], atol=1e-14
@@ -448,7 +456,9 @@ def test_initial_matches_genps_fks(data, conf, points, prefix):
         )
         np.testing.assert_allclose(np.stack(x, 1)[valid], x_ref[valid], rtol=1e-13)
         fortran = jac_ref / flux_factor(shat_ref, nex)
-        ours = det_xi / width * det_fortran_units
+        # the range of xi is empty where the bound leaves none (not valid)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            ours = det_xi / width * det_fortran_units
         np.testing.assert_allclose(ours[valid], fortran[valid], rtol=1e-12)
 
 

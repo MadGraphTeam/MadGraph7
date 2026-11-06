@@ -150,6 +150,7 @@ def test_fks_configurations_of_the_exporter(path):
         ]
         assert config.masses == real_masses(born.external_masses(), exp)
         assert config.splitting_types == exp["splitting_type"]
+        assert config.extra_counterterm == exp.get("extra_cnt_index", -1)
         assert config.tags == exp.get("real_tags", [])
         assert config.qed_splitting() == (exp["splitting_type"][0] == "QED")
         assert config.particle_count() == len(exp["real_pdgs"])
@@ -165,12 +166,17 @@ def test_fks_configurations_of_the_exporter(path):
 def test_symmetry_factors_of_the_fortran(path):
     """The Born of each configuration is that of the exporter, and its
     symmetry factor and identical-particle ratio are fkssymmetryfactor and
-    iden_comp of setfksfactor (fks_singular.f) for the real emission."""
+    iden_comp of setfksfactor (fks_singular.f) for the real emission. With
+    the second splitting type the Born is that of the extra counterterm."""
     data = reference(path)
-    configurations = fks_configurations(born_mapping(data), data["fks_configurations"])
+    exported = data["fks_configurations"]
+    configurations = fks_configurations(born_mapping(data), exported)
     for config, conf in zip(configurations, data["configs"]):
-        assert config.born_pdgs() == data["fks_configurations"]["born_pdgs"]
+        assert config.born_pdgs() == exported["born_pdgs"]
         assert config.identical_particle_ratio() == conf["iden_comp"]
+        if config.extra_counterterm >= 0:
+            extra = exported["extra_counterterms"][config.extra_counterterm]
+            assert config.born_pdgs(1) == extra["born_pdgs"]
         factors = {
             p["fks_symmetry_factor"] for p in conf["points"] if "prefactors" in p
         }
@@ -186,7 +192,7 @@ def test_born_of_splittings():
     for a particle off an incoming one of the same flavor, the antiparticle of
     i off an incoming gluon or photon, and no Born for other pairs."""
 
-    def born(pdgs, i_fks, j_fks, splitting_types=("QCD",)):
+    def born(pdgs, i_fks, j_fks, splitting_types=("QCD",), splitting=0):
         colors = [
             8 if p == 21 else (1 if p in (22, 11, -11) else (3 if p > 0 else -3))
             for p in pdgs
@@ -203,7 +209,8 @@ def test_born_of_splittings():
             masses=[0.0] * n,
             fks_j_from_i=pairs,
             splitting_types=list(splitting_types),
-        ).born_pdgs()
+            extra_counterterm=0 if len(splitting_types) == 2 else -1,
+        ).born_pdgs(splitting)
 
     assert born([2, -2, 2, -2, 21], 4, 0) == [2, -2, 2, -2]
     assert born([2, -2, 21, 2, -2], 4, 3) == [2, -2, 21, 21]
@@ -215,9 +222,14 @@ def test_born_of_splittings():
     assert born([2, -2, 22, 11, -11], 4, 3, qed) == [2, -2, 22, 22]
     assert born([2, 22, 11, -11, 2], 4, 0, qed) == [22, 22, 11, -11]
     assert born([22, -2, 11, -11, -2], 4, 0, qed) == [2, -2, 11, -11]
-    # the first type sets the mother, the second is that of an extra
+    # the first type sets the mother, the second that of the Born of an extra
     # counterterm
-    assert born([2, -2, 21, 2, -2], 4, 3, ("QED", "QCD")) == [2, -2, 21, 22]
+    both = ("QED", "QCD")
+    assert born([2, -2, 21, 2, -2], 4, 3, both) == [2, -2, 21, 22]
+    assert born([2, -2, 21, 2, -2], 4, 3, both, 1) == [2, -2, 21, 21]
+    assert born([2, 2, 21, 22, 2], 4, 0, both, 1) == [21, 2, 21, 22]
+    with pytest.raises(ValueError, match="splitting type"):
+        born([2, -2, 21, 2, -2], 4, 3, ("QCD",), 1)
     for pdgs, i_fks, j_fks in [
         ([2, -2, 21, 2, 2], 4, 3),
         ([2, -2, 21, 21, 2], 4, 1),
@@ -290,3 +302,8 @@ def test_checks_of_the_configurations():
         ms.FKSEikonals([config(fks_j_from_i=[[], [], [], [], [0, 5]])])
     with pytest.raises(ValueError, match="FKS pairs"):
         ms.FKSEikonals([config(j_fks=2)])
+    # an extra counterterm with two splitting types and only then
+    with pytest.raises(ValueError, match="extra counterterm"):
+        ms.FKSEikonals([config(splitting_types=["QCD", "QED"])])
+    with pytest.raises(ValueError, match="extra counterterm"):
+        ms.FKSEikonals([config(extra_counterterm=0)])

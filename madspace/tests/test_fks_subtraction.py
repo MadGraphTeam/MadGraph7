@@ -20,7 +20,14 @@ limits at the event close to them.
 
 import numpy as np
 import pytest
-from fks_testing import FKS_DATA, FKS_DATA_IDS, at_nlo_orders, evaluate, reference
+from fks_testing import (
+    FKS_DATA,
+    FKS_DATA_IDS,
+    at_nlo_orders,
+    evaluate,
+    extra_born_offsets,
+    reference,
+)
 from fks_testing import reference_born_mapping as born_mapping
 from test_fks_limits import born_blocks, generated_points, soft_scale
 
@@ -87,16 +94,20 @@ ALPHA_S, ALPHA = 0.118, 1 / 128.0
 
 
 def born_blocks_of_any_born(data, batch):
-    """Born blocks of a Born with any colors, of its only Born order: one, the
-    color correlations of a reference point over its Born, a spin-correlated
-    Born that is not its average, alpha_s and alpha."""
+    """Born blocks of a Born with any colors, for every Born input (the Born
+    orders and those of the extra counterterms): one, the color correlations
+    of a reference point over its Born, a spin-correlated Born that is not
+    its average, alpha_s and alpha."""
     point = next(p for _, p in generated_points(data))
-    correlated = np.array(point["born_blocks"]["color_correlated"])
-    correlated /= point["born_blocks"]["born"]
+    blocks = point["born_blocks"]
+    first = blocks.get("orders", [blocks])[0]
+    correlated = np.array(first["color_correlated"]) / first["born"]
+    count = len(data["fks_configurations"]["orders"]["born"])
+    _, total = extra_born_offsets(data)
     return [
-        np.ones((batch, 1)),
-        np.broadcast_to(correlated, (batch, 1, *correlated.shape)).copy(),
-        np.full((batch, 1), 0.3),
+        np.ones((batch, total)),
+        np.broadcast_to(correlated, (batch, count, *correlated.shape)).copy(),
+        np.full((batch, total), 0.3),
         np.full(batch, ALPHA_S),
         np.full(batch, ALPHA),
     ]
@@ -106,84 +117,109 @@ def collinear_remnants(
     born, configurations, out, index, born_args, scales, f, s_c, s_sc, delta_i, dis, n_f
 ):
     """The collinear remnants of sreal_deg for the events of FKSKinematics,
-    in numpy: per unit det of the collinear and soft-collinear
-    counter-events, zero for a final-state or massive emitter, with the
-    color or charge factors of the splitting type (QCD or QED) and its
-    coupling, for one Born and one NLO order."""
+    in numpy, per NLO order: per unit det of the collinear and
+    soft-collinear counter-events, zero for a final-state or massive emitter,
+    summed over the splitting types of the configuration (the second with
+    the Born of the extra counterterm), each with its color or charge
+    factors, coupling, identical-particle ratio and Born input."""
     tr = 0.5
     fks = fks_configurations(born, configurations)
     limits = fks_limits(born, configurations)
     kernels = limits.splitting_kernels()
     count = len(fks)
     kind = np.array([kernels.splitting_kind(c) for c in range(count)])[index]
-    qed = np.array([limits.qed(c) for c in range(count)])[index]
-    # the color or charge factor of AP_reduced of the splitting type
-    color = np.array([kernels.factors(c)[int(limits.qed(c))] for c in range(count)])
-    color = color[index]
     remnant = np.array([c.initial_state() and c.masses[c.j_fks] == 0.0 for c in fks])
-    ratio = np.array([c.identical_particle_ratio() for c in fks])[index]
     beam = np.array([c.j_fks if c.initial_state() else 0 for c in fks])[index]
-    born_value, alpha_s, alpha_qed = born_args[0][:, 0], born_args[3], born_args[4]
-    coupling = np.where(qed, alpha_qed, alpha_s)
+    born_inputs, alpha_s, alpha_qed = born_args[0], born_args[3], born_args[4]
     mu_f = np.where(beam == 0, scales[0], scales[1])
     xi_c = out["collinear_xi"]
+    with_remnant = remnant[index]
+    collinear = np.zeros((len(index), limits.nlo_order_count()))
+    soft_collinear = np.zeros_like(collinear)
 
     def s_hat(momenta):
         p = momenta[:, 0] + momenta[:, 1]
         return p[:, 0] ** 2 - (p[:, 1:] ** 2).sum(1)
 
-    def pieces(z, s):
-        w = 1 - z
-        ap = np.choose(
-            kind,
+    for splitting in range(2):
+        types = np.array([limits.coupling(c, splitting) for c in range(count)])
+        active = (types >= 0)[index]
+        if not active.any():
+            continue
+        qed = types[index] == 1
+        # the color or charge factor of AP_reduced of the splitting type
+        color = np.array([kernels.factors(c)[max(types[c], 0)] for c in range(count)])[
+            index
+        ]
+        ratio = np.array(
             [
-                w * w / z + z + z * w * w,
-                (z * z + w * w) * w,
-                1 + z * z,
-                (1 + w * w) * w / z,
-            ],
+                c.identical_particle_ratio(splitting) if types[k] >= 0 else 0.0
+                for k, c in enumerate(fks)
+            ]
+        )[index]
+        coupling = np.where(qed, alpha_qed, alpha_s)
+        sources = np.array([limits.born_index(c, splitting) for c in range(count)])
+        sources = sources[index]
+        born_value = np.where(
+            sources >= 0,
+            np.take_along_axis(born_inputs, np.maximum(sources, 0), axis=1),
+            0.0,
         )
-        ap_prime = np.choose(kind, [0 * z, -2 * z * w * w, -w * w, -z * w])
-        n = born_value * ratio * 4 * np.pi * coupling / (8 * np.pi**2 * z) * color
-        d_xi = n * (ap * np.log(s * delta_i / (2 * mu_f**2)) - ap_prime)
-        d_lxi = 2 * n * ap
-        k = np.zeros((3, len(z)))
-        if dis:
-            lx = np.log(z)
-            pqg, pgq = z * z + w * w, 1 + z * z
-            regular = -pqg * lx + 8 * z * w - 1
-            plus = -1.5 - pgq * lx + w * (3 + 2 * z)
-            delta = 4.5 + np.pi**2 / 3
-            # the factors of xkplus, xklog and xkdelta: those of AP_reduced,
-            # with n_f T_R for g -> g g and the sign of q -> g/a q
-            factor = np.choose(kind, [-2 * n_f * tr + 0 * z, color, color, -color])
-            k_p = factor * np.choose(kind, [w * regular, w * regular, plus, plus])
-            k_l = factor * np.choose(kind, [w * pqg, w * pqg, pgq, pgq])
-            k_d = factor * np.choose(
-                kind, [0 * z, 0 * z, -delta + 0 * z, -delta + 0 * z]
-            )
-            k = -n / color * np.array([k_p, k_l, k_d])
-        return d_xi, d_lxi, k[0], k[1], k[2]
 
-    log_xi = np.log(xi_c)
-    d_xi, d_lxi, k_p, k_l, _ = pieces(1 - xi_c, s_hat(out["collinear_momenta"]))
-    collinear = f["f_dc"] * (d_xi + k_p + (d_lxi + k_l) * log_xi)
-    one = np.ones(len(index))
-    d_xi, d_lxi, k_p, k_l, k_d = pieces(one, s_hat(out["soft_collinear_momenta"]))
-    f_dsc, f_pdf = f["f_dsc"], f["f_pdf"]
-    soft_collinear = (
-        -f_dsc[:, 0] * (d_xi + k_p + (d_lxi + k_l) * log_xi)
-        - f_dsc[:, 1] * d_xi
-        - f_dsc[:, 2] * d_lxi
-        + f_pdf[:, 0] * k_d
-        + f_pdf[:, 1] * k_p
-        + f_pdf[:, 2] * k_l
-    )
-    with_remnant = remnant[index]
-    return (
-        np.where(with_remnant & (s_c > 0), collinear, 0.0)[:, None],
-        np.where(with_remnant & (s_sc > 0), soft_collinear, 0.0)[:, None],
-    )
+        def pieces(z, s):
+            w = 1 - z
+            ap = np.choose(
+                kind,
+                [
+                    w * w / z + z + z * w * w,
+                    (z * z + w * w) * w,
+                    1 + z * z,
+                    (1 + w * w) * w / z,
+                ],
+            )
+            ap_prime = np.choose(kind, [0 * z, -2 * z * w * w, -w * w, -z * w])
+            n = ratio * 4 * np.pi * coupling / (8 * np.pi**2 * z) * color
+            d_xi = n * (ap * np.log(s * delta_i / (2 * mu_f**2)) - ap_prime)
+            d_lxi = 2 * n * ap
+            k = np.zeros((3, len(z)))
+            if dis:
+                lx = np.log(z)
+                pqg, pgq = z * z + w * w, 1 + z * z
+                regular = -pqg * lx + 8 * z * w - 1
+                plus = -1.5 - pgq * lx + w * (3 + 2 * z)
+                delta = 4.5 + np.pi**2 / 3
+                # the factors of xkplus, xklog and xkdelta: those of
+                # AP_reduced, with n_f T_R for g -> g g (QCD only) and the
+                # sign of q -> g/a q
+                gluons = np.where(qed, 0.0, -2 * n_f * tr)
+                factor = np.choose(kind, [gluons + 0 * z, color, color, -color])
+                k_p = factor * np.choose(kind, [w * regular, w * regular, plus, plus])
+                k_l = factor * np.choose(kind, [w * pqg, w * pqg, pgq, pgq])
+                k_d = factor * np.choose(
+                    kind, [0 * z, 0 * z, -delta + 0 * z, -delta + 0 * z]
+                )
+                safe = np.where(color != 0, color, 1.0)
+                k = -n / safe * np.array([k_p, k_l, k_d])
+            return d_xi, d_lxi, k[0], k[1], k[2]
+
+        log_xi = np.log(xi_c)
+        d_xi, d_lxi, k_p, k_l, _ = pieces(1 - xi_c, s_hat(out["collinear_momenta"]))
+        unit_c = f["f_dc"] * (d_xi + k_p + (d_lxi + k_l) * log_xi)
+        one = np.ones(len(index))
+        d_xi, d_lxi, k_p, k_l, k_d = pieces(one, s_hat(out["soft_collinear_momenta"]))
+        f_dsc, f_pdf = f["f_dsc"], f["f_pdf"]
+        unit_sc = (
+            -f_dsc[:, 0] * (d_xi + k_p + (d_lxi + k_l) * log_xi)
+            - f_dsc[:, 1] * d_xi
+            - f_dsc[:, 2] * d_lxi
+            + f_pdf[:, 0] * k_d
+            + f_pdf[:, 1] * k_p
+            + f_pdf[:, 2] * k_l
+        )
+        on = active & with_remnant
+        collinear += np.where(on & (s_c > 0), unit_c, 0.0)[:, None] * born_value
+        soft_collinear += np.where(on & (s_sc > 0), unit_sc, 0.0)[:, None] * born_value
+    return collinear, soft_collinear
 
 
 def fact_scales(data, batch):
@@ -332,17 +368,22 @@ def test_matches_madfks(path):
     # j in the eikonal factors in the frame of genps_fks.f, which differs from
     # that of the event by O(xi). The terms of the soft limit cancel for
     # massive emitters. MadFKS's dot sets invariants below 1e-6 GeV^2 to zero,
-    # which drops a pair of i and a particle collinear to it from fks_Sij
-    # (S = 1 where it is 1 - 6e-9 at a photon i of u u~ > e- e+ a a).
+    # which drops the pairs of i and the particles collinear to it from
+    # fks_Sij and moves S by up to the ratio of their invariants with i to the
+    # smallest other one (S = 1 where it is 1 - 6e-9 at a photon i of
+    # u u~ > e- e+ a a, by 7e-5 at a soft photon i of a u > u a u~ off an
+    # incoming u).
     p = field("p_ev")
-    p_i = p[np.arange(len(rows)), [conf["i_fks"] - 1 for conf, _ in rows]]
+    i_index = [conf["i_fks"] - 1 for conf, _ in rows]
+    p_i = p[np.arange(len(rows)), i_index]
     invariants = np.abs(
         p_i[:, None, 0] * p[..., 0] - (p_i[:, None, 1:] * p[..., 1:]).sum(-1)
     )
-    invariants[invariants == 0.0] = np.inf
-    rounded = invariants.min(1) < 1e-6
+    invariants[np.arange(len(rows)), i_index] = np.inf
+    zeroed = np.where(invariants < 1e-6, invariants, 0.0).max(1)
+    kept = np.where(invariants >= 1e-6, invariants, np.inf).min(1)
     initial = np.array([conf["j_fks"] <= 2 for conf, _ in rows])
-    rtol = 1e-11 + np.where(switched, 1e-9 + initial * xi, 0) + rounded * 1e-8
+    rtol = 1e-11 + np.where(switched, 1e-9 + initial * xi, 0) + zeroed / kept
     rtol = rtol[:, None]
     # the soft contribution per unit soft limit, times the scale of the limit
     fx_s = sreal[:, 1]
@@ -364,6 +405,11 @@ MAPPING_PROCESSES = [
     "pp_epemj_P0_ug_uemep",
     "pp_epem_qed_P0_aa_emep",
     "pp_epema_qed_P0_uux_emepa",
+    # Borns of several orders, and extra counterterms off a final-state gluon
+    # and off an incoming quark
+    "uux_uux_mix_P0_uux_uux",
+    "pp_aj_mix_P0_gu_ua",
+    "pp_aj_mix_P0_uux_ag",
 ]
 
 
@@ -383,7 +429,8 @@ def test_on_mapping_events(name, pdf_scheme):
     subtraction = fks_subtraction(
         born, configurations, **parameters, pdf_scheme=pdf_scheme, n_f=4.0
     )
-    me = 1 / (out["xi"] ** 2 * (1 - out["y"]))[:, None]
+    orders = len(configurations["orders"]["nlo"])
+    me = np.repeat(1 / (out["xi"] ** 2 * (1 - out["y"]))[:, None], orders, axis=1)
     born_args = born_blocks_of_any_born(data, len(index))
     # factorization scales that differ between the beams
     scales = [np.full(len(index), 90.0), np.full(len(index), 140.0)]
@@ -473,9 +520,10 @@ def test_on_mapping_events(name, pdf_scheme):
             0.0,
         ),
     ]
-    # the remnants in another order of the operations
+    # the remnants in another order of the operations, whose terms (also the
+    # parts of the DIS scheme) cancel to a few 1e-13
     for ours, theirs, rtol in zip(
-        [real, soft, collinear, soft_collinear], expected, [1e-15, 1e-15, 1e-13, 1e-13]
+        [real, soft, collinear, soft_collinear], expected, [1e-15, 1e-15, 1e-12, 1e-12]
     ):
         assert np.isfinite(ours).all()
         np.testing.assert_allclose(ours, theirs, rtol=rtol, atol=0)
@@ -501,7 +549,8 @@ def test_limits_at_the_event(name):
     )[index]
     soft_switch = (omy >= TINY) & (xi < TINY) & (out["soft_det"] > 0)
     switched = (omy < TINY) | soft_switch
-    me = 1 / (xi**2 * omy)[:, None]
+    orders = len(configurations["orders"]["nlo"])
+    me = np.repeat(1 / (xi**2 * omy)[:, None], orders, axis=1)
     born_args = born_blocks_of_any_born(data, batch)
     kinematics = [y if key == "y" else out[key] for key in KINEMATICS]
     scales = [np.full(batch, 100.0)] * 2

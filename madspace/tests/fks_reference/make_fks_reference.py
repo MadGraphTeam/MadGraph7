@@ -90,7 +90,8 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
                and per position of amp_split: sreal_orders (amp_split after
                the four calls of sreal, zero where not generated),
                born_orders (amp_split_cnt for a QCD and for a QED
-               splitting), color_links_orders (amp_split_soft for each pair
+               splitting), extra_born_orders (the same for the Born of the
+               extra counterterm, zero without one), color_links_orders (amp_split_soft for each pair
                of color_links, which are the charge-linked Borns where i is
                a photon), collinear_remnants_orders (the six pieces of
                collinear_remnants per counter-event) and
@@ -156,6 +157,15 @@ PROCESSES = {
     "pp_epema_qed": ("p p > e+ e- a [QED]", ["P0_uux_emepa"]),
     # photon emission off massive charged particles
     "aa_ttx_qed": ("a a > t t~ [QED]", ["P0_aa_ttx"]),
+    # mixed QCD and QED corrections: a Born of three orders, and extra
+    # counterterms for a quark pair from a gluon or a photon, off a final-state
+    # gluon and off an incoming quark (a leptonic Born of these needs lepton
+    # PDFs, MadFKS has no initial-state emitter at fixed s_hat)
+    "uux_uux_mix": ("u u~ > u u~ QCD^2<=4 QED^2<=4 [QCD QED]", None),
+    "pp_aj_mix": (
+        "p p > a j QED^2<=4 QCD^2<=2 [QCD QED]",
+        ["P0_gu_ua", "P0_uux_ag"],
+    ),
 }
 # the model of the processes that need another one than MadGraph picks
 MODELS = {
@@ -163,6 +173,8 @@ MODELS = {
     "pp_epem_qed_dis": "loop_qcd_qed_sm",
     "pp_epema_qed": "loop_qcd_qed_sm",
     "aa_ttx_qed": "loop_qcd_qed_sm",
+    "uux_uux_mix": "loop_qcd_qed_sm",
+    "pp_aj_mix": "loop_qcd_qed_sm",
 }
 FKS_POWERS = {
     "pp_epemj_params": dict(xicut=0.3, xiScut=0.25, deltaO=0.8, deltaI=0.7, deltaS=0.6),
@@ -433,6 +445,8 @@ def parse(text):
             point["sreal_orders"] = per_order(floats(rest), data, 4)
         elif key == "BORNO":
             point["born_orders"] = per_order(floats(rest), data, 2)
+        elif key == "BORNXO":
+            point["extra_born_orders"] = per_order(floats(rest), data, 2)
         elif key == "BLINKO":
             point["color_links_orders"] = per_order(floats(rest), data)
         elif key == "DEGO":
@@ -494,14 +508,17 @@ def colored(pdg):
 VECTORS = (21, 22)
 
 
-def born_runtime(born_pdgs, nincoming, path, model=None):
-    """The pyAmpliCol runtime of the Born, with the color correlators of all
-    pairs of colored particles and the spin correlators of every gluon and
-    photon, in the built-in Standard Model or the given model source."""
+def born_runtime(born_pdgs, nincoming, path, model=None, color=True):
+    """The pyAmpliCol runtime of a Born, with the color correlators of all
+    pairs of colored particles (where color is set) and the spin correlators
+    of every gluon and photon, in the built-in Standard Model or the given
+    model source, with the coupling orders of the lowest order."""
     import pyamplicol as pa
     from pyamplicol.config import ColorConfig, RunConfig
 
     legs = [k + 1 for k, pdg in enumerate(born_pdgs) if colored(pdg)]
+    if not color:
+        legs = []
     if not os.path.isdir(path):
         process = " ".join(particle(pdg) for pdg in born_pdgs[:nincoming])
         process += " > " + " ".join(particle(pdg) for pdg in born_pdgs[nincoming:])
@@ -515,7 +532,14 @@ def born_runtime(born_pdgs, nincoming, path, model=None):
                 (k + 1,) for k, pdg in enumerate(born_pdgs) if pdg in VECTORS
             ),
         )
-        config = RunConfig(action="generate", color=ColorConfig(accuracy="full"))
+        # pyAmpliCol 1.0.1 has no full color for amplitudes without a QCD
+        # vertex, whose color factor is exact at its default accuracy where
+        # they have one quark line
+        quarks = sum(1 for pdg in born_pdgs if abs(pdg) <= 6)
+        color = ColorConfig(accuracy="full")
+        if not any(pdg == 21 for pdg in born_pdgs) and not legs and quarks <= 2:
+            color = ColorConfig()
+        config = RunConfig(action="generate", color=color)
         pa.Generator(config).generate(
             process,
             path,
@@ -526,6 +550,75 @@ def born_runtime(born_pdgs, nincoming, path, model=None):
     if tuple(runtime.external_permutation) != tuple(range(len(born_pdgs))):
         raise ValueError(f"pyAmpliCol reorders the particles of {born_pdgs}")
     return runtime, legs
+
+
+def sbornsoft_pairs(conf):
+    """The pairs (m, n) of sbornsoft for the configuration of reference data,
+    1-based in the real process, in the order of the color links of the
+    dump."""
+    i_fks = conf["i_fks"]
+    partners = conf["fks_j_from_i"][i_fks - 1]
+    pairs = []
+    for k, m in enumerate(partners):
+        for n in partners[: k + 1]:
+            if (m != n or conf["masses"][m - 1] != 0.0) and i_fks not in (m, n):
+                pairs.append((m, n))
+    return pairs
+
+
+def fortran_orders(data, conf, point):
+    """The Born and the color-correlated Borns per Born order at a point of
+    reference data, from the Fortran: the Born of amp_split_cnt of the
+    splitting type with which all Born orders are kept, the color-correlated
+    ones from the color-linked Borns of sborn_sf per order (C_m B from color
+    conservation for a massless m) where i is a gluon, zero elsewhere. For a
+    Born of several orders: pyAmpliCol 1.0.1 drops the amplitudes without a
+    QCD vertex where it has color correlators or full color (u u~ > u u~ at
+    QCD^2 <= 4 and QED^2 <= 4 gives the order alpha_s^2 alone), and
+    misses part of their interference where it has neither."""
+    orders = data["fks_configurations"]["orders"]
+    names = orders["split_orders"]
+    amp_split = data["split_orders"]["amp_split"]
+    n = len(data["fks_configurations"]["born_pdgs"])
+
+    def position(order, name):
+        order = list(order)
+        order[names.index(name)] += 2
+        if any(p > m for p, m in zip(order, orders["max_nlo"])):
+            return None
+        return amp_split.index(order)
+
+    for k, name in enumerate(["QCD", "QED"]):
+        if name not in names:
+            continue
+        positions = [position(o, name) for o in orders["born"]]
+        if None not in positions:
+            break
+    else:
+        raise ValueError("no splitting type keeps all Born orders")
+    blocks = [
+        dict(
+            born=point["born_orders"][k][p],
+            color_correlated=[[0.0] * n for _ in range(n)],
+        )
+        for p in positions
+    ]
+    i_fks = conf["i_fks"]
+    if conf["pdg"][i_fks - 1] == 21:
+        g2 = data["g"] ** 2
+        qcd = [position(o, "QCD") for o in orders["born"]]
+        for (m, l), links in zip(sbornsoft_pairs(conf), point["color_links_orders"]):
+            mb, lb = m - (m > i_fks), l - (l > i_fks)
+            for block, p in zip(blocks, qcd):
+                value = links[p] / g2 * (2 if m == l else 1)
+                block["color_correlated"][mb - 1][lb - 1] = value
+                block["color_correlated"][lb - 1][mb - 1] = value
+        for block in blocks:
+            matrix = block["color_correlated"]
+            for m in range(n):
+                if matrix[m][m] == 0.0 and any(matrix[m]):
+                    matrix[m][m] = -math.fsum(matrix[m][l] for l in range(n) if l != m)
+    return blocks
 
 
 def param_card(out):
@@ -595,75 +688,129 @@ def born_blocks(data, path, model=None, out=None, work=None):
     is a gluon or a photon in the Born, the spin-correlated tensor S with
     B(e) = e^mu e^nu S_mu,nu (contravariant components of e, summed with unit
     weights) the Born with the real vector e in place of the polarization of
-    the emitter. The parameters are those of the param_card of MadGraph (the
-    defaults of the built-in Standard Model of pyAmpliCol) at the alpha_s of
-    the Fortran, but the top width: MadGraph sets it to zero in t-channel
-    propagators (zerowidth_tchannel), the only ones of the top in these
-    Borns. For loop_qcd_qed_sm (MODELS), the sm UFO of MadGraph at the
-    parameters of the output (ufo_sm_parameters), since the built-in Standard
-    Model of pyAmpliCol 1.0.1 is off by a factor 5.27 for every external
-    photon."""
+    the emitter. A Born with several orders has them from the Fortran per
+    order (orders, see fortran_orders), and their sums. A configuration with
+    an extra
+    counterterm has the Born of the other mother (extra_counterterms of the
+    exporter) and its spin-correlated tensor per order of that Born (extra).
+    The parameters are those of the param_card of MadGraph (the defaults of
+    the built-in Standard Model of pyAmpliCol) at the alpha_s of the Fortran,
+    but the top width: MadGraph sets it to zero in t-channel propagators
+    (zerowidth_tchannel), the only ones of the top in these Borns. For
+    loop_qcd_qed_sm (MODELS), the sm UFO of MadGraph at the parameters of the
+    output (ufo_sm_parameters), since the built-in Standard Model of
+    pyAmpliCol 1.0.1 is off by a factor 5.27 for every external photon."""
     import pyamplicol as pa
 
     configurations = data["fks_configurations"]
-    born_pdgs = configurations["born_pdgs"]
+    nincoming = configurations["nincoming"]
+    orders = configurations["orders"]
     alpha_s = data["g"] ** 2 / (4 * math.pi)
     if model == "loop_qcd_qed_sm":
-        runtime, legs = born_runtime(
-            born_pdgs, configurations["nincoming"], path, ufo_model(work)
-        )
-        runtime.set_model_parameters(dict(ufo_sm_parameters(out), aS=alpha_s, WT=0.0))
+        source_model = ufo_model(work)
+        parameters = dict(ufo_sm_parameters(out), aS=alpha_s, WT=0.0)
         source = "sm UFO of MadGraph at the parameters of loop_qcd_qed_sm"
     else:
-        runtime, legs = born_runtime(born_pdgs, configurations["nincoming"], path)
-        runtime.set_model_parameters(
-            {"normalization.alpha_s_me_check": alpha_s, "particle.6.width": 0.0}
-        )
+        source_model = None
+        parameters = {
+            "normalization.alpha_s_me_check": alpha_s,
+            "particle.6.width": 0.0,
+        }
         source = "built-in Standard Model"
     data["born_blocks"] = dict(
         source=f"pyAmpliCol {pa.package_version()}, {source}",
         alpha_s=alpha_s,
         top_width=0.0,
     )
-    n = len(born_pdgs)
-    for conf in data["configs"]:
-        i_fks, j_fks = conf["i_fks"], conf["j_fks"]
-        born_j = j_fks if j_fks < i_fks else j_fks - 1
-        vector = born_pdgs[born_j - 1] in VECTORS
-        for point in conf["points"] + conf.get("limit_points", []):
-            if "born" not in point:
-                continue
-            requests = {"born": pa.CorrelatedRequest("born", {})}
-            for k, a in enumerate(legs):
-                for b in legs[k:]:
-                    requests[f"T{a}_{b}"] = pa.CorrelatedRequest(f"T{a}_{b}", {})
-            if vector:
-                # the Born at e = u_mu + u_nu, with the unit vectors u_mu
-                for mu in range(4):
-                    for nu in range(mu, 4):
-                        e = [0.0] * 4
-                        e[mu] = e[nu] = 1.0
-                        requests[f"S{mu}{nu}"] = pa.CorrelatedRequest(
-                            "born", {born_j: tuple(e)}
-                        )
-            values = runtime.evaluate_correlated_many(
-                [point["p_born"]], requests, arithmetic="double-double"
-            )
-            value = {key: float(v[0].real) for key, v in values.items()}
+
+    def runtime_of(pdgs, where, color):
+        # the runtime of the Born and its colored particles
+        runtime, legs = born_runtime(pdgs, nincoming, where, source_model, color)
+        runtime.set_model_parameters(parameters)
+        return runtime, legs
+
+    def evaluate(pdgs, runtime, legs, p_born, born_j):
+        # the blocks at p_born
+        n = len(pdgs)
+        vector = pdgs[born_j - 1] in VECTORS
+        requests = {"born": pa.CorrelatedRequest("born", {})}
+        for k, a in enumerate(legs):
+            for b in legs[k:]:
+                requests[f"T{a}_{b}"] = pa.CorrelatedRequest(f"T{a}_{b}", {})
+        if vector:
+            # the Born at e = u_mu + u_nu, with the unit vectors u_mu
+            for mu in range(4):
+                for nu in range(mu, 4):
+                    e = [0.0] * 4
+                    e[mu] = e[nu] = 1.0
+                    requests[f"S{mu}{nu}"] = pa.CorrelatedRequest(
+                        "born", {born_j: tuple(e)}
+                    )
+        values = runtime.evaluate_correlated_many(
+            [p_born], requests, arithmetic="double-double"
+        )
+        value = {k: float(v[0].real) for k, v in values.items()}
+        blocks = dict(born=value["born"])
+        if legs:
             correlated = [[0.0] * n for _ in range(n)]
             for k, a in enumerate(legs):
                 for b in legs[k:]:
                     correlated[a - 1][b - 1] = value[f"T{a}_{b}"]
                     correlated[b - 1][a - 1] = value[f"T{a}_{b}"]
-            blocks = dict(born=value["born"], color_correlated=correlated)
-            if vector:
-                tensor = [[0.0] * 4 for _ in range(4)]
-                for mu in range(4):
-                    for nu in range(4):
-                        diagonal = value[f"S{mu}{mu}"] + value[f"S{nu}{nu}"]
-                        both = value[f"S{min(mu, nu)}{max(mu, nu)}"]
-                        tensor[mu][nu] = both if mu == nu else 0.5 * (both - diagonal)
-                blocks["spin_correlated"] = tensor
+            blocks["color_correlated"] = correlated
+        if vector:
+            tensor = [[0.0] * 4 for _ in range(4)]
+            for mu in range(4):
+                for nu in range(4):
+                    diagonal = value[f"S{mu}{mu}"] + value[f"S{nu}{nu}"]
+                    both = value[f"S{min(mu, nu)}{max(mu, nu)}"]
+                    tensor[mu][nu] = both if mu == nu else 0.5 * (both - diagonal)
+            blocks["spin_correlated"] = tensor
+        return blocks
+
+    def add(values):
+        # the sum of numbers or of nested lists of them
+        if isinstance(values[0], list):
+            return [add(list(column)) for column in zip(*values)]
+        return math.fsum(values)
+
+    born_pdgs = configurations["born_pdgs"]
+    several = len(orders["born"]) > 1
+    born = None if several else runtime_of(born_pdgs, path, True)
+    extras = []
+    for k, (extra, extra_orders) in enumerate(
+        zip(configurations.get("extra_counterterms", []), orders.get("extra_born", []))
+    ):
+        if len(extra_orders) > 1:
+            raise NotImplementedError("an extra counterterm of several orders")
+        extras.append(runtime_of(extra["born_pdgs"], f"{path}_extra{k}", False))
+    if several:
+        data["born_blocks"]["source"] = (
+            "MadFKS per Born order: the Born of amp_split_cnt and the "
+            "color-linked Borns of sborn_sf, see fortran_orders"
+        )
+    for conf, configuration in zip(data["configs"], configurations["configurations"]):
+        i_fks, j_fks = conf["i_fks"], conf["j_fks"]
+        born_j = j_fks if j_fks < i_fks else j_fks - 1
+        extra = configuration["extra_cnt_index"]
+        for point in conf["points"] + conf.get("limit_points", []):
+            if "born" not in point:
+                continue
+            if several:
+                if any(pdg in VECTORS for pdg in born_pdgs):
+                    raise NotImplementedError(
+                        "spin-correlated Borns of a Born of several orders"
+                    )
+                per_order = fortran_orders(data, conf, point)
+                blocks = {key: add([b[key] for b in per_order]) for key in per_order[0]}
+                blocks["orders"] = per_order
+            else:
+                blocks = evaluate(born_pdgs, *born, point["p_born"], born_j)
+            if extra >= 0:
+                pdgs = configurations["extra_counterterms"][extra]["born_pdgs"]
+                blocks["extra"] = [
+                    evaluate(pdgs, *extras[extra], point["p_born"], born_j)
+                ]
             point["born_blocks"] = blocks
 
 

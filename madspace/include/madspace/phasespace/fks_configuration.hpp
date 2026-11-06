@@ -53,8 +53,13 @@ struct FKSConfiguration {
     /// The types of the splitting of i and j, "QCD" or "QED" (splitting_type
     /// of the FKS exporter): the coupling of its soft and collinear limits.
     /// A second type comes with an extra counterterm, the Born of another
-    /// mother (extra_cnt of MadFKS).
+    /// mother (extra_cnt of MadFKS): for a quark i and its antiquark j (or the
+    /// same quark incoming), which come from a gluon and from a photon.
     std::vector<std::string> splitting_types{"QCD"};
+    /// The extra counterterm of the second splitting type, a position in
+    /// FKSCouplingOrders::extra_born (extra_cnt_index of the FKS exporter), -1
+    /// for none.
+    int extra_counterterm = -1;
     /// Whether each particle of the real process is tagged (PARTICLE_TAG_D),
     /// an identified photon (!a!) that does not split, empty for none.
     std::vector<bool> tags;
@@ -72,16 +77,19 @@ struct FKSConfiguration {
         return !splitting_types.empty() && splitting_types.front() == "QED";
     }
     /**
-     * PDG codes of the Born: the real process without i, with the mother
-     * i + j at the position of j. For a gluon or photon i the mother is j, for
-     * a final-state pair of a particle and its antiparticle the gluon (QCD
-     * splitting) or photon (QED splitting) it comes from, and for a
-     * final-state i off an incoming j of the same flavor the gluon or photon
-     * that enters the Born, else the antiparticle of i.
+     * PDG codes of the Born of a splitting type: the real process without i,
+     * with the mother i + j at the position of j. For a gluon or photon i the
+     * mother is j, for a final-state pair of a particle and its antiparticle
+     * the gluon (QCD splitting) or photon (QED splitting) it comes from, and
+     * for a final-state i off an incoming j of the same flavor the gluon or
+     * photon that enters the Born, else the antiparticle of i.
      *
+     * @param splitting  The position of the splitting type in
+     *                   splitting_types: 0 for the Born, 1 for that of the
+     *                   extra counterterm.
      * @throws std::invalid_argument if i and j come from no splitting.
      */
-    std::vector<int> born_pdgs() const;
+    std::vector<int> born_pdgs(std::size_t splitting = 0) const;
     /**
      * Number of FKS pairs of the real process that the configuration stands
      * for, by the symmetry of identical final-state particles:
@@ -92,14 +100,19 @@ struct FKSConfiguration {
     double symmetry_factor() const;
     /**
      * Ratio of the identical-particle factors of the final states of the Born
-     * and of the real process, by which the Born and its correlated versions
-     * enter the soft and collinear limits of the real matrix element
-     * (iden_comp of setfksfactor in fks_singular.f [3]). Each factor is the
-     * product of @f$k!@f$ over the flavors of @f$k@f$ final-state particles.
+     * of a splitting type and of the real process, by which the Born and its
+     * correlated versions enter the soft and collinear limits of the real
+     * matrix element (iden_comp of setfksfactor in fks_singular.f [3]). Each
+     * factor is the product of @f$k!@f$ over the flavors of @f$k@f$
+     * final-state particles. MadFKS divides the Born of an extra counterterm
+     * by the factor of the Born (the IDEN_VALUES of born_cnt_<n>.f) and takes
+     * iden_comp of the Born for both, which is the same as this ratio with
+     * the Born of the extra counterterm and its own factor.
      *
+     * @param splitting  As for born_pdgs().
      * @throws std::invalid_argument as born_pdgs().
      */
-    double identical_particle_ratio() const;
+    double identical_particle_ratio(std::size_t splitting = 0) const;
 };
 
 /**
@@ -107,7 +120,8 @@ struct FKSConfiguration {
  * the same number of particles and with every field of that size, i a
  * massless final-state particle, j another particle that forms an FKS pair
  * with it, FKS pairs within the real process, one or two different
- * splitting types, each "QCD" or "QED", and tags for none or all particles.
+ * splitting types, each "QCD" or "QED", an extra counterterm with two of
+ * them only, and tags for none or all particles.
  *
  * @param configurations  The configurations.
  * @param user            Name of the caller, for the error messages.
@@ -148,11 +162,20 @@ struct FKSCouplingOrders {
     nested_vector2<int> nlo;
     /// The largest powers of each split order at NLO (nlo_orders).
     std::vector<int> max_nlo;
+    /// For each extra counterterm, the powers of each split order of the
+    /// orders of its Born (SQSPLITORDERS of born_cnt_<n>.f).
+    nested_vector3<int> extra_born;
 
     /// Number of Born orders.
     std::size_t born_count() const { return born.size(); }
     /// Number of NLO orders.
     std::size_t nlo_count() const { return nlo.size(); }
+    /// Number of Borns that the limits of the real emission take: one per
+    /// Born order, then one per order of the Born of each extra counterterm.
+    std::size_t born_input_count() const;
+    /// Position of the first order of the Born of an extra counterterm among
+    /// the Borns of born_input_count().
+    std::size_t extra_born_offset(std::size_t extra) const;
     /**
      * The NLO order of the counterterms of a splitting of a type of the Born
      * of an order, -1 where they are not kept.
@@ -163,6 +186,17 @@ struct FKSCouplingOrders {
      *         order of the counterterms is kept but not one of `nlo`.
      */
     int counterterm_order(std::size_t born_index, const std::string& type) const;
+    /**
+     * The NLO order of the counterterms of a splitting of a type of the Born
+     * of an extra counterterm of an order, as counterterm_order().
+     *
+     * @param extra  The extra counterterm, a position in `extra_born`.
+     * @param index  The order of its Born, a position in `extra_born[extra]`.
+     * @param type   The splitting type, "QCD" or "QED".
+     */
+    int extra_counterterm_order(
+        std::size_t extra, std::size_t index, const std::string& type
+    ) const;
     /// The orders of a Born with @f$\alpha_s^b@f$ alone and QCD corrections:
     /// the split order QCD, the Born order 2b and the NLO order 2b + 2.
     static FKSCouplingOrders qcd(int alpha_s_power);
@@ -170,7 +204,8 @@ struct FKSCouplingOrders {
 
 /**
  * Check coupling orders: at least one Born and one NLO order, each with a
- * power of every split order, and split orders without repetition.
+ * power of every split order (also those of the extra counterterms, at least
+ * one each), and split orders without repetition.
  *
  * @param orders  The coupling orders.
  * @param user    Name of the caller, for the error messages.

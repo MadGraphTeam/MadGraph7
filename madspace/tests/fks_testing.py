@@ -2,6 +2,7 @@
 
 import glob
 import json
+import math
 import os
 
 import numpy as np
@@ -166,6 +167,8 @@ def with_pair(config, i_fks, j_fks):
         masses=config.masses,
         fks_j_from_i=config.fks_j_from_i,
         splitting_types=config.splitting_types,
+        tags=config.tags,
+        extra_counterterm=config.extra_counterterm,
     )
 
 
@@ -191,11 +194,66 @@ def at_nlo_orders(values, data):
     return np.asarray(values)[..., order_positions(data)[1]]
 
 
-def per_born_order(values, data):
-    """Born blocks of pyAmpliCol, which are those of the only Born order of
-    the reference data, with the axis of the Born orders."""
-    assert len(data["fks_configurations"]["orders"]["born"]) == 1
-    return np.asarray(values)[:, None]
+def identical_factor(pdgs, nincoming=2):
+    """The identical-particle factor of the final state of a process, the
+    product of k! over its flavors of k particles."""
+    final = list(pdgs[nincoming:])
+    return float(np.prod([math.factorial(final.count(p)) for p in set(final)]))
+
+
+def extra_born_madfks_factor(data, extra):
+    """The factor by which the Born of an extra counterterm of MadFKS
+    (born_cnt_<n>.f, divided by the identical-particle factor of the Born)
+    differs from that of the process (divided by its own)."""
+    exported = data["fks_configurations"]
+    pdgs = exported["extra_counterterms"][extra]["born_pdgs"]
+    return identical_factor(pdgs) / identical_factor(exported["born_pdgs"])
+
+
+def extra_born_offsets(data):
+    """The position of the first order of the Born of each extra counterterm
+    among the Born inputs of FKSLimits (the Born orders first), and their
+    number."""
+    orders = data["fks_configurations"]["orders"]
+    offsets, position = [], len(orders["born"])
+    for extra in orders.get("extra_born", []):
+        offsets.append(position)
+        position += len(extra)
+    return offsets, position
+
+
+def born_inputs(data, rows, k_perp):
+    """born and spin_correlated per Born input (the Born orders, then the
+    orders of the Born of each extra counterterm, see
+    FKSCouplingOrders.born_input_count), with the tensors of the
+    spin-correlated Borns contracted with k_perp (zero where there are none),
+    and color_correlated per Born order, from the Born blocks of pyAmpliCol
+    at the points of the rows (configuration, point) of reference data. The
+    Born of an extra counterterm is that of the configuration of the point,
+    zero elsewhere."""
+    configurations = data["fks_configurations"]["configurations"]
+    count = len(data["fks_configurations"]["orders"]["born"])
+    offsets, total = extra_born_offsets(data)
+    n = len(data["fks_configurations"]["born_pdgs"])
+    born = np.zeros((len(rows), total))
+    spin = np.zeros((len(rows), total))
+    color = np.zeros((len(rows), count, n, n))
+    for k, (conf, point) in enumerate(rows):
+        blocks = point["born_blocks"]
+
+        def contracted(block):
+            tensor = np.array(block.get("spin_correlated", np.zeros((4, 4))))
+            return k_perp[k] @ tensor @ k_perp[k]
+
+        for o, block in enumerate(blocks.get("orders", [blocks])):
+            born[k, o] = block["born"]
+            color[k, o] = block["color_correlated"]
+            spin[k, o] = contracted(block)
+        extra = configurations[conf["nfks"] - 1].get("extra_cnt_index", -1)
+        for o, block in enumerate(blocks.get("extra", [])):
+            born[k, offsets[extra] + o] = block["born"]
+            spin[k, offsets[extra] + o] = contracted(block)
+    return born, color, spin
 
 
 def alpha(data):

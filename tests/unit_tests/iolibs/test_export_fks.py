@@ -326,7 +326,33 @@ class TestFKSConfigurationsJson(unittest.TestCase):
         # [LOonly]: none, not the fake configuration of fks_info.inc
         data = export_fks.get_fks_configurations(self.fksborn([]))
         self.assertEqual(data['configurations'], [])
+        self.assertEqual(data['extra_counterterms'], [])
         self.assertEqual(data['born_pdgs'], [2, 21, 2, 11, -11])
+
+    def test_extra_counterterms(self):
+        # e+ e- > u u~ g at alpha_s alpha^2 with alpha^3 allowed: the d d~ of
+        # e+ e- > u u~ d d~ comes from the gluon or from a photon, whose Born
+        # e+ e- > u u~ a is the extra counterterm
+        legs = [{'id': pdg, 'state': k >= 2}
+                for k, pdg in enumerate([-11, 11, 2, -2, 22])]
+        extra = type('ExtraCnt', (), {
+            '__getitem__': lambda self, key: {'processes': [{'legs': legs}]}[key],
+            'get_split_orders_mapping':
+                lambda self: ([(0, 6)], [((0, 3), (1, 2))])})()
+        fksborn = self.fksborn([])
+        fksborn.extra_cnt_me_list = [extra]
+        orders = {'split_orders': ['QCD', 'QED'],
+                  'amp_split_orders': [(2, 4), (2, 6), (4, 4), (0, 8)],
+                  'amp_split_size_born': 1,
+                  'max_born_orders': {'QCD': 2, 'QED': 6},
+                  'max_nlo_orders': {'QCD': 4, 'QED': 8}}
+        data = export_fks.get_fks_configurations(fksborn, orders)
+        self.assertEqual(data['extra_counterterms'],
+                         [{'born_pdgs': [-11, 11, 2, -2, 22]}])
+        self.assertEqual(data['orders'], {
+            'split_orders': ['QCD', 'QED'], 'born': [[2, 4]],
+            'nlo': [[2, 6], [4, 4], [0, 8]], 'max_born': [2, 6],
+            'max_nlo': [4, 8], 'extra_born': [[[0, 6]]]})
 
 
 class TestBornGscale(unittest.TestCase):

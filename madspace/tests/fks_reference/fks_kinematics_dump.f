@@ -167,6 +167,10 @@ c the same per split order, for the amp_split arrays of fks_singular.f
       include '../../Source/PDF/pdf.inc'
       complex*16 ans_cnt(2,nsplitorders)
       common /c_born_cnt/ans_cnt
+      double complex ans_extra_cnt(2,nsplitorders)
+      integer iextra_cnt,isplitorder_born,isplitorder_cnt
+      common /c_extra_cnt/iextra_cnt,isplitorder_born,isplitorder_cnt
+      double precision extra_o(amp_split_size,2)
       double precision iden_comp
       common /c_iden_comp/iden_comp
       logical need_color_links,need_charge_links
@@ -448,6 +452,23 @@ c (amp_split_cnt, at the NLO position the counterterm contributes to)
      &                 dble(amp_split_cnt(iamp,1,qed_pos))
                enddo
                write (*,fmt) 'BORNO',((born_o(iamp,k),iamp=1
+     &              ,amp_split_size),k=1,2)
+c the same for the Born of the extra counterterm (born_cnt_<n>.f, the
+c other mother of a quark pair), zero without one
+               do iamp=1,amp_split_size
+                  extra_o(iamp,1)=0d0
+                  extra_o(iamp,2)=0d0
+               enddo
+               if (iextra_cnt.gt.0) then
+                  call extra_cnt_frame(p_born,iextra_cnt,ans_extra_cnt)
+                  do iamp=1,amp_split_size
+                     if (qcd_pos.gt.0) extra_o(iamp,1)=
+     &                    dble(amp_split_cnt(iamp,1,qcd_pos))
+                     if (qed_pos.gt.0) extra_o(iamp,2)=
+     &                    dble(amp_split_cnt(iamp,1,qed_pos))
+                  enddo
+               endif
+               write (*,fmt) 'BORNXO',((extra_o(iamp,k),iamp=1
      &              ,amp_split_size),k=1,2)
                neik=0
                if (need_color_links.or.need_charge_links) then

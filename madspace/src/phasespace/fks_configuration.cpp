@@ -23,10 +23,15 @@ double identical_factor(std::vector<int> pdgs) {
 
 } // namespace
 
-std::vector<int> FKSConfiguration::born_pdgs() const {
+std::vector<int> FKSConfiguration::born_pdgs(std::size_t splitting) const {
+    if (splitting >= splitting_types.size()) {
+        throw std::invalid_argument(
+            "FKSConfiguration: the configuration has no such splitting type"
+        );
+    }
     int pdg_i = pdgs.at(i_fks), pdg_j = pdgs.at(j_fks);
     // the gauge boson a pair of i and j of opposite flavors comes from
-    int boson = qed_splitting() ? 22 : 21;
+    int boson = splitting_types.at(splitting) == "QED" ? 22 : 21;
     int mother;
     if (pdg_i == 21 || pdg_i == 22) {
         mother = pdg_j;
@@ -64,8 +69,8 @@ double FKSConfiguration::symmetry_factor() const {
     return final_count(pdg_i) * f_j;
 }
 
-double FKSConfiguration::identical_particle_ratio() const {
-    auto born = born_pdgs();
+double FKSConfiguration::identical_particle_ratio(std::size_t splitting) const {
+    auto born = born_pdgs(splitting);
     return identical_factor({born.begin() + INCOMING_COUNT, born.end()}) /
         identical_factor({pdgs.begin() + INCOMING_COUNT, pdgs.end()});
 }
@@ -125,6 +130,12 @@ std::size_t madspace::check_fks_configurations(
                 "different of QCD and QED"
             );
         }
+        if ((c.extra_counterterm >= 0) != (c.splitting_types.size() == 2)) {
+            fail(
+                "a configuration has an extra counterterm with two splitting "
+                "types and only then"
+            );
+        }
         auto pairs_with = [&](std::size_t k, std::size_t l) {
             const auto& partners = c.fks_j_from_i.at(k);
             return std::find(partners.begin(), partners.end(), l) != partners.end();
@@ -139,31 +150,66 @@ std::size_t madspace::check_fks_configurations(
     return n;
 }
 
-int FKSCouplingOrders::counterterm_order(
-    std::size_t born_index, const std::string& type
-) const {
-    auto position = std::find(split_orders.begin(), split_orders.end(), type);
-    if (position == split_orders.end()) {
+std::size_t FKSCouplingOrders::born_input_count() const {
+    std::size_t count = born.size();
+    for (const auto& orders : extra_born) {
+        count += orders.size();
+    }
+    return count;
+}
+
+std::size_t FKSCouplingOrders::extra_born_offset(std::size_t extra) const {
+    std::size_t offset = born.size();
+    for (std::size_t k = 0; k < extra; ++k) {
+        offset += extra_born.at(k).size();
+    }
+    extra_born.at(extra);
+    return offset;
+}
+
+namespace {
+
+// the position in nlo of an order plus two powers of a splitting type, -1
+// where that is beyond max_nlo (keep_order_cnt of born.f and born_cnt_<n>.f)
+int shifted_order(
+    const FKSCouplingOrders& orders, std::vector<int> order, const std::string& type
+) {
+    const auto& names = orders.split_orders;
+    auto position = std::find(names.begin(), names.end(), type);
+    if (position == names.end()) {
         throw std::invalid_argument(
             "FKSCouplingOrders: the splitting type " + type + " is not a split order"
         );
     }
-    std::size_t p = position - split_orders.begin();
-    std::vector<int> order = born.at(born_index);
+    std::size_t p = position - names.begin();
     order.at(p) += 2;
     for (std::size_t k = 0; k < order.size(); ++k) {
-        if (order.at(k) > max_nlo.at(k)) {
+        if (order.at(k) > orders.max_nlo.at(k)) {
             return -1;
         }
     }
-    auto found = std::find(nlo.begin(), nlo.end(), order);
-    if (found == nlo.end()) {
+    auto found = std::find(orders.nlo.begin(), orders.nlo.end(), order);
+    if (found == orders.nlo.end()) {
         throw std::invalid_argument(
             "FKSCouplingOrders: the counterterms of a " + type +
             " splitting of a Born order have no NLO order"
         );
     }
-    return static_cast<int>(found - nlo.begin());
+    return static_cast<int>(found - orders.nlo.begin());
+}
+
+} // namespace
+
+int FKSCouplingOrders::counterterm_order(
+    std::size_t born_index, const std::string& type
+) const {
+    return shifted_order(*this, born.at(born_index), type);
+}
+
+int FKSCouplingOrders::extra_counterterm_order(
+    std::size_t extra, std::size_t index, const std::string& type
+) const {
+    return shifted_order(*this, extra_born.at(extra).at(index), type);
 }
 
 FKSCouplingOrders FKSCouplingOrders::qcd(int alpha_s_power) {
@@ -199,6 +245,12 @@ void madspace::check_fks_coupling_orders(
     }
     for (const auto& order : orders.nlo) {
         sizes = sizes && order.size() == n;
+    }
+    for (const auto& extra : orders.extra_born) {
+        sizes = sizes && !extra.empty();
+        for (const auto& order : extra) {
+            sizes = sizes && order.size() == n;
+        }
     }
     if (!sizes) {
         fail("every coupling order needs a power of each split order");

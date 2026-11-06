@@ -22,10 +22,11 @@ from fks_testing import (
     SPLITTING_TYPES,
     alpha,
     at_nlo_orders,
+    born_inputs,
     configuration,
     evaluate,
+    extra_born_madfks_factor,
     order_positions,
-    per_born_order,
     reference,
 )
 from fks_testing import reference_born_mapping as born_mapping
@@ -49,8 +50,8 @@ def generated_points(data):
 
 
 def born_blocks(data, rows):
-    """born, color_correlated, spin_correlated (per Born order), alpha_s and
-    alpha of the points, with the tensor of the spin-correlated Born (zero
+    """born, color_correlated, spin_correlated (born_inputs), alpha_s and
+    alpha of the points, with the tensors of the spin-correlated Borns (zero
     where the emitter is not a gluon or a photon) contracted with k_perp of
     FKSSplittingKernels at the event, and their fks_index."""
     index = np.array([conf["nfks"] - 1 for conf, _ in rows], dtype=np.int32)
@@ -62,12 +63,8 @@ def born_blocks(data, rows):
         np.array([point["p_born"] for _, point in rows]),
         fks_index=index,
     )
-    blocks = [point["born_blocks"] for _, point in rows]
-    tensors = np.array([b.get("spin_correlated", np.zeros((4, 4))) for b in blocks])
     return (
-        per_born_order([b["born"] for b in blocks], data),
-        per_born_order([b["color_correlated"] for b in blocks], data),
-        per_born_order(np.einsum("bm,bmn,bn->b", k_perp, tensors, k_perp), data),
+        *born_inputs(data, rows, k_perp),
         np.full(len(rows), data["born_blocks"]["alpha_s"]),
         np.full(len(rows), alpha(data)),
         index,
@@ -154,22 +151,43 @@ def test_matches_sreal(path):
 
 @pytest.mark.parametrize("path", FKS_DATA, ids=FKS_DATA_IDS)
 def test_born_orders_of_the_counterterms(path):
-    """The Born order of the counterterms at each NLO order is that of
+    """The Born input of the counterterms at each NLO order is that of
     amp_split_cnt of the Fortran: the Born at its position for the splitting
-    type of the configuration, zero where the counterterms have none."""
+    type of the configuration, with the second type that of the extra
+    counterterm (extra_cnt_frame), zero where the counterterms have none
+    (MadFKS drops orders below 1e-12 of the largest)."""
     data = reference(path)
     limits = fks_limits(born_mapping(data), data["fks_configurations"])
     configurations = fks_configurations(born_mapping(data), data["fks_configurations"])
-    for conf, point in generated_points(data):
+    rows = generated_points(data)
+    born, *_ = born_blocks(data, rows)
+    assert born.shape[1] == limits.born_input_count()
+    for k, (conf, point) in enumerate(rows):
         c = conf["nfks"] - 1
-        assert limits.qed(c) == (configurations[c].splitting_types == ["QED"])
-        born_orders = np.array(point["born_orders"])
-        expected = at_nlo_orders(
-            born_orders[SPLITTING_TYPES[configurations[c].splitting_types[0]]], data
-        )
-        born = point["born_blocks"]["born"]
-        for b, value in zip(limits.born_index(c), expected):
-            assert value == (pytest.approx(born, rel=1e-11) if b >= 0 else 0.0)
+        config = configurations[c]
+        assert limits.qed(c) == (config.splitting_types[0] == "QED")
+        for s in range(2):
+            if s >= len(config.splitting_types):
+                assert limits.coupling(c, s) == -1
+                assert all(b < 0 for b in limits.born_index(c, s))
+                continue
+            kind = SPLITTING_TYPES[config.splitting_types[s]]
+            assert limits.coupling(c, s) == kind
+            key = "born_orders" if s == 0 else "extra_born_orders"
+            expected = at_nlo_orders(np.array(point[key])[kind], data)
+            if s == 1:
+                # MadFKS divides it by the identical-particle factor of the
+                # Born, which iden_comp compensates
+                expected = expected / extra_born_madfks_factor(
+                    data, config.extra_counterterm
+                )
+            scale = np.abs(born[k]).max()
+            for b, value in zip(limits.born_index(c, s), expected):
+                if b < 0:
+                    assert value == 0.0
+                    continue
+                tolerance = 1e-11 * abs(born[k, b]) + 1e-12 * scale
+                assert abs(value - born[k, b]) <= tolerance
 
 
 @pytest.mark.parametrize("path", FKS_DATA, ids=FKS_DATA_IDS)
@@ -347,6 +365,105 @@ def test_coupling_orders():
             ),
         )
     assert ms.FKSCouplingOrders.qcd(2).nlo == [[6]]
+
+
+def test_extra_counterterm():
+    """A final-state d d~ of e+ e- > u u~ d d~ comes from the gluon of
+    e+ e- > u u~ g (QCD) and from a photon, with the Born e+ e- > u u~ a of
+    an extra counterterm (QED). The collinear limit is the sum of those of
+    the two splittings, each with its Born input, coupling, kernels and
+    identical-particle ratio, at the NLO order of each, and there is no soft
+    limit."""
+    pdgs = [-11, 11, 2, -2, 1, -1]
+    colors = [1, 1, 3, -3, 3, -3]
+    charges = [1.0, -1.0, 2 / 3, -2 / 3, -1 / 3, 1 / 3]
+    pairs = [[] for _ in range(6)]
+    pairs[5] = [4]
+    both = configuration(
+        5,
+        4,
+        pdgs,
+        colors,
+        charges,
+        fks_j_from_i=pairs,
+        splitting_types=("QCD", "QED"),
+    )
+    both.extra_counterterm = 0
+    assert both.born_pdgs(1) == [-11, 11, 2, -2, 22]
+    orders = ms.FKSCouplingOrders(
+        split_orders=["QCD", "QED"],
+        born=[[2, 4]],
+        nlo=[[2, 6], [4, 4], [0, 8]],
+        max_nlo=[4, 8],
+        extra_born=[[[0, 6]]],
+    )
+    assert orders.born_input_count() == 2 and orders.extra_born_offset(0) == 1
+    assert orders.extra_counterterm_order(0, 0, "QED") == 2
+    # the QCD counterterms of the extra Born (2, 6) are no part of it
+    assert orders.extra_counterterm_order(0, 0, "QCD") == 0
+    limits = ms.FKSLimits([both], orders)
+    assert limits.born_input_count() == 2
+    assert limits.born_index(0, 0) == [-1, 0, -1]
+    assert limits.born_index(0, 1) == [-1, -1, 1]
+    assert (limits.coupling(0, 0), limits.coupling(0, 1)) == (0, 1)
+    assert not limits.soft(0)
+    batch = 4
+    rng = np.random.default_rng(7)
+    p = rng.normal(size=(batch, 6, 4))
+    p[..., 0] = np.linalg.norm(p[..., 1:], axis=-1)
+    born = rng.uniform(0.5, 2.0, (batch, 2))
+    spin = rng.uniform(0.1, 0.9, (batch, 2)) * born
+    alpha_s, alpha_qed = np.full(batch, 0.118), np.full(batch, 0.0078)
+    args = [born, rng.normal(size=(batch, 1, 5, 5)), spin, alpha_s, alpha_qed]
+    soft, collinear, soft_collinear = evaluate(
+        limits, p, p[:, 5], np.full(batch, 0.3), p, p, *args, fks_index=np.zeros(batch)
+    )
+    np.testing.assert_array_equal(soft, 0.0)
+    # each splitting alone, with its Born as the only one
+    qcd, qed = (
+        configuration(
+            5, 4, pdgs, colors, charges, fks_j_from_i=pairs, splitting_types=(t,)
+        )
+        for t in ("QCD", "QED")
+    )
+    for config, born_order, o, k in [(qcd, [2, 4], 1, 0), (qed, [0, 6], 2, 1)]:
+        alone = ms.FKSLimits(
+            [config],
+            ms.FKSCouplingOrders(
+                split_orders=["QCD", "QED"],
+                born=[born_order],
+                nlo=[[2, 6], [4, 4], [0, 8]],
+                max_nlo=[4, 8],
+            ),
+        )
+        _, expected, expected_sc = evaluate(
+            alone,
+            p,
+            p[:, 5],
+            np.full(batch, 0.3),
+            p,
+            p,
+            born[:, [k]],
+            args[1],
+            spin[:, [k]],
+            alpha_s,
+            alpha_qed,
+            fks_index=np.zeros(batch),
+        )
+        np.testing.assert_array_equal(collinear[:, o], expected[:, o])
+        np.testing.assert_array_equal(soft_collinear[:, o], expected_sc[:, o])
+        assert (expected[:, o] != 0).all()
+    np.testing.assert_array_equal(collinear[:, 0], 0.0)
+    with pytest.raises(ValueError, match="extra counterterm"):
+        ms.FKSLimits(
+            [both],
+            ms.FKSCouplingOrders(
+                split_orders=["QCD", "QED"],
+                born=[[2, 4]],
+                nlo=[[2, 6], [4, 4], [0, 8]],
+                max_nlo=[4, 8],
+            ),
+        )
 
 
 def test_configurations():

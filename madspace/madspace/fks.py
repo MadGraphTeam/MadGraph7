@@ -12,21 +12,29 @@ madgraph/iolibs/export_fks.py):
         ij_pdg: PDG code of the parton i + j of the Born
         real_pdgs: PDG codes of the real process
         splitting_type: the types of the splitting, QCD or QED, a second
-            one with an extra counterterm (extra_cnt_index)
+            one with an extra counterterm
+        extra_cnt_index: the extra counterterm of the second type (a
+            position in extra_counterterms), -1 for none
         real_tags: whether each particle of the real process is tagged (an
             identified photon, !a!), absent from older exporters
-        real_me, need_color_links, need_charge_links, extra_cnt_index
+        real_me, need_color_links, need_charge_links
         real_colors, real_charges: color representation (1, 3, -3, 8) and
             electric charge of each particle of the real process
         fks_j_from_i: for each particle i of the real process, the particles
             j it forms an FKS pair with (1-based), the pairs whose sector
             functions partition the phase space of the real process
+    extra_counterterms[]: the Borns of the extra counterterms
+        (born_cnt_<n>.f), for a quark pair that comes from a gluon or from a
+        photon, absent from older exporters
+        born_pdgs: PDG codes of the Born of the other mother
     orders: the coupling orders of orders.inc and amp_split_orders.inc
         split_orders: the names of the split orders (QCD, QED, ...)
         born, nlo: the powers of each split order of the Born orders and of
             the NLO orders, the positions of the amp_split arrays
         max_born, max_nlo: the largest powers of each split order at the
             Born and at NLO (born_orders and nlo_orders)
+        extra_born: for each extra counterterm, the powers of each split
+            order of the orders of its Born
 
 The functions here turn it into the FKSMappings of a Born mapping, one per
 configuration, or into one FKSConfigurationMapping for all of them, with the
@@ -38,7 +46,8 @@ final-state emitter, s_hat_min for an incoming one.
 
 fks_configurations gives the FKSConfigurations that the classes of the FKS
 subtraction take and fks_coupling_orders their FKSCouplingOrders, by which
-the Born blocks come per Born order and the real emission, its counterterms
+the Born blocks come per Born order (followed by those of the Borns of the
+extra counterterms per their orders) and the real emission, its counterterms
 and the n-body part per NLO order. With them, fks_sector_function builds the sector functions
 S_ij of the configurations, fks_eikonals the eikonal factors of their soft
 limits, fks_splitting_kernels the factors of their collinear limits,
@@ -240,7 +249,8 @@ def fks_configurations(born, configurations):
     Raises:
         ValueError: as fks_mappings, for a configuration of a real process
             without FKS pairs (a finite one), and for a splitting of i and j
-            that does not give the Born.
+            that does not give the Born, or with the second splitting type
+            the Born of its extra counterterm.
     """
     born_pdgs = list(configurations["born_pdgs"])
     born_masses = list(born.external_masses())
@@ -263,15 +273,23 @@ def fks_configurations(born, configurations):
             fks_j_from_i=[[j - 1 for j in js] for js in pairs],
             splitting_types=list(configuration["splitting_type"]),
             tags=[bool(tag) for tag in configuration.get("real_tags", [])],
+            extra_counterterm=configuration.get("extra_cnt_index", -1),
         )
-        # the Born that FKSConfiguration infers from the splitting, which sets
-        # the identical-particle ratio of the counterterms
-        if fks_configuration.born_pdgs() != born_pdgs:
-            raise ValueError(
-                f"the splitting of i_fks = {configuration['i_fks']} and "
-                f"j_fks = {configuration['j_fks']} in {configuration['real_pdgs']} "
-                f"does not give the Born {born_pdgs}"
-            )
+        # the Borns that FKSConfiguration infers from the splitting, which set
+        # the identical-particle ratios of the counterterms
+        expected = [born_pdgs]
+        if fks_configuration.extra_counterterm >= 0:
+            extra = configurations["extra_counterterms"][
+                fks_configuration.extra_counterterm
+            ]
+            expected.append(list(extra["born_pdgs"]))
+        for splitting, pdgs in enumerate(expected):
+            if fks_configuration.born_pdgs(splitting) != pdgs:
+                raise ValueError(
+                    f"the splitting of i_fks = {configuration['i_fks']} and "
+                    f"j_fks = {configuration['j_fks']} in "
+                    f"{configuration['real_pdgs']} does not give the Born {pdgs}"
+                )
         result.append(fks_configuration)
     return result
 
@@ -301,6 +319,7 @@ def fks_coupling_orders(configurations):
         born=[list(o) for o in orders["born"]],
         nlo=[list(o) for o in orders["nlo"]],
         max_nlo=list(orders["max_nlo"]),
+        extra_born=[[list(o) for o in extra] for extra in orders.get("extra_born", [])],
     )
 
 

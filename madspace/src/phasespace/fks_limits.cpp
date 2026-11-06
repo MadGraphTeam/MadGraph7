@@ -246,38 +246,49 @@ std::size_t madspace::check_splitting_configurations(
     std::size_t n = check_fks_configurations(configurations, user);
     check_fks_coupling_orders(orders, user);
     for (const auto& config : configurations) {
-        if (config.splitting_types.size() != 1) {
-            throw std::invalid_argument(
-                user +
-                ": a configuration with an extra counterterm (two splitting "
-                "types) is not supported"
-            );
+        if (config.extra_counterterm >= 0) {
+            auto extra = static_cast<std::size_t>(config.extra_counterterm);
+            if (extra >= orders.extra_born.size()) {
+                throw std::invalid_argument(
+                    user + ": the coupling orders have no such extra counterterm"
+                );
+            }
+            int pdg_i = config.pdgs.at(config.i_fks);
+            if (pdg_i == 21 || pdg_i == 22) {
+                throw std::invalid_argument(
+                    user +
+                    ": an extra counterterm needs a pair of a quark and its "
+                    "antiquark (or the same quark incoming)"
+                );
+            }
         }
-        const auto& type = config.splitting_types.front();
-        const auto& names = orders.split_orders;
-        if (std::find(names.begin(), names.end(), type) == names.end()) {
-            throw std::invalid_argument(
-                user + ": the splitting type " + type + " is not a split order"
-            );
+        for (std::size_t s = 0; s < config.splitting_types.size(); ++s) {
+            const auto& type = config.splitting_types.at(s);
+            const auto& names = orders.split_orders;
+            if (std::find(names.begin(), names.end(), type) == names.end()) {
+                throw std::invalid_argument(
+                    user + ": the splitting type " + type + " is not a split order"
+                );
+            }
+            auto colored = [&](std::size_t k) {
+                int color = config.colors.at(k);
+                return color == 8 || std::abs(color) == 3;
+            };
+            auto electroweak = [&](std::size_t k) {
+                return config.pdgs.at(k) == 22 || config.charges.at(k) != 0.;
+            };
+            bool valid = type == "QCD"
+                ? colored(config.i_fks) && colored(config.j_fks)
+                : electroweak(config.i_fks) && electroweak(config.j_fks);
+            if (!valid) {
+                throw std::invalid_argument(
+                    user + ": a " + type +
+                    " splitting needs i and j colored (QCD) or photons or "
+                    "charged (QED)"
+                );
+            }
+            config.born_pdgs(s);
         }
-        auto colored = [&](std::size_t k) {
-            int color = config.colors.at(k);
-            return color == 8 || std::abs(color) == 3;
-        };
-        auto electroweak = [&](std::size_t k) {
-            return config.pdgs.at(k) == 22 || config.charges.at(k) != 0.;
-        };
-        bool valid = type == "QCD"
-            ? colored(config.i_fks) && colored(config.j_fks)
-            : electroweak(config.i_fks) && electroweak(config.j_fks);
-        if (!valid) {
-            throw std::invalid_argument(
-                user + ": a " + type +
-                " splitting needs i and j colored (QCD) or photons or "
-                "charged (QED)"
-            );
-        }
-        config.born_pdgs();
     }
     return n;
 }
@@ -292,16 +303,17 @@ FKSLimits::FKSLimits(
                 check_splitting_configurations(configurations, orders, "FKSLimits")
             );
             int b = static_cast<int>(orders.born_count());
+            int inputs = static_cast<int>(orders.born_input_count());
             return NamedVector<Type>{
                 {"soft_momenta", batch_four_vec_array(n)},
                 {"soft_p_i_hat", batch_four_vec},
                 {"y", batch_float},
                 {"collinear_momenta", batch_four_vec_array(n)},
                 {"soft_collinear_momenta", batch_four_vec_array(n)},
-                {"born", batch_float_array(b)},
+                {"born", batch_float_array(inputs)},
                 {"color_correlated",
                  Type{DataType::dt_float64, batch_size, {b, n - 1, n - 1}}},
-                {"spin_correlated", batch_float_array(b)},
+                {"spin_correlated", batch_float_array(inputs)},
                 {"alpha_s", batch_float},
                 {"alpha", batch_float},
                 {"fks_index", batch_int},
@@ -321,6 +333,7 @@ FKSLimits::FKSLimits(
     _eikonals(configurations),
     _kernels(configurations),
     _born_order_count(orders.born_count()),
+    _born_input_count(orders.born_input_count()),
     _nlo_order_count(orders.nlo_count()) {
     std::size_t largest = _eikonals.max_pair_count();
     for (std::size_t c = 0; c < configurations.size(); ++c) {
@@ -360,18 +373,57 @@ FKSLimits::FKSLimits(
         _pair_m.push_back(ms);
         _pair_n.push_back(ns);
         _pair_factor.push_back(factors);
-        _collinear_factor.push_back(config.masses.at(config.j_fks) == 0. ? ratio : 0.);
-        _coupling.push_back(qed ? 1 : 0);
-        // the Born order of the counterterms at each NLO order
-        std::vector<me_int_t> sources(orders.nlo_count(), -1);
-        for (std::size_t b = 0; b < orders.born_count(); ++b) {
-            int o = orders.counterterm_order(b, config.splitting_types.front());
-            if (o >= 0) {
-                sources.at(o) = static_cast<me_int_t>(b);
+        // per splitting type (the second one for the extra counterterm) the
+        // coupling, the factor of the collinear limits and at each NLO order
+        // the Born of the counterterms among the Born inputs
+        bool massless = config.masses.at(config.j_fks) == 0.;
+        std::vector<me_int_t> couplings(2, -1);
+        std::vector<double> collinear_factors(2, 0.);
+        nested_vector2<me_int_t> sources(
+            2, std::vector<me_int_t>(orders.nlo_count(), -1)
+        );
+        for (std::size_t s = 0; s < config.splitting_types.size(); ++s) {
+            const auto& type = config.splitting_types.at(s);
+            couplings.at(s) = type == "QED" ? 1 : 0;
+            if (massless) {
+                collinear_factors.at(s) = config.identical_particle_ratio(s);
+            }
+            if (s == 0) {
+                for (std::size_t b = 0; b < orders.born_count(); ++b) {
+                    int o = orders.counterterm_order(b, type);
+                    if (o >= 0) {
+                        sources.at(0).at(o) = static_cast<me_int_t>(b);
+                    }
+                }
+                continue;
+            }
+            auto extra = static_cast<std::size_t>(config.extra_counterterm);
+            std::size_t offset = orders.extra_born_offset(extra);
+            for (std::size_t e = 0; e < orders.extra_born.at(extra).size(); ++e) {
+                int o = orders.extra_counterterm_order(extra, e, type);
+                if (o >= 0) {
+                    sources.at(1).at(o) = static_cast<me_int_t>(offset + e);
+                }
             }
         }
+        _collinear_factor.push_back(collinear_factors);
+        _coupling.push_back(couplings);
         _born_index.push_back(sources);
     }
+}
+
+Value FKSLimits::born_index_table() const {
+    // first index fastest, as the constants of nested vectors
+    std::size_t count = _born_index.size(), orders = _nlo_order_count;
+    std::vector<me_int_t> flat(count * 2 * orders);
+    for (std::size_t c = 0; c < count; ++c) {
+        for (std::size_t s = 0; s < 2; ++s) {
+            for (std::size_t o = 0; o < orders; ++o) {
+                flat.at(c + count * (s + 2 * o)) = _born_index.at(c).at(s).at(o);
+            }
+        }
+    }
+    return Value(flat, {static_cast<int>(count), 2, static_cast<int>(orders)});
 }
 
 NamedVector<Value> FKSLimits::build_function_impl(
@@ -398,7 +450,7 @@ NamedVector<Value> FKSLimits::build_function_impl(
         _pair_n,
         _pair_factor,
         _coupling,
-        _born_index
+        born_index_table()
     );
     std::vector<me_int_t> kind;
     nested_vector2<double> factors;
@@ -423,7 +475,7 @@ NamedVector<Value> FKSLimits::build_function_impl(
                 index,
                 _collinear_factor,
                 _coupling,
-                _born_index
+                born_index_table()
             )
         );
     }

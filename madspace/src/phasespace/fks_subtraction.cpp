@@ -72,6 +72,7 @@ FKSSubtraction::FKSSubtraction(
             FKSLimits limits(configurations, orders);
             auto n = static_cast<int>(limits.particle_count());
             auto b = static_cast<int>(orders.born_count());
+            auto inputs = static_cast<int>(orders.born_input_count());
             auto o = static_cast<int>(orders.nlo_count());
             return NamedVector<Type>{
                 {"momenta", batch_four_vec_array(n)},
@@ -94,10 +95,10 @@ FKSSubtraction::FKSSubtraction(
                 {"soft_collinear_det", batch_float},
                 {"soft_collinear_p_i_hat", batch_four_vec},
                 {"matrix_element", batch_float_array(o)},
-                {"born", batch_float_array(b)},
+                {"born", batch_float_array(inputs)},
                 {"color_correlated",
                  Type{DataType::dt_float64, batch_size, {b, n - 1, n - 1}}},
-                {"spin_correlated", batch_float_array(b)},
+                {"spin_correlated", batch_float_array(inputs)},
                 {"alpha_s", batch_float},
                 {"alpha", batch_float},
                 {"fact_scale1", batch_float},
@@ -134,24 +135,36 @@ FKSSubtraction::FKSSubtraction(
     for (std::size_t c = 0; c < configurations.size(); ++c) {
         const auto& config = configurations.at(c);
         bool massless = config.masses.at(config.j_fks) == 0.;
-        std::size_t t = _limits.qed(c) ? QED : QCD;
         int kind = kernels.splitting_kind(c);
-        // the color or charge factor of AP_reduced and that of the kernels of
-        // the DIS scheme, xkplus, xklog and xkdelta
-        double ap_factor = kernels.factors(c).at(t);
-        double dis_factor = kind == 0
-            ? (t == QCD ? -2. * n_f * TR : 0.)
-            : (kind == 3 ? -ap_factor : ap_factor);
+        // per splitting type (the second for the extra counterterm) the
+        // coupling, the Born inputs, the identical-particle ratio, the color
+        // or charge factor of AP_reduced and that of the kernels of the DIS
+        // scheme, xkplus, xklog and xkdelta
+        std::vector<me_int_t> couplings(2, -1);
+        std::vector<double> ratios(2, 0.), ap_factors(2, 0.), dis_factors(2, 0.);
+        for (std::size_t s = 0; s < 2; ++s) {
+            int coupling = _limits.coupling(c, s);
+            if (coupling < 0) {
+                continue;
+            }
+            std::size_t t = coupling == 1 ? QED : QCD;
+            double ap_factor = kernels.factors(c).at(t);
+            couplings.at(s) = static_cast<me_int_t>(t);
+            ratios.at(s) = config.identical_particle_ratio(s);
+            ap_factors.at(s) = ap_factor;
+            dis_factors.at(s) = kind == 0
+                ? (t == QCD ? -2. * n_f * TR : 0.)
+                : (kind == 3 ? -ap_factor : ap_factor);
+        }
         _symmetry.push_back(config.symmetry_factor());
         _massless.push_back(massless ? 1 : 0);
         _remnant.push_back(massless && config.initial_state() ? 1 : 0);
         _beam.push_back(config.initial_state() ? config.j_fks : 0);
         _kind.push_back(kind);
-        _coupling.push_back(static_cast<me_int_t>(t));
-        _born_index.push_back(_limits.born_index(c));
-        _ratio.push_back(config.identical_particle_ratio());
-        _ap_factor.push_back(ap_factor);
-        _dis_factor.push_back(dis_factor);
+        _coupling.push_back(couplings);
+        _ratio.push_back(ratios);
+        _ap_factor.push_back(ap_factors);
+        _dis_factor.push_back(dis_factors);
         _delta_i.push_back(delta_i);
     }
 }
@@ -240,7 +253,7 @@ NamedVector<Value> FKSSubtraction::build_function_impl(
         _beam,
         _kind,
         _coupling,
-        _born_index,
+        _limits.born_index_table(),
         _ratio,
         _ap_factor,
         _dis_factor,
@@ -407,10 +420,13 @@ FKSSoftVirtual::FKSSoftVirtual(
         _pair_factor.at(t).resize(largest, 0.);
     }
     // the Born orders of the QCD and QED counterterms at each NLO order, for
-    // the splitting types of the configurations
+    // the splitting types of the configurations (split_type_used, which has
+    // those of the extra counterterms too)
     bool used[2] = {false, false};
     for (const auto& c : configurations) {
-        used[c.qed_splitting() ? QED : QCD] = true;
+        for (const auto& type : c.splitting_types) {
+            used[type == "QED" ? QED : QCD] = true;
+        }
     }
     _born_index.assign(2, std::vector<me_int_t>(orders.nlo_count(), -1));
     _ren_factor.assign(orders.nlo_count(), 0.);
