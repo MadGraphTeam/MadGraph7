@@ -28,7 +28,9 @@ else
 endif
 
 # check if we need to link to gammaUPC
-ifneq (,$(filter edff chff, $(pdlabel1) $(pdlabel2)))
+# gamma-UPC pdlabels (edff, chff, edpf, edf1n2n, ...) all start with ed or ch,
+# a prefix no other pdlabel uses (checked in tests/unit_tests/various/test_gamma_upc.py)
+ifneq (,$(filter ed% ch%, $(pdlabel1) $(pdlabel2)))
 # go through here if pdflabel1 or pdlabel2 is on "edff" or "chff"
    TOREMOVE += $(LIBDIR)libgammaUPC.$(libext)
 # remove it to force recompilation of the library if back on it

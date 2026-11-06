@@ -279,6 +279,10 @@ C-------------------------------------------------
         endif
       enddo
 
+c     gamma-UPC labels (edff, chff, edf1n2n, ...): same as edff/chff
+      if(pdfin(1:2).eq.'ed') mpdf=numspdf(4)
+      if(pdfin(1:2).eq.'ch') mpdf=numspdf(5)
+
       if(mpdf.eq.-1) then
         write(*,*)'pdf ',pdfin,' not implemented in get_pdfup.'
         write(*,*)'known pdfs are'
