@@ -8465,31 +8465,46 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         # probabilities keep using the (n-1)! trace one
         ncolor = self.set_color_flow_lines(matrix_element, replace_dict, ncolor)
 
+        # POL(B) is the polarisation of beam B. In a grouped output, a mirror
+        # process (IMIRROR=2, IM=2) evaluates leg 1 on the parton of beam 2
+        # and leg 2 on the one of beam 1, so leg JJ takes POL(JB), JB the beam
+        # it comes from. A non-grouped output has no mirror process.
+        if isinstance(self, ProcessExporterFortranMEGroup):
+            beam_of_leg = """
+               JB = %(leg)s
+               IF (IM.EQ.2) JB = 3-%(leg)s"""
+            pol = 'JB'
+        else:
+            beam_of_leg = ''
+            pol = '%(leg)s'
         if self.beam_polarization == [True, True]:
-            replace_dict['beam_polarization'] = """
-                         DO JJ=1,nincoming
+            leg = 'JJ'
+            replace_dict['beam_polarization'] = ("""
+                         DO JJ=1,nincoming"""+ beam_of_leg + """
 c NB_SPIN_STATE_IN/2 avoids a double counting
 c of an explicit polarisation in the process
-               IF(POL(JJ).NE.1d0.AND.NHEL(JJ,I).EQ.INT(SIGN(1d0,POL(JJ)))) THEN
-                 T=T*ABS(POL(JJ))*NB_SPIN_STATE_IN(JJ)/2d0
-               ELSE IF(POL(JJ).NE.1d0)THEN
-                 T=T*(2d0-ABS(POL(JJ)))*NB_SPIN_STATE_IN(JJ)/2d0
+               IF(POL(%(pol)s).NE.1d0.AND.NHEL(%(leg)s,I).EQ.INT(SIGN(1d0,POL(%(pol)s)))) THEN
+                 T=T*ABS(POL(%(pol)s))*NB_SPIN_STATE_IN(%(leg)s)/2d0
+               ELSE IF(POL(%(pol)s).NE.1d0)THEN
+                 T=T*(2d0-ABS(POL(%(pol)s)))*NB_SPIN_STATE_IN(%(leg)s)/2d0
                ENDIF
              ENDDO
-            """
+            """) % {'leg': leg, 'pol': pol % {'leg': leg}}
         else:
             replace_dict['beam_polarization'] = ""
             for i in [0,1]:
                 if self.beam_polarization[i]:
-                    replace_dict['beam_polarization'] = """
-                                   ! handling only one beam polarization here. Second beam can be handle via the pdf.
+                    leg = '%i' % (i+1)
+                    replace_dict['beam_polarization'] = ("""
+                                   ! handling only one beam polarization here. Second beam can be handle via the pdf."""
+                                   + beam_of_leg + """
 c NB_SPIN_STATE_IN/2 avoids a double counting
 c of an explicit polarisation in the process
-                                   IF(POL(%(bid)i).NE.1d0.AND.NHEL(%(bid)i,I).EQ.INT(SIGN(1d0,POL(%(bid)i)))) THEN
-                 T=T*ABS(POL(%(bid)i))*NB_SPIN_STATE_IN(%(bid)i)/2d0
-               ELSE IF(POL(%(bid)i).NE.1d0)THEN
-                 T=T*(2d0-ABS(POL(%(bid)i)))*NB_SPIN_STATE_IN(%(bid)i)/2d0
-               ENDIF """ % {'bid': i+1}
+                                   IF(POL(%(pol)s).NE.1d0.AND.NHEL(%(leg)s,I).EQ.INT(SIGN(1d0,POL(%(pol)s)))) THEN
+                 T=T*ABS(POL(%(pol)s))*NB_SPIN_STATE_IN(%(leg)s)/2d0
+               ELSE IF(POL(%(pol)s).NE.1d0)THEN
+                 T=T*(2d0-ABS(POL(%(pol)s)))*NB_SPIN_STATE_IN(%(leg)s)/2d0
+               ENDIF """) % {'leg': leg, 'pol': pol % {'leg': leg}}
 
         if matrix_element.get_nonia() > 0:
             tmpl = self.matrix_file.replace('.inc', '_onia_pwave.inc'

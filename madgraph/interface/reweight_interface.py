@@ -143,6 +143,10 @@ class ReweightInterface(extended_cmd.Cmd):
         self.event_path = event_path
         self.path2prefix = {} # store the f2pyprefix associated to a library
         self.scale2_is_rooted = set() # loop libraries expecting mu^4 (see load_module)
+        self.beampol = None # (pol1, pol2) of the events' beams (see get_beampol)
+        self.beampol_legs = None # per incoming leg: is it polarised
+        self._beampol_set = {} # id(module) -> value its /to_beampol/ holds
+        self._spin_cache = {}
         if event_path:
             logger.info("Extracting the banner ...")
             self.do_import(event_path, allow_madspin=allow_madspin)
@@ -1145,7 +1149,109 @@ class ReweightInterface(extended_cmd.Cmd):
                             if self.model:
                                 raise
                     module.update_all_coup()
+
+        self.beampol = self.get_beampol()
+        self._beampol_set = {}
         return param_card_iterator, tag_name
+
+    def get_beampol(self):
+        """The beam polarisation of the events, (pol1, pol2) per beam in the
+        convention of the /to_beampol/ common of the matrix elements -- the
+        internal one of madevent's /to_polarization/ (setrun.f):
+        sign(1 + |polbeam|/100, polbeam), so 1 is unpolarised and 2 fully
+        polarised -- or None when no beam polarisation enters the matrix
+        element of the events.
+
+        madevent applies the polarisation only to a leg of the process whose
+        particles are all spin-1/2 fermions, across all the processes of the
+        output (export_v4.beam_polarization), and with the EVA pdf it is the
+        pdf that carries it. The value is the one of the beam the particle of
+        that leg comes from: beam 2 for leg 1 of a mirror process, as in the
+        `e- a > e- a` and `a e- > e- a` of an e- e- collider. self.beampol_legs
+        keeps that decision per leg of the library (whose legs are the ones of
+        the madevent process), for set_event_beampol. Unpolarised legs stay
+        unpolarised here as well: a polarised ratio on events generated
+        unpolarised would be as wrong as an unpolarised one on polarised
+        events. An NLO or mg7 run_card has no beam polarisation, and a decay
+        no beam.
+        """
+        run_card = getattr(self, 'run_card', None)
+        if self.is_decay or not isinstance(run_card, banner.RunCardLO):
+            return None
+        pol = [1., 1.]
+        for b in (1, 2):
+            value = float(run_card['polbeam%i' % b])
+            if not value:
+                continue
+            if 'eva' in (run_card['pdlabel'], run_card.get('pdlabel%i' % b)):
+                continue
+            pol[b-1] = math.copysign(1 + abs(value) / 100., value)
+        if pol == [1., 1.]:
+            return None
+        model = getattr(self, 'original_model', None) or self.model
+        self.beampol_legs = []
+        for j in (0, 1):
+            partons = set(order[0][j] for key, (order, _, _) in self.id_to_path.items()
+                          if not isinstance(key[1], str))
+            self.beampol_legs.append(all(self._is_fermion(model, pid) for pid in partons))
+            if not self.beampol_legs[-1]:
+                logger.warning('As in madevent, incoming leg %i of the processes has no '
+                               'beam polarisation: one of its particles (%s) is not a '
+                               'spin-1/2 fermion.', j + 1,
+                               ', '.join(str(p) for p in sorted(partons)))
+        if not any(self.beampol_legs):
+            return None
+        logger.info('Beam polarisation of the events in the matrix elements: '
+                    'polbeam1=%s, polbeam2=%s', run_card['polbeam1'], run_card['polbeam2'])
+        return tuple(pol)
+
+    def _is_fermion(self, model, pid):
+        """True when pid is a spin-1/2 particle of model"""
+        if pid not in self._spin_cache:
+            try:
+                spin = model.get_particle(pid).get('spin')
+            except Exception:
+                spin = None
+            self._spin_cache[pid] = spin == 2
+        return self._spin_cache[pid]
+
+    def set_event_beampol(self, module, event, lab_p, pdg, n_initial, virtual=False):
+        """Hand the beam polarisation of this event to the /to_beampol/ of
+        module. SMATRIX applies BEAMPOL(J) to its incoming leg J, which is not
+        beam J when the legs of the event are reordered to the ones of the
+        library (an e+ e- event computed by an `e- e+ >` matrix element):
+        beam 1 is the incoming particle that runs along +z in the lab.
+
+        lab_p: lab-frame momenta in the order of the library (pdg).
+        The value is set again only when it changes, which is rare.
+        """
+        if not self.beampol or n_initial != 2:
+            return
+        model = getattr(self, 'original_model', None) or self.model
+        if virtual or hasattr(module, 'set_madloop_path'):
+            raise self.InvalidCmd('Polarised beams (polbeam1/polbeam2 of the run_card) '
+                                  'are not supported by the loop matrix elements of '
+                                  'the reweighting.')
+        incoming = [(part.E, part.px, part.py, part.pz) for part in event
+                    if part.status == -1]
+        legs = [tuple(p) for p in lab_p[:2]]
+        if any(p not in incoming for p in legs):
+            raise self.InvalidCmd('Polarised beams (polbeam1/polbeam2 of the run_card) '
+                                  'can not be reweighted with a crossed matrix element: '
+                                  'a final-state particle of the event is an incoming '
+                                  'leg of %s.' % pdg)
+        beams = (0, 1) if legs[0][3] >= legs[1][3] else (1, 0)
+        value = tuple(self.beampol[b]
+                      if self.beampol_legs[j] and self._is_fermion(model, pdg[j]) else 1.
+                      for j, b in enumerate(beams))
+        if self._beampol_set.get(id(module)) == value:
+            return
+        if not hasattr(module, 'py_set_beampol'):
+            raise self.InvalidCmd('The reweighting matrix elements predate the beam '
+                                  'polarisation support (no py_set_beampol): remove '
+                                  'the rw_me directories to have them regenerated.')
+        module.py_set_beampol(*value)
+        self._beampol_set[id(module)] = value
 
         
     def do_set(self, line):
@@ -2003,6 +2109,11 @@ class ReweightInterface(extended_cmd.Cmd):
         relevant_merged = relevant_model.get('merged_particles') if relevant_model else self.merged_particles
         if relevant_merged and any(p in relevant_merged for p in pdg):
             pdg = event.get_pdg(all_p[0])
+
+        # the permutations of all_p differ in their final state only: the
+        # incoming legs, still lab-frame here, say which beam is which leg
+        self.set_event_beampol(module, event, all_p[0], pdg, len(orig_order[0]),
+                               virtual=is_virtual_tag or 'virt' in base)
 
         # aMC@NLO writes its LHE with the partons on the Monte-Carlo mass shell
         # (add_write_info.f, put_on_MC_mshell_in / put_on_MC_mshell_Hevout)
@@ -3748,6 +3859,7 @@ class DensityInterface(ReweightInterface):
         # and all_p, so that a returned position is a leg for all three
         lab_p = event.get_momenta(orig_order, merged_map=self.revert_merged,
                                  decay_chain=not self.keep_ordering)
+        self.set_event_beampol(module, event, lab_p, pdg, n_ini)
         boost_corrected = self.chose_particle_user_input(lab_p, pdg, self.momenta_boost, 'momenta_boost', fortran_format = False)
         all_p = self.method_boost_event(event, all_p, orig_order, hypp_id, boost_corrected)
         
