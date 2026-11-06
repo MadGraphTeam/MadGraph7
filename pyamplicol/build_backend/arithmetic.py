@@ -245,6 +245,9 @@ def build(
     }
     if linux:
         build_environment["LD_LIBRARY_PATH"] = str(library)
+    else:
+        # Room in the load commands for the SDK copies' @rpath names.
+        build_environment["LDFLAGS"] = "-Wl,-headerpad_max_install_names"
     jobs = _jobs()
     libraries: dict[str, Path] = {}
     for name, options in _CONFIGURE:
