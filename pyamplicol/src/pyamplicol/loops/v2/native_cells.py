@@ -964,22 +964,15 @@ def directed_table(directed: Any, table: Any, swapped: bool) -> Any:
 
 
 def _from_raw(raw: RawTensor) -> ConnectedColorTensor:
-    from pyamplicol.color.connections import ColorLeg, OpenColorString, TensorTerm
+    from pyamplicol.color.connections import ColorLeg, TensorTerm
 
     legs, terms, normalization = raw
     decoder = _Decoder()
     return ConnectedColorTensor(
         tuple(ColorLeg(label, representation) for label, representation in legs),
         tuple(
-            TensorTerm(
-                decoder.coefficient(re, im),
-                ColorTensor(
-                    tuple(OpenColorString(q, tuple(w), qb) for q, w, qb in strings),
-                    tuple(tuple(trace) for trace in traces),
-                ),
-                power,
-            )
-            for re, im, power, (strings, traces) in terms
+            TensorTerm(decoder.coefficient(re, im), _colour_tensor(structure), power)
+            for re, im, power, structure in terms
         ),
         normalization,
     )
