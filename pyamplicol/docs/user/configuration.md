@@ -204,9 +204,9 @@ Generation probes every loop-induced process in double-double at one point
 (the validation point farthest from the tree poles, lifted to exact momentum
 conservation), on its full tree kernels with every width fixed to zero (the
 complex-mass scheme keeps its complex masses): the amplitude's poles must
-vanish (finiteness) and, for every external gluon or photon, the amplitude
-with its polarisation replaced by its momentum (Ward: R2 completeness), each
-within ten times the probe's own estimate. A failure refuses the process
+vanish (finiteness) and, for an external gluon and an external photon, the
+amplitude with its polarisation replaced by its momentum (Ward: R2
+completeness), each within ten times the probe's own estimate. A failure refuses the process
 (`loop-induced-probe`); `[generation] allow_failed_probes = true` (CLI
 `--allow-failed-probes`) stores it anyway. The outcome is recorded in the
 artifact's generation filters (`loop_induced_probes`).

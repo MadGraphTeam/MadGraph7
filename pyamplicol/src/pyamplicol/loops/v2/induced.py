@@ -826,8 +826,35 @@ def rotation_budget(direct: Any, rotated: Any) -> dict:
     sum vanishes), lane by lane, and the absolute deviations enter the
     quadratic budget (``quadratic_budget``) as the reduction re-test's do."""
 
+    return quadratic_budget(
+        direct, _rotation_deviations(direct, rotated, _row_phases(direct, rotated, 1))
+    )
+
+
+def rotation_errors(direct: Any, rotated: Any) -> dict:
+    """Per (loop order, row), t and Laurent coefficient k the absolute
+    deviation bound of a probe's rotation check (``probe``): the lanes and
+    counterterm kets of ``rotated`` against ``direct`` after removing each
+    row's little-group phase (``rotation_budget``'s comparison), here with
+    the phase from every Laurent coefficient (a probe's residues may sit in
+    the poles), summed over the lanes so that no two cancel. A true value
+    rotates with its row's phase and deviates by rounding only; rounding
+    noise deviates by its own size: the residues of a Furry zero (g g > a a
+    a), whose numerator coefficients cancel between the loop's two
+    orientations, so that its term floor is at rounding too, are covered by
+    this budget, not by the floor. Needs the raw lanes (or compares the
+    bare amplitudes, ``rotation_budget``)."""
+
+    width = width_of(direct)
+    return _rotation_deviations(direct, rotated, _row_phases(direct, rotated, width))
+
+
+def _row_phases(direct: Any, rotated: Any, width: int) -> dict:
+    """Per helicity row the little-group phase of ``rotated`` against
+    ``direct``: the phase of sum conj(a') a over the row's loop orders, t
+    and its first ``width`` Laurent coefficients (1 where it vanishes)."""
+
     numbers = direct.numbers
-    width = 3 if direct.poles else 1
     size = len(direct.slice.amplitude)
     with numbers.scope():
         phases = {}
@@ -840,7 +867,8 @@ def rotation_budget(direct: Any, rotated: Any) -> dict:
                 if other is None:
                     continue
                 for t in range(size):
-                    total = total + other[t][0].conjugate() * vector[t][0]
+                    for k in range(width):
+                        total = total + other[t][k].conjugate() * vector[t][k]
             magnitude = abs(total)
             phases[row] = (
                 numbers.pair(1)
@@ -849,6 +877,18 @@ def rotation_budget(direct: Any, rotated: Any) -> dict:
                 if numbers.double
                 else total * (1 / numbers.real(magnitude))
             )
+    return phases
+
+
+def _rotation_deviations(direct: Any, rotated: Any, phases: Mapping) -> dict:
+    """``lane_errors`` of the phase-corrected lane deviations of ``rotated``
+    from ``direct``, plus the counterterm kets' (and, without raw lanes, the
+    bare amplitudes') per (loop order, row, t) deviations."""
+
+    numbers = direct.numbers
+    width = 3 if direct.poles else 1
+    size = len(direct.slice.amplitude)
+    with numbers.scope():
         deviations = {}
         zero = numbers.zero
         for lane in dict.fromkeys([*direct.families, *rotated.families]):
@@ -878,7 +918,7 @@ def rotation_budget(direct: Any, rotated: Any) -> dict:
                     x = zero if a is None else a[t][k]
                     y = zero if b is None else b[t][k]
                     cell[t][k] += float(abs(y * phases[row] - x))
-    return quadratic_budget(direct, errors)
+    return errors
 
 
 def term_values(evaluation: Any) -> dict:
@@ -1109,17 +1149,22 @@ ESTIMATE_FACTOR = 10
 
 
 def amplitude_estimates(
-    evaluation: Any, roundoff: float, scales: Mapping | None = None
+    evaluation: Any,
+    roundoff: float,
+    scales: Mapping | None = None,
+    rotations: Sequence[Mapping] = (),
 ) -> dict:
     """Per (loop order, row) and Laurent coefficient k the pair (||a_k||_G,
     E_k): the amplitude's colour-metric norm and its absolute estimate E_k =
-    SAFETY x ||delta a_k||_G + FLOOR_UNITS x u x S_k(h) (``stability``'s
-    combination at the amplitude level, PLAN §2.a.8), with ||delta a_k||_G
-    bounded by the reduction re-test's per-component deviations
-    (``native_budget``, or the Python lanes' ``family_deviations``; no two
-    families cancel) and S_k(h) the row's term floor (``row_scales``, or
-    ``scales``: a Ward probe's are the physical amplitude's, ``probe``).
-    Needs the reduction re-test and the term scale (``probe``)."""
+    SAFETY x (max over rotations of ||delta a_k||_G + ||delta a_k||_G of the
+    re-test) + FLOOR_UNITS x u x S_k(h) (``stability``'s combination at the
+    amplitude level, PLAN §2.a.8), with the re-test's ||delta a_k||_G
+    bounded by its per-component deviations (``native_budget``, or the
+    Python lanes' ``family_deviations``; no two families cancel), a
+    rotation's by ``rotation_errors`` (``rotations``), and S_k(h) the row's
+    term floor (``row_scales``, or ``scales``: a Ward probe's are the
+    physical amplitude's, ``probe``). Needs the reduction re-test and the
+    term scale (``probe``)."""
 
     from .stability import FLOOR_UNITS, SAFETY
 
@@ -1158,6 +1203,14 @@ def amplitude_estimates(
                 if error is None
                 else _bound_norm([error[t][k] for t in range(size)], gram)
             )
+            budget += max(
+                (
+                    _bound_norm([turned[key][t][k] for t in range(size)], gram)
+                    for turned in rotations
+                    if key in turned
+                ),
+                default=0.0,
+            )
             entries.append(
                 (residue, SAFETY * budget + FLOOR_UNITS * roundoff * scale_[k])
             )
@@ -1189,11 +1242,16 @@ class ProbeResult:
         return self.worst <= ESTIMATE_FACTOR
 
 
-def _probe_evaluation(executor, point, scale, parameters, precision, ward, frame):
-    """One point on ``executor`` with the reduction re-test in ``frame`` and
-    the term scale: (the carrier's precision, the evaluation)."""
+def _probe_evaluation(
+    executor, point, scale, parameters, precision, ward, frame, term_scale=False
+):
+    """One point on ``executor`` with the reduction re-test in ``frame``
+    (None: none, a rotation check's run), the raw lanes (``rotation_errors``
+    sums its deviations over them) and, with ``term_scale``, the term scale:
+    (the carrier's precision, the evaluation)."""
 
-    executor.term_scale = True
+    executor.term_scale = term_scale
+    raw, executor.raw_lanes = executor.raw_lanes, True
     try:
         precision, evaluations, failures = executor._evaluated(
             [point],
@@ -1207,6 +1265,7 @@ def _probe_evaluation(executor, point, scale, parameters, precision, ward, frame
         )
     finally:
         executor.term_scale = False
+        executor.raw_lanes = raw
     if failures:
         raise ArithmeticError(f"the probe point failed: {failures[0]}")
     (evaluation,) = evaluations
@@ -1242,7 +1301,7 @@ def probe(
     parameters: Mapping[str, str] | None = None,
     precision: Any = None,
     ward: Any = None,
-    frame: str = "reversed",
+    checks: Any = None,
     physical: Mapping | None = None,
 ) -> ProbeResult:
     """The finiteness probe (``ward`` None) or the amplitude-level Ward
@@ -1270,14 +1329,41 @@ def probe(
       amplitude's own floor can be at rounding (the numerators of g g > h
       vanish term by term), which would make its estimate meaningless.
 
-    The reduction re-test in ``frame`` and the term scale run with it."""
+    ``checks`` (``stability.StabilityChecks``; default the calibrated
+    ``RECOMMENDED_CHECKS``: the rescaled reduction re-test and one generic
+    rotation) are the estimate's checks: the re-test runs with the term
+    scale, each rotation re-evaluates the rotated point (a Ward value
+    rotates with it, ``ward.rotated_ward``) and enters by
+    ``rotation_errors``, which also covers residues that are rounding of a
+    cancellation inside the family numerators (a Furry zero), where the
+    term floor is at rounding itself."""
 
-    from .assemble import Precision
+    from .assemble import Precision, _fraction
+    from .stability import RECOMMENDED_CHECKS
 
     precision = precision or Precision.double_double()
+    checks = RECOMMENDED_CHECKS if checks is None else checks
+    frame = checks.frame
+    if frame is None:
+        raise ValueError("a probe needs the reduction re-test (its term scale)")
+    # The term floor is the physical amplitude's: a Ward run reads the
+    # physical run's (``physical``) and forms no term scale of its own.
     carrier, evaluation = _probe_evaluation(
-        executor, point, scale, parameters, precision, ward, frame
+        executor, point, scale, parameters, precision, ward, frame, ward is None
     )
+    turned = []
+    for rotation in checks.rotations:
+        moved = rotation.apply(tuple(tuple(_fraction(x) for x in p) for p in point))
+        if ward is None:
+            rotated_ward = None
+        else:
+            from .ward import rotated_ward as rotate
+
+            rotated_ward = rotate(rotation, ward)
+        _carrier, run = _probe_evaluation(
+            executor, moved, scale, parameters, precision, rotated_ward, None
+        )
+        turned.append(rotation_errors(evaluation, run))
     if ward is None:
         scales = row_scales(evaluation)
         floors = scales
@@ -1286,12 +1372,12 @@ def probe(
 
         if physical is None:
             _carrier, reference = _probe_evaluation(
-                executor, point, scale, parameters, precision, None, frame
+                executor, point, scale, parameters, precision, None, frame, True
             )
             physical = row_scales(reference)
         scales = physical
         floors = ward_floors(physical, ward_leg(ward))
-    estimates = amplitude_estimates(evaluation, carrier.unit_roundoff, floors)
+    estimates = amplitude_estimates(evaluation, carrier.unit_roundoff, floors, turned)
     first = 0 if ward is not None else 1
     ratios = {}
     for key, entries in estimates.items():
@@ -1501,8 +1587,8 @@ def generation_probes(
 ) -> dict[str, Any]:
     """The generation-time probes of a loop-induced slice (m-lit Q12, PLAN
     §2.a.7 items 5-6), in double-double by default: the finiteness probe and,
-    on every external massless gauge-boson leg (gluons and photons), the
-    amplitude-level Ward probe epsilon_j -> c p_j / E_j for c = 1 and i, on
+    on one leg of every external massless gauge-boson species (gluons and
+    photons), the amplitude-level Ward probe epsilon_j -> p_j / E_j, on
     a slice of the request generated on the full tree kernels at zero widths
     outside the complex-mass scheme (``probe_request``; the production slice
     itself when it already is one). The point is the candidate binary64
@@ -1517,7 +1603,7 @@ def generation_probes(
 
     from .assemble import Precision
     from .plan_export import NativeExecutor
-    from .ward import WARD_FACTORS, gauge_legs, gauge_ward, ward_slice
+    from .ward import gauge_legs, gauge_ward, ward_slice
 
     if slice_.amplitude.colour_zero:
         return {"exact_colour_zero": True}
@@ -1539,24 +1625,31 @@ def generation_probes(
     scale = _point_scale(point, sum(1 for leg in blocks.process.legs if leg.is_initial))
     finite = probe(executor, point, scale, precision=precision)
     results = [("finiteness", None, finite)]
-    legs = gauge_legs(target)
+    # One Ward probe per external gauge-boson species (its first leg; Bose
+    # symmetry relates the others) at c = 1: the amplitude is linear in the
+    # substituted vector, so c = i (needed where an interference takes a
+    # real part, ``ward.WARD_FACTORS``) has the same norm.
+    species = {int(leg.label): int(leg.pdg) for leg in target.blocks.process.legs}
+    first: dict[int, int] = {}
+    for leg in gauge_legs(target):
+        first.setdefault(species[leg], leg)
+    legs = sorted(first.values())
     for leg in legs:
-        for factor in WARD_FACTORS:
-            ward = gauge_ward(leg, factor, point)
-            results.append(
-                (
-                    "ward",
-                    (leg, factor),
-                    probe(
-                        executor,
-                        point,
-                        scale,
-                        precision=precision,
-                        ward=ward,
-                        physical=finite.scales,
-                    ),
-                )
+        ward = gauge_ward(leg, (1, 0), point)
+        results.append(
+            (
+                "ward",
+                leg,
+                probe(
+                    executor,
+                    point,
+                    scale,
+                    precision=precision,
+                    ward=ward,
+                    physical=finite.scales,
+                ),
             )
+        )
     finiteness = results[0][2]
     wards = [result for kind, _, result in results if kind == "ward"]
     record: dict[str, Any] = {
@@ -1574,7 +1667,7 @@ def generation_probes(
     }
     failed = [
         f"{kind} probe"
-        + ("" if where is None else f" (leg {where[0]}, c = {where[1]})")
+        + ("" if where is None else f" (leg {where})")
         + f": {result.worst:.3g} times its estimate"
         for kind, where, result in results
         if not result.passed

@@ -670,25 +670,36 @@ def test_ward_probe_passes_and_discriminates(li):
 
 
 @pytest.mark.loop_physics
-def test_generation_probes_pass_at_zero_widths_on_the_full_kernels(li):
-    """m-lit Q12 / Q7, PLAN §2.a.7: the generation-time probes of g g > h g
-    at the model's widths (none fixed): on a probe slice with the widths
-    fixed to zero on the full tree kernels, in double-double at the
-    candidate farthest from the tree poles (lifted to exact momentum
-    conservation), the finiteness probe and the Ward probes of the three
-    gluons pass within ten times their estimates."""
+@pytest.mark.parametrize(
+    ("process", "orders", "name", "legs"),
+    [
+        ("g g > h g", {"QCD": 3, "QED": 1}, "li_gg_hg", [1]),
+        # A Furry zero: the residues are rounding of the numerators' own
+        # cancellation, which the rotation budget covers.
+        ("g g > h a", {"QCD": 2, "QED": 2}, "li_gg_ha", [1, 4]),
+    ],
+    ids=["gg_hg", "gg_ha"],
+)
+def test_generation_probes_pass_at_zero_widths_on_the_full_kernels(
+    li, process, orders, name, legs
+):
+    """m-lit Q12 / Q7, PLAN §2.a.7: the generation-time probes at the
+    model's widths (none fixed): on a probe slice with the widths fixed to
+    zero on the full tree kernels, in double-double at the candidate
+    farthest from the tree poles (lifted to exact momentum conservation),
+    the finiteness probe and the Ward probe of one leg per gauge-boson
+    species pass within ten times their estimates."""
 
     from pyamplicol.loops.v2 import induced
     from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
 
     compiled = li.model("no_b_mass")
-    orders = {"QCD": 3, "QED": 1}
     slice_ = LoopSlice.generate(
         compiled,
-        SliceRequest("g g > h g", orders, orders, contribution="loop-induced"),
+        SliceRequest(process, orders, orders, contribution="loop-induced"),
         li.native,
     )
-    points = _fixture("li_gg_hg")["points"]
+    points = _fixture(name)["points"]
     candidates = [[[float(x) for x in p] for p in point] for point in points]
     record = induced.generation_probes(slice_, compiled, li.native, candidates)
     assert record["precision"] == "double-double" and record["widths"] == "zero"
@@ -696,7 +707,7 @@ def test_generation_probes_pass_at_zero_widths_on_the_full_kernels(li):
     distances = [induced.probe_point(slice_, point, 64)[1] for point in candidates]
     assert record["candidate"] == distances.index(max(distances))
     assert record["finiteness"]["passed"] and record["ward"]["passed"]
-    assert record["ward"]["legs"] == [1, 2, 4] and "failed" not in record
+    assert record["ward"]["legs"] == legs and "failed" not in record
 
 
 @pytest.mark.loop_physics
@@ -826,7 +837,7 @@ def test_public_route_generates_loads_and_relocates(li, tmp_path):
     }
     probes = records["gg_h"]["loop_induced_probes"]
     assert probes["finiteness"]["passed"] and probes["ward"]["passed"]
-    assert probes["ward"]["legs"] == [1, 2]
+    assert probes["ward"]["legs"] == [1]
     assert records["h_ga"]["loop_induced_probes"] == {"exact_colour_zero": True}
     point, scale, parameters = li.point("li_gg_h")
     runtime = Runtime.load(output, process="gg_h", model_parameters=parameters)
