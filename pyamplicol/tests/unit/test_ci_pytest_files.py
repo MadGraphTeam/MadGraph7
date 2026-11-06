@@ -76,16 +76,17 @@ def test_minimum_executed_count(tmp_path):
     assert "::error::2 tests executed, fewer than 3" in output
 
 
-def test_marker_selection_drops_files_and_empty_needs_a_notice(tmp_path):
+def test_marker_selection_drops_files_and_only_missing_files_may_pass(tmp_path):
     code, output = _run(tmp_path, "test_*.py", "--marker", "slow")
     assert code == 0, output
     assert "-> 1 units from 4 targets" in output
     assert "1 units, 1 tests executed" in output
-    code, output = _run(tmp_path, "test_b.py", "--marker", "slow")
-    assert code == 1, output
-    assert "::error::no test selected" in output
+    for arguments in ((), ("--allow-missing", "none yet")):
+        code, output = _run(tmp_path, "test_b.py", "--marker", "slow", *arguments)
+        assert code == 1, output
+        assert "::error::no test selected" in output
     code, output = _run(
-        tmp_path, "test_b.py", "--marker", "slow", "--allow-empty", "none yet"
+        tmp_path, "test_new*.py", "--marker", "slow", "--allow-missing", "none yet"
     )
     assert code == 0, output
     assert "::notice::none yet" in output

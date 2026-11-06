@@ -13,8 +13,9 @@ admits one process per user); with it ``--jobs`` run concurrently.
 
 The run fails when a unit fails, with ``--require-each`` when a unit executes
 no test (every selected test skipped: a vacuous unit), and when fewer than
-``--min-executed`` tests ran in total; an empty selection fails unless
-``--allow-empty`` gives the notice that makes it a pass. ``--record`` writes
+``--min-executed`` tests ran in total. An empty selection fails, except that
+targets matching no file yet pass with the ``--allow-missing`` notice (tests
+that are still to land). ``--record`` writes
 the counts and the files' wall times (a ``--durations`` input); ``--merge``
 sums the records of the shards of one run and applies ``--min-executed`` to
 the total.
@@ -238,7 +239,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="fail a unit that executes no test (all selected tests skipped)",
     )
-    parser.add_argument("--allow-empty", metavar="NOTICE")
+    parser.add_argument(
+        "--allow-missing",
+        metavar="NOTICE",
+        help="no target matches a file yet: pass with this ::notice::",
+    )
     parser.add_argument("--output", type=Path, help="logs and JUnit reports")
     parser.add_argument("--python", default=sys.executable)
     argv = list(sys.argv[1:] if argv is None else argv)
@@ -269,8 +274,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     units = _shard(units, args.shard, durations)
     if not units:
-        if args.allow_empty is not None:
-            print(f"::notice::{args.allow_empty}")
+        if not targets and args.allow_missing is not None:
+            print(f"::notice::{args.allow_missing}")
             return 0
         print(f"::error::no test selected by {shlex.join(args.targets)}")
         return 1
