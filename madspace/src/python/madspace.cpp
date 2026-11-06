@@ -2559,8 +2559,11 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<EWSudakovMode>&>(),
             py::arg("process"),
             py::arg("parameters"),
-            py::arg("modes") =
+            py::arg_v(
+                "modes",
                 std::vector<EWSudakovMode>{{0, true, true}, {1, true, true}},
+                "[EWSudakovMode(sud_mod=0), EWSudakovMode(sud_mod=1)]"
+            ),
             pydoc::doc("EWSudakov::EWSudakov")
         )
         .def(
