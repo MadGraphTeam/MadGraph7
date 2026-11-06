@@ -591,6 +591,115 @@
         "process": "21 21 -> 6 -6 11 -11 21",
         "library": "ppllttj_ew"
       }
+    },
+    {
+      "name": "li_gg_hh",
+      "role": "loop-induced",
+      "li_row": "LI-24",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        25,
+        25
+      ],
+      "loop_orders": {
+        "QCD": 2,
+        "QED": 2
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > h h [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_hh/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> H H"
+      },
+      "openloops": {
+        "process": "21 21 -> 25 25",
+        "library": "pphh2"
+      },
+      "points": {
+        "tool": "exact_points.py",
+        "scale_window": [
+          "300",
+          "1500"
+        ]
+      },
+      "analytic_limit": [
+        "gg_hh_let"
+      ],
+      "note": "the gg_hh_let oracle is the m_t -> infinity limit (LI-A7), compared only in an m_t extrapolation",
+      "reference_fixture": "li/li_gg_hh"
+    },
+    {
+      "name": "li_gg_hgg",
+      "role": "loop-induced",
+      "li_row": "LI-32",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        25,
+        21,
+        21
+      ],
+      "loop_orders": {
+        "QCD": 4,
+        "QED": 1
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > h g g [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_hgg/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> H g g"
+      },
+      "openloops": {
+        "process": "21 21 -> 25 21 21",
+        "library": "pphjj2"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "reference_fixture": "li/li_gg_hgg"
+    },
+    {
+      "name": "li_gg_zzg",
+      "role": "loop-induced",
+      "li_row": "LI-33",
+      "loop_induced": true,
+      "pdgs": [
+        21,
+        21,
+        23,
+        23,
+        21
+      ],
+      "loop_orders": {
+        "QCD": 3,
+        "QED": 2
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > z z g [sqrvirt=QCD]",
+        "export": "runs/li/li_gg_zzg/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> Z Z g"
+      },
+      "openloops": {
+        "process": "21 21 -> 23 23 21",
+        "library": "ppvvj2"
+      },
+      "points": {
+        "tool": "exact_points.py"
+      },
+      "reference_fixture": "li/li_gg_zzg"
     }
   ]
 }
