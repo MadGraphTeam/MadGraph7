@@ -80,8 +80,18 @@ def test_streams_are_exact_distinct_and_start_with_the_campaign(key):
     points = [streams.exact(stream, index) for index in range(len(stream["points"]))]
     assert len(points) == streams.STREAM_LENGTH
     assert len({tuple(x for p in point for x in p) for point in points}) == len(points)
+    # Supplied points (mass patterns exact_points cannot represent, e.g. the
+    # loop-induced g g > h h h): momentum conservation exact, mass shells to
+    # the printed 30 digits.
+    supplied = stream["construction"].startswith("supplied_points")
     for point in points:
-        exact_points.check(point, masses, 2)
+        if not supplied:
+            exact_points.check(point, masses, 2)
+            continue
+        for mu in range(4):
+            assert sum(p[mu] for p in point[:2]) == sum(p[mu] for p in point[2:])
+        for p, m in zip(point, masses, strict=True):
+            assert abs(exact_points._dot(p, p) - m * m) <= p[0] ** 2 / 10**27
     assert streams.campaign_agreement(key, stream) in (True, None)
     text = streams.binary64(stream, 3)
     for exact, decimal in zip(stream["points"][:3], text, strict=True):

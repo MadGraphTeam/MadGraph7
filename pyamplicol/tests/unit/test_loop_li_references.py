@@ -52,9 +52,15 @@ def test_loop_induced_specification_and_fixture(name):
     assert data["normalization"]["denominator"] == required_spec.normalization(spec)["denominator"]
     text = path.read_text()
     assert not re.search(r"/(shared|home|tmp)/", text), "absolute path left in the fixture"
-    assert "madloop" in data["providers"]
-    assert data["providers"]["madloop"]["settings"]["MadLoopParams"]["HelicityFilterLevel"] == "0"
-    assert data["providers"]["madloop"]["settings"]["param_card"]
+    if spec["madloop"].get("unavailable"):
+        # e.g. g g > a a a: MG5 removes Furry loops by rule (no diagram).
+        assert "madloop" not in data["providers"] and data["unavailable"]["madloop"]
+    elif {"export", "madloop"} & set(data["misses_45_min"]):
+        assert "madloop" not in data["providers"]
+    else:
+        assert "madloop" in data["providers"]
+        assert data["providers"]["madloop"]["settings"]["MadLoopParams"]["HelicityFilterLevel"] == "0"
+        assert data["providers"]["madloop"]["settings"]["param_card"]
     if spec.get("zero"):
         assert data["zero_row"] and data["passed"] is None
         return
@@ -64,7 +70,7 @@ def test_loop_induced_specification_and_fixture(name):
     for provider in ("recola", "openloops"):
         if spec.get(provider, {}).get("unavailable"):
             assert provider not in data["providers"]
-        else:
+        elif provider not in data["misses_45_min"]:
             assert provider in data["providers"], f"{name}: no {provider} reference"
     if spec.get("analytic"):
         # The oracle equals at least one provider far below L1 at every point
@@ -83,6 +89,8 @@ def test_single_helicity_rows_sum_to_the_summed_value(name):
     # Q39: |A(h)|^2/avg (MadLoop's USERHEL value / HELAVGFACTOR) sums to the
     # helicity-summed value; a stale USERHEL would break the sum from point 2 on.
     data = _fixture(name)
+    if "madloop" not in data["providers"]:
+        pytest.skip(f"{name}: no MadLoop reference ({data['misses_45_min'].get('madloop')})")
     for row in data["rows"]:
         helicity = row.get("per_helicity")
         assert helicity, f"{name}: no single-helicity rows"
@@ -97,18 +105,36 @@ def test_the_campaign_manifest_is_current_and_covers_every_reference():
     referenced = {run["process"] for row in manifest["rows"] for run in row["runs"]}
     assert set(_li_processes()) <= referenced
     for row in manifest["rows"]:
-        if row["tier"] in ("analytic", "2->2", "1->3", "zeros", "EW"):
+        if row["tier"] in ("analytic", "2->2", "1->3", "zeros", "EW") or "gate" in row["tier"]:
             assert row["runs"] or row.get("owner") or row["row"] == "LI-Z1", row["row"]
         for run in row["runs"]:
             assert run["status"] in ("pass", "zero row"), (row["row"], run)
+    # Every 2->3 row of PLAN §4.1 has its references (lit-ref-b).
+    three = {run["process"] for row in manifest["rows"] if row["tier"] == "2->3 gate" for run in row["runs"]}
+    assert {"li_emep_ggg", "li_gg_hhh", "li_gg_hgg", "li_gg_zzg", "li_gg_aag", "li_gg_wpwmg", "li_gg_zzz",
+            "li_gg_hzg", "li_gg_agg", "li_gg_zgg", "li_uux_hgg", "li_uux_ddxh"} <= three
 
 
-@pytest.mark.parametrize("name", ["li_gg_hh", "li_gg_hgg", "li_gg_zzg"])
-def test_provider_timing_records_of_the_gated_and_two_to_two_rows(name):
+TIMED = sorted(p.name[: -len("-providers.json")] for p in (FIXTURES / "timing").glob("*-providers.json"))
+
+
+def test_every_two_to_three_gate_row_has_provider_timings():
+    manifest = json.loads((REFERENCE / "li_campaign.json").read_text())
+    three = {run["process"] for row in manifest["rows"] if row["tier"] == "2->3 gate" for run in row["runs"]}
+    assert three <= set(TIMED)
+
+
+@pytest.mark.parametrize("name", TIMED)
+def test_provider_timing_records(name):
+    spec = required_spec.load_process(required_spec.DEFAULT_SPEC, name)
     record = json.loads((FIXTURES / "timing" / f"{name}-providers.json").read_text())
-    assert record["process"] == name
+    assert record["process"] == name and record["points"] == 16
+    assert not re.search(r"/(shared|home|tmp)/", json.dumps(record)), "absolute path left in the record"
     for provider in ("madloop", "recola", "openloops"):
         entry = record["providers"][provider]
+        if spec[provider].get("unavailable"):
+            assert entry.get("unavailable"), (name, provider)
+            continue
         assert "error" not in entry and entry["mean_seconds_per_point"] > 0
     madloop = record["providers"]["madloop"]
     assert madloop["madloop_params"]["MLReductionLib"] == "7|6|1"
@@ -117,6 +143,13 @@ def test_provider_timing_records_of_the_gated_and_two_to_two_rows(name):
         "colour flows and squaring"}
     opp = json.loads((FIXTURES / "timing" / f"{name}-providers-madloop-opp.json").read_text())
     assert opp["providers"]["madloop"]["madloop_params"]["MLReductionLib"] == "6|7|1"
+    # The one-helicity column (MadEvent mode): inline, or a separate record for
+    # the rows the first delivery timed.
+    separate = FIXTURES / "timing" / f"{name}-providers-madloop-one-helicity.json"
+    one = (json.loads(separate.read_text())["providers"]["madloop"] if separate.exists() else madloop)["one_helicity"]
+    assert one["madloop_params"]["MLReductionLib"] == "7|6|1"
+    assert 0 < one["mean_seconds_per_call"] and one["calls"] == sum(one["kept_helicities_per_point"])
+    assert all(0 < kept <= one["helicities"] for kept in one["kept_helicities_per_point"])
 
 
 def test_references_py_refuses_a_loop_induced_specification(tmp_path, monkeypatch):

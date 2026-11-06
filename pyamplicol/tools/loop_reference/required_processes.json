@@ -2827,7 +2827,7 @@
       "correction": "QCD",
       "scheme": "qcd-widths",
       "madloop": {"process": "g g > e+ e- mu+ mu- g [sqrvirt=QCD]"},
-      "recola": {"process": "g g -> e+ e- mu+ mu- g"},
+      "recola": {"process": "g g -> e+ e- mu+ mu- g", "unavailable": "Recola's on-shell scheme with non-zero widths is not the fixed-width scheme of MG5 and OpenLoops (as for li_gg_emepmupmum: 1.7e-4 to 3.6e-4 relative to OpenLoops here); the measured deviation is recorded"},
       "openloops": {"process": "21 21 -> -11 11 -13 13 21", "library": "ppllllj2"},
       "points": {"tool": "exact_points.py"},
       "note": "2->5 stretch (rank 7, outside TIRust's validated N <= 6, reported only); OpenLoops library ppllllj2 is not in the designated list: added under the 45-minute rule (PLAN §3.2)"
