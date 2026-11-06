@@ -17,7 +17,11 @@ ANNOUNCEMENT:
        - onia produced in 1 -> N decays, e.g. "generate z > Jpsi(1|3S11) a",
          "generate t > w+ Bc-(1|1S01) c": the momentum reshuffling works at the fixed
          mass of the decaying particle (it also checks the particle at position 2,
-         which it skipped), and madevent has the integration channels of a decay.
+         which it skipped), and madevent has the integration channels of a decay:
+         each one maps the invariant masses the propagators of its diagram depend
+         on (the two constituents of an onium count as the bound state), so the
+         fragmentation peaks of a strongly boosted onium (z > Bc+ b c~ far above
+         the Z mass) are sampled.
        - an incoming onium with a second incoming particle ("Jpsi(1|3S11) g > g g") is
          accepted by 'output standalone_fortran' only (a matrix element, used for the
          time-reversal checks).

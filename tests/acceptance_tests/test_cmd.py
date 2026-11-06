@@ -2735,6 +2735,57 @@ class TestCmdShell2(unittest.TestCase,
         expected = 8 * alphas ** 2 * r2 / (3 * M ** 2)
         self.assertLess(abs(width - expected) / expected, 1e-10)
 
+    def test_onia_decay_channels(self):
+        """The madevent channels of a 1 -> N process with onia follow the
+        propagators of their diagram, over the physical final state:
+        z > Bc+ b c~ maps m(B_c cbar) in the bbar-fragmentation diagrams and
+        m(B_c b) in the c-fragmentation ones (the bbar* or c* propagator
+        carries the whole B_c); an incoming onium (Jpsi > g g g) maps a pair
+        of gluons. Each channel ends on the decaying particle."""
+
+        import glob
+        import madgraph.interface.master_interface as MGCmd
+
+        def channels(proc_dir):
+            text = open(pjoin(proc_dir, 'configs.inc')).read()
+            out = {}
+            for m in re.finditer(r'IFOREST\(I,(-\d+),(\d+)\),I=1,2\)/(-?\d+),(-?\d+)/\s*\n\s*'
+                                 r'DATA \(SPROP\(I,-\d+,\d+\),I=1,1\)/(-?\d+)/', text):
+                out.setdefault(int(m.group(2)), []).append(
+                    (int(m.group(3)), int(m.group(4)), int(m.group(5))))
+            return out
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('import model sm_onia-c_mass')
+
+        # legs: 1 z, 2 Bc+, 3 b, 4 c~
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        mg_cmd.exec_cmd('generate z > Bc+(1|1S01) b c~ QED=1')
+        mg_cmd.exec_cmd('output madevent %s -f -nojpeg' % self.out_dir)
+        proc_dir = glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*'))[0]
+        chans = channels(proc_dir)
+        self.assertEqual(len(chans), 4)
+        first = sorted(tuple(sorted(c[0][:2])) for c in chans.values())
+        self.assertEqual(first, [(2, 3), (2, 3), (2, 4), (2, 4)])
+        # the bbar* (c*) propagator carries the whole B_c: a quark propagator;
+        # the gluon carries one constituent: massless
+        self.assertEqual(sorted(abs(c[0][2]) for c in chans.values()), [4, 5, 21, 21])
+        self.assertTrue(all(len(c) == 2 and c[-1][2] == 23 for c in chans.values()))
+
+        # an incoming onium: legs 1 Jpsi, 2-4 gluons
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        mg_cmd.exec_cmd('generate Jpsi(1|3S11) > g g g')
+        mg_cmd.exec_cmd('output madevent %s -f -nojpeg' % self.out_dir)
+        proc_dir = glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*'))[0]
+        chans = channels(proc_dir)
+        self.assertTrue(all(len(c) == 2 and c[-1][2] == 443 for c in chans.values()))
+        self.assertTrue(all(set(c[0][:2]) <= set([2, 3, 4]) for c in chans.values()))
+        self.assertEqual(len(set(tuple(sorted(c[0][:2])) for c in chans.values())), 3)
+
     def test_standalone_density(self):
         """test that standalone density is working"""
 
