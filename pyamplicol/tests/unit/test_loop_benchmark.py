@@ -708,6 +708,22 @@ def test_gate_document_applies_the_floor_and_reads_no_old_root(tmp_path, no_old_
     assert madloop["generation"]["total_s"] == 6
     slow = rows["gg_ggg"]["pyamplicol"]["native/full"]["batches"]["128"]["gate"]
     assert slow["status"] == "fail" and "measured_status" not in slow
+    # Single provider runs: this run's host spread is 0; another campaign's
+    # (``--host-spread``, the EW row gated beside G1) is assumed where larger.
+    assert document["host_provider_spread"] == 0.0
+    assert "host_provider_spread_of_run" not in document
+    wide, _ = gate.build(paths, tmp_path / "ref", host_spread=0.08)
+    assert wide["host_provider_spread"] == 0.08
+    assert wide["host_provider_spread_of_run"] == 0.0
+    row = {r["key"]: r for r in wide["processes"]}["gg_ggg"]
+    assert row["provider_uncertainty"]["openloops"] == {
+        "relative": 0.08,
+        "assumed": True,
+    }
+    band = row["pyamplicol"]["native/full"]["batches"]["128"]["gate"]
+    assert band["ratio_to_binding_limit"] == slow["ratio_to_binding_limit"]
+    assert band["band_to_binding_limit"][0] < slow["band_to_binding_limit"][0]
+    assert band["band_to_binding_limit"][1] > slow["band_to_binding_limit"][1]
     assert no_old_root == []
 
 
