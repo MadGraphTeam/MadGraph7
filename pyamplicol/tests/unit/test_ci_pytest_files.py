@@ -55,11 +55,58 @@ def test_counts_executed_tests_including_expected_failures(tmp_path):
 
 
 def test_a_failing_unit_fails_the_run_with_its_log(tmp_path):
+    # One at a time: each unit's output streams live inside its group.
     code, output = _run(tmp_path, "test_a.py", "test_d.py")
     assert code == 1, output
     assert "::error::test_d.py exited 1" in output
+    group = output.split("::group::[2/2] test_d.py\n", 1)[1]
+    assert "assert False" in group.split("::endgroup::", 1)[0]
+    assert "(exit 1)" not in output
+    # Concurrent units: a failing unit's log is printed after the run.
+    code, output = _run(
+        tmp_path, "test_a.py", "test_d.py", "--jobs", "2", licensed=True
+    )
+    assert code == 1, output
     assert "::group::test_d.py (exit 1)" in output
     assert "assert False" in output
+    assert "::group::[" not in output
+
+
+def test_a_killed_run_keeps_the_streamed_output(tmp_path):
+    """The unit's output reaches the run's output while the unit runs, so a
+    kill of the whole tree (a memory watchdog) leaves it in the job log."""
+
+    (tmp_path / "test_slow.py").write_text(
+        "import time\n\n\ndef test_slow():\n    print('started', flush=True)\n"
+        "    time.sleep(60)\n"
+    )
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            str(TOOL),
+            "test_slow.py",
+            "--",
+            "-s",
+            "-p",
+            "no:cacheprovider",
+        ],
+        cwd=tmp_path,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        env={k: v for k, v in os.environ.items() if k != "SYMBOLICA_LICENSE"},
+        start_new_session=True,
+    )
+    seen = []
+    try:
+        assert process.stdout is not None
+        for line in process.stdout:
+            seen.append(line.decode(errors="replace"))
+            if "started" in seen[-1]:
+                break
+    finally:
+        os.killpg(process.pid, 9)
+        process.wait(timeout=30)
+    assert any("started" in line for line in seen), seen
 
 
 def test_an_all_skipped_unit_fails_only_with_require_each(tmp_path):
@@ -68,6 +115,52 @@ def test_an_all_skipped_unit_fails_only_with_require_each(tmp_path):
     code, output = _run(tmp_path, "test_a.py", "test_b.py", "--require-each")
     assert code == 1, output
     assert "::error::test_b.py executed no test (all skipped)" in output
+
+
+def test_any_skip_fails_with_no_skips(tmp_path):
+    (tmp_path / "test_e.py").write_text(
+        "import pytest\n\n\ndef test_runs():\n    pass\n\n\n"
+        "def test_skips():\n    pytest.skip('probe')\n"
+    )
+    code, output = _run(tmp_path, "test_e.py", "--require-each")
+    assert code == 0, output
+    code, output = _run(tmp_path, "test_e.py", "test_c.py", "--no-skips")
+    assert code == 1, output
+    assert "::error::test_e.py skipped 1 test(s) (none allowed)" in output
+    # An expected failure is not a skip.
+    code, output = _run(tmp_path, "test_c.py", "--no-skips")
+    assert code == 0, output
+
+
+def test_require_marker_fails_on_a_test_outside_the_expression(tmp_path):
+    code, output = _run(
+        tmp_path, "test_a.py", "--marker", "slow", "--require-marker", "slow"
+    )
+    assert code == 1, output
+    assert "::error::test_a.py::test_two is outside -m 'slow'" in output
+    assert "tests executed" not in output
+    code, output = _run(
+        tmp_path,
+        "test_a.py",
+        "--marker",
+        "slow",
+        "--require-marker",
+        "slow",
+        "--deselect",
+        "test_a.py::test_two",
+    )
+    assert code == 0, output
+    assert "1 units, 1 tests executed" in output
+    code, output = _run(
+        tmp_path,
+        "test_new*.py",
+        "--require-marker",
+        "slow",
+        "--allow-missing",
+        "none yet",
+    )
+    assert code == 0, output
+    assert "::notice::none yet" in output
 
 
 def test_minimum_executed_count(tmp_path):
@@ -132,6 +225,13 @@ def test_split_shards_partition_the_test_ids(tmp_path, licensed):
     code, output = _run(tmp_path, *records, "--merge", "--min-executed", "4")
     assert code == 1, output
     assert "::error::3 tests executed (at least 4 required), 0 failed" in output
+    skipped = json.loads((tmp_path / "record-1.json").read_text()) | {"skipped": 1}
+    (tmp_path / "record-1.json").write_text(json.dumps(skipped))
+    code, output = _run(tmp_path, *records, "--merge")
+    assert code == 0, output
+    code, output = _run(tmp_path, *records, "--merge", "--no-skips")
+    assert code == 1, output
+    assert "1 skipped (none allowed)" in output
 
 
 def test_exclusions_apply_to_the_files_collected_from_a_directory(tmp_path):

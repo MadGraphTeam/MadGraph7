@@ -12,13 +12,20 @@ unknown files the median; without it, by unit count). Without
 admits one process per user); with it ``--jobs`` run concurrently.
 
 The run fails when a unit fails, with ``--require-each`` when a unit executes
-no test (every selected test skipped: a vacuous unit), and when fewer than
-``--min-executed`` tests ran in total. An empty selection fails, except that
-targets matching no file yet pass with the ``--allow-missing`` notice (tests
-that are still to land). ``--record`` writes
-the counts and the files' wall times (a ``--durations`` input); ``--merge``
-sums the records of the shards of one run and applies ``--min-executed`` to
-the total.
+no test (every selected test skipped: a vacuous unit), with ``--no-skips``
+when any selected test skips, and when fewer than ``--min-executed`` tests
+ran in total. ``--require-marker EXPR`` fails before running when a test of
+the targets is outside the pytest ``-m`` expression (a test no selection
+would run). An empty selection fails, except that targets matching no file
+yet pass with the ``--allow-missing`` notice (tests that are still to land).
+``--record`` writes the counts and the files' wall times (a ``--durations``
+input); ``--merge`` sums the records of the shards of one run and applies
+``--min-executed`` and ``--no-skips`` to the totals.
+
+One unit at a time, its output streams into this process's output as it is
+written (inside a ``::group::``), so a unit killed with the whole tree (a
+memory watchdog, a cancelled or timed-out job) still leaves its output; with
+concurrent units each unit's log is printed when it fails.
 """
 
 from __future__ import annotations
@@ -33,6 +40,7 @@ import statistics
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -123,8 +131,29 @@ def _shard(units: list[str], shard: str, durations: dict[str, float]) -> list[st
     return sorted(chosen, key=order.__getitem__)
 
 
+def _follow(log: Path, done: threading.Event) -> None:
+    """Copy ``log`` to stdout as it grows, until ``done`` and the end."""
+
+    with log.open("rb") as stream:
+        while True:
+            chunk = stream.read(1 << 16)
+            if chunk:
+                sys.stdout.buffer.write(chunk)
+                sys.stdout.flush()
+            elif done.is_set():
+                return
+            else:
+                done.wait(0.2)
+
+
 def _run_unit(
-    python: str, unit: str, pytest_args: list[str], output: Path, number: int
+    python: str,
+    unit: str,
+    pytest_args: list[str],
+    output: Path,
+    number: int,
+    *,
+    live: bool = False,
 ) -> Result:
     report = output / f"unit-{number:04d}.xml"
     log = output / f"unit-{number:04d}.log"
@@ -132,13 +161,24 @@ def _run_unit(
     basetemp = output / f"tmp-{number:04d}"
     command = [python, "-m", "pytest", "-q", f"--junitxml={report}", *pytest_args]
     start = time.monotonic()
-    with log.open("w") as stream:
+    # The child writes to its log file, never to a pipe: a grandchild that
+    # keeps the output open cannot block the run.
+    with log.open("wb") as stream:
         process = subprocess.Popen(
             [*command, f"--basetemp={basetemp}", unit],
             stdout=stream,
             stderr=subprocess.STDOUT,
+            env=dict(os.environ, PYTHONUNBUFFERED="1") if live else None,
         )
+        done = threading.Event()
+        follower = None
+        if live:
+            follower = threading.Thread(target=_follow, args=(log, done), daemon=True)
+            follower.start()
         _, status, usage = os.wait4(process.pid, 0)
+        done.set()
+        if follower is not None:
+            follower.join()
     process.returncode = os.waitstatus_to_exitcode(status)
     shutil.rmtree(basetemp, ignore_errors=True)
     result = Result(
@@ -146,7 +186,7 @@ def _run_unit(
         process.returncode,
         time.monotonic() - start,
         usage.ru_maxrss / 1024**2,
-        log=log,
+        log=None if live else log,
     )
     if report.exists():
         for case in ElementTree.parse(report).getroot().iter("testcase"):
@@ -204,10 +244,16 @@ def _merge(args: argparse.Namespace) -> int:
             stream.write(line + "\n")
     if args.record:
         _write_record(args.record, **totals, durations=durations)
-    if totals["failed"] or totals["executed"] < args.min_executed:
+    if (
+        totals["failed"]
+        or totals["executed"] < args.min_executed
+        or (args.no_skips and totals["skipped"])
+    ):
         print(
             f"::error::{totals['executed']} tests executed (at least "
-            f"{args.min_executed} required), {totals['failed']} failed"
+            f"{args.min_executed} required), {totals['failed']} failed, "
+            f"{totals['skipped']} skipped"
+            + (" (none allowed)" if args.no_skips else "")
         )
         return 1
     return 0
@@ -240,6 +286,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="fail a unit that executes no test (all selected tests skipped)",
     )
     parser.add_argument(
+        "--no-skips",
+        action="store_true",
+        help="fail a unit in which any selected test skips",
+    )
+    parser.add_argument(
+        "--require-marker",
+        metavar="EXPR",
+        help="fail when a test of the targets is outside this -m expression",
+    )
+    parser.add_argument(
         "--allow-missing",
         metavar="NOTICE",
         help="no target matches a file yet: pass with this ::notice::",
@@ -251,10 +307,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     cut = argv.index("--") if "--" in argv else len(argv)
     args = parser.parse_args(argv[:cut])
     pytest_args = argv[cut + 1 :]
-    if args.marker:
-        pytest_args[:0] = ["-m", args.marker]
     for node in args.deselect:
         pytest_args += ["--deselect", node]
+    unmarked_args = list(pytest_args)
+    if args.marker:
+        pytest_args[:0] = ["-m", args.marker]
 
     if args.merge:
         return _merge(args)
@@ -264,6 +321,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         return not any(path.match(pattern) for pattern in args.exclude)
 
     targets = [target for target in _targets(args.targets) if kept(target)]
+    if targets and args.require_marker:
+        outside, _ = _collect(
+            args.python,
+            targets,
+            ["-m", f"not ({args.require_marker})", *unmarked_args],
+        )
+        if outside:
+            for node in outside:
+                print(f"::error::{node} is outside -m {args.require_marker!r}")
+            return 1
     units = targets
     if targets and (args.marker or args.split):
         ids, line = _collect(args.python, targets, pytest_args)
@@ -293,9 +360,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         flush=True,
     )
 
+    live = jobs == 1
+
     def run(numbered: tuple[int, str]) -> Result:
         number, unit = numbered
-        result = _run_unit(args.python, unit, pytest_args, output, number)
+        if live:
+            print(f"::group::[{number + 1}/{len(units)}] {unit}", flush=True)
+        result = _run_unit(args.python, unit, pytest_args, output, number, live=live)
+        if live:
+            print("::endgroup::", flush=True)
         print(
             f"[{number + 1}/{len(units)}] exit {result.code} "
             f"{result.seconds:7.1f} s {result.rss_gib:6.2f} GiB "
@@ -314,6 +387,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             problems.append(f"{result.unit} exited {result.code}")
         elif args.require_each and result.executed == 0:
             problems.append(f"{result.unit} executed no test (all skipped)")
+        elif args.no_skips and result.skipped:
+            problems.append(
+                f"{result.unit} skipped {result.skipped} test(s) (none allowed)"
+            )
     executed = sum(result.executed for result in results)
     if executed < args.min_executed:
         problems.append(f"{executed} tests executed, fewer than {args.min_executed}")
@@ -322,6 +399,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"::group::{result.unit} (exit {result.code})")
             print(result.log.read_text(errors="replace"))
             print("::endgroup::")
+    if live and problems:
+        print("each unit's output is in its group above")
     notes = [
         f"{len(results)} units, {executed} tests executed, "
         f"{sum(r.skipped for r in results)} skipped, "
