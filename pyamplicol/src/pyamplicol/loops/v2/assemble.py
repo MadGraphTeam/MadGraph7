@@ -112,6 +112,7 @@ from .colour import (
     _adjoint_rename,
     _colour_key,
     _relabelled_colour,
+    amplitude_contraction,
     build_seed_table,
     contract_colour,
     extend_seed_table,
@@ -2612,6 +2613,11 @@ class LoopSlice:
         policy = self.request.colour_contraction
         if policy not in ("auto", "direct", "fft"):
             raise ValueError(f"unknown colour contraction {policy!r}")
+        if not self.blocks.born_orders:
+            # Amplitude mode (loop-induced: no Born at any order): the seeds
+            # are the coefficient cells, contracted directly (M-LIT LIT-COL).
+            amplitude_contraction(policy, self.request.process)
+            return
         if policy == "direct":
             return
         from .refusals import LoopRequestUnsupported

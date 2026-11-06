@@ -1663,6 +1663,138 @@ pub fn gram(basis: &[Tensor]) -> RusticolResult<Vec<Vec<Arc<Laurent>>>> {
         .collect())
 }
 
+// ---------------------------------------------------------- amplitude basis
+
+/// The SU(N_c) literal tensor of an adjoint ring (`Primitive.tensor`): its
+/// U(N_c) expansion ([`adjoint_un_terms`]) as literal traces (reversed:
+/// literal traces list `tr(tau^w_k .. tau^w_1)`), single-letter traces
+/// vanishing and equal terms combined ([`combine_terms`]).
+pub fn adjoint_ring_tensor(word: &[Label], legs: &[Leg]) -> RusticolResult<Tensor> {
+    let terms = adjoint_un_terms(word)?
+        .into_iter()
+        .map(|(sign, traces, power)| Term {
+            coefficient: Exact::integer(sign),
+            structure: Structure::new(
+                Vec::new(),
+                traces
+                    .iter()
+                    .map(|t| t.iter().rev().copied().collect())
+                    .collect(),
+            ),
+            nc_power: power,
+        })
+        .collect();
+    Ok(Tensor::connected(legs.to_vec(), terms, 0))
+}
+
+impl CellEngine {
+    /// The colour vector `kappa_c` of each class (`SeedTable.tensor`) on the
+    /// engine's legs, in input order: adjoint rings and fundamental traces
+    /// by their SU(N_c) expansion, quark rings as their registered canonical
+    /// ring relabelled back onto the class's labels, generic classes as
+    /// given.
+    pub fn class_tensors(&self, classes: &[ClassInput]) -> RusticolResult<Vec<Tensor>> {
+        let caches = locked(&self.shared)?;
+        let rings = &caches.rings;
+        classes
+            .par_iter()
+            .map(|class| match class {
+                ClassInput::AdjointRing(word) => adjoint_ring_tensor(word, &self.legs),
+                ClassInput::FundamentalTrace(word) => fundamental_trace_tensor(word, &self.legs),
+                ClassInput::QuarkRing { ring, forward } => {
+                    let canonical = rings
+                        .get(*ring)
+                        .ok_or_else(|| invalid(format!("unregistered quark ring {ring}")))?;
+                    let back: FastMap<Label, Label> =
+                        forward.iter().map(|&(class, ring)| (ring, class)).collect();
+                    Ok(canonical.relabelled(&|a: Label| *back.get(&a).unwrap_or(&a)))
+                }
+                ClassInput::Generic(tensor) => Ok(tensor.clone()),
+            })
+            .collect()
+    }
+}
+
+/// The full-colour amplitude basis of a loop-induced request (M-LIT
+/// LIT-COL; PLAN §2.a.2 items 1-3; twin of `colour.amplitude_basis`).
+///
+/// `tensors` (T) are the distinct literal tensors of the class expansions
+/// `kappa_c = sum_t c_{c,t} |t>`, in class order and each class's term
+/// order, then those of the counterterm kets not already in T, in the
+/// kets' (sorted) order. `cells[c]` lists `(t, c_{c,t})` for every t the
+/// class carries, by t: the exact Laurent coefficients in N_c read off the
+/// class's own expansion (its `1/sqrt(2)` power folded; nothing is
+/// overlapped or inverted). `counterterms` are the T elements the kets
+/// carry (sorted) and `metric` is `G_{tt'} = <t|t'>` exact in N_c
+/// ([`gram`], relabelling-orbit cache). Full colour only: no N_c grade and
+/// no truncation; T may be linearly dependent at N_c = 3, which is
+/// harmless because nothing is inverted.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AmplitudeBasis {
+    pub tensors: Vec<Structure>,
+    pub cells: Vec<Vec<(usize, Laurent)>>,
+    pub counterterms: Vec<usize>,
+    pub metric: Vec<Vec<Arc<Laurent>>>,
+}
+
+/// The [`AmplitudeBasis`] of the class tensors `classes` (on `legs`) and
+/// the literal tensors `kets` of the counterterm kets. A class with an odd
+/// `1/sqrt(2)` power (an irrational cell) is refused, as by `seed_cells`.
+pub fn amplitude_basis(
+    legs: &[Leg],
+    classes: &[Tensor],
+    kets: &[Structure],
+) -> RusticolResult<AmplitudeBasis> {
+    let mut tensors: Vec<Structure> = Vec::new();
+    let mut ids: FastMap<Structure, usize> = FastMap::default();
+    let mut intern = |structure: &Structure, tensors: &mut Vec<Structure>| -> usize {
+        if let Some(&id) = ids.get(structure) {
+            return id;
+        }
+        tensors.push(structure.clone());
+        ids.insert(structure.clone(), tensors.len() - 1);
+        tensors.len() - 1
+    };
+    let mut cells = Vec::with_capacity(classes.len());
+    for class in classes {
+        if class.normalization % 2 == 1 {
+            return Err(invalid("a seed class carries an irrational sqrt(2) factor"));
+        }
+        let scale = Rational::new(
+            Integer::one(),
+            Integer::from(2).pow(u64::from(class.normalization / 2)),
+        );
+        let mut row: BTreeMap<usize, Laurent> = BTreeMap::new();
+        for term in &class.terms {
+            let t = intern(&term.structure, &mut tensors);
+            add_laurent(
+                row.entry(t).or_default(),
+                term.nc_power,
+                term.coefficient.scale(&scale),
+            );
+        }
+        cells.push(
+            row.into_iter()
+                .filter(|(_, cell)| !cell.is_empty())
+                .collect(),
+        );
+    }
+    let mut counterterms: Vec<usize> = kets.iter().map(|k| intern(k, &mut tensors)).collect();
+    counterterms.sort_unstable();
+    counterterms.dedup();
+    let singles: Vec<Tensor> = tensors
+        .iter()
+        .map(|t| Tensor::single(legs, t.clone()))
+        .collect();
+    let metric = gram(&singles)?;
+    Ok(AmplitudeBasis {
+        tensors,
+        cells,
+        counterterms,
+        metric,
+    })
+}
+
 // --------------------------------------------------------------- projection
 
 /// A colour accuracy (`ColourAccuracy`).
@@ -2540,5 +2672,125 @@ mod tests {
                 }
             }
         }
+    }
+
+    fn laurent(terms: &[(i32, i64, i64)]) -> Laurent {
+        let mut out = Laurent::new();
+        for &(power, numerator, denominator) in terms {
+            let value = Rational::new(Integer::from(numerator), Integer::from(denominator));
+            add_laurent(&mut out, power, Exact::real(value));
+        }
+        out
+    }
+
+    fn trace(labels: &[Label]) -> Structure {
+        Structure::new(Vec::new(), vec![labels.to_vec()])
+    }
+
+    #[test]
+    fn adjoint_ring_tensors_are_their_su_n_expansion() {
+        // Tr_adj(F^1 F^2) = 2 N tr(12); Tr_adj(F^1 F^2 F^3) = N tr(3 2 1) -
+        // N tr(1 2 3) (literal traces reversed; single letters vanish).
+        let legs: Vec<Leg> = (1..=3).map(|l| (l, ADJOINT)).collect();
+        let two = adjoint_ring_tensor(&[1, 2], &legs[..2]).unwrap();
+        assert_eq!(
+            two.terms,
+            vec![Term {
+                coefficient: Exact::integer(2),
+                structure: trace(&[1, 2]),
+                nc_power: 1,
+            }]
+        );
+        let three = adjoint_ring_tensor(&[1, 2, 3], &legs).unwrap();
+        assert_eq!(
+            three.terms,
+            vec![
+                Term {
+                    coefficient: Exact::integer(-1),
+                    structure: trace(&[1, 2, 3]),
+                    nc_power: 1,
+                },
+                Term {
+                    coefficient: Exact::one(),
+                    structure: trace(&[1, 3, 2]),
+                    nc_power: 1,
+                },
+            ]
+        );
+        // The ring's face-counted overlaps are those of its literal tensor.
+        let four: Vec<Leg> = (1..=4).map(|l| (l, ADJOINT)).collect();
+        let word: Vec<Label> = vec![1, 3, 2, 4];
+        let ket = adjoint_ring_tensor(&word, &four).unwrap();
+        for bra in [vec![1, 2, 3, 4], vec![1, 3, 2, 4], vec![1, 4, 2, 3]] {
+            let bra = adjoint_tensor(&four, bra);
+            assert_eq!(
+                adjoint_ring_overlap(&word, &bra).unwrap(),
+                contract(&bra, &ket).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn amplitude_basis_reads_cells_off_the_class_expansions() {
+        let legs: Vec<Leg> = (1..=3).map(|l| (l, ADJOINT)).collect();
+        let engine = CellEngine::new(legs.clone(), Vec::new()).unwrap();
+        let classes = engine
+            .class_tensors(&[
+                ClassInput::FundamentalTrace(vec![1, 2, 3]),
+                ClassInput::FundamentalTrace(vec![1, 3, 2]),
+                ClassInput::AdjointRing(vec![1, 2, 3]),
+                ClassInput::FundamentalTrace(vec![2]),
+            ])
+            .unwrap();
+        let kets = [trace(&[1, 2, 3])];
+        let basis = amplitude_basis(&legs, &classes, &kets).unwrap();
+        // tr(tau^1 tau^2 tau^3) is the literal trace (3 2 1) = (1 3 2).
+        assert_eq!(basis.tensors, vec![trace(&[1, 3, 2]), trace(&[1, 2, 3])]);
+        let cells: Vec<Vec<(usize, Laurent)>> = vec![
+            vec![(0, laurent(&[(0, 1, 1)]))],
+            vec![(1, laurent(&[(0, 1, 1)]))],
+            vec![(0, laurent(&[(1, 1, 1)])), (1, laurent(&[(1, -1, 1)]))],
+            // tr(tau^a) = 0: no cell.
+            vec![],
+        ];
+        assert_eq!(basis.cells, cells);
+        assert_eq!(basis.counterterms, vec![1]);
+        // <tr(abc)|tr(abc)> = N^3 - 3N + 2/N (56/3 at N_c = 3) and
+        // <tr(abc)|tr(acb)> = -2N + 2/N (-16/3).
+        let diagonal = laurent(&[(3, 1, 1), (1, -3, 1), (-1, 2, 1)]);
+        let off = laurent(&[(1, -2, 1), (-1, 2, 1)]);
+        let metric: Vec<Vec<Laurent>> = basis
+            .metric
+            .iter()
+            .map(|row| row.iter().map(|cell| (**cell).clone()).collect())
+            .collect();
+        assert_eq!(
+            metric,
+            vec![vec![diagonal.clone(), off.clone()], vec![off, diagonal]]
+        );
+        assert_eq!(
+            at_three(&metric[0][0]),
+            Exact::real(Rational::new(Integer::from(56), Integer::from(3)))
+        );
+    }
+
+    #[test]
+    fn amplitude_basis_folds_even_and_refuses_odd_sqrt2_powers() {
+        let legs: Vec<Leg> = (1..=2).map(|l| (l, ADJOINT)).collect();
+        let single = |normalization: u32| {
+            Tensor::connected(
+                legs.clone(),
+                vec![Term {
+                    coefficient: Exact::integer(3),
+                    structure: trace(&[1, 2]),
+                    nc_power: -1,
+                }],
+                normalization,
+            )
+        };
+        let basis = amplitude_basis(&legs, &[single(2)], &[]).unwrap();
+        assert_eq!(basis.cells, vec![vec![(0, laurent(&[(-1, 3, 2)]))]]);
+        assert!(basis.counterterms.is_empty());
+        assert!(amplitude_basis(&legs, &[single(1)], &[]).is_err());
     }
 }
