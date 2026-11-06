@@ -2091,20 +2091,41 @@ def test_report_builder_loop_induced_table_markers_backend_floor_and_reports(
     ms["loop_induced"] = tir_only
     with pytest.raises(ValueError, match="not one of the row's"):
         build()
-    ms["loop_induced"] = _loop_induced_registry()
+    ms["loop_induced"] = _loop_induced_registry(
+        validation_only={"ids": ["LI-Z1", "LI-Z2"], "reason": "test"}
+    )
+    # lit-ref's manifest format: a row's reference runs (madloop_process)
+    # and its free-text process list (annotations, 'or', 'vs'); one row may
+    # carry several ids ("LI-Z1/Z2").
     manifest = tmp_path / "tools" / "loop_reference" / "li_campaign.json"
     manifest.parent.mkdir(parents=True)
     rows_m = [
-        {"row": f"LI-{r['key']}", "process": r["process"]}
+        {"row": f"LI-{r['key']}", "processes": f"{r['process']} [QCD] (t loop)"}
         for r in ms["loop_induced"]["rows"]
     ]
-    manifest.write_text(
-        json.dumps({"rows": [*rows_m, {"row": "LI-Z1", "process": "h > g a"}]})
-    )
+    rows_m[0] = {
+        "row": "LI-gg_hh",
+        "processes": "large m_t: g g > h g vs HEFT; g g > h h vs the LET",
+    }
+    rows_m[1] = {
+        "row": "LI-aa_hh",
+        "processes": "a a > h h h",
+        "runs": [{"madloop_process": "a a > h h [sqrvirt=QED]"}],
+    }
+    identities = {"row": "LI-Z1/Z2", "processes": "zeros", "runs": []}
+    manifest.write_text(json.dumps({"rows": [*rows_m, identities]}))
     _, out = build()
-    assert out["meta"]["campaign"]["checked"] is True
+    campaign = out["meta"]["campaign"]
+    assert campaign["checked"] is True
+    assert (campaign["rows"], campaign["ids"]) == (len(rows_m) + 1, len(rows_m) + 2)
+    # A process is an item of the text, not a prefix of a longer one.
+    rows_m[0]["processes"] = "g g > h h h, g g > h h g"
+    manifest.write_text(json.dumps({"rows": [*rows_m, identities]}))
+    with pytest.raises(ValueError, match="'g g > h h' is not a process"):
+        build()
+    rows_m[0]["processes"] = "g g > h h or g g > h h g"
     manifest.write_text(
-        json.dumps({"rows": [*rows_m, {"row": "LI-99", "process": "x > y"}]})
+        json.dumps({"rows": [*rows_m, identities, {"row": "LI-99", "processes": ""}]})
     )
     with pytest.raises(ValueError, match="neither registry rows"):
         build()
