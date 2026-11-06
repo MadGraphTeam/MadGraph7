@@ -72,7 +72,7 @@ def test_native_toolchains_and_manylinux_image_are_immutable() -> None:
     assert "rust-toolchain@stable" not in rust_workflows
     assert "default-toolchain stable" not in workflows
     assert "manylinux_2_28_x86_64:latest" not in workflows
-    assert rust_workflows.count(f"rust-toolchain@{RUST_TOOLCHAIN_ACTION_SHA}") == 7
+    assert rust_workflows.count(f"rust-toolchain@{RUST_TOOLCHAIN_ACTION_SHA}") == 11
     assert workflows.count(f"default-toolchain {RUST_TOOLCHAIN}") == 2
     assert workflows.count(f"export RUSTUP_TOOLCHAIN={RUST_TOOLCHAIN}") == 2
     assert workflows.count(MANYLINUX_IMAGE) == 2
@@ -246,9 +246,12 @@ def test_restricted_symbolica_check_runs_before_ordinary_test_collection() -> No
         maxsplit=1,
     )[1].split("\n      - name:", maxsplit=1)[0]
     commands = step.split(".venv/bin/python -m pytest ")
-    assert len(commands) == 3
+    assert len(commands) == 2
     assert commands[1].startswith(f"{module} -q\n")
-    assert module not in commands[2]
+    # The others: one process per file, one at a time (restricted Symbolica).
+    ordinary = commands[1].split("\n", maxsplit=1)[1]
+    assert ".venv/bin/python tools/ci/run_pytest_files.py" in ordinary
+    assert module not in ordinary
     assert step.count(MEMORY_WATCHDOG) == 2
 
     justfile = JUSTFILE.read_text(encoding="utf-8")

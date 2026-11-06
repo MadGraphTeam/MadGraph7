@@ -29,6 +29,11 @@ oracles (``native_stages(())`` runs them):
 * **C5 directed colour.** ``directed_table`` (``DirectedColour._table``,
   operator images formed natively by ``operator_images``' Rust twin) and
   ``family_degrees`` (``ObservableSlice._family_degrees``).
+* **Amplitude basis** (M-LIT LIT-COL). ``amplitude_basis`` is the twin of
+  ``colour.amplitude_basis`` (class expansions, coefficient cells and the
+  metric of a loop-induced request, rusticol-core
+  ``cells::amplitude_basis``); ``counterterm_tensors`` collects a slice's
+  counterterm-ket tensors as ``LoopSlice.degrees`` collects its keys.
 
 Determinism (rule 5 of the plan): every native output is independent of the
 thread count (``threads`` selects a private pool; None the global one).
@@ -55,6 +60,7 @@ from pyamplicol.color.connections import (
 
 from .assemble import _AdjointOrbits
 from .colour import (
+    AmplitudeBasis,
     BornBasis,
     Laurent,
     Primitive,
@@ -66,9 +72,11 @@ from .families import Orders, add_orders
 __all__ = [
     "NativeCells",
     "adjoint_orbits",
+    "amplitude_basis",
     "cell_table",
     "contract_colour",
     "contract_many",
+    "counterterm_tensors",
     "decode",
     "degrees",
     "dipole_orbits",
@@ -93,10 +101,13 @@ _KINDS = {"adjoint-ring": 0, "fundamental-trace": 1}
 #             companion read it);
 #   "orbits"  assemble._AdjointOrbits (classes and rename);
 #   "dipoles" LoopSlice.dipoles (``dipoles``: orbit representatives);
-#   "family"  ObservableSlice._family_degrees (complete-family degrees).
+#   "family"  ObservableSlice._family_degrees (complete-family degrees);
+#   "amplitude" colour.amplitude_basis (loop-induced amplitude basis).
 # Rule 2: no stage has a per-request Python fallback; a native refusal is
 # raised (fail closed).
-STAGES: frozenset[str] = frozenset({"cells", "degrees", "orbits", "dipoles", "family"})
+STAGES: frozenset[str] = frozenset(
+    {"cells", "degrees", "orbits", "dipoles", "family", "amplitude"}
+)
 NATIVE_STAGES: frozenset[str] = STAGES
 _DECODED = 0
 
@@ -386,6 +397,55 @@ def gram(basis: BornBasis, threads: int | None = None) -> Cells:
     """``BornBasis.gram``, natively."""
 
     return decode(_native().colour_gram([_tensor(b) for b in basis.tensors], threads))
+
+
+# ---------------------------------------------------------- amplitude basis
+
+
+def _colour_tensor(raw: RawStructure) -> ColorTensor:
+    from pyamplicol.color.connections import OpenColorString
+
+    strings, traces = raw
+    return ColorTensor(
+        tuple(OpenColorString(q, tuple(w), qb) for q, w, qb in strings),
+        tuple(tuple(trace) for trace in traces),
+    )
+
+
+def amplitude_basis(
+    table: Any, kets: Sequence[ColorTensor], threads: int | None = None
+) -> AmplitudeBasis:
+    """``colour.amplitude_basis`` natively: the class expansions of
+    ``table``'s classes (encoded as for its cells, ``NativeCells``), the
+    coefficient cells and the metric in rusticol-core. ``kets`` are already
+    the basis's (``colour.amplitude_kets``)."""
+
+    engine = NativeCells(table.basis)
+    tensors, cells, counterterms, metric = engine._engine.amplitude_basis(
+        [engine._class(seed) for seed in table.classes],
+        [_structure(ket) for ket in kets],
+        threads,
+    )
+    decoder = _Decoder()
+    return AmplitudeBasis(
+        tuple(table.basis.legs),
+        tuple(map(_colour_tensor, tensors)),
+        tuple(tuple((t, decoder.cell(cell)) for t, cell in row) for row in cells),
+        tuple(counterterms),
+        tuple(tuple(decoder.cell(cell) for cell in row) for row in metric),
+    )
+
+
+def counterterm_tensors(slice_: Any) -> tuple[ColorTensor, ...]:
+    """The literal tensors of a slice's counterterm kets at every loop
+    order, every site closed (no relabelling orbits): the counterterm keys
+    of ``LoopSlice.degrees`` (``_DegreeKeys``: site terms and the CT
+    program's closure terms), sorted."""
+
+    keys = _DegreeKeys(slice_, orbits=False)
+    return tuple(
+        sorted({tensor for found in keys.counterterms.values() for tensor, _p in found})
+    )
 
 
 # ----------------------------------------------------------- C2: projection
@@ -904,22 +964,15 @@ def directed_table(directed: Any, table: Any, swapped: bool) -> Any:
 
 
 def _from_raw(raw: RawTensor) -> ConnectedColorTensor:
-    from pyamplicol.color.connections import ColorLeg, OpenColorString, TensorTerm
+    from pyamplicol.color.connections import ColorLeg, TensorTerm
 
     legs, terms, normalization = raw
     decoder = _Decoder()
     return ConnectedColorTensor(
         tuple(ColorLeg(label, representation) for label, representation in legs),
         tuple(
-            TensorTerm(
-                decoder.coefficient(re, im),
-                ColorTensor(
-                    tuple(OpenColorString(q, tuple(w), qb) for q, w, qb in strings),
-                    tuple(tuple(trace) for trace in traces),
-                ),
-                power,
-            )
-            for re, im, power, (strings, traces) in terms
+            TensorTerm(decoder.coefficient(re, im), _colour_tensor(structure), power)
+            for re, im, power, structure in terms
         ),
         normalization,
     )

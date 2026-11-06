@@ -43,9 +43,14 @@ jobs:
           tests/unit/test_config_models.py
           tests/unit/test_config_resolution.py
           -q
-      - name: Check the CI memory watchdog
+      - name: Check the CI tools and the loop-test licence switch
         if: matrix.python-version == '3.11'
-        run: python -m pytest tests/unit/test_ci_memory_watchdog.py -q
+        run: >-
+          python -m pytest
+          tests/unit/test_ci_memory_watchdog.py
+          tests/unit/test_ci_pytest_files.py
+          tests/unit/test_conftest_licence_switch.py
+          -q
 
   source-contracts:
     name: Python 3.11 source and release contracts
@@ -138,16 +143,16 @@ jobs:
         # Keep native compiler/panic diagnostics visible even if Python aborts.
         run: >-
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
-          .venv/bin/python -m pytest
+          .venv/bin/python tools/ci/run_pytest_files.py
           tests/integration/test_multilanguage_api.py
           tests/integration/test_correlated_native_sdk.py
           tests/integration/test_otf_cache_native_sdk.py
           tests/integration/test_umami_api.py
-          -q -s
+          -- -s
       - name: Run focused Python unit checks (30 GiB RSS limit)
         run: |
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 -- \
-            .venv/bin/python -m pytest \
+            .venv/bin/python tools/ci/run_pytest_files.py \
             tests/unit/test_api_requests.py \
             tests/unit/test_api_bundle.py \
             tests/unit/test_umami_metadata.py \
@@ -184,25 +189,24 @@ jobs:
             tests/unit/test_model_loading.py \
             tests/unit/test_sdk_config.py \
             tests/unit/test_selftest_fixture.py \
-            tests/unit/test_symbolica_exact.py \
-            -q
+            tests/unit/test_symbolica_exact.py
       - name: Run eager prepared-model and runtime unit checks (30 GiB RSS limit)
         run: >-
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
-          .venv/bin/python -m pytest
+          .venv/bin/python tools/ci/run_pytest_files.py
           tests/unit/test_eager_*.py
           tests/unit/test_model_source_prepared_compile.py
           tests/unit/test_packaged_prepared_model*.py
           tests/unit/test_prepared_*.py
-          -q
       - name: Run focused generation and runtime integration (30 GiB RSS limit)
         # Collection of the ordinary integration batch initializes Symbolica.
-        # The restricted child must run first with an uninitialized parent.
+        # The restricted child must run first with an uninitialized parent;
+        # the others run one process per file, one at a time.
         run: |
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 -- \
             .venv/bin/python -m pytest tests/integration/test_spenso_restricted_mode.py -q
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 -- \
-            .venv/bin/python -m pytest \
+            .venv/bin/python tools/ci/run_pytest_files.py \
             tests/integration/test_schema_v3_generation_runtime.py \
             tests/integration/test_exact_precision_normalization.py \
             tests/integration/test_sm_heft_backends.py \
@@ -213,8 +217,7 @@ jobs:
             tests/integration/test_otf_cache.py \
             tests/integration/test_adjoint_fft_runtime.py \
             tests/integration/test_generalized_adjoint_fft_runtime.py \
-            tests/integration/test_recurrence_generation_runtime.py::test_ufo_sm_recurrence_refreshes_real_and_complex_derived_couplings \
-            -q
+            tests/integration/test_recurrence_generation_runtime.py::test_ufo_sm_recurrence_refreshes_real_and_complex_derived_couplings
       - name: Check Rust workspace (30 GiB RSS limit)
         run: >-
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
@@ -227,3 +230,470 @@ jobs:
         run: |
           .venv/bin/python -m pyamplicol self-test --json
           .venv/bin/python -m pytest tests/integration/test_examples.py -q
+
+  # Licensed loop jobs (M-LIT lit-ci, RULED Q32). The repository secret
+  # SYMBOLICA_LICENSE reaches only the steps that run Symbolica, through their
+  # own env:. Fork pull requests get no secret: the gate below then says so
+  # and the licensed jobs skip their build and test steps; on pushes,
+  # same-repository pull requests and dispatches an empty secret fails here.
+  # The jobs that report results run unless the run is cancelled and fail
+  # when a job they need did not succeed (a skipped job would read as
+  # passed in a required status check).
+  licence:
+    name: Symbolica licence gate (loop jobs)
+    runs-on: ubuntu-24.04
+    outputs:
+      licensed: ${{ steps.licence.outputs.licensed }}
+    steps:
+      - name: Require the SYMBOLICA_LICENSE secret
+        id: licence
+        env:
+          SYMBOLICA_LICENSE: ${{ secrets.SYMBOLICA_LICENSE }}
+          FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: |
+          if [ "$FORK" = true ]; then
+            echo "::notice title=Licensed loop jobs skipped::fork pull request: GitHub passes it no SYMBOLICA_LICENSE secret, so the loop, loop-induced and tir jobs skip their build and test steps (they run on pushes, same-repository pull requests and workflow_dispatch)"
+            echo "licensed=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$SYMBOLICA_LICENSE" ]; then
+            echo "::error title=SYMBOLICA_LICENSE is empty::the repository secret SYMBOLICA_LICENSE is missing or empty on this $GITHUB_EVENT_NAME run; without it every loop test would be skipped"
+            exit 1
+          else
+            echo "licensed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # The loop native runtime of a source checkout, built once for the loop
+  # jobs by tools/developer/build_loop_native.py (the Python extension and the
+  # loop SDK; the loop SDK tests link its shared library) and staged by each.
+  loop-runtime:
+    name: Loop native runtime (published dependencies)
+    needs: licence
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_INCREMENTAL: "0"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Skip without the licence
+        if: needs.licence.outputs.licensed != 'true'
+        run: |
+          echo "::notice title=Loop runtime skipped::fork pull request without SYMBOLICA_LICENSE (licence gate): the loop native runtime is not built"
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        if: needs.licence.outputs.licensed == 'true'
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        if: needs.licence.outputs.licensed == 'true'
+        with:
+          python-version: "3.11"
+      - uses: dtolnay/rust-toolchain@46511b1c83438f0dd37c02d843619ece5a4abb5b # 1.97.1
+        if: needs.licence.outputs.licensed == 'true'
+      - name: Cache Cargo downloads
+        if: needs.licence.outputs.licensed == 'true'
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-cargo-1.97.1-${{ hashFiles('Cargo.lock', 'dependencies/contributor-lock.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-1.97.1-
+      - name: Install the C toolchain of the native build
+        if: needs.licence.outputs.licensed == 'true'
+        # GMP, MPFR and MPC build from source (traditional TLS dialect).
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y gcc make m4
+      - name: Build the loop native runtime once for the loop jobs (30 GiB RSS limit)
+        if: needs.licence.outputs.licensed == 'true'
+        run: >-
+          python tools/ci/memory_watchdog.py --limit-gib 30 --
+          python tools/developer/build_loop_native.py build "$RUNNER_TEMP/loop-native"
+          --target-dir "$RUNNER_TEMP/cargo-loop-native"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: needs.licence.outputs.licensed == 'true'
+        with:
+          name: loop-native
+          # What staging and the tests read (not the static SDK archives).
+          path: |
+            ${{ runner.temp }}/loop-native/build-info.json
+            ${{ runner.temp }}/loop-native/_rusticol.so
+            ${{ runner.temp }}/loop-native/librusticol_loop_sdk.so
+          if-no-files-found: error
+          retention-days: 1
+
+  # The loop Python default tier: every loop-marked test (LOOP_MARKERS) but
+  # loop_nightly, which tests/conftest.py skips without the licence, one
+  # process per test file (test_loop_v2_ct_closure.py one per test id), one
+  # at a time (peaks up to ~7.3 GiB on a 16 GB runner), in 8 shards balanced
+  # by the wall times of tools/ci/loop_durations.json (4.4 h serial locally).
+  # A skipped test fails its shard (none skips in this tier with its inputs).
+  loop-shard:
+    name: Loop default tier (shard ${{ matrix.shard }})
+    needs: [licence, loop-runtime]
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    env:
+      PYAMPLICOL_BUILD_MODE: release
+      PYAMPLICOL_REQUIRE_SYMBOLICA_LICENSE: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+      SYMBOLICA_HIDE_BANNER: "1"
+      # The three patched loop UFOs are the shipped model assets.
+      PYAMPLICOL_NLO_UFO_REFERENCE: ${{ github.workspace }}/src/pyamplicol/assets/models/ufo/loop_sm
+      PYAMPLICOL_EW_UFO_REFERENCE: ${{ github.workspace }}/src/pyamplicol/assets/models/ufo/loop_qcd_qed_sm_Gmu
+      PYAMPLICOL_EW_NLO_UFO_REFERENCE: ${{ github.workspace }}/src/pyamplicol/assets/models/ufo/loop_qcd_qed_sm
+    steps:
+      - name: Skip without the licence
+        if: needs.licence.outputs.licensed != 'true'
+        run: |
+          echo "::notice title=Loop tests skipped::fork pull request without SYMBOLICA_LICENSE (licence gate): the loop default tier does not run"
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        if: needs.licence.outputs.licensed == 'true'
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        if: needs.licence.outputs.licensed == 'true'
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            dependencies/release-lock.toml
+            dependencies/contributor-lock.toml
+            dependencies/python-runtime-lock.toml
+      - uses: dtolnay/rust-toolchain@46511b1c83438f0dd37c02d843619ece5a4abb5b # 1.97.1
+        if: needs.licence.outputs.licensed == 'true'
+      - name: Cache Cargo downloads
+        if: needs.licence.outputs.licensed == 'true'
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-cargo-1.97.1-${{ hashFiles('Cargo.lock', 'dependencies/contributor-lock.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-1.97.1-
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        if: needs.licence.outputs.licensed == 'true'
+        with:
+          name: loop-native
+          path: ${{ runner.temp }}/loop-native
+      - name: Install the published dependencies, the loop native runtime and the test toolchains
+        if: needs.licence.outputs.licensed == 'true'
+        # The venv holds the published dependencies only; the checkout's src/
+        # with the staged loop native runtime is the package under test, as
+        # in a developer checkout. mpmath: the arbitrary-precision oracles of
+        # tools/loop_reference.
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y g++ gfortran make
+          python dependencies/install_dependencies.py --dependencies-only
+          .venv/bin/python tools/developer/build_loop_native.py stage "$RUNNER_TEMP/loop-native"
+          .venv/bin/python -m pip install "mpmath==1.3.0"
+      # Deselected (35 of 2558 ids at ca602436), each listed below in order.
+      # 26 need external inputs this job does not fetch: the sgluon NLO and
+      # HC NLO UFO downloads, the MadGraph source (MG5_aMC v3.7.0 runs) and
+      # the unpatched UFOmodeldb 6ca4b120 copies, all public and pinnable (a
+      # hash-checked fetch step would restore them), and the saved PACBIN
+      # controls (workspace only). 9 fail under PyPI symbolica 3.0.3 and pass
+      # with the Community build 20a9da94 (symbolica-dev/symbolica#163): the
+      # 6 sdk_extras ids differ at ~1e-30 relative, and the 3 stored-process
+      # ids are an identity check (the same call gives other bits in a fresh
+      # process, ~5e-29 relative), a release-lane defect; drop all 9 with a
+      # Symbolica release that carries #163.
+      - name: Run the loop default tier (shard ${{ matrix.shard }}, 30 GiB RSS limit)
+        if: needs.licence.outputs.licensed == 'true'
+        env:
+          # One model cache for the shard's processes (atomic writes).
+          PYAMPLICOL_CACHE_DIR: ${{ runner.temp }}/pyamplicol-cache
+          # The package under test for the test processes and their children.
+          PYTHONPATH: ${{ github.workspace }}/src
+          SYMBOLICA_LICENSE: ${{ secrets.SYMBOLICA_LICENSE }}
+        run: >-
+          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
+          .venv/bin/python tools/ci/run_pytest_files.py tests
+          --marker "(loop_fast or loop_physics) and not loop_nightly"
+          --exclude "tests/unit/test_loop_v2_induced*.py"
+          --exclude "tests/unit/test_loop_v2_li_*.py"
+          --split tests/unit/test_loop_v2_ct_closure.py
+          --deselect tests/unit/test_loop_adjoint_scalar_counterterms.py::test_np_zero_is_exact_source_selection_not_particle_or_arity_pruning
+          --deselect tests/unit/test_loop_graphs.py::test_optional_madloop_graph_selection_matches_native_catalogue
+          --deselect "tests/unit/test_loop_model_cms.py::test_parameters_and_couplings_equal_mg5_complex_mass_model["
+          --deselect tests/unit/test_loop_model_cms.py::test_tree_model_view_equals_mg5_complex_mass_model
+          --deselect tests/unit/test_loop_v2_artifact.py::test_legacy_loop_artifacts_are_refused_with_the_reason
+          --deselect "tests/unit/test_loop_v2_ew_gauge.py::test_feynman_gauge_trees_equal_unitary_gauge["
+          --deselect "tests/unit/test_loop_v2_ew_gauge.py::test_slavnov_taylor_identities["
+          --deselect tests/unit/test_loop_v2_hc.py::test_tree_heft_merges_with_x0_equal_the_madloop_borns
+          --deselect tests/unit/test_loop_v2_hc.py::test_hc05_five_point_gluon_r2_is_lowered_and_equals_madloop
+          --deselect tests/unit/test_loop_v2_hc.py::test_a_five_point_r2_colour_without_a_vocabulary_form_is_refused_typed
+          --deselect tests/unit/test_loop_v2_msm_manifest.py::test_r2_rule_finds_madloop_omissions_structurally
+          --deselect "tests/unit/test_loop_v2_ufodb_models.py::test_shipped_model_is_patched_ufodb_and_older_copies_share_its_profile["
+          --deselect "tests/unit/test_loop_v2_ufodb_models.py::test_the_issue_1_patch_changes_what_it_says["
+          --deselect tests/unit/test_loop_v2_ufodb_models.py::test_gmu_charge_counterterm_has_its_b_mass_term
+          --deselect "tests/unit/test_loop_v2_sdk_extras.py::test_sdk_extras_equal_the_python_api["
+          --deselect tests/unit/test_loop_v2_sdk_extras.py::test_sdk_split_poles_in_extended_precision_equal_the_python_api
+          --deselect tests/unit/test_loop_v2_sdk_extras.py::test_sdk_leading_colour_resolved_rows_equal_the_python_api
+          --deselect "tests/unit/test_loop_v2_stored_process.py::test_stored_process_call_regenerates_nothing[double-double]"
+          --deselect "tests/unit/test_loop_v2_stored_process.py::test_stored_process_call_regenerates_nothing[arbitrary]"
+          --deselect "tests/unit/test_loop_v2_stored_process.py::test_stored_process_call_regenerates_nothing[colour-double-double]"
+          --durations tools/ci/loop_durations.json
+          --shard ${{ matrix.shard }}/${{ strategy.job-total }}
+          --require-each
+          --no-skips
+          --output "$RUNNER_TEMP/loop-units"
+          --record "$RUNNER_TEMP/loop-record-${{ matrix.shard }}.json"
+          -- -p no:cacheprovider
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: needs.licence.outputs.licensed == 'true'
+        with:
+          name: loop-record-${{ matrix.shard }}
+          path: ${{ runner.temp }}/loop-record-${{ matrix.shard }}.json
+          if-no-files-found: error
+          retention-days: 7
+
+  loop:
+    name: loop (licensed loop Python default tier)
+    needs: [licence, loop-shard]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require the licence gate and the loop shards
+        env:
+          GATE: ${{ needs.licence.result }}
+          LICENSED: ${{ needs.licence.outputs.licensed }}
+          NEEDED: ${{ needs.loop-shard.result }}
+        run: |
+          if [ "$GATE" != success ]; then
+            echo "::error title=Licence gate $GATE::the licence gate ended with '$GATE': no loop test ran"
+            exit 1
+          elif [ "$LICENSED" != true ]; then
+            echo "::notice title=Loop tests skipped::fork pull request without SYMBOLICA_LICENSE (licence gate): no loop test ran"
+          elif [ "$NEEDED" != success ]; then
+            echo "::error title=loop-shard $NEEDED::loop-shard ended with '$NEEDED'"
+            exit 1
+          fi
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        if: needs.licence.outputs.licensed == 'true'
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        if: needs.licence.outputs.licensed == 'true'
+        with:
+          pattern: loop-record-*
+          path: loop-records
+          merge-multiple: true
+      - name: Count the loop tests executed by all shards
+        if: needs.licence.outputs.licensed == 'true'
+        run: >-
+          python3 tools/ci/run_pytest_files.py --merge loop-records/*.json
+          --no-skips --record loop-durations.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: needs.licence.outputs.licensed == 'true'
+        with:
+          name: loop-durations
+          path: loop-durations.json
+          if-no-files-found: error
+          retention-days: 30
+
+  # Loop-induced tests (M-LIT): the default tier of test_loop_v2_induced*.py
+  # and test_loop_v2_li_*.py; no such file before lit-req is a pass with a
+  # notice; a file without a selected test, a skipped test, or a test without
+  # a LOOP_MARKERS marker (which no job would run) fails.
+  loop-induced:
+    name: loop-induced (licensed loop-induced default tier)
+    needs: [licence, loop-runtime]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    env:
+      PYAMPLICOL_BUILD_MODE: release
+      PYAMPLICOL_REQUIRE_SYMBOLICA_LICENSE: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+      SYMBOLICA_HIDE_BANNER: "1"
+      # The three patched loop UFOs are the shipped model assets.
+      PYAMPLICOL_NLO_UFO_REFERENCE: ${{ github.workspace }}/src/pyamplicol/assets/models/ufo/loop_sm
+      PYAMPLICOL_EW_UFO_REFERENCE: ${{ github.workspace }}/src/pyamplicol/assets/models/ufo/loop_qcd_qed_sm_Gmu
+      PYAMPLICOL_EW_NLO_UFO_REFERENCE: ${{ github.workspace }}/src/pyamplicol/assets/models/ufo/loop_qcd_qed_sm
+    steps:
+      - name: Require the licence gate and the loop native runtime
+        env:
+          GATE: ${{ needs.licence.result }}
+          LICENSED: ${{ needs.licence.outputs.licensed }}
+          NEEDED: ${{ needs.loop-runtime.result }}
+        run: |
+          if [ "$GATE" != success ]; then
+            echo "::error title=Licence gate $GATE::the licence gate ended with '$GATE': no loop test ran"
+            exit 1
+          elif [ "$LICENSED" != true ]; then
+            echo "::notice title=Loop tests skipped::fork pull request without SYMBOLICA_LICENSE (licence gate): the loop-induced tests do not run"
+          elif [ "$NEEDED" != success ]; then
+            echo "::error title=loop-runtime $NEEDED::loop-runtime ended with '$NEEDED'"
+            exit 1
+          fi
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        if: needs.licence.outputs.licensed == 'true'
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        if: needs.licence.outputs.licensed == 'true'
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            dependencies/release-lock.toml
+            dependencies/contributor-lock.toml
+            dependencies/python-runtime-lock.toml
+      - uses: dtolnay/rust-toolchain@46511b1c83438f0dd37c02d843619ece5a4abb5b # 1.97.1
+        if: needs.licence.outputs.licensed == 'true'
+      - name: Cache Cargo downloads
+        if: needs.licence.outputs.licensed == 'true'
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-cargo-1.97.1-${{ hashFiles('Cargo.lock', 'dependencies/contributor-lock.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-1.97.1-
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        if: needs.licence.outputs.licensed == 'true'
+        with:
+          name: loop-native
+          path: ${{ runner.temp }}/loop-native
+      - name: Install the published dependencies, the loop native runtime and the test toolchains
+        if: needs.licence.outputs.licensed == 'true'
+        # The venv holds the published dependencies only; the checkout's src/
+        # with the staged loop native runtime is the package under test, as
+        # in a developer checkout. mpmath: the arbitrary-precision oracles of
+        # tools/loop_reference.
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y g++ gfortran make
+          python dependencies/install_dependencies.py --dependencies-only
+          .venv/bin/python tools/developer/build_loop_native.py stage "$RUNNER_TEMP/loop-native"
+          .venv/bin/python -m pip install "mpmath==1.3.0"
+      - name: Run the loop-induced default tier (30 GiB RSS limit)
+        if: needs.licence.outputs.licensed == 'true'
+        env:
+          # One model cache for the job's processes (atomic writes).
+          PYAMPLICOL_CACHE_DIR: ${{ runner.temp }}/pyamplicol-cache
+          # The package under test for the test processes and their children.
+          PYTHONPATH: ${{ github.workspace }}/src
+          SYMBOLICA_LICENSE: ${{ secrets.SYMBOLICA_LICENSE }}
+        run: >-
+          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
+          .venv/bin/python tools/ci/run_pytest_files.py
+          "tests/unit/test_loop_v2_induced*.py"
+          "tests/unit/test_loop_v2_li_*.py"
+          --marker "(loop_fast or loop_physics) and not loop_nightly"
+          --require-marker "loop_fast or loop_physics or loop_nightly"
+          --require-each
+          --no-skips
+          --allow-missing "no loop-induced test file yet (tests/unit/test_loop_v2_induced*.py, tests/unit/test_loop_v2_li_*.py): passes until lit-req (M-LIT) lands the first ones"
+          -- -p no:cacheprovider
+
+  # iregi-rust (TIRust) behind the `tir` cargo feature (M-LIT lit-dep). The
+  # job is switched off while TIR_FEATURES is empty: lit-dep sets it to the
+  # cargo feature list (e.g. <crate>/tir) and fits the runner to lit-tirust-0's
+  # d0.rs measurement. A declared `tir` feature with the job off fails. Its
+  # tests follow `just rust-test` (one test at a time, the Python-producer
+  # tests alone); on fork pull requests they run without the secret, with a
+  # restricted Symbolica (ca602436's rule).
+  tir:
+    name: tir (Rust workspace with --features tir)
+    needs: licence
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_INCREMENTAL: "0"
+      PYAMPLICOL_BUILD_MODE: release
+      PYTHONDONTWRITEBYTECODE: "1"
+      SYMBOLICA_HIDE_BANNER: "1"
+      TIR_FEATURES: ""
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Decide whether the tir checks run
+        id: tir
+        env:
+          GATE: ${{ needs.licence.result }}
+          LICENSED: ${{ needs.licence.outputs.licensed }}
+        run: |
+          declared=$(grep -rlE '^[[:space:]]*"?tir"?[[:space:]]*=' --include=Cargo.toml Cargo.toml rust || true)
+          if [ -z "$TIR_FEATURES" ]; then
+            if [ -n "$declared" ]; then
+              echo "::error title=tir job switched off::a tir cargo feature is declared ($declared) but TIR_FEATURES is empty in tests.yml"
+              exit 1
+            fi
+            echo "::notice title=tir job switched off::TIR_FEATURES is empty in tests.yml (no tir cargo feature yet); lit-dep (M-LIT) switches the job on"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          elif [ "$GATE" != success ]; then
+            echo "::error title=Licence gate $GATE::the licence gate ended with '$GATE': the tir checks do not run"
+            exit 1
+          else
+            if [ "$LICENSED" != true ]; then
+              echo "::notice title=tir tests without the licence::fork pull request without SYMBOLICA_LICENSE (licence gate): the tir Rust tests run with a restricted Symbolica, one test at a time"
+            fi
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        if: steps.tir.outputs.run == 'true'
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            dependencies/release-lock.toml
+            dependencies/contributor-lock.toml
+            dependencies/python-runtime-lock.toml
+      - uses: dtolnay/rust-toolchain@46511b1c83438f0dd37c02d843619ece5a4abb5b # 1.97.1
+        if: steps.tir.outputs.run == 'true'
+      - name: Cache Cargo downloads
+        if: steps.tir.outputs.run == 'true'
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-cargo-1.97.1-${{ hashFiles('Cargo.lock', 'dependencies/contributor-lock.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-1.97.1-
+      - name: Install the published Python dependencies and toolchains
+        if: steps.tir.outputs.run == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y g++ gfortran make
+          python dependencies/install_dependencies.py --dependencies-only
+      - name: Check the Rust workspace with the tir features (30 GiB RSS limit)
+        if: steps.tir.outputs.run == 'true'
+        run: |
+          .venv/bin/python tools/release/run_cargo.py --mode release -- fmt --all --check
+          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 -- \
+            .venv/bin/python tools/release/run_cargo.py --mode release -- \
+            clippy --workspace --all-targets --locked --features "$TIR_FEATURES"
+      - name: Test the Rust workspace with the tir features (30 GiB RSS limit)
+        if: steps.tir.outputs.run == 'true'
+        env:
+          # Empty on fork pull requests: then unset (restricted Symbolica).
+          SYMBOLICA_LICENSE: ${{ secrets.SYMBOLICA_LICENSE }}
+          PYAMPLICOL_TEST_PYTHON: ${{ github.workspace }}/.venv/bin/python
+        run: |
+          if [ -z "$SYMBOLICA_LICENSE" ]; then unset SYMBOLICA_LICENSE; fi
+          serialization=engine::evaluator::backend::python_serialization_tests
+          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 -- \
+            .venv/bin/python tools/release/run_cargo.py --mode release -- \
+            test --workspace --locked --features "$TIR_FEATURES" -- \
+            --skip python_serialization_tests --test-threads=1
+          for name in python_saved_evaluator_roundtrips_in_three_precisions \
+            python_saved_evaluator_with_a_conflicting_symbol_loads; do
+            .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 -- \
+              .venv/bin/python tools/release/run_cargo.py --mode release -- \
+              test --workspace --locked --features "$TIR_FEATURES" --lib -- \
+              --exact "$serialization::$name"
+          done

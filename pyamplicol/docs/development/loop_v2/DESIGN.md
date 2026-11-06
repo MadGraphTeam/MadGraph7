@@ -1691,7 +1691,7 @@ Verified for WP2.4 [V]:
 
 The exact colour-cell stages run in rusticol-core (`loop_v2::generate::cells`, `loop_v2::dipole_orbits`; PyO3 `v2_colour.rs`; glue `loops/v2/native_cells.py`, `loops/v2/dipoles.py`). Every native stage equals its Python stage exactly, which stays the oracle (HANDOFF §0.4). No Symbolica state or licence is touched: exact numbers are `symbolica::domains::{integer, rational}` only (checked statically and by a no-key subprocess, `tests/unit/test_loop_v2_native_cells.py`).
 
-**Switches (rule 1: one flag per stage, dispatched inside the Python stage).** `native_cells.NATIVE_STAGES` (default: all five; `native_cells.native_stages(())` runs the oracle lane):
+**Switches (rule 1: one flag per stage, dispatched inside the Python stage).** `native_cells.NATIVE_STAGES` (default: all six; `native_cells.native_stages(())` runs the oracle lane):
 
 | Stage | Switch site | What runs natively |
 |---|---|---|
@@ -1699,6 +1699,7 @@ The exact colour-cell stages run in rusticol-core (`loop_v2::generate::cells`, `
 | `"degrees"` | one dispatch in `LoopSlice.degrees` (inclusive metric; `_prune_colour` and the companion read it) | the key sets are collected as the oracle collects them (`native_cells._DegreeKeys`; the CT program's closure terms, millions at seven legs over a few thousand shared colours, grouped by (colour, coupling or whole-rule grades, grade, orders) and expanded once per colour, cached on the slice for its program and coupling layout so the inclusive degrees and every complete family collect them once), then every overlap degree and the seed-table degrees in one batch (`cells::overlap_degrees` with the relabelling orbits, `OrderedTable::degree`) |
 | `"orbits"` | `assemble._AdjointOrbits.__new__` | the relabelling classes and `rename` (`cells::AdjointOrbits`); `site_key` stays the oracle's |
 | `"dipoles"` | one dispatch in `LoopSlice.dipoles` | `dipoles.build` + `dipoles.operators` (§12.4, "Dipole operators per relabelling orbit") |
+| `"amplitude"` | `colour.amplitude_basis` (loop-induced, §7.10) | `CellEngine::class_tensors` (each class's SU(N_c) expansion: adjoint rings from their U(N_c) terms, fundamental traces, registered quark rings relabelled back, generic classes as given), then `cells::amplitude_basis` (T, coefficient cells, metric by `cells::gram`) |
 | `"family"` | `ObservableSlice._family_degrees` | every history pair's directed table (above) and overlap degrees of the complete family in native batches: `cells::directed_overlap_degrees` (literal Born-key and ket structures, the images formed natively per pair) or, for pairs with a quark-pair splitting, `cells::tensor_overlap_degrees` on the oracle's connected images |
 
 The liveness of `_prune_colour` stays Python (no switch line is given to it; `native_cells.live_classes` is its tested twin). `BornBasis.gram` and `contract_colour` keep their Python bodies (twins `native_cells.gram`, `contract_many`).
@@ -1743,6 +1744,19 @@ Generation (`LoopSlice.generate`, wall time and process peak; both lanes in one 
 | g g > g g g g g, with the top / vetoed (measure-g1-7leg's plans) | 9,414 → 4,707 / 4,707 → 4,707 | 810,495 → 647,775 / — | 197,539 → 97,140 / 144,986 → 97,140 |
 
 The lower multiplicities quoted against seven gluons kept the top. LC generates slower than FC because the prune rebuilds the tries after the seed table (the native schedules with `keep` evaluated per skeleton in Python, the readings and the table extension: 5–6 s of a 63–93 s generation at g g > g g g g top-free, 38 s and 10 s for the companion at seven gluons), and, before package C, the Python degrees; the liveness itself (`class_live`, cached per class) is under a second at six legs. Building the LC tries once, with `keep`, would remove the rebuild (generation-scale-2's `generator_input`). With an observable's tables the liveness dominates instead: at u u~ > g g g g g LC with T12's family (the slice table and 50 directed tables as criteria) `_prune_colour` takes 129 s in Python, its native twin `native_cells.live_classes` on the same tables (their native handles) 1.25 s (3,120 of 7,620 classes live). `_prune_colour` has no switch line of package C (§5.2 of the migration plan); the line is the coordinator's to assign.
+
+### 7.10 Amplitude colour basis (loop-induced, M-LIT LIT-COL)
+
+A loop-induced request has no Born to project the loop onto (`blocks.born_orders == ()`), so the loop amplitude stays a colour vector (M-LIT PLAN §2.a.2 items 1–3). `colour.amplitude_basis(table, kets)` returns an `AmplitudeBasis`:
+
+- **T**: the distinct literal tensors of the class expansions κ_c = Σ_t c_{c,t} |t⟩ (`SeedTable.tensor`; class order, then each class's canonical term order), then those of the counterterm kets not already in T (sorted; `native_cells.counterterm_tensors` collects a slice's from the `_DegreeKeys` counterterm keys, every site closed). Equal literal tensors are one element. The analogue of the Born-interfered seed basis (`assemble._born_tensors`).
+- **Cells** c_{c,t}: per class the (t, Laurent) pairs read off its own expansion, exact in N_c, its 1/√2 power folded (an odd power is refused, as in `seed_cells`). Nothing is overlapped, projected or inverted.
+- **Metric** G_{tt'} = ⟨t|t'⟩, exact in N_c: `BornBasis.gram` of T as a seed basis (`AmplitudeBasis.seed_basis`, also the basis of the seeded oracle F2), i.e. `contract_colour` with the relabelling-orbit cache; natively `cells::gram`.
+- **Full colour only** (M-LIT Q8): no N_c grade, no truncated metric; `cells_at_three` / `metric_at_three` substitute N_c = 3. T may be linearly dependent at N_c = 3; |A|² = a†Ga needs no inversion (§7.1), and per-component values a_t are not physical (checks use G-norms or G a).
+- **Colour zero** (`AmplitudeBasis.colour_zero`, the one exact zero of M-LIT, Q13): every c_{c,t} vanishes exactly at N_c = 3 and no counterterm ket carries a tensor (e.g. tr(τ^a) = 0 at h > g a). Every other zero is numerical.
+- **Seed contraction**: without a Born, `LoopSlice._plan_contraction` applies `colour.amplitude_contraction` (the symmetric-group seed FFT contracts Born amplitudes, of which there are none): `"auto"`/`"direct"` contract directly, a forced `"fft"` is refused typed (`forced-seed-fft-unserved`).
+
+The native stage equals the oracle exactly (tensors, cells, ket elements and metric as formal-N_c Laurent polynomials), independent of the thread count (`tests/unit/test_loop_v2_amplitude_colour.py`: synthetic tables of every class kind built without generation, g g > h, g g > h g, u u~ > h g, g g > g g h, g g > z z g). The Born-interfered seed tables, plans and tree programs are unchanged.
 
 ---
 
