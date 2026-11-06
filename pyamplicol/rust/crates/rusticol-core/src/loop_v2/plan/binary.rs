@@ -2156,9 +2156,17 @@ mod tests {
         u64::from_le_bytes(member[at..at + 8].try_into().unwrap())
     }
 
+    /// A fresh plan of the seeded schema (the binary header carries the
+    /// plan's own schema, which the reader admits).
+    fn seeded_fresh() -> PlanFile {
+        let mut file = PlanFile::fresh();
+        file.schema = super::super::PLAN_SCHEMA;
+        file
+    }
+
     fn empty_member() -> Vec<u8> {
         PlanModel {
-            file: PlanFile::fresh(),
+            file: seeded_fresh(),
             member: None,
         }
         .binary()
@@ -2284,7 +2292,7 @@ mod tests {
     #[test]
     fn plans_that_share_beyond_the_bound_are_padded() {
         let (n, m) = (500, 400);
-        let mut file = PlanFile::fresh();
+        let mut file = seeded_fresh();
         file.contents = (0..n)
             .map(|_| {
                 let mut content = ContentFile::fresh();
@@ -2323,7 +2331,7 @@ mod tests {
     /// Every truncation of a member is refused.
     #[test]
     fn truncated_members_are_refused() {
-        let mut file = PlanFile::fresh();
+        let mut file = seeded_fresh();
         file.helicities = vec![vec![-1, 1]; 4];
         file.block_rows = vec![3, 1, 4];
         file.factors = vec![(0, 2), (1, 7)];
@@ -2337,7 +2345,7 @@ mod tests {
     /// A plan whose seed classes, seed keys and families are long enough for
     /// the parallel decode, with strings, nested lists and options.
     fn parallel_plan() -> PlanFile {
-        let mut file = PlanFile::fresh();
+        let mut file = seeded_fresh();
         let weight = |k: usize| format!("{}/{}", k % 7, 1 + k % 5);
         file.seed_classes = (0..600)
             .map(|k| SeedFile {
@@ -2440,7 +2448,7 @@ mod tests {
     /// `edges` leaf edges into a content on no leg (each edge links every
     /// Born row), `columns` observable columns.
     fn born_rows_plan(legs: usize, edges: usize, columns: usize) -> PlanFile {
-        let mut file = PlanFile::fresh();
+        let mut file = seeded_fresh();
         (file.schema, file.legs, file.rows, file.columns) =
             (super::super::PLAN_SCHEMA, legs, 1 << legs, columns);
         file.helicities = vec![vec![-1, 1]; legs];
@@ -2598,7 +2606,7 @@ mod tests {
         assert!(error.contains("exceed the member's bound"), "{error}");
         // The empty plan derives next to nothing, and is no bomb.
         let empty = PlanModel {
-            file: PlanFile::fresh(),
+            file: seeded_fresh(),
             member: None,
         };
         assert!(empty.derive_bound().unwrap().cost() < 1024);
