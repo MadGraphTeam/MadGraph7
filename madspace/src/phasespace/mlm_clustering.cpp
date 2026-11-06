@@ -953,7 +953,7 @@ MLMClustering::MLMClustering(
         ++i;
     }
 
-    append_state_layout(_cluster_state_machine, states);
+    append_state_layout(*_cluster_state_machine, states);
 
     if (clustering_history == ClusteringHistory::all_diagrams) {
         return;
@@ -1032,7 +1032,7 @@ MLMClustering::MLMClustering(
             diagram_meta.at(mask) = {};
         }
     }
-    auto diagram_offsets = append_state_layout(_cluster_state_machine, diagram_states);
+    auto diagram_offsets = append_state_layout(*_cluster_state_machine, diagram_states);
     for (auto [diag_index, root] : diagram_roots) {
         _diagram_start_states.at(diag_index) = diagram_offsets.at(root);
     }
@@ -1191,10 +1191,10 @@ MLMClustering::MLMClustering(
         append_state_layout(layout, states);
         auto key = std::tuple{std::move(layout), beam_flags, jet_leg_mask};
         auto [found, inserted] = compiled.try_emplace(
-            key, static_cast<me_int_t>(_cluster_state_machine.size())
+            key, static_cast<me_int_t>(_cluster_state_machine->size())
         );
         if (inserted) {
-            append_state_layout(_cluster_state_machine, states);
+            append_state_layout(*_cluster_state_machine, states);
         }
         _class_start_states.push_back(found->second);
         _class_beam_flags.push_back(beam_flags);
@@ -1203,6 +1203,29 @@ MLMClustering::MLMClustering(
     // the flags of the topology constructor's single class
     _beam_flags = _class_beam_flags.at(_flavor_classes.at(0));
     _jet_leg_mask = _class_jet_leg_masks.at(_flavor_classes.at(0));
+}
+
+void MLMClustering::initialize_globals(ContextPtr context) const {
+    if (_global_name.empty()) {
+        throw std::logic_error("the MLM clustering has no global name");
+    }
+    auto& machine = *_cluster_state_machine;
+    // the subprocess may be set up again in the same context
+    if (context->global_exists(_global_name)) {
+        context->delete_global(_global_name);
+    }
+    auto global =
+        context->define_global(_global_name, DataType::dt_int32, {machine.size()});
+    Tensor host = context->device() == cpu_device()
+        ? global
+        : Tensor(DataType::dt_int32, {1, machine.size()});
+    auto view = host.view<me_int_t, 2>();
+    for (std::size_t i = 0; i < machine.size(); ++i) {
+        view[0][i] = machine[i];
+    }
+    if (context->device() != cpu_device()) {
+        global.copy_from(host);
+    }
 }
 
 NamedVector<Value> MLMClustering::build_function_impl(
@@ -1269,6 +1292,13 @@ NamedVector<Value> MLMClustering::build_kernel(
 ) const {
     std::array<Value, 17> mlm_out;
     auto batch_size = fb.batch_size({momenta});
+    Value state_machine = _global_name.empty()
+        ? Value(*_cluster_state_machine)
+        : fb.global(
+              _global_name,
+              DataType::dt_int32,
+              {static_cast<int>(_cluster_state_machine->size())}
+          );
     Value random = fb.squeeze(fb.random(batch_size, 1));
     Value beam_flags, jet_leg_mask;
     if (_class_start_states.empty()) {
@@ -1296,7 +1326,7 @@ NamedVector<Value> MLMClustering::build_kernel(
             momenta,
             random,
             start_state,
-            _cluster_state_machine,
+            state_machine,
             _external_masses,
             _bw_masses,
             _bw_widths,
@@ -1324,7 +1354,7 @@ NamedVector<Value> MLMClustering::build_kernel(
             momenta,
             random,
             start_state,
-            _cluster_state_machine,
+            state_machine,
             _external_masses,
             _bw_masses,
             _bw_widths,

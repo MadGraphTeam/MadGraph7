@@ -382,11 +382,12 @@ class MadgraphSubprocess:
                 ms.MLMClustering.ClusteringMeasure, beam["clustering_measure"]),
             clustering_mean_pdf_ladder=beam["clustering_mean_pdf_ladder"],
         )
-        return ms.EnergyScale(
-            self.build_mlm_clustering(options),
-            min_scale=min_scale,
-            max_scale=max_scale,
-        )
+        clustering = self.build_mlm_clustering(options)
+        # one copy of the state machine per context, not one per channel function
+        clustering.global_name = f"subproc{self.subproc_id}.mlm_state_machine"
+        for context in self.process.contexts:
+            clustering.initialize_globals(context)
+        return ms.EnergyScale(clustering, min_scale=min_scale, max_scale=max_scale)
 
     def build_mlm_clustering(self, options: dict):
         """The ms.MLMClustering of the subprocess with the given run card

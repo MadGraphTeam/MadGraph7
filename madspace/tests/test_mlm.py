@@ -3029,3 +3029,22 @@ def test_class_arguments_are_checked():
     with pytest.raises(ValueError):
         bad_line = ms.ClusteringLine(3, 21, 0.0, 0.0)
         class_clustering([ms.ClusteringClass(pdg_ids, [[bad_line]])], [0], masses)
+
+
+def test_the_state_machine_can_be_a_context_global(process):
+    """Read from a context global, the state machine gives the same scales as
+    the copy each function otherwise holds, and is left out of the function."""
+    name, diagrams, pdg_ids = process
+    momenta = sample_momenta(diagrams)
+    reference = make_clustering(diagrams, external_pdg_ids=pdg_ids)
+    clustering = make_clustering(diagrams, external_pdg_ids=pdg_ids)
+    clustering.global_name = f"test_mlm_state_machine_{name}"
+    clustering.initialize_globals(ms.default_context())
+    # set up again in the same context
+    clustering.initialize_globals(ms.default_context())
+    for ref, out in zip(run(reference, momenta)[:4], run(clustering, momenta)[:4]):
+        np.testing.assert_array_equal(ref, out)
+    machine_size = len(clustering.cluster_state_machine)
+    assert f"int32[1, {machine_size}] = {clustering.global_name}" in str(
+        clustering.function()
+    )

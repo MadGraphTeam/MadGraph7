@@ -2238,6 +2238,12 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def_property_readonly("class_start_states", &MLMClustering::class_start_states)
         .def_property_readonly("flavor_classes", &MLMClustering::flavor_classes)
+        .def_property(
+            "global_name", &MLMClustering::global_name, &MLMClustering::set_global_name
+        )
+        .def(
+            "initialize_globals", &MLMClustering::initialize_globals, py::arg("context")
+        )
         .def_property_readonly("pdf_absolute_pdgs", &MLMClustering::pdf_absolute_pdgs)
         .def_property_readonly("clustering_measure", &MLMClustering::clustering_measure)
         .def_property_readonly("clustering_history", &MLMClustering::clustering_history)

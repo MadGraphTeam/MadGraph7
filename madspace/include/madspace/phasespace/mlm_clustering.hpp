@@ -1,7 +1,9 @@
 #pragma once
 
+#include <memory>
 #include <unordered_map>
 
+#include "madspace/driver/context.hpp"
 #include "madspace/phasespace/base.hpp"
 #include "madspace/phasespace/topology.hpp"
 
@@ -230,10 +232,17 @@ public:
     const std::vector<me_int_t>& flavor_classes() const { return _flavor_classes; }
 
     // The compiled clustering state machine, in the flat encoding the kernel
-    // walks. Exposed so that its structure can be checked directly.
+    // walks. Exposed so that its structure can be checked directly. Copies of
+    // the clustering share it.
     const std::vector<me_int_t>& cluster_state_machine() const {
-        return _cluster_state_machine;
+        return *_cluster_state_machine;
     }
+    // With a global name, the functions read the state machine from that context
+    // global (see initialize_globals) instead of holding a copy each.
+    const std::string& global_name() const { return _global_name; }
+    void set_global_name(const std::string& name) { _global_name = name; }
+    // Define the global named global_name() in the context, holding the state machine.
+    void initialize_globals(ContextPtr context) const;
     const std::vector<double>& external_masses() const { return _external_masses; }
     const std::vector<double>& bw_masses() const { return _bw_masses; }
     const std::vector<double>& bw_widths() const { return _bw_widths; }
@@ -269,7 +278,9 @@ private:
         const std::vector<me_int_t>& leg_flavors
     ) const;
 
-    std::vector<me_int_t> _cluster_state_machine;
+    std::shared_ptr<std::vector<me_int_t>> _cluster_state_machine =
+        std::make_shared<std::vector<me_int_t>>();
+    std::string _global_name;
     std::vector<me_int_t> _diagram_start_states;
     std::vector<double> _external_masses;
     std::vector<double> _bw_masses;
