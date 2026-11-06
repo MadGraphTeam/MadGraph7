@@ -9420,9 +9420,12 @@ c           This is dummy particle used in multiparticle vertices
         exact if it carries whole particles: its virtuality is then the
         invariant mass of legs, and its particle (pdg) sets the grid. It is
         not if it carries one constituent of an onium (as the gluon of
-        Z > b bbar*, bbar* > B_c cbar): its virtuality then grows with the
-        invariant that takes in the whole onium, which is the one mapped,
-        through a massless propagator (pdg 21)."""
+        Z > b bbar*, bbar* > B_c cbar). A massless one is still used: its
+        virtuality grows with the invariant that takes in the whole onium,
+        which is the one mapped, through a massless propagator (pdg 21). A
+        massive one is not: its pole need not sit at the threshold of that
+        invariant (the top of t > t* g*, t* > w+ b in t > w+ Bc- c is near its
+        pole where the gluon is soft, at large m(w+ Bc-))."""
 
         incoming = set(leg for leg, phys in leg_map.items() if phys == 1)
         outgoing = set(leg_map) - incoming
@@ -9464,6 +9467,8 @@ c           This is dummy particle used in multiparticle vertices
             if len(legs) < 2 or legs == finals:
                 continue
             exact = exact and all(constituents[p] <= side for p in legs)
+            if not exact and str(wf.get('mass')).lower() != 'zero':
+                continue
             candidates.append((legs, exact, wf.get_pdg_code() if exact else 21))
         return candidates
 

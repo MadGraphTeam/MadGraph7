@@ -10135,8 +10135,9 @@ C       This is dummy particle used in multiparticle vertices
 class _OniaWf(dict):
     """A wavefunction as get_onia_decay_candidates reads it."""
 
-    def __init__(self, number=None, mothers=(), pdg=21):
-        dict.__init__(self, number_external=number, mothers=list(mothers))
+    def __init__(self, number=None, mothers=(), pdg=21, mass='ZERO'):
+        dict.__init__(self, number_external=number, mothers=list(mothers),
+                      mass=mass)
         self.pdg = pdg
 
     def get_pdg_code(self):
@@ -10188,7 +10189,7 @@ class OniaDecayConfigsTest(unittest.TestCase):
         # the whole B_c (exact), the gluon one constituent of it
         legs, leg_map = self.zbc()
         g = _OniaWf(mothers=[legs[5], legs[2]], pdg=21)
-        bbar = _OniaWf(mothers=[legs[3], g], pdg=-5)
+        bbar = _OniaWf(mothers=[legs[3], g], pdg=-5, mass='MDL_MB')
         diag = {'amplitudes': [{'mothers': [bbar, legs[4], legs[1]]}]}
         cands = self.E.get_onia_decay_candidates(diag, leg_map)
         self.assertEqual(sorted(cands, key=lambda c: c[1]),
@@ -10200,7 +10201,7 @@ class OniaDecayConfigsTest(unittest.TestCase):
         # z > c cbar*: a propagator built with the z is the other side
         legs, leg_map = self.zbc()
         g = _OniaWf(mothers=[legs[3], legs[4]], pdg=21)
-        cbar = _OniaWf(mothers=[legs[5], legs[1]], pdg=-4)
+        cbar = _OniaWf(mothers=[legs[5], legs[1]], pdg=-4, mass='MDL_MC')
         diag = {'amplitudes': [{'mothers': [cbar, legs[2], g]}]}
         cands = self.E.get_onia_decay_candidates(diag, leg_map)
         # cbar* = p_z - p_cbar is B_c b (exact); the gluon carries the b and
@@ -10215,13 +10216,37 @@ class OniaDecayConfigsTest(unittest.TestCase):
         # 2, 3, 4); the quark line between two gluons carries one constituent
         legs = dict((n, _OniaWf(n)) for n in range(1, 6))
         leg_map = {1: 1, 2: 1, 3: 2, 4: 3, 5: 4}
-        c1 = _OniaWf(mothers=[legs[1], legs[3]], pdg=4)
-        c2 = _OniaWf(mothers=[c1, legs[4]], pdg=4)
+        c1 = _OniaWf(mothers=[legs[1], legs[3]], pdg=4, mass='MDL_MC')
+        c2 = _OniaWf(mothers=[c1, legs[4]], pdg=4, mass='MDL_MC')
         diag = {'amplitudes': [{'mothers': [c2, legs[2], legs[5]]}]}
+        # massive and carrying one constituent: no invariant, the chain
+        self.assertEqual(self.E.get_onia_decay_candidates(diag, leg_map), [])
+        # the same line taken massless keeps its pair (a single leg on its
+        # side gives no invariant)
+        g = _OniaWf(mothers=[legs[1], legs[3]], pdg=21)
+        diag = {'amplitudes': [{'mothers': [g, legs[2], legs[4], legs[5]]}]}
+        self.assertEqual(self.E.get_onia_decay_candidates(diag, leg_map), [])
+        g2 = _OniaWf(mothers=[g, legs[4]], pdg=21)
+        diag = {'amplitudes': [{'mothers': [g2, legs[2], legs[5]]}]}
         cands = self.E.get_onia_decay_candidates(diag, leg_map)
         self.assertEqual(cands, [(frozenset([2, 3]), False, 21)])
         self.assertEqual(self.E.get_onia_decay_vertices(cands, 4, 443),
                          [(3, 2, 21), (4, -1, 443)])
+
+    def test_candidates_of_a_top_decay(self):
+        # t > w+ Bc- c, legs 1 t, 2 w+, 3 b, 4 c~ (the Bc-), 5 c: in
+        # t > t* g*, t* > w+ b the top carries one constituent of the B_c and
+        # is massive (its pole is at large m(w+ Bc-), not at its threshold):
+        # only the gluon, m(Bc- c), is mapped
+        legs = dict((n, _OniaWf(n)) for n in range(1, 6))
+        leg_map = {1: 1, 2: 2, 3: 3, 4: 3, 5: 4}
+        top = _OniaWf(mothers=[legs[3], legs[2]], pdg=6, mass='MDL_MT')
+        g = _OniaWf(mothers=[legs[4], legs[5]], pdg=21)
+        diag = {'amplitudes': [{'mothers': [legs[1], top, g]}]}
+        cands = self.E.get_onia_decay_candidates(diag, leg_map)
+        self.assertEqual(cands, [(frozenset([3, 4]), False, 21)])
+        self.assertEqual(self.E.get_onia_decay_vertices(cands, 4, 6),
+                         [(4, 3, 21), (-1, 2, 6)])
 
     def test_overlapping_invariants(self):
         # exact invariants first; one overlapping a kept one is dropped
