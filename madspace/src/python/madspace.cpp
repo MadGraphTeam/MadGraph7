@@ -1219,6 +1219,47 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("CustomPdf::function_index")
         );
 
+    auto merging_scale = py::classh<MergingScale, FunctionGenerator>(
+        m, "MergingScale", pydoc::doc("MergingScale")
+    );
+    add_enum<MergingScale::Measure>(
+        merging_scale,
+        "Measure",
+        {
+            {"kt_durham", MergingScale::kt_durham},
+            {"pt_lund", MergingScale::pt_lund},
+        }
+    );
+    merging_scale
+        .def(
+            py::init<
+                MergingScale::Measure,
+                const std::vector<int>&,
+                const std::vector<bool>&,
+                double,
+                bool,
+                bool,
+                int>(),
+            py::arg("measure"),
+            py::arg("pdg_ids"),
+            py::arg("merging_legs"),
+            py::arg("d_parameter") = 0.4,
+            py::arg("hadronic1") = true,
+            py::arg("hadronic2") = true,
+            py::arg("max_jet_flavor") = 4,
+            pydoc::doc("MergingScale::MergingScale")
+        )
+        .def("measure", &MergingScale::measure, pydoc::doc("MergingScale::measure"))
+        .def("active", &MergingScale::active, pydoc::doc("MergingScale::active"))
+        .def(
+            "merging_leg_indices",
+            &MergingScale::merging_leg_indices,
+            pydoc::doc("MergingScale::merging_leg_indices")
+        )
+        .def(
+            "bounds_pt", &MergingScale::bounds_pt, pydoc::doc("MergingScale::bounds_pt")
+        );
+
     auto cuts = py::classh<Cuts, FunctionGenerator>(m, "Cuts", pydoc::doc("Cuts"));
     add_enum<Cuts::CutMode>(
         cuts,
@@ -1246,6 +1287,14 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readonly("mode", &Cuts::CutItem::mode, pydoc::doc("Cuts::CutItem::mode"));
     // Registered before the methods that return it, so that their signatures show
     // the Python type name.
+    py::classh<Cuts::MergingCut>(m, "MergingCut", pydoc::doc("Cuts::MergingCut"))
+        .def(py::init<MergingScale, double>(), py::arg("scale"), py::arg("min"))
+        .def_readonly(
+            "scale", &Cuts::MergingCut::scale, pydoc::doc("Cuts::MergingCut::scale")
+        )
+        .def_readonly(
+            "min", &Cuts::MergingCut::min, pydoc::doc("Cuts::MergingCut::min")
+        );
     py::classh<Cuts::PairMassAny>(cuts, "PairMassAny", pydoc::doc("Cuts::PairMassAny"))
         .def_readonly(
             "pairs", &Cuts::PairMassAny::pairs, pydoc::doc("Cuts::PairMassAny::pairs")
@@ -1256,17 +1305,24 @@ PYBIND11_MODULE(_madspace_py, m) {
     cuts.def(
             py::init<
                 const std::vector<Cuts::CutItem>&,
-                const std::optional<CustomFunction>&>(),
+                const std::optional<CustomFunction>&,
+                const std::optional<Cuts::MergingCut>&>(),
             py::arg("cut_data"),
             py::arg("custom_cut") = std::nullopt,
+            py::arg("merging_cut") = std::nullopt,
             pydoc::doc("Cuts::Cuts")
     )
         .def(
-            py::init<std::size_t, const std::optional<CustomFunction>&>(),
+            py::init<
+                std::size_t,
+                const std::optional<CustomFunction>&,
+                const std::optional<Cuts::MergingCut>&>(),
             py::arg("particle_count"),
             py::arg("custom_cut") = std::nullopt,
+            py::arg("merging_cut") = std::nullopt,
             pydoc::doc("Cuts::Cuts#2")
         )
+        .def("merging_cut", &Cuts::merging_cut, pydoc::doc("Cuts::merging_cut"))
         .def("sqrt_s_min", &Cuts::sqrt_s_min, pydoc::doc("Cuts::sqrt_s_min"))
         .def("eta_max", &Cuts::eta_max, pydoc::doc("Cuts::eta_max"))
         .def("pt_min", &Cuts::pt_min, pydoc::doc("Cuts::pt_min"))
@@ -2031,6 +2087,26 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("DiscreteFlow::initialize_globals")
         );
 
+    py::classh<ClusteringLine>(m, "ClusteringLine")
+        .def(
+            py::init<int, int, double, double>(),
+            py::arg("mask"),
+            py::arg("pdg_id"),
+            py::arg("mass") = 0.,
+            py::arg("width") = 0.
+        )
+        .def_readonly("mask", &ClusteringLine::mask)
+        .def_readonly("pdg_id", &ClusteringLine::pdg_id)
+        .def_readonly("mass", &ClusteringLine::mass)
+        .def_readonly("width", &ClusteringLine::width);
+    py::classh<ClusteringClass>(m, "ClusteringClass")
+        .def(
+            py::init<std::vector<int>, nested_vector2<ClusteringLine>>(),
+            py::arg("external_pdg_ids"),
+            py::arg("diagrams")
+        )
+        .def_readonly("external_pdg_ids", &ClusteringClass::external_pdg_ids)
+        .def_readonly("diagrams", &ClusteringClass::diagrams);
     py::classh<MLMClustering, FunctionGenerator> mlm(m, "MLMClustering");
     add_enum<ScaleScheme>(
         mlm,
@@ -2123,6 +2199,51 @@ PYBIND11_MODULE(_madspace_py, m) {
            py::arg("clustering_history") = ClusteringHistory::all_diagrams,
            py::arg("clustering_mean_pdf_ladder") = true
     )
+        .def(
+            py::init<
+                std::vector<ClusteringClass>,
+                std::vector<me_int_t>,
+                std::vector<double>,
+                double,
+                JetScaleScheme,
+                ScaleScheme,
+                std::unordered_map<int, int>,
+                double,
+                double,
+                double,
+                bool,
+                int,
+                PartonLineScheme,
+                AlphasScheme,
+                bool,
+                ClusteringMeasure,
+                bool>(),
+            py::arg("classes"),
+            py::arg("flavor_classes"),
+            py::arg("external_masses"),
+            py::arg("cm_energy"),
+            py::arg("jet_scale_scheme") = JetScaleScheme::production,
+            py::arg("scale_scheme") = ScaleScheme::clustering_mean,
+            py::arg("pdg_color_types") = std::unordered_map<int, int>{},
+            py::arg("xqcut") = 0.,
+            py::arg("bw_cutoff") = 15.,
+            py::arg("jet_radius") = 1.0,
+            py::arg("hadronic") = true,
+            py::arg("max_jet_flavor") = 4,
+            py::arg("parton_line_scheme") = PartonLineScheme::goodjet,
+            py::arg("alphas_scheme") = AlphasScheme::per_vertex,
+            py::arg("pdf_reweighting") = true,
+            py::arg("clustering_measure") = ClusteringMeasure::fxfx,
+            py::arg("clustering_mean_pdf_ladder") = true
+        )
+        .def_property_readonly("class_start_states", &MLMClustering::class_start_states)
+        .def_property_readonly("flavor_classes", &MLMClustering::flavor_classes)
+        .def_property(
+            "global_name", &MLMClustering::global_name, &MLMClustering::set_global_name
+        )
+        .def(
+            "initialize_globals", &MLMClustering::initialize_globals, py::arg("context")
+        )
         .def_property_readonly("pdf_absolute_pdgs", &MLMClustering::pdf_absolute_pdgs)
         .def_property_readonly("clustering_measure", &MLMClustering::clustering_measure)
         .def_property_readonly("clustering_history", &MLMClustering::clustering_history)

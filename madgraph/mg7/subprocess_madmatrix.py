@@ -7,9 +7,9 @@ import re
 from dataclasses import dataclass, field
 from typing import Literal, NamedTuple, TYPE_CHECKING
 
-from madgraph.mg7.common import logger, me_parameters, ms
+from madgraph.mg7.common import logger, me_parameters, mlm_clustering_history, ms
 from madgraph.iolibs.template_files.mg7.custom_function_loader import load_surrogate
-from madgraph.mg7.observables import build_observable, clean_pids, decay_products, observable_pids, pid_is_qcd
+from madgraph.mg7.observables import _flavor_options, build_observable, clean_pids, decay_products, observable_pids, pid_is_qcd
 
 if TYPE_CHECKING:
     from madgraph.mg7.madgraph_process import MadgraphProcess
@@ -280,6 +280,7 @@ class MadgraphSubprocess:
         custom_cut = self.process.custom_function(
             "cut", self.particle_count, representative_pids
         )
+        merging_cut = self.build_merging_cut()
         if len(self.process.cut_data) > 0:
             self.cuts = ms.Cuts([
                 ms.CutItem(
@@ -292,9 +293,9 @@ class MadgraphSubprocess:
                     mode=cut_item.mode,
                 )
                 for cut_item in self.process.cut_data
-            ], custom_cut)
-        elif custom_cut is not None:
-            self.cuts = ms.Cuts(self.particle_count, custom_cut)
+            ], custom_cut, merging_cut)
+        elif custom_cut is not None or merging_cut is not None:
+            self.cuts = ms.Cuts(self.particle_count, custom_cut, merging_cut)
         else:
             self.cuts = None
         # A flavor standing for both beam orientations draws the orientation
@@ -354,44 +355,59 @@ class MadgraphSubprocess:
         self.load_matrix_elements(api_path_formats, member_metas)
 
     def build_mlm_scale(self, min_scale: float, max_scale: float):
-        """The scales of the MLM clustering history of each event."""
-        mc_data = self.build_multi_channel_data()
+        """The scales of the MLM clustering history of each event. "ckkwl" is
+        madevent's dynamical_scale_choice -1 central scale: no merging cut and
+        no alpha_s / pdf ladder, which Pythia8 applies itself."""
+        ckkwl = getattr(self.process, "ckkwl_scale", False)
         beam = self.process.run_card["beam"]
+        options = dict(
+            cm_energy=self.process.e_cm,
+            jet_scale_scheme=getattr(
+                ms.MLMClustering.JetScaleScheme, beam["jet_scale_scheme"]),
+            scale_scheme=getattr(
+                ms.MLMClustering.ScaleScheme,
+                "madevent" if ckkwl else beam["scale_scheme"]),
+            xqcut=0.0 if ckkwl else self.process.run_card["phasespace"]["xqcut"],
+            bw_cutoff=self.process.run_card["phasespace"]["bw_cutoff"],
+            jet_radius=beam["jet_radius"],
+            hadronic=not self.process.leptonic,
+            max_jet_flavor=beam["max_jet_flavor"],
+            parton_line_scheme=getattr(
+                ms.MLMClustering.PartonLineScheme, beam["parton_line_scheme"]),
+            alphas_scheme=getattr(
+                ms.MLMClustering.AlphasScheme,
+                "none" if ckkwl else beam["alphas_reweighting"]),
+            pdf_reweighting=False if ckkwl else beam["pdf_reweighting"],
+            clustering_measure=getattr(
+                ms.MLMClustering.ClusteringMeasure, beam["clustering_measure"]),
+            clustering_mean_pdf_ladder=beam["clustering_mean_pdf_ladder"],
+        )
+        clustering = self.build_mlm_clustering(options)
+        # one copy of the state machine per context, not one per channel function
+        clustering.global_name = f"subproc{self.subproc_id}.mlm_state_machine"
+        for context in self.process.contexts:
+            clustering.initialize_globals(context)
+        return ms.EnergyScale(clustering, min_scale=min_scale, max_scale=max_scale)
+
+    def build_mlm_clustering(self, options: dict):
+        """The ms.MLMClustering of the subprocess with the given run card
+        options, along its Feynman diagrams."""
+        mc_data = self.build_multi_channel_data()
         all_pids = (clean_pids(self.meta["incoming"])
                     + clean_pids(self.meta["outgoing"]))
-        return ms.EnergyScale(
-            ms.MLMClustering(
-                topologies=[topo[0] for topo in mc_data.topologies],
-                permutations=mc_data.permutations,
-                diagram_indices=mc_data.diagram_indices,
-                cm_energy=self.process.e_cm,
-                jet_scale_scheme=getattr(
-                    ms.MLMClustering.JetScaleScheme, beam["jet_scale_scheme"]),
-                scale_scheme=getattr(
-                    ms.MLMClustering.ScaleScheme, beam["scale_scheme"]),
-                pdg_color_types={
-                    int(key): value
-                    for key, value in self.meta["pdg_color_types"].items()
-                },
-                xqcut=self.process.run_card["phasespace"]["xqcut"],
-                bw_cutoff=self.process.run_card["phasespace"]["bw_cutoff"],
-                jet_radius=beam["jet_radius"],
-                hadronic=not self.process.leptonic,
-                external_pdg_ids=all_pids,
-                max_jet_flavor=beam["max_jet_flavor"],
-                parton_line_scheme=getattr(
-                    ms.MLMClustering.PartonLineScheme, beam["parton_line_scheme"]),
-                alphas_scheme=getattr(
-                    ms.MLMClustering.AlphasScheme, beam["alphas_reweighting"]),
-                pdf_reweighting=beam["pdf_reweighting"],
-                clustering_measure=getattr(
-                    ms.MLMClustering.ClusteringMeasure, beam["clustering_measure"]),
-                clustering_history=getattr(
-                    ms.MLMClustering.ClusteringHistory, beam["clustering_history"]),
-                clustering_mean_pdf_ladder=beam["clustering_mean_pdf_ladder"],
-            ),
-            min_scale=min_scale,
-            max_scale=max_scale,
+        return ms.MLMClustering(
+            topologies=[topo[0] for topo in mc_data.topologies],
+            permutations=mc_data.permutations,
+            diagram_indices=mc_data.diagram_indices,
+            pdg_color_types={
+                int(key): value
+                for key, value in self.meta["pdg_color_types"].items()
+            },
+            external_pdg_ids=all_pids,
+            clustering_history=getattr(
+                ms.MLMClustering.ClusteringHistory,
+                mlm_clustering_history(self.process.run_card)),
+            **options,
         )
 
     def load_matrix_elements(self, api_path_formats, member_metas):
@@ -459,6 +475,45 @@ class MadgraphSubprocess:
         if not self.surrogates or self.process.surrogate["mode"] != "unweight":
             return None
         return self.process.surrogate
+
+    def build_merging_cut(self):
+        """ms.MergingCut of the CKKW-L cut for this subprocess, or None.
+
+        As madevent, the merging legs never include decay-chain products, and
+        the flavours are those of the first flavour of the subprocess."""
+        merging_cut = getattr(self.process, "merging_cut", None)
+        if merging_cut is None or len(self.meta["incoming"]) != 2:
+            return None
+        measure, value, merging_pdgs = merging_cut
+        n_in = len(self.meta["incoming"])
+        decay = decay_products(self.meta, self.unmerged_meta)
+
+        def leg_mask(pids):
+            return [
+                i >= n_in and i - n_in not in decay and abs(pid) in merging_pdgs
+                for i, pid in enumerate(pids)
+            ]
+
+        pids = self.flavor_pids()[0]
+        mask = leg_mask(pids)
+        if any(leg_mask(option) != mask
+               for option in _flavor_options(self.meta, self.unmerged_meta)):
+            raise ValueError(
+                f"subprocess {self.meta['incoming']} > {self.meta['outgoing']} "
+                "groups flavours that merging_pdgs treats differently; regenerate "
+                "the process after 'set apply_flavor_grouping False'"
+            )
+        hadronic = not self.process.leptonic
+        scale = ms.MergingScale(
+            measure,
+            list(pids),
+            mask,
+            d_parameter=float(self.process.run_card["phasespace"]["dparameter"]),
+            hadronic1=hadronic,
+            hadronic2=hadronic,
+            max_jet_flavor=int(self.process.run_card["beam"]["max_jet_flavor"]),
+        )
+        return ms.MergingCut(scale, value) if scale.active() else None
 
     def flavor_pids(self) -> list[list[int]]:
         """PDG ids of the external particles for every flavor of the

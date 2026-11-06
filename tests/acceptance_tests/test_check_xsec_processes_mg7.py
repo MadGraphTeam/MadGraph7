@@ -168,7 +168,7 @@ def _require_mg7_runtime(test):
 
 
 def _edit_run_card(toml_path, events, disable_jet_cuts, cuts=None,
-                   cut_decays=None, madnis=None):
+                   cut_decays=None, madnis=None, phasespace=None):
     """Set the event count, (optionally) neutralise the jet cuts, add the
     entry's extra cuts and set its cut_decays and MadNIS switch.
 
@@ -208,6 +208,10 @@ def _edit_run_card(toml_path, events, disable_jet_cuts, cuts=None,
         t, count = re.subn(r'(?m)^cut_decays = \w+',
                            'cut_decays = %s' % str(bool(cut_decays)).lower(), t)
         assert count == 1, 'no cut_decays in %s' % toml_path
+    for key, value in (phasespace or {}).items():
+        # e.g. the CKKW-L merging cut ktdurham / ptlund
+        t, count = re.subn(r'(?m)^%s = [^#\n]*' % key, '%s = %r ' % (key, value), t)
+        assert count == 1, 'no %s in %s' % (key, toml_path)
     if madnis is not None:
         # the first `enable` after the [madnis] header ([vegas] and
         # [systematics] have one too)
@@ -325,7 +329,7 @@ class CheckXsecProcessesMG7Test(unittest.TestCase):
         toml = pjoin(run_dir, 'Cards', 'run_card.toml')
         _edit_run_card(toml, _EVENTS, entry.get('disable_jet_cuts', False),
                        entry.get('cuts'), entry.get('cut_decays'),
-                       entry.get('madnis'))
+                       entry.get('madnis'), entry.get('phasespace'))
 
         log = pjoin(run_dir, 'mg7_gen.log')
         with open(log, 'w') as logfh:

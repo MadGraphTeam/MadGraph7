@@ -159,6 +159,22 @@ class AmplicolExportTest(unittest.TestCase):
         self.assertIn('jet_2-pt', histograms)
         self.assertFalse([name for name in histograms if name.startswith('g_')])
 
+    def test_extra_jets_turn_mlm_on(self):
+        """[amplicol] p p > j j and p p > j j j are an MLM merged sample, as
+        their madmatrix counterparts."""
+        import madgraph.iolibs.export_amplicol as export_amplicol
+        import madgraph.various.banner as banner_mod
+        self.cmd.exec_cmd('generate p p > j j [amplicol]', printcmd=False,
+                          precmd=True)
+        self.cmd.exec_cmd('add process p p > j j j [amplicol]', printcmd=False,
+                          precmd=True)
+        processes = export_amplicol.representative_processes(
+            self.cmd._curr_amplicol_defs, self.cmd._curr_model)
+        run_card = banner_mod.RunCardMG7()
+        run_card.create_default_for_process(
+            {'ninitial': 2, 'nexternal': 5}, '', [[proc] for proc in processes])
+        self.assertTrue(run_card.is_mlm_merged())
+
     def test_mirrored_beams(self):
         """pyamplicol keeps one process per unordered initial state; the other
         beam order is integrated as the mirror where the definition allows it."""

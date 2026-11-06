@@ -2611,6 +2611,107 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertEqual(card['ickkw'], 0)
         self.assertEqual(card['xqcut'], 0.0)
 
+    def test_legacy_keys_report_ckkwl_merging(self):
+        """The madevent shower interface runs CKKW-L merging from a positive
+        ktdurham or ptlund, with ickkw = 0, and reads dparameter, maxjetflavor
+        and sys_matchscale for it"""
+        card = bannermod.RunCardMG7()
+        self.assertFalse(card.is_ckkwl_merged())
+        self.assertEqual(card['ktdurham'], -1.0)
+        self.assertEqual(card['ptlund'], -1.0)
+        self.assertEqual(card['sys_matchscale'], 0.0)
+        card.set('phasespace.ktdurham', 30.0)
+        card.set('phasespace.dparameter', 1.0)
+        card.set('beam.max_jet_flavor', 4)
+        self.assertTrue(card.is_ckkwl_merged())
+        self.assertEqual(card['ickkw'], 0)
+        self.assertEqual(card['ktdurham'], 30.0)
+        self.assertEqual(card['ptlund'], -1.0)
+        self.assertEqual(card['dparameter'], 1.0)
+        self.assertEqual(card['maxjetflavor'], 4)
+        self.assertEqual(card['sys_matchscale'], 'auto')
+        self.assertEqual(card['pdgs_for_merging_cut'], [21, 1, 2, 3, 4, 5, 6])
+        card.set('phasespace.merging_pdgs', [21, 1, 2, 3, 4])
+        self.assertEqual(card['pdgs_for_merging_cut'], [21, 1, 2, 3, 4])
+
+    def test_ckkwl_entries_round_trip(self):
+        import tomllib
+        rc = bannermod.RunCardMG7()
+        out = io.StringIO()
+        rc.write(out, template=self.template)
+        phasespace = tomllib.loads(out.getvalue())['phasespace']
+        self.assertEqual(phasespace['ktdurham'], 0.0)
+        self.assertEqual(phasespace['ptlund'], 0.0)
+        self.assertEqual(phasespace['dparameter'], 0.4)
+        self.assertEqual(phasespace['merging_pdgs'], 'auto')
+        rc.set('phasespace.ptlund', 25.0, user=True)
+        rc.set('phasespace.merging_pdgs', [21, 1, 2, 3, 4, 5], user=True)
+        rc.set('beam.dynamical_scale_choice', 'ckkwl', user=True)
+        out = io.StringIO()
+        rc.write(out, template=self.template)
+        back = bannermod.RunCardMG7(out.getvalue())
+        self.assertEqual(back['phasespace']['ptlund'], 25.0)
+        self.assertEqual(back['phasespace']['merging_pdgs'], [21, 1, 2, 3, 4, 5])
+        self.assertEqual(back['beam']['dynamical_scale_choice'], 'ckkwl')
+        back.set('phasespace.merging_pdgs', 'auto', user=True)
+        self.assertEqual(back['phasespace']['merging_pdgs'], 'auto')
+
+    def test_ckkwl_validity(self):
+        rc = bannermod.RunCardMG7()
+        rc.set('phasespace.ktdurham', 30.0)
+        rc.check_validity()
+        rc.set('beam.dynamical_scale_choice', 'ckkwl')
+        rc.check_validity()
+        rc.set('phasespace.ptlund', 30.0)
+        self.assertRaises(bannermod.InvalidRunCard, rc.check_validity)
+        rc.set('phasespace.ptlund', 0.0)
+        rc.set('phasespace.xqcut', 20.0)
+        self.assertRaises(bannermod.InvalidRunCard, rc.check_validity)
+        rc.set('phasespace.xqcut', 0.0)
+        rc.set('beam.dynamical_scale_choice', 'mlm')
+        self.assertRaises(bannermod.InvalidRunCard, rc.check_validity)
+        rc.set('beam.dynamical_scale_choice', 'transverse_mass')
+        rc.set('phasespace.dparameter', 0.0)
+        self.assertRaises(bannermod.InvalidRunCard, rc.check_validity)
+        # the "ckkwl" scale alone, without a merging cut, is fine
+        rc = bannermod.RunCardMG7()
+        rc.set('beam.dynamical_scale_choice', 'ckkwl')
+        rc.check_validity()
+
+    def test_from_LO_conversion_of_ckkwl_merging(self):
+        """ickkw = 0 with ktdurham or ptlund is madevent's CKKW-L: the same cut,
+        and its default dynamical_scale_choice -1 becomes the "ckkwl" scale"""
+        lo = bannermod.RunCardLO()
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        # madevent's -1 defaults are mg7's 0
+        self.assertEqual(mg7['phasespace']['ktdurham'], 0.0)
+        self.assertEqual(mg7['phasespace']['ptlund'], 0.0)
+        self.assertNotEqual(mg7['beam']['dynamical_scale_choice'], 'ckkwl')
+        lo['ktdurham'] = 30
+        lo['dparameter'] = 1.0
+        lo['pdgs_for_merging_cut'] = [21, 1, 2, 3, 4]
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual(mg7['phasespace']['ktdurham'], 30.0)
+        self.assertEqual(mg7['phasespace']['ptlund'], 0.0)
+        self.assertEqual(mg7['phasespace']['dparameter'], 1.0)
+        self.assertEqual(mg7['phasespace']['merging_pdgs'], [21, 1, 2, 3, 4])
+        self.assertEqual(mg7['beam']['dynamical_scale_choice'], 'ckkwl')
+        joined = ' '.join(dropped)
+        for key in ('ktdurham', 'dparameter', 'pdgs_for_merging_cut'):
+            self.assertNotIn(key, joined)
+        mg7.check_validity()
+        # a closed-form scale choice is kept
+        lo['dynamical_scale_choice'] = 3
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual(mg7['beam']['dynamical_scale_choice'], 'half_transverse_mass')
+        # CKKW-L and MLM together can not be represented
+        lo['ickkw'] = 1
+        lo['xqcut'] = 20
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual(mg7['phasespace']['ktdurham'], 0.0)
+        self.assertIn('ktdurham/ptlund with ickkw=1', ' '.join(dropped))
+        mg7.check_validity()
+
     def test_set_maxjetflavor_sets_the_mlm_jet_flavours(self):
         rc = bannermod.RunCardMG7()
         rc.set_lo_param('maxjetflavor', '5')
@@ -3033,14 +3134,11 @@ class TestRunCardMG7AutoMLM(unittest.TestCase):
         self.assertNotIn('jet-lepton-delta_r', rc.dynamic_sections['cuts'])
         self.assertIn('lepton-delta_r', rc.dynamic_sections['cuts'])
 
-    def test_amplicol_output_is_no_merging(self):
-        rc = bannermod.RunCardMG7()
-        rc.create_default_for_process(
-            self.PC(), '', [[mg7_proc([2, -1], [-11, 12])],
-                            [mg7_proc([2, -1], [-11, 12, 21])]], amplicol=True)
-        self.assertFalse(rc.is_mlm_merged())
-        self.assertEqual(rc['phasespace']['xqcut'], 0.0)
-        self.assertIn('jet-delta_r', rc.dynamic_sections['cuts'])
+    def test_amplicol_output_is_merged_too(self):
+        """[amplicol] processes come as the same lists of processes."""
+        rc = self.build([[mg7_proc([2, -1], [-11, 12])],
+                         [mg7_proc([2, -1], [-11, 12, 21])]])
+        self.assertTrue(rc.is_mlm_merged())
 
     def test_an_extra_photon_is_no_merging(self):
         rc = self.build([[mg7_proc([2, -1], [-11, 12])],

@@ -393,6 +393,37 @@ def subprocess_entries(metadata, model, rel_dir, me_path, ratio_path, qcd_power,
     return entries
 
 
+def clustering_model(model):
+    """The particles and 3-point vertices of the model without its flavour
+    grouping, for the MLM clustering of [amplicol] events
+    (madgraph.mg7.amplicol_clustering)."""
+    merged = set(model.get('merged_particles'))
+
+    def physical(pdgs):
+        return not any(abs(pdg) in merged for pdg in pdgs)
+
+    particles = {}
+    for particle in model.get('particles'):
+        pdg = particle.get_pdg_code()
+        if not physical([pdg]):
+            continue
+        for code in (pdg, particle.get_anti_pdg_code()):
+            part = model.get_particle(code)
+            particles[code] = {'anti': part.get_anti_pdg_code(),
+                               'color': part.get_color(),
+                               'mass': part.get('mass'),
+                               'width': part.get('width')}
+    vertices = []
+    interactions = list(model.get('interactions'))
+    if merged:
+        interactions += list(model['unmerged_interactions'])
+    for interaction in interactions:
+        pdgs = [p.get_pdg_code() for p in interaction.get('particles')]
+        if len(pdgs) == 3 and physical(pdgs) and all(p in particles for p in pdgs):
+            vertices.append([pdgs, dict(interaction.get('orders'))])
+    return {'particles': particles, 'vertices': vertices}
+
+
 def parameter_references(metadata):
     """The parameter card entry of every mutable runtime parameter."""
     references = {}
@@ -445,6 +476,9 @@ def _export_amplicol_processes(dir_path, proc_defs, model, multiparticles=None,
         logger.error('pyamplicol failed to generate the [amplicol] matrix elements')
         raise madgraph.InvalidCmd('pyamplicol failed to generate the [amplicol] '
                                   'matrix elements: %s' % error)
+    from madgraph.mg7.amplicol_clustering import CLUSTERING_MODEL
+    with open(pjoin(subproc_dir, CLUSTERING_MODEL), 'w') as stream:
+        json.dump(clustering_model(model), stream)
     entries = []
     for procdef, process, provider_ids in zip(proc_defs, processes, providers):
         name, path, orders = process['name'], process['path'], process['orders']

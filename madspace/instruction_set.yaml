@@ -2754,6 +2754,54 @@ cut_any:
       desc: "1 if at least one observable is in [min, max], 0 otherwise"
   desc: "Cut indicator: 1 if at least one observable in the vector is inside the window, 0 otherwise. See @ref Cuts."
 
+merging_scale_kt_durham:
+  inputs:
+    - name: momenta
+      type: [float, n, 4]
+      desc: "external momenta, incoming first"
+    - name: merging_legs
+      type: [int, single, n]
+      desc: "1 for every outgoing leg subject to the merging cut, 0 for the others"
+    - name: d_parameter
+      type: [float, single]
+      desc: "D of the hadronic kt measure"
+    - name: beam_flags
+      type: [int, single]
+      desc: "bit 0 (1): beam 1 is a hadron, bit 1 (2): beam 2 is a hadron"
+    - name: mode
+      type: [int, single]
+      desc: "0 no merging scale, 2 the full measure"
+  outputs:
+    - name: scale
+      type: [float]
+      desc: "smallest Durham kt of the merging legs"
+  vectorized: False
+  desc: "CKKW-L ktdurham merging scale: the smallest pT to the beam and pairwise Durham kt of the merging legs. See @ref MergingScale."
+
+merging_scale_pt_lund:
+  inputs:
+    - name: momenta
+      type: [float, n, 4]
+      desc: "external momenta, incoming first"
+    - name: merging_legs
+      type: [int, single, n]
+      desc: "1 for every outgoing leg subject to the merging cut, 0 for the others"
+    - name: pdg_ids
+      type: [int, single, n]
+      desc: "signed pdg id of every external leg"
+    - name: beam_flags
+      type: [int, single]
+      desc: "bit 0 (1): beam 1 is a hadron, bit 1 (2): beam 2 is a hadron"
+    - name: mode
+      type: [int, single]
+      desc: "0 no merging scale, 1 pT of exactly two massless legs, 2 the full measure"
+  outputs:
+    - name: scale
+      type: [float]
+      desc: "smallest Pythia8 evolution pT of the merging legs"
+  vectorized: False
+  desc: "CKKW-L ptlund merging scale: the smallest Pythia8 evolution pT over the ISR and FSR splittings of the merging legs. See @ref MergingScale."
+
 ---
 title: Energy scale
 
@@ -2801,7 +2849,7 @@ scale_partonic_energy:
       desc: "the energy scale"
   desc: "Dynamical scale set to sqrt(E^2 - pz^2) of the sum of the first two (incoming) momenta. See @ref EnergyScale."
 
-mlm_clustering_hadronic:
+mlm_clustering:
   inputs:
     - name: momenta
       type: [float, n, 4]
@@ -2816,176 +2864,20 @@ mlm_clustering_hadronic:
       type: [int, single, m]
       desc:
     - name: external_masses
-      type: [float, n]
+      type: [float, single, n]
       desc:
-    - name: bw_masses
+    - name: parameters
       type: [float, single, k]
-      desc:
-    - name: bw_widths
-      type: [float, single, k]
-      desc:
-    - name: bw_cutoffs
-      type: [float, single]
-      desc:
-    - name: jet_radius
-      type: [float, single]
-      desc:
-    - name: cm_energy
-      type: [float, single]
-      desc:
-    - name: jet_scale_scheme
+      desc: "bw_cutoff, jet_radius, cm_energy and xqcut, then the mass and width of every Breit-Wigner line"
+    - name: flags
       type: [int, single]
-      desc:
-    - name: xqcut
-      type: [float, single]
-      desc:
-    - name: scale_scheme
-      type: [int, single]
-      desc:
+      desc: "two bits each: jet_scale_scheme, scale_scheme, parton_line_scheme, alphas_scheme, pdf_reweighting, clustering_measure, history_mode, hadronic (MLM_SHIFT_* in kernels/mlm.hpp)"
     - name: beam_flags
-      type: [int, single]
-      desc:
+      type: [int]
+      desc: per event, as the clustering class of its flavour can change it
     - name: jet_leg_mask
-      type: [int, single]
-      desc:
-    - name: parton_line_scheme
-      type: [int, single]
-      desc:
-    - name: alphas_scheme
-      type: [int, single]
-      desc:
-    - name: pdf_reweighting
-      type: [int, single]
-      desc: "0 off, 1 the pdf ladder under scale_scheme madevent, 2 also under clustering_mean"
-    - name: clustering_measure
-      type: [int, single]
-      desc:
-    - name: history_mode
-      type: [int, single]
-      desc: ClusteringHistory, how the start state and the history over every diagram are combined
-    - name: flavor_index
       type: [int]
-      desc: sampled flavour of the event, i.e. the row of leg_flavors that applies to it
-    - name: leg_flavors
-      type: [int, single, f]
-      desc: abs pdg id of every external leg per flavour, row-major; a row of zeros (or a flavor_index past the table) leaves every clustering allowed
-  outputs:
-    - name: ren_scale
-      type: [float]
-      desc:
-    - name: fact_scale1
-      type: [float]
-      desc:
-    - name: fact_scale2
-      type: [float]
-      desc:
-    - name: outgoing_scales
-      type: [float, n-2]
-      desc:
-    - name: diagram_index
-      type: [int]
-      desc:
-    - name: xqcut_weight
-      type: [float]
-      desc:
-    - name: alphas_scales
-      type: [float, n-3]
-      desc: scale of each clustering vertex for the alpha_s reweighting
-    - name: alphas_weight
-      type: [float]
-      desc: zero when a reweighted vertex sits where the coupling is not usable
-    - name: pdf_scale1
-      type: [float]
-      desc: scale the beam-1 density is evaluated at, below fact_scale1 when reweighting
-    - name: pdf_scale2
-      type: [float]
-      desc: scale the beam-2 density is evaluated at, below fact_scale2 when reweighting
-    - name: pdf_rw_flavor
-      type: [int, n-1]
-      desc: flavour class of the beam line at each pdf reweighting step
-    - name: pdf_rw_x
-      type: [float, n-1]
-      desc: momentum fraction of the beam line at each step, relative to the beam
-    - name: pdf_rw_q_num
-      type: [float, n-1]
-      desc: scale the density is reweighted to at each step
-    - name: pdf_rw_q_den
-      type: [float, n-1]
-      desc: scale the density is reweighted from at each step
-    - name: pdf_rw_active
-      type: [float, n-1]
-      desc: one where a step contributes a pdf ratio, zero for an inert slot
-    - name: pdf_rw_beam
-      type: [float, n-1]
-      desc: which beam each step sits on, as 0 or 1
-    - name: pdf_rw_x_prev
-      type: [float, n-1]
-      desc: momentum fraction of the beam line before each step's z, relative to the beam
-
-  vectorized: False
-
-mlm_clustering_leptonic:
-  inputs:
-    - name: momenta
-      type: [float, n, 4]
-      desc:
-    - name: random
-      type: [float]
-      desc:
-    - name: start_state
-      type: [int]
-      desc: state machine offset the walk starts at, 0 for the history over every diagram
-    - name: state_machine
-      type: [int, single, m]
-      desc:
-    - name: external_masses
-      type: [float, n]
-      desc:
-    - name: bw_masses
-      type: [float, single, k]
-      desc:
-    - name: bw_widths
-      type: [float, single, k]
-      desc:
-    - name: bw_cutoffs
-      type: [float, single]
-      desc:
-    - name: jet_radius
-      type: [float, single]
-      desc:
-    - name: cm_energy
-      type: [float, single]
-      desc:
-    - name: jet_scale_scheme
-      type: [int, single]
-      desc:
-    - name: xqcut
-      type: [float, single]
-      desc:
-    - name: scale_scheme
-      type: [int, single]
-      desc:
-    - name: beam_flags
-      type: [int, single]
-      desc:
-    - name: jet_leg_mask
-      type: [int, single]
-      desc:
-    - name: parton_line_scheme
-      type: [int, single]
-      desc:
-    - name: alphas_scheme
-      type: [int, single]
-      desc:
-    - name: pdf_reweighting
-      type: [int, single]
-      desc: "0 off, 1 the pdf ladder under scale_scheme madevent, 2 also under clustering_mean"
-    - name: clustering_measure
-      type: [int, single]
-      desc:
-    - name: history_mode
-      type: [int, single]
-      desc: ClusteringHistory, how the start state and the history over every diagram are combined
+      desc: per event, as beam_flags
     - name: flavor_index
       type: [int]
       desc: sampled flavour of the event, i.e. the row of leg_flavors that applies to it

@@ -3765,14 +3765,14 @@ class ProcessExporterMG7(ProcessExporterCPP):
         except (KeyError, TypeError):
             processes = None
         amplicol_procs = self.amplicol_processes()
-        amplicol = bool(amplicol_procs)
-        if amplicol:
-            processes = (processes or []) + [amplicol_procs]
+        if amplicol_procs:
+            # one group per process, as the amplitudes: their multiplicities
+            # decide whether the sample is MLM merged
+            processes = (processes or []) + [[proc] for proc in amplicol_procs]
 
         if processes:
             run_card.create_default_for_process(self.proc_characteristic,
-                                                history, processes,
-                                                amplicol=amplicol)
+                                                history, processes)
             # persist the model so the runtime can reload it: to compute the
             # widths set to 'auto' in the param_card (and recompute them at
             # each scan point) and to reset the parameters the model derives

@@ -1,7 +1,9 @@
 #pragma once
 
+#include <memory>
 #include <unordered_map>
 
+#include "madspace/driver/context.hpp"
 #include "madspace/phasespace/base.hpp"
 #include "madspace/phasespace/topology.hpp"
 
@@ -99,8 +101,48 @@ enum class ClusteringHistory {
     madevent = 2,
 };
 
+// An internal line of a clustering diagram: the external legs on one side of it
+// as a bit mask, beam 1 (bit 0) never among them for a final-state line. A
+// t-channel line is listed twice, once from each beam.
+struct ClusteringLine {
+    int mask;
+    int pdg_id;
+    double mass;
+    double width;
+};
+
+// The diagrams one assignment of external flavours (and colour flow) of a
+// subprocess can be clustered along, given line by line.
+struct ClusteringClass {
+    std::vector<int> external_pdg_ids;
+    nested_vector2<ClusteringLine> diagrams;
+};
+
 class MLMClustering : public FunctionGenerator {
 public:
+    // The history over the diagrams of the class of each event's flavour,
+    // flavor_classes[flavour index], always as under ClusteringHistory::all_diagrams.
+    // The diagram_index output numbers the diagrams within a class.
+    MLMClustering(
+        std::vector<ClusteringClass> classes,
+        std::vector<me_int_t> flavor_classes,
+        std::vector<double> external_masses,
+        double cm_energy,
+        JetScaleScheme jet_scale_scheme = JetScaleScheme::production,
+        ScaleScheme scale_scheme = ScaleScheme::clustering_mean,
+        std::unordered_map<int, int> pdg_color_types = {},
+        double xqcut = 0,
+        double bw_cutoff = 15,
+        double jet_radius = 1.0,
+        bool hadronic = true,
+        int max_jet_flavor = 4,
+        PartonLineScheme parton_line_scheme = PartonLineScheme::goodjet,
+        AlphasScheme alphas_scheme = AlphasScheme::per_vertex,
+        bool pdf_reweighting = true,
+        ClusteringMeasure clustering_measure = ClusteringMeasure::fxfx,
+        bool clustering_mean_pdf_ladder = true
+    );
+
     MLMClustering(
         std::vector<Topology> topologies,
         nested_vector3<std::size_t> permutations,
@@ -179,13 +221,28 @@ public:
     ) const;
     // Whether any clustering of the compiled state machines depends on the
     // flavours of the event. Without one, the flavours change nothing.
-    bool has_flavor_dependent_clusterings() const { return _has_same_flavor; }
+    bool has_flavor_dependent_clusterings() const {
+        return _has_same_flavor || _class_start_states.size() > 1;
+    }
+    // Per clustering class, its offset in cluster_state_machine; empty for a
+    // clustering built from topologies. Identical classes share one offset.
+    const std::vector<me_int_t>& class_start_states() const {
+        return _class_start_states;
+    }
+    const std::vector<me_int_t>& flavor_classes() const { return _flavor_classes; }
 
     // The compiled clustering state machine, in the flat encoding the kernel
-    // walks. Exposed so that its structure can be checked directly.
+    // walks. Exposed so that its structure can be checked directly. Copies of
+    // the clustering share it.
     const std::vector<me_int_t>& cluster_state_machine() const {
-        return _cluster_state_machine;
+        return *_cluster_state_machine;
     }
+    // With a global name, the functions read the state machine from that context
+    // global (see initialize_globals) instead of holding a copy each.
+    const std::string& global_name() const { return _global_name; }
+    void set_global_name(const std::string& name) { _global_name = name; }
+    // Define the global named global_name() in the context, holding the state machine.
+    void initialize_globals(ContextPtr context) const;
     const std::vector<double>& external_masses() const { return _external_masses; }
     const std::vector<double>& bw_masses() const { return _bw_masses; }
     const std::vector<double>& bw_widths() const { return _bw_widths; }
@@ -221,7 +278,9 @@ private:
         const std::vector<me_int_t>& leg_flavors
     ) const;
 
-    std::vector<me_int_t> _cluster_state_machine;
+    std::shared_ptr<std::vector<me_int_t>> _cluster_state_machine =
+        std::make_shared<std::vector<me_int_t>>();
+    std::string _global_name;
     std::vector<me_int_t> _diagram_start_states;
     std::vector<double> _external_masses;
     std::vector<double> _bw_masses;
@@ -239,6 +298,10 @@ private:
     bool _has_same_flavor = false;
     int _beam_flags;
     int _jet_leg_mask;
+    std::vector<me_int_t> _class_start_states;
+    std::vector<me_int_t> _class_beam_flags;
+    std::vector<me_int_t> _class_jet_leg_masks;
+    std::vector<me_int_t> _flavor_classes;
     double _xqcut;
     double _bw_cutoff;
     double _jet_radius;

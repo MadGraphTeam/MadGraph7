@@ -45,7 +45,8 @@ _NSIGMA = float(os.environ.get('MG7_AMPLICOL_NSIGMA', 4))
 _PDF = 'NNPDF23_lo_as_0130_qed'
 
 
-def _edit_run_card(path, gridpack=False, output_format=None, **amplicol):
+def _edit_run_card(path, gridpack=False, output_format=None, merging=None,
+                   **amplicol):
     card = open(path).read()
     if gridpack:
         card = re.sub(r'(?m)^save_gridpack = false', 'save_gridpack = true', card)
@@ -55,8 +56,17 @@ def _edit_run_card(path, gridpack=False, output_format=None, **amplicol):
     if output_format:
         card = re.sub(r'(?m)^output_format = ".*"', 'output_format = "%s"' %
                       output_format, card)
-    card = card.replace('fixed_ren_scale = false', 'fixed_ren_scale = true')
-    card = card.replace('fixed_fact_scale = false', 'fixed_fact_scale = true')
+    if merging == 'mlm':
+        card = re.sub(r'(?m)^dynamical_scale_choice = ".*"',
+                      'dynamical_scale_choice = "mlm"', card)
+        card = re.sub(r'(?m)^xqcut = .*$', 'xqcut = 20.0', card)
+    elif merging == 'ckkwl':
+        card = re.sub(r'(?m)^dynamical_scale_choice = ".*"',
+                      'dynamical_scale_choice = "ckkwl"', card)
+        card = re.sub(r'(?m)^ktdurham = .*$', 'ktdurham = 30.0', card)
+    else:
+        card = card.replace('fixed_ren_scale = false', 'fixed_ren_scale = true')
+        card = card.replace('fixed_fact_scale = false', 'fixed_fact_scale = true')
     card = re.sub(r'(?m)^(pdf[12]) = ".*"$', r'\1 = "%s"' % _PDF, card)
     card = re.sub(r'(?m)^events = \d+', 'events = %d' % _EVENTS, card)
     card = re.sub(r'(?m)^seed = -1', 'seed = 7', card)
@@ -126,7 +136,7 @@ class MG7AmplicolTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.path, ignore_errors=True)
 
-    def run_mg7(self, name, processes, gridpack=False, **amplicol):
+    def run_mg7(self, name, processes, gridpack=False, merging=None, **amplicol):
         """Output and run the processes, returns the cross section, its error
         and the run directory."""
         run_dir = pjoin(self.path, name)
@@ -137,7 +147,8 @@ class MG7AmplicolTest(unittest.TestCase):
             mg.exec_cmd('%s %s' % ('generate' if index == 0 else 'add process',
                                    process))
         mg.exec_cmd('output mg7 %s' % run_dir)
-        _edit_run_card(pjoin(run_dir, 'Cards', 'run_card.toml'), gridpack, **amplicol)
+        _edit_run_card(pjoin(run_dir, 'Cards', 'run_card.toml'), gridpack,
+                       merging=merging, **amplicol)
         log = pjoin(run_dir, 'generate_events.log')
         with open(log, 'w') as stream:
             status = subprocess.call(
@@ -151,9 +162,11 @@ class MG7AmplicolTest(unittest.TestCase):
         self.assertTrue(result['done'], open(log).read()[-3000:])
         return float(result['mean']), float(result['error']), run_dir
 
-    def assert_compatible(self, first, second, factor=1.):
+    def assert_compatible(self, first, second, factor=1., relative=0.):
+        """Equal within _NSIGMA errors, plus a relative difference allowed on
+        top of them."""
         (mean1, error1), (mean2, error2) = first, second
-        error = (error1**2 + (factor * error2)**2)**0.5
+        error = (error1**2 + (factor * error2)**2)**0.5 + relative * abs(mean1) / _NSIGMA
         self.assertLess(abs(mean1 - factor * mean2), _NSIGMA * error,
                         '%g +- %g vs %g +- %g' % (mean1, error1, factor * mean2,
                                                   factor * error2))
@@ -211,6 +224,22 @@ class MG7AmplicolTest(unittest.TestCase):
                                 output_format='lhe')
         self.assert_compatible(amplicol[:2], madmatrix)
         self.assert_resonances(_events(amplicol[2]), 24, 80.419, 2.0476)
+
+    def test_pp_wpjj_mlm(self):
+        """MLM scales from the planar diagrams of each event's colour flow.
+        They need not be madmatrix's, which cluster along every diagram, but
+        give nearly the same rate."""
+        madmatrix = self.run_mg7('mm', ['p p > e+ ve j j'], merging='mlm')[:2]
+        amplicol = self.run_mg7('amp', ['p p > e+ ve j j [amplicol]'],
+                                merging='mlm')[:2]
+        self.assert_compatible(amplicol, madmatrix, relative=0.03)
+
+    def test_pp_jjj_ckkwl(self):
+        """The ktdurham merging cut and the ckkwl scale."""
+        madmatrix = self.run_mg7('mm', ['p p > j j j'], merging='ckkwl')[:2]
+        amplicol = self.run_mg7('amp', ['p p > j j j [amplicol]'],
+                                merging='ckkwl')[:2]
+        self.assert_compatible(amplicol, madmatrix, relative=0.03)
 
     def test_mixed(self):
         """[amplicol] and madmatrix processes in one output."""
