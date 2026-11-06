@@ -9245,7 +9245,7 @@ c           This is dummy particle used in multiparticle vertices
     def write_configs_file_from_onia_diagrams(self, writer, configs, mapconfigs,
                                          nexternal, ninitial, model,
                                          onia_pairs=None, alpha_s_powers=None,
-                                         parent_id=None):
+                                         parent_id=None, onia_leg_maps=None):
         """Write the actual configs.inc file.
 
         configs is the diagrams corresponding to configs (each
@@ -9253,6 +9253,9 @@ c           This is dummy particle used in multiparticle vertices
         subprocesses, with None if there is no corresponding diagrams
         for a given process).
         mapconfigs gives the diagram number for each config.
+        onia_leg_maps gives, per subprocess, the physical leg of every
+        constituent leg (HelasMatrixElement.get_onia_leg_map); a decay needs
+        it to give each channel the topology of its diagram.
 
         For s-channels, we need to output one PDG for each subprocess in
         the subprocess group, in order to be able to pick the right
@@ -9284,16 +9287,24 @@ c           This is dummy particle used in multiparticle vertices
             nconfigs += 1
 
             if ninitial == 1:
-                # A decay: the flat s-channel chain is the whole topology.
-                # The constituent diagrams cannot give it (with a decaying
-                # onium they even have two incoming legs), so the channels
-                # handed to props.inc and decayBW.inc are this chain too.
+                # A decay: s-channels only, over the physical final state.
+                # The constituent diagrams cannot be used as they are (an
+                # onium is two legs there, and a decaying onium gives two
+                # incoming legs), so each channel is the tree of the physical
+                # invariants that the propagators of its diagram depend on,
+                # and props.inc and decayBW.inc get the same tree.
+                isub, diag = [(i, d) for i, d in enumerate(helas_diags)
+                              if d][0]
+                candidates = self.get_onia_decay_candidates(
+                    diag, onia_leg_maps[isub]) if onia_leg_maps else []
+                vertices = self.get_onia_decay_vertices(candidates,
+                                                        nexternal, parent_id)
                 lines.extend(self.get_onia_decay_config_lines(
-                    nconfigs, mapconfigs[iconfig], nexternal, parent_id))
+                    nconfigs, mapconfigs[iconfig], vertices))
                 nqcd_list.append(self.get_onia_config_nqcd(helas_diags,
                                                            alpha_s_powers))
                 s_and_t_channels.append([self.get_onia_decay_schannels(
-                    nexternal, parent_id), [], 2])
+                    vertices), [], 2])
                 continue
 
             # Need s- and t-channels for all subprocesses, including
@@ -9400,46 +9411,133 @@ c           This is dummy particle used in multiparticle vertices
         return nqcd
 
     @staticmethod
-    def get_onia_decay_config_lines(iconf, diagram, nexternal, parent_id):
-        """configs.inc lines of one channel of a 1 -> N decay with onia.
+    def get_onia_decay_candidates(diagram, leg_map):
+        """The physical invariants that the propagators of a 1 -> N diagram
+        with onia depend on, as [(legs, exact, pdg)]: legs is the frozenset
+        of physical final-state legs on one side of the propagator.
 
-        As genps.f expects for a decay, there are nexternal-2 s-channel
-        vertices: a chain over the final-state particles (nexternal,
-        nexternal-1, ..., 2) whose last vertex is the decaying particle
-        itself, with the t-channel strategy of the decays (2)."""
+        leg_map is HelasMatrixElement.get_onia_leg_map(). A propagator is
+        exact if it carries whole particles: its virtuality is then the
+        invariant mass of legs, and its particle (pdg) sets the grid. It is
+        not if it carries one constituent of an onium (as the gluon of
+        Z > b bbar*, bbar* > B_c cbar): its virtuality then grows with the
+        invariant that takes in the whole onium, which is the one mapped,
+        through a massless propagator (pdg 21)."""
+
+        incoming = set(leg for leg, phys in leg_map.items() if phys == 1)
+        outgoing = set(leg_map) - incoming
+        finals = frozenset(leg_map[leg] for leg in outgoing)
+        constituents = {}
+        for leg in outgoing:
+            constituents.setdefault(leg_map[leg], set()).add(leg)
+
+        # the internal wavefunctions (propagators) of the diagram and the
+        # external legs below each of them
+        props = []
+        seen = set()
+        def leaves(wf):
+            if not wf.get('mothers'):
+                return set([wf.get('number_external')])
+            below = set()
+            for mother in wf.get('mothers'):
+                below |= leaves(mother)
+            if id(wf) not in seen:
+                seen.add(id(wf))
+                props.append((wf, below))
+            return below
+        for amp in diagram.get('amplitudes'):
+            for mother in amp.get('mothers'):
+                leaves(mother)
+
+        candidates = []
+        for wf, below in props:
+            inc = below & incoming
+            if not inc:
+                side, exact = below, True
+            elif inc == incoming:
+                # the decaying particle(s) on this side: the other side
+                side, exact = outgoing - below, True
+            else:
+                # one constituent of a decaying onium
+                side, exact = below & outgoing, False
+            legs = frozenset(leg_map[leg] for leg in side)
+            if len(legs) < 2 or legs == finals:
+                continue
+            exact = exact and all(constituents[p] <= side for p in legs)
+            candidates.append((legs, exact, wf.get_pdg_code() if exact else 21))
+        return candidates
+
+    @staticmethod
+    def get_onia_decay_vertices(candidates, nexternal, parent_id):
+        """The s-channel tree of one channel of a 1 -> N decay with onia, as
+        [(daughter, daughter, pdg)] for the vertices -1, -2, ...
+
+        As genps.f expects for a decay, there are nexternal-2 vertices over
+        the final-state legs 2..nexternal, the last one being the decaying
+        particle (pdg parent_id). The tree keeps the candidate invariants
+        (get_onia_decay_candidates) that nest in or are disjoint from those
+        already kept, exact ones first, then the smaller ones; the legs left
+        over are joined in a chain from the highest leg number, which with
+        no candidates is the whole tree: (n, n-1), (-1, n-2), ..., (., 2)."""
+
+        finals = frozenset(range(2, nexternal + 1))
+        kept = {}
+        for legs, exact, pdg in sorted(candidates, key=lambda c:
+                                       (not c[1], len(c[0]), sorted(c[0]))):
+            if legs in kept or not legs < finals:
+                continue
+            if all(legs <= k or k <= legs or not legs & k for k in kept):
+                kept[legs] = pdg
+
+        vertices = []
+        def build(node):
+            if len(node) == 1:
+                return next(iter(node))
+            inner = [k for k in kept if k < node]
+            children = [k for k in inner if not any(k < o for o in inner)]
+            covered = frozenset().union(*children)
+            children += [frozenset([leg]) for leg in node - covered]
+            numbers = [build(c) for c in
+                       sorted(children, key=max, reverse=True)]
+            current = numbers[0]
+            for number in numbers[1:-1]:
+                vertices.append((current, number, 21))
+                current = -len(vertices)
+            pdg = parent_id if node == finals else kept[node]
+            vertices.append((current, numbers[-1], pdg or 21))
+            return -len(vertices)
+        build(finals)
+        return vertices
+
+    @staticmethod
+    def get_onia_decay_config_lines(iconf, diagram, vertices):
+        """configs.inc lines of one channel of a 1 -> N decay with onia,
+        with the t-channel strategy of the decays (2); vertices is
+        get_onia_decay_vertices()."""
 
         lines = ["# Diagram %d" % diagram,
                  "data mapconfig(%d)/%d/" % (iconf, diagram),
                  "data tstrategy(%d)/2/" % iconf]
-        leg1, leg2 = nexternal, nexternal - 1
-        nvert = nexternal - 2
-        for i in range(1, nvert + 1):
-            prop = parent_id if (i == nvert and parent_id) else 21
+        for i, (leg1, leg2, prop) in enumerate(vertices, 1):
             lines.append("data (iforest(i,%d,%d),i=1,2)/%d,%d/" %
                          (-i, iconf, leg1, leg2))
             lines.append("data (sprop(i,%d,%d),i=1,1)/%d/" % (-i, iconf, prop))
             lines.append("data tprid(%d,%d)/0/" % (-i, iconf))
-            leg1, leg2 = -i, leg2 - 1
         return lines
 
     @staticmethod
-    def get_onia_decay_schannels(nexternal, parent_id):
+    def get_onia_decay_schannels(vertices):
         """The s-channel vertices of get_onia_decay_config_lines, as
-        props.inc and decayBW.inc read them: massless propagators along the
-        chain (as its sprop 21), the decaying particle at its end."""
+        props.inc and decayBW.inc read them."""
 
-        vertices = []
-        leg1, leg2 = nexternal, nexternal - 1
-        nvert = nexternal - 2
-        for i in range(1, nvert + 1):
-            prop = parent_id if (i == nvert and parent_id) else 21
+        out = []
+        for i, (leg1, leg2, prop) in enumerate(vertices, 1):
             legs = base_objects.LegList([
                 base_objects.Leg({'id': 21, 'number': leg1, 'state': True}),
                 base_objects.Leg({'id': 21, 'number': leg2, 'state': True}),
                 base_objects.Leg({'id': prop, 'number': -i, 'state': True})])
-            vertices.append(base_objects.Vertex({'id': 0, 'legs': legs}))
-            leg1, leg2 = -i, leg2 - 1
-        return vertices
+            out.append(base_objects.Vertex({'id': 0, 'legs': legs}))
+        return out
     
 
 
@@ -10859,7 +10957,9 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
                                                 nexternal, ninitial,
                                                      model,onia_pairs,
                                                 alpha_s_powers=alpha_s_powers,
-                                                parent_id=parent_id)
+                                                parent_id=parent_id,
+                                                onia_leg_maps=[me.get_onia_leg_map()
+                                                    for me in matrix_elements])
         else:
             return len(diagrams), \
                self.write_configs_file_from_diagrams(writer, diagrams,

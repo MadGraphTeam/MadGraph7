@@ -10132,22 +10132,36 @@ C       This is dummy particle used in multiparticle vertices
 
 """)
 
+class _OniaWf(dict):
+    """A wavefunction as get_onia_decay_candidates reads it."""
+
+    def __init__(self, number=None, mothers=(), pdg=21):
+        dict.__init__(self, number_external=number, mothers=list(mothers))
+        self.pdg = pdg
+
+    def get_pdg_code(self):
+        return self.pdg
+
+
 class OniaDecayConfigsTest(unittest.TestCase):
     """The madevent integration channels of a 1 -> N process with onia:
-    nexternal-2 s-channel vertices (as genps.f expects for a decay), the last
-    one being the decaying particle, and the same chain for props.inc and
-    decayBW.inc."""
+    nexternal-2 s-channel vertices over the physical final state (as genps.f
+    expects for a decay), the last one being the decaying particle. Each
+    channel follows the propagators of its diagram, translated from the
+    constituent legs to the physical ones; props.inc and decayBW.inc get the
+    same tree."""
 
-    def test_decay_chain_lines(self):
-        E = export_v4.ProcessExporterFortranME
-        # 1 -> 2: one vertex, the parent itself
-        lines = E.get_onia_decay_config_lines(1, 1, 3, 23)
-        self.assertIn('data tstrategy(1)/2/', lines)
-        self.assertIn('data (iforest(i,-1,1),i=1,2)/3,2/', lines)
-        self.assertIn('data (sprop(i,-1,1),i=1,1)/23/', lines)
-        # 1 -> 3: (4,3) then (-1,2) on the parent
-        lines = E.get_onia_decay_config_lines(2, 5, 4, 6)
+    E = export_v4.ProcessExporterFortranME
+
+    def test_decay_chain_without_candidates(self):
+        # no invariant to map: the chain (n, n-1), (-1, n-2), ..., (., 2)
+        self.assertEqual(self.E.get_onia_decay_vertices([], 3, 23), [(3, 2, 23)])
+        self.assertEqual(self.E.get_onia_decay_vertices([], 4, 6),
+                         [(4, 3, 21), (-1, 2, 6)])
+        lines = self.E.get_onia_decay_config_lines(
+            2, 5, self.E.get_onia_decay_vertices([], 4, 6))
         self.assertIn('data mapconfig(2)/5/', lines)
+        self.assertIn('data tstrategy(2)/2/', lines)
         self.assertIn('data (iforest(i,-1,2),i=1,2)/4,3/', lines)
         self.assertIn('data (sprop(i,-1,2),i=1,1)/21/', lines)
         self.assertIn('data (iforest(i,-2,2),i=1,2)/-1,2/', lines)
@@ -10155,13 +10169,72 @@ class OniaDecayConfigsTest(unittest.TestCase):
         self.assertFalse(any('-3,' in l for l in lines))
 
     def test_decay_schannels(self):
-        E = export_v4.ProcessExporterFortranME
-        verts = E.get_onia_decay_schannels(5, 441)
+        verts = self.E.get_onia_decay_schannels(
+            self.E.get_onia_decay_vertices([], 5, 441))
         self.assertEqual(len(verts), 3)
         self.assertEqual([v.get('legs')[-1].get('number') for v in verts], [-1, -2, -3])
         self.assertEqual([v.get('legs')[-1].get('id') for v in verts], [21, 21, 441])
         self.assertEqual([[l.get('number') for l in v.get('legs')[:2]] for v in verts],
                          [[5, 4], [-1, 3], [-2, 2]])
+
+    def zbc(self):
+        """z > Bc+ b c~: constituent legs 1 z, 2 c, 3 b~ (the B_c), 4 b, 5 c~."""
+        legs = dict((n, _OniaWf(n)) for n in range(1, 6))
+        leg_map = {1: 1, 2: 2, 3: 2, 4: 3, 5: 4}
+        return legs, leg_map
+
+    def test_candidates_of_bbar_fragmentation(self):
+        # z > b bbar*, bbar* > B_c cbar through g* > c cbar: the bbar* carries
+        # the whole B_c (exact), the gluon one constituent of it
+        legs, leg_map = self.zbc()
+        g = _OniaWf(mothers=[legs[5], legs[2]], pdg=21)
+        bbar = _OniaWf(mothers=[legs[3], g], pdg=-5)
+        diag = {'amplitudes': [{'mothers': [bbar, legs[4], legs[1]]}]}
+        cands = self.E.get_onia_decay_candidates(diag, leg_map)
+        self.assertEqual(sorted(cands, key=lambda c: c[1]),
+                         [(frozenset([2, 4]), False, 21), (frozenset([2, 4]), True, -5)])
+        self.assertEqual(self.E.get_onia_decay_vertices(cands, 4, 23),
+                         [(4, 2, -5), (-1, 3, 23)])
+
+    def test_candidates_through_the_decaying_particle(self):
+        # z > c cbar*: a propagator built with the z is the other side
+        legs, leg_map = self.zbc()
+        g = _OniaWf(mothers=[legs[3], legs[4]], pdg=21)
+        cbar = _OniaWf(mothers=[legs[5], legs[1]], pdg=-4)
+        diag = {'amplitudes': [{'mothers': [cbar, legs[2], g]}]}
+        cands = self.E.get_onia_decay_candidates(diag, leg_map)
+        # cbar* = p_z - p_cbar is B_c b (exact); the gluon carries the b and
+        # one constituent of the B_c
+        self.assertEqual(sorted(cands, key=lambda c: c[1]),
+                         [(frozenset([2, 3]), False, 21), (frozenset([2, 3]), True, -4)])
+        self.assertEqual(self.E.get_onia_decay_vertices(cands, 4, 23),
+                         [(3, 2, -4), (4, -1, 23)])
+
+    def test_candidates_of_a_decaying_onium(self):
+        # Jpsi > g g g: constituents 1, 2 incoming, gluons 3, 4, 5 (physical
+        # 2, 3, 4); the quark line between two gluons carries one constituent
+        legs = dict((n, _OniaWf(n)) for n in range(1, 6))
+        leg_map = {1: 1, 2: 1, 3: 2, 4: 3, 5: 4}
+        c1 = _OniaWf(mothers=[legs[1], legs[3]], pdg=4)
+        c2 = _OniaWf(mothers=[c1, legs[4]], pdg=4)
+        diag = {'amplitudes': [{'mothers': [c2, legs[2], legs[5]]}]}
+        cands = self.E.get_onia_decay_candidates(diag, leg_map)
+        self.assertEqual(cands, [(frozenset([2, 3]), False, 21)])
+        self.assertEqual(self.E.get_onia_decay_vertices(cands, 4, 443),
+                         [(3, 2, 21), (4, -1, 443)])
+
+    def test_overlapping_invariants(self):
+        # exact invariants first; one overlapping a kept one is dropped
+        cands = [(frozenset([2, 3]), False, 21), (frozenset([3, 4]), True, 22)]
+        self.assertEqual(self.E.get_onia_decay_vertices(cands, 4, 23),
+                         [(4, 3, 22), (-1, 2, 23)])
+
+    def test_nested_tree(self):
+        cands = [(frozenset([2, 3]), True, 4), (frozenset([4, 5, 6]), True, 23),
+                 (frozenset([5, 6]), False, 21)]
+        verts = self.E.get_onia_decay_vertices(cands, 6, 25)
+        self.assertEqual(verts, [(6, 5, 21), (-1, 4, 23), (3, 2, 4), (-2, -3, 25)])
+        self.assertEqual(len(verts), 6 - 2)
 
 
 class AlohaFortranWriterTest(unittest.TestCase):

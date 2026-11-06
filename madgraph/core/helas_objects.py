@@ -5644,6 +5644,25 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
         return pairs
 
+    def get_onia_leg_map(self):
+        """The physical leg of every constituent leg, {number_external:
+        physical number}: the two constituents of an onium share the number
+        of their bound state (as MAPPING in onia.inc)."""
+
+        leg_map = {}
+        counter = 0
+        first = None
+        for wf in self.get_external_wavefunctions():
+            leg_map[wf.get('number_external')] = \
+                                       wf.get('number_external') - counter
+            if wf.get('onium'):
+                if first is None:
+                    first = wf.get('onium').get('index')
+                    counter += 1
+                else:
+                    first = None
+        return leg_map
+
     def get_nexternal_ninitial(self, constituents=False):
         """Gives (number or external particles, number of
         incoming particles). A bound state is one particle, its two
