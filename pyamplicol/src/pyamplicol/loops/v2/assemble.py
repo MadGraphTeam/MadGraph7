@@ -1055,6 +1055,92 @@ def _field_level_families(
     return generate_families(table, catalogue, selection)
 
 
+def _loop_catalogue(compiled, prepared, data, request) -> ModelLoopCatalogue:
+    """The loop vertex catalogue of a request (``LoopSlice.generate``): the
+    prepared structure's vertices and perturbative species, without the
+    vetoed particles and without the vertices whose couplings vanish
+    identically at the model's restriction (fail-closed-2;
+    ``ct_sites.vanishing_loop_vertices``)."""
+
+    return ModelLoopCatalogue(
+        data,
+        species_orders=prepared.structure.perturbative_species_orders,
+        veto=request.particle_veto,
+        vanishing=vanishing_loop_vertices(
+            compiled,
+            prepared.model.kernels,
+            (rule["name"] for rule in data["vertex_rules"]),
+        ),
+    )
+
+
+def reachable_loop_orders(
+    compiled: Any,
+    request: SliceRequest,
+    bounds: Mapping[str, int],
+    *,
+    model: RequestModel | None = None,
+    native: Any = None,
+) -> frozenset[Orders]:
+    """The exact coupling orders of every one-loop amplitude of ``request``'s
+    process that the field-level loop family recursion (design §3.2 item 1,
+    ``_field_level_families``) reaches for its corrections (MadLoop's joint
+    selection, ``LoopEligibility``) within ``bounds`` (m-lit LIT-REQ, Q4
+    (a)): the orders of every closed routing of an admitted or
+    certified-scaleless family (a family the selection convention rejects,
+    e.g. a single coloured attachment, is no loop amplitude). Nothing
+    numerical decides it.
+
+    An order ``bounds`` does not name is bounded by the data: cutting the
+    loop line leaves a tree of n + 2 legs, so its power is at most that of
+    such a tree (``_tree_order_bounds``). ``model`` is the request's
+    ``prepare_request_model`` (prepared here when None); ``native`` the loop
+    core for the native recursion (``generator_input.NativeGeneration``),
+    None for the Python recursion (its oracle). The request's own loop
+    orders are not read."""
+
+    from pyamplicol.processes.model import build_model_process_ir
+
+    request = resolve_request(compiled, request)
+    if model is None:
+        model = prepare_request_model(compiled, request)
+    data = json.loads(model.prepared.structure.native.to_json())
+    process = build_model_process_ir(
+        request.process, compiled.ir, color_accuracy="full"
+    )
+    names = sorted(
+        {str(name) for entry in data["couplings"] for name, _power in entry["orders"]}
+        | {str(name) for name in bounds}
+    )
+    derived = _tree_order_bounds(data, len(process.legs) + 2, names)
+    box = {
+        name: min(int(bounds.get(name, derived.get(name, 0))), derived.get(name, 0))
+        for name in names
+    }
+    targets = frozenset(
+        add_orders(tuple(zip(names, powers, strict=True)))
+        for powers in product(*(range(box[name] + 1) for name in names))
+        if any(powers)
+    )
+    if not targets or not request.corrections:
+        return frozenset()
+    selection = LoopOrderSelection(frozenset(request.corrections), targets)
+    families = _field_level_families(
+        data,
+        process,
+        _loop_catalogue(compiled, model.prepared, data, request),
+        selection,
+        request,
+        native,
+    )
+    return frozenset(
+        add_orders(*(position.orders for position in families.routing(closure)[1]))
+        for group in (families.families, families.scaleless_families)
+        for family in group.values()
+        for closure in family.closures
+    )
+
+
 def _born_block_requests(
     table: ModelBlockTable, data, born_orders: Mapping[str, int]
 ) -> frozenset[BlockCurrent]:
@@ -2162,16 +2248,7 @@ class LoopSlice:
         # (fail-closed-2; decided from the coupling values,
         # ``ct_sites.restricted_to_zero``, the counterterm root closure's
         # rule too).
-        loop_catalogue = ModelLoopCatalogue(
-            data,
-            species_orders=structure.perturbative_species_orders,
-            veto=request.particle_veto,
-            vanishing=vanishing_loop_vertices(
-                compiled,
-                prepared.model.kernels,
-                (rule["name"] for rule in data["vertex_rules"]),
-            ),
-        )
+        loop_catalogue = _loop_catalogue(compiled, prepared, data, request)
         native_families = "families" in generator_input.NATIVE_STAGES
         model = compiled
 
