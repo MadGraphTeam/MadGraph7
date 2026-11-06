@@ -1158,6 +1158,10 @@ def export_trees(
         counterterms = _counterterm_program(
             slice_, closure_term, whole_term, components, born_orders, ct_terms
         )
+        if not counterterms.record["ket"] and not counterterms.record["entries"]:
+            # No counterterm term and no field insertion reaches the request
+            # (an exact colour zero's program): nothing to evaluate.
+            counterterms = ct = None
     masses = _external_masses(slice_)
     parameters, parameter_evaluator, parameter_outputs = _parameter_program(
         slice_,
@@ -1774,9 +1778,11 @@ def _cell_section(slice_: Any, literal: Sequence[Any]) -> bytes:
         slice_.basis, tensors=tuple(_single(tensor, legs) for tensor in literal[:count])
     )
     kets = [_single(tensor, legs) for tensor in literal]
+    # (A program without ket tensors, e.g. an exact colour zero's, has one
+    # empty table.)
     parts = [
         bytes(NativeCells(basis).table(kets[start : start + _CELL_CHUNK]).section())
-        for start in range(0, len(kets), _CELL_CHUNK)
+        for start in range(0, max(len(kets), 1), _CELL_CHUNK)
     ]
     return parts[0] if len(parts) == 1 else _join_cell_sections(parts)
 

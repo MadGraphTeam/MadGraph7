@@ -2610,7 +2610,13 @@ impl TreeProgram {
             .parameters
             .evaluate_batch(&inputs, &mut outputs, points)
             .map_err(|e| invalid(format!("parameter program: {e}")))?;
-        let rows: Vec<&[Complex<T>]> = outputs.chunks_exact(program.outputs).collect();
+        // (A program without outputs, e.g. an exact colour zero's tree
+        // program with no coupling, has one empty row per point.)
+        let rows: Vec<&[Complex<T>]> = if program.outputs == 0 {
+            vec![&[]; points]
+        } else {
+            outputs.chunks_exact(program.outputs).collect()
+        };
         // Values a batch shares (Born couplings, kernel constants, masses):
         // equal at every point unless they depend on the scale, which a
         // batch of mixed scales of such a model was refused for above (or,
