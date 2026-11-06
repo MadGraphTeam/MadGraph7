@@ -10,7 +10,10 @@ LIT-REQ; PLAN §1.2-§1.4, §2.a.10, rulings Q2 (b), Q4 (a), Q7, Q8 (a)).
 * Their loop orders are inferred from the field-level loop family recursion
   (``assemble.reachable_loop_orders``, ``loop_service.loop_induced_orders``):
   the PLAN §1.3 table on loop_sm and loop_qcd_qed_sm; explicit bounds are
-  honoured; no reachable amplitude is the typed ``no-loop-amplitude``.
+  honoured; an order every loop of which has a single coloured attachment
+  (Tr T^a = 0: ``h > g a``, ``z > g a``) is reached as an exact colour zero
+  (PLAN §1.2, Q13) and recorded; no reachable loop is the typed
+  ``no-loop-amplitude``.
 * Full colour only (``loop-induced-colour-accuracy``); fixed tree widths
   admitted (the coloured-width refusal stays the Born-interfered guard),
   unstable external states refused under the complex-mass scheme.
@@ -329,9 +332,9 @@ EW_INDUCED = {
 }
 
 
-def _check_table(plan, table, corrections):
+def _check_table(plan, table, corrections, others=()):
     induced = _induced(plan)
-    assert set(induced) == set(table), plan.unsupported_features
+    assert set(induced) == set(table) | set(others), plan.unsupported_features
     assert _keys(plan) == ["loop-induced-engine-pending"]
     for key, (_expression, orders) in table.items():
         record = induced[key]
@@ -342,6 +345,8 @@ def _check_table(plan, table, corrections):
         assert record["color_accuracy"] == "full"
         assert list(record["corrections"]) == list(corrections)
         assert record["width_policy"] == "fixed-tree-widths"
+        assert not record["colour_zero_loop_orders"]
+        assert record["exact_colour_zero"] is False
         ((sector),) = record["sectors"]
         assert dict(sector["order"]) == {k: 2 * v for k, v in orders.items()}
         assert [list(map(dict, pair)) for pair in sector["pairs"]] == [[orders, orders]]
@@ -361,28 +366,51 @@ def test_order_table_is_inferred_on_loop_qcd_qed_sm(tmp_path):
     """The PLAN §1.3 table on loop_qcd_qed_sm (one dry run, QCD and QED
     corrections: MadLoop's joint selection admits each loop under either):
     the QCD-induced rows keep their orders, the EW-induced ones (the
-    complete a a > a a, h > a a, h > z a) take QED = 4, 3, 3."""
+    complete a a > a a, h > a a, h > z a) take QED = 4, 3, 3. An exact
+    colour zero is a reachable order (MG5_aMC's WEIGHTED bound counts its
+    loop diagrams too): u u~ > h h takes the gluon-triangle order QCD = 2,
+    QED = 2 (an exact colour zero) under ``minimal``; explicit bounds add
+    the Z-triangle order QED = 4, which carries its amplitude."""
 
     table = {
         key: QCD_INDUCED[key] for key in ("gg_h", "gg_zz", "gg_hg", "h_gg")
     } | EW_INDUCED
     entries = tuple((key, expression) for key, (expression, _) in table.items())
-    plan = _plan(
-        tmp_path,
-        entries,
-        model="loop_qcd_qed_sm",
-        restriction=None,
-        orders=("QCD", "QED"),
+    settings = {
+        "model": "loop_qcd_qed_sm",
+        "restriction": None,
+        "orders": ("QCD", "QED"),
         # loop_qcd_qed_sm has no alpha(0) input: no photon is tagged.
-        loop='external_photons = "none"',
+        "loop": 'external_photons = "none"',
+    }
+    plan = _plan(tmp_path, (*entries, ("uu_hh", "u u~ > h h")), **settings)
+    _check_table(plan, table, ("QCD", "QED"), others=("uu_hh",))
+    zero = _induced(plan)["uu_hh"]
+    assert dict(zero["loop_orders"]) == {"QCD": 2, "QED": 2}
+    assert list(map(dict, zero["colour_zero_loop_orders"])) == [{"QCD": 2, "QED": 2}]
+    assert zero["exact_colour_zero"] is True
+    plan = _plan(
+        tmp_path / "explicit",
+        (("uu_hh", "u u~ > h h"),),
+        policy="explicit",
+        process="max_coupling_orders = {QCD = 2, QED = 4}",
+        **settings,
     )
-    _check_table(plan, table, ("QCD", "QED"))
+    (record,) = _induced(plan).values()
+    assert list(map(dict, record["loop_orders"])) == [
+        {"QCD": 2, "QED": 2},
+        {"QCD": 0, "QED": 4},
+    ]
+    assert list(map(dict, record["colour_zero_loop_orders"])) == [{"QCD": 2, "QED": 2}]
+    assert record["exact_colour_zero"] is False
+    assert "(an exact colour zero)" not in plan.unsupported_features[0]
 
 
 @pytest.mark.loop_physics
 def test_native_and_python_recursions_reach_the_same_orders():
     """``reachable_loop_orders`` on the native family recursion equals its
-    Python oracle (``families.generate_families``)."""
+    Python oracle (``families.generate_families``), the exact colour zeros
+    (h > g a, z > g a: one gluon on the quark loop) included."""
 
     from pyamplicol.loops.covariant_model import with_source_repairs
     from pyamplicol.loops.native import load_loop_native
@@ -406,9 +434,12 @@ def test_native_and_python_recursions_reach_the_same_orders():
             compiled.raw_loop_model, None, selected_corrections=("QCD",)
         ),
     )
-    for process, orders in (
-        ("g g > z z", (("QCD", 2), ("QED", 2))),
-        ("g g > h g", (("QCD", 3), ("QED", 1))),
+    zero = (("QCD", 1), ("QED", 2))
+    for process, orders, colour_zero in (
+        ("g g > z z", {(("QCD", 2), ("QED", 2))}, set()),
+        ("g g > h g", {(("QCD", 3), ("QED", 1))}, set()),
+        ("h > g a", set(), {zero}),
+        ("z > g a", set(), {zero}),
     ):
         request = SliceRequest(
             process,
@@ -424,11 +455,12 @@ def test_native_and_python_recursions_reach_the_same_orders():
             compiled, request, {}, model=model, native=load_loop_native()
         )
         python = reachable_loop_orders(compiled, request, {}, model=model)
-        assert native == python == frozenset({orders}), process
+        assert native == python, process
+        assert native.amplitude == orders and native.colour_zero == colour_zero
         # An explicit bound below the lowest order reaches nothing.
         assert not reachable_loop_orders(
             compiled, request, {"QED": 0}, model=model, native=load_loop_native()
-        )
+        ).orders
 
 
 # ------------------------------------------------------- routing by value
@@ -483,18 +515,28 @@ def test_each_value_on_mixed_and_purely_loop_induced_requests(tmp_path, value):
 
 @pytest.mark.loop_physics
 def test_members_without_any_amplitude_and_explicit_bounds(tmp_path):
-    """A Born-less member that reaches no loop amplitude is skipped with
-    ``no-loop-amplitude`` (p p > h h: the massless quark members; refused
-    for a single process: a a > a a under QCD, g g > h with QED = 0);
-    explicit bounds bound the loop orders under either policy (u u~ > d d~ h
-    with QED <= 1 excludes the VBF Born)."""
+    """A Born-less member that reaches no loop is skipped with
+    ``no-loop-amplitude`` (x x > h, x = g a: a a > h has no QCD loop, while
+    g a > h, an exact colour zero, and g g > h are served; refused for a
+    single process: a a > a a under QCD, g g > h with QED = 0); explicit
+    bounds bound the loop orders under either policy (u u~ > d d~ h with
+    QED <= 1 excludes the VBF Born)."""
 
-    plan = _plan(tmp_path / "pphh", (("p", "p p > h h"),))
+    plan = _plan(
+        tmp_path / "xxh",
+        (("p", "x x > h"),),
+        process='multiparticles = {x = ["g", "a"]}',
+    )
     assert _keys(plan) == ["loop-induced-engine-pending"]
-    (record,) = _induced(plan).values()
-    assert record["process"].casefold() == "g g > h h"
-    skipped = plan.estimated_coverage["skipped_members"]
-    assert skipped and {item["refusal"] for item in skipped} == {"no-loop-amplitude"}
+    served = {
+        record["process"].casefold(): record for record in _induced(plan).values()
+    }
+    assert set(served) == {"g g > h", "g a > h"}
+    assert served["g g > h"]["exact_colour_zero"] is False
+    assert served["g a > h"]["exact_colour_zero"] is True
+    ((skipped),) = plan.estimated_coverage["skipped_members"]
+    assert skipped["process"].casefold() == "a a > h"
+    assert skipped["refusal"] == "no-loop-amplitude"
     for name, expression, process in (
         ("aa", "a a > a a", ""),
         ("gg", "g g > h", "max_coupling_orders = {QED = 0}"),
@@ -517,6 +559,37 @@ def test_members_without_any_amplitude_and_explicit_bounds(tmp_path):
     assert plan.unsupported_features == ()
     (record,) = plan.estimated_coverage["processes"]
     assert set(record) == BORN_RECORD_KEYS
+
+
+@pytest.mark.loop_physics
+def test_colour_zeros_are_routed_as_exact_colour_zeros(tmp_path):
+    """PLAN §1.2 / LI-Z1: h > g a and z > g a (one gluon on a quark loop,
+    Tr T^a = 0) are routed loop-induced at their orders QCD = 1, QED = 2,
+    recorded as exact colour zeros and refused ``loop-induced-engine-
+    pending`` (marked) until lit-amp serves the exact zero; so are the
+    massless-quark members of p p > h h (the s-channel gluon on the top
+    loop), next to the amplitude of g g > h h."""
+
+    entries = (("hga", "h > g a"), ("zga", "z > g a"), ("pphh", "p p > h h"))
+    plan = _plan(tmp_path, entries)
+    assert _keys(plan) == ["loop-induced-engine-pending"]
+    assert "'H > G A' (an exact colour zero)" in plan.unsupported_features[0]
+    assert "'G G > H H'," in plan.unsupported_features[0]
+    assert plan.estimated_coverage["skipped_members"] == ()
+    records = {
+        record["process"].casefold(): record for record in _induced(plan).values()
+    }
+    for process, record in records.items():
+        if process == "g g > h h":
+            assert dict(record["loop_orders"]) == {"QCD": 2, "QED": 2}
+            assert not record["colour_zero_loop_orders"]
+            assert record["exact_colour_zero"] is False
+            continue
+        orders = {"QCD": 1, "QED": 2} if " g a" in process else {"QCD": 2, "QED": 2}
+        assert dict(record["loop_orders"]) == orders, process
+        assert list(map(dict, record["colour_zero_loop_orders"])) == [orders]
+        assert record["exact_colour_zero"] is True, process
+    assert {"h > g a", "z > g a", "g g > h h", "u u~ > h h"} <= set(records)
 
 
 # ------------------------------------------------- colour, widths, engine

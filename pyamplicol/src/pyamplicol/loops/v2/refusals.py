@@ -109,7 +109,10 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   without a member; ``born-in-loop-induced-mode`` the converse under
   ``only``; ``no-loop-amplitude`` a Born-less process whose field-level
   loop family recursion reaches no loop amplitude within its orders and
-  corrections (``loop_service.loop_induced_orders``);
+  corrections (``loop_service.loop_induced_orders``), where an order every
+  loop of which has a single coloured attachment (Tr T^a = 0, exact in any
+  model: ``h > g a``) is reached, as an exact colour zero
+  (``assemble.reachable_loop_orders``, PLAN §1.2, Q13);
   ``loop-induced-colour-accuracy`` an LC or NLC loop-induced request (full
   colour only, Q8); ``loop-induced-include-pending`` (configuration) the
   ``include`` value until it lands; ``loop-induced-engine-pending`` the
@@ -312,16 +315,19 @@ LOOP_ADMISSION_REFUSALS = (
     LoopAdmissionRefusal(
         "no-loop-amplitude",
         "a concrete process without a Born amplitude whose one-loop recursion "
-        "reaches no loop amplitude within its coupling-order limits and "
-        "corrections (e.g. a a > a a with process.loop_coupling_orders = "
-        "['QCD']: a quark loop with photons only has no QCD vertex); skipped "
-        "with a typed record in a multiparticle request",
-        "its loop-squared matrix element would be a silent zero; the field-level "
-        "loop family recursion (MadLoop's joint correction selection) decides "
-        "it structurally, before any loop generation",
+        "reaches no loop within its coupling-order limits and corrections (e.g. "
+        "a a > a a with process.loop_coupling_orders = ['QCD']: a quark loop "
+        "with photons only has no QCD vertex; g g > h with QED = 0); skipped "
+        "with a typed record in a multiparticle request. A process every loop "
+        "of which has a single coloured attachment (h > g a, z > g a: Tr T^a = "
+        "0) is not refused: it is served as an exact colour zero",
+        "with no one-loop amplitude there is nothing to square: a result would "
+        "be a silent zero; the field-level loop family recursion (MadLoop's "
+        "joint correction selection) decides it structurally, before any loop "
+        "generation",
         "the corrections whose vertices its loops need "
         "(process.loop_coupling_orders), or coupling-order limits that admit a "
-        "loop amplitude",
+        "loop",
         "m-lit LIT-REQ (Q4 (a))",
         "none",
     ),
@@ -803,13 +809,17 @@ LOOP_CONFIGURATION_REFUSALS = (
     ),
     LoopAdmissionRefusal(
         "loop-induced-include-pending",
-        "process.loop_induced = 'include' (the Born x virtual interference and "
-        "the loop-squared |A_loop|^2 of a mixed request as separate "
-        "contributions)",
-        "the two kinds are never summed; serving both in one artifact lands with "
-        "the Python product surface (m-lit LIT-API)",
-        "process.loop_induced = 'auto' for the Born members and a separate "
-        "request with 'only' for the Born-less ones",
+        "process.loop_induced = 'include' (the members of one mixed "
+        "multiparticle request served both ways: its Born members' Born x "
+        "virtual interference and its Born-less members' |A_loop|^2, as "
+        "separate contributions)",
+        "the two kinds are never summed; serving both kinds of one mixed "
+        "multiparticle request lands with the Python product surface (m-lit "
+        "LIT-API)",
+        "process.loop_induced = 'auto' with the Born-less processes as their "
+        "own process entries (each entry is routed by its own members, so one "
+        "plan already holds both kinds as separate processes), or 'only' for "
+        "the Born-less members of the mixed request",
         "m-lit LIT-REQ (Q2 (b))",
         "m-lit LIT-API",
     ),

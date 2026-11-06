@@ -1075,6 +1075,32 @@ def _loop_catalogue(compiled, prepared, data, request) -> ModelLoopCatalogue:
     )
 
 
+class ReachableLoopOrders(NamedTuple):
+    """The exact coupling orders a loop-induced request's one-loop
+    recursion reaches (``reachable_loop_orders``), both reachable (Q4 (a)).
+
+    ``amplitude``: the orders of the closed routings of an admitted or
+    certified-scaleless family. ``colour_zero``: the other orders, each
+    reached only by routings the selection convention drops for a single
+    coloured attachment (``families.selection_rejection``,
+    ``COLOUR_ZERO_REJECTION``): such a loop's colour factor is the trace of
+    one generator (an invariant tensor with one index of a nontrivial
+    irreducible representation), which vanishes exactly in any model, so
+    the amplitude at these orders is an exact colour zero (m-lit PLAN §1.2,
+    RULED Q13: the one exact-zero mechanism; ``h > g a``, ``z > g a``)."""
+
+    amplitude: frozenset[Orders]
+    colour_zero: frozenset[Orders]
+
+    @property
+    def orders(self) -> frozenset[Orders]:
+        return self.amplitude | self.colour_zero
+
+
+# The selection-convention reason of an exact colour zero (Tr T^a = 0).
+COLOUR_ZERO_REJECTION = "single-coloured-attachment"
+
+
 def reachable_loop_orders(
     compiled: Any,
     request: SliceRequest,
@@ -1082,23 +1108,31 @@ def reachable_loop_orders(
     *,
     model: RequestModel | None = None,
     native: Any = None,
-) -> frozenset[Orders]:
+) -> ReachableLoopOrders:
     """The exact coupling orders of every one-loop amplitude of ``request``'s
     process that the field-level loop family recursion (design §3.2 item 1,
     ``_field_level_families``) reaches for its corrections (MadLoop's joint
     selection, ``LoopEligibility``) within ``bounds`` (m-lit LIT-REQ, Q4
-    (a)): the orders of every closed routing of an admitted or
-    certified-scaleless family (a family the selection convention rejects,
-    e.g. a single coloured attachment, is no loop amplitude). Nothing
-    numerical decides it.
+    (a)), split into the orders with a loop amplitude and the exact colour
+    zeros (``ReachableLoopOrders``). The other rejections of the selection
+    convention (external wave-function corrections, VEV tadpoles) are no
+    loop amplitude. Nothing numerical decides it.
 
     An order ``bounds`` does not name is bounded by the data: cutting the
     loop line leaves a tree of n + 2 legs, so its power is at most that of
-    such a tree (``_tree_order_bounds``). ``model`` is the request's
-    ``prepare_request_model`` (prepared here when None); ``native`` the loop
-    core for the native recursion (``generator_input.NativeGeneration``),
-    None for the Python recursion (its oracle). The request's own loop
-    orders are not read."""
+    such a tree (``_tree_order_bounds``); the targets are every order of
+    that box. The recursion logs a rejected family without its orders, and
+    an admitted routing of a family drops the family's log, so the colour
+    zeros are found by recursions on the targets without an amplitude
+    order, halved while a group logs a single coloured attachment (one
+    extra run when it logs none, about 2 k log2 T for k colour-zero orders
+    among T targets). A family whose first logged routing at an order has
+    another reason hides a colour-zero routing of that family there
+    (conservative: the order is then not reached). ``model`` is the
+    request's ``prepare_request_model`` (prepared here when None);
+    ``native`` the loop core for the native recursion
+    (``generator_input.NativeGeneration``), None for the Python recursion
+    (its oracle). The request's own loop orders are not read."""
 
     from pyamplicol.processes.model import build_model_process_ir
 
@@ -1124,22 +1158,53 @@ def reachable_loop_orders(
         if any(powers)
     )
     if not targets or not request.corrections:
-        return frozenset()
-    selection = LoopOrderSelection(frozenset(request.corrections), targets)
-    families = _field_level_families(
-        data,
-        process,
-        _loop_catalogue(compiled, model.prepared, data, request),
-        selection,
-        request,
-        native,
-    )
-    return frozenset(
-        add_orders(*(position.orders for position in families.routing(closure)[1]))
-        for group in (families.families, families.scaleless_families)
-        for family in group.values()
-        for closure in family.closures
-    )
+        return ReachableLoopOrders(frozenset(), frozenset())
+    corrections = frozenset(request.corrections)
+    catalogue = _loop_catalogue(compiled, model.prepared, data, request)
+
+    def recursion(orders: Iterable[Orders]) -> FamilySet:
+        return _field_level_families(
+            data,
+            process,
+            catalogue,
+            LoopOrderSelection(corrections, frozenset(orders)),
+            request,
+            native,
+        )
+
+    def reached(families: FamilySet) -> set[Orders]:
+        return {
+            add_orders(*(position.orders for position in families.routing(closure)[1]))
+            for group in (families.families, families.scaleless_families)
+            for family in group.values()
+            for closure in family.closures
+        }
+
+    found = recursion(targets)
+    amplitude = reached(found)
+    colour_zero: set[Orders] = set()
+    rest = tuple(sorted(targets - amplitude))
+    groups: list[tuple[tuple[Orders, ...], FamilySet | None]] = [
+        (rest, None if amplitude else found)
+    ]
+    while groups:
+        group, families = groups.pop()
+        if not group:
+            continue
+        if families is None:
+            families = recursion(group)
+        # A group holds no amplitude order, so it admits no routing.
+        amplitude |= reached(families)
+        if not any(
+            entry.reason == COLOUR_ZERO_REJECTION for entry in families.rejected
+        ):
+            continue
+        if len(group) == 1:
+            colour_zero.update(group)
+            continue
+        half = len(group) // 2
+        groups.extend(((group[half:], None), (group[:half], None)))
+    return ReachableLoopOrders(frozenset(amplitude), frozenset(colour_zero - amplitude))
 
 
 def _born_block_requests(
