@@ -3422,10 +3422,12 @@ Parameters              %(params)s\n\
                 calls_to_me += "comp_idfac = compensate_identical_factor(%d)\n" % (i + 1)
                 par_ren = "par_ren_EWSDK_GOLD_ME_%d" % (i + 1)
 
+            # the PDG codes of base_amp, also for GET_QCD_LO2 without a LO1
+            calls_to_me += "pdglist = (/%s/)\n" % ','.join([str(leg['id']) for leg in me['matrix_element']['processes'][0]['legs']])
+
             # here the calls to all contributions where the particles of base_amp are not changed
             # these are corrections on top of the LO1
             if has_lo[1]:
-                calls_to_me += "pdglist = (/%s/)\n" % ','.join([str(leg['id']) for leg in me['matrix_element']['processes'][0]['legs']])
                 calls_to_me += "C the LSC term (diagonal)\n" 
                 calls_to_me += "AMP_SPLIT_EWSUD_LSC(:) = AMP_SPLIT_EWSUD_LSC(:)+AMP_SPLIT_EWSUD(:)*get_lsc_diag(pdglist,nhel(1,ihel),iflist,invariants)*comp_idfac\n"
                 calls_to_me += "C the SSC term (neutral/diagonal)\n" 
