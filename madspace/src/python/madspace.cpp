@@ -3699,6 +3699,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             "set_target_count",
             &ChannelEventGenerator::set_target_count,
             py::arg("target_count"),
+            py::arg("tighten_max_weight") = true,
             pydoc::doc("ChannelEventGenerator::set_target_count")
         )
         .def(
@@ -4411,6 +4412,17 @@ PYBIND11_MODULE(_madspace_py, m) {
             &EventGenerator::generate,
             py::call_guard<py::gil_scoped_release>(),
             pydoc::doc("EventGenerator::generate")
+        )
+        .def_static(
+            "request_stop",
+            &EventGenerator::request_stop,
+            py::arg("stop") = true,
+            pydoc::doc("EventGenerator::request_stop")
+        )
+        .def_static(
+            "stop_requested",
+            &EventGenerator::stop_requested,
+            pydoc::doc("EventGenerator::stop_requested")
         )
         .def(
             "optimize",

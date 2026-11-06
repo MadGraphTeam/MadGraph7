@@ -1,8 +1,10 @@
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <deque>
 #include <memory>
+#include <optional>
 #include <set>
 #include <vector>
 
@@ -44,6 +46,14 @@ public:
     static void set_abort_check_function(std::function<void(void)> func) {
         _abort_check_function = func;
     }
+    /// Ask a running @ref generate to stop early (or withdraw the request with
+    /// `stop = false`). The batches in flight still finish, then the events
+    /// generated so far are kept: the target count is lowered until every
+    /// channel has its share of it, see @ref generate. Safe to call from a
+    /// signal handler.
+    static void request_stop(bool stop = true) { _stop_requested = stop; }
+    /// Whether @ref request_stop asked the generation to stop.
+    static bool stop_requested() { return _stop_requested; }
 
     /**
      * @param contexts    One context per device to run on, shared by every
@@ -77,7 +87,9 @@ public:
     /// re-surveying after simplification) don't share a seed stream.
     void survey(std::size_t survey_pass = 0);
     /// Generate unweighted events until every channel reaches its target
-    /// count.
+    /// count. After @ref request_stop, it stops dispatching batches and lowers
+    /// the target to what every channel can deliver for its share of the
+    /// integral; the extra events of the other channels are dropped.
     void generate();
     /// Run only the VEGAS and channel-weight optimization of every channel
     /// that still needs it, until all are optimized. No events are kept.
@@ -148,6 +160,7 @@ private:
         double cpu_time_sec;
     };
     inline static std::function<void(void)> _abort_check_function = [] {};
+    inline static std::atomic<bool> _stop_requested = false;
 
     GeneratorConfig _config;
     std::vector<std::shared_ptr<ChannelEventGenerator>> _channels;
@@ -233,7 +246,15 @@ private:
     void update_integral_status();
     // With `final_step`, the integrals after the weighting steps are used. They
     // only change in a fixed order once the steps are drained.
-    void update_integral_fractions(bool final_step = true);
+    // Without `target_count`, the configured one is shared between the channels.
+    // `tighten_max_weights` is passed to ChannelEventGenerator::set_target_count.
+    void update_integral_fractions(
+        bool final_step = true,
+        std::optional<std::size_t> target_count = {},
+        bool tighten_max_weights = true
+    );
+    // After request_stop(): lower the target until every channel has its share.
+    void finish_stopped_generation();
     void update_counts();
     void reset_start_time();
     void add_timing_data(const std::string& key);

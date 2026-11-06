@@ -161,9 +161,10 @@ public:
     bool needs_optimization() const {
         return (_vegas_optimizer || _discrete_optimizer) && !_status.optimized;
     }
-    /// Set the target unweighted event count; a smaller target tightens the
-    /// maximum-weight estimate to the smaller truncation budget.
-    void set_target_count(std::size_t target_count);
+    /// Set the target unweighted event count; unless `tighten_max_weight` is
+    /// false, a smaller target tightens the maximum-weight estimate to the
+    /// smaller truncation budget.
+    void set_target_count(std::size_t target_count, bool tighten_max_weight = true);
     /// Names of the compute-graph globals this channel's integrand reads.
     const std::unordered_set<std::string>& used_globals() const {
         return _used_globals;

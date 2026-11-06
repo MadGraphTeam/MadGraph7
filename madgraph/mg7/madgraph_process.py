@@ -1,12 +1,15 @@
 """The run of one process directory: cards, integration, events and output."""
 
+import contextlib
 import glob
 import json
 import math
 import os
 import shutil
+import signal
 import subprocess
 import tempfile
+import threading
 import time
 
 from madgraph.mg7.common import backend_of, fptype_of, interference_helicities_summed, lhe_helicities, lhe_weight_info, logger, me_parameters, mlm_pdf_ladder, ms, resolve_auto_backend, resolve_seed, resolve_verbosity
@@ -36,6 +39,47 @@ from madgraph.mg7.subprocess_madmatrix import MadgraphSubprocess, PhaseSpace, bu
 # spends most of its time parsing them. Below, building the precompiled header
 # costs about what it saves.
 PCH_MIN_SUBPROCESSES = 4
+
+
+class StopOnSigusr1:
+    """While the events are generated, `kill -USR1 <pid>` stops the generation
+    early: the batches in flight finish, then the events generated so far are
+    written. Every channel keeps its share of the integral, so the run has fewer
+    events than requested (see ms.EventGenerator.request_stop).
+
+    The handler is installed for the whole `with` block, so that a signal sent a
+    bit late (while the events are written) is ignored instead of killing the
+    run with the default action; only while `armed` does it stop anything."""
+
+    def __init__(self):
+        self.armed = False
+        self.previous = None
+
+    def __enter__(self):
+        self.sigusr1 = getattr(signal, "SIGUSR1", None)
+        # signal handlers can only be installed from the main thread
+        if self.sigusr1 is None or threading.current_thread() is not threading.main_thread():
+            self.sigusr1 = None
+            return self
+        ms.EventGenerator.request_stop(False)
+        self.previous = signal.signal(self.sigusr1, self.handle)
+        logger.info("to stop early and keep the events generated so far: kill -USR1 %d",
+                    os.getpid())
+        return self
+
+    def __exit__(self, *exc):
+        if self.sigusr1 is not None:
+            signal.signal(self.sigusr1, self.previous)
+            ms.EventGenerator.request_stop(False)
+        return False
+
+    def handle(self, signum, frame):
+        if not self.armed:
+            logger.info("SIGUSR1 ignored: no events are being generated")
+            return
+        logger.info("SIGUSR1 received: stopping the generation, "
+                    "the events generated so far will be written")
+        ms.EventGenerator.request_stop()
 
 
 class MadgraphProcess:
@@ -1853,7 +1897,15 @@ class MadgraphProcess:
         if self.gridpack_run_mode != "regular":
             self.finish_without_events()
             return
-        self.event_generator.generate()
+        with StopOnSigusr1() as stop:
+            stop.armed = True
+            self.event_generator.generate()
+            stop.armed = False
+            self.write_events(output_format)
+
+    def write_events(self, output_format) -> None:
+        """Combine the generated events into the output_format file, then write
+        the histograms and plots and store the gridpack."""
         if output_format is None:
             output_format = self.run_card["run"]["output_format"]
         systematics = self.build_systematics()
