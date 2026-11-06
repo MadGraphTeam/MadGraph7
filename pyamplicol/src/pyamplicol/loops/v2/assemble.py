@@ -1121,7 +1121,11 @@ def reachable_loop_orders(
     An order ``bounds`` does not name is bounded by the data: cutting the
     loop line leaves a tree of n + 2 legs, so its power is at most that of
     such a tree (``_tree_order_bounds``); the targets are every order of
-    that box. The recursion logs a rejected family without its orders, and
+    that box (its size is the product of bound + 1 over the orders with a
+    nonzero bound: small for the SM's two; a many-order model would want
+    the recursion's selection in box form, ``LoopOrderSelection`` with its
+    cap alone, a change of the recursion and its native twin). The
+    recursion logs a rejected family without its orders, and
     an admitted routing of a family drops the family's log, so the colour
     zeros are found by recursions on the targets without an amplitude
     order, halved while a group logs a single coloured attachment (one
