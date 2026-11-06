@@ -708,6 +708,22 @@ def test_gate_document_applies_the_floor_and_reads_no_old_root(tmp_path, no_old_
     assert madloop["generation"]["total_s"] == 6
     slow = rows["gg_ggg"]["pyamplicol"]["native/full"]["batches"]["128"]["gate"]
     assert slow["status"] == "fail" and "measured_status" not in slow
+    # Single provider runs: this run's host spread is 0; another campaign's
+    # (``--host-spread``, the EW row gated beside G1) is assumed where larger.
+    assert document["host_provider_spread"] == 0.0
+    assert "host_provider_spread_of_run" not in document
+    wide, _ = gate.build(paths, tmp_path / "ref", host_spread=0.08)
+    assert wide["host_provider_spread"] == 0.08
+    assert wide["host_provider_spread_of_run"] == 0.0
+    row = {r["key"]: r for r in wide["processes"]}["gg_ggg"]
+    assert row["provider_uncertainty"]["openloops"] == {
+        "relative": 0.08,
+        "assumed": True,
+    }
+    band = row["pyamplicol"]["native/full"]["batches"]["128"]["gate"]
+    assert band["ratio_to_binding_limit"] == slow["ratio_to_binding_limit"]
+    assert band["band_to_binding_limit"][0] < slow["band_to_binding_limit"][0]
+    assert band["band_to_binding_limit"][1] > slow["band_to_binding_limit"][1]
     assert no_old_root == []
 
 
@@ -1844,3 +1860,340 @@ def test_an_imported_madloop_timing_takes_the_specified_exports_generation(
         "madloop": {"status": "exporting", "graph_generation_s": 60.0},
         "recola": {"status": "running", "since": "2026-10-20"},
     }
+
+
+def _loop_induced_registry(**changes) -> dict:
+    """A small loop-induced row registry (milestone.json loop_induced)."""
+
+    def row(key, process, group, gate_class, served, backends=("ninjars", "tirust")):
+        return {
+            "key": key,
+            "process": process,
+            "ids": [f"LI-{key}"],
+            "corrections": "QCD",
+            "legs": len(process.replace(">", "").split()),
+            "group": group,
+            "gate_class": gate_class,
+            "served_by": served,
+            "backends": list(backends),
+            "references": ["madloop", "openloops", "recola"],
+        }
+
+    registry = {
+        "source": "test",
+        "default_backend": "tirust",
+        "landed": ["lit-amp", "lit-r2"],
+        "groups": ["2->2", "2->3"],
+        "gate_classes": {"reported": "test", "gated": "test"},
+        "validation_only": {"ids": ["LI-Z1"], "reason": "test"},
+        "rows": [
+            row("gg_hh", "g g > h h", "2->2", "reported", "lit-amp"),
+            row("aa_hh", "a a > h h", "2->2", "reported", "lit-ew"),
+            row("gg_hgg", "g g > h g g", "2->3", "gated", "lit-r2"),
+            row("gg_zzg", "g g > z z g", "2->3", "gated", "lit-r2"),
+            row("gg_hhh", "g g > h h h", "2->3", "gated", "lit-r2"),
+            row("gg_zzz", "g g > z z z", "2->3", "gated", "lit-r2"),
+        ],
+    }
+    registry.update(changes)
+    return registry
+
+
+def _loop_induced_milestone(registry: dict) -> dict:
+    rule = {
+        "below_seconds_per_point": gate.GATE_FLOOR_SECONDS,
+        "verdict": "not gated",
+        "label": gate.GATE_FLOOR_STATUS,
+        "short": "<5 ms: not gated",
+        "source": "test",
+    }
+    return {
+        "date": "2026-11-06",
+        "engine_revision": "bbbbbbbb",
+        "gate_decisions": {"decisions": [], "threshold_rule": rule, "source": "test"},
+        "ancestry": {
+            "revisions": ["aaaaaaaa", "bbbbbbbb"],
+            "ancestors": [["aaaaaaaa", "bbbbbbbb"]],
+        },
+        "loop_induced": registry,
+    }
+
+
+def test_report_builder_loop_induced_table_markers_backend_floor_and_reports(
+    tmp_path,
+):
+    """The loop-induced section of the report builder (m-lit/PLAN.md §3.7
+    'Pushes'): absent input files read as pending, a package not landed
+    leaves its rows pending, a landed package without a record is 'not run';
+    the cell takes the newest revision's B = 128 record, the default backend
+    (TIRust) first with the other backend beside it, and NinjaRS per
+    amplitude labelled where only NinjaRS ran at B = 128; B = 1 or other
+    batches alone give no batched cell (with the reason), a repeated record
+    is refused; four legs or fewer are reported, below 5 ms not gated, no
+    verdict before lit-perf's records, Table 1's chip from them; no matched
+    provider means no gate; the registry's legs and gate classes agree."""
+
+    import json
+
+    builder = _report_builder()
+    ms = _loop_induced_milestone(_loop_induced_registry())
+    data = tmp_path / "data"
+    data.mkdir()
+
+    def build():
+        recency = builder.Recency(tmp_path, ms["ancestry"])
+        out = builder.build_loop_induced(ms, recency, data=data, repo=tmp_path)
+        return {r["key"]: r for g in out["groups"] for r in g["rows"]}, out
+
+    # No input file yet: every cell pending, the validation and providers too.
+    rows, out = build()
+    assert [g["name"] for g in out["groups"]] == ["2->2", "2->3"]
+    assert not any(x["present"] for x in out["meta"]["inputs"].values())
+    assert out["meta"]["campaign"]["checked"] is False
+    for r in rows.values():
+        assert r["timing"]["status"] == r["generation"]["status"] == "pending"
+        assert r["validation"]["status"] == r["providers"]["status"] == "pending"
+    assert "lit-ew" in rows["aa_hh"]["timing"]["reason"]
+    assert "li-timing.json" in rows["gg_hh"]["timing"]["reason"]
+
+    def rec(key, backend, seconds, revision="bbbbbbbb", **extra):
+        return {
+            "key": key,
+            "revision": revision,
+            "backend": backend,
+            "batch": 128,
+            "seconds_per_point": seconds,
+            "generation": {"seconds": 12.0, "peak_gib": 0.5},
+            "source": f"test/{key}",
+            **extra,
+        }
+
+    timing = {
+        "records": [
+            rec("gg_hh", "ninjars", 0.002),
+            rec("aa_hh", "ninjars", 0.002),
+            rec("gg_hgg", "tirust", 0.010, revision="aaaaaaaa"),
+            rec("gg_hgg", "ninjars", 0.004),
+            rec("gg_hgg", "tirust", 0.003),
+            # B = 1 (reported in the detailed sections, PLAN §5.1) before
+            # B = 128 in the file: the cell is B = 128's.
+            rec("gg_zzg", "tirust", 0.050, batch=1),
+            rec("gg_zzg", "tirust", 0.020),
+            rec("gg_zzz", "tirust", 0.030),
+        ]
+    }
+    # lit-ref's provider timings: the manifest's reference runs name their
+    # timing records (below tests/fixtures/loop/, the gate tool's providers
+    # format) and their unavailable providers; MadLoop counts at its
+    # production card 7|6|1 only (the 6|7|1 OPP column is not the summary's).
+    fixtures = tmp_path / "tests" / "fixtures" / "loop"
+
+    def timing_record(name, **providers):
+        path = fixtures / "required" / "li" / "timing" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"kind": "providers", "providers": providers}))
+        return str(path.relative_to(fixtures))
+
+    def ml(t, lib="7|6|1"):
+        return {
+            "median_seconds_per_point": t,
+            "madloop_params": {"MLReductionLib": lib},
+        }
+
+    production = timing_record(
+        "production.json",
+        madloop=ml(0.04),
+        openloops={"median_seconds_per_point": 0.01},
+        recola={
+            "median_seconds_per_point": 0.05,
+            "setup": {"generation_seconds": 60.0},
+        },
+    )
+    no_recola = timing_record(
+        "no-recola.json", madloop=ml(0.04), openloops={"median_seconds_per_point": 0.01}
+    )
+    opp = timing_record("opp.json", madloop=ml(0.001, lib="6|7|1"))
+    process = {r["key"]: r["process"] for r in ms["loop_induced"]["rows"]}
+
+    def run(key, records=(), **unavailable):
+        return {
+            "process": f"li_{key}",
+            "madloop_process": f"{process[key]} [sqrvirt=QCD]",
+            "provider_timing_records": list(records),
+            "unavailable": unavailable,
+        }
+
+    def write_manifest(runs):
+        rows_m = [
+            {"row": f"LI-{key}", "processes": p, "runs": runs.get(key, [])}
+            for key, p in process.items()
+        ]
+        manifest = tmp_path / builder.LI_CAMPAIGN
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        manifest.write_text(json.dumps({"rows": rows_m}))
+
+    runs = {
+        "gg_hh": [run("gg_hh", [production, opp])],
+        "gg_hgg": [run("gg_hgg", [production, opp])],
+        "gg_zzg": [run("gg_zzg", [no_recola], recola="beyond 45 min")],
+        "gg_zzz": [run("gg_zzz", madloop="no", openloops="no library", recola="no")],
+    }
+    write_manifest(runs)
+    (data / "li-timing.json").write_text(json.dumps(timing))
+    rows, out = build()
+    assert out["meta"]["inputs"]["providers"]["present"] is True
+    hgg_ml = rows["gg_hgg"]["providers"]["providers"]["madloop"]
+    assert hgg_ml["seconds_per_point"] == 0.04
+    assert hgg_ml["setting"] == "MLReductionLib 7|6|1"
+    assert rows["gg_zzg"]["providers"]["providers"]["recola"] == {
+        "status": "unavailable",
+        "reason": "beyond 45 min",
+        "source": "li_campaign.json runs[li_gg_zzg]",
+    }
+    # A package not landed stays pending even with a record.
+    assert rows["aa_hh"]["timing"]["status"] == "pending"
+    # NinjaRS per amplitude, labelled, where only NinjaRS ran; four legs: reported.
+    hh = rows["gg_hh"]["timing"]
+    assert hh["backend_label"] == "NinjaRS per amplitude" and not hh["default_backend"]
+    assert hh["gate"] == {"status": "reported", "label": "no gate (2->2)"}
+    assert hh["ratio_to_fastest"] == pytest.approx(0.002 / 0.01)
+    assert rows["gg_hh"]["providers"]["fastest"]["key"] == "openloops"
+    gen = rows["gg_hh"]["generation"]
+    assert gen["status"] == "measured" and gen["ratio_to_fastest"] == pytest.approx(0.2)
+    # The newest revision's default backend, the other backend beside it;
+    # below 5 ms not gated.
+    hgg = rows["gg_hgg"]["timing"]
+    assert hgg["backend"] == "tirust" and hgg["revision"] == "bbbbbbbb"
+    assert hgg["seconds_per_point"] == 0.003
+    assert hgg["other_backend"]["backend_label"] == "NinjaRS per amplitude"
+    assert hgg["gate"]["status"] == "not gated"
+    assert hgg["gate"]["label"] == "<5 ms: not gated"
+    # Gated, above 5 ms, no lit-perf record: no verdict yet; the B = 1
+    # record listed first neither hides the B = 128 one nor is the other
+    # backend.
+    zzg = rows["gg_zzg"]["timing"]
+    assert zzg["status"] == "measured" and zzg["batch"] == 128
+    assert zzg["seconds_per_point"] == 0.020 and "other_backend" not in zzg
+    assert zzg["gate"]["label"] == "no verdict yet"
+    # No matched provider: no gate, no ratio.
+    zzz = rows["gg_zzz"]["timing"]
+    assert zzz["gate"]["label"] == "no matched provider: no gate"
+    assert "ratio_to_fastest" not in zzz
+    # A landed package without a record of the row: not run.
+    assert rows["gg_hhh"]["timing"]["status"] == "not run"
+    assert rows["gg_hhh"]["providers"]["status"] == "not run"
+    # lit-perf's verdict becomes Table 1's chip (inconclusive -> open).
+    zzg128 = timing["records"][6]
+    assert (zzg128["key"], zzg128["batch"]) == ("gg_zzg", 128)
+    zzg128["gate"] = {
+        "status": "inconclusive",
+        "ratio_to_limit": 1.0,
+        "band": [0.9, 1.1],
+    }
+    (data / "li-timing.json").write_text(json.dumps(timing))
+    rows, _ = build()
+    assert rows["gg_zzg"]["timing"]["gate"]["status"] == "open"
+    # A row whose providers are not all unavailable but none timed yet: no
+    # matched-provider exemption, no verdict.
+    runs["gg_hhh"] = [run("gg_hhh", openloops="no library")]
+    write_manifest(runs)
+    timing["records"].append(rec("gg_hhh", "tirust", 0.040))
+    (data / "li-timing.json").write_text(json.dumps(timing))
+    rows, _ = build()
+    hhh = rows["gg_hhh"]
+    assert hhh["providers"]["status"] == "recorded"
+    assert hhh["providers"]["providers"]["madloop"]["status"] == "not timed"
+    assert hhh["timing"]["gate"]["label"] == "no provider time yet"
+    timing["records"].pop()
+    del runs["gg_hhh"]
+    # Two production timings of one provider are ambiguous.
+    runs["gg_hh"] = [run("gg_hh", [production, no_recola])]
+    write_manifest(runs)
+    with pytest.raises(ValueError, match="two production timings of madloop"):
+        build()
+    runs["gg_hh"] = [run("gg_hh", [production, opp])]
+    write_manifest(runs)
+    # The batch is chosen before the backend: TIRust timed at B = 1 only and
+    # NinjaRS at B = 128 give NinjaRS's B = 128 cell, labelled, no other
+    # backend; without a B = 128 record at the newest revision no batched
+    # cell (Table 1's 'no gate batch' / 'not batched', with the reason).
+    batches = {
+        "records": [
+            rec("gg_hgg", "tirust", 0.009, batch=1),
+            rec("gg_hgg", "ninjars", 0.006),
+            rec("gg_zzg", "tirust", 0.060, batch=1),
+            rec("gg_zzg", "tirust", 0.025, batch=16),
+            rec("gg_zzg", "tirust", 0.020, revision="aaaaaaaa"),
+            rec("gg_zzz", "tirust", 0.070, batch=1),
+        ]
+    }
+    (data / "li-timing.json").write_text(json.dumps(batches))
+    rows, _ = build()
+    hgg = rows["gg_hgg"]["timing"]
+    assert hgg["status"] == "measured" and hgg["backend"] == "ninjars"
+    assert hgg["batch"] == 128 and not hgg["default_backend"]
+    assert hgg["seconds_per_point"] == 0.006 and "other_backend" not in hgg
+    assert rows["gg_zzg"]["timing"] == {
+        "status": "no gate batch",
+        "reason": "timed B = 1, 16 only",
+        "timed_batches": [1, 16],
+        "revision": "bbbbbbbb",
+        "source": "li-timing.json records[gg_zzg, tirust, bbbbbbbb]",
+    }
+    assert rows["gg_zzg"]["generation"]["status"] == "measured"
+    assert rows["gg_zzz"]["timing"]["status"] == "not batched"
+    assert rows["gg_zzz"]["timing"]["reason"] == "timed B = 1 only"
+    # Two records of one backend and batch at a revision are ambiguous.
+    batches["records"].append(rec("gg_hgg", "ninjars", 0.007))
+    (data / "li-timing.json").write_text(json.dumps(batches))
+    with pytest.raises(ValueError, match="two records of gg_hgg"):
+        build()
+    (data / "li-timing.json").write_text(json.dumps(timing))
+    # The registry: a 2->3 row cannot be 'reported', a backend record must
+    # be one of the row's, and the manifest check stops on an unknown row.
+    bad = _loop_induced_registry()
+    bad["rows"][2]["gate_class"] = "reported"
+    with pytest.raises(ValueError, match="four legs or fewer"):
+        builder._li_registry({"loop_induced": bad})
+    tir_only = _loop_induced_registry()
+    tir_only["rows"][0]["backends"] = ["tirust"]
+    ms["loop_induced"] = tir_only
+    with pytest.raises(ValueError, match="not one of the row's"):
+        build()
+    ms["loop_induced"] = _loop_induced_registry(
+        validation_only={"ids": ["LI-Z1", "LI-Z2"], "reason": "test"}
+    )
+    # lit-ref's manifest format: a row's reference runs (madloop_process)
+    # and its free-text process list (annotations, 'or', 'vs'); one row may
+    # carry several ids ("LI-Z1/Z2").
+    manifest = tmp_path / builder.LI_CAMPAIGN
+    rows_m = [
+        {"row": f"LI-{r['key']}", "processes": f"{r['process']} [QCD] (t loop)"}
+        for r in ms["loop_induced"]["rows"]
+    ]
+    rows_m[0] = {
+        "row": "LI-gg_hh",
+        "processes": "large m_t: g g > h g vs HEFT; g g > h h vs the LET",
+    }
+    rows_m[1] = {
+        "row": "LI-aa_hh",
+        "processes": "a a > h h h",
+        "runs": [{"madloop_process": "a a > h h [sqrvirt=QED]"}],
+    }
+    identities = {"row": "LI-Z1/Z2", "processes": "zeros", "runs": []}
+    manifest.write_text(json.dumps({"rows": [*rows_m, identities]}))
+    _, out = build()
+    campaign = out["meta"]["campaign"]
+    assert campaign["checked"] is True
+    assert (campaign["rows"], campaign["ids"]) == (len(rows_m) + 1, len(rows_m) + 2)
+    # A process is an item of the text, not a prefix of a longer one.
+    rows_m[0]["processes"] = "g g > h h h, g g > h h g"
+    manifest.write_text(json.dumps({"rows": [*rows_m, identities]}))
+    with pytest.raises(ValueError, match="'g g > h h' is not a process"):
+        build()
+    rows_m[0]["processes"] = "g g > h h or g g > h h g"
+    manifest.write_text(
+        json.dumps({"rows": [*rows_m, identities, {"row": "LI-99", "processes": ""}]})
+    )
+    with pytest.raises(ValueError, match="neither registry rows"):
+        build()
