@@ -1909,9 +1909,11 @@ def test_report_builder_loop_induced_table_markers_backend_floor_and_reports(
     """The loop-induced section of the report builder (m-lit/PLAN.md §3.7
     'Pushes'): absent input files read as pending, a package not landed
     leaves its rows pending, a landed package without a record is 'not run';
-    the cell takes the newest revision's default backend (TIRust) with the
-    other backend beside it, and NinjaRS per amplitude labelled where only
-    NinjaRS ran; four legs or fewer are reported, below 5 ms not gated, no
+    the cell takes the newest revision's B = 128 record, the default backend
+    (TIRust) first with the other backend beside it, and NinjaRS per
+    amplitude labelled where only NinjaRS ran at B = 128; B = 1 or other
+    batches alone give no batched cell (with the reason), a repeated record
+    is refused; four legs or fewer are reported, below 5 ms not gated, no
     verdict before lit-perf's records, Table 1's chip from them; no matched
     provider means no gate; the registry's legs and gate classes agree."""
 
@@ -1957,6 +1959,9 @@ def test_report_builder_loop_induced_table_markers_backend_floor_and_reports(
             rec("gg_hgg", "tirust", 0.010, revision="aaaaaaaa"),
             rec("gg_hgg", "ninjars", 0.004),
             rec("gg_hgg", "tirust", 0.003),
+            # B = 1 (reported in the detailed sections, PLAN §5.1) before
+            # B = 128 in the file: the cell is B = 128's.
+            rec("gg_zzg", "tirust", 0.050, batch=1),
             rec("gg_zzg", "tirust", 0.020),
             rec("gg_zzz", "tirust", 0.030),
         ]
@@ -1998,8 +2003,13 @@ def test_report_builder_loop_induced_table_markers_backend_floor_and_reports(
     assert hgg["other_backend"]["backend_label"] == "NinjaRS per amplitude"
     assert hgg["gate"]["status"] == "not gated"
     assert hgg["gate"]["label"] == "<5 ms: not gated"
-    # Gated, above 5 ms, no lit-perf record: no verdict yet.
-    assert rows["gg_zzg"]["timing"]["gate"]["label"] == "no verdict yet"
+    # Gated, above 5 ms, no lit-perf record: no verdict yet; the B = 1
+    # record listed first neither hides the B = 128 one nor is the other
+    # backend.
+    zzg = rows["gg_zzg"]["timing"]
+    assert zzg["status"] == "measured" and zzg["batch"] == 128
+    assert zzg["seconds_per_point"] == 0.020 and "other_backend" not in zzg
+    assert zzg["gate"]["label"] == "no verdict yet"
     # No matched provider: no gate, no ratio.
     zzz = rows["gg_zzz"]["timing"]
     assert zzz["gate"]["label"] == "no matched provider: no gate"
@@ -2008,7 +2018,9 @@ def test_report_builder_loop_induced_table_markers_backend_floor_and_reports(
     assert rows["gg_hhh"]["timing"]["status"] == "not run"
     assert rows["gg_hhh"]["providers"]["status"] == "not run"
     # lit-perf's verdict becomes Table 1's chip (inconclusive -> open).
-    timing["records"][5]["gate"] = {
+    zzg128 = timing["records"][6]
+    assert (zzg128["key"], zzg128["batch"]) == ("gg_zzg", 128)
+    zzg128["gate"] = {
         "status": "inconclusive",
         "ratio_to_limit": 1.0,
         "band": [0.9, 1.1],
@@ -2016,6 +2028,42 @@ def test_report_builder_loop_induced_table_markers_backend_floor_and_reports(
     (data / "li-timing.json").write_text(json.dumps(timing))
     rows, _ = build()
     assert rows["gg_zzg"]["timing"]["gate"]["status"] == "open"
+    # The batch is chosen before the backend: TIRust timed at B = 1 only and
+    # NinjaRS at B = 128 give NinjaRS's B = 128 cell, labelled, no other
+    # backend; without a B = 128 record at the newest revision no batched
+    # cell (Table 1's 'no gate batch' / 'not batched', with the reason).
+    batches = {
+        "records": [
+            rec("gg_hgg", "tirust", 0.009, batch=1),
+            rec("gg_hgg", "ninjars", 0.006),
+            rec("gg_zzg", "tirust", 0.060, batch=1),
+            rec("gg_zzg", "tirust", 0.025, batch=16),
+            rec("gg_zzg", "tirust", 0.020, revision="aaaaaaaa"),
+            rec("gg_zzz", "tirust", 0.070, batch=1),
+        ]
+    }
+    (data / "li-timing.json").write_text(json.dumps(batches))
+    rows, _ = build()
+    hgg = rows["gg_hgg"]["timing"]
+    assert hgg["status"] == "measured" and hgg["backend"] == "ninjars"
+    assert hgg["batch"] == 128 and not hgg["default_backend"]
+    assert hgg["seconds_per_point"] == 0.006 and "other_backend" not in hgg
+    assert rows["gg_zzg"]["timing"] == {
+        "status": "no gate batch",
+        "reason": "timed B = 1, 16 only",
+        "timed_batches": [1, 16],
+        "revision": "bbbbbbbb",
+        "source": "li-timing.json records[gg_zzg, tirust, bbbbbbbb]",
+    }
+    assert rows["gg_zzg"]["generation"]["status"] == "measured"
+    assert rows["gg_zzz"]["timing"]["status"] == "not batched"
+    assert rows["gg_zzz"]["timing"]["reason"] == "timed B = 1 only"
+    # Two records of one backend and batch at a revision are ambiguous.
+    batches["records"].append(rec("gg_hgg", "ninjars", 0.007))
+    (data / "li-timing.json").write_text(json.dumps(batches))
+    with pytest.raises(ValueError, match="two records of gg_hgg"):
+        build()
+    (data / "li-timing.json").write_text(json.dumps(timing))
     # The registry: a 2->3 row cannot be 'reported', a backend record must
     # be one of the row's, and the manifest check stops on an unknown row.
     bad = _loop_induced_registry()
