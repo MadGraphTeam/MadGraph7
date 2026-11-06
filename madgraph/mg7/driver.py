@@ -19,6 +19,7 @@ from madgraph.mg7.postprocess import (
     _find_or_convert_event_file,
     _off,
     _report_failure,
+    _setup_logging,
     run_lhe_postprocessing,
     run_selected_tools,
     selected_tools,
@@ -439,6 +440,29 @@ def deliver_lhe_from_binary(process) -> None:
                 json.dump(content, f, indent=1)
 
 
+def cluster_enabled() -> bool:
+    """Whether the run card asks for the cluster mode. Read from the file as it
+    is, so that a card with scan entries can still be refused properly."""
+    import tomllib
+    with open(os.path.join("Cards", "run_card.toml"), "rb") as f:
+        return bool(tomllib.load(f).get("cluster", {}).get("enable", False))
+
+
+def run_cluster_job(job_dir: str) -> None:
+    """One training job of the cluster mode: integrate the subprocesses of the
+    card in job_dir, save the data of the gridpack and mark the job done. The
+    steering process has made the card and built the matrix elements."""
+    _setup_logging()
+    process = MadgraphProcess(run_card_path=os.path.join(job_dir, "run_card.toml"))
+    process.gridpack_data_only = True
+    process.survey()
+    process.train_madnis()
+    process.generate_events()
+    _release_channel_generators(process)
+    with open(os.path.join(job_dir, "done"), "w") as f:
+        f.write("done\n")
+
+
 def run_single(switch=None, reweight=None) -> "MadgraphProcess":
     """Run a single generation and return the process (for its result).
     reweight is the reweight_backend.Decision of prepare_reweighting(), or
@@ -560,6 +584,13 @@ def run_generation(switch=None, reweight=None) -> None:
     param_card_path = os.path.join("Cards", "param_card.dat")
     run_iter = detect_run_scan(run_card_path)
     param_iter = detect_param_scan(param_card_path)
+    if cluster_enabled():
+        if run_iter or param_iter:
+            raise RuntimeError("cluster mode does not run scans: remove the "
+                               "scan:[...] entries or switch [cluster] enable off")
+        from madgraph.iolibs.template_files.mg7 import cluster_run
+        cluster_run.run_cluster(switch, reweight)
+        return
     if run_iter and param_iter:
         raise RuntimeError(
             "Scanning simultaneously over the run_card and the param_card is "

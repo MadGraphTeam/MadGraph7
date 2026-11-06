@@ -228,7 +228,8 @@ class MadgraphSubprocess:
         process: MadgraphProcess,
         meta: dict,
         subproc_id: int,
-        unmerged_meta: dict | None = None
+        unmerged_meta: dict | None = None,
+        me_index: int | None = None,
     ):
         self.process = process
         self.meta = meta
@@ -351,6 +352,7 @@ class MadgraphSubprocess:
             )
 
         # the libraries were all built up front by MadgraphProcess.compile_matrix_elements
+        self.me_index = me_index
         self.load_matrix_elements(api_path_formats, member_metas)
 
     def build_mlm_scale(self, min_scale: float, max_scale: float):
@@ -402,9 +404,10 @@ class MadgraphSubprocess:
             self.matrix_elements = [
                 self.process.load_matrix_element(
                     path_format, self.process.param_card_path,
-                    me_parameters(self.process.run_card)
+                    me_parameters(self.process.run_card),
+                    None if self.me_index is None else self.me_index + position,
                 )
-                for path_format in api_path_formats
+                for position, path_format in enumerate(api_path_formats)
             ]
         self.surrogates = []
         if self.process.surrogate is not None:

@@ -13,6 +13,7 @@ from madgraph.various.banner import RunCardMG7
 from madgraph.mg7 import npy_to_lhe
 from madgraph.mg7.bootstrap import MG_ROOT as _MG_ROOT
 from madgraph.mg7.driver import (
+    run_cluster_job,
     ExistingRun,
     REWEIGHT_CARD,
     compute_decay_widths,
@@ -736,6 +737,8 @@ def main() -> None:
         "--make-arg", action="append", default=[],
         help="extra argument of the matrix element build (--decay-widths)")
     parser.add_argument(
+        "--cluster-job", metavar="DIR", default=None, help=argparse.SUPPRESS)
+    parser.add_argument(
         "--reweight", dest="reweight_card", default=None,
         help="reweight the events after generation with this reweight card "
              "(it becomes Cards/reweight_card.dat and switches reweighting on)",
@@ -772,6 +775,11 @@ def main() -> None:
             extra_make_args=args.make_arg)
         with open(args.decay_widths, "w") as f:
             json.dump(results, f)
+        return
+
+    if args.cluster_job:
+        _raise_open_file_limit()
+        run_cluster_job(os.path.abspath(args.cluster_job))
         return
 
     line = "generate_events" if args.ask_edit_cards else "generate_events -f"

@@ -2,6 +2,7 @@
 
 import logging
 import os
+import glob
 import re
 import subprocess
 import sys
@@ -47,6 +48,25 @@ LOG_LEVEL_MAP = {
 def ms_log_handler(level: ms.Logger.LogLevel, message: str):
     logger.log(LOG_LEVEL_MAP[level], message)
 ms.Logger.set_log_handler(ms_log_handler)
+
+
+def new_run_path(run_name: str) -> str:
+    """Create and return the next free Events/<run_name>_NN."""
+    os.makedirs("Events", exist_ok=True)
+    run_dir_prefix = os.path.join("Events", f"{run_name}_")
+    existing_run_dirs = glob.glob(f"{run_dir_prefix}*")
+    run_index = 1
+    for run_dir in existing_run_dirs:
+        run_index_str = run_dir[len(run_dir_prefix):]
+        if run_index_str.isnumeric():
+            run_index = max(run_index, int(run_index_str) + 1)
+    while True:
+        try:
+            run_path = f"{run_dir_prefix}{run_index:02d}"
+            os.mkdir(run_path)
+            return run_path
+        except FileExistsError:
+            run_index += 1
 
 
 def get_start_time():
