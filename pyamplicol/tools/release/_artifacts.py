@@ -485,6 +485,9 @@ def _required_legal_files() -> tuple[str, ...]:
         "THIRD_PARTY_NOTICES.md",
         "licenses/Symbolica.txt",
         "licenses/SymJIT.txt",
+        "licenses/NinjaRS.txt",
+        "licenses/oneloopmaster.txt",
+        "licenses/GammaLoop-crates.txt",
     )
 
 

@@ -1,0 +1,5 @@
+alloc-stdlib 0.2.4 (https://github.com/dropbox/rust-alloc-no-stdlib) declares
+license = "BSD-3-Clause" and its published crate contains no license file.
+It is developed in the same repository, by the same author, as alloc-no-stdlib,
+whose published BSD-3-Clause license is reproduced in
+licenses/rust/alloc-no-stdlib-2.0.4/LICENSE.
