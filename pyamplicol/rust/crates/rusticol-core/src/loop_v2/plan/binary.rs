@@ -2428,7 +2428,8 @@ mod tests {
             member: None,
         };
         visit_plan(&mut writer, &mut file.file).unwrap();
-        writer.finish(derived).unwrap()
+        let schema = file.file.schema;
+        writer.finish(derived, schema).unwrap()
     }
 
     fn json_copy(file: &PlanFile) -> PlanFile {
