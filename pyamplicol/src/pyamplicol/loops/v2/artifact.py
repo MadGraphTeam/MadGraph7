@@ -1125,7 +1125,9 @@ def generate_process(
             trees=True,
             born_squared=True,
             keep_kets=declared,
-            column_sets={kind: plan.seed_columns for kind, plan in plans.items()},
+            column_sets=None
+            if induced
+            else {kind: plan.seed_columns for kind, plan in plans.items()},
         )
     except NativeExportUnsupported as error:
         raise _not_storable(request, "native point inputs", error) from error

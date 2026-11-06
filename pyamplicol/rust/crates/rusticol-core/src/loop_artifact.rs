@@ -781,11 +781,13 @@ fn validate_v2_metadata(metadata: &LoopV2ExecutionMetadata) -> RusticolResult<()
             ),
         "colour degrees are declared exactly per sector at LC and NLC",
     )?;
+    // (A loop-induced process has no Born; an exact colour zero of one, e.g.
+    // h > g a, has no family either.)
     require(
-        !metadata.born_orders.is_empty()
+        (induced || !metadata.born_orders.is_empty())
             && !metadata.sectors.is_empty()
             && metadata.sectors.iter().all(|s| !s.pairs.is_empty())
-            && metadata.families > 0
+            && (induced || metadata.families > 0)
             && metadata.buckets.iter().map(|b| b.2).sum::<usize>() == metadata.families,
         "plan v4 needs Born orders, sectors and reduction buckets covering every family",
     )?;
