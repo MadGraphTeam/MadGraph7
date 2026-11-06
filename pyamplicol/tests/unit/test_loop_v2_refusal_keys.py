@@ -198,13 +198,8 @@ def test_configuration_refusals_fire_in_the_dry_run_and_at_generation(tmp_path, 
             {"generation": 'particle_veto = ["e-"]'},
         ),
         # Every member of p p > h h is Born-less: served loop-induced by
-        # default (m-lit Q2 (b)), whose generation is pending (LIT-AMP), and
-        # refused under process.loop_induced = "skip".
-        (
-            "loop-induced-engine-pending",
-            "p p > h h",
-            {"restriction": "no_b_mass"},
-        ),
+        # default (m-lit Q2 (b)) and refused under process.loop_induced =
+        # "skip".
         (
             "loop-induced",
             "p p > h h",
@@ -428,6 +423,7 @@ def test_internal_and_engine_errors_keep_their_keys():
         UnloweredCountertermError,
     )
     from pyamplicol.loops.v2.ct_sites import CountertermCompletenessError
+    from pyamplicol.loops.v2.induced import ProbeFailure
     from pyamplicol.loops.v2.native_trees import (
         NATIVE_EXPORT_REFUSALS,
         NativeExportUnsupported,
@@ -448,6 +444,7 @@ def test_internal_and_engine_errors_keep_their_keys():
         CountertermCouplingError: "counterterm-coupling",
         LoopKernelCatalogueError: "loop-kernel-catalogue",
         CountertermCompletenessError: "counterterm-completeness",
+        ProbeFailure: "loop-induced-probe",
     }
     assert sorted(internal.values()) == sorted(listed_internal_keys())
     for cls, key in internal.items():

@@ -43,7 +43,7 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 125
+    assert len(FIELD_REGISTRY) == 126
     # m-lit LIT-REQ: loop-induced routing (Q2 (b)).
     assert FIELD_REGISTRY["process.loop_induced"].default == "auto"
     assert FIELD_REGISTRY["process.loop_induced"].choices == (
@@ -73,6 +73,8 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     assert FIELD_REGISTRY["generation.particle_veto"].default == ()
     assert FIELD_REGISTRY["generation.allow_anomalous_veto"].kind == "bool"
     assert FIELD_REGISTRY["generation.allow_anomalous_veto"].default is False
+    assert FIELD_REGISTRY["generation.allow_failed_probes"].kind == "bool"
+    assert FIELD_REGISTRY["generation.allow_failed_probes"].default is False
     assert FIELD_REGISTRY["evaluation.poles"].default == "all"
     assert FIELD_REGISTRY["evaluation.poles"].choices == ("all", "none", "uv", "ir")
     assert FIELD_REGISTRY["evaluation.stability_checks.rotations"].kind == "list_str"

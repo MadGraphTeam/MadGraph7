@@ -30,6 +30,9 @@ from .results import _exact_decimal_sum
 
 VirtualScalar: TypeAlias = float | complex | Decimal | CorrelatedValue
 EPSILON_POWERS = (0, -1, -2)
+# The contributions a virtual result holds: the Born-virtual interference and
+# |A_loop|^2 of a loop-induced process (m-lit Q36).
+CONTRIBUTIONS = ("virtual", "loop-induced")
 
 
 class LaurentCoefficients(NamedTuple):
@@ -808,11 +811,21 @@ def _sum(values: tuple[VirtualScalar, ...]) -> VirtualScalar:
 
 
 def _orders(
-    born_orders: Sequence[CouplingOrders], sectors: Sequence[VirtualOrderSector]
+    born_orders: Sequence[CouplingOrders],
+    sectors: Sequence[VirtualOrderSector],
+    contribution: str = "virtual",
 ) -> tuple[tuple[CouplingOrders, ...], tuple[VirtualOrderSector, ...]]:
     born_orders = tuple(canonical_order(order) for order in born_orders)
     sectors = tuple(sectors)
-    if not born_orders or not sectors:
+    if contribution not in CONTRIBUTIONS:
+        raise ValueError(f"unknown contribution {contribution!r}")
+    if contribution == "loop-induced":
+        # |A_loop|^2 (m-lit Q36): no Born, loop x loop sectors.
+        if born_orders:
+            raise ValueError("a loop-induced result has an empty Born catalogue")
+        if not sectors:
+            raise ValueError("virtual results require an interference catalogue")
+    elif not born_orders or not sectors:
         raise ValueError("virtual results require Born and interference catalogues")
     if len(set(born_orders)) != len(born_orders):
         raise ValueError("duplicate Born squared orders")
@@ -846,7 +859,8 @@ def _common(
     if not isinstance(result.correlated, bool):
         raise TypeError("correlated must be a boolean")
     object.__setattr__(result, "poles", pole_selection(result.poles))
-    born_orders, sectors = _orders(result.born_orders, result.sectors)
+    contribution = getattr(result, "contribution", "virtual")
+    born_orders, sectors = _orders(result.born_orders, result.sectors, contribution)
     diagnostics = tuple(result.diagnostics)
     if not all(isinstance(item, VirtualLaneDiagnostic) for item in diagnostics):
         raise TypeError("virtual results require per-lane diagnostics")
@@ -887,10 +901,13 @@ def _common(
                 computes_poles(result.poles),
             )
         )
-        if any(
-            len(_scalar_kinds(value)) != 1
-            for value in (frozen_born[-1], frozen_values[-1])
-        ):
+        # (A loop-induced result's Born axes have zero length: no container.)
+        checked = (
+            (frozen_values[-1],)
+            if contribution == "loop-induced"
+            else (frozen_born[-1], frozen_values[-1])
+        )
+        if any(len(_scalar_kinds(value)) != 1 for value in checked):
             raise TypeError("a lane must use consistent Born and virtual containers")
     for name, value in (
         ("born_orders", born_orders),
@@ -980,6 +997,13 @@ class VirtualEvaluation:
     ran a :class:`VirtualRescuePolicy` (``None`` otherwise); each lane's
     values, diagnostic, estimate and pole parts are then those of the level
     that returned it, and ``rescue_counts`` summarises the levels.
+
+    ``contribution`` is ``"virtual"`` (the Born-virtual interference) or
+    ``"loop-induced"`` (|A_loop|^2 of a process without a Born amplitude,
+    m-lit Q36): its Born fields are zeroed (``born_orders`` empty, every
+    per-point Born entry of zero length), its sectors pair loop orders (the
+    pair's ``born`` slot holds the conjugated loop order) and its computed
+    poles vanish up to rounding (a finiteness cross-check).
     """
 
     born_values: OrderCoefficients
@@ -994,6 +1018,7 @@ class VirtualEvaluation:
     stability: tuple[VirtualStabilityEstimate | None, ...] | None = None
     pole_parts: tuple[VirtualPoleParts | None, ...] | None = None
     rescue: tuple[VirtualRescueRecord, ...] | None = None
+    contribution: Literal["virtual", "loop-induced"] = "virtual"
 
     def __post_init__(self) -> None:
         _common(self, (len(self.born_orders),), (len(self.sectors), 3))

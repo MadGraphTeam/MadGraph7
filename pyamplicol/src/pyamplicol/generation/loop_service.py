@@ -1277,9 +1277,6 @@ def _plan_v2(backend, processes, blockers, *, model=None):
                         "native_export_checked": False,
                     }
                 )
-            pending = _engine_pending(requests, context.colour_zero)
-            if pending is not None:
-                blockers = (*blockers, pending)
         except (ValueError, TypeError, RuntimeError, ImportError, PyAmpliColError) as e:
             # A listed key first (``refusals.keyed_error``).
             blockers = (str(keyed_error(e)),)
@@ -1380,34 +1377,6 @@ def _loop_induced_coverage(
         "loop_admission_checked": False,
         "native_export_checked": False,
     }
-
-
-def _engine_pending(requests, colour_zero):
-    """The listed ``loop-induced-engine-pending`` blocker of the loop-induced
-    requests among ``requests``, or None: they are routed and dry-run, and
-    their generation is refused until the amplitude-mode engine lands (m-lit
-    LIT-AMP lifts it; never a silent zero). An exact colour zero
-    (``colour_zero`` names all its loop orders; ``_loop_induced_request``)
-    is marked."""
-
-    from pyamplicol.loops.v2.refusals import ListedBlocker
-
-    pending = [
-        repr(request.process)
-        + (
-            " (an exact colour zero)"
-            if len(zero) == len(request.exact_loop_orders)
-            else ""
-        )
-        for request, zero in zip(requests, colour_zero, strict=True)
-        if request.contribution == "loop-induced"
-    ]
-    if not pending:
-        return None
-    return ListedBlocker(
-        "loop-induced-engine-pending",
-        "loop-induced processes are not generated yet: " + ", ".join(pending),
-    )
 
 
 # The artifact extension of the skipped members of multiparticle requests
@@ -1564,11 +1533,6 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
             # Only the scope keeps the Born DAGs (each slice releases its own).
             context, requests, _released, skipped = _born_members(backend, context)
             del _released
-            # Loop-induced processes are routed, not generated yet (m-lit
-            # LIT-AMP lifts this; never a silent zero).
-            pending = _engine_pending(requests, context.colour_zero)
-            if pending is not None:
-                raise pending.error()
         native = load_loop_native()
         compiled = context.resolved.compiled
         validation = backend._generation_config.validation
@@ -1592,6 +1556,11 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                         phase.update(index + 1, message=f"{name} (flavour member)")
                         continue
                     process = generate_process(compiled, request, native, correlators)
+                    # m-lit Q12: the generation-time probes of a loop-induced
+                    # process (None for a virtual).
+                    probes = _loop_induced_probes(
+                        backend, context, entry, process, native, validation, index
+                    )
                     generated[name] = process
                     path = Path(temporary) / f"{name}.pacbin"
                     write_plan(
@@ -1621,6 +1590,9 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                                 color_contraction=request.colour_contraction,
                                 color_correlations=process.color_correlations(),
                                 spin_correlations=process.spin_correlations(),
+                                # Loop-induced: kind, interference, poles
+                                # (m-lit LIT-AMP; absent for a virtual).
+                                **process.contribution(),
                             ),
                             validation_point=build_process_validation_point(
                                 entry.process_ir,
@@ -1651,6 +1623,11 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                                 ),
                                 # REQUIREMENTS_ADDENDUM J: rule -> reason.
                                 "counterterms_inert": process.inert_counterterms(),
+                                **(
+                                    {"loop_induced_probes": probes}
+                                    if probes is not None
+                                    else {}
+                                ),
                                 # The request's gauge (WP3.2 EWI-4b), recorded
                                 # off the default unitary gauge only.
                                 **(
@@ -1819,6 +1796,41 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
         ),
         mode=mode,
         files=result.files,
+    )
+
+
+def _loop_induced_probes(backend, context, entry, process, native, validation, index):
+    """The generation-time probes of a loop-induced process (m-lit Q12,
+    ``induced.generation_probes``) on the generation's validation points of
+    the process (``generation.validation.samples`` candidates, at least one);
+    None for a virtual. A failure refuses the process (``loop-induced-probe``)
+    unless ``generation.allow_failed_probes``."""
+
+    from pyamplicol.loops.v2.induced import generation_probes
+
+    slice_ = process.slice
+    if getattr(slice_, "amplitude", None) is None:
+        return None
+    candidates = []
+    if not slice_.amplitude.colour_zero:
+        for sample in range(max(validation.samples, 1)):
+            record = build_process_validation_point(
+                entry.process_ir,
+                context.resolved.model,
+                process_id=entry.request.name,
+                seed=validation.seed + index + sample,
+            )
+            if not record.available:
+                raise GenerationError(
+                    f"loop-induced probe momenta unavailable: {record.error}"
+                )
+            candidates.append(record.four_vectors)
+    return generation_probes(
+        slice_,
+        context.resolved.compiled,
+        native,
+        candidates,
+        allow_failure=backend._run_config.generation.allow_failed_probes,
     )
 
 

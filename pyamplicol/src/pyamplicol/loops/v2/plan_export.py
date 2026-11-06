@@ -56,6 +56,7 @@ from typing import Any, Literal
 from pyamplicol.color.connections import ExactColorCoefficient
 from pyamplicol.config import PoleSelection
 
+from . import induced
 from . import reference_executor as rx
 from .colour import SYMMETRIC_GROUP_FFT, project
 from .families import FamilyKey, Orders
@@ -66,6 +67,10 @@ from .refusals import require_formal_nc_tables
 from .schedules import forward_graph
 
 PLAN_SCHEMA = 4
+# Amplitude-mode plans (loop-induced |A_loop|^2, route R1; M-LIT RULED Q42 =
+# (a)): written only for a loop-induced slice; seeded plans keep schema 4
+# and their bytes (``rusticol_core::loop_v2::plan::AMPLITUDE_PLAN_SCHEMA``).
+AMPLITUDE_PLAN_SCHEMA = 5
 # The native report's count of seed-FFT jobs (``loop_execution::v2::
 # FFT_SEED_JOBS``): present exactly when an evaluation ran the FFT.
 FFT_SEED_JOBS = "symmetric-group-fft seed jobs"
@@ -165,6 +170,11 @@ class ExportedPlan:
     # PlanSource``: ``program["families"]`` and ``["contents"]`` are then its
     # read-only views; released to the binary member once stored), else None.
     model: Any = None
+    # Amplitude-mode plans (loop-induced, schema 5): the amplitude basis size
+    # T; the columns are (row, t) (``induced.column_labels``) and the
+    # executor returns per (loop order, column) the bare loop amplitude.
+    # None for seeded plans.
+    amplitude: int | None = None
 
     def json(self) -> str:
         """The plan JSON, ``json.dumps(program, separators=(",", ":"))``,
@@ -594,6 +604,55 @@ class _Exporter:
             )
         shared = weight_of_column != list(range(len(weight_of_column)))
         return class_records, records, weight_of_column if shared else None
+
+    def amplitude_seed_records(self, size: int) -> tuple[list[dict], list[dict]]:
+        """The seed records of an amplitude-mode plan (loop-induced, route
+        R1; ``induced``): one seed-weight column per amplitude basis element
+        t, whose class record of class c holds c_{c,t} at N_c = 3
+        (``AmplitudeBasis.cells_at_three``) on the one unit Born component;
+        the plan's columns (row, t) seed their own row with weight column t
+        (``column_rows``, ``column_weights``), so column (h0, t) carries the
+        amplitude numerator N_{f,h0,t}. Seed keys combine their classes as
+        for the seeded plans (x_c)."""
+
+        slice_ = self.slice_
+        table = slice_.table
+        cells = slice_.amplitude.cells_at_three()
+        self.born_components.setdefault((0, (), 0), 0)
+        classes: dict[tuple[int, Orders], int] = {}
+        self.class_records = classes
+        class_records: list[dict] = []
+
+        def class_record(c: int, order: Orders) -> int:
+            found = classes.get((c, order))
+            if found is not None:
+                return found
+            if order not in table.orders[c]:
+                raise KeyError(f"seed class {c} is not read at {order}")
+            weights_of: list[list] = [[] for _ in range(size)]
+            for t, value in cells[c]:
+                weights_of[t].append(
+                    [0, _fraction_text(value.real), _fraction_text(value.imag)]
+                )
+            found = classes[(c, order)] = len(class_records)
+            class_records.append({"columns": weights_of})
+            return found
+
+        records = [
+            {
+                "classes": [
+                    [
+                        class_record(c, order),
+                        _fraction_text(x.real),
+                        _fraction_text(x.imag),
+                    ]
+                    for c, x in combination
+                    if x
+                ]
+            }
+            for combination, order in self.seeds
+        ]
+        return class_records, records
 
     # -- schedule B -----------------------------------------------------------
 
@@ -1233,9 +1292,24 @@ def export_plan(
         else None
     )
     columns_given = columns
-    columns = tuple(sector_columns(slice_) if columns is None else columns)
-    seed_classes, seeds, column_weights = exporter.seed_records(columns)
-    fourier = fourier_record(slice_, exporter, columns)
+    amplitude = getattr(slice_, "amplitude", None)
+    if amplitude is not None:
+        # Loop-induced (route R1): one-hot columns (row, t), each seeding its
+        # own row with the cells of t (``_Exporter.amplitude_seed_records``).
+        if columns is not None or column_sets:
+            raise ValueError(
+                "an amplitude-mode plan has its own (row, t) columns: observable "
+                "column sets of loop-induced processes are not served yet"
+            )
+        size = len(amplitude)
+        columns = tuple(range(len(rows) * size))
+        seed_classes, seeds = exporter.amplitude_seed_records(size)
+        column_weights = [t for _row in rows for t in range(size)]
+        fourier = None
+    else:
+        columns = tuple(sector_columns(slice_) if columns is None else columns)
+        seed_classes, seeds, column_weights = exporter.seed_records(columns)
+        fourier = fourier_record(slice_, exporter, columns)
     native_trees = None
     if trees:
         from .native_trees import export_trees
@@ -1244,14 +1318,16 @@ def export_plan(
             slice_,
             exporter,
             rows,
-            born_squared=born_squared,
+            born_squared=born_squared and amplitude is None,
             with_counterterms=counterterms,
-            keep_kets=keep_kets,
+            # A loop-induced point reads its counterterm kets themselves
+            # (no Born interference keeps them).
+            keep_kets=keep_kets or amplitude is not None,
         )
     legs = len(slice_.blocks.process.legs)
     row_index = {row: i for i, row in enumerate(rows)}
     program = {
-        "schema": PLAN_SCHEMA,
+        "schema": PLAN_SCHEMA if amplitude is None else AMPLITUDE_PLAN_SCHEMA,
         "legs": legs,
         "rows": len(rows),
         "helicities": [list(h) for h in helicities],
@@ -1270,7 +1346,9 @@ def export_plan(
         "forward": forward_program,
         "merged": merged_program,
     }
-    if any(column.rows is not None for column in columns):
+    if amplitude is not None:
+        program["column_rows"] = [[r] for r in range(len(rows)) for _t in range(size)]
+    elif any(column.rows is not None for column in columns):
         program["column_rows"] = [
             None
             if column.rows is None
@@ -1349,13 +1427,16 @@ def export_plan(
         masses=tuple(exporter.masses),
         orders=orders,
         families=tuple(keys),
-        columns=tuple(sector for sector, _pairs in slice_.sectors)
+        columns=induced.column_labels(rows, size)
+        if amplitude is not None
+        else tuple(sector for sector, _pairs in slice_.sectors)
         if columns_given is None
         else tuple(range(len(columns))),
         trees=native_trees,
         column_seeds=column_seeds,
         fourier=fourier,
         model=model,
+        amplitude=None if amplitude is None else size,
     )
 
 
@@ -1530,6 +1611,13 @@ class NativeExecutor:
         # Point inputs of the latest ``family_numerators`` calls (oracle
         # comparisons run several schedules and carriers on one batch).
         self._point_inputs: OrderedDict[str, Any] = OrderedDict()
+        # Amplitude-mode plans: also return the raw reduction lanes (an
+        # oracle and diagnostic; by default only the amplitudes).
+        self.raw_lanes = False
+        # Amplitude-mode plans: the next ``reduce`` also forms the term scale
+        # (``V2Options::term_scale``; ``evaluate`` sets it for the reference
+        # evaluation of a stability estimate).
+        self.term_scale = False
 
     def native(
         self,
@@ -1813,6 +1901,10 @@ class NativeExecutor:
             if batch.setdefault("shared", common) != common:
                 raise ValueError(_scale_dependent(exported, batch["shared"], common))
             batch["block_rows"].append(rows)
+            if exported.amplitude is not None:
+                # Amplitude mode (R1): the one unit Born component per row.
+                batch["born"].append([value(1)] * len(exported.rows))
+                continue
             amplitudes = [_born_row(evaluation, row) for row in exported.rows]
             batch["born"].append(
                 [
@@ -1928,17 +2020,23 @@ class NativeExecutor:
                 require_full_kernels(self.slice)
             else:
                 wards = None
-        precision, evaluations, failures = self._evaluated(
-            points,
-            scales,
-            parameters,
-            precision,
-            poles,
-            stability.frame,
-            schedule,
-            wards,
-            catani=self.catani,
-        )
+        # A loop-induced estimate's floor is the term scale (``induced.
+        # scale``), formed by the reference evaluation's executor call.
+        self.term_scale = self.exported.amplitude is not None and stability.enabled
+        try:
+            precision, evaluations, failures = self._evaluated(
+                points,
+                scales,
+                parameters,
+                precision,
+                poles,
+                stability.frame,
+                schedule,
+                wards,
+                catani=self.catani,
+            )
+        finally:
+            self.term_scale = False
         rotated = []
         for k, rotation in enumerate(stability.rotations):
             moved = [
@@ -1973,9 +2071,11 @@ class NativeExecutor:
                 budgets[stability.reduction] = reference.retest_budget
             components = reference.result.components
             estimate = StabilityEstimate.from_checks(
-                components.get("virtual", components["bare"]),
+                components["virtual"]
+                if "virtual" in components
+                else components["bare"],
                 budgets,
-                scale=reference.absolute,
+                scale=reference.stability_scale(),
                 roundoff=precision.unit_roundoff,
                 families=reference.family_deviations,
             )
@@ -2170,6 +2270,11 @@ class NativeExecutor:
             "check": retest is not None,
             "rescale": retest == "rescaled",
         }
+        if self.exported.amplitude is not None and self.raw_lanes:
+            # Amplitude mode returns its raw lanes only on request.
+            options["raw_lanes"] = True
+        if self.exported.amplitude is not None and self.term_scale:
+            options["term_scale"] = True
         catani = self.inputs == "native" and any(
             getattr(evaluation, "catani", False) for evaluation in evaluations
         )
@@ -2290,6 +2395,12 @@ class NativeExecutor:
                             strict=True,
                         )
                     }
+                if exported.amplitude is not None:
+                    # Loop-induced: the native amplitude sum per (loop order,
+                    # column), its re-test, budget and scale (``induced``).
+                    induced.read_native(
+                        evaluation, output, index, exported, carrier, numbers
+                    )
                 if catani and evaluation.catani:
                     from .dipoles import correlations
 

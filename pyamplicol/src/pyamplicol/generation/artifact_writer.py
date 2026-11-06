@@ -58,7 +58,7 @@ from .._internal.versions import (
     EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
     EVALUATOR_RUNTIME_CAPABILITIES,
     LEGACY_LOOP_ARTIFACT_REMOVED,
-    LOOP_V2_RUNTIME_CAPABILITY,
+    LOOP_V2_RUNTIME_CAPABILITIES,
     NATIVE_COMPILED_DIRECT_APPLICATION_ABI,
     ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
@@ -988,7 +988,7 @@ def write_schema_v3_artifact(
         existing_capabilities = set(existing.runtime["required_runtime_capabilities"])
         if RETIRED_LOOP_RUNTIME_CAPABILITY in existing_capabilities:
             raise CompatibilityError(LEGACY_LOOP_ARTIFACT_REMOVED)
-        existing_loop = LOOP_V2_RUNTIME_CAPABILITY in existing_capabilities
+        existing_loop = bool(LOOP_V2_RUNTIME_CAPABILITIES & existing_capabilities)
         if has_loop != existing_loop:
             raise ValueError(
                 "cannot append tree and virtual processes to the same artifact"
@@ -1009,7 +1009,7 @@ def write_schema_v3_artifact(
     existing_bundle = _existing_bundle_path(existing)
     # The standalone SDK evaluates plan v4 processes once their tree inputs
     # run natively (WP3.1); until then a v2 artifact carries no API bundle.
-    v2_loop = LOOP_V2_RUNTIME_CAPABILITY in loop_capabilities
+    v2_loop = bool(LOOP_V2_RUNTIME_CAPABILITIES & loop_capabilities)
     if v2_loop:
         hook = None
     can_emit_bundle = not v2_loop and (hook is not None or existing_bundle is not None)
@@ -5350,8 +5350,8 @@ def _required_runtime_capabilities(
             EAGER_PLAN_V3_RUNTIME_CAPABILITY,
             RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
             RECURRENCE_COLOR_RUNTIME_CAPABILITY,
-            LOOP_V2_RUNTIME_CAPABILITY,
         }
+        | LOOP_V2_RUNTIME_CAPABILITIES
     )
     if RETIRED_LOOP_RUNTIME_CAPABILITY in unknown:
         raise CompatibilityError(LEGACY_LOOP_ARTIFACT_REMOVED)

@@ -649,6 +649,23 @@ struct Evaluation {
     check: Option<Vec<Lanes>>,
     bare: Vec<Vec<Values>>,
     budget: Vec<Option<Vec<Vec<f64>>>>,
+    /// Amplitude-mode plans (loop-induced): per point and (loop order,
+    /// column) slot `order * columns + column` the bare loop amplitude per
+    /// Laurent coefficient (`PointResult::amplitudes`), else None.
+    amplitudes: Option<Vec<Vec<Values>>>,
+    /// Their re-test, when a check ran.
+    amplitude_check: Option<Vec<Vec<Values>>>,
+    /// Per point and slot `Σ_f |ΔΩ_f| / (16π²)` per coefficient (binary64
+    /// reals), when a check ran.
+    amplitude_budget: Option<Vec<Vec<Vec<f64>>>>,
+    /// With `term_scale`, per point and slot the term scale
+    /// `Σ_f Σ_α |N_α| |I_α| / (16π²)` per coefficient (binary64 reals;
+    /// `PointResult::amplitude_scale`), else None.
+    amplitude_scale: Option<Vec<Vec<Vec<f64>>>>,
+    /// Amplitude-mode plans with native trees and counterterms: per point
+    /// the counterterm kets (`TreeInputs::kets`: rows × ket components in
+    /// the counterterm program's layout), else None.
+    counterterm_kets: Option<Vec<Values>>,
     failures: Vec<Vec<String>>,
     report: ReportObject,
 }
@@ -689,7 +706,55 @@ fn export_evaluation<T: Exchanged + Real>(
             .collect::<Lanes>()
     };
     let checked = results.iter().any(|r| r.check.is_some());
+    let amplitude = results.iter().any(|r| !r.amplitudes.is_empty());
+    let amplitude_checked = results.iter().any(|r| r.amplitude_check.is_some());
+    let slots = |values: &[Vec<Complex<T>>]| {
+        values
+            .iter()
+            .map(|slot| T::export(slot, bits))
+            .collect::<Vec<_>>()
+    };
+    let amplitudes = amplitude.then(|| results.iter().map(|r| slots(&r.amplitudes)).collect());
+    let amplitude_check = amplitude_checked.then(|| {
+        results
+            .iter()
+            .map(|r| r.amplitude_check.as_deref().map(slots).unwrap_or_default())
+            .collect()
+    });
+    let amplitude_budget = amplitude_checked.then(|| {
+        results
+            .iter()
+            .map(|r| {
+                r.amplitude_budget
+                    .as_ref()
+                    .map(|budget| {
+                        budget
+                            .iter()
+                            .map(|slot| slot.iter().map(|x| x.to_f64()).collect())
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            })
+            .collect()
+    });
+    let scaled = results.iter().any(|r| !r.amplitude_scale.is_empty());
+    let amplitude_scale = scaled.then(|| {
+        results
+            .iter()
+            .map(|r| {
+                r.amplitude_scale
+                    .iter()
+                    .map(|slot| slot.iter().map(|x| x.to_f64()).collect())
+                    .collect()
+            })
+            .collect()
+    });
     Evaluation {
+        amplitudes,
+        amplitude_check,
+        amplitude_budget,
+        amplitude_scale,
+        counterterm_kets: None,
         born,
         loop_born,
         counterterms,
@@ -929,6 +994,7 @@ where
         }
     };
     let (mut born, mut loop_born, mut counterterms) = (None, None, None);
+    let mut kets: Option<Vec<Values>> = None;
     let mut columns: Option<Vec<Vec<Values>>> = None;
     let mut correlations: Option<Vec<Values>> = None;
     let mut results = Vec::with_capacity(points);
@@ -965,6 +1031,15 @@ where
         extend(&mut born, native.born_squared.map(export));
         extend(&mut loop_born, native.loop_born.map(export));
         extend(&mut counterterms, native.counterterms.map(export));
+        extend(
+            &mut kets,
+            native.kets.map(|points| {
+                points
+                    .iter()
+                    .map(|values| T::export(values, bits))
+                    .collect()
+            }),
+        );
         if let Some(correlator) = dipoles {
             // The Born vectors' colour correlations (M-FINAL MF-8G-3), in
             // the report's "trees: dipoles" stage.
@@ -1029,6 +1104,7 @@ where
         columns,
     );
     evaluation.dipoles = correlations;
+    evaluation.counterterm_kets = kets;
     Ok(evaluation)
 }
 
@@ -1662,8 +1738,14 @@ impl V2Executor {
     /// `dipoles` (a `NativeDipoleCorrelator`, native trees only) adds per
     /// point the Born vectors' colour correlations contracted over the
     /// stored dipole orbits (`"dipoles"`, the native Catani operator's
-    /// input; report stage "trees: dipoles").
-    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both", contraction="auto", part_points=None, fill_points=None, input_budget=None, rows=None, basis=None, components=None, families=None, dipoles=None))]
+    /// input; report stage "trees: dipoles"). An amplitude-mode plan
+    /// (schema 5, loop-induced) returns per point `amplitudes` (per (loop
+    /// order, column) slot the bare loop amplitude `i/(16π²) Σ_f Ω_f`),
+    /// with a check `amplitude_check` and `amplitude_budget`, with
+    /// `term_scale` the slots' term scale `amplitude_scale` (one
+    /// unit-numerator reduction per monomial, family and point); its raw
+    /// lanes only with `raw_lanes`.
+    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both", contraction="auto", part_points=None, fill_points=None, input_budget=None, rows=None, basis=None, components=None, families=None, dipoles=None, raw_lanes=false, term_scale=false))]
     #[allow(clippy::too_many_arguments)]
     fn evaluate(
         &mut self,
@@ -1688,6 +1770,8 @@ impl V2Executor {
         components: Option<Vec<bool>>,
         families: Option<Vec<bool>>,
         dipoles: Option<PyRef<'_, NativeDipoleCorrelator>>,
+        raw_lanes: bool,
+        term_scale: bool,
     ) -> PyResult<Evaluation> {
         let poles = match poles {
             Some(value) => v2::poles_option(&value)?,
@@ -1713,6 +1797,8 @@ impl V2Executor {
                 "fft" => Contraction::Fft,
                 _ => return Err(error("contraction must be auto, direct or fft")),
             },
+            raw_lanes,
+            term_scale,
             ..V2Options::default()
         };
         if let Some(chunk) = chunk_families {
@@ -1993,8 +2079,54 @@ fn evaluate_v2_artifact(
         .collect())
 }
 
+/// |A|² of binary64 loop-induced amplitude vectors per sector and Laurent
+/// coefficient in the canonical squaring order
+/// (`rusticol_core::loop_v2::interference::square_amplitudes`, the native
+/// binary64 square of RULED Q41; DD and arbitrary precision square the
+/// exported vectors in Python's `Decimal`, `loops/v2/induced.square`).
+/// `amplitudes` per (loop order, row, basis element) slot (`orders` loop
+/// orders) its Laurent coefficients as `[re, im]` pairs; `metric` `G`
+/// row-major; `sectors` per sector its `(l, l')` loop-order slot pairs.
+#[pyfunction]
+#[pyo3(signature = (amplitudes, orders, rows, basis, width, metric, sectors, average))]
+#[allow(clippy::too_many_arguments)]
+fn square_amplitudes(
+    py: Python<'_>,
+    amplitudes: Vec<Vec<[f64; 2]>>,
+    orders: usize,
+    rows: usize,
+    basis: usize,
+    width: usize,
+    metric: Vec<[f64; 2]>,
+    sectors: Vec<Vec<(usize, usize)>>,
+    average: f64,
+) -> PyResult<Vec<Vec<f64>>> {
+    let complex = |values: &[[f64; 2]]| {
+        values
+            .iter()
+            .map(|[re, im]| Complex::new(*re, *im))
+            .collect::<Vec<_>>()
+    };
+    let amplitudes: Vec<Vec<Complex<f64>>> = amplitudes.iter().map(|cell| complex(cell)).collect();
+    let metric = complex(&metric);
+    py.detach(|| {
+        rusticol_core::loop_v2::interference::square_amplitudes(
+            &amplitudes,
+            orders,
+            rows,
+            basis,
+            width,
+            &metric,
+            &sectors,
+            &average,
+        )
+    })
+    .map_err(error)
+}
+
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<V2Executor>()?;
+    module.add_function(wrap_pyfunction!(square_amplitudes, module)?)?;
     module.add_function(wrap_pyfunction!(compile_v2_plane, module)?)?;
     module.add(
         "PlaneMismatchError",

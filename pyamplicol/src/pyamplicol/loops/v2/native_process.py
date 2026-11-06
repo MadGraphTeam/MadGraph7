@@ -163,7 +163,13 @@ def _stored_dipoles(slice_: Any) -> str | None:
 
 
 def _plan_view(
-    record: Mapping[str, Any], columns: Any, trees: NativeTrees, first: int = 0
+    record: Mapping[str, Any],
+    columns: Any,
+    trees: NativeTrees,
+    first: int = 0,
+    *,
+    rows: tuple = (),
+    amplitude: int | None = None,
 ) -> Any:
     """The ``ExportedPlan`` view a native executor reads: lane labels (plan
     family indices from ``first``, loop orders, sector columns), the tree
@@ -171,14 +177,16 @@ def _plan_view(
     fourier_record``; the record's ``fourier``, absent when every seed is
     contracted directly). The companion's families are numbered after the
     process's, so the lanes of both stay distinct in one evaluation
-    (``assemble._PointEvaluation.set_lanes``)."""
+    (``assemble._PointEvaluation.set_lanes``). A loop-induced process's
+    view also has its helicity ``rows`` and amplitude basis size
+    (``amplitude``; ``induced.read_native``)."""
 
     from .plan_export import ExportedPlan
 
     fourier = record.get("fourier")
     return ExportedPlan(
         program={},
-        rows=(),
+        rows=rows,
         born_components=(),
         block_rows=(),
         constants=(),
@@ -188,6 +196,7 @@ def _plan_view(
         columns=columns,
         trees=trees,
         fourier=None if fourier is None else json.dumps(fourier, separators=(",", ":")),
+        amplitude=amplitude,
     )
 
 
@@ -287,12 +296,28 @@ class NativeProcess:
 
         trees = exported.trees
         born = None if trees is None else trees.program["born"]
-        if born is None or born["metric"] is None:
+        sectors = [sector for sector, _pairs in slice_.sectors]
+        if getattr(slice_, "amplitude", None) is not None:
+            # Loop-induced (amplitude mode, ``induced``): no Born; the plan's
+            # columns are (row, t).
+            from . import induced
+
+            if trees is None or exported.amplitude is None:
+                raise ValueError(
+                    "a loop-induced native process needs an amplitude-mode plan "
+                    "exported with trees"
+                )
+            if tuple(exported.columns) != induced.column_labels(
+                exported.rows, exported.amplitude
+            ):
+                raise ValueError(
+                    "a loop-induced native process evaluates its (row, t) columns"
+                )
+        elif born is None or born["metric"] is None:
             raise ValueError(
                 "a native process needs a plan exported with trees and |A0|^2"
             )
-        sectors = [sector for sector, _pairs in slice_.sectors]
-        if tuple(exported.columns) != tuple(sectors):
+        elif tuple(exported.columns) != tuple(sectors):
             raise ValueError("a native process evaluates the sector columns")
         request = slice_.request
         record = {
@@ -329,6 +354,12 @@ class NativeProcess:
             "trees": _trees_record(trees),
             "scaleless": None,
         }
+        if exported.amplitude is not None:
+            # A loop-induced process's amplitude record (absent for a
+            # Born-interfered one, whose records keep their bytes).
+            from . import induced
+
+            record["amplitude"] = induced.amplitude_record(slice_, exported)
         regulators = slice_.pole_regulators
         if regulators is not None:
             # The model's pole regulators (``poles.pole_regulators``): the
@@ -368,7 +399,10 @@ class NativeProcess:
         # makes no prediction.
         from . import dipoles
 
-        catani = dipoles.catani_record(slice_)
+        # A loop-induced process has no Born, hence no Catani prediction and
+        # no dipole operators (its poles vanish: the finiteness cross-check).
+        induced = exported.amplitude is not None
+        catani = None if induced else dipoles.catani_record(slice_)
         if catani is not None:
             record["catani"] = catani
         # A slice on the full tree kernels (``ward.ward_slice``): its stored
@@ -380,7 +414,13 @@ class NativeProcess:
             # Its massless vector legs (``ward.gauge_legs``): the stored view
             # has no model data.
             record["gauge_legs"] = list(gauge_legs(slice_))
-        return cls(plan, trees, record, companion, dipoles=_stored_dipoles(slice_))
+        return cls(
+            plan,
+            trees,
+            record,
+            companion,
+            dipoles=None if induced else _stored_dipoles(slice_),
+        )
 
     # -- storage -------------------------------------------------------------
 
@@ -493,6 +533,14 @@ class NativeProcess:
         record = self.record
         columns = tuple(_orders_of(sector) for sector, _pairs in record["sectors"])
         view = _ProcessView(record, native, externals)
+        rows: tuple = ()
+        size = None
+        if view.amplitude is not None:
+            # Loop-induced: the (row, t) columns of the amplitude-mode plan.
+            from . import induced
+
+            rows, size = view.amplitude.rows, len(view.amplitude)
+            columns = induced.column_labels(rows, size)
         # The stored dipole orbits: Catani's colour input when the executor
         # forms the prediction (``NativeExecutor(catani=True)``).
         view.stored_dipoles = self.dipoles
@@ -507,7 +555,7 @@ class NativeProcess:
         return NativeExecutor(
             view,
             forward=False,
-            exported=_plan_view(record, columns, self.trees),
+            exported=_plan_view(record, columns, self.trees, rows=rows, amplitude=size),
             plan_json=self.plan,
             inputs="native",
             scaleless=companion,
@@ -549,6 +597,15 @@ class _ProcessView:
             for sector, pairs in record["sectors"]
         )
         self.normalisation = SimpleNamespace(average=int(record["average"]))
+        # A loop-induced process's stored amplitude basis
+        # (``induced.StoredAmplitude``), None for a Born-interfered one.
+        self.amplitude = None
+        self.colour_zero_orders: frozenset = frozenset()
+        if "amplitude" in record:
+            from .induced import StoredAmplitude
+
+            self.amplitude = StoredAmplitude.from_record(record["amplitude"])
+            self.colour_zero_orders = self.amplitude.colour_zero_orders
         # The certified-scaleless companion's view (``NativeProcess.
         # executor``): the same process, sectors and parameters.
         self.scaleless: _ProcessView | None = None

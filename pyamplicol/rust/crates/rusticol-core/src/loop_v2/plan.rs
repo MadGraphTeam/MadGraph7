@@ -56,8 +56,21 @@ use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use symbolica::domains::rational::Rational;
 
-/// The plan schema version this executor runs.
+/// The plan schema version of the seeded (Born-interfered) plans.
 pub const PLAN_SCHEMA: u32 = 4;
+/// The plan schema of amplitude-mode plans (loop-induced |A_loop|^2, M-LIT
+/// RULED Q42 = (a)): route R1's one-hot columns `(h, t)`, each seeding one
+/// Born helicity row (`column_rows`) with the coefficient cells `c_{c,t}`
+/// of its seed-weight column on unit Born components, and the executor's
+/// native amplitude sum per (loop order, column) instead of the bare
+/// interference. Seeded plans keep schema 4 and their bytes.
+pub const AMPLITUDE_PLAN_SCHEMA: u32 = 5;
+
+/// Whether this executor runs plans of `schema` (4 seeded, 5 amplitude
+/// mode).
+pub fn admitted_schema(schema: u32) -> bool {
+    schema == PLAN_SCHEMA || schema == AMPLITUDE_PLAN_SCHEMA
+}
 
 fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::compatibility(format!("loop v2 plan: {}", message.into()))
@@ -900,6 +913,10 @@ pub struct LoopProgramV4 {
     /// The rows of the chunk inputs schedule B reads, when the live-row
     /// pruning restricts them (`plan/live.rs`); `None`: every row.
     pub read_rows: Option<ReadRows>,
+    /// Amplitude mode ([`AMPLITUDE_PLAN_SCHEMA`]): the executor sums the
+    /// families into the loop amplitude per (loop order, column) instead of
+    /// the bare interference (`loop_execution::v2`).
+    pub amplitude: bool,
 }
 
 /// The rows of the chunk inputs schedule B reads (`plan/live.rs`): the
@@ -1303,9 +1320,30 @@ impl LoopProgramV4 {
     }
 
     fn from_file(file: PlanFile, policy: FormPolicy) -> RusticolResult<Self> {
-        require(file.schema == PLAN_SCHEMA, "unsupported plan schema")?;
+        require(admitted_schema(file.schema), "unsupported plan schema")?;
+        let amplitude = file.schema == AMPLITUDE_PLAN_SCHEMA;
+        if amplitude {
+            // R1: every column seeds exactly one Born helicity row.
+            let rows = file
+                .column_rows
+                .as_deref()
+                .ok_or_else(|| invalid("an amplitude-mode plan needs column rows"))?;
+            require(
+                rows.len() == file.columns
+                    && rows
+                        .iter()
+                        .all(|kept| kept.as_ref().is_some_and(|kept| kept.len() == 1)),
+                "an amplitude-mode column seeds one Born helicity row",
+            )?;
+        }
         super::bounds::check_legs(file.legs).map_err(invalid)?;
-        require(file.rows > 0 && file.columns > 0, "empty process")?;
+        // An amplitude-mode plan of an exact colour zero (no coefficient
+        // cell and no counterterm ket: an empty amplitude basis, e.g.
+        // h > g a, Tr T^a = 0) has no column: its |A|^2 is 0.
+        require(
+            file.rows > 0 && (file.columns > 0 || amplitude),
+            "empty process",
+        )?;
         require(file.average > 0, "normalisation divisor must be positive")?;
         let columns = file.columns;
         let kernels = file
@@ -1652,6 +1690,7 @@ impl LoopProgramV4 {
             products: tables.tables,
             order_count,
             read_rows: None,
+            amplitude,
         };
         // Helicity-resolved and selected columns: the steps keep the rows
         // their kept Born rows reach (`live`).

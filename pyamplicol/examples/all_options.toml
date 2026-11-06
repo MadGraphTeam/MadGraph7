@@ -205,6 +205,11 @@ emit_api_bundle = true
 # are refused by default. Recorded in the artifact. Needs particle_veto.
 # Virtual-only. Default false.
 # allow_anomalous_veto = true
+# generation.allow_failed_probes: Store a loop-induced process whose
+# generation-time finiteness or Ward probe (double-double, within ten times the
+# probe's own estimate) failed; such processes are refused by default. Recorded
+# in the artifact. Virtual-only. Default false.
+# allow_failed_probes = true
 [generation.validation]
 # generation.validation.enabled: Run generation validation. Default true.
 enabled = true

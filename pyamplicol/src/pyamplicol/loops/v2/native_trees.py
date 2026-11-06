@@ -457,6 +457,11 @@ class NativeTrees:
     # container's compressed member (``StoredMember``) instead, which its
     # executors inflate natively (M-FINAL MF-8G-2 item 2).
     container: bytes | StoredMember | None = None
+    # (component, epsilon power, loop orders) of each counterterm ket vector
+    # (``_Counterterms.vectors``; generation only): with ``ket_tensors`` and
+    # the program's ket layout a loop-induced point's native kets project
+    # onto its amplitude basis (``induced.native_kets``).
+    ket_vectors: tuple[tuple[str, int, Orders], ...] = ()
 
     @property
     def is_binary(self) -> bool:
@@ -1153,6 +1158,10 @@ def export_trees(
         counterterms = _counterterm_program(
             slice_, closure_term, whole_term, components, born_orders, ct_terms
         )
+        if not counterterms.record["ket"] and not counterterms.record["entries"]:
+            # No counterterm term and no field insertion reaches the request
+            # (an exact colour zero's program): nothing to evaluate.
+            counterterms = ct = None
     masses = _external_masses(slice_)
     parameters, parameter_evaluator, parameter_outputs = _parameter_program(
         slice_,
@@ -1250,6 +1259,7 @@ def export_trees(
         ),
         () if counterterms is None else counterterms.tensors,
         tuple(sections.items()),
+        ket_vectors=() if counterterms is None else counterterms.vectors,
     )
 
 
@@ -1407,6 +1417,10 @@ class _Counterterms:
     # ``NATIVE_SECTIONS``: the overlap cells' binary section (``record``
     # then omits ``cells``; ``_cell_section``).
     cells: bytes | None = None
+    # (component, epsilon power, loop orders) of each ket vector, in index
+    # order: a loop-induced point's kets project onto its amplitude basis
+    # from them (``induced.native_kets``).
+    vectors: tuple[tuple[str, int, Orders], ...] = ()
 
 
 def _counterterm_program(
@@ -1733,6 +1747,7 @@ def _counterterm_program(
         ),
         tuple(literal),
         cell_section,
+        tuple(vectors),
     )
 
 
@@ -1763,9 +1778,11 @@ def _cell_section(slice_: Any, literal: Sequence[Any]) -> bytes:
         slice_.basis, tensors=tuple(_single(tensor, legs) for tensor in literal[:count])
     )
     kets = [_single(tensor, legs) for tensor in literal]
+    # (A program without ket tensors, e.g. an exact colour zero's, has one
+    # empty table.)
     parts = [
         bytes(NativeCells(basis).table(kets[start : start + _CELL_CHUNK]).section())
-        for start in range(0, len(kets), _CELL_CHUNK)
+        for start in range(0, max(len(kets), 1), _CELL_CHUNK)
     ]
     return parts[0] if len(parts) == 1 else _join_cell_sections(parts)
 

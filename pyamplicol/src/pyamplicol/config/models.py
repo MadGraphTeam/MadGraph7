@@ -864,6 +864,10 @@ class GenerationConfig:
     # from cancelling but that cancel without it (an anomalous veto, e.g. one
     # breaking a quark doublet); refused by default. Recorded in the artifact.
     allow_anomalous_veto: bool = field(default=False, metadata=_setting("bool"))
+    # m-lit Q12: store a loop-induced process whose generation-time
+    # finiteness or Ward probe failed (refused by default); the failure is
+    # recorded in the artifact.
+    allow_failed_probes: bool = field(default=False, metadata=_setting("bool"))
     validation: GenerationValidationConfig = field(
         default_factory=GenerationValidationConfig, metadata=_section()
     )
@@ -891,6 +895,8 @@ class GenerationConfig:
             raise ConfigurationError(
                 "generation.allow_anomalous_veto must be a boolean"
             )
+        if not isinstance(self.allow_failed_probes, bool):
+            raise ConfigurationError("generation.allow_failed_probes must be a boolean")
         if self.allow_anomalous_veto and not self.particle_veto:
             raise ConfigurationError(
                 "generation.allow_anomalous_veto requires generation.particle_veto"

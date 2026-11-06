@@ -109,6 +109,22 @@ pub mod v2 {
         /// when read again (`ChunkInputs::prepare_within`; heap limbs of
         /// arbitrary-precision reals excluded).
         pub input_budget: usize,
+        /// Amplitude-mode plans (`LoopProgramV4::amplitude`): also return
+        /// every raw reduction lane ([`PointResult::families`], and the
+        /// re-test's), a diagnostic and oracle; by default a point returns
+        /// only its amplitudes, their re-test and budget (O(rows x basis)
+        /// values per loop order). Seeded plans always return their lanes.
+        pub raw_lanes: bool,
+        /// Amplitude-mode plans: also return each (loop order, column)
+        /// slot's term scale `Σ_f Σ_α |N_{f,α}| |I_{f,α}| / (16π²)` per
+        /// Laurent coefficient ([`PointResult::amplitude_scale`]), the size
+        /// of the amplitude before the reduction's cancellations (the
+        /// finiteness and stability scale of a loop-induced point, m-lit
+        /// DECISIONS 2026-11-06 ~09:00 (1)). `I_{f,α}` is the integral of
+        /// monomial `α` of family `f`: one unit-numerator reduction per
+        /// monomial, family and point, so the option costs `C(R+4, 4)`
+        /// lanes per family and point; refused for seeded plans.
+        pub term_scale: bool,
     }
 
     impl Default for V2Options {
@@ -121,6 +137,8 @@ pub mod v2 {
                 part_chunks: DEFAULT_PART_CHUNKS,
                 contraction: Contraction::Auto,
                 input_budget: DEFAULT_INPUT_BUDGET,
+                raw_lanes: false,
+                term_scale: false,
             }
         }
     }
@@ -214,6 +232,10 @@ pub mod v2 {
             .sum()
     }
 
+    /// Report stage and count of the term scale's unit-numerator reductions
+    /// ([`V2Options::term_scale`]).
+    pub const TERM_SCALE: &str = "term scale";
+    pub const TERM_SCALE_LANES: &str = "term-scale lanes";
     /// Report count of the modelled dressing work (complex MAC per lane).
     const DRESSING_WORK: &str = "dressing work (modelled complex MAC per lane)";
     /// Report count of the chunk inputs dropped while still live (rebuilt
@@ -227,15 +249,36 @@ pub mod v2 {
     /// One point of an evaluation.
     #[derive(Clone)]
     pub struct PointResult<T> {
-        /// Raw Laurent integrals of every reduced lane.
+        /// Raw Laurent integrals of every reduced lane (amplitude-mode
+        /// plans: only with [`V2Options::raw_lanes`]).
         pub families: Vec<(LaneKey, Vec<Complex<T>>)>,
-        /// The re-test integrals, when a check was asked.
+        /// The re-test integrals, when a check was asked (amplitude-mode
+        /// plans: only with [`V2Options::raw_lanes`]).
         pub check: Option<Vec<(LaneKey, Vec<Complex<T>>)>>,
         /// Per observable column, the bare virtual `2 Re(i/(16π² avg) ΣΩ)`
-        /// per Laurent coefficient.
+        /// per Laurent coefficient (empty for amplitude-mode plans).
         pub bare: Vec<Vec<T>>,
-        /// Per observable column, the re-test error budget.
+        /// Per observable column, the re-test error budget (seeded plans).
         pub budget: Option<Vec<Vec<T>>>,
+        /// Amplitude-mode plans (loop-induced, M-LIT LIT-AMP): per loop
+        /// order and column, at `order * columns + column`, the bare loop
+        /// amplitude `a = i/(16π²) Σ_f Ω_f` per Laurent coefficient, the
+        /// families summed in lane order (family, then column); empty for
+        /// seeded plans.
+        pub amplitudes: Vec<Vec<Complex<T>>>,
+        /// The re-test's amplitudes, when a check was asked.
+        pub amplitude_check: Option<Vec<Vec<Complex<T>>>>,
+        /// Per loop order and column `Σ_f |Ω_f − Ω'_f| / (16π²)` per
+        /// coefficient: the amplitude's re-test budget in which no two
+        /// families cancel (the caller forms the quadratic budget of |A|²
+        /// with the counterterm kets and the colour metric).
+        pub amplitude_budget: Option<Vec<Vec<T>>>,
+        /// With [`V2Options::term_scale`], per loop order and column the
+        /// term scale `Σ_f Σ_α |N_{f,α}| |I_{f,α}| / (16π²)` per
+        /// coefficient: the amplitude's size before the reduction's own
+        /// cancellations (the caller forms the per-row term floor with the
+        /// counterterm kets and the colour metric); else empty.
+        pub amplitude_scale: Vec<Vec<T>>,
         /// Numerical failures; a failed point has no values.
         pub failures: Vec<String>,
     }
@@ -964,6 +1007,63 @@ pub mod v2 {
         failures: Vec<Vec<String>>,
         families: Vec<Vec<(LaneKey, Vec<Complex<T>>)>>,
         checks: Vec<Vec<(LaneKey, Vec<Complex<T>>)>>,
+        /// [`V2Options::term_scale`]: per point and (loop order, column)
+        /// slot `Σ_f Σ_α |N_{f,α}| |I_{f,α}|` per coefficient (without the
+        /// loop factor); empty until a point's first lane is reduced.
+        terms: Vec<Vec<Vec<T>>>,
+    }
+
+    /// The unit-numerator lanes of a family group: per point of the group
+    /// (its lanes are point-major, `lanes_of`) one lane per monomial `α` of
+    /// the family's coefficient layout with numerator `q^α`, at that point's
+    /// kinematics (key column = `α`). Their integrals are the family's
+    /// tensor moments `I_{f,α}` ([`V2Options::term_scale`]).
+    fn unit_lanes<T: Carrier>(group: &FamilyLanes<T>, zero: &T) -> FamilyLanes<T> {
+        let lanes = group.keys.len();
+        let monomials = group.coefficients.len() / lanes.max(1);
+        let n = group.propagators;
+        let one = Complex::new(zero.one(), zero.clone());
+        let nil = Complex::new(zero.clone(), zero.clone());
+        let mut units = FamilyLanes {
+            family: group.family,
+            propagators: n,
+            rank: group.rank,
+            points: Vec::new(),
+            keys: Vec::new(),
+            shifts: Vec::new(),
+            masses: Vec::new(),
+            scales: Vec::new(),
+            s_matrix: Vec::new(),
+            coefficients: Vec::new(),
+        };
+        for lane in 0..lanes {
+            let point = group.points[lane];
+            if lane > 0 && group.points[lane - 1] == point {
+                continue;
+            }
+            for alpha in 0..monomials {
+                units.points.push(point);
+                units.keys.push(LaneKey {
+                    family: group.family,
+                    order: 0,
+                    column: alpha,
+                });
+                units
+                    .shifts
+                    .extend_from_slice(&group.shifts[lane * 4 * n..(lane + 1) * 4 * n]);
+                units
+                    .masses
+                    .extend_from_slice(&group.masses[lane * n..(lane + 1) * n]);
+                units.scales.push(group.scales[lane].clone());
+                units
+                    .s_matrix
+                    .extend_from_slice(&group.s_matrix[lane * n * n..(lane + 1) * n * n]);
+                units.coefficients.extend(
+                    (0..monomials).map(|m| if m == alpha { one.clone() } else { nil.clone() }),
+                );
+            }
+        }
+        units
     }
 
     /// The reduction side of one chunk of lanes: scatters family numerators
@@ -980,7 +1080,7 @@ pub mod v2 {
         sink: &'a mut Lanes<T>,
     }
 
-    impl<T: Carrier, B: V2Backend<T>, const L: usize> Reduction<'_, T, B, L> {
+    impl<T: Carrier + Real, B: V2Backend<T>, const L: usize> Reduction<'_, T, B, L> {
         fn reduce(
             &mut self,
             numerators: &[FamilyNumerator<T>],
@@ -1040,6 +1140,67 @@ pub mod v2 {
                     }
                 }
             }
+            if self.options.term_scale {
+                self.term_scale(&groups, report)?;
+            }
+            Ok(())
+        }
+
+        /// [`V2Options::term_scale`]: reduce every group's unit-numerator
+        /// lanes ([`unit_lanes`], no re-test) and add, per lane,
+        /// `Σ_α |N_α| |I_α|` per Laurent coefficient to its point's (loop
+        /// order, column) slot.
+        fn term_scale(
+            &mut self,
+            groups: &[FamilyLanes<T>],
+            report: &mut Report,
+        ) -> RusticolResult<()> {
+            let start = Instant::now();
+            let zero = &self.data.zero;
+            let units: Vec<FamilyLanes<T>> =
+                groups.iter().map(|group| unit_lanes(group, zero)).collect();
+            report.count(
+                TERM_SCALE_LANES,
+                units.iter().map(|g| g.keys.len() as u64).sum(),
+            );
+            let (moments, _) = self.backend.reduce(&units, self.options.poles, None)?;
+            let width = self.options.poles.width();
+            let slots = self.plan.order_count * self.plan.columns;
+            let sink = &mut *self.sink;
+            for ((group, unit), moments) in groups.iter().zip(&units).zip(&moments) {
+                let monomials = group.coefficients.len() / group.keys.len().max(1);
+                let mut first = 0;
+                for (lane, (&point, &key)) in group.points.iter().zip(&group.keys).enumerate() {
+                    if lane > 0 && group.points[lane - 1] != point {
+                        first += monomials;
+                    }
+                    debug_assert_eq!(unit.points[first], point);
+                    let terms = &mut sink.terms[point];
+                    if terms.is_empty() {
+                        *terms = vec![vec![zero.clone(); width]; slots];
+                    }
+                    let slot = &mut terms[key.order * self.plan.columns + key.column];
+                    let numerator = &group.coefficients[lane * monomials..(lane + 1) * monomials];
+                    for (alpha, n) in numerator.iter().enumerate() {
+                        if n.re.is_fully_zero() && n.im.is_fully_zero() {
+                            continue;
+                        }
+                        match &moments[first + alpha] {
+                            Ok(moment) => {
+                                let size = n.clone().norm().re;
+                                for (s, z) in slot.iter_mut().zip(moment) {
+                                    *s += size.clone() * &z.clone().norm().re;
+                                }
+                            }
+                            Err(status) => sink.failures[point].push(format!(
+                                "term scale of family {} monomial {alpha}: {status}",
+                                group.family
+                            )),
+                        }
+                    }
+                }
+            }
+            report.time(TERM_SCALE, start);
             Ok(())
         }
     }
@@ -1122,10 +1283,16 @@ pub mod v2 {
         let merged_parts = merged
             .map(|merged| parts(merged, options.part_chunks, plan))
             .unwrap_or_default();
+        if options.term_scale && !plan.amplitude {
+            return Err(RusticolError::invalid_argument(
+                "the term scale is a diagnostic of amplitude-mode plans (loop-induced)",
+            ));
+        }
         let mut sink = Lanes {
             failures: vec![Vec::new(); points],
             families: vec![Vec::new(); points],
             checks: vec![Vec::new(); points],
+            terms: vec![Vec::new(); points],
         };
         for chunk in chunks(points, L) {
             backend.begin();
@@ -1205,6 +1372,7 @@ pub mod v2 {
             mut failures,
             mut families,
             mut checks,
+            mut terms,
         } = sink;
         let zero = zero.zero();
         let pi = zero.pi();
@@ -1213,15 +1381,51 @@ pub mod v2 {
             zero.one() / (zero.from_usize(16) * &pi * &pi * zero.from_usize(plan.average as usize)),
         );
         let mut results = Vec::with_capacity(points);
+        let failed = |failures: Vec<String>| PointResult {
+            families: Vec::new(),
+            check: None,
+            bare: Vec::new(),
+            budget: None,
+            amplitudes: Vec::new(),
+            amplitude_check: None,
+            amplitude_budget: None,
+            amplitude_scale: Vec::new(),
+            failures,
+        };
+        if plan.amplitude {
+            // Amplitude-mode plans (decided once per call): the native
+            // amplitude sum per (loop order, column).
+            for point in 0..points {
+                if !failures[point].is_empty() {
+                    results.push(failed(std::mem::take(&mut failures[point])));
+                    continue;
+                }
+                let mut lanes = std::mem::take(&mut families[point]);
+                lanes.sort_by_key(|(key, _)| *key);
+                let tests = options.check.map(|_| {
+                    let mut tests = std::mem::take(&mut checks[point]);
+                    tests.sort_by_key(|(key, _)| *key);
+                    tests
+                });
+                let terms = options
+                    .term_scale
+                    .then(|| std::mem::take(&mut terms[point]));
+                results.push(amplitude_result(
+                    plan,
+                    &zero,
+                    width,
+                    lanes,
+                    tests,
+                    terms,
+                    options.raw_lanes,
+                ));
+            }
+            report.count("points", points as u64);
+            return Ok((results, report));
+        }
         for point in 0..points {
             if !failures[point].is_empty() {
-                results.push(PointResult {
-                    families: Vec::new(),
-                    check: None,
-                    bare: Vec::new(),
-                    budget: None,
-                    failures: std::mem::take(&mut failures[point]),
-                });
+                results.push(failed(std::mem::take(&mut failures[point])));
                 continue;
             }
             let mut sums =
@@ -1264,11 +1468,88 @@ pub mod v2 {
                 check,
                 bare,
                 budget,
+                amplitudes: Vec::new(),
+                amplitude_check: None,
+                amplitude_budget: None,
+                amplitude_scale: Vec::new(),
                 failures: Vec::new(),
             });
         }
         report.count("points", points as u64);
         Ok((results, report))
+    }
+
+    /// The loop amplitude of an amplitude-mode point (M-LIT LIT-AMP, the
+    /// native amplitude sum): per (loop order, column) `i/(16π²) Σ_f Ω_f`
+    /// over the point's lanes sorted by key (families in plan order), the
+    /// re-test's amplitude and the budget `Σ_f |ΔΩ_f| / (16π²)` when a
+    /// check ran, the term scale `Σ_f Σ_α |N_α| |I_α| / (16π²)` when asked
+    /// (`terms`, [`V2Options::term_scale`]); the raw lanes kept only when
+    /// asked (`raw_lanes`).
+    fn amplitude_result<T: Real>(
+        plan: &LoopProgramV4,
+        zero: &T,
+        width: usize,
+        lanes: Vec<(LaneKey, Vec<Complex<T>>)>,
+        tests: Option<Vec<(LaneKey, Vec<Complex<T>>)>>,
+        terms: Option<Vec<Vec<T>>>,
+        raw_lanes: bool,
+    ) -> PointResult<T> {
+        let pi = zero.pi();
+        let scale = zero.one() / (zero.from_usize(16) * &pi * &pi);
+        let factor = Complex::new(zero.clone(), scale.clone());
+        let slots = plan.order_count * plan.columns;
+        let slot = |key: &LaneKey| key.order * plan.columns + key.column;
+        let sum = |lanes: &[(LaneKey, Vec<Complex<T>>)]| {
+            let mut out = vec![vec![Complex::new(zero.clone(), zero.clone()); width]; slots];
+            for (key, value) in lanes {
+                for (s, z) in out[slot(key)].iter_mut().zip(value) {
+                    *s += z;
+                }
+            }
+            for amplitude in &mut out {
+                for z in amplitude.iter_mut() {
+                    *z = factor.clone() * &*z;
+                }
+            }
+            out
+        };
+        let amplitudes = sum(&lanes);
+        // A point none of whose lanes was reduced has no term (all zero).
+        let amplitude_scale = match terms {
+            Some(terms) if terms.is_empty() => vec![vec![zero.clone(); width]; slots],
+            Some(mut terms) => {
+                for z in terms.iter_mut().flatten() {
+                    *z = scale.clone() * &*z;
+                }
+                terms
+            }
+            None => Vec::new(),
+        };
+        let (amplitude_check, amplitude_budget) = match &tests {
+            Some(tests) => {
+                let mut budget = vec![vec![zero.clone(); width]; slots];
+                for ((key, direct), (other, test)) in lanes.iter().zip(tests) {
+                    debug_assert_eq!(key, other);
+                    for (b, d) in budget[slot(key)].iter_mut().zip(deviation(direct, test)) {
+                        *b += scale.clone() * &d;
+                    }
+                }
+                (Some(sum(tests)), Some(budget))
+            }
+            None => (None, None),
+        };
+        PointResult {
+            families: if raw_lanes { lanes } else { Vec::new() },
+            check: tests.filter(|_| raw_lanes),
+            bare: Vec::new(),
+            budget: None,
+            amplitudes,
+            amplitude_check,
+            amplitude_budget,
+            amplitude_scale,
+            failures: Vec::new(),
+        }
     }
 
     #[cfg(test)]

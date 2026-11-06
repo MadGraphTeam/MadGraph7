@@ -13,6 +13,7 @@ fn virtual_capability_is_known_without_admitting_scalar_tree_execution() {
     for capability in [
         RuntimeCapability::LoopRuntimeV3.as_str(),
         RuntimeCapability::LoopRuntimeV4.as_str(),
+        RuntimeCapability::LoopRuntimeV5.as_str(),
     ] {
         assert!(validate_runtime_capabilities(&[capability.to_owned()], "loop transport").is_ok());
         assert!(!crate::supported_runtime_capabilities().contains(&capability));

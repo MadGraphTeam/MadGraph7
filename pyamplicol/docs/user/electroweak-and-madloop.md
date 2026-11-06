@@ -136,8 +136,7 @@ extension `loop_skipped_members`). The stored members' sum is MadLoop's
 Born x virtual; the loop-squared contribution of a skipped member, which
 MadLoop's multiparticle output holds, is not computed. A request none of whose
 members has a Born is routed loop-induced (`process.loop_induced`, see
-[Configuration](configuration.md); its generation is refused
-`loop-induced-engine-pending` until the loop-induced engine lands), and
+[Configuration](configuration.md); generated as |A_loop|^2), and
 refused (`loop-induced`) under `process.loop_induced = "skip"`. `p` and `j` are the model's
 massless quarks and gluon; add the photon with `process.multiparticles`.
 
@@ -179,7 +178,7 @@ key with its remedy:
 | `ufo-value-writes` | a UFO that writes declared values after their constructors (e.g. the UFOmodeldb issue-1 patch of `loop_qcd_qed_sm_Gmu` as published; the shipped copy has them folded) |
 | `process-group-analysis` | a numerical process-group analysis of a one-loop request (permutation aliases and exact flavour members are served, see [Process grouping](process-grouping.md#one-loop-virtual-artifacts)) |
 | `direct-r2`, `fft-basis-trace`, `colour-selectors`, `relation-discovery`, `evaluator-backend`, `evaluator-tuning`, `covariant-multiplets` | settings the one-loop engine does not take (each message names the setting) |
-| `fermion-sign`, `reading-sign`, `unlowered-counterterm`, `counterterm-coupling`, `loop-kernel-catalogue`, `counterterm-completeness` | internal: an engine condition met during generation |
+| `fermion-sign`, `reading-sign`, `unlowered-counterterm`, `counterterm-coupling`, `loop-kernel-catalogue`, `counterterm-completeness`, `loop-induced-probe` | internal: an engine condition met during generation |
 
 A process whose point inputs the native export does not cover is refused
 with the export's key (`NativeExportRefused`, e.g. `plane-mismatch`). See
