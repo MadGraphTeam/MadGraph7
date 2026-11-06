@@ -31,7 +31,8 @@ Dependencies use ordinary pinned Git revisions and Cargo's lockfile. No ignored
 reference directory or `upstream` symlink is needed. The standalone workspace
 aligns Symbolica with the application's shared core and uses:
 
-- NinjaRS main `b3a29c8577733f384de1c74b48bde5b24c2799d3` (PRs #7-#12 and #14,
+- NinjaRS `36e30a49418e1b6a8b54ee774a920e3a9483b00d` (main `b3a29c85`, PRs #7-#12 and #14,
+  plus the 0BSD relicence;
   the Symbolica and oneloopmaster pins below; UV/IR pole selection through
   the master providers, the fast engine's UV residues `fast::tensor_uv`,
   threshold-free light-like spinors).

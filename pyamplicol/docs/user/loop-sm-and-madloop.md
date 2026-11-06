@@ -79,8 +79,8 @@ of them only.
 | `/ z` | `generation.particle_veto = ["Z"]` (internal lines, loops and counterterms) |
 | `p p > t t~` with a multiparticle label | the same expression: one artifact entry per subprocess (`p` and `j` are the model's massless quarks and gluon, so the b is in them on `no_b_mass`), each equal to its own single-process generation; load one with `Runtime.load(artifact, process="g g > t t~")` (the stable ID or the expression; the artifact records loop_sm's own spelling, `G G > t t~`, and any letter case selects it) |
 | `$ x`, `$$ x`, decay chains `a > b c, b > d e`, `@N` | not served |
-| `[noborn=QCD]` (loop-induced) | not served (see the refusals below) |
-| `t > b w+ [virt=QCD]` (one-loop decay) | `expression = "t > b w+"`, `process.loop_coupling_orders = ["QCD"]`: averaged over the decaying particle's helicities and colours, its own width zero (`fixed_parameters = { WT = "0" }`), equal to MadLoop (`h > g g [noborn=QCD]` stays `loop-induced`) |
+| `[noborn=QCD]` (loop-induced) | `process.loop_coupling_orders = ["QCD"]` with `process.loop_induced` (`"auto"`, the default, routes a process without a Born loop-induced; its generation is refused `loop-induced-engine-pending` until the loop-induced engine lands; [configuration](configuration.md#processes-and-multiparticles)) |
+| `t > b w+ [virt=QCD]` (one-loop decay) | `expression = "t > b w+"`, `process.loop_coupling_orders = ["QCD"]`: averaged over the decaying particle's helicities and colours, its own width zero (`fixed_parameters = { WT = "0" }`), equal to MadLoop (`h > g g [noborn=QCD]` is routed loop-induced) |
 
 MG5_aMC syntax inside a process expression is refused with the key
 `madloop-syntax`, and the message names the run-card setting above.
@@ -124,7 +124,7 @@ starts with a listed key and names the remedy; `pyamplicol generate
 | Key | Request |
 | --- | --- |
 | `madloop-syntax` | MG5_aMC syntax in the process expression |
-| `loop-induced` | no Born amplitude within the coupling-order limits (`g g > h h`, `g g > z z`, ...) |
+| `loop-induced` | no Born amplitude within the coupling-order limits (`g g > h h`, `g g > z z`, ...) under `process.loop_induced = "skip"` (the default routes it loop-induced: `loop-induced-engine-pending`) |
 | `coloured-width` | a coloured particle with a nonzero width in a tree current |
 | `lorentz-slot-arity` | a vertex tensor whose slots do not match its particles (other than the repaired constant scalar ones) |
 | `majorana-fermion`, `multi-fermion-contact` | Majorana fermions; vertices with more than two fermions |

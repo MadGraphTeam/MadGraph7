@@ -713,6 +713,75 @@ def test_nc_column_names_the_plan_rows_and_existing_oracles():
         assert p3 == p0 and _exact(mu3) * 4 == _exact(mu0), row
 
 
+@pytest.mark.loop_fast
+def test_scan_processes_are_bounded_by_cpus_memory_or_the_setting(monkeypatch):
+    """``loop_nc_scan.concurrent_processes``: the usable CPUs, at most the
+    available memory over this process's peak resident size (at least one),
+    or ``PYAMPLICOL_TEST_SUBPROCESSES`` when set (a positive integer)."""
+
+    from . import loop_nc_scan
+
+    resource = loop_nc_scan.resource
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
+    monkeypatch.delenv(loop_nc_scan.PROCESSES_VARIABLE, raising=False)
+    monkeypatch.setattr(loop_nc_scan, "_usable_cpus", lambda: 4)
+    for available, expected in (
+        (None, 4),
+        (100 * peak, 4),
+        (5 * peak // 2, 2),
+        (peak // 2, 1),
+    ):
+        monkeypatch.setattr(
+            loop_nc_scan, "_available_memory", lambda memory=available: memory
+        )
+        assert loop_nc_scan.concurrent_processes() == expected, available
+    monkeypatch.setenv(loop_nc_scan.PROCESSES_VARIABLE, "7")
+    assert loop_nc_scan.concurrent_processes() == 7
+    for wrong in ("0", "-1", "two", "1.5"):
+        monkeypatch.setenv(loop_nc_scan.PROCESSES_VARIABLE, wrong)
+        with pytest.raises(ValueError, match="positive integer"):
+            loop_nc_scan.concurrent_processes()
+
+
+@pytest.mark.loop_fast
+def test_scan_processes_never_exceed_the_bound(monkeypatch):
+    """Concurrent scans together (MQ-NC's oracles run two) start at most the
+    bound's processes at once: eight values over two scans, bound 3."""
+
+    import threading
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    from . import loop_nc_scan
+
+    lock = threading.Lock()
+    running = [0, 0]
+
+    def fake_run(command, **options):
+        with lock:
+            running[0] += 1
+            running[1] = max(running)
+        time.sleep(0.1)
+        with lock:
+            running[0] -= 1
+        return loop_nc_scan.subprocess.CompletedProcess(
+            command, 0, stdout=json.dumps({"n": command[-2]}) + "\n", stderr=""
+        )
+
+    monkeypatch.setenv(loop_nc_scan.PROCESSES_VARIABLE, "3")
+    monkeypatch.setattr(loop_nc_scan, "_SLOTS", None)
+    monkeypatch.setattr(loop_nc_scan.subprocess, "run", fake_run)
+    values = ("3", "2", "4", "1")
+    with ThreadPoolExecutor(2) as pool:
+        scans = [
+            pool.submit(loop_nc_scan.scan, "model", {}, values, "double", Path("c"))
+            for _ in range(2)
+        ]
+        for future in scans:
+            assert future.result() == {n: {"n": n} for n in values}
+    assert running[0] == 0 and 2 <= running[1] <= 3, running
+
+
 def _run(model, native, tmp_path, row, indices):
     from pyamplicol.models.loading import load_compiled_model
 

@@ -542,11 +542,20 @@ def test_slice_request_records_round_trip():
         alpha0_inverse="ainv0",
     )
     default = SliceRequest("g g > g g", {"QCD": 2}, {"QCD": 4})
+    # A loop-induced request is full colour without a selection (m-lit Q8):
+    # its contribution is checked on a request of its own below.
     for item in fields(SliceRequest):
-        if item.name not in ("process", "born_orders"):
+        if item.name not in ("process", "born_orders", "contribution"):
             assert getattr(request, item.name) != getattr(default, item.name), item
+    induced = SliceRequest(
+        "g g > h", {}, {"QCD": 2, "QED": 1}, contribution="loop-induced"
+    )
+    assert request_record(induced)["contribution"] == "loop-induced"
+    assert request_from_record(request_record(induced)) == induced
     record = request_record(request)
-    assert set(record) == {item.name for item in fields(SliceRequest)} | {"correlators"}
+    assert set(record) == {item.name for item in fields(SliceRequest)} - {
+        "contribution"
+    } | {"correlators"}
     assert json.loads(json.dumps(record)) == record
     assert request_from_record(record) == request
     single = request_record(default)
@@ -558,6 +567,7 @@ def test_slice_request_records_round_trip():
         "external_photons",
         "alpha0_conversion",
         "alpha0_inverse",
+        "contribution",
     } & set(single)
     assert request_from_record(single) == default
     with pytest.raises(ArtifactError, match=r"unknown.*future_option"):
