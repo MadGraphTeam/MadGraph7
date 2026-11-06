@@ -136,8 +136,7 @@ extension `loop_skipped_members`). The stored members' sum is MadLoop's
 Born x virtual; the loop-squared contribution of a skipped member, which
 MadLoop's multiparticle output holds, is not computed. A request none of whose
 members has a Born is routed loop-induced (`process.loop_induced`, see
-[Configuration](configuration.md); its generation is refused
-`loop-induced-engine-pending` until the loop-induced engine lands), and
+[Configuration](configuration.md); generated as |A_loop|^2), and
 refused (`loop-induced`) under `process.loop_induced = "skip"`. `p` and `j` are the model's
 massless quarks and gluon; add the photon with `process.multiparticles`.
 

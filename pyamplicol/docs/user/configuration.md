@@ -195,9 +195,11 @@ stable). A process every loop of which has a single coloured attachment
 such. A Born-less process that reaches no loop at all is refused, or skipped
 in a multiparticle request (`no-loop-amplitude`). The dry run lists the kind,
 the inferred loop orders and their loop x loop sectors, the loop orders that
-are exact colour zeros (`colour_zero_loop_orders`, `exact_colour_zero`);
-generation is refused (`loop-induced-engine-pending`) until the loop-induced
-engine lands.
+are exact colour zeros (`colour_zero_loop_orders`, `exact_colour_zero`).
+Generation stores |A_loop|^2 at full colour (artifact capability
+`rusticol.loop-runtime.v5`); `Runtime.evaluate` returns a `VirtualEvaluation`
+with `contribution = "loop-induced"`, empty Born fields and the poles
+`"all"` or `"none"` (their vanishing is a finiteness cross-check).
 
 `flavor_scheme`, `max_quark_lines`, and coupling-order settings constrain that
 expansion. Coupling-order names come from the selected model: the generic
