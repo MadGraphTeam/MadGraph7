@@ -85,7 +85,8 @@ class Banner(dict):
             'mgpgscard': 'MGPGSCard',
             'mgdelphescard': 'MGDelphesCard',
             'mgdelphestrigger': 'MGDelphesTrigger',
-            'mgshowercard': 'MGShowerCard' }
+            'mgshowercard': 'MGShowerCard',
+            'mcatnlomatching': 'MCatNLOMatching' }
     
     forbid_cdata = ['initrwgt']
     
@@ -132,6 +133,7 @@ class Banner(dict):
       'mggenerationinfo':'',
       'scalesfunctionalform':'',
       'montecarlomasses':'',
+      'mcatnlomatching':'',
       'initrwgt':'',
       'MGDensity':'',
       'madspin':'madspin_card.dat',
