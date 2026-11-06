@@ -55,10 +55,13 @@ import shutil
 import subprocess
 import sys
 import zlib
+from concurrent.futures import ThreadPoolExecutor
 from fractions import Fraction
 from pathlib import Path
 
 import pytest
+
+from .loop_nc_scan import run_bounded
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOL = ROOT / "tools" / "loop_artifact_portability.py"
@@ -776,8 +779,12 @@ def test_native_members_do_not_depend_on_the_model_cache(
     script = tmp_path / "generate.py"
     script.write_text(_GENERATE_DIGESTS)
     caches = {"cold": tmp_path / "cold-cache", "warm": warm}
-    running = {
-        name: subprocess.Popen(
+
+    def generate(name: str, cache: Path) -> subprocess.CompletedProcess:
+        # Two full generations, concurrent only for speed: within the test
+        # processes' bound (the first alone; the electroweak one holds about
+        # 5.7 GiB, two at once exceeded the CI loop jobs' 12 GiB).
+        return run_bounded(
             [
                 sys.executable,
                 str(script),
@@ -787,16 +794,18 @@ def test_native_members_do_not_depend_on_the_model_cache(
                 str(ROOT),
                 case,
             ],
+            kind=("model-cache generation", case),
             cwd=tmp_path,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            timeout=1800,
         )
-        for name, cache in caches.items()
-    }
-    for process in running.values():
-        output, _ = process.communicate(timeout=1800)
-        assert process.returncode == 0, output[-2000:]
+
+    with ThreadPoolExecutor(len(caches)) as pool:
+        runs = list(pool.map(generate, caches, caches.values()))
+    for run in runs:
+        assert run.returncode == 0, run.stdout[-2000:]
     cold, warm_run = (
         json.loads((tmp_path / f"{name}.json").read_text()) for name in caches
     )

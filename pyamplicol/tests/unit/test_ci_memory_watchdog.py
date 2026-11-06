@@ -841,6 +841,54 @@ def test_exit_code_is_propagated() -> None:
     assert "command finished exit=23" in completed.stderr
 
 
+def test_guarded_environment_announces_the_tighter_limit() -> None:
+    variable = watchdog.LIMIT_ENVIRONMENT_VARIABLE
+    base = {"PATH": "/bin"}
+
+    assert watchdog.guarded_environment(5 * watchdog.GIB, base) == {
+        "PATH": "/bin",
+        variable: str(5 * watchdog.GIB),
+    }
+    assert base == {"PATH": "/bin"}
+    # A nested watchdog announces the tighter of its own and the enclosing one.
+    for enclosing, announced in ((3, 3), (9, 5)):
+        child = watchdog.guarded_environment(
+            5 * watchdog.GIB, {variable: str(enclosing * watchdog.GIB)}
+        )
+        assert child[variable] == str(announced * watchdog.GIB)
+    for unusable in ("", "0", "-1", "lots"):
+        child = watchdog.guarded_environment(5 * watchdog.GIB, {variable: unusable})
+        assert child[variable] == str(5 * watchdog.GIB)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process groups require POSIX")
+def test_guarded_command_sees_the_limit() -> None:
+    environment = dict(os.environ)
+    environment.pop(watchdog.LIMIT_ENVIRONMENT_VARIABLE, None)
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(WATCHDOG),
+            "--limit-mib",
+            "256",
+            "--poll-interval",
+            "0.02",
+            "--",
+            sys.executable,
+            "-c",
+            f"import os; print(os.environ[{watchdog.LIMIT_ENVIRONMENT_VARIABLE!r}])",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        env=environment,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == str(256 * watchdog.MIB)
+
+
 def _pid_exists(pid: int) -> bool:
     try:
         os.kill(pid, 0)
