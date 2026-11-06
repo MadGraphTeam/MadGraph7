@@ -908,8 +908,10 @@ def term_values(evaluation: Any) -> dict:
     out: dict = {}
     numerators = getattr(evaluation, "amplitude_numerators", None) or {}
     if numerators:
-        moments = _moments(evaluation, numerators)
-        out = _term_sums(evaluation, numerators, moments)
+        # (Formed on demand, possibly after the point's own scope.)
+        with evaluation.numbers.scope():
+            moments = _moments(evaluation, numerators)
+            out = _term_sums(evaluation, numerators, moments)
     evaluation.term_cache = out
     return out
 
@@ -1009,18 +1011,21 @@ def row_scales(evaluation: Any) -> dict:
     roots = [max(float(complex(gram[t][t]).real), 0.0) ** 0.5 for t in range(size)]
     kets = evaluation.counterterm_vectors
     out = {}
-    for key in dict.fromkeys([*terms, *kets]):
-        vector = terms.get(key)
-        ket = kets.get(key)
-        values = []
-        for k in range(width):
-            value = 0.0
-            if vector is not None:
-                value = sum(vector[t][k] * roots[t] for t in range(size))
-            if ket is not None:
-                value += float(g_norm([ket[t][k] for t in range(size)], gram, numbers))
-            values.append(value)
-        out[key] = [max(value, values[0]) for value in values]
+    with numbers.scope():
+        for key in dict.fromkeys([*terms, *kets]):
+            vector = terms.get(key)
+            ket = kets.get(key)
+            values = []
+            for k in range(width):
+                value = 0.0
+                if vector is not None:
+                    value = sum(vector[t][k] * roots[t] for t in range(size))
+                if ket is not None:
+                    value += float(
+                        g_norm([ket[t][k] for t in range(size)], gram, numbers)
+                    )
+                values.append(value)
+            out[key] = [max(value, values[0]) for value in values]
     evaluation.row_scale_cache = out
     return out
 
@@ -1086,7 +1091,10 @@ def finiteness(evaluation: Any) -> dict:
     for key, vector in evaluation.amplitude_vectors.items():
         ratio = 0.0
         for k in range(1, width):
-            residue = float(g_norm([vector[t][k] for t in range(size)], gram, numbers))
+            with numbers.scope():
+                residue = float(
+                    g_norm([vector[t][k] for t in range(size)], gram, numbers)
+                )
             if residue:
                 bound = scales.get(key, [0.0] * width)[k]
                 ratio = max(ratio, residue / bound if bound else float("inf"))
@@ -1123,12 +1131,23 @@ def amplitude_estimates(evaluation: Any, roundoff: float) -> dict:
     width = width_of(evaluation)
     size = len(evaluation.slice.amplitude)
     out = {}
-    for key, vector in evaluation.amplitude_vectors.items():
+    with numbers.scope():
+        items = [
+            (
+                key,
+                [
+                    g_norm([vector[t][k] for t in range(size)], gram, numbers)
+                    for k in range(width)
+                ],
+            )
+            for key, vector in evaluation.amplitude_vectors.items()
+        ]
+    for key, norms in items:
         error = errors.get(key)
         scale_ = scales.get(key, [0.0] * width)
         entries = []
         for k in range(width):
-            residue = float(g_norm([vector[t][k] for t in range(size)], gram, numbers))
+            residue = float(norms[k])
             budget = (
                 0.0
                 if error is None
