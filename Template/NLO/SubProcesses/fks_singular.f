@@ -5276,7 +5276,7 @@ c
           write(6,*)'Error in xkplus: wrong j_fks', j_fks
           stop
         endif
-        xkk(1)=0d0
+        xkk(:)=0d0
         if(dabs(ch1).gt.0d0.and.dabs(ch2).gt.0d0
      $      .and.dabs(ch1).eq.dabs(ch2)) then ! gamma -> f^* (ch1) fbar (ch2)
           xkk(2)=-abs(col1)*ch1**2*(1d0-x)*(x**2+(1d0-x)**2)
