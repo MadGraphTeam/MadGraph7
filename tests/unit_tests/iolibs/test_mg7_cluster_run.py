@@ -19,7 +19,7 @@ import tempfile
 import types
 import unittest
 
-from madgraph.iolibs.template_files.mg7 import bootstrap as mg7_bootstrap
+from madgraph.mg7 import bootstrap as mg7_bootstrap
 from madgraph.various.banner import RunCardMG7
 
 # Importing launch without a compiled madspace starts the madspace build, and

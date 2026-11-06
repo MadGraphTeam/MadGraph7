@@ -22,14 +22,15 @@ import types
 import unittest
 from unittest import mock
 
-from madgraph.iolibs.template_files.mg7 import bootstrap as mg7_bootstrap
+from madgraph.mg7 import bootstrap as mg7_bootstrap
 
 # Importing launch without a compiled madspace starts the madspace build, and
 # test_manager imports every unit test module while collecting: check first.
 launch = None
 if mg7_bootstrap.madspace_is_installed():
     try:
-        import madgraph.iolibs.template_files.mg7.launch as launch
+        import madgraph.mg7.launch as launch
+        from madgraph.mg7 import madgraph_process
     except Exception as error:
         launch = None
         import_error = error
@@ -71,7 +72,7 @@ class TestSubprocessSelection(unittest.TestCase):
         process = process_stub(merged, selection)
         created = []
         with mock.patch.object(
-                launch, 'MadgraphSubprocess',
+                madgraph_process, 'MadgraphSubprocess',
                 side_effect=lambda *args, **kwargs: created.append((args, kwargs))
                 or types.SimpleNamespace(subproc_id=args[2])):
             launch.MadgraphProcess.init_subprocesses(process)
@@ -80,13 +81,12 @@ class TestSubprocessSelection(unittest.TestCase):
     def test_selection_keeps_global_ids_and_positions(self):
         process, created = self.init_subprocesses(False, [3, 1])
         self.assertEqual([args[2] for args, _ in created], [1, 3])
-        # after the one custom function
-        self.assertEqual([kwargs['me_index'] for _, kwargs in created], [2, 4])
+        self.assertEqual([kwargs['me_index'] for _, kwargs in created], [1, 3])
 
     def test_merged_selection_positions(self):
         process, created = self.init_subprocesses(True, [2])
         self.assertEqual([args[2] for args, _ in created], [2])
-        self.assertEqual(created[0][1]['me_index'], 1 + 3)
+        self.assertEqual(created[0][1]['me_index'], 3)
 
     def test_no_selection_selects_everything(self):
         process, created = self.init_subprocesses(False, [])

@@ -28,7 +28,7 @@ import sys
 import time
 
 from madgraph.iolibs.template_files.mg7 import combine_cluster
-from madgraph.iolibs.template_files.mg7 import launch
+from madgraph.mg7 import launch
 from madgraph.iolibs.template_files.mg7 import merge_gridpacks
 from madgraph.various import cluster as cluster_module
 
@@ -357,7 +357,8 @@ class ClusterRun:
         card.set("run.device", self.devices["deploy"], user=True)
         launch.MadgraphProcess.write_gridpack_shell(
             gridpack_path, card, self.backends["deploy"],
-            self.process.custom_function_paths)
+            self.process.custom_function_paths, self.process.subprocess_data,
+            self.process.gridpack_run_mode)
         return gridpack_path
 
     # ------------------------------------------------------------------
