@@ -789,14 +789,34 @@ NamedVector<Value> Integrand::build_channel_part(
 
     // Evaluate PDF prior for adaptive flavor sampling
     Value pdf_prior;
-    auto scales = _energy_scale.value().build_function(fb, {momenta_acc});
+    // When the event is clustered again with its flavours below, a first
+    // clustering would only set the scale of the prior: H_T/2 does that cheaply.
+    bool clustering_scales =
+        !(_energy_scale && _energy_scale->is_mlm() &&
+          !_energy_scale->mlm_history_per_diagram() && !_mlm_leg_flavors.empty());
+    auto scales = clustering_scales
+        ? _energy_scale.value().build_function(fb, {momenta_acc})
+        : EnergyScale(
+              _mapping.particle_count(),
+              EnergyScale::half_transverse_mass,
+              false,
+              false,
+              0.,
+              0.,
+              0.,
+              1.,
+              std::nullopt,
+              _energy_scale->min_scale(),
+              _energy_scale->max_scale()
+          )
+              .build_function(fb, {momenta_acc});
     std::array<Value, 2> pdf_results;
     bool has_pdf_prior = false;
     // The densities of beam i for every flavour option. Under MLM pdf
     // reweighting they are taken at the bottom of the clustering ladder, not at
     // the factorisation scale (mlm_weights walks them back up).
     auto beam_pdf = [&](std::size_t i) {
-        auto& pdf_scale = _energy_scale->mlm_pdf_reweighting()
+        auto& pdf_scale = _energy_scale->mlm_pdf_reweighting() && clustering_scales
             ? scales.at(std::format("pdf_scale{}", i + 1))
             : scales.at(i + 1);
         auto pdf =
@@ -939,14 +959,14 @@ NamedVector<Value> Integrand::build_channel_part(
     bool mlm_history_per_diagram =
         _energy_scale && _energy_scale->mlm_history_per_diagram();
 
-    // The first clustering ran before the flavour was known; some clusterings
-    // only exist for some flavours of a merged subprocess, so cluster again
-    // with the event's flavours. The prior keeps the first scales.
-    if (_energy_scale && _energy_scale->is_mlm() && !mlm_history_per_diagram &&
-        !_mlm_leg_flavors.empty()) {
+    // Some clusterings only exist for some flavours of a merged subprocess
+    // (or the flavours pick their own clustering class), so the event is
+    // clustered once its flavour is known. The prior keeps its own scales.
+    if (!clustering_scales) {
         scales = _energy_scale->build_mlm_with_flavors(
             fb, momenta_acc, flavor_id, _mlm_leg_flavors
         );
+        clustering_scales = true;
         for (std::size_t i = 0; i < 2; ++i) {
             if (!pdf_results.at(i)) {
                 continue;
