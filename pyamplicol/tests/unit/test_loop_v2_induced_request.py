@@ -395,7 +395,7 @@ def test_order_table_is_inferred_on_loop_qcd_qed_sm(tmp_path):
     ]
     assert list(map(dict, record["colour_zero_loop_orders"])) == [{"QCD": 2, "QED": 2}]
     assert record["exact_colour_zero"] is False
-    assert "(an exact colour zero)" not in plan.unsupported_features[0]
+    assert plan.unsupported_features == ()
 
 
 @pytest.mark.loop_physics
