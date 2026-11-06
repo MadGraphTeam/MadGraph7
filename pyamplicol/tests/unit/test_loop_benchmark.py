@@ -1982,25 +1982,74 @@ def test_report_builder_loop_induced_table_markers_backend_floor_and_reports(
             rec("gg_zzz", "tirust", 0.030),
         ]
     }
-    ml = {"seconds_per_point": 0.04, "source": "test"}
-    providers = {
-        "rows": {
-            key: {
-                "madloop": ml,
-                "openloops": {"seconds_per_point": 0.01, "source": "test"},
-                "recola": {"status": "unavailable", "reason": "beyond 45 min"},
-                "generation": {"madloop": 60.0},
-            }
-            for key in ("gg_hh", "gg_hgg", "gg_zzg")
+    # lit-ref's provider timings: the manifest's reference runs name their
+    # timing records (below tests/fixtures/loop/, the gate tool's providers
+    # format) and their unavailable providers; MadLoop counts at its
+    # production card 7|6|1 only (the 6|7|1 OPP column is not the summary's).
+    fixtures = tmp_path / "tests" / "fixtures" / "loop"
+
+    def timing_record(name, **providers):
+        path = fixtures / "required" / "li" / "timing" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"kind": "providers", "providers": providers}))
+        return str(path.relative_to(fixtures))
+
+    def ml(t, lib="7|6|1"):
+        return {
+            "median_seconds_per_point": t,
+            "madloop_params": {"MLReductionLib": lib},
         }
+
+    production = timing_record(
+        "production.json",
+        madloop=ml(0.04),
+        openloops={"median_seconds_per_point": 0.01},
+        recola={
+            "median_seconds_per_point": 0.05,
+            "setup": {"generation_seconds": 60.0},
+        },
+    )
+    no_recola = timing_record(
+        "no-recola.json", madloop=ml(0.04), openloops={"median_seconds_per_point": 0.01}
+    )
+    opp = timing_record("opp.json", madloop=ml(0.001, lib="6|7|1"))
+    process = {r["key"]: r["process"] for r in ms["loop_induced"]["rows"]}
+
+    def run(key, records=(), **unavailable):
+        return {
+            "process": f"li_{key}",
+            "madloop_process": f"{process[key]} [sqrvirt=QCD]",
+            "provider_timing_records": list(records),
+            "unavailable": unavailable,
+        }
+
+    def write_manifest(runs):
+        rows_m = [
+            {"row": f"LI-{key}", "processes": p, "runs": runs.get(key, [])}
+            for key, p in process.items()
+        ]
+        manifest = tmp_path / builder.LI_CAMPAIGN
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        manifest.write_text(json.dumps({"rows": rows_m}))
+
+    runs = {
+        "gg_hh": [run("gg_hh", [production, opp])],
+        "gg_hgg": [run("gg_hgg", [production, opp])],
+        "gg_zzg": [run("gg_zzg", [no_recola], recola="beyond 45 min")],
+        "gg_zzz": [run("gg_zzz", madloop="no", openloops="no library", recola="no")],
     }
-    providers["rows"]["gg_zzz"] = {
-        k: {"status": "unavailable", "reason": "no library"}
-        for k in ("madloop", "openloops", "recola")
-    }
+    write_manifest(runs)
     (data / "li-timing.json").write_text(json.dumps(timing))
-    (data / "li-providers.json").write_text(json.dumps(providers))
     rows, out = build()
+    assert out["meta"]["inputs"]["providers"]["present"] is True
+    hgg_ml = rows["gg_hgg"]["providers"]["providers"]["madloop"]
+    assert hgg_ml["seconds_per_point"] == 0.04
+    assert hgg_ml["setting"] == "MLReductionLib 7|6|1"
+    assert rows["gg_zzg"]["providers"]["providers"]["recola"] == {
+        "status": "unavailable",
+        "reason": "beyond 45 min",
+        "source": "li_campaign.json runs[li_gg_zzg]",
+    }
     # A package not landed stays pending even with a record.
     assert rows["aa_hh"]["timing"]["status"] == "pending"
     # NinjaRS per amplitude, labelled, where only NinjaRS ran; four legs: reported.
@@ -2044,6 +2093,26 @@ def test_report_builder_loop_induced_table_markers_backend_floor_and_reports(
     (data / "li-timing.json").write_text(json.dumps(timing))
     rows, _ = build()
     assert rows["gg_zzg"]["timing"]["gate"]["status"] == "open"
+    # A row whose providers are not all unavailable but none timed yet: no
+    # matched-provider exemption, no verdict.
+    runs["gg_hhh"] = [run("gg_hhh", openloops="no library")]
+    write_manifest(runs)
+    timing["records"].append(rec("gg_hhh", "tirust", 0.040))
+    (data / "li-timing.json").write_text(json.dumps(timing))
+    rows, _ = build()
+    hhh = rows["gg_hhh"]
+    assert hhh["providers"]["status"] == "recorded"
+    assert hhh["providers"]["providers"]["madloop"]["status"] == "not timed"
+    assert hhh["timing"]["gate"]["label"] == "no provider time yet"
+    timing["records"].pop()
+    del runs["gg_hhh"]
+    # Two production timings of one provider are ambiguous.
+    runs["gg_hh"] = [run("gg_hh", [production, no_recola])]
+    write_manifest(runs)
+    with pytest.raises(ValueError, match="two production timings of madloop"):
+        build()
+    runs["gg_hh"] = [run("gg_hh", [production, opp])]
+    write_manifest(runs)
     # The batch is chosen before the backend: TIRust timed at B = 1 only and
     # NinjaRS at B = 128 give NinjaRS's B = 128 cell, labelled, no other
     # backend; without a B = 128 record at the newest revision no batched
@@ -2097,8 +2166,7 @@ def test_report_builder_loop_induced_table_markers_backend_floor_and_reports(
     # lit-ref's manifest format: a row's reference runs (madloop_process)
     # and its free-text process list (annotations, 'or', 'vs'); one row may
     # carry several ids ("LI-Z1/Z2").
-    manifest = tmp_path / "tools" / "loop_reference" / "li_campaign.json"
-    manifest.parent.mkdir(parents=True)
+    manifest = tmp_path / builder.LI_CAMPAIGN
     rows_m = [
         {"row": f"LI-{r['key']}", "processes": f"{r['process']} [QCD] (t loop)"}
         for r in ms["loop_induced"]["rows"]
