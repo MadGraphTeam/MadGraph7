@@ -228,6 +228,60 @@ def test_native_square_equals_the_python_square(loop_native):
     assert python == native
 
 
+@pytest.mark.loop_fast
+def test_virtual_evaluation_holds_a_loop_induced_result():
+    """m-lit Q36: a loop-induced result is a ``VirtualEvaluation`` with
+    ``contribution = "loop-induced"``, an empty Born catalogue and
+    zero-length Born entries; a virtual result still needs its Born
+    catalogue, and a loop-induced one refuses a Born; the default keeps
+    every existing value and equality."""
+
+    from pyamplicol.api.virtual_results import VirtualEvaluation, VirtualLaneDiagnostic
+    from pyamplicol.config import R2Strategy
+    from pyamplicol.loops.orders import BornLoopPair, VirtualOrderSector
+    from pyamplicol.loops.strategy import R2Selection
+
+    loop = (("QCD", 2), ("QED", 1))
+    sector = VirtualOrderSector((("QCD", 4), ("QED", 2)), (BornLoopPair(loop, loop),))
+    strategy = R2Selection(R2Strategy.MODEL, R2Strategy.MODEL, "model R2")
+    success = VirtualLaneDiagnostic("success", "double", 53, False)
+    value = VirtualEvaluation(
+        ((),),
+        (((0.25, 0.0, 0.0),),),
+        (),
+        (sector,),
+        (success,),
+        strategy,
+        contribution="loop-induced",
+    )
+    assert value.contribution == "loop-induced" and value.born_shape == (1, 0)
+    assert value.finite == ((0.25,),)
+    with pytest.raises(ValueError, match="Born and interference catalogues"):
+        VirtualEvaluation(
+            ((),), (((0.25, 0.0, 0.0),),), (), (sector,), (success,), strategy
+        )
+    with pytest.raises(ValueError, match="empty Born catalogue"):
+        VirtualEvaluation(
+            ((1.0,),),
+            (((0.25, 0.0, 0.0),),),
+            ((("QCD", 4), ("QED", 2)),),
+            (sector,),
+            (success,),
+            strategy,
+            contribution="loop-induced",
+        )
+    with pytest.raises(ValueError, match="unknown contribution"):
+        VirtualEvaluation(
+            ((),),
+            (((0.25, 0.0, 0.0),),),
+            (),
+            (sector,),
+            (success,),
+            strategy,
+            contribution="loop-squared",
+        )
+
+
 # ------------------------------------------------------------------ rows
 
 # (fixture, analytic oracle in the fixture's rows)

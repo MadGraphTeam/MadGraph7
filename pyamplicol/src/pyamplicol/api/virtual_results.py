@@ -859,11 +859,8 @@ def _common(
     if not isinstance(result.correlated, bool):
         raise TypeError("correlated must be a boolean")
     object.__setattr__(result, "poles", pole_selection(result.poles))
-    born_orders, sectors = _orders(
-        result.born_orders,
-        result.sectors,
-        getattr(result, "contribution", "virtual"),
-    )
+    contribution = getattr(result, "contribution", "virtual")
+    born_orders, sectors = _orders(result.born_orders, result.sectors, contribution)
     diagnostics = tuple(result.diagnostics)
     if not all(isinstance(item, VirtualLaneDiagnostic) for item in diagnostics):
         raise TypeError("virtual results require per-lane diagnostics")
@@ -906,9 +903,9 @@ def _common(
         )
         # (A loop-induced result's Born axes have zero length: no container.)
         checked = (
-            (frozen_born[-1], frozen_values[-1])
-            if all(born_dimensions)
-            else (frozen_values[-1],)
+            (frozen_values[-1],)
+            if contribution == "loop-induced"
+            else (frozen_born[-1], frozen_values[-1])
         )
         if any(len(_scalar_kinds(value)) != 1 for value in checked):
             raise TypeError("a lane must use consistent Born and virtual containers")
