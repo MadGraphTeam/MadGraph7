@@ -724,6 +724,7 @@ def test_scan_processes_are_bounded_by_cpus_memory_or_the_setting(monkeypatch):
     resource = loop_nc_scan.resource
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
     monkeypatch.delenv(loop_nc_scan.PROCESSES_VARIABLE, raising=False)
+    monkeypatch.delenv(loop_nc_scan.WATCHDOG_LIMIT_VARIABLE, raising=False)
     monkeypatch.setattr(loop_nc_scan, "_usable_cpus", lambda: 4)
     for available, expected in (
         (None, 4),
@@ -769,7 +770,7 @@ def test_scan_processes_never_exceed_the_bound(monkeypatch):
         )
 
     monkeypatch.setenv(loop_nc_scan.PROCESSES_VARIABLE, "3")
-    monkeypatch.setattr(loop_nc_scan, "_SLOTS", None)
+    monkeypatch.setattr(loop_nc_scan, "_KINDS", {})
     monkeypatch.setattr(loop_nc_scan.subprocess, "run", fake_run)
     values = ("3", "2", "4", "1")
     with ThreadPoolExecutor(2) as pool:
@@ -780,6 +781,101 @@ def test_scan_processes_never_exceed_the_bound(monkeypatch):
         for future in scans:
             assert future.result() == {n: {"n": n} for n in values}
     assert running[0] == 0 and 2 <= running[1] <= 3, running
+
+
+@pytest.mark.loop_fast
+def test_child_processes_fit_the_memory_watchdog_limit(monkeypatch):
+    """Under ``tools/ci/memory_watchdog.py`` (its announced limit) the bound
+    also fits the children into the limit less this process's peak, each at
+    the larger of the given estimate and that peak; an unusable announcement
+    is ignored."""
+
+    from . import loop_nc_scan
+
+    gib = 1024**3
+    peaks = {loop_nc_scan.resource.RUSAGE_SELF: gib}
+    monkeypatch.delenv(loop_nc_scan.PROCESSES_VARIABLE, raising=False)
+    monkeypatch.setattr(loop_nc_scan, "_usable_cpus", lambda: 4)
+    monkeypatch.setattr(loop_nc_scan, "_available_memory", lambda: 14 * gib)
+    monkeypatch.setattr(loop_nc_scan, "_peak_bytes", peaks.__getitem__)
+    variable = loop_nc_scan.WATCHDOG_LIMIT_VARIABLE
+    monkeypatch.delenv(variable, raising=False)
+    # Without the watchdog: 14 GiB available holds two 5.7 GiB children.
+    assert loop_nc_scan.concurrent_processes(int(5.7 * gib)) == 2
+    monkeypatch.setenv(variable, str(12 * gib))
+    # 12 GiB less the 1 GiB test process: one 5.7 GiB child, four scans.
+    assert loop_nc_scan.concurrent_processes(int(5.7 * gib)) == 1
+    assert loop_nc_scan.concurrent_processes(int(1.2 * gib)) == 4
+    # Children smaller than this process count at its peak (as without one).
+    assert loop_nc_scan.concurrent_processes(gib // 4) == 4
+    monkeypatch.setenv(variable, str(gib))
+    assert loop_nc_scan.concurrent_processes() == 1
+    for unusable in ("", "0", "-5", "12GiB"):
+        monkeypatch.setenv(variable, unusable)
+        assert loop_nc_scan.concurrent_processes(int(5.7 * gib)) == 2, unusable
+
+
+@pytest.mark.loop_fast
+def test_a_kinds_first_process_runs_alone_then_at_its_measured_size(monkeypatch):
+    """``run_bounded(..., kind=...)``: the first process of a kind runs alone
+    (other processes wait, and it waits for running ones), the kind's others
+    then run within the bound at the largest reaped child's peak: six
+    processes of one kind at a 1 GiB measured child under a limit holding two,
+    then a second kind's first again alone."""
+
+    import threading
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    from . import loop_nc_scan
+
+    gib = 1024**3
+    resource = loop_nc_scan.resource
+    peaks = {resource.RUSAGE_SELF: gib // 2, resource.RUSAGE_CHILDREN: gib}
+    lock = threading.Lock()
+    running = {"now": 0, "max": 0}
+    log = []
+
+    def fake_run(command, **options):
+        with lock:
+            running["now"] += 1
+            running["max"] = max(running["max"], running["now"])
+            log.append(("start", command[0], running["now"]))
+        time.sleep(0.05)
+        with lock:
+            log.append(("end", command[0], running["now"]))
+            running["now"] -= 1
+        return loop_nc_scan.subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.delenv(loop_nc_scan.PROCESSES_VARIABLE, raising=False)
+    monkeypatch.setenv(loop_nc_scan.WATCHDOG_LIMIT_VARIABLE, str(gib // 2 + 2 * gib))
+    monkeypatch.setattr(loop_nc_scan, "_usable_cpus", lambda: 4)
+    monkeypatch.setattr(loop_nc_scan, "_available_memory", lambda: None)
+    monkeypatch.setattr(loop_nc_scan, "_peak_bytes", peaks.__getitem__)
+    monkeypatch.setattr(loop_nc_scan, "_KINDS", {})
+    monkeypatch.setattr(loop_nc_scan.subprocess, "run", fake_run)
+
+    def run(label, kind):
+        return loop_nc_scan.run_bounded([label], kind=kind).returncode
+
+    with ThreadPoolExecutor(6) as pool:
+        assert list(pool.map(run, "abcdef", ["one"] * 6)) == [0] * 6
+    # The first start is alone and ends before any other starts; then two.
+    assert log[0][0] == "start" and log[0][2] == 1, log
+    assert log[1][0] == "end" and log[1][1] == log[0][1], log
+    assert running["max"] == 2, log
+    log.clear()
+    running["max"] = 0
+    with ThreadPoolExecutor(3) as pool:
+        futures = [pool.submit(run, label, "one") for label in "gh"]
+        time.sleep(0.01)
+        futures.append(pool.submit(run, "i", "two"))
+        assert [future.result() for future in futures] == [0] * 3
+    # "two" starts alone, once the running ones of "one" have ended.
+    start = next(k for k, entry in enumerate(log) if entry[:2] == ("start", "i"))
+    assert log[start][2] == 1, log
+    assert running["max"] == 2, log
+    assert loop_nc_scan._RUNNING == 0
 
 
 def _run(model, native, tmp_path, row, indices):

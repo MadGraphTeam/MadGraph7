@@ -44,7 +44,10 @@ dependence. At N_c = 1, where C_F vanishes, and with ``"catani": false`` the
 operator is not patched and ``ir_poles`` is null.
 
 The scan processes of one test process run at most ``concurrent_processes()``
-at once, all its scans together (``run_bounded``).
+at once, all its scans together (``run_bounded``), as do the other child
+processes the tests start for speed only (``run_bounded`` with a ``kind``,
+e.g. the two generations of ``test_loop_artifact_portability``'s model-cache
+check).
 """
 
 from __future__ import annotations
@@ -62,6 +65,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PROCESSES_VARIABLE = "PYAMPLICOL_TEST_SUBPROCESSES"
+# Set by tools/ci/memory_watchdog.py for the command it guards.
+WATCHDOG_LIMIT_VARIABLE = "PYAMPLICOL_MEMORY_WATCHDOG_LIMIT_BYTES"
 
 
 def _usable_cpus() -> int:
@@ -84,17 +89,42 @@ def _available_memory() -> int | None:
     return None
 
 
-def concurrent_processes() -> int:
-    """How many scan processes this test process runs at once.
+def _peak_bytes(who: int) -> int:
+    """Peak resident size in bytes of ``resource.getrusage(who)``
+    (``RUSAGE_SELF``: this process; ``RUSAGE_CHILDREN``: the largest child it
+    has reaped, with that child's reaped descendants)."""
+
+    peak = resource.getrusage(who).ru_maxrss
+    return peak if sys.platform == "darwin" else peak * 1024
+
+
+def _watchdog_limit() -> int | None:
+    """The process-tree limit in bytes that ``tools/ci/memory_watchdog.py``
+    announces to the command it guards (``WATCHDOG_LIMIT_VARIABLE``), else
+    None."""
+
+    try:
+        limit = int(os.environ.get(WATCHDOG_LIMIT_VARIABLE, "").strip())
+    except ValueError:
+        return None
+    return limit if limit > 0 else None
+
+
+def concurrent_processes(estimate: int | None = None) -> int:
+    """How many child processes this test process runs at once.
 
     ``PYAMPLICOL_TEST_SUBPROCESSES`` (a positive integer) when set. Otherwise
     one per CPU this process may run on, a scan process being CPU-bound (more
     only add memory, one generation each: 13 at once, one per N, held 16 GiB
-    of a 4-core 16 GB CI runner and its runner died), and no more than the
-    available memory (Linux ``MemAvailable``) holds at this test process's
-    peak resident size each. Rule 7 generates the request before its scan
-    regenerates it at other N, so there the estimate errs high (A12: a
-    2.2 GiB test process, 1.2 GiB per scan process)."""
+    of a 4-core 16 GB CI runner and its runner died), and no more than fit,
+    each at the larger of ``estimate`` (bytes) and this test process's peak
+    resident size, into the available memory (Linux ``MemAvailable``) and,
+    under the CI memory watchdog, into its process-tree limit less this
+    process's peak (the watchdog sums the tree's resident sizes: 4 CPUs and
+    14 GiB available admitted two 5.7 GiB generations that its 12 GiB limit
+    stopped). Rule 7 generates the request before its scan regenerates it at
+    other N, so there this process's peak errs high (A12: a 2.2 GiB test
+    process, 1.2 GiB per scan process)."""
 
     configured = os.environ.get(PROCESSES_VARIABLE, "").strip()
     if configured:
@@ -108,28 +138,65 @@ def concurrent_processes() -> int:
             )
         return count
     bound = _usable_cpus()
-    available = _available_memory()
-    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
-    if available is not None and peak > 0:
-        bound = min(bound, max(1, available // peak))
+    peak = _peak_bytes(resource.RUSAGE_SELF)
+    each = max(peak, estimate or 0)
+    if each > 0:
+        available = _available_memory()
+        if available is not None:
+            bound = min(bound, max(1, available // each))
+        limit = _watchdog_limit()
+        if limit is not None:
+            bound = min(bound, max(1, (limit - peak) // each))
     return bound
 
 
-_SLOTS: threading.BoundedSemaphore | None = None
-_SLOTS_LOCK = threading.Lock()
+# Admission of run_bounded's processes: how many run, and per kind whether
+# one has finished (False while its first one runs).
+_ADMISSION = threading.Condition()
+_RUNNING = 0
+_KINDS: dict[object, bool] = {}
 
 
-def run_bounded(command, **options) -> subprocess.CompletedProcess:
-    """``subprocess.run(command, **options)`` once fewer than
-    ``concurrent_processes()`` (fixed at this test process's first scan) of
-    its scan processes run."""
+def _admits(kind) -> bool:
+    if kind is None or os.environ.get(PROCESSES_VARIABLE, "").strip():
+        return concurrent_processes() > _RUNNING
+    finished = _KINDS.get(kind)
+    if finished is None:
+        # A kind's size is unknown until one of its processes ends: the
+        # first runs alone.
+        return _RUNNING == 0
+    if not finished:
+        return False
+    # The largest child reaped so far bounds one of this kind (it includes
+    # the kind's first process).
+    each = _peak_bytes(resource.RUSAGE_CHILDREN)
+    return concurrent_processes(each) > _RUNNING
 
-    global _SLOTS
-    with _SLOTS_LOCK:
-        if _SLOTS is None:
-            _SLOTS = threading.BoundedSemaphore(concurrent_processes())
-    with _SLOTS:
+
+def run_bounded(command, *, kind=None, **options) -> subprocess.CompletedProcess:
+    """``subprocess.run(command, **options)`` once ``concurrent_processes()``
+    admits one more of this test process's bounded processes (re-evaluated
+    whenever one ends). ``kind``: a label of processes alike in size (the same
+    command on the same input), for children that may outgrow this process:
+    the first of a kind runs alone, the others then at the largest peak
+    resident size of a reaped child. Without one, a process is taken to need
+    this test process's peak (the N_c scans, which regenerate its request).
+    ``PYAMPLICOL_TEST_SUBPROCESSES`` fixes the count for every kind."""
+
+    global _RUNNING
+    with _ADMISSION:
+        _ADMISSION.wait_for(lambda: _admits(kind))
+        _RUNNING += 1
+        if kind is not None:
+            _KINDS.setdefault(kind, False)
+    try:
         return subprocess.run(command, **options)
+    finally:
+        with _ADMISSION:
+            _RUNNING -= 1
+            if kind is not None:
+                _KINDS[kind] = True
+            _ADMISSION.notify_all()
 
 
 def exact_point(masses) -> list[list[str]]:
