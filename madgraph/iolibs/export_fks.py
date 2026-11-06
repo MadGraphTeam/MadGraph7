@@ -3688,7 +3688,7 @@ Parameters              %(params)s\n\
 
         # Extract color data lines
         color_data_lines = self.get_color_data_lines(matrix_element)
-        replace_dict['color_data_lines'] = "\n".join(color_data_lines)
+        replace_dict['color_data_lines'] = "\n".join(color_data_lines) % {'proc_prefix': ''}
 
         # Extract helas calls of the base  matrix element
         helas_calls = fortran_model.get_matrix_element_calls(\
