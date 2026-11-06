@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which
+# This file is a part of the MadGraph7 project, an application which
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this
+# It is subject to the MadGraph7 license which should accompany this
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -320,7 +320,7 @@ class TestGammaUPCExporters(unittest.TestCase):
     def test_pdf_lines_upc_condition(self):
         """a a > mu+ mu-: LO and NLO call PHOTONPDFSQUARE on the same condition"""
 
-        import models.import_ufo as import_ufo
+        import madgraph.models.import_ufo as import_ufo
         import madgraph.core.base_objects as base_objects
         import madgraph.core.diagram_generation as diagram_generation
         import madgraph.core.helas_objects as helas_objects

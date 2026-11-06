@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which
+# This file is a part of the MadGraph7 project, an application which
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this
+# It is subject to the MadGraph7 license which should accompany this
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -100,7 +100,7 @@ class TestGammaUPCMadEvent(unittest.TestCase):
         mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
         mg_cmd.exec_cmd('import model sm')
         mg_cmd.exec_cmd('generate a a > mu+ mu-')
-        mg_cmd.exec_cmd('output %s -f' % self.run_dir)
+        mg_cmd.exec_cmd('output madevent %s -f' % self.run_dir)
         self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
         self.cmd_line.no_notification()
         self.cmd_line.exec_cmd('set automatic_html_opening False --no_save')

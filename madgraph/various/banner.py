@@ -4492,9 +4492,15 @@ class PDLabelBlock(RunBlock):
         """check which template is active and fill the parameter in the inactive one. """
 
         if self.status(card):
-            if card['pdlabel1'] == 'lhapdf' or card['pdlabel2'] == 'lhapdf':
+            upc = is_upc_label(card['pdlabel1']) or is_upc_label(card['pdlabel2'])
+            # two elastic-photon beams never use lhapdf (the default pdlabel):
+            # a gamma-UPC label on one beam then wins over lhapdf on the other
+            photon_beams = isinstance(card['lpp1'],int) and isinstance(card['lpp2'],int) and \
+                           abs(card['lpp1']) == 2 == abs(card['lpp2'])
+            if (card['pdlabel1'] == 'lhapdf' or card['pdlabel2'] == 'lhapdf') and \
+               not (upc and photon_beams):
                 dict.__setitem__(card, 'pdlabel','lhapdf')
-            elif is_upc_label(card['pdlabel1']) or is_upc_label(card['pdlabel2']):
+            elif upc:
                 # gamma-UPC gives the photon-photon luminosity: one label for both beams
                 if card['pdlabel1'] != card['pdlabel2']:
                     if is_upc_label(card['pdlabel1']):
