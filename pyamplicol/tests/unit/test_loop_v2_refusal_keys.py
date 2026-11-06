@@ -198,13 +198,8 @@ def test_configuration_refusals_fire_in_the_dry_run_and_at_generation(tmp_path, 
             {"generation": 'particle_veto = ["e-"]'},
         ),
         # Every member of p p > h h is Born-less: served loop-induced by
-        # default (m-lit Q2 (b)), whose generation is pending (LIT-AMP), and
-        # refused under process.loop_induced = "skip".
-        (
-            "loop-induced-engine-pending",
-            "p p > h h",
-            {"restriction": "no_b_mass"},
-        ),
+        # default (m-lit Q2 (b)) and refused under process.loop_induced =
+        # "skip".
         (
             "loop-induced",
             "p p > h h",

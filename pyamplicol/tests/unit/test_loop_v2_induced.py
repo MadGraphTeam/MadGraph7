@@ -18,12 +18,22 @@ li``, MadLoop / Recola / OpenLoops and the mpmath oracles of
   counterterm kets) equal the Python point inputs;
 * the F2 oracle: the amplitude fed as the Born of the unchanged seeded path
   gives 2|A|^2;
-* the poles of |A|^2 vanish within the stability estimate (finiteness);
+* the poles of |A|^2 vanish within the stability estimate, and the
+  amplitude-level finiteness and Ward probes pass within ten times their
+  own estimates on the per-row term floor (m-lit DECISIONS 2026-11-06
+  ~09:00 (1)), whose native and Python forms agree; a non-gauge vector
+  fails the Ward probe (it discriminates);
 * h > g a is an exact colour zero with its record (every loop has a single
-  coloured attachment, Tr T^a = 0), g g > h a a numerical zero within its
-  absolute estimate;
+  coloured attachment, Tr T^a = 0), g g > h a and g g > a a a are
+  numerical zeros within their absolute estimates;
 * the native canonical square equals the Python one, and seeded plans keep
-  schema 4.
+  schema 4;
+* the public route: generated through ``Generator``, a loop-induced
+  artifact (``rusticol.loop-runtime.v5``) loads through ``Runtime``,
+  returns a ``VirtualEvaluation`` with zeroed Born fields and
+  ``contribution = "loop-induced"`` equal to the slice's native value,
+  refuses the "uv" and "ir" pole selections, serves the exact colour zero
+  h > g a as 0, and relocates bitwise.
 """
 
 from __future__ import annotations
@@ -265,9 +275,7 @@ def test_double_double_equals_the_analytic_oracle(li, name):
     native = li.native_value(name, Precision.double_double())
     from decimal import Decimal
 
-    assert (
-        abs(Decimal(str(_total(native))) / Decimal(oracle) - 1) <= ANALYTIC_DD
-    )
+    assert abs(Decimal(str(_total(native))) / Decimal(oracle) - 1) <= ANALYTIC_DD
 
 
 @pytest.mark.loop_physics
@@ -288,9 +296,9 @@ def test_f2_oracle_gives_twice_the_square(li, name):
     basis, overlap cells <t|kappa_c>) returns 2|A|^2: the seeds conjugate
     the Born, so bare + CT interference = 2 sum_h a^dagger G a / avg."""
 
+    from pyamplicol.loops.v2 import reference_executor as rx
     from pyamplicol.loops.v2.assemble import Precision, SectorSeeds, _Numbers
     from pyamplicol.loops.v2.colour import build_seed_table
-    from pyamplicol.loops.v2 import reference_executor as rx
 
     slice_ = li.slice(name)
     point, scale, parameters = li.point(name)
@@ -335,7 +343,7 @@ def test_f2_oracle_gives_twice_the_square(li, name):
         bare = evaluation._bare(evaluation.families)["f2"].coefficients[0]
         gram = evaluation.gram
         counterterm = 0
-        for (order, row), ket in evaluation.counterterm_vectors.items():
+        for (_order, row), ket in evaluation.counterterm_vectors.items():
             for left in orders:
                 a = amplitude[(left, row)]
                 value = sum(
@@ -349,6 +357,13 @@ def test_f2_oracle_gives_twice_the_square(li, name):
 
 
 # ------------------------------------------------------------------ zeros
+
+
+H_TO_G_A_POINT = [
+    ["125", "0", "0", "0"],
+    ["62.5", "0", "0", "62.5"],
+    ["62.5", "0", "0", "-62.5"],
+]
 
 
 @pytest.mark.loop_physics
@@ -376,9 +391,7 @@ def test_h_to_g_a_is_an_exact_colour_zero(li):
     assert not slice_.families.families and slice_.amplitude.colour_zero
     assert any(e.reason == COLOUR_ZERO_REJECTION for e in slice_.families.rejected)
     result = slice_.evaluate(
-        [["125", "0", "0", "0"], ["62.5", "0", "0", "62.5"], ["62.5", "0", "0", "-62.5"]],
-        Fraction(125) ** 2,
-        precision=Precision.double(),
+        H_TO_G_A_POINT, Fraction(125) ** 2, precision=Precision.double()
     )
     assert all(value == 0 for value in result.totals)
 
@@ -394,9 +407,7 @@ def test_g_g_to_h_a_is_zero_within_its_absolute_estimate(li):
 
     reference = _fixture("li_gg_h")["rows"][0]["value"]
     for precision in (Precision.double(), Precision.double_double()):
-        result = li.native_value(
-            "li_gg_ha", precision, stability=RECOMMENDED_CHECKS
-        )
+        result = li.native_value("li_gg_ha", precision, stability=RECOMMENDED_CHECKS)
         (sector,) = result.stability.absolute
         estimate = result.stability.absolute[sector].coefficients[0]
         assert abs(float(_total(result))) <= 10 * estimate
@@ -445,3 +456,265 @@ def test_amplitude_mode_plans_are_schema_5_and_seeded_plans_schema_4(li):
         t for _r in range(program["rows"]) for t in range(size)
     ]
     assert program["born_components"] == 1
+
+
+# ------------------------------------------------------------------ probes
+
+
+def _evaluation(executor, point, scale, parameters, precision):
+    """The point evaluation on a native executor with the reduction re-test
+    and the term scale (``induced.probe``'s run)."""
+
+    executor.term_scale = True
+    try:
+        _precision, (evaluation,), failures = executor._evaluated(
+            [point],
+            [scale],
+            parameters,
+            precision,
+            "all",
+            "reversed",
+        )
+    finally:
+        executor.term_scale = False
+    assert not failures
+    return evaluation
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("name", ["li_gg_h", "li_gg_hg"])
+def test_native_term_floor_equals_the_python_oracle(li, name):
+    """The native term scale (unit-numerator reductions,
+    ``V2Options::term_scale``) equals the Python reference's (its own unit
+    numerators through the reducer) per (loop order, row) and Laurent
+    coefficient, after the per-row floor (``induced.row_scales``)."""
+
+    from pyamplicol.loops.v2 import induced
+    from pyamplicol.loops.v2.assemble import Precision, _fraction
+
+    precision = Precision.double()
+    slice_ = li.slice(name)
+    point, scale, parameters = li.point(name)
+    native = induced.row_scales(
+        _evaluation(li.executor(name), point, scale, parameters, precision)
+    )
+    exact = tuple(tuple(_fraction(x) for x in p) for p in point)
+    python = slice_._evaluate(
+        exact, scale, dict(parameters), precision, "all", "reversed"
+    )
+    oracle = induced.row_scales(python)
+    assert set(native) == set(oracle) and native
+    for key, values in native.items():
+        for value, reference in zip(values, oracle[key], strict=True):
+            assert reference > 0
+            assert abs(value / reference - 1) <= ORACLE, key
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize(
+    ("name", "precision"),
+    [
+        ("li_gg_h", "double"),
+        ("li_gg_hh", "double"),
+        ("li_gg_aa_nf5", "double"),
+        ("li_gg_zz", "double"),
+        ("li_gg_zz", "double_double"),
+    ],
+)
+def test_finiteness_probe_passes_on_the_term_floor(li, name, precision):
+    """PLAN §2.a.7 L3 with the DECISIONS ~09:00 (1) scale: per (loop order,
+    row) the poles of the amplitude lie within ten times their estimate on
+    the row's term floor, also where whole families are finite (massive
+    loops) and where single boxes carry 1/eps^2 (g g > a a massless)."""
+
+    from pyamplicol.loops.v2 import induced
+    from pyamplicol.loops.v2.assemble import Precision
+
+    point, scale, parameters = li.point(name)
+    result = induced.probe(
+        li.executor(name),
+        point,
+        scale,
+        parameters=parameters,
+        precision=getattr(Precision, precision)(),
+    )
+    assert result.kind == "finiteness" and result.ratios
+    assert result.passed, result.ratios
+
+
+@pytest.mark.loop_physics
+def test_ward_probe_passes_and_discriminates(li):
+    """The amplitude-level Ward probe (PLAN §2.a.7, Q12) on g g > a a
+    (massless quarks; every leg a massless gauge boson): epsilon_j -> c
+    p_j / E_j for c = 1, i on each leg leaves the amplitude within ten
+    times its own estimate (R2 restores the bare part's violation); a
+    non-gauge vector on leg 1 fails it by far."""
+
+    from pyamplicol.loops.v2 import induced
+    from pyamplicol.loops.v2.assemble import Precision
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+    from pyamplicol.loops.v2.ward import WARD_FACTORS, gauge_ward, ward_slice
+
+    name = "li_gg_aa_nf5"
+    fixture = _fixture(name)
+    compiled = li.model(fixture["scheme_data"].get("restriction") or "default")
+    slice_ = ward_slice(compiled, _request(fixture, compiled), li.native)
+    executor = NativeExecutor(slice_, forward=False, inputs="python")
+    point, scale, parameters = li.point(name)
+    precision = Precision.double()
+    for leg in (1, 2, 3, 4):
+        for factor in WARD_FACTORS:
+            result = induced.probe(
+                executor,
+                point,
+                scale,
+                parameters=parameters,
+                precision=precision,
+                ward=gauge_ward(leg, factor, point),
+            )
+            assert result.kind == "ward" and result.passed, (leg, factor, result.ratios)
+    control = (1, (("1", "0"), ("0", "0"), ("1", "0"), ("0", "0")))
+    result = induced.probe(
+        executor, point, scale, parameters=parameters, precision=precision, ward=control
+    )
+    assert result.worst > 1e6
+
+
+@pytest.mark.loop_physics
+def test_g_g_to_a_a_a_is_zero_within_its_absolute_estimate(li):
+    """g g > a a a (Furry: the quark loop's two orientations cancel) is
+    served numerically (Q13: no Furry-by-rule zero): |A|^2 lies within ten
+    times its absolute estimate, whose floor is the term scale, and the
+    cancellation is that of the carrier: |A|^2 is ~u^2 of the squared term
+    scale."""
+
+    from pyamplicol.loops.v2 import induced
+    from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+    from pyamplicol.loops.v2.stability import RECOMMENDED_CHECKS
+    from tools.loop_reference import exact_points
+
+    compiled = li.model("no_b_mass")
+    orders = {"QCD": 2, "QED": 3}
+    slice_ = LoopSlice.generate(
+        compiled,
+        SliceRequest("g g > a a a", orders, orders, contribution="loop-induced"),
+        li.native,
+    )
+    (point,) = exact_points.generate([0] * 5, count=1)
+    point = [[exact_points.decimal_string(x) for x in p] for p in point]
+    executor = NativeExecutor(slice_, forward=False, inputs="python")
+    (result,) = executor.evaluate(
+        [point],
+        [Fraction(1000) ** 2],
+        precision=Precision.double(),
+        stability=RECOMMENDED_CHECKS,
+    )
+    (sector,) = result.stability.absolute
+    estimate = result.stability.absolute[sector].coefficients[0]
+    total = abs(float(_total(result)))
+    assert total <= 10 * estimate
+    evaluation = _evaluation(
+        executor, point, Fraction(1000) ** 2, {}, Precision.double()
+    )
+    (term,) = induced.scale(evaluation).values()
+    assert total <= 1e-20 * term.coefficients[0]
+
+
+# ------------------------------------------------------------ public route
+
+
+def _card(output, entries, fixture) -> str:
+    fixed = ", ".join(
+        f"{key} = {json.dumps(value)}"
+        for key, value in fixture["scheme_data"]["fixed_parameters"].items()
+    )
+    listed = ", ".join(
+        f"{{expression = {json.dumps(expression)}, name = {json.dumps(name)}}}"
+        for name, expression in entries
+    )
+    return f"""
+action = "generate"
+[model]
+source = "loop_sm"
+restriction = "no_b_mass"
+[process]
+entries = [{listed}]
+loop_coupling_orders = ["QCD"]
+[loop]
+r2_strategy = "model"
+[loop.preparation]
+fixed_parameters = {{{fixed}}}
+[generation]
+output = {json.dumps(str(output))}
+emit_api_bundle = false
+[generation.validation]
+post_build_validation = false
+"""
+
+
+@pytest.mark.loop_physics
+def test_public_route_generates_loads_and_relocates(li, tmp_path):
+    """Generator -> artifact -> Runtime: g g > h and the exact colour zero
+    h > g a in one loop-induced artifact (``rusticol.loop-runtime.v5``)."""
+
+    import importlib.util
+
+    from pyamplicol import Runtime
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.api.errors import CompatibilityError
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loops.v2.assemble import Precision
+
+    fixture = _fixture("li_gg_h")
+    entries = (("gg_h", "g g > h"), ("h_ga", "h > g a"))
+    output = tmp_path / "artifact"
+    card = tmp_path / "card.toml"
+    card.write_text(_card(output, entries, fixture))
+    Generator(resolve_config(card)).generate(
+        ProcessSet(tuple(ProcessRequest.parse(e, name=n) for n, e in entries)), output
+    )
+    manifest = json.loads((output / "artifact.json").read_text())
+    assert manifest["runtime"]["required_runtime_capabilities"] == [
+        "rusticol.loop-runtime.v5"
+    ]
+    point, scale, parameters = li.point("li_gg_h")
+    runtime = Runtime.load(output, process="gg_h", model_parameters=parameters)
+    info = runtime.inspect()
+    assert info["contribution_kind"] == "loop-induced"
+    assert info["interference"] == "conj(loop)*loop" and info["born_orders"] == []
+    value = runtime.evaluate([point], mu_r2=[str(scale)])
+    assert value.contribution == "loop-induced"
+    assert value.born_orders == () and value.born_values == ((),)
+    ((finite, single, double),) = value.values[0]
+    madloop = fixture["rows"][0]["providers"]["madloop"]["value"]
+    assert _relative(finite, madloop) <= LAX
+    native = li.native_value("li_gg_h", Precision.double())
+    assert _relative(finite, _total(native)) <= ORACLE
+    assert abs(single) <= 1e-9 * abs(finite) and abs(double) <= 1e-9 * abs(finite)
+    for poles in ("uv", "ir"):
+        with pytest.raises(CompatibilityError, match="not served"):
+            runtime.evaluate([point], mu_r2=[str(scale)], poles=poles)
+    zero = Runtime.load(output, process="h_ga", model_parameters=parameters)
+    (sectors,) = zero.evaluate([H_TO_G_A_POINT], mu_r2=["15625"]).values
+    assert all(x == 0 for laurent in sectors for x in laurent)
+    # Relocation (PLAN Done 5): a copy at another path evaluates bitwise
+    # equal in a fresh interpreter (``tools/loop_artifact_portability.py``).
+    tool = ROOT / "tools" / "loop_artifact_portability.py"
+    spec = importlib.util.spec_from_file_location("loop_artifact_portability", tool)
+    portability = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(portability)
+    points = tmp_path / "points.json"
+    points.write_text(
+        json.dumps(
+            {
+                "points": [[[float(x).hex() for x in p] for p in point]],
+                "mu_r2": [float(scale).hex()],
+            }
+        )
+    )
+    verdict = portability.check(
+        output, "gg_h", tmp_path / "check", points_file=points, parameters=parameters
+    )
+    assert verdict["relocated_bitwise"]["bitwise"], verdict["relocated_bitwise"]
+    assert verdict["no_generation"]

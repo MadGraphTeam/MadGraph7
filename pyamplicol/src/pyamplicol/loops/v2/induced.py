@@ -494,7 +494,11 @@ def read_native(
                 out[(order, row)] = [read(slots[base + t]) for t in range(size)]
         return out
 
-    evaluation.native_bare = vectors(output["amplitudes"][index], carrier)
+    # (An empty amplitude basis, an exact colour zero, has no slot.)
+    amplitudes = output.get("amplitudes")
+    evaluation.native_bare = vectors(
+        [] if amplitudes is None else amplitudes[index], carrier
+    )
     budget = output.get("amplitude_budget")
     evaluation.native_budget = (
         None
@@ -685,7 +689,14 @@ def native_square(
         for _sector, pairs in sectors
     ]
     squared = native.square_amplitudes(
-        values, len(rows), size, width, metric_values, pairs, float(average)
+        values,
+        len(orders),
+        len(rows),
+        size,
+        width,
+        metric_values,
+        pairs,
+        float(average),
     )
     return {
         sector: tuple(totals)
@@ -1106,6 +1117,136 @@ def finiteness(evaluation: Any) -> dict:
                 ratio = max(ratio, residue / bound if bound else float("inf"))
         out[key] = ratio
     return out
+
+
+# The user's x10 rule (m-lit Q12): a probe residue passes within ten times
+# its own stability estimate.
+ESTIMATE_FACTOR = 10
+
+
+def amplitude_estimates(evaluation: Any, roundoff: float) -> dict:
+    """Per (loop order, row) and Laurent coefficient k the pair (||a_k||_G,
+    E_k): the amplitude's colour-metric norm and its absolute estimate E_k =
+    SAFETY x ||delta a_k||_G + FLOOR_UNITS x u x S_k(h) (``stability``'s
+    combination at the amplitude level, PLAN §2.a.8), with ||delta a_k||_G
+    bounded by the reduction re-test's per-component deviations
+    (``native_budget``, or the Python lanes' ``family_deviations``; no two
+    families cancel) and S_k(h) the row's term floor (``row_scales``).
+    Needs the reduction re-test and the term scale (``probe``)."""
+
+    from .stability import FLOOR_UNITS, SAFETY
+
+    errors = getattr(evaluation, "native_budget", None)
+    if errors is None:
+        deviations = evaluation.family_deviations
+        if deviations is None:
+            raise ValueError("an amplitude estimate needs the reduction re-test")
+        errors = lane_errors(evaluation, deviations)
+    scales = row_scales(evaluation)
+    gram = evaluation.gram
+    numbers = evaluation.numbers
+    width = width_of(evaluation)
+    size = len(evaluation.slice.amplitude)
+    out = {}
+    for key, vector in evaluation.amplitude_vectors.items():
+        error = errors.get(key)
+        scale_ = scales.get(key, [0.0] * width)
+        entries = []
+        for k in range(width):
+            residue = float(g_norm([vector[t][k] for t in range(size)], gram, numbers))
+            budget = (
+                0.0
+                if error is None
+                else _bound_norm([error[t][k] for t in range(size)], gram)
+            )
+            entries.append(
+                (residue, SAFETY * budget + FLOOR_UNITS * roundoff * scale_[k])
+            )
+        out[key] = tuple(entries)
+    return out
+
+
+@dataclass(frozen=True)
+class ProbeResult:
+    """A loop-induced probe of one point (``probe``): per (loop order, row)
+    the largest ratio |residue| / E over the probed Laurent coefficients
+    (``amplitude_estimates``) and whether every ratio is within
+    ``ESTIMATE_FACTOR`` (the x10 rule; pass/fail from the probe's own
+    estimate, never a fixed tolerance, m-lit Q12)."""
+
+    kind: str
+    ratios: Mapping[tuple[Orders, rx.Row], float]
+
+    @property
+    def worst(self) -> float:
+        return max(self.ratios.values(), default=0.0)
+
+    @property
+    def passed(self) -> bool:
+        return self.worst <= ESTIMATE_FACTOR
+
+
+def probe(
+    executor: Any,
+    point: Sequence[Sequence[Any]],
+    scale: Any,
+    *,
+    parameters: Mapping[str, str] | None = None,
+    precision: Any = None,
+    ward: Any = None,
+    frame: str = "reversed",
+) -> ProbeResult:
+    """The finiteness probe (``ward`` None) or the amplitude-level Ward
+    probe of a loop-induced point on a native executor of its slice
+    (``plan_export.NativeExecutor``; PLAN §2.a.7, items 5-6).
+
+    * **Finiteness**: a one-loop amplitude without a tree is IR finite and,
+      renormalised, UV finite, so its pole coefficients a_{-1}, a_{-2}
+      vanish per (loop order, row) in the colour-metric norm; each is
+      measured against its estimate on the row's term floor (DECISIONS
+      2026-11-06 ~09:00 (1)): a missing family, a wrong scaleless drop or a
+      wrong master shows here (it replaces Catani for loop-induced).
+    * **Ward** (``ward``: a Ward value, ``ward.gauge_ward``: epsilon_j ->
+      c p_j / E_j of a massless gauge boson j): the amplitude with leg j's
+      polarisation replaced vanishes at every Laurent coefficient; the bare
+      part alone does not, the R2 counterterms restore it, so a missing R2
+      vertex shows here (invisible to the poles). The slice must be on the
+      full tree kernels (``ward.ward_slice``). Widths enter the probe as
+      the caller's parameters (zero widths outside the complex-mass scheme,
+      m-lit Q7).
+
+    The reduction re-test in ``frame`` and the term scale run with it."""
+
+    from .assemble import Precision
+
+    precision = precision or Precision.double_double()
+    executor.term_scale = True
+    try:
+        precision, evaluations, failures = executor._evaluated(
+            [point],
+            [scale],
+            dict(parameters or {}),
+            precision,
+            "all",
+            frame,
+            "B",
+            None if ward is None else [ward],
+        )
+    finally:
+        executor.term_scale = False
+    if failures:
+        raise ArithmeticError(f"the probe point failed: {failures[0]}")
+    (evaluation,) = evaluations
+    estimates = amplitude_estimates(evaluation, precision.unit_roundoff)
+    first = 0 if ward is not None else 1
+    ratios = {}
+    for key, entries in estimates.items():
+        ratio = 0.0
+        for residue, estimate in entries[first:]:
+            if residue:
+                ratio = max(ratio, residue / estimate if estimate else float("inf"))
+        ratios[key] = ratio
+    return ProbeResult("ward" if ward is not None else "finiteness", ratios)
 
 
 def g_norm(vector: Sequence[Any], gram: Sequence[Sequence[Any]], numbers: Any) -> Any:

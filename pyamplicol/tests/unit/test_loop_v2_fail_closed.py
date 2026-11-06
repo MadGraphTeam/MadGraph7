@@ -146,7 +146,6 @@ def test_refusals_are_listed_typed_and_name_their_rule():
         "born-in-loop-induced-mode",
         "no-loop-amplitude",
         "loop-induced-colour-accuracy",
-        "loop-induced-engine-pending",
         "coloured-width",
         # M-SM MS-CMS's mass-scheme policy (``test_loop_model_cms.py``).
         "electroweak-width",

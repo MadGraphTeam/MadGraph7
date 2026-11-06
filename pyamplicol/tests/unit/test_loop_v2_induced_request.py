@@ -17,9 +17,9 @@ LIT-REQ; PLAN §1.2-§1.4, §2.a.10, rulings Q2 (b), Q4 (a), Q7, Q8 (a)).
 * Full colour only (``loop-induced-colour-accuracy``); fixed tree widths
   admitted (the coloured-width refusal stays the Born-interfered guard),
   unstable external states refused under the complex-mass scheme.
-* Generation refuses ``loop-induced-engine-pending`` until the amplitude
-  engine lands (never a silent zero); Born-interfered dry runs and request
-  records are unchanged.
+* An admitted loop-induced request has no dry-run blocker (m-lit LIT-AMP
+  generates it in amplitude mode, ``test_loop_v2_induced.py``);
+  Born-interfered dry runs and request records are unchanged.
 """
 
 from __future__ import annotations
@@ -242,17 +242,13 @@ def test_loop_induced_orders_minimal_and_explicit():
 def test_slice_request_contribution_and_its_record():
     """``SliceRequest.contribution``: recorded only for a loop-induced
     request (Born-interfered records keep their bytes), restored from the
-    record; full colour only (Q8); its generation is refused typed before
-    anything is built."""
+    record; full colour only (Q8)."""
 
     from dataclasses import replace
 
     from pyamplicol.loops.v2.artifact import request_from_record, request_record
-    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
-    from pyamplicol.loops.v2.refusals import (
-        LoopRequestUnsupported,
-        LoopRequestUnsupportedValue,
-    )
+    from pyamplicol.loops.v2.assemble import SliceRequest
+    from pyamplicol.loops.v2.refusals import LoopRequestUnsupportedValue
 
     virtual = SliceRequest("u u~ > d d~", {"QCD": 2}, {"QCD": 4}, corrections=("QCD",))
     record = request_record(virtual)
@@ -269,9 +265,6 @@ def test_slice_request_contribution_and_its_record():
         with pytest.raises(LoopRequestUnsupportedValue) as refused:
             replace(induced, accuracy=accuracy)
         assert refused.value.key == "loop-induced-colour-accuracy"
-    with pytest.raises(LoopRequestUnsupported) as refused:
-        LoopSlice.generate(None, induced, None)
-    assert refused.value.key == "loop-induced-engine-pending"
 
 
 @pytest.mark.loop_fast
@@ -291,7 +284,6 @@ def test_loop_induced_refusals_are_listed_and_name_the_key():
         "born-in-loop-induced-mode",
         "no-loop-amplitude",
         "loop-induced-colour-accuracy",
-        "loop-induced-engine-pending",
     )
     assert set(admission) <= set(listed_refusal_keys())
     assert "loop-induced-include-pending" in listed_configuration_keys()
@@ -335,7 +327,7 @@ EW_INDUCED = {
 def _check_table(plan, table, corrections, others=()):
     induced = _induced(plan)
     assert set(induced) == set(table) | set(others), plan.unsupported_features
-    assert _keys(plan) == ["loop-induced-engine-pending"]
+    assert _keys(plan) == []
     for key, (_expression, orders) in table.items():
         record = induced[key]
         assert dict(record["loop_orders"]) == orders, key
@@ -492,7 +484,7 @@ def test_each_value_on_mixed_and_purely_loop_induced_requests(tmp_path, value):
         assert record["reason"].startswith("loop-induced: ")
     else:
         # only: g g > z z served loop-induced, the Born members skipped.
-        assert _keys(mixed) == ["loop-induced-engine-pending"]
+        assert _keys(mixed) == []
         ((record),) = records
         assert record["contribution"] == "loop-induced"
         assert record["process"].casefold() == "g g > z z"
@@ -503,7 +495,7 @@ def test_each_value_on_mixed_and_purely_loop_induced_requests(tmp_path, value):
         assert _keys(induced) == ["loop-induced"]
         assert "process.loop_induced = 'auto'" in induced.unsupported_features[0]
         return
-    assert _keys(induced) == ["loop-induced-engine-pending"]
+    assert _keys(induced) == []
     (record,) = induced.estimated_coverage["processes"]
     assert record["contribution"] == "loop-induced"
     assert dict(record["loop_orders"]) == {"QCD": 2, "QED": 1}
@@ -527,7 +519,7 @@ def test_members_without_any_amplitude_and_explicit_bounds(tmp_path):
         (("p", "x x > h"),),
         process='multiparticles = {x = ["g", "a"]}',
     )
-    assert _keys(plan) == ["loop-induced-engine-pending"]
+    assert _keys(plan) == []
     served = {
         record["process"].casefold(): record for record in _induced(plan).values()
     }
@@ -565,18 +557,13 @@ def test_members_without_any_amplitude_and_explicit_bounds(tmp_path):
 def test_colour_zeros_are_routed_as_exact_colour_zeros(tmp_path):
     """PLAN §1.2 / LI-Z1: h > g a and z > g a (one gluon on a quark loop,
     Tr T^a = 0) are routed loop-induced at their orders QCD = 1, QED = 2,
-    recorded as exact colour zeros and refused ``loop-induced-engine-
-    pending`` (marked) until lit-amp serves the exact zero; so are the
-    massless-quark members of p p > h h (the s-channel gluon on the top
+    recorded as exact colour zeros (lit-amp serves the exact zero); so are
+    the massless-quark members of p p > h h (the s-channel gluon on the top
     loop), next to the amplitude of g g > h h."""
 
     entries = (("hga", "h > g a"), ("zga", "z > g a"), ("pphh", "p p > h h"))
     plan = _plan(tmp_path, entries)
-    assert _keys(plan) == ["loop-induced-engine-pending"]
-    pending = plan.unsupported_features[0]
-    assert "'H > G A' (an exact colour zero)" in pending
-    assert "'G G > H H'" in pending
-    assert "'G G > H H' (an exact colour zero)" not in pending
+    assert _keys(plan) == []
     assert plan.estimated_coverage["skipped_members"] == ()
     records = {
         record["process"].casefold(): record for record in _induced(plan).values()
@@ -598,13 +585,9 @@ def test_colour_zeros_are_routed_as_exact_colour_zeros(tmp_path):
 
 
 @pytest.mark.loop_physics
-def test_colour_accuracy_and_generation_refusals(tmp_path):
-    """LC/NLC loop-induced requests are refused typed (Q8); the generation
-    of an admitted loop-induced request is refused typed before any output
-    (never a silent zero)."""
-
-    from pyamplicol.api.errors import GenerationError
-    from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+def test_colour_accuracy_refusals(tmp_path):
+    """LC/NLC loop-induced requests are refused typed (Q8); an admitted one
+    is generated (m-lit LIT-AMP, ``test_loop_v2_induced.py``)."""
 
     for accuracy in ("lc", "nlc"):
         plan = _plan(
@@ -613,13 +596,6 @@ def test_colour_accuracy_and_generation_refusals(tmp_path):
             colour=f'accuracy = "{accuracy}"',
         )
         assert _keys(plan) == ["loop-induced-colour-accuracy"]
-    generator = _generator(tmp_path / "gen", (("p", "g g > h"),))
-    output = tmp_path / "gen" / "out"
-    with pytest.raises(GenerationError) as refused:
-        generator.generate(_processes((("p", "g g > h"),)), output)
-    assert isinstance(refused.value, LoopRequestUnsupported)
-    assert refused.value.key == "loop-induced-engine-pending"
-    assert not output.exists()
 
 
 @pytest.mark.loop_physics
@@ -641,19 +617,19 @@ def test_width_policy_on_the_loop_induced_branch_only(tmp_path, monkeypatch):
     assert _keys(plan) == ["coloured-width"]
     assert 'WT = "0"' in plan.unsupported_features[0]
     plan = _plan(tmp_path / "gghh", (("p", "g g > h h"),), fixed=STABLE)
-    assert _keys(plan) == ["loop-induced-engine-pending"]
+    assert _keys(plan) == []
     (record,) = _induced(plan).values()
     assert record["width_policy"] == "fixed-tree-widths"
     monkeypatch.setattr(artifact, "require_zero_coloured_widths", refuse)
     plan = _plan(tmp_path / "uudd", (("p", "u u~ > d d~"),))
     assert _keys(plan) == ["coloured-width"]
     plan = _plan(tmp_path / "gghh2", (("p", "g g > h h"),), fixed=STABLE)
-    assert _keys(plan) == ["loop-induced-engine-pending"]
+    assert _keys(plan) == []
     monkeypatch.undo()
     plan = _plan(
         tmp_path / "cms", (("p", "g g > h"),), fixed=STABLE, scheme="complex-mass"
     )
-    assert _keys(plan) == ["loop-induced-engine-pending"]
+    assert _keys(plan) == []
     (record,) = _induced(plan).values()
     assert record["width_policy"] == "complex-mass-scheme"
     plan = _plan(
