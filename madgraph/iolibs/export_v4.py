@@ -9307,14 +9307,19 @@ c           This is dummy particle used in multiparticle vertices
                 # incoming legs), so each channel is the tree of the physical
                 # invariants that the propagators of its diagram depend on,
                 # and props.inc and decayBW.inc get the same tree.
-                isub, diag = [(i, d) for i, d in enumerate(helas_diags)
-                              if d][0]
-                candidates = self.get_onia_decay_candidates(
-                    diag, onia_leg_maps[isub]) if onia_leg_maps else []
-                vertices = self.get_onia_decay_vertices(candidates,
+                def decay_vertices(isub, diag):
+                    candidates = self.get_onia_decay_candidates(
+                        diag, onia_leg_maps[isub]) if onia_leg_maps else []
+                    return self.get_onia_decay_vertices(candidates,
                                                         nexternal, parent_id)
+                per_sub = [decay_vertices(i, d) if d else None
+                           for i, d in enumerate(helas_diags)]
+                vertices = [v for v in per_sub if v is not None][0]
+                sprops = self.get_onia_sprops(
+                    [[(v[0], v[1], v[2]) for v in sub] if sub else None
+                     for sub in per_sub], vertices)
                 lines.extend(self.get_onia_decay_config_lines(
-                    nconfigs, mapconfigs[iconfig], vertices))
+                    nconfigs, mapconfigs[iconfig], vertices, sprops))
                 nqcd_list.append(self.get_onia_config_nqcd(helas_diags,
                                                            alpha_s_powers))
                 s_and_t_channels.append([self.get_onia_decay_schannels(
@@ -9323,12 +9328,18 @@ c           This is dummy particle used in multiparticle vertices
 
             # A 2 -> N process: the s- and t-channels of the diagram over
             # the physical legs (get_onia_production_channels)
-            isub, diag = [(i, d) for i, d in enumerate(helas_diags) if d][0]
-            channels = self.get_onia_production_channels(
-                diag, onia_leg_maps[isub], model, new_pdg) \
-                if onia_leg_maps else None
+            per_sub = [self.get_onia_production_channels(
+                           d, onia_leg_maps[i], model, new_pdg)
+                       if d and onia_leg_maps else None
+                       for i, d in enumerate(helas_diags)]
+            channels = [c for c, d in zip(per_sub, helas_diags) if d][0]
             if channels:
                 schannels, tchannels = channels
+                flat = lambda vs: [tuple([l.get('number') for l in v.get('legs')[:-1]] +
+                                         [v.get('legs')[-1].get('id')]) for v in vs]
+                sprops = self.get_onia_sprops(
+                    [flat(c[0]) if c else None for c in per_sub],
+                    flat(schannels))
                 tstrat = self.opt.get('t_strategy', 0)
                 tchannels, tchannels_strategy = \
                     ProcessExporterFortranME.reorder_tchannels(tchannels,
@@ -9342,25 +9353,27 @@ c           This is dummy particle used in multiparticle vertices
                                                          tchannels_strategy))
                 nqcd_list.append(self.get_onia_config_nqcd(helas_diags,
                                                            alpha_s_powers))
-                allchannels = [(v, True) for v in schannels]
+                allchannels = [(v, sp) for v, sp in zip(schannels, sprops)]
                 if len(tchannels) > 1:
-                    allchannels += [(v, False) for v in tchannels]
-                for vert, is_s in allchannels:
+                    allchannels += [(v, None) for v in tchannels]
+                for vert, sp in allchannels:
                     daughters = [l.get('number') for l in vert.get('legs')[:-1]]
                     last = vert.get('legs')[-1]
                     lines.append("data (iforest(i,%d,%d),i=1,%d)/%s/" % (
                         last.get('number'), nconfigs, len(daughters),
                         ",".join([str(d) for d in daughters])))
-                    if is_s:
-                        lines.append("data (sprop(i,%d,%d),i=1,1)/%d/" % (
-                            last.get('number'), nconfigs, last.get('id')))
+                    if sp is not None:
+                        lines.append("data (sprop(i,%d,%d),i=1,%d)/%s/" % (
+                            last.get('number'), nconfigs, len(sp),
+                            ",".join([str(x) for x in sp])))
                         lines.append("data tprid(%d,%d)/0/" % (
                             last.get('number'), nconfigs))
                     else:
                         lines.append("data tprid(%d,%d)/%d/" % (
                             last.get('number'), nconfigs, abs(last.get('id'))))
-                        lines.append("data (sprop(i,%d,%d),i=1,1)/0/" % (
-                            last.get('number'), nconfigs))
+                        lines.append("data (sprop(i,%d,%d),i=1,%d)/%s/" % (
+                            last.get('number'), nconfigs, nsubprocs,
+                            ",".join(['0'] * nsubprocs)))
                 continue
 
             # Need s- and t-channels for all subprocesses, including
@@ -9702,18 +9715,43 @@ c           This is dummy particle used in multiparticle vertices
         return schannels, tchannels
 
     @staticmethod
-    def get_onia_decay_config_lines(iconf, diagram, vertices):
+    def get_onia_sprops(per_sub, vertices):
+        """The s-channel particle of every vertex of a channel for every
+        subprocess of the group (sprop(iproc,...), which the clustering of
+        the dynamical scale reads): per_sub gives, per subprocess, its own
+        vertices [(daughter, daughter, pdg)] for the diagram of this
+        channel, or None if it has none (0, as for any process). A
+        subprocess whose tree differs takes the particle of the channel."""
+
+        sprops = []
+        for i, (d1, d2, pdg) in enumerate(vertices):
+            row = []
+            for sub in per_sub:
+                if sub is None:
+                    row.append(0)
+                elif len(sub) == len(vertices) and tuple(sub[i][:2]) == (d1, d2):
+                    row.append(sub[i][2])
+                else:
+                    row.append(pdg)
+            sprops.append(row)
+        return sprops
+
+    @staticmethod
+    def get_onia_decay_config_lines(iconf, diagram, vertices, sprops=None):
         """configs.inc lines of one channel of a 1 -> N decay with onia,
         with the t-channel strategy of the decays (2); vertices is
-        get_onia_decay_vertices()."""
+        get_onia_decay_vertices(), sprops get_onia_sprops() (by default the
+        particle of the channel, for one subprocess)."""
 
         lines = ["# Diagram %d" % diagram,
                  "data mapconfig(%d)/%d/" % (iconf, diagram),
                  "data tstrategy(%d)/2/" % iconf]
         for i, (leg1, leg2, prop) in enumerate(vertices, 1):
+            sp = sprops[i - 1] if sprops else [prop]
             lines.append("data (iforest(i,%d,%d),i=1,2)/%d,%d/" %
                          (-i, iconf, leg1, leg2))
-            lines.append("data (sprop(i,%d,%d),i=1,1)/%d/" % (-i, iconf, prop))
+            lines.append("data (sprop(i,%d,%d),i=1,%d)/%s/" % (
+                -i, iconf, len(sp), ",".join([str(x) for x in sp])))
             lines.append("data tprid(%d,%d)/0/" % (-i, iconf))
         return lines
 

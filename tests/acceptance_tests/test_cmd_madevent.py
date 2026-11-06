@@ -2698,6 +2698,39 @@ class TestMECmdShell(unittest.TestCase):
         self.assertLess(abs(width2 / width - M / mphys), 1e-4,
                         '%s / %s against %s' % (width2, width, M / mphys))
 
+    def test_onium_production_default_scale(self):
+        """Onium production at a hadron collider with madevent's default
+        scale (dynamical_scale_choice -1): the clustering reads the s-channel
+        particle of every grouped subprocess (sprop), which the onium
+        channels wrote for the first one only; for g q > Jpsi q and q g >
+        Jpsi q in one directory the second had 0, and the run stopped in
+        get_color(0)."""
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('import model sm_onia-c_mass')
+        mg_cmd.exec_cmd('generate p p > Jpsi(1|3S11) j')
+        mg_cmd.exec_cmd('output madevent %s/' % self.run_dir)
+        # every subprocess of a group has the particle of an s-channel
+        import glob
+        for configs in glob.glob(pjoin(self.run_dir, 'SubProcesses', 'P*', 'configs.inc')):
+            maxsproc = int(re.search(r'MAXSPROC=(\d+)', open(pjoin(
+                os.path.dirname(configs), 'maxamps.inc')).read().replace(' ', '')).group(1))
+            for vals in re.findall(r'SPROP\(I,-\d+,\d+\),I=1,(\d+)\)/([-\d,]+)/',
+                                   open(configs).read()):
+                self.assertEqual(int(vals[0]), maxsproc)
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+        run_card = pjoin(self.run_dir, 'Cards', 'run_card.dat')
+        text = open(run_card).read()
+        for key, value in (('nevents', '1000'), ('pdlabel', 'nn23lo1'), ('ptj', '10.0'),
+                           ('dynamical_scale_choice', '-1')):
+            text = re.sub(r'(?m)^\s*\S+\s*=\s*%s\b' % key, ' %s = %s' % (value, key), text)
+        open(run_card, 'w').write(text)
+        self.do('generate_events -f')
+        self.assertGreater(self.cmd_line.results.current['cross'], 0)
+
     def test_onium_production_in_decay(self):
         """Onia produced in a decay: Gamma(Z -> eta_c gamma) through the vector
         coupling of the Z, (2/3) M Gamma(eta_c -> gamma gamma) (v_c/(e_c s_W

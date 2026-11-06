@@ -34,6 +34,14 @@ ANNOUNCEMENT:
          time-reversal checks).
        - Bug fix: "set onia_card ..." when launching madevent was refused (the merged
          launch question did not offer the onia card).
+       - Bug fix: onium production at a hadron collider with the default scale
+         (dynamical_scale_choice -1) stopped with "No color given for pdg 0": the
+         onium channels gave the s-channel particle of the first subprocess of a group
+         only, and the clustering read 0 for the others (e.g. q g > Jpsi q next to
+         g q > Jpsi q).
+       - Bug fix: with a decaying onium at its physical mass (onia_decay 1 1), a soft
+         decay product was put off shell by the momentum rescale (a cut-off on |p|^2):
+         "Jpsi(1|3S11) > g g g" gave widths of order 1e27 GeV.
        - Bug fix: a P-wave onium (almost) at rest, e.g. a decaying one with the 1d-14
          momentum genps.f gives it, lost the precision of its orbital derivative: the
          summed |M|^2 varied by a few per cent with the orientation. It is now put
