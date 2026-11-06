@@ -27,6 +27,26 @@ export ENV_VFOLD_ME_MODE=${ENV_VFOLD_ME_MODE:-C}
 export ENV_VFOLD_CUDACPP_BASE=${ENV_VFOLD_CUDACPP_BASE:-${vfold_procdir}/lib/cudacpp}
 # The cudacpp backend: none, sse4, avx2, 512y, 512z (SIMD on CPU) or cuda (GPU)
 export ENV_VFOLD_CUDACPP_BACKEND=${ENV_VFOLD_CUDACPP_BACKEND:-avx2}
+# Mode C: the SIMD width of the cudacpp backend on CPU (number of doubles),
+# or the number of threads per warp on GPU (else the Fortran default is 128)
+if [ "${ENV_VFOLD_VECSIZE_USED}" == "" ] && [ "${ENV_VFOLD_ME_MODE}" == "C" ]; then
+  case ${ENV_VFOLD_CUDACPP_BACKEND} in
+    none) export ENV_VFOLD_VECSIZE_USED=1;;
+    sse4) export ENV_VFOLD_VECSIZE_USED=2;;
+    avx2|512y) export ENV_VFOLD_VECSIZE_USED=4;;
+    512z) export ENV_VFOLD_VECSIZE_USED=8;;
+    cuda) export ENV_VFOLD_VECSIZE_USED=32;;
+  esac
+fi
+# EVENT (kpoint) batching: the number of kpoints whose matrix elements are
+# evaluated together in one batch with all of their folds (road B step 9a);
+# the default 1 means no kpoint batching. It is capped internally so that
+# nkpoints*nfolds fits the batch buffers. The tests use 64 with folding
+# 8,4,1 and 512 with folding 1,1,1.
+export ENV_VFOLD_KPOINT_BATCH=${ENV_VFOLD_KPOINT_BATCH:-64}
+# With kpoint batching, keep one matrix element batch per MINT2 candidate
+# queue (virt/novi) instead of regathering it (road B step 11d)
+export ENV_VFOLD_BATCH_PERVN=${ENV_VFOLD_BATCH_PERVN:-1}
 # SBORN served from the Born points evaluated by cudacpp (road B steps 9i+9j)
 export ENV_VFOLD_SBORN_BRIDGE=${ENV_VFOLD_SBORN_BRIDGE:-1}
 # SBORN at another coupling g served by rescaling (road B step 10b)
@@ -37,5 +57,8 @@ echo "MadVFold: ENV_VFOLD_* variables (these are only examples: tune them to you
 echo "ENV_VFOLD_ME_MODE=${ENV_VFOLD_ME_MODE}"
 echo "ENV_VFOLD_CUDACPP_BASE=${ENV_VFOLD_CUDACPP_BASE}"
 echo "ENV_VFOLD_CUDACPP_BACKEND=${ENV_VFOLD_CUDACPP_BACKEND}"
+echo "ENV_VFOLD_VECSIZE_USED=${ENV_VFOLD_VECSIZE_USED}"
+echo "ENV_VFOLD_KPOINT_BATCH=${ENV_VFOLD_KPOINT_BATCH}"
+echo "ENV_VFOLD_BATCH_PERVN=${ENV_VFOLD_BATCH_PERVN}"
 echo "ENV_VFOLD_SBORN_BRIDGE=${ENV_VFOLD_SBORN_BRIDGE}"
 echo "ENV_VFOLD_SBORN_GSCALE=${ENV_VFOLD_SBORN_GSCALE}"
