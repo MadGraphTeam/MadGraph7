@@ -1733,6 +1733,21 @@ def _system_library(name: str, rust_target: str) -> bool:
     return match is not None and match.group(1) in _SYSTEM_LIBRARIES[rust_target]
 
 
+def _require_system_or_bundled(
+    needed: str, target: str, bundled: Mapping[str, frozenset[str]]
+) -> None:
+    """An ELF dependency is a target C runtime library or a bundled library."""
+
+    if _system_library(needed, RELEASE_TARGETS[target]) or needed in bundled.get(
+        "pyamplicol.libs", frozenset()
+    ):
+        return
+    raise ArtifactError(
+        "extension needs a library that is neither a system library nor "
+        f"bundled in pyamplicol.libs: {needed}"
+    )
+
+
 def _scan_extension(
     path: Path,
     target: str,
@@ -1803,15 +1818,8 @@ def _scan_extension(
                 raise ArtifactError(
                     f"extension has a forbidden dynamic dependency: {match.group(1)}"
                 )
-            if (
-                match
-                and not _system_library(match.group(1), RELEASE_TARGETS[target])
-                and match.group(1) not in bundled.get("pyamplicol.libs", frozenset())
-            ):
-                raise ArtifactError(
-                    "extension needs a library that is neither a system library "
-                    f"nor bundled in pyamplicol.libs: {match.group(1)}"
-                )
+            if match:
+                _require_system_or_bundled(match.group(1), target, bundled)
     _reject_native_paths(
         dynamic.replace(str(path), "<extension>"), "extension dynamic metadata"
     )
