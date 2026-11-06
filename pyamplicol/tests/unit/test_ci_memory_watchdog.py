@@ -964,8 +964,9 @@ def test_tests_workflow_guards_every_heavy_validation_phase() -> None:
     guarded = "tools/ci/memory_watchdog.py --limit-gib 30 --"
     # The installer stages the native runtime within its guarded invocation.
     # Restricted-mode and ordinary integration checks use separate invocations;
-    # the licensed loop jobs guard their build, test and tir invocations.
-    assert workflow.count(guarded) == 13
+    # the licensed loop jobs guard their build, test and tir invocations (the
+    # tir tests: the workspace, then the Python-producer tests in a loop).
+    assert workflow.count(guarded) == 14
     for heavy_command in (
         "dependencies/install_dependencies.py",
         "tests/unit/test_generation_execution_schema.py",
