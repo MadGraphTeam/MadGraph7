@@ -91,9 +91,10 @@ def concurrent_processes() -> int:
     one per CPU this process may run on, a scan process being CPU-bound (more
     only add memory, one generation each: 13 at once, one per N, held 16 GiB
     of a 4-core 16 GB CI runner and its runner died), and no more than the
-    available memory holds at this test process's peak resident size each
-    (it has generated the request the scan regenerates at other N, besides
-    the session's own state, so the estimate errs high)."""
+    available memory (Linux ``MemAvailable``) holds at this test process's
+    peak resident size each. Rule 7 generates the request before its scan
+    regenerates it at other N, so there the estimate errs high (A12: a
+    2.2 GiB test process, 1.2 GiB per scan process)."""
 
     configured = os.environ.get(PROCESSES_VARIABLE, "").strip()
     if configured:
