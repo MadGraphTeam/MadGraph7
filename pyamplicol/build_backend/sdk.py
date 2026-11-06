@@ -541,15 +541,11 @@ def _ensure_sdk_workspace_member(root: Path) -> None:
         raise RuntimeError("Cargo workspace member inventory is invalid")
     if RUST_SDK_WORKSPACE_MEMBER in members:
         return
-    expected = [
-        "rust/crates/rusticol-core",
-        "rust/crates/rusticol-python",
-    ]
-    if (
-        members != expected
-        or not (root / RUST_SDK_WORKSPACE_MEMBER / "Cargo.toml").is_file()
-    ):
+    # Maturin keeps only the members its own build needs; whatever it kept
+    # stays, and the SDK crate (shipped in the sdist) is appended.
+    if not (root / RUST_SDK_WORKSPACE_MEMBER / "Cargo.toml").is_file():
         raise RuntimeError("Cargo workspace does not contain the Rusticol C SDK")
+    restored = [*members, RUST_SDK_WORKSPACE_MEMBER]
 
     workspace = re.search(
         r"(?ms)^\[workspace\]\s*\n(?P<body>.*?)(?=^\[|\Z)",
@@ -558,10 +554,10 @@ def _ensure_sdk_workspace_member(root: Path) -> None:
     if workspace is None:
         raise RuntimeError("Cargo workspace member inventory is invalid")
     body = workspace.group("body")
+    listing = "[" + ", ".join(json.dumps(member) for member in restored) + "]"
     updated_body, count = re.subn(
         r"(?ms)^(members\s*=\s*)\[.*?\]",
-        rf'\g<1>["{expected[0]}", "{expected[1]}", '
-        rf'"{RUST_SDK_WORKSPACE_MEMBER}"]',
+        lambda match: match.group(1) + listing,
         body,
         count=1,
     )

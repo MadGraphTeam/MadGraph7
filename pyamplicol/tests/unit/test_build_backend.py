@@ -1912,14 +1912,30 @@ def test_candidate_lock_follows_every_crate_inheriting_the_workspace_version() -
     assert all(after[name] == local[name] for name in local if name not in inheriting)
 
 
+@pytest.mark.parametrize(
+    "pruned",
+    [
+        ["rust/crates/rusticol-core", "rust/crates/rusticol-python"],
+        # Maturin 1.15's list for the 1.0.2 workspace (loop-reduction crates).
+        [
+            "rust/crates/pyamplicol",
+            "rust/crates/rusticol-core",
+            "rust/crates/rusticol-python",
+            "rust/loop-reduction",
+            "rust/loop-reduction/python",
+        ],
+    ],
+)
 def test_sdk_build_restores_maturin_pruned_sdist_workspace_member(
     tmp_path: Path,
+    pruned: list[str],
 ) -> None:
     cargo = tmp_path / "Cargo.toml"
+    listing = ", ".join(f'"{member}"' for member in pruned)
     cargo.write_text(
-        """\
+        f"""\
 [workspace]
-members = ["rust/crates/rusticol-core", "rust/crates/rusticol-python"]
+members = [{listing}]
 resolver = "2"
 
 [workspace.package]
@@ -1935,14 +1951,20 @@ version = "0.1.0"
 
     with cargo.open("rb") as stream:
         members = tomllib.load(stream)["workspace"]["members"]
-    assert members == [
-        "rust/crates/rusticol-core",
-        "rust/crates/rusticol-python",
-        "rust/crates/rusticol-capi",
-    ]
+    assert members == [*pruned, "rust/crates/rusticol-capi"]
     restored = cargo.read_bytes()
     sdk._ensure_sdk_workspace_member(tmp_path)
     assert cargo.read_bytes() == restored
+
+
+def test_sdk_build_refuses_workspace_without_the_sdk_crate(tmp_path: Path) -> None:
+    (tmp_path / "Cargo.toml").write_text(
+        '[workspace]\nmembers = ["rust/crates/rusticol-core"]\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="does not contain the Rusticol C SDK"):
+        sdk._ensure_sdk_workspace_member(tmp_path)
 
 
 def test_dependency_gate_subprocess_ignores_inherited_build_injection(
