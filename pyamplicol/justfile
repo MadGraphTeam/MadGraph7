@@ -104,10 +104,12 @@ rust-check:
     {{python}} tools/release/run_cargo.py --mode {{build_mode}} -- fmt --all --check
     {{python}} tools/release/run_cargo.py --mode {{build_mode}} -- clippy --workspace --all-targets --locked
 
-# The Python-producer tests run alone: an unlicensed (restricted) Symbolica
-# admits one process at a time, and the test process itself uses Symbolica.
+# An unlicensed (restricted) Symbolica admits one thread of one process per
+# user at a time; a thread releases it when it exits. Tests therefore run one
+# after another (each on its own thread), and the Python-producer tests, which
+# start a Python Symbolica child, run alone.
 rust-test:
-    {{python}} tools/release/run_cargo.py --mode {{build_mode}} -- test --workspace --locked -- --skip python_serialization_tests
+    {{python}} tools/release/run_cargo.py --mode {{build_mode}} -- test --workspace --locked -- --skip python_serialization_tests --test-threads=1
     {{python}} tools/release/run_cargo.py --mode {{build_mode}} -- test --workspace --locked --lib -- --exact engine::evaluator::backend::python_serialization_tests::python_saved_evaluator_roundtrips_in_three_precisions
     {{python}} tools/release/run_cargo.py --mode {{build_mode}} -- test --workspace --locked --lib -- --exact engine::evaluator::backend::python_serialization_tests::python_saved_evaluator_with_a_conflicting_symbol_loads
     {{python}} tools/release/run_cargo.py --mode {{build_mode}} -- test --locked -p rusticol-core --no-default-features --features f64-compiled native_role_exports_load_and_remain_callable_while_owners_move
