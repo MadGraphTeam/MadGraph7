@@ -29,7 +29,8 @@
       ],
       "url": "https://github.com/alphal00p/ninjars.git",
       "ref": "main",
-      "revision": "b3a29c8577733f384de1c74b48bde5b24c2799d3"
+      "revision": "36e30a49418e1b6a8b54ee774a920e3a9483b00d",
+      "note": "b3a29c85 (PR #14) + the 0BSD relicence commit; merged into main"
     },
     {
       "name": "oneloopmaster",
