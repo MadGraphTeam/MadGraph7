@@ -704,31 +704,6 @@ def native_square(
     }
 
 
-def _absolute(vector, numbers):
-    return [[abs(z) for z in cell] for cell in vector]
-
-
-def _deviations(direct, other, size, width, numbers):
-    """Per (order, row) the absolute deviations |a - a'| per t and k."""
-
-    zero = numbers.zero
-    out = {}
-    for key in dict.fromkeys([*direct, *other]):
-        a = direct.get(key)
-        b = other.get(key)
-        out[key] = [
-            [
-                abs(
-                    (a[t][k] if a is not None else zero)
-                    - (b[t][k] if b is not None else zero)
-                )
-                for k in range(width)
-            ]
-            for t in range(size)
-        ]
-    return out
-
-
 def _bound_norm(errors, gram) -> float:
     """sqrt(e^T |G| e) for absolute errors e per t (an upper bound of
     ||delta a||_G for |delta a_t| <= e_t)."""
@@ -1266,16 +1241,27 @@ def g_norm(vector: Sequence[Any], gram: Sequence[Sequence[Any]], numbers: Any) -
 
 
 __all__ = [
+    "ESTIMATE_FACTOR",
     "LOOP_INDUCED_INTERFERENCE",
     "AmplitudeSeeds",
+    "ProbeResult",
+    "StoredAmplitude",
     "add_amplitudes",
+    "amplitude_estimates",
+    "amplitude_record",
     "bare_amplitudes",
     "bind",
     "column_labels",
     "counterterm_kets",
+    "finiteness",
     "g_norm",
     "kappa",
     "loop_sectors",
     "metric",
+    "probe",
+    "row_scales",
+    "scale",
     "square",
+    "stability_scale",
+    "term_values",
 ]
