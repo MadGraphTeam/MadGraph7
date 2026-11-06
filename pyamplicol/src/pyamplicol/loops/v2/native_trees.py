@@ -457,6 +457,11 @@ class NativeTrees:
     # container's compressed member (``StoredMember``) instead, which its
     # executors inflate natively (M-FINAL MF-8G-2 item 2).
     container: bytes | StoredMember | None = None
+    # (component, epsilon power, loop orders) of each counterterm ket vector
+    # (``_Counterterms.vectors``; generation only): with ``ket_tensors`` and
+    # the program's ket layout a loop-induced point's native kets project
+    # onto its amplitude basis (``induced.native_kets``).
+    ket_vectors: tuple[tuple[str, int, Orders], ...] = ()
 
     @property
     def is_binary(self) -> bool:
@@ -1250,6 +1255,7 @@ def export_trees(
         ),
         () if counterterms is None else counterterms.tensors,
         tuple(sections.items()),
+        ket_vectors=() if counterterms is None else counterterms.vectors,
     )
 
 
@@ -1407,6 +1413,10 @@ class _Counterterms:
     # ``NATIVE_SECTIONS``: the overlap cells' binary section (``record``
     # then omits ``cells``; ``_cell_section``).
     cells: bytes | None = None
+    # (component, epsilon power, loop orders) of each ket vector, in index
+    # order: a loop-induced point's kets project onto its amplitude basis
+    # from them (``induced.native_kets``).
+    vectors: tuple[tuple[str, int, Orders], ...] = ()
 
 
 def _counterterm_program(
@@ -1733,6 +1743,7 @@ def _counterterm_program(
         ),
         tuple(literal),
         cell_section,
+        tuple(vectors),
     )
 
 

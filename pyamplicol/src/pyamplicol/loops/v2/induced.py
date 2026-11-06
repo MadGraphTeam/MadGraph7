@@ -343,9 +343,11 @@ def square(
 
 def rows_of(evaluation: Any) -> tuple[rx.Row, ...]:
     """The helicity rows of a point evaluation in plan order (the product of
-    the legs' helicities, ``plan_export.born_rows``)."""
+    the legs' helicities, ``plan_export.born_rows``): the native executor's
+    rows, else those of the point's counterterm vectors."""
 
-    return tuple(evaluation.site_vectors)
+    rows = getattr(evaluation, "amplitude_rows", None)
+    return tuple(evaluation.site_vectors) if rows is None else rows
 
 
 def finish(evaluation: Any, retest: str | None) -> Any:
@@ -406,6 +408,68 @@ def read_native(
         output["amplitude_scale"][index], lambda values: [float(x) for x in values]
     )
     evaluation.native_square = numbers.double
+    evaluation.amplitude_rows = tuple(exported.rows)
+    kets = output.get("counterterm_kets")
+    if kets is not None:
+        evaluation.native_kets = native_kets(
+            evaluation.slice, exported, carrier(kets[index]), numbers, width_of(evaluation)
+        )
+
+
+def width_of(evaluation: Any) -> int:
+    """Laurent coefficients per value: [finite, 1/eps, 1/eps^2], or finite."""
+
+    return 3 if evaluation.poles else 1
+
+
+def ket_map(slice_: Any, trees: Any) -> list[tuple[int, int, Orders, int]]:
+    """Per counterterm ket component of a native tree program (its layout
+    (ket tensor, vector, N_c power), ``native_trees._counterterm_program``)
+    the amplitude basis element of its tensor, the Laurent index of its
+    vector's epsilon power, the vector's loop orders and its N_c power."""
+
+    basis = {tensor: t for t, tensor in enumerate(slice_.amplitude.tensors)}
+    layout = trees.program["counterterms"]["ket"]
+    out = []
+    for tensor, vector, nc_power in layout:
+        _component, power, order = trees.ket_vectors[vector]
+        literal = trees.ket_tensors[tensor]
+        t = basis.get(literal)
+        if t is None:
+            raise KeyError(
+                f"a native counterterm ket tensor {literal!r} outside the "
+                "amplitude basis"
+            )
+        out.append((t, -power, order, nc_power))
+    return out
+
+
+def native_kets(
+    slice_: Any, exported: Any, values: Sequence[Any], numbers: Any, width: int
+) -> dict[tuple[Orders, rx.Row], list[list[Any]]]:
+    """A^CT per (loop order, row) from a point's native counterterm kets
+    (``V2Executor.evaluate``'s ``counterterm_kets``: rows x ket components,
+    the program's layout) on the amplitude basis at N_c = 3 (``ket_map``;
+    the native twin of ``counterterm_kets``)."""
+
+    mapping = exported.__dict__.get("_ket_map")
+    if mapping is None:
+        mapping = exported.__dict__["_ket_map"] = ket_map(slice_, exported.trees)
+    components = len(mapping)
+    size = len(slice_.amplitude)
+    zero = numbers.zero
+    three = numbers.real(3)
+    out: dict[tuple[Orders, rx.Row], list[list[Any]]] = {}
+    for r, row in enumerate(exported.rows):
+        for j, (t, k, order, nc) in enumerate(mapping):
+            if k >= width:
+                continue
+            value = values[r * components + j]
+            ket = out.get((order, row))
+            if ket is None:
+                ket = out[(order, row)] = [[zero] * width for _ in range(size)]
+            ket[t][k] = ket[t][k] + value * three**nc
+    return out
 
 
 def assemble(evaluation: Any) -> None:
@@ -430,7 +494,18 @@ def assemble(evaluation: Any) -> None:
             if native is None
             else native
         )
-        kets = counterterm_kets(slice_, evaluation.site_vectors, numbers, width)
+        kets = getattr(evaluation, "native_kets", None)
+        if kets is None:
+            if not hasattr(evaluation, "site_vectors"):
+                if slice_.amplitude.counterterms:
+                    # Never a silent loss of the R2/UV part.
+                    raise ValueError(
+                        "a loop-induced native point needs the executor's "
+                        "counterterm kets (native trees with counterterms)"
+                    )
+                kets = {}
+            else:
+                kets = counterterm_kets(slice_, evaluation.site_vectors, numbers, width)
         total = add_amplitudes(bare, kets, numbers=numbers, size=size, width=width)
         gram = metric(slice_, numbers)
         if getattr(evaluation, "native_square", False):

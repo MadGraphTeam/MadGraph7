@@ -5141,7 +5141,9 @@ class _NativePoint(_PointEvaluation):
         return out or None
 
     def _assemble(self) -> None:
-        if self.native_counterterms:
+        if self.native_counterterms or self.slice.amplitude is not None:
+            # (Loop-induced: the executor's amplitudes and counterterm kets,
+            # ``induced.read_native``.)
             super()._assemble()
             return
         if self.split_lanes is not None:

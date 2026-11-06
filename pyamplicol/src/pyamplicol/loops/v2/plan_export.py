@@ -1318,9 +1318,11 @@ def export_plan(
             slice_,
             exporter,
             rows,
-            born_squared=born_squared,
+            born_squared=born_squared and amplitude is None,
             with_counterterms=counterterms,
-            keep_kets=keep_kets,
+            # A loop-induced point reads its counterterm kets themselves
+            # (no Born interference keeps them).
+            keep_kets=keep_kets or amplitude is not None,
         )
     legs = len(slice_.blocks.process.legs)
     row_index = {row: i for i, row in enumerate(rows)}
