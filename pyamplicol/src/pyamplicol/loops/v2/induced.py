@@ -1219,17 +1219,19 @@ def ward_floors(physical: Mapping, leg: int) -> dict:
     from it only in that leg's helicity (the substituted leg reads one
     vector for every helicity, so its rows repeat the same amplitude)."""
 
+    def merged(row):
+        return tuple((i, 0 if i == leg - 1 else h) for i, h in row)
+
     out: dict = {}
     for (order, row), values in physical.items():
-        key = (order, tuple((i, 0 if i == leg - 1 else h) for i, h in row))
+        key = (order, merged(row))
         found = out.get(key)
         out[key] = (
-            list(values) if found is None else [max(a, b) for a, b in zip(found, values)]
+            list(values)
+            if found is None
+            else [max(a, b) for a, b in zip(found, values, strict=True)]
         )
-    return {
-        (order, row): out[(order, tuple((i, 0 if i == leg - 1 else h) for i, h in row))]
-        for order, row in physical
-    }
+    return {(order, row): out[(order, merged(row))] for order, row in physical}
 
 
 def probe(
@@ -1397,7 +1399,8 @@ def probe_point(
 
         def energies(scale: Fraction) -> list[Fraction]:
             return [
-                root(scale * scale * q + m) for q, m in zip(spatial, masses, strict=True)
+                root(scale * scale * q + m)
+                for q, m in zip(spatial, masses, strict=True)
             ]
 
         scale = Fraction(1)
@@ -1477,9 +1480,9 @@ def _particle_square(slice_: Any, record: Any, digits: int) -> Fraction | None:
 
     mass = str(record.mass)
     try:
-        value = _model_masses(
-            slice_.compiled, slice_.request.fixed_parameters, digits
-        )(mass)
+        value = _model_masses(slice_.compiled, slice_.request.fixed_parameters, digits)(
+            mass
+        )
     except (KeyError, ValueError):
         return None
     if not isinstance(value, Fraction) or not value:

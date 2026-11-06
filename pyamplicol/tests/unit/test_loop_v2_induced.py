@@ -323,9 +323,7 @@ def test_binary64_equals_madloop_the_oracle_and_the_python_route(li, name, analy
 
 
 @pytest.mark.loop_physics
-@pytest.mark.parametrize(
-    "name", [name for name, analytic in ROWS if analytic]
-)
+@pytest.mark.parametrize("name", [name for name, analytic in ROWS if analytic])
 def test_double_double_equals_the_analytic_oracle(li, name):
     from pyamplicol.loops.v2.assemble import Precision
 
@@ -695,9 +693,7 @@ def test_generation_probes_pass_at_zero_widths_on_the_full_kernels(li):
     record = induced.generation_probes(slice_, compiled, li.native, candidates)
     assert record["precision"] == "double-double" and record["widths"] == "zero"
     assert record["zeroed_widths"] == ["WH", "WT", "WW", "WZ"]
-    distances = [
-        induced.probe_point(slice_, point, 64)[1] for point in candidates
-    ]
+    distances = [induced.probe_point(slice_, point, 64)[1] for point in candidates]
     assert record["candidate"] == distances.index(max(distances))
     assert record["finiteness"]["passed"] and record["ward"]["passed"]
     assert record["ward"]["legs"] == [1, 2, 4] and "failed" not in record
