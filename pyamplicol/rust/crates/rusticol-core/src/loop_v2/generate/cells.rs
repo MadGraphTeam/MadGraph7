@@ -2770,7 +2770,7 @@ mod tests {
         );
         assert_eq!(
             at_three(&metric[0][0]),
-            Exact::real(Rational::new(56.into(), 3.into()))
+            Exact::real(Rational::new(Integer::from(56), Integer::from(3)))
         );
     }
 
