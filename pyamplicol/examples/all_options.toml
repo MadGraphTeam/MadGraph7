@@ -40,6 +40,12 @@ coupling_order_policy = "explicit"
 # ["QCD"]. Default null (tree generation). A list selects virtual generation and
 # requires evaluator.execution_mode "auto" or "loop_recurrence".
 # loop_coupling_orders = ["QCD"]
+# process.loop_induced: One-loop processes without a Born amplitude within their
+# coupling-order limits (loop-induced, |A_loop|^2): "auto" serves a request none
+# of whose processes has a Born loop-induced and skips the Born-less members of a
+# mixed multiparticle request, "skip" serves none, "only" serves only them,
+# "include" serves both kinds as separate contributions. Default auto.
+# loop_induced = "auto"
 # The following four topology-extraction controls are unstable, developer-only
 # implementation details. Do not rely on them in production run cards.
 # process.max_color_sectors: Optional cap on generated color sectors. Default null.

@@ -8,7 +8,9 @@ a listed rule (``PROCESS_REQUEST_REFUSALS``; a loop dry run lists them as
 particle or process name:
 
 * ``madloop-syntax``: MG5_aMC process syntax that has a pyAmpliCol run-card
-  setting instead (``[virt=QCD]``, ``[QCD]`` and the other NLO brackets,
+  setting instead (``[virt=QCD]``, ``[QCD]`` and the other NLO brackets;
+  ``[noborn=QCD]``: ``process.loop_induced`` with the correction in
+  ``process.loop_coupling_orders``,
   coupling-order constraints such as ``QED=2`` or ``QCD^2==4``, ``/ x``
   particle exclusions) or no counterpart (``$``/``$$`` s-channel exclusions,
   decay chains ``p p > t t~, t > b w+`` and ``t > b w+, w+ > e+ ve``, ``@N``
@@ -51,9 +53,13 @@ PROCESS_REQUEST_REFUSALS = (
         'process.loop_coupling_orders = ["QCD"] for [virt=QCD] or [QCD]; '
         "process.max_coupling_orders = {QED = 2} for QED=2 (squared-order "
         "sectors are read out of the result, QCD^2==); "
-        'generation.particle_veto = ["x"] for / x; s-channel exclusions, '
+        'generation.particle_veto = ["x"] for / x; for [noborn=QCD] '
+        '(loop-induced, |A_loop|^2) process.loop_coupling_orders = ["QCD"] '
+        'with process.loop_induced = "auto" (the default: a request none of '
+        "whose processes has a Born amplitude is served loop-induced) or "
+        '"only" (only the processes without a Born); s-channel exclusions and '
         "decay chains (request each decay, 't > b w+', as its own process) "
-        "and loop-induced [noborn=...] requests are not served",
+        "are not served",
     ),
 )
 _REFUSALS = {refusal.key: refusal for refusal in PROCESS_REQUEST_REFUSALS}
@@ -92,7 +98,11 @@ def refuse_madloop_syntax(expression: str) -> None:
 
     text = " ".join(str(expression).split())
     found: list[str] = []
-    if re.search(r"\[[^\]]*=[^\]]*\]", text):
+    if re.search(r"\[\s*noborn\s*=[^\]]*\]", text, re.IGNORECASE):
+        found.append(
+            "a loop-induced NLO bracket ('[noborn=QCD]' style: process.loop_induced)"
+        )
+    elif re.search(r"\[[^\]]*=[^\]]*\]", text):
         found.append("an NLO bracket ('[virt=QCD]' style)")
     if "$" in text:
         found.append("an s-channel exclusion ('$')")

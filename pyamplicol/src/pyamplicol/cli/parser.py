@@ -19,6 +19,7 @@ from pyamplicol.config import (
     ConfigResolution,
     ConfigurationError,
     EvaluatorExecutionMode,
+    LoopInducedPolicy,
     PoleSelection,
     ProcessGroupAnalysis,
     resolve_config,
@@ -227,6 +228,18 @@ def _add_process_options(parser: argparse.ArgumentParser) -> None:
         default=argparse.SUPPRESS,
         metavar="NAME",
         help="Request a virtual correction; repeat for a union of correction orders.",
+    )
+    parser.add_argument(
+        "--loop-induced",
+        dest="process.loop_induced",
+        choices=tuple(LoopInducedPolicy),
+        default=argparse.SUPPRESS,
+        help=(
+            "one-loop processes without a Born amplitude (|A_loop|^2): 'auto' "
+            "(default) serves a request with no Born member loop-induced, "
+            "'skip' serves none, 'only' serves only them, 'include' serves "
+            "both kinds as separate contributions"
+        ),
     )
     parser.add_argument(
         "--name",

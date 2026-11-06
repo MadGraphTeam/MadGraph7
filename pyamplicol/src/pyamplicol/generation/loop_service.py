@@ -16,7 +16,7 @@ import os
 import time
 from collections.abc import Iterable, Mapping, Sequence
 from contextlib import ExitStack
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -118,6 +118,15 @@ def _feature_blockers(backend, processes):
                 f"{str(run.process.analyze_process_groups)!r})",
             )
         )
+    if run.process.loop_induced == "include":
+        reasons.append(
+            ListedBlocker(
+                "loop-induced-include-pending",
+                "process.loop_induced = 'include' (a mixed multiparticle "
+                "request's Born x virtual and |A_loop|^2 as separate "
+                "contributions) is not served yet",
+            )
+        )
     if run.loop.r2_strategy == "direct":
         reasons.append(
             ListedBlocker(
@@ -194,6 +203,12 @@ class _LoopContext:
     preparation: LoopPreparation
     color_declaration: Any = None
     limits: tuple[dict[str, int], ...] = ()
+    # ``process.max_coupling_orders`` by the declared names: the bounds of a
+    # loop-induced request's loop amplitudes (``loop_induced_orders``).
+    explicit: dict[str, int] = field(default_factory=dict)
+    # Per entry the loop orders of a loop-induced request that are exact
+    # colour zeros (``_loop_induced_request``), None for a Born member.
+    colour_zero: tuple[tuple[dict[str, int], ...] | None, ...] = ()
 
 
 def _prepare(
@@ -333,6 +348,7 @@ def _prepare(
         preparation,
         color_data,
         tuple(entry_limits),
+        explicit=dict(explicit),
     )
 
 
@@ -507,8 +523,10 @@ def _v2_blockers(backend) -> tuple[str, ...]:
     """Configurations the v2 engine does not cover.
 
     Requests are refused per process, before any loop generation, by
-    ``_v2_request`` (no Born amplitude, undeclared corrections, coloured
-    widths in the Born currents, an unidentified scale parameter) and
+    ``_member`` / ``_v2_request`` / ``_loop_induced_request`` (undeclared
+    corrections, coloured widths in the Born currents of a Born-interfered
+    request, an unidentified scale parameter, the loop-induced routing of
+    ``_born_members``) and
     ``loops.v2.assemble.prepare_request_model`` (the model preparation);
     the generator fails closed with its own reason on what it does not
     admit (e.g. chiral loop-fermion vertices, WP3.2)."""
@@ -710,29 +728,36 @@ def _loop_orders_record(request) -> object:
     return orders[0] if len(orders) == 1 else orders
 
 
-def _v2_request(backend, context, index, born_dags=None):
-    """The slice request of one expanded process (``loops.v2.assemble``),
-    checked before any loop generation; its Born DAG is appended to
-    ``born_dags`` when a list is given (the dry run's policy checks read it).
+@dataclass(frozen=True)
+class _Member:
+    """The request-independent facts of one expanded process (``_member``):
+    its process, label, coupling-order limits, fixed parameters, vetoed
+    |PDG| codes, Born amplitude orders within the limits and the Born DAG
+    they were read from (empty orders: no Born amplitude, loop-induced)."""
 
-    The Born bounds are the process's coupling-order limits. The loop orders
-    follow its Born amplitude orders (``v2_loop_orders``), read from the Born
-    DAG (``artifact.born_amplitude_orders``), which must exist and propagate
-    no coloured particle with a width (``artifact.require_zero_coloured_widths``;
-    the slice re-checks its loop-side tree currents after generation). The
-    renormalisation-scale parameter is resolved here
-    (``_v2_scale_parameter``)."""
+    process: str
+    label: str
+    limits: dict[str, int]
+    fixed: dict[str, str]
+    veto: tuple[int, ...]
+    born: tuple
+    dag: Any
+
+
+def _member(backend, context, index) -> _Member:
+    """The checks every expanded process takes before it is routed (declared
+    corrections, stable external states under the complex-mass scheme,
+    native pole masses, no vetoed external particle) and its Born amplitude
+    orders within its coupling-order limits (``artifact.born_amplitude_orders``):
+    a process is loop-induced iff no Born DAG root exists within them
+    (m-lit PLAN §1.2; never a numerical zero)."""
+
     from pyamplicol.loops.model_cms import (
         require_native_pole_masses,
         require_stable_external_states,
         scheme_metadata,
     )
-    from pyamplicol.loops.v2.artifact import (
-        born_amplitude_orders,
-        require_zero_coloured_widths,
-    )
-    from pyamplicol.loops.v2.assemble import SliceRequest
-    from pyamplicol.loops.v2.ew_policy import correction_orders, require_zero_widths
+    from pyamplicol.loops.v2.artifact import born_amplitude_orders
 
     run = backend._run_config
     compiled = context.resolved.compiled
@@ -749,7 +774,8 @@ def _v2_request(backend, context, index, born_dags=None):
         fixed = {k: v for k, v in fixed.items() if k not in scheme.get("ones", ())}
     veto = particle_veto_codes(compiled, run.generation.particle_veto)
     pdgs = (*entry.process_ir.initial_pdgs, *entry.process_ir.final_pdgs)
-    # Under the complex-mass scheme external states are stable (EW-25).
+    # Under the complex-mass scheme external states are stable (EW-25), for
+    # Born-interfered and loop-induced requests alike (m-lit Q7).
     require_stable_external_states(compiled, pdgs, label)
     require_native_pole_masses(compiled, label)
     external = sorted({abs(int(pdg)) for pdg in pdgs} & set(veto))
@@ -762,39 +788,62 @@ def _v2_request(backend, context, index, born_dags=None):
             f"(|PDG| {external}); a veto only applies to internal lines and loops",
         )
     born, dag = born_amplitude_orders(compiled, process, limits, veto)
-    if not born:
-        from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+    return _Member(process, label, dict(limits), fixed, veto, born, dag)
 
-        raise LoopRequestUnsupported(
-            "loop-induced",
-            f"{label} has no Born amplitude within the coupling-order limits "
-            f"{dict(sorted(limits.items()))}",
-        )
+
+def _no_born(member: _Member):
+    """The typed ``loop-induced`` record (or refusal) of a Born-less process
+    a request does not serve."""
+
+    from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+    return LoopRequestUnsupported(
+        "loop-induced",
+        f"{member.label} has no Born amplitude within the coupling-order limits "
+        f"{dict(sorted(member.limits.items()))}",
+    )
+
+
+def _v2_request(backend, context, index, born_dags=None, member=None):
+    """The slice request of one expanded process with a Born amplitude
+    (``loops.v2.assemble``), checked before any loop generation; its Born DAG
+    is appended to ``born_dags`` when a list is given (the dry run's policy
+    checks read it). ``member`` is the process's ``_member`` (made here when
+    None).
+
+    The Born bounds are the process's coupling-order limits. The loop orders
+    follow its Born amplitude orders (``v2_loop_orders``), read from the Born
+    DAG (``artifact.born_amplitude_orders``), which must exist (else the
+    typed ``loop-induced`` refusal, which ``_born_members`` routes) and
+    propagate no coloured particle with a width
+    (``artifact.require_zero_coloured_widths``; the slice re-checks its
+    loop-side tree currents after generation). The renormalisation-scale
+    parameter is resolved here (``_v2_scale_parameter``)."""
+    from pyamplicol.loops.v2.artifact import require_zero_coloured_widths
+    from pyamplicol.loops.v2.ew_policy import correction_orders, require_zero_widths
+
+    run = backend._run_config
+    compiled = context.resolved.compiled
+    if member is None:
+        member = _member(backend, context, index)
+    if not member.born:
+        raise _no_born(member)
+    limits, label, fixed, dag = member.limits, member.label, member.fixed, member.dag
     require_zero_coloured_widths(label, (dag,), compiled, fixed)
     accuracy = run.color.accuracy
     selection = (
-        _v2_selection(backend, compiled, process, label)
+        _v2_selection(backend, compiled, member.process, label)
         if _leading_colour(run)
         else None
     )
-    request = SliceRequest(
-        process,
-        dict(limits),
-        v2_loop_orders(born, context.corrections, limits),
-        corrections=context.corrections,
-        fixed_parameters=fixed,
-        particle_veto=veto,
-        allow_anomalous_veto=run.generation.allow_anomalous_veto,
+    request = _slice_request(
+        backend,
+        context,
+        member,
+        v2_loop_orders(member.born, context.corrections, limits),
         accuracy=accuracy,
         colour_declaration=context.color_declaration if accuracy != "full" else None,
-        scale_parameter=_v2_scale_parameter(compiled, fixed),
-        alpha_s_parameter=run.loop.alpha_s_parameter,
-        colour_contraction=_V2_CONTRACTION[run.color.contraction],
-        compatibility=context.preparation.compatibility,
         selection=selection,
-        external_photons=run.loop.external_photons,
-        alpha0_conversion=run.loop.alpha0_conversion_parameter,
-        alpha0_inverse=run.loop.alpha0_inverse_parameter,
     )
     if set(context.corrections) - {correction_orders(compiled, fixed).strong}:
         # An electroweak correction ([U8], ``ew_policy.require_zero_widths``):
@@ -806,67 +855,330 @@ def _v2_request(backend, context, index, born_dags=None):
     return request
 
 
-def _born_members(backend, context):
-    """The slice requests of the expanded processes that have a Born
-    amplitude, with ``context`` restricted to them, and the skipped members
-    (m-sm PLAN Q2 (a)).
+def _slice_request(backend, context, member, loop_orders, **fields):
+    """The slice request of ``member`` (``_member``) at ``loop_orders`` with
+    the run's settings, its coupling-order limits as Born bounds;
+    ``fields`` sets the others (accuracy, colour declaration, selection,
+    contribution). Shared by ``_v2_request`` and ``_loop_induced_request``."""
 
-    A concrete process of a multiparticle request (``p p > e+ e-``: its
-    member ``g g > e+ e-``) with no Born amplitude within the coupling-order
-    limits is loop-induced: it is skipped with a typed record (key
-    ``loop-induced``, the dry run's ``skipped_members`` and the artifact's
-    ``loop_skipped_members`` extension), and the Born x virtual sum of the
-    request is that of its other members (the loop-squared contribution of
-    such a member, which MadLoop's multiparticle output holds, comes with
-    the loop-induced milestone). A request with no member left, or a single
-    concrete process, is refused (``loop-induced``)."""
+    from pyamplicol.loops.v2.assemble import SliceRequest
+
+    run = backend._run_config
+    return SliceRequest(
+        member.process,
+        dict(member.limits),
+        loop_orders,
+        corrections=context.corrections,
+        fixed_parameters=member.fixed,
+        particle_veto=member.veto,
+        allow_anomalous_veto=run.generation.allow_anomalous_veto,
+        scale_parameter=_v2_scale_parameter(context.resolved.compiled, member.fixed),
+        alpha_s_parameter=run.loop.alpha_s_parameter,
+        colour_contraction=_V2_CONTRACTION[run.color.contraction],
+        compatibility=context.preparation.compatibility,
+        external_photons=run.loop.external_photons,
+        alpha0_conversion=run.loop.alpha0_conversion_parameter,
+        alpha0_inverse=run.loop.alpha0_inverse_parameter,
+        **fields,
+    )
+
+
+def _order_hierarchy(context) -> dict[str, int]:
+    """The model's coupling-order hierarchy by declared name (at least 1):
+    the weights of the tree service's minimal-order policy
+    (``coupling_order_hierarchies``, read by
+    ``dag_algorithms.infer_minimal_coupling_order_limits``)."""
+
+    compiled = context.resolved.compiled
+    return _order_names(compiled).mapping(
+        context.resolved.model.coupling_order_hierarchies()
+    )
+
+
+def loop_induced_orders(
+    reachable: Iterable[Sequence[tuple[str, int]]],
+    *,
+    policy: str,
+    hierarchy: Mapping[str, int] | None = None,
+    names: Iterable[str] = (),
+) -> dict[str, int] | tuple[dict[str, int], ...]:
+    """The exact loop-amplitude orders of a loop-induced request (m-lit PLAN
+    §1.3, Q4 (a); the ``v2_loop_orders`` of a process without a Born) from
+    the orders its field-level loop family recursion reaches within the
+    request's bounds (``reachable``; ``assemble.reachable_loop_orders``).
+
+    ``explicit``: every reachable order (``process.max_coupling_orders``
+    bounds the amplitude orders). ``minimal``: the lowest reachable ones by
+    the model's coupling hierarchy, i.e. every reachable order of the least
+    weighted degree sum(hierarchy * power) (as MG5_aMC, which bounds the
+    WEIGHTED order by that of its lowest loop diagram,
+    ``loop_diagram_generation.py``). Squared orders are the loop x loop
+    pairs l + l'. A mapping for one order, else
+    a sequence by degree; every mapping names ``names`` and every reached
+    coupling (zero powers kept). Refused (``ValueError``) without a
+    reachable order: the caller's ``no-loop-amplitude``."""
+
+    found = sorted(
+        {tuple(sorted((str(n), int(p)) for n, p in o if p)) for o in reachable}
+    )
+    if not found:
+        raise ValueError("a loop-induced request needs a reachable loop amplitude")
+    weights = dict(hierarchy or {})
+
+    def degree(orders) -> int:
+        return sum(max(1, int(weights.get(name, 1))) * power for name, power in orders)
+
+    if str(policy) == "minimal":
+        lowest = min(map(degree, found))
+        found = [orders for orders in found if degree(orders) == lowest]
+    elif str(policy) != "explicit":
+        raise ValueError(f"unknown coupling-order policy {policy!r}")
+    keys = sorted({*map(str, names), *(name for orders in found for name, _ in orders)})
+    loops = []
+    for orders in sorted(found, key=lambda orders: (degree(orders), orders)):
+        loop = dict.fromkeys(keys, 0)
+        loop.update(orders)
+        loops.append(loop)
+    return loops[0] if len(loops) == 1 else tuple(loops)
+
+
+def _loop_induced_request(backend, context, index, member, models):
+    """The slice request of one expanded process without a Born amplitude,
+    served loop-induced (|A_loop|^2; m-lit LIT-REQ), and its loop orders
+    that are exact colour zeros. ``models`` caches the model preparations
+    of the order inference by recipe.
+
+    Full colour only (``loop-induced-colour-accuracy``, Q8). The loop orders
+    are inferred (``loop_induced_orders``) from the field-level loop family
+    recursion within ``process.max_coupling_orders``
+    (``assemble.reachable_loop_orders``): the orders with a loop amplitude
+    and those every loop of which has a single coloured attachment (an
+    exact colour zero, Tr T^a = 0: ``h > g a``; the request is one when all
+    its orders are); none reachable is the typed ``no-loop-amplitude``.
+    Widths (Q7): fixed widths are admitted in every tree propagator (no
+    coloured-width refusal: with no Born there is no Catani mismatch, and
+    the UV counterterm vertices multiply the same widthful tree
+    propagators; the runtime finiteness diagnostic checks it at production
+    widths), loop propagators stay widthless; under the complex-mass scheme
+    masses are complex everywhere and unstable external states were refused
+    by ``_member``. The electroweak width guard of an electroweak request
+    stays (m-lit LIT-EW replaces it with the Q7 policy): the tree currents
+    of the process's legs (its Born DAG, which has no root) are checked as
+    a Born-interfered request's Born."""
+
+    from pyamplicol.loops.native import load_loop_native
+    from pyamplicol.loops.v2 import generator_input
+    from pyamplicol.loops.v2.artifact import request_record
+    from pyamplicol.loops.v2.assemble import (
+        prepare_request_model,
+        reachable_loop_orders,
+    )
+    from pyamplicol.loops.v2.ew_policy import correction_orders, require_zero_widths
+    from pyamplicol.loops.v2.families import add_orders
+    from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+    run = backend._run_config
+    compiled = context.resolved.compiled
+    accuracy = str(run.color.accuracy)
+    if accuracy != "full":
+        raise LoopRequestUnsupported(
+            "loop-induced-colour-accuracy",
+            f"{member.label} has no Born amplitude within the coupling-order "
+            f"limits {dict(sorted(member.limits.items()))} and requests "
+            f"color.accuracy = {accuracy!r}",
+        )
+    bounds = dict(context.explicit)
+    # The request before its loop orders are known: bounded by the explicit
+    # limits only, its preparation keeps every vertex the bounds admit.
+    base = _slice_request(
+        backend,
+        context,
+        member,
+        bounds,
+        accuracy="full",
+        contribution="loop-induced",
+    )
+    recipe = request_record(base)
+    del recipe["process"]
+    key = json.dumps(recipe, sort_keys=True)
+    if key not in models:
+        models[key] = prepare_request_model(compiled, base)
+    native = load_loop_native() if "families" in generator_input.NATIVE_STAGES else None
+    reachable = reachable_loop_orders(
+        compiled, base, bounds, model=models[key], native=native
+    )
+    if not reachable.orders:
+        raise LoopRequestUnsupported(
+            "no-loop-amplitude",
+            f"{member.label} has no Born amplitude within the coupling-order "
+            f"limits {dict(sorted(member.limits.items()))} and no one-loop "
+            f"amplitude for the corrections {list(context.corrections)} within "
+            f"{dict(sorted(bounds.items())) or 'the derived order bounds'}",
+        )
+    orders = loop_induced_orders(
+        reachable.orders,
+        policy=str(run.process.coupling_order_policy),
+        hierarchy=_order_hierarchy(context),
+        names=(*_order_names(compiled).declared, *bounds, *context.corrections),
+    )
+    request = replace(base, loop_orders=orders)
+    zero = tuple(
+        dict(loop)
+        for loop in request.exact_loop_orders
+        if add_orders(tuple(loop.items())) in reachable.colour_zero
+    )
+    if set(context.corrections) - {correction_orders(compiled, member.fixed).strong}:
+        require_zero_widths(compiled, request, (member.dag,), member.fixed)
+    return request, zero
+
+
+def _skip_record(entry, error) -> dict[str, str]:
+    return {
+        "key": entry.request.name,
+        "process": entry.request.expression,
+        "request": entry.source_request.name,
+        "request_expression": entry.source_request.expression,
+        "refusal": error.key,
+        "reason": str(error),
+    }
+
+
+def _born_members(backend, context):
+    """The slice requests of the expanded processes a request serves, with
+    ``context`` restricted to them (and ``colour_zero`` set), their Born
+    DAGs (None for a loop-induced one) and the skipped members, routed by
+    ``process.loop_induced`` (m-lit PLAN Q2 (b), §1.7; m-sm PLAN Q2 (a)).
+
+    A concrete process with no Born amplitude within its coupling-order
+    limits (``_member``) is loop-induced. Per request (a ``ProcessRequest``
+    and its concrete processes):
+
+    * ``auto`` (default): a request with a Born member serves its Born
+      members; its Born-less members (``p p > e+ e-``: ``g g > e+ e-``) are
+      skipped with the typed ``loop-induced`` record (the dry run's
+      ``skipped_members``, the artifact's ``loop_skipped_members``). A
+      request none of whose members has a Born serves them loop-induced
+      (``_loop_induced_request``).
+    * ``skip``: Born members only; a request with no Born member, or a
+      single Born-less process, is refused (``loop-induced``).
+    * ``only``: Born-less members only, loop-induced; Born members are
+      skipped with the typed ``born-in-loop-induced-mode`` record, and a
+      request without a Born-less member is refused with that key.
+    * ``include`` is a configuration refusal (``loop-induced-include-pending``).
+
+    A loop-induced member that reaches no loop amplitude (not even an exact
+    colour zero, which is served) is skipped with the typed
+    ``no-loop-amplitude`` record (refused for a single process). A
+    request left without a member is refused with the key of its records.
+    Born members are processed in order exactly as before (``_v2_request``);
+    the routing of Born-less members waits for their request's other
+    members."""
 
     from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
 
-    requests, dags, kept, skipped = [], [], [], []
+    policy = str(backend._run_config.process.loop_induced)
+    if policy not in ("auto", "skip", "only"):
+        raise LoopRequestUnsupported(
+            "loop-induced-include-pending",
+            f"process.loop_induced = {policy!r} is not served yet",
+        )
+    served: dict[int, tuple[Any, Any, Any]] = {}
+    skipped: dict[int, dict[str, str]] = {}
+    deferred: list[tuple[int, _Member]] = []
+    with_born: set[str] = set()
+    models: dict[str, Any] = {}
     for index, entry in enumerate(context.expanded):
-        try:
-            request = _v2_request(backend, context, index, dags)
-        except LoopRequestUnsupported as error:
-            if error.key != "loop-induced" or entry.source_expansion_size <= 1:
-                raise
-            skipped.append(
-                {
-                    "key": entry.request.name,
-                    "process": entry.request.expression,
-                    "request": entry.source_request.name,
-                    "request_expression": entry.source_request.expression,
-                    "refusal": error.key,
-                    "reason": str(error),
-                }
+        member = _member(backend, context, index)
+        single = entry.source_expansion_size <= 1
+        if member.born:
+            with_born.add(entry.source_request.name)
+            if policy == "only":
+                error = LoopRequestUnsupported(
+                    "born-in-loop-induced-mode",
+                    f"{member.label} has a Born amplitude within the "
+                    "coupling-order limits "
+                    f"{dict(sorted(member.limits.items()))} (orders "
+                    f"{[dict(orders) for orders in member.born]}) and "
+                    "process.loop_induced = 'only'",
+                )
+                if single:
+                    raise error
+                skipped[index] = _skip_record(entry, error)
+                continue
+            request = _v2_request(backend, context, index, None, member)
+            served[index] = (request, member.dag, None)
+        elif single:
+            if policy == "skip":
+                raise _no_born(member)
+            request, zero = _loop_induced_request(
+                backend, context, index, member, models
             )
+            served[index] = (request, None, zero)
+        else:
+            deferred.append((index, member))
+    for index, member in deferred:
+        entry = context.expanded[index]
+        if policy == "skip" or (
+            policy == "auto" and entry.source_request.name in with_born
+        ):
+            skipped[index] = _skip_record(entry, _no_born(member))
             continue
-        requests.append(request)
-        kept.append(index)
+        try:
+            request, zero = _loop_induced_request(
+                backend, context, index, member, models
+            )
+        except LoopRequestUnsupported as error:
+            if error.key != "no-loop-amplitude":
+                raise
+            skipped[index] = _skip_record(entry, error)
+            continue
+        served[index] = (request, None, zero)
+    kept = sorted(served)
+    records = tuple(skipped[index] for index in sorted(skipped))
     sources = {context.expanded[index].source_request.name for index in kept}
     empty = sorted(
         {
             (record["request"], record["request_expression"])
-            for record in skipped
+            for record in records
             if record["request"] not in sources
         }
     )
     if empty:
         name, expression = empty[0]
+        mine = [record for record in records if record["request"] == name]
+        listed = ", ".join(record["process"] for record in mine)
+        refusals = {record["refusal"] for record in mine}
+        if "no-loop-amplitude" in refusals:
+            raise LoopRequestUnsupported(
+                "no-loop-amplitude",
+                f"no concrete process of {name!r} ({expression}) has a Born or a "
+                "loop amplitude within its coupling-order limits and corrections: "
+                + listed,
+            )
+        if refusals == {"born-in-loop-induced-mode"}:
+            raise LoopRequestUnsupported(
+                "born-in-loop-induced-mode",
+                f"every concrete process of {name!r} ({expression}) has a Born "
+                "amplitude within its coupling-order limits and "
+                "process.loop_induced = 'only': " + listed,
+            )
         raise LoopRequestUnsupported(
             "loop-induced",
             f"no concrete process of {name!r} ({expression}) has a Born "
-            "amplitude within the coupling-order limits: "
-            + ", ".join(
-                record["process"] for record in skipped if record["request"] == name
-            ),
+            "amplitude within the coupling-order limits: " + listed,
         )
     restricted = replace(
         context,
         expanded=tuple(context.expanded[index] for index in kept),
         limits=tuple(context.limits[index] for index in kept),
+        colour_zero=tuple(served[index][2] for index in kept),
     )
-    return restricted, tuple(requests), tuple(dags), tuple(skipped)
+    return (
+        restricted,
+        tuple(served[index][0] for index in kept),
+        tuple(served[index][1] for index in kept),
+        records,
+    )
 
 
 def _plan_policy_checks(compiled, request, model, dag):
@@ -933,8 +1245,8 @@ def _plan_v2(backend, processes, blockers, *, model=None):
             )
             context, requests, dags, skipped = _born_members(backend, context)
             prepared = {}
-            for entry, request, dag in zip(
-                context.expanded, requests, dags, strict=True
+            for entry, request, dag, zero in zip(
+                context.expanded, requests, dags, context.colour_zero, strict=True
             ):
                 recipe = request_record(request)
                 del recipe["process"]
@@ -947,7 +1259,9 @@ def _plan_v2(backend, processes, blockers, *, model=None):
                     context.resolved.compiled, request, prepared[key], dag
                 )
                 coverage.append(
-                    {
+                    _loop_induced_coverage(backend, context, entry, request, zero)
+                    if request.contribution == "loop-induced"
+                    else {
                         "key": entry.request.name,
                         "process": entry.request.expression,
                         "engine": "v2",
@@ -963,6 +1277,9 @@ def _plan_v2(backend, processes, blockers, *, model=None):
                         "native_export_checked": False,
                     }
                 )
+            pending = _engine_pending(requests, context.colour_zero)
+            if pending is not None:
+                blockers = (*blockers, pending)
         except (ValueError, TypeError, RuntimeError, ImportError, PyAmpliColError) as e:
             # A listed key first (``refusals.keyed_error``).
             blockers = (str(keyed_error(e)),)
@@ -1005,6 +1322,92 @@ def _plan_v2(backend, processes, blockers, *, model=None):
         ),
     )
     return replace(result, estimated_coverage=estimated)
+
+
+def _loop_induced_sectors(request) -> list[dict[str, object]]:
+    """The squared-order sectors of a loop-induced request: loop x loop pairs
+    (l, l'), l <= l', of order l + l' (2 Re for l != l'; m-lit PLAN §1.3)."""
+
+    loops = [dict(orders) for orders in request.exact_loop_orders]
+    sectors: dict[tuple, dict[str, object]] = {}
+    for i, left in enumerate(loops):
+        for right in loops[i:]:
+            names = sorted({*left, *right})
+            order = {name: left.get(name, 0) + right.get(name, 0) for name in names}
+            key = tuple(sorted(order.items()))
+            sector = sectors.setdefault(key, {"order": order, "pairs": []})
+            sector["pairs"].append([left, right])
+    return [sectors[key] for key in sorted(sectors)]
+
+
+def _loop_induced_coverage(
+    backend, context, entry, request, colour_zero
+) -> dict[str, object]:
+    """The dry run's record of a process served loop-induced (|A_loop|^2):
+    its kind, the coupling-order limits within which it has no Born, its
+    inferred loop orders and loop x loop sectors, those of its loop orders
+    that are exact colour zeros (``colour_zero``; every loop has a single
+    coloured attachment, Tr T^a = 0) and whether all are (an exact colour
+    zero request, ``h > g a``: m-lit PLAN §1.2, Q13), the order policy and
+    the width policy (m-lit Q7)."""
+
+    run = backend._run_config
+    scheme = str(context.declaration.scheme.mass_scheme)
+    return {
+        "key": entry.request.name,
+        "process": entry.request.expression,
+        "engine": "v2",
+        "contribution": "loop-induced",
+        "interference": "conj(loop)*loop",
+        "born_orders": {},
+        "coupling_order_limits": dict(request.born_orders),
+        "loop_orders": _loop_orders_record(request),
+        "loop_order_policy": str(run.process.coupling_order_policy),
+        "sectors": _loop_induced_sectors(request),
+        "colour_zero_loop_orders": [dict(orders) for orders in colour_zero],
+        "exact_colour_zero": len(colour_zero) == len(request.exact_loop_orders),
+        "corrections": list(request.corrections),
+        "color_accuracy": request.accuracy,
+        "scale_parameter": request.scale_parameter,
+        # m-lit Q7: fixed widths in every tree propagator and widthless loop
+        # propagators; the complex-mass scheme puts complex masses in tree
+        # and loop propagators (unstable external states refused).
+        "width_policy": (
+            "complex-mass-scheme" if scheme == "complex-mass" else "fixed-tree-widths"
+        ),
+        "loop_graph_count": 0,
+        "numerator_compilation_deferred": True,
+        "loop_admission_checked": False,
+        "native_export_checked": False,
+    }
+
+
+def _engine_pending(requests, colour_zero):
+    """The listed ``loop-induced-engine-pending`` blocker of the loop-induced
+    requests among ``requests``, or None: they are routed and dry-run, and
+    their generation is refused until the amplitude-mode engine lands (m-lit
+    LIT-AMP lifts it; never a silent zero). An exact colour zero
+    (``colour_zero`` names all its loop orders; ``_loop_induced_request``)
+    is marked."""
+
+    from pyamplicol.loops.v2.refusals import ListedBlocker
+
+    pending = [
+        repr(request.process)
+        + (
+            " (an exact colour zero)"
+            if len(zero) == len(request.exact_loop_orders)
+            else ""
+        )
+        for request, zero in zip(requests, colour_zero, strict=True)
+        if request.contribution == "loop-induced"
+    ]
+    if not pending:
+        return None
+    return ListedBlocker(
+        "loop-induced-engine-pending",
+        "loop-induced processes are not generated yet: " + ", ".join(pending),
+    )
 
 
 # The artifact extension of the skipped members of multiparticle requests
@@ -1161,6 +1564,11 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
             # Only the scope keeps the Born DAGs (each slice releases its own).
             context, requests, _released, skipped = _born_members(backend, context)
             del _released
+            # Loop-induced processes are routed, not generated yet (m-lit
+            # LIT-AMP lifts this; never a silent zero).
+            pending = _engine_pending(requests, context.colour_zero)
+            if pending is not None:
+                raise pending.error()
         native = load_loop_native()
         compiled = context.resolved.compiled
         validation = backend._generation_config.validation

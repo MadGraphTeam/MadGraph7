@@ -80,10 +80,9 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   the request is refused when a loop position uses it
   (``colour.SeedColour.states``), naming the vertex and the order.
 * The QCD guards of the public route (m-qcd MQ-MODEL; user rulings
-  2026-10-28 ~15:25): ``loop-induced`` (no Born amplitude within the
-  request's coupling-order limits, ``generation.loop_service._v2_request``),
-  ``coloured-width`` (a coloured particle with a nonzero width in a tree
-  current, ``artifact.require_zero_coloured_widths``), and at model
+  2026-10-28 ~15:25): ``coloured-width`` (a coloured particle with a nonzero
+  width in a tree current of a Born-interfered request,
+  ``artifact.require_zero_coloured_widths``), and at model
   preparation (``loops.covariant_model.build_covariant_structure``)
   ``lorentz-slot-arity`` (a vertex tensor whose slots do not match its
   particles once the structural source repair,
@@ -99,6 +98,32 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   (``generation.dag_ordering._direct_contraction_ir`` with ``loop_born``);
   the tree lanes refuse it (``dag_ordering.DiracWeylClosureUnsupported``,
   key ``dirac-weyl-closure``).
+* Loop-induced routing (m-lit LIT-REQ; PLAN §1.2-§1.4, rulings Q2 (b),
+  Q4 (a), Q7, Q8 (a)): a concrete process is loop-induced iff no Born DAG
+  root exists within its coupling-order limits (structural, never a
+  numerical zero; ``generation.loop_service._v2_request``).
+  ``process.loop_induced`` routes it: ``loop-induced`` is the typed record
+  of a Born-less member a request does not serve (every one under
+  ``skip``; the Born-less members of a multiparticle request with Born
+  members under ``auto`` and ``skip``) and the refusal of a request left
+  without a member; ``born-in-loop-induced-mode`` the converse under
+  ``only``; ``no-loop-amplitude`` a Born-less process whose field-level
+  loop family recursion reaches no loop amplitude within its orders and
+  corrections (``loop_service.loop_induced_orders``), where an order every
+  loop of which has a single coloured attachment (Tr T^a = 0, exact in any
+  model: ``h > g a``) is reached, as an exact colour zero
+  (``assemble.reachable_loop_orders``, PLAN §1.2, Q13);
+  ``loop-induced-colour-accuracy`` an LC or NLC loop-induced request (full
+  colour only, Q8); ``loop-induced-include-pending`` (configuration) the
+  ``include`` value until it lands; ``loop-induced-engine-pending`` the
+  generation of an admitted loop-induced process until the amplitude-mode
+  engine lands (never a silent zero). Widths (Q7): a loop-induced request
+  admits fixed widths in every tree propagator (no Born, so no Catani
+  mismatch, and the UV counterterm vertices multiply the same widthful
+  tree propagators), loop propagators stay widthless; ``coloured-width``
+  stays the Born-interfered guard; under the complex-mass scheme masses are
+  complex in tree and loop propagators and an unstable external state is
+  refused (``cms-external-width``, ahead of the routing).
 * One-loop 1 -> n decays (M-FINAL MF-DEC-2) are served: no rule reads the
   number of initial legs (``decay-process``, MF-DEC-1's interim refusal,
   is retired). The decaying leg is an ordinary incoming leg: its field
@@ -107,7 +132,8 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   MadLoop's NLOCT ``recms`` at zero width), its own width is zero
   (``cms-external-width`` under the complex-mass scheme; in the real-mass
   scheme the width of a particle that does not propagate enters nothing),
-  and a loop-induced decay (``h > g g``) is ``loop-induced``.
+  and a loop-induced decay (``h > g g``) is routed as any loop-induced
+  process.
 * ``forced-seed-fft-unserved`` (MQ-FFT, a guard): ``colour_contraction =
   "fft"`` requires the certified symmetric-group FFT of the seed contraction
   (design §7.3). Orbits of the external adjoint labels are found and
@@ -159,7 +185,8 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   ``mass_scheme`` is ``"real-on-shell"`` or ``"complex-mass"``
   (``mass-scheme`` otherwise). Real on-shell requests propagate no width in
   coloured trees (``coloured-width``) nor, if electroweak, in any tree
-  (``electroweak-width``, [U8]); the complex-mass scheme is MG5_aMC's
+  (``electroweak-width``, [U8]; a loop-induced request takes the Q7 width
+  policy above on the coloured side); the complex-mass scheme is MG5_aMC's
   transform of the model (``complex_mass_model``), which refuses a model
   outside its assumptions (``complex-mass-scheme``), a width-carrying
   particle of internal mass (``cms-internal-mass``), a fixed Yukawa input
@@ -256,15 +283,76 @@ LOOP_ADMISSION_REFUSALS = (
     ),
     LoopAdmissionRefusal(
         "loop-induced",
-        "a request without a Born amplitude within its coupling-order limits "
-        "(a loop-induced process, MG5_aMC [noborn=QCD]: g g > h h, g g > z z, "
-        "g g > a a, ...)",
-        "v2 virtuals interfere one-loop and Born amplitudes; a loop-squared "
-        "matrix element is not served",
-        "a process with a Born amplitude, or coupling-order limits "
-        "(process.max_coupling_orders) that admit one",
-        "after M-SM (user ruling 2026-10-28 ~15:25 (2))",
-        "loop-squared matrix elements",
+        "a concrete process without a Born amplitude within its coupling-order "
+        "limits (a loop-induced process, MG5_aMC [noborn=QCD]: g g > h h, "
+        "g g > z z, h > g g, ...) that the request does not serve: every one "
+        "under process.loop_induced = 'skip', and the Born-less members of a "
+        "multiparticle request that also has Born members ('auto', 'skip'; "
+        "skipped with a typed record)",
+        "a Born x virtual interference and a loop-squared matrix element "
+        "|A_loop|^2 are separate contributions, never summed; 'auto' serves "
+        "the loop-squared one for a request none of whose processes has a Born, "
+        "'skip' serves none",
+        "process.loop_induced = 'auto' (the default) for a purely loop-induced "
+        "request, 'only' for the Born-less members of a mixed multiparticle "
+        "request, or coupling-order limits (process.max_coupling_orders) that "
+        "admit a Born amplitude",
+        "m-lit LIT-REQ (Q2 (b))",
+        "process.loop_induced = 'include' (both kinds, LIT-API)",
+    ),
+    LoopAdmissionRefusal(
+        "born-in-loop-induced-mode",
+        "a concrete process with a Born amplitude under process.loop_induced = "
+        "'only' (skipped with a typed record in a multiparticle request; a "
+        "single process or a request without a loop-induced member is refused)",
+        "'only' serves the processes without a Born amplitude within their "
+        "coupling-order limits, loop-squared (|A_loop|^2)",
+        "process.loop_induced = 'auto' (the default) or 'skip' for the Born x "
+        "virtual interference",
+        "m-lit LIT-REQ (Q2 (b))",
+        "none",
+    ),
+    LoopAdmissionRefusal(
+        "no-loop-amplitude",
+        "a concrete process without a Born amplitude whose one-loop recursion "
+        "reaches no loop within its coupling-order limits and corrections (e.g. "
+        "a a > a a with process.loop_coupling_orders = ['QCD']: a quark loop "
+        "with photons only has no QCD vertex; g g > h with QED = 0); skipped "
+        "with a typed record in a multiparticle request. A process every loop "
+        "of which has a single coloured attachment (h > g a, z > g a: Tr T^a = "
+        "0) is not refused: it is served as an exact colour zero",
+        "with no one-loop amplitude there is nothing to square: a result would "
+        "be a silent zero; the field-level loop family recursion (MadLoop's "
+        "joint correction selection) decides it structurally, before any loop "
+        "generation",
+        "the corrections whose vertices its loops need "
+        "(process.loop_coupling_orders), or coupling-order limits that admit a "
+        "loop",
+        "m-lit LIT-REQ (Q4 (a))",
+        "none",
+    ),
+    LoopAdmissionRefusal(
+        "loop-induced-colour-accuracy",
+        "a loop-induced process at leading or next-to-leading colour "
+        "(color.accuracy = 'lc' or 'nlc')",
+        "loop-induced processes are served at full colour only (m-lit Q8 (a)): "
+        "one N_c grade at N_c = 3, no truncated colour metric",
+        "color.accuracy = 'full' (the one-loop default)",
+        "m-lit LIT-REQ (Q8 (a))",
+        "none",
+    ),
+    LoopAdmissionRefusal(
+        "loop-induced-engine-pending",
+        "the generation of a loop-induced process (|A_loop|^2): the request is "
+        "routed and its loop orders inferred (the dry run lists them), but the "
+        "amplitude-mode generation has not landed",
+        "never a silent zero: generation refuses until the loop-induced engine "
+        "(amplitude seeds, native amplitude sum, canonical squaring) serves it",
+        "the dry run (Generator.plan) for the request's kind and loop orders; "
+        "process.loop_induced = 'skip' leaves the loop-induced members of a "
+        "multiparticle request out",
+        "m-lit LIT-REQ",
+        "m-lit LIT-AMP (the loop-induced vertical slice)",
     ),
     LoopAdmissionRefusal(
         "coloured-width",
@@ -718,6 +806,22 @@ LOOP_CONFIGURATION_REFUSALS = (
         "no loop.preparation covariant multiplets",
         "m-sm MS-MODEL",
         "none",
+    ),
+    LoopAdmissionRefusal(
+        "loop-induced-include-pending",
+        "process.loop_induced = 'include' (the members of one mixed "
+        "multiparticle request served both ways: its Born members' Born x "
+        "virtual interference and its Born-less members' |A_loop|^2, as "
+        "separate contributions)",
+        "the two kinds are never summed; serving both kinds of one mixed "
+        "multiparticle request lands with the Python product surface (m-lit "
+        "LIT-API)",
+        "process.loop_induced = 'auto' with the Born-less processes as their "
+        "own process entries (each entry is routed by its own members, so one "
+        "plan already holds both kinds as separate processes), or 'only' for "
+        "the Born-less members of the mixed request",
+        "m-lit LIT-REQ (Q2 (b))",
+        "m-lit LIT-API",
     ),
 )
 _REFUSALS = {

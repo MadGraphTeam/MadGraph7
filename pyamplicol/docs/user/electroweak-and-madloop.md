@@ -135,7 +135,10 @@ typed record (key `loop-induced`) in the dry run
 extension `loop_skipped_members`). The stored members' sum is MadLoop's
 Born x virtual; the loop-squared contribution of a skipped member, which
 MadLoop's multiparticle output holds, is not computed. A request none of whose
-members has a Born is refused (`loop-induced`). `p` and `j` are the model's
+members has a Born is routed loop-induced (`process.loop_induced`, see
+[Configuration](configuration.md); its generation is refused
+`loop-induced-engine-pending` until the loop-induced engine lands), and
+refused (`loop-induced`) under `process.loop_induced = "skip"`. `p` and `j` are the model's
 massless quarks and gluon; add the photon with `process.multiparticles`.
 
 ## Refusals
@@ -166,7 +169,7 @@ key with its remedy:
 | `veto-unlabelled-counterterms` | a veto of a loop species of a requested correction on these models |
 | `anomalous-veto` | a veto that breaks an anomaly-free multiplet (`generation.allow_anomalous_veto` overrides) |
 | `colour-declaration-coverage` | LC or NLC without a covering colour declaration |
-| `loop-induced` | no Born amplitude within the limits |
+| `loop-induced` | no Born amplitude within the limits, for a process the request does not serve loop-induced (`process.loop_induced`) |
 | `coloured-width` | a real on-shell request with a coloured particle of a width in a tree current |
 | `electroweak-width` | a real on-shell electroweak request with any particle of a width in a tree current |
 | `mass-scheme` | a `mass_scheme` that is neither `real-on-shell` nor `complex-mass` |

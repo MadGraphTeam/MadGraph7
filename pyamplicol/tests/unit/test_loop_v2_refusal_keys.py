@@ -16,7 +16,8 @@ public dry run (m-sm PLAN MS-MODEL item 4).
 * Multiparticle requests (m-sm PLAN Q2 (a)): a member without a Born is
   skipped with a typed ``loop-induced`` record (dry run ``skipped_members``,
   artifact extension ``loop_skipped_members``); a request with no member
-  left is refused.
+  left is refused, or served loop-induced (m-lit Q2 (b),
+  ``test_loop_v2_induced_request.py``).
 """
 
 from __future__ import annotations
@@ -196,8 +197,19 @@ def test_configuration_refusals_fire_in_the_dry_run_and_at_generation(tmp_path, 
             "u u~ > e- e+",
             {"generation": 'particle_veto = ["e-"]'},
         ),
-        # Every member of p p > h h is loop-induced (m-sm Q2 (a)).
-        ("loop-induced", "p p > h h", {"restriction": "no_b_mass"}),
+        # Every member of p p > h h is Born-less: served loop-induced by
+        # default (m-lit Q2 (b)), whose generation is pending (LIT-AMP), and
+        # refused under process.loop_induced = "skip".
+        (
+            "loop-induced-engine-pending",
+            "p p > h h",
+            {"restriction": "no_b_mass"},
+        ),
+        (
+            "loop-induced",
+            "p p > h h",
+            {"restriction": "no_b_mass", "process": 'loop_induced = "skip"'},
+        ),
     ],
 )
 def test_loop_sm_request_refusals_fire_in_the_dry_run(
