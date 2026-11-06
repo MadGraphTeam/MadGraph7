@@ -32,6 +32,14 @@ type RawLaurent = Vec<(i32, String, String)>;
 type RawGrades = Vec<((usize, u32), Vec<i32>)>;
 /// Dipole operators per (i, j) leg pair: rows of fraction texts.
 type RawDipoles = Vec<((i64, i64), Vec<Vec<String>>)>;
+/// An amplitude basis: (T, per class (t, cell), counterterm elements,
+/// metric rows).
+type RawAmplitudeBasis = (
+    Vec<RawStructure>,
+    Vec<Vec<(usize, RawLaurent)>>,
+    Vec<usize>,
+    Vec<Vec<RawLaurent>>,
+);
 
 fn structure(raw: RawStructure) -> Structure {
     let (strings, traces) = raw;
@@ -68,6 +76,17 @@ fn raw_laurent(cell: &Laurent) -> RawLaurent {
         .collect()
 }
 
+fn raw_structure(structure: &Structure) -> RawStructure {
+    (
+        structure
+            .strings
+            .iter()
+            .map(|s| (s.q, s.word.clone(), s.qbar))
+            .collect(),
+        structure.traces.clone(),
+    )
+}
+
 fn raw_tensor(tensor: &Tensor) -> RawTensor {
     (
         tensor.legs.clone(),
@@ -76,20 +95,7 @@ fn raw_tensor(tensor: &Tensor) -> RawTensor {
             .iter()
             .map(|term| {
                 let (re, im) = term.coefficient.texts();
-                let structure = &term.structure;
-                (
-                    re,
-                    im,
-                    term.nc_power,
-                    (
-                        structure
-                            .strings
-                            .iter()
-                            .map(|s| (s.q, s.word.clone(), s.qbar))
-                            .collect(),
-                        structure.traces.clone(),
-                    ),
-                )
+                (re, im, term.nc_power, raw_structure(&term.structure))
             })
             .collect(),
         tensor.normalization,
@@ -348,6 +354,48 @@ impl NativeCellEngine {
         let engine = &mut self.engine;
         let rows = on_threads(py, threads, || engine.cells(&classes))?;
         Ok(NativeCellTable::new(rows))
+    }
+
+    /// The full-colour amplitude basis of `classes` and the counterterm
+    /// kets' literal tensors `kets` (`colour.amplitude_basis`, M-LIT
+    /// LIT-COL): (T as structures, per class its (t, c_{c,t}) cells, the
+    /// T elements the kets carry, the metric `<t|t'>` rows).
+    #[pyo3(signature = (classes, kets, threads=None))]
+    fn amplitude_basis(
+        &self,
+        py: Python<'_>,
+        classes: Vec<RawClass>,
+        kets: Vec<RawStructure>,
+        threads: Option<usize>,
+    ) -> PyResult<RawAmplitudeBasis> {
+        let classes = classes
+            .into_iter()
+            .map(class)
+            .collect::<PyResult<Vec<_>>>()?;
+        let kets: Vec<Structure> = kets.into_iter().map(structure).collect();
+        let engine = &self.engine;
+        let basis = on_threads(py, threads, || {
+            let tensors = engine.class_tensors(&classes)?;
+            cells::amplitude_basis(engine.legs(), &tensors, &kets)
+        })?;
+        Ok((
+            basis.tensors.iter().map(raw_structure).collect(),
+            basis
+                .cells
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .map(|(t, cell)| (*t, raw_laurent(cell)))
+                        .collect()
+                })
+                .collect(),
+            basis.counterterms,
+            basis
+                .metric
+                .iter()
+                .map(|row| row.iter().map(|cell| raw_laurent(cell)).collect())
+                .collect(),
+        ))
     }
 }
 
