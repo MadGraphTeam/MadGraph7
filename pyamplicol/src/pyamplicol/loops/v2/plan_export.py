@@ -817,8 +817,9 @@ class _Exporter:
                 for content, source in edges:
                     cuts[content.loop_out].append((content, source))
                 for species in sorted(cuts):
+                    # Within the family's trie rank (at least the group's).
                     for part in _trace_groups(
-                        cuts[species], group.rank, self.kinematics.shape
+                        cuts[species], trie.rank, self.kinematics.shape
                     ):
                         self._step(steps, part, 0, shift, accumulator)
             if values:
