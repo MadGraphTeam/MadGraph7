@@ -2225,7 +2225,8 @@ class V2VirtualRuntime:
             }
         carrier = self._carrier(arithmetic, precision)[0]
         choice = self._reduction(requested, carrier, route)
-        if checks is not None and checks.cross_backend:
+        # (A checks value of another type is refused by ``v2_options``.)
+        if getattr(checks, "cross_backend", False) is True:
             from .reduction import cross
 
             try:
