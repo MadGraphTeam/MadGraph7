@@ -1,0 +1,62 @@
+{
+ "what": "the \u00a74.1 rows other packages run (li_manifest.DELEGATED), recorded in data/lit.json from their records (m-lit brief R8: LI-B1 from lit-tir's report)",
+ "LI-B1": {
+  "status": "partial",
+  "owner": "lit-tir (this record); the Born-interfered L6 on the M-QCD, M-SM, decay and HC campaigns WAITS ON lit-tir-mp",
+  "source": "workspace/reports/engine-v2/m-lit/lit-tir-report.md \u00a7F.4 and \u00a7G.3 (\u00a7G.3 replaces \u00a74's synthetic tally); native loop-native-lit-tir-e8d076d1 = the slice's e852f448 (digest c3fda0c4)",
+  "rule": "L6 per lane: |T - N| <= 10 max(E_N, E_T, 4u x lane scale), every Laurent order",
+  "g1_six_leg_lanes": {
+   "g g > g g g g full": {
+    "lanes": 2200,
+    "tirust_serves": 1374,
+    "compared": 1274,
+    "beyond_10E": 9,
+    "worst_beyond_10E": "8 lanes <= 1.2e-13 of the lane; 1 lane 4.0e-4 (NinjaRS off by 4.0e-4, its estimate 3.6e-5; TIRust 9.7e-7)"
+   },
+   "u u~ > g g g g full": {
+    "lanes": 1256,
+    "tirust_serves": 961,
+    "compared": 930,
+    "beyond_10E": 17,
+    "worst_beyond_10E": "<= 7.1e-11 of the lane"
+   }
+  },
+  "g1_rows_first_session": "\u00a74 (method choice then on; gate-passed lanes bitwise what the default serves now): 9 G1 rows, lanes beyond 10x reach 1.65e-10 of the lane scale; virtual totals agree to <= 1.5e-10",
+  "synthetic_default": {
+   "lanes": 152576,
+   "refused_on_gates": 40768,
+   "compared": 108672,
+   "beyond_10E": 1004,
+   "worst_ratio": 97.5,
+   "note": "worst at 1.1e-11 of the lane; every bin with a deviation > 1e-5 has worst ratio <= 6.8"
+  },
+  "executor_level": "TIRust fails every point closed on the 6- and 7-leg G1 rows at this pin (gate refusals, method choice off: ruling 17:20 (d)); the served-lane comparison is the cross-backend evidence",
+  "waits_on": "lit-tir-mp (re-pin to ac1e234 or newer): the executor-level L6 on every Born-interfered campaign, re-run with workspace/tmp/lit-tir/scripts/li_b1.py and lib1_lanes.py"
+ },
+ "LI-B2": {
+  "status": "delegated",
+  "owner": "lit-tir",
+  "source": "TIR unit row (rust/loop-reduction/tests/v2_tir.rs; lit-tir report \u00a71-\u00a72)"
+ },
+ "LI-X1": {
+  "status": "delegated",
+  "owner": "lit-eft",
+  "source": "run-only check, outside the rows and L6 (USER 2026-11-06 ~14:55)"
+ },
+ "LI-O1": {
+  "status": "partial",
+  "owner": "lit-obs",
+  "source": "tools/loop_v2_observables_backends.py (lit-tir report \u00a7F.5, \u00a7G.3): exit 2 'not exercised' at this pin, TIRust fails points closed (g g > h g g 141 outputs, u u~ > h g g 93); WAITS ON lit-tir-mp"
+ },
+ "findings": {
+  "li_gg_hg": {
+   "L9": "the HEFT oracle is the defect: pyAmpliCol's built-in-sm-heft tree is 9/8 of the analytic LO HEFT value at g g > h (G_F alpha_s^2 m_H^4 c(r)^2 / (288 sqrt2 pi^2) with the model's own c(r); reproducer workspace/tmp/lit-val/findings/heft_gg_h.py), and the loop-induced g g > h (= Spira's analytic formula, = MadLoop / OpenLoops / Recola) over that tree extrapolates to the same 8/9; here the scan extrapolates to 8/9 to <= 1e-6 as well: decoupling holds, the oracle is 9/8 too large (finding to the coordinator)"
+  },
+  "li_uux_hg": {
+   "L9": "the HEFT oracle is the defect: pyAmpliCol's built-in-sm-heft tree is 9/8 of the analytic LO HEFT value at g g > h (G_F alpha_s^2 m_H^4 c(r)^2 / (288 sqrt2 pi^2) with the model's own c(r); reproducer workspace/tmp/lit-val/findings/heft_gg_h.py), and the loop-induced g g > h (= Spira's analytic formula, = MadLoop / OpenLoops / Recola) over that tree extrapolates to the same 8/9; here the scan extrapolates to 8/9 to <= 1e-6 as well: decoupling holds, the oracle is 9/8 too large (finding to the coordinator)"
+  },
+  "li_gg_hgg": {
+   "L9": "the HEFT oracle is the defect: pyAmpliCol's built-in-sm-heft tree is 9/8 of the analytic LO HEFT value at g g > h (G_F alpha_s^2 m_H^4 c(r)^2 / (288 sqrt2 pi^2) with the model's own c(r); reproducer workspace/tmp/lit-val/findings/heft_gg_h.py), and the loop-induced g g > h (= Spira's analytic formula, = MadLoop / OpenLoops / Recola) over that tree extrapolates to the same 8/9; here the scan extrapolates to 8/9 to <= 1e-6 as well: decoupling holds, the oracle is 9/8 too large (finding to the coordinator)"
+  }
+ }
+}
