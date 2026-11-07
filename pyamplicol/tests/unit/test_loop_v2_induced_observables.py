@@ -100,9 +100,9 @@ def _generate(root: Path, name: str, expression: str, aliases=()):
     return root / "artifact"
 
 
-# A permutation alias of g g > h g g: g g > g h g (final legs 3 and 4
+# A permutation alias of u u~ > h g g: u~ u > h g g (the initial legs
 # exchanged).
-ALIAS = ("p_swap", "p", (0, 1, 3, 2, 4))
+ALIAS = ("p_swap", "p", (1, 0, 2, 3, 4))
 
 
 ROWS = {"li_gg_hgg": "g g > h g g", "li_uux_hgg": "u u~ > h g g"}
@@ -120,7 +120,7 @@ def artifacts(loop_sm_ufo, loop_native, tmp_path_factory):
             tmp_path_factory.mktemp(name),
             name,
             expression,
-            (ALIAS,) if name == "li_gg_hgg" else (),
+            (ALIAS,) if name == "li_uux_hgg" else (),
         )
         for name, expression in ROWS.items()
     }
@@ -498,15 +498,15 @@ def test_spin_projection_equals_the_literal_source(li, name, leg):
 
 @pytest.mark.loop_physics
 def test_a_permutation_alias_reads_the_representative(artifacts):
-    """The alias g g > g h g evaluates as its representative at the
-    permuted momenta, bitwise: the inclusive value, a served colour history
-    (T_1.T_5: its image is declared), a spin vector on the alias's gluon
-    leg 3 (the representative's leg 4) and the resolved rows (relabelled)."""
+    """The alias u~ u > h g g evaluates as its representative at the
+    permuted momenta, bitwise: the inclusive value, a colour history read on
+    its own labels (its T_1.T_4 is the representative's T_2.T_4), a spin
+    vector on a gluon leg and the resolved rows (relabelled)."""
 
     from pyamplicol import Runtime
     from pyamplicol.correlators import CorrelatedRequest
 
-    name = "li_gg_hgg"
+    name = "li_uux_hgg"
     points, scales = _points(name)
     points, scales = points[:1], scales[:1]
     _alias, _target, permutation = ALIAS
@@ -517,15 +517,16 @@ def test_a_permutation_alias_reads_the_representative(artifacts):
         alias.evaluate(member, mu_r2=scales).values
         == representative.evaluate(points, mu_r2=scales).values
     )
-    vector = _spin(_recola(name)["rows"][21]["vector"])
-    assert _recola(name)["rows"][21]["legs"] == [4]
+    row = _recola(name)["rows"][13]
+    assert row["kind"] == "sc" and row["legs"] == [4] and row["point"] == 0
+    vector = _spin(row["vector"])
     requests = {
-        "c": CorrelatedRequest("T1T5"),
-        "s": CorrelatedRequest("born", {4: vector}),
+        "c": CorrelatedRequest("T2T4"),
+        "s": CorrelatedRequest("T2T4", {4: vector}),
     }
     mapped = {
-        "c": CorrelatedRequest("T1T5"),
-        "s": CorrelatedRequest("born", {3: vector}),
+        "c": CorrelatedRequest("T1T4"),
+        "s": CorrelatedRequest("T1T4", {4: vector}),
     }
     direct = representative.evaluate_correlated_many(points, requests, mu_r2=scales)
     relabelled = alias.evaluate_correlated_many(member, mapped, mu_r2=scales)
@@ -533,8 +534,8 @@ def test_a_permutation_alias_reads_the_representative(artifacts):
         assert relabelled[key].values == direct[key].values, key
     rows = representative.evaluate_resolved(points, mu_r2=scales)
     moved = alias.evaluate_resolved(member, mu_r2=scales)
-    assert sorted(v.finite for v in (x[0] for x in moved.values[0][0])) == sorted(
-        v.finite for v in (x[0] for x in rows.values[0][0])
+    assert sorted(v[0].finite for v in moved.values[0][0]) == sorted(
+        v[0].finite for v in rows.values[0][0]
     )
 
 
