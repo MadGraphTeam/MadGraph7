@@ -27,7 +27,10 @@ pub use ninjars::fast::tensor_layout::monomials as tensor_monomials;
 pub use reduction::{
     DecimalMomentum, PolynomialPlan, RawLane, ReductionBatch, light_mass_needs_invariants,
 };
-pub use v2_execution::{Reduction, TypedBatch, V2Backends, V2ReductionBackend, backend_carriers};
+pub use v2_execution::{
+    Reduction, TIRUST_BINARY64_ONLY, TIRUST_NOT_BUILT, TypedBatch, V2Backends, V2ReductionBackend,
+    backend_carriers, plan_histogram,
+};
 pub use v2_reduce::{
     FamilyGroup, NATIVE_ONSHELL_THRESHOLD, PoleSelection, Poles, ReduceOptions, ReductionFrame,
     V2Output, V2Reducer, fast_engine_threshold, reaches_fast_threshold, shift_coefficients,

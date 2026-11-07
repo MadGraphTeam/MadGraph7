@@ -61,6 +61,9 @@ BACKENDS = tuple(
 # The per-type defaults of ``"auto"`` (RULED Q17 / Q40).
 DEFAULTS: Mapping[str, str] = {"virtual": "ninjars", "loop-induced": "tirust"}
 CARRIERS = ("double", "double-double", "arbitrary")
+# The refusal of TIRust at an extended carrier on the Python reference path
+# (the native one is ``runtime::TIRUST_BINARY64_ONLY``).
+TIRUST_BINARY64_ONLY = "the TIRust reduction backend serves binary64 in this build"
 NAMES = {"ninjars": "NinjaRS", "tirust": "TIRust"}
 KINDS = {"virtual": "Born-interfered", "loop-induced": "loop-induced"}
 
@@ -122,6 +125,25 @@ def executor_options() -> dict[str, str]:
 
     backend = _EFFECTIVE.get()
     return {} if backend == "ninjars" else {"reduction": backend}
+
+
+def prepare(executor: Any) -> None:
+    """Build the TIRust plans of a native executor (``V2Executor``) from its
+    plan's (propagators, rank) histogram when the current context runs
+    TIRust (``running``), before the call's first point (m-lit PLAN §2.b.3:
+    no first-call stall); kept for the executor's lifetime, so a later call
+    only compares its settings. TIRust's typed refusal of a family (its plan
+    construction, or the rank admission) is ``ReductionUnavailable``. Nothing
+    for NinjaRS."""
+
+    if _EFFECTIVE.get() != "tirust":
+        return
+    try:
+        executor.prepare_reduction("tirust")
+    except ValueError as error:
+        raise ReductionUnavailable(
+            f"reduction 'tirust' cannot serve this artifact: {error}"
+        ) from error
 
 
 def native_backends(native: Any) -> dict[str, frozenset[str]]:
@@ -253,10 +275,12 @@ __all__ = [
     "DEFAULTS",
     "RESOLVED",
     "SUMMED",
+    "TIRUST_BINARY64_ONLY",
     "ReductionUnavailable",
     "Route",
     "executor_options",
     "native_backends",
+    "prepare",
     "resolve",
     "running",
 ]

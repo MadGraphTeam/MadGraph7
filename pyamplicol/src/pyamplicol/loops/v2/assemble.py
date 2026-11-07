@@ -4365,9 +4365,9 @@ class _PointEvaluation:
             if not numbers.double:
                 from pyamplicol.api.errors import ReductionUnavailable
 
-                raise ReductionUnavailable(
-                    "the TIRust reduction backend serves binary64 in this build"
-                )
+                from .reduction import TIRUST_BINARY64_ONLY
+
+                raise ReductionUnavailable(TIRUST_BINARY64_ONLY)
             reducer = slice_.native.V2TirReducer()
         else:
             reducer = slice_.native.V2Reducer(

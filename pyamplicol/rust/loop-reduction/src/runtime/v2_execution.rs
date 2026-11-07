@@ -33,9 +33,7 @@ pub trait TypedBatch: BatchCarrier {
         _poles: Poles,
         _check: Option<ReductionCheck>,
     ) -> RusticolResult<Reduced<Self>> {
-        Err(RusticolError::unsupported_precision(
-            "the TIRust reduction backend serves binary64 in this build",
-        ))
+        Err(RusticolError::unsupported_precision(TIRUST_BINARY64_ONLY))
     }
 }
 
@@ -88,31 +86,16 @@ pub enum V2Backends {
     TiRust(Box<crate::v2_tir::TirReductionBackend>),
 }
 
-/// A reduction backend by name: `"ninjars"` or `"tirust"`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Reduction {
-    NinjaRs,
-    TiRust,
-}
+/// A reduction backend by name: `"ninjars"` or `"tirust"` (the rank
+/// admission's backend, one definition).
+pub use rusticol_core::loop_v2::bounds::Reducer as Reduction;
 
-impl Reduction {
-    pub fn parse(name: &str) -> RusticolResult<Self> {
-        match name {
-            "ninjars" => Ok(Self::NinjaRs),
-            "tirust" => Ok(Self::TiRust),
-            other => Err(RusticolError::invalid_argument(format!(
-                "reduction must be ninjars or tirust, not {other}"
-            ))),
-        }
-    }
+/// The refusal of a TIRust request at a carrier other than binary64.
+pub const TIRUST_BINARY64_ONLY: &str = "the TIRust reduction backend serves binary64 in this build";
 
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::NinjaRs => "ninjars",
-            Self::TiRust => "tirust",
-        }
-    }
-}
+/// The refusal of a TIRust request in a build without it.
+pub const TIRUST_NOT_BUILT: &str =
+    "this native library is built without TIRust (the cargo feature tir)";
 
 /// The reduction backends this build serves, by name (`"ninjars"`,
 /// `"tirust"`), with the carriers each serves: what the PyO3 capability
@@ -123,6 +106,17 @@ pub fn backend_carriers() -> Vec<(&'static str, Vec<&'static str>)> {
         out.push(("tirust", vec!["double"]));
     }
     out
+}
+
+/// A plan's (propagators, declared rank) histogram: the TIR backend's plans
+/// ([`V2Backends::tirust`]).
+pub fn plan_histogram(
+    plan: &rusticol_core::loop_v2::plan::LoopProgramV4,
+) -> std::collections::BTreeSet<(usize, usize)> {
+    plan.families
+        .iter()
+        .map(|f| (f.propagators(), f.rank))
+        .collect()
 }
 
 impl V2Backends {
@@ -141,7 +135,7 @@ impl V2Backends {
             let _ = families.into_iter();
             Err(RusticolError::unsupported_runtime_capability(
                 "tirust",
-                "this native library is built without TIRust (the cargo feature tir)",
+                TIRUST_NOT_BUILT,
             ))
         }
     }

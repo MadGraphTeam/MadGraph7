@@ -746,15 +746,22 @@ extension by default (the cargo feature `tir`) and serves binary64
 process types when requested (`"tirust"`); until its agreement with NinjaRS
 on loop-induced processes is established, `"auto"` stays on NinjaRS for
 loop-induced processes too and records why. A family TIRust cannot reduce
-is refused typed with TIRust's own reason (for now this includes an on-shell
-massive leg next to a loop propagator of its mass, such as a top in its own
-gauge loop, whose invariants TIRust's direct engine does not take exactly
-yet). In binary64, TIRust verifies every lane its method choice serves (the
-rows its conditioning gates refuse) in a second frame; a lane that fails
-that check fails its point (no automatic switch to NinjaRS). At present this
-happens on many points of Born-interfered processes with five or more
-external legs. `loop.reduction` other than `"auto"` needs a one-loop request
-(`process.loop_coupling_orders`).
+(its plan construction refuses the family's number of propagators or rank)
+is refused typed with TIRust's own reason before any point. A loop family
+point with an on-shell massive leg next to a loop propagator of its mass,
+such as a top in its own gauge loop, fails with a TIRust capability reason
+(TIRust's direct engine does not take these invariants exactly yet). In
+binary64, TIRust serves only the kinematic rows its conditioning gates
+accept: a row they refuse fails its point with the gates' reason (no
+automatic switch to NinjaRS). TIRust's own method choice for such rows
+(small-Gram expansions, alternative reduction) stays off until a TIRust
+correction of those expansions and of their error estimate is adopted: on
+some rows its values are wrong by more than 1e-5 while every check sees
+agreement. At present many points of Born-interfered processes with five or
+more external legs fail this way. TIRust's qualified domain is up to six
+loop propagators at numerator rank six (reported, never enforced: beyond it
+the achieved precision is measured, as everywhere). `loop.reduction` other
+than `"auto"` needs a one-loop request (`process.loop_coupling_orders`).
 
 **Momenta and arithmetic.** Every arithmetic (`double`, `double-double`,
 `arbitrary`) takes each external leg's invariant p² in the loop integrals to be

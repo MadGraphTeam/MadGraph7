@@ -37,18 +37,20 @@ pub fn check_legs(legs: usize) -> Result<u64, String> {
 }
 
 /// A reduction backend, for the rank admission of its family numerators
-/// (m-lit PLAN §2.b.7: the single source of truth takes the backend).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+/// (m-lit PLAN §2.b.7: the single source of truth takes the backend), and
+/// the runtime's backend choice (`rusticol_loop_reduction::runtime::
+/// Reduction`). The discriminants index the runtime's backend slots.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Reducer {
     /// NinjaRS (integrand reduction): rank <= N + 2 ([`ninjars::RankClass`]).
-    NinjaRs,
+    NinjaRs = 0,
     /// TIRust (tensor-integral reduction). Its own capability is what its
     /// plan construction serves (the TIR backend refuses typed with
     /// TIRust's reason); until artifacts admit families beyond rank N + 2
     /// (m-lit `lit-eft`: TIR-only artifacts) its families are held to the
     /// artifacts' admission, NinjaRS's, so that every artifact serves both
     /// backends.
-    TiRust,
+    TiRust = 1,
 }
 
 impl Reducer {
@@ -56,6 +58,25 @@ impl Reducer {
     /// artifact admits both backends until `lit-eft`): the plan loader, the
     /// binary member bound and the generator ask it.
     pub const ARTIFACT: Self = Self::NinjaRs;
+
+    /// The backend of `name`: `"ninjars"` or `"tirust"`.
+    pub fn parse(name: &str) -> crate::RusticolResult<Self> {
+        match name {
+            "ninjars" => Ok(Self::NinjaRs),
+            "tirust" => Ok(Self::TiRust),
+            other => Err(crate::RusticolError::invalid_argument(format!(
+                "reduction must be ninjars or tirust, not {other}"
+            ))),
+        }
+    }
+
+    /// The backend's name (`parse`'s input).
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::NinjaRs => "ninjars",
+            Self::TiRust => "tirust",
+        }
+    }
 }
 
 /// `None` if `reducer` reduces a numerator of rank `rank` over `propagators`

@@ -892,23 +892,13 @@ fn backend_of<'a>(
             }
             Reduction::TiRust => {
                 if !matches!(carrier, Carriers::Double) {
-                    return Err(error(
-                        "the TIRust reduction backend serves binary64 in this build",
-                    ));
+                    return Err(error(runtime::TIRUST_BINARY64_ONLY));
                 }
-                V2Backends::tirust(histogram(plan)).map_err(error)?
+                V2Backends::tirust(runtime::plan_histogram(plan)).map_err(error)?
             }
         });
     }
     Ok(slot.as_mut().expect("backend"))
-}
-
-/// The plan's (propagators, declared rank) histogram: TIRust's plans.
-fn histogram(plan: &LoopProgramV4) -> std::collections::BTreeSet<(usize, usize)> {
-    plan.families
-        .iter()
-        .map(|f| (f.propagators(), f.rank))
-        .collect()
 }
 
 impl V2Executor {
@@ -1533,30 +1523,31 @@ impl V2Executor {
     /// Build the `reduction` backend of this executor's carrier now (TIRust:
     /// its plans from the plan's (propagators, rank) histogram, so that no
     /// evaluation builds them; TIRust's typed refusal of a family is raised
-    /// here). Returns the (propagators, rank) plans TIRust built (empty for
-    /// NinjaRS). For validation, TIRust's keywords `method_choice`,
-    /// `alternative_first` and `acceptance` (those of `V2TirReducer`, whose
-    /// defaults are the backend's) set its settings: its backend is rebuilt
-    /// when they differ from its current ones. NinjaRS refuses them.
-    #[pyo3(signature = (reduction="tirust", *, method_choice=true, alternative_first=Some(f64::NAN), acceptance=None))]
+    /// here: the artifact runtime calls it once per call and carrier on
+    /// TIRust). Returns the (propagators, rank) plans TIRust built (empty
+    /// for NinjaRS). For validation, TIRust's keywords `method_choice`,
+    /// `alternative_first` and `acceptance` (those of `V2TirReducer`; omitted,
+    /// the backend's defaults) set its settings: its backend is rebuilt when
+    /// they differ from its current ones. NinjaRS refuses them.
+    #[pyo3(signature = (reduction="tirust", *, method_choice=None, alternative_first=super::v2::Limit::default_limit(), acceptance=None))]
     fn prepare_reduction(
         &mut self,
         reduction: &str,
-        method_choice: bool,
-        alternative_first: Option<f64>,
+        method_choice: Option<bool>,
+        alternative_first: Option<super::v2::Limit>,
         acceptance: Option<f64>,
     ) -> PyResult<Vec<(usize, usize)>> {
         let reduction = Reduction::parse(reduction).map_err(error)?;
-        let defaults =
-            method_choice && alternative_first.is_some_and(f64::is_nan) && acceptance.is_none();
-        if !defaults && reduction != Reduction::TiRust {
+        if reduction != Reduction::TiRust
+            && super::v2::tir_settings_given(method_choice, &alternative_first, acceptance)
+        {
             return Err(error(
                 "method_choice, alternative_first and acceptance are TIRust's settings",
             ));
         }
         #[cfg(feature = "tir")]
         if reduction == Reduction::TiRust && matches!(self.carrier, Carriers::Double) {
-            let options = super::v2::tir_options(method_choice, alternative_first, acceptance);
+            let options = super::v2::tir_options(method_choice, &alternative_first, acceptance)?;
             let slot = &mut self.backends[reduction as usize];
             let current = match slot {
                 Some(V2Backends::TiRust(backend)) => Some(*backend.options()),
@@ -1564,11 +1555,13 @@ impl V2Executor {
             };
             if current != Some(options) {
                 *slot = Some(
-                    V2Backends::tirust_with(histogram(self.executor.plan()), options)
+                    V2Backends::tirust_with(runtime::plan_histogram(self.executor.plan()), options)
                         .map_err(error)?,
                 );
             }
         }
+        #[cfg(not(feature = "tir"))]
+        let _ = (method_choice, alternative_first, acceptance);
         let backend = backend_of(
             &mut self.backends,
             self.carrier,

@@ -184,27 +184,61 @@ impl V2Reducer {
     }
 }
 
+/// The `alternative_first` keyword of TIRust's validation settings
+/// ([`V2TirReducer`], `V2Executor.prepare_reduction`): a limit, `None` (the
+/// lever off: the expansions first) or `"default"` (the backend's own,
+/// `v2_tir::TirOptions::default`, TIRust's `EXPANSION_TOLERANCE`).
+#[derive(Clone, Debug, PartialEq, FromPyObject)]
+pub(super) enum Limit {
+    Value(f64),
+    Named(String),
+}
+
+impl Limit {
+    /// The keyword's default: the backend's own limit.
+    pub(super) fn default_limit() -> Option<Self> {
+        Some(Self::Named("default".to_owned()))
+    }
+}
+
+/// Whether TIRust's validation keywords differ from their defaults
+/// (`method_choice` and `acceptance` omitted, `alternative_first`
+/// `"default"`).
+pub(super) fn tir_settings_given(
+    method_choice: Option<bool>,
+    alternative_first: &Option<Limit>,
+    acceptance: Option<f64>,
+) -> bool {
+    method_choice.is_some() || *alternative_first != Limit::default_limit() || acceptance.is_some()
+}
+
 /// TIRust's settings from the validation keywords of [`V2TirReducer`] and
-/// `V2Executor.prepare_reduction`: `method_choice`, `alternative_first`
-/// (NaN: the default limit; None disables the lever) and `acceptance`
-/// (None: the default), the others the defaults (`v2_tir::TirOptions`).
+/// `V2Executor.prepare_reduction`: `method_choice` and `acceptance` (None:
+/// the default), `alternative_first` ([`Limit`]); the others the defaults
+/// (`v2_tir::TirOptions`).
 #[cfg(feature = "tir")]
 pub(super) fn tir_options(
-    method_choice: bool,
-    alternative_first: Option<f64>,
+    method_choice: Option<bool>,
+    alternative_first: &Option<Limit>,
     acceptance: Option<f64>,
-) -> rusticol_loop_reduction::v2_tir::TirOptions {
+) -> PyResult<rusticol_loop_reduction::v2_tir::TirOptions> {
     let defaults = rusticol_loop_reduction::v2_tir::TirOptions::default();
-    rusticol_loop_reduction::v2_tir::TirOptions {
-        method_choice,
-        alternative_first: if alternative_first.is_some_and(f64::is_nan) {
-            defaults.alternative_first
-        } else {
-            alternative_first
-        },
+    let alternative_first = match alternative_first {
+        None => None,
+        Some(Limit::Value(limit)) => Some(*limit),
+        Some(Limit::Named(name)) if name == "default" => defaults.alternative_first,
+        Some(Limit::Named(other)) => {
+            return Err(error(format!(
+                "alternative_first must be a limit, None or \"default\", not {other:?}"
+            )));
+        }
+    };
+    Ok(rusticol_loop_reduction::v2_tir::TirOptions {
+        method_choice: method_choice.unwrap_or(defaults.method_choice),
+        alternative_first,
         acceptance: acceptance.unwrap_or(defaults.acceptance),
         ..defaults
-    }
+    })
 }
 
 /// The TIR backend (`rusticol_loop_reduction::v2_tir`, binary64) on the
@@ -213,26 +247,27 @@ pub(super) fn tir_options(
 /// consecutive lanes of bitwise equal kinematics one moment row. Its check
 /// frame is the rotation by `rotation` with the origin shift (`rescale`
 /// adds the rescaling); `reverse` and `shift` are NinjaRS's and ignored.
-/// The keywords override the backend's settings (`v2_tir::TirOptions`; for
-/// validation): `method_choice` (False: gate-refused rows fail),
-/// `alternative_first` (None: the expansions first; default TIRust's
-/// `EXPANSION_TOLERANCE`) and `acceptance` (the method-choice check's
-/// tolerance). Refused typed in a build without TIRust.
+/// The keywords override the backend's settings (`v2_tir::TirOptions`,
+/// whose defaults they keep when omitted; for validation): `method_choice`
+/// (default off: gate-refused rows fail closed; True: TIRust's method
+/// choice and its check), `alternative_first` ([`Limit`]) and `acceptance`
+/// (the method-choice check's tolerance). Refused typed in a build without
+/// TIRust.
 #[pyclass]
 struct V2TirReducer(rusticol_loop_reduction::runtime::V2Backends);
 
 #[pymethods]
 impl V2TirReducer {
     #[new]
-    #[pyo3(signature = (*, method_choice=true, alternative_first=Some(f64::NAN), acceptance=None))]
+    #[pyo3(signature = (*, method_choice=None, alternative_first=Limit::default_limit(), acceptance=None))]
     fn new(
-        method_choice: bool,
-        alternative_first: Option<f64>,
+        method_choice: Option<bool>,
+        alternative_first: Option<Limit>,
         acceptance: Option<f64>,
     ) -> PyResult<Self> {
         #[cfg(feature = "tir")]
         {
-            let options = tir_options(method_choice, alternative_first, acceptance);
+            let options = tir_options(method_choice, &alternative_first, acceptance)?;
             rusticol_loop_reduction::runtime::V2Backends::tirust_with([], options)
                 .map(Self)
                 .map_err(error)

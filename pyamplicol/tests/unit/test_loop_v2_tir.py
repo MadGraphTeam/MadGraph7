@@ -7,15 +7,23 @@ lit-tir, PLAN §3.3 and §2.b.2-§2.b.6).
 * T2: the raw reduction lanes of generated Born-interfered slices (g g > g g,
   u u~ > d d~ g, a complex-mass b b~ > w+ w-) reduced by TIRust agree with
   NinjaRS's within 10 times the larger of the two backends' re-test
-  estimates (PLAN §4 L6), all Laurent orders; a top in its own gauge loop
-  (g g > t t~) is refused typed by TIRust's capability (lit-spike-tir F1:
-  its invariants need the supplied S-matrix), never a wrong value;
+  estimates (PLAN §4 L6), all Laurent orders, plus 1e-12 of the lane's
+  largest coefficient (``ROUNDING``: where both re-tests are blind, e.g.
+  NinjaRS's reversed frame on a bubble, agreement to rounding passes too;
+  inside the precision-lax rule); in the default settings TIRust serves no
+  method-choice row (DECISIONS 2026-11-07 ~17:20 (d)): a point whose row
+  the conditioning gates refuse fails closed with the gates' reason; a top
+  in its own gauge loop (g g > t t~) is refused typed by TIRust's
+  capability (lit-spike-tir F1: its invariants need the supplied
+  S-matrix), never a wrong value;
 * T6: the family threads leave TIRust's values bitwise;
 * the executor's TIRust validation settings (``prepare_reduction``) rebuild
   its backend and reset to the defaults bitwise; NinjaRS refuses them;
 * the public API serves an explicit ``reduction="tirust"`` on the summed and
-  the resolved routes, records it, keeps ``"auto"`` on NinjaRS (with its
-  reason) and refuses TIRust at double-double typed before any point;
+  the resolved routes (values reduced by TIRust: within the lax precision
+  of NinjaRS's and not bitwise equal to them), records it, keeps ``"auto"``
+  on NinjaRS (with its reason) and refuses TIRust at double-double typed
+  before any point;
 * T8: binary64 TIRust touches no Symbolica state: a fresh interpreter
   without the licence and with pyAmpliCol's native library key disabled
   evaluates the shipped loop-induced and Born-interfered self-test artifacts
@@ -48,10 +56,14 @@ PARAMETERS = {"aS": "0.118", "MT": "173"}
 FIXED = {"MB": "0"}
 # L6 (PLAN §4): |TIR - NinjaRS| <= 10 max(E_N, E_T), E the backend's re-test
 # deviation, with lit-spike-tir's floor of 4 units of binary64 roundoff of
-# the lane's largest Laurent coefficient.
+# the lane's largest Laurent coefficient; plus ROUNDING of that coefficient
+# where both re-tests are blind (module docstring; inside the lax rule).
 MARGIN = 10.0
 FLOOR = 4 * 2.0**-53
 ROUNDING = 1e-12
+# The lax precision of the public-API comparison (relative to the largest
+# entry; below ~1e-5 is not a finding).
+LAX = 1e-6
 
 
 def _tirust(native) -> bool:
@@ -167,11 +179,19 @@ def _size(z) -> float:
     return abs(complex(z))
 
 
-def _agree(name, ninja, tir) -> tuple[int, float]:
-    """Every lane of both backends within L6; returns (lanes, worst ratio)."""
+def _agree(name, ninja, tir) -> tuple[int, float, int]:
+    """Every lane of both backends within L6 on the points TIRust serves (a
+    point it fails closed names TIRust's reason); returns (lanes, worst
+    ratio, failed points)."""
 
-    count, worst = 0, 0.0
-    for (n_direct, n_check), (t_direct, t_check) in zip(ninja, tir, strict=True):
+    count, worst, failed = 0, 0.0, 0
+    for n_point, t_point in zip(ninja, tir, strict=True):
+        assert not isinstance(n_point, list), (name, n_point)
+        if isinstance(t_point, list):
+            failed += 1
+            assert any("TIRust" in reason for reason in t_point), (name, t_point)
+            continue
+        (n_direct, n_check), (t_direct, t_check) = n_point, t_point
         assert n_direct.keys() == t_direct.keys(), name
         for lane, n in n_direct.items():
             t = t_direct[lane]
@@ -186,7 +206,19 @@ def _agree(name, ninja, tir) -> tuple[int, float]:
             assert deviation <= bound, (name, lane, deviation, e_n, e_t, scale)
             worst = max(worst, deviation / bound)
             count += 1
-    return count, worst
+    return count, worst, failed
+
+
+def _no_method_choice(report) -> None:
+    """The default settings serve no method-choice row (module docstring)."""
+
+    counts = report["counts"]
+    for name in (
+        "TIR method-choice rows",
+        "TIR method-choice rows with expansions",
+        "TIR method-choice check rows",
+    ):
+        assert counts.get(name, 0) == 0, (name, counts)
 
 
 @pytest.mark.loop_physics
@@ -198,10 +230,14 @@ def test_raw_lanes_agree_with_ninjars_within_their_estimates(slices, name):
     points, scales = PROCESSES[name][2]()
     ninja = _lanes(executor, points, scales, "ninjars")
     tir = _lanes(executor, points, scales, "tirust")
-    lanes, _worst = _agree(name, ninja, tir)
+    lanes, _worst, failed = _agree(name, ninja, tir)
     assert lanes > 0
     statistics = executor.last_report["counts"]
     assert statistics["contracted lanes"] > 0 and statistics["tensor moment rows"] > 0
+    _no_method_choice(executor.last_report)
+    if failed:
+        reasons = [r for point in tir if isinstance(point, list) for r in point]
+        assert any("refused by the conditioning gates" in r for r in reasons), reasons
 
 
 @pytest.mark.loop_physics
@@ -232,23 +268,39 @@ def test_family_threads_leave_tirust_bitwise(slices):
 @pytest.mark.loop_physics
 def test_validation_settings_rebuild_and_reset_the_tirust_backend(slices):
     """``V2Executor.prepare_reduction``'s TIRust settings (the validation
-    knobs of the discriminating test, DECISIONS 2026-11-07 15:12): NinjaRS
-    refuses them; another setting rebuilds TIRust's backend and the default
-    call restores the default lanes bit for bit."""
+    knobs of the discriminating test, DECISIONS 2026-11-07 15:12; the
+    method choice is the one option lit-tir-mp turns back on): NinjaRS
+    refuses them, an unknown limit name is refused; another setting
+    rebuilds TIRust's backend (the method choice on: its rows counted) and
+    the default call restores the default lanes bit for bit (no
+    method-choice row)."""
 
     executor = slices("uux_ddxg")
     points, scales = PROCESSES["uux_ddxg"][2]()
-    points, scales = points[:2], scales[:2]
     native = executor.native("double", None, len(points))
     with pytest.raises(Exception, match="TIRust's settings"):
         native.prepare_reduction("ninjars", alternative_first=None)
+    with pytest.raises(Exception, match="alternative_first must be"):
+        native.prepare_reduction("tirust", alternative_first="fastest")
     plans = native.prepare_reduction("tirust")
     default = _lanes(executor, points, scales, "tirust")
-    validation = native.prepare_reduction("tirust", method_choice=False, acceptance=0.0)
+    _no_method_choice(executor.last_report)
+    validation = native.prepare_reduction(
+        "tirust", method_choice=True, alternative_first="default", acceptance=0.0
+    )
     assert validation == plans
-    _lanes(executor, points, scales, "tirust")
+    chosen = _lanes(executor, points, scales, "tirust")
+    counts = executor.last_report["counts"]
+    if counts["TIR gate refusals"]:
+        # Every gate-refused row took the method choice: served, or refused
+        # by it or by its check (acceptance 0) with that reason.
+        reasons = [r for point in chosen if isinstance(point, list) for r in point]
+        assert counts["TIR method-choice rows"] > 0 or any(
+            "then by the method choice" in r for r in reasons
+        ), (counts, reasons)
     assert native.prepare_reduction("tirust") == plans
     assert _lanes(executor, points, scales, "tirust") == default
+    _no_method_choice(executor.last_report)
 
 
 @pytest.mark.loop_physics
@@ -302,8 +354,9 @@ def test_complex_mass_lanes_agree(loop_sm_ufo, loop_native, tmp_path_factory):
     points = [[[repr(x) for x in leg] for leg in legs]]
     ninja = _lanes(executor, points, ["62500"], "ninjars")
     tir = _lanes(executor, points, ["62500"], "tirust")
-    lanes, _worst = _agree("bbx_wpwm_cms", ninja, tir)
+    lanes, _worst, _failed = _agree("bbx_wpwm_cms", ninja, tir)
     assert lanes > 0
+    _no_method_choice(executor.last_report)
 
 
 # ---------------------------------------------------------------- public API
@@ -379,8 +432,29 @@ def test_tirust_is_served_on_request_and_auto_keeps_ninjars(loop_native):
         lanes = [lane for lane in found["tirust"].diagnostics]
         assert {lane.reduction.effective for lane in lanes} == {"tirust"}, call
         assert repr(found["tirust"].born_values) == repr(found["ninjars"].born_values)
+        # The virtual values were reduced by TIRust: within the lax
+        # precision of NinjaRS's, and not NinjaRS's bits.
+        n_values = _flat(found["ninjars"].values)
+        t_values = _flat(found["tirust"].values)
+        assert len(n_values) == len(t_values) > 0, call
+        scale = max(abs(x) for x in n_values)
+        assert scale > 0, call
+        assert max(abs(a - b) for a, b in zip(n_values, t_values)) <= LAX * scale, call
+        assert repr(found["tirust"].values) != repr(found["ninjars"].values), call
     auto = born.evaluate(points[:1], mu_r2=scales[:1])
     assert {lane.reduction.effective for lane in auto.diagnostics} == {"ninjars"}
+
+
+def _flat(values) -> list[complex]:
+    """The numbers of a nested result (``VirtualValues``,
+    ``ResolvedVirtualValues``) in order."""
+
+    if isinstance(values, (str, bytes)):
+        raise TypeError(values)
+    try:
+        return [complex(values)]
+    except TypeError:
+        return [x for item in values for x in _flat(item)]
 
 
 # ------------------------------------------------------------------------ T8

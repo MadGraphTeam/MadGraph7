@@ -28,20 +28,26 @@
 //! `tensor_basis` into NinjaRS's `tensor_layout` order (the permutation is
 //! read from the plan's basis, a bijection at every rank).
 //!
-//! **Method choice and its check (lit-spike-tir F2, DECISIONS 2026-11-07
-//! ~10:05).** Every row goes first through the conditioning gates of a
-//! default workspace. Rows the gates refuse (`Unstable`) are retried in a
-//! second workspace with TIRust's binary64 method choice: the a priori
-//! (COLLIER-style) choice of small-Gram expansions or the alternative PV
-//! reduction for the boxes and triangles whose PV estimate is too large,
-//! with the alternative PV first wherever its estimate is within the
-//! expansions' own tolerance (`DirectWorkspace::set_alternative_first`,
-//! [`iregi_rust::direct::EXPANSION_TOLERANCE`]). TIRust leaves those values
-//! unchecked ("callers verify the lanes"), so every lane of a method-choice
-//! row is verified here, never by TIRust's hidden rotation test: its value
-//! in a second frame of the same row (the caller's check frame when the call
-//! asks for one, else [`TirOptions::acceptance_frame`]) must agree with the
-//! direct one within [`TirOptions::acceptance`] of the lane's term scale
+//! **Method choice (off by default) and its check (lit-spike-tir F2,
+//! DECISIONS 2026-11-07 ~10:05 and ~17:20).** Every row goes first through
+//! the conditioning gates of a default workspace. By default
+//! ([`TirOptions::method_choice`] off) a row the gates refuse (`Unstable`)
+//! fails closed with the gates' reason: binary64 TIR serves only gate-passed
+//! rows until the TIRust fix of the small-Gram expansions and of their error
+//! estimate (m-lit lit-tirust-mc) is re-pinned (lit-tir-mp turns the option
+//! back on), because the check below is blind on some of the rows the method
+//! choice serves wrongly (lit-tir report §3). With the option on, those rows
+//! are retried in a second workspace with TIRust's binary64 method choice:
+//! the a priori (COLLIER-style) choice of small-Gram expansions or the
+//! alternative PV reduction for the boxes and triangles whose PV estimate is
+//! too large, with the alternative PV first wherever its estimate is within
+//! the expansions' own tolerance (`DirectWorkspace::set_alternative_first`,
+//! [`TirOptions::alternative_first`]). TIRust leaves those values unchecked
+//! ("callers verify the lanes"), so every lane of a method-choice row is
+//! verified here, never by TIRust's hidden rotation test: its value in a
+//! second frame of the same row (the caller's check frame when the call asks
+//! for one, else [`TirOptions::acceptance_frame`]) must agree with the direct
+//! one within [`TirOptions::acceptance`] of the lane's term scale
 //! `Σ_α |c_α| |M_α|` (its size before the contraction's cancellations); a
 //! lane that does not, or whose check row is refused, fails closed with its
 //! reason. A row still refused after the method choice, or with a TIRust
@@ -95,23 +101,29 @@ use std::collections::{BTreeMap, HashMap};
 use std::time::Instant;
 
 /// The settings of the TIR backend. Every value is overridable; the
-/// defaults are TIRust's own (module docs).
+/// defaults are TIRust's own (module docs), apart from the method choice,
+/// off until lit-tir-mp's re-pin (DECISIONS 2026-11-07 ~17:20 (d)).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TirOptions {
     /// Whether rows the conditioning gates refuse get the method choice
-    /// (on; off: they fail closed with the gates' reason, a diagnostic).
+    /// (default off: they fail closed with the gates' reason; the one
+    /// option lit-tir-mp turns back on after its re-pin to the TIRust fix
+    /// of lit-tirust-mc, with evidence; on: the method choice and its
+    /// check, module docs).
     pub method_choice: bool,
     /// Conditioning gate of the method-choice pass: TIRust's facade gate of
     /// its checked lanes (`dispatch/direct_hybrid.rs` `ROTATION_GATE`,
-    /// 1e-15, validated there on boxes to heptagons); the first pass keeps
-    /// the direct engine's default gate.
+    /// 1e-15, validated there on boxes to heptagons; a private constant of
+    /// TIRust at this pin, copied here: lit-tir-mp reads it from TIRust's
+    /// API at its re-pin); the first pass keeps the direct engine's default
+    /// gate.
     pub method_choice_gate: f64,
     /// Extra triangle ranks of the small-Gram expansions (TIRust's facade
-    /// `GRAM_BOOST`, 12).
+    /// `GRAM_BOOST`, 12; private at this pin, as `method_choice_gate`).
     pub expansion_boost: u16,
-    /// `DirectWorkspace::set_alternative_first`: the alternative PV first
-    /// wherever its a priori estimate is at most this (DECISIONS 2026-11-07
-    /// ~10:05: [`iregi_rust::direct::EXPANSION_TOLERANCE`]).
+    /// `DirectWorkspace::set_alternative_first` of the method choice: the
+    /// alternative PV first wherever its a priori estimate is at most this
+    /// (DECISIONS 2026-11-07 ~10:05: [`iregi_rust::direct::EXPANSION_TOLERANCE`]).
     pub alternative_first: Option<f64>,
     /// Largest accepted deviation of a method-choice lane between its two
     /// frames, relative to the lane's term scale: the expansions' own
@@ -125,7 +137,7 @@ pub struct TirOptions {
 impl Default for TirOptions {
     fn default() -> Self {
         Self {
-            method_choice: true,
+            method_choice: false,
             method_choice_gate: 1e-15,
             expansion_boost: 12,
             alternative_first: Some(iregi_rust::direct::EXPANSION_TOLERANCE),
@@ -273,6 +285,7 @@ struct Counters {
     contraction: f64,
     rows: u64,
     lanes: u64,
+    shared: u64,
     gate_refusals: u64,
     choice_rows: u64,
     expansion_rows: u64,
@@ -392,6 +405,7 @@ impl TirReductionBackend {
             counts: vec![
                 ("tensor moment rows", c.rows),
                 ("contracted lanes", c.lanes),
+                ("moment rows shared", c.shared),
                 ("TIR gate refusals", c.gate_refusals),
                 ("TIR method-choice rows", c.choice_rows),
                 ("TIR method-choice rows with expansions", c.expansion_rows),
@@ -477,7 +491,18 @@ impl TirReductionBackend {
             }
             self.counters.rows += members.len() as u64;
             self.counters.gate_refusals += refused.len() as u64;
-            if refused.is_empty() || !options.method_choice {
+            if refused.is_empty() {
+                continue;
+            }
+            if !options.method_choice {
+                for &k in &refused {
+                    if let Err(reason) = &mut out[members[k]].moments {
+                        reason.push_str(
+                            " (refused by the conditioning gates; binary64 TIRust serves \
+                             gate-passed rows only: its method choice is off)",
+                        );
+                    }
+                }
                 continue;
             }
             let retry = KinematicsBatch {
@@ -607,6 +632,10 @@ impl TirReductionBackend {
             let g = &groups[row.group];
             let declared = ncoeff(g.rank);
             let monomials = ncoeff(row.rank);
+            // A direct row serving more than one lane (PLAN §2.b.2 item 6).
+            if row.end - row.start > 1 {
+                self.counters.shared += 1;
+            }
             let first = &direct[r];
             let other = second_of[r];
             let map =
@@ -692,7 +721,7 @@ impl TirReductionBackend {
             match batch.data() {
                 Data::Double(values) => Ok(values.to_vec()),
                 _ => Err(RusticolError::unsupported_precision(
-                    "the TIRust reduction backend serves binary64 in this build",
+                    crate::runtime::TIRUST_BINARY64_ONLY,
                 )),
             }
         };

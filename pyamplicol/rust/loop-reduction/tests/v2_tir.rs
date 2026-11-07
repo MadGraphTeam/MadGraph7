@@ -4,8 +4,9 @@
 //! T1 scalar and tensor integrals against NinjaRS's generic engine in
 //! double-double, T3 the layout permutation and the split UV column, T4 rank
 //! over-declaration, T5 check frames, T6 chunking and batch composition, T10
-//! unit scaling, the method choice and its check, and the typed capability
-//! refusals. Binary64 TIR lanes are compared within the lax-precision rule
+//! unit scaling, the default's fail-closed gate refusals (no method-choice
+//! row), the method choice and its check when enabled, and the typed
+//! capability refusals. Binary64 TIR lanes are compared within the lax-precision rule
 //! (relative to the lane's largest Laurent coefficient), never bitwise
 //! except where an identity makes them so.
 #![cfg(feature = "tir")]
@@ -160,8 +161,28 @@ fn dd(group: &FamilyLanes<f64>) -> FamilyLanes<DoubleFloat> {
     }
 }
 
+/// The TIR backend in its default settings (the method choice off:
+/// gate-refused rows fail closed, DECISIONS 2026-11-07 ~17:20 (d)).
 fn tir() -> V2Backends {
     V2Backends::TiRust(Box::new(TirReductionBackend::new(TirOptions::default())))
+}
+
+/// The TIR backend with the method choice on (the one option lit-tir-mp
+/// turns back on after its re-pin) and otherwise the defaults.
+fn tir_method_choice() -> V2Backends {
+    V2Backends::TiRust(Box::new(TirReductionBackend::new(TirOptions {
+        method_choice: true,
+        ..TirOptions::default()
+    })))
+}
+
+/// The count `name` of a backend's statistics (0 when absent).
+fn count(statistics: &rusticol_core::loop_execution::v2::BackendStatistics, name: &str) -> u64 {
+    statistics
+        .counts
+        .iter()
+        .find(|(key, _)| *key == name)
+        .map_or(0, |(_, value)| *value)
 }
 
 fn ninjars(arithmetic: &str, engine: &str) -> V2Backends {
@@ -588,15 +609,11 @@ fn capability_refusals_are_typed() {
     assert_eq!(backend.reduction(), Reduction::TiRust);
 }
 
-/// Rows the conditioning gates refuse take the method choice (alternative
-/// PV first within the expansions' tolerance) and are verified by their own
-/// check row: near-forward boxes of a top loop with massless legs (exact
-/// Pythagorean momenta, so every massless invariant is exactly zero: a small
-/// Gram determinant, no on-shell decision) agree with NinjaRS's generic
-/// engine at 80 digits within their estimates, and the statistics count
-/// them.
-#[test]
-fn method_choice_rows_are_checked() {
+/// Near-forward boxes of a top loop with massless legs (exact Pythagorean
+/// momenta, so every massless invariant is exactly zero: a small Gram
+/// determinant, no on-shell decision), ranks 4 and 6: rows the conditioning
+/// gates refuse.
+fn near_forward_boxes() -> Vec<FamilyLanes<f64>> {
     let mut groups = Vec::new();
     let mut family = 0;
     let mt2 = C::new(173. * 173., 0.);
@@ -632,6 +649,17 @@ fn method_choice_rows_are_checked() {
             assert_eq!(g.s_matrix[i * 4 + j].re, 0.);
         }
     }
+    groups
+}
+
+/// The default settings serve no method-choice row (DECISIONS 2026-11-07
+/// ~17:20 (d)): the near-forward boxes the conditioning gates refuse fail
+/// closed with the gates' reason, in the direct and in the check frame,
+/// and the statistics count no method-choice row; the lanes of the rows the
+/// gates pass agree with NinjaRS at 80 digits.
+#[test]
+fn the_default_serves_no_method_choice_row() {
+    let groups = near_forward_boxes();
     let mut backend = tir();
     let (found, check) = reduce(
         &mut backend,
@@ -640,13 +668,63 @@ fn method_choice_rows_are_checked() {
         Some(ReductionCheck::REVERSED),
     );
     let statistics = V2Backend::<f64>::take_statistics(&mut backend);
-    let count = |name: &str| {
-        statistics
-            .counts
-            .iter()
-            .find(|(key, _)| *key == name)
-            .map_or(0, |(_, value)| *value)
-    };
+    eprintln!("default statistics: {:?}", statistics.counts);
+    assert!(
+        count(&statistics, "TIR gate refusals") > 0,
+        "{statistics:?}"
+    );
+    for name in [
+        "TIR method-choice rows",
+        "TIR method-choice rows with expansions",
+        "TIR method-choice check rows",
+        "TIR method-choice lanes refused by their check",
+    ] {
+        assert_eq!(count(&statistics, name), 0, "{name}: {statistics:?}");
+    }
+    let truth = reference_arbitrary(&groups, Poles::All, 80);
+    let check = check.unwrap();
+    let mut refused = 0;
+    for (g, a) in found.iter().enumerate() {
+        for (lane, x) in a.iter().enumerate() {
+            match x {
+                Ok(x) => {
+                    let error = relative(x, truth[g][lane].as_ref().unwrap());
+                    assert!(error < 1e-12, "family {g} lane {lane}: {error:e}");
+                }
+                Err(reason) => {
+                    refused += 1;
+                    assert!(
+                        reason.contains("refused by the conditioning gates")
+                            && reason.contains("method choice is off"),
+                        "{reason}"
+                    );
+                }
+            }
+            if let Err(reason) = &check[g][lane] {
+                assert!(reason.contains("TIRust"), "{reason}");
+            }
+        }
+    }
+    assert!(refused > 0);
+}
+
+/// With the method choice on (`TirOptions::method_choice`, the option
+/// lit-tir-mp turns back on), the rows the conditioning gates refuse take
+/// it (alternative PV first within the expansions' tolerance) and are
+/// verified by their own check row: the near-forward boxes agree with
+/// NinjaRS's generic engine at 80 digits within their estimates, and the
+/// statistics count them.
+#[test]
+fn method_choice_rows_are_checked() {
+    let groups = near_forward_boxes();
+    let mut backend = tir_method_choice();
+    let (found, check) = reduce(
+        &mut backend,
+        &groups,
+        Poles::All,
+        Some(ReductionCheck::REVERSED),
+    );
+    let statistics = V2Backend::<f64>::take_statistics(&mut backend);
     eprintln!("method-choice statistics: {:?}", statistics.counts);
     // NinjaRS's generic engine at 80 digits: its double-double reaches only
     // 6e-8 on the rank-6 box at the smallest angle (TIR binary64: 1e-15).
@@ -705,9 +783,13 @@ fn method_choice_rows_are_checked() {
         }
     }
     assert!(served > 0);
-    assert!(count("TIR gate refusals") > 0, "{:?}", statistics.counts);
     assert!(
-        count("TIR method-choice rows") > 0,
+        count(&statistics, "TIR gate refusals") > 0,
+        "{:?}",
+        statistics.counts
+    );
+    assert!(
+        count(&statistics, "TIR method-choice rows") > 0,
         "{:?}",
         statistics.counts
     );
@@ -757,6 +839,7 @@ fn method_choice_variants() {
             for alternative in [Some(iregi_rust::direct::EXPANSION_TOLERANCE), None] {
                 for check in [ReductionCheck::REVERSED, ReductionCheck::RESCALED] {
                     let options = TirOptions {
+                        method_choice: true,
                         alternative_first: alternative,
                         ..TirOptions::default()
                     };

@@ -374,15 +374,7 @@ fn reducer_rank_refusal(
     reducer: &str,
 ) -> PyResult<Option<String>> {
     use rusticol_core::loop_v2::bounds::{Reducer, rank_refusal};
-    let reducer = match reducer {
-        "ninjars" => Reducer::NinjaRs,
-        "tirust" => Reducer::TiRust,
-        other => {
-            return Err(error(format!(
-                "reducer must be ninjars or tirust, not {other}"
-            )));
-        }
-    };
+    let reducer = Reducer::parse(reducer).map_err(error)?;
     Ok(rank_refusal(reducer, propagators, rank))
 }
 

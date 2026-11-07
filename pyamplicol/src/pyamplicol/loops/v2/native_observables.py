@@ -1776,7 +1776,7 @@ class StoredColumns:
         from .native_trees import batch_parameters
         from .plan_export import NativeExecutor, _fraction_text
         from .poles import has_poles, pole_mode, reducer_poles, splits
-        from .reduction import executor_options
+        from .reduction import executor_options, prepare
 
         view = self.observables.slice
         process = self.observables.process
@@ -1816,6 +1816,7 @@ class StoredColumns:
             **executor_options(),
         }
         native = self._executor(arithmetic, digits, len(evaluations), False)
+        prepare(native)
         selected = {} if masks is None else masks.options(0)
         output = native.evaluate(inputs, schedule="B", **options, **selected)
         # The native report of the latest batch (stages and counts, as

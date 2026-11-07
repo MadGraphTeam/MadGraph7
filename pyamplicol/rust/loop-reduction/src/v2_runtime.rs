@@ -484,15 +484,10 @@ impl V2Precision {
         if reduction == Reduction::TiRust {
             if self != Self::Double {
                 return Err(RusticolError::unsupported_precision(
-                    "the TIRust reduction backend serves binary64 in this build",
+                    crate::runtime::TIRUST_BINARY64_ONLY,
                 ));
             }
-            return V2Backends::tirust(
-                plan.families
-                    .iter()
-                    .map(|f| (f.propagators(), f.rank))
-                    .collect::<BTreeSet<_>>(),
-            );
+            return V2Backends::tirust(crate::runtime::plan_histogram(plan));
         }
         let reducer = match self {
             Self::Double => V2Reducer::new("double", None, "fast", true),
@@ -1286,7 +1281,7 @@ impl V2Runtime {
         if reduction == Reduction::TiRust && !crate::tir::available() {
             return Err(RusticolError::unsupported_runtime_capability(
                 "tirust",
-                "this native library is built without TIRust (the cargo feature tir)",
+                crate::runtime::TIRUST_NOT_BUILT,
             ));
         }
         if reduction != self.reduction {
