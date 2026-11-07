@@ -756,8 +756,7 @@ accept: a row they refuse fails its point with the gates' reason (no
 automatic switch to NinjaRS). TIRust's own method choice for such rows
 (small-Gram expansions, alternative reduction) stays off until a TIRust
 correction of those expansions and of their error estimate is adopted: on
-some rows its values are wrong by more than 1e-5 while every check sees
-agreement. At present many points of Born-interfered processes with five or
+some rows its values are wrong by far more than 1e-5. At present many points of Born-interfered processes with five or
 more external legs fail this way. TIRust's qualified domain is up to six
 loop propagators at numerator rank six (reported, never enforced: beyond it
 the achieved precision is measured, as everywhere). `loop.reduction` other
