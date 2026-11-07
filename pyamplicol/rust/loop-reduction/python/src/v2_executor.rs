@@ -1535,9 +1535,9 @@ impl V2Executor {
     /// evaluation builds them; TIRust's typed refusal of a family is raised
     /// here). Returns the (propagators, rank) plans TIRust built (empty for
     /// NinjaRS). For validation, TIRust's keywords `method_choice`,
-    /// `alternative_first` and `acceptance` (those of `V2TirReducer`) rebuild
-    /// its backend with these settings when one differs from its default;
-    /// NinjaRS refuses them.
+    /// `alternative_first` and `acceptance` (those of `V2TirReducer`, whose
+    /// defaults are the backend's) set its settings: its backend is rebuilt
+    /// when they differ from its current ones. NinjaRS refuses them.
     #[pyo3(signature = (reduction="tirust", *, method_choice=true, alternative_first=Some(f64::NAN), acceptance=None))]
     fn prepare_reduction(
         &mut self,
@@ -1549,16 +1549,21 @@ impl V2Executor {
         let reduction = Reduction::parse(reduction).map_err(error)?;
         let defaults =
             method_choice && alternative_first.is_some_and(f64::is_nan) && acceptance.is_none();
-        if !defaults {
-            if reduction != Reduction::TiRust {
-                return Err(error(
-                    "method_choice, alternative_first and acceptance are TIRust's settings",
-                ));
-            }
-            #[cfg(feature = "tir")]
-            if matches!(self.carrier, Carriers::Double) {
-                let options = super::v2::tir_options(method_choice, alternative_first, acceptance);
-                self.backends[reduction as usize] = Some(
+        if !defaults && reduction != Reduction::TiRust {
+            return Err(error(
+                "method_choice, alternative_first and acceptance are TIRust's settings",
+            ));
+        }
+        #[cfg(feature = "tir")]
+        if reduction == Reduction::TiRust && matches!(self.carrier, Carriers::Double) {
+            let options = super::v2::tir_options(method_choice, alternative_first, acceptance);
+            let slot = &mut self.backends[reduction as usize];
+            let current = match slot {
+                Some(V2Backends::TiRust(backend)) => Some(*backend.options()),
+                _ => None,
+            };
+            if current != Some(options) {
+                *slot = Some(
                     V2Backends::tirust_with(histogram(self.executor.plan()), options)
                         .map_err(error)?,
                 );
