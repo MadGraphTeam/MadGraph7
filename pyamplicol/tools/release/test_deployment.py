@@ -536,6 +536,8 @@ class NativeToolchain:
     cxx: tuple[str, ...]
     fortran: tuple[str, ...]
     rustc: tuple[str, ...]
+    # Builds the self-test's UMAMI provider; a candidate run may lack it.
+    make: tuple[str, ...] | None
 
 
 @dataclass(frozen=True)
@@ -719,6 +721,10 @@ def _native_toolchain(mode: str) -> NativeToolchain | None:
     cxx = _native_command("CXX", ("c++", "clang++", "g++"))
     fortran = _native_command("FC", ("gfortran", "flang-new", "flang", "ifx"))
     rustc = _native_command("RUSTC", ("rustc",))
+    make = _native_command("MAKE", ("make", "gmake"))
+    required = (
+        mode == "release" or os.environ.get("PYAMPLICOL_REQUIRE_NATIVE_TESTS") == "1"
+    )
     missing = tuple(
         name
         for name, command in (
@@ -735,17 +741,18 @@ def _native_toolchain(mode: str) -> NativeToolchain | None:
             + " and ".join(missing)
             + " compilers"
         )
-        if (
-            mode == "release"
-            or os.environ.get("PYAMPLICOL_REQUIRE_NATIVE_TESTS") == "1"
-        ):
+        if required:
             raise ReleaseError(message)
         print(f"Candidate deployment did not run native SDK smoke tests: {message}")
         return None
-    assert all(command is not None for command in (cc, cxx, fortran, rustc))
+    if make is None:
+        message = "the UMAMI provider check of the native SDK requires make"
+        if required:
+            raise ReleaseError(message)
+        print(f"Candidate deployment did not run the UMAMI provider check: {message}")
     assert cc is not None and cxx is not None
     assert fortran is not None and rustc is not None
-    return NativeToolchain(cc=cc, cxx=cxx, fortran=fortran, rustc=rustc)
+    return NativeToolchain(cc=cc, cxx=cxx, fortran=fortran, rustc=rustc, make=make)
 
 
 def _sdk_payload(python: Path, environment: dict[str, str]) -> dict[str, Any]:
@@ -1186,6 +1193,59 @@ def _native_sdk_drivers(
     return results
 
 
+def _umami_provider_driver(
+    python: Path,
+    *,
+    make: tuple[str, ...],
+    cc: tuple[str, ...],
+    fixture: NativePhysicsFixture,
+    build: Path,
+    environment: dict[str, str],
+) -> float:
+    """Build the self-test's UMAMI provider with its own Makefile (the SDK
+    resolved by the installed rusticol-config) and check the driver's value."""
+
+    source = fixture.artifact / "API" / "umami"
+    if not (source / "Makefile").is_file():
+        raise ReleaseError("installed self-test artifact has no UMAMI provider")
+    if len(fixture.totals) != 1:
+        raise ReleaseError("the UMAMI driver check needs one self-test total")
+    completed = run(
+        [
+            *make,
+            "-s",
+            f"RUSTICOL_CONFIG={python.parent / 'rusticol-config'}",
+            f"CC={shlex.join(cc)}",
+            f"BUILD_DIR={build}",
+            "run",
+        ],
+        cwd=source,
+        env=environment,
+        capture_output=True,
+    )
+    lines = completed.stdout.strip().splitlines()
+    try:
+        payload = json.loads(lines[-1]) if lines else None
+    except json.JSONDecodeError as error:
+        raise ReleaseError(
+            f"the UMAMI driver returned invalid JSON: {error}"
+        ) from error
+    value = payload.get("matrix_element") if isinstance(payload, dict) else None
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise ReleaseError("the UMAMI driver returned no matrix element")
+    # The driver evaluates the artifact's saved validation point, at which the
+    # expected total is recorded.
+    expected = fixture.totals[0]
+    if not math.isfinite(value) or abs(value - expected) > 1.0e-12 * max(
+        abs(expected), 1.0
+    ):
+        raise ReleaseError(
+            f"the UMAMI driver's matrix element {value!r} differs from the "
+            f"self-test total {expected!r}"
+        )
+    return float(value)
+
+
 def _native_sdk_smoke(
     python: Path,
     *,
@@ -1230,6 +1290,15 @@ def _native_sdk_smoke(
             environment=environment,
         )
         _compare_driver_results(results)
+        if toolchain.make is not None:
+            _umami_provider_driver(
+                python,
+                make=toolchain.make,
+                cc=toolchain.cc,
+                fixture=fixture,
+                build=sandbox / f"umami-{state}",
+                environment=environment,
+            )
     compression = sdk.get("archive_compression")
     if compression is not None:
         _concurrent_sdk_first_use(
