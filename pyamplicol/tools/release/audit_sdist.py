@@ -45,6 +45,7 @@ REQUIRED_SDIST_MEMBERS = frozenset(
         "THIRD_PARTY_NOTICES.md",
         "justfile",
         "build_backend/_pyamplicol_build.py",
+        "build_backend/arithmetic.py",
         "build_backend/sdk.py",
         "dependencies/release-lock.toml",
         "docs/README.md",

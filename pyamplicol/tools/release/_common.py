@@ -19,6 +19,9 @@ from pathlib import Path, PurePosixPath
 ROOT = Path(__file__).resolve().parents[2]
 DIST = ROOT / "dist"
 CANDIDATE_ARTIFACTS = ROOT / ".artifacts" / "candidate"
+# Wheels built for distribution: the backend links GMP, MPFR and MPC as shared
+# libraries bundled by Maturin's wheel repair (build_backend/arithmetic.py).
+DISTRIBUTION_WHEEL_SETTINGS = ("--config-setting", "pyamplicol.distribution-wheel=true")
 DEPLOYMENT_ROOT = ROOT / "PYPI_DEPLOYMENT_TEST"
 DEPENDENCY_WHEELHOUSE = ROOT / "dependencies" / "wheelhouse"
 DEPENDENCY_GATE = ROOT / "tools" / "release" / "check_dependencies.py"
@@ -330,6 +333,7 @@ __all__ = [
     "DEPENDENCY_WHEELHOUSE",
     "DEPLOYMENT_ROOT",
     "DIST",
+    "DISTRIBUTION_WHEEL_SETTINGS",
     "ROOT",
     "ReleaseError",
     "build_mode",

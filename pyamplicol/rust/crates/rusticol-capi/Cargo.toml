@@ -14,7 +14,16 @@ build = "build.rs"
 name = "rusticol_capi"
 crate-type = ["staticlib", "rlib"]
 
+[features]
+default = []
+# Link GMP, MPFR and MPC as shared libraries instead of building them into
+# the binary (gmp-mpfr-sys use-system-libs). The build backend enables it
+# for distributable wheels and supplies the libraries
+# (build_backend/arithmetic.py); developer builds keep the static default.
+shared-arithmetic = ["dep:gmp-mpfr-sys", "gmp-mpfr-sys/use-system-libs"]
+
 [dependencies]
+gmp-mpfr-sys = { workspace = true, optional = true }
 rusticol-core = { path = "../rusticol-core", default-features = false, features = ["f64-compiled", "f64-symjit"] }
 rusticol-loop-sdk = { path = "../../loop-reduction/sdk" }
 serde_json.workspace = true

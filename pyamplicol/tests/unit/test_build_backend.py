@@ -252,8 +252,98 @@ def test_linux_release_wheel_requests_manylinux_repair(
         "kwargs": {
             "with_sdk": True,
             "retain_release_build_info": True,
+            "shared_arithmetic": False,
         },
     }
+
+
+@pytest.mark.parametrize("mode", ("candidate", "release"))
+@pytest.mark.parametrize("platform_name", ("darwin", "linux"))
+def test_distribution_wheel_links_the_shared_arithmetic_runtime(
+    monkeypatch: pytest.MonkeyPatch, mode: str, platform_name: str
+) -> None:
+    monkeypatch.setenv("PYAMPLICOL_BUILD_MODE", mode)
+    monkeypatch.setattr(backend.sys, "platform", platform_name)
+    observed: dict[str, object] = {}
+
+    def delegated(operation, *args, **kwargs):
+        observed["args"] = args
+        observed["kwargs"] = kwargs
+        return "pyamplicol.whl"
+
+    monkeypatch.setattr(backend, "_from_overlay", delegated)
+    supplied = {
+        "pyamplicol.distribution-wheel": "true",
+        "frontend.setting": "preserved",
+    }
+    assert backend.build_wheel("dist", supplied) == "pyamplicol.whl"
+    with (ROOT / "pyproject.toml").open("rb") as stream:
+        features = tomllib.load(stream)["tool"]["maturin"]["features"]
+    # Maturin's --features replaces pyproject's list: it is repeated in full
+    # (the numpy-gated bindings were missing from a release-way wheel).
+    assert "numpy" in features
+    arguments = [
+        "--features",
+        ",".join((*features, backend.arithmetic.CARGO_FEATURE)),
+        "--compression-level",
+        "9",
+    ]
+    if platform_name == "linux":
+        # A distribution wheel is always a repaired manylinux wheel on Linux.
+        arguments = ["--compatibility", "manylinux_2_28", *arguments]
+    assert observed["args"] == (
+        "dist",
+        {"frontend.setting": "preserved", "maturin.build-args": arguments},
+        None,
+    )
+    assert observed["kwargs"] == {
+        "with_sdk": True,
+        "retain_release_build_info": True,
+        "shared_arithmetic": True,
+    }
+    assert supplied["pyamplicol.distribution-wheel"] == "true"
+
+
+def test_distribution_wheel_features_refuse_an_invalid_maturin_list(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.maturin]\nfeatures = "numpy"\n', encoding="utf-8"
+    )
+    monkeypatch.setattr(backend, "ROOT", tmp_path)
+
+    with pytest.raises(RuntimeError, match="must be a list of names"):
+        backend._distribution_wheel_features()
+
+
+def test_distribution_and_host_wheel_settings_are_exclusive() -> None:
+    with pytest.raises(RuntimeError, match="are exclusive"):
+        backend._release_wheel_config_settings(
+            {"pyamplicol.host-wheel": "true"}, distribution=True
+        )
+
+
+@pytest.mark.parametrize("value", (None, True, "", "yes", ["true"]))
+def test_distribution_wheel_setting_rejects_invalid_values(value) -> None:
+    with pytest.raises(RuntimeError, match="distribution-wheel must be"):
+        backend.build_wheel("dist", {"pyamplicol.distribution-wheel": value})
+
+
+def test_bootstrap_wheel_is_never_a_distribution_wheel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYAMPLICOL_BUILD_MODE", "release")
+    with pytest.raises(RuntimeError, match="never distributed"):
+        backend.build_release_prepared_model_bootstrap_wheel(
+            "dist",
+            bootstrap_context="test",
+            config_settings={"pyamplicol.distribution-wheel": "true"},
+        )
+
+
+def test_shared_arithmetic_is_built_only_for_wheels() -> None:
+    with pytest.raises(RuntimeError, match="only for wheels"):
+        backend._from_overlay(lambda: None, with_sdk=False, shared_arithmetic=True)
 
 
 def test_candidate_and_non_linux_wheels_preserve_frontend_settings(
@@ -301,21 +391,33 @@ def test_host_wheel_setting_rejects_invalid_values(value) -> None:
 
 
 @pytest.mark.parametrize(
-    "hook_name", ("get_requires_for_build_wheel", "prepare_metadata_for_build_wheel")
+    "hook_name",
+    (
+        "get_requires_for_build_wheel",
+        "prepare_metadata_for_build_wheel",
+        "get_requires_for_build_sdist",
+        "build_sdist",
+    ),
 )
-def test_wheel_frontend_hooks_do_not_forward_backend_host_setting(
-    monkeypatch: pytest.MonkeyPatch, hook_name: str
+@pytest.mark.parametrize(
+    "setting", ("pyamplicol.host-wheel", "pyamplicol.distribution-wheel")
+)
+def test_wheel_frontend_hooks_do_not_forward_backend_wheel_settings(
+    monkeypatch: pytest.MonkeyPatch, hook_name: str, setting: str
 ) -> None:
+    monkeypatch.setenv("PYAMPLICOL_BUILD_MODE", "release")
     observed = []
     monkeypatch.setattr(
         backend,
         "_from_overlay",
         lambda _operation, *args, **_kwargs: observed.extend(args),
     )
-    args = ("metadata",) if hook_name == "prepare_metadata_for_build_wheel" else ()
-    getattr(backend, hook_name)(
-        *args, config_settings={"pyamplicol.host-wheel": "true"}
+    args = (
+        ("metadata",)
+        if hook_name in {"prepare_metadata_for_build_wheel", "build_sdist"}
+        else ()
     )
+    getattr(backend, hook_name)(*args, config_settings={setting: "true"})
     assert observed[-1] == {}
 
 
@@ -355,11 +457,14 @@ def test_release_bootstrap_wheel_uses_the_producer_platform(
         return "pyamplicol.whl"
 
     monkeypatch.setattr(backend, "_from_overlay", delegated)
-    assert backend.build_release_prepared_model_bootstrap_wheel(
-        "dist",
-        bootstrap_context="test",
-        config_settings={"frontend.setting": "preserved"},
-    ) == "pyamplicol.whl"
+    assert (
+        backend.build_release_prepared_model_bootstrap_wheel(
+            "dist",
+            bootstrap_context="test",
+            config_settings={"frontend.setting": "preserved"},
+        )
+        == "pyamplicol.whl"
+    )
     expected: dict[str, object] = {"frontend.setting": "preserved"}
     if platform_name == "linux":
         expected["maturin.build-args"] = ["--compatibility", "linux"]
@@ -420,7 +525,8 @@ def test_candidate_bootstrap_wheel_strips_stale_generated_assets(
     def fake_overlay(_mode: str):
         yield overlay, target
 
-    def fake_sdk(_root: Path, _target: Path) -> Path:
+    def fake_sdk(_root: Path, _target: Path, *, arithmetic=None) -> Path:
+        assert arithmetic is None
         staging = tmp_path / "sdk"
         staging.mkdir()
         (staging / "metadata.json").write_text(
@@ -1024,9 +1130,7 @@ def test_candidate_source_revision_ignores_untracked_copied_campaign_anywhere(
 
     tracked = checkout / "src/runtime.py"
     tracked.write_text("VALUE = 2\n", encoding="utf-8")
-    assert (
-        backend._clean_source_revision(allow_generated_report_outputs=True) is None
-    )
+    assert backend._clean_source_revision(allow_generated_report_outputs=True) is None
 
 
 def test_candidate_source_revision_rejects_incomplete_untracked_campaign(
@@ -1444,9 +1548,7 @@ def test_archive_overlay_without_git_history_uses_pruned_allowlist(
     source = tmp_path / "archive"
     retained = {
         Path("build_backend/backend.py"): "archive = True\n",
-        Path("src/pyamplicol/_profiling_campaign/pyAmpliCol.tex"): (
-            "maintained TeX\n"
-        ),
+        Path("src/pyamplicol/_profiling_campaign/pyAmpliCol.tex"): ("maintained TeX\n"),
         Path("release_assets/prepared_models/README.md"): "release store\n",
         Path("src/pyamplicol/_sdk/config.py"): "maintained SDK config\n",
         Path("src/rusticol_config/__init__.py"): "standalone SDK config\n",
@@ -1467,8 +1569,7 @@ def test_archive_overlay_without_git_history_uses_pruned_allowlist(
         Path("src/pyamplicol/_profiling_campaign/pyAmpliCol.synctex.gz"),
         Path("docs/performance_reports/macbook_M3/pyAmpliCol.toc"),
         Path(
-            "src/pyamplicol/_profiling_campaign/campaign_artifacts/"
-            "private-attempt.bin"
+            "src/pyamplicol/_profiling_campaign/campaign_artifacts/private-attempt.bin"
         ),
         Path("src/pyamplicol.egg-info/PKG-INFO"),
         Path("src/pyamplicol/_rusticol.abi3.so"),
@@ -1520,9 +1621,7 @@ def test_release_prepared_store_is_outside_native_build_identity(
 ) -> None:
     cargo = tmp_path / "Cargo.toml"
     cargo.write_text("[workspace]\n", encoding="utf-8")
-    (tmp_path / "pyproject.toml").write_bytes(
-        (ROOT / "pyproject.toml").read_bytes()
-    )
+    (tmp_path / "pyproject.toml").write_bytes((ROOT / "pyproject.toml").read_bytes())
     before = backend._native_build_inputs_digest(tmp_path)
     store = tmp_path / "release_assets" / "prepared_models"
     store.mkdir(parents=True)
@@ -1605,7 +1704,8 @@ def test_retained_pep517_hooks_use_gate_overlay_and_clean_environment(
         assert project_release_prepared_models is True
         yield overlay, target
 
-    def fake_sdk(root: Path, target_dir: Path) -> Path:
+    def fake_sdk(root: Path, target_dir: Path, *, arithmetic=None) -> Path:
+        assert arithmetic is None
         assert root == overlay and target_dir == target
         assert not (set(injected) - {"CC", "CXX"}) & set(os.environ)
         assert not {str(path) for path in injected_bins} & set(
@@ -1748,8 +1848,11 @@ def test_sdk_build_references_the_python_owned_safe_rust_wrapper(
     monkeypatch.setattr(sdk, "_cargo_messages", lambda _stdout: ())
     monkeypatch.setattr(sdk, "_static_library", lambda _messages: archive)
     monkeypatch.setattr(sdk, "_native_tokens", lambda _stderr: ())
-    monkeypatch.setattr(sdk, "_typed_link_arguments", lambda _tokens, _target: link)
+    monkeypatch.setattr(
+        sdk, "_typed_link_arguments", lambda _tokens, _target, **_kwargs: link
+    )
     monkeypatch.setattr(sdk, "_scan_archive", lambda _archive: None)
+    monkeypatch.setattr(sdk, "_stripped_archive", lambda archive, *_args: archive)
     monkeypatch.setattr(sdk, "_scan_archive_symbols", lambda _archive: None)
     monkeypatch.setattr(
         sdk, "_validate_archive_linkage", lambda *_args, **_kwargs: None
@@ -1773,7 +1876,8 @@ def test_sdk_build_references_the_python_owned_safe_rust_wrapper(
             "rustc",
             "--locked",
             "--offline",
-            "--release",
+            "--profile",
+            "sdk",
             "--package",
             contract["package"],
             "--target",
@@ -1790,9 +1894,9 @@ def test_sdk_build_references_the_python_owned_safe_rust_wrapper(
 
 
 def test_python_extension_rebuilds_and_refreshes_embedded_sdk() -> None:
-    build_script = (
-        ROOT / "rust/crates/rusticol-python/build.rs"
-    ).read_text(encoding="utf-8")
+    build_script = (ROOT / "rust/crates/rusticol-python/build.rs").read_text(
+        encoding="utf-8"
+    )
 
     assert "PYAMPLICOL_NATIVE_BUILD_INPUTS_SHA256" in build_script
     assert "remove_dir_all(&sdk_output)" in build_script
@@ -1825,14 +1929,30 @@ def test_candidate_lock_follows_every_crate_inheriting_the_workspace_version() -
     assert all(after[name] == local[name] for name in local if name not in inheriting)
 
 
+@pytest.mark.parametrize(
+    "pruned",
+    [
+        ["rust/crates/rusticol-core", "rust/crates/rusticol-python"],
+        # Maturin 1.15's list for the 1.0.2 workspace (loop-reduction crates).
+        [
+            "rust/crates/pyamplicol",
+            "rust/crates/rusticol-core",
+            "rust/crates/rusticol-python",
+            "rust/loop-reduction",
+            "rust/loop-reduction/python",
+        ],
+    ],
+)
 def test_sdk_build_restores_maturin_pruned_sdist_workspace_member(
     tmp_path: Path,
+    pruned: list[str],
 ) -> None:
     cargo = tmp_path / "Cargo.toml"
+    listing = ", ".join(f'"{member}"' for member in pruned)
     cargo.write_text(
-        """\
+        f"""\
 [workspace]
-members = ["rust/crates/rusticol-core", "rust/crates/rusticol-python"]
+members = [{listing}]
 resolver = "2"
 
 [workspace.package]
@@ -1848,14 +1968,20 @@ version = "0.1.0"
 
     with cargo.open("rb") as stream:
         members = tomllib.load(stream)["workspace"]["members"]
-    assert members == [
-        "rust/crates/rusticol-core",
-        "rust/crates/rusticol-python",
-        "rust/crates/rusticol-capi",
-    ]
+    assert members == [*pruned, "rust/crates/rusticol-capi"]
     restored = cargo.read_bytes()
     sdk._ensure_sdk_workspace_member(tmp_path)
     assert cargo.read_bytes() == restored
+
+
+def test_sdk_build_refuses_workspace_without_the_sdk_crate(tmp_path: Path) -> None:
+    (tmp_path / "Cargo.toml").write_text(
+        '[workspace]\nmembers = ["rust/crates/rusticol-core"]\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="does not contain the Rusticol C SDK"):
+        sdk._ensure_sdk_workspace_member(tmp_path)
 
 
 def test_dependency_gate_subprocess_ignores_inherited_build_injection(
@@ -2139,6 +2265,136 @@ def test_native_link_arguments_are_typed_and_allowlisted() -> None:
         "dl",
         "c",
     ]
+
+
+def test_shipped_shared_libraries_are_split_from_system_libraries() -> None:
+    tokens = ["-lmpc", "-lmpfr", "-lgmp", "-lgcc_s", "-lgmp", "-lc"]
+    link = sdk._typed_link_arguments(
+        tokens,
+        "x86_64-unknown-linux-gnu",
+        shared_libraries=sdk.arithmetic_module.LINK_ORDER,
+    )
+    assert link["system_libraries"] == ["gcc_s", "c"]
+    assert link["shared"] == ["mpc", "mpfr", "gmp"]
+    with pytest.raises(RuntimeError, match="not allowlisted: mpc"):
+        sdk._typed_link_arguments(tokens, "x86_64-unknown-linux-gnu")
+    with pytest.raises(RuntimeError, match="does not link the shared libraries"):
+        sdk._typed_link_arguments(
+            ["-lgcc_s", "-lc"],
+            "x86_64-unknown-linux-gnu",
+            shared_libraries=sdk.arithmetic_module.LINK_ORDER,
+        )
+
+
+def test_sdk_with_the_shared_arithmetic_runtime_ships_and_links_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    archive = tmp_path / "librusticol_capi.a"
+    archive.write_bytes(b"!<arch>\n")
+    prefix = tmp_path / "prefix"
+    (prefix / "lib").mkdir(parents=True)
+    libraries = {}
+    for name, soname in (
+        ("gmp", "libgmp-pyamplicol.so.10"),
+        ("mpfr", "libmpfr-pyamplicol.so.6"),
+        ("mpc", "libmpc-pyamplicol.so.3"),
+    ):
+        libraries[name] = prefix / "lib" / soname
+        libraries[name].write_bytes(name.encode())
+    runtime = sdk.arithmetic_module.ArithmeticRuntime(prefix, libraries)
+    target = "x86_64-unknown-linux-gnu"
+    commands: list[list[str]] = []
+    linkage: dict[str, object] = {}
+
+    def fake_run(command, **_kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(sdk.arithmetic_module.sys, "platform", "linux")
+    monkeypatch.setattr(sdk, "_host_target", lambda _root: target)
+    monkeypatch.setattr(sdk, "_requested_target", lambda host: host)
+    monkeypatch.setattr(sdk, "_cargo_fetch", lambda *_args: None)
+    monkeypatch.setattr(sdk.subprocess, "run", fake_run)
+    monkeypatch.setattr(sdk, "_cargo_messages", lambda _stdout: ())
+    monkeypatch.setattr(sdk, "_static_library", lambda _messages: archive)
+    monkeypatch.setattr(
+        sdk, "_native_tokens", lambda _stderr: ["-lmpc", "-lmpfr", "-lgmp", "-lc"]
+    )
+    monkeypatch.setattr(sdk, "_scan_archive", lambda _archive: None)
+    monkeypatch.setattr(sdk, "_stripped_archive", lambda archive, *_args: archive)
+    monkeypatch.setattr(sdk, "_scan_archive_symbols", lambda _archive: None)
+    monkeypatch.setattr(
+        sdk,
+        "_validate_archive_linkage",
+        lambda *_args, **kwargs: linkage.update(kwargs),
+    )
+    monkeypatch.setattr(sdk, "_package_version", lambda _root: "0.1.0")
+
+    staging = sdk.build_sdk(ROOT, tmp_path / "target", arithmetic=runtime)
+
+    features = commands[0].index("--features")
+    assert commands[0][features + 1] == sdk.arithmetic_module.CARGO_FEATURE
+    assert linkage["shared_files"] == tuple(
+        libraries[name] for name in ("mpc", "mpfr", "gmp")
+    )
+    link = json.loads((staging / "link.json").read_text(encoding="utf-8"))
+    assert link["system_libraries"] == ["c"]
+    assert link["shared_libraries"] == [
+        "lib/libmpc-pyamplicol.so.3",
+        "lib/libmpfr-pyamplicol.so.6",
+        "lib/libgmp-pyamplicol.so.10",
+    ]
+    assert "shared" not in link
+    for name, relative in zip(
+        ("mpc", "mpfr", "gmp"), link["shared_libraries"], strict=True
+    ):
+        assert (staging / relative).read_bytes() == libraries[name].read_bytes()
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux")
+    or any(
+        shutil.which(tool) is None
+        for tool in ("cc", "ar", "strip", "readelf", "objcopy", "nm")
+    ),
+    reason="needs a GNU ELF toolchain",
+)
+def test_shipped_sdk_archive_drops_debug_info_and_bitcode(tmp_path: Path) -> None:
+    source = tmp_path / "member.c"
+    source.write_text("int rusticol_probe(void) { return 7; }\n", encoding="utf-8")
+    member = tmp_path / "member.o"
+    subprocess.run(["cc", "-g", "-c", str(source), "-o", str(member)], check=True)
+    subprocess.run(
+        [
+            "objcopy",
+            "--add-section",
+            f".llvmbc={source}",
+            str(member),
+        ],
+        check=True,
+    )
+    archive = tmp_path / "librusticol_capi.a"
+    subprocess.run(["ar", "rcs", str(archive), str(member)], check=True)
+
+    stripped = sdk._stripped_archive(
+        archive, tmp_path / "out" / archive.name, "x86_64-unknown-linux-gnu"
+    )
+
+    sections = subprocess.run(
+        ["readelf", "-S", "-W", str(stripped)],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert ".debug_info" not in sections and ".llvmbc" not in sections
+    symbols = subprocess.run(
+        ["nm", "--defined-only", str(stripped)],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert "rusticol_probe" in symbols
+    assert archive.read_bytes() != stripped.read_bytes()
 
 
 def test_static_archive_byte_scan_ignores_random_python_text(tmp_path: Path) -> None:

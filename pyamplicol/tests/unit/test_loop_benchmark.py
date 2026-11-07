@@ -1840,7 +1840,8 @@ def test_report_builder_gives_each_summary_table_its_provenance(
         "backend": "tirust",
         "batch": 128,
         "seconds_per_point": 0.003,
-        "generation": {"seconds": 12.0, "peak_gib": 0.5},
+        "host": "testhost",
+        "generation": {"seconds": 12.0, "probes_seconds": 3.0, "peak_gib": 0.5},
         "native_build": "loop-native-li-run",
         "native_digest": "f" * 64,
         "source": "test/gg_hgg",
@@ -1886,8 +1887,37 @@ def test_report_builder_gives_each_summary_table_its_provenance(
     assert cell["revision"] == "bbbbbbbb"
     assert cell["native_build"] == "loop-native-li-run"
     assert cell["native_digest"] == "f" * 64
+    assert cell["host"] == rows["gg_hgg"]["generation"]["host"] == "testhost"
     openloops = rows["gg_hgg"]["providers"]["providers"]["openloops"]
     assert openloops["host"] == "testhost"
+    # The report's own line (running header, page-1 subtitle): its date and
+    # newest measured engine, beside each table's own (Table 1's
+    # configuration labelled as such): Table 2's bbbbbbbb is newer than
+    # Table 1's cccccccc by the recorded ancestry; without a Table 2 record
+    # the head is Table 1's.
+    summary = {
+        "groups": [
+            {
+                "rows": [
+                    {
+                        kind: {"main": {"status": "measured", "revision": "c" * 8}}
+                        for kind in ("generation", "full_colour", "leading_colour")
+                    }
+                ]
+            }
+        ]
+    }
+    ms["ancestry"] = {
+        "revisions": [*ms["ancestry"]["revisions"], "c" * 8],
+        "ancestors": [*ms["ancestry"]["ancestors"], ["c" * 8, "bbbbbbbb"]],
+    }
+    recency = builder.Recency(tmp_path, ms["ancestry"])
+    report = builder.report_meta(summary, out, recency, ms)
+    assert (report["date"], report["head"]) == ("2026-11-06", "bbbbbbbb")
+    assert (report["table1"], report["table2"]) == ("c" * 8, "bbbbbbbb")
+    empty = {"groups": []}
+    report = builder.report_meta(summary, empty, recency, ms)
+    assert report["head"] == report["table1"] == "c" * 8 and report["table2"] is None
 
 
 def test_an_imported_madloop_timing_takes_the_specified_exports_generation(
@@ -2076,7 +2106,8 @@ def test_report_builder_loop_induced_table_markers_backend_floor_and_reports(
             "backend": backend,
             "batch": 128,
             "seconds_per_point": seconds,
-            "generation": {"seconds": 12.0, "peak_gib": 0.5},
+            "host": "testhost",
+            "generation": {"seconds": 12.0, "probes_seconds": 3.0, "peak_gib": 0.5},
             "source": f"test/{key}",
             **extra,
         }
@@ -2171,8 +2202,15 @@ def test_report_builder_loop_induced_table_markers_backend_floor_and_reports(
     assert hh["gate"] == {"status": "reported", "label": "no gate (2->2)"}
     assert hh["ratio_to_fastest"] == pytest.approx(0.002 / 0.01)
     assert rows["gg_hh"]["providers"]["fastest"]["key"] == "openloops"
+    # Generation: the full production cost, generate + plan export + the
+    # mandatory generation-time probes (m-lit Q12), their share named; its
+    # multiplier against the provider's generation takes the full cost.
     gen = rows["gg_hh"]["generation"]
-    assert gen["status"] == "measured" and gen["ratio_to_fastest"] == pytest.approx(0.2)
+    assert gen["status"] == "measured" and gen["seconds"] == 15.0
+    assert gen["generate_seconds"] == 12.0 and gen["probes_seconds"] == 3.0
+    assert gen["probe_share"] == pytest.approx(0.2)
+    assert gen["ratio_to_fastest"] == pytest.approx(15.0 / 60.0)
+    assert gen["host"] == hh["host"] == "testhost"
     # The newest revision's default backend, the other backend beside it;
     # below 5 ms not gated.
     hgg = rows["gg_hgg"]["timing"]
@@ -2217,6 +2255,18 @@ def test_report_builder_loop_induced_table_markers_backend_floor_and_reports(
     assert hhh["providers"]["status"] == "recorded"
     assert hhh["providers"]["providers"]["madloop"]["status"] == "not timed"
     assert hhh["timing"]["gate"]["label"] == "no provider time yet"
+    # A record without its probe time holds no full production cost: not
+    # recorded (never a partial generation); a record without its host is
+    # refused.
+    del timing["records"][-1]["generation"]["probes_seconds"]
+    (data / "li-timing.json").write_text(json.dumps(timing))
+    rows, _ = build()
+    assert rows["gg_hhh"]["generation"]["status"] == "not recorded"
+    assert "probe time" in rows["gg_hhh"]["generation"]["reason"]
+    del timing["records"][-1]["host"]
+    (data / "li-timing.json").write_text(json.dumps(timing))
+    with pytest.raises(ValueError, match="names no host"):
+        build()
     timing["records"].pop()
     del runs["gg_hhh"]
     # Two production timings of one provider are ambiguous.

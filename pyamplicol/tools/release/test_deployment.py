@@ -40,6 +40,7 @@ from _common import (
     DEPENDENCY_WHEELHOUSE,
     DEPLOYMENT_ROOT,
     DIST,
+    DISTRIBUTION_WHEEL_SETTINGS,
     ROOT,
     ReleaseError,
     build_mode,
@@ -260,7 +261,7 @@ roots = {item.split("/", 1)[0] for item in package_files}
 assert all(
     root == "pyamplicol"
     or root == "rusticol_config"
-    or root == "pyamplicol.libs"
+    or root in {"pyamplicol.libs", "pyamplicol.dylibs"}
     or root.endswith(".dist-info")
     for root in roots
 ), sorted(roots)
@@ -1160,6 +1161,7 @@ def _build_fresh_candidate_wheel(artifact_directory: Path) -> Path:
             "-m",
             "build",
             "--wheel",
+            *DISTRIBUTION_WHEEL_SETTINGS,
             "--outdir",
             artifact_directory,
         ],

@@ -132,7 +132,8 @@ def _induced(plan) -> dict[str, dict]:
     }
 
 
-# The keys of a Born-interfered dry-run record (unchanged by LIT-REQ).
+# The keys of a Born-interfered dry-run record (unchanged by LIT-REQ; its
+# runtime capability named since lit-amp-b).
 BORN_RECORD_KEYS = {
     "key",
     "process",
@@ -146,7 +147,10 @@ BORN_RECORD_KEYS = {
     "numerator_compilation_deferred",
     "loop_admission_checked",
     "native_export_checked",
+    "runtime_capability",
 }
+V4 = "rusticol.loop-runtime.v4"
+V5 = "rusticol.loop-runtime.v5"
 
 
 # ---------------------------------------------------------- configuration
@@ -478,6 +482,10 @@ def test_each_value_on_mixed_and_purely_loop_induced_requests(tmp_path, value):
         assert len(records) == 5
         assert all(set(record) == BORN_RECORD_KEYS for record in records)
         assert all(dict(record["born_orders"])["QED"] == 2 for record in records)
+        # Each process's runtime from its request's contribution.
+        assert {record["runtime_capability"] for record in records} == {V4}
+        assert mixed.estimated_coverage["runtime_capabilities"] == (V4,)
+        assert mixed.estimated_coverage["runtime_capability"] == V4
         ((record),) = skipped
         assert record["process"].casefold() == "g g > z z"
         assert record["refusal"] == "loop-induced"
@@ -487,6 +495,8 @@ def test_each_value_on_mixed_and_purely_loop_induced_requests(tmp_path, value):
         assert _keys(mixed) == []
         ((record),) = records
         assert record["contribution"] == "loop-induced"
+        assert record["runtime_capability"] == V5
+        assert mixed.estimated_coverage["runtime_capability"] == V5
         assert record["process"].casefold() == "g g > z z"
         assert dict(record["loop_orders"]) == {"QCD": 2, "QED": 2}
         assert len(skipped) == 5
@@ -500,9 +510,19 @@ def test_each_value_on_mixed_and_purely_loop_induced_requests(tmp_path, value):
     assert record["contribution"] == "loop-induced"
     assert dict(record["loop_orders"]) == {"QCD": 2, "QED": 1}
     assert dict(record["coupling_order_limits"]) == {}
+    assert record["runtime_capability"] == V5
     if value == "only":
         born = _plan(tmp_path / "uudd", (("p", "u u~ > d d~"),), loop_induced=value)
         assert _keys(born) == ["born-in-loop-induced-mode"]
+    if value == "auto":
+        # A Born-interfered and a loop-induced request in one run: the
+        # planned artifact requires both runtimes, no single one.
+        both = _plan(
+            tmp_path / "both", (("z", "u u~ > z"), ("h", "g g > h")), loop_induced=value
+        )
+        assert _keys(both) == []
+        assert both.estimated_coverage["runtime_capabilities"] == (V4, V5)
+        assert both.estimated_coverage["runtime_capability"] is None
 
 
 @pytest.mark.loop_physics

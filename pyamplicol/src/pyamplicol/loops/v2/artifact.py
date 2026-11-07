@@ -1499,7 +1499,9 @@ class V2VirtualRuntime:
     stability checks.
     """
 
-    contribution_kind = "virtual"
+    # The class default; a loaded runtime reads its process's kind from the
+    # artifact metadata ("virtual" or "loop-induced", m-lit Q36).
+    contribution_kind: Literal["virtual", "loop-induced"] = "virtual"
     execution_mode = "loop_recurrence"
 
     def __init__(
@@ -1614,6 +1616,9 @@ class V2VirtualRuntime:
         self._physics = physics
         self._execution = execution
         self._metadata = physics["metadata"]
+        self.contribution_kind = cast(
+            Literal["virtual", "loop-induced"], self._metadata["contribution_kind"]
+        )
         self._born_orders = tuple(
             canonical_order(tuple((n, p) for n, p in order))
             for order in self._metadata["born_orders"]
@@ -1781,7 +1786,7 @@ class V2VirtualRuntime:
             # (``selection``: tree-engine IDs and order), each anchored to
             # its Born basis element (``evaluate_resolved``'s ``basis-<i>``).
             born_anchored_color_components=anchors,
-            contribution_kind="virtual",
+            contribution_kind=self.contribution_kind,
             reduction=PhysicsReduction(kind, ()),
             model_parameters=(),
             # Selection of a mapped process is refused (``_refuse_member_
@@ -2224,9 +2229,7 @@ class V2VirtualRuntime:
             poles=poles,
             stability=tuple(estimates) if checks.enabled else None,
             pole_parts=tuple(parts) if splits_poles(poles) else None,
-            contribution=cast(
-                Literal["virtual", "loop-induced"], self._metadata["contribution_kind"]
-            ),
+            contribution=self.contribution_kind,
         )
 
     def _contraction(self, results: Sequence[Any]) -> VirtualColorContraction:

@@ -2318,6 +2318,7 @@ dependencies = [
 name = "rusticol-capi"
 version = "1.0.2"
 dependencies = [
+ "gmp-mpfr-sys",
  "rusticol-core",
  "rusticol-loop-sdk",
  "serde_json",
@@ -2392,6 +2393,7 @@ name = "rusticol-python"
 version = "1.0.2"
 dependencies = [
  "flate2",
+ "gmp-mpfr-sys",
  "num-bigint",
  "num-rational",
  "num-traits",
