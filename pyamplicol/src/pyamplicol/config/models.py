@@ -904,6 +904,12 @@ class GenerationConfig:
     # finiteness or Ward probe failed (refused by default); the failure is
     # recorded in the artifact.
     allow_failed_probes: bool = field(default=False, metadata=_setting("bool"))
+    # m-lit Q10 (LIT-R2): the stated failure probability of the exact
+    # helicity-zero filter of loop-induced processes (that it drops a row
+    # that is not an integrand zero); 0 drops nothing and skips the filter.
+    helicity_filter_failure_probability: float = field(
+        default=1e-12, metadata=_setting("float")
+    )
     validation: GenerationValidationConfig = field(
         default_factory=GenerationValidationConfig, metadata=_section()
     )
@@ -933,6 +939,16 @@ class GenerationConfig:
             )
         if not isinstance(self.allow_failed_probes, bool):
             raise ConfigurationError("generation.allow_failed_probes must be a boolean")
+        failure = _finite_float(
+            self.helicity_filter_failure_probability,
+            "generation.helicity_filter_failure_probability",
+            minimum=0.0,
+        )
+        if failure >= 1:
+            raise ConfigurationError(
+                "generation.helicity_filter_failure_probability must be below 1"
+            )
+        object.__setattr__(self, "helicity_filter_failure_probability", failure)
         if self.allow_anomalous_veto and not self.particle_veto:
             raise ConfigurationError(
                 "generation.allow_anomalous_veto requires generation.particle_veto"

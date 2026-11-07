@@ -78,6 +78,20 @@ impl<T: Carrier> FamilyNumerator<T> {
     }
 }
 
+/// The trace `τ[m] = Σ_α row[α][α][m]` of one output row of a trace step
+/// (its `d_alpha × d_out` blocks of `trace.len()` lane values each).
+#[inline(always)]
+fn row_trace<T: Carrier>(step: &Step, row: &[T], trace: &mut [T]) {
+    let block = trace.len();
+    super::kernels::clear(trace);
+    for a in 0..step.d_alpha {
+        let diagonal = &row[(a * step.d_out + a) * block..][..block];
+        for (c, x) in trace.iter_mut().zip(diagonal) {
+            *c += x;
+        }
+    }
+}
+
 /// Close a trace step's output (one helicity row per column) into an
 /// accumulator: `acc[o][m] += Σ_α out[o][α][α][m]`. The step's rank is at
 /// most the family rank (checked when the plan loads), so no coefficient is
@@ -97,17 +111,54 @@ pub fn trace_into<T: Carrier, const L: usize>(
     let row = step.out_row() * v;
     let mut column = vec![zero.clone(); n_out * v];
     for o in 0..columns {
-        let source = &output[o * row..][..row];
-        super::kernels::clear(&mut column);
-        for a in 0..step.d_alpha {
-            let diagonal = &source[(a * step.d_out + a) * n_out * v..][..n_out * v];
-            for (c, x) in column.iter_mut().zip(diagonal) {
-                *c += x;
-            }
-        }
+        row_trace(step, &output[o * row..][..row], &mut column);
         let target = &mut accumulator[o * n_family * v..][..n_family * v];
         for (t, c) in target.chunks_exact_mut(v).zip(column.chunks_exact(v)) {
             cadd::<T, L>(t, c);
+        }
+    }
+}
+
+/// Close a trace step of a dressed-row plan (route R2, M-LIT LIT-R2) into
+/// an accumulator: per object row `r` (one object column) its trace
+/// `τ_r[m] = Σ_α out[r][α][α][m]`, then for each observable column `o` of
+/// its Born row `born[r]` (`columns[born[r]]`: `(o, w)`, `w` the column's
+/// seed-weight column) `acc[o][m] += u[w] τ_r[m]`, with `u` the amplitude
+/// vector of the step's seed key in the carrier (`(re, im)` per seed-weight
+/// column, the same for every lane). The step's rank is at most the family
+/// rank (checked when the plan loads).
+#[allow(clippy::too_many_arguments)]
+pub fn trace_rows_into<T: Carrier, const L: usize>(
+    step: &Step,
+    output: &[T],
+    accumulator: &mut [T],
+    born: &[u32],
+    columns: &[Vec<(usize, usize)>],
+    vector: &[(T, T)],
+    rank: usize,
+    zero: &T,
+) {
+    let v = lane_vector_len(L);
+    let n_out = ncoeff(step.rank_out);
+    let n_family = ncoeff(rank);
+    debug_assert!(n_out <= n_family, "a trace step above the family rank");
+    let row = step.out_row() * v;
+    let mut trace = vec![zero.clone(); n_out * v];
+    let mut term = vec![zero.clone(); v];
+    for (r, &h) in born.iter().enumerate() {
+        row_trace(step, &output[r * row..][..row], &mut trace);
+        for &(o, w) in &columns[h as usize] {
+            let (re, im) = &vector[w];
+            let target = &mut accumulator[o * n_family * v..][..n_family * v];
+            for (t, c) in target.chunks_exact_mut(v).zip(trace.chunks_exact(v)) {
+                let (c_re, c_im) = c.split_at(L);
+                let (term_re, term_im) = term.split_at_mut(L);
+                for l in 0..L {
+                    term_re[l] = re.clone() * &c_re[l] - im.clone() * &c_im[l];
+                    term_im[l] = re.clone() * &c_im[l] + im.clone() * &c_re[l];
+                }
+                cadd::<T, L>(t, &term);
+            }
         }
     }
 }

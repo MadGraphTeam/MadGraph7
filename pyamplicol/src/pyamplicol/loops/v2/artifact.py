@@ -1055,11 +1055,8 @@ def generate_process(
     process regenerates.
     """
 
-    from pyamplicol.correlators import CorrelatorConfig
-
     from .assemble import LoopSlice, resolve_request
     from .observables import ObservableSlice
-    from .plan_export import export_plan
 
     if request.counterterms != "recursion":
         # Site closure (with its loop matching) is the O6 test oracle only.
@@ -1070,11 +1067,7 @@ def generate_process(
     # The recorded recipe names the corrections the slice takes (a request
     # that names none takes the model's strong correction).
     request = resolve_request(compiled, request)
-    declared = correlators is not None and bool(
-        correlators.color_correlations
-        or correlators.spin_correlations
-        or correlators.all_color_through_order is not None
-    )
+    declared = _declared(correlators)
     from .native_trees import NativeExportUnsupported
 
     try:
@@ -1091,6 +1084,43 @@ def generate_process(
             )
     except NativeExportUnsupported as error:
         raise _not_storable(request, "native point inputs", error) from error
+    return export_process(observables, request, declared)
+
+
+def reexport_process(
+    process: GeneratedProcess, compiled: Any, request: Any, correlators: Any = None
+) -> GeneratedProcess:
+    """``process`` exported again from its own slice (``export_process``), as
+    ``generate_process`` exported it for ``request`` and ``correlators``."""
+
+    from .assemble import resolve_request
+
+    return export_process(
+        process.observables, resolve_request(compiled, request), _declared(correlators)
+    )
+
+
+def _declared(correlators: Any) -> bool:
+    """Whether ``correlators`` declares colour or spin observables."""
+
+    return correlators is not None and bool(
+        correlators.color_correlations
+        or correlators.spin_correlations
+        or correlators.all_color_through_order is not None
+    )
+
+
+def export_process(observables: Any, request: Any, declared: bool) -> GeneratedProcess:
+    """The stored plans and native point inputs of a generated slice
+    (``generate_process``'s export): exported again, on the same slice, when
+    the exact helicity-zero filter of a loop-induced process drops rows
+    (``LoopSlice.zero_rows``, ``helicity_filter``)."""
+
+    from pyamplicol.correlators import CorrelatorConfig
+
+    from .native_trees import NativeExportUnsupported
+    from .plan_export import export_plan
+
     # Schedule F (the forward oracle) is not stored: the runtime dresses by
     # schedule B, and F's section is over half of the plan (gg -> gggg: 52 of
     # 98 MB of JSON).

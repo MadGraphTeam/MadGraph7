@@ -44,7 +44,7 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 128
+    assert len(FIELD_REGISTRY) == 129
     # m-lit LIT-API: the reduction backend (Q17 / Q18), a generation default
     # and its runtime override.
     assert FIELD_REGISTRY["loop.reduction"].default == "auto"
@@ -87,12 +87,33 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     assert FIELD_REGISTRY["generation.allow_anomalous_veto"].default is False
     assert FIELD_REGISTRY["generation.allow_failed_probes"].kind == "bool"
     assert FIELD_REGISTRY["generation.allow_failed_probes"].default is False
+    filter_failure = FIELD_REGISTRY["generation.helicity_filter_failure_probability"]
+    assert filter_failure.kind == "float" and filter_failure.default == 1e-12
     assert FIELD_REGISTRY["evaluation.poles"].default == "all"
     assert FIELD_REGISTRY["evaluation.poles"].choices == ("all", "none", "uv", "ir")
     assert FIELD_REGISTRY["evaluation.stability_checks.rotations"].kind == "list_str"
     assert FIELD_REGISTRY["evaluation.stability_checks.rotation_count"].default == 0
     assert FIELD_REGISTRY["evaluation.stability_checks.rescaled"].default is False
     assert FIELD_REGISTRY["loop.preparation"].nullable
+
+
+def test_helicity_filter_failure_probability_is_a_probability_below_one() -> None:
+    """m-lit Q10 (LIT-R2): the exact helicity-zero filter's stated failure
+    probability is overridable; 0 drops nothing, 1 and above, negative,
+    non-finite and non-numeric values are refused."""
+
+    assert GenerationConfig().helicity_filter_failure_probability == 1e-12
+    assert (
+        GenerationConfig(
+            helicity_filter_failure_probability=0
+        ).helicity_filter_failure_probability
+        == 0.0
+    )
+    for value in (1, 1.5, -1e-3, float("inf"), float("nan"), True, "1e-9"):
+        with pytest.raises(
+            ConfigurationError, match="helicity_filter_failure_probability"
+        ):
+            GenerationConfig(helicity_filter_failure_probability=value)
 
 
 def test_loop_config_refuses_the_removed_engine_with_the_reason() -> None:

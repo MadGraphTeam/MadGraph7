@@ -67,6 +67,7 @@ emit_api_bundle = false
 particle_veto = []
 allow_anomalous_veto = false
 allow_failed_probes = false
+helicity_filter_failure_probability = 1e-12
 
 [generation.validation]
 enabled = true
