@@ -1895,11 +1895,15 @@ impl V2Executor {
 #[pyfunction]
 #[pyo3(signature = (path, process=None))]
 fn admit_v2_artifact(py: Python<'_>, path: &str, process: Option<&str>) -> PyResult<String> {
-    use rusticol_core::loop_artifact::{LOOP_V2_RUNTIME_CAPABILITY, open_loop_v2_artifact};
+    use rusticol_core::loop_artifact::{loop_v2_capability, open_loop_v2_artifact};
 
     let loaded = py
         .detach(|| open_loop_v2_artifact(path, process))
         .map_err(error)?;
+    // The admitted process's own runtime (v4 Born-interfered, v5
+    // loop-induced): the loader checked it against its contribution.
+    let runtime_capability = loop_v2_capability(&loaded.metadata.contribution_kind)
+        .ok_or_else(|| error("unknown loop contribution kind"))?;
     let program = &loaded.program;
     let buckets: Vec<[usize; 3]> = program
         .buckets()
@@ -1909,7 +1913,7 @@ fn admit_v2_artifact(py: Python<'_>, path: &str, process: Option<&str>) -> PyRes
     serde_json::to_string(&serde_json::json!({
         "artifact_id": loaded.artifact_id,
         "process_id": loaded.selection.process.id,
-        "runtime_capability": LOOP_V2_RUNTIME_CAPABILITY,
+        "runtime_capability": runtime_capability,
         "plan_sha256": loaded.plan_sha256,
         "plan_bytes": loaded.plan_json.len(),
         "families": program.families.len(),

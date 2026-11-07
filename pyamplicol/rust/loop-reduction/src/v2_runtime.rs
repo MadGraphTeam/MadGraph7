@@ -98,8 +98,9 @@ use crate::runtime::{
 pub use crate::v2_decimal::{Arith, Binary64, C, Decimal, DecimalArith, cadd, cmul, conj};
 use rusticol_core::VerifiedArtifact;
 use rusticol_core::loop_artifact::{
-    LOOP_V2_RUNTIME_CAPABILITY, LoadedLoopV2Artifact, LoopV2ExecutionMetadata, LoopV2NativeTrees,
-    load_loop_v2_artifact, read_loop_v2_native_inputs, read_loop_v2_observables,
+    LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY, LOOP_V2_RUNTIME_CAPABILITY, LoadedLoopV2Artifact,
+    LoopV2ExecutionMetadata, LoopV2NativeTrees, is_loop_v2_manifest, load_loop_v2_artifact,
+    read_loop_v2_native_inputs, read_loop_v2_observables,
 };
 use rusticol_core::loop_execution::v2::{
     Contraction, LaneKey, PointResult, Poles, V2Executor, V2Options,
@@ -786,11 +787,14 @@ pub struct V2Runtime {
     observables: Option<columns::Observables>,
 }
 
-/// Whether the artifact at `path` serves its processes through the plan v4
-/// runtime (every process requires the v2 runtime capability).
+/// Whether the artifact at `path` serves its processes through the v2 loop
+/// runtimes (every process requires one of the v2 loop runtime capabilities,
+/// Born-interfered and loop-induced processes in any mix,
+/// `loop_artifact::is_loop_v2_manifest`); [`V2Runtime::open`] serves its
+/// Born-interfered processes.
 pub fn is_v2_artifact(path: impl AsRef<Path>) -> RusticolResult<bool> {
     let artifact = rusticol_core::VerifiedArtifact::open(path)?;
-    Ok(artifact.manifest().runtime.required_runtime_capabilities == [LOOP_V2_RUNTIME_CAPABILITY])
+    Ok(is_loop_v2_manifest(artifact.manifest()))
 }
 
 impl V2Runtime {
@@ -805,6 +809,19 @@ impl V2Runtime {
         let path = path.as_ref().to_path_buf();
         let verified = VerifiedArtifact::open(&path)?;
         let artifact = load_loop_v2_artifact(&verified, process)?;
+        // The native SDK serves Born-interfered processes; a loop-induced
+        // one (an amplitude-mode plan, `rusticol.loop-runtime.v5`) is served
+        // by the Python runtime until the SDK takes amplitude-mode plans
+        // (m-lit LIT-SDK): refused typed, never evaluated as a seeded plan.
+        if artifact.metadata.contribution_kind != "virtual" {
+            return Err(RusticolError::compatibility(format!(
+                "the native loop SDK serves Born-interfered processes \
+                 ({LOOP_V2_RUNTIME_CAPABILITY}); process {:?} is {} \
+                 ({LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY}): evaluate it through \
+                 the Python runtime",
+                artifact.selection.process.id, artifact.metadata.contribution_kind
+            )));
+        }
         let externals = model_externals(&verified)?;
         let native = read_loop_v2_native_inputs(&verified, &artifact)?.ok_or_else(|| {
             invalid("the process has no native point inputs; regenerate the artifact")
