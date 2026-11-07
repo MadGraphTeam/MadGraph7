@@ -129,16 +129,20 @@ request's limits, so compare sector by sector.
 
 A request with a multiparticle label generates its concrete processes that
 have a Born amplitude within the coupling-order limits. A member without one
-(`g g > e+ e-` in `p p > e+ e-`) is loop-induced: it is skipped, with a
-typed record (key `loop-induced`) in the dry run
-(`estimated_coverage.skipped_members`) and in the artifact (manifest
-extension `loop_skipped_members`). The stored members' sum is MadLoop's
-Born x virtual; the loop-squared contribution of a skipped member, which
-MadLoop's multiparticle output holds, is not computed. A request none of whose
-members has a Born is routed loop-induced (`process.loop_induced`, see
-[Configuration](configuration.md); generated as |A_loop|^2), and
-refused (`loop-induced`) under `process.loop_induced = "skip"`. `p` and `j` are the model's
-massless quarks and gluon; add the photon with `process.multiparticles`.
+(`g g > e+ e-` in `p p > e+ e-`) is loop-induced. By default
+(`process.loop_induced = "auto"`) it is skipped, with a typed record (key
+`loop-induced`) in the dry run (`estimated_coverage.skipped_members`) and in
+the artifact (manifest extension `loop_skipped_members`): the stored members'
+sum is MadLoop's Born x virtual. `process.loop_induced = "include"` also
+serves it, as |A_loop|^2 next to the Born members' Born x virtual, each
+concrete process its own contribution (`contribution = "loop-induced"` or
+`"virtual"` in its results), never summed; this is the loop-squared
+contribution MadLoop's multiparticle output holds. A request none of whose
+members has a Born is routed loop-induced (see
+[Configuration](configuration.md); generated as |A_loop|^2), and refused
+(`loop-induced`) under `process.loop_induced = "skip"`. `p` and `j` are the
+model's massless quarks and gluon; add the photon with
+`process.multiparticles`.
 
 ## Refusals
 
