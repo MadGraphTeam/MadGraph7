@@ -501,7 +501,9 @@ fn family_links(family: &rusticol_core::loop_v2::plan::Family) -> usize {
 fn dressed_rows_are_dressed_only_where_a_column_reads_them() {
     // The load drops the trace links of the exact helicity-zero filter's
     // rows (no column reads them); a helicity mask of one call drops the
-    // masked rows' too; a mask keeping every read row prunes nothing.
+    // masked rows' too (a family runs a pruned copy when it keeps at most
+    // `KEPT_SHARE` of its links, else whole); a mask keeping every read row
+    // prunes nothing.
     let all = LoopProgramV4::load(&text(&dressed_plan(2, 4, 2, 0))).unwrap();
     let dropped = LoopProgramV4::load(&text(&dressed_plan(2, 4, 2, 1))).unwrap();
     let whole: usize = all.families.iter().map(family_links).sum();
@@ -511,10 +513,18 @@ fn dressed_rows_are_dressed_only_where_a_column_reads_them() {
         assert_eq!(family.row_traces.len(), family.steps.len());
     }
     let live = dropped
-        .live_rows(&[true, true, false, true], &[0, 1])
+        .live_rows(&[true, true, false, false], &[0, 1])
         .unwrap()
         .expect("a masked row is pruned");
     assert!(live.links() < loaded, "{} of {loaded} links", live.links());
+    assert_eq!(live.pruned(), 2);
+    // Two of the three read rows keep more than half of the links: the
+    // families run whole.
+    let kept = dropped
+        .live_rows(&[true, true, false, true], &[0, 1])
+        .unwrap()
+        .expect("a masked row is live");
+    assert_eq!((kept.links(), kept.pruned()), (loaded, 0));
     for f in 0..2 {
         if let Some(copy) = live.family(f) {
             assert_eq!(copy.row_traces.len(), copy.steps.len());
