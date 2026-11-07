@@ -159,6 +159,46 @@ def test_route_r2_runs_schedule_b_only(li):
 # ------------------------------------------------- exact helicity-zero filter
 
 
+def test_degree_bound_clears_negative_powers_and_counts_split_blocks():
+    """The exact test's degree bound on a crafted plan: three positions; a
+    fused kernel with terms MT/sw x and sw x (base sw with both signs: the
+    Laurent numerator times sw^3 is a polynomial) and a split kernel sw on
+    two block slots (two block components multiply it outside the kernel):
+    d = 3 (max(1 + 1, 1 + 1, 1 + 2) + 1) = 12; counting |exponents| per term
+    (9) undercounts the cleared degree."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.v2.helicity_filter import degree_bound, points_needed
+
+    mt, sw = ("param", "MT"), ("param", "sw")
+    constants = [
+        ((1, ((mt, 1), (sw, -1)), (), True), ()),
+        ((1, ((sw, 1),), (), True), ()),
+    ]
+    program = {
+        "kernels": [
+            {"outputs": [[[0, [[0, 1]]], [1, [[0, 1]]]]]},
+            {"outputs": [[[1, []]]]},
+        ],
+        "contents": [
+            {
+                "terms": [
+                    {
+                        "slots": [1, 2],
+                        "bindings": [{"kernel": 0}],
+                        "split": [{"kernel": 1}],
+                    }
+                ]
+            }
+        ],
+        "families": [{"sequence": [[1, 0], [2, 0], [4, 0]]}],
+    }
+    exported = SimpleNamespace(program=program, constants=constants)
+    assert degree_bound(exported) == 12
+    assert points_needed(12, 4, 1e-12) == 1
+
+
 def _filter(li, name):
     from pyamplicol.loops.v2.helicity_filter import generation_filter
 

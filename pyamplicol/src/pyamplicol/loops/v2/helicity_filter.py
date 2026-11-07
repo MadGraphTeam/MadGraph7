@@ -28,10 +28,13 @@ powers of parameters, primes, pi and parameter functions; each base b takes
 a random u_b with b^e = u_b^(e L_b), L_b the common denominator of its
 exponents, so equal constants stay equal; a prime base takes its square
 root modulo p where it has one). Each numerator coefficient is then a
-polynomial in these values with exact rational coefficients, of total
-degree at most ``degree_bound`` (``d``, from the plan: a family's positions
-times the largest kernel term degree of its contents, every input power and
-every constant factor counted), so a row that is not an integrand zero
+Laurent polynomial in these values with exact rational coefficients; times
+a monomial clearing every base's negative powers (nonzero, every u_b being
+drawn nonzero) it is a polynomial of total degree at most ``degree_bound``
+(``d``, from the plan: a family's positions times the largest kernel term
+degree of its contents, every input power, every positive constant
+exponent and a split term's block components counted, plus every base's
+largest negative exponent), so a row that is not an integrand zero
 vanishes at one random point with probability at most d / (p - 1)
 (Schwartz-Zippel); ``k`` is the least count with rows x (d / (p - 1))^k at
 most the stated failure probability ``p_fail`` (both recorded). A zero
@@ -134,49 +137,75 @@ def _base_name(base: Any, signs: Mapping[str, int], power: Fraction) -> Any:
     return (base, 1)
 
 
-def _constant_degree(key: Any, flips: Any, lcm: Mapping[Any, int]) -> int:
+def _constant_exponents(
+    key: Any, flips: Any, lcm: Mapping[Any, int]
+) -> tuple[int, dict[Any, int]]:
+    """A constant as a Laurent monomial in the base variables u_b
+    (b^e = u_b^(e L_b)): the sum of its positive exponents, and per base the
+    size of its negative exponent."""
+
     _coefficient, exact_factors, irrational, _positive = key
     signs = dict(flips)
-    degree = 0
+    positive = Fraction(0)
+    negative: dict[Any, Fraction] = {}
     for base, power in (*exact_factors, *irrational):
         power = Fraction(power)
-        degree += abs(power * lcm[_base_name(base, signs, power)])
-    return int(degree)
+        name = _base_name(base, signs, power)
+        scaled = power * lcm[name]
+        if scaled > 0:
+            positive += scaled
+        elif scaled < 0:
+            negative[name] = negative.get(name, Fraction(0)) - scaled
+    return int(positive), {name: int(size) for name, size in negative.items()}
 
 
 def degree_bound(exported: Any) -> int:
     """A bound of the total degree of every numerator coefficient in the
-    exact test's random values: the largest family's positions times the
-    largest kernel term degree over the plan's contents, a term's degree
-    being its constant's (``_constant_degree``) plus every input power
-    (block currents, block momenta, loop momenta: a frame shift makes each
-    loop power a polynomial of that degree in the momenta)."""
+    exact test's random values, as a polynomial once every base's negative
+    powers are cleared.
+
+    A kernel term is its constant (a Laurent monomial in the bases,
+    ``_constant_exponents``) times a monomial in the inputs (block currents,
+    block momenta, loop momenta: a frame shift makes each loop power a
+    polynomial of that degree in the momenta); a split vertex term also
+    multiplies one block-current component per slot outside its kernels. A
+    family's numerator multiplies one term per position, so with ``n`` the
+    largest family's positions, ``P`` the largest term degree counting
+    positive powers only and ``N_b`` the largest negative power of base b,
+    the numerator times prod_b u_b^(n N_b) is a polynomial of degree at most
+    ``n (P + sum_b N_b)``; it vanishes exactly where the numerator does,
+    every u_b being drawn nonzero."""
 
     program = exported.program
     constants = exported.constants
     lcm = _bases(constants)
-    constant_degree = [_constant_degree(key, flips, lcm) for key, flips in constants]
-    kernels = []
+    exponents = [_constant_exponents(key, flips, lcm) for key, flips in constants]
+    kernels: list[tuple[int, dict[Any, int]]] = []
     for kernel in program["kernels"]:
-        kernels.append(
-            max(
-                (
-                    constant_degree[constant] + sum(power for _input, power in monomial)
-                    for terms in kernel["outputs"]
-                    for constant, monomial in terms
-                ),
-                default=0,
-            )
-        )
-    content = 0
+        top = 0
+        cleared: dict[Any, int] = {}
+        for terms in kernel["outputs"]:
+            for constant, monomial in terms:
+                positive, negative = exponents[constant]
+                top = max(top, positive + sum(power for _input, power in monomial))
+                for name, size in negative.items():
+                    cleared[name] = max(cleared.get(name, 0), size)
+        kernels.append((top, cleared))
+    top = 0
+    cleared = {}
     for record in program["contents"]:
         for term in record["terms"]:
-            for binding in (*term["bindings"], *term["split"]):
-                content = max(content, kernels[binding["kernel"]])
+            slots = len(term["slots"])
+            for extra, bindings in ((0, term["bindings"]), (slots, term["split"])):
+                for binding in bindings:
+                    degree, negative = kernels[binding["kernel"]]
+                    top = max(top, degree + extra)
+                    for name, size in negative.items():
+                        cleared[name] = max(cleared.get(name, 0), size)
     positions = max(
         (len(family["sequence"]) for family in program["families"]), default=0
     )
-    return max(1, positions * content)
+    return max(1, positions * (top + sum(cleared.values())))
 
 
 def points_needed(degree: int, rows: int, failure: float) -> int:
