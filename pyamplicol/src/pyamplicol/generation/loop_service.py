@@ -22,7 +22,6 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
-from pyamplicol._internal.versions import LOOP_V2_RUNTIME_CAPABILITY
 from pyamplicol.api.errors import GenerationError, PyAmpliColError
 from pyamplicol.api.requests import ProcessSet
 from pyamplicol.api.results import GenerationPlan, GenerationResult
@@ -46,7 +45,11 @@ from pyamplicol.models.loop_preparation import (
 )
 
 from .dag_algorithms import infer_minimal_coupling_order_limits
-from .loop_artifact import LoopV2ExecutionMetadata, LoopV2ProcessArtifact
+from .loop_artifact import (
+    LoopV2ExecutionMetadata,
+    LoopV2ProcessArtifact,
+    loop_v2_capability,
+)
 from .progress import GenerationPhaseReporter, PhaseHandle
 from .validation import build_process_validation_point
 
@@ -1218,7 +1221,11 @@ def _plan_v2(backend, processes, blockers, *, model=None):
     ``loop_admission_refusals`` the structures the generation refuses,
     ``refusals.LOOP_ADMISSION_REFUSALS``, with their remedies;
     ``process_request_refusals`` the process requests refused for tree and
-    loop alike, ``processes.refusals.PROCESS_REQUEST_REFUSALS``)."""
+    loop alike, ``processes.refusals.PROCESS_REQUEST_REFUSALS``). Each
+    process names its runtime capability (from its request's contribution:
+    v4 Born-interfered, v5 loop-induced); ``runtime_capabilities`` is the
+    planned artifact's union, ``runtime_capability`` the one runtime when
+    every process shares it (else None)."""
     from pyamplicol.loops.v2.artifact import request_record
     from pyamplicol.loops.v2.assemble import prepare_request_model
     from pyamplicol.loops.v2.native_trees import NATIVE_EXPORT_REFUSALS
@@ -1258,7 +1265,7 @@ def _plan_v2(backend, processes, blockers, *, model=None):
                 _plan_policy_checks(
                     context.resolved.compiled, request, prepared[key], dag
                 )
-                coverage.append(
+                record = (
                     _loop_induced_coverage(backend, context, entry, request, zero)
                     if request.contribution == "loop-induced"
                     else {
@@ -1277,6 +1284,9 @@ def _plan_v2(backend, processes, blockers, *, model=None):
                         "native_export_checked": False,
                     }
                 )
+                # The process's runtime: from its request's contribution.
+                record["runtime_capability"] = loop_v2_capability(request.contribution)
+                coverage.append(record)
         except (ValueError, TypeError, RuntimeError, ImportError, PyAmpliColError) as e:
             # A listed key first (``refusals.keyed_error``).
             blockers = (str(keyed_error(e)),)
@@ -1289,6 +1299,7 @@ def _plan_v2(backend, processes, blockers, *, model=None):
         coverage=coverage,
     )
     estimated = dict(result.estimated_coverage)
+    capabilities = tuple(sorted({str(item["runtime_capability"]) for item in coverage}))
     estimated.update(
         engine="v2",
         arithmetic=("double", "double-double", "arbitrary"),
@@ -1296,7 +1307,11 @@ def _plan_v2(backend, processes, blockers, *, model=None):
         correlations=True,
         exact_flavor_grouping=backend._run_config.process.flavor_blind,
         api_bundle=False,
-        runtime_capability=LOOP_V2_RUNTIME_CAPABILITY,
+        # The runtimes the planned artifact requires (its manifest's union,
+        # sorted), and the one runtime when every process shares it (None for
+        # a mix of Born-interfered and loop-induced processes, or no process).
+        runtime_capabilities=capabilities,
+        runtime_capability=capabilities[0] if len(capabilities) == 1 else None,
         native_export_refusals=tuple(
             f"{refusal.key}: {refusal.feature}" for refusal in NATIVE_EXPORT_REFUSALS
         ),

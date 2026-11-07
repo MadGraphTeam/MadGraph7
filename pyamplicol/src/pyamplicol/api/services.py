@@ -55,6 +55,9 @@ from .results import (
     _sum_entries,
 )
 from .virtual_results import (
+    CONTRIBUTIONS as VIRTUAL_CONTRIBUTIONS,
+)
+from .virtual_results import (
     ResolvedVirtualEvaluation,
     VirtualEvaluation,
     VirtualRescuePolicy,
@@ -517,11 +520,14 @@ class Runtime:
         )
 
     @property
-    def contribution_kind(self) -> Literal["tree", "virtual"]:
+    def contribution_kind(self) -> Literal["tree", "virtual", "loop-induced"]:
         """Observable kind declared by the loaded backend.
 
         Existing injected tree backends may omit this additive capability.
-        The loop execution lane always requires virtual result semantics.
+        The loop execution lane always requires virtual result semantics:
+        "virtual" (the Born-virtual interference) or "loop-induced"
+        (|A_loop|^2 of a process without a Born, m-lit Q36), both returning
+        ``VirtualEvaluation`` results.
         """
         mode = getattr(self._backend, "execution_mode", None)
         kind = getattr(
@@ -529,13 +535,21 @@ class Runtime:
             "contribution_kind",
             "virtual" if mode == "loop_recurrence" else "tree",
         )
-        if kind not in {"tree", "virtual"} or (
-            mode is not None and (mode == "loop_recurrence") != (kind == "virtual")
+        if kind not in {"tree", *VIRTUAL_CONTRIBUTIONS} or (
+            mode is not None
+            and (mode == "loop_recurrence") != (kind in VIRTUAL_CONTRIBUTIONS)
         ):
             raise EvaluationError(
                 "runtime backend has inconsistent contribution metadata"
             )
-        return cast(Literal["tree", "virtual"], kind)
+        return cast(Literal["tree", "virtual", "loop-induced"], kind)
+
+    @property
+    def _virtual(self) -> bool:
+        """Virtual result semantics (a Born-interfered virtual or a
+        loop-induced process: ``VirtualEvaluation`` results, loop options)."""
+
+        return self.contribution_kind in VIRTUAL_CONTRIBUTIONS
 
     def inspect(self) -> Mapping[str, object]:
         """Return compact authenticated runtime metadata and live cache state.
@@ -700,8 +714,14 @@ class Runtime:
                 precision=precision,
                 **options,
             )
-        if contribution == "virtual":
-            if not isinstance(values, VirtualEvaluation) or values.correlated:
+        if contribution != "tree":
+            # The result's kind is the runtime's ("virtual" or
+            # "loop-induced", m-lit Q36).
+            if (
+                not isinstance(values, VirtualEvaluation)
+                or values.correlated
+                or values.contribution != contribution
+            ):
                 raise EvaluationError(
                     "virtual runtime backend returned an invalid ordinary "
                     "VirtualEvaluation"
@@ -726,7 +746,7 @@ class Runtime:
         if on_failure not in {"raise", "return"}:
             raise ValueError("on_failure must be 'raise' or 'return'")
         if on_failure == "return":
-            if self.contribution_kind != "virtual":
+            if not self._virtual:
                 raise CompatibilityError(
                     "partial-value return requires a virtual runtime"
                 )
@@ -743,7 +763,7 @@ class Runtime:
             if not isinstance(stability, VirtualRescuePolicy):
                 raise TypeError("stability requires a VirtualRescuePolicy")
             options["stability"] = stability
-        if self.contribution_kind != "virtual" and (
+        if not self._virtual and (
             mu_r2 is not None or r2_strategy is not None or stability is not None
         ):
             raise CompatibilityError(
@@ -764,7 +784,7 @@ class Runtime:
             if not isinstance(checks, VirtualStabilityChecks):
                 raise TypeError("stability_checks requires VirtualStabilityChecks")
             options["stability_checks"] = checks
-        if options and self.contribution_kind != "virtual":
+        if options and not self._virtual:
             raise CompatibilityError("poles and stability_checks are virtual options")
         return options
 
@@ -935,7 +955,7 @@ class Runtime:
             precision=precision,
             **options,
         )
-        if contribution == "virtual":
+        if contribution != "tree":
             if not isinstance(result, ResolvedVirtualEvaluation) or result.correlated:
                 raise EvaluationError(
                     "virtual runtime backend returned an invalid ordinary "
@@ -1124,7 +1144,7 @@ class Runtime:
         self._backend.set_model_parameters(dict(mapping))
 
     def _correlator_catalogue(self) -> CorrelatorCatalogue:
-        if self.contribution_kind == "virtual":
+        if self._virtual:
             raise CompatibilityError(
                 "public virtual correlation dispatch is not integrated yet"
             )
@@ -1144,7 +1164,7 @@ class Runtime:
         Reads the declared catalogue without loading an amplitude executor.
         Each returned record contains its runtime ID and ordered bra/ket steps.
         """
-        if self.contribution_kind == "virtual":
+        if self._virtual:
             records = self._virtual_correlation_operation(
                 "available_color_correlations"
             )()
@@ -1191,7 +1211,7 @@ class Runtime:
         represents a complex component without a binary64 conversion.
         This affects the correlated evaluation methods, not :meth:`evaluate`.
         """
-        if self.contribution_kind == "virtual":
+        if self._virtual:
             self._virtual_correlation_operation("set_spin_correlation_vectors")(vectors)
             return
         self._correlator_evaluator().set_spin_correlation_vectors(vectors)
@@ -1233,7 +1253,7 @@ class Runtime:
             arithmetic, mu_r2, r2_strategy, stability, on_failure
         )
         options.update(self._v2_options(poles, stability_checks))
-        if self.contribution_kind == "virtual":
+        if self._virtual:
             operation = self._virtual_correlation_operation("evaluate_correlated")
             self._require_evaluation_options(operation, options)
             value = operation(
@@ -1329,7 +1349,7 @@ class Runtime:
             arithmetic, mu_r2, r2_strategy, stability, on_failure
         )
         options.update(self._v2_options(poles, stability_checks))
-        if self.contribution_kind == "virtual":
+        if self._virtual:
             operation = self._virtual_correlation_operation("evaluate_correlated_many")
             self._require_evaluation_options(operation, options)
             values = operation(

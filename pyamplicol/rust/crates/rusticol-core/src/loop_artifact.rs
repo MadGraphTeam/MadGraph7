@@ -38,6 +38,25 @@ pub fn loop_v2_capability(contribution_kind: &str) -> Option<&'static str> {
         _ => None,
     }
 }
+
+/// Whether `manifest` is a v2 loop artifact: every process requires exactly
+/// one of the v2 loop runtime capabilities ([`LOOP_V2_RUNTIME_CAPABILITY`]
+/// for a Born-interfered process, [`LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY`]
+/// for a loop-induced one), in any mix, and the artifact requires no other
+/// runtime.
+pub fn is_loop_v2_manifest(manifest: &crate::ArtifactManifest) -> bool {
+    let loop_v2 = |capability: &String| {
+        capability == LOOP_V2_RUNTIME_CAPABILITY
+            || capability == LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY
+    };
+    let capabilities = &manifest.runtime.required_runtime_capabilities;
+    !capabilities.is_empty()
+        && capabilities.iter().all(loop_v2)
+        && manifest.processes.iter().all(|p| {
+            p.required_runtime_capabilities.len() == 1
+                && loop_v2(&p.required_runtime_capabilities[0])
+        })
+}
 pub const DIRECTED_INTERFERENCE: &str = "Bdagger K_BL L + Ldagger K_LB B";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -304,15 +323,13 @@ pub fn load_loop_v2_artifact(
 ) -> RusticolResult<LoadedLoopV2Artifact> {
     use sha2::{Digest, Sha256};
 
-    let capabilities = &artifact.manifest().runtime.required_runtime_capabilities;
+    // A v2 loop artifact holds Born-interfered (v4) and loop-induced (v5)
+    // processes in any mix: every process requires exactly one v2 loop
+    // runtime (the manifest's union, checked by `validate_manifest`, is then
+    // a non-empty subset of them); the selected process's capability is
+    // checked against its contribution below.
     require(
-        (capabilities == &[LOOP_V2_RUNTIME_CAPABILITY]
-            || capabilities == &[LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY])
-            && artifact
-                .manifest()
-                .processes
-                .iter()
-                .all(|p| &p.required_runtime_capabilities == capabilities),
+        is_loop_v2_manifest(artifact.manifest()),
         "plan v4 processes cannot share an artifact with other runtimes",
     )?;
     let selection = artifact.select_process(requested_process)?;

@@ -40,7 +40,8 @@ def _json_value(value: object) -> object:
         }
         if isinstance(value, (VirtualEvaluation, ResolvedVirtualEvaluation)):
             result.update(
-                contribution_kind="virtual",
+                # "virtual" or "loop-induced" (m-lit Q36: the result's kind).
+                contribution_kind=getattr(value, "contribution", "virtual"),
                 epsilon_powers=list(value.epsilon_powers),
                 coefficient_names=["finite", "single_pole", "double_pole"],
                 normalization="Cepsilon=(4*pi)^epsilon/Gamma(1-epsilon)",

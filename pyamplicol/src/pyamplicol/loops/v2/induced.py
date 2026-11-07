@@ -159,8 +159,12 @@ class StoredAmplitude:
     reads of ``colour.AmplitudeBasis`` (the basis size, the full-colour
     metric at N_c = 3, the elements the counterterm kets carry), the map of
     the tree program's counterterm ket components onto the basis
-    (``ket_map``), the helicity rows of the amplitude-mode plan and the
-    exact colour-zero loop orders (RULED Q13's colour-zero record)."""
+    (``ket_map``), the helicity rows of the amplitude-mode plan, the exact
+    colour-zero loop orders (RULED Q13's colour-zero record) and whether the
+    whole request is an exact colour zero (``colour_zero``,
+    ``AmplitudeBasis.colour_zero`` at generation: no nonzero coefficient
+    cell and no counterterm ket; the record keeps no cells, so it stores
+    the generation's answer)."""
 
     size: int
     metric: tuple[tuple[Any, ...], ...]
@@ -168,22 +172,13 @@ class StoredAmplitude:
     ket_map: tuple[tuple[int, int, Orders, int], ...]
     rows: tuple[rx.Row, ...]
     colour_zero_orders: frozenset[Orders]
+    colour_zero: bool
 
     def __len__(self) -> int:
         return self.size
 
     def metric_at_three(self) -> tuple[tuple[Any, ...], ...]:
         return self.metric
-
-    @property
-    def colour_zero(self) -> bool:
-        """No coefficient cell and no counterterm ket: every amplitude
-        component vanishes by colour algebra (the record's
-        ``colour_zero_orders`` name the orders)."""
-
-        return self.size == 0 or (
-            not self.counterterms and bool(self.colour_zero_orders)
-        )
 
     @classmethod
     def from_record(cls, record: Mapping[str, Any]) -> StoredAmplitude:
@@ -207,6 +202,7 @@ class StoredAmplitude:
             ),
             tuple(tuple(enumerate(int(h) for h in row)) for row in record["rows"]),
             frozenset(orders(order) for order in record["colour_zero_orders"]),
+            bool(record["colour_zero"]),
         )
 
 
@@ -238,6 +234,9 @@ def amplitude_record(slice_: Any, exported: Any) -> dict[str, Any]:
         "colour_zero_orders": [
             orders(order) for order in sorted(slice_.colour_zero_orders)
         ],
+        # The request's exact colour zero (``AmplitudeBasis.colour_zero``):
+        # one colour-zero order beside live ones does not make it.
+        "colour_zero": basis.colour_zero,
     }
 
 
