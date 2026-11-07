@@ -6,8 +6,10 @@ Done; PLAN §4.0 rule L6; row LI-O1).
 On the LI-O1 rows (g g > h g g and u u~ > h g g, every dipole T_i.T_j and
 every gluon's spin class declared) every observable call kind runs once on
 each reduction backend, ``reduction="ninjars"`` and ``reduction="tirust"``,
-with the stability checks (one rotation and the reduction-direction check),
-at the rows' reference points:
+with the stability checks (one rotation and the reduction-direction check)
+and every pole (``poles="all"``), at the rows' reference points, in one
+carrier (``--arithmetic``: binary64 by default, ``double-double`` or
+``arbitrary`` with ``--precision`` digits):
 
 * colour-correlated: ``evaluate_correlated_many`` over "born" and every
   declared dipole;
@@ -18,8 +20,13 @@ at the rows' reference points:
   anchors;
 * single-helicity selection: ``evaluate(helicities=[h])`` for every row.
 
-Each output passes when |N - T| <= 10 max(E_N, E_T) (L6, binary64: the
-backends' absolute estimates E of the same entry). Every result's lane
+Every sector and Laurent coefficient (finite part and both poles) of every
+output is compared. In binary64 an entry passes when |N - T| <= 10 max(E_N,
+E_T) (L6: the backends' absolute estimates E of the same entry); in
+double-double and arbitrary precision when |N - T| <= 1e-24 m (L6 after
+m-lit LIT-TIR-MP), m the largest |coefficient| of the output's sector in
+either arm (``stability.relative``'s metric: a vanishing pole is measured
+against its finite part). Every result's lane
 diagnostics must name the arm's backend as the effective one
 (``reduction.effective``), and the two arms must differ somewhere: a TIRust
 arm equal to the NinjaRS one bitwise on every output was not reduced by
@@ -38,6 +45,9 @@ Run (licence in the environment, the staged native of the slice)::
     PYTHONPATH=<community build>:<worktree>/src python \\
         tools/loop_v2_observables_backends.py --work-dir <scratch> \\
         --output <scratch>/backends.json
+    # the double-double arm of L6 (once TIRust serves double-double):
+    ... tools/loop_v2_observables_backends.py --work-dir <scratch> \
+        --output <scratch>/backends-dd.json --arithmetic double-double
 
 ``--work-dir`` keeps the generated artifacts (re-used when present).
 """
@@ -54,8 +64,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests" / "fixtures" / "loop" / "required" / "li"
 BACKENDS = ("ninjars", "tirust")
-# PLAN §4.0 L6 (binary64): within ten times the larger estimate.
+# PLAN §4.0 L6: binary64 within ten times the larger estimate; double-double
+# and arbitrary precision within 1e-24 of the sector's largest coefficient.
 FACTOR = 10
+RELATIVE = Decimal("1e-24")
+COEFFICIENTS = ("finite", "single_pole", "double_pole")
 
 
 class NotExercised(Exception):
@@ -89,33 +102,63 @@ def _effective(result, backend: str, label: str) -> None:
         )
 
 
-def _entries(name: str, runtime, backend: str, checks) -> dict:
-    """Every observable output of one row on one backend: label -> (value,
-    absolute estimate) of the first sector's finite part per point."""
+def _parts(value) -> tuple[Decimal, Decimal]:
+    """A public scalar (float, complex, Decimal or ``CorrelatedValue``) as
+    exact (real, imaginary) decimals."""
+
+    real = getattr(value, "real", value)
+    imag = getattr(value, "imag", 0)
+    return Decimal(real), Decimal(imag)
+
+
+def _laurents(values, estimates) -> list:
+    """Per sector the (coefficient, (re, im), absolute estimate) of every
+    computed Laurent coefficient."""
+
+    out = []
+    for laurent, error in zip(values, estimates, strict=True):
+        out.append(
+            [
+                (name, _parts(getattr(laurent, name)), float(getattr(error, name)))
+                for name in COEFFICIENTS
+                if getattr(laurent, name) is not None
+            ]
+        )
+    return out
+
+
+def _entries(name: str, runtime, backend: str, checks, carrier: dict) -> dict:
+    """Every observable output of one row on one backend: label -> per
+    sector the computed Laurent coefficients with their absolute
+    estimates (``_laurents``) per point."""
 
     from pyamplicol.correlators import CorrelatedRequest
 
     fixture = _fixture(name)
     points = fixture["points"]
     scales = [str(Fraction(mu) ** 2) for mu in fixture["mu_r"]]
-    options = {"mu_r2": scales, "stability_checks": checks, "reduction": backend}
+    settings = {
+        "stability_checks": checks,
+        "reduction": backend,
+        "poles": "all",
+        **carrier,
+    }
+    options = {"mu_r2": scales, **settings}
     out: dict = {}
 
-    def keep(label, result, index):
+    def keep(label, result):
         _effective(result, backend, label)
         for p, (values, estimate) in enumerate(
             zip(result.values, result.stability, strict=True)
         ):
-            value = values[0] if index is None else index(values)
-            error = estimate.absolute[0] if index is None else index(estimate)
-            out[f"{label}/p{p}"] = (complex(value.finite), float(error.finite))
+            out[f"{label}/p{p}"] = _laurents(values, estimate.absolute)
 
     ids = [item.id for item in runtime.available_color_correlations()]
     many = runtime.evaluate_correlated_many(
         points, {i: CorrelatedRequest(i) for i in ids}, **options
     )
     for key, result in many.items():
-        keep(f"correlated/{key}", result, None)
+        keep(f"correlated/{key}", result)
     recola = json.loads((FIXTURES / "correlations" / f"{name}-recola.json").read_text())
     for row in recola["rows"]:
         if row["kind"] not in ("sc", "scc"):
@@ -128,13 +171,11 @@ def _entries(name: str, runtime, backend: str, checks) -> dict:
             [points[p]],
             {"x": CorrelatedRequest(history, {leg: vector})},
             mu_r2=[scales[p]],
-            stability_checks=checks,
-            reduction=backend,
+            **settings,
         )["x"]
-        _effective(result, backend, f"spin/{leg}/{history}")
-        value = result.values[0][0]
-        error = result.stability[0].absolute[0]
-        out[f"spin/{leg}/{history}/p{p}"] = (complex(value.finite), float(error.finite))
+        label = f"spin/{leg}/{history}"
+        _effective(result, backend, label)
+        out[f"{label}/p{p}"] = _laurents(result.values[0], result.stability[0].absolute)
     for resolution in ("contracted", "amplitude-basis"):
         resolved = runtime.evaluate_resolved(
             points, color_resolution=resolution, **options
@@ -145,18 +186,58 @@ def _entries(name: str, runtime, backend: str, checks) -> dict:
         ):
             for h, helicity in enumerate(resolved.helicity_ids):
                 for c, colour in enumerate(resolved.virtual_color_ids):
-                    value = values[0][h][c]
-                    error = estimates[h][c].absolute[0]
-                    out[f"resolved/{resolution}/{helicity}/{colour}/p{p}"] = (
-                        complex(value.finite),
-                        float(error.finite),
+                    out[f"resolved/{resolution}/{helicity}/{colour}/p{p}"] = _laurents(
+                        [sector[h][c] for sector in values],
+                        estimates[h][c].absolute,
                     )
         if resolution == "contracted":
             helicities = resolved.helicity_ids
     for helicity in helicities:
         selected = runtime.evaluate(points, helicities=[helicity], **options)
-        keep(f"selection/{helicity}", selected, None)
+        keep(f"selection/{helicity}", selected)
     return out
+
+
+def _compare(ninjars: list, tirust: list, binary64: bool) -> list:
+    """Per sector and coefficient of one output: the L6 comparison."""
+
+    rows = []
+    for sector, (n_sector, t_sector) in enumerate(zip(ninjars, tirust, strict=True)):
+        largest = max(
+            (
+                abs(complex(*parts)) if binary64 else _modulus(parts)
+                for _name, parts, _error in (*n_sector, *t_sector)
+            ),
+            default=0,
+        )
+        for (name, n, e_n), (other, t, e_t) in zip(n_sector, t_sector, strict=True):
+            if name != other:
+                raise ValueError(f"the arms computed different Laurent orders: {name}")
+            difference = _modulus((n[0] - t[0], n[1] - t[1]))
+            if binary64:
+                bound = Decimal(FACTOR * max(e_n, e_t))
+            else:
+                bound = RELATIVE * Decimal(largest)
+            rows.append(
+                {
+                    "sector": sector,
+                    "coefficient": name,
+                    "ninjars": [str(n[0]), str(n[1])],
+                    "tirust": [str(t[0]), str(t[1])],
+                    "difference": float(difference),
+                    "bound": float(bound),
+                    "passed": difference <= bound,
+                }
+            )
+    return rows
+
+
+def _modulus(parts) -> Decimal:
+    from decimal import localcontext
+
+    with localcontext() as context:
+        context.prec = 80
+        return (parts[0] * parts[0] + parts[1] * parts[1]).sqrt()
 
 
 def main() -> int:
@@ -166,7 +247,17 @@ def main() -> int:
     parser.add_argument("--work-dir", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--rows", nargs="+", default=None)
+    parser.add_argument(
+        "--arithmetic",
+        choices=("double", "double-double", "arbitrary"),
+        default="double",
+    )
+    parser.add_argument("--precision", type=int, default=None)
     args = parser.parse_args()
+    binary64 = args.arithmetic == "double"
+    carrier = {"arithmetic": args.arithmetic}
+    if args.precision is not None:
+        carrier["precision"] = args.precision
 
     sys.path.insert(0, str(ROOT))
     from pyamplicol import Runtime
@@ -175,7 +266,12 @@ def main() -> int:
     from tests.unit.loop_v2_induced_observables_rows import ROWS
 
     checks = VirtualStabilityChecks(1, reduction_direction=True)
-    record: dict = {"rule": "L6: |N - T| <= 10 max(E_N, E_T) (binary64)", "rows": {}}
+    rule = (
+        "L6: |N - T| <= 10 max(E_N, E_T) (binary64)"
+        if binary64
+        else f"L6: |N - T| <= 1e-24 max |coefficient| ({args.arithmetic})"
+    )
+    record: dict = {"rule": rule, "carrier": carrier, "rows": {}}
 
     def write() -> None:
         args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -191,7 +287,7 @@ def main() -> int:
     for name in args.rows or sorted(ROWS):
         runtime = Runtime.load(_artifact(args.work_dir, name, ROWS[name]), process="p")
         try:
-            ninjars = _entries(name, runtime, "ninjars", checks)
+            ninjars = _entries(name, runtime, "ninjars", checks, carrier)
         except (ReductionUnavailable, NotExercised) as error:
             # The reference arm must run: an error, not a missing TIRust.
             record["error"] = f"NinjaRS arm: {error}"
@@ -199,30 +295,23 @@ def main() -> int:
             print(f"FAIL: the NinjaRS arm does not run: {error}")
             return 1
         try:
-            tirust = _entries(name, runtime, "tirust", checks)
+            tirust = _entries(name, runtime, "tirust", checks, carrier)
         except (ReductionUnavailable, NotExercised) as error:
             return not_exercised(str(error))
-        if all(tirust[label][0] == value for label, (value, _e) in ninjars.items()):
+        if all(
+            [[parts for _n, parts, _e in sector] for sector in tirust[label]]
+            == [[parts for _n, parts, _e in sector] for sector in value]
+            for label, value in ninjars.items()
+        ):
             return not_exercised(
                 f"{name}: every output equals the NinjaRS arm's bitwise "
                 f"({len(ninjars)} outputs)"
             )
         rows = []
-        for label, (n, e_n) in ninjars.items():
-            t, e_t = tirust[label]
-            bound = FACTOR * max(e_n, e_t)
-            ok = abs(n - t) <= bound
-            failed += not ok
-            rows.append(
-                {
-                    "output": label,
-                    "ninjars": [n.real, n.imag],
-                    "tirust": [t.real, t.imag],
-                    "difference": abs(n - t),
-                    "bound": bound,
-                    "passed": ok,
-                }
-            )
+        for label, value in ninjars.items():
+            for row in _compare(value, tirust[label], binary64):
+                failed += not row["passed"]
+                rows.append({"output": label, **row})
         record["rows"][name] = rows
         worst = max(
             (
