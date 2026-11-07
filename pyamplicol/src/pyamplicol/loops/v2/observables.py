@@ -132,11 +132,19 @@ from .plan_export import (
 )
 from .poles import ORIGINS, has_poles, pole_mode, select_sector, split_sector, splits
 from .stability import (
+    CROSS,
     ROTATION,
     Budget,
     StabilityChecks,
     StabilityEstimate,
     differences,
+)
+
+# The Python reference observables run no cross-backend check (the native
+# observables do, ``native_observables.NativeObservables.runs``).
+CROSS_NATIVE_ONLY = (
+    "the cross-backend check (stability_checks cross_backend) runs on the "
+    "native executor; the Python reference observables do not run it"
 )
 
 Resolution = Literal["helicity", "colour", "helicity-colour"]
@@ -1264,6 +1272,10 @@ class ObservableSlice:
     ) -> dict[Hashable, PointResult]:
         plan = ColumnPlan(self, columns)
         stability = stability or StabilityChecks()
+        if stability.cross_backend:
+            from pyamplicol.api.errors import CompatibilityError
+
+            raise CompatibilityError(CROSS_NATIVE_ONLY)
         precision = precision or Precision.double()
         precision.require_reference()
         reference = self._evaluated(
@@ -1604,11 +1616,14 @@ class ColumnPlan:
         rotated: Sequence[tuple[Any, Mapping[Hashable, PointResult]]],
         roundoff: float,
         reduction: str | None,
+        cross: tuple[Any, str] | None = None,
     ) -> dict[Hashable, PointResult]:
         """``results`` of the evaluation ``reference`` with their stability
         estimates from the rotated (evaluation, results) runs and, for the
         reduction check ``reduction`` (``StabilityChecks.reduction``), the
-        reference's re-test lanes."""
+        reference's re-test lanes; ``cross``: the cross-backend check's
+        (evaluation, results) on the other backend, or None, with the reason
+        it did not run (``stability.CrossRuns.of``)."""
 
         # Differences at the carrier's working digits (a Decimal negation
         # outside them rounds to the default 28 digits).
@@ -1617,7 +1632,7 @@ class ColumnPlan:
                 key: replace(
                     result,
                     stability=self.estimate(
-                        key, reference, result, rotated, roundoff, reduction
+                        key, reference, result, rotated, roundoff, reduction, cross
                     ),
                 )
                 for key, result in results.items()
@@ -1631,9 +1646,12 @@ class ColumnPlan:
         rotated,
         roundoff: float,
         reduction: str | None,
+        cross: tuple[Any, str] | None = None,
     ) -> StabilityEstimate:
         """The stability estimate of output ``key`` (``stability``): rotation
-        budgets from the rotated evaluations' lanes and local components, the
+        budgets from the rotated evaluations' lanes and local components (the
+        cross-backend check's from its evaluation on the other backend, as a
+        rotation's at the unrotated point: ``checked``), the
         budget of the reduction check ``reduction`` (reversed or rescaled
         frame) from the re-test lanes. As the inclusive estimate
         (``assemble._PointEvaluation.rotation_budget``), every difference is
@@ -1653,7 +1671,14 @@ class ColumnPlan:
         )
         budgets = {}
         zero = Laurent(*[reference.numbers.zero] * width)
-        for index, (evaluation, results) in enumerate(rotated):
+        runs = [(ROTATION.format(index), run) for index, run in enumerate(rotated)]
+        not_run = {}
+        if cross is not None:
+            if cross[0] is None:
+                not_run[CROSS] = cross[1]
+            else:
+                runs.append((CROSS, cross[0]))
+        for name, (evaluation, results) in runs:
             other = results[key]
             lanes = {
                 lane: tuple(
@@ -1673,9 +1698,7 @@ class ColumnPlan:
                 differences(result.components[name], other.components[name])
                 for name in LOCAL_COMPONENTS
             ]
-            budgets[ROTATION.format(index)] = self._budget(
-                key, lanes, width, changes, average
-            )
+            budgets[name] = self._budget(key, lanes, width, changes, average)
         deviations = None
         if reduction is not None:
             if reference.retest_families is None:
@@ -1704,6 +1727,7 @@ class ColumnPlan:
             scale=scale,
             roundoff=roundoff,
             families=deviations,
+            not_run=not_run,
         )
 
 
@@ -2116,6 +2140,10 @@ class NativeObservables:
         the complete outputs of the others (``None`` for a failed point)."""
 
         stability = stability or StabilityChecks()
+        if stability.cross_backend:
+            from pyamplicol.api.errors import CompatibilityError
+
+            raise CompatibilityError(CROSS_NATIVE_ONLY)
         spins = (
             list(spin)
             if spin is not None and not isinstance(spin, Mapping)

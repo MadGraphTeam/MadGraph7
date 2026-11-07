@@ -1739,6 +1739,11 @@ class StoredColumns:
                 failures.setdefault(index, []).extend(
                     f"{ROTATION.format(k)}: {reason}" for reason in reasons
                 )
+        crossed = None
+        if stability.cross_backend:
+            crossed = self._cross_runs(
+                points, scales, spins, parameters, precision, poles, masks
+            )
         out = []
         for index, reference in enumerate(references):
             if index in failures:
@@ -1746,6 +1751,15 @@ class StoredColumns:
                 continue
             result = self.plan.results(reference, wanted, group)
             if stability.enabled:
+                cross = None
+                if crossed is not None:
+                    other, why = crossed.of(index)
+                    cross = (
+                        None
+                        if other is None
+                        else (other, self.plan.results(other, wanted, group)),
+                        why,
+                    )
                 result = self.plan.checked(
                     result,
                     reference,
@@ -1755,6 +1769,7 @@ class StoredColumns:
                     ],
                     precision.unit_roundoff,
                     stability.reduction,
+                    cross,
                 )
             if rename:
                 result = {rename.get(key, key): v for key, v in result.items()}
@@ -1764,6 +1779,28 @@ class StoredColumns:
         if failures:
             raise FailedPoints(out, failures)
         return out
+
+    def _cross_runs(self, points, scales, spins, parameters, precision, poles, masks):
+        """The cross-backend check's evaluations (``stability.CROSS``): every
+        point again on the other reduction backend (``reduction.cross`` of
+        the context's), without re-test; a point the other backend fails, or
+        every point when it refuses the columns, keeps the reason instead
+        (``stability.CrossRuns``; the point's own result is unchanged)."""
+
+        from pyamplicol.api.errors import ReductionUnavailable
+
+        from .reduction import NAMES, cross, current, running
+        from .stability import CrossRuns
+
+        backend = cross(current())
+        try:
+            with running(backend):
+                runs, failed = self._evaluations(
+                    points, scales, spins, parameters, precision, poles, None, masks
+                )
+        except ReductionUnavailable as error:
+            return CrossRuns(NAMES[backend], [None] * len(points), {}, str(error))
+        return CrossRuns(NAMES[backend], runs, failed)
 
     def _evaluations(
         self, points, scales, spins, parameters, precision, poles, retest, masks=None
