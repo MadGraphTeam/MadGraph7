@@ -94,8 +94,6 @@ RESOLVED = Route(
 )
 
 
-
-
 # The effective backend of the native executor calls of the current context
 # (``running``): the artifact runtime sets it per carrier once ``resolve`` has
 # chosen it; the executors' call sites read it (``executor_options``).

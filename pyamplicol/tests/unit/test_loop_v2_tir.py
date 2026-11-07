@@ -327,9 +327,7 @@ def test_tirust_is_served_on_request_and_auto_keeps_ninjars(loop_native):
         for sector, (n, t) in enumerate(
             zip(values["ninjars"].values[k], values["tirust"].values[k], strict=True)
         ):
-            e = max(
-                values[b].stability[k].absolute[sector][0] for b in values
-            )
+            e = max(values[b].stability[k].absolute[sector][0] for b in values)
             assert abs(float(n.finite) - float(t.finite)) <= MARGIN * e + 1e-14 * abs(
                 float(n.finite)
             ), (k, sector)
@@ -412,7 +410,9 @@ def test_binary64_tirust_touches_no_symbolica_state(loop_native, tmp_path):
     with portability.RestrictedPermit(lock_dir=str(lock)) as permit:
         assert permit.record["verified"], permit.record
         env = permit.environment({**base, **NO_NATIVE_KEY})
-        unlicensed = {backend: _run_t8(backend, env) for backend in ("ninjars", "tirust")}
+        unlicensed = {
+            backend: _run_t8(backend, env) for backend in ("ninjars", "tirust")
+        }
     for backend in ("ninjars", "tirust"):
         licensed = _run_t8(backend, dict(os.environ))
         assert unlicensed[backend] == licensed, backend

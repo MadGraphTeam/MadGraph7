@@ -62,8 +62,8 @@ from .colour import SYMMETRIC_GROUP_FFT, project
 from .families import FamilyKey, Orders
 from .merged import MergedGraph, merged_graph
 from .native_trees import StoredMember, executor_program
-from .reduction import executor_options
 from .poly_affine import size
+from .reduction import executor_options
 from .refusals import require_formal_nc_tables
 from .schedules import build_trie, forward_graph
 
