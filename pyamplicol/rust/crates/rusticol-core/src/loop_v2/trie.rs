@@ -15,7 +15,7 @@
 //! per edge and routing term into one accumulator per vertex tensor, then
 //! `O' += T · V` once per group and target row.
 
-use super::closure::{FamilyNumerator, trace_into};
+use super::closure::{FamilyNumerator, trace_into, trace_rows_into};
 use super::dress::{Carrier, ChunkInputs, LaneData, Pool, dress_edge};
 use super::kernels::{Segment, lane_vector_len, split_edge, split_vertex};
 use super::plan::{Edge, Family, LoopProgramV4, Source, SplitStep, Step};
@@ -49,11 +49,13 @@ pub fn run_family_on<T: Carrier, const L: usize>(
     seeds: &Seeds<T>,
     data: &LaneData<T, L>,
 ) -> RusticolResult<FamilyRun<T>> {
-    let columns = plan.columns;
+    // Objects carry `object_columns` columns per row (one with dressed
+    // rows); the accumulators every observable column.
+    let columns = plan.object_columns();
     let v = lane_vector_len(L);
     let zero = &data.zero;
     let mut pool = Pool::new(zero);
-    let mut numerator = FamilyNumerator::zeros::<L>(index, family, columns, zero);
+    let mut numerator = FamilyNumerator::zeros::<L>(index, family, plan.columns, zero);
     let mut outputs: Vec<Option<Vec<T>>> = (0..family.steps.len()).map(|_| None).collect();
     let weights: Vec<T> = family
         .leaves
@@ -131,8 +133,27 @@ pub fn run_family_on<T: Carrier, const L: usize>(
                 }
             }
         }
-        match step.trace {
-            Some(accumulator) => {
+        match (step.trace, family.row_traces.get(s)) {
+            (Some(accumulator), Some(Some(row_trace))) => {
+                // Dressed rows: the per-row closure with the amplitude
+                // vector of the step's seed key (decided per step).
+                let vector: Vec<(T, T)> = plan.key_vectors[row_trace.key as usize]
+                    .iter()
+                    .map(|[re, im]| (data.cast(re), data.cast(im)))
+                    .collect();
+                trace_rows_into::<T, L>(
+                    step,
+                    &out,
+                    &mut numerator.accumulators[accumulator],
+                    &row_trace.rows,
+                    &plan.row_columns,
+                    &vector,
+                    family.rank,
+                    zero,
+                );
+                pool.give(out);
+            }
+            (Some(accumulator), _) => {
                 trace_into::<T, L>(
                     step,
                     &out,
@@ -143,7 +164,7 @@ pub fn run_family_on<T: Carrier, const L: usize>(
                 );
                 pool.give(out);
             }
-            None => outputs[s] = Some(out),
+            (None, _) => outputs[s] = Some(out),
         }
     }
     Ok(FamilyRun {
