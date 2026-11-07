@@ -416,6 +416,7 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/VegasGridOptimizer.html">VegasGridOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/Verbosity.html">Verbosity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/WeightingGroup.html">WeightingGroup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/apply_mlm_hardest_shower_scale.html">apply_mlm_hardest_shower_scale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/available_backends.html">available_backends</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/cpu_device.html">cpu_device</a></li>
@@ -578,6 +579,7 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/VegasGridOptimizer.html">VegasGridOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/WeightingGroup.html">WeightingGroup</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/WeightingPipeline.html">WeightingPipeline</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/apply_mlm_hardest_shower_scale.html">apply_mlm_hardest_shower_scale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/available_backends.html">available_backends</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/cpu_device.html">cpu_device</a></li>
@@ -777,6 +779,8 @@
           <li><a href="madspace/python/Cuts.html#madspace.Cuts.CutMode.any">(madspace.Cuts.CutMode attribute)</a>
 </li>
         </ul></li>
+        <li><a href="madspace/python/apply_mlm_hardest_shower_scale.html#madspace.apply_mlm_hardest_shower_scale">apply_mlm_hardest_shower_scale() (in module madspace)</a>
+</li>
         <li><a href="madspace/python/ChannelEventGenerator.html#madspace.ChannelEventGenerator.apply_step_truncation_budgets">apply_step_truncation_budgets() (madspace.ChannelEventGenerator method)</a>
 </li>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.apply_subchannel_weights">apply_subchannel_weights() (madspace.FunctionBuilder method)</a>
@@ -996,6 +1000,8 @@
         <li><a href="madspace/python/Logger.html#madspace.Logger.clear_log_handler">clear_log_handler() (madspace.Logger static method)</a>
 </li>
         <li><a href="madspace/python/EventStream.html#madspace.EventStream.close">close() (madspace.EventStream method)</a>
+</li>
+        <li><a href="madspace/python/LHEParticle.html#madspace.LHEParticle.cluster_scale">cluster_scale (madspace.LHEParticle property)</a>
 </li>
         <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.cluster_state_machine">cluster_state_machine (madspace.MLMClustering property)</a>
 </li>
@@ -1595,6 +1601,8 @@
           <li><a href="madspace/python/EnergyScale.html#madspace.EnergyScale.DynamicalScaleType.half_transverse_mass">(madspace.EnergyScale.DynamicalScaleType attribute)</a>
 </li>
         </ul></li>
+        <li><a href="madspace/python/LHEEvent.html#madspace.LHEEvent.has_cluster_scales">has_cluster_scales (madspace.LHEEvent property)</a>
+</li>
         <li><a href="madspace/python/MappingChannelWeights.html#madspace.MappingChannelWeights.has_diagrams">has_diagrams() (madspace.MappingChannelWeights method)</a>
 </li>
         <li><a href="madspace/python/MappingChannelWeights.html#madspace.MappingChannelWeights.has_partners">has_partners() (madspace.MappingChannelWeights method)</a>
@@ -1607,10 +1615,10 @@
 </li>
         <li><a href="madspace/python/SubprocArgs.html#madspace.SubprocArgs.helicities">helicities (madspace.SubprocArgs property)</a>
 </li>
-        <li><a href="madspace/python/MatrixElementApi.html#madspace.MatrixElementApi.helicity_count">helicity_count() (madspace.MatrixElementApi method)</a>
-</li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="madspace/python/MatrixElementApi.html#madspace.MatrixElementApi.helicity_count">helicity_count() (madspace.MatrixElementApi method)</a>
+</li>
         <li><a href="madspace/python/MatrixElement.html#madspace.MatrixElement.helicity_in">helicity_in (madspace.MatrixElement attribute)</a>
 
         <ul>
@@ -2002,6 +2010,8 @@
         <li><a href="madspace/cpp/AlphaSGrid.html#_CPPv4N8madspace10AlphaSGrid12region_sizesE">madspace::AlphaSGrid::region_sizes (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/AlphaSGrid.html#_CPPv4N8madspace10AlphaSGrid6valuesE">madspace::AlphaSGrid::values (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/apply_mlm_hardest_shower_scale.html#_CPPv4N8madspace30apply_mlm_hardest_shower_scaleER8LHEEventdi">madspace::apply_mlm_hardest_shower_scale (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/available_backends.html#_CPPv4N8madspace18available_backendsEv">madspace::available_backends (C++ function)</a>
 </li>
@@ -2991,6 +3001,12 @@
 </li>
         <li><a href="madspace/cpp/GeneratorConfig.html#_CPPv4N8madspace15GeneratorConfig25max_overweight_truncationE">madspace::GeneratorConfig::max_overweight_truncation (C++ member)</a>
 </li>
+        <li><a href="madspace/cpp/GeneratorConfig.html#_CPPv4N8madspace15GeneratorConfig19mlm_collider_energyE">madspace::GeneratorConfig::mlm_collider_energy (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/GeneratorConfig.html#_CPPv4N8madspace15GeneratorConfig24mlm_hardest_shower_scaleE">madspace::GeneratorConfig::mlm_hardest_shower_scale (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/GeneratorConfig.html#_CPPv4N8madspace15GeneratorConfig18mlm_max_jet_flavorE">madspace::GeneratorConfig::mlm_max_jet_flavor (C++ member)</a>
+</li>
         <li><a href="madspace/cpp/GeneratorConfig.html#_CPPv4N8madspace15GeneratorConfig21optimization_patienceE">madspace::GeneratorConfig::optimization_patience (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/GeneratorConfig.html#_CPPv4N8madspace15GeneratorConfig22optimization_thresholdE">madspace::GeneratorConfig::optimization_threshold (C++ member)</a>
@@ -3469,10 +3485,10 @@
 </li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4NK8madspace14MadnisTraining14status_batchesEv">madspace::MadnisTraining::status_batches (C++ function)</a>
 </li>
-        <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4NK8madspace14MadnisTraining19status_buffer_sizesEv">madspace::MadnisTraining::status_buffer_sizes (C++ function)</a>
-</li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4NK8madspace14MadnisTraining19status_buffer_sizesEv">madspace::MadnisTraining::status_buffer_sizes (C++ function)</a>
+</li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4NK8madspace14MadnisTraining25status_buffered_fractionsEv">madspace::MadnisTraining::status_buffered_fractions (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4NK8madspace14MadnisTraining21status_channel_countsEv">madspace::MadnisTraining::status_channel_counts (C++ function)</a>
@@ -4970,6 +4986,12 @@
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.mlm_clustering_hadronic">mlm_clustering_hadronic() (madspace.FunctionBuilder method)</a>
 </li>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.mlm_clustering_leptonic">mlm_clustering_leptonic() (madspace.FunctionBuilder method)</a>
+</li>
+        <li><a href="madspace/python/GeneratorConfig.html#madspace.GeneratorConfig.mlm_collider_energy">mlm_collider_energy (madspace.GeneratorConfig property)</a>
+</li>
+        <li><a href="madspace/python/GeneratorConfig.html#madspace.GeneratorConfig.mlm_hardest_shower_scale">mlm_hardest_shower_scale (madspace.GeneratorConfig property)</a>
+</li>
+        <li><a href="madspace/python/GeneratorConfig.html#madspace.GeneratorConfig.mlm_max_jet_flavor">mlm_max_jet_flavor (madspace.GeneratorConfig property)</a>
 </li>
         <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering">MLMClustering (class in madspace)</a>
 </li>

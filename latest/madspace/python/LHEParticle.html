@@ -418,6 +418,7 @@
 <li class="toctree-l2"><a class="reference internal" href="VegasGridOptimizer.html">VegasGridOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Verbosity.html">Verbosity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="WeightingGroup.html">WeightingGroup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="apply_mlm_hardest_shower_scale.html">apply_mlm_hardest_shower_scale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="available_backends.html">available_backends</a></li>
 <li class="toctree-l2"><a class="reference internal" href="compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpu_device.html">cpu_device</a></li>
@@ -580,6 +581,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/VegasGridOptimizer.html">VegasGridOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/WeightingGroup.html">WeightingGroup</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/WeightingPipeline.html">WeightingPipeline</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/apply_mlm_hardest_shower_scale.html">apply_mlm_hardest_shower_scale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/available_backends.html">available_backends</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/cpu_device.html">cpu_device</a></li>
@@ -707,6 +709,12 @@
 <dt class="sig sig-object py" id="madspace.LHEParticle.anti_color">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">anti_color</span></span><a class="headerlink" href="#madspace.LHEParticle.anti_color" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="madspace.LHEParticle.cluster_scale">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">cluster_scale</span></span><a class="headerlink" href="#madspace.LHEParticle.cluster_scale" title="Link to this definition">¶</a></dt>
+<dd><p>MLM clustering scale in GeV, written for outgoing particles if LHEEvent::has_cluster_scales is set.</p>
+</dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.LHEParticle.color">
@@ -852,6 +860,7 @@
 <li><a class="reference internal" href="#">LHEParticle</a><ul>
 <li><a class="reference internal" href="#madspace.LHEParticle"><code class="docutils literal notranslate"><span class="pre">LHEParticle</span></code></a><ul>
 <li><a class="reference internal" href="#madspace.LHEParticle.anti_color"><code class="docutils literal notranslate"><span class="pre">LHEParticle.anti_color</span></code></a></li>
+<li><a class="reference internal" href="#madspace.LHEParticle.cluster_scale"><code class="docutils literal notranslate"><span class="pre">LHEParticle.cluster_scale</span></code></a></li>
 <li><a class="reference internal" href="#madspace.LHEParticle.color"><code class="docutils literal notranslate"><span class="pre">LHEParticle.color</span></code></a></li>
 <li><a class="reference internal" href="#madspace.LHEParticle.energy"><code class="docutils literal notranslate"><span class="pre">LHEParticle.energy</span></code></a></li>
 <li><a class="reference internal" href="#madspace.LHEParticle.lifetime"><code class="docutils literal notranslate"><span class="pre">LHEParticle.lifetime</span></code></a></li>

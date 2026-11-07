@@ -418,6 +418,7 @@
 <li class="toctree-l2"><a class="reference internal" href="VegasGridOptimizer.html">VegasGridOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Verbosity.html">Verbosity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="WeightingGroup.html">WeightingGroup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="apply_mlm_hardest_shower_scale.html">apply_mlm_hardest_shower_scale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="available_backends.html">available_backends</a></li>
 <li class="toctree-l2"><a class="reference internal" href="compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpu_device.html">cpu_device</a></li>
@@ -580,6 +581,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/VegasGridOptimizer.html">VegasGridOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/WeightingGroup.html">WeightingGroup</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/WeightingPipeline.html">WeightingPipeline</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/apply_mlm_hardest_shower_scale.html">apply_mlm_hardest_shower_scale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/available_backends.html">available_backends</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/cpu_device.html">cpu_device</a></li>
@@ -711,7 +713,7 @@ generators”, <a class="reference external" href="https://arxiv.org/abs/hep-ph/
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.LHEEvent.alpha_qcd">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">alpha_qcd</span></span><a class="headerlink" href="#madspace.LHEEvent.alpha_qcd" title="Link to this definition">¶</a></dt>
-<dd><p>QCD coupling at the event scale.</p>
+<dd><p>QCD coupling at the renormalisation scale (mu_r).</p>
 </dd></dl>
 
 <dl class="py property">
@@ -724,6 +726,12 @@ generators”, <a class="reference external" href="https://arxiv.org/abs/hep-ph/
 <dt class="sig sig-object py" id="madspace.LHEEvent.format">
 <span class="sig-name descname"><span class="pre">format</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.LHEEvent" title="madspace._madspace_py.LHEEvent"><span class="pre">madspace._madspace_py.LHEEvent</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#madspace.LHEEvent.format" title="Link to this definition">¶</a></dt>
 <dd><p>Append this event’s LHE text to <code class="docutils literal notranslate"><span class="pre">buffer</span></code>.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="madspace.LHEEvent.has_cluster_scales">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">has_cluster_scales</span></span><a class="headerlink" href="#madspace.LHEEvent.has_cluster_scales" title="Link to this definition">¶</a></dt>
+<dd><p>Whether the MLM clustering scales of the outgoing particles are written (<code class="docutils literal notranslate"><span class="pre">pt_clust_&lt;i&gt;</span></code> attributes of <code class="docutils literal notranslate"><span class="pre">&lt;scales&gt;</span></code>).</p>
 </dd></dl>
 
 <dl class="py property">
@@ -752,7 +760,12 @@ generators”, <a class="reference external" href="https://arxiv.org/abs/hep-ph/
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.LHEEvent.scale">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">scale</span></span><a class="headerlink" href="#madspace.LHEEvent.scale" title="Link to this definition">¶</a></dt>
-<dd><p>Event scale, in GeV.</p>
+<dd><p>the larger factorisation scale, as madevent writes it.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Event scale (SCALUP), in GeV</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py property">
@@ -825,6 +838,7 @@ generators”, <a class="reference external" href="https://arxiv.org/abs/hep-ph/
 <li><a class="reference internal" href="#madspace.LHEEvent.alpha_qcd"><code class="docutils literal notranslate"><span class="pre">LHEEvent.alpha_qcd</span></code></a></li>
 <li><a class="reference internal" href="#madspace.LHEEvent.alpha_qed"><code class="docutils literal notranslate"><span class="pre">LHEEvent.alpha_qed</span></code></a></li>
 <li><a class="reference internal" href="#madspace.LHEEvent.format"><code class="docutils literal notranslate"><span class="pre">LHEEvent.format()</span></code></a></li>
+<li><a class="reference internal" href="#madspace.LHEEvent.has_cluster_scales"><code class="docutils literal notranslate"><span class="pre">LHEEvent.has_cluster_scales</span></code></a></li>
 <li><a class="reference internal" href="#madspace.LHEEvent.particles"><code class="docutils literal notranslate"><span class="pre">LHEEvent.particles</span></code></a></li>
 <li><a class="reference internal" href="#madspace.LHEEvent.process_id"><code class="docutils literal notranslate"><span class="pre">LHEEvent.process_id</span></code></a></li>
 <li><a class="reference internal" href="#madspace.LHEEvent.rwgt"><code class="docutils literal notranslate"><span class="pre">LHEEvent.rwgt</span></code></a></li>

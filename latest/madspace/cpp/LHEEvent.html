@@ -418,6 +418,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../python/VegasGridOptimizer.html">VegasGridOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/Verbosity.html">Verbosity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/WeightingGroup.html">WeightingGroup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/apply_mlm_hardest_shower_scale.html">apply_mlm_hardest_shower_scale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/available_backends.html">available_backends</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/cpu_device.html">cpu_device</a></li>
@@ -580,6 +581,7 @@
 <li class="toctree-l2"><a class="reference internal" href="VegasGridOptimizer.html">VegasGridOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="WeightingGroup.html">WeightingGroup</a></li>
 <li class="toctree-l2"><a class="reference internal" href="WeightingPipeline.html">WeightingPipeline</a></li>
+<li class="toctree-l2"><a class="reference internal" href="apply_mlm_hardest_shower_scale.html">apply_mlm_hardest_shower_scale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="available_backends.html">available_backends</a></li>
 <li class="toctree-l2"><a class="reference internal" href="compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpu_device.html">cpu_device</a></li>
@@ -734,7 +736,7 @@
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace8LHEEvent5scaleE">
 <span id="_CPPv3N8madspace8LHEEvent5scaleE"></span><span id="_CPPv2N8madspace8LHEEvent5scaleE"></span><span id="madspace::LHEEvent::scale__double"></span><span class="target" id="structmadspace_1_1LHEEvent_1ad79361cb6253a6faaee9ac368ec12650"></span><span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">scale</span></span></span><a class="headerlink" href="#_CPPv4N8madspace8LHEEvent5scaleE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Event scale, in GeV. </p>
+<dd><p>Event scale (SCALUP), in GeV: the larger factorisation scale, as madevent writes it. </p>
 </dd></dl>
 
 <dl class="cpp var">
@@ -746,7 +748,7 @@
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace8LHEEvent9alpha_qcdE">
 <span id="_CPPv3N8madspace8LHEEvent9alpha_qcdE"></span><span id="_CPPv2N8madspace8LHEEvent9alpha_qcdE"></span><span id="madspace::LHEEvent::alpha_qcd__double"></span><span class="target" id="structmadspace_1_1LHEEvent_1a3c140b2f2091f4238e69ac72c6f4b724"></span><span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">alpha_qcd</span></span></span><a class="headerlink" href="#_CPPv4N8madspace8LHEEvent9alpha_qcdE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>QCD coupling at the event scale. </p>
+<dd><p>QCD coupling at the renormalisation scale (<a class="reference internal" href="#structmadspace_1_1LHEEvent_1aff103e4d5317de186c040ad38ba5fbd3"><span class="std std-ref">mu_r</span></a>). </p>
 </dd></dl>
 
 <dl class="cpp var">
@@ -765,7 +767,7 @@
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace8LHEEvent4mu_rE">
 <span id="_CPPv3N8madspace8LHEEvent4mu_rE"></span><span id="_CPPv2N8madspace8LHEEvent4mu_rE"></span><span id="madspace::LHEEvent::mu_r__double"></span><span class="target" id="structmadspace_1_1LHEEvent_1aff103e4d5317de186c040ad38ba5fbd3"></span><span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">mu_r</span></span></span><a class="headerlink" href="#_CPPv4N8madspace8LHEEvent4mu_rE" title="Link to this definition">¶</a><br /></dt>
 <dd><p>Renormalisation scale, written as the <code class="docutils literal notranslate"><span class="pre">mur</span></code> attribute of <code class="docutils literal notranslate"><span class="pre">&lt;scales&gt;</span></code>. </p>
-<p>The event <code class="docutils literal notranslate"><span class="pre">scale</span></code> (SCALUP) is written separately. </p>
+<p>It is not in SCALUP: the event <code class="docutils literal notranslate"><span class="pre">scale</span></code> is the larger factorisation scale, as unwgt.f writes sqrt(max(q2fact)). </p>
 </dd></dl>
 
 <dl class="cpp var">
