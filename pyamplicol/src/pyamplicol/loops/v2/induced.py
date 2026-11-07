@@ -851,7 +851,13 @@ def rotation_errors(direct: Any, rotated: Any) -> dict:
 def _row_phases(direct: Any, rotated: Any, width: int) -> dict:
     """Per helicity row the little-group phase of ``rotated`` against
     ``direct``: the phase of sum conj(a') a over the row's loop orders, t
-    and its first ``width`` Laurent coefficients (1 where it vanishes)."""
+    and its first ``width`` Laurent coefficients (1 where it vanishes).
+
+    The modulus is taken in the carrier (``_modulus``): a phase normalised
+    in binary64 is off unity by ~1e-16, which a double-double or arbitrary
+    precision comparison would read as a deviation of every rotated value
+    (lit-stab-n: the rotation budget of g g > h h in double-double was
+    7e-17 relative instead of 2e-30)."""
 
     numbers = direct.numbers
     size = len(direct.slice.amplitude)
@@ -868,15 +874,25 @@ def _row_phases(direct: Any, rotated: Any, width: int) -> dict:
                 for t in range(size):
                     for k in range(width):
                         total = total + other[t][k].conjugate() * vector[t][k]
-            magnitude = abs(total)
+            magnitude = _modulus(total, numbers)
             phases[row] = (
                 numbers.pair(1)
                 if not magnitude
                 else total * numbers.real(1 / magnitude)
                 if numbers.double
-                else total * (1 / numbers.real(magnitude))
+                else total * (1 / magnitude)
             )
     return phases
+
+
+def _modulus(value: Any, numbers: Any) -> Any:
+    """|value| in the carrier: ``abs`` in binary64; for the Decimal pairs of
+    the extended carriers sqrt(re^2 + im^2) at the active context precision
+    (their ``abs`` is a binary64 float)."""
+
+    if numbers.double:
+        return abs(value)
+    return (value.real * value.real + value.imag * value.imag).sqrt()
 
 
 def _rotation_deviations(direct: Any, rotated: Any, phases: Mapping) -> dict:
