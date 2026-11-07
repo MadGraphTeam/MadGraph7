@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: 0BSD
 """Loop-induced |A_loop|^2 on route R2 (M-LIT LIT-R2): amplitude mode in
-schedule B with dressed-leg rows (``plan_export._Exporter._dressed_family``,
+schedule B with dressed-leg rows (``plan_export._Exporter.family``,
 the native ``dressed`` plans of ``rusticol_core::loop_v2::plan``).
 
 Route R2k (m-lit DECISIONS 2026-11-06 ~09:00 (3)): per family one suffix

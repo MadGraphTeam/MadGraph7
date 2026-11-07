@@ -289,6 +289,90 @@ def _trace_groups(edges, rank: int, shape) -> list[list]:
     return [groups[key] for key in sorted(groups)]
 
 
+def walk_trie(
+    trie: Any,
+    sequence: Sequence[tuple[int, Any]],
+    rank: int,
+    content: Callable[[int], Any],
+    shape: Callable[[Any], Any],
+    leaf: Callable[[Any, list], Any],
+    step: Callable[[list, int, int, Orders | None], Any],
+) -> None:
+    """Walk one schedule-B suffix trie in its frame (``sequence``: the family
+    key read in it). ``leaf(skeleton, contents)`` makes the object of each
+    oriented skeleton; each node of depth k < N dresses position k of its
+    edges' sources, ``step(edges, out_mask, shift, None)`` with the legs
+    still open as ``out_mask``; an accumulator node (depth N) closes its
+    edges per loop species, in ``_trace_groups`` within ``rank``, by
+    ``step(group, 0, shift, orders)`` with the node's loop orders. The
+    objects are the callbacks' (``_Object`` with ``rows``, ``d_alpha``,
+    ``d_beta`` and ``storage``). One walk serves the exporter's seeded
+    families and dressed class tries (``_Exporter.family``) and the
+    dressed-row frame cost (``dressed_frames``)."""
+
+    before = [0]
+    for mask, _mass in sequence:
+        before.append(before[-1] | mask)
+    full = before[-1]
+    leaf_objects = [
+        leaf(skeleton, [content(segment.label) for segment in ring])
+        for skeleton, ring in trie.leaves
+    ]
+    values: dict[int, Any] = {}
+    for index, node in enumerate(trie.nodes):
+        edges = []
+        for segment, child in node.edges:
+            source = leaf_objects[child] if node.depth == 1 else values.pop(child)
+            edges.append((content(segment.label), source))
+        shift = before[node.depth - 1]
+        if node.depth < len(trie.family):
+            values[index] = step(edges, full ^ before[node.depth], shift, None)
+            continue
+        cuts = defaultdict(list)
+        for segment_content, source in edges:
+            cuts[segment_content.loop_out].append((segment_content, source))
+        for species in sorted(cuts):
+            for group in _trace_groups(cuts[species], rank, shape):
+                step(group, 0, shift, node.orders)
+    if values:
+        raise AssertionError("a trie object without a consumer")
+
+
+def amplitude_vector(combination, cells: Sequence[Any]) -> tuple:
+    """The amplitude vector sum_c x_c c_{c,t} of a seed combination on the
+    coefficient cells ``cells`` (``AmplitudeBasis.cells_at_three``), as its
+    non-zero (t, real, imaginary) entries: skeletons of equal vectors close
+    equally, so they share one class trie (route R2k)."""
+
+    vector: dict[int, ExactColorCoefficient] = {}
+    for c, x in combination:
+        for t, value in cells[c]:
+            term = x * value
+            vector[t] = vector[t] + term if t in vector else term
+    return tuple((t, w.real, w.imag) for t, w in sorted(vector.items()) if w)
+
+
+def vector_groups(
+    oriented: Iterable[tuple[Any, Any]],
+    content: Callable[[int], Any],
+    class_of: Mapping[Any, Any],
+    vector: Callable[[Any], tuple],
+) -> list[list[tuple[Any, Any]]]:
+    """Oriented skeletons (skeleton, ring) grouped by the amplitude vector
+    of their reading's seed combination (``class_of``, ``vector``), in
+    first-seen order: one suffix trie per group (route R2k, M-LIT DECISIONS
+    2026-11-06 ~09:00 (3))."""
+
+    groups: dict[tuple, list[tuple[Any, Any]]] = {}
+    for skeleton, ring in oriented:
+        reading = rx._reading(skeleton, [content(segment.label) for segment in ring])
+        combination = class_of.get(reading)
+        if combination is None:
+            raise KeyError("reading without a seed class")
+        groups.setdefault(vector(combination), []).append((skeleton, ring))
+    return list(groups.values())
+
+
 @dataclass
 class _Exporter:
     slice_: Any
@@ -320,7 +404,7 @@ class _Exporter:
     # Row -> (leg mask, leg count), the content row check's.
     row_masks: dict[Any, tuple[int, int]] = field(default_factory=dict)
     # Amplitude mode on route R2 (M-LIT LIT-R2): dressed-leg rows, one trie
-    # per seed-key vector inside each family (``_dressed_family``).
+    # per seed-key vector inside each family (``family``).
     dressed: bool = False
     # Seed combination -> its amplitude vector (``_vector``).
     vectors: dict[Any, tuple] = field(default_factory=dict)
@@ -662,54 +746,68 @@ class _Exporter:
     # -- schedule B -----------------------------------------------------------
 
     def family(self, key: FamilyKey, schedule) -> dict:
-        if self.dressed:
-            return self._dressed_family(key, schedule)
+        """The record of one schedule-B family, walked in its trie frame
+        (``walk_trie``). A seeded plan walks the family trie, each leaf its
+        skeleton's seed on the plan's rows. A dressed-row plan (amplitude
+        mode, route R2k; M-LIT LIT-R2) walks one suffix trie per amplitude
+        vector of its skeletons' seeds (``vector_groups``), each leaf a
+        constant seed (its seed key the group's, its weight the skeleton's)
+        on one empty row; its steps dress rows of the legs dressed so far and
+        each trace step closes its rows with the group's vector (the native
+        ``RowTrace``). The tries' steps follow one another and share the
+        family's accumulators, one per loop orders."""
+
         slice_ = self.slice_
-        plan = slice_.plan
+        view = slice_.plan.view
         trie = schedule.trie
         sequence = trie.frame.apply(key)
-        before = [0]
-        for mask, _mass in sequence:
-            before.append(before[-1] | mask)
-        full = before[-1]
-        leaves, leaf_objects = [], []
-        for skeleton, ring in trie.leaves:
-            contents = [plan.view.content(segment.label) for segment in ring]
-            dimension = self.kinematics.shape(contents[0]).loop_in
-            leaves.append(
-                {
-                    "seed": self.seed(skeleton, contents),
-                    "weight": _fraction_text(slice_.weights(skeleton, contents)),
-                }
-            )
-            leaf_objects.append(
-                _Object(self.rows, dimension, dimension, 0, leaf=len(leaves) - 1)
-            )
-        accumulators: dict[Orders, int] = {}
+        leaves: list[dict] = []
         steps: list[dict] = []
-        values: dict[int, _Object] = {}
-        for index, node in enumerate(trie.nodes):
-            edges = []
-            for segment, child in node.edges:
-                source = leaf_objects[child] if node.depth == 1 else values.pop(child)
-                edges.append((plan.view.content(segment.label), source))
-            shift = before[node.depth - 1]
-            if node.depth < len(trie.family):
-                values[index] = self._step(
-                    steps, edges, full ^ before[node.depth], shift, None
+        accumulators: dict[Orders, int] = {}
+
+        def step(edges, out_mask: int, shift: int, orders: Orders | None):
+            accumulator = (
+                None
+                if orders is None
+                else accumulators.setdefault(orders, len(accumulators))
+            )
+            return self._step(steps, edges, out_mask, shift, accumulator)
+
+        def leaf(seed: int | None):
+            def make(skeleton, contents) -> _Object:
+                dimension = self.kinematics.shape(contents[0]).loop_in
+                leaves.append(
+                    {
+                        "seed": self.seed(skeleton, contents) if seed is None else seed,
+                        "weight": _fraction_text(slice_.weights(skeleton, contents)),
+                    }
                 )
-                continue
-            accumulator = accumulators.setdefault(node.orders, len(accumulators))
-            cuts = defaultdict(list)
-            for content, source in edges:
-                cuts[content.loop_out].append((content, source))
-            for species in sorted(cuts):
-                for group in _trace_groups(
-                    cuts[species], trie.rank, self.kinematics.shape
-                ):
-                    self._step(steps, group, 0, shift, accumulator)
-        if values:
-            raise AssertionError("a trie object without a consumer")
+                rows = self.rows if seed is None else ((),)
+                return _Object(rows, dimension, dimension, 0, leaf=len(leaves) - 1)
+
+            return make
+
+        if self.dressed:
+            tries = []
+            for group in vector_groups(
+                trie.leaves, view.content, slice_.class_of, self._vector
+            ):
+                skeleton, ring = group[0]
+                seed = self.seed(skeleton, [view.content(s.label) for s in ring])
+                tries.append((seed, build_trie(schedule.family, trie.frame, group)))
+        else:
+            tries = [(None, trie)]
+        for seed, part in tries:
+            # A class trie's rings are the family's: within its rank.
+            walk_trie(
+                part,
+                sequence,
+                trie.rank,
+                view.content,
+                self.kinematics.shape,
+                leaf(seed),
+                step,
+            )
         return {
             "sequence": [[mask, self._mass(mass)] for mask, mass in sequence],
             "rank": family_rank(trie.rank, steps),
@@ -722,118 +820,15 @@ class _Exporter:
         }
 
     def _vector(self, combination) -> tuple:
-        """The amplitude vector sum_c x_c c_{c,t} of a seed combination at
-        N_c = 3 (``AmplitudeBasis.cells_at_three``), as its non-zero
-        (t, real, imaginary) entries: equal vectors close equally, so their
-        skeletons share one class trie (``_dressed_family``)."""
+        """``amplitude_vector`` of a seed combination on the slice's
+        amplitude basis, cached per combination."""
 
         found = self.vectors.get(combination)
         if found is None:
-            cells = self.slice_.amplitude.cells_at_three()
-            vector: dict[int, ExactColorCoefficient] = {}
-            for c, x in combination:
-                for t, value in cells[c]:
-                    term = x * value
-                    vector[t] = vector[t] + term if t in vector else term
-            found = self.vectors[combination] = tuple(
-                (t, w.real, w.imag) for t, w in sorted(vector.items()) if w
+            found = self.vectors[combination] = amplitude_vector(
+                combination, self.slice_.amplitude.cells_at_three()
             )
         return found
-
-    def _class_groups(self, trie) -> list[tuple[int, list]]:
-        """The family's oriented skeletons grouped by the amplitude vector of
-        their seed (``_vector``), in first-seen order, each with the seed key
-        of its first skeleton: one suffix trie per group (route R2k, M-LIT
-        DECISIONS 2026-11-06 ~09:00 (3))."""
-
-        plan = self.slice_.plan
-        groups: dict[tuple, tuple[int, list]] = {}
-        for skeleton, ring in trie.leaves:
-            contents = [plan.view.content(segment.label) for segment in ring]
-            combination = self.slice_.class_of.get(rx._reading(skeleton, contents))
-            if combination is None:
-                raise KeyError("reading without a seed class")
-            vector = self._vector(combination)
-            found = groups.get(vector)
-            if found is None:
-                found = groups[vector] = (self.seed(skeleton, contents), [])
-            found[1].append((skeleton, ring))
-        return list(groups.values())
-
-    def _dressed_family(self, key: FamilyKey, schedule) -> dict:
-        """A family of a dressed-row plan (amplitude mode, route R2k; M-LIT
-        LIT-R2): in the family's trie frame, one suffix trie per amplitude
-        vector of its skeletons' seeds (``_class_groups``), each leaf a
-        constant seed (its seed key the group's, its weight the skeleton's)
-        on one empty row; the steps dress rows of the legs dressed so far and
-        each trace step closes its rows with the group's vector (the native
-        ``RowTrace``). The tries' steps follow one another; their
-        accumulators are the family's, per loop orders."""
-
-        slice_ = self.slice_
-        plan = slice_.plan
-        trie = schedule.trie
-        sequence = trie.frame.apply(key)
-        before = [0]
-        for mask, _mass in sequence:
-            before.append(before[-1] | mask)
-        full = before[-1]
-        leaves: list[dict] = []
-        accumulators: dict[Orders, int] = {}
-        steps: list[dict] = []
-        rank = trie.rank
-        for seed, oriented in self._class_groups(trie):
-            group = build_trie(schedule.family, trie.frame, oriented)
-            rank = max(rank, group.rank)
-            leaf_objects = []
-            for skeleton, ring in group.leaves:
-                contents = [plan.view.content(segment.label) for segment in ring]
-                dimension = self.kinematics.shape(contents[0]).loop_in
-                leaves.append(
-                    {
-                        "seed": seed,
-                        "weight": _fraction_text(slice_.weights(skeleton, contents)),
-                    }
-                )
-                leaf_objects.append(
-                    _Object(((),), dimension, dimension, 0, leaf=len(leaves) - 1)
-                )
-            values: dict[int, _Object] = {}
-            for index, node in enumerate(group.nodes):
-                edges = []
-                for segment, child in node.edges:
-                    source = (
-                        leaf_objects[child] if node.depth == 1 else values.pop(child)
-                    )
-                    edges.append((plan.view.content(segment.label), source))
-                shift = before[node.depth - 1]
-                if node.depth < len(group.family):
-                    values[index] = self._step(
-                        steps, edges, full ^ before[node.depth], shift, None
-                    )
-                    continue
-                accumulator = accumulators.setdefault(node.orders, len(accumulators))
-                cuts = defaultdict(list)
-                for content, source in edges:
-                    cuts[content.loop_out].append((content, source))
-                for species in sorted(cuts):
-                    # Within the family's trie rank (at least the group's).
-                    for part in _trace_groups(
-                        cuts[species], trie.rank, self.kinematics.shape
-                    ):
-                        self._step(steps, part, 0, shift, accumulator)
-            if values:
-                raise AssertionError("a trie object without a consumer")
-        return {
-            "sequence": [[mask, self._mass(mass)] for mask, mass in sequence],
-            "rank": family_rank(rank, steps),
-            "orders": [
-                self.orders.setdefault(order, len(self.orders))
-                for order in accumulators
-            ],
-            "leaves": leaves,
-            "steps": steps,
-        }
 
     def _mass(self, mass) -> int:
         return self.masses.setdefault(mass, len(self.masses))
@@ -1520,7 +1515,7 @@ def export_plan(
     if column_weights is not None:
         program["column_weights"] = column_weights
     if dressed:
-        # Route R2: route R1's columns, closed per row (``_dressed_family``).
+        # Route R2: route R1's columns, closed per row (``_Exporter.family``).
         program["dressed"] = True
     model = None
     if streamed is not None:
