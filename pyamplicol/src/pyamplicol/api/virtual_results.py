@@ -11,7 +11,8 @@ from itertools import pairwise
 from types import MappingProxyType
 from typing import Any, Literal, NamedTuple, TypeAlias, cast
 
-from pyamplicol.config import PoleSelection, R2Strategy
+from pyamplicol.config import PoleSelection, R2Strategy, ReductionBackend
+from pyamplicol.config.models import reduction_request
 from pyamplicol.correlators import CorrelatedValue
 from pyamplicol.loops.orders import VirtualOrderSector, canonical_order
 from pyamplicol.loops.strategy import R2Selection
@@ -302,9 +303,6 @@ class VirtualStabilityEstimate:
 
 REDUCTION_CHECKS = ("none", "reversed", "rescaled")
 RESCUE_METRICS = ("relative", "finite", "scale")
-# The reduction backends of a v2 loop evaluation (m-lit Q17 / Q18): "auto"
-# takes the per-type default (``loops.v2.reduction``).
-REDUCTION_BACKENDS = ("auto", "ninjars", "tirust")
 
 
 @dataclass(frozen=True, slots=True)
@@ -324,10 +322,11 @@ class VirtualReduction:
     reason: str
 
     def __post_init__(self) -> None:
-        if self.requested not in REDUCTION_BACKENDS:
-            raise ValueError(f"requested reduction must be one of {REDUCTION_BACKENDS}")
-        if self.effective not in REDUCTION_BACKENDS[1:]:
-            raise ValueError("effective reduction must be 'ninjars' or 'tirust'")
+        # The choices are ``config.ReductionBackend``'s (one definition, one
+        # validator); "auto" is a request, never the effective backend.
+        reduction_request(self.requested)
+        if reduction_request(self.effective) == ReductionBackend.AUTO:
+            raise ValueError("the effective reduction is a backend, never 'auto'")
         if self.requested not in ("auto", self.effective):
             raise ValueError("an explicit reduction request is served as requested")
         if not isinstance(self.reason, str) or not self.reason:

@@ -269,7 +269,16 @@ def test_auto_takes_the_per_type_default_and_records_every_fallback():
     a TIR-only artifact has no NinjaRS fallback."""
 
     from pyamplicol.api.errors import CompatibilityError
-    from pyamplicol.loops.v2.reduction import ReductionUnavailable, resolve
+    from pyamplicol.loops.v2.reduction import (
+        BACKENDS,
+        ReductionUnavailable,
+        Route,
+        resolve,
+    )
+
+    # A route whose executor runs every backend: the capability logic alone
+    # (the artifact runtime's routes, ``SUMMED`` / ``RESOLVED``, below).
+    every = Route("a test route", frozenset(BACKENDS))
 
     def choice(requested, kind, carrier="double", native=None, admitted=None):
         return resolve(
@@ -277,6 +286,7 @@ def test_auto_takes_the_per_type_default_and_records_every_fallback():
             contribution=kind,
             carrier=carrier,
             native=_Native() if native is None else native,
+            route=every,
             admitted=admitted,
         )
 
@@ -313,7 +323,7 @@ def test_auto_takes_the_per_type_default_and_records_every_fallback():
         choice("auto", "loop-induced", "double-double", tir, admitted=only)
     with pytest.raises(CompatibilityError, match="unknown reduction backend"):
         choice("auto", "virtual", native=_Native({"golem": ALL}))
-    with pytest.raises(ValueError, match="reduction must be one of"):
+    with pytest.raises(ValueError, match="unknown reduction backend"):
         choice("fast", "virtual")
 
 
@@ -352,7 +362,7 @@ def test_reduction_option_surfaces(tmp_path):
     record = request_record(chosen)
     assert record["reduction"] == "tirust"
     assert request_from_record(record).reduction == "tirust"
-    with pytest.raises(ValueError, match="reduction must be one of"):
+    with pytest.raises(ValueError, match="unknown reduction backend"):
         replace(request, reduction="golem")
 
     # The configuration keys stay importable without numpy (CI's

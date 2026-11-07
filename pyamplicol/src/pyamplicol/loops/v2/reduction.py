@@ -24,25 +24,51 @@ naming each built-in backend and the carriers it serves) when the extension
 has the query, else NinjaRS at every carrier (an extension built before the
 TIRust backend, m-lit lit-tir, which adds the query). An artifact may admit
 fewer backends (``admitted``: TIR-only artifacts of rank > N + 2, m-lit
-lit-eft).
+lit-eft). A call also runs on one route of the artifact runtime (``Route``:
+``SUMMED``, the summed virtual through the native executor, or
+``RESOLVED``, the colour-, spin- and helicity-resolved outputs and the
+leading-colour selections through the stored observable columns), and the
+effective backend is one the route's executor runs: the guard of every
+route, so that a result never names a backend its values were not reduced
+by.
 """
 
 from __future__ import annotations
 
 import json
 from collections.abc import Collection, Mapping
-from typing import Any, Literal, cast
+from typing import Any, NamedTuple, cast
 
 from pyamplicol.api.errors import CompatibilityError
+from pyamplicol.config.models import ReductionBackend, reduction_request
 
-# The public choices (``config.ReductionBackend``) and the backends.
-REQUESTS = ("auto", "ninjars", "tirust")
-BACKENDS = ("ninjars", "tirust")
+# The backends: the public choices (``config.ReductionBackend``, the one
+# definition; ``config.models.reduction_request`` validates a request)
+# without ``"auto"``.
+BACKENDS = tuple(item.value for item in ReductionBackend if item != "auto")
 # The per-type defaults of ``"auto"`` (RULED Q17 / Q40).
 DEFAULTS: Mapping[str, str] = {"virtual": "ninjars", "loop-induced": "tirust"}
 CARRIERS = ("double", "double-double", "arbitrary")
 NAMES = {"ninjars": "NinjaRS", "tirust": "TIRust"}
 KINDS = {"virtual": "Born-interfered", "loop-induced": "loop-induced"}
+
+
+class Route(NamedTuple):
+    """A route of the artifact runtime: what it evaluates (for messages) and
+    the reduction backends its executor runs."""
+
+    serves: str
+    backends: frozenset[str]
+
+
+# The routes and the backends their executors run. Every native reduction is
+# NinjaRS's until the TIRust backend is wired to an executor (m-lit lit-tir:
+# the summed route; the resolved outputs after it, lit-obs).
+SUMMED = Route("the summed virtual", frozenset({"ninjars"}))
+RESOLVED = Route(
+    "the colour-, spin- and helicity-resolved outputs and selections",
+    frozenset({"ninjars"}),
+)
 
 
 class ReductionUnavailable(CompatibilityError):
@@ -51,16 +77,6 @@ class ReductionUnavailable(CompatibilityError):
     artifact does not admit it). ``key`` is ``"reduction-unavailable"``."""
 
     key = "reduction-unavailable"
-
-
-def requested_backend(value: object) -> Literal["auto", "ninjars", "tirust"]:
-    """A validated request (``"auto"``, ``"ninjars"`` or ``"tirust"``; the
-    ``config.ReductionBackend`` enum or its value)."""
-
-    text = getattr(value, "value", value)
-    if not isinstance(text, str) or text not in REQUESTS:
-        raise ValueError(f"reduction must be one of {list(REQUESTS)}; got {value!r}")
-    return cast(Literal["auto", "ninjars", "tirust"], text)
 
 
 def native_backends(native: Any) -> dict[str, frozenset[str]]:
@@ -91,8 +107,9 @@ def _unavailable(
     carrier: str,
     served: Mapping[str, frozenset[str]],
     admitted: Collection[str],
+    route: Route,
 ) -> str | None:
-    """Why ``backend`` cannot serve ``carrier`` (None: it can)."""
+    """Why ``backend`` cannot serve ``carrier`` on ``route`` (None: it can)."""
 
     name = NAMES[backend]
     if backend not in admitted:
@@ -106,6 +123,8 @@ def _unavailable(
         )
     if carrier not in served[backend]:
         return f"{name} does not serve the {carrier} carrier in this native extension"
+    if backend not in route.backends:
+        return f"{name} is not wired to the executor of {route.serves} in this build"
     return None
 
 
@@ -115,16 +134,18 @@ def resolve(
     contribution: str,
     carrier: str,
     native: Any,
+    route: Route,
     admitted: Collection[str] | None = None,
 ) -> Any:
-    """The ``VirtualReduction`` of a call: the requested backend, the
-    effective one at ``carrier`` and the reason (module docstring). An
-    explicit request that cannot be served raises ``ReductionUnavailable``;
-    ``"auto"`` without any backend for the carrier as well."""
+    """The ``VirtualReduction`` of a call on ``route``: the requested
+    backend, the effective one at ``carrier`` and the reason (module
+    docstring). An explicit request that cannot be served raises
+    ``ReductionUnavailable``; ``"auto"`` without any backend for the carrier
+    as well."""
 
     from pyamplicol.api.virtual_results import VirtualReduction
 
-    request = requested_backend(requested)
+    request = reduction_request(requested)
     if contribution not in DEFAULTS:
         raise ValueError(f"unknown contribution {contribution!r}")
     if carrier not in CARRIERS:
@@ -132,7 +153,7 @@ def resolve(
     served = native_backends(native)
     allowed = frozenset(BACKENDS if admitted is None else admitted)
     if request != "auto":
-        why = _unavailable(request, carrier, served, allowed)
+        why = _unavailable(request, carrier, served, allowed, route)
         if why is not None:
             raise ReductionUnavailable(
                 f"reduction {request!r} was requested, but {why}; request "
@@ -144,7 +165,7 @@ def resolve(
         # A TIR-only artifact: no NinjaRS fallback exists (m-lit Q18, Q24).
         default = "tirust"
     kind = KINDS[contribution]
-    why = _unavailable(default, carrier, served, allowed)
+    why = _unavailable(default, carrier, served, allowed, route)
     if why is None:
         reason = (
             f"auto: {NAMES[default]}, the {kind} default"
@@ -153,7 +174,7 @@ def resolve(
         )
         return VirtualReduction("auto", cast(Any, default), reason)
     fallback = "ninjars"
-    other = _unavailable(fallback, carrier, served, allowed)
+    other = _unavailable(fallback, carrier, served, allowed, route)
     if fallback == default or other is not None:
         raise ReductionUnavailable(
             f"no reduction backend serves this {kind} call at the {carrier} "
@@ -171,9 +192,10 @@ __all__ = [
     "BACKENDS",
     "CARRIERS",
     "DEFAULTS",
-    "REQUESTS",
+    "RESOLVED",
+    "SUMMED",
     "ReductionUnavailable",
+    "Route",
     "native_backends",
-    "requested_backend",
     "resolve",
 ]

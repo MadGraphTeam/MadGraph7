@@ -1763,9 +1763,9 @@ class SliceRequest:
                 f"unknown contribution {self.contribution!r}; expected one of "
                 f"{list(CONTRIBUTIONS)}"
             )
-        from .reduction import requested_backend
+        from pyamplicol.config.models import reduction_request
 
-        requested_backend(self.reduction)
+        reduction_request(self.reduction)
         if self.contribution == "loop-induced" and self.accuracy != "full":
             # Full colour only for loop-induced processes (m-lit Q8 (a)).
             raise LoopRequestUnsupportedValue(
