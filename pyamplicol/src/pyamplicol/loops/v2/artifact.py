@@ -1599,6 +1599,21 @@ class V2VirtualRuntime:
         self._native_process = load_native_process(runtime)
         # A loop-induced process stores no observable columns yet (LIT-OBS).
         self._induced = "amplitude" in self._native_process.record
+        # A loop-induced process's colour-zero record (m-lit Q13: the one
+        # exact zero, every loop with a single coloured attachment).
+        self._colour_zero: dict[str, object] | None = None
+        if self._induced:
+            from .induced import StoredAmplitude
+
+            stored = StoredAmplitude.from_record(
+                self._native_process.record["amplitude"]
+            )
+            self._colour_zero = {
+                "exact_colour_zero": stored.colour_zero,
+                "colour_zero_loop_orders": [
+                    dict(order) for order in sorted(stored.colour_zero_orders)
+                ],
+            }
         if self._native_process.observables is None and not self._induced:
             raise ArtifactError(
                 "the stored process has no observable columns (an older "
@@ -1893,6 +1908,12 @@ class V2VirtualRuntime:
                     "default_precision": self.default_precision,
                     "requested_r2_strategy": self._default_r2.value,
                     "effective_r2_strategy": "model",
+                    # The reduction backend (m-lit Q17 / Q18): the request of
+                    # a call that names none, the artifact's generation
+                    # default, the per-type default of "auto" and what the
+                    # native extension serves (backend -> carriers).
+                    "reduction": self._reduction_summary(),
+                    **({} if self._colour_zero is None else self._colour_zero),
                     "parameter_overrides": dict(self._parameters),
                     "scale_input": "explicit positive mu_r2, scalar or per point",
                     "stability_checks": (
@@ -2070,6 +2091,21 @@ class V2VirtualRuntime:
             self._reductions[key] = found
         return found
 
+    def _reduction_summary(self) -> dict[str, object]:
+        """``inspect``'s reduction-backend record."""
+
+        from .reduction import DEFAULTS, native_backends
+
+        return {
+            "requested": self._reduction_request,
+            "artifact_default": self._execution["request"].get("reduction", "auto"),
+            "auto_default": DEFAULTS[self.contribution_kind],
+            "native": {
+                name: sorted(carriers)
+                for name, carriers in native_backends(self._native).items()
+            },
+        }
+
     def _reduction_choices(
         self,
         reduction: str | None,
@@ -2246,6 +2282,14 @@ class V2VirtualRuntime:
 
         with_poles = computes_poles(poles)
         bits = _precision_bits(carrier, setting.digits)
+        detail = "accuracy is estimated only by the requested stability checks"
+        if self._colour_zero is not None and self._colour_zero["exact_colour_zero"]:
+            # The colour-zero record (m-lit Q13): exactly 0, not a numerical
+            # zero.
+            detail = (
+                "exact colour zero: every loop has a single coloured attachment "
+                "(Tr T^a = 0), the value is exactly 0"
+            )
         arithmetic = cast(Literal["double", "double-double", "arbitrary"], carrier)
         contraction = self._contraction(results)
         born_values: list[tuple[Any, ...] | None] = []
@@ -2312,7 +2356,7 @@ class V2VirtualRuntime:
                     arithmetic,
                     bits,
                     False,
-                    "accuracy is estimated only by the requested stability checks",
+                    detail,
                     primary_color_contraction=contraction,
                     reduction=reduction,
                     finiteness=result.finiteness,

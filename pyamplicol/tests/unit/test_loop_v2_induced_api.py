@@ -436,6 +436,13 @@ def test_reduction_finiteness_and_estimates_on_the_public_route(shipped):
 
     expected = _expected()
     points, scales = expected["points"], expected["mu_r2"]
+    info = shipped.inspect()
+    assert info["exact_colour_zero"] is False
+    assert info["colour_zero_loop_orders"] == []
+    reduction = info["reduction"]
+    assert reduction["requested"] == reduction["artifact_default"] == "auto"
+    assert reduction["auto_default"] == "tirust"
+    assert "ninjars" in reduction["native"]
     auto = shipped.evaluate(points, mu_r2=scales)
     assert auto.contribution == "loop-induced" and auto.born_orders == ()
     for lane in auto.diagnostics:
@@ -528,6 +535,36 @@ def test_generation_default_is_recorded_and_the_artifact_is_backend_independent(
     )
     value = runtime.evaluate(expected["points"], mu_r2=expected["mu_r2"])
     assert {lane.reduction.requested for lane in value.diagnostics} == {"auto"}
+
+
+@pytest.mark.loop_physics
+def test_an_exact_colour_zero_is_reported_with_its_colour_record(tmp_path):
+    """h > g a (every loop has a single coloured attachment, Tr T^a = 0):
+    the one exact zero (m-lit Q13) evaluates to exactly 0 and says so in
+    its lane diagnostics and ``inspect``; a numerical zero never does."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.config import resolve_config
+
+    selftest = _selftest()
+    output = tmp_path / "artifact"
+    card = selftest.card(output)
+    card["process"]["entries"] = [{"expression": "h > g a", "name": "h_ga"}]
+    Generator(resolve_config(card, base_dir=tmp_path)).generate(
+        ProcessSet((ProcessRequest.parse("h > g a", name="h_ga"),)), output
+    )
+    runtime = Runtime.load(output, process="h_ga")
+    info = runtime.inspect()
+    assert info["exact_colour_zero"] is True
+    assert info["colour_zero_loop_orders"] == [{"QCD": 1, "QED": 2}]
+    point = [["125", "0", "0", "0"], ["62.5", "0", "0", "62.5"]]
+    point.append(["62.5", "0", "0", "-62.5"])
+    value = runtime.evaluate([point], mu_r2="15625")
+    assert value.contribution == "loop-induced"
+    assert all(x == 0 for laurent in value.values[0] for x in laurent)
+    (lane,) = value.diagnostics
+    assert lane.detail.startswith("exact colour zero")
 
 
 _SELFTEST = r"""
