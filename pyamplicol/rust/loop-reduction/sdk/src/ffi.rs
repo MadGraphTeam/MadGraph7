@@ -265,6 +265,26 @@ pub unsafe extern "C" fn rusticol_virtual_set_arithmetic(
         Ok(())
     })
 }
+/// The reduction backend of the handle's later evaluations, the Python
+/// API's `reduction=`: "auto" (NULL, the default: the process type's
+/// default where it serves the call, else NinjaRS, the reason recorded),
+/// "ninjars" or "tirust". An explicit backend the native library does not
+/// build is refused here, one that cannot serve a later call's carrier or
+/// route by that call (`RUSTICOL_VIRTUAL_RUNTIME_ERROR`, the Python API's
+/// `ReductionUnavailable`); never a silent switch. Each result records the
+/// requested and effective backends and the reason in its diagnostics.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_set_reduction(
+    handle: *mut VirtualHandle,
+    reduction: *const c_char,
+) -> c_int {
+    guard(|| unsafe {
+        mutable(handle)?
+            .0
+            .set_reduction(text(reduction)?.unwrap_or("auto"))?;
+        Ok(())
+    })
+}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rusticol_virtual_shape(
     handle: *const VirtualHandle,

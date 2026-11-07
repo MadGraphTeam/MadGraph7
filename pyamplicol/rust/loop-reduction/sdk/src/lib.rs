@@ -13,6 +13,8 @@ pub use rusticol_core::source_bindings::SourceOverrides;
 use rusticol_core::{RusticolError, RusticolResult};
 #[cfg(test)]
 use rusticol_loop_reduction::runtime::{Batch, Data};
+use rusticol_loop_reduction::reduction_policy::{self, Choice, Refusal};
+use rusticol_loop_reduction::runtime::Reduction;
 use rusticol_loop_reduction::v2_runtime::{
     C, ColumnPoint, Decimal, Rational, V2Point, V2Poles, V2Precision, V2Runtime, decimal_parameter,
     is_v2_artifact, named_parameters,
@@ -240,6 +242,10 @@ pub struct Runtime {
     shape: Shape,
     poles: Poles,
     arithmetic: Arithmetic,
+    /// The requested reduction backend of later evaluations ("auto",
+    /// "ninjars" or "tirust"; the artifact's generation default until
+    /// [`Runtime::set_reduction`]).
+    reduction: String,
     color_components: Vec<String>,
     history_ids: Vec<String>,
     spin_classes: Vec<Vec<usize>>,
@@ -295,6 +301,7 @@ impl Runtime {
             native.set_parameters(real_overrides(values)?)?;
         }
         let accuracy = native.metadata().color_accuracy.clone();
+        let reduction = native.artifact_reduction().to_owned();
         // The stored observable columns (correlated, spin-correlated and
         // resolved outputs), when the process has them.
         let observables = (|| -> RusticolResult<_> {
@@ -325,12 +332,15 @@ impl Runtime {
             Ok(axes) => (axes.rows.len(), axes.colour_ids.len()),
             Err(_) => (native.helicities(), 1),
         };
+        // A loop-induced process has no Born (Q36): zero Born orders and
+        // colour components.
+        let born_colours = if native.loop_induced() { 0 } else { colours };
         let shape = Shape {
             external_count: native.external_count(),
             born_orders: native.born_orders(),
             virtual_orders: native.sectors(),
             helicities,
-            born_color_components: colours,
+            born_color_components: born_colours,
             virtual_color_components: colours,
             epsilon_count: 3,
             resolved_available: u32::from(observables.is_ok()),
@@ -341,6 +351,7 @@ impl Runtime {
             shape,
             poles: Poles::All,
             arithmetic: Arithmetic::Double,
+            reduction,
             history_ids,
             spin_classes,
             observables,
@@ -350,10 +361,85 @@ impl Runtime {
         self.shape
     }
     /// The pole selection of later evaluations (default all): "all",
-    /// "none", "uv" or "ir", the Python API's four (`Poles`).
+    /// "none", "uv" or "ir", the Python API's four (`Poles`); a selection
+    /// the process does not serve (a loop-induced process serves "all" and
+    /// "none", m-lit PLAN §2.a.7) is refused with a typed `Compatibility`
+    /// error in the Python API's words, and nothing changes.
     pub fn set_poles(&mut self, poles: Poles) -> RusticolResult<()> {
+        let Engine::V4(native) = &self.engine;
+        native.check_poles(poles.v2())?;
         self.poles = poles;
         Ok(())
+    }
+    /// The reduction backend of later evaluations, the Python API's
+    /// `reduction=`: "auto", "ninjars" or "tirust" (the one policy,
+    /// `rusticol_loop_reduction::reduction_policy`). A backend this native
+    /// library does not build is refused here (typed `Compatibility`, the
+    /// Python API's `ReductionUnavailable`), one that cannot serve a later
+    /// call's carrier by that call; nothing changes on a refusal.
+    pub fn set_reduction(&mut self, reduction: &str) -> RusticolResult<()> {
+        let served = reduction_policy::served();
+        match reduction {
+            "auto" => {}
+            "ninjars" | "tirust" if served.contains_key(reduction) => {}
+            "ninjars" | "tirust" => {
+                let route = reduction_policy::route(reduction_policy::SUMMED)
+                    .expect("the summed route");
+                let carrier = self.arithmetic.name();
+                return match reduction_policy::resolve(
+                    reduction,
+                    self.contribution(),
+                    carrier,
+                    &served,
+                    None,
+                    &route,
+                ) {
+                    Err(Refusal::Unavailable(message)) => {
+                        Err(RusticolError::compatibility(message))
+                    }
+                    Err(Refusal::Invalid(message)) => Err(invalid(message)),
+                    Ok(_) => unreachable!("an unbuilt backend serves no carrier"),
+                };
+            }
+            other => {
+                return Err(invalid(format!(
+                    "unknown reduction backend '{other}': reduction must be \
+                     \"auto\", \"ninjars\" or \"tirust\""
+                )));
+            }
+        }
+        self.reduction = reduction.to_owned();
+        Ok(())
+    }
+    /// The requested reduction backend of later evaluations.
+    pub fn reduction(&self) -> &str {
+        &self.reduction
+    }
+    /// The process type: "virtual" (Born-interfered) or "loop-induced".
+    pub fn contribution(&self) -> &str {
+        let Engine::V4(native) = &self.engine;
+        &native.metadata().contribution_kind
+    }
+    /// The backend of a call on `route` at the current arithmetic
+    /// (`reduction_policy::resolve`), applied to the native runtime: once
+    /// per call, never per point.
+    fn reduce_on(&mut self, route: &str) -> RusticolResult<Choice> {
+        let route = reduction_policy::route(route).expect("an artifact route");
+        let choice = reduction_policy::resolve(
+            &self.reduction,
+            self.contribution(),
+            self.arithmetic.name(),
+            &reduction_policy::served(),
+            None,
+            &route,
+        )
+        .map_err(|refusal| match refusal {
+            Refusal::Unavailable(message) => RusticolError::compatibility(message),
+            Refusal::Invalid(message) => invalid(message),
+        })?;
+        let Engine::V4(native) = &mut self.engine;
+        native.set_reduction(Reduction::parse(&choice.effective)?)?;
+        Ok(choice)
     }
     pub fn poles(&self) -> Poles {
         self.poles
@@ -384,15 +470,37 @@ impl Runtime {
                 Some(reason.clone()),
             ),
         };
+        let served: serde_json::Map<String, serde_json::Value> = reduction_policy::served()
+            .into_iter()
+            .map(|(name, carriers)| (name, serde_json::json!(carriers)))
+            .collect();
+        let colour_zero = native.colour_zero().map(|(exact, orders)| {
+            serde_json::json!({
+                "exact_colour_zero": exact,
+                "colour_zero_loop_orders": orders
+                    .iter()
+                    .map(|order| order.iter().cloned().collect::<BTreeMap<String, i64>>())
+                    .collect::<Vec<_>>(),
+            })
+        });
         serde_json::to_string(&serde_json::json!({
-            "contribution_kind":"virtual", "execution_mode":"loop_recurrence",
+            "contribution_kind":metadata.contribution_kind,
+            "interference":metadata.interference,
+            "reduction": {
+                "requested": self.reduction,
+                "artifact_default": native.artifact_reduction(),
+                "auto_default": reduction_policy::default_of(&metadata.contribution_kind),
+                "native": served,
+            },
+            "colour_zero": colour_zero,
+            "execution_mode":"loop_recurrence",
             "engine":"v2", "plan_sha256":native.plan_sha256(),
             "point_inputs":"native-v2",
             "arithmetic":["double", "double-double", "arbitrary"],
             "current_arithmetic": self.arithmetic.name(),
             "current_digits": self.arithmetic.digits(),
             "epsilon_powers":[0,-1,-2],
-            "pole_selections":["all","none","uv","ir"],
+            "pole_selections":metadata.poles,
             "poles":self.poles.name(),
             "resolved":resolved, "correlations":resolved,
             "correlation_histories":self.history_ids,
@@ -473,11 +581,15 @@ impl Runtime {
             let axes = self.observables.clone().map_err(|reason| {
                 RusticolError::compatibility(format!("{NO_OBSERVABLES}: {reason}"))
             })?;
+            let reduction = self.reduce_on(reduction_policy::RESOLVED)?;
             let Engine::V4(native) = &mut self.engine;
-            return Evaluation::resolved_v4(native, inputs, shape, poles, arithmetic, &axes);
+            return Evaluation::resolved_v4(
+                native, inputs, shape, poles, arithmetic, &axes, &reduction,
+            );
         }
+        let reduction = self.reduce_on(reduction_policy::SUMMED)?;
         let Engine::V4(native) = &mut self.engine;
-        Evaluation::from_v4(native, inputs, shape, poles, arithmetic)
+        Evaluation::from_v4(native, inputs, shape, poles, arithmetic, &reduction)
     }
     fn prepare_inputs(
         &self,
@@ -712,17 +824,18 @@ impl Evaluation {
         shape: Shape,
         poles: Poles,
         arithmetic: Arithmetic,
+        reduction: &Choice,
     ) -> RusticolResult<Self> {
         let (momenta, scales) = exact_inputs(&inputs, shape.external_count)?;
         match arithmetic {
             Arithmetic::Double => {
                 let points = native.evaluate(&momenta, &scales, poles.v2())?;
-                Self::ordinary(inputs, shape, poles, arithmetic, points)
+                Self::ordinary(inputs, shape, poles, arithmetic, points, reduction)
             }
             _ => {
                 let points =
                     native.evaluate_extended(&momenta, &scales, poles.v2(), arithmetic.v2())?;
-                Self::ordinary(inputs, shape, poles, arithmetic, points)
+                Self::ordinary(inputs, shape, poles, arithmetic, points, reduction)
             }
         }
     }
@@ -733,6 +846,7 @@ impl Evaluation {
         poles: Poles,
         arithmetic: Arithmetic,
         points: Vec<V2Point<N>>,
+        reduction: &Choice,
     ) -> RusticolResult<Self> {
         let (successful_point_ids, statuses, failures) = statuses_of(&inputs.point_ids, &points);
         let mut born = Reals::default();
@@ -754,6 +868,7 @@ impl Evaluation {
             &failures,
             poles,
             arithmetic,
+            reduction,
         )?;
         Ok(Self {
             requested_point_ids: inputs.point_ids,
@@ -779,6 +894,7 @@ impl Evaluation {
         poles: Poles,
         arithmetic: Arithmetic,
         axes: &Observables,
+        reduction: &Choice,
     ) -> RusticolResult<Self> {
         let (momenta, scales) = exact_inputs(&inputs, shape.external_count)?;
         let keys = native.resolved_keys()?;
@@ -786,7 +902,7 @@ impl Evaluation {
             Arithmetic::Double => {
                 let points =
                     native.evaluate_columns("resolved", &momenta, &scales, &[], poles.v2())?;
-                Self::resolved(inputs, shape, poles, arithmetic, axes, &keys, points)
+                Self::resolved(inputs, shape, poles, arithmetic, axes, &keys, points, reduction)
             }
             _ => {
                 let points = native.evaluate_columns_extended(
@@ -797,7 +913,7 @@ impl Evaluation {
                     poles.v2(),
                     arithmetic.v2(),
                 )?;
-                Self::resolved(inputs, shape, poles, arithmetic, axes, &keys, points)
+                Self::resolved(inputs, shape, poles, arithmetic, axes, &keys, points, reduction)
             }
         }
     }
@@ -811,6 +927,7 @@ impl Evaluation {
         axes: &Observables,
         keys: &[(usize, usize)],
         points: Vec<ColumnPoint<N>>,
+        reduction: &Choice,
     ) -> RusticolResult<Self> {
         let helicities = axes.rows.len();
         let colours = axes.colour_ids.len();
@@ -846,6 +963,7 @@ impl Evaluation {
             &failures,
             poles,
             arithmetic,
+            reduction,
         )?;
         Ok(Self {
             requested_point_ids: inputs.point_ids,
@@ -872,14 +990,23 @@ impl Evaluation {
 }
 
 /// The diagnostics record of an evaluation.
+#[allow(clippy::too_many_arguments)]
 fn diagnostics(
     requested: &[u64],
     successful: &[u64],
     failures: &BTreeMap<u64, Vec<String>>,
     poles: Poles,
     arithmetic: Arithmetic,
+    reduction: &Choice,
 ) -> RusticolResult<String> {
     serde_json::to_string(&serde_json::json!({
+        // The reduction backend of the call (the Python API's
+        // `VirtualReduction`): requested, effective and why.
+        "reduction": {
+            "requested": reduction.requested,
+            "effective": reduction.effective,
+            "reason": reduction.reason,
+        },
         "requested_point_ids":requested,
         "successful_point_ids":successful,
         "failures":failures,

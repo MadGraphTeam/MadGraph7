@@ -98,6 +98,7 @@ module rusticol_virtual
     procedure :: update_parameters
     procedure :: set_poles
     procedure :: set_arithmetic
+    procedure :: set_reduction
     procedure :: evaluate
     procedure :: evaluate_correlated
     procedure :: correlation_histories_json
@@ -191,6 +192,11 @@ module rusticol_virtual
     function c_set_poles(handle, poles) bind(C, name="rusticol_virtual_set_poles") result(value)
       import
       type(c_ptr), value :: handle, poles
+      integer(c_int) :: value
+    end function
+    function c_set_reduction(handle, reduction) bind(C, name="rusticol_virtual_set_reduction") result(value)
+      import
+      type(c_ptr), value :: handle, reduction
       integer(c_int) :: value
     end function
     function c_evaluate(handle, request, output) bind(C, name="rusticol_virtual_evaluate") result(value)
@@ -629,6 +635,20 @@ contains
     if (present(digits)) count=int(digits,c_int32_t)
     buffer=cstring(arithmetic)
     call finish(c_set_arithmetic(handle_of(self),c_loc(buffer),count),ierr)
+  end subroutine
+
+  ! Reduction backend of later evaluations (the Python API's reduction=):
+  ! "auto" (default), "ninjars" or "tirust"; an unavailable explicit backend
+  ! is refused with a runtime-error status and its message.
+  subroutine set_reduction(self,reduction,ierr,error_message)
+    class(virtual_runtime), intent(inout) :: self
+    character(*), intent(in) :: reduction
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable, optional, intent(out) :: error_message
+    character(c_char), allocatable, target :: buffer(:)
+    buffer=cstring(reduction)
+    call finish(c_set_reduction(handle_of(self),c_loc(buffer)),ierr, &
+      error_message=error_message)
   end subroutine
 
   subroutine evaluate(self,momenta,mu_r2,output,point_ids,resolved,r2_strategy,ierr,error_message)

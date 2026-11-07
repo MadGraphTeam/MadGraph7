@@ -57,6 +57,13 @@ enum rusticol_virtual_point_status {
   RUSTICOL_VIRTUAL_FAILED = 3,
   RUSTICOL_VIRTUAL_ACCURACY_NOT_ESTABLISHED = 4
 };
+/* Loop-induced processes (metadata_json "contribution_kind": "loop-induced",
+ * "interference": "conj(loop)*loop"; |A_loop|^2, no Born) are opened directly,
+ * with the same shapes: born_orders = 0 and born_color_components = 0 here,
+ * born_values = 0 in every result (copy_born copies nothing); the virtual
+ * orders are the loop x loop sectors; each value is |A_loop|^2 per sector and
+ * epsilon power, full colour (one contracted colour component). Its poles are
+ * computed as a finiteness cross-check: they vanish up to rounding. */
 typedef struct {
   size_t external_count, born_orders, virtual_orders, helicities;
   size_t born_color_components, virtual_color_components, epsilon_count;
@@ -105,7 +112,10 @@ int rusticol_virtual_update_parameters(rusticol_virtual_handle *handle,
  * the poles are the bare loop's UV poles) or "ir" (plan v4: the poles are the
  * renormalised virtual's IR poles). The split selections run the stored
  * companion of the certified-scaleless families; the finite part is the same
- * in every selection. Plan v1-v3 artifacts accept "all" only.
+ * in every selection. Plan v1-v3 artifacts accept "all" only. A loop-induced
+ * process serves "all" and "none" only (its UV and IR parts are not additive
+ * in |A|^2): "uv" and "ir" return RUSTICOL_VIRTUAL_RUNTIME_ERROR with the
+ * Python API's message and change nothing (the capabilities' "pole_selections").
  */
 int rusticol_virtual_set_poles(rusticol_virtual_handle *handle, const char *poles);
 /* Arithmetic of later evaluations (the Python API's arithmetic=/precision=):
@@ -119,6 +129,20 @@ int rusticol_virtual_set_poles(rusticol_virtual_handle *handle, const char *pole
  */
 int rusticol_virtual_set_arithmetic(rusticol_virtual_handle *handle,
   const char *arithmetic, uint32_t digits);
+/* Reduction backend of later evaluations (the Python API's reduction=;
+ * additive, ABI version 2 kept): "auto" (NULL, the default), "ninjars" or
+ * "tirust". "auto" takes the process type's default where it serves the call
+ * (one policy, shared with the Python API: today NinjaRS for both process
+ * types, the reason recorded), else NinjaRS. An explicit backend this library
+ * is built without (TIRust needs the cargo feature tir) is refused here, one
+ * that cannot serve a later call's carrier (TIRust serves binary64) by that
+ * call; both RUSTICOL_VIRTUAL_RUNTIME_ERROR (the Python API's
+ * ReductionUnavailable), never a silent switch. Every result's diagnostics
+ * record "reduction": {"requested","effective","reason"}; the handle's
+ * capabilities list what this library serves ("reduction": "native").
+ */
+int rusticol_virtual_set_reduction(rusticol_virtual_handle *handle,
+  const char *reduction);
 int rusticol_virtual_shape(const rusticol_virtual_handle *handle,
   rusticol_virtual_shape_info *output);
 /* JSON size query: output=NULL, capacity=0; needed includes terminal NUL.

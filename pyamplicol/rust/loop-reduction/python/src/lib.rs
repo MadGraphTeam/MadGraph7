@@ -20,6 +20,7 @@ mod v2_seeds;
 use batch::NativeBatch;
 
 use pyo3::{exceptions::PyValueError, prelude::*, types::PyBytes};
+use std::collections::{BTreeMap, BTreeSet};
 use rusticol_loop_reduction::Complex;
 use symbolica::{
     domains::float::{DoubleFloat, Float},
@@ -113,6 +114,56 @@ fn reduction_backends() -> String {
     serde_json::Value::Object(record).to_string()
 }
 
+/// The reduction-backend policy, the one definition of `"auto"` (m-lit
+/// DECISIONS 2026-11-07 21:50 R7; `rusticol_loop_reduction::reduction_policy`)
+/// as JSON: `{"backends", "carriers", "defaults": {kind: backend}, "routes":
+/// {key: {"serves", "backends", "auto"}}}`, which `loops.v2.reduction` reads.
+#[pyfunction]
+fn reduction_policy() -> String {
+    rusticol_loop_reduction::reduction_policy::policy_json().to_string()
+}
+
+/// `reduction_policy::resolve` of a call: `requested` ("auto", "ninjars",
+/// "tirust") for `contribution` at `carrier`, the native extension's served
+/// backends `served` (backend -> carriers), the artifact's `admitted`
+/// backends (None: every one) and the route (`serves`, the backends its
+/// executor runs, those `"auto"` may take: None, every one it runs).
+/// Returns `("ok", requested, effective, reason)`, or `("unavailable", "",
+/// "", message)` (the typed `ReductionUnavailable`) or `("invalid", "", "",
+/// message)` (a `ValueError`).
+#[pyfunction]
+#[pyo3(signature = (requested, contribution, carrier, served, admitted, serves, backends, auto))]
+#[allow(clippy::too_many_arguments)]
+fn reduction_resolve(
+    requested: &str,
+    contribution: &str,
+    carrier: &str,
+    served: BTreeMap<String, BTreeSet<String>>,
+    admitted: Option<BTreeSet<String>>,
+    serves: String,
+    backends: BTreeSet<String>,
+    auto: Option<BTreeSet<String>>,
+) -> (&'static str, String, String, String) {
+    use rusticol_loop_reduction::reduction_policy::{Refusal, Route, resolve};
+    let route = Route {
+        serves,
+        backends,
+        auto,
+    };
+    match resolve(
+        requested,
+        contribution,
+        carrier,
+        &served,
+        admitted.as_ref(),
+        &route,
+    ) {
+        Ok(choice) => ("ok", choice.requested, choice.effective, choice.reason),
+        Err(Refusal::Unavailable(message)) => ("unavailable", String::new(), String::new(), message),
+        Err(Refusal::Invalid(message)) => ("invalid", String::new(), String::new(), message),
+    }
+}
+
 #[pymodule]
 fn _loop_reduction(module: &Bound<'_, PyModule>) -> PyResult<()> {
     register(module)
@@ -136,6 +187,8 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(canonical_saved_evaluator, module)?)?;
     module.add_function(wrap_pyfunction!(tirust_available, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_backends, module)?)?;
+    module.add_function(wrap_pyfunction!(reduction_policy, module)?)?;
+    module.add_function(wrap_pyfunction!(reduction_resolve, module)?)?;
     v2::register(module)?;
     v2_catalogue::register(module)?;
     v2_closure::register(module)?;

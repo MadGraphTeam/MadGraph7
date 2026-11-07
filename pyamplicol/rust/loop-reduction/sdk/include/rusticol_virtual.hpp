@@ -237,6 +237,11 @@ public:
     void set_arithmetic(const std::string &arithmetic, std::uint32_t digits = 0) {
         virtual_detail::check(rusticol_virtual_set_arithmetic(handle_.get(), arithmetic.c_str(), digits));
     }
+    // "auto" (default), "ninjars" or "tirust" (the Python API's reduction=);
+    // an unavailable explicit backend throws VirtualError.
+    void set_reduction(const std::string &reduction) {
+        virtual_detail::check(rusticol_virtual_set_reduction(handle_.get(), reduction.c_str()));
+    }
     std::uint64_t update_parameters(const std::string &exact_json) {
         std::uint64_t revision = 0;
         virtual_detail::check(rusticol_virtual_update_parameters(handle_.get(), exact_json.c_str(), &revision));

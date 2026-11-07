@@ -86,7 +86,7 @@ fn rational_f64(value: &Rational) -> f64 {
     if small(&numerator) && small(&denominator) {
         return numerator.to_f64() / denominator.to_f64();
     }
-    value.to_multi_prec_float(256).to_f64()
+    symbolica::domains::float::RealLike::to_f64(&value.to_multi_prec_float(256))
 }
 
 impl Squaring for Binary64 {

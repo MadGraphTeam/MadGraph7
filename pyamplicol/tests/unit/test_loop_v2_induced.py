@@ -1033,8 +1033,8 @@ def test_a_mixed_artifact_serves_both_contributions(li, loop_native, tmp_path):
     one (g g > h, process.loop_induced = auto) writes one artifact requiring
     both v2 loop runtimes, each process its own (v4, v5): it loads and
     evaluates both through the Python API and the native admission; the
-    native SDK runtime serves the Born-interfered process (bitwise the Python
-    API's) and refuses the loop-induced one typed. u u~ > z equals the same
+    native SDK runtime serves both (bitwise the Python API's; the
+    loop-induced one with an empty Born, m-lit LIT-SDK). u u~ > z equals the same
     process generated alone bitwise, g g > h the slice's native value."""
 
     from pyamplicol import Runtime
@@ -1088,7 +1088,10 @@ def test_a_mixed_artifact_serves_both_contributions(li, loop_native, tmp_path):
             assert value.born_orders == () and value.born_values == ((),)
             native = li.native_value("li_gg_h", Precision.double())
             assert _relative(value.values[0][0][0], _total(native)) <= ORACLE
-            with pytest.raises(ValueError, match="Python runtime"):
-                loop_native.evaluate_v2_artifact(
-                    str(mixed), [flat], [str(scale)], process=key, parameters=parameters
-                )
+            # The native SDK runtime serves the loop-induced process of a
+            # mixed artifact too (m-lit LIT-SDK): empty Born, |A|^2 bitwise.
+            (born, virtual), failures = loop_native.evaluate_v2_artifact(
+                str(mixed), [flat], [str(scale)], process=key, parameters=parameters
+            )[0]
+            assert not failures and born == []
+            assert virtual == [list(laurent) for laurent in value.values[0]]

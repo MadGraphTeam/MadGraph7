@@ -36,15 +36,23 @@ backends of its ``auto`` set: NinjaRS, until the loop-induced agreement of
 the two backends is established (m-lit lit-cache), so ``"auto"`` keeps
 NinjaRS for loop-induced processes too, with the reason recorded, and
 TIRust serves explicit requests.
+
+The policy has ONE definition, in Rust (``rusticol_loop_reduction::
+reduction_policy``, m-lit DECISIONS 2026-11-07 21:50 R7), which the native
+SDKs share: the per-type defaults (``DEFAULTS``), the artifact runtime's
+routes with their ``auto`` sets (``SUMMED``, ``RESOLVED``) and ``resolve``'s
+choice and reason texts are read from the native extension
+(``reduction_policy``, ``reduction_resolve``), never restated here.
 """
 
 from __future__ import annotations
 
+import functools
 import json
 from collections.abc import Collection, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import TYPE_CHECKING, Any, NamedTuple, cast
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from pyamplicol.api.errors import CompatibilityError, ReductionUnavailable
 from pyamplicol.config.models import ReductionBackend, reduction_request
@@ -58,14 +66,43 @@ if TYPE_CHECKING:
 BACKENDS = tuple(
     item.value for item in ReductionBackend if item is not ReductionBackend.AUTO
 )
-# The per-type defaults of ``"auto"`` (RULED Q17 / Q40).
-DEFAULTS: Mapping[str, str] = {"virtual": "ninjars", "loop-induced": "tirust"}
 CARRIERS = ("double", "double-double", "arbitrary")
 # The refusal of TIRust at an extended carrier on the Python reference path
 # (the native one is ``runtime::TIRUST_BINARY64_ONLY``).
 TIRUST_BINARY64_ONLY = "the TIRust reduction backend serves binary64 in this build"
 NAMES = {"ninjars": "NinjaRS", "tirust": "TIRust"}
-KINDS = {"virtual": "Born-interfered", "loop-induced": "loop-induced"}
+
+
+@functools.lru_cache(maxsize=1)
+def policy() -> Mapping[str, Any]:
+    """The native reduction policy (``reduction_policy()``: the backends,
+    carriers, per-type defaults and the artifact runtime's routes), read
+    once."""
+
+    from pyamplicol.loops.native import load_loop_native
+
+    return json.loads(load_loop_native().reduction_policy())
+
+
+class _Defaults(Mapping[str, str]):
+    """The per-type defaults of ``"auto"`` (RULED Q17 / Q40), read from the
+    native policy on first use."""
+
+    def _table(self) -> Mapping[str, str]:
+        return policy()["defaults"]
+
+    def __getitem__(self, key: str) -> str:
+        return self._table()[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._table())
+
+    def __len__(self) -> int:
+        return len(self._table())
+
+
+# The per-type defaults of ``"auto"`` (the native policy's).
+DEFAULTS: Mapping[str, str] = _Defaults()
 
 
 class Route(NamedTuple):
@@ -83,18 +120,31 @@ class Route(NamedTuple):
         return backend in (self.backends if self.auto is None else self.auto)
 
 
-# The routes and the backends their executors run (the native executor's
-# ``reduction`` option, m-lit lit-tir). ``"auto"`` stays on NinjaRS until the
-# loop-induced agreement of the two backends is checked (m-lit lit-cache,
-# which adds TIRust to ``auto``).
-SUMMED = Route(
-    "the summed virtual", frozenset({"ninjars", "tirust"}), frozenset({"ninjars"})
-)
-RESOLVED = Route(
-    "the colour-, spin- and helicity-resolved outputs and selections",
-    frozenset({"ninjars", "tirust"}),
-    frozenset({"ninjars"}),
-)
+def route(key: str) -> Route:
+    """The artifact runtime's route ``key`` ("summed": the summed virtual;
+    "resolved": the colour-, spin- and helicity-resolved outputs and
+    selections) from the native policy: what it serves, the backends its
+    executor runs (the native executor's ``reduction`` option, m-lit lit-tir)
+    and those ``"auto"`` takes there (NinjaRS until the loop-induced
+    agreement of the two backends is checked; m-lit lit-cache adds TIRust in
+    the native policy)."""
+
+    found = policy()["routes"][key]
+    return Route(
+        str(found["serves"]),
+        frozenset(found["backends"]),
+        None if found["auto"] is None else frozenset(found["auto"]),
+    )
+
+
+def __getattr__(name: str) -> Route:
+    # ``SUMMED`` and ``RESOLVED``: the native policy's routes, read on first
+    # use (PEP 562).
+    if name in ("SUMMED", "RESOLVED"):
+        found = route(name.lower())
+        globals()[name] = found
+        return found
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 # The effective backend of the native executor calls of the current context
@@ -171,32 +221,6 @@ def native_backends(native: Any) -> dict[str, frozenset[str]]:
     return out
 
 
-def _unavailable(
-    backend: str,
-    carrier: str,
-    served: Mapping[str, frozenset[str]],
-    admitted: Collection[str],
-    route: Route,
-) -> str | None:
-    """Why ``backend`` cannot serve ``carrier`` on ``route`` (None: it can)."""
-
-    name = NAMES[backend]
-    if backend not in admitted:
-        return (
-            f"the artifact admits {[NAMES[item] for item in sorted(admitted)]} "
-            f"only, not {name}"
-        )
-    if backend not in served:
-        return f"{name} is not built into this native extension" + (
-            " (the 'tir' feature)" if backend == "tirust" else ""
-        )
-    if carrier not in served[backend]:
-        return f"{name} does not serve the {carrier} carrier in this native extension"
-    if backend not in route.backends:
-        return f"{name} is not wired to the executor of {route.serves} in this build"
-    return None
-
-
 def resolve(
     requested: object,
     *,
@@ -213,62 +237,25 @@ def resolve(
     as well."""
 
     from pyamplicol.api.virtual_results import VirtualReduction
+    from pyamplicol.loops.native import load_loop_native
 
     request = reduction_request(requested)
-    if contribution not in DEFAULTS:
-        raise ValueError(f"unknown contribution {contribution!r}")
-    if carrier not in CARRIERS:
-        raise ValueError(f"unknown carrier {carrier!r}")
     served = native_backends(native)
-    allowed = frozenset(BACKENDS if admitted is None else admitted)
-    if request != "auto":
-        why = _unavailable(request, carrier, served, allowed, route)
-        if why is not None:
-            raise ReductionUnavailable(
-                f"reduction {request!r} was requested, but {why}; request "
-                "'auto' or the other backend"
-            )
-        return VirtualReduction(request, request, "requested")
-    default = DEFAULTS[contribution]
-    if allowed == {"tirust"}:
-        # A TIR-only artifact: no NinjaRS fallback exists (m-lit Q18, Q24).
-        default = "tirust"
-    kind = KINDS[contribution]
-    why = _unavailable(default, carrier, served, allowed, route)
-    if (
-        why is None
-        and not route.automatic(default)
-        and allowed != {"tirust"}
-        and _unavailable("ninjars", carrier, served, allowed, route) is None
-    ):
-        # Served on explicit request, not yet by "auto" (``Route.auto``).
-        return VirtualReduction(
-            "auto",
-            "ninjars",
-            f"auto: NinjaRS; {NAMES[default]}, the {kind} default, serves "
-            f"{route.serves} on explicit request until its agreement with "
-            "NinjaRS on loop-induced processes is established",
-        )
-    if why is None:
-        reason = (
-            f"auto: {NAMES[default]}, the {kind} default"
-            if default == DEFAULTS[contribution]
-            else f"auto: {NAMES[default]}, the only backend the artifact admits"
-        )
-        return VirtualReduction("auto", cast(Any, default), reason)
-    fallback = "ninjars"
-    other = _unavailable(fallback, carrier, served, allowed, route)
-    if fallback == default or other is not None:
-        raise ReductionUnavailable(
-            f"no reduction backend serves this {kind} call at the {carrier} "
-            f"carrier: {why}" + ("" if other is None else f"; {other}")
-        )
-    return VirtualReduction(
-        "auto",
-        "ninjars",
-        f"auto: {NAMES[default]}, the {kind} default, is unavailable ({why}); "
-        "NinjaRS serves the call",
+    status, chosen, effective, reason = load_loop_native().reduction_resolve(
+        request,
+        contribution,
+        carrier,
+        {name: sorted(carriers) for name, carriers in served.items()},
+        None if admitted is None else sorted(admitted),
+        route.serves,
+        sorted(route.backends),
+        None if route.auto is None else sorted(route.auto),
     )
+    if status == "unavailable":
+        raise ReductionUnavailable(reason)
+    if status != "ok":
+        raise ValueError(reason)
+    return VirtualReduction(chosen, effective, reason)
 
 
 __all__ = [
@@ -282,7 +269,9 @@ __all__ = [
     "Route",
     "executor_options",
     "native_backends",
+    "policy",
     "prepare",
     "resolve",
+    "route",
     "running",
 ]

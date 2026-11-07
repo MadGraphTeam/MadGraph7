@@ -208,6 +208,7 @@ impl Runtime {
             ..self.correlated_shape()
         };
         let (poles, arithmetic) = (self.poles, self.arithmetic);
+        let reduction = self.reduce_on(reduction_policy::RESOLVED)?;
         let (momenta, scales) = exact_inputs(&inputs, self.shape.external_count)?;
         let points = inputs.point_ids.len();
         let spin_legs: Vec<usize> = inputs.spin_sources.keys().copied().collect();
@@ -217,7 +218,7 @@ impl Runtime {
             Arithmetic::Double => {
                 let found =
                     native.evaluate_columns("correlated", &momenta, &scales, &spins, poles.v2())?;
-                CorrelatedEvaluation::from_columns(inputs, shape, poles, arithmetic, found)?
+                CorrelatedEvaluation::from_columns(inputs, shape, poles, arithmetic, found, &reduction)?
             }
             _ => {
                 let found = native.evaluate_columns_extended(
@@ -228,7 +229,7 @@ impl Runtime {
                     poles.v2(),
                     arithmetic.v2(),
                 )?;
-                CorrelatedEvaluation::from_columns(inputs, shape, poles, arithmetic, found)?
+                CorrelatedEvaluation::from_columns(inputs, shape, poles, arithmetic, found, &reduction)?
             }
         };
         Ok(CorrelatedEvaluation {
@@ -322,6 +323,7 @@ impl CorrelatedEvaluation {
         poles: Poles,
         arithmetic: Arithmetic,
         points: Vec<ColumnPoint<N>>,
+        reduction: &Choice,
     ) -> RusticolResult<Self> {
         let (successful_point_ids, statuses, failures) = statuses_of(&inputs.point_ids, &points);
         let mut born = Complexes::default();
@@ -349,6 +351,7 @@ impl CorrelatedEvaluation {
             &failures,
             poles,
             arithmetic,
+            reduction,
         )?;
         let decimal = (arithmetic != Arithmetic::Double).then(|| DecimalComplexValues {
             arithmetic: arithmetic.name(),

@@ -38,6 +38,12 @@ enum pyamplicol_umami_virtual_v1_output_key {
     PYAMPLICOL_UMAMI_V1_OUT_CORRELATED_BORN = 0x50410004, /* complex pair, history x Born order */
     PYAMPLICOL_UMAMI_V1_OUT_CORRELATED_VIRTUAL = 0x50410005 /* complex pair, history x virtual order x poles */
 };
+/* A loop-induced process (|A_loop|^2; rusticol_virtual_metadata_json names
+ * "contribution_kind": "loop-induced" and "interference": "conj(loop)*loop")
+ * is served by the same function: it has no Born, so the shape's born_orders
+ * is 0 and PYAMPLICOL_UMAMI_V1_OUT_BORN (and OUT_CORRELATED_BORN) are empty
+ * (zero width; a requested Born output is left untouched); OUT_VIRTUAL holds
+ * |A_loop|^2 per loop x loop sector and epsilon power. */
 typedef struct {
     uint32_t resolved; /* 0 inclusive; 1 all saved helicities/colour components */
     const char *r2_strategy; /* NULL inherits the SDK handle */
