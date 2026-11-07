@@ -37,10 +37,13 @@ from __future__ import annotations
 
 import json
 from collections.abc import Collection, Mapping
-from typing import Any, NamedTuple, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 from pyamplicol.api.errors import CompatibilityError
 from pyamplicol.config.models import ReductionBackend, reduction_request
+
+if TYPE_CHECKING:
+    from pyamplicol.api.virtual_results import VirtualReduction
 
 # The backends: the public choices (``config.ReductionBackend``, the one
 # definition; ``config.models.reduction_request`` validates a request)
@@ -138,7 +141,7 @@ def resolve(
     native: Any,
     route: Route,
     admitted: Collection[str] | None = None,
-) -> Any:
+) -> VirtualReduction:
     """The ``VirtualReduction`` of a call on ``route``: the requested
     backend, the effective one at ``carrier`` and the reason (module
     docstring). An explicit request that cannot be served raises
