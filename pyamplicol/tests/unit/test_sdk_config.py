@@ -12,9 +12,9 @@ import subprocess
 import sys
 import threading
 import tomllib
+import types
 from pathlib import Path
 
-import platformdirs
 import pytest
 
 import rusticol_config as config
@@ -378,9 +378,12 @@ def test_default_cache_is_the_platform_user_cache(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.delenv("PYAMPLICOL_CACHE_DIR", raising=False)
-    monkeypatch.setattr(
-        platformdirs, "user_cache_path", lambda name: tmp_path / "platform" / name
-    )
+    # rusticol_config imports platformdirs only when it needs the default;
+    # a stand-in keeps this file importable where the runtime dependencies
+    # are not installed (the source-contracts CI job installs only pytest).
+    platformdirs = types.ModuleType("platformdirs")
+    platformdirs.user_cache_path = lambda name: tmp_path / "platform" / name  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "platformdirs", platformdirs)
     assert config.sdk_cache_root() == tmp_path / "platform" / "pyamplicol" / "sdk"
     monkeypatch.setenv("PYAMPLICOL_CACHE_DIR", "~/override")
     assert config.sdk_cache_root() == Path("~/override").expanduser() / "sdk"
