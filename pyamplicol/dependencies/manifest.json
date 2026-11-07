@@ -11,14 +11,14 @@
       ],
       "url": "https://github.com/ValentinHirschi/symbolica.git",
       "branch": "loop_me_pyamplicol",
-      "revision": "b9eaa735862e7d22d7694a14da02f2498342e29a",
+      "revision": "dfe6bd97b974b1028dc63071ea165136cd2b0ef5",
       "base": {
         "url": "https://github.com/symbolica-dev/symbolica.git",
         "branch": "community",
         "revision": "36cbac3a555d4b93b9601706f1d2f32629770ae6"
       },
       "pull_request": "https://github.com/symbolica-dev/symbolica/pull/163",
-      "note": "community 36cbac3a + the consolidated PR (7 commits); moves to upstream once merged"
+      "note": "community 36cbac3a + the consolidated PR (9 commits); moves to upstream once merged"
     },
     {
       "name": "ninjars",
@@ -29,8 +29,8 @@
       ],
       "url": "https://github.com/alphal00p/ninjars.git",
       "ref": "main",
-      "revision": "6ab0a53e2b9640fb9434bc5c1214e6271d80bad7",
-      "note": "main 1ef7b7ae (b3a29c85 = PR #14, the 0BSD relicence 36e30a49) + the re-pin of its manifests on oneloopmaster a7cf4587 and Symbolica b9eaa735 (no source change); it reaches main through a merge commit, which the coordinator pushes before this pin lands"
+      "revision": "520b220b653d46266e7aa1417a3b941923812118",
+      "note": "main 1ef7b7ae (b3a29c85 = PR #14, the 0BSD relicence 36e30a49) + the re-pin of its manifests on oneloopmaster a7cf4587 and Symbolica b9eaa735 (6ab0a53e, merged as 816715fb) + the re-pin on Symbolica dfe6bd97 (520b220b; no source change); it reaches main through a merge commit, which the coordinator pushes before this pin lands"
     },
     {
       "name": "oneloopmaster",
@@ -56,7 +56,7 @@
       "role": "Python Symbolica (development Community build)",
       "url": "https://github.com/symbolica-dev/symbolica-community.git",
       "revision": "39b556c7d7dcc919f61d125f60ff83f8d49f7ac3",
-      "patch": "[patch.crates-io] symbolica/numerica/graphica -> ValentinHirschi/symbolica b9eaa735862e7d22d7694a14da02f2498342e29a",
+      "patch": "[patch.crates-io] symbolica/numerica/graphica -> ValentinHirschi/symbolica dfe6bd97b974b1028dc63071ea165136cd2b0ef5",
       "release_lock": "PyPI symbolica 3.0.3 (dependencies/release-lock.toml)"
     }
   ]
