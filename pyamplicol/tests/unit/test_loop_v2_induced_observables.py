@@ -20,6 +20,9 @@ Every output is a quadratic form on the point's amplitude vector
 * the helicity-resolved rows and the single-helicity selections sum to the
   total (row LI-O1), each selection equal to its resolved row; the
   amplitude-basis anchors of a row sum to it;
+* binary64 within ten times its estimate of double-double: correlated
+  outputs with the recommended checks, the amplitude-basis anchors with the
+  both-backends check's (``tools/loop_v2_observables_backends.py``);
 * full colour only (no colour-flow selection), the colour axis option is
   loop-induced only, undeclared histories and spin legs are refused.
 """
@@ -727,6 +730,33 @@ def test_correlated_outputs_in_double_double_and_with_estimates(artifacts):
             # binary64 within ten times its own estimate of the DD value.
             assert abs(a - b) <= 10 * estimate.absolute[0].finite, (key, p)
             assert _relative(a, b) <= LAX
+
+
+@pytest.mark.loop_physics
+def test_the_both_backends_checks_cover_the_amplitude_basis_anchors(artifacts):
+    """The binary64 rule of the both-backends check (L6,
+    ``tools/loop_v2_observables_backends.py``) reads the estimates of its
+    ``checks()`` (the rescaled re-test and three generic rotations): every
+    amplitude-basis anchor of u u~ > h g g, at every fixture point, is within
+    ten times its estimate of the double-double value. The numerical-zero
+    anchor amplitude-0 of h11 at point 0 is 14.7 times off the estimate of
+    the recommended checks (one rotation, which moves it by 3 % of its
+    error)."""
+
+    from tools.loop_v2_observables_backends import checks
+
+    name = "li_uux_hgg"
+    runtime = _runtime(artifacts, name)
+    points, scales = _points(name)
+    options = {"mu_r2": scales, "color_resolution": "amplitude-basis"}
+    dd = runtime.evaluate_resolved(points, arithmetic="double-double", **options)
+    checked = runtime.evaluate_resolved(points, stability_checks=checks(), **options)
+    for p, estimates in enumerate(checked.stability):
+        for h, row in enumerate(estimates):
+            for c, estimate in enumerate(row):
+                a = complex(checked.values[p][0][h][c].finite)
+                b = complex(dd.values[p][0][h][c].finite.real)
+                assert abs(a - b) <= 10 * estimate.absolute[0].finite, (p, h, c)
 
 
 @pytest.mark.loop_physics

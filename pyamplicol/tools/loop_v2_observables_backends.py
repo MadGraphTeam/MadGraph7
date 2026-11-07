@@ -21,13 +21,20 @@ carrier (``--arithmetic``: binary64 by default, ``double-double`` or
 
 Every sector and Laurent coefficient (finite part and both poles) of every
 output is compared. In binary64 an entry passes when |N - T| <= 10 max(E_N,
-E_T) (L6: the backends' absolute estimates E of the same entry, with the
-recommended stability checks ``stability.RECOMMENDED_CHECKS``: one generic
-rotation and the rescaled reduction re-test, the O1 rule's estimate; without
-the rescaled re-test no master integral is evaluated twice and the estimate
-misses the masters' own rounding, DESIGN §10.4: at u u~ > h g g's point 1
-the binary64 error of T1.T4 is then 25 times its estimate, 7 times the
-recommended one); in double-double and arbitrary precision when |N - T| <=
+E_T) (L6: the backends' absolute estimates E of the same entry; ``checks()``:
+the rescaled reduction re-test and three generic rotations, the recommended
+configuration ``stability.RECOMMENDED_CHECKS`` with two more rotations).
+Without the rescaled re-test no master integral is evaluated twice and the
+estimate misses the masters' own rounding (DESIGN §10.4): at u u~ > h g g's
+point 1 the binary64 error of T1.T4 is then 25 times its estimate (7 times
+with the re-test). One rotation is one sample of the dressing's rounding,
+which no reduction re-test repeats: against the double-double values (the
+stand-in for an accurate second arm) the recommended checks leave 3 of the
+2322 binary64 entries of the two rows beyond ten times their estimate (14.7
+at u u~ > h g g's numerical-zero anchor amplitude-0 of h11, point 0, which
+the first rotation moves by 3 % of its error; 10.2 at a spin output
+and a g g > h g g anchor), two or three rotations none (at most 7.9 and 7.7
+times); in double-double and arbitrary precision when |N - T| <=
 1e-24 m (L6 after m-lit LIT-TIR-MP), m the largest |coefficient| of the
 output's sector in either arm (``stability.relative``'s metric: a vanishing
 pole is measured against its finite part), without checks (the rule reads
@@ -73,11 +80,24 @@ BACKENDS = ("ninjars", "tirust")
 # and arbitrary precision within 1e-24 of the sector's largest coefficient.
 FACTOR = 10
 RELATIVE = Decimal("1e-24")
+# The binary64 rule's generic rotations (``default_rotation(0..2)``; module
+# docstring), with the rescaled reduction re-test.
+ROTATIONS = 3
 COEFFICIENTS = ("finite", "single_pole", "double_pole")
 
 
 class NotExercised(Exception):
     """A result of the TIRust arm was not reduced by TIRust."""
+
+
+def checks():
+    """The stability checks of the binary64 rule: the recommended
+    configuration (``stability.RECOMMENDED_CHECKS``: the rescaled reduction
+    re-test and ``default_rotation(0)``) with two more generic rotations."""
+
+    from pyamplicol.api import VirtualStabilityChecks
+
+    return VirtualStabilityChecks(ROTATIONS, reduction_direction=True, rescaled=True)
 
 
 def _fixture(name: str) -> dict:
@@ -144,7 +164,7 @@ def _estimates(stability, count: int) -> list:
     return [None] * count if stability is None else list(stability)
 
 
-def _entries(name: str, runtime, backend: str, checks, carrier: dict) -> dict:
+def _entries(name: str, runtime, backend: str, stability, carrier: dict) -> dict:
     """Every observable output of one row on one backend: label -> per
     sector the computed Laurent coefficients with their absolute
     estimates (``_laurents``) per point."""
@@ -155,7 +175,7 @@ def _entries(name: str, runtime, backend: str, checks, carrier: dict) -> dict:
     points = fixture["points"]
     scales = [str(Fraction(mu) ** 2) for mu in fixture["mu_r"]]
     settings = {
-        "stability_checks": checks,
+        "stability_checks": stability,
         "reduction": backend,
         "poles": "all",
         **carrier,
@@ -281,19 +301,11 @@ def main() -> int:
 
     sys.path.insert(0, str(ROOT))
     from pyamplicol import Runtime
-    from pyamplicol.api import VirtualStabilityChecks
     from pyamplicol.loops.v2.reduction import ReductionUnavailable
-    from pyamplicol.loops.v2.stability import RECOMMENDED_CHECKS
     from tests.unit.loop_v2_induced_observables_rows import ROWS
 
     # The estimates of the binary64 rule; the high-precision rule reads none.
-    checks = (
-        VirtualStabilityChecks(
-            RECOMMENDED_CHECKS.rotations, reduction_direction=True, rescaled=True
-        )
-        if binary64
-        else None
-    )
+    stability = checks() if binary64 else None
     rule = (
         "L6: |N - T| <= 10 max(E_N, E_T) (binary64)"
         if binary64
@@ -315,7 +327,7 @@ def main() -> int:
     for name in args.rows or sorted(ROWS):
         runtime = Runtime.load(_artifact(args.work_dir, name, ROWS[name]), process="p")
         try:
-            ninjars = _entries(name, runtime, "ninjars", checks, carrier)
+            ninjars = _entries(name, runtime, "ninjars", stability, carrier)
         except (ReductionUnavailable, NotExercised) as error:
             # The reference arm must run: an error, not a missing TIRust.
             record["error"] = f"NinjaRS arm: {error}"
@@ -323,7 +335,7 @@ def main() -> int:
             print(f"FAIL: the NinjaRS arm does not run: {error}")
             return 1
         try:
-            tirust = _entries(name, runtime, "tirust", checks, carrier)
+            tirust = _entries(name, runtime, "tirust", stability, carrier)
         except (ReductionUnavailable, NotExercised) as error:
             return not_exercised(str(error))
         if all(
