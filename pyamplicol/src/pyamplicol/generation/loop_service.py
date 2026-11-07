@@ -121,15 +121,6 @@ def _feature_blockers(backend, processes):
                 f"{str(run.process.analyze_process_groups)!r})",
             )
         )
-    if run.process.loop_induced == "include":
-        reasons.append(
-            ListedBlocker(
-                "loop-induced-include-pending",
-                "process.loop_induced = 'include' (a mixed multiparticle "
-                "request's Born x virtual and |A_loop|^2 as separate "
-                "contributions) is not served yet",
-            )
-        )
     if run.loop.r2_strategy == "direct":
         reasons.append(
             ListedBlocker(
@@ -882,6 +873,7 @@ def _slice_request(backend, context, member, loop_orders, **fields):
         external_photons=run.loop.external_photons,
         alpha0_conversion=run.loop.alpha0_conversion_parameter,
         alpha0_inverse=run.loop.alpha0_inverse_parameter,
+        reduction=str(run.loop.reduction),
         **fields,
     )
 
@@ -1067,7 +1059,9 @@ def _born_members(backend, context):
     * ``only``: Born-less members only, loop-induced; Born members are
       skipped with the typed ``born-in-loop-induced-mode`` record, and a
       request without a Born-less member is refused with that key.
-    * ``include`` is a configuration refusal (``loop-induced-include-pending``).
+    * ``include``: both kinds, as separate contributions (each concrete
+      process its own, never summed): Born members as Born-interfered
+      virtuals, Born-less members loop-induced (m-lit LIT-API).
 
     A loop-induced member that reaches no loop amplitude (not even an exact
     colour zero, which is served) is skipped with the typed
@@ -1080,11 +1074,6 @@ def _born_members(backend, context):
     from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
 
     policy = str(backend._run_config.process.loop_induced)
-    if policy not in ("auto", "skip", "only"):
-        raise LoopRequestUnsupported(
-            "loop-induced-include-pending",
-            f"process.loop_induced = {policy!r} is not served yet",
-        )
     served: dict[int, tuple[Any, Any, Any]] = {}
     skipped: dict[int, dict[str, str]] = {}
     deferred: list[tuple[int, _Member]] = []

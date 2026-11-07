@@ -650,6 +650,7 @@ def assemble(evaluation: Any) -> None:
         None,
         colour_contraction=getattr(evaluation, "colour_contraction", "direct"),
         poles=evaluation.mode,
+        finiteness=point_finiteness(evaluation),
     )
     budgets(evaluation)
 
@@ -1156,6 +1157,23 @@ def finiteness(evaluation: Any) -> dict:
                 ratio = max(ratio, residue / bound if bound else float("inf"))
         out[key] = ratio
     return out
+
+
+def point_finiteness(evaluation: Any) -> float | None:
+    """The finiteness ratio of a point (the public lane diagnostic's
+    ``finiteness``): the largest ``finiteness`` ratio over its loop orders
+    and rows, when its poles were computed and its term scale is at hand
+    without another reduction (a native point whose executor formed it,
+    ``native_terms``: the stability checks request it); None otherwise.
+    An exact colour zero (an empty amplitude basis) has ratio 0."""
+
+    if width_of(evaluation) == 1:
+        return None
+    if getattr(evaluation, "native_terms", None) is None:
+        # (The Python reference forms its term scale by reducing unit
+        # numerators: only on request, ``finiteness``, ``stability_scale``.)
+        return None
+    return max(finiteness(evaluation).values(), default=0.0)
 
 
 # The user's x10 rule (m-lit Q12): a probe residue passes within ten times

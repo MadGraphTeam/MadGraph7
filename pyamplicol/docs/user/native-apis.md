@@ -194,13 +194,32 @@ The installed SDK is owned by the wheel:
 pyamplicol/_sdk/
   include/rusticol.h
   include/rusticol.hpp
+  include/rusticol_virtual.h
+  include/rusticol_virtual.hpp
+  include/umami.h
+  include/pyamplicol_umami_virtual_v1.h
   rust/rusticol.rs
   fortran/rusticol.f90
+  fortran/rusticol_virtual.f90
+  umami/pyamplicol_umami_virtual_v1.c
+  umami/UMAMI_LICENSE
   lib/librusticol_capi.a
+  lib/libmpc-pyamplicol.so.3        (Linux distribution wheels)
+  lib/libmpfr-pyamplicol.so.6
+  lib/libgmp-pyamplicol.so.10
   config.py
   metadata.json
   link.json
 ```
+
+The archive holds the tree and one-loop C ABIs (`rusticol_virtual.h`
+included). Distribution wheels link GMP, MPFR and MPC dynamically: the three
+shared libraries ship next to the archive (on macOS `libmpc.3.dylib`,
+`libmpfr.6.dylib` and `libgmp.10.dylib` with `@rpath` install names), and
+`link.json` lists them in link order, so `rusticol-config --libs` names them
+by path with a run path to `lib/` (see
+[GMP, MPFR and MPC in the wheels](installation.md#gmp-mpfr-and-mpc-in-the-wheels)).
+A source build links them statically and ships only the archive.
 
 `rusticol-config` validates this SDK and emits correctly quoted paths and
 target-specific link arguments:
