@@ -90,9 +90,10 @@ def test_cards_read_the_fixture(tmp_path):
     assert card["model"] == {"source": "loop_sm", "restriction": "no_b_mass"}
     assert card["process"]["max_coupling_orders"] == {"QED": 1}
     assert card["process"]["loop_coupling_orders"] == ["QCD"]
-    assert card["loop"]["preparation"]["fixed_parameters"] == data["scheme_data"][
-        "fixed_parameters"
-    ]
+    assert (
+        card["loop"]["preparation"]["fixed_parameters"]
+        == data["scheme_data"]["fixed_parameters"]
+    )
     _, card = parsed("li_gg_aa_nf5")
     assert card["generation"]["particle_veto"] == ["t"]
     _, card = parsed("li_gg_h_tb")
@@ -126,13 +127,17 @@ def test_the_identity_transform_is_exact(name):
         for a, b in zip(exact, image, strict=True):
             assert square(a) == square(b)
         for k in range(4):
-            assert sum(p[k] for p in image[:initial]) == sum(p[k] for p in image[initial:])
+            assert sum(p[k] for p in image[:initial]) == sum(
+                p[k] for p in image[initial:]
+            )
 
 
 def _point(value, error, *, status="success", finiteness=1e-15, pole=2e-15):
     return {
         "status": status,
-        "detail": "" if status == "success" else "box [0, 1, 2, 3] refused at conditioning 1.6e-5",
+        "detail": ""
+        if status == "success"
+        else "box [0, 1, 2, 3] refused at conditioning 1.6e-5",
         "reduction": None,
         "finiteness": finiteness if status == "success" else None,
         "values": None
@@ -165,9 +170,11 @@ def _record(name):
         "points": [_point(near[0] * (1 + 2e-13), None)]
         + [_point(0, None, status="failed")] * (count - 1)
     }
-    t64c = {"points": [_point(near[0] * (1 + 2e-13), 1e-12 * v[0])] + t64["points"][1:]}
+    t64c = {"points": [_point(near[0] * (1 + 2e-13), 1e-12 * v[0]), *t64["points"][1:]]}
     dd = {"points": [_point(x, 1e-30 * x, finiteness=1e-31, pole=1e-31) for x in v]}
-    refused = {"refused": "ReductionUnavailable: TIRust does not serve the double-double carrier"}
+    refused = {
+        "refused": "ReductionUnavailable: TIRust does not serve the double-double carrier"
+    }
     return {
         "fixture": name,
         "generation": {
@@ -248,7 +255,9 @@ def test_lit_json_is_keyed_by_the_registry_and_read_by_the_report(entries, tmp_p
     assert "TIRust serves 1/3" in row["note"]
     assert out["rows"]["gg_zz"]["status"] == "not run"
     assert "LI-24" in out["ids"] and "LI-A7" in out["ids"]
-    path = lm.WT / "docs" / "performance_reports" / "loop" / "scripts" / "build_summary.py"
+    path = (
+        lm.WT / "docs" / "performance_reports" / "loop" / "scripts" / "build_summary.py"
+    )
     spec = importlib.util.spec_from_file_location("build_summary_lit", path)
     builder = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(builder)
@@ -257,7 +266,7 @@ def test_lit_json_is_keyed_by_the_registry_and_read_by_the_report(entries, tmp_p
     cells = builder._li_cells(registry["gg_hh"], False, files, {}, None, {}, "tirust")
     validation = cells["validation"]
     assert validation["status"] == "partial" and validation["points"] == 3
-    assert [r["key"] for r in validation["references"]][0] in row["references"]
+    assert next(r["key"] for r in validation["references"]) in row["references"]
 
 
 def test_stress_fixtures_are_exact_and_current(entries):
@@ -303,3 +312,109 @@ def test_high_precision_backend_arm_is_ready_for_lit_tir_mp(entries):
         point["values"][0]["finite"] = repr(value * (1 + 1e-9))
     record["arms"]["tirust/double-double/checked"] = moved
     assert lm.judge(record, entry)["L6"]["double-double"]["status"] == "pass (lax)"
+
+
+def _legs(*spec):
+    return [{"flavour": f, "incoming": i, "fermion": fe} for f, i, fe in spec]
+
+
+def test_crossing_maps_points_and_identity(entries):
+    """C1 (the crossing of LI-26's runs): the maps are fixed by the crossed
+    legs (identical-leg relabellings counted once), crossed points stay exact
+    and momentum conserving with negative-energy crossed legs, and the
+    identity holds with (-1)^(crossed fermions) and the fixtures' averages; a
+    crossing whose crossed values vanish everywhere is partial with its
+    reason, a mismatch beyond ten times the estimate is a miss. data/lit.json
+    keys it 'crossing': LI-C1 stays the complex-mass-scheme row."""
+
+    gg_hg = _legs(
+        (21, True, False), (21, True, False), (25, False, False), (21, False, False)
+    )
+    ug_hu = _legs(
+        (-2, True, True), (21, True, False), (25, False, False), (2, False, True)
+    )
+    uux_hg = _legs(
+        (-2, True, True), (2, True, True), (25, False, False), (21, False, False)
+    )
+    assert len(lm.crossing_maps(gg_hg, gg_hg)) == 2
+    assert lm.crossing_maps(ug_hu, ug_hu) == [] and lm.crossing_maps(gg_hg, ug_hu) == []
+    (mapping,) = lm.crossing_maps(uux_hg, ug_hu)
+    assert mapping == [[0, 1], [3, -1], [2, 1], [1, -1]]
+    data = lm.fixture("li_ug_hu")
+    for point in lm.crossed_points(data["points"], mapping):
+        exact = [[Fraction(c) for c in p] for p in point]
+        assert exact[1][0] < 0 and exact[3][0] < 0
+        for k in range(4):
+            assert exact[0][k] + exact[1][k] == exact[2][k] + exact[3][k]
+
+    def point(value, error):
+        if value:
+            return _point(value, error * value)
+        zero = _point(1.0, error)  # an exact zero with an absolute estimate
+        zero["values"][0]["finite"] = "0.0"
+        return zero
+
+    def arms(values, scale=1.0):
+        return {
+            "double": {"points": [point(x * scale, 1e-12) for x in values]},
+            "double-double": {"points": [point(x * scale, 1e-30) for x in values]},
+        }
+
+    records = {n: _record(n) for n in ("li_gg_hg", "li_ug_hu")}
+    near = [
+        float(p["values"][0]["finite"])
+        for p in records["li_gg_hg"]["arms"]["ninjars/double/checked"]["points"]
+    ]
+    exact = [
+        float(p["values"][0]["finite"])
+        for p in records["li_gg_hg"]["arms"]["ninjars/double-double/checked"]["points"]
+    ]
+    boson = lm.crossing_maps(gg_hg, gg_hg)[0]
+    result = {
+        "crossings": [
+            {
+                "target": "li_gg_hg",
+                "source": "li_gg_hg",
+                "map": boson,
+                "crossed_fermions": 0,
+                "points": data["points"],
+                "arms": {
+                    "double": arms(near)["double"],
+                    "double-double": arms(exact)["double-double"],
+                },
+            },
+            {
+                "target": "li_uux_hg",
+                "source": "li_ug_hu",
+                "map": mapping,
+                "crossed_fermions": 1,
+                "points": data["points"],
+                "arms": arms([0.0] * 3),
+            },
+            {
+                "target": "li_gg_hg",
+                "source": "li_gg_hg",
+                "map": lm.crossing_maps(gg_hg, gg_hg)[1],
+                "crossed_fermions": 0,
+                "points": data["points"],
+                "arms": arms(near, 1.01),
+            },
+        ]
+    }
+    judged = lm.judge_crossing(result, records)
+    statuses = [r["status"] for r in judged["runs"].values()]
+    assert statuses == ["pass", "partial", "estimate miss"]
+    first = next(iter(judged["runs"].values()))
+    assert first["double_double_max_relative"] == 0.0
+    assert "exactly zero" in list(judged["runs"].values())[1]["reason"]
+    assert judged["status"] == "estimate miss"
+    cms = {e["fixture"]: e for e in entries}["li_gg_aa_cms"]
+    assert "LI-C1" in cms["ids"]
+    out = lm.lit(
+        {**records, "li_gg_aa_cms": _record("li_gg_aa_cms")},
+        entries,
+        "test",
+        crossing_result=result,
+    )
+    assert list(out["ids"]["LI-C1"]["runs"]) == ["li_gg_aa_cms"]
+    assert out["ids"][lm.CROSSING_ID]["status"] == "estimate miss"

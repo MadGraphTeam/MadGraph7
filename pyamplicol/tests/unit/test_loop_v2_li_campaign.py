@@ -67,3 +67,24 @@ def test_heavy_top_limit(target, tmp_path_factory, loop_native):
     if "L9" in findings.get(target["fixture"], {}):
         pytest.xfail(findings[target["fixture"]]["L9"][:200])
     assert result["status"] == "pass", result
+
+
+def test_crossing_identity(tmp_path_factory, loop_native):
+    """C1: the crossing of LI-26's runs (``li_manifest.crossing``): every
+    crossing passes or is recorded partial with its reason (crossed values
+    exactly zero at a negative-energy fermion leg), none fails or misses."""
+
+    work = _work(tmp_path_factory)
+    records = {}
+    for name, entry in ENTRIES.items():
+        if lm.CROSSING_ROW not in entry["ids"]:
+            continue
+        path = work / name / "record.json"
+        record = json.loads(path.read_text()) if path.is_file() else {}
+        if not record.get("complete"):
+            record = lm.evaluate(name, work, ap=False, identity=False)
+        records[name] = record
+    judged = lm.judge_crossing(lm.crossing(work, list(ENTRIES.values())), records)
+    statuses = [r["status"] for r in judged["runs"].values()]
+    assert "pass" in statuses, judged
+    assert not {"fail", "estimate miss", "not run"} & set(statuses), judged
