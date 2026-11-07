@@ -363,9 +363,9 @@ def main() -> int:
             record.setdefault("tirust_failed", {})[name] = failures
             print(f"{name}: TIRust failed {len(failures)} outputs' points closed")
         if not tirust:
-            return not_exercised(
-                f"{name}: TIRust failed every point closed ({len(failures)} outputs)"
-            )
+            # Nothing to compare on this row (the exit code says so below).
+            print(f"{name}: TIRust failed every point closed ({len(failures)} outputs)")
+            continue
         if all(
             [[parts for _n, parts, _e in sector] for sector in tirust[label]]
             == [[parts for _n, parts, _e in sector] for sector in ninjars[label]]
