@@ -113,6 +113,11 @@ def correlator_matrices(basis: Any, histories: Sequence[Any]) -> dict[str, Matri
     from pyamplicol.color.correlator_matrices import literal_correlator_matrices
 
     histories = [history for history in histories if history.id != INCLUSIVE]
+    if not histories:
+        # Only |A|^2 itself (no correlator declared): no matrix, so a stored
+        # amplitude basis without its legs (an artifact without correlator
+        # matrices) needs none.
+        return {}
     matrices = literal_correlator_matrices(basis.legs, basis.tensors, histories)
     return {
         history.id: matrix for history, matrix in zip(histories, matrices, strict=True)

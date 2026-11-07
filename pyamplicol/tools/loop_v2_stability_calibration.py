@@ -44,9 +44,25 @@ Since |A|^2 of an integrated zero (g g > z, Landau-Yang) is itself rounding,
 sector and Laurent coefficient (the user's x10 rule, DESIGN §10.4), records
 |value| / E and E / S (the opt-in rescue metric "scale", PLAN §2.a.8).
 
+TIR frames (m-lit lit-stab-t, PLAN §2.b.6, the T7 light re-run): ``--reduction
+tirust`` reduces the checked evaluations with TIRust in its shipped default
+(its frames: the reduction-direction check is the cyclic rotation by one with
+the origin shift, the rescaled one adds x = 7/10); the truth stays NinjaRS at
+Float(256) on the same exact points (DECISIONS 2026-11-07 19:49 / 21:39: exact
+rational points, consistent inputs). ``--cross-backend`` adds the
+cross-backend check (``stability.CROSS``: the evaluation on the other backend)
+to the checked configuration and times the configuration without it once
+more (``<carrier>-nocross``: the cost of the check; its virtual must equal
+the checked one bitwise). A point the backend fails closed is recorded with
+its reason; ``report`` gives the served fraction and the reasons per row, and
+per point the check whose budget carries the estimate at its worst entry.
+``--truth-from DIR`` reuses the truth of an earlier run of the same points
+(the point must be identical).
+
 Usage:
     python tools/loop_v2_stability_calibration.py run PROCESS START STOP OUTDIR
         [--batch N] [--double-double] [--model-cache DIR] [--ufo PATH]
+        [--reduction ninjars|tirust] [--cross-backend] [--truth-from DIR]
     python tools/loop_v2_stability_calibration.py report OUTDIR [--output PATH]
 """
 
@@ -86,6 +102,7 @@ DELTA_R_MIN = 0.4
 # Float(256): the native carrier runs at the digits plus 20 guard digits.
 TRUTH_DIGITS = 57
 RESCALED_SUFFIX = "-rescaled"
+NOCROSS_SUFFIX = "-nocross"
 CARRIERS = ("double", "double-double")
 LAURENT = ("finite", "single_pole", "double_pole")
 
@@ -451,27 +468,37 @@ def _record(result, seconds: float) -> dict[str, Any]:
             scale=_budgets(estimate.scale),
             roundoff=estimate.roundoff,
         )
+        if estimate.not_run:
+            record["not_run"] = dict(estimate.not_run)
     return record
 
 
-def _evaluate(executor, points, precision, checks, parameters=None):
-    """Evaluate a batch; a failed point is recorded with its reasons."""
+def _evaluate(executor, points, precision, checks, parameters=None, reduction=None):
+    """Evaluate a batch on ``reduction`` (None: NinjaRS); a failed point is
+    recorded with its reasons, every point when the backend refuses the
+    carrier or the process typed."""
 
+    from pyamplicol.api.errors import ReductionUnavailable
     from pyamplicol.loops.v2.plan_export import FailedPoints
+    from pyamplicol.loops.v2.reduction import running
 
     scales = [SCALE_SQUARED] * len(points)
     start = time.perf_counter()
     failures = {}
     try:
-        results = executor.evaluate(
-            points,
-            scales,
-            parameters=PARAMETERS if parameters is None else parameters,
-            precision=precision,
-            stability=checks,
-        )
+        with running(reduction):
+            results = executor.evaluate(
+                points,
+                scales,
+                parameters=PARAMETERS if parameters is None else parameters,
+                precision=precision,
+                stability=checks,
+            )
     except FailedPoints as failed:
         results, failures = failed.results, failed.failures
+    except ReductionUnavailable as error:
+        results = [None] * len(points)
+        failures = {index: [f"refused: {error}"] for index in range(len(points))}
     seconds = (time.perf_counter() - start) / len(points)
     return [
         {"failure": "; ".join(failures[index])}
@@ -499,7 +526,8 @@ def run(options) -> int:
         executor = NativeExecutor(build_slice(name, compiled), threads=options.threads)
         parameters = PARAMETERS
         sample = sample_point
-    checks = StabilityChecks(rotations(), True)
+    cross = options.cross_backend
+    checks = StabilityChecks(rotations(), True, cross_backend=cross)
     # The rescaled reduction check is a second evaluation (one reduction
     # check per evaluation); ``report`` merges its budget by point.
     rescaled = StabilityChecks((), True, rescaled=True)
@@ -511,9 +539,17 @@ def run(options) -> int:
         for carrier, precision in precisions
     ]
     suffix = ".rescaled" if options.rescaled_only else ""
+    if options.reduction != "ninjars":
+        suffix += f".{options.reduction}"
+    truths = _truths(options.truth_from, name) if options.truth_from else {}
     if not options.rescaled_only:
         carriers = [(carrier, precision, checks) for carrier, precision in precisions]
         carriers += [(f"{c}{RESCALED_SUFFIX}", p, rescaled) for c, p in precisions]
+        if cross:
+            # The cost of the cross-backend check (and its virtual: bitwise
+            # the checked one's).
+            plain = StabilityChecks(rotations(), True)
+            carriers += [(f"{c}{NOCROSS_SUFFIX}", p, plain) for c, p in precisions]
         carriers.append(("truth", Precision.arbitrary(TRUTH_DIGITS), None))
     options.outdir.mkdir(parents=True, exist_ok=True)
     path = options.outdir / f"{name}.{options.start}-{options.stop}{suffix}.jsonl"
@@ -525,11 +561,25 @@ def run(options) -> int:
         for first in range(0, len(todo), options.batch):
             indices = todo[first : first + options.batch]
             points = [[[str(x) for x in p] for p in sample(name, i)] for i in indices]
-            records = [{"process": name, "index": i} for i in indices]
+            records = [
+                {"process": name, "index": i, "reduction": options.reduction}
+                for i in indices
+            ]
             for carrier, precision, configured in carriers:
+                # The truth is NinjaRS at Float(256) on the same exact points.
+                backend = None if carrier == "truth" else options.reduction
+                if carrier == "truth" and all(
+                    truths.get(i, {}).get("point") == p
+                    for i, p in zip(indices, points, strict=True)
+                ):
+                    for record in records:
+                        record[carrier] = truths[record["index"]]["truth"]
+                    continue
                 for record, value in zip(
                     records,
-                    _evaluate(executor, points, precision, configured, parameters),
+                    _evaluate(
+                        executor, points, precision, configured, parameters, backend
+                    ),
                     strict=True,
                 ):
                     record[carrier] = value
@@ -539,6 +589,20 @@ def run(options) -> int:
                 out.write(json.dumps(record) + "\n")
             out.flush()
     return 0
+
+
+def _truths(directory: Path, name: str) -> dict[int, dict[str, Any]]:
+    """The truth and point of each index of ``name`` recorded in
+    ``directory`` (``--truth-from``)."""
+
+    out = {}
+    for path in sorted(directory.glob(f"{name}.*.jsonl")):
+        for line in path.read_text().splitlines():
+            record = json.loads(line)
+            truth = record.get("truth")
+            if truth is not None and "failure" not in truth and "point" in record:
+                out[record["index"]] = {"truth": truth, "point": record["point"]}
+    return out
 
 
 # ------------------------------------------------------------------ report
@@ -704,7 +768,60 @@ def _point_report(record, carrier, truth):
             _largest_ratio(estimate.absolute, scale),
         )
     raw = {name: stability.relative(exact_floats, b) for name, b in budgets.items()}
-    return out, raw
+    return out, raw, _carrying(errors, budgets, scale, data["roundoff"])
+
+
+def _carrying(errors, budgets, scale, roundoff) -> str:
+    """The check that carries the estimate of every check (one reduction
+    frame: the rescaled one when it ran) at the point's worst entry (the
+    sector and Laurent coefficient of the largest error / E): the largest
+    term of E there, "rotation" for the rotations' maximum, "floor" for the
+    floor (lit-tir finding (B): report per row which frame carries it)."""
+
+    from pyamplicol.loops.v2 import stability
+
+    frames = [name for name in budgets if name in stability.FRAMES]
+    dropped = set(frames[:-1]) if stability.RESCALED not in frames else set(frames)
+    dropped.discard(stability.RESCALED)
+    names = [name for name in budgets if name not in dropped]
+    worst, carrier = -1.0, "floor"
+    for sector, error in errors.items():
+        for k, value in enumerate(error.coefficients):
+            terms = {
+                "floor": stability.FLOOR_UNITS
+                * roundoff
+                * abs(scale[sector].coefficients[k])
+            }
+            rotations = [
+                abs(budgets[n][sector].coefficients[k])
+                for n in names
+                if n not in stability.ADDITIVE
+            ]
+            if rotations:
+                terms["rotation"] = stability.SAFETY * max(rotations)
+            for n in names:
+                if n in stability.ADDITIVE:
+                    terms[n] = stability.SAFETY * abs(
+                        budgets[n][sector].coefficients[k]
+                    )
+            total = sum(terms.values())
+            ratio = value / total if total else (math.inf if value else 0.0)
+            if ratio > worst:
+                worst, carrier = ratio, max(terms, key=terms.get)
+    return carrier
+
+
+def _reasons(reasons) -> dict[str, int]:
+    """Failure reasons counted by their text without numbers (a row's
+    refusal classes: gates, capability, ...)."""
+
+    import re
+
+    counted: dict[str, int] = defaultdict(int)
+    for reason in reasons:
+        key = re.sub(r"[-+]?\d[\d.e+-]*", "#", str(reason))[:160]
+        counted[key] += 1
+    return dict(sorted(counted.items(), key=lambda item: -item[1])[:12])
 
 
 def report(options) -> int:
@@ -717,8 +834,13 @@ def report(options) -> int:
     rows: dict[tuple[str, str], list] = defaultdict(list)
     failures: dict[str, list] = defaultdict(list)
     seconds: dict[tuple[str, str], list] = defaultdict(list)
+    plain: dict[tuple[str, str], list] = defaultdict(list)
+    bitwise: dict[tuple[str, str], list] = defaultdict(list)
+    not_run: dict[tuple[str, str], list] = defaultdict(list)
+    backends: set[str] = set()
     for record in _records(options.outdir):
         name = record["process"]
+        backends.add(record.get("reduction", "ninjars"))
         truth = record["truth"]
         if "failure" in truth:
             failures[name].append((record["index"], truth["failure"]))
@@ -734,12 +856,25 @@ def report(options) -> int:
                 _point_report(record, carrier, truth["virtual"])
             )
             seconds[(name, carrier)].append(data["seconds"])
+            for check, reason in data.get("not_run", {}).items():
+                not_run[(name, carrier)].append((record["index"], check, reason))
+            other = record.get(f"{carrier}{NOCROSS_SUFFIX}")
+            if other and "failure" not in other:
+                plain[(name, carrier)].append(other["seconds"])
+                bitwise[(name, carrier)].append(other["virtual"] == data["virtual"])
     payload: dict[str, Any] = {
         "safety": stability.SAFETY,
         "floor_units": stability.FLOOR_UNITS,
         "truth_bits": 256,
+        # The backend of the checked evaluations (the truth: NinjaRS).
+        "reduction": sorted(backends) if len(backends) != 1 else next(iter(backends)),
         "processes": {},
     }
+    # A row the backend serves no point of still reports its refusals.
+    for key in failures:
+        name, _, carrier = key.partition(" ")
+        if carrier in CARRIERS and (name, carrier) not in rows:
+            rows[(name, carrier)] = []
     for (name, carrier), points in sorted(rows.items()):
         configurations = {}
         names_seen = sorted({names for p in points for names in p[0]}, key=len)
@@ -788,15 +923,44 @@ def report(options) -> int:
                 / len(pairs),
             }
         errors = [p[0][next(iter(p[0]))][0] for p in points]
-        payload["processes"].setdefault(name, {})[carrier] = {
+        failed = failures.get(f"{name} {carrier}", [])
+        entry = {
+            # No served point: nothing calibrated (R6: waits on the package
+            # that serves the row), never a vacuous pass.
+            **({} if points else {"status": "WAITS ON lit-tir-mp"}),
             "points": len(points),
             "failed_truth": len(failures.get(name, [])),
-            "failed": len(failures.get(f"{name} {carrier}", [])),
+            "failed": len(failed),
+            "served_fraction": len(points) / (len(points) + len(failed)),
+            "failure_reasons": _reasons(reason for _, reason in failed),
             "seconds_per_point": _quantiles(seconds[(name, carrier)]),
             "true_relative_error": _quantiles(errors),
             "configurations": configurations,
             "checks": raw,
+            # The check whose term carries the estimate of every check at
+            # each point's worst entry (``_carrying``).
+            "carried_by": dict(
+                sorted(
+                    (c, sum(p[2] == c for p in points)) for c in {p[2] for p in points}
+                )
+            ),
         }
+        if not_run.get((name, carrier)):
+            entry["not_run"] = {
+                "points": len(not_run[(name, carrier)]),
+                "reasons": _reasons(r for _, _, r in not_run[(name, carrier)]),
+            }
+        if plain.get((name, carrier)):
+            # The cost of the cross-backend check: the checked evaluation
+            # with it against the same without it (one more evaluation on
+            # the other backend), and its virtual bitwise unchanged.
+            entry["cross_backend_cost"] = {
+                "seconds_with": _quantiles(seconds[(name, carrier)]),
+                "seconds_without": _quantiles(plain[(name, carrier)]),
+                "virtual_bitwise": sum(bitwise[(name, carrier)]),
+                "compared": len(bitwise[(name, carrier)]),
+            }
+        payload["processes"].setdefault(name, {})[carrier] = entry
     payload["failures"] = {k: v[:20] for k, v in failures.items()}
     text = json.dumps(payload, indent=1) + "\n"
     if options.output:
@@ -821,6 +985,22 @@ def main(argv: list[str] | None = None) -> int:
         "--rescaled-only",
         action="store_true",
         help="only the rescaled reduction check (a supplement to a finished run)",
+    )
+    runner.add_argument(
+        "--reduction",
+        choices=("ninjars", "tirust"),
+        default="ninjars",
+        help="the reduction backend of the checked evaluations (truth: NinjaRS)",
+    )
+    runner.add_argument(
+        "--cross-backend",
+        action="store_true",
+        help="add the cross-backend check (and time the checks without it)",
+    )
+    runner.add_argument(
+        "--truth-from",
+        type=Path,
+        help="reuse the truth of an earlier run's identical points",
     )
     runner.add_argument("--ufo", type=Path, default=UFO)
     runner.add_argument(
