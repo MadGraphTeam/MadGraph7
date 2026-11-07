@@ -141,7 +141,7 @@ fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::invalid_argument(format!("plan v4 runtime: {}", message.into()))
 }
 
-type Orders = Vec<(String, i64)>;
+pub type Orders = Vec<(String, i64)>;
 
 /// Coupling orders compared as sets of (name, power) with zero powers dropped.
 fn canonical(orders: &[(String, i64)]) -> Orders {
@@ -1293,7 +1293,7 @@ impl V2Runtime {
     /// zero, by colour algebra alone): whether the whole request is an exact
     /// colour zero and its exact colour-zero loop orders; none for a
     /// Born-interfered process.
-    pub fn colour_zero(&self) -> Option<(bool, Vec<Vec<(String, i64)>>)> {
+    pub fn colour_zero(&self) -> Option<(bool, Vec<Orders>)> {
         self.induced.as_ref().map(|induced| {
             (
                 induced.record.colour_zero,

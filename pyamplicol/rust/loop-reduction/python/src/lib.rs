@@ -20,8 +20,8 @@ mod v2_seeds;
 use batch::NativeBatch;
 
 use pyo3::{exceptions::PyValueError, prelude::*, types::PyBytes};
-use std::collections::{BTreeMap, BTreeSet};
 use rusticol_loop_reduction::Complex;
+use std::collections::{BTreeMap, BTreeSet};
 use symbolica::{
     domains::float::{DoubleFloat, Float},
     domains::rational::Rational,
@@ -159,7 +159,9 @@ fn reduction_resolve(
         &route,
     ) {
         Ok(choice) => ("ok", choice.requested, choice.effective, choice.reason),
-        Err(Refusal::Unavailable(message)) => ("unavailable", String::new(), String::new(), message),
+        Err(Refusal::Unavailable(message)) => {
+            ("unavailable", String::new(), String::new(), message)
+        }
         Err(Refusal::Invalid(message)) => ("invalid", String::new(), String::new(), message),
     }
 }

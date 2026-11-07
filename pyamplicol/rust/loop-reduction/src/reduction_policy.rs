@@ -73,7 +73,10 @@ pub struct Route {
 impl Route {
     /// Whether `"auto"` may take `backend` on this route.
     pub fn automatic(&self, backend: &str) -> bool {
-        self.auto.as_ref().unwrap_or(&self.backends).contains(backend)
+        self.auto
+            .as_ref()
+            .unwrap_or(&self.backends)
+            .contains(backend)
     }
 }
 
@@ -387,11 +390,18 @@ mod tests {
         assert_eq!(found.effective, "tirust");
         assert_eq!(found.reason, "auto: TIRust, the loop-induced default");
         let found = resolve("auto", "loop-induced", "double-double", &tir, None, &every).unwrap();
-        assert!(found.reason.contains("does not serve the double-double carrier"));
+        assert!(
+            found
+                .reason
+                .contains("does not serve the double-double carrier")
+        );
         let only = set(&["tirust"]);
         let found = resolve("auto", "virtual", "double", &tir, Some(&only), &every).unwrap();
         assert_eq!(found.effective, "tirust");
-        assert_eq!(found.reason, "auto: TIRust, the only backend the artifact admits");
+        assert_eq!(
+            found.reason,
+            "auto: TIRust, the only backend the artifact admits"
+        );
         assert!(matches!(
             resolve("ninjars", "virtual", "double", &tir, Some(&only), &every),
             Err(Refusal::Unavailable(message)) if message.contains("the artifact admits ['TIRust'] only")
@@ -410,7 +420,11 @@ mod tests {
             auto: None,
         };
         let found = resolve("auto", "loop-induced", "double", &tir, None, &wired).unwrap();
-        assert!(found.reason.contains("not wired to the executor of a NinjaRS route"));
+        assert!(
+            found
+                .reason
+                .contains("not wired to the executor of a NinjaRS route")
+        );
     }
 
     #[test]
@@ -418,7 +432,10 @@ mod tests {
         let record = policy_json();
         assert_eq!(record["defaults"]["loop-induced"], "tirust");
         assert_eq!(record["defaults"]["virtual"], "ninjars");
-        assert_eq!(record["routes"][SUMMED]["auto"], serde_json::json!(["ninjars"]));
+        assert_eq!(
+            record["routes"][SUMMED]["auto"],
+            serde_json::json!(["ninjars"])
+        );
         assert_eq!(
             record["routes"][RESOLVED]["backends"],
             serde_json::json!(["ninjars", "tirust"])

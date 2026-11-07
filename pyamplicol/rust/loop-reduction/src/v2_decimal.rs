@@ -447,10 +447,13 @@ impl Arith for DecimalArith {
 /// average. `metric` is `G` row-major (`size²` cells). Binary64 squares with
 /// `rusticol_core::loop_v2::interference::square_amplitudes` (Python's
 /// `induced.native_square`).
+/// One amplitude vector: per basis element t its Laurent coefficients.
+pub type AmplitudeVector<N> = Vec<Vec<C<N>>>;
+
 #[allow(clippy::too_many_arguments)]
 pub fn square_amplitudes_python<A: Arith>(
     arith: &A,
-    vectors: &[Option<Vec<Vec<C<A::N>>>>],
+    vectors: &[Option<AmplitudeVector<A::N>>],
     rows: usize,
     size: usize,
     width: usize,
@@ -467,7 +470,8 @@ pub fn square_amplitudes_python<A: Arith>(
         for &(left, right) in sector {
             let weight = arith.int(if left == right { 1 } else { 2 });
             for row in 0..rows {
-                let (Some(a), Some(b)) = (&vectors[left * rows + row], &vectors[right * rows + row])
+                let (Some(a), Some(b)) =
+                    (&vectors[left * rows + row], &vectors[right * rows + row])
                 else {
                     continue;
                 };
@@ -478,16 +482,29 @@ pub fn square_amplitudes_python<A: Arith>(
                         for (t, left_cell) in a.iter().enumerate().take(size) {
                             let mut inner = zero.clone();
                             for (u, right_cell) in b.iter().enumerate().take(size) {
-                                inner = cadd(arith, &inner, &cmul(arith, &metric[t * size + u], &right_cell[j]));
+                                inner = cadd(
+                                    arith,
+                                    &inner,
+                                    &cmul(arith, &metric[t * size + u], &right_cell[j]),
+                                );
                             }
-                            total = cadd(arith, &total, &cmul(arith, &conj(arith, &left_cell[i]), &inner));
+                            total = cadd(
+                                arith,
+                                &total,
+                                &cmul(arith, &conj(arith, &left_cell[i]), &inner),
+                            );
                         }
                     }
                     *slot = arith.add(slot, &arith.mul(&weight, &total.re));
                 }
             }
         }
-        out.push(totals.iter().map(|value| arith.div(value, &divisor)).collect());
+        out.push(
+            totals
+                .iter()
+                .map(|value| arith.div(value, &divisor))
+                .collect(),
+        );
     }
     out
 }
@@ -548,26 +565,49 @@ mod tests {
             (0..2)
                 .map(|t| {
                     (0..3)
-                        .map(|k| c(seed + 0.1 * t as f64 - 0.37 * k as f64, 0.3 - seed * k as f64))
+                        .map(|k| {
+                            c(
+                                seed + 0.1 * t as f64 - 0.37 * k as f64,
+                                0.3 - seed * k as f64,
+                            )
+                        })
                         .collect()
                 })
                 .collect()
         };
-        let vectors: Vec<Option<Vec<Vec<C<f64>>>>> =
-            [0.7, -1.3, 2.1, 0.45].iter().map(|s| Some(vector(*s))).collect();
-        let metric = [c(8.0 / 3.0, 0.0), c(-1.0 / 3.0, 0.0), c(-1.0 / 3.0, 0.0), c(8.0 / 3.0, 0.0)];
+        let vectors: Vec<Option<Vec<Vec<C<f64>>>>> = [0.7, -1.3, 2.1, 0.45]
+            .iter()
+            .map(|s| Some(vector(*s)))
+            .collect();
+        let metric = [
+            c(8.0 / 3.0, 0.0),
+            c(-1.0 / 3.0, 0.0),
+            c(-1.0 / 3.0, 0.0),
+            c(8.0 / 3.0, 0.0),
+        ];
         let pairs = vec![vec![(0, 0)], vec![(0, 1), (1, 1)]];
         let python = square_amplitudes_python(&Binary64, &vectors, 2, 2, 3, &metric, &pairs, 256);
         let dense: Vec<Vec<Complex<f64>>> = vectors
             .iter()
-            .flat_map(|v| v.as_ref().unwrap().iter().map(|cell| {
-                cell.iter().map(|z| Complex::new(z.re, z.im)).collect::<Vec<_>>()
-            }))
+            .flat_map(|v| {
+                v.as_ref().unwrap().iter().map(|cell| {
+                    cell.iter()
+                        .map(|z| Complex::new(z.re, z.im))
+                        .collect::<Vec<_>>()
+                })
+            })
             .collect();
         let native_metric: Vec<Complex<f64>> =
             metric.iter().map(|z| Complex::new(z.re, z.im)).collect();
         let native = rusticol_core::loop_v2::interference::square_amplitudes(
-            &dense, 2, 2, 2, 3, &native_metric, &pairs, &256.0,
+            &dense,
+            2,
+            2,
+            2,
+            3,
+            &native_metric,
+            &pairs,
+            &256.0,
         )
         .unwrap();
         assert_eq!(python, native);

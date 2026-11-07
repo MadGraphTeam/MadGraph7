@@ -17,7 +17,9 @@
 
 use super::{Lift, Native, Orders, invalid};
 use crate::Complex;
-use crate::v2_decimal::{Arith, Binary64, C, DecimalArith, cadd, square_amplitudes_python};
+use crate::v2_decimal::{
+    AmplitudeVector, Arith, Binary64, C, DecimalArith, cadd, square_amplitudes_python,
+};
 use rusticol_core::RusticolResult;
 use rusticol_core::loop_v2::dress::parse_rational;
 use serde::Deserialize;
@@ -43,9 +45,6 @@ pub(crate) struct AmplitudeRecord {
     pub(crate) colour_zero_orders: Vec<Orders>,
     /// Whether the whole request is an exact colour zero.
     pub(crate) colour_zero: bool,
-    /// The declared observables (`induced_observables.correlators_record`).
-    #[serde(default)]
-    pub(crate) correlators: Option<serde_json::Value>,
 }
 
 /// The carrier arithmetic of the loop-induced assembly: the Python API's
@@ -64,7 +63,7 @@ pub(crate) trait Squaring: Arith {
     #[allow(clippy::too_many_arguments)]
     fn square(
         &self,
-        vectors: &[Option<Vec<Vec<C<Self::N>>>>],
+        vectors: &[Option<AmplitudeVector<Self::N>>],
         slots: usize,
         rows: usize,
         size: usize,
@@ -82,7 +81,13 @@ fn rational_f64(value: &Rational) -> f64 {
     let limit = Rational::from(1_i64 << 53);
     let numerator = Rational::from(value.numerator());
     let denominator = Rational::from(value.denominator());
-    let small = |x: &Rational| (if x.is_negative() { -x.clone() } else { x.clone() }) <= limit;
+    let small = |x: &Rational| {
+        (if x.is_negative() {
+            -x.clone()
+        } else {
+            x.clone()
+        }) <= limit
+    };
     if small(&numerator) && small(&denominator) {
         return numerator.to_f64() / denominator.to_f64();
     }
@@ -98,7 +103,7 @@ impl Squaring for Binary64 {
     }
     fn square(
         &self,
-        vectors: &[Option<Vec<Vec<C<f64>>>>],
+        vectors: &[Option<AmplitudeVector<f64>>],
         slots: usize,
         rows: usize,
         size: usize,
@@ -148,8 +153,8 @@ impl Squaring for DecimalArith {
     }
     fn three_power(&self, power: i64) -> crate::v2_decimal::Decimal {
         let magnitude = symbolica::domains::integer::Integer::from(3).pow(power.unsigned_abs());
-        let exact = crate::v2_decimal::Decimal::parse(&magnitude.to_string())
-            .expect("an integer literal");
+        let exact =
+            crate::v2_decimal::Decimal::parse(&magnitude.to_string()).expect("an integer literal");
         if power >= 0 {
             self.context.plus(&exact)
         } else {
@@ -158,7 +163,7 @@ impl Squaring for DecimalArith {
     }
     fn square(
         &self,
-        vectors: &[Option<Vec<Vec<C<crate::v2_decimal::Decimal>>>>],
+        vectors: &[Option<AmplitudeVector<crate::v2_decimal::Decimal>>],
         _slots: usize,
         rows: usize,
         size: usize,
@@ -203,7 +208,9 @@ impl Induced {
             return Err(invalid("the amplitude metric is basis x basis"));
         }
         if record.rows.len() != rows {
-            return Err(invalid("the amplitude record's rows differ from the plan's"));
+            return Err(invalid(
+                "the amplitude record's rows differ from the plan's",
+            ));
         }
         if record.ket_map.iter().any(|(t, ..)| *t >= record.size) {
             return Err(invalid("a counterterm ket outside the amplitude basis"));
@@ -270,10 +277,12 @@ impl Induced {
         let columns = rows * size;
         // `read_native`'s bare vectors per (plan order, row): every slot's
         // Laurent coefficients (an empty basis has none).
-        let mut bare: BTreeMap<(Orders, usize), Vec<Vec<C<A::N>>>> = BTreeMap::new();
+        let mut bare: BTreeMap<(Orders, usize), AmplitudeVector<A::N>> = BTreeMap::new();
         let mut order_keys: Vec<(Orders, usize)> = Vec::new();
         if size > 0 && amplitudes.len() != self.plan_orders.len() * columns {
-            return Err(invalid("the executor's amplitude slots differ from the plan's"));
+            return Err(invalid(
+                "the executor's amplitude slots differ from the plan's",
+            ));
         }
         for (o, order) in self.plan_orders.iter().enumerate() {
             for r in 0..rows {
@@ -291,7 +300,7 @@ impl Induced {
             }
         }
         // `native_kets`: A^CT per (loop order, row) on the basis.
-        let mut ket_vectors: BTreeMap<(Orders, usize), Vec<Vec<C<A::N>>>> = BTreeMap::new();
+        let mut ket_vectors: BTreeMap<(Orders, usize), AmplitudeVector<A::N>> = BTreeMap::new();
         let mut ket_keys: Vec<(Orders, usize)> = Vec::new();
         if let Some(values) = kets {
             let components = self.record.ket_map.len();
@@ -322,7 +331,7 @@ impl Induced {
         }
         // `add_amplitudes(bare, kets)`: zero, plus every part's cells in
         // order.
-        let mut total: BTreeMap<(Orders, usize), Vec<Vec<C<A::N>>>> = BTreeMap::new();
+        let mut total: BTreeMap<(Orders, usize), AmplitudeVector<A::N>> = BTreeMap::new();
         for (keys, part) in [(&order_keys, &bare), (&ket_keys, &ket_vectors)] {
             for key in keys {
                 let vector = &part[key];
@@ -347,7 +356,7 @@ impl Induced {
                 Ok(arith.times_real(&cell, &one))
             })
             .collect::<RusticolResult<Vec<_>>>()?;
-        let vectors: Vec<Option<Vec<Vec<C<A::N>>>>> = self
+        let vectors: Vec<Option<AmplitudeVector<A::N>>> = self
             .slots
             .iter()
             .flat_map(|order| (0..rows).map(move |r| (order.clone(), r)))

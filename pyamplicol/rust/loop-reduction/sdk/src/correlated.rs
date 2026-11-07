@@ -218,7 +218,9 @@ impl Runtime {
             Arithmetic::Double => {
                 let found =
                     native.evaluate_columns("correlated", &momenta, &scales, &spins, poles.v2())?;
-                CorrelatedEvaluation::from_columns(inputs, shape, poles, arithmetic, found, &reduction)?
+                CorrelatedEvaluation::from_columns(
+                    inputs, shape, poles, arithmetic, found, &reduction,
+                )?
             }
             _ => {
                 let found = native.evaluate_columns_extended(
@@ -229,7 +231,9 @@ impl Runtime {
                     poles.v2(),
                     arithmetic.v2(),
                 )?;
-                CorrelatedEvaluation::from_columns(inputs, shape, poles, arithmetic, found, &reduction)?
+                CorrelatedEvaluation::from_columns(
+                    inputs, shape, poles, arithmetic, found, &reduction,
+                )?
             }
         };
         Ok(CorrelatedEvaluation {

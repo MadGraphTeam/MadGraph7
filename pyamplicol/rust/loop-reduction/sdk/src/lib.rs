@@ -11,10 +11,10 @@ use rusticol_core::loop_artifact::{LOOP_RUNTIME_CAPABILITY, LOOP_V2_RUNTIME_CAPA
 use rusticol_core::loop_execution::LoopInputs;
 pub use rusticol_core::source_bindings::SourceOverrides;
 use rusticol_core::{RusticolError, RusticolResult};
-#[cfg(test)]
-use rusticol_loop_reduction::runtime::{Batch, Data};
 use rusticol_loop_reduction::reduction_policy::{self, Choice, Refusal};
 use rusticol_loop_reduction::runtime::Reduction;
+#[cfg(test)]
+use rusticol_loop_reduction::runtime::{Batch, Data};
 use rusticol_loop_reduction::v2_runtime::{
     C, ColumnPoint, Decimal, Rational, V2Point, V2Poles, V2Precision, V2Runtime, decimal_parameter,
     is_v2_artifact, named_parameters,
@@ -383,8 +383,8 @@ impl Runtime {
             "auto" => {}
             "ninjars" | "tirust" if served.contains_key(reduction) => {}
             "ninjars" | "tirust" => {
-                let route = reduction_policy::route(reduction_policy::SUMMED)
-                    .expect("the summed route");
+                let route =
+                    reduction_policy::route(reduction_policy::SUMMED).expect("the summed route");
                 let carrier = self.arithmetic.name();
                 return match reduction_policy::resolve(
                     reduction,
@@ -902,7 +902,9 @@ impl Evaluation {
             Arithmetic::Double => {
                 let points =
                     native.evaluate_columns("resolved", &momenta, &scales, &[], poles.v2())?;
-                Self::resolved(inputs, shape, poles, arithmetic, axes, &keys, points, reduction)
+                Self::resolved(
+                    inputs, shape, poles, arithmetic, axes, &keys, points, reduction,
+                )
             }
             _ => {
                 let points = native.evaluate_columns_extended(
@@ -913,7 +915,9 @@ impl Evaluation {
                     poles.v2(),
                     arithmetic.v2(),
                 )?;
-                Self::resolved(inputs, shape, poles, arithmetic, axes, &keys, points, reduction)
+                Self::resolved(
+                    inputs, shape, poles, arithmetic, axes, &keys, points, reduction,
+                )
             }
         }
     }
