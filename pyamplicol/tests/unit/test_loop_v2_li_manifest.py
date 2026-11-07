@@ -258,3 +258,29 @@ def test_lit_json_is_keyed_by_the_registry_and_read_by_the_report(entries, tmp_p
     validation = cells["validation"]
     assert validation["status"] == "partial" and validation["points"] == 3
     assert [r["key"] for r in validation["references"]][0] in row["references"]
+
+
+def test_stress_fixtures_are_exact_and_current(entries):
+    """PLAN §4.1's stress points: the committed stress fixtures are what
+    ``write_stress`` builds (deterministic), every point exact (terminating
+    decimals, on the base's mass shells, momentum conserving), validation-
+    only runs with the AP carrier."""
+
+    by_fixture = {e["fixture"]: e for e in entries}
+    for name, kind, values, energy in lm.STRESS:
+        base = lm.fixture(name)
+        stress = lm.fixture(f"li_stress_{name.removeprefix('li_')}_{kind}")
+        assert stress["points"] == lm.stress_points(base, kind, values, energy)
+        assert stress["scheme_data"] == base["scheme_data"]
+        mass = None
+        for point in stress["points"]:
+            p = [[Fraction(c) for c in m] for m in point]
+            for k in range(4):
+                assert p[0][k] + p[1][k] == p[2][k] + p[3][k]
+            squares = [m[0] ** 2 - m[1] ** 2 - m[2] ** 2 - m[3] ** 2 for m in p]
+            assert squares[0] == squares[1] == 0 and squares[2] == squares[3]
+            assert mass is None or squares[2] == mass
+            mass = squares[2]
+        entry = by_fixture[stress["name"]]
+        assert entry["key"] is None and entry["tiers"] == ["stress"]
+        assert lm.ARBITRARY in stress["carriers"]
