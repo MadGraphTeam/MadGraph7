@@ -615,9 +615,6 @@ def _quantiles(values: list[float]) -> dict[str, float]:
 
 
 THRESHOLDS = (1e-12, 1e-9, 1e-6, 1e-3)
-# USER DECISION (2026-10-23; DESIGN §10.4): a single-point test of an
-# estimate E holds the true error to at most 10 E.
-ESTIMATE_MARGIN = 10
 
 
 def _largest_ratio(numerators, denominators) -> float:
@@ -713,6 +710,10 @@ def _point_report(record, carrier, truth):
 def report(options) -> int:
     from pyamplicol.loops.v2 import stability
 
+    # USER DECISION (2026-10-23; DESIGN §10.4; m-lit Q12): a single-point
+    # test of an estimate E holds the true error to at most 10 E.
+    from pyamplicol.loops.v2.induced import ESTIMATE_FACTOR
+
     rows: dict[tuple[str, str], list] = defaultdict(list)
     failures: dict[str, list] = defaultdict(list)
     seconds: dict[tuple[str, str], list] = defaultdict(list)
@@ -770,7 +771,7 @@ def report(options) -> int:
                 # rescue metric "scale").
                 "absolute": {
                     "false_negatives": sum(r > 1 for r in ratios),
-                    "beyond_margin": sum(r > ESTIMATE_MARGIN for r in ratios),
+                    "beyond_margin": sum(r > ESTIMATE_FACTOR for r in ratios),
                     "error_over_estimate": _quantiles(ratios),
                     "value_over_estimate": _quantiles([item[5] for item in pairs]),
                     "estimate_over_scale": _quantiles([item[6] for item in pairs]),

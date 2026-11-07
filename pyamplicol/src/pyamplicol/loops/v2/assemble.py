@@ -5214,8 +5214,12 @@ class _NativePoint(_PointEvaluation):
             self.retest_budget = self._lane_budget(self.family_deviations)
 
     def rotation_budget(self, rotated: _PointEvaluation) -> dict[Orders, Budget]:
-        if self.native_counterterms:
+        if self.native_counterterms or self.slice.amplitude is not None:
             # Every component: the local ones are rotation invariant too.
+            # (Loop-induced: the row-phase-normalised amplitudes and
+            # counterterm kets, ``induced.rotation_budget``, as in
+            # ``_assemble``; a point without counterterms has no lanes in
+            # ``families``, whose difference would be an empty budget.)
             return super().rotation_budget(rotated)
         zero = Laurent(*[self.numbers.zero] * (3 if self.poles else 1))
         with self.numbers.scope():

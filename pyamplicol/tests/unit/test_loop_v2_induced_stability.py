@@ -16,13 +16,18 @@ runtime's route (native point inputs) against Float(256):
   double-double (``ESTIMATE_MARGIN``, DESIGN §10.4);
 * g g > z is served as "zero within its estimate" (RULED Q13: no
   Landau-Yang declaration): |A|^2 <= 10 E in binary64 and double-double;
-  its E / S is the floor's 16 u, so the opt-in rescue metric "scale" (E <=
-  target x S, PLAN §2.a.8) accepts it at the first level, while its
-  relative estimate exceeds every target and the default rescue keeps it
-  at the last level with the target not met;
+  its E / S is the floor's 16 u, below every rescue target: the
+  precondition of the opt-in rescue metric "scale" (E <= target x S, PLAN
+  §2.a.8; the metric itself is pending LIT-API's ``VirtualRescueLevel.
+  metric``, which tests it), while its relative estimate exceeds every
+  target and the default rescue keeps it at the last level with the target
+  not met;
 * the double-double estimate shrinks with the carrier's unit roundoff (the
   rotation budget compares the rotated amplitudes after a little-group
   phase normalised in the carrier, ``induced._modulus``);
+* the stored route's rotation check samples on rows without counterterm
+  kets (g g > z, g g > h a: ``induced.rotation_budget``), so the Furry
+  zero g g > h a is within its estimate there too;
 * the committed light calibration (``tools/loop_v2_stability_calibration.
   py``, ``tests/fixtures/loop/v2/stability_calibration_li.json``) records
   no point beyond the x10 margin in any check configuration;
@@ -141,10 +146,10 @@ def test_g_g_to_z_is_zero_within_its_estimate(li, carrier):
     """g g > z (Landau-Yang) is evaluated numerically, never declared zero
     (RULED Q13): on every fixture point |A|^2 lies within ten times E per
     Laurent coefficient. E rests on the term floor (E / S is the floor's
-    FLOOR_UNITS x u): the opt-in rescue metric "scale" (E <= target x S)
-    meets the default rescue target at the first level, whereas the
-    relative estimate (E against the value, itself rounding) exceeds it by
-    far."""
+    FLOOR_UNITS x u): E / S meets the default rescue target, the
+    precondition of the opt-in rescue metric "scale" (E <= target x S,
+    pending LIT-API), whereas the relative estimate (E against the value,
+    itself rounding) exceeds it by far."""
 
     from pyamplicol.loops.v2.assemble import Precision
     from pyamplicol.loops.v2.stability import (
@@ -175,7 +180,8 @@ def test_the_default_rescue_keeps_g_g_to_z_at_its_last_level(li, tmp_path):
     arbitrary(57) and is kept at the last level with the target marked as
     not met, its value within its estimate there too (PLAN §2.a.8: the
     rescue terminates, at the cost of every level; the opt-in "scale"
-    metric stops at the first, ``test_g_g_to_z_is_zero_within_its_estimate``)."""
+    metric, pending LIT-API, is to stop at the first,
+    ``test_g_g_to_z_is_zero_within_its_estimate``)."""
 
     from pyamplicol import Runtime
     from pyamplicol.api.virtual_results import VirtualRescuePolicy
@@ -198,6 +204,77 @@ def test_the_default_rescue_keeps_g_g_to_z_at_its_last_level(li, tmp_path):
     assert result.contribution == "loop-induced"
 
 
+# ------------------------------------------------------------ rotation check
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("carrier", ["double", "double_double"])
+def test_the_native_rotation_check_samples_without_counterterms(
+    li, carrier, monkeypatch
+):
+    """g g > z has no counterterm kets, so the executor forms none: on the
+    stored runtime's route its rotation check still compares the rotated
+    amplitudes after the row phase (``induced.rotation_budget``), never the
+    raw lanes a native amplitude-mode point does not hold (an empty, hence
+    zero, budget that left the check silently measuring nothing)."""
+
+    from pyamplicol.loops.v2 import induced
+    from pyamplicol.loops.v2.assemble import Precision, _NativePoint
+    from pyamplicol.loops.v2.stability import RECOMMENDED_CHECKS
+
+    seen = []
+    original = _NativePoint.rotation_budget
+
+    def spy(self, rotated):
+        budget = original(self, rotated)
+        seen.append(
+            (self.native_counterterms, budget, induced.rotation_budget(self, rotated))
+        )
+        return budget
+
+    monkeypatch.setattr(_NativePoint, "rotation_budget", spy)
+    precision = getattr(Precision, carrier)()
+    result = _evaluate(li, "li_gg_z", precision, 0, RECOMMENDED_CHECKS)
+    assert seen and not any(counterterms for counterterms, _, _ in seen)
+    for _, budget, reference in seen:
+        assert budget == reference
+        assert any(x > 0 for b in budget.values() for x in b.coefficients)
+    assert result.stability.checks["rotation-0"] > 0
+
+
+@pytest.mark.loop_physics
+def test_g_g_to_h_a_is_zero_within_its_estimate_on_the_stored_route(li, tmp_path):
+    """g g > h a (Furry; no counterterms) on the stored runtime's route: its
+    term floor is at rounding, so the rotation budget carries the estimate.
+    Through the executor with native inputs |A|^2 <= 10 E per Laurent
+    coefficient in binary64 and double-double; through the public runtime
+    the binary64 value (rounding) has a finite-part estimate of at least
+    1/10 of itself (|A|^2 <= 10 E: no correct digit claimed), its rotation
+    check sampling."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.api.virtual_results import VirtualRescueLevel, VirtualRescuePolicy
+    from pyamplicol.loops.v2.assemble import Precision
+    from pyamplicol.loops.v2.stability import RECOMMENDED_CHECKS
+
+    for precision in (Precision.double(), Precision.double_double()):
+        result = _evaluate(li, "li_gg_ha", precision, 0, RECOMMENDED_CHECKS)
+        assert result.stability.checks["rotation-0"] > 0
+        for sector, laurent in result.components["virtual"].items():
+            absolute = result.stability.absolute[sector].coefficients
+            for k, value in enumerate(laurent.coefficients):
+                assert abs(float(value)) <= ESTIMATE_MARGIN * absolute[k], (k, value)
+    fixture = _fixture("li_gg_ha")
+    output = _generate(tmp_path, (("gg_ha", "g g > h a"),), fixture)
+    point, scale, parameters = li.point("li_gg_ha")
+    runtime = Runtime.load(output, process="gg_ha", model_parameters=parameters)
+    policy = VirtualRescuePolicy((VirtualRescueLevel("double"),))
+    result = runtime.evaluate([point], mu_r2=[str(scale)], stability=policy)
+    (estimate,) = result.stability
+    assert ESTIMATE_MARGIN * estimate.finite >= 1, estimate
+    assert dict(estimate.checks)["rotation-0"] > 0, estimate
+
+
 # ---------------------------------------------------------------- calibration
 
 
@@ -209,7 +286,10 @@ def test_loop_induced_calibration_has_no_miss_beyond_the_margin():
     absolute error exceeds ten times its estimate (per sector and Laurent
     coefficient), and the recommended configuration (the rescaled re-test
     with a rotation) misses none at all; g g > z stays within its estimate
-    with E / S at the floor."""
+    with E / S at the floor. Every requested check sampled: no check's
+    budget is identically zero over a row's points (a check that measures
+    nothing, as the stored route's rotation check of a row without
+    counterterm kets once did, passes every margin unnoticed)."""
 
     from pyamplicol.loops.v2.stability import RESCUE_TARGET
 
@@ -219,6 +299,8 @@ def test_loop_induced_calibration_has_no_miss_beyond_the_margin():
             record = data["processes"][name][carrier]
             assert record["points"] >= points and record["failed"] == 0, name
             assert record["failed_truth"] == 0
+            for check, sampled in record["checks"].items():
+                assert sampled["check_over_error"]["max"] > 0, (name, carrier, check)
             for configuration, rates in record["configurations"].items():
                 absolute = rates["absolute"]
                 assert absolute["beyond_margin"] == 0, (name, carrier, configuration)
