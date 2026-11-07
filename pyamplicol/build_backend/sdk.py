@@ -48,6 +48,7 @@ SDK_SOURCES = (
 RUST_SDK_SOURCE = "src/pyamplicol/_sdk/rust/rusticol.rs"
 RUST_SDK_WORKSPACE_MEMBER = "rust/crates/rusticol-capi"
 NATIVE_MARKER = "native-static-libs:"
+_UNDEFINED_SYMBOL_TYPES = frozenset("UuWwVv")
 FORBIDDEN_UNDEFINED_SYMBOL_PREFIXES = (
     "pyobject",
     "pyexc_",
@@ -333,11 +334,16 @@ def _scan_archive(path: Path) -> None:
 def _scan_archive_symbols(path: Path) -> bool:
     """Inspect undefined symbols when a compatible object reader is available.
 
-    Rust tracks upstream LLVM more closely than Apple's command-line tools. An
-    older ``nm`` can therefore reject a valid Rust archive before the platform
-    linker does. Returning ``False`` in that case delegates the authoritative
-    check to :func:`_validate_archive_linkage`; a successfully parsed table is
-    still checked for forbidden Python dependencies here.
+    LLVM's ``nm`` (``llvm-nm``, and Apple's ``nm``, which is LLVM's) lists the
+    symbols of an object's embedded LLVM bitcode instead of its native symbol
+    table, and the precompiled Rust standard library embeds bitcode that a
+    reader older than Rust's LLVM cannot parse (the macOS archive ships as
+    built, see :func:`_stripped_archive`). Each ``nm`` therefore first reads
+    the native table (``--no-llvm-bc``) and, if it does not know that option,
+    runs without it. Returning ``False`` when no ``nm`` reads the archive
+    delegates the authoritative check to :func:`_validate_archive_linkage`; a
+    successfully parsed table is still checked for forbidden Python
+    dependencies here.
     """
 
     candidates: list[str] = []
@@ -350,32 +356,34 @@ def _scan_archive_symbols(path: Path) -> bool:
             candidates.append(candidate)
 
     for nm in candidates:
-        completed = subprocess.run(
-            [nm, "-u", str(path)],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        forbidden: list[str] = []
-        for line in completed.stdout.splitlines():
-            fields = line.split()
-            if not fields or line.endswith(":"):
-                continue
-            # ``[value] type name``; for ``-u`` on Mach-O, Darwin's nm prints
-            # the bare name of each undefined symbol.
-            if len(fields) >= 2 and fields[-2] not in {"U", "u", "W", "w", "V", "v"}:
-                continue
-            symbol = fields[-1]
-            normalized = symbol.removeprefix("_").lower()
-            if normalized.startswith(FORBIDDEN_UNDEFINED_SYMBOL_PREFIXES):
-                forbidden.append(symbol)
-        if forbidden:
-            raise RuntimeError(
-                "Rusticol static archive has undefined Python/PyO3/NumPy symbols: "
-                + ", ".join(sorted(set(forbidden)))
+        for native_table in (("--no-llvm-bc",), ()):
+            completed = subprocess.run(
+                [nm, *native_table, "-u", str(path)],
+                check=False,
+                capture_output=True,
+                text=True,
             )
-        if completed.returncode == 0:
-            return True
+            forbidden: list[str] = []
+            for line in completed.stdout.splitlines():
+                fields = line.split()
+                if not fields or line.endswith(":"):
+                    continue
+                # ``[value] type name``; for ``-u`` on Mach-O, Darwin's nm
+                # prints the bare name of each undefined symbol.
+                if len(fields) >= 2 and fields[-2] not in _UNDEFINED_SYMBOL_TYPES:
+                    continue
+                symbol = fields[-1]
+                # Mach-O names carry one more leading underscore.
+                normalized = symbol.lstrip("_").lower()
+                if normalized.startswith(FORBIDDEN_UNDEFINED_SYMBOL_PREFIXES):
+                    forbidden.append(symbol)
+            if forbidden:
+                raise RuntimeError(
+                    "Rusticol static archive has undefined Python/PyO3/NumPy "
+                    "symbols: " + ", ".join(sorted(set(forbidden)))
+                )
+            if completed.returncode == 0:
+                return True
     return False
 
 
