@@ -267,8 +267,9 @@ LOOP_REPORT = (
     Path(__file__).resolve().parents[2] / "docs" / "performance_reports" / "loop"
 )
 # Its items in order: Table 1 (Born-interfered) and Table 2 (loop-induced)
-# open it, then Figure 1 (Table 1 against the gate), Table 3 (the gate and
-# stage numbers behind Table 1's chips and bars) and the reading guide.
+# open it, then Figure 1 (Table 1 and Table 2's timed rows against the gate),
+# Table 3 (the gate and stage numbers behind Table 1's chips and bars) and
+# the reading guide.
 LOOP_REPORT_ITEMS = (
     "tab:summary",
     "tab:summary-li",
