@@ -25,7 +25,8 @@ of ``tools/loop_reference/li_analytic.py``), served by NinjaRS per amplitude
 * the complex-mass scheme rows of LI-C1 (complex m_t in g g > a a and
   g g > a a g, complex M_W and m_t in the complete a a > a a, e+ e- > g g g
   with complex M_Z in its tree propagators, g g > z z with external
-  W_Z = 0 and complex m_t) equal the complex-mass references, record the
+  W_Z = 0 and complex m_t, g g > e+ e- mu+ mu- with complex M_Z in its tree
+  propagators) equal the complex-mass references, record the
   complex-mass width policy, and an unstable external state is refused
   typed (``cms-external-width``).
 """
@@ -76,6 +77,8 @@ CMS_ROWS = [
     ("li_aa_aa_cms", True),
     ("li_emep_ggg_cms", False),
     ("li_gg_zz_cms", False),
+    # 2 -> 4: complex M_Z in the tree propagators of the two lepton pairs.
+    ("li_gg_emepmupmum_cms", False),
 ]
 
 
@@ -83,9 +86,16 @@ def _fixture(name: str) -> dict:
     return json.loads((FIXTURES / f"{name}.json").read_text())
 
 
-def _process(fixture: dict) -> str:
-    text = fixture["madloop_process"].split("[")[0]
-    return " ".join(token for token in text.split() if "=" not in token)
+def _process(fixture: dict, compiled) -> str:
+    """The fixture's process in the model's particle names (by PDG)."""
+
+    names = {int(r.pdg_code): str(r.name) for r in compiled.ir.particles}
+    pdgs, initial = fixture["pdgs"], fixture["initial"]
+    return (
+        " ".join(names[pdg] for pdg in pdgs[:initial])
+        + " > "
+        + " ".join(names[pdg] for pdg in pdgs[initial:])
+    )
 
 
 def _corrections(fixture: dict) -> tuple[str, ...] | None:
@@ -145,7 +155,7 @@ class _EwRows:
         if corrections is not None:
             options["corrections"] = corrections
         return SliceRequest(
-            _process(fixture),
+            _process(fixture, compiled),
             orders,
             orders,
             contribution="loop-induced",
@@ -313,18 +323,29 @@ def _default_widths_request(ew, name, **fields):
     return replace(request, fixed_parameters=fixed)
 
 
-@pytest.mark.parametrize("name", ["li_emep_hh", "li_emep_ggg"])
-def test_lepton_rows_with_the_model_z_width(ew, name):
+# (fixture, how |A|^2 depends on the s-channel Z's width): e+ e- > h h has
+# no s-channel Z part (Z* -> h h vanishes: Bose symmetry leaves only q^mu,
+# which the massless lepton current annihilates), so its value does not
+# move with W_Z beyond rounding; e+ e- > g g g has one (gamma*/Z* -> g g g
+# through the quark loop), first order in W_Z.
+LEPTON_ROWS = [("li_emep_hh", "none"), ("li_emep_ggg", "first order")]
+
+
+@pytest.mark.parametrize(
+    ("name", "dependence"), LEPTON_ROWS, ids=[row[0] for row in LEPTON_ROWS]
+)
+def test_lepton_rows_with_the_model_z_width(ew, name, dependence):
     """Q7, LI-E3 / LI-E4: e+ e- > h h [QED] and e+ e- > g g g at the model's
     default widths generate with fixed widths in their tree propagators (the
     s-channel Z) and widthless loop propagators, recorded in their
     conventions (no ``electroweak-width`` refusal: they are loop-induced).
-    They evaluate at the model's Z width; the Z width is a run-time
-    parameter of the tree propagators: at W_Z = 0 the value equals the
-    zero-width references (MadLoop, Recola: Recola is mandatory for
-    e+ e- > h h, no Ward probe reaches a process without an external gauge
-    boson), and the shift from there is of first order in W_Z (the tree
-    propagator's width times the loop amplitudes' absorptive parts)."""
+    They evaluate at the model's Z width, a run-time parameter of the tree
+    propagators: at W_Z = 0 the value equals the zero-width references
+    (MadLoop, Recola: Recola is mandatory for e+ e- > h h, no Ward probe
+    reaches a process without an external gauge boson); e+ e- > h h does not
+    move with W_Z (its s-channel Z part vanishes), e+ e- > g g g moves to
+    first order (the tree propagator's width times the quark loop's
+    absorptive part)."""
 
     from pyamplicol.loops.v2.assemble import LoopSlice, Precision
     from pyamplicol.loops.v2.ew_policy import FIXED_TREE_WIDTHS, scheme_conventions
@@ -360,7 +381,11 @@ def test_lepton_rows_with_the_model_z_width(ew, name):
         for pole in a.totals[2:]:
             assert abs(float(pole)) <= 1e-9 * abs(float(_total(a)))
         shift, small = float(_total(a) - _total(c)), float(_total(b) - _total(c))
-        assert shift != 0, index
+        if dependence == "none":
+            # Rounding only (the zero-width references hold at W_Z too).
+            assert abs(shift) <= 1e-12 * abs(float(_total(c))), (index, shift)
+            continue
+        assert abs(shift) > 1e-12 * abs(float(_total(c))), index
         # First order in W_Z: the second-order remainder is of relative size
         # M_Z W_Z / |s - M_Z^2| < 1e-3 at these points.
         assert abs(shift / small / 10 - 1) <= 0.05, (index, shift, small)
@@ -439,7 +464,10 @@ def test_born_interfered_width_refusal_unchanged_loop_induced_served(
     from pyamplicol.api import Generator, ProcessRequest, ProcessSet
     from pyamplicol.config import resolve_config
     from pyamplicol.loops.v2.ew_policy import FIXED_TREE_WIDTHS
+    from pyamplicol.models.loading import compile_model_source
 
+    # The dry run reads compiled models from the cache only.
+    compile_model_source(loop_gmu_ufo, require_supported=False)
     entries = (("mumu", "e+ e- > m+ m-"), ("hh", "e+ e- > h h"))
     fixed = {
         key: value

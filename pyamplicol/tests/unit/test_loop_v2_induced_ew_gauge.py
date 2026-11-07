@@ -12,7 +12,8 @@ LI-W1; RULED Q7, Q12):
   for an outgoing Z, while the Goldstone side is far from vanishing; a
   flipped G0 t t~ coupling breaks it; on h > z a both sides vanish (the
   photon's transversality); the generation-time probes run it on one leg
-  per massive species at zero widths and record it;
+  per massive species at zero widths and the public route records it, with
+  the width policy, in the artifact;
 * the both-gauges equality of the QCD-only g g > h z and g g > w+ w- at
   zero widths (their trees take unitary gauge; s-channel Z* / G0* with the
   t-b mass splitting differ by gauge term by term): unitary = 't Hooft-
@@ -22,7 +23,6 @@ LI-W1; RULED Q7, Q12):
 from __future__ import annotations
 
 import json
-from dataclasses import replace
 from fractions import Fraction
 from pathlib import Path
 
@@ -220,39 +220,97 @@ def test_goldstone_equivalence_on_h_to_z_a_vanishes_on_both_sides(probes):
     assert result.goldstone_ratio <= 10
 
 
-def test_generation_probes_run_the_goldstone_probe(gmu, loop_native):
-    """m-lit Q12 / Q7: the generation-time probes of a a > z z [QED] at the
-    model's default widths zero the widths (outside the complex-mass
-    scheme), run the finiteness probe, the Ward probe of the photon species
-    and the Goldstone-equivalence probe of the Z species, all within ten
-    times their estimates in double-double, and record the Goldstone phase."""
+def _card(output: Path, ufo: Path, entries, fixed: dict[str, str]) -> str:
+    listed = ", ".join(
+        f"{{expression = {json.dumps(expression)}, name = {json.dumps(name)}}}"
+        for name, expression in entries
+    )
+    parameters = ", ".join(f"{key} = {json.dumps(v)}" for key, v in fixed.items())
+    return f"""
+action = "generate"
+[model]
+source = {json.dumps(str(ufo))}
+[process]
+entries = [{listed}]
+loop_coupling_orders = ["QED"]
+[loop]
+r2_strategy = "model"
+external_photons = "none"
+[loop.preparation]
+fixed_parameters = {{{parameters}}}
+compatibility = "gmu_particle_anti"
+[generation]
+output = {json.dumps(str(output))}
+emit_api_bundle = false
+[generation.validation]
+post_build_validation = false
+"""
 
-    from pyamplicol.loops.v2 import induced
-    from pyamplicol.loops.v2.assemble import LoopSlice
 
-    request = _ew_request(gmu, "li_aa_zz")
+def test_public_route_records_the_width_policy_and_the_goldstone_probe(
+    gmu, loop_gmu_ufo, tmp_path
+):
+    """Generator -> artifact -> Runtime: a a > z z [QED] at the model's
+    default widths (m-lit Q7, Q12). The artifact records the fixed-tree-width
+    policy (the s-channel Higgs of h h -> Z Z blocks propagates with W_H; loop
+    propagators widthless) and the generation-time probes, run at zero widths
+    in double-double: finiteness, the Ward probe of the photon species and
+    the Goldstone-equivalence probe of the Z species (eta = -i), all within
+    ten times their estimates. The stored process evaluates at the
+    references' zero widths equal to MadLoop."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loops.v2.ew_policy import FIXED_TREE_WIDTHS
+
+    name = "li_aa_zz"
+    fixture = _fixture(name)
     fixed = {
         key: value
-        for key, value in request.fixed_parameters.items()
-        if not key.startswith("W")
+        for key, value in fixture["scheme_data"]["fixed_parameters"].items()
+        if key in gmu.parameter_defaults and not key.startswith("W")
     }
-    slice_ = LoopSlice.generate(
-        gmu, replace(request, fixed_parameters=fixed), loop_native
+    entries = (("aazz", "a a > z z"),)
+    card = tmp_path / "card.toml"
+    output = tmp_path / "artifact"
+    card.write_text(_card(output, loop_gmu_ufo, entries, fixed))
+    Generator(resolve_config(card)).generate(
+        ProcessSet(tuple(ProcessRequest.parse(e, name=n) for n, e in entries)), output
     )
-    candidates = [
-        [[float(x) for x in p] for p in point]
-        for point in _fixture("li_aa_zz")["points"]
-    ]
-    record = induced.generation_probes(slice_, gmu, loop_native, candidates)
-    assert record["widths"] == "zero"
-    assert {"WZ", "WW", "WT", "WH"} <= set(record["zeroed_widths"])
-    assert record["finiteness"]["passed"] and record["ward"]["passed"]
-    assert record["ward"]["legs"] == [1]
-    goldstone = record["goldstone"]
+    manifest = json.loads((output / "artifact.json").read_text())
+    (filters,) = (
+        record["filters"]
+        for record in manifest["extensions"]["generation"]["concrete_processes"]
+        if record["id"] == "aazz"
+    )
+    policy = filters["conventions"]["width_policy"]
+    assert policy["policy"] == FIXED_TREE_WIDTHS
+    assert policy["loop_propagators"] == "widthless"
+    assert policy["tree_widths"] == {"H": "WH"}
+    probes = filters["loop_induced_probes"]
+    assert probes["widths"] == "zero" and "failed" not in probes
+    assert {"WZ", "WW", "WT", "WH"} <= set(probes["zeroed_widths"])
+    assert probes["finiteness"]["passed"] and probes["ward"]["passed"]
+    assert probes["ward"]["legs"] == [1]
+    goldstone = probes["goldstone"]
     assert goldstone["legs"] == [3] and goldstone["passed"]
     re, im = goldstone["phases"]["3"]
     assert abs(re) <= 1e-9 and abs(im + 1) <= 1e-9
-    assert "failed" not in record
+    point, scale = _point(fixture)
+    zero = dict.fromkeys(("WZ", "WW", "WT", "WH"), "0")
+    parameters = {
+        key: value
+        for key, value in fixture["scheme_data"]["parameters"].items()
+        if key in gmu.parameter_defaults and key not in fixed
+    }
+    runtime = Runtime.load(
+        output, process="aazz", model_parameters={**parameters, **zero}
+    )
+    value = runtime.evaluate([point], mu_r2=[str(scale)])
+    assert value.contribution == "loop-induced"
+    madloop = fixture["rows"][0]["providers"]["madloop"]["value"]
+    assert abs(value.values[0][0][0] / madloop - 1) <= LAX
 
 
 # ------------------------------------------------------------ both gauges
