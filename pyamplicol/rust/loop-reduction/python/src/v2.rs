@@ -184,6 +184,29 @@ impl V2Reducer {
     }
 }
 
+/// TIRust's settings from the validation keywords of [`V2TirReducer`] and
+/// `V2Executor.prepare_reduction`: `method_choice`, `alternative_first`
+/// (NaN: the default limit; None disables the lever) and `acceptance`
+/// (None: the default), the others the defaults (`v2_tir::TirOptions`).
+#[cfg(feature = "tir")]
+pub(super) fn tir_options(
+    method_choice: bool,
+    alternative_first: Option<f64>,
+    acceptance: Option<f64>,
+) -> rusticol_loop_reduction::v2_tir::TirOptions {
+    let defaults = rusticol_loop_reduction::v2_tir::TirOptions::default();
+    rusticol_loop_reduction::v2_tir::TirOptions {
+        method_choice,
+        alternative_first: if alternative_first.is_some_and(f64::is_nan) {
+            defaults.alternative_first
+        } else {
+            alternative_first
+        },
+        acceptance: acceptance.unwrap_or(defaults.acceptance),
+        ..defaults
+    }
+}
+
 /// The TIR backend (`rusticol_loop_reduction::v2_tir`, binary64) on the
 /// groups of [`V2Reducer::reduce`] (the Python reference path's reducer
 /// when the call's reduction backend is TIRust): one family per group,
@@ -209,18 +232,7 @@ impl V2TirReducer {
     ) -> PyResult<Self> {
         #[cfg(feature = "tir")]
         {
-            let defaults = rusticol_loop_reduction::v2_tir::TirOptions::default();
-            let options = rusticol_loop_reduction::v2_tir::TirOptions {
-                method_choice,
-                // NaN: the default limit (a keyword's None disables it).
-                alternative_first: if alternative_first.is_some_and(f64::is_nan) {
-                    defaults.alternative_first
-                } else {
-                    alternative_first
-                },
-                acceptance: acceptance.unwrap_or(defaults.acceptance),
-                ..defaults
-            };
+            let options = tir_options(method_choice, alternative_first, acceptance);
             rusticol_loop_reduction::runtime::V2Backends::tirust_with([], options)
                 .map(Self)
                 .map_err(error)

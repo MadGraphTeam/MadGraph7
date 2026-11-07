@@ -896,17 +896,19 @@ fn backend_of<'a>(
                         "the TIRust reduction backend serves binary64 in this build",
                     ));
                 }
-                V2Backends::tirust(
-                    plan.families
-                        .iter()
-                        .map(|f| (f.propagators(), f.rank))
-                        .collect::<std::collections::BTreeSet<_>>(),
-                )
-                .map_err(error)?
+                V2Backends::tirust(histogram(plan)).map_err(error)?
             }
         });
     }
     Ok(slot.as_mut().expect("backend"))
+}
+
+/// The plan's (propagators, declared rank) histogram: TIRust's plans.
+fn histogram(plan: &LoopProgramV4) -> std::collections::BTreeSet<(usize, usize)> {
+    plan.families
+        .iter()
+        .map(|f| (f.propagators(), f.rank))
+        .collect()
 }
 
 impl V2Executor {
@@ -1532,10 +1534,36 @@ impl V2Executor {
     /// its plans from the plan's (propagators, rank) histogram, so that no
     /// evaluation builds them; TIRust's typed refusal of a family is raised
     /// here). Returns the (propagators, rank) plans TIRust built (empty for
-    /// NinjaRS).
-    #[pyo3(signature = (reduction="tirust"))]
-    fn prepare_reduction(&mut self, reduction: &str) -> PyResult<Vec<(usize, usize)>> {
+    /// NinjaRS). For validation, TIRust's keywords `method_choice`,
+    /// `alternative_first` and `acceptance` (those of `V2TirReducer`) rebuild
+    /// its backend with these settings when one differs from its default;
+    /// NinjaRS refuses them.
+    #[pyo3(signature = (reduction="tirust", *, method_choice=true, alternative_first=Some(f64::NAN), acceptance=None))]
+    fn prepare_reduction(
+        &mut self,
+        reduction: &str,
+        method_choice: bool,
+        alternative_first: Option<f64>,
+        acceptance: Option<f64>,
+    ) -> PyResult<Vec<(usize, usize)>> {
         let reduction = Reduction::parse(reduction).map_err(error)?;
+        let defaults =
+            method_choice && alternative_first.is_some_and(f64::is_nan) && acceptance.is_none();
+        if !defaults {
+            if reduction != Reduction::TiRust {
+                return Err(error(
+                    "method_choice, alternative_first and acceptance are TIRust's settings",
+                ));
+            }
+            #[cfg(feature = "tir")]
+            if matches!(self.carrier, Carriers::Double) {
+                let options = super::v2::tir_options(method_choice, alternative_first, acceptance);
+                self.backends[reduction as usize] = Some(
+                    V2Backends::tirust_with(histogram(self.executor.plan()), options)
+                        .map_err(error)?,
+                );
+            }
+        }
         let backend = backend_of(
             &mut self.backends,
             self.carrier,
