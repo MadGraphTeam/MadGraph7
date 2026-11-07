@@ -503,7 +503,7 @@ fn selector_domain_contains_parts(
 }
 
 impl DirectRecurrencePlan {
-    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
     #[cfg_attr(target_vendor = "apple", inline(never))]
     pub fn new(mut parts: DirectRecurrencePlanParts) -> RusticolResult<Self> {
         #[cfg(feature = "on-the-fly-test-support")]
@@ -851,7 +851,7 @@ fn canonicalize_contribution_initialization(
     Ok(())
 }
 
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 #[cfg_attr(target_vendor = "apple", cold)]
 fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
@@ -1814,7 +1814,7 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
     Ok(())
 }
 
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 fn validate_closure_proofs(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
     parts

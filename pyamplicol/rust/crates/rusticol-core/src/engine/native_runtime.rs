@@ -1677,7 +1677,7 @@ impl NativeRuntime {
         }
     }
 
-    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
     #[cfg_attr(target_vendor = "apple", inline(never))]
     #[allow(clippy::too_many_arguments)]
     fn finish_dense_load(
@@ -1826,7 +1826,7 @@ impl NativeRuntime {
     // in one Apple section; evaluation code remains in the ordinary text
     // section and non-Apple builds retain their normal placement.
     #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
     #[cfg_attr(target_vendor = "apple", inline(never))]
     fn load_recurrence_bootstrap(
         bootstrap: crate::artifact::RecurrenceBootstrapArtifact,
@@ -1877,7 +1877,7 @@ impl NativeRuntime {
         )
     }
 
-    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
     #[cfg_attr(target_vendor = "apple", inline(never))]
     pub fn load(
         artifact_path: impl AsRef<Path>,

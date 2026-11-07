@@ -6,7 +6,7 @@ static NEXT_PHYSICS_RUNTIME_BINDING_ID: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(1);
 
 impl PhysicsRuntime {
-    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
     #[cfg_attr(target_vendor = "apple", inline(never))]
     pub(super) fn new(manifest: ProcessPhysicsV1) -> RusticolResult<Self> {
         manifest.validate()?;
