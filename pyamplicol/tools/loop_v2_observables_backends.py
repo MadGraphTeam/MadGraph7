@@ -46,7 +46,10 @@ TIRust. The check exits 0 when every output passes, 1 when one fails (or
 the NinjaRS arm itself does not run), and 2 when the TIRust arm was not
 exercised: TIRust does not serve the loop-induced observable calls yet
 (``reduction.ReductionUnavailable``: the RESOLVED route or the executor's
-``runs(reduction=)`` not wired, m-lit LIT-TIR), a result names another
+``runs(reduction=)`` not wired, m-lit LIT-TIR), it fails points closed (in
+binary64 a row its conditioning gates refuse, its method choice being off
+until m-lit LIT-TIR-MP: the outputs of the points it serves are compared
+and the failed ones recorded, ``tirust_failed``), a result names another
 effective backend, or the arms agree bitwise. It writes one JSON record
 (``--output``) with every comparison.
 
@@ -164,10 +167,15 @@ def _estimates(stability, count: int) -> list:
     return [None] * count if stability is None else list(stability)
 
 
-def _entries(name: str, runtime, backend: str, stability, carrier: dict) -> dict:
+def _entries(
+    name: str, runtime, backend: str, stability, carrier: dict, failed: dict
+) -> dict:
     """Every observable output of one row on one backend: label -> per
     sector the computed Laurent coefficients with their absolute
-    estimates (``_laurents``) per point."""
+    estimates (``_laurents``) per point. The TIRust arm returns its failed
+    points (binary64: a row its conditioning gates refuse fails the point
+    closed, m-lit lit-tir; never a value) instead of raising: their outputs
+    are left out and recorded in ``failed`` (label -> reason)."""
 
     from pyamplicol.correlators import CorrelatedRequest
 
@@ -178,10 +186,18 @@ def _entries(name: str, runtime, backend: str, stability, carrier: dict) -> dict
         "stability_checks": stability,
         "reduction": backend,
         "poles": "all",
+        "on_failure": "return" if backend == "tirust" else "raise",
         **carrier,
     }
     options = {"mu_r2": scales, **settings}
     out: dict = {}
+
+    def served(result, p: int, label: str) -> bool:
+        lane = result.diagnostics[p]
+        if lane.status == "success":
+            return True
+        failed[label] = lane.detail[:300]
+        return False
 
     def keep(label, result):
         _effective(result, backend, label)
@@ -189,7 +205,8 @@ def _entries(name: str, runtime, backend: str, stability, carrier: dict) -> dict
         for p, (values, estimate) in enumerate(
             zip(result.values, estimates, strict=True)
         ):
-            out[f"{label}/p{p}"] = _laurents(values, estimate)
+            if served(result, p, f"{label}/p{p}"):
+                out[f"{label}/p{p}"] = _laurents(values, estimate)
 
     ids = [item.id for item in runtime.available_color_correlations()]
     many = runtime.evaluate_correlated_many(
@@ -214,7 +231,8 @@ def _entries(name: str, runtime, backend: str, stability, carrier: dict) -> dict
         label = f"spin/{leg}/{history}"
         _effective(result, backend, label)
         (estimate,) = _estimates(result.stability, 1)
-        out[f"{label}/p{p}"] = _laurents(result.values[0], estimate)
+        if served(result, 0, f"{label}/p{p}"):
+            out[f"{label}/p{p}"] = _laurents(result.values[0], estimate)
     for resolution in ("contracted", "amplitude-basis"):
         resolved = runtime.evaluate_resolved(
             points, color_resolution=resolution, **options
@@ -224,6 +242,8 @@ def _entries(name: str, runtime, backend: str, stability, carrier: dict) -> dict
         for p, (values, estimates) in enumerate(
             zip(resolved.values, per_point, strict=True)
         ):
+            if not served(resolved, p, f"resolved/{resolution}/p{p}"):
+                continue
             for h, helicity in enumerate(resolved.helicity_ids):
                 for c, colour in enumerate(resolved.virtual_color_ids):
                     out[f"resolved/{resolution}/{helicity}/{colour}/p{p}"] = _laurents(
@@ -327,29 +347,37 @@ def main() -> int:
     for name in args.rows or sorted(ROWS):
         runtime = Runtime.load(_artifact(args.work_dir, name, ROWS[name]), process="p")
         try:
-            ninjars = _entries(name, runtime, "ninjars", stability, carrier)
+            ninjars = _entries(name, runtime, "ninjars", stability, carrier, {})
         except (ReductionUnavailable, NotExercised) as error:
             # The reference arm must run: an error, not a missing TIRust.
             record["error"] = f"NinjaRS arm: {error}"
             write()
             print(f"FAIL: the NinjaRS arm does not run: {error}")
             return 1
+        failures: dict = {}
         try:
-            tirust = _entries(name, runtime, "tirust", stability, carrier)
+            tirust = _entries(name, runtime, "tirust", stability, carrier, failures)
         except (ReductionUnavailable, NotExercised) as error:
             return not_exercised(str(error))
+        if failures:
+            record.setdefault("tirust_failed", {})[name] = failures
+            print(f"{name}: TIRust failed {len(failures)} outputs' points closed")
+        if not tirust:
+            return not_exercised(
+                f"{name}: TIRust failed every point closed ({len(failures)} outputs)"
+            )
         if all(
             [[parts for _n, parts, _e in sector] for sector in tirust[label]]
-            == [[parts for _n, parts, _e in sector] for sector in value]
-            for label, value in ninjars.items()
+            == [[parts for _n, parts, _e in sector] for sector in ninjars[label]]
+            for label in tirust
         ):
             return not_exercised(
                 f"{name}: every output equals the NinjaRS arm's bitwise "
                 f"({len(ninjars)} outputs)"
             )
         rows = []
-        for label, value in ninjars.items():
-            for row in _compare(value, tirust[label], binary64):
+        for label, value in tirust.items():
+            for row in _compare(ninjars[label], value, binary64):
                 failed += not row["passed"]
                 rows.append({"output": label, **row})
         record["rows"][name] = rows
@@ -365,8 +393,17 @@ def main() -> int:
         print(f"{name}: {len(rows)} outputs, worst |N - T| / bound = {worst:.3g}")
     record["passed"] = not failed
     write()
-    print("PASS" if not failed else f"FAIL ({failed} outputs)")
-    return 0 if not failed else 1
+    if failed:
+        print(f"FAIL ({failed} outputs)")
+        return 1
+    if record.get("tirust_failed"):
+        # Every compared output agrees, but TIRust failed some points closed.
+        return not_exercised(
+            "TIRust failed points closed: "
+            + ", ".join(f"{k}: {len(v)}" for k, v in record["tirust_failed"].items())
+        )
+    print("PASS")
+    return 0
 
 
 if __name__ == "__main__":
