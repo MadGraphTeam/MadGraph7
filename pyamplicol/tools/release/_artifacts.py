@@ -1733,7 +1733,8 @@ def _scan_static_runtime_families(path: Path, description: str) -> None:
 
     data = path.read_bytes()
     elf_shared_object = data[:4] == b"\x7fELF" and data[16:18] in {b"\x03\x00"}
-    defined = _symbol_names(path, "--defined-only") or set()
+    listed = _symbol_names(path, "--defined-only")
+    defined = listed or set()
     if elf_shared_object:
         defined |= _symbol_names(path, "-D", "--defined-only") or set()
     copied = sorted(name for name in defined if _runtime_symbol(name))
@@ -1756,9 +1757,12 @@ def _scan_static_runtime_families(path: Path, description: str) -> None:
         if _marker_outside_symbol_names(data, lowered, marker.encode(), names)
     ]
     if found:
+        # Without a symbol table, imported names count as markers as well.
+        unread = "" if listed is not None else " (no nm could read its symbols)"
         raise ArtifactError(
             f"{description} contains a forbidden static arithmetic runtime: "
             + ", ".join(found)
+            + unread
         )
 
 

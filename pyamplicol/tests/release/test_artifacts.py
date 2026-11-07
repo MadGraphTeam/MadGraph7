@@ -1534,7 +1534,10 @@ def test_native_scan_rejects_static_arithmetic_runtime_markers(
 ) -> None:
     binary = tmp_path / "native-artifact"
     binary.write_bytes(b"prefix\x00" + marker + b"\x00suffix")
-    with pytest.raises(ArtifactError, match="forbidden static arithmetic runtime"):
+    with pytest.raises(
+        ArtifactError,
+        match=r"arithmetic runtime: .*\(no nm could read its symbols\)",
+    ):
         _scan_static_runtime_families(binary, "test artifact")
 
 
@@ -1678,7 +1681,7 @@ def test_static_runtime_scan_rejects_a_stripped_darwin_runtime_copy(
         undefined="dyld_stub_binder\n",
     )
     with pytest.raises(
-        ArtifactError, match="forbidden static arithmetic runtime: mpfr_"
+        ArtifactError, match=r"forbidden static arithmetic runtime: mpfr_$"
     ):
         _scan_static_runtime_families(extension, "test extension")
 
