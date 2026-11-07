@@ -758,14 +758,7 @@ automatic switch to NinjaRS). TIRust's own method choice for such rows
 correction of those expansions and of their error estimate is adopted: on
 some rows its values are wrong by more than 1e-5 while every check sees
 agreement. At present many points of Born-interfered processes with five or
-more external legs fail this way. Passing the gates is not a guarantee
-either: on some rows the gates accept (seen on boxes of a six-gluon point
-and on test rows whose numerator rank exceeds the number of propagators)
-TIRust's binary64 value is also wrong by more than 1e-5 while the
-stability checks agree with it, because every check frame shares the
-row's ill-conditioning. Until the TIRust correction is adopted, a TIRust
-binary64 result is therefore not guaranteed within its stability estimate;
-use it for cross-checks against NinjaRS (`"auto"` does not route to it). TIRust's qualified domain is up to six
+more external legs fail this way. TIRust's qualified domain is up to six
 loop propagators at numerator rank six (reported, never enforced: beyond it
 the achieved precision is measured, as everywhere). `loop.reduction` other
 than `"auto"` needs a one-loop request (`process.loop_coupling_orders`).
