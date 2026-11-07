@@ -28,6 +28,7 @@ from fks_testing import (
     evaluate,
     extra_born_offsets,
     has_collinear_born,
+    madfks_pdf_prefactors,
     reference,
 )
 from fks_testing import reference_born_mapping as born_mapping
@@ -325,7 +326,10 @@ def madfks_contributions(data, rows, scheme=None):
             and point["xi_cnt"][COLLINEAR] < xi_s_cut
         ):
             d_xi, d_lxi, d_mu_f, k_p, k_l, k_d = remnants[1]
-            f_dsc, f_pdf = f["f_dsc"], f["f_pdf_scheme"]
+            f_dsc = f["f_dsc"]
+            f_pdf = madfks_pdf_prefactors(
+                f["f_pdf_scheme"], xi_max[COLLINEAR], xi_s_cut
+            )
             remnant = (
                 -(d_xi + k_p + (d_lxi + k_l) * log_xi) * f_dsc[0]
                 - (d_xi * f_dsc[1] + d_lxi * f_dsc[2])

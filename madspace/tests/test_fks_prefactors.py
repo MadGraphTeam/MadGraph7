@@ -8,14 +8,23 @@ xi (xinorm) they hold, and the parameters of the subtraction, at their defaults
 for most processes and away from them for pp_epemj_params. Divided by those,
 the Fortran prefactors are those of madspace, which leaves the width and the
 Jacobians to the dets of FKSKinematics and the symmetry factors to the
-integrand. On events of the FKS mappings the collinear counter-event shares
-xi with the event for a final-state emitter and xi_hat for an initial-state
-one.
+integrand. Those of a change of the PDF scheme take min(xi_max, xiScut) of
+the collinear counter-event where MadFKS takes xiScut (see
+madfks_pdf_prefactors and test_fks_prefactor_integrals.py). On events of the
+FKS mappings the collinear counter-event shares xi with the event for a
+final-state emitter and xi_hat for an initial-state one.
 """
 
 import numpy as np
 import pytest
-from fks_testing import FKS_DATA, FKS_DATA_IDS, configuration, evaluate, reference
+from fks_testing import (
+    FKS_DATA,
+    FKS_DATA_IDS,
+    configuration,
+    evaluate,
+    madfks_pdf_prefactors,
+    reference,
+)
 from fks_testing import reference_born_mapping as born_mapping
 
 import madspace as ms
@@ -65,6 +74,12 @@ def test_matches_compute_prefactors_n1body(path):
         key: np.array([p["prefactors"][key] for p in points])
         for key in ["f_r", "f_s", "f_c", "f_dc", "f_sc", "f_dsc", "f_pdf_scheme"]
     }
+    # with min(xi_max_c, xiScut) for xiScut (see madfks_pdf_prefactors)
+    fortran["f_pdf_scheme"] = madfks_pdf_prefactors(
+        fortran["f_pdf_scheme"],
+        field("xiimax_cnt", COLLINEAR),
+        data["subtraction"]["xi_s_cut"],
+    )
     sym, sym_deg = field("fks_symmetry_factor"), field("fks_symmetry_factor_deg")
     jac, jac_cnt = field("jac"), field("jac_cnt")
     xinorm, xinorm_c = field("xinorm_ev"), field("xinorm_cnt", COLLINEAR)

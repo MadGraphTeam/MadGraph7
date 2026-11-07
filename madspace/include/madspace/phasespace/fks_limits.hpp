@@ -409,9 +409,13 @@ std::size_t check_splitting_configurations(
  * and for the collinear remnants @f$f_{dc} = 32 \pi^2 / (s_c \xi_c \delta_S)@f$
  * and the four @f$f_{dsc}@f$ (with @f$32 \pi^2 / s@f$ of the soft-collinear
  * counter-event), and those of a change of the PDF scheme at the
- * soft-collinear counter-event, @f$32 \pi^2 / (s \delta_S \xi_\mathrm{S,cut})@f$
- * times 1, @f$\log \xi_\mathrm{S,cut}@f$ and
- * @f$\log^2 \xi_\mathrm{S,cut} / 2@f$ (f_pdfsch_d, f_pdfsch_p, f_pdfsch_l). They
+ * soft-collinear counter-event, @f$32 \pi^2 / (s \delta_S \xi_{l,c})@f$
+ * times 1, @f$\log \xi_{l,c}@f$ and @f$\log^2 \xi_{l,c} / 2@f$, which give
+ * @f$[1/(1 - z)]_+@f$, @f$[\log(1 - z)/(1 - z)]_+@f$ and
+ * @f$\delta(1 - z)@f$ on the range of @f$z = 1 - \xi_c@f$. MadFKS
+ * (f_pdfsch_d, f_pdfsch_p, f_pdfsch_l) takes @f$\xi_\mathrm{S,cut}@f$ for
+ * @f$\xi_{l,c}@f$, which misses part of them where @f$\xi_\mathrm{max}@f$ of
+ * the collinear counter-event is below @f$\xi_\mathrm{S,cut}@f$. They
  * multiply @f$\xi^2 (1 - y)@f$ times the real matrix element and its limits. The
  * collinear ones vanish for a massive emitter. Whether a counterterm contributes
  * (@f$\xi \le \xi_\mathrm{S,cut}@f$,

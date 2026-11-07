@@ -271,3 +271,19 @@ def born_inputs(data, rows, k_perp, key="born_blocks"):
 def alpha(data):
     """The QED coupling of the Fortran, gal(1)^2 / (4 pi)."""
     return data["gal"] ** 2 / (4 * np.pi)
+
+
+def madfks_pdf_prefactors(f_pdf, xi_max_c, xi_s_cut):
+    """The prefactors of a change of the PDF scheme of MadFKS (f_pdfsch_d,
+    f_pdfsch_p, f_pdfsch_l, shape (..., 3)) with min(xi_max_c, xiScut) for
+    xiScut, as FKSPrefactors: MadFKS spreads delta(xi) over 0 to xiScut and
+    adds log(xiScut), which misses part of them where xi_max_c of the
+    collinear counter-event is below xiScut. The reference data come from a
+    MadFKS without the fix, so this goes once they are made with it."""
+    f_pdf = np.asarray(f_pdf, dtype=float)
+    lim = np.minimum(np.asarray(xi_max_c, dtype=float), xi_s_cut)[..., None]
+    # points without a collinear counter-event have no prefactors
+    lim = np.where(lim > 0, lim, xi_s_cut)
+    g = f_pdf[..., :1] * xi_s_cut
+    log_lim = np.log(lim)
+    return np.concatenate([g, g * log_lim, g * log_lim**2 / 2], axis=-1) / lim

@@ -479,11 +479,15 @@ KERNELSPEC void kernel_fks_prefactors(
     // as a product, which vanishes exactly for xi_lim_c = xicut
     f_dsc[2] = g * (log_cut - log_lim) * (log_cut + log_lim) / (2. * xi_lim_c);
     f_dsc[3] = g * (1. / x_c + l_xi / xi_lim_c);
-    // the delta, plus and log-plus parts of a change of the PDF scheme
-    auto log_s_cut = log(xi_s_cut);
-    f_pdf[0] = g / xi_s_cut;
-    f_pdf[1] = g * log_s_cut / xi_s_cut;
-    f_pdf[2] = g * log_s_cut * log_s_cut / (2. * xi_s_cut);
+    // the delta, plus and log-plus parts of a change of the PDF scheme:
+    // delta(xi) spread over the range of the soft-collinear counterterm, up to
+    // xi_lim_c, and log(xi_lim_c) and log^2(xi_lim_c) / 2 that turn its
+    // [1/xi] and [log(xi)/xi] into [1/(1 - z)]_+ and [log(1 - z)/(1 - z)]_+.
+    // MadFKS takes xiScut for xi_lim_c, which misses part of them where the
+    // range of xi ends below xiScut.
+    f_pdf[0] = g / xi_lim_c;
+    f_pdf[1] = g * log_lim / xi_lim_c;
+    f_pdf[2] = g * log_lim * log_lim / (2. * xi_lim_c);
 }
 
 // The soft limit of xi^2 (1 - y) times the real matrix element of sbornsoft
