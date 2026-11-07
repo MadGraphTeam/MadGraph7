@@ -247,8 +247,9 @@ class VirtualStabilityEstimate:
     bound each coefficient's error relative to the coefficient itself (the
     poles are ``None`` in finite-only evaluations; ``inf`` marks an error
     estimate on an exact zero). ``checks`` names every check that ran with
-    its own relative budget (``rotation-<k>``, ``reduction-direction`` or
-    ``reduction-rescaled``).
+    its own relative budget (``rotation-<k>``, ``reduction-direction``,
+    ``reduction-rescaled``, or ``spin-transverse``: a loop-induced spin
+    vector's non-transverse part, which the value does not read).
 
     The absolute estimate E and the scale S it is measured against (v2 loop
     runtimes fill them; ``None`` otherwise): ``absolute[s]`` holds E per

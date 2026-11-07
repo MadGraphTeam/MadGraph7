@@ -1613,8 +1613,9 @@ def export_plan(
         # own row with the cells of t (``_Exporter.amplitude_seed_records``).
         if columns is not None or column_sets:
             raise ValueError(
-                "an amplitude-mode plan has its own (row, t) columns: observable "
-                "column sets of loop-induced processes are not served yet"
+                "an amplitude-mode plan has its own (row, t) columns: the "
+                "observables of a loop-induced process are quadratic forms on its "
+                "amplitude vectors (induced_observables), never column sets"
             )
         size = len(amplitude)
         columns = tuple(range(len(rows) * size))
@@ -1778,6 +1779,31 @@ class NativeNumerator:
     orders: Orders
     rank: int
     columns: tuple[tuple[Any, ...], ...]
+
+
+def point_estimate(
+    reference: Any, rotated: Sequence[Any], stability: Any, roundoff: float
+) -> Any:
+    """The stability estimate of one point's result (``NativeExecutor.
+    evaluate``): the rotation checks' budgets of the evaluations at the
+    rotated points ``rotated``, the reduction check's re-test budget, the
+    term scale of the floor and the per-family deviations."""
+
+    from .stability import ROTATION, StabilityEstimate
+
+    budgets = {}
+    for k, run in enumerate(rotated):
+        budgets[ROTATION.format(k)] = reference.rotation_budget(run)
+    if stability.reduction:
+        budgets[stability.reduction] = reference.retest_budget
+    components = reference.result.components
+    return StabilityEstimate.from_checks(
+        components["virtual"] if "virtual" in components else components["bare"],
+        budgets,
+        scale=reference.stability_scale(),
+        roundoff=roundoff,
+        families=reference.family_deviations,
+    )
 
 
 class FailedPoints(ArithmeticError):
@@ -1951,6 +1977,11 @@ class NativeExecutor:
         # (``V2Options::term_scale``; ``evaluate`` sets it for the reference
         # evaluation of a stability estimate).
         self.term_scale = False
+        # Amplitude-mode plans: the helicity rows the next calls keep (one
+        # flag per plan row; ``runs(rows=...)``, a loop-induced
+        # single-helicity selection): the native executor dresses those rows
+        # only (``plan/live.rs``); None keeps every row.
+        self.row_mask: tuple[bool, ...] | None = None
 
     def native(
         self,
@@ -2343,8 +2374,95 @@ class NativeExecutor:
         alone: ``FailedPoints`` carries the complete results of the others.
         """
 
+        from .stability import StabilityChecks
+
+        stability = stability or StabilityChecks()
+        precision, evaluations, rotated, failures = self.runs(
+            points,
+            scales,
+            parameters=parameters,
+            precision=precision,
+            poles=poles,
+            stability=stability,
+            schedule=schedule,
+            ward=ward,
+        )
+        out: list[Any] = []
+        for index, reference in enumerate(evaluations):
+            if index in failures:
+                out.append(None)
+                continue
+            if not stability.enabled:
+                out.append(reference.result)
+                continue
+            estimate = point_estimate(
+                reference,
+                [runs[index] for runs in rotated],
+                stability,
+                precision.unit_roundoff,
+            )
+            out.append(replace(reference.result, stability=estimate))
+        if failures:
+            raise FailedPoints(out, failures)
+        return out
+
+    def runs(
+        self,
+        points: Sequence[Sequence[Sequence[Any]]],
+        scales: Sequence[Any],
+        *,
+        parameters: Mapping[str, str] | None = None,
+        precision: Any = None,
+        poles: PoleSelection | str = PoleSelection.ALL,
+        stability: Any = None,
+        schedule: Literal["B", "M"] = "B",
+        ward: Any = None,
+        rows: Iterable[rx.Row] | None = None,
+        reduction: str | None = None,
+    ) -> tuple[Any, list[Any], list[list[Any]], dict[int, list[str]]]:
+        """The point evaluations ``evaluate`` assembles its results from: the
+        precision, the reference evaluation of every point (re-tested in the
+        reduction check's frame), per rotation of the stability checks the
+        evaluations at the rotated points, and the failures per point index
+        (a rotated run's failure names its rotation). The loop-induced
+        observables (``induced_observables``) form their quadratic forms on
+        the same evaluations' amplitude vectors; ``rows`` (amplitude mode)
+        keeps those helicity rows only (``row_mask``: the others are not
+        dressed, their amplitudes are not formed). ``reduction`` is the
+        effective backend the call's result records (``VirtualReduction.
+        effective``; None: the executor's own): this executor reduces with
+        NinjaRS, so another is refused typed, never run on NinjaRS (m-lit
+        lit-tir wires the TIRust backend here)."""
+
+        if reduction not in (None, "ninjars"):
+            from .reduction import ReductionUnavailable
+
+            raise ReductionUnavailable(
+                f"the native executor's reduction is NinjaRS's; the {reduction!r} "
+                "backend is not wired to it"
+            )
+        if rows is None:
+            return self._runs(
+                points, scales, parameters, precision, poles, stability, schedule, ward
+            )
+        if self.exported.amplitude is None:
+            raise ValueError("a row mask needs an amplitude-mode plan")
+        kept = frozenset(rows)
+        self.row_mask = tuple(row in kept for row in self.exported.rows)
+        try:
+            return self._runs(
+                points, scales, parameters, precision, poles, stability, schedule, ward
+            )
+        finally:
+            self.row_mask = None
+
+    def _runs(
+        self, points, scales, parameters, precision, poles, stability, schedule, ward
+    ):
+        """``runs`` on every row the executor keeps."""
+
         from .assemble import _fraction
-        from .stability import ROTATION, StabilityChecks, StabilityEstimate
+        from .stability import ROTATION, StabilityChecks
 
         stability = stability or StabilityChecks()
         wards = None
@@ -2392,33 +2510,7 @@ class NativeExecutor:
                 failures.setdefault(index, []).extend(
                     f"{ROTATION.format(k)}: {reason}" for reason in reasons
                 )
-        out: list[Any] = []
-        for index, reference in enumerate(evaluations):
-            if index in failures:
-                out.append(None)
-                continue
-            if not stability.enabled:
-                out.append(reference.result)
-                continue
-            budgets = {}
-            for k, runs in enumerate(rotated):
-                budgets[ROTATION.format(k)] = reference.rotation_budget(runs[index])
-            if stability.reduction:
-                budgets[stability.reduction] = reference.retest_budget
-            components = reference.result.components
-            estimate = StabilityEstimate.from_checks(
-                components["virtual"]
-                if "virtual" in components
-                else components["bare"],
-                budgets,
-                scale=reference.stability_scale(),
-                roundoff=precision.unit_roundoff,
-                families=reference.family_deviations,
-            )
-            out.append(replace(reference.result, stability=estimate))
-        if failures:
-            raise FailedPoints(out, failures)
-        return out
+        return precision, evaluations, rotated, failures
 
     def native_inputs(self, points, scales, parameters=None, precision=None):
         """The executor's native tree inputs of a batch (``inputs="native"``):
@@ -2611,6 +2703,8 @@ class NativeExecutor:
             options["raw_lanes"] = True
         if self.exported.amplitude is not None and self.term_scale:
             options["term_scale"] = True
+        if self.exported.amplitude is not None and self.row_mask is not None:
+            options["rows"] = list(self.row_mask)
         catani = self.inputs == "native" and any(
             getattr(evaluation, "catani", False) for evaluation in evaluations
         )

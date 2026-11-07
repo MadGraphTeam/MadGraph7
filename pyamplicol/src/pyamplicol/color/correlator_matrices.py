@@ -464,6 +464,67 @@ def build_color_correlator_matrices(
     return tuple(result)
 
 
+def literal_correlator_matrices(
+    legs: Sequence[ColorLeg],
+    tensors: Sequence[ColorTensor],
+    correlators: Sequence[ColorCorrelator],
+) -> tuple[tuple[tuple[ExactColorCoefficient, ...], ...], ...]:
+    """Dense directed full-colour matrices of literal colour tensors.
+
+    Per correlator the matrix ``M[t][u] = <bra(t)|ket(u)>`` of the unit-weight
+    literal tensors ``tensors`` on ``legs`` (the amplitude basis of a
+    loop-induced process, m-lit LIT-OBS), every N_c Laurent term kept and
+    evaluated at N_c = 3 (full colour only). A colour vector ``a`` on the
+    tensors then has the correlated square ``a^dagger M a``; the order-zero
+    history is the tensors' colour metric. Each connected image is formed
+    once per tensor and emission sequence, shared by every correlator."""
+
+    requests = tuple(correlators)
+    if any(not isinstance(request, ColorCorrelator) for request in requests):
+        raise TypeError("colour correlators must be ColorCorrelator requests")
+    legs = tuple(legs)
+    terms = tuple(TensorTerm(ExactColorCoefficient(1), tensor) for tensor in tensors)
+    for term in terms:
+        _validate_tensor_legs(term.tensor, legs)
+    images: dict[tuple[ColorEmission, ...], tuple[ConnectedColorTensor, ...]] = {}
+
+    def image(emissions: tuple[ColorEmission, ...]) -> tuple[ConnectedColorTensor, ...]:
+        found = images.get(emissions)
+        if found is None:
+            connection = ColorConnection(legs, emissions)
+            found = images[emissions] = tuple(
+                apply_color_connection(
+                    term.tensor, connection, coefficient=term.coefficient
+                )
+                for term in terms
+            )
+        return found
+
+    out = []
+    for request in requests:
+        if (
+            ColorConnection(legs, request.bra).output_legs
+            != ColorConnection(legs, request.ket).output_legs
+        ):
+            raise ValueError(
+                f"colour correlator {request.id!r} has incompatible typed bra/ket "
+                "outputs"
+            )
+        bras, kets = image(request.bra), image(request.ket)
+        out.append(
+            tuple(
+                tuple(
+                    evaluate_color_nc_terms(
+                        contract_connected_tensor_nc_terms(bra, ket)
+                    )
+                    for ket in kets
+                )
+                for bra in bras
+            )
+        )
+    return tuple(out)
+
+
 def build_color_correlator_matrix(
     color_plan: GenericColorPlan,
     correlator: ColorCorrelator,
@@ -487,6 +548,7 @@ __all__ = [
     "ColorCorrelatorMatrixEntry",
     "build_color_correlator_matrices",
     "build_color_correlator_matrix",
+    "literal_correlator_matrices",
     "process_color_legs",
     "sector_color_tensor",
     "selected_color_sectors",

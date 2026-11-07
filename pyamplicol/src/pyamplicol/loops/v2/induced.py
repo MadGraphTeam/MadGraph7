@@ -43,7 +43,7 @@ numerically.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
 from types import MappingProxyType
@@ -174,6 +174,10 @@ class StoredAmplitude:
     rows: tuple[rx.Row, ...]
     colour_zero_orders: frozenset[Orders]
     colour_zero: bool
+    # The declared observables (``induced_observables.declare``): the
+    # resolved ``CorrelatorConfig`` and each colour history's matrix on the
+    # basis; None without a declaration.
+    correlators: Any = None
 
     def __len__(self) -> int:
         return self.size
@@ -184,6 +188,8 @@ class StoredAmplitude:
     @classmethod
     def from_record(cls, record: Mapping[str, Any]) -> StoredAmplitude:
         from pyamplicol.color.connections import ExactColorCoefficient
+
+        from .induced_observables import correlators_from_record
 
         def orders(value) -> Orders:
             return tuple((str(name), int(power)) for name, power in value)
@@ -204,6 +210,9 @@ class StoredAmplitude:
             tuple(tuple(enumerate(int(h) for h in row)) for row in record["rows"]),
             frozenset(orders(order) for order in record["colour_zero_orders"]),
             bool(record["colour_zero"]),
+            correlators_from_record(record["correlators"])
+            if "correlators" in record
+            else None,
         )
 
 
@@ -212,6 +221,8 @@ def amplitude_record(slice_: Any, exported: Any) -> dict[str, Any]:
     (``native_process.NativeProcess.export``; ``StoredAmplitude``): exact
     rationals as strings, loop orders as [name, power] lists; no path, user
     or host enters it."""
+
+    from .induced_observables import correlators_record
 
     basis = slice_.amplitude
 
@@ -238,6 +249,13 @@ def amplitude_record(slice_: Any, exported: Any) -> dict[str, Any]:
         # The request's exact colour zero (``AmplitudeBasis.colour_zero``):
         # one colour-zero order beside live ones does not make it.
         "colour_zero": basis.colour_zero,
+        # Declared observables only (``induced_observables.declare``): a
+        # record without them keeps its bytes.
+        **(
+            {"correlators": correlators_record(declared)}
+            if (declared := getattr(slice_, "amplitude_correlators", None)) is not None
+            else {}
+        ),
     }
 
 
@@ -717,6 +735,39 @@ def _bound_norm(errors, gram) -> float:
     return total**0.5
 
 
+def sector_form(
+    evaluation: Any,
+    rows: Sequence[rx.Row],
+    left: Callable[[tuple[Orders, rx.Row]], Sequence[Any] | None],
+    right: Callable[[tuple[Orders, rx.Row]], Sequence[Any] | None],
+    kernel: Callable[[Any, Any], float],
+) -> dict:
+    """The |A|^2-level Laurent convolution of every budget and scale per
+    sector: sum_pairs kappa sum_rows sum_{i+j=k} kernel(x_i, y_j) / avg
+    (a ``Budget`` per Laurent coefficient k), x = left((l, row)) and
+    y = right((l', row)) per Laurent coefficient (None: no term)."""
+
+    from .stability import Budget
+
+    width = width_of(evaluation)
+    average = float(evaluation.average)
+    out = {}
+    for sector, pairs in evaluation.slice.sectors:
+        totals = [0.0] * width
+        for pair in sorted(pairs):
+            weight = kappa(pair)
+            for row in rows:
+                x = left((pair[0], row))
+                y = right((pair[1], row))
+                if x is None or y is None:
+                    continue
+                for k in range(width):
+                    for i in range(k + 1):
+                        totals[k] += weight * kernel(x[i], y[k - i])
+        out[sector] = Budget(tuple(value / average for value in totals))
+    return out
+
+
 def quadratic_budget(evaluation: Any, errors: Mapping) -> dict:
     """The error budget of |A|^2 per sector and Laurent coefficient from
     absolute amplitude errors ``errors`` ((order, row) -> per t and k):
@@ -724,50 +775,34 @@ def quadratic_budget(evaluation: Any, errors: Mapping) -> dict:
     + ||e_i|| ||e_j||) / avg, colour-metric norms (PLAN §2.a.8; never a raw
     component)."""
 
-    from .stability import Budget
-
-    slice_ = evaluation.slice
     gram = evaluation.gram
     numbers = evaluation.numbers
-    width = 3 if evaluation.poles else 1
-    rows = rows_of(evaluation)
-    average = float(evaluation.average)
+    width = width_of(evaluation)
     amplitude = evaluation.amplitude_vectors
-    size = len(slice_.amplitude)
+    size = len(evaluation.slice.amplitude)
 
-    def norms(vectors, key):
-        vector = vectors.get(key)
-        if vector is None:
-            return [0.0] * width
+    def terms(key):
+        """(||a_k||_G, ||e_k|| bound) per Laurent coefficient k."""
+
+        vector = amplitude.get(key)
+        error = errors.get(key)
         return [
-            float(g_norm([vector[t][k] for t in range(size)], gram, numbers))
+            (
+                0.0
+                if vector is None
+                else float(g_norm([vector[t][k] for t in range(size)], gram, numbers)),
+                0.0
+                if error is None
+                else _bound_norm([error[t][k] for t in range(size)], gram),
+            )
             for k in range(width)
         ]
 
-    def bounds(key):
-        vector = errors.get(key)
-        if vector is None:
-            return [0.0] * width
-        return [
-            _bound_norm([vector[t][k] for t in range(size)], gram) for k in range(width)
-        ]
+    def kernel(x, y):
+        (a, da), (b, db) = x, y
+        return a * db + da * b + da * db
 
-    out = {}
-    for sector, pairs in slice_.sectors:
-        totals = [0.0] * width
-        for pair in sorted(pairs):
-            left, right = pair
-            for row in rows:
-                a, b = norms(amplitude, (left, row)), norms(amplitude, (right, row))
-                da, db = bounds((left, row)), bounds((right, row))
-                for k in range(width):
-                    for i in range(k + 1):
-                        j = k - i
-                        totals[k] += kappa(pair) * (
-                            a[i] * db[j] + da[i] * b[j] + da[i] * db[j]
-                        )
-        out[sector] = Budget(tuple(value / average for value in totals))
-    return out
+    return sector_form(evaluation, rows_of(evaluation), terms, terms, kernel)
 
 
 def lane_errors(evaluation: Any, lanes: Mapping) -> dict:
@@ -1096,27 +1131,14 @@ def scale(evaluation: Any) -> dict:
     (1) scale), so that a numerical zero is reported as "zero within the
     estimate" (RULED Q13: no zero is declared)."""
 
-    from .stability import Budget
-
     scales = row_scales(evaluation)
-    width = width_of(evaluation)
-    rows = rows_of(evaluation)
-    average = float(evaluation.average)
-    out = {}
-    for sector, pairs in evaluation.slice.sectors:
-        totals = [0.0] * width
-        for pair in sorted(pairs):
-            left, right = pair
-            for row in rows:
-                a = scales.get((left, row))
-                b = scales.get((right, row))
-                if a is None or b is None:
-                    continue
-                for k in range(width):
-                    for i in range(k + 1):
-                        totals[k] += kappa(pair) * a[i] * b[k - i]
-        out[sector] = Budget(tuple(value / average for value in totals))
-    return out
+    return sector_form(
+        evaluation,
+        rows_of(evaluation),
+        scales.get,
+        scales.get,
+        lambda a, b: a * b,
+    )
 
 
 def stability_scale(evaluation: Any) -> dict:

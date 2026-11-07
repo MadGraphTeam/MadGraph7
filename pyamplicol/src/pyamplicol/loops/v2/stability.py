@@ -93,6 +93,12 @@ REDUCTION = "reduction-direction"
 RESCALED = "reduction-rescaled"
 # The re-reduction frame of each reduction check (``V2Reducer.reduce``).
 FRAMES = {REDUCTION: "reversed", RESCALED: "rescaled"}
+# An input budget: an output's change over the inputs its given input
+# determines only to within a part the output cannot read (a loop-induced
+# spin vector's non-transverse part, ``induced_observables.PointOutputs``).
+# Budgets in FRAMES or ADDITIVE add up; the rotations' is their largest.
+TRANSVERSE = "spin-transverse"
+ADDITIVE = (*FRAMES, TRANSVERSE)
 
 _AXES = {"x": 1, "y": 2, "z": 3}
 
@@ -445,22 +451,22 @@ class StabilityEstimate:
         roundoff: float,
         families: Mapping[Any, Any] | None = None,
     ) -> StabilityEstimate:
-        """Combine the absolute budgets of named checks (``ROTATION`` and
-        ``REDUCTION`` names) for the reference Laurent values per sector;
-        ``scale`` are the absolute sums S and ``roundoff`` the carrier's unit
-        roundoff."""
+        """Combine the absolute budgets of named checks (``ROTATION``,
+        ``REDUCTION`` and ``ADDITIVE`` names) for the reference Laurent values
+        per sector; ``scale`` are the absolute sums S and ``roundoff`` the
+        carrier's unit roundoff."""
 
         if not budgets:
             raise ValueError("a stability estimate needs at least one check")
         unknown = [
             name
             for name in budgets
-            if name not in FRAMES and not name.startswith(ROTATION.format(""))
+            if name not in ADDITIVE and not name.startswith(ROTATION.format(""))
         ]
         if unknown:
             raise ValueError(f"unknown stability checks {unknown}")
-        rotations = [b for name, b in budgets.items() if name not in FRAMES]
-        reductions = [b for name, b in budgets.items() if name in FRAMES]
+        rotations = [b for name, b in budgets.items() if name not in ADDITIVE]
+        reductions = [b for name, b in budgets.items() if name in ADDITIVE]
         combined = {}
         for sector, laurent in reference.items():
             width = len(laurent.coefficients)
@@ -511,6 +517,7 @@ def _at(budget: Any, k: int) -> float:
 
 
 __all__ = [
+    "ADDITIVE",
     "DEFAULT_RESCUE",
     "FLOOR_UNITS",
     "FRAMES",
@@ -521,6 +528,7 @@ __all__ = [
     "RESCUE_TARGET",
     "ROTATION",
     "SAFETY",
+    "TRANSVERSE",
     "Budget",
     "Rotation",
     "StabilityChecks",
