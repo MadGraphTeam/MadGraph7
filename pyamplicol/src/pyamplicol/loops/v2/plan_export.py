@@ -1500,7 +1500,16 @@ def export_plan(
         "merged": merged_program,
     }
     if amplitude is not None:
-        program["column_rows"] = [[r] for r in range(len(rows)) for _t in range(size)]
+        # A row the exact helicity-zero filter dropped (``helicity_filter``,
+        # an integrand zero) keeps its (row, t) columns without a row: they
+        # seed nothing (R1), are never closed into (R2), stay zero and are
+        # not reduced.
+        dropped = getattr(slice_, "zero_rows", None) or frozenset()
+        program["column_rows"] = [
+            [] if row in dropped else [r]
+            for r, row in enumerate(rows)
+            for _t in range(size)
+        ]
     elif any(column.rows is not None for column in columns):
         program["column_rows"] = [
             None
@@ -1794,9 +1803,12 @@ class NativeExecutor:
             # program and seed FFT of an executor built already
             # (``V2Executor.derive``; one of the same carrier first, whose
             # tree runtime it shares too): each costs its own runtime only.
-            native_trees = self.inputs == "native" and arithmetic != "exact"
+            # The exact carriers (rational, and the prime field of the
+            # helicity-zero filter) dress numerators only.
+            exact = arithmetic in ("exact", "prime")
+            native_trees = self.inputs == "native" and not exact
             fourier = (
-                arithmetic != "exact"
+                not exact
                 and self.contraction != "direct"
                 and self.exported.fourier is not None
             )
@@ -1829,7 +1841,7 @@ class NativeExecutor:
                 # The seed FFT runs in every floating carrier; the exact one
                 # (numerators only) and a direct policy contract directly.
                 fourier=None
-                if arithmetic == "exact" or self.contraction == "direct"
+                if exact or self.contraction == "direct"
                 else self.exported.fourier,
             )
         return found

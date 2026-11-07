@@ -2171,11 +2171,13 @@ mod tests {
         assert!(matches!(words.next(), Ok(1)));
     }
 
-    /// The header offset of every column of a member, in member order.
+    /// The header offset of every column of a member, in member order (the
+    /// member's own column count: a seeded member holds fewer columns).
     fn column_offsets(member: &[u8]) -> Vec<usize> {
         let mut at = HEADER;
         let mut offsets = Vec::new();
-        for _ in COLUMN_NAMES {
+        let columns = u32::from_le_bytes(member[16..20].try_into().unwrap()) as usize;
+        for _ in 0..columns {
             offsets.push(at);
             let width = usize::from(member[at]);
             let count = u64::from_le_bytes(member[at + 8..at + 16].try_into().unwrap());

@@ -760,7 +760,11 @@ def _crafted_members(native) -> dict[str, tuple[bytes, str]]:
     empty = _empty_plan()
     member = bytes(native.V2PlanModel.from_json(json.dumps(empty).encode()).binary())
     names = native.V2PlanModel.columns()
-    assert struct.unpack_from("<I", member, 16)[0] == len(names)
+    count = struct.unpack_from("<I", member, 16)[0]
+    # A seeded member holds every column but the amplitude-mode ones (plan
+    # schema 5 only: M-LIT LIT-R2's dressed rows).
+    assert names[count:] == ["DressedFlag", "Dressed"]
+    names = names[:count]
     offsets = _columns(member, names)
 
     def craft(*columns: tuple[str, int, int], declared: int | None = None) -> bytes:

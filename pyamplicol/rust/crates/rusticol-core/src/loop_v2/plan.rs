@@ -1397,7 +1397,8 @@ impl LoopProgramV4 {
         require(admitted_schema(file.schema), "unsupported plan schema")?;
         let amplitude = file.schema == AMPLITUDE_PLAN_SCHEMA;
         if amplitude {
-            // R1: every column seeds exactly one Born helicity row.
+            // Every column seeds one Born helicity row, or none: a row the
+            // exact helicity-zero filter dropped (an integrand zero).
             let rows = file
                 .column_rows
                 .as_deref()
@@ -1406,8 +1407,8 @@ impl LoopProgramV4 {
                 rows.len() == file.columns
                     && rows
                         .iter()
-                        .all(|kept| kept.as_ref().is_some_and(|kept| kept.len() == 1)),
-                "an amplitude-mode column seeds one Born helicity row",
+                        .all(|kept| kept.as_ref().is_some_and(|kept| kept.len() <= 1)),
+                "an amplitude-mode column seeds at most one Born helicity row",
             )?;
         }
         let dressed = match file.dressed {

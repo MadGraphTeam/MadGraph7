@@ -31,6 +31,7 @@ pub mod merged;
 pub mod observables;
 pub mod plan;
 pub mod poly;
+pub mod prime;
 pub mod retest;
 pub mod seeds;
 pub mod trees;
