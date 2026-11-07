@@ -92,12 +92,12 @@ if [ "$mode" == "--launch" ]; then
   # Step 14h: also F1 with the other MadLoop reduction library, for the timing table only
   # (in ${events}Sn or ${events}Sc: F1[n] and F1[c], the results are not expected to be the same)
   if [ "$ninjaAndCollier" == "1" ]; then
-    if [ "$(grep -m1 ^ENV_VFOLD_MLREDUCTION= ${events}S/LOG.txt)" == "ENV_VFOLD_MLREDUCTION=ninja" ]; then
+    if [ "$(grep -m1 ^ENV_VFOLDTEST_MLREDUCTION= ${events}S/LOG.txt)" == "ENV_VFOLDTEST_MLREDUCTION=ninja" ]; then
       other=collier; otherS=Sc
     else
       other=ninja; otherS=Sn
     fi
-    ENV_VFOLD_MLREDUCTION=${other} ENV_VFOLD_ME_MODE=F1 ./vfold/myLaunch.sh ${oOpt} ${xOpt}
+    ENV_VFOLDTEST_MLREDUCTION=${other} ENV_VFOLD_ME_MODE=F1 ./vfold/myLaunch.sh ${oOpt} ${xOpt}
     mv Events/run_01 ${events}${otherS}
   fi
 
@@ -178,7 +178,8 @@ elif [ "$mode" == "--diff" ]; then
   # were silently not compared). Each line also records a failure in ${status}.
   # F1/S and F2/T are identical to F, and so is F1 with the MadLoop library of F
   # (Sn or Sc from --ninja-and-collier; with the other library it is not compared)
-  mlF=$(grep -m1 ^ENV_VFOLD_MLREDUCTION= Events/${events}F/LOG.txt 2>/dev/null | cut -d= -f2)
+  # (step 14s part 10/10: the variable was ENV_VFOLD_MLREDUCTION in older runs)
+  mlF=$(grep -m1 -E '^ENV_VFOLD(TEST)?_MLREDUCTION=' Events/${events}F/LOG.txt 2>/dev/null | cut -d= -f2)
   mlF=${mlF:-ninja} # older runs do not print it, they all used ninja
   for sfx in S T Sn Sc; do
     if [ ! -d Events/${events}${sfx} ]; then

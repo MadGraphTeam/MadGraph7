@@ -56,7 +56,7 @@ epem_bbxmummupg (eemumubbg, channel GF58.0):
   results of each channel from its res_1.dat in run_gen111 (checked in
   eebbbb: the f111 -o events are the same with the original job_status.pkl
   and with one built from the f841 one)
-- there are no Delta grids yet: -o with ENV_MCATNLODELTA=1 fails
+- there are no Delta grids yet: -o with ENV_VFOLDTEST_MCATNLODELTA=1 fails
 
 gg_ttxg (ggttg, channel GF10.0):
 - folding_1_1_1 and folding_8_4_1 come from dedicated short runs of
@@ -76,4 +76,4 @@ gg_ttxg (ggttg, channel GF10.0):
   weights (21.6%) are typical. GF11.0 has the highest fraction among them
   (34.8%), so it may be better for studies of negative weights.
 - aS.txt has 0.118 as in the param_card, but this is not used with a PDF set
-- there are no Delta grids yet: -o with ENV_MCATNLODELTA=1 fails
+- there are no Delta grids yet: -o with ENV_VFOLDTEST_MCATNLODELTA=1 fails

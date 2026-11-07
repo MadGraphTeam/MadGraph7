@@ -681,7 +681,7 @@ def write_randomized_events_memory(
 ) -> None:
     shuffled = list(refs)
     rng = random.Random(seed)
-    if os.environ.get('ENV_VFOLD_NOSHUFFLE', '') == '':  # AV keep the order of events (e.g. for diffs to MG5 3.6.3)
+    if os.environ.get('ENV_VFOLDTEST_NOSHUFFLE', '') == '':  # AV keep the order of events (e.g. for diffs to MG5 3.6.3)
         rng.shuffle(shuffled)
     if subset is not None and subset < len(shuffled):
         shuffled = shuffled[:subset]

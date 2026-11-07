@@ -22,16 +22,28 @@ while [ "$1" != "" ]; do
     echo "Usage:   $0 [-o] [-x]"
     echo "Example: ENV_VFOLD_ME_MODE=F $0"
     echo "Example: ENV_VFOLD_CUDACPP_BACKEND=avx2 ENV_VFOLD_ME_MODE=C $0"
-    echo "Example: ENV_NEVENTS=10 ENV_FOLDING='8,4,1' ENV_VFOLD_ME_MODE=F $0 -o"
-    echo "Example: ENV_MCATNLODELTA=1 ENV_VFOLD_ME_MODE=F0 $0"
-    echo "Example: ENV_PHYSICS=1 ENV_REQACC=0.01 ENV_VFOLD_ME_MODE=F0 $0"
-    echo "Example: ENV_ISEED=84101 ENV_VFOLD_ME_MODE=F0 $0"
-    echo "Example: ENV_VFOLD_MLREDUCTION=ninja ENV_VFOLD_ME_MODE=F1 $0"
-    echo "Example: ENV_VFOLD_POLYCACHE=0 ENV_VFOLD_ME_MODE=F1 $0"
+    echo "Example: ENV_VFOLDTEST_NEVENTS=10 ENV_VFOLDTEST_FOLDING='8,4,1' ENV_VFOLD_ME_MODE=F $0 -o"
+    echo "Example: ENV_VFOLDTEST_MCATNLODELTA=1 ENV_VFOLD_ME_MODE=F0 $0"
+    echo "Example: ENV_VFOLDTEST_PHYSICS=1 ENV_VFOLDTEST_REQACC=0.01 ENV_VFOLD_ME_MODE=F0 $0"
+    echo "Example: ENV_VFOLDTEST_ISEED=84101 ENV_VFOLD_ME_MODE=F0 $0"
+    echo "Example: ENV_VFOLDTEST_MLREDUCTION=ninja ENV_VFOLD_ME_MODE=F1 $0"
+    echo "Example: ENV_VFOLDTEST_POLYCACHE=0 ENV_VFOLD_ME_MODE=F1 $0"
     echo "Example: CUDACPP_RUNTIME_BLASCOLORSUM=1 CUDACPP_RUNTIME_BLASCOLORSUM_VFOLDBORN= ENV_VFOLD_CUDACPP_BACKEND=cuda ENV_VFOLD_ME_MODE=C $0"
     exit 1
   fi
   shift
+done
+
+# Step 14s part 10/10: the test variables were renamed ENV_VFOLDTEST_* (e.g. ENV_NEVENTS, ENV_VFOLD_CHANNELS):
+# fail if an old name is set, rather than silently ignore it
+for var in ENV_NEVENTS ENV_FOLDING ENV_MCATNLODELTA ENV_PHYSICS ENV_REQACC ENV_ISEED \
+    ENV_VFOLD_MLREDUCTION ENV_VFOLD_POLYCACHE ENV_VFOLD_CHANNELS ENV_VFOLD_NOSHUFFLE \
+    ENV_VFOLD_MINT0_NITERS ENV_VFOLD_MINT0_NPOINTS ENV_VFOLD_MINT0_ACC ENV_VFOLD_MINT1_NITERS ENV_VFOLD_MINT1_NPOINTS; do
+  if [ "${!var+set}" == "set" ]; then
+    new=ENV_VFOLDTEST_${var#ENV_}; new=${new/VFOLDTEST_VFOLD_/VFOLDTEST_}
+    echo "ERROR! ${var} is set, but it was renamed ${new} in step 14s"
+    exit 1
+  fi
 done
 
 # Create the logfile
@@ -107,37 +119,37 @@ else
 fi
 
 # Folding
-if [ "${ENV_FOLDING}" == "" ]; then ENV_FOLDING="8, 4, 1"; fi # default 8x4x1
+if [ "${ENV_VFOLDTEST_FOLDING}" == "" ]; then ENV_VFOLDTEST_FOLDING="8, 4, 1"; fi # default 8x4x1
 
 # MC@NLO-Delta matching (1: set mcatnlo_delta=True in the run_card; unset or 0: keep the run_card as is)
-if [ "${ENV_MCATNLODELTA}" != "" ] && [ "${ENV_MCATNLODELTA}" != "0" ] && [ "${ENV_MCATNLODELTA}" != "1" ]; then
-  echo "ERROR! Invalid ENV_MCATNLODELTA=${ENV_MCATNLODELTA}"
+if [ "${ENV_VFOLDTEST_MCATNLODELTA}" != "" ] && [ "${ENV_VFOLDTEST_MCATNLODELTA}" != "0" ] && [ "${ENV_VFOLDTEST_MCATNLODELTA}" != "1" ]; then
+  echo "ERROR! Invalid ENV_VFOLDTEST_MCATNLODELTA=${ENV_VFOLDTEST_MCATNLODELTA}"
   exit 1
 fi
-if [ "${ENV_MCATNLODELTA}" == "1" ] && [ "$xOpt" == "-x" ]; then
-  echo "WARNING! ENV_MCATNLODELTA=1 with -x: existing binaries are used, check that they were built with mcatnlo_delta=True"
+if [ "${ENV_VFOLDTEST_MCATNLODELTA}" == "1" ] && [ "$xOpt" == "-x" ]; then
+  echo "WARNING! ENV_VFOLDTEST_MCATNLODELTA=1 with -x: existing binaries are used, check that they were built with mcatnlo_delta=True"
 fi
 
-# Physics runs (1: stock MINT0/MINT1 parameters and all channels, i.e. keep ENV_VFOLD_MINT* and ENV_VFOLD_CHANNELS
+# Physics runs (1: stock MINT0/MINT1 parameters and all channels, i.e. keep ENV_VFOLDTEST_MINT* and ENV_VFOLDTEST_CHANNELS
 # unset instead of the faster test settings below; unset or 0: test settings)
-if [ "${ENV_PHYSICS}" != "" ] && [ "${ENV_PHYSICS}" != "0" ] && [ "${ENV_PHYSICS}" != "1" ]; then
-  echo "ERROR! Invalid ENV_PHYSICS=${ENV_PHYSICS}"
+if [ "${ENV_VFOLDTEST_PHYSICS}" != "" ] && [ "${ENV_VFOLDTEST_PHYSICS}" != "0" ] && [ "${ENV_VFOLDTEST_PHYSICS}" != "1" ]; then
+  echo "ERROR! Invalid ENV_VFOLDTEST_PHYSICS=${ENV_VFOLDTEST_PHYSICS}"
   exit 1
 fi
-if [ "${ENV_PHYSICS}" == "1" ] && [ "$oOpt" == "-o" ]; then
-  echo "ERROR! ENV_PHYSICS=1 is not supported with -o (physics tests rerun all of MINT0/1/2)"
+if [ "${ENV_VFOLDTEST_PHYSICS}" == "1" ] && [ "$oOpt" == "-o" ]; then
+  echo "ERROR! ENV_VFOLDTEST_PHYSICS=1 is not supported with -o (physics tests rerun all of MINT0/1/2)"
   exit 1
 fi
 
 # Required accuracy (req_acc in the run_card; unset: keep the run_card value, -1 = auto from nevents)
-if [ "${ENV_REQACC}" != "" ] && ! [[ "${ENV_REQACC}" =~ ^(-1|0?\.[0-9]+|1)$ ]]; then
-  echo "ERROR! Invalid ENV_REQACC=${ENV_REQACC} (must be -1 or in ]0,1])"
+if [ "${ENV_VFOLDTEST_REQACC}" != "" ] && ! [[ "${ENV_VFOLDTEST_REQACC}" =~ ^(-1|0?\.[0-9]+|1)$ ]]; then
+  echo "ERROR! Invalid ENV_VFOLDTEST_REQACC=${ENV_VFOLDTEST_REQACC} (must be -1 or in ]0,1])"
   exit 1
 fi
 
 # Random seed (iseed in the run_card; unset: default 84100 below)
-if [ "${ENV_ISEED}" != "" ] && ! [[ "${ENV_ISEED}" =~ ^[1-9][0-9]*$ ]]; then
-  echo "ERROR! Invalid ENV_ISEED=${ENV_ISEED} (must be a positive integer)"
+if [ "${ENV_VFOLDTEST_ISEED}" != "" ] && ! [[ "${ENV_VFOLDTEST_ISEED}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERROR! Invalid ENV_VFOLDTEST_ISEED=${ENV_VFOLDTEST_ISEED} (must be a positive integer)"
   exit 1
 fi
 
@@ -145,19 +157,19 @@ fi
 filesK="res_1.dat mint_grids res_1 grid.MC_integer results.dat"
 ofld=
 if [ "$oOpt" == "-o" ]; then
-  if [ "${ENV_FOLDING}" == "8, 4, 1" ] || [ "${ENV_FOLDING}" == "8,4,1" ]; then
+  if [ "${ENV_VFOLDTEST_FOLDING}" == "8, 4, 1" ] || [ "${ENV_VFOLDTEST_FOLDING}" == "8,4,1" ]; then
     ofld=841
-  elif [ "${ENV_FOLDING}" == "1, 1, 1" ] || [ "${ENV_FOLDING}" == "1,1,1" ]; then
+  elif [ "${ENV_VFOLDTEST_FOLDING}" == "1, 1, 1" ] || [ "${ENV_VFOLDTEST_FOLDING}" == "1,1,1" ]; then
     ofld=111
   else
-    echo "ERROR! Unknown ENV_FOLDING=${ENV_FOLDING} in -o mode"
+    echo "ERROR! Unknown ENV_VFOLDTEST_FOLDING=${ENV_VFOLDTEST_FOLDING} in -o mode"
     exit 1
   fi
   # MINT0/1 grids for this folding (see vfold/test/grids/README)
   # With Delta, use MINT0/1 grids from a Delta physics run in vfold5381 (MG5 3.8.1, aS 0.118):
   # the MINT1 upper envelope of the v363 grids was computed without Delta
-  refgen=vfold/test/grids/folding_$(echo ${ENV_FOLDING} | sed 's/ //g; s/,/_/g')
-  if [ "${ENV_MCATNLODELTA}" == "1" ]; then
+  refgen=vfold/test/grids/folding_$(echo ${ENV_VFOLDTEST_FOLDING} | sed 's/ //g; s/,/_/g')
+  if [ "${ENV_VFOLDTEST_MCATNLODELTA}" == "1" ]; then
     refgen=${refgen}_Delta
   fi
   if [ ! -d ${refgen} ]; then
@@ -171,10 +183,10 @@ if [ "$oOpt" == "-o" ]; then
     fi
   done
   # Keep the MINT2 order of events in events.lhe (MG5 3.8.1 collect_events.py shuffles them)
-  export ENV_VFOLD_NOSHUFFLE=1
+  export ENV_VFOLDTEST_NOSHUFFLE=1
 else
   # Let MG5 3.8.1 collect_events.py reshuffle the MINT2 order of events in events.lhe
-  unset ENV_VFOLD_NOSHUFFLE
+  unset ENV_VFOLDTEST_NOSHUFFLE
 fi
 
 # Tweak MINT parameters for faster tests
@@ -182,84 +194,84 @@ fi
 # like eebbbb and eemumubb, but is useful also for the simplest eebb process
 # These are (functional/timing) software tests, physics accuracy is not the goal
 # See create_jobs_to_run and write_input_file in amcatnlo_run_interface.py
-# Increase ENV_NEVENTS for slower MINT2 generation for more accurate timing tests
-# The MINT0/MINT1 parameters (ENV_VFOLD_MINT*) and the GF channels (ENV_VFOLD_CHANNELS) can be set
+# Increase ENV_VFOLDTEST_NEVENTS for slower MINT2 generation for more accurate timing tests
+# The MINT0/MINT1 parameters (ENV_VFOLDTEST_MINT*) and the GF channels (ENV_VFOLDTEST_CHANNELS) can be set
 # in the environment (step 14n for ggttg, step 14s for all processes), e.g. by madvfold/test/makeGrids.sh
 randinit=84100
-if [ "${ENV_ISEED}" != "" ]; then randinit=${ENV_ISEED}; fi
+if [ "${ENV_VFOLDTEST_ISEED}" != "" ]; then randinit=${ENV_VFOLDTEST_ISEED}; fi
 if [ "${PROC}" != "${PROC/eebb_}" ]; then
-  if [ "${ENV_NEVENTS}" == "" ]; then ENV_NEVENTS=10; fi # default 10
-  if [ "${ENV_VFOLD_MINT0_NITERS}" == "" ]; then export ENV_VFOLD_MINT0_NITERS=2; fi    # MINT0 (grid setup) iterations [DEFAULT: 12]
-  if [ "${ENV_VFOLD_MINT0_ACC}" == "" ]; then export ENV_VFOLD_MINT0_ACC=0.5; fi     # MINT0 accuracy target [DEFAULT: 0.03]
-  if [ "${ENV_VFOLD_MINT1_NITERS}" == "" ]; then export ENV_VFOLD_MINT1_NITERS=2; fi    # MINT1 (upper envelope) iterations [DEFAULT: 12]
-  if [ "${ENV_VFOLD_MINT0_NPOINTS}" == "" ]; then export ENV_VFOLD_MINT0_NPOINTS=500; fi    # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
-  if [ "${ENV_VFOLD_MINT1_NPOINTS}" == "" ]; then export ENV_VFOLD_MINT1_NPOINTS=500; fi    # MINT1 points/iter [DEFAULT: -1=auto, can grow to 1000s]
-  ###unset ENV_VFOLD_CHANNELS        # GF channels (space-separated) [DEFAULT: all channels]
-  if [ "${ENV_VFOLD_CHANNELS}" == "" ]; then export ENV_VFOLD_CHANNELS="2.0"; fi # GF channels (space-separated) [DEFAULT: all channels]
+  if [ "${ENV_VFOLDTEST_NEVENTS}" == "" ]; then ENV_VFOLDTEST_NEVENTS=10; fi # default 10
+  if [ "${ENV_VFOLDTEST_MINT0_NITERS}" == "" ]; then export ENV_VFOLDTEST_MINT0_NITERS=2; fi    # MINT0 (grid setup) iterations [DEFAULT: 12]
+  if [ "${ENV_VFOLDTEST_MINT0_ACC}" == "" ]; then export ENV_VFOLDTEST_MINT0_ACC=0.5; fi     # MINT0 accuracy target [DEFAULT: 0.03]
+  if [ "${ENV_VFOLDTEST_MINT1_NITERS}" == "" ]; then export ENV_VFOLDTEST_MINT1_NITERS=2; fi    # MINT1 (upper envelope) iterations [DEFAULT: 12]
+  if [ "${ENV_VFOLDTEST_MINT0_NPOINTS}" == "" ]; then export ENV_VFOLDTEST_MINT0_NPOINTS=500; fi    # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
+  if [ "${ENV_VFOLDTEST_MINT1_NPOINTS}" == "" ]; then export ENV_VFOLDTEST_MINT1_NPOINTS=500; fi    # MINT1 points/iter [DEFAULT: -1=auto, can grow to 1000s]
+  ###unset ENV_VFOLDTEST_CHANNELS        # GF channels (space-separated) [DEFAULT: all channels]
+  if [ "${ENV_VFOLDTEST_CHANNELS}" == "" ]; then export ENV_VFOLDTEST_CHANNELS="2.0"; fi # GF channels (space-separated) [DEFAULT: all channels]
 elif [ "${PROC}" != "${PROC/eebbbb_}" ]; then
-  if [ "${ENV_NEVENTS}" == "" ]; then
+  if [ "${ENV_VFOLDTEST_NEVENTS}" == "" ]; then
     if [ "${ofld}" == "841" ]; then
       ###randinit="84100" # 84100/1/2/3/4 give virtual=0 with 10 events
-      ENV_NEVENTS=20 # 841 grids: 10 in ~22s (no virtual!), 20-50-100 in ~33-70-135s (virtual)
+      ENV_VFOLDTEST_NEVENTS=20 # 841 grids: 10 in ~22s (no virtual!), 20-50-100 in ~33-70-135s (virtual)
     elif [ "${ofld}" == "111" ]; then
-      ENV_NEVENTS=200 # 111 grids: 50 in ~2.5s, 100 in ~5s, 200 in ~10s
+      ENV_VFOLDTEST_NEVENTS=200 # 111 grids: 50 in ~2.5s, 100 in ~5s, 200 in ~10s
     else
-      ENV_NEVENTS=10 # default 10
+      ENV_VFOLDTEST_NEVENTS=10 # default 10
     fi
   fi
-  if [ "${ENV_VFOLD_MINT0_NITERS}" == "" ]; then export ENV_VFOLD_MINT0_NITERS=2; fi    # MINT0 (grid setup) iterations [DEFAULT: 12]
-  if [ "${ENV_VFOLD_MINT0_ACC}" == "" ]; then export ENV_VFOLD_MINT0_ACC=0.5; fi     # MINT0 accuracy target [DEFAULT: 0.03]
-  if [ "${ENV_VFOLD_MINT1_NITERS}" == "" ]; then export ENV_VFOLD_MINT1_NITERS=2; fi    # MINT1 (upper envelope) iterations [DEFAULT: 12]
-  if [ "${ENV_VFOLD_MINT0_NPOINTS}" == "" ]; then export ENV_VFOLD_MINT0_NPOINTS=50; fi    # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
-  if [ "${ENV_VFOLD_MINT1_NPOINTS}" == "" ]; then export ENV_VFOLD_MINT1_NPOINTS=50; fi    # MINT1 points/iter [DEFAULT: -1=auto, can grow to 1000s]
-  # NB: may need to keep ENV_VFOLD_CHANNELS unset to investigate bugs in channel mapping
-  if [ "${ENV_VFOLD_CHANNELS}" == "" ]; then export ENV_VFOLD_CHANNELS="11.0"; fi   # GF channels (space-separated) [DEFAULT: all channels]
+  if [ "${ENV_VFOLDTEST_MINT0_NITERS}" == "" ]; then export ENV_VFOLDTEST_MINT0_NITERS=2; fi    # MINT0 (grid setup) iterations [DEFAULT: 12]
+  if [ "${ENV_VFOLDTEST_MINT0_ACC}" == "" ]; then export ENV_VFOLDTEST_MINT0_ACC=0.5; fi     # MINT0 accuracy target [DEFAULT: 0.03]
+  if [ "${ENV_VFOLDTEST_MINT1_NITERS}" == "" ]; then export ENV_VFOLDTEST_MINT1_NITERS=2; fi    # MINT1 (upper envelope) iterations [DEFAULT: 12]
+  if [ "${ENV_VFOLDTEST_MINT0_NPOINTS}" == "" ]; then export ENV_VFOLDTEST_MINT0_NPOINTS=50; fi    # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
+  if [ "${ENV_VFOLDTEST_MINT1_NPOINTS}" == "" ]; then export ENV_VFOLDTEST_MINT1_NPOINTS=50; fi    # MINT1 points/iter [DEFAULT: -1=auto, can grow to 1000s]
+  # NB: may need to keep ENV_VFOLDTEST_CHANNELS unset to investigate bugs in channel mapping
+  if [ "${ENV_VFOLDTEST_CHANNELS}" == "" ]; then export ENV_VFOLDTEST_CHANNELS="11.0"; fi   # GF channels (space-separated) [DEFAULT: all channels]
 elif [ "${PROC}" != "${PROC/eemumubb_}" ]; then
-  if [ "${ENV_NEVENTS}" == "" ]; then ENV_NEVENTS=10; fi # default 10
-  if [ "${ENV_VFOLD_MINT0_NITERS}" == "" ]; then export ENV_VFOLD_MINT0_NITERS=2; fi    # MINT0 (grid setup) iterations [DEFAULT: 12]
-  if [ "${ENV_VFOLD_MINT0_ACC}" == "" ]; then export ENV_VFOLD_MINT0_ACC=0.5; fi     # MINT0 accuracy target [DEFAULT: 0.03]
-  if [ "${ENV_VFOLD_MINT1_NITERS}" == "" ]; then export ENV_VFOLD_MINT1_NITERS=2; fi    # MINT1 (upper envelope) iterations [DEFAULT: 12]
-  if [ "${ENV_VFOLD_MINT0_NPOINTS}" == "" ]; then export ENV_VFOLD_MINT0_NPOINTS=50; fi    # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
-  if [ "${ENV_VFOLD_MINT1_NPOINTS}" == "" ]; then export ENV_VFOLD_MINT1_NPOINTS=50; fi    # MINT1 points/iter [DEFAULT: -1=auto, can grow to 1000s]
-  # NB: may need to keep ENV_VFOLD_CHANNELS unset to investigate bugs in channel mapping
-  if [ "${ENV_VFOLD_CHANNELS}" == "" ]; then export ENV_VFOLD_CHANNELS="11.0"; fi   # GF channels (space-separated) [DEFAULT: all channels]
+  if [ "${ENV_VFOLDTEST_NEVENTS}" == "" ]; then ENV_VFOLDTEST_NEVENTS=10; fi # default 10
+  if [ "${ENV_VFOLDTEST_MINT0_NITERS}" == "" ]; then export ENV_VFOLDTEST_MINT0_NITERS=2; fi    # MINT0 (grid setup) iterations [DEFAULT: 12]
+  if [ "${ENV_VFOLDTEST_MINT0_ACC}" == "" ]; then export ENV_VFOLDTEST_MINT0_ACC=0.5; fi     # MINT0 accuracy target [DEFAULT: 0.03]
+  if [ "${ENV_VFOLDTEST_MINT1_NITERS}" == "" ]; then export ENV_VFOLDTEST_MINT1_NITERS=2; fi    # MINT1 (upper envelope) iterations [DEFAULT: 12]
+  if [ "${ENV_VFOLDTEST_MINT0_NPOINTS}" == "" ]; then export ENV_VFOLDTEST_MINT0_NPOINTS=50; fi    # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
+  if [ "${ENV_VFOLDTEST_MINT1_NPOINTS}" == "" ]; then export ENV_VFOLDTEST_MINT1_NPOINTS=50; fi    # MINT1 points/iter [DEFAULT: -1=auto, can grow to 1000s]
+  # NB: may need to keep ENV_VFOLDTEST_CHANNELS unset to investigate bugs in channel mapping
+  if [ "${ENV_VFOLDTEST_CHANNELS}" == "" ]; then export ENV_VFOLDTEST_CHANNELS="11.0"; fi   # GF channels (space-separated) [DEFAULT: all channels]
 elif [ "${PROC}" != "${PROC/eemumubbg_}" ]; then
-  if [ "${ENV_NEVENTS}" == "" ]; then ENV_NEVENTS=10; fi # default 10
-  # Step 14h: COLLIER by default, except in physics tests (Ninja amplifies rounding, see ENV_VFOLD_MLREDUCTION below)
-  if [ "${ENV_VFOLD_MLREDUCTION}" == "" ] && [ "${ENV_PHYSICS}" != "1" ]; then export ENV_VFOLD_MLREDUCTION=collier; fi
-  if [ "${ENV_VFOLD_MINT0_NITERS}" == "" ]; then export ENV_VFOLD_MINT0_NITERS=2; fi    # MINT0 (grid setup) iterations [DEFAULT: 12]
-  if [ "${ENV_VFOLD_MINT0_ACC}" == "" ]; then export ENV_VFOLD_MINT0_ACC=0.5; fi     # MINT0 accuracy target [DEFAULT: 0.03]
-  if [ "${ENV_VFOLD_MINT1_NITERS}" == "" ]; then export ENV_VFOLD_MINT1_NITERS=2; fi    # MINT1 (upper envelope) iterations [DEFAULT: 12]
-  if [ "${ENV_VFOLD_MINT0_NPOINTS}" == "" ]; then export ENV_VFOLD_MINT0_NPOINTS=50; fi    # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
-  if [ "${ENV_VFOLD_MINT1_NPOINTS}" == "" ]; then export ENV_VFOLD_MINT1_NPOINTS=50; fi    # MINT1 points/iter [DEFAULT: -1=auto, can grow to 1000s]
-  # NB: may need to keep ENV_VFOLD_CHANNELS unset to investigate bugs in channel mapping
+  if [ "${ENV_VFOLDTEST_NEVENTS}" == "" ]; then ENV_VFOLDTEST_NEVENTS=10; fi # default 10
+  # Step 14h: COLLIER by default, except in physics tests (Ninja amplifies rounding, see ENV_VFOLDTEST_MLREDUCTION below)
+  if [ "${ENV_VFOLDTEST_MLREDUCTION}" == "" ] && [ "${ENV_VFOLDTEST_PHYSICS}" != "1" ]; then export ENV_VFOLDTEST_MLREDUCTION=collier; fi
+  if [ "${ENV_VFOLDTEST_MINT0_NITERS}" == "" ]; then export ENV_VFOLDTEST_MINT0_NITERS=2; fi    # MINT0 (grid setup) iterations [DEFAULT: 12]
+  if [ "${ENV_VFOLDTEST_MINT0_ACC}" == "" ]; then export ENV_VFOLDTEST_MINT0_ACC=0.5; fi     # MINT0 accuracy target [DEFAULT: 0.03]
+  if [ "${ENV_VFOLDTEST_MINT1_NITERS}" == "" ]; then export ENV_VFOLDTEST_MINT1_NITERS=2; fi    # MINT1 (upper envelope) iterations [DEFAULT: 12]
+  if [ "${ENV_VFOLDTEST_MINT0_NPOINTS}" == "" ]; then export ENV_VFOLDTEST_MINT0_NPOINTS=50; fi    # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
+  if [ "${ENV_VFOLDTEST_MINT1_NPOINTS}" == "" ]; then export ENV_VFOLDTEST_MINT1_NPOINTS=50; fi    # MINT1 points/iter [DEFAULT: -1=auto, can grow to 1000s]
+  # NB: may need to keep ENV_VFOLDTEST_CHANNELS unset to investigate bugs in channel mapping
   # Step 14q: GF58.0 (13% of the ABS integral) instead of GF11.0 (0.1%), see vfold/test/grids/README
-  if [ "${ENV_VFOLD_CHANNELS}" == "" ]; then export ENV_VFOLD_CHANNELS="58.0"; fi # GF channels (space-separated) [DEFAULT: all channels]
+  if [ "${ENV_VFOLDTEST_CHANNELS}" == "" ]; then export ENV_VFOLDTEST_CHANNELS="58.0"; fi # GF channels (space-separated) [DEFAULT: all channels]
 elif [ "${PROC}" != "${PROC/ggttg_}" ]; then
-  if [ "${ENV_NEVENTS}" == "" ]; then ENV_NEVENTS=10; fi # default 10
-  if [ "${ENV_VFOLD_MINT0_NITERS}" == "" ]; then export ENV_VFOLD_MINT0_NITERS=2; fi    # MINT0 (grid setup) iterations [DEFAULT: 12]
-  if [ "${ENV_VFOLD_MINT0_ACC}" == "" ]; then export ENV_VFOLD_MINT0_ACC=0.5; fi        # MINT0 accuracy target [DEFAULT: 0.03]
-  if [ "${ENV_VFOLD_MINT1_NITERS}" == "" ]; then export ENV_VFOLD_MINT1_NITERS=2; fi    # MINT1 (upper envelope) iterations [DEFAULT: 12]
-  if [ "${ENV_VFOLD_MINT0_NPOINTS}" == "" ]; then export ENV_VFOLD_MINT0_NPOINTS=50; fi # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
-  if [ "${ENV_VFOLD_MINT1_NPOINTS}" == "" ]; then export ENV_VFOLD_MINT1_NPOINTS=50; fi # MINT1 points/iter [DEFAULT: -1=auto, can grow to 1000s]
-  # NB: may need to keep ENV_VFOLD_CHANNELS unset to investigate bugs in channel mapping
+  if [ "${ENV_VFOLDTEST_NEVENTS}" == "" ]; then ENV_VFOLDTEST_NEVENTS=10; fi # default 10
+  if [ "${ENV_VFOLDTEST_MINT0_NITERS}" == "" ]; then export ENV_VFOLDTEST_MINT0_NITERS=2; fi    # MINT0 (grid setup) iterations [DEFAULT: 12]
+  if [ "${ENV_VFOLDTEST_MINT0_ACC}" == "" ]; then export ENV_VFOLDTEST_MINT0_ACC=0.5; fi        # MINT0 accuracy target [DEFAULT: 0.03]
+  if [ "${ENV_VFOLDTEST_MINT1_NITERS}" == "" ]; then export ENV_VFOLDTEST_MINT1_NITERS=2; fi    # MINT1 (upper envelope) iterations [DEFAULT: 12]
+  if [ "${ENV_VFOLDTEST_MINT0_NPOINTS}" == "" ]; then export ENV_VFOLDTEST_MINT0_NPOINTS=50; fi # MINT0 points/iter [DEFAULT: -1=auto, can grow to 1000s]
+  if [ "${ENV_VFOLDTEST_MINT1_NPOINTS}" == "" ]; then export ENV_VFOLDTEST_MINT1_NPOINTS=50; fi # MINT1 points/iter [DEFAULT: -1=auto, can grow to 1000s]
+  # NB: may need to keep ENV_VFOLDTEST_CHANNELS unset to investigate bugs in channel mapping
   # Step 14o: GF10.0 is the largest channel with virtuals (the -o test grids are for this channel)
-  if [ "${ENV_VFOLD_CHANNELS}" == "" ]; then export ENV_VFOLD_CHANNELS="10.0"; fi # GF channels (space-separated) [DEFAULT: all channels]
+  if [ "${ENV_VFOLDTEST_CHANNELS}" == "" ]; then export ENV_VFOLDTEST_CHANNELS="10.0"; fi # GF channels (space-separated) [DEFAULT: all channels]
 else
   echo "ERROR! Unknown PROC=${PROC}"
   exit 1
 fi
-if [ "${ENV_PHYSICS}" == "1" ]; then
-  unset ENV_VFOLD_MINT0_NITERS ENV_VFOLD_MINT0_ACC ENV_VFOLD_MINT1_NITERS ENV_VFOLD_MINT0_NPOINTS ENV_VFOLD_MINT1_NPOINTS ENV_VFOLD_CHANNELS
+if [ "${ENV_VFOLDTEST_PHYSICS}" == "1" ]; then
+  unset ENV_VFOLDTEST_MINT0_NITERS ENV_VFOLDTEST_MINT0_ACC ENV_VFOLDTEST_MINT1_NITERS ENV_VFOLDTEST_MINT0_NPOINTS ENV_VFOLDTEST_MINT1_NPOINTS ENV_VFOLDTEST_CHANNELS
   # No dumps: the extra MINT1 dump iteration is included in the MINT1 results and biases them
   export ENV_FVZ_NDUMP=0
 fi
 # All GF channels (step 14s, e.g. for madvfold/test/makeGrids.sh): the process blocks above set a default channel if unset
-if [ "${ENV_VFOLD_CHANNELS}" == "all" ]; then unset ENV_VFOLD_CHANNELS; fi
+if [ "${ENV_VFOLDTEST_CHANNELS}" == "all" ]; then unset ENV_VFOLDTEST_CHANNELS; fi
 # Check that the -o grids exist for the selected channels (before changing any card)
-if [ "$oOpt" == "-o" ] && [ "${ENV_VFOLD_CHANNELS}" != "" ]; then
+if [ "$oOpt" == "-o" ] && [ "${ENV_VFOLDTEST_CHANNELS}" != "" ]; then
   for Pdir in $(cd SubProcesses; ls -d P*); do
-    for gf in ${ENV_VFOLD_CHANNELS}; do
+    for gf in ${ENV_VFOLDTEST_CHANNELS}; do
       if [ ! -d ${refgen}/${Pdir}/GF${gf} ]; then
         echo "ERROR! No -o grids for channel GF${gf} (missing directory ${refgen}/${Pdir}/GF${gf})"
         echo "Available channels: $(ls ${refgen}/${Pdir} 2>/dev/null | tr '\n' ' ')"
@@ -276,11 +288,11 @@ cp Source/param_card.inc Source/param_card.inc.original
 if [ "$oOpt" == "-o" ]; then # fort.77 (soft/collinear checks in fks_singular.f depends on aS)
   for f in SubProcesses/P*/fort.77; do if [ -f ${f} ]; then cp -p ${f} ${f}.original; fi; done # (not in a new directory before its first build)
 fi
-sed -i "s/.*= nevents/  ${ENV_NEVENTS} = nevents/" Cards/run_card.dat
-sed -i "s/.*= folding/  ${ENV_FOLDING} = folding/" Cards/run_card.dat
+sed -i "s/.*= nevents/  ${ENV_VFOLDTEST_NEVENTS} = nevents/" Cards/run_card.dat
+sed -i "s/.*= folding/  ${ENV_VFOLDTEST_FOLDING} = folding/" Cards/run_card.dat
 sed -i "s/.*= iseed/  ${randinit} = iseed/" Cards/run_card.dat
-if [ "${ENV_REQACC}" != "" ]; then
-  sed -i "s/.*= req_acc /  ${ENV_REQACC} = req_acc /" Cards/run_card.dat
+if [ "${ENV_VFOLDTEST_REQACC}" != "" ]; then
+  sed -i "s/.*= req_acc /  ${ENV_VFOLDTEST_REQACC} = req_acc /" Cards/run_card.dat
 fi
 # Use in MINT2 the aS(MZ) of the MINT0/1 grids (aS.txt, see vfold/test/grids/README):
 # the v363 grids were computed with aS(MZ)=0.119 (MG5 3.6.3 took it from pdlabel nn23nlo
@@ -294,7 +306,7 @@ if [ "$oOpt" == "-o" ]; then
     exit 1
   fi
 fi
-if [ "${ENV_MCATNLODELTA}" == "1" ]; then
+if [ "${ENV_VFOLDTEST_MCATNLODELTA}" == "1" ]; then
   sed -i "s/.*= mcatnlo_delta/  True = mcatnlo_delta/I" Cards/run_card.dat # case-insensitive: MCatNLO_DELTA in the 3.8.1 run_card
   cp SubProcesses/pythia8_opts SubProcesses/pythia8_opts.original
   cp SubProcesses/pythia8_control_setup.inc SubProcesses/pythia8_control_setup.inc.original
@@ -314,8 +326,8 @@ if [ "$oOpt" == "-o" ]; then
   cp -p ${refgen}/job_status.pkl SubProcesses/job_status.pkl
   Pdirs=$(cd SubProcesses; ls -d P*)
   for Pdir in ${Pdirs}; do
-    if [ "${ENV_VFOLD_CHANNELS}" != "" ]; then
-      gfs="$(for gf in ${ENV_VFOLD_CHANNELS}; do echo GF${gf}; done)"
+    if [ "${ENV_VFOLDTEST_CHANNELS}" != "" ]; then
+      gfs="$(for gf in ${ENV_VFOLDTEST_CHANNELS}; do echo GF${gf}; done)"
     else
       gfs=$(cd ${refgen}/${Pdir}; ls -d GF*)
     fi
@@ -387,13 +399,13 @@ if [ "${ENV_VFOLD_KPOINT_BATCH}" == "" ]; then export ENV_VFOLD_KPOINT_BATCH=1; 
 # The default is ninja, except for the non-physics tests of the processes which set collier above. With ninja, rounding
 # differences change the virtual, up to 1e-4 and more at some points, as they change which library
 # is used: in eemumubbg, F and each C backend differ. It is also slower if Ninja is often not stable.
-if [ "${ENV_VFOLD_MLREDUCTION}" == "" ]; then export ENV_VFOLD_MLREDUCTION=ninja; fi
-if [ "${ENV_VFOLD_MLREDUCTION}" == "ninja" ]; then
+if [ "${ENV_VFOLDTEST_MLREDUCTION}" == "" ]; then export ENV_VFOLDTEST_MLREDUCTION=ninja; fi
+if [ "${ENV_VFOLDTEST_MLREDUCTION}" == "ninja" ]; then
   mlreductionlib="6|7|1"
-elif [ "${ENV_VFOLD_MLREDUCTION}" == "collier" ]; then
+elif [ "${ENV_VFOLDTEST_MLREDUCTION}" == "collier" ]; then
   mlreductionlib="7"
 else
-  echo "ERROR! Invalid ENV_VFOLD_MLREDUCTION=${ENV_VFOLD_MLREDUCTION} (must be ninja or collier)"
+  echo "ERROR! Invalid ENV_VFOLDTEST_MLREDUCTION=${ENV_VFOLDTEST_MLREDUCTION} (must be ninja or collier)"
   exit 1
 fi
 # (both files: the compilation, i.e. without -x, updates the SubProcesses one from the Cards one)
@@ -422,12 +434,12 @@ if [ "${ENV_VFOLD_BATCH_PERVN}" == "" ]; then export ENV_VFOLD_BATCH_PERVN=1; fi
 # Only this file is cached: it uses no vfold code and its module POLYNOMIAL_CONSTANTS is only used
 # in its V0 directory. The key includes all it depends on, so that an entry can never be stale. Its
 # polynomial.o and polynomial_constants.mod are stored together, in madvfold/DEV/fcache (untracked).
-# Disable it with ENV_VFOLD_POLYCACHE=0. It is only used in directories in madvfold/DEV, without -x.
+# Disable it with ENV_VFOLDTEST_POLYCACHE=0. It is only used in directories in madvfold/DEV, without -x.
 polyCacheDir=$(cd ..; pwd)/fcache
 declare -A polyCacheKeys
 polyCacheStamp=
 polyCacheRestore() {
-  if [ "${ENV_VFOLD_POLYCACHE}" == "0" ] || [ "$xOpt" == "-x" ] || [ "$(basename $(cd ..; pwd))" != "DEV" ]; then return; fi
+  if [ "${ENV_VFOLDTEST_POLYCACHE}" == "0" ] || [ "$xOpt" == "-x" ] || [ "$(basename $(cd ..; pwd))" != "DEV" ]; then return; fi
   local v key entry
   mkdir -p ${polyCacheDir}
   for v in SubProcesses/P*/V0_*; do
@@ -465,8 +477,8 @@ polyCacheStore() {
 
 # Dump function (used twice: before and after generation)
 dumpENV() {
-  echo "ENV_NEVENTS=${ENV_NEVENTS}" | tee -a $out
-  echo "ENV_FOLDING=${ENV_FOLDING}" | tee -a $out
+  echo "ENV_VFOLDTEST_NEVENTS=${ENV_VFOLDTEST_NEVENTS}" | tee -a $out
+  echo "ENV_VFOLDTEST_FOLDING=${ENV_VFOLDTEST_FOLDING}" | tee -a $out
   echo "ENV_VFOLD_CUDACPP_BASE=${ENV_VFOLD_CUDACPP_BASE}" | tee -a $out
   echo "ENV_VFOLD_CUDACPP_BACKEND=${ENV_VFOLD_CUDACPP_BACKEND}" | tee -a $out
   echo "ENV_VFOLD_ME_MODE=${ENV_VFOLD_ME_MODE}" | tee -a $out
@@ -474,21 +486,21 @@ dumpENV() {
   echo "ENV_VFOLD_KPOINT_BATCH=${ENV_VFOLD_KPOINT_BATCH}" | tee -a $out
   echo "ENV_VFOLD_SBORN_BRIDGE=${ENV_VFOLD_SBORN_BRIDGE}" | tee -a $out
   echo "ENV_VFOLD_SBORN_GSCALE=${ENV_VFOLD_SBORN_GSCALE}" | tee -a $out
-  echo "ENV_VFOLD_MLREDUCTION=${ENV_VFOLD_MLREDUCTION}" | tee -a $out
-  echo "ENV_VFOLD_POLYCACHE=${ENV_VFOLD_POLYCACHE}" | tee -a $out
+  echo "ENV_VFOLDTEST_MLREDUCTION=${ENV_VFOLDTEST_MLREDUCTION}" | tee -a $out
+  echo "ENV_VFOLDTEST_POLYCACHE=${ENV_VFOLDTEST_POLYCACHE}" | tee -a $out
   echo "ENV_VFOLD_CPUTIME=${ENV_VFOLD_CPUTIME}" | tee -a $out
   echo "ENV_VFOLD_BATCH_PERVN=${ENV_VFOLD_BATCH_PERVN}" | tee -a $out
-  echo "ENV_VFOLD_MINT0_ACC=${ENV_VFOLD_MINT0_ACC}" | tee -a $out
-  echo "ENV_VFOLD_MINT0_NITERS=${ENV_VFOLD_MINT0_NITERS}" | tee -a $out
-  echo "ENV_VFOLD_MINT0_NPOINTS=${ENV_VFOLD_MINT0_NPOINTS}" | tee -a $out
-  echo "ENV_VFOLD_MINT1_NITERS=${ENV_VFOLD_MINT1_NITERS}" | tee -a $out
-  echo "ENV_VFOLD_MINT1_NPOINTS=${ENV_VFOLD_MINT1_NPOINTS}" | tee -a $out
-  echo "ENV_VFOLD_CHANNELS=${ENV_VFOLD_CHANNELS}" | tee -a $out
-  echo "ENV_VFOLD_NOSHUFFLE=${ENV_VFOLD_NOSHUFFLE}" | tee -a $out
-  echo "ENV_MCATNLODELTA=${ENV_MCATNLODELTA}" | tee -a $out
-  echo "ENV_PHYSICS=${ENV_PHYSICS}" | tee -a $out
-  echo "ENV_REQACC=${ENV_REQACC}" | tee -a $out
-  echo "ENV_ISEED=${ENV_ISEED}" | tee -a $out
+  echo "ENV_VFOLDTEST_MINT0_ACC=${ENV_VFOLDTEST_MINT0_ACC}" | tee -a $out
+  echo "ENV_VFOLDTEST_MINT0_NITERS=${ENV_VFOLDTEST_MINT0_NITERS}" | tee -a $out
+  echo "ENV_VFOLDTEST_MINT0_NPOINTS=${ENV_VFOLDTEST_MINT0_NPOINTS}" | tee -a $out
+  echo "ENV_VFOLDTEST_MINT1_NITERS=${ENV_VFOLDTEST_MINT1_NITERS}" | tee -a $out
+  echo "ENV_VFOLDTEST_MINT1_NPOINTS=${ENV_VFOLDTEST_MINT1_NPOINTS}" | tee -a $out
+  echo "ENV_VFOLDTEST_CHANNELS=${ENV_VFOLDTEST_CHANNELS}" | tee -a $out
+  echo "ENV_VFOLDTEST_NOSHUFFLE=${ENV_VFOLDTEST_NOSHUFFLE}" | tee -a $out
+  echo "ENV_VFOLDTEST_MCATNLODELTA=${ENV_VFOLDTEST_MCATNLODELTA}" | tee -a $out
+  echo "ENV_VFOLDTEST_PHYSICS=${ENV_VFOLDTEST_PHYSICS}" | tee -a $out
+  echo "ENV_VFOLDTEST_REQACC=${ENV_VFOLDTEST_REQACC}" | tee -a $out
+  echo "ENV_VFOLDTEST_ISEED=${ENV_VFOLDTEST_ISEED}" | tee -a $out
   echo "CUDACPP_RUNTIME_BLASCOLORSUM=${CUDACPP_RUNTIME_BLASCOLORSUM}" | tee -a $out
   # Step 14n: the overrides for each library, only if defined (empty is not the same as unset)
   (env | grep -E '^CUDACPP_RUNTIME_(BLASCOLORSUM|CUBLASTF32TENSOR)_VFOLD' || true) | sort | tee -a $out
@@ -564,7 +576,7 @@ if [ "$oOpt" == "-o" ]; then touch Source/param_card.inc; fi
 if [ "$oOpt" == "-o" ]; then
   for f in SubProcesses/P*/fort.77; do if [ -f ${f}.original ]; then mv ${f}.original ${f}; fi; done
 fi
-if [ "${ENV_MCATNLODELTA}" == "1" ]; then
+if [ "${ENV_VFOLDTEST_MCATNLODELTA}" == "1" ]; then
   mv SubProcesses/pythia8_opts.original SubProcesses/pythia8_opts
   mv SubProcesses/pythia8_control_setup.inc.original SubProcesses/pythia8_control_setup.inc
   rm -f SubProcesses/P*/LHAFortran_aMCatNLO.h.gch

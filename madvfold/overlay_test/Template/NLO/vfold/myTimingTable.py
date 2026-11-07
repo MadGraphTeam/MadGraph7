@@ -188,12 +188,18 @@ def read_channel_log(path):
     return times, order, c
 
 
+# Names of the test variables in the logs before step 14s part 10/10 (now ENV_VFOLDTEST_*)
+OLD_TEST_ENV = r'^(?:ENV_|ENV_VFOLD_)(NEVENTS|FOLDING|MCATNLODELTA|PHYSICS|REQACC|ISEED|MLREDUCTION|POLYCACHE|CHANNELS|MINT[01]_\w+|NOSHUFFLE)(?==)'
+
+
 def read_env(logtxt):
     """ENV_xxx=value and CUDACPP_xxx=value lines dumped by myLaunch.sh into LOG.txt (first occurrence)."""
     env = {}
     if os.path.isfile(logtxt):
         for line in open(logtxt, errors='replace'):
-            m = re.match(r'^((?:ENV|CUDACPP)_\w+)=(.*)$', re.sub(r'^ENV_AV_', 'ENV_VFOLD_', line.rstrip('\n')))  # old logs: ENV_AV_
+            line = re.sub(r'^ENV_AV_', 'ENV_VFOLD_', line.rstrip('\n'))  # old logs: ENV_AV_
+            line = re.sub(OLD_TEST_ENV, r'ENV_VFOLDTEST_\1', line)  # old logs: test variables before step 14s part 10/10
+            m = re.match(r'^((?:ENV|CUDACPP)_\w+)=(.*)$', line)
             if m and m.group(1) not in env:
                 env[m.group(1)] = m.group(2)
     return env
@@ -287,10 +293,10 @@ def _run_params(data):
     """Step-level parameters for the header, from the batched mode (or any)."""
     ref = data.get(MODE_BATCHED) or next(iter(data.values()))
     env, cnt = ref['env'], ref['counters']
-    nev = env.get('ENV_NEVENTS') or str(cnt['ev_novi'] + cnt['ev_virt'] + cnt['ev_born'])
+    nev = env.get('ENV_VFOLDTEST_NEVENTS') or str(cnt['ev_novi'] + cnt['ev_virt'] + cnt['ev_born'])
     return {
         'nevents': nev,
-        'folding': env.get('ENV_FOLDING') or '?',
+        'folding': env.get('ENV_VFOLDTEST_FOLDING') or '?',
         # (N/A before step 9a: that code evaluates one kpoint at a time and
         # never reads ENV_VFOLD_KPOINT_BATCH, which myLaunch.sh exports anyway)
         'kbatch': 'N/A' if _noswitch(cnt, 'kbatch_log') else
@@ -312,9 +318,9 @@ def _run_params(data):
 
 
 def _mlreduction(d):
-    """MadLoop reduction library of a column (step 14h, ENV_VFOLD_MLREDUCTION):
+    """MadLoop reduction library of a column (step 14h, ENV_VFOLDTEST_MLREDUCTION):
     older runs do not have this variable, and they all used the MG5 default, ninja."""
-    return d['env'].get('ENV_VFOLD_MLREDUCTION') or 'ninja'
+    return d['env'].get('ENV_VFOLDTEST_MLREDUCTION') or 'ninja'
 
 
 def _vecsize(name, d):

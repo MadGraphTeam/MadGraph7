@@ -2130,11 +2130,11 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
                     # (e.g. some processes have many more channels/GF folders than others,
                     # each running its own full mint0/mint1/mint2 sequence -- physics
                     # accuracy is not needed for that use case).
-                    env_channels = os.environ.get('ENV_VFOLD_CHANNELS', '')
+                    env_channels = os.environ.get('ENV_VFOLDTEST_CHANNELS', '')
                     if env_channels:
                         allowed = set(env_channels.split())
                         channels = [c for c in channels if c in allowed]
-                        logger.info('ENV_VFOLD_CHANNELS=%s: restricting to channels %s' % (env_channels, channels))
+                        logger.info('ENV_VFOLDTEST_CHANNELS=%s: restricting to channels %s' % (env_channels, channels))
                 except IOError:
                     logger.warning('No integration channels found for contribution %s (too large masses/low energy?)' % p_dir)
                     continue
@@ -2312,12 +2312,12 @@ RESTART = %(mint_mode)s
             job['nlo_npoints'] = -1
             job['nlo_niters'] = 12
             if job['mint_mode'] == 0:
-                if os.environ.get('ENV_VFOLD_MINT0_NPOINTS'): job['nlo_npoints'] = int(os.environ['ENV_VFOLD_MINT0_NPOINTS'])
-                if os.environ.get('ENV_VFOLD_MINT0_NITERS'):  job['nlo_niters']  = int(os.environ['ENV_VFOLD_MINT0_NITERS'])
-                if os.environ.get('ENV_VFOLD_MINT0_ACC'):     job['accuracy']    = float(os.environ['ENV_VFOLD_MINT0_ACC'])
+                if os.environ.get('ENV_VFOLDTEST_MINT0_NPOINTS'): job['nlo_npoints'] = int(os.environ['ENV_VFOLDTEST_MINT0_NPOINTS'])
+                if os.environ.get('ENV_VFOLDTEST_MINT0_NITERS'):  job['nlo_niters']  = int(os.environ['ENV_VFOLDTEST_MINT0_NITERS'])
+                if os.environ.get('ENV_VFOLDTEST_MINT0_ACC'):     job['accuracy']    = float(os.environ['ENV_VFOLDTEST_MINT0_ACC'])
             elif job['mint_mode'] == 1:
-                if os.environ.get('ENV_VFOLD_MINT1_NPOINTS'): job['nlo_npoints'] = int(os.environ['ENV_VFOLD_MINT1_NPOINTS'])
-                if os.environ.get('ENV_VFOLD_MINT1_NITERS'):  job['nlo_niters']  = int(os.environ['ENV_VFOLD_MINT1_NITERS'])
+                if os.environ.get('ENV_VFOLDTEST_MINT1_NPOINTS'): job['nlo_npoints'] = int(os.environ['ENV_VFOLDTEST_MINT1_NPOINTS'])
+                if os.environ.get('ENV_VFOLDTEST_MINT1_NITERS'):  job['nlo_niters']  = int(os.environ['ENV_VFOLDTEST_MINT1_NITERS'])
             content = \
 """%(nlo_npoints)s %(nlo_niters)s      ! points, iterations
 %(accuracy)s       ! desired fractional accuracy

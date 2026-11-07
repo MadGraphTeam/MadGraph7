@@ -17,7 +17,7 @@
 # gg_ttxg for madvfold/DEV/ggttg_vfgen). Existing grids are not removed, they
 # are renamed as folding_<f1>_<f2>_<f3>[_Delta].BAK<date>.
 # The process must be known to vfold/myLaunch.sh (it has defaults for each
-# process). The grids are computed with ENV_MCATNLODELTA=1 if this is set.
+# process). The grids are computed with ENV_VFOLDTEST_MCATNLODELTA=1 if this is set.
 
 set -e
 set -o pipefail
@@ -26,8 +26,8 @@ usage() {
   echo "Usage:   $0 [--channels '<ch1 ch2...>'] <procdir> <f1,f2,f3>"
   echo "         (default: all GF channels, e.g. --channels '10.0' for GF10.0 only)"
   echo "         (the MINT parameters can be set in the environment, defaults below:"
-  echo "         ENV_VFOLD_MINT0_NITERS, ENV_VFOLD_MINT0_NPOINTS, ENV_VFOLD_MINT1_NITERS, ENV_VFOLD_MINT1_NPOINTS)"
-  echo "         (also ENV_VFOLD_CUDACPP_BACKEND [avx2], ENV_VFOLD_KPOINT_BATCH, ENV_NEVENTS [10], ENV_ISEED, ENV_MCATNLODELTA)"
+  echo "         ENV_VFOLDTEST_MINT0_NITERS, ENV_VFOLDTEST_MINT0_NPOINTS, ENV_VFOLDTEST_MINT1_NITERS, ENV_VFOLDTEST_MINT1_NPOINTS)"
+  echo "         (also ENV_VFOLD_CUDACPP_BACKEND [avx2], ENV_VFOLD_KPOINT_BATCH, ENV_VFOLDTEST_NEVENTS [10], ENV_VFOLDTEST_ISEED, ENV_VFOLDTEST_MCATNLODELTA)"
   echo "Example: $0 madvfold/DEV/ggttg_vfgen 8,4,1"
   exit 1
 }
@@ -54,7 +54,7 @@ proc=${pdirs#P*_}
 
 # The grids directories
 fdir=folding_${fold//,/_}
-if [ "${ENV_MCATNLODELTA}" == "1" ]; then fdir=${fdir}_Delta; fi
+if [ "${ENV_VFOLDTEST_MCATNLODELTA}" == "1" ]; then fdir=${fdir}_Delta; fi
 outs="${mg5dir}/madvfold/test/grids/${proc}/${fdir} ${procdir}/vfold/test/grids/${fdir}"
 
 # Run settings: mode C (by default with avx2), no dumps, kpoint batch as in the tests
@@ -63,25 +63,25 @@ outs="${mg5dir}/madvfold/test/grids/${proc}/${fdir} ${procdir}/vfold/test/grids/
 # at 8,4,1; the channels run in parallel on the available cores): tune them for each process
 if [ "${fold}" == "1,1,1" ]; then
   : ${ENV_VFOLD_KPOINT_BATCH:=512}
-  : ${ENV_VFOLD_MINT0_NITERS:=10}; : ${ENV_VFOLD_MINT0_NPOINTS:=100000}
-  : ${ENV_VFOLD_MINT1_NITERS:=10}; : ${ENV_VFOLD_MINT1_NPOINTS:=400000}
+  : ${ENV_VFOLDTEST_MINT0_NITERS:=10}; : ${ENV_VFOLDTEST_MINT0_NPOINTS:=100000}
+  : ${ENV_VFOLDTEST_MINT1_NITERS:=10}; : ${ENV_VFOLDTEST_MINT1_NPOINTS:=400000}
 else
   : ${ENV_VFOLD_KPOINT_BATCH:=64}
-  : ${ENV_VFOLD_MINT0_NITERS:=10}; : ${ENV_VFOLD_MINT0_NPOINTS:=40000}
-  : ${ENV_VFOLD_MINT1_NITERS:=10}; : ${ENV_VFOLD_MINT1_NPOINTS:=40000}
+  : ${ENV_VFOLDTEST_MINT0_NITERS:=10}; : ${ENV_VFOLDTEST_MINT0_NPOINTS:=40000}
+  : ${ENV_VFOLDTEST_MINT1_NITERS:=10}; : ${ENV_VFOLDTEST_MINT1_NPOINTS:=40000}
 fi
-export ENV_VFOLD_KPOINT_BATCH ENV_VFOLD_MINT0_NITERS ENV_VFOLD_MINT0_NPOINTS ENV_VFOLD_MINT1_NITERS ENV_VFOLD_MINT1_NPOINTS
-export ENV_VFOLD_MINT0_ACC=-1 # no early stop of MINT0 on accuracy
-export ENV_VFOLD_CHANNELS="${channels}" # 'all' is understood by myLaunch.sh
+export ENV_VFOLD_KPOINT_BATCH ENV_VFOLDTEST_MINT0_NITERS ENV_VFOLDTEST_MINT0_NPOINTS ENV_VFOLDTEST_MINT1_NITERS ENV_VFOLDTEST_MINT1_NPOINTS
+export ENV_VFOLDTEST_MINT0_ACC=-1 # no early stop of MINT0 on accuracy
+export ENV_VFOLDTEST_CHANNELS="${channels}" # 'all' is understood by myLaunch.sh
 export ENV_FVZ_NDUMP=0 # no extra MINT1 dump iteration (it is included in the MINT1 results and biases them)
 export ENV_VFOLD_ME_MODE=C
 export ENV_VFOLD_CUDACPP_BACKEND=${ENV_VFOLD_CUDACPP_BACKEND:-avx2}
 export ENV_VFOLD_SBORN_GSCALE=1
-export ENV_FOLDING=${fold}
-export ENV_NEVENTS=${ENV_NEVENTS:-10}
-unset ENV_PHYSICS ENV_REQACC # ENV_PHYSICS=1 would ignore the MINT parameters and channels above
+export ENV_VFOLDTEST_FOLDING=${fold}
+export ENV_VFOLDTEST_NEVENTS=${ENV_VFOLDTEST_NEVENTS:-10}
+unset ENV_VFOLDTEST_PHYSICS ENV_VFOLDTEST_REQACC # ENV_VFOLDTEST_PHYSICS=1 would ignore the MINT parameters and channels above
 echo "INFO: makeGrids.sh procdir=${procdir} proc=${proc} folding=${fold} channels=${channels}"
-echo "INFO: MINT0 ${ENV_VFOLD_MINT0_NITERS}x${ENV_VFOLD_MINT0_NPOINTS}, MINT1 ${ENV_VFOLD_MINT1_NITERS}x${ENV_VFOLD_MINT1_NPOINTS}, C/${ENV_VFOLD_CUDACPP_BACKEND}, k${ENV_VFOLD_KPOINT_BATCH}, Delta=${ENV_MCATNLODELTA:-0}"
+echo "INFO: MINT0 ${ENV_VFOLDTEST_MINT0_NITERS}x${ENV_VFOLDTEST_MINT0_NPOINTS}, MINT1 ${ENV_VFOLDTEST_MINT1_NITERS}x${ENV_VFOLDTEST_MINT1_NPOINTS}, C/${ENV_VFOLD_CUDACPP_BACKEND}, k${ENV_VFOLD_KPOINT_BATCH}, Delta=${ENV_VFOLDTEST_MCATNLODELTA:-0}"
 
 # The plain run (the log is in the run directory, its stdout in <procdir>/makeGrids_<fdir>.out)
 cd ${procdir}

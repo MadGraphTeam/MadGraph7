@@ -14,7 +14,7 @@ usage() {
   echo "Usage:   $0 [--diffonly] [--refbase <refbase>] [--diffmodes '<mode1 mode2...>'] [--modes '<mode1 mode2...>'] <step>"
   echo "Usage:   $0 [--nodiff] [--modes '<mode1 mode2...>'] <step>"
   echo "Example: $0 --modes 'F0 F C' --refbase step2 step3a"
-  echo "Modes:   F1 (ENV_VFOLD_MLREDUCTION as in the environment or myLaunch.sh); F1n, F1c (F1 with ninja, collier)"
+  echo "Modes:   F1 (ENV_VFOLDTEST_MLREDUCTION as in the environment or myLaunch.sh); F1n, F1c (F1 with ninja, collier)"
   exit 1
 }
 refbase=
@@ -61,8 +61,8 @@ if [ "${ENV_VFOLD_KPOINT_BATCH}" == "" ]; then export ENV_VFOLD_KPOINT_BATCH=32;
 # Road B step 10b: GSCALE optimization
 if [ "${ENV_VFOLD_SBORN_GSCALE}" == "" ]; then export ENV_VFOLD_SBORN_GSCALE=1; fi
 
-# MC@NLO-Delta matching (ENV_MCATNLODELTA=1, see myLaunch.sh): outputs and references are in Events/DELTA
-if [ "${ENV_MCATNLODELTA}" == "1" ]; then evdir=Events/DELTA; mkdir -p ${evdir}; else evdir=Events; fi
+# MC@NLO-Delta matching (ENV_VFOLDTEST_MCATNLODELTA=1, see myLaunch.sh): outputs and references are in Events/DELTA
+if [ "${ENV_VFOLDTEST_MCATNLODELTA}" == "1" ]; then evdir=Events/DELTA; mkdir -p ${evdir}; else evdir=Events; fi
 echo evdir="$evdir"
 
 # Check that no Events/run* exist
@@ -79,7 +79,7 @@ for mode in $modes; do
   ENV_VFOLD_ME_MODE=$mode
   unset CUDACPP_RUNTIME_BLASCOLORSUM CUDACPP_RUNTIME_BLASCOLORSUM_VFOLDBORN
   # Step 14h: only F1n and F1c change the MadLoop reduction library of the environment or myLaunch.sh
-  mlreduction=${ENV_VFOLD_MLREDUCTION}
+  mlreduction=${ENV_VFOLDTEST_MLREDUCTION}
   # Validate mode and get suffix
   if [ "${ENV_VFOLD_ME_MODE}" == "F0" ]; then
     suffix=Z
@@ -137,7 +137,7 @@ for mode in $modes; do
       echo "ERROR! Directory ${events} already exists"
       exit 1
     fi
-    ENV_VFOLD_MLREDUCTION=${mlreduction} ENV_VFOLD_ME_MODE=${ENV_VFOLD_ME_MODE} ENV_VFOLD_CUDACPP_BACKEND=${ENV_VFOLD_CUDACPP_BACKEND} ./vfold/myLaunch.sh ${xOpt}
+    ENV_VFOLDTEST_MLREDUCTION=${mlreduction} ENV_VFOLD_ME_MODE=${ENV_VFOLD_ME_MODE} ENV_VFOLD_CUDACPP_BACKEND=${ENV_VFOLD_CUDACPP_BACKEND} ./vfold/myLaunch.sh ${xOpt}
     mv Events/run_01 ${events}
   fi
   # Build the code only in the first test then use the existing binaries
@@ -151,9 +151,9 @@ for suffix in $suffixes; do
     # Check that reference directory exists
     eventsref=${evdir}/${refbase}${suffix}
     # Step 14h: F1n and F1c can also use F1 of the reference, if this used the same library
-    # (older runs do not print ENV_VFOLD_MLREDUCTION, they all used ninja)
+    # (older runs do not print ENV_VFOLDTEST_MLREDUCTION, they all used ninja; it was ENV_VFOLD_MLREDUCTION before step 14s)
     if [ ! -d ${eventsref} ] && [ -d ${evdir}/${refbase}S ] && { [ "${suffix}" == "Sn" ] || [ "${suffix}" == "Sc" ]; }; then
-      reflib=$(grep -m1 ^ENV_VFOLD_MLREDUCTION= ${evdir}/${refbase}S/LOG.txt | cut -d= -f2)
+      reflib=$(grep -m1 -E '^ENV_VFOLD(TEST)?_MLREDUCTION=' ${evdir}/${refbase}S/LOG.txt | cut -d= -f2)
       if [ "${reflib}" == "" ]; then reflib=ninja; fi
       if [ "${suffix}" == "S${reflib:0:1}" ]; then eventsref=${evdir}/${refbase}S; fi
     fi
