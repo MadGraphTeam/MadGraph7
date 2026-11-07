@@ -430,34 +430,34 @@ def test_generation_stores_a_partial_drop(li, li_artifact, tmp_path, monkeypatch
     subset of rows makes generation export the process again
     (``artifact.reexport_process``) and store the dropped rows' columns
     without a row; the public runtime evaluates the stored process. Forced
-    here (no tested process drops a proper subset): g g > h's rows the
+    here (no tested process drops a proper subset, and g g > h has
+    counterterm kets, so its filter drops nothing): g g > h's rows the
     pre-screen does not prove live (``screen``), the J_z-forbidden ones,
     which vanish only after the integration, so |A|^2 equals the whole
     artifact's to rounding. A zero failure probability skips the filter."""
 
-    import dataclasses
     import json
 
     from pyamplicol import Runtime
     from pyamplicol.loops.v2 import helicity_filter as hf
     from pyamplicol.loops.v2.artifact import read_plan_json
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
 
     from .test_loop_v2_induced import _generate
 
-    real = hf.filter_rows
+    real = hf.generation_filter
 
-    def forced(executor, point, scale, *args, **kwargs):
-        verdict = real(executor, point, scale, *args, **kwargs)
+    def forced(slice_, candidates, **kwargs):
+        record, _rows = real(slice_, candidates, **kwargs)
+        _index, point, scale = hf.generation_point(slice_, candidates)
+        executor = NativeExecutor(slice_, forward=False, inputs="native")
         live = hf.screen(executor, point, scale, {})
         rows = executor.exported.rows
-        return dataclasses.replace(
-            verdict,
-            dropped=tuple(
-                hf.row_label(rows[r]) for r in range(len(rows)) if r not in live
-            ),
-        )
+        dropped = frozenset(rows[r] for r in range(len(rows)) if r not in live)
+        labels = sorted(hf.row_label(row) for row in dropped)
+        return {**record, "dropped": labels}, dropped
 
-    monkeypatch.setattr(hf, "filter_rows", forced)
+    monkeypatch.setattr(hf, "generation_filter", forced)
     output = _generate(
         tmp_path / "dropped", (("gg_h", "g g > h"),), _fixture("li_gg_h")
     )
@@ -477,5 +477,5 @@ def test_generation_stores_a_partial_drop(li, li_artifact, tmp_path, monkeypatch
         values[label] = runtime.evaluate([point], mu_r2=[str(scale)]).values[0][0]
     whole, dropped = values["whole"][0], values["dropped"][0]
     assert dropped != 0 and abs(dropped - whole) <= 1e-12 * abs(whole)
-    record, rows = hf.generation_filter(li.slice("li_gg_h"), [[0.0]], failure=0)
+    record, rows = real(li.slice("li_gg_h"), [[0.0]], failure=0)
     assert record == {"failure_probability": 0.0, "dropped": []} and not rows

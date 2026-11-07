@@ -450,21 +450,7 @@ def filter_rows(
         raise ValueError("the helicity-zero filter serves loop-induced plans")
     rows = list(exported.rows)
     if counterterm_tensors(executor.slice):
-        # No row can drop (module docs): nothing is screened or tested.
-        return FilterVerdict(
-            rows=len(rows),
-            live_by_screen=0,
-            tested=(),
-            integrand_zero=(),
-            dropped=(),
-            every_row_zero=False,
-            counterterms="present",
-            prime=PRIME,
-            points=0,
-            degree_bound=0,
-            failure_probability=failure,
-            failure_bound=0.0,
-        )
+        return _with_kets(len(rows), failure)
     seconds: dict[str, float] = {}
     start = time.perf_counter()
     live = screen(executor, point, scale, dict(parameters or {}))
@@ -495,6 +481,26 @@ def filter_rows(
         failure_probability=failure,
         failure_bound=max(len(tested), 1) * ratio**k,
         seconds=seconds,
+    )
+
+
+def _with_kets(rows: int, failure: float) -> FilterVerdict:
+    """The verdict of a request with counterterm kets: no row can drop
+    (module docs), so nothing is screened or tested."""
+
+    return FilterVerdict(
+        rows=rows,
+        live_by_screen=0,
+        tested=(),
+        integrand_zero=(),
+        dropped=(),
+        every_row_zero=False,
+        counterterms="present",
+        prime=PRIME,
+        points=0,
+        degree_bound=0,
+        failure_probability=failure,
+        failure_bound=0.0,
     )
 
 
@@ -532,12 +538,16 @@ def generation_filter(
     has no row to filter; a zero ``failure`` drops nothing (the filter is
     skipped)."""
 
-    from .plan_export import NativeExecutor
+    from .native_cells import counterterm_tensors
+    from .plan_export import NativeExecutor, born_rows
 
     if slice_.amplitude.colour_zero or not candidates:
         return {"exact_colour_zero": bool(slice_.amplitude.colour_zero)}, frozenset()
     if failure == 0:
         return {"failure_probability": 0.0, "dropped": []}, frozenset()
+    if counterterm_tensors(slice_):
+        # Before any export: no row can drop.
+        return _with_kets(len(born_rows(slice_)), failure).record(), frozenset()
     index, point, scale = generation_point(slice_, candidates)
     executor = NativeExecutor(slice_, forward=False, inputs="native")
     verdict = filter_rows(executor, point, scale, failure=failure)
