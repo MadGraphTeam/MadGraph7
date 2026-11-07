@@ -407,7 +407,7 @@ class V2ObservablesRuntime:
     established and nothing is escalated automatically.
     """
 
-    contribution_kind = "virtual"
+    contribution_kind: Literal["virtual", "loop-induced"] = "virtual"
     execution_mode = "loop_v2"
 
     def __init__(
