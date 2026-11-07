@@ -496,13 +496,15 @@ jobs:
       # ---- acceptancetest_gamma_upc ----
       # a a > mu+ mu- in PbPb (edff) and in OO with neutron tagging (edf1n1n,
       # plus a refused edf3n3n): builds and links libgammaUPC in a parallel
-      # Source build. The other TestGammaUPCMadEvent / TestGammaUPCNLO tests
-      # need several runs each and are left out.
+      # Source build; test_upc_source_build_switch switches the pdlabel between
+      # gamma-UPC and regular in one output (a few seconds). The other
+      # TestGammaUPCMadEvent / TestGammaUPCNLO tests need several runs each and
+      # are left out.
       - name: "acceptancetest_gamma_upc"
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_upc_pbpb_edff test_upc_oo -pA -t0 -l INFO
+            ./tests/test_manager.py test_upc_pbpb_edff test_upc_oo test_upc_source_build_switch -pA -t0 -l INFO
 
 
   acceptancetest_53:
