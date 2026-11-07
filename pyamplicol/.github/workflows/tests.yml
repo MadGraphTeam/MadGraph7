@@ -408,7 +408,7 @@ jobs:
       # the unpatched UFOmodeldb 6ca4b120 copies, all public and pinnable (a
       # hash-checked fetch step would restore them), and the saved PACBIN
       # controls (workspace only). 9 fail under PyPI symbolica 3.0.3 and pass
-      # with the Community build 20a9da94 (symbolica-dev/symbolica#163): the
+      # with the Community build b9eaa735 (symbolica-dev/symbolica#163): the
       # 6 sdk_extras ids differ at ~1e-30 relative, and the 3 stored-process
       # ids are an identity check (the same call gives other bits in a fresh
       # process, ~5e-29 relative), a release-lane defect; drop all 9 with a

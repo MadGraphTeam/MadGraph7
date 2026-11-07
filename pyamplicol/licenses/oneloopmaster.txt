@@ -1,7 +1,7 @@
 oneloopmaster (Rust crate oneloop) linked into pyAmpliCol's native libraries
 
 Source: https://github.com/alphal00p/oneloopmaster, revision
-128ea6645f2811e6179068b98731501292841409 (pinned in
+a7cf45876b2273f2c1b5dd1490d88abc07a6f287 (pinned in
 rust/loop-reduction/Cargo.toml and Cargo.lock).
 
 License: the BSD Zero Clause License (0BSD), reproduced below. oneloopmaster
