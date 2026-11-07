@@ -6,13 +6,7 @@ Done; PLAN §4.0 rule L6; row LI-O1).
 On the LI-O1 rows (g g > h g g and u u~ > h g g, every dipole T_i.T_j and
 every gluon's spin class declared) every observable call kind runs once on
 each reduction backend, ``reduction="ninjars"`` and ``reduction="tirust"``,
-with the recommended stability checks (``stability.RECOMMENDED_CHECKS``: one
-generic rotation and the rescaled reduction re-test, the O1 rule's estimate;
-without the rescaled re-test no master integral is evaluated twice and the
-estimate misses the masters' own rounding, DESIGN §10.4: at u u~ > h g g's
-point 1 the binary64 error of T1.T4 is 25 times that estimate, 7 times the
-recommended one) and every pole (``poles="all"``), at the rows' reference
-points, in one
+with every pole (``poles="all"``), at the rows' reference points, in one
 carrier (``--arithmetic``: binary64 by default, ``double-double`` or
 ``arbitrary`` with ``--precision`` digits):
 
@@ -27,13 +21,19 @@ carrier (``--arithmetic``: binary64 by default, ``double-double`` or
 
 Every sector and Laurent coefficient (finite part and both poles) of every
 output is compared. In binary64 an entry passes when |N - T| <= 10 max(E_N,
-E_T) (L6: the backends' absolute estimates E of the same entry); in
-double-double and arbitrary precision when |N - T| <= 1e-24 m (L6 after
-m-lit LIT-TIR-MP), m the largest |coefficient| of the output's sector in
-either arm (``stability.relative``'s metric: a vanishing pole is measured
-against its finite part). Every result's lane
-diagnostics must name the arm's backend as the effective one
-(``reduction.effective``), and the two arms must differ somewhere: a TIRust
+E_T) (L6: the backends' absolute estimates E of the same entry, with the
+recommended stability checks ``stability.RECOMMENDED_CHECKS``: one generic
+rotation and the rescaled reduction re-test, the O1 rule's estimate; without
+the rescaled re-test no master integral is evaluated twice and the estimate
+misses the masters' own rounding, DESIGN §10.4: at u u~ > h g g's point 1
+the binary64 error of T1.T4 is then 25 times its estimate, 7 times the
+recommended one); in double-double and arbitrary precision when |N - T| <=
+1e-24 m (L6 after m-lit LIT-TIR-MP), m the largest |coefficient| of the
+output's sector in either arm (``stability.relative``'s metric: a vanishing
+pole is measured against its finite part), without checks (the rule reads
+no estimate; the checks would cost about four evaluations per point).
+Every result's lane diagnostics must name the arm's backend as the effective
+one (``reduction.effective``), and the two arms must differ somewhere: a TIRust
 arm equal to the NinjaRS one bitwise on every output was not reduced by
 TIRust. The check exits 0 when every output passes, 1 when one fails (or
 the NinjaRS arm itself does not run), and 2 when the TIRust arm was not
@@ -116,20 +116,32 @@ def _parts(value) -> tuple[Decimal, Decimal]:
     return Decimal(real), Decimal(imag)
 
 
-def _laurents(values, estimates) -> list:
+def _laurents(values, estimate) -> list:
     """Per sector the (coefficient, (re, im), absolute estimate) of every
-    computed Laurent coefficient."""
+    computed Laurent coefficient; the estimate is 0 without checks
+    (``estimate`` None: double-double and arbitrary precision)."""
 
+    errors = [None] * len(values) if estimate is None else estimate.absolute
     out = []
-    for laurent, error in zip(values, estimates, strict=True):
+    for laurent, error in zip(values, errors, strict=True):
         out.append(
             [
-                (name, _parts(getattr(laurent, name)), float(getattr(error, name)))
+                (
+                    name,
+                    _parts(getattr(laurent, name)),
+                    0.0 if error is None else float(getattr(error, name)),
+                )
                 for name in COEFFICIENTS
                 if getattr(laurent, name) is not None
             ]
         )
     return out
+
+
+def _estimates(stability, count: int) -> list:
+    """A result's per-point estimates, None each without checks."""
+
+    return [None] * count if stability is None else list(stability)
 
 
 def _entries(name: str, runtime, backend: str, checks, carrier: dict) -> dict:
@@ -153,10 +165,11 @@ def _entries(name: str, runtime, backend: str, checks, carrier: dict) -> dict:
 
     def keep(label, result):
         _effective(result, backend, label)
+        estimates = _estimates(result.stability, len(result.values))
         for p, (values, estimate) in enumerate(
-            zip(result.values, result.stability, strict=True)
+            zip(result.values, estimates, strict=True)
         ):
-            out[f"{label}/p{p}"] = _laurents(values, estimate.absolute)
+            out[f"{label}/p{p}"] = _laurents(values, estimate)
 
     ids = [item.id for item in runtime.available_color_correlations()]
     many = runtime.evaluate_correlated_many(
@@ -180,20 +193,22 @@ def _entries(name: str, runtime, backend: str, checks, carrier: dict) -> dict:
         )["x"]
         label = f"spin/{leg}/{history}"
         _effective(result, backend, label)
-        out[f"{label}/p{p}"] = _laurents(result.values[0], result.stability[0].absolute)
+        (estimate,) = _estimates(result.stability, 1)
+        out[f"{label}/p{p}"] = _laurents(result.values[0], estimate)
     for resolution in ("contracted", "amplitude-basis"):
         resolved = runtime.evaluate_resolved(
             points, color_resolution=resolution, **options
         )
         _effective(resolved, backend, f"resolved/{resolution}")
+        per_point = _estimates(resolved.stability, len(resolved.values))
         for p, (values, estimates) in enumerate(
-            zip(resolved.values, resolved.stability, strict=True)
+            zip(resolved.values, per_point, strict=True)
         ):
             for h, helicity in enumerate(resolved.helicity_ids):
                 for c, colour in enumerate(resolved.virtual_color_ids):
                     out[f"resolved/{resolution}/{helicity}/{colour}/p{p}"] = _laurents(
                         [sector[h][c] for sector in values],
-                        estimates[h][c].absolute,
+                        None if estimates is None else estimates[h][c],
                     )
         if resolution == "contracted":
             helicities = resolved.helicity_ids
@@ -271,8 +286,13 @@ def main() -> int:
     from pyamplicol.loops.v2.stability import RECOMMENDED_CHECKS
     from tests.unit.loop_v2_induced_observables_rows import ROWS
 
-    checks = VirtualStabilityChecks(
-        RECOMMENDED_CHECKS.rotations, reduction_direction=True, rescaled=True
+    # The estimates of the binary64 rule; the high-precision rule reads none.
+    checks = (
+        VirtualStabilityChecks(
+            RECOMMENDED_CHECKS.rotations, reduction_direction=True, rescaled=True
+        )
+        if binary64
+        else None
     )
     rule = (
         "L6: |N - T| <= 10 max(E_N, E_T) (binary64)"
