@@ -16,11 +16,13 @@ at the level where a disagreement would actually change a cross section:
      points.
 
 Note on what that third check is not. Event-level numbers from a full MadEvent
-run (5.9% of beams radiating at FCC-ee 240, 23.1% at ILC 500) are a different
-quantity: they are shaped by the matrix element and the cuts, which reweight x
-before any beam radiates. Comparing the two directly reads like a factor-two
-disagreement at 365 GeV and is not one -- the Fortran density alone gives 12.6%
-there. The reference for this code is the Fortran, and that is what is used.
+run (6.2% of beams radiating at FCC-ee 240, 10.7% at 365, 30.3% at ILC 500) are
+a different quantity: they are shaped by the matrix element and the cuts, which
+reweight x before any beam radiates, so they sit somewhat below the density
+alone. The reference for this code is the Fortran, and that is what is used.
+(Earlier event-level numbers, 5.9% / 6.0% / 23.1%, came from runs hit by two
+since-fixed bugs: flavour grouping dropped the beamstrahlung components, and
+the 365 GeV run linked a stale 240 GeV eepdf.o.)
 
 What is *not* here is the cross section itself. That needs the components
 wired into Integrand/DifferentialCrossSection and the mg7 launcher, which is
@@ -49,9 +51,9 @@ PS_EXPO = 0.96
 # post matrix element and post cuts, so they are NOT what this script checks
 # against; see the module docstring.
 SETS = {
-    'fcce240ll': {'e_beam': 120.0, 'madevent_events': 0.059},
-    'fcce365ll': {'e_beam': 182.5, 'madevent_events': 0.060},
-    'ilc500ll': {'e_beam': 250.0, 'madevent_events': 0.231},
+    'fcce240ll': {'e_beam': 120.0, 'madevent_events': 0.062},
+    'fcce365ll': {'e_beam': 182.5, 'madevent_events': 0.107},
+    'ilc500ll': {'e_beam': 250.0, 'madevent_events': 0.303},
 }
 
 QTERM_NAMES = {'sqrt': 'sqrt_u', 'u15': 'u_three_halves',
@@ -135,12 +137,21 @@ def check_luminosity(ms, meta, dat, binary, workdir, n_points=4000, seed=5):
 
 
 def build_sampler_reference(root, name):
-    """Compile eepdf_sample_bstrahl of one set as a standalone dumper."""
+    """Compile eepdf_sample_bstrahl of one set as a standalone dumper.
+
+    The shared bstrahl.f includes bstrahl_pars.inc, and gfortran looks for an
+    include next to the source file first -- where the no-beamstrahlung
+    default lives. So the set's include is put next to a copy of bstrahl.f.
+    """
     out = os.path.join(tempfile.gettempdir(), 'validate_bs_' + name)
+    pdf = os.path.join(root, 'Template', 'Common', 'Source', 'PDF')
+    build = tempfile.mkdtemp(prefix='validate_bs_')
+    shutil.copy(os.path.join(pdf, 'bstrahl.f'), build)
+    shutil.copy(os.path.join(pdf, 'lep_densities', name, 'bstrahl_pars.inc'),
+                build)
     cmd = ['gfortran', '-w', '-ffixed-line-length-132', '-O1', '-o', out,
            os.path.join(root, 'vendor', 'eepdfgrid', 'dump_bstrahl_sample.f'),
-           os.path.join(root, 'Template', 'Common', 'Source', 'PDF',
-                        'lep_densities', name, 'bstrahl.f')]
+           os.path.join(build, 'bstrahl.f')]
     if subprocess.run(cmd, capture_output=True).returncode != 0:
         return None
     return out

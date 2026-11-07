@@ -163,22 +163,25 @@ def build(mg5dir, pythia8_path, force=False):
 def density_has_bstrahl(pdlabel, source_dir_path):
     """True if this lepton density convolutes beamstrahlung into its PDF.
 
-    Asked of the density's own bstrahl.f, which is generated alongside the
-    grid and is the same authority the Fortran uses at run time, so the two
-    cannot drift apart.  Used at card-checking time, before any event file
+    Asked of the density's own bstrahl_pars.inc, which is generated alongside
+    the grid and is the same authority the Fortran uses at run time, so the
+    two cannot drift apart.  Used at card-checking time, before any event file
     exists; once there are events, event_file_needs_bstrahl() is better
     because it describes the file actually being showered.
     """
     if not pdlabel:
         return False
     path = pjoin(source_dir_path, 'PDF', 'lep_densities', str(pdlabel),
-                 'bstrahl.f')
+                 'bstrahl_pars.inc')
     if not os.path.exists(path):
         return False
     try:
         with open(path) as fsock:
             for line in fsock:
-                if 'eepdf_has_bstrahl' in line and '.true.' in line.lower():
+                line = line.lower()
+                if line[:1] in ('c', '!', '*'):
+                    continue
+                if 'bs_has' in line and '.true.' in line:
                     return True
     except IOError:
         pass

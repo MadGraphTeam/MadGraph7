@@ -13,7 +13,7 @@ import numpy as np
 
 S = os.path.dirname(os.path.abspath(__file__)) + '/'
 
-# CIRCE parameters of fcce240ll, as shipped in its bstrahl.f
+# CIRCE parameters of fcce240ll, as shipped in its bstrahl_pars.inc
 P1, Q1 = -901.2, -19.30
 P3, Q3 = -899.2, -18.03
 

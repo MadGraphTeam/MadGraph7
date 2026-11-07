@@ -101,7 +101,7 @@ and in each region corresponding variable transformation is performed to flatten
 Please refer to the function "Iapq", "Iapqterm1" and "Iapqterm2" in "calcpdf_{collider}.f" for more technical details.
 
 ****************************
-Beamstrahlung/ISR splitting (bstrahl.f)
+Beamstrahlung/ISR splitting (bstrahl.f, bstrahl_pars.inc)
 ****************************
 The grid in eepdf.f is the convolution of the beamstrahlung spectrum with
 the ISR structure function, so an event's momentum fraction x is really a
@@ -109,21 +109,28 @@ product x = xbs*xisr.  A parton shower must be given xisr alone -- xbs is
 a beam-energy loss, not radiation off the beam lepton -- so MadGraph
 samples the split at event-writing time and records it in the event file.
 
-gen_bstrahl.py emits, for each density set, the bstrahl.f that exposes
-that split:
+The sampling code, Template/Common/Source/PDF/bstrahl.f, is common to all
+density sets.  What differs between sets -- whether there is any
+beamstrahlung, the CIRCE parameters and the form of the spectrum's
+exponential factor -- is in Source/PDF/lep_densities/<set>/bstrahl_pars.inc,
+which copy_lep_densities() copies over the no-beamstrahlung default next to
+bstrahl.f.  gen_bstrahl.py emits those includes (and the default):
 
   python3 gen_bstrahl.py <MG root>
 
 It reads the CIRCE parameters from calcpdf_{collider}.f.  Note that the
 exponential factor of the spectrum is *collider dependent* (dsqrt(u),
-u**1.5 or (x/z)**(-1.5), see the QTERM table in the script) -- getting it
+u**1.5 or (x/z)**(-1.5), see the QFORM table in the script) -- getting it
 wrong is silent, so add each new collider to that table explicitly.
 
-test_bstrahl.f checks a generated bstrahl.f against the Iapq() of the
-corresponding calcpdf file, which is what catches such a mistake:
+test_bstrahl.f checks bstrahl.f, with a set's include, against the Iapq()
+of the corresponding calcpdf file, which is what catches such a mistake.
+gfortran looks for an include next to the source file first, so put the
+two side by side:
 
-  gfortran -w -o t test_bstrahl.f \
-      <MG root>/Template/Common/Source/PDF/lep_densities/<set>/bstrahl.f \
+  mkdir w && cp <MG root>/Template/Common/Source/PDF/bstrahl.f \
+      <MG root>/Template/Common/Source/PDF/lep_densities/<set>/bstrahl_pars.inc w/
+  gfortran -w -o t test_bstrahl.f w/bstrahl.f \
       calcpdf_<collider>.f calcisr.f dgauss.f && ./t
 
 The residual disagreement is a few 1e-3 at worst and comes from dgauss,

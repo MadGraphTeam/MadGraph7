@@ -1,6 +1,7 @@
       program test_bstrahl
 c     Closure test: the normalisation of the sampling integrand in
-c     bstrahl.f must reproduce Iapq() of vendor/eepdfgrid, and the
+c     bstrahl.f, compiled with a set's bstrahl_pars.inc, must reproduce
+c     Iapq() of vendor/eepdfgrid, and the
 c     sampled split must satisfy xbs*xisr = x with xisr in [x,1].
       implicit none
       integer ngrid

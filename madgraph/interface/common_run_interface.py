@@ -2766,17 +2766,18 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                     'The corresponding directory cannot be found in \n' + \
                     'Source/PDF/lep_densities')
 
-        # now copy the files. bstrahl.f carries the beamstrahlung/ISR
-        # splitting of this density, and replaces the no-beamstrahlung
-        # stub shipped in Template/Common/Source/PDF.
+        # now copy the files. bstrahl_pars.inc carries the parameters of this
+        # density's beamstrahlung/ISR splitting, and replaces the
+        # no-beamstrahlung default shipped in Template/Common/Source/PDF; the
+        # splitting code itself, bstrahl.f, is shared by all densities.
         #
         # Check each source first. allowed_lep_densities is built by listing
         # this directory, so a set added by hand is selectable without
         # necessarily carrying all three files, and files.cp only logs a
-        # warning when the source is missing. For bstrahl.f that would leave
-        # the stub in place, i.e. a run that quietly writes no beamstrahlung
-        # fractions and is then showered with undegraded beams -- the exact
-        # failure the fractions exist to prevent.
+        # warning when the source is missing. For bstrahl_pars.inc that would
+        # leave the default in place, i.e. a run that quietly writes no
+        # beamstrahlung fractions and is then showered with undegraded beams
+        # -- the exact failure the fractions exist to prevent.
         #
         # Source/makefile builds libpdf.a from the PDF *directory*, whose mtime
         # does not move when an existing file is overwritten, so a new density
@@ -2784,30 +2785,33 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         # FCC-ee density used for a 365 GeV run). Hence remove the stale
         # objects and the library whenever the density actually changes, and
         # leave everything alone when it does not.
-        filenames = ['eepdf.f', 'gridpdfaux.f', 'bstrahl.f']
-        for filename in filenames:
+        # file of the density -> the object compiled from it
+        objects = {'eepdf.f': 'eepdf.o',
+                   'gridpdfaux.f': 'gridpdfaux.o',
+                   'bstrahl_pars.inc': 'bstrahl.o'}
+        for filename in objects:
             source = os.path.join(lep_d_path, filename)
             if not os.path.exists(source):
                 raise madgraph.aMCatNLOError(
                     ('The dressed-lepton density %s is incomplete: %s is '
                      'missing.\n' % (name, source)) +
                     'Every density directory must provide eepdf.f, '
-                    'gridpdfaux.f and bstrahl.f;\nbstrahl.f declares whether '
-                    'the density folds beamstrahlung into its\ngrid and, if '
-                    'it does, how to split x into its beamstrahlung and ISR\n'
-                    'parts. See vendor/eepdfgrid/readme for how to generate '
-                    'it.')
+                    'gridpdfaux.f and bstrahl_pars.inc;\nbstrahl_pars.inc '
+                    'declares whether the density folds beamstrahlung into '
+                    'its\ngrid and, if it does, the parameters needed to split '
+                    'x into its\nbeamstrahlung and ISR parts. See '
+                    'vendor/eepdfgrid/readme for how to generate it.')
         # all present: only now touch Source/PDF, so that an incomplete set
         # leaves the previous density whole
         changed = False
-        for filename in filenames:
+        for filename, objname in objects.items():
             source = os.path.join(lep_d_path, filename)
             old = os.path.join(pdf_path, filename)
             if os.path.exists(old) and filecmp.cmp(source, old, shallow=False):
                 continue
             files.cp(source, pdf_path)
             changed = True
-            obj = os.path.join(pdf_path, filename[:-2] + '.o')
+            obj = os.path.join(pdf_path, objname)
             if os.path.exists(obj):
                 os.remove(obj)
         libpdf = os.path.join(sourcedir, os.pardir, 'lib', 'libpdf.a')

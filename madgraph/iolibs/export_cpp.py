@@ -3763,7 +3763,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
         gridpack could not carry one at all.
 
         The whole set directory is copied although only `eepdf.f` is read:
-        `bstrahl.f` is what a cross-check against the Fortran needs, and
+        `bstrahl_pars.inc` is what a cross-check against the Fortran needs, and
         3.5 MB next to a compiled madspace is not worth a partial copy that
         someone later has to debug.
 

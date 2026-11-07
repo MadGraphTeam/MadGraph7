@@ -1,12 +1,17 @@
 c     Reference for madspace's BeamstrahlungSampler: eepdf_sample_bstrahl of
-c     the set's bstrahl.f, on given (x, Q2, component, beamid, u1, u2).
+c     bstrahl.f, compiled with a set's bstrahl_pars.inc, on given
+c     (x, Q2, component, beamid, u1, u2).
 c
 c     The C++ port reproduces this to 1e-16 for all three collider q-term
 c     forms.  Kept because that comparison is the only thing that pins the
 c     port down -- the unit tests check invariants, not the spectrum itself.
 c
+c     bstrahl.f must sit next to the set's include (gfortran looks there
+c     first, where Source/PDF keeps the no-beamstrahlung default):
+c     cp Template/Common/Source/PDF/bstrahl.f \
+c        Template/Common/Source/PDF/lep_densities/<set>/bstrahl_pars.inc w/
 c     gfortran -w -ffixed-line-length-132 -o dump_bs dump_bstrahl_sample.f \
-c         Template/Common/Source/PDF/lep_densities/<set>/bstrahl.f
+c         w/bstrahl.f
 c     ./dump_bs points.txt      # npt, then "x q2 component beamid u1 u2"
 
       program dump_bs

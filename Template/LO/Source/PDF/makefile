@@ -11,7 +11,7 @@ LIBDIR        = ../../lib/
 include ../make_opts
 
 # bstrahl.o/sample_bstrahl.o are needed whatever the PDF choice: the
-# default bstrahl.f is a no-beamstrahlung stub, replaced by
+# default bstrahl_pars.inc declares no beamstrahlung, and is replaced by
 # copy_lep_densities() when a dressed-lepton density is selected.
 PDF = opendata.o PhotonFlux.o bstrahl.o sample_bstrahl.o
 TOREMOVE =  # file that need to be remove since not linked in current library. important to force recompilation
@@ -70,6 +70,9 @@ reset:
 $(LIBDIR)$(LIBRARY): $(PDF)
 	rm $(LIBDIR)$(LIBRARY) || echo "recompilation of $(LIBDIR)$(LIBRARY)"
 	$(call CREATELIB, $@, $^)
+
+# the density's parameters are compiled into bstrahl.o
+bstrahl.o: bstrahl_pars.inc
 
 makefile_gammaUPC:
 	(cd ./gammaUPC ; make ; cd ../)
