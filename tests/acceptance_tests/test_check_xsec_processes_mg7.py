@@ -29,7 +29,10 @@ tests). Each test:
      since the template now defaults to the dynamical HT/2 scale, and the PDF
      set (``NNPDF23_lo_as_0130_qed``), so the references stay valid no matter
      which set the template defaults to; it also sets the event count and, for
-     the hadronic tt~ decays, neutralises the jet cuts (see CLAUDE.md),
+     the hadronic tt~ decays, neutralises the jet cuts (see CLAUDE.md). An
+     entry may add cuts (``"cuts": {"<cut>.<bound>": value}``), set
+     ``[phasespace] cut_decays`` (``"cut_decays": true``) and switch MadNIS
+     off (``"madnis": false``, see below),
   4. runs ``bin/generate_events -f`` and reads the cross-section from the
      madspace ``Events/*/info.json`` (``process.mean`` / ``process.error``),
   5. asserts the relative difference to the reference stays within the
@@ -44,6 +47,14 @@ tests). Each test:
 
 The source of truth is ``check_xsec_processes_reference.json`` (mirrors the
 table in CLAUDE.md, produced with fixed scale and 1M events).
+
+MadNIS training (``[madnis] enable = "auto"``: always on for four or more
+final-state particles, on for three when the survey spread is large) is ~95%
+of the run time of the processes that use it, independently of the event
+count. Half of those entries therefore carry ``"madnis": false`` and run on
+the VEGAS multichannel sampling alone, including the inclusive ``p p > ...``
+ones (whose reference is the sum of the sub-channel references); the other
+half keeps the default, so both samplers stay covered.
 
 Four knobs are read from the environment so the CI can dial them without
 touching the code:
@@ -156,8 +167,10 @@ def _require_mg7_runtime(test):
                       '$LHAPDF_DATA_PATH)' % _REFERENCE_PDF)
 
 
-def _edit_run_card(toml_path, events, disable_jet_cuts):
-    """Set the event count and (optionally) neutralise the jet cuts.
+def _edit_run_card(toml_path, events, disable_jet_cuts, cuts=None,
+                   cut_decays=None, madnis=None):
+    """Set the event count, (optionally) neutralise the jet cuts, add the
+    entry's extra cuts and set its cut_decays and MadNIS switch.
 
     The reference cross-sections were produced with FIXED scales
     (mu = 91.188 GeV) and with the NNPDF23_lo_as_0130_qed PDF set. The
@@ -171,7 +184,11 @@ def _edit_run_card(toml_path, events, disable_jet_cuts):
     t = open(toml_path).read()
     t = t.replace('fixed_ren_scale = false', 'fixed_ren_scale = true')
     t = t.replace('fixed_fact_scale = false', 'fixed_fact_scale = true')
-    t = re.sub(r'(?m)^pdf = ".*"$', 'pdf = "%s"' % _REFERENCE_PDF, t)
+    # one set per beam (pdf1/pdf2); a card from before the split has pdf
+    t, pinned = re.subn(r'(?m)^(pdf[12]?) = ".*"$',
+                        r'\1 = "%s"' % _REFERENCE_PDF, t)
+    if not pinned:
+        raise RuntimeError('no [beam] pdf entry to pin in %s' % toml_path)
     t = re.sub(r'events = \d+', 'events = %d' % events, t)
     if disable_jet_cuts:
         # jet cuts must be disabled for the hadronic tt~ decay processes to
@@ -180,6 +197,24 @@ def _edit_run_card(toml_path, events, disable_jet_cuts):
         t = re.sub(r'jet-eta_abs\.max\s*=.*', 'jet-eta_abs.max = 100.0', t)
         t = re.sub(r'jet-delta_r\.min\s*=.*', 'jet-delta_r.min = 0.0', t)
         t = re.sub(r'jet-lepton-delta_r\.min\s*=.*', 'jet-lepton-delta_r.min = 0.0', t)
+    if cuts:
+        # right under the [cuts] header ([histograms] has keys of the same
+        # form, e.g. its own sqrt_s.min)
+        lines = ''.join('%s = %r\n' % (key, float(value))
+                        for key, value in cuts.items())
+        t, count = re.subn(r'(?m)^\[cuts\]\n', lambda m: m.group(0) + lines, t)
+        assert count == 1, 'no [cuts] section in %s' % toml_path
+    if cut_decays is not None:
+        t, count = re.subn(r'(?m)^cut_decays = \w+',
+                           'cut_decays = %s' % str(bool(cut_decays)).lower(), t)
+        assert count == 1, 'no cut_decays in %s' % toml_path
+    if madnis is not None:
+        # the first `enable` after the [madnis] header ([vegas] and
+        # [systematics] have one too)
+        t, count = re.subn(r'(?m)(^\[madnis\]\n(?:(?!^\[).*\n)*?)enable = .*$',
+                           lambda m: m.group(1) + 'enable = %s'
+                           % str(bool(madnis)).lower(), t)
+        assert count == 1, 'no [madnis] enable in %s' % toml_path
     open(toml_path, 'w').write(t)
 
 
@@ -288,7 +323,9 @@ class CheckXsecProcessesMG7Test(unittest.TestCase):
         mg.exec_cmd('output mg7 %s' % run_dir)
 
         toml = pjoin(run_dir, 'Cards', 'run_card.toml')
-        _edit_run_card(toml, _EVENTS, entry.get('disable_jet_cuts', False))
+        _edit_run_card(toml, _EVENTS, entry.get('disable_jet_cuts', False),
+                       entry.get('cuts'), entry.get('cut_decays'),
+                       entry.get('madnis'))
 
         log = pjoin(run_dir, 'mg7_gen.log')
         with open(log, 'w') as logfh:
@@ -320,12 +357,14 @@ class CheckXsecProcessesMG7Test(unittest.TestCase):
             overweight_max = _OVERWEIGHT_FACTOR * _max_overweight_truncation(toml)
 
         ref_x = entry['cross']
-        reldiff = abs(got - ref_x) / ref_x if ref_x else float('inf')
+        # abs(ref_x): an interference has a negative cross section, and a
+        # negative relative difference would always pass
+        reldiff = abs(got - ref_x) / abs(ref_x) if ref_x else float('inf')
         # the tolerance covers genuine differences; the MC error of the run
         # (and of the reference) comes on top of it, so that fewer events do
         # not turn statistical fluctuations into failures
         sigma = math.sqrt(err ** 2 + (entry.get('error') or 0.0) ** 2)
-        allowed = _TOLERANCE + (_NSIGMA * sigma / ref_x if ref_x else 0.0)
+        allowed = _TOLERANCE + (_NSIGMA * sigma / abs(ref_x) if ref_x else 0.0)
         xsec_ok = reldiff <= allowed
         overweight_ok = overweight is None or overweight <= overweight_max
         problems = []

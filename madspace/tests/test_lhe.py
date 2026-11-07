@@ -8,10 +8,12 @@ from pytest import approx
 
 import madspace as ms
 
+# LHE events are built and completed on the host
+pytestmark = pytest.mark.cpu_only
+
 HERE = os.path.dirname(os.path.realpath(__file__))
 # Copy of PROC_tt_decay/SubProcesses/subprocesses.json (a hadronically decaying
-# ttbar process), checked in here since the PROC_tt_decay output directory
-# itself isn't guaranteed to exist/persist.
+# ttbar process).
 TT_DECAY_SUBPROCESSES = os.path.join(
     HERE, "test_data", "lhe", "tt_decay_subprocesses.json"
 )
@@ -46,8 +48,9 @@ def subproc_meta():
 def build_topology_and_args(meta, bw_cutoff=BW_CUTOFF):
     """Rebuild the ms.Topology/ms.SubprocArgs for the single channel/diagram
     described in PROC_tt_decay's subprocesses.json, mirroring what
-    MadgraphSubprocess.build_multi_channel_data/build_lhe_completer do in the
-    madevent.py template, without needing a full MadgraphProcess/run_card setup.
+    MadgraphSubprocess.build_multi_channel_data and
+    MadgraphProcess.build_lhe_completer (madgraph/mg7) do, without needing a
+    full MadgraphProcess/run_card setup.
     """
     channel = meta["channels"][0]
     propagators = []
@@ -165,7 +168,7 @@ def test_event_attributes_are_bound_to_their_own_members():
 
     Guards against copy-paste slips in the pybind11 binding block: a
     def_readwrite pointing at the wrong struct member silently shadows another
-    field (alpha_qcd used to be bound to LHEEvent::process_id).
+    field (e.g. alpha_qcd bound to LHEEvent::process_id).
     """
     values = dict(
         process_id=7,
@@ -189,7 +192,7 @@ def test_event_attributes_are_bound_to_their_own_members():
 
 def test_event_header_line_written_to_lhe():
     """The event header line of the written LHE file carries the values set
-    from Python, in the order defined by arXiv:0109068 (NUP IDPRUP XWGTUP
+    from Python, in the order defined by hep-ph/0109068 (NUP IDPRUP XWGTUP
     SCALUP AQEDUP AQCDUP).
 
     The attributes are set one by one rather than passed to the constructor, so
@@ -360,10 +363,9 @@ def test_resonance_colors_consistent_with_daughters(events, subproc_meta):
 def test_external_color_flows_match_input_across_subprocesses(
     topology_and_args, mapping, subproc_meta
 ):
-    """Regression test for a color-offset bug where a second subprocess's
-    external colors were read from the wrong location in the flattened color
-    table. Uses two (identical) subprocesses so the offset for subproc index 1
-    is actually exercised.
+    """Colors of a later subprocess must be read from its own part of the
+    flattened color table. Uses two (identical) subprocesses so that the offset
+    for subproc index 1 is exercised.
     """
     _, _, subproc_args = topology_and_args
     lhe_completer = ms.LHECompleter([subproc_args, subproc_args], bw_cutoff=BW_CUTOFF)
@@ -412,6 +414,33 @@ def test_external_flavors_are_valid_options(lhe_completer, mapping, subproc_meta
             assert pdgs in options
 
 
+def test_first_incoming_particle_moves_along_plus_z(lhe_completer, mapping):
+    """A beam-swapped event (py, pz -> -py, -pz) is written with the incoming
+    particles swapped, record and all, so particle 1 comes from beam 1."""
+    p_ext = sample_external_momenta(mapping, 30, seed=5)
+    for row in p_ext:
+        assert row[0][3] > 0
+        mirrored = row.copy()
+        mirrored[:, 2:] *= -1
+        events = []
+        for momenta in (row, mirrored):
+            event = build_event(momenta)
+            lhe_completer.complete_event_data(event, 0, 0, 0, 0, 0, ms.MixMaxRandom(11))
+            events.append(event)
+        plain, swapped = events
+        assert swapped.particles[0].pz > 0
+        for field in ("pdg_id", "color", "anti_color", "spin"):
+            assert getattr(swapped.particles[0], field) == getattr(
+                plain.particles[1], field
+            )
+            assert getattr(swapped.particles[1], field) == getattr(
+                plain.particles[0], field
+            )
+        assert momentum(swapped.particles[0]) == approx(
+            momentum(plain.particles[1]) * [1, 1, -1, -1]
+        )
+
+
 def test_save_load_roundtrip(lhe_completer, mapping):
     with tempfile.TemporaryDirectory() as tmpdir:
         save_path = os.path.join(tmpdir, "lhe_completer.json")
@@ -453,7 +482,7 @@ def test_invalid_color_index_raises(lhe_completer, mapping):
 def test_particle_momentum_kwargs_match_attributes():
     """The constructor kwargs for the momentum components are spelled like the
     attributes they set: px/py/pz, matching LHEParticle's C++ members and the
-    rest of madspace. The old p_x/p_y/p_z spelling is gone."""
+    rest of madspace; p_x/p_y/p_z are rejected."""
     particle = ms.LHEParticle(px=1.5, py=-2.5, pz=3.5, energy=4.5)
     assert (particle.px, particle.py, particle.pz) == (1.5, -2.5, 3.5)
     assert particle.energy == 4.5
@@ -461,3 +490,105 @@ def test_particle_momentum_kwargs_match_attributes():
     for name in ("p_x", "p_y", "p_z"):
         with pytest.raises(TypeError):
             ms.LHEParticle(**{name: 1.0})
+
+
+def chain_topology(masses):
+    """t-channel chain topology without propagator information."""
+    n_out = len(masses) - 2
+    vertices = [["i0", "p0", "o0"]]
+    vertices += [[f"p{i - 1}", f"p{i}", f"o{i}"] for i in range(1, n_out - 1)]
+    vertices.append(["i1", f"p{n_out - 2}", f"o{n_out - 1}"])
+    diagram = ms.Diagram(
+        masses[:2], masses[2:], [ms.Propagator() for _ in range(n_out - 1)], vertices
+    )
+    return ms.Topology(diagram)
+
+
+def test_subprocess_without_diagrams():
+    """Without diagrams, events carry the diagram index -1 and get no
+    intermediate particles."""
+    pdg_ids = [21, 21, 21, 21, 21]
+    color_flows = [
+        [[502, 501], [503, 502], [503, 504], [505, 501], [505, 504]],
+        [[501, 502], [502, 503], [504, 503], [501, 505], [504, 505]],
+    ]
+    subproc_args = ms.SubprocArgs(
+        process_id=3,
+        topologies=[chain_topology([0.0] * 5)],
+        permutations=[[]],
+        diagram_indices=[[]],
+        diagram_color_indices=[[]],
+        color_flows=color_flows,
+        pdg_color_types={21: 8},
+        helicities=[[1, 1, -1, -1, 1], [-1, -1, 1, 1, -1]],
+        pdg_ids=[[pdg_ids]],
+    )
+    lhe_completer = ms.LHECompleter([subproc_args], bw_cutoff=BW_CUTOFF)
+    event = build_event(np.ones((5, 4)) * [100.0, 0.0, 0.0, 0.0])
+    lhe_completer.complete_event_data(event, 0, -1, 1, 0, 1, ms.MixMaxRandom(1))
+    assert event.process_id == 3
+    assert [p.pdg_id for p in event.particles] == pdg_ids
+    assert [(p.color, p.anti_color) for p in event.particles] == [
+        tuple(flow) for flow in color_flows[1]
+    ]
+    assert [p.spin for p in event.particles] == [-1, -1, 1, 1, -1]
+    with pytest.raises(RuntimeError, match="Diagram index out of range"):
+        lhe_completer.complete_event_data(event, 0, 0, 0, 0, 0, ms.MixMaxRandom(1))
+
+
+def weighted_flavor_completer(pdg_id_weights):
+    """e+ e- > l+ l- with two flavors of two options each."""
+    options = [
+        [[11, -11, 13, -13], [11, -11, 15, -15]],
+        [[-11, 11, 13, -13], [-11, 11, 15, -15]],
+    ]
+    subproc_args = ms.SubprocArgs(
+        topologies=[chain_topology([0.0] * 4)],
+        permutations=[[]],
+        diagram_indices=[[]],
+        diagram_color_indices=[[]],
+        color_flows=[[[0, 0]] * 4],
+        pdg_color_types={pdg: 1 for pdg in (11, -11, 13, -13, 15, -15)},
+        helicities=[[1, -1, 1, -1]],
+        pdg_ids=options,
+        pdg_id_weights=pdg_id_weights,
+    )
+    return ms.LHECompleter([subproc_args], bw_cutoff=BW_CUTOFF)
+
+
+def drawn_taus(lhe_completer, flavor_index, count, seed):
+    rand_gen = ms.MixMaxRandom(seed)
+    taus = 0
+    for _ in range(count):
+        event = build_event(np.ones((4, 4)) * [100.0, 0.0, 0.0, 0.0])
+        lhe_completer.complete_event_data(event, 0, -1, 0, flavor_index, 0, rand_gen)
+        taus += event.particles[2].pdg_id == 15
+    return taus
+
+
+def test_pdg_id_options_are_drawn_in_proportion_to_their_weights():
+    """Options are written with probability proportional to their weight;
+    equal weights and flavors without weights draw them uniformly."""
+    lhe_completer = weighted_flavor_completer([[1.0, 3.0], []])
+    count = 4000
+    assert drawn_taus(lhe_completer, 0, count, 5) / count == approx(0.75, abs=0.03)
+    assert drawn_taus(lhe_completer, 1, count, 5) / count == approx(0.5, abs=0.03)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_path = os.path.join(tmpdir, "lhe_completer.json")
+        lhe_completer.save(save_path)
+        loaded = ms.LHECompleter.load(save_path)
+    assert drawn_taus(loaded, 0, 200, 9) == drawn_taus(lhe_completer, 0, 200, 9)
+
+    # equal weights consume the random numbers like the uniform draw
+    equal = weighted_flavor_completer([[2.0, 2.0], [2.0, 2.0]])
+    uniform = weighted_flavor_completer([])
+    assert drawn_taus(equal, 0, 200, 3) == drawn_taus(uniform, 0, 200, 3)
+
+
+@pytest.mark.parametrize(
+    "pdg_id_weights", [[[1.0, 0.0], []], [[1.0, -1.0], []], [[1.0], []], [[1.0, 1.0]]]
+)
+def test_invalid_pdg_id_weights_raise(pdg_id_weights):
+    with pytest.raises(ValueError):
+        weighted_flavor_completer(pdg_id_weights)

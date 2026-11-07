@@ -928,6 +928,7 @@ namespace madmatrix
 #else
   inline __host__ __device__ fptype_amp_sv fpamp_of_mom( const fptype_momenta_sv& p ) { return static_cast<fptype_amp_sv>( p ); }
 #endif
+  inline __host__ __device__ fptype_denom_sv fpdenom_bcast( fptype_denom s ) { return fptype_denom_sv{} + s; }
   template<typename T>
   inline __host__ __device__ fptype_amp fpamp_scalar( const T& x ) { return static_cast<fptype_amp>( x ); }
 
@@ -958,6 +959,17 @@ namespace madmatrix
     T out = base;
     for( int i = 1; i < k; i++ ) out = out * base;
     return out;
+  }
+
+  // Heaviside step of the $-excluded propagator (ALOHA 'P1D' tag): valtrue
+  // where cond >= 0 (outside the on-shell window), valfalse inside it. Same
+  // Theta(0) = 1 convention as the Fortran THETA_FUNCTIONR. Only the real part
+  // of cond is physical.
+  template<class CX>
+  inline __host__ __device__ CX
+  theta_functionr( const CX& cond, const fptype valtrue, const fptype valfalse )
+  {
+    return ( cxreal( cond ) >= 0 ) ? CX( valtrue, 0 ) : CX( valfalse, 0 );
   }
 
 } // end namespace madmatrix

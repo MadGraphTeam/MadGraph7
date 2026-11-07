@@ -359,22 +359,18 @@ def lhapdf_configured(interface):
 
 
 def pythia8_available(interface):
-    """Whether this MG7 has a usable Pythia8 *and* the MG5aMC interface to it.
+    """Whether this MG7 has a usable Pythia8.
 
     MG5 nulls options['pythia8_path'] at startup when the headers are not where
-    it points (madgraph_interface.py:7912), and showering from aMC@NLO also
-    needs options['mg5amc_py8_interface_path'], so both are checked.
+    it points, so that option alone tells: aMC@NLO builds its own Pythia8
+    driver and MadEvent runs Pythia8's main164.
     """
 
     try:
         options = interface.options
     except Exception:
         return False
-    for key in ('pythia8_path', 'mg5amc_py8_interface_path'):
-        value = options.get(key)
-        if value in (None, '', 'None'):
-            return False
-    return True
+    return options.get('pythia8_path') not in (None, '', 'None')
 
 
 def output_name(interface, default):

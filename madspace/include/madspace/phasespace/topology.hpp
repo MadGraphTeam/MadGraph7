@@ -28,6 +28,9 @@ struct Propagator {
     double e_max;
     /// PDG id of the propagating particle.
     int pdg_id;
+    /// Half-width, in units of `width`, of the window where the Breit-Wigner
+    /// sampling is flattened (`$`-excluded propagator); `0` for none.
+    double flat_window = 0.;
 };
 
 /**
@@ -163,6 +166,9 @@ public:
         /// Position in the flat `Diagram::propagators()` list, or
         /// @ref no_propagator; lets callers apply a per-diagram PDG override.
         std::size_t flat_propagator_index;
+        /// Flattened Breit-Wigner window of the propagator, see
+        /// @ref Propagator::flat_window.
+        double flat_window = 0.;
     };
 
     /// Enumerate the sub-channels of a diagram, one per on-shell configuration.
@@ -186,6 +192,12 @@ public:
     const std::vector<double>& t_propagator_widths() const {
         return _t_propagator_widths;
     }
+    /// The pdg ids of the `t`-channel propagators, in the same order as
+    /// t_propagator_masses(). Needed to tell a QCD splitting off the initial
+    /// state from a QED/EW one.
+    const std::vector<int>& t_propagator_pdg_ids() const {
+        return _t_propagator_pdg_ids;
+    }
     /// The `s`-channel decay-tree nodes.
     const std::vector<Decay>& decays() const { return _decays; }
     /**
@@ -208,7 +220,7 @@ public:
     const std::vector<std::size_t>& decay_integration_order() const {
         return _decay_integration_order;
     }
-    /// Diagram indices of the outgoing particles, in decay-tree order.
+    /// Decay-tree node index of each outgoing particle, in diagram order.
     const std::vector<std::size_t>& outgoing_indices() const {
         return _outgoing_indices;
     }
@@ -220,8 +232,9 @@ public:
     /// A decay has no `t`-channel chain and a root virtuality fixed by the
     /// mass of the decaying particle.
     bool is_decay() const { return _incoming_masses.size() == 1; }
-    /// For each propagator, the outgoing momenta summed to form it and the
-    /// energy window `(indices, e_min, e_max)`.
+    /// For each propagator, a tuple `(factors, mass, width)`. `factors` has one
+    /// entry per external particle (incoming first): +1 or -1 for the momenta
+    /// summed to form the propagator momentum, 0 otherwise.
     /// @param only_decays  Restrict the result to the `s`-channel decay nodes.
     std::vector<std::tuple<std::vector<int>, double, double>>
     propagator_momentum_terms(bool only_decays = false) const;
@@ -234,6 +247,7 @@ private:
     std::vector<std::size_t> _t_integration_order;
     std::vector<double> _t_propagator_masses;
     std::vector<double> _t_propagator_widths;
+    std::vector<int> _t_propagator_pdg_ids;
     std::vector<Decay> _decays;
     std::vector<std::size_t> _decay_integration_order;
     std::vector<std::size_t> _outgoing_indices;

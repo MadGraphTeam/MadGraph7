@@ -41,7 +41,7 @@ C
       INTEGER SELECTED_HEL, SELECTED_COL, IVEC
       INTEGER IFLAV
 C     
-C     global (due to reading writting)
+C     global (due to reading writing)
 C     
 C     Good-helicity filter is per (helicity, flavor): a helicity that
 C      is zero for

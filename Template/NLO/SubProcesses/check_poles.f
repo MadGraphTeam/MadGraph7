@@ -1,6 +1,6 @@
       Program DRIVER
 c**************************************************************************
-c     This is the driver for the whole calulation
+c     This is the driver for the whole calculation
 c**************************************************************************
       use mint_module
       use FKSParams
@@ -82,7 +82,7 @@ C-----
       call setrun                !Sets up run parameters
       call setpara('param_card.dat')   !Sets up couplings and masses
       call setcuts               !Sets up cuts and particle masses
-      call printout              !Prints out a summary of paramaters
+      call printout              !Prints out a summary of parameters
       call run_printout          !Prints out a summary of the run settings
       include 'pmass.inc'
      
@@ -98,7 +98,7 @@ c     Set the energy to be characteristic of the run
       enddo
       if (abs(lpp(1)).eq.1.and.abs(lpp(2)).eq.1) then
           energy = max((ebeam(1)+ebeam(2))/20.0d0,2.0d0*totmass)
-      else if (lpp(1).eq.2.and.lpp(2).eq.2) then
+      else if (abs(lpp(1)).eq.2.and.abs(lpp(2)).eq.2) then
           energy = max((ebeam(1)/(nb_proton(1)+nb_neutron(1))+ebeam(2)/
      .       (nb_proton(2)+nb_neutron(2)))/200.0d0,2.0d0*totmass)
       else

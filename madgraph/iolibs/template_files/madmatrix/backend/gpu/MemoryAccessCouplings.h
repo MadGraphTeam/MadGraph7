@@ -42,7 +42,7 @@ namespace madmatrix
 
     // Locate the buffer for a single coupling (output) in a memory super-buffer (input) from the given coupling index (input)
     // [Signature (non-const) ===> fptype* idcoupAccessBuffer( fptype* buffer, const int idcoup ) <===]
-    // NB: keep this in public even if exposed through KernelAccessCouplings: nvcc says it is inaccesible otherwise?
+    // NB: keep this in public even if exposed through KernelAccessCouplings: nvcc says it is inaccessible otherwise?
     static __host__ __device__ inline fptype*
     idcoupAccessBuffer( fptype* buffer, // input "super-buffer"
                         const int idcoup )
@@ -56,7 +56,7 @@ namespace madmatrix
 
     // Locate the buffer for a single coupling (output) in a memory super-buffer (input) from the given coupling index (input)
     // [Signature (const) ===> const fptype* idcoupAccessBufferConst( const fptype* buffer, const int idcoup ) <===]
-    // NB: keep this in public even if exposed through KernelAccessCouplings: nvcc says it is inaccesible otherwise?
+    // NB: keep this in public even if exposed through KernelAccessCouplings: nvcc says it is inaccessible otherwise?
     static __host__ __device__ inline const fptype*
     idcoupAccessBufferConst( const fptype* buffer, // input "super-buffer"
                              const int idcoup )

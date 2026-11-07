@@ -43,7 +43,7 @@ import madgraph.various.misc as misc
 
 import aloha.create_aloha as create_aloha
 
-import models.write_param_card as write_param_card
+import madgraph.models.write_param_card as write_param_card
 from madgraph import MG5DIR
 from madgraph.iolibs.files import cp, ln, mv
 _file_path = os.path.split(os.path.dirname(os.path.realpath(__file__)))[0] + '/'
@@ -60,7 +60,7 @@ class IdentifyConfigTag(diagram_generation.DiagramTag):
     @staticmethod
     def link_from_leg(leg, model):
         """Returns the end link for a leg needed to identify configs: 
-        ((leg numer, spin, mass, width, color), number)."""
+        ((leg number, spin, mass, width, color), number)."""
 
         part = model.get_particle(leg.get('id'))
         if abs(part.get('pdg_code')) in [23,25] and leg.get('state') == False:
@@ -368,7 +368,7 @@ class SubProcessGroup(base_objects.PhysicsObject):
         for ime, me in enumerate(matrix_elements):
             # Define here a FDStructure repository which will be used for the 
             # tagging all the diagrams in get_contracted_loop_diagram. Remember
-            # the the tagging of each loop updates the FDStructre repository
+            # the tagging of each loop updates the FDStructre repository
             # with the new structures identified.
                                     
             if isinstance(me, loop_helas_objects.LoopHelasMatrixElement):
@@ -517,6 +517,12 @@ class SubProcessGroup(base_objects.PhysicsObject):
             pols = tuple(base_objects.canonical_polarization(
                              l.get('polarization'))
                          for l in process.get('legs'))
+            # Likewise an interference process ('[LIxtree=QCD]', '[treextree]')
+            # never shares a group with an ordinary one, even with the same
+            # '@N': the events of a group share the power of alpha_s of each
+            # channel (config_nqcd.inc), which differs between the two.
+            # Ordinary processes all have '' here: their grouping is unchanged.
+            interference = process.get_interference_mode()
 
             # This is where the requirements for which particles to
             # combine are defined. Include p.get('is_part') in
@@ -531,7 +537,7 @@ class SubProcessGroup(base_objects.PhysicsObject):
                              abs(p.get('color')),l.get('onshell'),l.get('onium').get('id')) for (p, l) \
                              in zip(is_parts + fs_parts, process.get('legs'))],
                            amplitude.get('process').get('id'),
-                           process.get('id'), pols]
+                           process.get('id'), pols, interference]
             if (criteria=="madweight"):
               proc_class = [ [(abs(p.get('pdg_code'))==5, abs(p.get('pdg_code'))==11, 
                            abs(p.get('pdg_code'))==13, abs(p.get('pdg_code'))==15) for p in \
@@ -546,7 +552,7 @@ class SubProcessGroup(base_objects.PhysicsObject):
                              abs(p.get('color')),l.get('onshell'),l.get('onium').get('id')) for (p, l) \
                              in zip(is_parts + fs_parts, process.get('legs'))],
                            amplitude.get('process').get('id'),
-                           process.get('id'), pols]
+                           process.get('id'), pols, interference]
 
             try:
                 amplitude_classes[iamp] = proc_classes.index(proc_class)

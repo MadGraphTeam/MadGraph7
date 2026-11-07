@@ -39,7 +39,7 @@ import  collections
 import aloha
 
 import madgraph
-import models
+import madgraph.models as models
 import madgraph.core.base_objects as base_objects
 import madgraph.core.color_algebra as color
 import madgraph.core.color_amp as color_amp
@@ -61,10 +61,10 @@ import madgraph.various.process_checks as process_checks
 import madgraph.loop.loop_diagram_generation as loop_diagram_generation
 import madgraph
 import aloha.create_aloha as create_aloha
-import models.import_ufo as import_ufo
-import models.write_param_card as param_writer
-import models.check_param_card as check_param_card
-from models import UFOError
+import madgraph.models.import_ufo as import_ufo
+import madgraph.models.write_param_card as param_writer
+import madgraph.models.check_param_card as check_param_card
+from madgraph.models import UFOError
 
 
 from madgraph import MadGraph5Error, MG5DIR, ReadWrite
@@ -131,7 +131,7 @@ class VirtualExporter(object):
         self.has_second_exporter = None
         
 
-    # helper function for customise helas writter
+    # helper function for customise helas writer
     @staticmethod
     def custom_helas_call(call, arg):
         """static method to customise the way aloha function call are written
@@ -249,7 +249,7 @@ def chosen_squared_orders(process, squared_orders):
         is_a_match = True
         for user_sqso, value in user_squared_orders.items():
             if user_sqso == 'WEIGHTED' :
-                logger.debug('WEIGHTED^2%s%s encoutered. Please check behavior for' + \
+                logger.debug('WEIGHTED^2%s%s encountered. Please check behavior for' + \
                         'https://bazaar.launchpad.net/~maddevelopers/mg5amcnlo/3.0.1/revision/613', \
                         (process.get_squared_order_type(user_sqso), sqsos[split_orders.index(user_sqso)]))
             if user_sqso not in split_orders:
@@ -404,10 +404,17 @@ class ProcessExporterFortran(VirtualExporter,
         if opt:
             self.opt.update(opt)
         self.cmd_options = self.opt['output_options']
+        if isinstance(self.cmd_options, dict) and 'axial_gauge' in self.cmd_options:
+            self.opt['axial_gauge'] = banner_mod.ConfigFile.format_variable(
+                  self.cmd_options['axial_gauge'], bool, 'axial_gauge')
+            # once per output: says so if the FD gauge drops the option
+            helas_call_writers.axial_gauge_requested(self.opt, warn=True)
         self._configure_flavor_mask_from_cmd_options()
         
         #place holder to pass information to the run_interface
         self.proc_characteristic = banner_mod.ProcCharacteristic()
+        self.proc_characteristic['density_matrix'] = \
+            isinstance(self.cmd_options, dict) and 'density' in self.cmd_options
         # call mother class
         super(ProcessExporterFortran,self).__init__(dir_path, opt)
 
@@ -873,7 +880,7 @@ class ProcessExporterFortran(VirtualExporter,
     # write_vector_size
     #===========================================================================
     def write_vector_size(self, fsock):
-        """Write the vector.inc which indicates how many event are handle in parralel."""
+        """Write the vector.inc which indicates how many events are handled in parallel."""
 
         try:
             vector_size = self.opt['output_options']['vector_size']
@@ -1071,7 +1078,7 @@ C
 
 
         # First find the coupling and suppress the coupling from process_str
-        #But first ensure that coupling are define whithout spaces:
+        #But first ensure that coupling are define without spaces:
         process_str = process_str.replace(' =', '=')
         process_str = process_str.replace('= ', '=')
         process_str = process_str.replace(',',' , ')
@@ -1703,7 +1710,7 @@ C
                     pass
                 else:
                     cp(filepos, self.dir_path + '/Source/DHELAS')
-    # following lines do the same but whithout symbolic link
+    # following lines do the same but without symbolic link
     # 
     #def export_helas(mgme_dir, dir_path):
     #
@@ -1752,11 +1759,11 @@ C
         set_of_lib = ' '.join(self.get_source_libraries_list()+['$(LIBRARIES)'])
         if self.opt['model'] == 'mssm' or self.opt['model'].startswith('mssm-'):
             model_line='''$(LIBDIR)libmodel.$(libext): MODEL param_card.inc vector.inc\n\tcd MODEL && make
-MODEL/MG5_param.dat: ../Cards/param_card.dat\n\t../bin/madevent treatcards param
-param_card.inc: MODEL/MG5_param.dat\n\t../bin/madevent treatcards param\n'''
+MODEL/MG5_param.dat: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatcards param
+param_card.inc: MODEL/MG5_param.dat\n\t../bin/madevent --allow-stdin treatcards param\n'''
         else:
             model_line='''$(LIBDIR)libmodel.$(libext): MODEL param_card.inc vector.inc\n\tcd MODEL && make
-param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
+param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatcards param\n'''
         
         dual_libs = ''
         dhelas_dual = ''
@@ -2011,7 +2018,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         
         model = matrix_element.get('processes')[0].get('model')
 
-        # auxilary functions
+        # auxiliary functions
         def falling_factorial_int(n, k):
             if k > n and n > 0:
                 return 0
@@ -2214,8 +2221,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         # Both sources of flavor multiplicity (several processes mapped onto one
         # matrix element, and merged legs within a process) are enumerated by
         # HelasMatrixElement.get_flavor_pdg_combinations, shared with the mg7
-        # exporter so the two backends cannot drift apart.
-        processes = matrix_element.get('processes')
+        # exporter so the two backends cannot drift apart (per process of
+        # get_flavor_row_processes).
+        processes = matrix_element.get_flavor_row_processes()
         for iproc, (pdg_lists, has_merged_particles) in enumerate(
                 matrix_element.get_flavor_pdg_combinations(self.model)):
             proc = processes[iproc]
@@ -2265,7 +2273,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                                   ",".join([ "%3r" % 0 ] * nexternal)))
 
                 else:
-                    # First build a color representation dictionnary
+                    # First build a color representation dictionary
                     repr_dict = {}
                     onium = False
                     for l in legs:
@@ -3199,7 +3207,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                         (fractions.Fraction(Nc_value)**coefficient[0][3]) for \
                         coefficient in coeff_list]
             # Create the list of the numbers of the contributing amplitudes.
-            # Mutliply by -1 for those which have an imaginary coefficient.
+            # Multiply by -1 for those which have an imaginary coefficient.
             ampnumbers_list=[coefficient[1]*(-1 if coefficient[0][2] else 1) \
                               for coefficient in coeff_list]
             # Find the common denominator.  
@@ -3320,7 +3328,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         """Return the JAMP = sum(fermionfactor * AMP(i)) lines from col_amps
         defined as a matrix element or directly as a color_amplitudes dictionary,
         Jamp_formatLC should be define to allow to add LeadingColor computation
-        (usefull for MatchBox)
+        (useful for MatchBox)
         The split argument defines how the JAMP lines should be split in order
         not to be too long.
         With orbit on, the common sub-expressions are looked for in a way which
@@ -3353,7 +3361,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 res_list.append(((JAMP_format+"=0D0") % str(i + 1)))
                 continue
             # Break the JAMP definition into 'n=split' pieces to avoid having
-            # arbitrarly long lines.
+            # arbitrarily long lines.
             first=True
             n = (len(coeff_list)+1 if split<=0 else split) 
             while coeff_list!=[]:
@@ -4157,10 +4165,41 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
 
 
+    @staticmethod
+    def get_pdf_lines_vec_flavor_loop(processes, all_flv, pdf_product):
+        """Fortran lines filling ALL_PD for the vector DSIG: for each warp,
+        only the rows of the flavor IFLAV_VEC(CURR_WARP) are filled (as
+        PD in the scalar code), NB_PSEL_WARP(CURR_WARP) is their number.
+        pdf_product(proc, one_flv) returns the lines setting
+        ALL_PD(IPROC,IVEC); an empty list means 1d0 (decays)."""
+
+        lines = ["ALL_PD(:,:) = 0d0",
+                 "DO CURR_WARP=1, NB_WARP_USED",
+                 "IFLAV = IFLAV_VEC(CURR_WARP)",
+                 "DO IWARP=1, WARP_SIZE",
+                 "IVEC = (CURR_WARP-1)*WARP_SIZE+IWARP",
+                 "IPROC = 0"]
+        for proc in processes:
+            process_line = proc.base_string()
+            for nb_flavor, grp in enumerate(all_flv):
+                lines.append("IF (IFLAV.EQ.%d) THEN" % (nb_flavor + 1))
+                for one_flv in grp:
+                    lines.append("IPROC=IPROC+1 ! " + process_line)
+                    lines += pdf_product(proc, one_flv) or \
+                        ["ALL_PD(IPROC,IVEC)=1d0"]
+                    lines.append("ALL_PD(0,IVEC)=ALL_PD(0,IVEC)+DABS(ALL_PD(IPROC,IVEC))")
+                lines.append("ENDIF")
+        lines += ["ENDDO ! IWARP LOOP",
+                  "NB_PSEL_WARP(CURR_WARP) = IPROC",
+                  "ENDDO ! CURRWARP LOOP"]
+        return "\n".join(lines) + "\n"
+
     def get_pdf_lines(self, matrix_element, ninitial, subproc_group = False, vector=False):
         """Generate the PDF lines for the auto_dsig.f file"""
 
-        processes = matrix_element.get('processes')
+        # processes combined in with another flavor restriction only add
+        # flavor rows, covered by the ones written for processes[0]
+        processes = matrix_element.get_flavor_row_processes()
         model = processes[0].get('model')
 
         pdf_definition_lines = ""
@@ -4198,19 +4237,10 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 # Close the vector loops opened above (no PDFs to fetch for decays)
                 pdf_lines += "ENDDO ! IWARP LOOP\n"
                 pdf_lines += "ENDDO ! CURRWARP LOOP\n"
-                # Set ALL_PD for ALL flavor combinations across all IVEC.
-                # No iflav conditioning here (matches ninitial==2 vector pattern):
-                # IPSEL will randomly select the flavor, then GET_FLAVOR maps it.
-                pdf_lines += "ALL_PD(0,:) = 0d0\nIPROC = 0\n"
-                for i, proc in enumerate(processes):
-                    process_line = proc.base_string()
-                    for grp in all_flv:
-                        for one_flv in grp:
-                            pdf_lines += "IPROC=IPROC+1 ! " + process_line
-                            pdf_lines += "\nDO IVEC=1, VECSIZE_USED\n"
-                            pdf_lines += "ALL_PD(IPROC,IVEC)=1d0\n"
-                            pdf_lines += "ALL_PD(0,IVEC)=ALL_PD(0,IVEC)+DABS(ALL_PD(IPROC,IVEC))\n"
-                            pdf_lines += "ENDDO\n"
+                # Same rows as the scalar code: only those of the flavor of
+                # the warp, IPSEL then selects one of them
+                pdf_lines += self.get_pdf_lines_vec_flavor_loop(
+                    processes, all_flv, lambda proc, one_flv: [])
             else:
                 pdf_lines = "PD(0) = 0d0\nIPROC = 0\n"
                 for i, proc in enumerate(processes):
@@ -4300,7 +4330,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             # Get PDF variable declarations for all initial states
             if vector:
                 vector_ext1 = '(VECSIZE_MEMMAX)' # pass to an array from a double
-                vector_ext2 = ', VECSIZE_MEMMAX' # add a dimenion
+                vector_ext2 = ', VECSIZE_MEMMAX' # add a dimension
             else:
                 vector_ext1, vector_ext2 = '',''
 
@@ -4432,18 +4462,11 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                             for ibeam in [1, 2]:
                                 initial_state = proc.get_initial_pdg(ibeam)
                                 if abs(initial_state) in model.get('merged_particles'):
-                                    flv = proc.get_initial_flavor(ibeam)
-                                    if len(flv) == 0:
-                                        sign = 1 if initial_state > 0 else -1
-                                        initial_state = sign * one_flv[ibeam-1]
-                                    elif len(flv) ==1:
-                                        initial_state = flv[0]
-                                    else:
-                                        # Grouped process: multiple specific quarks are
-                                        # possible; use the one specified by this flavor
-                                        # combination.
-                                        sign = 1 if initial_state > 0 else -1
-                                        initial_state = sign * one_flv[ibeam-1]
+                                    # the flavor row fixes the beam flavor
+                                    # (it honours the leg restriction; a
+                                    # union row may not be processes[0]'s)
+                                    sign = 1 if initial_state > 0 else -1
+                                    initial_state = sign * one_flv[ibeam-1]
                                 
                                 if initial_state in list(pdf_codes.keys()):
                                     pdf_lines = pdf_lines + "%s%d*" % \
@@ -4473,49 +4496,42 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 # Add up PDFs for the different initial state particles
                 pdf_lines += "ENDDO ! IWARP LOOP\n"
                 pdf_lines += "ENDDO ! CURRWARP LOOP\n"
-                pdf_lines = pdf_lines + "ALL_PD(0,:) = 0d0\nIPROC = 0\n"
-                for proc in processes:
-                    for nb_flavor in range(matrix_element.get_nb_flavors()):
-                        comp_list = []
-                        process_line = proc.base_string()
-                        pdf_lines = pdf_lines + "IPROC=IPROC+1 ! " + process_line
-                        pdf_lines += '\n   DO IVEC=1, VECSIZE_USED'
-                        pdf_lines = pdf_lines + "\nALL_PD(IPROC,IVEC)="
-                        for ibeam in [1, 2]:
-                            initial_state = proc.get_initial_pdg(ibeam)
-                            if abs(initial_state) in model.get('merged_particles'):
-                                flv = proc.get_initial_flavor(ibeam)
-                                if len(flv) == 0:
-                                    sign = 1 if initial_state > 0 else -1
-                                    initial_state = sign * matrix_element.get_external_flavors()[nb_flavor][ibeam-1]
-                                elif len(flv) ==1:
-                                    initial_state = flv[0]
-                                else:
-                                    # Grouped process: multiple specific quarks are
-                                    # possible; use the one specified by this flavor
-                                    # combination.
-                                    sign = 1 if initial_state > 0 else -1
-                                    initial_state = sign * matrix_element.get_external_flavors()[nb_flavor][ibeam-1]
 
-                            if initial_state in list(pdf_codes.keys()):
-                                pdf_lines = pdf_lines + "%s%d(IVEC)*" % \
-                                            (pdf_codes[initial_state], ibeam)
-                                comp_list.append("%s%d" % (pdf_codes[initial_state], ibeam))
-                            else:
-                                pdf_lines = pdf_lines + "1d0*"
-                                comp_list.append("DUMMY")
-                        # Remove last "*" from pdf_lines
-                        pdf_lines = pdf_lines[:-1] + "\n"
-                        # this is for the lepton collisions with electron luminosity 
-                        # put here "%s%d_components(i_ee)*%s%d_components(i_ee)"
-                        if dressed_lep:
-                            pdf_lines += "if (pdlabel.eq.'dressed')" + \
-                                "ALL_PD(IPROC,IVEC)=ee_comp_prod(%s_components(1,IVEC),%s_components(1,IVEC))\n" % \
-                                tuple(comp_list)
-                        pdf_lines = pdf_lines + "ALL_PD(0,IVEC)=ALL_PD(0,IVEC)+DABS(ALL_PD(IPROC,IVEC))\n"
-                        pdf_lines += '\n    ENDDO\n'
-                        if not dressed_lep:
-                            ee_pdf_definition_lines = ""
+                def pdf_product(proc, one_flv):
+                    """lines setting ALL_PD(IPROC,IVEC) for this flavor row"""
+                    comp_list = []
+                    line = "ALL_PD(IPROC,IVEC)="
+                    for ibeam in [1, 2]:
+                        initial_state = proc.get_initial_pdg(ibeam)
+                        if abs(initial_state) in model.get('merged_particles'):
+                            # the flavor row fixes the beam flavor (it
+                            # honours the leg restriction; a union row
+                            # may not be processes[0]'s)
+                            sign = 1 if initial_state > 0 else -1
+                            initial_state = sign * one_flv[ibeam-1]
+
+                        if initial_state in list(pdf_codes.keys()):
+                            line += "%s%d(IVEC)*" % (pdf_codes[initial_state], ibeam)
+                            comp_list.append("%s%d" % (pdf_codes[initial_state], ibeam))
+                        else:
+                            line += "1d0*"
+                            comp_list.append("DUMMY")
+                    # Remove last "*"
+                    lines = [line[:-1]]
+                    # this is for the lepton collisions with electron luminosity
+                    if dressed_lep:
+                        lines.append("if (pdlabel.eq.'dressed')" + \
+                            "ALL_PD(IPROC,IVEC)=ee_comp_prod(%s_components(1,IVEC),%s_components(1,IVEC))" % \
+                            tuple(comp_list))
+                    return lines
+
+                # Same rows as the scalar code: only those of the flavor of
+                # the warp, in leshouche order, IPSEL then selects one of them
+                all_flv = list(matrix_element.get_external_flavors_with_iden())
+                pdf_lines += self.get_pdf_lines_vec_flavor_loop(
+                    processes, all_flv, pdf_product)
+                if not dressed_lep:
+                    ee_pdf_definition_lines = ""
 
         # Remove last line break from the return variables                
         if vector:
@@ -4672,7 +4688,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             # Write out propagators for s-channel and t-channel vertices
 
             lines.append("# Diagram %d" % (mapconfigs[iconfig]))
-            # Correspondance between the config and the diagram = amp2
+            # Correspondence between the config and the diagram = amp2
             lines.append("data mapconfig(%d)/%d/" % (nconfigs,
                                                      mapconfigs[iconfig]))
 
@@ -4954,7 +4970,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
             # dileptonia
             # The perturbative LDME is multiplied by a factor Nc*N[C]=3*6 to undo the color normalization
-            # of the color projetion of the quarkonium color-singelt projector.
+            # of the color projection of the quarkonium color-singelt projector.
             if ldme[3]=='1S0':
                 ldme_perturbative += 'LDME_{id} = 9D0*({alpha})**3/2D0/ATAN(1D0)*({mass1}*{mass2}/({mass1}+{mass2}))**3'.format(alpha=alpha,id=ldme[0],mass1=mass1,mass2=mass2)
             elif ldme[3]=='3S1':
@@ -5037,12 +5053,10 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         # Try to find the correct one.
         if default_compiler['f2py'] and misc.which(default_compiler['f2py']):
             f2py_compiler = default_compiler['f2py']
-        elif misc.which('f2py%d.%d' %(sys.version_info.major, sys.version_info.minor)):
-            f2py_compiler = 'f2py%d.%d' %(sys.version_info.major, sys.version_info.minor)
-        elif misc.which('f2py%d' %(sys.version_info.major)):
-            f2py_compiler = 'f2py%d' %(sys.version_info.major)            
-        elif misc.which('f2py'):
-            f2py_compiler = 'f2py'
+        elif misc.default_f2py():
+            # this Python's own f2py first: f2py3 on the PATH may build
+            # modules for another Python
+            f2py_compiler = misc.default_f2py()
 
 
         to_replace = {'fortran': f77_compiler, 'f2py': f2py_compiler}
@@ -5209,6 +5223,33 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
 
         self.prefix_info = {}
         ProcessExporterFortran.__init__(self, *args, **opts)
+
+    def zero_tchannel_width(self):
+        """True if the t-channel widths are set to zero (zerowidth_tchannel)
+        as in madevent: by default for the reweighting (standalone_rw) and
+        MadSpin (standalone_msP/msF) outputs, not for standalone. The output
+        option --zerowidth_tchannel=True/False overrides it (used by MadSpin
+        for its standalone outputs). Never for the loop outputs."""
+
+        export_format = self.opt['export_format']
+        if export_format not in ['standalone_fortran', 'standalone_rw',
+                                 'standalone_msP', 'standalone_msF']:
+            return False
+        output_options = self.opt.get('output_options') or {}
+        if 'zerowidth_tchannel' in output_options:
+            return banner_mod.ConfigFile.format_variable(
+                output_options['zerowidth_tchannel'], bool, 'zerowidth_tchannel')
+        return export_format != 'standalone_fortran'
+
+    # helper function for customise helas writer
+    def custom_helas_call(self, call, arg):
+        """Tag the propagator width with fk_ as madevent does, such that the
+        HelasCallWriter sets the t-channel widths to zero like in the generated
+        sample. The remaining tags are removed in write_matrix_element_v4."""
+
+        if arg['mass'] == '%(M)s,%(W)s,' and self.zero_tchannel_width():
+            arg['mass'] = '%(M)s,fk_%(W)s,'
+        return call, arg
 
     def copy_template(self, model):
         """Additional actions needed for setup of Template
@@ -5402,7 +5443,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         open(pjoin(self.dir_path,'SubProcesses','__init__.py'),'w')
 
         if False:#'mode' in self.opt and self.opt['mode'] == "reweight":
-            #add the module to hande the NLO weight
+            #add the module to handle the NLO weight
             files.copytree(pjoin(MG5DIR, 'Template', 'RWGTNLO'),
                           pjoin(self.dir_path, 'Source'))
             files.copytree(pjoin(MG5DIR, 'Template', 'NLO', 'Source', 'PDF'),
@@ -5416,14 +5457,18 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                             pjoin(self.dir_path,'SubProcesses','check_sa.py'))
         else:
             # create a single makefile to compile all the subprocesses
-            text = '''\n# For python linking (require f2py part of numpy)\nifeq ($(origin MENUM),undefined)\n  MENUM=2\nendif\n''' 
+            text = '''\n# For python linking (require f2py part of numpy)\nifeq ($(origin MENUM),undefined)\n  MENUM=2\nendif\n'''
             deppython = ''
+            rules = ''
             for Pdir in os.listdir(pjoin(self.dir_path,'SubProcesses')):
                 if os.path.isdir(pjoin(self.dir_path, 'SubProcesses', Pdir)):
-                    text += '%(0)s/matrix$(MENUM)py.so:\n\tcd %(0)s;make matrix$(MENUM)py.so\n'% {'0': Pdir}
+                    rules += '%(0)s/matrix$(MENUM)py.so:\n\tcd %(0)s;make matrix$(MENUM)py.so\n'% {'0': Pdir}
                     deppython += ' %(0)s/matrix$(MENUM)py.so ' % {'0': Pdir}
-            text+='all: %s\n\techo \'done\'' % deppython
-            
+            # 'all' must be the first rule: it is the default goal of a plain
+            # 'make', which would otherwise build only the first P directory.
+            text += 'all: %s\n\techo \'done\'\n' % deppython
+            text += rules
+
             ff = open(pjoin(self.dir_path, 'SubProcesses', 'makefile'),'a')
             ff.write(text)
             ff.close()
@@ -5447,8 +5492,15 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             prefix, tag = value[0], value[1]
             info.append('#PY %s : %s # %s %s' % (tag, key, prefix, pid))
 
+        # The merged-code rewrite and the dispatch below work on LPDGS, a local
+        # copy of the caller's PDGS: f2py hands an int32 numpy array straight
+        # through for intent(in), so rewriting PDGS itself turned a reused
+        # [2,-2,-11,11] into [81,-81,-82,82] and the next call silently
+        # answered for d d~. Legs beyond npdg stay 0, which matches no process.
         flavor_text= "  flavor(:) = 1\n"
-        flavor_text += " do i =1, npdg\n"
+        flavor_text += "  lpdgs(:) = 0\n"
+        flavor_text += " do i =1, min(npdg, %i)\n" % max_nexternal
+        flavor_text += " lpdgs(i) = pdgs(i)\n"
         nb = 0
         for pdg, pids in self.model['merged_particles'].items():
             for group_pos, pid in enumerate(pids, 1):
@@ -5458,9 +5510,9 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                     flavor_text += ' '
                 nb += 1
                 # flavor(i) is the 1-based position of the actual PDG within
-                # the merged-particle group; pdgs(i) is rewritten to carry
+                # the merged-particle group; lpdgs(i) is rewritten to carry
                 # the merged-particle ID (with the original sign).
-                flavor_text += 'if (abs(pdgs(i)).eq.%i)then\n flavor(i) = %i\n pdgs(i) = Sign(%i, pdgs(i))\n' % (pid, group_pos, pdg)
+                flavor_text += 'if (abs(lpdgs(i)).eq.%i)then\n flavor(i) = %i\n lpdgs(i) = Sign(%i, lpdgs(i))\n' % (pid, group_pos, pdg)
         if nb>0:
             flavor_text += 'endif\n'
         flavor_text += " enddo\n"
@@ -5506,7 +5558,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
 
             for ii,pdgs in enumerate(current_id):
                 pid = current_pid[ii]
-                condition = '.and.'.join(['%i.eq.pdgs(%i)' %(pdg, i+1) for i, pdg in enumerate(pdgs)])
+                condition = '.and.'.join(['%i.eq.lpdgs(%i)' %(pdg, i+1) for i, pdg in enumerate(pdgs)])
                 if ii==0:
                     line = ' if(%s.and.(procid.le.0.or.procid.eq.%d)) then ! %i' % (condition, pid, ii)
                 else:
@@ -5521,10 +5573,13 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                     # density: those must stay where they are, so they are
                     # passed as the frozen legs. smatrixhel has no such leg.
                     repair = (' call flavor_order_repair(%sget_flavor_index,'
-                              ' %sget_flavor, %i, %i, %i, %%s, flavor, pdgs,'
+                              ' %sget_flavor, %i, %i, %i, %%s, flavor, lpdgs,'
                               ' p, pfix)' % (prefix, prefix, n_ext,
                                              info_me[4], info_me[5]))
-                    text.append(repair % 'n_changing, pos, .true.')
+                    # GET_ALL_INTER fixes the helicity of every other leg from
+                    # NHEL, by leg position: it gets the same no-repair rule
+                    # as a specific smatrixhel row (below), hence the switch.
+                    text.append(repair % 'n_changing, pos, %(dorepair)s')
                     # a request for one specific helicity row names it by leg
                     # position, so re-ordering the legs would answer for a
                     # different helicity assignment: leave those calls alone.
@@ -5635,7 +5690,8 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                                            for i in range(max_nexternal) for (pdg,pid) in allids),
                           'prefix':'\',\''.join(allprefix),
                           'pids': ','.join(str(pid) for (pdg,pid) in allids),
-                          'inter_splitter': '\n'.join(text) % {'fct_name': 'GET_ALL_INTER(%s, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, INTER)' % momenta},
+                          'inter_splitter': '\n'.join(text) % {'fct_name': 'GET_ALL_INTER(%s, LNHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, INTER)' % momenta,
+                                                               'dorepair': '.false.'},
                           'flavor_repair_function': flavor_repair_function,
                           'parameter_setup': '\n'.join(parameter_setup),
                           'helreset_def' : '\n'.join(helreset_def),
@@ -5645,7 +5701,8 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                           'nhel': all_nhel,
                           'f2py_prefix': f2py_prefix,
                           'idens_value': all_iden,
-                          'density_splitter': '\n'.join(text) % {'fct_name': 'GET_DENSITY(%s, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, ALPHAS, SCALE2, INTER)' % momenta},
+                          'density_splitter': '\n'.join(text) % {'fct_name': 'GET_DENSITY(%s, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, ALPHAS, SCALE2, INTER)' % momenta,
+                                                                 'dorepair': '.true.'},
                           
                           }
 
@@ -5674,15 +5731,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             params['%s_%s' % (block.upper(), lha)] = name
 
         if model['running_elements']:
-            add_scale = set()
-            for runs in self.model.get('running_elements'):
-                for line_run in runs.run_objects:
-                    for one_element in line_run:
-                        add_scale.add(one_element.lhablock)
-            for block in add_scale:
-                if block.upper() == "SMINPUTS":
-                    continue
-                name = block
+            for block in self.model.get_running_blocks():
                 params['%s__scale' % (block.upper())] = 'mdl__%s__scale' % (block.upper())
                 params['mdl__%s__scale' % (block.upper())] = 'mdl__%s__scale' % (block.upper())
 
@@ -6171,14 +6220,28 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         fortran_model.use_flavor_mask = (n_mask > 0)
         fortran_model.me_n_flavors = n_mask
         fortran_model.me_active_flavor_mask = active_flavor_mask
+        fortran_model.axial_gauge = helas_call_writers.axial_gauge_requested(
+                                                                   self.opt)
+        fortran_model.axial_gauge_refs = \
+            helas_call_writers.get_axial_gauge_refs(matrix_element) \
+            if fortran_model.axial_gauge else {}
+        # the propagators of the --zerowidth_decay particles of this matrix
+        # element, if any, are written with a zero width. Not with
+        # misc.TMP_variable: the writer is a dict, which it addresses by key.
+        fortran_model.zerowidth_pdgs = self.get_zerowidth_pdgs(matrix_element)
         try:
             # Extract helas calls
             helas_calls = fortran_model.get_matrix_element_calls(\
                         matrix_element)
         finally:
+            fortran_model.zerowidth_pdgs = frozenset()
             fortran_model.use_flavor_mask = False
             fortran_model.me_n_flavors = 0
+            fortran_model.axial_gauge_refs = {}
             fortran_model.me_active_flavor_mask = None
+        if self.zero_tchannel_width():
+            # t-channel widths are already zeroed, no fake width in standalone
+            helas_calls = [call.replace(',fk_', ',') for call in helas_calls]
 
         replace_dict['helas_calls'] = "\n".join(helas_calls)
 
@@ -6287,19 +6350,18 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                               matrix_element.get('processes')[0],squared_orders)
 
             # For convenience we also write the driver check_sa_splitOrders.f
-            # that explicitely writes out the contribution from each squared order.
+            # that explicitly writes out the contribution from each squared order.
             # The original driver still works and is compiled with 'make' while
             # the splitOrders one is compiled with 'make check_sa_born_splitOrders'
-            if self.opt['export_format'] not in ['standalone_msP', 'standalone_msF']:
-                check_sa_writer=writers.FortranWriter('check_sa_born_splitOrders.f')
+            # It goes next to the matrix element file: the standalone output
+            # does not chdir to the process directory.
+            if write and writer and \
+               self.opt['export_format'] not in ['standalone_msP', 'standalone_msF']:
+                check_sa_writer=writers.FortranWriter(pjoin(
+                    os.path.dirname(os.path.abspath(writer.name)),
+                    'check_sa_born_splitOrders.f'))
                 self.write_check_sa_splitOrders(squared_orders,split_orders,
                   nexternal,ninitial,proc_prefix,check_sa_writer)
-
-        if write:
-            writers.FortranWriter('nsqso_born.inc').writelines(
-                """INTEGER NSQSO_BORN
-                   PARAMETER (NSQSO_BORN=%d)"""%replace_dict['nSqAmpSplitOrders'])
-            files.cp('nsqso_born.inc', '..')
 
         replace_dict['jamp_lines'] = '\n'.join(jamp_lines)
 
@@ -6431,6 +6493,39 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         else:
             replace_dict['return_value'] = len([call for call in helas_calls if call.find('#') != 0])
             return replace_dict # for subclass update
+
+    def get_zerowidth_pdgs(self, matrix_element):
+        """The |pdg| whose propagators are written with a zero width in this
+        matrix element, from the output option --zerowidth_decay=, which is
+        either True/False or a list <pdg>,<pdg>,...
+
+        A particle is zeroed in a process where it is an external leg: in a
+        2 > N process where it is in the final state, and in a 1 > N process
+        (a decay) where it is the decaying particle -- and only then, so that
+        the decay of one particle keeps the width of any other particle it
+        propagates (the W of t > e+ ve b). True takes every such particle (in
+        a decay: the decaying particle), a list only those listed, False or
+        an empty list none. This is what MadSpin's pole approximation needs
+        for its production (list) and decay (True) density matrices; the
+        param_card, and hence every other use of the width, is untouched.
+        """
+        option = self.cmd_options.get('zerowidth_decay')
+        if option is True or str(option).strip().lower() == 'true':
+            asked = None
+        elif not option or str(option).strip().lower() == 'false':
+            return frozenset()
+        else:
+            asked = set(abs(int(pid)) for pid in str(option).split(',')
+                        if pid.strip())
+        active = set()
+        for proc in matrix_element.get('processes'):
+            legs = proc.get('legs')
+            if proc.get_ninitial() == 1:
+                active.add(abs(legs[0].get('id')))
+            else:
+                active.update(abs(leg.get('id')) for leg in legs
+                              if leg.get('state'))
+        return frozenset(active if asked is None else active & asked)
 
     #===========================================================================
     # write_check_sa   
@@ -6838,7 +6933,7 @@ class ProcessExporterFortranMW(ProcessExporterFortran):
         cp(_file_path+'/iolibs/file_writers.py', 
                               self.dir_path+'/bin/internal/file_writers.py')
         #model file                        
-        cp(_file_path+'../models/check_param_card.py', 
+        cp(_file_path+'models/check_param_card.py', 
                               self.dir_path+'/bin/internal/check_param_card.py')   
                 
         #madevent file
@@ -7489,7 +7584,7 @@ c     channel position
             # Write out propagators for s-channel and t-channel vertices
 
             #lines.append("# Diagram %d" % (mapconfigs[iconfig]))
-            # Correspondance between the config and the diagram = amp2
+            # Correspondence between the config and the diagram = amp2
             lines.append("*     %d       %d " % (nconfigs,
                                                      mapconfigs[iconfig]))
 
@@ -7579,7 +7674,8 @@ class ProcessExporterFortranME(ProcessExporterFortran):
                         'export_format':'madevent', 'mp': False,
                         'v5_model': True,
                         'output_options':{},
-                        'hel_recycling': False
+                        'hel_recycling': False,
+                        'axial_gauge': False
                         }
     jamp_optim = True
     default_vector_size = 1
@@ -7602,6 +7698,26 @@ class ProcessExporterFortranME(ProcessExporterFortran):
                   opt['output_options']['hel_recycling'], bool, 'hel_recycling')
 
         if opt and isinstance(opt['output_options'], dict) and \
+                                       'axial_gauge' in opt['output_options']:
+            self.opt['axial_gauge'] = banner_mod.ConfigFile.format_variable(
+                  opt['output_options']['axial_gauge'], bool, 'axial_gauge')
+            # False if the FD gauge drops it (ProcessExporterFortran.__init__
+            # already said so)
+            if helas_call_writers.axial_gauge_requested(self.opt):
+                # AMP2 -- the single diagram enhancement weight of
+                # sde_strategy 1 -- is gauge dependent: the axial gauge moves
+                # amplitude between diagrams, so |AMP_i|^2 stops following the
+                # propagator structure of diagram i and the multichannel
+                # weights stop matching the peaks of the integrand.  Measured
+                # on g g > g g g g: 2m37s with sde_strategy 1 against 1m33s
+                # with sde_strategy 2, for the same cross section.
+                logger.warning("axial_gauge makes the per diagram AMP2 gauge "
+                    "dependent, which badly degrades the default single "
+                    "diagram enhancement. Set 'sde_strategy = 2' in the run "
+                    "card, otherwise the integration can be several times "
+                    "slower than without the optimisation.")
+
+        if opt and isinstance(opt['output_options'], dict) and \
                                        't_strategy' in opt['output_options']:
             self.opt['t_strategy'] = banner_mod.ConfigFile.format_variable(
                   opt['output_options']['t_strategy'], int, 't_strategy')
@@ -7620,7 +7736,7 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         else:
             self.opt['nb_warp'] = 1
 
-    # helper function for customise helas writter
+    # helper function for customise helas writer
     @staticmethod
     def custom_helas_call(call, arg):
         if arg['mass'] == '%(M)s,%(W)s,':
@@ -7642,7 +7758,7 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         filename = pjoin(self.dir_path,'Source','run_config.inc')
         self.write_run_config_file(writers.FortranWriter(filename))
         
-        # The next file are model dependant (due to SLAH convention)
+        # The next file are model dependent (due to SLAH convention)
         self.model_name = model.get('name')
         # Add the symmetry.f 
         filename = pjoin(self.dir_path,'SubProcesses','symmetry.f')
@@ -7684,7 +7800,7 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         cp(_file_path+'/iolibs/file_writers.py', 
                               self.dir_path+'/bin/internal/file_writers.py')
         #model file                        
-        cp(_file_path+'../models/check_param_card.py', 
+        cp(_file_path+'models/check_param_card.py', 
                               self.dir_path+'/bin/internal/check_param_card.py')   
         
         #copy all the file present in madevent directory
@@ -7883,7 +7999,7 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         # Compute actual MAXPROC: for merged processes each flavor combination
         # generates a separate IDUP row, so MAXPROC must cover all of them.
         nb_idup_rows = 0
-        for proc in matrix_element.get('processes'):
+        for proc in matrix_element.get_flavor_row_processes():
             legs = proc.get_legs_with_decays()
             ids = [l.get('id') for l in legs]
             if self.model and 'merged_particles' in self.model and \
@@ -7927,7 +8043,8 @@ class ProcessExporterFortranME(ProcessExporterFortran):
 
         # Find config symmetries and permutations
         symmetry, perms, ident_perms = \
-                  diagram_symmetry.find_symmetry(matrix_element)
+                  diagram_symmetry.find_symmetry(matrix_element,
+                                                 check_flavor_rows=True)
 
         filename = pjoin(Ppath, 'symswap.inc')
         self.write_symswap_file(writers.FortranWriter(filename),
@@ -8214,12 +8331,18 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         fortran_model.use_flavor_mask = (n_flavors > 0)
         fortran_model.me_n_flavors = n_flavors
         fortran_model.me_active_flavor_mask = active_flavor_mask
+        fortran_model.axial_gauge = helas_call_writers.axial_gauge_requested(
+                                                                   self.opt)
+        fortran_model.axial_gauge_refs = \
+            helas_call_writers.get_axial_gauge_refs(matrix_element) \
+            if fortran_model.axial_gauge else {}
         try:
             helas_calls = fortran_model.get_matrix_element_calls(matrix_element)
         finally:
             fortran_model.use_flavor_mask = False
             fortran_model.me_n_flavors = 0
             fortran_model.me_active_flavor_mask = None
+            fortran_model.axial_gauge_refs = {}
         if fortran_model.width_tchannel_set_tozero and not ProcessExporterFortranME.done_warning_tchannel:
             logger.info("Some T-channel width have been set to zero [new since 2.8.0]\n if you want to keep this width please set \"zerowidth_tchannel\" to False", '$MG:BOLD')
             ProcessExporterFortranME.done_warning_tchannel = True
@@ -8363,7 +8486,7 @@ class ProcessExporterFortranME(ProcessExporterFortran):
             squared_orders = [(2,),]
             amp_orders = [((1,),tuple(range(1,ngraphs+1)))]
             replace_dict['chosen_so_configs'] = '.TRUE.'
-            # addtionally set the function to NOT be called
+            # additionally set the function to NOT be called
             replace_dict['select_configs_if'] = ''
             replace_dict['select_configs_endif'] = ''
             
@@ -8713,6 +8836,20 @@ c of an explicit polarisation in the process
         integer iwarp
         return 
         end
+
+        SUBROUTINE STORE_GROUPING_CHOICE(IWARP)
+        integer iwarp
+        return
+        end
+
+        SUBROUTINE SELECT_GROUPING_VEC(IMIRROR_VEC, IPROC, ICONF_VEC, WGT, VECSIZE_USED)
+        integer imirror_vec(*)
+        integer iproc
+        integer iconf_vec(*)
+        double precision WGT(*)
+        integer VECSIZE_USED
+        return
+        end
         
         
         """
@@ -8901,7 +9038,8 @@ c           This is dummy particle used in multiparticle vertices
                                                             [[c[1]] for c in configs],
                                                             mapconfigs,
                                                             nexternal, ninitial,
-                                                            model)
+                                                            model,
+                    alpha_s_powers=interference_alpha_s_powers([matrix_element]))
 
     #===========================================================================
     # write_run_configs_file
@@ -8927,7 +9065,8 @@ c           This is dummy particle used in multiparticle vertices
     # write_configs_file_from_diagrams
     #===========================================================================
     def write_configs_file_from_diagrams(self, writer, configs, mapconfigs,
-                                         nexternal, ninitial, model):
+                                         nexternal, ninitial, model,
+                                         alpha_s_powers=None):
         """Write the actual configs.inc file.
         
         configs is the diagrams corresponding to configs (each
@@ -9012,18 +9151,26 @@ c           This is dummy particle used in multiparticle vertices
             # Write out propagators for s-channel and t-channel vertices
 
             lines.append("# Diagram %d" % (mapconfigs[iconfig]))
-            # Correspondance between the config and the diagram = amp2
+            # Correspondence between the config and the diagram = amp2
             lines.append("data mapconfig(%d)/%d/" % (nconfigs,
                                                      mapconfigs[iconfig]))
             lines.append("data tstrategy(%d)/%d/" % (nconfigs, tchannels_strategy))
-            # Number of QCD couplings in this diagram
+            # Number of QCD couplings in this diagram, i.e. the power of
+            # alpha_s of the events of this channel; for an interference
+            # process the power of the left x right product instead, given
+            # per subprocess in alpha_s_powers (see
+            # interference_alpha_s_power)
             nqcd = 0
-            for h in helas_diags:
+            for isub, h in enumerate(helas_diags):
                 if h:
-                    try:
-                        nqcd = h.calculate_orders()['QCD']
-                    except KeyError:
-                        pass
+                    power = alpha_s_powers[isub] if alpha_s_powers else None
+                    if power is not None:
+                        nqcd = power
+                    else:
+                        try:
+                            nqcd = h.calculate_orders()['QCD']
+                        except KeyError:
+                            pass
                     break
                 else:
                     continue
@@ -9079,7 +9226,7 @@ c           This is dummy particle used in multiparticle vertices
     #===========================================================================
     def write_configs_file_from_onia_diagrams(self, writer, configs, mapconfigs,
                                          nexternal, ninitial, model,
-                                         onia_pairs=None):
+                                         onia_pairs=None, alpha_s_powers=None):
         """Write the actual configs.inc file.
 
         configs is the diagrams corresponding to configs (each
@@ -9164,18 +9311,26 @@ c           This is dummy particle used in multiparticle vertices
             # Write out propagators for s-channel and t-channel vertices
 
             lines.append("# Diagram %d" % (mapconfigs[iconfig]))
-            # Correspondance between the config and the diagram = amp2
+            # Correspondence between the config and the diagram = amp2
             lines.append("data mapconfig(%d)/%d/" % (nconfigs,
                                                      mapconfigs[iconfig]))
             lines.append("data tstrategy(%d)/%d/" % (nconfigs, tchannels_strategy))
-            # Number of QCD couplings in this diagram
+            # Number of QCD couplings in this diagram, i.e. the power of
+            # alpha_s of the events of this channel; for an interference
+            # process the power of the left x right product instead, given
+            # per subprocess in alpha_s_powers (see
+            # interference_alpha_s_power)
             nqcd = 0
-            for h in helas_diags:
+            for isub, h in enumerate(helas_diags):
                 if h:
-                    try:
-                        nqcd = h.calculate_orders()['QCD']
-                    except KeyError:
-                        pass
+                    power = alpha_s_powers[isub] if alpha_s_powers else None
+                    if power is not None:
+                        nqcd = power
+                    else:
+                        try:
+                            nqcd = h.calculate_orders()['QCD']
+                        except KeyError:
+                            pass
                     break
                 else:
                     continue
@@ -9208,7 +9363,7 @@ c           This is dummy particle used in multiparticle vertices
 
 
     #===========================================================================
-    # reoder t-channels
+    # reorder t-channels
     #===========================================================================
     
     #ordering = 0    
@@ -9345,7 +9500,7 @@ c           This is dummy particle used in multiparticle vertices
         # id of the first T-channel (-X)
         propa_id = tchannels[0]['legs'][-1]['number'] 
         #
-        # Setup the last vertex to refenence the second id beam
+        # Setup the last vertex to reference the second id beam
         # -N (need to setup it to 2.
         initialid = tchannels[-1]['legs'][-1]['number']       
         oldid2new[initialid] = 2
@@ -9361,7 +9516,7 @@ c           This is dummy particle used in multiparticle vertices
             # vertex taken from the bottom we have 
             # (-N+1 X > -N) we need to flip to pass to 
             # -N X > -N+1 (and then relabel -N and -N+1  
-            legs = new_vert['legs'] # shorcut
+            legs = new_vert['legs'] # shortcut
             id1 = legs[0]['number']
             id2 = legs[1]['number']
             id3 = legs[2]['number']
@@ -9458,7 +9613,7 @@ c           This is dummy particle used in multiparticle vertices
         # id of the first T-channel (-X)
         propa_id = tchannels[0]['legs'][-1]['number'] 
         #
-        # Setup the last vertex to refenence the second id beam
+        # Setup the last vertex to reference the second id beam
         # -N (need to setup it to 2.
         initialid = tchannels[-1]['legs'][-1]['number']       
         oldid2new[initialid] = id
@@ -9487,7 +9642,7 @@ c           This is dummy particle used in multiparticle vertices
             # -N X > -N+1 (and then relabel -N and -N+1
             # to be secure  we also support (X -N+1 > -N)
             if (i % 2 ==1 and id ==2) or (i %2 == 0 and id ==1): 
-                legs = new_vert['legs'] # shorcut
+                legs = new_vert['legs'] # shortcut
                 id1 = legs[0]['number']
                 id2 = legs[1]['number'] 
                 if id1 > id2:
@@ -9856,12 +10011,18 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
     ddm_needs_flow_basis = True
 
     matrix_file = "matrix_madevent_group_v4.inc"
+    # dimensions of GOODHEL(NCOMB, ...) (flavour, subprocess) and of NTRY
+    # (beam orientation, flavour, subprocess) in the BLOCK_GOODHEL common of
+    # matrix_file
+    goodhel_dims = 'MAXFLAVPERPROC, MAXSPROC'
+    ntry_dims = '2, MAXFLAVPERPROC, MAXSPROC'
     grouped_mode = 'madevent'
     default_opt = {'clean': False, 'complex_mass':False,
                         'export_format':'madevent', 'mp': False,
                         'v5_model': True,
                         'output_options':{},
-                        'hel_recycling': True
+                        'hel_recycling': True,
+                        'axial_gauge': False
                         }
     
     
@@ -10284,7 +10445,11 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
         printzeroamp = []
         for iproc in range(len(matrix_elements)):
             printzeroamp.append(\
-                "        call print_zero_amp%i()" % ( iproc + 1))
+                # PRINT_ZERO_AMP_<n> is the reporter defined by the matrix
+                # template; PRINT_ZERO_AMP<n> (no underscore) is the empty stub
+                # auto_dsig_v4.inc emits.  Calling the stub silently disabled
+                # the whole hel_zeroamp optimisation.
+                "        call print_zero_amp_%i()" % ( iproc + 1))
         replace_dict['print_zero_amp'] = "\n".join(printzeroamp)
         
         
@@ -10470,7 +10635,8 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
     def read_write_good_hel(self, ncomb):
         """return the code to read/write the good_hel common_block"""    
 
-        convert = {'ncomb' : ncomb}
+        convert = {'ncomb' : ncomb, 'dims': self.goodhel_dims,
+                   'ntry_dims': self.ntry_dims}
 
         output = """
         subroutine write_good_hel(stream_id)
@@ -10479,8 +10645,8 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
         integer stream_id
         INTEGER                 NCOMB
         PARAMETER (             NCOMB=%(ncomb)d)
-        LOGICAL GOODHEL(NCOMB, MAXFLAVPERPROC, MAXSPROC)
-        INTEGER NTRY(MAXFLAVPERPROC, MAXSPROC)
+        LOGICAL GOODHEL(NCOMB, %(dims)s)
+        INTEGER NTRY(%(ntry_dims)s)
         common/BLOCK_GOODHEL/NTRY,GOODHEL
         write(stream_id,*) GOODHEL
         return
@@ -10494,11 +10660,11 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
         integer stream_id
         INTEGER                 NCOMB
         PARAMETER (             NCOMB=%(ncomb)d)
-        LOGICAL GOODHEL(NCOMB, MAXFLAVPERPROC, MAXSPROC)
-        INTEGER NTRY(MAXFLAVPERPROC, MAXSPROC)
+        LOGICAL GOODHEL(NCOMB, %(dims)s)
+        INTEGER NTRY(%(ntry_dims)s)
         common/BLOCK_GOODHEL/NTRY,GOODHEL
         read(stream_id,*) GOODHEL
-        NTRY(:,:) = MAXTRIES + 1
+        NTRY = MAXTRIES + 1
         return
         end
         
@@ -10507,12 +10673,12 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
         include 'maxamps.inc'
         INTEGER                 NCOMB
         PARAMETER (             NCOMB=%(ncomb)d)
-        LOGICAL GOODHEL(NCOMB, MAXFLAVPERPROC, MAXSPROC)
-        INTEGER NTRY(MAXFLAVPERPROC, MAXSPROC)
+        LOGICAL GOODHEL(NCOMB, %(dims)s)
+        INTEGER NTRY(%(ntry_dims)s)
         INTEGER I,J
 
-        GOODHEL(:,:,:) = .false.
-        NTRY(:,:) = 0
+        GOODHEL = .false.
+        NTRY = 0
         end
         
         integer function get_maxsproc()
@@ -10589,18 +10755,31 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
         (nexternal, ninitial) = subproc_group.get_nexternal_ninitial()
         onia_pairs = matrix_elements[0].get_onia_pairs()
 
+        # power of alpha_s per subprocess for the interference processes
+        alpha_s_powers = interference_alpha_s_powers(matrix_elements)
+        if len(set(p for p in alpha_s_powers if p is not None)) > 1:
+            logger.warning("The interference subprocesses of %s have different "
+                           "powers of alpha_s, but share the integration "
+                           "channels: each channel takes the power of its first "
+                           "subprocess, so the scale variations of the "
+                           "systematics (off by default) would be approximate. "
+                           "Generate these subprocesses with separate 'add "
+                           "process' lines to avoid it."
+                           % subproc_group.get('name'))
         if onia_pairs:
             return len(diagrams), \
                self.write_configs_file_from_onia_diagrams(writer, diagrams,
                                                 config_numbers,
                                                 nexternal, ninitial,
-                                                     model,onia_pairs)
+                                                     model,onia_pairs,
+                                                alpha_s_powers=alpha_s_powers)
         else:
             return len(diagrams), \
                self.write_configs_file_from_diagrams(writer, diagrams,
                                                 config_numbers,
                                                 nexternal, ninitial,
-                                                     model)
+                                                     model,
+                                                alpha_s_powers=alpha_s_powers)
 
 
 
@@ -10719,25 +10898,23 @@ class UFO_model_to_mg4(object):
         
         if self.model.get('running_elements'):
             all_elements = set()
-            add_scale = set()
             for runs in self.model.get('running_elements'):
                 for line_run in runs.run_objects:
                     for one_element in line_run:
                         all_elements.add(one_element.name)
-                        add_scale.add(one_element.lhablock)
-            all_elements.union(set(self.PS_dependent_key))
+            all_elements.update(set(self.PS_dependent_key))
             self.PS_dependent_key = list(all_elements)
             MUE = [p for p in self.model.get('parameters')[('external',)] if p.lhablock.lower() == 'loop' and tuple(p.lhacode) == (2,)]
             
             if MUE:
                 self.MUE = MUE[0]
                 self.PS_dependent_key.append(MUE[0].name)
+                # the keys under which the parameters and couplings are
+                # stored use the name of the UFO model, without the prefix
+                if MUE[0].name.startswith('mdl_'):
+                    self.PS_dependent_key.append(MUE[0].name[4:])
             
-            try:
-                add_scale.remove('SMINPUTS')
-            except Exception:
-                pass
-            self.scales = add_scale
+            self.scales = self.model.get_running_blocks()
 
     
     def pass_parameter_to_case_insensitive(self):
@@ -10775,7 +10952,7 @@ class UFO_model_to_mg4(object):
                 var.name = new_name
     
         # Apply the modification to the map_CTcoup_CTparam of the model
-        # if it has one (giving for each coupling the CT parameters whcih
+        # if it has one (giving for each coupling the CT parameters which
         # are necessary and which should be exported to the model.
         if hasattr(self.model,'map_CTcoup_CTparam'):
             for coup, ctparams in self.model.map_CTcoup_CTparam:
@@ -10854,7 +11031,7 @@ class UFO_model_to_mg4(object):
         #store the running parameter that are used
         self.used_running_key = used_running_key     
         # MG4 use G and not aS as it basic object for alphas related computation
-        #Pass G in the  independant list
+        #Pass G in the  independent list
         if 'G' in self.params_dep:
             index = self.params_dep.index('G')
             G = self.params_dep.pop(index)
@@ -10967,11 +11144,11 @@ class UFO_model_to_mg4(object):
         file_to_link = ['formats.inc', 'rw_para.f', 'testprog.f']
     
         for filename in file_to_link:
-            cp( MG5DIR + '/models/template_files/fortran/' + filename, \
+            cp( MG5DIR + '/madgraph/models/template_files/fortran/' + filename, \
                                                                 self.dir_path)
             
         file = open(os.path.join(MG5DIR,\
-                              'models/template_files/fortran/rw_para.f')).read()
+                              'madgraph/models/template_files/fortran/rw_para.f')).read()
 
         if self.vector_size:
             includes=["include \'../vector.inc\'"]
@@ -11006,10 +11183,10 @@ class UFO_model_to_mg4(object):
             updateloop_default = '.false.'
 
         if self.opt['onia']:
-            cp( MG5DIR + '/models/template_files/fortran/rw_onia.f', \
+            cp( MG5DIR + '/madgraph/models/template_files/fortran/rw_onia.f', \
                                        os.path.join(self.dir_path,'rw_onia.f'))
             
-        cp( MG5DIR + '/models/template_files/fortran/' + lha_read_filename, \
+        cp( MG5DIR + '/madgraph/models/template_files/fortran/' + lha_read_filename, \
                                        os.path.join(self.dir_path,'lha_read.f'))
         
         file=file%{'includes':'\n      '.join(includes),
@@ -11021,7 +11198,7 @@ class UFO_model_to_mg4(object):
 
         if self.opt['export_format'] in ['madevent', 'FKS5_default', 'FKS5_optimized'] \
             or self.opt['loop_induced']:
-            cp( MG5DIR + '/models/template_files/fortran/makefile_madevent', 
+            cp( MG5DIR + '/madgraph/models/template_files/fortran/makefile_madevent', 
                 self.dir_path + '/makefile')
             if self.opt['export_format'] in ['FKS5_default', 'FKS5_optimized']:
                 path = pjoin(self.dir_path, 'makefile')
@@ -11031,15 +11208,16 @@ class UFO_model_to_mg4(object):
         elif self.opt['export_format'] in ['standalone_fortran', 'standalone_msP','standalone_msF',
                                   'madloop','madloop_optimized', 'standalone_rw', 
                                   'madweight','matchbox','madloop_matchbox', 'plugin']:
-            cp( MG5DIR + '/models/template_files/fortran/makefile_standalone', 
+            cp( MG5DIR + '/madgraph/models/template_files/fortran/makefile_standalone', 
                 self.dir_path + '/makefile')
         else:
             raise MadGraph5Error('Unknown format')
 
-        if self.opt['export_format'].startswith('standalone'):
-            cp( MG5DIR + '/Template/LO/Source/alfas_functions.f', 
+        if self.opt['export_format'].startswith('standalone') or \
+                                                self.running_in_model_library():
+            cp( MG5DIR + '/Template/LO/Source/alfas_functions.f',
                 self.dir_path)
-            cp( MG5DIR + '/Template/LO/Source/alfas.inc', 
+            cp( MG5DIR + '/Template/LO/Source/alfas.inc',
                 self.dir_path)
 
             fsock = open(pjoin(self.dir_path, '..', 'cuts.inc'),'w')
@@ -11054,7 +11232,21 @@ class UFO_model_to_mg4(object):
             if self.model['running_elements']:
                 cp( MG5DIR + '/Template/Running',  pjoin(self.dir_path, '..', 'RUNNING'))
 
+        if self.running_in_model_library():
+            # the evolution routines go into the model library itself (see
+            # create_makeinc): the shared libraries of these formats link
+            # Source/MODEL/*.o or libmodel, never librunning
+            for name in self.running_sources:
+                cp(pjoin(MG5DIR, 'Template', 'Running', name), self.dir_path)
 
+    running_sources = ['matrix_exponential.f', 'c8lib.f', 'r8lib.f']
+
+    def running_in_model_library(self):
+        """True for a model with running parameters (running.py) exported
+        with makefile_standalone (standalone, MadLoop, reweighting, ...)"""
+        return bool(self.model['running_elements']) and not (
+            self.opt['export_format'] in ['madevent', 'FKS5_default', 'FKS5_optimized']
+            or self.opt['loop_induced'])
 
     def create_coupl_inc(self):
         """ write coupling.inc """
@@ -11080,7 +11272,9 @@ C
                 double precision MU_R, all_mu_r%(vec)s
                 common/rscale/ MU_R, all_mu_r
 
-                """   % {'vec': ('' if not self.vector_size else '(1)' if self.vector_size<=1 else '(VECSIZE_MEMMAX)')}
+                """   % {'vec': ('' if not self.vector_size else '(VECSIZE_MEMMAX)')}
+                # NB: always VECSIZE_MEMMAX (as for the coupling arrays) since the
+                #     vector_size can be changed at run time (run_card) after the output
                 ###   % {'vec': ("(VECSIZE_MEMMAX)" if self.vector_size else '')}
                 ###   % {'vec': ("(%i)" % max(1,self.vector_size) if self.vector_size else '')}
 
@@ -11102,7 +11296,7 @@ C
                     %(complex_mp_format)s %(mp_prefix)sgal(2)
                     common/MP_weak/ %(mp_prefix)sgal
                     
-                    %(complex_mp_format)s %(mp_prefix)sMU_R
+                    %(real_mp_format)s %(mp_prefix)sMU_R
                     common/MP_rscale/ %(mp_prefix)sMU_R
 
                 """
@@ -11325,7 +11519,7 @@ C
             return True
          
         # We must allow the conjugate shorthand for the complex parameter as
-        # well so we check wether either the parameter name or its name with
+        # well so we check whether either the parameter name or its name with
         # 'conjg__' substituted with '' is present in the list.
         # This is acceptable even if some parameter had an original name 
         # including 'conjg__' in it, because at worst we export a parameter 
@@ -11356,13 +11550,13 @@ C
         """ Extract what are the needed CT parameters given the wanted_couplings"""
         
         if not hasattr(self.model,'map_CTcoup_CTparam') or not wanted_couplings:
-            # Setting these lists to none wil disable the filtering in 
+            # Setting these lists to none will disable the filtering in
             # check_needed_param
             self.allCTparameters  = None
             self.usedCTparameters = None
             return
         
-        # All CTparameters appearin in all CT couplings        
+        # All CTparameters appearing in all CT couplings
         allCTparameters=list(self.model.map_CTcoup_CTparam.values())
         # Define in this class the list of all CT parameters
         self.allCTparameters=list(\
@@ -11394,7 +11588,7 @@ C
             replace_dict['include_vector'] = ''
 
         fsock = self.open('printout.f', format='fortran')
-        text = open(pjoin(MG5DIR , 'models', 'template_files','fortran', 'printout.f')).read()
+        text = open(pjoin(MG5DIR, 'madgraph', 'models', 'template_files','fortran', 'printout.f')).read()
         text = text % replace_dict
         fsock.write(text)
 
@@ -11543,7 +11737,7 @@ C
                 pass
         else:
             if dp:
-                logger.warning('$RED aEWM1 and Gf not define in MODEL. AQED will not be written correcty in LHE FILE')
+                logger.warning('$RED aEWM1 and Gf not define in MODEL. AQED will not be written correctly in LHE FILE')
                 fsock.writelines(""" gal(1) = 1d0
                                  gal(2) = 1d0
                              """)
@@ -11800,6 +11994,13 @@ C
                             {'args': 'vecid' if (self.vector_size) else '',
                             'args_dep': ' integer vecid' if self.vector_size  else ''}
                          )
+        if self.model['running_elements'] and self.opt['mp']:
+            # coupling used for the evolution of the running parameters in
+            # update_as_param, shared with the multiple precision version
+            fsock.writelines("""
+                            double precision gother_mp
+                            common /to_gother_mp/ gother_mp
+                            """)
 
 
         if self.opt['export_format'] in ['madevent']:
@@ -11835,6 +12036,14 @@ C
         fsock.writelines("""include \'input.inc\'
                             include \'coupl.inc\'
                             READLHA = .false.""")
+        if self.model['running_elements'] and self.MUE:
+            # the parameters depending on the extra scale (muprime**2) are
+            # evaluated in intparam_definition.inc: set the scale before
+            fsock.writelines(""" if (fixed_extra_scale) then
+                                  %s = mue_ref_fixed
+                                 else
+                                  %s = mue_over_ref*model_scale
+                                 endif""" % (self.MUE.name, self.MUE.name))
         fsock.writelines("""    
                             include \'intparam_definition.inc\'\n
                             
@@ -11852,6 +12061,8 @@ C
                 if self.MUE:
                     fsock.writelines(' %s = mue_ref_fixed' % self.MUE.name)
                 fsock.writelines(' Gother = SQRT(4.0D0*PI*ALPHAS(mue_ref_fixed))') 
+                if self.opt['mp']:
+                    fsock.writelines(' gother_mp = Gother')
                 fsock.writelines(' first = .false.') 
                 for i in range(len(running_block)):
                     fsock.writelines(" call C_RUNNING_%s(Gother) ! %s \n" % (i+1,list(running_block[i])))   
@@ -11867,6 +12078,8 @@ C
                 fsock.writelines(' if(mue_over_ref.ne.1d0)then')
                 fsock.writelines('  Gother = SQRT(4.0D0*PI*ALPHAS(mue_over_ref*model_scale))')
                 fsock.writelines(' endif')
+                if self.opt['mp']:
+                    fsock.writelines(' gother_mp = Gother')
                 
                 for i in range(len(running_block)):
                     fsock.writelines(" call C_RUNNING_%s(Gother) ! %s \n" % (i+1,list(running_block[i])))   
@@ -11964,8 +12177,13 @@ C
                             """%self.mp_real_format)
             fsock.writelines("""include \'input.inc\'""")
 
-            fsock.writelines("""include \'coupl.inc\'
-                                include \'actualize_mp_ext_params.inc\'
+            fsock.writelines("""include \'coupl.inc\'""")
+            if self.model['running_elements']:
+                fsock.writelines("""
+                                double precision gother_mp, gother_eff
+                                common /to_gother_mp/ gother_mp
+                                """)
+            fsock.writelines("""include \'actualize_mp_ext_params.inc\'
                                 READLHA = .false.
                                 include \'mp_intparam_definition.inc\'\n
                              """)
@@ -11979,8 +12197,12 @@ C
                 #running_block = self.model.get_running(self.used_running_key) 
                 if running_block:
                     fsock.write_comments('calculate the running parameter')
+                    # same coupling as the double precision version (fixed
+                    # or dynamical extra scale); G if it was not called
+                    fsock.writelines(" gother_eff = gother_mp")
+                    fsock.writelines(" if (gother_eff.le.0d0) gother_eff = G")
                     for i in range(len(running_block)):
-                        fsock.writelines(" call MP_C_RUNNING_%s(G) ! %s \n" % (i+1,list(running_block[i])))   
+                        fsock.writelines(" call MP_C_RUNNING_%s(gother_eff) ! %s \n" % (i+1,list(running_block[i])))   
             
                     
             fsock.write_comments('\ncouplings needed to be evaluated points by points\n')
@@ -12011,7 +12233,7 @@ C
       %(mpinput)s
 
       include '../cuts.inc'
-      include '../vector.inc'
+      %(include_vector)s
       INCLUDE 'coupl.inc'
       double precision GMU
 
@@ -12067,7 +12289,7 @@ C
       PARAMETER  (PI=3.141592653589793D0)
 
       include '../cuts.inc'
-      include '../vector.inc'
+      %(include_vector)s
       INCLUDE 'input.inc'
       %(mpinput)s
       INCLUDE 'coupl.inc'
@@ -12122,7 +12344,7 @@ C
       PARAMETER  (PI=3.141592653589793D0)
 
        include '../cuts.inc'
-       include '../vector.inc'
+       %(include_vector)s
       INCLUDE 'input.inc'
       %(mpinput)s
       INCLUDE 'coupl.inc'
@@ -12280,9 +12502,9 @@ C
                 data['check_scale'] += check_scale % {'1': one_scale, '2': scale}           
 
         # need to compute the matrices
-        # carefull some component are proportional to aS
+        # careful: some components are proportional to aS
         # need to convert those to G^2
-        # need to be carefull with prefactor included (none yet)
+        # need to be careful with prefactor included (none yet)
 
         
         
@@ -12308,6 +12530,8 @@ C
                     data['initc0'] += "\n   MAT2(%i,%i) = %s" % (i+1, j+1, towrite)
 
         data['mpinput'] =''
+        # vector.inc only exists in the madevent output (not in aMC@NLO)
+        data['include_vector'] = "include '../vector.inc'" if self.vector_size else ''
         if any(mat1[i][j] for i,j in zip(range(size),range(size))):
             template = self.template_running_gs_gs2
         else:
@@ -13561,8 +13785,11 @@ c         segments from -DABS(tiny*Ga) to Ga
             text += ' rw_onia.o'
         text += ' model_functions.o get_color.o '
         
-        if self.opt['export_format'].startswith('standalone'):
+        if self.opt['export_format'].startswith('standalone') or \
+                                                self.running_in_model_library():
             text += ' alfas_functions.o '
+        if self.running_in_model_library():
+            text += ' '.join(f.replace('.f', '.o') for f in self.running_sources) + ' '
 
         nb_coup_indep_noloop = 1 + len(self.coups_indep_noloop) // self.nb_def_by_file 
         nb_coup_indep_loop = 1 + len(self.coups_indep_loop) // self.nb_def_by_file
@@ -13684,19 +13911,8 @@ c         segments from -DABS(tiny*Ga) to Ga
      
         external_param = [format(param) for param in self.params_ext]
         if self.model['running_elements']:
-            scales = set()
-            
-            for elements in self.model["running_elements"]:
-                for params in elements.run_objects:
-                    for param in params:
-                        scales.add(param.lhablock)
-
-            try:
-                scales.remove('SMINPUTS')
-            except Exception:
-                pass
             #entry should be a parameter ... not a string
-            for b in scales:
+            for b in self.model.get_running_blocks():
                 param = base_objects.ParamCardVariable(
                     'mdl__%s__scale' % b.lower(),
                      91.188, b, [0])
@@ -13759,19 +13975,8 @@ c         segments from -DABS(tiny*Ga) to Ga
                           for param in self.params_ext]
         
         if self.model['running_elements']:
-            scales = set()
-            
-            for elements in self.model["running_elements"]:
-                for params in elements.run_objects:
-                    for param in params:
-                        scales.add(param.lhablock)
-
-            try:
-                scales.remove('SMINPUTS')
-            except Exception:
-                pass
             #entry should be a parameter ... not a string
-            for b in scales:
+            for b in self.model.get_running_blocks():
                 param = base_objects.ParamCardVariable(
                     'mdl__%s__scale' % b,
                      91.188, b, 0)
@@ -13818,7 +14023,7 @@ c         segments from -DABS(tiny*Ga) to Ga
             model_name = model.get('name')
             # IF MSSM convert the card to SLAH1
             if model_name == 'mssm' or model_name.startswith('mssm-'):
-                import models.check_param_card as translator    
+                import madgraph.models.check_param_card as translator    
                 # Check the format of the param_card for Pythia and make it correct
                 if rule_card_path:
                     translator.make_valid_param_card(output_path, rule_card_path)
@@ -13853,6 +14058,82 @@ c         segments from -DABS(tiny*Ga) to Ga
 # standalone_msP / _msF / _rw. None of those has a loop backend.
 LOOP_INDUCED_FORMATS = ['madevent', 'plugin', 'standalone_fortran']
 
+def interference_alpha_s_power(matrix_elements):
+    """The power of alpha_s of the events of an interference process
+    ('left [LIxtree=QCD] right' or 'left [treextree] right').
+
+    madevent gives each event the QCD order of the diagram of its integration
+    channel (config_nqcd.inc), which is the power of alpha_s of |A|^2 for an
+    ordinary process. For an interference the quantity computed is
+    2 Re(A_left A_right^*): its power is half the QCD order of the products of
+    one left-hand and one right-hand amplitude passing the squared-order
+    constraints, whatever the channel. Returns:
+      False  for an ordinary process (keep the per-channel values),
+      n      when all those products share the power n,
+      None   when they do not, or when it is not an integer (the scale
+             variations of the systematics are then ill-defined).
+    """
+
+    import madgraph.loop.loop_helas_objects as loop_helas_objects
+    powers = set()
+    for me in matrix_elements:
+        process = me.get('processes')[0]
+        if not process.get_interference_mode():
+            return False
+        hierarchy = process.get('model').get('order_hierarchy')
+        if isinstance(me, loop_helas_objects.LoopHelasMatrixElement):
+            amplitude = me.get('base_amplitude')
+            orders = [d.get('orders') for d in amplitude.get('loop_diagrams') +
+                      amplitude.get('loop_UVCT_diagrams')]
+        else:
+            orders = [d.calculate_orders() for d in me.get('diagrams')]
+        # one diagram per distinct set of orders, on each side
+        sides = {0: [], 1: []}
+        for signature in set(tuple(sorted((k, v) for k, v in o.items()
+                                          if k != 'WEIGHTED')) for o in orders):
+            diagram_orders = dict(signature)
+            diagram_orders['WEIGHTED'] = sum(hierarchy.get(k, 0) * v
+                                             for k, v in signature)
+            side = diagram_orders.get(base_objects.INTERFERENCE_ORDER, 0)
+            if side in sides:
+                sides[side].append(base_objects.Diagram({'orders': diagram_orders}))
+        squared_orders = process.get('squared_orders')
+        types = dict((order, process.get_squared_order_type(order))
+                     for order in squared_orders)
+        for left in sides[0]:
+            for right in sides[1]:
+                if left.pass_squared_order_constraints(right, squared_orders,
+                                                       types):
+                    powers.add(left.get_order('QCD') + right.get_order('QCD'))
+    if len(powers) == 1:
+        power = powers.pop()
+        if power % 2 == 0:
+            return power // 2
+    return None
+
+def interference_alpha_s_powers(matrix_elements):
+    """The power of alpha_s to give the events of each matrix element in
+    config_nqcd.inc (see interference_alpha_s_power): the power of the left x
+    right products for an interference process, None for an ordinary one,
+    whose events keep the QCD order of the diagram of their channel. Kept
+    per matrix element, so that a subprocess group mixing interference and
+    ordinary processes gets the right value for each channel."""
+
+    powers = []
+    for me in matrix_elements:
+        power = interference_alpha_s_power([me])
+        if power is None:
+            logger.warning("The power of alpha_s of the interference %s is not "
+                           "unique: the scale variations of the systematics "
+                           "(off by default for interference processes) would "
+                           "be wrong. Constrain the QCD order of the "
+                           "interference (e.g. QCD^2==n after ']') to make it "
+                           "unique." % me.get('processes')[0].nice_string(
+                                                                 prefix=False))
+        # 'is False': a power of 0 is a valid one
+        powers.append(None if power is False else power)
+    return powers
+
 def loop_induced_not_supported_msg(format, process=None):
     """Refusal text for a format that cannot write a LoopHelasMatrixElement."""
 
@@ -13866,7 +14147,7 @@ to integrate it.""" % {'format': format, 'orders': orders}
 
 def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True, cmd_options={}):
     """ Determine which Export_v4 class is required. cmd is the command 
-        interface containing all potential usefull information.
+        interface containing all potential useful information.
         The output_type argument specifies from which context the output
         is called. It is 'madloop' for MadLoop5, 'amcatnlo' for FKS5 output
         and 'default' for tree-level outputs."""
@@ -13964,7 +14245,19 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
             amcatnlo_options['export_format']='FKS5_optimized'
         return ExporterClass(cmd._export_dir, amcatnlo_options)
 
-    # Then treat the EW sudakov Standalone output     
+    # Then the FKS Born building-block standalone output (output standalone_fortran --fks)
+    elif output_type=='amcatnlo_sa':
+        import madgraph.iolibs.export_fks as export_fks
+        amcatnlo_options = dict(opt)
+        amcatnlo_options.update(MadLoop_SA_options)
+        amcatnlo_options['running'] = cmd._curr_model.get('running_elements')
+        amcatnlo_options['mp'] = len(cmd._fks_multi_proc.get_virt_amplitudes()) > 0
+        amcatnlo_options['fks_limits'] = getattr(cmd, '_fks_limits', False)
+        logger.info("Writing out the FKS Born building blocks in a standalone format")
+        amcatnlo_options['export_format']='FKS5_optimized'
+        return export_fks.ProcessExporterFortranFKS_SA(cmd._export_dir, amcatnlo_options)
+
+    # Then treat the EW sudakov Standalone output
     elif output_type=='ewsudsa':
         import madgraph.iolibs.export_fks as export_fks
         ExporterClass=None

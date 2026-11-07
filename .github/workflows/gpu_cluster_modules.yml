@@ -26,20 +26,16 @@ on:
 
 jobs:
   modules:
-    runs-on: ubuntu-22.04
-    environment: ceci-gpu
+    # the vmadgraph runner of the cluster, whose ceci-gate holds the CECI ssh key
+    runs-on: [self-hosted, vmadgraph, "vmadgraph-${{ inputs.cluster }}"]
+    timeout-minutes: 30
     env:
       CLUSTER: ${{ inputs.cluster }}
       PATTERN: ${{ inputs.pattern }}
       PARTITION: ${{ inputs.partition }}
       GRES: ${{ inputs.gres }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/ceci_ssh
-        with:
-          key: ${{ secrets.CECI_KEY }}
-          user: ${{ vars.CECI_USER || 'omatt' }}
       - name: module avail
         run: |
-          ssh "$CLUSTER" "bash -l -s -- $(printf '%q ' "$PATTERN" "$PARTITION" "$GRES")" \
-            < .github/gpu_ci/remote_modules.sh
+          sudo -n -u ceci /usr/local/sbin/ceci-gate modules "$CLUSTER" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
+            --pattern="$PATTERN" --partition="$PARTITION" --gres="$GRES"

@@ -31,7 +31,8 @@ BufferUnweighter::BufferUnweighter(const NamedVector<Type>& types, double quanti
 NamedVector<Value> BufferUnweighter::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
-    Value max_weight = fb.quantile(args.at(0), _quantile);
+    // quantile of |w|, since the acceptance is on |w| and the sign is kept
+    Value max_weight = fb.quantile(fb.abs(args.at(0)), _quantile);
     Value full_weight = args.at(0);
     auto [uw_indices, uw_weights] = fb.unweight(full_weight, max_weight);
     ValueVec output{uw_weights};

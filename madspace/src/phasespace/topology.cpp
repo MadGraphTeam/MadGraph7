@@ -17,6 +17,7 @@ bool find_t_vertices(
     std::vector<int>& integration_order,
     std::vector<double>& _t_propagator_masses,
     std::vector<double>& _t_propagator_widths,
+    std::vector<int>& _t_propagator_pdg_ids,
     std::size_t current_index,
     int source_propagator
 ) {
@@ -49,6 +50,7 @@ bool find_t_vertices(
                         integration_order,
                         _t_propagator_masses,
                         _t_propagator_widths,
+                        _t_propagator_pdg_ids,
                         vertices.at(0) == current_index
                             ? vertices.at(1)
                             : vertices.at(0),
@@ -60,6 +62,7 @@ bool find_t_vertices(
                     auto& propagator = diagram.propagators().at(line_ref.index());
                     _t_propagator_masses.push_back(propagator.mass);
                     _t_propagator_widths.push_back(propagator.width);
+                    _t_propagator_pdg_ids.push_back(propagator.pdg_id);
                 } else {
                     out_lines.push_back(line_ref);
                 }
@@ -119,6 +122,7 @@ void build_decays(
             false,
             false,
             line_ref.index(),
+            propagator.flat_window,
         });
         decay_indices.push_back(decay_index);
         integration_order.push_back(propagator.integration_order);
@@ -245,9 +249,13 @@ Diagram::Diagram(
             "Diagram must have one incoming particle (a decay) or two (a collision)"
         );
     }
-    if (outgoing_masses.size() < 2) {
+    // A single-particle final state is allowed for collisions only (delta
+    // function in s_hat), not for decays.
+    if (outgoing_masses.size() < (incoming_masses.size() == 2 ? 1 : 2)) {
         throw std::invalid_argument(
-            "Diagram must have at least two outgoing particles"
+            incoming_masses.size() == 2
+                ? "Diagram must have at least one outgoing particle"
+                : "A decay diagram must have at least two outgoing particles"
         );
     }
 
@@ -301,13 +309,9 @@ std::vector<Topology> Topology::topologies(const Diagram& diagram) {
     std::vector<Diagram::LineRef> lines_after_t;
     std::vector<int> integration_order;
     if (diagram.incoming_masses().size() == 1) {
-        // Decay: there is no t-channel chain to find. find_t_vertices walks in
-        // from the *second* incoming particle and marks the vertices between
-        // the two beams; with a single incoming particle the vertex it attaches
-        // to is simply the root of a pure s-channel cascade, and every other
-        // line at that vertex is a child of the root decay. Hand those to the
-        // shared decay builder below and leave _t_integration_order empty, so
-        // t_propagator_count() == 0 and consumers take their no-t-channel path.
+        // A decay has no t-channel chain: the vertex of the incoming particle
+        // is the root of a pure s-channel cascade, and its other lines are the
+        // root's children.
         std::size_t root_vertex = diagram.incoming_vertices().at(0);
         for (auto& line_ref : diagram.vertices().at(root_vertex)) {
             if (line_ref.type() == Diagram::incoming) {
@@ -325,6 +329,7 @@ std::vector<Topology> Topology::topologies(const Diagram& diagram) {
             integration_order,
             topo._t_propagator_masses,
             topo._t_propagator_widths,
+            topo._t_propagator_pdg_ids,
             diagram.incoming_vertices().at(1),
             -1
         );
@@ -490,7 +495,9 @@ Topology::propagator_momentum_terms(bool only_decays) const {
     }
     for (auto& decay : std::views::reverse(_decays)) {
         if (decay.index == 0) {
-            if (_t_integration_order.size() == 0) {
+            // In a 2 -> 1 topology the root is the outgoing particle itself:
+            // its invariant is fixed at its mass, so it is no propagator.
+            if (_t_integration_order.size() == 0 && decay.child_indices.size() != 0) {
                 std::vector<int> factors(n_ext);
                 for (std::size_t i = 0; i < n_in; ++i) {
                     factors.at(i) = 1;

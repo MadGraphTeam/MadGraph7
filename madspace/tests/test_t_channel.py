@@ -1,36 +1,42 @@
 import math
 
-import numpy as np
 import pytest
+import torch
+from madspace_testing import generator, rand, randint
 from pytest import approx
 
 import madspace as ms
 
-np.set_printoptions(linewidth=1000)
+torch.set_printoptions(linewidth=1000)
+
+
+def assert_approx(actual, expected, rel=1e-6, abs=1e-12):
+    """pytest.approx-like elementwise comparison of tensors."""
+    torch.testing.assert_close(actual, expected, rtol=rel, atol=abs)
 
 
 def _color_order(n_out, mode):
     """Single-chain color order for color_ordered mode; None otherwise."""
     if mode != ms.PhaseSpaceMapping.color_ordered:
         return None
-    return [0] + [i + 2 for i in range(n_out)] + [1]
+    return ms.ColorOrderedMapping.Options([0] + [i + 2 for i in range(n_out)] + [1])
 
 
 def _fwd_inputs(mapping, rng, n):
     """[random] (+ [discrete] when the mode declares discrete choices)."""
-    r = rng.random((n, mapping.random_dim()))
+    r = rand((n, mapping.random_dim()), generator=rng)
     inputs = [r]
     disc = None
     dd = mapping.discrete_dim()
     if dd:
-        disc = rng.integers(0, 2, size=(n, dd)).astype(np.int32)
+        disc = randint(0, 2, (n, dd), generator=rng, dtype=torch.int32)
         inputs.append(disc)
     return inputs, r, disc
 
 
 @pytest.fixture
 def rng():
-    return np.random.default_rng(1234)
+    return generator(43)
 
 
 @pytest.fixture(
@@ -89,7 +95,7 @@ def test_t_channel_masses(masses, rng, mode):
         masses,
         CM_ENERGY,
         mode=mode,
-        color_order=_color_order(len(masses) - 2, mode),
+        color_ordered=_color_order(len(masses) - 2, mode),
     )
     inputs, r, _ = _fwd_inputs(mapping, rng, BATCH_SIZE)
     p_ext, x1, x2, det = mapping.map_forward(inputs)
@@ -100,19 +106,19 @@ def test_t_channel_masses(masses, rng, mode):
         p_ext = p_ext[physical_mask]
         batch_phys = p_ext.shape[0]
 
-    m_ext_true = np.full((batch_phys, len(masses)), masses)
-    m_ext = np.sqrt(
-        np.maximum(0, p_ext[:, :, 0] ** 2 - np.sum(p_ext[:, :, 1:] ** 2, axis=2))
+    m_ext_true = torch.tensor(masses).expand(batch_phys, -1)
+    m_ext = torch.sqrt(
+        torch.clamp(p_ext[:, :, 0] ** 2 - torch.sum(p_ext[:, :, 1:] ** 2, dim=2), min=0)
     )
-    # The massless on-shell reconstruction m = sqrt(E^2 - |p|^2) has an FP floor
-    # that scales with the particle energy (~2e-6 * E); the deep color_ordered
-    # boost chains reach it for a few high-energy boundary events. Shallower
-    # modes stay well under the flat 1e-3, so only color_ordered needs the
-    # energy-scaled term (a genuine kinematic error would exceed it ~1000x).
+    # m = sqrt(E^2 - |p|^2) has a rounding floor that scales with the energy;
+    # the deep color_ordered boost chains reach it for a few high-energy events,
+    # so only color_ordered gets the energy-scaled tolerance.
     abs_tol = 1e-3
     if mode == ms.PhaseSpaceMapping.color_ordered:
-        abs_tol = 1e-3 + 2e-6 * np.abs(p_ext[:, :, 0])
-    assert np.all(np.abs(m_ext - m_ext_true) <= abs_tol + 1e-3 * np.abs(m_ext_true))
+        abs_tol = 1e-3 + 2e-6 * torch.abs(p_ext[:, :, 0])
+    assert torch.all(
+        torch.abs(m_ext - m_ext_true) <= abs_tol + 1e-3 * torch.abs(m_ext_true)
+    )
 
 
 def test_t_channel_incoming(masses, rng, mode):
@@ -120,7 +126,7 @@ def test_t_channel_incoming(masses, rng, mode):
         masses,
         CM_ENERGY,
         mode=mode,
-        color_order=_color_order(len(masses) - 2, mode),
+        color_ordered=_color_order(len(masses) - 2, mode),
     )
     inputs, r, _ = _fwd_inputs(mapping, rng, BATCH_SIZE)
     p_ext, x1, x2, det = mapping.map_forward(inputs)
@@ -133,18 +139,21 @@ def test_t_channel_incoming(masses, rng, mode):
         p_ext = p_ext[physical_mask]
         batch_phys = p_ext.shape[0]
 
-    zeros = np.zeros(batch_phys)
+    zeros = torch.zeros(batch_phys)
     p_a = p_ext[:, 0]
     p_b = p_ext[:, 1]
     e_beam = 0.5 * CM_ENERGY
 
-    assert p_a[:, 0] == approx(p_a[:, 3]) and p_b[:, 0] == approx(-p_b[:, 3])
-    assert p_a[:, 1] == approx(zeros) and p_a[:, 2] == approx(zeros)
-    assert p_b[:, 1] == approx(zeros) and p_b[:, 2] == approx(zeros)
-    assert np.all(x1 >= 0) and np.all(x1 <= 1)
-    assert np.all(x2 >= 0) and np.all(x2 <= 1)
-    assert p_a[:, 0] == approx(e_beam * x1)
-    assert p_b[:, 0] == approx(e_beam * x2)
+    assert_approx(p_a[:, 0], p_a[:, 3])
+    assert_approx(p_b[:, 0], -p_b[:, 3])
+    assert_approx(p_a[:, 1], zeros)
+    assert_approx(p_a[:, 2], zeros)
+    assert_approx(p_b[:, 1], zeros)
+    assert_approx(p_b[:, 2], zeros)
+    assert torch.all(x1 >= 0) and torch.all(x1 <= 1)
+    assert torch.all(x2 >= 0) and torch.all(x2 <= 1)
+    assert_approx(p_a[:, 0], e_beam * x1)
+    assert_approx(p_b[:, 0], e_beam * x2)
 
 
 def test_t_channel_momentum_conservation(masses, rng, mode):
@@ -152,7 +161,7 @@ def test_t_channel_momentum_conservation(masses, rng, mode):
         masses,
         CM_ENERGY,
         mode=mode,
-        color_order=_color_order(len(masses) - 2, mode),
+        color_ordered=_color_order(len(masses) - 2, mode),
     )
     inputs, r, _ = _fwd_inputs(mapping, rng, BATCH_SIZE)
     p_ext, x1, x2, det = mapping.map_forward(inputs)
@@ -161,10 +170,11 @@ def test_t_channel_momentum_conservation(masses, rng, mode):
         physical_mask = det != 0.0
         p_ext = p_ext[physical_mask]
 
-    p_in = np.sum(p_ext[:, :2], axis=1)
-    p_out = np.sum(p_ext[:, 2:], axis=1)
+    p_in = torch.sum(p_ext[:, :2], dim=1)
+    p_out = torch.sum(p_ext[:, 2:], dim=1)
 
-    assert p_out == approx(p_in, rel=1e-6, abs=1e-9)
+    # the transverse components are 0 up to the rounding of momenta of order CM_ENERGY
+    assert_approx(p_out, p_in, rel=1e-6, abs=1e-12 * CM_ENERGY)
 
 
 def test_t_channel_inverse(masses, rng, mode):
@@ -173,7 +183,7 @@ def test_t_channel_inverse(masses, rng, mode):
         CM_ENERGY,
         mode=mode,
         invariant_power=0.3,
-        color_order=_color_order(len(masses) - 2, mode),
+        color_ordered=_color_order(len(masses) - 2, mode),
     )
     inputs, r, disc = _fwd_inputs(mapping, rng, BATCH_SIZE)
     p_ext, x1, x2, det = mapping.map_forward(inputs)
@@ -191,14 +201,56 @@ def test_t_channel_inverse(masses, rng, mode):
     out = mapping.map_inverse((p_ext, x1, x2))
     det_inv = out[-1]
     r_inv = out[0]
-    one_batch = np.ones_like(det)
-    # Continuous randoms round-trip; the discrete int channel (color_ordered)
-    # is checked for exact bin/solution recovery separately.
-    assert r_inv == approx(r, abs=1e-3, rel=1e-3)
-    assert det * det_inv == approx(one_batch, rel=1e-5)
+    one_batch = torch.ones_like(det)
+    # Continuous randoms round-trip; the discrete choices (color_ordered) are
+    # recovered exactly.
+    assert_approx(r_inv, r, abs=1e-3, rel=1e-3)
+    assert_approx(det * det_inv, one_batch, rel=1e-5)
     if disc is not None:
-        disc_inv = np.asarray(out[1]).astype(np.int64)
-        assert np.array_equal(disc_inv, disc.astype(np.int64))
+        assert torch.equal(out[1].long(), disc.long())
+
+
+@pytest.mark.parametrize(
+    "masses,energy",
+    [
+        ([0.0, 0.0, 0.0, 0.0], 300.0),
+        ([0.0, 0.0, 0.0, 91.0], 300.0),
+        ([0.0, 0.0, 173.0, 173.0], 1000.0),
+    ],
+    ids=["massless", "massless and Z", "t tbar"],
+)
+def test_two_to_two_inverse_precision(masses, energy):
+    """The inverse of a 2 -> 2 scattering gives back its random numbers to
+    their rounding. The squares of the momenta are off by about eps E^2, also
+    for massless particles, so the range of |t| comes from the masses and is
+    computed without cancellations of order s, and |t| from light-cone
+    components, without cancellations of order E^2 in the forward direction
+    (a lower end of the range from the squared momenta moved r by up to
+    7e-12)."""
+    mapping = ms.PhaseSpaceMapping(
+        masses, energy, leptonic=True, mode=ms.PhaseSpaceMapping.propagator
+    )
+    r = rand((20000, mapping.random_dim()), generator=generator(5))
+    p_ext, x1, x2, _ = mapping.map_forward([r])
+    r_inv = mapping.map_inverse((p_ext, x1, x2))[0]
+    assert torch.max(torch.abs(r_inv - r)) < 2e-15
+
+
+def test_t_channel_chain_inverse_precision():
+    """In a chain of t-channel scatterings the last one starts from a
+    spacelike momentum, whose range of |t| depends on the masses of the
+    outgoing particles in proportion to (s - m_b^2) / s. The inverse takes the
+    masses of the forward map, so that it gives back the random number of
+    |t| of the last scattering, the last random number, to near its rounding
+    (with the squared momenta up to 2e-10 for a light pair of particles 2 and
+    3)."""
+    mapping = ms.PhaseSpaceMapping(
+        [0.0] * 5, 300.0, leptonic=True, mode=ms.PhaseSpaceMapping.propagator
+    )
+    r = rand((20000, mapping.random_dim()), generator=generator(5))
+    p_ext, x1, x2, _ = mapping.map_forward([r])
+    r_inv = mapping.map_inverse((p_ext, x1, x2))[0]
+    assert torch.max(torch.abs(r_inv[:, -1] - r[:, -1])) < 2e-13
 
 
 @pytest.mark.parametrize(
@@ -217,7 +269,7 @@ def test_t_channel_phase_space_volume(particle_count, energy, rng, mode):
             energy,
             mode=mode,
             leptonic=False,
-            color_order=co,
+            color_ordered=co,
         )
     else:
         mapping = ms.PhaseSpaceMapping(
@@ -225,13 +277,13 @@ def test_t_channel_phase_space_volume(particle_count, energy, rng, mode):
             energy,
             mode=mode,
             leptonic=True,
-            color_order=co,
+            color_ordered=co,
         )
     sample_count = 100000
     inputs, r, _ = _fwd_inputs(mapping, rng, sample_count)
     *rest, det = mapping.map_forward(inputs)
-    # det is the per-branch Jacobian; the solution multiplicity (2 per 2->3 peel)
-    # is owned externally now, so apply 2^discrete_dim to recover the full volume.
+    # det is the per-branch Jacobian; multiply by 2^discrete_dim (two solutions
+    # per 2->3 step) to get the full volume.
     det = det * 2.0 ** mapping.discrete_dim()
     ps_volume = (
         (2 * math.pi) ** (4 - 3 * particle_count)
@@ -241,8 +293,8 @@ def test_t_channel_phase_space_volume(particle_count, energy, rng, mode):
     )
     if mode == ms.PhaseSpaceMapping.chili:
         ps_volume /= (particle_count - 1) ** 2  # integration over x1*x2 in [0,1]
-    std_error = np.std(det) / np.sqrt(sample_count)
-    assert np.mean(det) == approx(ps_volume, abs=3 * std_error, rel=1e-6)
+    std_error = det.std(correction=0).item() / math.sqrt(sample_count)
+    assert det.mean().item() == approx(ps_volume, abs=3 * std_error, rel=1e-6)
 
 
 # ---------------------------------------------------------------------------
@@ -252,7 +304,8 @@ def test_t_channel_phase_space_volume(particle_count, energy, rng, mode):
 # (beams cyclically adjacent -> all outgoing on one side). These cases also
 # exercise *two-sided* splits (set1 and set2 both non-empty), which build a
 # genuinely different t-channel topology, and a range of discrete-peel counts
-# (discrete_dim grows by one for every set with > 2 outgoing partons).
+# (one discrete choice per 2->3 step: each peel after the first, and a
+# two-particle side when the other side is not empty).
 # ColorOrderedMapping is never constructed directly here -- only through
 # PhaseSpaceMapping, which is the only entry point it is meant to have.
 # ---------------------------------------------------------------------------
@@ -279,7 +332,7 @@ def test_color_ordered_color_orders(rng, color_order, out_masses, _label):
         CM_ENERGY,
         mode=ms.PhaseSpaceMapping.color_ordered,
         invariant_power=0.3,
-        color_order=color_order,
+        color_ordered=ms.ColorOrderedMapping.Options(color_order),
     )
     # random_dim is color-order invariant; discrete_dim tracks the peel count.
     assert mapping.random_dim() == 3 * len(out_masses) - 2
@@ -288,26 +341,28 @@ def test_color_ordered_color_orders(rng, color_order, out_masses, _label):
     p_ext, x1, x2, det = mapping.map_forward(inputs)
 
     # (1) momentum conservation
-    p_in = np.sum(p_ext[:, :2], axis=1)
-    p_out = np.sum(p_ext[:, 2:], axis=1)
-    assert p_out == approx(p_in, rel=1e-6, abs=1e-9)
+    p_in = torch.sum(p_ext[:, :2], dim=1)
+    p_out = torch.sum(p_ext[:, 2:], dim=1)
+    # the transverse components are 0 up to the rounding of momenta of order CM_ENERGY
+    assert_approx(p_out, p_in, rel=1e-6, abs=1e-12 * CM_ENERGY)
 
     # (2) on-shell external masses (energy-scaled FP floor for deep boost chains)
-    m_ext_true = np.full((BATCH_SIZE, len(masses)), masses)
-    m_ext = np.sqrt(
-        np.maximum(0, p_ext[:, :, 0] ** 2 - np.sum(p_ext[:, :, 1:] ** 2, axis=2))
+    m_ext_true = torch.tensor(masses).expand(BATCH_SIZE, -1)
+    m_ext = torch.sqrt(
+        torch.clamp(p_ext[:, :, 0] ** 2 - torch.sum(p_ext[:, :, 1:] ** 2, dim=2), min=0)
     )
-    abs_tol = 1e-3 + 2e-6 * np.abs(p_ext[:, :, 0])
-    assert np.all(np.abs(m_ext - m_ext_true) <= abs_tol + 1e-3 * np.abs(m_ext_true))
+    abs_tol = 1e-3 + 2e-6 * torch.abs(p_ext[:, :, 0])
+    assert torch.all(
+        torch.abs(m_ext - m_ext_true) <= abs_tol + 1e-3 * torch.abs(m_ext_true)
+    )
 
     # (3) inverse: continuous randoms round-trip, discrete choices exactly,
     out = mapping.map_inverse((p_ext, x1, x2))
     r_inv, det_inv = out[0], out[-1]
-    assert r_inv == approx(r, abs=2e-3, rel=1e-3)
-    rt_err = np.abs(det * det_inv - 1.0)
-    assert np.quantile(rt_err, 0.99) < 1e-5
-    assert np.isfinite(rt_err).all()
-    assert np.mean(rt_err > 1e-2) < 0.01
+    assert_approx(r_inv, r, abs=2e-3, rel=1e-3)
+    rt_err = torch.abs(det * det_inv - 1.0)
+    assert torch.quantile(rt_err, 0.99) < 1e-5
+    assert torch.isfinite(rt_err).all()
+    assert torch.mean((rt_err > 1e-2).double()) < 0.01
     if disc is not None:
-        disc_inv = np.asarray(out[1]).astype(np.int64)
-        assert np.array_equal(disc_inv, disc.astype(np.int64))
+        assert torch.equal(out[1].long(), disc.long())

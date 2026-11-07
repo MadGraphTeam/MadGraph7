@@ -19,17 +19,107 @@ import madgraph
 import madgraph.core.base_objects as base_objects
 import madgraph.core.helas_objects as helas_objects
 import madgraph.loop.loop_helas_objects as loop_helas_objects
-import models.check_param_card as check_param_card
+import madgraph.models.check_param_card as check_param_card
 import aloha.aloha_writers as aloha_writers
 import aloha
 from madgraph import MadGraph5Error
 import madgraph.various.misc as misc
+import logging
+
+logger = logging.getLogger('madgraph.helas_call_writers')
 if madgraph.ordering:
     set	= misc.OrderedSet
 
 class HelasWriterError(Exception):
     """Class for the error of this module """
     pass
+
+
+#===============================================================================
+# Axial-gauge reference vectors
+#===============================================================================
+def axial_gauge_requested(output_options, warn=False):
+    """Whether --axial_gauge=True was given on the output line.
+
+    The FD gauge has its own five-component vxxxxx and no vxxxxxr, so the
+    option is dropped there. This is asked once per matrix element; the
+    exporters ask it once more with warn=True when they are built, so that
+    every output command that drops the option says so, once."""
+
+    value = (output_options or {}).get('axial_gauge', False)
+    if isinstance(value, str):
+        value = value.strip().lower() in ('true', 't', '1', 'yes', 'on')
+    if not value:
+        return False
+    if aloha.unitary_gauge == 3:
+        if warn:
+            logger.warning('axial_gauge is not available in the FD gauge: '
+                           'the option is ignored.')
+        return False
+    return True
+
+
+def get_axial_gauge_refs(matrix_element):
+    """Pick the axial-gauge reference leg of every massless external vector.
+
+    VXXXXX builds its polarisation in the gauge n = (1,0,0,0). Choosing
+    instead a lightlike r taken from another external leg gives eps.r = 0,
+    and -- when several legs share the same r -- eps_i.eps_j = 0 for every
+    same-chirality pair, which makes whole currents and amplitudes vanish
+    (arXiv:2312.07447). One reference is therefore shared by all the vectors
+    of a gauge group; the reference leg uses the next candidate so that r is
+    never its own momentum.
+
+    The choice is made here, once, and is the same for every helicity
+    configuration: an external wavefunction still depends only on its own leg
+    and its own helicity, so helicity recycling is unaffected. The zeros
+    themselves are helicity dependent and are picked up at run time by the
+    existing hel_zeroamp scan.
+
+    The reference has to be a leg the vector couples to: a zero needs r to
+    meet eps in a vertex, either as the momentum of a fermion line the vector
+    is attached to or as another vector sharing r. So a gluon takes a
+    coloured leg and a photon a charged one; with e+ e- > u u~ g g a beam
+    reference gives no zero at all, the u quark 72 of the 256 (helicity,
+    diagram) pairs of the 16 good helicities.  Among those, an
+    initial-state leg is preferred as the safest numerically: vxxxxxr divides
+    by r.p, which for r on the beam is E * pT * exp(-y) of the gauged leg and
+    so is kept away from zero by the usual pT and rapidity cuts (a final-state
+    r relies on the separation cuts instead).
+    """
+
+    externals = {}
+    for wf in matrix_element.get_all_wavefunctions():
+        if not wf.get('mothers'):
+            externals[wf.get('number_external')] = wf
+    if not externals:
+        return {}
+
+    massless = [i for i in sorted(externals)
+                if externals[i].get('mass').lower() == 'zero']
+    vectors = [i for i in massless if externals[i].get('spin') == 3]
+    # A single massless leg cannot serve as the reference of itself.
+    if not vectors or len(massless) < 2:
+        return {}
+
+    def couples_to(vector):
+        part = externals[vector]['particle']
+        if part.get('color') != 1:
+            return lambda i: externals[i]['particle'].get('color') != 1
+        if part.get('charge') == 0:
+            return lambda i: externals[i]['particle'].get('charge') != 0
+        return lambda i: True
+
+    refs = {}
+    for vector in vectors:
+        candidates = [i for i in massless if couples_to(vector)(i)]
+        if len(candidates) < 2:
+            candidates = massless
+        order = [i for i in candidates
+                 if externals[i].get('state') == 'initial']
+        order += [i for i in candidates if i not in order]
+        refs[vector] = order[1] if vector == order[0] else order[0]
+    return refs
 
 
 #===============================================================================
@@ -48,6 +138,11 @@ class HelasCallWriter(base_objects.PhysicsObject):
     mother_dict = {1: 'S', 2: 'O', -2: 'I', 3: 'V', 5: 'T', 4:'OR', -4:'IR',
                    99:'P'}
     
+    # |pdg| of the particles whose propagators are written with a zero width
+    # (see get_wavefunction_call). Set for one matrix element at a time by the
+    # exporter (output standalone --zerowidth_decay=).
+    zerowidth_pdgs = frozenset()
+
     @staticmethod
     def customize_argument_for_all_other_helas_object(call, arg):
         """ Place holder for PLUGIN/...
@@ -67,6 +162,26 @@ class HelasCallWriter(base_objects.PhysicsObject):
         self['wavefunctions'] = {}
         self['amplitudes'] = {}
         self.width_tchannel_set_tozero = False
+        # Axial-gauge reference vectors for external vector wavefunctions.
+        # axial_gauge switches the routine name (and hence the cached call
+        # templates), so it has to be set once for a whole export;
+        # axial_gauge_refs maps external leg -> reference leg and is set per
+        # matrix element.
+        self.axial_gauge = False
+        self.axial_gauge_refs = {}
+
+    def has_axial_gauge_ref(self, wf):
+        """Whether this external is written as vxxxxxr: a vector that got a
+        reference leg (a massless one, see get_axial_gauge_refs). Any other
+        external -- a massive vector in particular -- keeps vxxxxx."""
+
+        return self.axial_gauge and \
+               wf.get('number_external') in self.axial_gauge_refs
+
+    def get_axial_gauge_ref(self, wf):
+        """Reference leg used for the gauge of this external vector."""
+
+        return self.axial_gauge_refs[wf.get('number_external')]
 
     def filter(self, name, value):
         """Filter for model property values"""
@@ -248,38 +363,46 @@ class HelasCallWriter(base_objects.PhysicsObject):
         amp_slots = self.get_amplitude_slots(matrix_element)
         position = [0]
 
-        res = []
-        written = set()
-        for diagram in matrix_element.get('diagrams'):
+        # no t-channel in a decay (is_t_channel assumes two initial particles),
+        # also when the output mixes decays with 2 > n processes (--standalone)
+        zerowidth_tchannel = self.options['zerowidth_tchannel']
+        if matrix_element.get('processes')[0].get_ninitial() == 1:
+            self.options['zerowidth_tchannel'] = False
+        try:
+            res = []
+            written = set()
+            for diagram in matrix_element.get('diagrams'):
 
 
-            for wf in diagram.get('wavefunctions'):
-                res.append(self.get_wavefunction_call(wf))
-                for i in after.get(wf.get('number'), []):
-                    # a wavefunction number can be listed by more than one
-                    # diagram, and the sum must only be written once
-                    if i in written:
+                for wf in diagram.get('wavefunctions'):
+                    res.append(self.get_wavefunction_call(wf))
+                    for i in after.get(wf.get('number'), []):
+                        # a wavefunction number can be listed by more than one
+                        # diagram, and the sum must only be written once
+                        if i in written:
+                            continue
+                        written.add(i)
+                        cubic, quartic, coeff = sums[i]
+                        res.extend(self.get_current_sum_lines(
+                            slots[i], cubic, quartic, coeff))
+                res.append("# Amplitude(s) for diagram number %d" % \
+                           diagram.get('number'))
+                for amplitude in diagram.get('amplitudes'):
+                    if amplitude.get('number') in folded:
+                        # summed into another amplitude through a current sum
                         continue
-                    written.add(i)
-                    cubic, quartic, coeff = sums[i]
-                    res.extend(self.get_current_sum_lines(
-                        slots[i], cubic, quartic, coeff))
-            res.append("# Amplitude(s) for diagram number %d" % \
-                       diagram.get('number'))
-            for amplitude in diagram.get('amplitudes'):
-                if amplitude.get('number') in folded:
-                    # summed into another amplitude through a current sum
-                    continue
-                res.append(self.get_amplitude_call_on_slot(
-                    amplitude, uses.get(amplitude.get('number')), slots,
-                    amp_slots))
-                if amp_slots is not None:
-                    res.extend(self.get_amplitude_merge_lines_at(
-                        amp_slots, position[0]))
-                    position[0] += 1
+                    res.append(self.get_amplitude_call_on_slot(
+                        amplitude, uses.get(amplitude.get('number')), slots,
+                        amp_slots))
+                    if amp_slots is not None:
+                        res.extend(self.get_amplitude_merge_lines_at(
+                            amp_slots, position[0]))
+                        position[0] += 1
 
-        if amp_slots is None:
-            res.extend(self.get_amplitude_merge_lines(matrix_element))
+            if amp_slots is None:
+                res.extend(self.get_amplitude_merge_lines(matrix_element))
+        finally:
+            self.options['zerowidth_tchannel'] = zerowidth_tchannel
 
         return res
 
@@ -399,6 +522,16 @@ class HelasCallWriter(base_objects.PhysicsObject):
             call, n = re.subn(r',\s*fk_(?!ZERO)\w*\s*,', ', ZERO,', str(call), flags=re.I)
             if n:
                 self.width_tchannel_set_tozero = True
+        # zerowidth_pdgs: propagators of these particles (|pdg|) get a zero
+        # width in this call only -- the model parameter itself is untouched.
+        # Nothing to do in the complex-mass scheme, where the call carries a
+        # complex mass instead of a (mass, width) pair.
+        zero = self.zerowidth_pdgs
+        if zero and abs(wavefunction.get('pdg_code')) in zero:
+            width = str(wavefunction.get('width'))
+            if width.upper() != 'ZERO':
+                call = re.sub(r',\s*(fk_)?%s\s*,' % re.escape(width), ', ZERO,',
+                              str(call), count=1, flags=re.I)
         return call
         
 
@@ -803,6 +936,17 @@ class FortranHelasCallWriter(HelasCallWriter):
                 argument.get_spin_state_number()]
             # Fill out with X up to 6 positions
             call = call + 'X' * (11 - len(call))
+            # Axial gauge: a vector leg that got a reference is written out as
+            # VXXXXXR, which takes the (lightlike) momentum of another external
+            # leg as its gauge reference.  The reference is fixed at generation
+            # time and is the same for every helicity configuration, so this
+            # does not change what an external wavefunction depends on -- see
+            # get_axial_gauge_refs.  The call templates are cached per call
+            # key, which a massless and a massive vector can share, so which of
+            # the two a leg gets is decided when its call is written.
+            axial = self.axial_gauge and argument.get('spin') == 3
+            if axial:
+                axial_call = call + 'R(P(0,%d),%s,NHEL(%d),%+d,P(0,%d),W(%d))'
             call = call + "(P(0,%d),"
             if argument.get('spin') != 1:
                 # For non-scalars, need mass and helicity
@@ -815,6 +959,21 @@ class FortranHelasCallWriter(HelasCallWriter):
                 call_function = lambda wf: call % \
                                 (wf.get('number_external'),
                                  # For boson, need initial/final here
+                                 (-1) ** (wf.get('state') == 'initial'),
+                                 wf.get('me_id'))
+            elif axial:
+                call_function = lambda wf: axial_call % \
+                                (wf.get('number_external'),
+                                 wf.get('mass'),
+                                 wf.get('number_external'),
+                                 # For boson, need initial/final here
+                                 (-1) ** (wf.get('state') == 'initial'),
+                                 self.get_axial_gauge_ref(wf),
+                                 wf.get('me_id')) \
+                                if self.has_axial_gauge_ref(wf) else call % \
+                                (wf.get('number_external'),
+                                 wf.get('mass'),
+                                 wf.get('number_external'),
                                  (-1) ** (wf.get('state') == 'initial'),
                                  wf.get('me_id'))
             elif argument.is_boson():
@@ -1334,7 +1493,7 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
                 helas_dict['MPLoopCoupling%i'%(i+1)]= \
                    '-%s%s'%(self.mp_prefix,coupl[1:]) if coupl.startswith('-') \
                                               else '%s%s'%(self.mp_prefix,coupl)
-            # We add here the placeholde for the proc_prefix
+            # We add here the placeholder for the proc_prefix
             return 'CALL %(proc_prefix)s'+call%helas_dict
 
         self.add_amplitude(loopamp.get_call_key(), create_loop_amp)
@@ -1377,6 +1536,7 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
 
         call="CALL "
         call_function = None
+        axial = False
         if argument.get('is_loop'):
             call=call+"LCUT_%(conjugate)s%(lcutspinletter)s(Q(0),I,WL(%(number)d))"
         else:
@@ -1385,6 +1545,15 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
                 argument.get_spin_state_number()]
             # Fill out with X up to 6 positions
             call = call + 'X' * (11 - len(call))
+            # Axial gauge: a vector leg that got a reference is written out as
+            # VXXXXXR, which takes the (lightlike) momentum of another external
+            # leg as its gauge reference. The reference is fixed at generation
+            # time and is the same for every helicity configuration, so this
+            # does not change what an external wavefunction depends on -- see
+            # get_axial_gauge_refs. The call templates are cached per call key,
+            # which a massless and a massive vector can share, so which of the
+            # two a leg gets is decided when its call is written.
+            axial = self.axial_gauge and argument.get('spin') == 3
             call = call + "(P(0,%(number_external)d),"
             if argument.get('spin') != 1:
                 # For non-scalars, need mass and helicity
@@ -1397,10 +1566,21 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
                 call = call + "%(state_id)+d, FLAVOR(%(number_external)d),{0})".format(\
                                     self.format_helas_object('W(','%(me_id)d'))
             else:
+                if axial:
+                    axial_call = call.replace('XXXXX(', 'XXXXXR(', 1) + \
+                        "%(state_id)+d,P(0,%(axial_ref)d),{0})".format(\
+                                    self.format_helas_object('W(','%(me_id)d'))
                 call = call + "%(state_id)+d,{0})".format(\
                                     self.format_helas_object('W(','%(me_id)d'))
 
-        call_function = lambda wf: call % wf.get_external_helas_call_dict()
+        if axial:
+            call_function = lambda wf: axial_call % dict(
+                wf.get_external_helas_call_dict(),
+                axial_ref=self.get_axial_gauge_ref(wf)) \
+                if self.has_axial_gauge_ref(wf) else \
+                call % wf.get_external_helas_call_dict()
+        else:
+            call_function = lambda wf: call % wf.get_external_helas_call_dict()
         self.add_wavefunction(argument.get_call_key(), call_function)
 
     def generate_all_other_helas_objects(self,argument):
@@ -1753,7 +1933,7 @@ class FortranUFOHelasCallWriterOptimized(FortranUFOHelasCallWriter):
         call = call + "%(LoopRank)d,"
         call = call + "I_SO,%(loop_group_id)d)"
         
-        # We add here the placeholde for the proc_prefix
+        # We add here the placeholder for the proc_prefix
         call_function = lambda amp: 'CALL %(proc_prefix)s'+\
                             call % amp.get_helas_call_dict(OptimizedOutput=True)
         self.add_amplitude(loopamp.get_call_key(), call_function)
@@ -1899,7 +2079,7 @@ class CPPUFOHelasCallWriter(UFOHelasCallWriter):
 
         First the call string is generated, using a dictionary to go
         from the spin state of the calling wavefunction and its
-        mothers, or the mothers of the amplitude, to difenrentiate wich call is
+        mothers, or the mothers of the amplitude, to differentiate which call is
         done.
 
         Then the call function is generated, as a lambda which fills
@@ -2161,7 +2341,7 @@ class GPUFOHelasCallWriter(CPPUFOHelasCallWriter):
 
         First the call string is generated, using a dictionary to go
         from the spin state of the calling wavefunction and its
-        mothers, or the mothers of the amplitude, to difenrentiate wich call is
+        mothers, or the mothers of the amplitude, to differentiate which call is
         done.
 
         Then the call function is generated, as a lambda which fills

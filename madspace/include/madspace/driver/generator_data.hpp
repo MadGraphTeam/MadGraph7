@@ -63,15 +63,16 @@ struct GeneratorConfig {
     std::size_t target_count = 10000;
     /// Damping factor of the VEGAS grid updates; see @ref VegasGridOptimizer.
     double vegas_damping = 0.2;
-    /// Fraction of the weight distribution's tail truncated when estimating
-    /// the unweighting efficiency.
+    /// Overweight tolerated when choosing the maximum weight, as a fraction of
+    /// the smaller of the target count and `freeze_max_weight_after`.
     double max_overweight_truncation = 0.01;
-    /// Number of survey events after which the maximum weight estimate is
-    /// frozen.
+    /// Expected number of unweighted events after which a channel's maximum
+    /// weight estimate is frozen.
     std::size_t freeze_max_weight_after = 10000;
-    /// Initial number of events per generation batch.
+    /// Initial number of events per VEGAS/channel-weight optimization batch.
     std::size_t start_batch_size = 1000;
-    /// Largest allowed number of events per generation batch.
+    /// Largest number of events per optimization batch (the batch size doubles
+    /// every iteration up to this value).
     std::size_t max_batch_size = 64000;
     /// Minimum number of VEGAS/channel-weight survey iterations.
     std::size_t survey_min_iters = 3;
@@ -82,25 +83,25 @@ struct GeneratorConfig {
     /// Number of consecutive non-improving iterations tolerated before the
     /// survey stops optimizing.
     std::size_t optimization_patience = 3;
-    /// Minimum relative improvement counted as progress by
-    /// `optimization_patience`.
+    /// An iteration counts as progress for `optimization_patience` if the relative
+    /// standard deviation falls below this fraction of its best value so far.
     double optimization_threshold = 0.99;
-    /// Batch size used on a CPU device.
+    /// Number of events per job on a CPU device.
     std::size_t cpu_batch_size = 1000;
-    /// Batch size used on a GPU device.
+    /// Number of events per job on a GPU device.
     std::size_t gpu_batch_size = 64000;
     /// Progress-reporting verbosity.
     Verbosity verbosity = Verbosity::silent;
-    /// If true, periodically write live progress data to disk.
+    /// Not read by the C++ generator.
     bool write_live_data = false;
     /// Thread count used to combine per-channel event files; `-1` for the
     /// hardware concurrency.
     int combine_thread_count = -1;
-    /// Minimum acceptable fraction of events surviving fiducial cuts before a
-    /// warning is raised.
+    /// A job repeats its batch until this fraction of its requested events
+    /// pass the cuts.
     double cut_efficiency_threshold = 0.7;
-    /// Maximum number of times a batch is resampled to reach
-    /// `cut_efficiency_threshold`.
+    /// Maximum number of repetitions per job to reach `cut_efficiency_threshold`
+    /// before an error is raised.
     std::size_t max_cut_repetitions = 100;
     /// Fraction of the target count below which the generator switches to
     /// finishing up the remaining events.
@@ -110,7 +111,67 @@ struct GeneratorConfig {
     /// Number of standard deviations of headroom added when sizing a batch,
     /// to avoid overshooting the target count.
     double batch_overshoot_sigma = 1.0;
+    /// MLM merging: write the event's hardest scale, instead of the collider
+    /// energy, as the pt_clust of the outgoing particles that are not light
+    /// partons; see @ref apply_mlm_hardest_shower_scale.
+    bool mlm_hardest_shower_scale = false;
+    /// The collider energy, the pt_clust the MLM clustering gives a leg it
+    /// assigned no clustering scale to.
+    double mlm_collider_energy = 0.;
+    /// Heaviest quark flavour that is a light jet, Pythia8's JetMatching:nQmatch.
+    int mlm_max_jet_flavor = 4;
 };
+
+/// Settings of a re- or unweighting step after the first unweighting, as far
+/// as the channels need them; see @ref WeightingStep.
+struct StepSettings {
+    /// Unweighting step if true, reweighting step otherwise.
+    bool unweight = true;
+    /// See @ref GeneratorConfig::max_overweight_truncation.
+    double max_overweight_truncation = 0.01;
+    /// See @ref GeneratorConfig::freeze_max_weight_after.
+    std::size_t freeze_max_weight_after = 10000;
+    /// Whether the step returns the ratio instead of the matrix element.
+    bool ratio = false;
+};
+
+/// Result of @ref evaluate_step_chain.
+struct StepChainResult {
+    /// Probability that the event is accepted by all steps.
+    double acceptance;
+    /// Signed weight of the event after all steps, in units of the product of
+    /// the maximum weights of the first unweighting and the unweighting steps.
+    double weight;
+};
+
+/**
+ * Acceptance probability and weight of an event after the first unweighting and
+ * the re- and unweighting steps that follow.
+ *
+ * The first step accepts the event with probability
+ * @f$\min(1, |w_0| / m_0)@f$ and carries the overweight factor
+ * @f$o_0 = \max(1, |w_0| / m_0)@f$. Each reweighting step multiplies the weight
+ * by its ratio @f$r_k@f$. Each unweighting step unweights
+ * @f$u_k = o \prod r@f$, the overweight factor of the last unweighting step
+ * times the ratios since, with probability @f$\min(1, u_k / m_k)@f$, and carries
+ * @f$o_k = \max(1, u_k / m_k)@f$. Raising any maximum weight only lowers the
+ * acceptance, so the events can be unweighted again with larger maxima.
+ *
+ * @param weight0      The stored weight of the first step, @f$\max(|w_0|, m)@f$
+ *                     with the sign of @f$w_0@f$, for a maximum @f$m \le m_0@f$.
+ * @param max_weight0  The maximum weight @f$m_0@f$ of the first step.
+ * @param ratios       The ratios @f$r_k@f$ of the steps.
+ * @param max_weights  The maximum weights @f$m_k@f$ of the steps, ignored for
+ *                     reweighting steps.
+ * @param steps        The steps.
+ */
+StepChainResult evaluate_step_chain(
+    double weight0,
+    double max_weight0,
+    const double* ratios,
+    const double* max_weights,
+    const std::vector<StepSettings>& steps
+);
 
 /**
  * Number of events to schedule in the next generation batch.
@@ -122,7 +183,8 @@ struct GeneratorConfig {
  *
  * @param count_target                 Total unweighted events wanted.
  * @param count_unweighted             Unweighted events generated so far.
- * @param count_opt                    Weighted events generated so far.
+ * @param count_requested              Weighted events requested so far, counting
+ *                                     each job at its nominal batch size.
  * @param abs_cross_section_count      Events behind the current cross-section
  *                                     estimate.
  * @param abs_cross_section_rel_error  Relative error of that estimate.
@@ -131,7 +193,7 @@ struct GeneratorConfig {
 std::size_t compute_generation_batch_event_count(
     std::size_t count_target,
     double count_unweighted,
-    std::size_t count_opt,
+    std::size_t count_requested,
     std::size_t abs_cross_section_count,
     double abs_cross_section_rel_error,
     const GeneratorConfig& config
@@ -174,27 +236,33 @@ struct GeneratorStatus {
     double mean_abs;
     /// Standard error of @ref mean_abs.
     double error_abs;
-    /// Relative standard deviation of the weights.
+    /// Relative standard deviation of the absolute weights.
     double rel_std_dev;
     /// Weighted events generated so far.
     std::size_t count;
-    /// Weighted events generated so far, restricted to the optimized phase.
+    /// Weighted events generated since the last reset of the event files.
     std::size_t count_opt;
-    /// Weighted events surviving fiducial cuts.
+    /// Weighted events surviving cuts.
     std::size_t count_after_cuts;
-    /// Weighted events surviving fiducial cuts, restricted to the optimized
-    /// phase.
+    /// Weighted events surviving cuts since the last reset of the event files.
     std::size_t count_after_cuts_opt;
     /// Unweighted events generated so far.
     double count_unweighted;
     /// Target unweighted event count; see @ref GeneratorConfig::target_count.
     std::size_t count_target;
-    /// Number of survey iterations run.
+    /// Number of optimization iterations run.
     std::size_t iterations;
+    /// Number of optimization iterations in a row without enough improvement;
+    /// the channel counts as optimized when this reaches
+    /// @ref GeneratorConfig::optimization_patience.
+    std::size_t iters_without_improvement;
     /// Whether the survey/optimization phase has finished.
     bool optimized;
     /// Whether generation of this subprocess is complete.
     bool done;
+    /// Events given the weight 0 by a weighting step, because their matrix
+    /// element ratio was not finite or the earlier matrix element was 0.
+    std::size_t count_invalid_step_values = 0;
 };
 
 /// One binned observable, accumulated during event generation; see @ref
@@ -206,23 +274,22 @@ struct Histogram {
     double min;
     /// Upper edge of the last bin.
     double max;
-    /// Summed weight per bin, including the under/overflow bins.
+    /// Weight per bin, including the under/overflow bins: raw sums in a
+    /// ChannelEventGenerator, normalized by EventGenerator::histograms().
     std::vector<double> bin_values;
-    /// Standard error per bin.
+    /// Standard error per bin (raw sums of squared weights in a
+    /// ChannelEventGenerator).
     std::vector<double> bin_errors;
 };
 
-// Lightweight pending-work entry for EventGenerator::_ready_jobs, before start_jobs()
-// has decided which context/how many sub-jobs to create from it. Kept separate from
-// GeneratorBatchJob so a queue of pending batches doesn't carry the weight of every
-// dispatched job's tensors and RNG bookkeeping.
+// Pending-work entry of EventGenerator::_ready_jobs, before start_jobs() has decided
+// which context and how many sub-jobs to create from it.
 struct ReadyJob {
     std::size_t channel_index;
     bool unweight;
-    // VEGAS batch: fixed size, start_jobs() dispatches it atomically in one go.
-    // Generation batch: events not yet dispatched -- start_jobs() decrements this in
-    // place as it creates sub-jobs, one device batch at a time, round-robining with
-    // other channels' ReadyJobs over however many calls it takes to reach zero.
+    // VEGAS batch: fixed size, dispatched in one go by start_jobs().
+    // Generation batch: events not yet dispatched; start_jobs() decrements it as it
+    // creates sub-jobs, one device batch per visit.
     std::size_t batch_event_count;
     bool is_vegas_batch = false;
 };
@@ -230,18 +297,17 @@ struct ReadyJob {
 struct GeneratorBatchJob {
     std::size_t channel_index;
     bool unweight;
-    // Copied from the originating ReadyJob at dispatch time. For a VEGAS batch, this
-    // is the batch's fixed total, read by start_job()'s shrink-to-fit and by the
-    // done_event_count accounting in survey()/survey_deterministic(). For a
-    // generation batch it isn't read after dispatch -- generation sub-jobs always
-    // request a full device batch (see start_job()).
+    // Copied from the originating ReadyJob. For a VEGAS batch, this is the fixed
+    // total, read by start_job() and the done_event_count accounting in survey().
+    // Not read for generation sub-jobs, which always request a full device batch.
     std::size_t batch_event_count;
-    // Total sub-jobs the batch was split into; only meaningful for VEGAS batches
-    // (see commit_generate_job()'s clear_events trigger). Generation batches are
-    // dispatched one sub-job per start_jobs() visit, so this isn't a full-batch count
-    // for them and isn't read.
+    // Total jobs (generate plus unweight stages) the VEGAS batch was split into;
+    // compared against the channel job count to detect its first committed job.
+    // Not meaningful for generation batches.
     std::size_t split_job_count;
     Tensor weights;
+    // per-event bias, empty without a custom bias
+    Tensor biases;
     TensorVec events;
     TensorVec unweighted_events;
     TensorVec hists;
@@ -250,17 +316,24 @@ struct GeneratorBatchJob {
     std::size_t context_index;
     std::size_t job_id;
     double max_weight;
+    // target count of the channel when max_weight was taken
+    std::size_t count_target = 0;
     // Top-level seed plus job identity, used to derive this job's DerivedSeed(s)
     // independently for generate vs unweight (see start_job()/submit_unweight_job()).
     std::optional<std::uint64_t> rng_seed;
-    // Per-channel dispatch sequence, assigned once at start_job() time.
+    // Per-channel dispatch sequence, assigned in start_job().
     std::size_t rng_job_index = 0;
     bool rng_is_survey = false;
     std::size_t rng_survey_pass = 0;
-    // True for a VEGAS-grid-optimization batch, dispatched atomically by start_jobs()
-    // and shrunk to fit by start_job(). False for a steady-state generation batch,
-    // dispatched incrementally as device-sized sub-jobs (see ReadyJob).
+    // True for an optimization batch (dispatched at once, shrunk to fit by
+    // start_job()), false for a generation batch (device-sized sub-jobs).
     bool is_vegas_batch = false;
+    // Nominal batch size start_job() requested; the job generates more raw points
+    // when it repeats batches to get enough of them past the cuts.
+    std::size_t requested_event_count = 0;
+    // With re- and unweighting steps: unweighted_events stay on the device and
+    // these are their weights, matrix elements and biases on the CPU
+    TensorVec step_host;
 };
 
 void to_json(nlohmann::json& j, const GeneratorStatus& status);

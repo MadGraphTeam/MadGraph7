@@ -2,6 +2,9 @@
 
 #include "madspace/util.hpp"
 
+#include <algorithm>
+#include <array>
+
 using namespace madspace;
 
 double TPropagatorMapping::pt2(std::size_t i) const {
@@ -19,7 +22,52 @@ static bool has_pt_cut(const std::vector<double>& pt_min) {
     return false;
 }
 
+namespace {
+// The rapidity bounds of the first scattering, which is between the two beams
+// in the partonic centre-of-mass frame: {recoil, peeled particle, beam sign}.
+// The first step peels particle integration_order[0] + side, from beam 1 if
+// side (see the constructor), and the recoil is every other particle, bounded
+// only if each of them is (its rapidity is a weighted mean of theirs).
+std::array<double, 3> first_step_rapidity_bounds(
+    const std::vector<std::size_t>& integration_order, const std::vector<double>& y_max
+) {
+    std::size_t n_out = integration_order.size() + 1;
+    if (integration_order.empty() || y_max.size() != n_out) {
+        return {-1., -1., 1.};
+    }
+    bool side = integration_order.at(0) == integration_order.size() - 1;
+    std::size_t peeled = integration_order.at(0) + side;
+    double recoil = 0.;
+    for (std::size_t i = 0; i < n_out; ++i) {
+        if (i == peeled) {
+            continue;
+        }
+        if (y_max.at(i) < 0.) {
+            recoil = -1.;
+            break;
+        }
+        recoil = std::max(recoil, y_max.at(i));
+    }
+    return {recoil, y_max.at(peeled), side ? 1. : -1.};
+}
+
+} // namespace
+
 TPropagatorMapping::TPropagatorMapping(
+    const std::vector<std::size_t>& integration_order,
+    double invariant_power,
+    const std::vector<double>& pt_min,
+    const std::vector<double>& y_max
+) :
+    TPropagatorMapping(
+        first_step_rapidity_bounds(integration_order, y_max),
+        integration_order,
+        invariant_power,
+        pt_min
+    ) {}
+
+TPropagatorMapping::TPropagatorMapping(
+    const std::array<double, 3>& first_step_bounds,
     const std::vector<std::size_t>& integration_order,
     double invariant_power,
     const std::vector<double>& pt_min
@@ -45,13 +93,27 @@ TPropagatorMapping::TPropagatorMapping(
             for (std::size_t i = 0; i < integration_order.size() + 1; ++i) {
                 cond_types.push_back(std::format("mass{}", i), batch_float);
             }
+            if (first_step_bounds.at(0) >= 0. || first_step_bounds.at(1) >= 0.) {
+                cond_types.push_back("x1", batch_float);
+                cond_types.push_back("x2", batch_float);
+            }
             return cond_types;
         }()
     ),
     _integration_order(integration_order),
     _pt_min(pt_min),
     _has_cut(has_pt_cut(pt_min)),
-    _com_scattering(true, invariant_power, 0., 0., has_pt_cut(pt_min)),
+    _rapidity_window(first_step_bounds.at(0) >= 0. || first_step_bounds.at(1) >= 0.),
+    _com_scattering(
+        true,
+        invariant_power,
+        0.,
+        0.,
+        has_pt_cut(pt_min),
+        first_step_bounds.at(0),
+        first_step_bounds.at(1),
+        first_step_bounds.at(2)
+    ),
     _lab_scattering(false, invariant_power, 0., 0., has_pt_cut(pt_min)) {
     std::size_t next_index_low = 0;
     std::size_t next_index_high = integration_order.size() - 1;
@@ -74,7 +136,9 @@ Mapping::Result TPropagatorMapping::build_forward_impl(
     const NamedVector<Value>& conditions
 ) const {
     Value e_cm = conditions.at(0);
-    ValueVec m_out(conditions.begin() + 1, conditions.end());
+    ValueVec m_out(
+        conditions.begin() + 1, conditions.begin() + 2 + _integration_order.size()
+    );
     auto r = inputs.begin();
     auto next_random = [&]() { return *(r++); };
     ValueVec dets;
@@ -145,6 +209,10 @@ Mapping::Result TPropagatorMapping::build_forward_impl(
             cond.push_back(fb.sub(total_etmin, running_etmin)); // etmin_1 (recoil)
             cond.push_back(etmin_peeled);                       // etmin_2 (peeled)
         }
+        if (&scattering == &_com_scattering && _rapidity_window) {
+            cond.push_back(conditions.at(conditions.size() - 2)); // x1
+            cond.push_back(conditions.at(conditions.size() - 1)); // x2
+        }
         auto ks = scattering.build_forward(
             fb, {next_random(), next_random(), mass_sum, mass}, cond
         );
@@ -168,10 +236,15 @@ Mapping::Result TPropagatorMapping::build_inverse_impl(
     const NamedVector<Value>& conditions
 ) const {
     Value e_cm = conditions.at(0);
-    ValueVec m_out(conditions.begin() + 1, conditions.end());
+    ValueVec m_out(
+        conditions.begin() + 1, conditions.begin() + 2 + _integration_order.size()
+    );
     std::size_t n_out = _integration_order.size() + 1;
     ValueVec random_out;
     ValueVec dets;
+    // the masses of the recoil systems of the steps, which the forward map
+    // samples (the last one an outgoing particle)
+    ValueVec recoil_masses;
 
     // compute s-invariants from momenta
     if (_integration_order.size() > 1) {
@@ -213,10 +286,12 @@ Mapping::Result TPropagatorMapping::build_inverse_impl(
             random_out.push_back(result["random"]);
             dets.push_back(result["det"]);
             max_mass = fb.sqrt(mass2);
+            recoil_masses.push_back(max_mass);
         }
     }
+    recoil_masses.push_back(m_out.at(_integration_order.back()));
 
-    // ETmin per particle (see forward); Only built when cuts are active.
+    // ETmin per particle, as in the forward map; only used with cuts
     auto etmin_particle = [&](std::size_t j) {
         return fb.sqrt(fb.add(fb.square(m_out.at(j)), Value(pt2(j))));
     };
@@ -228,11 +303,12 @@ Mapping::Result TPropagatorMapping::build_inverse_impl(
         }
     }
 
-    // sample t-invariants and build momenta of t-channel part of the diagram
+    // recover the t-invariant random numbers from the t-channel momenta
     Value k_rest = fb.add(inputs.at(0), inputs.at(1));
     Value p1_rest = inputs.at(0), p2_rest = inputs.at(1);
     bool first = true;
-    for (auto [index, side] : zip(_integration_order, _sample_sides)) {
+    for (auto [index, side, recoil_mass] :
+         zip(_integration_order, _sample_sides, recoil_masses)) {
         auto& scattering = first ? _com_scattering : _lab_scattering;
         first = false;
         std::size_t sampled_index = index + side;
@@ -246,7 +322,15 @@ Mapping::Result TPropagatorMapping::build_inverse_impl(
             cond.push_back(fb.sub(total_etmin, running_etmin)); // etmin_1 (recoil)
             cond.push_back(etmin_peeled);                       // etmin_2 (peeled)
         }
-        auto rs = scattering.build_inverse(fb, {k_rest, k}, cond);
+        if (&scattering == &_com_scattering && _rapidity_window) {
+            cond.push_back(conditions.at(conditions.size() - 2)); // x1
+            cond.push_back(conditions.at(conditions.size() - 1)); // x2
+        }
+        // with the masses of the forward map, which fix the range of |t|
+        // (those of the momenta are rounded)
+        auto rs = scattering.build_inverse_with_masses(
+            fb, {k_rest, k}, cond, recoil_mass, mass
+        );
         random_out.push_back(rs.at(0));
         random_out.push_back(rs.at(1));
         dets.push_back(rs["det"]);

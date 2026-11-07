@@ -152,7 +152,7 @@ C ----------
          JC(IHEL) = +1
       ENDDO
 C     When spin-2 particles are involved, the Helicity filtering is dangerous for the 2->1 topology.
-C     For this reason, we simply remove the filterin when there is only three external particles.
+C     For this reason, we simply remove the filtering when there is only three external particles.
       IF (NEXTERNAL.LE.3) THEN
         DO IHEL=1,NCOMB
           DO J=1,NFLAV
@@ -238,7 +238,7 @@ C
       COMPLEX*16 DUM0,DUM1
       DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/
 C
-C MadSONS VAIABLES
+C MadSONS VARIABLES
 C
       INCLUDE 'onia.inc'
       INCLUDE 'ldme.inc'
@@ -450,7 +450,7 @@ C     ROUTINE FOR F2PY to read the benchmark point.
       IMPLICIT NONE
       CHARACTER*512 PATH
 CF2PY INTENT(IN) :: PATH
-      call setpara(PATH)  !first call to setup the paramaters
+      call setpara(PATH)  !first call to set up the parameters
       return
       end
 

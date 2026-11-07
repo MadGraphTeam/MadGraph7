@@ -18,10 +18,10 @@ c     INPUTS:  ndim     == number of dimensions
 c              iconfig  == configuration working on
 c              mincfig  == First configuration to include
 c              maxcfig  == Last configuration to include
-c              invar    == Number of invarients we are mapping (ndim*maxcfig)
+c              invar    == Number of invariants we are mapping (ndim*maxcfig)
 c              wgt      == wgt for choosing point thus far. 1/npnts*iter
 c     OUTPUTS: wgt      == updated weight after choosing points
-c              x        == points choosen from sample grid
+c              x        == points chosen from sample grid
 c              p        == transformed points call is f(p(x))
 c     COMMON:
 c           hel_picked  == Modified integer in gen_ps.inc to pass the
@@ -77,15 +77,15 @@ c                mincfig   == First configuration to include
 c                maxcfig   == Last configuration to include
 c                wgt       == wgt for choosing x's so far.
 c     OUTPUTS:   wgt       == updated wgt including all configs
-c                x()       == Integration variabls for all configs
+c                x()       == Integration variables for all configs
 c                p1(0:3,n) == 4 momentum of external particles
 c
 c     REQUIRES: IFOREST() set in data statement (see configs.inc)
 c               NEXTERNAL set in data statement (see genps.inc)
 c
-c     Note regarding integration variables mapping to invarients
+c     Note regarding integration variables mapping to invariants
 c     the first nbranch variables go for the masses of branches -1,-2,..
-c     For each t-channel invarient x(ndim-1), x(ndim-3), .... are used
+c     For each t-channel invariant x(ndim-1), x(ndim-3), .... are used
 c     in place of the cos(theta) variable used in s-channel.
 c     x(ndim), x(ndim-2),.... are the phi angles.
 c**************************************************************************
@@ -119,6 +119,11 @@ c
       double precision jac,sjac,pswgt,pwgt(maxconfigs),flux
       double precision tprb, mtot
       double precision xtau, dum
+      double precision shat_unit
+      double precision get_shat_unit
+      external get_shat_unit
+      logical shat_from_gencms
+      external shat_from_gencms
       double precision pi1(0:3),pi2(0:3),p0,p3
       save m
 
@@ -250,7 +255,28 @@ c
       xbk(2)   = 1d0
       sjac = 1d0
       if (abs(lpp(1)) .ge. 1 .and. abs(lpp(2)) .ge. 1) then
-         if (abs(lpp(1)).eq.9.or.abs(lpp(2)).eq.9)then
+         if (shat_from_gencms()) then
+c-----
+c tjs 5/24/2010 for 2->1 process
+c-------
+            shat_unit = get_shat_unit(stot)
+           call sample_get_x(sjac,x(ndim-1),ndim-1,mincfig,0d0,1d0)               
+           xtau = x(ndim-1)
+            if(nexternal .eq. 3) then
+c              GENCMS takes x(ndim-1) in units of shat_unit
+               x(ndim-1) = pmass(3)*pmass(3)/shat_unit
+               sjac=1 / shat_unit    !for delta function in d_tau
+            endif
+
+            call sample_get_x(sjac,x(ndim),ndim,mincfig,0d0,1d0)
+            CALL GENCMS(STOT,Xbk(1),Xbk(2),X(ndim-1), SMIN,SJAC)
+            x(ndim-1) = xtau    !Fix for 2->1 process
+c           Set CM rapidity for use in the rap() function
+            cm_rap=.5d0*dlog(xbk(1)*ebeam(1)/(xbk(2)*ebeam(2)))
+            set_cm_rap=.true.
+c           Set shat
+            s(-nbranch) = xbk(1)*xbk(2)*stot
+         else if (abs(lpp(1)).eq.9.or.abs(lpp(2)).eq.9)then
             call sample_get_x(sjac,x(ndim),ndim,mincfig,0d0,1d0)
             call sample_get_x(sjac,x(ndim-1),ndim-1,mincfig,0d0,1d0)
             call get_dummy_x1_x2(sjac, Xbk(1), x(ndim-1),pi1, pi2, stot, s(-nbranch))
@@ -303,7 +329,7 @@ c        ! while in the ee case x1 and x2 are generated first.
 c        ! now we are done. We must call the following function 
 c        ! in order to (re-)generate tau and ycm
 c        ! from x1 and x2. It also (re-)checks that tau_born 
-c        ! is pysical, and otherwise sets xjac0=-1000
+c        ! is physical, and otherwise sets xjac0=-1000
                call get_y_from_x12(x1_ee, x2_ee, omx_ee(1), cm_rap) 
                set_cm_rap=.true.
             endif
@@ -328,24 +354,9 @@ c               endif
 
 
          else
-c-----
-c tjs 5/24/2010 for 2->1 process
-c-------
-           call sample_get_x(sjac,x(ndim-1),ndim-1,mincfig,0d0,1d0)               
-           xtau = x(ndim-1)
-            if(nexternal .eq. 3) then
-               x(ndim-1) = pmass(3)*pmass(3)/stot
-               sjac=1 / stot    !for delta function in d_tau
-            endif
-
-            call sample_get_x(sjac,x(ndim),ndim,mincfig,0d0,1d0)
-            CALL GENCMS(STOT,Xbk(1),Xbk(2),X(ndim-1), SMIN,SJAC)
-            x(ndim-1) = xtau    !Fix for 2->1 process
-c           Set CM rapidity for use in the rap() function
-            cm_rap=.5d0*dlog(xbk(1)*ebeam(1)/(xbk(2)*ebeam(2)))
-            set_cm_rap=.true.
-c           Set shat
-            s(-nbranch) = xbk(1)*xbk(2)*stot
+            write(*,*) 'ERROR: no s-hat sampling for lpp=',lpp,
+     &           ' pdlabel=',pdlabel
+            stop 1
          endif
       elseif (lpp(1).eq.9.or.lpp(2).eq.9) then
          call sample_get_x(sjac,x(ndim),ndim,mincfig,0d0,1d0)
@@ -533,7 +544,7 @@ c
          flux  = 1d0 /(2.D0*SQRT(LAMBDA(s(-nbranch),m(1)**2,m(2)**2)))
          flux  = flux / (2d0*pi)**(3 * nfinal - 4)
 c
-c     Make sure all the invarients are reasonable
+c     Make sure all the invariants are reasonable
 c         
 
          do i=1,invar
@@ -547,7 +558,7 @@ c
 c
 c     Determine fractional probs from the different configs this
 c     allows me to only include points which were contributed
-c     by the projection onto that invarient.
+c     by the projection onto that invariant.
 c
 c
 c     Now normalize fprb
@@ -718,6 +729,8 @@ c     part to it, and that the t-channel propagators must always appear
 c     as the first element, that is itree(1,i)
 c************************************************************************
       implicit none
+      logical msoft
+      common/to_msoft/msoft
 c
 c     Constants
 c      
@@ -892,7 +905,7 @@ c
          totmass=totmass+m(itree(2,ibranch))
       enddo
       m(-ns_channel-1) = dsqrt(S(-nbranch))
-      do ibranch = -ns_channel-1,-nbranch+2,-1    !Choose invarient mass
+      do ibranch = -ns_channel-1,-nbranch+2,-1    !Choose invariant mass
          totmass=totmass-m(itree(2,ibranch))      !for remaining particles
          smin = totmass**2                        !This affects t_min/max
          smax = (m(ibranch) - m(itree(2,ibranch)))**2
@@ -901,9 +914,11 @@ c
             jac=-3d0
             return
          endif
+         msoft = .true.
          call sample_get_x(wgt,x(nbranch-1+(-ibranch)*2),
      &        nbranch-1+(-ibranch)*2,iconfig,
      &        smin/stot,smax/stot)
+         msoft = .false.
 
          m(ibranch-1)=dsqrt(max(stot*x(nbranch-1+(-ibranch)*2), 0d0))
 c         write(*,*) 'Using s',nbranch-1+(-ibranch)*2
@@ -1489,7 +1504,7 @@ c
       p1(2) = pt*sin(phi)
 
       call rotxxx(p1,pa_cms,p1)          !Rotate back to pa_cms frame
-      call boostx(p1,ptot,p1)            !boost back to lab fram
+      call boostx(p1,ptot,p1)            !boost back to lab frame
       do i=0,3
          pr(i)=pa(i)-p1(i)               !Return remainder of momentum
       enddo
@@ -1514,7 +1529,7 @@ C****************************************************************************
 C**************************************************************************
 C     This is the G function from Particle Kinematics by
 C     E. Byckling and K. Kajantie, Chapter 4 p. 89 eqs 5.23
-C     It is used to determine if a set of invarients are physical or not
+C     It is used to determine if a set of invariants are physical or not
 C**************************************************************************
       implicit none
 c
@@ -1637,6 +1652,8 @@ C     LOCAL
 
       DOUBLE PRECISION TAU,TAUMIN,TAUMAX
       DOUBLE PRECISION ETA,ETAMIN,ETAMAX
+      DOUBLE PRECISION GET_SHAT_MAX
+      EXTERNAL GET_SHAT_MAX
       logical warned
       data warned/.false./
       include 'maxparticles.inc'
@@ -1659,11 +1676,7 @@ C     &     X(1),TAU,SJACOBI)
 C     IF THERE IS NO S CHANNEL POLE USE BELOW:
 
       TAUMIN = 0d0 !SMIN/S !keep scale fix
-      if (dsqrt_shatmax.ne.-1d0)then
-          TAUMAX=dsqrt_shatmax**2/S
-      else
-        TAUMAX = 1D0
-      endif
+      TAUMAX = GET_SHAT_MAX(S)/S
       TAU    = (TAUMAX-TAUMIN)*X(1)+TAUMIN
       SJACOBI=  sjacobi*(TAUMAX-TAUMIN)
 
@@ -1682,6 +1695,54 @@ c      eta = 0d0
       X1 = SQRT(TAU)*EXP(ETA)
       X2 = SQRT(TAU)*EXP(-ETA)
 
+      END
+
+      DOUBLE PRECISION FUNCTION GET_SHAT_MAX(S)
+C***********************************************************************
+C     LARGEST ALLOWED SHAT: MIN(S, DSQRT_SHATMAX**2)
+C     ALSO THE UNIT OF THE TAU VARIABLE SAMPLED BY GENCMS
+C***********************************************************************
+      IMPLICIT NONE
+      DOUBLE PRECISION S
+      include 'maxparticles.inc'
+      include '../../Source/vector.inc'
+      include 'run.inc'
+      include 'cuts.inc'
+
+      GET_SHAT_MAX = S
+      if (dsqrt_shatmax.ne.-1d0) GET_SHAT_MAX = min(S, dsqrt_shatmax**2)
+      END
+
+      LOGICAL FUNCTION SHAT_FROM_GENCMS()
+C***********************************************************************
+C     TRUE IF GEN_MOM SAMPLES SHAT WITH GENCMS (TWO PDF BEAMS, NOT
+C     LPP=9 AND NOT DRESSED). GEN_MOM DISPATCHES ON THIS FUNCTION, SO
+C     A NEW BEAM SETUP WITH ITS OWN SAMPLING MUST BE EXCLUDED HERE.
+C***********************************************************************
+      IMPLICIT NONE
+      include 'maxparticles.inc'
+      include '../../Source/vector.inc'
+      include 'run.inc'
+      include '../../Source/PDF/pdf.inc'
+
+      SHAT_FROM_GENCMS = abs(lpp(1)).ge.1 .and. abs(lpp(2)).ge.1
+     &     .and. abs(lpp(1)).ne.9 .and. abs(lpp(2)).ne.9
+     &     .and. pdlabel.ne.'dressed'
+      END
+
+      DOUBLE PRECISION FUNCTION GET_SHAT_UNIT(S)
+C***********************************************************************
+C     UNIT OF THE S-HAT VARIABLE SAMPLED BY GEN_MOM: GENCMS SAMPLES IT
+C     UP TO GET_SHAT_MAX(S), EVERY OTHER BEAM SETUP UP TO S
+C***********************************************************************
+      IMPLICIT NONE
+      DOUBLE PRECISION S
+      DOUBLE PRECISION GET_SHAT_MAX
+      LOGICAL SHAT_FROM_GENCMS
+      EXTERNAL GET_SHAT_MAX, SHAT_FROM_GENCMS
+
+      GET_SHAT_UNIT = S
+      IF (SHAT_FROM_GENCMS()) GET_SHAT_UNIT = GET_SHAT_MAX(S)
       END
 
       SUBROUTINE GENCMS_EE(S,X1,X2,X,SMIN,SJACOBI)
@@ -1766,16 +1827,15 @@ C     -----------------------------------------
 
       DOUBLE PRECISION P1(0:3,NEXTERNAL)
       DOUBLE PRECISION P2(0:3,NEXTERNAL)
-      DOUBLE PRECISION PBOOST(0:3)
+      DOUBLE PRECISION QZ(0:3), QT(0:3), PTMP(0:3)
       integer frame_id
 
       integer ids(nexternal)
-      integer i,j
+      integer i
       logical trivial_boost
 
 c     uncompress
       call mapid(frame_id, ids)
-      pboost(:) = 0d0
       p2(:,:) = 0d0
 c     avoid trivial boost (check only for  0 0 1 1 1... so sum of the
 c     final state. 1 1 0 0 0 .... should not go within this function   
@@ -1799,19 +1859,16 @@ c     final state. 1 1 0 0 0 .... should not go within this function
             return
         endif
 
-c     find the boost momenta --sum of particles--
-      do i=1,nexternal
-       if (ids(i).eq.1)then
-            do j=0,3
-	           Pboost(j) = Pboost(j) + P1(j,i)
-            enddo
-         endif
-      enddo
-      do j=1,3
-          Pboost(j) = -1 * Pboost(j)
-      enddo
+c     rest frame of the selected particles, reached by a boost along z and
+c     then a transverse one. A single boost along their momentum would
+c     depend on the frame the momenta come in -- partonic c.m. here, lab
+c     in madspace and MadSpin, the Born c.m. of the FKS sector at NLO --
+c     and so would the spin axis of a single particle at rest. See
+c     get_me_frame_boosts in Template/Common/Source/impose_frame_rest.f.
+      call get_me_frame_boosts(ids, nexternal, nincoming, p1, qz, qt)
       do i=1, nexternal
-         call boostx(p1(0,i), pboost, p2(0,i))
+         call boostx(p1(0,i), qz, ptmp)
+         call boostx(ptmp, qt, p2(0,i))
       enddo
 
 c     A single selected particle must come out *exactly* at rest, not at

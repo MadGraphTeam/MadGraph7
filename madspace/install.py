@@ -13,12 +13,17 @@ Non-interactive examples:
   python install.py --source -j 8
   python install.py --source --cuda --hip --simd --debug
   python install.py --source --yes --cuda --cuda-arch 80
+  python install.py --source --clean          # rebuild from scratch
 
 Source-build options (--cuda, --hip, --openblas, --simd, --debug, ...,
 --cuda-arch, --hip-arch) are resolved per option: a flag given on the command
 line always wins; otherwise --yes reuses the value saved by the previous
 source build, else the platform default. Without --yes, compile flags describe
 the whole build: the options they leave out take the platform default.
+
+Rebuilds reuse the CMake tree in build/ and are therefore incremental. --clean
+deletes build/ and install/ first, for the rare cases where that tree is in the
+way; the saved settings live outside both and survive it.
 """
 
 import argparse
@@ -34,7 +39,12 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
 INSTALL_DIR = SCRIPT_DIR / "install"
-SETTINGS_FILE = SCRIPT_DIR / "build" / "install_settings.json"
+BUILD_DIR = SCRIPT_DIR / "build"
+# Outside both directories, so --clean resets the build without also forgetting
+# how the user wants madspace built. _LEGACY_SETTINGS_FILE is an older location,
+# still read so an existing installation keeps its choices.
+SETTINGS_FILE = SCRIPT_DIR / "install_settings.json"
+_LEGACY_SETTINGS_FILE = BUILD_DIR / "install_settings.json"
 
 PACKAGE_NAME = "madspace"
 
@@ -156,8 +166,8 @@ def ask_compile_options(
 
     *keys*, if given, restricts the menu to entries whose output_key is in
     it (used to split the compile-options prompt into a basic and an expert
-    stage). *show_expert_option* appends a pseudo entry ("_expert") used to
-    let the user opt into seeing the expert stage.
+    stage). *show_expert_option* appends a pseudo entry (output key "_expert")
+    that lets the user opt into the expert stage.
 
     *from_saved* controls the Enter hint wording.
     """
@@ -334,7 +344,7 @@ def resolve_gpu_arch(args: argparse.Namespace, saved: dict, backend: str) -> str
 # The source build (scikit-build-core) needs cmake >= 3.15 on PATH. When it is
 # missing (or too old) we fall back to a cmake installed through MadGraph's
 # HEPTools installer (`install cmake` in MG5), which lives next to this package
-# under <MG5>/HEPTools. An explicit MADGRAPH_CMAKE / CMAKE env var wins.
+# under <MG5>/HEPTools. A cmake on PATH that is recent enough is preferred.
 
 CMAKE_MIN_VERSION = (3, 15)
 
@@ -451,8 +461,7 @@ def set_build_parallelism(env: dict, jobs: int | None) -> dict:
     count comes entirely from the environment. With the Ninja generator that
     goes unnoticed (ninja parallelises on its own), but whenever ninja is
     missing scikit-build-core falls back to "Unix Makefiles", and make without
-    ``-j`` compiles one file at a time -- which is why a gcc/make build took
-    minutes while the ninja one did not.
+    ``-j`` compiles one file at a time.
 
     ``CMAKE_BUILD_PARALLEL_LEVEL`` is read by ``cmake --build`` itself, so it
     works for either generator, and being an environment variable it is also
@@ -483,9 +492,9 @@ def run(cmd: list, env: dict | None = None) -> None:
 def install_build_deps(system: bool = False) -> dict:
     """Install build-system dependencies and return an updated env.
 
-    Reads the list from pyproject.toml's [build-system] requires, which now
-    also includes pyyaml and pybind11-stubgen for the CMake-driven code
-    generation (see CMakeLists.txt).
+    Reads the list from pyproject.toml's [build-system] requires, which includes
+    pyyaml and pybind11-stubgen for the CMake-driven code generation (see
+    CMakeLists.txt).
 
     When *system* is False (default) deps are installed into INSTALL_DIR and
     PYTHONPATH is set so the subsequent pip invocation picks them up.
@@ -566,23 +575,46 @@ def _release_wheel_available() -> bool:
 
     python_tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
     return any(
-        python_tag in name and all(tag in name for tag in platform_tags)
+        name.startswith(f"{PACKAGE_NAME}-")
+        and python_tag in name
+        and all(tag in name for tag in platform_tags)
         for name in wheels.split(",")
     )
 
 
 def load_settings() -> dict:
-    try:
-        with open(SETTINGS_FILE) as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+    for path in (SETTINGS_FILE, _LEGACY_SETTINGS_FILE):
+        try:
+            with open(path) as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            continue
+    return {}
 
 
 def save_settings(settings: dict) -> None:
     SETTINGS_FILE.parent.mkdir(exist_ok=True)
     with open(SETTINGS_FILE, "w") as f:
         json.dump(settings, f, indent=2)
+
+
+# Starting over
+#
+# A rebuild is normally incremental: the CMake tree in build/ is what makes it
+# take seconds instead of recompiling madspace and its vendored OpenBLAS from
+# scratch, so it is kept unless the user asks otherwise with --clean.
+
+
+def clean_install_dirs() -> list[Path]:
+    """Delete the CMake build tree and the install directory. Returns the
+    directories that were actually removed."""
+    removed = []
+    for target in (BUILD_DIR, INSTALL_DIR):
+        if target.is_dir():
+            shutil.rmtree(target)
+            print(f"Removed {target}")
+            removed.append(target)
+    return removed
 
 
 # Main
@@ -600,7 +632,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--bin",
         action="store_true",
         default=False,
-        help="Install pre-compiled package (default when interactive).",
+        help="Install pre-compiled package (the interactive default in a release "
+        "tarball whose wheel matches this platform).",
     )
     mode.add_argument(
         "--source",
@@ -634,6 +667,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=False,
         help="Install system-wide instead of into the local install/ directory.",
+    )
+    parser.add_argument(
+        "--clean",
+        action="store_true",
+        default=False,
+        help="Delete the build/ and install/ directories first, for a rebuild "
+        "from scratch (slow: madspace and its vendored OpenBLAS are recompiled). "
+        "The saved settings are kept.",
     )
 
     # Compile option flags (each defaults to None = not specified via CLI)
@@ -744,8 +785,14 @@ def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
     _set_noninteractive(args.yes)
 
-    # Load saved settings when a previous installation is present
-    saved = load_settings() if (INSTALL_DIR / "madspace").is_dir() else {}
+    # The saved settings describe how the user wants madspace built, so they
+    # are read whether or not install/ holds a previous installation: it never
+    # does under --system, nor after a --clean whose rebuild failed. Read
+    # before --clean on purpose, since the legacy location is inside build/.
+    saved = load_settings()
+
+    if args.clean:
+        clean_install_dirs()
 
     # The PyPI wheel is only offered/defaulted-to in an actual release tarball
     # (input/.release, written by bin/create_release.py) that still matches
@@ -784,7 +831,7 @@ def main(argv: list[str] | None = None) -> None:
             from_source = True
 
     # PyPI installation, pinned to this checkout's madspace version so the
-    # wheel matches the bundled source (see SOURCE_HASH check in mg7/launch.py).
+    # wheel matches the bundled source (see SOURCE_HASH check in madgraph/mg7/common.py).
     if not from_source:
         pip_cmd = [
             sys.executable,

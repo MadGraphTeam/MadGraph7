@@ -223,6 +223,11 @@ C
       logical               zooming
       common /to_zoomchoice/zooming
 
+      logical last_it
+      double precision last_uref, last_ufix, last_lumi, last_goal, last_xnorm
+      common /to_refine_last/ last_uref, last_ufix, last_lumi, last_goal,
+     &     last_xnorm, last_it
+
 c
 c     External
 c
@@ -238,6 +243,10 @@ C-----
 C  BEGIN CODE
 C-----
       local_twgt = max(twgt_it, twgt)
+c     refine last iteration (dsample): a large weight must not coarsen the events
+c     stored after it beyond the maximum weight they are unweighted against
+      if (last_it .and. last_ufix .gt. 0d0)
+     &     local_twgt = min(local_twgt, twgt*last_ufix/fudge)
 c      write(*,*) "twgt", twgt, twgt_it, local_twgt
       if (local_twgt .ge. 0d0) then
          p(:,:) = px(:,:)
@@ -328,6 +337,18 @@ c      save neventswritten
       integer ngroup
       common/to_group/ngroup
 
+c     maximum weight of this unweighting, for the refine last iteration (dsample)
+      logical last_it
+      double precision last_uref, last_ufix, last_lumi, last_goal, last_xnorm
+      common /to_refine_last/ last_uref, last_ufix, last_lumi, last_goal,
+     &     last_xnorm, last_it
+c     events this unweighting would give at last_uref (dsample, run.inc)
+      double precision last_nref
+      common /to_refine_lastn/ last_nref
+      double precision max_overweight_truncation
+      common/to_overweight/max_overweight_truncation
+      double precision xow
+
 c
 c     external
 c
@@ -341,11 +362,13 @@ C-----
 c
 c     First scale all of the events to the total cross section
 c
-
+      last_uref = 0d0
       if (nw .le. 0) return
       if (scale_to_xsec) then
          call sample_result(xsecabs,xsec,xerr,itmin)
          if (xsecabs .le. 0) return !Fix by TS 12/3/2010
+c        refine last iteration: its events are normalised to its own mean
+         if (last_it .and. last_xnorm .gt. 0d0) xsecabs = last_xnorm
       else
          xscale = nw*twgt
       endif
@@ -368,6 +391,34 @@ c
       th_maxwgt = dabs(swgt(i))
       if ( force_max_wgt.lt.0)then
          target_wgt = dabs(swgt(i))
+c        maximum weight for a refine last iteration decided now: the 99% quantile
+c        of the event weights, a count quantile that one large weight cannot move
+c        (unlike the truncation above, whose maximum a single large weight sets).
+c        The events are in units of twgt*fudge (fudge=10 in unwgt): in units of
+c        twgt, i.e. of |wgt|/twgt of a phase-space point
+         last_uref = dabs(swgt(max(1,min(nw,int(0.99d0*nw)))))*10d0
+c        with max_overweight_truncation set, the maximum weight is instead the
+c        one above which the events carry that fraction of the cross-section
+c        (as mg7's max_overweight_truncation); last_nref is then the number of
+c        events this iteration gives at that maximum
+         last_nref = 0d0
+         if (max_overweight_truncation .gt. 0d0) then
+            xow = 0d0
+            i = nw
+            do while (i .gt. 1 .and. xow+dabs(swgt(i)) .le.
+     &           max_overweight_truncation*xtot)
+               xow = xow + dabs(swgt(i))
+               i = i-1
+            enddo
+            last_uref = dabs(swgt(i))*10d0
+            do i=1,nw
+               last_nref = last_nref + min(1d0, dabs(swgt(i))*10d0/last_uref)
+            enddo
+         endif
+c        the refine last iteration is unweighted against the maximum weight its
+c        stop was counted with: a large weight it contains stays an overweight
+c        event and does not set the maximum for all the other events of the job
+         if (last_it .and. last_ufix .gt. 0d0) target_wgt = last_ufix/10d0
       else if (.not.scale_to_xsec) then
          target_wgt = force_max_wgt / xscale
       else
@@ -642,6 +693,11 @@ c   Fix ordering of ptclus
       do i=1,nexternal
         ptclus(i) = ptcltmp(i)
       enddo
+c     MLM: start the shower of the non-jet particles from the hardest
+c     scale of the event instead of sqrt(s) (run_card mlm_shower_start)
+      if (ickkw.gt.0 .and. mlm_hardest_shower) then
+         call mlm_hardest_shower_scale(jpart, ptclus)
+      endif
 
 c     Check if we have flipped particle 1 and 2, and flip back
       flip = .false.
@@ -924,6 +980,52 @@ c     Store weight for event
 
       end
       
+      subroutine mlm_hardest_shower_scale(jpart, ptclus)
+c************************************************************************
+c     setclscales writes ptclus = sqrt(s) for every outgoing particle that
+c     no QCD clustering booked a scale onto. With
+c     Beams:setProductionScalesFromLHEF, Pythia8 starts each particle's
+c     final-state shower from its pt_clust and the initial-state shower
+c     from the largest one, so leptons and heavy quarks at sqrt(s) start
+c     the shower at the collider energy. Give the outgoing particles that
+c     are not light partons the event's hardest scale instead:
+c     max(SCALUP, pt_clust of the light partons below sqrt(s)). Light
+c     partons at sqrt(s) (core partons) keep it: that value is Pythia8's
+c     do-not-match flag. Only the shower start changes, not the matching.
+c     Same rule as apply_mlm_hardest_shower_scale in madspace.
+c************************************************************************
+      implicit none
+      include 'genps.inc'
+      include 'nexternal.inc'
+      include 'vector.inc'
+      include 'run.inc'
+      include 'cuts.inc'
+      integer jpart(7,-nexternal+3:2*nexternal-3)
+      double precision ptclus(nexternal)
+      double precision stot,m1,m2
+      common/to_stot/stot,m1,m2
+      integer i, id
+      double precision flag, hardest
+      logical light
+
+      flag = 0.999d0*sqrt(stot)
+      hardest = 0d0
+      if (q2fact(1).gt.0d0) hardest = max(hardest, sqrt(q2fact(1)))
+      if (q2fact(2).gt.0d0) hardest = max(hardest, sqrt(q2fact(2)))
+      do i=nincoming+1,nexternal
+         id = abs(jpart(1,i))
+         light = id.eq.21 .or. (id.ge.1 .and. id.le.maxjetflavor)
+         if (light .and. ptclus(i).lt.flag)
+     $        hardest = max(hardest, ptclus(i))
+      enddo
+      if (hardest.le.0d0) return
+      do i=nincoming+1,nexternal
+         id = abs(jpart(1,i))
+         light = id.eq.21 .or. (id.ge.1 .and. id.le.maxjetflavor)
+         if (.not.light .and. ptclus(i).ge.flag) ptclus(i) = hardest
+      enddo
+      end
+
       integer function n_unwgted()
 c************************************************************************
 c     Determines the number of unweighted events which have been written

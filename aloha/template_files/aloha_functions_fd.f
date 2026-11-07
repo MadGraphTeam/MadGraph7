@@ -118,7 +118,12 @@ c#endif
             im = (3-nh)/2
             sfomeg(1) = sf(1)*omega(ip)
             sfomeg(2) = sf(2)*omega(im)
-            pp3 = max(pp+p(3),rZero)
+c           Light-cone identity avoids the |p|+p3 cancellation.
+            if ( p(3).lt.rZero ) then
+               pp3 = max((p(1)**2+p(2)**2)/(pp-p(3)),rZero)
+            else
+               pp3 = max(pp+p(3),rZero)
+            endif
             chi(1) = dcmplx( dsqrt(pp3*rHalf/pp) )
             if ( pp3.eq.rZero ) then
                chi(2) = dcmplx(-nh )
@@ -247,7 +252,12 @@ c$$$      fi(2) = dcmplx(p(1),p(2))*nsf*-1
             im = (3-nh)/2
             sfomeg(1) = sf(1)*omega(ip)
             sfomeg(2) = sf(2)*omega(im)
-            pp3 = max(pp+p(3),rZero)
+c           Light-cone identity avoids the |p|+p3 cancellation.
+            if ( p(3).lt.rZero ) then
+               pp3 = max((p(1)**2+p(2)**2)/(pp-p(3)),rZero)
+            else
+               pp3 = max(pp+p(3),rZero)
+            endif
             chi(1) = dcmplx( dsqrt(pp3*rHalf/pp) )
             if ( pp3.eq.rZero ) then
                chi(2) = dcmplx(-nh )
@@ -390,7 +400,12 @@ c#endif
             im = (3-nh)/2
             sfomeg(1) = sf(1)*omega(ip)
             sfomeg(2) = sf(2)*omega(im)
-            pp3 = max(pp+p(3),rZero)
+c           Light-cone identity avoids the |p|+p3 cancellation.
+            if ( p(3).lt.rZero ) then
+               pp3 = max((p(1)**2+p(2)**2)/(pp-p(3)),rZero)
+            else
+               pp3 = max(pp+p(3),rZero)
+            endif
             chi(1) = dcmplx( dsqrt(pp3*rHalf/pp) )
             if ( pp3.eq.rZero ) then
                chi(2) = dcmplx(-nh )
@@ -520,7 +535,12 @@ c$$$      fo(2) = dcmplx(p(1),p(2))*nsf
             im = (3-nh)/2
             sfomeg(1) = sf(1)*omega(ip)
             sfomeg(2) = sf(2)*omega(im)
-            pp3 = max(pp+p(3),rZero)
+c           Light-cone identity avoids the |p|+p3 cancellation.
+            if ( p(3).lt.rZero ) then
+               pp3 = max((p(1)**2+p(2)**2)/(pp-p(3)),rZero)
+            else
+               pp3 = max(pp+p(3),rZero)
+            endif
             chi(1) = dcmplx( dsqrt(pp3*rHalf/pp) )
             if ( pp3.eq.rZero ) then
                chi(2) = dcmplx(-nh )
@@ -1556,7 +1576,7 @@ c construct eps0
       end if
 
       if ( nhel.ge.-1 ) then
-c constract spinor+ 
+c contract spinor+
        nh = nsr
        if ( rmass.ne.rZero ) then
          pp = min(p(0),dsqrt(p(1)**2+p(2)**2+p(3)**2))
@@ -1621,7 +1641,7 @@ c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
       end if
 
       if ( nhel.le.1 ) then
-c constract spinor-
+c contract spinor-
        nh = -nsr
        if ( rmass.ne.rZero ) then
          pp = min(p(0),dsqrt(p(1)**2+p(2)**2+p(3)**2))
@@ -1898,7 +1918,7 @@ c construct eps0
       end if
 
       if ( nhel.ge.-1 ) then
-c constract spinor+ 
+c contract spinor+
        nh = nsr
 
        if ( rmass.ne.rZero ) then
@@ -1976,7 +1996,7 @@ c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
       endif
 
       if ( nhel.le.1 ) then
-c constract spinor+ 
+c contract spinor+
        nh = -nsr
 
       if ( rmass.ne.rZero ) then

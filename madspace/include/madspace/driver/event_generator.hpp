@@ -20,6 +20,7 @@
 #include "madspace/driver/status_file.hpp"
 #include "madspace/driver/systematics.hpp"
 #include "madspace/driver/vegas_optimizer.hpp"
+#include "madspace/driver/weighting_pipeline.hpp"
 #include "madspace/phasespace.hpp"
 
 namespace madspace {
@@ -54,13 +55,18 @@ public:
      * @param status_file Optional status file progress is periodically
      *                    written to.
      * @param config      Generator configuration.
+     * @param groups      Groups of channels with re- and unweighting steps
+     *                    after their first unweighting, see @ref WeightingStep.
+     *                    The integrals and event counts are then those after
+     *                    the last step.
      */
     EventGenerator(
         const std::vector<ContextPtr>& contexts,
         const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels,
         std::uint64_t seed,
         std::shared_ptr<StatusFile> status_file = nullptr,
-        const GeneratorConfig& config = default_config
+        const GeneratorConfig& config = default_config,
+        const std::vector<WeightingGroup>& groups = {}
     );
     EventGenerator(EventGenerator&&) = default;
     EventGenerator& operator=(EventGenerator&&) = default;
@@ -73,6 +79,16 @@ public:
     /// Generate unweighted events until every channel reaches its target
     /// count.
     void generate();
+    /// Run only the VEGAS and channel-weight optimization of every channel
+    /// that still needs it, until all are optimized. No events are kept.
+    void optimize();
+    /// Like @ref generate, but every channel with a nonzero cross section runs
+    /// until it has `freeze_max_weight_after` unweighted events (the largest value
+    /// of its steps, if higher), regardless of its share of the cross section, so
+    /// that its maximum weight is final
+    /// (see @ref ChannelEventGenerator::max_weight). The events are not meant
+    /// to be combined.
+    void fix_max_weights();
     /**
      * Combine every channel's generated events into a single unweighted
      * `.npy` file.
@@ -81,8 +97,8 @@ public:
      * @param systematics  Optional; adds the scale/PDF variation weights to
      *                     the written events (`.npy` columns `rwgt_<id>`).
      * @param histograms   Optional; filled with the written events and all
-     *                     their weights (recorded in `info.json`'s
-     *                     `"event_histograms"`).
+     *                     their weights (recorded under `"event_histograms"`
+     *                     in the status file).
      */
     void combine_to_compact_npy(
         const std::string& file_name,
@@ -144,52 +160,54 @@ private:
     std::vector<bool> _channel_optimizing;
     std::vector<double> _channel_integral_fractions;
     std::vector<std::size_t> _context_job_counts;
+    // invalid step values per channel that were already warned about
+    std::vector<std::size_t> _warned_invalid_step_values;
     // True while a channel has a steady-state batch dispatched but not yet fully
     // committed; keeps next_batch_event_count() from double-counting in-flight work.
     std::vector<bool> _channel_batch_pending;
-    // True once a channel's current generation ReadyJob has had its full event count
-    // dispatched (batch_event_count reached zero). Needed alongside
-    // channel_job_count == 0 before finish_channel_job() clears _channel_batch_pending
-    // -- dispatch now happens incrementally, so channel_job_count can transiently hit
-    // zero mid-batch, between one sub-job's commit and the next one being dispatched.
+    // True once all events of a channel's current generation ReadyJob are dispatched.
+    // finish_channel_job() needs this besides channel_job_count == 0, since the count
+    // can hit zero between one sub-job's commit and the next one's dispatch.
     std::vector<bool> _channel_batch_dispatch_done;
-    // Round-robin position into _ready_jobs for generation-batch dispatch, persisted
-    // across start_jobs() calls so multiple channels' batches interleave (one device
-    // batch at a time) instead of one channel's batch draining before the next is
-    // touched.
+    // Round-robin position into _ready_jobs, kept across start_jobs() calls so that
+    // channels' batches interleave.
     std::size_t _ready_job_rr_cursor = 0;
-    // Per-channel commit ordering, analogous to _ready_gen/_commit_cursor but ordered
-    // per channel instead of globally. _channel_gen_order holds a channel's dispatched
-    // job ids in dispatch order and _channel_ready_gen the ones that have completed;
-    // the front of the order deque is the next commit due. An explicit deque rather
-    // than a "next id" counter because a channel's job ids are not contiguous: dispatch
-    // round-robins between channels, so consecutive ids belong to different channels.
+    // Per-channel commit ordering. _channel_gen_order holds a channel's dispatched job
+    // ids in dispatch order and _channel_ready_gen the completed ones; the front of the
+    // deque is the next commit due. A deque is needed since a channel's ids are not
+    // contiguous.
     std::vector<std::deque<std::size_t>> _channel_gen_order;
     std::vector<std::set<std::size_t>> _channel_ready_gen;
-    // Same, for a job's unweight-stage completion (tracked separately since it's a
-    // distinct completion event). Order is appended at generate-commit time, which is
-    // also when the unweight stage is queued.
+    // Same for the unweight stage; the order is appended when the generate stage
+    // commits, which is when the unweight stage is queued.
     std::vector<std::deque<std::size_t>> _channel_unweight_order;
     std::vector<std::set<std::size_t>> _channel_unweight_ready;
-    // generate() only: per-context queue of job ids awaiting unweight-stage
-    // dispatch, drained with priority by start_jobs().
+    // Per-context queue of job ids awaiting unweight-stage dispatch, drained with
+    // priority by start_jobs().
     std::vector<std::vector<std::size_t>> _context_unweight_queue;
     ResultQueue _result_queue;
+    std::unique_ptr<WeightingPipeline> _pipeline;
 
     // Base seed for reproducible event generation.
     std::uint64_t _seed;
 
-    // unweight_all() may run more than once per generate() (a channel's target can
-    // grow after it looked done, un-finishing it and triggering another round).
-    // Salted by this counter so repeated calls don't replay the same stream.
+    // unweight_all() may run more than once per generate(); this counter salts its
+    // seeds so repeated calls don't replay the same stream.
     std::size_t _unweight_call_index = 0;
+
+    // What a run of the generate loop does; see run_generate().
+    enum class GenerateMode { events, optimize_only, fix_max_weights };
+    void run_generate(GenerateMode mode);
+    // Channels with an optimizer, and how many of them are optimized.
+    std::pair<std::size_t, std::size_t> optimized_channel_count() const;
+    GenerateMode _generate_mode = GenerateMode::events;
 
     // Scheduling context for the running survey()/generate() call, read by
     // start_jobs() to derive job seeds.
     bool _survey_job = false;
     std::size_t _survey_pass = 0;
 
-    // Generate completions are committed in ascending job id, with
+    // survey() only: generate completions are committed in ascending job id, with
     // _commit_cursor as the next id due.
     std::set<std::size_t> _ready_gen;
     std::size_t _commit_cursor = 0;
@@ -209,27 +227,32 @@ private:
     void finish_channel_job(const GeneratorBatchJob& job);
     std::size_t next_batch_event_count(std::size_t channel_index) const;
     std::size_t start_jobs();
+    std::size_t wait_for_result(std::size_t& in_flight);
+    void reset_jobs();
     void update_integral();
     void update_integral_status();
-    void update_integral_fractions();
+    // With `final_step`, the integrals after the weighting steps are used. They
+    // only change in a fixed order once the steps are drained.
+    void update_integral_fractions(bool final_step = true);
     void update_counts();
     void reset_start_time();
     void add_timing_data(const std::string& key);
     void unweight_all();
-    std::tuple<std::vector<CombineChannelData>, std::size_t, double> init_combine();
+    std::tuple<std::vector<CombineChannelData>, std::size_t, std::vector<double>>
+    init_combine();
     void read_and_combine(
         std::vector<CombineChannelData>& channel_data,
         EventBuffer& buffer,
-        double norm_factor,
+        const std::vector<double>& norm_factors,
         MixMaxRandom& rand_gen
     );
-    void fill_lhe_event(
-        LHECompleter& lhe_completer,
-        LHEEvent& lhe_event,
-        EventBuffer& buffer,
-        std::size_t event_index,
-        MixMaxRandom& rand_gen
-    );
+    // run the re- and unweighting steps of all collected events
+    void drain_pipeline();
+    // unweighting efficiency of each pass, the first one before and after cuts
+    std::tuple<double, double, std::vector<double>> pass_efficiencies() const;
+    // start the jobs of the steps whose batches are full, and the partial ones
+    // once the generation jobs leave threads idle
+    std::size_t start_pipeline_jobs();
     // Layout of the combined events as read from the channel files
     DataLayout combined_layout() const;
     // Layout of the written events: the reweighting inputs are dropped unless
@@ -275,6 +298,7 @@ private:
         std::size_t iter
     );
 
+    void warn_invalid_step_values();
     void print_gen_init();
     void print_gen_update(bool done);
     void print_gen_update_pretty(bool done);

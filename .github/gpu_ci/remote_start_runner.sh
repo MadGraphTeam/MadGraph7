@@ -1,6 +1,9 @@
 #!/bin/bash
-# Runs on the cluster LOGIN node, piped through ssh by gpu_runner_ci.yml (start_runner):
+# Runs on the cluster LOGIN node, piped through ssh by ceci-gate (vm_gate/ceci-gate) for the
+# start_runner job of gpu_runner_ci.yml:
 #     ssh <cluster> bash -l -s -- LABEL RUN_ID RUN_TAG IDLE_MINUTES [sbatch options...] < remote_start_runner.sh
+# The copy that runs is the one installed on the vmadgraph VM (/usr/local/share/ceci-gate):
+# install it there again after a change (README.md, "One-time setup").
 # Submits runner_batch.sh (copied beforehand into ~/mg7-gpu-ci/runner-LABEL, next to
 # job_started_hook.sh) and waits until the runner is connected to GitHub.
 #  - every runner job of a cluster is called mg7-gh-runner-LABEL and uses

@@ -159,7 +159,7 @@ C
 C CCC THIS IS PROBABLY UNNECESSARY, KEEP COMMENTED FOR THE TIME BEING
 C  Imag power takes into account the I factor when a longitudinal Z
 C   boson is replaced by its goldstone (Chi). 
-C   It is the difference of the number of Chi's in the first and second amplitude which are interferred together
+C   It is the difference of the number of Chi's in the first and second amplitude which are interfered together
 C       integer imag_power
 C       data imag_power / %(imag_power)d /
 

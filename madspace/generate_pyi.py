@@ -2,8 +2,8 @@
 """Generate madspace/_madspace_py.pyi from a freshly built _madspace_py module.
 
 pybind11-stubgen has to import the module to introspect it, which in turn
-requires the full "madspace" package (its __init__.py preloads libmadspace
-and monkey-patches a few classes). Rather than requiring a full install, this
+requires the full "madspace" package (its loader preloads libmadspace and
+monkey-patches a few classes). Rather than requiring a full install, this
 script assembles a throwaway copy of just the pieces needed for that import
 in --stage-dir, then runs pybind11-stubgen against it.
 """
@@ -31,7 +31,7 @@ def main():
         shutil.rmtree(stage_pkg)
     (stage_pkg / "lib").mkdir(parents=True)
 
-    for name in ("__init__.py", "_madspace_py_loader.py"):
+    for name in ("__init__.py", "_madspace_py_loader.py", "python_function.py"):
         shutil.copy2(args.package_dir / name, stage_pkg / name)
     shutil.copy2(args.module, stage_pkg / args.module.name)
     shutil.copy2(args.lib, stage_pkg / "lib" / args.lib.name)
@@ -57,6 +57,14 @@ def main():
             "--enum-class-locations=Activation:MLP.Activation",
             "--enum-class-locations=CutMode:Cuts.CutMode",
             "--enum-class-locations=LRSchedule:AdamOptimizer.LRSchedule",
+            "--enum-class-locations=Mode:WeightingStep.Mode",
+            "--enum-class-locations=DataType:DataType",
+            "--enum-class-locations=JetScaleScheme:MLMClustering.JetScaleScheme",
+            "--enum-class-locations=ScaleScheme:MLMClustering.ScaleScheme",
+            "--enum-class-locations=PartonLineScheme:MLMClustering.PartonLineScheme",
+            "--enum-class-locations=AlphasScheme:MLMClustering.AlphasScheme",
+            "--enum-class-locations=ClusteringMeasure:MLMClustering.ClusteringMeasure",
+            "--enum-class-locations=ClusteringHistory:MLMClustering.ClusteringHistory",
             # Fail the build on unresolvable names/expressions (e.g. an enum
             # default value needing its own --enum-class-locations entry)
             # instead of silently emitting a stub with holes in it.
@@ -71,9 +79,8 @@ def main():
     )
 
     # pybind11-stubgen's own error checks (above) don't guarantee the emitted
-    # file is syntactically valid Python, e.g. a bad --print-safe-value-reprs
-    # match can inline an expression verbatim; parse it so a broken stub
-    # fails the build instead of shipping something downstream tools choke on.
+    # file is syntactically valid Python (e.g. an expression may be inlined
+    # verbatim); parse it so a broken stub fails the build.
     stub_path = args.output_dir / "madspace" / "_madspace_py.pyi"
     source = stub_path.read_text()
     try:

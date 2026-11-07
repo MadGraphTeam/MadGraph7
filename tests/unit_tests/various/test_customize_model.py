@@ -21,10 +21,10 @@ import os
 import tests.unit_tests as unittest
 
 import madgraph.interface.madgraph_interface as mg_interface
-import models.build_restriction_lib as build_restrict_lib
-import models.check_param_card as check_param_card
-import models.import_ufo as import_ufo
-import models.write_param_card as param_writer
+import madgraph.models.build_restriction_lib as build_restrict_lib
+import madgraph.models.check_param_card as check_param_card
+import madgraph.models.import_ufo as import_ufo
+import madgraph.models.write_param_card as param_writer
 
 
 def get_option(categories, name):

@@ -1,5 +1,6 @@
 #!/bin/bash
-# Slurm batch script, submitted by remote_start_runner.sh from the runner directory:
+# Slurm batch script, submitted by remote_start_runner.sh from the runner directory, where
+# ceci-gate copies it at every start from the vmadgraph VM (/usr/local/share/ceci-gate):
 # runs the self-hosted GitHub runner for ONE workflow run, then ends the allocation,
 # so that all the CI jobs of that run share this single allocation.
 #     sbatch [options] runner_batch.sh RUN_ID STOP_FILE IDLE_MINUTES
@@ -23,9 +24,11 @@ RUNNER_PID=$!
 while kill -0 "$RUNNER_PID" 2> /dev/null; do
     sleep 15
     if [ -e "$CI_STOP_FILE" ]; then
-        # give the runner the time to report the end of the stop_runner job
-        for _ in $(seq 30); do
-            tail -n 1 "$LOG" | grep -q 'completed with result' && break
+        # give the runner the time to report the end of the stop_runner job: it uploads the
+        # logs first, which can take a minute. Stopped before, the job stays in progress on
+        # GitHub, and the watchdog takes the end of the allocation for an early one
+        for _ in $(seq 300); do
+            grep -q -F ' stop_runner completed with result' "$LOG" && break
             sleep 1
         done
         echo "Stop requested by the workflow"

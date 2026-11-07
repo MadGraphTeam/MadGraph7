@@ -670,7 +670,8 @@ class TestDressedPhaseSpace(unittest.TestCase):
         try:
             cls.ms.PhaseSpaceMapping(
                 [0.] * 4, 240.0, False, 0.8,
-                cls.ms.PhaseSpaceMapping.TChannelMode.rambo, None, None, 0.96)
+                cls.ms.PhaseSpaceMapping.TChannelMode.rambo,
+                lepton_sampling_power=0.96)
         except TypeError:
             raise unittest.SkipTest(
                 'madspace build predates lepton_sampling_power')
@@ -681,7 +682,8 @@ class TestDressedPhaseSpace(unittest.TestCase):
         M = self.ms.PhaseSpaceMapping
         mode = M.TChannelMode.rambo
         return (M(masses, self.e_cm, False, 0.8, mode),
-                M(masses, self.e_cm, False, 0.8, mode, None, None, self.power))
+                M(masses, self.e_cm, False, 0.8, mode,
+                  lepton_sampling_power=self.power))
 
     def test_the_split_costs_one_extra_random_number(self):
         """It also has to decide which beam carries the drawn fraction."""
@@ -784,10 +786,10 @@ class TestLheAnnotation(unittest.TestCase):
         cls.ms = _madspace()
         if cls.ms is None or not hasattr(cls.ms, 'BeamstrahlungSampler'):
             raise unittest.SkipTest('madspace build with the sampler required')
-        sys.path.insert(0, os.path.join(
-            _root, 'madgraph', 'iolibs', 'template_files', 'mg7'))
+        if _root not in sys.path:
+            sys.path.insert(0, _root)
         try:
-            import lepton_density
+            from madgraph.mg7 import lepton_density
         except ImportError:
             raise unittest.SkipTest('lepton_density helper not importable')
         cls.mod = lepton_density

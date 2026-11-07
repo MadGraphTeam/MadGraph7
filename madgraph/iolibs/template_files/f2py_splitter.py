@@ -17,7 +17,7 @@ CF2PY double precision, intent(in) :: SCALE2
   integer npdg, nhel, procid
   double precision p(*)
   double precision ANS, ALPHAS, PI,SCALE2
-  integer flavor(%(maxpart)i),I
+  integer flavor(%(maxpart)i),lpdgs(%(maxpart)i),I
 %(flavor_index_decl)s
   include 'coupl.inc'
   
@@ -61,7 +61,7 @@ C
   INTEGER POS(n_changing)
   INTEGER ALLOW_HEL(n_changing*n_comb)
   DOUBLE COMPLEX INTER(n_comb*(n_comb+1)/2)
-  integer flavor(%(maxpart)i),I
+  integer flavor(%(maxpart)i),lpdgs(%(maxpart)i),I
 %(flavor_index_decl)s
 C     Update is done insider the direct density call functions
 
@@ -72,10 +72,10 @@ C     Update is done insider the direct density call functions
             return
             end
 
-  subroutine %(f2py_prefix)sf77_get_all_inter(pdgs, procid, npdg, P, POS, N_CHANGING, ALLOW_HEL, N_COMB, INTER)
+  subroutine %(f2py_prefix)sf77_get_all_inter(pdgs, procid, npdg, P, NHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, INTER)
   IMPLICIT NONE
 C     P momenta
-C     NHEL base of helicity that are not changing
+C     NHEL(NPDG) helicity of the legs not in POS (POS entries ignored)
 C     POS(N_CHNGING): position of the changing helicity
 C     n_changing: number of changing helicity
 C     ALLOW_HEL(NCOMB, N_CHANGING): combination of helicity to
@@ -84,20 +84,28 @@ C     INTER((NCOMB*NCOMB+1)/2: all interference term (not the
 C      symmetric one)
 
   integer pdgs(*)
-  integer npdg, nhel, procid, n_changing
+  integer npdg, procid, n_changing
+  integer nhel(*), lnhel(%(maxpart)i)
   integer n_comb
   double precision p(*)
   double precision ANS,  PI,SCALE2
   INTEGER POS(*)
   INTEGER ALLOW_HEL(*)
   DOUBLE COMPLEX INTER(*)
-  integer flavor(%(maxpart)i),I
+  integer flavor(%(maxpart)i),lpdgs(%(maxpart)i),I
 %(flavor_index_decl)s
 C     Update is done insider the direct density call functions
 
 C     Update is done insider the direct density call functions
 
 %(flavormapping)s
+
+C     The per-process GET_ALL_INTER writes the POS entries of its NHEL:
+C     hand it a copy, f2py passes a numpy array straight through.
+  lnhel(:) = 0
+  do i = 1, min(npdg, %(maxpart)i)
+     lnhel(i) = nhel(i)
+  enddo
 
 %(inter_splitter)s
 
@@ -137,6 +145,20 @@ C     aliases them. See PY_SET_BEAMPOL for the convention.
       COMMON/TO_BEAMPOL/BEAMPOL
       BEAMPOL(1) = POL1
       BEAMPOL(2) = POL2
+      RETURN
+      END
+
+
+      SUBROUTINE %(f2py_prefix)sf77_set_bwcutoff(NEW_VALUE)
+C     Window of the $-syntax propagators (see the MATRIX routines). Filled on
+C     this side of the shared-library boundary, like /to_beampol/: a common
+C     block written from the f2py wrapper is not the one the matrix elements
+C     read.
+      IMPLICIT NONE
+      DOUBLE PRECISION NEW_VALUE
+      DOUBLE PRECISION STANDALONE_BWCUTOFF
+      COMMON/TO_STANDALONE_BWCUTOFF/STANDALONE_BWCUTOFF
+      STANDALONE_BWCUTOFF = NEW_VALUE
       RETURN
       END
       

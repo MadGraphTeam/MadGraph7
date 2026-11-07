@@ -2,9 +2,11 @@
 the dynamical scale only (as the LO `scalefact`); fixed scales are left alone.
 """
 
-import numpy as np
+import math
+
 import pytest
-from pytest import approx
+import torch
+from madspace_testing import generator, rand
 
 import madspace as ms
 
@@ -13,35 +15,35 @@ M_TOP = 173.0
 
 def _momenta():
     """A few p p -> t t~ events, (batch, n, 4) with (E, px, py, pz)."""
-    rng = np.random.default_rng(20260917)
+    rng = generator(20260917)
     batch = 32
-    pt = rng.uniform(10.0, 400.0, size=(batch, 2))
-    phi = rng.uniform(0.0, 2 * np.pi, size=(batch, 2))
-    pz = rng.uniform(-600.0, 600.0, size=(batch, 2))
-    e = np.sqrt(M_TOP**2 + pt**2 + pz**2)
-    out = np.stack(
-        [e, pt * np.cos(phi), pt * np.sin(phi), pz], axis=-1
+    pt = 10.0 + 390.0 * rand((batch, 2), generator=rng)
+    phi = 2 * math.pi * rand((batch, 2), generator=rng)
+    pz = -600.0 + 1200.0 * rand((batch, 2), generator=rng)
+    e = torch.sqrt(M_TOP**2 + pt**2 + pz**2)
+    out = torch.stack(
+        [e, pt * torch.cos(phi), pt * torch.sin(phi), pz], dim=-1
     )  # (batch, 2, 4)
-    e_in = out[:, :, 0].sum(axis=1) / 2
-    incoming = np.zeros((batch, 2, 4))
+    e_in = out[:, :, 0].sum(dim=1) / 2
+    incoming = torch.zeros((batch, 2, 4))
     incoming[:, 0, 0] = e_in
     incoming[:, 0, 3] = e_in
     incoming[:, 1, 0] = e_in
     incoming[:, 1, 3] = -e_in
-    return np.concatenate([incoming, out], axis=1)
+    return torch.cat([incoming, out], dim=1)
 
 
 def _ht(momenta):
     """sum_i sqrt(m_i^2 + pT_i^2) over the final state."""
     final = momenta[:, 2:, :]
-    return np.sqrt(
-        np.maximum(0.0, final[..., 0] ** 2 - final[..., 3] ** 2)
-    ).sum(axis=1)
+    return torch.sqrt(
+        torch.clamp(final[..., 0] ** 2 - final[..., 3] ** 2, min=0.0)
+    ).sum(dim=1)
 
 
-def _call(scale, momenta):
-    ren, fact1, fact2 = scale(momenta)
-    return np.asarray(ren), np.asarray(fact1), np.asarray(fact2)
+def assert_approx(actual, expected, rel=1e-6, abs=1e-12):
+    """pytest.approx-like elementwise comparison of tensors."""
+    torch.testing.assert_close(actual, expected, rtol=rel, atol=abs)
 
 
 @pytest.mark.parametrize(
@@ -54,11 +56,11 @@ def _call(scale, momenta):
 def test_dynamical_scale_definitions(dyn_type, expected):
     momenta = _momenta()
     scale = ms.EnergyScale(momenta.shape[1], dyn_type, False, False, 0.0, 0.0, 0.0)
-    ren, fact1, fact2 = _call(scale, momenta)
+    ren, fact1, fact2 = scale(momenta)
     reference = expected * _ht(momenta)
-    assert ren == approx(reference)
-    assert fact1 == approx(reference)
-    assert fact2 == approx(reference)
+    assert_approx(ren, reference)
+    assert_approx(fact1, reference)
+    assert_approx(fact2, reference)
 
 
 @pytest.mark.parametrize("factor", [0.5, 1.0, 2.0])
@@ -74,11 +76,11 @@ def test_scale_factor_multiplies_the_dynamical_scale(factor):
         0.0,
         factor,
     )
-    ren, fact1, fact2 = _call(scale, momenta)
+    ren, fact1, fact2 = scale(momenta)
     reference = factor * 0.5 * _ht(momenta)
-    assert ren == approx(reference)
-    assert fact1 == approx(reference)
-    assert fact2 == approx(reference)
+    assert_approx(ren, reference)
+    assert_approx(fact1, reference)
+    assert_approx(fact2, reference)
 
 
 def test_scale_factor_default_is_one():
@@ -92,10 +94,10 @@ def test_scale_factor_default_is_one():
         0.0,
         0.0,
     )
-    without = _call(ms.EnergyScale(*args), momenta)
-    with_one = _call(ms.EnergyScale(*args, 1.0), momenta)
+    without = ms.EnergyScale(*args)(momenta)
+    with_one = ms.EnergyScale(*args, 1.0)(momenta)
     for a, b in zip(without, with_one):
-        assert a == approx(b)
+        assert_approx(a, b)
 
 
 def test_scale_factor_leaves_a_fixed_scale_alone():
@@ -111,10 +113,10 @@ def test_scale_factor_leaves_a_fixed_scale_alone():
         fixed,
         0.5,
     )
-    ren, fact1, fact2 = _call(scale, momenta)
-    assert ren == approx(np.full(momenta.shape[0], fixed))
-    assert fact1 == approx(np.full(momenta.shape[0], fixed))
-    assert fact2 == approx(np.full(momenta.shape[0], fixed))
+    ren, fact1, fact2 = scale(momenta)
+    assert_approx(ren, torch.full((momenta.shape[0],), fixed))
+    assert_approx(fact1, torch.full((momenta.shape[0],), fixed))
+    assert_approx(fact2, torch.full((momenta.shape[0],), fixed))
 
 
 def test_scale_factor_with_a_fixed_renormalisation_scale_only():
@@ -131,7 +133,7 @@ def test_scale_factor_with_a_fixed_renormalisation_scale_only():
         0.0,
         0.25,
     )
-    ren, fact1, fact2 = _call(scale, momenta)
-    assert ren == approx(np.full(momenta.shape[0], fixed))
-    assert fact1 == approx(0.25 * 0.5 * _ht(momenta))
-    assert fact2 == approx(0.25 * 0.5 * _ht(momenta))
+    ren, fact1, fact2 = scale(momenta)
+    assert_approx(ren, torch.full((momenta.shape[0],), fixed))
+    assert_approx(fact1, 0.25 * 0.5 * _ht(momenta))
+    assert_approx(fact2, 0.25 * 0.5 * _ht(momenta))

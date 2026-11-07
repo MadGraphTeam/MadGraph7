@@ -103,7 +103,7 @@ C BEGIN CODE
 C ----------
 	  IF(abs(reference_value).eq.0.0d0) then
 	    %(proc_prefix)sIsZero=.FALSE.
-		write(*,*) '##E02 ERRROR Reference value for comparison is zero.'
+		write(*,*) '##E02 ERROR Reference value for comparison is zero.'
 		STOP
 	  else
 	    %(proc_prefix)sIsZero=((abs(toTest)/abs(reference_value)).lt.ZeroThres)
@@ -195,7 +195,7 @@ C
 C P is the actual PS POINT used for the computation, and can be rotated for the stability test purposes.
 	  %(real_dp_format)s P(0:3,NEXTERNAL) 
 C DP_RES STORES THE DOUBLE PRECISION RESULT OBTAINED FROM DIFFERENT EVALUATION METHODS IN ORDER TO ASSESS STABILITY.
-C THE STAB_STAGE COUNTER I CORRESPONDANCE GOES AS FOLLOWS
+C THE STAB_STAGE COUNTER CORRESPONDENCE GOES AS FOLLOWS
 C  I=1 -> ORIGINAL PS, CTMODE=1
 C  I=2 -> ORIGINAL PS, CTMODE=2, (ONLY WITH CTMODERUN=-1)
 C  I=3 -> PS WITH ROTATION 1, CTMODE=1, (ONLY WITH CTMODERUN=-2)
@@ -208,7 +208,7 @@ C IF UNSTABLE IT GOES TO THE SAME PATTERN BUT STAB_INDEX IS THEN I+20.
 	  INTEGER N_DP_EVAL, N_QP_EVAL
 	  DATA N_DP_EVAL/1/
 	  DATA N_QP_EVAL/1/
-c     This is used for loop-induced where the reference scale for comparisons is infered from
+c     This is used for loop-induced where the reference scale for comparisons is inferred from
 c     the previous points
 	  %(real_dp_format)s NEXTREF
 	  DATA NEXTREF/ZERO/
@@ -273,7 +273,7 @@ C
 	  DATA REF/0.0d0/
       common/%(proc_prefix)sINIT/NTRY,CHECKPHASE,HELDOUBLECHECKED,REF
 
-C     THE LOGICAL BELOWS ARE JUST TO KEEP TRACK OF WHETHER THE MP_PS HAS BEEN SET YET OR NOT AND WHETER THE MP EXTERNAL WFS HAVE BEEN COMPUTED YET.
+C     THE LOGICAL VARIABLES BELOW ARE JUST TO KEEP TRACK OF WHETHER THE MP_PS HAS BEEN SET YET OR NOT AND WHETHER THE MP EXTERNAL WFS HAVE BEEN COMPUTED YET.
 	  LOGICAL MP_DONE
 	  DATA MP_DONE/.FALSE./
 	  common/%(proc_prefix)sMP_DONE/MP_DONE
@@ -281,7 +281,7 @@ C     THE LOGICAL BELOWS ARE JUST TO KEEP TRACK OF WHETHER THE MP_PS HAS BEEN SE
 	  DATA MP_PS_SET/.FALSE./
 	  common/%(proc_prefix)sMP_PS_SET/MP_PS_SET
 
-C     PS CAN POSSIBILY BE PASSED THROUGH IMPROVE_PS BUT IS NOT MODIFIED FOR THE PURPOSE OF THE STABILITY TEST	  
+C     PS CAN POSSIBLY BE PASSED THROUGH IMPROVE_PS BUT IS NOT MODIFIED FOR THE PURPOSE OF THE STABILITY TEST
 C     EVEN THOUGH THEY ARE PUT IN COMMON BLOCK, FOR NOW THEY ARE NOT USED ANYWHERE ELSE
 	  %(real_dp_format)s PS(0:3,NEXTERNAL)
 	  common/%(proc_prefix)sPSPOINT/PS
@@ -532,7 +532,7 @@ C In the initialization, I cannot perform stability test and therefore guarantee
   CTMODEINIT_BU=CTMODEINIT
 C So either one choses quad precision directly
 C  CTMODEINIT=4
-C Or, because this is very slow, we keep the orignal value. The accuracy returned is -1 and tells the MC that he should not trust the evaluation for checks.
+C Or, because this is very slow, we keep the original value. The accuracy returned is -1 and tells the MC that he should not trust the evaluation for checks.
   CTMODEINIT=CTMODEINIT_BU
 ENDIF
 
@@ -759,7 +759,7 @@ C   SET THE LOOP FILTER
   ELSEIF (.NOT.HELDOUBLECHECKED)THEN
     IF ((.NOT.GOODHEL(HELPICKED)).AND.(.NOT.%(proc_prefix)sISZERO(ABS(ANS(1))+ABS(ANS(2))+ABS(ANS(3)),REF/DBLE(NCOMB),-1))) THEN
 	  write(*,*) '##W15 Helicity filter could not be successfully double checked.'
-	  write(*,*) '##One reason for this is that you have changed sensible parameters which affected what are the zero helicity configurations.'
+	  write(*,*) '##One reason for this is that you have changed sensitive parameters which affected what are the zero helicity configurations.'
 	  write(*,*) '##MadLoop will try to reset the Helicity filter with the next PS points it receives.'
 	  NTRY=0
 	  OPEN(30,FILE=HelFilterFN,err=349)

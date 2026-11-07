@@ -14,6 +14,7 @@
 #include "MemoryBuffers.h"
 #include "color_sum.h" // for blasColorSumTmpSize
 
+#include <algorithm> // for std::max
 #include <cfenv> // for fetestexcept
 #include <iostream>
 #include <sstream>
@@ -24,7 +25,8 @@ namespace madmatrix
 {
   //--------------------------------------------------------------------------
 
-  MatrixElementKernelBase::MatrixElementKernelBase( const BufferMomenta& momenta,         // input: momenta
+  MatrixElementKernelBase::MatrixElementKernelBase( ProcessParameters& params,            // input: parameters of the process (output: good helicities)
+                                                    const BufferMomenta& momenta,         // input: momenta
                                                     const BufferGs& gs,                   // input: gs for alphaS
                                                     const BufferIflavorVec& iflavorVec,   // input: flavor indices for the flavor combination
                                                     const BufferRndNumHelicity& rndhel,   // input: random numbers for helicity selection
@@ -33,7 +35,8 @@ namespace madmatrix
                                                     BufferMatrixElements& matrixElements, // output: matrix elements
                                                     BufferSelectedHelicity& selhel,       // output: helicity selection
                                                     BufferSelectedColor& selcol )         // output: color selection
-    : m_momenta( momenta )
+    : m_params( params )
+    , m_momenta( momenta )
     , m_gs( gs )
     , m_iflavorVec( iflavorVec )
     , m_rndhel( rndhel )
@@ -153,7 +156,8 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
-  MatrixElementKernelDevice::MatrixElementKernelDevice( const BufferMomenta& momenta,         // input: momenta
+  MatrixElementKernelDevice::MatrixElementKernelDevice( ProcessParameters& params,            // input: parameters of the process (output: good helicities)
+                                                        const BufferMomenta& momenta,         // input: momenta
                                                         const BufferGs& gs,                   // input: gs for alphaS
                                                         const BufferIflavorVec& iflavorVec,   // input: flavor indices for the flavor combination
                                                         const BufferRndNumHelicity& rndhel,   // input: random numbers for helicity selection
@@ -164,8 +168,9 @@ namespace madmatrix
                                                         BufferSelectedColor& selcol,          // output: color selection
                                                         const size_t gpublocks,
                                                         const size_t gputhreads)
-    : MatrixElementKernelBase( momenta, gs, iflavorVec, rndhel, rndcol, channelIds, matrixElements, selhel, selcol )
+    : MatrixElementKernelBase( params, momenta, gs, iflavorVec, rndhel, rndcol, channelIds, matrixElements, selhel, selcol )
     , NumberOfEvents( gpublocks * gputhreads )
+    , m_deviceParams()
     , m_couplings( this->nevt() )
     , m_pHelMEs()
     , m_pHelJamps()
@@ -206,7 +211,7 @@ namespace madmatrix
       throw std::runtime_error( sstr.str() );
     }
     // Create the "one-helicity" jamp buffer that will be used for helicity filtering
-    m_pHelJamps.reset( new DeviceBufferAmp( ProcessData::ncolor * mgOnGpu::nx2 * this->nevt() ) );
+    m_pHelJamps.reset( new DeviceBufferAmp( ProcessData::njampso * mgOnGpu::nx2 * this->nevt() ) );
     // Create the "one-helicity" numerator and denominator buffers that will be used for helicity filtering
     m_pHelNumerators.reset( new DeviceBufferSimple( this->nevt() * ProcessData::ndiagrams ) );
     m_pHelDenominators.reset( new DeviceBufferSimple( this->nevt() ) );
@@ -221,8 +226,17 @@ namespace madmatrix
       if( blasEnv && std::string( blasEnv ) != "" )
       {
 #ifndef MGONGPU_HAS_NO_BLAS
-        m_blasColorSum = true; // fixme? eventually set default=true and decode "Y" and "N" choices?
-        std::cout << "INFO: Env variable CUDACPP_RUNTIME_BLASCOLORSUM is set and non-empty: enable BLAS" << std::endl;
+        if constexpr( ProcessData::nampso > 1 )
+        {
+          // the BLAS color sum contracts one ncolor jamp vector per helicity: it cannot pair
+          // the jamps of several amplitude split orders, which color_sum_kernel does
+          std::cout << "WARNING! Env variable CUDACPP_RUNTIME_BLASCOLORSUM is set and non-empty, but the BLAS color sum does not pair split amplitude orders: disable BLAS" << std::endl;
+        }
+        else
+        {
+          m_blasColorSum = true; // fixme? eventually set default=true and decode "Y" and "N" choices?
+          std::cout << "INFO: Env variable CUDACPP_RUNTIME_BLASCOLORSUM is set and non-empty: enable BLAS" << std::endl;
+        }
 #else
         throw std::runtime_error( "Env variable CUDACPP_RUNTIME_BLASCOLORSUM is set and non-empty, but BLAS was disabled at build time" );
 #endif
@@ -295,12 +309,17 @@ namespace madmatrix
   {
     PinnedHostBufferHelicityMask hstIsGoodHel( ProcessData::ncomb );
     // ... 0d1. Compute good helicity mask (a host variable) on the device
-    gpuLaunchKernel( computeDependentCouplings, m_gpublocks, m_gputhreads, m_gs.data(), m_couplings.data() );
+    m_deviceParams.update( m_params );
+    gpuLaunchKernel( computeDependentCouplings, m_gpublocks, m_gputhreads, m_deviceParams.arg( m_params ), m_gs.data(), m_couplings.data() );
     const int nevt = m_gpublocks * m_gputhreads;
-    sigmaKin_getGoodHel( m_momenta.data(), m_couplings.data(), m_iflavorVec.data(), m_matrixElements.data(), m_pHelNumerators->data(), m_pHelDenominators->data(), m_pHelJamps->data(), hstIsGoodHel.data(), nevt );
-    // ... 0d3. Set good helicity list in host static memory
-    int nGoodHel = sigmaKin_setGoodHel( hstIsGoodHel.data() );
-    assert( nGoodHel > 0 ); // SANITY CHECK: there should be at least one good helicity
+    sigmaKin_getGoodHel( m_deviceParams.arg( m_params ), m_momenta.data(), m_couplings.data(), m_iflavorVec.data(), m_matrixElements.data(), m_pHelNumerators->data(), m_pHelDenominators->data(), m_pHelJamps->data(), hstIsGoodHel.data(), nevt );
+    // ... 0d3. Set good helicity list in the parameters of the process (and on the device)
+    int nGoodHel = sigmaKin_setGoodHel( m_params, hstIsGoodHel.data() );
+    m_deviceParams.update( m_params );
+    // nGoodHel can be 0 (a subprocess whose |M|^2 vanishes identically): sigmaKin then skips the
+    // helicity loop and returns |M|^2 = 0, as on the CPU. The per-helicity buffers below are
+    // sized for one helicity at least, so that they are never empty (null) allocations.
+    const int nGoodHelAlloc = std::max( nGoodHel, 1 );
     // Create one GPU stream for each good helicity
     for( int ighel = 0; ighel < nGoodHel; ighel++ )
       gpuStreamCreate( &m_helStreams[ighel] );
@@ -316,10 +335,10 @@ namespace madmatrix
     }
 #endif
     // ... Create the "many-helicity" super-buffer of nGoodHel ME buffers (dynamically allocated because nGoodHel is determined at runtime)
-    m_pHelMEs.reset( new DeviceBufferSimple( nGoodHel * nevt ) );
+    m_pHelMEs.reset( new DeviceBufferSimple( nGoodHelAlloc * nevt ) );
     // ... Create the "many-helicity" super-buffer of nGoodHel ME buffers (dynamically allocated because nGoodHel is determined at runtime)
     // ... (calling reset here deletes the previously created "one-helicity" buffers used for helicity filtering)
-    m_pHelJamps.reset( new DeviceBufferAmp( nGoodHel * ProcessData::ncolor * mgOnGpu::nx2 * nevt ) );
+    m_pHelJamps.reset( new DeviceBufferAmp( nGoodHelAlloc * ProcessData::njampso * mgOnGpu::nx2 * nevt ) );
     // ... Create the numerator and denominator buffers. These no longer carry a helicity dimension:
     // ... the numerators are accumulated in place over all good helicities via atomicAdd in calculate_jamps
     // ... ([nevt][ndiagrams]) and the denominators are derived from them ([nevt]).
@@ -329,7 +348,7 @@ namespace madmatrix
     // Create the "many-helicity" super-buffer of temporary buffers for the cuBLAS/hipBLAS intermediate
     // results in color_sum_blas, and in mixed precision mode for the converted jamps too
     // (see blasColorSumTmpSize in color_sum.h, which is where the size is defined)
-    if( m_blasColorSum ) m_pHelBlasTmp.reset( new DeviceBufferSimple2( blasColorSumTmpSize( nGoodHel, nevt ) ) );
+    if( m_blasColorSum ) m_pHelBlasTmp.reset( new DeviceBufferSimple2( blasColorSumTmpSize( nGoodHelAlloc, nevt ) ) );
 #endif
     // Return the number of good helicities
     return nGoodHel;
@@ -339,7 +358,7 @@ namespace madmatrix
 
   void MatrixElementKernelDevice::computeMatrixElements( const bool useChannelIds )
   {
-    gpuLaunchKernel( computeDependentCouplings, m_gpublocks, m_gputhreads, m_gs.data(), m_couplings.data() );
+    gpuLaunchKernel( computeDependentCouplings, m_gpublocks, m_gputhreads, m_deviceParams.arg( m_params ), m_gs.data(), m_couplings.data() );
 #ifndef MGONGPU_HAS_NO_BLAS
     fptype2* ghelAllBlasTmp = ( m_blasColorSum ? m_pHelBlasTmp->data() : nullptr );
     gpuBlasHandle_t* pBlasHandle = ( m_blasColorSum ? &m_blasHandle : nullptr );
@@ -348,7 +367,7 @@ namespace madmatrix
     gpuBlasHandle_t* pBlasHandle = nullptr;
 #endif
     const unsigned int* pChannelIds = ( useChannelIds ? m_channelIds.data() : nullptr );
-    sigmaKin( m_momenta.data(), m_couplings.data(), m_iflavorVec.data(), m_rndhel.data(), m_rndcol.data(), pChannelIds, nullptr, m_matrixElements.data(), m_selhel.data(), m_selcol.data(), m_colJamp2s.data(), m_pHelNumerators->data(), m_pHelDenominators->data(), nullptr, true, m_pHelMEs->data(), m_pHelJamps->data(), ghelAllBlasTmp, pBlasHandle, m_helStreams, false, m_gpublocks, m_gputhreads );
+    sigmaKin( m_params, m_deviceParams.arg( m_params ), m_momenta.data(), m_couplings.data(), m_iflavorVec.data(), m_rndhel.data(), m_rndcol.data(), pChannelIds, nullptr, m_matrixElements.data(), m_selhel.data(), m_selcol.data(), m_colJamp2s.data(), m_pHelNumerators->data(), m_pHelDenominators->data(), nullptr, true, m_pHelMEs->data(), m_pHelJamps->data(), ghelAllBlasTmp, pBlasHandle, m_helStreams, false, m_gpublocks, m_gputhreads );
 #ifdef MGONGPU_CHANNELID_DEBUG
     //std::cout << "DEBUG: MatrixElementKernelDevice::computeMatrixElements " << this << " " << ( useChannelIds ? "T" : "F" ) << " " << nevt() << std::endl;
     copyHostFromDevice( m_hstChannelIds, m_channelIds ); // FIXME?!

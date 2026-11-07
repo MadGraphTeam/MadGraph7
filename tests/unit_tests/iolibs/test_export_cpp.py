@@ -34,7 +34,7 @@ import madgraph.iolibs.export_mg7 as export_mg7
 import madgraph.iolibs.export_v4 as export_v4
 import madgraph.iolibs.file_writers as writers
 import madgraph.iolibs.helas_call_writers as helas_call_writer
-import models.import_ufo as import_ufo
+import madgraph.models.import_ufo as import_ufo
 import madgraph.iolibs.save_load_object as save_load_object
 import madgraph.iolibs.group_subprocs as group_subprocs
 
@@ -911,6 +911,7 @@ class BrokenSymmetryCPPExportTest(unittest.TestCase):
             'process_lines': '',
             'model_name': 'sm',
             'initProc_lines': '',
+            'refreshMasses_lines': '',
             'reset_jamp_lines': '',
             'sigmaKin_lines': '',
             'sigmaHat_lines': 'return 0.;',

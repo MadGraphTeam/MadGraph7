@@ -682,7 +682,7 @@ class ColorBasis(dict):
         import madgraph.various.misc as misc
         # loop over possible color chains
         for col_chain, col_str in colorize_dict.items():
-            # Create a canonical immutable representation of the the string
+            # Create a canonical immutable representation of the string
             canonical_rep, rep_dict = col_str.to_canonical()
             try:
                 # If this representation has already been considered,
@@ -1051,7 +1051,7 @@ class ColorBasis(dict):
                         res_dict[index - offset2][i] = offset
                     elif index > offset3:
                         # For color sextets, use negative triplet
-                        # number to reperesent antitriplet and vice
+                        # number to represent antitriplet and vice
                         # versa, allowing for two triplet or two
                         # antitriplet numbers representing the color
                         # sextet.

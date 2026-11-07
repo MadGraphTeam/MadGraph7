@@ -36,7 +36,7 @@ import aloha.aloha_lib as aloha_lib
 import aloha.aloha_object as aloha_object
 import aloha.aloha_parsers as aloha_parsers
 import aloha.aloha_fct as aloha_fct
-import models
+import madgraph.models as models
 try:
     import madgraph.iolibs.files as files
     import madgraph.various.misc as misc
@@ -389,7 +389,24 @@ in presence of majorana particle/flow violation"""
             expr = self.lorentz_expr
         
         if need_P_sign:
-            expr = re.sub(r'\b(P|PSlash)\(', r'-\1(', expr)
+            # (-P)**n = (-1)**n * P**n. The sign is added as a bare '-', which
+            # binds looser than '**' (-P(-1,id)**2 is -(P^2)), so a momentum
+            # raised to an even integer power is left unsigned. Before this,
+            # p^2 changed sign in the $ veto (P1D) of every outgoing fermion
+            # propagator, which switched the veto off.
+            # An even exponent is recognised as a number, bare or in
+            # parentheses (2, 2.0, 2e0, (2)); any other exponent (an
+            # expression, an odd number) gets the sign. ALOHA's parser has no
+            # signed exponent.
+            def flip_sign(match):
+                power = match.group(3) or match.group(4)
+                if power is not None and float(power).is_integer() \
+                                     and int(float(power)) % 2 == 0:
+                    return match.group(0)
+                return '-' + match.group(0)
+            number = r'\d+(?:\.\d*)?(?:[eE][+-]?\d+)?'
+            expr = re.sub(r'\b(P|PSlash)\(([^()]*)\)(?:\s*\*\*\s*(?:\(\s*(%s)\s*\)|(%s)(?![\w.])))?'
+                          % (number, number), flip_sign, expr)
 
         calc = aloha_parsers.ALOHAExpressionParser()
         lorentz_expr = calc.parse(expr)
@@ -447,7 +464,7 @@ in presence of majorana particle/flow violation"""
                     else:
                         massless = True
                         self.denominator = None
-                # 1D is a multiplication of standar propagator -> later
+                # 1D is a multiplication of standard propagator -> later
                 elif propa in [[],['1D']]:
                     massless = False
                     self.denominator = None
@@ -817,7 +834,7 @@ in presence of majorana particle/flow violation"""
 
 class CombineRoutineBuilder(AbstractRoutineBuilder):
     """A special builder for combine routine if needed to write those
-        explicitely.
+        explicitly.
     """
     def __init__(self, l_lorentz, model=None):
         """ initialize the run
@@ -1216,7 +1233,7 @@ class AbstractALOHAModel(dict):
                                          routines=routines)
             
         
-        # Build mutiple lorentz call
+        # Build multiple lorentz call
         for list_l_name, tag, outgoing in data:
             if len(list_l_name) ==1:
                 continue
@@ -1270,7 +1287,7 @@ class AbstractALOHAModel(dict):
                             
     def compute_aloha(self, builder, symmetry=None, routines=None, tag=[]):
         """ define all the AbstractRoutine linked to a given lorentz structure
-        symmetry authorizes to use the symmetry of anoter lorentz structure.
+        symmetry authorizes to use the symmetry of another lorentz structure.
         routines to define only a subset of the routines."""
 
         name = builder.name
@@ -1302,7 +1319,7 @@ class AbstractALOHAModel(dict):
 
     def compute_aloha_without_kernel(self, builder, symmetry=None, routines=None):
         """define all the AbstractRoutine linked to a given lorentz structure
-        symmetry authorizes to use the symmetry of anoter lorentz structure.
+        symmetry authorizes to use the symmetry of another lorentz structure.
         routines to define only a subset of the routines. 
         Compare to compute_aloha, each routines are computed independently.
         """
@@ -1341,7 +1358,7 @@ class AbstractALOHAModel(dict):
 #               pjoin(output_dir, 'additional_aloha_function.f') )
 #            else:
 #                logger.warning('''Some function present in the lorentz structure are 
-#                not recognized. Please edit the code to add the defnition of such function.''')
+#                not recognized. Please edit the code to add the definition of such a function.''')
 #                logger.info('list of missing fct: %s .' % \
 #                            ','.join([a[0] for a in aloha_lib.KERNEL.unknow_fct]))
 #        

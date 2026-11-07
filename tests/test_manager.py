@@ -617,7 +617,7 @@ class TimeLimit(Exception): pass
 class TestSuiteModified(unittest.TestSuite):
     """ This is a wrapper for the default implementation of unittest.TestSuite 
     so that we can add the decorator for the resetting of the global variables
-    everytime the TestSuite is __call__'ed., hence avoiding side effects from 
+    every time the TestSuite is __call__'ed., hence avoiding side effects from
     them."""
     
     time_limit = 1
@@ -922,7 +922,7 @@ class TestFinder(list):
         1) full file position
         2) name of the file (with extension)
         3) full file position whithour extension
-        4) name of the file (whithout extension)
+        4) name of the file (without extension)
         5) name of the file (but suppose name in python format)
         6) if name is a python file, try with a './' and with package pos
         """

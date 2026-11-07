@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from collections import defaultdict
 
@@ -6,6 +7,8 @@ from madgraph.various.diagram_symmetry import find_symmetry, IdentifySGConfigTag
 from madgraph.iolibs import export_cpp
 from madgraph.iolibs.group_subprocs import IdentifyConfigTag
 from madgraph.core.diagram_generation import DiagramTag
+
+logger = logging.getLogger('madgraph.export_mg7')
 
 class IdentifyTopologyTag(IdentifyConfigTag):
     """ Like IndentifyConfigTag, but ignores spin and color """
@@ -339,6 +342,10 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
             vertices = []
             propagators = []
             on_shell_propagators = []
+            # $-excluded s-channels: the matrix element vanishes within
+            # bwcutoff widths of the pole, so the phase space flattens its
+            # Breit-Wigner there (see build_topologies in launch.py)
+            dollar_propagators = []
             diagram_edge_names = dict(self.edge_names)
             diag_vertices = diagram.get("vertices")
             # Index-aligned with `propagators`: both are filled in vertex-list
@@ -361,6 +368,8 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                     )
                     if legs[-1].get("onshell"):
                         on_shell_propagators.append(prop_index)
+                    elif legs[-1].get("onshell") is False:
+                        dollar_propagators.append(prop_index)
                 vertices.append(vertex_props)
 
             chan_index = len(self.channels)
@@ -372,6 +381,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                     "propagators": propagators,
                     "vertices": vertices,
                     "on_shell_propagators": on_shell_propagators,
+                    "dollar_propagators": dollar_propagators,
                     "diagrams": [
                         {
                             "diagram": diagram_index,
@@ -398,7 +408,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
     def get_subprocess_info(self, proc_dir, lib_me_path):
         n_external, n_initial = self.matrix_element.get_nexternal_ninitial()
         if self.color_basis:
-            # First build a color representation dictionnary
+            # First build a color representation dictionary
             repr_dict = {}
             legs = self.process.get_legs_with_decays()
             for leg in legs:
@@ -476,6 +486,18 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
         qcd_power = (qcd_orders.pop()
                      if len(qcd_orders) == 1 and None not in qcd_orders else -1)
 
+        # an interference: squared split orders that drop a component, so that a
+        # helicity can contribute negatively (madmatrix select_helicity_signed);
+        # with [generation] interference_helicity = "summed" the |M|^2 is the
+        # helicity sum and the LHE helicities of this subprocess are written as 9
+        interference = False
+        try:
+            from madgraph.iolibs.export_v4 import split_order_tables
+            so = split_order_tables(self.matrix_element)
+            interference = bool(so) and so['nampso'] > 1 and not all(so['chosen'])
+        except Exception as error:
+            logger.debug('could not determine the split orders: %s', error)
+
         return (
             {
                 "incoming": self.incoming,
@@ -489,6 +511,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 "pdg_color_types": pdg_color_types,
                 "diagram_count": len(self.diagrams),
                 "helicities": list(self.matrix_element.get_helicity_matrix()),
+                "interference": interference,
             },
             self.diagram_tags,
             self.subprocess_class,

@@ -1,5 +1,7 @@
 #include "madspace/phasespace/pdf.hpp"
 
+#include "madspace/phasespace/matrix_element.hpp"
+
 #include <cmath>
 #include <fstream>
 #include <sstream>
@@ -320,14 +322,14 @@ std::vector<std::size_t> PdfGrid::logq2_shape(bool batch_dim) const {
 
 void PdfGrid::initialize_globals(ContextPtr context, const std::string& prefix) const {
     auto logx_tensor_global = context->define_global(
-        prefixed_name(prefix, "pdf_logx"), DataType::dt_float, logx_shape()
+        prefixed_name(prefix, "pdf_logx"), DataType::dt_float64, logx_shape()
     );
     auto q2_tensor_global = context->define_global(
-        prefixed_name(prefix, "pdf_logq2"), DataType::dt_float, logq2_shape()
+        prefixed_name(prefix, "pdf_logq2"), DataType::dt_float64, logq2_shape()
     );
     auto coeffs_tensor_global = context->define_global(
         prefixed_name(prefix, "pdf_coefficients"),
-        DataType::dt_float,
+        DataType::dt_float64,
         coefficients_shape()
     );
     bool is_cpu = context->device() == cpu_device();
@@ -337,9 +339,9 @@ void PdfGrid::initialize_globals(ContextPtr context, const std::string& prefix) 
         q2_tensor = q2_tensor_global;
         coeffs_tensor = coeffs_tensor_global;
     } else {
-        logx_tensor = Tensor(DataType::dt_float, logx_shape(true));
-        q2_tensor = Tensor(DataType::dt_float, logq2_shape(true));
-        coeffs_tensor = Tensor(DataType::dt_float, coefficients_shape(true));
+        logx_tensor = Tensor(DataType::dt_float64, logx_shape(true));
+        q2_tensor = Tensor(DataType::dt_float64, logq2_shape(true));
+        coeffs_tensor = Tensor(DataType::dt_float64, coefficients_shape(true));
     }
     initialize_logx(logx_tensor);
     initialize_logq2(q2_tensor);
@@ -384,24 +386,73 @@ PartonDensity::PartonDensity(
     }
 }
 
+PartonDensity::PartonDensity(
+    const CustomPdf& custom_pdf,
+    const std::vector<int>& pids,
+    int beam_index,
+    bool dynamic_pid
+) :
+    FunctionGenerator(
+        "PartonDensity",
+        [&] {
+            NamedVector<Type> arg_types{{"x", batch_float}, {"q", batch_float}};
+            if (dynamic_pid) {
+                arg_types.push_back("flavor_index", batch_int);
+            }
+            return arg_types;
+        }(),
+        {{"pdf", dynamic_pid ? batch_float : batch_float_array(pids.size())}}
+    ),
+    _pids(pids.begin(), pids.end()),
+    _custom_pdf(custom_pdf),
+    _beam_index(beam_index),
+    _dynamic_pid(dynamic_pid) {}
+
 NamedVector<Value> PartonDensity::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
     auto x = args.at(0);
     auto q = args.at(1);
+    if (_custom_pdf) {
+        MatrixElement function(
+            _custom_pdf->function_index,
+            0,
+            {MatrixElement::momentum_fraction_in,
+             MatrixElement::scale_in,
+             MatrixElement::pdg_id_in,
+             MatrixElement::beam_index_in},
+            {MatrixElement::pdf_out}
+        );
+        auto batch_size = fb.batch_size({x});
+        auto beam_index = fb.full({_beam_index, batch_size});
+        if (_dynamic_pid) {
+            auto pid = fb.gather_int(args.at(2), _pids);
+            return {
+                {"pdf", function.build_function(fb, {x, q, pid, beam_index}).at(0)}
+            };
+        }
+        ValueVec pdfs;
+        for (me_int_t pid : _pids) {
+            auto pid_value = fb.full({pid, batch_size});
+            pdfs.push_back(
+                function.build_function(fb, {x, q, pid_value, beam_index}).at(0)
+            );
+        }
+        return {{"pdf", fb.stack(pdfs)}};
+    }
     auto grid_logx = fb.global(
         prefixed_name(_prefix, "pdf_logx"),
-        DataType::dt_float,
+        DataType::dt_float64,
         {_logx_shape.begin(), _logx_shape.end()}
     );
     auto grid_logq2 = fb.global(
         prefixed_name(_prefix, "pdf_logq2"),
-        DataType::dt_float,
+        DataType::dt_float64,
         {_logq2_shape.begin(), _logq2_shape.end()}
     );
     auto grid_coeffs = fb.global(
         prefixed_name(_prefix, "pdf_coefficients"),
-        DataType::dt_float,
+        DataType::dt_float64,
         {_coeffs_shape.begin(), _coeffs_shape.end()}
     );
     if (_dynamic_pid) {
@@ -468,10 +519,10 @@ double exponent_constant(double offset, double alpha_em, double lepton_mass) {
 void EEPartonDensity::initialize_globals(ContextPtr context) const {
     std::vector<std::size_t> shape{_offsets.size()};
     auto global = context->define_global(
-        prefixed_name(_prefix, "eepdf_exponent"), DataType::dt_float, shape
+        prefixed_name(_prefix, "eepdf_exponent"), DataType::dt_float64, shape
     );
     bool is_cpu = context->device() == cpu_device();
-    Tensor tensor = is_cpu ? global : Tensor(DataType::dt_float, {1, _offsets.size()});
+    Tensor tensor = is_cpu ? global : Tensor(DataType::dt_float64, {1, _offsets.size()});
     auto view = tensor.view<double, 2>()[0];
     for (std::size_t i = 0; i < _offsets.size(); ++i) {
         view[i] = exponent_constant(_offsets[i], _alpha_em, _lepton_mass);
@@ -493,7 +544,7 @@ NamedVector<Value> EEPartonDensity::build_function_impl(
 
     auto exponents = fb.global(
         prefixed_name(_prefix, "eepdf_exponent"),
-        DataType::dt_float,
+        DataType::dt_float64,
         {static_cast<int>(_offsets.size())}
     );
     auto constant = fb.gather(index, exponents);
@@ -605,7 +656,6 @@ AlphaSGrid::AlphaSGrid(const std::string& file) {
         throw std::runtime_error(std::format("could not open file '{}'", file));
     }
     for (std::string line; std::getline(grid_file, line);) {
-        // skip comments and remove leading and trailing spaces
         line = trim(line);
 
         // minimalistic parser to read yaml-like data
@@ -727,11 +777,11 @@ void AlphaSGrid::initialize_globals(
     ContextPtr context, const std::string& prefix
 ) const {
     auto q2_tensor_global = context->define_global(
-        prefixed_name(prefix, "alpha_s_logq2"), DataType::dt_float, logq2_shape()
+        prefixed_name(prefix, "alpha_s_logq2"), DataType::dt_float64, logq2_shape()
     );
     auto coeffs_tensor_global = context->define_global(
         prefixed_name(prefix, "alpha_s_coefficients"),
-        DataType::dt_float,
+        DataType::dt_float64,
         coefficients_shape()
     );
     bool is_cpu = context->device() == cpu_device();
@@ -740,8 +790,8 @@ void AlphaSGrid::initialize_globals(
         q2_tensor = q2_tensor_global;
         coeffs_tensor = coeffs_tensor_global;
     } else {
-        q2_tensor = Tensor(DataType::dt_float, logq2_shape(true));
-        coeffs_tensor = Tensor(DataType::dt_float, coefficients_shape(true));
+        q2_tensor = Tensor(DataType::dt_float64, logq2_shape(true));
+        coeffs_tensor = Tensor(DataType::dt_float64, coefficients_shape(true));
     }
     initialize_logq2(q2_tensor);
     initialize_coefficients(coeffs_tensor);
@@ -765,12 +815,12 @@ NamedVector<Value> RunningCoupling::build_function_impl(
     auto q = args.at(0);
     auto grid_logq2 = fb.global(
         prefixed_name(_prefix, "alpha_s_logq2"),
-        DataType::dt_float,
+        DataType::dt_float64,
         {_logq2_shape.begin(), _logq2_shape.end()}
     );
     auto grid_coeffs = fb.global(
         prefixed_name(_prefix, "alpha_s_coefficients"),
-        DataType::dt_float,
+        DataType::dt_float64,
         {_coeffs_shape.begin(), _coeffs_shape.end()}
     );
     return {{"alpha_s", fb.interpolate_alpha_s(q, grid_logq2, grid_coeffs)}};

@@ -20,6 +20,11 @@ template <typename T, int dim>
 using IIn = typename T::template IIn<dim>;
 template <typename T, int dim>
 using BIn = typename T::template BIn<dim>;
+// inputs marked as single in the instruction set (no batch dimension)
+template <typename T, int dim>
+using FSIn = typename T::template FSIn<dim>;
+template <typename T, int dim>
+using ISIn = typename T::template ISIn<dim>;
 template <typename T, int dim>
 using FOut = typename T::template FOut<dim>;
 template <typename T, int dim>
