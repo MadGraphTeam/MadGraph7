@@ -114,8 +114,9 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   model: ``h > g a``) is reached, as an exact colour zero
   (``assemble.reachable_loop_orders``, PLAN §1.2, Q13);
   ``loop-induced-colour-accuracy`` an LC or NLC loop-induced request (full
-  colour only, Q8); ``loop-induced-include-pending`` (configuration) the
-  ``include`` value until it lands. An admitted loop-induced process is
+  colour only, Q8); ``include`` serves both kinds of a mixed request as
+  separate processes, never summed (m-lit LIT-API). An admitted
+  loop-induced process is
   generated in amplitude mode (m-lit LIT-AMP, ``induced``; an exact colour
   zero such as ``h > g a`` is stored with its colour-zero record and
   evaluates to an exact 0). Widths (Q7): a loop-induced request
@@ -794,22 +795,6 @@ LOOP_CONFIGURATION_REFUSALS = (
         "no loop.preparation covariant multiplets",
         "m-sm MS-MODEL",
         "none",
-    ),
-    LoopAdmissionRefusal(
-        "loop-induced-include-pending",
-        "process.loop_induced = 'include' (the members of one mixed "
-        "multiparticle request served both ways: its Born members' Born x "
-        "virtual interference and its Born-less members' |A_loop|^2, as "
-        "separate contributions)",
-        "the two kinds are never summed; serving both kinds of one mixed "
-        "multiparticle request lands with the Python product surface (m-lit "
-        "LIT-API)",
-        "process.loop_induced = 'auto' with the Born-less processes as their "
-        "own process entries (each entry is routed by its own members, so one "
-        "plan already holds both kinds as separate processes), or 'only' for "
-        "the Born-less members of the mixed request",
-        "m-lit LIT-REQ (Q2 (b))",
-        "m-lit LIT-API",
     ),
 )
 _REFUSALS = {

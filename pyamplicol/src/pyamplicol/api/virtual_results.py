@@ -1313,9 +1313,7 @@ class ResolvedVirtualEvaluation:
         for name in ("helicity_ids", "born_color_ids", "virtual_color_ids"):
             ids = tuple(getattr(self, name))
             # A loop-induced result has no Born colour axis (m-lit Q36).
-            empty = (
-                name == "born_color_ids" and self.contribution == "loop-induced"
-            )
+            empty = name == "born_color_ids" and self.contribution == "loop-induced"
             if (
                 bool(ids) == empty
                 or len(set(ids)) != len(ids)

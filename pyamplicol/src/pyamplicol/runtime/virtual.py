@@ -284,7 +284,10 @@ def v2_public_estimate(
     absolute = tuple(laurent(errors.get(key)) for key in keys)
     magnitude = tuple(laurent(scales.get(key)) for key in keys)
     ratios = [
-        [_ratio(error[k], size[k]) for error, size in zip(absolute, magnitude)]
+        [
+            _ratio(error[k], size[k])
+            for error, size in zip(absolute, magnitude, strict=True)
+        ]
         for k in range(width)
     ]
     single = coefficients[1] if with_poles else None

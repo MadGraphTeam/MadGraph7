@@ -1814,6 +1814,12 @@ class RunConfig:
                 "generation.particle_veto requires one-loop generation "
                 "(process.loop_coupling_orders)"
             )
+        if not virtual and self.loop.reduction is not ReductionBackend.AUTO:
+            raise ConfigurationError(
+                f"loop.reduction = {str(self.loop.reduction)!r} requires one-loop "
+                "generation (process.loop_coupling_orders); an evaluation "
+                "overrides an artifact's backend with evaluation.reduction"
+            )
         if not virtual and self.process.loop_induced in (
             LoopInducedPolicy.ONLY,
             LoopInducedPolicy.INCLUDE,
@@ -1956,8 +1962,8 @@ __all__ = [
     "ProcessGroupAnalysis",
     "ProgressMode",
     "R2Strategy",
-    "ReductionBackend",
     "RecurrenceEvaluatorConfig",
+    "ReductionBackend",
     "RelationDiscoveryMode",
     "RunConfig",
     "SymbolicaConfig",

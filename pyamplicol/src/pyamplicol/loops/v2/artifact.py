@@ -2092,7 +2092,10 @@ class V2VirtualRuntime:
         carriers = (
             [self._carrier(arithmetic, precision)[0]]
             if policy is None
-            else [self._carrier(item.arithmetic, item.precision)[0] for item in policy.levels]
+            else [
+                self._carrier(item.arithmetic, item.precision)[0]
+                for item in policy.levels
+            ]
         )
         return {carrier: self._reduction(requested, carrier) for carrier in carriers}
 

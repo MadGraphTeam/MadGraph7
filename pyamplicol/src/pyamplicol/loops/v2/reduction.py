@@ -101,9 +101,8 @@ def _unavailable(
             f"only, not {name}"
         )
     if backend not in served:
-        return (
-            f"{name} is not built into this native extension"
-            + (" (the 'tir' feature)" if backend == "tirust" else "")
+        return f"{name} is not built into this native extension" + (
+            " (the 'tir' feature)" if backend == "tirust" else ""
         )
     if carrier not in served[backend]:
         return f"{name} does not serve the {carrier} carrier in this native extension"
