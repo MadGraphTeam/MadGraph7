@@ -974,3 +974,41 @@ fn term_scale(moments: &[[Complex<f64>; 4]], c: &[Complex<f64>], width: usize) -
 pub fn layout_positions(rank: usize) -> RusticolResult<Vec<usize>> {
     Ok(Bin::new(1, rank)?.position)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The row-layout contraction is `Σ_α c_α M_α` per slot: equal to the
+    /// sequential sum to rounding of the term scale, at every monomial count
+    /// (the four partial sums' tail included) and width.
+    #[test]
+    fn the_row_layout_contraction_is_the_sum_of_its_terms() {
+        let value = |k: usize, s: usize| {
+            let x = ((k * 7 + s * 3) % 11) as f64 - 5.0;
+            Complex::new(x * 0.37 + 1e-3 * k as f64, 0.21 * (s as f64) - x * 0.11)
+        };
+        for monomials in [1usize, 3, 4, 5, 15, 35, 70, 126] {
+            let moments: Vec<[Complex<f64>; 4]> = (0..monomials)
+                .map(|k| [0, 1, 2, 3].map(|s| value(k, s)))
+                .collect();
+            let c: Vec<Complex<f64>> = (0..monomials).map(|k| value(k + 13, 7)).collect();
+            for width in 1..=4 {
+                let found = Slots::new(&moments, width).contract(&c);
+                assert_eq!(found.len(), width);
+                for (slot, z) in found.iter().enumerate() {
+                    let mut sum = Complex::new(0., 0.);
+                    let mut scale = 0.;
+                    for (m, c) in moments.iter().zip(&c) {
+                        sum += *c * m[slot];
+                        scale += complex(c) * complex(&m[slot]);
+                    }
+                    assert!(
+                        complex(&(*z - sum)) <= 4. * f64::EPSILON * scale,
+                        "{monomials} {width} {slot}: {z:?} vs {sum:?}"
+                    );
+                }
+            }
+        }
+    }
+}

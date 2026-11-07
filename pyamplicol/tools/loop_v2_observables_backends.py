@@ -113,7 +113,7 @@ LIT_AMP = {
     "li_gg_zz": "g g > z z",
     "li_gg_hh": "g g > h h",
     "li_gg_hg": "g g > h g",
-    "li_uux_hg": "u u~ > h g QED=1",
+    "li_uux_hg": "u u~ > h g",
 }
 
 
@@ -147,9 +147,36 @@ def _artifact(work: Path, name: str, expression: str, observables: bool = True) 
 
             generate(work / name, name, expression)
         else:
-            from tests.unit.test_loop_v2_induced import _generate
+            _generate_plain(work / name, name, expression)
+    return output
 
-            _generate(work / name, (("p", expression),), _fixture(name))
+
+def _generate_plain(root: Path, name: str, expression: str) -> Path:
+    """A lit-amp row's artifact through the public Generator, without
+    declared observables: ``test_loop_v2_induced._card`` with the fixture's
+    electroweak loop orders as ``process.max_coupling_orders`` (the row's
+    coupling-order selection, e.g. QED = 1 of u u~ > h g)."""
+
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.config import resolve_config
+    from tests.unit.test_loop_v2_induced import _card
+
+    fixture = _fixture(name)
+    root.mkdir(parents=True, exist_ok=True)
+    output = root / "artifact"
+    orders = ", ".join(
+        f"{order} = {value}"
+        for order, value in fixture["loop_orders"].items()
+        if order != "QCD"
+    )
+    card = _card(output, (("p", expression),), fixture).replace(
+        'loop_coupling_orders = ["QCD"]',
+        f'loop_coupling_orders = ["QCD"]\nmax_coupling_orders = {{{orders}}}',
+    )
+    (root / "card.toml").write_text(card)
+    Generator(resolve_config(root / "card.toml")).generate(
+        ProcessSet((ProcessRequest.parse(expression, name="p"),)), output
+    )
     return output
 
 
