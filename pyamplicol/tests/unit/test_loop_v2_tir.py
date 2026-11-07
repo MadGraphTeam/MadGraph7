@@ -11,6 +11,8 @@ lit-tir, PLAN §3.3 and §2.b.2-§2.b.6).
   (g g > t t~) is refused typed by TIRust's capability (lit-spike-tir F1:
   its invariants need the supplied S-matrix), never a wrong value;
 * T6: the family threads leave TIRust's values bitwise;
+* the executor's TIRust validation settings (``prepare_reduction``) rebuild
+  its backend and reset to the defaults bitwise; NinjaRS refuses them;
 * the public API serves an explicit ``reduction="tirust"`` on the summed and
   the resolved routes, records it, keeps ``"auto"`` on NinjaRS (with its
   reason) and refuses TIRust at double-double typed before any point;
@@ -225,6 +227,28 @@ def test_family_threads_leave_tirust_bitwise(slices):
     one = _lanes(slices("uux_ddxg", threads=1), points, scales, "tirust")
     four = _lanes(slices("uux_ddxg", threads=4), points, scales, "tirust")
     assert one == four
+
+
+@pytest.mark.loop_physics
+def test_validation_settings_rebuild_and_reset_the_tirust_backend(slices):
+    """``V2Executor.prepare_reduction``'s TIRust settings (the validation
+    knobs of the discriminating test, DECISIONS 2026-11-07 15:12): NinjaRS
+    refuses them; another setting rebuilds TIRust's backend and the default
+    call restores the default lanes bit for bit."""
+
+    executor = slices("uux_ddxg")
+    points, scales = PROCESSES["uux_ddxg"][2]()
+    points, scales = points[:2], scales[:2]
+    native = executor.native("double", None, len(points))
+    with pytest.raises(Exception, match="TIRust's settings"):
+        native.prepare_reduction("ninjars", alternative_first=None)
+    plans = native.prepare_reduction("tirust")
+    default = _lanes(executor, points, scales, "tirust")
+    validation = native.prepare_reduction("tirust", method_choice=False, acceptance=0.0)
+    assert validation == plans
+    _lanes(executor, points, scales, "tirust")
+    assert native.prepare_reduction("tirust") == plans
+    assert _lanes(executor, points, scales, "tirust") == default
 
 
 @pytest.mark.loop_physics
