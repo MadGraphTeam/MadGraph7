@@ -309,6 +309,9 @@ def v2_public_estimate(
         scale=max((value for row in ratios for value in row), default=0.0),
         absolute=absolute,
         magnitude=magnitude,
+        # A requested check that did not run at the point, with its reason
+        # (the cross-backend check where the other backend fails the point).
+        not_run=tuple(getattr(estimate, "not_run", {}).items()),
     )
 
 
@@ -944,6 +947,17 @@ class V2ObservablesRuntime:
         )
         v2_options(on_failure=on_failure, **options)
         points, scales = _inputs(momenta, mu_r2, self.external_count)
+        if reductions is None and any(
+            item.reduction not in ("auto", "ninjars") for item in policy.levels
+        ):
+            # A direct runtime resolves no backend: it reduces with NinjaRS.
+            from pyamplicol.api.errors import ReductionUnavailable
+
+            raise ReductionUnavailable(
+                "a rescue level requests a reduction backend, but this v2 "
+                "runtime reduces with NinjaRS only (the artifact runtime "
+                "resolves each level's backend)"
+            )
 
         def level(indices: tuple[int, ...], rung: Any) -> VirtualEvaluation:
             return self.evaluate(
@@ -955,7 +969,11 @@ class V2ObservablesRuntime:
                 color_flows=color_flows,
                 stability_checks=rung.checks,
                 on_failure="return",
-                reductions=reductions,
+                # The level's own backend (the artifact runtime resolves one
+                # per level, ``V2VirtualRuntime._reduction_choices``).
+                reductions=(
+                    None if reductions is None else {rung.arithmetic: reductions[rung]}
+                ),
                 **options,
             )
 

@@ -91,7 +91,12 @@ from pathlib import Path
 from threading import RLock
 from typing import Any, Literal, cast
 
-from pyamplicol.api.errors import ArtifactError, CompatibilityError, EvaluationError
+from pyamplicol.api.errors import (
+    ArtifactError,
+    CompatibilityError,
+    EvaluationError,
+    ReductionUnavailable,
+)
 from pyamplicol.api.protocols import ModelParameters, Momenta, ScalarInput
 from pyamplicol.api.results import (
     BornAnchoredColorComponent,
@@ -2058,7 +2063,12 @@ class V2VirtualRuntime:
         )
         selected = bool(helicities or color_flows)
         choices = self._reduction_choices(
-            reduction, arithmetic, precision, policy, RESOLVED if selected else SUMMED
+            reduction,
+            arithmetic,
+            precision,
+            policy,
+            RESOLVED if selected else SUMMED,
+            stability_checks,
         )
         if selected:
             # A leading-colour selection (``selection``): one summed output
@@ -2134,7 +2144,7 @@ class V2VirtualRuntime:
                     selection,
                     rung.checks,
                     "return",
-                    choices[carrier],
+                    choices[rung],
                 )
 
             return rescue(policy, len(points), level, on_failure=on_failure)
@@ -2184,31 +2194,49 @@ class V2VirtualRuntime:
         precision: int | None,
         policy: VirtualRescuePolicy | None,
         route: Route,
-    ) -> dict[str, VirtualReduction]:
-        """The reduction backend of a call on ``route`` per carrier it runs
-        (its own, or each level's under a rescue policy), resolved before any
-        point is evaluated. The effective backend is one the route's executor
-        runs (the guard of every route, ``reduction.Route``): an explicit
-        backend that cannot serve one of them is refused typed, ``auto``
-        falls back with its reason (m-lit Q17 / Q18; never a silent
-        switch)."""
+        checks: VirtualStabilityChecks | None = None,
+    ) -> dict[Any, VirtualReduction]:
+        """The reduction backend of a call on ``route``, resolved before any
+        point is evaluated: keyed by the call's carrier, or under a rescue
+        policy by each ``VirtualRescueLevel``, resolved once per level for
+        its carrier from the level's own request (``VirtualRescueLevel.
+        reduction``; ``"auto"`` takes the call's; m-lit Q17 / Q22). The
+        effective backend is one the route's executor runs (the guard of
+        every route, ``reduction.Route``): an explicit backend that cannot
+        serve one of them is refused typed, ``auto`` falls back with its
+        reason (m-lit Q17 / Q18; never a silent switch). With the
+        cross-backend check (``checks``) the other backend must serve the
+        carrier as well (refused typed otherwise)."""
 
         requested = (
             self._reduction_request
             if reduction is None
             else reduction_request(reduction)
         )
-        carriers = (
-            [self._carrier(arithmetic, precision)[0]]
-            if policy is None
-            else [
-                self._carrier(item.arithmetic, item.precision)[0]
-                for item in policy.levels
-            ]
-        )
-        return {
-            carrier: self._reduction(requested, carrier, route) for carrier in carriers
-        }
+        if policy is not None:
+            # The levels own their checks (``rescue.RESCUE_OWNS_CARRIER``).
+            return {
+                level: self._reduction(
+                    level.backend_request(requested),
+                    self._carrier(level.arithmetic, level.precision)[0],
+                    route,
+                )
+                for level in policy.levels
+            }
+        carrier = self._carrier(arithmetic, precision)[0]
+        choice = self._reduction(requested, carrier, route)
+        # (A checks value of another type is refused by ``v2_options``.)
+        if getattr(checks, "cross_backend", False) is True:
+            from .reduction import cross
+
+            try:
+                self._reduction(cross(choice.effective), carrier, route)
+            except ReductionUnavailable as error:
+                raise ReductionUnavailable(
+                    "the cross-backend check (stability_checks cross_backend) "
+                    f"compares with the other reduction backend: {error}"
+                ) from error
+        return {carrier: choice}
 
     def _evaluate_level(
         self,
@@ -2533,7 +2561,12 @@ class V2VirtualRuntime:
         are built (``reductions``)."""
 
         choices = self._reduction_choices(
-            reduction, arithmetic, precision, options.get("stability"), RESOLVED
+            reduction,
+            arithmetic,
+            precision,
+            options.get("stability"),
+            RESOLVED,
+            options.get("stability_checks"),
         )
         operation = getattr(self._observable_runtime(), name)
         return operation(
