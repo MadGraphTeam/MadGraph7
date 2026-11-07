@@ -210,9 +210,36 @@ class VirtualStabilityChecks:
         )
 
 
+def _nonnegative(value: object, name: str) -> None:
+    if not isinstance(value, float) or math.isnan(value) or value < 0:
+        raise ValueError(f"{name} must be a nonnegative float")
+
+
+def _absolute_axis(
+    value: object, name: str, with_poles: bool
+) -> tuple[LaurentCoefficients, ...]:
+    """Per-sector absolute Laurent floats (``VirtualStabilityEstimate``'s
+    ``absolute`` and ``magnitude``): poles ``None`` exactly when absent."""
+
+    out = []
+    for sector in tuple(cast(Sequence[object], value)):
+        laurent = tuple(cast(Sequence[object], sector))
+        if len(laurent) != 3:
+            raise ValueError(f"{name} holds Laurent triples per sector")
+        _nonnegative(laurent[0], name)
+        for pole in laurent[1:]:
+            if not with_poles:
+                if pole is not None:
+                    raise ValueError(f"{name} has no pole entries without poles")
+                continue
+            _nonnegative(pole, name)
+        out.append(LaurentCoefficients(*cast(tuple[float, float, float], laurent)))
+    return tuple(out)
+
+
 @dataclass(frozen=True, slots=True)
 class VirtualStabilityEstimate:
-    """Estimated relative accuracy of one point's virtual.
+    """Estimated accuracy of one point's virtual.
 
     ``relative`` bounds each sector's error relative to that sector's largest
     Laurent coefficient; ``finite``, ``single_pole`` and ``double_pole``
@@ -221,6 +248,22 @@ class VirtualStabilityEstimate:
     estimate on an exact zero). ``checks`` names every check that ran with
     its own relative budget (``rotation-<k>``, ``reduction-direction`` or
     ``reduction-rescaled``).
+
+    The absolute estimate E and the scale S it is measured against (v2 loop
+    runtimes fill them; ``None`` otherwise): ``absolute[s]`` holds E per
+    sector and Laurent coefficient (:class:`LaurentCoefficients` of floats,
+    poles ``None`` when not computed), ``magnitude[s]`` the scale S of the
+    same entries (the absolute sum of the contributions before they cancel;
+    for a loop-induced result the pre-cancellation scale of its amplitudes,
+    m-lit PLAN §2.a.8), and ``scale`` the largest E / S over them: the
+    accuracy against the size of what cancelled (the ``"scale"`` metric of
+    a :class:`VirtualRescueLevel`). A value with ``|value| <= E`` is zero
+    within the estimate (m-lit Q13: zeros are numerical, never declared by
+    a physics rule). For a loop-induced result
+    (``contribution="loop-induced"``) the pole estimates ``single_pole`` and
+    ``double_pole`` are measured against S as well (max over sectors of E /
+    S): its poles vanish, so their own size is no scale (m-lit PLAN §2.a.7,
+    "Pole shape").
     """
 
     relative: float
@@ -228,24 +271,67 @@ class VirtualStabilityEstimate:
     single_pole: float | None
     double_pole: float | None
     checks: tuple[tuple[str, float], ...]
+    scale: float | None = None
+    absolute: tuple[LaurentCoefficients, ...] | None = None
+    magnitude: tuple[LaurentCoefficients, ...] | None = None
 
     def __post_init__(self) -> None:
-        for name in ("relative", "finite", "single_pole", "double_pole"):
+        for name in ("relative", "finite", "single_pole", "double_pole", "scale"):
             value = getattr(self, name)
-            if value is None and name in ("single_pole", "double_pole"):
+            if value is None and name in ("single_pole", "double_pole", "scale"):
                 continue
-            if not isinstance(value, float) or math.isnan(value) or value < 0:
-                raise ValueError(f"{name} must be a nonnegative float")
+            _nonnegative(value, name)
         if (self.single_pole is None) != (self.double_pole is None):
             raise ValueError("both pole estimates are present or absent")
         checks = tuple((str(name), float(value)) for name, value in self.checks)
         if not checks or len({name for name, _ in checks}) != len(checks):
             raise ValueError("an estimate names its distinct checks")
         object.__setattr__(self, "checks", checks)
+        given = [item is None for item in (self.scale, self.absolute, self.magnitude)]
+        if any(given) != all(given):
+            raise ValueError("scale, absolute and magnitude are given together")
+        if self.absolute is not None:
+            with_poles = self.single_pole is not None
+            absolute = _absolute_axis(self.absolute, "absolute", with_poles)
+            magnitude = _absolute_axis(self.magnitude, "magnitude", with_poles)
+            if len(absolute) != len(magnitude) or not absolute:
+                raise ValueError("absolute and magnitude follow the sectors")
+            object.__setattr__(self, "absolute", absolute)
+            object.__setattr__(self, "magnitude", magnitude)
 
 
 REDUCTION_CHECKS = ("none", "reversed", "rescaled")
-RESCUE_METRICS = ("relative", "finite")
+RESCUE_METRICS = ("relative", "finite", "scale")
+# The reduction backends of a v2 loop evaluation (m-lit Q17 / Q18): "auto"
+# takes the per-type default (``loops.v2.reduction``).
+REDUCTION_BACKENDS = ("auto", "ninjars", "tirust")
+
+
+@dataclass(frozen=True, slots=True)
+class VirtualReduction:
+    """The reduction backend of one evaluation (m-lit PLAN §2.b.4, RULED
+    Q17 / Q18): the ``requested`` one (``"auto"``, ``"ninjars"`` or
+    ``"tirust"``), the ``effective`` one that reduced every loop numerator
+    of the call, and the ``reason`` of the choice. ``"auto"`` takes the
+    per-type default (loop-induced: TIRust; Born-interfered: NinjaRS) and
+    falls back to NinjaRS, with the reason, where TIRust cannot serve the
+    call; an explicitly requested backend that cannot serve it is refused
+    instead. The choice is made once per call and carrier, never per point
+    (no silent switch)."""
+
+    requested: Literal["auto", "ninjars", "tirust"]
+    effective: Literal["ninjars", "tirust"]
+    reason: str
+
+    def __post_init__(self) -> None:
+        if self.requested not in REDUCTION_BACKENDS:
+            raise ValueError(f"requested reduction must be one of {REDUCTION_BACKENDS}")
+        if self.effective not in REDUCTION_BACKENDS[1:]:
+            raise ValueError("effective reduction must be 'ninjars' or 'tirust'")
+        if self.requested not in ("auto", self.effective):
+            raise ValueError("an explicit reduction request is served as requested")
+        if not isinstance(self.reason, str) or not self.reason:
+            raise ValueError("a reduction choice states its reason")
 
 
 def _carrier_bits(arithmetic: str, precision: int | None) -> int:
@@ -273,8 +359,11 @@ class VirtualRescueLevel:
     (:class:`VirtualStabilityChecks`). A point is accepted at the level when
     it evaluates and its estimate's ``metric`` (``"relative"``:
     ``VirtualStabilityEstimate.relative``, each sector against its largest
-    Laurent coefficient; ``"finite"``: the finite part against itself) is at
-    most ``target``. A level without any check accepts no point by its
+    Laurent coefficient; ``"finite"``: the finite part against itself;
+    ``"scale"``: ``VirtualStabilityEstimate.scale``, E <= target x S against
+    the scale S of what cancelled, an opt-in acceptance rule for values that
+    may vanish, such as loop-induced zeros, m-lit PLAN §2.a.8) is at most
+    ``target``. A level without any check accepts no point by its
     estimate; it may only be the last level, which keeps every point it
     evaluates.
     """
@@ -284,7 +373,7 @@ class VirtualRescueLevel:
     rotations: tuple[Rotation | str, ...] | int = (RESCUE_ROTATION,)
     reduction_check: Literal["none", "reversed", "rescaled"] = "rescaled"
     target: float = RESCUE_TARGET
-    metric: Literal["relative", "finite"] = "relative"
+    metric: Literal["relative", "finite", "scale"] = "relative"
 
     def __post_init__(self) -> None:
         VirtualArithmeticSpec(self.arithmetic, self.precision)
@@ -504,6 +593,15 @@ class VirtualLaneDiagnostic:
     # The initial attempt; rescued evaluations retain their actual later
     # operations in verification.attempts.
     primary_color_contraction: VirtualColorContraction | None = None
+    # The reduction backend of the evaluation (m-lit Q17 / Q18).
+    reduction: VirtualReduction | None = None
+    # A loop-induced point's amplitude-level finiteness ratio (m-lit PLAN
+    # §2.a.7, L3): the largest ||a_{-k}||_G over loop orders, helicity rows
+    # and pole coefficients against the row's pre-cancellation term scale,
+    # of the order of the carrier's unit roundoff for a complete amplitude.
+    # Formed with the poles and the stability checks (their term scale);
+    # None otherwise and for Born-interfered results.
+    finiteness: float | None = None
 
     def __post_init__(self) -> None:
         if self.status not in {
@@ -535,6 +633,14 @@ class VirtualLaneDiagnostic:
         if self.valid and failures:
             raise ValueError("valid lanes cannot retain unrecovered failures")
         object.__setattr__(self, "failures", failures)
+        if self.reduction is not None and not isinstance(
+            self.reduction, VirtualReduction
+        ):
+            raise TypeError("a lane's reduction is a VirtualReduction record")
+        if self.finiteness is not None:
+            _nonnegative(self.finiteness, "finiteness")
+            if not self.valid:
+                raise ValueError("failed lanes carry no finiteness ratio")
 
     @property
     def valid(self) -> bool:
@@ -859,8 +965,15 @@ def _common(
     if not isinstance(result.correlated, bool):
         raise TypeError("correlated must be a boolean")
     object.__setattr__(result, "poles", pole_selection(result.poles))
-    contribution = getattr(result, "contribution", "virtual")
+    contribution = result.contribution
     born_orders, sectors = _orders(result.born_orders, result.sectors, contribution)
+    if contribution == "loop-induced" and splits_poles(result.poles):
+        # The UV and IR parts of |A_loop|^2 are not additive (m-lit PLAN
+        # §2.a.7): a loop-induced result has every pole or none.
+        raise ValueError(
+            "a loop-induced result has the pole selection 'all' or 'none' "
+            f"(got {result.poles.value!r})"
+        )
     diagnostics = tuple(result.diagnostics)
     if not all(isinstance(item, VirtualLaneDiagnostic) for item in diagnostics):
         raise TypeError("virtual results require per-lane diagnostics")
@@ -1169,6 +1282,11 @@ class ResolvedVirtualEvaluation:
     requested. An entry that vanishes structurally (a helicity row whose Born
     amplitude is zero) holds rounding noise, so its relative estimate is
     large (e.g. 1e4): compare such entries on the point's scale.
+
+    ``contribution`` follows :class:`VirtualEvaluation`: a loop-induced
+    result (``"loop-induced"``) has no Born colour axis (``born_color_ids``
+    empty, every Born entry of zero length) and its ``virtual_color_ids``
+    resolve the colour-contracted |A_loop|^2 (m-lit Q36).
     """
 
     born_values: ResolvedCoefficients
@@ -1187,18 +1305,25 @@ class ResolvedVirtualEvaluation:
         tuple[tuple[tuple[VirtualStabilityEstimate, ...], ...] | None, ...] | None
     ) = None
     pole_parts: tuple[VirtualPoleParts | None, ...] | None = None
+    contribution: Literal["virtual", "loop-induced"] = "virtual"
 
     def __post_init__(self) -> None:
         if self.color_accuracy not in {"lc", "nlc", "full"}:
             raise ValueError("unknown colour accuracy")
         for name in ("helicity_ids", "born_color_ids", "virtual_color_ids"):
             ids = tuple(getattr(self, name))
+            # A loop-induced result has no Born colour axis (m-lit Q36).
+            empty = name == "born_color_ids" and self.contribution == "loop-induced"
             if (
-                not ids
+                bool(ids) == empty
                 or len(set(ids)) != len(ids)
                 or not all(isinstance(i, str) and i for i in ids)
             ):
-                raise ValueError("resolved axis IDs must be nonempty and unique")
+                raise ValueError(
+                    "a loop-induced result has no Born colour IDs"
+                    if empty
+                    else "resolved axis IDs must be nonempty and unique"
+                )
             object.__setattr__(self, name, ids)
         _common(
             self,
@@ -1399,4 +1524,5 @@ class ResolvedVirtualEvaluation:
                 None if parts is None else parts.mapped(summed)
                 for parts in self.pole_parts
             ),
+            contribution=self.contribution,
         )

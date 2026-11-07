@@ -285,6 +285,57 @@ Input shape is:
 At LC, resolved shape is `(point, helicity, color_flow)`. At NLC/full,
 the color dimension has length one because color is contracted.
 
+## One-loop virtuals and loop-induced processes
+
+A one-loop artifact evaluates to a `VirtualEvaluation` (per point, squared
+order sector and Laurent coefficient `[finite, 1/eps, 1/eps^2]`):
+`contribution = "virtual"` for the Born-virtual interference, `"loop-induced"`
+for |A_loop|^2 of a process without a Born amplitude (`g g > h`; see
+[Configuration](configuration.md#processes-and-multiparticles)). A
+loop-induced result is the same type with its Born fields zeroed
+(`born_orders == ()`, every per-point Born entry empty), sectors that pair
+loop orders, and the pole selections `"all"` and `"none"` only; its computed
+poles vanish, a necessary-only finiteness cross-check.
+
+```python
+from pyamplicol import Runtime, VirtualStabilityChecks
+
+runtime = Runtime.load("artifacts/gg_h", model_parameters={"MT": "173"})
+value = runtime.evaluate(
+    points,
+    mu_r2="15625",
+    stability_checks=VirtualStabilityChecks(1, True, rescaled=True),
+)
+assert value.contribution == "loop-induced" and value.born_orders == ()
+lane = value.diagnostics[0]
+print(lane.reduction)    # VirtualReduction(requested='auto', effective=..., reason=...)
+print(lane.finiteness)   # ||a_{-k}||_G against the pre-cancellation scale (~1e-15)
+estimate = value.stability[0]
+print(estimate.absolute, estimate.magnitude, estimate.scale)   # E, S per sector; max E/S
+```
+
+The reduction backend is chosen once per call (`reduction="auto"`, `"ninjars"`
+or `"tirust"` on `Runtime.load` and on every evaluation; default: the
+artifact's `[loop] reduction`): `"auto"` takes TIRust for a loop-induced and
+NinjaRS for a Born-interfered process and falls back to NinjaRS, with the
+reason recorded, where TIRust cannot serve the call; an explicit backend that
+cannot serve it is refused (`CompatibilityError`). Every lane diagnostic
+records the requested and effective backend and the reason
+([Configuration](configuration.md#reduction-backend)).
+
+With stability checks every estimate carries, besides the relative
+estimates, the absolute estimate E per sector and Laurent coefficient
+(`absolute`), the scale S it is measured against (`magnitude`, the size of
+the contributions before they cancel) and their largest ratio (`scale`). A
+value with `|value| <= E` is zero within the estimate: zeros of loop-induced
+processes (Landau-Yang, Furry) are never declared by a rule, they are
+evaluated and reported this way. For a loop-induced result the pole
+estimates `single_pole` and `double_pole` are E / S as well (the poles
+vanish, so their own size is no scale), and each lane's `finiteness` (with
+poles and checks) is the amplitude-level finiteness ratio. An exact colour
+zero (`h > g a`: every loop has a single coloured attachment) evaluates to an
+exact 0.
+
 ## Split totals by squared coupling order
 
 Recurrence artifacts record the exact coupling orders of every amplitude
@@ -626,8 +677,10 @@ has:
   rounded once to an exact rotation) and `reduction_check` (`"none"`,
   `"reversed"` or `"rescaled"`), as in `VirtualStabilityChecks`;
 - a `target` on the stability estimate's `metric`: `"relative"` (each squared
-  order against its largest Laurent coefficient) or `"finite"` (the finite
-  part against itself).
+  order against its largest Laurent coefficient), `"finite"` (the finite
+  part against itself) or `"scale"` (E <= target x S, the estimate against
+  the scale of what cancelled: an opt-in acceptance rule for values that may
+  vanish, such as a loop-induced zero, which no relative target can reach).
 
 Only the last level may run without a check; it then keeps every point it
 evaluates, with no estimate. How a batch runs:
@@ -671,7 +724,11 @@ same rotation) in three ways:
   rotated values.
 
 Every pole selection (`poles=`), colour accuracy and leading-colour
-`helicities` / `color_flows` selection is supported. `stability=` together with
+`helicities` / `color_flows` selection is supported, for Born-interfered and
+loop-induced processes. The reduction backend (`reduction=`) is resolved for
+every level's carrier before the first point is evaluated: an explicitly
+requested backend that cannot serve one of them is refused, an `"auto"` one
+records its choice per level in the lane diagnostics. `stability=` together with
 `arithmetic`, a non-default `precision` or `stability_checks` is refused with a
 `CompatibilityError` (the levels own them), as is a policy on
 `evaluate_resolved` and `evaluate_correlated(_many)`, and a load-time policy
