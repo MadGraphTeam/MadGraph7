@@ -80,6 +80,10 @@ CMS_ROWS = [
     # 2 -> 4: complex M_Z in the tree propagators of the two lepton pairs.
     ("li_gg_emepmupmum_cms", False),
 ]
+# The complex-mass rows whose real on-shell twin (same model and points, zero
+# widths) has no tree propagator: their difference is the complex masses in
+# the loop propagators alone (the complete a a > a a: W and top loops).
+LOOP_ONLY_TWINS = {"li_aa_aa_cms": "li_aa_aa"}
 
 
 def _fixture(name: str) -> dict:
@@ -106,8 +110,11 @@ def _corrections(fixture: dict) -> tuple[str, ...] | None:
 
 
 class _EwRows:
-    """The G_mu model (real on-shell and, per card, complex-mass), the
-    generated slices and native executors of the fixture rows (once each)."""
+    """The G_mu model (real on-shell and, per card, complex-mass), and the
+    generated slice and native executor of the current fixture row: one row
+    is kept at a time (an electroweak slice holds about 1-2 GB; the CI job
+    runs a file under a 12 GiB process-tree limit), so each test of a row
+    takes all its checks at once."""
 
     def __init__(self, ufo, native, root):
         from pyamplicol.models.loading import compile_model_source
@@ -168,6 +175,9 @@ class _EwRows:
         if found is None:
             from pyamplicol.loops.v2.assemble import LoopSlice
 
+            # Release the previous row before generating this one.
+            self.slices.clear()
+            self.executors.clear()
             fixture = _fixture(name)
             found = self.slices[name] = LoopSlice.generate(
                 self.model(fixture), self.request(fixture), self.native
@@ -249,7 +259,9 @@ def _check_providers(name, results, analytic):
 @pytest.mark.parametrize(("name", "analytic"), EW_ROWS, ids=[r[0] for r in EW_ROWS])
 def test_ew_rows_equal_madloop_recola_and_the_oracle(ew, name, analytic):
     """LI-A3, A4, A6, E1-E4 in binary64 at every reference point: MadLoop
-    and Recola within the lax rule, the oracle within 1e-9; the [QED] rows
+    and Recola within the lax rule, the oracle within 1e-9; in double-double
+    at the first point: the oracle within 1e-12 where there is one, else
+    binary64 within 1e-9 and MadLoop within the lax rule. The [QED] rows are
     generated in 't Hooft-Feynman gauge (W, Goldstone and ghost loops), at
     zero widths (the references' scheme), recording the fixed-tree-width
     policy."""
@@ -262,28 +274,19 @@ def test_ew_rows_equal_madloop_recola_and_the_oracle(ew, name, analytic):
     # e+ e- > g g g keeps the compiled model's.
     if _corrections(_fixture(name)) is not None:
         assert str(slice_.compiled.ir.gauge) == "feynman"
-    _check_providers(name, ew.values(name, Precision.double()), analytic)
+    results = ew.values(name, Precision.double())
+    _check_providers(name, results, analytic)
     policy = scheme_conventions(slice_)["width_policy"]
     assert policy["policy"] == FIXED_TREE_WIDTHS
     assert policy["loop_propagators"] == "widthless"
     assert policy["tree_widths"] == {}
-
-
-@pytest.mark.parametrize(("name", "analytic"), EW_ROWS, ids=[r[0] for r in EW_ROWS])
-def test_ew_rows_in_double_double(ew, name, analytic):
-    """Double-double at the first point: the oracle within 1e-12 where there
-    is one, else binary64 within 1e-9 and the providers within the lax rule."""
-
-    from pyamplicol.loops.v2.assemble import Precision
-
     (dd,) = ew.values(name, Precision.double_double(), points=[0])
     row = _fixture(name)["rows"][0]
     if analytic:
         oracle = Decimal(row["providers"]["analytic"]["decimal"])
         assert abs(Decimal(str(_total(dd))) / oracle - 1) <= Decimal(ANALYTIC_DD)
     else:
-        (double,) = ew.values(name, Precision.double(), points=[0])
-        assert _relative(_total(dd), _total(double)) <= ANALYTIC_DOUBLE
+        assert _relative(_total(dd), _total(results[0])) <= ANALYTIC_DOUBLE
         assert _relative(_total(dd), row["providers"]["madloop"]["value"]) <= LAX
 
 
@@ -597,23 +600,14 @@ def test_complex_mass_rows_equal_the_references(ew, name, analytic):
         row = _fixture(name)["rows"][0]
         oracle = Decimal(row["providers"]["analytic"]["decimal"])
         assert abs(Decimal(str(_total(dd))) / oracle - 1) <= Decimal(ANALYTIC_DD)
-
-
-def test_complex_masses_enter_the_loop_propagators(ew):
-    """The complete a a > a a under the complex-mass scheme differs from the
-    real on-shell one at the same point by the widths' effect on its W and
-    top loops (no tree propagator): far beyond the lax rule, and each equals
-    its own references (``test_complex_mass_rows_equal_the_references``,
-    ``test_ew_rows_equal_madloop_recola_and_the_oracle``)."""
-
-    from pyamplicol.loops.v2.assemble import Precision
-
-    cms = _fixture("li_aa_aa_cms")
-    real = _fixture("li_aa_aa")
-    assert cms["points"][0] == real["points"][0]
-    (complex_mass,) = ew.values("li_aa_aa_cms", Precision.double(), points=[0])
-    (on_shell,) = ew.values("li_aa_aa", Precision.double(), points=[0])
-    assert _relative(_total(complex_mass), _total(on_shell)) > 1e-4
+    twin = LOOP_ONLY_TWINS.get(name)
+    if twin is not None:
+        # The complex masses enter the loop propagators: far beyond the lax
+        # rule from the real on-shell value at the same point.
+        real = _fixture(twin)
+        assert real["points"][0] == _fixture(name)["points"][0]
+        on_shell = real["rows"][0]["providers"]["madloop"]["value"]
+        assert _relative(_total(results[0]), on_shell) > 1e-4
 
 
 @pytest.mark.parametrize(

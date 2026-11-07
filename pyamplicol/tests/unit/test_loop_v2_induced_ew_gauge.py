@@ -92,8 +92,9 @@ def _point(fixture: dict, index: int = 0):
 
 
 class _Probes:
-    """The Goldstone probe slices of a fixture row (the vector's Ward slice
-    and the Goldstone's, both on the full tree kernels), generated once."""
+    """The Goldstone probe slices of the current fixture row (the vector's
+    Ward slice and the Goldstone's, both on the full tree kernels): one row
+    is kept at a time (the CI job's 12 GiB process-tree limit)."""
 
     def __init__(self, compiled, native):
         self.compiled, self.native = compiled, native
@@ -106,6 +107,7 @@ class _Probes:
             from pyamplicol.loops.v2.plan_export import NativeExecutor
             from pyamplicol.loops.v2.ward import ward_slice
 
+            self.found.clear()
             request = _ew_request(self.compiled, name)
             vector = ward_slice(self.compiled, request, self.native)
             ((leg, partner),) = goldstone.massive_vector_legs(vector).items()
