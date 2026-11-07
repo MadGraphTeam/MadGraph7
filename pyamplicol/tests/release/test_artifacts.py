@@ -1531,15 +1531,43 @@ def test_release_allows_remapped_rust_standard_library_backtrace_paths(
 @pytest.mark.parametrize("marker", [b"__gmpz_init", b"mpfr_set", b"malachite-q"])
 def test_native_scan_rejects_static_arithmetic_runtime_markers(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     marker: bytes,
 ) -> None:
     binary = tmp_path / "native-artifact"
     binary.write_bytes(b"prefix\x00" + marker + b"\x00suffix")
+    _fake_nm(monkeypatch)
+    with pytest.raises(ArtifactError, match="arithmetic runtime: "):
+        _scan_static_runtime_families(binary, "test artifact")
+
+
+def test_static_runtime_scan_fails_when_no_nm_reads_the_symbols(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Without a symbol table, imports cannot be told from a copy: the audit
+    # fails on that, not on the imported names.
+    binary = tmp_path / "librusticol_capi.a"
+    binary.write_bytes(b"!<arch>\n\0___gmpz_init\0_mpfr_init2\0")
+    monkeypatch.delenv("LLVM_NM", raising=False)
+    monkeypatch.setattr(artifacts.shutil, "which", lambda _name: "/usr/bin/nm")
+    monkeypatch.setattr(
+        artifacts.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command, 1, stdout="", stderr="nm: error: Unknown attribute kind (102)"
+        ),
+    )
     with pytest.raises(
         ArtifactError,
-        match=r"arithmetic runtime: .*\(no nm could read its symbols\)",
+        match=r"^cannot read the symbols of test archive: `nm --no-llvm-bc "
+        r"--defined-only`: nm: error: Unknown attribute kind \(102\); "
+        r"`nm --defined-only`: ",
     ):
-        _scan_static_runtime_families(binary, "test artifact")
+        _scan_static_runtime_families(binary, "test archive")
+    monkeypatch.setattr(artifacts.shutil, "which", lambda _name: None)
+    with pytest.raises(ArtifactError, match="test archive: no nm found"):
+        _scan_static_runtime_families(binary, "test archive")
 
 
 _ELF_TOOLS = (
@@ -1564,9 +1592,11 @@ def _compile(tmp_path: Path, name: str, source: str, *arguments: str) -> Path:
 
 def test_static_runtime_scan_ignores_the_rust_binding_crate_name(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     binary = tmp_path / "native-artifact"
     binary.write_bytes(b"gmp_mpfr_sys-0123.gmp_mpfr_sys.4567-cgu.0.rcgu.o/\n")
+    _fake_nm(monkeypatch)
     _scan_static_runtime_families(binary, "test artifact")
 
 
@@ -1706,6 +1736,59 @@ def test_capi_archive_scan_rejects_darwin_bare_name_python_imports(
         _scan_capi_archive(archive, allow_local_rustup=False)
 
 
+def test_nm_reads_the_native_symbol_table_before_any_embedded_bitcode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Apple's nm (LLVM's) reads an object's embedded bitcode by default and
+    # fails on bitcode newer than its LLVM; GNU nm rejects --no-llvm-bc.
+    archive = tmp_path / "librusticol_capi.a"
+    archive.write_bytes(b"!<arch>\n\0___gmpz_init\0_mpfr_init2\0_rusticol_abi\0")
+    monkeypatch.delenv("LLVM_NM", raising=False)
+    monkeypatch.setattr(artifacts.shutil, "which", lambda _name: "/usr/bin/nm")
+    calls: list[list[str]] = []
+
+    def listing(command: list[str]) -> str:
+        if "--defined-only" in command:
+            return "\nlibrusticol_capi.a(capi.o):\n0000000000000448 T _rusticol_abi\n"
+        return "\nlibrusticol_capi.a(capi.o):\n___gmpz_init\n_mpfr_init2\n"
+
+    def apple(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess:
+        calls.append(command[1:-1])
+        if "--no-llvm-bc" not in command:
+            return subprocess.CompletedProcess(
+                command, 1, stdout="", stderr="error: Unknown attribute kind (102)"
+            )
+        return subprocess.CompletedProcess(command, 0, stdout=listing(command))
+
+    monkeypatch.setattr(artifacts.subprocess, "run", apple)
+    _scan_static_runtime_families(archive, "test archive")
+    assert _scan_capi_archive(archive, allow_local_rustup=False)
+    assert calls == [
+        ["--no-llvm-bc", "--defined-only"],
+        ["--no-llvm-bc", "-u"],
+        ["--no-llvm-bc", "-u"],
+    ]
+
+    def gnu(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess:
+        calls.append(command[1:-1])
+        if "--no-llvm-bc" in command:
+            return subprocess.CompletedProcess(
+                command, 1, stdout="", stderr="nm: unrecognized option '--no-llvm-bc'"
+            )
+        return subprocess.CompletedProcess(command, 0, stdout=listing(command))
+
+    calls.clear()
+    monkeypatch.setattr(artifacts.subprocess, "run", gnu)
+    _scan_static_runtime_families(archive, "test archive")
+    assert calls == [
+        ["--no-llvm-bc", "--defined-only"],
+        ["--defined-only"],
+        ["--no-llvm-bc", "-u"],
+        ["-u"],
+    ]
+
+
 def _macho_linker() -> list[str] | None:
     """A clang driver that links Mach-O dylibs: native on macOS, else lld."""
 
@@ -1787,6 +1870,102 @@ def test_static_runtime_scan_on_macho_imports_and_copies(
         _scan_static_runtime_families(copy, "test extension")
 
 
+@pytest.mark.skipif(_MACHO_LINKER is None, reason="needs a Mach-O C toolchain")
+@pytest.mark.parametrize("arch", ["arm64", "x86_64"])
+def test_relative_path_scan_skips_macho_code_sections(
+    tmp_path: Path, arch: str
+) -> None:
+    code = _macho_dylib(tmp_path, "code.so", _CODE_SECTION_PATH, arch)
+    assert b"\0../src\0" in code.read_bytes()
+    assert artifacts._machine_code_ranges(code.read_bytes())
+    artifacts._scan_embedded_paths({"pyamplicol/_rusticol.abi3.so": code.read_bytes()})
+    data = _macho_dylib(
+        tmp_path, "data.so", _CODE_SECTION_PATH + _DATA_SECTION_PATH, arch
+    )
+    with pytest.raises(ArtifactError, match=re.escape("marker '../': ")):
+        artifacts._scan_embedded_paths(
+            {"pyamplicol/_rusticol.abi3.so": data.read_bytes()}
+        )
+
+
+_STANDARD_LIBRARY_LIKE = "int standard_library_like(int x) { return 3 * x; }\n"
+
+
+def _macho_archive(
+    tmp_path: Path, name: str, sources: dict[str, str], arch: str
+) -> Path:
+    """A Mach-O archive as the macOS C API archive is built.
+
+    The first object stands for the precompiled Rust standard library: it
+    embeds LLVM bitcode, here unreadable, as Rust's newer bitcode is to
+    Apple's ``nm``; its native symbol table is intact. The crate objects
+    (``--profile sdk``: ``-C embed-bitcode=no``) embed none.
+    """
+
+    objects = []
+    for index, (stem, source) in enumerate(
+        {"std": _STANDARD_LIBRARY_LIKE, **sources}.items()
+    ):
+        source_path = tmp_path / f"{stem}.c"
+        source_path.write_text(source, encoding="utf-8")
+        output = tmp_path / f"{stem}.o"
+        subprocess.run(
+            [
+                "clang",
+                "-target",
+                f"{arch}-apple-macos11",
+                *(["-fembed-bitcode"] if index == 0 else []),
+                "-c",
+                str(source_path),
+                "-o",
+                str(output),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        if index == 0:
+            data = bytearray(output.read_bytes())
+            module = data.find(b"\xde\xc0\x17\x0b")  # the Darwin bitcode wrapper
+            if module < 0:
+                module = data.index(b"BC\xc0\xde")
+            data[module + 4 : module + 20] = b"\xff" * 16
+            output.write_bytes(bytes(data))
+        objects.append(str(output))
+    archive = tmp_path / name
+    subprocess.run(
+        ["llvm-ar", "--format=darwin", "rcs", str(archive), *objects], check=True
+    )
+    return archive
+
+
+@pytest.mark.skipif(
+    _MACHO_LINKER is None or shutil.which("llvm-ar") is None,
+    reason="needs a Mach-O C toolchain and llvm-ar",
+)
+@pytest.mark.parametrize("arch", ["arm64", "x86_64"])
+def test_static_runtime_scan_reads_macho_archives_with_unreadable_bitcode(
+    tmp_path: Path, arch: str
+) -> None:
+    shared = _macho_archive(
+        tmp_path, "librusticol_shared.a", {"consumer": _MACHO_CONSUMER}, arch
+    )
+    # The embedded module is what LLVM's nm reads by default.
+    default = subprocess.run(
+        ["llvm-nm", "--defined-only", str(shared)], capture_output=True, text=True
+    )
+    assert default.returncode != 0
+    _scan_static_runtime_families(shared, "test archive")
+    assert _scan_capi_archive(shared, allow_local_rustup=False)
+    static = _macho_archive(
+        tmp_path,
+        "librusticol_static.a",
+        {"consumer": _MACHO_CONSUMER, "copy": _MACHO_RUNTIME},
+        arch,
+    )
+    with pytest.raises(ArtifactError, match="defines ___gmpz_init, _mpfr_set"):
+        _scan_static_runtime_families(static, "test archive")
+
+
 @pytest.mark.parametrize(
     "needed",
     ["libc.so.6", "libgcc_s.so.1", "libpthread.so.0", "ld-linux-x86-64.so.2"],
@@ -1843,8 +2022,74 @@ def test_versioned_shared_objects_are_scanned_as_native_members() -> None:
 
 
 @pytest.mark.parametrize(
+    ("text", "marker"),
+    [
+        (b"FR_RNDA\0../../mpfr-src/src/add1.c\0", "../"),
+        (b"\0..\\..\\mpfr-src\\src\\add1.c\0", "..\\\\"),
+        (b'{"source": "..\\\\build\\\\x.c"}', "..\\\\"),
+        (b"assertion failed at ../src/x.c:12\n", "../"),
+        (b"..//src/x.c", "../"),
+        (b"../relative.c", "../"),
+    ],
+)
+def test_relative_paths_in_shared_object_text_are_rejected(
+    text: bytes, marker: str
+) -> None:
+    with pytest.raises(
+        ArtifactError, match=re.escape(f"non-relocatable path marker '{marker}': ")
+    ):
+        artifacts._scan_embedded_paths({"pyamplicol/_rusticol.abi3.so": text})
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        # x86-64 instructions of Linux release-profile extensions that the
+        # former rule reported as paths: callq rel32 0xff5c2e2e, callq
+        # *0x022f2e2e(%rip), leaq 0x12f2e2e(%rip), movsd 0x22f2e2e(%rip).
+        b"\0\0L\x89\xea\xe8..\\\xffH\x8d\xbc$",
+        b'SH\x89\xfb\xff\x15../\x02\xbf"\0\0',
+        b"\xf67\x01H\x8d=../\x01\xff\x15\x10\x8c",
+        b"W\xd1\xf2\x0f\x10\r../\x02A\xff\xd6\xf2",
+        # Binary data: the marker bytes with no path component after them.
+        b"\0\0\0\0\0\0..\\\0\0\0\x11\0",
+    ],
+)
+def test_relative_marker_bytes_in_binary_data_are_not_paths(data: bytes) -> None:
+    artifacts._scan_embedded_paths({"pyamplicol/_rusticol.abi3.so": data})
+
+
+# A text-shaped relative path placed in the code section, and the same text
+# as data: only the data is an embedded path.
+_CODE_SECTION_PATH = (
+    '__asm__(".text\\n.globl code_bytes\\ncode_bytes:\\n'
+    '.byte 0x00, 0x2e, 0x2e, 0x2f, 0x73, 0x72, 0x63, 0x00\\n");\n'
+    "int code(void) { return 1; }\n"
+)
+_DATA_SECTION_PATH = (
+    'const char *volatile data_path = "\\0../src/x.c";\n'
+    "int data(void) { return data_path[0]; }\n"
+)
+
+
+@pytest.mark.skipif(not _ELF_TOOLS, reason="needs an ELF C toolchain")
+def test_relative_path_scan_skips_elf_code_sections(tmp_path: Path) -> None:
+    code = _compile(tmp_path, "code.so", _CODE_SECTION_PATH, "-shared")
+    assert b"\0../src\0" in code.read_bytes()
+    assert artifacts._machine_code_ranges(code.read_bytes())
+    artifacts._scan_embedded_paths({"pyamplicol/_rusticol.abi3.so": code.read_bytes()})
+    data = _compile(
+        tmp_path, "data.so", _CODE_SECTION_PATH + _DATA_SECTION_PATH, "-shared"
+    )
+    with pytest.raises(ArtifactError, match=re.escape("marker '../': ")):
+        artifacts._scan_embedded_paths(
+            {"pyamplicol/_rusticol.abi3.so": data.read_bytes()}
+        )
+
+
+@pytest.mark.parametrize(
     "symbol",
-    ["_PyErr_SetString", "PyLong_FromLong", "_Py_Dealloc"],
+    ["_PyErr_SetString", "PyLong_FromLong", "_Py_Dealloc", "__Py_Dealloc"],
 )
 def test_capi_archive_scan_rejects_undefined_python_symbols(
     tmp_path: Path,
