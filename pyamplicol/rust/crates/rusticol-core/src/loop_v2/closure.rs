@@ -112,6 +112,57 @@ pub fn trace_into<T: Carrier, const L: usize>(
     }
 }
 
+/// Close a trace step of a dressed-row plan (route R2, M-LIT LIT-R2) into
+/// an accumulator: per object row `r` (one object column) its trace
+/// `τ_r[m] = Σ_α out[r][α][α][m]`, then for each observable column `o` of
+/// its Born row `born[r]` (`columns[born[r]]`: `(o, w)`, `w` the column's
+/// seed-weight column) `acc[o][m] += u[w] τ_r[m]`, with `u` the amplitude
+/// vector of the step's seed key in the carrier (`(re, im)` per seed-weight
+/// column, the same for every lane). The step's rank is at most the family
+/// rank (checked when the plan loads).
+#[allow(clippy::too_many_arguments)]
+pub fn trace_rows_into<T: Carrier, const L: usize>(
+    step: &Step,
+    output: &[T],
+    accumulator: &mut [T],
+    born: &[u32],
+    columns: &[Vec<(usize, usize)>],
+    vector: &[(T, T)],
+    rank: usize,
+    zero: &T,
+) {
+    let v = lane_vector_len(L);
+    let n_out = ncoeff(step.rank_out);
+    let n_family = ncoeff(rank);
+    debug_assert!(n_out <= n_family, "a trace step above the family rank");
+    let row = step.out_row() * v;
+    let mut trace = vec![zero.clone(); n_out * v];
+    let mut term = vec![zero.clone(); v];
+    for (r, &h) in born.iter().enumerate() {
+        let source = &output[r * row..][..row];
+        super::kernels::clear(&mut trace);
+        for a in 0..step.d_alpha {
+            let diagonal = &source[(a * step.d_out + a) * n_out * v..][..n_out * v];
+            for (c, x) in trace.iter_mut().zip(diagonal) {
+                *c += x;
+            }
+        }
+        for &(o, w) in &columns[h as usize] {
+            let (re, im) = &vector[w];
+            let target = &mut accumulator[o * n_family * v..][..n_family * v];
+            for (t, c) in target.chunks_exact_mut(v).zip(trace.chunks_exact(v)) {
+                let (c_re, c_im) = c.split_at(L);
+                let (term_re, term_im) = term.split_at_mut(L);
+                for l in 0..L {
+                    term_re[l] = re.clone() * &c_re[l] - im.clone() * &c_im[l];
+                    term_im[l] = re.clone() * &c_im[l] + im.clone() * &c_re[l];
+                }
+                cadd::<T, L>(t, &term);
+            }
+        }
+    }
+}
+
 /// Lane vectors of `-V(mask)`, the shift of a frame map `q = σ q' − V`.
 pub fn frame_shift<T: Carrier, const L: usize>(data: &LaneData<T, L>, mask: u64) -> [Vec<T>; 4] {
     let v = lane_vector_len(L);
