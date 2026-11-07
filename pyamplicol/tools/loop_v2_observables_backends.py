@@ -40,9 +40,11 @@ output's sector in either arm (``stability.relative``'s metric: a vanishing
 pole is measured against its finite part), without checks (the rule reads
 no estimate; the checks would cost about four evaluations per point).
 Every result's lane diagnostics must name the arm's backend as the effective
-one (``reduction.effective``), and the two arms must differ somewhere: a TIRust
-arm equal to the NinjaRS one bitwise on every output was not reduced by
-TIRust. The check exits 0 when every output passes, 1 when one fails (or
+one (``reduction.effective``), and on every row the two arms must differ
+on some output with a nonzero coefficient: a TIRust arm equal to the NinjaRS
+one bitwise there was not reduced by TIRust (exact zeros, such as
+structurally vanishing helicity selections, agree in any two arms and
+count for neither). The check exits 0 when every output passes, 1 when one fails (or
 the NinjaRS arm itself does not run), and 2 when the TIRust arm was not
 exercised: TIRust does not serve the loop-induced observable calls yet
 (``reduction.ReductionUnavailable``: the RESOLVED route or the executor's
@@ -50,7 +52,8 @@ exercised: TIRust does not serve the loop-induced observable calls yet
 binary64 a row its conditioning gates refuse, its method choice being off
 until m-lit LIT-TIR-MP: the outputs of the points it serves are compared
 and the failed ones recorded, ``tirust_failed``), a result names another
-effective backend, or the arms agree bitwise. It writes one JSON record
+effective backend, or the arms agree bitwise on a row (``bitwise_equal``).
+Every row is run either way. It writes one JSON record
 (``--output``) with every comparison.
 
 Run (licence in the environment, the staged native of the slice)::
@@ -159,6 +162,12 @@ def _laurents(values, estimate) -> list:
             ]
         )
     return out
+
+
+def _coefficients(output: list) -> list:
+    """The (re, im) parts of every computed coefficient of one output."""
+
+    return [parts for sector in output for _name, parts, _error in sector]
 
 
 def _estimates(stability, count: int) -> list:
@@ -366,15 +375,24 @@ def main() -> int:
             # Nothing to compare on this row (the exit code says so below).
             print(f"{name}: TIRust failed every point closed ({len(failures)} outputs)")
             continue
-        if all(
-            [[parts for _n, parts, _e in sector] for sector in tirust[label]]
-            == [[parts for _n, parts, _e in sector] for sector in ninjars[label]]
+        # Exact zeros (structurally vanishing outputs) are equal in any two
+        # arms: only outputs with a nonzero coefficient show the backend.
+        informative = [
+            label
             for label in tirust
+            if any(any(parts) for parts in _coefficients(tirust[label]))
+            or any(any(parts) for parts in _coefficients(ninjars[label]))
+        ]
+        if all(
+            _coefficients(tirust[label]) == _coefficients(ninjars[label])
+            for label in informative
         ):
-            return not_exercised(
-                f"{name}: every output equals the NinjaRS arm's bitwise "
-                f"({len(ninjars)} outputs)"
+            record.setdefault("bitwise_equal", {})[name] = (
+                f"{len(informative)} of the {len(tirust)} outputs TIRust served have "
+                "a nonzero coefficient, and every one of them equals the NinjaRS "
+                "arm's bitwise"
             )
+            print(f"{name}: {record['bitwise_equal'][name]}")
         rows = []
         for label, value in tirust.items():
             for row in _compare(ninjars[label], value, binary64):
@@ -396,12 +414,20 @@ def main() -> int:
     if failed:
         print(f"FAIL ({failed} outputs)")
         return 1
+    reasons = []
     if record.get("tirust_failed"):
         # Every compared output agrees, but TIRust failed some points closed.
-        return not_exercised(
+        reasons.append(
             "TIRust failed points closed: "
             + ", ".join(f"{k}: {len(v)}" for k, v in record["tirust_failed"].items())
         )
+    if record.get("bitwise_equal"):
+        reasons.append(
+            "no nonzero output differs from the NinjaRS arm on "
+            + ", ".join(record["bitwise_equal"])
+        )
+    if reasons:
+        return not_exercised("; ".join(reasons))
     print("PASS")
     return 0
 
