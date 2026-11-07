@@ -12,9 +12,9 @@ publish = false
 feynkit-kinematics = { git = "https://github.com/alphal00p/gammaloop.git", rev = "d1904bf2bd5bf4f26969a73b415095e941a55610", default-features = false, features = ["native"] }
 pyamplicol = { path = "../crates/pyamplicol" }
 rusticol-core = { path = "../crates/rusticol-core", features = ["symbolica-runtime", "python-generation-bridge", "loop-v2"] }
-ninjars = { git = "https://github.com/alphal00p/ninjars.git", rev = "6ab0a53e2b9640fb9434bc5c1214e6271d80bad7" }
-ninjars-graph = { git = "https://github.com/alphal00p/ninjars.git", rev = "6ab0a53e2b9640fb9434bc5c1214e6271d80bad7" }
-ninjars-symbolica = { git = "https://github.com/alphal00p/ninjars.git", rev = "6ab0a53e2b9640fb9434bc5c1214e6271d80bad7", features = ["native-masters"] }
+ninjars = { git = "https://github.com/alphal00p/ninjars.git", rev = "520b220b653d46266e7aa1417a3b941923812118" }
+ninjars-graph = { git = "https://github.com/alphal00p/ninjars.git", rev = "520b220b653d46266e7aa1417a3b941923812118" }
+ninjars-symbolica = { git = "https://github.com/alphal00p/ninjars.git", rev = "520b220b653d46266e7aa1417a3b941923812118", features = ["native-masters"] }
 # One oneloop feature set in every root build (M-LIT PLAN §2.c.2 item 3, the Q28
 # rule): NinjaRS's native masters need generated-evaluators, TIRust rust-codegen;
 # rust-codegen only adds modules (rust_codegen, native::batch).

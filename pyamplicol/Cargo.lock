@@ -1215,7 +1215,7 @@ dependencies = [
 [[package]]
 name = "graphica"
 version = "3.0.1"
-source = "git+https://github.com/ValentinHirschi/symbolica.git?rev=b9eaa735862e7d22d7694a14da02f2498342e29a#b9eaa735862e7d22d7694a14da02f2498342e29a"
+source = "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#dfe6bd97b974b1028dc63071ea165136cd2b0ef5"
 dependencies = [
  "ahash",
  "dyn-clone",
@@ -1645,7 +1645,7 @@ dependencies = [
 [[package]]
 name = "ninjars"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars.git?rev=6ab0a53e2b9640fb9434bc5c1214e6271d80bad7#6ab0a53e2b9640fb9434bc5c1214e6271d80bad7"
+source = "git+https://github.com/alphal00p/ninjars.git?rev=520b220b653d46266e7aa1417a3b941923812118#520b220b653d46266e7aa1417a3b941923812118"
 dependencies = [
  "feynkit-kinematics",
  "symbolica",
@@ -1655,7 +1655,7 @@ dependencies = [
 [[package]]
 name = "ninjars-graph"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars.git?rev=6ab0a53e2b9640fb9434bc5c1214e6271d80bad7#6ab0a53e2b9640fb9434bc5c1214e6271d80bad7"
+source = "git+https://github.com/alphal00p/ninjars.git?rev=520b220b653d46266e7aa1417a3b941923812118#520b220b653d46266e7aa1417a3b941923812118"
 dependencies = [
  "feynkit-amplitude",
  "feynkit-generator",
@@ -1674,7 +1674,7 @@ dependencies = [
 [[package]]
 name = "ninjars-positional"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars.git?rev=6ab0a53e2b9640fb9434bc5c1214e6271d80bad7#6ab0a53e2b9640fb9434bc5c1214e6271d80bad7"
+source = "git+https://github.com/alphal00p/ninjars.git?rev=520b220b653d46266e7aa1417a3b941923812118#520b220b653d46266e7aa1417a3b941923812118"
 dependencies = [
  "symbolica",
  "thiserror",
@@ -1683,7 +1683,7 @@ dependencies = [
 [[package]]
 name = "ninjars-symbolica"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars.git?rev=6ab0a53e2b9640fb9434bc5c1214e6271d80bad7#6ab0a53e2b9640fb9434bc5c1214e6271d80bad7"
+source = "git+https://github.com/alphal00p/ninjars.git?rev=520b220b653d46266e7aa1417a3b941923812118#520b220b653d46266e7aa1417a3b941923812118"
 dependencies = [
  "ninjars",
  "ninjars-positional",
@@ -1786,7 +1786,7 @@ dependencies = [
 [[package]]
 name = "numerica"
 version = "3.0.2"
-source = "git+https://github.com/ValentinHirschi/symbolica.git?rev=b9eaa735862e7d22d7694a14da02f2498342e29a#b9eaa735862e7d22d7694a14da02f2498342e29a"
+source = "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#dfe6bd97b974b1028dc63071ea165136cd2b0ef5"
 dependencies = [
  "ahash",
  "astro-float",
@@ -2762,7 +2762,7 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 [[package]]
 name = "symbolica"
 version = "3.0.2"
-source = "git+https://github.com/ValentinHirschi/symbolica.git?rev=b9eaa735862e7d22d7694a14da02f2498342e29a#b9eaa735862e7d22d7694a14da02f2498342e29a"
+source = "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#dfe6bd97b974b1028dc63071ea165136cd2b0ef5"
 dependencies = [
  "ahash",
  "append-only-vec",
