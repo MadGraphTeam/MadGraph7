@@ -2485,6 +2485,40 @@ def test_static_archive_symbol_scan_defers_incompatible_llvm_reader(
     assert not sdk._scan_archive_symbols(archive)
 
 
+@pytest.mark.parametrize("reader", ["apple", "gnu"])
+def test_static_archive_symbol_scan_reads_the_native_symbol_table(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reader: str,
+) -> None:
+    # Apple's nm (LLVM's) fails on the embedded bitcode unless told to read
+    # the native table; GNU nm does not know the option.
+    archive = tmp_path / "librusticol_capi.a"
+    archive.write_bytes(b"archive")
+    monkeypatch.delenv("LLVM_NM", raising=False)
+    monkeypatch.setattr(sdk.shutil, "which", lambda _name: "/usr/bin/nm")
+    calls: list[list[str]] = []
+    undefined = "\nlibrusticol_capi.a(capi.o):\n___gmpz_init\n"
+
+    def run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess:
+        calls.append(command[1:-1])
+        native = "--no-llvm-bc" in command
+        if native != (reader == "apple"):
+            return subprocess.CompletedProcess(command, 1, stdout="", stderr="error")
+        return subprocess.CompletedProcess(command, 0, stdout=undefined, stderr="")
+
+    monkeypatch.setattr(sdk.subprocess, "run", run)
+    assert sdk._scan_archive_symbols(archive)
+    assert calls == (
+        [["--no-llvm-bc", "-u"]]
+        if reader == "apple"
+        else [["--no-llvm-bc", "-u"], ["-u"]]
+    )
+    undefined += "_PyErr_SetString\n"
+    with pytest.raises(RuntimeError, match=r"undefined Python.*_PyErr_SetString"):
+        sdk._scan_archive_symbols(archive)
+
+
 @pytest.mark.skipif(os.name == "nt", reason="native SDK targets macOS and Linux")
 def test_static_archive_link_probe_rejects_missing_public_export(
     tmp_path: Path,
