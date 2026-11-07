@@ -862,21 +862,35 @@ class InducedColumns:
                 out.append(None)
                 continue
             point = points[index]
-            outputs = {}
-            turned = {}
-            for g in used:
-                value = assignments[index][g]
-                outputs[g] = PointOutputs(reference, forms, sources, point, value)
-                turned[g] = [
-                    PointOutputs(
-                        run[index],
-                        forms,
-                        sources,
-                        _rotated_point(rotation, point),
-                        _rotated_spin(rotation, value),
-                    )
-                    for rotation, run in zip(stability.rotations, rotated, strict=True)
-                ]
+            outputs = {
+                g: PointOutputs(reference, forms, sources, point, assignments[index][g])
+                for g in used
+            }
+            turned: dict[int, list[PointOutputs]] = {}
+
+            def rotations(
+                g: int, index: int = index, point: Any = point, turned: dict = turned
+            ) -> list:
+                """The assignment's outputs at the rotated points (formed for
+                the outputs whose estimate reads them)."""
+
+                found = turned.get(g)
+                if found is None:
+                    value = assignments[index][g]
+                    found = turned[g] = [
+                        PointOutputs(
+                            run[index],
+                            forms,
+                            sources,
+                            _rotated_point(rotation, point),
+                            _rotated_spin(rotation, value),
+                        )
+                        for rotation, run in zip(
+                            stability.rotations, rotated, strict=True
+                        )
+                    ]
+                return found
+
             result = {}
             for output in self.outputs:
                 g = output.spin
@@ -897,7 +911,10 @@ class InducedColumns:
                     )
                 elif stability.enabled:
                     estimate = outputs[g].estimate(
-                        output, turned[g], stability.reduction, precision.unit_roundoff
+                        output,
+                        rotations(g),
+                        stability.reduction,
+                        precision.unit_roundoff,
                     )
                 value = point_result(
                     reference, outputs[g].value(output), estimate, output.rows
