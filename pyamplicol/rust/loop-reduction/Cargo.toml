@@ -8,6 +8,16 @@ rust-version = "1.96"
 license = "0BSD"
 publish = false
 
+[features]
+# TIRust (huashengshao/TIRust), the tensor-integral reduction backend (m-lit
+# PLAN §2.c.2 item 3), is a DEFAULT feature (USER 2026-11-06 ~13:35): every
+# default build links it (developer builds, tests, staged natives, CI, wheels
+# and releases). `--no-default-features` builds without it; TIRust shares this
+# workspace's Symbolica and oneloop sources and feature sets, so NinjaRS's
+# numerics are the same either way.
+default = ["tir"]
+tir = ["dep:iregi-rust", "dep:iregi-masters"]
+
 [dependencies]
 feynkit-kinematics = { git = "https://github.com/alphal00p/gammaloop.git", rev = "d1904bf2bd5bf4f26969a73b415095e941a55610", default-features = false, features = ["native"] }
 pyamplicol = { path = "../crates/pyamplicol" }
@@ -22,3 +32,8 @@ oneloop = { git = "https://github.com/alphal00p/oneloopmaster.git", rev = "a7cf4
 symbolica = { version = "=3.0.2", default-features = false, features = ["integer-gmp", "float-mpfr"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# A commit of TIRust's main (after its one history rewrite); its oneloop
+# revision and feature set are this manifest's, its Symbolica requirement
+# ("3.0") resolves to the root [patch.crates-io] revision.
+iregi-rust = { git = "https://github.com/huashengshao/TIRust.git", rev = "760e3144cb96df516241c9347582b10b4c47f3f3", optional = true }
+iregi-masters = { git = "https://github.com/huashengshao/TIRust.git", rev = "760e3144cb96df516241c9347582b10b4c47f3f3", optional = true }

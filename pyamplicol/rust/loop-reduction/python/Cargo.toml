@@ -14,11 +14,17 @@ crate-type = ["cdylib", "rlib"]
 test = false
 doctest = false
 
+[features]
+# TIRust, a default feature forwarded to rusticol-loop-reduction (m-lit
+# PLAN §2.c.2 item 3; USER 2026-11-06 ~13:35).
+default = ["tir"]
+tir = ["rusticol-loop-reduction/tir"]
+
 [dependencies]
 pyo3 = { version = "0.29", features = ["abi3-py311", "multiple-pymethods"] }
 pyamplicol = { path = "../../crates/pyamplicol" }
 rusticol-core = { path = "../../crates/rusticol-core", features = ["symbolica-runtime", "python-generation-bridge"] }
-rusticol-loop-reduction = { path = ".." }
+rusticol-loop-reduction = { path = "..", default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }
 symbolica = { version = "=3.0.2", default-features = false, features = ["integer-gmp", "float-mpfr"] }
