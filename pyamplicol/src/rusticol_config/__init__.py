@@ -380,6 +380,38 @@ def load_sdk_info() -> SdkInfo:
     )
 
 
+def prune_other_versions(info: SdkInfo) -> tuple[Path, ...]:
+    """Remove the SDK cache copies of other package versions or archives.
+
+    A compressed archive is unpacked once per package version and archive
+    digest (``<root>/sdk/<version>-<sha256>/``), so upgrades leave the copies
+    of earlier versions in the user cache. Nothing deletes them
+    automatically: this explicit, opt-in call (``rusticol-config
+    --prune-other-versions``) removes every ``<version>-<sha256>`` directory
+    under ``<root>/sdk/`` other than this installation's own and returns the
+    removed directories. Other files and directories under the cache root are
+    never touched; a plain (uncompressed) installation keeps no copy, so every
+    copy found is another installation's."""
+
+    import shutil
+
+    root = sdk_cache_root()
+    own = info.archive.cache_path
+    keep = None if own is None else own.parent
+    removed = []
+    if not root.is_dir():
+        return ()
+    for entry in sorted(root.iterdir()):
+        version, _sep, digest = entry.name.rpartition("-")
+        if not (entry.is_dir() and version and _SHA256.fullmatch(digest)):
+            continue
+        if keep is not None and entry.resolve() == keep.resolve():
+            continue
+        shutil.rmtree(entry)
+        removed.append(entry)
+    return tuple(removed)
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="rusticol-config",
@@ -398,6 +430,12 @@ def _parser() -> argparse.ArgumentParser:
     group.add_argument("--rustflags", action="store_true")
     group.add_argument("--cargo-rustflags", action="store_true")
     group.add_argument("--json", action="store_true")
+    group.add_argument(
+        "--prune-other-versions",
+        action="store_true",
+        help="remove the user-cache SDK copies of other package versions "
+        "(opt-in; never done automatically); prints the removed directories",
+    )
     return parser
 
 
@@ -424,6 +462,8 @@ def _output(args: argparse.Namespace, info: SdkInfo) -> str:
         return shlex.join(info.rust_flags)
     if args.cargo_rustflags:
         return info.cargo_encoded_rust_flags
+    if args.prune_other_versions:
+        return "\n".join(str(path) for path in prune_other_versions(info))
     return json.dumps(info.to_json(), indent=2, sort_keys=True)
 
 

@@ -374,6 +374,36 @@ def test_cache_is_keyed_by_version_and_archive_digest(
     assert paths == [_expected_cache_path(cache), _expected_cache_path(cache, other)]
 
 
+def test_other_versions_copies_are_pruned_only_on_request(
+    compressed: tuple[Path, Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Per-version cache copies accumulate across upgrades; nothing deletes
+    them automatically (m-lit lit-rel-xz, R7): ``--prune-other-versions``
+    removes the other versions' ``<version>-<sha256>`` copies only, never
+    this installation's own nor anything else under the cache root."""
+
+    _, cache = compressed
+    own = config.load_sdk_info().library
+    digest = hashlib.sha256(b"older").hexdigest()
+    older = cache / "sdk" / f"0.0.9-{digest}"
+    older.mkdir(parents=True)
+    (older / "librusticol_capi.a").write_bytes(b"older")
+    unrelated = cache / "sdk" / "notes"
+    unrelated.mkdir()
+    models = cache / "models"
+    models.mkdir()
+    # Using the SDK never prunes.
+    assert config.load_sdk_info().library == own
+    assert older.is_dir()
+    assert config.main(["--prune-other-versions"]) == 0
+    assert capsys.readouterr().out.splitlines() == [str(older)]
+    assert not older.exists()
+    assert own.read_bytes() == _ARCHIVE
+    assert unrelated.is_dir() and models.is_dir()
+    # Nothing left to prune.
+    assert config.prune_other_versions(config.load_sdk_info()) == ()
+
+
 def test_default_cache_is_the_platform_user_cache(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

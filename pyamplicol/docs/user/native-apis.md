@@ -245,9 +245,13 @@ partial archive. The installation itself is only read, so a read-only
 `site-packages` works; the cache directory must be writable (set
 `PYAMPLICOL_CACHE_DIR` otherwise). Metadata-only queries (`--cflags`,
 `--include-dir`, `--version`, ...) never unpack. Each pyAmpliCol version
-unpacks its own copy; delete `<cache>/sdk/` to reclaim the space of
-versions no longer installed. A source build ships the plain archive, which
-is used in place.
+unpacks its own copy (about 50 MB), and nothing deletes the copies of
+earlier versions automatically: `rusticol-config --prune-other-versions`
+removes every `<cache>/sdk/<version>-<sha256>/` directory other than this
+installation's own and prints what it removed (other files under the cache
+root are never touched; another installed version unpacks its copy again on
+its next use). A source build ships the plain archive, which is used in
+place.
 
 `rusticol-config` validates this SDK and emits correctly quoted paths and
 target-specific link arguments:
