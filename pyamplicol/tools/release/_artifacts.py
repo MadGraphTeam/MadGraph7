@@ -242,6 +242,20 @@ _ALLOWED_REPAIR_ROOTS = {"pyamplicol.libs", "pyamplicol.dylibs"}
 _SDK_SHARED_LIBRARY = re.compile(
     r"lib/lib[A-Za-z0-9_+-]+(?:\.so(?:\.[0-9]+)+|(?:\.[0-9]+)*\.dylib)"
 )
+# Wheel size report components by member name (first match; the rest is
+# "other").
+_WHEEL_SIZE_COMPONENTS = (
+    ("extension", re.compile(r"pyamplicol/_rusticol(?:\.[^./]+)*\.so")),
+    ("SDK archive", re.compile(r"pyamplicol/_sdk/lib/[^/]+\.a")),
+    ("SDK shared libraries", re.compile(r"pyamplicol/_sdk/lib/[^/]+")),
+    (
+        "bundled libraries",
+        re.compile(
+            "(?:" + "|".join(map(re.escape, sorted(_ALLOWED_REPAIR_ROOTS))) + ")/.+"
+        ),
+    ),
+    ("prepared models", re.compile(re.escape(_PREPARED_MODEL_WHEEL_PREFIX) + "/.+")),
+)
 _FORBIDDEN_SDIST_MEMBERS = {
     ".cargo/config.toml",
     "build_backend/python_lock.py",
@@ -1892,6 +1906,31 @@ def _native_scan(
         _scan_static_runtime_families(archive_path, "Rusticol C API archive")
 
 
+def wheel_size_summary(path: Path) -> str:
+    """The wheel's size and limit with its compressed bytes per component."""
+
+    size = path.stat().st_size
+    totals = {name: 0 for name, _pattern in _WHEEL_SIZE_COMPONENTS}
+    totals["other"] = 0
+    with zipfile.ZipFile(path) as archive:
+        for info in archive.infolist():
+            component = next(
+                (
+                    name
+                    for name, pattern in _WHEEL_SIZE_COMPONENTS
+                    if pattern.fullmatch(info.filename)
+                ),
+                "other",
+            )
+            totals[component] += info.compress_size
+    totals["zip metadata"] = size - sum(totals.values())
+    parts = ", ".join(f"{name} {value}" for name, value in totals.items())
+    return (
+        f"{path.name} is {size} bytes (limit {MAX_WHEEL_BYTES}); "
+        f"compressed bytes: {parts}"
+    )
+
+
 def audit_wheel(
     path: Path,
     *,
@@ -1904,10 +1943,12 @@ def audit_wheel(
     if mode not in {"candidate", "release"}:
         raise ArtifactError(f"unsupported wheel audit mode: {mode}")
     size = path.stat().st_size
-    if size > MAX_WHEEL_BYTES:
-        raise ArtifactError(
-            f"compressed wheel is {size} bytes; limit is {MAX_WHEEL_BYTES} bytes"
-        )
+    # The size limit is a publication constraint: an oversized wheel is still
+    # audited in full first, so that the limit never masks a content defect.
+    oversized = size > MAX_WHEEL_BYTES
+    size_error = f"compressed wheel is {size} bytes; limit is {MAX_WHEEL_BYTES} bytes"
+    if oversized and not zipfile.is_zipfile(path):
+        raise ArtifactError(size_error)
     filename_version, python_tag, abi_tag, platform_tag = _parse_wheel_filename(path)
     if python_tag != EXPECTED_PYTHON_TAG or abi_tag != EXPECTED_ABI_TAG:
         raise ArtifactError(
@@ -2030,6 +2071,10 @@ def audit_wheel(
             extensions[0],
             target,
             allow_local_rustup=mode == "candidate",
+        )
+    if oversized:
+        raise ArtifactError(
+            f"{size_error} (every other wheel check passed); {wheel_size_summary(path)}"
         )
     return WheelReport(
         filename=path.name,
@@ -2218,4 +2263,5 @@ __all__ = [
     "WheelReport",
     "audit_sdist",
     "audit_wheel",
+    "wheel_size_summary",
 ]

@@ -10,7 +10,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from _artifacts import audit_sdist, audit_wheel
+from _artifacts import audit_sdist, audit_wheel, wheel_size_summary
 from _common import (
     CANDIDATE_ARTIFACTS,
     DIST,
@@ -120,6 +120,7 @@ def build_release_artifacts(
             "direct-source wheel",
         )
         audit_wheel(direct_wheel, mode=mode)
+        print(f"Audited {wheel_size_summary(direct_wheel)}", flush=True)
 
         if mode == "candidate":
             candidate_wheel = output_directory / direct_wheel.name
@@ -140,6 +141,7 @@ def build_release_artifacts(
             python=python,
         )
         audit_wheel(rebuilt_wheel, mode="release")
+        print(f"Audited {wheel_size_summary(rebuilt_wheel)}", flush=True)
 
         copied_wheel = output_directory / rebuilt_wheel.name
         shutil.copy2(rebuilt_wheel, copied_wheel)
