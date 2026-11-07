@@ -108,6 +108,13 @@ def decay_density_tensor(slot_identity, helicities, slot_densities):
     return density_dec
 
 
+def ren_scale2(event):
+    """mu_R**2 for the matrix element's SCALE2: the mur of the event's <scales>
+    tag (the mg7 output writes it), otherwise SCALUP, which holds mu_F."""
+    get_ren_scale = getattr(event, 'get_ren_scale', None)
+    return (get_ren_scale() if get_ren_scale else event.scale) ** 2
+
+
 
 class MadSpinDegenerateWeight(madspin.MadSpinError):
     """The accept/reject cannot ever accept: every trial weight is structurally
@@ -12667,8 +12674,9 @@ class MadSpinInterface(extended_cmd.Cmd):
         momentum is the sum of the selected legs (in the lab), ready to be
         handed to ``_boost_momenta``, which negates the spatial part itself
         (HELAS ``boostx``, exactly what ``boost_to_frame`` does in driver.f);
-        its ``initial`` attribute is the initial state's total momentum, the
-        partonic CM that ``_boost_momenta`` goes through first.
+        its ``along_beam`` and ``initial`` attributes tell ``_boost_momenta``
+        how to get there (along the beam for a collision, through the rest
+        frame of the decaying particle for a decay).
 
         Three things switch it on -- the three clauses of ``_needs_frame_axis``
         -- and all of them are cases where the frame is *observable*:
@@ -12736,15 +12744,12 @@ class MadSpinInterface(extended_cmd.Cmd):
                 "frame_id = %s selects legs %s, a massless system (m^2 = %g "
                 "GeV^2): it has no rest frame. Select massive legs, or several "
                 "legs." % (frame_id, selected, pboost.mass_sqr))
-        # madevent's boost_to_frame acts on momenta in the partonic CM frame
-        # (genps.f builds them there, unwgt.f boosts them to the lab only when
-        # it writes the event), so _boost_momenta first takes the lab momenta
-        # back to the rest frame of the initial state. Going to the selected
-        # legs straight from the lab is not the same frame: two boosts along
-        # different directions compose to a boost and a (Wigner) rotation, and
-        # the quantisation axis of a leg at rest turns with it -- 25 degrees
-        # for a W of pT = 100 GeV in a partonic CM at rapidity 1.
+        # A collision has a beam axis, and its frame is reached along it first
+        # (see _boost_momenta). A decay has none: madevent hands its matrix
+        # element momenta in the rest frame of the decaying particle and
+        # boosts once from there, so _boost_momenta goes through that frame.
         nb_initial = len(orig_order[0]) if orig_order else 2
+        pboost.along_beam = (nb_initial == 2)
         pboost.initial = lhe_parser.FourMomentum()
         for i in range(nb_initial):
             pboost.initial += lhe_parser.FourMomentum(momenta[i])
@@ -12790,11 +12795,24 @@ class MadSpinInterface(extended_cmd.Cmd):
 
         if rest_leg == -1:
             rest_leg = getattr(pboost, 'rest_leg', None)
-        initial = getattr(pboost, 'initial', None)
-        if initial is not None:
-            # through the partonic CM first, as madevent (see _frame_boost)
-            momenta = to_rest(momenta, initial)
-            pboost = to_rest([pboost], initial)[0]
+        if getattr(pboost, 'along_beam', False):
+            # Along z to zero rapidity of pboost, then transverse to its rest
+            # frame: the frame madevent, madspace, aMC@NLO and driver.f all
+            # use, and the same whichever frame along the beam the momenta
+            # come in -- here the lab. A single boost straight from the lab
+            # would differ by a Wigner rotation, and the quantisation axis of
+            # a leg at rest would turn with it (get_me_frame_boosts,
+            # Template/Common/Source/impose_frame_rest.f).
+            momenta = to_rest(momenta, lhe_parser.FourMomentum(
+                pboost.E, 0., 0., pboost.pz))
+            pboost = lhe_parser.FourMomentum(
+                math.sqrt((pboost.E - pboost.pz) * (pboost.E + pboost.pz)),
+                pboost.px, pboost.py, 0.)
+        elif getattr(pboost, 'initial', None) is not None:
+            # a decay: through the rest frame of the decaying particle first,
+            # as madevent (see _frame_boost)
+            momenta = to_rest(momenta, pboost.initial)
+            pboost = to_rest([pboost], pboost.initial)[0]
         out = [(new.E, new.px, new.py, new.pz)
                for new in to_rest(momenta, pboost)]
         if rest_leg is not None and rest_leg <= len(out):
@@ -12977,7 +12995,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                                                   pos=position,
                                                   allow_hel=allow_hel,
                                                   alphas=event.aqcd,
-                                                  scale2=event.scale**2)
+                                                  scale2=ren_scale2(event))
 
 
         #print(f"density_array = {density_array}") 
@@ -13091,7 +13109,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                 P[:, :, c] = np.asarray(momenta[k], dtype=float).T
                 all_pdgs[:, c] = pdgs[k]
                 alphas[c] = events[k].aqcd
-                scale2[c] = events[k].scale ** 2
+                scale2[c] = ren_scale2(events[k])
             # PY_GET_DENSITY_BATCH(PDGS, PROCID, P, POS, ALLOW_HEL, ALPHAS,
             #                      SCALE2, NBATCH, NEXT)
             inter = module.py_get_density_batch(pdgs=all_pdgs,
@@ -13269,7 +13287,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                 else:
                     # SCALE2 is the squared scale (MU_R = sqrt(SCALE2) in
                     # UPDATE_AS_PARAM2), as get_density and the reweighting pass it
-                    new_value = self.all_f2py[pdir](pdg_for_call, p, event.aqcd, event.scale**2)
+                    new_value = self.all_f2py[pdir](pdg_for_call, p, event.aqcd, ren_scale2(event))
                 #if the process is Loop-Induced, smatrixhel returns the tuple (value, returncode), we need to keep only the value
                 if isinstance(new_value, tuple):
                     new_value = new_value[0]
