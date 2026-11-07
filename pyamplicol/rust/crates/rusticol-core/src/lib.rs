@@ -327,3 +327,18 @@ pub mod __private {
     }
 }
 pub const ARTIFACT_MANIFEST_FILE: &str = "artifact.json";
+
+/// Mach-O section that groups the artifact cold-load functions on Apple
+/// targets, so loading an artifact touches few `__TEXT` pages. Use it as
+/// `#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]`
+/// next to `inline(never)`, on functions only. `regular,pure_instructions`
+/// declares a code section: without it the macOS linker warns that the
+/// functions' unwind information lies outside a code section.
+#[cfg(target_vendor = "apple")]
+macro_rules! rcl_load_section {
+    () => {
+        "__TEXT,__rcl_load,regular,pure_instructions"
+    };
+}
+#[cfg(target_vendor = "apple")]
+pub(crate) use rcl_load_section;

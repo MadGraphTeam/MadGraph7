@@ -521,7 +521,7 @@ fn encode_recurrence_bootstrap_physics_wire_v1(
 
 /// Decode and semantically validate one native recurrence physics
 /// payload. Exact consumption is part of the ABI.
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 pub(super) fn decode_recurrence_bootstrap_physics_v1(
     bytes: &[u8],

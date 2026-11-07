@@ -177,7 +177,7 @@ struct ScalarDegreeThreeTransform {
 
 impl SymmetricGroupFftPlan {
     /// Build a transform plan for `S_degree`.
-    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
     #[cfg_attr(target_vendor = "apple", inline(never))]
     pub fn new(degree: usize) -> RusticolResult<Self> {
         let factorials = checked_factorials(degree)?;
