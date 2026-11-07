@@ -10,6 +10,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod reduction_policy;
 pub mod runtime;
 pub mod tir;
 pub mod v2_decimal;

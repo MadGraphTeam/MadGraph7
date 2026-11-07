@@ -88,6 +88,7 @@
 //! single-point evaluation.
 
 mod columns;
+mod induced;
 
 pub use columns::{COLUMN_SETS, ColumnPoint, ColumnValues, INCLUSIVE};
 
@@ -190,6 +191,14 @@ struct NativeRecord {
     /// counterterms' UV parts from the tree program at the IR regulator 0.
     #[serde(default)]
     pole_regulators: Option<PoleRegulators>,
+    /// The plan's loop orders (`ExportedPlan.orders`): an amplitude-mode
+    /// plan's executor slots are per loop order and column.
+    #[serde(default)]
+    orders: Vec<Orders>,
+    /// A loop-induced process's amplitude basis
+    /// (`induced.amplitude_record`); none for a Born-interfered one.
+    #[serde(default)]
+    amplitude: Option<induced::AmplitudeRecord>,
     #[serde(flatten)]
     _rest: BTreeMap<String, serde_json::Value>,
 }
@@ -399,6 +408,16 @@ pub enum V2Poles {
 }
 
 impl V2Poles {
+    /// The selection's name (`PoleSelection.value`).
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::None => "none",
+            Self::Uv => "uv",
+            Self::Ir => "ir",
+        }
+    }
+
     pub(crate) fn poles(self) -> bool {
         self != Self::None
     }
@@ -798,13 +817,17 @@ pub struct V2Runtime {
     process_inputs: Arc<LoopV2NativeTrees>,
     /// The stored observable columns, read on first use.
     observables: Option<columns::Observables>,
+    /// A loop-induced process's amplitude assembly (|A_loop|², m-lit
+    /// LIT-SDK); none for a Born-interfered process. Chosen at open: a
+    /// runtime assembles one process type (no per-point branch).
+    induced: Option<Arc<induced::Induced>>,
 }
 
 /// Whether the artifact at `path` serves its processes through the v2 loop
 /// runtimes (every process requires one of the v2 loop runtime capabilities,
 /// Born-interfered and loop-induced processes in any mix,
-/// `loop_artifact::is_loop_v2_manifest`); [`V2Runtime::open`] serves its
-/// Born-interfered processes.
+/// `loop_artifact::is_loop_v2_manifest`); [`V2Runtime::open`] serves both
+/// process types.
 pub fn is_v2_artifact(path: impl AsRef<Path>) -> RusticolResult<bool> {
     let artifact = rusticol_core::VerifiedArtifact::open(path)?;
     Ok(is_loop_v2_manifest(artifact.manifest()))
@@ -822,19 +845,6 @@ impl V2Runtime {
         let path = path.as_ref().to_path_buf();
         let verified = VerifiedArtifact::open(&path)?;
         let artifact = load_loop_v2_artifact(&verified, process)?;
-        // The native SDK serves Born-interfered processes; a loop-induced
-        // one (an amplitude-mode plan, `rusticol.loop-runtime.v5`) is served
-        // by the Python runtime until the SDK takes amplitude-mode plans
-        // (m-lit LIT-SDK): refused typed, never evaluated as a seeded plan.
-        if artifact.metadata.contribution_kind != "virtual" {
-            return Err(RusticolError::compatibility(format!(
-                "the native loop SDK serves Born-interfered processes \
-                 ({LOOP_V2_RUNTIME_CAPABILITY}); process {:?} is {} \
-                 ({LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY}): evaluate it through \
-                 the Python runtime",
-                artifact.selection.process.id, artifact.metadata.contribution_kind
-            )));
-        }
         let externals = model_externals(&verified)?;
         let native = read_loop_v2_native_inputs(&verified, &artifact)?.ok_or_else(|| {
             invalid("the process has no native point inputs; regenerate the artifact")
@@ -853,7 +863,23 @@ impl V2Runtime {
             Some(&native.planes),
             &program,
         )?;
-        if !trees.has_counterterms() {
+        // A loop-induced process (an amplitude-mode plan,
+        // `rusticol.loop-runtime.v5`) reads its amplitude record; its
+        // counterterms are kets on the amplitude basis (`induced`).
+        let loop_induced = artifact.metadata.contribution_kind == "loop-induced";
+        if loop_induced != program.amplitude || loop_induced != record.amplitude.is_some() {
+            return Err(invalid(format!(
+                "process {:?} is {} ({}) but its plan or native record is not",
+                artifact.selection.process.id,
+                artifact.metadata.contribution_kind,
+                if loop_induced {
+                    LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY
+                } else {
+                    LOOP_V2_RUNTIME_CAPABILITY
+                }
+            )));
+        }
+        if !loop_induced && !trees.has_counterterms() {
             return Err(invalid("the tree program has no counterterm components"));
         }
         // The split selections set the IR regulator by name: it must be a
@@ -916,6 +942,15 @@ impl V2Runtime {
                 "the tree program reads a parameter the model does not declare",
             ));
         }
+        let induced = match &record.amplitude {
+            Some(amplitude) => Some(Arc::new(induced::Induced::new(
+                amplitude.clone(),
+                record.orders.clone(),
+                &record.sectors,
+                program.rows,
+            )?)),
+            None => None,
+        };
         let mut process = Runner::new(program, trees, record.fourier.clone(), threads)?;
         // The binary64 executor, tree runtime and backend (the Python API's,
         // `v2_executor.backend_of`) are built at open.
@@ -949,6 +984,7 @@ impl V2Runtime {
                 planes: native.planes,
             }),
             observables: None,
+            induced,
         })
     }
 
@@ -1194,6 +1230,7 @@ impl V2Runtime {
         ) -> RusticolResult<Vec<V2Point<N>>>,
     ) -> RusticolResult<Vec<V2Point<N>>> {
         self.check_batch(momenta, scales)?;
+        self.check_poles(mode)?;
         if momenta.is_empty() {
             return Ok(Vec::new());
         }
@@ -1225,6 +1262,54 @@ impl V2Runtime {
             .into_iter()
             .map(|point| point.expect("every point is in one part"))
             .collect())
+    }
+
+    /// The pole selection `mode` is one the process serves (its metadata's
+    /// `poles`: every selection for a Born-interfered process, "all" and
+    /// "none" for a loop-induced one, whose UV and IR parts are not additive
+    /// in |A|², m-lit PLAN §2.a.7), refused typed in the Python API's words
+    /// otherwise (`V2VirtualRuntime.evaluate`'s `CompatibilityError`).
+    pub fn check_poles(&self, mode: V2Poles) -> RusticolResult<()> {
+        let name = mode.name();
+        let served = &self.artifact.metadata.poles;
+        if served.iter().any(|selection| selection == name) {
+            return Ok(());
+        }
+        let listed: Vec<String> = served.iter().map(|s| format!("'{s}'")).collect();
+        Err(RusticolError::compatibility(format!(
+            "the pole selection '{name}' is not served by this {} process (it \
+             serves [{}])",
+            self.artifact.metadata.contribution_kind,
+            listed.join(", ")
+        )))
+    }
+
+    /// Whether the process is loop-induced (|A_loop|², no Born).
+    pub fn loop_induced(&self) -> bool {
+        self.induced.is_some()
+    }
+
+    /// A loop-induced process's colour-zero record (m-lit Q13: the one exact
+    /// zero, by colour algebra alone): whether the whole request is an exact
+    /// colour zero and its exact colour-zero loop orders; none for a
+    /// Born-interfered process.
+    pub fn colour_zero(&self) -> Option<(bool, Vec<Vec<(String, i64)>>)> {
+        self.induced.as_ref().map(|induced| {
+            (
+                induced.record.colour_zero,
+                induced.record.colour_zero_orders.clone(),
+            )
+        })
+    }
+
+    /// The generation request's reduction backend (`[loop] reduction`, the
+    /// artifact's default of a call that names none; "auto" when absent).
+    pub fn artifact_reduction(&self) -> &str {
+        self.artifact
+            .request
+            .get("reduction")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("auto")
     }
 
     /// One mu_R² per point, `4 × legs` components per point, positive
@@ -1300,7 +1385,7 @@ impl V2Runtime {
     /// the carrier of `zero` and the arithmetic `arith`
     /// (`plan_export.NativeExecutor.reduce`, `assemble._PointEvaluation.
     /// set_lanes` and `_assemble`, in the same operations and order).
-    fn evaluate_batch<T: Native, A: Lift<T>>(
+    fn evaluate_batch<T: Native, A: Lift<T> + induced::Squaring>(
         &mut self,
         momenta: &[Vec<Rational>],
         scales: &[Rational],
@@ -1313,6 +1398,9 @@ impl V2Runtime {
         Complex<T>: Real + EvaluationDomain,
         TreeRuntime<T>: Send,
     {
+        if let Some(induced) = self.induced.clone() {
+            return self.evaluate_induced(&induced, momenta, scales, mode, precision, zero, arith);
+        }
         let poles = mode.poles();
         let bits = precision.bits()?;
         let lanes = precision.lanes(momenta.len());
@@ -1549,6 +1637,76 @@ impl V2Runtime {
                 })
                 .collect::<RusticolResult<Vec<_>>>()?;
             out.push(Ok((born_values, virtual_values)));
+        }
+        Ok(out)
+    }
+}
+
+impl V2Runtime {
+    /// One batch of a loop-induced process (`plan_export.NativeExecutor.
+    /// reduce` of an amplitude-mode plan and `induced.assemble`): the tree
+    /// program's inputs and counterterm kets, the executor's bare loop
+    /// amplitudes per (loop order, row, basis element), and |A|² per sector
+    /// ([`induced::Induced::square_point`]); no Born values (Q36: the Born
+    /// fields are empty).
+    #[allow(clippy::too_many_arguments)]
+    fn evaluate_induced<T: Native, A: Lift<T> + induced::Squaring>(
+        &mut self,
+        induced: &induced::Induced,
+        momenta: &[Vec<Rational>],
+        scales: &[Rational],
+        mode: V2Poles,
+        precision: V2Precision,
+        zero: &T,
+        arith: &A,
+    ) -> RusticolResult<Vec<V2Point<A::N>>>
+    where
+        Complex<T>: Real + EvaluationDomain,
+        TreeRuntime<T>: Send,
+    {
+        let poles = mode.poles();
+        let width = if poles { 3 } else { 1 };
+        let bits = precision.bits()?;
+        let lanes = precision.lanes(momenta.len());
+        let incoming = self.incoming(momenta);
+        let values = self.parameter_values()?;
+        let (bound, inputs) = self.process.fill(
+            precision, lanes, &values, scales, &incoming, poles, None, zero,
+        )?;
+        let kets = inputs.kets;
+        let batch = v2_batch(incoming, scales, bound, inputs.block_rows, inputs.born);
+        let options = V2Options {
+            poles: mode.lanes(),
+            contraction: contraction(&self.artifact.metadata.color_contraction),
+            ..V2Options::default()
+        };
+        self.backend(precision)?;
+        let backend = self.backends.get_mut(&precision).expect("the backend");
+        let results = self
+            .process
+            .evaluate(lanes, &batch, zero, backend, options)?;
+        let rows = self.process.plan.rows;
+        let mut out = Vec::with_capacity(results.len());
+        for (index, result) in results.into_iter().enumerate() {
+            if !result.failures.is_empty() {
+                out.push(Err(result.failures));
+                continue;
+            }
+            let squared = induced.square_point(
+                arith,
+                &result.amplitudes,
+                kets.as_ref().map(|kets| kets[index].as_slice()),
+                rows,
+                width,
+                bits,
+                self.record.average,
+            )?;
+            let virtual_values = self
+                .sector_index
+                .iter()
+                .map(|&s| squared[s].clone())
+                .collect();
+            out.push(Ok((Vec::new(), virtual_values)));
         }
         Ok(out)
     }

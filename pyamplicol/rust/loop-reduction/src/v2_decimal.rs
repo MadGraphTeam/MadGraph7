@@ -435,6 +435,63 @@ impl Arith for DecimalArith {
     }
 }
 
+/// |A|² of loop-induced amplitude vectors per sector and Laurent
+/// coefficient as the Python API's `loops/v2/induced.square` forms it in
+/// double-double and arbitrary precision, operation for operation (the
+/// canonical squaring order, DESIGN §7.10, of RULED Q41): per sector, per
+/// slot pair `(l, l')` in order (weight 1 for `l == l'`, 2 otherwise), per
+/// helicity row whose two vectors exist (`vectors[l * rows + row]`; `None`
+/// is absent and skipped, as Python's `amplitudes.get`), per coefficient k
+/// `Σ_{i+j=k} Σ_t conj(a_{t,i}) Σ_u G_{tu} b_{u,j}`, its real part times the
+/// weight added to the sector's coefficient; each total divided by the
+/// average. `metric` is `G` row-major (`size²` cells). Binary64 squares with
+/// `rusticol_core::loop_v2::interference::square_amplitudes` (Python's
+/// `induced.native_square`).
+#[allow(clippy::too_many_arguments)]
+pub fn square_amplitudes_python<A: Arith>(
+    arith: &A,
+    vectors: &[Option<Vec<Vec<C<A::N>>>>],
+    rows: usize,
+    size: usize,
+    width: usize,
+    metric: &[C<A::N>],
+    pairs: &[Vec<(usize, usize)>],
+    average: i64,
+) -> Vec<Vec<A::N>> {
+    let zero = C::new(arith.zero(), arith.zero());
+    let real_zero = arith.real_int(0);
+    let divisor = arith.int(average);
+    let mut out = Vec::with_capacity(pairs.len());
+    for sector in pairs {
+        let mut totals = vec![real_zero.clone(); width];
+        for &(left, right) in sector {
+            let weight = arith.int(if left == right { 1 } else { 2 });
+            for row in 0..rows {
+                let (Some(a), Some(b)) = (&vectors[left * rows + row], &vectors[right * rows + row])
+                else {
+                    continue;
+                };
+                for (k, slot) in totals.iter_mut().enumerate() {
+                    let mut total = zero.clone();
+                    for i in 0..=k {
+                        let j = k - i;
+                        for (t, left_cell) in a.iter().enumerate().take(size) {
+                            let mut inner = zero.clone();
+                            for (u, right_cell) in b.iter().enumerate().take(size) {
+                                inner = cadd(arith, &inner, &cmul(arith, &metric[t * size + u], &right_cell[j]));
+                            }
+                            total = cadd(arith, &total, &cmul(arith, &conj(arith, &left_cell[i]), &inner));
+                        }
+                    }
+                    *slot = arith.add(slot, &arith.mul(&weight, &total.re));
+                }
+            }
+        }
+        out.push(totals.iter().map(|value| arith.div(value, &divisor)).collect());
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
