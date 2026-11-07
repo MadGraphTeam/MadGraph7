@@ -21,9 +21,9 @@ What each panel establishes:
   C  eCM matches sqrt(x_BS1 x_BS2 s) to 1e-11, and the final-state energy
      sums to (x_BS1+x_BS2)E rather than 2E
   D  ILC 500: the forward-photon energy the shower produces drops by
-     8.4 GeV on average, against 9.3 GeV of beamstrahlung energy that left
+     9.1 GeV on average, against 10.3 GeV of beamstrahlung energy that left
      with the beam, and the fraction of events with no forward ISR photon
-     at all goes from 26% to 43%
+     at all goes from 23% to 40% (regenerated 2026-11-07)
   E  FCC-ee 240: the two curves coincide, as they must when only 0.03 GeV
      is removed
   F  the beamstrahlung spectra behind D and E

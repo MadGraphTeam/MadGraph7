@@ -46,10 +46,10 @@ Citation keys in `runsetup.tex` are placeholders (`Frixione:2021zdp`,
 
 ## 3. State that beamstrahlung is irrelevant for FCC-ee, with a reference
 
-Our numbers: 5.9% (240 GeV) and 6.0% (365 GeV) of beams radiate at all,
-mean relative energy loss 1.6e-5 per beam, fewer than 0.2% of events below
-`sqrt(s')/sqrt(s) = 0.999`. At ILC 500 the same quantities are 23.1%,
-7.5e-3 and 28%.
+Our numbers (regenerated 2026-11-07): 6.2% (240 GeV) and 10.7% (365 GeV) of
+beams radiate at all, mean relative energy loss 1.6e-5 (3.8e-5) per beam,
+0.2% (0.7%) of events below `sqrt(s')/sqrt(s) = 0.999`. At ILC 500 the same
+quantities are 30.3%, 1.0e-2 and 39%.
 
 A reference is still needed. I sanity-checked against an average loss of
 about 1.42 MeV per crossing quoted at the WW threshold, same order of

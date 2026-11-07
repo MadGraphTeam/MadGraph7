@@ -17,8 +17,8 @@ renormalisation and factorisation scales are dynamical
 muons satisfy the default run-card cuts, $p_T>10$~GeV, $|\eta|<2.5$ and
 $\Delta R_{\mu\mu}>0.4$, with no cut on $m(\mu^-\mu^+)$.  We generate
 $2\times10^4$ unweighted events at each FCC-ee energy and $1.5\times10^4$
-for the ILC, obtaining $\sigma=3.358(6)$~pb at $240$~GeV,
-$\sigma=1.316(3)$~pb at $365$~GeV and $\sigma=0.3752(6)$~pb at $500$~GeV.
+for the ILC, obtaining $\sigma=3.866(6)$~pb at $240$~GeV,
+$\sigma=1.518(3)$~pb at $365$~GeV and $\sigma=0.7622(14)$~pb at $500$~GeV.
 
 Because a dressed-lepton density convolutes beamstrahlung with ISR, the
 momentum fraction carried by the incoming lepton is the product
@@ -42,25 +42,27 @@ events in which at least one beam radiated.  This is the ISR that the
 space-like shower builds.  The dashed curves are obtained by showering the
 same events with the beams left at their nominal energy, which is what a
 shower unaware of beamstrahlung does.  At the FCC-ee the two treatments are
-indistinguishable, because the energy at stake is only
-$\sim2\times10^{-5}$ of the beam; at the ILC they separate clearly, the
-shower producing on average $8.4$~GeV more forward radiation than it should
-against the $9.3$~GeV per event that beamstrahlung had in fact carried away
+nearly indistinguishable, because the energy at stake is only
+a few $10^{-5}$ of the beam; at the ILC they separate clearly, the
+shower producing on average $9.1$~GeV more forward radiation than it should
+against the $10.3$~GeV per event that beamstrahlung had in fact carried away
 before the collision, and the fraction of events with no forward photon at
-all changing from $26\%$ to $43\%$.  The middle panel shows the underlying
-spectra: $5.9\%$ ($6.0\%$) of the FCC-ee beams radiate at $240$ ($365$)~GeV
-with a mean relative energy loss of $1.6\times10^{-5}$, against $23.1\%$ and
-$7.5\times10^{-3}$ at the ILC.  The lower panel translates this into the
+all changing from $23\%$ to $40\%$.  The middle panel shows the underlying
+spectra: $6.2\%$ ($10.7\%$) of the FCC-ee beams radiate at $240$ ($365$)~GeV
+with a mean relative energy loss of $1.6\times10^{-5}$ ($3.8\times10^{-5}$), against $30.3\%$ and
+$1.0\times10^{-2}$ at the ILC.  The lower panel translates this into the
 collision energy left after beamstrahlung,
-$\sqrt{s'}/\sqrt{s}=\sqrt{x_{\rm BS1}x_{\rm BS2}}$: fewer than $0.2\%$ of
-the FCC-ee events fall below $0.999$, whereas $28\%$ of the ILC ones do.
+$\sqrt{s'}/\sqrt{s}=\sqrt{x_{\rm BS1}x_{\rm BS2}}$: $0.2\%$ ($0.7\%$) of
+the FCC-ee events at $240$ ($365$)~GeV fall below $0.999$, whereas $39\%$ of the ILC ones do.
 The treatment is therefore essentially inert at a circular collider, as it
 should be, and necessary at a linear one.
 
 % Reproduction: vendor/py8main/validation/ holds dump.cc, which showers an
 % event file with and without degraded beams and writes the per-event
-% quantities, and mg7plot.py, which produces this figure.  Cross sections
-% obtained with MadGraph7 0.2.0 at commit 9f9b8cced.
+% quantities, and mg7plot.py, which produces this figure.  Regenerated on
+% 2026-11-07 at 6bbff4cb93 (Pythia 8.318), one process directory per density;
+% the first version (fdb2bbccec) lost the beamstrahlung components to flavour
+% grouping and ran the 365 GeV sample with the fcce240ll density.
 
 % Cross-check of the shipped spectra against the machine designs.  The
 % parameterisations are fits to GuineaPig runs, and the shipped coefficients

@@ -111,7 +111,7 @@ for pl, dg, col, lab in SETS:
 ax.set_xscale('log')
 ax.set_yscale('log')
 ax.set_xlim(1e-7, 1.0)
-ax.set_ylim(1e-4, 0.5)
+ax.set_ylim(1e-4, 1.0)
 ax.set_xlabel('$1-x_{\\rm BS}$')
 ax.set_ylabel('$1/N \\, dN/d\\log_{10}$')
 update_legend(ax, 3, pos=(0.02, 0.98))
