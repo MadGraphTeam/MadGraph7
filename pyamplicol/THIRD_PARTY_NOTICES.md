@@ -54,8 +54,8 @@ in `siravan/symjit-crate#1`; it does not alter generated kernels.
 The distributed `pyamplicol._rusticol` extension and the C SDK archive
 `librusticol_capi.a` statically link pyAmpliCol's own Rust crates (0BSD) with
 their Rust dependencies: Symbolica's Rust crates, Rug and its `gmp-mpfr-sys`
-bindings, SymJIT, NinjaRS, oneloopmaster, GammaLoop's FeynKit, Spenso, Idenso
-and linnet crates, and published crates.io crates.
+bindings, SymJIT, NinjaRS, oneloopmaster, TIRust, GammaLoop's FeynKit, Spenso,
+Idenso and linnet crates, and published crates.io crates.
 Higher-precision Python evaluation additionally loads the separately installed
 Symbolica Python package, which remains subject to Symbolica's terms.
 
@@ -93,6 +93,20 @@ from the sources bundled in the `gmp-mpfr-sys` 1.7.1 crate
 shared instead of static; `build_backend/arithmetic.py` in pyAmpliCol's source
 distribution is the complete build recipe.
 
+The Rust crates `rug` and `gmp-mpfr-sys` themselves (the bindings, not the C
+libraries) are statically linked into the extension and the C SDK archive.
+Relinking with modified versions of them is offered under section 4(d)(0) of
+the GNU Lesser General Public License version 3: pyAmpliCol's source
+distribution is the complete Corresponding Application Code (every Rust and
+Python source, `Cargo.toml`, `Cargo.lock` and the build backend), and the
+Minimal Corresponding Source of the two crates is published on crates.io at
+the versions locked in `Cargo.lock`. To produce a modified combined work,
+replace the crates in the unpacked source distribution (for example with a
+`[patch.crates-io]` entry in its `Cargo.toml` that names the modified crates,
+then `cargo update -p rug -p gmp-mpfr-sys`) and rebuild and install from it
+(`python -m pip install .` in that directory, as in "To build from the source
+distribution published on PyPI" in `docs/user/installation.md`).
+
 ## NinjaRS
 
 NinjaRS (<https://github.com/alphal00p/ninjars>), the one-loop integrand
@@ -113,6 +127,19 @@ project, including the pinned revision. oneloopmaster is a Rust/Symbolica
 transcription of OneLOop by Andreas van Hameren, who gave his permission for
 its distribution and relicensing. `licenses/oneloopmaster.txt` reproduces the
 license and the OneLOop credits its README asks for.
+
+## TIRust
+
+TIRust (<https://github.com/huashengshao/TIRust>, formerly
+`huashengshao/iregi-rust`; Rust crates `iregi-rust` and `iregi-masters`), the
+one-loop tensor-integral reduction library, is linked from the revision pinned
+in `rust/loop-reduction/Cargo.toml` and `Cargo.lock` (the cargo feature `tir`,
+on by default). It is distributed under the BSD Zero Clause License; its
+license covers the project's own code, including the scalar masters generated
+from oneloopmaster's expressions (a transcription of OneLOop by Andreas van
+Hameren, distributed and relicensed with his permission). The third-party
+content its license lists is not part of the two linked crates.
+`licenses/TIRust.txt` reproduces the license of the pinned revision.
 
 ## GammaLoop Crates (FeynKit)
 

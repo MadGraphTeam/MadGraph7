@@ -51,6 +51,7 @@ REPOSITORY_NOTICES = {
     "alphal00p/gammaloop": "GammaLoop-crates.txt",
     "alphal00p/ninjars": "NinjaRS.txt",
     "alphal00p/oneloopmaster": "oneloopmaster.txt",
+    "huashengshao/TIRust": "TIRust.txt",
 }
 _REPOSITORY = re.compile(r"github\.com/([^/]+/[^/?#]+?)(?:\.git)?[?#)]")
 _LICENCE_NAME = re.compile(

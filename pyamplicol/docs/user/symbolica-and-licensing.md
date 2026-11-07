@@ -329,6 +329,7 @@ model with `--jit-compress` or `--no-jit-compress`.
 | SymJIT | Native JIT application runtime | MIT License. |
 | NinjaRS | One-loop integrand reduction, linked into the native libraries | BSD Zero Clause License (`0BSD`). |
 | oneloopmaster | One-loop scalar integrals, linked into the native libraries | BSD Zero Clause License (`0BSD`); a transcription of OneLOop, relicensed with Andreas van Hameren's permission; see `licenses/oneloopmaster.txt`. |
+| TIRust | One-loop tensor-integral reduction, linked into the native libraries (default cargo feature `tir`) | BSD Zero Clause License (`0BSD`), including its scalar masters transcribed from OneLOop with Andreas van Hameren's permission; see `licenses/TIRust.txt`. |
 | GammaLoop crates (FeynKit, Spenso, Idenso, linnet) | Loop kinematics and tensor algebra, linked into the native libraries | MIT OR Apache-2.0, MIT, or GammaLoop's no-restrictions license per crate; the vendored `dot-parser` declares GPL-2.0-or-later. |
 | Other linked Rust crates (including Rug with GMP, MPFR and MPC) | Native dependencies | Their own licenses, reproduced under `licenses/rust/`; GMP, MPFR, MPC and the Rust crates `rug` and `gmp-mpfr-sys` are LGPL-3.0-or-later. |
 | UFO model loader | External UFO loading | MIT License. |

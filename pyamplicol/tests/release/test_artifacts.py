@@ -66,6 +66,7 @@ _LEGAL_FILES = (
     "licenses/SymJIT.txt",
     "licenses/NinjaRS.txt",
     "licenses/oneloopmaster.txt",
+    "licenses/TIRust.txt",
     "licenses/GammaLoop-crates.txt",
     # GMP, MPFR and MPC: LGPL-3.0-or-later and the GPL-3.0 text it incorporates,
     # from the gmp-mpfr-sys release Cargo.lock pins.
