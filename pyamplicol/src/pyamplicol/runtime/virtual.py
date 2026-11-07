@@ -8,7 +8,7 @@ one complete batch, including source parameters, counterterms and reduction.
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from decimal import Decimal, InvalidOperation
 from numbers import Integral, Real
 from threading import RLock
@@ -340,13 +340,16 @@ def v2_options(
     if on_failure not in ("raise", "return"):
         raise ValueError("on_failure must be 'raise' or 'return'")
     if helicities or color_flows:
-        # ``evaluate`` and ``evaluate_resolved`` take them at leading colour
-        # (``loops.v2.selection``) and remove them before this check; the
-        # correlated evaluations reach it.
+        # ``evaluate`` and ``evaluate_resolved`` take them (Born-interfered:
+        # at leading colour, ``loops.v2.selection``; loop-induced: helicities
+        # at full colour, ``V2InducedObservablesRuntime``) and remove them before this
+        # check; the correlated evaluations reach it.
         raise CompatibilityError(
             "v2 correlated virtual evaluations take no helicity or colour-flow "
             "selection, as in the tree engine; select with evaluate or "
-            "evaluate_resolved at leading colour (color.accuracy='lc')"
+            "evaluate_resolved (Born-interfered processes at leading colour, "
+            "color.accuracy='lc'; loop-induced processes select helicities at "
+            "full colour)"
         )
     v2_r2_strategy(r2_strategy)
     if stability is not None:
@@ -559,8 +562,10 @@ class V2ObservablesRuntime:
         reduction: VirtualReduction | None = None,
     ) -> tuple[list[Any], dict[int, list[str]]]:
         """Per-point outputs (``None`` for a failed point) and the failures;
-        the native columns reduce on ``reduction``'s effective backend (the
-        artifact runtime's choice for the call's carrier; None: NinjaRS)."""
+        ``reduction`` is the call's backend at its carrier (the artifact
+        runtime's choice; None: a direct runtime, NinjaRS): the native
+        columns reduce on its effective backend (``reduction.running``) and
+        take the options of ``_column_options``."""
 
         from pyamplicol.loops.v2.plan_export import FailedPoints
         from pyamplicol.loops.v2.reduction import running
@@ -570,6 +575,7 @@ class V2ObservablesRuntime:
             return [], {}
         effective = None if reduction is None else reduction.effective
         if self._executor == "native":
+            extra = self._column_options(reduction)
 
             def batch(indices: list[int]) -> tuple[list[Any], dict[int, list[str]]]:
                 try:
@@ -580,6 +586,7 @@ class V2ObservablesRuntime:
                                 [scales[i] for i in indices],
                                 spin=[spins[i] for i in indices],
                                 **options,
+                                **extra,
                             )
                         ),
                         {},
@@ -590,7 +597,9 @@ class V2ObservablesRuntime:
             with running(effective):
                 return isolate_scale_failures(batch, scales)
         if effective not in (None, "ninjars"):
-            raise CompatibilityError(
+            from pyamplicol.api.errors import ReductionUnavailable
+
+            raise ReductionUnavailable(
                 f"the Python reference executor reduces with NinjaRS only, not "
                 f"{effective!r}"
             )
@@ -605,6 +614,14 @@ class V2ObservablesRuntime:
                 out.append(None)
                 failures[index] = [str(error)]
         return out, failures
+
+    def _column_options(self, reduction: VirtualReduction | None) -> dict[str, Any]:
+        """The native column runners' options from the call's reduction
+        choice: none for the Born-interfered stored columns (they read the
+        effective backend from ``reduction.running``, set by ``_run``)."""
+
+        del reduction
+        return {}
 
     # -- evaluation -----------------------------------------------------------
 
@@ -771,6 +788,7 @@ class V2ObservablesRuntime:
                 v2_public_estimate(
                     result.stability,
                     with_poles,
+                    contribution=self.contribution_kind,
                     sectors=[sector.order for sector in self._sectors],
                 )
             )
@@ -809,6 +827,7 @@ class V2ObservablesRuntime:
             poles=poles,
             stability=tuple(estimates) if checked else None,
             pole_parts=tuple(parts) if split else None,
+            contribution=self.contribution_kind,
         )
 
     def _default_born_orders(self) -> tuple[tuple[tuple[str, int], ...], ...]:
@@ -953,6 +972,53 @@ class V2ObservablesRuntime:
             "its representative process"
         )
 
+    def _require_selection(
+        self,
+        helicities: Sequence[str] | None,
+        color_flows: Sequence[str] | None,
+        *,
+        resolved: bool = False,
+    ) -> None:
+        """Refuse a selection the process cannot serve: at NLC and full
+        colour every helicity and colour is contracted
+        (``selection.require_leading_colour``)."""
+
+        from pyamplicol.loops.v2 import selection as lc
+
+        lc.require_leading_colour(
+            self._observables.slice.request.accuracy,
+            helicities,
+            color_flows,
+            resolved=resolved,
+        )
+
+    def _resolution(self, color_resolution: str | None) -> tuple[Any, tuple[Any, ...]]:
+        """(the resolved column set's key, its colour components) of
+        ``evaluate_resolved``: at leading colour one entry per Born basis
+        element, else one contracted component."""
+
+        if color_resolution is not None:
+            raise CompatibilityError(
+                "color_resolution selects the colour axis of a loop-induced "
+                "process's resolved output; a Born-interfered virtual resolves "
+                "its colour by its accuracy"
+            )
+        if self._observables.slice.request.accuracy == "lc":
+            return "helicity-colour", tuple(self._observables.components)
+        return "helicity", (None,)
+
+    def _colour_ids(
+        self, components: Sequence[Any]
+    ) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """(Born, virtual) colour IDs of the resolved components: a Born
+        basis element's ``basis-<i>`` at leading colour, else the accuracy."""
+
+        accuracy = self._observables.slice.request.accuracy
+        if accuracy == "lc":
+            ids = tuple(f"basis-{b}" for b in components)
+            return ids, ids
+        return (str(accuracy),), (str(accuracy),)
+
     def _evaluate_selected(
         self,
         momenta: Momenta,
@@ -972,9 +1038,7 @@ class V2ObservablesRuntime:
 
         poles, checks = v2_options(on_failure=on_failure, **options)
         observables = self._observables
-        lc.require_leading_colour(
-            observables.slice.request.accuracy, helicities, color_flows
-        )
+        self._require_selection(helicities, color_flows)
         self._refuse_member_selection()
         rows, basis = self.selection_catalogue().resolve(helicities, color_flows)
         column = lc.column(rows, basis)
@@ -1045,17 +1109,103 @@ class V2ObservablesRuntime:
     ) -> dict[str, VirtualEvaluation]:
         """Every request on one batch; requests with equal spin sources share
         their seed columns (one dressing per point and source assignment; one
-        native batch per source assignment)."""
+        native batch per source assignment, ``_correlated_batches``)."""
 
         selection, checks = v2_options(on_failure=on_failure, **options)
-        observables = self._observables
         arithmetic, carrier = self._precision(arithmetic, precision)
         points, scales = _inputs(momenta, mu_r2, self.external_count)
+        groups, sources = self._spin_groups(requests, len(points))
+        with self._lock:
+            parameters = dict(self._parameters)
+        settings = {
+            "parameters": parameters,
+            "precision": carrier,
+            "poles": selection.value,
+            "stability": checks.to_checks() if checks.enabled else None,
+        }
+        reduction = None if reductions is None else reductions[arithmetic]
+        out: dict[str, VirtualEvaluation] = {}
+        for outputs, spins, python, labels in self._correlated_batches(
+            requests, groups, sources, len(points), settings
+        ):
+            per_point, failures = self._run(
+                ("correlated", outputs),
+                python,
+                points,
+                scales,
+                spins,
+                settings,
+                reduction,
+            )
+            self._failed(failures, on_failure)
+            for label, output in labels:
+                out[label] = self._evaluation(
+                    [
+                        None if results is None else results[output]
+                        for results in per_point
+                    ],
+                    failures,
+                    arithmetic,
+                    carrier,
+                    _correlated,
+                    selection,
+                    checks,
+                    reductions,
+                )
+        return {label: out[label] for label in requests}
+
+    def _correlated_batches(
+        self,
+        requests: Mapping[str, CorrelatedRequest],
+        groups: Mapping[tuple[Any, ...], list[str]],
+        sources: Mapping[tuple[Any, ...], tuple[dict[int, Any], ...]],
+        point_count: int,
+        settings: Mapping[str, Any],
+    ) -> Iterator[tuple[tuple[Any, ...], list[Any], Any, list[tuple[str, Any]]]]:
+        """The batches of ``evaluate_correlated_many``, one per spin source
+        assignment (``_spin_groups``): its outputs (the colour histories),
+        per-point spin sources, Python runner, and each label's output."""
+
+        del point_count
+        for key, labels in groups.items():
+            histories = tuple(
+                dict.fromkeys(requests[label].color_correlation for label in labels)
+            )
+            runner: Any = self._runner() if self._executor != "native" else None
+
+            def python(
+                point: Any,
+                scale: Any,
+                spin: Any,
+                runner: Any = runner,
+                histories: Any = histories,
+            ) -> Any:
+                return runner.evaluate(
+                    point, scale, correlations=histories, spin=spin, **settings
+                )
+
+            yield (
+                histories,
+                [spin or None for spin in sources[key]],
+                python,
+                [(label, requests[label].color_correlation) for label in labels],
+            )
+
+    def _spin_groups(
+        self, requests: Mapping[str, CorrelatedRequest], point_count: int
+    ) -> tuple[
+        dict[tuple[Any, ...], list[str]],
+        dict[tuple[Any, ...], tuple[dict[int, Any], ...]],
+    ]:
+        """The labels of ``evaluate_correlated_many``'s requests per spin
+        source assignment (its key: the per-point sources) and each
+        assignment's per-point sources (the request's vectors, else those
+        set by ``set_spin_correlation_vectors``), the requests checked."""
+
         known = {item.id for item in self.available_color_correlations()}
         with self._lock:
             inherited = dict(self._spin_vectors)
-            parameters = dict(self._parameters)
-        classes = observables.spin_classes
+        classes = self._observables.spin_classes
         allowed = tuple(sorted({leg for group in classes for leg in group}))
         groups: dict[tuple[Any, ...], list[str]] = {}
         sources: dict[tuple[Any, ...], tuple[dict[int, Any], ...]] = {}
@@ -1070,10 +1220,10 @@ class V2ObservablesRuntime:
             vectors = _copy_spin_vectors(
                 inherited if request.spin_vectors is None else request.spin_vectors,
                 classes,
-                point_count=len(points),
+                point_count=point_count,
             )
             prepared = _prepare_spin_vectors(
-                vectors, allowed_legs=allowed, point_count=len(points)
+                vectors, allowed_legs=allowed, point_count=point_count
             )
             key = tuple(
                 tuple(sorted((leg, wave) for leg, wave in point.items()))
@@ -1081,57 +1231,7 @@ class V2ObservablesRuntime:
             )
             groups.setdefault(key, []).append(label)
             sources[key] = prepared
-        settings = {
-            "parameters": parameters,
-            "precision": carrier,
-            "poles": selection.value,
-            "stability": checks.to_checks() if checks.enabled else None,
-        }
-        out: dict[str, VirtualEvaluation] = {}
-        for key, labels in groups.items():
-            histories = tuple(
-                dict.fromkeys(requests[label].color_correlation for label in labels)
-            )
-            spins = [spin or None for spin in sources[key]]
-            runner: Any = self._runner() if self._executor != "native" else None
-
-            def python(
-                point: Any,
-                scale: Any,
-                spin: Any,
-                runner: Any = runner,
-                histories: Any = histories,
-            ) -> Any:
-                return runner.evaluate(
-                    point, scale, correlations=histories, spin=spin, **settings
-                )
-
-            per_point, failures = self._run(
-                ("correlated", histories),
-                python,
-                points,
-                scales,
-                spins,
-                settings,
-                None if reductions is None else reductions[arithmetic],
-            )
-            self._failed(failures, on_failure)
-            for label in labels:
-                history = requests[label].color_correlation
-                out[label] = self._evaluation(
-                    [
-                        None if results is None else results[history]
-                        for results in per_point
-                    ],
-                    failures,
-                    arithmetic,
-                    carrier,
-                    _correlated,
-                    selection,
-                    checks,
-                    reductions,
-                )
-        return {label: out[label] for label in requests}
+        return groups, sources
 
     def evaluate_resolved(
         self,
@@ -1144,14 +1244,15 @@ class V2ObservablesRuntime:
         helicities: Sequence[str] | None = None,
         color_flows: Sequence[str] | None = None,
         reductions: Mapping[str, VirtualReduction] | None = None,
+        color_resolution: str | None = None,
         **options: Any,
     ) -> ResolvedVirtualEvaluation:
         """Per Born helicity row and Born basis element (design §8.5); at
         leading colour ``helicities`` and ``color_flows`` (the tree engine's
         IDs and ordinals, as in ``evaluate``) keep the selected rows and the
-        basis elements of the selected flows, each entry as without them."""
-
-        from pyamplicol.loops.v2 import selection as lc
+        basis elements of the selected flows, each entry as without them.
+        ``color_resolution`` is a loop-induced process's colour axis
+        (``V2InducedObservablesRuntime``)."""
 
         selection, checks = v2_options(on_failure=on_failure, **options)
         with_poles = computes_poles(selection)
@@ -1163,14 +1264,10 @@ class V2ObservablesRuntime:
         if self._member is not None:
             # The member's rows in its own catalogue order.
             rows = tuple(sorted(self._member.row(row) for row in rows))
-        accuracy = observables.slice.request.accuracy
-        resolution = "helicity-colour" if accuracy == "lc" else "helicity"
-        components: tuple[Any, ...] = (
-            observables.components if accuracy == "lc" else (None,)
-        )
+        resolution, components = self._resolution(color_resolution)
         helicity_ids = tuple(f"h{i}" for i in range(len(rows)))
         if helicities or color_flows:
-            lc.require_leading_colour(accuracy, helicities, color_flows, resolved=True)
+            self._require_selection(helicities, color_flows, resolved=True)
             self._refuse_member_selection()
             kept, basis = self.selection_catalogue().resolve(helicities, color_flows)
             if kept is not None:
@@ -1271,6 +1368,7 @@ class V2ObservablesRuntime:
                         v2_public_estimate(
                             result[(row, b)].stability,
                             with_poles,
+                            contribution=self.contribution_kind,
                             sectors=[sector.order for sector in self._sectors],
                         )
                         for b in components
@@ -1311,11 +1409,7 @@ class V2ObservablesRuntime:
                         )
                     )
                 )
-        ids = (
-            tuple(f"basis-{b}" for b in components)
-            if accuracy == "lc"
-            else (str(accuracy),)
-        )
+        born_ids, ids = self._colour_ids(components)
         return ResolvedVirtualEvaluation(
             born_values=tuple(born_values),
             values=tuple(values),
@@ -1324,10 +1418,146 @@ class V2ObservablesRuntime:
             diagnostics=tuple(diagnostics),
             r2=R2Selection(R2Strategy.MODEL, R2Strategy.MODEL, "model-supplied R2"),
             helicity_ids=helicity_ids,
-            born_color_ids=ids,
+            born_color_ids=born_ids,
             virtual_color_ids=ids,
             color_accuracy=observables.slice.request.accuracy,
             poles=selection,
             stability=tuple(estimates) if checks.enabled else None,
             pole_parts=tuple(parts) if split else None,
+            contribution=self.contribution_kind,
         )
+
+
+class V2InducedObservablesRuntime(V2ObservablesRuntime):
+    """``V2ObservablesRuntime`` over a loop-induced process
+    (``loops.v2.induced_observables.InducedObservables``, m-lit LIT-OBS):
+    the same calls and result types, every output a quadratic form on the
+    point's one amplitude vector (no extra dressing or reduction; RULED Q9).
+
+    Results are ``contribution="loop-induced"`` (zeroed Born fields, RULED
+    Q36). The colour histories are the declared ones (the stored matrices),
+    ``"born"`` the colour metric: |A|^2. ``evaluate(helicities=...)``
+    selects helicity rows at full colour (RULED Q39: |A(h)|^2/avg with the
+    total's average, so a complete selection sums to it; no parity or Bose
+    row mapping, RULED Q37); a loop-induced process has no colour flows
+    (full colour only, RULED Q8). ``evaluate_resolved`` is per helicity row
+    with one colour-contracted component (``"full"``), or with
+    ``color_resolution="amplitude-basis"`` per amplitude-basis anchor
+    (``amplitude-<t>``: Re(conj(a_t) (G a)_t)/avg, a basis-dependent split
+    summing to the row's value). The native executor runs every call, one
+    batch (and one per rotation) per call: ``evaluate_correlated_many``
+    forms every request, whatever its spin sources, on the same amplitude
+    vectors; the call's effective reduction backend goes to the executor
+    (``induced_observables.InducedColumns``)."""
+
+    contribution_kind = "loop-induced"
+
+    def __init__(self, observables: Any, **options: Any) -> None:
+        if options.get("executor", "native") != "native":
+            raise ValueError("loop-induced observables run the native executor")
+        super().__init__(observables, **options)
+
+    def _default_born_orders(self) -> tuple[tuple[tuple[str, int], ...], ...]:
+        return ()
+
+    def _column_options(self, reduction: VirtualReduction | None) -> dict[str, Any]:
+        """The effective backend of the call (``InducedColumns.evaluate``
+        passes it to the executor, which refuses one it does not run)."""
+
+        return {"reduction": None if reduction is None else reduction.effective}
+
+    def _correlated_batches(
+        self,
+        requests: Mapping[str, CorrelatedRequest],
+        groups: Mapping[tuple[Any, ...], list[str]],
+        sources: Mapping[tuple[Any, ...], tuple[dict[int, Any], ...]],
+        point_count: int,
+        settings: Mapping[str, Any],
+    ) -> Iterator[tuple[tuple[Any, ...], list[Any], Any, list[tuple[str, Any]]]]:
+        """Every request of ``evaluate_correlated_many`` on one native batch
+        (and one per rotation): each (spin source assignment, colour history)
+        output is a quadratic form on the points' amplitude vectors, so
+        requests with different spin sources cost no extra dressing or
+        reduction (RULED Q9). The outputs are keyed (assignment, history)
+        (``InducedObservables.native_columns``)."""
+
+        del settings
+        assignments = tuple(groups)
+        labels = [
+            (label, (g, requests[label].color_correlation))
+            for g, key in enumerate(assignments)
+            for label in groups[key]
+        ]
+        spins = [
+            tuple(sources[key][index] or None for key in assignments)
+            for index in range(point_count)
+        ]
+
+        def python(point: Any, scale: Any, spin: Any) -> Any:
+            raise AssertionError("loop-induced observables run the native executor")
+
+        outputs = tuple(dict.fromkeys(output for _, output in labels))
+        yield outputs, spins, python, labels
+
+    def selection_catalogue(self) -> Any:
+        """The helicity rows a selection names (no colour flows): a mapped
+        process's own rows, in its resolved order (``evaluate_resolved``),
+        which its columns read as the representative rows they relabel
+        (``InducedObservables.native_columns``)."""
+
+        from pyamplicol.loops.v2 import selection
+
+        member = self._member
+        if member is None:
+            return super().selection_catalogue()
+        with self._lock:
+            if self._catalogue is None:
+                rows = sorted(member.row(row) for row in self._observables.rows)
+                self._catalogue = selection.Catalogue(tuple(rows), ())
+            return self._catalogue
+
+    def _refuse_member_selection(self) -> None:
+        """A mapped process selects its own helicity rows
+        (``selection_catalogue``) and has no colour flows
+        (``_require_selection``)."""
+
+    def _require_selection(
+        self,
+        helicities: Sequence[str] | None,
+        color_flows: Sequence[str] | None,
+        *,
+        resolved: bool = False,
+    ) -> None:
+        del helicities, resolved
+        if color_flows:
+            raise CompatibilityError(
+                "a loop-induced process is evaluated at full colour only and "
+                "has no colour flows to select; select helicity rows "
+                "(helicities=...) or resolve the amplitude-basis anchors "
+                "(evaluate_resolved(color_resolution='amplitude-basis'))"
+            )
+
+    def _resolution(self, color_resolution: str | None) -> tuple[Any, tuple[Any, ...]]:
+        from pyamplicol.loops.v2 import induced_observables as io
+
+        choice = io.CONTRACTED if color_resolution is None else color_resolution
+        if choice not in io.COLOUR_RESOLUTIONS:
+            raise CompatibilityError(
+                f"unknown loop-induced colour resolution {color_resolution!r}; "
+                f"choose one of {list(io.COLOUR_RESOLUTIONS)}"
+            )
+        if choice == io.CONTRACTED:
+            return choice, (None,)
+        return choice, tuple(range(len(self._observables.slice.amplitude)))
+
+    def _colour_ids(
+        self, components: Sequence[Any]
+    ) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """No Born colour axis (RULED Q36); the contracted component
+        ``"full"`` or the amplitude-basis anchors ``amplitude-<t>``."""
+
+        from pyamplicol.loops.v2 import induced_observables as io
+
+        if tuple(components) == (None,):
+            return (), ("full",)
+        return (), tuple(io.ANCHOR_ID.format(t) for t in components)

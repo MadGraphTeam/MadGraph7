@@ -28,6 +28,15 @@
 //! block value on a dropped row no longer reaches a kept one). A plan whose
 //! columns keep every row is left as it is. Schedules F and M keep their own
 //! programs.
+//!
+//! **Dressed rows** (route R2, [`LoopProgramV4::dressed`]): the leaves seed
+//! one constant row, so nothing dies forward; a trace step closes each
+//! object row into the columns of its Born row ([`super::RowTrace`]), so the
+//! backward pass keeps a trace step's object rows whose Born row is kept and
+//! read by a column (`row_columns`): at load the rows no column reads (the
+//! exact helicity-zero filter's drops), per call also the rows a helicity
+//! mask drops (a loop-induced single-helicity selection). The pruned copy
+//! keeps its trace steps' row closures.
 
 use super::super::kernels::RowLink;
 use super::{
@@ -43,13 +52,21 @@ impl LoopProgramV4 {
     /// zeros of the Born rows no column keeps (module docs); the split
     /// parts' shortened link lists are interned in `links`.
     pub(super) fn prune_dead_rows(&mut self, links: &mut LinkInterner) {
-        if !self.column_rows.restricts() {
-            return;
-        }
-        let columns = self.columns;
-        let seeded: Vec<bool> = (0..self.rows * columns)
-            .map(|row| self.column_rows.keeps(row / columns, row % columns))
-            .collect();
+        let (seeded, columns, traced) = if self.dressed {
+            let Some(traced) = self.traced_rows(None) else {
+                return;
+            };
+            (vec![true], self.object_columns(), Some(traced))
+        } else {
+            if !self.column_rows.restricts() {
+                return;
+            }
+            let columns = self.columns;
+            let seeded: Vec<bool> = (0..self.rows * columns)
+                .map(|row| self.column_rows.keeps(row / columns, row % columns))
+                .collect();
+            (seeded, columns, None)
+        };
         for family in &mut self.families {
             (*family, _) = prune_family(
                 family,
@@ -58,6 +75,7 @@ impl LoopProgramV4 {
                 &self.contents,
                 &self.vertices,
                 links,
+                traced.as_deref(),
             );
         }
         // The factor and current rows the kept links read (schedules F and
@@ -65,6 +83,21 @@ impl LoopProgramV4 {
         if self.forward.is_none() && self.merged.is_none() {
             self.read_rows = Some(self.rows_read());
         }
+    }
+
+    /// The Born rows a dressed-row plan's trace steps close: those read by
+    /// a column (`row_columns`) and kept by `mask` (one flag per Born row;
+    /// None keeps all); `None` when that is every row a column reads
+    /// (nothing to prune).
+    fn traced_rows(&self, mask: Option<&[bool]>) -> Option<Vec<bool>> {
+        let read = |h: usize| !self.row_columns[h].is_empty();
+        let traced: Vec<bool> = (0..self.rows)
+            .map(|h| read(h) && mask.is_none_or(|kept| kept[h]))
+            .collect();
+        if traced.iter().all(|&kept| kept) {
+            return None;
+        }
+        Some(traced)
     }
 
     /// The content rows of each fused factor and the term rows of each
@@ -296,27 +329,40 @@ impl LoopProgramV4 {
     ) -> RusticolResult<Option<LiveRows>> {
         super::require(rows.len() == self.rows, "one kept flag per Born row")?;
         super::require(
-            !self.dressed,
-            "a dressed-row plan seeds no Born row: helicity masks of loop-induced \
-             processes are not served yet",
-        )?;
-        super::require(
             families.windows(2).all(|pair| pair[0] < pair[1])
                 && families.last().is_none_or(|&f| f < self.families.len()),
             "ascending plan families",
         )?;
-        let columns = self.columns;
-        let keeps = |row: usize| self.column_rows.keeps(row / columns, row % columns);
-        let seeded: Vec<bool> = (0..self.rows * columns)
-            .map(|row| rows[row / columns] && keeps(row))
-            .collect();
-        if seeded
-            .iter()
-            .enumerate()
-            .all(|(row, &seed)| seed == keeps(row))
-        {
-            return Ok(None);
-        }
+        let (seeded, columns, traced) = if self.dressed {
+            // Dressed rows: the trace steps close the kept Born rows a
+            // column reads (`traced_rows`; the load already dropped the
+            // rows no column reads).
+            let traced = self.traced_rows(Some(rows));
+            let unchanged = match &traced {
+                None => true,
+                Some(traced) => {
+                    (0..self.rows).all(|h| traced[h] == !self.row_columns[h].is_empty())
+                }
+            };
+            if unchanged {
+                return Ok(None);
+            }
+            (vec![true], self.object_columns(), traced)
+        } else {
+            let columns = self.columns;
+            let keeps = |row: usize| self.column_rows.keeps(row / columns, row % columns);
+            let seeded: Vec<bool> = (0..self.rows * columns)
+                .map(|row| rows[row / columns] && keeps(row))
+                .collect();
+            if seeded
+                .iter()
+                .enumerate()
+                .all(|(row, &seed)| seed == keeps(row))
+            {
+                return Ok(None);
+            }
+            (seeded, columns, None)
+        };
         // One link interner: the parts' shortened lists are shared across
         // the families (a list keeping every link stays the template's).
         // Per listed family: the copy (None: it runs whole), the links it
@@ -333,6 +379,7 @@ impl LoopProgramV4 {
                     &self.contents,
                     &self.vertices,
                     &mut interner,
+                    traced.as_deref(),
                 );
                 let (links, whole) = (family_links(&copy), family_links(template));
                 if copy.steps.is_empty() || links * share.1 <= whole * share.0 {
@@ -421,6 +468,7 @@ fn prune_family(
     contents: &[Content],
     vertices: &[Vertex],
     interner: &mut LinkInterner,
+    traced: Option<&[bool]>,
 ) -> (Family, usize) {
     let mut lists = 0;
     let steps = &family.steps;
@@ -465,10 +513,16 @@ fn prune_family(
     kept.resize_with(steps.len(), || None);
     for s in (0..steps.len()).rev() {
         let step = &steps[s];
-        let wanted = if step.trace.is_some() {
-            live[s].clone()
-        } else {
-            std::mem::take(&mut read[s])
+        let wanted = match (step.trace, traced, family.row_traces.get(s)) {
+            // A dressed trace step closes the object rows of its traced
+            // Born rows only.
+            (Some(_), Some(traced), Some(Some(trace))) => live[s]
+                .iter()
+                .zip(&trace.rows)
+                .map(|(&live, &row)| live && traced[row as usize])
+                .collect(),
+            (Some(_), ..) => live[s].clone(),
+            (None, ..) => std::mem::take(&mut read[s]),
         };
         let inputs = sources(step, seeded, &live);
         let keep = |link: &RowLink, input: &[bool]| {
@@ -598,10 +652,16 @@ fn prune_family(
     // then has a link left too (every open object feeds one edge).
     let mut index: Vec<Option<usize>> = vec![None; steps.len()];
     let mut pruned: Vec<Step> = Vec::with_capacity(kept.iter().flatten().count());
+    // A dressed-row family's row closures, by kept step (empty for seeded
+    // plans).
+    let mut row_traces = Vec::new();
     for (s, step) in kept.into_iter().enumerate() {
         let Some(mut step) = step else {
             continue;
         };
+        if !family.row_traces.is_empty() {
+            row_traces.push(family.row_traces[s].clone());
+        }
         for edge in &mut step.edges {
             if let Source::Step(child) = edge.source {
                 let child = index[child].expect("the child of a kept edge is kept");
@@ -633,9 +693,7 @@ fn prune_family(
         factors: factors.into_iter().collect(),
         vertices: instances.into_iter().collect(),
         currents: currents.into_iter().collect(),
-        // Dressed-row plans are never pruned (`prune_dead_rows`,
-        // `live_rows_keeping`).
-        row_traces: Vec::new(),
+        row_traces,
     };
     (family, lists)
 }

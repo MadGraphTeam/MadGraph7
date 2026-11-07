@@ -439,7 +439,8 @@ def test_tirust_is_served_on_request_and_auto_keeps_ninjars(loop_native):
         assert len(n_values) == len(t_values) > 0, call
         scale = max(abs(x) for x in n_values)
         assert scale > 0, call
-        assert max(abs(a - b) for a, b in zip(n_values, t_values)) <= LAX * scale, call
+        deviation = max(abs(a - b) for a, b in zip(n_values, t_values, strict=True))
+        assert deviation <= LAX * scale, (call, deviation, scale)
         assert repr(found["tirust"].values) != repr(found["ninjars"].values), call
     auto = born.evaluate(points[:1], mu_r2=scales[:1])
     assert {lane.reduction.effective for lane in auto.diagnostics} == {"ninjars"}

@@ -155,11 +155,25 @@ class MappedObservables:
             return self._observables.native_columns(kind, value, **options)
         from .observables import INCLUSIVE
 
+        # An output is a history id or, on a loop-induced process, a (spin
+        # source assignment, history id) pair (``induced_observables``).
         wanted = tuple(dict.fromkeys(value))
-        missing = [n for n in wanted if n != INCLUSIVE and n not in self._ids]
+
+        def history(item: Any) -> str:
+            return item[1] if isinstance(item, tuple) else item
+
+        def mapped(item: Any) -> Any:
+            name = self._ids.get(history(item), history(item))
+            return (item[0], name) if isinstance(item, tuple) else name
+
+        missing = [
+            history(n)
+            for n in wanted
+            if history(n) != INCLUSIVE and history(n) not in self._ids
+        ]
         if missing:
             raise KeyError(f"unserved colour correlations {missing!r}")
-        keys = {name: self._ids.get(name, name) for name in wanted}
+        keys = {item: mapped(item) for item in wanted}
         found = self._observables.native_columns(
             kind, tuple(dict.fromkeys(keys.values())), **options
         )

@@ -937,6 +937,7 @@ class Runtime:
         poles: PoleSelection | str | None = None,
         stability_checks: VirtualStabilityChecks | None = None,
         reduction: ReductionBackend | str | None = None,
+        color_resolution: Literal["contracted", "amplitude-basis"] | None = None,
     ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         """Return physical values resolved by helicity and color component.
 
@@ -951,6 +952,11 @@ class Runtime:
         backend has no precision default, as in :meth:`evaluate`.
         ``poles`` and ``stability_checks`` follow :meth:`evaluate` (v2 virtual
         runtimes; the estimates and the pole parts are per resolved entry).
+        ``color_resolution`` is the colour axis of a loop-induced process:
+        ``"contracted"`` (the default, one component per helicity) or
+        ``"amplitude-basis"`` (one basis-dependent anchored part per
+        amplitude-basis element, ``amplitude-<t>``, summing to the
+        helicity's value); other runtimes refuse it.
         """
 
         precision = _validate_precision(
@@ -963,6 +969,8 @@ class Runtime:
             arithmetic, mu_r2, r2_strategy, stability, on_failure
         )
         options.update(self._v2_options(poles, stability_checks, reduction))
+        if color_resolution is not None:
+            options["color_resolution"] = color_resolution
         self._require_evaluation_options(self._backend.evaluate_resolved, options)
         result = self._backend.evaluate_resolved(
             momenta,
@@ -1007,6 +1015,7 @@ class Runtime:
         poles: PoleSelection | str | None = None,
         stability_checks: VirtualStabilityChecks | None = None,
         reduction: ReductionBackend | str | None = None,
+        color_resolution: Literal["contracted", "amplitude-basis"] | None = None,
     ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         return self.evaluate_resolved(
             momenta,
@@ -1021,6 +1030,7 @@ class Runtime:
             poles=poles,
             stability_checks=stability_checks,
             reduction=reduction,
+            color_resolution=color_resolution,
         )
 
     def evaluate_orders(

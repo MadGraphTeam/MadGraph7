@@ -361,6 +361,51 @@ colour zero (every colour coefficient of the loop amplitude vanishes at
 N_c = 3 by colour algebra, as for `h > g a`, Tr T^a = 0) evaluates to an
 exact 0 and its lanes say so.
 
+### Observables of loop-induced processes
+
+The correlated, resolved and selected calls serve loop-induced processes with
+the same result types (`contribution = "loop-induced"`), as quadratic forms on
+the point's loop amplitude vector (nothing is reduced again; full colour
+only). Colour histories and spin classes are declared at generation
+(`correlators=CorrelatorConfig(...)`), their colour matrices stored with the
+artifact:
+
+```python
+from pyamplicol.correlators import CorrelatedRequest
+
+many = runtime.evaluate_correlated_many(
+    points,
+    {
+        "total": CorrelatedRequest("born"),          # |A|^2
+        "T1T4": CorrelatedRequest("T1T4"),           # <A|T_1.T_4|A>
+        "spin": CorrelatedRequest("born", {4: v}),   # leg 4's wavefunction -> v
+    },
+    mu_r2=scales,
+)
+rows = runtime.evaluate_resolved(points, mu_r2=scales)           # per helicity
+anchors = runtime.evaluate_resolved(
+    points, mu_r2=scales, color_resolution="amplitude-basis"
+)                                                                # per basis element
+one = runtime.evaluate(points, mu_r2=scales, helicities=["h0"])  # |A(h0)|^2 / avg
+```
+
+A spin vector v is expanded on the leg's polarisation vectors, which span
+exactly the vectors transverse to its momentum p (v.p = 0; for a massless leg
+the part along p vanishes by the Ward identity): for a transverse v the
+value is the literal-source one of a Born-interfered virtual. A part of v
+with v.p != 0 (for example the rounding of a k_perp built in binary64) is not
+read: the value is that of the transverse vector the expansion keeps, and
+the stability estimate carries the dropped part's size (the check
+`spin-transverse`), so a vector far from transverse is served with an
+estimate of the value's own size rather than refused. One `evaluate_correlated_many` call is one evaluation
+of the points whatever its spin vectors: every request is formed on the same
+amplitudes. A single-helicity selection divides by the total's average, so
+the selections of every row sum to the total, and its dressing is pruned to
+the selected rows (a family keeping more than half of its links runs whole).
+The amplitude-basis anchors are basis-dependent parts whose sum is the
+helicity's value. Colour-flow selection does not exist for loop-induced
+processes.
+
 ## Split totals by squared coupling order
 
 Recurrence artifacts record the exact coupling orders of every amplitude
@@ -751,8 +796,8 @@ same rotation) in three ways:
 For a Born-interfered process every pole selection (`poles=`), colour
 accuracy and leading-colour `helicities` / `color_flows` selection is
 supported. A loop-induced process is rescued with what it serves: the pole
-selections `"all"` and `"none"`, full colour, and no helicity or colour-flow
-selection yet (`CompatibilityError`). The reduction backend (`reduction=`) is
+selections `"all"` and `"none"`, full colour and its helicity selections
+(`helicities=`); it has no colour flows to select (`CompatibilityError`). The reduction backend (`reduction=`) is
 resolved for every level's carrier before the first point is evaluated: an
 explicitly requested backend that cannot serve one of them is refused, an
 `"auto"` one records its choice per level in the lane diagnostics. `stability=` together with

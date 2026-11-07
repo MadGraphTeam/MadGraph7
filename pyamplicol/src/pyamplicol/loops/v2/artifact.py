@@ -1076,7 +1076,17 @@ def generate_process(
         # A listed feature the native point inputs do not cover is refused as
         # soon as the generation knows it (``native_inputs``), before the
         # trees are built.
-        if declared:
+        if declared and request.contribution == "loop-induced":
+            # Loop-induced observables are quadratic forms on the amplitude
+            # vector (m-lit LIT-OBS, ``induced_observables``): the slice is
+            # the inclusive one, its declared histories' matrices are stored
+            # with its amplitude basis.
+            from .induced_observables import declare
+
+            slice_ = LoopSlice.generate(compiled, request, native, native_inputs=True)
+            declare(slice_, compiled, request, correlators)
+            observables = ObservableSlice.of(slice_)
+        elif declared:
             observables = ObservableSlice.generate(
                 compiled, request, native, correlators=correlators, native_inputs=True
             )
@@ -1149,8 +1159,9 @@ def export_process(observables: Any, request: Any, declared: bool) -> GeneratedP
     # loaded process regenerates.
     from .native_observables import column_plans
 
-    # A loop-induced process has no Born: its observable columns (colour and
-    # spin correlations, resolved output) are m-lit LIT-OBS's.
+    # A loop-induced process has no Born and stores no observable columns:
+    # its colour and spin correlations and resolved outputs are quadratic
+    # forms on the amplitude vector (``induced_observables``).
     induced = getattr(observables.slice, "amplitude", None) is not None
     plans = {} if induced else column_plans(observables)
     try:
@@ -1631,7 +1642,9 @@ class V2VirtualRuntime:
         # File-backed (M-FINAL MF-8G-2 item 2): the plans and binary tree
         # programs stay in the PACBIN, read by the native executors.
         self._native_process = load_native_process(runtime)
-        # A loop-induced process stores no observable columns yet (LIT-OBS).
+        # A loop-induced process stores no observable columns: its
+        # observables are quadratic forms on the amplitude vector
+        # (``induced_observables``).
         self._induced = "amplitude" in self._native_process.record
         # A loop-induced process's colour-zero record (m-lit Q13: the one
         # exact zero, by colour algebra alone: no colour coefficient of the
@@ -1720,39 +1733,55 @@ class V2VirtualRuntime:
     def _observable_runtime(self) -> Any:
         """The correlated and resolved outputs' runtime (``runtime.virtual.
         V2ObservablesRuntime``), built on first use on the stored observable
-        columns of the native process (nothing regenerates)."""
+        columns of the native process (nothing regenerates). A loop-induced
+        process's (m-lit LIT-OBS; ``V2InducedObservablesRuntime``) are
+        quadratic forms on the amplitude vectors of the process's own
+        executor, with the declared histories' stored matrices; they run the
+        runtime's current executor (``clear`` replaces it) under the
+        runtime's lock (the inclusive calls share the executor). A permuted
+        mapped process reads the histories and spin classes on its labels."""
 
-        from pyamplicol.runtime.virtual import V2ObservablesRuntime
+        from pyamplicol.runtime.virtual import (
+            V2InducedObservablesRuntime,
+            V2ObservablesRuntime,
+        )
 
+        from .induced_observables import InducedObservables
         from .native_observables import StoredObservableSlice
         from .observables import FORCED_FFT_OBSERVABLES
 
         if self._induced:
-            # m-lit LIT-OBS serves them (full observable parity, RULED Q9).
-            raise CompatibilityError(
-                "the colour-, spin- and helicity-resolved outputs of a "
-                "loop-induced process are not served yet; evaluate the "
-                "inclusive |A_loop|^2"
-            )
-        if self._execution["request"]["colour_contraction"] == "fft":
-            # The stored observable columns are contracted directly.
-            raise CompatibilityError(FORCED_FFT_OBSERVABLES)
-        with self._lock:
-            if self._observables is None:
+            kind: Any = V2InducedObservablesRuntime
+
+            def observables() -> Any:
+                return InducedObservables(
+                    self._executor, current=lambda: self._executor, lock=self._lock
+                )
+
+        else:
+            if self._execution["request"]["colour_contraction"] == "fft":
+                # The stored observable columns are contracted directly.
+                raise CompatibilityError(FORCED_FFT_OBSERVABLES)
+            kind = V2ObservablesRuntime
+
+            def observables() -> Any:
                 correlators = correlators_from_record(self._execution["request"])
-                observables = StoredObservableSlice(
+                return StoredObservableSlice(
                     self._native_process,
                     self._native_process.observables,
                     () if correlators is None else correlators.color_correlations,
                     self._native,
                 )
+
+        with self._lock:
+            if self._observables is None:
+                found = observables()
                 if self._member is not None and self._member.alias:
                     from .mapping import MappedObservables
 
-                    # Histories and spin classes on the permuted labels.
-                    observables = MappedObservables(observables, self._member)
-                runtime = V2ObservablesRuntime(
-                    observables,
+                    found = MappedObservables(found, self._member)
+                runtime = kind(
+                    found,
                     member=self._member,
                     mapping=self._mapping,
                     arithmetic=self.default_arithmetic,
@@ -2524,7 +2553,11 @@ class V2VirtualRuntime:
     ) -> Any:
         """Per Born helicity row; the colour axis holds one entry per Born
         basis element at LC (``basis-<i>``) and one contracted component at
-        NLC and full colour (design §8.5)."""
+        NLC and full colour (design §8.5). A loop-induced process resolves
+        its own helicity rows with one contracted component (``"full"``) or,
+        with ``color_resolution="amplitude-basis"``, its amplitude-basis
+        anchors (``amplitude-<t>``; ``runtime.virtual.
+        V2InducedObservablesRuntime``)."""
 
         return self._observable_call(
             "evaluate_resolved", (momenta,), precision, arithmetic, reduction, options

@@ -1007,7 +1007,12 @@ where
     };
     let started = std::time::Instant::now();
     let mut filling = trees.prepare(executor, inputs, &batch.scales, &zero)?;
-    filling.sources = selection.sources(filling.sources.take(), batch.momenta.len());
+    // Amplitude mode: the kept rows restrict the dressing only
+    // (`live_rows`); its trees have no observable columns that read them
+    // per point (decided per call).
+    if !executor.plan().amplitude {
+        filling.sources = selection.sources(filling.sources.take(), batch.momenta.len());
+    }
     filling.rows = tree_rows;
     // The report's "trees" stage: the whole native input fill, then its
     // parts (`TreeInputs::seconds`).
