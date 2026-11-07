@@ -1,0 +1,420 @@
+# SPDX-License-Identifier: 0BSD
+"""The TIR backend through the native executor and the public API (m-lit
+lit-tir, PLAN §3.3 and §2.b.2-§2.b.6).
+
+* the native extension's capability query (``_loop.reduction_backends``)
+  reports TIRust in binary64 exactly when it links TIRust;
+* T2: the raw reduction lanes of generated Born-interfered slices (g g > g g,
+  u u~ > d d~ g, a complex-mass b b~ > w+ w-) reduced by TIRust agree with
+  NinjaRS's within 10 times the larger of the two backends' re-test
+  estimates (PLAN §4 L6), all Laurent orders; a top in its own gauge loop
+  (g g > t t~) is refused typed by TIRust's capability (lit-spike-tir F1:
+  its invariants need the supplied S-matrix), never a wrong value;
+* T6: the family threads leave TIRust's values bitwise;
+* the public API serves an explicit ``reduction="tirust"`` on the summed and
+  the resolved routes, records it, keeps ``"auto"`` on NinjaRS (with its
+  reason) and refuses TIRust at double-double typed before any point;
+* T8: binary64 TIRust touches no Symbolica state: a fresh interpreter
+  without the licence and with pyAmpliCol's native library key disabled
+  evaluates the shipped loop-induced and Born-interfered self-test artifacts
+  on TIRust while another process holds the restricted Symbolica permit,
+  with the licensed run's bits (the same on NinjaRS is the baseline).
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[2]
+FIXTURES = ROOT / "tests" / "fixtures" / "loop"
+_tool_spec = importlib.util.spec_from_file_location(
+    "loop_artifact_portability", ROOT / "tools" / "loop_artifact_portability.py"
+)
+assert _tool_spec is not None and _tool_spec.loader is not None
+portability = importlib.util.module_from_spec(_tool_spec)
+_tool_spec.loader.exec_module(portability)
+
+NO_NATIVE_KEY = {"PYAMPLICOL_NATIVE_LIBRARY_KEY": "off"}
+PARAMETERS = {"aS": "0.118", "MT": "173"}
+FIXED = {"MB": "0"}
+# L6 (PLAN §4): |TIR - NinjaRS| <= 10 max(E_N, E_T), E the backend's re-test
+# deviation, with lit-spike-tir's floor of 4 units of binary64 roundoff of
+# the lane's largest Laurent coefficient.
+MARGIN = 10.0
+FLOOR = 4 * 2.0**-53
+
+
+def _tirust(native) -> bool:
+    return bool(native.tirust_available())
+
+
+@pytest.mark.loop_fast
+def test_the_capability_query_reports_tirust_in_binary64(loop_native):
+    from pyamplicol.loops.v2.reduction import CARRIERS, native_backends
+
+    found = native_backends(loop_native)
+    assert found["ninjars"] == frozenset(CARRIERS)
+    if _tirust(loop_native):
+        assert found["tirust"] == frozenset({"double"})
+    else:
+        assert "tirust" not in found
+
+
+# -------------------------------------------------------------------- T2, T6
+
+
+def _reference_points(name: str):
+    data = json.loads(
+        (ROOT / "tools" / "loop_reference" / f"{name}.json").read_text(),
+        parse_float=str,
+    )
+    points = data["points"]
+    return points, ["1000000"] * len(points)
+
+
+def _fixture_points(source: str):
+    from decimal import Decimal
+
+    data = json.loads((FIXTURES / source).read_text(), parse_float=str)
+    points = data["points"]
+    mu = data.get("mu_r", ["1000"] * len(points))
+    if isinstance(mu, str):
+        mu = [mu] * len(points)
+    return points, [format(Decimal(str(m)) ** 2, "f") for m in mu]
+
+
+PROCESSES = {
+    "gg_gg": (
+        "g g > g g",
+        {"QCD": 2, "QED": 0},
+        lambda: _reference_points("gluon_scattering_qcd"),
+    ),
+    "uux_ddxg": (
+        "u u~ > d d~ g",
+        {"QCD": 3, "QED": 0},
+        lambda: _fixture_points("required/uux_ddxg.json"),
+    ),
+    "gg_ttx": (
+        "g g > t t~",
+        {"QCD": 2, "QED": 0},
+        lambda: _fixture_points("required/gg_ttx.json"),
+    ),
+}
+
+
+@pytest.fixture(scope="module")
+def slices(loop_sm_compiled_model, loop_native):
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+    from pyamplicol.models.loading import load_compiled_model
+
+    if not _tirust(loop_native):
+        pytest.skip("the staged native extension is built without TIRust")
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    built: dict = {}
+
+    def build(name: str, threads=None):
+        key = (name, threads)
+        if key not in built:
+            process, born, _points = PROCESSES[name]
+            loop = {k: v + (2 if k == "QCD" else 0) for k, v in born.items()}
+            if name not in [k for k, _ in built]:
+                request = SliceRequest(process, born, loop, fixed_parameters=FIXED)
+                slice_ = LoopSlice.generate(compiled, request, loop_native)
+            else:
+                slice_ = next(v for (k, _), v in built.items() if k == name).slice
+            built[key] = NativeExecutor(slice_, threads=threads)
+        return built[key]
+
+    return build
+
+
+def _lanes(executor, points, scales, backend: str, retest: str = "reversed"):
+    """Per point (lanes, re-test lanes) of the executor's native evaluation
+    on ``backend``, or the failures."""
+
+    from pyamplicol.loops.v2.reduction import running
+
+    with running(backend):
+        _precision, evaluations, failures = executor._evaluated(
+            points, scales, PARAMETERS, None, "all", retest
+        )
+    out = []
+    for index, evaluation in enumerate(evaluations):
+        if index in failures:
+            out.append(failures[index])
+            continue
+        out.append(
+            (
+                {k: v.coefficients for k, v in evaluation.families.items()},
+                {k: v.coefficients for k, v in evaluation.retest_families.items()},
+            )
+        )
+    return out
+
+
+def _size(z) -> float:
+    return abs(complex(z))
+
+
+def _agree(name, ninja, tir) -> tuple[int, float]:
+    """Every lane of both backends within L6; returns (lanes, worst ratio)."""
+
+    count, worst = 0, 0.0
+    for (n_direct, n_check), (t_direct, t_check) in zip(ninja, tir, strict=True):
+        assert n_direct.keys() == t_direct.keys(), name
+        for lane, n in n_direct.items():
+            t = t_direct[lane]
+            scale = max(_size(z) for z in n)
+            e_n = max(_size(a - b) for a, b in zip(n, n_check[lane], strict=True))
+            e_t = max(_size(a - b) for a, b in zip(t, t_check[lane], strict=True))
+            bound = MARGIN * max(e_n, e_t, FLOOR * scale)
+            deviation = max(_size(a - b) for a, b in zip(t, n, strict=True))
+            assert deviation <= bound, (name, lane, deviation, e_n, e_t, scale)
+            worst = max(worst, deviation / bound)
+            count += 1
+    return count, worst
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("name", ["gg_gg", "uux_ddxg"])
+def test_raw_lanes_agree_with_ninjars_within_their_estimates(slices, name):
+    """T2 / L6 on the raw lanes, all Laurent orders, every fixture point."""
+
+    executor = slices(name)
+    points, scales = PROCESSES[name][2]()
+    ninja = _lanes(executor, points, scales, "ninjars")
+    tir = _lanes(executor, points, scales, "tirust")
+    lanes, _worst = _agree(name, ninja, tir)
+    assert lanes > 0
+    statistics = executor.last_report["counts"]
+    assert statistics["contracted lanes"] > 0
+    assert statistics["tensor moment rows"] <= statistics["contracted lanes"]
+
+
+@pytest.mark.loop_physics
+def test_a_top_in_its_own_gauge_loop_is_refused_by_capability(slices):
+    """g g > t t~: the on-shell top legs next to top propagators need the
+    supplied S-matrix (TIRust U1, lit-tir-mp's re-pin); until then TIRust's
+    lanes there fail typed and the points fail closed, never a value."""
+
+    executor = slices("gg_ttx")
+    points, scales = PROCESSES["gg_ttx"][2]()
+    tir = _lanes(executor, points[:1], scales[:1], "tirust")
+    (reasons,) = tir
+    assert isinstance(reasons, list)
+    assert any("TIRust capability" in reason for reason in reasons), reasons
+    assert executor.last_report["counts"]["TIR capability refusals"] > 0
+
+
+@pytest.mark.loop_physics
+def test_family_threads_leave_tirust_bitwise(slices):
+    """T6: one family thread or four, the same TIRust lanes bit for bit."""
+
+    points, scales = PROCESSES["uux_ddxg"][2]()
+    one = _lanes(slices("uux_ddxg", threads=1), points, scales, "tirust")
+    four = _lanes(slices("uux_ddxg", threads=4), points, scales, "tirust")
+    assert one == four
+
+
+@pytest.mark.loop_physics
+def test_complex_mass_lanes_agree(loop_sm_ufo, loop_native, tmp_path_factory):
+    """T2 on the complex-mass fixture (lit-spike-tir's b b~ > w+ w-: the
+    top's complex pole mass in the t channel and the loops, Im m^2 < 0;
+    ``test_loop_v2_native_complex_masses``'s "plain" model)."""
+
+    import math
+    from dataclasses import replace
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest, _model_masses
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+    from pyamplicol.models.loading import compile_model_source
+    from tools.loop_reference.model_compatibility import (
+        prepare_loop_sm_scalar_declarations,
+    )
+
+    from .loop_v2_ufo_variants import complex_mass_ufo
+
+    if not _tirust(loop_native):
+        pytest.skip("the staged native extension is built without TIRust")
+    root = tmp_path_factory.mktemp("complex-top")
+    ufo = complex_mass_ufo(loop_sm_ufo, root / "loop_sm_plain", "t", "MT", "WT")
+    compiled = compile_model_source(ufo, cache_dir=root / "cache")
+    compiled = replace(
+        compiled,
+        raw_loop_model=prepare_loop_sm_scalar_declarations(
+            compiled.raw_loop_model
+        ).derived,
+        _serialized_path=None,
+        _prepared_bundle=None,
+    )
+    request = SliceRequest(
+        "b b~ > w+ w-",
+        {"QCD": 0, "QED": 2},
+        {"QCD": 2, "QED": 2},
+        fixed_parameters={"WZ": "0", "WW": "0", "WH": "0", "MB": "0"},
+    )
+    slice_ = LoopSlice.generate(compiled, request, loop_native)
+    executor = NativeExecutor(slice_)
+    mw = float(_model_masses(slice_.compiled, {}, 40)("MW"))
+    energy = 250.0
+    size = math.sqrt(energy * energy - mw * mw)
+    legs = [
+        (energy, 0.0, 0.0, energy),
+        (energy, 0.0, 0.0, -energy),
+        (energy, 0.8 * size, 0.0, 0.6 * size),
+        (energy, -0.8 * size, 0.0, -0.6 * size),
+    ]
+    points = [[[repr(x) for x in leg] for leg in legs]]
+    ninja = _lanes(executor, points, ["62500"], "ninjars")
+    tir = _lanes(executor, points, ["62500"], "tirust")
+    lanes, _worst = _agree("bbx_wpwm_cms", ninja, tir)
+    assert lanes > 0
+
+
+# ---------------------------------------------------------------- public API
+
+
+def _li():
+    from pyamplicol._internal import selftest_virtual_li
+
+    return selftest_virtual_li
+
+
+def _ew():
+    from pyamplicol._internal import selftest_virtual_ew
+
+    return selftest_virtual_ew
+
+
+@pytest.mark.loop_physics
+def test_tirust_is_served_on_request_and_auto_keeps_ninjars(loop_native):
+    """The summed route of the loop-induced self-test (g g > h) and the
+    summed and resolved routes of the Born-interfered one serve an explicit
+    ``"tirust"`` (recorded as requested) with NinjaRS's values within their
+    re-test estimates; ``"auto"`` keeps NinjaRS with its reason; TIRust at
+    double-double is refused typed before any point."""
+
+    from pyamplicol import ReductionUnavailable, Runtime, VirtualStabilityChecks
+
+    if not _tirust(loop_native):
+        pytest.skip("the staged native extension is built without TIRust")
+    li = _li()
+    expected = json.loads((li.fixture_root() / "expected.json").read_text())
+    runtime = Runtime.load(
+        li.fixture_root() / "artifact",
+        process=li.NAME,
+        model_parameters=expected["parameters"],
+    )
+    points, scales = expected["points"], expected["mu_r2"]
+    checks = VirtualStabilityChecks(0, True)
+    values = {}
+    for backend in ("ninjars", "tirust"):
+        value = runtime.evaluate(
+            points, mu_r2=scales, stability_checks=checks, reduction=backend
+        )
+        assert {lane.reduction.effective for lane in value.diagnostics} == {backend}
+        assert {lane.reduction.reason for lane in value.diagnostics} == {"requested"}
+        values[backend] = value
+    for k in range(len(points)):
+        for sector, (n, t) in enumerate(
+            zip(values["ninjars"].values[k], values["tirust"].values[k], strict=True)
+        ):
+            e = max(
+                values[b].stability[k].absolute[sector][0] for b in values
+            )
+            assert abs(float(n.finite) - float(t.finite)) <= MARGIN * e + 1e-14 * abs(
+                float(n.finite)
+            ), (k, sector)
+    auto = runtime.evaluate(points[:1], mu_r2=scales[:1])
+    (lane,) = auto.diagnostics
+    assert lane.reduction.effective == "ninjars"
+    assert "agreement with NinjaRS on loop-induced processes" in lane.reduction.reason
+    with pytest.raises(ReductionUnavailable, match="double-double"):
+        runtime.evaluate(
+            points[:1], mu_r2=scales[:1], arithmetic="double-double", reduction="tirust"
+        )
+    ew = _ew()
+    record = json.loads((ew.fixture_root() / "expected.json").read_text())
+    born = Runtime.load(ew.fixture_root() / "artifact", process=ew.NAME)
+    points, scales = record["points"][:2], record["mu_r2"][:2]
+    for call in ("evaluate", "evaluate_resolved"):
+        found = {
+            backend: getattr(born, call)(points, mu_r2=scales, reduction=backend)
+            for backend in ("ninjars", "tirust")
+        }
+        lanes = [lane for lane in found["tirust"].diagnostics]
+        assert {lane.reduction.effective for lane in lanes} == {"tirust"}, call
+        assert repr(found["tirust"].born_values) == repr(found["ninjars"].born_values)
+    auto = born.evaluate(points[:1], mu_r2=scales[:1])
+    assert {lane.reduction.effective for lane in auto.diagnostics} == {"ninjars"}
+
+
+# ------------------------------------------------------------------------ T8
+
+_T8 = r"""
+import json, sys
+from pyamplicol import Runtime
+from pyamplicol._internal import selftest_virtual_ew as ew
+from pyamplicol._internal import selftest_virtual_li as li
+backend = sys.argv[1]
+out = {}
+for module in (li, ew):
+    root = module.fixture_root()
+    expected = json.loads((root / "expected.json").read_text())
+    runtime = Runtime.load(root / "artifact", process=module.NAME,
+                           model_parameters=expected.get("parameters") or None)
+    value = runtime.evaluate(expected["points"][:2], mu_r2=expected["mu_r2"][:2],
+                             reduction=backend)
+    out[module.NAME] = {
+        "effective": sorted({lane.reduction.effective for lane in value.diagnostics}),
+        "values": [[[float(x).hex() for x in sector] for sector in point]
+                   for point in value.values],
+    }
+print(json.dumps(out))
+"""
+
+
+def _run_t8(backend: str, env: dict[str, str]) -> dict:
+    run = subprocess.run(
+        [sys.executable, "-c", _T8, backend],
+        capture_output=True,
+        text=True,
+        timeout=900,
+        check=False,
+        env=env,
+    )
+    output = run.stdout[-2000:] + run.stderr[-4000:]
+    assert run.returncode == 0, output
+    assert "restricted Symbolica" not in output
+    return json.loads(run.stdout.strip().splitlines()[-1])
+
+
+@pytest.mark.loop_physics
+def test_binary64_tirust_touches_no_symbolica_state(loop_native, tmp_path):
+    """T8 (module docstring); NinjaRS in the same harness is the baseline."""
+
+    if not _tirust(loop_native):
+        pytest.skip("the staged native extension is built without TIRust")
+    lock = tmp_path / "symbolica-locks"
+    lock.mkdir()
+    lock.chmod(0o700)
+    base = {
+        key: value for key, value in os.environ.items() if key != "SYMBOLICA_LICENSE"
+    }
+    with portability.RestrictedPermit(lock_dir=str(lock)) as permit:
+        assert permit.record["verified"], permit.record
+        env = permit.environment({**base, **NO_NATIVE_KEY})
+        unlicensed = {backend: _run_t8(backend, env) for backend in ("ninjars", "tirust")}
+    for backend in ("ninjars", "tirust"):
+        licensed = _run_t8(backend, dict(os.environ))
+        assert unlicensed[backend] == licensed, backend
+        for record in licensed.values():
+            assert record["effective"] == [backend]

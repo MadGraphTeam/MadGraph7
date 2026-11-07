@@ -151,6 +151,27 @@ impl V2Backends {
         }
     }
 
+    /// The TIR backend on the NinjaRS adapter's batch groups
+    /// (`v2_tir::TirReductionBackend::reduce_family_groups`); NinjaRS takes
+    /// [`V2Reducer::reduce`] directly.
+    pub fn reduce_family_groups(
+        &mut self,
+        groups: &[FamilyGroup<'_>],
+        poles: Poles,
+        check: Option<ReductionCheck>,
+    ) -> RusticolResult<super::v2_reduce::V2Output> {
+        match self {
+            #[cfg(feature = "tir")]
+            Self::TiRust(backend) => backend.reduce_family_groups(groups, poles, check),
+            _ => {
+                let _ = (groups, poles, check);
+                Err(RusticolError::invalid_argument(
+                    "batch groups reduce through V2Reducer::reduce on NinjaRS",
+                ))
+            }
+        }
+    }
+
     /// The TIR backend's (propagators, rank) plans built so far (empty for
     /// NinjaRS).
     pub fn plans(&self) -> Vec<(usize, usize)> {

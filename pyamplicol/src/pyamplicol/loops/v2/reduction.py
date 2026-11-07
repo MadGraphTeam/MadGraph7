@@ -213,11 +213,19 @@ def resolve(
         default = "tirust"
     kind = KINDS[contribution]
     why = _unavailable(default, carrier, served, allowed, route)
-    if why is None and not route.automatic(default) and allowed != {"tirust"}:
-        why = (
-            f"'auto' takes {NAMES[default]} on {route.serves} only once its "
-            "agreement with NinjaRS on loop-induced processes is established; "
-            f"request {default!r} explicitly"
+    if (
+        why is None
+        and not route.automatic(default)
+        and allowed != {"tirust"}
+        and _unavailable("ninjars", carrier, served, allowed, route) is None
+    ):
+        # Served on explicit request, not yet by "auto" (``Route.auto``).
+        return VirtualReduction(
+            "auto",
+            "ninjars",
+            f"auto: NinjaRS; {NAMES[default]}, the {kind} default, serves "
+            f"{route.serves} on explicit request until its agreement with "
+            "NinjaRS on loop-induced processes is established",
         )
     if why is None:
         reason = (

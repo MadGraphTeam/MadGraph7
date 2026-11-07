@@ -184,6 +184,87 @@ impl V2Reducer {
     }
 }
 
+/// The TIR backend (`rusticol_loop_reduction::v2_tir`, binary64) on the
+/// groups of [`V2Reducer::reduce`] (the Python reference path's reducer
+/// when the call's reduction backend is TIRust): one family per group,
+/// consecutive lanes of bitwise equal kinematics one moment row. Its check
+/// frame is the rotation by `rotation` with the origin shift (`rescale`
+/// adds the rescaling); `reverse` and `shift` are NinjaRS's and ignored.
+/// Refused typed in a build without TIRust.
+#[pyclass]
+struct V2TirReducer(rusticol_loop_reduction::runtime::V2Backends);
+
+#[pymethods]
+impl V2TirReducer {
+    #[new]
+    fn new() -> PyResult<Self> {
+        rusticol_loop_reduction::runtime::V2Backends::tirust([])
+            .map(Self)
+            .map_err(error)
+    }
+    /// The (propagators, rank) plans built so far.
+    fn plans(&self) -> Vec<(usize, usize)> {
+        self.0.plans()
+    }
+    #[pyo3(signature = (groups, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false))]
+    #[allow(clippy::too_many_arguments, clippy::type_complexity)]
+    fn reduce(
+        &mut self,
+        py: Python<'_>,
+        groups: Vec<Group<'_>>,
+        poles: Option<Bound<'_, PyAny>>,
+        check: bool,
+        reverse: bool,
+        rotation: usize,
+        shift: bool,
+        rescale: bool,
+    ) -> PyResult<(Vec<ReductionBatch>, Option<Vec<ReductionBatch>>)> {
+        let poles = poles.map_or(Ok(Poles::All), |value| poles_option(&value))?;
+        let check = check.then_some(rusticol_core::loop_v2::retest::ReductionCheck {
+            reverse,
+            rotation,
+            shift,
+            rescale,
+        });
+        let batches: Vec<_> = groups
+            .iter()
+            .map(|(n, shifts, masses, scales, matrix, coefficients)| {
+                (
+                    *n,
+                    &shifts.0,
+                    &masses.0,
+                    &scales.0,
+                    &matrix.0,
+                    &coefficients.0,
+                )
+            })
+            .collect();
+        let backend = &mut self.0;
+        let output = py
+            .detach(|| {
+                let groups: Vec<_> = batches
+                    .iter()
+                    .map(
+                        |&(propagators, shifts, masses, scales, matrix, coefficients)| {
+                            FamilyGroup {
+                                propagators,
+                                shifts,
+                                masses_squared: masses,
+                                scales_squared: scales,
+                                s_matrix: matrix,
+                                coefficients,
+                            }
+                        },
+                    )
+                    .collect();
+                backend.reduce_family_groups(&groups, poles, check)
+            })
+            .map_err(error)?;
+        let wrap = |batches: Vec<_>| batches.into_iter().map(ReductionBatch).collect();
+        Ok((wrap(output.direct), output.check.map(wrap)))
+    }
+}
+
 /// Binary64 seed weights on certified regular symmetric-group orbits
 /// (`runtime::V2SeedFourier`). `kernels[k]` lists `(re, im)` of `k(x)` at the
 /// lexicographic ranks of `S_degree`; `pairs` are `(kernel, Born orbit, loop
@@ -241,6 +322,7 @@ pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
         rusticol_loop_reduction::runtime::fast_engine_threshold(),
     )?;
     module.add_class::<V2Reducer>()?;
+    module.add_class::<V2TirReducer>()?;
     module.add_class::<V2SeedFourier>()?;
     module.add_function(wrap_pyfunction!(v2_tensor_monomials, module)?)
 }

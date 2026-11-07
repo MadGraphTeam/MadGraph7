@@ -636,6 +636,97 @@ impl TirReductionBackend {
     }
 }
 
+impl TirReductionBackend {
+    /// [`Self::reduce`] on the NinjaRS adapter's batch groups (`runtime::
+    /// V2Reducer::reduce`'s input and output; the Python reference path's
+    /// `V2TirReducer`): one family per group; consecutive lanes with bitwise
+    /// equal shifts, masses and scale form one kinematic row.
+    pub fn reduce_family_groups(
+        &mut self,
+        groups: &[crate::runtime::FamilyGroup<'_>],
+        poles: Poles,
+        check: Option<ReductionCheck>,
+    ) -> RusticolResult<crate::runtime::V2Output> {
+        use crate::runtime::{Batch, Data, ReductionBatch, V2Output, tensor_rank};
+        let values = |batch: &Batch| -> RusticolResult<Vec<Complex<f64>>> {
+            match batch.data() {
+                Data::Double(values) => Ok(values.clone()),
+                _ => Err(RusticolError::unsupported_precision(
+                    "the TIRust reduction backend serves binary64 in this build",
+                )),
+            }
+        };
+        let mut lanes = Vec::with_capacity(groups.len());
+        let mut ids = Vec::with_capacity(groups.len());
+        for (family, g) in groups.iter().enumerate() {
+            let n = g.propagators;
+            let rows = g.coefficients.rows();
+            let rank = tensor_rank(g.coefficients.columns())
+                .map_err(|e| RusticolError::invalid_argument(e.to_string()))?;
+            let (shifts, masses, scales) = (values(g.shifts)?, values(g.masses_squared)?, values(g.scales_squared)?);
+            let mut points = Vec::with_capacity(rows);
+            for lane in 0..rows {
+                let same = lane > 0
+                    && shifts[(lane - 1) * 4 * n..lane * 4 * n] == shifts[lane * 4 * n..(lane + 1) * 4 * n]
+                    && masses[(lane - 1) * n..lane * n] == masses[lane * n..(lane + 1) * n]
+                    && scales[lane - 1] == scales[lane];
+                points.push(if same { points[lane - 1] } else { lane });
+            }
+            ids.push(g.coefficients.ids().to_vec());
+            lanes.push(FamilyLanes {
+                family,
+                propagators: n,
+                rank,
+                points,
+                keys: (0..rows)
+                    .map(|column| rusticol_core::loop_execution::v2::LaneKey {
+                        family,
+                        order: 0,
+                        column,
+                    })
+                    .collect(),
+                shifts,
+                masses,
+                scales,
+                s_matrix: values(g.s_matrix)?,
+                coefficients: values(g.coefficients)?,
+            });
+        }
+        let (direct, again) = self.reduce(&lanes, poles, check)?;
+        let width = poles.width();
+        let batches = |outcomes: Vec<Vec<LaneOutcome<f64>>>| {
+            outcomes
+                .into_iter()
+                .zip(&ids)
+                .map(|(group, ids)| {
+                    let mut values = Vec::new();
+                    let mut kept = Vec::new();
+                    let mut statuses = Vec::with_capacity(group.len());
+                    for (outcome, &id) in group.into_iter().zip(ids) {
+                        match outcome {
+                            Ok(value) => {
+                                values.extend(value);
+                                kept.push(id);
+                                statuses.push((id, "success".to_owned()));
+                            }
+                            Err(status) => statuses.push((id, status)),
+                        }
+                    }
+                    Ok(ReductionBatch {
+                        values: Batch::typed(values, kept, width, 53)
+                            .map_err(|e| RusticolError::internal(e.to_string()))?,
+                        statuses,
+                    })
+                })
+                .collect::<RusticolResult<Vec<_>>>()
+        };
+        Ok(V2Output {
+            direct: batches(direct)?,
+            check: again.map(batches).transpose()?,
+        })
+    }
+}
+
 /// The bin of (`n`, `rank`), built on first use.
 fn bin_of(bins: &mut BTreeMap<(usize, usize), Bin>, n: usize, rank: usize) -> RusticolResult<&mut Bin> {
     if !bins.contains_key(&(n, rank)) {

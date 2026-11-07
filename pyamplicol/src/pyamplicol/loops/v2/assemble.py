@@ -186,6 +186,7 @@ from .poles import (
     strong_gamma,
 )
 from .poly_affine import MonomialLayout, leg_momentum
+from .reduction import executor_options
 from .refusals import (
     LoopRequestUnsupported,
     LoopRequestUnsupportedValue,
@@ -4358,9 +4359,20 @@ class _PointEvaluation:
             groups = groups + twin_groups
         arithmetic = "double" if numbers.double else "arbitrary"
         digits = None if numbers.double else numbers.precision.digits
-        reducer = slice_.native.V2Reducer(
-            arithmetic, digits, "fast" if numbers.double else "generic"
-        )
+        if executor_options().get("reduction") == "tirust":
+            # The call's reduction backend (``reduction.running``): TIRust,
+            # binary64 in this build (``V2TirReducer``).
+            if not numbers.double:
+                from pyamplicol.api.errors import ReductionUnavailable
+
+                raise ReductionUnavailable(
+                    "the TIRust reduction backend serves binary64 in this build"
+                )
+            reducer = slice_.native.V2TirReducer()
+        else:
+            reducer = slice_.native.V2Reducer(
+                arithmetic, digits, "fast" if numbers.double else "generic"
+            )
         direct, check = reducer.reduce(
             groups,
             poles=reducer_poles(self.mode),
