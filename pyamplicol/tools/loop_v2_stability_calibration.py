@@ -523,7 +523,14 @@ def run(options) -> int:
         sample = loop_induced_point
     else:
         compiled = compile_loop_sm(options.ufo, options.model_cache)
-        executor = NativeExecutor(build_slice(name, compiled), threads=options.threads)
+        # ``--inputs native``: the stored runtime's route (native trees, no
+        # forward oracle); the default keeps the O15 calibration's.
+        native = (
+            {"forward": False, "inputs": "native"} if options.inputs == "native" else {}
+        )
+        executor = NativeExecutor(
+            build_slice(name, compiled), threads=options.threads, **native
+        )
         parameters = PARAMETERS
         sample = sample_point
     cross = options.cross_backend
@@ -568,6 +575,30 @@ def run(options) -> int:
             for carrier, precision, configured in carriers:
                 # The truth is NinjaRS at Float(256) on the same exact points.
                 backend = None if carrier == "truth" else options.reduction
+                if carrier == "truth" and options.truth_served:
+                    # Only the points a checked carrier served need it.
+                    served = [
+                        k
+                        for k, record in enumerate(records)
+                        if any(
+                            "failure" not in value
+                            for key, value in record.items()
+                            if isinstance(value, dict)
+                        )
+                    ]
+                    for k, record in enumerate(records):
+                        if k not in served:
+                            record[carrier] = {"skipped": "no checked carrier served"}
+                    if not served:
+                        continue
+                    subset = [points[k] for k in served]
+                    for k, value in zip(
+                        served,
+                        _evaluate(executor, subset, precision, None, parameters),
+                        strict=True,
+                    ):
+                        records[k][carrier] = value
+                    continue
                 if carrier == "truth" and all(
                     truths.get(i, {}).get("point") == p
                     for i, p in zip(indices, points, strict=True)
@@ -845,6 +876,11 @@ def report(options) -> int:
         if "failure" in truth:
             failures[name].append((record["index"], truth["failure"]))
             continue
+        if "skipped" in truth and any(
+            "failure" not in (record.get(carrier) or {"failure": ""})
+            for carrier in CARRIERS
+        ):
+            raise ValueError(f"{name} {record['index']}: a served point has no truth")
         for carrier in CARRIERS:
             data = record.get(carrier)
             if data is None:
@@ -961,7 +997,12 @@ def report(options) -> int:
                 "compared": len(bitwise[(name, carrier)]),
             }
         payload["processes"].setdefault(name, {})[carrier] = entry
-    payload["failures"] = {k: v[:20] for k, v in failures.items()}
+    # The first failures per row, each reason cut to its head (the classes
+    # are in ``failure_reasons``).
+    payload["failures"] = {
+        k: [(index, str(reason)[:240]) for index, reason in v[:20]]
+        for k, v in failures.items()
+    }
     text = json.dumps(payload, indent=1) + "\n"
     if options.output:
         options.output.write_text(text)
@@ -996,6 +1037,17 @@ def main(argv: list[str] | None = None) -> int:
         "--cross-backend",
         action="store_true",
         help="add the cross-backend check (and time the checks without it)",
+    )
+    runner.add_argument(
+        "--inputs",
+        choices=("python", "native"),
+        default="python",
+        help="tree inputs of the Born-interfered rows (loop-induced: native)",
+    )
+    runner.add_argument(
+        "--truth-served",
+        action="store_true",
+        help="compute the truth only for points a checked carrier served",
     )
     runner.add_argument(
         "--truth-from",

@@ -647,26 +647,49 @@ def test_tir_single_point_estimates_bracket_the_error_gg_z(li, loop_native):
 @pytest.mark.loop_fast
 def test_tir_calibration_has_no_served_miss_beyond_the_margin():
     """The recorded TIR calibration (TIRust's shipped default, against
-    NinjaRS at Float(256) on the same exact points): every configuration
-    holds every served point's absolute error within 10 E; served
-    fractions and refusal reasons recorded per row; a row TIRust serves no
-    point of waits on lit-tir-mp."""
+    NinjaRS at Float(256) on the same exact points; 400 points of g g > g g g
+    and u u~ > e- e+ d d~ g, 2000 of g g > h h and g g > z): on every served
+    point, every check configuration with a reduction re-test (TIR's frames:
+    the rotation by one with the origin shift, rescaled or not) or the
+    cross-backend check holds the absolute error within 10 E, per sector and
+    Laurent coefficient, and the recommended one (rescaled re-test + a
+    rotation) misses none at all. Rotations alone are no TIR estimate (lit-tir
+    finding (B)): on g g > g g g one rotation missed two of the 82 served
+    points by more than 10 E (at true errors ~1e-12), which every re-test
+    frame and the other rotation see. Served fractions, refusal reasons and
+    the check carrying each estimate are recorded; the cross-backend check
+    leaves every virtual bitwise; a carrier TIRust serves no point of waits on
+    lit-tir-mp (double-double here)."""
+
+    from pyamplicol.loops.v2.stability import CROSS, FRAMES
 
     data = json.loads(CALIBRATION.read_text())
     assert data["reduction"] == "tirust"
-    for name, carriers in data["processes"].items():
-        record = carriers["double"]
-        assert 0 <= record["served_fraction"] <= 1
-        assert record["failed_truth"] == 0, name
-        if not record["points"]:
-            assert record["status"] == WAITS, name
-            continue
-        for configuration, rates in record["configurations"].items():
-            assert rates["absolute"]["beyond_margin"] == 0, (name, configuration)
-        assert sum(record["carried_by"].values()) == record["points"]
-        cost = record.get("cross_backend_cost")
-        if cost is not None:
-            assert cost["virtual_bitwise"] == cost["compared"], name
+    rows = data["processes"]
+    assert set(rows) == {"gg_ggg", "uux_emepddxg", "li_gg_hh", "li_gg_z"}
+    for name, carriers in rows.items():
+        for carrier, record in carriers.items():
+            assert 0 <= record["served_fraction"] <= 1
+            assert record["failed_truth"] == 0, name
+            if not record["points"]:
+                assert record["status"] == WAITS, (name, carrier)
+                continue
+            assert carrier == "double"
+            for configuration, rates in record["configurations"].items():
+                checks = set(configuration.split(" + "))
+                if checks & {*FRAMES, CROSS}:
+                    assert rates["absolute"]["beyond_margin"] == 0, (
+                        name,
+                        configuration,
+                    )
+            recommended = record["configurations"]["reduction-rescaled + rotation-0"]
+            assert recommended["absolute"]["false_negatives"] == 0, name
+            assert sum(record["carried_by"].values()) == record["points"]
+            cost = record["cross_backend_cost"]
+            assert cost["virtual_bitwise"] == cost["compared"] == record["points"]
+    assert rows["li_gg_hh"]["double-double"]["points"] == 0
+    assert rows["li_gg_hh"]["double"]["points"] >= 1900
+    assert rows["li_gg_z"]["double"]["points"] == 2000
 
 
 # ------------------------------------------- after lit-tir-mp (ready to run)
