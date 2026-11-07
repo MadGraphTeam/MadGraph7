@@ -82,6 +82,39 @@ def test_the_capability_query_reports_tirust_in_binary64(loop_native):
         assert "tirust" not in found
 
 
+@pytest.mark.loop_fast
+def test_tirust_plans_are_built_before_the_first_point_and_refused_typed():
+    """``reduction.prepare`` (called by the executor call sites once per
+    batch, before ``evaluate``) builds TIRust's plans when the context runs
+    TIRust, nothing for NinjaRS, and turns TIRust's typed plan-construction
+    refusal into ``ReductionUnavailable``."""
+
+    from pyamplicol import ReductionUnavailable
+    from pyamplicol.loops.v2.reduction import prepare, running
+
+    class Executor:
+        def __init__(self, refusal=None):
+            self.calls, self.refusal = [], refusal
+
+        def prepare_reduction(self, reduction):
+            self.calls.append(reduction)
+            if self.refusal:
+                raise ValueError(self.refusal)
+            return [(4, 4)]
+
+    executor = Executor()
+    prepare(executor)
+    with running("ninjars"):
+        prepare(executor)
+    assert executor.calls == []
+    with running("tirust"):
+        prepare(executor)
+    assert executor.calls == ["tirust"]
+    refused = Executor("TIRust cannot reduce 13 propagators at rank 0: too many")
+    with running("tirust"), pytest.raises(ReductionUnavailable, match="13 propagators"):
+        prepare(refused)
+
+
 # -------------------------------------------------------------------- T2, T6
 
 
