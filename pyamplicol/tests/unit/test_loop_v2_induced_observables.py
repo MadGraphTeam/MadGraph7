@@ -335,6 +335,16 @@ def test_resolved_rows_and_single_helicity_selections_sum_to_the_total(artifacts
         selected.append(value.values[0][0].finite)
         assert value.values[0][0].finite == rows[h]
     assert _relative(sum(selected), total) <= ROUNDING
+    # The selection's dressing is pruned to its row (route R2's per-call
+    # liveness): fewer modelled MACs and reduction lanes than every row, the
+    # value bitwise the resolved row's (above).
+    executor = runtime._backend._observable_runtime()._observables.executor
+    pruned = dict(executor.last_report["counts"])
+    runtime.evaluate_correlated(points, mu_r2=scales)
+    whole = executor.last_report["counts"]
+    assert "live-row links" in pruned and "live-row links" not in whole
+    for count in ("reduction lanes", "dressing work (modelled complex MAC per lane)"):
+        assert pruned[count] < whole[count], count
     # Q37: helicity-flipped rows are not mapped onto each other.
     assert len(set(rows)) > len(rows) // 2
 
