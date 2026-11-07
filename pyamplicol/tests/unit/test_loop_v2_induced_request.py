@@ -6,7 +6,8 @@ LIT-REQ; PLAN §1.2-§1.4, §2.a.10, rulings Q2 (b), Q4 (a), Q7, Q8 (a)).
   TOML, CLI ``--loop-induced``, Python ``LoopInducedPolicy``) routes the
   concrete processes without a Born amplitude within their coupling-order
   limits (loop-induced, |A_loop|^2): every value by dry run on the mixed
-  ``p p > z z`` and the purely loop-induced ``g g > h``.
+  ``p p > z z`` and the purely loop-induced ``g g > h`` (``include``, m-lit
+  LIT-API: both kinds of the mixed request as separate processes).
 * Their loop orders are inferred from the field-level loop family recursion
   (``assemble.reachable_loop_orders``, ``loop_service.loop_induced_orders``):
   the PLAN §1.3 table on loop_sm and loop_qcd_qed_sm; explicit bounds are
@@ -290,7 +291,9 @@ def test_loop_induced_refusals_are_listed_and_name_the_key():
         "loop-induced-colour-accuracy",
     )
     assert set(admission) <= set(listed_refusal_keys())
-    assert "loop-induced-include-pending" in listed_configuration_keys()
+    # m-lit LIT-API serves process.loop_induced = 'include': no refusal.
+    assert "loop-induced-include-pending" not in listed_configuration_keys()
+    assert "loop-induced-include-pending" not in listed_refusal_keys()
     for key in ("loop-induced", "born-in-loop-induced-mode"):
         assert "process.loop_induced = 'auto'" in refusal_text(key, "m")
     assert "color.accuracy = 'full'" in refusal_text(
@@ -470,12 +473,28 @@ def test_each_value_on_mixed_and_purely_loop_induced_requests(tmp_path, value):
 
     mixed = _plan(tmp_path / "ppzz", (("p", "p p > z z"),), loop_induced=value)
     induced = _plan(tmp_path / "ggh", (("p", "g g > h"),), loop_induced=value)
-    if value == "include":
-        for plan in (mixed, induced):
-            assert _keys(plan) == ["loop-induced-include-pending"]
-        return
     skipped = mixed.estimated_coverage["skipped_members"]
     records = mixed.estimated_coverage["processes"]
+    if value == "include":
+        # Both kinds as separate processes (m-lit LIT-API, Q2 (b)): the five
+        # Born members Born-interfered, g g > z z loop-induced, nothing
+        # skipped; one plan requiring both runtimes, each process its own.
+        assert mixed.unsupported_features == () and skipped == ()
+        assert len(records) == 6
+        born = [record for record in records if "contribution" not in record]
+        (loop,) = [record for record in records if "contribution" in record]
+        assert len(born) == 5 and all(set(r) == BORN_RECORD_KEYS for r in born)
+        assert {record["runtime_capability"] for record in born} == {V4}
+        assert loop["contribution"] == "loop-induced"
+        assert loop["process"].casefold() == "g g > z z"
+        assert loop["runtime_capability"] == V5
+        assert dict(loop["loop_orders"]) == {"QCD": 2, "QED": 2}
+        assert mixed.estimated_coverage["runtime_capabilities"] == (V4, V5)
+        assert mixed.estimated_coverage["runtime_capability"] is None
+        assert _keys(induced) == []
+        (record,) = induced.estimated_coverage["processes"]
+        assert record["contribution"] == "loop-induced"
+        return
     if value in ("auto", "skip"):
         # Born members served as before, g g > z z skipped with today's record.
         assert mixed.unsupported_features == ()

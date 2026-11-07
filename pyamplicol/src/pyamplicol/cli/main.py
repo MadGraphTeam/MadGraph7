@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import fields, is_dataclass
@@ -64,6 +65,9 @@ def _json_value(value: object) -> object:
     if isinstance(value, complex):
         return {"real": value.real, "imag": value.imag}
     if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, float) and not math.isfinite(value):
+        # JSON has no infinity: an estimate on an exact zero is "inf".
         return str(value)
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value

@@ -66,7 +66,13 @@ The default build directory is the sibling
 A single provider produces **`libumami.so`** and **`umami_driver`** on both Linux
 and macOS; the `.so` suffix is retained on macOS. Rusticol is statically included
 in the provider and its symbols are hidden. The standalone driver links only
-the UMAMI library, not another copy of Rusticol. It reads a saved validation
+the UMAMI library, not another copy of Rusticol. With a distribution wheel the
+provider also links GMP, MPFR and MPC dynamically, from the wheel's
+`pyamplicol/_sdk/lib/` (`libgmp-pyamplicol.so.10`, `libmpfr-pyamplicol.so.6`,
+`libmpc-pyamplicol.so.3` on Linux; `libgmp.10.dylib`, `libmpfr.6.dylib`,
+`libmpc.3.dylib` on macOS), which `rusticol-config --libs` names by path
+with a run path to that directory; a source build links them statically
+([GMP, MPFR and MPC in the wheels](installation.md#gmp-mpfr-and-mpc-in-the-wheels)). It reads a saved validation
 point and prints the matrix element as JSON. Optional arguments select a
 zero-based channel and flavour:
 
@@ -93,7 +99,9 @@ cc -I/absolute/artifact/API/umami my_driver.c \
 ```
 
 Keep the executable and provider together when relocating them, and retain the
-whole generated artifact and any native evaluator dependencies. `rusticol-config`
+whole generated artifact and any native evaluator dependencies; a provider
+built from a distribution wheel also needs its three runtime libraries next
+to it or on its library path once moved away from that environment. `rusticol-config`
 is needed to **build the provider**, not to add a second Rusticol library to its
 consumer. Distribute the generated `UMAMI_LICENSE` notice with the provider;
 the upstream public header retains its license, independently of the adapter's

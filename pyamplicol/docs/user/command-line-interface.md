@@ -435,6 +435,15 @@ before model parameters are bound. Without an explicit arithmetic choice, the
 existing precision convention applies: 16 digits selects double; other requested
 precisions select arbitrary precision. DoubleFloat is always selected explicitly.
 
+`--loop-reduction {auto,ninjars,tirust}` selects the reduction backend for the
+evaluation, overriding the artifact's default (`generate --loop-reduction`
+records that default): `auto` takes TIRust for a loop-induced and NinjaRS for
+a Born-interfered process, falling back to NinjaRS with the reason recorded;
+an explicit backend that cannot serve the call is refused. The JSON output's
+lane diagnostics name the requested and effective backends and the reason. A
+loop-induced artifact (`contribution: "loop-induced"` in the JSON, empty
+`born_values`) takes `--poles all` or `none` only.
+
 Use `--mu-r2-file scales.json` for one positive scale squared per point, instead
 of `--mu-r2`. A scale file such as `[1000000, "900000.0000000000000000001"]`
 accepts JSON numbers or strings. Virtual momenta, parameter and scale files

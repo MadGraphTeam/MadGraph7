@@ -1626,6 +1626,9 @@ class PointResult:
     bra against the Born amplitude read on the loop side (where a gluon's
     polarisation is c p_j it vanishes with the tree Ward identity); ``born``
     and ``totals[0]`` stay the physical Born. ``None`` otherwise.
+
+    ``finiteness`` is a loop-induced point's amplitude-level finiteness
+    ratio (``induced.point_finiteness``), ``None`` when not formed.
     """
 
     born: Mapping[Orders, Any]
@@ -1638,6 +1641,11 @@ class PointResult:
     poles: PoleSelection = PoleSelection.ALL
     pole_origins: Mapping[str, Mapping[str, Mapping[Orders, Laurent]]] | None = None
     loop_born: Mapping[Orders, Any] | None = None
+    # A loop-induced point's amplitude-level finiteness ratio (the largest
+    # ``induced.finiteness`` over loop orders and rows), formed when its
+    # poles and its term scale are (the native executor forms the term scale
+    # with the stability checks); None otherwise.
+    finiteness: float | None = None
 
     def virtual(self, sector: Orders) -> Laurent:
         return self.components["virtual"][sector]
@@ -1742,6 +1750,12 @@ class SliceRequest:
     # it only for a loop-induced request (``artifact.OPTIONAL_REQUEST_DEFAULTS``),
     # so Born-interfered records keep their bytes.
     contribution: Contribution = "virtual"
+    # The generation default of the reduction backend (``[loop] reduction``,
+    # m-lit Q17; ``reduction``): "auto", "ninjars" or "tirust", recorded only
+    # when not "auto" and read by the runtime as the request of a call that
+    # names none. The generated slice does not depend on it (artifacts are
+    # backend-independent).
+    reduction: str = "auto"
 
     def __post_init__(self) -> None:
         if self.contribution not in CONTRIBUTIONS:
@@ -1749,6 +1763,9 @@ class SliceRequest:
                 f"unknown contribution {self.contribution!r}; expected one of "
                 f"{list(CONTRIBUTIONS)}"
             )
+        from .reduction import requested_backend
+
+        requested_backend(self.reduction)
         if self.contribution == "loop-induced" and self.accuracy != "full":
             # Full colour only for loop-induced processes (m-lit Q8 (a)).
             raise LoopRequestUnsupportedValue(

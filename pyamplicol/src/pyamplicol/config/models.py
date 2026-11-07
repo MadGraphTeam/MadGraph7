@@ -150,6 +150,23 @@ class R2Strategy(StrEnum):
     DIRECT = "direct"
 
 
+class ReductionBackend(StrEnum):
+    """The reduction backend of a v2 one-loop evaluation (m-lit PLAN §2.b.4,
+    RULED Q17 / Q18): ``auto`` (the default) takes the per-type default,
+    TIRust (tensor-integral reduction) for a loop-induced process and
+    NinjaRS (integrand reduction) for a Born-interfered one, and falls back
+    to NinjaRS with a recorded reason where TIRust cannot serve the call;
+    ``ninjars`` and ``tirust`` request one backend, refused when it cannot
+    serve the call. ``loop.reduction`` is the generation default recorded in
+    the artifact (artifacts are backend-independent), ``evaluation.
+    reduction`` the runtime override; the requested and effective backends
+    and the reason are in every result's lane diagnostics."""
+
+    AUTO = "auto"
+    NINJARS = "ninjars"
+    TIRUST = "tirust"
+
+
 class PoleSelection(StrEnum):
     """Which Laurent poles a one-loop evaluation computes (design §12.4).
 
@@ -1277,6 +1294,12 @@ class EvaluationConfig:
         default=PoleSelection.ALL,
         metadata=_setting("str", choices=tuple(PoleSelection)),
     )
+    # The runtime override of the artifact's reduction backend (None: the
+    # artifact's generation default; ``ReductionBackend``).
+    reduction: ReductionBackend | None = field(
+        default=None,
+        metadata=_setting("str", nullable=True, choices=tuple(ReductionBackend)),
+    )
     stability_checks: EvaluationStabilityChecksConfig = field(
         default_factory=EvaluationStabilityChecksConfig, metadata=_section()
     )
@@ -1336,6 +1359,12 @@ class EvaluationConfig:
         object.__setattr__(
             self, "poles", _enum(self.poles, PoleSelection, "evaluation.poles")
         )
+        if self.reduction is not None:
+            object.__setattr__(
+                self,
+                "reduction",
+                _enum(self.reduction, ReductionBackend, "evaluation.reduction"),
+            )
         if not isinstance(self.stability_checks, EvaluationStabilityChecksConfig):
             raise ConfigurationError(
                 "evaluation.stability_checks must be an EvaluationStabilityChecksConfig"
@@ -1639,6 +1668,13 @@ class LoopConfig:
     r2_strategy: R2Strategy = field(
         default=R2Strategy.AUTO, metadata=_setting("str", choices=tuple(R2Strategy))
     )
+    # The generation default of the reduction backend (``ReductionBackend``),
+    # recorded in the artifact when not ``auto``; evaluations override it
+    # (``evaluation.reduction``).
+    reduction: ReductionBackend = field(
+        default=ReductionBackend.AUTO,
+        metadata=_setting("str", choices=tuple(ReductionBackend)),
+    )
     model: LoopModelConfig = field(default_factory=LoopModelConfig, metadata=_section())
     preparation: LoopPreparationConfig | None = field(default=None, metadata=_section())
     # The v2 engine's alpha_s parameter of the QCD IR-pole prediction (an
@@ -1685,6 +1721,11 @@ class LoopConfig:
             )
         object.__setattr__(
             self, "r2_strategy", _enum(self.r2_strategy, R2Strategy, "loop.r2_strategy")
+        )
+        object.__setattr__(
+            self,
+            "reduction",
+            _enum(self.reduction, ReductionBackend, "loop.reduction"),
         )
         from pyamplicol.loops.v2.ew_policy import photon_tag_option
 
@@ -1772,6 +1813,12 @@ class RunConfig:
             raise ConfigurationError(
                 "generation.particle_veto requires one-loop generation "
                 "(process.loop_coupling_orders)"
+            )
+        if not virtual and self.loop.reduction is not ReductionBackend.AUTO:
+            raise ConfigurationError(
+                f"loop.reduction = {str(self.loop.reduction)!r} requires one-loop "
+                "generation (process.loop_coupling_orders); an evaluation "
+                "overrides an artifact's backend with evaluation.reduction"
             )
         if not virtual and self.process.loop_induced in (
             LoopInducedPolicy.ONLY,
@@ -1916,6 +1963,7 @@ __all__ = [
     "ProgressMode",
     "R2Strategy",
     "RecurrenceEvaluatorConfig",
+    "ReductionBackend",
     "RelationDiscoveryMode",
     "RunConfig",
     "SymbolicaConfig",

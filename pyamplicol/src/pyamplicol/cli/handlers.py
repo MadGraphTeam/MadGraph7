@@ -450,11 +450,12 @@ class DefaultCliServices:
             or evaluation.mu_r2_file is not None
             or config.loop.r2_strategy != "auto"
             or evaluation.on_failure != "raise"
+            or evaluation.reduction is not None
             or v2_options
         ):
             raise ConfigurationError(
-                "arithmetic, mu_r2, r2_strategy, poles, stability checks and "
-                "on_failure options require a virtual artifact; "
+                "arithmetic, mu_r2, r2_strategy, poles, stability checks, "
+                "reduction and on_failure options require a virtual artifact; "
                 "tree precision is selected with --precision"
             )
         parameters: ModelParameters | None = None
@@ -488,6 +489,11 @@ class DefaultCliServices:
                     arithmetic=evaluation.arithmetic,
                     precision=evaluation.precision,
                     r2_strategy=config.loop.r2_strategy,
+                    **(
+                        {}
+                        if evaluation.reduction is None
+                        else {"reduction": str(evaluation.reduction)}
+                    ),
                 )
             return Runtime.load(
                 artifact,
