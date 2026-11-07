@@ -163,6 +163,7 @@ _FORBIDDEN_STATIC_RUNTIME_MARKERS = (
 _STATIC_RUNTIME_SYMBOL_PREFIXES = ("mpfr_", "mpc_")
 _BINDING_CRATE = b"gmp_mpfr_sys"
 _STATIC_RUNTIME_SYMBOL_PARTS = ("__gmp", "malachite")
+_UNDEFINED_SYMBOL_TYPES = frozenset({"U", "u", "W", "w", "V", "v"})
 _COMMON_SYSTEM_LIBRARIES = {"c", "dl", "m", "pthread", "resolv", "rt", "util"}
 _SYSTEM_LIBRARIES = {
     "aarch64-apple-darwin": _COMMON_SYSTEM_LIBRARIES | {"System", "gcc_s", "iconv"},
@@ -1479,6 +1480,24 @@ def _reject_native_path_bytes(data: bytes, description: str) -> None:
             )
 
 
+def _nm_symbols(output: str) -> list[tuple[str | None, str]]:
+    """``(type, name)`` of each symbol line of BSD-format ``nm`` output.
+
+    A line is ``[value] type name``; archive member headers end with ``:``.
+    For ``-u`` on a Mach-O file, Darwin's ``nm`` (Apple's LLVM ``nm``,
+    ``llvm-nm`` and the classic cctools ``nm`` alike) prints the bare name,
+    so such a line has no type.
+    """
+
+    symbols: list[tuple[str | None, str]] = []
+    for line in output.splitlines():
+        fields = line.split()
+        if not fields or line.endswith(":"):
+            continue
+        symbols.append((fields[-2] if len(fields) >= 2 else None, fields[-1]))
+    return symbols
+
+
 def _scan_capi_archive(path: Path, *, allow_local_rustup: bool) -> bool:
     """Validate relocation paths and authoritative undefined-symbol linkage.
 
@@ -1508,11 +1527,10 @@ def _scan_capi_archive(path: Path, *, allow_local_rustup: bool) -> bool:
             text=True,
         )
         forbidden_symbols: list[str] = []
-        for line in completed.stdout.splitlines():
-            fields = line.split()
-            if len(fields) < 2 or fields[-2] not in {"U", "u", "W", "w", "V", "v"}:
+        for kind, symbol in _nm_symbols(completed.stdout):
+            # A bare name (no type) is the Darwin form of an undefined symbol.
+            if kind is not None and kind not in _UNDEFINED_SYMBOL_TYPES:
                 continue
-            symbol = fields[-1]
             normalized = symbol.removeprefix("_").lower()
             if normalized.startswith(_FORBIDDEN_CAPI_UNDEFINED_PREFIXES):
                 forbidden_symbols.append(symbol)
@@ -1654,12 +1672,7 @@ def _symbol_names(path: Path, *arguments: str) -> set[str] | None:
         )
         if completed.returncode != 0:
             continue
-        names: set[str] = set()
-        for line in completed.stdout.splitlines():
-            fields = line.split()
-            if len(fields) >= 2 and not line.endswith(":"):
-                names.add(fields[-1])
-        return names
+        return {name for _kind, name in _nm_symbols(completed.stdout)}
     return None
 
 
