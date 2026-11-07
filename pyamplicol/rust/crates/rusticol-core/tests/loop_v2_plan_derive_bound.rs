@@ -481,6 +481,9 @@ fn dressed_rows_stay_within_the_bound() {
     }
 }
 
+/// A change made to a valid dressed-row plan.
+type Mutation = fn(&mut Value);
+
 /// The loader's error for `plan` (JSON), which must fail.
 fn refusal(plan: &Value) -> String {
     match LoopProgramV4::load(&text(plan)) {
@@ -499,7 +502,7 @@ fn dressed_plans_refuse_what_route_r2_never_writes() {
         panic!("a dressed-row plan served a helicity mask");
     };
     assert!(error.message().contains("seeds no Born row"), "{error}");
-    let cases: [(&str, fn(&mut Value)); 6] = [
+    let cases: [(&str, Mutation); 6] = [
         ("`dressed` only as true", |p| p["dressed"] = json!(false)),
         ("amplitude-mode route", |p| {
             p["schema"] = json!(4);
