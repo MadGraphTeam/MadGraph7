@@ -1571,6 +1571,12 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                         phase.update(index + 1, message=f"{name} (flavour member)")
                         continue
                     process = generate_process(compiled, request, native, correlators)
+                    # m-lit Q10 (LIT-R2): the exact helicity-zero filter of a
+                    # loop-induced process (None for a virtual); rows it
+                    # drops are exported again without their row.
+                    helicity, process = _loop_induced_filter(
+                        context, entry, process, request, validation, index, correlators
+                    )
                     # m-lit Q12: the generation-time probes of a loop-induced
                     # process (None for a virtual).
                     probes = _loop_induced_probes(
@@ -1641,6 +1647,11 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                                 **(
                                     {"loop_induced_probes": probes}
                                     if probes is not None
+                                    else {}
+                                ),
+                                **(
+                                    {"loop_induced_helicity_filter": helicity}
+                                    if helicity is not None
                                     else {}
                                 ),
                                 # The request's gauge (WP3.2 EWI-4b), recorded
@@ -1814,6 +1825,55 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
     )
 
 
+def _loop_induced_candidates(context, entry, validation, index):
+    """The generation's validation points of a process (``generation.
+    validation.samples`` candidates, at least one): the loop-induced probes'
+    and helicity filter's candidate points."""
+
+    candidates = []
+    for sample in range(max(validation.samples, 1)):
+        record = build_process_validation_point(
+            entry.process_ir,
+            context.resolved.model,
+            process_id=entry.request.name,
+            seed=validation.seed + index + sample,
+        )
+        if not record.available:
+            raise GenerationError(
+                f"loop-induced probe momenta unavailable: {record.error}"
+            )
+        candidates.append(record.four_vectors)
+    return candidates
+
+
+def _loop_induced_filter(
+    context, entry, process, request, validation, index, correlators
+):
+    """The exact helicity-zero filter of a loop-induced process (m-lit Q10,
+    ``helicity_filter.generation_filter``): its record (None for a virtual)
+    and the process, exported again without the rows it drops (none when it
+    would drop every row: m-lit Q13, the verdict is then a diagnostic)."""
+
+    from pyamplicol.loops.v2.artifact import reexport_process
+    from pyamplicol.loops.v2.helicity_filter import generation_filter
+
+    slice_ = process.slice
+    if getattr(slice_, "amplitude", None) is None:
+        return None, process
+    candidates = (
+        []
+        if slice_.amplitude.colour_zero
+        else _loop_induced_candidates(context, entry, validation, index)
+    )
+    record, dropped = generation_filter(slice_, candidates)
+    if dropped:
+        slice_.zero_rows = dropped
+        process = reexport_process(
+            process, context.resolved.compiled, request, correlators
+        )
+    return record, process
+
+
 def _loop_induced_probes(backend, context, entry, process, native, validation, index):
     """The generation-time probes of a loop-induced process (m-lit Q12,
     ``induced.generation_probes``) on the generation's validation points of
@@ -1826,20 +1886,11 @@ def _loop_induced_probes(backend, context, entry, process, native, validation, i
     slice_ = process.slice
     if getattr(slice_, "amplitude", None) is None:
         return None
-    candidates = []
-    if not slice_.amplitude.colour_zero:
-        for sample in range(max(validation.samples, 1)):
-            record = build_process_validation_point(
-                entry.process_ir,
-                context.resolved.model,
-                process_id=entry.request.name,
-                seed=validation.seed + index + sample,
-            )
-            if not record.available:
-                raise GenerationError(
-                    f"loop-induced probe momenta unavailable: {record.error}"
-                )
-            candidates.append(record.four_vectors)
+    candidates = (
+        []
+        if slice_.amplitude.colour_zero
+        else _loop_induced_candidates(context, entry, validation, index)
+    )
     return generation_probes(
         slice_,
         context.resolved.compiled,

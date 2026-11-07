@@ -236,9 +236,9 @@ class _Values:
         out = pow(u, int(abs(exponent)), PRIME)
         if exponent < 0:
             out = pow(out, PRIME - 2, PRIME)
-        if kind == "param" and signs.get(value, 1) < 0 and power.denominator == 1:
-            if int(power) % 2:
-                out = (PRIME - out) % PRIME
+        flipped = kind == "param" and signs.get(value, 1) < 0
+        if flipped and power.denominator == 1 and int(power) % 2:
+            out = (PRIME - out) % PRIME
         return out
 
     def constant(self, key: Any, flips: Any) -> tuple[int, int]:
@@ -329,24 +329,46 @@ def zero_rows_exactly(
 def screen(
     executor: Any, point: Any, scale: Any, parameters: Mapping[str, str]
 ) -> set[int]:
-    """The rows the binary64 pre-screen proves live (``ESTIMATE_FACTOR`` x
-    their own estimate at some loop order and Laurent coefficient)."""
+    """The rows the binary64 pre-screen proves live: ``ESTIMATE_FACTOR`` (the
+    x10 rule) times their own estimate at some loop order and Laurent
+    coefficient, the estimate of the generation-time probes
+    (``induced.probes``: the calibrated re-test and generic rotation of
+    ``stability.RECOMMENDED_CHECKS`` and the row term floors): the rotation
+    budget covers the rounding of numerators that cancel term by term (a
+    Furry zero), whose term floor is rounding itself."""
 
-    from .assemble import Precision
-    from .induced import ESTIMATE_FACTOR, _probe_runs, amplitude_estimates
-
-    _carrier, (evaluation,) = _probe_runs(
-        executor,
-        [(point, None)],
-        scale,
-        parameters,
-        Precision.double(),
-        "reversed",
-        True,
+    from .assemble import Precision, _fraction
+    from .induced import (
+        ESTIMATE_FACTOR,
+        _probe_runs,
+        amplitude_estimates,
+        physical_floors,
+        rotation_errors,
     )
+    from .stability import RECOMMENDED_CHECKS
+
+    checks = RECOMMENDED_CHECKS
+    precision = Precision.double()
+    carrier, (evaluation,) = _probe_runs(
+        executor, [(point, None)], scale, parameters, precision, checks.frame
+    )
+    exact = tuple(tuple(_fraction(x) for x in p) for p in point)
+    turned = []
+    if checks.rotations:
+        _carrier, rotated = _probe_runs(
+            executor,
+            [(rotation.apply(exact), None) for rotation in checks.rotations],
+            scale,
+            parameters,
+            precision,
+            None,
+        )
+        turned = [rotation_errors(evaluation, run) for run in rotated]
+    floors = physical_floors(executor, point, scale, parameters)
+    estimates = amplitude_estimates(evaluation, carrier.unit_roundoff, floors, turned)
     index = {row: r for r, row in enumerate(executor.exported.rows)}
     live = set()
-    for (_order, row), entries in amplitude_estimates(evaluation, 2.0**-53).items():
+    for (_order, row), entries in estimates.items():
         if any(residue > ESTIMATE_FACTOR * estimate for residue, estimate in entries):
             live.add(index[row])
     return live
@@ -402,3 +424,38 @@ def filter_rows(
         failure_bound=max(len(tested), 1) * ratio**k,
         seconds=seconds,
     )
+
+
+def generation_filter(
+    slice_: Any,
+    candidates: Sequence[Sequence[Sequence[float]]],
+    *,
+    failure: float = FAILURE_PROBABILITY,
+) -> tuple[dict[str, Any], frozenset]:
+    """The generation-time filter of a loop-induced slice: its verdict at the
+    candidate point farthest from every tree pole (lifted to 32 digits,
+    ``induced.probe_point``) on the slice's own plan, and the rows to drop
+    (``LoopSlice.zero_rows``, read by ``export_plan``). An exact colour zero
+    has no row to filter."""
+
+    from .induced import _point_scale, probe_point
+    from .plan_export import NativeExecutor
+
+    if slice_.amplitude.colour_zero or not candidates:
+        return {"exact_colour_zero": bool(slice_.amplitude.colour_zero)}, frozenset()
+    lifted = [probe_point(slice_, momenta, 32) for momenta in candidates]
+    index = max(
+        range(len(lifted)),
+        key=lambda i: float("inf") if lifted[i][1] is None else lifted[i][1],
+    )
+    point, _distance = lifted[index]
+    initial = sum(1 for leg in slice_.blocks.process.legs if leg.is_initial)
+    executor = NativeExecutor(slice_, forward=False, inputs="native")
+    verdict = filter_rows(
+        executor, point, _point_scale(point, initial), failure=failure
+    )
+    labels = set(verdict.dropped)
+    dropped = frozenset(
+        row for row in executor.exported.rows if row_label(row) in labels
+    )
+    return {**verdict.record(), "candidate": index}, dropped
