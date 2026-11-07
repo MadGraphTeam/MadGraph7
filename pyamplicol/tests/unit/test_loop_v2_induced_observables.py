@@ -69,11 +69,12 @@ def _gluons(pdgs):
     return [k for k, pdg in enumerate(pdgs, 1) if pdg == 21]
 
 
-def _generate(root: Path, name: str, expression: str):
+def _generate(root: Path, name: str, expression: str, aliases=()):
     """The loop-induced artifact of fixture row ``name`` through the public
-    Generator, every dipole T_i.T_j and every gluon's spin class declared."""
+    Generator, every dipole T_i.T_j and every gluon's spin class declared
+    (``aliases``: ``ProcessAlias`` arguments on process ``p``)."""
 
-    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.api import Generator, ProcessAlias, ProcessRequest, ProcessSet
     from pyamplicol.config import resolve_config
     from pyamplicol.correlators import CorrelatorConfig
 
@@ -89,11 +90,19 @@ def _generate(root: Path, name: str, expression: str):
         }
     )
     Generator(resolve_config(card)).generate(
-        ProcessSet((ProcessRequest.parse(expression, name="p"),)),
+        ProcessSet(
+            (ProcessRequest.parse(expression, name="p"),),
+            tuple(ProcessAlias(*alias) for alias in aliases),
+        ),
         root / "artifact",
         correlators=correlators,
     )
     return root / "artifact"
+
+
+# A permutation alias of g g > h g g: g g > g h g (final legs 3 and 4
+# exchanged).
+ALIAS = ("p_swap", "p", (0, 1, 3, 2, 4))
 
 
 ROWS = {"li_gg_hgg": "g g > h g g", "li_uux_hgg": "u u~ > h g g"}
@@ -107,7 +116,12 @@ def li(loop_sm_ufo, loop_native, tmp_path_factory):
 @pytest.fixture(scope="module")
 def artifacts(loop_sm_ufo, loop_native, tmp_path_factory):
     return {
-        name: _generate(tmp_path_factory.mktemp(name), name, expression)
+        name: _generate(
+            tmp_path_factory.mktemp(name),
+            name,
+            expression,
+            (ALIAS,) if name == "li_gg_hgg" else (),
+        )
         for name, expression in ROWS.items()
     }
 
@@ -480,6 +494,48 @@ def test_spin_projection_equals_the_literal_source(li, name, leg):
     )
     for sector, values in projected.items():
         assert _relative(values[0], direct[sector][0]) <= 1e-10
+
+
+@pytest.mark.loop_physics
+def test_a_permutation_alias_reads_the_representative(artifacts):
+    """The alias g g > g h g evaluates as its representative at the
+    permuted momenta, bitwise: the inclusive value, a served colour history
+    (T_1.T_5: its image is declared), a spin vector on the alias's gluon
+    leg 3 (the representative's leg 4) and the resolved rows (relabelled)."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.correlators import CorrelatedRequest
+
+    name = "li_gg_hgg"
+    points, scales = _points(name)
+    points, scales = points[:1], scales[:1]
+    _alias, _target, permutation = ALIAS
+    member = [[point[permutation[k]] for k in range(len(point))] for point in points]
+    representative = _runtime(artifacts, name)
+    alias = Runtime.load(artifacts[name], process="p_swap")
+    assert (
+        alias.evaluate(member, mu_r2=scales).values
+        == representative.evaluate(points, mu_r2=scales).values
+    )
+    vector = _spin(_recola(name)["rows"][21]["vector"])
+    assert _recola(name)["rows"][21]["legs"] == [4]
+    requests = {
+        "c": CorrelatedRequest("T1T5"),
+        "s": CorrelatedRequest("born", {4: vector}),
+    }
+    mapped = {
+        "c": CorrelatedRequest("T1T5"),
+        "s": CorrelatedRequest("born", {3: vector}),
+    }
+    direct = representative.evaluate_correlated_many(points, requests, mu_r2=scales)
+    relabelled = alias.evaluate_correlated_many(member, mapped, mu_r2=scales)
+    for key in requests:
+        assert relabelled[key].values == direct[key].values, key
+    rows = representative.evaluate_resolved(points, mu_r2=scales)
+    moved = alias.evaluate_resolved(member, mu_r2=scales)
+    assert sorted(v.finite for v in (x[0] for x in moved.values[0][0])) == sorted(
+        v.finite for v in (x[0] for x in rows.values[0][0])
+    )
 
 
 # ------------------------------------------------------------ carriers

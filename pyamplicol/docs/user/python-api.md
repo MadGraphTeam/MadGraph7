@@ -357,6 +357,42 @@ colour zero (every colour coefficient of the loop amplitude vanishes at
 N_c = 3 by colour algebra, as for `h > g a`, Tr T^a = 0) evaluates to an
 exact 0 and its lanes say so.
 
+### Observables of loop-induced processes
+
+The correlated, resolved and selected calls serve loop-induced processes with
+the same result types (`contribution = "loop-induced"`), as quadratic forms on
+the point's loop amplitude vector (nothing is reduced again; full colour
+only). Colour histories and spin classes are declared at generation
+(`correlators=CorrelatorConfig(...)`), their colour matrices stored with the
+artifact:
+
+```python
+from pyamplicol.correlators import CorrelatedRequest
+
+many = runtime.evaluate_correlated_many(
+    points,
+    {
+        "total": CorrelatedRequest("born"),          # |A|^2
+        "T1T4": CorrelatedRequest("T1T4"),           # <A|T_1.T_4|A>
+        "spin": CorrelatedRequest("born", {4: v}),   # leg 4's wavefunction -> v
+    },
+    mu_r2=scales,
+)
+rows = runtime.evaluate_resolved(points, mu_r2=scales)           # per helicity
+anchors = runtime.evaluate_resolved(
+    points, mu_r2=scales, color_resolution="amplitude-basis"
+)                                                                # per basis element
+one = runtime.evaluate(points, mu_r2=scales, helicities=["h0"])  # |A(h0)|^2 / avg
+```
+
+A spin vector is projected on the leg's polarisation vectors (exact for a
+vector in their span, and for a massless leg up to a multiple of its
+momentum); a single-helicity selection divides by the total's average, so the
+selections of every row sum to the total, and dresses the selected rows only.
+The amplitude-basis anchors are basis-dependent parts whose sum is the
+helicity's value. Colour-flow selection does not exist for loop-induced
+processes.
+
 ## Split totals by squared coupling order
 
 Recurrence artifacts record the exact coupling orders of every amplitude
