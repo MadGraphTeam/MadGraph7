@@ -598,8 +598,12 @@ class VirtualLaneDiagnostic:
     # §2.a.7, L3): the largest ||a_{-k}||_G over loop orders, helicity rows
     # and pole coefficients against the row's pre-cancellation term scale,
     # of the order of the carrier's unit roundoff for a complete amplitude.
-    # Formed with the poles and the stability checks (their term scale);
-    # None otherwise and for Born-interfered results.
+    # Present exactly when the call computes the poles and requests stability
+    # checks; None otherwise (also with poles="none") and for Born-interfered
+    # results. Its scale is the point's term floor, which needs every
+    # family's tensor moments at the point (one unit-numerator reduction per
+    # family monomial and point on NinjaRS); the checks form it anyway, a call
+    # without them pays nothing for it.
     finiteness: float | None = None
 
     def __post_init__(self) -> None:

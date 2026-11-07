@@ -1602,7 +1602,9 @@ class V2VirtualRuntime:
         # A loop-induced process stores no observable columns yet (LIT-OBS).
         self._induced = "amplitude" in self._native_process.record
         # A loop-induced process's colour-zero record (m-lit Q13: the one
-        # exact zero, every loop with a single coloured attachment).
+        # exact zero, by colour algebra alone: no colour coefficient of the
+        # loop amplitude and no counterterm colour tensor is nonzero at
+        # N_c = 3, ``induced.bind``).
         self._colour_zero: dict[str, object] | None = None
         if self._induced:
             from .induced import StoredAmplitude
@@ -2293,8 +2295,9 @@ class V2VirtualRuntime:
             # The colour-zero record (m-lit Q13): exactly 0, not a numerical
             # zero.
             detail = (
-                "exact colour zero: every loop has a single coloured attachment "
-                "(Tr T^a = 0), the value is exactly 0"
+                "exact colour zero: every colour coefficient of the loop "
+                "amplitude vanishes at N_c = 3 (colour algebra), the value is "
+                "exactly 0"
             )
         arithmetic = cast(Literal["double", "double-double", "arbitrary"], carrier)
         contraction = self._contraction(results)

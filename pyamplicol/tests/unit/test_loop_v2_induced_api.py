@@ -628,7 +628,10 @@ def test_reduction_finiteness_and_estimates_on_the_public_route(shipped):
         assert lane.reduction.requested == "auto"
         assert lane.reduction.effective == "ninjars"
         assert "loop-induced default" in lane.reduction.reason
-        # Formed with the stability checks' term scale only.
+        # The finiteness ratio exists exactly with poles and stability checks
+        # (its scale, the term floor, needs the per-point tensor moments,
+        # which only the checks form; documented in python-api.md and on
+        # VirtualLaneDiagnostic.finiteness).
         assert lane.finiteness is None
     named = shipped.evaluate(points, mu_r2=scales, reduction="ninjars")
     assert named.values == auto.values
@@ -663,9 +666,18 @@ def test_reduction_finiteness_and_estimates_on_the_public_route(shipped):
         points, mu_r2=scales, poles="none", stability_checks=checks
     )
     assert all(lane.finiteness is None for lane in finite_only.diagnostics)
+    # Any check forms it, the cheapest included (the re-test alone).
+    retest = shipped.evaluate(
+        points, mu_r2=scales, stability_checks=VirtualStabilityChecks(0, True)
+    )
+    assert retest.values == auto.values
+    assert [lane.finiteness for lane in retest.diagnostics] == [
+        lane.finiteness for lane in checked.diagnostics
+    ]
     rescued = shipped.evaluate(points, mu_r2=scales, stability=ladder)
     assert rescued.rescue_counts == {0: len(points), "not met": 0, "failed": 0}
     assert all(lane.reduction is not None for lane in rescued.diagnostics)
+    assert all(0.0 <= lane.finiteness <= 1e-12 for lane in rescued.diagnostics)
 
 
 @pytest.mark.loop_physics
@@ -744,6 +756,10 @@ def test_an_exact_colour_zero_is_reported_with_its_colour_record(tmp_path):
     assert all(x == 0 for laurent in value.values[0] for x in laurent)
     (lane,) = value.diagnostics
     assert lane.detail.startswith("exact colour zero")
+    # The colour-algebra fact, not one mechanism (a vanishing coefficient or
+    # no routed family both make it).
+    assert "every colour coefficient" in lane.detail
+    assert "attachment" not in lane.detail
 
 
 _SELFTEST = r"""
