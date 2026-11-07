@@ -102,6 +102,13 @@ def goldstone_legs() -> Iterator[None]:
         _GOLDSTONE_LEGS.reset(token)
 
 
+def goldstone_legs_admitted() -> bool:
+    """Whether the current scope admits Goldstone external legs
+    (``goldstone_legs``)."""
+
+    return _GOLDSTONE_LEGS.get()
+
+
 @dataclass(frozen=True)
 class ModelParticleCatalog:
     model_name: str
@@ -456,6 +463,7 @@ __all__ = [
     "build_model_process_ir",
     "expand_model_processes",
     "goldstone_legs",
+    "goldstone_legs_admitted",
     "parse_multiparticle_definitions",
     "require_external_leg_counts",
 ]

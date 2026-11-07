@@ -1644,8 +1644,12 @@ def generation_probes(
     every tree pole, lifted by ``probe_point``. A probe passes within ten
     times its own estimate (``ESTIMATE_FACTOR``); a failure raises
     ``ProbeFailure`` unless ``allow_failure`` (recorded). An exact colour
-    zero has nothing to probe. Massive external vectors take no Ward probe
-    here (their Goldstone-equivalence and both-gauges checks are LIT-EW's).
+    zero has nothing to probe. Massive external vectors take the
+    Goldstone-equivalence probe (``goldstone``, m-lit LIT-EW) on one leg of
+    every species with a Goldstone partner, in a 't Hooft-Feynman gauge
+    request only (the identity needs the Goldstone vertices; a QCD-only
+    request in unitary gauge has its both-gauges equality as a validation
+    check instead), recorded as ``goldstone``.
 
     Returns the record the artifact stores (``generation_filters``)."""
 
@@ -1690,6 +1694,10 @@ def generation_probes(
     results = [("finiteness", None, found[0])] + [
         ("ward", leg, result) for leg, result in zip(legs, found[1:], strict=True)
     ]
+    goldstones = _goldstone_probes(
+        target, compiled, request, native, point, scale, precision, found[0].scales
+    )
+    results += [("goldstone", leg, result) for leg, result in goldstones["results"]]
     finiteness = results[0][2]
     wards = [result for kind, _, result in results if kind == "ward"]
     record: dict[str, Any] = {
@@ -1704,6 +1712,7 @@ def generation_probes(
             "worst": _short(max((r.worst for r in wards), default=0.0)),
             "passed": all(r.passed for r in wards),
         },
+        **({"goldstone": goldstones["record"]} if goldstones["record"] else {}),
     }
     failed = [
         f"{kind} probe"
@@ -1719,12 +1728,65 @@ def generation_probes(
                 f"{slice_.request.process!r}: the loop-induced generation-time "
                 f"probes failed ({'; '.join(failed)}; pass within "
                 f"{ESTIMATE_FACTOR} times the probe's own estimate, m-lit Q12): "
-                "a missing family or counterterm (finiteness) or R2 vertex "
-                "(Ward). generation.allow_failed_probes = true stores the "
+                "a missing family or counterterm (finiteness), R2 vertex "
+                "(Ward) or Goldstone-side vertex or counterterm (Goldstone). "
+                "generation.allow_failed_probes = true stores the "
                 "artifact anyway, with the failure recorded"
             )
         record["allowed_failure"] = True
     return record
+
+
+def _goldstone_probes(
+    target, compiled, request, native, point, scale, precision, physical
+) -> dict[str, Any]:
+    """The Goldstone-equivalence probes of a probe slice (``goldstone``,
+    m-lit LIT-EW): in a 't Hooft-Feynman gauge slice, one per external
+    massive-vector species with a Goldstone partner, at the probe point,
+    with the physical row floors of its finiteness probe. Returns the
+    (leg, ``GoldstoneResult``) pairs and the record (None without such a
+    leg); a Goldstone side the engine refuses is recorded as skipped, never
+    a silent pass."""
+
+    from . import goldstone
+    from .plan_export import NativeExecutor
+    from .refusals import LoopRequestUnsupported
+
+    if str(target.compiled.ir.gauge) != "feynman":
+        return {"results": [], "record": None}
+    massive = goldstone.massive_vector_legs(target)
+    if not massive:
+        return {"results": [], "record": None}
+    vector = NativeExecutor(target, forward=False, inputs="native")
+    results, phases, skipped = [], {}, {}
+    for leg, partner in massive.items():
+        try:
+            side = goldstone.goldstone_slice(
+                compiled, request, native, target, leg, partner
+            )
+        except LoopRequestUnsupported as error:
+            skipped[str(leg)] = f"{error.key}: {error}"
+            continue
+        result = goldstone.probe(
+            vector,
+            NativeExecutor(side, forward=False, inputs="native"),
+            point,
+            scale,
+            leg,
+            precision=precision,
+            physical=physical,
+        )
+        results.append((leg, result))
+        if result.phase is not None:
+            phases[str(leg)] = [_short(x) for x in result.phase]
+    record: dict[str, Any] = {
+        "legs": [leg for leg, _ in results],
+        "worst": _short(max((r.worst for _, r in results), default=0.0)),
+        "passed": all(r.passed for _, r in results),
+        **({"phases": phases} if phases else {}),
+        **({"skipped": skipped} if skipped else {}),
+    }
+    return {"results": results, "record": record}
 
 
 def _short(value: float) -> float | str:

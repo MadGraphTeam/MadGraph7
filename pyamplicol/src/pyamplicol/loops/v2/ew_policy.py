@@ -847,8 +847,10 @@ def require_zero_widths(
 # RULED (USER 2026-11-05) Q7 (m-lit PLAN §3.4 LIT-EW): "Fixed tree widths but
 # consistent complex mass scheme everywhere when enabled (and then unstable
 # particles never in the external states)."
+# The policy names of the dry run's record (``loop_service.
+# _loop_induced_coverage``) and of the artifact's (``loop_induced_width_record``).
 FIXED_TREE_WIDTHS = "fixed-tree-widths"
-COMPLEX_MASS_WIDTHS = "complex-mass"
+COMPLEX_MASS_WIDTHS = "complex-mass-scheme"
 
 
 def tree_width_policy(
@@ -889,7 +891,8 @@ def loop_induced_width_record(
 ) -> dict[str, Any]:
     """The width policy record of a loop-induced request (``tree_width_policy``;
     the generation record's ``conventions.width_policy``): ``policy``
-    "fixed-tree-widths" or "complex-mass"; its tree and loop propagators;
+    "fixed-tree-widths" or "complex-mass-scheme" (the dry run's names); its
+    tree and loop propagators;
     with fixed widths the particles whose non-zero width a non-amputated tree
     current propagates (``propagating_widths``: particle -> width parameter;
     empty when every such width is zero or fixed to zero)."""
