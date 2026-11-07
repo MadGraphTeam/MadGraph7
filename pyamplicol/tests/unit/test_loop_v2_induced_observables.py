@@ -157,6 +157,38 @@ def test_literal_matrices_keep_the_metric_and_colour_conservation():
 
 
 @pytest.mark.loop_fast
+def test_spin_vectors_must_be_transverse_to_their_leg():
+    """A spin vector is read on the leg's polarisation vectors, which span
+    v.p = 0: transverse vectors (and p itself for a massless leg) pass, a
+    component along the time direction is refused, and a binary64-rounded
+    transverse vector passes in binary64 but not at a finer roundoff."""
+
+    import math
+
+    from pyamplicol.api.errors import CompatibilityError
+    from pyamplicol.loops.v2.induced_observables import require_transverse
+
+    zero = (Decimal(0), Decimal(0))
+    p = ("5", "3", "0", "4")
+    u = 2.0**-53
+    require_transverse((zero, zero, (Decimal(0), Decimal(1)), zero), p, u, 4)
+    require_transverse(tuple((Decimal(x), Decimal(0)) for x in p), p, u, 4)
+    with pytest.raises(CompatibilityError, match="leg 4 is not transverse"):
+        require_transverse(((Decimal(1), Decimal(0)), zero, zero, zero), p, u, 4)
+    # (0, 4/5, 0, -3/5) rounded to binary64: transverse within its rounding.
+    rounded = (
+        zero,
+        (Decimal.from_float(0.8), Decimal(0)),
+        zero,
+        (Decimal.from_float(-0.6), Decimal(0)),
+    )
+    assert Fraction(rounded[1][0]) != Fraction(4, 5)
+    require_transverse(rounded, p, u, 4)
+    with pytest.raises(CompatibilityError, match="not transverse"):
+        require_transverse(rounded, p, math.ldexp(1.0, -104), 4)
+
+
+@pytest.mark.loop_fast
 def test_spin_coefficients_invert_the_polarisation_vectors():
     """c_h(w_h') = delta: the leg's polarisation vectors are orthonormal
     (w . conj(w') = -delta), massless and massive, for both energy signs;
@@ -666,4 +698,4 @@ def test_born_interfered_runtimes_refuse_the_colour_axis_option():
         SimpleNamespace(slice=slice_, spin_classes=(), histories=(), rows=())
     )
     with pytest.raises(CompatibilityError, match="Born-interfered virtual"):
-        runtime.evaluate_resolved([], color_resolution="amplitude-basis")
+        runtime.evaluate_resolved([], mu_r2=[], color_resolution="amplitude-basis")
