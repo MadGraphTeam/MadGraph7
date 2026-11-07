@@ -59,10 +59,10 @@ wide = "1.7"
 # in the direct evaluator translator, native Python ComplexFloat operands at
 # the more precise component's precision) on top:
 # symbolica-dev/symbolica#163, branch ValentinHirschi/symbolica
-# loop_me_pyamplicol. NinjaRS pins the same revision (oneloopmaster's own
-# standalone [patch] names the previous head 20a9da94; only this root's
-# [patch] applies here); it moves to upstream once the PR is merged. One
-# revision for the kernel and its numerical and graph crates.
+# loop_me_pyamplicol. NinjaRS and oneloopmaster's own standalone [patch]
+# pin the same revision (only this root's [patch] applies here); it moves
+# to upstream once the PR is merged. One revision for the kernel and its
+# numerical and graph crates.
 [patch.crates-io]
 symbolica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "dfe6bd97b974b1028dc63071ea165136cd2b0ef5" }
 numerica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "dfe6bd97b974b1028dc63071ea165136cd2b0ef5" }

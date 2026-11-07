@@ -1666,7 +1666,7 @@ dependencies = [
 [[package]]
 name = "ninjars"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars.git?rev=520b220b653d46266e7aa1417a3b941923812118#520b220b653d46266e7aa1417a3b941923812118"
+source = "git+https://github.com/alphal00p/ninjars.git?rev=5b6a8f5709b1e540a70ac6278ca36185c4cdad16#5b6a8f5709b1e540a70ac6278ca36185c4cdad16"
 dependencies = [
  "feynkit-kinematics",
  "symbolica",
@@ -1676,7 +1676,7 @@ dependencies = [
 [[package]]
 name = "ninjars-graph"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars.git?rev=520b220b653d46266e7aa1417a3b941923812118#520b220b653d46266e7aa1417a3b941923812118"
+source = "git+https://github.com/alphal00p/ninjars.git?rev=5b6a8f5709b1e540a70ac6278ca36185c4cdad16#5b6a8f5709b1e540a70ac6278ca36185c4cdad16"
 dependencies = [
  "feynkit-amplitude",
  "feynkit-generator",
@@ -1695,7 +1695,7 @@ dependencies = [
 [[package]]
 name = "ninjars-positional"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars.git?rev=520b220b653d46266e7aa1417a3b941923812118#520b220b653d46266e7aa1417a3b941923812118"
+source = "git+https://github.com/alphal00p/ninjars.git?rev=5b6a8f5709b1e540a70ac6278ca36185c4cdad16#5b6a8f5709b1e540a70ac6278ca36185c4cdad16"
 dependencies = [
  "symbolica",
  "thiserror",
@@ -1704,7 +1704,7 @@ dependencies = [
 [[package]]
 name = "ninjars-symbolica"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars.git?rev=520b220b653d46266e7aa1417a3b941923812118#520b220b653d46266e7aa1417a3b941923812118"
+source = "git+https://github.com/alphal00p/ninjars.git?rev=5b6a8f5709b1e540a70ac6278ca36185c4cdad16#5b6a8f5709b1e540a70ac6278ca36185c4cdad16"
 dependencies = [
  "ninjars",
  "ninjars-positional",
@@ -1862,7 +1862,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 [[package]]
 name = "oneloop"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=a7cf45876b2273f2c1b5dd1490d88abc07a6f287#a7cf45876b2273f2c1b5dd1490d88abc07a6f287"
+source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bd703d09a78f7849a6b86a07096e6f222fc01193#bd703d09a78f7849a6b86a07096e6f222fc01193"
 dependencies = [
  "bincode",
  "symbolica",

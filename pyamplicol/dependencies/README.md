@@ -22,10 +22,10 @@ Upstream `main` alone does not build the workspace: NinjaRS and
 complex-modulus fix, and NinjaRS's determinism test the deterministic factor
 signs; the Python Community modules (FeynKit, HepKit) need the `community`
 branch's `symbolica::utils::resources`. The pin moves to upstream once the PR
-is merged. NinjaRS (`520b220b`: main `b3a29c85`, PR #14, its 0BSD relicence and the
-re-pins of its manifests on oneloopmaster `a7cf4587` and this revision) pins the same
-revision; oneloopmaster (main `a7cf4587`) names the previous head `20a9da94` in its
-own standalone `[patch]`, which only applies when it is the root workspace. There
+is merged. NinjaRS (`5b6a8f57`: main `b3a29c85`, PR #14, its 0BSD relicence and the
+re-pins of its manifests on this revision and oneloopmaster `bd703d09`) pins the same
+revision, as does oneloopmaster (main `bd703d09`) in its own standalone `[patch]`,
+which only applies when it is the root workspace. There
 is no alphal00p Symbolica fork in the graph (`cargo tree -i symbolica` lists one
 source, and `cargo tree -i oneloop` one oneloop). SymJIT stays 2.28.3. These
 pins are recorded by Cargo. This is a source integration, with Rust 1.96 or
