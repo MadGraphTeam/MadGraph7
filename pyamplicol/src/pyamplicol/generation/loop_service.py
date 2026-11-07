@@ -882,6 +882,7 @@ def _slice_request(backend, context, member, loop_orders, **fields):
         external_photons=run.loop.external_photons,
         alpha0_conversion=run.loop.alpha0_conversion_parameter,
         alpha0_inverse=run.loop.alpha0_inverse_parameter,
+        reduction=str(run.loop.reduction),
         **fields,
     )
 

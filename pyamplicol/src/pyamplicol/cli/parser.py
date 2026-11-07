@@ -22,6 +22,7 @@ from pyamplicol.config import (
     LoopInducedPolicy,
     PoleSelection,
     ProcessGroupAnalysis,
+    ReductionBackend,
     resolve_config,
 )
 
@@ -517,6 +518,17 @@ def _add_evaluator_options(
             choices=("auto", "model", "direct"),
             default=argparse.SUPPRESS,
         )
+        parser.add_argument(
+            "--loop-reduction",
+            dest="loop.reduction",
+            choices=tuple(ReductionBackend),
+            default=argparse.SUPPRESS,
+            help=(
+                "one-loop reduction backend recorded as the artifact's default: "
+                "'auto' (default: TIRust for loop-induced, NinjaRS for "
+                "Born-interfered processes), 'ninjars' or 'tirust'"
+            ),
+        )
         # Removed with the legacy loop engine; still parsed so that naming it
         # is refused with the removal reason (``config.resolver.REMOVED_FIELDS``).
         parser.add_argument(
@@ -766,6 +778,18 @@ def _add_evaluation_options(
         choices=("auto", "model", "direct"),
         default=argparse.SUPPRESS,
         help="select a complete R2 strategy present in the virtual artifact",
+    )
+    parser.add_argument(
+        "--loop-reduction",
+        dest="evaluation.reduction",
+        choices=tuple(ReductionBackend),
+        default=argparse.SUPPRESS,
+        help=(
+            "v2 virtuals: the reduction backend, overriding the artifact's "
+            "default; 'auto' takes TIRust for loop-induced and NinjaRS for "
+            "Born-interfered processes (NinjaRS, with the reason recorded, "
+            "where TIRust cannot serve the call)"
+        ),
     )
     parser.add_argument(
         "--resolved",

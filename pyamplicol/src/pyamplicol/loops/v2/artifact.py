@@ -83,7 +83,7 @@ import time
 import zlib
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from fractions import Fraction
 from functools import cached_property
@@ -110,6 +110,7 @@ from pyamplicol.api.virtual_results import (
     VirtualFailureDiagnostic,
     VirtualLaneDiagnostic,
     VirtualPoleParts,
+    VirtualReduction,
     VirtualRescuePolicy,
     VirtualStabilityChecks,
     VirtualStabilityEstimate,
@@ -228,6 +229,9 @@ OPTIONAL_REQUEST_DEFAULTS: dict[str, object] = {
     # m-lit LIT-REQ: the served contribution, named only for a loop-induced
     # request (Born-interfered records keep their bytes).
     "contribution": "virtual",
+    # m-lit LIT-API: the generation default of the reduction backend (Q17),
+    # named only when not "auto".
+    "reduction": "auto",
 }
 
 
@@ -1497,6 +1501,14 @@ class V2VirtualRuntime:
     ``evaluate`` (``loops.v2.rescue``; off by default), used by every call
     that names neither its own policy nor an arithmetic, a precision or
     stability checks.
+
+    ``reduction`` (``"auto"``, ``"ninjars"`` or ``"tirust"``) is the
+    reduction backend every call requests that names none, by default the
+    artifact's generation default (``[loop] reduction``, the request
+    record's ``reduction``; ``"auto"`` when absent). Each call resolves it
+    once per carrier (``loops.v2.reduction.resolve``) and records the
+    requested and effective backends and the reason in its lane
+    diagnostics.
     """
 
     # The class default; a loaded runtime reads its process's kind from the
@@ -1515,6 +1527,7 @@ class V2VirtualRuntime:
         precision: int | None = None,
         r2_strategy: str | None = None,
         stability: VirtualRescuePolicy | None = None,
+        reduction: str | None = None,
     ) -> None:
         from pyamplicol.artifacts import MANIFEST_NAME, load_manifest
         from pyamplicol.generation.loop_artifact import LOOP_V2_NATIVE_POINT_INPUTS
@@ -1619,6 +1632,16 @@ class V2VirtualRuntime:
         self.contribution_kind = cast(
             Literal["virtual", "loop-induced"], self._metadata["contribution_kind"]
         )
+        # The reduction backend a call requests when it names none: the
+        # load-time one, else the artifact's generation default (m-lit Q17).
+        from .reduction import requested_backend
+
+        self._reduction_request = requested_backend(
+            execution["request"].get("reduction", "auto")
+            if reduction is None
+            else reduction
+        )
+        self._reductions: dict[tuple[str, str], VirtualReduction] = {}
         self._born_orders = tuple(
             canonical_order(tuple((n, p) for n, p in order))
             for order in self._metadata["born_orders"]
@@ -1928,10 +1951,14 @@ class V2VirtualRuntime:
         poles: PoleSelection | str | None = None,
         stability_checks: VirtualStabilityChecks | None = None,
         on_failure: Literal["raise", "return"] = "raise",
+        reduction: str | None = None,
     ) -> VirtualEvaluation:
         """The virtual of every point in one carrier, or under a rescue
         policy (``stability``, else the load-time default; ``loops.v2.
-        rescue``) level by level from the original exact inputs."""
+        rescue``) level by level from the original exact inputs.
+        ``reduction`` overrides the runtime's reduction-backend request for
+        the call (resolved once per carrier, before any point is
+        evaluated)."""
 
         from pyamplicol.runtime.virtual import _inputs, v2_options
 
@@ -1945,6 +1972,7 @@ class V2VirtualRuntime:
             default_precision=self.default_precision,
             stability_checks=stability_checks,
         )
+        choices = self._reduction_choices(reduction, arithmetic, precision, policy)
         if helicities or color_flows:
             # A leading-colour selection (``selection``): one summed output
             # of the stored resolved columns.
@@ -1953,17 +1981,20 @@ class V2VirtualRuntime:
                 if policy is None
                 else {}
             )
-            return self._observable_runtime().evaluate(
-                momenta,
-                helicities=helicities,
-                color_flows=color_flows,
-                mu_r2=mu_r2,
-                r2_strategy=r2_strategy,
-                stability=policy,
-                poles=poles,
-                stability_checks=stability_checks,
-                on_failure=on_failure,
-                **carrier_options,
+            return _with_reduction(
+                self._observable_runtime().evaluate(
+                    momenta,
+                    helicities=helicities,
+                    color_flows=color_flows,
+                    mu_r2=mu_r2,
+                    r2_strategy=r2_strategy,
+                    stability=policy,
+                    poles=poles,
+                    stability_checks=stability_checks,
+                    on_failure=on_failure,
+                    **carrier_options,
+                ),
+                choices,
             )
         selection, checks = v2_options(
             r2_strategy=r2_strategy,
@@ -2000,6 +2031,7 @@ class V2VirtualRuntime:
                     selection,
                     checks,
                     on_failure,
+                    choices[cast(str, carrier)],
                 )
 
             def level(indices: tuple[int, ...], rung: Any) -> VirtualEvaluation:
@@ -2014,9 +2046,55 @@ class V2VirtualRuntime:
                     selection,
                     rung.checks,
                     "return",
+                    choices[carrier],
                 )
 
             return rescue(policy, len(points), level, on_failure=on_failure)
+
+    def _reduction(self, requested: str, carrier: str) -> VirtualReduction:
+        """The reduction backend of ``requested`` at ``carrier`` (``loops.v2.
+        reduction.resolve`` for this process's contribution kind and the
+        native extension; fixed per runtime, so cached)."""
+
+        key = (requested, carrier)
+        found = self._reductions.get(key)
+        if found is None:
+            from .reduction import resolve
+
+            found = resolve(
+                requested,
+                contribution=self.contribution_kind,
+                carrier=carrier,
+                native=self._native,
+            )
+            self._reductions[key] = found
+        return found
+
+    def _reduction_choices(
+        self,
+        reduction: str | None,
+        arithmetic: str | None,
+        precision: int | None,
+        policy: VirtualRescuePolicy | None,
+    ) -> dict[str, VirtualReduction]:
+        """The reduction backend of a call per carrier it runs (its own, or
+        each level's under a rescue policy), resolved before any point is
+        evaluated: an explicit backend that cannot serve one of them is
+        refused (m-lit Q17 / Q18)."""
+
+        from .reduction import requested_backend
+
+        requested = (
+            self._reduction_request
+            if reduction is None
+            else requested_backend(reduction)
+        )
+        carriers = (
+            [self._carrier(arithmetic, precision)[0]]
+            if policy is None
+            else [self._carrier(item.arithmetic, item.precision)[0] for item in policy.levels]
+        )
+        return {carrier: self._reduction(requested, carrier) for carrier in carriers}
 
     def _evaluate_level(
         self,
@@ -2029,11 +2107,19 @@ class V2VirtualRuntime:
         selection: PoleSelection,
         checks: VirtualStabilityChecks,
         on_failure: str,
+        reduction: VirtualReduction,
     ) -> VirtualEvaluation:
         """One batch of exact points in one carrier with one set of checks
         (the whole ``evaluate`` without a rescue policy, and each level of
-        one)."""
+        one), on the ``reduction`` backend."""
 
+        # Every native reduction is NinjaRS's until the TIRust backend lands
+        # (m-lit lit-tir passes the effective backend to the executor).
+        if reduction.effective != "ninjars":
+            raise CompatibilityError(
+                f"the {reduction.effective!r} reduction backend is not wired to "
+                "the v2 executor of this build"
+            )
         results, failures = self._run(
             points, scales, parameters, setting, selection, checks
         )
@@ -2043,7 +2129,9 @@ class V2VirtualRuntime:
                 f"v2 virtual evaluation failed at point {index}: "
                 + "; ".join(failures[index])
             )
-        return self._result(results, failures, setting, carrier, r2, selection, checks)
+        return self._result(
+            results, failures, setting, carrier, r2, selection, checks, reduction
+        )
 
     def _run(
         self,
@@ -2149,6 +2237,7 @@ class V2VirtualRuntime:
         r2: R2Strategy,
         poles: PoleSelection,
         checks: VirtualStabilityChecks,
+        reduction: VirtualReduction | None = None,
     ) -> VirtualEvaluation:
         from pyamplicol.runtime.virtual import v2_public_estimate
 
@@ -2181,6 +2270,7 @@ class V2VirtualRuntime:
                             ),
                         ),
                         primary_color_contraction=contraction,
+                        reduction=reduction,
                     )
                 )
                 continue
@@ -2204,7 +2294,14 @@ class V2VirtualRuntime:
                     for sector in self._sectors
                 )
             )
-            estimates.append(v2_public_estimate(result.stability, with_poles))
+            estimates.append(
+                v2_public_estimate(
+                    result.stability,
+                    with_poles,
+                    contribution=self.contribution_kind,
+                    sectors=[sector.order for sector in self._sectors],
+                )
+            )
             parts.append(self._pole_parts(result) if splits_poles(poles) else None)
             diagnostics.append(
                 VirtualLaneDiagnostic(
@@ -2214,6 +2311,8 @@ class V2VirtualRuntime:
                     False,
                     "accuracy is estimated only by the requested stability checks",
                     primary_color_contraction=contraction,
+                    reduction=reduction,
+                    finiteness=result.finiteness,
                 )
             )
         return VirtualEvaluation(
@@ -2301,20 +2400,45 @@ class V2VirtualRuntime:
             "precision": 16 if digits is None else digits,
         }
 
+    def _observable_call(
+        self,
+        name: str,
+        args: tuple[Any, ...],
+        precision: int | None,
+        arithmetic: str | None,
+        reduction: str | None,
+        options: dict[str, Any],
+    ) -> Any:
+        """One observable call (``V2ObservablesRuntime``) on the call's
+        reduction backend, resolved before it runs (``_reduction_choices``)
+        and recorded in its lane diagnostics."""
+
+        choices = self._reduction_choices(
+            reduction, arithmetic, precision, options.get("stability")
+        )
+        operation = getattr(self._observable_runtime(), name)
+        return _with_reduction(
+            operation(
+                *args, **self._observable_options(precision, arithmetic, options)
+            ),
+            choices,
+        )
+
     def evaluate_resolved(
         self,
         momenta: Momenta,
         *,
         precision: int | None = None,
         arithmetic: str | None = None,
+        reduction: str | None = None,
         **options: Any,
     ) -> Any:
         """Per Born helicity row; the colour axis holds one entry per Born
         basis element at LC (``basis-<i>``) and one contracted component at
         NLC and full colour (design §8.5)."""
 
-        return self._observable_runtime().evaluate_resolved(
-            momenta, **self._observable_options(precision, arithmetic, options)
+        return self._observable_call(
+            "evaluate_resolved", (momenta,), precision, arithmetic, reduction, options
         )
 
     def evaluate_correlated(
@@ -2323,10 +2447,19 @@ class V2VirtualRuntime:
         *,
         precision: int | None = None,
         arithmetic: str | None = None,
+        reduction: str | None = None,
         **options: Any,
     ) -> VirtualEvaluation:
-        return self._observable_runtime().evaluate_correlated(
-            momenta, **self._observable_options(precision, arithmetic, options)
+        return cast(
+            VirtualEvaluation,
+            self._observable_call(
+                "evaluate_correlated",
+                (momenta,),
+                precision,
+                arithmetic,
+                reduction,
+                options,
+            ),
         )
 
     def evaluate_correlated_many(
@@ -2336,12 +2469,19 @@ class V2VirtualRuntime:
         *,
         precision: int | None = None,
         arithmetic: str | None = None,
+        reduction: str | None = None,
         **options: Any,
     ) -> dict[str, VirtualEvaluation]:
-        return self._observable_runtime().evaluate_correlated_many(
-            momenta,
-            requests,
-            **self._observable_options(precision, arithmetic, options),
+        return cast(
+            dict[str, VirtualEvaluation],
+            self._observable_call(
+                "evaluate_correlated_many",
+                (momenta, requests),
+                precision,
+                arithmetic,
+                reduction,
+                options,
+            ),
         )
 
     def available_color_correlations(self) -> tuple[Any, ...]:
@@ -2428,6 +2568,23 @@ def _stored_member(group_member: Any, representative: str) -> Any:
 
     legs = inverse(tuple(int(leg) for leg in group_member.permutation))
     return FlavourMember(str(group_member.expression), representative, legs, {})
+
+
+def _with_reduction(value: Any, choices: Mapping[str, VirtualReduction]) -> Any:
+    """``value`` (a virtual result or a mapping of them, e.g. named
+    correlated outputs) with each lane diagnostic naming the reduction
+    backend of its carrier (``choices``, ``V2VirtualRuntime.
+    _reduction_choices``)."""
+
+    if isinstance(value, Mapping):
+        return {name: _with_reduction(item, choices) for name, item in value.items()}
+    return replace(
+        value,
+        diagnostics=tuple(
+            replace(item, reduction=choices[item.arithmetic])
+            for item in value.diagnostics
+        ),
+    )
 
 
 def _zero(carrier: str) -> Any:

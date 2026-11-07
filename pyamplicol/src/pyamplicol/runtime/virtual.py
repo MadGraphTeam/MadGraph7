@@ -240,20 +240,66 @@ def _rows(
     )
 
 
+def _ratio(error: float, scale: float) -> float:
+    """E / S (0 for an exact zero estimate, inf for E > 0 at S = 0)."""
+
+    if not error:
+        return 0.0
+    return error / scale if scale else math.inf
+
+
 def v2_public_estimate(
-    estimate: Any, with_poles: bool
+    estimate: Any,
+    with_poles: bool,
+    *,
+    contribution: str = "virtual",
+    sectors: Sequence[Any] | None = None,
 ) -> VirtualStabilityEstimate | None:
-    """The public record of a v2 ``stability.StabilityEstimate``."""
+    """The public record of a v2 ``stability.StabilityEstimate``: the
+    relative estimates, and the absolute estimate E with the scale S it is
+    measured against per sector (``sectors``: the public sector orders, by
+    default the estimate's) and their largest ratio E / S. For a
+    loop-induced result the pole estimates are E / S too (its poles vanish;
+    m-lit PLAN §2.a.7, "Pole shape")."""
 
     if estimate is None:
         return None
     coefficients = tuple(float(x) for x in estimate.coefficients)
+    width = 3 if with_poles else 1
+    errors = {canonical_order(key): item for key, item in estimate.absolute.items()}
+    scales = {canonical_order(key): item for key, item in estimate.scale.items()}
+    keys = (
+        list(errors)
+        if sectors is None
+        else [canonical_order(sector) for sector in sectors]
+    )
+
+    def laurent(found: Any) -> LaurentCoefficients:
+        values = [
+            0.0 if found is None else abs(float(found.coefficients[k]))
+            for k in range(width)
+        ]
+        return LaurentCoefficients(*values, *([None] * (3 - width)))
+
+    absolute = tuple(laurent(errors.get(key)) for key in keys)
+    magnitude = tuple(laurent(scales.get(key)) for key in keys)
+    ratios = [
+        [_ratio(error[k], size[k]) for error, size in zip(absolute, magnitude)]
+        for k in range(width)
+    ]
+    single = coefficients[1] if with_poles else None
+    double = coefficients[2] if with_poles else None
+    if contribution == "loop-induced" and with_poles:
+        single, double = max(ratios[1], default=0.0), max(ratios[2], default=0.0)
     return VirtualStabilityEstimate(
         float(estimate.relative),
         coefficients[0],
-        coefficients[1] if with_poles else None,
-        coefficients[2] if with_poles else None,
+        single,
+        double,
         tuple((name, float(value)) for name, value in estimate.checks.items()),
+        scale=max((value for row in ratios for value in row), default=0.0),
+        absolute=absolute,
+        magnitude=magnitude,
     )
 
 
@@ -693,7 +739,13 @@ class V2ObservablesRuntime:
                     for sector in self._sectors
                 )
             )
-            estimates.append(v2_public_estimate(result.stability, with_poles))
+            estimates.append(
+                v2_public_estimate(
+                    result.stability,
+                    with_poles,
+                    sectors=[sector.order for sector in self._sectors],
+                )
+            )
             if split:
                 origins = result.pole_origins
                 parts.append(
@@ -1164,7 +1216,11 @@ class V2ObservablesRuntime:
             estimates.append(
                 tuple(
                     tuple(
-                        v2_public_estimate(result[(row, b)].stability, with_poles)
+                        v2_public_estimate(
+                            result[(row, b)].stability,
+                            with_poles,
+                            sectors=[sector.order for sector in self._sectors],
+                        )
                         for b in components
                     )
                     for row in rows
