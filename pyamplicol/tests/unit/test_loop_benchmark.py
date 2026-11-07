@@ -2580,10 +2580,20 @@ def test_report_builder_loop_induced_cell_is_the_auto_record_never_a_failed_one(
         with pytest.raises(ValueError, match=match):
             builder.build_loop_induced(ms, recency, data=data, repo=tmp_path)
 
+    # A row not generated or timed: its measured reason on both cells.
+    why = "generation beyond the 45-min rule (probes running at 45 min)"
+    (data / "li-timing.json").write_text(
+        json.dumps({"records": [rec("gg_zzz", "auto", "ninjars", missing=why)]})
+    )
+    out = builder.build_loop_induced(ms, recency, data=data, repo=tmp_path)
+    rows = {r["key"]: r for g in out["groups"] for r in g["rows"]}
+    zzz = rows["gg_zzz"]
+    assert zzz["timing"]["status"] == zzz["generation"]["status"] == "not run"
+    assert zzz["timing"]["reason"] == zzz["generation"]["reason"] == why
     refused(rec("gg_hgg", "tirust", "ninjars", seconds=0.04), "was requested but")
     refused(
         rec("gg_hgg", "tirust", "tirust", failed=[1] * 7, seconds=0.04),
-        "no time per point",
+        "has no time per point",
     )
     refused(rec("gg_hgg", "tirust", "tirust"), "without its time per point")
     bad = rec("gg_hgg", "tirust", "tirust", failed=[64] * 7)
