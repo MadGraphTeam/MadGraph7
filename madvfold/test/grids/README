@@ -10,6 +10,12 @@ epem_bbbxbx for 'generate e+ e- > b b~ b b~ [QCD]', also in
 madvfold/DEV/eebbbb_vfgen; the grids are installed only for processes
 with a single P directory).
 
+MadGraph7: the grids are those of mg5amcnlo (branch vfold5381cg) at the same
+step, with their mint_grids converted by madvfold/test/convertGrids381to7.py
+(step 14e part 4/4: nintegrals is 26=6+2*10 in MG5aMC 3.8.1 and 38=6+2*16 in
+MadGraph7, whose read_grids_from_file stops on the old ones with 'Bad real
+number').
+
 Each <proc>/folding_<f1>_<f2>_<f3>[_Delta] directory holds, for one
 folding without/with MC@NLO-Delta, only what myLaunch.sh -o uses:
 - job_status.pkl: the list of integration jobs (in -o mode MG5 keeps only
