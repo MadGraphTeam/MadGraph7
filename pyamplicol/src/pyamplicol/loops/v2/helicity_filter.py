@@ -37,10 +37,22 @@ exponent and a split term's block components counted, plus every base's
 largest negative exponent), so a row that is not an integrand zero
 vanishes at one random point with probability at most d / (p - 1)
 (Schwartz-Zippel); ``k`` is the least count with rows x (d / (p - 1))^k at
-most the stated failure probability ``p_fail`` (both recorded). A zero
-relying on relations among these values that the random point does not
-keep (on-shell conditions, spinor identities of the tree currents) is not
-seen: the row stays live, which costs time, never correctness.
+most the stated failure probability ``p_fail`` (both recorded;
+``generation.helicity_filter_failure_probability``, 0 drops nothing and
+skips the filter). A zero relying on relations among these values that the
+random point does not keep (on-shell conditions, spinor identities of the
+tree currents) is not seen: the row stays live, which costs time, never
+correctness.
+
+*What the bound covers.* It is the probability over the random point for
+the numerator reduced modulo the fixed prime p. Two deterministic steps
+precede it and are not counted: the reduction of the exact coefficients
+modulo p (a non-zero rational coefficient whose numerator p divides
+reduces to 0) and a prime base under a square root taken as its root
+modulo p (an element of Q(sqrt b) whose norm p divides maps to 0). Either
+needs p = 2^61 - 1 to divide an integer built from the model's constants;
+a constant whose denominator p divides is not representable and keeps
+every tested row live (``Unrepresentable``).
 
 **Counterterm kets.** The engine has no exact tree program, so a row's
 counterterm ket counts as zero only where the request has no counterterm
@@ -63,7 +75,8 @@ from typing import Any
 
 # The field of the exact test (``rusticol_core::loop_v2::prime::PRIME``).
 PRIME = (1 << 61) - 1
-# The stated failure probability of the exact test (overridable per call).
+# The default stated failure probability of the exact test (the setting
+# ``generation.helicity_filter_failure_probability``).
 FAILURE_PROBABILITY = 1e-12
 
 
@@ -231,6 +244,12 @@ def _sqrt_mod(value: int) -> int | None:
     return root if root * root % PRIME == value else None
 
 
+class Unrepresentable(ValueError):
+    """A constant of the exact test with no value in F_p (its denominator,
+    or a prime base under a negative power, is a multiple of p): every
+    tested row stays live."""
+
+
 class _Values:
     """One random point of the exact test: a value per base variable."""
 
@@ -262,6 +281,8 @@ class _Values:
             u, exponent = int(value), power
         else:
             u, exponent = self.base(name), power * self.lcm[name]
+        if exponent < 0 and u % PRIME == 0:
+            raise Unrepresentable(f"the base {base} is a multiple of p")
         out = pow(u, int(abs(exponent)), PRIME)
         if exponent < 0:
             out = pow(out, PRIME - 2, PRIME)
@@ -285,12 +306,13 @@ class _Values:
 
 
 def _residue(value: Fraction) -> int:
-    return (
-        value.numerator
-        % PRIME
-        * pow(value.denominator % PRIME, PRIME - 2, PRIME)
-        % PRIME
-    )
+    """``value`` modulo p; a denominator p divides has no residue (the Rust
+    carrier's non-finite marker, ``prime::Fp``)."""
+
+    denominator = value.denominator % PRIME
+    if denominator == 0:
+        raise Unrepresentable(f"the denominator of {value} is a multiple of p")
+    return value.numerator % PRIME * pow(denominator, PRIME - 2, PRIME) % PRIME
 
 
 def random_inputs(executor: Any, rng: random.Random, lcm: Mapping[Any, int]) -> dict:
@@ -334,7 +356,8 @@ def zero_rows_exactly(
 ) -> tuple[set[int], float]:
     """The rows (indices into ``executor.exported.rows``) whose every
     numerator coefficient vanishes at ``points`` random points over F_p, and
-    the seconds taken."""
+    the seconds taken; none when a constant has no value in F_p
+    (``Unrepresentable``: every row stays live)."""
 
     exported = executor.exported
     size = exported.amplitude
@@ -346,7 +369,11 @@ def zero_rows_exactly(
     for _point in range(points):
         if not zero:
             break
-        (point,) = native.numerators(random_inputs(executor, rng, lcm), "B")
+        try:
+            inputs = random_inputs(executor, rng, lcm)
+        except Unrepresentable:
+            return set(), time.perf_counter() - start
+        (point,) = native.numerators(inputs, "B")
         for _family, _order, _rank, columns in point:
             for o, column in enumerate(columns):
                 row = o // size
@@ -465,13 +492,16 @@ def generation_filter(
     candidate point farthest from every tree pole (lifted to 32 digits,
     ``induced.probe_point``) on the slice's own plan, and the rows to drop
     (``LoopSlice.zero_rows``, read by ``export_plan``). An exact colour zero
-    has no row to filter."""
+    has no row to filter; a zero ``failure`` drops nothing (the filter is
+    skipped)."""
 
     from .induced import _point_scale, probe_point
     from .plan_export import NativeExecutor
 
     if slice_.amplitude.colour_zero or not candidates:
         return {"exact_colour_zero": bool(slice_.amplitude.colour_zero)}, frozenset()
+    if failure == 0:
+        return {"failure_probability": 0.0, "dropped": []}, frozenset()
     lifted = [probe_point(slice_, momenta, 32) for momenta in candidates]
     index = max(
         range(len(lifted)),

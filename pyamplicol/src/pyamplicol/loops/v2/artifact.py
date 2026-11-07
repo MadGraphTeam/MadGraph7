@@ -1065,11 +1065,7 @@ def generate_process(
     # The recorded recipe names the corrections the slice takes (a request
     # that names none takes the model's strong correction).
     request = resolve_request(compiled, request)
-    declared = correlators is not None and bool(
-        correlators.color_correlations
-        or correlators.spin_correlations
-        or correlators.all_color_through_order is not None
-    )
+    declared = _declared(correlators)
     from .native_trees import NativeExportUnsupported
 
     try:
@@ -1097,13 +1093,18 @@ def reexport_process(
 
     from .assemble import resolve_request
 
-    declared = correlators is not None and bool(
+    return export_process(
+        process.observables, resolve_request(compiled, request), _declared(correlators)
+    )
+
+
+def _declared(correlators: Any) -> bool:
+    """Whether ``correlators`` declares colour or spin observables."""
+
+    return correlators is not None and bool(
         correlators.color_correlations
         or correlators.spin_correlations
         or correlators.all_color_through_order is not None
-    )
-    return export_process(
-        process.observables, resolve_request(compiled, request), declared
     )
 
 

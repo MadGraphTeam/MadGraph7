@@ -1505,9 +1505,8 @@ def export_plan(
         # an integrand zero) keeps its (row, t) columns without a row: they
         # seed nothing (R1), are never closed into (R2), stay zero and are
         # not reduced.
-        dropped = getattr(slice_, "zero_rows", None) or frozenset()
         program["column_rows"] = [
-            [] if row in dropped else [r]
+            [] if row in slice_.zero_rows else [r]
             for r, row in enumerate(rows)
             for _t in range(size)
         ]

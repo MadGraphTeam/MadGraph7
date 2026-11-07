@@ -1560,16 +1560,21 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                         phase.update(index + 1, message=f"{name} (flavour member)")
                         continue
                     process = generate_process(compiled, request, native, correlators)
+                    # The validation points of a loop-induced process (None
+                    # for a virtual), for its filter and its probes.
+                    candidates = _loop_induced_candidates(
+                        context, entry, process, validation, index
+                    )
                     # m-lit Q10 (LIT-R2): the exact helicity-zero filter of a
                     # loop-induced process (None for a virtual); rows it
                     # drops are exported again without their row.
                     helicity, process = _loop_induced_filter(
-                        context, entry, process, request, validation, index, correlators
+                        backend, context, process, request, candidates, correlators
                     )
                     # m-lit Q12: the generation-time probes of a loop-induced
                     # process (None for a virtual).
                     probes = _loop_induced_probes(
-                        backend, context, entry, process, native, validation, index
+                        backend, context, process, native, candidates
                     )
                     generated[name] = process
                     path = Path(temporary) / f"{name}.pacbin"
@@ -1814,11 +1819,17 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
     )
 
 
-def _loop_induced_candidates(context, entry, validation, index):
-    """The generation's validation points of a process (``generation.
-    validation.samples`` candidates, at least one): the loop-induced probes'
-    and helicity filter's candidate points."""
+def _loop_induced_candidates(context, entry, process, validation, index):
+    """The generation's validation points of a loop-induced process
+    (``generation.validation.samples`` candidates, at least one): the
+    candidate points of its helicity filter and its probes; none for an
+    exact colour zero, None for a virtual."""
 
+    slice_ = process.slice
+    if getattr(slice_, "amplitude", None) is None:
+        return None
+    if slice_.amplitude.colour_zero:
+        return []
     candidates = []
     for sample in range(max(validation.samples, 1)):
         record = build_process_validation_point(
@@ -1835,26 +1846,25 @@ def _loop_induced_candidates(context, entry, validation, index):
     return candidates
 
 
-def _loop_induced_filter(
-    context, entry, process, request, validation, index, correlators
-):
+def _loop_induced_filter(backend, context, process, request, candidates, correlators):
     """The exact helicity-zero filter of a loop-induced process (m-lit Q10,
-    ``helicity_filter.generation_filter``): its record (None for a virtual)
-    and the process, exported again without the rows it drops (none when it
-    would drop every row: m-lit Q13, the verdict is then a diagnostic)."""
+    ``helicity_filter.generation_filter``, at the stated failure probability
+    ``generation.helicity_filter_failure_probability``): its record (None for
+    a virtual) and the process, exported again without the rows it drops
+    (none when it would drop every row: m-lit Q13, the verdict is then a
+    diagnostic)."""
 
     from pyamplicol.loops.v2.artifact import reexport_process
     from pyamplicol.loops.v2.helicity_filter import generation_filter
 
-    slice_ = process.slice
-    if getattr(slice_, "amplitude", None) is None:
+    if candidates is None:
         return None, process
-    candidates = (
-        []
-        if slice_.amplitude.colour_zero
-        else _loop_induced_candidates(context, entry, validation, index)
+    slice_ = process.slice
+    record, dropped = generation_filter(
+        slice_,
+        candidates,
+        failure=backend._run_config.generation.helicity_filter_failure_probability,
     )
-    record, dropped = generation_filter(slice_, candidates)
     if dropped:
         slice_.zero_rows = dropped
         process = reexport_process(
@@ -1863,25 +1873,19 @@ def _loop_induced_filter(
     return record, process
 
 
-def _loop_induced_probes(backend, context, entry, process, native, validation, index):
+def _loop_induced_probes(backend, context, process, native, candidates):
     """The generation-time probes of a loop-induced process (m-lit Q12,
     ``induced.generation_probes``) on the generation's validation points of
-    the process (``generation.validation.samples`` candidates, at least one);
-    None for a virtual. A failure refuses the process (``loop-induced-probe``)
-    unless ``generation.allow_failed_probes``."""
+    the process (``_loop_induced_candidates``); None for a virtual. A
+    failure refuses the process (``loop-induced-probe``) unless
+    ``generation.allow_failed_probes``."""
 
     from pyamplicol.loops.v2.induced import generation_probes
 
-    slice_ = process.slice
-    if getattr(slice_, "amplitude", None) is None:
+    if candidates is None:
         return None
-    candidates = (
-        []
-        if slice_.amplitude.colour_zero
-        else _loop_induced_candidates(context, entry, validation, index)
-    )
     return generation_probes(
-        slice_,
+        process.slice,
         context.resolved.compiled,
         native,
         candidates,

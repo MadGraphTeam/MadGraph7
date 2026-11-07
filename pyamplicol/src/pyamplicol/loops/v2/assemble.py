@@ -2078,6 +2078,10 @@ class LoopSlice:
     # Q13's one exact mechanism, ``induced``).
     amplitude: Any = None
     colour_zero_orders: frozenset[Orders] = frozenset()
+    # Loop-induced: the helicity rows the exact helicity-zero filter drops
+    # (integrand zeros, ``helicity_filter.generation_filter``; M-LIT LIT-R2),
+    # kept as columns without a row by ``plan_export.export_plan``.
+    zero_rows: frozenset = frozenset()
     _cache: dict = field(default_factory=dict, repr=False)
 
     @property

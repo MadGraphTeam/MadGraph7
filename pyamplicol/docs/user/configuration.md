@@ -219,6 +219,13 @@ completeness), each within ten times the probe's own estimate. A failure refuses
 (`loop-induced-probe`); `[generation] allow_failed_probes = true` (CLI
 `--allow-failed-probes`) stores it anyway. The outcome is recorded in the
 artifact's generation filters (`loop_induced_probes`).
+Generation also drops the helicity rows of a loop-induced process that are
+zero before the loop integration (every numerator vanishes identically),
+tested exactly over a prime field at random points; the chance that it drops
+a row that is not zero is at most `[generation]
+helicity_filter_failure_probability` (default `1e-12`; `0` drops nothing and
+skips the test). It never drops every row of a process. The verdict is
+recorded in the artifact's generation filters (`loop_induced_helicity_filter`).
 
 `flavor_scheme`, `max_quark_lines`, and coupling-order settings constrain that
 expansion. Coupling-order names come from the selected model: the generic
