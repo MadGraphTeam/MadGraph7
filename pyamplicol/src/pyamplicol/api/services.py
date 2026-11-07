@@ -657,8 +657,11 @@ class Runtime:
         is returned. ``reduction`` (``"auto"``, ``"ninjars"`` or ``"tirust"``)
         overrides the runtime's reduction backend for the call: ``"auto"``
         takes TIRust for a loop-induced and NinjaRS for a Born-interfered
-        process, falling back to NinjaRS with the reason recorded; an explicit
-        backend that cannot serve the call is refused. The requested and
+        process, falling back to NinjaRS with the reason recorded (for now
+        ``"auto"`` keeps NinjaRS for loop-induced processes too, until the
+        two backends' agreement there is established; ``"tirust"`` is served
+        on request in binary64); an explicit backend that cannot serve the
+        call is refused. The requested and
         effective backends and the reason are in every lane diagnostic
         (``VirtualLaneDiagnostic.reduction``).
         """

@@ -155,7 +155,9 @@ class ReductionBackend(StrEnum):
     RULED Q17 / Q18): ``auto`` (the default) takes the per-type default,
     TIRust (tensor-integral reduction) for a loop-induced process and
     NinjaRS (integrand reduction) for a Born-interfered one, and falls back
-    to NinjaRS with a recorded reason where TIRust cannot serve the call;
+    to NinjaRS with a recorded reason where TIRust cannot serve the call
+    (for now ``auto`` keeps NinjaRS for loop-induced processes too, with
+    the reason, until the two backends' agreement there is established);
     ``ninjars`` and ``tirust`` request one backend, refused when it cannot
     serve the call. ``loop.reduction`` is the generation default recorded in
     the artifact (artifacts are backend-independent), ``evaluation.
