@@ -121,6 +121,7 @@ if TYPE_CHECKING:
         VirtualEvaluation,
         VirtualFailureDiagnostic,
         VirtualLaneDiagnostic,
+        VirtualReduction,
         VirtualRescueAttempt,
         VirtualRescueLevel,
         VirtualRescuePolicy,
@@ -136,6 +137,7 @@ if TYPE_CHECKING:
         GenerationConfig,
         LoopConfig,
         R2Strategy,
+        ReductionBackend,
         RunConfig,
     )
     from .correlators import (
@@ -203,6 +205,7 @@ __all__ = [
     "ProcessSet",
     "PyAmpliColError",
     "R2Strategy",
+    "ReductionBackend",
     "ReductionGroup",
     "ResolvedEvaluation",
     "ResolvedVirtualEvaluation",
@@ -216,6 +219,7 @@ __all__ = [
     "VirtualEvaluation",
     "VirtualFailureDiagnostic",
     "VirtualLaneDiagnostic",
+    "VirtualReduction",
     "VirtualRescueAttempt",
     "VirtualRescueLevel",
     "VirtualRescuePolicy",
@@ -295,6 +299,7 @@ _CONFIG_EXPORTS = (
     "GenerationConfig",
     "LoopConfig",
     "R2Strategy",
+    "ReductionBackend",
     "RunConfig",
 )
 _VIRTUAL_RESULT_EXPORTS = (
@@ -305,6 +310,7 @@ _VIRTUAL_RESULT_EXPORTS = (
     "VirtualLaneDiagnostic",
     "VirtualColorContraction",
     "VirtualArithmeticSpec",
+    "VirtualReduction",
     "VirtualRescueAttempt",
     "VirtualRescueLevel",
     "VirtualRescuePolicy",

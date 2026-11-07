@@ -1950,6 +1950,7 @@ def load_runtime_backend(
     precision: int | None = None,
     r2_strategy: R2Strategy | str | None = None,
     stability: VirtualRescuePolicy | None = None,
+    reduction: str | None = None,
 ) -> RuntimeBackend:
     """Load a schema-v3 artifact without importing the extension during discovery.
 
@@ -1970,6 +1971,8 @@ def load_runtime_backend(
         if not isinstance(stability, VirtualRescuePolicy):
             raise TypeError("stability requires a VirtualRescuePolicy")
         options["stability"] = stability
+    if reduction is not None:
+        options["reduction"] = reduction
     manifest_root = (
         path.parent if path.name == MANIFEST_NAME and path.is_file() else path
     )

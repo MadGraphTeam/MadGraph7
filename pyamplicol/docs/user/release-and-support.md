@@ -35,6 +35,24 @@ Version 1.0.1 uses published Symbolica 3.0.0, SymJIT 2.26.4 and
 ufo-model-loader 1.0.0, as recorded in the dependency lockfiles. No local
 dependency source patches or unpublished wheels are needed.
 
+## In development: loop-induced processes
+
+The development branch (`loop_induced_tir_support`, not released) adds
+loop-induced one-loop processes: processes without a Born amplitude within
+their coupling-order limits (`g g > h`, `g g > z z`, `h > g g`), served as
+|A_loop|^2 at full colour and evaluated as `VirtualEvaluation` results with
+`contribution = "loop-induced"` (empty Born fields, poles `"all"` or
+`"none"`, which vanish; zeros reported within their absolute estimate), see
+[Configuration](configuration.md#processes-and-multiparticles) and the
+[Python API](python-api.md#one-loop-virtuals-and-loop-induced-processes).
+`process.loop_induced` routes them (`"include"` serves both kinds of a mixed
+multiparticle request as separate contributions), and `[loop] reduction`
+selects the reduction backend (`"auto"`: TIRust for loop-induced, NinjaRS for
+Born-interfered processes; TIRust is not built in yet, so `"auto"` records a
+NinjaRS fallback and `"tirust"` is refused). `pyamplicol self-test` also
+evaluates a shipped loop-induced artifact (`g g > h`) against MadLoop. The
+native SDKs refuse loop-induced processes for now.
+
 ## 1.0.2 release
 
 Version `1.0.2` adds one-loop virtual matrix elements on the v2 engine:
