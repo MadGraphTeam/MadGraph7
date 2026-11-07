@@ -109,6 +109,23 @@ reducer. It preserves rational inputs and verifies the evanescent remainder in
 all three arithmetic modes, including changing batch sizes and epsilon-sector
 assembly. This internal fixture does not enable loop-induced production.
 
+## TIRust (cargo feature `tir`)
+
+TIRust (`https://github.com/huashengshao/TIRust`, crates `iregi-rust` and
+`iregi-masters`), the tensor-integral reduction backend, is an optional
+dependency pinned to a commit of its main and enabled by the cargo feature
+`tir`, a default feature of this crate and of every crate that links it
+(`rusticol-loop-python`, `rusticol-loop-sdk`, `rusticol-python`,
+`rusticol-capi`): developer builds, tests, staged natives, CI, wheels and
+releases have it. TIRust uses this workspace's Symbolica and oneloop sources
+and feature sets, so the feature changes no NinjaRS value.
+`--no-default-features` builds without it (`build_loop_native.py build
+--no-tir`; the CI `tir` job checks that configuration and compares
+`tests/tir_feature.rs`'s NinjaRS lanes bit for bit across the two).
+`rusticol_loop_reduction::tir::available()` (Python:
+`pyamplicol._rusticol._loop.tirust_available()`) reports whether a build links
+it.
+
 ## Native Python bindings
 
 The `python` member builds `_loop_reduction`, a developer-only PyO3 extension
