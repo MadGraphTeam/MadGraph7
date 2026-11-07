@@ -17,7 +17,10 @@ Checked here:
   Python exporter's dressed row links (written with ``links=True``) equal
   the native loader's derivation; the binary member decodes back to the
   plan's JSON; a seeded plan's binary member holds format 3's columns only;
-* route R2 runs schedule B only.
+* route R2 runs schedule B only;
+* the exact helicity-zero filter: its degree bound, the F_p test's
+  verdicts, Q13, dropped rows as columns without a row, and the drop path
+  through the public generation.
 """
 
 from __future__ import annotations
@@ -159,6 +162,7 @@ def test_route_r2_runs_schedule_b_only(li):
 # ------------------------------------------------- exact helicity-zero filter
 
 
+@pytest.mark.loop_fast
 def test_degree_bound_clears_negative_powers_and_counts_split_blocks():
     """The exact test's degree bound on a crafted plan: three positions; a
     fused kernel with terms MT/sw x and sw x (base sw with both signs: the
@@ -197,6 +201,43 @@ def test_degree_bound_clears_negative_powers_and_counts_split_blocks():
     exported = SimpleNamespace(program=program, constants=constants)
     assert degree_bound(exported) == 12
     assert points_needed(12, 4, 1e-12) == 1
+
+
+@pytest.mark.loop_fast
+def test_constants_without_a_residue_keep_every_row_live():
+    """A constant with no value in F_p (its denominator, or a prime base
+    under a negative power, a multiple of p) is refused, never read as 0: the
+    exact test then finds no zero row (as the Rust carrier's non-finite
+    marker keeps a row live)."""
+
+    import random
+    from fractions import Fraction
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.v2 import helicity_filter as hf
+
+    assert hf._residue(Fraction(3, 2)) * 2 % hf.PRIME == 3
+    with pytest.raises(hf.Unrepresentable):
+        hf._residue(Fraction(1, hf.PRIME))
+    values = hf._Values(random.Random(0), {(("prime", hf.PRIME), 1): 1})
+    assert values.power(("prime", hf.PRIME), {}, Fraction(1)) == 0
+    with pytest.raises(hf.Unrepresentable):
+        values.power(("prime", hf.PRIME), {}, Fraction(-1))
+    executor = SimpleNamespace(
+        exported=SimpleNamespace(
+            amplitude=1,
+            constants=[((Fraction(1, hf.PRIME), (), (), True), ())],
+            block_rows=[],
+            rows=[(), ()],
+            masses=[],
+        ),
+        slice=SimpleNamespace(
+            blocks=SimpleNamespace(process=SimpleNamespace(legs=[None, None]))
+        ),
+        native=lambda *args: None,
+    )
+    zero, _seconds = hf.zero_rows_exactly(executor, [0, 1], 1, 0)
+    assert zero == set()
 
 
 def _filter(li, name):
@@ -278,7 +319,7 @@ def test_dropped_rows_are_columns_without_a_row(li):
     try:
         pruned = NativeExecutor(slice_, forward=False)
     finally:
-        del slice_.zero_rows
+        slice_.zero_rows = frozenset()
     size = pruned.exported.amplitude
     assert pruned.exported.program["column_rows"][: 2 * size] == [[]] * (2 * size)
     values = {}
@@ -320,3 +361,53 @@ def test_generation_records_the_filter_verdict(li_artifact):  # noqa: F811
     assert records["h_ga"]["loop_induced_helicity_filter"] == {
         "exact_colour_zero": True
     }
+
+
+@pytest.mark.loop_physics
+def test_generation_stores_a_partial_drop(li, li_artifact, tmp_path, monkeypatch):  # noqa: F811
+    """The production drop path end to end: a verdict dropping a proper
+    subset of rows makes generation export the process again
+    (``artifact.reexport_process``) and store the dropped rows' columns
+    without a row; the public runtime evaluates the stored process. Forced
+    here (no tested process drops a proper subset): g g > h's rows the
+    pre-screen does not prove live, the J_z-forbidden ones, which vanish only
+    after the integration, so |A|^2 equals the whole artifact's to rounding.
+    A zero failure probability skips the filter."""
+
+    import dataclasses
+    import json
+
+    from pyamplicol import Runtime
+    from pyamplicol.loops.v2 import helicity_filter as hf
+    from pyamplicol.loops.v2.artifact import read_plan_json
+
+    from .test_loop_v2_induced import _generate
+
+    real = hf.filter_rows
+
+    def forced(*args, **kwargs):
+        verdict = real(*args, **kwargs)
+        return dataclasses.replace(verdict, dropped=verdict.tested)
+
+    monkeypatch.setattr(hf, "filter_rows", forced)
+    output = _generate(
+        tmp_path / "dropped", (("gg_h", "g g > h"),), _fixture("li_gg_h")
+    )
+    manifest = json.loads((output / "artifact.json").read_text())
+    (record,) = manifest["extensions"]["generation"]["concrete_processes"]
+    verdict = record["filters"]["loop_induced_helicity_filter"]
+    assert len(verdict["dropped"]) == 2 and verdict["dropped"] == verdict["tested"]
+    assert not verdict["every_row_zero"] and verdict["rows"] == 4
+    plan = json.loads(
+        read_plan_json(output / "processes" / "gg_h" / "loop-runtime.pacbin")
+    )
+    assert sorted(map(len, plan["column_rows"])) == [0, 0, 1, 1]
+    point, scale, parameters = li.point("li_gg_h")
+    values = {}
+    for label, artifact in (("whole", li_artifact), ("dropped", output)):
+        runtime = Runtime.load(artifact, process="gg_h", model_parameters=parameters)
+        values[label] = runtime.evaluate([point], mu_r2=[str(scale)]).values[0][0]
+    whole, dropped = values["whole"][0], values["dropped"][0]
+    assert dropped != 0 and abs(dropped - whole) <= 1e-12 * abs(whole)
+    record, rows = hf.generation_filter(li.slice("li_gg_h"), [[0.0]], failure=0)
+    assert record == {"failure_probability": 0.0, "dropped": []} and not rows
