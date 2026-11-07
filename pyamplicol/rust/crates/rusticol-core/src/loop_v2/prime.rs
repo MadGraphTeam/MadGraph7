@@ -70,9 +70,9 @@ impl Fp {
         let mut out = Self(1);
         while e > 0 {
             if e & 1 == 1 {
-                out = out * base;
+                out *= base;
             }
-            base = base * base;
+            base *= base;
             e >>= 1;
         }
         out

@@ -1031,11 +1031,11 @@ fn key_vector(
                 let (mut kr, mut ki) = (Rational::from(0), Rational::from(0));
                 for term in &classes[*class].columns[w] {
                     let [a, b] = &weights[term.weight as usize];
-                    kr = kr + a;
-                    ki = ki + b;
+                    kr += a;
+                    ki += b;
                 }
-                re = re + &(xr.clone() * &kr - xi.clone() * &ki);
-                im = im + &(xr.clone() * &ki + xi.clone() * &kr);
+                re += &(xr.clone() * &kr - xi.clone() * &ki);
+                im += &(xr.clone() * &ki + xi.clone() * &kr);
             }
             [re, im]
         })
@@ -1809,9 +1809,9 @@ impl LoopProgramV4 {
         if dressed {
             let mut row_columns = vec![Vec::new(); program.rows];
             for (o, &w) in program.column_weights.iter().enumerate() {
-                for h in 0..program.rows {
+                for (h, columns) in row_columns.iter_mut().enumerate() {
                     if program.column_rows.keeps(h, o) {
-                        row_columns[h].push((o, w));
+                        columns.push((o, w));
                     }
                 }
             }

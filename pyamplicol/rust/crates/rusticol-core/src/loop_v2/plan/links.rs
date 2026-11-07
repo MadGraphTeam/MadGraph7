@@ -100,11 +100,6 @@ impl RowSpace {
         (legs, restricted)
     }
 
-    /// The legs of every row (a Born row's mask).
-    pub(super) fn all(&self) -> u64 {
-        self.all
-    }
-
     /// Block row index of each row of a content, by its restricted row.
     pub(super) fn content_rows(&self, content: &ContentFile) -> RusticolResult<HashMap<Row, u32>> {
         let mask = content.mask;
