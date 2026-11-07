@@ -231,24 +231,26 @@ pub(super) fn tir_options(
     };
     Ok(rusticol_loop_reduction::v2_tir::TirOptions {
         method_choice: method_choice.unwrap_or(defaults.method_choice),
+        extended_method_choice: method_choice.unwrap_or(defaults.extended_method_choice),
         alternative_first,
         acceptance: acceptance.unwrap_or(defaults.acceptance),
         ..defaults
     })
 }
 
-/// The TIR backend (`rusticol_loop_reduction::v2_tir`, binary64) on the
-/// groups of [`V2Reducer::reduce`] (the Python reference path's reducer
-/// when the call's reduction backend is TIRust): one family per group,
-/// consecutive lanes of bitwise equal kinematics one moment row. Its check
+/// The TIR backend (`rusticol_loop_reduction::v2_tir`) on the groups of
+/// [`V2Reducer::reduce`] in their carrier (binary64, double-double or
+/// arbitrary precision; the Python reference path's reducer when the call's
+/// reduction backend is TIRust): one family per group, consecutive lanes of
+/// bitwise equal kinematics one moment row. Its check
 /// frame is the rotation by `rotation` with the origin shift (`rescale`
 /// adds the rescaling); `reverse` and `shift` are NinjaRS's and ignored.
 /// The keywords override the backend's settings (`v2_tir::TirOptions`,
 /// whose defaults they keep when omitted; for validation): `method_choice`
 /// (default off: gate-refused rows fail closed; True: TIRust's method
-/// choice and its check), `alternative_first` ([`Limit`]) and `acceptance`
-/// (the method-choice check's tolerance). Refused typed in a build without
-/// TIRust.
+/// choice and its check, in every carrier), `alternative_first` ([`Limit`])
+/// and `acceptance` (the method-choice check's binary64 tolerance). Refused
+/// typed in a build without TIRust.
 #[pyclass]
 struct V2TirReducer(rusticol_loop_reduction::runtime::V2Backends);
 
@@ -264,14 +266,14 @@ impl V2TirReducer {
         #[cfg(feature = "tir")]
         {
             let options = tir_options(method_choice, &alternative_first, acceptance)?;
-            rusticol_loop_reduction::runtime::V2Backends::tirust_with([], options)
+            rusticol_loop_reduction::runtime::V2Backends::tirust_with([], 53, options)
                 .map(Self)
                 .map_err(error)
         }
         #[cfg(not(feature = "tir"))]
         {
             let _ = (method_choice, alternative_first, acceptance);
-            rusticol_loop_reduction::runtime::V2Backends::tirust([])
+            rusticol_loop_reduction::runtime::V2Backends::tirust([], 53)
                 .map(Self)
                 .map_err(error)
         }

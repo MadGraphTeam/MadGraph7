@@ -891,26 +891,29 @@ fn backend_of<'a>(
                 })
             }
             Reduction::TiRust => {
-                if !matches!(carrier, Carriers::Double) {
-                    return Err(error(runtime::TIRUST_BINARY64_ONLY));
-                }
-                V2Backends::tirust(runtime::plan_histogram(plan)).map_err(error)?
+                V2Backends::tirust(runtime::plan_histogram(plan), carrier_bits(carrier)?)
+                    .map_err(error)?
             }
         });
     }
     Ok(slot.as_mut().expect("backend"))
 }
 
+/// The bits of a numeric carrier (0 for the exact ones).
+fn carrier_bits(carrier: Carriers) -> PyResult<u32> {
+    Ok(match carrier {
+        Carriers::Double => 53,
+        Carriers::DoubleDouble => 106,
+        Carriers::Arbitrary(digits) => {
+            Float::decimal_digits_to_bits(f64::from(digits)).map_err(error)?
+        }
+        Carriers::Exact | Carriers::Prime => 0,
+    })
+}
+
 impl V2Executor {
     fn bits(&self) -> PyResult<u32> {
-        Ok(match self.carrier {
-            Carriers::Double => 53,
-            Carriers::DoubleDouble => 106,
-            Carriers::Arbitrary(digits) => {
-                Float::decimal_digits_to_bits(f64::from(digits)).map_err(error)?
-            }
-            Carriers::Exact | Carriers::Prime => 0,
-        })
+        carrier_bits(self.carrier)
     }
 }
 
@@ -1551,8 +1554,11 @@ impl V2Executor {
             ));
         }
         #[cfg(feature = "tir")]
-        if reduction == Reduction::TiRust && matches!(self.carrier, Carriers::Double) {
+        if reduction == Reduction::TiRust
+            && !matches!(self.carrier, Carriers::Exact | Carriers::Prime)
+        {
             let options = super::v2::tir_options(method_choice, &alternative_first, acceptance)?;
+            let bits = self.bits()?;
             let slot = &mut self.backends[reduction as usize];
             let current = match slot {
                 Some(V2Backends::TiRust(backend)) => Some(*backend.options()),
@@ -1560,8 +1566,12 @@ impl V2Executor {
             };
             if current != Some(options) {
                 *slot = Some(
-                    V2Backends::tirust_with(runtime::plan_histogram(self.executor.plan()), options)
-                        .map_err(error)?,
+                    V2Backends::tirust_with(
+                        runtime::plan_histogram(self.executor.plan()),
+                        bits,
+                        options,
+                    )
+                    .map_err(error)?,
                 );
             }
         }
@@ -1851,7 +1861,7 @@ impl V2Executor {
     /// `term_scale` the slots' term scale `amplitude_scale` (one
     /// unit-numerator reduction per monomial, family and point); its raw
     /// lanes only with `raw_lanes`. `reduction` is the reduction backend,
-    /// `"ninjars"` (the default) or `"tirust"` (binary64; its check frame
+    /// `"ninjars"` (the default) or `"tirust"` (every carrier; its check frame
     /// is the rotation by `rotation` with the origin shift, `rescale` adding
     /// the rescaling: `reverse` and `shift` are NinjaRS's; `v2_tir`); the
     /// caller (`loops.v2.reduction.resolve`) has chosen it once per call.

@@ -478,16 +478,11 @@ impl V2Precision {
     }
 
     /// The `reduction` backend of the carrier (`v2_executor.backend_of`):
-    /// NinjaRS, or TIRust (binary64; its plans built for `plan`'s
-    /// (propagators, rank) histogram, the other plans' on first use).
+    /// NinjaRS, or TIRust (its plans built for `plan`'s (propagators, rank)
+    /// histogram at the carrier's precision, the other plans' on first use).
     fn backend(self, reduction: Reduction, plan: &LoopProgramV4) -> RusticolResult<V2Backends> {
         if reduction == Reduction::TiRust {
-            if self != Self::Double {
-                return Err(RusticolError::unsupported_precision(
-                    crate::runtime::TIRUST_BINARY64_ONLY,
-                ));
-            }
-            return V2Backends::tirust(crate::runtime::plan_histogram(plan));
+            return V2Backends::tirust(crate::runtime::plan_histogram(plan), self.bits()?);
         }
         let reducer = match self {
             Self::Double => V2Reducer::new("double", None, "fast", true),
@@ -1273,8 +1268,9 @@ impl V2Runtime {
     }
 
     /// The reduction backend of the following evaluations: NinjaRS (the
-    /// default) or TIRust (binary64; a build without it, or an extended
-    /// carrier, refuses typed when a batch would reduce on it). The choice
+    /// default) or TIRust (every carrier; a build without it refuses typed,
+    /// a family outside TIRust's capability when a batch would reduce on
+    /// it). The choice
     /// is the caller's (m-lit PLAN §2.b.4: the SDK has the per-call
     /// backend, `lit-sdk`), never switched by the runtime.
     pub fn set_reduction(&mut self, reduction: Reduction) -> RusticolResult<()> {

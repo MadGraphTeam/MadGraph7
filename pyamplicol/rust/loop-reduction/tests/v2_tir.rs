@@ -18,10 +18,13 @@ use rusticol_core::loop_v2::retest::ReductionCheck;
 use rusticol_loop_reduction::runtime::{
     PoleSelection, Reduction, V2Backends, V2Reducer, V2ReductionBackend,
 };
+use iregi_rust::DirectCapabilities;
 use rusticol_loop_reduction::v2_tir::{
-    TirOptions, TirReductionBackend, layout_positions, tir_frame,
+    TirOptions, TirReductionBackend, capability_refusal, carrier_gate, layout_positions,
+    tir_frame,
 };
-use symbolica::domains::float::{Complex, DoubleFloat, RealLike};
+use rusticol_loop_reduction::NativeFloat;
+use symbolica::domains::float::{Complex, DoubleFloat, Float, Real, RealLike, SingleFloat};
 
 type C = Complex<f64>;
 
@@ -624,64 +627,239 @@ fn unit_scaling() {
     }
 }
 
-/// The capability refusals are TIRust's own (typed plan construction) or
-/// read from the row's exact invariants (an on-shell leg next to a
-/// propagator of its mass), never a constant of this crate; a backend
-/// without TIRust refuses typed.
+/// The capability refusals are TIRust's own (its capability query and its
+/// typed plan construction), never a constant of this crate: a family
+/// beyond TIRust's former fixed caps is admitted, one beyond what the
+/// query reports is refused typed with TIRust's reason, in every carrier.
 #[test]
 fn capability_refusals_are_typed() {
-    let found = TirReductionBackend::with_histogram([(1, 3), (3, 3)], TirOptions::default())
+    let found = TirReductionBackend::with_histogram([(1, 3), (3, 3)], 53, TirOptions::default())
         .unwrap()
         .plans();
     assert_eq!(found.len(), 4 + 4);
     // Thirteen propagators (beyond the twelve of TIRust's former fixed cap)
     // are admitted: the bound is TIRust's capability query, no constant here.
-    let beyond = TirReductionBackend::with_histogram([(13, 2)], TirOptions::default()).unwrap();
+    let beyond = TirReductionBackend::with_histogram([(13, 2)], 53, TirOptions::default()).unwrap();
     assert_eq!(beyond.plans(), [(13, 0), (13, 1), (13, 2)]);
-    // One propagator more than the query's largest count is refused typed,
-    // with TIRust's reason.
-    let n = iregi_rust::DirectReductionPlan::capabilities(&0f64).max_propagators + 1;
-    let refused = match TirReductionBackend::with_histogram([(n, 0)], TirOptions::default()) {
-        Err(error) => error,
-        Ok(_) => panic!("TIRust admitted {n} propagators"),
-    };
+    for bits in [53, 106, 256] {
+        assert_eq!(capability_refusal(13, 2, bits), None);
+        // One propagator more than the query's largest count is refused
+        // typed, with TIRust's reason.
+        let n = DirectCapabilities::of_representation(bits).max_propagators + 1;
+        let refused = match TirReductionBackend::with_histogram([(n, 0)], bits, TirOptions::default())
+        {
+            Err(error) => error,
+            Ok(_) => panic!("TIRust admitted {n} propagators"),
+        };
+        assert_eq!(
+            refused.kind(),
+            RusticolErrorKind::UnsupportedRuntimeCapability
+        );
+        let message = refused.message();
+        assert!(
+            message.contains(&format!("TIRust cannot reduce {n} propagators"))
+                && message.contains("direct engine"),
+            "{message}"
+        );
+        assert_eq!(capability_refusal(n, 0, bits).as_deref(), Some(message));
+    }
+    // The artifacts' rank admission (rank <= N + 2 until lit-eft) comes first.
+    assert!(
+        capability_refusal(4, 7, 53)
+            .unwrap()
+            .contains("for both reduction backends")
+    );
     assert_eq!(
-        refused.kind(),
-        RusticolErrorKind::UnsupportedRuntimeCapability
+        rusticol_loop_reduction::runtime::rank_refusal(Reduction::TiRust, 13, 2),
+        None
     );
-    assert!(
-        refused
-            .message()
-            .contains(&format!("TIRust cannot reduce {n} propagators")),
-        "{}",
-        refused.message()
-    );
-    assert!(
-        refused.message().contains("direct engine"),
-        "{}",
-        refused.message()
-    );
-    // A top in its own gauge loop: S[1][2] = m_t² next to a top propagator.
+}
+
+/// A top in its own gauge loop: `S[1][2] = m_t²` next to two top
+/// propagators (an exact on-shell configuration). TIRust takes the supplied
+/// S-matrix (U1), so the row is served on the exact on-shell branch in every
+/// carrier and agrees with NinjaRS's generic engine at 80 digits.
+#[test]
+fn an_onshell_leg_next_to_its_propagator_is_served() {
     let mt2 = 173. * 173.;
     let mut rng = Lcg(23);
     let mut onshell = point(3, &[0., mt2, mt2], &mut rng);
     // V_2 - V_1 = (m_t, 0, 0, 0): its invariant is m_t² exactly.
     onshell.shifts[1] = [400., 100., 50., 25.];
     onshell.shifts[2] = [573., 100., 50., 25.];
-    let groups = vec![lanes(0, &[onshell], 2, 2, 1, &mut rng)];
+    let groups = vec![lanes(0, &[onshell], 2, 2, 2, &mut rng)];
     assert_eq!(groups[0].s_matrix[3 + 2].re, mt2);
+    let truth = reference_arbitrary(&groups, Poles::All, 80);
+    let (found, _) = reduce(&mut tir(), &groups, Poles::All, None);
+    let (worst, compared) = worst(&found, &truth);
+    eprintln!("on-shell top, binary64: {compared} lanes, worst relative {worst:e}");
+    assert_eq!(compared, 2);
+    assert!(worst < 1e-12, "{worst:e}");
+    for (bits, bound) in [(106, 1e-24), (256, 1e-60)] {
+        let deviation = extended_against_truth(&groups, bits, 80, Poles::All);
+        eprintln!("on-shell top, {bits} bits vs 80 digits: {deviation:e}");
+        assert!(deviation < bound, "{bits} bits: {deviation:e}");
+    }
+}
+
+/// The groups lifted exactly into a carrier of `bits` bits, the S-matrix
+/// formed in the carrier from the lifted shifts (inputs consistent to the
+/// carrier's precision, never exactly formed invariants with rounded
+/// shifts: lit-onshell-probe's rule).
+fn lifted(groups: &[FamilyLanes<f64>], bits: u32) -> Vec<FamilyLanes<Float>> {
+    let real = |x: f64| Float::with_val(bits, x);
+    let complex = |z: &C| Complex::new(real(z.re), real(z.im));
+    groups
+        .iter()
+        .map(|g| {
+            let n = g.propagators;
+            let shifts: Vec<Complex<Float>> = g.shifts.iter().map(complex).collect();
+            let mut s_matrix = Vec::new();
+            for lane in 0..g.keys.len() {
+                let v = &shifts[lane * 4 * n..(lane + 1) * 4 * n];
+                for i in 0..n {
+                    for j in 0..n {
+                        let d = |mu: usize| v[4 * i + mu].re.clone() - &v[4 * j + mu].re;
+                        let square = |mu: usize| d(mu) * &d(mu);
+                        let x = square(0) - &square(1) - &square(2) - &square(3);
+                        s_matrix.push(Complex::new(x, real(0.)));
+                    }
+                }
+            }
+            FamilyLanes {
+                family: g.family,
+                propagators: n,
+                rank: g.rank,
+                points: g.points.clone(),
+                keys: g.keys.clone(),
+                shifts,
+                masses: g.masses.iter().map(complex).collect(),
+                scales: g.scales.iter().map(complex).collect(),
+                s_matrix,
+                coefficients: g.coefficients.iter().map(complex).collect(),
+            }
+        })
+        .collect()
+}
+
+/// `groups` in double-double (`bits` 106, the lifted values rounded once,
+/// exactly as they are representable) or at `bits` MPFR bits, reduced by
+/// TIR and by NinjaRS's generic engine at `digits` digits on the same
+/// consistent inputs: the worst relative deviation over every served lane
+/// (all of them must be served).
+fn extended_against_truth(groups: &[FamilyLanes<f64>], bits: u32, digits: u32, poles: Poles) -> f64 {
+    let _unlock = pyamplicol::unlock();
+    let truth_bits = Float::decimal_digits_to_bits(f64::from(digits)).unwrap();
+    let exact = lifted(groups, truth_bits.max(bits));
+    let mut ninja = V2Backends::NinjaRs(V2ReductionBackend {
+        reducer: V2Reducer::new("arbitrary", Some(digits), "generic", true).unwrap(),
+        masters: PoleSelection::BOTH,
+    });
+    V2Backend::<Float>::begin(&mut ninja);
+    let (truth, _) = V2Backend::<Float>::reduce(&mut ninja, &exact, poles, None).unwrap();
     let mut backend = tir();
-    let (direct, _) = reduce(&mut backend, &groups, Poles::All, None);
-    let refusal = direct[0][0].as_ref().unwrap_err();
-    assert!(refusal.contains("TIRust capability"), "{refusal}");
-    let statistics = V2Backend::<f64>::take_statistics(&mut backend);
-    assert!(statistics.counts.contains(&("TIR capability refusals", 1)));
-    // Extended carriers are refused typed before any reduction.
-    let mut backend = tir();
-    let error = V2Backend::<DoubleFloat>::reduce(&mut backend, &[dd(&groups[0])], Poles::All, None)
-        .unwrap_err();
-    assert_eq!(error.kind(), RusticolErrorKind::UnsupportedPrecision);
-    assert_eq!(backend.reduction(), Reduction::TiRust);
+    let found: Vec<Vec<Vec<Complex<Float>>>> = if bits == 106 {
+        let dd: Vec<FamilyLanes<DoubleFloat>> = lifted(groups, 106)
+            .iter()
+            .map(|g| {
+                let c = |v: &[Complex<Float>]| v.iter().map(Complex::to_double_float).collect();
+                FamilyLanes {
+                    family: g.family,
+                    propagators: g.propagators,
+                    rank: g.rank,
+                    points: g.points.clone(),
+                    keys: g.keys.clone(),
+                    shifts: c(&g.shifts),
+                    masses: c(&g.masses),
+                    scales: c(&g.scales),
+                    s_matrix: c(&g.s_matrix),
+                    coefficients: c(&g.coefficients),
+                }
+            })
+            .collect();
+        V2Backend::<DoubleFloat>::begin(&mut backend);
+        let (found, _) = V2Backend::<DoubleFloat>::reduce(&mut backend, &dd, poles, None).unwrap();
+        // Each double-double value exactly, at the truth's precision.
+        let zero = Float::with_val(truth_bits, 0.);
+        let exact = |x: &DoubleFloat| zero.from_rational(&NativeFloat::exact_rational(x).unwrap());
+        let up = |z: &Complex<DoubleFloat>| Complex::new(exact(&z.re), exact(&z.im));
+        found
+            .into_iter()
+            .map(|g| g.into_iter().map(|l| l.unwrap().iter().map(up).collect()).collect())
+            .collect()
+    } else {
+        let mp = lifted(groups, bits);
+        V2Backend::<Float>::begin(&mut backend);
+        let (found, _) = V2Backend::<Float>::reduce(&mut backend, &mp, poles, None).unwrap();
+        found
+            .into_iter()
+            .map(|g| g.into_iter().map(|l| l.unwrap()).collect())
+            .collect()
+    };
+    let norm = |z: &Complex<Float>| (z.re.clone() * &z.re + &(z.im.clone() * &z.im)).sqrt();
+    let mut worst: f64 = 0.;
+    for (a, b) in found.iter().zip(&truth) {
+        for (x, y) in a.iter().zip(b) {
+            let y = y.as_ref().unwrap();
+            let scale = y.iter().map(norm).fold(0f64, |m, v| m.max(v.to_f64()));
+            for (p, q) in x.iter().zip(y) {
+                worst = worst.max(norm(&(p.clone() - q)).to_f64() / scale);
+            }
+        }
+    }
+    worst
+}
+
+/// The extended carriers (m-lit lit-tir-mp, DESIGN §11.1): T1's families
+/// (tadpoles to boxes, massless, massive and complex masses, ranks up to
+/// four), all Laurent orders and the UV residue, in double-double and at
+/// 256 bits on inputs consistent to the carrier, against NinjaRS's generic
+/// engine at 80 digits on the same exact inputs: every lane served (the
+/// carriers' gates, `v2_tir::carrier_gate`), double-double within its
+/// target 1e-24 (measured and printed; the contract's DD = MPFR target),
+/// 256 bits within 1e-60.
+#[test]
+fn extended_carriers_match_ninjars_at_80_digits() {
+    let mut rng = Lcg(7);
+    let mut groups = Vec::new();
+    let cases: [(usize, Vec<f64>); 7] = [
+        (1, vec![173. * 173.]),
+        (2, vec![0., 0.]),
+        (2, vec![173. * 173., 80. * 80.]),
+        (3, vec![0., 0., 0.]),
+        (3, vec![173. * 173., 173. * 173., 173. * 173.]),
+        (4, vec![0., 0., 0., 0.]),
+        (4, vec![173. * 173., 0., 80. * 80., 0.]),
+    ];
+    let mut family = 0;
+    for (n, masses) in cases {
+        let points: Vec<_> = (0..2).map(|_| point(n, &masses, &mut rng)).collect();
+        for rank in 0..=4.min(n + 2) {
+            groups.push(lanes(family, &points, rank, rank, 2, &mut rng));
+            family += 1;
+        }
+    }
+    let mut complex = point(3, &[0., 0., 0.], &mut rng);
+    complex.masses = vec![C::new(173. * 173., -173. * 1.5); 3];
+    groups.push(lanes(family, &[complex], 3, 3, 2, &mut rng));
+    for (bits, bound) in [(106, 1e-24), (256, 1e-60)] {
+        let deviation = extended_against_truth(&groups, bits, 80, Poles::Split);
+        eprintln!("T1 at {bits} bits vs NinjaRS generic at 80 digits: worst relative {deviation:e}");
+        assert!(deviation < bound, "{bits} bits: {deviation:e}");
+    }
+}
+
+/// Every carrier's gate is the binary64 one carried to its precision
+/// (`carrier_gate`): the same share of the significand.
+#[test]
+fn carrier_gates_keep_the_share_of_the_significand() {
+    assert_eq!(carrier_gate(1e-12, 53), 1e-12);
+    for bits in [106u32, 256, 512] {
+        let gate = carrier_gate(1e-12, bits);
+        let share = gate.log2() / -f64::from(bits);
+        assert!((share - 1e-12f64.log2() / -53.).abs() < 1e-12, "{bits}: {share}");
+    }
+    assert!((carrier_gate(1e-12, 106) / 1e-24 - 1.).abs() < 1e-12);
 }
 
 /// Near-forward boxes of a top loop with massless legs (exact Pythagorean
