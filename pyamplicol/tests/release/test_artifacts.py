@@ -470,6 +470,7 @@ def _selftest_files(
     missing_arena_capability: str | None = None,
     missing_symjit_capability: str | None = None,
     direct_codegen_optimization_level: int = 2,
+    umami_artifact_id: str | None = None,
 ) -> dict[str, bytes]:
     payload_path = "processes/smoke/evaluator.symjit"
     payload = b"synthetic trusted SymJIT application"
@@ -690,6 +691,42 @@ def _selftest_files(
         + "\n"
     ).encode()
     manifest["artifact_id"] = hashlib.sha256(canonical).hexdigest()
+    if umami_artifact_id is not None:
+        # A UMAMI provider is an API payload, outside the identity; "bound"
+        # names the artifact's identity, anything else a stale one.
+        bound = (
+            manifest["artifact_id"]
+            if umami_artifact_id == "bound"
+            else umami_artifact_id
+        )
+        umami_payloads = {
+            "API/umami/metadata.json": (
+                json.dumps(
+                    {"provider": {"id": "p0", "artifact_id": bound}},
+                    indent=2,
+                    sort_keys=True,
+                ).encode()
+                + b"\n",
+                "sdk-metadata",
+                "application/json",
+            ),
+            "API/umami/provider_p0.h": (
+                f'#define UMAMI_ARTIFACT_ID "{bound}"\n'.encode(),
+                "api-source",
+                "text/x-chdr",
+            ),
+        }
+        api_payloads.update(umami_payloads)
+        manifest["payloads"].extend(
+            {
+                "path": path,
+                "role": role,
+                "media_type": media_type,
+                "size_bytes": len(data),
+                "sha256": hashlib.sha256(data).hexdigest(),
+            }
+            for path, (data, role, media_type) in sorted(umami_payloads.items())
+        )
     prefix = f"pyamplicol/assets/selftest/{rust_target}"
     files = {
         f"{prefix}/expected.json": json.dumps(
@@ -748,6 +785,7 @@ def _wheel(
     selftest_missing_arena_capability: str | None = None,
     selftest_missing_symjit_capability: str | None = None,
     selftest_direct_codegen_optimization_level: int = 2,
+    selftest_umami_artifact_id: str | None = None,
     selftest_fixture_bootstrap: bool = False,
     metadata_description: str = "",
     sdk_compressed: bool | None = None,
@@ -867,6 +905,7 @@ def _wheel(
             direct_codegen_optimization_level=(
                 selftest_direct_codegen_optimization_level
             ),
+            umami_artifact_id=selftest_umami_artifact_id,
         )
     )
     for relative in _LEGAL_FILES:
@@ -2352,6 +2391,26 @@ def test_wheel_selftest_requires_the_complete_five_language_api_bundle(
 
     with pytest.raises(ArtifactError, match=r"five-language API.*API/rust"):
         audit_wheel(wheel, mode="release", native_scan=False)
+
+
+def test_wheel_selftest_umami_provider_names_the_artifact_identity(
+    tmp_path: Path,
+) -> None:
+    audit_wheel(
+        _wheel(tmp_path / "bound", selftest_umami_artifact_id="bound"),
+        mode="release",
+        native_scan=False,
+    )
+    stale = _wheel(tmp_path / "stale", selftest_umami_artifact_id="e" * 64)
+
+    with pytest.raises(
+        ArtifactError,
+        match=re.escape(
+            "UMAMI provider does not name the artifact identity: "
+            "API/umami/metadata.json, API/umami/provider_p0.h"
+        ),
+    ):
+        audit_wheel(stale, mode="release", native_scan=False)
 
 
 def test_sdk_link_metadata_is_target_allowlisted(tmp_path: Path) -> None:

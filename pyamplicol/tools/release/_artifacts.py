@@ -61,6 +61,7 @@ from audit_sdist import (
 )
 from prepare_selftest_fixture import (
     _artifact_id,
+    umami_identity_updates,
     validate_artifact_identity_contract,
     validate_portable_artifact_capabilities,
     validate_portable_execution_manifest,
@@ -1396,6 +1397,17 @@ def _validate_selftest_fixture(
     }
     if actual != declared:
         raise ArtifactError("wheel self-test artifact payload inventory is incomplete")
+    try:
+        unbound_umami = umami_identity_updates(
+            manifest, lambda relative: entries.get(f"{artifact_prefix}{relative}")
+        )
+    except RuntimeError as error:
+        raise ArtifactError(f"wheel self-test UMAMI provider: {error}") from error
+    if unbound_umami:
+        raise ArtifactError(
+            "wheel self-test UMAMI provider does not name the artifact identity: "
+            + ", ".join(sorted(unbound_umami))
+        )
     missing_api_payloads = sorted(_REQUIRED_SELFTEST_API_PAYLOADS - declared)
     if missing_api_payloads:
         raise ArtifactError(

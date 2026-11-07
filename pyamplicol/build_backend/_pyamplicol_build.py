@@ -857,7 +857,7 @@ def _stage_runtime_resources(overlay: Path) -> None:
         shutil.copy2(source, target)
 
 
-def _portable_selftest_validators(source_root: Path) -> tuple[Any, Any]:
+def _portable_selftest_contract(source_root: Path) -> Any:
     """Load the dependency-free release contract from the source being built."""
 
     source = source_root / "tools" / "release" / "prepare_selftest_fixture.py"
@@ -869,6 +869,11 @@ def _portable_selftest_validators(source_root: Path) -> tuple[Any, Any]:
         raise RuntimeError("could not load the portable self-test contract")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    return module
+
+
+def _portable_selftest_validators(source_root: Path) -> tuple[Any, Any]:
+    module = _portable_selftest_contract(source_root)
     artifact_validator = getattr(
         module,
         "validate_portable_artifact_capabilities",
@@ -1067,6 +1072,14 @@ def _stage_selftest_fixture(overlay: Path, target: str) -> None:
     except (KeyError, OSError, TypeError, json.JSONDecodeError) as error:
         raise RuntimeError(f"invalid self-test artifact manifest: {path}") from error
     manifest["artifact_id"] = _runtime_artifact_id(manifest)
+    # The fixture's UMAMI provider names the artifact identity, which the
+    # retargeting above changed.
+    refresh_umami = getattr(
+        _portable_selftest_contract(overlay), "refresh_umami_artifact_identity", None
+    )
+    if not callable(refresh_umami):
+        raise RuntimeError("portable self-test contract cannot rebind UMAMI providers")
+    refresh_umami(selected / "artifact", manifest)
     path.write_text(
         json.dumps(
             manifest,

@@ -1313,6 +1313,19 @@ def test_portable_selftest_stages_for_every_release_target(target: str) -> None:
             for payload in manifest["payloads"]
             if "target" in payload
         } == {target}
+        # Retargeting changes the identity; the UMAMI provider follows it.
+        artifact = fixture_root / target / "artifact"
+        header = (artifact / "API/umami/provider_p0.h").read_text(encoding="utf-8")
+        assert f'#define UMAMI_ARTIFACT_ID "{manifest["artifact_id"]}"\n' in header
+        metadata = json.loads(
+            (artifact / "API/umami/metadata.json").read_text(encoding="utf-8")
+        )
+        assert metadata["provider"]["artifact_id"] == manifest["artifact_id"]
+        for payload in manifest["payloads"]:
+            if payload["path"].startswith("API/umami/"):
+                data = (artifact / payload["path"]).read_bytes()
+                assert payload["sha256"] == hashlib.sha256(data).hexdigest()
+                assert payload["size_bytes"] == len(data)
 
 
 def test_cargo_overlay_rejects_unknown_resolution_mode(tmp_path: Path) -> None:
