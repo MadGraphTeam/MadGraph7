@@ -17,6 +17,17 @@ batch (``V2VirtualRuntime`` and ``V2ObservablesRuntime``):
 3. at the last level a point that evaluates keeps its value with the target
    marked as not met; a point that failed at every level is a failed lane.
 
+A level compares the public estimate's field named by its ``metric`` with
+its target. An integrated zero (a Landau-Yang |A|^2 of a loop-induced
+process, m-lit PLAN §2.a.8; numerical, never declared, RULED Q13) can never
+meet a "relative" or "finite" target, its value being itself rounding: it
+climbs to the last level and is kept there with the target not met. The
+opt-in "scale" metric (E <= target x S, the estimate against the
+pre-cancellation scale S of its floor; LIT-API's ``VirtualRescueLevel.
+metric``) accepts it at the first level, where its E / S is the floor's
+FLOOR_UNITS x u (M-LIT LIT-STAB-N, ``tests/unit/test_loop_v2_induced_
+stability.py``).
+
 Escalated levels evaluate one point per call: every lane of a non-binary64
 carrier is a scalar loop that costs as much padded as filled, so a fixed
 lane count of one gives each escalated carrier one native executor, which
@@ -257,6 +268,7 @@ def _merged(
         stability=tuple(estimates) if checked else None,
         pole_parts=tuple(parts) if splits_poles(template.poles) else None,
         rescue=tuple(records),
+        contribution=template.contribution,
     )
 
 
