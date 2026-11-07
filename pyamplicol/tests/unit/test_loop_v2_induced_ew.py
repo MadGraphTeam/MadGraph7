@@ -66,6 +66,8 @@ EW_ROWS = [
     ("li_aa_zz", False),
     ("li_aa_hh", False),
     ("li_emep_hh", False),
+    # LI-E4: the lepton tree current on a QCD-corrected quark loop.
+    ("li_emep_ggg", False),
 ]
 # The complex-mass rows of LI-C1 (fixture, analytic oracle).
 CMS_ROWS = [
@@ -236,16 +238,20 @@ def _check_providers(name, results, analytic):
 
 @pytest.mark.parametrize(("name", "analytic"), EW_ROWS, ids=[r[0] for r in EW_ROWS])
 def test_ew_rows_equal_madloop_recola_and_the_oracle(ew, name, analytic):
-    """LI-A3, A4, A6, E1-E3 in binary64 at every reference point: MadLoop
-    and Recola within the lax rule, the oracle within 1e-9; generated in
-    't Hooft-Feynman gauge (W, Goldstone and ghost loops) at zero widths
-    (the references' scheme), recording the fixed-tree-width policy."""
+    """LI-A3, A4, A6, E1-E4 in binary64 at every reference point: MadLoop
+    and Recola within the lax rule, the oracle within 1e-9; the [QED] rows
+    generated in 't Hooft-Feynman gauge (W, Goldstone and ghost loops), at
+    zero widths (the references' scheme), recording the fixed-tree-width
+    policy."""
 
     from pyamplicol.loops.v2.assemble import Precision
     from pyamplicol.loops.v2.ew_policy import FIXED_TREE_WIDTHS, scheme_conventions
 
     slice_ = ew.slice(name)
-    assert str(slice_.compiled.ir.gauge) == "feynman"
+    # [QED] requests take 't Hooft-Feynman gauge; the QCD-corrected
+    # e+ e- > g g g keeps the compiled model's.
+    if _corrections(_fixture(name)) is not None:
+        assert str(slice_.compiled.ir.gauge) == "feynman"
     _check_providers(name, ew.values(name, Precision.double()), analytic)
     policy = scheme_conventions(slice_)["width_policy"]
     assert policy["policy"] == FIXED_TREE_WIDTHS
@@ -307,23 +313,23 @@ def _default_widths_request(ew, name, **fields):
     return replace(request, fixed_parameters=fixed)
 
 
-def test_e_e_to_h_h_with_the_model_z_width(ew):
-    """Q7, LI-E3: e+ e- > h h [QED] at the model's default widths generates
-    with fixed widths in its tree propagators (the s-channel Z) and
-    widthless loop propagators, recorded in its conventions (no
-    ``electroweak-width`` refusal: it is loop-induced). It evaluates at the
-    model's Z width; the Z width is a run-time parameter of its tree
-    propagators: at W_Z = 0 the value equals the zero-width references
-    (MadLoop, Recola: Recola is mandatory here, no Ward probe reaches a
-    process without an external gauge boson), and the shift from there is
-    of first order in W_Z (the tree propagator's width times the loop
-    amplitudes' absorptive parts above the W, Z and h h thresholds)."""
+@pytest.mark.parametrize("name", ["li_emep_hh", "li_emep_ggg"])
+def test_lepton_rows_with_the_model_z_width(ew, name):
+    """Q7, LI-E3 / LI-E4: e+ e- > h h [QED] and e+ e- > g g g at the model's
+    default widths generate with fixed widths in their tree propagators (the
+    s-channel Z) and widthless loop propagators, recorded in their
+    conventions (no ``electroweak-width`` refusal: they are loop-induced).
+    They evaluate at the model's Z width; the Z width is a run-time
+    parameter of the tree propagators: at W_Z = 0 the value equals the
+    zero-width references (MadLoop, Recola: Recola is mandatory for
+    e+ e- > h h, no Ward probe reaches a process without an external gauge
+    boson), and the shift from there is of first order in W_Z (the tree
+    propagator's width times the loop amplitudes' absorptive parts)."""
 
     from pyamplicol.loops.v2.assemble import LoopSlice, Precision
     from pyamplicol.loops.v2.ew_policy import FIXED_TREE_WIDTHS, scheme_conventions
     from pyamplicol.loops.v2.plan_export import NativeExecutor
 
-    name = "li_emep_hh"
     fixture = _fixture(name)
     slice_ = LoopSlice.generate(
         ew.compiled, _default_widths_request(ew, name), ew.native
