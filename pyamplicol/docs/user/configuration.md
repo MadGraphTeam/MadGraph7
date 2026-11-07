@@ -645,7 +645,9 @@ stability estimates instead and leave escalating the arithmetic to the caller
 One-loop requests (`process.loop_coupling_orders`) generate virtual processes
 with the shared-recursion one-loop engine v2 (no loop diagram is listed),
 the only one-loop engine, and publish them as plan v4 processes (runtime
-capability `rusticol.loop-runtime.v4`). The per-diagram legacy engine was
+capability `rusticol.loop-runtime.v4`) for the Born-interfered virtuals and
+plan v5 processes (`rusticol.loop-runtime.v5`, amplitude mode) for the
+loop-induced ones. The per-diagram legacy engine was
 removed: a card, override or command line naming `loop.engine` (or
 `--loop-engine`) is refused ("configuration field 'loop.engine' was removed
 ..."), and an artifact of the legacy engine (`rusticol.loop-runtime.v3`) is
@@ -712,15 +714,17 @@ reduction = "ninjars"          # override for this evaluation (default: the arti
 
 `"auto"` takes the per-type default, TIRust for a loop-induced and NinjaRS
 for a Born-interfered process; where TIRust cannot serve the call (a native
-extension built without it, a carrier it does not serve yet) it falls back to
+extension built without it, a carrier it does not serve yet, or an output
+whose executor does not run it yet: the summed virtual and the resolved,
+correlated and selected outputs are checked separately) it falls back to
 NinjaRS and records why. An explicitly requested backend that cannot serve
 the call is refused before any point is evaluated (`CompatibilityError`, key
 `reduction-unavailable`), never switched silently. The choice is made once
 per call and carrier (each rescue level's carrier in the Python rescue), and
 every lane diagnostic records it (`VirtualLaneDiagnostic.reduction`: the
 requested and effective backend and the reason; also in the CLI's JSON).
-Until the TIRust backend is built into the native extension (m-lit
-`lit-tir`), every call runs on NinjaRS: `"auto"` records the fallback and
+Until the TIRust backend is built into the native extension and wired to
+its executors, every call runs on NinjaRS: `"auto"` records the fallback and
 `"tirust"` is refused. `loop.reduction` other than `"auto"` needs a one-loop
 request (`process.loop_coupling_orders`).
 

@@ -32,11 +32,12 @@ a2^dag G b0]: the finite part of |a|^2 is exact only if the amplitude's
 poles vanish (its O(eps) terms are not computed), which the finiteness
 diagnostic checks (PLAN §2.a.7 "Pole shape").
 
-**Exact zeros** (RULED Q13): the only exact zero is the colour zero: every
-loop of a requested loop order has a single coloured attachment (the
-family recursion drops it as ``assemble.COLOUR_ZERO_REJECTION``, Tr T^a = 0
-in any model) and no counterterm ket carries a colour tensor there
-(``LoopSlice.colour_zero_orders``); every other zero is evaluated
+**Exact zeros** (RULED Q13): the only exact zero is the colour zero, by
+colour algebra alone: at a requested loop order no seed class has a
+nonzero colour coefficient at N_c = 3 and no counterterm ket carries a
+colour tensor (``bind``: the classes' coefficients vanish, or no family is
+routed because every loop has a single coloured attachment, Tr T^a = 0 in
+any model; ``LoopSlice.colour_zero_orders``); every other zero is evaluated
 numerically.
 """
 
@@ -1164,8 +1165,11 @@ def point_finiteness(evaluation: Any) -> float | None:
     ``finiteness``): the largest ``finiteness`` ratio over its loop orders
     and rows, when its poles were computed and its term scale is at hand
     without another reduction (a native point whose executor formed it,
-    ``native_terms``: the stability checks request it); None otherwise.
-    An exact colour zero (an empty amplitude basis) has ratio 0."""
+    ``native_terms``: the stability checks request it, as the floor of
+    their estimate); None otherwise. A default call (no checks) does not
+    form the term scale: its unit-numerator reductions cost 1.3x (g g > z z)
+    to 2x (g g > h) a plain evaluation on NinjaRS (lit-api-b). An exact
+    colour zero (an empty amplitude basis) has ratio 0."""
 
     if width_of(evaluation) == 1:
         return None

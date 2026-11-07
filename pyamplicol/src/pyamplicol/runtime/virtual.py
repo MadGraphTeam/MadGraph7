@@ -29,6 +29,7 @@ from pyamplicol.api.virtual_results import (
     VirtualFailureDiagnostic,
     VirtualLaneDiagnostic,
     VirtualPoleParts,
+    VirtualReduction,
     VirtualRescuePolicy,
     VirtualScalar,
     VirtualStabilityChecks,
@@ -654,11 +655,15 @@ class V2ObservablesRuntime:
         checked: bool,
         index: int = 0,
         reasons: Sequence[str] | None = None,
+        reductions: Mapping[str, VirtualReduction] | None = None,
     ) -> VirtualLaneDiagnostic:
         bits = {"double": 53, "double-double": 106}.get(arithmetic) or math.ceil(
             precision.digits * math.log2(10)
         )
         executor = "native" if self._executor == "native" else "Python reference"
+        # The call's reduction backend at this carrier (``reductions``: the
+        # artifact runtime's resolved choices; none for a direct runtime).
+        reduction = None if reductions is None else reductions[arithmetic]
         if reasons is not None:
             reason = "; ".join(reasons)
             return VirtualLaneDiagnostic(
@@ -672,6 +677,7 @@ class V2ObservablesRuntime:
                         index, None, None, None, "v2-evaluation", reason
                     ),
                 ),
+                reduction=reduction,
             )
         return VirtualLaneDiagnostic(
             "success",
@@ -684,6 +690,7 @@ class V2ObservablesRuntime:
                 if checked
                 else "no stability check requested"
             ),
+            reduction=reduction,
         )
 
     def _failed(self, failures: Mapping[int, Sequence[str]], on_failure: str) -> None:
@@ -703,6 +710,7 @@ class V2ObservablesRuntime:
         correlated: bool,
         poles: PoleSelection = PoleSelection.ALL,
         checks: VirtualStabilityChecks | None = None,
+        reductions: Mapping[str, VirtualReduction] | None = None,
     ) -> VirtualEvaluation:
 
         born_orders = self._default_born_orders()
@@ -727,6 +735,7 @@ class V2ObservablesRuntime:
                         checked,
                         index,
                         failures.get(index, ["failed"]),
+                        reductions,
                     )
                 )
                 continue
@@ -774,7 +783,9 @@ class V2ObservablesRuntime:
                         )
                     )
                 )
-            diagnostics.append(self._diagnostic(arithmetic, precision, checked))
+            diagnostics.append(
+                self._diagnostic(arithmetic, precision, checked, reductions=reductions)
+            )
         return VirtualEvaluation(
             born_values=tuple(born_values),
             values=tuple(values),
@@ -826,13 +837,17 @@ class V2ObservablesRuntime:
         helicities: Sequence[str] | None = None,
         color_flows: Sequence[str] | None = None,
         stability: VirtualRescuePolicy | None = None,
+        reductions: Mapping[str, VirtualReduction] | None = None,
         **options: Any,
     ) -> VirtualEvaluation:
         """The virtual of every point; at leading colour ``helicities`` and
         ``color_flows`` select Born helicity rows and colour flows with the
         tree engine's IDs and ordinals (``loops.v2.selection``): the sum of
         their Born-anchored entries, Born included. ``stability`` runs a
-        rescue policy (``loops.v2.rescue``) over these evaluations."""
+        rescue policy (``loops.v2.rescue``) over these evaluations.
+        ``reductions`` (every call): the reduction backend per carrier that
+        each lane diagnostic records (the artifact runtime's resolved
+        choices, ``V2VirtualRuntime._reduction_choices``)."""
 
         if stability is not None:
             return self._rescued(
@@ -843,6 +858,7 @@ class V2ObservablesRuntime:
                 arithmetic=arithmetic,
                 helicities=helicities,
                 color_flows=color_flows,
+                reductions=reductions,
                 **options,
             )
         if helicities or color_flows:
@@ -853,6 +869,7 @@ class V2ObservablesRuntime:
                 mu_r2=mu_r2,
                 precision=precision,
                 arithmetic=arithmetic,
+                reductions=reductions,
                 **options,
             )
         return self.evaluate_correlated_many(
@@ -862,6 +879,7 @@ class V2ObservablesRuntime:
             precision=precision,
             arithmetic=arithmetic,
             _correlated=False,
+            reductions=reductions,
             **options,
         )["born"]
 
@@ -876,6 +894,7 @@ class V2ObservablesRuntime:
         helicities: Sequence[str] | None,
         color_flows: Sequence[str] | None,
         on_failure: Literal["raise", "return"] = "raise",
+        reductions: Mapping[str, VirtualReduction] | None = None,
         **options: Any,
     ) -> VirtualEvaluation:
         """``evaluate`` under a rescue policy: each level one ``evaluate``
@@ -906,6 +925,7 @@ class V2ObservablesRuntime:
                 color_flows=color_flows,
                 stability_checks=rung.checks,
                 on_failure="return",
+                reductions=reductions,
                 **options,
             )
 
@@ -932,6 +952,7 @@ class V2ObservablesRuntime:
         precision: int | None = None,
         arithmetic: str | None = None,
         on_failure: Literal["raise", "return"] = "raise",
+        reductions: Mapping[str, VirtualReduction] | None = None,
         **options: Any,
     ) -> VirtualEvaluation:
         """One selection column (``selection.column``) of every point."""
@@ -987,6 +1008,7 @@ class V2ObservablesRuntime:
             False,
             poles,
             checks,
+            reductions,
         )
 
     def evaluate_correlated(
@@ -1006,6 +1028,7 @@ class V2ObservablesRuntime:
         arithmetic: str | None = None,
         on_failure: Literal["raise", "return"] = "raise",
         _correlated: bool = True,
+        reductions: Mapping[str, VirtualReduction] | None = None,
         **options: Any,
     ) -> dict[str, VirtualEvaluation]:
         """Every request on one batch; requests with equal spin sources share
@@ -1093,6 +1116,7 @@ class V2ObservablesRuntime:
                     _correlated,
                     selection,
                     checks,
+                    reductions,
                 )
         return {label: out[label] for label in requests}
 
@@ -1106,6 +1130,7 @@ class V2ObservablesRuntime:
         on_failure: Literal["raise", "return"] = "raise",
         helicities: Sequence[str] | None = None,
         color_flows: Sequence[str] | None = None,
+        reductions: Mapping[str, VirtualReduction] | None = None,
         **options: Any,
     ) -> ResolvedVirtualEvaluation:
         """Per Born helicity row and Born basis element (design §8.5); at
@@ -1189,6 +1214,7 @@ class V2ObservablesRuntime:
                         checks.enabled,
                         index,
                         failures.get(index, ["failed"]),
+                        reductions,
                     )
                 )
                 continue
@@ -1220,7 +1246,11 @@ class V2ObservablesRuntime:
                     for sector in self._sectors
                 )
             )
-            diagnostics.append(self._diagnostic(arithmetic, carrier, checks.enabled))
+            diagnostics.append(
+                self._diagnostic(
+                    arithmetic, carrier, checks.enabled, reductions=reductions
+                )
+            )
             estimates.append(
                 tuple(
                     tuple(

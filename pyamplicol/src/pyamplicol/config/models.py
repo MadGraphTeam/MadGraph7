@@ -167,6 +167,25 @@ class ReductionBackend(StrEnum):
     TIRUST = "tirust"
 
 
+def reduction_request(value: object) -> Literal["auto", "ninjars", "tirust"]:
+    """The value of a reduction-backend request (``ReductionBackend`` or its
+    value): the one validator of every surface that takes one (``Runtime.
+    load`` / ``evaluate(reduction=)``, the slice request, the artifact
+    runtime and its result records); the configuration keys validate the
+    same enum (``loop.reduction``, ``evaluation.reduction``)."""
+
+    try:
+        if not isinstance(value, str):
+            raise TypeError
+        found = ReductionBackend(value)
+    except (TypeError, ValueError):
+        choices = ", ".join(repr(item.value) for item in ReductionBackend)
+        raise ValueError(
+            f"unknown reduction backend {value!r}; one of {choices}"
+        ) from None
+    return found.value
+
+
 class PoleSelection(StrEnum):
     """Which Laurent poles a one-loop evaluation computes (design §12.4).
 
