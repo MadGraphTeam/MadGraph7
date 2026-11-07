@@ -16,12 +16,11 @@ runtime's route (native point inputs) against Float(256):
   double-double (``ESTIMATE_MARGIN``, DESIGN §10.4);
 * g g > z is served as "zero within its estimate" (RULED Q13: no
   Landau-Yang declaration): |A|^2 <= 10 E in binary64 and double-double;
-  its E / S is the floor's 16 u, below every rescue target: the
-  precondition of the opt-in rescue metric "scale" (E <= target x S, PLAN
-  §2.a.8; the metric itself is pending LIT-API's ``VirtualRescueLevel.
-  metric``, which tests it), while its relative estimate exceeds every
-  target and the default rescue keeps it at the last level with the target
-  not met;
+  its E / S is the floor's 16 u, so the opt-in rescue metric "scale" (E <=
+  target x S, PLAN §2.a.8, ``VirtualRescueLevel.metric``) accepts it at the
+  first level, while its relative estimate exceeds every target and the
+  default rescue keeps it at the last level with the target not met (both
+  ladders end to end on the public runtime);
 * the double-double estimate shrinks with the carrier's unit roundoff (the
   rotation budget compares the rotated amplitudes after a little-group
   phase normalised in the carrier, ``induced._modulus``);
@@ -146,10 +145,10 @@ def test_g_g_to_z_is_zero_within_its_estimate(li, carrier):
     """g g > z (Landau-Yang) is evaluated numerically, never declared zero
     (RULED Q13): on every fixture point |A|^2 lies within ten times E per
     Laurent coefficient. E rests on the term floor (E / S is the floor's
-    FLOOR_UNITS x u): E / S meets the default rescue target, the
-    precondition of the opt-in rescue metric "scale" (E <= target x S,
-    pending LIT-API), whereas the relative estimate (E against the value,
-    itself rounding) exceeds it by far."""
+    FLOOR_UNITS x u): E / S meets the default rescue target, so the opt-in
+    rescue metric "scale" (E <= target x S) accepts it, whereas the
+    relative estimate (E against the value, itself rounding) exceeds it by
+    far."""
 
     from pyamplicol.loops.v2.assemble import Precision
     from pyamplicol.loops.v2.stability import (
@@ -174,17 +173,22 @@ def test_g_g_to_z_is_zero_within_its_estimate(li, carrier):
 
 
 @pytest.mark.loop_physics
-def test_the_default_rescue_keeps_g_g_to_z_at_its_last_level(li, tmp_path):
+def test_the_rescue_of_g_g_to_z_terminates_under_either_metric(li, tmp_path):
     """Under the default (relative) rescue metric an integrated zero can
     never meet its target: g g > z climbs binary64 -> double-double ->
     arbitrary(57) and is kept at the last level with the target marked as
-    not met, its value within its estimate there too (PLAN §2.a.8: the
-    rescue terminates, at the cost of every level; the opt-in "scale"
-    metric, pending LIT-API, is to stop at the first,
-    ``test_g_g_to_z_is_zero_within_its_estimate``)."""
+    not met (PLAN §2.a.8: the rescue terminates, at the cost of every
+    level). The opt-in "scale" metric (E <= target x S, ``VirtualRescueLevel.
+    metric``) on the same ladder accepts it at the first level, its E / S
+    the floor's FLOOR_UNITS x u, its value the binary64 one and within its
+    absolute estimate (Q13: zero within the estimate)."""
+
+    from dataclasses import replace
 
     from pyamplicol import Runtime
     from pyamplicol.api.virtual_results import VirtualRescuePolicy
+    from pyamplicol.loops.v2.assemble import Precision
+    from pyamplicol.loops.v2.stability import FLOOR_UNITS
 
     output = _generate(tmp_path, (("gg_z", "g g > z"),), _fixture("li_gg_z"))
     point, scale, parameters = li.point("li_gg_z")
@@ -202,6 +206,23 @@ def test_the_default_rescue_keeps_g_g_to_z_at_its_last_level(li, tmp_path):
     assert result.diagnostics[0].status == "rescued"
     assert not result.diagnostics[0].accuracy_established
     assert result.contribution == "loop-induced"
+
+    ladder = VirtualRescuePolicy(
+        tuple(replace(level, metric="scale") for level in policy.levels)
+    )
+    scaled = runtime.evaluate([point], mu_r2=[str(scale)], stability=ladder)
+    (record,) = scaled.rescue
+    assert record.level == 0 and record.met and len(record.attempts) == 1
+    (estimate,) = scaled.stability
+    floor = FLOOR_UNITS * Precision.double().unit_roundoff
+    assert floor <= estimate.scale <= ESTIMATE_MARGIN * floor
+    assert record.attempts[0].estimate == estimate.scale <= ladder.levels[0].target
+    (value,) = scaled.values[0]
+    (error,) = estimate.absolute
+    assert abs(value.finite) <= ESTIMATE_MARGIN * error.finite
+    unchecked = runtime.evaluate([point], mu_r2=[str(scale)])
+    assert scaled.values == unchecked.values
+    assert scaled.contribution == "loop-induced"
 
 
 # ------------------------------------------------------------ rotation check
@@ -246,10 +267,9 @@ def test_the_native_rotation_check_samples_without_counterterms(
 def test_g_g_to_h_a_is_zero_within_its_estimate_on_the_stored_route(li, tmp_path):
     """g g > h a (Furry; no counterterms) on the stored runtime's route: its
     term floor is at rounding, so the rotation budget carries the estimate.
-    Through the executor with native inputs |A|^2 <= 10 E per Laurent
-    coefficient in binary64 and double-double; through the public runtime
-    the binary64 value (rounding) has a finite-part estimate of at least
-    1/10 of itself (|A|^2 <= 10 E: no correct digit claimed), its rotation
+    Through the executor with native inputs and through the public runtime
+    |A|^2 <= 10 E per Laurent coefficient (no correct digit claimed for a
+    value that is rounding), in binary64 and double-double, the rotation
     check sampling."""
 
     from pyamplicol import Runtime
@@ -268,11 +288,14 @@ def test_g_g_to_h_a_is_zero_within_its_estimate_on_the_stored_route(li, tmp_path
     output = _generate(tmp_path, (("gg_ha", "g g > h a"),), fixture)
     point, scale, parameters = li.point("li_gg_ha")
     runtime = Runtime.load(output, process="gg_ha", model_parameters=parameters)
-    policy = VirtualRescuePolicy((VirtualRescueLevel("double"),))
-    result = runtime.evaluate([point], mu_r2=[str(scale)], stability=policy)
-    (estimate,) = result.stability
-    assert ESTIMATE_MARGIN * estimate.finite >= 1, estimate
-    assert dict(estimate.checks)["rotation-0"] > 0, estimate
+    for arithmetic in ("double", "double-double"):
+        policy = VirtualRescuePolicy((VirtualRescueLevel(arithmetic),))
+        result = runtime.evaluate([point], mu_r2=[str(scale)], stability=policy)
+        (estimate,) = result.stability
+        assert dict(estimate.checks)["rotation-0"] > 0, (arithmetic, estimate)
+        assert ESTIMATE_MARGIN * estimate.finite >= 1, (arithmetic, estimate)
+        for value, error in zip(result.values[0], estimate.absolute, strict=True):
+            assert abs(value.finite) <= ESTIMATE_MARGIN * error.finite, arithmetic
 
 
 # ---------------------------------------------------------------- calibration
