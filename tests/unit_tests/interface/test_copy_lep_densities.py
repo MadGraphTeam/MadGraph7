@@ -170,5 +170,35 @@ class TestShippedDensities(unittest.TestCase):
         self.assertIn('bs_has=.false.', text)
 
 
+class TestBeamstrahlungSetup(unittest.TestCase):
+    """py8_bstrahl.beamstrahlung_setup_error, shared by madevent and mg7."""
+
+    def test_accepted(self):
+        self.assertIsNone(py8_bstrahl.beamstrahlung_setup_error(
+            'fcce240ll', 120.0, 120.0, False))
+        # the run card may hold the energies as strings or ints
+        self.assertIsNone(py8_bstrahl.beamstrahlung_setup_error(
+            'fcce240ll', '120', 120, False))
+
+    def test_mlm_refused(self):
+        """no Pythia8 main both vetoes and degrades the beams"""
+        error = py8_bstrahl.beamstrahlung_setup_error(
+            'fcce240ll', 120.0, 120.0, True)
+        self.assertIn('MLM', error)
+        self.assertIn('fcce240ll', error)
+
+    def test_asymmetric_beams_refused(self):
+        error = py8_bstrahl.beamstrahlung_setup_error(
+            'ilc500ll', 250.0, 200.0, False)
+        self.assertIn('ebeam1 = ebeam2', error)
+        self.assertNotIn('MLM', error)
+
+    def test_both_reported(self):
+        error = py8_bstrahl.beamstrahlung_setup_error(
+            'ilc500ll', 250.0, 200.0, True)
+        self.assertIn('MLM', error)
+        self.assertIn('ebeam1 = ebeam2', error)
+
+
 if __name__ == '__main__':
     unittest.main()

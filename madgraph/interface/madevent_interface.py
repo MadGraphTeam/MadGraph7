@@ -4950,6 +4950,14 @@ already exists and is not a fifo file."""%fifo_path)
         lhe_path = pjoin(self.me_dir, 'Events', self.run_name,
                          PY8_Card.subruns[0]['Beams:LHEF'])
         if py8_bstrahl.event_file_needs_bstrahl(lhe_path):
+            # generation refuses these already; a file produced elsewhere, or
+            # before that check existed, has to be refused here too
+            error = py8_bstrahl.beamstrahlung_setup_error(
+                self.run_card['pdlabel'],
+                self.run_card['ebeam1'], self.run_card['ebeam2'],
+                self.run_card['ickkw'] > 0)
+            if error:
+                raise self.InvalidCmd(error)
             # A standalone process directory has no MadGraph tree to build
             # from, so there the main must already have been built, normally
             # when Pythia8 was installed.
@@ -6726,6 +6734,15 @@ tar -czf split_$1.tar.gz split_$1
                     self.copy_lep_densities(self.run_card['pdlabel'], pjoin(self.me_dir, 'Source'))
                     self.make_opts_var['pdlabel1'] = 'ee'
                     self.make_opts_var['pdlabel2'] = 'ee'
+                    # refuse before the survey what could not be showered
+                    if py8_bstrahl.density_has_bstrahl(
+                            self.run_card['pdlabel'], pjoin(self.me_dir, 'Source')):
+                        error = py8_bstrahl.beamstrahlung_setup_error(
+                            self.run_card['pdlabel'],
+                            self.run_card['ebeam1'], self.run_card['ebeam2'],
+                            self.run_card['ickkw'] > 0)
+                        if error:
+                            raise self.InvalidCmd(error)
         
         # set random number
         if self.run_card['iseed'] != 0:

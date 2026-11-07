@@ -160,6 +160,42 @@ def build(mg5dir, pythia8_path, force=False):
     return None
 
 
+def beamstrahlung_setup_error(density, ebeam1, ebeam2, mlm):
+    """Why a run with this beamstrahlung density cannot be generated, or None.
+
+    Two set-ups are refused before any event is produced, by madevent and mg7
+    alike (the caller raises its own exception type with the message):
+
+    * MLM matching (ickkw > 0, or dynamical_scale_choice = "mlm" in mg7). The
+      showered events need the matching veto, which main164 applies and the
+      beamstrahlung Pythia8 main does not, while main164 cannot degrade the
+      beams. Neither main showers such a file correctly.
+
+    * Beams of different energy. The densities are fitted for the symmetric
+      beams of their collider, and the beamstrahlung main degrades both beams
+      from the energy of the first.
+    """
+    problems = []
+    if mlm:
+        problems.append(
+            'MLM matching is on. Showering these events needs both the '
+            'matching veto (main164) and the per-event beam degradation '
+            '(mg5amc_bstrahl), and no Pythia8 main does both; switch the '
+            'matching off (ickkw = 0, or a dynamical_scale_choice other than '
+            '"mlm" in mg7).')
+    if abs(float(ebeam1) - float(ebeam2)) > 1e-9 * max(abs(float(ebeam1)),
+                                                        abs(float(ebeam2)), 1.):
+        problems.append(
+            'the beam energies differ (%s and %s GeV). The density is fitted '
+            'for the symmetric beams of its collider, and the beamstrahlung '
+            'shower degrades both beams from the energy of the first; set '
+            'ebeam1 = ebeam2.' % (ebeam1, ebeam2))
+    if not problems:
+        return None
+    return ('The lepton density %s includes beamstrahlung, but %s' %
+            (density, ' Also, '.join(problems)))
+
+
 def density_has_bstrahl(pdlabel, source_dir_path):
     """True if this lepton density convolutes beamstrahlung into its PDF.
 

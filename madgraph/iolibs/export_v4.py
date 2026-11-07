@@ -4227,6 +4227,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
         ENDIF
         DO IWARP=1, warp_SIZE
           IVEC = (CURR_WARP-1)*WARP_SIZE+IWARP
+c         the dressed-lepton densities read 1-x from OMX_EE, not from x
+          OMX_EE(:) = ALL_OMX_EE(:,IVEC)
           """
 
 

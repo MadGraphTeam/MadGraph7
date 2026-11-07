@@ -223,29 +223,89 @@ class LeptonDensity:
         if self.sampler is None or not self.has_beamstrahlung:
             return 0
 
+        # Streamed: the file is read and rewritten EVENTS_PER_CHUNK events at
+        # a time, so memory stays bounded whatever the number of events (it
+        # used to hold the whole file, plus a list of its events and the
+        # rewritten copy, i.e. about three times its size).
         import numpy as np
         opener = gzip.open if path.endswith('.gz') else open
-        with opener(path, 'rt') as fsock:
-            text = fsock.read()
-        head, _, rest = text.partition('<event>')
-        if not rest:
-            return 0
-        events = ('<event>' + rest).split('<event>')[1:]
+        tmp_path = path + '.bstrahl_tmp'
+        if fact_scale is None:
+            logger.warning(
+                'the factorisation scale is dynamical, so the beamstrahlung '
+                'split falls back to the shower scale in SCALUP; it is not '
+                'the scale the density was evaluated at')
 
+        # A list seed gives a stream independent of default_rng(run_seed),
+        # which the event generation already used; the mask keeps any integer
+        # the run card allows -- including the -1 that means "draw one" before
+        # it is resolved -- a legal non-negative seed rather than a ValueError.
+        rng = np.random.default_rng([int(seed) & ((1 << 64) - 1), 0xB57A])
+        annotated = 0
+        try:
+            with opener(path, 'rt') as fin, opener(tmp_path, 'wt') as fout:
+                chunk = []
+                event = None
+                for line in fin:
+                    if event is None:
+                        stripped = line.lstrip()
+                        if (stripped.startswith('<event') and
+                                not stripped.startswith('<eventgroup')):
+                            event = [line]
+                        else:
+                            # header, or the closing tag after the events:
+                            # what came before it has to be written first
+                            if chunk:
+                                annotated += self._annotate_chunk(
+                                    chunk, fout, rng, fact_scale)
+                                chunk = []
+                            fout.write(line)
+                        continue
+                    event.append(line)
+                    if '</event>' in line:
+                        chunk.append(event)
+                        event = None
+                        if len(chunk) >= self.EVENTS_PER_CHUNK:
+                            annotated += self._annotate_chunk(
+                                chunk, fout, rng, fact_scale)
+                            chunk = []
+                if chunk:
+                    annotated += self._annotate_chunk(
+                        chunk, fout, rng, fact_scale)
+                if event is not None:
+                    # truncated file: keep the unterminated event as it was
+                    fout.writelines(event)
+        except BaseException:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            raise
+        if annotated:
+            os.replace(tmp_path, path)
+        else:
+            os.remove(tmp_path)
+        return annotated
+
+    # events held in memory at a time by annotate_lhe
+    EVENTS_PER_CHUNK = 10000
+
+    def _annotate_chunk(self, chunk, fout, rng, fact_scale):
+        """Sample and write the <beamstrahlung> element of these events.
+
+        `chunk` is a list of events, each the list of its lines from
+        `<event>` to `</event>` included. Returns the number written.
+        """
+        import numpy as np
         e_cm = float(self.mapping_e_cm)
         x1, x2, scale = [], [], []
-        for event in events:
-            body = event.split('</event>')[0]
+        for event in chunk:
             incoming = []
             header = None
-            for line in body.split('\n'):
+            for line in event[1:-1]:
                 field = line.split()
                 # The header is the FIRST six-field line of this event.
                 # Collecting every six-field line in the file instead lets an
                 # <mgrwt> or <scales> payload -- or anything another LHEF
-                # writer added -- shift the scales against the events, and
-                # the only symptom would be the length check below firing and
-                # silently putting every event at e_cm/2.
+                # writer added -- shift the scales against the events.
                 if header is None and len(field) == 6:
                     header = field
                 elif len(field) >= 13 and field[1] == '-1':
@@ -258,7 +318,7 @@ class LeptonDensity:
                 x2.append(1.0)
             scale.append(float(header[3]) if header else e_cm / 2.)
 
-        n = len(events)
+        n = len(chunk)
         x1 = np.clip(np.asarray(x1), 0.0, 1.0)
         x2 = np.clip(np.asarray(x2), 0.0, 1.0)
         omx1 = np.maximum(1.0 - x1, self.OMX_FLOOR)
@@ -266,35 +326,27 @@ class LeptonDensity:
         if fact_scale is not None:
             q = np.full(n, float(fact_scale))
         else:
-            logger.warning(
-                'the factorisation scale is dynamical, so the beamstrahlung '
-                'split falls back to the shower scale in SCALUP; it is not '
-                'the scale the density was evaluated at')
             q = np.asarray(scale, dtype=float)
 
-        # A list seed gives a stream independent of default_rng(run_seed),
-        # which the event generation already used; the mask keeps any integer
-        # the run card allows -- including the -1 that means "draw one" before
-        # it is resolved -- a legal non-negative seed rather than a ValueError.
-        rng = np.random.default_rng([int(seed) & ((1 << 64) - 1), 0xB57A])
         component = np.asarray(
             self._host_luminosity()(x1, omx1, x2, omx2, q,
                                     rng.uniform(0, 1, n)).component_index)
         deviates = rng.uniform(0, 1, (n, 4))
 
-        out = [head]
-        annotated = 0
-        for i, event in enumerate(events):
+        for i, event in enumerate(chunk):
             fractions = self.sampler.sample(
                 float(x1[i]), float(x2[i]), float(q[i]) ** 2,
                 int(component[i]), *deviates[i].tolist())
-            body, sep, tail = event.partition('</event>')
             element = '<beamstrahlung>%15.7e%15.7e </beamstrahlung>\n' % fractions
-            out.append('<event>' + body + element + sep + tail)
-            annotated += 1
-        with opener(path, 'wt') as fsock:
-            fsock.write(''.join(out))
-        return annotated
+            last = event[-1]
+            cut = last.index('</event>')
+            fout.writelines(event[:-1])
+            if cut:
+                # '</event>' sharing its line with the end of the body
+                fout.write(last[:cut] + '\n')
+            fout.write(element)
+            fout.write(last[cut:])
+        return n
 
     # -- cross-section plumbing ------------------------------------------
     @staticmethod

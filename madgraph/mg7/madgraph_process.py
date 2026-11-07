@@ -16,6 +16,7 @@ from madgraph.models.check_param_card import ParamCard
 from madgraph.models.model_reader import Alphas_Runner
 from madgraph.mg7 import hwu_output
 from madgraph.mg7 import lepton_density as lepton_density_module
+import madgraph.various.py8_bstrahl as py8_bstrahl
 from madgraph.mg7 import npy_to_lhe
 from madgraph.mg7 import options
 from madgraph.mg7 import plots
@@ -2116,6 +2117,13 @@ class MadgraphProcess:
                 self._lepton_density_name, tuple(beam_pdgs),
                 " (with beamstrahlung)"
                 if self._lepton_density.has_beamstrahlung else "")
+            if self._lepton_density.has_beamstrahlung:
+                error = py8_bstrahl.beamstrahlung_setup_error(
+                    self._lepton_density_name,
+                    self.beam_energies[0], self.beam_energies[1],
+                    self.run_card["beam"]["dynamical_scale_choice"] == "mlm")
+                if error:
+                    raise ValueError(error)
         return self._lepton_density
 
     @property

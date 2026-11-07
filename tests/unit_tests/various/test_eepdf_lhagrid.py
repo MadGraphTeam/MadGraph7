@@ -33,6 +33,7 @@ Three layers, each checked against the one below it:
     against a quadrature that uses neither.
 """
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -944,6 +945,51 @@ class TestLheAnnotation(unittest.TestCase):
                 path = os.path.join(tmp, 'seed%s.lhe' % abs(seed))
                 self._lhe(path, [(0.8, 0.9)])
                 self.assertEqual(density.annotate_lhe(path, seed=seed), 1)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_streamed_in_chunks(self):
+        """Events are rewritten a chunk at a time, not all held in memory.
+
+        With a chunk of two, five events cross two chunk boundaries and leave
+        a partial last chunk; every event must still get exactly one element,
+        in order, and the header and the closing tag must come out where they
+        were -- also through gzip, the format mg7 ships.
+        """
+        import gzip
+        tmp = tempfile.mkdtemp()
+        try:
+            density = self._density('fcce240ll', tmp)
+            if not density.has_beamstrahlung:
+                self.skipTest('fcce240ll carries no beamstrahlung')
+            density.EVENTS_PER_CHUNK = 2
+            fractions = [(0.7, 0.9), (0.95, 0.6), (0.99, 0.99), (0.5, 0.5),
+                         (1.0, 0.8)]
+            plain = os.path.join(tmp, 'events.lhe')
+            self._lhe(plain, fractions)
+            before = open(plain).read()
+            zipped = plain + '.gz'
+            with gzip.open(zipped, 'wt') as fsock:
+                fsock.write(before)
+            for path in (plain, zipped):
+                self.assertEqual(density.annotate_lhe(path, seed=2,
+                                                      fact_scale=91.188), 5)
+                opener = gzip.open if path.endswith('.gz') else open
+                with opener(path, 'rt') as fsock:
+                    after = fsock.read()
+                # nothing but the elements was added, each before </event>
+                self.assertEqual(
+                    re.sub(r'<beamstrahlung>[^\n]*\n', '', after), before)
+                self.assertEqual(after.count('<beamstrahlung>'), 5)
+                self.assertEqual(
+                    after.count('</beamstrahlung>\n</event>'), 5)
+                self.assertTrue(after.endswith('</LesHouchesEvents>\n'))
+                self.assertFalse(os.path.exists(path + '.bstrahl_tmp'))
+                tags = [line.split()[1:3] for line in after.split('\n')
+                        if line.startswith('<beamstrahlung>')]
+                for (x1, x2), (xbs1, xbs2) in zip(fractions, tags):
+                    self.assertGreaterEqual(float(xbs1), x1 - 1e-6)
+                    self.assertGreaterEqual(float(xbs2), x2 - 1e-6)
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 

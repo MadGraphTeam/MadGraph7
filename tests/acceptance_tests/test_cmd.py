@@ -5277,6 +5277,14 @@ C
         # the next call overwrites the ee_components common block
         self.assertEqual(content.count('=PDG2PDF('),
                          content.count('EE_COMPONENTS(1:4)'))
+        # The densities read 1-x from OMX_EE, which genps sets per generated
+        # point: the vectorized routine has to restore each lane's value
+        # before its PDFs (and before UNWGT samples the beamstrahlung split),
+        # or every lane uses the 1-x of the last point -- which doubled the
+        # FCC-ee 240 GeV cross section at vector_size 16.
+        self.assertEqual(
+            content.replace(' ', '').upper().count(
+                'OMX_EE(:)=ALL_OMX_EE(:,IVEC)'), 3)
 
     def test_madevent_subproc_group(self):
         """Test MadEvent output using the SubProcess group functionality"""
