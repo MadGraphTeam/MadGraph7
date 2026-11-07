@@ -293,26 +293,54 @@ fn relative(a: &[C], b: &[C]) -> f64 {
         / scale
 }
 
-fn worst(found: &Lanes, truth: &Lanes) -> f64 {
-    let mut worst: f64 = 0.;
-    for (a, b) in found.iter().zip(truth) {
-        for (x, y) in a.iter().zip(b) {
-            let (x, y) = (x.as_ref().unwrap(), y.as_ref().unwrap());
-            worst = worst.max(relative(x, y));
+/// Whether a lane failed closed on TIRust's conditioning gates (the default
+/// settings: the method choice off, DECISIONS 2026-11-07 ~17:20 (d)); any
+/// other failure panics.
+fn gate_refused(lane: &LaneOutcome<f64>) -> bool {
+    match lane {
+        Ok(_) => false,
+        Err(reason) => {
+            assert!(
+                reason.contains("refused by the conditioning gates"),
+                "not a gate refusal: {reason}"
+            );
+            true
         }
     }
-    worst
+}
+
+/// The worst relative difference of the lanes of `found` and `truth` that
+/// neither refuses on the gates, and how many were compared.
+fn worst(found: &Lanes, truth: &Lanes) -> (f64, usize) {
+    let (mut worst, mut compared): (f64, usize) = (0., 0);
+    for (a, b) in found.iter().zip(truth) {
+        for (x, y) in a.iter().zip(b) {
+            if gate_refused(x) || gate_refused(y) {
+                continue;
+            }
+            let (x, y) = (x.as_ref().unwrap(), y.as_ref().unwrap());
+            worst = worst.max(relative(x, y));
+            compared += 1;
+        }
+    }
+    (worst, compared)
 }
 
 /// Every lane of `found` within `MARGIN` times its own re-test deviation
 /// (`check`, floored at four units of binary64 roundoff of the reference
 /// lane's largest coefficient) of `truth` (PLAN §4 L6 against a reference
-/// without error of its own); returns the worst relative difference.
-fn within_estimates(found: &Lanes, check: &Lanes, truth: &Lanes) -> f64 {
+/// without error of its own), skipping the lanes refused on the gates in
+/// either frame; returns the worst relative difference and how many lanes
+/// were compared.
+fn within_estimates(found: &Lanes, check: &Lanes, truth: &Lanes) -> (f64, usize) {
     const MARGIN: f64 = 10.;
-    let mut worst: f64 = 0.;
+    let (mut worst, mut compared): (f64, usize) = (0., 0);
     for ((a, b), t) in found.iter().zip(check).zip(truth) {
         for (lane, ((x, y), z)) in a.iter().zip(b).zip(t).enumerate() {
+            if gate_refused(x) || gate_refused(y) {
+                continue;
+            }
+            compared += 1;
             let (x, y, z) = (
                 x.as_ref().unwrap(),
                 y.as_ref().unwrap(),
@@ -336,7 +364,7 @@ fn within_estimates(found: &Lanes, check: &Lanes, truth: &Lanes) -> f64 {
             worst = worst.max(deviation / scale);
         }
     }
-    worst
+    (worst, compared)
 }
 
 /// T1: A0 to D0 and tensor tadpoles, bubbles, triangles and boxes up to
@@ -368,15 +396,27 @@ fn scalar_and_tensor_integrals_match_ninjars_double_double() {
     complex.masses = vec![C::new(173. * 173., -173. * 1.5); 3];
     groups.push(lanes(family, &[complex], 3, 3, 2, &mut rng));
     let truth = reference(&groups, Poles::Split);
-    let (found, check) = reduce(
-        &mut tir(),
-        &groups,
-        Poles::Split,
-        Some(ReductionCheck::RESCALED),
-    );
-    let worst = within_estimates(&found, &check.unwrap(), &truth);
-    eprintln!("T1: TIR vs NinjaRS generic DD, worst relative {worst:e}");
-    assert!(worst < 1e-6, "TIR vs NinjaRS generic DD: {worst:e}");
+    let total: usize = groups.iter().map(|g| g.keys.len()).sum();
+    // The default (gate-refused rows fail closed) and the method choice on
+    // (every lane served: the boxes the gates refuse too).
+    for (name, mut backend) in [("default", tir()), ("method choice", tir_method_choice())] {
+        let (found, check) = reduce(
+            &mut backend,
+            &groups,
+            Poles::Split,
+            Some(ReductionCheck::RESCALED),
+        );
+        let (worst, compared) = within_estimates(&found, &check.unwrap(), &truth);
+        eprintln!(
+            "T1 ({name}): TIR vs NinjaRS generic DD, {compared} of {total} lanes, worst relative \
+             {worst:e}"
+        );
+        assert!(worst < 1e-6, "TIR vs NinjaRS generic DD: {worst:e}");
+        assert!(2 * compared > total, "{name}: {compared} of {total}");
+        if name == "method choice" {
+            assert_eq!(compared, total);
+        }
+    }
 }
 
 /// T3: the layout permutation is a bijection onto TIRust's basis with
@@ -406,7 +446,14 @@ fn layout_round_trip_and_split_columns() {
     let (all, _) = reduce(&mut tir(), &groups, Poles::All, None);
     let (none, _) = reduce(&mut tir(), &groups, Poles::None, None);
     let (ninja, _) = reduce(&mut ninjars("double", "fast"), &groups, Poles::Split, None);
+    let mut compared = 0;
     for lane in 0..split[0].len() {
+        // A gate-refused row fails closed in every pole mode alike.
+        if gate_refused(&split[0][lane]) {
+            assert!(gate_refused(&all[0][lane]) && gate_refused(&none[0][lane]));
+            continue;
+        }
+        compared += 1;
         let s = split[0][lane].as_ref().unwrap();
         let a = all[0][lane].as_ref().unwrap();
         assert_eq!((s.len(), a.len()), (4, 3));
@@ -419,6 +466,7 @@ fn layout_round_trip_and_split_columns() {
             "UV column lane {lane}"
         );
     }
+    assert!(compared > 0);
 }
 
 /// T4: lanes declared above their true rank reduce at their true rank:
@@ -457,11 +505,14 @@ fn check_frames_rotate_and_rescale() {
         .collect();
     let groups = vec![lanes(0, &points, 3, 3, 2, &mut rng)];
     for check in [ReductionCheck::REVERSED, ReductionCheck::RESCALED] {
-        let (direct, again) = reduce(&mut tir(), &groups, Poles::All, Some(check));
-        let again = again.unwrap();
-        let deviation = worst(&again, &direct);
-        assert!(deviation > 0., "{check:?}: the check frame is blind");
-        assert!(deviation < 1e-10, "{check:?}: {deviation:e}");
+        for mut backend in [tir(), tir_method_choice()] {
+            let (direct, again) = reduce(&mut backend, &groups, Poles::All, Some(check));
+            let again = again.unwrap();
+            let (deviation, compared) = worst(&again, &direct);
+            assert!(compared > 0, "{check:?}: no lane compared");
+            assert!(deviation > 0., "{check:?}: the check frame is blind");
+            assert!(deviation < 1e-10, "{check:?}: {deviation:e}");
+        }
     }
 }
 
@@ -547,10 +598,16 @@ fn unit_scaling() {
                     .collect()
             })
             .collect();
+        // The conditioning gates are scale invariant: the same lanes fail
+        // closed at every scale.
+        for (a, b) in found[0].iter().zip(&reference[0]) {
+            assert_eq!(gate_refused(a), gate_refused(b), "2^{exponent}");
+        }
         // Not bitwise (lit-spike-tir T10: the moments' own rounding, e.g.
         // their logarithms, at most 3.3e-11 of the row scale there); lax.
-        let deviation = worst(&found, &reference);
-        eprintln!("T10: 2^{exponent}: worst relative {deviation:e}");
+        let (deviation, compared) = worst(&found, &reference);
+        eprintln!("T10: 2^{exponent}: {compared} lanes, worst relative {deviation:e}");
+        assert!(compared > 0, "2^{exponent}: no lane compared");
         assert!(deviation < 1e-8, "2^{exponent}: {deviation:e}");
     }
 }
