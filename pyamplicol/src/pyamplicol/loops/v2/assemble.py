@@ -1291,6 +1291,41 @@ def _frame_policy(rows: Sequence[int]) -> Any:
     return cheapest(generator_input.frame_rows(rows), _FRAME_MODEL)
 
 
+def _layout_rank(plan: LoopSchedules) -> int:
+    """The largest rank a node of ``plan``'s tries forms: the executor
+    bounds a node's rank by its inputs' rank plus the largest degree of its
+    edges (the slice's ``MonomialLayout``)."""
+
+    return max(
+        (
+            node.rank_in + max(segment.q_degree for segment, _ in node.edges)
+            for schedule in plan.schedules.values()
+            for node in schedule.trie.nodes
+        ),
+        # A loop-induced exact colour zero has no family.
+        default=0,
+    )
+
+
+def _check_readings(
+    readings: Iterable[Skeleton], weights: LeafWeights, reading: TreeReading
+) -> None:
+    """Refuse readings whose fermion lines (``LeafWeights.fermion_sign``)
+    or vertices (``TreeReading.conjugate``, the rules of every content seen)
+    the conventions do not cover."""
+
+    for skeleton in readings:
+        weights.fermion_sign(skeleton)  # refuses fermion lines it does not cover
+    # The vertices of every reading: those of the distinct contents.
+    rules = {
+        term.vertex.rule
+        for content in weights.contents_seen()
+        for term in content.terms
+    }
+    for rule in sorted(rules):
+        reading.conjugate(rule)  # refuses vertices it cannot read
+
+
 class SectorSeeds:
     """Seeds with one column per squared-order sector (an ``rx.SeedSource``).
 
@@ -2087,6 +2122,10 @@ class LoopSlice:
     # propagators, or the complex-mass scheme everywhere), recorded in the
     # generation record's conventions; None for a Born-interfered slice.
     width_policy: Mapping[str, Any] | None = None
+    # Loop-induced: the frame choice for route R2's dressed rows
+    # (``_frame_dressed_rows``, ``plan_export.dressed_frames``: seconds,
+    # modelled dressing work before and after, families re-framed).
+    dressed_frames: Mapping[str, Any] | None = None
     _cache: dict = field(default_factory=dict, repr=False)
 
     @property
@@ -2621,16 +2660,7 @@ class LoopSlice:
         readings = rx.reading_skeletons(plan)
         weights = LeafWeights(data, closure.fermion_ends)
         reading = TreeReading(data)
-        for skeleton in readings:
-            weights.fermion_sign(skeleton)  # refuses fermion lines it does not cover
-        # The vertices of every reading: those of the distinct contents.
-        rules = {
-            term.vertex.rule
-            for content in weights.contents_seen()
-            for term in content.terms
-        }
-        for rule in sorted(rules):
-            reading.conjugate(rule)  # refuses vertices it cannot read
+        _check_readings(readings, weights, reading)
         if program is not None:
             # The program's root terms and the Born close the same vertices
             # on blocks of the same words: one colour cache serves both.
@@ -2705,21 +2735,7 @@ class LoopSlice:
                 (sector, frozenset(pairs)) for sector, pairs in sorted(sectors.items())
             ),
             normalisation=Normalisation.of(structure.native, incoming, outgoing),
-            layout=MonomialLayout.native(
-                native,
-                # The executor bounds a node's rank by its inputs' rank plus
-                # the largest degree of its edges.
-                max(
-                    (
-                        node.rank_in
-                        + max(segment.q_degree for segment, _ in node.edges)
-                        for schedule in plan.schedules.values()
-                        for node in schedule.trie.nodes
-                    ),
-                    # A loop-induced exact colour zero has no family.
-                    default=0,
-                ),
-            ),
+            layout=MonomialLayout.native(native, _layout_rank(plan)),
             native=native,
             reading=reading,
             weights=weights,
@@ -2737,6 +2753,7 @@ class LoopSlice:
         if request.accuracy != "full" and prune:
             slice_._prune_colour()
         if request.contribution == "loop-induced":
+            slice_._frame_dressed_rows()
             induced.bind(slice_, generation=generation)
         slice_._plan_contraction()
         # The certified-scaleless companion serves the "uv" and "ir" pole
@@ -2858,6 +2875,46 @@ class LoopSlice:
             certificates=dict(self.table.certificates),
         )
         return extend_seed_table(empty, {}, self.colour, readings, compress=True)
+
+    def _frame_dressed_rows(self) -> None:
+        """Amplitude mode (loop-induced): every family in the frame chosen for
+        route R2's dressed rows (``plan_export.dressed_frames``; M-LIT
+        DECISIONS 2026-11-06 ~09:00 (3)), instead of the generation's frame
+        priced on seeded rows; the seed table is then that of the new
+        readings (``colour.build_seed_table``), so the amplitude basis T
+        (``induced.bind``) holds the tensors the plan reads. Route R1, the
+        oracle, reads the same frames. The choice is recorded
+        (``dressed_frames``)."""
+
+        from .plan_export import dressed_frames
+
+        frames, record = dressed_frames(self)
+        self.dressed_frames = record
+        if not record["reframed"]:
+            return
+        if self.generation is not None and "schedules" in generator_input.NATIVE_STAGES:
+            replaced = self.generation.build_of_plan(self.plan)
+            plan = self.generation.schedules(self.colour, frames=frames)
+            if replaced is not None:
+                # The generation-frame build: no stage reads it any more.
+                self.generation.release(replaced)
+        else:
+
+            def chosen(family, candidates):
+                return next(
+                    trie for frame, trie in candidates if frame == frames[family.key]
+                )
+
+            plan = build_schedules(
+                self.families, self.loop_catalogue, self.colour, policy=chosen
+            )
+        readings = rx.reading_skeletons(plan)
+        _check_readings(readings, self.weights, self.reading)
+        self.plan = plan
+        self.table, self.class_of = build_seed_table(
+            self.colour, readings, self.basis, compress=self.request.compress_colour
+        )
+        self.layout = MonomialLayout.native(self.native, _layout_rank(plan))
 
     def _plan_contraction(self) -> None:
         """Certify the seed FFT's orbits per ``colour_contraction``."""

@@ -11,13 +11,15 @@ with its seed key's amplitude vector into route R1's (row, t) columns.
 Checked here:
 
 * R1 = R2 on lit-amp's rows: the bare amplitude vectors per (loop order,
-  row) and |A|^2 agree to rounding in binary64 and double-double (the two
-  routes sum the same terms in another order);
+  row) agree to rounding in the colour-metric norm, and so does |A|^2, in
+  binary64 and double-double (the two routes sum the same terms in another
+  order);
 * an R2 plan is schema 5 with route R1's columns and ``dressed``; the
   Python exporter's dressed row links (written with ``links=True``) equal
   the native loader's derivation; the binary member decodes back to the
   plan's JSON; a seeded plan's binary member holds format 3's columns only;
-* route R2 runs schedule B only;
+* route R2 runs schedule B only; its families take the frames chosen for
+  dressed rows;
 * the exact helicity-zero filter: its degree bound, the F_p test's
   verdicts, Q13, dropped rows as columns without a row, and the drop path
   through the public generation.
@@ -29,8 +31,9 @@ import pytest
 
 from .test_loop_v2_induced import _fixture, _Rows, li_artifact  # noqa: F401
 
-# Rounding of the two routes' different summation orders, relative to the
-# largest amplitude component of the point (binary64, double-double).
+# Rounding of the two routes' different summation orders: the colour-metric
+# norm of the difference of their amplitude vectors relative to route R1's
+# (binary64, double-double).
 ROUNDING = {"double": 1e-12, "double-double": 1e-27}
 
 # lit-amp's rows (``test_loop_v2_induced.ROWS``).
@@ -70,16 +73,26 @@ def _evaluated(executor, point, scale, parameters, precision):
     return evaluation
 
 
-def _largest(vectors) -> float:
-    return max(
-        (
-            abs(complex(z))
-            for vector in vectors.values()
-            for laurent in vector
-            for z in laurent
-        ),
-        default=0.0,
-    )
+def _gram_norm(vectors, gram) -> float:
+    """The colour-metric norm of amplitude vectors (``native_bare``: per
+    (loop order, row) a[t][k], k the Laurent coefficient): the square root
+    of the sum over keys and k of a_k^dag G a_k, G the full-colour metric at
+    N_c = 3 (``AmplitudeBasis.metric_at_three``)."""
+
+    total = 0.0
+    for vector in vectors.values():
+        for k in range(len(vector[0]) if vector else 0):
+            a = [complex(laurent[k]) for laurent in vector]
+            total += sum(
+                (a[t].conjugate() * gram[t][u] * a[u]).real
+                for t in range(len(a))
+                for u in range(len(a))
+            )
+    return max(total, 0.0) ** 0.5
+
+
+def _number(cell) -> complex:
+    return complex(float(cell.real), float(cell.imag))
 
 
 @pytest.mark.loop_physics
@@ -90,6 +103,10 @@ def test_route_r2_equals_route_r1(li, name, carrier):
 
     precision = Precision.double() if carrier == "double" else Precision.double_double()
     executors = _routes(li, name)
+    gram = [
+        [_number(cell) for cell in row]
+        for row in li.slice(name).amplitude.metric_at_three()
+    ]
     assert executors["R2"].exported.program.get("dressed") is True
     assert "dressed" not in executors["R1"].exported.program
     points = len(_fixture(name)["points"])
@@ -100,15 +117,20 @@ def test_route_r2_equals_route_r1(li, name, carrier):
             for route in ("R1", "R2")
         )
         assert r1.native_bare.keys() == r2.native_bare.keys()
-        scale_ = _largest(r1.native_bare)
-        assert scale_ > 0
-        worst = max(
-            abs(complex(a) - complex(b))
+        norm = _gram_norm(r1.native_bare, gram)
+        assert norm > 0
+        # The difference in the carrier's own arithmetic, then its norm.
+        difference = {
+            key: [
+                [a - b for a, b in zip(laurent_a, laurent_b, strict=True)]
+                for laurent_a, laurent_b in zip(
+                    vector, r2.native_bare[key], strict=True
+                )
+            ]
             for key, vector in r1.native_bare.items()
-            for laurent_a, laurent_b in zip(vector, r2.native_bare[key], strict=True)
-            for a, b in zip(laurent_a, laurent_b, strict=True)
-        )
-        assert worst <= ROUNDING[carrier] * scale_, (name, index, worst / scale_)
+        }
+        ratio = _gram_norm(difference, gram) / norm
+        assert ratio <= ROUNDING[carrier], (name, index, ratio)
     # |A|^2 through the evaluation path: the square of vectors equal to
     # rounding, relative to the square of the largest component.
     point, scale, parameters = li.point(name)
@@ -121,6 +143,30 @@ def test_route_r2_equals_route_r1(li, name, carrier):
     total = float(values["R1"].totals[1])
     assert total > 0
     assert abs(float(values["R2"].totals[1]) / total - 1) <= 1e3 * ROUNDING[carrier]
+
+
+@pytest.mark.loop_physics
+def test_frames_are_chosen_for_dressed_rows(li):
+    """Route R2k's frames (``plan_export.dressed_frames``; m-lit DECISIONS
+    2026-11-06 ~09:00 (3)): a loop-induced slice is generated in the frames
+    whose class tries take the least modelled dressing work, recorded with
+    the work of the generation's frames (priced on seeded rows). On
+    g g > z z every family moves (its seeded-row frames take about 9 % more
+    dressing work); the choice is a fixed point: pricing the generated slice
+    again keeps every frame at the same work."""
+
+    from pyamplicol.loops.v2.plan_export import dressed_frames
+
+    slice_ = li.slice("li_gg_zz")
+    record = slice_.dressed_frames
+    assert record["families"] == len(slice_.plan.schedules)
+    assert record["reframed"] > 0 and record["work"] < record["work_before"]
+    frames, again = dressed_frames(slice_)
+    assert again["reframed"] == 0
+    assert again["work"] == again["work_before"] == record["work"]
+    assert frames == {
+        key: schedule.trie.frame for key, schedule in slice_.plan.schedules.items()
+    }
 
 
 @pytest.mark.loop_physics
@@ -279,23 +325,38 @@ def test_filter_verdicts_keep_every_row_of_zero_processes(li):
     live by the binary64 pre-screen (its amplitude is rounding within its
     estimate), every row is an integrand zero and the request has no
     counterterm ket, so every row would drop: the rows stay live and the
-    verdict is a diagnostic. g g > h: the J_z-forbidden rows (+,-) and (-,+)
-    are not proven live by the screen (they vanish after the integration)
-    and are not integrand zeros: live. The failure bound and k are
-    recorded from the plan's degree bound."""
+    verdict is a diagnostic. The failure bound and k are recorded from the
+    plan's degree bound. g g > h has counterterm kets, so no row can drop:
+    the filter neither screens nor tests. Its J_z-forbidden rows (+,-) and
+    (-,+), which vanish only after the integration, are not proven live by
+    the screen and are not integrand zeros (screen and exact test called
+    directly)."""
 
-    from pyamplicol.loops.v2.helicity_filter import PRIME
+    from pyamplicol.loops.v2 import helicity_filter as hf
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
 
     record, dropped = _filter(li, "li_gg_ha")
     assert record["every_row_zero"] and record["counterterms"] == "absent"
     assert record["live_by_screen"] == 0 and record["dropped"] == [] and not dropped
     assert len(record["integrand_zero"]) == record["rows"] == 8
-    assert record["prime"] == PRIME and record["points"] >= 1
+    assert record["prime"] == hf.PRIME and record["points"] >= 1
     assert record["failure_bound"] <= record["failure_probability"]
     record, dropped = _filter(li, "li_gg_h")
-    assert not record["every_row_zero"] and not dropped
-    assert record["live_by_screen"] == 2 and len(record["tested"]) == 2
-    assert record["integrand_zero"] == []
+    assert record["counterterms"] == "present" and not dropped
+    assert record["tested"] == [] and record["points"] == 0
+    assert record["dropped"] == [] and not record["every_row_zero"]
+    slice_ = li.slice("li_gg_h")
+    candidates = [
+        [[float(x) for x in p] for p in point]
+        for point in _fixture("li_gg_h")["points"]
+    ]
+    _index, point, scale = hf.generation_point(slice_, candidates)
+    executor = NativeExecutor(slice_, forward=False, inputs="native")
+    live = hf.screen(executor, point, scale, {})
+    tested = [r for r in range(len(executor.exported.rows)) if r not in live]
+    assert len(live) == 2 and len(tested) == 2
+    zero, _seconds = hf.zero_rows_exactly(executor, tested, 1, 0)
+    assert zero == set()
 
 
 @pytest.mark.loop_physics
@@ -342,9 +403,9 @@ def test_dropped_rows_are_columns_without_a_row(li):
 def test_generation_records_the_filter_verdict(li_artifact):  # noqa: F811
     """The public route runs the filter at generation and records its
     verdict per loop-induced process (``loop_induced_helicity_filter``):
-    g g > h keeps every row (the J_z-forbidden rows are tested and are not
-    integrand zeros), the exact colour zero h > g a has no row to filter;
-    the stored plan keeps one row per column."""
+    g g > h keeps every row (it has counterterm kets, so nothing is screened
+    or tested), the exact colour zero h > g a has no row to filter; the
+    stored plan keeps one row per column."""
 
     import json
 
@@ -355,7 +416,7 @@ def test_generation_records_the_filter_verdict(li_artifact):  # noqa: F811
     }
     verdict = records["gg_h"]["loop_induced_helicity_filter"]
     assert verdict["rows"] == 4 and verdict["dropped"] == []
-    assert verdict["live_by_screen"] == 2 and len(verdict["tested"]) == 2
+    assert verdict["counterterms"] == "present" and verdict["tested"] == []
     assert verdict["integrand_zero"] == [] and not verdict["every_row_zero"]
     assert verdict["failure_bound"] <= verdict["failure_probability"]
     assert records["h_ga"]["loop_induced_helicity_filter"] == {
@@ -370,9 +431,9 @@ def test_generation_stores_a_partial_drop(li, li_artifact, tmp_path, monkeypatch
     (``artifact.reexport_process``) and store the dropped rows' columns
     without a row; the public runtime evaluates the stored process. Forced
     here (no tested process drops a proper subset): g g > h's rows the
-    pre-screen does not prove live, the J_z-forbidden ones, which vanish only
-    after the integration, so |A|^2 equals the whole artifact's to rounding.
-    A zero failure probability skips the filter."""
+    pre-screen does not prove live (``screen``), the J_z-forbidden ones,
+    which vanish only after the integration, so |A|^2 equals the whole
+    artifact's to rounding. A zero failure probability skips the filter."""
 
     import dataclasses
     import json
@@ -385,9 +446,16 @@ def test_generation_stores_a_partial_drop(li, li_artifact, tmp_path, monkeypatch
 
     real = hf.filter_rows
 
-    def forced(*args, **kwargs):
-        verdict = real(*args, **kwargs)
-        return dataclasses.replace(verdict, dropped=verdict.tested)
+    def forced(executor, point, scale, *args, **kwargs):
+        verdict = real(executor, point, scale, *args, **kwargs)
+        live = hf.screen(executor, point, scale, {})
+        rows = executor.exported.rows
+        return dataclasses.replace(
+            verdict,
+            dropped=tuple(
+                hf.row_label(rows[r]) for r in range(len(rows)) if r not in live
+            ),
+        )
 
     monkeypatch.setattr(hf, "filter_rows", forced)
     output = _generate(
@@ -396,7 +464,7 @@ def test_generation_stores_a_partial_drop(li, li_artifact, tmp_path, monkeypatch
     manifest = json.loads((output / "artifact.json").read_text())
     (record,) = manifest["extensions"]["generation"]["concrete_processes"]
     verdict = record["filters"]["loop_induced_helicity_filter"]
-    assert len(verdict["dropped"]) == 2 and verdict["dropped"] == verdict["tested"]
+    assert len(verdict["dropped"]) == 2
     assert not verdict["every_row_zero"] and verdict["rows"] == 4
     plan = json.loads(
         read_plan_json(output / "processes" / "gg_h" / "loop-runtime.pacbin")

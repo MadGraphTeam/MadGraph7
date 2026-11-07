@@ -56,8 +56,9 @@ every tested row live (``Unrepresentable``).
 
 **Counterterm kets.** The engine has no exact tree program, so a row's
 counterterm ket counts as zero only where the request has no counterterm
-ket at all (``native_cells.counterterm_tensors``, structural); otherwise
-the rows the exact test finds zero stay live (recorded).
+ket at all (``native_cells.counterterm_tensors``, structural). With kets
+no row can drop, so neither the screen nor the exact test runs: the
+verdict records the kets as present and no row tested.
 
 A dropped row keeps its (row, t) columns without a row (``export_plan``):
 its trace writes nothing, its columns stay zero and are never reduced.
@@ -448,6 +449,22 @@ def filter_rows(
     if exported.amplitude is None:
         raise ValueError("the helicity-zero filter serves loop-induced plans")
     rows = list(exported.rows)
+    if counterterm_tensors(executor.slice):
+        # No row can drop (module docs): nothing is screened or tested.
+        return FilterVerdict(
+            rows=len(rows),
+            live_by_screen=0,
+            tested=(),
+            integrand_zero=(),
+            dropped=(),
+            every_row_zero=False,
+            counterterms="present",
+            prime=PRIME,
+            points=0,
+            degree_bound=0,
+            failure_probability=failure,
+            failure_bound=0.0,
+        )
     seconds: dict[str, float] = {}
     start = time.perf_counter()
     live = screen(executor, point, scale, dict(parameters or {}))
@@ -460,8 +477,7 @@ def filter_rows(
     zero: set[int] = set()
     if tested:
         zero, seconds["exact"] = zero_rows_exactly(executor, tested, k, seed)
-    counterterms = "present" if counterterm_tensors(executor.slice) else "absent"
-    certified = sorted(zero) if counterterms == "absent" else []
+    certified = sorted(zero)
     every = bool(rows) and len(certified) == len(rows)
     dropped = [] if every else certified
     ratio = degree / (PRIME - 1)
@@ -472,7 +488,7 @@ def filter_rows(
         integrand_zero=tuple(row_label(rows[r]) for r in sorted(zero)),
         dropped=tuple(row_label(rows[r]) for r in dropped),
         every_row_zero=every,
-        counterterms=counterterms,
+        counterterms="absent",
         prime=PRIME,
         points=k,
         degree_bound=degree,
@@ -482,6 +498,28 @@ def filter_rows(
     )
 
 
+def generation_point(
+    slice_: Any, candidates: Sequence[Sequence[Sequence[float]]]
+) -> tuple[int, Any, Any]:
+    """The candidate point the filter runs at: the one farthest from every
+    tree pole, lifted onto exact momentum conservation at twice the binary64
+    screen's working digits, as the probes lift theirs
+    (``induced.probe_point``); its index, the point and its scale."""
+
+    from .assemble import Precision
+    from .induced import _point_scale, probe_point
+
+    digits = 2 * Precision.double().working_digits
+    lifted = [probe_point(slice_, momenta, digits) for momenta in candidates]
+    index = max(
+        range(len(lifted)),
+        key=lambda i: float("inf") if lifted[i][1] is None else lifted[i][1],
+    )
+    point, _distance = lifted[index]
+    initial = sum(1 for leg in slice_.blocks.process.legs if leg.is_initial)
+    return index, point, _point_scale(point, initial)
+
+
 def generation_filter(
     slice_: Any,
     candidates: Sequence[Sequence[Sequence[float]]],
@@ -489,30 +527,20 @@ def generation_filter(
     failure: float = FAILURE_PROBABILITY,
 ) -> tuple[dict[str, Any], frozenset]:
     """The generation-time filter of a loop-induced slice: its verdict at the
-    candidate point farthest from every tree pole (lifted to 32 digits,
-    ``induced.probe_point``) on the slice's own plan, and the rows to drop
+    ``generation_point`` on the slice's own plan, and the rows to drop
     (``LoopSlice.zero_rows``, read by ``export_plan``). An exact colour zero
     has no row to filter; a zero ``failure`` drops nothing (the filter is
     skipped)."""
 
-    from .induced import _point_scale, probe_point
     from .plan_export import NativeExecutor
 
     if slice_.amplitude.colour_zero or not candidates:
         return {"exact_colour_zero": bool(slice_.amplitude.colour_zero)}, frozenset()
     if failure == 0:
         return {"failure_probability": 0.0, "dropped": []}, frozenset()
-    lifted = [probe_point(slice_, momenta, 32) for momenta in candidates]
-    index = max(
-        range(len(lifted)),
-        key=lambda i: float("inf") if lifted[i][1] is None else lifted[i][1],
-    )
-    point, _distance = lifted[index]
-    initial = sum(1 for leg in slice_.blocks.process.legs if leg.is_initial)
+    index, point, scale = generation_point(slice_, candidates)
     executor = NativeExecutor(slice_, forward=False, inputs="native")
-    verdict = filter_rows(
-        executor, point, _point_scale(point, initial), failure=failure
-    )
+    verdict = filter_rows(executor, point, scale, failure=failure)
     labels = set(verdict.dropped)
     dropped = frozenset(
         row for row in executor.exported.rows if row_label(row) in labels

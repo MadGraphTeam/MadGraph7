@@ -45,7 +45,7 @@ from __future__ import annotations
 
 import copy
 import json
-from collections import OrderedDict, defaultdict
+from collections import Counter, OrderedDict, defaultdict
 from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
@@ -371,6 +371,173 @@ def vector_groups(
             raise KeyError("reading without a seed class")
         groups.setdefault(vector(combination), []).append((skeleton, ring))
     return list(groups.values())
+
+
+def catalogue_kinematics(slice_: Any) -> rx.CatalogueKinematics:
+    """The shapes, kernels and block rows of ``slice_``'s contents
+    (``reference_executor.CatalogueKinematics``) that a plan is exported with
+    (``export_plan``) and the dressed-row frames are priced with
+    (``dressed_frames``)."""
+
+    from .assemble import _BlockRows
+
+    return rx.CatalogueKinematics(
+        slice_.catalogue,
+        slice_.compiled.ir.vertex_terms,
+        slice_.data,
+        _BlockRows(slice_, None),
+        (),
+        rx.KernelConstants({}, rx.Carrier.f64()),
+        reading=slice_.reading,
+    )
+
+
+# The modelled work a dressed-row frame is priced by: per step the cheaper of
+# its fused and split forms (``ReferenceExecutor._dress`` counts), and the
+# per-row closures (``_dressed_work``).
+_DRESSED_WORK = ("best/seed", "best/step", "closure")
+
+
+def dressed_frames(slice_: Any) -> tuple[dict[FamilyKey, Any], dict[str, Any]]:
+    """Frames chosen for dressed rows (amplitude mode, route R2k; M-LIT
+    DECISIONS 2026-11-06 ~09:00 (3)): per family of ``slice_``'s plan, among
+    its frames (``schedules.candidate_tries`` of its skeletons, the reading
+    choice of the generation), the one whose class tries take the least
+    modelled dressing work (``_dressed_work``: the exact dressed rows and
+    links of every step, each step priced at the cheaper of its fused and
+    split forms by the reference executor's counts, plus the per-row
+    closures). A frame's class tries group its readings by amplitude vector
+    (``vector_groups``), so every reading of every frame gets a seed class
+    (``colour.extend_seed_table``; its vectors are taken on the extended
+    table's coefficient cells, ``colour.amplitude_basis``). A tie keeps the
+    family's frame. Returns the frame per family and a record (seconds,
+    modelled work before and after, families re-framed)."""
+
+    import time
+
+    from .colour import amplitude_basis, extend_seed_table
+    from .schedules import SkeletonView, candidate_tries
+
+    start = time.perf_counter()
+    plan = slice_.plan
+    view = SkeletonView(slice_.loop_catalogue, slice_.colour)
+    candidates = {}
+    readings: dict[Any, None] = {}
+    for key, schedule in plan.schedules.items():
+        viewed = view.select(skeleton for skeleton, _ring in schedule.trie.leaves)
+        tries = candidate_tries(schedule.family, viewed)
+        candidates[key] = (schedule, tries)
+        for _frame, trie in tries:
+            for skeleton, ring in trie.leaves:
+                reading = rx._reading(
+                    skeleton, [view.content(segment.label) for segment in ring]
+                )
+                if reading not in slice_.class_of:
+                    readings.setdefault(reading)
+    table, class_of = extend_seed_table(
+        slice_.table,
+        slice_.class_of,
+        slice_.colour,
+        list(readings),
+        compress=slice_.request.compress_colour,
+    )
+    cells = amplitude_basis(table).cells_at_three()
+    vectors: dict[Any, tuple] = {}
+
+    def vector(combination) -> tuple:
+        found = vectors.get(combination)
+        if found is None:
+            found = vectors[combination] = amplitude_vector(combination, cells)
+        return found
+
+    executor = rx.ReferenceExecutor(catalogue_kinematics(slice_), None, numeric=False)
+    frames: dict[FamilyKey, Any] = {}
+    before = after = 0
+    moved = 0
+    for key, (schedule, tries) in candidates.items():
+        current = schedule.trie.frame
+        work = [
+            (
+                _dressed_work(schedule.family, trie, view, class_of, vector, executor),
+                frame != current,
+                frame,
+            )
+            for frame, trie in tries
+        ]
+        cost, _moved, frame = min(work, key=lambda item: item[:2])
+        frames[key] = frame
+        before += next(item[0] for item in work if not item[1])
+        after += cost
+        moved += frame != current
+    record = {
+        "seconds": time.perf_counter() - start,
+        "work_before": before,
+        "work": after,
+        "families": len(frames),
+        "reframed": moved,
+    }
+    return frames, record
+
+
+def _dressed_work(family, trie, view, class_of, vector, executor) -> int:
+    """The modelled dressing work of one family frame's class tries
+    (``dressed_frames``): the exporter's walk (``walk_trie``) with dressed
+    rows, each step counted by ``ReferenceExecutor._dress`` (no numerics)
+    and each trace step's per-row closure into its vector's columns."""
+
+    counts: Counter = Counter()
+    shape = executor.kinematics.shape
+    sequence = trie.frame.apply(family.key)
+
+    def leaf(_skeleton, contents) -> _Object:
+        dimension = shape(contents[0]).loop_in
+        return _Object(((),), dimension, dimension, 0, leaf=0)
+
+    for group in vector_groups(trie.leaves, view.content, class_of, vector):
+        skeleton, ring = group[0]
+        reading = rx._reading(
+            skeleton, [view.content(segment.label) for segment in ring]
+        )
+        width = len(vector(class_of[reading]))
+
+        def step(edges, _out_mask, shift, orders, width=width) -> _Object:
+            storage = max(source.storage for _content, source in edges)
+            out = executor._dress(
+                [
+                    (
+                        content,
+                        rx._Payload(
+                            dict.fromkeys(source.rows),
+                            source.d_alpha,
+                            source.d_beta,
+                            source.storage,
+                            source.leaf >= 0,
+                        ),
+                    )
+                    for content, source in edges
+                ],
+                out_mask=None,
+                shift=shift,
+                rank_in=storage,
+                columns=1,
+                counts=counts,
+            )
+            if orders is not None:
+                counts["closure"] += (
+                    out.d_alpha * size(out.rank) * len(out.rows) * width
+                )
+            return _Object(tuple(out.rows), out.d_alpha, out.d_beta, out.rank)
+
+        walk_trie(
+            build_trie(family, trie.frame, group),
+            sequence,
+            trie.rank,
+            view.content,
+            shape,
+            leaf,
+            step,
+        )
+    return sum(counts[name] for name in _DRESSED_WORK)
 
 
 @dataclass
@@ -1356,9 +1523,16 @@ def export_plan(
     (``ExportedPlan.column_seeds``; the plan itself is unchanged): a set's
     plan is this plan with its seed records (``native_observables``), at the
     cost of its seed records only.
+
+    ``route`` selects the amplitude-mode route of a loop-induced slice
+    (M-LIT RULED Q14 = (a)): ``"R2"``, the default and production route
+    (schema-5 ``dressed`` plan: dressed-leg rows, one class trie per
+    amplitude vector in each family, ``_Exporter.family``), which runs
+    schedule B only and so refuses ``forward`` and ``merged``; or ``"R1"``,
+    its oracle (one-hot (row, t) columns on the seeded rows). A
+    Born-interfered slice refuses any route.
     """
 
-    from .assemble import _BlockRows
     from .refusals import require_nc_exact
 
     amplitude = getattr(slice_, "amplitude", None)
@@ -1383,15 +1557,7 @@ def export_plan(
     # N_c-exact tree blocks: the generation refuses others
     # (``LoopSlice.generate``), and no export serves one (``refusals``).
     require_nc_exact(slice_.blocks, slice_.request.accuracy, slice_.request.process)
-    kinematics = rx.CatalogueKinematics(
-        slice_.catalogue,
-        slice_.compiled.ir.vertex_terms,
-        slice_.data,
-        _BlockRows(slice_, None),
-        (),
-        rx.KernelConstants({}, rx.Carrier.f64()),
-        reading=slice_.reading,
-    )
+    kinematics = catalogue_kinematics(slice_)
     helicities = born_helicities(slice_)
     rows = born_rows(slice_)
     from . import native_lowering
@@ -1694,6 +1860,11 @@ class NativeExecutor:
     path (``ward``): with native inputs the native trees read each point's
     loop-side vector (``loop_sources``), with Python inputs the Python lane
     forms them (the oracle); the slice needs the full tree kernels.
+
+    ``route`` is the amplitude-mode route of a loop-induced slice
+    (``export_plan``): ``"R2"`` (the default; dressed rows, schedule B only,
+    so ``forward=False`` and no ``merged``) or ``"R1"`` (its oracle); a
+    Born-interfered slice refuses a route.
     """
 
     def __init__(
