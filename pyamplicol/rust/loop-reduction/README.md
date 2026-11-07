@@ -31,21 +31,25 @@ Dependencies use ordinary pinned Git revisions and Cargo's lockfile. No ignored
 reference directory or `upstream` symlink is needed. The standalone workspace
 aligns Symbolica with the application's shared core and uses:
 
-- NinjaRS `36e30a49418e1b6a8b54ee774a920e3a9483b00d` (main `b3a29c85`, PRs #7-#12 and #14,
-  plus the 0BSD relicence;
-  the Symbolica and oneloopmaster pins below; UV/IR pole selection through
+- NinjaRS `6ab0a53e2b9640fb9434bc5c1214e6271d80bad7` (main `b3a29c85`, PRs #7-#12 and #14,
+  the 0BSD relicence, and the re-pin on the Symbolica and oneloopmaster
+  revisions below, no source change; UV/IR pole selection through
   the master providers, the fast engine's UV residues `fast::tensor_uv`,
   threshold-free light-like spinors).
-- Symbolica, Numerica and Graphica `20a9da94071d7dd64ea5cdd6ed9d6e8f8cefeacc`:
+- Symbolica, Numerica and Graphica `b9eaa735862e7d22d7694a14da02f2498342e29a`:
   symbolica-dev/symbolica `community` 36cbac3a plus the consolidated upstream
   PR symbolica-dev/symbolica#163 (batched evaluation, `DualNumber` views,
   state-minimal evaluator saves, complex-modulus Dual derivatives,
-  deterministic integer factor signs), branch `loop_me_pyamplicol` of
+  deterministic integer factor signs, polynomial exponents bounded by the
+  i32 conversion range), branch `loop_me_pyamplicol` of
   `https://github.com/ValentinHirschi/symbolica` (see `dependencies/README.md`).
 - FeynKit `d1904bf2bd5bf4f26969a73b415095e941a55610`, the owner's coherent
   dependency revision recorded by NinjaRS.
-- oneloopmaster `128ea6645f2811e6179068b98731501292841409` (its main with the
-  same Symbolica pin; per-evaluator `PoleSelection`).
+- oneloopmaster `a7cf45876b2273f2c1b5dd1490d88abc07a6f287` (its main: per-evaluator
+  `PoleSelection`, TIRust's oneloop patches incl. #17/#18, the 0BSD relicence,
+  and #19's order-independent massless triangle (trif0) with a hand-written
+  binary64/double-double kernel), with one feature set in every root build:
+  `generated-evaluators` and `rust-codegen` (the latter only adds modules).
 
 From this crate's directory, using the shared workspace environment:
 
