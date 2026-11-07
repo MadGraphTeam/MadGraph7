@@ -732,18 +732,25 @@ reduction = "ninjars"          # override for this evaluation (default: the arti
 `"auto"` takes the per-type default, TIRust for a loop-induced and NinjaRS
 for a Born-interfered process; where TIRust cannot serve the call (a native
 extension built without it, a carrier it does not serve yet, or an output
-whose executor does not run it yet: the summed virtual and the resolved,
+whose executor does not run it: the summed virtual and the resolved,
 correlated and selected outputs are checked separately) it falls back to
 NinjaRS and records why. An explicitly requested backend that cannot serve
-the call is refused before any point is evaluated (`CompatibilityError`, key
-`reduction-unavailable`), never switched silently. The choice is made once
-per call and carrier (each rescue level's carrier in the Python rescue), and
-every lane diagnostic records it (`VirtualLaneDiagnostic.reduction`: the
-requested and effective backend and the reason; also in the CLI's JSON).
-Until the TIRust backend is built into the native extension and wired to
-its executors, every call runs on NinjaRS: `"auto"` records the fallback and
-`"tirust"` is refused. `loop.reduction` other than `"auto"` needs a one-loop
-request (`process.loop_coupling_orders`).
+the call is refused before any point is evaluated (`ReductionUnavailable`, a
+`CompatibilityError` with key `reduction-unavailable`), never switched
+silently. The choice is made once per call and carrier (each rescue level's
+carrier in the Python rescue), and every lane diagnostic records it
+(`VirtualLaneDiagnostic.reduction`: the requested and effective backend and
+the reason; also in the CLI's JSON). TIRust is built into the native
+extension by default (the cargo feature `tir`) and serves binary64
+(double-double and arbitrary precision follow) on every output of both
+process types when requested (`"tirust"`); until its agreement with NinjaRS
+on loop-induced processes is established, `"auto"` stays on NinjaRS for
+loop-induced processes too and records why. A family TIRust cannot reduce
+is refused typed with TIRust's own reason (for now this includes an on-shell
+massive leg next to a loop propagator of its mass, such as a top in its own
+gauge loop, whose invariants TIRust's direct engine does not take exactly
+yet). `loop.reduction` other than `"auto"` needs a one-loop request
+(`process.loop_coupling_orders`).
 
 **Momenta and arithmetic.** Every arithmetic (`double`, `double-double`,
 `arbitrary`) takes each external leg's invariant p² in the loop integrals to be

@@ -650,7 +650,7 @@ impl TirReductionBackend {
         use crate::runtime::{Batch, Data, ReductionBatch, V2Output, tensor_rank};
         let values = |batch: &Batch| -> RusticolResult<Vec<Complex<f64>>> {
             match batch.data() {
-                Data::Double(values) => Ok(values.clone()),
+                Data::Double(values) => Ok(values.to_vec()),
                 _ => Err(RusticolError::unsupported_precision(
                     "the TIRust reduction backend serves binary64 in this build",
                 )),
