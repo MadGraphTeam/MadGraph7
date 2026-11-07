@@ -1508,6 +1508,28 @@ class V2InducedObservablesRuntime(V2ObservablesRuntime):
                 )
         return {label: out[label] for label in requests}
 
+    def selection_catalogue(self) -> Any:
+        """The helicity rows a selection names (no colour flows): a mapped
+        process's own rows, in its resolved order (``evaluate_resolved``),
+        which its columns read as the representative rows they relabel
+        (``InducedObservables.native_columns``)."""
+
+        from pyamplicol.loops.v2 import selection
+
+        member = self._member
+        if member is None:
+            return super().selection_catalogue()
+        with self._lock:
+            if self._catalogue is None:
+                rows = sorted(member.row(row) for row in self._observables.rows)
+                self._catalogue = selection.Catalogue(tuple(rows), ())
+            return self._catalogue
+
+    def _refuse_member_selection(self) -> None:
+        """A mapped process selects its own helicity rows
+        (``selection_catalogue``) and has no colour flows
+        (``_require_selection``)."""
+
     def _require_selection(
         self,
         helicities: Sequence[str] | None,

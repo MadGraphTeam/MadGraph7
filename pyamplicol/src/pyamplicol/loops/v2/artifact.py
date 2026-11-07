@@ -1728,67 +1728,55 @@ class V2VirtualRuntime:
     def _observable_runtime(self) -> Any:
         """The correlated and resolved outputs' runtime (``runtime.virtual.
         V2ObservablesRuntime``), built on first use on the stored observable
-        columns of the native process (nothing regenerates)."""
+        columns of the native process (nothing regenerates). A loop-induced
+        process's (m-lit LIT-OBS; ``V2InducedObservablesRuntime``) are
+        quadratic forms on the amplitude vectors of the process's own
+        executor, with the declared histories' stored matrices; they run the
+        runtime's current executor (``clear`` replaces it) under the
+        runtime's lock (the inclusive calls share the executor). A permuted
+        mapped process reads the histories and spin classes on its labels."""
 
-        from pyamplicol.runtime.virtual import V2ObservablesRuntime
+        from pyamplicol.runtime.virtual import (
+            V2InducedObservablesRuntime,
+            V2ObservablesRuntime,
+        )
 
+        from .induced_observables import InducedObservables
         from .native_observables import StoredObservableSlice
         from .observables import FORCED_FFT_OBSERVABLES
 
         if self._induced:
-            return self._induced_observable_runtime()
-        if self._execution["request"]["colour_contraction"] == "fft":
-            # The stored observable columns are contracted directly.
-            raise CompatibilityError(FORCED_FFT_OBSERVABLES)
-        with self._lock:
-            if self._observables is None:
+            kind: Any = V2InducedObservablesRuntime
+
+            def observables() -> Any:
+                return InducedObservables(
+                    self._executor, current=lambda: self._executor, lock=self._lock
+                )
+
+        else:
+            if self._execution["request"]["colour_contraction"] == "fft":
+                # The stored observable columns are contracted directly.
+                raise CompatibilityError(FORCED_FFT_OBSERVABLES)
+            kind = V2ObservablesRuntime
+
+            def observables() -> Any:
                 correlators = correlators_from_record(self._execution["request"])
-                observables = StoredObservableSlice(
+                return StoredObservableSlice(
                     self._native_process,
                     self._native_process.observables,
                     () if correlators is None else correlators.color_correlations,
                     self._native,
                 )
-                if self._member is not None and self._member.alias:
-                    from .mapping import MappedObservables
-
-                    # Histories and spin classes on the permuted labels.
-                    observables = MappedObservables(observables, self._member)
-                runtime = V2ObservablesRuntime(
-                    observables,
-                    member=self._member,
-                    mapping=self._mapping,
-                    arithmetic=self.default_arithmetic,
-                    precision=self.default_precision,
-                )
-                runtime.set_model_parameters(self._parameters)
-                self._observables = runtime
-            return self._observables
-
-    def _induced_observable_runtime(self) -> Any:
-        """The correlated, resolved and selected outputs of a loop-induced
-        process (m-lit LIT-OBS; ``runtime.virtual.V2InducedObservablesRuntime``):
-        quadratic forms on the amplitude vectors of the process's own
-        executor, with the declared histories' stored matrices (nothing
-        regenerates); a permuted mapped process reads them on its labels.
-        They run the runtime's current executor (``clear`` replaces it) under
-        the runtime's lock (the inclusive calls share the executor)."""
-
-        from pyamplicol.runtime.virtual import V2InducedObservablesRuntime
-
-        from .induced_observables import InducedObservables
 
         with self._lock:
             if self._observables is None:
-                observables: Any = InducedObservables(
-                    self._executor, current=lambda: self._executor, lock=self._lock
-                )
+                found = observables()
                 if self._member is not None and self._member.alias:
                     from .mapping import MappedObservables
 
-                    observables = MappedObservables(observables, self._member)
-                runtime = V2InducedObservablesRuntime(
-                    observables,
+                    found = MappedObservables(found, self._member)
+                runtime = kind(
+                    found,
                     member=self._member,
                     mapping=self._mapping,
                     arithmetic=self.default_arithmetic,

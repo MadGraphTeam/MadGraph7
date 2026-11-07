@@ -157,35 +157,63 @@ def test_literal_matrices_keep_the_metric_and_colour_conservation():
 
 
 @pytest.mark.loop_fast
-def test_spin_vectors_must_be_transverse_to_their_leg():
-    """A spin vector is read on the leg's polarisation vectors, which span
-    v.p = 0: transverse vectors (and p itself for a massless leg) pass, a
-    component along the time direction is refused, and a binary64-rounded
-    transverse vector passes in binary64 but not at a finer roundoff."""
+def test_the_transverse_residual_is_the_part_the_projection_drops():
+    """rho (``transverse_residual``) is the Euclidean size of v - sum_h c_h
+    w_h, the gauge part along p of a massless leg excluded: exactly 0 for
+    v.p = 0 in rationals (a transverse vector, p itself, their sum),
+    |v.p|/|p| for a massless leg's non-transverse part (also the rounding of
+    a binary64-built transverse vector) and |v.p| |p| / m^2 for a massive
+    leg's (its dropped direction is p)."""
 
-    import math
+    from decimal import localcontext
 
-    from pyamplicol.api.errors import CompatibilityError
-    from pyamplicol.loops.v2.induced_observables import require_transverse
+    from pyamplicol.loops.v2.induced_observables import (
+        spin_coefficients,
+        transverse_residual,
+    )
+    from pyamplicol.runtime.symbolica_exact import _massive_vector, _massless_vector
 
     zero = (Decimal(0), Decimal(0))
-    p = ("5", "3", "0", "4")
-    u = 2.0**-53
-    require_transverse((zero, zero, (Decimal(0), Decimal(1)), zero), p, u, 4)
-    require_transverse(tuple((Decimal(x), Decimal(0)) for x in p), p, u, 4)
-    with pytest.raises(CompatibilityError, match="leg 4 is not transverse"):
-        require_transverse(((Decimal(1), Decimal(0)), zero, zero, zero), p, u, 4)
-    # (0, 4/5, 0, -3/5) rounded to binary64: transverse within its rounding.
-    rounded = (
-        zero,
-        (Decimal.from_float(0.8), Decimal(0)),
-        zero,
-        (Decimal.from_float(-0.6), Decimal(0)),
-    )
-    assert Fraction(rounded[1][0]) != Fraction(4, 5)
-    require_transverse(rounded, p, u, 4)
-    with pytest.raises(CompatibilityError, match="not transverse"):
-        require_transverse(rounded, p, math.ldexp(1.0, -104), 4)
+    with localcontext() as context:
+        context.prec = 50
+        p = [Decimal(5), Decimal(3), Decimal(0), Decimal(4)]
+        waves = {h: _massless_vector(p, h) for h in (-1, 1)}
+
+        def rho(vector, momentum=p, waves=waves, gauge=True):
+            coefficients = spin_coefficients(vector, waves)
+            return transverse_residual(vector, momentum, waves, coefficients, gauge)
+
+        transverse = (zero, zero, (Decimal(0), Decimal(1)), zero)
+        gauge = tuple((x, Decimal(0)) for x in p)
+        both = tuple(
+            (a[0] + 7 * b[0], a[1]) for a, b in zip(transverse, gauge, strict=True)
+        )
+        assert rho(transverse) == rho(gauge) == rho(both) == 0
+        timelike = ((Decimal(1), Decimal(0)), zero, zero, zero)
+        norm = sum(x * x for x in p).sqrt()
+        assert abs(rho(timelike) - 5 / norm) < Decimal("1e-40")
+        shifted = tuple(
+            (a[0] + b[0], a[1]) for a, b in zip(both, timelike, strict=True)
+        )
+        assert abs(rho(shifted) - 5 / norm) < Decimal("1e-40")
+        # (0, 4/5, 0, -3/5) rounded to binary64: v.p = -(3 x 0.8 - 4 x 0.6)
+        # in the rounded values, a nonzero rounding.
+        rounded = (
+            zero,
+            (Decimal.from_float(0.8), Decimal(0)),
+            zero,
+            (Decimal.from_float(-0.6), Decimal(0)),
+        )
+        dot = 3 * rounded[1][0] + 4 * rounded[3][0]
+        assert dot != 0
+        assert abs(rho(rounded) - abs(dot) / norm) < Decimal("1e-40")
+        mass = Decimal(91)
+        q = [Decimal(0), Decimal(12), Decimal(-30), Decimal(38)]
+        q[0] = (mass**2 + q[1] ** 2 + q[2] ** 2 + q[3] ** 2).sqrt()
+        massive = {h: _massive_vector(q, h, mass) for h in (-1, 0, 1)}
+        found = rho(timelike, q, massive, False)
+        expected = q[0] * sum(x * x for x in q).sqrt() / mass**2
+        assert abs(found - expected) < Decimal("1e-30") * expected
 
 
 @pytest.mark.loop_fast
@@ -502,7 +530,8 @@ def test_a_permutation_alias_reads_the_representative(artifacts):
     """The alias u~ u > h g g evaluates as its representative at the
     permuted momenta, bitwise: the inclusive value, a colour history read on
     its own labels (its T_1.T_4 is the representative's T_2.T_4), a spin
-    vector on a gluon leg and the resolved rows (relabelled)."""
+    vector on a gluon leg, the resolved rows (relabelled) and its
+    single-helicity selections (on its own rows)."""
 
     from pyamplicol import Runtime
     from pyamplicol.correlators import CorrelatedRequest
@@ -538,6 +567,28 @@ def test_a_permutation_alias_reads_the_representative(artifacts):
     assert sorted(v[0].finite for v in moved.values[0][0]) == sorted(
         v[0].finite for v in rows.values[0][0]
     )
+    # Its helicity selections name its own rows (its resolved order, its
+    # tree IDs in its leg order), each the representative row whose legs it
+    # permutes.
+    from pyamplicol.loops.v2.selection import helicity_id
+
+    own = alias._backend._observable_runtime().selection_catalogue().rows
+    for k in (0, 3, len(own) - 1):
+        theirs = tuple(sorted((permutation[leg], h) for leg, h in own[k]))
+        value = alias.evaluate(member, mu_r2=scales, helicities=[f"h{k}"]).values
+        assert value[0][0].finite == moved.values[0][0][k][0].finite
+        assert (
+            alias.evaluate(
+                member, mu_r2=scales, helicities=[helicity_id(own[k])]
+            ).values
+            == value
+            == representative.evaluate(
+                points, mu_r2=scales, helicities=[helicity_id(theirs)]
+            ).values
+        )
+        kept = alias.evaluate_resolved(member, mu_r2=scales, helicities=[f"h{k}"])
+        assert kept.helicity_ids == (f"h{k}",)
+        assert kept.values[0][0][0] == moved.values[0][0][k]
 
 
 @pytest.mark.loop_physics
@@ -546,12 +597,10 @@ def test_one_call_is_one_evaluation_whatever_the_spin_sources(artifacts, monkeyp
     different spin sources (RULED Q9: every (assignment, history) output is
     a form on the same amplitude vectors), each output equal to its own
     call bitwise; the call's effective backend reaches the executor, which
-    refuses one it does not run (no silent switch); a spin vector not
-    transverse to its leg is refused before any evaluation; the
-    observables run the runtime's current executor under its lock, also
-    after ``clear``."""
+    refuses one it does not run (no silent switch); a spin vector with no
+    transverse part is served, not refused; the observables run the
+    runtime's current executor under its lock, also after ``clear``."""
 
-    from pyamplicol.api.errors import CompatibilityError
     from pyamplicol.correlators import CorrelatedRequest
     from pyamplicol.loops.v2.reduction import ReductionUnavailable
 
@@ -594,13 +643,15 @@ def test_one_call_is_one_evaluation_whatever_the_spin_sources(artifacts, monkeyp
     assert len(calls) == 1 + len(requests)
     with pytest.raises(ReductionUnavailable, match="not wired"):
         original(points, scales, reduction="tirust")
+    # A vector with no transverse part is served (its value the projection's
+    # exact 0; its estimate carries it): one more evaluation, no refusal.
     zero = (Decimal(0), Decimal(0))
     timelike = ((Decimal(1), Decimal(0)), zero, zero, zero)
-    with pytest.raises(CompatibilityError, match="not transverse"):
-        runtime.evaluate_correlated_many(
-            points, {"x": CorrelatedRequest("born", {leg_a: timelike})}, mu_r2=scales
-        )
-    assert len(calls) == 1 + len(requests)
+    (value,) = runtime.evaluate_correlated_many(
+        points, {"x": CorrelatedRequest("born", {leg_a: timelike})}, mu_r2=scales
+    )["x"].values
+    assert complex(value[0].finite) == 0
+    assert len(calls) == 2 + len(requests)
     # TIRust on the resolved route with the executor not wired to it (a
     # route-only step): a typed refusal, never NinjaRS under a TIRust label.
     from pyamplicol.loops.v2 import artifact as stored
@@ -668,6 +719,91 @@ def test_correlated_outputs_in_double_double_and_with_estimates(artifacts):
         # binary64 within ten times its own estimate of the DD value.
         assert abs(a - b) <= 10 * estimate.absolute[0].finite
         assert _relative(a, b) <= LAX
+
+
+@pytest.mark.loop_physics
+def test_a_binary64_k_perp_is_served_with_its_transverse_budget(artifacts):
+    """A Sudakov k_perp = k - (k.p/q.p) q - (k.q/q.p) p built in binary64
+    is transverse to its leg only to its rounding (here beyond 4u sum |v||p|,
+    the former refusal's bound): it is served in binary64 and double-double,
+    its value within the estimate of the exact rational k_perp's, whose
+    estimate has no spin-transverse budget; the budget carries the dropped
+    part. A vector far from transverse (w_+ plus the time direction) is
+    served with an estimate of the value's own size."""
+
+    import random
+    from decimal import localcontext
+
+    from pyamplicol.api import VirtualStabilityChecks
+    from pyamplicol.correlators import CorrelatedRequest
+    from pyamplicol.loops.v2.induced_observables import polarisations
+
+    name, leg = "li_uux_hgg", 4
+    runtime = _runtime(artifacts, name)
+    points, scales = _points(name)
+    point, scale = points[0], scales[0]
+
+    def dot(a, b):
+        return a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3]
+
+    p = [Fraction(x) for x in point[leg - 1]]
+    q = [Fraction(x) for x in point[0]]
+    assert dot(p, p) == dot(q, q) == 0
+    pf, qf = [float(x) for x in p], [float(x) for x in q]
+    rng = random.Random(5)
+    while True:
+        size = 10 ** rng.uniform(-3, 1) * pf[0]
+        k = [rng.uniform(-size, size) for _ in range(4)]
+        built = [
+            k[m] - dot(k, pf) / dot(qf, pf) * qf[m] - dot(k, qf) / dot(qf, pf) * pf[m]
+            for m in range(4)
+        ]
+        exact_dot = abs(dot([Fraction(x) for x in built], p))
+        rounding = sum(abs(Fraction(x)) * abs(y) for x, y in zip(built, p, strict=True))
+        if exact_dot > 4 * Fraction(2.0**-53) * rounding:
+            break
+    kk = [Fraction(x) for x in k]
+    exact = [
+        kk[m] - dot(kk, p) / dot(q, p) * q[m] - dot(kk, q) / dot(q, p) * p[m]
+        for m in range(4)
+    ]
+    assert dot(exact, p) == 0
+    with localcontext() as context:
+        context.prec = 60
+        transverse = tuple(
+            (Decimal(x.numerator) / Decimal(x.denominator), Decimal(0)) for x in exact
+        )
+    rounded = tuple((Decimal(repr(x)), Decimal(0)) for x in built)
+    checks = VirtualStabilityChecks(1, reduction_direction=True)
+
+    def spin(vector, arithmetic="double"):
+        result = runtime.evaluate_correlated_many(
+            [point],
+            {"x": CorrelatedRequest("born", {leg: vector})},
+            mu_r2=[scale],
+            arithmetic=arithmetic,
+            stability_checks=checks,
+        )["x"]
+        (value,), (estimate,) = result.values, result.stability
+        return complex(value[0].finite), estimate
+
+    for arithmetic in ("double", "double-double"):
+        reference, clean = spin(transverse, arithmetic)
+        value, estimate = spin(rounded, arithmetic)
+        budgets = dict(estimate.checks)
+        assert dict(clean.checks).get("spin-transverse", 0.0) < 1e-40
+        assert 0 < budgets["spin-transverse"] < 1e-12, budgets
+        assert abs(value - reference) <= estimate.absolute[0].finite
+    with localcontext() as context:
+        context.prec = 40
+        observables = runtime._backend._observable_runtime()._observables
+        plus = polarisations(observables.sources, leg, point[leg - 1])[1]
+    far = ((plus[0][0] + 1, plus[0][1]), *plus[1:])
+    value, estimate = spin(far)
+    alone, _estimate = spin(plus)
+    assert value == alone
+    assert dict(estimate.checks)["spin-transverse"] > 1
+    assert estimate.absolute[0].finite > abs(value)
 
 
 # ------------------------------------------------------------- refusals

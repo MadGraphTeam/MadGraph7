@@ -35,11 +35,13 @@ by the one canonical square (``induced.square`` / the native
   exact for v in their span, which is v . p_j = 0 (for a massless leg
   modulo p_j, whose part vanishes by the Ward identity, the generation-time
   probe checks it: the projection Recola's loop-induced spin correlations
-  make). A v with v . p_j != 0 beyond the carrier's rounding is refused
-  (``require_transverse``), never projected. No extra dressing or
-  reduction: the spin-correlated output is the colour form of the history
-  on the vectors A(v) (the other legs' rows summed), every spin source
-  assignment of a call on the same evaluations.
+  make). A part of v outside that span (v . p_j != 0: a binary64-built
+  k_perp's rounding, or more) has no meaning on the helicity amplitudes:
+  the output is that of the transverse vector v - r the projection reads,
+  and its estimate carries r (``transverse_residual``; below). No extra
+  dressing or reduction: the spin-correlated output is the colour form of
+  the history on the vectors A(v) (the other legs' rows summed), every spin
+  source assignment of a call on the same evaluations.
 * **Resolved** (``resolved``). Per helicity row h, |A(h)|^2/avg (one
   colour-contracted component); with ``AMPLITUDE_BASIS`` per basis element
   t the anchored part Re(conj(a_t) (G a)_t)/avg (the metric
@@ -60,9 +62,17 @@ rotation invariant: the rotated spin vectors and polarisation vectors move
 together, and a row's little-group phase cancels in a^dag M a); the
 reduction check's budget bounds the form's change from the re-test's
 absolute amplitude errors e by the elementwise |M| (sum e^T|M||b| +
-|a|^T|M|e + e^T|M|e); the scale S of the floor is the same form of the
-per-row term floors (``induced.term_values`` and the counterterm kets),
-never the output itself (RULED Q13: a zero is "zero within the estimate").
+|a|^T|M|e + e^T|M|e); a spin vector with a non-transverse part of size
+rho (Euclidean, the gauge part along p of a massless leg excluded)
+determines the transverse vector it stands for only to within rho: the
+budget ``stability.TRANSVERSE`` is the same bound over every transverse
+vector within rho of the one read (coefficient changes |dc_h| <= rho |w_h|,
+Cauchy-Schwarz), 0 for an exactly transverse v, of the output's size for a
+v far from transverse (no refusal: the point's estimate says it, and a
+rescue policy fails that point alone); the scale S of the floor is the same
+form of the per-row term floors (``induced.term_values`` and the
+counterterm kets), never the output itself (RULED Q13: a zero is "zero
+within the estimate").
 """
 
 from __future__ import annotations
@@ -277,53 +287,67 @@ def spin_coefficients(
     return out
 
 
-# The terms of a Minkowski product: its rounding bound at unit roundoff u is
-# TERMS u sum_mu |v_mu||p_mu| (the dot product's gamma_n bound).
-TERMS = 4
+def massless(sources: Sequence[Mapping[str, Any]], leg: int) -> bool:
+    """Whether vector leg ``leg``'s source records are massless (no mass
+    parameter; ``polarisations``)."""
+
+    return any(
+        int(source["leg_label"]) == leg
+        and source["source_ir"].get("mass_parameter") is None
+        for source in sources
+    )
 
 
-def require_transverse(
+def transverse_residual(
     vector: Sequence[tuple[Any, Any]],
     momentum: Sequence[Any],
-    roundoff: float,
-    leg: int,
-) -> None:
-    """Refuse a spin vector v of leg ``leg`` that is not transverse to the
-    leg's momentum p within the carrier's rounding: |Re v.p| + |Im v.p| <=
-    TERMS u sum_mu (|Re v_mu| + |Im v_mu|)|p_mu| at unit roundoff u
-    (``roundoff``), in exact rationals. The leg's polarisation vectors span
-    exactly {v : v.p = 0} (eps+, eps- and, for a massless leg, p, whose part
-    vanishes by the Ward identity; a massive leg's three polarisations), so
-    on a transverse v the projection (``spin_coefficients``) is the literal
-    source the Born-interfered virtual evaluates (the leg's wavefunction
-    replaced); a part with v.p != 0 has no meaning on the helicity
-    amplitudes and is refused, never dropped (``CompatibilityError``)."""
-
-    from pyamplicol.api.errors import CompatibilityError
+    waves: Mapping[int, Sequence[tuple[Decimal, Decimal]]],
+    coefficients: Mapping[int, tuple[Decimal, Decimal]],
+    gauge: bool,
+) -> Decimal:
+    """rho: the Euclidean size of the part of a spin vector v that the
+    leg's polarisation vectors w_h do not carry, r = v - sum_h c_h w_h
+    (``spin_coefficients``), less its component along the leg's momentum p
+    when ``gauge`` (a massless leg: that part vanishes by the Ward
+    identity). The w_h (and p for a massless leg) span {v : v.p = 0}, so
+    rho is 0, exactly, when v.p = 0 in exact rationals, and otherwise the
+    size of the non-transverse part that the projection drops
+    (``PointOutputs``: the output is that of the transverse vector v - r,
+    the estimate covers every transverse vector within rho of it). In the
+    active Decimal context."""
 
     from .assemble import _fraction
 
     signs = (1, -1, -1, -1)
     p = [_fraction(x) for x in momentum]
     parts = [(_fraction(re), _fraction(im)) for re, im in vector]
-    real = sum(
-        sign * re * q for sign, (re, _im), q in zip(signs, parts, p, strict=True)
-    )
-    imag = sum(
-        sign * im * q for sign, (_re, im), q in zip(signs, parts, p, strict=True)
-    )
-    scale = sum(
-        (abs(re) + abs(im)) * abs(q) for (re, im), q in zip(parts, p, strict=True)
-    )
-    if abs(real) + abs(imag) > TERMS * Fraction(roundoff) * scale:
-        raise CompatibilityError(
-            f"the spin vector of leg {leg} is not transverse to the leg's "
-            f"momentum (|v.p| = {float(abs(real) + abs(imag)):.3g}, rounding "
-            f"bound {float(TERMS * Fraction(roundoff) * scale):.3g}): a "
-            "loop-induced spin correlation reads v on the leg's polarisation "
-            "vectors, which span v.p = 0 only; give v transverse at the "
-            "evaluation's precision"
-        )
+    if not any(
+        sum(sign * part[c] * q for sign, part, q in zip(signs, parts, p, strict=True))
+        for c in (0, 1)
+    ):
+        return Decimal(0)
+    residual = [[_decimal(re), _decimal(im)] for re, im in vector]
+    for h, wave in waves.items():
+        cr, ci = coefficients[h]
+        for mu, (wr, wi) in enumerate(wave):
+            residual[mu][0] -= cr * wr - ci * wi
+            residual[mu][1] -= cr * wi + ci * wr
+    size = sum(re * re + im * im for re, im in residual)
+    if gauge:
+        q = [_decimal(x) for x in momentum]
+        norm = sum(x * x for x in q)
+        along = [
+            sum(x * part[c] for x, part in zip(q, residual, strict=True))
+            for c in (0, 1)
+        ]
+        size -= (along[0] * along[0] + along[1] * along[1]) / norm
+    return max(size, Decimal(0)).sqrt()
+
+
+def _norm(wave: Sequence[tuple[Decimal, Decimal]]) -> Decimal:
+    """The Euclidean norm of a complex four-vector."""
+
+    return sum(re * re + im * im for re, im in wave).sqrt()
 
 
 def spin_amplitudes(
@@ -471,35 +495,28 @@ def form(evaluation: Any, amplitudes, forms: Forms, metric: Any, rows) -> dict:
 
 def _bound(evaluation, magnitude, left, right, rows) -> dict:
     """sum_pairs kappa sum_rows sum_{i+j=k} x_i^T |M| y_j / avg of the
-    absolute vectors ``left``/``right`` ((order, row) -> [t][k] floats)."""
+    absolute vectors ``left``/``right`` ((order, row) -> [t][k] floats)
+    (``induced.sector_form``)."""
 
-    from .stability import Budget
-
-    width = induced.width_of(evaluation)
     size = len(magnitude)
-    average = float(evaluation.average)
-    out = {}
-    for sector, pairs in evaluation.slice.sectors:
-        totals = [0.0] * width
-        for pair in sorted(pairs):
-            weight = induced.kappa(pair)
-            for row in rows:
-                a = left.get((pair[0], row))
-                b = right.get((pair[1], row))
-                if a is None or b is None:
-                    continue
-                for k in range(width):
-                    for i in range(k + 1):
-                        j = k - i
-                        for t in range(size):
-                            if not a[t][i]:
-                                continue
-                            inner = 0.0
-                            for u in range(size):
-                                inner += magnitude[t][u] * b[u][j]
-                            totals[k] += weight * a[t][i] * inner
-        out[sector] = Budget(tuple(value / average for value in totals))
-    return out
+
+    def columns(vectors):
+        def of(key):
+            vector = vectors.get(key)
+            if vector is None:
+                return None
+            return [[vector[t][k] for t in range(size)] for k in range(len(vector[0]))]
+
+        return of
+
+    def kernel(x, y):
+        total = 0.0
+        for t in range(size):
+            if x[t]:
+                total += x[t] * sum(magnitude[t][u] * y[u] for u in range(size))
+        return total
+
+    return induced.sector_form(evaluation, rows, columns(left), columns(right), kernel)
 
 
 def _absolute(vectors) -> dict:
@@ -531,8 +548,17 @@ def _add_budgets(*parts: Mapping) -> dict:
     return out
 
 
-def _spin_errors(errors: Mapping, coefficients: Mapping[int, Mapping[int, Any]]):
-    """Absolute errors of A(v) from the rows' errors: sum |prod c| e."""
+def _spin_errors(
+    errors: Mapping,
+    coefficients: Mapping[int, Mapping[int, Any]],
+    changes: Mapping[int, Mapping[int, float]] | None = None,
+):
+    """Absolute errors of A(v) per (loop order, remaining row): from the
+    rows' errors e, sum prod_j |c_j| e; with ``changes`` (delta_j per spin
+    leg and helicity: coefficient changes |dc_j| <= delta_j) on e = |a|,
+    sum (prod_j (|c_j| + delta_j) - prod_j |c_j|) |a|, the difference
+    formed term by term (D <- D (|c_j| + delta_j) + delta_j prod_{i<j} |c_i|),
+    so a delta below |c|'s rounding is kept."""
 
     if not coefficients:
         return errors
@@ -543,13 +569,20 @@ def _spin_errors(errors: Mapping, coefficients: Mapping[int, Mapping[int, Any]])
     out: dict = {}
     for (order, row), cells in errors.items():
         weight = 1.0
+        moved = 0.0
         rest = []
         for leg, h in row:
             found = magnitudes.get(leg)
             if found is None:
                 rest.append((leg, h))
-            else:
-                weight *= found.get(h, 0.0)
+                continue
+            size = found.get(h, 0.0)
+            if changes is not None:
+                delta = changes.get(leg, {}).get(h, 0.0)
+                moved = moved * (size + delta) + weight * delta
+            weight *= size
+        if changes is not None:
+            weight = moved
         if not weight:
             continue
         target = out.setdefault(
@@ -581,15 +614,29 @@ class PointOutputs:
         self.size = len(evaluation.slice.amplitude)
         self.forms = forms
         self.coefficients: dict[int, dict[int, Any]] = {}
+        # delta_j(h) = rho_j |w_h| per spin leg with a non-transverse part
+        # (``transverse_residual``): the coefficient changes over the
+        # transverse vectors within rho_j of the one the output reads.
+        self.changes: dict[int, dict[int, float]] = {}
+        self._transverse: dict | None = None
         if spin:
             with localcontext() as context:
                 context.prec = max(numbers.precision.working_digits, 34) + 10
                 for leg, vector in spin.items():
-                    waves = polarisations(sources, int(leg), point[int(leg) - 1])
-                    self.coefficients[int(leg) - 1] = {
-                        h: numbers.pair(re, im)
-                        for h, (re, im) in spin_coefficients(vector, waves).items()
+                    label = int(leg)
+                    momentum = point[label - 1]
+                    waves = polarisations(sources, label, momentum)
+                    exact = spin_coefficients(vector, waves)
+                    self.coefficients[label - 1] = {
+                        h: numbers.pair(re, im) for h, (re, im) in exact.items()
                     }
+                    rho = transverse_residual(
+                        vector, momentum, waves, exact, massless(sources, label)
+                    )
+                    if rho:
+                        self.changes[label - 1] = {
+                            h: float(rho * _norm(wave)) for h, wave in waves.items()
+                        }
         with numbers.scope():
             self.amplitudes = (
                 spin_amplitudes(
@@ -624,7 +671,7 @@ class PointOutputs:
     def budgets(self, output: Output, rotated: Sequence[PointOutputs], frame: Any):
         """The named budgets of the output's estimate (module docstring)."""
 
-        from .stability import ROTATION, Budget
+        from .stability import ROTATION, TRANSVERSE, Budget
 
         direct = self.value(output)
         out: dict[str, dict] = {}
@@ -642,15 +689,29 @@ class PointOutputs:
         if frame is not None:
             errors = self._errors()
             if errors is not None:
-                rows = self.rows_of(output)
-                _h, _k, magnitude = self.forms(output.metric)
-                values = _absolute(self.amplitudes)
-                out[frame] = _add_budgets(
-                    _bound(self.evaluation, magnitude, errors, values, rows),
-                    _bound(self.evaluation, magnitude, values, errors, rows),
-                    _bound(self.evaluation, magnitude, errors, errors, rows),
+                out[frame] = self._perturbed(output, errors)
+        if self.changes:
+            if self._transverse is None:
+                self._transverse = _spin_errors(
+                    _absolute(self.evaluation.amplitude_vectors),
+                    self.coefficients,
+                    self.changes,
                 )
+            out[TRANSVERSE] = self._perturbed(output, self._transverse)
         return out
+
+    def _perturbed(self, output: Output, errors: Mapping) -> dict:
+        """The form's change bound for absolute errors e of its vectors b:
+        e^T|M||b| + |b|^T|M|e + e^T|M|e (elementwise |M|)."""
+
+        rows = self.rows_of(output)
+        _h, _k, magnitude = self.forms(output.metric)
+        values = _absolute(self.amplitudes)
+        return _add_budgets(
+            _bound(self.evaluation, magnitude, errors, values, rows),
+            _bound(self.evaluation, magnitude, values, errors, rows),
+            _bound(self.evaluation, magnitude, errors, errors, rows),
+        )
 
     def _errors(self) -> dict | None:
         evaluation = self.evaluation
@@ -807,7 +868,6 @@ class InducedColumns:
         (``Output.spin``); ``reduction`` the call's effective backend (the
         executor refuses one it does not run)."""
 
-        from .assemble import Precision
         from .observables import _member_key, _rotated_point, _rotated_spin
         from .plan_export import FailedPoints, point_estimate
         from .stability import StabilityChecks
@@ -834,11 +894,6 @@ class InducedColumns:
             assignments = [
                 tuple(member.spin(value) for value in values) for values in assignments
             ]
-        roundoff = (precision or Precision.double()).unit_roundoff
-        for point, values in zip(points, assignments, strict=True):
-            for value in values:
-                for leg, vector in (value or {}).items():
-                    require_transverse(vector, point[int(leg) - 1], roundoff, int(leg))
         observables = self.observables
         with observables.lock:
             # The executor is the artifact runtime's own (shared state: its
@@ -1038,7 +1093,7 @@ class InducedObservables:
         history id) pairs: ``V2InducedObservablesRuntime.
         evaluate_correlated_many``), ``resolved`` (a colour resolution,
         ``COLOUR_RESOLUTIONS``) or ``selection`` (a ``selection.column``: its
-        helicity rows)."""
+        helicity rows, a ``member``'s own)."""
 
         from .selection import SELECTION
 
@@ -1068,7 +1123,12 @@ class InducedObservables:
         elif kind == SELECTION:
             if value.basis is not None:
                 raise ValueError("a loop-induced process has no colour-flow selection")
-            outputs = [Output(value.key, INCLUSIVE, value.rows)]
+            rows = value.rows
+            if member is not None and rows is not None:
+                # A member's selection names its own rows.
+                representative = {member.row(row): row for row in self.rows}
+                rows = frozenset(representative[row] for row in rows)
+            outputs = [Output(value.key, INCLUSIVE, rows)]
         else:
             raise ValueError(f"unknown column set {kind!r}")
         return InducedColumns(self, outputs, member, resolved=kind == "resolved")
@@ -1088,8 +1148,9 @@ __all__ = [
     "correlators_record",
     "declare",
     "hermitian_parts",
+    "massless",
     "polarisations",
-    "require_transverse",
     "spin_amplitudes",
     "spin_coefficients",
+    "transverse_residual",
 ]

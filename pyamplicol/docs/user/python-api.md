@@ -385,12 +385,15 @@ anchors = runtime.evaluate_resolved(
 one = runtime.evaluate(points, mu_r2=scales, helicities=["h0"])  # |A(h0)|^2 / avg
 ```
 
-A spin vector v must be transverse to its leg's momentum p (v.p = 0 within
-the evaluation's rounding); it is then expanded on the leg's polarisation
-vectors, which span exactly those vectors (for a massless leg the part along
-p vanishes by the Ward identity), so the value is the literal-source one of
-a Born-interfered virtual. A non-transverse vector raises
-`CompatibilityError`. One `evaluate_correlated_many` call is one evaluation
+A spin vector v is expanded on the leg's polarisation vectors, which span
+exactly the vectors transverse to its momentum p (v.p = 0; for a massless leg
+the part along p vanishes by the Ward identity): for a transverse v the
+value is the literal-source one of a Born-interfered virtual. A part of v
+with v.p != 0 (for example the rounding of a k_perp built in binary64) is not
+read: the value is that of the transverse vector the expansion keeps, and
+the stability estimate carries the dropped part's size (the check
+`spin-transverse`), so a vector far from transverse is served with an
+estimate of the value's own size rather than refused. One `evaluate_correlated_many` call is one evaluation
 of the points whatever its spin vectors: every request is formed on the same
 amplitudes. A single-helicity selection divides by the total's average, so
 the selections of every row sum to the total, and its dressing is pruned to
