@@ -96,9 +96,12 @@ fi
 
 # Files to diff (LHE result files: stricter tolerance - and fix indentation if required)
 # (ignore the GIT line of the banner: the two runs may come from different branches)
+# (ignore the formatting of the run_card in the banner: MG5 sometimes rewrites Cards/run_card.dat,
+# with lowercase names, tabs and other spacing, so compare only the lowercase values and names)
 if [ "${lhe}" == "1" ]; then
-  grep -v '^#\* *GIT ' ${runA}/events.lhe > ${runA}/events.lhe.tmp
-  grep -v '^#\* *GIT ' ${runB}/events.lhe > ${runB}/events.lhe.tmp
+  runcardfmt='/<MGRunCard>/,/<\/MGRunCard>/{s/!.*//;s/[[:space:]]\+/ /g;s/^ //;s/ $//;s/.*/\L&/}'
+  grep -v '^#\* *GIT ' ${runA}/events.lhe | sed "${runcardfmt}" > ${runA}/events.lhe.tmp
+  grep -v '^#\* *GIT ' ${runB}/events.lhe | sed "${runcardfmt}" > ${runB}/events.lhe.tmp
   resfiles="events.lhe.tmp ${resfiles}"
 elif [ "${lhe}" == "-1" ]; then # cross-compare v3.8.1 and v3.6.3 LHE files
   cat ${runA}/events.lhe \

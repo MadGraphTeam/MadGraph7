@@ -170,34 +170,43 @@ elif [ "$mode" == "--diff" ]; then
 
   events=${step}
   cmdtmp=$(mktemp)
+  notcmp=
 
-  echo "  ./vfold/myDiffRun.sh ${oOpt} ${events}S ${events}F" >> ${cmdtmp}
-  echo "  ./vfold/myDiffRun.sh ${oOpt} ${events}T ${events}F" >> ${cmdtmp}
-  echo "  ./vfold/myDiffRun.sh ${oOpt} -nd5 ${events}F ${events}Cnone" >> ${cmdtmp}
-  echo "  ./vfold/myDiffRun.sh ${oOpt} -nd5 ${events}F ${events}Csse4" >> ${cmdtmp}
-  echo "  ./vfold/myDiffRun.sh ${oOpt} -nd5 ${events}F ${events}Cavx2" >> ${cmdtmp}
+  # Step 14s: compare all the runs of this step that exist (before, only the
+  # backends none, sse4, avx2, 512y, 512z and a single cuda run were compared:
+  # the cuda scans Ccuda<N> and Ccudbr<N> and F1 with the other MadLoop library
+  # were silently not compared). Each line also records a failure in ${status}.
+  # F1/S and F2/T are identical to F, and so is F1 with the MadLoop library of F
+  # (Sn or Sc from --ninja-and-collier; with the other library it is not compared)
+  mlF=$(grep -m1 ^ENV_VFOLD_MLREDUCTION= Events/${events}F/LOG.txt 2>/dev/null | cut -d= -f2)
+  mlF=${mlF:-ninja} # older runs do not print it, they all used ninja
+  for sfx in S T Sn Sc; do
+    if [ ! -d Events/${events}${sfx} ]; then
+      if [ "${sfx}" == "S" ] || [ "${sfx}" == "T" ]; then notcmp="${notcmp} ${events}${sfx}(missing)"; fi
+    elif [ "${sfx}" == "Sn" ] || [ "${sfx}" == "Sc" ] && [ "${sfx}" != "S${mlF:0:1}" ]; then
+      notcmp="${notcmp} ${events}${sfx}(F uses ${mlF})"
+    else
+      echo "  ./vfold/myDiffRun.sh ${oOpt} ${events}${sfx} ${events}F || status=1" >> ${cmdtmp}
+    fi
+  done
+  # Each C (all CPU backends, all cuda and cudb/cudbr vecsizes found) is equal to F within tolerance
+  for d in $(for d in Events/${events}C*; do if [ -d ${d} ]; then echo ${d#Events/}; fi; done | sort -V); do
+    echo "  ./vfold/myDiffRun.sh ${oOpt} -nd5 ${events}F ${d} || status=1" >> ${cmdtmp}
+  done
 
-  if [ -d Events/${events}C512y ]; then
-    echo "  ./vfold/myDiffRun.sh ${oOpt} -nd5 ${events}F ${events}C512y" >> ${cmdtmp}
-  fi
-
-  if [ -d Events/${events}C512z ]; then
-    echo "  ./vfold/myDiffRun.sh ${oOpt} -nd5 ${events}F ${events}C512z" >> ${cmdtmp}
-  fi
-
-  if [ -d Events/${events}Ccuda ]; then
-    echo "  ./vfold/myDiffRun.sh ${oOpt} -nd5 ${events}F ${events}Ccuda" >> ${cmdtmp}
-  fi
-
+  status=0
   source ${cmdtmp}
 
   echo
   echo "Compared results using"
   echo "  $0 ${ARGS}"
-  echo "Modes F1/S, F2/T and F give identical results"
+  echo "Modes F1/S, F2/T (and F1 with the MadLoop library of F) and F give identical results"
   echo "Modes F and all Cs are equal within tolerance"
-  cat ${cmdtmp}
+  sed 's/ || status=1$//' ${cmdtmp}
+  if [ "${notcmp}" != "" ]; then echo "NOT compared:${notcmp}"; fi
+  echo "STATUS=${status} (all comparisons above)"
   rm ${cmdtmp}
+  exit ${status}
 
 elif [ "$mode" == "--diff2" ]; then
 
@@ -205,38 +214,37 @@ elif [ "$mode" == "--diff2" ]; then
   events=${step}
   cmdtmp=$(mktemp)
   lnktmp=$(mktemp)
+  notcmp=
 
-  echo "  ./vfold/myDiffRun.sh ${oOpt} ${refevt}Z ${events}Z" >> ${cmdtmp}
-  echo "  ./vfold/myDiffRun.sh ${oOpt} ${refevt}F ${events}S" >> ${cmdtmp}
-  echo "  ./vfold/myDiffRun.sh ${oOpt} ${refevt}F ${events}T" >> ${cmdtmp}
-  echo "  ./vfold/myDiffRun.sh ${oOpt} ${refevt}F ${events}F" >> ${cmdtmp}
-  echo "  ./vfold/myDiffRun.sh ${oOpt} ${refevt}Cnone ${events}Cnone" >> ${cmdtmp}
-  echo "  ./vfold/myDiffRun.sh ${oOpt} ${refevt}Csse4 ${events}Csse4" >> ${cmdtmp}
-  echo "  ./vfold/myDiffRun.sh ${oOpt} ${refevt}Cavx2 ${events}Cavx2" >> ${cmdtmp}
+  # Step 14s: compare each run of this step that exists to the same run of the
+  # reference step (S and T to F of the reference if this has no S or T), also
+  # the cuda scans Ccuda<N> and Ccudbr<N> and F1 with the other MadLoop library
+  # (before, only Z, S, T, F, the CPU backends and a single cuda run were compared)
+  for d in $(for d in Events/${events}*; do if [ -d ${d} ]; then echo ${d#Events/}; fi; done | sort -V); do
+    sfx=${d#${events}}
+    if [ "${sfx}" == "" ] || [[ "${sfx}" =~ / ]]; then continue; fi
+    ref=${refevt}${sfx}
+    if [ ! -d Events/${ref} ] && { [ "${sfx}" == "S" ] || [ "${sfx}" == "T" ]; }; then ref=${refevt}F; fi
+    if [ -d Events/${ref} ]; then
+      echo "  ./vfold/myDiffRun.sh ${oOpt} ${ref} ${d} || status=1" >> ${cmdtmp}
+    else
+      notcmp="${notcmp} ${d}"
+    fi
+  done
 
-  if [ -d Events/${refevt}C512y ] && [ -d Events/${events}C512y ]; then
-    echo "  ./vfold/myDiffRun.sh ${oOpt} ${refevt}C512y ${events}C512y" >> ${cmdtmp}
-  fi
+  sed -e "s|./vfold/myDiffRun.sh|../linkDumps.sh|" -e "s/ || status=1$//" ${cmdtmp} > ${lnktmp}
 
-  if [ -d Events/${refevt}C512z ] && [ -d Events/${events}C512z ]; then
-    echo "  ./vfold/myDiffRun.sh ${oOpt} ${refevt}C512z ${events}C512z" >> ${cmdtmp}
-  fi
-
-  if [ -d Events/${refevt}Ccuda ] && [ -d Events/${events}Ccuda ]; then
-    echo "  ./vfold/myDiffRun.sh ${oOpt} ${refevt}Ccuda ${events}Ccuda" >> ${cmdtmp}
-  fi
-
-  cat ${cmdtmp} | sed "s|./vfold/myDiffRun.sh|../linkDumps.sh|" > ${lnktmp}
-
+  status=0
   source ${cmdtmp}
 
   echo
   echo "Compared results using"
   echo "  $0 ${ARGS}"
-  echo "Z is identical to the last reference ${refstep}"
-  echo "S, T and F are identical to the last reference ${refstep}"
-  echo "Each C is identical to the last reference ${refstep}"
-  cat ${cmdtmp}
+  echo "Each run is identical to the same run of the reference ${refstep}"
+  echo "(S and T to F of the reference if this has no S or T)"
+  sed 's/ || status=1$//' ${cmdtmp}
+  if [ "${notcmp}" != "" ]; then echo "NOT compared (not in the reference):${notcmp}"; fi
+  echo "STATUS=${status} (all comparisons above)"
   rm ${cmdtmp}
 
   if [ "${oOpt}" == "" ]; then
@@ -249,6 +257,7 @@ elif [ "$mode" == "--diff2" ]; then
     echo
   fi
   rm ${lnktmp}
+  exit ${status}
 
 else
 

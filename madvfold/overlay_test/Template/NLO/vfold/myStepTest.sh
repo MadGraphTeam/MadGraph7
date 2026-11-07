@@ -93,122 +93,79 @@ for tst in ${tsts}; do
   outL=Events/${ref}/${tag}/${tst}/log_${step}_launch.txt
   outD=Events/${ref}/${tag}/${tst}/log_${step}_diff.txt
   table=Events/${ref}/${tag}/${tst}/timingTable_${step}.txt
-  step2=step8m # NB: tst2 and step2 are not used at the moment (comparison to step8m/step8n disabled below)
   if [ "${tst}" == "n200f111k1" ]; then
     env="ENV_NEVENTS=200 ENV_FOLDING='1,1,1' ENV_VFOLD_KPOINT_BATCH=1"
-    tst2=${tst}
   elif [ "${tst}" == "n200f111k32" ]; then
     env="ENV_NEVENTS=200 ENV_FOLDING='1,1,1' ENV_VFOLD_KPOINT_BATCH=32"
-    tst2=${tst/k32/k1}
   elif [ "${tst}" == "n200f111k32g1" ]; then
     env="ENV_NEVENTS=200 ENV_FOLDING='1,1,1' ENV_VFOLD_KPOINT_BATCH=32 ENV_VFOLD_SBORN_GSCALE=1"
-    tst2=${tst/k32g1/k1}
   elif [ "${tst}" == "n2000f111k32g1" ]; then
     # 10x more events
     env="ENV_NEVENTS=2000 ENV_FOLDING='1,1,1' ENV_VFOLD_KPOINT_BATCH=32 ENV_VFOLD_SBORN_GSCALE=1"
-    tst2=${tst/k32g1/k1}
   elif [ "${tst}" == "n200f111k512" ]; then
     env="ENV_NEVENTS=200 ENV_FOLDING='1,1,1' ENV_VFOLD_KPOINT_BATCH=512"
-    tst2=${tst/k512/k1}
   elif [ "${tst}" == "n200f111k512g1" ]; then
     env="ENV_NEVENTS=200 ENV_FOLDING='1,1,1' ENV_VFOLD_KPOINT_BATCH=512 ENV_VFOLD_SBORN_GSCALE=1"
-    tst2=${tst/k512g1/k1}
   elif [ "${tst}" == "n200f111k1024g1" ]; then
     env="ENV_NEVENTS=200 ENV_FOLDING='1,1,1' ENV_VFOLD_KPOINT_BATCH=1024 ENV_VFOLD_SBORN_GSCALE=1"
-    tst2=${tst/k1024g1/k1}
   elif [ "${tst}" == "n100f111k512g1" ]; then
     # Step 14p: 5x more events than n20f111k512g1, to compare to n100f841k64g1 (e.g. ggttg: about 2 virtual events)
     env="ENV_NEVENTS=100 ENV_FOLDING='1,1,1' ENV_VFOLD_KPOINT_BATCH=512 ENV_VFOLD_SBORN_GSCALE=1"
-    tst2=${tst/k512g1/k1}
   elif [ "${tst}" == "n50f111k512g1" ]; then
     # Step 14s: 2x fewer events than n100f111k512g1, to compare to n50f841k64g1 (e.g. ggttg with the step 14t grids)
     env="ENV_NEVENTS=50 ENV_FOLDING='1,1,1' ENV_VFOLD_KPOINT_BATCH=512 ENV_VFOLD_SBORN_GSCALE=1"
-    tst2=${tst/k512g1/k1}
   elif [ "${tst}" == "n20f111k512g1" ]; then
     # 10x fewer events: match n20f841 for eemumubbg tests
     env="ENV_NEVENTS=20 ENV_FOLDING='1,1,1' ENV_VFOLD_KPOINT_BATCH=512 ENV_VFOLD_SBORN_GSCALE=1"
-    tst2=${tst/k512g1/k1}
   elif [ "${tst}" == "n2000f111k512g1" ]; then
     # 10x more events: the fixed GPU init cost becomes negligible and the virtual sample larger
     env="ENV_NEVENTS=2000 ENV_FOLDING='1,1,1' ENV_VFOLD_KPOINT_BATCH=512 ENV_VFOLD_SBORN_GSCALE=1"
-    tst2=${tst/k512g1/k1}
   elif [ "${tst}" == "n200f111k32g1DELTA" ]; then
     env="ENV_NEVENTS=200 ENV_FOLDING='1,1,1' ENV_VFOLD_KPOINT_BATCH=32 ENV_VFOLD_SBORN_GSCALE=1 ENV_MCATNLODELTA=1"
-    tst2=${tst/k32g1DELTA/k1}
   elif [ "${tst}" == "n200f111k512g1DELTA" ]; then
     env="ENV_NEVENTS=200 ENV_FOLDING='1,1,1' ENV_VFOLD_KPOINT_BATCH=512 ENV_VFOLD_SBORN_GSCALE=1 ENV_MCATNLODELTA=1"
-    tst2=${tst/k512g1DELTA/k1}
   elif [ "${tst}" == "n20f841k1" ]; then
     env="ENV_NEVENTS=20 ENV_FOLDING='8,4,1' ENV_VFOLD_KPOINT_BATCH=1"
-    tst2=${tst}
   elif [ "${tst}" == "n20f841k32" ]; then
     env="ENV_NEVENTS=20 ENV_FOLDING='8,4,1' ENV_VFOLD_KPOINT_BATCH=32"
-    tst2=${tst/k32/k1}
   elif [ "${tst}" == "n20f841k32g1" ]; then
     env="ENV_NEVENTS=20 ENV_FOLDING='8,4,1' ENV_VFOLD_KPOINT_BATCH=32 ENV_VFOLD_SBORN_GSCALE=1"
-    tst2=${tst/k32g1/k1}
   elif [ "${tst}" == "n20f841k64g1" ]; then
     env="ENV_NEVENTS=20 ENV_FOLDING='8,4,1' ENV_VFOLD_KPOINT_BATCH=64 ENV_VFOLD_SBORN_GSCALE=1"
-    tst2=${tst/k64g1/k1}
   elif [ "${tst}" == "n20f841k128" ]; then
     env="ENV_NEVENTS=20 ENV_FOLDING='8,4,1' ENV_VFOLD_KPOINT_BATCH=128"
-    tst2=${tst/k128/k1}
   elif [ "${tst}" == "n20f841k128g1" ]; then
     env="ENV_NEVENTS=20 ENV_FOLDING='8,4,1' ENV_VFOLD_KPOINT_BATCH=128 ENV_VFOLD_SBORN_GSCALE=1"
-    tst2=${tst/k128g1/k1}
   elif [ "${tst}" == "n50f841k64g1" ]; then
     # Step 14s: 2x fewer events than n100f841k64g1, to compare to n50f111k512g1 (e.g. ggttg with the step 14t grids)
     env="ENV_NEVENTS=50 ENV_FOLDING='8,4,1' ENV_VFOLD_KPOINT_BATCH=64 ENV_VFOLD_SBORN_GSCALE=1"
-    tst2=${tst/k64g1/k1}
   elif [ "${tst}" == "n100f841k1" ]; then
     env="ENV_NEVENTS=100 ENV_FOLDING='8,4,1' ENV_VFOLD_KPOINT_BATCH=1"
-    tst2=${tst}
   elif [ "${tst}" == "n100f841k32g1" ]; then
     env="ENV_NEVENTS=100 ENV_FOLDING='8,4,1' ENV_VFOLD_KPOINT_BATCH=32 ENV_VFOLD_SBORN_GSCALE=1"
-    tst2=${tst/k32g1/k1}
   elif [ "${tst}" == "n100f841k64g1" ]; then
     env="ENV_NEVENTS=100 ENV_FOLDING='8,4,1' ENV_VFOLD_KPOINT_BATCH=64 ENV_VFOLD_SBORN_GSCALE=1"
-    tst2=${tst/k64g1/k1}
   elif [ "${tst}" == "n200f841k1" ]; then
     env="ENV_NEVENTS=200 ENV_FOLDING='8,4,1' ENV_VFOLD_KPOINT_BATCH=1"
-    tst2=${tst}
-    step2=step8n
   elif [ "${tst}" == "n200f841k1g1" ]; then
     env="ENV_NEVENTS=200 ENV_FOLDING='8,4,1' ENV_VFOLD_KPOINT_BATCH=1 ENV_VFOLD_SBORN_GSCALE=1"
-    tst2=${tst/k1g1/k1}
-    step2=step8n
   elif [ "${tst}" == "n200f841k16g1" ]; then
     env="ENV_NEVENTS=200 ENV_FOLDING='8,4,1' ENV_VFOLD_KPOINT_BATCH=16 ENV_VFOLD_SBORN_GSCALE=1"
-    tst2=${tst/k16g1/k1}
-    step2=step8n
   elif [ "${tst}" == "n200f841k32g1" ]; then
     env="ENV_NEVENTS=200 ENV_FOLDING='8,4,1' ENV_VFOLD_KPOINT_BATCH=32 ENV_VFOLD_SBORN_GSCALE=1"
-    tst2=${tst/k32g1/k1}
-    step2=step8n
   elif [ "${tst}" == "n100f841k64g1" ]; then
     # Step 14p: 5x more events than n20f841k64g1, to compare to n100f111k512g1 (e.g. ggttg: about 2 virtual events)
     env="ENV_NEVENTS=100 ENV_FOLDING='8,4,1' ENV_VFOLD_KPOINT_BATCH=64 ENV_VFOLD_SBORN_GSCALE=1"
-    tst2=${tst/k64g1/k1}
   elif [ "${tst}" == "n200f841k64g1" ]; then
     env="ENV_NEVENTS=200 ENV_FOLDING='8,4,1' ENV_VFOLD_KPOINT_BATCH=64 ENV_VFOLD_SBORN_GSCALE=1"
-    tst2=${tst/k64g1/k1}
-    step2=step8n
   elif [ "${tst}" == "n200f841k128g1" ]; then
     env="ENV_NEVENTS=200 ENV_FOLDING='8,4,1' ENV_VFOLD_KPOINT_BATCH=128 ENV_VFOLD_SBORN_GSCALE=1"
-    tst2=${tst/k128g1/k1}
-    step2=step8n
   elif [ "${tst}" == "n200f841k1g1DELTA" ]; then
     env="ENV_NEVENTS=200 ENV_FOLDING='8,4,1' ENV_VFOLD_KPOINT_BATCH=1 ENV_VFOLD_SBORN_GSCALE=1 ENV_MCATNLODELTA=1"
-    tst2=${tst/k1g1DELTA/k1}
-    step2=step8n
   elif [ "${tst}" == "n200f841k64g1DELTA" ]; then
     env="ENV_NEVENTS=200 ENV_FOLDING='8,4,1' ENV_VFOLD_KPOINT_BATCH=64 ENV_VFOLD_SBORN_GSCALE=1 ENV_MCATNLODELTA=1"
-    tst2=${tst/k64g1DELTA/k1}
-    step2=step8n
   elif [ "${tst}" == "n200f841k256g1" ]; then
     env="ENV_NEVENTS=200 ENV_FOLDING='8,4,1' ENV_VFOLD_KPOINT_BATCH=256 ENV_VFOLD_SBORN_GSCALE=1"
-    tst2=${tst/k256g1/k1}
-    step2=step8n
   else
     echo "ERROR! Unknown tst=${tst}" |& tee -a $outL
     exit 1
@@ -264,15 +221,8 @@ for tst in ${tsts}; do
   echo | tee -a $outD
   echo "-------------------------------------------------------------------------------" | tee -a $outD
   echo | tee -a $outD
-  # The comparison to the reference ${ref}/${tst2}/${step2} (step8m/step8n) is NOT supported at the moment:
-  # these references do not exist in REF3, and myDiffRun.sh only prints 'Directory not found' for them,
-  # so the comparison was a silent no-op that still reported 'identical' (tst2 and step2 are kept for later)
-  cmd="./vfold/myBackends.sh --diff2-o ${ref}/${tst2}/${step2} ${refstep}"
-  echo "SKIPPED (not supported at the moment, references do not exist in ${ref}):" | tee -a $outD
-  echo "  ${cmd}" | tee -a $outD
-  echo | tee -a $outD
-  echo "-------------------------------------------------------------------------------" | tee -a $outD
-  echo | tee -a $outD
+  # Step 14s: the comparison to an older step (step8m/step8n, which do not exist in REF3 or REF4) was removed:
+  # compare two steps manually with './vfold/myBackends.sh --diff2-o <refstep> <step>'
   cmd="./vfold/myTimingTable.py -f txt Events/${refstep}"
   echo "Prepare timing table using:" | tee -a $outD
   echo "  ${cmd}" | tee -a $outD
