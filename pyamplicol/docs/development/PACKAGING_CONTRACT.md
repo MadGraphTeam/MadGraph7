@@ -176,7 +176,10 @@ without Rust in the consumer environment. That deployment includes:
 - `twine check` and platform/native-dependency audits;
 - import, CLI, direct-JIT f64 self-test, and packaged-example checks;
 - Python total/resolved runtime behavior with Symbolica imports blocked;
-- C11, C++17, Fortran 2008, and Rust 2021 f64 driver compilation/execution;
+- C11, C++17, Fortran 2008, and Rust 2021 f64 driver compilation/execution,
+  and the self-test's UMAMI provider built with its own Makefile and run
+  (its matrix element equals the self-test total), first on an empty SDK
+  cache and then on the warm one, plus two concurrent first uses of the cache;
 - model-parameter card and direct UFO-parameter override behavior.
 
 CPython 3.14 receives a focused abi3 installation, import, metadata, and
