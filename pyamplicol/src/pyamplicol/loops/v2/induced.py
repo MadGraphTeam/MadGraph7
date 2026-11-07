@@ -174,6 +174,10 @@ class StoredAmplitude:
     rows: tuple[rx.Row, ...]
     colour_zero_orders: frozenset[Orders]
     colour_zero: bool
+    # The declared observables (``induced_observables.declare``): the
+    # resolved ``CorrelatorConfig`` and each colour history's matrix on the
+    # basis; None without a declaration.
+    correlators: Any = None
 
     def __len__(self) -> int:
         return self.size
@@ -184,6 +188,8 @@ class StoredAmplitude:
     @classmethod
     def from_record(cls, record: Mapping[str, Any]) -> StoredAmplitude:
         from pyamplicol.color.connections import ExactColorCoefficient
+
+        from .induced_observables import correlators_from_record
 
         def orders(value) -> Orders:
             return tuple((str(name), int(power)) for name, power in value)
@@ -204,6 +210,9 @@ class StoredAmplitude:
             tuple(tuple(enumerate(int(h) for h in row)) for row in record["rows"]),
             frozenset(orders(order) for order in record["colour_zero_orders"]),
             bool(record["colour_zero"]),
+            correlators_from_record(record["correlators"])
+            if "correlators" in record
+            else None,
         )
 
 
@@ -212,6 +221,8 @@ def amplitude_record(slice_: Any, exported: Any) -> dict[str, Any]:
     (``native_process.NativeProcess.export``; ``StoredAmplitude``): exact
     rationals as strings, loop orders as [name, power] lists; no path, user
     or host enters it."""
+
+    from .induced_observables import correlators_record
 
     basis = slice_.amplitude
 
@@ -238,6 +249,13 @@ def amplitude_record(slice_: Any, exported: Any) -> dict[str, Any]:
         # The request's exact colour zero (``AmplitudeBasis.colour_zero``):
         # one colour-zero order beside live ones does not make it.
         "colour_zero": basis.colour_zero,
+        # Declared observables only (``induced_observables.declare``): a
+        # record without them keeps its bytes.
+        **(
+            {"correlators": correlators_record(declared)}
+            if (declared := getattr(slice_, "amplitude_correlators", None)) is not None
+            else {}
+        ),
     }
 
 

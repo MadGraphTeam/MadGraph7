@@ -1,0 +1,903 @@
+# SPDX-License-Identifier: 0BSD
+"""Observables of a loop-induced process (m-lit LIT-OBS; PLAN §1.5, §1.7,
+§2.a.2, §3.4; RULED Q8, Q9, Q13, Q37, Q39).
+
+A loop-induced point is one amplitude vector a_{l,h,t} per loop order l,
+helicity row h and amplitude-basis element t (``induced``: the native
+amplitude sum, a = bare + A^CT). Every observable is a quadratic form on
+that vector: nothing is dressed or reduced again, and the forms are squared
+by the one canonical square (``induced.square`` / the native
+``square_amplitudes`` in binary64, RULED Q41), with the slice's average
+``avg`` (``Normalisation.of``) and its loop x loop sectors. Full colour only
+(RULED Q8).
+
+* **Colour-correlated** (``correlated``). A declared history X (an ordered
+  pair of colour connections, ``ColorCorrelator``) has the directed matrix
+  M_X[t, u] = <bra_X(t)|ket_X(u)> of the amplitude basis at N_c = 3
+  (``color.correlator_matrices.literal_correlator_matrices``, computed at
+  generation and stored with the process: nothing regenerates at load). Its
+  output per sector is (1/avg) sum_h sum_pairs (a_l^dag M a_l' [+ a_l'^dag M
+  a_l for l != l']), the history's analogue of the Born-interfered
+  B^dag K_BL L + L^dag K_LB B: complex in general, real for a dipole
+  T_i.T_j (Hermitian). It is squared as M = H + i K with the Hermitian
+  parts H = (M + M^dag)/2 and K = (M - M^dag)/2i, each by the canonical
+  square. The history ``"born"`` is the colour metric G itself: |A|^2.
+  Colour conservation holds exactly on the basis: sum_{j != i} M_{T_i.T_j}
+  = -C_i G (every basis element is a colour singlet).
+* **Spin-correlated** (``spin``). A spin vector v of a declared leg j
+  replaces the leg's wavefunction on both sides (the Born-interfered
+  convention: v takes the place of the leg's polarisation vector, its
+  crossing phase applied by the engine as to every source). The amplitude
+  is linear in that wavefunction, so A(v) = sum_lambda c_lambda(v)
+  A(lambda) with c_lambda = -v . conj(w_lambda) on the leg's own
+  polarisation vectors w_lambda at the point (``polarisations``: the tree
+  program's source records, HELAS conventions; w . conj(w') = -delta):
+  exact for v in their span, and for a massless leg modulo p_j, whose part
+  vanishes by the Ward identity (the generation-time probe checks it) --
+  the projection Recola's loop-induced spin correlations make. No extra
+  dressing or reduction: the spin-correlated output is the colour form of
+  the history on the vectors A(v) (the other legs' rows summed).
+* **Resolved** (``resolved``). Per helicity row h, |A(h)|^2/avg (one
+  colour-contracted component); with ``AMPLITUDE_BASIS`` per basis element
+  t the anchored part Re(conj(a_t) (G a)_t)/avg (the metric
+  (E_t G + G E_t)/2, E_t the projection on t): a basis-dependent split
+  (T may be linearly dependent at N_c = 3) whose sum over t is the row's
+  value.
+* **Single-helicity selection** (``selection``, RULED Q39): the sum over
+  the selected rows of |A(h)|^2/avg with the same average as the total, so
+  the rows of a complete selection sum to it. No parity halving and no
+  Bose row mapping (RULED Q37): every row is its own amplitude.
+
+Stability estimates (REQUIREMENTS_ADDENDUM C) per output: a rotation's
+budget is the output's own deviation at the rotated point (every form is
+rotation invariant: the rotated spin vectors and polarisation vectors move
+together, and a row's little-group phase cancels in a^dag M a); the
+reduction check's budget bounds the form's change from the re-test's
+absolute amplitude errors e by the elementwise |M| (sum e^T|M||b| +
+|a|^T|M|e + e^T|M|e); the scale S of the floor is the same form of the
+per-row term floors (``induced.term_values`` and the counterterm kets),
+never the output itself (RULED Q13: a zero is "zero within the estimate").
+"""
+
+from __future__ import annotations
+
+from collections.abc import Hashable, Mapping, Sequence
+from dataclasses import dataclass
+from decimal import Decimal, localcontext
+from fractions import Fraction
+from typing import Any
+
+from pyamplicol.color.connections import ExactColorCoefficient
+
+from . import induced
+from . import reference_executor as rx
+from .families import Orders
+
+# The resolved colour axis of a loop-induced result: one colour-contracted
+# component per helicity row (its ID the accuracy, "full"), or the
+# amplitude-basis anchors (IDs ``ANCHOR_ID``), a basis-dependent split.
+CONTRACTED = "contracted"
+AMPLITUDE_BASIS = "amplitude-basis"
+COLOUR_RESOLUTIONS = (CONTRACTED, AMPLITUDE_BASIS)
+ANCHOR_ID = "amplitude-{}"
+INCLUSIVE = "born"
+
+Matrix = tuple[tuple[ExactColorCoefficient, ...], ...]
+
+
+# ------------------------------------------------------------------ colour
+
+
+def correlator_matrices(basis: Any, histories: Sequence[Any]) -> dict[str, Matrix]:
+    """M_X of every declared history X on a slice's amplitude basis
+    (``colour.AmplitudeBasis``: its legs and literal tensors), exact at
+    N_c = 3, by history id."""
+
+    from pyamplicol.color.correlator_matrices import literal_correlator_matrices
+
+    histories = [history for history in histories if history.id != INCLUSIVE]
+    matrices = literal_correlator_matrices(basis.legs, basis.tensors, histories)
+    return {
+        history.id: matrix for history, matrix in zip(histories, matrices, strict=True)
+    }
+
+
+def declare(slice_: Any, compiled: Any, request: Any, correlators: Any) -> None:
+    """Declare the observables ``correlators`` (a ``CorrelatorConfig``) of a
+    generated loop-induced slice: the declaration resolved on its amplitude
+    basis's colour legs (``all_color_through_order`` expanded), its spin
+    classes checked to be vector legs with four-component sources
+    (``observables.require_vector_spin_sources``, the tree engine's rule) and
+    every history's matrix M_X (``correlator_matrices``), kept as
+    ``slice_.amplitude_correlators`` for the stored amplitude record
+    (``induced.amplitude_record``). A generation-time selection that keeps
+    fewer helicities is refused with declared observables, as for a
+    Born-interfered virtual (``selected-correlators``)."""
+
+    from .observables import _refuse_selected_observables, require_vector_spin_sources
+
+    _refuse_selected_observables(request, True)
+    resolved = correlators._resolve_color(slice_.amplitude.legs)
+    require_vector_spin_sources(compiled, request.process, resolved.spin_correlations)
+    slice_.amplitude_correlators = (
+        resolved,
+        correlator_matrices(slice_.amplitude, resolved.color_correlations),
+    )
+
+
+def correlators_record(declared: tuple[Any, Mapping[str, Matrix]]) -> dict[str, Any]:
+    """The stored form of a declaration (``declare``: the resolved
+    ``CorrelatorConfig`` and its matrices; the amplitude record's
+    ``correlators``): the declaration's JSON and each history's matrix,
+    exact rationals as strings, by history id."""
+
+    config, matrices = declared
+    return {
+        "declaration": config.to_json_dict(),
+        "matrices": [
+            {
+                "id": name,
+                "matrix": [
+                    [[str(cell.real), str(cell.imag)] for cell in row] for row in matrix
+                ],
+            }
+            for name, matrix in sorted(matrices.items())
+        ],
+    }
+
+
+def correlators_from_record(record: Mapping[str, Any]) -> tuple[Any, dict[str, Matrix]]:
+    """``correlators_record`` read back: (the ``CorrelatorConfig``, the
+    matrices by history id)."""
+
+    from pyamplicol.correlators import CorrelatorConfig
+
+    matrices = {
+        str(item["id"]): tuple(
+            tuple(ExactColorCoefficient(Fraction(re), Fraction(im)) for re, im in row)
+            for row in item["matrix"]
+        )
+        for item in record["matrices"]
+    }
+    return CorrelatorConfig.from_json_dict(record["declaration"]), matrices
+
+
+def hermitian_parts(matrix: Matrix) -> tuple[Matrix, Matrix | None]:
+    """(H, K) with M = H + i K, H = (M + M^dag)/2 and K = (M - M^dag)/2i,
+    both Hermitian; K is None when M is Hermitian (a dipole)."""
+
+    size = len(matrix)
+    half = Fraction(1, 2)
+    h = tuple(
+        tuple(
+            (matrix[t][u] + matrix[u][t].conjugate()).scaled(half) for u in range(size)
+        )
+        for t in range(size)
+    )
+    minus_half_i = ExactColorCoefficient(0, Fraction(-1, 2))
+    k = tuple(
+        tuple(
+            (matrix[t][u] + matrix[u][t].conjugate().scaled(-1)) * minus_half_i
+            for u in range(size)
+        )
+        for t in range(size)
+    )
+    return h, (k if any(cell for row in k for cell in row) else None)
+
+
+def anchor_metric(gram: Matrix, t: int) -> Matrix:
+    """(E_t G + G E_t)/2: a^dag of it a = Re(conj(a_t) (G a)_t)."""
+
+    size = len(gram)
+    half = Fraction(1, 2)
+    zero = ExactColorCoefficient()
+    return tuple(
+        tuple(
+            (
+                (gram[r][u] if r == t else zero) + (gram[r][u] if u == t else zero)
+            ).scaled(half)
+            for u in range(size)
+        )
+        for r in range(size)
+    )
+
+
+# -------------------------------------------------------------------- spin
+
+
+def _decimal(value: Any) -> Decimal:
+    if isinstance(value, Fraction):
+        return Decimal(value.numerator) / Decimal(value.denominator)
+    return Decimal(str(value)) if not isinstance(value, Decimal) else value
+
+
+def polarisations(
+    sources: Sequence[Mapping[str, Any]], leg: int, momentum: Sequence[Any]
+) -> dict[int, tuple[tuple[Decimal, Decimal], ...]]:
+    """The polarisation vectors w_h of vector leg ``leg`` (its label) at its
+    physical momentum ``momentum``, per source helicity h (the helicity of
+    the leg's rows): the tree program's source records
+    (``source_fill.sources``: the momentum transform of the crossing, the
+    source helicity), before the crossing phase, which the engine applies
+    to a spin vector alike. A massive leg's mass is its on-shell invariant
+    sqrt(p^2). In the active Decimal context."""
+
+    from pyamplicol.runtime.symbolica_exact import _massive_vector, _massless_vector
+
+    out: dict[int, tuple[tuple[Decimal, Decimal], ...]] = {}
+    for source in sources:
+        if int(source["leg_label"]) != leg:
+            continue
+        if source.get("wavefunction_kind") != "vector" or int(source["dimension"]) != 4:
+            raise ValueError(
+                f"spin-correlated leg {leg} requires a full four-component vector "
+                "source"
+            )
+        p = [_decimal(x) for x in momentum]
+        if source["applied_crossing"]["momentum_transform"] == "negate-four-momentum":
+            p = [-x for x in p]
+        helicity = int(source["source_helicity"])
+        if source["source_ir"].get("mass_parameter") is None:
+            wave = _massless_vector(p, helicity)
+        else:
+            mass = (p[0] * p[0] - p[1] * p[1] - p[2] * p[2] - p[3] * p[3]).sqrt()
+            wave = _massive_vector(p, helicity, mass)
+        out[helicity] = tuple(wave)
+    if not out:
+        raise ValueError(f"leg {leg} has no source of the tree program")
+    return out
+
+
+def spin_coefficients(
+    vector: Sequence[tuple[Any, Any]],
+    waves: Mapping[int, Sequence[tuple[Decimal, Decimal]]],
+) -> dict[int, tuple[Decimal, Decimal]]:
+    """c_h = -v . conj(w_h) (Minkowski, mostly minus) per helicity h: the
+    coefficients of v on the polarisation vectors (w_h . conj(w_h') =
+    -delta), so that M.v = sum_h c_h M.w_h for v in their span."""
+
+    signs = (1, -1, -1, -1)
+    out = {}
+    for helicity, wave in waves.items():
+        re = Decimal(0)
+        im = Decimal(0)
+        for sign, (vr, vi), (wr, wi) in zip(signs, vector, wave, strict=True):
+            vr, vi = _decimal(vr), _decimal(vi)
+            # v * conj(w) = (vr wr + vi wi) + i (vi wr - vr wi)
+            re += sign * (vr * wr + vi * wi)
+            im += sign * (vi * wr - vr * wi)
+        out[helicity] = (-re, -im)
+    return out
+
+
+def spin_amplitudes(
+    amplitudes: Mapping[tuple[Orders, rx.Row], Sequence[Sequence[Any]]],
+    coefficients: Mapping[int, Mapping[int, Any]],
+    numbers: Any,
+    width: int,
+    size: int,
+) -> dict[tuple[Orders, rx.Row], list[list[Any]]]:
+    """A(v) per (loop order, remaining row): sum over the spin legs'
+    helicities of prod_j c_j(h_j) a(row); ``coefficients`` maps each spin
+    leg's 0-based index to its carrier coefficients per helicity. The
+    remaining row keeps the other legs' helicities (a spin leg's entry is
+    dropped)."""
+
+    zero = numbers.zero
+    out: dict[tuple[Orders, rx.Row], list[list[Any]]] = {}
+    for (order, row), vector in amplitudes.items():
+        weight = None
+        rest = []
+        for leg, h in row:
+            found = coefficients.get(leg)
+            if found is None:
+                rest.append((leg, h))
+                continue
+            c = found.get(h)
+            if c is None:
+                weight = None
+                break
+            weight = c if weight is None else weight * c
+        else:
+            if weight is None:
+                continue
+            key = (order, tuple(rest))
+            total = out.get(key)
+            if total is None:
+                total = out[key] = [[zero] * width for _ in range(size)]
+            for t in range(size):
+                for k in range(width):
+                    total[t][k] = total[t][k] + weight * vector[t][k]
+    return out
+
+
+# ----------------------------------------------------------------- outputs
+
+
+@dataclass(frozen=True)
+class Output:
+    """One loop-induced output: the metric of its quadratic form (a history
+    id, ``INCLUSIVE`` for G, or ("anchor", t)), the helicity rows it keeps
+    (None: all) and whether its spin legs carry vectors."""
+
+    key: Hashable
+    metric: Any = INCLUSIVE
+    rows: frozenset[rx.Row] | None = None
+
+
+class Forms:
+    """The carrier matrices of one point's outputs: G, every declared
+    history's (H, K) and the anchors' metrics, formed once per carrier."""
+
+    def __init__(self, gram: Matrix, matrices: Mapping[str, Matrix], numbers: Any):
+        self._gram = gram
+        self._matrices = matrices
+        self._numbers = numbers
+        self._found: dict[Any, tuple[Any, Any, Any]] = {}
+
+    def __call__(self, metric: Any) -> tuple[Any, Any, Any]:
+        """(H in the carrier, K in the carrier or None, |M| as floats)."""
+
+        found = self._found.get(metric)
+        if found is None:
+            if metric == INCLUSIVE:
+                exact, k = self._gram, None
+                h = exact
+            elif isinstance(metric, tuple):
+                exact = anchor_metric(self._gram, metric[1])
+                h, k = exact, None
+            else:
+                exact = self._matrices[metric]
+                h, k = hermitian_parts(exact)
+            numbers = self._numbers
+            carrier = [[numbers.colour(cell, 0) for cell in row] for row in h]
+            imaginary = (
+                None
+                if k is None
+                else [[numbers.colour(cell, 0) for cell in row] for row in k]
+            )
+            magnitude = [[abs(complex(cell)) for cell in row] for row in exact]
+            found = self._found[metric] = (carrier, imaginary, magnitude)
+        return found
+
+
+def _square(evaluation: Any, amplitudes, metric, rows) -> dict[Orders, tuple]:
+    """The canonical square of ``amplitudes`` with ``metric`` (a carrier
+    matrix) over ``rows``: natively in binary64 (``induced.native_square``),
+    in the carrier's Decimal otherwise (``induced.square``)."""
+
+    slice_ = evaluation.slice
+    width = induced.width_of(evaluation)
+    if getattr(evaluation, "native_square", False):
+        return induced.native_square(
+            amplitudes,
+            metric,
+            slice_.sectors,
+            rows,
+            width,
+            evaluation.average,
+            slice_.native,
+        )
+    return induced.square(
+        amplitudes,
+        metric,
+        slice_.sectors,
+        rows,
+        width,
+        evaluation.numbers,
+        evaluation.average,
+    )
+
+
+def form(evaluation: Any, amplitudes, forms: Forms, metric: Any, rows) -> dict:
+    """The output of one metric on ``amplitudes`` over ``rows``, per sector
+    (a tuple of Laurent coefficients): real for a Hermitian metric, else
+    H-square + i K-square."""
+
+    h, k, _magnitude = forms(metric)
+    real = _square(evaluation, amplitudes, h, rows)
+    if k is None:
+        return real
+    imaginary = _square(evaluation, amplitudes, k, rows)
+    numbers = evaluation.numbers
+    return {
+        sector: tuple(
+            numbers.pair(x, y) if numbers.double else rx.Complex(x, y)
+            for x, y in zip(values, imaginary[sector], strict=True)
+        )
+        for sector, values in real.items()
+    }
+
+
+def _bound(evaluation, magnitude, left, right, rows) -> dict:
+    """sum_pairs kappa sum_rows sum_{i+j=k} x_i^T |M| y_j / avg of the
+    absolute vectors ``left``/``right`` ((order, row) -> [t][k] floats)."""
+
+    from .stability import Budget
+
+    width = induced.width_of(evaluation)
+    size = len(magnitude)
+    average = float(evaluation.average)
+    out = {}
+    for sector, pairs in evaluation.slice.sectors:
+        totals = [0.0] * width
+        for pair in sorted(pairs):
+            weight = induced.kappa(pair)
+            for row in rows:
+                a = left.get((pair[0], row))
+                b = right.get((pair[1], row))
+                if a is None or b is None:
+                    continue
+                for k in range(width):
+                    for i in range(k + 1):
+                        j = k - i
+                        for t in range(size):
+                            if not a[t][i]:
+                                continue
+                            inner = 0.0
+                            for u in range(size):
+                                inner += magnitude[t][u] * b[u][j]
+                            totals[k] += weight * a[t][i] * inner
+        out[sector] = Budget(tuple(value / average for value in totals))
+    return out
+
+
+def _absolute(vectors) -> dict:
+    return {
+        key: [[float(abs(z)) for z in cell] for cell in vector]
+        for key, vector in vectors.items()
+    }
+
+
+def _add_budgets(*parts: Mapping) -> dict:
+    from .stability import Budget
+
+    out = {}
+    for part in parts:
+        for sector, budget in part.items():
+            found = out.get(sector)
+            out[sector] = (
+                budget
+                if found is None
+                else Budget(
+                    tuple(
+                        x + y
+                        for x, y in zip(
+                            found.coefficients, budget.coefficients, strict=True
+                        )
+                    )
+                )
+            )
+    return out
+
+
+def _spin_errors(errors: Mapping, coefficients: Mapping[int, Mapping[int, Any]]):
+    """Absolute errors of A(v) from the rows' errors: sum |prod c| e."""
+
+    if not coefficients:
+        return errors
+    magnitudes = {
+        leg: {h: abs(complex(c)) for h, c in values.items()}
+        for leg, values in coefficients.items()
+    }
+    out: dict = {}
+    for (order, row), cells in errors.items():
+        weight = 1.0
+        rest = []
+        for leg, h in row:
+            found = magnitudes.get(leg)
+            if found is None:
+                rest.append((leg, h))
+            else:
+                weight *= found.get(h, 0.0)
+        if not weight:
+            continue
+        target = out.setdefault(
+            (order, tuple(rest)), [[0.0] * len(cell) for cell in cells]
+        )
+        for t, cell in enumerate(cells):
+            for k, value in enumerate(cell):
+                target[t][k] += weight * value
+    return out
+
+
+class PointOutputs:
+    """The outputs of one point evaluation (a ``_NativePoint`` of the
+    amplitude-mode executor): its amplitude vectors, the spin legs'
+    coefficients of one spin assignment and the carrier forms."""
+
+    def __init__(
+        self,
+        evaluation: Any,
+        matrices: Mapping[str, Matrix],
+        sources: Sequence[Mapping[str, Any]],
+        point: Sequence[Sequence[Any]],
+        spin: Mapping[int, Any] | None,
+    ):
+        self.evaluation = evaluation
+        numbers = evaluation.numbers
+        self.width = induced.width_of(evaluation)
+        self.size = len(evaluation.slice.amplitude)
+        self.forms = Forms(
+            evaluation.slice.amplitude.metric_at_three(), matrices, numbers
+        )
+        self.coefficients: dict[int, dict[int, Any]] = {}
+        if spin:
+            with localcontext() as context:
+                context.prec = max(numbers.precision.working_digits, 34) + 10
+                for leg, vector in spin.items():
+                    waves = polarisations(sources, int(leg), point[int(leg) - 1])
+                    self.coefficients[int(leg) - 1] = {
+                        h: numbers.pair(re, im)
+                        for h, (re, im) in spin_coefficients(vector, waves).items()
+                    }
+        with numbers.scope():
+            self.amplitudes = (
+                spin_amplitudes(
+                    evaluation.amplitude_vectors,
+                    self.coefficients,
+                    numbers,
+                    self.width,
+                    self.size,
+                )
+                if self.coefficients
+                else evaluation.amplitude_vectors
+            )
+        self.rows = tuple(dict.fromkeys(row for _order, row in self.amplitudes))
+        if not self.coefficients:
+            self.rows = induced.rows_of(evaluation)
+
+    def rows_of(self, output: Output) -> tuple[rx.Row, ...]:
+        if output.rows is None:
+            return self.rows
+        return tuple(row for row in self.rows if row in output.rows)
+
+    def value(self, output: Output) -> dict[Orders, tuple]:
+        with self.evaluation.numbers.scope():
+            return form(
+                self.evaluation,
+                self.amplitudes,
+                self.forms,
+                output.metric,
+                self.rows_of(output),
+            )
+
+    def budgets(self, output: Output, rotated: Sequence[PointOutputs], frame: Any):
+        """The named budgets of the output's estimate (module docstring)."""
+
+        from .stability import ROTATION, Budget
+
+        direct = self.value(output)
+        out: dict[str, dict] = {}
+        for k, other in enumerate(rotated):
+            moved = other.value(output)
+            out[ROTATION.format(k)] = {
+                sector: Budget(
+                    tuple(
+                        float(abs(y - x))
+                        for x, y in zip(values, moved[sector], strict=True)
+                    )
+                )
+                for sector, values in direct.items()
+            }
+        if frame is not None:
+            errors = self._errors()
+            if errors is not None:
+                rows = self.rows_of(output)
+                _h, _k, magnitude = self.forms(output.metric)
+                values = _absolute(self.amplitudes)
+                out[frame] = _add_budgets(
+                    _bound(self.evaluation, magnitude, errors, values, rows),
+                    _bound(self.evaluation, magnitude, values, errors, rows),
+                    _bound(self.evaluation, magnitude, errors, errors, rows),
+                )
+        return out
+
+    def _errors(self) -> dict | None:
+        evaluation = self.evaluation
+        errors = getattr(evaluation, "native_budget", None)
+        if errors is None:
+            deviations = getattr(evaluation, "family_deviations", None)
+            if deviations is None:
+                return None
+            errors = induced.lane_errors(evaluation, deviations)
+        return _spin_errors(errors, self.coefficients)
+
+    def scale(self, output: Output) -> dict:
+        """The floor's scale S: the output's |M| form of the per-row term
+        floors (term scale per t and k with the row's finite floor, plus the
+        counterterm kets' magnitudes)."""
+
+        evaluation = self.evaluation
+        terms = induced.term_values(evaluation)
+        kets = _absolute(evaluation.counterterm_vectors)
+        floors: dict = {}
+        for key in dict.fromkeys([*terms, *kets]):
+            cells = []
+            for t in range(self.size):
+                values = [0.0] * self.width
+                for source in (terms.get(key), kets.get(key)):
+                    if source is not None:
+                        for k in range(self.width):
+                            values[k] += float(source[t][k])
+                cells.append([max(value, values[0]) for value in values])
+            floors[key] = cells
+        floors = _spin_errors(floors, self.coefficients)
+        _h, _k, magnitude = self.forms(output.metric)
+        return _bound(evaluation, magnitude, floors, floors, self.rows_of(output))
+
+    def estimate(self, output: Output, rotated, frame, roundoff) -> Any:
+        from .assemble import Laurent
+        from .stability import StabilityEstimate
+
+        values = {
+            sector: Laurent(*laurent) for sector, laurent in self.value(output).items()
+        }
+        return StabilityEstimate.from_checks(
+            values,
+            self.budgets(output, rotated, frame),
+            scale=self.scale(output),
+            roundoff=roundoff,
+        )
+
+
+def point_result(evaluation: Any, values: Mapping[Orders, tuple], estimate=None):
+    """A ``PointResult`` of one output: its values as the "virtual"
+    component per sector (no Born, no other component: a square has no
+    additive bare/R2/UV split)."""
+
+    from .assemble import Laurent, PointResult
+
+    numbers = evaluation.numbers
+    width = induced.width_of(evaluation)
+    zero = numbers.real(0)
+    virtual = {sector: Laurent(*laurent) for sector, laurent in values.items()}
+    totals = [zero]
+    for k in range(width):
+        totals.append(sum((laurent[k] for laurent in values.values()), zero))
+    return PointResult(
+        {},
+        {"virtual": virtual},
+        tuple(totals),
+        {},
+        None,
+        stability=estimate,
+        poles=evaluation.mode,
+        finiteness=evaluation.result.finiteness,
+    )
+
+
+# ------------------------------------------------------------- runners
+
+
+class InducedColumns:
+    """The outputs of one call kind on a loop-induced process
+    (``V2ObservablesRuntime``'s native column runner): ``outputs`` are the
+    call's ``Output`` records, evaluated on the process's own amplitude-mode
+    executor (one native batch per call, plus one per rotation)."""
+
+    def __init__(
+        self,
+        observables: InducedObservables,
+        outputs: Sequence[Output],
+        member: Any = None,
+    ):
+        self.observables = observables
+        self.outputs = tuple(outputs)
+        self.member = member
+
+    def evaluate(
+        self,
+        points,
+        scales,
+        *,
+        spin=None,
+        parameters=None,
+        precision=None,
+        poles="all",
+        stability=None,
+        ward=None,
+    ):
+        from .observables import _member_key, _rotated_point, _rotated_spin
+        from .plan_export import FailedPoints
+        from .stability import StabilityChecks
+
+        if ward is not None:
+            raise NotImplementedError(
+                "the asymmetric Ward mode is a validation tool of the generated "
+                "slice (ward.ward_slice)"
+            )
+        stability = stability or StabilityChecks()
+        spins = (
+            list(spin)
+            if spin is not None and not isinstance(spin, Mapping)
+            else [spin] * len(points)
+        )
+        if len(spins) != len(points):
+            raise ValueError("one spin source assignment per point")
+        member = self.member
+        if member is not None:
+            points = [member.point(point) for point in points]
+            spins = [member.spin(value) for value in spins]
+        executor = self.observables.executor
+        precision, references, rotated, failures = executor.runs(
+            points,
+            scales,
+            parameters=parameters,
+            precision=precision,
+            poles=poles,
+            stability=stability,
+        )
+        sources = self.observables.sources
+        matrices = self.observables.matrices
+        out: list[Any] = []
+        for index, reference in enumerate(references):
+            if index in failures:
+                out.append(None)
+                continue
+            outputs = PointOutputs(
+                reference, matrices, sources, points[index], spins[index]
+            )
+            turned = [
+                PointOutputs(
+                    run[index],
+                    matrices,
+                    sources,
+                    _rotated_point(rotation, points[index]),
+                    _rotated_spin(rotation, spins[index]),
+                )
+                for rotation, run in zip(stability.rotations, rotated, strict=True)
+            ]
+            result = {}
+            for output in self.outputs:
+                estimate = (
+                    outputs.estimate(
+                        output,
+                        turned,
+                        stability.reduction,
+                        precision.unit_roundoff,
+                    )
+                    if stability.enabled
+                    else None
+                )
+                value = point_result(reference, outputs.value(output), estimate)
+                key = output.key
+                result[key if member is None else _member_key(member, key)] = value
+            out.append(result)
+        if failures:
+            raise FailedPoints(out, failures)
+        return out
+
+
+class InducedObservables:
+    """The observables of a loop-induced process (the subset of
+    ``observables.ObservableSlice`` that ``runtime.virtual.
+    V2InducedObservablesRuntime`` reads): its declared colour histories and
+    spin classes, its helicity rows, the stored correlator matrices and the
+    process's own amplitude-mode executor (a stored process's, or an
+    in-memory slice's native-input executor)."""
+
+    def __init__(
+        self,
+        executor: Any,
+        histories: Sequence[Any] = (),
+        spin_classes: Sequence[Sequence[int]] = (),
+        matrices: Mapping[str, Matrix] | None = None,
+    ):
+        self.executor = executor
+        self.slice = executor.slice
+        amplitude = self.slice.amplitude
+        if amplitude is None:
+            raise ValueError("InducedObservables needs a loop-induced process")
+        declared = getattr(amplitude, "correlators", None)
+        if declared is None:
+            declared = getattr(self.slice, "amplitude_correlators", None)
+        if declared is not None and not histories and not spin_classes:
+            # The generation's declaration (``declare``) and its matrices.
+            config, matrices = declared
+            histories = config.color_correlations
+            spin_classes = config.spin_correlations
+        self.histories = tuple(histories)
+        self.spin_classes = tuple(tuple(int(leg) for leg in c) for c in spin_classes)
+        if matrices is None:
+            matrices = (
+                declared[1]
+                if declared is not None
+                else correlator_matrices(amplitude, self.histories)
+            )
+        missing = [h.id for h in self.histories if h.id not in matrices]
+        if missing:
+            raise ValueError(f"colour histories {missing} have no stored matrix")
+        self.matrices = dict(matrices)
+        rows = getattr(amplitude, "rows", None)
+        if rows is None:
+            rows = executor.exported.rows
+        self.rows = tuple(rows)
+        self.components: tuple[int, ...] = ()
+        self.flows: tuple[Any, ...] = ()
+
+    @classmethod
+    def of_slice(cls, slice_: Any, correlators: Any = None, **options: Any):
+        """The observables of an in-memory loop-induced slice on its own
+        native-input executor (``options``: the executor's)."""
+
+        from .plan_export import NativeExecutor
+
+        executor = NativeExecutor(slice_, forward=False, inputs="native", **options)
+        histories = () if correlators is None else correlators.color_correlations
+        spin = () if correlators is None else correlators.spin_correlations
+        return cls(executor, histories, spin)
+
+    @property
+    def sources(self) -> Sequence[Mapping[str, Any]]:
+        return self.executor.exported.trees.program["source_fill"]["sources"]
+
+    def history(self, identifier: str) -> Any:
+        from pyamplicol.color.correlator_matrices import ColorCorrelator
+
+        if identifier == INCLUSIVE:
+            return ColorCorrelator(INCLUSIVE)
+        for history in self.histories:
+            if history.id == identifier:
+                return history
+        raise KeyError(f"undeclared colour correlation {identifier!r}")
+
+    def native_columns(
+        self, kind: str, value: Any, *, member: Any = None, **_options: Any
+    ) -> InducedColumns:
+        """The runner of one call kind (``V2ObservablesRuntime._native_columns``
+        keys): ``correlated`` (history ids), ``resolved`` (a colour
+        resolution, ``COLOUR_RESOLUTIONS``) or ``selection`` (a
+        ``selection.column``: its helicity rows)."""
+
+        from .selection import SELECTION
+
+        if kind == "correlated":
+            outputs = []
+            for name in dict.fromkeys(value):
+                self.history(name)
+                outputs.append(Output(name, name))
+        elif kind == "resolved":
+            if value not in COLOUR_RESOLUTIONS:
+                raise ValueError(f"unknown loop-induced resolution {value!r}")
+            anchors = (
+                (None,)
+                if value == CONTRACTED
+                else tuple(range(len(self.slice.amplitude)))
+            )
+            outputs = [
+                Output(
+                    (row, b),
+                    INCLUSIVE if b is None else ("anchor", b),
+                    frozenset({row}),
+                )
+                for row in self.rows
+                for b in anchors
+            ]
+        elif kind == SELECTION:
+            if value.basis is not None:
+                raise ValueError("a loop-induced process has no colour-flow selection")
+            outputs = [Output(value.key, INCLUSIVE, value.rows)]
+        else:
+            raise ValueError(f"unknown column set {kind!r}")
+        return InducedColumns(self, outputs, member)
+
+
+__all__ = [
+    "AMPLITUDE_BASIS",
+    "ANCHOR_ID",
+    "COLOUR_RESOLUTIONS",
+    "CONTRACTED",
+    "InducedColumns",
+    "InducedObservables",
+    "Output",
+    "PointOutputs",
+    "correlator_matrices",
+    "correlators_from_record",
+    "correlators_record",
+    "declare",
+    "hermitian_parts",
+    "polarisations",
+    "spin_amplitudes",
+    "spin_coefficients",
+]

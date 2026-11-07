@@ -1074,7 +1074,17 @@ def generate_process(
         # A listed feature the native point inputs do not cover is refused as
         # soon as the generation knows it (``native_inputs``), before the
         # trees are built.
-        if declared:
+        if declared and request.contribution == "loop-induced":
+            # Loop-induced observables are quadratic forms on the amplitude
+            # vector (m-lit LIT-OBS, ``induced_observables``): the slice is
+            # the inclusive one, its declared histories' matrices are stored
+            # with its amplitude basis.
+            from .induced_observables import declare
+
+            slice_ = LoopSlice.generate(compiled, request, native, native_inputs=True)
+            declare(slice_, compiled, request, correlators)
+            observables = ObservableSlice.of(slice_)
+        elif declared:
             observables = ObservableSlice.generate(
                 compiled, request, native, correlators=correlators, native_inputs=True
             )
@@ -1726,12 +1736,7 @@ class V2VirtualRuntime:
         from .observables import FORCED_FFT_OBSERVABLES
 
         if self._induced:
-            # m-lit LIT-OBS serves them (full observable parity, RULED Q9).
-            raise CompatibilityError(
-                "the colour-, spin- and helicity-resolved outputs of a "
-                "loop-induced process are not served yet; evaluate the "
-                "inclusive |A_loop|^2"
-            )
+            return self._induced_observable_runtime()
         if self._execution["request"]["colour_contraction"] == "fft":
             # The stored observable columns are contracted directly.
             raise CompatibilityError(FORCED_FFT_OBSERVABLES)
@@ -1750,6 +1755,35 @@ class V2VirtualRuntime:
                     # Histories and spin classes on the permuted labels.
                     observables = MappedObservables(observables, self._member)
                 runtime = V2ObservablesRuntime(
+                    observables,
+                    member=self._member,
+                    mapping=self._mapping,
+                    arithmetic=self.default_arithmetic,
+                    precision=self.default_precision,
+                )
+                runtime.set_model_parameters(self._parameters)
+                self._observables = runtime
+            return self._observables
+
+    def _induced_observable_runtime(self) -> Any:
+        """The correlated, resolved and selected outputs of a loop-induced
+        process (m-lit LIT-OBS; ``runtime.virtual.V2InducedObservablesRuntime``):
+        quadratic forms on the amplitude vectors of the process's own
+        executor, with the declared histories' stored matrices (nothing
+        regenerates); a permuted mapped process reads them on its labels."""
+
+        from pyamplicol.runtime.virtual import V2InducedObservablesRuntime
+
+        from .induced_observables import InducedObservables
+
+        with self._lock:
+            if self._observables is None:
+                observables: Any = InducedObservables(self._executor)
+                if self._member is not None and self._member.alias:
+                    from .mapping import MappedObservables
+
+                    observables = MappedObservables(observables, self._member)
+                runtime = V2InducedObservablesRuntime(
                     observables,
                     member=self._member,
                     mapping=self._mapping,

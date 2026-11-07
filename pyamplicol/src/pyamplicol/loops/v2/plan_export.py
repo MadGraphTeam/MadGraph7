@@ -2343,8 +2343,69 @@ class NativeExecutor:
         alone: ``FailedPoints`` carries the complete results of the others.
         """
 
-        from .assemble import _fraction
         from .stability import ROTATION, StabilityChecks, StabilityEstimate
+
+        stability = stability or StabilityChecks()
+        precision, evaluations, rotated, failures = self.runs(
+            points,
+            scales,
+            parameters=parameters,
+            precision=precision,
+            poles=poles,
+            stability=stability,
+            schedule=schedule,
+            ward=ward,
+        )
+        out: list[Any] = []
+        for index, reference in enumerate(evaluations):
+            if index in failures:
+                out.append(None)
+                continue
+            if not stability.enabled:
+                out.append(reference.result)
+                continue
+            budgets = {}
+            for k, runs in enumerate(rotated):
+                budgets[ROTATION.format(k)] = reference.rotation_budget(runs[index])
+            if stability.reduction:
+                budgets[stability.reduction] = reference.retest_budget
+            components = reference.result.components
+            estimate = StabilityEstimate.from_checks(
+                components["virtual"]
+                if "virtual" in components
+                else components["bare"],
+                budgets,
+                scale=reference.stability_scale(),
+                roundoff=precision.unit_roundoff,
+                families=reference.family_deviations,
+            )
+            out.append(replace(reference.result, stability=estimate))
+        if failures:
+            raise FailedPoints(out, failures)
+        return out
+
+    def runs(
+        self,
+        points: Sequence[Sequence[Sequence[Any]]],
+        scales: Sequence[Any],
+        *,
+        parameters: Mapping[str, str] | None = None,
+        precision: Any = None,
+        poles: PoleSelection | str = PoleSelection.ALL,
+        stability: Any = None,
+        schedule: Literal["B", "M"] = "B",
+        ward: Any = None,
+    ) -> tuple[Any, list[Any], list[list[Any]], dict[int, list[str]]]:
+        """The point evaluations ``evaluate`` assembles its results from: the
+        precision, the reference evaluation of every point (re-tested in the
+        reduction check's frame), per rotation of the stability checks the
+        evaluations at the rotated points, and the failures per point index
+        (a rotated run's failure names its rotation). The loop-induced
+        observables (``induced_observables``) form their quadratic forms on
+        the same evaluations' amplitude vectors."""
+
+        from .assemble import _fraction
+        from .stability import ROTATION, StabilityChecks
 
         stability = stability or StabilityChecks()
         wards = None
@@ -2392,33 +2453,7 @@ class NativeExecutor:
                 failures.setdefault(index, []).extend(
                     f"{ROTATION.format(k)}: {reason}" for reason in reasons
                 )
-        out: list[Any] = []
-        for index, reference in enumerate(evaluations):
-            if index in failures:
-                out.append(None)
-                continue
-            if not stability.enabled:
-                out.append(reference.result)
-                continue
-            budgets = {}
-            for k, runs in enumerate(rotated):
-                budgets[ROTATION.format(k)] = reference.rotation_budget(runs[index])
-            if stability.reduction:
-                budgets[stability.reduction] = reference.retest_budget
-            components = reference.result.components
-            estimate = StabilityEstimate.from_checks(
-                components["virtual"]
-                if "virtual" in components
-                else components["bare"],
-                budgets,
-                scale=reference.stability_scale(),
-                roundoff=precision.unit_roundoff,
-                families=reference.family_deviations,
-            )
-            out.append(replace(reference.result, stability=estimate))
-        if failures:
-            raise FailedPoints(out, failures)
-        return out
+        return precision, evaluations, rotated, failures
 
     def native_inputs(self, points, scales, parameters=None, precision=None):
         """The executor's native tree inputs of a batch (``inputs="native"``):

@@ -760,6 +760,7 @@ class V2ObservablesRuntime:
                 v2_public_estimate(
                     result.stability,
                     with_poles,
+                    contribution=self.contribution_kind,
                     sectors=[sector.order for sector in self._sectors],
                 )
             )
@@ -798,6 +799,7 @@ class V2ObservablesRuntime:
             poles=poles,
             stability=tuple(estimates) if checked else None,
             pole_parts=tuple(parts) if split else None,
+            contribution=self.contribution_kind,
         )
 
     def _default_born_orders(self) -> tuple[tuple[tuple[str, int], ...], ...]:
@@ -942,6 +944,47 @@ class V2ObservablesRuntime:
             "its representative process"
         )
 
+    def _require_selection(
+        self,
+        helicities: Sequence[str] | None,
+        color_flows: Sequence[str] | None,
+        *,
+        resolved: bool = False,
+    ) -> None:
+        """Refuse a selection the process cannot serve: at NLC and full
+        colour every helicity and colour is contracted
+        (``selection.require_leading_colour``)."""
+
+        from pyamplicol.loops.v2 import selection as lc
+
+        lc.require_leading_colour(
+            self._observables.slice.request.accuracy,
+            helicities,
+            color_flows,
+            resolved=resolved,
+        )
+
+    def _resolution(
+        self, color_resolution: str | None
+    ) -> tuple[Any, tuple[Any, ...], tuple[str, ...], tuple[str, ...]]:
+        """(the resolved column set's key, its colour components, the Born
+        and the virtual colour IDs) of ``evaluate_resolved``: at leading
+        colour one entry per Born basis element (``basis-<i>``), else one
+        contracted component with the accuracy as its ID."""
+
+        if color_resolution is not None:
+            raise CompatibilityError(
+                "color_resolution selects the colour axis of a loop-induced "
+                "process's resolved output; a Born-interfered virtual resolves "
+                "its colour by its accuracy"
+            )
+        accuracy = self._observables.slice.request.accuracy
+        if accuracy == "lc":
+            components = tuple(self._observables.components)
+            ids = tuple(f"basis-{b}" for b in components)
+            return "helicity-colour", components, ids, ids
+        return "helicity", (None,), (str(accuracy),), (str(accuracy),)
+
     def _evaluate_selected(
         self,
         momenta: Momenta,
@@ -961,9 +1004,7 @@ class V2ObservablesRuntime:
 
         poles, checks = v2_options(on_failure=on_failure, **options)
         observables = self._observables
-        lc.require_leading_colour(
-            observables.slice.request.accuracy, helicities, color_flows
-        )
+        self._require_selection(helicities, color_flows)
         self._refuse_member_selection()
         rows, basis = self.selection_catalogue().resolve(helicities, color_flows)
         column = lc.column(rows, basis)
@@ -1131,14 +1172,15 @@ class V2ObservablesRuntime:
         helicities: Sequence[str] | None = None,
         color_flows: Sequence[str] | None = None,
         reductions: Mapping[str, VirtualReduction] | None = None,
+        color_resolution: str | None = None,
         **options: Any,
     ) -> ResolvedVirtualEvaluation:
         """Per Born helicity row and Born basis element (design §8.5); at
         leading colour ``helicities`` and ``color_flows`` (the tree engine's
         IDs and ordinals, as in ``evaluate``) keep the selected rows and the
-        basis elements of the selected flows, each entry as without them."""
-
-        from pyamplicol.loops.v2 import selection as lc
+        basis elements of the selected flows, each entry as without them.
+        ``color_resolution`` is a loop-induced process's colour axis
+        (``V2InducedObservablesRuntime``)."""
 
         selection, checks = v2_options(on_failure=on_failure, **options)
         with_poles = computes_poles(selection)
@@ -1150,14 +1192,10 @@ class V2ObservablesRuntime:
         if self._member is not None:
             # The member's rows in its own catalogue order.
             rows = tuple(sorted(self._member.row(row) for row in rows))
-        accuracy = observables.slice.request.accuracy
-        resolution = "helicity-colour" if accuracy == "lc" else "helicity"
-        components: tuple[Any, ...] = (
-            observables.components if accuracy == "lc" else (None,)
-        )
+        resolution, components, born_ids, ids = self._resolution(color_resolution)
         helicity_ids = tuple(f"h{i}" for i in range(len(rows)))
         if helicities or color_flows:
-            lc.require_leading_colour(accuracy, helicities, color_flows, resolved=True)
+            self._require_selection(helicities, color_flows, resolved=True)
             self._refuse_member_selection()
             kept, basis = self.selection_catalogue().resolve(helicities, color_flows)
             if kept is not None:
@@ -1257,6 +1295,7 @@ class V2ObservablesRuntime:
                         v2_public_estimate(
                             result[(row, b)].stability,
                             with_poles,
+                            contribution=self.contribution_kind,
                             sectors=[sector.order for sector in self._sectors],
                         )
                         for b in components
@@ -1297,11 +1336,6 @@ class V2ObservablesRuntime:
                         )
                     )
                 )
-        ids = (
-            tuple(f"basis-{b}" for b in components)
-            if accuracy == "lc"
-            else (str(accuracy),)
-        )
         return ResolvedVirtualEvaluation(
             born_values=tuple(born_values),
             values=tuple(values),
@@ -1310,10 +1344,73 @@ class V2ObservablesRuntime:
             diagnostics=tuple(diagnostics),
             r2=R2Selection(R2Strategy.MODEL, R2Strategy.MODEL, "model-supplied R2"),
             helicity_ids=helicity_ids,
-            born_color_ids=ids,
+            born_color_ids=born_ids,
             virtual_color_ids=ids,
             color_accuracy=observables.slice.request.accuracy,
             poles=selection,
             stability=tuple(estimates) if checks.enabled else None,
             pole_parts=tuple(parts) if split else None,
+            contribution=self.contribution_kind,
         )
+
+
+class V2InducedObservablesRuntime(V2ObservablesRuntime):
+    """``V2ObservablesRuntime`` over a loop-induced process
+    (``loops.v2.induced_observables.InducedObservables``, m-lit LIT-OBS):
+    the same calls and result types, every output a quadratic form on the
+    point's one amplitude vector (no extra dressing or reduction; RULED Q9).
+
+    Results are ``contribution="loop-induced"`` (zeroed Born fields, RULED
+    Q36). The colour histories are the declared ones (the stored matrices),
+    ``"born"`` the colour metric: |A|^2. ``evaluate(helicities=...)``
+    selects helicity rows at full colour (RULED Q39: |A(h)|^2/avg with the
+    total's average, so a complete selection sums to it; no parity or Bose
+    row mapping, RULED Q37); a loop-induced process has no colour flows
+    (full colour only, RULED Q8). ``evaluate_resolved`` is per helicity row
+    with one colour-contracted component (``"full"``), or with
+    ``color_resolution="amplitude-basis"`` per amplitude-basis anchor
+    (``amplitude-<t>``: Re(conj(a_t) (G a)_t)/avg, a basis-dependent split
+    summing to the row's value). The native executor runs every call."""
+
+    contribution_kind = "loop-induced"
+
+    def __init__(self, observables: Any, **options: Any) -> None:
+        if options.get("executor", "native") != "native":
+            raise ValueError("loop-induced observables run the native executor")
+        super().__init__(observables, **options)
+
+    def _default_born_orders(self) -> tuple[tuple[tuple[str, int], ...], ...]:
+        return ()
+
+    def _require_selection(
+        self,
+        helicities: Sequence[str] | None,
+        color_flows: Sequence[str] | None,
+        *,
+        resolved: bool = False,
+    ) -> None:
+        del helicities, resolved
+        if color_flows:
+            raise CompatibilityError(
+                "a loop-induced process is evaluated at full colour only and "
+                "has no colour flows to select; select helicity rows "
+                "(helicities=...) or resolve the amplitude-basis anchors "
+                "(evaluate_resolved(color_resolution='amplitude-basis'))"
+            )
+
+    def _resolution(
+        self, color_resolution: str | None
+    ) -> tuple[Any, tuple[Any, ...], tuple[str, ...], tuple[str, ...]]:
+        from pyamplicol.loops.v2 import induced_observables as io
+
+        choice = io.CONTRACTED if color_resolution is None else color_resolution
+        if choice not in io.COLOUR_RESOLUTIONS:
+            raise CompatibilityError(
+                f"unknown loop-induced colour resolution {color_resolution!r}; "
+                f"choose one of {list(io.COLOUR_RESOLUTIONS)}"
+            )
+        if choice == io.CONTRACTED:
+            return choice, (None,), (), ("full",)
+        size = len(self._observables.slice.amplitude)
+        components = tuple(range(size))
+        return choice, components, (), tuple(io.ANCHOR_ID.format(t) for t in components)
