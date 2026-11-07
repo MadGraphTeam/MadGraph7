@@ -388,7 +388,8 @@ one = runtime.evaluate(points, mu_r2=scales, helicities=["h0"])  # |A(h0)|^2 / a
 A spin vector is projected on the leg's polarisation vectors (exact for a
 vector in their span, and for a massless leg up to a multiple of its
 momentum); a single-helicity selection divides by the total's average, so the
-selections of every row sum to the total, and dresses the selected rows only.
+selections of every row sum to the total, and its dressing is pruned to the
+selected rows (a family keeping more than half of its links runs whole).
 The amplitude-basis anchors are basis-dependent parts whose sum is the
 helicity's value. Colour-flow selection does not exist for loop-induced
 processes.
