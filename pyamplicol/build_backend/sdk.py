@@ -373,7 +373,8 @@ def _scan_archive_symbols(path: Path) -> bool:
                 if len(fields) >= 2 and fields[-2] not in _UNDEFINED_SYMBOL_TYPES:
                     continue
                 symbol = fields[-1]
-                normalized = symbol.removeprefix("_").lower()
+                # Mach-O names carry one more leading underscore.
+                normalized = symbol.lstrip("_").lower()
                 if normalized.startswith(FORBIDDEN_UNDEFINED_SYMBOL_PREFIXES):
                     forbidden.append(symbol)
             if forbidden:

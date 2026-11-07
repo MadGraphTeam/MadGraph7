@@ -1686,7 +1686,8 @@ def _scan_capi_archive(path: Path, *, allow_local_rustup: bool) -> bool:
             # A bare name (no type) is the Darwin form of an undefined symbol.
             if kind is not None and kind not in _UNDEFINED_SYMBOL_TYPES:
                 continue
-            normalized = symbol.removeprefix("_").lower()
+            # Mach-O names carry one more leading underscore (``__Py_Dealloc``).
+            normalized = symbol.lstrip("_").lower()
             if normalized.startswith(_FORBIDDEN_CAPI_UNDEFINED_PREFIXES):
                 forbidden_symbols.append(symbol)
         if forbidden_symbols:

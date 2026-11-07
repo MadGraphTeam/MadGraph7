@@ -2088,7 +2088,7 @@ def test_relative_path_scan_skips_elf_code_sections(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "symbol",
-    ["_PyErr_SetString", "PyLong_FromLong", "_Py_Dealloc"],
+    ["_PyErr_SetString", "PyLong_FromLong", "_Py_Dealloc", "__Py_Dealloc"],
 )
 def test_capi_archive_scan_rejects_undefined_python_symbols(
     tmp_path: Path,

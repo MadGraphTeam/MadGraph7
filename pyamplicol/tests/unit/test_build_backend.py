@@ -2414,7 +2414,7 @@ def test_static_archive_byte_scan_rejects_nonrelocatable_paths(
 
 @pytest.mark.parametrize(
     "symbol",
-    ["_PyErr_SetString", "PyLong_FromLong", "_Py_Dealloc"],
+    ["_PyErr_SetString", "PyLong_FromLong", "_Py_Dealloc", "__Py_Dealloc"],
 )
 # BSD-format lines, and Darwin's bare names for -u on Mach-O members.
 @pytest.mark.parametrize(
