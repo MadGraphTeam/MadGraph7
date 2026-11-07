@@ -235,6 +235,18 @@ ANNOUNCEMENT:
        list for good, and a later import of e.g. loop_sm then grouped mdl_MW under
        ('aEWM1','Gf') instead of ('aEWM1',), reordering mp_intparam_definition.inc.
        Each instance now works on its own copy.
+   NC+DdE+LM+HS+LS: gamma-UPC 1.8 with forward neutron tagging in ultraperipheral
+       collisions, at LO and NLO.
+       - new pdlabel edf<y>n<z>n / chf<y>n<z>n: EDFF / ChFF with the neutron tags <y>, <z>
+         of beam 1 and beam 2 among i (0n+Xn), x (Xn), 0, 1, 2, 3, 4. Pb208, Au197 and O16
+         (up to 2n) are supported. The tag of a proton beam is ignored.
+       - edp/edm (chp/chm) in place of edf (chf) give the upper/lower neutron-emission
+         cross sections, for the uncertainty estimate.
+       - new photoabsorption and 1n-4n emission cross sections for Pb208, Au197, O16 (and U238,
+         not enabled yet), and a new interpolation of the photon-photon luminosity grid.
+   OM: Bug fix: a madevent run with a gamma-UPC pdlabel (edff, chff) stopped at
+       "compile Source Directory" when the Source directory was built in parallel:
+       gamma-UPC was compiled twice at once ("Cannot rename module file").
 
 
 3.8.2 (XX/XX/XX):
@@ -265,15 +277,6 @@ ANNOUNCEMENT:
         g g > t t~, t > b w+ with boost_choice [5, -6].
     VD: Quantum Information library: new observable Get_Steering (two-qubit steering for 2 or 3
         measurements per site, 1510.08030).
-    NC+DdE+LM+HS+LS: gamma-UPC 1.8 with forward neutron tagging in ultraperipheral
-        collisions, at LO and NLO.
-        - new pdlabel edf<y>n<z>n / chf<y>n<z>n: EDFF / ChFF with the neutron tags <y>, <z>
-          of beam 1 and beam 2 among i (0n+Xn), x (Xn), 0, 1, 2, 3, 4. Pb208, Au197 and O16
-          (up to 2n) are supported. The tag of a proton beam is ignored.
-        - edp/edm (chp/chm) in place of edf (chf) give the upper/lower neutron-emission
-          cross sections, for the uncertainty estimate.
-        - new photoabsorption and 1n-4n emission cross sections for Pb208, Au197, O16 (and U238,
-          not enabled yet), and a new interpolation of the photon-photon luminosity grid.
 
 3.8.1 (XX/XX/XX):
     OM: LO: the final unweighting no longer truncates the events above the maximum

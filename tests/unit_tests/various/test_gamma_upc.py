@@ -392,6 +392,23 @@ program check_pbreak
 end program check_pbreak
 """
 
+    # calls the routine of gammaUPC_dummy.f selected on stdin
+    dummy_driver = """
+      program check_dummy
+      implicit none
+      integer which
+      double precision photonpdfsquare,RA,lum
+      external photonpdfsquare
+      read(*,*) which
+      if(which.eq.1) then
+         lum = photonpdfsquare(0.1d0,0.1d0)
+         write(*,*) lum
+      else
+         call Get_nucleus_RA(82,126,RA)
+      endif
+      end
+"""
+
     @classmethod
     def setUpClass(cls):
         cls.fc = misc.which('gfortran')
@@ -415,6 +432,9 @@ end program check_pbreak
             fsock.write(cls.pbreak_driver)
         cls.compile(src, ['-ffixed-line-length-132', '-o', 'check_labels', 'check_labels.f'] + objects)
         cls.compile(src, ['-o', 'check_pbreak', 'check_pbreak.f90'] + objects)
+        with open(pjoin(src, 'check_dummy.f'), 'w') as fsock:
+            fsock.write(cls.dummy_driver)
+        cls.compile(src, ['-o', 'check_dummy', 'check_dummy.f', 'gammaUPC_dummy.f'])
         cls.src = src
 
     @classmethod
@@ -453,6 +473,16 @@ end program check_pbreak
             out = self.run_exe('check_labels', stdin=label + '\n')
             self.assertEqual(out.returncode, 2, (label, out.stdout))
             self.assertIn('unknown gamma-UPC pdlabel', out.stdout)
+
+    def test_dummy_stops_with_error(self):
+        """the dummy library (linked when no gamma-UPC pdlabel is used) stops
+        with a non-zero exit status: a text code ('stop "gamma-UPC 1"') exits
+        with status 0, which would make a wrongly linked job look successful"""
+
+        for which in [1, 2]:
+            out = self.run_exe('check_dummy', stdin='%i\n' % which)
+            self.assertEqual(out.returncode, which, out.stdout)
+            self.assertIn('gamma-UPC dummy linked', out.stdout)
 
     def test_pbreak_sum_rules(self):
         """break-up probabilities of Pb208+Pb208: 0n+Xn=1 per nucleus, the four
