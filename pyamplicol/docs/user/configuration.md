@@ -688,6 +688,7 @@ rotation_count = 1             # that many default (generic-axis) rotations
 # rotations = ["x:3/5:4/5"]    # alternative: exact "<x|y|z>:<cos>:<sin>" or "<ax>,<ay>,<az>:<radians>"
 reduction_direction = true     # re-reduce every loop numerator, reversed frame
 rescaled = true                # ... at rescaled inputs: master integrals evaluated again
+# cross_backend = true         # every point again on the other reduction backend
 ```
 
 This is the recommended configuration (Python `VirtualStabilityChecks(1, True,
@@ -708,7 +709,16 @@ above). `poles` is a pole selection (`PoleSelection` in Python):
 under every selection, and `"none"` saves the pole work. The CLI spells these
 `--poles {all,none,uv,ir}`,
 `--stability-rotation SPEC` (repeatable), `--stability-rotations COUNT`,
-`--stability-reduction-direction` and `--stability-rescaled`.
+`--stability-reduction-direction`, `--stability-rescaled` and
+`--stability-cross-backend`. `cross_backend` (Python
+`VirtualStabilityChecks(..., cross_backend=True)`) evaluates every point a
+second time on the other reduction backend (TIRust for a call on NinjaRS,
+NinjaRS for one on TIRust) and adds the deviation of its reduction lanes to
+the estimate (check `cross-backend`); it combines with another check, is
+refused where the other backend cannot serve the carrier (TIRust at
+double-double in this release, or a native extension built without TIRust),
+and a point the other backend fails keeps the other checks' estimate with the
+reason in its estimate's `not_run`.
 
 #### Reduction backend
 

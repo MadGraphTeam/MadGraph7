@@ -465,7 +465,9 @@ The precision-rescue options (`--stability-higher`,
 the legacy loop engine, the only one that served them; naming one is refused
 with the reason. v2 evaluations return stability estimates
 (`--stability-rotations`, `--stability-reduction-direction`,
-`--stability-rescaled`) and leave escalating `--arithmetic` to the caller.
+`--stability-rescaled`, `--stability-cross-backend`: the other reduction
+backend's evaluation of every point, with another check) and leave escalating
+`--arithmetic` to the caller.
 
 `--on-failure raise` is the default. `--on-failure return` preserves successful
 points and returns an unavailable whole-point row for each numerical failure:

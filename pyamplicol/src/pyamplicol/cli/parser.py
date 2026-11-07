@@ -730,6 +730,16 @@ def _add_evaluation_options(
         ),
     )
     parser.add_argument(
+        "--stability-cross-backend",
+        dest="evaluation.stability_checks.cross_backend",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "v2 virtual check: evaluate every point again on the other "
+            "reduction backend (with another check)"
+        ),
+    )
+    parser.add_argument(
         "--verify-successful",
         dest="evaluation.stability.verify_successful",
         action=argparse.BooleanOptionalAction,
