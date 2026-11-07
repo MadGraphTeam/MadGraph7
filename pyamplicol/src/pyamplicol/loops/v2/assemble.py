@@ -207,8 +207,10 @@ from .skeletons import Skeleton
 from .stability import (
     ROTATION,
     Budget,
+    CrossRuns,
     StabilityChecks,
     StabilityEstimate,
+    cross_check,
     differences,
 )
 
@@ -3119,14 +3121,40 @@ class LoopSlice:
             budgets[ROTATION.format(index)] = reference.rotation_budget(rotated)
         if stability.reduction:
             budgets[stability.reduction] = reference.retest_budget
+        not_run = {}
+        if stability.cross_backend:
+            reference.cross_run = self._cross_run(
+                exact_point, scale, dict(parameters or {}), precision, poles
+            )
+            not_run = cross_check(reference, budgets)
         estimate = StabilityEstimate.from_checks(
             reference.result.components["virtual"],
             budgets,
             scale=reference.stability_scale(),
             roundoff=precision.unit_roundoff,
             families=reference.family_deviations,
+            not_run=not_run,
         )
         return replace(reference.result, stability=estimate)
+
+    def _cross_run(self, point, scale, parameters, precision, poles):
+        """The point on the other reduction backend (the cross-backend
+        check, ``stability.CrossRuns.of``): its evaluation, or None with the
+        reason the other backend failed or refused it."""
+
+        from pyamplicol.api.errors import ReductionUnavailable
+
+        from .reduction import NAMES, cross, current, running
+
+        backend = cross(current())
+        try:
+            with running(backend):
+                runs = [
+                    self._evaluate(point, scale, parameters, precision, poles, None)
+                ]
+        except (ReductionUnavailable, ValueError, ArithmeticError) as error:
+            return CrossRuns(NAMES[backend], [None], {0: [str(error)]}).of(0)
+        return CrossRuns(NAMES[backend], runs, {}).of(0)
 
     def _evaluate(self, point, scale, parameters, precision, poles, retest):
         with _Numbers(precision).scope():

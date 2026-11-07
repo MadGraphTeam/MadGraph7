@@ -867,6 +867,17 @@ def rotation_budget(direct: Any, rotated: Any) -> dict:
     )
 
 
+def cross_budget(direct: Any, other: Any) -> dict:
+    """The error budget of the cross-backend check of a loop-induced point
+    (``stability.CROSS``): ``other`` is the same point on the other
+    reduction backend, so the lanes and kets are compared as
+    ``rotation_budget`` compares them, without a little-group phase."""
+
+    with direct.numbers.scope():
+        unit = {row: direct.numbers.pair(1) for row in rows_of(direct)}
+    return quadratic_budget(direct, _rotation_deviations(direct, other, unit))
+
+
 def rotation_errors(direct: Any, rotated: Any) -> dict:
     """Per (loop order, row), t and Laurent coefficient k the absolute
     deviation bound of a probe's rotation check (``probe``): the lanes and
