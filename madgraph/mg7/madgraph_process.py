@@ -2132,10 +2132,8 @@ class MadgraphProcess:
 
         The beamstrahlung split has to be sampled at the scale the density
         was evaluated at, which is `fact_scale1` -- the same one Integrand
-        hands to the luminosity. An LHE file does not carry it: SCALUP is
-        the shower starting scale, a different quantity, so a run with a
-        dynamical factorisation scale has nothing to recover it from after
-        the fact, and annotate_lhe says so and falls back.
+        hands to the luminosity. With a dynamical scale annotate_lhe reads it
+        back per event from SCALUP, which mg7 writes as mu_F.
         """
         beam = self.run_card["beam"]
         if not beam["fixed_fact_scale"]:

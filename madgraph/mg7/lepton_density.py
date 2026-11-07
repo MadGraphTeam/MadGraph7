@@ -208,15 +208,11 @@ class LeptonDensity:
         x1 = (E+pz)/sqrt(s), x2 = (E-pz)/sqrt(s) -- so this needs nothing
         threaded through the integrand or the event record.
 
-        `fact_scale` is the scale the density was evaluated at, and has to be
-        passed in: the only scale an LHE event carries is SCALUP, which is
-        the shower starting scale. MadEvent happens to write mu_F there, so
-        reading it looks right when the two files are compared, but mg7 does
-        not -- it writes a per-event shower scale, 10 to 120 GeV where mu_F
-        is 91.188 -- and sampling the split at that scale draws it from a
-        different spectrum than the density that produced the event. None
-        falls back to SCALUP with a warning, which is all a run with a
-        dynamical factorisation scale can do.
+        The split has to be sampled at the scale the density was evaluated
+        at. `fact_scale` gives it for a fixed factorisation scale; None takes
+        each event's SCALUP, which mg7 writes as max(mu_F1, mu_F2) -- with a
+        dressed density, which only beam 1 carries, that is the mu_F the
+        luminosity used, as madevent writes it too.
 
         Returns the number of events annotated.
         """
@@ -230,11 +226,6 @@ class LeptonDensity:
         import numpy as np
         opener = gzip.open if path.endswith('.gz') else open
         tmp_path = path + '.bstrahl_tmp'
-        if fact_scale is None:
-            logger.warning(
-                'the factorisation scale is dynamical, so the beamstrahlung '
-                'split falls back to the shower scale in SCALUP; it is not '
-                'the scale the density was evaluated at')
 
         # A list seed gives a stream independent of default_rng(run_seed),
         # which the event generation already used; the mask keeps any integer

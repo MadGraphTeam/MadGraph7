@@ -871,14 +871,13 @@ class TestLheAnnotation(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
     def test_fact_scale_replaces_scalup(self):
-        """mu_F has to be passed in; SCALUP is a different scale.
+        """A fixed mu_F is used as given; otherwise SCALUP is.
 
-        SCALUP is the only scale an LHE event carries and MadEvent happens to
-        write mu_F there, but mg7 writes a per-event shower scale. The split
-        turns out to be weakly scale dependent -- two orders of magnitude in Q
-        barely move it -- so this cannot be pinned by comparing the fractions
-        it produces; what it pins is that a caller who supplies mu_F is not
-        silently put on the fallback, and one who cannot is told.
+        mg7 writes mu_F into SCALUP (max(mu_F1, mu_F2), as madevent does), so
+        a dynamical-scale run reads it back per event, silently. The split is
+        weakly scale dependent -- two orders of magnitude in Q barely move it
+        -- so this is pinned by comparing tags between files, not by the
+        fractions themselves.
         """
         tmp = tempfile.mkdtemp()
         try:
@@ -897,12 +896,13 @@ class TestLheAnnotation(unittest.TestCase):
             density.annotate_lhe(odd, seed=5, fact_scale=91.188)
             self.assertEqual(self._tags(right), self._tags(odd))
 
-            # and without it the run is told which scale it fell back to
+            # without it, SCALUP is the scale: a file whose SCALUP is that
+            # mu_F gets the same split as passing mu_F, and quietly
             fallback = os.path.join(tmp, 'fallback.lhe')
-            self._lhe(fallback, fractions, scale=7.0)
-            with self.assertLogs(self.mod.logger, level='WARNING') as caught:
+            self._lhe(fallback, fractions, scale=91.188)
+            with self.assertNoLogs(self.mod.logger, level='WARNING'):
                 density.annotate_lhe(fallback, seed=5)
-            self.assertTrue(any('SCALUP' in line for line in caught.output))
+            self.assertEqual(self._tags(right), self._tags(fallback))
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
