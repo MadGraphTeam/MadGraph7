@@ -17,7 +17,16 @@ carrier (``--arithmetic``: binary64 by default, ``double-double`` or
   one dipole per gluon;
 * resolved: ``evaluate_resolved`` contracted and on the amplitude-basis
   anchors;
-* single-helicity selection: ``evaluate(helicities=[h])`` for every row.
+* single-helicity selection: ``evaluate(helicities=[h])`` for every row;
+* the summed virtual: ``evaluate`` (``virtual``).
+
+``--set lit-amp`` runs the summed virtual of the lit-amp loop-induced rows
+(``LIT_AMP``: g g > h, h > g g, g g > a a, g g > z z, g g > h h, g g > h g,
+u u~ > h g; m-lit lit-cache, DECISIONS 2026-11-07 21:50 R3 (b)) instead,
+generated without declared observables. Every set also records, per row and
+backend, the fixture points the production call serves (``served``: the
+summed virtual with the checks off, the shipped settings; R3 (c): TIRust must
+serve every point NinjaRS serves).
 
 Every sector and Laurent coefficient (finite part and both poles) of every
 output is compared. In binary64 an entry passes when |N - T| <= 10 max(E_N,
@@ -68,6 +77,10 @@ Run (licence in the environment, the staged native of the slice)::
         --output <scratch>/backends-dd.json --arithmetic double-double
 
 ``--work-dir`` keeps the generated artifacts (re-used when present).
+The lit-amp rows (``--set lit-amp``, the summed virtual only)::
+
+    ... tools/loop_v2_observables_backends.py --work-dir <scratch> \
+        --output <scratch>/backends-lit-amp.json --set lit-amp
 """
 
 from __future__ import annotations
@@ -90,6 +103,18 @@ RELATIVE = Decimal("1e-24")
 # docstring), with the rescaled reduction re-test.
 ROTATIONS = 3
 COEFFICIENTS = ("finite", "single_pole", "double_pole")
+# The lit-amp loop-induced rows (M-LIT-a): fixture name -> process; their
+# artifacts declare no observables and the check compares the summed
+# virtual (``--set lit-amp``).
+LIT_AMP = {
+    "li_gg_h": "g g > h",
+    "li_h_gg": "h > g g",
+    "li_gg_aa": "g g > a a",
+    "li_gg_zz": "g g > z z",
+    "li_gg_hh": "g g > h h",
+    "li_gg_hg": "g g > h g",
+    "li_uux_hg": "u u~ > h g QED=1",
+}
 
 
 class NotExercised(Exception):
@@ -110,12 +135,21 @@ def _fixture(name: str) -> dict:
     return json.loads((FIXTURES / f"{name}.json").read_text())
 
 
-def _artifact(work: Path, name: str, expression: str) -> Path:
-    from tests.unit.loop_v2_induced_observables_rows import generate
+def _artifact(work: Path, name: str, expression: str, observables: bool = True) -> Path:
+    """The row's artifact: with every dipole and gluon spin class declared
+    (the LI-O1 rows), or without declared observables (``observables``
+    False: the summed virtual of the lit-amp rows)."""
 
     output = work / name / "artifact"
     if not (output / "artifact.json").is_file():
-        generate(work / name, name, expression)
+        if observables:
+            from tests.unit.loop_v2_induced_observables_rows import generate
+
+            generate(work / name, name, expression)
+        else:
+            from tests.unit.test_loop_v2_induced import _generate
+
+            _generate(work / name, (("p", expression),), _fixture(name))
     return output
 
 
@@ -176,12 +210,41 @@ def _estimates(stability, count: int) -> list:
     return [None] * count if stability is None else list(stability)
 
 
+def _served(name: str, runtime, backend: str, carrier: dict) -> dict:
+    """The fixture points the production call serves on ``backend``: the
+    summed virtual with every pole and the checks off (the shipped
+    settings), per point "success" or the lane diagnostic's reason."""
+
+    fixture = _fixture(name)
+    result = runtime.evaluate(
+        fixture["points"],
+        mu_r2=[str(Fraction(mu) ** 2) for mu in fixture["mu_r"]],
+        stability_checks=None,
+        reduction=backend,
+        poles="all",
+        on_failure="return",
+        **carrier,
+    )
+    _effective(result, backend, "served")
+    return {
+        f"p{p}": "success" if lane.status == "success" else lane.detail[:300]
+        for p, lane in enumerate(result.diagnostics)
+    }
+
+
 def _entries(
-    name: str, runtime, backend: str, stability, carrier: dict, failed: dict
+    name: str,
+    runtime,
+    backend: str,
+    stability,
+    carrier: dict,
+    failed: dict,
+    observables: bool = True,
 ) -> dict:
     """Every observable output of one row on one backend: label -> per
     sector the computed Laurent coefficients with their absolute
-    estimates (``_laurents``) per point. The TIRust arm returns its failed
+    estimates (``_laurents``) per point; the summed virtual only without
+    declared ``observables``. The TIRust arm returns its failed
     points (binary64: a row its conditioning gates refuse fails the point
     closed, m-lit lit-tir; never a value) instead of raising: their outputs
     are left out and recorded in ``failed`` (label -> reason)."""
@@ -217,6 +280,9 @@ def _entries(
             if served(result, p, f"{label}/p{p}"):
                 out[f"{label}/p{p}"] = _laurents(values, estimate)
 
+    keep("virtual", runtime.evaluate(points, **options))
+    if not observables:
+        return out
     ids = [item.id for item in runtime.available_color_correlations()]
     many = runtime.evaluate_correlated_many(
         points, {i: CorrelatedRequest(i) for i in ids}, **options
@@ -322,6 +388,13 @@ def main() -> int:
         default="double",
     )
     parser.add_argument("--precision", type=int, default=None)
+    parser.add_argument(
+        "--set",
+        choices=("li-o1", "lit-amp"),
+        default="li-o1",
+        help="the LI-O1 rows with every observable (default) or the lit-amp "
+        "rows' summed virtual",
+    )
     args = parser.parse_args()
     binary64 = args.arithmetic == "double"
     carrier = {"arithmetic": args.arithmetic}
@@ -340,7 +413,15 @@ def main() -> int:
         if binary64
         else f"L6: |N - T| <= 1e-24 max |coefficient| ({args.arithmetic})"
     )
-    record: dict = {"rule": rule, "carrier": carrier, "rows": {}}
+    observables = args.set == "li-o1"
+    row_set = ROWS if observables else LIT_AMP
+    record: dict = {
+        "rule": rule,
+        "carrier": carrier,
+        "set": args.set,
+        "rows": {},
+        "served": {},
+    }
 
     def write() -> None:
         args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -353,19 +434,40 @@ def main() -> int:
         return 2
 
     failed = 0
-    for name in args.rows or sorted(ROWS):
-        runtime = Runtime.load(_artifact(args.work_dir, name, ROWS[name]), process="p")
+    for name in args.rows or sorted(row_set):
+        runtime = Runtime.load(
+            _artifact(args.work_dir, name, row_set[name], observables), process="p"
+        )
         try:
-            ninjars = _entries(name, runtime, "ninjars", stability, carrier, {})
+            served = {
+                backend: _served(name, runtime, backend, carrier)
+                for backend in BACKENDS
+            }
+            record["served"][name] = served
+            ninjars = _entries(
+                name, runtime, "ninjars", stability, carrier, {}, observables
+            )
         except (ReductionUnavailable, NotExercised) as error:
             # The reference arm must run: an error, not a missing TIRust.
             record["error"] = f"NinjaRS arm: {error}"
             write()
             print(f"FAIL: the NinjaRS arm does not run: {error}")
             return 1
+        missing = sorted(
+            point
+            for point, status in served["ninjars"].items()
+            if status == "success" and served["tirust"][point] != "success"
+        )
+        if missing:
+            # R3 (c): a point NinjaRS serves at the shipped settings that
+            # TIRust does not.
+            record.setdefault("tirust_unserved", {})[name] = missing
+            print(f"{name}: TIRust does not serve {missing} at the shipped settings")
         failures: dict = {}
         try:
-            tirust = _entries(name, runtime, "tirust", stability, carrier, failures)
+            tirust = _entries(
+                name, runtime, "tirust", stability, carrier, failures, observables
+            )
         except (ReductionUnavailable, NotExercised) as error:
             return not_exercised(str(error))
         if failures:
@@ -415,6 +517,12 @@ def main() -> int:
         print(f"FAIL ({failed} outputs)")
         return 1
     reasons = []
+    if record.get("tirust_unserved"):
+        reasons.append(
+            "TIRust does not serve every point NinjaRS serves at the shipped "
+            "settings: "
+            + ", ".join(f"{k}: {len(v)}" for k, v in record["tirust_unserved"].items())
+        )
     if record.get("tirust_failed"):
         # Every compared output agrees, but TIRust failed some points closed.
         reasons.append(
