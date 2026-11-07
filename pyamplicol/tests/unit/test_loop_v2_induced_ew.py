@@ -287,14 +287,15 @@ def test_ew_rows_in_double_double(ew, name, analytic):
         assert _relative(_total(dd), row["providers"]["madloop"]["value"]) <= LAX
 
 
-def test_h_to_a_a_in_arbitrary_precision(ew):
-    """AP on the tier's analytic row (h > a a: W, Goldstone, ghost and
-    fermion triangles): the oracle within 1e-12 and double-double within the
-    on-shell contract 1e-24 (L7)."""
+@pytest.mark.parametrize("name", ["li_h_aa", "li_gg_aa_cms"])
+def test_arbitrary_precision_on_one_row_per_tier(ew, name):
+    """AP on one analytic row per tier (the EW rows: h > a a, W, Goldstone,
+    ghost and fermion triangles; LI-C1: g g > a a with a complex top mass):
+    the oracle within 1e-12 and double-double within the on-shell contract
+    1e-24 (L7)."""
 
     from pyamplicol.loops.v2.assemble import Precision
 
-    name = "li_h_aa"
     (ap,) = ew.values(name, Precision.arbitrary(40), points=[0])
     (dd,) = ew.values(name, Precision.double_double(), points=[0])
     oracle = Decimal(_fixture(name)["rows"][0]["providers"]["analytic"]["decimal"])
