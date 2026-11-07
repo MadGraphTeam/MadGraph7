@@ -18,7 +18,9 @@ crates/linnet-py and tydenso, which pyAmpliCol does not link, carry their own).
 pyAmpliCol uses the crates declaring
 "MIT OR Apache-2.0" under the MIT License, whose text follows. linnet depends
 on the vendored dot-parser 0.5.1 (GPL-2.0-or-later), recorded in
-licenses/rust/dot-parser-0.5.1/.
+licenses/rust/dot-parser-0.5.1/. linnet's crates/linnet/src/parser/subgraph_free.rs
+is adapted from dot-parser 0.5.1's src/subgraph_free.rs (Martin Vassor,
+GPL-2.0-or-later) and is covered by the same notice.
 
 MIT License
 
