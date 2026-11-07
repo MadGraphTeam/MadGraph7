@@ -1597,6 +1597,26 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
             if name in FO_card:
                 self.run_card.set(name, FO_card[name], user=False)
 
+        # me_frame needs the process: what [1,2] means, and which legs may not
+        # enter a frame once real emission is computed (see
+        # RunCardNLO.get_me_frame_legs, which raises for a frame that is not
+        # infrared safe). A run being compiled hands it over here, with the
+        # mode. A bare 'treatcards run' (the reweighting compiles its rw_me
+        # Source that way) has no run_card loaded: the parent reads the card,
+        # and RunCardNLO.write_include_file finds the process on disk.
+        if isinstance(getattr(self, 'run_card', None), banner_mod.RunCardNLO):
+            proc_charac = getattr(self, 'proc_characteristics', None) or \
+                          self.get_characteristics()
+            self.run_card.set_me_frame_process(proc_charac,
+                real_emission=mode not in ['LO', 'aMC@LO', 'noshowerLO'])
+            legs = self.run_card.get_me_frame_legs()
+            if legs != (self.run_card['me_frame'] if 'me_frame' in
+                        self.run_card.user_set else []):
+                logger.info('me_frame: the matrix elements are evaluated in '
+                            'the rest frame of legs %s, which is the partonic '
+                            'c.m. of the Born and stays infrared safe for the '
+                            'real emission.' % legs)
+
         return super(aMCatNLOCmd,self).do_treatcards(line, amcatnlo)
     
     ############################################################################
@@ -4081,13 +4101,14 @@ RESTART = %(mint_mode)s
 
         # check that if FxFx is activated the correct shower plugin is present
         if shower == 'PYTHIA8' and self.run_card['ickkw'] == 3:
-            misc.sprint(self.options['pythia8_path'])
             f1 = open(pjoin(self.me_dir, "MCatNLO","Scripts", "JetMatching.h"), "r").read()
             py8_plugin = pjoin(self.options['pythia8_path'], "include","Pythia8Plugins","JetMatching.h")
             if not os.path.exists(py8_plugin):
                 raise Exception("FxFx requires a dedicated plugin to be installed in Pythia8. See http://cern.ch/amcatnlo/FxFx_merging.htm")
             f2 = open(py8_plugin).read()
-            if f1 != f2:
+            # the two copies may differ in comments only (spelling, the
+            # MadGraph7 name), which does not change the plugin
+            if not misc.same_cpp_code(f1, f2):
                 raise Exception("FxFx requires a dedicated plugin to be installed in Pythia8. Incorrect plugin detected. See http://cern.ch/amcatnlo/FxFx_merging.htm")
 
         if shower == 'PYTHIA8' and not os.path.exists(pjoin(self.options['pythia8_path'], 'xmldoc')):

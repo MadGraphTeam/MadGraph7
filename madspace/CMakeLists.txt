@@ -210,6 +210,8 @@ add_library(
     src/driver/context.cpp
     src/driver/event_generator.cpp
     src/driver/channel_generator.cpp
+    src/driver/event_utils.cpp
+    src/driver/event_stream.cpp
     src/driver/generator_data.cpp
     src/driver/status_file.cpp
     src/driver/thread_pool.cpp
@@ -223,6 +225,7 @@ add_library(
     src/driver/event_histograms.cpp
     src/driver/madnis_training.cpp
     src/driver/random.cpp
+    src/driver/weighting_pipeline.cpp
     src/compgraphs/type.cpp
     src/compgraphs/function.cpp
     src/compgraphs/instruction.cpp
@@ -260,6 +263,7 @@ add_library(
     src/phasespace/mlm_clustering.cpp
     src/phasespace/cross_section.cpp
     src/phasespace/scale.cpp
+    src/phasespace/weighting_step.cpp
     include/madspace/util.hpp
     include/madspace/driver.hpp
     include/madspace/driver/adam_optimizer.hpp
@@ -279,6 +283,7 @@ add_library(
     include/madspace/driver/logger.hpp
     include/madspace/driver/madnis_training.hpp
     include/madspace/driver/random.hpp
+    include/madspace/driver/weighting_pipeline.hpp
     include/madspace/compgraphs.hpp
     include/madspace/compgraphs/type.hpp
     include/madspace/compgraphs/function.hpp
@@ -318,6 +323,7 @@ add_library(
     include/madspace/phasespace/mlm_clustering.hpp
     include/madspace/phasespace/cross_section.hpp
     include/madspace/phasespace/scale.hpp
+    include/madspace/phasespace/weighting_step.hpp
     include/madspace/mixmax/mixmax.hpp
     include/madspace/mixmax/mixmax_skip_N17.c
 )
@@ -578,8 +584,8 @@ install(TARGETS _madspace_py DESTINATION madspace)
 if(ENABLE_DOCS)
     set(MADSPACE_PYI_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated_pyi)
 
-    # Runs whenever _madspace_py is relinked, i.e. whenever madspace.cpp or,
-    # transitively (via instruction_set.hpp), instruction_set.yaml change. Imports
+    # Runs whenever _madspace_py is relinked, e.g. when a binding source, the
+    # generated instruction_set.hpp or docstrings.hpp change. Imports
     # the freshly built extension from an isolated staging copy of the madspace
     # package (see generate_pyi.py) so pybind11-stubgen can introspect it.
     add_custom_command(
