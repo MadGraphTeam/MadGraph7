@@ -203,7 +203,7 @@ pyamplicol/_sdk/
   fortran/rusticol_virtual.f90
   umami/pyamplicol_umami_virtual_v1.c
   umami/UMAMI_LICENSE
-  lib/librusticol_capi.a
+  lib/librusticol_capi.a.xz         (distribution wheels; a source build ships lib/librusticol_capi.a)
   lib/libmpc-pyamplicol.so.3        (Linux distribution wheels)
   lib/libmpfr-pyamplicol.so.6
   lib/libgmp-pyamplicol.so.10
@@ -220,6 +220,34 @@ shared libraries ship next to the archive (on macOS `libmpc.3.dylib`,
 by path with a run path to `lib/` (see
 [GMP, MPFR and MPC in the wheels](installation.md#gmp-mpfr-and-mpc-in-the-wheels)).
 A source build links them statically and ships only the archive.
+
+### The SDK archive cache
+
+Distribution wheels ship the archive xz-compressed
+(`lib/librusticol_capi.a.xz`, about 29 MB instead of 220 MB unpacked).
+`metadata.json` records the SHA-256 and size of the unpacked archive. The
+first `rusticol-config` query that names the archive (`--library`, `--libs`,
+`--rustflags`, `--cargo-rustflags`, `--json`) unpacks it, in a second or two,
+into a per-user cache:
+
+```text
+$PYAMPLICOL_CACHE_DIR/sdk/<version>-<sha256>/librusticol_capi.a   (if PYAMPLICOL_CACHE_DIR is set)
+~/.cache/pyamplicol/sdk/<version>-<sha256>/librusticol_capi.a      (Linux; $XDG_CACHE_HOME/pyamplicol if set)
+~/Library/Caches/pyamplicol/sdk/<version>-<sha256>/librusticol_capi.a   (macOS)
+```
+
+`PYAMPLICOL_CACHE_DIR` is the same override as for the compiled-model cache.
+Later queries reuse the cached copy after checking its size and SHA-256; a copy
+that fails the check is unpacked again. Each process unpacks into its own
+temporary file in that directory and renames it into place only after the
+check, so concurrent first uses (parallel builds) are safe and never see a
+partial archive. The installation itself is only read, so a read-only
+`site-packages` works; the cache directory must be writable (set
+`PYAMPLICOL_CACHE_DIR` otherwise). Metadata-only queries (`--cflags`,
+`--include-dir`, `--version`, ...) never unpack. Each pyAmpliCol version
+unpacks its own copy; delete `<cache>/sdk/` to reclaim the space of
+versions no longer installed. A source build ships the plain archive, which
+is used in place.
 
 `rusticol-config` validates this SDK and emits correctly quoted paths and
 target-specific link arguments:

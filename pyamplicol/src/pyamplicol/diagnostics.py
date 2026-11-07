@@ -109,7 +109,7 @@ def _sdk_check(*, required: bool) -> DiagnosticCheck:
     return DiagnosticCheck(
         "native-sdk",
         "pass",
-        f"{info.target}; ABI {info.abi_version}; {info.library.name}",
+        f"{info.target}; ABI {info.abi_version}; {info.library_name}",
     )
 
 

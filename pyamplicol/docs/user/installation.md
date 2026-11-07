@@ -76,14 +76,19 @@ three.
 
 The Linux libraries use their own sonames, so neither the extension nor an SDK
 consumer can bind a system `libgmp.so.10` by accident. The C SDK archive
-`librusticol_capi.a` contains no copy of these libraries. `rusticol-config
---libs` (which the generated drivers' Makefiles use) prints everything a
-C, C++ or Fortran consumer links against: the archive, the three shared
-libraries by path (dependents first), a run path to their directory, and the
-target's system libraries. On Linux, for example:
+`librusticol_capi.a` contains no copy of these libraries. The wheels ship it
+xz-compressed (`pyamplicol/_sdk/lib/librusticol_capi.a.xz`); the first
+`rusticol-config` query that needs it unpacks it into the per-user cache
+`<cache>/sdk/<version>-<sha256>/` (`<cache>` = `$PYAMPLICOL_CACHE_DIR` if set,
+otherwise `~/.cache/pyamplicol` on Linux or `~/Library/Caches/pyamplicol` on
+macOS; see [The SDK archive cache](native-apis.md#the-sdk-archive-cache)).
+`rusticol-config --libs` (which the generated drivers' Makefiles use) prints
+everything a C, C++ or Fortran consumer links against: the unpacked archive,
+the three shared libraries by path (dependents first), a run path to their
+directory, and the target's system libraries. On Linux, for example:
 
 ```text
-<site-packages>/pyamplicol/_sdk/lib/librusticol_capi.a
+~/.cache/pyamplicol/sdk/<version>-<sha256>/librusticol_capi.a
 <site-packages>/pyamplicol/_sdk/lib/libmpc-pyamplicol.so.3
 <site-packages>/pyamplicol/_sdk/lib/libmpfr-pyamplicol.so.6
 <site-packages>/pyamplicol/_sdk/lib/libgmp-pyamplicol.so.10

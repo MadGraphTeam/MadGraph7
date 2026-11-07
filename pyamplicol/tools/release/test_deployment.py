@@ -5,11 +5,13 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
 import shlex
 import shutil
+import subprocess
 import sys
 import tempfile
 import tomllib
@@ -534,6 +536,8 @@ class NativeToolchain:
     cxx: tuple[str, ...]
     fortran: tuple[str, ...]
     rustc: tuple[str, ...]
+    # Builds the self-test's UMAMI provider; a candidate run may lack it.
+    make: tuple[str, ...] | None
 
 
 @dataclass(frozen=True)
@@ -717,6 +721,10 @@ def _native_toolchain(mode: str) -> NativeToolchain | None:
     cxx = _native_command("CXX", ("c++", "clang++", "g++"))
     fortran = _native_command("FC", ("gfortran", "flang-new", "flang", "ifx"))
     rustc = _native_command("RUSTC", ("rustc",))
+    make = _native_command("MAKE", ("make", "gmake"))
+    required = (
+        mode == "release" or os.environ.get("PYAMPLICOL_REQUIRE_NATIVE_TESTS") == "1"
+    )
     missing = tuple(
         name
         for name, command in (
@@ -733,16 +741,18 @@ def _native_toolchain(mode: str) -> NativeToolchain | None:
             + " and ".join(missing)
             + " compilers"
         )
-        if mode == "release" or os.environ.get(
-            "PYAMPLICOL_REQUIRE_NATIVE_TESTS"
-        ) == "1":
+        if required:
             raise ReleaseError(message)
         print(f"Candidate deployment did not run native SDK smoke tests: {message}")
         return None
-    assert all(command is not None for command in (cc, cxx, fortran, rustc))
+    if make is None:
+        message = "the UMAMI provider check of the native SDK requires make"
+        if required:
+            raise ReleaseError(message)
+        print(f"Candidate deployment did not run the UMAMI provider check: {message}")
     assert cc is not None and cxx is not None
     assert fortran is not None and rustc is not None
-    return NativeToolchain(cc=cc, cxx=cxx, fortran=fortran, rustc=rustc)
+    return NativeToolchain(cc=cc, cxx=cxx, fortran=fortran, rustc=rustc, make=make)
 
 
 def _sdk_payload(python: Path, environment: dict[str, str]) -> dict[str, Any]:
@@ -953,23 +963,113 @@ def _compare_driver_results(results: dict[str, dict[str, Any]]) -> None:
                 )
 
 
-def _native_sdk_smoke(
+# rusticol-config unpacks a compressed SDK archive into this cache
+# (rusticol_config.CACHE_ENVIRONMENT); the deployment uses its own, empty one.
+_SDK_CACHE_ENVIRONMENT = "PYAMPLICOL_CACHE_DIR"
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(1 << 20):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _check_sdk_cache(
+    sdk: dict[str, Any],
+    *,
+    cache: Path,
+    state: str,
+    previous: Path | None,
+) -> Path | None:
+    """Check where a compressed SDK archive was unpacked; return that path.
+
+    The cold query unpacks into the empty ``cache``; the warm query must reuse
+    the same, unchanged file. A plain archive is used in place (None).
+    """
+
+    compression = sdk.get("archive_compression")
+    if compression is None:
+        return None
+    library = Path(str(sdk["library"]))
+    if not library.is_relative_to(cache) or not library.is_file():
+        raise ReleaseError(
+            f"rusticol-config did not unpack the SDK archive into {cache}: {library}"
+        )
+    if (
+        library.stat().st_size != compression["size"]
+        or _file_sha256(library) != compression["sha256"]
+    ):
+        raise ReleaseError("the unpacked SDK archive does not match its metadata")
+    if state == "warm" and library != previous:
+        raise ReleaseError("the warm SDK query did not reuse the unpacked archive")
+    leftovers = sorted(
+        path.name for path in library.parent.iterdir() if path != library
+    )
+    if leftovers:
+        raise ReleaseError(f"the SDK cache keeps partial files: {leftovers}")
+    return library
+
+
+def _concurrent_sdk_first_use(
     python: Path,
     *,
     sandbox: Path,
-    mode: str,
     environment: dict[str, str],
-) -> bool:
-    toolchain = _native_toolchain(mode)
-    if toolchain is None:
-        return False
-    sdk = _sdk_payload(python, environment)
-    fixture = _installed_selftest_fixture(
-        python,
-        sandbox=sandbox,
-        environment=environment,
-    )
-    native = sandbox / "native-sdk-smoke"
+    compression: dict[str, Any],
+) -> None:
+    """Two simultaneous first uses of an empty cache publish one checked archive."""
+
+    cache = sandbox / "sdk-cache-concurrent"
+    concurrent_environment = {**environment, _SDK_CACHE_ENVIRONMENT: str(cache)}
+    processes = [
+        subprocess.Popen(
+            [python, "-I", "-m", "rusticol_config", "--library"],
+            env=concurrent_environment,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for _ in range(2)
+    ]
+    outputs = [process.communicate() for process in processes]
+    failures = [
+        stderr.strip()
+        for process, (_stdout, stderr) in zip(processes, outputs, strict=True)
+        if process.returncode != 0
+    ]
+    if failures:
+        raise ReleaseError(
+            "concurrent first uses of the SDK cache failed: " + "; ".join(failures)
+        )
+    libraries = {Path(stdout.strip()) for stdout, _stderr in outputs}
+    if len(libraries) != 1:
+        raise ReleaseError(
+            f"concurrent first uses resolved different archives: {sorted(libraries)}"
+        )
+    (library,) = libraries
+    if (
+        not library.is_relative_to(cache)
+        or _file_sha256(library) != compression["sha256"]
+        or sorted(path.name for path in library.parent.iterdir()) != [library.name]
+    ):
+        raise ReleaseError(
+            "concurrent first uses did not publish one complete, checked archive"
+        )
+
+
+def _native_sdk_drivers(
+    python: Path,
+    *,
+    toolchain: NativeToolchain,
+    sdk: dict[str, Any],
+    fixture: NativePhysicsFixture,
+    native: Path,
+    environment: dict[str, str],
+) -> dict[str, dict[str, Any]]:
+    """Build the C, C++, Fortran and Rust consumers with ``sdk``; run all five."""
+
     native.mkdir(parents=True, exist_ok=False)
     python_source = fixture.artifact / "API" / "python" / "check_standalone.py"
     c_source = fixture.artifact / "API" / "c" / "check_standalone.c"
@@ -1090,7 +1190,123 @@ def _native_sdk_smoke(
             environment=environment,
         ),
     }
-    _compare_driver_results(results)
+    return results
+
+
+def _umami_provider_driver(
+    python: Path,
+    *,
+    make: tuple[str, ...],
+    cc: tuple[str, ...],
+    fixture: NativePhysicsFixture,
+    build: Path,
+    environment: dict[str, str],
+) -> float:
+    """Build the self-test's UMAMI provider with its own Makefile (the SDK
+    resolved by the installed rusticol-config) and check the driver's value."""
+
+    source = fixture.artifact / "API" / "umami"
+    if not (source / "Makefile").is_file():
+        raise ReleaseError("installed self-test artifact has no UMAMI provider")
+    if len(fixture.totals) != 1:
+        raise ReleaseError("the UMAMI driver check needs one self-test total")
+    completed = run(
+        [
+            *make,
+            "-s",
+            f"RUSTICOL_CONFIG={python.parent / 'rusticol-config'}",
+            f"CC={shlex.join(cc)}",
+            f"BUILD_DIR={build}",
+            "run",
+        ],
+        cwd=source,
+        env=environment,
+        capture_output=True,
+    )
+    lines = completed.stdout.strip().splitlines()
+    try:
+        payload = json.loads(lines[-1]) if lines else None
+    except json.JSONDecodeError as error:
+        raise ReleaseError(
+            f"the UMAMI driver returned invalid JSON: {error}"
+        ) from error
+    value = payload.get("matrix_element") if isinstance(payload, dict) else None
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise ReleaseError("the UMAMI driver returned no matrix element")
+    # The driver evaluates the artifact's saved validation point, at which the
+    # expected total is recorded.
+    expected = fixture.totals[0]
+    if not math.isfinite(value) or abs(value - expected) > 1.0e-12 * max(
+        abs(expected), 1.0
+    ):
+        raise ReleaseError(
+            f"the UMAMI driver's matrix element {value!r} differs from the "
+            f"self-test total {expected!r}"
+        )
+    return float(value)
+
+
+def _native_sdk_smoke(
+    python: Path,
+    *,
+    sandbox: Path,
+    mode: str,
+    environment: dict[str, str],
+) -> bool:
+    toolchain = _native_toolchain(mode)
+    if toolchain is None:
+        return False
+    # An empty cache first (a distribution wheel's compressed archive is
+    # unpacked by the first query), then the same consumers on the warm cache.
+    cache = sandbox / "sdk-cache"
+    if cache.exists():
+        raise ReleaseError(f"the deployment SDK cache is not empty: {cache}")
+    environment = {**environment, _SDK_CACHE_ENVIRONMENT: str(cache)}
+    fixture = _installed_selftest_fixture(
+        python,
+        sandbox=sandbox,
+        environment=environment,
+    )
+    unpacked: Path | None = None
+    unpacked_stat: tuple[int, int] | None = None
+    sdk: dict[str, Any] = {}
+    for state in ("cold", "warm"):
+        sdk = _sdk_payload(python, environment)
+        unpacked = _check_sdk_cache(sdk, cache=cache, state=state, previous=unpacked)
+        if unpacked is not None:
+            current = unpacked.stat()
+            if state == "warm" and unpacked_stat != (
+                current.st_ino,
+                current.st_mtime_ns,
+            ):
+                raise ReleaseError("the warm SDK query rewrote the unpacked archive")
+            unpacked_stat = (current.st_ino, current.st_mtime_ns)
+        results = _native_sdk_drivers(
+            python,
+            toolchain=toolchain,
+            sdk=sdk,
+            fixture=fixture,
+            native=sandbox / f"native-sdk-smoke-{state}",
+            environment=environment,
+        )
+        _compare_driver_results(results)
+        if toolchain.make is not None:
+            _umami_provider_driver(
+                python,
+                make=toolchain.make,
+                cc=toolchain.cc,
+                fixture=fixture,
+                build=sandbox / f"umami-{state}",
+                environment=environment,
+            )
+    compression = sdk.get("archive_compression")
+    if compression is not None:
+        _concurrent_sdk_first_use(
+            python,
+            sandbox=sandbox,
+            environment=environment,
+            compression=compression,
+        )
     return True
 
 
@@ -1309,9 +1525,7 @@ def test_deployment(
         if not abi3_smoke_only:
             numpy_version = installation.versions.get("numpy")
             if numpy_version is None:
-                raise ReleaseError(
-                    "deployment dependency closure has no NumPy version"
-                )
+                raise ReleaseError("deployment dependency closure has no NumPy version")
             _symbolica_absent_f64_smoke(
                 wheel,
                 target_python=target_python,
