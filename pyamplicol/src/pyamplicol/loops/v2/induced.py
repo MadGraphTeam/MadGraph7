@@ -1784,7 +1784,9 @@ def _goldstone_probes(
     with the physical row floors of its finiteness probe. Returns the
     (leg, ``GoldstoneResult``) pairs and the record (None without such a
     leg); a Goldstone side the engine refuses is recorded as skipped, never
-    a silent pass."""
+    a silent pass, and when every side is refused the probe did not run:
+    the record is ``status`` "not-run" with the refusals, and no
+    ``passed``."""
 
     from . import goldstone
     from .plan_export import NativeExecutor
@@ -1795,7 +1797,7 @@ def _goldstone_probes(
     massive = goldstone.massive_vector_legs(target)
     if not massive:
         return {"results": [], "record": None}
-    vector = NativeExecutor(target, forward=False, inputs="native")
+    vector = None
     results, phases, skipped = [], {}, {}
     for leg, partner in massive.items():
         try:
@@ -1803,8 +1805,11 @@ def _goldstone_probes(
                 compiled, request, native, target, leg, partner
             )
         except LoopRequestUnsupported as error:
-            skipped[str(leg)] = f"{error.key}: {error}"
+            # The listed refusal's text: its key, rule and remedy.
+            skipped[str(leg)] = str(error)
             continue
+        if vector is None:
+            vector = NativeExecutor(target, forward=False, inputs="native")
         result = goldstone.probe(
             vector,
             NativeExecutor(side, forward=False, inputs="native"),
@@ -1817,6 +1822,13 @@ def _goldstone_probes(
         results.append((leg, result))
         if result.phase is not None:
             phases[str(leg)] = [_short(x) for x in result.phase]
+    if not results:
+        # Every Goldstone side was refused: nothing was probed, which is not
+        # a pass (all([]) would read True).
+        return {
+            "results": [],
+            "record": {"status": "not-run", "legs": [], "skipped": skipped},
+        }
     record: dict[str, Any] = {
         "legs": [leg for leg, _ in results],
         "worst": _short(max((r.worst for _, r in results), default=0.0)),

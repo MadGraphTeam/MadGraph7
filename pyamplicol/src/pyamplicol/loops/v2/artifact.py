@@ -944,13 +944,15 @@ class GeneratedProcess:
         }
 
     def conventions(self) -> dict[str, object] | None:
-        """The conventions of an electroweak request's virtual (WP3.2 EWI-7,
-        ``ew_policy.scheme_conventions``: regularisation and lambda_HV, the
-        gamma-five reading, gauge, UV, mass and electroweak input schemes,
-        the external-photon convention): the generation record's
-        ``conventions`` (``Runtime.inspect`` and the artifact inspection read
-        it there); None for a request that is not electroweak (its record
-        then has no entry, so such artifacts keep their bytes)."""
+        """The conventions of the request's virtual (WP3.2 EWI-7,
+        ``ew_policy.scheme_conventions``: for an electroweak request
+        regularisation and lambda_HV, the gamma-five reading, gauge, UV, mass
+        and electroweak input schemes, the external-photon convention; the
+        complex-mass record; a loop-induced request's width policy, m-lit
+        Q7): the generation record's ``conventions`` (``Runtime.inspect`` and
+        the artifact inspection read it there); None for a Born-interfered
+        request that is neither electroweak nor complex-mass (its record then
+        has no entry, so such artifacts keep their bytes)."""
 
         from .ew_policy import scheme_conventions
 

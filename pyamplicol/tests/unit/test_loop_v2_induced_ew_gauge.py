@@ -10,10 +10,13 @@ LI-W1; RULED Q7, Q12):
   complete [QED] a a > z z it holds with eta = -i, the convention the
   tree-level Slavnov-Taylor identities of ``test_loop_v2_ew_gauge.py`` fix
   for an outgoing Z, while the Goldstone side is far from vanishing; a
-  flipped G0 t t~ coupling breaks it; on h > z a both sides vanish (the
-  photon's transversality); the generation-time probes run it on one leg
-  per massive species at zero widths (``test_loop_v2_induced_ew_public.py``:
-  the public route records it, with the width policy, in the artifact);
+  non-gauge vector in place of p_3 / E_3 or a Goldstone side off by 1 % in
+  modulus breaks it by far; on h > z a both sides vanish (the photon's
+  transversality); the generation-time probes run it on one leg per
+  massive species at zero widths (``test_loop_v2_induced_ew_public.py``:
+  the public route records it, with the width policy, in the artifact),
+  and a request whose every Goldstone side the engine refuses records the
+  probe as not run, with the refusals, never as passed;
 * the both-gauges equality of the QCD-only g g > h z and g g > w+ w- at
   zero widths (their trees take unitary gauge; s-channel Z* / G0* with the
   t-b mass splitting differ by gauge term by term): unitary = 't Hooft-
@@ -220,6 +223,42 @@ def test_goldstone_equivalence_on_h_to_z_a_vanishes_on_both_sides(probes):
     result = probes.probe("li_h_za")
     assert result.passed and result.phase is None
     assert result.goldstone_ratio <= 10
+
+
+def test_goldstone_probe_with_every_side_refused_is_not_run(monkeypatch):
+    """A 't Hooft-Feynman request with massive external vectors whose every
+    Goldstone side the engine refuses: the generation-time record says the
+    probe did not run and gives each refusal; it never reads passed (all
+    over no result would be True) and nothing is probed or failed."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.v2 import goldstone, induced, plan_export
+    from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+    def refused(compiled, request, native, slice_, leg, partner):
+        raise LoopRequestUnsupported("feynman-gauge", f"leg {leg} ({partner})")
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("nothing is probed when every side is refused")
+
+    monkeypatch.setattr(
+        goldstone, "massive_vector_legs", lambda target: {3: 250, 4: 251}
+    )
+    monkeypatch.setattr(goldstone, "goldstone_slice", refused)
+    monkeypatch.setattr(goldstone, "probe", unexpected)
+    monkeypatch.setattr(plan_export, "NativeExecutor", unexpected)
+    target = SimpleNamespace(
+        compiled=SimpleNamespace(ir=SimpleNamespace(gauge="feynman"))
+    )
+    found = induced._goldstone_probes(target, None, None, None, None, None, None, {})
+    assert found["results"] == []
+    record = found["record"]
+    assert record["status"] == "not-run" and record["legs"] == []
+    assert "passed" not in record and "worst" not in record
+    assert set(record["skipped"]) == {"3", "4"}
+    assert record["skipped"]["3"].startswith("feynman-gauge: leg 3 (250). Rule: ")
+    assert record["skipped"]["4"].startswith("feynman-gauge: leg 4 (251). Rule: ")
 
 
 # ------------------------------------------------------------ both gauges

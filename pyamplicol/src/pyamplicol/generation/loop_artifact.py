@@ -249,10 +249,11 @@ def loop_v2_capability(contribution_kind: str) -> str:
 def recorded_conventions(
     extensions: Mapping[str, object], process_id: str
 ) -> dict[str, object] | None:
-    """The conventions of process ``process_id``'s electroweak virtual as the
-    artifact's generation extension records them (the process's generation
-    filters, ``conventions``: WP3.2 EWI-7, ``loops.v2.ew_policy.
-    scheme_conventions``), None when none is recorded. The physics metadata
+    """The conventions of process ``process_id``'s virtual (electroweak,
+    complex-mass or loop-induced) as the artifact's generation extension
+    records them (the process's generation filters, ``conventions``: WP3.2
+    EWI-7, ``loops.v2.ew_policy.scheme_conventions``), None when none is
+    recorded. The physics metadata
     keeps its schema (the native admission reads it)."""
 
     generation = extensions.get("generation")
