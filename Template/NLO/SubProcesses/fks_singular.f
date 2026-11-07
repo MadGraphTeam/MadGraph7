@@ -1744,6 +1744,7 @@ c terms.
      $     ,f_sc_MC_S,f_sc_MC_H,f_MC_S,f_MC_H
       ! prefactors for the PDF scheme
       double precision prefact_pdfsch_d,prefact_pdfsch_p,prefact_pdfsch_l
+      double precision xilim_pdfsch
       double precision f_pdfsch_d,f_pdfsch_p,f_pdfsch_l
       common/factor_pdfsch/f_pdfsch_d,f_pdfsch_p,f_pdfsch_l
       double precision pmass(nexternal)
@@ -1811,14 +1812,21 @@ c equal to ione, so no need to define separate factors.
             f_dsc(4)=( prefact_deg+prefact_deg_sxi )*jac_cnt(2)/(shat
      &           /(32*pi**2))*fkssymmetryfactorDeg
      &           *vegas_wgt
-            ! prefactor for the PDF scheme
-            prefact_pdfsch_d=xinorm_cnt(1)/xiScut_used/deltaS
+            ! prefactor for the PDF scheme: delta(xi) spread over the
+            ! range of the soft-collinear counterterm, and the log of
+            ! its end, which turn [1/xi] and [log(xi)/xi] into the plus
+            ! distributions in z=1-xi. The range ends at xiimax_cnt(1)
+            ! where that is below xiScut_used (large Bjorken x).
+            xilim_pdfsch=min(xiimax_cnt(1),xiScut_used)
+            prefact_pdfsch_d=xinorm_cnt(1)/xilim_pdfsch/deltaS
             f_pdfsch_d=prefact_pdfsch_d*jac_cnt(2)/(shat/(32*pi**2))
      &           *fkssymmetryfactorDeg*vegas_wgt
-            prefact_pdfsch_p=xinorm_cnt(1)*dlog(xiScut_used)/xiScut_used/deltaS
+            prefact_pdfsch_p=xinorm_cnt(1)*dlog(xilim_pdfsch)
+     &           /xilim_pdfsch/deltaS
             f_pdfsch_p=prefact_pdfsch_p*jac_cnt(2)/(shat/(32*pi**2))
      &           *fkssymmetryfactorDeg*vegas_wgt
-            prefact_pdfsch_l=xinorm_cnt(1)*dlog(xiScut_used)**2/2d0/xiScut_used/deltaS
+            prefact_pdfsch_l=xinorm_cnt(1)*dlog(xilim_pdfsch)**2/2d0
+     &           /xilim_pdfsch/deltaS
             f_pdfsch_l=prefact_pdfsch_l*jac_cnt(2)/(shat/(32*pi**2))
      &           *fkssymmetryfactorDeg*vegas_wgt
          else
