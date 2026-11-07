@@ -46,7 +46,9 @@ non-default configuration); ``build-info.json`` records the cargo features.
 ``stage`` publishes such a directory into a checkout's ``src/pyamplicol``
 through the source-runtime contract of ``prepare_source_runtime.py``. It
 refuses a build whose digest differs from the checkout's native inputs and
-verifies the staged module in a fresh interpreter.
+verifies the staged module in a fresh interpreter, which also reports whether
+it links TIRust (``"tir"`` in the printed report: builds with and without
+``tir`` share the native-input digest).
 """
 
 from __future__ import annotations
@@ -84,12 +86,14 @@ _OUTPUTS = {
 _TRADITIONAL_TLS = "-mtls-dialect=gnu"
 _C_DEPENDENCY_STAMP = "pyamplicol-c-dependencies.json"
 _VERIFY = """
+import json
 import sys
 sys.path.insert(0, sys.argv[1])
 from pyamplicol import _rusticol
 from pyamplicol._internal.versions import verify_native_module
 verify_native_module(_rusticol)
 assert _rusticol._loop.V2Executor
+print(json.dumps(_rusticol._loop.tirust_available()))
 """
 
 
@@ -357,10 +361,21 @@ def stage(build_directory: Path, root: Path) -> dict[str, object]:
             (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode(),
         )
         marker.unlink()
-    subprocess.run(
-        [sys.executable, "-c", _VERIFY, str(root / "src")], cwd=root, check=True
+    verified = subprocess.run(
+        [sys.executable, "-c", _VERIFY, str(root / "src")],
+        cwd=root,
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
     )
-    return {"staged": str(package / "_rusticol.so"), "native_digest": digest}
+    # The staged extension's own answer (a build with and one without tir
+    # share the native-input digest; build-info.json records which it is).
+    tir = json.loads(verified.stdout.splitlines()[-1])
+    return {
+        "staged": str(package / "_rusticol.so"),
+        "native_digest": digest,
+        "tir": tir,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
