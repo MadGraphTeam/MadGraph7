@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import json
 import random
+from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
 
@@ -58,6 +59,9 @@ ANALYTIC_DD = 1e-12
 # executor: rounding only (precision is lax, < 1e-5 is never a finding).
 ORACLE = 1e-10
 VETO = {"t": 6, "b": 5}
+# The v2 loop runtimes: Born-interfered (plan v4) and loop-induced (v5).
+V4 = "rusticol.loop-runtime.v4"
+V5 = "rusticol.loop-runtime.v5"
 
 
 def _fixture(name: str) -> dict:
@@ -457,10 +461,11 @@ def test_stored_colour_zero_agrees_with_the_generated_basis(li):
     """The stored amplitude record (``induced.StoredAmplitude``) states the
     request's exact colour zero as the generation's basis does
     (``AmplitudeBasis.colour_zero``: no nonzero coefficient cell and no
-    counterterm ket): u u~ > h h at the gluon-triangle order QCD = 2,
-    QED = 2 (an exact colour zero, Tr T^a = 0) and the Z-triangle order
-    QCD = 0, QED = 4 (live) is not a colour zero, though one of its orders
-    is and it has no counterterm ket; h > g a is one."""
+    counterterm ket): u u~ > h g at the order QCD = 1, QED = 3 (the quark
+    line's Z/photon into a top loop with one gluon, Tr T^a = 0: an exact
+    colour zero) and QCD = 3, QED = 1 (the quark line's gluon into a top
+    loop, live) is not a colour zero, though one of its orders is; h > g a
+    is one."""
 
     from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
     from pyamplicol.loops.v2.induced import StoredAmplitude
@@ -470,17 +475,17 @@ def test_stored_colour_zero_agrees_with_the_generated_basis(li):
     compiled = li.model("no_b_mass")
     fixed = {
         name: value
-        for name, value in _fixture("li_gg_zz")["scheme_data"][
+        for name, value in _fixture("li_uux_hg")["scheme_data"][
             "fixed_parameters"
         ].items()
         if name in compiled.parameter_defaults
     }
-    zero = (("QCD", 2), ("QED", 2))
+    zero = (("QCD", 1), ("QED", 3))
     for process, limits, orders, colour_zero in (
         (
-            "u u~ > h h",
-            {"QCD": 2, "QED": 4},
-            [{"QCD": 2, "QED": 2}, {"QCD": 0, "QED": 4}],
+            "u u~ > h g",
+            {"QCD": 3, "QED": 3},
+            [{"QCD": 3, "QED": 1}, {"QCD": 1, "QED": 3}],
             False,
         ),
         ("h > g a", {"QCD": 1, "QED": 2}, [{"QCD": 1, "QED": 2}], True),
@@ -496,16 +501,22 @@ def test_stored_colour_zero_agrees_with_the_generated_basis(li):
             ),
             li.native,
         )
-        assert slice_.amplitude.colour_zero is colour_zero, process
+        basis = slice_.amplitude
+        assert basis.colour_zero is colour_zero, process
         if not colour_zero:
             assert slice_.colour_zero_orders == {zero}
-            assert not slice_.amplitude.counterterms
         record = NativeProcess.of(
             NativeExecutor(slice_, forward=False, inputs="native")
         ).record["amplitude"]
         stored = StoredAmplitude.from_record(record)
-        assert stored.colour_zero is colour_zero, process
+        assert stored.colour_zero is colour_zero, (process, basis.counterterms)
         assert stored.colour_zero_orders == slice_.colour_zero_orders
+        if not colour_zero:
+            # The generation's answer, never a guess from the colour-zero
+            # orders: without its counterterm kets the record's live cells
+            # still make the request no colour zero.
+            bare = {**record, "counterterms": [], "ket_map": []}
+            assert StoredAmplitude.from_record(bare).colour_zero is False
 
 
 @pytest.mark.loop_physics
@@ -861,27 +872,47 @@ post_build_validation = false
 """
 
 
+def _generate(root: Path, entries, fixture) -> Path:
+    """Generate ``entries`` ((name, expression), ...) through the public
+    ``Generator`` into ``root / "artifact"`` (``_card``)."""
+
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.config import resolve_config
+
+    root.mkdir(parents=True, exist_ok=True)
+    output = root / "artifact"
+    card = root / "card.toml"
+    card.write_text(_card(output, entries, fixture))
+    Generator(resolve_config(card)).generate(
+        ProcessSet(tuple(ProcessRequest.parse(e, name=n) for n, e in entries)), output
+    )
+    return output
+
+
+@pytest.fixture(scope="module")
+def li_artifact(li, tmp_path_factory):
+    """g g > h and the exact colour zero h > g a in one loop-induced artifact
+    (``rusticol.loop-runtime.v5`` only), generated once."""
+
+    entries = (("gg_h", "g g > h"), ("h_ga", "h > g a"))
+    return _generate(
+        tmp_path_factory.mktemp("li-artifact"), entries, _fixture("li_gg_h")
+    )
+
+
 @pytest.mark.loop_physics
-def test_public_route_generates_loads_and_relocates(li, tmp_path):
+def test_public_route_generates_loads_and_relocates(li, li_artifact, tmp_path):
     """Generator -> artifact -> Runtime: g g > h and the exact colour zero
     h > g a in one loop-induced artifact (``rusticol.loop-runtime.v5``)."""
 
     import importlib.util
 
     from pyamplicol import Runtime
-    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
     from pyamplicol.api.errors import CompatibilityError
-    from pyamplicol.config import resolve_config
     from pyamplicol.loops.v2.assemble import Precision
 
     fixture = _fixture("li_gg_h")
-    entries = (("gg_h", "g g > h"), ("h_ga", "h > g a"))
-    output = tmp_path / "artifact"
-    card = tmp_path / "card.toml"
-    card.write_text(_card(output, entries, fixture))
-    Generator(resolve_config(card)).generate(
-        ProcessSet(tuple(ProcessRequest.parse(e, name=n) for n, e in entries)), output
-    )
+    output = li_artifact
     manifest = json.loads((output / "artifact.json").read_text())
     assert manifest["runtime"]["required_runtime_capabilities"] == [
         "rusticol.loop-runtime.v5"
@@ -899,6 +930,11 @@ def test_public_route_generates_loads_and_relocates(li, tmp_path):
     runtime = Runtime.load(output, process="gg_h", model_parameters=parameters)
     info = runtime.inspect()
     assert info["contribution_kind"] == "loop-induced"
+    # m-lit Q36: the kind lives in the metadata, and the facade serves it with
+    # virtual result semantics; the native admission names the v5 runtime.
+    assert runtime.contribution_kind == "loop-induced"
+    assert runtime.physics.contribution_kind == "loop-induced"
+    assert info["native_admission"]["runtime_capability"] == V5
     assert info["interference"] == "conj(loop)*loop" and info["born_orders"] == []
     value = runtime.evaluate([point], mu_r2=[str(scale)])
     assert value.contribution == "loop-induced"
@@ -935,3 +971,124 @@ def test_public_route_generates_loads_and_relocates(li, tmp_path):
     )
     assert verdict["relocated_bitwise"]["bitwise"], verdict["relocated_bitwise"]
     assert verdict["no_generation"]
+
+
+@pytest.mark.loop_physics
+def test_cli_evaluates_a_loop_induced_artifact(li, li_artifact, tmp_path):
+    """``pyamplicol evaluate`` takes a loop-induced artifact (only the v5
+    runtime) as a virtual one: with --mu-r2 and --poles it returns the
+    Python API's VirtualEvaluation, its kind named in the JSON."""
+
+    import io
+
+    from pyamplicol import Runtime
+    from pyamplicol.cli import run_cli
+
+    point, scale, parameters = li.point("li_gg_h")
+    (tmp_path / "momenta.json").write_text(json.dumps([point]))
+    (tmp_path / "parameters.json").write_text(json.dumps(parameters))
+    expected = Runtime.load(
+        li_artifact, process="gg_h", model_parameters=parameters
+    ).evaluate([point], mu_r2=[str(scale)], poles="none")
+    for poles in ("none", "all"):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        code = run_cli(
+            (
+                "evaluate",
+                str(li_artifact),
+                "--process",
+                "gg_h",
+                "--momenta",
+                str(tmp_path / "momenta.json"),
+                "--model-parameters",
+                str(tmp_path / "parameters.json"),
+                "--mu-r2",
+                str(scale),
+                "--poles",
+                poles,
+                "--json",
+                "--progress",
+                "off",
+            ),
+            stdout=stdout,
+            stderr=stderr,
+        )
+        assert code == 0, stderr.getvalue()
+        payload = json.loads(stdout.getvalue())
+        assert payload["contribution_kind"] == payload["contribution"]
+        assert payload["contribution"] == "loop-induced"
+        assert payload["poles"] == poles and payload["born_values"] == [[]]
+        ((finite, *rest),) = payload["values"][0]
+        assert finite == expected.values[0][0][0]
+        if poles == "none":
+            assert rest == [None, None]
+        else:
+            # Computed poles of |A|^2 vanish (the finiteness cross-check).
+            assert all(abs(x) <= 1e-9 * abs(finite) for x in rest)
+
+
+@pytest.mark.loop_physics
+def test_a_mixed_artifact_serves_both_contributions(li, loop_native, tmp_path):
+    """One run with a Born-interfered request (u u~ > z) and a loop-induced
+    one (g g > h, process.loop_induced = auto) writes one artifact requiring
+    both v2 loop runtimes, each process its own (v4, v5): it loads and
+    evaluates both through the Python API and the native admission; the
+    native SDK runtime serves the Born-interfered process (bitwise the Python
+    API's) and refuses the loop-induced one typed. u u~ > z equals the same
+    process generated alone bitwise, g g > h the slice's native value."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.api.virtual_results import VirtualEvaluation
+    from pyamplicol.loops.v2.assemble import Precision
+
+    fixture = _fixture("li_gg_h")
+    mixed = _generate(
+        tmp_path / "mixed", (("uux_z", "u u~ > z"), ("gg_h", "g g > h")), fixture
+    )
+    alone = _generate(tmp_path / "alone", (("uux_z", "u u~ > z"),), fixture)
+    manifest = json.loads((mixed / "artifact.json").read_text())
+    assert manifest["runtime"]["required_runtime_capabilities"] == [V4, V5]
+    assert {
+        p["id"]: p["required_runtime_capabilities"] for p in manifest["processes"]
+    } == {"uux_z": [V4], "gg_h": [V5]}
+    gg_point, scale, parameters = li.point("li_gg_h")
+    # u u~ > z at rest: the Z on shell (MZ of the fixture's scheme).
+    mz = parameters["MZ"]
+    half = str(Decimal(mz) / 2)
+    z_point = [
+        [half, "0", "0", half],
+        [half, "0", "0", "-" + half],
+        [mz, "0", "0", "0"],
+    ]
+    for key, point, kind, capability in (
+        ("uux_z", z_point, "virtual", V4),
+        ("gg_h", gg_point, "loop-induced", V5),
+    ):
+        admitted = json.loads(loop_native.admit_v2_artifact(str(mixed), key))
+        assert admitted["runtime_capability"] == capability
+        assert admitted["metadata"]["contribution_kind"] == kind
+        runtime = Runtime.load(mixed, process=key, model_parameters=parameters)
+        assert runtime.contribution_kind == runtime.physics.contribution_kind == kind
+        value = runtime.evaluate([point], mu_r2=[str(scale)])
+        assert isinstance(value, VirtualEvaluation) and value.contribution == kind
+        flat = [str(c) for momentum in point for c in momentum]
+        if kind == "virtual":
+            assert value.born_values[0][0] != 0
+            (born, virtual), failures = loop_native.evaluate_v2_artifact(
+                str(mixed), [flat], [str(scale)], process=key, parameters=parameters
+            )[0]
+            assert not failures
+            assert born == list(value.born_values[0])
+            assert virtual == [list(laurent) for laurent in value.values[0]]
+            single = Runtime.load(alone, process=key, model_parameters=parameters)
+            found = single.evaluate([point], mu_r2=[str(scale)])
+            assert found.born_values == value.born_values
+            assert found.values == value.values
+        else:
+            assert value.born_orders == () and value.born_values == ((),)
+            native = li.native_value("li_gg_h", Precision.double())
+            assert _relative(value.values[0][0][0], _total(native)) <= ORACLE
+            with pytest.raises(ValueError, match="Python runtime"):
+                loop_native.evaluate_v2_artifact(
+                    str(mixed), [flat], [str(scale)], process=key, parameters=parameters
+                )
