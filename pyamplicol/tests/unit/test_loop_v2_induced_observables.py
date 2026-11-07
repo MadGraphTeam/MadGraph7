@@ -334,6 +334,12 @@ def test_resolved_rows_and_single_helicity_selections_sum_to_the_total(artifacts
         points, mu_r2=scales, color_resolution="amplitude-basis"
     )
     assert anchors.virtual_color_ids[0] == "amplitude-0"
+    # The _with_prec form takes the colour axis too.
+    with_prec = runtime.evaluate_resolved_with_prec(
+        points, 16, mu_r2=scales, color_resolution="amplitude-basis"
+    )
+    assert with_prec.virtual_color_ids == anchors.virtual_color_ids
+    assert with_prec.values == anchors.values
     selected = []
     for h, helicity in enumerate(resolved.helicity_ids):
         parts = anchors.values[0][0][h]
@@ -682,43 +688,45 @@ def test_one_call_is_one_evaluation_whatever_the_spin_sources(artifacts, monkeyp
 @pytest.mark.loop_physics
 def test_correlated_outputs_in_double_double_and_with_estimates(artifacts):
     """The quadratic forms in double-double (Decimal square of the native
-    amplitude vectors) agree with binary64; with stability checks every
-    output carries its estimate, absolute against its own scale."""
+    amplitude vectors) agree with binary64; with the recommended stability
+    checks (``stability.RECOMMENDED_CHECKS``: one generic rotation and the
+    rescaled reduction re-test) every output carries its estimate, absolute
+    against its own scale, and the binary64 value is within ten times it of
+    the double-double one at every fixture point (without the rescaled
+    re-test the masters' own rounding is missed: T1.T4 at point 1 is then 25
+    times off its estimate, DESIGN §10.4)."""
 
     from pyamplicol.api import VirtualStabilityChecks
     from pyamplicol.correlators import CorrelatedRequest
+    from pyamplicol.loops.v2.stability import RECOMMENDED_CHECKS
 
     name = "li_uux_hgg"
     runtime = _runtime(artifacts, name)
     points, scales = _points(name)
-    points, scales = points[:1], scales[:1]
-    requests = {i: CorrelatedRequest(i) for i in ("born", "T1T4", "T4T5")}
+    requests = {i: CorrelatedRequest(i) for i in ("born", "T1T4", "T2T4", "T4T5")}
+    recommended = VirtualStabilityChecks(
+        RECOMMENDED_CHECKS.rotations, reduction_direction=True, rescaled=True
+    )
     double = runtime.evaluate_correlated_many(points, requests, mu_r2=scales)
     dd = runtime.evaluate_correlated_many(
         points, requests, mu_r2=scales, arithmetic="double-double"
     )
     checked = runtime.evaluate_correlated_many(
-        points,
-        requests,
-        mu_r2=scales,
-        stability_checks=VirtualStabilityChecks(1, reduction_direction=True),
+        points, requests, mu_r2=scales, stability_checks=recommended
     )
     # "born" is |A|^2 itself: the inclusive evaluation's value and estimate.
-    inclusive = runtime.evaluate(
-        points,
-        mu_r2=scales,
-        stability_checks=VirtualStabilityChecks(1, reduction_direction=True),
-    )
+    inclusive = runtime.evaluate(points, mu_r2=scales, stability_checks=recommended)
     assert checked["born"].values == inclusive.values
     assert checked["born"].stability == inclusive.stability
     for key in requests:
-        a = complex(double[key].values[0][0].finite)
-        b = complex(dd[key].values[0][0].finite.real)
-        (estimate,) = checked[key].stability
-        assert 0 < estimate.relative < 1e-8
-        # binary64 within ten times its own estimate of the DD value.
-        assert abs(a - b) <= 10 * estimate.absolute[0].finite
-        assert _relative(a, b) <= LAX
+        assert len(checked[key].stability) == len(points)
+        for p, estimate in enumerate(checked[key].stability):
+            a = complex(double[key].values[p][0].finite)
+            b = complex(dd[key].values[p][0].finite.real)
+            assert 0 < estimate.relative < 1e-8
+            # binary64 within ten times its own estimate of the DD value.
+            assert abs(a - b) <= 10 * estimate.absolute[0].finite, (key, p)
+            assert _relative(a, b) <= LAX
 
 
 @pytest.mark.loop_physics
@@ -833,6 +841,10 @@ def test_loop_induced_observable_refusals(artifacts):
         )
     with pytest.raises(CompatibilityError, match="colour resolution"):
         runtime.evaluate_resolved(points, mu_r2=scales, color_resolution="flows")
+    # A correlated call takes no selection; the message names the
+    # loop-induced full-colour helicity selection.
+    with pytest.raises(CompatibilityError, match="loop-induced processes select"):
+        runtime.evaluate_correlated(points, mu_r2=scales, helicities=["h0"])
 
 
 @pytest.mark.loop_fast

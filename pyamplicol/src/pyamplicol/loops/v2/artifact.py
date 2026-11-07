@@ -1157,8 +1157,9 @@ def export_process(observables: Any, request: Any, declared: bool) -> GeneratedP
     # loaded process regenerates.
     from .native_observables import column_plans
 
-    # A loop-induced process has no Born: its observable columns (colour and
-    # spin correlations, resolved output) are m-lit LIT-OBS's.
+    # A loop-induced process has no Born and stores no observable columns:
+    # its colour and spin correlations and resolved outputs are quadratic
+    # forms on the amplitude vector (``induced_observables``).
     induced = getattr(observables.slice, "amplitude", None) is not None
     plans = {} if induced else column_plans(observables)
     try:
@@ -1639,7 +1640,9 @@ class V2VirtualRuntime:
         # File-backed (M-FINAL MF-8G-2 item 2): the plans and binary tree
         # programs stay in the PACBIN, read by the native executors.
         self._native_process = load_native_process(runtime)
-        # A loop-induced process stores no observable columns yet (LIT-OBS).
+        # A loop-induced process stores no observable columns: its
+        # observables are quadratic forms on the amplitude vector
+        # (``induced_observables``).
         self._induced = "amplitude" in self._native_process.record
         # A loop-induced process's colour-zero record (m-lit Q13: the one
         # exact zero, by colour algebra alone: no colour coefficient of the

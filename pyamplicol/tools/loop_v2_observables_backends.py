@@ -6,8 +6,13 @@ Done; PLAN §4.0 rule L6; row LI-O1).
 On the LI-O1 rows (g g > h g g and u u~ > h g g, every dipole T_i.T_j and
 every gluon's spin class declared) every observable call kind runs once on
 each reduction backend, ``reduction="ninjars"`` and ``reduction="tirust"``,
-with the stability checks (one rotation and the reduction-direction check)
-and every pole (``poles="all"``), at the rows' reference points, in one
+with the recommended stability checks (``stability.RECOMMENDED_CHECKS``: one
+generic rotation and the rescaled reduction re-test, the O1 rule's estimate;
+without the rescaled re-test no master integral is evaluated twice and the
+estimate misses the masters' own rounding, DESIGN §10.4: at u u~ > h g g's
+point 1 the binary64 error of T1.T4 is 25 times that estimate, 7 times the
+recommended one) and every pole (``poles="all"``), at the rows' reference
+points, in one
 carrier (``--arithmetic``: binary64 by default, ``double-double`` or
 ``arbitrary`` with ``--precision`` digits):
 
@@ -263,9 +268,12 @@ def main() -> int:
     from pyamplicol import Runtime
     from pyamplicol.api import VirtualStabilityChecks
     from pyamplicol.loops.v2.reduction import ReductionUnavailable
+    from pyamplicol.loops.v2.stability import RECOMMENDED_CHECKS
     from tests.unit.loop_v2_induced_observables_rows import ROWS
 
-    checks = VirtualStabilityChecks(1, reduction_direction=True)
+    checks = VirtualStabilityChecks(
+        RECOMMENDED_CHECKS.rotations, reduction_direction=True, rescaled=True
+    )
     rule = (
         "L6: |N - T| <= 10 max(E_N, E_T) (binary64)"
         if binary64

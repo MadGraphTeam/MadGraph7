@@ -1015,6 +1015,7 @@ class Runtime:
         poles: PoleSelection | str | None = None,
         stability_checks: VirtualStabilityChecks | None = None,
         reduction: ReductionBackend | str | None = None,
+        color_resolution: Literal["contracted", "amplitude-basis"] | None = None,
     ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         return self.evaluate_resolved(
             momenta,
@@ -1029,6 +1030,7 @@ class Runtime:
             poles=poles,
             stability_checks=stability_checks,
             reduction=reduction,
+            color_resolution=color_resolution,
         )
 
     def evaluate_orders(

@@ -8,7 +8,7 @@ one complete batch, including source parameters, counterterms and reduction.
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from decimal import Decimal, InvalidOperation
 from numbers import Integral, Real
 from threading import RLock
@@ -340,13 +340,16 @@ def v2_options(
     if on_failure not in ("raise", "return"):
         raise ValueError("on_failure must be 'raise' or 'return'")
     if helicities or color_flows:
-        # ``evaluate`` and ``evaluate_resolved`` take them at leading colour
-        # (``loops.v2.selection``) and remove them before this check; the
-        # correlated evaluations reach it.
+        # ``evaluate`` and ``evaluate_resolved`` take them (Born-interfered:
+        # at leading colour, ``loops.v2.selection``; loop-induced: helicities
+        # at full colour, ``V2InducedObservablesRuntime``) and remove them before this
+        # check; the correlated evaluations reach it.
         raise CompatibilityError(
             "v2 correlated virtual evaluations take no helicity or colour-flow "
             "selection, as in the tree engine; select with evaluate or "
-            "evaluate_resolved at leading colour (color.accuracy='lc')"
+            "evaluate_resolved (Born-interfered processes at leading colour, "
+            "color.accuracy='lc'; loop-induced processes select helicities at "
+            "full colour)"
         )
     v2_r2_strategy(r2_strategy)
     if stability is not None:
@@ -1096,7 +1099,7 @@ class V2ObservablesRuntime:
     ) -> dict[str, VirtualEvaluation]:
         """Every request on one batch; requests with equal spin sources share
         their seed columns (one dressing per point and source assignment; one
-        native batch per source assignment)."""
+        native batch per source assignment, ``_correlated_batches``)."""
 
         selection, checks = v2_options(on_failure=on_failure, **options)
         arithmetic, carrier = self._precision(arithmetic, precision)
@@ -1110,12 +1113,54 @@ class V2ObservablesRuntime:
             "poles": selection.value,
             "stability": checks.to_checks() if checks.enabled else None,
         }
+        reduction = None if reductions is None else reductions[arithmetic]
         out: dict[str, VirtualEvaluation] = {}
+        for outputs, spins, python, labels in self._correlated_batches(
+            requests, groups, sources, len(points), settings
+        ):
+            per_point, failures = self._run(
+                ("correlated", outputs),
+                python,
+                points,
+                scales,
+                spins,
+                settings,
+                reduction,
+            )
+            self._failed(failures, on_failure)
+            for label, output in labels:
+                out[label] = self._evaluation(
+                    [
+                        None if results is None else results[output]
+                        for results in per_point
+                    ],
+                    failures,
+                    arithmetic,
+                    carrier,
+                    _correlated,
+                    selection,
+                    checks,
+                    reductions,
+                )
+        return {label: out[label] for label in requests}
+
+    def _correlated_batches(
+        self,
+        requests: Mapping[str, CorrelatedRequest],
+        groups: Mapping[tuple[Any, ...], list[str]],
+        sources: Mapping[tuple[Any, ...], tuple[dict[int, Any], ...]],
+        point_count: int,
+        settings: Mapping[str, Any],
+    ) -> Iterator[tuple[tuple[Any, ...], list[Any], Any, list[tuple[str, Any]]]]:
+        """The batches of ``evaluate_correlated_many``, one per spin source
+        assignment (``_spin_groups``): its outputs (the colour histories),
+        per-point spin sources, Python runner, and each label's output."""
+
+        del point_count
         for key, labels in groups.items():
             histories = tuple(
                 dict.fromkeys(requests[label].color_correlation for label in labels)
             )
-            spins = [spin or None for spin in sources[key]]
             runner: Any = self._runner() if self._executor != "native" else None
 
             def python(
@@ -1129,32 +1174,12 @@ class V2ObservablesRuntime:
                     point, scale, correlations=histories, spin=spin, **settings
                 )
 
-            per_point, failures = self._run(
-                ("correlated", histories),
+            yield (
+                histories,
+                [spin or None for spin in sources[key]],
                 python,
-                points,
-                scales,
-                spins,
-                settings,
-                None if reductions is None else reductions[arithmetic],
+                [(label, requests[label].color_correlation) for label in labels],
             )
-            self._failed(failures, on_failure)
-            for label in labels:
-                history = requests[label].color_correlation
-                out[label] = self._evaluation(
-                    [
-                        None if results is None else results[history]
-                        for results in per_point
-                    ],
-                    failures,
-                    arithmetic,
-                    carrier,
-                    _correlated,
-                    selection,
-                    checks,
-                    reductions,
-                )
-        return {label: out[label] for label in requests}
 
     def _spin_groups(
         self, requests: Mapping[str, CorrelatedRequest], point_count: int
@@ -1431,82 +1456,38 @@ class V2InducedObservablesRuntime(V2ObservablesRuntime):
 
         return {"reduction": None if reduction is None else reduction.effective}
 
-    def evaluate_correlated_many(
+    def _correlated_batches(
         self,
-        momenta: Momenta,
         requests: Mapping[str, CorrelatedRequest],
-        *,
-        mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
-        precision: int | None = None,
-        arithmetic: str | None = None,
-        on_failure: Literal["raise", "return"] = "raise",
-        _correlated: bool = True,
-        reductions: Mapping[str, VirtualReduction] | None = None,
-        **options: Any,
-    ) -> dict[str, VirtualEvaluation]:
-        """Every request on one native batch (and one per rotation): each
-        (spin source assignment, colour history) output is a quadratic form
-        on the points' amplitude vectors, so requests with different spin
-        sources cost no extra dressing or reduction (RULED Q9). The outputs
-        are keyed (assignment, history) (``InducedObservables.
-        native_columns``)."""
+        groups: Mapping[tuple[Any, ...], list[str]],
+        sources: Mapping[tuple[Any, ...], tuple[dict[int, Any], ...]],
+        point_count: int,
+        settings: Mapping[str, Any],
+    ) -> Iterator[tuple[tuple[Any, ...], list[Any], Any, list[tuple[str, Any]]]]:
+        """Every request of ``evaluate_correlated_many`` on one native batch
+        (and one per rotation): each (spin source assignment, colour history)
+        output is a quadratic form on the points' amplitude vectors, so
+        requests with different spin sources cost no extra dressing or
+        reduction (RULED Q9). The outputs are keyed (assignment, history)
+        (``InducedObservables.native_columns``)."""
 
-        selection, checks = v2_options(on_failure=on_failure, **options)
-        arithmetic, carrier = self._precision(arithmetic, precision)
-        points, scales = _inputs(momenta, mu_r2, self.external_count)
-        groups, sources = self._spin_groups(requests, len(points))
-        with self._lock:
-            parameters = dict(self._parameters)
+        del settings
         assignments = tuple(groups)
-        wanted = tuple(
-            dict.fromkeys(
-                (g, requests[label].color_correlation)
-                for g, key in enumerate(assignments)
-                for label in groups[key]
-            )
-        )
+        labels = [
+            (label, (g, requests[label].color_correlation))
+            for g, key in enumerate(assignments)
+            for label in groups[key]
+        ]
         spins = [
             tuple(sources[key][index] or None for key in assignments)
-            for index in range(len(points))
+            for index in range(point_count)
         ]
-        settings = {
-            "parameters": parameters,
-            "precision": carrier,
-            "poles": selection.value,
-            "stability": checks.to_checks() if checks.enabled else None,
-        }
 
         def python(point: Any, scale: Any, spin: Any) -> Any:
             raise AssertionError("loop-induced observables run the native executor")
 
-        per_point, failures = self._run(
-            ("correlated", wanted),
-            python,
-            points,
-            scales,
-            spins,
-            settings,
-            None if reductions is None else reductions[arithmetic],
-        )
-        self._failed(failures, on_failure)
-        out: dict[str, VirtualEvaluation] = {}
-        for g, key in enumerate(assignments):
-            for label in groups[key]:
-                output = (g, requests[label].color_correlation)
-                out[label] = self._evaluation(
-                    [
-                        None if results is None else results[output]
-                        for results in per_point
-                    ],
-                    failures,
-                    arithmetic,
-                    carrier,
-                    _correlated,
-                    selection,
-                    checks,
-                    reductions,
-                )
-        return {label: out[label] for label in requests}
+        outputs = tuple(dict.fromkeys(output for _, output in labels))
+        yield outputs, spins, python, labels
 
     def selection_catalogue(self) -> Any:
         """The helicity rows a selection names (no colour flows): a mapped
