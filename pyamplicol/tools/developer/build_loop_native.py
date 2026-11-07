@@ -37,10 +37,18 @@ needs ``make`` and ``m4`` on ``PATH``).
 ``build-info.json`` records the C settings and the glibc versions each native
 library needs (its ELF version requirements).
 
+Both libraries are built with their default cargo features, which include
+``tir`` (TIRust, the tensor-integral reduction backend; m-lit PLAN §2.c.2
+item 3, a default feature by the user's ruling of 2026-11-06), as wheels are.
+``--no-tir`` builds them without it (``--no-default-features``: the
+non-default configuration); ``build-info.json`` records the cargo features.
+
 ``stage`` publishes such a directory into a checkout's ``src/pyamplicol``
 through the source-runtime contract of ``prepare_source_runtime.py``. It
 refuses a build whose digest differs from the checkout's native inputs and
-verifies the staged module in a fresh interpreter.
+verifies the staged module in a fresh interpreter, which also reports whether
+it links TIRust (``"tir"`` in the printed report: builds with and without
+``tir`` share the native-input digest).
 """
 
 from __future__ import annotations
@@ -78,12 +86,14 @@ _OUTPUTS = {
 _TRADITIONAL_TLS = "-mtls-dialect=gnu"
 _C_DEPENDENCY_STAMP = "pyamplicol-c-dependencies.json"
 _VERIFY = """
+import json
 import sys
 sys.path.insert(0, sys.argv[1])
 from pyamplicol import _rusticol
 from pyamplicol._internal.versions import verify_native_module
 verify_native_module(_rusticol)
 assert _rusticol._loop.V2Executor
+print(json.dumps(_rusticol._loop.tirust_available()))
 """
 
 
@@ -186,8 +196,23 @@ def _glibc_version_needs(root: Path, paths: dict[str, Path]) -> dict[str, list[s
     return needs
 
 
+# The packages built, the features always requested, and the default feature
+# ``--no-tir`` leaves out (every other default feature of the two packages is
+# ``tir`` itself, so ``--no-default-features`` drops only TIRust).
+_PACKAGES = ("rusticol-python", "rusticol-loop-sdk")
+_FEATURES = ("rusticol-python/extension-module", "rusticol-python/numpy")
+_TIR_FEATURE = "tir"
+
+
+def cargo_features(tir: bool = True) -> list[str]:
+    """The cargo feature arguments of ``build`` (with or without TIRust)."""
+
+    arguments = ["--features", ",".join(_FEATURES)]
+    return arguments if tir else ["--no-default-features", *arguments]
+
+
 def build(
-    root: Path, output: Path, target_dir: Path | None = None
+    root: Path, output: Path, target_dir: Path | None = None, tir: bool = True
 ) -> dict[str, object]:
     output = output.resolve()
     if output.exists():
@@ -218,12 +243,8 @@ def build(
         "--release",
         "--target-dir",
         str(target),
-        "-p",
-        "rusticol-python",
-        "-p",
-        "rusticol-loop-sdk",
-        "--features",
-        "rusticol-python/extension-module,rusticol-python/numpy",
+        *(argument for package in _PACKAGES for argument in ("-p", package)),
+        *cargo_features(tir),
         "--message-format=json-render-diagnostics",
     ]
     process = subprocess.Popen(
@@ -277,6 +298,11 @@ def build(
         "version": version.replace("-dev.", ".dev"),
         "profile": {"name": "release"}
         | {key: env[key] for key in sorted(env) if key.startswith("CARGO_PROFILE_")},
+        "cargo_features": {
+            "default_features": tir,
+            "features": list(_FEATURES),
+            _TIR_FEATURE: tir,
+        },
         "rustc": subprocess.check_output(["rustc", "-V"], text=True).strip(),
         "c_dependencies": c_settings,
         "glibc_version_needs": _glibc_version_needs(
@@ -335,10 +361,21 @@ def stage(build_directory: Path, root: Path) -> dict[str, object]:
             (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode(),
         )
         marker.unlink()
-    subprocess.run(
-        [sys.executable, "-c", _VERIFY, str(root / "src")], cwd=root, check=True
+    verified = subprocess.run(
+        [sys.executable, "-c", _VERIFY, str(root / "src")],
+        cwd=root,
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
     )
-    return {"staged": str(package / "_rusticol.so"), "native_digest": digest}
+    # The staged extension's own answer (a build with and one without tir
+    # share the native-input digest; build-info.json records which it is).
+    tir = json.loads(verified.stdout.splitlines()[-1])
+    return {
+        "staged": str(package / "_rusticol.so"),
+        "native_digest": digest,
+        "tir": tir,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -352,6 +389,12 @@ def main(argv: list[str] | None = None) -> int:
         help="private Cargo target directory (default: cargo-loop-native-<profile> "
         "next to a set CARGO_TARGET_DIR, else the checkout's target/)",
     )
+    build_parser.add_argument(
+        "--no-tir",
+        action="store_true",
+        help="build without TIRust (--no-default-features; the default "
+        "feature tir is on otherwise)",
+    )
     stage_parser = commands.add_parser("stage", help="stage a build into a checkout")
     stage_parser.add_argument("build_directory", type=Path)
     for sub in (build_parser, stage_parser):
@@ -359,7 +402,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     root = args.source.resolve()
     if args.command == "build":
-        report = build(root, args.output, args.target_dir)
+        report = build(root, args.output, args.target_dir, tir=not args.no_tir)
     else:
         report = stage(args.build_directory.resolve(), root)
     print(json.dumps(report, indent=2, sort_keys=True))

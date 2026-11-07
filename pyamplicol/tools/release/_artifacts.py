@@ -553,6 +553,7 @@ def _required_legal_files() -> tuple[str, ...]:
         "licenses/SymJIT.txt",
         "licenses/NinjaRS.txt",
         "licenses/oneloopmaster.txt",
+        "licenses/TIRust.txt",
         "licenses/GammaLoop-crates.txt",
         *_arithmetic_licence_files(),
     )

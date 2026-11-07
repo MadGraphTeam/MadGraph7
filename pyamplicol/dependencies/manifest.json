@@ -43,6 +43,17 @@
       "note": "main: TIRust's oneloop patches (PRs #17/#18, merge 5efc7f6), the 0BSD relicence 37d9a9b3 and PR #19 (order-independent massless triangle); features generated-evaluators + rust-codegen"
     },
     {
+      "name": "tirust",
+      "crates": [
+        "iregi-rust",
+        "iregi-masters"
+      ],
+      "url": "https://github.com/huashengshao/TIRust.git",
+      "ref": "main",
+      "revision": "760e3144cb96df516241c9347582b10b4c47f3f3",
+      "note": "main after the one history rewrite (2026-11-07; same tree as ff13bd7); behind the default cargo feature tir of the crates that link it; oneloop a7cf4587 and Symbolica dfe6bd97 as this workspace's (one source each); 0BSD (licenses/TIRust.txt)"
+    },
+    {
       "name": "feynkit",
       "crates": [
         "feynkit-kinematics"
