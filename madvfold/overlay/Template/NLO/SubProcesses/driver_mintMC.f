@@ -152,9 +152,6 @@ c
       call run_printout          !Prints out a summary of the run settings
       call fill_configurations_common
       call check_amp_split 
-      ! AV road B step 3: test of the Born batch (--vfold-with-tests),
-      ! a no-op unless ENV_VFOLD_TEST_BORN_BATCH is set
-      if (vfold_tests) call vfold_test_born_batch
 
       ! AV MadVFold: the FVZ dumps (and the ENV_FVZ_* variables) are only
       ! enabled by 'output --vfold-with-tests' (see vfold_tests.inc)

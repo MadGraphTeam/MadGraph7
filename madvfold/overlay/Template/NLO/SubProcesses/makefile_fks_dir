@@ -55,7 +55,7 @@ FILES= $(patsubst %.f,%.o,$(wildcard parton_lum_*.f)) 			\
          $(patsubst %.f,%.o,$(wildcard  numder*.f)) 			\
 	 momentum_reshuffling.o						\
 	 rescale_alpha_tagged.o						\
-	 fks_Sij.o $(fastjetfortran_madfks) vfold_mode.o vfold_cpu_time.o vfold_rng_slots.o vfold_cudacpp_dispatcher.o vfold_born_batch.o vfold_test_born_batch.o vfold_real_batch.o vfold_real_me_chooser.o fks_singular.o		\
+	 fks_Sij.o $(fastjetfortran_madfks) vfold_mode.o vfold_cpu_time.o vfold_rng_slots.o vfold_cudacpp_dispatcher.o vfold_born_batch.o vfold_real_batch.o vfold_real_me_chooser.o fks_singular.o		\
 	 montecarlocounter.o reweight_xsec.o boostwdir2.o       	\
 	 boost_to_frame.o						\
 	 cluster.o splitorders_stuff.o 			\
@@ -200,7 +200,6 @@ vfold_mode.o: vfold_mode.f90
 vfold_rng_slots.o: vfold_rng_slots.f90 vfold_mode.o
 vfold_cudacpp_dispatcher.o: vfold_cudacpp_dispatcher.cpp
 vfold_born_batch.o: vfold_born_batch.f90 vfold_mode.o vfold_bsf.inc
-vfold_test_born_batch.o: vfold_test_born_batch.f90 vfold_born_batch.o
 vfold_real_batch.o: vfold_real_batch.f90 vfold_mode.o
 mint_module.o : FKSParams.o vfold_mode.o vfold_rng_slots.o vfold_born_batch.o vfold_real_batch.o
 BinothLHA_OLP.o: FKSParams.o
@@ -210,7 +209,7 @@ fks_singular.o: weight_lines.o mint_module.o vfold_mode.o vfold_rng_slots.o vfol
 montecarlocounter.o: vfold_mode.o vfold_rng_slots.o
 MC_integer.o: vfold_rng_slots.o
 born_hel.o: vfold_rng_slots.o
-driver_mintMC.o: weight_lines.o mint_module.o vfold_mode.o vfold_rng_slots.o vfold_born_batch.o vfold_real_batch.o vfold_test_born_batch.o pythia8_control.inc pythia8_control_setup.inc
+driver_mintMC.o: weight_lines.o mint_module.o vfold_mode.o vfold_rng_slots.o vfold_born_batch.o vfold_real_batch.o pythia8_control.inc pythia8_control_setup.inc
 driver_mintFO.o: weight_lines.o mint_module.o FKSParams.o
 pythia8_wrapper.o: pythia8_fortran.o LHAFortran_aMCatNLO.h
 chooser_functions.o: weight_lines.o

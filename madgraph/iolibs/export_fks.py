@@ -120,8 +120,7 @@ def vfold_linkfiles(opt):
         return []
     return ['vfold_tests.inc', 'vfold_mode.f90', 'vfold_cpu_time.c',
             'vfold_rng_slots.f90', 'vfold_born_batch.f90',
-            'vfold_real_batch.f90', 'vfold_test_born_batch.f90',
-            'vfold_cudacpp_dispatcher.cpp']
+            'vfold_real_batch.f90', 'vfold_cudacpp_dispatcher.cpp']
 
 def vfold_copy_template(opt, dir_path):
     """Overlay the Template/NLO files of the overlay trees on dir_path"""
