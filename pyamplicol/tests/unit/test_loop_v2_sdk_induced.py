@@ -329,3 +329,77 @@ def test_the_reduction_setter_records_the_python_apis_choice(
         assert "unknown reduction backend" in _error(sdk)
     finally:
         sdk.rusticol_virtual_free(handle)
+
+
+@pytest.mark.parametrize(
+    ("arithmetic", "digits"), [("double-double", 0), ("arbitrary", 32)]
+)
+def test_tirust_in_extended_precision_follows_the_capability_query(
+    artifacts, loop_native, arithmetic, digits
+):
+    """DD/AP on TIRust (m-lit lit-tir-mp's carriers; DECISIONS 21:50 R2):
+    where the native extension reports TIRust at the carrier
+    (``reduction_backends()``), the SDK's TIRust values equal the Python
+    API's TIRust values (``Decimal`` values; the same failed statuses where
+    it fails closed); where it does not, both refuse an explicit TIRust call
+    typed with the same message (the Python API's ``ReductionUnavailable``)
+    and ``auto`` keeps NinjaRS with the same reason. Runs unchanged once
+    lit-tir-mp's carriers land."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.api.errors import ReductionUnavailable
+
+    served = json.loads(loop_native.reduction_backends())
+    if "tirust" not in served:
+        pytest.skip("this native extension is built without TIRust")
+    name = "li_gg_hgg"
+    artifact = artifacts[name]
+    runtime = Runtime.load(artifact, process="p")
+    points, scales = _inputs(name, 1)
+    exact_points, exact_scales = _exact(points, scales)
+    options = {"arithmetic": arithmetic, **({"precision": digits} if digits else {})}
+    sdk = _sdk()
+    handle = _open(sdk, artifact)
+    try:
+        status = sdk.rusticol_virtual_set_arithmetic(
+            handle, arithmetic.encode(), ctypes.c_uint32(digits)
+        )
+        assert status == 0, _error(sdk)
+        assert sdk.rusticol_virtual_set_reduction(handle, b"tirust") == 0
+        if arithmetic not in served["tirust"]:
+            with pytest.raises(ReductionUnavailable) as refused:
+                runtime.evaluate(
+                    exact_points, mu_r2=exact_scales, reduction="tirust", **options
+                )
+            flat = [c for point in points for p in point for c in p]
+            momenta = (ctypes.c_double * len(flat))(*flat)
+            mu = (ctypes.c_double * 1)(*scales)
+            request = _Request(momenta, len(flat), 1, None, mu, 1)
+            result = ctypes.c_void_p()
+            status = sdk.rusticol_virtual_evaluate(
+                handle, ctypes.byref(request), ctypes.byref(result)
+            )
+            assert status == STATUS_RUNTIME_ERROR
+            assert str(refused.value) in _error(sdk)
+            assert sdk.rusticol_virtual_set_reduction(handle, b"auto") == 0
+            found = _evaluate(sdk, handle, points, scales)
+            expected = runtime.evaluate(exact_points, mu_r2=exact_scales, **options)
+            record = expected.diagnostics[0].reduction
+            assert found["diagnostics"]["reduction"]["reason"] == record.reason
+            return
+        found = _evaluate(sdk, handle, points, scales)
+        expected = runtime.evaluate(
+            exact_points,
+            mu_r2=exact_scales,
+            reduction="tirust",
+            on_failure="return",
+            **options,
+        )
+        if expected.values[0] is None:
+            assert found["statuses"] == [FAILED_STATUS]
+            return
+        literals = found["decimal"]["virtual"]
+        values = [x for laurent in expected.values[0] for x in laurent]
+        assert [Decimal(x) for x in literals] == [Decimal(x) for x in values]
+    finally:
+        sdk.rusticol_virtual_free(handle)
