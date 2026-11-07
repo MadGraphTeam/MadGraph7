@@ -605,15 +605,18 @@ jobs:
           --allow-missing "no loop-induced test file yet (tests/unit/test_loop_v2_induced*.py, tests/unit/test_loop_v2_li_*.py): passes until lit-req (M-LIT) lands the first ones"
           -- -p no:cacheprovider
 
-  # iregi-rust (TIRust) behind the `tir` cargo feature (M-LIT lit-dep). The
-  # job is switched off while TIR_FEATURES is empty: lit-dep sets it to the
-  # cargo feature list (e.g. <crate>/tir) and fits the runner to lit-tirust-0's
-  # d0.rs measurement. A declared `tir` feature with the job off fails. Its
-  # tests follow `just rust-test` (one test at a time, the Python-producer
-  # tests alone); on fork pull requests they run without the secret, with a
-  # restricted Symbolica (ca602436's rule).
+  # The NON-default configuration of TIRust (iregi-rust, M-LIT lit-dep): the
+  # cargo feature `tir` is a default feature of every crate that links TIRust
+  # (USER 2026-11-06 ~13:35), so the other jobs build and test with it. This
+  # job checks the crates without it (`--no-default-features` on TIR_PACKAGES,
+  # whose only default feature is `tir`; every crate declaring a `tir` feature
+  # must be listed) and that NinjaRS's values do not depend on it:
+  # rusticol-loop-reduction's tir_feature test writes the bits of its NinjaRS
+  # lanes in both configurations and the files must be identical. Its tests
+  # follow `just rust-test` (one test at a time); on fork pull requests they
+  # run without the secret, with a restricted Symbolica (ca602436's rule).
   tir:
-    name: tir (Rust workspace with --features tir)
+    name: tir (TIRust-linking crates without the default tir feature)
     needs: licence
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
@@ -622,7 +625,7 @@ jobs:
       PYAMPLICOL_BUILD_MODE: release
       PYTHONDONTWRITEBYTECODE: "1"
       SYMBOLICA_HIDE_BANNER: "1"
-      TIR_FEATURES: ""
+      TIR_PACKAGES: "rusticol-loop-reduction rusticol-loop-python rusticol-loop-sdk rusticol-python rusticol-capi"
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -633,23 +636,21 @@ jobs:
           GATE: ${{ needs.licence.result }}
           LICENSED: ${{ needs.licence.outputs.licensed }}
         run: |
-          declared=$(grep -rlE '^[[:space:]]*"?tir"?[[:space:]]*=' --include=Cargo.toml Cargo.toml rust || true)
-          if [ -z "$TIR_FEATURES" ]; then
-            if [ -n "$declared" ]; then
-              echo "::error title=tir job switched off::a tir cargo feature is declared ($declared) but TIR_FEATURES is empty in tests.yml"
-              exit 1
-            fi
-            echo "::notice title=tir job switched off::TIR_FEATURES is empty in tests.yml (no tir cargo feature yet); lit-dep (M-LIT) switches the job on"
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          elif [ "$GATE" != success ]; then
+          for manifest in $(grep -rlE '^[[:space:]]*"?tir"?[[:space:]]*=' --include=Cargo.toml Cargo.toml rust); do
+            name=$(sed -n 's/^name = "\(.*\)"$/\1/p' "$manifest" | head -1)
+            case " $TIR_PACKAGES " in
+              *" $name "*) ;;
+              *) echo "::error title=tir package not checked::$manifest declares a tir feature but $name is not in TIR_PACKAGES"; exit 1 ;;
+            esac
+          done
+          if [ "$GATE" != success ]; then
             echo "::error title=Licence gate $GATE::the licence gate ended with '$GATE': the tir checks do not run"
             exit 1
-          else
-            if [ "$LICENSED" != true ]; then
-              echo "::notice title=tir tests without the licence::fork pull request without SYMBOLICA_LICENSE (licence gate): the tir Rust tests run with a restricted Symbolica, one test at a time"
-            fi
-            echo "run=true" >> "$GITHUB_OUTPUT"
           fi
+          if [ "$LICENSED" != true ]; then
+            echo "::notice title=tir tests without the licence::fork pull request without SYMBOLICA_LICENSE (licence gate): the tir Rust tests run with a restricted Symbolica, one test at a time"
+          fi
+          echo "run=true" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         if: steps.tir.outputs.run == 'true'
         with:
@@ -679,30 +680,31 @@ jobs:
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y g++ gfortran make
           python dependencies/install_dependencies.py --dependencies-only
-      - name: Check the Rust workspace with the tir features (12 GiB RSS limit)
+      - name: Check the TIRust-linking crates without tir (12 GiB RSS limit)
         if: steps.tir.outputs.run == 'true'
         run: |
+          packages=$(printf -- '-p %s ' $TIR_PACKAGES)
           .venv/bin/python tools/release/run_cargo.py --mode release -- fmt --all --check
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 12 -- \
             .venv/bin/python tools/release/run_cargo.py --mode release -- \
-            clippy --workspace --all-targets --locked --features "$TIR_FEATURES"
-      - name: Test the Rust workspace with the tir features (12 GiB RSS limit)
+            clippy $packages --all-targets --locked --no-default-features
+      - name: Test without tir; NinjaRS values identical with and without it (12 GiB RSS limit)
         if: steps.tir.outputs.run == 'true'
         env:
           # Empty on fork pull requests: then unset (restricted Symbolica).
           SYMBOLICA_LICENSE: ${{ secrets.SYMBOLICA_LICENSE }}
-          PYAMPLICOL_TEST_PYTHON: ${{ github.workspace }}/.venv/bin/python
         run: |
           if [ -z "$SYMBOLICA_LICENSE" ]; then unset SYMBOLICA_LICENSE; fi
-          serialization=engine::evaluator::backend::python_serialization_tests
-          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 12 -- \
-            .venv/bin/python tools/release/run_cargo.py --mode release -- \
-            test --workspace --locked --features "$TIR_FEATURES" -- \
-            --skip python_serialization_tests --test-threads=1
-          for name in python_saved_evaluator_roundtrips_in_three_precisions \
-            python_saved_evaluator_with_a_conflicting_symbol_loads; do
+          bits="$RUNNER_TEMP/ninjars-bits"
+          mkdir -p "$bits"
+          PYAMPLICOL_NINJARS_BITS="$bits/without-tir.txt" \
             .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 12 -- \
-              .venv/bin/python tools/release/run_cargo.py --mode release -- \
-              test --workspace --locked --features "$TIR_FEATURES" --lib -- \
-              --exact "$serialization::$name"
-          done
+            .venv/bin/python tools/release/run_cargo.py --mode release -- \
+            test -p rusticol-loop-reduction -p rusticol-loop-sdk --locked \
+            --no-default-features -- --test-threads=1
+          PYAMPLICOL_NINJARS_BITS="$bits/with-tir.txt" \
+            .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 12 -- \
+            .venv/bin/python tools/release/run_cargo.py --mode release -- \
+            test -p rusticol-loop-reduction --locked --test tir_feature -- --test-threads=1
+          cmp "$bits/without-tir.txt" "$bits/with-tir.txt"
+          echo "NinjaRS lanes bitwise identical with and without tir: $(wc -l < "$bits/with-tir.txt") lanes"
