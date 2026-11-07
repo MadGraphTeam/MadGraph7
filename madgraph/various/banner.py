@@ -806,6 +806,60 @@ def parse_energy_unit(value):
 class UnknownPDFSet(InvalidRunCard):
     """A PDF label or LHAPDF id that no PDF set of the installation matches."""
 
+# gamma-UPC photon-photon luminosities (arXiv:2207.03012) with forward neutron
+# tagging. A pdlabel is made of
+#   'ed' (EDFF) or 'ch' (ChFF),
+#   'f', 'p' or 'm': central, upper or lower neutron-emission cross section,
+#   'f' (no tagging) or '<y>n<z>n', the neutron tags of beam 1 and beam 2:
+#       i (inclusive, 0n+Xn), x (Xn, X>=1), 0, 1, 2, 3, 4 (exactly that many).
+# The 'ed' and 'ch' prefixes are reserved for gamma-UPC: the makefiles link
+# libgammaUPC on them, and the Fortran code tests PDLABEL(1:2).
+UPC_NEUTRON_TAGS = ['in', 'xn', '0n', '1n', '2n', '3n', '4n']
+UPC_LABELS = ['%s%s%s' % (ff, err, tag)
+              for ff in ('ed', 'ch')
+              for err in ('f', 'p', 'm')
+              for tag in ['f'] + [y + z for y in UPC_NEUTRON_TAGS for z in UPC_NEUTRON_TAGS]]
+_UPC_LABEL_SET = frozenset(UPC_LABELS)
+
+def is_upc_label(label):
+    """True if label is a gamma-UPC pdlabel (edff, chpf, edf1n2n, ...)."""
+    return label in _UPC_LABEL_SET
+
+# Nuclei (Z, N) with forward neutron tagging, and the highest exact neutron
+# multiplicity available for each (all of them have xn and 0n).
+#   O16: '2n' uses the >=2n cross section; 3n and 4n are not available.
+#   U238 is not enabled: photoabsorption fits exist, but there is no adequate
+#   U238 photon flux yet (a Woods-Saxon profile is not suited to it).
+# A neutron tag on a proton beam is ignored by gamma-UPC.
+UPC_NEUTRON_TAGGING_NUCLEI = {(82, 126): 4,   # Pb208
+                              (79, 118): 4,   # Au197
+                              (8, 8): 2}      # O16
+
+def check_upc_neutron_tagging(card, label):
+    """Raise InvalidRunCard if the gamma-UPC pdlabel asks for a neutron tag
+    that gamma-UPC does not provide for the ion of that beam."""
+
+    if not is_upc_label(label) or label[3] == 'f':
+        return
+    if not abs(card['lpp1']) == 2 == abs(card['lpp2']):
+        return
+    for beam, tag in ((1, label[3:5]), (2, label[5:7])):
+        if tag == 'in':
+            continue
+        Z, N = card['nb_proton%i' % beam], card['nb_neutron%i' % beam]
+        if (Z, N) == (1, 0):
+            continue
+        nmax = UPC_NEUTRON_TAGGING_NUCLEI.get((Z, N))
+        if nmax is None:
+            raise InvalidRunCard("pdlabel '%s': forward neutron tagging ('%s') is not available "
+                                 "for beam %i (Z=%s, N=%s). Only Pb208, Au197 and O16 are supported "
+                                 "(use pdlabel '%sf' for no tagging)."
+                                 % (label, tag, beam, Z, N, label[:2]))
+        if tag[0].isdigit() and int(tag[0]) > nmax:
+            raise InvalidRunCard("pdlabel '%s': neutron tag '%s' is not available for beam %i "
+                                 "(Z=%s, N=%s), which has at most %in."
+                                 % (label, tag, beam, Z, N, nmax))
+
 class ProcCard(list):
     """Basic Proccard object"""
     
@@ -4175,14 +4229,17 @@ class RunCard(ConfigFile):
                 return lhaid[0]
             else:
                 return lhaid
-        else: 
+        elif is_upc_label(pdf):
+            return 0
+        else:
             try:
-                return {'none': 0, 'iww': 0, 'eva':0, 'edff':0, 'chff':0,
+                return {'none': 0, 'iww': 0, 'eva':0,
                     'cteq6_m':10000,'cteq6_l':10041,'cteq6l1':10042,
                     'nn23lo':246800,'nn23lo1':247000,'nn23nlo':244800
-                    }[pdf] 
+                    }[pdf]
             except:
-                return 0   
+                # any other label (lepton densities, mixed, ...) has no PDF id
+                return 0
     
     def get_lhapdf_id(self):
         return self.get_pdf_id(self['pdlabel'])
@@ -4435,11 +4492,18 @@ class PDLabelBlock(RunBlock):
         """check which template is active and fill the parameter in the inactive one. """
 
         if self.status(card):
-            if card['pdlabel1'] == 'lhapdf' or card['pdlabel2'] == 'lhapdf':
+            upc = is_upc_label(card['pdlabel1']) or is_upc_label(card['pdlabel2'])
+            # two elastic-photon beams never use lhapdf (the default pdlabel):
+            # a gamma-UPC label on one beam then wins over lhapdf on the other
+            photon_beams = isinstance(card['lpp1'],int) and isinstance(card['lpp2'],int) and \
+                           abs(card['lpp1']) == 2 == abs(card['lpp2'])
+            if (card['pdlabel1'] == 'lhapdf' or card['pdlabel2'] == 'lhapdf') and \
+               not (upc and photon_beams):
                 dict.__setitem__(card, 'pdlabel','lhapdf')
-            elif card['pdlabel1'] in ['edff','chff'] or card['pdlabel2'] in ['edff','chff']:
+            elif upc:
+                # gamma-UPC gives the photon-photon luminosity: one label for both beams
                 if card['pdlabel1'] != card['pdlabel2']:
-                    if card['pdlabel1'] in ['edff','chff']:
+                    if is_upc_label(card['pdlabel1']):
                         dict.__setitem__(card, 'pdlabel',card['pdlabel1'])
                         dict.__setitem__(card, 'pdlabel2',card['pdlabel1'])
                     else:
@@ -4470,6 +4534,9 @@ class PDLabelBlock(RunBlock):
         if isinstance(card['lpp1'],int) and isinstance(card['lpp2'],int) and \
             abs(card['lpp1']) == 1 == abs(card['lpp2']) and card['pdlabel1'] != card['pdlabel2']:
             raise InvalidRunCard("Asymmetric beam pdf not supported for proton-proton collision")
+
+        # pdlabel1 == pdlabel2 for gamma-UPC (see above)
+        check_upc_neutron_tagging(card, card['pdlabel1'])
 
     def status(self, card):
         """return False if template_off to be used, True if template_on to be used"""
@@ -4793,8 +4860,8 @@ class RunCardLO(RunCard):
                        allowed=[-1,0, 0.938, 207.9766521*0.938, 0.000511, 0.105, '*'],
                        shortcut={'proton':0.938,'lead':207.9766521*0.938,'electron':0.000511,'muon':0.105},
                        comment='For heavy ion physics mass in GeV of the ion (of beam 2)', energy=True)
-        valid_pdf = ['lhapdf', 'cteq6_m','cteq6_l', 'cteq6l1','nn23lo', 'nn23lo1', 'nn23nlo','iww','eva','edff','chff','none','mixed']+\
-                       sum(self.allowed_lep_densities.values(),[])
+        valid_pdf = ['lhapdf', 'cteq6_m','cteq6_l', 'cteq6l1','nn23lo', 'nn23lo1', 'nn23nlo','iww','eva','none','mixed']+\
+                       sum(self.allowed_lep_densities.values(),[]) + UPC_LABELS
         self.add_param("pdlabel", "lhapdf", hidden=True, allowed=valid_pdf)
         self.add_param("pdlabel1", "lhapdf", hidden=True, allowed=valid_pdf, fortran_name="pdsublabel(1)")
         self.add_param("pdlabel2", "lhapdf", hidden=True, allowed=valid_pdf, fortran_name="pdsublabel(2)")
@@ -5148,7 +5215,7 @@ class RunCardLO(RunCard):
                     self.set(pdlabelX, 'none')
                     mod = True
             elif abs(self[lpp]) == 1: # PDF from PDF library
-                if self[pdlabelX] in ['eva','iww','edff','chff','none']:
+                if self[pdlabelX] in ['eva', 'iww', 'none'] or is_upc_label(self[pdlabelX]):
                     raise InvalidRunCard("%s \'%s\' not compatible with %s \'%s\'" % (lpp, self[lpp], pdlabelX, self[pdlabelX]))
             elif abs(self[lpp]) in [3,4]: # PDF from PDF library
                 if self[pdlabelX] not in ['none','eva','iww'] + sum(self.allowed_lep_densities.values(),[]):
@@ -5156,7 +5223,7 @@ class RunCardLO(RunCard):
                     self.set(pdlabelX, 'eva')
                     mod = True
             elif abs(self[lpp]) == 2:
-                if self[pdlabelX] not in ['none','chff','edff','iww']:
+                if self[pdlabelX] not in ['none','iww'] and not is_upc_label(self[pdlabelX]):
                     logger.warning("%s \'%s\' not compatible with %s \'%s\'. Changing %s to edff" % (lpp, self[lpp], pdlabelX, self[pdlabelX], pdlabelX))
                     self.set(pdlabelX, 'edff')
                     mod = True
@@ -5222,7 +5289,7 @@ class RunCardLO(RunCard):
                     logger.warning("Weak boson from lepton PDF is using fixed scale value of muf [dsqrt_q2fact%s]. Looks like you kept the default value (Mz). Is this really the cut-off that you want to use?" % i)
         
                 if abs(self['lpp%s' % i ]) == 2 and self['fixed_fac_scale%s' % i] and self['dsqrt_q2fact%s'%i] == 91.188:
-                    if self['pdlabel'] in ['edff','chff']:
+                    if is_upc_label(self['pdlabel']):
                         logger.warning("Since 3.5.0 exclusive photon-photon processes in ultraperipheral proton and nuclear collisions from gamma-UPC (arXiv:2207.03012) will ignore the factorisation scale.")
                     else:
                         logger.warning("Since 2.7.1 elastic photon from proton is using fixed scale value of muf [dsqrt_q2fact%s] as the cut in the Equivalent Photon Approximation (Budnev, et al) formula. Please edit it accordingly." % i)
@@ -6215,8 +6282,9 @@ class RunCardNLO(RunCard):
         self.add_param('mass_ion2', -1.0, hidden=True, fortran_name="mass_ion(2)",
                        allowed=[-1,0, 0.938, 207.9766521*0.938, 0.000511, 0.105, '*'],
                        comment='For heavy ion physics mass in GeV of the ion (of beam 2)', energy=True)
-        self.add_param('pdlabel', 'lhapdf', allowed=['lhapdf', 'emela', 'cteq6_m','cteq6_d','cteq6_l','cteq6l1', 'nn23lo','nn23lo1','nn23nlo','ct14q00','ct14q07','ct14q14','ct14q21','edff','chff'] +\
-             sum(self.allowed_lep_densities.values(),[]) )                
+        valid_pdf = ['lhapdf', 'emela', 'cteq6_m','cteq6_d','cteq6_l','cteq6l1', 'nn23lo','nn23lo1','nn23nlo','ct14q00','ct14q07','ct14q14','ct14q21'] +\
+             sum(self.allowed_lep_densities.values(),[]) + UPC_LABELS
+        self.add_param('pdlabel', 'lhapdf', allowed=valid_pdf )
         # NNPDF40_nlo_as_01180; create_default_for_process swaps in the
         # 4-flavour set (334700) when the model has a massive b (was 244600).
         self.add_param('lhaid', [331700],fortran_name='lhaPDFid')
@@ -6376,7 +6444,7 @@ class RunCardNLO(RunCard):
             if self['lpp1'] == 1 or self['lpp2']==1:
                 raise InvalidRunCard('Process like Deep Inelastic scattering not supported at NLO accuracy.')
 
-            if not self['lpp1'] == 2 == self['lpp2']:
+            if not abs(self['lpp1']) == 2 == abs(self['lpp2']):
 
                 if abs(self['lpp1']) == abs(self['lpp2']) in [3,4]:
                     # for dressed lepton collisions, check that the lhaid is a valid one
@@ -6393,6 +6461,8 @@ class RunCardNLO(RunCard):
                     self['pdlabel']='nn23nlo'
                     self['reweight_pdf']=[False]
                     logger.info('''Lepton-lepton collisions: ignoring PDF related parameters in the run_card.dat (pdlabel, lhaid, reweight_pdf, ...)''')
+
+        check_upc_neutron_tagging(self, self['pdlabel'])
 
         # For FxFx merging, make sure that the following parameters are set correctly:
         if self['ickkw'] == 3: 
@@ -6489,7 +6559,7 @@ class RunCardNLO(RunCard):
                 raise InvalidRunCard("'dynamical_scale_choice' has two or more identical entries. They have to be all different for the code to work correctly.")
             
         # Check that length of lists are consistent
-        if self['lpp1'] == self['lpp2'] == 2:
+        if abs(self['lpp1']) == abs(self['lpp2']) == 2:
             if not self['rw_fscale'] == [1.0]:
                 self['rw_fscale'] = [1.0]
                 logger.warning("Factorisation scale cannot be varied for elastic photon collisions.")

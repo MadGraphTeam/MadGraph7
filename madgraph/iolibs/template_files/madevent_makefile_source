@@ -56,11 +56,18 @@ $(LIBDIR)libdhelas.$(libext): DHELAS | $(LIBDIR)libmodel.$(libext)
 	cd DHELAS && make%(dhelas_dual)s
 $(LIBDIR)libpdf.$(libext): PDF $(alfas_functions).o | $(LIBDIR)libmodel.$(libext)
 	cd PDF && make
-ifneq (,$(filter edff chff, $(pdlabel1) $(pdlabel2)))
-$(LIBDIR)libgammaUPC.$(libext): PDF/gammaUPC
+# gamma-UPC pdlabels (edff, chff, edpf, edf1n2n, ...) all start with ed or ch,
+# a prefix no other pdlabel uses (checked in tests/unit_tests/various/test_gamma_upc.py)
+#
+# PDF/makefile also (re)builds libgammaUPC, from the sub-make of libpdf: under
+# 'make -j' the two makes would compile PDF/gammaUPC at the same time and
+# collide on its .mod files. Order-only on libpdf, so this rule only runs once
+# that sub-make is done, and reports a failure that PDF/makefile would mask.
+ifneq (,$(filter ed%% ch%%, $(pdlabel1) $(pdlabel2)))
+$(LIBDIR)libgammaUPC.$(libext): PDF/gammaUPC | $(LIBDIR)libpdf.$(libext)
 	cd PDF/gammaUPC && make
 else
-$(LIBDIR)libgammaUPC.$(libext): PDF/gammaUPC
+$(LIBDIR)libgammaUPC.$(libext): PDF/gammaUPC | $(LIBDIR)libpdf.$(libext)
 	cd PDF/gammaUPC && make -f makefile_dummy
 endif	
 $(LIBDIR)libcernlib.$(libext): CERNLIB
