@@ -230,9 +230,20 @@ class LoopV2ProcessArtifact:
 
     @property
     def runtime_capability(self) -> str:
-        if self.metadata.contribution_kind == "loop-induced":
-            return LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY
+        return loop_v2_capability(self.metadata.contribution_kind)
+
+
+def loop_v2_capability(contribution_kind: str) -> str:
+    """The runtime capability of a v2 loop process of ``contribution_kind``
+    (rusticol-core ``loop_artifact::loop_v2_capability``): the plan v4
+    runtime for a Born-interfered virtual, the amplitude-mode runtime for a
+    loop-induced process."""
+
+    if contribution_kind == "loop-induced":
+        return LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY
+    if contribution_kind == "virtual":
         return LOOP_V2_RUNTIME_CAPABILITY
+    raise ValueError(f"unknown loop contribution kind {contribution_kind!r}")
 
 
 def recorded_conventions(

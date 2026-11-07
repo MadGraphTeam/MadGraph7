@@ -165,8 +165,11 @@ def _read_json(
 
 
 def _virtual_artifact_hint(path: Path) -> bool:
-    """Choose CLI ingress only; the native loader checks the artifact itself."""
-    from pyamplicol._internal.versions import LOOP_V2_RUNTIME_CAPABILITY
+    """Choose CLI ingress only; the native loader checks the artifact itself.
+
+    Any v2 loop runtime makes a virtual artifact (Born-interfered and
+    loop-induced processes, in any mix), as ``Runtime.load`` dispatches."""
+    from pyamplicol._internal.versions import LOOP_V2_RUNTIME_CAPABILITIES
     from pyamplicol.artifacts import MANIFEST_NAME, load_manifest
 
     path = path.expanduser().resolve(strict=False)
@@ -174,8 +177,10 @@ def _virtual_artifact_hint(path: Path) -> bool:
     if not (root / MANIFEST_NAME).is_file():
         return False
     manifest = load_manifest(root, verify_payloads=False)
-    return LOOP_V2_RUNTIME_CAPABILITY in cast(
-        tuple[str, ...], manifest.runtime["required_runtime_capabilities"]
+    return bool(
+        LOOP_V2_RUNTIME_CAPABILITIES.intersection(
+            cast(tuple[str, ...], manifest.runtime["required_runtime_capabilities"])
+        )
     )
 
 
@@ -300,7 +305,7 @@ def _full_physics_inspection(artifact: Path, selector: str | None) -> object:
     physics = runtime.physics
     if not isinstance(physics, ProcessPhysics):
         return physics
-    if physics.contribution_kind == "virtual":
+    if physics.contribution_kind != "tree":
         return {
             **{item.name: getattr(physics, item.name) for item in fields(physics)},
             "virtual": runtime.inspect(),

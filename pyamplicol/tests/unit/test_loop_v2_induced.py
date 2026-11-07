@@ -453,6 +453,62 @@ def test_h_to_g_a_is_an_exact_colour_zero(li):
 
 
 @pytest.mark.loop_physics
+def test_stored_colour_zero_agrees_with_the_generated_basis(li):
+    """The stored amplitude record (``induced.StoredAmplitude``) states the
+    request's exact colour zero as the generation's basis does
+    (``AmplitudeBasis.colour_zero``: no nonzero coefficient cell and no
+    counterterm ket): u u~ > h h at the gluon-triangle order QCD = 2,
+    QED = 2 (an exact colour zero, Tr T^a = 0) and the Z-triangle order
+    QCD = 0, QED = 4 (live) is not a colour zero, though one of its orders
+    is and it has no counterterm ket; h > g a is one."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.loops.v2.induced import StoredAmplitude
+    from pyamplicol.loops.v2.native_process import NativeProcess
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+
+    compiled = li.model("no_b_mass")
+    fixed = {
+        name: value
+        for name, value in _fixture("li_gg_zz")["scheme_data"][
+            "fixed_parameters"
+        ].items()
+        if name in compiled.parameter_defaults
+    }
+    zero = (("QCD", 2), ("QED", 2))
+    for process, limits, orders, colour_zero in (
+        (
+            "u u~ > h h",
+            {"QCD": 2, "QED": 4},
+            [{"QCD": 2, "QED": 2}, {"QCD": 0, "QED": 4}],
+            False,
+        ),
+        ("h > g a", {"QCD": 1, "QED": 2}, [{"QCD": 1, "QED": 2}], True),
+    ):
+        slice_ = LoopSlice.generate(
+            compiled,
+            SliceRequest(
+                process,
+                limits,
+                orders,
+                contribution="loop-induced",
+                fixed_parameters=fixed,
+            ),
+            li.native,
+        )
+        assert slice_.amplitude.colour_zero is colour_zero, process
+        if not colour_zero:
+            assert slice_.colour_zero_orders == {zero}
+            assert not slice_.amplitude.counterterms
+        record = NativeProcess.of(
+            NativeExecutor(slice_, forward=False, inputs="native")
+        ).record["amplitude"]
+        stored = StoredAmplitude.from_record(record)
+        assert stored.colour_zero is colour_zero, process
+        assert stored.colour_zero_orders == slice_.colour_zero_orders
+
+
+@pytest.mark.loop_physics
 def test_g_g_to_h_a_is_zero_within_its_absolute_estimate(li):
     """g g > h a (Furry: the quark loop's two orientations cancel) is served
     numerically (Q13: no Furry-by-rule zero): |A|^2 lies within ten times
