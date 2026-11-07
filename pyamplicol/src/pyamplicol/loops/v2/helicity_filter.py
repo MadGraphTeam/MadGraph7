@@ -66,7 +66,8 @@ FAILURE_PROBABILITY = 1e-12
 
 @dataclass(frozen=True)
 class FilterVerdict:
-    """The filter's record of one process (stored as a generation filter)."""
+    """The filter's verdict for one process; ``record`` is what an artifact
+    stores as its generation filter (the timings stay out of it)."""
 
     rows: int
     live_by_screen: int
@@ -96,7 +97,6 @@ class FilterVerdict:
             "degree_bound": self.degree_bound,
             "failure_probability": self.failure_probability,
             "failure_bound": self.failure_bound,
-            "seconds": dict(self.seconds),
         }
 
 
