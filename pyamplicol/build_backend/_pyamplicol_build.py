@@ -857,7 +857,7 @@ def _stage_runtime_resources(overlay: Path) -> None:
         shutil.copy2(source, target)
 
 
-def _portable_selftest_validators(source_root: Path) -> tuple[Any, Any]:
+def _portable_selftest_contract(source_root: Path) -> Any:
     """Load the dependency-free release contract from the source being built."""
 
     source = source_root / "tools" / "release" / "prepare_selftest_fixture.py"
@@ -869,6 +869,11 @@ def _portable_selftest_validators(source_root: Path) -> tuple[Any, Any]:
         raise RuntimeError("could not load the portable self-test contract")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    return module
+
+
+def _portable_selftest_validators(source_root: Path) -> tuple[Any, Any]:
+    module = _portable_selftest_contract(source_root)
     artifact_validator = getattr(
         module,
         "validate_portable_artifact_capabilities",
@@ -1067,6 +1072,14 @@ def _stage_selftest_fixture(overlay: Path, target: str) -> None:
     except (KeyError, OSError, TypeError, json.JSONDecodeError) as error:
         raise RuntimeError(f"invalid self-test artifact manifest: {path}") from error
     manifest["artifact_id"] = _runtime_artifact_id(manifest)
+    # The fixture's UMAMI provider names the artifact identity, which the
+    # retargeting above changed.
+    refresh_umami = getattr(
+        _portable_selftest_contract(overlay), "refresh_umami_artifact_identity", None
+    )
+    if not callable(refresh_umami):
+        raise RuntimeError("portable self-test contract cannot rebind UMAMI providers")
+    refresh_umami(selected / "artifact", manifest)
     path.write_text(
         json.dumps(
             manifest,
@@ -1875,10 +1888,12 @@ def _from_overlay(
     validate_prepared_models: bool = False,
     retain_release_build_info: bool = False,
     release_prepared_model_bootstrap_context: str | None = None,
-    shared_arithmetic: bool = False,
+    distribution: bool = False,
     **kwargs: Any,
 ) -> _Result:
-    if shared_arithmetic and not with_sdk:
+    # A distribution wheel links the shared arithmetic runtime and ships the
+    # SDK archive xz-compressed (``build_sdk``).
+    if distribution and not with_sdk:
         raise RuntimeError("the shared arithmetic runtime is built only for wheels")
     with _delegating():
         mode = _build_mode()
@@ -1959,7 +1974,7 @@ def _from_overlay(
                 )
             environment.update(_macos_native_build_updates())
             arithmetic_runtime = None
-            if shared_arithmetic:
+            if distribution:
                 print(
                     "* Building the shared GMP, MPFR and MPC libraries...",
                     flush=True,
@@ -1996,7 +2011,12 @@ def _from_overlay(
                         "several minutes)...",
                         flush=True,
                     )
-                    sdk = build_sdk(overlay, target_dir, arithmetic=arithmetic_runtime)
+                    sdk = build_sdk(
+                        overlay,
+                        target_dir,
+                        arithmetic=arithmetic_runtime,
+                        compress_archive=distribution,
+                    )
                     print("* Native C SDK built.", flush=True)
                     sdk_metadata = json.loads(
                         (sdk / "metadata.json").read_text(encoding="utf-8")
@@ -2026,7 +2046,7 @@ def build_wheel(
         metadata_directory,
         with_sdk=True,
         retain_release_build_info=True,
-        shared_arithmetic=distribution,
+        distribution=distribution,
     )
     return filename
 

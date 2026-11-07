@@ -4,6 +4,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import lzma
 import os
 import shutil
 import subprocess
@@ -252,7 +253,7 @@ def test_linux_release_wheel_requests_manylinux_repair(
         "kwargs": {
             "with_sdk": True,
             "retain_release_build_info": True,
-            "shared_arithmetic": False,
+            "distribution": False,
         },
     }
 
@@ -299,7 +300,7 @@ def test_distribution_wheel_links_the_shared_arithmetic_runtime(
     assert observed["kwargs"] == {
         "with_sdk": True,
         "retain_release_build_info": True,
-        "shared_arithmetic": True,
+        "distribution": True,
     }
     assert supplied["pyamplicol.distribution-wheel"] == "true"
 
@@ -343,7 +344,7 @@ def test_bootstrap_wheel_is_never_a_distribution_wheel(
 
 def test_shared_arithmetic_is_built_only_for_wheels() -> None:
     with pytest.raises(RuntimeError, match="only for wheels"):
-        backend._from_overlay(lambda: None, with_sdk=False, shared_arithmetic=True)
+        backend._from_overlay(lambda: None, with_sdk=False, distribution=True)
 
 
 def test_candidate_and_non_linux_wheels_preserve_frontend_settings(
@@ -525,8 +526,10 @@ def test_candidate_bootstrap_wheel_strips_stale_generated_assets(
     def fake_overlay(_mode: str):
         yield overlay, target
 
-    def fake_sdk(_root: Path, _target: Path, *, arithmetic=None) -> Path:
-        assert arithmetic is None
+    def fake_sdk(
+        _root: Path, _target: Path, *, arithmetic=None, compress_archive=False
+    ) -> Path:
+        assert arithmetic is None and compress_archive is False
         staging = tmp_path / "sdk"
         staging.mkdir()
         (staging / "metadata.json").write_text(
@@ -1310,6 +1313,19 @@ def test_portable_selftest_stages_for_every_release_target(target: str) -> None:
             for payload in manifest["payloads"]
             if "target" in payload
         } == {target}
+        # Retargeting changes the identity; the UMAMI provider follows it.
+        artifact = fixture_root / target / "artifact"
+        header = (artifact / "API/umami/provider_p0.h").read_text(encoding="utf-8")
+        assert f'#define UMAMI_ARTIFACT_ID "{manifest["artifact_id"]}"\n' in header
+        metadata = json.loads(
+            (artifact / "API/umami/metadata.json").read_text(encoding="utf-8")
+        )
+        assert metadata["provider"]["artifact_id"] == manifest["artifact_id"]
+        for payload in manifest["payloads"]:
+            if payload["path"].startswith("API/umami/"):
+                data = (artifact / payload["path"]).read_bytes()
+                assert payload["sha256"] == hashlib.sha256(data).hexdigest()
+                assert payload["size_bytes"] == len(data)
 
 
 def test_cargo_overlay_rejects_unknown_resolution_mode(tmp_path: Path) -> None:
@@ -1704,8 +1720,10 @@ def test_retained_pep517_hooks_use_gate_overlay_and_clean_environment(
         assert project_release_prepared_models is True
         yield overlay, target
 
-    def fake_sdk(root: Path, target_dir: Path, *, arithmetic=None) -> Path:
-        assert arithmetic is None
+    def fake_sdk(
+        root: Path, target_dir: Path, *, arithmetic=None, compress_archive=False
+    ) -> Path:
+        assert arithmetic is None and compress_archive is False
         assert root == overlay and target_dir == target
         assert not (set(injected) - {"CC", "CXX"}) & set(os.environ)
         assert not {str(path) for path in injected_bins} & set(
@@ -2351,6 +2369,86 @@ def test_sdk_with_the_shared_arithmetic_runtime_ships_and_links_it(
         assert (staging / relative).read_bytes() == libraries[name].read_bytes()
 
 
+@pytest.mark.parametrize("compress", (False, True))
+def test_distribution_sdk_ships_the_archive_xz_compressed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, compress: bool
+) -> None:
+    payload = b"!<arch>\n" + bytes(range(256)) * 64
+    archive = tmp_path / "librusticol_capi.a"
+    archive.write_bytes(payload)
+    link = {
+        "schema_version": 1,
+        "target": "x86_64-unknown-linux-gnu",
+        "system_libraries": ["c"],
+        "frameworks": [],
+    }
+    probed: list[Path] = []
+
+    def fake_run(command, **_kwargs):
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(sdk, "_host_target", lambda _root: link["target"])
+    monkeypatch.setattr(sdk, "_requested_target", lambda host: host)
+    monkeypatch.setattr(sdk, "_cargo_fetch", lambda *_args: None)
+    monkeypatch.setattr(sdk.subprocess, "run", fake_run)
+    monkeypatch.setattr(sdk, "_cargo_messages", lambda _stdout: ())
+    monkeypatch.setattr(sdk, "_static_library", lambda _messages: archive)
+    monkeypatch.setattr(sdk, "_native_tokens", lambda _stderr: ())
+    monkeypatch.setattr(
+        sdk, "_typed_link_arguments", lambda _tokens, _target, **_kwargs: dict(link)
+    )
+    monkeypatch.setattr(sdk, "_scan_archive", lambda _archive: None)
+    monkeypatch.setattr(sdk, "_stripped_archive", lambda archive, *_args: archive)
+    monkeypatch.setattr(sdk, "_scan_archive_symbols", lambda _archive: None)
+    monkeypatch.setattr(
+        sdk,
+        "_validate_archive_linkage",
+        lambda archive, **_kwargs: probed.append(archive),
+    )
+    monkeypatch.setattr(sdk, "_package_version", lambda _root: "0.1.0")
+
+    staging = sdk.build_sdk(ROOT, tmp_path / "target", compress_archive=compress)
+
+    # The link probe always runs on the plain archive, before compression.
+    assert probed == [archive]
+    metadata = json.loads((staging / "metadata.json").read_text(encoding="utf-8"))
+    plain = staging / "lib" / "librusticol_capi.a"
+    compressed = staging / "lib" / "librusticol_capi.a.xz"
+    if not compress:
+        assert metadata["archive"] == "lib/librusticol_capi.a"
+        assert "archive_compression" not in metadata
+        assert plain.read_bytes() == payload and not compressed.exists()
+        return
+    assert not plain.exists()
+    assert metadata["archive"] == "lib/librusticol_capi.a.xz"
+    assert metadata["archive_compression"] == {
+        "format": "xz",
+        "sha256": hashlib.sha256(payload).hexdigest(),
+        "size": len(payload),
+    }
+    data = compressed.read_bytes()
+    assert data.startswith(b"\xfd7zXZ\x00")
+    assert lzma.decompress(data, format=lzma.FORMAT_XZ) == payload
+
+
+def test_compressed_archive_refuses_a_file_that_does_not_round_trip(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    archive = tmp_path / "librusticol_capi.a"
+    archive.write_bytes(b"!<arch>\n")
+    real_open = sdk.lzma.open
+
+    def truncating_open(path, mode="rb", **kwargs):
+        stream = real_open(path, mode, **kwargs)
+        if "r" in mode:
+            stream.read(1)
+        return stream
+
+    monkeypatch.setattr(sdk.lzma, "open", truncating_open)
+    with pytest.raises(RuntimeError, match="does not round-trip"):
+        sdk._compressed_archive(archive, tmp_path / "librusticol_capi.a.xz")
+
+
 @pytest.mark.skipif(
     not sys.platform.startswith("linux")
     or any(
@@ -2414,7 +2512,7 @@ def test_static_archive_byte_scan_rejects_nonrelocatable_paths(
 
 @pytest.mark.parametrize(
     "symbol",
-    ["_PyErr_SetString", "PyLong_FromLong", "_Py_Dealloc"],
+    ["_PyErr_SetString", "PyLong_FromLong", "_Py_Dealloc", "__Py_Dealloc"],
 )
 # BSD-format lines, and Darwin's bare names for -u on Mach-O members.
 @pytest.mark.parametrize(
@@ -2483,6 +2581,40 @@ def test_static_archive_symbol_scan_defers_incompatible_llvm_reader(
     )
 
     assert not sdk._scan_archive_symbols(archive)
+
+
+@pytest.mark.parametrize("reader", ["apple", "gnu"])
+def test_static_archive_symbol_scan_reads_the_native_symbol_table(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reader: str,
+) -> None:
+    # Apple's nm (LLVM's) fails on the embedded bitcode unless told to read
+    # the native table; GNU nm does not know the option.
+    archive = tmp_path / "librusticol_capi.a"
+    archive.write_bytes(b"archive")
+    monkeypatch.delenv("LLVM_NM", raising=False)
+    monkeypatch.setattr(sdk.shutil, "which", lambda _name: "/usr/bin/nm")
+    calls: list[list[str]] = []
+    undefined = "\nlibrusticol_capi.a(capi.o):\n___gmpz_init\n"
+
+    def run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess:
+        calls.append(command[1:-1])
+        native = "--no-llvm-bc" in command
+        if native != (reader == "apple"):
+            return subprocess.CompletedProcess(command, 1, stdout="", stderr="error")
+        return subprocess.CompletedProcess(command, 0, stdout=undefined, stderr="")
+
+    monkeypatch.setattr(sdk.subprocess, "run", run)
+    assert sdk._scan_archive_symbols(archive)
+    assert calls == (
+        [["--no-llvm-bc", "-u"]]
+        if reader == "apple"
+        else [["--no-llvm-bc", "-u"], ["-u"]]
+    )
+    undefined += "_PyErr_SetString\n"
+    with pytest.raises(RuntimeError, match=r"undefined Python.*_PyErr_SetString"):
+        sdk._scan_archive_symbols(archive)
 
 
 @pytest.mark.skipif(os.name == "nt", reason="native SDK targets macOS and Linux")
