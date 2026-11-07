@@ -50,8 +50,8 @@
       ],
       "url": "https://github.com/huashengshao/TIRust.git",
       "ref": "main",
-      "revision": "760e3144cb96df516241c9347582b10b4c47f3f3",
-      "note": "main after the one history rewrite (2026-11-07; same tree as ff13bd7); behind the default cargo feature tir of the crates that link it; oneloop a7cf4587 and Symbolica dfe6bd97 as this workspace's (one source each); 0BSD (licenses/TIRust.txt)"
+      "revision": "3f28d9c3f489b82a4022ec7bfcca0a24951f1741",
+      "note": "main after the one history rewrite (2026-11-07; 760e3144 = rewritten ff13bd7) + the re-pin on oneloopmaster bd703d09 (3f28d9c3; no source change); behind the default cargo feature tir of the crates that link it; oneloop bd703d09 and Symbolica dfe6bd97 as this workspace's (one source each); 0BSD (licenses/TIRust.txt)"
     },
     {
       "name": "feynkit",
