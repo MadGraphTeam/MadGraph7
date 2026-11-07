@@ -328,6 +328,158 @@ def test_auto_takes_the_per_type_default_and_records_every_fallback():
 
 
 @pytest.mark.loop_fast
+def test_the_effective_backend_is_one_the_route_runs():
+    """The guard of every route: the artifact runtime's summed route and its
+    resolved outputs run NinjaRS only in this build, so with TIRust built
+    into the extension auto still takes NinjaRS on them (the reason names
+    the route) and an explicit TIRust is refused typed; a route whose
+    executor runs TIRust takes it. One choice list and one validator
+    (``config.ReductionBackend``, ``reduction_request``)."""
+
+    from pyamplicol.api.virtual_results import VirtualReduction
+    from pyamplicol.config import ReductionBackend
+    from pyamplicol.config.models import reduction_request
+    from pyamplicol.loops.v2.reduction import (
+        BACKENDS,
+        RESOLVED,
+        SUMMED,
+        ReductionUnavailable,
+        Route,
+        resolve,
+    )
+
+    tir = _Native({"ninjars": ALL, "tirust": ALL})
+    for route in (SUMMED, RESOLVED):
+        for kind in ("virtual", "loop-induced"):
+            found = resolve(
+                "auto", contribution=kind, carrier="double", native=tir, route=route
+            )
+            assert found.effective == "ninjars"
+        assert f"not wired to the executor of {route.serves}" in found.reason
+        with pytest.raises(ReductionUnavailable, match="not wired to the executor"):
+            resolve(
+                "tirust",
+                contribution="virtual",
+                carrier="double",
+                native=tir,
+                route=route,
+            )
+    wired = Route("a wired route", frozenset(BACKENDS))
+    found = resolve(
+        "auto", contribution="loop-induced", carrier="double", native=tir, route=wired
+    )
+    assert found.effective == "tirust"
+    assert tuple(item.value for item in ReductionBackend)[1:] == BACKENDS
+    assert [reduction_request(item) for item in ReductionBackend] == [
+        "auto",
+        *BACKENDS,
+    ]
+    for bad in ("golem", 3, None):
+        with pytest.raises(ValueError, match="unknown reduction backend"):
+            reduction_request(bad)
+        with pytest.raises(ValueError, match="unknown reduction backend"):
+            VirtualReduction(bad, "ninjars", "x")  # type: ignore[arg-type]
+
+
+@pytest.mark.loop_physics
+def test_every_route_records_its_backend_and_refuses_one_it_does_not_run(
+    monkeypatch,
+):
+    """With an extension that reports TIRust built in, an explicit TIRust
+    request is refused typed before any point runs on every route of the
+    shipped Born-interfered artifact (the summed evaluate and a rescue
+    level, evaluate_resolved, evaluate_correlated(_many), the leading-colour
+    selection), and a loop-induced auto call falls back to NinjaRS with the
+    route in its reason (never a silent switch). Every lane records its
+    backend as it is built: one lane diagnostic and one result per output,
+    no rebuild of finished results."""
+
+    from pyamplicol import Runtime
+    from pyamplicol._internal import selftest_virtual_ew as ew
+    from pyamplicol.api import virtual_results
+    from pyamplicol.api.virtual_results import (
+        VirtualReduction,
+        VirtualRescueLevel,
+        VirtualRescuePolicy,
+    )
+    from pyamplicol.correlators import CorrelatedRequest
+    from pyamplicol.loops.v2 import reduction
+    from pyamplicol.loops.v2.reduction import ReductionUnavailable
+
+    built = {name: frozenset(reduction.CARRIERS) for name in reduction.BACKENDS}
+    monkeypatch.setattr(reduction, "native_backends", lambda native: built)
+    expected = json.loads((ew.fixture_root() / "expected.json").read_text())
+    points, scales = expected["points"][:2], expected["mu_r2"][:2]
+    runtime = Runtime.load(ew.fixture_root() / "artifact", process=ew.NAME)
+    born = {"a": CorrelatedRequest("born", {}), "b": CorrelatedRequest("born", {})}
+    ladder = VirtualRescuePolicy(
+        (VirtualRescueLevel("double"), VirtualRescueLevel("double-double"))
+    )
+    calls = {
+        "evaluate": lambda **kw: runtime.evaluate(points, mu_r2=scales, **kw),
+        "rescue": lambda **kw: runtime.evaluate(
+            points, mu_r2=scales, stability=ladder, **kw
+        ),
+        "evaluate_resolved": lambda **kw: runtime.evaluate_resolved(
+            points, mu_r2=scales, **kw
+        ),
+        "evaluate_correlated": lambda **kw: runtime.evaluate_correlated(
+            points, mu_r2=scales, **kw
+        ),
+        "evaluate_correlated_many": lambda **kw: runtime.evaluate_correlated_many(
+            points, born, mu_r2=scales, **kw
+        ),
+    }
+    auto = VirtualReduction(
+        "auto", "ninjars", "auto: NinjaRS, the Born-interfered default"
+    )
+    built_lanes: list[object] = []
+    built_results: list[object] = []
+
+    def counted(cls, sink):
+        original = cls.__post_init__
+
+        def wrapped(self):
+            sink.append(self)
+            original(self)
+
+        monkeypatch.setattr(cls, "__post_init__", wrapped)
+
+    counted(virtual_results.VirtualLaneDiagnostic, built_lanes)
+    for cls in ("VirtualEvaluation", "ResolvedVirtualEvaluation"):
+        counted(getattr(virtual_results, cls), built_results)
+    for name, call in calls.items():
+        with pytest.raises(ReductionUnavailable, match="not wired to the executor"):
+            call(reduction="tirust")
+        built_lanes.clear()
+        built_results.clear()
+        found = call()
+        results = list(found.values()) if isinstance(found, dict) else [found]
+        lanes = [lane for result in results for lane in result.diagnostics]
+        assert {lane.reduction for lane in lanes} == {auto}, name
+        if name != "rescue":
+            # (A rescue merges its levels' results into a new one.)
+            assert len(built_lanes) == len(lanes), name
+            assert len(built_results) == len(results), name
+    with pytest.raises(ReductionUnavailable, match="resolved outputs and selections"):
+        runtime.evaluate(points, mu_r2=scales, helicities=["h0"], reduction="tirust")
+    selftest = _selftest()
+    li = _expected()
+    induced = Runtime.load(
+        selftest.fixture_root() / "artifact",
+        process=selftest.NAME,
+        model_parameters=li["parameters"],
+    )
+    value = induced.evaluate(li["points"][:1], mu_r2=li["mu_r2"][:1])
+    (lane,) = value.diagnostics
+    assert lane.reduction.effective == "ninjars"
+    assert "TIRust, the loop-induced default, is unavailable" in lane.reduction.reason
+    assert "not wired to the executor of the summed virtual" in lane.reduction.reason
+    with pytest.raises(ReductionUnavailable, match="summed virtual"):
+        induced.evaluate(li["points"][:1], mu_r2=li["mu_r2"][:1], reduction="tirust")
+
+
+@pytest.mark.loop_fast
 def test_reduction_option_surfaces(tmp_path):
     """``[loop] reduction`` (CLI ``generate --loop-reduction``) is recorded
     in the request only when not auto (seeded records keep their bytes);
