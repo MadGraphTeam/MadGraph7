@@ -13,7 +13,7 @@ from collections import Counter
 from dataclasses import dataclass
 from math import factorial, prod
 
-from ..processes.model import ufo_goldstone_flag
+from ..processes.model import goldstone_legs_admitted, ufo_goldstone_flag
 from .physical_states import ExternalStateLayout, ExternalStateLeg
 
 
@@ -99,7 +99,7 @@ def prepare_loop_external_request(model, incoming, outgoing):
         is_initial = index < len(initial)
         if (
             not fields.get("propagating", True)
-            or ufo_goldstone_flag(fields)
+            or (ufo_goldstone_flag(fields) and not goldstone_legs_admitted())
             or fields.get("ghost_number", 0)
         ):
             raise NotImplementedError(

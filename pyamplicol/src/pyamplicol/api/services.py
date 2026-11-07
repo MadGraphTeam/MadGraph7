@@ -21,6 +21,7 @@ from pyamplicol.config import (
     ReductionBackend,
     RunConfig,
 )
+from pyamplicol.config.models import reduction_request
 from pyamplicol.reporting import ProgressSink
 
 from .errors import (
@@ -189,18 +190,6 @@ def _process_set(
 def _validate_progress(progress: ProgressSink | None) -> None:
     if progress is not None and not isinstance(progress, ProgressSink):
         raise TypeError("progress must implement ProgressSink.emit(event)")
-
-
-def _reduction(value: ReductionBackend | str) -> str:
-    """A validated reduction-backend request (``ReductionBackend``)."""
-
-    try:
-        return ReductionBackend(value).value
-    except ValueError:
-        choices = ", ".join(repr(item.value) for item in ReductionBackend)
-        raise ValueError(
-            f"unknown reduction backend {value!r}; one of {choices}"
-        ) from None
 
 
 def _validate_precision(precision: int) -> int:
@@ -463,7 +452,7 @@ class Runtime:
                 raise TypeError("stability requires a VirtualRescuePolicy")
             options["stability"] = stability
         if reduction is not None:
-            options["reduction"] = _reduction(reduction)
+            options["reduction"] = reduction_request(reduction)
         loader = _get_runtime_loader()
         if options and not _accepts_keyword_arguments(loader, *options):
             raise CompatibilityError(
@@ -813,7 +802,7 @@ class Runtime:
                 raise TypeError("stability_checks requires VirtualStabilityChecks")
             options["stability_checks"] = checks
         if reduction is not None:
-            options["reduction"] = _reduction(reduction)
+            options["reduction"] = reduction_request(reduction)
         if options and not self._virtual:
             raise CompatibilityError(
                 "poles, stability_checks and reduction are virtual options"

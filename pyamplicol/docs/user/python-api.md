@@ -309,7 +309,7 @@ value = runtime.evaluate(
 assert value.contribution == "loop-induced" and value.born_orders == ()
 lane = value.diagnostics[0]
 print(lane.reduction)    # VirtualReduction(requested='auto', effective=..., reason=...)
-print(lane.finiteness)   # ||a_{-k}||_G against the pre-cancellation scale (~1e-15)
+print(lane.finiteness)   # ||a_{-k}||_G against the row's term floor (~1e-15)
 estimate = value.stability[0]
 print(estimate.absolute, estimate.magnitude, estimate.scale)   # E, S per sector; max E/S
 ```
@@ -319,9 +319,12 @@ or `"tirust"` on `Runtime.load` and on every evaluation; default: the
 artifact's `[loop] reduction`): `"auto"` takes TIRust for a loop-induced and
 NinjaRS for a Born-interfered process and falls back to NinjaRS, with the
 reason recorded, where TIRust cannot serve the call; an explicit backend that
-cannot serve it is refused (`CompatibilityError`). Every lane diagnostic
-records the requested and effective backend and the reason
-([Configuration](configuration.md#reduction-backend)).
+cannot serve it is refused (`ReductionUnavailable`, a `CompatibilityError`
+with key `reduction-unavailable`). The effective backend is always one that
+the call's executor runs: the summed `evaluate` and the resolved, correlated
+and selected outputs each check it, so a result never names a backend that
+did not reduce it. Every lane diagnostic records the requested and effective
+backend and the reason ([Configuration](configuration.md#reduction-backend)).
 
 With stability checks every estimate carries, besides the relative
 estimates, the absolute estimate E per sector and Laurent coefficient
@@ -331,10 +334,28 @@ value with `|value| <= E` is zero within the estimate: zeros of loop-induced
 processes (Landau-Yang, Furry) are never declared by a rule, they are
 evaluated and reported this way. For a loop-induced result the pole
 estimates `single_pole` and `double_pole` are E / S as well (the poles
-vanish, so their own size is no scale), and each lane's `finiteness` (with
-poles and checks) is the amplitude-level finiteness ratio. An exact colour
-zero (`h > g a`: every loop has a single coloured attachment) evaluates to an
-exact 0.
+vanish, so their own size is no scale).
+
+Each lane's `finiteness` is the amplitude-level finiteness ratio of a
+loop-induced point: the largest `||a_{-k}||_G / S_k(h)` over its loop
+orders, helicity rows and poles, of the order of the carrier's unit
+roundoff for a finite amplitude (the judgement the computed poles stand on).
+It exists exactly when the call computes the poles and requests stability
+checks (any `VirtualStabilityChecks` or a rescue level with checks), and is
+`None` otherwise, also for `poles="none"`. The reason: its scale S_k(h) is
+the row's term floor, the amplitude's size before the reduction's own
+cancellations, which needs every family's tensor moments at the point (one
+unit-numerator reduction per family monomial and point with NinjaRS:
+1.3 times a plain evaluation on `g g > z z`, 2 times on `g g > h`). The
+stability checks form it anyway, as the floor of E; a call without checks
+pays nothing for it. Without the ratio the computed poles still vanish
+against the finite part (the necessary-only cross-check), and the artifact
+itself passed the generation's double-double finiteness probe (a failed
+probe refuses the process unless `generation.allow_failed_probes`, which is
+recorded). An exact
+colour zero (every colour coefficient of the loop amplitude vanishes at
+N_c = 3 by colour algebra, as for `h > g a`, Tr T^a = 0) evaluates to an
+exact 0 and its lanes say so.
 
 ## Split totals by squared coupling order
 
@@ -723,12 +744,14 @@ same rotation) in three ways:
   of every reduction lane with a safety factor of two, not to the spread of the
   rotated values.
 
-Every pole selection (`poles=`), colour accuracy and leading-colour
-`helicities` / `color_flows` selection is supported, for Born-interfered and
-loop-induced processes. The reduction backend (`reduction=`) is resolved for
-every level's carrier before the first point is evaluated: an explicitly
-requested backend that cannot serve one of them is refused, an `"auto"` one
-records its choice per level in the lane diagnostics. `stability=` together with
+For a Born-interfered process every pole selection (`poles=`), colour
+accuracy and leading-colour `helicities` / `color_flows` selection is
+supported. A loop-induced process is rescued with what it serves: the pole
+selections `"all"` and `"none"`, full colour, and no helicity or colour-flow
+selection yet (`CompatibilityError`). The reduction backend (`reduction=`) is
+resolved for every level's carrier before the first point is evaluated: an
+explicitly requested backend that cannot serve one of them is refused, an
+`"auto"` one records its choice per level in the lane diagnostics. `stability=` together with
 `arithmetic`, a non-default `precision` or `stability_checks` is refused with a
 `CompatibilityError` (the levels own them), as is a policy on
 `evaluate_resolved` and `evaluate_correlated(_many)`, and a load-time policy

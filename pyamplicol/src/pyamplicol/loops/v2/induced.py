@@ -32,11 +32,12 @@ a2^dag G b0]: the finite part of |a|^2 is exact only if the amplitude's
 poles vanish (its O(eps) terms are not computed), which the finiteness
 diagnostic checks (PLAN §2.a.7 "Pole shape").
 
-**Exact zeros** (RULED Q13): the only exact zero is the colour zero: every
-loop of a requested loop order has a single coloured attachment (the
-family recursion drops it as ``assemble.COLOUR_ZERO_REJECTION``, Tr T^a = 0
-in any model) and no counterterm ket carries a colour tensor there
-(``LoopSlice.colour_zero_orders``); every other zero is evaluated
+**Exact zeros** (RULED Q13): the only exact zero is the colour zero, by
+colour algebra alone: at a requested loop order no seed class has a
+nonzero colour coefficient at N_c = 3 and no counterterm ket carries a
+colour tensor (``bind``: the classes' coefficients vanish, or no family is
+routed because every loop has a single coloured attachment, Tr T^a = 0 in
+any model; ``LoopSlice.colour_zero_orders``); every other zero is evaluated
 numerically.
 """
 
@@ -1164,8 +1165,11 @@ def point_finiteness(evaluation: Any) -> float | None:
     ``finiteness``): the largest ``finiteness`` ratio over its loop orders
     and rows, when its poles were computed and its term scale is at hand
     without another reduction (a native point whose executor formed it,
-    ``native_terms``: the stability checks request it); None otherwise.
-    An exact colour zero (an empty amplitude basis) has ratio 0."""
+    ``native_terms``: the stability checks request it, as the floor of
+    their estimate); None otherwise. A default call (no checks) does not
+    form the term scale: its unit-numerator reductions cost 1.3x (g g > z z)
+    to 2x (g g > h) a plain evaluation on NinjaRS (lit-api-b). An exact
+    colour zero (an empty amplitude basis) has ratio 0."""
 
     if width_of(evaluation) == 1:
         return None
@@ -1500,37 +1504,22 @@ class ProbeFailure(ArithmeticError):
 
 def probe_request(slice_: Any) -> tuple[Any, tuple[str, ...]]:
     """The request of the generation-time probe slice and the widths it
-    zeroes (m-lit Q7): outside the complex-mass scheme every external width
-    parameter of the model that is not zero is fixed to 0 (a fixed width in
-    a tree propagator breaks the Ward identity of an external photon or
-    gluon line it attaches to, so the probe would fail spuriously); under
-    the complex-mass scheme the widths stay (the scheme is gauge invariant).
-    The production artifact keeps its widths."""
+    zeroes (m-lit Q7, ``ew_policy.probe_widths``): outside the complex-mass
+    scheme every external width parameter of the model that is not zero is
+    fixed to 0 (a fixed width in a tree propagator breaks the Ward identity
+    of an external photon or gluon line it attaches to, so the probe would
+    fail spuriously); under the complex-mass scheme the widths stay (the
+    scheme is gauge invariant). The production artifact keeps its widths."""
 
     from dataclasses import replace
 
-    from pyamplicol.loops.model_cms import convention_record
+    from .ew_policy import probe_widths
 
-    from .ew_policy import is_zero
-
-    compiled, request = slice_.compiled, slice_.request
-    if convention_record(compiled) is not None:
+    request = slice_.request
+    fixed, zeroed = probe_widths(slice_.compiled, request.fixed_parameters)
+    if not zeroed:
         return request, ()
-    parameters = {record.name: record for record in compiled.ir.parameters}
-    fixed = request.fixed_parameters
-    widths = sorted(
-        {
-            str(record.width)
-            for record in compiled.ir.particles
-            if str(record.width) in parameters
-            and parameters[str(record.width)].nature == "external"
-            and not is_zero(str(record.width), parameters, fixed)
-        }
-    )
-    if not widths:
-        return request, ()
-    zeroed = {**dict(fixed), **dict.fromkeys(widths, "0")}
-    return replace(request, fixed_parameters=zeroed), tuple(widths)
+    return replace(request, fixed_parameters=fixed), zeroed
 
 
 def probe_point(
@@ -1693,8 +1682,12 @@ def generation_probes(
     every tree pole, lifted by ``probe_point``. A probe passes within ten
     times its own estimate (``ESTIMATE_FACTOR``); a failure raises
     ``ProbeFailure`` unless ``allow_failure`` (recorded). An exact colour
-    zero has nothing to probe. Massive external vectors take no Ward probe
-    here (their Goldstone-equivalence and both-gauges checks are LIT-EW's).
+    zero has nothing to probe. Massive external vectors take the
+    Goldstone-equivalence probe (``goldstone``, m-lit LIT-EW) on one leg of
+    every species with a Goldstone partner, in a 't Hooft-Feynman gauge
+    request only (the identity needs the Goldstone vertices; a QCD-only
+    request in unitary gauge has its both-gauges equality as a validation
+    check instead), recorded as ``goldstone``.
 
     Returns the record the artifact stores (``generation_filters``)."""
 
@@ -1739,6 +1732,10 @@ def generation_probes(
     results = [("finiteness", None, found[0])] + [
         ("ward", leg, result) for leg, result in zip(legs, found[1:], strict=True)
     ]
+    goldstones = _goldstone_probes(
+        target, compiled, request, native, point, scale, precision, found[0].scales
+    )
+    results += [("goldstone", leg, result) for leg, result in goldstones["results"]]
     finiteness = results[0][2]
     wards = [result for kind, _, result in results if kind == "ward"]
     record: dict[str, Any] = {
@@ -1753,6 +1750,7 @@ def generation_probes(
             "worst": _short(max((r.worst for r in wards), default=0.0)),
             "passed": all(r.passed for r in wards),
         },
+        **({"goldstone": goldstones["record"]} if goldstones["record"] else {}),
     }
     failed = [
         f"{kind} probe"
@@ -1768,12 +1766,65 @@ def generation_probes(
                 f"{slice_.request.process!r}: the loop-induced generation-time "
                 f"probes failed ({'; '.join(failed)}; pass within "
                 f"{ESTIMATE_FACTOR} times the probe's own estimate, m-lit Q12): "
-                "a missing family or counterterm (finiteness) or R2 vertex "
-                "(Ward). generation.allow_failed_probes = true stores the "
+                "a missing family or counterterm (finiteness), R2 vertex "
+                "(Ward) or Goldstone-side vertex or counterterm (Goldstone). "
+                "generation.allow_failed_probes = true stores the "
                 "artifact anyway, with the failure recorded"
             )
         record["allowed_failure"] = True
     return record
+
+
+def _goldstone_probes(
+    target, compiled, request, native, point, scale, precision, physical
+) -> dict[str, Any]:
+    """The Goldstone-equivalence probes of a probe slice (``goldstone``,
+    m-lit LIT-EW): in a 't Hooft-Feynman gauge slice, one per external
+    massive-vector species with a Goldstone partner, at the probe point,
+    with the physical row floors of its finiteness probe. Returns the
+    (leg, ``GoldstoneResult``) pairs and the record (None without such a
+    leg); a Goldstone side the engine refuses is recorded as skipped, never
+    a silent pass."""
+
+    from . import goldstone
+    from .plan_export import NativeExecutor
+    from .refusals import LoopRequestUnsupported
+
+    if str(target.compiled.ir.gauge) != "feynman":
+        return {"results": [], "record": None}
+    massive = goldstone.massive_vector_legs(target)
+    if not massive:
+        return {"results": [], "record": None}
+    vector = NativeExecutor(target, forward=False, inputs="native")
+    results, phases, skipped = [], {}, {}
+    for leg, partner in massive.items():
+        try:
+            side = goldstone.goldstone_slice(
+                compiled, request, native, target, leg, partner
+            )
+        except LoopRequestUnsupported as error:
+            skipped[str(leg)] = f"{error.key}: {error}"
+            continue
+        result = goldstone.probe(
+            vector,
+            NativeExecutor(side, forward=False, inputs="native"),
+            point,
+            scale,
+            leg,
+            precision=precision,
+            physical=physical,
+        )
+        results.append((leg, result))
+        if result.phase is not None:
+            phases[str(leg)] = [_short(x) for x in result.phase]
+    record: dict[str, Any] = {
+        "legs": [leg for leg, _ in results],
+        "worst": _short(max((r.worst for _, r in results), default=0.0)),
+        "passed": all(r.passed for _, r in results),
+        **({"phases": phases} if phases else {}),
+        **({"skipped": skipped} if skipped else {}),
+    }
+    return {"results": results, "record": record}
 
 
 def _short(value: float) -> float | str:

@@ -359,7 +359,11 @@ def _scan_archive_symbols(path: Path) -> bool:
         forbidden: list[str] = []
         for line in completed.stdout.splitlines():
             fields = line.split()
-            if len(fields) < 2 or fields[-2] not in {"U", "u", "W", "w", "V", "v"}:
+            if not fields or line.endswith(":"):
+                continue
+            # ``[value] type name``; for ``-u`` on Mach-O, Darwin's nm prints
+            # the bare name of each undefined symbol.
+            if len(fields) >= 2 and fields[-2] not in {"U", "u", "W", "w", "V", "v"}:
                 continue
             symbol = fields[-1]
             normalized = symbol.removeprefix("_").lower()

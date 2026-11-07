@@ -698,7 +698,9 @@ For controlled, multi-process comparisons and report generation, use
 ### Virtual (one-loop) artifacts
 
 A one-loop artifact (plan v4 processes of the v2 engine, runtime capability
-`rusticol.loop-runtime.v4`) loads through the same `Runtime.load` entry point.
+`rusticol.loop-runtime.v4`, for Born-interfered virtuals; plan v5 processes,
+`rusticol.loop-runtime.v5`, for loop-induced ones) loads through the same
+`Runtime.load` entry point.
 Directory and direct `artifact.json` paths are accepted. The native loader
 checks the selected process, payloads, coupling orders and declared scheme and
 binds the saved program; no model import or regeneration happens at load. An

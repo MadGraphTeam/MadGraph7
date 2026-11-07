@@ -1763,9 +1763,9 @@ class SliceRequest:
                 f"unknown contribution {self.contribution!r}; expected one of "
                 f"{list(CONTRIBUTIONS)}"
             )
-        from .reduction import requested_backend
+        from pyamplicol.config.models import reduction_request
 
-        requested_backend(self.reduction)
+        reduction_request(self.reduction)
         if self.contribution == "loop-induced" and self.accuracy != "full":
             # Full colour only for loop-induced processes (m-lit Q8 (a)).
             raise LoopRequestUnsupportedValue(
@@ -2082,6 +2082,11 @@ class LoopSlice:
     # (integrand zeros, ``helicity_filter.generation_filter``; M-LIT LIT-R2),
     # kept as columns without a row by ``plan_export.export_plan``.
     zero_rows: frozenset = frozenset()
+    # The width policy of a loop-induced request (m-lit Q7,
+    # ``ew_policy.tree_width_policy``: fixed tree widths with widthless loop
+    # propagators, or the complex-mass scheme everywhere), recorded in the
+    # generation record's conventions; None for a Born-interfered slice.
+    width_policy: Mapping[str, Any] | None = None
     _cache: dict = field(default_factory=dict, repr=False)
 
     @property
@@ -2339,6 +2344,11 @@ class LoopSlice:
         loop_catalogue = _loop_catalogue(compiled, prepared, data, request)
         native_families = "families" in generator_input.NATIVE_STAGES
         model = compiled
+        # The width policy is decided once per request at generation
+        # (plan-time; ``ew_policy.tree_width_policy``): a loop-induced
+        # request records it, the tree program sets it.
+        loop_induced = request.contribution == "loop-induced"
+        width_policy: list[Any] = [None]
 
         tree_model = CompiledUFOModel(model)
         # The Born DAG's compile arguments (``build_tree_blocks``; its summary
@@ -2365,12 +2375,15 @@ class LoopSlice:
                 # LC and NLC project formal N_c: every block of one grade.
                 u1_grades=request.accuracy != "full",
             )
-            if electroweak:
+            if loop_induced or electroweak:
                 # Widths in the Born or the loop-side trees, before their
                 # kernels (a width takes the full ones, 38 s at g g > t t~
-                # on the G_mu model) and the counterterm lowering
-                # (``ew_policy.require_zero_widths``).
-                ew_policy.require_zero_widths(
+                # on the G_mu model) and the counterterm lowering: refused
+                # in an electroweak Born-interfered request
+                # (``ew_policy.require_zero_widths``), recorded for a
+                # loop-induced one (m-lit Q7: fixed tree widths, or the
+                # complex-mass scheme everywhere; ``tree_width_policy``).
+                width_policy[0] = ew_policy.tree_width_policy(
                     model, request, (blocks.born_dag, blocks.blocks_dag), fixed
                 )
             # Trees that propagate a coloured particle with a width (or a
@@ -2717,6 +2730,7 @@ class LoopSlice:
             counterterm_program=program,
             cancelled_cells=cancelled,
             external_photons=photons,
+            width_policy=width_policy[0],
         )
         if born_terms is not inclusive_born:
             slice_._refuse_inexact_flows(inclusive_born)

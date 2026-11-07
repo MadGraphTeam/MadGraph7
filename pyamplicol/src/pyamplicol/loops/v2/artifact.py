@@ -83,7 +83,7 @@ import time
 import zlib
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from decimal import Decimal
 from fractions import Fraction
 from functools import cached_property
@@ -118,6 +118,7 @@ from pyamplicol.api.virtual_results import (
     splits_poles,
 )
 from pyamplicol.config import PoleSelection, R2Strategy
+from pyamplicol.config.models import reduction_request
 from pyamplicol.generation.evaluator_container import (
     PacbinMemberKind,
     PacbinMemberSource,
@@ -129,6 +130,7 @@ from pyamplicol.loops.strategy import R2Selection
 
 from .families import Orders, add_orders
 from .native_trees import Program, StoredMember, program_bytes
+from .reduction import RESOLVED, SUMMED, Route
 
 PLAN_MEMBER = "schedule/loop-plan-v4.json.zlib"
 # The binary plan member (``ExportedPlan.binary()``, M-FINAL MF-8G-1 item 5),
@@ -1630,7 +1632,9 @@ class V2VirtualRuntime:
         # A loop-induced process stores no observable columns yet (LIT-OBS).
         self._induced = "amplitude" in self._native_process.record
         # A loop-induced process's colour-zero record (m-lit Q13: the one
-        # exact zero, every loop with a single coloured attachment).
+        # exact zero, by colour algebra alone: no colour coefficient of the
+        # loop amplitude and no counterterm colour tensor is nonzero at
+        # N_c = 3, ``induced.bind``).
         self._colour_zero: dict[str, object] | None = None
         if self._induced:
             from .induced import StoredAmplitude
@@ -1679,14 +1683,12 @@ class V2VirtualRuntime:
         )
         # The reduction backend a call requests when it names none: the
         # load-time one, else the artifact's generation default (m-lit Q17).
-        from .reduction import requested_backend
-
-        self._reduction_request = requested_backend(
+        self._reduction_request = reduction_request(
             execution["request"].get("reduction", "auto")
             if reduction is None
             else reduction
         )
-        self._reductions: dict[tuple[str, str], VirtualReduction] = {}
+        self._reductions: dict[tuple[str, str, Route], VirtualReduction] = {}
         self._born_orders = tuple(
             canonical_order(tuple((n, p) for n, p in order))
             for order in self._metadata["born_orders"]
@@ -2023,8 +2025,11 @@ class V2VirtualRuntime:
             default_precision=self.default_precision,
             stability_checks=stability_checks,
         )
-        choices = self._reduction_choices(reduction, arithmetic, precision, policy)
-        if helicities or color_flows:
+        selected = bool(helicities or color_flows)
+        choices = self._reduction_choices(
+            reduction, arithmetic, precision, policy, RESOLVED if selected else SUMMED
+        )
+        if selected:
             # A leading-colour selection (``selection``): one summed output
             # of the stored resolved columns.
             carrier_options = (
@@ -2032,7 +2037,8 @@ class V2VirtualRuntime:
                 if policy is None
                 else {}
             )
-            return _with_reduction(
+            return cast(
+                VirtualEvaluation,
                 self._observable_runtime().evaluate(
                     momenta,
                     helicities=helicities,
@@ -2043,9 +2049,9 @@ class V2VirtualRuntime:
                     poles=poles,
                     stability_checks=stability_checks,
                     on_failure=on_failure,
+                    reductions=choices,
                     **carrier_options,
                 ),
-                choices,
             )
         selection, checks = v2_options(
             r2_strategy=r2_strategy,
@@ -2102,12 +2108,15 @@ class V2VirtualRuntime:
 
             return rescue(policy, len(points), level, on_failure=on_failure)
 
-    def _reduction(self, requested: str, carrier: str) -> VirtualReduction:
-        """The reduction backend of ``requested`` at ``carrier`` (``loops.v2.
-        reduction.resolve`` for this process's contribution kind and the
-        native extension; fixed per runtime, so cached)."""
+    def _reduction(
+        self, requested: str, carrier: str, route: Route
+    ) -> VirtualReduction:
+        """The reduction backend of ``requested`` at ``carrier`` on ``route``
+        (``loops.v2.reduction.resolve`` for this process's contribution kind,
+        the native extension and the backends the route's executor runs;
+        fixed per runtime, so cached)."""
 
-        key = (requested, carrier)
+        key = (requested, carrier, route)
         found = self._reductions.get(key)
         if found is None:
             from .reduction import resolve
@@ -2117,6 +2126,7 @@ class V2VirtualRuntime:
                 contribution=self.contribution_kind,
                 carrier=carrier,
                 native=self._native,
+                route=route,
             )
             self._reductions[key] = found
         return found
@@ -2142,18 +2152,20 @@ class V2VirtualRuntime:
         arithmetic: str | None,
         precision: int | None,
         policy: VirtualRescuePolicy | None,
+        route: Route,
     ) -> dict[str, VirtualReduction]:
-        """The reduction backend of a call per carrier it runs (its own, or
-        each level's under a rescue policy), resolved before any point is
-        evaluated: an explicit backend that cannot serve one of them is
-        refused (m-lit Q17 / Q18)."""
-
-        from .reduction import requested_backend
+        """The reduction backend of a call on ``route`` per carrier it runs
+        (its own, or each level's under a rescue policy), resolved before any
+        point is evaluated. The effective backend is one the route's executor
+        runs (the guard of every route, ``reduction.Route``): an explicit
+        backend that cannot serve one of them is refused typed, ``auto``
+        falls back with its reason (m-lit Q17 / Q18; never a silent
+        switch)."""
 
         requested = (
             self._reduction_request
             if reduction is None
-            else requested_backend(reduction)
+            else reduction_request(reduction)
         )
         carriers = (
             [self._carrier(arithmetic, precision)[0]]
@@ -2163,7 +2175,9 @@ class V2VirtualRuntime:
                 for item in policy.levels
             ]
         )
-        return {carrier: self._reduction(requested, carrier) for carrier in carriers}
+        return {
+            carrier: self._reduction(requested, carrier, route) for carrier in carriers
+        }
 
     def _evaluate_level(
         self,
@@ -2180,15 +2194,9 @@ class V2VirtualRuntime:
     ) -> VirtualEvaluation:
         """One batch of exact points in one carrier with one set of checks
         (the whole ``evaluate`` without a rescue policy, and each level of
-        one), on the ``reduction`` backend."""
+        one), on the ``reduction`` backend (one the native executor runs,
+        ``_reduction_choices`` on ``reduction.SUMMED``)."""
 
-        # Every native reduction is NinjaRS's until the TIRust backend lands
-        # (m-lit lit-tir passes the effective backend to the executor).
-        if reduction.effective != "ninjars":
-            raise CompatibilityError(
-                f"the {reduction.effective!r} reduction backend is not wired to "
-                "the v2 executor of this build"
-            )
         results, failures = self._run(
             points, scales, parameters, setting, selection, checks
         )
@@ -2317,8 +2325,9 @@ class V2VirtualRuntime:
             # The colour-zero record (m-lit Q13): exactly 0, not a numerical
             # zero.
             detail = (
-                "exact colour zero: every loop has a single coloured attachment "
-                "(Tr T^a = 0), the value is exactly 0"
+                "exact colour zero: every colour coefficient of the loop "
+                "amplitude vanishes at N_c = 3 (colour algebra), the value is "
+                "exactly 0"
             )
         arithmetic = cast(Literal["double", "double-double", "arbitrary"], carrier)
         contraction = self._contraction(results)
@@ -2487,18 +2496,18 @@ class V2VirtualRuntime:
         options: dict[str, Any],
     ) -> Any:
         """One observable call (``V2ObservablesRuntime``) on the call's
-        reduction backend, resolved before it runs (``_reduction_choices``)
-        and recorded in its lane diagnostics."""
+        reduction backend, resolved before it runs (``_reduction_choices`` on
+        ``reduction.RESOLVED``) and recorded in its lane diagnostics as they
+        are built (``reductions``)."""
 
         choices = self._reduction_choices(
-            reduction, arithmetic, precision, options.get("stability")
+            reduction, arithmetic, precision, options.get("stability"), RESOLVED
         )
         operation = getattr(self._observable_runtime(), name)
-        return _with_reduction(
-            operation(
-                *args, **self._observable_options(precision, arithmetic, options)
-            ),
-            choices,
+        return operation(
+            *args,
+            reductions=choices,
+            **self._observable_options(precision, arithmetic, options),
         )
 
     def evaluate_resolved(
@@ -2645,23 +2654,6 @@ def _stored_member(group_member: Any, representative: str) -> Any:
 
     legs = inverse(tuple(int(leg) for leg in group_member.permutation))
     return FlavourMember(str(group_member.expression), representative, legs, {})
-
-
-def _with_reduction(value: Any, choices: Mapping[str, VirtualReduction]) -> Any:
-    """``value`` (a virtual result or a mapping of them, e.g. named
-    correlated outputs) with each lane diagnostic naming the reduction
-    backend of its carrier (``choices``, ``V2VirtualRuntime.
-    _reduction_choices``)."""
-
-    if isinstance(value, Mapping):
-        return {name: _with_reduction(item, choices) for name, item in value.items()}
-    return replace(
-        value,
-        diagnostics=tuple(
-            replace(item, reduction=choices[item.arithmetic])
-            for item in value.diagnostics
-        ),
-    )
 
 
 def _zero(carrier: str) -> Any:

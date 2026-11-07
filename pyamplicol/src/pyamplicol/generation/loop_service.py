@@ -956,10 +956,11 @@ def _loop_induced_request(backend, context, index, member, models):
     propagators; the runtime finiteness diagnostic checks it at production
     widths), loop propagators stay widthless; under the complex-mass scheme
     masses are complex everywhere and unstable external states were refused
-    by ``_member``. The electroweak width guard of an electroweak request
-    stays (m-lit LIT-EW replaces it with the Q7 policy): the tree currents
-    of the process's legs (its Born DAG, which has no root) are checked as
-    a Born-interfered request's Born."""
+    by ``_member``. The electroweak width guard of a Born-interfered
+    request (``ew_policy.require_zero_widths``, ``electroweak-width``) does
+    not apply (m-lit LIT-EW): an electroweak loop-induced request takes the
+    same Q7 policy, which ``LoopSlice.generate`` records
+    (``ew_policy.tree_width_policy``)."""
 
     from pyamplicol.loops.native import load_loop_native
     from pyamplicol.loops.v2 import generator_input
@@ -968,7 +969,6 @@ def _loop_induced_request(backend, context, index, member, models):
         prepare_request_model,
         reachable_loop_orders,
     )
-    from pyamplicol.loops.v2.ew_policy import correction_orders, require_zero_widths
     from pyamplicol.loops.v2.families import add_orders
     from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
 
@@ -1022,8 +1022,6 @@ def _loop_induced_request(backend, context, index, member, models):
         for loop in request.exact_loop_orders
         if add_orders(tuple(loop.items())) in reachable.colour_zero
     )
-    if set(context.corrections) - {correction_orders(compiled, member.fixed).strong}:
-        require_zero_widths(compiled, request, (member.dag,), member.fixed)
     return request, zero
 
 

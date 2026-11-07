@@ -2416,10 +2416,16 @@ def test_static_archive_byte_scan_rejects_nonrelocatable_paths(
     "symbol",
     ["_PyErr_SetString", "PyLong_FromLong", "_Py_Dealloc"],
 )
+# BSD-format lines, and Darwin's bare names for -u on Mach-O members.
+@pytest.mark.parametrize(
+    "line",
+    ["                 U {symbol}\n", "\nlibrusticol_capi.a(capi.o):\n{symbol}\n"],
+)
 def test_static_archive_symbol_scan_rejects_python_symbols(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     symbol: str,
+    line: str,
 ) -> None:
     archive = tmp_path / "librusticol_capi.a"
     archive.write_bytes(b"archive")
@@ -2428,7 +2434,7 @@ def test_static_archive_symbol_scan_rejects_python_symbols(
         sdk.subprocess,
         "run",
         lambda *_args, **_kwargs: subprocess.CompletedProcess(
-            ["nm"], 0, stdout=f"                 U {symbol}\n", stderr=""
+            ["nm"], 0, stdout=line.format(symbol=symbol), stderr=""
         ),
     )
 
@@ -2447,7 +2453,7 @@ def test_static_archive_symbol_scan_accepts_non_python_symbols(
         sdk.subprocess,
         "run",
         lambda *_args, **_kwargs: subprocess.CompletedProcess(
-            ["nm"], 0, stdout="                 U _malloc\n", stderr=""
+            ["nm"], 0, stdout="                 U _malloc\n___gmpz_init\n", stderr=""
         ),
     )
 
