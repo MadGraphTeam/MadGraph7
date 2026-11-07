@@ -45,7 +45,7 @@ from __future__ import annotations
 
 import copy
 import json
-from collections import OrderedDict, defaultdict
+from collections import Counter, OrderedDict, defaultdict
 from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
@@ -64,7 +64,7 @@ from .merged import MergedGraph, merged_graph
 from .native_trees import StoredMember, executor_program
 from .poly_affine import size
 from .refusals import require_formal_nc_tables
-from .schedules import forward_graph
+from .schedules import build_trie, forward_graph
 
 PLAN_SCHEMA = 4
 # Amplitude-mode plans (loop-induced |A_loop|^2, route R1; M-LIT RULED Q42 =
@@ -289,6 +289,257 @@ def _trace_groups(edges, rank: int, shape) -> list[list]:
     return [groups[key] for key in sorted(groups)]
 
 
+def walk_trie(
+    trie: Any,
+    sequence: Sequence[tuple[int, Any]],
+    rank: int,
+    content: Callable[[int], Any],
+    shape: Callable[[Any], Any],
+    leaf: Callable[[Any, list], Any],
+    step: Callable[[list, int, int, Orders | None], Any],
+) -> None:
+    """Walk one schedule-B suffix trie in its frame (``sequence``: the family
+    key read in it). ``leaf(skeleton, contents)`` makes the object of each
+    oriented skeleton; each node of depth k < N dresses position k of its
+    edges' sources, ``step(edges, out_mask, shift, None)`` with the legs
+    still open as ``out_mask``; an accumulator node (depth N) closes its
+    edges per loop species, in ``_trace_groups`` within ``rank``, by
+    ``step(group, 0, shift, orders)`` with the node's loop orders. The
+    objects are the callbacks' (``_Object`` with ``rows``, ``d_alpha``,
+    ``d_beta`` and ``storage``). One walk serves the exporter's seeded
+    families and dressed class tries (``_Exporter.family``) and the
+    dressed-row frame cost (``dressed_frames``)."""
+
+    before = [0]
+    for mask, _mass in sequence:
+        before.append(before[-1] | mask)
+    full = before[-1]
+    leaf_objects = [
+        leaf(skeleton, [content(segment.label) for segment in ring])
+        for skeleton, ring in trie.leaves
+    ]
+    values: dict[int, Any] = {}
+    for index, node in enumerate(trie.nodes):
+        edges = []
+        for segment, child in node.edges:
+            source = leaf_objects[child] if node.depth == 1 else values.pop(child)
+            edges.append((content(segment.label), source))
+        shift = before[node.depth - 1]
+        if node.depth < len(trie.family):
+            values[index] = step(edges, full ^ before[node.depth], shift, None)
+            continue
+        cuts = defaultdict(list)
+        for segment_content, source in edges:
+            cuts[segment_content.loop_out].append((segment_content, source))
+        for species in sorted(cuts):
+            for group in _trace_groups(cuts[species], rank, shape):
+                step(group, 0, shift, node.orders)
+    if values:
+        raise AssertionError("a trie object without a consumer")
+
+
+def amplitude_vector(combination, cells: Sequence[Any]) -> tuple:
+    """The amplitude vector sum_c x_c c_{c,t} of a seed combination on the
+    coefficient cells ``cells`` (``AmplitudeBasis.cells_at_three``), as its
+    non-zero (t, real, imaginary) entries: skeletons of equal vectors close
+    equally, so they share one class trie (route R2k)."""
+
+    vector: dict[int, ExactColorCoefficient] = {}
+    for c, x in combination:
+        for t, value in cells[c]:
+            term = x * value
+            vector[t] = vector[t] + term if t in vector else term
+    return tuple((t, w.real, w.imag) for t, w in sorted(vector.items()) if w)
+
+
+def vector_groups(
+    oriented: Iterable[tuple[Any, Any]],
+    content: Callable[[int], Any],
+    class_of: Mapping[Any, Any],
+    vector: Callable[[Any], tuple],
+) -> list[list[tuple[Any, Any]]]:
+    """Oriented skeletons (skeleton, ring) grouped by the amplitude vector
+    of their reading's seed combination (``class_of``, ``vector``), in
+    first-seen order: one suffix trie per group (route R2k, M-LIT DECISIONS
+    2026-11-06 ~09:00 (3))."""
+
+    groups: dict[tuple, list[tuple[Any, Any]]] = {}
+    for skeleton, ring in oriented:
+        reading = rx._reading(skeleton, [content(segment.label) for segment in ring])
+        combination = class_of.get(reading)
+        if combination is None:
+            raise KeyError("reading without a seed class")
+        groups.setdefault(vector(combination), []).append((skeleton, ring))
+    return list(groups.values())
+
+
+def catalogue_kinematics(slice_: Any) -> rx.CatalogueKinematics:
+    """The shapes, kernels and block rows of ``slice_``'s contents
+    (``reference_executor.CatalogueKinematics``) that a plan is exported with
+    (``export_plan``) and the dressed-row frames are priced with
+    (``dressed_frames``)."""
+
+    from .assemble import _BlockRows
+
+    return rx.CatalogueKinematics(
+        slice_.catalogue,
+        slice_.compiled.ir.vertex_terms,
+        slice_.data,
+        _BlockRows(slice_, None),
+        (),
+        rx.KernelConstants({}, rx.Carrier.f64()),
+        reading=slice_.reading,
+    )
+
+
+# The modelled work a dressed-row frame is priced by: per step the cheaper of
+# its fused and split forms (``ReferenceExecutor._dress`` counts), and the
+# per-row closures (``_dressed_work``).
+_DRESSED_WORK = ("best/seed", "best/step", "closure")
+
+
+def dressed_frames(slice_: Any) -> tuple[dict[FamilyKey, Any], dict[str, Any]]:
+    """Frames chosen for dressed rows (amplitude mode, route R2k; M-LIT
+    DECISIONS 2026-11-06 ~09:00 (3)): per family of ``slice_``'s plan, among
+    its frames (``schedules.candidate_tries`` of its skeletons, the reading
+    choice of the generation), the one whose class tries take the least
+    modelled dressing work (``_dressed_work``: the exact dressed rows and
+    links of every step, each step priced at the cheaper of its fused and
+    split forms by the reference executor's counts, plus the per-row
+    closures). A frame's class tries group its readings by amplitude vector
+    (``vector_groups``), so every reading of every frame gets a seed class
+    (``colour.extend_seed_table``; its vectors are taken on the extended
+    table's coefficient cells, ``colour.amplitude_basis``). A tie keeps the
+    family's frame. Returns the frame per family and a record (seconds,
+    modelled work before and after, families re-framed)."""
+
+    import time
+
+    from .colour import amplitude_basis, extend_seed_table
+    from .schedules import SkeletonView, candidate_tries
+
+    start = time.perf_counter()
+    plan = slice_.plan
+    view = SkeletonView(slice_.loop_catalogue, slice_.colour)
+    candidates = {}
+    readings: dict[Any, None] = {}
+    for key, schedule in plan.schedules.items():
+        viewed = view.select(skeleton for skeleton, _ring in schedule.trie.leaves)
+        tries = candidate_tries(schedule.family, viewed)
+        candidates[key] = (schedule, tries)
+        for _frame, trie in tries:
+            for skeleton, ring in trie.leaves:
+                reading = rx._reading(
+                    skeleton, [view.content(segment.label) for segment in ring]
+                )
+                if reading not in slice_.class_of:
+                    readings.setdefault(reading)
+    table, class_of = extend_seed_table(
+        slice_.table,
+        slice_.class_of,
+        slice_.colour,
+        list(readings),
+        compress=slice_.request.compress_colour,
+    )
+    cells = amplitude_basis(table).cells_at_three()
+    vectors: dict[Any, tuple] = {}
+
+    def vector(combination) -> tuple:
+        found = vectors.get(combination)
+        if found is None:
+            found = vectors[combination] = amplitude_vector(combination, cells)
+        return found
+
+    executor = rx.ReferenceExecutor(catalogue_kinematics(slice_), None, numeric=False)
+    frames: dict[FamilyKey, Any] = {}
+    before = after = 0
+    moved = 0
+    for key, (schedule, tries) in candidates.items():
+        current = schedule.trie.frame
+        work = [
+            (
+                _dressed_work(schedule.family, trie, view, class_of, vector, executor),
+                frame != current,
+                frame,
+            )
+            for frame, trie in tries
+        ]
+        cost, _moved, frame = min(work, key=lambda item: item[:2])
+        frames[key] = frame
+        before += next(item[0] for item in work if not item[1])
+        after += cost
+        moved += frame != current
+    record = {
+        "seconds": time.perf_counter() - start,
+        "work_before": before,
+        "work": after,
+        "families": len(frames),
+        "reframed": moved,
+    }
+    return frames, record
+
+
+def _dressed_work(family, trie, view, class_of, vector, executor) -> int:
+    """The modelled dressing work of one family frame's class tries
+    (``dressed_frames``): the exporter's walk (``walk_trie``) with dressed
+    rows, each step counted by ``ReferenceExecutor._dress`` (no numerics)
+    and each trace step's per-row closure into its vector's columns."""
+
+    counts: Counter = Counter()
+    shape = executor.kinematics.shape
+    sequence = trie.frame.apply(family.key)
+
+    def leaf(_skeleton, contents) -> _Object:
+        dimension = shape(contents[0]).loop_in
+        return _Object(((),), dimension, dimension, 0, leaf=0)
+
+    for group in vector_groups(trie.leaves, view.content, class_of, vector):
+        skeleton, ring = group[0]
+        reading = rx._reading(
+            skeleton, [view.content(segment.label) for segment in ring]
+        )
+        width = len(vector(class_of[reading]))
+
+        def step(edges, _out_mask, shift, orders, width=width) -> _Object:
+            storage = max(source.storage for _content, source in edges)
+            out = executor._dress(
+                [
+                    (
+                        content,
+                        rx._Payload(
+                            dict.fromkeys(source.rows),
+                            source.d_alpha,
+                            source.d_beta,
+                            source.storage,
+                            source.leaf >= 0,
+                        ),
+                    )
+                    for content, source in edges
+                ],
+                out_mask=None,
+                shift=shift,
+                rank_in=storage,
+                columns=1,
+                counts=counts,
+            )
+            if orders is not None:
+                counts["closure"] += (
+                    out.d_alpha * size(out.rank) * len(out.rows) * width
+                )
+            return _Object(tuple(out.rows), out.d_alpha, out.d_beta, out.rank)
+
+        walk_trie(
+            build_trie(family, trie.frame, group),
+            sequence,
+            trie.rank,
+            view.content,
+            shape,
+            leaf,
+            step,
+        )
+    return sum(counts[name] for name in _DRESSED_WORK)
+
+
 @dataclass
 class _Exporter:
     slice_: Any
@@ -319,6 +570,11 @@ class _Exporter:
     content_count: int = 0
     # Row -> (leg mask, leg count), the content row check's.
     row_masks: dict[Any, tuple[int, int]] = field(default_factory=dict)
+    # Amplitude mode on route R2 (M-LIT LIT-R2): dressed-leg rows, one trie
+    # per seed-key vector inside each family (``family``).
+    dressed: bool = False
+    # Seed combination -> its amplitude vector (``_vector``).
+    vectors: dict[Any, tuple] = field(default_factory=dict)
 
     # -- kernels ------------------------------------------------------------
 
@@ -657,52 +913,68 @@ class _Exporter:
     # -- schedule B -----------------------------------------------------------
 
     def family(self, key: FamilyKey, schedule) -> dict:
+        """The record of one schedule-B family, walked in its trie frame
+        (``walk_trie``). A seeded plan walks the family trie, each leaf its
+        skeleton's seed on the plan's rows. A dressed-row plan (amplitude
+        mode, route R2k; M-LIT LIT-R2) walks one suffix trie per amplitude
+        vector of its skeletons' seeds (``vector_groups``), each leaf a
+        constant seed (its seed key the group's, its weight the skeleton's)
+        on one empty row; its steps dress rows of the legs dressed so far and
+        each trace step closes its rows with the group's vector (the native
+        ``RowTrace``). The tries' steps follow one another and share the
+        family's accumulators, one per loop orders."""
+
         slice_ = self.slice_
-        plan = slice_.plan
+        view = slice_.plan.view
         trie = schedule.trie
         sequence = trie.frame.apply(key)
-        before = [0]
-        for mask, _mass in sequence:
-            before.append(before[-1] | mask)
-        full = before[-1]
-        leaves, leaf_objects = [], []
-        for skeleton, ring in trie.leaves:
-            contents = [plan.view.content(segment.label) for segment in ring]
-            dimension = self.kinematics.shape(contents[0]).loop_in
-            leaves.append(
-                {
-                    "seed": self.seed(skeleton, contents),
-                    "weight": _fraction_text(slice_.weights(skeleton, contents)),
-                }
-            )
-            leaf_objects.append(
-                _Object(self.rows, dimension, dimension, 0, leaf=len(leaves) - 1)
-            )
-        accumulators: dict[Orders, int] = {}
+        leaves: list[dict] = []
         steps: list[dict] = []
-        values: dict[int, _Object] = {}
-        for index, node in enumerate(trie.nodes):
-            edges = []
-            for segment, child in node.edges:
-                source = leaf_objects[child] if node.depth == 1 else values.pop(child)
-                edges.append((plan.view.content(segment.label), source))
-            shift = before[node.depth - 1]
-            if node.depth < len(trie.family):
-                values[index] = self._step(
-                    steps, edges, full ^ before[node.depth], shift, None
+        accumulators: dict[Orders, int] = {}
+
+        def step(edges, out_mask: int, shift: int, orders: Orders | None):
+            accumulator = (
+                None
+                if orders is None
+                else accumulators.setdefault(orders, len(accumulators))
+            )
+            return self._step(steps, edges, out_mask, shift, accumulator)
+
+        def leaf(seed: int | None):
+            def make(skeleton, contents) -> _Object:
+                dimension = self.kinematics.shape(contents[0]).loop_in
+                leaves.append(
+                    {
+                        "seed": self.seed(skeleton, contents) if seed is None else seed,
+                        "weight": _fraction_text(slice_.weights(skeleton, contents)),
+                    }
                 )
-                continue
-            accumulator = accumulators.setdefault(node.orders, len(accumulators))
-            cuts = defaultdict(list)
-            for content, source in edges:
-                cuts[content.loop_out].append((content, source))
-            for species in sorted(cuts):
-                for group in _trace_groups(
-                    cuts[species], trie.rank, self.kinematics.shape
-                ):
-                    self._step(steps, group, 0, shift, accumulator)
-        if values:
-            raise AssertionError("a trie object without a consumer")
+                rows = self.rows if seed is None else ((),)
+                return _Object(rows, dimension, dimension, 0, leaf=len(leaves) - 1)
+
+            return make
+
+        if self.dressed:
+            tries = []
+            for group in vector_groups(
+                trie.leaves, view.content, slice_.class_of, self._vector
+            ):
+                skeleton, ring = group[0]
+                seed = self.seed(skeleton, [view.content(s.label) for s in ring])
+                tries.append((seed, build_trie(schedule.family, trie.frame, group)))
+        else:
+            tries = [(None, trie)]
+        for seed, part in tries:
+            # A class trie's rings are the family's: within its rank.
+            walk_trie(
+                part,
+                sequence,
+                trie.rank,
+                view.content,
+                self.kinematics.shape,
+                leaf(seed),
+                step,
+            )
         return {
             "sequence": [[mask, self._mass(mass)] for mask, mass in sequence],
             "rank": family_rank(trie.rank, steps),
@@ -714,13 +986,25 @@ class _Exporter:
             "steps": steps,
         }
 
+    def _vector(self, combination) -> tuple:
+        """``amplitude_vector`` of a seed combination on the slice's
+        amplitude basis, cached per combination."""
+
+        found = self.vectors.get(combination)
+        if found is None:
+            found = self.vectors[combination] = amplitude_vector(
+                combination, self.slice_.amplitude.cells_at_three()
+            )
+        return found
+
     def _mass(self, mass) -> int:
         return self.masses.setdefault(mass, len(self.masses))
 
     def _step(self, steps, edges, out_mask, shift, accumulator) -> _Object:
         """One schedule-B step. Its helicity rows and row links follow from
-        the source rows and the contents' rows (``rx.restrict``): written only
-        with ``links``, else the native loader derives them."""
+        the source rows and the contents' rows (``rx.restrict``; with dressed
+        rows each source row joined with every content row, ``rx.merge``):
+        written only with ``links``, else the native loader derives them."""
 
         (d_alpha,) = {source.d_alpha for _content, source in edges}
         seeded = {source.leaf >= 0 for _content, source in edges}
@@ -746,7 +1030,16 @@ class _Exporter:
                 "child": source.step,
                 "factor": self.factor(index, shift),
             }
-            if self.links:
+            if self.links and self.dressed:
+                links = []
+                for position, row in enumerate(source.rows):
+                    for block, block_row in enumerate(shape.rows):
+                        target = targets.setdefault(
+                            rx.merge(row, block_row), len(targets)
+                        )
+                        links += [target, position, block]
+                record["links"] = links
+            elif self.links:
                 block_index = {row: i for i, row in enumerate(shape.rows)}
                 links = []
                 for position, row in enumerate(source.rows):
@@ -1208,6 +1501,7 @@ def export_plan(
     counterterms: bool = True,
     keep_kets: bool = False,
     column_sets: Mapping[str, Sequence[Any]] | None = None,
+    route: Literal["R1", "R2"] | None = None,
 ) -> ExportedPlan:
     """The plan v4 program of a generated slice (structure only, no numerics).
 
@@ -1229,24 +1523,41 @@ def export_plan(
     (``ExportedPlan.column_seeds``; the plan itself is unchanged): a set's
     plan is this plan with its seed records (``native_observables``), at the
     cost of its seed records only.
+
+    ``route`` selects the amplitude-mode route of a loop-induced slice
+    (M-LIT RULED Q14 = (a)): ``"R2"``, the default and production route
+    (schema-5 ``dressed`` plan: dressed-leg rows, one class trie per
+    amplitude vector in each family, ``_Exporter.family``), which runs
+    schedule B only and so refuses ``forward`` and ``merged``; or ``"R1"``,
+    its oracle (one-hot (row, t) columns on the seeded rows). A
+    Born-interfered slice refuses any route.
     """
 
-    from .assemble import _BlockRows
     from .refusals import require_nc_exact
+
+    amplitude = getattr(slice_, "amplitude", None)
+    # The amplitude-mode route (M-LIT RULED Q14 = (a)): R2 (dressed-leg rows,
+    # one trie per seed-key vector; production) or R1 (one-hot (row, t)
+    # columns on the seeded rows; lit-amp's route, kept as its oracle).
+    if amplitude is None:
+        if route is not None:
+            raise ValueError("a route is an amplitude-mode (loop-induced) option")
+    elif route is None:
+        route = "R2"
+    elif route not in ("R1", "R2"):
+        raise ValueError(f"unknown amplitude-mode route {route!r}")
+    dressed = route == "R2"
+    if dressed and (forward or merged is not None):
+        raise ValueError(
+            "route R2 (dressed rows) runs schedule B only: export with "
+            "forward=False and no merged graph, or take route 'R1'"
+        )
 
     # LC/NLC seed records, Born components and counterterm projections need
     # N_c-exact tree blocks: the generation refuses others
     # (``LoopSlice.generate``), and no export serves one (``refusals``).
     require_nc_exact(slice_.blocks, slice_.request.accuracy, slice_.request.process)
-    kinematics = rx.CatalogueKinematics(
-        slice_.catalogue,
-        slice_.compiled.ir.vertex_terms,
-        slice_.data,
-        _BlockRows(slice_, None),
-        (),
-        rx.KernelConstants({}, rx.Carrier.f64()),
-        reading=slice_.reading,
-    )
+    kinematics = catalogue_kinematics(slice_)
     helicities = born_helicities(slice_)
     rows = born_rows(slice_)
     from . import native_lowering
@@ -1261,7 +1572,12 @@ def export_plan(
     )
     contents_sink = None if streamed is None else native_lowering.contents_builder()
     exporter = _Exporter(
-        slice_, kinematics, rows, links=links, content_sink=contents_sink
+        slice_,
+        kinematics,
+        rows,
+        links=links,
+        content_sink=contents_sink,
+        dressed=dressed,
     )
     families, keys, family_orders = [], [], []
     for key, schedule in slice_.plan.schedules.items():
@@ -1292,7 +1608,6 @@ def export_plan(
         else None
     )
     columns_given = columns
-    amplitude = getattr(slice_, "amplitude", None)
     if amplitude is not None:
         # Loop-induced (route R1): one-hot columns (row, t), each seeding its
         # own row with the cells of t (``_Exporter.amplitude_seed_records``).
@@ -1347,7 +1662,15 @@ def export_plan(
         "merged": merged_program,
     }
     if amplitude is not None:
-        program["column_rows"] = [[r] for r in range(len(rows)) for _t in range(size)]
+        # A row the exact helicity-zero filter dropped (``helicity_filter``,
+        # an integrand zero) keeps its (row, t) columns without a row: they
+        # seed nothing (R1), are never closed into (R2), stay zero and are
+        # not reduced.
+        program["column_rows"] = [
+            [] if row in slice_.zero_rows else [r]
+            for r, row in enumerate(rows)
+            for _t in range(size)
+        ]
     elif any(column.rows is not None for column in columns):
         program["column_rows"] = [
             None
@@ -1357,6 +1680,9 @@ def export_plan(
         ]
     if column_weights is not None:
         program["column_weights"] = column_weights
+    if dressed:
+        # Route R2: route R1's columns, closed per row (``_Exporter.family``).
+        program["dressed"] = True
     model = None
     if streamed is not None:
         model = native_lowering.PlanSource(
@@ -1534,6 +1860,11 @@ class NativeExecutor:
     path (``ward``): with native inputs the native trees read each point's
     loop-side vector (``loop_sources``), with Python inputs the Python lane
     forms them (the oracle); the slice needs the full tree kernels.
+
+    ``route`` is the amplitude-mode route of a loop-induced slice
+    (``export_plan``): ``"R2"`` (the default; dressed rows, schedule B only,
+    so ``forward=False`` and no ``merged``) or ``"R1"`` (its oracle); a
+    Born-interfered slice refuses a route.
     """
 
     def __init__(
@@ -1553,6 +1884,7 @@ class NativeExecutor:
         scaleless: tuple[ExportedPlan, str | bytes] | Callable[[], Any] | None = None,
         contraction: Literal["auto", "direct", "fft"] | None = None,
         catani: bool = False,
+        route: Literal["R1", "R2"] | None = None,
     ):
         if inputs not in ("python", "native"):
             raise ValueError(f"unknown input path {inputs!r}")
@@ -1584,6 +1916,7 @@ class NativeExecutor:
             trees=inputs == "native",
             born_squared=born_squared,
             counterterms=counterterms,
+            route=route,
         )
         if inputs == "native" and self.exported.trees is None:
             raise ValueError("native inputs need a plan exported with trees=True")
@@ -1636,9 +1969,12 @@ class NativeExecutor:
             # program and seed FFT of an executor built already
             # (``V2Executor.derive``; one of the same carrier first, whose
             # tree runtime it shares too): each costs its own runtime only.
-            native_trees = self.inputs == "native" and arithmetic != "exact"
+            # The exact carriers (rational, and the prime field of the
+            # helicity-zero filter) dress numerators only.
+            exact = arithmetic in ("exact", "prime")
+            native_trees = self.inputs == "native" and not exact
             fourier = (
-                arithmetic != "exact"
+                not exact
                 and self.contraction != "direct"
                 and self.exported.fourier is not None
             )
@@ -1671,7 +2007,7 @@ class NativeExecutor:
                 # The seed FFT runs in every floating carrier; the exact one
                 # (numerators only) and a direct policy contract directly.
                 fourier=None
-                if arithmetic == "exact" or self.contraction == "direct"
+                if exact or self.contraction == "direct"
                 else self.exported.fourier,
             )
         return found

@@ -11,7 +11,8 @@
 //! - optional keys as the exporter writes them: a step's `rows` and an
 //!   edge's `links` only when written (after the other keys, as appended),
 //!   `column_rows` only when some column keeps a subset of the Born rows,
-//!   `column_weights` only when columns share a seed-weight column;
+//!   `column_weights` only when columns share a seed-weight column,
+//!   `dressed` only in a dressed-row plan (as `true`);
 //!   `forward`, `merged`, a relabelling, a merged edge's weight and a merged
 //!   state's closure as `null` when absent;
 //! - every other key always.
@@ -33,9 +34,10 @@ use super::super::{
 /// byte for byte (`V2PlanModel.from_program`) refuses `None` under these keys
 /// and the absence of any other key. The record is the file form's type name
 /// (`serde`'s struct name).
-pub const OMITTED_WHEN_ABSENT: [(&str, &str); 4] = [
+pub const OMITTED_WHEN_ABSENT: [(&str, &str); 5] = [
     ("PlanFile", "column_rows"),
     ("PlanFile", "column_weights"),
+    ("PlanFile", "dressed"),
     ("StepFile", "rows"),
     ("EdgeFile", "links"),
 ];
@@ -199,6 +201,7 @@ pub(super) fn write(file: &PlanFile) -> Vec<u8> {
         merged: merged_section,
         column_rows,
         column_weights,
+        dressed,
     } = file;
     let mut out = Out(Vec::new());
     let o = &mut out;
@@ -267,6 +270,10 @@ pub(super) fn write(file: &PlanFile) -> Vec<u8> {
     if let Some(weights) = column_weights {
         o.key(false, "column_weights");
         o.usizes(weights);
+    }
+    if let Some(dressed) = dressed {
+        o.key(false, "dressed");
+        o.boolean(*dressed);
     }
     o.byte(b'}');
     out.0
@@ -644,6 +651,7 @@ mod tests {
     #[test]
     fn omitted_keys_name_their_records() {
         let records = [
+            std::any::type_name::<PlanFile>(),
             std::any::type_name::<PlanFile>(),
             std::any::type_name::<PlanFile>(),
             std::any::type_name::<StepFile>(),

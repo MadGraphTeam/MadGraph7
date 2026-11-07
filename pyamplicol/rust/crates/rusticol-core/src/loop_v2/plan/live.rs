@@ -296,6 +296,11 @@ impl LoopProgramV4 {
     ) -> RusticolResult<Option<LiveRows>> {
         super::require(rows.len() == self.rows, "one kept flag per Born row")?;
         super::require(
+            !self.dressed,
+            "a dressed-row plan seeds no Born row: helicity masks of loop-induced \
+             processes are not served yet",
+        )?;
+        super::require(
             families.windows(2).all(|pair| pair[0] < pair[1])
                 && families.last().is_none_or(|&f| f < self.families.len()),
             "ascending plan families",
@@ -628,6 +633,9 @@ fn prune_family(
         factors: factors.into_iter().collect(),
         vertices: instances.into_iter().collect(),
         currents: currents.into_iter().collect(),
+        // Dressed-row plans are never pruned (`prune_dead_rows`,
+        // `live_rows_keeping`).
+        row_traces: Vec::new(),
     };
     (family, lists)
 }
