@@ -442,31 +442,43 @@ fn layout_round_trip_and_split_columns() {
         .map(|_| point(4, &[173. * 173., 0., 0., 80. * 80.], &mut rng))
         .collect();
     let groups = vec![lanes(0, &points, 4, 4, 3, &mut rng)];
-    let (split, _) = reduce(&mut tir(), &groups, Poles::Split, None);
-    let (all, _) = reduce(&mut tir(), &groups, Poles::All, None);
-    let (none, _) = reduce(&mut tir(), &groups, Poles::None, None);
     let (ninja, _) = reduce(&mut ninjars("double", "fast"), &groups, Poles::Split, None);
-    let mut compared = 0;
-    for lane in 0..split[0].len() {
-        // A gate-refused row fails closed in every pole mode alike.
-        if gate_refused(&split[0][lane]) {
-            assert!(gate_refused(&all[0][lane]) && gate_refused(&none[0][lane]));
-            continue;
+    // The default (these boxes may fail closed on the gates, in every pole
+    // mode alike) and the method choice on (every lane served).
+    let configurations: [(&str, fn() -> V2Backends); 2] =
+        [("default", tir), ("method choice", tir_method_choice)];
+    for (name, backend) in configurations {
+        let (split, _) = reduce(&mut backend(), &groups, Poles::Split, None);
+        let (all, _) = reduce(&mut backend(), &groups, Poles::All, None);
+        let (none, _) = reduce(&mut backend(), &groups, Poles::None, None);
+        let mut compared = 0;
+        for lane in 0..split[0].len() {
+            if gate_refused(&split[0][lane]) {
+                assert!(gate_refused(&all[0][lane]) && gate_refused(&none[0][lane]));
+                continue;
+            }
+            compared += 1;
+            let s = split[0][lane].as_ref().unwrap();
+            let a = all[0][lane].as_ref().unwrap();
+            assert_eq!((s.len(), a.len()), (4, 3));
+            assert_eq!(&s[..3], &a[..], "{name} lane {lane}");
+            assert_eq!(
+                none[0][lane].as_ref().unwrap(),
+                &a[..1],
+                "{name} lane {lane}"
+            );
+            let n = ninja[0][lane].as_ref().unwrap();
+            let scale = n.iter().map(size).fold(0., f64::max);
+            assert!(
+                size(&(s[3] - n[3])) < 1e-11 * scale,
+                "{name}: UV column lane {lane}"
+            );
         }
-        compared += 1;
-        let s = split[0][lane].as_ref().unwrap();
-        let a = all[0][lane].as_ref().unwrap();
-        assert_eq!((s.len(), a.len()), (4, 3));
-        assert_eq!(&s[..3], &a[..], "lane {lane}");
-        assert_eq!(none[0][lane].as_ref().unwrap(), &a[..1], "lane {lane}");
-        let n = ninja[0][lane].as_ref().unwrap();
-        let scale = n.iter().map(size).fold(0., f64::max);
-        assert!(
-            size(&(s[3] - n[3])) < 1e-11 * scale,
-            "UV column lane {lane}"
-        );
+        eprintln!("T3 ({name}): {compared} of {} lanes", split[0].len());
+        if name == "method choice" {
+            assert_eq!(compared, split[0].len());
+        }
     }
-    assert!(compared > 0);
 }
 
 /// T4: lanes declared above their true rank reduce at their true rank:
