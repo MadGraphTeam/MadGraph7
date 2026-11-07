@@ -27,7 +27,11 @@ from pyamplicol.api.requests import ProcessSet
 from pyamplicol.api.results import GenerationPlan, GenerationResult
 from pyamplicol.config import ColorContraction
 from pyamplicol.loops.covariant_model import with_source_repairs
-from pyamplicol.loops.model_cms import apply_mass_scheme, require_real_fixed_parameters
+from pyamplicol.loops.model_cms import (
+    COMPLEX_MASS,
+    apply_mass_scheme,
+    require_real_fixed_parameters,
+)
 from pyamplicol.loops.order_names import CouplingOrderNameError, CouplingOrderNames
 from pyamplicol.loops.orders import canonical_order
 from pyamplicol.models.loop_color_declaration import (
@@ -1350,6 +1354,8 @@ def _loop_induced_coverage(
     zero request, ``h > g a``: m-lit PLAN §1.2, Q13), the order policy and
     the width policy (m-lit Q7)."""
 
+    from pyamplicol.loops.v2.ew_policy import COMPLEX_MASS_WIDTHS, FIXED_TREE_WIDTHS
+
     run = backend._run_config
     scheme = str(context.declaration.scheme.mass_scheme)
     return {
@@ -1372,7 +1378,7 @@ def _loop_induced_coverage(
         # propagators; the complex-mass scheme puts complex masses in tree
         # and loop propagators (unstable external states refused).
         "width_policy": (
-            "complex-mass-scheme" if scheme == "complex-mass" else "fixed-tree-widths"
+            COMPLEX_MASS_WIDTHS if scheme == COMPLEX_MASS else FIXED_TREE_WIDTHS
         ),
         "loop_graph_count": 0,
         "numerator_compilation_deferred": True,

@@ -1789,9 +1789,7 @@ def test_a_campaign_timed_on_tool_revisions_of_its_slice_revision(monkeypatch):
         builder._sides(g1)
 
 
-def test_report_builder_gives_each_summary_table_its_provenance(
-    tmp_path, monkeypatch
-):
+def test_report_builder_gives_each_summary_table_its_provenance(tmp_path, monkeypatch):
     """The report's essentials rule (user 2026-11-06 ~13:25): each summary
     table states its provenance in one line (engine revision, native build
     and digest, host, date), so the builder carries them: Table 1's
@@ -2360,6 +2358,106 @@ def test_report_builder_loop_induced_table_markers_backend_floor_and_reports(
     )
     with pytest.raises(ValueError, match="neither registry rows"):
         build()
+
+
+def test_report_builder_figure_one_draws_loop_induced_rows_with_a_time_and_a_provider():
+    """Figure 1's loop-induced rows (USER 2026-11-07 ~10:40): every row of the
+    loop-induced table with a batched pyAmpliCol time and a matched provider
+    time, in the table's order, with its providers' times and, from 2 -> 3
+    upward, the gate limit (MadLoop's time and the gate factor times each
+    other provider's, the smallest); the other rows are not drawn, listed by
+    reason. The committed summary-li.json holds the figure of its own rows."""
+
+    import json
+
+    builder = _report_builder()
+
+    def row(key, gate_class, timing, providers=None):
+        recorded = providers is not None
+        timed = {k: {"seconds_per_point": t} for k, t in (providers or {}).items()}
+        fastest = min(timed, key=lambda k: timed[k]["seconds_per_point"], default=None)
+        return {
+            "key": key,
+            "math": key,
+            "corrections": "QCD",
+            "gate_class": gate_class,
+            "timing": timing,
+            "providers": {
+                "status": "recorded" if recorded else "not run",
+                "providers": {**timed, "recola": {"status": "not timed"}}
+                if recorded and "recola" not in timed
+                else timed,
+                "fastest": None if fastest is None else {"key": fastest},
+            },
+        }
+
+    def measured(t, providers, gate):
+        cell = {
+            "status": "measured",
+            "seconds_per_point": t,
+            "backend_label": "TIRust",
+            "gate": gate,
+        }
+        if providers:
+            cell["ratio_to_fastest"] = t / min(providers.values())
+        return cell
+
+    reported = {"status": "reported", "label": "no gate (2->2)"}
+    verdict = {"status": "no verdict", "label": "no verdict yet"}
+    small = {"status": "not gated", "label": "<5 ms: not gated"}
+    table = {
+        "groups": [
+            {
+                "name": "2->2",
+                "rows": [
+                    row(
+                        "hh",
+                        "reported",
+                        measured(0.002, {"madloop": 0.001}, reported),
+                        {"madloop": 0.001},
+                    ),
+                    row("zz", "reported", measured(0.03, {}, reported)),
+                    row("aa", "reported", {"status": "pending", "reason": "lit-x"}),
+                ],
+            },
+            {
+                "name": "2->3",
+                "rows": [
+                    row(
+                        "hhh",
+                        "gated",
+                        measured(0.007, {"x": 0.0056}, verdict),
+                        {"madloop": 0.009, "recola": 0.0056, "openloops": 0.0229},
+                    ),
+                    row(
+                        "hgg",
+                        "gated",
+                        measured(0.003, {"x": 0.0035}, small),
+                        {"madloop": 0.004, "openloops": 0.0035},
+                    ),
+                    row("zzg", "gated", {"status": "no gate batch", "reason": "B = 1"}),
+                ],
+            },
+        ]
+    }
+    figure = builder.li_figure(table, 1.3)
+    assert [f["key"] for f in figure["rows"]] == ["hh", "hhh", "hgg"]
+    hh, hhh, hgg = figure["rows"]
+    assert hh["limit"] is None and hh["gate"] == reported
+    assert hh["providers"] == {"madloop": 0.001} and hh["fastest"] == "madloop"
+    assert hhh["limit"] == {"seconds": pytest.approx(1.3 * 0.0056), "binding": "Recola"}
+    assert hhh["providers"] == {"madloop": 0.009, "recola": 0.0056, "openloops": 0.0229}
+    assert hgg["limit"] == {"seconds": 0.004, "binding": "MadLoop"}
+    assert hgg["gate"]["status"] == "not gated" and hgg["group"] == "2->3"
+    assert figure["not_drawn"] == {
+        builder.LI_NO_TIME: ["aa", "zzg"],
+        builder.LI_NO_PROVIDER: ["zz"],
+    }
+    # The committed data: the figure is the one of the committed table.
+    data = ROOT / "docs" / "performance_reports" / "loop" / "data"
+    committed = json.loads((data / "summary-li.json").read_text())
+    factor = json.loads((data / "summary.json").read_text())["meta"]["gate_factor"]
+    assert committed["figure"] == builder.li_figure(committed, factor)
 
 
 def test_madloop_columns_share_the_production_run_setup(tmp_path, monkeypatch):

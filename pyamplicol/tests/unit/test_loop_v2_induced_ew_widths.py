@@ -21,6 +21,11 @@ unstable particles never in the external states).").
 
 Shared helpers: ``test_loop_v2_induced_ew.py`` (the G_mu model, one row's
 slice at a time).
+
+Tiers (slice-status DECISIONS 2026-11-07 ~09:12 (5)): one parametrisation
+of each test runs in the default tier (e+ e- > g g g at the model's Z
+width, LI-43, h > z a widthless, the complex-mass e+ e- > g g g, the
+refused g g > z z), every other one is ``loop_nightly``.
 """
 
 from __future__ import annotations
@@ -40,6 +45,7 @@ from tests.unit.test_loop_v2_induced_ew import (
     _process,
     _relative,
     _total,
+    tiers,
 )
 
 pytestmark = pytest.mark.loop_physics
@@ -92,9 +98,7 @@ def _default_widths_request(ew, name, **fields):
 LEPTON_ROWS = [("li_emep_hh", "none"), ("li_emep_ggg", "first order")]
 
 
-@pytest.mark.parametrize(
-    ("name", "dependence"), LEPTON_ROWS, ids=[row[0] for row in LEPTON_ROWS]
-)
+@pytest.mark.parametrize(("name", "dependence"), tiers(LEPTON_ROWS, "li_emep_ggg"))
 def test_lepton_rows_with_the_model_z_width(ew, name, dependence):
     """Q7, LI-E3 / LI-E4: e+ e- > h h [QED] and e+ e- > g g g at the model's
     default widths generate with fixed widths in their tree propagators (the
@@ -221,7 +225,7 @@ def test_fixed_tree_widths_equal_madloop_and_openloops(loop_sm_no_b_mass, loop_n
     assert _relative(_total(dd), _total(results[0])) <= ANALYTIC_DOUBLE
 
 
-@pytest.mark.parametrize("name", ["li_h_za", "li_aa_aa"])
+@pytest.mark.parametrize("name", tiers(["li_h_za", "li_aa_aa"], "li_h_za"))
 def test_widthless_loop_propagators(ew, name):
     """Q7: loop propagators carry no width. h > z a and a a > a a have no
     tree propagator (every tree current of h > z a is amputated; photons
@@ -259,7 +263,7 @@ def test_widthless_loop_propagators(ew, name):
 # --------------------------------------------------- complex-mass scheme
 
 
-@pytest.mark.parametrize(("name", "analytic"), CMS_ROWS, ids=[r[0] for r in CMS_ROWS])
+@pytest.mark.parametrize(("name", "analytic"), tiers(CMS_ROWS, "li_emep_ggg_cms"))
 def test_complex_mass_rows_equal_the_references(ew, name, analytic):
     """LI-C1 (Q7): the complex-mass scheme is consistent everywhere: complex
     pole masses in the tree and the loop propagators, complex couplings.
@@ -298,10 +302,15 @@ def test_complex_mass_rows_equal_the_references(ew, name, analytic):
 @pytest.mark.parametrize(
     ("process", "orders", "corrections"),
     [
-        ("g g > z z", {"QCD": 2, "QED": 2}, None),
-        ("a a > z z", {"QCD": 0, "QED": 4}, ("QED",)),
+        pytest.param("g g > z z", {"QCD": 2, "QED": 2}, None, id="gg_zz"),
+        pytest.param(
+            "a a > z z",
+            {"QCD": 0, "QED": 4},
+            ("QED",),
+            id="aa_zz",
+            marks=pytest.mark.loop_nightly,
+        ),
     ],
-    ids=["gg_zz", "aa_zz"],
 )
 def test_an_unstable_external_state_is_refused_under_the_complex_mass_scheme(
     ew, process, orders, corrections

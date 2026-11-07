@@ -1010,8 +1010,12 @@ SMINPUTS_FERMI = ("SMINPUTS", (2,))
 
 def scheme_conventions(slice_: Any) -> dict[str, object] | None:
     """The conventions an electroweak request's virtual is defined in (WP3.2
-    EWI-7; requirements EW-14 and EW-18), None for a request that is not
-    electroweak (``electroweak``). v2 makes no private gamma-five or scheme
+    EWI-7; requirements EW-14 and EW-18). A request that is not electroweak
+    (``electroweak``) records only its ``mass_scheme`` under the complex-mass
+    scheme and its ``width_policy`` when loop-induced (below), so every
+    loop-induced request has a record; None for a Born-interfered request
+    that is neither (its record then has no entry, so such artifacts keep
+    their bytes). v2 makes no private gamma-five or scheme
     choice: four-dimensional numerators with d-dimensional denominators plus
     the model's R2 and UV rules define the result, so the record states the
     model's conventions as the generation found them:

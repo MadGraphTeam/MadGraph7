@@ -123,9 +123,11 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   admits fixed widths in every tree propagator (no Born, so no Catani
   mismatch, and the UV counterterm vertices multiply the same widthful
   tree propagators), loop propagators stay widthless; ``coloured-width``
-  stays the Born-interfered guard; under the complex-mass scheme masses are
-  complex in tree and loop propagators and an unstable external state is
-  refused (``cms-external-width``, ahead of the routing).
+  and ``electroweak-width`` stay the Born-interfered guards (m-lit LIT-EW:
+  an electroweak loop-induced request takes the same policy); under the
+  complex-mass scheme masses are complex in tree and loop propagators and
+  an unstable external state is refused (``cms-external-width``, ahead of
+  the routing).
 * One-loop 1 -> n decays (M-FINAL MF-DEC-2) are served: no rule reads the
   number of initial legs (``decay-process``, MF-DEC-1's interim refusal,
   is retired). The decaying leg is an ordinary incoming leg: its field
@@ -187,8 +189,9 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   ``mass_scheme`` is ``"real-on-shell"`` or ``"complex-mass"``
   (``mass-scheme`` otherwise). Real on-shell requests propagate no width in
   coloured trees (``coloured-width``) nor, if electroweak, in any tree
-  (``electroweak-width``, [U8]; a loop-induced request takes the Q7 width
-  policy above on the coloured side); the complex-mass scheme is MG5_aMC's
+  (``electroweak-width``, [U8]); both are Born-interfered guards: a
+  loop-induced request, electroweak or not, takes the Q7 width policy above
+  (``ew_policy.tree_width_policy``); the complex-mass scheme is MG5_aMC's
   transform of the model (``complex_mass_model``), which refuses a model
   outside its assumptions (``complex-mass-scheme``), a width-carrying
   particle of internal mass (``cms-internal-mass``), a fixed Yukawa input

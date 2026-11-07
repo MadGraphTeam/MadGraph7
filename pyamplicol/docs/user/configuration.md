@@ -215,10 +215,14 @@ conservation), on its full tree kernels with every width fixed to zero (the
 complex-mass scheme keeps its complex masses): the amplitude's poles must
 vanish (finiteness) and, for an external gluon and an external photon, the
 amplitude with its polarisation replaced by its momentum (Ward: R2
-completeness), each within ten times the probe's own estimate. A failure refuses the process
+completeness) and, for an external massive vector of a 't Hooft-Feynman gauge
+request, the Goldstone-equivalence identity k.A(V) = eta M_V A(G), each within
+ten times the probe's own estimate. A failure refuses the process
 (`loop-induced-probe`); `[generation] allow_failed_probes = true` (CLI
 `--allow-failed-probes`) stores it anyway. The outcome is recorded in the
-artifact's generation filters (`loop_induced_probes`).
+artifact's generation filters (`loop_induced_probes`; its `goldstone` entry
+reads `status = "not-run"`, with the refusals, when no Goldstone side of the
+request could be generated).
 Generation also drops the helicity rows of a loop-induced process that are
 zero before the loop integration (every numerator vanishes identically),
 tested exactly modulo the fixed prime 2^61 - 1 at random points. Over the
