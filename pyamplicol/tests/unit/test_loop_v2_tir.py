@@ -304,9 +304,12 @@ def test_validation_settings_rebuild_and_reset_the_tirust_backend(slices):
     knobs of the discriminating test, DECISIONS 2026-11-07 15:12; the
     method choice is the one option lit-tir-mp turns back on): NinjaRS
     refuses them, an unknown limit name is refused; another setting
-    rebuilds TIRust's backend (the method choice on: its rows counted) and
-    the default call restores the default lanes bit for bit (no
-    method-choice row)."""
+    rebuilds TIRust's backend for a validation run on the native executor
+    (the method choice on: the gate-refused rows take it), and the artifact
+    runtime's next call restores the defaults (``reduction.prepare``) and
+    their lanes bit for bit (no method-choice row)."""
+
+    from pyamplicol.loops.v2.assemble import Precision
 
     executor = slices("uux_ddxg")
     points, scales = PROCESSES["uux_ddxg"][2]()
@@ -322,16 +325,25 @@ def test_validation_settings_rebuild_and_reset_the_tirust_backend(slices):
         "tirust", method_choice=True, alternative_first="default", acceptance=0.0
     )
     assert validation == plans
-    chosen = _lanes(executor, points, scales, "tirust")
-    counts = executor.last_report["counts"]
+    evaluations = executor._native_points(
+        points, scales, PARAMETERS, Precision.double()
+    )
+    output = native.evaluate(
+        executor._inputs(evaluations, "double"),
+        schedule="B",
+        contraction=executor.contraction,
+        poles="all",
+        check=False,
+        reduction="tirust",
+    )
+    counts = output["report"]["counts"]
     if counts["TIR gate refusals"]:
         # Every gate-refused row took the method choice: served, or refused
         # by it or by its check (acceptance 0) with that reason.
-        reasons = [r for point in chosen if isinstance(point, list) for r in point]
+        reasons = [r for failure in output["failures"] for r in failure]
         assert counts["TIR method-choice rows"] > 0 or any(
             "then by the method choice" in r for r in reasons
         ), (counts, reasons)
-    assert native.prepare_reduction("tirust") == plans
     assert _lanes(executor, points, scales, "tirust") == default
     _no_method_choice(executor.last_report)
 

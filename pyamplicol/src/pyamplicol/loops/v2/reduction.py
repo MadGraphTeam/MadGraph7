@@ -132,7 +132,9 @@ def prepare(executor: Any) -> None:
     plan's (propagators, rank) histogram when the current context runs
     TIRust (``running``), before the call's first point (m-lit PLAN §2.b.3:
     no first-call stall); kept for the executor's lifetime, so a later call
-    only compares its settings. TIRust's typed refusal of a family (its plan
+    only compares its settings, which are always TIRust's defaults here (the
+    validation settings of ``V2Executor.prepare_reduction`` serve runs on the
+    native executor itself). TIRust's typed refusal of a family (its plan
     construction, or the rank admission) is ``ReductionUnavailable``. Nothing
     for NinjaRS."""
 
