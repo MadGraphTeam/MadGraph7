@@ -20,8 +20,10 @@ chooses the effective backend once per call and carrier, never per point:
 
 What a backend serves is the native extension's capability, never a
 constant of this module: ``native.reduction_backends()`` (a JSON object
-naming each built-in backend and the carriers it serves: TIRust in binary64
-in an extension built with it, the default cargo feature ``tir``) when the
+naming each built-in backend and the carriers it serves: TIRust at every
+carrier in an extension built with it, the default cargo feature ``tir``,
+m-lit lit-tir-mp; which families it serves is TIRust's own capability
+query, refused typed when the plans are built, ``prepare``) when the
 extension has the query, else NinjaRS at every carrier (an extension built
 before the TIRust backend, m-lit lit-tir, which adds the query). An artifact
 may admit fewer backends (``admitted``: TIR-only artifacts of rank > N + 2,
@@ -61,9 +63,6 @@ BACKENDS = tuple(
 # The per-type defaults of ``"auto"`` (RULED Q17 / Q40).
 DEFAULTS: Mapping[str, str] = {"virtual": "ninjars", "loop-induced": "tirust"}
 CARRIERS = ("double", "double-double", "arbitrary")
-# The refusal of TIRust at an extended carrier on the Python reference path
-# (the native one is ``runtime::TIRUST_BINARY64_ONLY``).
-TIRUST_BINARY64_ONLY = "the TIRust reduction backend serves binary64 in this build"
 NAMES = {"ninjars": "NinjaRS", "tirust": "TIRust"}
 KINDS = {"virtual": "Born-interfered", "loop-induced": "loop-induced"}
 
@@ -277,7 +276,6 @@ __all__ = [
     "DEFAULTS",
     "RESOLVED",
     "SUMMED",
-    "TIRUST_BINARY64_ONLY",
     "ReductionUnavailable",
     "Route",
     "executor_options",

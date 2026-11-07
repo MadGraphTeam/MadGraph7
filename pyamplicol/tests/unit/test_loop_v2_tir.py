@@ -3,7 +3,8 @@
 lit-tir, PLAN §3.3 and §2.b.2-§2.b.6).
 
 * the native extension's capability query (``_loop.reduction_backends``)
-  reports TIRust in binary64 exactly when it links TIRust;
+  reports TIRust at every carrier exactly when it links TIRust (m-lit
+  lit-tir-mp);
 * T2: the raw reduction lanes of generated Born-interfered slices (g g > g g,
   u u~ > d d~ g, a complex-mass b b~ > w+ w-) reduced by TIRust agree with
   NinjaRS's within 10 times the larger of the two backends' re-test
@@ -13,17 +14,19 @@ lit-tir, PLAN §3.3 and §2.b.2-§2.b.6).
   inside the precision-lax rule); in the default settings TIRust serves no
   method-choice row (DECISIONS 2026-11-07 ~17:20 (d)): a point whose row
   the conditioning gates refuse fails closed with the gates' reason; a top
-  in its own gauge loop (g g > t t~) is refused typed by TIRust's
-  capability (lit-spike-tir F1: its invariants need the supplied
-  S-matrix), never a wrong value;
+  in its own gauge loop (g g > t t~), whose invariants need the supplied
+  S-matrix (lit-spike-tir F1), is served on the exact on-shell branch and
+  agrees with NinjaRS within L6 in binary64 and to the double-double target
+  in double-double (m-lit lit-tir-mp);
 * T6: the family threads leave TIRust's values bitwise;
 * the executor's TIRust validation settings (``prepare_reduction``) rebuild
   its backend and reset to the defaults bitwise; NinjaRS refuses them;
 * the public API serves an explicit ``reduction="tirust"`` on the summed and
   the resolved routes (values reduced by TIRust: within the lax precision
-  of NinjaRS's and not bitwise equal to them), records it, keeps ``"auto"``
-  on NinjaRS (with its reason) and refuses TIRust at double-double typed
-  before any point;
+  of NinjaRS's and not bitwise equal to them), records it and keeps
+  ``"auto"`` on NinjaRS (with its reason); an explicit ``"tirust"`` at
+  double-double and arbitrary precision, and on every level of a rescue
+  ladder, stays on TIRust (m-lit lit-tir-mp);
 * T8: binary64 TIRust touches no Symbolica state: a fresh interpreter
   without the licence and with pyAmpliCol's native library key disabled
   evaluates the shipped loop-induced and Born-interfered self-test artifacts
@@ -64,6 +67,9 @@ ROUNDING = 1e-12
 # The lax precision of the public-API comparison (relative to the largest
 # entry; below ~1e-5 is not a finding).
 LAX = 1e-6
+# The double-double target of the two backends on the same inputs (DESIGN
+# §11.1's DD = MPFR target; R5: measured and recorded).
+DOUBLE_DOUBLE = 1e-24
 
 
 def _tirust(native) -> bool:
@@ -71,13 +77,20 @@ def _tirust(native) -> bool:
 
 
 @pytest.mark.loop_fast
-def test_the_capability_query_reports_tirust_in_binary64(loop_native):
+def test_the_capability_query_reports_tirust_at_every_carrier(loop_native):
     from pyamplicol.loops.v2.reduction import CARRIERS, native_backends
 
     found = native_backends(loop_native)
     assert found["ninjars"] == frozenset(CARRIERS)
     if _tirust(loop_native):
-        assert found["tirust"] == frozenset({"double"})
+        assert found["tirust"] == frozenset(CARRIERS)
+        # Which families TIRust serves is its own capability query: beyond
+        # its former fixed cap of twelve propagators, refused only past what
+        # the query reports (no constant of pyAmpliCol's).
+        assert loop_native.reducer_rank_refusal(13, 2, "tirust") is None
+        refusal = loop_native.reducer_rank_refusal(65, 0, "tirust")
+        assert "TIRust cannot reduce 65 propagators" in refusal, refusal
+        assert "rank <= N+2" in loop_native.reducer_rank_refusal(4, 7, "tirust")
     else:
         assert "tirust" not in found
 
@@ -274,18 +287,53 @@ def test_raw_lanes_agree_with_ninjars_within_their_estimates(slices, name):
 
 
 @pytest.mark.loop_physics
-def test_a_top_in_its_own_gauge_loop_is_refused_by_capability(slices):
-    """g g > t t~: the on-shell top legs next to top propagators need the
-    supplied S-matrix (TIRust U1, lit-tir-mp's re-pin); until then TIRust's
-    lanes there fail typed and the points fail closed, never a value."""
+def test_a_top_in_its_own_gauge_loop_is_served(slices):
+    """g g > t t~: the on-shell top legs next to top propagators. TIRust
+    takes the S-matrix the executor forms (the on-shell entries exactly the
+    legs' squared masses, DESIGN §11.1), so the lanes are served on the exact
+    on-shell branch: in binary64 within L6 of NinjaRS's (a row the gates
+    refuse fails closed with the gates' reason, never a capability one), and
+    in double-double every lane within the double-double target of
+    NinjaRS's generic engine on the same inputs."""
+
+    from pyamplicol.loops.v2.assemble import Precision
+    from pyamplicol.loops.v2.reduction import running
 
     executor = slices("gg_ttx")
     points, scales = PROCESSES["gg_ttx"][2]()
-    tir = _lanes(executor, points[:1], scales[:1], "tirust")
-    (reasons,) = tir
-    assert isinstance(reasons, list)
-    assert any("TIRust capability" in reason for reason in reasons), reasons
-    assert executor.last_report["counts"]["TIR capability refusals"] > 0
+    ninja = _lanes(executor, points, scales, "ninjars")
+    tir = _lanes(executor, points, scales, "tirust")
+    lanes, _worst, _failed = _agree("gg_ttx", ninja, tir)
+    assert lanes > 0
+    for point in tir:
+        if isinstance(point, list):
+            assert not any("capability" in reason for reason in point), point
+    worst = 0.0
+    for backend in ("ninjars", "tirust"):
+        with running(backend):
+            _precision, evaluations, failures = executor._evaluated(
+                points[:1],
+                scales[:1],
+                PARAMETERS,
+                Precision.double_double(),
+                "all",
+                None,
+            )
+        assert not failures, failures
+        if backend == "ninjars":
+            reference = evaluations[0].families
+            continue
+        found = evaluations[0].families
+        assert found.keys() == reference.keys()
+        for lane, value in found.items():
+            n = reference[lane].coefficients
+            scale = max(_size(z) for z in n)
+            deviation = max(
+                _size(a - b) for a, b in zip(value.coefficients, n, strict=True)
+            )
+            worst = max(worst, deviation / scale)
+    print(f"g g > t t~ double-double TIRust vs NinjaRS: worst relative {worst:.3e}")
+    assert worst < DOUBLE_DOUBLE, worst
 
 
 @pytest.mark.loop_physics
@@ -418,9 +466,10 @@ def test_tirust_is_served_on_request_and_auto_keeps_ninjars(loop_native):
     summed and resolved routes of the Born-interfered one serve an explicit
     ``"tirust"`` (recorded as requested) with NinjaRS's values within their
     re-test estimates; ``"auto"`` keeps NinjaRS with its reason; TIRust at
-    double-double is refused typed before any point."""
+    double-double and arbitrary precision is served on request, also on
+    every level of a rescue ladder."""
 
-    from pyamplicol import ReductionUnavailable, Runtime
+    from pyamplicol import Runtime
     from pyamplicol.api.virtual_results import VirtualStabilityChecks
 
     if not _tirust(loop_native):
@@ -454,10 +503,45 @@ def test_tirust_is_served_on_request_and_auto_keeps_ninjars(loop_native):
     (lane,) = auto.diagnostics
     assert lane.reduction.effective == "ninjars"
     assert "agreement with NinjaRS on loop-induced processes" in lane.reduction.reason
-    with pytest.raises(ReductionUnavailable, match="double-double"):
-        runtime.evaluate(
-            points[:1], mu_r2=scales[:1], arithmetic="double-double", reduction="tirust"
+    # The extended carriers on TIRust (m-lit lit-tir-mp): explicitly
+    # requested, served and recorded at double-double and arbitrary
+    # precision, within the double-double target of NinjaRS's values.
+    for arithmetic, precision in (("double-double", None), ("arbitrary", 40)):
+        found = {
+            backend: runtime.evaluate(
+                points[:1],
+                mu_r2=scales[:1],
+                arithmetic=arithmetic,
+                precision=precision,
+                reduction=backend,
+            )
+            for backend in ("ninjars", "tirust")
+        }
+        (lane,) = found["tirust"].diagnostics
+        assert (lane.reduction.effective, lane.reduction.reason) == (
+            "tirust",
+            "requested",
         )
+        n_values = _flat(found["ninjars"].values)
+        t_values = _flat(found["tirust"].values)
+        scale = max(abs(x) for x in n_values)
+        deviation = max(abs(a - b) for a, b in zip(n_values, t_values, strict=True))
+        assert deviation <= DOUBLE_DOUBLE * scale, (arithmetic, deviation, scale)
+    # Every level of a rescue ladder resolves to the explicit request: a
+    # level on TIRust stays on TIRust (binary64, then double-double).
+    from pyamplicol.api.virtual_results import VirtualRescueLevel, VirtualRescuePolicy
+
+    ladder = VirtualRescuePolicy(
+        (
+            VirtualRescueLevel("double", rotations=0, target=1e-300),
+            VirtualRescueLevel("double-double", rotations=0, reduction_check="none"),
+        )
+    )
+    rescued = runtime.evaluate(
+        points[:1], mu_r2=scales[:1], stability=ladder, reduction="tirust"
+    )
+    assert {lane.reduction.effective for lane in rescued.diagnostics} == {"tirust"}
+    assert rescued.rescue[0].level == 1, rescued.rescue
     ew = _ew()
     record = json.loads((ew.fixture_root() / "expected.json").read_text())
     born = Runtime.load(ew.fixture_root() / "artifact", process=ew.NAME)

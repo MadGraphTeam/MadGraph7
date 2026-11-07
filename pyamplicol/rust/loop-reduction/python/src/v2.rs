@@ -198,27 +198,48 @@ impl Limit {
 }
 
 /// Whether TIRust's validation keywords differ from their defaults
-/// (`method_choice` and `acceptance` omitted, `alternative_first`
-/// `"default"`).
+/// (`method_choice`, `acceptance` and `acceptance_frame` omitted,
+/// `alternative_first` `"default"`).
 pub(super) fn tir_settings_given(
     method_choice: Option<bool>,
     alternative_first: &Option<Limit>,
     acceptance: Option<f64>,
+    acceptance_frame: &Option<String>,
 ) -> bool {
-    method_choice.is_some() || *alternative_first != Limit::default_limit() || acceptance.is_some()
+    method_choice.is_some()
+        || *alternative_first != Limit::default_limit()
+        || acceptance.is_some()
+        || acceptance_frame.is_some()
 }
 
 /// TIRust's settings from the validation keywords of [`V2TirReducer`] and
-/// `V2Executor.prepare_reduction`: `method_choice` and `acceptance` (None:
-/// the default), `alternative_first` ([`Limit`]); the others the defaults
-/// (`v2_tir::TirOptions`).
+/// `V2Executor.prepare_reduction`: `method_choice` (both carrier classes)
+/// and `acceptance` (None: the default), `alternative_first` ([`Limit`]),
+/// `acceptance_frame` (`"rotated"`: rotation by one with the origin shift,
+/// `"rescaled"`: the same rescaled; None: the default); the others the
+/// defaults (`v2_tir::TirOptions`).
 #[cfg(feature = "tir")]
 pub(super) fn tir_options(
     method_choice: Option<bool>,
     alternative_first: &Option<Limit>,
     acceptance: Option<f64>,
+    acceptance_frame: &Option<String>,
 ) -> PyResult<rusticol_loop_reduction::v2_tir::TirOptions> {
     let defaults = rusticol_loop_reduction::v2_tir::TirOptions::default();
+    let acceptance_frame = match acceptance_frame.as_deref() {
+        None => defaults.acceptance_frame,
+        Some(name @ ("rotated" | "rescaled")) => rusticol_loop_reduction::runtime::ReductionFrame {
+            reverse: false,
+            rotation: 1,
+            shift: true,
+            rescale: name == "rescaled",
+        },
+        Some(other) => {
+            return Err(error(format!(
+                "acceptance_frame must be \"rotated\", \"rescaled\" or None, not {other:?}"
+            )));
+        }
+    };
     let alternative_first = match alternative_first {
         None => None,
         Some(Limit::Value(limit)) => Some(*limit),
@@ -234,6 +255,7 @@ pub(super) fn tir_options(
         extended_method_choice: method_choice.unwrap_or(defaults.extended_method_choice),
         alternative_first,
         acceptance: acceptance.unwrap_or(defaults.acceptance),
+        acceptance_frame,
         ..defaults
     })
 }
@@ -249,7 +271,8 @@ pub(super) fn tir_options(
 /// whose defaults they keep when omitted; for validation): `method_choice`
 /// (default off: gate-refused rows fail closed; True: TIRust's method
 /// choice and its check, in every carrier), `alternative_first` ([`Limit`])
-/// and `acceptance` (the method-choice check's binary64 tolerance). Refused
+/// `acceptance` (the method-choice check's binary64 tolerance) and
+/// `acceptance_frame` (its frame, `"rotated"` or `"rescaled"`). Refused
 /// typed in a build without TIRust.
 #[pyclass]
 struct V2TirReducer(rusticol_loop_reduction::runtime::V2Backends);
@@ -257,22 +280,28 @@ struct V2TirReducer(rusticol_loop_reduction::runtime::V2Backends);
 #[pymethods]
 impl V2TirReducer {
     #[new]
-    #[pyo3(signature = (*, method_choice=None, alternative_first=Limit::default_limit(), acceptance=None))]
+    #[pyo3(signature = (*, method_choice=None, alternative_first=Limit::default_limit(), acceptance=None, acceptance_frame=None))]
     fn new(
         method_choice: Option<bool>,
         alternative_first: Option<Limit>,
         acceptance: Option<f64>,
+        acceptance_frame: Option<String>,
     ) -> PyResult<Self> {
         #[cfg(feature = "tir")]
         {
-            let options = tir_options(method_choice, &alternative_first, acceptance)?;
+            let options = tir_options(
+                method_choice,
+                &alternative_first,
+                acceptance,
+                &acceptance_frame,
+            )?;
             rusticol_loop_reduction::runtime::V2Backends::tirust_with([], 53, options)
                 .map(Self)
                 .map_err(error)
         }
         #[cfg(not(feature = "tir"))]
         {
-            let _ = (method_choice, alternative_first, acceptance);
+            let _ = (method_choice, alternative_first, acceptance, acceptance_frame);
             rusticol_loop_reduction::runtime::V2Backends::tirust([], 53)
                 .map(Self)
                 .map_err(error)

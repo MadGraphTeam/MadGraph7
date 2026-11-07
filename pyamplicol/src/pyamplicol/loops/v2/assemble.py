@@ -4330,9 +4330,10 @@ class _PointEvaluation:
     def reducer(self):
         """A reducer of the call's reduction backend (``reduction.running``):
         NinjaRS's ``V2Reducer`` at the evaluation's arithmetic, or TIRust's
-        ``V2TirReducer`` (binary64 in this build; other arithmetic refused
-        typed). Every reduction of the point takes it (its lanes here, the
-        loop-induced term scale's unit numerators, ``induced._moments``):
+        ``V2TirReducer`` (in the carrier of the lanes it receives: binary64
+        or arbitrary precision). Every reduction of the point takes it (its
+        lanes here, the loop-induced term scale's unit numerators,
+        ``induced._moments``):
         the backend is read once, at the point's first reduction, so a term
         scale formed later uses the backend of the point's lanes."""
         numbers = self.numbers
@@ -4340,12 +4341,6 @@ class _PointEvaluation:
             self.reduction_backend = executor_options().get("reduction", "ninjars")
         backend = self.reduction_backend
         if backend == "tirust":
-            if not numbers.double:
-                from pyamplicol.api.errors import ReductionUnavailable
-
-                from .reduction import TIRUST_BINARY64_ONLY
-
-                raise ReductionUnavailable(TIRUST_BINARY64_ONLY)
             return self.slice.native.V2TirReducer()
         return self.slice.native.V2Reducer(
             "double" if numbers.double else "arbitrary",
