@@ -749,7 +749,11 @@ loop-induced processes too and records why. A family TIRust cannot reduce
 is refused typed with TIRust's own reason (for now this includes an on-shell
 massive leg next to a loop propagator of its mass, such as a top in its own
 gauge loop, whose invariants TIRust's direct engine does not take exactly
-yet). `loop.reduction` other than `"auto"` needs a one-loop request
+yet). In binary64, TIRust verifies every lane its method choice serves (the
+rows its conditioning gates refuse) in a second frame; a lane that fails
+that check fails its point (no automatic switch to NinjaRS). At present this
+happens on many points of Born-interfered processes with five or more
+external legs. `loop.reduction` other than `"auto"` needs a one-loop request
 (`process.loop_coupling_orders`).
 
 **Momenta and arithmetic.** Every arithmetic (`double`, `double-double`,
