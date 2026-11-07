@@ -63,15 +63,18 @@ def orders_within(orders: Orders, cap: Orders) -> bool:
 
 
 @cache
-def reducer_rank_refusal(propagators: int, rank: int) -> str | None:
-    """``None`` if the reducer reduces a numerator of ``rank`` over
-    ``propagators`` loop propagators, else its refusal: the reducer's own
-    admission (NinjaRS ``RankClass::of``, through the native module), which
-    the plan loader and the runtime reducer ask too."""
+def reducer_rank_refusal(
+    propagators: int, rank: int, reducer: str = "ninjars"
+) -> str | None:
+    """``None`` if the reduction backend ``reducer`` (``"ninjars"``, the
+    artifacts' admission, or ``"tirust"``) reduces a numerator of ``rank``
+    over ``propagators`` loop propagators, else its refusal: the backend's
+    own admission (NinjaRS ``RankClass::of``, through the native module),
+    which the plan loader and the runtime backends ask too."""
 
     from pyamplicol.loops.native import load_loop_native
 
-    return load_loop_native().reducer_rank_refusal(propagators, rank)
+    return load_loop_native().reducer_rank_refusal(propagators, rank, reducer)
 
 
 def lowest_leg(mask: int) -> int:

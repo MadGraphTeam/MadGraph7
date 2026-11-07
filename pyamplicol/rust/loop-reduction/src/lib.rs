@@ -14,6 +14,8 @@ pub mod runtime;
 pub mod tir;
 pub mod v2_decimal;
 pub mod v2_runtime;
+#[cfg(feature = "tir")]
+pub mod v2_tir;
 
 use std::ops::Add;
 use std::time::{Duration, Instant};

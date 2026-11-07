@@ -103,6 +103,7 @@ if TYPE_CHECKING:
         ProcessSet,
         PyAmpliColError,
         ReductionGroup,
+        ReductionUnavailable,
         ResolvedEvaluation,
         Runtime,
         TreeGradedEvaluation,
@@ -206,6 +207,7 @@ __all__ = [
     "PyAmpliColError",
     "R2Strategy",
     "ReductionBackend",
+    "ReductionUnavailable",
     "ReductionGroup",
     "ResolvedEvaluation",
     "ResolvedVirtualEvaluation",
@@ -244,6 +246,7 @@ _ERROR_EXPORTS = (
     "ModelError",
     "NativePlatformError",
     "PyAmpliColError",
+    "ReductionUnavailable",
 )
 _REQUEST_EXPORTS = (
     "ModelSource",

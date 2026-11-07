@@ -2564,7 +2564,7 @@ mod tests {
         // family's rank that its unread content allows.
         // Past the largest rank the reducer admits over the plan's legs.
         let beyond = born_rows_plan(4, 1, 1).legs;
-        let beyond = u32::try_from(crate::loop_v2::bounds::largest_rank(beyond) + 1).unwrap();
+        let beyond = u32::try_from(crate::loop_v2::bounds::largest_rank(crate::loop_v2::bounds::Reducer::ARTIFACT, beyond) + 1).unwrap();
         for (name, exponents, degree) in [
             ("fused exponent", [0, 0, 0, 1 << 20], 0),
             ("fused wrap", [0, 1 << 31, 1 << 31, 0], 0),

@@ -556,14 +556,19 @@ class V2ObservablesRuntime:
         scales: Sequence[Any],
         spins: Sequence[Any],
         options: Mapping[str, Any],
+        reduction: VirtualReduction | None = None,
     ) -> tuple[list[Any], dict[int, list[str]]]:
-        """Per-point outputs (``None`` for a failed point) and the failures."""
+        """Per-point outputs (``None`` for a failed point) and the failures;
+        the native columns reduce on ``reduction``'s effective backend (the
+        artifact runtime's choice for the call's carrier; None: NinjaRS)."""
 
         from pyamplicol.loops.v2.plan_export import FailedPoints
+        from pyamplicol.loops.v2.reduction import running
 
         if not points:
             # An empty batch is valid (as for ``evaluate``): no native call.
             return [], {}
+        effective = None if reduction is None else reduction.effective
         if self._executor == "native":
 
             def batch(indices: list[int]) -> tuple[list[Any], dict[int, list[str]]]:
@@ -582,7 +587,13 @@ class V2ObservablesRuntime:
                 except FailedPoints as failed:
                     return list(failed.results), dict(failed.failures)
 
-            return isolate_scale_failures(batch, scales)
+            with running(effective):
+                return isolate_scale_failures(batch, scales)
+        if effective not in (None, "ninjars"):
+            raise CompatibilityError(
+                f"the Python reference executor reduces with NinjaRS only, not "
+                f"{effective!r}"
+            )
         out: list[Any] = []
         failures: dict[int, list[str]] = {}
         for index, (point, scale, spin) in enumerate(
@@ -998,6 +1009,7 @@ class V2ObservablesRuntime:
             scales,
             [None] * len(points),
             settings,
+            None if reductions is None else reductions[arithmetic],
         )
         self._failed(failures, on_failure)
         return self._evaluation(
@@ -1101,6 +1113,7 @@ class V2ObservablesRuntime:
                 scales,
                 spins,
                 settings,
+                None if reductions is None else reductions[arithmetic],
             )
             self._failed(failures, on_failure)
             for label in labels:
@@ -1188,6 +1201,7 @@ class V2ObservablesRuntime:
             scales,
             [None] * len(points),
             settings,
+            None if reductions is None else reductions[arithmetic],
         )
         self._failed(failures, on_failure)
         born_orders = self._default_born_orders()

@@ -1776,6 +1776,7 @@ class StoredColumns:
         from .native_trees import batch_parameters
         from .plan_export import NativeExecutor, _fraction_text
         from .poles import has_poles, pole_mode, reducer_poles, splits
+        from .reduction import executor_options
 
         view = self.observables.slice
         process = self.observables.process
@@ -1811,6 +1812,8 @@ class StoredColumns:
             "poles": reducer_poles(mode),
             "check": retest is not None,
             "rescale": retest == "rescaled",
+            # The call's reduction backend (``reduction.running``).
+            **executor_options(),
         }
         native = self._executor(arithmetic, digits, len(evaluations), False)
         selected = {} if masks is None else masks.options(0)

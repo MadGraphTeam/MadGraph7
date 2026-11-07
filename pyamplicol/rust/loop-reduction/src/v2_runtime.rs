@@ -21,7 +21,8 @@
 //!    `threads` bound of [`V2Runtime::open`]);
 //! 2. the plan's executor dresses and reduces every family
 //!    (`loop_execution::v2::V2Executor`, NinjaRS through
-//!    [`crate::runtime::V2ReductionBackend`]);
+//!    [`crate::runtime::V2ReductionBackend`] by default, or TIRust in
+//!    binary64, [`V2Runtime::set_reduction`]);
 //! 3. the components are assembled per sector exactly as
 //!    `loops/v2/assemble._PointEvaluation._assemble` does for the Python
 //!    API's native lane (`plan_export.NativeExecutor(inputs="native")`), in
@@ -92,8 +93,8 @@ pub use columns::{COLUMN_SETS, ColumnPoint, ColumnValues, INCLUSIVE};
 
 use crate::Complex;
 use crate::runtime::{
-    Carrier as DecimalCarrier, PoleSelection, TypedBatch, V2Reducer, V2ReductionBackend,
-    decimal_complex,
+    Carrier as DecimalCarrier, PoleSelection, Reduction, TypedBatch, V2Backends, V2Reducer,
+    V2ReductionBackend, decimal_complex,
 };
 pub use crate::v2_decimal::{Arith, Binary64, C, Decimal, DecimalArith, cadd, cmul, conj};
 use rusticol_core::VerifiedArtifact;
@@ -476,8 +477,23 @@ impl V2Precision {
         lanes
     }
 
-    /// The reduction backend of the carrier (`v2_executor.backend_of`).
-    fn backend(self) -> RusticolResult<V2ReductionBackend> {
+    /// The `reduction` backend of the carrier (`v2_executor.backend_of`):
+    /// NinjaRS, or TIRust (binary64; its plans built for `plan`'s
+    /// (propagators, rank) histogram, the other plans' on first use).
+    fn backend(self, reduction: Reduction, plan: &LoopProgramV4) -> RusticolResult<V2Backends> {
+        if reduction == Reduction::TiRust {
+            if self != Self::Double {
+                return Err(RusticolError::unsupported_precision(
+                    "the TIRust reduction backend serves binary64 in this build",
+                ));
+            }
+            return V2Backends::tirust(
+                plan.families
+                    .iter()
+                    .map(|f| (f.propagators(), f.rank))
+                    .collect::<BTreeSet<_>>(),
+            );
+        }
         let reducer = match self {
             Self::Double => V2Reducer::new("double", None, "fast", true),
             Self::DoubleDouble => V2Reducer::new("double-double", None, "generic", true),
@@ -486,10 +502,10 @@ impl V2Precision {
             }
         }
         .map_err(|e| invalid(e.to_string()))?;
-        Ok(V2ReductionBackend {
+        Ok(V2Backends::NinjaRs(V2ReductionBackend {
             reducer,
             masters: PoleSelection::BOTH,
-        })
+        }))
     }
 }
 
@@ -635,7 +651,7 @@ impl Runner {
         lanes: usize,
         batch: &V2Batch<T>,
         zero: &T,
-        backend: &mut V2ReductionBackend,
+        backend: &mut V2Backends,
         options: V2Options,
     ) -> RusticolResult<Vec<PointResult<T>>>
     where
@@ -764,7 +780,9 @@ pub struct V2Runtime {
     artifact: LoadedLoopV2Artifact,
     record: NativeRecord,
     process: Runner,
-    backends: BTreeMap<V2Precision, V2ReductionBackend>,
+    /// The reduction backend of every evaluation ([`V2Runtime::set_reduction`]).
+    reduction: Reduction,
+    backends: BTreeMap<V2Precision, V2Backends>,
     /// The stored companion's tree program (none: the process has no
     /// certified-scaleless families) and, once a split selection ran, the
     /// companion itself.
@@ -912,12 +930,16 @@ impl V2Runtime {
             .runtimes
             .insert(V2Precision::Double, Box::new(runtime));
         let mut backends = BTreeMap::new();
-        backends.insert(V2Precision::Double, V2Precision::Double.backend()?);
+        backends.insert(
+            V2Precision::Double,
+            V2Precision::Double.backend(Reduction::NinjaRs, &process.plan)?,
+        );
         Ok(Self {
             path,
             artifact,
             record,
             process,
+            reduction: Reduction::NinjaRs,
             backends,
             scaleless_inputs: native.scaleless.map(Arc::new),
             scaleless: None,
@@ -1247,11 +1269,36 @@ impl V2Runtime {
             .collect()
     }
 
-    fn backend(&mut self, precision: V2Precision) -> RusticolResult<&mut V2ReductionBackend> {
+    fn backend(&mut self, precision: V2Precision) -> RusticolResult<&mut V2Backends> {
         if !self.backends.contains_key(&precision) {
-            self.backends.insert(precision, precision.backend()?);
+            let backend = precision.backend(self.reduction, &self.process.plan)?;
+            self.backends.insert(precision, backend);
         }
         Ok(self.backends.get_mut(&precision).expect("the backend"))
+    }
+
+    /// The reduction backend of the following evaluations: NinjaRS (the
+    /// default) or TIRust (binary64; a build without it, or an extended
+    /// carrier, refuses typed when a batch would reduce on it). The choice
+    /// is the caller's (m-lit PLAN §2.b.4: the SDK has the per-call
+    /// backend, `lit-sdk`), never switched by the runtime.
+    pub fn set_reduction(&mut self, reduction: Reduction) -> RusticolResult<()> {
+        if reduction == Reduction::TiRust && !crate::tir::available() {
+            return Err(RusticolError::unsupported_runtime_capability(
+                "tirust",
+                "this native library is built without TIRust (the cargo feature tir)",
+            ));
+        }
+        if reduction != self.reduction {
+            self.reduction = reduction;
+            self.backends.clear();
+        }
+        Ok(())
+    }
+
+    /// The reduction backend of the following evaluations.
+    pub fn reduction(&self) -> Reduction {
+        self.reduction
     }
 
     /// One batch through the tree program, the executor and the assembly in

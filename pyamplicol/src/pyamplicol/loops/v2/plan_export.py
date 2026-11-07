@@ -62,6 +62,7 @@ from .colour import SYMMETRIC_GROUP_FFT, project
 from .families import FamilyKey, Orders
 from .merged import MergedGraph, merged_graph
 from .native_trees import StoredMember, executor_program
+from .reduction import executor_options
 from .poly_affine import size
 from .refusals import require_formal_nc_tables
 from .schedules import build_trie, forward_graph
@@ -2611,6 +2612,9 @@ class NativeExecutor:
             options["raw_lanes"] = True
         if self.exported.amplitude is not None and self.term_scale:
             options["term_scale"] = True
+        # The reduction backend of the call (``reduction.running``; nothing
+        # for NinjaRS, the executor's default).
+        options.update(executor_options())
         catani = self.inputs == "native" and any(
             getattr(evaluation, "catani", False) for evaluation in evaluations
         )

@@ -20,26 +20,33 @@ chooses the effective backend once per call and carrier, never per point:
 
 What a backend serves is the native extension's capability, never a
 constant of this module: ``native.reduction_backends()`` (a JSON object
-naming each built-in backend and the carriers it serves) when the extension
-has the query, else NinjaRS at every carrier (an extension built before the
-TIRust backend, m-lit lit-tir, which adds the query). An artifact may admit
-fewer backends (``admitted``: TIR-only artifacts of rank > N + 2, m-lit
-lit-eft). A call also runs on one route of the artifact runtime (``Route``:
-``SUMMED``, the summed virtual through the native executor, or
+naming each built-in backend and the carriers it serves: TIRust in binary64
+in an extension built with it, the default cargo feature ``tir``) when the
+extension has the query, else NinjaRS at every carrier (an extension built
+before the TIRust backend, m-lit lit-tir, which adds the query). An artifact
+may admit fewer backends (``admitted``: TIR-only artifacts of rank > N + 2,
+m-lit lit-eft). A call also runs on one route of the artifact runtime
+(``Route``: ``SUMMED``, the summed virtual through the native executor, or
 ``RESOLVED``, the colour-, spin- and helicity-resolved outputs and the
 leading-colour selections through the stored observable columns), and the
 effective backend is one the route's executor runs: the guard of every
 route, so that a result never names a backend its values were not reduced
-by.
+by. Both routes run both backends; ``"auto"`` takes on a route only the
+backends of its ``auto`` set: NinjaRS, until the loop-induced agreement of
+the two backends is established (m-lit lit-cache), so ``"auto"`` keeps
+NinjaRS for loop-induced processes too, with the reason recorded, and
+TIRust serves explicit requests.
 """
 
 from __future__ import annotations
 
 import json
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
-from pyamplicol.api.errors import CompatibilityError
+from pyamplicol.api.errors import CompatibilityError, ReductionUnavailable
 from pyamplicol.config.models import ReductionBackend, reduction_request
 
 if TYPE_CHECKING:
@@ -59,29 +66,64 @@ KINDS = {"virtual": "Born-interfered", "loop-induced": "loop-induced"}
 
 
 class Route(NamedTuple):
-    """A route of the artifact runtime: what it evaluates (for messages) and
-    the reduction backends its executor runs."""
+    """A route of the artifact runtime: what it evaluates (for messages), the
+    reduction backends its executor runs, and those ``"auto"`` may take
+    there (``auto``; None: every backend it runs)."""
 
     serves: str
     backends: frozenset[str]
+    auto: frozenset[str] | None = None
+
+    def automatic(self, backend: str) -> bool:
+        """Whether ``"auto"`` may take ``backend`` on this route."""
+
+        return backend in (self.backends if self.auto is None else self.auto)
 
 
-# The routes and the backends their executors run. Every native reduction is
-# NinjaRS's until the TIRust backend is wired to an executor (m-lit lit-tir:
-# the summed route; the resolved outputs after it, lit-obs).
-SUMMED = Route("the summed virtual", frozenset({"ninjars"}))
+# The routes and the backends their executors run (the native executor's
+# ``reduction`` option, m-lit lit-tir). ``"auto"`` stays on NinjaRS until the
+# loop-induced agreement of the two backends is checked (m-lit lit-cache,
+# which adds TIRust to ``auto``).
+SUMMED = Route(
+    "the summed virtual", frozenset({"ninjars", "tirust"}), frozenset({"ninjars"})
+)
 RESOLVED = Route(
     "the colour-, spin- and helicity-resolved outputs and selections",
+    frozenset({"ninjars", "tirust"}),
     frozenset({"ninjars"}),
 )
 
 
-class ReductionUnavailable(CompatibilityError):
-    """An explicitly requested reduction backend cannot serve the call (the
-    native extension lacks it, it does not serve the carrier, or the
-    artifact does not admit it). ``key`` is ``"reduction-unavailable"``."""
 
-    key = "reduction-unavailable"
+
+# The effective backend of the native executor calls of the current context
+# (``running``): the artifact runtime sets it per carrier once ``resolve`` has
+# chosen it; the executors' call sites read it (``executor_options``).
+_EFFECTIVE: ContextVar[str] = ContextVar("pyamplicol_v2_reduction", default="ninjars")
+
+
+@contextmanager
+def running(backend: str | None) -> Iterator[None]:
+    """Run the native executor calls of this context on the effective
+    ``backend`` (``resolve``'s ``VirtualReduction.effective``; None:
+    NinjaRS), chosen once per call and carrier, never per point."""
+
+    if backend is not None and backend not in BACKENDS:
+        raise ValueError(f"unknown reduction backend {backend!r}")
+    token = _EFFECTIVE.set(backend or "ninjars")
+    try:
+        yield
+    finally:
+        _EFFECTIVE.reset(token)
+
+
+def executor_options() -> dict[str, str]:
+    """The native executor's ``reduction`` option in the current context
+    (``running``): empty for NinjaRS, the executor's default, so that a
+    NinjaRS call passes exactly what it passed before the option existed."""
+
+    backend = _EFFECTIVE.get()
+    return {} if backend == "ninjars" else {"reduction": backend}
 
 
 def native_backends(native: Any) -> dict[str, frozenset[str]]:
@@ -171,6 +213,12 @@ def resolve(
         default = "tirust"
     kind = KINDS[contribution]
     why = _unavailable(default, carrier, served, allowed, route)
+    if why is None and not route.automatic(default) and allowed != {"tirust"}:
+        why = (
+            f"'auto' takes {NAMES[default]} on {route.serves} only once its "
+            "agreement with NinjaRS on loop-induced processes is established; "
+            f"request {default!r} explicitly"
+        )
     if why is None:
         reason = (
             f"auto: {NAMES[default]}, the {kind} default"
@@ -201,6 +249,8 @@ __all__ = [
     "SUMMED",
     "ReductionUnavailable",
     "Route",
+    "executor_options",
     "native_backends",
     "resolve",
+    "running",
 ]
