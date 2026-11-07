@@ -14,17 +14,27 @@
 //! must be invertible: a multiple of `p` is an error the caller sees as a
 //! non-finite value, [`Fp::is_finite`]). The carrier dresses numerators only:
 //! the operations the dressing never runs on a field element (comparisons of
-//! magnitude, precision) answer as for an exact carrier.
+//! magnitude, precision) answer as for an exact carrier. The arithmetic is
+//! numerica's `FiniteField<Mersenne64>` (Symbolica's domains); `Fp` adds the
+//! non-finite marker and the carrier traits.
 
 use std::fmt;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use symbolica::domains::finite_field::{FiniteField, FiniteFieldCore, Mersenne64};
 use symbolica::domains::float::{FloatLike, RealLike, SingleFloat};
 use symbolica::domains::integer::Integer;
 use symbolica::domains::rational::Rational;
+use symbolica::domains::{Field, Ring, RingOps};
 use symbolica::rand::Rng;
 
 /// The prime `2^61 − 1` (a Mersenne prime, `≡ 3 mod 4`).
-pub const PRIME: u64 = (1 << 61) - 1;
+pub const PRIME: u64 = Mersenne64::PRIME;
+
+/// The field `F_p` of numerica (its elements are the residues in `[0, p)`).
+#[inline(always)]
+fn field() -> FiniteField<Mersenne64> {
+    FiniteField::<Mersenne64>::new(Mersenne64::new())
+}
 
 /// An element of `F_p` (`p` = [`PRIME`]), or the marker of a rational whose
 /// denominator `p` divides (not finite).
@@ -37,7 +47,7 @@ const INVALID: u64 = u64::MAX;
 impl Fp {
     /// The residue `value mod p`.
     pub fn new(value: u64) -> Self {
-        Self(reduce(u128::from(value)))
+        Self(value % PRIME)
     }
 
     /// The residue in `[0, p)` (or `u64::MAX` for the non-finite marker).
@@ -61,34 +71,12 @@ impl Fp {
         Self(reduced.rem_euclid(PRIME as i64) as u64)
     }
 
-    /// `self^e` by squaring.
-    fn power(self, mut e: u64) -> Self {
+    /// `self^e`.
+    fn power(self, e: u64) -> Self {
         if self.0 == INVALID {
             return self;
         }
-        let mut base = self;
-        let mut out = Self(1);
-        while e > 0 {
-            if e & 1 == 1 {
-                out *= base;
-            }
-            base *= base;
-            e >>= 1;
-        }
-        out
-    }
-}
-
-/// `x mod (2^61 − 1)` for `x < 2^122`.
-fn reduce(x: u128) -> u64 {
-    let p = u128::from(PRIME);
-    let folded = (x & p) + (x >> 61);
-    let folded = (folded & p) + (folded >> 61);
-    let folded = folded as u64;
-    if folded >= PRIME {
-        folded - PRIME
-    } else {
-        folded
+        Self(field().pow(&self.0, e))
     }
 }
 
@@ -119,8 +107,7 @@ impl Neg for Fp {
     fn neg(self) -> Self {
         match self.0 {
             INVALID => self,
-            0 => self,
-            x => Self(PRIME - x),
+            x => Self(RingOps::neg(&field(), x)),
         }
     }
 }
@@ -131,8 +118,7 @@ impl Add for Fp {
         if !self.valid(other) {
             return Self(INVALID);
         }
-        let sum = self.0 + other.0;
-        Self(if sum >= PRIME { sum - PRIME } else { sum })
+        Self(RingOps::add(&field(), self.0, other.0))
     }
 }
 
@@ -149,7 +135,7 @@ impl Mul for Fp {
         if !self.valid(other) {
             return Self(INVALID);
         }
-        Self(reduce(u128::from(self.0) * u128::from(other.0)))
+        Self(RingOps::mul(&field(), self.0, other.0))
     }
 }
 
@@ -162,11 +148,11 @@ impl Div for Fp {
 }
 
 impl Fp {
-    /// `self⁻¹` (Fermat), the non-finite marker for zero.
+    /// `self⁻¹`, the non-finite marker for zero.
     fn inverse(self) -> Self {
         match self.0 {
             0 | INVALID => Self(INVALID),
-            _ => self.power(PRIME - 2),
+            x => Self(field().inv(&x)),
         }
     }
 }
