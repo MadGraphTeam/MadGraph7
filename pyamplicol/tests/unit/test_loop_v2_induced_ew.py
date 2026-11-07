@@ -391,6 +391,75 @@ def test_lepton_rows_with_the_model_z_width(ew, name, dependence):
         assert abs(shift / small / 10 - 1) <= 0.05, (index, shift, small)
 
 
+@pytest.fixture(scope="module")
+def loop_sm_no_b_mass(loop_sm_ufo, tmp_path_factory):
+    from tools.loop_benchmark.mqcd import compile_restriction
+
+    return compile_restriction(
+        loop_sm_ufo, "no_b_mass", tmp_path_factory.mktemp("li-ew-sm") / "no_b_mass"
+    )
+
+
+def test_fixed_tree_widths_equal_madloop_and_openloops(loop_sm_no_b_mass, loop_native):
+    """Q7, LI-43 (the reference row of the width policy, scheme qcd-widths):
+    g g > e+ e- mu+ mu- [QCD] on MG5_aMC's loop_sm (no_b_mass) with the Z, W
+    and Higgs widths fixed in its tree propagators (the Z of each lepton pair
+    and the Higgs of g g > h* > z z) and widthless loop propagators equals
+    MadLoop and OpenLoops, which use that scheme, within the lax rule at
+    every point in binary64 (Recola's fixed-width scheme is another, lit-ref-b:
+    excluded); double-double at the first point equals binary64 within 1e-9;
+    the policy names the propagated widths."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
+    from pyamplicol.loops.v2.ew_policy import FIXED_TREE_WIDTHS, scheme_conventions
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+
+    name = "li_gg_emepmupmum"
+    fixture = _fixture(name)
+    compiled = loop_sm_no_b_mass
+    orders = dict(fixture["loop_orders"])
+    fixed = {
+        key: value
+        for key, value in fixture["scheme_data"]["fixed_parameters"].items()
+        if key in compiled.parameter_defaults
+    }
+    assert all(Decimal(fixed[w]) > 0 for w in ("WZ", "WW", "WH"))
+    slice_ = LoopSlice.generate(
+        compiled,
+        SliceRequest(
+            _process(fixture, compiled),
+            orders,
+            orders,
+            contribution="loop-induced",
+            fixed_parameters=fixed,
+        ),
+        loop_native,
+    )
+    policy = scheme_conventions(slice_)["width_policy"]
+    assert policy["policy"] == FIXED_TREE_WIDTHS
+    assert policy["loop_propagators"] == "widthless"
+    assert policy["tree_widths"] == {"H": "WH", "Z": "WZ"}
+    external = slice_._external_parameters()
+    parameters = {
+        key: value
+        for key, value in fixture["scheme_data"]["parameters"].items()
+        if key in external and key not in slice_.fixed_parameters
+    }
+    executor = NativeExecutor(slice_, forward=False, inputs="native")
+    scales = [Fraction(mu) ** 2 for mu in fixture["mu_r"]]
+    results = executor.evaluate(
+        fixture["points"], scales, parameters=parameters, precision=Precision.double()
+    )
+    _check_providers(name, results, analytic=False)
+    (dd,) = executor.evaluate(
+        fixture["points"][:1],
+        scales[:1],
+        parameters=parameters,
+        precision=Precision.double_double(),
+    )
+    assert _relative(_total(dd), _total(results[0])) <= ANALYTIC_DOUBLE
+
+
 @pytest.mark.parametrize("name", ["li_h_za", "li_aa_aa"])
 def test_widthless_loop_propagators(ew, name):
     """Q7: loop propagators carry no width. h > z a and a a > a a have no
@@ -456,7 +525,7 @@ post_build_validation = false
 def test_born_interfered_width_refusal_unchanged_loop_induced_served(
     ew, loop_gmu_ufo, tmp_path
 ):
-    """One dry run at the model's default widths, [QED]: the Born-interfered
+    """Dry runs at the model's default widths, [QED]: the Born-interfered
     e+ e- > m+ m- keeps its ``electroweak-width`` refusal (the s-channel Z,
     remedy: zero widths or the complex-mass scheme), the loop-induced
     e+ e- > h h is served with the fixed-tree-width policy (Q7)."""
@@ -468,7 +537,6 @@ def test_born_interfered_width_refusal_unchanged_loop_induced_served(
 
     # The dry run reads compiled models from the cache only.
     compile_model_source(loop_gmu_ufo, require_supported=False)
-    entries = (("mumu", "e+ e- > m+ m-"), ("hh", "e+ e- > h h"))
     fixed = {
         key: value
         for key, value in _fixture("li_emep_hh")["scheme_data"][
@@ -476,17 +544,24 @@ def test_born_interfered_width_refusal_unchanged_loop_induced_served(
         ].items()
         if key in ew.compiled.parameter_defaults and not key.startswith("W")
     }
-    card = tmp_path / "card.toml"
-    card.write_text(_ew_card(tmp_path / "out", loop_gmu_ufo, entries, fixed))
-    plan = Generator(resolve_config(card)).plan(
-        ProcessSet(tuple(ProcessRequest.parse(e, name=n) for n, e in entries))
-    )
-    (blocker,) = plan.unsupported_features
+
+    def plan(name, expression):
+        card = tmp_path / name / "card.toml"
+        card.parent.mkdir()
+        entries = ((name, expression),)
+        card.write_text(_ew_card(card.parent / "out", loop_gmu_ufo, entries, fixed))
+        return Generator(resolve_config(card)).plan(
+            ProcessSet((ProcessRequest.parse(expression, name=name),))
+        )
+
+    (blocker,) = plan("mumu", "e+ e- > m+ m-").unsupported_features
     assert blocker.startswith("electroweak-width: "), blocker
-    assert "WZ" in blocker and "complex-mass" in blocker and "m+ m-" in blocker
+    assert "WZ" in blocker and "complex-mass" in blocker
+    served = plan("hh", "e+ e- > h h")
+    assert served.unsupported_features == ()
     (record,) = (
         record
-        for record in plan.estimated_coverage["processes"]
+        for record in served.estimated_coverage["processes"]
         if record.get("contribution") == "loop-induced"
     )
     assert record["key"] == "hh" and record["width_policy"] == FIXED_TREE_WIDTHS
