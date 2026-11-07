@@ -29,8 +29,8 @@
       ],
       "url": "https://github.com/alphal00p/ninjars.git",
       "ref": "main",
-      "revision": "520b220b653d46266e7aa1417a3b941923812118",
-      "note": "main 1ef7b7ae (b3a29c85 = PR #14, the 0BSD relicence 36e30a49) + the re-pin of its manifests on oneloopmaster a7cf4587 and Symbolica b9eaa735 (6ab0a53e, merged as 816715fb) + the re-pin on Symbolica dfe6bd97 (520b220b; no source change); it reaches main through a merge commit, which the coordinator pushes before this pin lands"
+      "revision": "5b6a8f5709b1e540a70ac6278ca36185c4cdad16",
+      "note": "main 1ef7b7ae (b3a29c85 = PR #14, the 0BSD relicence 36e30a49) + the re-pin of its manifests on oneloopmaster a7cf4587 and Symbolica b9eaa735 (6ab0a53e, merged as 816715fb) + the re-pin on Symbolica dfe6bd97 (520b220b, merged as 7444beba) + the re-pin on oneloopmaster bd703d09 (5b6a8f57; no source change); it reaches main through a merge commit, which the coordinator pushes before this pin lands"
     },
     {
       "name": "oneloopmaster",
@@ -39,8 +39,8 @@
       ],
       "url": "https://github.com/alphal00p/oneloopmaster.git",
       "ref": "main",
-      "revision": "a7cf45876b2273f2c1b5dd1490d88abc07a6f287",
-      "note": "main: TIRust's oneloop patches (PRs #17/#18, merge 5efc7f6), the 0BSD relicence 37d9a9b3 and PR #19 (order-independent massless triangle); features generated-evaluators + rust-codegen"
+      "revision": "bd703d09a78f7849a6b86a07096e6f222fc01193",
+      "note": "main: TIRust's oneloop patches (PRs #17/#18, merge 5efc7f6), the 0BSD relicence 37d9a9b3, PR #19 (order-independent massless triangle) and PR #20 (merge bd703d0: C0 at a vanishing Kallen function reduced to bubbles on the arbitrary-precision routes; binary64/double-double kernels unchanged); features generated-evaluators + rust-codegen"
     },
     {
       "name": "feynkit",

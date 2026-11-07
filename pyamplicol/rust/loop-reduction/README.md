@@ -31,7 +31,7 @@ Dependencies use ordinary pinned Git revisions and Cargo's lockfile. No ignored
 reference directory or `upstream` symlink is needed. The standalone workspace
 aligns Symbolica with the application's shared core and uses:
 
-- NinjaRS `520b220b653d46266e7aa1417a3b941923812118` (main `b3a29c85`, PRs #7-#12 and #14,
+- NinjaRS `5b6a8f5709b1e540a70ac6278ca36185c4cdad16` (main `b3a29c85`, PRs #7-#12 and #14,
   the 0BSD relicence, and the re-pins on the Symbolica and oneloopmaster
   revisions below, no source change; UV/IR pole selection through
   the master providers, the fast engine's UV residues `fast::tensor_uv`,
@@ -47,10 +47,12 @@ aligns Symbolica with the application's shared core and uses:
   `https://github.com/ValentinHirschi/symbolica` (see `dependencies/README.md`).
 - FeynKit `d1904bf2bd5bf4f26969a73b415095e941a55610`, the owner's coherent
   dependency revision recorded by NinjaRS.
-- oneloopmaster `a7cf45876b2273f2c1b5dd1490d88abc07a6f287` (its main: per-evaluator
+- oneloopmaster `bd703d09a78f7849a6b86a07096e6f222fc01193` (its main: per-evaluator
   `PoleSelection`, TIRust's oneloop patches incl. #17/#18, the 0BSD relicence,
-  and #19's order-independent massless triangle (trif0) with a hand-written
-  binary64/double-double kernel), with one feature set in every root build:
+  #19's order-independent massless triangle (trif0) with a hand-written
+  binary64/double-double kernel, and #20's exact bubble reduction of a C0 at a
+  vanishing Källén function on the arbitrary-precision routes), with one
+  feature set in every root build:
   `generated-evaluators` and `rust-codegen` (the latter only adds modules).
 
 From this crate's directory, using the shared workspace environment:
