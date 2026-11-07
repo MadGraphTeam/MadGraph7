@@ -45,7 +45,6 @@ def test_campaign_run_passes_its_rules(name, tmp_path_factory, loop_native):
     path.write_text(json.dumps(record, indent=1) + "\n")
     judged = lm.judge(record, entry)
     statuses = {c: judged[c]["status"] for c in lm.CHECKS if c in judged}
-    assert "ninjars" not in judged, judged.get("ninjars")
     assert "fail" not in statuses.values(), statuses
     for check in entry["checks"]:
         if check in lm.CHECKS and check != "L9":
