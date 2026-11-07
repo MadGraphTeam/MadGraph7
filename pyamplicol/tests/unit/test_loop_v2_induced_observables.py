@@ -601,6 +601,26 @@ def test_one_call_is_one_evaluation_whatever_the_spin_sources(artifacts, monkeyp
             points, {"x": CorrelatedRequest("born", {leg_a: timelike})}, mu_r2=scales
         )
     assert len(calls) == 1 + len(requests)
+    # TIRust on the resolved route with the executor not wired to it (a
+    # route-only step): a typed refusal, never NinjaRS under a TIRust label.
+    from pyamplicol.loops.v2 import artifact as stored
+    from pyamplicol.loops.v2 import reduction
+
+    every = frozenset(reduction.BACKENDS)
+    monkeypatch.setattr(
+        stored, "RESOLVED", reduction.Route(reduction.RESOLVED.serves, every)
+    )
+    monkeypatch.setattr(
+        reduction,
+        "native_backends",
+        lambda native: {name: frozenset(reduction.CARRIERS) for name in every},
+    )
+    backend._reductions.clear()
+    with pytest.raises(ReductionUnavailable, match="not wired"):
+        runtime.evaluate_correlated_many(
+            points, requests, mu_r2=scales, reduction="tirust"
+        )
+    assert calls[-1] == "tirust"
     backend.clear()
     assert observables.executor is backend._executor is not executor
 
