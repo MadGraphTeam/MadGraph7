@@ -48,56 +48,28 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal, localcontext
-from fractions import Fraction
 from types import MappingProxyType
 from typing import Any
 
 from . import induced
 from .induced import ESTIMATE_FACTOR
 
-# UFO spins are 2s + 1.
-SCALAR_SPIN = 1
-VECTOR_SPIN = 3
-
 
 def goldstone_partners(compiled: Any) -> dict[int, int]:
-    """Signed PDG of every massive physical vector -> signed PDG of its
-    Goldstone boson: the scalar flagged ``goldstoneboson`` of the vector's
-    charge, colour and mass parameter (in 't Hooft-Feynman gauge a Goldstone
-    has its vector's mass: MG5_aMC's G0 with MZ, G+ with MW). A structural
-    reading, never names; a vector without exactly one such scalar has no
-    partner (no probe)."""
+    """Signed PDG of every massive vector with a Goldstone partner -> signed
+    PDG of that Goldstone, as the model compiler resolved them
+    (``compiled.ir.goldstone_partners``, ``models.compiler_gauge.
+    compile_goldstone_partner_records``: the UFO's Goldstone flag, spin,
+    colour, quantum numbers and resolved mass; "explicit" in 't Hooft-Feynman
+    gauge, "absorbed" in unitary gauge). A vector with a model-supplied
+    propagator has no probe (its gauge fixing is the model's)."""
 
-    from .ew_policy import is_zero
-
-    parameters = {record.name: record for record in compiled.ir.parameters}
-    goldstones = [
-        record
-        for record in compiled.ir.particles
-        if record.goldstoneboson
-        and int(record.spin) == SCALAR_SPIN
-        and record.auxiliary_kind is None
-    ]
-    out = {}
-    for record in compiled.ir.particles:
-        if (
-            int(record.spin) != VECTOR_SPIN
-            or int(record.ghost_number)
-            or record.goldstoneboson
-            or record.auxiliary_kind is not None
-            or is_zero(str(record.mass), parameters, {})
-        ):
-            continue
-        found = [
-            goldstone
-            for goldstone in goldstones
-            if str(goldstone.mass) == str(record.mass)
-            and Fraction(str(goldstone.charge)) == Fraction(str(record.charge))
-            and int(goldstone.color) == int(record.color)
-        ]
-        if len(found) == 1:
-            out[int(record.pdg_code)] = int(found[0].pdg_code)
-    return out
+    pdg = {str(record.name): int(record.pdg_code) for record in compiled.ir.particles}
+    return {
+        pdg[record.vector]: pdg[record.goldstone]
+        for record in compiled.ir.goldstone_partners
+        if record.vector is not None and record.policy != "model-supplied"
+    }
 
 
 def massive_vector_legs(slice_: Any) -> dict[int, int]:
