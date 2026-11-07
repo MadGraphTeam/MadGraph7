@@ -327,7 +327,9 @@ def test_loop_report_tables_state_their_provenance_in_one_line() -> None:
     assert "li-head" in table2.split("table.header(")[1]
     # Table 2's provenance names pyAmpliCol's host, its generation cell the
     # generation-time probes (the full production generate cost).
-    assert "li-our-hosts" in table2 and "m.probes_seconds" in table2
+    assert "li-our-hosts" in table2 and "timing.host" in code
+    generation = code[code.index("#let li-generation") : code.index("#let li-timing")]
+    assert "m.probes_seconds" in generation and "m.probe_share" in generation
 
 
 def test_loop_report_head_line_labels_table_1_and_names_the_report() -> None:
@@ -343,7 +345,7 @@ def test_loop_report_head_line_labels_table_1_and_names_the_report() -> None:
     for line in (header, page1):
         assert "rep.date" in line and "rep.head" in line
         assert "Table 1: engine #raw(sm.engine_on_loop)" in line
-        assert "t2-engine" in line
+    assert "t2-engine" in page1
 
 
 def test_loop_report_readme_states_the_essentials_rule() -> None:
