@@ -55,16 +55,18 @@ wide = "1.7"
 # consolidated upstream PR (batched evaluation, DualNumber component views,
 # saved evaluators that hold only the state they reference, complex-modulus
 # derivatives in Dual domains, deterministic integer factor signs, polynomial
-# exponents bounded by the i32 conversion range) on top:
+# exponents bounded by the i32 conversion range, a journaled conditional cache
+# in the direct evaluator translator, native Python ComplexFloat operands at
+# the more precise component's precision) on top:
 # symbolica-dev/symbolica#163, branch ValentinHirschi/symbolica
 # loop_me_pyamplicol. NinjaRS pins the same revision (oneloopmaster's own
 # standalone [patch] names the previous head 20a9da94; only this root's
 # [patch] applies here); it moves to upstream once the PR is merged. One
 # revision for the kernel and its numerical and graph crates.
 [patch.crates-io]
-symbolica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "b9eaa735862e7d22d7694a14da02f2498342e29a" }
-numerica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "b9eaa735862e7d22d7694a14da02f2498342e29a" }
-graphica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "b9eaa735862e7d22d7694a14da02f2498342e29a" }
+symbolica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "dfe6bd97b974b1028dc63071ea165136cd2b0ef5" }
+numerica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "dfe6bd97b974b1028dc63071ea165136cd2b0ef5" }
+graphica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "dfe6bd97b974b1028dc63071ea165136cd2b0ef5" }
 symbolica-typst-plugin = { git = "https://github.com/symbolica-dev/symbolica-typst-plugin", rev = "57b7455b37c30f4f87353c0073e49f5225e937ab" }
 
 [profile.dev]

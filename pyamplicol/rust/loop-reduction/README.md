@@ -31,17 +31,19 @@ Dependencies use ordinary pinned Git revisions and Cargo's lockfile. No ignored
 reference directory or `upstream` symlink is needed. The standalone workspace
 aligns Symbolica with the application's shared core and uses:
 
-- NinjaRS `6ab0a53e2b9640fb9434bc5c1214e6271d80bad7` (main `b3a29c85`, PRs #7-#12 and #14,
-  the 0BSD relicence, and the re-pin on the Symbolica and oneloopmaster
+- NinjaRS `520b220b653d46266e7aa1417a3b941923812118` (main `b3a29c85`, PRs #7-#12 and #14,
+  the 0BSD relicence, and the re-pins on the Symbolica and oneloopmaster
   revisions below, no source change; UV/IR pole selection through
   the master providers, the fast engine's UV residues `fast::tensor_uv`,
   threshold-free light-like spinors).
-- Symbolica, Numerica and Graphica `b9eaa735862e7d22d7694a14da02f2498342e29a`:
+- Symbolica, Numerica and Graphica `dfe6bd97b974b1028dc63071ea165136cd2b0ef5`:
   symbolica-dev/symbolica `community` 36cbac3a plus the consolidated upstream
   PR symbolica-dev/symbolica#163 (batched evaluation, `DualNumber` views,
   state-minimal evaluator saves, complex-modulus Dual derivatives,
   deterministic integer factor signs, polynomial exponents bounded by the
-  i32 conversion range), branch `loop_me_pyamplicol` of
+  i32 conversion range, a journaled conditional cache in the direct evaluator
+  translator, native Python ComplexFloat operands at the more precise
+  component's precision), branch `loop_me_pyamplicol` of
   `https://github.com/ValentinHirschi/symbolica` (see `dependencies/README.md`).
 - FeynKit `d1904bf2bd5bf4f26969a73b415095e941a55610`, the owner's coherent
   dependency revision recorded by NinjaRS.

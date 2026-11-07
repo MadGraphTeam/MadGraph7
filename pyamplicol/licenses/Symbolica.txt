@@ -5,7 +5,7 @@ SPDX identifier: LicenseRef-Symbolica-Proprietary (pyAmpliCol's local
 identifier for Symbolica's proprietary, source-available terms)
 
 Upstream terms: the complete License.md of the linked Symbolica revision
-b9eaa735862e7d22d7694a14da02f2498342e29a (symbolica-dev/symbolica community
+dfe6bd97b974b1028dc63071ea165136cd2b0ef5 (symbolica-dev/symbolica community
 36cbac3a plus symbolica-dev/symbolica#163), reproduced verbatim. The numerica
 and graphica crates of the same revision state their own MIT License
 (licenses/rust/numerica-3.0.2/, licenses/rust/graphica-3.0.1/).
