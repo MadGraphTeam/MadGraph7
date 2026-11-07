@@ -7,6 +7,7 @@ import csv
 import hashlib
 import io
 import json
+import lzma
 import re
 import shutil
 import subprocess
@@ -14,6 +15,7 @@ import sys
 import tarfile
 import tomllib
 import zipfile
+from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 
 import pytest
@@ -24,6 +26,7 @@ _LOCK = tomllib.loads(
     (ROOT / "dependencies" / "release-lock.toml").read_text(encoding="utf-8")
 )
 _RELEASE_VERSION = str(_LOCK["project"]["version"])
+_CANDIDATE_VERSION = f"{_RELEASE_VERSION}.dev0+candidate.0123456789ab"
 _CONTRIBUTOR_LOCK = tomllib.loads(
     (ROOT / "dependencies" / "contributor-lock.toml").read_text(encoding="utf-8")
 )
@@ -747,6 +750,8 @@ def _wheel(
     selftest_direct_codegen_optimization_level: int = 2,
     selftest_fixture_bootstrap: bool = False,
     metadata_description: str = "",
+    sdk_compressed: bool | None = None,
+    sdk_archive: bytes = b"synthetic static archive",
 ) -> Path:
     if requirement is not None and requirements is not None:
         raise ValueError("use requirement or requirements, not both")
@@ -761,7 +766,28 @@ def _wheel(
     )
     declared_legal_files = _LEGAL_FILES if license_files is None else license_files
     dist_info = f"pyamplicol-{version}.dist-info"
-    sdk_archive = b"synthetic static archive"
+    # Distribution (release) wheels ship the SDK archive xz-compressed.
+    if sdk_compressed is None:
+        sdk_compressed = not candidate
+    sdk_metadata: dict[str, object] = {
+        "schema_version": 1,
+        "abi_version": 1,
+        "version": sdk_version or version,
+        "target": rust_target,
+        "archive": "lib/librusticol_capi.a",
+        "rust_source": "rust/rusticol.rs",
+    }
+    sdk_member = "pyamplicol/_sdk/lib/librusticol_capi.a"
+    sdk_member_data = sdk_archive
+    if sdk_compressed:
+        sdk_metadata["archive"] = "lib/librusticol_capi.a.xz"
+        sdk_metadata["archive_compression"] = {
+            "format": "xz",
+            "sha256": hashlib.sha256(sdk_archive).hexdigest(),
+            "size": len(sdk_archive),
+        }
+        sdk_member += ".xz"
+        sdk_member_data = lzma.compress(sdk_archive, format=lzma.FORMAT_XZ)
     files = {
         name: b"synthetic required wheel member\n"
         for name in _REQUIRED_WHEEL_PACKAGE_MEMBERS
@@ -776,17 +802,8 @@ def _wheel(
             "pyamplicol/_sdk/include/rusticol.hpp": b"#pragma once\n",
             "pyamplicol/_sdk/fortran/rusticol.f90": b"module rusticol\nend module\n",
             "pyamplicol/_sdk/rust/rusticol.rs": b"// safe Rust wrapper\n",
-            "pyamplicol/_sdk/lib/librusticol_capi.a": sdk_archive,
-            "pyamplicol/_sdk/metadata.json": json.dumps(
-                {
-                    "schema_version": 1,
-                    "abi_version": 1,
-                    "version": sdk_version or version,
-                    "target": rust_target,
-                    "archive": "lib/librusticol_capi.a",
-                    "rust_source": "rust/rusticol.rs",
-                }
-            ).encode(),
+            sdk_member: sdk_member_data,
+            "pyamplicol/_sdk/metadata.json": json.dumps(sdk_metadata).encode(),
             "pyamplicol/_sdk/link.json": json.dumps(
                 {
                     "schema_version": 1,
@@ -907,6 +924,7 @@ def _wheel(
     files[record_name] = record.getvalue().encode()
 
     filename = f"pyamplicol-{version}-cp311-abi3-{platform_tag}.whl"
+    directory.mkdir(parents=True, exist_ok=True)
     path = directory / filename
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for name, data in files.items():
@@ -1964,10 +1982,8 @@ def test_wheel_size_summary_splits_the_compressed_bytes(tmp_path: Path) -> None:
     summary = artifacts.wheel_size_summary(wheel)
     size = wheel.stat().st_size
     assert summary.startswith(f"{wheel.name} is {size} bytes (limit {MAX_WHEEL_BYTES})")
-    parts = dict(
-        item.rsplit(" ", 1)
-        for item in summary.split("compressed bytes: ", 1)[1].split(", ")
-    )
+    components, archive_sizes = summary.split("compressed bytes: ", 1)[1].split("; ")
+    parts = dict(item.rsplit(" ", 1) for item in components.split(", "))
     assert list(parts) == [
         "extension",
         "SDK archive",
@@ -1986,6 +2002,139 @@ def test_wheel_size_summary_splits_the_compressed_bytes(tmp_path: Path) -> None:
     )
     assert int(parts["extension"]) == compressed["pyamplicol/_rusticol.abi3.so"]
     assert int(parts["prepared models"]) > 0
+    # The SDK archive ships xz-compressed: stored and unpacked sizes follow.
+    xz_member = "pyamplicol/_sdk/lib/librusticol_capi.a.xz"
+    assert int(parts["SDK archive"]) == compressed[xz_member]
+    with zipfile.ZipFile(wheel) as archive:
+        stored = archive.getinfo(xz_member).file_size
+    unpacked = len(b"synthetic static archive")
+    assert archive_sizes == (
+        f"SDK archive librusticol_capi.a.xz {stored} bytes xz, "
+        f"unpacked {unpacked} bytes"
+    )
+
+    plain = _wheel(tmp_path / "plain", candidate=True, version=_CANDIDATE_VERSION)
+    assert artifacts.wheel_size_summary(plain).endswith(
+        f"; SDK archive librusticol_capi.a {unpacked} bytes uncompressed"
+    )
+
+
+def test_release_wheel_requires_the_xz_compressed_sdk_archive(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ArtifactError, match="must ship the SDK archive xz"):
+        audit_wheel(
+            _wheel(tmp_path, sdk_compressed=False), mode="release", native_scan=False
+        )
+
+
+@pytest.mark.parametrize("compressed", (False, True))
+def test_candidate_wheel_accepts_either_sdk_archive_form(
+    tmp_path: Path, candidate_dependency_provenance: None, compressed: bool
+) -> None:
+    wheel = _wheel(
+        tmp_path,
+        candidate=True,
+        version=_CANDIDATE_VERSION,
+        sdk_compressed=compressed,
+    )
+    report = audit_wheel(wheel, mode="candidate", native_scan=False)
+    assert report.version == _CANDIDATE_VERSION
+
+
+def _rewritten_wheel(tmp_path: Path, edit: Callable[[dict[str, bytes]], None]) -> Path:
+    """A release wheel whose members ``edit`` changes; RECORD is rewritten."""
+
+    source = _wheel(tmp_path / "source")
+    with zipfile.ZipFile(source) as archive:
+        files = {name: archive.read(name) for name in archive.namelist()}
+    record_name = next(name for name in files if name.endswith(".dist-info/RECORD"))
+    del files[record_name]
+    edit(files)
+    rows = [
+        [name, _record_hash(data), str(len(data))]
+        for name, data in sorted(files.items())
+    ]
+    rows.append([record_name, "", ""])
+    record = io.StringIO(newline="")
+    csv.writer(record, lineterminator="\n").writerows(rows)
+    files[record_name] = record.getvalue().encode()
+    path = tmp_path / source.name
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, data in files.items():
+            archive.writestr(zipfile.ZipInfo(name, (2025, 1, 1, 0, 0, 0)), data)
+    return path
+
+
+def _sdk_metadata_edit(**changes: object) -> Callable[[dict[str, bytes]], None]:
+    def edit(files: dict[str, bytes]) -> None:
+        metadata = json.loads(files["pyamplicol/_sdk/metadata.json"])
+        compression = dict(metadata["archive_compression"])
+        compression.update(changes)
+        metadata["archive_compression"] = compression
+        files["pyamplicol/_sdk/metadata.json"] = json.dumps(metadata).encode()
+
+    return edit
+
+
+@pytest.mark.parametrize(
+    ("edit", "message"),
+    (
+        (_sdk_metadata_edit(sha256="0" * 64), "does not unpack to the recorded"),
+        (_sdk_metadata_edit(size=1), "does not unpack to the recorded"),
+        (_sdk_metadata_edit(format="zstd"), "archive_compression metadata"),
+        (_sdk_metadata_edit(size=True), "archive_compression metadata"),
+        (
+            lambda files: files.update(
+                {"pyamplicol/_sdk/lib/librusticol_capi.a.xz": b"not xz"}
+            ),
+            "is not valid xz",
+        ),
+        (
+            lambda files: files.update(
+                {"pyamplicol/_sdk/lib/librusticol_capi.a": b"archive"}
+            ),
+            "exactly one SDK archive form",
+        ),
+        (
+            lambda files: files.pop("pyamplicol/_sdk/lib/librusticol_capi.a.xz"),
+            "missing the SDK archive",
+        ),
+    ),
+)
+def test_compressed_sdk_archive_is_checked_against_its_metadata(
+    tmp_path: Path,
+    edit: Callable[[dict[str, bytes]], None],
+    message: str,
+) -> None:
+    with pytest.raises(ArtifactError, match=message):
+        audit_wheel(_rewritten_wheel(tmp_path, edit), mode="release", native_scan=False)
+
+
+def test_compressed_sdk_archive_is_scanned_unpacked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A host path inside the archive is invisible in its xz bytes.
+    leaky = b"!<arch>\n" + b"built in /home/builder/rusticol/src/lib.rs\0" * 64
+    wheel = _wheel(tmp_path / "leaky", sdk_archive=leaky)
+    with zipfile.ZipFile(wheel) as archive:
+        assert b"/home/" not in archive.read(
+            "pyamplicol/_sdk/lib/librusticol_capi.a.xz"
+        )
+    with pytest.raises(ArtifactError, match=r"librusticol_capi\.a embeds"):
+        audit_wheel(wheel, mode="release", native_scan=False)
+
+    scanned: dict[str, bytes] = {}
+
+    def native_scan(entries, _extension, _target, **_kwargs) -> None:
+        scanned.update(entries)
+
+    monkeypatch.setattr(artifacts, "_host_matches", lambda _target: True)
+    monkeypatch.setattr(artifacts, "_native_scan", native_scan)
+    archive = b"!<arch>\nrelocatable archive\0"
+    audit_wheel(_wheel(tmp_path / "clean", sdk_archive=archive), mode="release")
+    assert scanned["pyamplicol/_sdk/lib/librusticol_capi.a"] == archive
+    assert "pyamplicol/_sdk/lib/librusticol_capi.a.xz" not in scanned
 
 
 def test_wheel_filename_version_must_match_metadata(tmp_path: Path) -> None:

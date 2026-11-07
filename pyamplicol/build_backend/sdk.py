@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import lzma
 import os
 import re
 import shlex
@@ -46,6 +48,10 @@ SDK_SOURCES = (
     ("src/pyamplicol/assets/api_templates/umami/UMAMI_LICENSE", "umami/UMAMI_LICENSE"),
 )
 RUST_SDK_SOURCE = "src/pyamplicol/_sdk/rust/rusticol.rs"
+# Distribution wheels ship the static archive xz-compressed (USER 2026-11-07:
+# wheel size); rusticol-config unpacks it on first use into the user cache.
+ARCHIVE_COMPRESSION = "xz"
+ARCHIVE_XZ_PRESET = 9
 RUST_SDK_WORKSPACE_MEMBER = "rust/crates/rusticol-capi"
 NATIVE_MARKER = "native-static-libs:"
 FORBIDDEN_UNDEFINED_SYMBOL_PREFIXES = (
@@ -514,6 +520,42 @@ int main(void) {{
             )
 
 
+def _compressed_archive(archive: Path, destination: Path) -> dict[str, Any]:
+    """Write ``archive`` xz-compressed to ``destination``; return its record.
+
+    The record (``metadata.json``'s ``archive_compression``) holds the SHA-256
+    and size of the uncompressed archive, which rusticol-config checks after
+    unpacking. The written file is decompressed once here and checked too.
+    """
+
+    digest = hashlib.sha256()
+    size = 0
+    with (
+        archive.open("rb") as source,
+        lzma.open(
+            destination,
+            "wb",
+            format=lzma.FORMAT_XZ,
+            check=lzma.CHECK_CRC64,
+            preset=ARCHIVE_XZ_PRESET,
+        ) as output,
+    ):
+        while chunk := source.read(1 << 20):
+            digest.update(chunk)
+            size += len(chunk)
+            output.write(chunk)
+    record = {"format": ARCHIVE_COMPRESSION, "sha256": digest.hexdigest(), "size": size}
+    check = hashlib.sha256()
+    unpacked = 0
+    with lzma.open(destination, "rb", format=lzma.FORMAT_XZ) as stream:
+        while chunk := stream.read(1 << 20):
+            check.update(chunk)
+            unpacked += len(chunk)
+    if unpacked != size or check.hexdigest() != record["sha256"]:
+        raise RuntimeError("the xz-compressed Rusticol archive does not round-trip")
+    return record
+
+
 def _package_version(root: Path) -> str:
     candidate = root / "src" / "pyamplicol" / "_build_info.json"
     if candidate.is_file():
@@ -578,12 +620,15 @@ def build_sdk(
     target_dir: Path,
     *,
     arithmetic: arithmetic_module.ArithmeticRuntime | None = None,
+    compress_archive: bool = False,
 ) -> Path:
     """Build the C SDK; with ``arithmetic``, link GMP/MPFR/MPC as shared libraries.
 
     The shared libraries are then shipped in ``lib/`` next to the archive and
     listed in ``link.json`` (``shared_libraries``, link order), for
-    ``rusticol-config --libs``.
+    ``rusticol-config --libs``. With ``compress_archive`` the validated static
+    archive ships as ``lib/<archive>.xz`` (distribution wheels); metadata.json
+    names it and records the unpacked archive's SHA-256 and size.
     """
 
     _ensure_sdk_workspace_member(root)
@@ -683,7 +728,12 @@ def build_sdk(
     )
     library = staging / "lib" / archive_name
     library.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(archive, library)
+    compression: dict[str, Any] | None = None
+    if compress_archive:
+        library = library.with_name(f"{archive_name}.{ARCHIVE_COMPRESSION}")
+        compression = _compressed_archive(archive, library)
+    else:
+        shutil.copy2(archive, library)
     if arithmetic is not None:
         staged = dict(
             zip(
@@ -699,20 +749,18 @@ def build_sdk(
         json.dumps(link, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+    metadata: dict[str, Any] = {
+        "schema_version": 1,
+        "abi_version": 1,
+        "version": _package_version(root),
+        "target": target,
+        "archive": f"lib/{library.name}",
+        "rust_source": "rust/rusticol.rs",
+    }
+    if compression is not None:
+        metadata["archive_compression"] = compression
     (staging / "metadata.json").write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "abi_version": 1,
-                "version": _package_version(root),
-                "target": target,
-                "archive": f"lib/{archive_name}",
-                "rust_source": "rust/rusticol.rs",
-            },
-            indent=2,
-            sort_keys=True,
-        )
-        + "\n",
+        json.dumps(metadata, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
     return staging

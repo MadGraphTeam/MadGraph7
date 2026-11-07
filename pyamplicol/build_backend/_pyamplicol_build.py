@@ -1875,10 +1875,12 @@ def _from_overlay(
     validate_prepared_models: bool = False,
     retain_release_build_info: bool = False,
     release_prepared_model_bootstrap_context: str | None = None,
-    shared_arithmetic: bool = False,
+    distribution: bool = False,
     **kwargs: Any,
 ) -> _Result:
-    if shared_arithmetic and not with_sdk:
+    # A distribution wheel links the shared arithmetic runtime and ships the
+    # SDK archive xz-compressed (``build_sdk``).
+    if distribution and not with_sdk:
         raise RuntimeError("the shared arithmetic runtime is built only for wheels")
     with _delegating():
         mode = _build_mode()
@@ -1959,7 +1961,7 @@ def _from_overlay(
                 )
             environment.update(_macos_native_build_updates())
             arithmetic_runtime = None
-            if shared_arithmetic:
+            if distribution:
                 print(
                     "* Building the shared GMP, MPFR and MPC libraries...",
                     flush=True,
@@ -1996,7 +1998,12 @@ def _from_overlay(
                         "several minutes)...",
                         flush=True,
                     )
-                    sdk = build_sdk(overlay, target_dir, arithmetic=arithmetic_runtime)
+                    sdk = build_sdk(
+                        overlay,
+                        target_dir,
+                        arithmetic=arithmetic_runtime,
+                        compress_archive=distribution,
+                    )
                     print("* Native C SDK built.", flush=True)
                     sdk_metadata = json.loads(
                         (sdk / "metadata.json").read_text(encoding="utf-8")
@@ -2026,7 +2033,7 @@ def build_wheel(
         metadata_directory,
         with_sdk=True,
         retain_release_build_info=True,
-        shared_arithmetic=distribution,
+        distribution=distribution,
     )
     return filename
 
