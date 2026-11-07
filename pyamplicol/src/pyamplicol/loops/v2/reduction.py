@@ -45,7 +45,9 @@ from pyamplicol.config.models import ReductionBackend, reduction_request
 # The backends: the public choices (``config.ReductionBackend``, the one
 # definition; ``config.models.reduction_request`` validates a request)
 # without ``"auto"``.
-BACKENDS = tuple(item.value for item in ReductionBackend if item != "auto")
+BACKENDS = tuple(
+    item.value for item in ReductionBackend if item is not ReductionBackend.AUTO
+)
 # The per-type defaults of ``"auto"`` (RULED Q17 / Q40).
 DEFAULTS: Mapping[str, str] = {"virtual": "ninjars", "loop-induced": "tirust"}
 CARRIERS = ("double", "double-double", "arbitrary")

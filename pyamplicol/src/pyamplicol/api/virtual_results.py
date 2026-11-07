@@ -11,7 +11,7 @@ from itertools import pairwise
 from types import MappingProxyType
 from typing import Any, Literal, NamedTuple, TypeAlias, cast
 
-from pyamplicol.config import PoleSelection, R2Strategy, ReductionBackend
+from pyamplicol.config import PoleSelection, R2Strategy
 from pyamplicol.config.models import reduction_request
 from pyamplicol.correlators import CorrelatedValue
 from pyamplicol.loops.orders import VirtualOrderSector, canonical_order
@@ -325,7 +325,7 @@ class VirtualReduction:
         # The choices are ``config.ReductionBackend``'s (one definition, one
         # validator); "auto" is a request, never the effective backend.
         reduction_request(self.requested)
-        if reduction_request(self.effective) == ReductionBackend.AUTO:
+        if reduction_request(self.effective) == "auto":
             raise ValueError("the effective reduction is a backend, never 'auto'")
         if self.requested not in ("auto", self.effective):
             raise ValueError("an explicit reduction request is served as requested")

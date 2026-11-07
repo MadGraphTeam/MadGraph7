@@ -10,7 +10,7 @@ from decimal import DecimalException
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Literal, TypeAlias, TypeVar, cast
+from typing import TYPE_CHECKING, Literal, TypeAlias, TypeVar
 
 if TYPE_CHECKING:
     from pyamplicol.api.virtual_results import VirtualStabilityChecks
@@ -183,7 +183,7 @@ def reduction_request(value: object) -> Literal["auto", "ninjars", "tirust"]:
         raise ValueError(
             f"unknown reduction backend {value!r}; one of {choices}"
         ) from None
-    return cast(Literal["auto", "ninjars", "tirust"], found.value)
+    return found.value
 
 
 class PoleSelection(StrEnum):
