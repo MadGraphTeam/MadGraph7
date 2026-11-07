@@ -159,7 +159,7 @@ pub(super) fn load_recurrence_native_runtime(
     Ok(LoadedRecurrenceRuntime { common, lane })
 }
 
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 pub(super) fn load_recurrence_ready_runtime(
     artifact: &mut VerifiedArtifact,
@@ -1236,7 +1236,7 @@ pub(super) fn load_ready_plan(
     )
 }
 
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 fn load_plan_reference(
     artifact: &VerifiedArtifact,
@@ -1370,7 +1370,7 @@ fn load_plan_reference(
     })
 }
 
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 #[cfg_attr(target_vendor = "apple", cold)]
 fn validate_process_binding(
@@ -3740,7 +3740,7 @@ fn encode_ready_source_domains(
         .collect()
 }
 
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 pub(super) fn decode_ready_source_domains(
     domains: &[RecurrenceReadySourceDomainV1],
@@ -4239,7 +4239,7 @@ struct RecurrenceCommonRuntimeDefinition {
     normalization_electroweak_coupling_power: u64,
 }
 
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 fn assemble_common_runtime(
     plan: &DirectRecurrencePlan,

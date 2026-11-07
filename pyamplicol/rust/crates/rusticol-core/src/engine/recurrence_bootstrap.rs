@@ -336,7 +336,7 @@ pub(crate) fn build_recurrence_bootstrap_image_v1(
     encode_image_body(&body)
 }
 
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 pub(crate) fn decode_recurrence_bootstrap_image_v1(
     bytes: &[u8],
