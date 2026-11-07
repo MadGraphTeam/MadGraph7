@@ -43,7 +43,12 @@ def test_every_campaign_run_is_one_entry_of_its_rows(entries):
             assert set(row["checks"]) <= set(entry["checks"])
             for provider in run.get("excluded", {}):
                 assert provider not in entry["providers"]
-    assert listed == set(by_fixture)
+    # This package's additional fixtures (the P15 point of LI-41) run too.
+    extra = {path.stem for path in lm.EXTRA.glob("*.json")}
+    assert "li_gg_hhgg_p15" in extra
+    assert by_fixture["li_gg_hhgg_p15"]["ids"] == ["LI-41"]
+    assert by_fixture["li_gg_hhgg_p15"]["key"] == "gg_hhgg"
+    assert listed | extra == set(by_fixture)
     assert lm._ids("LI-W1/L1/P1/C1/S1") == ["LI-W1", "LI-L1", "LI-P1", "LI-C1", "LI-S1"]
 
 
