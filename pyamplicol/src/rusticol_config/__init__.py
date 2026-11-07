@@ -156,6 +156,16 @@ class SdkInfo:
             "system_libraries": list(self.system_libraries),
             "frameworks": list(self.frameworks),
             "shared_libraries": [str(path) for path in self.shared_libraries],
+            # The shipped archive's compression record (None: used in place).
+            "archive_compression": (
+                {
+                    "format": ARCHIVE_COMPRESSION,
+                    "sha256": self.archive.sha256,
+                    "size": self.archive.size,
+                }
+                if self.archive.compressed
+                else None
+            ),
             "cflags": list(self.cflags),
             "link_flags": list(self.link_flags),
             "rust_flags": list(self.rust_flags),

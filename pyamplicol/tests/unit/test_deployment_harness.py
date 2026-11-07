@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import os
 import subprocess
@@ -209,8 +210,7 @@ def test_abi3_smoke_skips_duplicate_generation_and_sdk_checks(
 
     assert sandbox is not None
     assert any(
-        command[-2:] == ["-c", deployment._INSTALLED_SMOKE]
-        for command in commands
+        command[-2:] == ["-c", deployment._INSTALLED_SMOKE] for command in commands
     )
     assert any(
         command[-2:] == ["-c", deployment._SYMBOLICA_FREE_F64_SMOKE]
@@ -278,8 +278,7 @@ def test_deployment_runs_a_copied_external_ufo_example(tmp_path: Path) -> None:
     card = tmp_path / "examples/external_ufo_sm.toml"
 
     command = [
-        os.fspath(item)
-        for item in deployment._copied_example_command(python, card)
+        os.fspath(item) for item in deployment._copied_example_command(python, card)
     ]
 
     assert command == [
@@ -549,3 +548,37 @@ def test_five_language_result_comparison_rejects_metadata_drift() -> None:
 
     with pytest.raises(ReleaseError, match="rust API driver metadata"):
         deployment._compare_driver_results(results)
+
+
+def test_sdk_cache_check_requires_one_reused_checked_archive(tmp_path: Path) -> None:
+    cache = tmp_path / "sdk-cache"
+    archive = b"!<arch>\nunpacked"
+    library = cache / "sdk" / "0.1.0-digest" / "librusticol_capi.a"
+    library.parent.mkdir(parents=True)
+    library.write_bytes(archive)
+    sdk = {
+        "library": str(library),
+        "archive_compression": {
+            "format": "xz",
+            "sha256": hashlib.sha256(archive).hexdigest(),
+            "size": len(archive),
+        },
+    }
+    check = deployment._check_sdk_cache
+    assert (
+        check({"library": "/site/lib.a"}, cache=cache, state="cold", previous=None)
+        is None
+    )
+    assert check(sdk, cache=cache, state="cold", previous=None) == library
+    assert check(sdk, cache=cache, state="warm", previous=library) == library
+    with pytest.raises(ReleaseError, match="did not reuse"):
+        check(sdk, cache=cache, state="warm", previous=tmp_path / "other.a")
+    with pytest.raises(ReleaseError, match="did not unpack"):
+        check(sdk, cache=tmp_path / "elsewhere", state="cold", previous=None)
+    (library.parent / ".librusticol_capi.a.x.partial").write_bytes(b"")
+    with pytest.raises(ReleaseError, match="partial files"):
+        check(sdk, cache=cache, state="cold", previous=None)
+    (library.parent / ".librusticol_capi.a.x.partial").unlink()
+    library.write_bytes(archive + b"!")
+    with pytest.raises(ReleaseError, match="does not match its metadata"):
+        check(sdk, cache=cache, state="cold", previous=None)

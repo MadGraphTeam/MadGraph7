@@ -334,6 +334,7 @@ def test_compressed_archive_is_unpacked_on_first_use_and_reused(
     assert expected.read_bytes() == _ARCHIVE
     assert info.link_flags[0] == str(expected)
     assert info.to_json()["library"] == str(expected)
+    assert info.to_json()["archive_compression"]["size"] == len(_ARCHIVE)
     assert sorted(path.name for path in expected.parent.iterdir()) == [
         "librusticol_capi.a"
     ]
