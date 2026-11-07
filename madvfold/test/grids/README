@@ -59,16 +59,25 @@ epem_bbxmummupg (eemumubbg, channel GF58.0):
 - there are no Delta grids yet: -o with ENV_VFOLDTEST_MCATNLODELTA=1 fails
 
 gg_ttxg (ggttg, channel GF10.0):
-- folding_1_1_1 and folding_8_4_1 come from dedicated short runs of
-  vfold/myLaunch.sh on aicoral92, in mode C/avx2 with ninja, for this channel
-  only and with ENV_FVZ_NDUMP=0: 8 iterations of 20000 points in MINT0, and
-  8 iterations of 80000 (f111, k512) or 20000 (f841, k64) points in MINT1,
-  in 503 s (f111) and 1994 s (f841). The settings are in their LOG.txt.
-- these grids are good enough for the tests, but they are not converged:
-  res_1.dat has 1247 +- 27 pb (f111) and 1490 +- 91 pb (f841), while the last
-  3 iterations of a longer physics run, not yet finished, had an ABS integral
-  of 2075 +- 163 pb. This channel has rare large weights, which only show up
-  with many points. Do not use these grids for physics.
+- folding_1_1_1 and folding_8_4_1 come from makeGrids.sh --channels 10.0
+  (step 14t, with the defaults of step 14s) on aicoral92, in mode C/avx2 with
+  ninja and ENV_FVZ_NDUMP=0: MINT0 10 iterations of 100000 (f111, k512) or
+  40000 (f841, k64) points, MINT1 10 iterations of 400000 (f111) or 40000
+  (f841) points, in 3302 s (f111) and 4508 s (f841). The settings are in
+  their LOG.txt.
+- res_1.dat has an ABS integral of 2406 +- 231 pb and an integral of
+  2053 +- 231 pb (f111), and 1861 +- 129 pb and 1641 +- 129 pb (f841). The
+  last 3 iterations of a longer physics run, not yet finished, had an ABS
+  integral of 2075 +- 163 pb. This channel has rare large weights, which
+  only show up with many points.
+- f111: MINT1 stopped on accuracy after 5 iterations, all included. f841:
+  MINT1 iteration 4 was rejected as a large fluctuation and, as in stock
+  MINT1, all later iterations (5 to 10) were then excluded too, so res_1.dat
+  comes from iterations 1 to 3 (the grids and the upper envelope are not
+  affected by this). This was reported upstream.
+- the step 14o grids that these replace were created by hand with fewer
+  points and were not converged (res_1.dat 1247 +- 27 pb for f111 and
+  1490 +- 91 pb for f841): they are in the git history.
 - GF10.0 was chosen from a test of all channels (500 events, f841, with very
   short MINT0/MINT1 grids of 50 points): it is the largest channel with
   virtuals. GF10.0, GF11.0 and GF8.0 have 26.8%, 27.1% and 21.7% of the ABS

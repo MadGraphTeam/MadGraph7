@@ -1,247 +1,31 @@
-START:    Tue Nov  3 11:12:46 AM CET 2026
+START:    Fri Nov  6 10:26:38 CET 2026
 HOSTNAME: aicoral92.cern.ch
-PROC:     ggttg_vfgen
+PROC:     ggttg_vfgrids_LOCALCLAUDE
 
-EXECUTING: ./vfold/myLaunch.sh -x
+EXECUTING: ./vfold/myLaunch.sh 
 
+CCACHE_DIR=/data/avalassi/NEGWGT2026/test-mg5amcnlo/madvfold/DEV/ccache
 FC=
 F90CACHE_DIR=
 F90CACHE_LOGFILE=
-Copy the cudacpp libraries from /data/avalassi/NEGWGT2026/test-mg5amcnlo/madvfold/DEV/ggttg_vfgen/CUDACPP
-lib/cudacpp/build.512y_d_inl0_hrd0/born
-total 268
-lrwxrwxrwx. 1 avalassi zg     24 Nov  3 11:12 libmg5amc_cudacpp_born.so -> libmg5amc_gg_ttxg_cpp.so
--rwxr-xr-x. 1 avalassi zg  83392 Nov  3 11:12 libmg5amc_cudacpp_common_born.so
--rwxr-xr-x. 1 avalassi zg 187024 Nov  3 11:12 libmg5amc_gg_ttxg_cpp.so
-lib/cudacpp/build.512y_d_inl0_hrd0/real1
-total 284
--rwxr-xr-x. 1 avalassi zg  83392 Nov  3 11:12 libmg5amc_cudacpp_common_real1.so
-lrwxrwxrwx. 1 avalassi zg     25 Nov  3 11:12 libmg5amc_cudacpp_real1.so -> libmg5amc_gg_ttxgg_cpp.so
--rwxr-xr-x. 1 avalassi zg 203640 Nov  3 11:12 libmg5amc_gg_ttxgg_cpp.so
-lib/cudacpp/build.512y_d_inl0_hrd0/real2
-total 260
--rwxr-xr-x. 1 avalassi zg  83392 Nov  3 11:12 libmg5amc_cudacpp_common_real2.so
-lrwxrwxrwx. 1 avalassi zg     27 Nov  3 11:12 libmg5amc_cudacpp_real2.so -> libmg5amc_dxg_ttxdxg_cpp.so
--rwxr-xr-x. 1 avalassi zg 178744 Nov  3 11:12 libmg5amc_dxg_ttxdxg_cpp.so
-lib/cudacpp/build.512y_d_inl0_hrd0/real3
-total 260
--rwxr-xr-x. 1 avalassi zg  83392 Nov  3 11:12 libmg5amc_cudacpp_common_real3.so
-lrwxrwxrwx. 1 avalassi zg     25 Nov  3 11:12 libmg5amc_cudacpp_real3.so -> libmg5amc_dg_ttxdg_cpp.so
--rwxr-xr-x. 1 avalassi zg 178744 Nov  3 11:12 libmg5amc_dg_ttxdg_cpp.so
-lib/cudacpp/build.512y_d_inl0_hrd0/real4
-total 260
--rwxr-xr-x. 1 avalassi zg  83392 Nov  3 11:12 libmg5amc_cudacpp_common_real4.so
-lrwxrwxrwx. 1 avalassi zg     27 Nov  3 11:12 libmg5amc_cudacpp_real4.so -> libmg5amc_gdx_ttxdxg_cpp.so
--rwxr-xr-x. 1 avalassi zg 178744 Nov  3 11:12 libmg5amc_gdx_ttxdxg_cpp.so
-lib/cudacpp/build.512y_d_inl0_hrd0/real5
-total 260
--rwxr-xr-x. 1 avalassi zg  83392 Nov  3 11:12 libmg5amc_cudacpp_common_real5.so
-lrwxrwxrwx. 1 avalassi zg     25 Nov  3 11:12 libmg5amc_cudacpp_real5.so -> libmg5amc_gd_ttxdg_cpp.so
--rwxr-xr-x. 1 avalassi zg 178744 Nov  3 11:12 libmg5amc_gd_ttxdg_cpp.so
-lib/cudacpp/build.512y_d_inl0_hrd0/real6
-total 260
--rwxr-xr-x. 1 avalassi zg  83392 Nov  3 11:12 libmg5amc_cudacpp_common_real6.so
-lrwxrwxrwx. 1 avalassi zg     26 Nov  3 11:12 libmg5amc_cudacpp_real6.so -> libmg5amc_gg_ttxddx_cpp.so
--rwxr-xr-x. 1 avalassi zg 178744 Nov  3 11:12 libmg5amc_gg_ttxddx_cpp.so
-
-lib/cudacpp/build.512z_d_inl0_hrd0/born
-total 276
-lrwxrwxrwx. 1 avalassi zg     24 Nov  3 11:12 libmg5amc_cudacpp_born.so -> libmg5amc_gg_ttxg_cpp.so
--rwxr-xr-x. 1 avalassi zg  83392 Nov  3 11:12 libmg5amc_cudacpp_common_born.so
--rwxr-xr-x. 1 avalassi zg 194856 Nov  3 11:12 libmg5amc_gg_ttxg_cpp.so
-lib/cudacpp/build.512z_d_inl0_hrd0/real1
-total 296
--rwxr-xr-x. 1 avalassi zg  83392 Nov  3 11:12 libmg5amc_cudacpp_common_real1.so
-lrwxrwxrwx. 1 avalassi zg     25 Nov  3 11:12 libmg5amc_cudacpp_real1.so -> libmg5amc_gg_ttxgg_cpp.so
--rwxr-xr-x. 1 avalassi zg 215928 Nov  3 11:12 libmg5amc_gg_ttxgg_cpp.so
-lib/cudacpp/build.512z_d_inl0_hrd0/real2
-total 268
--rwxr-xr-x. 1 avalassi zg  83392 Nov  3 11:12 libmg5amc_cudacpp_common_real2.so
-lrwxrwxrwx. 1 avalassi zg     27 Nov  3 11:12 libmg5amc_cudacpp_real2.so -> libmg5amc_dxg_ttxdxg_cpp.so
--rwxr-xr-x. 1 avalassi zg 186480 Nov  3 11:12 libmg5amc_dxg_ttxdxg_cpp.so
-lib/cudacpp/build.512z_d_inl0_hrd0/real3
-total 268
--rwxr-xr-x. 1 avalassi zg  83392 Nov  3 11:12 libmg5amc_cudacpp_common_real3.so
-lrwxrwxrwx. 1 avalassi zg     25 Nov  3 11:12 libmg5amc_cudacpp_real3.so -> libmg5amc_dg_ttxdg_cpp.so
--rwxr-xr-x. 1 avalassi zg 186480 Nov  3 11:12 libmg5amc_dg_ttxdg_cpp.so
-lib/cudacpp/build.512z_d_inl0_hrd0/real4
-total 268
--rwxr-xr-x. 1 avalassi zg  83392 Nov  3 11:12 libmg5amc_cudacpp_common_real4.so
-lrwxrwxrwx. 1 avalassi zg     27 Nov  3 11:12 libmg5amc_cudacpp_real4.so -> libmg5amc_gdx_ttxdxg_cpp.so
--rwxr-xr-x. 1 avalassi zg 186480 Nov  3 11:12 libmg5amc_gdx_ttxdxg_cpp.so
-lib/cudacpp/build.512z_d_inl0_hrd0/real5
-total 268
--rwxr-xr-x. 1 avalassi zg  83392 Nov  3 11:12 libmg5amc_cudacpp_common_real5.so
-lrwxrwxrwx. 1 avalassi zg     25 Nov  3 11:12 libmg5amc_cudacpp_real5.so -> libmg5amc_gd_ttxdg_cpp.so
--rwxr-xr-x. 1 avalassi zg 186480 Nov  3 11:12 libmg5amc_gd_ttxdg_cpp.so
-lib/cudacpp/build.512z_d_inl0_hrd0/real6
-total 268
--rwxr-xr-x. 1 avalassi zg  83392 Nov  3 11:12 libmg5amc_cudacpp_common_real6.so
-lrwxrwxrwx. 1 avalassi zg     26 Nov  3 11:12 libmg5amc_cudacpp_real6.so -> libmg5amc_gg_ttxddx_cpp.so
--rwxr-xr-x. 1 avalassi zg 186480 Nov  3 11:12 libmg5amc_gg_ttxddx_cpp.so
-
-lib/cudacpp/build.avx2_d_inl0_hrd0/born
-total 268
-lrwxrwxrwx. 1 avalassi zg     24 Nov  3 11:12 libmg5amc_cudacpp_born.so -> libmg5amc_gg_ttxg_cpp.so
--rwxr-xr-x. 1 avalassi zg  83384 Nov  3 11:12 libmg5amc_cudacpp_common_born.so
--rwxr-xr-x. 1 avalassi zg 187024 Nov  3 11:12 libmg5amc_gg_ttxg_cpp.so
-lib/cudacpp/build.avx2_d_inl0_hrd0/real1
-total 288
--rwxr-xr-x. 1 avalassi zg  83384 Nov  3 11:12 libmg5amc_cudacpp_common_real1.so
-lrwxrwxrwx. 1 avalassi zg     25 Nov  3 11:12 libmg5amc_cudacpp_real1.so -> libmg5amc_gg_ttxgg_cpp.so
--rwxr-xr-x. 1 avalassi zg 207736 Nov  3 11:12 libmg5amc_gg_ttxgg_cpp.so
-lib/cudacpp/build.avx2_d_inl0_hrd0/real2
-total 260
--rwxr-xr-x. 1 avalassi zg  83384 Nov  3 11:12 libmg5amc_cudacpp_common_real2.so
-lrwxrwxrwx. 1 avalassi zg     27 Nov  3 11:12 libmg5amc_cudacpp_real2.so -> libmg5amc_dxg_ttxdxg_cpp.so
--rwxr-xr-x. 1 avalassi zg 178744 Nov  3 11:12 libmg5amc_dxg_ttxdxg_cpp.so
-lib/cudacpp/build.avx2_d_inl0_hrd0/real3
-total 260
--rwxr-xr-x. 1 avalassi zg  83384 Nov  3 11:12 libmg5amc_cudacpp_common_real3.so
-lrwxrwxrwx. 1 avalassi zg     25 Nov  3 11:12 libmg5amc_cudacpp_real3.so -> libmg5amc_dg_ttxdg_cpp.so
--rwxr-xr-x. 1 avalassi zg 178744 Nov  3 11:12 libmg5amc_dg_ttxdg_cpp.so
-lib/cudacpp/build.avx2_d_inl0_hrd0/real4
-total 260
--rwxr-xr-x. 1 avalassi zg  83384 Nov  3 11:12 libmg5amc_cudacpp_common_real4.so
-lrwxrwxrwx. 1 avalassi zg     27 Nov  3 11:12 libmg5amc_cudacpp_real4.so -> libmg5amc_gdx_ttxdxg_cpp.so
--rwxr-xr-x. 1 avalassi zg 178744 Nov  3 11:12 libmg5amc_gdx_ttxdxg_cpp.so
-lib/cudacpp/build.avx2_d_inl0_hrd0/real5
-total 260
--rwxr-xr-x. 1 avalassi zg  83384 Nov  3 11:12 libmg5amc_cudacpp_common_real5.so
-lrwxrwxrwx. 1 avalassi zg     25 Nov  3 11:12 libmg5amc_cudacpp_real5.so -> libmg5amc_gd_ttxdg_cpp.so
--rwxr-xr-x. 1 avalassi zg 178744 Nov  3 11:12 libmg5amc_gd_ttxdg_cpp.so
-lib/cudacpp/build.avx2_d_inl0_hrd0/real6
-total 260
--rwxr-xr-x. 1 avalassi zg  83384 Nov  3 11:12 libmg5amc_cudacpp_common_real6.so
-lrwxrwxrwx. 1 avalassi zg     26 Nov  3 11:12 libmg5amc_cudacpp_real6.so -> libmg5amc_gg_ttxddx_cpp.so
--rwxr-xr-x. 1 avalassi zg 178744 Nov  3 11:12 libmg5amc_gg_ttxddx_cpp.so
-
-lib/cudacpp/build.cuda_d_inl0_hrd0/born
-total 2592
-lrwxrwxrwx. 1 avalassi zg      25 Nov  3 11:12 libmg5amc_cudacpp_born.so -> libmg5amc_gg_ttxg_cuda.so
--rwxr-xr-x. 1 avalassi zg  896120 Nov  3 11:12 libmg5amc_cudacpp_common_born.so
--rwxr-xr-x. 1 avalassi zg 1756600 Nov  3 11:12 libmg5amc_gg_ttxg_cuda.so
-lib/cudacpp/build.cuda_d_inl0_hrd0/real1
-total 4316
--rwxr-xr-x. 1 avalassi zg  896120 Nov  3 11:12 libmg5amc_cudacpp_common_real1.so
-lrwxrwxrwx. 1 avalassi zg      26 Nov  3 11:12 libmg5amc_cudacpp_real1.so -> libmg5amc_gg_ttxgg_cuda.so
--rwxr-xr-x. 1 avalassi zg 3520952 Nov  3 11:12 libmg5amc_gg_ttxgg_cuda.so
-lib/cudacpp/build.cuda_d_inl0_hrd0/real2
-total 2776
--rwxr-xr-x. 1 avalassi zg  896120 Nov  3 11:12 libmg5amc_cudacpp_common_real2.so
-lrwxrwxrwx. 1 avalassi zg      28 Nov  3 11:12 libmg5amc_cudacpp_real2.so -> libmg5amc_dxg_ttxdxg_cuda.so
--rwxr-xr-x. 1 avalassi zg 1943992 Nov  3 11:12 libmg5amc_dxg_ttxdxg_cuda.so
-lib/cudacpp/build.cuda_d_inl0_hrd0/real3
-total 2772
--rwxr-xr-x. 1 avalassi zg  896120 Nov  3 11:12 libmg5amc_cudacpp_common_real3.so
-lrwxrwxrwx. 1 avalassi zg      26 Nov  3 11:12 libmg5amc_cudacpp_real3.so -> libmg5amc_dg_ttxdg_cuda.so
--rwxr-xr-x. 1 avalassi zg 1939896 Nov  3 11:12 libmg5amc_dg_ttxdg_cuda.so
-lib/cudacpp/build.cuda_d_inl0_hrd0/real4
-total 2884
--rwxr-xr-x. 1 avalassi zg  896120 Nov  3 11:12 libmg5amc_cudacpp_common_real4.so
-lrwxrwxrwx. 1 avalassi zg      28 Nov  3 11:12 libmg5amc_cudacpp_real4.so -> libmg5amc_gdx_ttxdxg_cuda.so
--rwxr-xr-x. 1 avalassi zg 2054584 Nov  3 11:12 libmg5amc_gdx_ttxdxg_cuda.so
-lib/cudacpp/build.cuda_d_inl0_hrd0/real5
-total 2884
--rwxr-xr-x. 1 avalassi zg  896120 Nov  3 11:12 libmg5amc_cudacpp_common_real5.so
-lrwxrwxrwx. 1 avalassi zg      26 Nov  3 11:12 libmg5amc_cudacpp_real5.so -> libmg5amc_gd_ttxdg_cuda.so
--rwxr-xr-x. 1 avalassi zg 2054584 Nov  3 11:12 libmg5amc_gd_ttxdg_cuda.so
-lib/cudacpp/build.cuda_d_inl0_hrd0/real6
-total 2884
--rwxr-xr-x. 1 avalassi zg  896120 Nov  3 11:12 libmg5amc_cudacpp_common_real6.so
-lrwxrwxrwx. 1 avalassi zg      27 Nov  3 11:12 libmg5amc_cudacpp_real6.so -> libmg5amc_gg_ttxddx_cuda.so
--rwxr-xr-x. 1 avalassi zg 2054584 Nov  3 11:12 libmg5amc_gg_ttxddx_cuda.so
-
-lib/cudacpp/build.none_d_inl0_hrd0/born
-total 256
-lrwxrwxrwx. 1 avalassi zg     24 Nov  3 11:12 libmg5amc_cudacpp_born.so -> libmg5amc_gg_ttxg_cpp.so
--rwxr-xr-x. 1 avalassi zg  83384 Nov  3 11:12 libmg5amc_cudacpp_common_born.so
--rwxr-xr-x. 1 avalassi zg 174096 Nov  3 11:12 libmg5amc_gg_ttxg_cpp.so
-lib/cudacpp/build.none_d_inl0_hrd0/real1
-total 280
--rwxr-xr-x. 1 avalassi zg  83384 Nov  3 11:12 libmg5amc_cudacpp_common_real1.so
-lrwxrwxrwx. 1 avalassi zg     25 Nov  3 11:12 libmg5amc_cudacpp_real1.so -> libmg5amc_gg_ttxgg_cpp.so
--rwxr-xr-x. 1 avalassi zg 198904 Nov  3 11:12 libmg5amc_gg_ttxgg_cpp.so
-lib/cudacpp/build.none_d_inl0_hrd0/real2
-total 240
--rwxr-xr-x. 1 avalassi zg  83384 Nov  3 11:12 libmg5amc_cudacpp_common_real2.so
-lrwxrwxrwx. 1 avalassi zg     27 Nov  3 11:12 libmg5amc_cudacpp_real2.so -> libmg5amc_dxg_ttxdxg_cpp.so
--rwxr-xr-x. 1 avalassi zg 157632 Nov  3 11:12 libmg5amc_dxg_ttxdxg_cpp.so
-lib/cudacpp/build.none_d_inl0_hrd0/real3
-total 240
--rwxr-xr-x. 1 avalassi zg  83384 Nov  3 11:12 libmg5amc_cudacpp_common_real3.so
-lrwxrwxrwx. 1 avalassi zg     25 Nov  3 11:12 libmg5amc_cudacpp_real3.so -> libmg5amc_dg_ttxdg_cpp.so
--rwxr-xr-x. 1 avalassi zg 157632 Nov  3 11:12 libmg5amc_dg_ttxdg_cpp.so
-lib/cudacpp/build.none_d_inl0_hrd0/real4
-total 240
--rwxr-xr-x. 1 avalassi zg  83384 Nov  3 11:12 libmg5amc_cudacpp_common_real4.so
-lrwxrwxrwx. 1 avalassi zg     27 Nov  3 11:12 libmg5amc_cudacpp_real4.so -> libmg5amc_gdx_ttxdxg_cpp.so
--rwxr-xr-x. 1 avalassi zg 157632 Nov  3 11:12 libmg5amc_gdx_ttxdxg_cpp.so
-lib/cudacpp/build.none_d_inl0_hrd0/real5
-total 240
--rwxr-xr-x. 1 avalassi zg  83384 Nov  3 11:12 libmg5amc_cudacpp_common_real5.so
-lrwxrwxrwx. 1 avalassi zg     25 Nov  3 11:12 libmg5amc_cudacpp_real5.so -> libmg5amc_gd_ttxdg_cpp.so
--rwxr-xr-x. 1 avalassi zg 157632 Nov  3 11:12 libmg5amc_gd_ttxdg_cpp.so
-lib/cudacpp/build.none_d_inl0_hrd0/real6
-total 240
--rwxr-xr-x. 1 avalassi zg  83384 Nov  3 11:12 libmg5amc_cudacpp_common_real6.so
-lrwxrwxrwx. 1 avalassi zg     26 Nov  3 11:12 libmg5amc_cudacpp_real6.so -> libmg5amc_gg_ttxddx_cpp.so
--rwxr-xr-x. 1 avalassi zg 157632 Nov  3 11:12 libmg5amc_gg_ttxddx_cpp.so
-
-lib/cudacpp/build.sse4_d_inl0_hrd0/born
-total 272
-lrwxrwxrwx. 1 avalassi zg     24 Nov  3 11:12 libmg5amc_cudacpp_born.so -> libmg5amc_gg_ttxg_cpp.so
--rwxr-xr-x. 1 avalassi zg  83384 Nov  3 11:12 libmg5amc_cudacpp_common_born.so
--rwxr-xr-x. 1 avalassi zg 191120 Nov  3 11:12 libmg5amc_gg_ttxg_cpp.so
-lib/cudacpp/build.sse4_d_inl0_hrd0/real1
-total 296
--rwxr-xr-x. 1 avalassi zg  83384 Nov  3 11:12 libmg5amc_cudacpp_common_real1.so
-lrwxrwxrwx. 1 avalassi zg     25 Nov  3 11:12 libmg5amc_cudacpp_real1.so -> libmg5amc_gg_ttxgg_cpp.so
--rwxr-xr-x. 1 avalassi zg 215928 Nov  3 11:12 libmg5amc_gg_ttxgg_cpp.so
-lib/cudacpp/build.sse4_d_inl0_hrd0/real2
-total 260
--rwxr-xr-x. 1 avalassi zg  83384 Nov  3 11:12 libmg5amc_cudacpp_common_real2.so
-lrwxrwxrwx. 1 avalassi zg     27 Nov  3 11:12 libmg5amc_cudacpp_real2.so -> libmg5amc_dxg_ttxdxg_cpp.so
--rwxr-xr-x. 1 avalassi zg 178744 Nov  3 11:12 libmg5amc_dxg_ttxdxg_cpp.so
-lib/cudacpp/build.sse4_d_inl0_hrd0/real3
-total 260
--rwxr-xr-x. 1 avalassi zg  83384 Nov  3 11:12 libmg5amc_cudacpp_common_real3.so
-lrwxrwxrwx. 1 avalassi zg     25 Nov  3 11:12 libmg5amc_cudacpp_real3.so -> libmg5amc_dg_ttxdg_cpp.so
--rwxr-xr-x. 1 avalassi zg 178744 Nov  3 11:12 libmg5amc_dg_ttxdg_cpp.so
-lib/cudacpp/build.sse4_d_inl0_hrd0/real4
-total 264
--rwxr-xr-x. 1 avalassi zg  83384 Nov  3 11:12 libmg5amc_cudacpp_common_real4.so
-lrwxrwxrwx. 1 avalassi zg     27 Nov  3 11:12 libmg5amc_cudacpp_real4.so -> libmg5amc_gdx_ttxdxg_cpp.so
--rwxr-xr-x. 1 avalassi zg 182840 Nov  3 11:12 libmg5amc_gdx_ttxdxg_cpp.so
-lib/cudacpp/build.sse4_d_inl0_hrd0/real5
-total 264
--rwxr-xr-x. 1 avalassi zg  83384 Nov  3 11:12 libmg5amc_cudacpp_common_real5.so
-lrwxrwxrwx. 1 avalassi zg     25 Nov  3 11:12 libmg5amc_cudacpp_real5.so -> libmg5amc_gd_ttxdg_cpp.so
--rwxr-xr-x. 1 avalassi zg 182840 Nov  3 11:12 libmg5amc_gd_ttxdg_cpp.so
-lib/cudacpp/build.sse4_d_inl0_hrd0/real6
-total 264
--rwxr-xr-x. 1 avalassi zg  83384 Nov  3 11:12 libmg5amc_cudacpp_common_real6.so
-lrwxrwxrwx. 1 avalassi zg     26 Nov  3 11:12 libmg5amc_cudacpp_real6.so -> libmg5amc_gg_ttxddx_cpp.so
--rwxr-xr-x. 1 avalassi zg 182840 Nov  3 11:12 libmg5amc_gg_ttxddx_cpp.so
-
 ENV_NEVENTS=10
 ENV_FOLDING=1,1,1
-ENV_VFOLD_CUDACPP_BASE=/data/avalassi/NEGWGT2026/test-mg5amcnlo/madvfold/DEV/ggttg_vfgen/lib/cudacpp
+ENV_VFOLD_CUDACPP_BASE=/data/avalassi/NEGWGT2026/test-mg5amcnlo/madvfold/DEV/ggttg_vfgrids_LOCALCLAUDE/lib/cudacpp
 ENV_VFOLD_CUDACPP_BACKEND=avx2
 ENV_VFOLD_ME_MODE=C
 ENV_VFOLD_VECSIZE_USED=4
 ENV_VFOLD_KPOINT_BATCH=512
 ENV_VFOLD_SBORN_BRIDGE=1
-ENV_VFOLD_SBORN_GSCALE=
+ENV_VFOLD_SBORN_GSCALE=1
 ENV_VFOLD_MLREDUCTION=ninja
 ENV_VFOLD_POLYCACHE=
 ENV_VFOLD_CPUTIME=-1
 ENV_VFOLD_BATCH_PERVN=1
 ENV_VFOLD_MINT0_ACC=-1
-ENV_VFOLD_MINT0_NITERS=8
-ENV_VFOLD_MINT0_NPOINTS=20000
-ENV_VFOLD_MINT1_NITERS=8
-ENV_VFOLD_MINT1_NPOINTS=80000
+ENV_VFOLD_MINT0_NITERS=10
+ENV_VFOLD_MINT0_NPOINTS=100000
+ENV_VFOLD_MINT1_NITERS=10
+ENV_VFOLD_MINT1_NPOINTS=400000
 ENV_VFOLD_CHANNELS=10.0
 ENV_VFOLD_NOSHUFFLE=
 ENV_MCATNLODELTA=
@@ -271,18 +55,34 @@ INFO: ************************************************************
 *               Type 'help' for in-line help.              *
 *                                                          *
 ************************************************************ 
-INFO: load configuration from /afs/cern.ch/user/a/avalassi/.mg5/mg5_configuration.txt  
-INFO: load configuration from /data/avalassi/NEGWGT2026/test-mg5amcnlo/madvfold/DEV/ggttg_vfgen/Cards/amcatnlo_configuration.txt  
+INFO: load configuration from /data/avalassi/NEGWGT2026/test-mg5amcnlo/madvfold/DEV/ggttg_vfgrids_LOCALCLAUDE/Cards/amcatnlo_configuration.txt  
 INFO: load configuration from /data/avalassi/NEGWGT2026/test-mg5amcnlo/input/mg5_configuration.txt  
-INFO: load configuration from /data/avalassi/NEGWGT2026/test-mg5amcnlo/madvfold/DEV/ggttg_vfgen/Cards/amcatnlo_configuration.txt  
+INFO: load configuration from /data/avalassi/NEGWGT2026/test-mg5amcnlo/madvfold/DEV/ggttg_vfgrids_LOCALCLAUDE/Cards/amcatnlo_configuration.txt  
+Using default text editor "vi". Set another one in ./input/mg5_configuration.txt
 No valid eps viewer found. Please set in ./input/mg5_configuration.txt
-Using default web browser "firefox". Set another one in ./input/mg5_configuration.txt
-Using default gzip "pigz". Set another one in ./input/mg5_configuration.txt
-launch -f -p -x
+No valid web browser found. Please set in ./input/mg5_configuration.txt
+Using default gzip "gzip". Set another one in ./input/mg5_configuration.txt
+launch -f -p
+[1;34mWARNING: bc command not available. Forbids to run the shower. please install it if you want to run the shower. (sudo apt-get install bc) [0m
 INFO: will run in mode: noshower 
 [1;34mWARNING: You have chosen not to run a parton shower. NLO events without showering are NOT physical. Please, shower the LesHouches events before using them for physics analyses. You have to choose NOW which parton-shower you WILL use and specify it in the run_card. [0m
 INFO: Starting run 
 INFO: Compiling the code 
+INFO: Using built-in libraries for PDFs 
+INFO: Compiling source... 
+INFO:           ...done, continuing with P* directories 
+INFO: Compiling directories... 
+INFO: Compiling on 4 cores 
+INFO:  Compiling P0_gg_ttxg... 
+INFO:     P0_gg_ttxg done. 
+INFO: Checking test output: 
+INFO: P0_gg_ttxg 
+INFO:  Result for test_ME: 
+INFO:    Passed. 
+INFO:  Result for test_MC: 
+INFO:    Passed. 
+INFO:  Result for check_poles: 
+INFO:    Poles successfully cancel for 20 points over 20 (tolerance=1.0e-05) 
 INFO: Starting run 
 INFO: Using 4 cores 
 INFO: Cleaning previous results 
@@ -291,8 +91,8 @@ INFO: ENV_VFOLD_CHANNELS=10.0: restricting to channels ['10.0']
 DEBUG! mint_step=0
 DEBUG! status=Setting up grids
 INFO: Setting up grids 
-INFO:  Idle: 0,  Running: 1,  Completed: 0 [ current time: 11h12 ] 
-INFO:  Idle: 0,  Running: 0,  Completed: 1 [  5m 49s  ] 
+INFO:  Idle: 0,  Running: 1,  Completed: 0 [ current time: 10h39 ] 
+INFO:  Idle: 0,  Running: 0,  Completed: 1 [  30m 23s  ] 
 sum of cpu time of last step: 0 second
 DEBUG! step=0
 DEBUG! nevents=10
@@ -300,15 +100,15 @@ INFO: Determining the number of unweighted events per channel
 
       Intermediate results:
       Random seed: 84100
-      Total cross section:      6.608e+02 +- 3.3e+01 pb
-      Total abs(cross section): 9.884e+02 +- 3.4e+01 pb 
+      Total cross section:      7.852e+02 +- 2.6e+01 pb
+      Total abs(cross section): 1.135e+03 +- 2.7e+01 pb 
 
  
 DEBUG! mint_step=1
 DEBUG! status=Computing upper envelope
 INFO: Computing upper envelope 
-INFO:  Idle: 0,  Running: 1,  Completed: 0 [ current time: 11h18 ] 
-INFO:  Idle: 0,  Running: 0,  Completed: 1 [  2m 20s  ] 
+INFO:  Idle: 0,  Running: 1,  Completed: 0 [ current time: 11h09 ] 
+INFO:  Idle: 0,  Running: 0,  Completed: 1 [  11m 41s  ] 
 sum of cpu time of last step: 0 second
 DEBUG! step=1
 DEBUG! nevents=10
@@ -316,14 +116,15 @@ INFO: Updating the number of unweighted events per channel
 
       Intermediate results:
       Random seed: 84100
-      Total cross section:      8.712e+02 +- 2.7e+01 pb
-      Total abs(cross section): 1.247e+03 +- 2.7e+01 pb 
+      Total cross section:      2.053e+03 +- 2.3e+02 pb
+      Total abs(cross section): 2.406e+03 +- 2.3e+02 pb 
 
  
 DEBUG! mint_step=2
 DEBUG! status=Generating events
 INFO: Generating events 
-INFO:  Idle: 0,  Running: 0,  Completed: 1 [ current time: 11h21 ] 
+INFO:  Idle: 0,  Running: 1,  Completed: 0 [ current time: 11h21 ] 
+INFO:  Idle: 0,  Running: 0,  Completed: 1 [  6.7s  ] 
 sum of cpu time of last step: 0 second
 INFO: Collecting events 
 INFO: 
@@ -332,10 +133,10 @@ INFO:
       Process g g > t t~ g [QCD]
       Run at p-p collider (6500.0 + 6500.0 GeV)
       Number of events generated: 10
-      Total cross section: 8.712e+02 +- 2.7e+01 pb
+      Total cross section: 2.053e+03 +- 2.3e+02 pb
    --------------------------------------------------------------
  
-INFO: The /data/avalassi/NEGWGT2026/test-mg5amcnlo/madvfold/DEV/ggttg_vfgen/Events/run_01/events.lhe.gz file has been generated.
+INFO: The /data/avalassi/NEGWGT2026/test-mg5amcnlo/madvfold/DEV/ggttg_vfgrids_LOCALCLAUDE/Events/run_01/events.lhe.gz file has been generated.
  
 INFO: Events generated 
 reweight -from_cards
@@ -344,24 +145,25 @@ decay_events -from_cards
 INFO:  
 quit
 INFO:  
+FCACHE: polynomial.o stored for SubProcesses/P0_gg_ttxg/V0_gg_ttxg (key ec5c4e4e6464a3d49c428ffd01e8813a)
 ENV_NEVENTS=10
 ENV_FOLDING=1,1,1
-ENV_VFOLD_CUDACPP_BASE=/data/avalassi/NEGWGT2026/test-mg5amcnlo/madvfold/DEV/ggttg_vfgen/lib/cudacpp
+ENV_VFOLD_CUDACPP_BASE=/data/avalassi/NEGWGT2026/test-mg5amcnlo/madvfold/DEV/ggttg_vfgrids_LOCALCLAUDE/lib/cudacpp
 ENV_VFOLD_CUDACPP_BACKEND=avx2
 ENV_VFOLD_ME_MODE=C
 ENV_VFOLD_VECSIZE_USED=4
 ENV_VFOLD_KPOINT_BATCH=512
 ENV_VFOLD_SBORN_BRIDGE=1
-ENV_VFOLD_SBORN_GSCALE=
+ENV_VFOLD_SBORN_GSCALE=1
 ENV_VFOLD_MLREDUCTION=ninja
 ENV_VFOLD_POLYCACHE=
 ENV_VFOLD_CPUTIME=-1
 ENV_VFOLD_BATCH_PERVN=1
 ENV_VFOLD_MINT0_ACC=-1
-ENV_VFOLD_MINT0_NITERS=8
-ENV_VFOLD_MINT0_NPOINTS=20000
-ENV_VFOLD_MINT1_NITERS=8
-ENV_VFOLD_MINT1_NPOINTS=80000
+ENV_VFOLD_MINT0_NITERS=10
+ENV_VFOLD_MINT0_NPOINTS=100000
+ENV_VFOLD_MINT1_NITERS=10
+ENV_VFOLD_MINT1_NPOINTS=400000
 ENV_VFOLD_CHANNELS=10.0
 ENV_VFOLD_NOSHUFFLE=
 ENV_MCATNLODELTA=
@@ -370,8 +172,8 @@ ENV_REQACC=
 ENV_ISEED=
 CUDACPP_RUNTIME_BLASCOLORSUM=
 randinit=84100
-START:    Tue Nov  3 11:12:46 AM CET 2026
-END:      Tue Nov  3 11:21:09 AM CET 2026
-ELAPSED:  503 seconds
+START:    Fri Nov  6 10:26:38 CET 2026
+END:      Fri Nov  6 11:21:40 CET 2026
+ELAPSED:  3302 seconds
 
 STATUS=0
