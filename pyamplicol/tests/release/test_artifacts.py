@@ -1534,7 +1534,10 @@ def test_native_scan_rejects_static_arithmetic_runtime_markers(
 ) -> None:
     binary = tmp_path / "native-artifact"
     binary.write_bytes(b"prefix\x00" + marker + b"\x00suffix")
-    with pytest.raises(ArtifactError, match="forbidden static arithmetic runtime"):
+    with pytest.raises(
+        ArtifactError,
+        match=r"arithmetic runtime: .*\(no nm could read its symbols\)",
+    ):
         _scan_static_runtime_families(binary, "test artifact")
 
 
@@ -1609,6 +1612,178 @@ def test_static_runtime_scan_rejects_an_archived_runtime_copy(
     subprocess.run(["ar", "rcs", str(static), str(importer), str(copy)], check=True)
     with pytest.raises(ArtifactError, match="defines mpfr_set"):
         _scan_static_runtime_families(static, "test archive")
+
+
+def test_nm_symbols_reads_bsd_lines_and_darwin_bare_undefined_names() -> None:
+    output = (
+        "\nlibrusticol_capi.a(capi.o):\n"
+        "0000000000000448 T _rusticol_abi_version\n"
+        "                 U __gmpz_init\n"
+        "                 w __cxa_finalize\n"
+        "___gmpz_clear\n"
+        "_mpfr_init2\n"
+        "\n"
+    )
+    assert artifacts._nm_symbols(output) == [
+        ("T", "_rusticol_abi_version"),
+        ("U", "__gmpz_init"),
+        ("w", "__cxa_finalize"),
+        (None, "___gmpz_clear"),
+        (None, "_mpfr_init2"),
+    ]
+
+
+def _fake_nm(
+    monkeypatch: pytest.MonkeyPatch, *, defined: str = "", undefined: str = ""
+) -> None:
+    """``nm`` as Darwin prints a Mach-O file: ``-u`` lists bare names."""
+
+    monkeypatch.delenv("LLVM_NM", raising=False)
+    monkeypatch.setattr(artifacts.shutil, "which", lambda _name: "/usr/bin/nm")
+
+    def run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess:
+        stdout = undefined if "-u" in command else defined
+        return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(artifacts.subprocess, "run", run)
+
+
+def test_static_runtime_scan_accepts_darwin_bare_name_imports(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A Mach-O extension importing the shared GMP/MPFR keeps their names in
+    # its string table and import (bind / chained-fixup) tables.
+    extension = tmp_path / "_rusticol.abi3.so"
+    extension.write_bytes(
+        b"\xcf\xfa\xed\xfe\0\x40___gmpz_init\0_mpfr_init2\0_PyInit__rusticol\0"
+    )
+    _fake_nm(
+        monkeypatch,
+        defined="0000000000000448 T _PyInit__rusticol\n",
+        undefined="___gmpz_init\n_mpfr_init2\ndyld_stub_binder\n",
+    )
+    _scan_static_runtime_families(extension, "test extension")
+
+
+def test_static_runtime_scan_rejects_a_stripped_darwin_runtime_copy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # strip -x removed the copy's symbols; its assertion text remains.
+    extension = tmp_path / "_rusticol.abi3.so"
+    extension.write_bytes(
+        b"\xcf\xfa\xed\xfe\0mpfr_get_prec (x) >= MPFR_PREC_MIN\0_PyInit__rusticol\0"
+    )
+    _fake_nm(
+        monkeypatch,
+        defined="0000000000000448 T _PyInit__rusticol\n",
+        undefined="dyld_stub_binder\n",
+    )
+    with pytest.raises(
+        ArtifactError, match=r"forbidden static arithmetic runtime: mpfr_$"
+    ):
+        _scan_static_runtime_families(extension, "test extension")
+
+
+def test_capi_archive_scan_rejects_darwin_bare_name_python_imports(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive = tmp_path / "librusticol_capi.a"
+    archive.write_bytes(b"synthetic archive")
+    _fake_nm(
+        monkeypatch,
+        undefined="\nlibrusticol_capi.a(capi.o):\n___gmpz_init\n_mpfr_init2\n",
+    )
+    assert _scan_capi_archive(archive, allow_local_rustup=False)
+    _fake_nm(
+        monkeypatch,
+        undefined="\nlibrusticol_capi.a(capi.o):\n___gmpz_init\n_PyErr_SetString\n",
+    )
+    with pytest.raises(ArtifactError, match=r"undefined Python.*_PyErr_SetString"):
+        _scan_capi_archive(archive, allow_local_rustup=False)
+
+
+def _macho_linker() -> list[str] | None:
+    """A clang driver that links Mach-O dylibs: native on macOS, else lld."""
+
+    if shutil.which("clang") is None:
+        return None
+    if sys.platform == "darwin":
+        return ["clang"]
+    if shutil.which("ld64.lld") is None or shutil.which("llvm-nm") is None:
+        return None
+    return ["clang", "-fuse-ld=lld"]
+
+
+_MACHO_LINKER = _macho_linker()
+_MACHO_RUNTIME = (
+    "int __gmpz_init(void) { return 1; }\nint mpfr_set(void) { return 2; }\n"
+)
+_MACHO_CONSUMER = (
+    "int __gmpz_init(void); int mpfr_set(void);\n"
+    "int consume(void) { return __gmpz_init() + mpfr_set(); }\n"
+)
+_MACHO_COPY = (
+    'static const char *volatile assertion = "mpfr_set (x) >= 0";\n'
+    "int __gmpz_init(void) { return 1; }\n"
+    "int mpfr_set(void) { return 2 + assertion[0]; }\n"
+)
+
+
+def _macho_dylib(
+    tmp_path: Path, name: str, source: str, arch: str, *arguments: str
+) -> Path:
+    source_path = tmp_path / f"{name}.c"
+    source_path.write_text(source, encoding="utf-8")
+    output = tmp_path / name
+    assert _MACHO_LINKER is not None
+    subprocess.run(
+        [
+            *_MACHO_LINKER,
+            "-target",
+            f"{arch}-apple-macos11",
+            "-nostdlib",
+            "-dynamiclib",
+            "-Wl,-undefined,dynamic_lookup",
+            str(source_path),
+            *arguments,
+            "-o",
+            str(output),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    return output
+
+
+@pytest.mark.skipif(_MACHO_LINKER is None, reason="needs a Mach-O C toolchain")
+@pytest.mark.parametrize("arch", ["arm64", "x86_64"])
+def test_static_runtime_scan_on_macho_imports_and_copies(
+    tmp_path: Path, arch: str
+) -> None:
+    runtime = _macho_dylib(tmp_path, "libgmp-test.dylib", _MACHO_RUNTIME, arch)
+    consumer = _macho_dylib(
+        tmp_path, "_rusticol.abi3.so", _MACHO_CONSUMER, arch, str(runtime)
+    )
+    _scan_static_runtime_families(consumer, "test extension")
+    with pytest.raises(ArtifactError, match="defines ___gmpz_init, _mpfr_set"):
+        _scan_static_runtime_families(runtime, "test runtime")
+    # A linked-in copy with its local symbols stripped (-x, as rustc's
+    # strip=symbols on Apple targets): its assertion text still matches.
+    copy = _macho_dylib(
+        tmp_path,
+        "_rusticol_copy.abi3.so",
+        _MACHO_CONSUMER + _MACHO_COPY,
+        arch,
+        "-Wl,-x",
+        "-Wl,-exported_symbol,_consume",
+    )
+    with pytest.raises(
+        ArtifactError, match="forbidden static arithmetic runtime: mpfr_"
+    ):
+        _scan_static_runtime_families(copy, "test extension")
 
 
 @pytest.mark.parametrize(
@@ -1754,6 +1929,63 @@ def test_record_direct_dependency_and_size_fail_closed(tmp_path: Path) -> None:
         stream.truncate(MAX_WHEEL_BYTES + 1)
     with pytest.raises(ArtifactError, match="limit"):
         audit_wheel(oversized, mode="release", native_scan=False)
+
+
+def test_oversized_wheel_is_audited_in_full_before_the_size_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(artifacts, "MAX_WHEEL_BYTES", 1000)
+    bad_record = _wheel(tmp_path, bad_record=True)
+    with pytest.raises(ArtifactError, match="RECORD hash"):
+        audit_wheel(bad_record, mode="release", native_scan=False)
+
+    bad_record.unlink()
+    wheel = _wheel(tmp_path)
+    size = wheel.stat().st_size
+    with pytest.raises(ArtifactError) as raised:
+        audit_wheel(wheel, mode="release", native_scan=False)
+    message = str(raised.value)
+    assert message.startswith(
+        f"compressed wheel is {size} bytes; limit is 1000 bytes "
+        "(every other wheel check passed); "
+    )
+    assert "compressed bytes: extension " in message
+
+
+def test_wheel_size_summary_splits_the_compressed_bytes(tmp_path: Path) -> None:
+    wheel = _wheel(
+        tmp_path,
+        extra_files={
+            "pyamplicol.dylibs/libgmp.10.dylib": b"g" * 4096,
+            "pyamplicol/_sdk/lib/libmpfr.6.dylib": b"m" * 2048,
+        },
+    )
+    summary = artifacts.wheel_size_summary(wheel)
+    size = wheel.stat().st_size
+    assert summary.startswith(f"{wheel.name} is {size} bytes (limit {MAX_WHEEL_BYTES})")
+    parts = dict(
+        item.rsplit(" ", 1)
+        for item in summary.split("compressed bytes: ", 1)[1].split(", ")
+    )
+    assert list(parts) == [
+        "extension",
+        "SDK archive",
+        "SDK shared libraries",
+        "bundled libraries",
+        "prepared models",
+        "other",
+        "zip metadata",
+    ]
+    assert sum(int(value) for value in parts.values()) == size
+    with zipfile.ZipFile(wheel) as archive:
+        compressed = {info.filename: info.compress_size for info in archive.infolist()}
+    assert (
+        int(parts["bundled libraries"])
+        == compressed["pyamplicol.dylibs/libgmp.10.dylib"]
+    )
+    assert int(parts["extension"]) == compressed["pyamplicol/_rusticol.abi3.so"]
+    assert int(parts["prepared models"]) > 0
 
 
 def test_wheel_filename_version_must_match_metadata(tmp_path: Path) -> None:

@@ -163,6 +163,7 @@ _FORBIDDEN_STATIC_RUNTIME_MARKERS = (
 _STATIC_RUNTIME_SYMBOL_PREFIXES = ("mpfr_", "mpc_")
 _BINDING_CRATE = b"gmp_mpfr_sys"
 _STATIC_RUNTIME_SYMBOL_PARTS = ("__gmp", "malachite")
+_UNDEFINED_SYMBOL_TYPES = frozenset({"U", "u", "W", "w", "V", "v"})
 _COMMON_SYSTEM_LIBRARIES = {"c", "dl", "m", "pthread", "resolv", "rt", "util"}
 _SYSTEM_LIBRARIES = {
     "aarch64-apple-darwin": _COMMON_SYSTEM_LIBRARIES | {"System", "gcc_s", "iconv"},
@@ -240,6 +241,20 @@ _BUILTIN_MODEL_SOURCE_KIND = "built-in-sm"
 _ALLOWED_REPAIR_ROOTS = {"pyamplicol.libs", "pyamplicol.dylibs"}
 _SDK_SHARED_LIBRARY = re.compile(
     r"lib/lib[A-Za-z0-9_+-]+(?:\.so(?:\.[0-9]+)+|(?:\.[0-9]+)*\.dylib)"
+)
+# Wheel size report components by member name (first match; the rest is
+# "other").
+_WHEEL_SIZE_COMPONENTS = (
+    ("extension", re.compile(r"pyamplicol/_rusticol(?:\.[^./]+)*\.so")),
+    ("SDK archive", re.compile(r"pyamplicol/_sdk/lib/[^/]+\.a")),
+    ("SDK shared libraries", re.compile(r"pyamplicol/_sdk/lib/[^/]+")),
+    (
+        "bundled libraries",
+        re.compile(
+            "(?:" + "|".join(map(re.escape, sorted(_ALLOWED_REPAIR_ROOTS))) + ")/.+"
+        ),
+    ),
+    ("prepared models", re.compile(re.escape(_PREPARED_MODEL_WHEEL_PREFIX) + "/.+")),
 )
 _FORBIDDEN_SDIST_MEMBERS = {
     ".cargo/config.toml",
@@ -1479,6 +1494,24 @@ def _reject_native_path_bytes(data: bytes, description: str) -> None:
             )
 
 
+def _nm_symbols(output: str) -> list[tuple[str | None, str]]:
+    """``(type, name)`` of each symbol line of BSD-format ``nm`` output.
+
+    A line is ``[value] type name``; archive member headers end with ``:``.
+    For ``-u`` on a Mach-O file, Darwin's ``nm`` (Apple's LLVM ``nm``,
+    ``llvm-nm`` and the classic cctools ``nm`` alike) prints the bare name,
+    so such a line has no type.
+    """
+
+    symbols: list[tuple[str | None, str]] = []
+    for line in output.splitlines():
+        fields = line.split()
+        if not fields or line.endswith(":"):
+            continue
+        symbols.append((fields[-2] if len(fields) >= 2 else None, fields[-1]))
+    return symbols
+
+
 def _scan_capi_archive(path: Path, *, allow_local_rustup: bool) -> bool:
     """Validate relocation paths and authoritative undefined-symbol linkage.
 
@@ -1508,11 +1541,10 @@ def _scan_capi_archive(path: Path, *, allow_local_rustup: bool) -> bool:
             text=True,
         )
         forbidden_symbols: list[str] = []
-        for line in completed.stdout.splitlines():
-            fields = line.split()
-            if len(fields) < 2 or fields[-2] not in {"U", "u", "W", "w", "V", "v"}:
+        for kind, symbol in _nm_symbols(completed.stdout):
+            # A bare name (no type) is the Darwin form of an undefined symbol.
+            if kind is not None and kind not in _UNDEFINED_SYMBOL_TYPES:
                 continue
-            symbol = fields[-1]
             normalized = symbol.removeprefix("_").lower()
             if normalized.startswith(_FORBIDDEN_CAPI_UNDEFINED_PREFIXES):
                 forbidden_symbols.append(symbol)
@@ -1654,12 +1686,7 @@ def _symbol_names(path: Path, *arguments: str) -> set[str] | None:
         )
         if completed.returncode != 0:
             continue
-        names: set[str] = set()
-        for line in completed.stdout.splitlines():
-            fields = line.split()
-            if len(fields) >= 2 and not line.endswith(":"):
-                names.add(fields[-1])
-        return names
+        return {name for _kind, name in _nm_symbols(completed.stdout)}
     return None
 
 
@@ -1706,7 +1733,8 @@ def _scan_static_runtime_families(path: Path, description: str) -> None:
 
     data = path.read_bytes()
     elf_shared_object = data[:4] == b"\x7fELF" and data[16:18] in {b"\x03\x00"}
-    defined = _symbol_names(path, "--defined-only") or set()
+    listed = _symbol_names(path, "--defined-only")
+    defined = listed or set()
     if elf_shared_object:
         defined |= _symbol_names(path, "-D", "--defined-only") or set()
     copied = sorted(name for name in defined if _runtime_symbol(name))
@@ -1729,9 +1757,12 @@ def _scan_static_runtime_families(path: Path, description: str) -> None:
         if _marker_outside_symbol_names(data, lowered, marker.encode(), names)
     ]
     if found:
+        # Without a symbol table, imported names count as markers as well.
+        unread = "" if listed is not None else " (no nm could read its symbols)"
         raise ArtifactError(
             f"{description} contains a forbidden static arithmetic runtime: "
             + ", ".join(found)
+            + unread
         )
 
 
@@ -1879,6 +1910,31 @@ def _native_scan(
         _scan_static_runtime_families(archive_path, "Rusticol C API archive")
 
 
+def wheel_size_summary(path: Path) -> str:
+    """The wheel's size and limit with its compressed bytes per component."""
+
+    size = path.stat().st_size
+    totals = {name: 0 for name, _pattern in _WHEEL_SIZE_COMPONENTS}
+    totals["other"] = 0
+    with zipfile.ZipFile(path) as archive:
+        for info in archive.infolist():
+            component = next(
+                (
+                    name
+                    for name, pattern in _WHEEL_SIZE_COMPONENTS
+                    if pattern.fullmatch(info.filename)
+                ),
+                "other",
+            )
+            totals[component] += info.compress_size
+    totals["zip metadata"] = size - sum(totals.values())
+    parts = ", ".join(f"{name} {value}" for name, value in totals.items())
+    return (
+        f"{path.name} is {size} bytes (limit {MAX_WHEEL_BYTES}); "
+        f"compressed bytes: {parts}"
+    )
+
+
 def audit_wheel(
     path: Path,
     *,
@@ -1891,10 +1947,12 @@ def audit_wheel(
     if mode not in {"candidate", "release"}:
         raise ArtifactError(f"unsupported wheel audit mode: {mode}")
     size = path.stat().st_size
-    if size > MAX_WHEEL_BYTES:
-        raise ArtifactError(
-            f"compressed wheel is {size} bytes; limit is {MAX_WHEEL_BYTES} bytes"
-        )
+    # The size limit is a publication constraint: an oversized wheel is still
+    # audited in full first, so that the limit never masks a content defect.
+    oversized = size > MAX_WHEEL_BYTES
+    size_error = f"compressed wheel is {size} bytes; limit is {MAX_WHEEL_BYTES} bytes"
+    if oversized and not zipfile.is_zipfile(path):
+        raise ArtifactError(size_error)
     filename_version, python_tag, abi_tag, platform_tag = _parse_wheel_filename(path)
     if python_tag != EXPECTED_PYTHON_TAG or abi_tag != EXPECTED_ABI_TAG:
         raise ArtifactError(
@@ -2017,6 +2075,10 @@ def audit_wheel(
             extensions[0],
             target,
             allow_local_rustup=mode == "candidate",
+        )
+    if oversized:
+        raise ArtifactError(
+            f"{size_error} (every other wheel check passed); {wheel_size_summary(path)}"
         )
     return WheelReport(
         filename=path.name,
@@ -2205,4 +2267,5 @@ __all__ = [
     "WheelReport",
     "audit_sdist",
     "audit_wheel",
+    "wheel_size_summary",
 ]
