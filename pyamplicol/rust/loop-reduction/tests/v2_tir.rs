@@ -634,10 +634,16 @@ fn capability_refusals_are_typed() {
         .unwrap()
         .plans();
     assert_eq!(found.len(), 4 + 4);
-    // TIRust's direct engine at this pin serves at most twelve propagators.
-    let refused = match TirReductionBackend::with_histogram([(13, 0)], TirOptions::default()) {
+    // Thirteen propagators (beyond the twelve of TIRust's former fixed cap)
+    // are admitted: the bound is TIRust's capability query, no constant here.
+    let beyond = TirReductionBackend::with_histogram([(13, 2)], TirOptions::default()).unwrap();
+    assert_eq!(beyond.plans(), [(13, 0), (13, 1), (13, 2)]);
+    // One propagator more than the query's largest count is refused typed,
+    // with TIRust's reason.
+    let n = iregi_rust::DirectReductionPlan::capabilities(&0f64).max_propagators + 1;
+    let refused = match TirReductionBackend::with_histogram([(n, 0)], TirOptions::default()) {
         Err(error) => error,
-        Ok(_) => panic!("TIRust admitted 13 propagators at this pin"),
+        Ok(_) => panic!("TIRust admitted {n} propagators"),
     };
     assert_eq!(
         refused.kind(),
@@ -646,7 +652,7 @@ fn capability_refusals_are_typed() {
     assert!(
         refused
             .message()
-            .contains("TIRust cannot reduce 13 propagators"),
+            .contains(&format!("TIRust cannot reduce {n} propagators")),
         "{}",
         refused.message()
     );
