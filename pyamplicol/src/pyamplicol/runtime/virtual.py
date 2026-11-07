@@ -274,19 +274,24 @@ def v2_public_estimate(
         else [canonical_order(sector) for sector in sectors]
     )
 
-    def laurent(found: Any) -> LaurentCoefficients:
-        values = [
+    def floats(found: Any) -> list[float]:
+        return [
             0.0 if found is None else abs(float(found.coefficients[k]))
             for k in range(width)
         ]
-        return LaurentCoefficients(*values, *([None] * (3 - width)))
 
-    absolute = tuple(laurent(errors.get(key)) for key in keys)
-    magnitude = tuple(laurent(scales.get(key)) for key in keys)
+    def laurent(values: list[float]) -> LaurentCoefficients:
+        absent = cast(VirtualScalar, None)
+        return LaurentCoefficients(*values, *([absent] * (3 - width)))
+
+    error_values = [floats(errors.get(key)) for key in keys]
+    scale_values = [floats(scales.get(key)) for key in keys]
+    absolute = tuple(laurent(values) for values in error_values)
+    magnitude = tuple(laurent(values) for values in scale_values)
     ratios = [
         [
             _ratio(error[k], size[k])
-            for error, size in zip(absolute, magnitude, strict=True)
+            for error, size in zip(error_values, scale_values, strict=True)
         ]
         for k in range(width)
     ]

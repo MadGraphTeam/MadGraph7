@@ -355,6 +355,23 @@ def test_reduction_option_surfaces(tmp_path):
     with pytest.raises(ValueError, match="reduction must be one of"):
         replace(request, reduction="golem")
 
+    # The configuration keys stay importable without numpy (CI's
+    # python-compatibility job; the 936e81b3 lesson).
+    probe = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; from pyamplicol.config import LoopConfig, ReductionBackend; "
+            "LoopConfig(reduction=ReductionBackend.TIRUST); "
+            "print('numpy' in sys.modules)",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=True,
+    )
+    assert probe.stdout.strip().splitlines()[-1] == "False"
+
     from pyamplicol import Runtime
 
     class Tree:

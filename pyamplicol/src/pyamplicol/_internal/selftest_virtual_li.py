@@ -79,7 +79,7 @@ def card(output: Path, cache_dir: Path | None = None) -> dict[str, object]:
     }
 
 
-def generate_li_self_test_artifact(output: Path, cache_dir: Path | None = None):
+def generate_li_self_test_artifact(output: Path, cache_dir: Path | None = None) -> Any:
     """Generate the self-test artifact into ``output`` (the shipped copy is
     this output; regenerate it when the artifact format or the package
     version changes)."""
