@@ -1533,26 +1533,33 @@ impl V2Executor {
     /// for NinjaRS). For validation, TIRust's keywords `method_choice`,
     /// `alternative_first` and `acceptance` (those of `V2TirReducer`; omitted,
     /// the backend's defaults) set its settings: its backend is rebuilt when
-    /// they differ from its current ones. NinjaRS refuses them.
-    #[pyo3(signature = (reduction="tirust", *, method_choice=None, alternative_first=super::v2::Limit::default_limit(), acceptance=None))]
+    /// they differ from its current ones. `profile` (a measurement:
+    /// `v2_tir::TirOptions::profile`, TIRust's own stage profile in the
+    /// report's "reduction: TIR ..." seconds) likewise. NinjaRS refuses them.
+    #[pyo3(signature = (reduction="tirust", *, method_choice=None, alternative_first=super::v2::Limit::default_limit(), acceptance=None, profile=None))]
     fn prepare_reduction(
         &mut self,
         reduction: &str,
         method_choice: Option<bool>,
         alternative_first: Option<super::v2::Limit>,
         acceptance: Option<f64>,
+        profile: Option<bool>,
     ) -> PyResult<Vec<(usize, usize)>> {
         let reduction = Reduction::parse(reduction).map_err(error)?;
         if reduction != Reduction::TiRust
-            && super::v2::tir_settings_given(method_choice, &alternative_first, acceptance)
+            && (super::v2::tir_settings_given(method_choice, &alternative_first, acceptance)
+                || profile.is_some())
         {
             return Err(error(
-                "method_choice, alternative_first and acceptance are TIRust's settings",
+                "method_choice, alternative_first, acceptance and profile are TIRust's settings",
             ));
         }
         #[cfg(feature = "tir")]
         if reduction == Reduction::TiRust && matches!(self.carrier, Carriers::Double) {
-            let options = super::v2::tir_options(method_choice, &alternative_first, acceptance)?;
+            let options = rusticol_loop_reduction::v2_tir::TirOptions {
+                profile: profile.unwrap_or(false),
+                ..super::v2::tir_options(method_choice, &alternative_first, acceptance)?
+            };
             let slot = &mut self.backends[reduction as usize];
             let current = match slot {
                 Some(V2Backends::TiRust(backend)) => Some(*backend.options()),
@@ -1566,7 +1573,7 @@ impl V2Executor {
             }
         }
         #[cfg(not(feature = "tir"))]
-        let _ = (method_choice, alternative_first, acceptance);
+        let _ = (method_choice, alternative_first, acceptance, profile);
         let backend = backend_of(
             &mut self.backends,
             self.carrier,

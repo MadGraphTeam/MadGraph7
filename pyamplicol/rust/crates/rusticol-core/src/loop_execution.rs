@@ -696,10 +696,27 @@ pub mod v2 {
             .collect()
     }
 
+    /// The lane vectors an amplitude-mode family's numerator and its
+    /// reduction lanes take in one bucket chunk: per (loop order, column)
+    /// its coefficients twice (the numerator, and the lanes' copy) and the
+    /// lanes' kinematics (`4N` shifts, `N` masses, the scale and the `N²`
+    /// invariants; `lanes_of`), one lane vector each (m-lit PLAN §2.b.3:
+    /// byte-bounded numerator chunks for loop-induced, within
+    /// [`V2Options::input_budget`]).
+    fn numerator_vectors(plan: &LoopProgramV4, family: &Family) -> usize {
+        let n = family.propagators();
+        let per_column = 2 * ninjars::fast::tensor_layout::ncoeff(family.rank) + 5 * n + 1 + n * n;
+        family.orders.len() * plan.columns * per_column
+    }
+
     /// Bucket chunks of `families` (ascending) in bucket order: runs of at
     /// most `size` families of one bucket whose chunk inputs take at most
     /// `vectors` lane vectors (a family alone may take more; `usize::MAX`:
-    /// runs of `size`).
+    /// runs of `size`). In an amplitude-mode plan (loop-induced; decided
+    /// once per plan) a family's numerator and reduction lanes count too
+    /// ([`numerator_vectors`]): its many columns (rows × colour components)
+    /// make them the largest objects of a chunk, so the one budget bounds
+    /// them; seeded plans keep their chunks.
     fn bucket_chunks(
         plan: &LoopProgramV4,
         size: usize,
@@ -745,14 +762,19 @@ pub mod v2 {
                     }
                     total
                 };
-                let mut add = new(&seen, stamp);
+                let numerator = if bounded && plan.amplitude {
+                    numerator_vectors(plan, family)
+                } else {
+                    0
+                };
+                let mut add = new(&seen, stamp) + numerator;
                 if !current.is_empty()
                     && (current.len() >= size.max(1) || held.saturating_add(add) > vectors)
                 {
                     parts.push(std::mem::take(&mut current));
                     stamp += 1;
                     held = 0;
-                    add = new(&seen, stamp);
+                    add = new(&seen, stamp) + numerator;
                 }
                 if bounded {
                     for (store, ids) in ids.iter().enumerate() {

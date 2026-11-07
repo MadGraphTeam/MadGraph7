@@ -139,6 +139,12 @@ pub struct TirOptions {
     /// The second frame of a method-choice row when the call asks for no
     /// check: rotation by one with the origin shift.
     pub acceptance_frame: ReductionFrame,
+    /// TIRust's own profile of every moment call (`DirectWorkspace::
+    /// set_profiling`: geometry, scalar masters, recursion, gather, output),
+    /// added to the statistics as the "reduction: TIR ..." seconds; a
+    /// measurement option (default off: its timers cost time), never a value
+    /// change.
+    pub profile: bool,
 }
 
 impl Default for TirOptions {
@@ -155,6 +161,7 @@ impl Default for TirOptions {
                 shift: true,
                 rescale: false,
             },
+            profile: false,
         }
     }
 }
@@ -244,6 +251,9 @@ impl Bin {
             let mut workspace = self.plan.workspace(0.0f64).map_err(|e| {
                 RusticolError::unsupported_runtime_capability("tirust", e.to_string())
             })?;
+            if options.profile {
+                workspace.set_profiling(true);
+            }
             if choice {
                 workspace.set_stability_threshold(options.method_choice_gate);
                 workspace.enable_estimated_method_choice(
@@ -299,6 +309,27 @@ struct Counters {
     acceptance_rows: u64,
     unverified: u64,
     capability: u64,
+    /// Scalar-master evaluations of TIRust's moment calls.
+    masters: u64,
+    /// [`TirOptions::profile`]: TIRust's profile (geometry, masters,
+    /// recursion, gather, output), in seconds.
+    profile: Option<[f64; 5]>,
+}
+
+impl Counters {
+    /// Add one TIRust call's scalar-master count, and its profile when
+    /// profiling.
+    fn call(&mut self, workspace: &DirectWorkspace<f64>, profiling: bool) {
+        self.masters += workspace.last_master_rows() as u64;
+        if profiling {
+            let p = workspace.last_profile();
+            let seconds = [p.geometry, p.masters, p.recurrence, p.gather, p.output];
+            let total = self.profile.get_or_insert([0.; 5]);
+            for (t, s) in total.iter_mut().zip(seconds) {
+                *t += s.as_secs_f64();
+            }
+        }
+    }
 }
 
 /// The TIR backend (module docs): binary64.
@@ -404,11 +435,21 @@ impl TirReductionBackend {
 
     pub fn take_statistics(&mut self) -> BackendStatistics {
         let c = std::mem::take(&mut self.counters);
+        let mut seconds = vec![
+            ("reduction: tensor moments", c.moments),
+            ("reduction: contraction", c.contraction),
+        ];
+        if let Some([geometry, masters, recursion, gather, output]) = c.profile {
+            seconds.extend([
+                ("reduction: TIR geometry", geometry),
+                ("reduction: TIR masters", masters),
+                ("reduction: TIR recursion", recursion),
+                ("reduction: TIR gather", gather),
+                ("reduction: TIR output", output),
+            ]);
+        }
         BackendStatistics {
-            seconds: vec![
-                ("reduction: tensor moments", c.moments),
-                ("reduction: contraction", c.contraction),
-            ],
+            seconds,
             counts: vec![
                 ("tensor moment rows", c.rows),
                 ("contracted lanes", c.lanes),
@@ -422,6 +463,7 @@ impl TirReductionBackend {
                     c.unverified,
                 ),
                 ("TIR capability refusals", c.capability),
+                ("TIR master evaluations", c.masters),
             ],
         }
     }
@@ -476,10 +518,11 @@ impl TirReductionBackend {
                 values,
             };
             let width = 5 * n + 1;
-            let result = bin
-                .workspace(false, &options)?
+            let workspace = bin.workspace(false, &options)?;
+            let result = workspace
                 .reduce_batch(&batch)
                 .map_err(|e| RusticolError::evaluation(format!("TIRust: {e}")))?;
+            self.counters.call(workspace, options.profile);
             let mut refused = Vec::new();
             for (k, &index) in members.iter().enumerate() {
                 match result.lane(k) {
@@ -524,6 +567,7 @@ impl TirReductionBackend {
             let result = workspace
                 .reduce_batch(&retry)
                 .map_err(|e| RusticolError::evaluation(format!("TIRust: {e}")))?;
+            self.counters.call(workspace, options.profile);
             let flagged = workspace.last_gram_lanes().to_vec();
             self.counters.rows += refused.len() as u64;
             for (r, &k) in refused.iter().enumerate() {
@@ -647,31 +691,49 @@ impl TirReductionBackend {
             let other = second_of[r];
             let map =
                 other.map(|_| FrameMap::<f64>::new(Some(frame), g.propagators, g.shifts.first()));
-            for lane in row.start..row.end {
-                let c = &g.coefficients[lane * declared..lane * declared + monomials];
-                let value = first
+            // The row's moments in the contraction's layout, once per row.
+            let slots: Result<Slots, String> = first
+                .moments
+                .as_ref()
+                .map(|m| Slots::new(&m.values, width))
+                .map_err(Clone::clone);
+            let other_slots: Option<Result<Slots, String>> = other.map(|other| {
+                other
                     .moments
                     .as_ref()
-                    .map(|m| contract(&m.values, c, width));
-                let again = other.map(|other| -> Result<Vec<Complex<f64>>, String> {
-                    let moments = other.moments.as_ref().map_err(Clone::clone)?;
-                    shifted.clear();
-                    map.as_ref().expect("a checked row's frame").coefficients(
-                        c,
-                        row.rank,
-                        &other.origin,
-                        &mut shifted,
-                    );
-                    let mut value = contract(&moments.values, &shifted, width);
-                    if let Some(factor) = &other.undo {
-                        for v in &mut value {
-                            *v *= *factor;
+                    .map(|m| Slots::new(&m.values, width))
+                    .map_err(Clone::clone)
+            });
+            for lane in row.start..row.end {
+                let c = &g.coefficients[lane * declared..lane * declared + monomials];
+                let value: LaneOutcome<f64> = match &slots {
+                    Ok(slots) => Ok(slots.contract(c)),
+                    Err(reason) => Err(reason.clone()),
+                };
+                let again = other.zip(other_slots.as_ref()).map(
+                    |(other, slots)| -> Result<Vec<Complex<f64>>, String> {
+                        let slots = match slots {
+                            Ok(slots) => slots,
+                            Err(reason) => return Err(reason.clone()),
+                        };
+                        shifted.clear();
+                        map.as_ref().expect("a checked row's frame").coefficients(
+                            c,
+                            row.rank,
+                            &other.origin,
+                            &mut shifted,
+                        );
+                        let mut value = slots.contract(&shifted);
+                        if let Some(factor) = &other.undo {
+                            for v in &mut value {
+                                *v *= *factor;
+                            }
                         }
-                    }
-                    Ok(value)
-                });
+                        Ok(value)
+                    },
+                );
                 self.counters.lanes += 1;
-                let verified = match (&first.moments, &value, &again) {
+                let verified = match (&first.moments, value, &again) {
                     (Ok(m), Ok(value), Some(again)) if m.choice => match again {
                         Ok(again) => {
                             let scale = term_scale(&m.values, c, width);
@@ -681,7 +743,7 @@ impl TirReductionBackend {
                                 .map(|(a, b)| complex(&(*a - b)))
                                 .fold(0f64, f64::max);
                             if deviation <= self.options.acceptance * scale {
-                                Ok(value.clone())
+                                Ok(value)
                             } else {
                                 self.counters.unverified += 1;
                                 Err(format!(
@@ -699,7 +761,7 @@ impl TirReductionBackend {
                             ))
                         }
                     },
-                    (_, value, _) => value.clone().map_err(Clone::clone),
+                    (_, value, _) => value,
                 };
                 direct_out[row.group].push(verified);
                 if let Some(check_out) = &mut check_out {
@@ -832,18 +894,66 @@ fn permuted(values: &[Complex<f64>], position: &[usize]) -> Vec<[Complex<f64>; 4
         .collect()
 }
 
-/// `Σ_α c_α M_α` in the first `width` slots (finite, 1/ε, 1/ε², UV).
-fn contract(moments: &[[Complex<f64>; 4]], c: &[Complex<f64>], width: usize) -> Vec<Complex<f64>> {
-    let mut out = vec![Complex::new(0., 0.); width];
-    for (m, c) in moments.iter().zip(c) {
-        if c.re == 0. && c.im == 0. {
-            continue;
+/// A row's moments in the first `width` slots (finite, 1/ε, 1/ε², UV), the
+/// real and imaginary parts of each slot contiguous: the layout of the
+/// contraction `Σ_α c_α M_α` of every lane of the row (lit-cache, PLAN
+/// §2.b.2 item 4), built once per row.
+struct Slots {
+    re: Vec<f64>,
+    im: Vec<f64>,
+    monomials: usize,
+}
+
+impl Slots {
+    fn new(moments: &[[Complex<f64>; 4]], width: usize) -> Self {
+        let monomials = moments.len();
+        let mut re = Vec::with_capacity(width * monomials);
+        let mut im = Vec::with_capacity(width * monomials);
+        for slot in 0..width {
+            re.extend(moments.iter().map(|m| m[slot].re));
+            im.extend(moments.iter().map(|m| m[slot].im));
         }
-        for (slot, value) in out.iter_mut().enumerate() {
-            *value += *c * m[slot];
+        Self { re, im, monomials }
+    }
+
+    /// `Σ_α c_α M_α` per slot of one lane's coefficients `c` (one per
+    /// monomial of the row).
+    fn contract(&self, c: &[Complex<f64>]) -> Vec<Complex<f64>> {
+        debug_assert_eq!(c.len(), self.monomials);
+        let m = self.monomials;
+        self.re
+            .chunks_exact(m.max(1))
+            .zip(self.im.chunks_exact(m.max(1)))
+            .map(|(re, im)| dot(c, re, im))
+            .collect()
+    }
+}
+
+/// `Σ_α c_α (re_α + i im_α)` in four independent partial sums (the lanes of
+/// a vector unit: no reassociation inside a sum, so the compiler may
+/// vectorise them), added in a fixed order.
+fn dot(c: &[Complex<f64>], re: &[f64], im: &[f64]) -> Complex<f64> {
+    let n = c.len().min(re.len());
+    let mut acc = [[0f64; 2]; 4];
+    let full = n - n % 4;
+    for i in (0..full).step_by(4) {
+        for (j, acc) in acc.iter_mut().enumerate() {
+            let (a, b) = (c[i + j].re, c[i + j].im);
+            let (x, y) = (re[i + j], im[i + j]);
+            acc[0] += a * x - b * y;
+            acc[1] += a * y + b * x;
         }
     }
-    out
+    for (k, i) in (full..n).enumerate() {
+        let (a, b) = (c[i].re, c[i].im);
+        let (x, y) = (re[i], im[i]);
+        acc[k][0] += a * x - b * y;
+        acc[k][1] += a * y + b * x;
+    }
+    Complex::new(
+        (acc[0][0] + acc[1][0]) + (acc[2][0] + acc[3][0]),
+        (acc[0][1] + acc[1][1]) + (acc[2][1] + acc[3][1]),
+    )
 }
 
 /// The lane's term scale: `max_s Σ_α |c_α| |M_α[s]|` over its `width` slots.
