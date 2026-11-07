@@ -54,7 +54,7 @@ cd pyamplicol
 python -m pip install .
 ```
 
-A source build requires Python 3.11 or newer, Rust 1.89 or newer, and a C/C++
+A source build requires Python 3.11 or newer, Rust 1.96 or newer (the workspace `rust-version`), and a C/C++
 toolchain. A Fortran compiler is required only for Fortran consumers.
 
 Contributor setup defaults to published Python dependencies from

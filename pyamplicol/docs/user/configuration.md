@@ -183,7 +183,7 @@ the matrix element is the loop-squared |A_loop|^2) by `process.loop_induced`:
 | `"auto"` (default) | a request none of whose processes has a Born is served loop-induced; in a mixed request (`p p > z z`) the Born members are served and the Born-less ones (`g g > z z`) skipped with a typed `loop-induced` record |
 | `"skip"` | nothing loop-induced; a purely loop-induced request is refused (`loop-induced`) |
 | `"only"` | only the Born-less processes, loop-induced; the Born members are skipped (`born-in-loop-induced-mode`, refused for a request without a Born-less member) |
-| `"include"` | both kinds of a mixed request as separate contributions, never summed (not served yet: `loop-induced-include-pending`; separate process entries already get both kinds in one plan under `"auto"`) |
+| `"include"` | both kinds of a mixed request, each concrete process its own contribution, never summed: the Born members as Born-interfered virtuals (runtime `rusticol.loop-runtime.v4`), the Born-less ones loop-induced (`rusticol.loop-runtime.v5`); separate process entries get both kinds in one artifact under `"auto"` too |
 
 A loop-induced process takes the lowest loop-amplitude orders its loops reach
 (`coupling_order_policy = "minimal"`, by the model's coupling hierarchy; with
@@ -199,7 +199,16 @@ are exact colour zeros (`colour_zero_loop_orders`, `exact_colour_zero`).
 Generation stores |A_loop|^2 at full colour (artifact capability
 `rusticol.loop-runtime.v5`); `Runtime.evaluate` returns a `VirtualEvaluation`
 with `contribution = "loop-induced"`, empty Born fields and the poles
-`"all"` or `"none"` (their vanishing is a finiteness cross-check).
+`"all"` or `"none"` (`"uv"` and `"ir"` are refused: the UV and IR parts of a
+square are not additive). The computed poles vanish (a necessary-only
+finiteness cross-check); with the stability checks each lane diagnostic also
+carries the amplitude-level finiteness ratio (`finiteness`: the amplitude's
+poles in the colour-metric norm against their pre-cancellation scale, of the
+order of the unit roundoff). Zeros are never declared by a physics rule
+(Landau-Yang, Furry, J_z): a vanishing |A_loop|^2 (`g g > h a`,
+`g g > a a a`) is reported as zero within its absolute estimate, `|value| <=
+E` with the estimate's `absolute` E and `magnitude` S (the size of what
+cancelled); only an exact colour zero is an exact 0.
 Generation probes every loop-induced process in double-double at one point
 (the validation point farthest from the tree poles, lifted to exact momentum
 conservation), on its full tree kernels with every width fixed to zero (the
@@ -681,6 +690,39 @@ under every selection, and `"none"` saves the pole work. The CLI spells these
 `--poles {all,none,uv,ir}`,
 `--stability-rotation SPEC` (repeatable), `--stability-rotations COUNT`,
 `--stability-reduction-direction` and `--stability-rescaled`.
+
+#### Reduction backend
+
+Two backends reduce the loop numerators: NinjaRS (integrand reduction) and
+TIRust (tensor-integral reduction: one set of tensor integrals per loop
+family and point serves every helicity and colour amplitude, which suits
+loop-induced processes, reduced per amplitude). Both serve both process
+types. `loop.reduction` is the generation default recorded in the artifact
+(the artifact itself does not depend on it), `evaluation.reduction` (CLI
+`--loop-reduction` on `generate` and `evaluate`; Python `Runtime.load(...,
+reduction=)` and `evaluate(..., reduction=)`) overrides it:
+
+```toml
+[loop]
+reduction = "auto"             # generation default: auto, ninjars, tirust
+
+[evaluation]
+reduction = "ninjars"          # override for this evaluation (default: the artifact's)
+```
+
+`"auto"` takes the per-type default, TIRust for a loop-induced and NinjaRS
+for a Born-interfered process; where TIRust cannot serve the call (a native
+extension built without it, a carrier it does not serve yet) it falls back to
+NinjaRS and records why. An explicitly requested backend that cannot serve
+the call is refused before any point is evaluated (`CompatibilityError`, key
+`reduction-unavailable`), never switched silently. The choice is made once
+per call and carrier (each rescue level's carrier in the Python rescue), and
+every lane diagnostic records it (`VirtualLaneDiagnostic.reduction`: the
+requested and effective backend and the reason; also in the CLI's JSON).
+Until the TIRust backend is built into the native extension (m-lit
+`lit-tir`), every call runs on NinjaRS: `"auto"` records the fallback and
+`"tirust"` is refused. `loop.reduction` other than `"auto"` needs a one-loop
+request (`process.loop_coupling_orders`).
 
 **Momenta and arithmetic.** Every arithmetic (`double`, `double-double`,
 `arbitrary`) takes each external leg's invariant p² in the loop integrals to be

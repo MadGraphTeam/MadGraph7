@@ -330,7 +330,7 @@ pub fn load_loop_v2_artifact(
     // checked against its contribution below.
     require(
         is_loop_v2_manifest(artifact.manifest()),
-        "plan v4 processes cannot share an artifact with other runtimes",
+        "v2 loop processes (v4/v5) cannot share an artifact with other runtimes",
     )?;
     let selection = artifact.select_process(requested_process)?;
     // A stored process may list permutation aliases: the Python runtime

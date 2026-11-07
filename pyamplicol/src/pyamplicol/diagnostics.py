@@ -278,6 +278,36 @@ def _prepared_virtual_check() -> DiagnosticCheck:
     return DiagnosticCheck("physics-virtual-prepared", "pass", summary)
 
 
+def _prepared_loop_induced_check() -> DiagnosticCheck:
+    """A loop-induced one-loop virtual (|A_loop|^2 of g g > h) from the
+    shipped prepared artifact (``_internal.selftest_virtual_li``: loaded and
+    evaluated, never generated) against MadLoop, with its poles vanishing.
+    Its binary64 evaluation touches no Symbolica state (no licence needed);
+    loading reads the compiled model with Symbolica, so an evaluation-only
+    installation without it reports a warning naming why."""
+
+    try:
+        import symbolica  # noqa: F401
+    except ImportError as exc:
+        return DiagnosticCheck(
+            "physics-virtual-loop-induced",
+            "warning",
+            "not run: loading the prepared loop-induced virtual reads its "
+            f"compiled model with Symbolica ({exc})",
+        )
+    try:
+        from ._internal.selftest_virtual_li import (
+            run_prepared_loop_induced_self_test,
+        )
+
+        summary, _worst = run_prepared_loop_induced_self_test()
+    except Exception as exc:
+        return DiagnosticCheck(
+            "physics-virtual-loop-induced", "fail", f"{type(exc).__name__}: {exc}"
+        )
+    return DiagnosticCheck("physics-virtual-loop-induced", "pass", summary)
+
+
 def _symbolica_check() -> DiagnosticCheck:
     try:
         from .licensing import detect_symbolica_license
@@ -327,6 +357,7 @@ def run_self_test() -> DiagnosticReport:
         _physics_check(),
         _virtual_check(),
         _prepared_virtual_check(),
+        _prepared_loop_induced_check(),
     )
     return DiagnosticReport(__version__, checks)
 

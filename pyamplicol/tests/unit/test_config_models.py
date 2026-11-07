@@ -36,6 +36,7 @@ from pyamplicol.config import (
     ProcessGroupAnalysis,
     R2Strategy,
     RecurrenceEvaluatorConfig,
+    ReductionBackend,
     RelationDiscoveryMode,
     RunConfig,
     SymbolicaConfig,
@@ -43,7 +44,18 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 126
+    assert len(FIELD_REGISTRY) == 128
+    # m-lit LIT-API: the reduction backend (Q17 / Q18), a generation default
+    # and its runtime override.
+    assert FIELD_REGISTRY["loop.reduction"].default == "auto"
+    assert FIELD_REGISTRY["loop.reduction"].choices == ("auto", "ninjars", "tirust")
+    assert FIELD_REGISTRY["evaluation.reduction"].default is None
+    assert FIELD_REGISTRY["evaluation.reduction"].nullable
+    assert FIELD_REGISTRY["evaluation.reduction"].choices == (
+        "auto",
+        "ninjars",
+        "tirust",
+    )
     # m-lit LIT-REQ: loop-induced routing (Q2 (b)).
     assert FIELD_REGISTRY["process.loop_induced"].default == "auto"
     assert FIELD_REGISTRY["process.loop_induced"].choices == (
@@ -91,6 +103,14 @@ def test_loop_config_refuses_the_removed_engine_with_the_reason() -> None:
         ):
             LoopConfig(engine=value)
     assert LoopConfig(r2_strategy="model").r2_strategy is R2Strategy.MODEL
+    assert LoopConfig().reduction is ReductionBackend.AUTO
+    assert LoopConfig(reduction="tirust").reduction is ReductionBackend.TIRUST
+    with pytest.raises(ConfigurationError, match=r"loop\.reduction must be one"):
+        LoopConfig(reduction="engine")
+    assert EvaluationConfig().reduction is None
+    assert EvaluationConfig(reduction="ninjars").reduction is ReductionBackend.NINJARS
+    with pytest.raises(ConfigurationError, match=r"evaluation\.reduction must be"):
+        EvaluationConfig(reduction="fast")
     assert (
         FIELD_REGISTRY["loop.preparation.fixed_parameters"].kind == "map_exact_scalar"
     )

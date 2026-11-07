@@ -84,6 +84,7 @@ _VIRTUAL_ONLY_LEAVES = frozenset(
         "process.loop_coupling_orders",
         "process.loop_induced",
         "evaluation.arithmetic",
+        "evaluation.reduction",
         "evaluation.correlated_requests",
         "evaluation.mu_r2",
         "evaluation.mu_r2_file",

@@ -257,6 +257,8 @@ def _merged(
         stability=tuple(estimates) if checked else None,
         pole_parts=tuple(parts) if splits_poles(template.poles) else None,
         rescue=tuple(records),
+        # The kind of the levels' results ("virtual" or "loop-induced").
+        contribution=template.contribution,
     )
 
 
