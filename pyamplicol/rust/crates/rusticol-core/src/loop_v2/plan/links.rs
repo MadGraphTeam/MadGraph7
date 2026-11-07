@@ -161,7 +161,11 @@ pub(super) fn content_lists(content_rows: &[HashMap<Row, u32>]) -> Vec<Vec<Row>>
 
 /// The rows and row links of one family's steps, in the exporter's order:
 /// seeded (`dressed` None), or with dressed rows over `dressed`, each
-/// content's rows in block-row order ([`content_lists`]).
+/// content's rows in block-row order ([`content_lists`]; module docs: a leaf
+/// seeds the empty row, each source row of an edge is joined with every row
+/// of its content, a step's rows cover exactly the legs it has dressed, so a
+/// trace step's rows are Born rows). One walk serves both: only a leaf's
+/// rows and the rows an edge links a source row to depend on the rule.
 pub(super) fn derive(
     family: &FamilyFile,
     file: &PlanFile,
@@ -169,17 +173,23 @@ pub(super) fn derive(
     content_rows: &[HashMap<Row, u32>],
     dressed: Option<&[Vec<Row>]>,
 ) -> RusticolResult<DerivedSteps> {
-    if let Some(lists) = dressed {
-        return derive_dressed(family, file, space, lists);
-    }
     let mut outputs: Vec<Option<Vec<Row>>> = vec![None; family.steps.len()];
-    let born: Vec<Row> = (0..space.rows as u64).map(|key| (space.all, key)).collect();
+    let leaf: Vec<Row> = match dressed {
+        Some(_) => vec![(0, 0)],
+        None => (0..space.rows as u64).map(|key| (space.all, key)).collect(),
+    };
     let mut derived = DerivedSteps {
         rows: Vec::with_capacity(family.steps.len()),
         links: Vec::with_capacity(family.steps.len()),
-        born: Vec::new(),
+        born: Vec::with_capacity(if dressed.is_some() {
+            family.steps.len()
+        } else {
+            0
+        }),
     };
     for (index, step) in family.steps.iter().enumerate() {
+        // The legs a dressed step's rows cover.
+        let covered = space.all & !step.out;
         let mut targets: HashMap<Row, u32> = HashMap::new();
         let mut order: Vec<Row> = Vec::new();
         let mut step_links = Vec::with_capacity(step.edges.len());
@@ -189,28 +199,49 @@ pub(super) fn derive(
                 .get(edge.factor)
                 .ok_or_else(|| invalid("edge factor index"))?
                 .0;
-            let blocks = content_rows
-                .get(content)
-                .ok_or_else(|| invalid("factor content index"))?;
+            require(content < content_rows.len(), "factor content index")?;
             let mask = file.contents[content].mask;
             let source: &[Row] = match (edge.leaf, edge.child) {
-                (leaf, -1) if leaf >= 0 => &born,
+                (leaf_index, -1) if leaf_index >= 0 => &leaf,
                 (-1, child) if child >= 0 && (child as usize) < index => outputs[child as usize]
                     .as_deref()
                     .ok_or_else(|| invalid("a step output feeds two edges"))?,
                 _ => return Err(invalid("edge needs one leaf or one earlier child")),
             };
             let mut links = Vec::new();
+            let mut link = |row: Row, position: usize, block: u32| -> RusticolResult<()> {
+                let next = u32::try_from(order.len()).map_err(|_| invalid("too many rows"))?;
+                let target = *targets.entry(row).or_insert_with(|| {
+                    order.push(row);
+                    next
+                });
+                let position = u32::try_from(position).map_err(|_| invalid("too many rows"))?;
+                links.extend([target, position, block]);
+                Ok(())
+            };
             for (position, &row) in source.iter().enumerate() {
-                if let Some(&block) = blocks.get(&space.restrict(row, mask)) {
-                    let key = space.restrict(row, step.out);
-                    let next = u32::try_from(order.len()).map_err(|_| invalid("too many rows"))?;
-                    let target = *targets.entry(key).or_insert_with(|| {
-                        order.push(key);
-                        next
-                    });
-                    let position = u32::try_from(position).map_err(|_| invalid("too many rows"))?;
-                    links.extend([target, position, block]);
+                match dressed {
+                    // The block row of the same helicities on the content's
+                    // legs, restricted to the legs the step leaves open.
+                    None => {
+                        if let Some(&block) = content_rows[content].get(&space.restrict(row, mask))
+                        {
+                            link(space.restrict(row, step.out), position, block)?;
+                        }
+                    }
+                    // Every row of the content, joined with the source row.
+                    Some(lists) => {
+                        let (legs, key) = row;
+                        require(
+                            legs & mask == 0 && legs | mask == covered,
+                            "a dressed edge does not dress the step's legs",
+                        )?;
+                        for (block, &(_, block_key)) in lists[content].iter().enumerate() {
+                            let block =
+                                u32::try_from(block).map_err(|_| invalid("too many rows"))?;
+                            link((covered, key + block_key), position, block)?;
+                        }
+                    }
                 }
             }
             step_links.push(links);
@@ -222,88 +253,19 @@ pub(super) fn derive(
             }
         }
         derived.rows.push(order.len());
-        outputs[index] = Some(order);
-        derived.links.push(step_links);
-    }
-    Ok(derived)
-}
-
-/// [`derive`] with dressed rows (module docs): a leaf seeds the empty row;
-/// each source row of an edge is joined with every row of its content; a
-/// step's rows must cover exactly the legs it has dressed, so a trace step's
-/// rows are Born rows.
-fn derive_dressed(
-    family: &FamilyFile,
-    file: &PlanFile,
-    space: &RowSpace,
-    lists: &[Vec<Row>],
-) -> RusticolResult<DerivedSteps> {
-    let mut outputs: Vec<Option<Vec<Row>>> = vec![None; family.steps.len()];
-    let leaf: [Row; 1] = [(0, 0)];
-    let mut derived = DerivedSteps {
-        rows: Vec::with_capacity(family.steps.len()),
-        links: Vec::with_capacity(family.steps.len()),
-        born: Vec::with_capacity(family.steps.len()),
-    };
-    for (index, step) in family.steps.iter().enumerate() {
-        let dressed = space.all & !step.out;
-        let mut targets: HashMap<Row, u32> = HashMap::new();
-        let mut order: Vec<Row> = Vec::new();
-        let mut step_links = Vec::with_capacity(step.edges.len());
-        for edge in &step.edges {
-            let content = file
-                .factors
-                .get(edge.factor)
-                .ok_or_else(|| invalid("edge factor index"))?
-                .0;
-            let rows = lists
-                .get(content)
-                .ok_or_else(|| invalid("factor content index"))?;
-            let mask = file.contents[content].mask;
-            let source: &[Row] = match (edge.leaf, edge.child) {
-                (leaf_index, -1) if leaf_index >= 0 => &leaf,
-                (-1, child) if child >= 0 && (child as usize) < index => outputs[child as usize]
-                    .as_deref()
-                    .ok_or_else(|| invalid("a step output feeds two edges"))?,
-                _ => return Err(invalid("edge needs one leaf or one earlier child")),
-            };
-            let mut links = Vec::new();
-            for (position, &(legs, key)) in source.iter().enumerate() {
-                require(
-                    legs & mask == 0 && legs | mask == dressed,
-                    "a dressed edge does not dress the step's legs",
-                )?;
-                let position = u32::try_from(position).map_err(|_| invalid("too many rows"))?;
-                for (block, &(_, block_key)) in rows.iter().enumerate() {
-                    let row = (dressed, key + block_key);
-                    let next = u32::try_from(order.len()).map_err(|_| invalid("too many rows"))?;
-                    let target = *targets.entry(row).or_insert_with(|| {
-                        order.push(row);
-                        next
-                    });
-                    let block = u32::try_from(block).map_err(|_| invalid("too many rows"))?;
-                    links.extend([target, position, block]);
-                }
-            }
-            step_links.push(links);
+        if dressed.is_some() {
+            derived.born.push(if step.trace >= 0 {
+                require(covered == space.all, "a dressed trace step with open legs")?;
+                Some(
+                    order
+                        .iter()
+                        .map(|&(_, key)| u32::try_from(key).map_err(|_| invalid("too many rows")))
+                        .collect::<RusticolResult<_>>()?,
+                )
+            } else {
+                None
+            });
         }
-        for edge in &step.edges {
-            if edge.child >= 0 {
-                outputs[edge.child as usize] = None;
-            }
-        }
-        derived.rows.push(order.len());
-        derived.born.push(if step.trace >= 0 {
-            require(dressed == space.all, "a dressed trace step with open legs")?;
-            Some(
-                order
-                    .iter()
-                    .map(|&(_, key)| u32::try_from(key).map_err(|_| invalid("too many rows")))
-                    .collect::<RusticolResult<_>>()?,
-            )
-        } else {
-            None
-        });
         outputs[index] = Some(order);
         derived.links.push(step_links);
     }
