@@ -19,10 +19,16 @@ at the rows' reference points:
 * single-helicity selection: ``evaluate(helicities=[h])`` for every row.
 
 Each output passes when |N - T| <= 10 max(E_N, E_T) (L6, binary64: the
-backends' absolute estimates E of the same entry). The check exits 0 when
-every output passes, 1 when one fails and 2 when TIRust does not serve the
-loop-induced observable calls yet (``reduction.ReductionUnavailable``,
-before LIT-TIR wires the RESOLVED route). It writes one JSON record
+backends' absolute estimates E of the same entry). Every result's lane
+diagnostics must name the arm's backend as the effective one
+(``reduction.effective``), and the two arms must differ somewhere: a TIRust
+arm equal to the NinjaRS one bitwise on every output was not reduced by
+TIRust. The check exits 0 when every output passes, 1 when one fails (or
+the NinjaRS arm itself does not run), and 2 when the TIRust arm was not
+exercised: TIRust does not serve the loop-induced observable calls yet
+(``reduction.ReductionUnavailable``: the RESOLVED route or the executor's
+``runs(reduction=)`` not wired, m-lit LIT-TIR), a result names another
+effective backend, or the arms agree bitwise. It writes one JSON record
 (``--output``) with every comparison.
 
 Run (licence in the environment, the staged native of the slice)::
@@ -47,10 +53,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests" / "fixtures" / "loop" / "required" / "li"
-ROWS = {"li_gg_hgg": "g g > h g g", "li_uux_hgg": "u u~ > h g g"}
 BACKENDS = ("ninjars", "tirust")
 # PLAN §4.0 L6 (binary64): within ten times the larger estimate.
 FACTOR = 10
+
+
+class NotExercised(Exception):
+    """A result of the TIRust arm was not reduced by TIRust."""
 
 
 def _fixture(name: str) -> dict:
@@ -58,13 +67,26 @@ def _fixture(name: str) -> dict:
 
 
 def _artifact(work: Path, name: str, expression: str) -> Path:
-    sys.path.insert(0, str(ROOT))
-    from tests.unit.test_loop_v2_induced_observables import _generate
+    from tests.unit.loop_v2_induced_observables_rows import generate
 
     output = work / name / "artifact"
     if not (output / "artifact.json").is_file():
-        _generate(work / name, name, expression)
+        generate(work / name, name, expression)
     return output
+
+
+def _effective(result, backend: str, label: str) -> None:
+    """Every lane diagnostic of ``result`` names ``backend`` as effective."""
+
+    found = {
+        None if lane.reduction is None else lane.reduction.effective
+        for lane in result.diagnostics
+    }
+    if found != {backend}:
+        raise NotExercised(
+            f"{label}: the {backend!r} arm's results name the effective backends "
+            f"{sorted(map(str, found))}"
+        )
 
 
 def _entries(name: str, runtime, backend: str, checks) -> dict:
@@ -80,6 +102,7 @@ def _entries(name: str, runtime, backend: str, checks) -> dict:
     out: dict = {}
 
     def keep(label, result, index):
+        _effective(result, backend, label)
         for p, (values, estimate) in enumerate(
             zip(result.values, result.stability, strict=True)
         ):
@@ -108,6 +131,7 @@ def _entries(name: str, runtime, backend: str, checks) -> dict:
             stability_checks=checks,
             reduction=backend,
         )["x"]
+        _effective(result, backend, f"spin/{leg}/{history}")
         value = result.values[0][0]
         error = result.stability[0].absolute[0]
         out[f"spin/{leg}/{history}/p{p}"] = (complex(value.finite), float(error.finite))
@@ -115,6 +139,7 @@ def _entries(name: str, runtime, backend: str, checks) -> dict:
         resolved = runtime.evaluate_resolved(
             points, color_resolution=resolution, **options
         )
+        _effective(resolved, backend, f"resolved/{resolution}")
         for p, (values, estimates) in enumerate(
             zip(resolved.values, resolved.stability, strict=True)
         ):
@@ -140,29 +165,51 @@ def main() -> int:
     )
     parser.add_argument("--work-dir", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--rows", nargs="+", default=sorted(ROWS))
+    parser.add_argument("--rows", nargs="+", default=None)
     args = parser.parse_args()
 
+    sys.path.insert(0, str(ROOT))
     from pyamplicol import Runtime
     from pyamplicol.api import VirtualStabilityChecks
     from pyamplicol.loops.v2.reduction import ReductionUnavailable
+    from tests.unit.loop_v2_induced_observables_rows import ROWS
 
     checks = VirtualStabilityChecks(1, reduction_direction=True)
     record: dict = {"rule": "L6: |N - T| <= 10 max(E_N, E_T) (binary64)", "rows": {}}
+
+    def write() -> None:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(record, indent=1) + "\n")
+
+    def not_exercised(reason: str) -> int:
+        record["not_exercised"] = reason
+        write()
+        print(f"TIRust arm not exercised: {reason}")
+        return 2
+
     failed = 0
-    for name in args.rows:
+    for name in args.rows or sorted(ROWS):
         runtime = Runtime.load(_artifact(args.work_dir, name, ROWS[name]), process="p")
         try:
-            values = {b: _entries(name, runtime, b, checks) for b in BACKENDS}
-        except ReductionUnavailable as error:
-            record["unavailable"] = str(error)
-            args.output.parent.mkdir(parents=True, exist_ok=True)
-            args.output.write_text(json.dumps(record, indent=1) + "\n")
-            print(f"TIRust does not serve the loop-induced observables yet: {error}")
-            return 2
+            ninjars = _entries(name, runtime, "ninjars", checks)
+        except (ReductionUnavailable, NotExercised) as error:
+            # The reference arm must run: an error, not a missing TIRust.
+            record["error"] = f"NinjaRS arm: {error}"
+            write()
+            print(f"FAIL: the NinjaRS arm does not run: {error}")
+            return 1
+        try:
+            tirust = _entries(name, runtime, "tirust", checks)
+        except (ReductionUnavailable, NotExercised) as error:
+            return not_exercised(str(error))
+        if all(tirust[label][0] == value for label, (value, _e) in ninjars.items()):
+            return not_exercised(
+                f"{name}: every output equals the NinjaRS arm's bitwise "
+                f"({len(ninjars)} outputs)"
+            )
         rows = []
-        for label, (n, e_n) in values["ninjars"].items():
-            t, e_t = values["tirust"][label]
+        for label, (n, e_n) in ninjars.items():
+            t, e_t = tirust[label]
             bound = FACTOR * max(e_n, e_t)
             ok = abs(n - t) <= bound
             failed += not ok
@@ -177,11 +224,18 @@ def main() -> int:
                 }
             )
         record["rows"][name] = rows
-        worst = max(row["difference"] / row["bound"] for row in rows if row["bound"])
+        worst = max(
+            (
+                row["difference"] / row["bound"]
+                if row["bound"]
+                else (0.0 if not row["difference"] else float("inf"))
+                for row in rows
+            ),
+            default=0.0,
+        )
         print(f"{name}: {len(rows)} outputs, worst |N - T| / bound = {worst:.3g}")
     record["passed"] = not failed
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(record, indent=1) + "\n")
+    write()
     print("PASS" if not failed else f"FAIL ({failed} outputs)")
     return 0 if not failed else 1
 

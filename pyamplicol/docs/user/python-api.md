@@ -385,11 +385,16 @@ anchors = runtime.evaluate_resolved(
 one = runtime.evaluate(points, mu_r2=scales, helicities=["h0"])  # |A(h0)|^2 / avg
 ```
 
-A spin vector is projected on the leg's polarisation vectors (exact for a
-vector in their span, and for a massless leg up to a multiple of its
-momentum); a single-helicity selection divides by the total's average, so the
-selections of every row sum to the total, and its dressing is pruned to the
-selected rows (a family keeping more than half of its links runs whole).
+A spin vector v must be transverse to its leg's momentum p (v.p = 0 within
+the evaluation's rounding); it is then expanded on the leg's polarisation
+vectors, which span exactly those vectors (for a massless leg the part along
+p vanishes by the Ward identity), so the value is the literal-source one of
+a Born-interfered virtual. A non-transverse vector raises
+`CompatibilityError`. One `evaluate_correlated_many` call is one evaluation
+of the points whatever its spin vectors: every request is formed on the same
+amplitudes. A single-helicity selection divides by the total's average, so
+the selections of every row sum to the total, and its dressing is pruned to
+the selected rows (a family keeping more than half of its links runs whole).
 The amplitude-basis anchors are basis-dependent parts whose sum is the
 helicity's value. Colour-flow selection does not exist for loop-induced
 processes.
@@ -784,8 +789,8 @@ same rotation) in three ways:
 For a Born-interfered process every pole selection (`poles=`), colour
 accuracy and leading-colour `helicities` / `color_flows` selection is
 supported. A loop-induced process is rescued with what it serves: the pole
-selections `"all"` and `"none"`, full colour, and no helicity or colour-flow
-selection yet (`CompatibilityError`). The reduction backend (`reduction=`) is
+selections `"all"` and `"none"`, full colour and its helicity selections
+(`helicities=`); it has no colour flows to select (`CompatibilityError`). The reduction backend (`reduction=`) is
 resolved for every level's carrier before the first point is evaluated: an
 explicitly requested backend that cannot serve one of them is refused, an
 `"auto"` one records its choice per level in the lane diagnostics. `stability=` together with

@@ -32,11 +32,14 @@ by the one canonical square (``induced.square`` / the native
   A(lambda) with c_lambda = -v . conj(w_lambda) on the leg's own
   polarisation vectors w_lambda at the point (``polarisations``: the tree
   program's source records, HELAS conventions; w . conj(w') = -delta):
-  exact for v in their span, and for a massless leg modulo p_j, whose part
-  vanishes by the Ward identity (the generation-time probe checks it) --
-  the projection Recola's loop-induced spin correlations make. No extra
-  dressing or reduction: the spin-correlated output is the colour form of
-  the history on the vectors A(v) (the other legs' rows summed).
+  exact for v in their span, which is v . p_j = 0 (for a massless leg
+  modulo p_j, whose part vanishes by the Ward identity, the generation-time
+  probe checks it: the projection Recola's loop-induced spin correlations
+  make). A v with v . p_j != 0 beyond the carrier's rounding is refused
+  (``require_transverse``), never projected. No extra dressing or
+  reduction: the spin-correlated output is the colour form of the history
+  on the vectors A(v) (the other legs' rows summed), every spin source
+  assignment of a call on the same evaluations.
 * **Resolved** (``resolved``). Per helicity row h, |A(h)|^2/avg (one
   colour-contracted component); with ``AMPLITUDE_BASIS`` per basis element
   t the anchored part Re(conj(a_t) (G a)_t)/avg (the metric
@@ -48,7 +51,10 @@ by the one canonical square (``induced.square`` / the native
   the rows of a complete selection sum to it. No parity halving and no
   Bose row mapping (RULED Q37): every row is its own amplitude.
 
-Stability estimates (REQUIREMENTS_ADDENDUM C) per output: a rotation's
+Stability estimates (REQUIREMENTS_ADDENDUM C) per output. ``"born"``
+without spin sources over every row is |A|^2 itself: it carries the
+inclusive evaluation's estimate (``plan_export.point_estimate``). Every
+other output: a rotation's
 budget is the output's own deviation at the rotated point (every form is
 rotation invariant: the rotated spin vectors and polarisation vectors move
 together, and a row's little-group phase cancels in a^dag M a); the
@@ -61,10 +67,11 @@ never the output itself (RULED Q13: a zero is "zero within the estimate").
 
 from __future__ import annotations
 
-from collections.abc import Hashable, Mapping, Sequence
+from collections.abc import Callable, Hashable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, localcontext
 from fractions import Fraction
+from threading import RLock
 from typing import Any
 
 from pyamplicol.color.connections import ExactColorCoefficient
@@ -270,6 +277,55 @@ def spin_coefficients(
     return out
 
 
+# The terms of a Minkowski product: its rounding bound at unit roundoff u is
+# TERMS u sum_mu |v_mu||p_mu| (the dot product's gamma_n bound).
+TERMS = 4
+
+
+def require_transverse(
+    vector: Sequence[tuple[Any, Any]],
+    momentum: Sequence[Any],
+    roundoff: float,
+    leg: int,
+) -> None:
+    """Refuse a spin vector v of leg ``leg`` that is not transverse to the
+    leg's momentum p within the carrier's rounding: |Re v.p| + |Im v.p| <=
+    TERMS u sum_mu (|Re v_mu| + |Im v_mu|)|p_mu| at unit roundoff u
+    (``roundoff``), in exact rationals. The leg's polarisation vectors span
+    exactly {v : v.p = 0} (eps+, eps- and, for a massless leg, p, whose part
+    vanishes by the Ward identity; a massive leg's three polarisations), so
+    on a transverse v the projection (``spin_coefficients``) is the literal
+    source the Born-interfered virtual evaluates (the leg's wavefunction
+    replaced); a part with v.p != 0 has no meaning on the helicity
+    amplitudes and is refused, never dropped (``CompatibilityError``)."""
+
+    from pyamplicol.api.errors import CompatibilityError
+
+    from .assemble import _fraction
+
+    signs = (1, -1, -1, -1)
+    p = [_fraction(x) for x in momentum]
+    parts = [(_fraction(re), _fraction(im)) for re, im in vector]
+    real = sum(
+        sign * re * q for sign, (re, _im), q in zip(signs, parts, p, strict=True)
+    )
+    imag = sum(
+        sign * im * q for sign, (_re, im), q in zip(signs, parts, p, strict=True)
+    )
+    scale = sum(
+        (abs(re) + abs(im)) * abs(q) for (re, im), q in zip(parts, p, strict=True)
+    )
+    if abs(real) + abs(imag) > TERMS * Fraction(roundoff) * scale:
+        raise CompatibilityError(
+            f"the spin vector of leg {leg} is not transverse to the leg's "
+            f"momentum (|v.p| = {float(abs(real) + abs(imag)):.3g}, rounding "
+            f"bound {float(TERMS * Fraction(roundoff) * scale):.3g}): a "
+            "loop-induced spin correlation reads v on the leg's polarisation "
+            "vectors, which span v.p = 0 only; give v transverse at the "
+            "evaluation's precision"
+        )
+
+
 def spin_amplitudes(
     amplitudes: Mapping[tuple[Orders, rx.Row], Sequence[Sequence[Any]]],
     coefficients: Mapping[int, Mapping[int, Any]],
@@ -318,16 +374,19 @@ def spin_amplitudes(
 class Output:
     """One loop-induced output: the metric of its quadratic form (a history
     id, ``INCLUSIVE`` for G, or ("anchor", t)), the helicity rows it keeps
-    (None: all) and whether its spin legs carry vectors."""
+    (None: all) and the index of the call's spin source assignment it reads
+    (``InducedColumns.evaluate``)."""
 
     key: Hashable
     metric: Any = INCLUSIVE
     rows: frozenset[rx.Row] | None = None
+    spin: int = 0
 
 
 class Forms:
-    """The carrier matrices of one point's outputs: G, every declared
-    history's (H, K) and the anchors' metrics, formed once per carrier."""
+    """The carrier matrices of the outputs: G, every declared history's
+    (H, K) and the anchors' metrics, formed once per carrier precision
+    (``InducedObservables.forms``) and shared by every point."""
 
     def __init__(self, gram: Matrix, matrices: Mapping[str, Matrix], numbers: Any):
         self._gram = gram
@@ -350,12 +409,13 @@ class Forms:
                 exact = self._matrices[metric]
                 h, k = hermitian_parts(exact)
             numbers = self._numbers
-            carrier = [[numbers.colour(cell, 0) for cell in row] for row in h]
-            imaginary = (
-                None
-                if k is None
-                else [[numbers.colour(cell, 0) for cell in row] for row in k]
-            )
+            with numbers.scope():
+                carrier = [[numbers.colour(cell, 0) for cell in row] for row in h]
+                imaginary = (
+                    None
+                    if k is None
+                    else [[numbers.colour(cell, 0) for cell in row] for row in k]
+                )
             magnitude = [[abs(complex(cell)) for cell in row] for row in exact]
             found = self._found[metric] = (carrier, imaginary, magnitude)
         return found
@@ -504,12 +564,13 @@ def _spin_errors(errors: Mapping, coefficients: Mapping[int, Mapping[int, Any]])
 class PointOutputs:
     """The outputs of one point evaluation (a ``_NativePoint`` of the
     amplitude-mode executor): its amplitude vectors, the spin legs'
-    coefficients of one spin assignment and the carrier forms."""
+    coefficients of one spin assignment and the carrier forms (``Forms``,
+    shared by the call's points)."""
 
     def __init__(
         self,
         evaluation: Any,
-        matrices: Mapping[str, Matrix],
+        forms: Forms,
         sources: Sequence[Mapping[str, Any]],
         point: Sequence[Sequence[Any]],
         spin: Mapping[int, Any] | None,
@@ -518,9 +579,7 @@ class PointOutputs:
         numbers = evaluation.numbers
         self.width = induced.width_of(evaluation)
         self.size = len(evaluation.slice.amplitude)
-        self.forms = Forms(
-            evaluation.slice.amplitude.metric_at_three(), matrices, numbers
-        )
+        self.forms = forms
         self.coefficients: dict[int, dict[int, Any]] = {}
         if spin:
             with localcontext() as context:
@@ -700,17 +759,23 @@ class InducedColumns:
     """The outputs of one call kind on a loop-induced process
     (``V2ObservablesRuntime``'s native column runner): ``outputs`` are the
     call's ``Output`` records, evaluated on the process's own amplitude-mode
-    executor (one native batch per call, plus one per rotation)."""
+    executor (one native batch per call, plus one per rotation, whatever
+    the outputs' spin source assignments)."""
 
     def __init__(
         self,
         observables: InducedObservables,
         outputs: Sequence[Output],
         member: Any = None,
+        *,
+        resolved: bool = False,
     ):
         self.observables = observables
         self.outputs = tuple(outputs)
         self.member = member
+        # Resolved outputs are keyed (row, component): a member's keys carry
+        # its own helicity rows (``observables._member_key``).
+        self.resolved = resolved
 
     def _rows(self) -> frozenset[rx.Row] | None:
         """The helicity rows the call's outputs read when every output
@@ -734,9 +799,17 @@ class InducedColumns:
         poles="all",
         stability=None,
         ward=None,
+        reduction=None,
     ):
+        """Per point the outputs by key (None for a failed point:
+        ``FailedPoints``). ``spin`` per point is one spin source assignment
+        (a mapping or None) or a tuple of them, which the outputs index
+        (``Output.spin``); ``reduction`` the call's effective backend (the
+        executor refuses one it does not run)."""
+
+        from .assemble import Precision
         from .observables import _member_key, _rotated_point, _rotated_spin
-        from .plan_export import FailedPoints
+        from .plan_export import FailedPoints, point_estimate
         from .stability import StabilityChecks
 
         if ward is not None:
@@ -752,57 +825,87 @@ class InducedColumns:
         )
         if len(spins) != len(points):
             raise ValueError("one spin source assignment per point")
+        assignments = [
+            value if isinstance(value, tuple) else (value,) for value in spins
+        ]
         member = self.member
         if member is not None:
             points = [member.point(point) for point in points]
-            spins = [member.spin(value) for value in spins]
-        executor = self.observables.executor
-        precision, references, rotated, failures = executor.runs(
-            points,
-            scales,
-            parameters=parameters,
-            precision=precision,
-            poles=poles,
-            stability=stability,
-            rows=self._rows(),
-        )
-        sources = self.observables.sources
-        matrices = self.observables.matrices
+            assignments = [
+                tuple(member.spin(value) for value in values) for values in assignments
+            ]
+        roundoff = (precision or Precision.double()).unit_roundoff
+        for point, values in zip(points, assignments, strict=True):
+            for value in values:
+                for leg, vector in (value or {}).items():
+                    require_transverse(vector, point[int(leg) - 1], roundoff, int(leg))
+        observables = self.observables
+        with observables.lock:
+            # The executor is the artifact runtime's own (shared state: its
+            # row mask and term scale), run under its lock.
+            precision, references, rotated, failures = observables.executor.runs(
+                points,
+                scales,
+                parameters=parameters,
+                precision=precision,
+                poles=poles,
+                stability=stability,
+                rows=self._rows(),
+                reduction=reduction,
+            )
+        sources = observables.sources
+        forms = observables.forms(precision)
+        used = sorted({output.spin for output in self.outputs})
         out: list[Any] = []
         for index, reference in enumerate(references):
             if index in failures:
                 out.append(None)
                 continue
-            outputs = PointOutputs(
-                reference, matrices, sources, points[index], spins[index]
-            )
-            turned = [
-                PointOutputs(
-                    run[index],
-                    matrices,
-                    sources,
-                    _rotated_point(rotation, points[index]),
-                    _rotated_spin(rotation, spins[index]),
-                )
-                for rotation, run in zip(stability.rotations, rotated, strict=True)
-            ]
+            point = points[index]
+            outputs = {}
+            turned = {}
+            for g in used:
+                value = assignments[index][g]
+                outputs[g] = PointOutputs(reference, forms, sources, point, value)
+                turned[g] = [
+                    PointOutputs(
+                        run[index],
+                        forms,
+                        sources,
+                        _rotated_point(rotation, point),
+                        _rotated_spin(rotation, value),
+                    )
+                    for rotation, run in zip(stability.rotations, rotated, strict=True)
+                ]
             result = {}
             for output in self.outputs:
-                estimate = (
-                    outputs.estimate(
-                        output,
-                        turned,
-                        stability.reduction,
+                g = output.spin
+                inclusive = (
+                    output.metric == INCLUSIVE
+                    and output.rows is None
+                    and not outputs[g].coefficients
+                )
+                estimate = None
+                if stability.enabled and inclusive:
+                    # |A|^2 itself: the inclusive evaluation's estimate
+                    # (``NativeExecutor.evaluate``), the same quantity.
+                    estimate = point_estimate(
+                        reference,
+                        [run[index] for run in rotated],
+                        stability,
                         precision.unit_roundoff,
                     )
-                    if stability.enabled
-                    else None
-                )
+                elif stability.enabled:
+                    estimate = outputs[g].estimate(
+                        output, turned[g], stability.reduction, precision.unit_roundoff
+                    )
                 value = point_result(
-                    reference, outputs.value(output), estimate, output.rows
+                    reference, outputs[g].value(output), estimate, output.rows
                 )
                 key = output.key
-                result[key if member is None else _member_key(member, key)] = value
+                if member is not None and self.resolved:
+                    key = _member_key(member, key)
+                result[key] = value
             out.append(result)
         if failures:
             raise FailedPoints(out, failures)
@@ -815,7 +918,10 @@ class InducedObservables:
     V2InducedObservablesRuntime`` reads): its declared colour histories and
     spin classes, its helicity rows, the stored correlator matrices and the
     process's own amplitude-mode executor (a stored process's, or an
-    in-memory slice's native-input executor)."""
+    in-memory slice's native-input executor). ``current`` returns the
+    executor to run (the artifact runtime's, which ``clear`` replaces;
+    default the given one) and ``lock`` guards its runs (the artifact
+    runtime's lock, whose inclusive calls share the executor)."""
 
     def __init__(
         self,
@@ -823,8 +929,12 @@ class InducedObservables:
         histories: Sequence[Any] = (),
         spin_classes: Sequence[Sequence[int]] = (),
         matrices: Mapping[str, Matrix] | None = None,
+        *,
+        current: Callable[[], Any] | None = None,
+        lock: Any = None,
     ):
-        self.executor = executor
+        self._current = current or (lambda: executor)
+        self.lock = lock if lock is not None else RLock()
         self.slice = executor.slice
         amplitude = self.slice.amplitude
         if amplitude is None:
@@ -855,6 +965,7 @@ class InducedObservables:
         self.rows = tuple(rows)
         self.components: tuple[int, ...] = ()
         self.flows: tuple[Any, ...] = ()
+        self._forms: dict[Any, Forms] = {}
 
     @classmethod
     def of_slice(cls, slice_: Any, correlators: Any = None, **options: Any):
@@ -869,8 +980,28 @@ class InducedObservables:
         return cls(executor, histories, spin)
 
     @property
+    def executor(self) -> Any:
+        return self._current()
+
+    @property
     def sources(self) -> Sequence[Mapping[str, Any]]:
         return self.executor.exported.trees.program["source_fill"]["sources"]
+
+    def forms(self, precision: Any) -> Forms:
+        """The carrier forms of the outputs at ``precision`` (a ``Precision``),
+        built once (point independent)."""
+
+        from .assemble import _Numbers
+
+        with self.lock:
+            found = self._forms.get(precision)
+            if found is None:
+                found = self._forms[precision] = Forms(
+                    self.slice.amplitude.metric_at_three(),
+                    self.matrices,
+                    _Numbers(precision),
+                )
+            return found
 
     def history(self, identifier: str) -> Any:
         from pyamplicol.color.correlator_matrices import ColorCorrelator
@@ -886,17 +1017,20 @@ class InducedObservables:
         self, kind: str, value: Any, *, member: Any = None, **_options: Any
     ) -> InducedColumns:
         """The runner of one call kind (``V2ObservablesRuntime._native_columns``
-        keys): ``correlated`` (history ids), ``resolved`` (a colour
-        resolution, ``COLOUR_RESOLUTIONS``) or ``selection`` (a
-        ``selection.column``: its helicity rows)."""
+        keys): ``correlated`` (history ids, or (spin source assignment,
+        history id) pairs: ``V2InducedObservablesRuntime.
+        evaluate_correlated_many``), ``resolved`` (a colour resolution,
+        ``COLOUR_RESOLUTIONS``) or ``selection`` (a ``selection.column``: its
+        helicity rows)."""
 
         from .selection import SELECTION
 
         if kind == "correlated":
             outputs = []
-            for name in dict.fromkeys(value):
+            for item in dict.fromkeys(value):
+                spin, name = item if isinstance(item, tuple) else (0, item)
                 self.history(name)
-                outputs.append(Output(name, name))
+                outputs.append(Output(item, name, None, spin))
         elif kind == "resolved":
             if value not in COLOUR_RESOLUTIONS:
                 raise ValueError(f"unknown loop-induced resolution {value!r}")
@@ -920,7 +1054,7 @@ class InducedObservables:
             outputs = [Output(value.key, INCLUSIVE, value.rows)]
         else:
             raise ValueError(f"unknown column set {kind!r}")
-        return InducedColumns(self, outputs, member)
+        return InducedColumns(self, outputs, member, resolved=kind == "resolved")
 
 
 __all__ = [
@@ -938,6 +1072,7 @@ __all__ = [
     "declare",
     "hermitian_parts",
     "polarisations",
+    "require_transverse",
     "spin_amplitudes",
     "spin_coefficients",
 ]

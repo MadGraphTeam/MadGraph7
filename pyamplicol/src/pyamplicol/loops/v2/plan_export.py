@@ -1613,8 +1613,9 @@ def export_plan(
         # own row with the cells of t (``_Exporter.amplitude_seed_records``).
         if columns is not None or column_sets:
             raise ValueError(
-                "an amplitude-mode plan has its own (row, t) columns: observable "
-                "column sets of loop-induced processes are not served yet"
+                "an amplitude-mode plan has its own (row, t) columns: the "
+                "observables of a loop-induced process are quadratic forms on its "
+                "amplitude vectors (induced_observables), never column sets"
             )
         size = len(amplitude)
         columns = tuple(range(len(rows) * size))
@@ -1778,6 +1779,31 @@ class NativeNumerator:
     orders: Orders
     rank: int
     columns: tuple[tuple[Any, ...], ...]
+
+
+def point_estimate(
+    reference: Any, rotated: Sequence[Any], stability: Any, roundoff: float
+) -> Any:
+    """The stability estimate of one point's result (``NativeExecutor.
+    evaluate``): the rotation checks' budgets of the evaluations at the
+    rotated points ``rotated``, the reduction check's re-test budget, the
+    term scale of the floor and the per-family deviations."""
+
+    from .stability import ROTATION, StabilityEstimate
+
+    budgets = {}
+    for k, run in enumerate(rotated):
+        budgets[ROTATION.format(k)] = reference.rotation_budget(run)
+    if stability.reduction:
+        budgets[stability.reduction] = reference.retest_budget
+    components = reference.result.components
+    return StabilityEstimate.from_checks(
+        components["virtual"] if "virtual" in components else components["bare"],
+        budgets,
+        scale=reference.stability_scale(),
+        roundoff=roundoff,
+        families=reference.family_deviations,
+    )
 
 
 class FailedPoints(ArithmeticError):
@@ -2348,7 +2374,7 @@ class NativeExecutor:
         alone: ``FailedPoints`` carries the complete results of the others.
         """
 
-        from .stability import ROTATION, StabilityChecks, StabilityEstimate
+        from .stability import StabilityChecks
 
         stability = stability or StabilityChecks()
         precision, evaluations, rotated, failures = self.runs(
@@ -2369,20 +2395,11 @@ class NativeExecutor:
             if not stability.enabled:
                 out.append(reference.result)
                 continue
-            budgets = {}
-            for k, runs in enumerate(rotated):
-                budgets[ROTATION.format(k)] = reference.rotation_budget(runs[index])
-            if stability.reduction:
-                budgets[stability.reduction] = reference.retest_budget
-            components = reference.result.components
-            estimate = StabilityEstimate.from_checks(
-                components["virtual"]
-                if "virtual" in components
-                else components["bare"],
-                budgets,
-                scale=reference.stability_scale(),
-                roundoff=precision.unit_roundoff,
-                families=reference.family_deviations,
+            estimate = point_estimate(
+                reference,
+                [runs[index] for runs in rotated],
+                stability,
+                precision.unit_roundoff,
             )
             out.append(replace(reference.result, stability=estimate))
         if failures:
@@ -2401,6 +2418,7 @@ class NativeExecutor:
         schedule: Literal["B", "M"] = "B",
         ward: Any = None,
         rows: Iterable[rx.Row] | None = None,
+        reduction: str | None = None,
     ) -> tuple[Any, list[Any], list[list[Any]], dict[int, list[str]]]:
         """The point evaluations ``evaluate`` assembles its results from: the
         precision, the reference evaluation of every point (re-tested in the
@@ -2410,8 +2428,19 @@ class NativeExecutor:
         observables (``induced_observables``) form their quadratic forms on
         the same evaluations' amplitude vectors; ``rows`` (amplitude mode)
         keeps those helicity rows only (``row_mask``: the others are not
-        dressed, their amplitudes are not formed)."""
+        dressed, their amplitudes are not formed). ``reduction`` is the
+        effective backend the call's result records (``VirtualReduction.
+        effective``; None: the executor's own): this executor reduces with
+        NinjaRS, so another is refused typed, never run on NinjaRS (m-lit
+        lit-tir wires the TIRust backend here)."""
 
+        if reduction not in (None, "ninjars"):
+            from .reduction import ReductionUnavailable
+
+            raise ReductionUnavailable(
+                f"the native executor's reduction is NinjaRS's; the {reduction!r} "
+                "backend is not wired to it"
+            )
         if rows is None:
             return self._runs(
                 points, scales, parameters, precision, poles, stability, schedule, ward

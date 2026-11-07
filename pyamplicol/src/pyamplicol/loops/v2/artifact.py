@@ -1770,7 +1770,9 @@ class V2VirtualRuntime:
         process (m-lit LIT-OBS; ``runtime.virtual.V2InducedObservablesRuntime``):
         quadratic forms on the amplitude vectors of the process's own
         executor, with the declared histories' stored matrices (nothing
-        regenerates); a permuted mapped process reads them on its labels."""
+        regenerates); a permuted mapped process reads them on its labels.
+        They run the runtime's current executor (``clear`` replaces it) under
+        the runtime's lock (the inclusive calls share the executor)."""
 
         from pyamplicol.runtime.virtual import V2InducedObservablesRuntime
 
@@ -1778,7 +1780,9 @@ class V2VirtualRuntime:
 
         with self._lock:
             if self._observables is None:
-                observables: Any = InducedObservables(self._executor)
+                observables: Any = InducedObservables(
+                    self._executor, current=lambda: self._executor, lock=self._lock
+                )
                 if self._member is not None and self._member.alias:
                     from .mapping import MappedObservables
 
@@ -2555,7 +2559,11 @@ class V2VirtualRuntime:
     ) -> Any:
         """Per Born helicity row; the colour axis holds one entry per Born
         basis element at LC (``basis-<i>``) and one contracted component at
-        NLC and full colour (design §8.5)."""
+        NLC and full colour (design §8.5). A loop-induced process resolves
+        its own helicity rows with one contracted component (``"full"``) or,
+        with ``color_resolution="amplitude-basis"``, its amplitude-basis
+        anchors (``amplitude-<t>``; ``runtime.virtual.
+        V2InducedObservablesRuntime``)."""
 
         return self._observable_call(
             "evaluate_resolved", (momenta,), precision, arithmetic, reduction, options

@@ -33,7 +33,9 @@ from pathlib import Path
 
 import pytest
 
-from tests.unit.test_loop_v2_induced import _card, _fixture, _request, _Rows
+from tests.unit.test_loop_v2_induced import _fixture, _request, _Rows
+
+from .loop_v2_induced_observables_rows import ROWS, coloured, generate
 
 ROOT = Path(__file__).resolve().parents[2]
 CORRELATIONS = ROOT / "tests" / "fixtures" / "loop" / "required" / "li" / "correlations"
@@ -44,68 +46,13 @@ ROUNDING = 1e-11
 CASIMIR = {8: Fraction(3), 3: Fraction(4, 3), -3: Fraction(4, 3)}
 
 
-def _dipoles(legs):
-    return [
-        {
-            "id": f"T{i}T{j}",
-            "bra": [{"kind": "emit-gluon", "emitter": i, "emitted": -1}],
-            "ket": [{"kind": "emit-gluon", "emitter": j, "emitted": -1}],
-        }
-        for i in legs
-        for j in legs
-        if i != j
-    ]
-
-
 def _recola(name):
     return json.loads((CORRELATIONS / f"{name}-recola.json").read_text())
-
-
-def _coloured(pdgs):
-    return [k for k, pdg in enumerate(pdgs, 1) if abs(pdg) in (1, 2, 3, 4, 5, 6, 21)]
-
-
-def _gluons(pdgs):
-    return [k for k, pdg in enumerate(pdgs, 1) if pdg == 21]
-
-
-def _generate(root: Path, name: str, expression: str, aliases=()):
-    """The loop-induced artifact of fixture row ``name`` through the public
-    Generator, every dipole T_i.T_j and every gluon's spin class declared
-    (``aliases``: ``ProcessAlias`` arguments on process ``p``)."""
-
-    from pyamplicol.api import Generator, ProcessAlias, ProcessRequest, ProcessSet
-    from pyamplicol.config import resolve_config
-    from pyamplicol.correlators import CorrelatorConfig
-
-    fixture = _fixture(name)
-    pdgs = fixture["pdgs"]
-    root.mkdir(parents=True, exist_ok=True)
-    card = root / "card.toml"
-    card.write_text(_card(root / "artifact", (("p", expression),), fixture))
-    correlators = CorrelatorConfig.from_json_dict(
-        {
-            "color_correlations": _dipoles(_coloured(pdgs)),
-            "spin_correlations": [[leg] for leg in _gluons(pdgs)],
-        }
-    )
-    Generator(resolve_config(card)).generate(
-        ProcessSet(
-            (ProcessRequest.parse(expression, name="p"),),
-            tuple(ProcessAlias(*alias) for alias in aliases),
-        ),
-        root / "artifact",
-        correlators=correlators,
-    )
-    return root / "artifact"
 
 
 # A permutation alias of u u~ > h g g: u~ u > h g g (the initial legs
 # exchanged).
 ALIAS = ("p_swap", "p", (1, 0, 2, 3, 4))
-
-
-ROWS = {"li_gg_hgg": "g g > h g g", "li_uux_hgg": "u u~ > h g g"}
 
 
 @pytest.fixture(scope="module")
@@ -116,7 +63,7 @@ def li(loop_sm_ufo, loop_native, tmp_path_factory):
 @pytest.fixture(scope="module")
 def artifacts(loop_sm_ufo, loop_native, tmp_path_factory):
     return {
-        name: _generate(
+        name: generate(
             tmp_path_factory.mktemp(name),
             name,
             expression,
@@ -291,11 +238,11 @@ def test_colour_and_spin_correlations_equal_recola(artifacts, name):
             )["x"].values
             worst = max(worst, _relative(result[0].finite, recola * factor))
     assert worst <= LAX, worst
-    for i in _coloured(pdgs):
+    for i in coloured(pdgs):
         for p, value in enumerate(total):
             summed = sum(
                 complex(many[f"T{i}T{j}"].values[p][0].finite)
-                for j in _coloured(pdgs)
+                for j in coloured(pdgs)
                 if j != i
             )
             assert _relative(summed, -float(CASIMIR[colour[i]]) * value) <= ROUNDING
@@ -351,10 +298,18 @@ def test_resolved_rows_and_single_helicity_selections_sum_to_the_total(artifacts
 
 @pytest.mark.loop_physics
 def test_spin_correlations_are_finite_differences_of_resolved_values(artifacts):
-    """A leg's own polarisation vector w_h as spin vector gives the resolved
-    rows with that helicity; the spin-correlated output is a Hermitian form
-    in v (parallelogram rule on w_+ +- w_-), and a real orthonormal frame
-    transverse to the leg sums to the total (completeness)."""
+    """The spin-correlated output against the resolved values, through the
+    public calls: a leg's own polarisation vector w_h as spin vector gives
+    the resolved rows with that helicity, the output is a Hermitian form in
+    v (parallelogram rule on w_+ +- w_-), and a real orthonormal frame
+    transverse to the leg sums to the total (completeness). These hold by
+    construction of the projection on the Python polarisation vectors
+    (``polarisations``), which builds w_h too: they check the forms, the
+    row bookkeeping and the frame's completeness, not the vectors against
+    the engine's sources, which Recola's complex transverse vectors
+    (``test_colour_and_spin_correlations_equal_recola``) and the
+    literal-source oracle (``test_spin_projection_equals_the_literal_source``)
+    do."""
 
     from decimal import localcontext
 
@@ -481,7 +436,11 @@ def test_spin_projection_equals_the_literal_source(li, name, leg):
         poles="none",
     )
     projected = PointOutputs(
-        reference, observables.matrices, observables.sources, point, spin
+        reference,
+        observables.forms(Precision.double()),
+        observables.sources,
+        point,
+        spin,
     ).value(Output("x"))
     _p, (literal,), _r, _f = executor.runs(
         [point],
@@ -549,6 +508,71 @@ def test_a_permutation_alias_reads_the_representative(artifacts):
     )
 
 
+@pytest.mark.loop_physics
+def test_one_call_is_one_evaluation_whatever_the_spin_sources(artifacts, monkeypatch):
+    """``evaluate_correlated_many`` runs the executor once for requests with
+    different spin sources (RULED Q9: every (assignment, history) output is
+    a form on the same amplitude vectors), each output equal to its own
+    call bitwise; the call's effective backend reaches the executor, which
+    refuses one it does not run (no silent switch); a spin vector not
+    transverse to its leg is refused before any evaluation; the
+    observables run the runtime's current executor under its lock, also
+    after ``clear``."""
+
+    from pyamplicol.api.errors import CompatibilityError
+    from pyamplicol.correlators import CorrelatedRequest
+    from pyamplicol.loops.v2.reduction import ReductionUnavailable
+
+    name = "li_uux_hgg"
+    runtime = _runtime(artifacts, name)
+    points, scales = _points(name)
+    points, scales = points[:1], scales[:1]
+    backend = runtime._backend
+    observables = backend._observable_runtime()._observables
+    assert observables.lock is backend._lock
+    executor = backend._executor
+    original = executor.runs
+    calls = []
+
+    def counted(*args, **kwargs):
+        calls.append(kwargs.get("reduction"))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(executor, "runs", counted)
+    rows = [r for r in _recola(name)["rows"] if r["kind"] == "sc" and r["point"] == 0]
+    (leg_a,), (leg_b,) = rows[0]["legs"], rows[-1]["legs"]
+    requests = {
+        "total": CorrelatedRequest("born"),
+        "T1T4": CorrelatedRequest("T1T4"),
+        "s1": CorrelatedRequest("born", {leg_a: _spin(rows[0]["vector"])}),
+        "s2": CorrelatedRequest("T1T4", {leg_b: _spin(rows[-1]["vector"])}),
+    }
+    many = runtime.evaluate_correlated_many(points, requests, mu_r2=scales)
+    assert calls == ["ninjars"]
+    assert {
+        lane.reduction.effective
+        for result in many.values()
+        for lane in result.diagnostics
+    } == {"ninjars"}
+    for label, request in requests.items():
+        alone = runtime.evaluate_correlated_many(
+            points, {label: request}, mu_r2=scales
+        )[label]
+        assert alone.values == many[label].values, label
+    assert len(calls) == 1 + len(requests)
+    with pytest.raises(ReductionUnavailable, match="not wired"):
+        original(points, scales, reduction="tirust")
+    zero = (Decimal(0), Decimal(0))
+    timelike = ((Decimal(1), Decimal(0)), zero, zero, zero)
+    with pytest.raises(CompatibilityError, match="not transverse"):
+        runtime.evaluate_correlated_many(
+            points, {"x": CorrelatedRequest("born", {leg_a: timelike})}, mu_r2=scales
+        )
+    assert len(calls) == 1 + len(requests)
+    backend.clear()
+    assert observables.executor is backend._executor is not executor
+
+
 # ------------------------------------------------------------ carriers
 
 
@@ -576,6 +600,14 @@ def test_correlated_outputs_in_double_double_and_with_estimates(artifacts):
         mu_r2=scales,
         stability_checks=VirtualStabilityChecks(1, reduction_direction=True),
     )
+    # "born" is |A|^2 itself: the inclusive evaluation's value and estimate.
+    inclusive = runtime.evaluate(
+        points,
+        mu_r2=scales,
+        stability_checks=VirtualStabilityChecks(1, reduction_direction=True),
+    )
+    assert checked["born"].values == inclusive.values
+    assert checked["born"].stability == inclusive.stability
     for key in requests:
         a = complex(double[key].values[0][0].finite)
         b = complex(dd[key].values[0][0].finite.real)
@@ -613,3 +645,25 @@ def test_loop_induced_observable_refusals(artifacts):
         )
     with pytest.raises(CompatibilityError, match="colour resolution"):
         runtime.evaluate_resolved(points, mu_r2=scales, color_resolution="flows")
+
+
+@pytest.mark.loop_fast
+def test_born_interfered_runtimes_refuse_the_colour_axis_option():
+    """``color_resolution`` is a loop-induced process's option: the
+    Born-interfered observables runtime refuses it typed (DESIGN §7.14)."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.api.errors import CompatibilityError
+    from pyamplicol.runtime.virtual import V2ObservablesRuntime
+
+    slice_ = SimpleNamespace(
+        sectors=(),
+        request=SimpleNamespace(accuracy="full"),
+        blocks=SimpleNamespace(process=SimpleNamespace(legs=(1, 2, 3, 4))),
+    )
+    runtime = V2ObservablesRuntime(
+        SimpleNamespace(slice=slice_, spin_classes=(), histories=(), rows=())
+    )
+    with pytest.raises(CompatibilityError, match="Born-interfered virtual"):
+        runtime.evaluate_resolved([], color_resolution="amplitude-basis")

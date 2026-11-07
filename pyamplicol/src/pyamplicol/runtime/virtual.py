@@ -556,8 +556,12 @@ class V2ObservablesRuntime:
         scales: Sequence[Any],
         spins: Sequence[Any],
         options: Mapping[str, Any],
+        reduction: VirtualReduction | None = None,
     ) -> tuple[list[Any], dict[int, list[str]]]:
-        """Per-point outputs (``None`` for a failed point) and the failures."""
+        """Per-point outputs (``None`` for a failed point) and the failures;
+        ``reduction`` is the call's backend at its carrier (the artifact
+        runtime's choice; None: a direct runtime), passed to the native
+        columns that take it (``_column_options``)."""
 
         from pyamplicol.loops.v2.plan_export import FailedPoints
 
@@ -565,6 +569,7 @@ class V2ObservablesRuntime:
             # An empty batch is valid (as for ``evaluate``): no native call.
             return [], {}
         if self._executor == "native":
+            extra = self._column_options(reduction)
 
             def batch(indices: list[int]) -> tuple[list[Any], dict[int, list[str]]]:
                 try:
@@ -575,6 +580,7 @@ class V2ObservablesRuntime:
                                 [scales[i] for i in indices],
                                 spin=[spins[i] for i in indices],
                                 **options,
+                                **extra,
                             )
                         ),
                         {},
@@ -594,6 +600,15 @@ class V2ObservablesRuntime:
                 out.append(None)
                 failures[index] = [str(error)]
         return out, failures
+
+    def _column_options(self, reduction: VirtualReduction | None) -> dict[str, Any]:
+        """The native column runners' options from the call's reduction
+        choice: none for the Born-interfered stored columns (they reduce
+        with NinjaRS, the only backend of the resolved route,
+        ``loops.v2.reduction.RESOLVED``)."""
+
+        del reduction
+        return {}
 
     # -- evaluation -----------------------------------------------------------
 
@@ -1045,6 +1060,7 @@ class V2ObservablesRuntime:
             scales,
             [None] * len(points),
             settings,
+            None if reductions is None else reductions[arithmetic],
         )
         self._failed(failures, on_failure)
         return self._evaluation(
@@ -1083,39 +1099,11 @@ class V2ObservablesRuntime:
         native batch per source assignment)."""
 
         selection, checks = v2_options(on_failure=on_failure, **options)
-        observables = self._observables
         arithmetic, carrier = self._precision(arithmetic, precision)
         points, scales = _inputs(momenta, mu_r2, self.external_count)
-        known = {item.id for item in self.available_color_correlations()}
+        groups, sources = self._spin_groups(requests, len(points))
         with self._lock:
-            inherited = dict(self._spin_vectors)
             parameters = dict(self._parameters)
-        classes = observables.spin_classes
-        allowed = tuple(sorted({leg for group in classes for leg in group}))
-        groups: dict[tuple[Any, ...], list[str]] = {}
-        sources: dict[tuple[Any, ...], tuple[dict[int, Any], ...]] = {}
-        for label, request in requests.items():
-            if not isinstance(request, CorrelatedRequest):
-                raise TypeError("correlated requests require CorrelatedRequest records")
-            if request.color_correlation not in known:
-                raise CompatibilityError(
-                    "undeclared virtual colour correlation "
-                    f"{request.color_correlation!r}"
-                )
-            vectors = _copy_spin_vectors(
-                inherited if request.spin_vectors is None else request.spin_vectors,
-                classes,
-                point_count=len(points),
-            )
-            prepared = _prepare_spin_vectors(
-                vectors, allowed_legs=allowed, point_count=len(points)
-            )
-            key = tuple(
-                tuple(sorted((leg, wave) for leg, wave in point.items()))
-                for point in prepared
-            )
-            groups.setdefault(key, []).append(label)
-            sources[key] = prepared
         settings = {
             "parameters": parameters,
             "precision": carrier,
@@ -1148,6 +1136,7 @@ class V2ObservablesRuntime:
                 scales,
                 spins,
                 settings,
+                None if reductions is None else reductions[arithmetic],
             )
             self._failed(failures, on_failure)
             for label in labels:
@@ -1166,6 +1155,48 @@ class V2ObservablesRuntime:
                     reductions,
                 )
         return {label: out[label] for label in requests}
+
+    def _spin_groups(
+        self, requests: Mapping[str, CorrelatedRequest], point_count: int
+    ) -> tuple[
+        dict[tuple[Any, ...], list[str]],
+        dict[tuple[Any, ...], tuple[dict[int, Any], ...]],
+    ]:
+        """The labels of ``evaluate_correlated_many``'s requests per spin
+        source assignment (its key: the per-point sources) and each
+        assignment's per-point sources (the request's vectors, else those
+        set by ``set_spin_correlation_vectors``), the requests checked."""
+
+        known = {item.id for item in self.available_color_correlations()}
+        with self._lock:
+            inherited = dict(self._spin_vectors)
+        classes = self._observables.spin_classes
+        allowed = tuple(sorted({leg for group in classes for leg in group}))
+        groups: dict[tuple[Any, ...], list[str]] = {}
+        sources: dict[tuple[Any, ...], tuple[dict[int, Any], ...]] = {}
+        for label, request in requests.items():
+            if not isinstance(request, CorrelatedRequest):
+                raise TypeError("correlated requests require CorrelatedRequest records")
+            if request.color_correlation not in known:
+                raise CompatibilityError(
+                    "undeclared virtual colour correlation "
+                    f"{request.color_correlation!r}"
+                )
+            vectors = _copy_spin_vectors(
+                inherited if request.spin_vectors is None else request.spin_vectors,
+                classes,
+                point_count=point_count,
+            )
+            prepared = _prepare_spin_vectors(
+                vectors, allowed_legs=allowed, point_count=point_count
+            )
+            key = tuple(
+                tuple(sorted((leg, wave) for leg, wave in point.items()))
+                for point in prepared
+            )
+            groups.setdefault(key, []).append(label)
+            sources[key] = prepared
+        return groups, sources
 
     def evaluate_resolved(
         self,
@@ -1232,6 +1263,7 @@ class V2ObservablesRuntime:
             scales,
             [None] * len(points),
             settings,
+            None if reductions is None else reductions[arithmetic],
         )
         self._failed(failures, on_failure)
         born_orders = self._default_born_orders()
@@ -1377,7 +1409,11 @@ class V2InducedObservablesRuntime(V2ObservablesRuntime):
     with one colour-contracted component (``"full"``), or with
     ``color_resolution="amplitude-basis"`` per amplitude-basis anchor
     (``amplitude-<t>``: Re(conj(a_t) (G a)_t)/avg, a basis-dependent split
-    summing to the row's value). The native executor runs every call."""
+    summing to the row's value). The native executor runs every call, one
+    batch (and one per rotation) per call: ``evaluate_correlated_many``
+    forms every request, whatever its spin sources, on the same amplitude
+    vectors; the call's effective reduction backend goes to the executor
+    (``induced_observables.InducedColumns``)."""
 
     contribution_kind = "loop-induced"
 
@@ -1388,6 +1424,89 @@ class V2InducedObservablesRuntime(V2ObservablesRuntime):
 
     def _default_born_orders(self) -> tuple[tuple[tuple[str, int], ...], ...]:
         return ()
+
+    def _column_options(self, reduction: VirtualReduction | None) -> dict[str, Any]:
+        """The effective backend of the call (``InducedColumns.evaluate``
+        passes it to the executor, which refuses one it does not run)."""
+
+        return {"reduction": None if reduction is None else reduction.effective}
+
+    def evaluate_correlated_many(
+        self,
+        momenta: Momenta,
+        requests: Mapping[str, CorrelatedRequest],
+        *,
+        mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
+        precision: int | None = None,
+        arithmetic: str | None = None,
+        on_failure: Literal["raise", "return"] = "raise",
+        _correlated: bool = True,
+        reductions: Mapping[str, VirtualReduction] | None = None,
+        **options: Any,
+    ) -> dict[str, VirtualEvaluation]:
+        """Every request on one native batch (and one per rotation): each
+        (spin source assignment, colour history) output is a quadratic form
+        on the points' amplitude vectors, so requests with different spin
+        sources cost no extra dressing or reduction (RULED Q9). The outputs
+        are keyed (assignment, history) (``InducedObservables.
+        native_columns``)."""
+
+        selection, checks = v2_options(on_failure=on_failure, **options)
+        arithmetic, carrier = self._precision(arithmetic, precision)
+        points, scales = _inputs(momenta, mu_r2, self.external_count)
+        groups, sources = self._spin_groups(requests, len(points))
+        with self._lock:
+            parameters = dict(self._parameters)
+        assignments = tuple(groups)
+        wanted = tuple(
+            dict.fromkeys(
+                (g, requests[label].color_correlation)
+                for g, key in enumerate(assignments)
+                for label in groups[key]
+            )
+        )
+        spins = [
+            tuple(sources[key][index] or None for key in assignments)
+            for index in range(len(points))
+        ]
+        settings = {
+            "parameters": parameters,
+            "precision": carrier,
+            "poles": selection.value,
+            "stability": checks.to_checks() if checks.enabled else None,
+        }
+
+        def python(point: Any, scale: Any, spin: Any) -> Any:
+            raise AssertionError("loop-induced observables run the native executor")
+
+        per_point, failures = self._run(
+            ("correlated", wanted),
+            python,
+            points,
+            scales,
+            spins,
+            settings,
+            None if reductions is None else reductions[arithmetic],
+        )
+        self._failed(failures, on_failure)
+        out: dict[str, VirtualEvaluation] = {}
+        for g, key in enumerate(assignments):
+            for label in groups[key]:
+                output = (g, requests[label].color_correlation)
+                out[label] = self._evaluation(
+                    [
+                        None if results is None else results[output]
+                        for results in per_point
+                    ],
+                    failures,
+                    arithmetic,
+                    carrier,
+                    _correlated,
+                    selection,
+                    checks,
+                    reductions,
+                )
+        return {label: out[label] for label in requests}
 
     def _require_selection(
         self,
