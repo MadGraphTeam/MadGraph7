@@ -15,6 +15,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+import arithmetic as arithmetic_module
 from native_build_identity import load_native_build_contract
 
 SDK_SOURCES = (
@@ -114,6 +115,12 @@ def _host_target(root: Path) -> str:
     raise RuntimeError("rustc -vV did not report a host target")
 
 
+def host_target(root: Path) -> str:
+    """Return the Rust host target triple (the only SDK target)."""
+
+    return _host_target(root)
+
+
 def _requested_target(host: str) -> str:
     requested = (
         os.environ.get("CARGO_BUILD_TARGET")
@@ -203,7 +210,19 @@ def _native_tokens(stderr: str) -> list[str]:
     return shlex.split(matches[0])
 
 
-def _typed_link_arguments(tokens: list[str], target: str) -> dict[str, Any]:
+def _typed_link_arguments(
+    tokens: list[str],
+    target: str,
+    *,
+    shared_libraries: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """Classify rustc's native link requirements.
+
+    ``shared_libraries`` names the libraries the SDK ships itself (the shared
+    arithmetic runtime of a distribution wheel). They are recorded by name in
+    ``shared`` here; ``build_sdk`` replaces them by the shipped files.
+    """
+
     libraries = MACOS_LIBRARIES if "apple-darwin" in target else LINUX_LIBRARIES
     result: dict[str, Any] = {
         "schema_version": 1,
@@ -211,6 +230,7 @@ def _typed_link_arguments(tokens: list[str], target: str) -> dict[str, Any]:
         "system_libraries": [],
         "frameworks": [],
     }
+    shipped: list[str] = []
     index = 0
     while index < len(tokens):
         token = tokens[index]
@@ -226,6 +246,11 @@ def _typed_link_arguments(tokens: list[str], target: str) -> dict[str, Any]:
             continue
         if token.startswith("-l") and len(token) > 2:
             library = token[2:]
+            if library in shared_libraries:
+                if library not in shipped:
+                    shipped.append(library)
+                index += 1
+                continue
             if library not in libraries:
                 raise RuntimeError(
                     f"native system library is not allowlisted: {library}"
@@ -244,7 +269,47 @@ def _typed_link_arguments(tokens: list[str], target: str) -> dict[str, Any]:
         ):
             raise RuntimeError(f"non-relocatable native link token: {token}")
         raise RuntimeError(f"unsupported native link token: {token}")
+    if set(shipped) != set(shared_libraries):
+        raise RuntimeError(
+            "the SDK archive does not link the shared libraries it ships: "
+            f"linked {sorted(shipped)}, shipped {sorted(shared_libraries)}"
+        )
+    if shipped:
+        result["shared"] = shipped
     return result
+
+
+def _stripped_archive(archive: Path, destination: Path, target: str) -> Path:
+    """Copy the archive without debug info, LLVM bitcode or unneeded symbols.
+
+    The ``sdk`` profile compiles every crate without LTO bitcode, but the
+    precompiled Rust standard library carries bitcode and line tables, and
+    every object keeps local symbols that no relocation references. None of
+    them is used by a C, C++, Fortran or Rust linker; global symbols and the
+    symbols relocations need stay (``strip --strip-unneeded``). GNU strip does
+    it on ELF targets; Apple's strip trails Rust's LLVM (see
+    ``_scan_archive_symbols``), so the macOS archive is shipped as built.
+    """
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if "apple-darwin" in target:
+        shutil.copy2(archive, destination)
+        return destination
+    command = [
+        "strip",
+        "--strip-unneeded",
+        "--remove-section=.llvmbc",
+        "--remove-section=.llvmcmd",
+        "--enable-deterministic-archives",
+        "-o",
+        str(destination),
+        str(archive),
+    ]
+    completed = subprocess.run(command, check=False, capture_output=True, text=True)
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout).strip()
+        raise RuntimeError(f"stripping the Rusticol static archive failed: {detail}")
+    return destination
 
 
 def _scan_archive(path: Path) -> None:
@@ -342,10 +407,17 @@ def _c_api_exports(
     return exports
 
 
-def _native_link_flags(link: Mapping[str, Any], target: str) -> list[str]:
+def _native_link_flags(
+    link: Mapping[str, Any],
+    target: str,
+    *,
+    shared_files: tuple[Path, ...] = (),
+) -> list[str]:
     if link.get("target") != target:
         raise RuntimeError("Rusticol native link metadata targets the wrong platform")
-    flags: list[str] = []
+    flags: list[str] = [str(path) for path in shared_files]
+    for directory in dict.fromkeys(path.parent for path in shared_files):
+        flags.append(f"-Wl,-rpath,{directory}")
     libraries = link.get("system_libraries")
     frameworks = link.get("frameworks")
     if not isinstance(libraries, list) or not all(
@@ -369,6 +441,7 @@ def _validate_archive_linkage(
     link: Mapping[str, Any],
     target: str,
     virtual_header: Path | None = None,
+    shared_files: tuple[Path, ...] = (),
 ) -> None:
     """Link and execute a probe that references every declared C ABI export."""
 
@@ -407,7 +480,7 @@ int main(void) {{
             *(["-I", str(virtual_header.parent)] if virtual_header is not None else []),
             str(probe_source),
             str(archive),
-            *_native_link_flags(link, target),
+            *_native_link_flags(link, target, shared_files=shared_files),
             "-o",
             str(probe_binary),
         ]
@@ -468,15 +541,11 @@ def _ensure_sdk_workspace_member(root: Path) -> None:
         raise RuntimeError("Cargo workspace member inventory is invalid")
     if RUST_SDK_WORKSPACE_MEMBER in members:
         return
-    expected = [
-        "rust/crates/rusticol-core",
-        "rust/crates/rusticol-python",
-    ]
-    if (
-        members != expected
-        or not (root / RUST_SDK_WORKSPACE_MEMBER / "Cargo.toml").is_file()
-    ):
+    # Maturin keeps only the members its own build needs; whatever it kept
+    # stays, and the SDK crate (shipped in the sdist) is appended.
+    if not (root / RUST_SDK_WORKSPACE_MEMBER / "Cargo.toml").is_file():
         raise RuntimeError("Cargo workspace does not contain the Rusticol C SDK")
+    restored = [*members, RUST_SDK_WORKSPACE_MEMBER]
 
     workspace = re.search(
         r"(?ms)^\[workspace\]\s*\n(?P<body>.*?)(?=^\[|\Z)",
@@ -485,10 +554,10 @@ def _ensure_sdk_workspace_member(root: Path) -> None:
     if workspace is None:
         raise RuntimeError("Cargo workspace member inventory is invalid")
     body = workspace.group("body")
+    listing = "[" + ", ".join(json.dumps(member) for member in restored) + "]"
     updated_body, count = re.subn(
         r"(?ms)^(members\s*=\s*)\[.*?\]",
-        rf'\g<1>["{expected[0]}", "{expected[1]}", '
-        rf'"{RUST_SDK_WORKSPACE_MEMBER}"]',
+        lambda match: match.group(1) + listing,
         body,
         count=1,
     )
@@ -500,7 +569,19 @@ def _ensure_sdk_workspace_member(root: Path) -> None:
     )
 
 
-def build_sdk(root: Path, target_dir: Path) -> Path:
+def build_sdk(
+    root: Path,
+    target_dir: Path,
+    *,
+    arithmetic: arithmetic_module.ArithmeticRuntime | None = None,
+) -> Path:
+    """Build the C SDK; with ``arithmetic``, link GMP/MPFR/MPC as shared libraries.
+
+    The shared libraries are then shipped in ``lib/`` next to the archive and
+    listed in ``link.json`` (``shared_libraries``, link order), for
+    ``rusticol-config --libs``.
+    """
+
     _ensure_sdk_workspace_member(root)
     host = _host_target(root)
     target = _requested_target(host)
@@ -520,6 +601,11 @@ def build_sdk(root: Path, target_dir: Path) -> Path:
             *profile_arguments,
             "--package",
             str(sdk_contract["package"]),
+            *(
+                ("--features", arithmetic_module.CARGO_FEATURE)
+                if arithmetic is not None
+                else ()
+            ),
             "--target",
             target,
             "--message-format=json-render-diagnostics",
@@ -545,7 +631,22 @@ def build_sdk(root: Path, target_dir: Path) -> Path:
     archive = _static_library(messages)
     if not archive.is_file():
         raise RuntimeError(f"cargo reported a missing static archive: {archive}")
-    link = _typed_link_arguments(_native_tokens(completed.stderr), target)
+    link = _typed_link_arguments(
+        _native_tokens(completed.stderr),
+        target,
+        shared_libraries=(
+            arithmetic_module.LINK_ORDER if arithmetic is not None else ()
+        ),
+    )
+    archive = _stripped_archive(
+        archive, target_dir.parent / "sdk-archive" / archive.name, target
+    )
+    shipped = tuple(link.pop("shared", ()))
+    shared_files = (
+        tuple(arithmetic.libraries[name] for name in shipped)
+        if arithmetic is not None
+        else ()
+    )
     _scan_archive(archive)
     _scan_archive_symbols(archive)
     _validate_archive_linkage(
@@ -554,6 +655,7 @@ def build_sdk(root: Path, target_dir: Path) -> Path:
         virtual_header=root / "rust/loop-reduction/sdk/include/rusticol_virtual.h",
         link=link,
         target=target,
+        shared_files=shared_files,
     )
 
     staging = target_dir.parent / "wheel-data" / "_sdk"
@@ -578,6 +680,17 @@ def build_sdk(root: Path, target_dir: Path) -> Path:
     library = staging / "lib" / archive_name
     library.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(archive, library)
+    if arithmetic is not None:
+        staged = dict(
+            zip(
+                arithmetic_module.LINK_ORDER,
+                arithmetic_module.stage_sdk_libraries(
+                    arithmetic, library.parent, os.environ
+                ),
+                strict=True,
+            )
+        )
+        link["shared_libraries"] = [f"lib/{staged[name]}" for name in shipped]
     (staging / "link.json").write_text(
         json.dumps(link, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",

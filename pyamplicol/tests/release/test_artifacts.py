@@ -8,6 +8,7 @@ import hashlib
 import io
 import json
 import re
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -66,6 +67,16 @@ _LEGAL_FILES = (
     "licenses/NinjaRS.txt",
     "licenses/oneloopmaster.txt",
     "licenses/GammaLoop-crates.txt",
+    # GMP, MPFR and MPC: LGPL-3.0-or-later and the GPL-3.0 text it incorporates,
+    # from the gmp-mpfr-sys release Cargo.lock pins.
+    *(
+        f"licenses/rust/gmp-mpfr-sys-{package['version']}/LICENSE-{kind}.md"
+        for package in tomllib.loads((ROOT / "Cargo.lock").read_text(encoding="utf-8"))[
+            "package"
+        ]
+        if package["name"] == "gmp-mpfr-sys"
+        for kind in ("LGPL", "GPL")
+    ),
 )
 _COMPILED_MODEL_KIND = "pyamplicol-compiled-model"
 _BUILTIN_MODEL_SOURCE_KIND = "built-in-sm"
@@ -1527,6 +1538,134 @@ def test_native_scan_rejects_static_arithmetic_runtime_markers(
         _scan_static_runtime_families(binary, "test artifact")
 
 
+_ELF_TOOLS = (
+    sys.platform.startswith("linux")
+    and shutil.which("cc") is not None
+    and shutil.which("nm") is not None
+    and shutil.which("ar") is not None
+)
+
+
+def _compile(tmp_path: Path, name: str, source: str, *arguments: str) -> Path:
+    source_path = tmp_path / f"{name}.c"
+    source_path.write_text(source, encoding="utf-8")
+    output = tmp_path / name
+    subprocess.run(
+        ["cc", "-fPIC", *arguments, str(source_path), "-o", str(output)],
+        check=True,
+        capture_output=True,
+    )
+    return output
+
+
+def test_static_runtime_scan_ignores_the_rust_binding_crate_name(
+    tmp_path: Path,
+) -> None:
+    binary = tmp_path / "native-artifact"
+    binary.write_bytes(b"gmp_mpfr_sys-0123.gmp_mpfr_sys.4567-cgu.0.rcgu.o/\n")
+    _scan_static_runtime_families(binary, "test artifact")
+
+
+@pytest.mark.skipif(not _ELF_TOOLS, reason="needs an ELF C toolchain")
+def test_static_runtime_scan_accepts_imported_arithmetic_symbols(
+    tmp_path: Path,
+) -> None:
+    # A shared arithmetic runtime: the library defines, the consumer imports.
+    runtime = _compile(
+        tmp_path,
+        "libgmp-test.so",
+        "int __gmpz_init(void) { return 1; }\nint mpfr_set(void) { return 2; }\n",
+        "-shared",
+    )
+    consumer = _compile(
+        tmp_path,
+        "_rusticol.abi3.so",
+        "int __gmpz_init(void); int mpfr_set(void);\n"
+        "int consume(void) { return __gmpz_init() + mpfr_set(); }\n",
+        "-shared",
+        f"-L{tmp_path}",
+        "-l:libgmp-test.so",
+    )
+    _scan_static_runtime_families(consumer, "test extension")
+    with pytest.raises(ArtifactError, match="defines __gmpz_init, mpfr_set"):
+        _scan_static_runtime_families(runtime, "test runtime")
+
+
+@pytest.mark.skipif(not _ELF_TOOLS, reason="needs an ELF C toolchain")
+def test_static_runtime_scan_rejects_an_archived_runtime_copy(
+    tmp_path: Path,
+) -> None:
+    importer = _compile(
+        tmp_path,
+        "importer.o",
+        "int mpfr_set(void);\nint use(void) { return mpfr_set(); }\n",
+        "-c",
+    )
+    copy = _compile(tmp_path, "copy.o", "int mpfr_set(void) { return 2; }\n", "-c")
+    shared = tmp_path / "librusticol_shared.a"
+    subprocess.run(["ar", "rcs", str(shared), str(importer)], check=True)
+    _scan_static_runtime_families(shared, "test archive")
+    static = tmp_path / "librusticol_static.a"
+    subprocess.run(["ar", "rcs", str(static), str(importer), str(copy)], check=True)
+    with pytest.raises(ArtifactError, match="defines mpfr_set"):
+        _scan_static_runtime_families(static, "test archive")
+
+
+@pytest.mark.parametrize(
+    "needed",
+    ["libc.so.6", "libgcc_s.so.1", "libpthread.so.0", "ld-linux-x86-64.so.2"],
+)
+def test_extension_may_need_target_c_runtime_libraries(needed: str) -> None:
+    artifacts._require_system_or_bundled(needed, "manylinux_2_28_x86_64", {})
+
+
+def test_extension_dependencies_must_be_bundled_otherwise() -> None:
+    bundled = {"pyamplicol.libs": frozenset({"libgmp-pyamplicol-0123abcd.so.10"})}
+    artifacts._require_system_or_bundled(
+        "libgmp-pyamplicol-0123abcd.so.10", "manylinux_2_28_x86_64", bundled
+    )
+    for needed in ("libgmp.so.10", "libmpfr-pyamplicol-0123abcd.so.6"):
+        with pytest.raises(ArtifactError, match="neither a system library"):
+            artifacts._require_system_or_bundled(
+                needed, "manylinux_2_28_x86_64", bundled
+            )
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        (["lib/../libgmp.so.10"], "unexpected SDK shared library path"),
+        (["lib/libgmp.so"], "unexpected SDK shared library path"),
+        (["lib/libgmp.10.dylib"], "does not match target"),
+        (["lib/libgmp.so.10", "lib/libgmp.so.10"], "duplicate entries"),
+        (["lib/libmpc.so.3"], "missing SDK shared library"),
+        ("lib/libgmp.so.10", "list of strings"),
+    ],
+)
+def test_sdk_shared_library_metadata_is_confined_and_shipped(
+    value: object, message: str
+) -> None:
+    entries = {"pyamplicol/_sdk/lib/libgmp.so.10": b"\x7fELF"}
+    with pytest.raises(ArtifactError, match=message):
+        artifacts._sdk_shared_library_members(
+            entries,
+            link={"shared_libraries": value},
+            rust_target="x86_64-unknown-linux-gnu",
+        )
+    assert artifacts._sdk_shared_library_members(
+        entries,
+        link={"shared_libraries": ["lib/libgmp.so.10"]},
+        rust_target="x86_64-unknown-linux-gnu",
+    ) == ("pyamplicol/_sdk/lib/libgmp.so.10",)
+
+
+def test_versioned_shared_objects_are_scanned_as_native_members() -> None:
+    with pytest.raises(ArtifactError, match=re.escape("path marker '../'")):
+        artifacts._scan_embedded_paths(
+            {"pyamplicol.libs/libmpfr-pyamplicol-0123abcd.so.6": b"../../mpfr-src/x.c"}
+        )
+
+
 @pytest.mark.parametrize(
     "symbol",
     ["_PyErr_SetString", "PyLong_FromLong", "_Py_Dealloc"],
@@ -2278,6 +2417,7 @@ def test_sdist_rejects_mismatched_symjit_cargo_source(tmp_path: Path) -> None:
     "missing_member",
     [
         "build_backend/_pyamplicol_build.py",
+        "build_backend/arithmetic.py",
         "build_backend/sdk.py",
         "docs/user/installation.md",
         "examples/data/pp_zjj_momenta.json",

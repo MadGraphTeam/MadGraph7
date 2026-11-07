@@ -53,22 +53,45 @@ in `siravan/symjit-crate#1`; it does not alter generated kernels.
 
 The distributed `pyamplicol._rusticol` extension and the C SDK archive
 `librusticol_capi.a` statically link pyAmpliCol's own Rust crates (0BSD) with
-their Rust dependencies: Symbolica's Rust crates, Rug with GMP, MPFR and MPC
-(through `gmp-mpfr-sys`), SymJIT, NinjaRS, oneloopmaster, GammaLoop's FeynKit,
-Spenso, Idenso and linnet crates, and published crates.io crates.
+their Rust dependencies: Symbolica's Rust crates, Rug and its `gmp-mpfr-sys`
+bindings, SymJIT, NinjaRS, oneloopmaster, GammaLoop's FeynKit, Spenso, Idenso
+and linnet crates, and published crates.io crates.
 Higher-precision Python evaluation additionally loads the separately installed
 Symbolica Python package, which remains subject to Symbolica's terms.
 
 The license files of every linked crates.io crate are reproduced under
 `licenses/rust/<crate>-<version>/`; a crate published without a license file
 has a `LICENSE-NOTE` there; `tools/release/rust_licence_inventory.py` checks
-this against the crates linked on every release target. GMP, MPFR and MPC,
-and the Rust crates `rug` 1.30.0 and `gmp-mpfr-sys` 1.7.1 that wrap and build
-them, are distributed under the GNU Lesser General Public License version 3
-or later; their license texts are in `licenses/rust/gmp-mpfr-sys-1.7.1/` and
-`licenses/rust/rug-1.30.0/`. The crates distributed under the Mozilla
-Public License 2.0 (`colored`, `option-ext`, `smartstring`) are used
-unmodified; their sources are published on crates.io.
+this against the crates linked on every release target. The crates
+distributed under the Mozilla Public License 2.0 (`colored`, `option-ext`,
+`smartstring`) are used unmodified; their sources are published on crates.io.
+
+### GMP, MPFR and MPC
+
+The GNU Multiple Precision Arithmetic Library (GMP) 6.3.0, the GNU MPFR
+Library 4.2.2 and the GNU MPC library 1.4.1, and the Rust crates `rug` 1.30.0
+and `gmp-mpfr-sys` 1.7.1 that wrap them, are distributed under the GNU Lesser
+General Public License version 3 or later (GMP alternatively under the GNU
+General Public License version 2 or later). Their license texts, the GNU
+General Public License version 3 that the Lesser General Public License
+incorporates, and the libraries' own `COPYING` files are in
+`licenses/rust/gmp-mpfr-sys-1.7.1/` and `licenses/rust/rug-1.30.0/`.
+
+The binary wheels link GMP, MPFR and MPC dynamically. They ship them as
+separate shared libraries, built from unmodified sources, that can be replaced
+by any interface-compatible build: in `pyamplicol.libs/` (Linux; the libraries carry
+the sonames `libgmp-pyamplicol.so.10`, `libmpfr-pyamplicol.so.6` and
+`libmpc-pyamplicol.so.3` plus the hash suffix of the wheel repair) or
+`pyamplicol.dylibs/` (macOS) for the Python extension, and in
+`pyamplicol/_sdk/lib/` next to the C SDK archive, which contains no copy of
+them and links them by path (`rusticol-config --libs`). The libraries are built
+from the sources bundled in the `gmp-mpfr-sys` 1.7.1 crate
+(<https://crates.io/crates/gmp-mpfr-sys/1.7.1>; directories `gmp-6.3.0-c`,
+`mpfr-4.2.2-c` and `mpc-1.4.1-c`, also at
+<https://gmplib.org/>, <https://www.mpfr.org/> and
+<https://www.multiprecision.org/mpc/>) with that crate's configure options,
+shared instead of static; `build_backend/arithmetic.py` in pyAmpliCol's source
+distribution is the complete build recipe.
 
 ## NinjaRS
 
