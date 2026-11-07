@@ -241,10 +241,10 @@ class TestGammaUPCSystematics(unittest.TestCase):
 
 
 class TestGammaUPCMakefiles(unittest.TestCase):
-    """the three makefiles link libgammaUPC exactly for the gamma-UPC labels"""
+    """the LO and NLO Source makefiles link libgammaUPC exactly for the
+    gamma-UPC labels, and are the only ones that build it"""
 
     makefiles = [  # (path, %-template, pdlabel variables)
-        ('Template/LO/Source/PDF/makefile', False, ('pdlabel1', 'pdlabel2')),
         ('madgraph/iolibs/template_files/madevent_makefile_source', True, ('pdlabel1', 'pdlabel2')),
         ('Template/NLO/Source/makefile', False, ('pdlabel',)),
     ]
@@ -314,6 +314,20 @@ class TestGammaUPCMakefiles(unittest.TestCase):
             for label, linked in result.items():
                 self.assertEqual(linked == '1', bannermod.is_upc_label(label), (path, label))
 
+    def test_single_gammaupc_builder(self):
+        """no other makefile builds libgammaUPC: under 'make -j' a second
+        builder compiled PDF/gammaUPC at the same time as Source/makefile, and
+        did not switch between the real and the dummy library"""
+
+        for path in ['Template/LO/Source/PDF/makefile', 'Template/NLO/Source/PDF/makefile',
+                     'Template/LO/SubProcesses/makefile']:
+            for line in open(pjoin(MG5DIR, path)):
+                if line.startswith('\t'):  # recipe; -I.../gammaUPC (the .mod files) is fine
+                    self.assertNotRegex(line, r'cd [^;&|]*gammaUPC', (path, line))
+        # SubProcesses goes through Source/makefile
+        text = open(pjoin(MG5DIR, 'Template/LO/SubProcesses/makefile')).read()
+        self.assertIn('cd ../../Source && make ../lib/libgammaUPC.$(libext)', text)
+
 
 class TestGammaUPCExporters(unittest.TestCase):
 
@@ -380,6 +394,13 @@ program check_pbreak
   ebeamMG5=(/522080d0,522080d0/); lpp=(/2,2/)
   call get_command_argument(1,arg)
   read(arg,*) NEUTRON_XSIGMA
+  call get_command_argument(2,arg)
+  if(len_trim(arg).gt.0)then
+     read(arg,*) j
+     b=Pbreak_AB_WoodsSaxon(0,j,15d0/0.1973d0)
+     write(*,*) 'P', b
+     stop
+  endif
   do ib=1,3
      b=bfm(ib)/0.1973d0
      do i=-2,4
@@ -483,6 +504,39 @@ end program check_pbreak
             out = self.run_exe('check_dummy', stdin='%i\n' % which)
             self.assertEqual(out.returncode, which, out.stdout)
             self.assertIn('gamma-UPC dummy linked', out.stdout)
+
+    def test_error_stop_exit_status(self):
+        """an error inside gamma-UPC exits with status 1 (a bare STOP exits
+        with 0); in2=5 is out of range in Pbreak_AB_WoodsSaxon"""
+
+        out = self.run_exe('check_pbreak', ['0', '5'])
+        self.assertEqual(out.returncode, 1, out.stdout)
+        self.assertIn('ERROR: only the following options for in2', out.stdout)
+        out = self.run_exe('check_pbreak', ['0', '-2'])
+        self.assertEqual(out.returncode, 0, out.stdout)
+
+    def test_no_status0_stop(self):
+        """every STOP of the gamma-UPC sources follows an error, so it must
+        give a non-zero exit status: no bare STOP and no text stop code (both
+        exit with 0 with gfortran)"""
+
+        stop = re.compile(r'(?i)(?:^|\))\s*stop\b(.*)$')
+        found = 0
+        for name in sorted(os.listdir(self.gammaupc)):
+            if not name.endswith(('.f90', '.f')):
+                continue
+            for i, line in enumerate(open(pjoin(self.gammaupc, name)), 1):
+                if name.endswith('.f') and line[:1] in 'cC*!':
+                    continue
+                code = line.split('!')[0].strip()
+                if re.search(r'["\']', code):  # in a string, not a statement
+                    code = re.sub(r'"[^"]*"|\'[^\']*\'', '', code)
+                m = stop.search(code)
+                if not m:
+                    continue
+                found += 1
+                self.assertRegex(m.group(1).strip(), r'^[1-9][0-9]*$', '%s:%i: %s' % (name, i, line.strip()))
+        self.assertGreater(found, 200)
 
     def test_pbreak_sum_rules(self):
         """break-up probabilities of Pb208+Pb208: 0n+Xn=1 per nucleus, the four
