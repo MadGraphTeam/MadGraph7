@@ -54,6 +54,19 @@
 //! `InvalidInput` / `MasterFailure` status, fails every lane of the row (a
 //! best-effort array is never a value).
 //!
+//! **Known limitation: gate-passed rows (lit-tir report §F.3).** Passing the
+//! gates does not make a row's value good to the lax rule: at this TIRust
+//! pin some rows the gates accept come back `Success` from the standard PV
+//! path off by more than 1e-5 of the lane, and no check frame sees it,
+//! since every frame shares the row's Gram systems (a g g > g g g g box in a
+//! top loop off by 2.4e-4 with a re-test estimate of 3.8e-7, a massless one
+//! off by 1.4e-5 at 3.0e-9, over-rank synthetic rows R = N + 1 up to
+//! 5.5e-4). Nothing here can detect these rows; TIRust's own gate and error
+//! estimate are the fix (m-lit lit-tirust-mc, adopted by lit-tir-mp's
+//! re-pin). Until then a binary64 TIR value is not guaranteed within its
+//! stability estimate: TIRust serves explicit requests only (`auto` never
+//! routes here before lit-cache's agreement check).
+//!
 //! **Check frames (lit-spike-tir F3).** `q -> -q` leaves the moments bitwise
 //! (odd moments flip exactly), so TIR's frame of a [`ReductionCheck`] never
 //! reverses: it is the cyclic rotation by `check.rotation` with the origin

@@ -1014,7 +1014,8 @@ def _moments(evaluation: Any, numerators: Mapping) -> dict:
     Laurent coefficient lists: the unit numerators of one of the family's
     loop orders in that frame (the integrals depend on the propagators and
     the frame alone) reduced through the evaluation's own reducer
-    (``_PointEvaluation._groups``)."""
+    (``_PointEvaluation.reducer``: the call's reduction backend) on its
+    groups (``_PointEvaluation._groups``)."""
 
     from dataclasses import replace
 
@@ -1038,12 +1039,7 @@ def _moments(evaluation: Any, numerators: Mapping) -> dict:
         )
     width = max(len(numerator.columns) for numerator in units.values())
     lanes, groups = evaluation._groups(units, 0, list(range(width)))
-    arithmetic = "double" if numbers.double else "arbitrary"
-    digits = None if numbers.double else numbers.precision.digits
-    reducer = evaluation.slice.native.V2Reducer(
-        arithmetic, digits, "fast" if numbers.double else "generic"
-    )
-    direct, _check = reducer.reduce(
+    direct, _check = evaluation.reducer().reduce(
         groups, poles=reducer_poles(evaluation.mode), check=False, rescale=False
     )
     frame_of = {key: frame for (_family, frame), key in frames.items()}

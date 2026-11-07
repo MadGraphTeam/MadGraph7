@@ -4,7 +4,7 @@
 use super::*;
 use batch::{NativeBatch, ReductionBatch};
 use rusticol_loop_reduction::runtime::{
-    FamilyGroup, MasterStatistics, PoleSelection, Poles, ReduceOptions, ReductionFrame,
+    FamilyGroup, MasterStatistics, PoleSelection, Poles, ReduceOptions, ReductionFrame, V2Output,
 };
 use std::collections::BTreeMap;
 
@@ -16,6 +16,30 @@ type Group<'py> = (
     PyRef<'py, NativeBatch>,
     PyRef<'py, NativeBatch>,
 );
+
+/// The groups of [`V2Reducer::reduce`] and [`V2TirReducer::reduce`] as
+/// `FamilyGroup`s borrowing the Python batches.
+fn family_groups<'a>(groups: &'a [Group<'_>]) -> Vec<FamilyGroup<'a>> {
+    groups
+        .iter()
+        .map(
+            |(propagators, shifts, masses, scales, matrix, coefficients)| FamilyGroup {
+                propagators: *propagators,
+                shifts: &shifts.0,
+                masses_squared: &masses.0,
+                scales_squared: &scales.0,
+                s_matrix: &matrix.0,
+                coefficients: &coefficients.0,
+            },
+        )
+        .collect()
+}
+
+/// A reduction's `(direct, check)` batches as Python batches.
+fn reduction_batches(output: V2Output) -> (Vec<ReductionBatch>, Option<Vec<ReductionBatch>>) {
+    let wrap = |batches: Vec<_>| batches.into_iter().map(ReductionBatch).collect();
+    (wrap(output.direct), output.check.map(wrap))
+}
 
 /// The Laurent columns of a `poles` option: `"all"` (combined poles),
 /// `"none"` (the finite part) or `"split"` (combined poles and each lane's UV
@@ -132,19 +156,7 @@ impl V2Reducer {
     ) -> PyResult<(Vec<ReductionBatch>, Option<Vec<ReductionBatch>>)> {
         let poles = poles.map_or(Ok(Poles::All), |value| poles_option(&value))?;
         let masters = master_selection(master_poles)?;
-        let batches: Vec<_> = groups
-            .iter()
-            .map(|(n, shifts, masses, scales, matrix, coefficients)| {
-                (
-                    *n,
-                    &shifts.0,
-                    &masses.0,
-                    &scales.0,
-                    &matrix.0,
-                    &coefficients.0,
-                )
-            })
-            .collect();
+        let groups = family_groups(&groups);
         let options = ReduceOptions {
             poles,
             check: check.then_some(ReductionFrame {
@@ -161,26 +173,10 @@ impl V2Reducer {
                 if !keep_masters {
                     reducer.clear_masters();
                 }
-                let groups: Vec<_> = batches
-                    .iter()
-                    .map(
-                        |&(propagators, shifts, masses, scales, matrix, coefficients)| {
-                            FamilyGroup {
-                                propagators,
-                                shifts,
-                                masses_squared: masses,
-                                scales_squared: scales,
-                                s_matrix: matrix,
-                                coefficients,
-                            }
-                        },
-                    )
-                    .collect();
                 reducer.reduce(&groups, options)
             })
             .map_err(error)?;
-        let wrap = |batches: Vec<_>| batches.into_iter().map(ReductionBatch).collect();
-        Ok((wrap(output.direct), output.check.map(wrap)))
+        Ok(reduction_batches(output))
     }
 }
 
@@ -304,42 +300,12 @@ impl V2TirReducer {
             shift,
             rescale,
         });
-        let batches: Vec<_> = groups
-            .iter()
-            .map(|(n, shifts, masses, scales, matrix, coefficients)| {
-                (
-                    *n,
-                    &shifts.0,
-                    &masses.0,
-                    &scales.0,
-                    &matrix.0,
-                    &coefficients.0,
-                )
-            })
-            .collect();
+        let groups = family_groups(&groups);
         let backend = &mut self.0;
         let output = py
-            .detach(|| {
-                let groups: Vec<_> = batches
-                    .iter()
-                    .map(
-                        |&(propagators, shifts, masses, scales, matrix, coefficients)| {
-                            FamilyGroup {
-                                propagators,
-                                shifts,
-                                masses_squared: masses,
-                                scales_squared: scales,
-                                s_matrix: matrix,
-                                coefficients,
-                            }
-                        },
-                    )
-                    .collect();
-                backend.reduce_family_groups(&groups, poles, check)
-            })
+            .detach(|| backend.reduce_family_groups(&groups, poles, check))
             .map_err(error)?;
-        let wrap = |batches: Vec<_>| batches.into_iter().map(ReductionBatch).collect();
-        Ok((wrap(output.direct), output.check.map(wrap)))
+        Ok(reduction_batches(output))
     }
 }
 
