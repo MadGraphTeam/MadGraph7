@@ -255,7 +255,11 @@ def test_levels_resolve_once_per_level_capability_driven(loop_native, monkeypatc
     every carrier (never a constant or a version check)."""
 
     from pyamplicol import ReductionUnavailable
-    from pyamplicol.api.virtual_results import VirtualRescueLevel, VirtualRescuePolicy
+    from pyamplicol.api.virtual_results import (
+        VirtualRescueLevel,
+        VirtualRescuePolicy,
+        VirtualStabilityChecks,
+    )
     from pyamplicol.loops.v2 import reduction
     from pyamplicol.loops.v2.reduction import CARRIERS, SUMMED
 
@@ -315,6 +319,17 @@ def test_levels_resolve_once_per_level_capability_driven(loop_native, monkeypatc
         choice.reason == "auto: TIRust, the loop-induced default"
         for choice in found.values()
     )
+    # The cross-backend check is admitted at every carrier the stub serves
+    # both backends at, and refused typed by a native without TIRust (a
+    # tir-off build: USER 2026-11-06 ~13:35).
+    checks = VirtualStabilityChecks(1, cross_backend=True)
+    for arithmetic in ("double", "double-double"):
+        backend._reduction_choices(None, arithmetic, None, None, SUMMED, checks)
+    monkeypatch.setattr(backend, "_native", _Native({"ninjars": list(CARRIERS)}))
+    monkeypatch.setattr(backend, "_reductions", {})
+    with pytest.raises(ReductionUnavailable, match=r"cross-backend check.*'tir'"):
+        backend._reduction_choices(None, "double", None, None, SUMMED, checks)
+    assert backend._reduction_choices(None, "double", None, None, SUMMED, None)
 
 
 @pytest.mark.loop_physics
