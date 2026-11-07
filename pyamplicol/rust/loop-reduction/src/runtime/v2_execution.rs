@@ -134,12 +134,7 @@ impl V2Backends {
     pub fn tirust(families: impl IntoIterator<Item = (usize, usize)>) -> RusticolResult<Self> {
         #[cfg(feature = "tir")]
         {
-            Ok(Self::TiRust(Box::new(
-                crate::v2_tir::TirReductionBackend::with_histogram(
-                    families,
-                    crate::v2_tir::TirOptions::default(),
-                )?,
-            )))
+            Self::tirust_with(families, crate::v2_tir::TirOptions::default())
         }
         #[cfg(not(feature = "tir"))]
         {
@@ -180,6 +175,17 @@ impl V2Backends {
             #[cfg(feature = "tir")]
             Self::TiRust(backend) => backend.plans(),
         }
+    }
+
+    /// [`Self::tirust`] with explicit settings.
+    #[cfg(feature = "tir")]
+    pub fn tirust_with(
+        families: impl IntoIterator<Item = (usize, usize)>,
+        options: crate::v2_tir::TirOptions,
+    ) -> RusticolResult<Self> {
+        Ok(Self::TiRust(Box::new(
+            crate::v2_tir::TirReductionBackend::with_histogram(families, options)?,
+        )))
     }
 
     pub fn reduction(&self) -> Reduction {

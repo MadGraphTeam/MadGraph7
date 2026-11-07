@@ -1844,7 +1844,9 @@ impl LoopProgramV4 {
             covered |= mask;
         }
         require(covered == full, "family reading does not cover every leg")?;
-        if let Some(refusal) = super::bounds::rank_refusal(super::bounds::Reducer::ARTIFACT, f.sequence.len(), f.rank) {
+        if let Some(refusal) =
+            super::bounds::rank_refusal(super::bounds::Reducer::ARTIFACT, f.sequence.len(), f.rank)
+        {
             return Err(invalid(format!("family rank: {refusal}")));
         }
         let leaves = f

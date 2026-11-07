@@ -368,7 +368,11 @@ fn trace_overlaps(py: Python<'_>, products: Vec<Vec<Vec<i64>>>) -> PyResult<Over
 /// (`rusticol_core::loop_v2::bounds::rank_refusal`).
 #[pyfunction]
 #[pyo3(signature = (propagators, rank, reducer="ninjars"))]
-fn reducer_rank_refusal(propagators: usize, rank: usize, reducer: &str) -> PyResult<Option<String>> {
+fn reducer_rank_refusal(
+    propagators: usize,
+    rank: usize,
+    reducer: &str,
+) -> PyResult<Option<String>> {
     use rusticol_core::loop_v2::bounds::{Reducer, rank_refusal};
     let reducer = match reducer {
         "ninjars" => Reducer::NinjaRs,

@@ -190,17 +190,48 @@ impl V2Reducer {
 /// consecutive lanes of bitwise equal kinematics one moment row. Its check
 /// frame is the rotation by `rotation` with the origin shift (`rescale`
 /// adds the rescaling); `reverse` and `shift` are NinjaRS's and ignored.
-/// Refused typed in a build without TIRust.
+/// The keywords override the backend's settings (`v2_tir::TirOptions`; for
+/// validation): `method_choice` (False: gate-refused rows fail),
+/// `alternative_first` (None: the expansions first; default TIRust's
+/// `EXPANSION_TOLERANCE`) and `acceptance` (the method-choice check's
+/// tolerance). Refused typed in a build without TIRust.
 #[pyclass]
 struct V2TirReducer(rusticol_loop_reduction::runtime::V2Backends);
 
 #[pymethods]
 impl V2TirReducer {
     #[new]
-    fn new() -> PyResult<Self> {
-        rusticol_loop_reduction::runtime::V2Backends::tirust([])
-            .map(Self)
-            .map_err(error)
+    #[pyo3(signature = (*, method_choice=true, alternative_first=Some(f64::NAN), acceptance=None))]
+    fn new(
+        method_choice: bool,
+        alternative_first: Option<f64>,
+        acceptance: Option<f64>,
+    ) -> PyResult<Self> {
+        #[cfg(feature = "tir")]
+        {
+            let defaults = rusticol_loop_reduction::v2_tir::TirOptions::default();
+            let options = rusticol_loop_reduction::v2_tir::TirOptions {
+                method_choice,
+                // NaN: the default limit (a keyword's None disables it).
+                alternative_first: if alternative_first.is_some_and(f64::is_nan) {
+                    defaults.alternative_first
+                } else {
+                    alternative_first
+                },
+                acceptance: acceptance.unwrap_or(defaults.acceptance),
+                ..defaults
+            };
+            rusticol_loop_reduction::runtime::V2Backends::tirust_with([], options)
+                .map(Self)
+                .map_err(error)
+        }
+        #[cfg(not(feature = "tir"))]
+        {
+            let _ = (method_choice, alternative_first, acceptance);
+            rusticol_loop_reduction::runtime::V2Backends::tirust([])
+                .map(Self)
+                .map_err(error)
+        }
     }
     /// The (propagators, rank) plans built so far.
     fn plans(&self) -> Vec<(usize, usize)> {

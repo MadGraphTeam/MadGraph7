@@ -98,6 +98,9 @@ use std::time::Instant;
 /// defaults are TIRust's own (module docs).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TirOptions {
+    /// Whether rows the conditioning gates refuse get the method choice
+    /// (on; off: they fail closed with the gates' reason, a diagnostic).
+    pub method_choice: bool,
     /// Conditioning gate of the method-choice pass: TIRust's facade gate of
     /// its checked lanes (`dispatch/direct_hybrid.rs` `ROTATION_GATE`,
     /// 1e-15, validated there on boxes to heptagons); the first pass keeps
@@ -122,6 +125,7 @@ pub struct TirOptions {
 impl Default for TirOptions {
     fn default() -> Self {
         Self {
+            method_choice: true,
             method_choice_gate: 1e-15,
             expansion_boost: 12,
             alternative_first: Some(iregi_rust::direct::EXPANSION_TOLERANCE),
@@ -207,16 +211,26 @@ impl Bin {
         })
     }
 
-    fn workspace(&mut self, choice: bool, options: &TirOptions) -> RusticolResult<&mut DirectWorkspace<f64>> {
-        let slot = if choice { &mut self.choice } else { &mut self.gates };
+    fn workspace(
+        &mut self,
+        choice: bool,
+        options: &TirOptions,
+    ) -> RusticolResult<&mut DirectWorkspace<f64>> {
+        let slot = if choice {
+            &mut self.choice
+        } else {
+            &mut self.gates
+        };
         if slot.is_none() {
             let mut workspace = self.plan.workspace(0.0f64).map_err(|e| {
                 RusticolError::unsupported_runtime_capability("tirust", e.to_string())
             })?;
             if choice {
                 workspace.set_stability_threshold(options.method_choice_gate);
-                workspace
-                    .enable_estimated_method_choice(options.expansion_boost, options.method_choice_gate);
+                workspace.enable_estimated_method_choice(
+                    options.expansion_boost,
+                    options.method_choice_gate,
+                );
                 workspace.set_alternative_first(options.alternative_first);
             }
             *slot = Some(workspace);
@@ -248,6 +262,9 @@ struct FrameRow {
     origin: [Complex<f64>; 4],
     undo: Option<Complex<f64>>,
 }
+
+/// The rows of one (propagators, rank) and their TIRust inputs.
+type RowInputs = (Vec<usize>, Vec<Complex<f64>>);
 
 /// Counters of the `reduce` calls since the last `take_statistics`.
 #[derive(Default)]
@@ -333,10 +350,15 @@ impl TirReductionBackend {
     }
 
     /// Build the plans of `families` ([`Self::with_histogram`]).
-    pub fn prepare(&mut self, families: impl IntoIterator<Item = (usize, usize)>) -> RusticolResult<()> {
+    pub fn prepare(
+        &mut self,
+        families: impl IntoIterator<Item = (usize, usize)>,
+    ) -> RusticolResult<()> {
         for (n, declared) in families {
             if let Some(refusal) = rank_refusal(Reducer::TiRust, n, declared) {
-                return Err(RusticolError::unsupported_runtime_capability("tirust", refusal));
+                return Err(RusticolError::unsupported_runtime_capability(
+                    "tirust", refusal,
+                ));
             }
             for rank in 0..=declared {
                 self.bin(n, rank)?;
@@ -374,7 +396,10 @@ impl TirReductionBackend {
                 ("TIR method-choice rows", c.choice_rows),
                 ("TIR method-choice rows with expansions", c.expansion_rows),
                 ("TIR method-choice check rows", c.acceptance_rows),
-                ("TIR method-choice lanes refused by their check", c.unverified),
+                (
+                    "TIR method-choice lanes refused by their check",
+                    c.unverified,
+                ),
                 ("TIR capability refusals", c.capability),
             ],
         }
@@ -391,7 +416,7 @@ impl TirReductionBackend {
         let started = Instant::now();
         let mut out: Vec<FrameRow> = Vec::with_capacity(rows.len());
         // Per (propagators, rank) the rows' indices and TIRust inputs.
-        let mut bins: BTreeMap<(usize, usize), (Vec<usize>, Vec<Complex<f64>>)> = BTreeMap::new();
+        let mut bins: BTreeMap<(usize, usize), RowInputs> = BTreeMap::new();
         let (mut shifts, mut masses) = (Vec::new(), Vec::new());
         for (index, row) in rows.iter().enumerate() {
             let g = &groups[row.group];
@@ -452,7 +477,7 @@ impl TirReductionBackend {
             }
             self.counters.rows += members.len() as u64;
             self.counters.gate_refusals += refused.len() as u64;
-            if refused.is_empty() {
+            if refused.is_empty() || !options.method_choice {
                 continue;
             }
             let retry = KinematicsBatch {
@@ -531,7 +556,9 @@ impl TirReductionBackend {
                     .max()
                     .unwrap_or(0);
                 if let Some(refusal) = rank_refusal(Reducer::TiRust, g.propagators, rank) {
-                    return Err(RusticolError::unsupported_runtime_capability("tirust", refusal));
+                    return Err(RusticolError::unsupported_runtime_capability(
+                        "tirust", refusal,
+                    ));
                 }
                 rows.push(Row {
                     group: index,
@@ -565,10 +592,16 @@ impl TirReductionBackend {
         }
         let started = Instant::now();
         let width = poles.width();
-        let mut direct_out: Vec<Vec<LaneOutcome<f64>>> =
-            groups.iter().map(|g| Vec::with_capacity(g.keys.len())).collect();
-        let mut check_out: Option<Vec<Vec<LaneOutcome<f64>>>> = check
-            .map(|_| groups.iter().map(|g| Vec::with_capacity(g.keys.len())).collect());
+        let mut direct_out: Vec<Vec<LaneOutcome<f64>>> = groups
+            .iter()
+            .map(|g| Vec::with_capacity(g.keys.len()))
+            .collect();
+        let mut check_out: Option<Vec<Vec<LaneOutcome<f64>>>> = check.map(|_| {
+            groups
+                .iter()
+                .map(|g| Vec::with_capacity(g.keys.len()))
+                .collect()
+        });
         let mut shifted = Vec::new();
         for (r, row) in rows.iter().enumerate() {
             let g = &groups[row.group];
@@ -576,20 +609,27 @@ impl TirReductionBackend {
             let monomials = ncoeff(row.rank);
             let first = &direct[r];
             let other = second_of[r];
-            let map = other.map(|_| FrameMap::<f64>::new(Some(frame), g.propagators, g.shifts.first()));
+            let map =
+                other.map(|_| FrameMap::<f64>::new(Some(frame), g.propagators, g.shifts.first()));
             for lane in row.start..row.end {
                 let c = &g.coefficients[lane * declared..lane * declared + monomials];
-                let value = first.moments.as_ref().map(|m| contract(&m.values, c, width));
+                let value = first
+                    .moments
+                    .as_ref()
+                    .map(|m| contract(&m.values, c, width));
                 let again = other.map(|other| -> Result<Vec<Complex<f64>>, String> {
                     let moments = other.moments.as_ref().map_err(Clone::clone)?;
                     shifted.clear();
-                    map.as_ref()
-                        .expect("a checked row's frame")
-                        .coefficients(c, row.rank, &other.origin, &mut shifted);
+                    map.as_ref().expect("a checked row's frame").coefficients(
+                        c,
+                        row.rank,
+                        &other.origin,
+                        &mut shifted,
+                    );
                     let mut value = contract(&moments.values, &shifted, width);
                     if let Some(factor) = &other.undo {
                         for v in &mut value {
-                            *v = *v * *factor;
+                            *v *= *factor;
                         }
                     }
                     Ok(value)
@@ -663,11 +703,16 @@ impl TirReductionBackend {
             let rows = g.coefficients.rows();
             let rank = tensor_rank(g.coefficients.columns())
                 .map_err(|e| RusticolError::invalid_argument(e.to_string()))?;
-            let (shifts, masses, scales) = (values(g.shifts)?, values(g.masses_squared)?, values(g.scales_squared)?);
+            let (shifts, masses, scales) = (
+                values(g.shifts)?,
+                values(g.masses_squared)?,
+                values(g.scales_squared)?,
+            );
             let mut points = Vec::with_capacity(rows);
             for lane in 0..rows {
                 let same = lane > 0
-                    && shifts[(lane - 1) * 4 * n..lane * 4 * n] == shifts[lane * 4 * n..(lane + 1) * 4 * n]
+                    && shifts[(lane - 1) * 4 * n..lane * 4 * n]
+                        == shifts[lane * 4 * n..(lane + 1) * 4 * n]
                     && masses[(lane - 1) * n..lane * n] == masses[lane * n..(lane + 1) * n]
                     && scales[lane - 1] == scales[lane];
                 points.push(if same { points[lane - 1] } else { lane });
@@ -728,11 +773,15 @@ impl TirReductionBackend {
 }
 
 /// The bin of (`n`, `rank`), built on first use.
-fn bin_of(bins: &mut BTreeMap<(usize, usize), Bin>, n: usize, rank: usize) -> RusticolResult<&mut Bin> {
-    if !bins.contains_key(&(n, rank)) {
-        bins.insert((n, rank), Bin::new(n, rank)?);
-    }
-    Ok(bins.get_mut(&(n, rank)).expect("bin"))
+fn bin_of(
+    bins: &mut BTreeMap<(usize, usize), Bin>,
+    n: usize,
+    rank: usize,
+) -> RusticolResult<&mut Bin> {
+    Ok(match bins.entry((n, rank)) {
+        std::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
+        std::collections::btree_map::Entry::Vacant(entry) => entry.insert(Bin::new(n, rank)?),
+    })
 }
 
 /// TIRust's lane array (`[UV1, IR1, IR2, finite]` per basis entry) in

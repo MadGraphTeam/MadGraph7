@@ -662,8 +662,21 @@ def test_reduction_finiteness_and_estimates_on_the_public_route(shipped):
     named = shipped.evaluate(points, mu_r2=scales, reduction="ninjars")
     assert named.values == auto.values
     assert {lane.reduction.reason for lane in named.diagnostics} == {"requested"}
-    with pytest.raises(ReductionUnavailable, match="TIRust is not built into"):
-        shipped.evaluate(points, mu_r2=scales, reduction="tirust")
+    from pyamplicol.loops.native import load_loop_native
+
+    if load_loop_native().tirust_available():
+        # Served on request in binary64 (m-lit lit-tir); NinjaRS's values to
+        # rounding.
+        tir = shipped.evaluate(points, mu_r2=scales, reduction="tirust")
+        assert {lane.reduction.effective for lane in tir.diagnostics} == {"tirust"}
+        for mine, theirs in zip(tir.values, auto.values, strict=True):
+            (a,), (b,) = mine, theirs
+            assert abs(float(a.finite) - float(b.finite)) <= 1e-12 * abs(
+                float(b.finite)
+            )
+    else:
+        with pytest.raises(ReductionUnavailable, match="TIRust is not built into"):
+            shipped.evaluate(points, mu_r2=scales, reduction="tirust")
     ladder = VirtualRescuePolicy(
         (
             VirtualRescueLevel("double", metric="scale"),

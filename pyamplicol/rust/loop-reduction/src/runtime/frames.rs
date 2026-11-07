@@ -170,7 +170,11 @@ impl<T: Carrier> FrameMap<T> {
     /// The frame's shifts of one lane's `4n` shifts (component-major per
     /// propagator), appended to `out`; returns the origin `V_order[0]`, from
     /// which [`Self::coefficients`] re-expands a shifted frame's numerator.
-    pub(crate) fn shifts(&self, shifts: &[Complex<T>], out: &mut Vec<Complex<T>>) -> [Complex<T>; 4] {
+    pub(crate) fn shifts(
+        &self,
+        shifts: &[Complex<T>],
+        out: &mut Vec<Complex<T>>,
+    ) -> [Complex<T>; 4] {
         let vector =
             |i: usize| -> [Complex<T>; 4] { std::array::from_fn(|mu| shifts[4 * i + mu].clone()) };
         let origin = vector(self.order[0]);

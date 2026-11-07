@@ -1926,8 +1926,8 @@ impl V2Executor {
         // module docs).
         let _unlock = (reduction == Reduction::NinjaRs
             && (self.engine == "generic" || !matches!(carrier, Carriers::Double)))
-            .then(pyamplicol::unlock)
-            .flatten();
+        .then(pyamplicol::unlock)
+        .flatten();
         let backend = backend_of(
             &mut self.backends,
             carrier,

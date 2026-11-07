@@ -190,8 +190,7 @@ fn reference(groups: &[FamilyLanes<f64>], poles: Poles) -> Lanes {
     let mut backend = ninjars("double-double", "generic");
     let groups: Vec<_> = groups.iter().map(dd).collect();
     V2Backend::<DoubleFloat>::begin(&mut backend);
-    let (direct, _) =
-        V2Backend::<DoubleFloat>::reduce(&mut backend, &groups, poles, None).unwrap();
+    let (direct, _) = V2Backend::<DoubleFloat>::reduce(&mut backend, &groups, poles, None).unwrap();
     direct
         .into_iter()
         .map(|group| {
@@ -293,14 +292,22 @@ fn within_estimates(found: &Lanes, check: &Lanes, truth: &Lanes) -> f64 {
     let mut worst: f64 = 0.;
     for ((a, b), t) in found.iter().zip(check).zip(truth) {
         for (lane, ((x, y), z)) in a.iter().zip(b).zip(t).enumerate() {
-            let (x, y, z) = (x.as_ref().unwrap(), y.as_ref().unwrap(), z.as_ref().unwrap());
+            let (x, y, z) = (
+                x.as_ref().unwrap(),
+                y.as_ref().unwrap(),
+                z.as_ref().unwrap(),
+            );
             let scale = z.iter().map(size).fold(0., f64::max);
             let estimate = x
                 .iter()
                 .zip(y)
                 .map(|(p, q)| size(&(*p - q)))
                 .fold(4. * f64::EPSILON / 2. * scale, f64::max);
-            let deviation = x.iter().zip(z).map(|(p, q)| size(&(*p - q))).fold(0., f64::max);
+            let deviation = x
+                .iter()
+                .zip(z)
+                .map(|(p, q)| size(&(*p - q)))
+                .fold(0., f64::max);
             assert!(
                 deviation <= MARGIN * estimate,
                 "lane {lane}: deviation {deviation:e}, estimate {estimate:e}, scale {scale:e}"
@@ -386,7 +393,10 @@ fn layout_round_trip_and_split_columns() {
         assert_eq!(none[0][lane].as_ref().unwrap(), &a[..1], "lane {lane}");
         let n = ninja[0][lane].as_ref().unwrap();
         let scale = n.iter().map(size).fold(0., f64::max);
-        assert!(size(&(s[3] - n[3])) < 1e-11 * scale, "UV column lane {lane}");
+        assert!(
+            size(&(s[3] - n[3])) < 1e-11 * scale,
+            "UV column lane {lane}"
+        );
     }
 }
 
@@ -395,7 +405,9 @@ fn layout_round_trip_and_split_columns() {
 #[test]
 fn rank_over_declaration_is_bitwise() {
     let mut rng = Lcg(3);
-    let points: Vec<_> = (0..2).map(|_| point(3, &[0., 173. * 173., 0.], &mut rng)).collect();
+    let points: Vec<_> = (0..2)
+        .map(|_| point(3, &[0., 173. * 173., 0.], &mut rng))
+        .collect();
     let exact = lanes(0, &points, 2, 2, 2, &mut Lcg(5));
     let over = lanes(0, &points, 2, 4, 2, &mut Lcg(5));
     let (a, _) = reduce(&mut tir(), &[exact], Poles::All, None);
@@ -419,7 +431,9 @@ fn check_frames_rotate_and_rescale() {
         }
     );
     let mut rng = Lcg(13);
-    let points: Vec<_> = (0..2).map(|_| point(4, &[0., 0., 0., 0.], &mut rng)).collect();
+    let points: Vec<_> = (0..2)
+        .map(|_| point(4, &[0., 0., 0., 0.], &mut rng))
+        .collect();
     let groups = vec![lanes(0, &points, 3, 3, 2, &mut rng)];
     for check in [ReductionCheck::REVERSED, ReductionCheck::RESCALED] {
         let (direct, again) = reduce(&mut tir(), &groups, Poles::All, Some(check));
@@ -435,8 +449,12 @@ fn check_frames_rotate_and_rescale() {
 #[test]
 fn batch_composition_and_chunking_are_bitwise() {
     let mut rng = Lcg(17);
-    let a_points: Vec<_> = (0..3).map(|_| point(4, &[0., 0., 173. * 173., 0.], &mut rng)).collect();
-    let b_points: Vec<_> = (0..2).map(|_| point(4, &[0., 0., 0., 0.], &mut rng)).collect();
+    let a_points: Vec<_> = (0..3)
+        .map(|_| point(4, &[0., 0., 173. * 173., 0.], &mut rng))
+        .collect();
+    let b_points: Vec<_> = (0..2)
+        .map(|_| point(4, &[0., 0., 0., 0.], &mut rng))
+        .collect();
     let a = lanes(0, &a_points, 4, 4, 3, &mut rng);
     let b = lanes(1, &b_points, 4, 4, 2, &mut rng);
     let (together, _) = reduce(&mut tir(), &[copy(&a), copy(&b)], Poles::All, None);
@@ -498,7 +516,13 @@ fn unit_scaling() {
             .into_iter()
             .map(|g| {
                 g.into_iter()
-                    .map(|l| l.map(|v| v.into_iter().map(|z| C::new(z.re * undo, z.im * undo)).collect()))
+                    .map(|l| {
+                        l.map(|v| {
+                            v.into_iter()
+                                .map(|z| C::new(z.re * undo, z.im * undo))
+                                .collect()
+                        })
+                    })
                     .collect()
             })
             .collect();
@@ -525,9 +549,22 @@ fn capability_refusals_are_typed() {
         Err(error) => error,
         Ok(_) => panic!("TIRust admitted 13 propagators at this pin"),
     };
-    assert_eq!(refused.kind(), RusticolErrorKind::UnsupportedRuntimeCapability);
-    assert!(refused.message().contains("TIRust cannot reduce 13 propagators"), "{}", refused.message());
-    assert!(refused.message().contains("direct engine"), "{}", refused.message());
+    assert_eq!(
+        refused.kind(),
+        RusticolErrorKind::UnsupportedRuntimeCapability
+    );
+    assert!(
+        refused
+            .message()
+            .contains("TIRust cannot reduce 13 propagators"),
+        "{}",
+        refused.message()
+    );
+    assert!(
+        refused.message().contains("direct engine"),
+        "{}",
+        refused.message()
+    );
     // A top in its own gauge loop: S[1][2] = m_t² next to a top propagator.
     let mt2 = 173. * 173.;
     let mut rng = Lcg(23);
@@ -578,7 +615,14 @@ fn method_choice_rows_are_checked() {
             mu2: 91.188 * 91.188,
         };
         for rank in [4, 6] {
-            groups.push(lanes(family, std::slice::from_ref(&point), rank, rank, 2, &mut Lcg(29)));
+            groups.push(lanes(
+                family,
+                std::slice::from_ref(&point),
+                rank,
+                rank,
+                2,
+                &mut Lcg(29),
+            ));
             family += 1;
         }
     }
@@ -589,7 +633,12 @@ fn method_choice_rows_are_checked() {
         }
     }
     let mut backend = tir();
-    let (found, check) = reduce(&mut backend, &groups, Poles::All, Some(ReductionCheck::REVERSED));
+    let (found, check) = reduce(
+        &mut backend,
+        &groups,
+        Poles::All,
+        Some(ReductionCheck::REVERSED),
+    );
     let statistics = V2Backend::<f64>::take_statistics(&mut backend);
     let count = |name: &str| {
         statistics
@@ -624,7 +673,10 @@ fn method_choice_rows_are_checked() {
                     let n_check = ninja_check[g][lane].as_ref().unwrap();
                     let scale = z.iter().map(size).fold(0., f64::max);
                     let spread = |p: &[C], q: &[C]| {
-                        p.iter().zip(q).map(|(a, b)| size(&(*a - b))).fold(0., f64::max)
+                        p.iter()
+                            .zip(q)
+                            .map(|(a, b)| size(&(*a - b)))
+                            .fold(0., f64::max)
                     };
                     let truth_error = spread(x, z) / scale;
                     eprintln!(
@@ -634,9 +686,16 @@ fn method_choice_rows_are_checked() {
                         spread(n, z) / scale,
                         spread(n, n_check) / scale
                     );
-                    assert!(truth_error < 1e-12, "family {g} lane {lane}: {truth_error:e}");
+                    assert!(
+                        truth_error < 1e-12,
+                        "family {g} lane {lane}: {truth_error:e}"
+                    );
                     let one = |v: &LaneOutcome<f64>| vec![vec![v.clone()]];
-                    within_estimates(&one(&found[g][lane]), &one(&check[g][lane]), &one(&truth[g][lane]));
+                    within_estimates(
+                        &one(&found[g][lane]),
+                        &one(&check[g][lane]),
+                        &one(&truth[g][lane]),
+                    );
                 }
                 // A refused lane fails closed with TIRust's or the check's reason.
                 (Err(reason), _) | (_, Err(reason)) => {
@@ -647,7 +706,11 @@ fn method_choice_rows_are_checked() {
     }
     assert!(served > 0);
     assert!(count("TIR gate refusals") > 0, "{:?}", statistics.counts);
-    assert!(count("TIR method-choice rows") > 0, "{:?}", statistics.counts);
+    assert!(
+        count("TIR method-choice rows") > 0,
+        "{:?}",
+        statistics.counts
+    );
 }
 
 /// Diagnostic (recorded in the package report, run with `--ignored`): the
@@ -672,13 +735,23 @@ fn method_choice_variants() {
             mu2: 91.188 * 91.188,
         };
         for rank in [4, 6] {
-            let groups = vec![lanes(0, std::slice::from_ref(&point), rank, rank, 2, &mut Lcg(29))];
+            let groups = vec![lanes(
+                0,
+                std::slice::from_ref(&point),
+                rank,
+                rank,
+                2,
+                &mut Lcg(29),
+            )];
             let truth = reference_arbitrary(&groups, Poles::All, 80);
             let dd = reference(&groups, Poles::All);
             for lane in 0..2 {
                 eprintln!(
                     "m {m} rank {rank}: lane {lane} double-double vs 80 digits {:e}",
-                    relative(dd[0][lane].as_ref().unwrap(), truth[0][lane].as_ref().unwrap())
+                    relative(
+                        dd[0][lane].as_ref().unwrap(),
+                        truth[0][lane].as_ref().unwrap()
+                    )
                 );
             }
             for alternative in [Some(iregi_rust::direct::EXPANSION_TOLERANCE), None] {

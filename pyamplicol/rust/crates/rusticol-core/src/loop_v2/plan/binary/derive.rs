@@ -780,14 +780,19 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
     // The families' readings and ranks (the reducer's admission), and the
     // largest family rank (merged states); every monomial table and fused
     // entry is bounded by the largest rank the reducer admits over the legs.
-    let admitted_rank = crate::loop_v2::bounds::largest_rank(crate::loop_v2::bounds::Reducer::ARTIFACT, file.legs);
+    let admitted_rank =
+        crate::loop_v2::bounds::largest_rank(crate::loop_v2::bounds::Reducer::ARTIFACT, file.legs);
     let mut largest_rank = 0;
     for f in &file.families {
         require(
             f.sequence.len() <= file.legs,
             "a family reading of more entries than legs",
         )?;
-        if let Some(refusal) = crate::loop_v2::bounds::rank_refusal(crate::loop_v2::bounds::Reducer::ARTIFACT, f.sequence.len(), f.rank) {
+        if let Some(refusal) = crate::loop_v2::bounds::rank_refusal(
+            crate::loop_v2::bounds::Reducer::ARTIFACT,
+            f.sequence.len(),
+            f.rank,
+        ) {
             return Err(invalid(format!("family rank: {refusal}")));
         }
         largest_rank = largest_rank.max(f.rank);

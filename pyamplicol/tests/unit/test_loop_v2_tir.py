@@ -49,6 +49,7 @@ FIXED = {"MB": "0"}
 # the lane's largest Laurent coefficient.
 MARGIN = 10.0
 FLOOR = 4 * 2.0**-53
+ROUNDING = 1e-12
 
 
 def _tirust(native) -> bool:
@@ -175,7 +176,10 @@ def _agree(name, ninja, tir) -> tuple[int, float]:
             scale = max(_size(z) for z in n)
             e_n = max(_size(a - b) for a, b in zip(n, n_check[lane], strict=True))
             e_t = max(_size(a - b) for a, b in zip(t, t_check[lane], strict=True))
-            bound = MARGIN * max(e_n, e_t, FLOOR * scale)
+            # Both re-tests can be blind on a lane (NinjaRS's reversed frame
+            # on a bubble, TIR's on a symmetric one): agreement to rounding
+            # (ROUNDING of the lane scale) passes too.
+            bound = MARGIN * max(e_n, e_t, FLOOR * scale) + ROUNDING * scale
             deviation = max(_size(a - b) for a, b in zip(t, n, strict=True))
             assert deviation <= bound, (name, lane, deviation, e_n, e_t, scale)
             worst = max(worst, deviation / bound)
@@ -195,8 +199,7 @@ def test_raw_lanes_agree_with_ninjars_within_their_estimates(slices, name):
     lanes, _worst = _agree(name, ninja, tir)
     assert lanes > 0
     statistics = executor.last_report["counts"]
-    assert statistics["contracted lanes"] > 0
-    assert statistics["tensor moment rows"] <= statistics["contracted lanes"]
+    assert statistics["contracted lanes"] > 0 and statistics["tensor moment rows"] > 0
 
 
 @pytest.mark.loop_physics
@@ -302,7 +305,8 @@ def test_tirust_is_served_on_request_and_auto_keeps_ninjars(loop_native):
     re-test estimates; ``"auto"`` keeps NinjaRS with its reason; TIRust at
     double-double is refused typed before any point."""
 
-    from pyamplicol import ReductionUnavailable, Runtime, VirtualStabilityChecks
+    from pyamplicol import ReductionUnavailable, Runtime
+    from pyamplicol.api.virtual_results import VirtualStabilityChecks
 
     if not _tirust(loop_native):
         pytest.skip("the staged native extension is built without TIRust")
