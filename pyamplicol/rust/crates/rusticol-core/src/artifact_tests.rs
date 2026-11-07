@@ -2079,6 +2079,7 @@ fn process_capabilities_are_strict_and_form_the_runtime_union() {
 /// processes in any mix (m-lit lit-amp-b): every process requires exactly one
 /// v2 loop runtime and the artifact no other runtime
 /// (`loop_artifact::is_loop_v2_manifest`, the loaders' admission).
+#[cfg(feature = "symbolica-runtime")]
 #[test]
 fn loop_v2_manifests_admit_born_interfered_and_loop_induced_in_any_mix() {
     use crate::loop_artifact::{
