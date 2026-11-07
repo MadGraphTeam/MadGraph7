@@ -266,13 +266,13 @@ def test_missing_or_mismatched_source_tree_is_rejected() -> None:
 LOOP_REPORT = (
     Path(__file__).resolve().parents[2] / "docs" / "performance_reports" / "loop"
 )
-# Its items in order: Table 1 (Born-interfered), Figure 1 (Table 1 against the
-# gate), Table 2 (loop-induced), Table 3 (the gate and stage numbers behind
-# Table 1's chips and bars) and the reading guide.
+# Its items in order: Table 1 (Born-interfered) and Table 2 (loop-induced)
+# open it, then Figure 1 (Table 1 against the gate), Table 3 (the gate and
+# stage numbers behind Table 1's chips and bars) and the reading guide.
 LOOP_REPORT_ITEMS = (
     "tab:summary",
-    "fig:gate",
     "tab:summary-li",
+    "fig:gate",
     "tab:gate",
     "reading",
 )
@@ -325,6 +325,25 @@ def test_loop_report_tables_state_their_provenance_in_one_line() -> None:
     for field in ("li-meta.date", "li-hosts", "native-of(li-engine)", "native-of(x)"):
         assert field in table2
     assert "li-head" in table2.split("table.header(")[1]
+    # Table 2's provenance names pyAmpliCol's host, its generation cell the
+    # generation-time probes (the full production generate cost).
+    assert "li-our-hosts" in table2 and "m.probes_seconds" in table2
+
+
+def test_loop_report_head_line_labels_table_1_and_names_the_report() -> None:
+    code = _loop_report_code()
+
+    # The running header and the page-1 subtitle name the report's date and
+    # newest measured engine (summary.json meta.report) and label Table 1's
+    # configuration as Table 1's, so no reader takes the whole report to be
+    # at Table 1's engine.
+    assert "#let rep = sm.report" in code
+    header = code[code.index("header: context") : code.index("#set text(")]
+    page1 = code[code.index("#align(center)[") : code.index("#let m-rows")]
+    for line in (header, page1):
+        assert "rep.date" in line and "rep.head" in line
+        assert "Table 1: engine #raw(sm.engine_on_loop)" in line
+        assert "t2-engine" in line
 
 
 def test_loop_report_readme_states_the_essentials_rule() -> None:
