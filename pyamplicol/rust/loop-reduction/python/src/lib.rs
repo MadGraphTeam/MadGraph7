@@ -92,6 +92,13 @@ fn canonical_saved_evaluator<'py>(
     }
 }
 
+/// Whether this native extension links TIRust, the tensor-integral reduction
+/// backend (the default cargo feature `tir`; `rusticol_loop_reduction::tir`).
+#[pyfunction]
+fn tirust_available() -> bool {
+    rusticol_loop_reduction::tir::available()
+}
+
 #[pymodule]
 fn _loop_reduction(module: &Bound<'_, PyModule>) -> PyResult<()> {
     register(module)
@@ -113,6 +120,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     batch::register(module)?;
     module.add_class::<CoefficientEvaluator>()?;
     module.add_function(wrap_pyfunction!(canonical_saved_evaluator, module)?)?;
+    module.add_function(wrap_pyfunction!(tirust_available, module)?)?;
     v2::register(module)?;
     v2_catalogue::register(module)?;
     v2_closure::register(module)?;

@@ -11,6 +11,10 @@ name = "rusticol_loop_sdk"
 crate-type = ["rlib", "staticlib", "cdylib"]
 
 [features]
+# TIRust, a default feature forwarded to rusticol-loop-reduction (m-lit
+# PLAN §2.c.2 item 3; USER 2026-11-06 ~13:35).
+default = ["tir"]
+tir = ["rusticol-loop-reduction/tir"]
 # The Rust example client links the combined C ABI archive by hand (README:
 # `cargo rustc --example client --features c-abi-examples -- -l static=rusticol_capi`),
 # so `cargo test --workspace` must not try to link it on its own.
@@ -21,7 +25,7 @@ name = "client"
 required-features = ["c-abi-examples"]
 
 [dependencies]
-rusticol-loop-reduction = { path = ".." }
+rusticol-loop-reduction = { path = "..", default-features = false }
 rusticol-core = { path = "../../crates/rusticol-core", features = ["symbolica-runtime", "python-generation-bridge"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

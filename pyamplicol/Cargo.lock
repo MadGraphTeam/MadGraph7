@@ -1358,6 +1358,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "iregi-masters"
+version = "0.1.0"
+source = "git+https://github.com/huashengshao/TIRust.git?rev=760e3144cb96df516241c9347582b10b4c47f3f3#760e3144cb96df516241c9347582b10b4c47f3f3"
+dependencies = [
+ "oneloop",
+ "symbolica",
+]
+
+[[package]]
+name = "iregi-rust"
+version = "0.1.0"
+source = "git+https://github.com/huashengshao/TIRust.git?rev=760e3144cb96df516241c9347582b10b4c47f3f3#760e3144cb96df516241c9347582b10b4c47f3f3"
+dependencies = [
+ "iregi-masters",
+ "oneloop",
+ "serde",
+ "symbolica",
+ "thiserror",
+]
+
+[[package]]
 name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2366,6 +2387,8 @@ name = "rusticol-loop-reduction"
 version = "0.1.0"
 dependencies = [
  "feynkit-kinematics",
+ "iregi-masters",
+ "iregi-rust",
  "ninjars",
  "ninjars-graph",
  "ninjars-symbolica",

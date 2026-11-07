@@ -5,11 +5,13 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import csv
 import hashlib
 import importlib.util
 import io
 import json
+import lzma
 import os
 import platform
 import re
@@ -60,6 +62,7 @@ from audit_sdist import (
 )
 from prepare_selftest_fixture import (
     _artifact_id,
+    umami_identity_updates,
     validate_artifact_identity_contract,
     validate_portable_artifact_capabilities,
     validate_portable_execution_manifest,
@@ -86,7 +89,6 @@ _REQUIRED_SDK_PATHS = {
     "pyamplicol/_sdk/include/rusticol.hpp",
     "pyamplicol/_sdk/fortran/rusticol.f90",
     "pyamplicol/_sdk/rust/rusticol.rs",
-    "pyamplicol/_sdk/lib/librusticol_capi.a",
     "pyamplicol/_sdk/config.py",
     "pyamplicol/_sdk/metadata.json",
     "pyamplicol/_sdk/link.json",
@@ -250,6 +252,12 @@ _COMPILED_MODEL_KIND = "pyamplicol-compiled-model"
 _BUILTIN_MODEL_SOURCE_KIND = "built-in-sm"
 # Maturin's wheel repair: auditwheel layout on Linux, delocate layout on macOS.
 _ALLOWED_REPAIR_ROOTS = {"pyamplicol.libs", "pyamplicol.dylibs"}
+# The C API archive: plain (developer builds), or xz-compressed in
+# distribution wheels (USER 2026-11-07), which every release wheel is;
+# metadata.json records the unpacked archive's SHA-256 and size.
+_SDK_ARCHIVE = "pyamplicol/_sdk/lib/librusticol_capi.a"
+_SDK_ARCHIVE_COMPRESSION = "xz"
+_SDK_ARCHIVE_XZ = f"{_SDK_ARCHIVE}.{_SDK_ARCHIVE_COMPRESSION}"
 _SDK_SHARED_LIBRARY = re.compile(
     r"lib/lib[A-Za-z0-9_+-]+(?:\.so(?:\.[0-9]+)+|(?:\.[0-9]+)*\.dylib)"
 )
@@ -257,7 +265,7 @@ _SDK_SHARED_LIBRARY = re.compile(
 # "other").
 _WHEEL_SIZE_COMPONENTS = (
     ("extension", re.compile(r"pyamplicol/_rusticol(?:\.[^./]+)*\.so")),
-    ("SDK archive", re.compile(r"pyamplicol/_sdk/lib/[^/]+\.a")),
+    ("SDK archive", re.compile(r"pyamplicol/_sdk/lib/[^/]+\.a(?:\.xz)?")),
     ("SDK shared libraries", re.compile(r"pyamplicol/_sdk/lib/[^/]+")),
     (
         "bundled libraries",
@@ -545,6 +553,7 @@ def _required_legal_files() -> tuple[str, ...]:
         "licenses/SymJIT.txt",
         "licenses/NinjaRS.txt",
         "licenses/oneloopmaster.txt",
+        "licenses/TIRust.txt",
         "licenses/GammaLoop-crates.txt",
         *_arithmetic_licence_files(),
     )
@@ -1134,7 +1143,10 @@ def _validate_sdk(
     *,
     version: str,
     rust_target: str,
-) -> None:
+    mode: str,
+) -> tuple[str, bytes]:
+    """Validate the SDK; return the archive's wheel member and unpacked bytes."""
+
     missing = sorted(_REQUIRED_SDK_PATHS - set(entries))
     if missing:
         raise ArtifactError("wheel is missing SDK resources: " + ", ".join(missing))
@@ -1153,8 +1165,9 @@ def _validate_sdk(
     if archive.is_absolute() or any(part in {"", ".", ".."} for part in archive.parts):
         raise ArtifactError("SDK archive path must be relative and confined")
     archive_name = (PurePosixPath("pyamplicol/_sdk") / archive).as_posix()
-    if archive_name != "pyamplicol/_sdk/lib/librusticol_capi.a":
-        raise ArtifactError(f"unexpected SDK archive path: {archive}")
+    archive_data = _sdk_archive_data(
+        entries, metadata, archive_name=archive_name, mode=mode
+    )
     rust_source = PurePosixPath(str(metadata.get("rust_source", "")))
     if rust_source.is_absolute() or any(
         part in {"", ".", ".."} for part in rust_source.parts
@@ -1193,6 +1206,79 @@ def _validate_sdk(
             f"frameworks={sorted(unexpected_frameworks)}"
         )
     _sdk_shared_library_members(entries, link=link, rust_target=rust_target)
+    return archive_name, archive_data
+
+
+def _sdk_archive_data(
+    entries: Mapping[str, bytes],
+    metadata: Mapping[str, Any],
+    *,
+    archive_name: str,
+    mode: str,
+) -> bytes:
+    """The C API archive's bytes, unpacked (and checked) when compressed."""
+
+    compression = metadata.get("archive_compression")
+    expected = _SDK_ARCHIVE if compression is None else _SDK_ARCHIVE_XZ
+    if archive_name != expected:
+        relative = archive_name.removeprefix("pyamplicol/_sdk/")
+        raise ArtifactError(f"unexpected SDK archive path: {relative}")
+    if archive_name not in entries:
+        raise ArtifactError(f"wheel is missing the SDK archive {archive_name}")
+    shipped = {_SDK_ARCHIVE, _SDK_ARCHIVE_XZ} & set(entries)
+    if shipped != {archive_name}:
+        raise ArtifactError(
+            "wheel must ship exactly one SDK archive form, found "
+            + ", ".join(sorted(shipped))
+        )
+    if compression is None:
+        if mode == "release":
+            raise ArtifactError(
+                "release wheels must ship the SDK archive xz-compressed "
+                f"({_SDK_ARCHIVE_XZ})"
+            )
+        return entries[archive_name]
+    if (
+        not isinstance(compression, dict)
+        or set(compression) != {"format", "sha256", "size"}
+        or compression["format"] != _SDK_ARCHIVE_COMPRESSION
+        or not isinstance(compression["sha256"], str)
+        or re.fullmatch(r"[0-9a-f]{64}", compression["sha256"]) is None
+        or not isinstance(compression["size"], int)
+        or isinstance(compression["size"], bool)
+        or compression["size"] <= 0
+    ):
+        raise ArtifactError("SDK archive_compression metadata is invalid")
+    try:
+        data = lzma.decompress(entries[archive_name], format=lzma.FORMAT_XZ)
+    except lzma.LZMAError as error:
+        raise ArtifactError(
+            f"SDK archive {archive_name} is not valid xz: {error}"
+        ) from error
+    if (
+        len(data) != compression["size"]
+        or hashlib.sha256(data).hexdigest() != compression["sha256"]
+    ):
+        raise ArtifactError(
+            f"SDK archive {archive_name} does not unpack to the recorded size and "
+            "SHA-256"
+        )
+    return data
+
+
+def _unpacked_sdk_entries(
+    entries: Mapping[str, bytes], archive_name: str, archive_data: bytes
+) -> dict[str, bytes]:
+    """Wheel members with the C API archive unpacked under its plain name.
+
+    The path, static-runtime and Python-linkage scans and the link probe
+    read the archive itself, never its compressed bytes.
+    """
+
+    unpacked = dict(entries)
+    del unpacked[archive_name]
+    unpacked[_SDK_ARCHIVE] = archive_data
+    return unpacked
 
 
 def _sdk_shared_library_members(
@@ -1419,6 +1505,17 @@ def _validate_selftest_fixture(
     }
     if actual != declared:
         raise ArtifactError("wheel self-test artifact payload inventory is incomplete")
+    try:
+        unbound_umami = umami_identity_updates(
+            manifest, lambda relative: entries.get(f"{artifact_prefix}{relative}")
+        )
+    except RuntimeError as error:
+        raise ArtifactError(f"wheel self-test UMAMI provider: {error}") from error
+    if unbound_umami:
+        raise ArtifactError(
+            "wheel self-test UMAMI provider does not name the artifact identity: "
+            + ", ".join(sorted(unbound_umami))
+        )
     missing_api_payloads = sorted(_REQUIRED_SELFTEST_API_PAYLOADS - declared)
     if missing_api_payloads:
         raise ArtifactError(
@@ -1517,6 +1614,7 @@ def _validate_wheel_inventory(
     wheel_name: str,
     record_name: str,
     extension_name: str,
+    sdk_archive_name: str,
     rust_target: str,
     mode: str,
 ) -> None:
@@ -1527,6 +1625,7 @@ def _validate_wheel_inventory(
     )
     expected = set(_REQUIRED_WHEEL_PACKAGE_MEMBERS)
     expected.add(extension_name)
+    expected.add(sdk_archive_name)
     expected.update(
         _sdk_shared_library_members(
             entries,
@@ -2020,7 +2119,7 @@ def _native_scan(
         extension_path = temporary / Path(extension).name
         archive_path = temporary / "librusticol_capi.a"
         extension_path.write_bytes(entries[extension])
-        archive_path.write_bytes(entries["pyamplicol/_sdk/lib/librusticol_capi.a"])
+        archive_path.write_bytes(entries[_SDK_ARCHIVE])
         _scan_extension(extension_path, target, bundled=_bundled_libraries(entries))
         _scan_capi_archive(archive_path, allow_local_rustup=allow_local_rustup)
         link = _json_object(entries, "pyamplicol/_sdk/link.json")
@@ -2036,11 +2135,16 @@ def _native_scan(
 
 
 def wheel_size_summary(path: Path) -> str:
-    """The wheel's size and limit with its compressed bytes per component."""
+    """The wheel's size and limit with its compressed bytes per component.
+
+    The SDK archive's stored size and, when it ships xz-compressed, its
+    unpacked size (from metadata.json) follow.
+    """
 
     size = path.stat().st_size
     totals = {name: 0 for name, _pattern in _WHEEL_SIZE_COMPONENTS}
     totals["other"] = 0
+    archive_sizes = ""
     with zipfile.ZipFile(path) as archive:
         for info in archive.infolist():
             component = next(
@@ -2052,11 +2156,28 @@ def wheel_size_summary(path: Path) -> str:
                 "other",
             )
             totals[component] += info.compress_size
+        names = set(archive.namelist())
+        if _SDK_ARCHIVE_XZ in names:
+            unpacked: object = None
+            with contextlib.suppress(KeyError, TypeError, ValueError):
+                metadata = json.loads(archive.read("pyamplicol/_sdk/metadata.json"))
+                unpacked = metadata["archive_compression"]["size"]
+            archive_sizes = (
+                f"; SDK archive {PurePosixPath(_SDK_ARCHIVE_XZ).name} "
+                f"{archive.getinfo(_SDK_ARCHIVE_XZ).file_size} bytes xz, "
+                f"unpacked {unpacked if isinstance(unpacked, int) else 'unknown'} "
+                "bytes"
+            )
+        elif _SDK_ARCHIVE in names:
+            archive_sizes = (
+                f"; SDK archive {PurePosixPath(_SDK_ARCHIVE).name} "
+                f"{archive.getinfo(_SDK_ARCHIVE).file_size} bytes uncompressed"
+            )
     totals["zip metadata"] = size - sum(totals.values())
     parts = ", ".join(f"{name} {value}" for name, value in totals.items())
     return (
         f"{path.name} is {size} bytes (limit {MAX_WHEEL_BYTES}); "
-        f"compressed bytes: {parts}"
+        f"compressed bytes: {parts}{archive_sizes}"
     )
 
 
@@ -2169,10 +2290,11 @@ def audit_wheel(
         raise ArtifactError(
             "wheel must contain exactly one pyamplicol/_rusticol*.abi3.so"
         )
-    _validate_sdk(
+    sdk_archive_name, sdk_archive = _validate_sdk(
         entries,
         version=version,
         rust_target=rust_target,
+        mode=mode,
     )
     _validate_selftest_fixture(entries, version=version, rust_target=rust_target)
     _validate_wheel_inventory(
@@ -2181,10 +2303,13 @@ def audit_wheel(
         wheel_name=wheel_name,
         record_name=record_name,
         extension_name=extensions[0],
+        sdk_archive_name=sdk_archive_name,
         rust_target=rust_target,
         mode=mode,
     )
     _validate_record(entries, record_name)
+    # Every later scan reads the unpacked C API archive.
+    entries = _unpacked_sdk_entries(entries, sdk_archive_name, sdk_archive)
     _scan_embedded_paths(
         entries,
         allow_local_rustup=mode == "candidate",

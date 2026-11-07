@@ -32,6 +32,15 @@ pins are recorded by Cargo. This is a source integration, with Rust 1.96 or
 newer required; the git `[patch]` still fails the published-crate gate, so the
 branch is not publishable until the PR is in a Symbolica release.
 
+TIRust ([huashengshao/TIRust](https://github.com/huashengshao/TIRust), crates
+`iregi-rust` and `iregi-masters`, pinned to a commit of its main after its one
+history rewrite) is one more git source, linked by the cargo feature `tir`, a
+default feature of every crate that links it (`--no-default-features` builds
+without it). Its crates require `symbolica = "3.0"` and the oneloop revision
+and features pinned here, so the root `[patch]` and oneloop pin serve them
+(one source each, unchanged feature sets). Like the NinjaRS and oneloopmaster
+pins it is a git source for the publication gate.
+
 The published Python/Community distribution is pinned to **3.0.3**, which the
 author builds from the same `community` branch (without the PR); its
 `Evaluator.save()` envelope is the one the native reads. 3.0.2's raw-bincode
