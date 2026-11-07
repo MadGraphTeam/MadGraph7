@@ -184,6 +184,12 @@ def _record(name):
             "identity/ninjars/double": n64,
             "identity/ninjars/double-double": dd,
         },
+        "l3_probes": {
+            "ninjars/double": [{"worst": 0.1, "passed": True}] * count,
+            "ninjars/double-double": [{"worst": 0.05, "passed": True}] * count,
+            "tirust/double": [{"worst": 0.2, "passed": True}]
+            + [{"error": "FailedPoints: box [0, 1, 2, 3] refused"}] * (count - 1),
+        },
         "complete": True,
     }
 
@@ -200,6 +206,8 @@ def test_judge_records_partial_waits_and_passes(entries):
     assert judged["L1"]["status"] == "pass"
     assert set(judged["L1"]["max_relative"]) == set(entry["providers"])
     assert judged["L3"]["ninjars/double"]["status"] == "pass"
+    assert judged["L3"]["tirust/double"]["status"] == "partial"
+    assert judged["L3"]["tirust/double"]["served"] == 1
     assert judged["L4"]["status"] == "pass"
     assert judged["L5"]["status"] == "pass"
     l6 = judged["L6"]
@@ -209,14 +217,14 @@ def test_judge_records_partial_waits_and_passes(entries):
     assert any("conditioning" in k for k in l6["double"]["tirust_failed_reasons"])
     assert l6["double-double"]["status"] == f"waits: {lm.TIR_MP}"
     assert "double-double" in l6["double-double"]["tirust"]
-    # A finiteness ratio beyond ten times its estimate (but far below the
-    # lax rule) is an estimate miss, not a failure.
+    # A probe residue beyond ten times its own estimate fails L3.
     record = _record("li_gg_hh")
-    record["arms"]["ninjars/double/checked"] = {
-        "points": [_point(1.0, 1e-12, finiteness=1e-13, pole=1e-15)]
-        + record["arms"]["ninjars/double/checked"]["points"][1:]
-    }
-    assert lm.judge(record, entry)["L3"]["ninjars/double"]["status"] == "estimate miss"
+    record["l3_probes"]["ninjars/double"] = [{"worst": 12.0, "passed": False}] * 3
+    assert lm.judge(record, entry)["L3"]["ninjars/double"]["status"] == "fail"
+    # A zero row's providers are recorded absolutely (L8 is its rule).
+    zero = {e["fixture"]: e for e in entries}["li_gg_ha"]
+    judged = lm.judge(_record("li_gg_ha"), zero)
+    assert judged["L1"]["status"] == "recorded" and "L8" in judged
 
 
 def test_lit_json_is_keyed_by_the_registry_and_read_by_the_report(entries, tmp_path):
