@@ -130,7 +130,7 @@ from pyamplicol.loops.strategy import R2Selection
 
 from .families import Orders, add_orders
 from .native_trees import Program, StoredMember, program_bytes
-from .reduction import RESOLVED, SUMMED, Route
+from .reduction import RESOLVED, SUMMED, Route, running
 
 PLAN_MEMBER = "schedule/loop-plan-v4.json.zlib"
 # The binary plan member (``ExportedPlan.binary()``, M-FINAL MF-8G-1 item 5),
@@ -2228,9 +2228,10 @@ class V2VirtualRuntime:
         one), on the ``reduction`` backend (one the native executor runs,
         ``_reduction_choices`` on ``reduction.SUMMED``)."""
 
-        results, failures = self._run(
-            points, scales, parameters, setting, selection, checks
-        )
+        with running(reduction.effective):
+            results, failures = self._run(
+                points, scales, parameters, setting, selection, checks
+            )
         if failures and on_failure == "raise":
             index = min(failures)
             raise EvaluationError(

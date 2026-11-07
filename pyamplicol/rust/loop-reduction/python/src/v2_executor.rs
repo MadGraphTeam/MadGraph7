@@ -32,7 +32,7 @@ use rusticol_core::loop_v2::retest::ReductionCheck;
 use rusticol_core::loop_v2::trees::{
     BoundParameters, TREE_FILL_BUDGET, TreeCarrier, TreeInputs, TreeProgram, TreeRuntime,
 };
-use rusticol_loop_reduction::runtime::{TypedBatch, V2ReductionBackend};
+use rusticol_loop_reduction::runtime::{Reduction, TypedBatch, V2Backends, V2ReductionBackend};
 use std::any::Any;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -849,36 +849,53 @@ struct V2Executor {
     /// The binary64 reduction engine: `fast` (production) or `generic`
     /// (oracle and cost reference of selected master poles).
     engine: String,
-    backend: Option<V2ReductionBackend>,
+    /// The reduction backends of the carrier, NinjaRS's then TIRust's, each
+    /// built on first use (`backend_of`).
+    backends: [Option<V2Backends>; 2],
     trees: Option<Trees>,
 }
 
-/// The reduction backend of a carrier, built on first use. A free function
-/// of the backend slot, so an evaluation can borrow the executor alongside.
-/// `engine` is the binary64 reduction engine; the extended carriers always
-/// reduce with the generic engine.
+/// The `reduction` backend of a carrier, built on first use. A free
+/// function of the backend slots, so an evaluation can borrow the executor
+/// alongside. `engine` is NinjaRS's binary64 reduction engine (the extended
+/// carriers always reduce with its generic engine); TIRust's plans are built
+/// from the `plan`'s (propagators, rank) histogram (`V2Backends::tirust`).
 fn backend_of<'a>(
-    slot: &'a mut Option<V2ReductionBackend>,
+    slots: &'a mut [Option<V2Backends>; 2],
     carrier: Carriers,
     engine: &str,
-) -> PyResult<&'a mut V2ReductionBackend> {
+    reduction: Reduction,
+    plan: &LoopProgramV4,
+) -> PyResult<&'a mut V2Backends> {
+    if matches!(carrier, Carriers::Exact | Carriers::Prime) {
+        return Err(error("the exact carrier dresses numerators only"));
+    }
+    let slot = &mut slots[reduction as usize];
     if slot.is_none() {
-        let reducer = match carrier {
-            Carriers::Double => runtime::V2Reducer::new("double", None, engine, true),
-            Carriers::DoubleDouble => {
-                runtime::V2Reducer::new("double-double", None, "generic", true)
+        *slot = Some(match reduction {
+            Reduction::NinjaRs => {
+                let reducer = match carrier {
+                    Carriers::Double => runtime::V2Reducer::new("double", None, engine, true),
+                    Carriers::DoubleDouble => {
+                        runtime::V2Reducer::new("double-double", None, "generic", true)
+                    }
+                    Carriers::Arbitrary(digits) => {
+                        runtime::V2Reducer::new("arbitrary", Some(digits), "generic", true)
+                    }
+                    Carriers::Exact | Carriers::Prime => unreachable!("refused above"),
+                }
+                .map_err(error)?;
+                V2Backends::NinjaRs(V2ReductionBackend {
+                    reducer,
+                    masters: v2::master_selection("both")?,
+                })
             }
-            Carriers::Arbitrary(digits) => {
-                runtime::V2Reducer::new("arbitrary", Some(digits), "generic", true)
+            Reduction::TiRust => {
+                if !matches!(carrier, Carriers::Double) {
+                    return Err(error(runtime::TIRUST_BINARY64_ONLY));
+                }
+                V2Backends::tirust(runtime::plan_histogram(plan)).map_err(error)?
             }
-            Carriers::Exact | Carriers::Prime => {
-                return Err(error("the exact carrier dresses numerators only"));
-            }
-        }
-        .map_err(error)?;
-        *slot = Some(V2ReductionBackend {
-            reducer,
-            masters: v2::master_selection("both")?,
         });
     }
     Ok(slot.as_mut().expect("backend"))
@@ -927,7 +944,7 @@ fn evaluate_with<T: Exchanged + Real + TypedBatch + TreeCarrier + Send + Sync>(
     py: Python<'_>,
     executor: &Executor,
     trees: Option<&mut Trees>,
-    backend: &mut V2ReductionBackend,
+    backend: &mut V2Backends,
     inputs: &Bound<'_, PyDict>,
     zero: T,
     bits: u32,
@@ -1432,7 +1449,7 @@ impl V2Executor {
             executor,
             carrier,
             engine: engine.to_owned(),
-            backend: None,
+            backends: [None, None],
             trees,
         })
     }
@@ -1503,9 +1520,61 @@ impl V2Executor {
                 .map_err(error)?,
             carrier,
             engine: engine.to_owned(),
-            backend: None,
+            backends: [None, None],
             trees,
         })
+    }
+
+    /// Build the `reduction` backend of this executor's carrier now (TIRust:
+    /// its plans from the plan's (propagators, rank) histogram, so that no
+    /// evaluation builds them; TIRust's typed refusal of a family is raised
+    /// here: the artifact runtime calls it once per call and carrier on
+    /// TIRust). Returns the (propagators, rank) plans TIRust built (empty
+    /// for NinjaRS). For validation, TIRust's keywords `method_choice`,
+    /// `alternative_first` and `acceptance` (those of `V2TirReducer`; omitted,
+    /// the backend's defaults) set its settings: its backend is rebuilt when
+    /// they differ from its current ones. NinjaRS refuses them.
+    #[pyo3(signature = (reduction="tirust", *, method_choice=None, alternative_first=super::v2::Limit::default_limit(), acceptance=None))]
+    fn prepare_reduction(
+        &mut self,
+        reduction: &str,
+        method_choice: Option<bool>,
+        alternative_first: Option<super::v2::Limit>,
+        acceptance: Option<f64>,
+    ) -> PyResult<Vec<(usize, usize)>> {
+        let reduction = Reduction::parse(reduction).map_err(error)?;
+        if reduction != Reduction::TiRust
+            && super::v2::tir_settings_given(method_choice, &alternative_first, acceptance)
+        {
+            return Err(error(
+                "method_choice, alternative_first and acceptance are TIRust's settings",
+            ));
+        }
+        #[cfg(feature = "tir")]
+        if reduction == Reduction::TiRust && matches!(self.carrier, Carriers::Double) {
+            let options = super::v2::tir_options(method_choice, &alternative_first, acceptance)?;
+            let slot = &mut self.backends[reduction as usize];
+            let current = match slot {
+                Some(V2Backends::TiRust(backend)) => Some(*backend.options()),
+                _ => None,
+            };
+            if current != Some(options) {
+                *slot = Some(
+                    V2Backends::tirust_with(runtime::plan_histogram(self.executor.plan()), options)
+                        .map_err(error)?,
+                );
+            }
+        }
+        #[cfg(not(feature = "tir"))]
+        let _ = (method_choice, alternative_first, acceptance);
+        let backend = backend_of(
+            &mut self.backends,
+            self.carrier,
+            &self.engine,
+            reduction,
+            self.executor.plan(),
+        )?;
+        Ok(backend.plans())
     }
 
     /// Whether the executor has a tree program (native inputs).
@@ -1781,8 +1850,12 @@ impl V2Executor {
     /// with a check `amplitude_check` and `amplitude_budget`, with
     /// `term_scale` the slots' term scale `amplitude_scale` (one
     /// unit-numerator reduction per monomial, family and point); its raw
-    /// lanes only with `raw_lanes`.
-    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both", contraction="auto", part_points=None, fill_points=None, input_budget=None, rows=None, basis=None, components=None, families=None, dipoles=None, raw_lanes=false, term_scale=false))]
+    /// lanes only with `raw_lanes`. `reduction` is the reduction backend,
+    /// `"ninjars"` (the default) or `"tirust"` (binary64; its check frame
+    /// is the rotation by `rotation` with the origin shift, `rescale` adding
+    /// the rescaling: `reverse` and `shift` are NinjaRS's; `v2_tir`); the
+    /// caller (`loops.v2.reduction.resolve`) has chosen it once per call.
+    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both", contraction="auto", part_points=None, fill_points=None, input_budget=None, rows=None, basis=None, components=None, families=None, dipoles=None, raw_lanes=false, term_scale=false, reduction="ninjars"))]
     #[allow(clippy::too_many_arguments)]
     fn evaluate(
         &mut self,
@@ -1809,7 +1882,9 @@ impl V2Executor {
         dipoles: Option<PyRef<'_, NativeDipoleCorrelator>>,
         raw_lanes: bool,
         term_scale: bool,
+        reduction: &str,
     ) -> PyResult<Evaluation> {
+        let reduction = Reduction::parse(reduction).map_err(error)?;
         let poles = match poles {
             Some(value) => v2::poles_option(&value)?,
             None => V2Options::default().poles,
@@ -1880,11 +1955,18 @@ impl V2Executor {
         // except lanes the fast engine routes to the generic one at its
         // absolute thresholds, which take the key themselves: `v2_reduce`
         // module docs).
-        let _unlock = (self.engine == "generic" || !matches!(carrier, Carriers::Double))
-            .then(pyamplicol::unlock)
-            .flatten();
-        let backend = backend_of(&mut self.backend, carrier, &self.engine)?;
-        backend.masters = masters;
+        let _unlock = (reduction == Reduction::NinjaRs
+            && (self.engine == "generic" || !matches!(carrier, Carriers::Double)))
+        .then(pyamplicol::unlock)
+        .flatten();
+        let backend = backend_of(
+            &mut self.backends,
+            carrier,
+            &self.engine,
+            reduction,
+            self.executor.plan(),
+        )?;
+        backend.set_masters(masters).map_err(error)?;
         let executor = &self.executor;
         let trees = self.trees.as_mut();
         let dipoles = dipoles.as_ref().map(|d| &*d.correlator);

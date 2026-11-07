@@ -99,6 +99,20 @@ fn tirust_available() -> bool {
     rusticol_loop_reduction::tir::available()
 }
 
+/// The reduction backends of this native extension's v2 executor, as JSON
+/// `{"ninjars": [carriers], "tirust": [carriers]}` (TIRust only in a build
+/// with it): the capability query `loops.v2.reduction.native_backends`
+/// reads (`runtime::backend_carriers`).
+#[pyfunction]
+fn reduction_backends() -> String {
+    let record: serde_json::Map<String, serde_json::Value> =
+        rusticol_loop_reduction::runtime::backend_carriers()
+            .into_iter()
+            .map(|(name, carriers)| (name.to_owned(), serde_json::json!(carriers)))
+            .collect();
+    serde_json::Value::Object(record).to_string()
+}
+
 #[pymodule]
 fn _loop_reduction(module: &Bound<'_, PyModule>) -> PyResult<()> {
     register(module)
@@ -121,6 +135,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<CoefficientEvaluator>()?;
     module.add_function(wrap_pyfunction!(canonical_saved_evaluator, module)?)?;
     module.add_function(wrap_pyfunction!(tirust_available, module)?)?;
+    module.add_function(wrap_pyfunction!(reduction_backends, module)?)?;
     v2::register(module)?;
     v2_catalogue::register(module)?;
     v2_closure::register(module)?;

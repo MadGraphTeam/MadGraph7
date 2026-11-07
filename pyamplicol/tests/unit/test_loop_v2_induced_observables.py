@@ -606,9 +606,10 @@ def test_one_call_is_one_evaluation_whatever_the_spin_sources(artifacts, monkeyp
     different spin sources (RULED Q9: every (assignment, history) output is
     a form on the same amplitude vectors), each output equal to its own
     call bitwise; the call's effective backend reaches the executor, which
-    refuses one it does not run (no silent switch); a spin vector with no
-    transverse part is served, not refused; the observables run the
-    runtime's current executor under its lock, also after ``clear``."""
+    reduces on it (TIRust on the resolved route, m-lit lit-tir; never
+    NinjaRS under a TIRust label); a spin vector with no transverse part is
+    served, not refused; the observables run the runtime's current executor
+    under its lock, also after ``clear``."""
 
     from pyamplicol.correlators import CorrelatedRequest
     from pyamplicol.loops.v2.reduction import ReductionUnavailable
@@ -650,8 +651,14 @@ def test_one_call_is_one_evaluation_whatever_the_spin_sources(artifacts, monkeyp
         )[label]
         assert alone.values == many[label].values, label
     assert len(calls) == 1 + len(requests)
-    with pytest.raises(ReductionUnavailable, match="not wired"):
+    tirust = bool(backend._native.tirust_available())
+    if tirust:
+        # The executor reduces on the backend it is given.
         original(points, scales, reduction="tirust")
+        assert executor.last_report["counts"]["contracted lanes"] > 0
+    else:
+        with pytest.raises(ReductionUnavailable):
+            original(points, scales, reduction="tirust")
     # A vector with no transverse part is served (its value the projection's
     # exact 0; its estimate carries it): one more evaluation, no refusal.
     zero = (Decimal(0), Decimal(0))
@@ -661,25 +668,24 @@ def test_one_call_is_one_evaluation_whatever_the_spin_sources(artifacts, monkeyp
     )["x"].values
     assert complex(value[0].finite) == 0
     assert len(calls) == 2 + len(requests)
-    # TIRust on the resolved route with the executor not wired to it (a
-    # route-only step): a typed refusal, never NinjaRS under a TIRust label.
-    from pyamplicol.loops.v2 import artifact as stored
-    from pyamplicol.loops.v2 import reduction
-
-    every = frozenset(reduction.BACKENDS)
-    monkeypatch.setattr(
-        stored, "RESOLVED", reduction.Route(reduction.RESOLVED.serves, every)
-    )
-    monkeypatch.setattr(
-        reduction,
-        "native_backends",
-        lambda native: {name: frozenset(reduction.CARRIERS) for name in every},
-    )
-    backend._reductions.clear()
-    with pytest.raises(ReductionUnavailable, match="not wired"):
-        runtime.evaluate_correlated_many(
-            points, requests, mu_r2=scales, reduction="tirust"
+    # TIRust on the resolved route: the executor reduces on it and every
+    # lane records it (a point it fails closed fails typed, never NinjaRS
+    # under a TIRust label); a native without TIRust refuses it typed.
+    if tirust:
+        served = runtime.evaluate_correlated_many(
+            points, requests, mu_r2=scales, reduction="tirust", on_failure="return"
         )
+        assert {
+            lane.reduction.effective
+            for result in served.values()
+            for lane in result.diagnostics
+        } == {"tirust"}
+        assert executor.last_report["counts"]["contracted lanes"] > 0
+    else:
+        with pytest.raises(ReductionUnavailable):
+            runtime.evaluate_correlated_many(
+                points, requests, mu_r2=scales, reduction="tirust"
+            )
     assert calls[-1] == "tirust"
     backend.clear()
     assert observables.executor is backend._executor is not executor

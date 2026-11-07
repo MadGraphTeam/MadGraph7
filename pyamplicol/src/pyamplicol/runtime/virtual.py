@@ -563,14 +563,17 @@ class V2ObservablesRuntime:
     ) -> tuple[list[Any], dict[int, list[str]]]:
         """Per-point outputs (``None`` for a failed point) and the failures;
         ``reduction`` is the call's backend at its carrier (the artifact
-        runtime's choice; None: a direct runtime), passed to the native
-        columns that take it (``_column_options``)."""
+        runtime's choice; None: a direct runtime, NinjaRS): the native
+        columns reduce on its effective backend (``reduction.running``) and
+        take the options of ``_column_options``."""
 
         from pyamplicol.loops.v2.plan_export import FailedPoints
+        from pyamplicol.loops.v2.reduction import running
 
         if not points:
             # An empty batch is valid (as for ``evaluate``): no native call.
             return [], {}
+        effective = None if reduction is None else reduction.effective
         if self._executor == "native":
             extra = self._column_options(reduction)
 
@@ -591,7 +594,15 @@ class V2ObservablesRuntime:
                 except FailedPoints as failed:
                     return list(failed.results), dict(failed.failures)
 
-            return isolate_scale_failures(batch, scales)
+            with running(effective):
+                return isolate_scale_failures(batch, scales)
+        if effective not in (None, "ninjars"):
+            from pyamplicol.api.errors import ReductionUnavailable
+
+            raise ReductionUnavailable(
+                f"the Python reference executor reduces with NinjaRS only, not "
+                f"{effective!r}"
+            )
         out: list[Any] = []
         failures: dict[int, list[str]] = {}
         for index, (point, scale, spin) in enumerate(
@@ -606,9 +617,8 @@ class V2ObservablesRuntime:
 
     def _column_options(self, reduction: VirtualReduction | None) -> dict[str, Any]:
         """The native column runners' options from the call's reduction
-        choice: none for the Born-interfered stored columns (they reduce
-        with NinjaRS, the only backend of the resolved route,
-        ``loops.v2.reduction.RESOLVED``)."""
+        choice: none for the Born-interfered stored columns (they read the
+        effective backend from ``reduction.running``, set by ``_run``)."""
 
         del reduction
         return {}

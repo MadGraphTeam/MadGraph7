@@ -47,6 +47,7 @@ import copy
 import json
 from collections import Counter, OrderedDict, defaultdict
 from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from fractions import Fraction
@@ -63,6 +64,7 @@ from .families import FamilyKey, Orders
 from .merged import MergedGraph, merged_graph
 from .native_trees import StoredMember, executor_program
 from .poly_affine import size
+from .reduction import executor_options, prepare, running
 from .refusals import require_formal_nc_tables
 from .schedules import build_trie, forward_graph
 
@@ -2430,31 +2432,38 @@ class NativeExecutor:
         keeps those helicity rows only (``row_mask``: the others are not
         dressed, their amplitudes are not formed). ``reduction`` is the
         effective backend the call's result records (``VirtualReduction.
-        effective``; None: the executor's own): this executor reduces with
-        NinjaRS, so another is refused typed, never run on NinjaRS (m-lit
-        lit-tir wires the TIRust backend here)."""
+        effective``; None: the current context's, ``reduction.running``): the
+        executor calls of the run reduce on it."""
 
-        if reduction not in (None, "ninjars"):
-            from .reduction import ReductionUnavailable
-
-            raise ReductionUnavailable(
-                f"the native executor's reduction is NinjaRS's; the {reduction!r} "
-                "backend is not wired to it"
-            )
-        if rows is None:
-            return self._runs(
-                points, scales, parameters, precision, poles, stability, schedule, ward
-            )
-        if self.exported.amplitude is None:
-            raise ValueError("a row mask needs an amplitude-mode plan")
-        kept = frozenset(rows)
-        self.row_mask = tuple(row in kept for row in self.exported.rows)
-        try:
-            return self._runs(
-                points, scales, parameters, precision, poles, stability, schedule, ward
-            )
-        finally:
-            self.row_mask = None
+        with nullcontext() if reduction is None else running(reduction):
+            if rows is None:
+                return self._runs(
+                    points,
+                    scales,
+                    parameters,
+                    precision,
+                    poles,
+                    stability,
+                    schedule,
+                    ward,
+                )
+            if self.exported.amplitude is None:
+                raise ValueError("a row mask needs an amplitude-mode plan")
+            kept = frozenset(rows)
+            self.row_mask = tuple(row in kept for row in self.exported.rows)
+            try:
+                return self._runs(
+                    points,
+                    scales,
+                    parameters,
+                    precision,
+                    poles,
+                    stability,
+                    schedule,
+                    ward,
+                )
+            finally:
+                self.row_mask = None
 
     def _runs(
         self, points, scales, parameters, precision, poles, stability, schedule, ward
@@ -2705,6 +2714,11 @@ class NativeExecutor:
             options["term_scale"] = True
         if self.exported.amplitude is not None and self.row_mask is not None:
             options["rows"] = list(self.row_mask)
+        # The reduction backend of the call (``reduction.running``; nothing
+        # for NinjaRS, the executor's default), its TIRust plans built before
+        # the first point (``reduction.prepare``).
+        options.update(executor_options())
+        prepare(native)
         catani = self.inputs == "native" and any(
             getattr(evaluation, "catani", False) for evaluation in evaluations
         )

@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: 0BSD
 
-//! The reduction backend of the native v2 executor
+//! The reduction backends of the native v2 executor
 //! (`rusticol_core::loop_execution::v2`): the executor streams each bucket
-//! chunk's family lanes into the [`V2Reducer`] (true-rank buckets, cached
-//! masters, reduction-direction check) as typed batches, without any decimal
-//! round trip, and reads back each lane's status and Laurent integrals.
+//! chunk's family lanes into the [`V2Reducer`] (NinjaRS: true-rank buckets,
+//! cached masters, reduction-direction check) as typed batches, without any
+//! decimal round trip, and reads back each lane's status and Laurent
+//! integrals; or into the TIR backend (`crate::v2_tir`, feature `tir`).
+//! [`V2Backends`] is the one choice per evaluation ([`Reduction`]).
 
 use super::batch::{Batch, BatchCarrier, Data};
 use super::v2_reduce::{
@@ -18,9 +20,21 @@ use rusticol_core::loop_v2::retest::ReductionCheck;
 use rusticol_core::{RusticolError, RusticolResult};
 use symbolica::domains::float::{DoubleFloat, Float};
 
-/// Typed access to the values of a [`Batch`].
+/// Typed access to the values of a [`Batch`], and the carrier's TIR
+/// reduction (binary64; m-lit `lit-tir-mp` adds the extended carriers).
 pub trait TypedBatch: BatchCarrier {
     fn values(data: &Data) -> Option<&[Complex<Self>]>;
+
+    /// The TIR backend's reduction in this carrier.
+    #[cfg(feature = "tir")]
+    fn tir_reduce(
+        _backend: &mut crate::v2_tir::TirReductionBackend,
+        _groups: &[FamilyLanes<Self>],
+        _poles: Poles,
+        _check: Option<ReductionCheck>,
+    ) -> RusticolResult<Reduced<Self>> {
+        Err(RusticolError::unsupported_precision(TIRUST_BINARY64_ONLY))
+    }
 }
 
 impl TypedBatch for f64 {
@@ -29,6 +43,16 @@ impl TypedBatch for f64 {
             Data::Double(values) => Some(values),
             _ => None,
         }
+    }
+
+    #[cfg(feature = "tir")]
+    fn tir_reduce(
+        backend: &mut crate::v2_tir::TirReductionBackend,
+        groups: &[FamilyLanes<Self>],
+        poles: Poles,
+        check: Option<ReductionCheck>,
+    ) -> RusticolResult<Reduced<Self>> {
+        backend.reduce(groups, poles, check)
     }
 }
 
@@ -46,6 +70,173 @@ impl TypedBatch for Float {
         match data {
             Data::Arbitrary(values) => Some(values),
             _ => None,
+        }
+    }
+}
+
+/// A reduction backend of the executor: one choice per evaluation, matched
+/// once per `begin` (point chunk) and per `reduce` (bucket chunk), never per
+/// point or lane (m-lit PLAN §2.a.6): `evaluate` is monomorphised once per
+/// carrier, not once more per backend.
+pub enum V2Backends {
+    /// NinjaRS (integrand reduction), [`V2ReductionBackend`].
+    NinjaRs(V2ReductionBackend),
+    /// TIRust (tensor-integral reduction), [`crate::v2_tir`].
+    #[cfg(feature = "tir")]
+    TiRust(Box<crate::v2_tir::TirReductionBackend>),
+}
+
+/// A reduction backend by name: `"ninjars"` or `"tirust"` (the rank
+/// admission's backend, one definition).
+pub use rusticol_core::loop_v2::bounds::Reducer as Reduction;
+
+/// The refusal of a TIRust request at a carrier other than binary64.
+pub const TIRUST_BINARY64_ONLY: &str = "the TIRust reduction backend serves binary64 in this build";
+
+/// The refusal of a TIRust request in a build without it.
+pub const TIRUST_NOT_BUILT: &str =
+    "this native library is built without TIRust (the cargo feature tir)";
+
+/// The reduction backends this build serves, by name (`"ninjars"`,
+/// `"tirust"`), with the carriers each serves: what the PyO3 capability
+/// query (`reduction_backends`) reports.
+pub fn backend_carriers() -> Vec<(&'static str, Vec<&'static str>)> {
+    let mut out = vec![("ninjars", vec!["double", "double-double", "arbitrary"])];
+    if crate::tir::available() {
+        out.push(("tirust", vec!["double"]));
+    }
+    out
+}
+
+/// A plan's (propagators, declared rank) histogram: the TIR backend's plans
+/// ([`V2Backends::tirust`]).
+pub fn plan_histogram(
+    plan: &rusticol_core::loop_v2::plan::LoopProgramV4,
+) -> std::collections::BTreeSet<(usize, usize)> {
+    plan.families
+        .iter()
+        .map(|f| (f.propagators(), f.rank))
+        .collect()
+}
+
+impl V2Backends {
+    /// The TIR backend, its plans built for `families` (an artifact's
+    /// (propagators, declared rank) histogram,
+    /// `v2_tir::TirReductionBackend::with_histogram`): TIRust's typed
+    /// refusal is the capability refusal; refused typed in a build without
+    /// TIRust (the cargo feature `tir`).
+    pub fn tirust(families: impl IntoIterator<Item = (usize, usize)>) -> RusticolResult<Self> {
+        #[cfg(feature = "tir")]
+        {
+            Self::tirust_with(families, crate::v2_tir::TirOptions::default())
+        }
+        #[cfg(not(feature = "tir"))]
+        {
+            let _ = families.into_iter();
+            Err(RusticolError::unsupported_runtime_capability(
+                "tirust",
+                TIRUST_NOT_BUILT,
+            ))
+        }
+    }
+
+    /// The TIR backend on the NinjaRS adapter's batch groups
+    /// (`v2_tir::TirReductionBackend::reduce_family_groups`); NinjaRS takes
+    /// [`V2Reducer::reduce`] directly.
+    pub fn reduce_family_groups(
+        &mut self,
+        groups: &[FamilyGroup<'_>],
+        poles: Poles,
+        check: Option<ReductionCheck>,
+    ) -> RusticolResult<super::v2_reduce::V2Output> {
+        match self {
+            #[cfg(feature = "tir")]
+            Self::TiRust(backend) => backend.reduce_family_groups(groups, poles, check),
+            _ => {
+                let _ = (groups, poles, check);
+                Err(RusticolError::invalid_argument(
+                    "batch groups reduce through V2Reducer::reduce on NinjaRS",
+                ))
+            }
+        }
+    }
+
+    /// The TIR backend's (propagators, rank) plans built so far (empty for
+    /// NinjaRS).
+    pub fn plans(&self) -> Vec<(usize, usize)> {
+        match self {
+            Self::NinjaRs(_) => Vec::new(),
+            #[cfg(feature = "tir")]
+            Self::TiRust(backend) => backend.plans(),
+        }
+    }
+
+    /// [`Self::tirust`] with explicit settings.
+    #[cfg(feature = "tir")]
+    pub fn tirust_with(
+        families: impl IntoIterator<Item = (usize, usize)>,
+        options: crate::v2_tir::TirOptions,
+    ) -> RusticolResult<Self> {
+        Ok(Self::TiRust(Box::new(
+            crate::v2_tir::TirReductionBackend::with_histogram(families, options)?,
+        )))
+    }
+
+    pub fn reduction(&self) -> Reduction {
+        match self {
+            Self::NinjaRs(_) => Reduction::NinjaRs,
+            #[cfg(feature = "tir")]
+            Self::TiRust(_) => Reduction::TiRust,
+        }
+    }
+
+    /// The masters' pole selection (NinjaRS's generic engine, the oracle of
+    /// selected residues); TIRust's moments keep every residue, so it
+    /// accepts `BOTH` only.
+    pub fn set_masters(&mut self, masters: PoleSelection) -> RusticolResult<()> {
+        match self {
+            Self::NinjaRs(backend) => {
+                backend.masters = masters;
+                Ok(())
+            }
+            #[cfg(feature = "tir")]
+            Self::TiRust(_) if masters == PoleSelection::BOTH => Ok(()),
+            #[cfg(feature = "tir")]
+            Self::TiRust(_) => Err(RusticolError::invalid_argument(
+                "the TIRust backend keeps every master pole; select master poles with NinjaRS's \
+                 generic engine",
+            )),
+        }
+    }
+}
+
+impl<T: TypedBatch> V2Backend<T> for V2Backends {
+    fn begin(&mut self) {
+        match self {
+            Self::NinjaRs(backend) => V2Backend::<T>::begin(backend),
+            #[cfg(feature = "tir")]
+            Self::TiRust(backend) => backend.begin(),
+        }
+    }
+
+    fn take_statistics(&mut self) -> BackendStatistics {
+        match self {
+            Self::NinjaRs(backend) => V2Backend::<T>::take_statistics(backend),
+            #[cfg(feature = "tir")]
+            Self::TiRust(backend) => backend.take_statistics(),
+        }
+    }
+
+    fn reduce(
+        &mut self,
+        groups: &[FamilyLanes<T>],
+        poles: Poles,
+        check: Option<ReductionCheck>,
+    ) -> RusticolResult<Reduced<T>> {
+        match self {
+            Self::NinjaRs(backend) => backend.reduce(groups, poles, check),
+            #[cfg(feature = "tir")]
+            Self::TiRust(backend) => T::tir_reduce(backend, groups, poles, check),
         }
     }
 }

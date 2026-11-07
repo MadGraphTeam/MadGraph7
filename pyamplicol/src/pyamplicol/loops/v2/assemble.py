@@ -186,6 +186,7 @@ from .poles import (
     strong_gamma,
 )
 from .poly_affine import MonomialLayout, leg_momentum
+from .reduction import executor_options
 from .refusals import (
     LoopRequestUnsupported,
     LoopRequestUnsupportedValue,
@@ -3793,6 +3794,8 @@ class _PointEvaluation:
 
         self.slice = slice_
         self.numbers = numbers
+        # The reduction backend of the point's reductions (``reducer``).
+        self.reduction_backend: str | None = None
         # ``mode`` selects the pole parts (``poles``); ``poles`` says whether
         # any pole column is computed (every mode but finite-only).
         self.mode = pole_mode(poles)
@@ -4324,6 +4327,32 @@ class _PointEvaluation:
 
     # -- reduction -----------------------------------------------------------------
 
+    def reducer(self):
+        """A reducer of the call's reduction backend (``reduction.running``):
+        NinjaRS's ``V2Reducer`` at the evaluation's arithmetic, or TIRust's
+        ``V2TirReducer`` (binary64 in this build; other arithmetic refused
+        typed). Every reduction of the point takes it (its lanes here, the
+        loop-induced term scale's unit numerators, ``induced._moments``):
+        the backend is read once, at the point's first reduction, so a term
+        scale formed later uses the backend of the point's lanes."""
+        numbers = self.numbers
+        if self.reduction_backend is None:
+            self.reduction_backend = executor_options().get("reduction", "ninjars")
+        backend = self.reduction_backend
+        if backend == "tirust":
+            if not numbers.double:
+                from pyamplicol.api.errors import ReductionUnavailable
+
+                from .reduction import TIRUST_BINARY64_ONLY
+
+                raise ReductionUnavailable(TIRUST_BINARY64_ONLY)
+            return self.slice.native.V2TirReducer()
+        return self.slice.native.V2Reducer(
+            "double" if numbers.double else "arbitrary",
+            None if numbers.double else numbers.precision.digits,
+            "fast" if numbers.double else "generic",
+        )
+
     def _reduce(
         self, numerators, retest: str | None, columns=None, scaleless=None
     ) -> None:
@@ -4336,7 +4365,7 @@ class _PointEvaluation:
         sector columns, or for observable ``columns`` ``scaleless`` =
         (companion slice or None, its seeds of an evaluation;
         ``observables.ColumnPlan``)."""
-        slice_, numbers = self.slice, self.numbers
+        slice_ = self.slice
         split = splits(self.mode)
         lanes, groups = self._groups(numerators, 0, columns)
         twin_lanes: list = []
@@ -4356,12 +4385,7 @@ class _PointEvaluation:
                 dressed.numerators, len(lanes), columns
             )
             groups = groups + twin_groups
-        arithmetic = "double" if numbers.double else "arbitrary"
-        digits = None if numbers.double else numbers.precision.digits
-        reducer = slice_.native.V2Reducer(
-            arithmetic, digits, "fast" if numbers.double else "generic"
-        )
-        direct, check = reducer.reduce(
+        direct, check = self.reducer().reduce(
             groups,
             poles=reducer_poles(self.mode),
             check=retest is not None,
@@ -5101,6 +5125,7 @@ class _NativePoint(_PointEvaluation):
 
         self.slice = slice_
         self.numbers = numbers
+        self.reduction_backend: str | None = None
         # The pole mode is set per batch (``plan_export.NativeExecutor``).
         self.mode = pole_mode(PoleSelection.ALL)
         self.poles = True

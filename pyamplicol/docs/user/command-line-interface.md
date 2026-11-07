@@ -438,8 +438,10 @@ precisions select arbitrary precision. DoubleFloat is always selected explicitly
 `--loop-reduction {auto,ninjars,tirust}` selects the reduction backend for the
 evaluation, overriding the artifact's default (`generate --loop-reduction`
 records that default): `auto` takes TIRust for a loop-induced and NinjaRS for
-a Born-interfered process, falling back to NinjaRS with the reason recorded;
-an explicit backend that cannot serve the call is refused. The JSON output's
+a Born-interfered process, falling back to NinjaRS with the reason recorded
+(for now `auto` keeps NinjaRS for loop-induced processes too, until the two
+backends' agreement there is established; `tirust` serves binary64 on
+request); an explicit backend that cannot serve the call is refused. The JSON output's
 lane diagnostics name the requested and effective backends and the reason. A
 loop-induced artifact (`contribution: "loop-induced"` in the JSON, empty
 `born_values`) takes `--poles all` or `none` only.

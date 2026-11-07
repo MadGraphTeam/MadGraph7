@@ -17,6 +17,7 @@ if TYPE_CHECKING:
         ModelError,
         NativePlatformError,
         PyAmpliColError,
+        ReductionUnavailable,
     )
     from .models import (
         CompiledModel,
@@ -146,6 +147,7 @@ __all__ = [
     "ProcessSet",
     "PyAmpliColError",
     "ReductionGroup",
+    "ReductionUnavailable",
     "ResolvedEvaluation",
     "ResolvedVirtualEvaluation",
     "Runtime",
@@ -186,6 +188,7 @@ _ERROR_EXPORTS = (
     "ModelError",
     "NativePlatformError",
     "PyAmpliColError",
+    "ReductionUnavailable",
 )
 _PROTOCOL_EXPORTS = (
     "BenchmarkBackend",

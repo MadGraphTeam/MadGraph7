@@ -5,9 +5,9 @@
 //! - External legs are one bit each of a `u64` leg mask: every leg-count
 //!   check (DAG input, families, plan, tree program, dressing) admits
 //!   `1..=`[`MAX_LEGS`] through [`full_mask`] / [`check_legs`].
-//! - A family's numerator rank is admitted by the reducer itself
-//!   (NinjaRS's [`ninjars::RankClass::of`]); the plan loader, the binary
-//!   member bound, the runtime reducer and the Python generator
+//! - A family's numerator rank is admitted by the reduction backend itself
+//!   ([`Reducer`]: NinjaRS's [`ninjars::RankClass::of`]); the plan loader,
+//!   the binary member bound, both runtime backends and the Python generator
 //!   (`_loop.reducer_rank_refusal`) all ask [`rank_refusal`].
 
 /// The most external legs a `u64` leg mask holds.
@@ -36,27 +36,77 @@ pub fn check_legs(legs: usize) -> Result<u64, String> {
     full_mask(legs).ok_or_else(|| leg_count_refusal(legs))
 }
 
-/// `None` if the reducer reduces a numerator of rank `rank` over
-/// `propagators` loop propagators, else the refusal naming the reducer's
-/// actual capability.
-pub fn rank_refusal(propagators: usize, rank: usize) -> Option<String> {
-    if propagators > 0 && ninjars::RankClass::of(propagators, rank).is_some() {
-        None
-    } else {
-        Some(format!(
-            "numerator rank {rank} over {propagators} loop propagators: NinjaRS reduces rank <= N+2 \
-             over N >= 1 propagators"
-        ))
+/// A reduction backend, for the rank admission of its family numerators
+/// (m-lit PLAN §2.b.7: the single source of truth takes the backend), and
+/// the runtime's backend choice (`rusticol_loop_reduction::runtime::
+/// Reduction`). The discriminants index the runtime's backend slots.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Reducer {
+    /// NinjaRS (integrand reduction): rank <= N + 2 ([`ninjars::RankClass`]).
+    NinjaRs = 0,
+    /// TIRust (tensor-integral reduction). Its own capability is what its
+    /// plan construction serves (the TIR backend refuses typed with
+    /// TIRust's reason); until artifacts admit families beyond rank N + 2
+    /// (m-lit `lit-eft`: TIR-only artifacts) its families are held to the
+    /// artifacts' admission, NinjaRS's, so that every artifact serves both
+    /// backends.
+    TiRust = 1,
+}
+
+impl Reducer {
+    /// The backend whose admission every artifact's families satisfy (every
+    /// artifact admits both backends until `lit-eft`): the plan loader, the
+    /// binary member bound and the generator ask it.
+    pub const ARTIFACT: Self = Self::NinjaRs;
+
+    /// The backend of `name`: `"ninjars"` or `"tirust"`.
+    pub fn parse(name: &str) -> crate::RusticolResult<Self> {
+        match name {
+            "ninjars" => Ok(Self::NinjaRs),
+            "tirust" => Ok(Self::TiRust),
+            other => Err(crate::RusticolError::invalid_argument(format!(
+                "reduction must be ninjars or tirust, not {other}"
+            ))),
+        }
+    }
+
+    /// The backend's name (`parse`'s input).
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::NinjaRs => "ninjars",
+            Self::TiRust => "tirust",
+        }
     }
 }
 
-/// The largest numerator rank the reducer admits over `propagators` loop
+/// `None` if `reducer` reduces a numerator of rank `rank` over `propagators`
+/// loop propagators, else the refusal naming the reducer's actual
+/// capability.
+pub fn rank_refusal(reducer: Reducer, propagators: usize, rank: usize) -> Option<String> {
+    match reducer {
+        Reducer::NinjaRs | Reducer::TiRust
+            if propagators > 0 && ninjars::RankClass::of(propagators, rank).is_some() =>
+        {
+            None
+        }
+        Reducer::NinjaRs => Some(format!(
+            "numerator rank {rank} over {propagators} loop propagators: NinjaRS reduces rank <= N+2 \
+             over N >= 1 propagators"
+        )),
+        Reducer::TiRust => Some(format!(
+            "numerator rank {rank} over {propagators} loop propagators: artifacts admit rank <= N+2 \
+             over N >= 1 propagators for both reduction backends (NinjaRS's capability)"
+        )),
+    }
+}
+
+/// The largest numerator rank `reducer` admits over `propagators` loop
 /// propagators (NinjaRS: `propagators + 2`), from [`rank_refusal`]; the
 /// excess above the propagators is a `u8` in NinjaRS's rank classes.
-pub fn largest_rank(propagators: usize) -> usize {
+pub fn largest_rank(reducer: Reducer, propagators: usize) -> usize {
     let mut rank = propagators;
     for _ in 0..=u8::MAX {
-        if rank_refusal(propagators, rank + 1).is_some() {
+        if rank_refusal(reducer, propagators, rank + 1).is_some() {
             break;
         }
         rank += 1;
@@ -80,15 +130,21 @@ mod tests {
 
     #[test]
     fn the_reducer_admits_the_rank() {
-        for n in 1..12 {
-            for rank in 0..=n + 2 {
-                assert_eq!(rank_refusal(n, rank), None);
+        for reducer in [Reducer::NinjaRs, Reducer::TiRust] {
+            for n in 1..12 {
+                for rank in 0..=n + 2 {
+                    assert_eq!(rank_refusal(reducer, n, rank), None);
+                }
+                assert!(rank_refusal(reducer, n, n + 3).is_some());
             }
-            let refusal = rank_refusal(n, n + 3).unwrap();
-            assert!(refusal.contains("NinjaRS reduces rank <= N+2"), "{refusal}");
+            assert!(rank_refusal(reducer, 0, 0).is_some());
+            assert_eq!(largest_rank(reducer, 4), 6);
+            assert_eq!(largest_rank(reducer, 64), 66);
         }
-        assert!(rank_refusal(0, 0).is_some());
-        assert_eq!(largest_rank(4), 6);
-        assert_eq!(largest_rank(64), 66);
+        let refusal = rank_refusal(Reducer::NinjaRs, 4, 7).unwrap();
+        assert!(refusal.contains("NinjaRS reduces rank <= N+2"), "{refusal}");
+        let refusal = rank_refusal(Reducer::TiRust, 4, 7).unwrap();
+        assert!(refusal.contains("for both reduction backends"), "{refusal}");
+        assert_eq!(Reducer::ARTIFACT, Reducer::NinjaRs);
     }
 }

@@ -66,7 +66,7 @@
 //! change sign under `q -> -q`), and box, triangle and tadpole masters are
 //! cache hits; bubbles whose two masses swap order are evaluated anew.
 //! With `rescale` every dimensionful input is scaled by the non-dyadic
-//! [`RESCALING`] factor `x` (shifts by `x`, squared masses, scale and
+//! [`RESCALING`](super::frames::RESCALING) factor `x` (shifts by `x`, squared masses, scale and
 //! invariants by `x²`, degree-`d` coefficients by `x^-d`), so that every
 //! master is evaluated anew at differently rounded arguments; the integral
 //! scales exactly as `x^(4-2N)` (all Laurent orders, the scale moving with
@@ -92,12 +92,14 @@
 //! carry them, its fast engine refuses a selected provider, and so does this
 //! adapter. The generic engine's selection is the oracle of the residue.
 
+use super::frames::FrameMap;
+pub use super::frames::{ReductionFrame, shift_coefficients};
 use super::master_cache::{MasterCache, MasterStatistics};
 use super::reduction::{ReductionBatch, Reductions};
 use super::*;
 use crate::FourMomentum;
 use ninjars::fast::TensorUvResidues;
-use ninjars::fast::tensor_layout::{block_offset, monomial_index, monomials, ncoeff};
+use ninjars::fast::tensor_layout::{block_offset, monomials, ncoeff};
 use ninjars::fast::{
     C64, FastAmplitude, FastInput, FastOptions, FastResult, FastStatus, RMom, TensorNumerator,
 };
@@ -106,27 +108,6 @@ pub use ninjars_symbolica::PoleSelection;
 pub use rusticol_core::loop_execution::v2::Poles;
 use std::collections::{BTreeMap, HashMap};
 use symbolica::{domains::float::Real, evaluate::EvaluationDomain};
-
-/// A relabelled reduction frame of a family given in loop-cycle order.
-///
-/// Propagator `j` of the frame is propagator `order[j]` of the family, with
-/// `order[j] = rotation + j` (or `rotation - j` if `reverse`) modulo the
-/// number of propagators. `reverse` also reverses the loop momentum,
-/// `σ = -1`. Without `shift` the loop momentum is `q = σ q'`, the shifts are
-/// `V'_j = σ V_order[j]` and the coefficients are reused exactly. With
-/// `shift`, `q = σ q' - V_order[0]`, so that `V'_0 = 0`, and the numerator is
-/// re-expanded exactly in the working precision.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ReductionFrame {
-    pub reverse: bool,
-    pub rotation: usize,
-    pub shift: bool,
-    pub rescale: bool,
-}
-
-/// The scale factor `x = 7/10` of a rescaled frame (non-dyadic, so that
-/// every scaled input rounds differently).
-pub const RESCALING: (i64, i64) = (7, 10);
 
 /// `OneLoopNativeMasters`' absolute on-shell threshold on the pinned NinjaRS
 /// 41a4c00 (original Ninja's `INFRARED_EPS`, the crate-private
@@ -188,40 +169,6 @@ fn invariant_reaches_fast_threshold(
                     .any(|m| m.im == 0. && inside((s.re - m.re).abs()))
         })
     })
-}
-
-impl ReductionFrame {
-    /// The loop direction reversed: `q -> -q` with the cycle traversed
-    /// backwards from the second propagator, so that every family of two or
-    /// more propagators also changes its first line (with rotation 0 a bubble
-    /// keeps its order, and its reversed reduction is often bitwise equal to
-    /// the direct one). The coefficients are reused exactly.
-    pub const REVERSED: Self = Self {
-        reverse: true,
-        rotation: 1,
-        shift: false,
-        rescale: false,
-    };
-
-    /// [`Self::REVERSED`] with every dimensionful input rescaled: the masters
-    /// are recomputed (and so tested) at the cost of their evaluation.
-    pub const RESCALED: Self = Self {
-        rescale: true,
-        ..Self::REVERSED
-    };
-
-    fn order(self, n: usize) -> Vec<usize> {
-        let rotation = self.rotation % n;
-        (0..n)
-            .map(|j| {
-                if self.reverse {
-                    (rotation + n - j) % n
-                } else {
-                    (rotation + j) % n
-                }
-            })
-            .collect()
-    }
 }
 
 /// Options of one [`V2Reducer::reduce`] call.
@@ -289,52 +236,6 @@ pub fn true_rank<T: Carrier>(coefficients: &[Complex<T>], rank: usize) -> usize 
         .unwrap_or(0)
 }
 
-/// Coefficients of `N(q + d)` from those of `N(q)`, rank preserved: one exact
-/// binomial (Taylor) shift per loop-momentum component.
-pub fn shift_coefficients<T: Carrier>(
-    coefficients: &[Complex<T>],
-    rank: usize,
-    d: &[Complex<T>; 4],
-) -> Vec<Complex<T>> {
-    let zero = coefficients[0].re.zero();
-    let czero = Complex::new(zero.clone(), zero.clone());
-    let exponents = monomials(rank);
-    let mut current = coefficients[..ncoeff(rank)].to_vec();
-    for (component, shift) in d.iter().enumerate() {
-        let mut powers = vec![Complex::new(zero.one(), zero.clone())];
-        for k in 1..=rank {
-            powers.push(powers[k - 1].clone() * shift);
-        }
-        let mut next = vec![czero.clone(); current.len()];
-        for (alpha, c) in exponents.iter().zip(&current) {
-            if c.re.is_zero() && c.im.is_zero() {
-                continue;
-            }
-            let e = alpha[component] as usize;
-            let mut target = *alpha;
-            let mut binomial: i64 = 1;
-            // (q + d)^e = Σ_k C(e, k) q^k d^(e - k), from k = e downwards.
-            for k in (0..=e).rev() {
-                target[component] = k as u32;
-                let weight = Complex::new(zero.from_i64(binomial), zero.clone());
-                next[monomial_index(target)] += c.clone() * &powers[e - k] * &weight;
-                binomial = binomial * k as i64 / (e - k + 1) as i64;
-            }
-        }
-        current = next;
-    }
-    current
-}
-
-/// Negate the odd-degree blocks: the coefficients of `N(-q)`.
-fn reverse_coefficients<T: Carrier>(coefficients: &mut [Complex<T>], rank: usize) {
-    for degree in (1..=rank).step_by(2) {
-        for c in &mut coefficients[block_offset(degree)..ncoeff(degree)] {
-            *c = -c.clone();
-        }
-    }
-}
-
 /// Typed lane-major view of one [`FamilyGroup`].
 struct Lanes<'a, T> {
     n: usize,
@@ -379,82 +280,26 @@ impl<T: Carrier> BucketInput<T> {
             s_matrix: Vec::with_capacity(lanes * n * n),
             coefficients: Vec::with_capacity(lanes * width),
         };
-        let identity: Vec<_> = (0..n).collect();
-        let order = frame.map_or(identity, |f| f.order(n));
-        let reverse = frame.is_some_and(|f| f.reverse);
-        let shift = frame.is_some_and(|f| f.shift);
-        let scale = frame
-            .is_some_and(|f| f.rescale)
-            .then(|| {
-                members
-                    .first()
-                    .map(|&(g, _)| rescaling(&groups[g].shifts[0]))
-            })
-            .flatten();
-        let scale_squared = scale.clone().map(|x| x.clone() * &x);
-        let scaled = |v: Complex<T>, factor: &Option<Complex<T>>| match factor {
-            Some(x) => v * x,
-            None => v,
-        };
+        let map = FrameMap::new(
+            frame,
+            n,
+            members.first().map(|&(g, _)| &groups[g].shifts[0]),
+        );
         for &(group, row) in members {
             let lanes = &groups[group];
-            let shifts = &lanes.shifts[row * 4 * n..(row + 1) * 4 * n];
-            let vector = |i: usize| -> [Complex<T>; 4] {
-                std::array::from_fn(|mu| shifts[4 * i + mu].clone())
-            };
-            let origin = vector(order[0]);
-            for &i in &order {
-                for (mu, v) in vector(i).into_iter().enumerate() {
-                    let v = if shift { v - &origin[mu] } else { v };
-                    input
-                        .shifts
-                        .push(scaled(if reverse { -v } else { v }, &scale));
-                }
-            }
-            let masses = &lanes.masses[row * n..(row + 1) * n];
-            input.masses.extend(
-                order
-                    .iter()
-                    .map(|&i| scaled(masses[i].clone(), &scale_squared)),
+            let origin = map.shifts(
+                &lanes.shifts[row * 4 * n..(row + 1) * 4 * n],
+                &mut input.shifts,
             );
-            input
-                .scales
-                .push(scaled(lanes.scales[row].clone(), &scale_squared));
-            let s = &lanes.s_matrix[row * n * n..(row + 1) * n * n];
-            for &i in &order {
-                input.s_matrix.extend(
-                    order
-                        .iter()
-                        .map(|&j| scaled(s[i * n + j].clone(), &scale_squared)),
-                );
-            }
+            map.masses(&lanes.masses[row * n..(row + 1) * n], &mut input.masses);
+            input.scales.push(map.squared(&lanes.scales[row]));
+            map.s_matrix(
+                &lanes.s_matrix[row * n * n..(row + 1) * n * n],
+                &mut input.s_matrix,
+            );
             let declared = ncoeff(lanes.rank);
             let source = &lanes.coefficients[row * declared..row * declared + width];
-            let start = input.coefficients.len();
-            if shift {
-                let d = origin.map(|v| -v);
-                input
-                    .coefficients
-                    .extend(shift_coefficients(source, rank, &d));
-            } else {
-                input.coefficients.extend_from_slice(source);
-            }
-            if reverse {
-                reverse_coefficients(&mut input.coefficients[start..], rank);
-            }
-            if let Some(x) = &scale {
-                // N'(q') = N(q'/x): degree-d coefficients times x^-d.
-                let inverse = x.one() / x;
-                let mut power = inverse.clone();
-                for degree in 1..=rank {
-                    for c in &mut input.coefficients
-                        [start + block_offset(degree)..start + ncoeff(degree)]
-                    {
-                        *c = c.clone() * &power;
-                    }
-                    power = power * &inverse;
-                }
-            }
+            map.coefficients(source, rank, &origin, &mut input.coefficients);
             input.ids.push(lanes.ids[row]);
         }
         input
@@ -496,16 +341,6 @@ impl<T: Carrier> BucketInput<T> {
     }
 }
 
-/// The rescaling factor [`RESCALING`] in the carrier of `like`.
-fn rescaling<T: Carrier>(like: &Complex<T>) -> Complex<T> {
-    let zero = like.re.zero();
-    let (numerator, denominator) = RESCALING;
-    Complex::new(
-        zero.from_i64(numerator) / &zero.from_i64(denominator),
-        zero.clone(),
-    )
-}
-
 /// Lanes `(group, row)` per (propagators, true rank), in a fixed order.
 type Buckets = BTreeMap<(usize, usize), Vec<(usize, usize)>>;
 
@@ -541,12 +376,7 @@ fn reduce_groups<T: Carrier, E: BucketEngine<T>>(
     for (&(n, rank), members) in buckets {
         let input = BucketInput::gather(groups, n, rank, members, frame);
         // A rescaled frame's integrals are x^(4-2N) times the family's.
-        let undo = frame.filter(|f| f.rescale).map(|_| {
-            let x = rescaling(&input.shifts[0]);
-            let inverse = x.one() / &x;
-            (0..2 * n).fold(x.one(), |power, _| power * &x)
-                * &(0..4).fold(x.one(), |power, _| power * &inverse)
-        });
+        let undo = FrameMap::new(frame, n, input.shifts.first()).undo();
         let width = ncoeff(rank);
         let residues = (poles == Poles::Split).then(|| TensorUvResidues::new(n, rank));
         for (lane, (&(group, row), mut outcome)) in
@@ -585,7 +415,11 @@ fn buckets<T: Carrier>(groups: &[Lanes<'_, T>]) -> ExecutionResult<Buckets> {
                 &lanes.coefficients[row * width..(row + 1) * width],
                 lanes.rank,
             );
-            if let Some(refusal) = rusticol_core::loop_v2::bounds::rank_refusal(lanes.n, rank) {
+            if let Some(refusal) = rusticol_core::loop_v2::bounds::rank_refusal(
+                rusticol_core::loop_v2::bounds::Reducer::NinjaRs,
+                lanes.n,
+                rank,
+            ) {
                 return Err(error(refusal));
             }
             buckets
@@ -1148,36 +982,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn exact_shift_and_reversal_match_direct_evaluation() {
+    fn true_and_declared_ranks() {
         let rank = 3;
         let coefficients: Vec<_> = (0..ncoeff(rank))
             .map(|k| Complex::new(k as f64 - 7.0, 0.5 * k as f64))
             .collect();
-        let evaluate = |c: &[Complex<f64>], q: [f64; 4]| {
-            monomials(rank)
-                .iter()
-                .zip(c)
-                .fold(Complex::new(0., 0.), |total, (alpha, c)| {
-                    let monomial: f64 = alpha
-                        .iter()
-                        .zip(q)
-                        .map(|(&e, x)| x.powi(e as i32))
-                        .product();
-                    total + *c * Complex::new(monomial, 0.)
-                })
-        };
-        // Dyadic values keep every operation below exact in binary64.
-        let d = [0.5, -1.25, 2.0, 0.75].map(|x| Complex::new(x, 0.));
-        let q = [1.5, 0.25, -0.5, 2.0];
-        let shifted = shift_coefficients(&coefficients, rank, &d);
-        let moved = std::array::from_fn(|mu| q[mu] + d[mu].re);
-        assert_eq!(evaluate(&shifted, q), evaluate(&coefficients, moved));
-        let mut reversed = coefficients.clone();
-        reverse_coefficients(&mut reversed, rank);
-        assert_eq!(
-            evaluate(&reversed, q),
-            evaluate(&coefficients, q.map(|x| -x))
-        );
         assert_eq!(true_rank(&coefficients, rank), 3);
         let mut lower = coefficients.clone();
         lower[block_offset(3)..].fill(Complex::new(0., 0.));
@@ -1292,18 +1101,5 @@ mod tests {
             assert_eq!(alone[0].status, "success");
             assert_eq!(chunked[k].value, alone[0].value, "lane {k}");
         }
-    }
-
-    #[test]
-    fn frames_are_dihedral_relabellings() {
-        assert_eq!(ReductionFrame::REVERSED.order(4), [1, 0, 3, 2]);
-        assert_eq!(ReductionFrame::REVERSED.order(2), [1, 0]);
-        let frame = ReductionFrame {
-            reverse: false,
-            rotation: 6,
-            shift: true,
-            rescale: false,
-        };
-        assert_eq!(frame.order(4), [2, 3, 0, 1]);
     }
 }

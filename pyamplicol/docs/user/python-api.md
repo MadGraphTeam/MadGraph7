@@ -318,9 +318,12 @@ The reduction backend is chosen once per call (`reduction="auto"`, `"ninjars"`
 or `"tirust"` on `Runtime.load` and on every evaluation; default: the
 artifact's `[loop] reduction`): `"auto"` takes TIRust for a loop-induced and
 NinjaRS for a Born-interfered process and falls back to NinjaRS, with the
-reason recorded, where TIRust cannot serve the call; an explicit backend that
-cannot serve it is refused (`ReductionUnavailable`, a `CompatibilityError`
-with key `reduction-unavailable`). The effective backend is always one that
+reason recorded, where TIRust cannot serve the call (for now `"auto"` stays
+on NinjaRS for loop-induced processes too, until the two backends' agreement
+there is established; `"tirust"` is served on request in binary64); an
+explicit backend that cannot serve it is refused before any point is
+evaluated (`pyamplicol.ReductionUnavailable`, a `CompatibilityError` with key
+`reduction-unavailable`). The effective backend is always one that
 the call's executor runs: the summed `evaluate` and the resolved, correlated
 and selected outputs each check it, so a result never names a backend that
 did not reduce it. Every lane diagnostic records the requested and effective
@@ -341,7 +344,8 @@ loop-induced point: the largest `||a_{-k}||_G / S_k(h)` over its loop
 orders, helicity rows and poles, of the order of the carrier's unit
 roundoff for a finite amplitude (the judgement the computed poles stand on).
 It exists exactly when the call computes the poles and requests stability
-checks (any `VirtualStabilityChecks` or a rescue level with checks), and is
+checks (any enabled `VirtualStabilityChecks`, or a rescue level with
+enabled checks; a bare `VirtualStabilityChecks()` enables none), and is
 `None` otherwise, also for `poles="none"`. The reason: its scale S_k(h) is
 the row's term floor, the amplitude's size before the reduction's own
 cancellations, which needs every family's tensor moments at the point (one

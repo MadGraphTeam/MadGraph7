@@ -361,13 +361,21 @@ fn trace_overlaps(py: Python<'_>, products: Vec<Vec<Vec<i64>>>) -> PyResult<Over
     .map_err(error)
 }
 
-/// `None` if the reducer (NinjaRS) reduces a numerator of rank `rank` over
-/// `propagators` loop propagators, else its refusal: the one rank admission
-/// the plan loader, the runtime reducer and the generator share
+/// `None` if the reduction backend `reducer` (`"ninjars"`, the default, or
+/// `"tirust"`) reduces a numerator of rank `rank` over `propagators` loop
+/// propagators, else its refusal: the one rank admission the plan loader,
+/// the runtime backends and the generator share
 /// (`rusticol_core::loop_v2::bounds::rank_refusal`).
 #[pyfunction]
-fn reducer_rank_refusal(propagators: usize, rank: usize) -> Option<String> {
-    rusticol_core::loop_v2::bounds::rank_refusal(propagators, rank)
+#[pyo3(signature = (propagators, rank, reducer="ninjars"))]
+fn reducer_rank_refusal(
+    propagators: usize,
+    rank: usize,
+    reducer: &str,
+) -> PyResult<Option<String>> {
+    use rusticol_core::loop_v2::bounds::{Reducer, rank_refusal};
+    let reducer = Reducer::parse(reducer).map_err(error)?;
+    Ok(rank_refusal(reducer, propagators, rank))
 }
 
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {

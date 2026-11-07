@@ -526,7 +526,9 @@ def _add_evaluator_options(
             help=(
                 "one-loop reduction backend recorded as the artifact's default: "
                 "'auto' (default: TIRust for loop-induced, NinjaRS for "
-                "Born-interfered processes), 'ninjars' or 'tirust'"
+                "Born-interfered processes; for now NinjaRS for both, until "
+                "TIRust's loop-induced agreement is established), 'ninjars' "
+                "or 'tirust'"
             ),
         )
         # Removed with the legacy loop engine; still parsed so that naming it
@@ -786,9 +788,9 @@ def _add_evaluation_options(
         default=argparse.SUPPRESS,
         help=(
             "v2 virtuals: the reduction backend, overriding the artifact's "
-            "default; 'auto' takes TIRust for loop-induced and NinjaRS for "
-            "Born-interfered processes (NinjaRS, with the reason recorded, "
-            "where TIRust cannot serve the call)"
+            "default; 'auto' takes NinjaRS, with the reason recorded (TIRust, "
+            "the loop-induced default, once its agreement with NinjaRS there "
+            "is established; 'tirust' serves binary64 on request)"
         ),
     )
     parser.add_argument(

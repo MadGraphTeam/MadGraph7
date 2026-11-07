@@ -330,11 +330,12 @@ def test_auto_takes_the_per_type_default_and_records_every_fallback():
 @pytest.mark.loop_fast
 def test_the_effective_backend_is_one_the_route_runs():
     """The guard of every route: the artifact runtime's summed route and its
-    resolved outputs run NinjaRS only in this build, so with TIRust built
-    into the extension auto still takes NinjaRS on them (the reason names
-    the route) and an explicit TIRust is refused typed; a route whose
-    executor runs TIRust takes it. One choice list and one validator
-    (``config.ReductionBackend``, ``reduction_request``)."""
+    resolved outputs run both backends (m-lit lit-tir), so an explicit
+    TIRust is served there; ``auto`` keeps NinjaRS on them for both kinds
+    until the loop-induced agreement is established (m-lit lit-cache), the
+    reason saying so; a route whose executor does not run TIRust refuses it
+    typed and its ``auto`` names the route. One choice list and one
+    validator (``config.ReductionBackend``, ``reduction_request``)."""
 
     from pyamplicol.api.virtual_results import VirtualReduction
     from pyamplicol.config import ReductionBackend
@@ -350,20 +351,38 @@ def test_the_effective_backend_is_one_the_route_runs():
 
     tir = _Native({"ninjars": ALL, "tirust": ALL})
     for route in (SUMMED, RESOLVED):
+        assert route.backends == frozenset(BACKENDS)
+        found = resolve(
+            "auto", contribution="virtual", carrier="double", native=tir, route=route
+        )
+        assert found == VirtualReduction(
+            "auto", "ninjars", "auto: NinjaRS, the Born-interfered default"
+        )
+        found = resolve(
+            "auto",
+            contribution="loop-induced",
+            carrier="double",
+            native=tir,
+            route=route,
+        )
+        assert found.effective == "ninjars"
+        assert "agreement with NinjaRS on loop-induced processes" in found.reason
+        assert route.serves in found.reason
         for kind in ("virtual", "loop-induced"):
             found = resolve(
-                "auto", contribution=kind, carrier="double", native=tir, route=route
+                "tirust", contribution=kind, carrier="double", native=tir, route=route
             )
-            assert found.effective == "ninjars"
-        assert f"not wired to the executor of {route.serves}" in found.reason
-        with pytest.raises(ReductionUnavailable, match="not wired to the executor"):
-            resolve(
-                "tirust",
-                contribution="virtual",
-                carrier="double",
-                native=tir,
-                route=route,
-            )
+            assert found == VirtualReduction("tirust", "tirust", "requested")
+    ninja = Route("a NinjaRS route", frozenset({"ninjars"}))
+    found = resolve(
+        "auto", contribution="loop-induced", carrier="double", native=tir, route=ninja
+    )
+    assert found.effective == "ninjars"
+    assert "not wired to the executor of a NinjaRS route" in found.reason
+    with pytest.raises(ReductionUnavailable, match="not wired to the executor"):
+        resolve(
+            "tirust", contribution="virtual", carrier="double", native=tir, route=ninja
+        )
     wired = Route("a wired route", frozenset(BACKENDS))
     found = resolve(
         "auto", contribution="loop-induced", carrier="double", native=tir, route=wired
@@ -385,7 +404,9 @@ def test_the_effective_backend_is_one_the_route_runs():
 def test_every_route_records_its_backend_and_refuses_one_it_does_not_run(
     monkeypatch,
 ):
-    """With an extension that reports TIRust built in, an explicit TIRust
+    """With an extension that reports TIRust built in at every carrier and
+    routes whose executors run NinjaRS only (the artifact runtime's routes
+    replaced by NinjaRS-only ones: the guard itself), an explicit TIRust
     request is refused typed before any point runs on every route of the
     shipped Born-interfered artifact (the summed evaluate and a rescue
     level, evaluate_resolved, evaluate_correlated(_many), the leading-colour
@@ -403,9 +424,14 @@ def test_every_route_records_its_backend_and_refuses_one_it_does_not_run(
         VirtualRescuePolicy,
     )
     from pyamplicol.correlators import CorrelatedRequest
-    from pyamplicol.loops.v2 import reduction
+    from pyamplicol.loops.v2 import artifact, reduction
     from pyamplicol.loops.v2.reduction import ReductionUnavailable
 
+    for name in ("SUMMED", "RESOLVED"):
+        route = getattr(reduction, name)
+        monkeypatch.setattr(
+            artifact, name, route._replace(backends=frozenset({"ninjars"}), auto=None)
+        )
     built = {name: frozenset(reduction.CARRIERS) for name in reduction.BACKENDS}
     monkeypatch.setattr(reduction, "native_backends", lambda native: built)
     expected = json.loads((ew.fixture_root() / "expected.json").read_text())
@@ -636,8 +662,21 @@ def test_reduction_finiteness_and_estimates_on_the_public_route(shipped):
     named = shipped.evaluate(points, mu_r2=scales, reduction="ninjars")
     assert named.values == auto.values
     assert {lane.reduction.reason for lane in named.diagnostics} == {"requested"}
-    with pytest.raises(ReductionUnavailable, match="TIRust is not built into"):
-        shipped.evaluate(points, mu_r2=scales, reduction="tirust")
+    from pyamplicol.loops.native import load_loop_native
+
+    if load_loop_native().tirust_available():
+        # Served on request in binary64 (m-lit lit-tir); NinjaRS's values to
+        # rounding.
+        tir = shipped.evaluate(points, mu_r2=scales, reduction="tirust")
+        assert {lane.reduction.effective for lane in tir.diagnostics} == {"tirust"}
+        for mine, theirs in zip(tir.values, auto.values, strict=True):
+            (a,), (b,) = mine, theirs
+            assert abs(float(a.finite) - float(b.finite)) <= 1e-12 * abs(
+                float(b.finite)
+            )
+    else:
+        with pytest.raises(ReductionUnavailable, match="TIRust is not built into"):
+            shipped.evaluate(points, mu_r2=scales, reduction="tirust")
     ladder = VirtualRescuePolicy(
         (
             VirtualRescueLevel("double", metric="scale"),
