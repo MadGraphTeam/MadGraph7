@@ -32,6 +32,18 @@ the transverse balance, the incoming momenta follow from the total), with
 p_T > 20 GeV for every outgoing leg and Delta R > 0.4 between any two of
 them; mu_R = 1 TeV, alpha_s = 0.118, M_T = 173 GeV, M_B = 0 (loop_sm).
 
+Loop-induced rows (m-lit lit-stab-n, ``LOOP_INDUCED``: |A_loop|^2 on route
+R1, NinjaRS per amplitude, native point inputs as the stored runtime): the
+model restriction, coupling orders, parameters and final-state masses are
+those of the row's reference fixture (``tests/fixtures/loop/required/li``);
+exact points (``loop_induced_point``) with uniformly distributed rational
+directions, a 2 -> 1 point in a random longitudinally boosted frame and a
+2 -> 2 equal-mass point at a sqrt(s) drawn in the fixture's scale window.
+Since |A|^2 of an integrated zero (g g > z, Landau-Yang) is itself rounding,
+``report`` also compares the absolute error with the absolute estimate per
+sector and Laurent coefficient (the user's x10 rule, DESIGN §10.4), records
+|value| / E and E / S (the opt-in rescue metric "scale", PLAN §2.a.8).
+
 Usage:
     python tools/loop_v2_stability_calibration.py run PROCESS START STOP OUTDIR
         [--batch N] [--double-double] [--model-cache DIR] [--ufo PATH]
@@ -96,6 +108,28 @@ PROCESSES = {
     "uux_ddxg": Process("u u~ > d d~ g", {"QCD": 3, "QED": 0}),
     "uux_emepddxg": Process("u u~ > e- e+ d d~ g", {"QCD": 3, "QED": 2}, (23,)),
     "gg_gggg": Process("g g > g g g g", {"QCD": 4, "QED": 0}),
+}
+
+
+@dataclass(frozen=True)
+class LoopInduced:
+    """A loop-induced calibration row: its process and loop coupling orders;
+    everything else is read from the reference fixture ``fixture``."""
+
+    process: str
+    orders: Mapping[str, int]
+    fixture: str
+
+    def data(self) -> dict[str, Any]:
+        path = ROOT / "tests" / "fixtures" / "loop" / "required" / "li"
+        return json.loads((path / f"{self.fixture}.json").read_text())
+
+
+# One row with large cancellations, one integrated zero (m-lit PLAN §3.4
+# LIT-STAB-N).
+LOOP_INDUCED = {
+    "li_gg_hh": LoopInduced("g g > h h", {"QCD": 2, "QED": 2}, "li_gg_hh"),
+    "li_gg_z": LoopInduced("g g > z", {"QCD": 2, "QED": 1}, "li_gg_z"),
 }
 
 
@@ -207,6 +241,73 @@ def sample_point(name: str, index: int) -> list[tuple[Fraction, ...]]:
             return point
 
 
+def _random_direction(rng: random.Random, resolution: int = 10**6):
+    """A rational unit 3-vector, uniformly distributed on the sphere up to
+    the rounding of its stereographic coordinates."""
+
+    theta = math.acos(2 * rng.random() - 1)
+    return _rational_direction(theta, 2 * math.pi * rng.random(), resolution)
+
+
+def _boost_z(point, plus: Fraction):
+    """``point`` boosted along z by the exact rapidity factor ``plus`` =
+    e^y (gamma = (plus + 1/plus) / 2, gamma beta = (plus - 1/plus) / 2)."""
+
+    gamma, gamma_beta = (plus + 1 / plus) / 2, (plus - 1 / plus) / 2
+    return [
+        (gamma * e + gamma_beta * pz, px, py, gamma_beta * e + gamma * pz)
+        for e, px, py, pz in point
+    ]
+
+
+def loop_induced_point(name: str, index: int) -> list[tuple[Fraction, ...]]:
+    """Point ``index`` of a loop-induced row's deterministic sample: exact
+    rationals, exactly on the fixture's mass shells and momentum conserving.
+
+    * One massive final particle (2 -> 1): at rest, beams of energy M/2
+      along a random rational direction, boosted along z by a random
+      rational e^y in [1/4, 4].
+    * Two final particles of one mass m (2 -> 2): beams along +-z, final
+      momenta back to back along a random rational direction with E =
+      m (k + 1/k) / 2, |p| = m (k - 1/k) / 2, log k uniform over the
+      fixture's sqrt(s) window (``point_construction.scale_window``).
+    """
+
+    data = LOOP_INDUCED[name].data()
+    construction = data["point_construction"]
+    initial = int(data.get("initial", 2))
+    masses = [Fraction(m) for m in construction["masses"]][initial:]
+    rng = random.Random(f"{name}:{index}")
+    zero = Fraction(0)
+    if len(masses) == 1 and masses[0]:
+        half = masses[0] / 2
+        n = _random_direction(rng)
+        point = [
+            (half, *(half * c for c in n)),
+            (half, *(-half * c for c in n)),
+            (masses[0], zero, zero, zero),
+        ]
+        plus = Fraction(4 ** (2 * rng.random() - 1)).limit_denominator(1000)
+        return _boost_z(point, plus)
+    if len(masses) == 2 and masses[0] == masses[1] and masses[0]:
+        m = masses[0]
+        low, high = (Fraction(x) / m for x in construction["scale_window"])
+        # k + 1/k = sqrt(s) / m
+        bounds = [float(x + (x * x - 4) ** 0.5) / 2 for x in (low, high)]
+        k = Fraction(
+            math.exp(rng.uniform(math.log(bounds[0]), math.log(bounds[1])))
+        ).limit_denominator(1000)
+        energy, momentum = m * (k + 1 / k) / 2, m * (k - 1 / k) / 2
+        n = _random_direction(rng)
+        return [
+            (energy, zero, zero, energy),
+            (energy, zero, zero, -energy),
+            (energy, *(momentum * c for c in n)),
+            (energy, *(-momentum * c for c in n)),
+        ]
+    raise ValueError(f"{name}: no exact point construction for masses {masses}")
+
+
 # ------------------------------------------------------------------ slices
 
 
@@ -282,6 +383,41 @@ def build_slice(name: str, compiled: Any) -> Any:
         assemble.generate_counterterm_sites = generate
 
 
+def build_loop_induced(name: str, ufo: Path, cache: Path) -> tuple[Any, dict]:
+    """The slice of a loop-induced row (on loop_sm under the fixture's
+    restriction, ``tools.loop_benchmark.mqcd.compile_restriction``) and the
+    fixture's model parameters it takes at evaluation."""
+
+    from pyamplicol.loops.native import load_loop_native
+    from pyamplicol.loops.v2 import assemble
+    from tools.loop_benchmark.mqcd import compile_restriction
+
+    entry = LOOP_INDUCED[name]
+    scheme = entry.data()["scheme_data"]
+    restriction = scheme.get("restriction") or "default"
+    compiled = compile_restriction(ufo, restriction, cache / restriction)
+    fixed = {
+        key: value
+        for key, value in scheme["fixed_parameters"].items()
+        if key in compiled.parameter_defaults
+    }
+    request = assemble.SliceRequest(
+        entry.process,
+        dict(entry.orders),
+        dict(entry.orders),
+        contribution="loop-induced",
+        fixed_parameters=fixed,
+    )
+    slice_ = assemble.LoopSlice.generate(compiled, request, load_loop_native())
+    external = slice_._external_parameters()
+    parameters = {
+        key: value
+        for key, value in scheme["parameters"].items()
+        if key in external and key not in slice_.fixed_parameters
+    }
+    return slice_, parameters
+
+
 # ------------------------------------------------------------------ run
 
 
@@ -318,7 +454,7 @@ def _record(result, seconds: float) -> dict[str, Any]:
     return record
 
 
-def _evaluate(executor, points, precision, checks):
+def _evaluate(executor, points, precision, checks, parameters=None):
     """Evaluate a batch; a failed point is recorded with its reasons."""
 
     from pyamplicol.loops.v2.plan_export import FailedPoints
@@ -328,7 +464,11 @@ def _evaluate(executor, points, precision, checks):
     failures = {}
     try:
         results = executor.evaluate(
-            points, scales, parameters=PARAMETERS, precision=precision, stability=checks
+            points,
+            scales,
+            parameters=PARAMETERS if parameters is None else parameters,
+            precision=precision,
+            stability=checks,
         )
     except FailedPoints as failed:
         results, failures = failed.results, failed.failures
@@ -347,8 +487,18 @@ def run(options) -> int:
     from pyamplicol.loops.v2.stability import StabilityChecks
 
     name = options.process
-    compiled = compile_loop_sm(options.ufo, options.model_cache)
-    executor = NativeExecutor(build_slice(name, compiled), threads=options.threads)
+    if name in LOOP_INDUCED:
+        # The stored runtime's route: native point inputs, no forward oracle.
+        slice_, parameters = build_loop_induced(name, options.ufo, options.model_cache)
+        executor = NativeExecutor(
+            slice_, threads=options.threads, forward=False, inputs="native"
+        )
+        sample = loop_induced_point
+    else:
+        compiled = compile_loop_sm(options.ufo, options.model_cache)
+        executor = NativeExecutor(build_slice(name, compiled), threads=options.threads)
+        parameters = PARAMETERS
+        sample = sample_point
     checks = StabilityChecks(rotations(), True)
     # The rescaled reduction check is a second evaluation (one reduction
     # check per evaluation); ``report`` merges its budget by point.
@@ -374,14 +524,12 @@ def run(options) -> int:
     with path.open("a") as out:
         for first in range(0, len(todo), options.batch):
             indices = todo[first : first + options.batch]
-            points = [
-                [[str(x) for x in p] for p in sample_point(name, i)] for i in indices
-            ]
+            points = [[[str(x) for x in p] for p in sample(name, i)] for i in indices]
             records = [{"process": name, "index": i} for i in indices]
             for carrier, precision, configured in carriers:
                 for record, value in zip(
                     records,
-                    _evaluate(executor, points, precision, configured),
+                    _evaluate(executor, points, precision, configured, parameters),
                     strict=True,
                 ):
                     record[carrier] = value
@@ -469,14 +617,33 @@ def _quantiles(values: list[float]) -> dict[str, float]:
 THRESHOLDS = (1e-12, 1e-9, 1e-6, 1e-3)
 
 
+def _largest_ratio(numerators, denominators) -> float:
+    """The largest numerator / denominator over sectors and Laurent
+    coefficients (0 / 0 counts 0, x / 0 infinite)."""
+
+    worst = 0.0
+    for sector, values in numerators.items():
+        for x, y in zip(
+            values.coefficients, denominators[sector].coefficients, strict=True
+        ):
+            x, y = abs(float(x)), abs(float(y))
+            if x:
+                worst = max(worst, x / y if y else math.inf)
+    return worst
+
+
 def _point_report(record, carrier, truth):
     """Per configuration: (true relative error, estimate) for the Laurent
-    vector and for the finite part, and the safety factor it needed.
+    vector and for the finite part, the largest absolute error / E over
+    sectors and Laurent coefficients, the largest |value| / E and E / S;
+    and each check's raw budget.
 
     The estimate's absolute error E is measured against the truth's scale,
     as the true error is: a point whose value has no correct digit has a
     relative estimate of order 1 or more against its own (wrong) value,
-    which does not compare with an error relative to the truth.
+    which does not compare with an error relative to the truth. The
+    absolute comparison holds also where the truth is itself zero (an
+    integrated zero, or the vanishing poles of a loop-induced |A|^2).
     """
 
     from pyamplicol.loops.v2 import stability
@@ -532,6 +699,9 @@ def _point_report(record, carrier, truth):
             stability.relative(exact_floats, estimate.absolute),
             finite,
             stability.per_coefficient(exact_floats, estimate.absolute)[0],
+            _largest_ratio(errors, estimate.absolute),
+            _largest_ratio(floats, estimate.absolute),
+            _largest_ratio(estimate.absolute, scale),
         )
     raw = {name: stability.relative(exact_floats, b) for name, b in budgets.items()}
     return out, raw
@@ -539,6 +709,10 @@ def _point_report(record, carrier, truth):
 
 def report(options) -> int:
     from pyamplicol.loops.v2 import stability
+
+    # USER DECISION (2026-10-23; DESIGN §10.4; m-lit Q12): a single-point
+    # test of an estimate E holds the true error to at most 10 E.
+    from pyamplicol.loops.v2.induced import ESTIMATE_FACTOR
 
     rows: dict[tuple[str, str], list] = defaultdict(list)
     failures: dict[str, list] = defaultdict(list)
@@ -571,8 +745,9 @@ def report(options) -> int:
         names_seen = sorted({names for p in points for names in p[0]}, key=len)
         for names in names_seen:
             pairs = [p[0][names] for p in points if names in p[0]]
-            vector_misses = sum(error > estimate for error, estimate, _, _ in pairs)
-            finite_misses = sum(error > estimate for _, _, error, estimate in pairs)
+            vector_misses = sum(error > estimate for error, estimate, *_ in pairs)
+            finite_misses = sum(error > estimate for _, _, error, estimate, *_ in pairs)
+            ratios = [item[4] for item in pairs]
             configurations[" + ".join(names)] = {
                 "points": len(pairs),
                 "false_negative_rate": vector_misses / len(pairs),
@@ -580,15 +755,26 @@ def report(options) -> int:
                 "false_negatives": vector_misses,
                 "false_negatives_finite": finite_misses,
                 "estimate_over_error": _quantiles(
-                    [e / r for r, e, _, _ in pairs if r > 0]
+                    [e / r for r, e, *_ in pairs if r > 0]
                 ),
                 "flagged": {
-                    f"{t:.0e}": sum(e > t for _, e, _, _ in pairs) / len(pairs)
+                    f"{t:.0e}": sum(e > t for _, e, *_ in pairs) / len(pairs)
                     for t in THRESHOLDS
                 },
                 "true_above": {
-                    f"{t:.0e}": sum(r > t for r, _, _, _ in pairs) / len(pairs)
+                    f"{t:.0e}": sum(r > t for r, *_ in pairs) / len(pairs)
                     for t in THRESHOLDS
+                },
+                # Per sector and Laurent coefficient: the absolute error
+                # against E (the user's x10 rule: beyond_margin), |value| / E
+                # (an integrated zero within its estimate) and E / S (the
+                # rescue metric "scale").
+                "absolute": {
+                    "false_negatives": sum(r > 1 for r in ratios),
+                    "beyond_margin": sum(r > ESTIMATE_FACTOR for r in ratios),
+                    "error_over_estimate": _quantiles(ratios),
+                    "value_over_estimate": _quantiles([item[5] for item in pairs]),
+                    "estimate_over_scale": _quantiles([item[6] for item in pairs]),
                 },
             }
         raw = {}
@@ -624,7 +810,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     commands = parser.add_subparsers(dest="command", required=True)
     runner = commands.add_parser("run")
-    runner.add_argument("process", choices=sorted(PROCESSES))
+    runner.add_argument("process", choices=sorted([*PROCESSES, *LOOP_INDUCED]))
     runner.add_argument("start", type=int)
     runner.add_argument("stop", type=int)
     runner.add_argument("outdir", type=Path)
