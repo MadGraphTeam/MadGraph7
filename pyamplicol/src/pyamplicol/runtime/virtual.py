@@ -964,13 +964,10 @@ class V2ObservablesRuntime:
             resolved=resolved,
         )
 
-    def _resolution(
-        self, color_resolution: str | None
-    ) -> tuple[Any, tuple[Any, ...], tuple[str, ...], tuple[str, ...]]:
-        """(the resolved column set's key, its colour components, the Born
-        and the virtual colour IDs) of ``evaluate_resolved``: at leading
-        colour one entry per Born basis element (``basis-<i>``), else one
-        contracted component with the accuracy as its ID."""
+    def _resolution(self, color_resolution: str | None) -> tuple[Any, tuple[Any, ...]]:
+        """(the resolved column set's key, its colour components) of
+        ``evaluate_resolved``: at leading colour one entry per Born basis
+        element, else one contracted component."""
 
         if color_resolution is not None:
             raise CompatibilityError(
@@ -978,12 +975,21 @@ class V2ObservablesRuntime:
                 "process's resolved output; a Born-interfered virtual resolves "
                 "its colour by its accuracy"
             )
+        if self._observables.slice.request.accuracy == "lc":
+            return "helicity-colour", tuple(self._observables.components)
+        return "helicity", (None,)
+
+    def _colour_ids(
+        self, components: Sequence[Any]
+    ) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """(Born, virtual) colour IDs of the resolved components: a Born
+        basis element's ``basis-<i>`` at leading colour, else the accuracy."""
+
         accuracy = self._observables.slice.request.accuracy
         if accuracy == "lc":
-            components = tuple(self._observables.components)
             ids = tuple(f"basis-{b}" for b in components)
-            return "helicity-colour", components, ids, ids
-        return "helicity", (None,), (str(accuracy),), (str(accuracy),)
+            return ids, ids
+        return (str(accuracy),), (str(accuracy),)
 
     def _evaluate_selected(
         self,
@@ -1192,7 +1198,7 @@ class V2ObservablesRuntime:
         if self._member is not None:
             # The member's rows in its own catalogue order.
             rows = tuple(sorted(self._member.row(row) for row in rows))
-        resolution, components, born_ids, ids = self._resolution(color_resolution)
+        resolution, components = self._resolution(color_resolution)
         helicity_ids = tuple(f"h{i}" for i in range(len(rows)))
         if helicities or color_flows:
             self._require_selection(helicities, color_flows, resolved=True)
@@ -1336,6 +1342,7 @@ class V2ObservablesRuntime:
                         )
                     )
                 )
+        born_ids, ids = self._colour_ids(components)
         return ResolvedVirtualEvaluation(
             born_values=tuple(born_values),
             values=tuple(values),
@@ -1398,9 +1405,7 @@ class V2InducedObservablesRuntime(V2ObservablesRuntime):
                 "(evaluate_resolved(color_resolution='amplitude-basis'))"
             )
 
-    def _resolution(
-        self, color_resolution: str | None
-    ) -> tuple[Any, tuple[Any, ...], tuple[str, ...], tuple[str, ...]]:
+    def _resolution(self, color_resolution: str | None) -> tuple[Any, tuple[Any, ...]]:
         from pyamplicol.loops.v2 import induced_observables as io
 
         choice = io.CONTRACTED if color_resolution is None else color_resolution
@@ -1410,7 +1415,17 @@ class V2InducedObservablesRuntime(V2ObservablesRuntime):
                 f"choose one of {list(io.COLOUR_RESOLUTIONS)}"
             )
         if choice == io.CONTRACTED:
-            return choice, (None,), (), ("full",)
-        size = len(self._observables.slice.amplitude)
-        components = tuple(range(size))
-        return choice, components, (), tuple(io.ANCHOR_ID.format(t) for t in components)
+            return choice, (None,)
+        return choice, tuple(range(len(self._observables.slice.amplitude)))
+
+    def _colour_ids(
+        self, components: Sequence[Any]
+    ) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """No Born colour axis (RULED Q36); the contracted component
+        ``"full"`` or the amplitude-basis anchors ``amplitude-<t>``."""
+
+        from pyamplicol.loops.v2 import induced_observables as io
+
+        if tuple(components) == (None,):
+            return (), ("full",)
+        return (), tuple(io.ANCHOR_ID.format(t) for t in components)
