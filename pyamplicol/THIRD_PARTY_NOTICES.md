@@ -124,8 +124,11 @@ and Idenso, spenso-hep-lib, symbolica-utils and the workspace-hack crate
 declare no license and fall under GammaLoop's top-level license, which places
 no usage restrictions (`licenses/GammaLoop.txt`). linnet depends on
 `dot-parser` 0.5.1 by Martin Vassor, which GammaLoop vendors and which declares
-GPL-2.0-or-later (`licenses/rust/dot-parser-0.5.1/`). The crate list and
-license texts are in `licenses/GammaLoop-crates.txt`.
+GPL-2.0-or-later (`licenses/rust/dot-parser-0.5.1/`). linnet's
+`crates/linnet/src/parser/subgraph_free.rs` is adapted from dot-parser 0.5.1's
+`src/subgraph_free.rs` (Martin Vassor, GPL-2.0-or-later); its notice is the same
+dot-parser license text. The crate list and license texts are in
+`licenses/GammaLoop-crates.txt`.
 
 ## UFO Model Loader
 
