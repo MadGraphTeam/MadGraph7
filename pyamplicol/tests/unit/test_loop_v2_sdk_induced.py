@@ -282,9 +282,13 @@ def test_the_reduction_setter_records_the_python_apis_choice(
             "reason": record.reason,
         }
         capabilities = _json(sdk, sdk.rusticol_virtual_capabilities_json, handle)
-        assert capabilities["reduction"]["native"] == json.loads(
-            loop_native.reduction_backends()
-        )
+        # What the library serves, as the Python API's inspect lists it.
+        assert capabilities["reduction"]["native"] == {
+            backend: sorted(carriers)
+            for backend, carriers in json.loads(
+                loop_native.reduction_backends()
+            ).items()
+        }
         assert capabilities["reduction"]["auto_default"] == "tirust"
         for backend in ("auto", "ninjars", "tirust"):
             status = sdk.rusticol_virtual_set_reduction(handle, backend.encode())
@@ -295,7 +299,10 @@ def test_the_reduction_setter_records_the_python_apis_choice(
             assert status == 0, _error(sdk)
             found = _evaluate(sdk, handle, points, scales)
             expected = runtime.evaluate(
-                exact_points, mu_r2=exact_scales, reduction=backend
+                exact_points,
+                mu_r2=exact_scales,
+                reduction=backend,
+                on_failure="return",
             )
             record = expected.diagnostics[0].reduction
             assert found["diagnostics"]["reduction"] == {

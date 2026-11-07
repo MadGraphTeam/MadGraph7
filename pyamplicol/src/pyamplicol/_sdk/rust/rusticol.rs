@@ -227,6 +227,17 @@ pub mod virtual_amplitudes {
                 )
             })
         }
+        /// Reduction backend of later evaluations, the Python API's
+        /// `reduction=`: "auto" (default), "ninjars" or "tirust"; an
+        /// unavailable explicit backend is a runtime error (never a silent
+        /// switch). Each result's diagnostics record the choice.
+        pub fn set_reduction(&mut self, reduction: &str) -> Result<()> {
+            let reduction = checked_cstring(reduction, "reduction backend")?;
+            // SAFETY: exclusive live handle and owned string.
+            check(unsafe {
+                ffi::rusticol_virtual_set_reduction(self.handle.as_ptr(), reduction.as_ptr())
+            })
+        }
         /// One native bulk call; binary64 inputs are read as their exact values.
         pub fn evaluate(
             &mut self,
@@ -736,6 +747,10 @@ pub mod virtual_amplitudes {
                 handle: *mut c_void,
                 arithmetic: *const c_char,
                 digits: u32,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_set_reduction(
+                handle: *mut c_void,
+                reduction: *const c_char,
             ) -> c_int;
             pub(super) fn rusticol_virtual_result_decimal_json(
                 handle: *const c_void,

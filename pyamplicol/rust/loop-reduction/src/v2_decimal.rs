@@ -534,4 +534,64 @@ mod tests {
             assert_eq!(DecimalContext::new(digits).pi(), expected, "{digits}");
         }
     }
+
+    /// The Python-order square equals the native binary64 square (the one
+    /// of RULED Q41) bitwise when every vector is present, skips absent
+    /// rows as Python's `amplitudes.get`, and squares in `Decimal` to the
+    /// exact value of exactly representable inputs.
+    #[test]
+    fn the_python_order_square_is_the_native_square() {
+        use symbolica::domains::float::Complex;
+        let c = |re: f64, im: f64| C::new(re, im);
+        // Two loop orders, two rows, a basis of two, three coefficients.
+        let vector = |seed: f64| -> Vec<Vec<C<f64>>> {
+            (0..2)
+                .map(|t| {
+                    (0..3)
+                        .map(|k| c(seed + 0.1 * t as f64 - 0.37 * k as f64, 0.3 - seed * k as f64))
+                        .collect()
+                })
+                .collect()
+        };
+        let vectors: Vec<Option<Vec<Vec<C<f64>>>>> =
+            [0.7, -1.3, 2.1, 0.45].iter().map(|s| Some(vector(*s))).collect();
+        let metric = [c(8.0 / 3.0, 0.0), c(-1.0 / 3.0, 0.0), c(-1.0 / 3.0, 0.0), c(8.0 / 3.0, 0.0)];
+        let pairs = vec![vec![(0, 0)], vec![(0, 1), (1, 1)]];
+        let python = square_amplitudes_python(&Binary64, &vectors, 2, 2, 3, &metric, &pairs, 256);
+        let dense: Vec<Vec<Complex<f64>>> = vectors
+            .iter()
+            .flat_map(|v| v.as_ref().unwrap().iter().map(|cell| {
+                cell.iter().map(|z| Complex::new(z.re, z.im)).collect::<Vec<_>>()
+            }))
+            .collect();
+        let native_metric: Vec<Complex<f64>> =
+            metric.iter().map(|z| Complex::new(z.re, z.im)).collect();
+        let native = rusticol_core::loop_v2::interference::square_amplitudes(
+            &dense, 2, 2, 2, 3, &native_metric, &pairs, &256.0,
+        )
+        .unwrap();
+        assert_eq!(python, native);
+        // An absent row contributes nothing (not a zero product).
+        let mut absent = vectors.clone();
+        absent[1] = None;
+        let skipped = square_amplitudes_python(&Binary64, &absent, 2, 2, 3, &metric, &pairs, 256);
+        let one_row = square_amplitudes_python(
+            &Binary64,
+            &[vectors[0].clone(), vectors[2].clone()],
+            1,
+            2,
+            3,
+            &metric,
+            &[vec![(0, 0)], vec![(0, 1), (1, 1)]],
+            256,
+        );
+        assert_eq!(skipped[0], one_row[0]);
+        // Decimal: |(1 + i, 2)|_G^2 / 4 with G = [[2, 1], [1, 2]] is 16 / 4.
+        let arith = DecimalArith::new(40);
+        let z = |re: i64, im: i64| C::new(Decimal::integer(re), Decimal::integer(im));
+        let a = Some(vec![vec![z(1, 1)], vec![z(2, 0)]]);
+        let g = [z(2, 0), z(1, 0), z(1, 0), z(2, 0)];
+        let squared = square_amplitudes_python(&arith, &[a], 1, 2, 1, &g, &[vec![(0, 0)]], 4);
+        assert_eq!(squared[0][0], Decimal::integer(4));
+    }
 }

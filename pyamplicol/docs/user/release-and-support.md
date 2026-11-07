@@ -52,7 +52,10 @@ Born-interfered processes; TIRust serves explicit `"tirust"` requests in
 binary64, and `"auto"` stays on NinjaRS, with the reason recorded, until the
 two backends' loop-induced agreement is established). `pyamplicol self-test` also
 evaluates a shipped loop-induced artifact (`g g > h`) against MadLoop. The
-native SDKs refuse loop-induced processes for now.
+native SDKs (C, C++, Fortran, Rust, UMAMI) open loop-induced processes directly
+with empty Born counts and the Python API's values, and take the reduction
+backend per call (`rusticol_virtual_set_reduction`); their loop-induced
+resolved and correlated outputs are not served yet.
 
 ## 1.0.2 release
 

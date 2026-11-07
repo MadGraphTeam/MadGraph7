@@ -14,8 +14,35 @@ These additive Rust/C/C++/Fortran interfaces call the same `VirtualRuntime` used
 facade. It reads ordinary verified process artifacts and needs no Python process,
 model importer, graph generator or alternate reducer. The existing tree SDK is
 unchanged. All interfaces return physical Born–loop interference, all generated
-squared coupling orders, and finite/single/double poles. Loop amplitudes squared
-and loop-induced production remain unsupported.
+squared coupling orders, and finite/single/double poles.
+
+**Loop-induced processes** (|A_loop|², no Born; m-lit LIT-SDK) are opened by the
+same `rusticol_virtual_open`, with no opt-in, in artifacts of their own or mixed
+with Born-interfered processes: `metadata_json` names `"contribution_kind":
+"loop-induced"` and `"interference": "conj(loop)*loop"`; the shape has zero Born
+orders and Born colour components and every result zero Born values; the
+virtual orders are the loop × loop sectors, each value |A_loop|² per sector and
+epsilon power, full colour (one contracted component), whose computed poles
+vanish up to rounding (a finiteness cross-check). The values are the Python
+API's: binary64 bitwise (the executor's amplitude sum plus the counterterm kets,
+squared by the one native square the Python API calls), double-double and
+arbitrary precision as `Decimal` values (squared in the canonical order). A
+loop-induced process serves the pole selections `"all"` and `"none"`; `"uv"`
+and `"ir"` are refused (`RUSTICOL_VIRTUAL_RUNTIME_ERROR`, the Python API's
+message). Its resolved and correlated outputs are not served by the SDK yet
+(`resolved_available = 0`, the capabilities' `observables_unavailable`).
+
+**Reduction backend.** `rusticol_virtual_set_reduction(handle, "auto" |
+"ninjars" | "tirust")` (C++ `set_reduction`, Fortran `set_reduction`) selects
+the backend of later evaluations, as the Python API's `reduction=`. `"auto"`
+(the default, or the artifact's `[loop] reduction`) follows the one policy the
+Python API reads (`rusticol_loop_reduction::reduction_policy`): today NinjaRS
+for both process types, with the reason recorded. An explicit backend the
+library is built without (TIRust needs the default cargo feature `tir`) is
+refused by the setter, one that cannot serve a call's carrier (TIRust serves
+binary64) by that call, never switched silently. Every result's
+`diagnostics_json` records `"reduction": {"requested", "effective",
+"reason"}`; the capabilities list the backends this library serves.
 
 The ordinary package builds the tree and virtual APIs into one
 `librusticol_capi.a`. Its existing `_sdk` bundle carries the virtual C/C++ headers,

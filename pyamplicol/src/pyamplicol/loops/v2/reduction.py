@@ -245,11 +245,11 @@ def resolve(
         request,
         contribution,
         carrier,
-        {name: sorted(carriers) for name, carriers in served.items()},
-        None if admitted is None else sorted(admitted),
+        {name: set(carriers) for name, carriers in served.items()},
+        None if admitted is None else set(admitted),
         route.serves,
-        sorted(route.backends),
-        None if route.auto is None else sorted(route.auto),
+        set(route.backends),
+        None if route.auto is None else set(route.auto),
     )
     if status == "unavailable":
         raise ReductionUnavailable(reason)
