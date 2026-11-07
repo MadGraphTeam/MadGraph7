@@ -284,3 +284,22 @@ def test_stress_fixtures_are_exact_and_current(entries):
         entry = by_fixture[stress["name"]]
         assert entry["key"] is None and entry["tiers"] == ["stress"]
         assert lm.ARBITRARY in stress["carriers"]
+
+
+def test_high_precision_backend_arm_is_ready_for_lit_tir_mp(entries):
+    """Once TIRust serves double-double (lit-tir-mp), the same judge
+    compares the arms through the one comparison within 1e-24 of the
+    sector's largest coefficient; a deviation below ~1e-5 is recorded as
+    lax, never a failure."""
+
+    entry = {e["fixture"]: e for e in entries}["li_gg_hh"]
+    record = _record("li_gg_hh")
+    dd = record["arms"]["ninjars/double-double/checked"]
+    record["arms"]["tirust/double-double/checked"] = json.loads(json.dumps(dd))
+    assert lm.judge(record, entry)["L6"]["double-double"]["status"] == "pass"
+    moved = json.loads(json.dumps(dd))
+    for point in moved["points"]:
+        value = float(point["values"][0]["finite"])
+        point["values"][0]["finite"] = repr(value * (1 + 1e-9))
+    record["arms"]["tirust/double-double/checked"] = moved
+    assert lm.judge(record, entry)["L6"]["double-double"]["status"] == "pass (lax)"
