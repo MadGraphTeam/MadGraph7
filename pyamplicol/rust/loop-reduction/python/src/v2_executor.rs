@@ -27,6 +27,7 @@ use rusticol_core::loop_execution::v2::{
 use rusticol_core::loop_v2::dipole_correlations::Correlator;
 use rusticol_core::loop_v2::dress::{Carrier as V2Carrier, V2Batch, parse_rational};
 use rusticol_core::loop_v2::plan::{FormPolicy, LoopProgramV4};
+use rusticol_core::loop_v2::prime::Fp;
 use rusticol_core::loop_v2::retest::ReductionCheck;
 use rusticol_core::loop_v2::trees::{
     BoundParameters, TREE_FILL_BUDGET, TreeCarrier, TreeInputs, TreeProgram, TreeRuntime,
@@ -101,6 +102,23 @@ impl Exchanged for Float {
                 .iter()
                 .cloned()
                 .map(|z| decimal_complex(z, bits))
+                .collect(),
+        )
+    }
+}
+
+/// The prime-field carrier of the exact helicity-zero filter (M-LIT LIT-R2):
+/// imported from exact rational texts (reduced modulo p), exported as the
+/// residues' decimal texts.
+impl Exchanged for Fp {
+    fn import(values: &Bound<'_, PyAny>, zero: &Self) -> PyResult<Vec<Complex<Self>>> {
+        exact_pairs(values, zero)
+    }
+    fn export(values: &[Complex<Self>], _bits: u32) -> Values {
+        Values::Text(
+            values
+                .iter()
+                .map(|z| [z.re.to_string(), z.im.to_string()])
                 .collect(),
         )
     }
@@ -814,6 +832,9 @@ enum Carriers {
     DoubleDouble,
     Arbitrary(u32),
     Exact,
+    /// The field F_p, p = 2^61 - 1 (numerators only; the exact
+    /// helicity-zero filter, `rusticol_core::loop_v2::prime`).
+    Prime,
 }
 
 /// The native v2 executor of one plan and carrier. `lanes` is the SIMD
@@ -850,7 +871,7 @@ fn backend_of<'a>(
             Carriers::Arbitrary(digits) => {
                 runtime::V2Reducer::new("arbitrary", Some(digits), "generic", true)
             }
-            Carriers::Exact => {
+            Carriers::Exact | Carriers::Prime => {
                 return Err(error("the exact carrier dresses numerators only"));
             }
         }
@@ -871,7 +892,7 @@ impl V2Executor {
             Carriers::Arbitrary(digits) => {
                 Float::decimal_digits_to_bits(f64::from(digits)).map_err(error)?
             }
-            Carriers::Exact => 0,
+            Carriers::Exact | Carriers::Prime => 0,
         })
     }
 }
@@ -1349,9 +1370,10 @@ impl V2Executor {
             ("double-double", None) => Carriers::DoubleDouble,
             ("arbitrary", Some(digits)) if digits > 0 => Carriers::Arbitrary(digits),
             ("exact", None) => Carriers::Exact,
+            ("prime", None) => Carriers::Prime,
             _ => {
                 return Err(error(
-                    "arithmetic must be double, double-double, exact, or arbitrary with digits",
+                    "arithmetic must be double, double-double, exact, prime, or arbitrary with digits",
                 ));
             }
         };
@@ -1396,7 +1418,7 @@ impl V2Executor {
         if let Some(record) = fourier {
             // The seed FFT needs square roots: the exact carrier contracts
             // directly (`loop_v2::fourier`).
-            if matches!(carrier, Carriers::Exact) {
+            if matches!(carrier, Carriers::Exact | Carriers::Prime) {
                 return Err(error("the exact carrier contracts seeds directly"));
             }
             executor = executor.with_fourier(record.as_bytes()).map_err(error)?;
@@ -1437,9 +1459,10 @@ impl V2Executor {
             ("double-double", None) => Carriers::DoubleDouble,
             ("arbitrary", Some(digits)) if digits > 0 => Carriers::Arbitrary(digits),
             ("exact", None) => Carriers::Exact,
+            ("prime", None) => Carriers::Prime,
             _ => {
                 return Err(error(
-                    "arithmetic must be double, double-double, exact, or arbitrary with digits",
+                    "arithmetic must be double, double-double, exact, prime, or arbitrary with digits",
                 ));
             }
         };
@@ -1449,7 +1472,7 @@ impl V2Executor {
         if fourier && self.executor.fourier().is_none() {
             return Err(error("the executor has no seed Fourier record to share"));
         }
-        if fourier && matches!(carrier, Carriers::Exact) {
+        if fourier && matches!(carrier, Carriers::Exact | Carriers::Prime) {
             return Err(error("the exact carrier contracts seeds directly"));
         }
         let same = std::mem::discriminant(&carrier) == std::mem::discriminant(&self.carrier)
@@ -1504,7 +1527,9 @@ impl V2Executor {
             Carriers::Arbitrary(_) => {
                 tree_inputs_with(executor, trees, inputs, Float::with_val(bits, 0), bits)
             }
-            Carriers::Exact => Err(error("the exact carrier has no native trees")),
+            Carriers::Exact | Carriers::Prime => {
+                Err(error("the exact carrier has no native trees"))
+            }
         }
     }
 
@@ -1552,7 +1577,9 @@ impl V2Executor {
                 bits,
                 selection,
             ),
-            Carriers::Exact => Err(error("the exact carrier has no native trees")),
+            Carriers::Exact | Carriers::Prime => {
+                Err(error("the exact carrier has no native trees"))
+            }
         }
     }
 
@@ -1574,7 +1601,9 @@ impl V2Executor {
             Carriers::Arbitrary(_) => {
                 bound_masses_with(trees, inputs, &scales, &Float::with_val(self.bits()?, 0))
             }
-            Carriers::Exact => Err(error("the exact carrier has no native trees")),
+            Carriers::Exact | Carriers::Prime => {
+                Err(error("the exact carrier has no native trees"))
+            }
         }
     }
 
@@ -1676,7 +1705,9 @@ impl V2Executor {
                 bits,
                 contraction,
             ),
-            Carriers::Exact => Err(error("the exact carrier contracts seeds directly")),
+            Carriers::Exact | Carriers::Prime => {
+                Err(error("the exact carrier contracts seeds directly"))
+            }
         }
     }
 
@@ -1714,6 +1745,7 @@ impl V2Executor {
             Carriers::Exact => {
                 numerators_with(py, executor, inputs, Rational::from(0), bits, schedule)
             }
+            Carriers::Prime => numerators_with(py, executor, inputs, Fp::new(0), bits, schedule),
         }
     }
 
@@ -1882,7 +1914,9 @@ impl V2Executor {
                 selection,
                 dipoles,
             ),
-            Carriers::Exact => unreachable!("backend_of refuses the exact carrier"),
+            Carriers::Exact | Carriers::Prime => {
+                unreachable!("backend_of refuses the exact carriers")
+            }
         }
     }
 }

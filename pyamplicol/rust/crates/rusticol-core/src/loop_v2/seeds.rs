@@ -256,6 +256,9 @@ pub fn contract<T: Carrier, const L: usize>(
     data: &LaneData<T, L>,
 ) -> Seeds<T> {
     let v = lane_vector_len(L);
+    if plan.dressed {
+        return constant::<T, L>(plan, data);
+    }
     let columns = plan.columns;
     let classes: Vec<Vec<T>> = classes
         .par_iter()
@@ -311,6 +314,22 @@ pub fn contract<T: Carrier, const L: usize>(
     Seeds {
         classes,
         keys,
+        values: Vec::new(),
+    }
+}
+
+/// The constant seeds of a dressed-row plan (route R2, M-LIT LIT-R2): every
+/// key's value is one lane vector `1` (one row, one object column), so a
+/// leaf object is its weight; the seed key's amplitude vector closes the
+/// trace steps instead (`closure::trace_rows_into`).
+fn constant<T: Carrier, const L: usize>(plan: &LoopProgramV4, data: &LaneData<T, L>) -> Seeds<T> {
+    let mut one = vec![data.zero.clone(); lane_vector_len(L)];
+    for x in &mut one[..L] {
+        *x = data.zero.one();
+    }
+    Seeds {
+        classes: vec![one],
+        keys: (0..plan.seeds.len()).map(|_| Key::Class(0)).collect(),
         values: Vec::new(),
     }
 }

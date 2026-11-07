@@ -145,6 +145,9 @@ use std::sync::Arc;
 pub const MAGIC: [u8; 8] = *b"LOOPPLAN";
 /// The binary member's format (one version; another is refused). Format 3
 /// adds the plan's `column_weights` (three columns after the column rows).
+/// An amplitude-mode member (plan schema 5) also holds the columns after
+/// [`SEEDED_COLUMNS`] (the dressed-row flag, M-LIT LIT-R2), so a seeded
+/// member's bytes are format 3's (M-LIT RULED Q42).
 pub const FORMAT: u32 = 3;
 
 /// The most bytes of decoded model a member may declare per member byte
@@ -492,6 +495,21 @@ columns! {
     ColumnRowsFlag, ColumnRowsLen, ColumnRowFlag, ColumnRowLen, ColumnRow,
     // column weights
     ColumnWeightsFlag, ColumnWeightsLen, ColumnWeight,
+    // amplitude-mode members only (plan schema 5): dressed rows
+    DressedFlag, Dressed,
+}
+
+/// The columns of a seeded member (plan schema 4): every column before the
+/// first amplitude-mode one.
+const SEEDED_COLUMNS: usize = Col::DressedFlag as usize;
+
+/// The columns a member of plan schema `schema` holds.
+fn column_count(schema: u32) -> usize {
+    if schema == super::AMPLITUDE_PLAN_SCHEMA {
+        COLUMN_NAMES.len()
+    } else {
+        SEEDED_COLUMNS
+    }
 }
 
 // ------------------------------------------------------------------ streams
@@ -945,6 +963,7 @@ fn visit_plan<S: Stream>(s: &mut S, file: &mut PlanFile) -> RusticolResult<()> {
         merged,
         column_rows,
         column_weights,
+        dressed,
     } = file;
     num(s, Col::Schema, schema)?;
     num(s, Col::Legs, legs)?;
@@ -998,7 +1017,16 @@ fn visit_plan<S: Stream>(s: &mut S, file: &mut PlanFile) -> RusticolResult<()> {
     })?;
     option(s, Col::ColumnWeightsFlag, column_weights, |s, weights| {
         nums(s, Col::ColumnWeightsLen, Col::ColumnWeight, weights)
-    })
+    })?;
+    // Amplitude-mode members only: a seeded member holds no such column.
+    if *schema == super::AMPLITUDE_PLAN_SCHEMA {
+        option(s, Col::DressedFlag, dressed, |s, dressed| {
+            flag(s, Col::Dressed, dressed)
+        })?;
+    } else if dressed.is_some() {
+        return Err(invalid("binary plan: dressed rows in a seeded plan"));
+    }
+    Ok(())
 }
 
 fn visit_kernel<S: Stream>(s: &mut S, kernel: &mut KernelFile) -> RusticolResult<()> {
@@ -1371,7 +1399,7 @@ impl Writer {
             self.column(Col::StringByte).extend(bytes);
         }
         let mut body = Vec::new();
-        for k in 0..COLUMN_NAMES.len() {
+        for k in 0..column_count(schema) {
             let values = self.columns.get(k).map(Vec::as_slice).unwrap_or(&[]);
             encode_column(&mut body, values);
         }
@@ -1399,7 +1427,7 @@ impl Writer {
         // The plan's own schema (4 seeded, 5 amplitude mode; the header
         // value of every seeded member is unchanged).
         out.extend_from_slice(&schema.to_le_bytes());
-        out.extend_from_slice(&(COLUMN_NAMES.len() as u32).to_le_bytes());
+        out.extend_from_slice(&(column_count(schema) as u32).to_le_bytes());
         out.extend_from_slice(&0u32.to_le_bytes());
         out.extend_from_slice(&decoded.to_le_bytes());
         out.extend_from_slice(&padding.to_le_bytes());
@@ -1750,8 +1778,9 @@ impl<'a> Reader<'a> {
         )?;
         let schema = u32_at(&mut bytes)?;
         require(super::admitted_schema(schema), "unsupported plan schema")?;
+        let columns = column_count(schema);
         require(
-            u32_at(&mut bytes)? as usize == COLUMN_NAMES.len(),
+            u32_at(&mut bytes)? as usize == columns,
             "binary plan: column count of another format",
         )?;
         require(
@@ -1769,8 +1798,8 @@ impl<'a> Reader<'a> {
         // (a probe, with its margin), the thread pool being up first.
         let threads = read_threads();
         derive::reserve("binary plan: the decoded model needs", declared)?;
-        let mut cursors = Vec::with_capacity(COLUMN_NAMES.len());
-        for _ in COLUMN_NAMES {
+        let mut cursors = Vec::with_capacity(columns);
+        for _ in 0..columns {
             let head = take(&mut bytes, 8)?;
             let width = usize::from(head[0]);
             require(
@@ -1841,7 +1870,13 @@ impl<'a> Reader<'a> {
 
     #[inline]
     fn next(&mut self, col: Col) -> RusticolResult<i64> {
-        self.cursors[col as usize].next().map_err(|short| {
+        let Some(cursor) = self.cursors.get_mut(col as usize) else {
+            return Err(invalid(format!(
+                "binary plan: column {} is not held by a member of plan schema {}",
+                COLUMN_NAMES[col as usize], self.schema
+            )));
+        };
+        cursor.next().map_err(|short| {
             let name = COLUMN_NAMES[col as usize];
             invalid(match short {
                 Short::Exhausted => format!("binary plan: column {name} is exhausted"),
@@ -2068,7 +2103,7 @@ fresh_records! {
     PlanFile {
         schema, legs, rows, helicities, columns, average, born_components, constants, masses,
         block_rows, kernels, contents, factors, seed_classes, seeds, families, forward, merged,
-        column_rows, column_weights,
+        column_rows, column_weights, dressed,
     },
     KernelFile { inputs, outputs },
     ContentFile { d_in, d_out, degree, rows, mask, row_helicities, fused, terms },
@@ -2136,11 +2171,13 @@ mod tests {
         assert!(matches!(words.next(), Ok(1)));
     }
 
-    /// The header offset of every column of a member, in member order.
+    /// The header offset of every column of a member, in member order (the
+    /// member's own column count: a seeded member holds fewer columns).
     fn column_offsets(member: &[u8]) -> Vec<usize> {
         let mut at = HEADER;
         let mut offsets = Vec::new();
-        for _ in COLUMN_NAMES {
+        let columns = u32::from_le_bytes(member[16..20].try_into().unwrap()) as usize;
+        for _ in 0..columns {
             offsets.push(at);
             let width = usize::from(member[at]);
             let count = u64::from_le_bytes(member[at + 8..at + 16].try_into().unwrap());
