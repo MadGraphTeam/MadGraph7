@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import pytest
 
-from .test_loop_v2_induced import _fixture, _Rows
+from .test_loop_v2_induced import _fixture, _Rows, li_artifact  # noqa: F401
 
 # Rounding of the two routes' different summation orders, relative to the
 # largest amplitude component of the point (binary64, double-double).
@@ -255,3 +255,28 @@ def test_dropped_rows_are_columns_without_a_row(li):
             assert all(complex(z) == 0 for laurent in vector for z in laurent)
         else:
             assert vector == values["whole"][(order, row)]
+
+
+@pytest.mark.loop_physics
+def test_generation_records_the_filter_verdict(li_artifact):  # noqa: F811
+    """The public route runs the filter at generation and records its
+    verdict per loop-induced process (``loop_induced_helicity_filter``):
+    g g > h keeps every row (the J_z-forbidden rows are tested and are not
+    integrand zeros), the exact colour zero h > g a has no row to filter;
+    the stored plan keeps one row per column."""
+
+    import json
+
+    manifest = json.loads((li_artifact / "artifact.json").read_text())
+    records = {
+        record["id"]: record["filters"]
+        for record in manifest["extensions"]["generation"]["concrete_processes"]
+    }
+    verdict = records["gg_h"]["loop_induced_helicity_filter"]
+    assert verdict["rows"] == 4 and verdict["dropped"] == []
+    assert verdict["live_by_screen"] == 2 and len(verdict["tested"]) == 2
+    assert verdict["integrand_zero"] == [] and not verdict["every_row_zero"]
+    assert verdict["failure_bound"] <= verdict["failure_probability"]
+    assert records["h_ga"]["loop_induced_helicity_filter"] == {
+        "exact_colour_zero": True
+    }
