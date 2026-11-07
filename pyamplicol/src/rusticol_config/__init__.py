@@ -4,18 +4,79 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import hashlib
 import importlib.util
 import json
+import lzma
+import os
+import re
 import runpy
 import shlex
+import tempfile
 from collections.abc import Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+# The pyAmpliCol cache root (also used by the compiled-model cache). A
+# compressed SDK archive is unpacked under ``<root>/sdk/``.
+CACHE_ENVIRONMENT = "PYAMPLICOL_CACHE_DIR"
+ARCHIVE_COMPRESSION = "xz"
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+_CHUNK = 1 << 20
 
 
 class SdkUnavailableError(RuntimeError):
     """Raised when a source tree has no staged native SDK."""
+
+
+@dataclass(frozen=True)
+class SdkArchive:
+    """The SDK's static archive as the installation ships it.
+
+    A plain archive is used in place. A compressed one (``.xz``; distribution
+    wheels) is unpacked on first use into the user cache, keyed by the package
+    version and the archive's SHA-256 recorded in the SDK metadata, and checked
+    against that digest and size whenever it is used.
+    """
+
+    path: Path
+    package_version: str
+    sha256: str | None = None
+    size: int | None = None
+
+    @property
+    def compressed(self) -> bool:
+        return self.sha256 is not None
+
+    @property
+    def name(self) -> str:
+        """File name of the usable (unpacked) archive."""
+
+        suffix = f".{ARCHIVE_COMPRESSION}"
+        return (
+            self.path.name.removesuffix(suffix) if self.compressed else self.path.name
+        )
+
+    @property
+    def cache_path(self) -> Path | None:
+        """Where a compressed archive is unpacked; None for a plain archive."""
+
+        if not self.compressed:
+            return None
+        return sdk_cache_root() / f"{self.package_version}-{self.sha256}" / self.name
+
+    def resolve(self) -> Path:
+        """Return the path of the usable archive, unpacking it if needed."""
+
+        if not self.compressed:
+            return self.path
+        destination = self.cache_path
+        assert destination is not None
+        if _matches(destination, self.sha256, self.size):
+            return destination
+        return _unpack(self, destination)
 
 
 @dataclass(frozen=True)
@@ -24,7 +85,7 @@ class SdkInfo:
     package_version: str
     target: str
     include_dir: Path
-    library: Path
+    archive: SdkArchive
     fortran_source: Path
     rust_source: Path
     system_libraries: tuple[str, ...]
@@ -32,6 +93,25 @@ class SdkInfo:
     # Shared libraries shipped next to the archive (a distribution wheel's
     # GMP, MPFR and MPC), in link order; linked by path with a run path.
     shared_libraries: tuple[Path, ...] = ()
+    # The resolved archive path, once known (functools.cached_property would
+    # serialize every instance's first use behind one lock on Python 3.11).
+    _resolved: dict[str, Path] = field(
+        default_factory=dict, init=False, repr=False, compare=False, hash=False
+    )
+
+    @property
+    def library(self) -> Path:
+        """The usable static archive (a compressed one is unpacked first)."""
+
+        if "library" not in self._resolved:
+            self._resolved["library"] = self.archive.resolve()
+        return self._resolved["library"]
+
+    @property
+    def library_name(self) -> str:
+        """The static archive's file name, without unpacking it."""
+
+        return self.archive.name
 
     @property
     def cflags(self) -> tuple[str, ...]:
@@ -65,16 +145,122 @@ class SdkInfo:
         return "\x1f".join(self.rust_flags)
 
     def to_json(self) -> dict[str, Any]:
-        payload = asdict(self)
-        payload["include_dir"] = str(self.include_dir)
-        payload["library"] = str(self.library)
-        payload["fortran_source"] = str(self.fortran_source)
-        payload["rust_source"] = str(self.rust_source)
-        payload["shared_libraries"] = [str(path) for path in self.shared_libraries]
-        payload["cflags"] = list(self.cflags)
-        payload["link_flags"] = list(self.link_flags)
-        payload["rust_flags"] = list(self.rust_flags)
-        return payload
+        return {
+            "abi_version": self.abi_version,
+            "package_version": self.package_version,
+            "target": self.target,
+            "include_dir": str(self.include_dir),
+            "library": str(self.library),
+            "fortran_source": str(self.fortran_source),
+            "rust_source": str(self.rust_source),
+            "system_libraries": list(self.system_libraries),
+            "frameworks": list(self.frameworks),
+            "shared_libraries": [str(path) for path in self.shared_libraries],
+            # The shipped archive's compression record (None: used in place).
+            "archive_compression": (
+                {
+                    "format": ARCHIVE_COMPRESSION,
+                    "sha256": self.archive.sha256,
+                    "size": self.archive.size,
+                }
+                if self.archive.compressed
+                else None
+            ),
+            "cflags": list(self.cflags),
+            "link_flags": list(self.link_flags),
+            "rust_flags": list(self.rust_flags),
+        }
+
+
+def sdk_cache_root() -> Path:
+    """The directory holding unpacked SDK archives.
+
+    ``$PYAMPLICOL_CACHE_DIR/sdk`` when the variable is set, otherwise ``sdk``
+    in the platform's user cache directory (``$XDG_CACHE_HOME/pyamplicol`` or
+    ``~/.cache/pyamplicol`` on Linux, ``~/Library/Caches/pyamplicol`` on macOS).
+    """
+
+    configured = os.environ.get(CACHE_ENVIRONMENT)
+    if configured:
+        root = Path(configured).expanduser()
+    else:
+        from platformdirs import user_cache_path
+
+        root = user_cache_path("pyamplicol")
+    return root.absolute() / "sdk"
+
+
+def _matches(path: Path, sha256: str | None, size: int | None) -> bool:
+    """Whether ``path`` is a regular file with the recorded size and digest."""
+
+    try:
+        if not path.is_file() or path.stat().st_size != size:
+            return False
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            while chunk := stream.read(_CHUNK):
+                digest.update(chunk)
+    except OSError:
+        return False
+    return digest.hexdigest() == sha256
+
+
+def _unpack(archive: SdkArchive, destination: Path) -> Path:
+    """Unpack ``archive`` to ``destination`` atomically.
+
+    Each process writes and checks its own temporary file in the destination
+    directory and renames it into place, so concurrent first uses never see
+    a partial archive; an existing copy that fails its check is replaced.
+    """
+
+    hint = (
+        f"set {CACHE_ENVIRONMENT} to a writable directory to unpack the "
+        "native SDK archive elsewhere"
+    )
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{destination.name}.", suffix=".partial", dir=destination.parent
+        )
+    except OSError as error:
+        raise SdkUnavailableError(
+            f"cannot create the SDK cache directory {destination.parent}: "
+            f"{error}; {hint}"
+        ) from error
+    temporary = Path(temporary_name)
+    try:
+        digest = hashlib.sha256()
+        size = 0
+        with (
+            os.fdopen(descriptor, "wb") as output,
+            lzma.open(archive.path, "rb", format=lzma.FORMAT_XZ) as source,
+        ):
+            while chunk := source.read(_CHUNK):
+                digest.update(chunk)
+                size += len(chunk)
+                output.write(chunk)
+            output.flush()
+            os.fsync(output.fileno())
+        if size != archive.size or digest.hexdigest() != archive.sha256:
+            raise SdkUnavailableError(
+                f"the compressed SDK archive {archive.path} does not unpack to "
+                "the recorded size and SHA-256; reinstall pyamplicol"
+            )
+        temporary.chmod(0o644)
+        os.replace(temporary, destination)
+    except lzma.LZMAError as error:
+        raise SdkUnavailableError(
+            f"the compressed SDK archive {archive.path} is corrupt: {error}; "
+            "reinstall pyamplicol"
+        ) from error
+    except OSError as error:
+        raise SdkUnavailableError(
+            f"cannot unpack the SDK archive into {destination.parent}: {error}; {hint}"
+        ) from error
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            temporary.unlink()
+    return destination
 
 
 def _resource_root() -> Path:
@@ -119,7 +305,39 @@ def _confined(root: Path, relative: str) -> Path:
     return path
 
 
+def _sdk_archive(root: Path, metadata: dict[str, Any], version: str) -> SdkArchive:
+    """The shipped archive: plain, or compressed with its unpacked digest."""
+
+    relative = str(metadata["archive"])
+    compression = metadata.get("archive_compression")
+    if compression is None:
+        return SdkArchive(_confined(root, relative), version)
+    if (
+        not isinstance(compression, dict)
+        or compression.get("format") != ARCHIVE_COMPRESSION
+        or not relative.endswith(f".{ARCHIVE_COMPRESSION}")
+        or not isinstance(compression.get("sha256"), str)
+        or _SHA256.fullmatch(compression["sha256"]) is None
+        or not isinstance(compression.get("size"), int)
+        or isinstance(compression["size"], bool)
+        or compression["size"] <= 0
+    ):
+        raise SdkUnavailableError("invalid compressed SDK archive metadata")
+    return SdkArchive(
+        _confined(root, relative),
+        version,
+        sha256=compression["sha256"],
+        size=compression["size"],
+    )
+
+
 def load_sdk_info() -> SdkInfo:
+    """Read the installed SDK's metadata.
+
+    Nothing is unpacked here: a compressed archive is unpacked when
+    ``SdkInfo.library`` (or a link line using it) is first needed.
+    """
+
     root = _resource_root()
     metadata = _load_json(root / "metadata.json")
     link = _load_json(root / "link.json")
@@ -134,7 +352,7 @@ def load_sdk_info() -> SdkInfo:
         raise SdkUnavailableError(
             "Rusticol SDK metadata version does not match pyamplicol"
         )
-    library = _confined(root, str(metadata["archive"]))
+    archive = _sdk_archive(root, metadata, package_version)
     for required in (
         "include/rusticol.h",
         "include/rusticol.hpp",
@@ -148,7 +366,7 @@ def load_sdk_info() -> SdkInfo:
         package_version=package_version,
         target=str(metadata["target"]),
         include_dir=(root / "include").resolve(),
-        library=library,
+        archive=archive,
         fortran_source=_confined(root, "fortran/rusticol.f90"),
         rust_source=_confined(
             root, str(metadata.get("rust_source", "rust/rusticol.rs"))
@@ -183,37 +401,40 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _output(args: argparse.Namespace, info: SdkInfo) -> str:
+    if args.abi_version:
+        return str(info.abi_version)
+    if args.version:
+        return info.package_version
+    if args.target:
+        return info.target
+    if args.include_dir:
+        return str(info.include_dir)
+    if args.library:
+        return str(info.library)
+    if args.fortran_source:
+        return str(info.fortran_source)
+    if args.rust_source:
+        return str(info.rust_source)
+    if args.cflags:
+        return shlex.join(info.cflags)
+    if args.libs:
+        return shlex.join(info.link_flags)
+    if args.rustflags:
+        return shlex.join(info.rust_flags)
+    if args.cargo_rustflags:
+        return info.cargo_encoded_rust_flags
+    return json.dumps(info.to_json(), indent=2, sort_keys=True)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
-        info = load_sdk_info()
+        # A compressed archive is unpacked here by the outputs that name it.
+        output = _output(args, load_sdk_info())
     except SdkUnavailableError as error:
         _parser().error(str(error))
-
-    if args.abi_version:
-        print(info.abi_version)
-    elif args.version:
-        print(info.package_version)
-    elif args.target:
-        print(info.target)
-    elif args.include_dir:
-        print(info.include_dir)
-    elif args.library:
-        print(info.library)
-    elif args.fortran_source:
-        print(info.fortran_source)
-    elif args.rust_source:
-        print(info.rust_source)
-    elif args.cflags:
-        print(shlex.join(info.cflags))
-    elif args.libs:
-        print(shlex.join(info.link_flags))
-    elif args.rustflags:
-        print(shlex.join(info.rust_flags))
-    elif args.cargo_rustflags:
-        print(info.cargo_encoded_rust_flags)
-    elif args.json:
-        print(json.dumps(info.to_json(), indent=2, sort_keys=True))
+    print(output)
     return 0
 
 

@@ -72,7 +72,12 @@ provider also links GMP, MPFR and MPC dynamically, from the wheel's
 `libmpc-pyamplicol.so.3` on Linux; `libgmp.10.dylib`, `libmpfr.6.dylib`,
 `libmpc.3.dylib` on macOS), which `rusticol-config --libs` names by path
 with a run path to that directory; a source build links them statically
-([GMP, MPFR and MPC in the wheels](installation.md#gmp-mpfr-and-mpc-in-the-wheels)). It reads a saved validation
+([GMP, MPFR and MPC in the wheels](installation.md#gmp-mpfr-and-mpc-in-the-wheels)).
+The Rusticol archive itself ships xz-compressed in the wheels: the Makefile's
+first `rusticol-config --library` unpacks it once into the per-user cache
+(`$PYAMPLICOL_CACHE_DIR/sdk/`, otherwise `~/.cache/pyamplicol/sdk/` on Linux
+and `~/Library/Caches/pyamplicol/sdk/` on macOS), and the provider links that
+copy ([The SDK archive cache](native-apis.md#the-sdk-archive-cache)). It reads a saved validation
 point and prints the matrix element as JSON. Optional arguments select a
 zero-based channel and flavour:
 
