@@ -1263,9 +1263,6 @@ class EvaluationStabilityChecksConfig:
     # The reduction-direction check at rescaled inputs (master integrals
     # evaluated again); requires reduction_direction.
     rescaled: bool = field(default=False, metadata=_setting("bool"))
-    # The evaluation on the other reduction backend (m-lit Q21; with another
-    # check: ``VirtualStabilityChecks.cross_backend``).
-    cross_backend: bool = field(default=False, metadata=_setting("bool"))
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -1276,7 +1273,7 @@ class EvaluationStabilityChecksConfig:
         _integer(
             self.rotation_count, "evaluation.stability_checks.rotation_count", minimum=0
         )
-        for name in ("reduction_direction", "rescaled", "cross_backend"):
+        for name in ("reduction_direction", "rescaled"):
             if type(getattr(self, name)) is not bool:
                 raise ConfigurationError(
                     f"evaluation.stability_checks.{name} must be a boolean"
@@ -1296,7 +1293,6 @@ class EvaluationStabilityChecksConfig:
                 self.rotations or self.rotation_count,
                 self.reduction_direction,
                 self.rescaled,
-                self.cross_backend,
             )
         except (TypeError, ValueError, ZeroDivisionError) as error:
             raise ConfigurationError(f"evaluation.stability_checks: {error}") from error

@@ -173,30 +173,6 @@ def test_the_cross_backend_check_combines_with_another_check():
 
 
 @pytest.mark.loop_fast
-def test_the_cross_backend_check_from_the_configuration_and_the_cli(tmp_path):
-    from pyamplicol.api.virtual_results import VirtualStabilityChecks
-    from pyamplicol.cli.parser import build_parser
-    from pyamplicol.config import ConfigurationError, resolve_config
-
-    card = tmp_path / "card.toml"
-    card.write_text(
-        'action = "generate"\n[evaluation.stability_checks]\n'
-        "rotation_count = 1\ncross_backend = true\n"
-    )
-    checks = resolve_config(card).effective.evaluation.stability_checks
-    assert checks.to_checks() == VirtualStabilityChecks(1, cross_backend=True)
-    card.write_text(
-        'action = "generate"\n[evaluation.stability_checks]\ncross_backend = true\n'
-    )
-    with pytest.raises(ConfigurationError, match="combine it with a rotation"):
-        resolve_config(card)
-    arguments = build_parser().parse_args(
-        ["evaluate", "--stability-rotations", "1", "--stability-cross-backend"]
-    )
-    assert getattr(arguments, "evaluation.stability_checks.cross_backend") is True
-
-
-@pytest.mark.loop_fast
 def test_the_cross_backend_budget_adds_to_the_estimate():
     """E = SAFETY x (max rotation + reduction + cross) + FLOOR_UNITS u S;
     ``not_run`` survives ``subset``; the public record validates it."""
