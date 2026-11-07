@@ -177,14 +177,14 @@ def _inner(a: Sequence[Any], b: Sequence[Any], gram: Any, numbers: Any) -> Any:
 
 
 def _unit(value: Any, numbers: Any) -> Any:
-    """value / |value| (1 for zero) in the carrier."""
+    """value / |value| (1 for zero) in the carrier (``induced._modulus``)."""
 
     if numbers.double:
         return value / abs(value) if value else 1 + 0j
     from .reference_executor import Complex
 
     with numbers.scope():
-        modulus = (value.real * value.real + value.imag * value.imag).sqrt()
+        modulus = induced._modulus(value, numbers)
         if not modulus:
             return Complex(Decimal(1), Decimal(0))
         return Complex(value.real / modulus, value.imag / modulus)
