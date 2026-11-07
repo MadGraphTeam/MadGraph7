@@ -219,6 +219,11 @@ shared libraries ship next to the archive (on macOS `libmpc.3.dylib`,
 `link.json` lists them in link order, so `rusticol-config --libs` names them
 by path with a run path to `lib/` (see
 [GMP, MPFR and MPC in the wheels](installation.md#gmp-mpfr-and-mpc-in-the-wheels)).
+The Python extension's own copies, which the wheel repair bundles next to
+`_rusticol` (`pyamplicol.libs/` on Linux, `pyamplicol.dylibs/` on macOS),
+carry the repair tool's file names (on Linux and macOS possibly with a content
+hash in the name) and are not part of the SDK's link line: link only what
+`rusticol-config --libs` names.
 A source build links them statically and ships only the archive.
 
 ### The SDK archive cache
