@@ -21,6 +21,11 @@ of ``tools/loop_reference/li_analytic.py``), served by NinjaRS per amplitude
   policy (Q7); the width policy's rows and the complex-mass rows of LI-C1
   are ``test_loop_v2_induced_ew_widths.py``'s (two files: each holds the
   CI job's 12 GiB process-tree limit with room).
+
+Tiers (slice-status DECISIONS 2026-11-07 ~09:12 (5)): one parametrisation
+of each test runs in the default tier (h > a a for the rows and arbitrary
+precision, sharing one slice; the dry runs), every other one is
+``loop_nightly`` (``tiers``).
 """
 
 from __future__ import annotations
@@ -66,6 +71,20 @@ EW_ROWS = [
 
 def _fixture(name: str) -> dict:
     return json.loads((FIXTURES / f"{name}.json").read_text())
+
+
+def tiers(rows, default: str) -> list:
+    """The parametrisations of ``rows`` (tuples or names, the first entry
+    the test id): ``default`` in the default tier, the others
+    ``loop_nightly`` (one representative per test in the default tier,
+    slice-status DECISIONS 2026-11-07 ~09:12 (5))."""
+
+    out = []
+    for row in rows:
+        values = row if isinstance(row, tuple) else (row,)
+        marks = () if values[0] == default else pytest.mark.loop_nightly
+        out.append(pytest.param(*values, id=values[0], marks=marks))
+    return out
 
 
 def _process(fixture: dict, compiled) -> str:
@@ -234,7 +253,7 @@ def _check_providers(name, results, analytic):
 # ------------------------------------------------------------------ rows
 
 
-@pytest.mark.parametrize(("name", "analytic"), EW_ROWS, ids=[r[0] for r in EW_ROWS])
+@pytest.mark.parametrize(("name", "analytic"), tiers(EW_ROWS, "li_h_aa"))
 def test_ew_rows_equal_madloop_recola_and_the_oracle(ew, name, analytic):
     """LI-A3, A4, A6, E1-E4 in binary64 at every reference point: MadLoop
     and Recola within the lax rule, the oracle within 1e-9; in double-double
@@ -268,7 +287,7 @@ def test_ew_rows_equal_madloop_recola_and_the_oracle(ew, name, analytic):
         assert _relative(_total(dd), row["providers"]["madloop"]["value"]) <= LAX
 
 
-@pytest.mark.parametrize("name", ["li_h_aa", "li_gg_aa_cms"])
+@pytest.mark.parametrize("name", tiers(["li_h_aa", "li_gg_aa_cms"], "li_h_aa"))
 def test_arbitrary_precision_on_one_row_per_tier(ew, name):
     """AP on one analytic row per tier (the EW rows: h > a a, W, Goldstone,
     ghost and fermion triangles; LI-C1: g g > a a with a complex top mass):

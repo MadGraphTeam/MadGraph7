@@ -21,6 +21,10 @@ LI-W1; RULED Q7, Q12):
   zero widths (their trees take unitary gauge; s-channel Z* / G0* with the
   t-b mass splitting differ by gauge term by term): unitary = 't Hooft-
   Feynman gauge, and both equal MadLoop.
+
+Tiers (slice-status DECISIONS 2026-11-07 ~09:12 (5)): g g > h z of the
+both-gauges test is ``loop_nightly``, g g > w+ w- its default-tier
+representative; every other test is in the default tier.
 """
 
 from __future__ import annotations
@@ -273,7 +277,9 @@ def loop_sm_no_b_mass(loop_sm_ufo, tmp_path_factory):
     )
 
 
-@pytest.mark.parametrize("name", ["li_gg_hz", "li_gg_wpwm"])
+@pytest.mark.parametrize(
+    "name", [pytest.param("li_gg_hz", marks=pytest.mark.loop_nightly), "li_gg_wpwm"]
+)
 def test_qcd_induced_massive_vectors_agree_in_both_gauges(
     loop_sm_no_b_mass, loop_native, name
 ):
