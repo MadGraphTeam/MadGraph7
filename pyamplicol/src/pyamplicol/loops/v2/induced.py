@@ -1466,37 +1466,22 @@ class ProbeFailure(ArithmeticError):
 
 def probe_request(slice_: Any) -> tuple[Any, tuple[str, ...]]:
     """The request of the generation-time probe slice and the widths it
-    zeroes (m-lit Q7): outside the complex-mass scheme every external width
-    parameter of the model that is not zero is fixed to 0 (a fixed width in
-    a tree propagator breaks the Ward identity of an external photon or
-    gluon line it attaches to, so the probe would fail spuriously); under
-    the complex-mass scheme the widths stay (the scheme is gauge invariant).
-    The production artifact keeps its widths."""
+    zeroes (m-lit Q7, ``ew_policy.probe_widths``): outside the complex-mass
+    scheme every external width parameter of the model that is not zero is
+    fixed to 0 (a fixed width in a tree propagator breaks the Ward identity
+    of an external photon or gluon line it attaches to, so the probe would
+    fail spuriously); under the complex-mass scheme the widths stay (the
+    scheme is gauge invariant). The production artifact keeps its widths."""
 
     from dataclasses import replace
 
-    from pyamplicol.loops.model_cms import convention_record
+    from .ew_policy import probe_widths
 
-    from .ew_policy import is_zero
-
-    compiled, request = slice_.compiled, slice_.request
-    if convention_record(compiled) is not None:
+    request = slice_.request
+    fixed, zeroed = probe_widths(slice_.compiled, request.fixed_parameters)
+    if not zeroed:
         return request, ()
-    parameters = {record.name: record for record in compiled.ir.parameters}
-    fixed = request.fixed_parameters
-    widths = sorted(
-        {
-            str(record.width)
-            for record in compiled.ir.particles
-            if str(record.width) in parameters
-            and parameters[str(record.width)].nature == "external"
-            and not is_zero(str(record.width), parameters, fixed)
-        }
-    )
-    if not widths:
-        return request, ()
-    zeroed = {**dict(fixed), **dict.fromkeys(widths, "0")}
-    return replace(request, fixed_parameters=zeroed), tuple(widths)
+    return replace(request, fixed_parameters=fixed), zeroed
 
 
 def probe_point(

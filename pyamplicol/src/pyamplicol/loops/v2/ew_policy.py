@@ -842,6 +842,111 @@ def require_zero_widths(
     )
 
 
+# ------------------------------------------- loop-induced width policy (Q7)
+
+# RULED (USER 2026-11-05) Q7 (m-lit PLAN §3.4 LIT-EW): "Fixed tree widths but
+# consistent complex mass scheme everywhere when enabled (and then unstable
+# particles never in the external states)."
+FIXED_TREE_WIDTHS = "fixed-tree-widths"
+COMPLEX_MASS_WIDTHS = "complex-mass"
+
+
+def tree_width_policy(
+    compiled: Any, request: Any, dags: Sequence[Any], fixed: Mapping[str, Any]
+) -> dict[str, Any] | None:
+    """The width policy of a request's tree currents (``dags``: its Born and
+    loop-side tree DAGs, before their kernels), decided once at generation
+    from the request's contribution (plan-time; m-lit PLAN §2.a.6):
+
+    * a Born-interfered request (``contribution`` "virtual") keeps the real
+      on-shell rule of an electroweak request: ``require_zero_widths``
+      refuses a width in its trees (``electroweak-width``, unchanged); the
+      caller runs this only for an electroweak request (a QCD-only one keeps
+      ``artifact.require_zero_coloured_widths``). Returns None;
+    * a loop-induced request (RULED Q7) has no Born, so no Catani pole and
+      no Born-proportional counterterm mixes two schemes: its tree
+      propagators keep the model's widths fixed (MadLoop's default for
+      loop-induced processes), its loop propagators stay widthless (real
+      masses, ``assemble._mass_values``), and the model's UV and R2
+      counterterm vertices multiply the same widthful tree propagators. Under
+      the complex-mass scheme (``loops.model_cms``) every particle of a
+      width propagates with its complex pole mass, in the trees and in the
+      loops alike, with complex couplings, and unstable external states are
+      refused (``model_cms.require_stable_external_states``,
+      ``cms-external-width``). Nothing is refused here; the returned record
+      (``loop_induced_width_record``) is the policy the artifact records."""
+
+    if getattr(request, "contribution", "virtual") != "loop-induced":
+        require_zero_widths(compiled, request, dags, fixed)
+        return None
+    return loop_induced_width_record(
+        compiled, propagating_widths(dags, compiled, fixed)
+    )
+
+
+def loop_induced_width_record(
+    compiled: Any, widths: Mapping[str, str]
+) -> dict[str, Any]:
+    """The width policy record of a loop-induced request (``tree_width_policy``;
+    the generation record's ``conventions.width_policy``): ``policy``
+    "fixed-tree-widths" or "complex-mass"; its tree and loop propagators;
+    with fixed widths the particles whose non-zero width a non-amputated tree
+    current propagates (``propagating_widths``: particle -> width parameter;
+    empty when every such width is zero or fixed to zero)."""
+
+    from pyamplicol.loops.model_cms import scheme_metadata
+
+    if scheme_metadata(compiled) is not None:
+        return {
+            "policy": COMPLEX_MASS_WIDTHS,
+            "tree_propagators": "complex pole masses",
+            "loop_propagators": "complex pole masses",
+            "external_states": "stable",
+        }
+    return {
+        "policy": FIXED_TREE_WIDTHS,
+        "tree_propagators": "fixed widths",
+        "loop_propagators": "widthless",
+        "tree_widths": dict(sorted(widths.items())),
+    }
+
+
+def probe_widths(
+    compiled: Any, fixed: Mapping[str, Any]
+) -> tuple[dict[str, Any], tuple[str, ...]]:
+    """The fixed parameters of a generation-time probe of a loop-induced
+    request and the widths they zero (RULED Q7: "Ward check then can keep
+    complex-masses in the complex-mass-scheme enabled, but indeed set all
+    widths to zero for the ward check otherwise"). Outside the complex-mass
+    scheme every external width parameter of the model that is not zero is
+    fixed to 0: a fixed width in a tree propagator breaks the Ward identity
+    of an external gauge boson attached to it and the Slavnov-Taylor
+    identity of a massive one, so a probe would fail spuriously. Under the
+    complex-mass scheme ``fixed`` is returned unchanged (the scheme is gauge
+    invariant). The production artifact keeps its width policy
+    (``tree_width_policy``). Shared by the Ward, finiteness and
+    Goldstone-equivalence probes (``induced.probe_request``,
+    ``goldstone``)."""
+
+    from pyamplicol.loops.model_cms import scheme_metadata
+
+    if scheme_metadata(compiled) is not None:
+        return dict(fixed), ()
+    parameters = {record.name: record for record in compiled.ir.parameters}
+    widths = sorted(
+        {
+            str(record.width)
+            for record in compiled.ir.particles
+            if str(record.width) in parameters
+            and parameters[str(record.width)].nature == "external"
+            and not is_zero(str(record.width), parameters, fixed)
+        }
+    )
+    if not widths:
+        return dict(fixed), ()
+    return {**dict(fixed), **dict.fromkeys(widths, "0")}, tuple(widths)
+
+
 # The regularisation parameter of MG5_aMC's NLOCT loop models (``lhv``):
 # lambda_HV, recognised by its declared TeX name; the model's R2 rules depend
 # on it (lambda_HV = 1: 't Hooft-Veltman, 0: four-dimensional helicity).
@@ -931,6 +1036,12 @@ def scheme_conventions(slice_: Any) -> dict[str, object] | None:
       (``model_cms.convention_record``); a complex-mass request that is not
       electroweak (QCD corrections with complex pole masses) records these
       two fields only;
+    * ``width_policy`` (loop-induced requests only, m-lit Q7: the slice's
+      ``width_policy``, ``tree_width_policy``): fixed widths in the tree
+      propagators with widthless loop propagators, or the complex-mass
+      scheme everywhere; a loop-induced request that is neither electroweak
+      nor complex-mass records this field only (with ``mass_scheme``
+      "real-on-shell": real masses in the loops and counterterms);
     * ``ew_input_scheme``: "G_mu" when the loops' electromagnetic coupling
       (``poles.qed_coupling``) depends on the Fermi constant (SLHA SMINPUTS
       2), "alpha" when it depends on an input 1/alpha (SMINPUTS 1: alpha(M_Z)
@@ -966,9 +1077,13 @@ def scheme_conventions(slice_: Any) -> dict[str, object] | None:
             "complex_mass": complex_mass,
         }
     )
+    policy = getattr(slice_, "width_policy", None)
+    widths = {} if policy is None else {"width_policy": policy}
     species = slice_.prepared.structure.perturbative_species_orders
     if not electroweak(compiled, request, species):
-        return mass_scheme or None
+        if widths and not mass_scheme:
+            return {"mass_scheme": "real-on-shell", **widths}
+        return {**mass_scheme, **widths} or None
     fixed = request.fixed_parameters
     parameters = {record.name: record for record in compiled.ir.parameters}
     lambda_hv = None
@@ -1015,6 +1130,7 @@ def scheme_conventions(slice_: Any) -> dict[str, object] | None:
         },
         **_photon_conventions(slice_),
         **_pole_split(slice_),
+        **widths,
     }
 
 
@@ -1053,6 +1169,8 @@ __all__ = [
     "ADJOINT",
     "ALPHA0_CONVERSION",
     "ALPHA0_INVERSE_CODE",
+    "COMPLEX_MASS_WIDTHS",
+    "FIXED_TREE_WIDTHS",
     "HV_TEXNAME",
     "PHOTON_TAG_CHOICES",
     "PHOTON_TAG_DEFAULT",
@@ -1070,10 +1188,12 @@ __all__ = [
     "gauge_ghost_partners",
     "is_photon",
     "is_zero",
+    "loop_induced_width_record",
     "massive_vector_loop_species",
     "photon_species",
     "photon_tag_option",
     "photon_tags",
+    "probe_widths",
     "propagated_species",
     "propagating_widths",
     "require_feynman_gauge",
@@ -1081,4 +1201,5 @@ __all__ = [
     "require_zero_widths",
     "scheme_conventions",
     "slice_photon_tags",
+    "tree_width_policy",
 ]

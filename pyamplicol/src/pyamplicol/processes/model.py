@@ -5,6 +5,8 @@ import itertools
 import re
 from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import cast
 
@@ -81,6 +83,25 @@ def resolve_model_particle_name(
     raise ValueError(f"particle {name!r} is not an external state in {model_name}")
 
 
+# Whether Goldstone bosons are admitted as external legs (``goldstone_legs``).
+_GOLDSTONE_LEGS: ContextVar[bool] = ContextVar("goldstone_legs", default=False)
+
+
+@contextmanager
+def goldstone_legs() -> Iterator[None]:
+    """Admit the model's Goldstone bosons as external legs within the scope
+    (outside it they never are, ``is_external_model_particle``): the
+    amplitude with a Goldstone in place of a massive vector is the other side
+    of its Slavnov-Taylor identity, a gauge probe of the loop-induced engine
+    (``loops.v2.goldstone``), never a physical process."""
+
+    token = _GOLDSTONE_LEGS.set(True)
+    try:
+        yield
+    finally:
+        _GOLDSTONE_LEGS.reset(token)
+
+
 @dataclass(frozen=True)
 class ModelParticleCatalog:
     model_name: str
@@ -103,13 +124,14 @@ class ModelParticleCatalog:
 
     @property
     def external_particles(self) -> tuple[CompiledParticleRecord, ...]:
+        goldstones = _GOLDSTONE_LEGS.get()
         return tuple(
             particle
             for particle in self.particles
             if is_external_model_particle(
                 spin=particle.spin,
                 ghost_number=particle.ghost_number,
-                goldstoneboson=particle.goldstoneboson,
+                goldstoneboson=particle.goldstoneboson and not goldstones,
                 propagating=particle.propagating,
                 auxiliary_kind=particle.auxiliary_kind,
             )
@@ -433,6 +455,7 @@ __all__ = [
     "ModelParticleCatalog",
     "build_model_process_ir",
     "expand_model_processes",
+    "goldstone_legs",
     "parse_multiparticle_definitions",
     "require_external_leg_counts",
 ]
