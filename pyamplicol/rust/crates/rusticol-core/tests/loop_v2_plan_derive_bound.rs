@@ -481,6 +481,54 @@ fn dressed_rows_stay_within_the_bound() {
     }
 }
 
+/// Row links a family runs (fused edges and split parts).
+fn family_links(family: &rusticol_core::loop_v2::plan::Family) -> usize {
+    family
+        .steps
+        .iter()
+        .map(|step| match &step.split {
+            None => step
+                .edges
+                .iter()
+                .map(|edge| edge.links.len())
+                .sum::<usize>(),
+            Some(split) => split.parts.iter().flatten().map(|p| p.links.len()).sum(),
+        })
+        .sum()
+}
+
+#[test]
+fn dressed_rows_are_dressed_only_where_a_column_reads_them() {
+    // The load drops the trace links of the exact helicity-zero filter's
+    // rows (no column reads them); a helicity mask of one call drops the
+    // masked rows' too; a mask keeping every read row prunes nothing.
+    let all = LoopProgramV4::load(&text(&dressed_plan(2, 4, 2, 0))).unwrap();
+    let dropped = LoopProgramV4::load(&text(&dressed_plan(2, 4, 2, 1))).unwrap();
+    let whole: usize = all.families.iter().map(family_links).sum();
+    let loaded: usize = dropped.families.iter().map(family_links).sum();
+    assert!(loaded < whole, "{loaded} of {whole} links after the drop");
+    for family in &dropped.families {
+        assert_eq!(family.row_traces.len(), family.steps.len());
+    }
+    let live = dropped
+        .live_rows(&[true, true, false, true], &[0, 1])
+        .unwrap()
+        .expect("a masked row is pruned");
+    assert!(live.links() < loaded, "{} of {loaded} links", live.links());
+    for f in 0..2 {
+        if let Some(copy) = live.family(f) {
+            assert_eq!(copy.row_traces.len(), copy.steps.len());
+        }
+    }
+    assert!(
+        dropped
+            .live_rows(&[false, true, true, true], &[0, 1])
+            .unwrap()
+            .is_none()
+    );
+    assert!(all.live_rows(&[true; 4], &[0, 1]).unwrap().is_none());
+}
+
 /// A change made to a valid dressed-row plan.
 type Mutation = fn(&mut Value);
 
@@ -497,11 +545,6 @@ fn dressed_plans_refuse_what_route_r2_never_writes() {
     let plan = dressed_plan(2, 4, 2, 1);
     let program = LoopProgramV4::load(&text(&plan)).unwrap();
     assert!(program.dressed);
-    // Helicity masks of loop-induced processes are not served yet.
-    let Err(error) = program.live_rows(&[true, false, true, true], &[]) else {
-        panic!("a dressed-row plan served a helicity mask");
-    };
-    assert!(error.message().contains("seeds no Born row"), "{error}");
     let cases: [(&str, Mutation); 6] = [
         ("`dressed` only as true", |p| p["dressed"] = json!(false)),
         ("amplitude-mode route", |p| {

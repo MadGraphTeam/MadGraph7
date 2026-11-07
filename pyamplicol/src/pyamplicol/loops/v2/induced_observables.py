@@ -641,10 +641,36 @@ class PointOutputs:
         )
 
 
-def point_result(evaluation: Any, values: Mapping[Orders, tuple], estimate=None):
+def finiteness(evaluation: Any, rows: Sequence[rx.Row] | None) -> float | None:
+    """The amplitude-level finiteness ratio of an output
+    (``induced.point_finiteness``) over the helicity rows it reads (None:
+    every row): under a row mask the other rows are not dressed, so their
+    counterterm kets alone are no amplitude."""
+
+    if induced.point_finiteness(evaluation) is None:
+        return None
+    ratios = induced.finiteness(evaluation)
+    kept = None if rows is None else frozenset(rows)
+    return max(
+        (
+            ratio
+            for (_order, row), ratio in ratios.items()
+            if kept is None or row in kept
+        ),
+        default=0.0,
+    )
+
+
+def point_result(
+    evaluation: Any,
+    values: Mapping[Orders, tuple],
+    estimate=None,
+    rows: Sequence[rx.Row] | None = None,
+):
     """A ``PointResult`` of one output: its values as the "virtual"
     component per sector (no Born, no other component: a square has no
-    additive bare/R2/UV split)."""
+    additive bare/R2/UV split); ``rows`` the helicity rows it reads (its
+    finiteness ratio's)."""
 
     from .assemble import Laurent, PointResult
 
@@ -663,7 +689,7 @@ def point_result(evaluation: Any, values: Mapping[Orders, tuple], estimate=None)
         None,
         stability=estimate,
         poles=evaluation.mode,
-        finiteness=evaluation.result.finiteness,
+        finiteness=finiteness(evaluation, rows),
     )
 
 
@@ -685,6 +711,17 @@ class InducedColumns:
         self.observables = observables
         self.outputs = tuple(outputs)
         self.member = member
+
+    def _rows(self) -> frozenset[rx.Row] | None:
+        """The helicity rows the call's outputs read when every output
+        restricts them (a single-helicity selection): the executor then
+        dresses those rows only (``NativeExecutor.runs(rows=...)``); None
+        dresses every row."""
+
+        if any(output.rows is None for output in self.outputs):
+            return None
+        kept = frozenset(row for output in self.outputs for row in output.rows)
+        return None if kept >= frozenset(self.observables.rows) else kept
 
     def evaluate(
         self,
@@ -727,6 +764,7 @@ class InducedColumns:
             precision=precision,
             poles=poles,
             stability=stability,
+            rows=self._rows(),
         )
         sources = self.observables.sources
         matrices = self.observables.matrices
@@ -760,7 +798,9 @@ class InducedColumns:
                     if stability.enabled
                     else None
                 )
-                value = point_result(reference, outputs.value(output), estimate)
+                value = point_result(
+                    reference, outputs.value(output), estimate, output.rows
+                )
                 key = output.key
                 result[key if member is None else _member_key(member, key)] = value
             out.append(result)

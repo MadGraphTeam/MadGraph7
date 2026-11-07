@@ -1818,11 +1818,10 @@ impl LoopProgramV4 {
             program.row_columns = row_columns;
         }
         // Helicity-resolved and selected columns: the steps keep the rows
-        // their kept Born rows reach (`live`). Dressed rows seed no Born row:
-        // every row a step reaches is live.
-        if !dressed {
-            program.prune_dead_rows(&mut tables.links);
-        }
+        // their kept Born rows reach (`live`); dressed rows: the trace steps
+        // close the Born rows a column reads (the exact helicity-zero
+        // filter's drops are not dressed).
+        program.prune_dead_rows(&mut tables.links);
         Ok(program)
     }
 
