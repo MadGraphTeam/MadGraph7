@@ -139,7 +139,7 @@ def route(key: str) -> Route:
 
 def __getattr__(name: str) -> Route:
     # ``SUMMED`` and ``RESOLVED``: the native policy's routes, read on first
-    # use (PEP 562).
+    # use (PEP 562; importable by name, not listed in ``__all__``).
     if name in ("SUMMED", "RESOLVED"):
         found = route(name.lower())
         globals()[name] = found
@@ -262,8 +262,6 @@ __all__ = [
     "BACKENDS",
     "CARRIERS",
     "DEFAULTS",
-    "RESOLVED",
-    "SUMMED",
     "TIRUST_BINARY64_ONLY",
     "ReductionUnavailable",
     "Route",

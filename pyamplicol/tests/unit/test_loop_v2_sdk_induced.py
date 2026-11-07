@@ -118,7 +118,9 @@ def _evaluate(sdk, handle, points, scales) -> dict:
         born = (ctypes.c_double * max(shape.born_values, 1))()
         loop = (ctypes.c_double * max(shape.virtual_values, 1))()
         statuses = (ctypes.c_uint32 * len(points))()
-        assert sdk.rusticol_virtual_result_copy_born(result, born, shape.born_values) == 0
+        assert (
+            sdk.rusticol_virtual_result_copy_born(result, born, shape.born_values) == 0
+        )
         assert (
             sdk.rusticol_virtual_result_copy_virtual(result, loop, shape.virtual_values)
             == 0
@@ -173,9 +175,9 @@ def test_loop_induced_sdk_values_equal_the_python_api(artifacts, loop_native, na
         axes = _Axes()
         assert sdk.rusticol_virtual_shape(handle, ctypes.byref(axes)) == 0
         assert axes.born_orders == 0 and axes.born_color_components == 0
-        assert axes.virtual_orders == len(runtime.evaluate(
-            exact_points[:1], mu_r2=exact_scales[:1]
-        ).values[0])
+        assert axes.virtual_orders == len(
+            runtime.evaluate(exact_points[:1], mu_r2=exact_scales[:1]).values[0]
+        )
         metadata = _json(sdk, sdk.rusticol_virtual_metadata_json, handle)
         assert metadata["contribution_kind"] == "loop-induced"
         assert metadata["interference"] == "conj(loop)*loop"
