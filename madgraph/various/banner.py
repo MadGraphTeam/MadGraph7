@@ -2237,7 +2237,7 @@ class PY8Card(ConfigFile):
               comment='Specify one must read inputs from the MadGraph banner.') 
         self.add_param("JetMatching:coneRadius", 1.0, hidden=True, always_write_to_card=False)
         self.add_param("JetMatching:nQmatch",4,hidden=True, always_write_to_card=False)
-        # for CKKWL merging (common with UMEPS, UNLOPS)
+        # for CKKWL merging (common with UMEPS)
         self.add_param("TimeShower:pTmaxMatch", 2, hidden=True, always_write_to_card=False)
         self.add_param("SpaceShower:pTmaxMatch", 1, hidden=True, always_write_to_card=False)
         self.add_param("SysCalc:tmsList", [10.0,20.0], hidden=True, always_write_to_card=False)
@@ -6291,12 +6291,15 @@ class RunCardNLO(RunCard):
 
         #technical
         self.add_param('folding', [1,1,1], include=False)
+        self.add_param('born_spreading', False, fortran_name='born_spreading',
+            comment="Redistribute the Born contribution across the FKS energy and angle bins. "
+                    "The normalized table is fitted during integration step 0.")
 
         #bias
         self.add_param('flavour_bias',[5,1], hidden=True, comment="Example: '5,100' means that the probability to generate an event with a bottom (or anti-bottom) quark is increased by a factor 100, but the weight of those events is reduced by a factor 100. Requires that the 'event_norm' is set to 'bias'.")
         
         #merging
-        self.add_param('ickkw', 0, allowed=[-1,0,3,4], comment=" - 0: No merging\n - 3:  FxFx Merging :  http://amcatnlo.cern.ch/FxFx_merging.htm\n - 4: UNLOPS merging (No interface within MadGraph7)\n - -1:  NNLL+NLO jet-veto computation. See arxiv:1412.8408 [hep-ph]")
+        self.add_param('ickkw', 0, allowed=[0,3], comment=" - 0: No merging\n - 3:  FxFx Merging :  http://amcatnlo.cern.ch/FxFx_merging.htm")
         self.add_param('bwcutoff', 15.0)
         #cuts        
         self.add_param('jetalgo', 1.0)
@@ -6344,7 +6347,20 @@ class RunCardNLO(RunCard):
         self.add_param('ptmax4pdg',[-1.], hidden=True, system=True, energy=True)
         self.add_param('mxxmin4pdg',[0.], hidden=True, system=True, energy=True)
         self.add_param('mxxpart_antipart', [False], hidden=True, system=True)
-        
+
+    def __setitem__(self, name, value, change_userdefine=False, raiseerror=False):
+        # A removed matching mode must not silently become an unmerged run
+        # when a legacy card is read or edited.
+        if name.strip().lower() == 'ickkw':
+            raiseerror = InvalidRunCard
+        return super(RunCardNLO, self).__setitem__(
+            name, value, change_userdefine, raiseerror)
+
+    def post_set_parton_shower(self, value, change_userdefine, raiseerror, **opt):
+        """Use the current shower name when reading or editing legacy cards."""
+        if value.upper() in ('HERWIGPP', 'HERWIG++'):
+            dict.__setitem__(self, 'parton_shower', 'HERWIG7')
+
     def check_validity(self):
         """check the validity of the various input"""
 
@@ -6417,12 +6433,6 @@ class RunCardNLO(RunCard):
                     logger.info('''For consistency in the FxFx merging, \'%s\' has been set to 1.0'''
                                 % jetparam ,'$MG:BOLD')
                     self[jetparam] = 1.0
-        elif self['ickkw'] == -1 and (self["dynamical_scale_choice"][0] != -1 or
-                                      len(self["dynamical_scale_choice"]) > 1):
-                self["dynamical_scale_choice"] = [-1]
-                self["reweight_scale"]=[self["reweight_scale"][0]]
-                logger.warning('''For consistency with the jet veto, the scale which will be used is ptj. dynamical_scale_choice will be set at -1.'''
-                                ,'$MG:BOLD')            
                                 
         # For interface to PINEAPPL, need to use LHAPDF and reweighting to get scale uncertainties
         if self['pineappl'] and self['pdlabel'].lower() != 'lhapdf':

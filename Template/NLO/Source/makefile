@@ -10,7 +10,7 @@ STDHEPDIR= ./StdHEP/
 
 GENERIC = $(alfas_functions).o rw_routines.o kin_functions.o		\
 	  run_printout.o dgauss.o ranmar.o setrun.o derivative.o	\
-	  zerox64_cernlib.o mg5_citation.o impose_frame_rest.o
+	  zerox64_cernlib.o timing.o mg5_citation.o impose_frame_rest.o
 
 ifneq ("$(wildcard ./RUNNING)","")
 	LINKLIBS += -lrunning
@@ -23,8 +23,12 @@ endif
 
 all: $(LIBDIR)libdhelas.a $(LIBDIR)libgeneric.a $(LIBDIR)libpdf.a	\
     $(LIBDIR)libgammaUPC.a $(LIBDIR)libmodel.a $(LIBDIR)libcernlib.a \
-    param_card.inc $(LIBS)
+    param_card.inc $(LIBS) born_support
 	rm -f PDF/*.o
+
+.PHONY: born_support
+born_support: param_card.inc
+	if [ -f BornSupport/providers.mk ]; then $(MAKE) -C BornSupport; fi
 
 
 $(LIBDIR)librunning.$(libext): RUNNING
@@ -34,7 +38,7 @@ $(LIBDIR)librunning.$(libext): RUNNING
 $(LIBDIR)libdhelas.a: DHELAS
 	rm -f $(LIBDIR)libdhelas.a
 	cd DHELAS; make
-	cp -f DHELAS/aloha_object.mod $(LIBDIR)
+	if [ -f DHELAS/aloha_object.mod ]; then cp -f DHELAS/aloha_object.mod $(LIBDIR); fi
 
 $(LIBDIR)libgeneric.a: $(GENERIC)
 	rm -f $(LIBDIR)libgeneric.a
@@ -46,6 +50,8 @@ $(LIBDIR)libgeneric.a: $(GENERIC)
 
 setrun.o: run_card.inc extra_weights.o
 	$(FC) $(FFLAGS) -c -o setrun.o setrun.f
+
+timing.o: timing_variables.inc
 
 $(LIBDIR)libpdf.a: PDF
 	rm -f $(LIBDIR)libpdf.a
@@ -66,7 +72,7 @@ $(LIBDIR)libcernlib.a: CERNLIB
 $(LIBDIR)libmodel.a: MODEL param_card.inc
 	rm -f $(LIBDIR)libmodel.a
 	cd MODEL; make
-	cp -f MODEL/model_object.mod $(LIBDIR)
+	if [ -f MODEL/model_object.mod ]; then cp -f MODEL/model_object.mod $(LIBDIR); fi
 
 run_card.inc: ../Cards/run_card.dat
 	../bin/aMCatNLO --allow-stdin treatcards run
@@ -115,6 +121,7 @@ libmodel: $(LIBDIR)libmodel.a
 libdhelas: $(LIBDIR)libdhelas.a
 
 clean:
+	if [ -f BornSupport/providers.mk ]; then $(MAKE) -C BornSupport clean; fi
 	rm -f *.o
 	rm -f param_card.inc run_card.inc
 	cd MODEL; make clean; cd ..

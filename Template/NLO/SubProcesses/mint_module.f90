@@ -65,7 +65,11 @@
 !
 
 module mint_module
+  ! Keep IEEE imports local to the procedures using them. Module-level
+  ! imports make gfortran save/restore FPU state in unrelated module users.
   use FKSParams ! contains use_poly_virtual
+  use virt_surrogate, only: vs_begin_point,vs_vcomp,vs_ratio_set,vs_ratio, &
+       vs_reset,vs_solve,vs_write_grids,vs_read_grids
   implicit none
   integer, parameter, private :: nintervals=32    ! max number of intervals in the integration grids
   integer, parameter, public  :: ndimmax=60       ! max number of dimensions of the integral
@@ -78,6 +82,10 @@ module mint_module
   integer, parameter, public :: max_fold=512     ! 8*8*8 is max folding for the three variables
   integer, parameter, private :: max_points=100000! maximum number of points to trow per iteration if not enough non-zero points can be found.
   integer, parameter, public  :: maxchannels=20 ! set as least as large as in amcatnlo_run_interface
+  integer, parameter, public :: born_spread_nxi=40,born_spread_ny=40
+  integer, parameter, private :: born_spread_nbins=born_spread_nxi*born_spread_ny
+  integer, parameter, private :: born_spread_train_points=800000
+  integer, parameter, private :: born_spread_validation_points=200000
   ! Total exploration share, divided equally over all integration channels.
   double precision, parameter, private :: channel_exploration=0.05d0
   ! Note that the number of intervals in the integration grids, 'nintervals', cannot be arbitrarily large.
@@ -98,6 +106,32 @@ module mint_module
   double precision, dimension(0:n_ave_virt), public :: virt_wgt_mint,born_wgt_mint,polyfit
   double precision, dimension(maxchannels), public :: virtual_fraction
   double precision, dimension(nintegrals,0:maxchannels), public :: ans,unc
+  logical, public :: born_spread_active=.false.,born_spread_ready=.false.
+  logical, private :: born_spread_calibrating=.false.
+  integer, public :: born_spread_phase=0,born_spread_current_bin=1
+  integer, public :: born_spread_bin_fold(max_fold)=1
+  integer, public :: born_spread_current_sector=1
+  integer, public :: born_spread_sector_fold(max_fold)=1
+  integer, private :: born_spread_nexternal=0,born_spread_nincoming=0
+  integer, private :: born_spread_nfks=0,born_spread_ndim=0
+  integer, private :: born_spread_restart_ncalls=0
+  integer, private :: born_spread_training_count=0
+  integer, private :: born_spread_validation_count=0
+  double precision, public :: born_spread_x=0d0,born_spread_y=0d0
+  ! Each sampled Born FKS sector carries its own unit normalization.
+  double precision, allocatable, public :: born_spread_factor(:,:,:)
+  double precision, private :: born_spread_mean_delta=0d0
+  double precision, private :: born_spread_m2_delta=0d0
+  double precision, private :: born_spread_base_total=0d0
+  double precision, private :: born_spread_spread_total=0d0
+  double precision, private :: born_spread_point_base=0d0
+  double precision, private :: born_spread_point_spread=0d0
+  double precision, allocatable, private :: born_spread_deriv0(:,:)
+  ! Flatten (bin,sector) here so one sort groups all sector fits.
+  integer, dimension(:), allocatable, private :: born_spread_break_bin
+  double precision, dimension(:), allocatable, private :: born_spread_break
+  double precision, dimension(:), allocatable, private :: born_spread_jump
+  integer, private :: born_spread_nbreak=0,born_spread_capacity=0
   logical :: only_virt,new_point,pass_cuts_check
 
 ! private variables
@@ -154,6 +188,9 @@ module mint_module
   double precision, dimension(0:nintervals,ndimmax,maxchannels), private :: xgrid,xacc
   double precision, dimension(nintervals,ndimmax,maxchannels), private :: ymax,xmmm
   double precision, dimension(nintegrals,0:maxchannels), private :: vtot,etot,chi2
+  ! Keep the legacy harmonic errors used to choose iteration weights apart
+  ! from the propagated uncertainty of the weighted estimator itself.
+  double precision, dimension(nintegrals), private :: iteration_weight_unc
   double precision, dimension(nintegrals,3), private :: ans3,unc3
   double precision, dimension(nintegrals), private :: ans_l3,unc_l3,chi2_l3,f
   double precision, dimension(0:maxchannels), private :: ymax_virt,ans_chan
@@ -173,7 +210,10 @@ module mint_module
   common /c_fnlo_nlops/fixed_order,nlo_ps
 
 ! functions and subroutines:
-  public :: mint,gen,read_grids_from_file
+  public :: mint,gen,read_grids_from_file,get_mint_wgt
+  public :: born_spread_configure,born_spread_set_point
+  public :: born_spread_observe_sample,born_spread_get_factor
+  public :: born_spread_load_table,born_spread_write_table
   private :: initialise_mint,setup_basic_mint &
        &,update_accumulated_results,prepare_next_iteration &
        &,check_desired_accuracy,update_integration_grids &
@@ -211,6 +251,7 @@ contains
     double precision, external :: fun
     logical :: enough_points,channel_loop_done
     call initialise_mint
+10  continue
     do while (nit.lt.itmax)
        call start_iteration
 2      kpoint_iter=kpoint_iter+1
@@ -222,7 +263,11 @@ contains
        enddo
        call get_amount_of_points(enough_points)
        if (.not.enough_points) goto 2
-       if (imode.eq.0 .and. nit.eq.1 .and. double_events) then
+       ! The special first-iteration loop requires the unit channel markers
+       ! from reset_mint_grids. After calibration we retain the adapted
+       ! channel weights, so use normal averaging on the restart instead.
+       if (imode.eq.0 .and. nit.eq.1 .and. double_events .and. &
+            .not.born_spread_ready) then
           call check_for_special_channels_loop(channel_loop_done)
           if (.not.channel_loop_done) goto 2
           call combine_results_channels_special_loop
@@ -231,8 +276,658 @@ contains
        endif
        call update_accumulated_results
     enddo
+    if (imode.eq.0 .and. born_spread_active .and. &
+         .not.born_spread_ready) then
+       call calibrate_born_spreading(fun)
+       call born_spread_write_table
+       born_spread_ready=.true.
+       born_spread_phase=3
+       if (double_events) born_spread_restart_ncalls= &
+            80*ndim*(nchans/3+1)
+       ncalls0=born_spread_restart_ncalls
+       call setup_common
+       call reset_MC_grid
+       call reset_accumulated_grids_for_updating
+       if (even_rn) call initialize_even_random_numbers
+       write(*,*) 'Restarting MINT with the normalized born-spreading table'
+       goto 10
+    endif
     call finalise_mint
   end subroutine mint
+
+  subroutine calibrate_born_spreading(fun)
+    implicit none
+    double precision, external :: fun
+    double precision :: x(ndimmax),vol
+    integer :: kfold(ndimmax),ipoint
+    logical :: old_even_rn
+    born_spread_phase=1
+    born_spread_calibrating=.true.
+    born_spread_training_count=0
+    born_spread_validation_count=0
+    born_spread_mean_delta=0d0
+    born_spread_m2_delta=0d0
+    born_spread_base_total=0d0
+    born_spread_spread_total=0d0
+    born_spread_point_base=0d0
+    born_spread_point_spread=0d0
+    born_spread_deriv0=0d0
+    born_spread_nbreak=0
+    old_even_rn=even_rn
+    even_rn=.false.
+    write(*,*) 'Training born-spreading table with ', &
+         born_spread_train_points,' independent phase-space points'
+    do ipoint=1,born_spread_train_points
+       new_point=.true.
+       call get_random_x(x,vol,kfold)
+       call compute_integrand(fun,x,vol)
+    enddo
+    call solve_born_spreading_table
+    born_spread_phase=2
+    write(*,*) 'Validating born-spreading table with ', &
+         born_spread_validation_points,' independent phase-space points'
+    do ipoint=1,born_spread_validation_points
+       new_point=.true.
+       call get_random_x(x,vol,kfold)
+       call compute_integrand(fun,x,vol)
+    enddo
+    born_spread_calibrating=.false.
+    even_rn=old_even_rn
+    call finish_born_spreading_validation
+    call deallocate_born_spread_lines
+    if (allocated(born_spread_break_bin)) deallocate(born_spread_break_bin)
+    if (allocated(born_spread_break)) deallocate(born_spread_break)
+    if (allocated(born_spread_jump)) deallocate(born_spread_jump)
+    born_spread_nbreak=0
+    born_spread_capacity=0
+  end subroutine calibrate_born_spreading
+
+  subroutine solve_born_spreading_table
+    implicit none
+    integer :: isector,first,last
+    if (born_spread_nbreak.gt.1) &
+         call born_spread_sort_breaks(1,born_spread_nbreak)
+    first=1
+    do isector=1,born_spread_nfks
+       last=first-1
+       do while (last.lt.born_spread_nbreak)
+          if (born_spread_break_bin(last+1).gt.isector*born_spread_nbins) exit
+          last=last+1
+       enddo
+       call solve_born_spreading_sector(isector,first,last)
+       first=last+1
+    enddo
+  end subroutine solve_born_spreading_table
+
+  subroutine solve_born_spreading_sector(isector,first_break,last_break)
+    implicit none
+    integer, intent(in) :: isector,first_break,last_break
+    integer, allocatable :: seg_bin(:)
+    double precision, allocatable :: seg_slope(:),seg_length(:)
+    double precision, dimension(born_spread_nbins) :: caps,bin_area
+    double precision :: deriv,prev,turn,jump_total,length,remaining
+    double precision :: group_slope,cap_total,low,high,mid,trial,total_add
+    double precision :: max_factor,weighted_norm,slope_scale
+    integer :: ibin,k,j,nseg,iseg,first,last,pass,global_bin,capacity
+    capacity=last_break-first_break+1+born_spread_nbins
+    allocate(seg_bin(capacity),seg_slope(capacity),seg_length(capacity))
+    nseg=0
+    k=first_break
+    do ibin=1,born_spread_nbins
+       global_bin=(isector-1)*born_spread_nbins+ibin
+       bin_area(ibin)=born_spread_bin_area()
+       max_factor=1d0/bin_area(ibin)
+       deriv=born_spread_deriv0(ibin,isector)
+       slope_scale=abs(deriv)
+       j=k
+       do while (j.le.last_break)
+          if (born_spread_break_bin(j).ne.global_bin) exit
+          slope_scale=slope_scale+born_spread_jump(j)
+          j=j+1
+       enddo
+       prev=0d0
+       do while (k.le.last_break)
+          if (born_spread_break_bin(k).ne.global_bin) exit
+          turn=born_spread_break(k)
+          jump_total=0d0
+          j=k
+          do while (j.le.last_break)
+             if (born_spread_break_bin(j).ne.global_bin) exit
+             if (.not.born_spread_same_break(turn, &
+                  born_spread_break(j))) exit
+             jump_total=jump_total+born_spread_jump(j)
+             j=j+1
+          enddo
+          if (turn.gt.prev.and.prev.lt.max_factor) then
+             length=min(turn-prev,max_factor-prev)
+             if (length.gt.0d0) then
+                nseg=nseg+1
+                seg_bin(nseg)=ibin
+                seg_slope(nseg)=deriv/bin_area(ibin)
+                if (abs(deriv).le.1d-13*slope_scale) seg_slope(nseg)=0d0
+                seg_length(nseg)=length
+             endif
+          endif
+          deriv=deriv+jump_total
+          prev=max(prev,turn)
+          k=j
+       enddo
+       if (prev.lt.max_factor) then
+          nseg=nseg+1
+          seg_bin(nseg)=ibin
+          seg_slope(nseg)=deriv/bin_area(ibin)
+          ! Cancelling the initial slope against its jumps can leave a tiny
+          ! residual. A truly flat tail must participate in the closest-to-
+          ! one tie break, rather than attract an entire sector's mass.
+          if (abs(deriv).le.1d-13*slope_scale) seg_slope(nseg)=0d0
+          seg_length(nseg)=max_factor-prev
+       endif
+    enddo
+    if (nseg.le.0) then
+       born_spread_factor(:,:,isector)=1d0
+       deallocate(seg_bin,seg_slope,seg_length)
+       return
+    endif
+    if (nseg.gt.1) call born_spread_sort_segments( &
+         seg_slope,seg_bin,seg_length,1,nseg)
+    born_spread_factor(:,:,isector)=0d0
+    remaining=1d0
+    iseg=1
+    do while (iseg.le.nseg.and.remaining.gt.1d-12)
+       first=iseg
+       group_slope=seg_slope(iseg)
+       do while (iseg.le.nseg)
+          if (.not.born_spread_same_slope(group_slope, &
+               seg_slope(iseg))) exit
+          iseg=iseg+1
+       enddo
+       last=iseg-1
+       caps=0d0
+       do j=first,last
+          caps(seg_bin(j))=caps(seg_bin(j))+seg_length(j)
+       enddo
+       cap_total=sum(caps*bin_area)
+       if (remaining.ge.cap_total-1d-12) then
+          do ibin=1,born_spread_nbins
+             if (caps(ibin).gt.0d0) then
+                j=(ibin-1)/born_spread_nxi+1
+                k=ibin-(j-1)*born_spread_nxi
+                born_spread_factor(k,j,isector)=born_spread_factor(k,j,isector)+caps(ibin)
+             endif
+          enddo
+          remaining=max(0d0,remaining-cap_total)
+       else
+          low=-maxval(1d0/bin_area)
+          high=maxval(1d0/bin_area)
+          do pass=1,100
+             mid=(low+high)/2d0
+             total_add=0d0
+             do ibin=1,born_spread_nbins
+                if (caps(ibin).le.0d0) cycle
+                j=(ibin-1)/born_spread_nxi+1
+                k=ibin-(j-1)*born_spread_nxi
+                trial=max(born_spread_factor(k,j,isector), &
+                     min(born_spread_factor(k,j,isector)+caps(ibin),1d0+mid))
+                total_add=total_add+bin_area(ibin)* &
+                     (trial-born_spread_factor(k,j,isector))
+             enddo
+             if (total_add.lt.remaining) then
+                low=mid
+             else
+                high=mid
+             endif
+          enddo
+          mid=(low+high)/2d0
+          do ibin=1,born_spread_nbins
+             if (caps(ibin).le.0d0) cycle
+             j=(ibin-1)/born_spread_nxi+1
+             k=ibin-(j-1)*born_spread_nxi
+             trial=max(born_spread_factor(k,j,isector), &
+                  min(born_spread_factor(k,j,isector)+caps(ibin),1d0+mid))
+             born_spread_factor(k,j,isector)=trial
+          enddo
+          remaining=0d0
+       endif
+    enddo
+    if (remaining.gt.1d-7) then
+       write(*,*) 'ERROR: born-spreading optimizer could not satisfy', &
+            ' its normalization constraint',remaining
+       stop 1
+    endif
+    weighted_norm=0d0
+    do ibin=1,born_spread_nbins
+       j=(ibin-1)/born_spread_nxi+1
+       k=ibin-(j-1)*born_spread_nxi
+       weighted_norm=weighted_norm+bin_area(ibin)* &
+            born_spread_factor(k,j,isector)
+    enddo
+    if (weighted_norm.le.0d0.or.abs(weighted_norm-1d0).gt.1d-7) then
+       write(*,*) 'ERROR: born-spreading optimizer produced invalid ', &
+            'normalization',weighted_norm
+       stop 1
+    endif
+    born_spread_factor(:,:,isector)=born_spread_factor(:,:,isector)/weighted_norm
+    deallocate(seg_bin,seg_slope,seg_length)
+  end subroutine solve_born_spreading_sector
+
+  pure double precision function born_spread_bin_area()
+    implicit none
+    ! The Born prefactor contains the radiation Jacobians. The table
+    ! coordinates are uniform in that measure, not in the raw MINT x's.
+    born_spread_bin_area=1d0/born_spread_nbins
+  end function born_spread_bin_area
+
+  subroutine born_spread_solver_self_test
+    implicit none
+    integer :: ibin,ix,iy
+    double precision :: expected,bval(1),cval(1),area
+    born_spread_deriv0=0d0
+    born_spread_nbreak=0
+    born_spread_phase=1
+    do ibin=1,born_spread_nbins
+       born_spread_current_bin=ibin
+       area=born_spread_bin_area()
+       ix=mod(ibin-1,born_spread_nxi)+1
+       bval(1)=area
+       cval(1)=-2d0*area
+       if (ix.gt.born_spread_nxi/2) then
+          bval(1)=-area
+          cval(1)=-area
+       endif
+       call born_spread_observe_sample(bval,cval,1)
+    enddo
+    born_spread_phase=0
+    call solve_born_spreading_table
+    do ibin=1,born_spread_nbins
+       iy=(ibin-1)/born_spread_nxi+1
+       ix=ibin-(iy-1)*born_spread_nxi
+       expected=0d0
+       if (ix.le.born_spread_nxi/2) expected=2d0
+       if (abs(born_spread_factor(ix,iy,1)-expected).gt.1d-10) then
+          write(*,*) 'ERROR: born-spreading optimizer self-test failed'
+          stop 1
+       endif
+    enddo
+    born_spread_deriv0=0d0
+    born_spread_nbreak=0
+    born_spread_training_count=0
+    call solve_born_spreading_table
+    if (maxval(abs(born_spread_factor-1d0)).gt.1d-10) then
+       write(*,*) 'ERROR: born-spreading tie-break self-test failed'
+       stop 1
+    endif
+    born_spread_factor=1d0
+    born_spread_deriv0=0d0
+    born_spread_current_bin=1
+    born_spread_nbreak=0
+    born_spread_capacity=0
+    if (allocated(born_spread_break_bin)) deallocate(born_spread_break_bin)
+    if (allocated(born_spread_break)) deallocate(born_spread_break)
+    if (allocated(born_spread_jump)) deallocate(born_spread_jump)
+  end subroutine born_spread_solver_self_test
+
+  subroutine finish_born_spreading_validation
+    implicit none
+    double precision :: validation_error,improvement,required
+    validation_error=0d0
+    if (born_spread_validation_count.gt.1) &
+         validation_error=sqrt(max(0d0,born_spread_m2_delta/ &
+         (born_spread_validation_count-1)/born_spread_validation_count))
+    improvement=born_spread_base_total-born_spread_spread_total
+    required=2d0*validation_error*born_spread_validation_count
+    if (born_spread_validation_count.lt.2.or. &
+         born_spread_base_total.le.0d0.or.improvement.le.required) then
+       born_spread_factor=1d0
+       write(*,*) 'Born spreading validation found no significant reduction; ', &
+            'using the normalized unit table'
+    else
+       write(*,*) 'Born spreading validation reduced sampled negative mass by ', &
+            improvement,' +/- ',validation_error*born_spread_validation_count
+    endif
+  end subroutine finish_born_spreading_validation
+
+  recursive subroutine born_spread_sort_breaks(left,right)
+    implicit none
+    integer, intent(in) :: left,right
+    integer :: i,j,pivot_bin,temp_bin
+    double precision :: pivot_turn,temp_turn,temp_jump
+    i=left
+    j=right
+    pivot_bin=born_spread_break_bin((left+right)/2)
+    pivot_turn=born_spread_break((left+right)/2)
+    do
+       do while (born_spread_break_bin(i).lt.pivot_bin.or. &
+            (born_spread_break_bin(i).eq.pivot_bin.and. &
+            born_spread_break(i).lt.pivot_turn))
+          i=i+1
+       enddo
+       do while (born_spread_break_bin(j).gt.pivot_bin.or. &
+            (born_spread_break_bin(j).eq.pivot_bin.and. &
+            born_spread_break(j).gt.pivot_turn))
+          j=j-1
+       enddo
+       if (i.le.j) then
+          temp_bin=born_spread_break_bin(i)
+          born_spread_break_bin(i)=born_spread_break_bin(j)
+          born_spread_break_bin(j)=temp_bin
+          temp_turn=born_spread_break(i)
+          born_spread_break(i)=born_spread_break(j)
+          born_spread_break(j)=temp_turn
+          temp_jump=born_spread_jump(i)
+          born_spread_jump(i)=born_spread_jump(j)
+          born_spread_jump(j)=temp_jump
+          i=i+1
+          j=j-1
+       endif
+       if (i.gt.j) exit
+    enddo
+    if (left.lt.j) call born_spread_sort_breaks(left,j)
+    if (i.lt.right) call born_spread_sort_breaks(i,right)
+  end subroutine born_spread_sort_breaks
+
+  pure recursive subroutine born_spread_sort_segments(slopes,bins,lengths,left,right)
+    implicit none
+    integer, intent(in) :: left,right
+    integer, intent(inout) :: bins(:)
+    double precision, intent(inout) :: slopes(:),lengths(:)
+    integer :: i,j,temp_bin
+    double precision :: pivot,temp_slope,temp_length
+    i=left
+    j=right
+    pivot=slopes((left+right)/2)
+    do
+       do while (slopes(i).lt.pivot)
+          i=i+1
+       enddo
+       do while (slopes(j).gt.pivot)
+          j=j-1
+       enddo
+       if (i.le.j) then
+          temp_slope=slopes(i)
+          slopes(i)=slopes(j)
+          slopes(j)=temp_slope
+          temp_length=lengths(i)
+          lengths(i)=lengths(j)
+          lengths(j)=temp_length
+          temp_bin=bins(i)
+          bins(i)=bins(j)
+          bins(j)=temp_bin
+          i=i+1
+          j=j-1
+       endif
+       if (i.gt.j) exit
+    enddo
+    if (left.lt.j) call born_spread_sort_segments( &
+         slopes,bins,lengths,left,j)
+    if (i.lt.right) call born_spread_sort_segments( &
+         slopes,bins,lengths,i,right)
+  end subroutine born_spread_sort_segments
+
+  pure logical function born_spread_same_break(a,b)
+    implicit none
+    double precision, intent(in) :: a,b
+    born_spread_same_break=(a.eq.b)
+  end function born_spread_same_break
+
+  pure logical function born_spread_same_slope(a,b)
+    implicit none
+    double precision, intent(in) :: a,b
+    double precision :: scale
+    scale=max(abs(a),abs(b),1d-300)
+    born_spread_same_slope=abs(a-b).le.1d-13*scale
+  end function born_spread_same_slope
+
+  subroutine born_spread_configure(enabled,nexternal,nincoming,nfks,ndim_in)
+    implicit none
+    logical, intent(in) :: enabled
+    integer, intent(in) :: nexternal,nincoming,nfks,ndim_in
+    born_spread_active=enabled
+    born_spread_ready=.false.
+    born_spread_calibrating=.false.
+    born_spread_phase=0
+    if (allocated(born_spread_factor)) deallocate(born_spread_factor)
+    if (allocated(born_spread_deriv0)) deallocate(born_spread_deriv0)
+    if (nfks.lt.1) call born_spread_table_error('Invalid Born-spreading sector count')
+    allocate(born_spread_factor(born_spread_nxi,born_spread_ny,nfks))
+    allocate(born_spread_deriv0(born_spread_nbins,nfks))
+    born_spread_factor=1d0
+    born_spread_x=0d0
+    born_spread_y=0d0
+    born_spread_current_bin=1
+    born_spread_current_sector=1
+    born_spread_nexternal=nexternal
+    born_spread_bin_fold=1
+    born_spread_sector_fold=1
+    born_spread_nincoming=nincoming
+    born_spread_nfks=nfks
+    born_spread_ndim=ndim_in
+    born_spread_restart_ncalls=0
+    born_spread_training_count=0
+    born_spread_validation_count=0
+    born_spread_mean_delta=0d0
+    born_spread_m2_delta=0d0
+    born_spread_base_total=0d0
+    born_spread_spread_total=0d0
+    born_spread_point_base=0d0
+    born_spread_point_spread=0d0
+    born_spread_deriv0=0d0
+    born_spread_nbreak=0
+    born_spread_capacity=0
+    if (allocated(born_spread_break_bin)) deallocate(born_spread_break_bin)
+    if (allocated(born_spread_break)) deallocate(born_spread_break)
+    if (allocated(born_spread_jump)) deallocate(born_spread_jump)
+    if (enabled) call born_spread_solver_self_test
+  end subroutine born_spread_configure
+
+  subroutine born_spread_set_point(x,y)
+    implicit none
+    double precision, intent(in) :: x,y
+    integer :: ix,iy
+    born_spread_x=max(0d0,min(x,1d0))
+    born_spread_y=max(0d0,min(y,1d0))
+    ix=min(int(born_spread_x*born_spread_nxi)+1,born_spread_nxi)
+    iy=min(int(born_spread_y*born_spread_ny)+1,born_spread_ny)
+    born_spread_current_bin=(iy-1)*born_spread_nxi+ix
+  end subroutine born_spread_set_point
+
+  double precision function born_spread_get_factor()
+    implicit none
+    integer :: ix,iy
+    iy=(born_spread_current_bin-1)/born_spread_nxi+1
+    ix=born_spread_current_bin-(iy-1)*born_spread_nxi
+    born_spread_get_factor=born_spread_factor(ix,iy,born_spread_current_sector)
+  end function born_spread_get_factor
+
+  subroutine born_spread_observe_sample(bvals,cvals,nvals,point_complete)
+    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+    implicit none
+    integer, intent(in) :: nvals
+    double precision, intent(in) :: bvals(*),cvals(*)
+    logical, intent(in), optional :: point_complete
+    integer :: j,ibin,isector
+    double precision :: b,c,turn,base_neg,spread_neg,delta,old_mean
+    if (born_spread_phase.eq.1) then
+       if (.not.present(point_complete)) then
+          born_spread_training_count=born_spread_training_count+1
+       elseif (point_complete) then
+          born_spread_training_count=born_spread_training_count+1
+       endif
+       ibin=born_spread_current_bin
+       isector=born_spread_current_sector
+       do j=1,nvals
+          b=bvals(j)
+          c=cvals(j)
+          if (.not.ieee_is_finite(b) .or. .not.ieee_is_finite(c)) cycle
+          if (b.eq.0d0) cycle
+          if (c.lt.0d0.or.(c.eq.0d0.and.b.lt.0d0)) &
+               born_spread_deriv0(ibin,isector)=born_spread_deriv0(ibin,isector)-b
+          turn=-c/b
+          if (.not.ieee_is_finite(turn)) cycle
+          if (turn.eq.0d0.and.c.lt.0d0.and.b.gt.0d0) &
+               born_spread_deriv0(ibin,isector)=born_spread_deriv0(ibin,isector)+b
+          if (turn.gt.0d0.and.turn.lt.1d0/born_spread_bin_area())call &
+               born_spread_append((isector-1)*born_spread_nbins+ibin,turn,abs(b))
+       enddo
+    elseif (born_spread_phase.eq.2) then
+       base_neg=0d0
+       spread_neg=0d0
+       do j=1,nvals
+          b=bvals(j)
+          c=cvals(j)
+          if (.not.ieee_is_finite(b) .or. .not.ieee_is_finite(c)) cycle
+          base_neg=base_neg+max(0d0,-(b+c))
+          spread_neg=spread_neg+max(0d0,-(b*born_spread_get_factor()+c))
+       enddo
+       born_spread_point_base=born_spread_point_base+base_neg
+       born_spread_point_spread=born_spread_point_spread+spread_neg
+       if (present(point_complete)) then
+          if (point_complete) then
+             born_spread_validation_count=born_spread_validation_count+1
+             delta=born_spread_point_spread-born_spread_point_base
+             old_mean=born_spread_mean_delta
+             born_spread_mean_delta=old_mean+ &
+                  (delta-old_mean)/born_spread_validation_count
+             born_spread_m2_delta=born_spread_m2_delta+ &
+                  (delta-old_mean)*(delta-born_spread_mean_delta)
+             born_spread_base_total=born_spread_base_total+ &
+                  born_spread_point_base
+             born_spread_spread_total=born_spread_spread_total+ &
+                  born_spread_point_spread
+             born_spread_point_base=0d0
+             born_spread_point_spread=0d0
+          endif
+       else
+! Preserve the standalone observer contract for single-fold callers.
+          born_spread_validation_count=born_spread_validation_count+1
+          delta=born_spread_point_spread-born_spread_point_base
+          old_mean=born_spread_mean_delta
+          born_spread_mean_delta=old_mean+ &
+               (delta-old_mean)/born_spread_validation_count
+          born_spread_m2_delta=born_spread_m2_delta+ &
+               (delta-old_mean)*(delta-born_spread_mean_delta)
+          born_spread_base_total=born_spread_base_total+ &
+               born_spread_point_base
+          born_spread_spread_total=born_spread_spread_total+ &
+               born_spread_point_spread
+          born_spread_point_base=0d0
+          born_spread_point_spread=0d0
+       endif
+    endif
+  end subroutine born_spread_observe_sample
+
+  subroutine born_spread_append(ibin,turn,jump)
+    implicit none
+    integer, intent(in) :: ibin
+    double precision, intent(in) :: turn,jump
+    integer, allocatable :: itemp(:)
+    double precision, allocatable :: dtemp(:)
+    integer :: new_capacity
+    if (born_spread_nbreak.eq.born_spread_capacity) then
+       new_capacity=max(1024,2*born_spread_capacity)
+       allocate(itemp(new_capacity))
+       if (born_spread_nbreak.gt.0) &
+            itemp(1:born_spread_nbreak)=born_spread_break_bin
+       call move_alloc(itemp,born_spread_break_bin)
+       allocate(dtemp(new_capacity))
+       if (born_spread_nbreak.gt.0) &
+            dtemp(1:born_spread_nbreak)=born_spread_break
+       call move_alloc(dtemp,born_spread_break)
+       allocate(dtemp(new_capacity))
+       if (born_spread_nbreak.gt.0) &
+            dtemp(1:born_spread_nbreak)=born_spread_jump
+       call move_alloc(dtemp,born_spread_jump)
+       born_spread_capacity=new_capacity
+    endif
+    born_spread_nbreak=born_spread_nbreak+1
+    born_spread_break_bin(born_spread_nbreak)=ibin
+    born_spread_break(born_spread_nbreak)=turn
+    born_spread_jump(born_spread_nbreak)=jump
+  end subroutine born_spread_append
+
+  subroutine born_spread_load_table
+    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+    implicit none
+    integer :: ios,version,nxi,ny,nexternal,nincoming,nfks,ndim_in
+    integer :: i,j,isector
+    character(len=32) :: tag
+    integer, parameter :: lun=71
+    open(unit=lun,file='born_spreading.dat',status='old',iostat=ios)
+    if (ios.ne.0) call born_spread_table_error( &
+         'Cannot open born_spreading.dat; rerun integration step 0 or set born_spreading = False')
+    read(lun,*,iostat=ios) tag,version
+    if (ios.ne.0) &
+         call born_spread_table_error('Unsupported born_spreading.dat format')
+    if (trim(tag).ne.'BORN_SPREAD'.or.version.ne.3) &
+         call born_spread_table_error('Unsupported born_spreading.dat format; rerun integration step 0')
+    read(lun,*,iostat=ios) nxi,ny,nexternal,nincoming,nfks,ndim_in
+    if (ios.ne.0) call born_spread_table_error('Corrupt born_spreading.dat signature')
+    if (nxi.ne.born_spread_nxi.or.ny.ne.born_spread_ny.or. &
+         nexternal.ne.born_spread_nexternal.or. &
+         nincoming.ne.born_spread_nincoming.or. &
+         nfks.ne.born_spread_nfks.or.ndim_in.ne.born_spread_ndim) &
+         call born_spread_table_error( &
+         'born_spreading.dat belongs to an incompatible process; rerun step 0')
+    read(lun,*,iostat=ios) born_spread_training_count, &
+         born_spread_validation_count
+    if (ios.ne.0) call born_spread_table_error('Corrupt born_spreading.dat statistics')
+    read(lun,*,iostat=ios) born_spread_base_total, &
+         born_spread_spread_total,born_spread_mean_delta,born_spread_m2_delta
+    if (ios.ne.0) call born_spread_table_error('Corrupt born_spreading.dat statistics')
+    do isector=1,born_spread_nfks
+       do j=1,born_spread_ny
+          read(lun,*,iostat=ios) (born_spread_factor(i,j,isector),i=1,born_spread_nxi)
+          if (ios.ne.0) call born_spread_table_error('Corrupt born_spreading.dat table')
+       enddo
+    enddo
+    close(lun)
+    if (any(.not.ieee_is_finite(born_spread_factor)).or. &
+         any(born_spread_factor.lt.0d0)) &
+         call born_spread_table_error('born_spreading.dat contains invalid factors')
+    do isector=1,born_spread_nfks
+       if (abs(born_spread_normalization(isector)-1d0).gt.1d-7) &
+            call born_spread_table_error('born_spreading.dat violates a sector normalization constraint')
+    enddo
+    born_spread_ready=.true.
+    born_spread_phase=3
+    write(*,*) 'Loaded normalized born-spreading table from born_spreading.dat'
+  end subroutine born_spread_load_table
+
+  pure double precision function born_spread_normalization(isector)
+    implicit none
+    integer, intent(in) :: isector
+    born_spread_normalization=sum(born_spread_bin_area()*born_spread_factor(:,:,isector))
+  end function born_spread_normalization
+
+  subroutine born_spread_write_table
+    implicit none
+    integer :: ios,i,j,isector
+    integer, parameter :: lun=72
+    open(unit=lun,file='born_spreading.dat',status='replace',iostat=ios)
+    if (ios.ne.0) then
+       write(*,*) 'ERROR: cannot write born_spreading.dat'
+       stop 1
+    endif
+    write(lun,*) 'BORN_SPREAD',3
+    write(lun,*) born_spread_nxi,born_spread_ny,born_spread_nexternal, &
+         born_spread_nincoming,born_spread_nfks,born_spread_ndim
+    write(lun,*) born_spread_training_count,born_spread_validation_count
+    write(lun,'(4(1x,es24.16))') born_spread_base_total, &
+         born_spread_spread_total,born_spread_mean_delta,born_spread_m2_delta
+    do isector=1,born_spread_nfks
+       do j=1,born_spread_ny
+          write(lun,'(40(1x,es24.16))') &
+               (born_spread_factor(i,j,isector),i=1,born_spread_nxi)
+       enddo
+    enddo
+    close(lun)
+  end subroutine born_spread_write_table
+
+  subroutine born_spread_table_error(message)
+    implicit none
+    character(len=*), intent(in) :: message
+    write(*,*) 'ERROR: ',trim(message)
+    stop 1
+  end subroutine born_spread_table_error
 
   subroutine initialise_mint
     implicit none
@@ -275,6 +970,9 @@ contains
     endif
     reset=.false.
     ncalls=0  ! # PS points (updated below)
+    if (imode.eq.0.and.born_spread_active.and. &
+         born_spread_restart_ncalls.eq.0) &
+         born_spread_restart_ncalls=ncalls0
   end subroutine setup_basic_mint
 
   subroutine update_accumulated_results
@@ -370,6 +1068,11 @@ contains
           call regrid_ave_virt(k_ord_virt)
        enddo
     endif
+    if (VirtTrickSurrogate.ge.1) then
+       do kchan=1,nchans
+          call vs_solve(kchan,.not.fixed_order)
+       enddo
+    endif
 ! Regrid the MC over integers (used for the MC over FKS dirs)
     call regrid_MC_integer
   end subroutine update_integration_grids
@@ -378,6 +1081,8 @@ contains
   subroutine combine_final_three_iterations
     implicit none
     integer :: i,j
+    double precision :: weight_unc,old_weight,new_weight
+    logical :: initialized
 ! Update the results of the last tree iterations
     do j=1,2
        ans3(1:nintegrals,j)=ans3(1:nintegrals,j+1)
@@ -389,14 +1094,26 @@ contains
     if (nit_included.ge.4) then
        do i=1,nintegrals
           ans_l3(i)=0d0
-          unc_l3(i)=ans3(i,1)*1d99
+          unc_l3(i)=0d0
+          weight_unc=0d0
+          initialized=.false.
           chi2_l3(i)=0d0
           do j=1,3 ! the three final iterations
-             if (i.ne.1 .and. (unc_l3(i).eq.0d0 .or. unc3(i,j).eq.0d0)) then
+             if (i.ne.1 .and. unc3(i,j).eq.0d0) then
                 continue ! do not do anything
+             elseif (.not.initialized) then
+                ! Start with an actual observation instead of the signed
+                ! ans3*1d99 sentinel, which fails for a zero first mean.
+                ans_l3(i)=ans3(i,j)
+                unc_l3(i)=unc3(i,j)
+                weight_unc=unc3(i,j)
+                initialized=.true.
              else
-                ans_l3(i)=(ans_l3(i)/unc_l3(i)+ans3(i,j)/unc3(i,j))/(1d0/unc_l3(i)+1d0/unc3(i,j))
-                unc_l3(i)=1d0/sqrt(1d0/unc_l3(i)**2+1/unc3(i,j)**2)
+                old_weight=unc3(i,j)/(weight_unc+unc3(i,j))
+                new_weight=weight_unc/(weight_unc+unc3(i,j))
+                ans_l3(i)=(ans_l3(i)/weight_unc+ans3(i,j)/unc3(i,j))/(1d0/weight_unc+1d0/unc3(i,j))
+                unc_l3(i)=sqrt((old_weight*unc_l3(i))**2+(new_weight*unc3(i,j))**2)
+                weight_unc=1d0/sqrt(1d0/weight_unc**2+1d0/unc3(i,j)**2)
                 chi2_l3(i)=chi2_l3(i)+(ans3(i,j)-ans_l3(i))**2/unc3(i,j)**2
              endif
           enddo
@@ -451,23 +1168,35 @@ contains
   subroutine combine_iterations
     implicit none
     integer i,kchan
+    double precision :: old_weight,new_weight
     HwU_values(1)=etot(1,0)
-    HwU_values(2)=unc(1,0)
+    HwU_values(2)=iteration_weight_unc(1)
     if(nit.eq.1) then ! first iteration
        ans(1:nintegrals,0:nchans)=vtot(1:nintegrals,0:nchans)
        unc(1:nintegrals,0:nchans)=etot(1:nintegrals,0:nchans)
+       iteration_weight_unc(1:nintegrals)=etot(1:nintegrals,0)
        ans_chan(0:nchans)=ans(1,0:nchans)
        write (*,'(a,1x,e10.4)') 'Chi^2 per d.o.f.',0d0
     else
        do kchan=nchans,0,-1 ! go backwards so that kchan=0 goes last
                             ! (this makes sure central value is correctly updated).
           do i=1,nintegrals
-             if (i.ne.1 .and. (etot(i,0).eq.0d0 .or. unc(i,0).eq.0d0)) then
+             if (i.ne.1 .and. (etot(i,0).eq.0d0 .or. iteration_weight_unc(i).eq.0d0)) then
                 continue ! do not do anything
              else
-                ans(i,kchan)=(ans(i,kchan)/unc(i,0)+vtot(i,kchan)/etot(i,0))/(1d0/unc(i,0)+1d0/etot(i,0))
-                unc(i,kchan)=1d0/sqrt(1d0/unc(i,kchan)**2+1d0/etot(i,kchan)**2)
-                chi2(i,kchan)=chi2(i,kchan)+(vtot(i,kchan)-ans(i,kchan))**2/etot(i,kchan)**2
+                old_weight=etot(i,0)/(iteration_weight_unc(i)+etot(i,0))
+                new_weight=iteration_weight_unc(i)/(iteration_weight_unc(i)+etot(i,0))
+                ans(i,kchan)=(ans(i,kchan)/iteration_weight_unc(i)+vtot(i,kchan)/etot(i,0)) &
+                     /(1d0/iteration_weight_unc(i)+1d0/etot(i,0))
+                ! Every channel uses the total-integral weights. Propagate
+                ! its variance with those same weights, including zero
+                ! channel errors; the total retains its own covariance.
+                ! As for HwU, this treats the estimated weights as fixed.
+                unc(i,kchan)=sqrt((old_weight*unc(i,kchan))**2+(new_weight*etot(i,kchan))**2)
+                if (kchan.eq.0) iteration_weight_unc(i)= &
+                     1d0/sqrt(1d0/iteration_weight_unc(i)**2+1d0/etot(i,0)**2)
+                if (etot(i,kchan).gt.0d0) chi2(i,kchan)= &
+                     chi2(i,kchan)+(vtot(i,kchan)-ans(i,kchan))**2/etot(i,kchan)**2
              endif
           enddo
           ans_chan(kchan)=ans(1,kchan)
@@ -588,8 +1317,8 @@ contains
   
   subroutine check_for_special_channels_loop(channel_loop_done)
     implicit none
-    logical :: channel_loop_done
-    integer :: kchan,i
+    logical, intent(out) :: channel_loop_done
+    integer :: kchan
     do kchan=nchans,1,-1
        if (ans_chan(kchan).eq.1d0) then
 ! results of the current channel
@@ -613,6 +1342,7 @@ contains
           return
        endif
     enddo
+    error stop 'Missing active channel in initial MINT channel loop'
   end subroutine check_for_special_channels_loop
 
   subroutine combine_results_channels_special_loop
@@ -703,7 +1433,7 @@ contains
     implicit none
     integer :: kdim,k_ord_virt,ithree,isix
     double precision, dimension(ndimmax) :: x
-    double precision :: virtual,born
+    double precision :: virtual,born,ratio
 ! accumulate the function in xacc(icell(kdim),kdim) to adjust the grid later
     do kdim=1,ndim
        xacc(icell(kdim),kdim,ichan) = xacc(icell(kdim),kdim,ichan) + f(1)
@@ -719,17 +1449,22 @@ contains
           ithree=2*k_ord_virt+5
           isix=2*k_ord_virt+6
        endif
-       if (f(ithree).ne.0d0) then
+       if (f(ithree).ne.0d0.or.(vs_vcomp.and.f(isix).ne.0d0)) then
           born=f(isix)
-          ! virt_wgt_mint=(virtual-average_virtual*born)/virtual_fraction. Compensate:
+          ! Undo the actual surrogate used for this point so the fallback
+          ! continues learning the exact virtual alongside the fit.
+          if (vs_ratio_set) then
+             ratio=vs_ratio
+          elseif (use_poly_virtual) then
+             ratio=polyfit(k_ord_virt)
+          else
+             ratio=average_virtual(k_ord_virt,ichan)
+          endif
+          virtual=f(ithree)*virtual_fraction(ichan)+ratio*born
           if (use_poly_virtual) then
-             virtual=f(ithree)*virtual_fraction(ichan)+ &
-                  polyfit(k_ord_virt)*f(isix)
              call add_point_polyfit(ichan,k_ord_virt,x(1:ndim-3), &
                   virtual/born,born/wgt_mult)
           else
-             virtual=f(ithree)*virtual_fraction(ichan)+ &
-                  average_virtual(k_ord_virt,ichan)*f(isix)
              call fill_ave_virt(x,k_ord_virt,virtual,born)
           endif
        else
@@ -818,6 +1553,8 @@ contains
     double precision, dimension(nintegrals) :: f1
     double precision, dimension(ndimmax) :: x
     double precision, external :: fun
+    ! Select once per complete point; never consume physics random numbers.
+    call timing_begin_point()
     ! contribution to integral
     ifirst=0
     if(imode.eq.0) then
@@ -841,7 +1578,30 @@ contains
        dummy=fun(x,vol,ifirst,f1)
        f(1:nintegrals)=f1(1:nintegrals)
     endif
+    call timing_end_point()
   end subroutine compute_integrand
+
+  subroutine get_mint_wgt(x,vol)
+    ! Given a random point x, compute the corresponding wgt from the
+    ! importance sampling accompanying that point.
+    implicit none
+    double precision, dimension(ndimmax),intent(in) :: x
+    double precision,intent(out) :: vol
+    integer :: kdim,icell
+    double precision :: dx
+    ! This assumes we are in channel 'ichan'
+    vol=1d0/vol_chan * wgt_mult
+    do kdim=1,ndim
+       ! determine the cell
+       icell=1
+       do while (xgrid(icell,kdim,ichan).lt.x(kdim))
+          icell=icell+1
+       enddo
+       ! compute wgt
+       dx=xgrid(icell,kdim,ichan)-xgrid(icell-1,kdim,ichan)
+       vol=vol*dx*nint_used/ifold(kdim)
+    enddo
+  end subroutine get_mint_wgt
   
   subroutine get_random_x(x,vol,kfold)
     implicit none
@@ -872,7 +1632,9 @@ contains
        dx=xgrid(icell(kdim),kdim,ichan)-xgrid(icell(kdim)-1,kdim,ichan)
        vol=vol*dx*nintcurr
        x(kdim)=xgrid(icell(kdim)-1,kdim,ichan)+rand(kdim)*dx
-       if(imode.eq.0) nhits(icell(kdim),kdim,ichan)=nhits(icell(kdim),kdim,ichan)+1
+       if(imode.eq.0.and..not.born_spread_calibrating) &
+            nhits(icell(kdim),kdim,ichan)= &
+            nhits(icell(kdim),kdim,ichan)+1
     enddo
     do k_ord_virt=0,n_ord_virt
        if (use_poly_virtual) then
@@ -1070,7 +1832,8 @@ contains
 
   subroutine reset_mint_grids
     implicit none
-    integer :: kdim,kint
+    integer :: kint
+    call vs_reset
     do kint=0,nint_used
        xgrid(kint,1:ndim,1:nchans)=dble(kint)/nint_used
     enddo
@@ -1100,8 +1863,18 @@ contains
     nit_included=0
     ans(1:nintegrals,0:nchans)=0d0
     unc(1:nintegrals,0:nchans)=0d0
+    iteration_weight_unc=0d0
+    chi2(1:nintegrals,0:nchans)=0d0
     ans3(1:nintegrals,1:3)=0d0
     unc3(1:nintegrals,1:3)=0d0
+    ans_l3(1:nintegrals)=0d0
+    unc_l3(1:nintegrals)=0d0
+    chi2_l3(1:nintegrals)=0d0
+    vtot(1:nintegrals,0:nchans)=0d0
+    etot(1:nintegrals,0:nchans)=0d0
+    ntotcalls(1:nintegrals)=0
+    non_zero_point(1:nintegrals)=0
+    pass_cuts_point=0
     HwU_values(1:2)=0d0
   end subroutine setup_common
   
@@ -1143,6 +1916,7 @@ contains
        write (12,*) 'AVE',virtual_fraction(kchan),average_virtual(0,kchan)
     enddo
     if (use_poly_virtual) call save_polyfit(12)
+    if (VirtTrickSurrogate.ge.1) call vs_write_grids(12,nchans)
     close (12)
   end subroutine write_grids_to_file
   
@@ -1154,8 +1928,23 @@ contains
     integer(kind=8) :: saved_calls
     double precision :: saved_moment
     character(len=3) :: dummy
+    character(len=4096) :: marker
+    logical :: saved_surrogate
     character(len=512) :: channel_info
     open (unit=12, file='mint_grids',status='old')
+    saved_surrogate=.false.
+    call vs_reset
+    do
+       read(12,'(a)',iostat=ios) marker
+       if (ios.lt.0) exit
+       if (ios.ne.0) then
+          write(*,*) 'ERROR: cannot inspect mint_grids.'
+          stop 1
+       endif
+       marker=adjustl(marker)
+       if (marker(1:3).eq.'VSU') saved_surrogate=.true.
+    enddo
+    rewind(12)
     ans(1,0)=0d0
     unc(1,0)=0d0
     do kchan=1,nchans
@@ -1207,6 +1996,9 @@ contains
        call restore_polyfit(12)
        call do_polyfit()
     endif
+    ! Older grids have no VSU rows and keep the grid/polynomial fallback.
+    ! Consume saved rows even when the fitted surrogate has been disabled.
+    if (saved_surrogate) call vs_read_grids(12,nchans,VirtTrickSurrogate.ge.1)
     close (12)
 ! check for zero cross-section: if restoring grids corresponding to
 ! sigma=0, just terminate the run
@@ -1609,11 +2401,10 @@ contains
   subroutine initialize_even_random_numbers
 ! Recompute the number of calls. Uses the algorithm from VEGAS
     implicit none
-    integer :: i
 ! Make sure that hypercubes are newly initialized
     firsttime=.true.
 ! Number of elements in which we can split one dimension
-    ng=(ncalls0/2.)**(1./ndim)
+    ng=int((ncalls0/2.)**(1./ndim))
 ! Total number of hypercubes
     k=ng**ndim
 ! Number of PS points in each hypercube (at least 2)

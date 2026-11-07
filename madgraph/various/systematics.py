@@ -594,7 +594,7 @@ class Systematics(object):
             except RuntimeError:
                 resume.write( '# PDF variation: missing combination\n')
             else:
-                resume.write( '# PDF variation: +%2.3g%% -%2.3g%%\n' % (percent(pdferr.errplus), percent(pdferr.errminus)))       
+                resume.write( '# PDF variation: +%2.3g%% -%2.3g%%\n' % (percent(pdferr.errplus), percent(pdferr.errminus)))
         # report error/central not directly linked to the central
         resume.write( "#\n")        
         for lhapdfid,values in pdfs.items():

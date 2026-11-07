@@ -16,6 +16,17 @@ module FKSParams
               SelectedCouplingOrders(maxCouplingTypes,0:maxCouplingsSelected), &
               QCD_squared_selected
   logical :: separate_flavour_configs,IncludeBornContributions,use_poly_virtual
+  ! Native virtual surrogate: 0 = grid/polynomial, 1 = colour dipoles,
+  ! 2 = colour dipoles and logarithms of all Born pairs (default).
+  integer :: VirtTrickSurrogate=2
+  logical :: MCExplicitKLSum=.true.
+  logical :: MCSubtractionAtFixedFlow=.true.
+  logical :: FKSExplicitSum=.false.
+  logical :: FxFxPythia8FiniteTerms=.false.
+  logical, private :: FxFxPythia8Matching=.false.
+  integer :: FKSFinalRecoil=0
+  integer :: FKSISRMapping=0
+  real*8 :: Pythia8MMaxGamma=10d0
 
 contains
 
@@ -25,7 +36,7 @@ contains
     logical, save :: HasReadOnce=.False.,paramPrinted=.false.
     logical :: force,couldRead,printParam
     character(*) :: filename
-    CHARACTER(len=64) :: buff, buff2, mode
+    CHARACTER(len=64) :: buff
     include "orders.inc"
     integer :: i,j
     couldRead=.False.
@@ -77,8 +88,41 @@ contains
              endif
           else if (buff .eq. '#SeparateFlavourConfigurations') then
              read(68,*,end=999) separate_flavour_configs
+          else if (buff .eq. '#FKSISRMapping') then
+             read(68,*,end=999) FKSISRMapping
+             if (FKSISRMapping.lt.0.or.FKSISRMapping.gt.2) then
+                write(*,*) 'FKSISRMapping must be 0, 1 or 2.'
+                stop 1
+             endif
+          else if (buff .eq. '#FKSFinalRecoil') then
+             read(68,*,end=999) FKSFinalRecoil
+             if (FKSFinalRecoil.lt.0.or.FKSFinalRecoil.gt.2) then
+                write(*,*) 'FKSFinalRecoil must be 0, 1 or 2.'
+                stop 1
+             endif
+          else if (buff .eq. '#Pythia8MMaxGamma') then
+             read(68,*,end=999) Pythia8MMaxGamma
+             if (.not.(Pythia8MMaxGamma.ge.0.001d0.and. &
+                       Pythia8MMaxGamma.le.5000d0)) then
+                write(*,*) 'Pythia8MMaxGamma must be between 0.001 and 5000 GeV.'
+                stop 1
+             endif
+          else if (buff .eq. '#MCExplicitKLSum') then
+             read(68,*,end=999) MCExplicitKLSum
+          else if (buff .eq. '#MCSubtractionAtFixedFlow') then
+             read(68,*,end=999) MCSubtractionAtFixedFlow
+          else if (buff .eq. '#FxFxPythia8FiniteTerms') then
+             read(68,*,end=999) FxFxPythia8FiniteTerms
+          else if (buff .eq. '#FKSExplicitSum') then
+             read(68,*,end=999) FKSExplicitSum
           else if (buff .eq. '#UsePolyVirtual') then
              read(68,*,end=999) use_poly_virtual
+          else if (buff .eq. '#VirtTrickSurrogate') then
+             read(68,*,end=999) VirtTrickSurrogate
+             if (VirtTrickSurrogate.lt.0.or.VirtTrickSurrogate.gt.2) then
+                write(*,*) 'VirtTrickSurrogate must be 0, 1 or 2.'
+                stop 1
+             endif
           else if (buff .eq. '#VetoedContributionTypes') then
              read(68,*,end=999) VetoedContributionTypes(0)
              if (VetoedContributionTypes(0) .lt. 0.or. &
@@ -205,6 +249,14 @@ contains
        write(*,*) ' > MinVirtualFraction        = ',Min_virt_fraction
        write(*,*) ' > SeparateFlavourConfigs    = ',separate_flavour_configs
        write(*,*) ' > UsePolyVirtual            = ',use_poly_virtual
+       write(*,*) ' > VirtTrickSurrogate        = ',VirtTrickSurrogate
+       write(*,*) ' > FKSFinalRecoil            = ',FKSFinalRecoil
+       write(*,*) ' > FKSISRMapping             = ',FKSISRMapping
+       write(*,*) ' > Pythia8MMaxGamma           = ',Pythia8MMaxGamma
+       write(*,*) ' > MCExplicitKLSum           = ',MCExplicitKLSum
+       write(*,*) ' > MCSubtractionAtFixedFlow  = ',MCSubtractionAtFixedFlow
+       write(*,*) ' > FKSExplicitSum            = ',FKSExplicitSum
+       write(*,*) ' > FxFxPythia8FiniteTerms     = ',FxFxPythia8FiniteTerms
        write(*,*) &
             '==============================================================='
        paramPrinted=.TRUE.
@@ -228,6 +280,14 @@ contains
     Min_virt_fraction=0.005d0
     separate_flavour_configs=.false.
     use_poly_virtual=.true.
+    VirtTrickSurrogate=2
+    FKSFinalRecoil=0
+    FKSISRMapping=0
+    Pythia8MMaxGamma=10d0
+    MCExplicitKLSum=.true.
+    MCSubtractionAtFixedFlow=.true.
+    FKSExplicitSum=.false.
+    FxFxPythia8FiniteTerms=.false.
     IncludeBornContributions=.true.
     SelectedContributionTypes(0)=0
     VetoedContributionTypes(0)=0
@@ -244,5 +304,64 @@ contains
        enddo
     enddo
   end subroutine DefaultFKSParam
+
+
+  subroutine configure_fxfx_sudakov(ickkw,nlo_ps,shower,printParam)
+    ! The run context is separate from the card so a later card read cannot
+    ! disable the finite terms required by FxFx with Pythia8 matching.
+    implicit none
+    integer, intent(in) :: ickkw
+    logical, intent(in) :: nlo_ps
+    character(*), intent(in) :: shower
+    logical, intent(in), optional :: printParam
+    FxFxPythia8Matching=ickkw.eq.3.and.nlo_ps.and.trim(shower).eq.'PYTHIA8'
+    if (present(printParam)) then
+       if (printParam.and.FxFxPythia8Matching) then
+          write(*,*) 'FxFx with PYTHIA8 matching: finite Sudakov terms enabled automatically.'
+       endif
+    endif
+  end subroutine configure_fxfx_sudakov
+
+  logical function use_fxfx_finite_terms()
+    implicit none
+    use_fxfx_finite_terms=FxFxPythia8FiniteTerms.or.FxFxPythia8Matching
+  end function use_fxfx_finite_terms
+
+  integer function get_fks_isr_mapping(nlo_ps,shower) result(mapping)
+    ! Resolve run settings on every entry so forward/inverse maps agree,
+    ! including diagnostics which read the FKS card after setrun.
+    implicit none
+    logical, intent(in) :: nlo_ps
+    character(*), intent(in) :: shower
+    select case (FKSISRMapping)
+    case (0)
+       ! Preserve the current default: controlled fixed-order comparisons
+       ! do not establish a variance benefit from reverting globally.
+       mapping=2
+    case (1,2)
+       mapping=FKSISRMapping
+    case default
+       write(*,*) 'FKSISRMapping must be 0, 1 or 2.'
+       stop 1
+    end select
+    if (mapping.eq.1.and.nlo_ps) then
+       write(*,*) 'FKSISRMapping=1 (symmetric) is not supported with ',trim(shower),' matching.'
+       write(*,*) 'Use FKSISRMapping=0 (automatic) or 2 (asymmetric), or run at fixed order.'
+       stop 1
+    endif
+  end function get_fks_isr_mapping
+
+  subroutine print_fks_isr_mapping(nlo_ps,shower)
+    implicit none
+    logical, intent(in) :: nlo_ps
+    character(*), intent(in) :: shower
+    integer mapping
+    mapping=get_fks_isr_mapping(nlo_ps,shower)
+    if (mapping.eq.1) then
+       write(*,*) 'FKS ISR mapping: symmetric'
+    else
+       write(*,*) 'FKS ISR mapping: asymmetric'
+    endif
+  end subroutine print_fks_isr_mapping
 
 end module FKSParams

@@ -92,7 +92,7 @@ $ion_pdf
                               ! lepton ISR
 #***********************************************************************
 # Include the NLO Monte Carlo subtr. terms for the following parton    *
-# shower (HERWIG6 | HERWIGPP | PYTHIA6Q | PYTHIA6PT | PYTHIA8)         *
+# shower (HERWIG6 | HERWIG7 | PYTHIA6Q | PYTHIA6PT | PYTHIA8)          *
 # WARNING: PYTHIA6PT works only for processes without FSR!!!!          *
 #***********************************************************************
   %(parton_shower)s   = parton_shower
@@ -144,9 +144,6 @@ $ion_pdf
 #   3: FxFx Merging - WARNING! Applies merging only at the hard-event  *
 #      level. After showering an MLM-type merging should be applied as *
 #      well. See http://amcatnlo.cern.ch/FxFx_merging.htm for details. *
-#   4: UNLOPS merging (with pythia8 only). No interface from within    *
-#      MadGraph7 available, but available in Pythia8.                    *
-#  -1: NNLL+NLO jet-veto computation. See arxiv:1412.8408 [hep-ph].    *
 #***********************************************************************
  %(ickkw)s        = ickkw
 #***********************************************************************
@@ -221,5 +218,6 @@ $ion_pdf
 # three variables. Typically, folding in xi_i or y_ij results in the   *
 # largest reduction of negatively weighted events. (arXiv:2002.12716)  *
 #***********************************************************************
+ %(born_spreading)s = born_spreading ! Fit a normalized 40x40 table in step 0 (adds 1M calibration points)
  %(folding)s = folding ! correspond to folding in xi_i, y_ij, and phi_i
 #***********************************************************************

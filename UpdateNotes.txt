@@ -5,6 +5,67 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   RF: Remove UNLOPS merging and NNLL+NLO jet-veto resummation, including their
+       dedicated cuts, clustering, reweighting utilities, PDF grids and LHE
+       records. NLO runs now accept only ickkw=0 (no merging) and ickkw=3 (FxFx);
+       cards selecting removed modes are rejected.
+   RF: Refactor MC@NLO subtraction around native labelled matching histories and
+       an output-wide BornSupport library. Equivalent Born evaluators share
+       amplitudes, helicity sums and colour/spin correlations, with explicit
+       transfers of model parameters, momenta and subprocess metadata. Native
+       histories retain their own Born projections, PDFs, damping and weights.
+       The FKS_params.dat controls MCExplicitKLSum, FKSExplicitSum and
+       MCSubtractionAtFixedFlow select complete inner matching-history sums,
+       outer FKS-sector sums and subtraction at the sampled event colour flow.
+   RF: Split FKS phase-space generation into typed Born/real/counterevent state,
+       sampling and forward/inverse radiation maps. Native Born projections,
+       subtraction, recoil and event writing use the same kinematic state.
+       Resonance channels use local recoil with analytic maps and Jacobians.
+       FKSFinalRecoil=1 or 2 selects a massless incoming parton with a hadronic
+       PDF as recoiler at fixed order; this option is unavailable for MC@NLO.
+   RF: Compute MC@NLO-Delta shower scales in native Fortran, removing the
+       Pythia-backed runtime dependency of the matching integrator. Update
+       shower-scale, event-colour and Sudakov bookkeeping, including massive
+       radiators, Pythia 8.318/FxFx patches and Herwig7 integration, configured
+       through herwig7_path.
+   RF: Add optional born_spreading in the NLO run_card, fitting a normalized
+       Born radiation distribution to reduce negative S-event weights. Fits
+       are validated before use and saved per FKS sector. Add the fitted
+       virtual surrogate controlled by VirtTrickSurrogate: 0 retains the
+       grid/polynomial, 1 uses colour dipoles and 2 also uses Born-pair logs.
+   RF: Preserve MadGraph7 polarisation and me_frame choices through native Born
+       and real evaluation. Born helicity masks follow the model, context and
+       requested frame; shared real caches restore diagram weights as well as
+       split-order results. Mixed QCD/QED Born amplitudes retain their separate
+       strong-coupling powers when cached amplitudes are rescaled.
+       Model snapshots now contain only used point-dependent parameters and
+       numerical couplings, selected using the model converter's dependency
+       metadata and reads in the generated evaluators. Used fixed inputs are
+       installed once per model configuration; card/coupling reinitialization
+       refreshes that configuration and invalidates dependent caches. Running
+       external parameters are included, and unused model inputs are omitted.
+   RF: Propagate MINT integration uncertainties with the actual iteration
+       weights, including individual channels and the last-three-iteration
+       estimate. Retain the existing central-value and histogram weights;
+       accuracy-driven runs can need more iterations with the corrected error.
+       Handle zero signed estimates and zero-error channels in these updates.
+   RF: Use scalar virtual fits only with one Born normalizer matching the fit.
+       Other order combinations retain the per-order grid/polynomial, avoiding
+       excessive virtual sampling with mixed QCD/EW corrections. Protect the
+       virtual-to-Born diagnostic when the Born contribution is zero.
+   RF: Add massive/QED subtraction and shower-support checks. Experimental NLO
+       QED shower launches require --allow_qed_ps; QED Delta/FxFx matching and
+       shower channels excluded by the support checks remain unsupported.
+       PYTHIA6PT final-state radiation is rejected before compilation, using
+       radiation flags from the retained FKS sectors, including multicore
+       generation. ISR-only PYTHIA6PT, fixed order and offline reweighting keep
+       their existing availability.
+   RF: Regenerate existing NLO process outputs for the new BornSupport library,
+       metadata and Fortran modules. Refit older Born-spreading sidecars from
+       integration step 0. Add compiled native/history/frame regressions,
+       mixed-order cache and shower checks, and MadGraph7-compatible CI setup.
+       Remove branch-added documentation/audit artifacts and fxfx_diagnostics;
+       manual historical replay tools accept external provenance inputs.
    OM: bin/madgraph, bin/madevent, bin/aMCatNLO and bin/generate_events (madevent, aMC@NLO
        and mg7 outputs) no longer read their commands, or the answers to the questions of
        a command given on the command line, from a pipe or a redirected file (e.g.
@@ -288,6 +349,11 @@ ANNOUNCEMENT:
     HS+LM+LS: P-Wave Support for Quarkonium/Leptonium (2607.26739)
 
     Bug Fixes:
+        OM: MadLoop: disable helicity filtering for all 2>1 and 1>2 processes.
+            A filter learned in the c.m. frame can discard nonzero helicities in
+            another frame, giving an incorrect virtual contribution in standalone,
+            OLP or boosted reweighting calls. The aMC@NLO virtual is evaluated in
+            the Born c.m. frame and is unaffected.
         OM: Bug fix custom files for cuts/scale/... were broken for NLO computation
             since 3.6.0
         OM: Bug fix (since 3.6.0) for rapidity cut in asymmetric collision 

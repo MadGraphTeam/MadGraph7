@@ -73,8 +73,8 @@ c put momenta in common block for couplings.f
       logical firsttime
       data firsttime/.true./
 
-      call cpu_time(tBefore)
 c
+      if(timing_sampled)call timing_enter(timing_scales)
       if (firsttime) then
         firsttime=.false.
 c Set scales and check that everything is all right
@@ -151,11 +151,10 @@ c Pass momenta to couplings.f
 cc         call setpara('param_card.dat')
       endif
 
-      call cpu_time(tAfter)
-      t_coupl=t_coupl+(tAfter-tBefore)
       
  200  format(1x,a,2(1x,d12.6),2x,f4.2)
 
+      if(timing_sampled)call timing_leave(timing_scales)
       return
       end
 
@@ -181,18 +180,9 @@ c the value of variable scale in common block /to_scale/
 c this is to avoid too low dynamic scales      
       double precision minscaleR
       parameter (minscaleR=2d0)
-c scale passed to the model: the extra running scale (muprime of the
-c running Wilson coefficients) follows muR through it
+c Running Wilson coefficients use the same model scale as alphaS.
       double precision model_scale
       common /model_scale/model_scale
-c After recomputing alphaS, be sure to set 'calculatedBorn' to false
-      logical calculatedBorn
-      common/ccalculatedBorn/calculatedBorn
-c the flag asking the Born to check its cached amplitudes (couplings
-c and momenta) before reusing them, and whether the Born does such a
-c check (set by the Born; false for a Born that does not)
-      logical check_born_amps, born_checks_amps
-      common/c_born_amps_check/check_born_amps,born_checks_amps
 c
       temp_scale_id='  '
       if(fixed_ren_scale)then
@@ -210,20 +200,6 @@ c The following is for backward compatibility. DO NOT REMOVE
       g=sqrt(4d0*pi*alphas(scale))
       model_scale=muR
       call update_as_param()
-c Reset calculatedBorn, because the couplings might have been changed.
-c This is needed in particular for the MC events, because there the
-c coupling should be set according to the real-emission kinematics,
-c even when computing the Born matrix elements.
-c A Born that checks its cached amplitudes (born_checks_amps) does not
-c need this: the next time it is called it compares the couplings it
-c uses and the momenta with the ones of its cached amplitudes. If only
-c alpha_S changed it rescales them by the power of g of each amplitude
-c (gscale), otherwise it recomputes them if any differ.
-      if (born_checks_amps) then
-        check_born_amps=.true.
-      else
-        calculatedBorn=.false.
-      endif
 c
       return
       end
@@ -256,10 +232,11 @@ c for 'geometric mean'
       double precision rfj,sycut,palg,amcatnlo_fastjetdmergemax
      &     ,tmp1,tmp2,xm2
 c FxFx
+      double precision FxFx_ren_scales(0:nexternal),
+     $                 FxFx_fac_scale(2)
       integer nFxFx_ren_scales
-      double precision FxFx_ren_scales(0:nexternal),FxFx_fac_scale(2)
-      common/c_FxFx_scales/FxFx_ren_scales,nFxFx_ren_scales
-     $     ,FxFx_fac_scale
+      common/c_FxFx_scales/FxFx_fac_scale,FxFx_ren_scales
+     $                    ,nFxFx_ren_scales
       integer bpower
 c
       tmp=0
@@ -428,17 +405,18 @@ c a scale to be used as a reference for factorizations scales
       include 'nexternal.inc'
       include 'run.inc'
       double precision muF_ref_dynamic,pp(0:3,nexternal)
-      double precision tmp,scale_global_reference,pt,et,dot,xm2,sumdot
+      double precision tmp,scale_global_reference,pt,et,dot,sumdot
       external pt,et,dot,sumdot
       character*80 temp_scale_id
       common/ctemp_scale_id/temp_scale_id
       integer i,imuftype
       parameter (imuftype=1)
 c FxFx
+      double precision FxFx_ren_scales(0:nexternal),
+     $                 FxFx_fac_scale(2)
       integer nFxFx_ren_scales
-      double precision FxFx_ren_scales(0:nexternal),FxFx_fac_scale(2)
-      common/c_FxFx_scales/FxFx_ren_scales,nFxFx_ren_scales
-     $     ,FxFx_fac_scale
+      common/c_FxFx_scales/FxFx_fac_scale,FxFx_ren_scales
+     $                    ,nFxFx_ren_scales
 c
       tmp=0
       if(ickkw.eq.3)then
@@ -475,8 +453,6 @@ c (Ellis-Sexton scale squared) in common block /COUPL_ES/
       include 'q_es.inc'
       double precision pp(0:3,nexternal),QES
       double precision QES_temp,QES_ref_dynamic
-      double precision pi
-      parameter (pi=3.14159265358979323846d0)
       character*80 muR_id_str,muF1_id_str,muF2_id_str,QES_id_str
       common/cscales_id_string/muR_id_str,muF1_id_str,
      #                         muF2_id_str,QES_id_str
@@ -549,22 +525,17 @@ c a scale to be used as a reference for renormalization scale
       include 'genps.inc'
       include 'nexternal.inc'
       include 'run.inc'
-      include 'cuts.inc'
       double precision scale_global_reference,pp(0:3,nexternal)
-      double precision tmp,pt,et,dot,xm2,sumdot,xmt2,ptmp(0:3)
+      double precision tmp,pt,et,dot,sumdot
       external pt,et,dot,sumdot
-      integer i,j
+      integer i
       character*80 temp_scale_id
       common/ctemp_scale_id/temp_scale_id
       double precision user_dynamical_scale
       external user_dynamical_scale
 c
       tmp=0
-      if(ickkw.eq.-1)then
-c Special for analytic resummation in veto'ed cross sections:
-         tmp=ptj
-         temp_scale_id='NLO+NNLL veto scale: ptj_max'
-      elseif(dynamical_scale_choice.eq.1) then
+      if(dynamical_scale_choice.eq.1) then
 c         Total transverse energy of the event.         
           tmp=0d0
           do i=3,nexternal
