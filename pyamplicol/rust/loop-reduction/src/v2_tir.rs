@@ -50,7 +50,8 @@
 //! **Carriers and gates.** One plan per (propagators, rank) serves every
 //! carrier; each carrier has its own workspaces (MPFR one per precision).
 //! Every row goes first through the conditioning gates of the carrier's
-//! workspace. Binary64 keeps TIRust's own default gate. The extended carriers
+//! workspace ([`TirOptions::gate`], by default TIRust's own binary64 gate).
+//! The extended carriers
 //! (double-double, MPFR) would otherwise inherit that binary64-tuned value
 //! at every precision (lit-tirust-io's interface note): their gate is the
 //! binary64 one carried to the carrier's precision, `g^(p / 53)` for a
@@ -166,10 +167,12 @@ pub struct TirOptions {
     /// The same for the extended carriers (double-double, MPFR); default
     /// off (not measured there: their gate-refused rows fail closed).
     pub extended_method_choice: bool,
-    /// The binary64 conditioning gate of the first pass: TIRust's direct
-    /// engine default (1e-12; `EmbedderOptions::gate` `None`, not a public
-    /// constant at this pin). Binary64 runs on TIRust's own default; the
-    /// extended carriers take it to their precision ([`carrier_gate`]).
+    /// The binary64 conditioning gate of the first pass, set on every
+    /// carrier's gates workspace: by default TIRust's direct engine default
+    /// (1e-12, `DirectExecutor`'s `stability_threshold`; not a public
+    /// constant at this pin, so the value is repeated here). Binary64 takes
+    /// it as it is; the extended carriers take it to their precision
+    /// ([`carrier_gate`]).
     pub gate: f64,
     /// The binary64 conditioning gate of the method-choice pass: TIRust's
     /// facade gate of its checked lanes (`dispatch/direct_hybrid.rs`
@@ -362,10 +365,17 @@ impl TirCarrier for Float {
 }
 
 /// A plan's workspaces in one carrier: the conditioning gates' and the
-/// method choice's, each built on first use.
+/// method choice's, each built on first use; with a tensor store
+/// ([`TirOptions::store`]) also both for the check passes, which take no
+/// store (a check pass in another frame or order recomputes every integral,
+/// so it never reads the primary pass's entries and keeps seeing their
+/// rounding; TIRust's rotation copy inside a primary call reads none
+/// either, its `check_view`).
 pub struct Slots<T: Carrier> {
     gates: Option<DirectWorkspace<T>>,
     choice: Option<DirectWorkspace<T>>,
+    check_gates: Option<DirectWorkspace<T>>,
+    check_choice: Option<DirectWorkspace<T>>,
 }
 
 impl<T: Carrier> Default for Slots<T> {
@@ -373,6 +383,8 @@ impl<T: Carrier> Default for Slots<T> {
         Self {
             gates: None,
             choice: None,
+            check_gates: None,
+            check_choice: None,
         }
     }
 }
@@ -431,10 +443,13 @@ impl Bin {
     }
 
     /// The carrier's gates (or, with `choice`, method-choice) workspace,
-    /// built on first use at the precision of `prototype`.
+    /// built on first use at the precision of `prototype`; with a `store`,
+    /// a `check` pass's own workspace without it ([`Slots`]; without a store
+    /// a check pass shares the primary pass's workspaces).
     fn workspace<T: TirCarrier>(
         &mut self,
         choice: bool,
+        check: bool,
         options: &TirOptions,
         prototype: &T,
         store: Option<&TensorStore>,
@@ -444,10 +459,13 @@ impl Bin {
     {
         let bits = prototype.get_precision();
         let slots = T::slots(&mut self.workspaces, bits);
-        let slot = if choice {
-            &mut slots.choice
-        } else {
-            &mut slots.gates
+        let check = check && store.is_some();
+        let store = if check { None } else { store };
+        let slot = match (choice, check) {
+            (false, false) => &mut slots.gates,
+            (true, false) => &mut slots.choice,
+            (false, true) => &mut slots.check_gates,
+            (true, true) => &mut slots.check_choice,
         };
         if slot.is_none() {
             let settings = self.plan.settings();
@@ -471,13 +489,14 @@ impl Bin {
             if store.is_some() {
                 workspace.set_tensor_store(store);
             }
-            let binary64 = bits == f64::MANTISSA_DIGITS;
             if choice {
                 let gate = gate_in(prototype, options.method_choice_gate);
                 workspace.set_stability_threshold(gate.clone());
                 workspace.enable_estimated_method_choice(options.expansion_boost, gate);
                 workspace.set_alternative_first(options.alternative_first);
-            } else if !binary64 {
+            } else {
+                // Every carrier from the option (binary64: the option's value
+                // itself, TIRust's own default 1e-12 by default).
                 workspace.set_stability_threshold(gate_in(prototype, options.gate));
             }
             *slot = Some(workspace);
@@ -538,9 +557,10 @@ struct Counters {
     /// (masters reused / computed, sub-integrals reused / computed, moments
     /// reused / computed).
     store: Option<[u64; 6]>,
-    /// [`TirOptions::masters_census`]: the store's master misses and those
-    /// repeating an earlier miss up to `MasterCache`'s relabellings.
-    census: Option<[u64; 2]>,
+    /// [`TirOptions::masters_census`]: per master family (tadpole, bubble,
+    /// triangle, box) the store's master misses and those repeating an
+    /// earlier miss of the chunk up to the census's relabellings.
+    census: Option<[[u64; 2]; 4]>,
 }
 
 impl Counters {
@@ -548,10 +568,12 @@ impl Counters {
     /// and the census's ([`TirOptions::masters_census`]).
     fn store(&mut self, store: &TensorStore, census: Option<&MastersCensus>) {
         if let Some(census) = census {
-            let (misses, repeats) = census.take();
-            let total = self.census.get_or_insert([0; 2]);
-            total[0] += misses;
-            total[1] += repeats;
+            let counts = census.take();
+            let total = self.census.get_or_insert([[0; 2]; 4]);
+            for (t, c) in total.iter_mut().zip(counts) {
+                t[0] += c[0];
+                t[1] += c[1];
+            }
         }
         let s = store.statistics();
         let counts = [
@@ -587,7 +609,12 @@ impl Counters {
 }
 
 /// [`TirOptions::masters_census`]: the store's master misses of a chunk, by
-/// canonical argument bits, and the counts (misses, canonical repeats).
+/// canonical argument bits, and per master family the counts (misses,
+/// canonical repeats). The relabellings are `MasterCache`'s for the
+/// triangle and the box (`canonical_master_row`) and the exchange of the two
+/// masses for the bubble, which the scalar B0 TIRust requests is symmetric
+/// under (`MasterCache` keys its bubbles by argument order: their tensor
+/// coefficients are not symmetric); a tadpole has none.
 #[derive(Default)]
 struct MastersCensus {
     state: std::sync::Mutex<CensusState>,
@@ -598,19 +625,44 @@ struct MastersCensus {
 #[derive(Default)]
 struct CensusState {
     seen: std::collections::HashSet<(u8, Vec<u64>)>,
-    misses: u64,
-    repeats: u64,
+    /// Per family code (0 tadpole, 1 bubble, 2 triangle, 3 box): misses,
+    /// repeats.
+    counts: [[u64; 2]; 4],
 }
 
 impl MastersCensus {
-    /// The counts since the last call, and a new chunk.
-    fn take(&self) -> (u64, u64) {
+    /// The counts per family since the last call, and a new chunk.
+    fn take(&self) -> [[u64; 2]; 4] {
         let mut state = self.state.lock().expect("census");
-        let counts = (state.misses, state.repeats);
+        let counts = state.counts;
         *state = CensusState::default();
         counts
     }
 }
+
+/// The census counts' names: the totals, then per family.
+const CENSUS_NAMES: [[&str; 2]; 5] = [
+    [
+        "TIR masters census: store misses",
+        "TIR masters census: canonical repeats",
+    ],
+    [
+        "TIR masters census: tadpole store misses",
+        "TIR masters census: tadpole canonical repeats",
+    ],
+    [
+        "TIR masters census: bubble store misses",
+        "TIR masters census: bubble canonical repeats",
+    ],
+    [
+        "TIR masters census: triangle store misses",
+        "TIR masters census: triangle canonical repeats",
+    ],
+    [
+        "TIR masters census: box store misses",
+        "TIR masters census: box canonical repeats",
+    ],
+];
 
 impl MasterProvider for MastersCensus {
     fn master(
@@ -646,9 +698,9 @@ impl MasterProvider for MastersCensus {
             .flat_map(|z| [z.re.to_bits(), z.im.to_bits()])
             .collect();
         let mut state = self.state.lock().expect("census");
-        state.misses += 1;
+        state.counts[usize::from(code)][0] += 1;
         if !state.seen.insert((code, bits)) {
-            state.repeats += 1;
+            state.counts[usize::from(code)][1] += 1;
         }
         None
     }
@@ -777,6 +829,14 @@ impl TirReductionBackend {
         bits: u32,
         options: TirOptions,
     ) -> RusticolResult<Self> {
+        if options.masters_census && !options.store {
+            // The census counts the store's misses: without the store there
+            // is nothing to count (never a silently ignored option).
+            return Err(RusticolError::invalid_argument(
+                "TIRust's masters census (masters_census) counts the tensor store's \
+                 master misses: it needs the store (store=True)",
+            ));
+        }
         let mut backend = Self::new(options);
         backend.prepare(families, bits)?;
         Ok(backend)
@@ -856,7 +916,7 @@ impl TirReductionBackend {
                     "TIR method-choice lanes refused by their check",
                     c.unverified,
                 ),
-                ("TIR master evaluations", c.masters),
+                ("TIR master requests", c.masters),
             ]
             .into_iter()
             .chain(c.store.into_iter().flat_map(|[mr, mc, sr, sc, or, oc]| {
@@ -869,11 +929,15 @@ impl TirReductionBackend {
                     ("TIR store moments computed", oc),
                 ]
             }))
-            .chain(c.census.into_iter().flat_map(|[misses, repeats]| {
-                [
-                    ("TIR masters census: store misses", misses),
-                    ("TIR masters census: canonical repeats", repeats),
-                ]
+            .chain(c.census.into_iter().flat_map(|families| {
+                let total = families
+                    .iter()
+                    .fold([0; 2], |[m, r], [fm, fr]| [m + fm, r + fr]);
+                std::iter::once(total)
+                    .chain(families)
+                    .zip(CENSUS_NAMES)
+                    .flat_map(|([misses, repeats], [m, r])| [(m, misses), (r, repeats)])
+                    .collect::<Vec<_>>()
             }))
             .collect(),
         }
@@ -956,7 +1020,11 @@ impl TirReductionBackend {
                 components: 1,
                 values,
             };
-            let workspace = bin.workspace(false, &options, prototype, self.store.as_ref())?;
+            // A pass in another frame than the direct one is a check pass
+            // (the call's check, the method-choice acceptance).
+            let check = frame.is_some();
+            let workspace =
+                bin.workspace(false, check, &options, prototype, self.store.as_ref())?;
             let (result, copied) = match copy {
                 Some(rotation) => {
                     let (result, copied) = workspace
@@ -1017,7 +1085,8 @@ impl TirReductionBackend {
                 .filter(|k| refused.binary_search(k).is_err())
                 .collect();
             if let (false, Some(rotation), Some(copies)) = (both.is_empty(), copy, &mut copies) {
-                let workspace = bin.workspace(true, &options, prototype, self.store.as_ref())?;
+                let workspace =
+                    bin.workspace(true, check, &options, prototype, self.store.as_ref())?;
                 let (result, copied) = workspace
                     .reduce_batch_with_rotation(&retry(&both), rotation)
                     .map_err(tirust)?;
@@ -1030,7 +1099,8 @@ impl TirReductionBackend {
                 retried(&copied, &rows, position, &[], copies, c);
             }
             if !alone.is_empty() {
-                let workspace = bin.workspace(true, &options, prototype, self.store.as_ref())?;
+                let workspace =
+                    bin.workspace(true, check, &options, prototype, self.store.as_ref())?;
                 let result = workspace.reduce_batch(&retry(&alone)).map_err(tirust)?;
                 self.counters.call(workspace, options.profile);
                 let flagged = workspace.last_gram_lanes().to_vec();
@@ -1045,7 +1115,10 @@ impl TirReductionBackend {
                     .plan
                     .rotated_batch(&retry(&copy_alone), rotation)
                     .map_err(tirust)?;
-                let workspace = bin.workspace(true, &options, prototype, self.store.as_ref())?;
+                // The copy rows refused alone: a check computation of their
+                // own (the check pass's workspace).
+                let workspace =
+                    bin.workspace(true, true, &options, prototype, self.store.as_ref())?;
                 let result = workspace.reduce_batch(&rotated).map_err(tirust)?;
                 self.counters.call(workspace, options.profile);
                 let flagged = workspace.last_gram_lanes().to_vec();
@@ -1184,7 +1257,28 @@ impl TirReductionBackend {
                 FrameMap::<T>::new(Some(frame), g.propagators, g.shifts.first())
             };
             let check_map = checked.as_ref().zip(check_frame).map(|(_, f)| frame_map(f));
-            let acceptance_map = accepted[r].map(|_| frame_map(acceptance));
+            // A method-choice row's acceptance moments taken back to the
+            // direct frame once per row (`FrameMap::moments`, the transpose
+            // of the lanes' re-expansion, with the frame's undo): each lane
+            // then contracts its own coefficients with them.
+            let acceptance_moments = accepted[r].map(|other| {
+                other
+                    .moments
+                    .as_ref()
+                    .map(|m| {
+                        let mut moments =
+                            frame_map(acceptance).moments(&m.values, row.rank, &other.origin);
+                        if let Some(factor) = &other.undo {
+                            for slot in &mut moments {
+                                for v in slot.iter_mut() {
+                                    *v = v.clone() * factor;
+                                }
+                            }
+                        }
+                        moments
+                    })
+                    .map_err(Clone::clone)
+            });
             for lane in row.start..row.end {
                 let c = &g.coefficients[lane * declared..lane * declared + monomials];
                 let value = first
@@ -1217,10 +1311,13 @@ impl TirReductionBackend {
                         // moments carry, whatever the call's pole mode, so
                         // that a lane is served or refused alike in every
                         // mode (its finite part identical, ADDENDUM I).
-                        let other = accepted[r].expect("a method-choice row's acceptance row");
-                        let map = acceptance_map.as_ref().expect("its frame");
+                        let second = acceptance_moments
+                            .as_ref()
+                            .expect("a method-choice row's acceptance row")
+                            .as_ref()
+                            .map(|moments| contract(moments, c, SLOTS));
                         let full = contract(&m.values, c, SLOTS);
-                        match in_frame(other, map, SLOTS) {
+                        match second {
                             Ok(second) => {
                                 let scale = term_scale(&m.values, c, SLOTS);
                                 let deviation = full
