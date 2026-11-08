@@ -95,6 +95,30 @@ def _relative(value, reference):
     return abs(complex(value) - complex(reference)) / abs(complex(reference))
 
 
+def _served_by(result):
+    """The backend that served each point of an "auto" result (m-lit F3:
+    TIRust for loop-induced processes; a point TIRust refuses or fails is
+    the per-point fallback's, NinjaRS, its lane recording the reason)."""
+
+    out = []
+    for lane in result.diagnostics:
+        record = lane.reduction
+        assert record.requested == "auto"
+        if record.effective == "ninjars":
+            assert record.reason.startswith("auto: NinjaRS, the per-point fallback: ")
+        else:
+            assert (record.effective, record.fallback) == ("tirust", "ninjars")
+        out.append(record.effective)
+    return out
+
+
+def _tirust_or_fallback(explicit):
+    """Per point the backend "auto" takes: TIRust where the explicit TIRust
+    call (``on_failure="return"``) serves the point, else NinjaRS."""
+
+    return ["tirust" if value is not None else "ninjars" for value in explicit.values]
+
+
 # ------------------------------------------------------------------ units
 
 
@@ -280,6 +304,10 @@ def test_colour_and_spin_correlations_equal_recola(artifacts, name):
     )
     total = [values[0].finite for values in many["born"].values]
     assert many["born"].contribution == "loop-induced"
+    # "auto" at the default target: TIRust serves every fixture point (u u~
+    # > h g g point 0's method-choice lanes, ~1.2e-9 of their term scale,
+    # are within its calibrated acceptance).
+    assert _served_by(many["born"]) == ["tirust"] * len(points)
     worst = 0.0
     for row in reference["rows"]:
         p = row["point"]
@@ -552,10 +580,11 @@ def test_a_permutation_alias_reads_the_representative(artifacts):
     member = [[point[permutation[k]] for k in range(len(point))] for point in points]
     representative = _runtime(artifacts, name)
     alias = Runtime.load(artifacts[name], process="p_swap")
-    assert (
-        alias.evaluate(member, mu_r2=scales).values
-        == representative.evaluate(points, mu_r2=scales).values
-    )
+    own = representative.evaluate(points, mu_r2=scales)
+    swapped = alias.evaluate(member, mu_r2=scales)
+    assert swapped.values == own.values
+    # Point 0 on TIRust for both (its lanes within the default acceptance).
+    assert _served_by(own) == _served_by(swapped) == ["tirust"]
     row = _recola(name)["rows"][13]
     assert row["kind"] == "sc" and row["legs"] == [4] and row["point"] == 0
     vector = _spin(row["vector"])
@@ -734,6 +763,22 @@ def test_correlated_outputs_in_double_double_and_with_estimates(artifacts):
     inclusive = runtime.evaluate(points, mu_r2=scales, stability_checks=recommended)
     assert checked["born"].values == inclusive.values
     assert checked["born"].stability == inclusive.stability
+    # Without checks TIRust serves every point, in binary64 and
+    # double-double; with them a point whose check rows TIRust refuses is the
+    # per-point fallback's (NinjaRS), on both routes alike.
+    assert _served_by(double["born"]) == _served_by(dd["born"]) == ["tirust"] * 3
+    explicit = runtime.evaluate(
+        points,
+        mu_r2=scales,
+        stability_checks=recommended,
+        reduction="tirust",
+        on_failure="return",
+    )
+    assert (
+        _served_by(checked["born"])
+        == _served_by(inclusive)
+        == _tirust_or_fallback(explicit)
+    )
     for key in requests:
         assert len(checked[key].stability) == len(points)
         for p, estimate in enumerate(checked[key].stability):
@@ -764,6 +809,15 @@ def test_the_both_backends_checks_cover_the_amplitude_basis_anchors(artifacts):
     options = {"mu_r2": scales, "color_resolution": "amplitude-basis"}
     dd = runtime.evaluate_resolved(points, arithmetic="double-double", **options)
     checked = runtime.evaluate_resolved(points, stability_checks=checks(), **options)
+    explicit = runtime.evaluate_resolved(
+        points,
+        stability_checks=checks(),
+        reduction="tirust",
+        on_failure="return",
+        **options,
+    )
+    assert _served_by(checked) == _tirust_or_fallback(explicit)
+    assert _served_by(dd) == ["tirust"] * len(points)
     for p, estimates in enumerate(checked.stability):
         for h, row in enumerate(estimates):
             for c, estimate in enumerate(row):
@@ -827,6 +881,8 @@ def test_a_binary64_k_perp_is_served_with_its_transverse_budget(artifacts):
     rounded = tuple((Decimal(repr(x)), Decimal(0)) for x in built)
     checks = VirtualStabilityChecks(1, reduction_direction=True)
 
+    served = []
+
     def spin(vector, arithmetic="double"):
         result = runtime.evaluate_correlated_many(
             [point],
@@ -835,6 +891,7 @@ def test_a_binary64_k_perp_is_served_with_its_transverse_budget(artifacts):
             arithmetic=arithmetic,
             stability_checks=checks,
         )["x"]
+        served.extend(_served_by(result))
         (value,), (estimate,) = result.values, result.stability
         return complex(value[0].finite), estimate
 
@@ -855,6 +912,9 @@ def test_a_binary64_k_perp_is_served_with_its_transverse_budget(artifacts):
     assert value == alone
     assert dict(estimate.checks)["spin-transverse"] > 1
     assert estimate.absolute[0].finite > abs(value)
+    # Each of the six calls records the backend that served the point
+    # (TIRust, or the per-point fallback's NinjaRS with its reason).
+    assert len(served) == 6 and set(served) <= {"tirust", "ninjars"}, served
 
 
 # ------------------------------------------------- the per-point fallback
