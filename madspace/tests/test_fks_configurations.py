@@ -239,6 +239,41 @@ def test_born_of_splittings():
             born(pdgs, i_fks, j_fks)
 
 
+def test_symmetry_factors_of_tagged_photons():
+    """A tagged photon (!a!) counts as a photon in the symmetry and
+    identical-particle factors, as in fks_singular.f: the FKS pairs of the
+    real process (fks_j_from_i) have the tagged photon as i too, its matrix
+    element has the identical-particle factor of both photons, and cuts.f
+    isolates every final-state photon alike, so that the integrand does not
+    tell them apart. u u~ > e- e+ !a! a with i the untagged
+    photon off the quark: f_i = 2, iden_comp = 1 / 2 (a matrix element with
+    IDEN 72 = 4 9 2), as for u u~ > e- e+ a a. Their product, by which the
+    real emission and its counterterms enter, is that of the Born,
+    u u~ > e- e+ !a!."""
+    pdgs = [2, -2, 11, -11, 22, 22]
+    pairs = [[], [], [], [], [0, 1, 2, 3], [0, 1, 2, 3]]
+
+    def config(tags):
+        return ms.FKSConfiguration(
+            i_fks=5,
+            j_fks=0,
+            pdgs=pdgs,
+            colors=[3, -3, 1, 1, 1, 1],
+            charges=[2 / 3, -2 / 3, -1.0, 1.0, 0.0, 0.0],
+            masses=[0.0] * 6,
+            fks_j_from_i=pairs,
+            splitting_types=["QED"],
+            tags=tags,
+        )
+
+    tagged = config([False, False, False, False, True, False])
+    plain = config([])
+    assert tagged.tagged(4) and not tagged.tagged(5)
+    for c in [tagged, plain]:
+        assert c.symmetry_factor() == 2.0
+        assert c.identical_particle_ratio() == 0.5
+
+
 def test_configuration_mapping_from_configurations():
     """FKSConfigurationMapping from FKSConfigurations is the one from their
     (i_fks, j_fks), and checks that they have the masses of the Born

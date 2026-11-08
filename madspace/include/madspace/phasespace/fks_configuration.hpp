@@ -95,7 +95,10 @@ struct FKSConfiguration {
      * for, by the symmetry of identical final-state particles:
      * @f$f_i f_j@f$ with @f$f_i@f$ the number of final-state particles of the
      * flavor of i and @f$f_j@f$ that of j, i excluded, or 1 for an incoming
-     * j (fkssymmetryfactor of setfksfactor in fks_singular.f [3]).
+     * j (fkssymmetryfactor of setfksfactor in fks_singular.f [3]). Tagged
+     * photons count as photons: they are in the FKS pairs of the real
+     * process, its matrix element has their identical-particle factor, and
+     * the cuts isolate every final-state photon alike.
      */
     double symmetry_factor() const;
     /**
