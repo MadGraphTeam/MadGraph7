@@ -2272,6 +2272,34 @@ def test_report_builder_loop_induced_table_markers_backend_floor_and_reports(
     write_manifest(runs)
     with pytest.raises(ValueError, match="two production timings of madloop"):
         build()
+    # A provider whose record excludes its values as a reference: timed and
+    # shown with its match open (lit-perf's call); where it is the fastest,
+    # the ratio to the fastest other provider beside the cell (no choice).
+    excluded = timing_record(
+        "excluded.json",
+        madloop=ml(0.04),
+        openloops={"median_seconds_per_point": 0.01},
+        recola={"median_seconds_per_point": 0.004, "values_excluded": "widths"},
+    )
+    runs["gg_hh"] = [run("gg_hh", [excluded])]
+    write_manifest(runs)
+    (data / "li-timing.json").write_text(json.dumps(timing))
+    rows, out = build()
+    prov = rows["gg_hh"]["providers"]
+    assert prov["providers"]["recola"]["match"] == builder.LI_MATCH_OPEN
+    assert prov["providers"]["recola"]["values_excluded"] == "widths"
+    assert "match" not in prov["providers"]["openloops"]
+    assert prov["fastest"]["key"] == "recola"
+    assert prov["fastest"]["match"] == builder.LI_MATCH_OPEN
+    assert prov["fastest_settled"]["key"] == "openloops"
+    hh = rows["gg_hh"]["timing"]
+    assert hh["ratio_to_fastest"] == pytest.approx(0.002 / 0.004)
+    assert hh["ratio_to_fastest_settled"] == pytest.approx(0.002 / 0.01)
+    drawn = {f["key"]: f for f in builder.li_figure(out, 1.3)["rows"]}
+    assert drawn["gg_hh"]["match_open"] == ["Recola"]
+    assert drawn["gg_hgg"]["match_open"] == []
+    assert "fastest_settled" not in rows["gg_hgg"]["providers"]
+    assert "ratio_to_fastest_settled" not in rows["gg_hgg"]["timing"]
     runs["gg_hh"] = [run("gg_hh", [production, opp])]
     write_manifest(runs)
     # The batch is chosen before the backend: TIRust timed at B = 1 only and
@@ -2564,6 +2592,7 @@ def test_report_builder_loop_induced_cell_is_the_auto_record_never_a_failed_one(
         "requested": "tirust",
         "status": "served",
         "served_fraction": 1.0,
+        "label": "128/128",
         "seconds_per_point": 0.4,
     }
     hhh = rows["gg_hhh"]["timing"]
@@ -2580,16 +2609,22 @@ def test_report_builder_loop_induced_cell_is_the_auto_record_never_a_failed_one(
         with pytest.raises(ValueError, match=match):
             builder.build_loop_induced(ms, recency, data=data, repo=tmp_path)
 
-    # A row not generated or timed: its measured reason on both cells.
+    # A row not generated or timed: its measured reason on both cells; the
+    # run stopped before its request was resolved names no backend.
     why = "generation beyond the 45-min rule (probes running at 45 min)"
-    (data / "li-timing.json").write_text(
-        json.dumps({"records": [rec("gg_zzz", "auto", "ninjars", missing=why)]})
-    )
+    stopped = rec("gg_zzz", "auto", "ninjars", missing=why)
+    del stopped["backend"], stopped["effective"], stopped["failed_points"]
+    (data / "li-timing.json").write_text(json.dumps({"records": [stopped]}))
     out = builder.build_loop_induced(ms, recency, data=data, repo=tmp_path)
     rows = {r["key"]: r for g in out["groups"] for r in g["rows"]}
     zzz = rows["gg_zzz"]
     assert zzz["timing"]["status"] == zzz["generation"]["status"] == "not run"
     assert zzz["timing"]["reason"] == zzz["generation"]["reason"] == why
+    assert zzz["timing"]["requested"] == "auto"
+    assert zzz["timing"]["effective"] == "not resolved"
+    assert "backend" not in zzz["timing"]
+    assert zzz["timing"]["source"] == "li-timing.json records[gg_zzz, auto, bbbbbbbb]"
+    refused(rec("gg_zzz", "auto", "ninjars", missing=why), "resolved no backend")
     refused(rec("gg_hgg", "tirust", "ninjars", seconds=0.04), "was requested but")
     refused(
         rec("gg_hgg", "tirust", "tirust", failed=[1] * 7, seconds=0.04),
