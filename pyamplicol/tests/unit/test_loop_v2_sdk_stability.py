@@ -19,6 +19,13 @@ the Python assembly kept as the oracle).
   checks there is no estimate; a configuration the Python API refuses is an
   invalid argument with its message; the other evaluations say why they
   form none.
+* The C++, Fortran and packaged Rust wrappers' setters give the same
+  estimates.
+* The SDK side of the loop-induced self-test (PLAN §2.a.10), checked as
+  ``lit-tir``'s T8: the shipped artifact evaluates through the C ABI, with
+  and without the monitoring, in a process without a licence while another
+  holds the restricted Symbolica permit, bitwise as licensed and as the
+  Python API.
 """
 
 from __future__ import annotations
@@ -749,3 +756,189 @@ def test_the_cxx_fortran_and_rust_wrappers_set_the_checks(
             if line.strip()
         ]
         assert found == expected, language
+
+
+# ------------------------------------------------- the SDK's self-test (T8)
+
+SELFTEST_CLIENT = r"""
+// ./client artifact process parameters.json input.txt: the SDK side of the
+// loop-induced self-test through the C++ wrapper: one binary64 evaluation of
+// the shipped artifact on the default backend, then one with the monitoring
+// on (two default rotations and the rescaled reduction check). Per
+// evaluation: the statuses, the Born value count, the virtual values as bit
+// patterns and the diagnostics JSON, one line each.
+#include "rusticol_virtual.hpp"
+#include <cinttypes>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <vector>
+
+int main(int argc, char **argv) {
+  if (argc < 5) return 2;
+  std::ifstream parameters_file(argv[3]);
+  std::stringstream parameters;
+  parameters << parameters_file.rdbuf();
+  std::ifstream in(argv[4]);
+  std::size_t points = 0, legs = 0;
+  in >> points >> legs;
+  std::vector<double> momenta(points * legs * 4), scales(points);
+  std::string token;
+  for (std::size_t p = 0; p < points; ++p) {
+    for (std::size_t i = 0; i < legs * 4; ++i) {
+      in >> token;
+      momenta[p * legs * 4 + i] = std::strtod(token.c_str(), nullptr);
+    }
+    in >> token;
+    scales[p] = std::strtod(token.c_str(), nullptr);
+  }
+  try {
+    rusticol::VirtualRuntime runtime(argv[1], std::string(argv[2]), parameters.str());
+    for (int pass = 0; pass < 2; ++pass) {
+      if (pass == 1) runtime.set_stability_checks(2, true, true);
+      auto result = runtime.evaluate(momenta, points, scales);
+      std::printf("statuses");
+      for (auto status : result.statuses()) std::printf(" %u", status);
+      std::printf("\nborn %zu\nvirtual", result.born().size());
+      for (double value : result.virtual_values()) {
+        std::uint64_t bits;
+        std::memcpy(&bits, &value, sizeof bits);
+        std::printf(" %" PRIu64, bits);
+      }
+      std::printf("\ndiagnostics %s\n", result.diagnostics_json().c_str());
+    }
+  } catch (const rusticol::VirtualError &error) {
+    std::printf("error %d %s\n", error.status(), error.what());
+    return 1;
+  }
+  return 0;
+}
+"""
+
+
+def test_the_sdk_self_test_touches_no_symbolica_state(loop_native, tmp_path):
+    """The SDK side of the loop-induced self-test (PLAN §2.a.10 / §3.5),
+    checked as ``lit-tir``'s T8: a fresh process with ``SYMBOLICA_LICENSE``
+    removed and ``PYAMPLICOL_NATIVE_LIBRARY_KEY=off`` evaluates the shipped
+    artifact (``assets/selftest_virtual/li``, g g > h) through the C ABI on
+    the default backend, without and with the binary64 monitoring, while
+    another process holds the restricted Symbolica permit of a private lock
+    directory (any Symbolica state access aborts). Its output equals the
+    licensed run's; the values and the estimates equal the Python API's
+    bitwise, with no Born values."""
+
+    import importlib.util
+    import os
+    import struct
+    import subprocess
+    from pathlib import Path
+
+    from pyamplicol import Runtime
+    from pyamplicol._internal import selftest_virtual_li as selftest
+    from pyamplicol.api.virtual_results import VirtualStabilityChecks
+    from tests.unit.test_loop_v2_sdk_extras import SDK, _compiler, _staged_sdk
+
+    root = Path(__file__).resolve().parents[2]
+    spec = importlib.util.spec_from_file_location(
+        "loop_artifact_portability", root / "tools" / "loop_artifact_portability.py"
+    )
+    assert spec is not None and spec.loader is not None
+    portability = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(portability)
+
+    build = _staged_sdk()
+    (tmp_path / "client.cpp").write_text(SELFTEST_CLIENT)
+    subprocess.run(
+        [
+            _compiler("CXX", "c++"),
+            "-std=c++17",
+            "-O2",
+            f"-I{SDK / 'include'}",
+            str(tmp_path / "client.cpp"),
+            f"-L{build}",
+            "-lrusticol_loop_sdk",
+            f"-Wl,-rpath,{build}",
+            "-lm",
+            "-o",
+            str(tmp_path / "client"),
+        ],
+        check=True,
+        cwd=tmp_path,
+    )
+    artifact = selftest.fixture_root() / "artifact"
+    expected = json.loads((selftest.fixture_root() / "expected.json").read_text())
+    # The SDK reads each binary64 input as its exact value
+    # (rusticol_virtual.h), so the Python API is given those exact values
+    # (the decimal text of the doubles). A Python float is read by its
+    # shortest decimal (assemble._fraction) where the rotation check turns the
+    # point, so float inputs whose shortest decimal is not their exact value
+    # (here 33.6, 50.592, ...) are turned from a point half an ulp away: here
+    # the same values, estimates that differ in their last digits.
+    points = [
+        [[float(Decimal(c)) for c in p] for p in point] for point in expected["points"]
+    ]
+    scales = [float(Decimal(s)) for s in expected["mu_r2"]]
+    exact_points = [[[str(Decimal(c)) for c in p] for p in point] for point in points]
+    exact_scales = [str(Decimal(s)) for s in scales]
+    (tmp_path / "parameters.json").write_text(
+        json.dumps({key: [value, "0"] for key, value in expected["parameters"].items()})
+    )
+    lines = [f"{len(points)} {len(points[0])}"]
+    for point, scale in zip(points, scales, strict=True):
+        lines.append(" ".join(v.hex() for v in [*(c for p in point for c in p), scale]))
+    (tmp_path / "input.txt").write_text("\n".join(lines) + "\n")
+    command = [
+        str(tmp_path / "client"),
+        str(artifact),
+        selftest.NAME,
+        str(tmp_path / "parameters.json"),
+        str(tmp_path / "input.txt"),
+    ]
+
+    def run(env: dict[str, str]) -> list[str]:
+        done = subprocess.run(
+            command, capture_output=True, text=True, timeout=600, check=False, env=env
+        )
+        output = done.stdout[-3000:] + done.stderr[-3000:]
+        assert done.returncode == 0, output
+        assert "restricted Symbolica" not in output
+        return done.stdout.splitlines()
+
+    lock = tmp_path / "symbolica-locks"
+    lock.mkdir()
+    lock.chmod(0o700)
+    base = {k: v for k, v in os.environ.items() if k != "SYMBOLICA_LICENSE"}
+    with portability.RestrictedPermit(lock_dir=str(lock)) as permit:
+        assert permit.record["verified"], permit.record
+        unlicensed = run(
+            permit.environment({**base, "PYAMPLICOL_NATIVE_LIBRARY_KEY": "off"})
+        )
+    licensed = run(dict(os.environ))
+    assert unlicensed == licensed
+
+    runtime = Runtime.load(
+        artifact, process=selftest.NAME, model_parameters=expected["parameters"]
+    )
+    mask = 2**64 - 1
+    for index, checks in enumerate(
+        (None, VirtualStabilityChecks(2, True, rescaled=True))
+    ):
+        result = runtime.evaluate(
+            exact_points, mu_r2=exact_scales, stability_checks=checks
+        )
+        assert result.contribution == "loop-induced"
+        statuses, born, values, diagnostics = licensed[4 * index : 4 * index + 4]
+        assert statuses == "statuses" + " 4" * len(points), statuses
+        assert born == "born 0"
+        bits = [int(b) for b in values.split()[1:]]
+        assert bits == [
+            struct.unpack("<q", struct.pack("<d", v))[0] & mask for v in _flat(result)
+        ]
+        record = json.loads(diagnostics.split(" ", 1)[1])["stability"]
+        if checks is None:
+            assert record is None
+        else:
+            assert record["estimates"] == [_record(e) for e in result.stability]

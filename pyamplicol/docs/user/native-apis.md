@@ -778,7 +778,15 @@ with the other checks off) nothing else runs and no estimate is formed. With
 checks, every successful point of a binary64 ordinary evaluation carries its
 estimate in the result's `diagnostics_json` (`"stability"`), equal bit for bit
 to the Python API's `VirtualStabilityEstimate`; the precision rescue stays the
-Python API's.
+Python API's. The SDK reads every binary64 input as its exact value, so its
+counterpart is the Python API given those exact values (for example
+`str(decimal.Decimal(x))`). The Python API reads a float by its shortest
+decimal (`33.6`, not the double's exact value), so where the two differ the
+rotation check turns points half an ulp apart and the estimates differ in
+their last digits. Binary64 evaluation, with or without the
+monitoring, never touches Symbolica: the shipped loop-induced self-test
+artifact evaluates through the C ABI without `SYMBOLICA_LICENSE` while another
+process holds the restricted Symbolica permit.
 
 ## Common setup failures
 
