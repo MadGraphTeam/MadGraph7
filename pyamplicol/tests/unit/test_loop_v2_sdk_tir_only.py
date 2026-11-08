@@ -127,9 +127,10 @@ def test_the_sdk_serves_a_tir_only_artifact_as_the_python_api(
             runtime.evaluate(texts, mu_r2=mu_r2, reduction="ninjars")
         assert _error(sdk) == str(refused.value)
 
-        # The cross-backend check would compare with NinjaRS: refused typed.
+        # The cross-backend check (with a rotation, as the Python API needs)
+        # would compare with NinjaRS: refused typed.
         assert sdk.rusticol_virtual_set_reduction(handle, b"auto") == 0
-        assert _set(sdk, handle, 0, None, False, False, True) == 0, _error(sdk)
+        assert _set(sdk, handle, 1, None, False, False, True) == 0, _error(sdk)
         status, _ = _evaluate(sdk, handle, points, scales)
         assert status == STATUS_RUNTIME_ERROR
         from pyamplicol.api.virtual_results import VirtualStabilityChecks
@@ -138,7 +139,7 @@ def test_the_sdk_serves_a_tir_only_artifact_as_the_python_api(
             runtime.evaluate(
                 texts,
                 mu_r2=mu_r2,
-                stability_checks=VirtualStabilityChecks(cross_backend=True),
+                stability_checks=VirtualStabilityChecks(1, cross_backend=True),
             )
         assert _error(sdk) == str(refused.value)
     finally:
