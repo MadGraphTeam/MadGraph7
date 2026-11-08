@@ -131,7 +131,7 @@ def test_the_target_accuracy_has_one_default_and_one_validator(loop_native):
                 VirtualReduction("auto", "tirust", "x", target=bad)
     assert EvaluationConfig(reduction_target=1e-6).reduction_target == 1e-6
     assert EvaluationConfig().reduction_target is None
-    with pytest.raises(ConfigurationError, match="evaluation.reduction_target"):
+    with pytest.raises(ConfigurationError, match=r"evaluation\.reduction_target"):
         EvaluationConfig(reduction_target=-1.0)
     # A fallback is the other backend of an "auto" request.
     with pytest.raises(ValueError, match="other backend"):

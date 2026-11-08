@@ -328,10 +328,7 @@ def test_levels_resolve_once_per_level_capability_driven(loop_native, monkeypatc
     # whose "auto" set leaves it out keeps NinjaRS with that reason.
     found = choices(auto)
     assert {choice.effective for choice in found.values()} == {"tirust"}
-    assert all(
-        choice.reason == AUTO_LOOP_INDUCED
-        for choice in found.values()
-    )
+    assert all(choice.reason == AUTO_LOOP_INDUCED for choice in found.values())
     kept = choices(
         auto,
         None,
