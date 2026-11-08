@@ -8,11 +8,12 @@ at the M-LIT close, slice-status DECISIONS 2026-11-07 ~13:34): one test id
 per run, the 6- and 7-leg rows take minutes to hours of generation.
 
 A run passes when no check fails: estimate misses, TIRust's failed points
-(partial, its typed reasons recorded) and the double-double / AP arms of L6
-that wait on lit-tir-mp are recorded, not failures (m-lit rulings (5), (8));
-L6's verdict is the worst of its carriers, so once TIRust serves double-
-double / AP (lit-tir-mp) a disagreement there fails the run; a deviation
-below ~1e-5 relative is never a failure (precision lax).
+(partial, its typed reasons recorded) and TIRust arms of an extension before
+lit-tir-mp (waiting on it) are recorded, not failures (m-lit rulings (5),
+(8)); L6's verdict is the worst of its carriers, so a backend disagreement
+in binary64, double-double or AP fails the run, as does a Ward probe (L4,
+every fixture point and massless gauge leg) beyond ten times its estimate;
+a deviation below ~1e-5 relative is never a failure (precision lax).
 
 With ``PYAMPLICOL_LI_CAMPAIGN_RECORDS=<dir>`` the records are kept there
 (``li_manifest.py lit --records <dir>`` writes data/lit.json from them).
