@@ -270,7 +270,7 @@ def resolve(
     if why is None:
         reason = (
             f"auto: {NAMES[default]}, the {kind} default"
-            if default == DEFAULTS[contribution]
+            if allowed != {"tirust"}
             else f"auto: {NAMES[default]}, the only backend the artifact admits"
         )
         return VirtualReduction("auto", cast(Any, default), reason)

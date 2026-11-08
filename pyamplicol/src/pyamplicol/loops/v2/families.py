@@ -96,7 +96,9 @@ def tir_only(buckets: Iterable[Sequence[int]]) -> bool:
     TIR-only: a family beyond NinjaRS's rank <= N + 2 (m-lit lit-eft; its
     artifacts admit TIRust only, which their declarations record)."""
 
-    return any(reducer_rank_refusal(n, r, "ninjars") is not None for n, r, *_ in buckets)
+    return any(
+        reducer_rank_refusal(n, r, "ninjars") is not None for n, r, *_ in buckets
+    )
 
 
 def lowest_leg(mask: int) -> int:

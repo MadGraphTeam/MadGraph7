@@ -2214,9 +2214,7 @@ class V2VirtualRuntime:
                 else DEFAULTS[self.contribution_kind]
             ),
             # The backends the artifact admits (m-lit lit-eft: TIR-only).
-            "admitted": sorted(
-                BACKENDS if self._admitted is None else self._admitted
-            ),
+            "admitted": sorted(BACKENDS if self._admitted is None else self._admitted),
             "native": {
                 name: sorted(carriers)
                 for name, carriers in native_backends(self._native).items()
