@@ -2273,8 +2273,8 @@ def test_report_builder_loop_induced_table_markers_backend_floor_and_reports(
     with pytest.raises(ValueError, match="two production timings of madloop"):
         build()
     # A provider whose record excludes its values as a reference: timed and
-    # shown with its match open (lit-perf's call); where it is the fastest,
-    # the ratio to the fastest other provider beside the cell (no choice).
+    # shown, not a matched provider (lit-perf: never the fastest matched one
+    # nor a limit), the ratio to it beside the cell.
     excluded = timing_record(
         "excluded.json",
         madloop=ml(0.04),
@@ -2286,20 +2286,33 @@ def test_report_builder_loop_induced_table_markers_backend_floor_and_reports(
     (data / "li-timing.json").write_text(json.dumps(timing))
     rows, out = build()
     prov = rows["gg_hh"]["providers"]
-    assert prov["providers"]["recola"]["match"] == builder.LI_MATCH_OPEN
+    assert prov["providers"]["recola"]["match"] == builder.LI_NOT_MATCHED
     assert prov["providers"]["recola"]["values_excluded"] == "widths"
     assert "match" not in prov["providers"]["openloops"]
-    assert prov["fastest"]["key"] == "recola"
-    assert prov["fastest"]["match"] == builder.LI_MATCH_OPEN
-    assert prov["fastest_settled"]["key"] == "openloops"
+    assert prov["fastest"]["key"] == "openloops" and "match" not in prov["fastest"]
+    assert prov["fastest_unmatched"]["key"] == "recola"
     hh = rows["gg_hh"]["timing"]
-    assert hh["ratio_to_fastest"] == pytest.approx(0.002 / 0.004)
-    assert hh["ratio_to_fastest_settled"] == pytest.approx(0.002 / 0.01)
+    assert hh["ratio_to_fastest"] == pytest.approx(0.002 / 0.01)
+    assert hh["ratio_to_fastest_unmatched"] == pytest.approx(0.002 / 0.004)
     drawn = {f["key"]: f for f in builder.li_figure(out, 1.3)["rows"]}
-    assert drawn["gg_hh"]["match_open"] == ["Recola"]
-    assert drawn["gg_hgg"]["match_open"] == []
-    assert "fastest_settled" not in rows["gg_hgg"]["providers"]
-    assert "ratio_to_fastest_settled" not in rows["gg_hgg"]["timing"]
+    assert drawn["gg_hh"]["not_matched"] == ["Recola"]
+    assert drawn["gg_hgg"]["not_matched"] == []
+    assert "fastest_unmatched" not in rows["gg_hgg"]["providers"]
+    assert "ratio_to_fastest_unmatched" not in rows["gg_hgg"]["timing"]
+    # Figure 1's gate limit: MadLoop and 1.3 x each matched provider (the
+    # unmatched Recola gives none); none while a matched reference has no
+    # production time yet.
+    assert builder._li_limit(prov, 1.3) == {
+        "seconds": pytest.approx(1.3 * 0.01),
+        "binding": "OpenLoops",
+    }
+    pending = {
+        "providers": {
+            "madloop": {"seconds_per_point": 0.04},
+            "openloops": {"status": "not timed", "reason": "no production timing yet"},
+        }
+    }
+    assert builder._li_limit(pending, 1.3) is None
     runs["gg_hh"] = [run("gg_hh", [production, opp])]
     write_manifest(runs)
     # The batch is chosen before the backend: TIRust timed at B = 1 only and
@@ -2393,7 +2406,8 @@ def test_report_builder_figure_one_draws_loop_induced_rows_with_a_time_and_a_pro
     loop-induced table with a batched pyAmpliCol time and a matched provider
     time, in the table's order, with its providers' times and, from 2 -> 3
     upward, the gate limit (MadLoop's time and the gate factor times each
-    other provider's, the smallest); the other rows are not drawn, listed by
+    other matched provider's, the smallest; none while a matched reference
+    has no production time yet); the other rows are not drawn, listed by
     reason. The committed summary-li.json holds the figure of its own rows."""
 
     import json
@@ -2475,7 +2489,9 @@ def test_report_builder_figure_one_draws_loop_induced_rows_with_a_time_and_a_pro
     assert hh["providers"] == {"madloop": 0.001} and hh["fastest"] == "madloop"
     assert hhh["limit"] == {"seconds": pytest.approx(1.3 * 0.0056), "binding": "Recola"}
     assert hhh["providers"] == {"madloop": 0.009, "recola": 0.0056, "openloops": 0.0229}
-    assert hgg["limit"] == {"seconds": 0.004, "binding": "MadLoop"}
+    # Recola, a reference of the row, has no production time yet: no
+    # complete gate limit (Table 1's rule).
+    assert hgg["limit"] is None
     assert hgg["gate"]["status"] == "not gated" and hgg["group"] == "2->3"
     assert figure["not_drawn"] == {
         builder.LI_NO_TIME: ["aa", "zzg"],
