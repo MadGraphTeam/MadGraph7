@@ -258,7 +258,11 @@ double fks_sqrt_s_hat_min(const Cuts& cuts, const std::vector<double>& outgoing_
  * @f$y@f$ to the beam of the emitter in the partonic center-of-mass frame, and
  * the Born, mapped at @f$s_\mathrm{rec} = (1 - \xi) s@f$ in its rest frame,
  * is boosted along @f$-\vec p_i@f$ to recoil against i
- * (`fks_initial_fixed_radiate`, `fks_initial_fixed_boost`). Then
+ * (`fks_initial_fixed_radiate`, `fks_initial_fixed_boost`). The asymmetric
+ * map maps it instead by the Lorentz map of the asymmetric emission followed
+ * by the boost into the frame of the real emission
+ * (`fks_initial_fixed_light_cone_map`, boost_born_momenta_noevpr of the
+ * MCcntRefactor_Sfun branch). Then
  * @f$\xi = \hat\xi \xi_\mathrm{max}@f$ with
  * @f$\xi_\mathrm{max} = 1 - s_\mathrm{min} / s@f$ and the lower end
  * @f$s_\mathrm{min}@f$ of the energy squared of the Born. The event and the
@@ -337,10 +341,11 @@ public:
      *                          rapidity and no mirrored beams, and an incoming
      *                          emitter radiates without the projection of the
      *                          event (@p s_hat_min is not used).
-     * @param initial_map       The map of an emission off an incoming parton
-     *                          with hadron beams, see
-     *                          FKSRadiation::InitialMap. Lepton beams keep
-     *                          their own.
+     * @param initial_map       The map of an emission off an incoming parton,
+     *                          see FKSRadiation::InitialMap. With lepton beams
+     *                          the asymmetric one maps the Born at s_rec by
+     *                          `fks_initial_fixed_light_cone_map` in place of
+     *                          the boost along i.
      */
     FKSConfigurationMapping(
         const PhaseSpaceMapping& born,
@@ -384,7 +389,7 @@ public:
     double sqrt_s_hat_floor() const { return _sqrt_s_hat_floor; }
     /// The luminosity of lepton beams, if any.
     const std::optional<LeptonLuminosity>& luminosity() const { return _luminosity; }
-    /// The map of an emission off an incoming parton with hadron beams.
+    /// The map of an emission off an incoming parton.
     FKSRadiation::InitialMap initial_map() const { return _initial_map; }
     /// Number of random numbers, those of the Born mapping, two of the
     /// luminosity of lepton beams and three of the emission.

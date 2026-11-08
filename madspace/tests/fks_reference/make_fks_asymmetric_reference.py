@@ -15,7 +15,8 @@ them, the configurations are the same) and
     initial_map ("asymmetric"), mg_branch and mg_commit (the commit of the
     checkout), jac_sampling_factors (true: the Jacobians of the branch include
     the factors 1 - stiny and 1 - ctiny of the sampling for an incoming
-    emitter, which genps_fks.f of main leaves out)
+    emitter, which genps_fks.f of main leaves out, but not without the
+    projection of the event of lepton PDFs)
 
 The points are those of make_fks_reference.py at the same random numbers, so
 their Borns and counter-events are those of test_data/fks. The branch also
@@ -45,12 +46,15 @@ import make_fks_reference as mfr  # noqa: E402
 
 # names of make_fks_reference.PROCESSES, with the subprocesses to keep: a
 # massless and a massive final state of a 2 -> 2 Born, a 2 -> 3 Born with
-# quark and gluon emitters, and photon emitters
+# quark and gluon emitters, photon emitters, and lepton PDFs, whose incoming
+# emitters radiate without the projection of the event
 PROCESSES = {
     "pp_epem": ["P0_uux_emep"],
     "pp_ttx": ["P0_gg_ttx", "P0_uux_ttx"],
     "pp_epemj": ["P0_uux_emepg", "P0_ug_uemep"],
     "pp_epem_qed": ["P0_aa_emep"],
+    "epem_mumu_qed": ["P0_epem_mummup"],
+    "epem_uuxg_mix": ["P0_epem_uuxg"],
 }
 # FKSISRMapping of the branch
 ISR_MAPPING = 2
@@ -80,7 +84,7 @@ NOT_KINEMATICS = {
 TOP_LEVEL = ["nexternal", "nincoming", "ndim", "lpp", "ebeam"]
 
 
-def dump(pdir, points, massive, limit, log):
+def dump(pdir, points, massive, limit, log, lpp):
     shutil.copy(
         os.path.join(HERE, "fks_kinematics_dump_modules.f"),
         os.path.join(pdir, "fks_kinematics_dump.f"),
@@ -92,7 +96,7 @@ def dump(pdir, points, massive, limit, log):
     result = subprocess.run(
         ["./fks_kinematics_dump"],
         cwd=pdir,
-        input=f"{points}\n1\n{massive}\n{limit}\n0\n{ISR_MAPPING}\n",
+        input=f"{points}\n1\n{massive}\n{limit}\n{lpp}\n{ISR_MAPPING}\n",
         capture_output=True,
         text=True,
         check=True,
@@ -138,7 +142,10 @@ def main():
             if sub not in keep:
                 continue
             log = os.path.join(work, f"{name}_{sub}_asymmetric.log")
-            parsed = mfr.parse(dump(pdir, args.points, args.massive, args.limit, log))
+            lpp = mfr.LEPTON_PDFS.get(name, 0)
+            parsed = mfr.parse(
+                dump(pdir, args.points, args.massive, args.limit, log, lpp)
+            )
             data = {key: parsed[key] for key in TOP_LEVEL}
             data.update(
                 process=process,

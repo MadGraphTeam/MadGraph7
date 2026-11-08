@@ -1029,7 +1029,10 @@ KERNELSPEC void kernel_fks_initial_asymmetric_born_fractions(
 // on input, and q^- on output (q^+ with direction = -1), come from the mass
 // shell where the mass is known, as in fks_beam_boost, which keeps the precision
 // of a momentum close to the axis also where A is large (small 1 - xi).
-// direction = -1 gives the inverse.
+// direction = -1 gives the inverse. With real_frame the map is followed by the
+// boost into the center-of-mass frame of the real emission,
+// q^+ -> sqrt(1 - xi) q^+ and q^- -> q^- / sqrt(1 - xi), as in
+// boost_born_momenta_noevpr of the branch for lepton beams.
 template <typename T>
 KERNELSPEC void fks_initial_light_cone_map(
     FIn<T, 2> p,
@@ -1039,9 +1042,11 @@ KERNELSPEC void fks_initial_light_cone_map(
     FVal<T> r_phi,
     FVal<T> beam_sign,
     double direction,
+    bool real_frame,
     FOut<T, 2> p_out
 ) {
     auto omx = max(1. - xi, EPS2);
+    auto rz = sqrt(omx);
     auto omy = 1. - y, opy = 1. + y;
     auto a = 1. + xi * omy / (2. * omx);
     auto bn = -xi * sqrt(max(omy * opy, 0.)) / (2. * sqrt(omx));
@@ -1058,15 +1063,23 @@ KERNELSPEC void fks_initial_light_cone_map(
         auto forward = q3 >= 0.;
         auto big = where(forward, q0 + q3, q0 - q3);
         auto small = (m2 + q1 * q1 + q2 * q2) / max(big, FVal<T>(EPS2));
-        auto qp = where(known, where(forward, big, small), q0 + q3);
-        auto qm = where(known, where(forward, small, big), q0 - q3);
+        FVal<T> qp = where(known, where(forward, big, small), q0 + q3);
+        FVal<T> qm = where(known, where(forward, small, big), q0 - q3);
         FVal<T> np, nt1, nt2, nm_direct;
         if (direction > 0.) {
             np = a * qp;
             nt1 = q1 + b1 * qp;
             nt2 = q2 + b2 * qp;
             nm_direct = (qm + 2. * (b1 * q1 + b2 * q2) + b_sq * qp) / a;
+            if (real_frame) {
+                np = np * rz;
+                nm_direct = nm_direct / rz;
+            }
         } else {
+            if (real_frame) {
+                qp = qp / rz;
+                qm = qm * rz;
+            }
             np = qp / a;
             nt1 = q1 - b1 * np;
             nt2 = q2 - b2 * np;
@@ -1092,7 +1105,7 @@ KERNELSPEC void kernel_fks_initial_light_cone_map(
     FOut<T, 2> p_out
 ) {
     fks_initial_light_cone_map<T>(
-        p, masses, xi, y, r_phi, FVal<T>(beam_sign), 1., p_out
+        p, masses, xi, y, r_phi, FVal<T>(beam_sign), 1., false, p_out
     );
 }
 
@@ -1107,7 +1120,41 @@ KERNELSPEC void kernel_fks_initial_light_cone_map_inverse(
     FOut<T, 2> p_out
 ) {
     fks_initial_light_cone_map<T>(
-        p, masses, xi, y, r_phi, FVal<T>(beam_sign), -1., p_out
+        p, masses, xi, y, r_phi, FVal<T>(beam_sign), -1., false, p_out
+    );
+}
+
+// fks_initial_light_cone_map followed by the boost into the center-of-mass frame
+// of the real emission, for the asymmetric map without the projection of the
+// event (lepton beams): the Born in its rest frame of energy
+// sqrt((1 - xi) s) into the frame of the real emission at sqrt(s).
+template <typename T>
+KERNELSPEC void kernel_fks_initial_fixed_light_cone_map(
+    FIn<T, 2> p,
+    FSIn<T, 1> masses,
+    FIn<T, 0> xi,
+    FIn<T, 0> y,
+    FIn<T, 0> r_phi,
+    FIn<T, 0> beam_sign,
+    FOut<T, 2> p_out
+) {
+    fks_initial_light_cone_map<T>(
+        p, masses, xi, y, r_phi, FVal<T>(beam_sign), 1., true, p_out
+    );
+}
+
+template <typename T>
+KERNELSPEC void kernel_fks_initial_fixed_light_cone_map_inverse(
+    FIn<T, 2> p,
+    FSIn<T, 1> masses,
+    FIn<T, 0> xi,
+    FIn<T, 0> y,
+    FIn<T, 0> r_phi,
+    FIn<T, 0> beam_sign,
+    FOut<T, 2> p_out
+) {
+    fks_initial_light_cone_map<T>(
+        p, masses, xi, y, r_phi, FVal<T>(beam_sign), -1., true, p_out
     );
 }
 

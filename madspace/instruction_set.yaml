@@ -3041,6 +3041,58 @@ fks_initial_light_cone_map_inverse:
       desc: "the final-state momenta of the Born"
   desc: "Inverse of @ref fks_initial_light_cone_map, with q^+ -> q^+ / A and the mass shell for the smaller light-cone component on input and q^- on output, so that a momentum close to the axis keeps its precision where A is large."
 
+fks_initial_fixed_light_cone_map:
+  inputs:
+    - name: p
+      type: [float, n, 4]
+      desc: "final-state momenta of the Born, in its rest frame of energy sqrt(s_rec) = sqrt((1 - xi) s)"
+    - name: masses
+      type: [float, single, n]
+      desc: "mass of each particle, or a negative value for none"
+    - name: xi
+      type: [float]
+      desc: "energy fraction of the FKS parton i"
+    - name: y
+      type: [float]
+      desc: "cosine of the angle between i and the incoming emitter j"
+    - name: r_phi
+      type: [float]
+      desc: "random number for the azimuth of i about the beam axis"
+    - name: beam_sign
+      type: [float]
+      desc: "+1 if j comes from beam 1 (along +z), -1 if from beam 2"
+  outputs:
+    - name: p_out
+      type: [float, n, 4]
+      desc: "the mapped momenta, in the center-of-mass frame of the real emission"
+  desc: "The asymmetric map of the Born without the projection of the event (lepton beams, @ref fks_initial_fixed_radiate), boost_born_momenta_noevpr of the MCcntRefactor_Sfun branch of MadGraph7 with FKSISRMapping 2: @ref fks_initial_light_cone_map followed by the boost q^+ -> sqrt(1 - xi) q^+, q^- -> q^- / sqrt(1 - xi) into the center-of-mass frame of the real emission. It takes the place of @ref fks_initial_fixed_boost. The final state recoils against the same i, rotated about the momentum of the recoil."
+
+fks_initial_fixed_light_cone_map_inverse:
+  inputs:
+    - name: p
+      type: [float, n, 4]
+      desc: "final-state momenta of the real emission without i, in its center-of-mass frame"
+    - name: masses
+      type: [float, single, n]
+      desc: "mass of each particle, or a negative value for none"
+    - name: xi
+      type: [float]
+      desc: "energy fraction of the FKS parton i"
+    - name: y
+      type: [float]
+      desc: "cosine of the angle between i and the incoming emitter j"
+    - name: r_phi
+      type: [float]
+      desc: "random number for the azimuth of i about the beam axis"
+    - name: beam_sign
+      type: [float]
+      desc: "+1 if j comes from beam 1 (along +z), -1 if from beam 2"
+  outputs:
+    - name: p_out
+      type: [float, n, 4]
+      desc: "the final-state momenta of the Born, in its rest frame"
+  desc: "Inverse of @ref fks_initial_fixed_light_cone_map."
+
 fks_initial_fixed_radiate:
   inputs:
     - name: xi_hat

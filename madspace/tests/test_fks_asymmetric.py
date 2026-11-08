@@ -40,12 +40,13 @@ def run(build, in_types, out_types, inputs):
     return [torch.from_dlpack(t).cpu().numpy() for t in runtime.call(tensors)]
 
 
-def light_cone_map(p, masses, xi, y, r_phi, beam_sign, inverse=False):
+def light_cone_map(p, masses, xi, y, r_phi, beam_sign, inverse=False, fixed=False):
     n = p.shape[1]
     vec = ms.batch_four_vec_array(n)
 
     def build(fb, *args):
-        name = "fks_initial_light_cone_map" + ("_inverse" if inverse else "")
+        name = "fks_initial_" + ("fixed_" if fixed else "") + "light_cone_map"
+        name += "_inverse" if inverse else ""
         p_in, *rest = args
         return [getattr(fb, name)(p_in, ms.Value(list(masses)), *rest, beam_sign)]
 
@@ -295,3 +296,42 @@ def test_counter_events_are_symmetric(j_fks, s_hat_min):
     np.testing.assert_allclose(
         asym["soft_det"][exists], (sym["soft_det"] * ratio)[exists], rtol=1e-13
     )
+
+
+@pytest.mark.parametrize("beam_sign", [1.0, -1.0])
+def test_fixed_light_cone_map(beam_sign):
+    """Without the projection of the event (lepton beams) the Born in its rest
+    frame at s_rec = (1 - xi) s goes to the center-of-mass frame of the real
+    emission at s: fks_initial_light_cone_map and the boost by sqrt(1 - xi)
+    of the branch, the total momentum to (sqrt(s), 0) - p_i of
+    fks_initial_fixed_radiate, and back."""
+    batch = 1000
+    rng = np.random.default_rng(6)
+    xi_hat, y, r_phi = rng.random(batch), 2 * rng.random(batch) - 1, rng.random(batch)
+    p_i, xi, *_ = run(
+        lambda fb, *args: fb.fks_initial_fixed_radiate(*args, 0.0, beam_sign),
+        [F] * 4,
+        [ms.batch_four_vec] + [F] * 4 + [ms.batch_four_vec],
+        [xi_hat, y, r_phi, np.full(batch, SQRT_S)],
+    )
+    sqrt_s_rec = SQRT_S * np.sqrt(1 - xi)
+    born = random_final_state(MASSES, batch, seed=7)
+    out = light_cone_map(born, MASSES, xi, y, r_phi, beam_sign, fixed=True)
+    lc = branch_map(born, xi, y, r_phi, beam_sign)
+    plus = (lc[..., 0] + beam_sign * lc[..., 3]) * np.sqrt(1 - xi)[:, None]
+    minus = (lc[..., 0] - beam_sign * lc[..., 3]) / np.sqrt(1 - xi)[:, None]
+    ref = lc.copy()
+    ref[..., 0] = 0.5 * (plus + minus)
+    ref[..., 3] = beam_sign * 0.5 * (plus - minus)
+    scale = np.maximum(born[..., 0].max(1), out[..., 0].max(1))[:, None, None]
+    np.testing.assert_allclose(out / scale, ref / scale, atol=1e-12)
+    total = np.zeros((batch, 1, 4))
+    total[:, 0, 0] = sqrt_s_rec
+    mapped = light_cone_map(total, [-1.0], xi, y, r_phi, beam_sign, fixed=True)[:, 0]
+    expected = -p_i
+    expected[:, 0] += SQRT_S
+    np.testing.assert_allclose(mapped / SQRT_S, expected / SQRT_S, atol=1e-13)
+    back = light_cone_map(
+        out, MASSES, xi, y, r_phi, beam_sign, inverse=True, fixed=True
+    )
+    np.testing.assert_allclose(back / scale, born / scale, atol=1e-13)

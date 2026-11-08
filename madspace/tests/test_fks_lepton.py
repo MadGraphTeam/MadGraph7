@@ -13,7 +13,10 @@ of the event and counter-events. Their Jacobians, with that of the Born at
 s_rec, the luminosity and the flux, must be those of genps_fks.f. The FKS
 mapping of lepton beams must be invertible, with the volume of the real phase
 space, and the Born of its collinear counter-event must be that of the
-collinear limit (p_born_coll).
+collinear limit (p_born_coll). The asymmetric map of an incoming emitter
+(FKSRadiation.InitialMap) maps the Born at s_rec by
+fks_initial_fixed_light_cone_map instead of the boost along i, compared with
+the data of the MCcntRefactor_Sfun branch (test_data/fks_asymmetric).
 """
 
 import math
@@ -21,7 +24,14 @@ import math
 import numpy as np
 import pytest
 import torch
-from fks_testing import FKS_DATA, FKS_DATA_IDS, evaluate, reference
+from fks_testing import (
+    FKS_ASYMMETRIC_DATA,
+    FKS_DATA,
+    FKS_DATA_IDS,
+    data_id,
+    evaluate,
+    reference,
+)
 from madspace_testing import default_context
 
 import madspace as ms
@@ -40,6 +50,9 @@ def is_lepton(path):
 
 LEPTON_DATA = [path for path in FKS_DATA if is_lepton(path)]
 LEPTON_IDS = [FKS_DATA_IDS[FKS_DATA.index(path)] for path in LEPTON_DATA]
+# with those of the asymmetric map from the MCcntRefactor_Sfun branch
+EMISSION_DATA = LEPTON_DATA + [p for p in FKS_ASYMMETRIC_DATA if is_lepton(p)]
+INITIAL_MAPS = ["symmetric", "asymmetric"]
 
 
 def to_torch(x):
@@ -122,10 +135,11 @@ def test_luminosity_matches_generate_x_ee(path):
     np.testing.assert_allclose(det * det_inv, 1.0, rtol=1e-13)
 
 
-def fixed_emission(n_final):
-    """fks_initial_fixed_radiate and fks_initial_fixed_boost as a function of
-    xi_hat, y, r_phi, sqrt(s), s_born_min, beam_sign and the final state of
-    the Born in its rest frame."""
+def fixed_emission(n_final, initial_map="symmetric", masses=None):
+    """fks_initial_fixed_radiate and fks_initial_fixed_boost (with the
+    asymmetric map fks_initial_fixed_light_cone_map, with the masses of the
+    final state) as a function of xi_hat, y, r_phi, sqrt(s), s_born_min,
+    beam_sign and the final state of the Born in its rest frame."""
     vec = ms.batch_four_vec_array(n_final)
     names = ["xi_hat", "y", "r_phi", "sqrt_s", "s_born_min", "beam_sign"]
     fb = ms.FunctionBuilder(
@@ -145,7 +159,17 @@ def fixed_emission(n_final):
     p_i, xi, xi_max, sqrt_s_rec, det_xi, p_i_hat = fb.fks_initial_fixed_radiate(
         *[fb.input(k) for k in range(6)]
     )
-    final = fb.fks_initial_fixed_boost(fb.input(6), p_i_hat, xi)
+    if initial_map == "asymmetric":
+        final = fb.fks_initial_fixed_light_cone_map(
+            fb.input(6),
+            ms.Value(list(masses)),
+            xi,
+            fb.input(1),
+            fb.input(2),
+            fb.input(5),
+        )
+    else:
+        final = fb.fks_initial_fixed_boost(fb.input(6), p_i_hat, xi)
     for k, value in enumerate([p_i, xi, xi_max, sqrt_s_rec, det_xi, p_i_hat, final]):
         fb.output(k, value)
     return ms.FunctionRuntime(fb.function(), default_context())
@@ -153,11 +177,11 @@ def fixed_emission(n_final):
 
 def configuration_cases():
     cases = []
-    for path in LEPTON_DATA:
+    for path in EMISSION_DATA:
         data = reference(path)
         for conf in data["configs"]:
             if any("noevpr" in p for p in conf["points"] + conf["limit_points"]):
-                name = f"{FKS_DATA_IDS[FKS_DATA.index(path)]}-fks{conf['nfks']}"
+                name = f"{data_id(path)}-fks{conf['nfks']}"
                 cases.append(pytest.param(path, conf["nfks"], id=name))
     return cases
 
@@ -169,9 +193,11 @@ def test_emission_matches_genps_fks(path, nfks):
     generate_noevpr_kinematics: i at fixed sqrt(s), the Born boosted against
     it, xi, xi_max and i per unit xi, and the Jacobians, which with the
     luminosity, the Born at s_rec and the flux at sqrt(s) are those of
-    genps_fks.f."""
+    genps_fks.f. With the asymmetric map of the MCcntRefactor_Sfun branch the
+    Born recoils by fks_initial_fixed_light_cone_map, with the same
+    Jacobians."""
     data = reference(path)
-    conf = data["configs"][nfks - 1]
+    conf = next(c for c in data["configs"] if c["nfks"] == nfks)
     points = [p for p in conf["points"] + conf["limit_points"] if "noevpr" in p]
     ndim, nex = data["ndim"], data["nexternal"]
     i_fks, j_fks = conf["i_fks"] - 1, conf["j_fks"] - 1
@@ -196,7 +222,9 @@ def test_emission_matches_genps_fks(path, nfks):
     xs = np.array([p["noevpr"]["x"] for p in points])
     a = 1 / (1 - BETA)
     jac_lumi = a * (1 - tau) ** (1 - BETA) * a * (1 - tau / xs[:, 0]) ** (1 - BETA)
-    runtime = fixed_emission(nex - 3)
+    initial_map = data.get("initial_map", "symmetric")
+    born_masses = np.delete(np.array(conf["masses"], dtype=float), i_fks)
+    runtime = fixed_emission(nex - 3, initial_map, born_masses[2:])
     # event, soft, collinear and soft-collinear counter-event
     cases = [
         ("event", xi_hat, y, field("p_ev"), field("jac")),
@@ -277,7 +305,7 @@ def test_collinear_born_of_genps_fks(path):
         )
 
 
-def lepton_mapping(data, cuts_floor=0.0):
+def lepton_mapping(data, cuts_floor=0.0, initial_map="symmetric"):
     """The FKS mapping of lepton beams of the configurations of reference
     data, with a RAMBO Born mapping of their masses."""
     conf = data["configs"][0]
@@ -292,16 +320,20 @@ def lepton_mapping(data, cuts_floor=0.0):
     )
     luminosity = ms.LeptonLuminosity(s_lab(data), BETA, s_hat_min_condition=True)
     mapping = fks_configuration_mapping(
-        born, data["fks_configurations"], luminosity=luminosity
+        born,
+        data["fks_configurations"],
+        luminosity=luminosity,
+        initial_map=initial_map,
     )
     return born, luminosity, mapping
 
 
+@pytest.mark.parametrize("initial_map", INITIAL_MAPS)
 @pytest.mark.parametrize("path", LEPTON_DATA, ids=LEPTON_IDS)
-def test_mapping_round_trip(path):
+def test_mapping_round_trip(path, initial_map):
     """The FKS mapping of lepton beams and its inverse."""
     data = reference(path)
-    _, _, mapping = lepton_mapping(data)
+    _, _, mapping = lepton_mapping(data, initial_map=initial_map)
     count = len(data["configs"])
     rng = np.random.default_rng(11)
     batch = 2000
@@ -332,14 +364,15 @@ def test_mapping_round_trip(path):
     np.testing.assert_allclose(weight[ok] * det_inv[ok], 1.0, rtol=1e-9)
 
 
+@pytest.mark.parametrize("initial_map", INITIAL_MAPS)
 @pytest.mark.parametrize("path", LEPTON_DATA, ids=LEPTON_IDS)
-def test_counter_events(path):
+def test_counter_events(path, initial_map):
     """The counter-events of an incoming emitter keep the momentum fractions
     and the partonic energy of the event, i is soft or along the beam of j,
     and collinear_born_momenta is the collinear counter-event without i with
     j - i, which is the Born at s_rec boosted along the beam."""
     data = reference(path)
-    _, _, mapping = lepton_mapping(data)
+    _, _, mapping = lepton_mapping(data, initial_map=initial_map)
     names = list(mapping.counter_event_types().keys())
     count = len(data["configs"])
     rng = np.random.default_rng(13)
@@ -382,14 +415,15 @@ def mean_and_error(values):
     return values.mean(), values.std() / math.sqrt(len(values))
 
 
+@pytest.mark.parametrize("initial_map", INITIAL_MAPS)
 @pytest.mark.parametrize("path", LEPTON_DATA, ids=LEPTON_IDS)
-def test_volume(path):
+def test_volume(path, initial_map):
     """Per configuration, the FKS mapping of lepton beams covers the real
     phase space at the momentum fractions of the luminosity once: its mean
     weight is that of the luminosity times a RAMBO mapping of the real
     process at the partonic energy."""
     data = reference(path)
-    _, luminosity, mapping = lepton_mapping(data)
+    _, luminosity, mapping = lepton_mapping(data, initial_map=initial_map)
     conf = data["configs"][0]
     sqrt_s = math.sqrt(s_lab(data))
     real = ms.PhaseSpaceMapping(

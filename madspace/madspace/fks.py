@@ -243,8 +243,9 @@ def fks_configuration_mapping(
             sqrt_s_hat_condition=True. An incoming emitter then radiates
             without the projection of the event, see
             FKSConfigurationMapping.
-        initial_map: the map of an emission off an incoming parton with
-            hadron beams, see fks_mappings.
+        initial_map: the map of an emission off an incoming parton, see
+            fks_mappings, also for lepton beams without the projection of the
+            event.
 
     Raises:
         ValueError: as fks_mappings, and if a floor needs the

@@ -836,8 +836,14 @@ FKSConfigurationMapping::Emission FKSConfigurationMapping::build_fixed_emission(
     auto [p_i, xi, xi_max, sqrt_s_rec, det_xi, p_i_hat] = fb.fks_initial_fixed_radiate(
         xi_hat, y_var, c.r_phi, c.sqrt_s, c.s_hat_min, c.beam_sign
     );
-    auto boosted =
-        fb.unstack(fb.fks_initial_fixed_boost(fb.stack(born.final_state), p_i_hat, xi));
+    auto final_state = fb.stack(born.final_state);
+    auto boosted = fb.unstack(
+        _initial_map == FKSRadiation::asymmetric
+            ? fb.fks_initial_fixed_light_cone_map(
+                  final_state, Value(final_masses()), xi, y_var, c.r_phi, c.beam_sign
+              )
+            : fb.fks_initial_fixed_boost(final_state, p_i_hat, xi)
+    );
     // the incoming momenta of the real emission, those of the Born at sqrt(s)
     ValueVec layout(c.incoming);
     layout.insert(layout.end(), boosted.begin(), boosted.end());
@@ -1506,8 +1512,13 @@ Mapping::Result FKSConfigurationMapping::build_lepton_inverse(
                 fb.fks_initial_fixed_cluster(p_i, sqrt_s, s_born_min, beam_sign);
             auto [r_xi, r_y, det_sample_inv] = fb.fks_xi_y_sample_inverse(xi_hat, y);
             // the direction of i, which the boost takes
+            auto final_stack = fb.stack(final_state);
             auto rest = fb.unstack(
-                fb.fks_initial_fixed_boost_inverse(fb.stack(final_state), p_i, xi)
+                _initial_map == FKSRadiation::asymmetric
+                    ? fb.fks_initial_fixed_light_cone_map_inverse(
+                          final_stack, Value(final_masses()), xi, y, r_phi, beam_sign
+                      )
+                    : fb.fks_initial_fixed_boost_inverse(final_stack, p_i, xi)
             );
             auto [p_in1, p_in2] = fb.com_p_in(sqrt_s_rec);
             ValueVec born{p_in1, p_in2};
