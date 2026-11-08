@@ -47,6 +47,7 @@ from tests.unit.loop_v2_induced_observables_rows import ROWS, generate
 from tests.unit.test_loop_v2_induced import _fixture
 from tests.unit.test_loop_v2_sdk_extras import (
     SDK,
+    _agree,
     UMAMI_HEADERS,
     WRAPPER,
     _bits,
@@ -547,14 +548,11 @@ def test_c_abi_extended_selections_equal_the_python_decimals(
                     for cell in cells:
                         values += [cell.finite, cell.single_pole, cell.double_pole]
             assert len(literals) == len(values)
-            for literal, value in zip(literals, values, strict=True):
-                if value is None:
-                    assert literal is None
-                    continue
-                assert Decimal(literal) == Decimal(value), (literal, value)
-            assert found["virtual"] == [
-                math.nan if x is None else float(Decimal(x)) for x in literals
-            ] or all(
+            # The double-double target (the SDK tests' rule, ruling R5): two
+            # native libraries may sum in another order on another host.
+            assert _agree(values, literals), (values, literals)
+            # The call's doubles are the nearest doubles of its own literals.
+            assert all(
                 (a != a and x is None) or a == float(Decimal(x))
                 for a, x in zip(found["virtual"], literals, strict=True)
             )

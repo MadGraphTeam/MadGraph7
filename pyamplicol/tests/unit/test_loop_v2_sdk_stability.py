@@ -38,7 +38,13 @@ from fractions import Fraction
 
 import pytest
 
-from tests.unit.test_loop_v2_sdk_extras import _error, _Request, _ResultShape, _sdk
+from tests.unit.test_loop_v2_sdk_extras import (
+    _agree,
+    _error,
+    _Request,
+    _ResultShape,
+    _sdk,
+)
 from tests.unit.test_loop_v2_sdk_parity import GG_POINT, POINT_173, _generate
 
 pytestmark = pytest.mark.loop_physics
@@ -1079,6 +1085,5 @@ def test_the_sdk_self_test_touches_no_symbolica_state(loop_native, tmp_path):
             else [sector for v in reference.values for sector in v]
         )
         values = [x for c in cells for x in (c.finite, c.single_pole, c.double_pole)]
-        assert [None if x is None else Decimal(x) for x in decimal["virtual"]] == [
-            None if x is None else Decimal(x) for x in values
-        ], index
+        # The double-double target (``test_loop_v2_sdk_extras._agree``).
+        assert _agree(values, decimal["virtual"]), index
