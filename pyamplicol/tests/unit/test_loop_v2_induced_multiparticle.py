@@ -30,7 +30,8 @@ _v2_member``). Generated through ``Generator`` and evaluated through
   counterterm rules of c and b change the retained plan). On ``p p > z z``
   with ``include`` nothing is folded (a down-type substitution changes the
   diagonal-CKM W couplings the electroweak orders retain), loop-induced
-  member included, each bitwise equal to the plain generation.
+  member included, and neither on ``p p > h h`` (its five loop-induced
+  q q~ > H H candidates), each bitwise equal to the plain generation.
 * LC / NLC: a request with a member routed loop-induced is refused as a
   whole (``loop-induced-colour-accuracy``, ``generate`` writes nothing);
   the mixed ``auto`` request passes, G G > Z Z skipped with its typed
@@ -194,6 +195,13 @@ def _point(name: str):
 
 
 @pytest.fixture(scope="module")
+def pphh(tmp_path_factory):
+    """p p > h h, purely loop-induced (generated once)."""
+
+    return _generate(tmp_path_factory.mktemp("pphh"), (("p", "p p > h h"),))
+
+
+@pytest.fixture(scope="module")
 def ppzz(tmp_path_factory):
     """p p > z z with process.loop_induced = 'include' (generated once)."""
 
@@ -222,7 +230,8 @@ def _assert_zero_member(artifact, key, expression, value, info, probes, inputs):
     coloured attachment (the s-channel gluon on the top loop) and no
     counterterm ket, the exact colour zero with its record. c, b: no loop
     family either, but the counterterm kets of their Yukawa R2 / UV vertices
-    (R2_ccH, UV_Hcc; y_c = y_b = 0 at no_b_mass) carry a colour tensor: not
+    (R2_ccH, UV_Hcc, R2_bbH, UV_Hbb: y_c = y_b = 0 at no_b_mass) carry a
+    colour tensor at the root of leg 1 (H H > c c~ has none): not
     a colour zero (m-lit Q13), evaluated numerically, the probes passed,
     exactly 0 within its absolute estimate. ``inputs``: the evaluated
     (point, scale, parameters)."""
@@ -284,16 +293,16 @@ def test_a_counterterm_only_loop_induced_process_generates(tmp_path):
 
 
 @pytest.mark.loop_nightly
-def test_loop_induced_multiparticle_request_end_to_end(tmp_path):
+def test_loop_induced_multiparticle_request_end_to_end(pphh, tmp_path):
     """p p > h h: six members, all served loop-induced (v5), each bitwise
     equal to the same process generated as its own request; G G > H H
     against MadLoop, the q q~ > H H members exactly 0 (``_assert_zero_member``:
     u, d, s exact colour zeros with their record; c, b numerical zeros within
-    their absolute estimates). Measured 124 s (two generations of six
+    their absolute estimates). Measured 124-136 s (two generations of six
     processes)."""
 
     fixture, point, scale, parameters = _point("li_gg_hh")
-    artifact = _generate(tmp_path / "pphh", (("p", "p p > h h"),))
+    artifact = pphh
     members = _members(artifact)
     expressions = {
         expression.casefold(): key for key, (expression, _c) in members.items()
@@ -442,6 +451,35 @@ def test_flavor_blind_on_a_mixed_request_folds_nothing_without_a_proof(ppzz, tmp
         assert _bits(value) == _bits(plain), expression
         values[expression.casefold()] = _bits(value)
     assert values["d d~ > z z"] == values["s s~ > z z"]
+
+
+@pytest.mark.loop_nightly
+def test_flavor_blind_on_loop_induced_members_folds_nothing_without_a_proof(
+    pphh, tmp_path
+):
+    """p p > h h, flavor_blind: the five q q~ > H H members are candidates of
+    one another (d, s, b and u, c share charge and mass) but none has an
+    exact proof (the electroweak orders retain the diagonal-CKM W couplings
+    a down-type substitution changes; the zero-coupling Yukawa counterterm
+    rules of c and b), so all six are generated on their own and evaluate
+    bitwise as the plain generation (``pphh``). Measured 66 s (with the
+    shared ``pphh`` artifact)."""
+
+    from pyamplicol.artifacts.process_groups import read_process_groups
+
+    _unused, *inputs = _point("li_gg_hh")
+    artifact = _generate(
+        tmp_path / "blind", (("p", "p p > h h"),), process="flavor_blind = true"
+    )
+    members = _members(artifact)
+    assert members == _members(pphh)
+    groups = read_process_groups(artifact)
+    assert all(m.generated for g in groups.groups.values() for m in g.members)
+    assert sorted(groups.groups) == sorted(members)
+    for key, (expression, _capabilities) in sorted(members.items()):
+        _runtime, value = _evaluate(artifact, key, *inputs)
+        _plain, plain = _evaluate(pphh, key, *inputs)
+        assert _bits(value) == _bits(plain), expression
 
 
 # ------------------------------------------------------------- LC and NLC
