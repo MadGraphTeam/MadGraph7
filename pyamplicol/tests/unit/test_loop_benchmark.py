@@ -2748,3 +2748,179 @@ def test_provider_records_carry_the_specification_value_annotations(
         == streams.spec("li_gg_zzzz")["recola"]["value_exceptions"]
     )
     assert entry["value_exceptions"]["points"] == [7, 13]
+
+
+def _induced_run(seconds: list[float], failed: list[int], values: dict) -> dict:
+    """One backend run of a loop-induced harness record (``InducedRun``)."""
+
+    summary = {
+        "blocks": len(seconds),
+        "points_per_block": 128,
+        "median_seconds_per_point": sorted(seconds)[len(seconds) // 2],
+        "min_seconds_per_point": min(seconds),
+        "max_seconds_per_point": max(seconds),
+        "samples_seconds_per_point": seconds,
+        "stages_per_point": {"dressing": seconds[0] / 2, "squaring": 1e-5},
+        "counts_per_block": {"TIR gate refusals": 3},
+        "reals_per_lane": {},
+        "throughput": None,
+        "values": values,
+        "failed_points": failed,
+        "failure_causes": {"x": max(failed)} if any(failed) else {},
+    }
+    return summary
+
+
+def test_loop_induced_gate_on_tirust_with_the_born_free_metric(tmp_path):
+    """``gate.build`` on a loop-induced row (m-lit lit-perf, PLAN §5.2): one
+    configuration per requested backend; the verdict on TIRust; NinjaRS per
+    amplitude reported as the second mode with its ratios; a TIRust run that
+    failed points closed has no verdict (the gap), its served points' time
+    beside it; the value metric is Born-free; a provider whose values are
+    excluded is no matched provider (reported beside the verdict, its values
+    not compared) and an excepted point is left out; the li-timing records
+    carry the request, per block the failed points, the served fraction and
+    the verdict, under the registry key."""
+
+    import json
+
+    key = "li_gg_emepmupmum"
+    rows = [{"born": 0.0, "finite": 1.0 + 1e-6 * i, "seconds": 0.01} for i in range(2)]
+    providers = {
+        "kind": "providers",
+        "process": key,
+        "cpu": 130,
+        "points": 2,
+        "providers": {
+            "madloop": {
+                "points": 2,
+                "mean_seconds_per_point": 0.040,
+                "median_seconds_per_point": 0.040,
+                "rows": rows,
+            },
+            "openloops": {
+                "points": 2,
+                "mean_seconds_per_point": 0.010,
+                "median_seconds_per_point": 0.010,
+                "rows": rows,
+            },
+            "recola": {
+                "points": 2,
+                "mean_seconds_per_point": 0.004,
+                "median_seconds_per_point": 0.004,
+                "rows": [{**r, "raw": {"finite": r["finite"]}} for r in rows],
+                "values_excluded": "width convention",
+            },
+        },
+    }
+    values = {"0": [0.0, 1.0], "1": [0.0, 1.0]}
+    record = {
+        **_pyamplicol_record(key, [0.006]),
+        "contribution": "loop-induced",
+        "host": "testhost",
+        "host_cpus": [7],
+        "native": {"directory": "loop-native-x", "digest": "d" * 64},
+        "generation": {
+            "generate": {"seconds": 1.0, "peak_gib": 0.5},
+            "export": {"seconds": 0.5},
+            "filter": {"seconds": 0.1, "peak_gib": 0.5, "dropped_rows": 0},
+            "probes": {"seconds": 9.0, "peak_gib": 0.7, "split_seconds": {}},
+            "plan_mb": 0.1,
+        },
+        "batches": {},
+        "backend_runs": {
+            "auto": {
+                "requested": "auto",
+                "effective": "ninjars",
+                "reason": "auto: NinjaRS; test",
+                "batches": {"128": _induced_run([0.008] * 5, [0] * 5, values)},
+                "served": {},
+                "profiled": {},
+            },
+            "tirust": {
+                "requested": "tirust",
+                "effective": "tirust",
+                "reason": "requested",
+                "batches": {"128": _induced_run([0.006] * 5, [0] * 5, values)},
+                "served": {},
+                "profiled": {},
+            },
+        },
+    }
+    failing = json.loads(json.dumps(record))
+    failing["revision"] = "1" * 40
+    run = failing["backend_runs"]["tirust"]
+    run["batches"]["128"] = _induced_run([0.007] * 5, [3] * 5, values)
+    run["served"] = {
+        "128": {**_induced_run([0.0065] * 5, [0] * 5, values), "points_per_block": 125}
+    }
+    paths = []
+    for index, item in enumerate([providers, record]):
+        path = tmp_path / f"r{index}.json"
+        path.write_text(json.dumps(item))
+        paths.append(path)
+    document, _ = gate.build(paths)
+    (row,) = document["processes"]
+    assert row["loop_induced"] and row["gate_backend"] == "tirust"
+    assert set(row["not_matched"]) == {"recola"}
+    tirust = row["pyamplicol"]["native/full/tirust"]
+    auto = row["pyamplicol"]["native/full/auto"]
+    verdict = tirust["batches"]["128"]["gate"]
+    # The limit: MadLoop 40 ms and 1.3 x OpenLoops 10 ms; Recola beside it.
+    assert verdict["status"] == "pass" and verdict["binding_provider"] == "openloops"
+    assert verdict["not_matched"]["recola"]["ratio"] == 0.006 / 0.004
+    assert auto["batches"]["128"]["gate"]["status"] == gate.SECOND_MODE_STATUS
+    assert auto["batches"]["128"]["gate"]["measured_status"] == "pass"
+    assert tirust["reduction"]["requested"] == "tirust"
+    compared = tirust["values_vs_providers"]
+    assert compared["recola"] == {"excluded": "width convention"}
+    assert compared["madloop"]["metric"] == gate.INDUCED_METRIC
+    worst = abs(1.0 - (1.0 + 1e-6)) / (1.0 + 1e-6)
+    assert compared["madloop"]["max_finite_deviation"] == worst
+    assert "squaring" in tirust["stages"]["128"]
+    # TIRust failed points closed: no verdict, the gap with its numbers.
+    paths[1].write_text(json.dumps(failing))
+    document, _ = gate.build(paths)
+    (row,) = document["processes"]
+    gap = row["pyamplicol"]["native/full/tirust"]["batches"]["128"]["gate"]
+    assert gap["status"] == gate.FAILED_CLOSED_STATUS
+    assert gap["failed_points"] == [3] * 5 and "ratio_to_binding_limit" not in gap
+    assert gap["served_points"]["points"] == 125
+    assert gap["served_fraction"] == 1 - 3 / 128
+    records = gate.li_timing_records(
+        document,
+        [{"key": "gg_emepmupmum", "ids": ["LI-43"], "process": "g g > e+ e- mu+ mu-"}],
+    )
+    by = {(r["requested"], r["batch"]): r for r in records}
+    tir = by[("tirust", 128)]
+    assert tir["key"] == "gg_emepmupmum" and tir["host"] == "testhost"
+    assert tir["failed_points"] == [3] * 5 and "seconds_per_point" not in tir
+    assert tir["whole_call_seconds_per_point"] == 0.007
+    assert tir["gate"]["status"] == gate.FAILED_CLOSED_STATUS
+    assert (
+        tir["generation"]["seconds"] == 1.6
+        and tir["generation"]["probes_seconds"] == 9.0
+    )
+    nin = by[("auto", 128)]
+    assert nin["seconds_per_point"] == 0.008 and nin["effective"] == "ninjars"
+    assert nin["reason"] == "auto: NinjaRS; test"
+    target = tmp_path / "li-timing.json"
+    target.write_text(json.dumps({"records": [{"key": "other", "revision": "2" * 40}]}))
+    gate.write_li_timing(target, records)
+    gate.write_li_timing(target, records)
+    merged = json.loads(target.read_text())["records"]
+    assert len(merged) == 1 + len(records)
+
+
+def test_value_exceptions_leave_their_points_out():
+    """``compare_values`` honours a provider's ``value_exceptions``: its
+    listed stream points are not compared (named in the result)."""
+
+    mine = {0: (0.0, 1.0), 7: (0.0, 1.0), 9: (0.0, 2.0)}
+    theirs = {"recola": {0: (0.0, 1.0), 7: (0.0, 5.0), 9: (0.0, 2.0)}}
+    notes = {"recola": {"value_exceptions": {"points": [7], "reason": "unstable"}}}
+    found = gate.compare_values("li_gg_zzzz", mine, theirs, notes)["recola"]
+    assert found["max_finite_deviation"] == 0.0 and found["points"] == 2
+    assert found["excepted_points"] == [7] and found["exception"] == "unstable"
+    plain = gate.compare_values("li_gg_zzzz", mine, theirs)["recola"]
+    assert plain["max_finite_deviation"] == 0.8
