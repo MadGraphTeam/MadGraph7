@@ -16,7 +16,10 @@
   ``loop_execution::v2::tests::
   amplitude_numerators_count_against_the_chunk_budget``);
 * TIRust's profile (``V2Executor.prepare_reduction(profile=True)``): its
-  stages join the report and the values stay bitwise.
+  stages join the report and the values stay bitwise;
+* the exit codes of the L6 both-backends check
+  (``tools/loop_v2_observables_backends.py``, extended by lit-cache for the
+  lit-amp rows), on a stubbed runtime.
 """
 
 from __future__ import annotations
@@ -164,3 +167,93 @@ def test_tirust_profile_joins_the_report_and_keeps_the_values(li, loop_native):
     assert profiled[2]["counts"]["TIR master evaluations"] > 0
     native.prepare_reduction("tirust")
     assert _native_run(executor, li, name, reduction="tirust")[0] == plain[0]
+
+
+@pytest.mark.loop_fast
+@pytest.mark.parametrize(
+    ("case", "code"),
+    [
+        ("agree", 0),
+        ("tirust-refused", 2),
+        ("tirust-unserved", 2),
+        ("tirust-failed-closed", 2),
+        ("bitwise-equal", 2),
+        ("ninjars-refused", 1),
+        ("disagree", 1),
+    ],
+)
+def test_the_backends_check_exit_codes(case, code, tmp_path, monkeypatch):
+    """The exit-code contract of the L6 both-backends check
+    (``tools/loop_v2_observables_backends.py``, which lit-tir-mp and lit-val
+    re-run), on a stubbed runtime: 0 when every compared output passes; 2
+    when the TIRust arm was not exercised (a TIRust refusal, a fixture point
+    NinjaRS serves that TIRust does not, points failed closed, or arms
+    bitwise equal); 1 when an output fails or the NinjaRS arm does not run."""
+
+    import json
+    import sys
+    from decimal import Decimal
+
+    import pyamplicol
+    from pyamplicol.api.errors import ReductionUnavailable
+    from tools import loop_v2_observables_backends as tool
+
+    def entry(value, error):
+        return [[("finite", (Decimal(value), Decimal(0)), error)]]
+
+    def served(name, runtime, backend, carrier):
+        if backend == "ninjars" and case == "ninjars-refused":
+            raise ReductionUnavailable("no NinjaRS")
+        if backend == "tirust" and case == "tirust-refused":
+            raise ReductionUnavailable("no TIRust")
+        unserved = backend == "tirust" and case == "tirust-unserved"
+        return {"p0": "success", "p1": "unstable" if unserved else "success"}
+
+    def entries(name, runtime, backend, stability, carrier, failed, observables):
+        if backend == "ninjars":
+            return {"virtual/p0": entry("1.0", 1e-3), "virtual/p1": entry("2.0", 1e-3)}
+        value = {"disagree": "1.5", "bitwise-equal": "1.0"}.get(case, "1.0001")
+        out = {"virtual/p0": entry(value, 1e-3)}
+        if case == "tirust-failed-closed":
+            failed["virtual/p1"] = "TIRust Unstable: ill-conditioned Gram matrix"
+        else:
+            out["virtual/p1"] = entry(
+                "2.0" if case == "bitwise-equal" else "2.0001", 1e-3
+            )
+        return out
+
+    class Runtime:
+        @staticmethod
+        def load(path, process):
+            return object()
+
+    monkeypatch.setattr(
+        tool, "_artifact", lambda work, name, expression, observables: work
+    )
+    monkeypatch.setattr(tool, "_served", served)
+    monkeypatch.setattr(tool, "_entries", entries)
+    monkeypatch.setattr(tool, "checks", lambda: None)
+    monkeypatch.setattr(pyamplicol, "Runtime", Runtime)
+    output = tmp_path / "record.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "tool",
+            "--work-dir",
+            str(tmp_path),
+            "--output",
+            str(output),
+            "--set",
+            "lit-amp",
+            "--rows",
+            "li_gg_hh",
+        ],
+    )
+    assert tool.main() == code
+    record = json.loads(output.read_text())
+    assert ("not_exercised" in record) == (code == 2)
+    if case == "disagree":
+        assert record["passed"] is False
+    if case == "agree":
+        assert record["passed"] is True and len(record["rows"]["li_gg_hh"]) == 2
