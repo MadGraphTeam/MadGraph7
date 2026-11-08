@@ -294,7 +294,7 @@ pub unsafe extern "C" fn rusticol_virtual_set_reduction(
 /// `reduction_target=` (m-lit F3 (a); additive, ABI version 2 kept): the
 /// relative accuracy of each point's result (every squared-order sector
 /// against its own size), 1e-5 by default (`reduction_policy::
-/// DEFAULT_TARGET`, unless the artifact records another). TIRust's
+/// DEFAULT_TARGET`). TIRust's
 /// method-choice acceptance follows it (calibrated); NinjaRS has no setting
 /// it drives. A value that is not a finite positive number is
 /// `RUSTICOL_VIRTUAL_INVALID_ARGUMENT` and nothing changes.

@@ -254,8 +254,8 @@ pub struct Runtime {
     /// "ninjars" or "tirust"; the artifact's generation default until
     /// [`Runtime::set_reduction`]).
     reduction: String,
-    /// The target accuracy of later evaluations (the artifact's generation
-    /// default, else `reduction_policy::DEFAULT_TARGET`, until
+    /// The target accuracy of later evaluations
+    /// (`reduction_policy::DEFAULT_TARGET` until
     /// [`Runtime::set_reduction_target`]).
     target: f64,
     /// The stability checks of later binary64 evaluations (none by default:
@@ -317,9 +317,7 @@ impl Runtime {
         }
         let accuracy = native.metadata().color_accuracy.clone();
         let reduction = native.artifact_reduction().to_owned();
-        let target = native
-            .artifact_target()
-            .unwrap_or(reduction_policy::DEFAULT_TARGET);
+        let target = reduction_policy::DEFAULT_TARGET;
         // The stored observable columns (correlated, spin-correlated and
         // resolved outputs), when the process has them.
         let observables = (|| -> RusticolResult<_> {
@@ -444,8 +442,7 @@ impl Runtime {
     /// The target accuracy of later evaluations, the Python API's
     /// `reduction_target=` (m-lit F3 (a)): the relative accuracy of each
     /// point's result (every squared-order sector against its own size),
-    /// `reduction_policy::DEFAULT_TARGET` (1e-5) unless the artifact records
-    /// another. TIRust's method-choice acceptance follows it (calibrated,
+    /// `reduction_policy::DEFAULT_TARGET` (1e-5) by default. TIRust's method-choice acceptance follows it (calibrated,
     /// `v2_tir::acceptance_of`); NinjaRS has no setting it drives. A value
     /// that is not a finite positive number is refused (typed
     /// `InvalidArgument`, `reduction_policy::TARGET_REFUSAL`) and nothing

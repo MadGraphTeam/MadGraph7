@@ -153,14 +153,14 @@ class R2Strategy(StrEnum):
 
 class ReductionBackend(StrEnum):
     """The reduction backend of a v2 one-loop evaluation (m-lit PLAN §2.b.4,
-    RULED Q17 / Q18): ``auto`` (the default) takes the per-type default,
+    RULED Q17 / Q18, F3): ``auto`` (the default) takes the per-type default,
     TIRust (tensor-integral reduction) for a loop-induced process and
     NinjaRS (integrand reduction) for a Born-interfered one, and falls back
-    to NinjaRS with a recorded reason where TIRust cannot serve the call
-    (for now ``auto`` keeps NinjaRS for loop-induced processes too, with
-    the reason, until the two backends' agreement there is established);
-    ``ninjars`` and ``tirust`` request one backend, refused when it cannot
-    serve the call. ``loop.reduction`` is the generation default recorded in
+    to NinjaRS with a recorded reason where TIRust cannot serve the call; on
+    TIRust a point it refuses or fails is evaluated again on NinjaRS (the
+    per-point fallback, recorded per point); ``ninjars`` and ``tirust``
+    request one backend, refused when it cannot serve the call, without a
+    fallback. ``loop.reduction`` is the generation default recorded in
     the artifact (artifacts are backend-independent), ``evaluation.
     reduction`` the runtime override; the requested and effective backends
     and the reason are in every result's lane diagnostics."""
@@ -187,6 +187,26 @@ def reduction_request(value: object) -> Literal["auto", "ninjars", "tirust"]:
             f"unknown reduction backend {value!r}; one of {choices}"
         ) from None
     return found.value
+
+
+def reduction_target(value: object) -> float:
+    """The value of a target accuracy (``evaluation.reduction_target``, the
+    CLI's ``--reduction-target``, ``Runtime.load`` / ``evaluate(...,
+    reduction_target=)``; m-lit F3 (a)): the relative accuracy of each
+    point's result, a finite positive number (a bool is refused), the one
+    validator of every Python surface; its refusal is the native policy's
+    one text (``reduction_policy::TARGET_REFUSAL``, the SDKs' too)."""
+
+    if (
+        not isinstance(value, bool)
+        and isinstance(value, (int, float))
+        and math.isfinite(value)
+        and value > 0
+    ):
+        return float(value)
+    from pyamplicol.loops.v2.reduction import policy
+
+    raise ValueError(policy()["target"]["refusal"])
 
 
 class PoleSelection(StrEnum):
@@ -1338,6 +1358,11 @@ class EvaluationConfig:
         default=None,
         metadata=_setting("str", nullable=True, choices=tuple(ReductionBackend)),
     )
+    # The target accuracy of TIRust's reductions (``reduction_target``; None:
+    # the default, 1e-5 relative per point).
+    reduction_target: float | None = field(
+        default=None, metadata=_setting("float", nullable=True)
+    )
     stability_checks: EvaluationStabilityChecksConfig = field(
         default_factory=EvaluationStabilityChecksConfig, metadata=_section()
     )
@@ -1403,6 +1428,12 @@ class EvaluationConfig:
                 "reduction",
                 _enum(self.reduction, ReductionBackend, "evaluation.reduction"),
             )
+        if self.reduction_target is not None:
+            try:
+                target = reduction_target(self.reduction_target)
+            except ValueError as exc:
+                raise ConfigurationError(f"evaluation.reduction_target: {exc}") from exc
+            object.__setattr__(self, "reduction_target", target)
         if not isinstance(self.stability_checks, EvaluationStabilityChecksConfig):
             raise ConfigurationError(
                 "evaluation.stability_checks must be an EvaluationStabilityChecksConfig"

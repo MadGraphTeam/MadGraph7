@@ -1386,16 +1386,6 @@ impl V2Runtime {
             .unwrap_or("auto")
     }
 
-    /// The generation request's target accuracy (`[loop] reduction_target`,
-    /// the artifact's default of a call that sets none; None when absent:
-    /// `reduction_policy::DEFAULT_TARGET`).
-    pub fn artifact_target(&self) -> Option<f64> {
-        self.artifact
-            .request
-            .get("reduction_target")
-            .and_then(serde_json::Value::as_f64)
-    }
-
     /// One mu_R² per point, `4 × legs` components per point, positive
     /// scales.
     pub(crate) fn check_batch(

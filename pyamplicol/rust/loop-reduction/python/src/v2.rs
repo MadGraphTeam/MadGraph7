@@ -225,7 +225,13 @@ pub(super) fn tir_options(
     acceptance: Option<f64>,
     acceptance_frame: &Option<String>,
 ) -> PyResult<rusticol_loop_reduction::v2_tir::TirOptions> {
-    tir_options_at(None, method_choice, alternative_first, acceptance, acceptance_frame)
+    tir_options_at(
+        None,
+        method_choice,
+        alternative_first,
+        acceptance,
+        acceptance_frame,
+    )
 }
 
 /// The validated target accuracy of a call (`reduction_policy::target`,
@@ -252,7 +258,8 @@ pub(super) fn tir_options_at(
     acceptance: Option<f64>,
     acceptance_frame: &Option<String>,
 ) -> PyResult<rusticol_loop_reduction::v2_tir::TirOptions> {
-    let defaults = rusticol_loop_reduction::v2_tir::TirOptions::for_target(reduction_target(target)?);
+    let defaults =
+        rusticol_loop_reduction::v2_tir::TirOptions::for_target(reduction_target(target)?);
     let acceptance_frame = match acceptance_frame.as_deref() {
         None => defaults.acceptance_frame,
         Some(name @ ("rotated" | "rescaled")) => rusticol_loop_reduction::runtime::ReductionFrame {

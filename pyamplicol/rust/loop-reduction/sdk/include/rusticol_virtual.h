@@ -167,8 +167,8 @@ int rusticol_virtual_set_reduction(rusticol_virtual_handle *handle,
   const char *reduction);
 /* Target accuracy of later evaluations (the Python API's reduction_target=;
  * additive, ABI version 2 kept): the relative accuracy of each point's result
- * (every squared-order sector against its own size), 1e-5 by default (or the
- * artifact's recorded default). TIRust's method-choice acceptance follows it
+ * (every squared-order sector against its own size), 1e-5 by default.
+ * TIRust's method-choice acceptance follows it
  * (calibrated against consistent truths); NinjaRS has no setting it drives.
  * A value that is not a finite positive number is
  * RUSTICOL_VIRTUAL_INVALID_ARGUMENT and nothing changes. */

@@ -895,14 +895,12 @@ fn backend_of<'a>(
                     masters: v2::master_selection("both")?,
                 })
             }
-            Reduction::TiRust => {
-                V2Backends::tirust(
-                    runtime::plan_histogram(plan),
-                    carrier_bits(carrier)?,
-                    rusticol_loop_reduction::reduction_policy::DEFAULT_TARGET,
-                )
-                .map_err(error)?
-            }
+            Reduction::TiRust => V2Backends::tirust(
+                runtime::plan_histogram(plan),
+                carrier_bits(carrier)?,
+                rusticol_loop_reduction::reduction_policy::DEFAULT_TARGET,
+            )
+            .map_err(error)?,
         });
     }
     Ok(slot.as_mut().expect("backend"))
@@ -1616,13 +1614,14 @@ impl V2Executor {
                 Some(V2Backends::TiRust(backend)) => Some(*backend.options()),
                 _ => None,
             };
-            if let (Some(current), Some(backend)) = (current, slot.as_mut())
-                && current != options
-                && rusticol_loop_reduction::v2_tir::TirOptions {
-                    acceptance: options.acceptance,
-                    ..current
-                } == options
-            {
+            let target_only = current.is_some_and(|current| {
+                current != options
+                    && (rusticol_loop_reduction::v2_tir::TirOptions {
+                        acceptance: options.acceptance,
+                        ..current
+                    }) == options
+            });
+            if let (true, Some(backend)) = (target_only, slot.as_mut()) {
                 // Another target: the acceptance only, the plans stay.
                 backend.set_target_acceptance(options.acceptance);
             } else if current != Some(options) {

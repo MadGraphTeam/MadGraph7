@@ -13,10 +13,27 @@ reduction=)``, else ``Runtime.load(..., reduction=)``, else the artifact's
 generation default ``[loop] reduction``, else ``"auto"``). ``resolve``
 chooses the effective backend once per call and carrier, never per point:
 
-* ``"auto"`` takes the per-type default (``DEFAULTS``) when it serves the
-  carrier, else NinjaRS, with the reason recorded;
+* ``"auto"`` takes the per-type default (``DEFAULTS``; TIRust on a TIR-only
+  artifact) when it serves the carrier, else NinjaRS, with the reason
+  recorded; on TIRust where NinjaRS serves the call too it has NinjaRS as
+  its PER-POINT FALLBACK (``VirtualReduction.fallback``, m-lit F3 (c)): a
+  point TIRust refuses or fails (also in the call's stability checks' own
+  evaluations) is evaluated again on NinjaRS from its original exact
+  inputs, at the call's carrier, after the TIRust call (``with_fallback``),
+  and the backend that served it and the reason are recorded per point
+  (``VirtualLaneDiagnostic.reduction``); a point NinjaRS fails too fails
+  with both reasons;
 * an explicit backend that cannot serve the call is refused typed
-  (``ReductionUnavailable``): never a silent switch.
+  (``ReductionUnavailable``): never a silent switch, and it has no
+  fallback.
+
+TIRust serves at a TARGET ACCURACY (``evaluate(..., reduction_target=)``,
+else ``Runtime.load(..., reduction_target=)``, else ``DEFAULT_TARGET`` of
+the native policy, 1e-5): the relative accuracy of each point's result
+(every squared-order sector against its own size, the rescue's
+``"relative"`` metric), from which TIRust's method-choice acceptance is
+calibrated in the native extension (``v2_tir::acceptance_of``); a rescue
+level's own target drives its level. NinjaRS has no setting it drives.
 
 What a backend serves is the native extension's capability, never a
 constant of this module: ``native.reduction_backends()`` (a JSON object
@@ -36,28 +53,28 @@ carry no correctness claim). A call also runs on one route of the artifact runti
 leading-colour selections through the stored observable columns), and the
 effective backend is one the route's executor runs: the guard of every
 route, so that a result never names a backend its values were not reduced
-by. Both routes run both backends; ``"auto"`` takes on a route only the
-backends of its ``auto`` set: NinjaRS, until the loop-induced agreement of
-the two backends is established (m-lit lit-cache), so ``"auto"`` keeps
-NinjaRS for loop-induced processes too, with the reason recorded, and
-TIRust serves explicit requests.
+by. Both routes run both backends, and ``"auto"`` takes either on both
+(its ``auto`` set; m-lit F3: TIRust for loop-induced processes, with the
+per-point NinjaRS fallback).
 
 The policy has ONE definition, in Rust (``rusticol_loop_reduction::
 reduction_policy``, m-lit DECISIONS 2026-11-07 21:50 R7), which the native
 SDKs share: the per-type defaults (``DEFAULTS``), the artifact runtime's
-routes with their ``auto`` sets (``SUMMED``, ``RESOLVED``) and ``resolve``'s
-choice and reason texts are read from the native extension
-(``reduction_policy``, ``reduction_resolve``), never restated here.
+routes with their ``auto`` sets (``SUMMED``, ``RESOLVED``), the default
+target, ``resolve``'s choice, its per-point fallback and every reason text
+are read from the native extension (``reduction_policy``,
+``reduction_resolve``, ``reduction_auto_default``, ``reduction_text``),
+never restated here.
 """
 
 from __future__ import annotations
 
 import functools
 import json
-from collections.abc import Collection, Iterator, Mapping
+from collections.abc import Callable, Collection, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple, TypeVar
 
 from pyamplicol.api.errors import CompatibilityError, ReductionUnavailable
 from pyamplicol.config.models import ReductionBackend, reduction_request
@@ -107,6 +124,39 @@ class _Defaults(Mapping[str, str]):
 DEFAULTS: Mapping[str, str] = _Defaults()
 
 
+def default_target() -> float:
+    """The default target accuracy of a call (the native policy's one
+    definition, ``reduction_policy::DEFAULT_TARGET``)."""
+
+    return float(policy()["target"]["default"])
+
+
+def auto_default(contribution: str, admitted: Collection[str] | None = None) -> str:
+    """The backend ``"auto"`` takes by default for ``contribution`` on an
+    artifact admitting ``admitted`` (None: every backend): the native
+    policy's one helper (``reduction_policy::auto_default``)."""
+
+    from pyamplicol.loops.native import load_loop_native
+
+    found = load_loop_native().reduction_auto_default(
+        contribution, None if admitted is None else set(admitted)
+    )
+    if found is None:
+        raise ValueError(f"unknown contribution {contribution!r}")
+    return str(found)
+
+
+def text(kind: str, a: str = "", b: str = "", detail: str = "") -> str:
+    """A reason text of the native policy (``reduction_text``): ``"served"``
+    (a point the fallback ``b`` served after ``a`` refused or failed it,
+    ``detail``), ``"failed"`` (a reason ``detail`` of the fallback ``a``) or
+    ``"cross"`` (the cross-backend check's refusal ``detail``)."""
+
+    from pyamplicol.loops.native import load_loop_native
+
+    return str(load_loop_native().reduction_text(kind, a, b, detail))
+
+
 class Route(NamedTuple):
     """A route of the artifact runtime: what it evaluates (for messages), the
     reduction backends its executor runs, and those ``"auto"`` may take
@@ -153,20 +203,30 @@ def __getattr__(name: str) -> Route:
 # (``running``): the artifact runtime sets it per carrier once ``resolve`` has
 # chosen it; the executors' call sites read it (``executor_options``).
 _EFFECTIVE: ContextVar[str] = ContextVar("pyamplicol_v2_reduction", default="ninjars")
+# The target accuracy of the current context (None: the default target).
+_TARGET: ContextVar[float | None] = ContextVar("pyamplicol_v2_target", default=None)
+_KEEP: Any = object()
 
 
 @contextmanager
-def running(backend: str | None) -> Iterator[None]:
+def running(backend: str | None, target: float | None = _KEEP) -> Iterator[None]:
     """Run the native executor calls of this context on the effective
     ``backend`` (``resolve``'s ``VirtualReduction.effective``; None:
-    NinjaRS), chosen once per call and carrier, never per point."""
+    NinjaRS), chosen once per call and carrier, never per point, at the
+    target accuracy ``target`` (``VirtualReduction.target``; None: the
+    default; omitted: the enclosing context's, e.g. for a cross-backend
+    check's evaluations)."""
 
     if backend is not None and backend not in BACKENDS:
         raise ValueError(f"unknown reduction backend {backend!r}")
     token = _EFFECTIVE.set(backend or "ninjars")
+    kept = target is _KEEP
+    held = None if kept else _TARGET.set(target)
     try:
         yield
     finally:
+        if held is not None:
+            _TARGET.reset(held)
         _EFFECTIVE.reset(token)
 
 
@@ -174,6 +234,13 @@ def current() -> str:
     """The effective backend of the current context (``running``)."""
 
     return _EFFECTIVE.get()
+
+
+def current_target() -> float | None:
+    """The target accuracy of the current context (``running``; None: the
+    default)."""
+
+    return _TARGET.get()
 
 
 def cross(backend: str) -> str:
@@ -200,16 +267,17 @@ def prepare(executor: Any) -> None:
     plan's (propagators, rank) histogram when the current context runs
     TIRust (``running``), before the call's first point (m-lit PLAN §2.b.3:
     no first-call stall); kept for the executor's lifetime, so a later call
-    only compares its settings, which are always TIRust's defaults here (the
-    validation settings of ``V2Executor.prepare_reduction`` serve runs on the
-    native executor itself). TIRust's typed refusal of a family (its plan
-    construction, or the rank admission) is ``ReductionUnavailable``. Nothing
-    for NinjaRS."""
+    only compares its settings: TIRust's defaults at the context's target
+    accuracy (``current_target``; another target sets the acceptance on the
+    built plans). The validation settings of ``V2Executor.prepare_reduction``
+    serve runs on the native executor itself. TIRust's typed refusal of a
+    family (its plan construction, or the rank admission) is
+    ``ReductionUnavailable``. Nothing for NinjaRS."""
 
     if _EFFECTIVE.get() != "tirust":
         return
     try:
-        executor.prepare_reduction("tirust")
+        executor.prepare_reduction("tirust", target=_TARGET.get())
     except ValueError as error:
         raise ReductionUnavailable(
             f"reduction 'tirust' cannot serve this artifact: {error}"
@@ -259,7 +327,7 @@ def resolve(
 
     request = reduction_request(requested)
     served = native_backends(native)
-    status, chosen, effective, reason = load_loop_native().reduction_resolve(
+    status, chosen, effective, reason, fallback = load_loop_native().reduction_resolve(
         request,
         contribution,
         carrier,
@@ -273,7 +341,60 @@ def resolve(
         raise ReductionUnavailable(reason)
     if status != "ok":
         raise ValueError(reason)
-    return VirtualReduction(chosen, effective, reason)
+    return VirtualReduction(chosen, effective, reason, fallback=fallback)
+
+
+_R = TypeVar("_R")
+
+
+def with_fallback(
+    run: Callable[[list[int] | None], tuple[list[_R], dict[int, list[str]]]],
+    choice: VirtualReduction,
+) -> tuple[list[_R], dict[int, list[str]], dict[int, VirtualReduction]]:
+    """``run`` of a batch on the call's effective backend at its target
+    (``running``; ``run(None)``: every point; ``run(indices)``: the points
+    at those batch indices, in that order; each returns its per-point
+    results and failures), then, for a choice with a per-point fallback
+    (``VirtualReduction.fallback``, m-lit F3 (c)), the points it refused or
+    failed again on the fallback, from their original exact inputs, at the
+    same carrier, after the primary call. Returns every point's result, the
+    failures (a point the fallback fails too keeps both backends' reasons)
+    and, per point the fallback evaluated again, its record (the backend
+    that served it and the reason; a failed point's: the fallback's
+    failure). A choice without a fallback runs ``run`` once (nothing else:
+    Born-interfered, explicit and TIR-only calls)."""
+
+    from pyamplicol.api.virtual_results import VirtualReduction
+
+    with running(choice.effective, choice.target):
+        results, failures = run(None)
+    records: dict[int, VirtualReduction] = {}
+    fallback = choice.fallback
+    if fallback is None or not failures:
+        return results, failures, records
+    indices = sorted(failures)
+    with running(fallback, choice.target):
+        again, still = run(indices)
+    results = list(results)
+    failures = dict(failures)
+    for local, index in enumerate(indices):
+        first = "; ".join(failures[index])
+        if local in still:
+            second = [text("failed", fallback, "", reason) for reason in still[local]]
+            failures[index] = [*failures[index], *second]
+            records[index] = VirtualReduction(
+                choice.requested, fallback, "; ".join(second), target=choice.target
+            )
+            continue
+        results[index] = again[local]
+        del failures[index]
+        records[index] = VirtualReduction(
+            choice.requested,
+            fallback,
+            text("served", choice.effective, fallback, first),
+            target=choice.target,
+        )
+    return results, failures, records
 
 
 __all__ = [
@@ -282,8 +403,11 @@ __all__ = [
     "DEFAULTS",
     "ReductionUnavailable",
     "Route",
+    "auto_default",
     "cross",
     "current",
+    "current_target",
+    "default_target",
     "executor_options",
     "native_backends",
     "policy",
@@ -291,4 +415,6 @@ __all__ = [
     "resolve",
     "route",
     "running",
+    "text",
+    "with_fallback",
 ]

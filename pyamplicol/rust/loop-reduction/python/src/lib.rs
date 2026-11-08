@@ -171,9 +171,7 @@ fn reduction_resolve(
         Err(Refusal::Unavailable(message)) => {
             ("unavailable", String::new(), String::new(), message, None)
         }
-        Err(Refusal::Invalid(message)) => {
-            ("invalid", String::new(), String::new(), message, None)
-        }
+        Err(Refusal::Invalid(message)) => ("invalid", String::new(), String::new(), message, None),
     }
 }
 
