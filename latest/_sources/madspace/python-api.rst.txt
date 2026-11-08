@@ -163,6 +163,7 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    python/VegasGridOptimizer
    python/Verbosity
    python/WeightingGroup
+   python/apply_mlm_collider_shower_scale
    python/apply_mlm_hardest_shower_scale
    python/available_backends
    python/compute_generation_batch_event_count

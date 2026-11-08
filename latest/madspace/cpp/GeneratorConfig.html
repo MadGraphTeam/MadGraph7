@@ -418,6 +418,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../python/VegasGridOptimizer.html">VegasGridOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/Verbosity.html">Verbosity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/WeightingGroup.html">WeightingGroup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/apply_mlm_collider_shower_scale.html">apply_mlm_collider_shower_scale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/apply_mlm_hardest_shower_scale.html">apply_mlm_hardest_shower_scale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/available_backends.html">available_backends</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
@@ -581,6 +582,7 @@
 <li class="toctree-l2"><a class="reference internal" href="VegasGridOptimizer.html">VegasGridOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="WeightingGroup.html">WeightingGroup</a></li>
 <li class="toctree-l2"><a class="reference internal" href="WeightingPipeline.html">WeightingPipeline</a></li>
+<li class="toctree-l2"><a class="reference internal" href="apply_mlm_collider_shower_scale.html">apply_mlm_collider_shower_scale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="apply_mlm_hardest_shower_scale.html">apply_mlm_hardest_shower_scale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="available_backends.html">available_backends</a></li>
 <li class="toctree-l2"><a class="reference internal" href="compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
@@ -835,13 +837,14 @@
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace15GeneratorConfig24mlm_hardest_shower_scaleE">
 <span id="_CPPv3N8madspace15GeneratorConfig24mlm_hardest_shower_scaleE"></span><span id="_CPPv2N8madspace15GeneratorConfig24mlm_hardest_shower_scaleE"></span><span id="madspace::GeneratorConfig::mlm_hardest_shower_scale__b"></span><span class="target" id="structmadspace_1_1GeneratorConfig_1a0a0b6eab24499a3fcc4da0a6071a8cf3"></span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">mlm_hardest_shower_scale</span></span></span><a class="headerlink" href="#_CPPv4N8madspace15GeneratorConfig24mlm_hardest_shower_scaleE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>MLM merging: write the event’s hardest scale, instead of the collider energy, as the pt_clust of the outgoing particles that are not light partons; see apply_mlm_hardest_shower_scale. </p>
+<dd><p>MLM merging: write the event’s hardest scale as the pt_clust of the outgoing particles that are not light partons; see apply_mlm_hardest_shower_scale. </p>
+<p>When false and <code class="docutils literal notranslate"><span class="pre">mlm_collider_energy</span></code> is set, they get the collider energy instead (apply_mlm_collider_shower_scale); when false and it is not, they keep the core-process scale the clustering gives them. </p>
 </dd></dl>
 
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace15GeneratorConfig19mlm_collider_energyE">
 <span id="_CPPv3N8madspace15GeneratorConfig19mlm_collider_energyE"></span><span id="_CPPv2N8madspace15GeneratorConfig19mlm_collider_energyE"></span><span id="madspace::GeneratorConfig::mlm_collider_energy__double"></span><span class="target" id="structmadspace_1_1GeneratorConfig_1ae24afb10711e6d219ecc4fb195bb864a"></span><span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">mlm_collider_energy</span></span></span><a class="headerlink" href="#_CPPv4N8madspace15GeneratorConfig19mlm_collider_energyE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>The collider energy, the pt_clust the MLM clustering gives a leg it assigned no clustering scale to. </p>
+<dd><p>The collider energy, the pt_clust the MLM clustering gives a light parton it assigned no clustering scale to. </p>
 </dd></dl>
 
 <dl class="cpp var">

@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html"><link rel="next" title="available_backends" href="available_backends.html"><link rel="prev" title="WeightingGroup" href="WeightingGroup.html">
+<link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html"><link rel="next" title="available_backends" href="available_backends.html"><link rel="prev" title="apply_mlm_collider_shower_scale" href="apply_mlm_collider_shower_scale.html">
         <link rel="canonical" href="https://docs.madgraph.org/latest/madspace/python/apply_mlm_hardest_shower_scale.html">
         <link rel="prefetch" href="../../_static/logo-light.png" as="image">
         <link rel="prefetch" href="../../_static/logo-dark.png" as="image">
@@ -418,6 +418,7 @@
 <li class="toctree-l2"><a class="reference internal" href="VegasGridOptimizer.html">VegasGridOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Verbosity.html">Verbosity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="WeightingGroup.html">WeightingGroup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="apply_mlm_collider_shower_scale.html">apply_mlm_collider_shower_scale</a></li>
 <li class="toctree-l2 current current-page"><a class="current reference internal" href="#">apply_mlm_hardest_shower_scale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="available_backends.html">available_backends</a></li>
 <li class="toctree-l2"><a class="reference internal" href="compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
@@ -581,6 +582,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/VegasGridOptimizer.html">VegasGridOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/WeightingGroup.html">WeightingGroup</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/WeightingPipeline.html">WeightingPipeline</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/apply_mlm_collider_shower_scale.html">apply_mlm_collider_shower_scale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/apply_mlm_hardest_shower_scale.html">apply_mlm_hardest_shower_scale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/available_backends.html">available_backends</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
@@ -704,8 +706,7 @@
 <dt class="sig sig-object py" id="madspace.apply_mlm_hardest_shower_scale">
 <span class="sig-prename descclassname"><span class="pre">madspace.</span></span><span class="sig-name descname"><span class="pre">apply_mlm_hardest_shower_scale</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">event</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="LHEEvent.html#madspace.LHEEvent" title="madspace._madspace_py.LHEEvent"><span class="pre">madspace._madspace_py.LHEEvent</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">collider_energy</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">SupportsFloat</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_jet_flavor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">SupportsInt</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#madspace.apply_mlm_hardest_shower_scale" title="Link to this definition">¶</a></dt>
 <dd><p>Start the MLM shower from the hardest scale of the event rather than from the collider energy.</p>
-<p>The MLM clustering reports every outgoing leg it assigned no clustering scale to at the collider energy: the leptons, photons and heavy quarks, and the light partons it puts in the core process. With Beams:setProductionScalesFromLHEF, which MLM merging turns on, Pythia8 starts each particle’s final-state shower from its pt_clust and the initial-state shower from the largest of them, so both would start at the kinematic limit. Here the outgoing particles at <code class="docutils literal notranslate"><span class="pre">collider_energy</span></code> that are not light partons (<a href="#id1"><span class="problematic" id="id2">|pdg|</span></a> &lt;= <code class="docutils literal notranslate"><span class="pre">max_jet_flavor</span></code> or a gluon) get the hardest scale of the event instead: the largest of SCALUP (mu_F) and the light partons’ pt_clust below the collider energy. Only the shower start moves, not the matching. A light parton at the collider energy keeps it: that value is Pythia8’s “do not
-match” flag.</p>
+<p>The MLM clustering reports the light partons it assigned no clustering scale to (those of the core process) at the collider energy, and the outgoing particles that are not light partons (leptons, photons, heavy quarks) at the core-process scale, madevent’s central factorisation scale. With Beams:setProductionScalesFromLHEF, which MLM merging turns on, Pythia8 starts each particle’s final-state shower from its pt_clust and the initial-state shower from the largest of them. Here the outgoing particles that are not light partons (<a href="#id1"><span class="problematic" id="id2">|pdg|</span></a> &lt;= <code class="docutils literal notranslate"><span class="pre">max_jet_flavor</span></code> or a gluon) get the hardest scale of the event: the largest of their own pt_clust (the core-process scale), SCALUP (mu_F) and the light partons’ pt_clust below the collider energy. The core-process scale keeps the start at the hard process when mu_F is a soft clustering scale (clustering_mean without the pdf ladder). Only the shower start moves, not the matching. A light parton at the collider energy keeps it: that value is Pythia8’s “do not match” flag.</p>
 </dd></dl>
 
 </section>
@@ -724,14 +725,14 @@ match” flag.</p>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="WeightingGroup.html">
+          <a class="prev-page" href="apply_mlm_collider_shower_scale.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">WeightingGroup</div>
+                <div class="title">apply_mlm_collider_shower_scale</div>
                 
               </div>
             </a>

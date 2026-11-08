@@ -418,6 +418,7 @@
 <li class="toctree-l2"><a class="reference internal" href="VegasGridOptimizer.html">VegasGridOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Verbosity.html">Verbosity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="WeightingGroup.html">WeightingGroup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="apply_mlm_collider_shower_scale.html">apply_mlm_collider_shower_scale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="apply_mlm_hardest_shower_scale.html">apply_mlm_hardest_shower_scale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="available_backends.html">available_backends</a></li>
 <li class="toctree-l2"><a class="reference internal" href="compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
@@ -581,6 +582,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/VegasGridOptimizer.html">VegasGridOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/WeightingGroup.html">WeightingGroup</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/WeightingPipeline.html">WeightingPipeline</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/apply_mlm_collider_shower_scale.html">apply_mlm_collider_shower_scale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/apply_mlm_hardest_shower_scale.html">apply_mlm_hardest_shower_scale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/available_backends.html">available_backends</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
@@ -774,13 +776,14 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.GeneratorConfig.mlm_collider_energy">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">mlm_collider_energy</span></span><a class="headerlink" href="#madspace.GeneratorConfig.mlm_collider_energy" title="Link to this definition">¶</a></dt>
-<dd><p>The collider energy, the pt_clust the MLM clustering gives a leg it assigned no clustering scale to.</p>
+<dd><p>The collider energy, the pt_clust the MLM clustering gives a light parton it assigned no clustering scale to.</p>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.GeneratorConfig.mlm_hardest_shower_scale">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">mlm_hardest_shower_scale</span></span><a class="headerlink" href="#madspace.GeneratorConfig.mlm_hardest_shower_scale" title="Link to this definition">¶</a></dt>
-<dd><p>write the event’s hardest scale, instead of the collider energy, as the pt_clust of the outgoing particles that are not light partons; see apply_mlm_hardest_shower_scale.</p>
+<dd><p>write the event’s hardest scale as the pt_clust of the outgoing particles that are not light partons; see apply_mlm_hardest_shower_scale.</p>
+<p>When false and <code class="docutils literal notranslate"><span class="pre">mlm_collider_energy</span></code> is set, they get the collider energy instead (apply_mlm_collider_shower_scale); when false and it is not, they keep the core-process scale the clustering gives them.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>MLM merging</p>

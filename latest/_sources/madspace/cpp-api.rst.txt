@@ -185,6 +185,7 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    cpp/VegasGridOptimizer
    cpp/WeightingGroup
    cpp/WeightingPipeline
+   cpp/apply_mlm_collider_shower_scale
    cpp/apply_mlm_hardest_shower_scale
    cpp/available_backends
    cpp/compute_generation_batch_event_count
