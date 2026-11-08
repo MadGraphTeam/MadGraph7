@@ -206,6 +206,20 @@ def _record(name):
     }
 
 
+# The capability query of an extension with TIRust at every carrier (lit-tir-mp).
+AFTER_TIR_MP = {
+    "ninjars": ["arbitrary", "double", "double-double"],
+    "tirust": ["arbitrary", "double", "double-double"],
+}
+
+
+def _after_tir_mp(record):
+    """``record`` as taken by an extension serving TIRust at every carrier."""
+
+    record["reduction_backends"] = AFTER_TIR_MP
+    return record
+
+
 def test_judge_records_partial_waits_and_passes(entries):
     """§4.0 on a synthetic record: L1 against the designated providers, L3
     finiteness against the pole estimate, L4 from the generation probes, L6
@@ -249,8 +263,9 @@ def test_arms_not_run_keep_their_reason(entries):
     makes L3 partial; ``LABEL=REASON`` arguments parse or are refused."""
 
     entry = {e["fixture"]: e for e in entries}["li_gg_hh"]
-    record = _record("li_gg_hh")
-    record["l3_probes"]["tirust/double"] = [{"worst": 0.2, "passed": True}] * 3
+    record = _after_tir_mp(_record("li_gg_hh"))
+    for carrier in ("double", "double-double"):
+        record["l3_probes"][f"tirust/{carrier}"] = [{"worst": 0.2, "passed": True}] * 3
     assert lm.judge(record, entry)["L3"]["status"] == "pass"
     reason = "the AP arm extrapolates to hours"
     record["arms"][f"ninjars/{lm.ARBITRARY}/plain"] = {"not_run": reason}
@@ -413,7 +428,7 @@ def test_a_failing_high_precision_arm_fails_the_row(entries):
     passes; a silent backend switch fails L6 too."""
 
     entry = {e["fixture"]: e for e in entries}["li_gg_hh"]
-    record = _record("li_gg_hh")
+    record = _after_tir_mp(_record("li_gg_hh"))
     record["l3_probes"]["tirust/double"] = [{"worst": 0.2, "passed": True}] * 3
     record["arms"]["tirust/double/plain"] = json.loads(
         json.dumps(record["arms"]["ninjars/double/plain"])
@@ -448,6 +463,87 @@ def test_a_failing_high_precision_arm_fails_the_row(entries):
     judged = lm.judge(switched, entry)
     assert judged["L6"]["status"] == "fail"
     assert judged["L6"]["double"]["effective_backend_switched"]
+
+
+def test_tirust_arms_before_lit_tir_mp_wait_and_after_it_are_judged(
+    entries, monkeypatch
+):
+    """Ruling (5): TIRust arms of an extension before lit-tir-mp (no TIRust
+    at every carrier in its recorded capability query, or none recorded)
+    wait on lit-tir-mp in L6 and L3 (a binary64 failure still fails); the
+    same arms refreshed by an extension serving every carrier are judged,
+    and a typed whole-arm refusal there is a coverage gap (partial), never
+    a wait. A record refreshed with the staged extension (also one whose
+    refresh was interrupted) is resumed, not run afresh."""
+
+    entry = {e["fixture"]: e for e in entries}["li_gg_hh"]
+    stale = _record("li_gg_hh")
+    for label in ("tirust/double/plain", "tirust/double/checked"):
+        stale["arms"][label] = json.loads(
+            json.dumps(stale["arms"]["ninjars/double/plain"])
+        )
+    stale["l3_probes"]["tirust/double"] = [{"worst": 0.2, "passed": True}] * 3
+    judged = lm.judge(stale, entry)
+    assert judged["L6"]["double"]["status"] == "pass"
+    assert judged["L6"]["status"] == f"waits: {lm.TIR_MP}"
+    assert judged["L6"]["waits_on"] == lm.TIR_MP
+    assert judged["L3"]["tirust/double"]["status"] == f"waits: {lm.TIR_MP}"
+    assert judged["L3"]["tirust/double-double"]["status"] == f"waits: {lm.TIR_MP}"
+    assert judged["L3"]["waits_on"] == lm.TIR_MP
+    row = lm.lit({"li_gg_hh": stale}, entries, "test")["rows"]["gg_hh"]
+    assert row["status"] == "partial" and row["waits_on"] == [lm.TIR_MP]
+    assert "L3" in row["note"] and "L6" in row["note"]
+    # Refreshed by an extension with TIRust at every carrier: judged, and
+    # the double-double refusal is a coverage gap with its typed reason.
+    fresh = json.loads(json.dumps(stale))
+    fresh["refreshed"] = [{"backend": "tirust", "reduction_backends": AFTER_TIR_MP}]
+    fresh["l3_probes"]["tirust/double-double"] = [{"worst": 0.3, "passed": True}] * 3
+    judged = lm.judge(fresh, entry)
+    assert "waits_on" not in judged["L6"] and "waits_on" not in judged["L3"]
+    assert judged["L6"]["double-double"]["status"] == "partial"
+    assert "double-double" in judged["L6"]["double-double"]["tirust"]
+    assert judged["L3"]["tirust/double"]["status"] == "pass"
+    # A binary64 disagreement fails even before lit-tir-mp.
+    wrong = json.loads(json.dumps(stale))
+    for label in ("tirust/double/plain", "tirust/double/checked"):
+        for point in wrong["arms"][label]["points"]:
+            point["values"][0]["finite"] = repr(float(point["values"][0]["finite"]) * 1.01)
+    assert lm.judge(wrong, entry)["L6"]["status"] == "fail"
+    # Resumption: the staged extension's hash against the record's natives.
+    monkeypatch.setattr(lm, "_native", lambda: {"extension_sha256": "new"})
+    fresh["native"] = {"extension_sha256": "old"}
+    fresh["refreshed"][0]["native"] = {"extension_sha256": "new"}
+    assert lm._same_native(fresh) and lm._same_native(fresh, "tirust")
+    assert not lm._same_native(fresh, "ninjars")
+    assert not lm._same_native({"native": {"extension_sha256": "old"}})
+    assert lm.tirust_carriers(fresh) == frozenset(AFTER_TIR_MP["tirust"])
+    assert lm.tirust_carriers(stale) is None
+
+
+def test_an_interrupted_refresh_is_resumed(tmp_path, monkeypatch):
+    """``_resumable``: a record unfinished in a refresh by the staged
+    extension continues (its kept arms are never recomputed); a complete
+    record refreshed by it is skipped on a second refresh."""
+
+    monkeypatch.setattr(lm, "_native", lambda: {"extension_sha256": "new"})
+    record = {
+        "native": {"extension_sha256": "old"},
+        "refreshed": [{"backend": "tirust", "native": {"extension_sha256": "new"}}],
+        "arms": {"ninjars/double/plain": {"points": []}},
+        "l3_probes": {},
+        "complete": False,
+    }
+    path = tmp_path / "record.json"
+    path.write_text(json.dumps(record))
+    assert lm._resumable(path, "tirust", "x", tmp_path) == record
+    assert lm._resumable(path, None, "x", tmp_path) == record
+    record["complete"] = True
+    path.write_text(json.dumps(record))
+    assert lm._resumable(path, "tirust", "x", tmp_path)["complete"]
+    # a record of another extension without a refresh: run afresh
+    record["refreshed"] = []
+    path.write_text(json.dumps({**record, "complete": False}))
+    assert lm._resumable(path, "tirust", "x", tmp_path) is None
 
 
 def test_exact_colour_zero_and_reference_findings(entries):
