@@ -4,7 +4,7 @@
 //! T1 scalar and tensor integrals against NinjaRS's generic engine in
 //! double-double, T3 the layout permutation and the split UV column, T4 rank
 //! over-declaration, T5 check frames, T6 chunking and batch composition, T10
-//! unit scaling, the fail-closed gate refusals without the method choice,
+//! unit scaling, T11 the rotation copy (bitwise the separate pass), the fail-closed gate refusals without the method choice,
 //! the binary64 default's method choice and its rescaled acceptance (the
 //! rotation-blind lanes of lit-tir report §H refused), and the typed
 //! capability refusals. Binary64 TIR lanes are compared within the lax-precision rule
@@ -509,21 +509,21 @@ fn rank_over_declaration_is_bitwise() {
     assert_eq!(a, b);
 }
 
-/// T5: TIR's check frame of every reduction check rotates the propagators
-/// with the origin shift (q -> -q leaves its moments bitwise): it is not
-/// blind on a generic box and agrees with the direct frame; the rescaled
-/// frame too.
+/// T5: TIR's check frame of a reduction check rotates the propagators
+/// (q -> -q leaves its moments bitwise): without `rescale` the relabelling
+/// alone (TIRust's rotation copy), with it the rotation with the origin
+/// shift at rescaled inputs; each is not blind on a generic box and agrees
+/// with the direct frame.
 #[test]
 fn check_frames_rotate_and_rescale() {
-    assert_eq!(
-        tir_frame(ReductionCheck::REVERSED),
-        rusticol_loop_reduction::runtime::ReductionFrame {
-            reverse: false,
-            rotation: 1,
-            shift: true,
-            rescale: false,
-        }
-    );
+    let frame = |shift, rescale| rusticol_loop_reduction::runtime::ReductionFrame {
+        reverse: false,
+        rotation: 1,
+        shift,
+        rescale,
+    };
+    assert_eq!(tir_frame(ReductionCheck::REVERSED), frame(false, false));
+    assert_eq!(tir_frame(ReductionCheck::RESCALED), frame(true, true));
     let mut rng = Lcg(13);
     let points: Vec<_> = (0..2)
         .map(|_| point(4, &[0., 0., 0., 0.], &mut rng))
@@ -539,6 +539,129 @@ fn check_frames_rotate_and_rescale() {
             assert!(deviation < 1e-10, "{check:?}: {deviation:e}");
         }
     }
+}
+
+/// The TIR backend with the rotation copy off (`TirOptions::rotation_copy`:
+/// a relabelled check frame is a separate pass) and the method choice as
+/// given.
+fn tir_separate(method_choice: bool) -> V2Backends {
+    V2Backends::TiRust(Box::new(TirReductionBackend::new(TirOptions {
+        method_choice,
+        rotation_copy: false,
+        ..TirOptions::default()
+    })))
+}
+
+/// Groups whose rows the conditioning gates refuse in the direct frame
+/// alone, in the relabelled frame alone and in both (the near-forward
+/// boxes, lit-tir's rotation-blind row), next to generic triangles, boxes
+/// and pentagons, massless and massive, every rank to 4.
+fn copy_groups() -> Vec<FamilyLanes<f64>> {
+    let mut groups = near_forward_boxes();
+    groups.extend(rotation_blind_row());
+    let mut rng = Lcg(31);
+    let mt2 = 173. * 173.;
+    for masses in [
+        vec![0.; 3],
+        vec![mt2; 3],
+        vec![0.; 4],
+        vec![mt2, 0., mt2, 0.],
+        vec![0.; 5],
+        vec![mt2; 5],
+    ] {
+        let points: Vec<_> = (0..3)
+            .map(|_| point(masses.len(), &masses, &mut rng))
+            .collect();
+        for rank in [0, 2, 4] {
+            groups.push(lanes(0, &points, rank, 4, 2, &mut rng));
+        }
+    }
+    for (family, group) in groups.iter_mut().enumerate() {
+        group.family = family;
+        for key in &mut group.keys {
+            key.family = family;
+        }
+    }
+    groups
+}
+
+/// T11 (the rotation copy, m-lit lit-stab-t step C): the reduction-direction
+/// check of TIR is TIRust's rotation copy from the direct pass's own calls,
+/// bit for bit the separate pass in the same relabelled frame: with and
+/// without the method choice (rows refused together with their copy, the
+/// direct row alone and the copy alone, all exercised), in binary64 and in
+/// double-double; the direct lanes are bitwise those of a call without a
+/// check, the rescaled check does not use it, and the statistics count the
+/// same rows and refusals.
+#[test]
+fn the_rotation_copy_is_the_separate_pass() {
+    let groups = copy_groups();
+    let check = Some(ReductionCheck::REVERSED);
+    let gate_refused = |x: &LaneOutcome<f64>| matches!(x, Err(reason) if reason.contains("refused by the conditioning gates"));
+    let (direct, again) = reduce(&mut tir_separate(false), &groups, Poles::All, check);
+    let again = again.unwrap();
+    let mut kinds = [0usize; 3];
+    for (a, b) in direct.iter().flatten().zip(again.iter().flatten()) {
+        match (gate_refused(a), gate_refused(b)) {
+            (true, true) => kinds[0] += 1,
+            (true, false) => kinds[1] += 1,
+            (false, true) => kinds[2] += 1,
+            (false, false) => {}
+        }
+    }
+    eprintln!("gate-refused lanes (both, direct alone, copy alone): {kinds:?}");
+    assert!(kinds.iter().all(|&k| k > 0), "{kinds:?}");
+    let rows = [
+        "tensor moment rows",
+        "TIR gate refusals",
+        "TIR method-choice rows",
+    ];
+    for method_choice in [false, true] {
+        let mut copied = V2Backends::TiRust(Box::new(TirReductionBackend::new(TirOptions {
+            method_choice,
+            ..TirOptions::default()
+        })));
+        let mut separate = tir_separate(method_choice);
+        let (a, a_check) = reduce(&mut copied, &groups, Poles::All, check);
+        let (b, b_check) = reduce(&mut separate, &groups, Poles::All, check);
+        assert_eq!(a, b, "method choice {method_choice}");
+        assert_eq!(a_check, b_check, "method choice {method_choice}");
+        let a_statistics = V2Backend::<f64>::take_statistics(&mut copied);
+        let b_statistics = V2Backend::<f64>::take_statistics(&mut separate);
+        for name in rows {
+            assert_eq!(
+                count(&a_statistics, name),
+                count(&b_statistics, name),
+                "{name}: {:?} {:?}",
+                a_statistics.counts,
+                b_statistics.counts
+            );
+        }
+        let (plain, _) = reduce(&mut tir_separate(method_choice), &groups, Poles::All, None);
+        assert_eq!(a, plain, "method choice {method_choice}");
+        let served = a_check
+            .unwrap()
+            .iter()
+            .flatten()
+            .filter(|x| x.is_ok())
+            .count();
+        assert!(served > 0);
+        // The rescaled check is a pass in its own frame either way.
+        let rescaled = Some(ReductionCheck::RESCALED);
+        let (a, a_check) = reduce(&mut copied, &groups, Poles::All, rescaled);
+        let (b, b_check) = reduce(&mut separate, &groups, Poles::All, rescaled);
+        assert_eq!((a, a_check), (b, b_check), "method choice {method_choice}");
+    }
+    let lifted: Vec<_> = groups.iter().map(dd).collect();
+    let dd_reduce = |backend: &mut V2Backends| {
+        V2Backend::<DoubleFloat>::begin(backend);
+        V2Backend::<DoubleFloat>::reduce(backend, &lifted, Poles::All, check).unwrap()
+    };
+    let (a, a_check) = dd_reduce(&mut tir());
+    let (b, b_check) = dd_reduce(&mut tir_separate(true));
+    assert_eq!(a, b);
+    assert_eq!(a_check, b_check);
+    assert!(a_check.unwrap().iter().flatten().any(|x| x.is_ok()));
 }
 
 /// T6: a lane's value does not depend on the other lanes, families or
