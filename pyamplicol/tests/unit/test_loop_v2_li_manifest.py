@@ -948,3 +948,28 @@ def test_run_skips_are_spec_data():
     arms, plain = lm.run_skips("li_gg_aagg")
     assert not plain and "ninjars/arbitrary/plain" in arms
     assert lm.run_skips("li_gg_hh") == ({}, False)
+
+
+def test_a_failing_lane_is_judged_against_the_double_double_truth():
+    """Ruling (7): a binary64 lane beyond 10 E at >= 1e-5 relative is judged
+    against the double-double lanes first: the backend off the truth by
+    more than 10 x its own estimate has an estimate miss (the row's status,
+    naming it); without a consistent truth the lane stays a failure."""
+
+    margin, floor = 10.0, 4 * 2.0**-53
+    truth = [3.0, 1.0, 0.5]
+    off = _lanes({"a": [3.003, 1.0, 0.5]})  # 1e-3 off, its re-test blind
+    found = {"ninjars": [off], "tirust": [_lanes({"a": truth})]}
+    result = lm.compare_lanes(found, margin, floor)
+    result["status"] = lm.born_verdict(result)
+    assert result["status"] == "fail"
+    agree = {b: [_lanes({"a": truth})] for b in lm.BACKENDS}
+    lm.judge_truth(result, found, agree, [0], margin, floor)
+    assert result["status"] == "estimate miss"
+    assert result["estimate_miss"] == {"ninjars": 1, "tirust": 0}
+    assert result["truth"][0]["ninjars"]["error"] > margin * floor
+    disagree = {"ninjars": [_lanes({"a": truth})], "tirust": [_lanes({"a": [3.1, 1.0, 0.5]})]}
+    result = lm.compare_lanes(found, margin, floor)
+    result["status"] = lm.born_verdict(result)
+    lm.judge_truth(result, found, disagree, [0], margin, floor)
+    assert result["status"] == "fail" and "disagree" in result["truth"][0]["truth"]
