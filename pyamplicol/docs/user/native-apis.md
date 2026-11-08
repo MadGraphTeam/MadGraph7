@@ -783,10 +783,24 @@ counterpart is the Python API given those exact values (for example
 `str(decimal.Decimal(x))`). The Python API reads a float by its shortest
 decimal (`33.6`, not the double's exact value): where the two differ, its
 point lies half an ulp from the SDK's, and values and estimates may differ in
-their last digits. Binary64 evaluation, with or without the
-monitoring, never touches Symbolica: the shipped loop-induced self-test
-artifact evaluates through the C ABI without `SYMBOLICA_LICENSE` while another
-process holds the restricted Symbolica permit.
+their last digits. Binary64 evaluation, with or without the monitoring, runs
+the artifact's stored SymJIT applications and needs no Symbolica licence: the
+shipped loop-induced self-test artifact evaluates through the C ABI without
+`SYMBOLICA_LICENSE` while another process holds the restricted Symbolica
+permit. Two binary64 cases evaluate saved Symbolica states natively, under
+pyAmpliCol's own package library key (no user licence either; see
+[Symbolica and licensing](symbolica-and-licensing.md)): a loop whose squared
+masses or invariants lie strictly between 0 and 1e-9 in the model's units
+(or an invariant within 1e-9 of a real squared mass), reduced by the generic
+engine, and an x86-64 CPU without AVX and FMA3, where SymJIT cannot compile.
+Double-double and arbitrary precision run under the package key too.
+
+The SDK serves the loop-induced selections of the Python API
+(`helicities=`, `color_resolution="amplitude-basis"`) through
+`rusticol_virtual_evaluate_selected` and its wrappers (see the SDK README,
+"Selections"): the amplitude-basis anchors are an explicitly basis-dependent
+split, a helicity selection is |A(h)|²/avg with the total's average, only the
+selected rows are evaluated, and colour flows are refused (full colour).
 
 ## Common setup failures
 

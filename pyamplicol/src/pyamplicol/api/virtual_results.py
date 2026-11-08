@@ -134,6 +134,14 @@ def parse_rotation(specification: str) -> Rotation:
 
     if not isinstance(specification, str):
         raise TypeError("a rotation specification is text")
+    # The native SDKs' parser builds the rotation (``stability.
+    # native_rotation``, the same exact matrix); the text below is the
+    # oracle and forms every refusal.
+    from pyamplicol.loops.v2.stability import native_rotation
+
+    native = native_rotation(specification)
+    if native is not None:
+        return native
     parts = specification.split(":")
     if len(parts) == 3 and parts[0] in ("x", "y", "z"):
         return Rotation.about(parts[0], parts[1], parts[2])

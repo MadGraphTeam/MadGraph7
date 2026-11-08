@@ -139,7 +139,7 @@ const FIELD_COMPONENT: &str = "uv_external_fields";
 /// Laurent powers in coefficient order (finite, 1/ε, 1/ε²).
 const LAURENT_POWERS: [i32; 3] = [0, -1, -2];
 /// The bare virtual's loop factor denominator (`conventions.LOOP_FACTOR_DENOMINATOR`).
-const LOOP_FACTOR_DENOMINATOR: i64 = 16;
+pub(crate) const LOOP_FACTOR_DENOMINATOR: i64 = 16;
 /// The artifact's model parameter defaults (`generation/artifact_writer.py`):
 /// every external parameter of the model, by name.
 const MODEL_PARAMETERS_PATH: &str = "model/parameters.json";

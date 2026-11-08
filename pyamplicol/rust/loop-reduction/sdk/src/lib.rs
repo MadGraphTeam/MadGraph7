@@ -802,7 +802,13 @@ impl Runtime {
             );
         }
         let reduction = self.reduce_on(reduction_policy::SUMMED)?;
-        let monitored = arithmetic == Arithmetic::Double && self.checks.enabled();
+        // The native monitoring serves binary64 in the pole selections
+        // "all" and "none" (a loop-induced process serves no other); a
+        // Born-interfered "uv" / "ir" call returns its values with the
+        // documented null record (the Python API estimates those selections).
+        let monitored = arithmetic == Arithmetic::Double
+            && self.checks.enabled()
+            && matches!(poles, Poles::All | Poles::None);
         if monitored && self.checks.cross_backend() {
             self.cross_available(&reduction)?;
         }
@@ -1320,7 +1326,8 @@ impl Evaluation {
             }
             (Arithmetic::Double, None) => {
                 let points = native.evaluate(&momenta, &scales, poles.v2())?;
-                let stability = monitoring.not_run();
+                // Checks set but not run in binary64: a split pole selection.
+                let stability = monitoring.record(SPLIT_MONITORING);
                 Self::ordinary(
                     inputs, shape, poles, arithmetic, points, reduction, stability,
                 )
@@ -1685,6 +1692,8 @@ const BINARY64_MONITORING: &str = "the native SDKs monitor binary64 evaluations 
     API estimates every carrier)";
 const ORDINARY_MONITORING: &str = "the native SDKs monitor the ordinary evaluations (the \
     Python API estimates the resolved and correlated outputs)";
+const SPLIT_MONITORING: &str = "the native SDKs monitor the pole selections \"all\" and \
+    \"none\" (the Python API estimates the \"uv\" and \"ir\" selections)";
 const SELECTION_MONITORING: &str = "the native SDKs monitor the ordinary evaluations without \
     a selection (the Python API estimates the helicity selections and the resolved and \
     correlated outputs)";

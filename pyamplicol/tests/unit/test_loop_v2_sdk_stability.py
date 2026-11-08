@@ -84,18 +84,30 @@ def _exact(matrix) -> tuple:
     return tuple(tuple(Fraction(x) for x in row) for row in matrix)
 
 
-def test_the_native_rotations_are_the_python_ones(loop_native):
-    from pyamplicol.api.virtual_results import parse_rotation
-    from pyamplicol.loops.v2.stability import RESCUE_ROTATION, default_rotation
+def test_the_native_rotations_are_the_python_ones(loop_native, monkeypatch):
+    """The native rotations equal the Python construction (the oracle), and
+    the Python API's production rotations (``default_rotation``,
+    ``parse_rotation``: the native ones, m-lit lit-sdk-b) equal both."""
 
+    from pyamplicol.api.virtual_results import parse_rotation
+    from pyamplicol.loops.v2 import stability
+    from pyamplicol.loops.v2.stability import (
+        RESCUE_ROTATION,
+        default_rotation,
+        python_default_rotation,
+    )
+
+    produced = [parse_rotation(text).matrix for text in (*SPECIFICATIONS, RESCUE_ROTATION)]
     for k in range(64):
-        assert _exact(loop_native.stability_default_rotation(k)) == (
-            default_rotation(k).matrix
-        ), k
-    for text in (*SPECIFICATIONS, RESCUE_ROTATION):
-        assert _exact(loop_native.stability_rotation(text)) == (
-            parse_rotation(text).matrix
-        ), text
+        oracle = python_default_rotation(k).matrix
+        assert _exact(loop_native.stability_default_rotation(k)) == oracle, k
+        assert default_rotation(k).matrix == oracle, k
+    # The Python parser alone (the oracle).
+    monkeypatch.setattr(stability, "NATIVE_BINARY64", False)
+    for text, found in zip((*SPECIFICATIONS, RESCUE_ROTATION), produced, strict=True):
+        oracle = parse_rotation(text).matrix
+        assert _exact(loop_native.stability_rotation(text)) == oracle, text
+        assert found == oracle, text
     for text in REFUSED:
         with pytest.raises(ValueError) as python:
             parse_rotation(text)
@@ -122,16 +134,29 @@ def _served(loop_native) -> dict:
     return json.loads(loop_native.reduction_backends())
 
 
-def _python(runtime, point, configuration):
+def _turned(point):
+    """A second, distinct point of a centre-of-mass point: its final-state
+    momenta rotated by 90 degrees about x, (E, px, py, pz) -> (E, px, -pz,
+    py), exact in decimal and binary64 (a new scattering angle: another
+    value)."""
+
+    out = [list(momentum) for momentum in point]
+    for leg in range(2, len(point)):
+        energy, x, y, z = point[leg]
+        out[leg] = [energy, x, str(-Decimal(z)), y]
+    return out
+
+
+def _python(runtime, point, configuration, points=None):
     """The Python API's call of one configuration (None: refused, with the
-    error)."""
+    error) on ``points`` (default: ``point`` twice)."""
 
     from pyamplicol.api.errors import ReductionUnavailable
 
     *_, poles, reduction = configuration
     try:
         return runtime.evaluate(
-            [point, point],
+            [point, point] if points is None else points,
             mu_r2=SCALES,
             poles=poles,
             reduction=reduction,
@@ -278,7 +303,9 @@ def test_sdk_estimates_equal_the_python_api(artifacts, loop_native, name):
     artifact = artifacts[name]
     runtime = Runtime.load(artifact, process=name)
     point = PROCESSES[name][1]
-    points = [[[float(Decimal(c)) for c in p] for p in point]] * 2
+    # Two distinct points (a lane or point order mix-up changes values).
+    exact = [point, _turned(point)]
+    points = [[[float(Decimal(c)) for c in p] for p in each] for each in exact]
     scales = [float(Decimal(s)) for s in SCALES]
     sdk = _sdk()
     handle = ctypes.c_void_p()
@@ -297,7 +324,7 @@ def test_sdk_estimates_equal_the_python_api(artifacts, loop_native, name):
             )
             assert sdk.rusticol_virtual_set_poles(handle, poles.encode()) == 0
             status = sdk.rusticol_virtual_set_reduction(handle, reduction.encode())
-            expected, refused = _python(runtime, point, configuration)
+            expected, refused = _python(runtime, point, configuration, exact)
             if reduction == "tirust" and "tirust" not in _served(loop_native):
                 assert status == STATUS_RUNTIME_ERROR and refused is not None
                 continue
@@ -354,6 +381,24 @@ def test_sdk_estimates_equal_the_python_api(artifacts, loop_native, name):
         assert found["statuses"] == [SUCCESS_STATUS] * 2
         record = found["diagnostics"]["stability"]
         assert record["estimates"] is None and "binary64" in record["reason"]
+        # A split pole selection ("uv", "ir") in binary64 with checks set
+        # returns its values (the Python API's, bitwise) and the documented
+        # null record (the Python API estimates those selections; lit-sdk-b
+        # item [5]: before, RUSTICOL_VIRTUAL_RUNTIME_ERROR).
+        assert sdk.rusticol_virtual_set_arithmetic(handle, b"double", 0) == 0
+        capabilities = _json(sdk.rusticol_virtual_capabilities_json, handle)
+        assert "uv" in capabilities["pole_selections"], capabilities["pole_selections"]
+        for poles in ("uv", "ir"):
+            assert sdk.rusticol_virtual_set_poles(handle, poles.encode()) == 0
+            status, found = _evaluate(sdk, handle, points, scales)
+            assert status == 0, (poles, _error(sdk))
+            assert found["statuses"] == [SUCCESS_STATUS] * 2
+            record = found["diagnostics"]["stability"]
+            assert record["estimates"] is None, record
+            assert '"uv" and "ir"' in record["reason"], record
+            expected = runtime.evaluate(exact, mu_r2=SCALES, poles=poles)
+            assert _same(found["virtual"], _flat(expected)), poles
+        assert sdk.rusticol_virtual_set_poles(handle, b"all") == 0
         # Checks off again: no estimate, no record.
         assert _set(sdk, handle, 0, None, False, False, False) == 0
         status, found = _evaluate(sdk, handle, points, scales)
