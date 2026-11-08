@@ -565,6 +565,32 @@ def test_ward_probes_at_the_fixture_points_judge_l4(entries):
     assert "no external massless gauge-boson leg" in judged["fixture_points"]["reason"]
 
 
+def test_a_numerical_zero_compares_backends_absolutely(entries):
+    """On a numerical-zero row (L8) the double-double / AP L6 comparison is
+    absolute, within ten times the double-double estimates of both backends:
+    two rounding-level values that differ relatively by O(1) agree, a value
+    beyond the estimates fails."""
+
+    entry = {e["fixture"]: e for e in entries}["li_gg_ha"]
+    assert lm.ZERO_TIER in entry["tiers"]
+    record = _after_tir_mp(_record("li_gg_ha"))
+    count = len(record["arms"]["ninjars/double-double/checked"]["points"])
+    noise = {"points": [_point(1e-60, 1e-28) for _ in range(count)]}
+    other = {"points": [_point(3e-60, 1e-28) for _ in range(count)]}
+    record["arms"]["ninjars/double-double/checked"] = noise
+    record["arms"]["tirust/double-double/checked"] = other
+    record["arms"][f"ninjars/{lm.ARBITRARY}/plain"] = noise
+    record["arms"][f"tirust/{lm.ARBITRARY}/plain"] = other
+    l6 = lm.judge(record, entry)["L6"]
+    assert l6["double-double"]["status"] == "pass" and "rule" in l6["double-double"]
+    assert l6[lm.ARBITRARY]["status"] == "pass"
+    far = json.loads(json.dumps(record))
+    far["arms"]["tirust/double-double/checked"] = {
+        "points": [_point(1e-20, 1e-28) for _ in range(count)]
+    }
+    assert lm.judge(far, entry)["L6"]["double-double"]["status"] == "fail"
+
+
 def test_an_interrupted_refresh_is_resumed(tmp_path, monkeypatch):
     """``_resumable``: a record unfinished in a refresh by the staged
     extension continues (its kept arms are never recomputed); a complete
