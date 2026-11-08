@@ -389,6 +389,11 @@ poles = "all"
 # every result's lane diagnostics name the requested and effective backends
 # and the reason. Default absent: the artifact's default.
 # reduction = "ninjars"
+# evaluation.reduction_target: v2 virtuals: the target accuracy TIRust's
+# method-choice acceptance follows (the relative accuracy of each point's
+# result, every squared-order sector against its own size; a finite positive
+# number). Default absent: 1e-5.
+# reduction_target = 1e-5
 
 [evaluation.stability]
 # The precision-rescue policy was removed with the legacy loop engine: only
