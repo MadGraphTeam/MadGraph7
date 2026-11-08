@@ -56,8 +56,10 @@ native SDKs (C, C++, Fortran, Rust, UMAMI) open loop-induced processes directly
 with empty Born counts and the Python API's values, and take the reduction
 backend per call (`rusticol_virtual_set_reduction`); they also serve the
 helicity-resolved and the colour- and spin-correlated outputs (the correlated
-history `"born"` is |A|^2 itself), with the Python API's values; native
-stability estimates are not served yet.
+history `"born"` is |A|^2 itself), with the Python API's values, and monitor
+binary64 stability for both process types (`rusticol_virtual_set_stability_checks`:
+rotations, the reduction-direction and rescaled checks, the cross-backend check;
+off by default), each point's estimate equal to the Python API's.
 
 ## 1.0.2 release
 

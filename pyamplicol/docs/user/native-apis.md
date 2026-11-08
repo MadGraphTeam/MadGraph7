@@ -768,6 +768,18 @@ The separate Python correlated API is also Symbolica-backed at precision 16;
 the native correlated entry points instead use the independent RustiCol
 binary64 executor described above.
 
+The one-loop SDK (`rusticol_virtual.h`) monitors binary64 stability like the
+Python API's `stability_checks=`: `rusticol_virtual_set_stability_checks`
+(C++ and Fortran `set_stability_checks`, the packaged Rust wrapper's
+`set_stability_checks`) takes a count of default rotations or rotation
+specifications, the reduction-direction check, its rescaled variant and the
+cross-backend check. Without checks (the default, or a rotation count of 0
+with the other checks off) nothing else runs and no estimate is formed. With
+checks, every successful point of a binary64 ordinary evaluation carries its
+estimate in the result's `diagnostics_json` (`"stability"`), equal bit for bit
+to the Python API's `VirtualStabilityEstimate`; the precision rescue stays the
+Python API's.
+
 ## Common setup failures
 
 | Symptom | Resolution |
