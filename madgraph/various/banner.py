@@ -8799,12 +8799,15 @@ class RunCardMG7(RunCard):
                 [nflav] + [abs(i) for i in beam_id if -7 < i < 7])
 
         if beam_id and beam_id <= leptons:
-            # lepton collider: no PDF, lower default energy, no hadronic cuts
+            # lepton collider: no PDF, lower default energy. The jet cuts stay,
+            # as in madevent's run_card (ptj/etaj/drjj are not hadron-collider
+            # specific): without them e+ e- > j j j (j) is infrared divergent,
+            # the survey is orders of magnitude off and the integration ends
+            # on a non-finite weight at a soft/collinear point.
             self['beam']['leptonic'] = True
             self['beam']['ebeam1'] = 500.0
             self['beam']['ebeam2'] = 500.0
             self['beam']['fixed_fact_scale'] = True
-            self.remove_jet_cuts()
         elif beam_id and not (beam_id & hadronic):
             # e.g. photon/neutrino initiated: also no proton PDF
             self['beam']['leptonic'] = True
@@ -9199,12 +9202,6 @@ class RunCardMG7(RunCard):
             self.dynamic_sections['multiparticles'].setdefault(
                 name, copy.deepcopy(pids))
         return True
-
-    def remove_jet_cuts(self):
-        """Drop jet related cuts (used for lepton colliders)."""
-        for key in list(self.dynamic_sections['cuts']):
-            if key.startswith('jet'):
-                del self.dynamic_sections['cuts'][key]
 
     # ------------------------------------------------------------------
     # conversion from the legacy LO run_card (see
