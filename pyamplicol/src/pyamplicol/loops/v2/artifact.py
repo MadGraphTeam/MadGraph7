@@ -893,6 +893,27 @@ class GeneratedProcess:
             counts[key] = counts.get(key, 0) + 1
         return [[n, r, count] for (n, r), count in sorted(counts.items())]
 
+    def reductions(self) -> tuple[str, ...] | None:
+        """The reduction backends the process admits when it is TIR-only
+        (``("tirust",)``: a family beyond NinjaRS's rank <= N + 2, m-lit
+        lit-eft; generated only where TIRust reduces it,
+        ``families.family_rank_refusal``), else None (every backend). A
+        generation default naming NinjaRS (``[loop] reduction``) cannot serve
+        a TIR-only process and is refused typed."""
+
+        from .families import tir_only
+
+        if not tir_only(self.buckets()):
+            return None
+        if self.slice.request.reduction == "ninjars":
+            raise ReductionUnavailable(
+                f"{self.slice.request.process}: the generation default reduction "
+                "'ninjars' cannot serve this process: a family is beyond NinjaRS's "
+                "rank <= N+2, so the artifact admits the reduction 'tirust' only "
+                "(m-lit lit-eft); generate with reduction 'auto' or 'tirust'"
+            )
+        return ("tirust",)
+
     def colour_degrees(self) -> dict[str, int | None] | None:
         if self.slice.request.accuracy == "full":
             return None
@@ -1701,6 +1722,12 @@ class V2VirtualRuntime:
         self.contribution_kind = cast(
             Literal["virtual", "loop-induced"], self._metadata["contribution_kind"]
         )
+        # The reduction backends the artifact admits: those its declarations
+        # name (a TIR-only process, m-lit lit-eft: TIRust), else every one.
+        admitted = self._metadata.get("reductions")
+        self._admitted: frozenset[str] | None = (
+            None if admitted is None else frozenset(admitted)
+        )
         # The reduction backend a call requests when it names none: the
         # load-time one, else the artifact's generation default (m-lit Q17).
         self._reduction_request = reduction_request(
@@ -2168,6 +2195,7 @@ class V2VirtualRuntime:
                 carrier=carrier,
                 native=self._native,
                 route=route,
+                admitted=self._admitted,
             )
             self._reductions[key] = found
         return found
@@ -2175,12 +2203,18 @@ class V2VirtualRuntime:
     def _reduction_summary(self) -> dict[str, object]:
         """``inspect``'s reduction-backend record."""
 
-        from .reduction import DEFAULTS, native_backends
+        from .reduction import BACKENDS, DEFAULTS, native_backends
 
         return {
             "requested": self._reduction_request,
             "artifact_default": self._execution["request"].get("reduction", "auto"),
-            "auto_default": DEFAULTS[self.contribution_kind],
+            "auto_default": (
+                "tirust"
+                if self._admitted == {"tirust"}
+                else DEFAULTS[self.contribution_kind]
+            ),
+            # The backends the artifact admits (m-lit lit-eft: TIR-only).
+            "admitted": sorted(BACKENDS if self._admitted is None else self._admitted),
             "native": {
                 name: sorted(carriers)
                 for name, carriers in native_backends(self._native).items()

@@ -2024,6 +2024,10 @@ class NativeExecutor:
         # single-helicity selection): the native executor dresses those rows
         # only (``plan/live.rs``); None keeps every row.
         self.row_mask: tuple[bool, ...] | None = None
+        # The plan families the next calls dress (one flag per plan family;
+        # None dresses every one): a diagnostic selection, e.g. NinjaRS on
+        # the families of a TIR-only plan it reduces (m-lit lit-eft).
+        self.family_mask: tuple[bool, ...] | None = None
 
     def native(
         self,
@@ -2784,6 +2788,8 @@ class NativeExecutor:
             options["term_scale"] = True
         if self.exported.amplitude is not None and self.row_mask is not None:
             options["rows"] = list(self.row_mask)
+        if self.family_mask is not None:
+            options["families"] = list(self.family_mask)
         # The reduction backend of the call (``reduction.running``; nothing
         # for NinjaRS, the executor's default), its TIRust plans built before
         # the first point (``reduction.prepare``).
