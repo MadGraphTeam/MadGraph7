@@ -709,8 +709,9 @@ MadNIS, and more accurate handling of spin correlations in MadSpin.</p>
 <p>This is an <strong>alpha release</strong>, meant for testing and feedback, <strong>not for production</strong>.
 The MadGraph7 workflow currently covers leading-order event generation. The LO workflow
 from <a class="reference external" href="mailto:MG5_aMC&#37;&#52;&#48;NLO">MG5_aMC<span>&#64;</span>NLO</a> is still reachable through the <code class="docutils literal notranslate"><span class="pre">output</span> <span class="pre">madevent</span></code> mode. The NLO
-workflow is also available (with only minor updates). AmpliCol mode is not included in
-this release.</p>
+workflow is also available (with only minor updates). The AmpliCol backend is available
+for the MG7 output: <code class="docutils literal notranslate"><span class="pre">generate</span> <span class="pre">p</span> <span class="pre">p</span> <span class="pre">&gt;</span> <span class="pre">j</span> <span class="pre">j</span> <span class="pre">j</span> <span class="pre">[amplicol]</span></code> takes the matrix elements from
+AmpliCol instead of Feynman diagrams (see the pyAmpliCol pages below).</p>
 <p>If you need a stable release, use the
 <a class="reference external" href="https://github.com/mg5amcnlo/mg5amcnlo">MadGraph5_aMC&#64;NLO repository</a> or the
 <a class="reference external" href="http://launchpad.net/madgraph5">Launchpad</a>.</p>

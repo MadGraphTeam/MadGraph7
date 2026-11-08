@@ -1049,6 +1049,30 @@ is a surrogate for testing.</p>
 </dd>
 </dl>
 </section>
+<section id="amplicol">
+<h2>[amplicol]<a class="headerlink" href="#amplicol" title="Link to this heading">¶</a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">[amplicol]</span></code> subprocesses (<code class="docutils literal notranslate"><span class="pre">generate</span> <span class="pre">p</span> <span class="pre">p</span> <span class="pre">&gt;</span> <span class="pre">j</span> <span class="pre">j</span> <span class="pre">j</span> <span class="pre">[amplicol]</span></code>) take their matrix
+elements from AmpliCol instead of Feynman diagrams. They are integrated at leading colour,
+one colour ordering at a time, over colour-ordered phase-space mappings. A second pass
+then re- or unweights the events to full colour with the ratio of the full-colour to the
+leading-colour matrix element, summed over the colour orderings, at the helicity of the
+event. These subprocesses run on CPUs only, and MG7 does not turn MLM merging on by itself
+for an output that has them.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">color_accuracy</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;full&quot;</span></code>)</dt><dd><p><code class="docutils literal notranslate"><span class="pre">&quot;full&quot;</span></code> corrects the events to full colour in the second pass. <code class="docutils literal notranslate"><span class="pre">&quot;lc&quot;</span></code> keeps the
+leading-colour events and skips the second pass.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">mode</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;reweight&quot;</span></code>)</dt><dd><p><code class="docutils literal notranslate"><span class="pre">&quot;reweight&quot;</span></code> keeps the full- to leading-colour ratio in the event weights.
+<code class="docutils literal notranslate"><span class="pre">&quot;unweight&quot;</span></code> unweights the events a second time with respect to that ratio. The
+events then have unit weights apart from overweights.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">first_pass_max_overweight_truncation</span></code> (<code class="docutils literal notranslate"><span class="pre">0.01</span></code>), <code class="docutils literal notranslate"><span class="pre">first_pass_freeze_max_weight_after</span></code> (<code class="docutils literal notranslate"><span class="pre">10000</span></code>)</dt><dd><p><code class="docutils literal notranslate"><span class="pre">max_overweight_truncation</span></code> and <code class="docutils literal notranslate"><span class="pre">freeze_max_weight_after</span></code> of the first,
+leading-colour unweighting, in unweight mode. The ones of <code class="docutils literal notranslate"><span class="pre">[generation]</span></code> set the
+second unweighting, to full colour, which gives the final events. In reweight mode, the
+events are unweighted once, at leading colour, as set by <code class="docutils literal notranslate"><span class="pre">[generation]</span></code>.</p>
+</dd>
+</dl>
+</section>
 <section id="multiparticles">
 <span id="run-card-multiparticles"></span><h2>[multiparticles]<a class="headerlink" href="#multiparticles" title="Link to this heading">¶</a></h2>
 <p>Named groups of particles, given as lists of PDG ids. The names are used in the cuts and
@@ -1326,6 +1350,7 @@ outputs, softmaxes and Jacobians, stays in double precision.</p>
 <li><a class="reference internal" href="#phasespace">[phasespace]</a></li>
 <li><a class="reference internal" href="#custom-functions">[custom_functions]</a></li>
 <li><a class="reference internal" href="#surrogate">[surrogate]</a></li>
+<li><a class="reference internal" href="#amplicol">[amplicol]</a></li>
 <li><a class="reference internal" href="#multiparticles">[multiparticles]</a></li>
 <li><a class="reference internal" href="#cuts">[cuts]</a></li>
 <li><a class="reference internal" href="#histograms">[histograms]</a></li>

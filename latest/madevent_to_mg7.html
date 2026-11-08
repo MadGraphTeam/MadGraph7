@@ -815,7 +815,8 @@ types, such as elastic photons or antiprotons, are not supported.</p></td>
 </table>
 </div>
 <p>The MadEvent default <code class="docutils literal notranslate"><span class="pre">dynamical_scale_choice</span> <span class="pre">=</span> <span class="pre">-1</span></code> follows the clustering of the diagram,
-as needed for CKKW merging. MG7 does not have it. Its default is <code class="docutils literal notranslate"><span class="pre">half_transverse_mass</span></code>.</p>
+as needed for MLM merging. In MG7 this is the choice <code class="docutils literal notranslate"><span class="pre">&quot;mlm&quot;</span></code>, see <a class="reference internal" href="#mlm-merging">MLM merging</a>. Otherwise
+the MG7 default is <code class="docutils literal notranslate"><span class="pre">half_transverse_mass</span></code>.</p>
 </section>
 <section id="generation-and-phase-space">
 <h2>Generation and phase space<a class="headerlink" href="#generation-and-phase-space" title="Link to this heading">¶</a></h2>
@@ -882,6 +883,56 @@ up to the charm quark and the gluon. Add <code class="docutils literal notransla
 <code class="docutils literal notranslate"><span class="pre">job_strategy</span></code>, <code class="docutils literal notranslate"><span class="pre">survey_splitting</span></code>, <code class="docutils literal notranslate"><span class="pre">refine_evt_by_job</span></code> and the <code class="docutils literal notranslate"><span class="pre">hel_*</span></code> options, have
 no counterpart. The integration and the hardware are configured in <code class="docutils literal notranslate"><span class="pre">[run]</span></code>,
 <code class="docutils literal notranslate"><span class="pre">[generation]</span></code>, <code class="docutils literal notranslate"><span class="pre">[vegas]</span></code>, <code class="docutils literal notranslate"><span class="pre">[phasespace]</span></code> and <code class="docutils literal notranslate"><span class="pre">[madnis]</span></code> instead.</p>
+</section>
+<section id="mlm-merging">
+<h2>MLM merging<a class="headerlink" href="#mlm-merging" title="Link to this heading">¶</a></h2>
+<p>As MadEvent, MG7 sets up MLM merging by itself when the process has several jet
+multiplicities (for example <code class="docutils literal notranslate"><span class="pre">p</span> <span class="pre">p</span> <span class="pre">&gt;</span> <span class="pre">w+</span></code> with <code class="docutils literal notranslate"><span class="pre">add</span> <span class="pre">process</span> <span class="pre">p</span> <span class="pre">p</span> <span class="pre">&gt;</span> <span class="pre">w+</span> <span class="pre">j</span></code>): the scale choice
+<code class="docutils literal notranslate"><span class="pre">&quot;mlm&quot;</span></code>, a merging cut <code class="docutils literal notranslate"><span class="pre">xqcut</span> <span class="pre">=</span> <span class="pre">30</span></code> GeV and no jet <code class="docutils literal notranslate"><span class="pre">delta_r</span></code> cuts. The shower then does
+the jet matching (<code class="docutils literal notranslate"><span class="pre">ickkw</span> <span class="pre">=</span> <span class="pre">1</span></code>, <code class="docutils literal notranslate"><span class="pre">JetMatching:qCut</span> <span class="pre">=</span> <span class="pre">1.5</span> <span class="pre">xqcut</span></code>). It is not set up for an
+output with <code class="docutils literal notranslate"><span class="pre">[amplicol]</span></code> subprocesses.</p>
+<div class="table-wrapper colwidths-given docutils container">
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 30.0%" />
+<col style="width: 40.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p><code class="docutils literal notranslate"><span class="pre">run_card.dat</span></code></p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">run_card.toml</span></code></p></th>
+<th class="head"><p>Notes</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ickkw</span> <span class="pre">=</span> <span class="pre">1</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">beam.dynamical_scale_choice</span> <span class="pre">=</span> <span class="pre">&quot;mlm&quot;</span></code></p></td>
+<td><p>The events are clustered back and their scales set as in MadEvent. Merging is
+on when <code class="docutils literal notranslate"><span class="pre">xqcut</span></code> is positive as well.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">xqcut</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">phasespace.xqcut</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0</span></code> disables the merging cut.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">auto_ptj_mjj</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">phasespace.auto_ptj_mjj</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">true</span></code> by default in both.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">maxjetflavor</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">beam.max_jet_flavor</span></code></p></td>
+<td><p>The heaviest quark that the clustering treats as a jet.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">pdfwgt</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">beam.pdf_reweighting</span></code></p></td>
+<td><p>Hidden in both.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sys_alpsfact</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">systematics.alps</span></code></p></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+</div>
 </section>
 <section id="cuts">
 <h2>Cuts<a class="headerlink" href="#cuts" title="Link to this heading">¶</a></h2>
@@ -1179,9 +1230,10 @@ correction <code class="docutils literal notranslate"><span class="pre">Gamma_NL
 <h2>Not supported yet<a class="headerlink" href="#not-supported-yet" title="Link to this heading">¶</a></h2>
 <p>The following MadEvent features have no MG7 equivalent. Settings for them are ignored.</p>
 <ul class="simple">
-<li><p>Matching and merging: <code class="docutils literal notranslate"><span class="pre">ickkw</span></code>, <code class="docutils literal notranslate"><span class="pre">xqcut</span></code>, <code class="docutils literal notranslate"><span class="pre">ktdurham</span></code>, <code class="docutils literal notranslate"><span class="pre">ptlund</span></code>, <code class="docutils literal notranslate"><span class="pre">dparameter</span></code>,
-<code class="docutils literal notranslate"><span class="pre">highestmult</span></code>, <code class="docutils literal notranslate"><span class="pre">ktscheme</span></code>, <code class="docutils literal notranslate"><span class="pre">alpsfact</span></code>, <code class="docutils literal notranslate"><span class="pre">chcluster</span></code>, <code class="docutils literal notranslate"><span class="pre">pdfwgt</span></code>,
-<code class="docutils literal notranslate"><span class="pre">asrwgtflavor</span></code>, <code class="docutils literal notranslate"><span class="pre">clusinfo</span></code>, <code class="docutils literal notranslate"><span class="pre">auto_ptj_mjj</span></code>, <code class="docutils literal notranslate"><span class="pre">pdgs_for_merging_cut</span></code>.</p></li>
+<li><p>Matching and merging other than MLM: <code class="docutils literal notranslate"><span class="pre">ickkw</span> <span class="pre">=</span> <span class="pre">2</span></code>, and the CKKW-L cuts <code class="docutils literal notranslate"><span class="pre">ktdurham</span></code>,
+<code class="docutils literal notranslate"><span class="pre">ptlund</span></code> and <code class="docutils literal notranslate"><span class="pre">dparameter</span></code>. The MLM settings <code class="docutils literal notranslate"><span class="pre">highestmult</span></code>, <code class="docutils literal notranslate"><span class="pre">ktscheme</span></code>,
+<code class="docutils literal notranslate"><span class="pre">alpsfact</span></code>, <code class="docutils literal notranslate"><span class="pre">chcluster</span></code>, <code class="docutils literal notranslate"><span class="pre">asrwgtflavor</span></code>, <code class="docutils literal notranslate"><span class="pre">clusinfo</span></code> and
+<code class="docutils literal notranslate"><span class="pre">pdgs_for_merging_cut</span></code> have no counterpart either.</p></li>
 <li><p>Biasing: <code class="docutils literal notranslate"><span class="pre">bias_module</span></code> and <code class="docutils literal notranslate"><span class="pre">bias_parameters</span></code>.</p></li>
 <li><p>Beam polarization and heavy-ion or equivalent-photon beams: <code class="docutils literal notranslate"><span class="pre">polbeam1</span></code>, <code class="docutils literal notranslate"><span class="pre">polbeam2</span></code>,
 <code class="docutils literal notranslate"><span class="pre">nb_proton1</span></code>, <code class="docutils literal notranslate"><span class="pre">nb_proton2</span></code>, <code class="docutils literal notranslate"><span class="pre">nb_neutron1</span></code>, <code class="docutils literal notranslate"><span class="pre">nb_neutron2</span></code>, <code class="docutils literal notranslate"><span class="pre">mass_ion1</span></code>,
@@ -1260,6 +1312,7 @@ any of the ordered jet cuts passes, and the vector-boson-fusion cuts <code class
 <li><a class="reference internal" href="#beams-and-pdfs">Beams and PDFs</a></li>
 <li><a class="reference internal" href="#scales">Scales</a></li>
 <li><a class="reference internal" href="#generation-and-phase-space">Generation and phase space</a></li>
+<li><a class="reference internal" href="#mlm-merging">MLM merging</a></li>
 <li><a class="reference internal" href="#cuts">Cuts</a></li>
 <li><a class="reference internal" href="#decay-widths">Decay widths</a><ul>
 <li><a class="reference internal" href="#nlo-widths">NLO widths</a></li>
