@@ -778,9 +778,13 @@ against its own size): the target divided by 580, the largest measured ratio
 of a true error to that frame deviation against consistent high-precision
 truths; a value that fails this check fails its point the same way. The
 target only admits values (a value served at one target is the same at
-another); in double-double and arbitrary precision, where TIRust's method
-choice is off, it acts on nothing, and NinjaRS has no setting it drives. A
-target that is not a finite positive number is refused. TIRust's qualified domain is up to six
+another) and governs only the values the method choice admits: rows that pass
+the conditioning gates carry binary64's own reduction error (measured up to
+about 1e-7 relative), so a target tighter than that can be missed; it is a
+calibrated acceptance, not a certificate. In double-double and arbitrary
+precision, where TIRust's method choice is off, it acts on nothing, and
+NinjaRS has no setting it drives. A target that is not a finite positive
+number is refused. TIRust's qualified domain is up to six
 loop propagators at numerator rank six (reported, never enforced: beyond it
 the achieved precision is measured, as everywhere). `loop.reduction` other
 than `"auto"` needs a one-loop request (`process.loop_coupling_orders`).

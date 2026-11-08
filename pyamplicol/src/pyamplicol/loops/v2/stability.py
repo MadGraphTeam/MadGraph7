@@ -361,9 +361,12 @@ RECOMMENDED_CHECKS = StabilityChecks(
 # every level adds the rescaled reduction check (rotations keep every master
 # invariant and cannot see a master integral's own rounding, module
 # docstring); the last level is 57 digits (O15's truth carrier) instead of
-# 1000 bits; the target applies to pyAmpliCol's estimate E.
+# 1000 bits; the target applies to pyAmpliCol's estimate E. The levels'
+# default target, ``RESCUE_TARGET``, is the call's default target accuracy
+# (m-lit F3 (a): one definition, the native policy's
+# ``reduction_policy::DEFAULT_TARGET``, 1e-5, read on first use by
+# ``loops.v2.reduction.default_target``; module ``__getattr__`` below).
 RESCUE_ROTATION = "euler:0.1,0.2,0.3"
-RESCUE_TARGET = 1e-5
 DEFAULT_RESCUE: tuple[tuple[str, int | None], ...] = (
     ("double", None),
     ("double-double", None),
@@ -812,6 +815,17 @@ def _at(budget: Any, k: int) -> float:
     return abs(float(budget.coefficients[k]))
 
 
+def __getattr__(name: str) -> float:
+    # ``RESCUE_TARGET``: the default target accuracy (the native policy's one
+    # definition), read on first use (PEP 562; importable by name, not listed
+    # in ``__all__``).
+    if name == "RESCUE_TARGET":
+        from pyamplicol.loops.v2.reduction import default_target
+
+        return default_target()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 __all__ = [
     "ADDITIVE",
     "CROSS",
@@ -823,7 +837,6 @@ __all__ = [
     "REDUCTION",
     "RESCALED",
     "RESCUE_ROTATION",
-    "RESCUE_TARGET",
     "ROTATION",
     "SAFETY",
     "TRANSVERSE",

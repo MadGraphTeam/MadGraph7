@@ -1168,11 +1168,21 @@ def test_the_loop_induced_default_stack_records_level_and_backend(artifacts):
     assert [
         record.reduction.effective for record in stacked.rescue if record.level == 0
     ] == ["tirust" for record in stacked.rescue if record.level == 0]
+    # Some fixture point fails TIRust's level (its monitored evaluation, the
+    # term-scale lanes of the re-test rows) and is served at the NinjaRS
+    # level: the records below are not vacuous.
+    climbed = [record for record in stacked.rescue if record.level >= 1]
+    assert any(record.level == 1 for record in climbed), [
+        record.level for record in stacked.rescue
+    ]
     assert all(
         record.reduction.effective == "ninjars"
         for record in stacked.rescue
         if record.level == 1
     )
+    for record in stacked.rescue:
+        if record.attempts[0].failure is not None:
+            assert record.level >= 1
     for backend in ("ninjars", "tirust"):
         one = runtime.evaluate(
             points, stability=VirtualRescuePolicy(), reduction=backend, **options

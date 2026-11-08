@@ -20,7 +20,6 @@ from pyamplicol.loops.v2.poles import ORIGINS
 from pyamplicol.loops.v2.stability import (
     DEFAULT_RESCUE,
     RESCUE_ROTATION,
-    RESCUE_TARGET,
     Rotation,
     StabilityChecks,
 )
@@ -396,6 +395,16 @@ def _carrier_bits(arithmetic: str, precision: int | None) -> int:
     return math.ceil(cast(int, precision) * math.log2(10))
 
 
+def _default_target() -> float:
+    """A level's default target: the call's default target accuracy (m-lit F3
+    (a), the native policy's one definition, ``loops.v2.reduction.
+    default_target``; read when a level is built, not at import)."""
+
+    from pyamplicol.loops.v2.reduction import default_target
+
+    return default_target()
+
+
 @dataclass(frozen=True, slots=True)
 class VirtualRescueLevel:
     """One level of a :class:`VirtualRescuePolicy`: a carrier, the stability
@@ -449,7 +458,7 @@ class VirtualRescueLevel:
     precision: int | None = None
     rotations: tuple[Rotation | str, ...] | int = (RESCUE_ROTATION,)
     reduction_check: Literal["none", "reversed", "rescaled"] = "rescaled"
-    target: float = RESCUE_TARGET
+    target: float = field(default_factory=_default_target)
     metric: Literal["relative", "finite", "scale"] = "relative"
     reduction: Literal["auto", "ninjars", "tirust"] = "auto"
 
@@ -523,8 +532,9 @@ class VirtualRescuePolicy:
     the level reached and every attempt.
 
     The default ``VirtualRescuePolicy()`` runs binary64, then double-double,
-    then 57-digit arbitrary precision, each with target 1e-5 on the relative
-    estimate, one rotation ``"euler:0.1,0.2,0.3"`` and the rescaled reduction
+    then 57-digit arbitrary precision, each with the default target accuracy
+    (1e-5, ``loops.v2.reduction.default_target``) on the relative estimate,
+    one rotation ``"euler:0.1,0.2,0.3"`` and the rescaled reduction
     check (``loops.v2.stability.DEFAULT_RESCUE``), every level ``"auto"``.
     For a loop-induced call whose ``"auto"`` takes TIRust with the NinjaRS
     fallback (``loops.v2.rescue.default_stack``) it is the loop-induced

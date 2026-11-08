@@ -2287,7 +2287,7 @@ class V2VirtualRuntime:
         if policy is not None:
             # The levels own their checks (``rescue.RESCUE_OWNS_CARRIER``)
             # and their targets.
-            return {
+            levels = {
                 level: replace(
                     self._reduction(
                         level.backend_request(requested),
@@ -2298,6 +2298,23 @@ class V2VirtualRuntime:
                 )
                 for level in policy.levels
             }
+            # The policy refuses a repeated (precision bits, reduction) pair
+            # of its levels' requests; an "auto" level may resolve to the
+            # backend another level at its precision names (e.g. a binary64
+            # "auto" and a binary64 "ninjars" level on a Born-interfered
+            # call), which would evaluate the same points again on the same
+            # backend and carrier: refused the same way, before any point.
+            pairs = [
+                (level.precision_bits, choice.effective)
+                for level, choice in levels.items()
+            ]
+            if len(set(pairs)) != len(pairs):
+                raise ValueError(
+                    "two rescue levels at the same precision differ in their "
+                    "reduction backend: repeated (precision bits, backend) pair "
+                    f"in this call's resolved levels {pairs}"
+                )
+            return levels
         carrier = self._carrier(arithmetic, precision)[0]
         from .reduction import default_target
 

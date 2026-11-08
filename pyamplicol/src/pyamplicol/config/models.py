@@ -193,17 +193,24 @@ def reduction_target(value: object) -> float:
     """The value of a target accuracy (``evaluation.reduction_target``, the
     CLI's ``--reduction-target``, ``Runtime.load`` / ``evaluate(...,
     reduction_target=)``; m-lit F3 (a)): the relative accuracy of each
-    point's result, a finite positive number (a bool is refused), the one
-    validator of every Python surface; its refusal is the native policy's
-    one text (``reduction_policy::TARGET_REFUSAL``, the SDKs' too)."""
+    point's result. The validator of every Python surface: a Python number
+    (a bool or another type is refused), checked by the native policy's one
+    rule (``reduction_policy::target``: finite and positive, the SDKs'
+    validator, reached through ``tir_acceptance``, which validates before it
+    maps), with its one refusal text (``reduction_policy::TARGET_REFUSAL``).
+    Validating a set target loads the native extension (the one that
+    evaluates it); an unset one does not."""
 
-    if (
-        not isinstance(value, bool)
-        and isinstance(value, (int, float))
-        and math.isfinite(value)
-        and value > 0
-    ):
-        return float(value)
+    from pyamplicol.loops.native import load_loop_native
+
+    native = load_loop_native()
+    if not isinstance(value, bool) and isinstance(value, (int, float)):
+        try:
+            target = float(value)
+        except OverflowError:
+            target = math.inf
+        native.tir_acceptance(target)
+        return target
     from pyamplicol.loops.v2.reduction import policy
 
     raise ValueError(policy()["target"]["refusal"])

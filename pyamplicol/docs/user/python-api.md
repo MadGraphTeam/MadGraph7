@@ -357,8 +357,13 @@ deviation measured against consistent high-precision truths (a synthetic lane
 set and the loop-induced benchmark rows' points). A tighter target refuses
 more such values (served by the fallback under `"auto"`), a looser one admits
 more; values TIRust serves at any target are the same values (the acceptance
-only admits). The target is a calibrated acceptance, not a certificate:
-request stability checks or a rescue stack for an estimate. NinjaRS has no
+only admits). The target governs only the values the method choice admits:
+values of rows that pass the conditioning gates, and values already admitted
+at the shipped TIRust acceptance, carry binary64's own reduction error
+(measured up to about 1e-7 relative on the calibration sets), so a target
+tighter than about 1e-7 can be missed by construction. The target is a
+calibrated acceptance, not a certificate: request stability checks or a
+rescue stack for an estimate. NinjaRS has no
 setting the target drives, and in double-double and arbitrary precision,
 where TIRust's method choice is off, the target acts on nothing. A value that
 is not a finite positive number is refused (`ValueError`).

@@ -1042,6 +1042,21 @@ def test_auto_through_the_c_abi_reads_the_librarys_backends(loop_native):
                 "ninjars",
             )
             assert sorted(capabilities["native"]) == ["ninjars", "tirust"]
+            # The values: per point bitwise explicit TIRust's, or explicit
+            # NinjaRS's for a point the fallback served (its record).
+            assert sdk.rusticol_virtual_set_reduction(handle, b"tirust") == 0
+            tirust, _ = evaluate()
+            width = len(auto) // len(points)
+            assert width and len(auto) == len(ninjars) == len(tirust)
+            ids = [str(i) for i in record["requested_point_ids"]]
+            assert reduction["fallback_points"] == len(record["fallbacks"])
+            for p, point in enumerate(ids):
+                part = slice(p * width, (p + 1) * width)
+                served = record["fallbacks"].get(point)
+                source = tirust if served is None else ninjars
+                if served is not None:
+                    assert served["effective"] == "ninjars", point
+                assert auto[part] == source[part], point
         else:
             assert (reduction["effective"], reduction["fallback"]) == ("ninjars", None)
             assert (

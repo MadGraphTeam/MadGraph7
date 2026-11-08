@@ -13,11 +13,11 @@ PLAN §2.b.4, §2.b.6, §2.a.8; RULED Q17 / Q21 / Q22; DECISIONS 2026-11-07
 * Before lit-tir-mp (capability-driven: the carriers the native extension
   reports for TIRust): an ``"auto"`` level of a loop-induced call whose
   request is ``"auto"`` takes TIRust, the loop-induced default, where the
-  native serves TIRust at the level's carrier (binary64; the m-lit F3 switch,
-  which supersedes R3) and NinjaRS with its reason elsewhere (double-double); an explicit
-  ``"tirust"`` double-double level, or an ``"auto"`` one inheriting an
-  explicit call-level ``"tirust"``, is refused typed
-  (``ReductionUnavailable``) before any point. After it (a native reporting
+  native serves TIRust at the level's carrier (binary64; the m-lit F3
+  switch, which supersedes R3) and NinjaRS with its reason elsewhere
+  (double-double); an explicit ``"tirust"`` double-double level, or an
+  ``"auto"`` one inheriting an explicit call-level ``"tirust"``, is refused
+  typed (``ReductionUnavailable``) before any point. After it (a native reporting
   TIRust at every carrier, here a capability-reporting stub): those levels
   resolve to TIRust and stay there, and so does every ``"auto"`` level; a
   route whose ``auto`` set leaves TIRust out keeps NinjaRS on them with its
@@ -347,6 +347,53 @@ def test_levels_resolve_once_per_level_capability_driven(loop_native, monkeypatc
     with pytest.raises(ReductionUnavailable, match=r"cross-backend check.*'tir'"):
         backend._reduction_choices(None, "double", None, None, SUMMED, checks)
     assert backend._reduction_choices(None, "double", None, None, SUMMED, None)
+
+
+@pytest.mark.loop_fast
+def test_levels_resolving_to_one_precision_and_backend_are_refused(
+    loop_native, monkeypatch
+):
+    """m-lit F3 (b): the policy refuses a repeated (precision bits,
+    reduction) pair of its levels' requests, and a call refuses, before any
+    point, levels whose backends resolve to one (precision bits, backend)
+    pair: a binary64 "auto" level beside a binary64 "tirust" one on a
+    loop-induced "auto" call (both TIRust in binary64), or beside a binary64
+    "ninjars" one on a call naming NinjaRS. On a stub reporting TIRust at
+    every carrier, so the test decides in every build."""
+
+    from pyamplicol.api.virtual_results import VirtualRescueLevel, VirtualRescuePolicy
+    from pyamplicol.loops.v2 import reduction
+    from pyamplicol.loops.v2.reduction import CARRIERS, SUMMED
+
+    runtime, points, scales = _load(_li())
+    backend = runtime._backend
+    monkeypatch.setattr(
+        backend, "_native", _Native({name: list(CARRIERS) for name in reduction.NAMES})
+    )
+    monkeypatch.setattr(backend, "_reductions", {})
+    beside_tirust = VirtualRescuePolicy(
+        (VirtualRescueLevel("double"), VirtualRescueLevel("double", reduction="tirust"))
+    )
+    beside_ninjars = VirtualRescuePolicy(
+        (
+            VirtualRescueLevel("double"),
+            VirtualRescueLevel("double", reduction="ninjars"),
+        )
+    )
+
+    def effective(policy, request=None):
+        found = backend._reduction_choices(request, None, None, policy, SUMMED)
+        return [found[level].effective for level in policy.levels]
+
+    with pytest.raises(ValueError, match=r"repeated \(precision bits, backend\)"):
+        effective(beside_tirust)
+    assert effective(beside_tirust, "ninjars") == ["ninjars", "tirust"]
+    with pytest.raises(ValueError, match=r"repeated \(precision bits, backend\)"):
+        effective(beside_ninjars, "ninjars")
+    assert effective(beside_ninjars) == ["tirust", "ninjars"]
+    # Through the public call: refused before any point.
+    with pytest.raises(ValueError, match=r"repeated \(precision bits, backend\)"):
+        runtime.evaluate(points, mu_r2=scales, stability=beside_tirust)
 
 
 @pytest.mark.loop_physics

@@ -564,24 +564,26 @@ class V2ObservablesRuntime:
         spins: Sequence[Any],
         options: Mapping[str, Any],
         reduction: VirtualReduction | None = None,
-    ) -> tuple[list[Any], dict[int, list[str]]]:
-        """Per-point outputs (``None`` for a failed point) and the failures;
-        ``reduction`` is the call's backend at its carrier (the artifact
+    ) -> tuple[list[Any], dict[int, list[str]], dict[int, VirtualReduction]]:
+        """Per-point outputs (``None`` for a failed point), the failures and
+        the per-point fallback's records; ``reduction`` is the call's backend
+        at its carrier (the artifact
         runtime's choice; None: a direct runtime, NinjaRS): the native
         columns reduce on its effective backend at its target
         (``reduction.running``) and take the options of ``_column_options``;
         with its per-point fallback the points it refuses or fails are
         evaluated again on the fallback (``reduction.with_fallback``), whose
-        record of each such point is kept for the call's lane diagnostics
-        (``_fallbacks``)."""
+        record of each such point (by point index) is returned for the call's
+        lane diagnostics and estimates (``_evaluation``, ``_diagnostic``,
+        ``_estimate``; per call, never runtime state, so concurrent calls on
+        one runtime keep their own records)."""
 
         from pyamplicol.loops.v2.plan_export import FailedPoints
         from pyamplicol.loops.v2.reduction import current, running, with_fallback
 
-        self._served = {}
         if not points:
             # An empty batch is valid (as for ``evaluate``): no native call.
-            return [], {}
+            return [], {}, {}
         effective = None if reduction is None else reduction.effective
         if self._executor == "native":
 
@@ -629,10 +631,8 @@ class V2ObservablesRuntime:
 
             if reduction is None:
                 with running(None):
-                    return run(None)
-            results, failures, served = with_fallback(run, reduction, len(points))
-            self._served = served
-            return results, failures
+                    return (*run(None), {})
+            return with_fallback(run, reduction, len(points))
         if effective not in (None, "ninjars"):
             from pyamplicol.api.errors import ReductionUnavailable
 
@@ -650,7 +650,7 @@ class V2ObservablesRuntime:
             except ArithmeticError as error:
                 out.append(None)
                 failures[index] = [str(error)]
-        return out, failures
+        return out, failures, {}
 
     def _estimate(
         self,
@@ -658,10 +658,12 @@ class V2ObservablesRuntime:
         with_poles: bool,
         index: int,
         checks: VirtualStabilityChecks | None,
+        served: Mapping[int, VirtualReduction] | None = None,
     ) -> VirtualStabilityEstimate | None:
         """A point's public estimate; a point the per-point fallback served
-        (``_run``) records its cross-backend check as not run, with the
-        fallback's reason (m-lit R6)."""
+        (``served``, the call's records from ``_run``) records its
+        cross-backend check as not run, with the fallback's reason (m-lit
+        R6)."""
 
         from pyamplicol.loops.v2.stability import CROSS
 
@@ -671,7 +673,7 @@ class V2ObservablesRuntime:
             contribution=self.contribution_kind,
             sectors=[sector.order for sector in self._sectors],
         )
-        own = getattr(self, "_served", {}).get(index)
+        own = (served or {}).get(index)
         if (
             own is not None
             and estimate is not None
@@ -753,6 +755,7 @@ class V2ObservablesRuntime:
         index: int = 0,
         reasons: Sequence[str] | None = None,
         reductions: Mapping[str, VirtualReduction] | None = None,
+        served: Mapping[int, VirtualReduction] | None = None,
     ) -> VirtualLaneDiagnostic:
         bits = {"double": 53, "double-double": 106}.get(arithmetic) or math.ceil(
             precision.digits * math.log2(10)
@@ -761,9 +764,9 @@ class V2ObservablesRuntime:
         # The call's reduction backend at this carrier (``reductions``: the
         # artifact runtime's resolved choices; none for a direct runtime), or
         # the point's own when the per-point fallback evaluated it again
-        # (``_run``).
+        # (``served``: the call's records from ``_run``).
         reduction = None if reductions is None else reductions[arithmetic]
-        reduction = getattr(self, "_served", {}).get(index, reduction)
+        reduction = (served or {}).get(index, reduction)
         if reasons is not None:
             reason = "; ".join(reasons)
             return VirtualLaneDiagnostic(
@@ -811,6 +814,7 @@ class V2ObservablesRuntime:
         poles: PoleSelection = PoleSelection.ALL,
         checks: VirtualStabilityChecks | None = None,
         reductions: Mapping[str, VirtualReduction] | None = None,
+        served: Mapping[int, VirtualReduction] | None = None,
     ) -> VirtualEvaluation:
 
         born_orders = self._default_born_orders()
@@ -836,6 +840,7 @@ class V2ObservablesRuntime:
                         index,
                         failures.get(index, ["failed"]),
                         reductions,
+                        served,
                     )
                 )
                 continue
@@ -856,7 +861,7 @@ class V2ObservablesRuntime:
                     for sector in self._sectors
                 )
             )
-            estimates.append(self._estimate(result, with_poles, index, checks))
+            estimates.append(self._estimate(result, with_poles, index, checks, served))
             if split:
                 origins = result.pole_origins
                 parts.append(
@@ -879,7 +884,12 @@ class V2ObservablesRuntime:
                 )
             diagnostics.append(
                 self._diagnostic(
-                    arithmetic, precision, checked, index, reductions=reductions
+                    arithmetic,
+                    precision,
+                    checked,
+                    index,
+                    reductions=reductions,
+                    served=served,
                 )
             )
         return VirtualEvaluation(
@@ -1148,7 +1158,7 @@ class V2ObservablesRuntime:
                 settings["stability"],
             )
 
-        per_point, failures = self._run(
+        per_point, failures, served = self._run(
             (lc.SELECTION, column),
             python,
             points,
@@ -1167,6 +1177,7 @@ class V2ObservablesRuntime:
             poles,
             checks,
             reductions,
+            served,
         )
 
     def evaluate_correlated(
@@ -1210,7 +1221,7 @@ class V2ObservablesRuntime:
         for outputs, spins, python, labels in self._correlated_batches(
             requests, groups, sources, len(points), settings
         ):
-            per_point, failures = self._run(
+            per_point, failures, served = self._run(
                 ("correlated", outputs),
                 python,
                 points,
@@ -1233,6 +1244,7 @@ class V2ObservablesRuntime:
                     selection,
                     checks,
                     reductions,
+                    served,
                 )
         return {label: out[label] for label in requests}
 
@@ -1373,7 +1385,7 @@ class V2ObservablesRuntime:
                 point, scale, resolution=resolution, **settings
             ).entries
 
-        entries, failures = self._run(
+        entries, failures, served = self._run(
             ("resolved", resolution),
             python,
             points,
@@ -1408,6 +1420,7 @@ class V2ObservablesRuntime:
                         index,
                         failures.get(index, ["failed"]),
                         reductions,
+                        served,
                     )
                 )
                 continue
@@ -1441,13 +1454,20 @@ class V2ObservablesRuntime:
             )
             diagnostics.append(
                 self._diagnostic(
-                    arithmetic, carrier, checks.enabled, index, reductions=reductions
+                    arithmetic,
+                    carrier,
+                    checks.enabled,
+                    index,
+                    reductions=reductions,
+                    served=served,
                 )
             )
             estimates.append(
                 tuple(
                     tuple(
-                        self._estimate(result[(row, b)], with_poles, index, checks)
+                        self._estimate(
+                            result[(row, b)], with_poles, index, checks, served
+                        )
                         for b in components
                     )
                     for row in rows
