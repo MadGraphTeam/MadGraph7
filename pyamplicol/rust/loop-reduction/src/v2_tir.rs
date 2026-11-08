@@ -249,7 +249,7 @@ pub struct TirOptions {
 /// serves, error against NinjaRS at 60 digits: largest ratio 579.2, error
 /// 2.69e-6 at deviation 4.64e-9) and the loop-induced rows of the frozen
 /// streams at the point level (|A_loop|^2 finite part against TIRust at 256
-/// bits with supplied invariants; tests/fixtures/loop/v2/
+/// bits with supplied invariants; rust/loop-reduction/tests/fixtures/
 /// tir_target_calibration.json, which a test reads against this value).
 pub const UNDERSTATEMENT: f64 = 580.0;
 

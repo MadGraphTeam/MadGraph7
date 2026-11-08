@@ -187,6 +187,24 @@ fn reduction_auto_default(
     rusticol_loop_reduction::reduction_policy::auto_default(contribution, admitted.as_ref())
 }
 
+/// TIRust's method-choice acceptance at the target accuracy `target`
+/// (`v2_tir::acceptance_of`, the one calibrated mapping; a `ValueError`
+/// unless `target` is finite and positive), or None in a build without
+/// TIRust.
+#[pyfunction]
+fn tir_acceptance(target: f64) -> PyResult<Option<f64>> {
+    let target = v2::reduction_target(Some(target))?;
+    #[cfg(feature = "tir")]
+    {
+        Ok(Some(rusticol_loop_reduction::v2_tir::acceptance_of(target)))
+    }
+    #[cfg(not(feature = "tir"))]
+    {
+        let _ = target;
+        Ok(None)
+    }
+}
+
 /// The texts of the per-point fallback and of the cross-backend check's
 /// refusal (`reduction_policy::fallback_served`, `fallback_failed`,
 /// `cross_refusal`): `kind` "served" (`a`, `b`, `text`: the primary
@@ -233,6 +251,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(reduction_resolve, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_auto_default, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_text, module)?)?;
+    module.add_function(wrap_pyfunction!(tir_acceptance, module)?)?;
     v2::register(module)?;
     v2_catalogue::register(module)?;
     v2_closure::register(module)?;
