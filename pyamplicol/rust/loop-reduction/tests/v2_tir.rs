@@ -552,13 +552,41 @@ fn tir_separate(method_choice: bool) -> V2Backends {
     })))
 }
 
+/// `group` with its propagators relabelled cyclically by `rotation`
+/// (propagator `k` is the family's `k + rotation`): the same integrals in
+/// the same loop-momentum frame, its coefficients unchanged.
+fn relabelled(group: &FamilyLanes<f64>, rotation: usize) -> FamilyLanes<f64> {
+    let n = group.propagators;
+    let from = |k: usize| (k + rotation) % n;
+    let mut out = copy(group);
+    for lane in 0..group.keys.len() {
+        for k in 0..n {
+            for mu in 0..4 {
+                out.shifts[lane * 4 * n + 4 * k + mu] =
+                    group.shifts[lane * 4 * n + 4 * from(k) + mu];
+            }
+            out.masses[lane * n + k] = group.masses[lane * n + from(k)];
+            for j in 0..n {
+                out.s_matrix[lane * n * n + k * n + j] =
+                    group.s_matrix[lane * n * n + from(k) * n + from(j)];
+            }
+        }
+    }
+    out
+}
+
 /// Groups whose rows the conditioning gates refuse in the direct frame
-/// alone, in the relabelled frame alone and in both (the near-forward
-/// boxes, lit-tir's rotation-blind row), next to generic triangles, boxes
-/// and pentagons, massless and massive, every rank to 4.
+/// alone, in the relabelled frame alone and in both (every cyclic
+/// relabelling of the near-forward boxes and of lit-tir's rotation-blind
+/// row: where one order is refused and the next one passes, some
+/// relabelling passes in its direct frame and is refused in its copy), next
+/// to generic triangles, boxes and pentagons, massless and massive, every
+/// rank to 4.
 fn copy_groups() -> Vec<FamilyLanes<f64>> {
-    let mut groups = near_forward_boxes();
-    groups.extend(rotation_blind_row());
+    let mut groups = Vec::new();
+    for group in near_forward_boxes().iter().chain(&rotation_blind_row()) {
+        groups.extend((0..group.propagators).map(|rotation| relabelled(group, rotation)));
+    }
     let mut rng = Lcg(31);
     let mt2 = 173. * 173.;
     for masses in [
