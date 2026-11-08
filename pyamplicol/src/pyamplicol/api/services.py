@@ -825,7 +825,7 @@ class Runtime:
             options["reduction_target"] = reduction_target_value(reduction_target)
         if options and not self._virtual:
             raise CompatibilityError(
-                "poles, stability_checks, reduction and reduction_target are "
+                "poles, stability_checks, reduction_target and reduction are "
                 "virtual options"
             )
         return options

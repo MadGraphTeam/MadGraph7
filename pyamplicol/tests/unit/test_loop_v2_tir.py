@@ -129,7 +129,9 @@ def test_tirust_plans_are_built_before_the_first_point_and_refused_typed():
         def __init__(self, refusal=None):
             self.calls, self.refusal = [], refusal
 
-        def prepare_reduction(self, reduction):
+        def prepare_reduction(self, reduction, *, target=None):
+            # The call's target accuracy (m-lit F3; None: the default).
+            assert target is None or target > 0
             self.calls.append(reduction)
             if self.refusal:
                 raise ValueError(self.refusal)

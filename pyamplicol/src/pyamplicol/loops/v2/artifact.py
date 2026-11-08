@@ -2299,8 +2299,15 @@ class V2VirtualRuntime:
                 for level in policy.levels
             }
         carrier = self._carrier(arithmetic, precision)[0]
+        from .reduction import default_target
+
+        # The call's target, else the runtime's, else the policy's default.
         call_target = (
-            self._reduction_target if target is None else reduction_target_value(target)
+            reduction_target_value(target)
+            if target is not None
+            else self._reduction_target
+            if self._reduction_target is not None
+            else default_target()
         )
         choice = replace(self._reduction(requested, carrier, route), target=call_target)
         # (A checks value of another type is refused by ``v2_options``.)

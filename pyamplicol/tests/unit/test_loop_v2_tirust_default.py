@@ -145,7 +145,14 @@ def test_the_cli_and_the_run_card_set_the_target(tmp_path):
 
     parser = build_parser()
     found = parser.parse_args(
-        ["evaluate", "artifact", "--reduction-target", "1e-7", "--loop-reduction", "tirust"]
+        [
+            "evaluate",
+            "artifact",
+            "--reduction-target",
+            "1e-7",
+            "--loop-reduction",
+            "tirust",
+        ]
     )
     options = vars(found)
     assert options["evaluation.reduction_target"] == 1e-7
@@ -185,7 +192,9 @@ def test_the_rescue_stack_takes_precision_and_backend_levels():
     # ladder's double-double and 57-digit levels ("auto"), every target 1e-5.
     default = VirtualRescuePolicy()
     found = loop_induced_stack()
-    assert [(level.arithmetic, level.precision, level.reduction) for level in found.levels] == [
+    assert [
+        (level.arithmetic, level.precision, level.reduction) for level in found.levels
+    ] == [
         ("double", None, "tirust"),
         ("double", None, "ninjars"),
         ("double-double", None, "auto"),
