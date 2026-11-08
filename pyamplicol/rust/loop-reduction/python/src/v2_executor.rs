@@ -1887,8 +1887,9 @@ impl V2Executor {
     /// unit-numerator reduction per monomial, family and point); its raw
     /// lanes only with `raw_lanes`. `reduction` is the reduction backend,
     /// `"ninjars"` (the default) or `"tirust"` (every carrier; its check frame
-    /// is the rotation by `rotation` with the origin shift, `rescale` adding
-    /// the rescaling: `reverse` and `shift` are NinjaRS's; `v2_tir`); the
+    /// is the relabelling by `rotation`, TIRust's rotation copy, and with
+    /// `rescale` the rotation with the origin shift at rescaled inputs:
+    /// `reverse` and `shift` are NinjaRS's; `v2_tir::tir_frame`); the
     /// caller (`loops.v2.reduction.resolve`) has chosen it once per call.
     #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both", contraction="auto", part_points=None, fill_points=None, input_budget=None, rows=None, basis=None, components=None, families=None, dipoles=None, raw_lanes=false, term_scale=false, reduction="ninjars"))]
     #[allow(clippy::too_many_arguments)]
