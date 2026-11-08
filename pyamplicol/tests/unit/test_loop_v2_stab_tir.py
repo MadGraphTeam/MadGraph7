@@ -684,9 +684,11 @@ def test_tir_calibration_has_no_served_miss_beyond_the_margin():
     and u u~ > e- e+ d d~ g, the first 100 also in double-double, 2000 of
     g g > h h and g g > z, the first 400 also in double-double; re-run by
     m-lit lit-tir-mp with the binary64 method choice on and TIRust serving
-    double-double): on every served point of either carrier, every check
-    configuration with a reduction re-test (TIR's frames: the rotation by one
-    with the origin shift, rescaled or not) or the cross-backend check holds
+    double-double, and by lit-stab-t-b with the reduction-direction check on
+    TIRust's rotation copy): on every served point of either carrier, every
+    check configuration with a reduction re-test (TIR's frames: the
+    relabelling by one, TIRust's rotation copy, or the rotation by one with
+    the origin shift at rescaled inputs) or the cross-backend check holds
     the absolute error within 10 E, per sector and Laurent coefficient, and
     the recommended one (rescaled re-test + a rotation) misses none at all.
     Rotations alone are no TIR estimate (lit-tir finding (B)): they miss

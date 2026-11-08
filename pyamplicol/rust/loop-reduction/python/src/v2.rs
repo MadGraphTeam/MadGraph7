@@ -265,8 +265,10 @@ pub(super) fn tir_options(
 /// arbitrary precision; the Python reference path's reducer when the call's
 /// reduction backend is TIRust): one family per group, consecutive lanes of
 /// bitwise equal kinematics one moment row. Its check
-/// frame is the rotation by `rotation` with the origin shift (`rescale`
-/// adds the rescaling); `reverse` and `shift` are NinjaRS's and ignored.
+/// frame is the relabelling by `rotation` (TIRust's rotation copy, from the
+/// direct pass's own calls), with `rescale` the rotation with the origin
+/// shift at rescaled inputs (`v2_tir::tir_frame`); `reverse` and `shift`
+/// are NinjaRS's and ignored.
 /// The keywords override the backend's settings (`v2_tir::TirOptions`,
 /// whose defaults they keep when omitted; for validation): `method_choice`
 /// (default: on in binary64 with its acceptance check, off in the extended
