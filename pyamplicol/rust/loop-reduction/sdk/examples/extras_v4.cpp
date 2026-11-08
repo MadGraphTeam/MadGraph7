@@ -26,6 +26,8 @@ struct Call {
 
 int main(int argc, char **argv) {
   if (argc < 4) return 2;
+  // An optional fourth argument "binary64" runs the binary64 calls only.
+  const bool binary64_only = argc > 4 && std::string(argv[4]) == "binary64";
   std::ifstream in(argv[3]);
   std::size_t points = 0, legs = 0, spin_legs = 0;
   in >> points >> legs;
@@ -62,6 +64,7 @@ int main(int argc, char **argv) {
         {"resolved-ap", "arbitrary", 32, "all", 3, 1},
     };
     for (const auto &call : calls) {
+      if (binary64_only && std::string(call.arithmetic) != "double") continue;
       const std::size_t n = call.points < points ? call.points : points;
       runtime.set_arithmetic(call.arithmetic, call.digits);
       std::printf("call %s\n", call.name);

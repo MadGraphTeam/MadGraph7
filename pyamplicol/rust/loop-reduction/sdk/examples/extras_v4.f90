@@ -10,6 +10,8 @@ program extras_v4_fortran
   use rusticol_virtual
   implicit none
   character(len=4096) :: artifact, process, path
+  ! An optional fourth argument 'binary64' runs the binary64 calls only.
+  character(len=16) :: mode
   integer :: unit, points, legs, spin_count, p, l, i, c, k, n
   integer(c_int64_t), allocatable :: bits(:)
   real(c_double), allocatable :: momenta(:,:,:), scales(:)
@@ -36,6 +38,8 @@ program extras_v4_fortran
   call get_command_argument(1, artifact)
   call get_command_argument(2, process)
   call get_command_argument(3, path)
+  mode = ''
+  if (command_argument_count() > 3) call get_command_argument(4, mode)
   open(newunit=unit, file=trim(path), status='old', action='read')
   read(unit, *) points, legs
   allocate(momenta(4, legs, points), scales(points), bits(4*legs+1))
@@ -61,6 +65,7 @@ program extras_v4_fortran
   call runtime%load(trim(artifact), process=trim(process), ierr=ierr)
   if (ierr /= VIRTUAL_OK) call fail('open')
   do k = 1, size(names)
+    if (trim(mode) == 'binary64' .and. trim(arithmetics(k)) /= 'double') cycle
     n = min(counts(k), points)
     call runtime%set_arithmetic(trim(arithmetics(k)), digits=digits(k), ierr=ierr)
     if (ierr /= VIRTUAL_OK) call fail('arithmetic')

@@ -26,6 +26,8 @@ typedef struct {
 
 int main(int argc, char **argv) {
   if (argc < 4) return 2;
+  /* An optional fourth argument "binary64" runs the binary64 calls only. */
+  int binary64_only = argc > 4 && strcmp(argv[4], "binary64") == 0;
   FILE *input = fopen(argv[3], "r");
   size_t points = 0, legs = 0, spin_legs = 0;
   if (!input || fscanf(input, "%zu %zu", &points, &legs) != 2) return 2;
@@ -70,6 +72,7 @@ int main(int argc, char **argv) {
   };
   for (size_t k = 0; k < sizeof(calls) / sizeof(calls[0]); k++) {
     call_t call = calls[k];
+    if (binary64_only && strcmp(call.arithmetic, "double") != 0) continue;
     size_t n = call.points < points ? call.points : points, stride = n;
     if (rusticol_virtual_set_arithmetic(runtime, call.arithmetic, call.digits)) fail("arithmetic");
     if (rusticol_virtual_set_poles(runtime, call.poles)) {

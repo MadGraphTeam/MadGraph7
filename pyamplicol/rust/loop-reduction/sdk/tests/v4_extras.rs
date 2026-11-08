@@ -21,6 +21,9 @@ struct Feed {
     spin_legs: Vec<usize>,
     /// Per spin leg its four complex components (re, im), as bit patterns.
     spin: Vec<Vec<u64>>,
+    /// Run the binary64 calls only.
+    #[serde(default)]
+    binary64_only: bool,
 }
 
 const CALLS: [(&str, &str, Option<u32>, &str, u8, usize); 13] = [
@@ -70,6 +73,9 @@ fn v4_extras_follow_the_python_api() {
         .collect();
     let mut out = String::new();
     for (name, arithmetic, digits, poles, kind, count) in CALLS {
+        if feed.binary64_only && arithmetic != "double" {
+            continue;
+        }
         let n = count.min(feed.points.len());
         let mut momenta = Vec::new();
         let mut scales = Vec::new();

@@ -554,6 +554,14 @@ def induced_cases(artifacts):
     return out
 
 
+# The row whose extended-precision executor runs take minutes per client (its
+# double-double and arbitrary-precision calls run in C and the Rust control;
+# every wrapper transports the same C ABI values, and the other row runs every
+# call in every language).
+SLOW_EXTENDED = "li_gg_hgg"
+DOUBLE_CALLS = {label for label, arithmetic, *_rest in CALLS if arithmetic == "double"}
+
+
 @pytest.mark.parametrize("language", ["c", "cpp", "fortran", "umami"])
 def test_loop_induced_sdk_observables_equal_the_python_api(
     language,
@@ -562,10 +570,15 @@ def test_loop_induced_sdk_observables_equal_the_python_api(
     clients,  # noqa: F811 (the imported fixture)
     tmp_path,
 ):
-    for name, (case, expected) in induced_cases.items():
+    for name, (case, (values, refused)) in induced_cases.items():
         feed = _induced_feed(case, tmp_path / f"{name}.txt", bits=language == "fortran")
-        found = _run(clients[language], artifacts[name], "p", feed)
-        _compare_induced(f"{language}:{name}", expected, found)
+        if name == SLOW_EXTENDED and language != "c":
+            found = _run(clients[language], artifacts[name], "p", feed, ("binary64",))
+            values = {k: v for k, v in values.items() if k in DOUBLE_CALLS}
+            refused = {k: v for k, v in refused.items() if k in DOUBLE_CALLS}
+        else:
+            found = _run(clients[language], artifacts[name], "p", feed)
+        _compare_induced(f"{language}:{name}", (values, refused), found)
 
 
 def test_loop_induced_sdk_announces_its_observables(artifacts):
