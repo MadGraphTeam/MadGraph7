@@ -273,6 +273,11 @@ pub unsafe extern "C" fn rusticol_virtual_set_arithmetic(
 /// route by that call (`RUSTICOL_VIRTUAL_RUNTIME_ERROR`, the Python API's
 /// `ReductionUnavailable`); never a silent switch. Each result records the
 /// requested and effective backends and the reason in its diagnostics.
+///
+/// # Safety
+///
+/// `handle` is NULL or a live handle of `rusticol_virtual_open` used by no
+/// other thread; `reduction` is NULL or a NUL-terminated string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rusticol_virtual_set_reduction(
     handle: *mut VirtualHandle,
@@ -295,6 +300,11 @@ pub unsafe extern "C" fn rusticol_virtual_set_reduction(
 /// and NULL (the default) runs no check: no estimate, no extra cost. Checks
 /// the Python API refuses are `RUSTICOL_VIRTUAL_INVALID_ARGUMENT` with its
 /// message, and nothing changes.
+///
+/// # Safety
+///
+/// `handle` is NULL or a live handle of `rusticol_virtual_open` used by no
+/// other thread; `rotations` is NULL or a NUL-terminated string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rusticol_virtual_set_stability_checks(
     handle: *mut VirtualHandle,
