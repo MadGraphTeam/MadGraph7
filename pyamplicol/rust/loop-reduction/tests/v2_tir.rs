@@ -1497,3 +1497,63 @@ fn the_rescaled_acceptance_refuses_the_rotation_blind_lanes() {
     // zero and the rescaled acceptance's reason moot.
     assert!(blind > 0, "no rotation-blind lane at this TIRust pin");
 }
+
+/// `TirOptions::store` (m-lit lit-cache STEP 3): a box family and its
+/// pinched triangle (the box's first three propagators, the same shifts)
+/// at the same points share TIRust's per-subset results through the
+/// backend's tensor store; every lane and every check lane is bitwise the
+/// store-off value, in one call and over several point chunks (`begin`
+/// clears the store), and the store's reuse is counted.
+#[test]
+fn the_tensor_store_leaves_every_lane_bitwise_and_shares_pinched_subsets() {
+    let mut rng = Lcg(29);
+    let masses = [0., 0., 173. * 173., 0.];
+    let box_points: Vec<_> = (0..3).map(|_| point(4, &masses, &mut rng)).collect();
+    let pinched: Vec<_> = box_points
+        .iter()
+        .map(|p| Point {
+            shifts: p.shifts[..3].to_vec(),
+            masses: p.masses[..3].to_vec(),
+            mu2: p.mu2,
+        })
+        .collect();
+    let groups = [
+        lanes(0, &box_points, 4, 4, 3, &mut rng),
+        lanes(1, &pinched, 3, 3, 2, &mut rng),
+    ];
+    let stored = || {
+        V2Backends::TiRust(Box::new(TirReductionBackend::new(TirOptions {
+            store: true,
+            ..TirOptions::default()
+        })))
+    };
+    for check in [None, Some(ReductionCheck::RESCALED)] {
+        let (off, off_check) = reduce(&mut tir(), &groups, Poles::All, check);
+        let mut backend = stored();
+        let (on, on_check) = reduce(&mut backend, &groups, Poles::All, check);
+        assert_eq!(on, off, "{check:?}");
+        assert_eq!(on_check, off_check, "{check:?}");
+        // Again on the same backend: the next chunk starts from an empty
+        // store and gives the same bits.
+        let (again, again_check) = reduce(&mut backend, &groups, Poles::All, check);
+        assert_eq!(again, off, "{check:?}");
+        assert_eq!(again_check, off_check, "{check:?}");
+        let statistics = V2Backend::<f64>::take_statistics(&mut backend);
+        let reused = count(&statistics, "TIR store masters reused")
+            + count(&statistics, "TIR store sub-integrals reused");
+        assert!(reused > 0, "{check:?}: {:?}", statistics.counts);
+        assert!(count(&statistics, "TIR store masters computed") > 0);
+        // Without the store no store count is reported.
+        let mut plain = tir();
+        reduce(&mut plain, &groups, Poles::All, check);
+        let statistics = V2Backend::<f64>::take_statistics(&mut plain);
+        assert!(
+            statistics
+                .counts
+                .iter()
+                .all(|(name, _)| !name.starts_with("TIR store")),
+            "{:?}",
+            statistics.counts
+        );
+    }
+}
