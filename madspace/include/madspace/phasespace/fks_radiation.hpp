@@ -72,6 +72,20 @@ namespace madspace {
  * frame of the real emission, but another range of @f$\xi@f$ and other
  * momenta in the frame of the Born.
  *
+ * With a resonance (@p resonance, the resonance-local recoil of the
+ * MCcntRefactor_Sfun branch of MadGraph7 after [4]) a final-state emitter
+ * radiates in the rest frame of the momentum @f$K@f$ of a part of the final
+ * state, its members, which contain @f$\bar\jmath@f$: they are boosted into
+ * that frame, the emission above maps them with @f$\sqrt{s}@f$ replaced by
+ * @f$\sqrt{K^2}@f$, the other members recoil against @f$i + j@f$, and they are
+ * boosted back. @f$K@f$ and the momenta of all other particles stay as they
+ * are, and @f$\xi@f$, @f$y@f$ and @f$\phi@f$ are those of the rest frame of
+ * @f$K@f$ (`fks_resonance_frame`). Since the members of a resonance have a
+ * Lorentz invariant phase space at fixed @f$K@f$, the weight is that of the
+ * emission at @f$\sqrt{K^2}@f$. madspace.fks.fks_resonances gives the
+ * resonance of MadGraph, the decay products of the grandmother of i and j
+ * where it is a resonance (set_granny).
+ *
  * The random numbers are mapped as
  * @f[
  *   \hat\xi = s_0 + (1 - s_0)\,r_\xi^2, \qquad
@@ -133,6 +147,9 @@ namespace madspace {
  * - [3] R. Frederix, S. Frixione, F. Maltoni, T. Stelzer, "Automation of
  *   next-to-leading order computations in QCD: the FKS subtraction",
  *   https://arxiv.org/abs/0908.4272 (Sec. 5)
+ * - [4] T. Ježo, P. Nason, "On the treatment of resonances in next-to-leading
+ *   order calculations matched to a parton shower",
+ *   https://arxiv.org/abs/1509.09071 (Sec. 3)
  */
 class FKSRadiation : public Mapping {
 public:
@@ -169,6 +186,11 @@ public:
     ///                             for the mass shell of its final state in
     ///                             the asymmetric map. Empty for none (the map
     ///                             is then linear in the momenta).
+    /// @param resonance            The positions in the real process of the
+    ///                             members of the resonance of a final-state
+    ///                             emitter, i and j included, at least one
+    ///                             more. Empty for none: the whole final
+    ///                             state recoils.
     FKSRadiation(
         std::size_t born_particle_count,
         std::size_t i_fks,
@@ -177,7 +199,8 @@ public:
         double s_hat_min = 0.,
         double emitter_mass = 0.,
         InitialMap initial_map = symmetric,
-        const std::vector<double>& born_masses = {}
+        const std::vector<double>& born_masses = {},
+        const std::vector<std::size_t>& resonance = {}
     );
     /// Number of uniform random inputs consumed by the forward mapping (3).
     std::size_t random_dim() const { return 3; }
@@ -197,6 +220,9 @@ public:
     InitialMap initial_map() const { return _initial_map; }
     /// Whether the emitter j is an incoming parton.
     bool initial_state() const { return _j_fks < 2; }
+    /// The members of the resonance, positions in the real process in
+    /// ascending order, empty for none.
+    const std::vector<std::size_t>& resonance() const { return _resonance; }
     /// The FKS counter-events: `soft`, `collinear` and `soft_collinear`, for
     /// every emitter, so that the FKS configurations of a Born share one
     /// layout. A massive emitter has only the soft one (the others have
@@ -286,6 +312,11 @@ private:
     InitialMap _initial_map;
     // the masses of the final state of the Born, -1 where unknown
     std::vector<double> _final_masses;
+    // the members of the resonance, and 1 for them, 0 for the other particles,
+    // in the order of the Born and of the real process
+    std::vector<std::size_t> _resonance;
+    std::vector<double> _born_resonance_mask;
+    std::vector<double> _real_resonance_mask;
 };
 
 } // namespace madspace

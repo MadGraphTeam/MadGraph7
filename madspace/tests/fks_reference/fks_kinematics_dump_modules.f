@@ -37,7 +37,12 @@ c
 c This copy is ported to the module API of Rikkert's MCcntRefactor_Sfun
 c branch (fks_phase_space, fks_phase_space_data). It reads a sixth input,
 c FKSISRMapping (1 symmetric as MadFKS main, 2 asymmetric), sets
-c VirtTrickSurrogate = 0 and runs at fixed order.
+c VirtTrickSurrogate = 0 and runs at fixed order. It also prints the
+c resonance of the resonance-local recoil of the branch: the Born
+c configuration (FOREST, PROPS), per FKS configuration the grandmother of
+c set_granny (GRANNY) and the members of the resonance that
+c select_fks_recoil installs (RESONANCE), and per point its momentum
+c (RESK) and the azimuthal phase of the collinear limit (AOR).
       use mint_module
       use FKSParams, only: FKSParamReader,paramFileName,FKSISRMapping
      &     ,VirtTrickSurrogate
@@ -51,7 +56,8 @@ c VirtTrickSurrogate = 0 and runs at fixed order.
      &     ,shat_ev,sqrtshat_cnt,shat_cnt,tau_ev,ycm_ev,tau_cnt,ycm_cnt
      &     ,xiimax_ev,xiimax_cnt,isolsign,xij_kperp,xinorm_ev,xinorm_cnt
      &     ,nocntevents,ybst_til_tolab,ybst_til_tocm,sqrtshat,shat
-     &     ,p_born_coll
+     &     ,p_born_coll,resonance_recoil,resonance_members
+     &     ,resonance_momentum,resonance_mass2,initial_recoil_leg,xij_aor
       implicit none
       include 'genps.inc'
       include 'nexternal.inc'
@@ -208,6 +214,7 @@ c every position of the amp_split arrays; the QED coupling e = gal(1)
      &        ,nsplitorders)
       enddo
       write (*,fmt) 'COUPL',dble(gal(1))
+      call write_born_forest(iconf_in)
 
       do ipass=1,3
       write (*,'(a,1x,i0)') 'PASS',ipass
@@ -258,6 +265,8 @@ c types, charges and FKS pairs of the real process
             call initialize_fks_phase_space(iconfig)
             call generate_prepared_fks_point(ndim,x,.false.,wgt,point)
             p=point%p
+            if (ipt.eq.1) call write_resonance(resonance_recoil
+     &           ,resonance_members,initial_recoil_leg)
             jac_full=wgt
             do k=-2,2
                jac_full_cnt(k)=jac_cnt(k)
@@ -305,6 +314,9 @@ c their rest frame.
             write (*,fmt) 'SHAT',shat_ev,(shat_cnt(k),k=-2,2),tau_ev
      &           ,ycm_ev,(tau_cnt(k),k=-2,2),(ycm_cnt(k),k=-2,2)
             write (*,fmt) 'KPERP',(xij_kperp(j),j=0,3)
+            write (*,fmt) 'RESK',resonance_mass2,(resonance_momentum(j)
+     &           ,j=0,3)
+            write (*,fmt) 'AOR',dble(xij_aor),dimag(xij_aor)
             write (*,fmt) 'PIHAT',(p_i_fks_ev(j),j=0,3)
      &           ,((p_i_fks_cnt(j,k),j=0,3),k=-2,2)
 c The sector function S_ij of the configuration (fks_Sij) at the event and
@@ -753,4 +765,53 @@ c data it writes (p_born, p_born_l, p_born_ev) are restored.
       p_born_l(:,:)=save_l(:,:)
       p_born_ev(:,:)=save_e(:,:)
       return
+      end
+
+
+      subroutine write_born_forest(iconf)
+c The Born configuration iconf: for each propagator (FOREST) its index,
+c its two daughters, sprop and tprid, then (PROPS) the masses and widths
+c of all propagators, as set_granny reads them.
+      implicit none
+      include 'genps.inc'
+      include 'nexternal.inc'
+      integer iconf,i
+      include 'born_conf.inc'
+      double precision pmass(-nexternal:0,lmaxconfigs)
+      double precision pwidth(-nexternal:0,lmaxconfigs)
+      integer pow(-nexternal:0,lmaxconfigs)
+      include 'coupl.inc'
+      pmass=0d0
+      pwidth=0d0
+      include 'born_props.inc'
+      write (*,'(a,1x,*(i0,1x))') 'NCONFIGS',mapconfig(0),iconf
+      do i=-1,-(nexternal-(2+nincoming)),-1
+         write (*,'(a,1x,*(i0,1x))') 'FOREST',i,iforest(1,i,iconf)
+     &        ,iforest(2,i,iconf),sprop(i,iconf),tprid(i,iconf)
+      enddo
+      write (*,'(a,1x,*(es25.17e3,1x))') 'PROPS',(pmass(i,iconf)
+     &     ,pwidth(i,iconf),i=-1,-(nexternal-(2+nincoming)),-1)
+      end
+
+
+      subroutine write_resonance(recoil,members,recoil_leg)
+c The grandmother of the FKS configuration (set_granny): igranny, iaunt,
+c granny_is_res and granny_chain_real_final of the real process, then
+c (RESONANCE) whether select_fks_recoil installs the resonance-local
+c recoil, its incoming recoiler (initial_recoil_leg) and the members of
+c the resonance, i and j included (resonance_members).
+      implicit none
+      include 'nexternal.inc'
+      logical recoil,members(nexternal)
+      integer recoil_leg,i
+      logical granny_is_res,granny_chain(-nexternal:nexternal)
+     &     ,granny_chain_real_final(-nexternal:nexternal)
+      integer igranny,iaunt
+      common /c_granny_res/igranny,iaunt,granny_is_res,granny_chain
+     &     ,granny_chain_real_final
+      write (*,'(a,1x,*(i0,1x))') 'GRANNY',igranny,iaunt
+     &     ,merge(1,0,granny_is_res),(merge(1,0
+     &     ,granny_chain_real_final(i)),i=1,nexternal)
+      write (*,'(a,1x,*(i0,1x))') 'RESONANCE',merge(1,0,recoil)
+     &     ,recoil_leg,(merge(1,0,members(i)),i=1,nexternal)
       end

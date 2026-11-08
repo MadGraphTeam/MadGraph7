@@ -53,7 +53,10 @@ configuration, or into one FKSConfigurationMapping for all of them, with the
 emitter is massive where it gives it a mass. With the cuts on the Born-level
 objects, the configurations get the lower bound on the partonic energy that
 the cuts imply (see fks_sqrt_s_hat_min): a floor of the Born mapping for a
-final-state emitter, s_hat_min for an incoming one.
+final-state emitter, s_hat_min for an incoming one. fks_resonances gives the
+resonances of the resonance-local recoil of a Born topology, with
+fks_minimal_masses for the masses its decay products need under the cuts of
+the run_card.
 
 fks_configurations gives the FKSConfigurations that the classes of the FKS
 subtraction take and fks_coupling_orders their FKSCouplingOrders, by which
@@ -71,6 +74,7 @@ approximation of the EW corrections from the ewsudakov entry.
 """
 
 import json
+import math
 import os
 
 from ._madspace_py import (
@@ -154,7 +158,12 @@ def checked_configurations(born_pdgs, particle_count, configurations):
 
 
 def fks_mappings(
-    born, configurations, s_hat_min=0.0, cuts=None, initial_map="symmetric"
+    born,
+    configurations,
+    s_hat_min=0.0,
+    cuts=None,
+    initial_map="symmetric",
+    resonances=None,
 ):
     """The FKSMappings of the FKS configurations of a Born, in their order.
 
@@ -175,11 +184,15 @@ def fks_mappings(
         initial_map: the map of an emission off an incoming parton,
             "symmetric" (genps_fks.f) or "asymmetric" (FKSISRMapping 2), see
             FKSRadiation.InitialMap.
+        resonances: per configuration the resonance of the resonance-local
+            recoil, as fks_resonances gives them for a Born mapping with one
+            permutation, None for none.
 
     Raises:
         ValueError: if the Born mapping does not have the particles of the
             Born, or a real process is not its Born with i and j in the place
-            of i + j, the order FKSMapping assumes.
+            of i + j, the order FKSMapping assumes, or resonances has more
+            than one permutation.
     """
     born_pdgs = list(configurations["born_pdgs"])
     if cuts is None:
@@ -194,18 +207,29 @@ def fks_mappings(
             "with cuts, born has to be a function that returns the Born mapping "
             "for given cuts"
         )
-    mappings = []
-    for configuration in checked_configurations(
+    entries = checked_configurations(
         born_pdgs, born_plain.particle_count(), configurations
-    ):
+    )
+    if resonances is None:
+        resonances = [[[]] for _ in entries]
+    if len(resonances) != len(entries) or any(len(r) != 1 for r in resonances):
+        raise ValueError(
+            "resonances needs one entry per configuration, each for one "
+            "permutation (FKSConfigurationMapping takes several)"
+        )
+    mappings = []
+    for configuration, resonance in zip(entries, resonances):
         i_fks, j_fks = configuration["i_fks"] - 1, configuration["j_fks"] - 1
+        resonance = list(resonance[0])
         if cuts is None:
-            mapping = FKSMapping(born, i_fks, j_fks, s_hat_min, initial_map)
+            mapping = FKSMapping(born, i_fks, j_fks, s_hat_min, initial_map, resonance)
         elif j_fks >= 2:
-            mapping = FKSMapping(born_final, i_fks, j_fks, s_hat_min, initial_map)
+            mapping = FKSMapping(
+                born_final, i_fks, j_fks, s_hat_min, initial_map, resonance
+            )
         else:
             mapping = FKSMapping(
-                born_plain, i_fks, j_fks, s_hat_min_initial, initial_map
+                born_plain, i_fks, j_fks, s_hat_min_initial, initial_map, resonance
             )
         mappings.append(mapping)
     return mappings
@@ -218,6 +242,7 @@ def fks_configuration_mapping(
     cuts=None,
     luminosity=None,
     initial_map="symmetric",
+    resonances=None,
 ):
     """The FKSConfigurationMapping of the FKS configurations of a Born, with
     fks_index the position of the configuration (nFKSprocess - 1): all
@@ -246,6 +271,9 @@ def fks_configuration_mapping(
         initial_map: the map of an emission off an incoming parton, see
             fks_mappings, also for lepton beams without the projection of the
             event.
+        resonances: per configuration and per permutation of the Born
+            mapping the resonance of the resonance-local recoil, as
+            fks_resonances gives them, None for none.
 
     Raises:
         ValueError: as fks_mappings, and if a floor needs the
@@ -268,6 +296,7 @@ def fks_configuration_mapping(
         sqrt_s_hat_floor=floor,
         luminosity=luminosity,
         initial_map=initial_map,
+        resonances=[] if resonances is None else resonances,
     )
 
 
@@ -277,6 +306,201 @@ def real_masses(born_masses, configuration):
     i_fks = configuration["i_fks"] - 1
     masses = list(born_masses)
     return masses[:i_fks] + [0.0] + masses[i_fks:]
+
+
+def _is_jet(pdg, maxjetflavor, gamma_is_j):
+    return abs(pdg) <= maxjetflavor or abs(pdg) == 21 or (pdg == 22 and gamma_is_j)
+
+
+def fks_minimal_masses(
+    configurations,
+    born_masses,
+    ptj=0.0,
+    ptgmin=0.0,
+    ptl=0.0,
+    mll=0.0,
+    mll_sf=0.0,
+    maxjetflavor=4,
+    gamma_is_j=False,
+    pdg_cuts=(),
+):
+    """The lowest invariant mass of each final-state particle of the Born that
+    the masses and the cuts of the run_card allow, per FKS configuration, as
+    set_tau_min of MadFKS gives it to set_granny (mass_min): the mass of a
+    particle plus ptj for a jet, ptgmin for an isolated photon and ptl for a
+    charged lepton, a lepton with an opposite one at least half of mll (and
+    of mll_sf for the same flavor), a particle with a cut by its PDG code
+    (pt_min_pdg, mxx_min_pdg) the bound from them.
+
+    set_tau_min classifies the particles of the real process of the
+    configuration (IS_A_J, ...) and reads the values at their positions in
+    the real process as those of the Born, which agree where i is last. It
+    computes them in a loop over all configurations, each time without its
+    i_fks, and keeps those of the last one, so the position of the i_fks of
+    the last configuration has the value of an earlier configuration with
+    another i_fks, else 0. The values here follow it.
+
+    Args:
+        configurations: the content of fks_configurations.json (see
+            read_fks_configurations).
+        born_masses: the masses of the Born, incoming first, in the order of
+            born_pdgs.
+        ptj, ptgmin, ptl, mll, mll_sf, maxjetflavor, gamma_is_j: the values of
+            the run_card.
+        pdg_cuts: the cuts by PDG code of the run_card, each a dict with pdg,
+            ptmin (pt_min_pdg), mxxmin (mxx_min_pdg) and part_antipart
+            (mxx_only_part_antipart).
+
+    Returns:
+        Per configuration the lowest invariant masses of the final-state
+        particles of the Born, in their order.
+    """
+    nincoming = configurations["nincoming"]
+    entries = configurations["configurations"]
+    last = entries[-1]["i_fks"]
+    other_i_fks = any(entry["i_fks"] != last for entry in entries)
+    result = []
+    for entry in entries:
+        pdgs = list(entry["real_pdgs"])
+        masses = real_masses(born_masses, entry)
+        n = len(pdgs)
+        # the cuts by PDG code of setcuts, at 1-based positions of the real
+        # process except the last
+        etmin = {}
+        mxxmin = {}
+        for cut in pdg_cuts:
+            for i in range(nincoming + 1, n):
+                if abs(pdgs[i - 1]) != cut["pdg"]:
+                    continue
+                etmin[i] = cut.get("ptmin", 0.0)
+                if cut.get("mxxmin", 0.0) == 0.0:
+                    continue
+                for k in range(i + 1, n):
+                    if (
+                        pdgs[k - 1] == -pdgs[i - 1]
+                        if cut.get("part_antipart", False)
+                        else abs(pdgs[k - 1]) == cut["pdg"]
+                    ):
+                        mxxmin[i, k] = cut["mxxmin"]
+
+        def lepton(i, sign):
+            return pdgs[i - 1] in (sign * 11, sign * 13, sign * 15)
+
+        def xm(i):
+            pdg, mass = pdgs[i - 1], masses[i - 1]
+            if _is_jet(pdg, maxjetflavor, gamma_is_j):
+                return mass + ptj
+            if pdg == 22:
+                return mass + ptgmin
+            for sign in (-1, 1):
+                if not lepton(i, sign):
+                    continue
+                value = mass + ptl
+                for j in range(nincoming + 1, n + 1):
+                    if not lepton(j, -sign):
+                        continue
+                    if pdgs[i - 1] == -pdgs[j - 1] and (mll_sf != 0.0 or mll != 0.0):
+                        return value - ptl - mass + max(mll / 2, mll_sf / 2, ptl + mass)
+                    if mll != 0.0:
+                        return value - ptl - mass + max(mll / 2, ptl + mass)
+                return value
+            if i == n:
+                return mass
+            count, mxx = 1, 0.0
+            for j in range(nincoming + 1, n):
+                a, b = mxxmin.get((i, j), 0.0), mxxmin.get((j, i), 0.0)
+                if a != 0.0 or b != 0.0:
+                    count += 1
+                    if mxx == 0.0:
+                        mxx = max(a, b)
+            smin = count * ((2 - count) * mass**2 + (count - 1) / 2 * mxx**2)
+            pt = etmin.get(i, 0.0)
+            if smin < count**2 * (pt**2 + mass**2):
+                return math.sqrt(pt**2 + mass**2)
+            return math.sqrt(smin) / count
+
+        result.append(
+            [
+                0.0 if b == last and not other_i_fks else xm(b)
+                for b in range(nincoming + 1, n)
+            ]
+        )
+    return result
+
+
+def fks_resonances(topology, configurations, minimal_masses, permutations=None):
+    """The resonances of the resonance-local recoil (see FKSRadiation) of the
+    FKS configurations of a Born, per configuration and per permutation of the
+    Born mapping, as the MCcntRefactor_Sfun branch of MadGraph7 installs them
+    by default (select_fks_recoil): with a final-state emitter j, the
+    grandmother of i and j, the propagator whose decay products contain the
+    Born emitter, where it is a resonance, as set_granny of MadFKS decides: a
+    decay of the topology (neither the propagator of s_hat nor one of the
+    t-channel, the root of the topology), with a mass and a positive width,
+    that the lowest invariant masses of its decay products allow to be on
+    shell. Its members are its decay products in the real process, i and j
+    included.
+
+    Args:
+        topology: the Topology of the Born mapping.
+        configurations: the content of fks_configurations.json (see
+            read_fks_configurations).
+        minimal_masses: per configuration the lowest invariant masses of the
+            final-state particles of the Born (see fks_minimal_masses).
+        permutations: the permutations of the Born mapping, as
+            PhaseSpaceMapping takes them (particle k of the Born is particle
+            permutation[k] of the topology, incoming ones included), None for
+            none.
+
+    Returns:
+        Per configuration and permutation (one without permutations) the
+        positions of the members in the real process, 0-based in ascending
+        order, empty without a resonance: the resonances argument of
+        FKSConfigurationMapping.
+    """
+    nincoming = configurations["nincoming"]
+    entries = configurations["configurations"]
+    decays = topology.decays
+    outgoing = list(topology.outgoing_indices)
+    if permutations is None or len(permutations) == 0:
+        permutations = [list(range(nincoming + len(outgoing)))]
+    # the outgoing particles of the topology, by node
+    leaf = {node: k for k, node in enumerate(outgoing)}
+
+    def products(node):
+        children = list(decays[node].child_indices)
+        if not children:
+            return [leaf[node]]
+        return [k for child in children for k in products(child)]
+
+    result = []
+    for entry, masses in zip(entries, minimal_masses, strict=True):
+        i_fks, j_fks = entry["i_fks"] - 1, entry["j_fks"] - 1
+        per_permutation = []
+        for permutation in permutations:
+            members = []
+            n_out = len(permutation) - nincoming
+            if j_fks >= nincoming and n_out + 1 >= 3:
+                # the Born emitter, its node in the topology and the grandmother
+                jb = j_fks if j_fks < i_fks else j_fks - 1
+                node = outgoing[permutation[jb] - nincoming]
+                granny = decays[node].parent_index
+                if granny != 0:
+                    decay = decays[granny]
+                    position = {t: k for k, t in enumerate(permutation)}
+                    born = sorted(position[nincoming + t] for t in products(granny))
+                    mass_min = sum(masses[b - nincoming] for b in born)
+                    if (
+                        decay.mass != 0.0
+                        and decay.width > 0.0
+                        and decay.mass > mass_min
+                    ):
+                        members = sorted(
+                            [b if b < i_fks else b + 1 for b in born] + [i_fks]
+                        )
+            per_permutation.append(members)
+        result.append(per_permutation)
+    return result
 
 
 def fks_configurations(born, configurations):

@@ -1,6 +1,8 @@
 #pragma once
 
+#include <functional>
 #include <optional>
+#include <tuple>
 #include <variant>
 #include <vector>
 
@@ -102,12 +104,18 @@ public:
     ///                   @ref FKSRadiation.
     /// @param initial_map  The map of an emission off an incoming parton, see
     ///                     FKSRadiation::InitialMap.
+    /// @param resonance  The members of the resonance of a final-state
+    ///                   emitter, see @ref FKSRadiation, in the order of the
+    ///                   real process. A Born mapping with more than one
+    ///                   permutation needs an @ref FKSConfigurationMapping,
+    ///                   which takes one per permutation.
     FKSMapping(
         const PhaseSpaceMapping& born,
         std::size_t i_fks,
         std::size_t j_fks,
         double s_hat_min = 0.,
-        FKSRadiation::InitialMap initial_map = FKSRadiation::symmetric
+        FKSRadiation::InitialMap initial_map = FKSRadiation::symmetric,
+        const std::vector<std::size_t>& resonance = {}
     );
     /// Number of continuous random inputs: those of the Born mapping and 3.
     std::size_t random_dim() const { return _born.random_dim() + 3; }
@@ -240,6 +248,13 @@ double fks_sqrt_s_hat_min(const Cuts& cuts, const std::vector<double>& outgoing_
  * radiates with the symmetric or the asymmetric map of @ref FKSRadiation
  * (@p initial_map).
  *
+ * With resonances (@p resonances, the resonance-local recoil of
+ * @ref FKSRadiation) a final-state emitter radiates in the rest frame of the
+ * resonance of its configuration, which can depend on the permutation of the
+ * Born mapping (`permutation_index`): the members of the Born are boosted into
+ * that frame (`fks_resonance_frame`) and back (`fks_resonance_frame_inverse`)
+ * around the emission. madspace.fks.fks_resonances gives those of MadGraph.
+ *
  * Drawing `fks_index`, uniformly or with an adaptive discrete sampler, and its
  * weight belong to the integrand, as for the `permutation_index` of a
  * @ref PhaseSpaceMapping: this mapping only routes the events. The
@@ -346,6 +361,12 @@ public:
      *                          the asymmetric one maps the Born at s_rec by
      *                          `fks_initial_fixed_light_cone_map` in place of
      *                          the boost along i.
+     * @param resonances        Per configuration and per permutation of the
+     *                          Born mapping (one without permutations), the
+     *                          members of the resonance of a final-state
+     *                          emitter in the order of the real process, i
+     *                          and j included, empty for none (see
+     *                          @ref FKSRadiation). Empty for none at all.
      */
     FKSConfigurationMapping(
         const PhaseSpaceMapping& born,
@@ -353,7 +374,8 @@ public:
         double s_hat_min = 0.,
         double sqrt_s_hat_floor = 0.,
         const std::optional<LeptonLuminosity>& luminosity = std::nullopt,
-        FKSRadiation::InitialMap initial_map = FKSRadiation::symmetric
+        FKSRadiation::InitialMap initial_map = FKSRadiation::symmetric,
+        const nested_vector3<std::size_t>& resonances = {}
     );
     /**
      * @param born              The @ref PhaseSpaceMapping of the Born process,
@@ -370,6 +392,8 @@ public:
      *                          (i_fks, j_fks).
      * @param initial_map       The map of an emission off an incoming parton,
      *                          see the constructor from (i_fks, j_fks).
+     * @param resonances        The members of the resonances, see the
+     *                          constructor from (i_fks, j_fks).
      */
     FKSConfigurationMapping(
         const PhaseSpaceMapping& born,
@@ -377,7 +401,8 @@ public:
         double s_hat_min = 0.,
         double sqrt_s_hat_floor = 0.,
         const std::optional<LeptonLuminosity>& luminosity = std::nullopt,
-        FKSRadiation::InitialMap initial_map = FKSRadiation::symmetric
+        FKSRadiation::InitialMap initial_map = FKSRadiation::symmetric,
+        const nested_vector3<std::size_t>& resonances = {}
     );
     /// The Born mapping.
     const PhaseSpaceMapping& born() const { return _born; }
@@ -391,6 +416,9 @@ public:
     const std::optional<LeptonLuminosity>& luminosity() const { return _luminosity; }
     /// The map of an emission off an incoming parton.
     FKSRadiation::InitialMap initial_map() const { return _initial_map; }
+    /// The members of the resonances per configuration and permutation, in
+    /// ascending order, empty for none.
+    const nested_vector3<std::size_t>& resonances() const { return _resonances; }
     /// Number of random numbers, those of the Born mapping, two of the
     /// luminosity of lepton beams and three of the emission.
     std::size_t random_dim() const {
@@ -500,6 +528,37 @@ private:
     std::vector<double> final_masses() const {
         return {_born_masses.begin() + 2, _born_masses.end()};
     }
+    // per event the row of the tables of the resonances: its configuration and
+    // the permutation of the Born mapping
+    Value
+    resonance_row(FunctionBuilder& fb, const NamedVector<Value>& conditions) const;
+    // the real emission of the inverse for the final-state emitters, the
+    // layout in the rest frame of the resonance of the event where it has one,
+    // with j at p_j and the energy sqrt_s of that frame
+    struct ResonanceFrame {
+        ValueVec p;
+        Value p_j;
+        Value sqrt_s;
+    };
+    // that frame, and the map of a Born from it into the Born c.m. frame
+    std::pair<ResonanceFrame, std::function<Value(Value)>> resonance_frame(
+        FunctionBuilder& fb,
+        Value real_cm,
+        Value sqrt_s,
+        const NamedVector<Value>& conditions
+    ) const;
+    // the Born of a final-state emitter of the inverse, in the order of the
+    // Born, its random numbers r_xi, r_y, r_phi and the inverse weight, from the
+    // layout p of the real emission in a frame of energy sqrt_s, with j at p_j
+    std::tuple<Value, Value, Value, Value, Value> build_final_cluster(
+        FunctionBuilder& fb,
+        EmitterKind kind,
+        const ValueVec& p,
+        Value p_j,
+        Value sqrt_s,
+        Value emitter_mass,
+        Value fks_index
+    ) const;
     // per event the value of the kind of its emitter
     Value pick(FunctionBuilder& fb, const ValueVec& by_kind, Value slot) const;
     // per event the momenta (rows each) of the kind of its emitter
@@ -549,6 +608,17 @@ private:
     nested_vector2<me_int_t> _real_order;
     nested_vector2<me_int_t> _layout_order;
     nested_vector2<me_int_t> _layout_emitter_first;
+    // the resonances, and per configuration and permutation (row
+    // configuration * permutations + permutation) 1 for their members, 0 for
+    // the other particles: in the order of the Born, in the layout, and in the
+    // layout with one more 1 (i per unit xi) where there is a resonance
+    nested_vector3<std::size_t> _resonances;
+    bool _any_resonance = false;
+    std::size_t _permutation_count = 1;
+    std::vector<me_int_t> _resonance_offsets;
+    nested_vector2<double> _resonance_born_masks;
+    nested_vector2<double> _resonance_layout_masks;
+    nested_vector2<double> _resonance_emission_masks;
 };
 
 /**

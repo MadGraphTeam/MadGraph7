@@ -1,5 +1,6 @@
 #include "madspace/phasespace/fks_radiation.hpp"
 
+#include <algorithm>
 #include <stdexcept>
 #include <string>
 
@@ -37,6 +38,46 @@ std::size_t checked_born_count(
     return born_particle_count;
 }
 
+std::vector<std::size_t> checked_resonance(
+    std::size_t born_particle_count,
+    std::size_t i_fks,
+    std::size_t j_fks,
+    std::vector<std::size_t> resonance
+) {
+    if (resonance.empty()) {
+        return resonance;
+    }
+    std::sort(resonance.begin(), resonance.end());
+    if (j_fks < INCOMING_COUNT) {
+        throw std::invalid_argument(
+            "FKSRadiation: a resonance needs a final-state emitter"
+        );
+    }
+    if (std::adjacent_find(resonance.begin(), resonance.end()) != resonance.end()) {
+        throw std::invalid_argument(
+            "FKSRadiation: every member of the resonance must appear once"
+        );
+    }
+    for (auto r : resonance) {
+        if (r < INCOMING_COUNT || r > born_particle_count) {
+            throw std::invalid_argument(
+                "FKSRadiation: the members of the resonance must be final-state "
+                "particles of the real process"
+            );
+        }
+    }
+    auto has = [&](std::size_t r) {
+        return std::binary_search(resonance.begin(), resonance.end(), r);
+    };
+    if (!has(i_fks) || !has(j_fks) || resonance.size() < 3) {
+        throw std::invalid_argument(
+            "FKSRadiation: the resonance must contain i, j and at least one more "
+            "particle, which recoils"
+        );
+    }
+    return resonance;
+}
+
 NamedVector<Type>
 radiation_input_types(std::size_t born_particle_count, bool leptonic) {
     NamedVector<Type> types{
@@ -72,7 +113,8 @@ FKSRadiation::FKSRadiation(
     double s_hat_min,
     double emitter_mass,
     InitialMap initial_map,
-    const std::vector<double>& born_masses
+    const std::vector<double>& born_masses,
+    const std::vector<std::size_t>& resonance
 ) :
     Mapping(
         "FKSRadiation",
@@ -89,7 +131,18 @@ FKSRadiation::FKSRadiation(
     _s_hat_min(s_hat_min),
     _emitter_mass(emitter_mass),
     _initial_map(initial_map),
-    _final_masses(born_particle_count - INCOMING_COUNT, -1.) {
+    _final_masses(born_particle_count - INCOMING_COUNT, -1.),
+    _resonance(checked_resonance(born_particle_count, i_fks, j_fks, resonance)) {
+    if (!_resonance.empty()) {
+        _born_resonance_mask.assign(born_particle_count, 0.);
+        _real_resonance_mask.assign(born_particle_count + 1, 0.);
+        for (auto r : _resonance) {
+            _real_resonance_mask.at(r) = 1.;
+            if (r != i_fks) {
+                _born_resonance_mask.at(born_index(r)) = 1.;
+            }
+        }
+    }
     if (!born_masses.empty()) {
         if (born_masses.size() != born_particle_count) {
             throw std::invalid_argument(
@@ -262,11 +315,49 @@ NamedVector<Value> FKSRadiation::build_counter_events_impl(
         x1 = inputs.at("x1");
         x2 = inputs.at("x2");
     }
-    auto p_jbar = initial_state() ? Value() : fb.unstack(born).at(born_index(_j_fks));
+    // with a resonance the emission maps its members in their rest frame, at
+    // the mass of the resonance
+    bool resonant = !_resonance.empty();
+    Value frame = born, sqrt_s_frame = sqrt_s, k_res;
+    if (resonant) {
+        auto [p_frame, k, sqrt_s_k] =
+            fb.fks_resonance_frame(born, Value(_born_resonance_mask), sqrt_s);
+        frame = p_frame;
+        k_res = k;
+        sqrt_s_frame = sqrt_s_k;
+    }
+    auto p_born = fb.unstack(born);
+    auto p_jbar = initial_state() ? Value() : fb.unstack(frame).at(born_index(_j_fks));
     auto r_phi = inputs.at("r_phi");
     auto [xi_hat, y_var, det_sample] =
-        build_sample(fb, inputs.at("r_xi"), inputs.at("r_y"), sqrt_s, p_jbar);
-    auto event = build_emission(fb, xi_hat, y_var, r_phi, born, sqrt_s, x1, x2);
+        build_sample(fb, inputs.at("r_xi"), inputs.at("r_y"), sqrt_s_frame, p_jbar);
+    auto emission = [&](Value xi_hat_k, Value y_k) {
+        auto result =
+            build_emission(fb, xi_hat_k, y_k, r_phi, frame, sqrt_s_frame, x1, x2);
+        if (!resonant) {
+            return result;
+        }
+        // the members and i per unit xi back into the frame of the Born, the
+        // others as in the Born (the rows of the members are not read)
+        auto rows = fb.unstack(result.momenta);
+        rows.push_back(result.p_i_hat);
+        auto filler = p_born.at(born_index(_j_fks));
+        ValueVec others;
+        for (std::size_t r = 0; r < _born_particle_count + 1; ++r) {
+            others.push_back(r == _i_fks ? filler : p_born.at(born_index(r)));
+        }
+        others.push_back(filler);
+        auto mask = _real_resonance_mask;
+        mask.push_back(1.);
+        auto back = fb.unstack(fb.fks_resonance_frame_inverse(
+            fb.stack(rows), fb.stack(others), Value(mask), k_res
+        ));
+        result.p_i_hat = back.back();
+        back.pop_back();
+        result.momenta = fb.stack(back);
+        return result;
+    };
+    auto event = emission(xi_hat, y_var);
 
     NamedVector<Value> outputs{{"momenta", event.momenta}};
     if (!_leptonic) {
@@ -288,16 +379,7 @@ NamedVector<Value> FKSRadiation::build_counter_events_impl(
         // layout with the event and det = 0
         bool exists = !(collinear && _emitter_mass > 0.);
         auto cnt = exists
-            ? build_emission(
-                  fb,
-                  soft ? Value(0.) : xi_hat,
-                  collinear ? Value(1.) : y_var,
-                  r_phi,
-                  born,
-                  sqrt_s,
-                  x1,
-                  x2
-              )
+            ? emission(soft ? Value(0.) : xi_hat, collinear ? Value(1.) : y_var)
             : event;
         outputs.push_back(name + "_momenta", cnt.momenta);
         if (!_leptonic) {
@@ -339,7 +421,17 @@ Mapping::Result FKSRadiation::build_final_inverse(
 ) const {
     auto momenta = inputs.at(0);
     auto sqrt_s = fb.obs_sqrt_s(momenta);
-    auto p_real = fb.unstack(momenta);
+    // with a resonance the members are clustered in their rest frame
+    bool resonant = !_resonance.empty();
+    Value frame = momenta, k_res;
+    if (resonant) {
+        auto [p_frame, k, sqrt_s_k] =
+            fb.fks_resonance_frame(momenta, Value(_real_resonance_mask), sqrt_s);
+        frame = p_frame;
+        k_res = k;
+        sqrt_s = sqrt_s_k;
+    }
+    auto p_real = fb.unstack(frame);
     auto p_i = p_real.at(_i_fks), p_j = p_real.at(_j_fks);
 
     Value p_jbar, r_xi, r_y, r_phi, xi, det_xi_inv, det_sample_inv;
@@ -395,9 +487,24 @@ Mapping::Result FKSRadiation::build_final_inverse(
             born.push_back(boosted.at(k++));
         }
     }
+    auto born_momenta = fb.stack(born);
+    if (resonant) {
+        // the members back into the frame of the real emission, the others as
+        // there (the row of jbar is not read)
+        auto p_orig = fb.unstack(momenta);
+        ValueVec others;
+        for (std::size_t r = 0; r < _born_particle_count + 1; ++r) {
+            if (r != _i_fks) {
+                others.push_back(p_orig.at(r));
+            }
+        }
+        born_momenta = fb.fks_resonance_frame_inverse(
+            born_momenta, fb.stack(others), Value(_born_resonance_mask), k_res
+        );
+    }
     auto det = fb.div(fb.mul(det_xi_inv, det_sample_inv), xi);
     NamedVector<Value> outputs{
-        {"r_xi", r_xi}, {"r_y", r_y}, {"r_phi", r_phi}, {"born_momenta", fb.stack(born)}
+        {"r_xi", r_xi}, {"r_y", r_y}, {"r_phi", r_phi}, {"born_momenta", born_momenta}
     };
     if (!_leptonic) {
         outputs.push_back("x1", inputs.at(1));

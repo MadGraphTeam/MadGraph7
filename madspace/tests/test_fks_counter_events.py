@@ -17,7 +17,11 @@ own mapping, see test_fks_lepton.py. The data of the asymmetric map of an
 incoming emitter (test_data/fks_asymmetric, from the MCcntRefactor_Sfun branch)
 are compared in the same way, with its conventions: Jacobians with the factors
 1 - stiny and 1 - ctiny of the sampling, and soft counter-events also below the
-lower bound on the partonic energy, which madspace does not generate.
+lower bound on the partonic energy, which madspace does not generate. So are
+those of its resonance-local recoil of a final-state emitter
+(test_data/fks_resonance), with the members of the resonance of the data,
+where its map of xi is that of main (see same_massive_xi_map in
+fks_testing.py).
 """
 
 import glob
@@ -30,9 +34,13 @@ import pytest
 import torch
 from fks_testing import (
     FKS_ASYMMETRIC_DATA,
+    FKS_RESONANCE_DATA,
     data_id,
     fortran_sampling_units,
     massive_fortran_precision,
+    resonance_members,
+    resonance_stretch,
+    same_massive_xi_map,
 )
 from madspace_testing import default_context
 
@@ -51,6 +59,7 @@ DATA = (
         )
     )
     + FKS_ASYMMETRIC_DATA
+    + FKS_RESONANCE_DATA
 )
 # position k + 2 of the counter-events k = 0, 1, 2 of genps_fks.f
 POSITIONS = {"soft": 2, "collinear": 3, "soft_collinear": 4}
@@ -96,7 +105,13 @@ def cases():
             continue
         nin = data["nincoming"]
         for conf in data["configs"]:
-            points = [p for p in conf["points"] if p["jac"] > 0 and "rad_jac" in p]
+            points = [
+                p
+                for p in conf["points"]
+                if p["jac"] > 0
+                and "rad_jac" in p
+                and same_massive_xi_map(data, conf, p)
+            ]
             if not points:
                 continue
             j = conf["j_fks"]
@@ -135,8 +150,16 @@ def test_matches_genps_fks(data, conf, points, prefix):
     # the configuration from the metadata of the FKS exporter (fks.py), with
     # the map of an incoming emitter of the data
     initial_map = data.get("initial_map", "symmetric")
+    resonances = [[resonance_members(c)] for c in data["configs"]]
+    if len(resonances) != len(data["fks_configurations"]["configurations"]):
+        # the asymmetric data keep only the configurations of an incoming emitter
+        resonances = None
     mapping = fks_mappings(
-        born, data["fks_configurations"], s_hat_min, initial_map=initial_map
+        born,
+        data["fks_configurations"],
+        s_hat_min,
+        initial_map=initial_map,
+        resonances=resonances,
     )[conf["nfks"] - 1]
     assert (mapping.i_fks(), mapping.j_fks()) == (i_fks, j_fks)
     kinematics = ms.FKSKinematics(mapping)
@@ -159,12 +182,13 @@ def test_matches_genps_fks(data, conf, points, prefix):
 
     # The Born comes back through the round trip of the Born mapping and the
     # boosts of PhaseSpaceMapping, so it differs from that of genps_fks.f by up
-    # to 2e-13 of its energy, and the emission off it by about as much. All
+    # to 2e-13 of its energy for a 2 -> 3 Born and 5e-13 for a 2 -> 4 one (in
+    # the SIMD modes), and the emission off it by about as much. All
     # comparisons below scale with this deviation.
     sqrt_s_born = np.sqrt(field("shat_born"))
     born_again = boost_z(out["born_momenta"], born_masses, -y_born)
     born_dev = np.abs(born_again - field("p_born")).max((1, 2)) / sqrt_s_born
-    assert (born_dev <= 3e-13).all()
+    assert (born_dev <= (3e-13 if nex <= 6 else 1e-12)).all()
     # relative to that, the deviation of the direction of the Born emitter
     jbar = j_fks if j_fks < i_fks else j_fks - 1
     direction_dev = sqrt_s_born / field("p_born")[:, jbar, 0]
@@ -257,11 +281,13 @@ def test_matches_genps_fks(data, conf, points, prefix):
         # i per unit xi, finite where i is soft (p_i_fks_cnt). Its direction is
         # set relative to the Born emitter, whose own direction carries the
         # deviation of the Born divided by its energy (a soft emitter amplifies
-        # it).
+        # it). With a resonance i comes out of the rest frame of the
+        # resonance, by a boost that stretches the rounding of both.
         hat = boost_z(out[name + "_p_i_hat"][:, None], [0.0], -y_born)[:, 0]
         hat_scale_cnt = np.sqrt(field("rad_shat_cnt")[:, pos]) / 2
         diff = np.abs(hat - field("rad_p_i_hat_cnt")[:, pos]).max(1) / hat_scale_cnt
-        assert (diff <= 1e-13 + 10 * born_dev * direction_dev)[valid].all()
+        bound = (1e-13 + 10 * born_dev * direction_dev) * resonance_stretch(points)
+        assert (diff <= bound)[valid].all()
         # its xi and the upper end of the range of xi at its y
         for key, fortran_key in [("_xi", "rad_xi_cnt"), ("_xi_max", "rad_xiimax_cnt")]:
             theirs = field(fortran_key)[:, pos]

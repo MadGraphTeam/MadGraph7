@@ -246,6 +246,75 @@ KERNELSPEC void kernel_fks_recoil_boost_inverse(
     fks_recoil_boost<T>(p, k, p_jbar, sqrt_s, -1., p_out);
 }
 
+// The momenta of the resonance-local recoil in the rest frame of the resonance
+// (prepare_resonance_frame of the MCcntRefactor_Sfun branch of MadGraph7, after
+// Jezo and Nason): the members (mask 1) add up to K, are boosted into its rest
+// frame like boostx does, and the other momenta are set to zero, so that the FKS
+// emission off a final-state parton at sqrt_s_frame = sqrt(K^2) maps the members
+// alone. Without members the momenta pass through, with K = (sqrt_s, 0) and
+// sqrt_s_frame = sqrt_s.
+template <typename T>
+KERNELSPEC void kernel_fks_resonance_frame(
+    FIn<T, 2> p,
+    FIn<T, 1> mask,
+    FIn<T, 0> sqrt_s,
+    FOut<T, 2> p_frame,
+    FOut<T, 1> k,
+    FOut<T, 0> sqrt_s_frame
+) {
+    FourMom<T> res{0., 0., 0., 0.};
+    FVal<T> count(0.);
+    for (std::size_t i = 0; i < p.size(); ++i) {
+        FVal<T> member(mask[i]);
+        auto p_i = p[i];
+        for (int j = 0; j < 4; ++j) {
+            res[j] = res[j] + member * p_i[j];
+        }
+        count = count + member;
+    }
+    auto resonant = count > 0.;
+    for (std::size_t i = 0; i < p.size(); ++i) {
+        auto p_i = load_mom<T>(p[i]);
+        auto boosted = boost<T>(p_i, res, -1.);
+        auto member = FVal<T>(mask[i]) > 0.;
+        auto p_out = p_frame[i];
+        for (int j = 0; j < 4; ++j) {
+            p_out[j] = where(resonant, where(member, boosted[j], FVal<T>(0.)), p_i[j]);
+        }
+    }
+    FVal<T> rs(sqrt_s);
+    k[0] = where(resonant, res[0], rs);
+    for (int j = 1; j < 4; ++j) {
+        k[j] = where(resonant, res[j], FVal<T>(0.));
+    }
+    sqrt_s_frame = where(resonant, sqrt(max(lsquare<T>(res), EPS2)), rs);
+}
+
+// Back from the rest frame of the resonance (fks_resonance_frame): the members
+// (mask 1) of p_frame are boosted by K, the other momenta are those of p. Without
+// members p_frame passes through.
+template <typename T>
+KERNELSPEC void kernel_fks_resonance_frame_inverse(
+    FIn<T, 2> p_frame, FIn<T, 2> p, FIn<T, 1> mask, FIn<T, 1> k, FOut<T, 2> p_out
+) {
+    FVal<T> count(0.);
+    for (std::size_t i = 0; i < p.size(); ++i) {
+        count = count + FVal<T>(mask[i]);
+    }
+    auto resonant = count > 0.;
+    auto res = load_mom<T>(k);
+    for (std::size_t i = 0; i < p.size(); ++i) {
+        auto q = load_mom<T>(p_frame[i]);
+        auto boosted = boost<T>(q, res, 1.);
+        auto member = FVal<T>(mask[i]) > 0.;
+        auto p_i = p[i];
+        auto out = p_out[i];
+        for (int j = 0; j < 4; ++j) {
+            out[j] = where(resonant, where(member, boosted[j], FVal<T>(p_i[j])), q[j]);
+        }
+    }
+}
+
 // Emission off a massive final-state parton, as
 // generate_momenta_massive_final of genps_fks.f. Energies, momenta and masses
 // are in units of sqrt_s: m_j of the emitter, m_rec of the system recoiling

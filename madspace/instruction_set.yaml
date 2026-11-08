@@ -2528,6 +2528,49 @@ fks_recoil_boost_inverse:
       desc: "the momenta of the Born recoil"
   desc: "Inverse of @ref fks_recoil_boost."
 
+fks_resonance_frame:
+  inputs:
+    - name: p
+      type: [float, n, 4]
+      desc: "momenta of an FKS emission, in the partonic center-of-mass frame"
+    - name: mask
+      type: [float, n]
+      desc: "1 for the members of the resonance, 0 for the other particles"
+    - name: sqrt_s
+      type: [float]
+      desc: "partonic center-of-mass energy"
+  outputs:
+    - name: p_frame
+      type: [float, n, 4]
+      desc: "the members in the rest frame of their sum, the other momenta zero"
+    - name: k
+      type: [float, 4]
+      desc: "the momentum K of the resonance, the sum of its members"
+    - name: sqrt_s_frame
+      type: [float]
+      desc: "the mass sqrt(K^2) of the resonance"
+  desc: "The rest frame of the resonance of the resonance-local recoil of an FKS emission off a final-state parton (prepare_resonance_frame of the MCcntRefactor_Sfun branch of MadGraph7, after Jezo and Nason). The members add up to K and are boosted into its rest frame as boostx does, the other momenta are set to zero, so that the emission at sqrt_s_frame maps the members alone and keeps K. Without members (mask 0 everywhere) the momenta pass through, K = (sqrt_s, 0) and sqrt_s_frame = sqrt_s."
+
+fks_resonance_frame_inverse:
+  inputs:
+    - name: p_frame
+      type: [float, n, 4]
+      desc: "momenta in the rest frame of the resonance"
+    - name: p
+      type: [float, n, 4]
+      desc: "momenta of the particles that are not members, in the partonic center-of-mass frame"
+    - name: mask
+      type: [float, n]
+      desc: "1 for the members of the resonance, 0 for the other particles"
+    - name: k
+      type: [float, 4]
+      desc: "the momentum K of the resonance, from @ref fks_resonance_frame"
+  outputs:
+    - name: p_out
+      type: [float, n, 4]
+      desc: "the members boosted back by K, the other momenta those of p"
+  desc: "Inverse of @ref fks_resonance_frame: the members of p_frame are boosted by K into the partonic center-of-mass frame, the other momenta are taken from p. Without members p_frame passes through."
+
 fks_final_massive_sample:
   inputs:
     - name: r_xi

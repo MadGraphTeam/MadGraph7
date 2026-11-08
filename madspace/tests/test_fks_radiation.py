@@ -12,7 +12,10 @@ factor xi, in units of xi_max (xi_norm for a massive emitter) and without the
 factors 1 - stiny and 1 - ctiny of the sampling (see test_fks_kernels.py). The
 data of the asymmetric map of an incoming emitter (test_data/fks_asymmetric)
 come from the MCcntRefactor_Sfun branch, whose Jacobians for an incoming
-emitter include those factors.
+emitter include those factors. Those of its resonance-local recoil of a
+final-state emitter (test_data/fks_resonance) are compared with the members of
+the resonance of the data, where its map of xi is that of main (see
+same_massive_xi_map in fks_testing.py).
 """
 
 import glob
@@ -25,10 +28,13 @@ import pytest
 import torch
 from fks_testing import (
     FKS_ASYMMETRIC_DATA,
+    FKS_RESONANCE_DATA,
     data_id,
     fortran_sampling_units,
     massive_fortran_precision,
     massive_xi_max,
+    resonance_members,
+    same_massive_xi_map,
 )
 from madspace_testing import generator
 
@@ -197,6 +203,7 @@ DATA = (
         )
     )
     + FKS_ASYMMETRIC_DATA
+    + FKS_RESONANCE_DATA
 )
 
 
@@ -273,7 +280,13 @@ def reference_cases():
         nin = data["nincoming"]
         for conf in data["configs"]:
             j = conf["j_fks"]
-            points = [p for p in conf["points"] if p["jac"] > 0 and "rad_jac" in p]
+            points = [
+                p
+                for p in conf["points"]
+                if p["jac"] > 0
+                and "rad_jac" in p
+                and same_massive_xi_map(data, conf, p)
+            ]
             if points:
                 name = data_id(path)
                 kind = "initial" if j <= nin else "final"
@@ -312,6 +325,7 @@ def test_matches_genps_fks(data, conf, points, prefix):
         emitter_mass=m_j if j_fks >= 2 else 0.0,
         initial_map=initial_map,
         born_masses=list(np.delete(conf["masses"], i_fks)),
+        resonance=resonance_members(conf),
     )
     assert mapping.random_dim() == 3
     assert mapping.initial_state() == (j_fks < 2)

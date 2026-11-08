@@ -36,12 +36,96 @@ FKS_ASYMMETRIC_DATA = sorted(
     )
 )
 
+# the kinematics of the resonance-local recoil of a final-state emitter, from
+# the MCcntRefactor_Sfun branch of MadGraph7, per Born configuration
+# (fks_reference/make_fks_resonance_reference.py)
+FKS_RESONANCE_DATA = sorted(
+    glob.glob(
+        os.path.join(
+            os.path.dirname(os.path.realpath(__file__)),
+            "test_data",
+            "fks_resonance",
+            "*.json",
+        )
+    )
+)
+
 
 def data_id(path):
     """The name of reference data in test ids, with the directory of the
-    asymmetric map."""
+    asymmetric map or of the resonance-local recoil."""
     name = os.path.basename(path)[:-5]
-    return f"asymmetric-{name}" if "fks_asymmetric" in path else name
+    if "fks_asymmetric" in path:
+        return f"asymmetric-{name}"
+    if "fks_resonance" in path:
+        return f"resonance-{name}"
+    return name
+
+
+def same_massive_xi_map(data, conf, point):
+    """Whether a point of reference data has the map of xi of genps_fks.f of
+    main, which madspace has. The map of a massive final-state emitter of the
+    MCcntRefactor_Sfun branch differs from it for y < 0, where r_xi below
+    rat = xi_max / xi_norm gives the first solution: there it takes xi_hat =
+    (stiny + (1 - stiny) r_xi^2) / rat in place of rat (stiny + (1 - stiny)
+    (r_xi / rat)^2), which overshoots xi_max by stiny (1 / rat - rat), and
+    stiny + (1 - stiny) r_xi in place of r_xi for the second solution (reported
+    on PR 397). For y >= 0 rat is 1 and the maps are the same."""
+    j = conf["j_fks"] - 1
+    if not data.get("mg_branch") or j < data["nincoming"] or conf["masses"][j] == 0:
+        return True
+    return point["y_ev"] >= 0
+
+
+def resonance_members(conf):
+    """The members of the resonance of a configuration of reference data, 0-based
+    positions in the real process, empty without the resonance-local recoil
+    (and for the other reference data)."""
+    resonance = conf.get("resonance")
+    if resonance is None or not resonance["resonance_recoil"]:
+        return []
+    return [k for k, member in enumerate(resonance["resonance_members"]) if member]
+
+
+def resonance_stretch(points):
+    """Per point of reference data, the largest factor (E_K + |K|) / M_K by
+    which the boost out of the rest frame of the resonance stretches a
+    momentum, 1 without a resonance: the rounding of an emission in that frame
+    grows by it, up to 77 for a Higgs boson far off its mass shell."""
+    stretch = np.ones(len(points))
+    for k, point in enumerate(points):
+        mass2 = point.get("resonance_mass2", 0.0)
+        if mass2 > 0:
+            res = np.array(point["resonance_momentum"])
+            stretch[k] = (res[0] + np.linalg.norm(res[1:])) / math.sqrt(mass2)
+    return stretch
+
+
+def forest_topology(data):
+    """The Topology of the Born configuration of resonance reference data, from
+    its iforest: a vertex per propagator with its two daughters, and the vertex
+    of the three lines left (the incoming partons with s_hat, or the end of the
+    t-channel)."""
+    conf = data["configs"][0]
+    masses = list(np.delete(np.array(conf["masses"]), conf["i_fks"] - 1))
+    nin = data["nincoming"]
+
+    def line(label):
+        if label < 0:
+            return f"p{-label - 1}"
+        if label <= nin:
+            return f"i{label - 1}"
+        return f"o{label - nin - 1}"
+
+    vertices, used = [], set()
+    for index, d1, d2, _, _ in data["born_forest"]:
+        vertices.append([line(index), line(d1), line(d2)])
+        used.update([d1, d2])
+    labels = list(range(1, len(masses) + 1))
+    labels += [-k for k in range(1, len(data["born_forest"]) + 1)]
+    vertices.append([line(label) for label in labels if label not in used])
+    propagators = [ms.Propagator(mass=m, width=w) for m, w in data["born_props"]]
+    return ms.Topology(ms.Diagram(masses[:nin], masses[nin:], propagators, vertices))
 
 
 def fortran_sampling_units(data, j_fks, second=False):

@@ -1321,7 +1321,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 double,
                 FKSRadiation::InitialMap,
-                const std::vector<double>&>(),
+                const std::vector<double>&,
+                const std::vector<std::size_t>&>(),
             py::arg("born_particle_count"),
             py::arg("i_fks"),
             py::arg("j_fks"),
@@ -1330,6 +1331,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("emitter_mass") = 0.,
             py::arg("initial_map") = FKSRadiation::symmetric,
             py::arg("born_masses") = std::vector<double>{},
+            py::arg("resonance") = std::vector<std::size_t>{},
             pydoc::doc("FKSRadiation::FKSRadiation")
         )
         .def(
@@ -1362,6 +1364,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             "initial_state",
             &FKSRadiation::initial_state,
             pydoc::doc("FKSRadiation::initial_state")
+        )
+        .def(
+            "resonance", &FKSRadiation::resonance, pydoc::doc("FKSRadiation::resonance")
         )
         .def(
             "counter_events",
@@ -1943,12 +1948,14 @@ PYBIND11_MODULE(_madspace_py, m) {
                 std::size_t,
                 std::size_t,
                 double,
-                FKSRadiation::InitialMap>(),
+                FKSRadiation::InitialMap,
+                const std::vector<std::size_t>&>(),
             py::arg("born"),
             py::arg("i_fks"),
             py::arg("j_fks"),
             py::arg("s_hat_min") = 0.,
             py::arg("initial_map") = FKSRadiation::symmetric,
+            py::arg("resonance") = std::vector<std::size_t>{},
             pydoc::doc("FKSMapping::FKSMapping")
         )
         .def(
@@ -1987,13 +1994,15 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 double,
                 const std::optional<LeptonLuminosity>&,
-                FKSRadiation::InitialMap>(),
+                FKSRadiation::InitialMap,
+                const nested_vector3<std::size_t>&>(),
             py::arg("born"),
             py::arg("configurations"),
             py::arg("s_hat_min") = 0.,
             py::arg("sqrt_s_hat_floor") = 0.,
             py::arg("luminosity") = std::nullopt,
             py::arg("initial_map") = FKSRadiation::symmetric,
+            py::arg("resonances") = nested_vector3<std::size_t>{},
             pydoc::doc("FKSConfigurationMapping::FKSConfigurationMapping")
         )
         .def(
@@ -2003,13 +2012,15 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 double,
                 const std::optional<LeptonLuminosity>&,
-                FKSRadiation::InitialMap>(),
+                FKSRadiation::InitialMap,
+                const nested_vector3<std::size_t>&>(),
             py::arg("born"),
             py::arg("configurations"),
             py::arg("s_hat_min") = 0.,
             py::arg("sqrt_s_hat_floor") = 0.,
             py::arg("luminosity") = std::nullopt,
-            py::arg("initial_map") = FKSRadiation::symmetric
+            py::arg("initial_map") = FKSRadiation::symmetric,
+            py::arg("resonances") = nested_vector3<std::size_t>{}
         )
         .def(
             "luminosity",
@@ -2020,6 +2031,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             "initial_map",
             &FKSConfigurationMapping::initial_map,
             pydoc::doc("FKSConfigurationMapping::initial_map")
+        )
+        .def(
+            "resonances",
+            &FKSConfigurationMapping::resonances,
+            pydoc::doc("FKSConfigurationMapping::resonances")
         )
         .def(
             "born",
