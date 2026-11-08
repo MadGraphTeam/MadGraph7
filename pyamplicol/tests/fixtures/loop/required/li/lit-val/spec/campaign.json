@@ -261,5 +261,23 @@
    "li_gg_zzz": 50,
    "li_gg_zzzz": 50
   }
+ },
+ "born_l6": {
+  "source": "m-lit PLAN §4.1 LI-B1 (every G1, M-QCD, M-SM incl. CMS, decay XX01-08, HC row, Born-interfered: L6 all Laurent orders, the theta = 1e-3..1e-5 rows); DECISIONS 2026-11-07 21:50 R8 (lit-val extends the Born-interfered L6 to the other campaigns after lit-tir-mp, reusing lit-tir's scripts), 2026-11-08 08:31 (a lane beyond 10 max(E) below ~1e-5 relative is recorded, not a failure)",
+  "campaigns": {
+   "mqcd": "tests/fixtures/loop/mqcd/manifest.json",
+   "msm": "tests/fixtures/loop/msm/manifest.json",
+   "dec": "tests/fixtures/loop/dec/manifest.json"
+  },
+  "forward": {
+   "values": [
+    "1e-3",
+    "1e-4",
+    "1e-5"
+   ],
+   "source": "§4.1 LI-B1: the theta = 1e-3..1e-5 rows (each 2 -> 2 row with massless beams and equal final masses, at its first reference point's sqrt(s) and scale)"
+  },
+  "high_points": 1,
+  "high_points_source": "double-double at each row's first point (the binary64 lanes at every tier point and the forward points carry the estimate rule; the double-double side is the 1e-24 target, R5)"
  }
 }
