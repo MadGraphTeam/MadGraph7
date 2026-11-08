@@ -270,6 +270,16 @@ def test_arms_not_run_keep_their_reason(entries):
     }
     with pytest.raises(ValueError, match="LABEL=REASON"):
         lm.skip_arms(["ninjars/arbitrary/plain"])
+    # A run with plain double-double arms (``--high-plain``) is judged on them.
+    plain = _record("li_gg_hh")
+    for backend in lm.BACKENDS:
+        arms = plain["arms"]
+        arms[f"{backend}/double-double/plain"] = arms.pop(
+            f"{backend}/double-double/checked"
+        )
+    judged = lm.judge(plain, entry)
+    assert judged["E"]["status"] == "pass" and judged["E"]["ninjars"]["points"] == 3
+    assert judged["L6"]["double-double"]["status"] == f"waits: {lm.TIR_MP}"
 
 
 def test_lit_json_is_keyed_by_the_registry_and_read_by_the_report(entries, tmp_path):
