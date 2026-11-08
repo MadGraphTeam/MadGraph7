@@ -8,7 +8,8 @@
 //! - A family's numerator rank is admitted by the reduction backends
 //!   themselves ([`rank_refusal`] per [`Reducer`]: NinjaRS's
 //!   [`ninjars::RankClass::of`], rank <= N + 2; TIRust's capability query,
-//!   `iregi_rust::DirectCapabilities`, with the cargo feature `tir`). An
+//!   `iregi_rust::DirectCapabilities`, with the cargo feature
+//!   `tirust-capability`, which the loop crates' `tir` turns on). An
 //!   artifact admits a family that one of them reduces ([`admission_refusal`]:
 //!   the plan loader, the binary member bound and the Python generator,
 //!   `_loop.reducer_rank_refusal`); a family beyond NinjaRS's rank makes the
@@ -51,7 +52,7 @@ pub enum Reducer {
     NinjaRs = 0,
     /// TIRust (tensor-integral reduction): no rank <= N + 2 limit; what it
     /// reduces is its own capability query ([`rank_refusal`]), refused
-    /// without the cargo feature `tir`.
+    /// without the cargo feature `tirust-capability` (the loop crates' `tir`).
     TiRust = 1,
 }
 
@@ -101,7 +102,7 @@ pub fn rank_refusal(reducer: Reducer, propagators: usize, rank: usize) -> Option
     }
 }
 
-#[cfg(feature = "tir")]
+#[cfg(feature = "tirust-capability")]
 fn tirust_refusal(propagators: usize, rank: usize) -> Option<String> {
     let refused = |why: String| {
         Some(format!(
@@ -118,11 +119,11 @@ fn tirust_refusal(propagators: usize, rank: usize) -> Option<String> {
         .and_then(|error| refused(error.to_string()))
 }
 
-#[cfg(not(feature = "tir"))]
+#[cfg(not(feature = "tirust-capability"))]
 fn tirust_refusal(propagators: usize, rank: usize) -> Option<String> {
     Some(format!(
         "TIRust cannot reduce {propagators} propagators at rank {rank}: this build has no TIRust \
-         (the cargo feature tir)"
+         (the loop crates' cargo feature tir)"
     ))
 }
 
@@ -206,14 +207,14 @@ mod tests {
         assert!(refused.contains("rank 8 over 5"), "{refused}");
     }
 
-    /// With TIRust (the cargo feature `tir`) a family beyond NinjaRS's rank
+    /// With TIRust (the cargo feature `tirust-capability`) a family beyond NinjaRS's rank
     /// is admitted through TIRust's capability query, up to its
     /// representation; without it the artifacts admit NinjaRS's ranks only.
     #[test]
     fn tirust_admits_ranks_beyond_n_plus_two_by_its_capability_query() {
         let refusal = rank_refusal(Reducer::TiRust, 0, 0).unwrap();
         assert!(refusal.contains("TIRust"), "{refusal}");
-        if cfg!(feature = "tir") {
+        if cfg!(feature = "tirust-capability") {
             for n in 1..12 {
                 for rank in 0..=n + 6 {
                     assert_eq!(rank_refusal(Reducer::TiRust, n, rank), None);

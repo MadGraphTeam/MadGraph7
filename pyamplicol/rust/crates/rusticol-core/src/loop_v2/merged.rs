@@ -704,9 +704,9 @@ mod tests {
 
     /// A family beyond NinjaRS's rank <= N + 2 (m-lit lit-eft): the plan
     /// loads where TIRust's capability query admits it (the cargo feature
-    /// `tir`) and its families make it TIR-only, the same plan within N + 2
-    /// is not; a build without TIRust refuses it as a family rank, as every
-    /// build refuses a rank beyond TIRust's representation.
+    /// `tirust-capability`) and its families make it TIR-only, the same plan
+    /// within N + 2 is not; a build without TIRust refuses it as a family
+    /// rank, as every build refuses a rank beyond TIRust's representation.
     #[test]
     fn a_family_beyond_ninjars_rank_loads_through_tirust() {
         use crate::loop_v2::bounds::tir_only;
@@ -723,7 +723,7 @@ mod tests {
         assert!(!tir_only(load(4).unwrap().buckets().into_keys()));
         // Two propagators at rank 5: beyond NinjaRS's N + 2.
         let loaded = load(5);
-        if cfg!(feature = "tir") {
+        if cfg!(feature = "tirust-capability") {
             let program = loaded.unwrap();
             assert_eq!(program.families[0].rank, 5);
             assert!(tir_only(program.buckets().into_keys()));

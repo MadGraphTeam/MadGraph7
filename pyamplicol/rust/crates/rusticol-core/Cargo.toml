@@ -26,9 +26,11 @@ symbolica-runtime = ["dep:symbolica", "dep:pyamplicol", "dep:tracing", "dep:trac
 loop-v2 = ["dep:brotli", "dep:flate2", "dep:ninjars", "symbolica-runtime", "f64-symjit"]
 # TIRust's capability query in the loop engine's rank admission (m-lit
 # lit-eft: families beyond NinjaRS's rank <= N+2 are admitted when TIRust
-# reduces them; `loop_v2::bounds`). Enabled by the loop consumer's `tir`
-# feature (rusticol-loop-reduction), never on its own.
-tir = ["loop-v2", "dep:iregi-rust"]
+# reduces them; `loop_v2::bounds`). Not the TIRust backend (the default
+# feature `tir` of the crates that link it): enabled only by the loop
+# consumer's `tir` (rusticol-loop-reduction), so a `--no-default-features`
+# build links no TIRust; not a default here.
+tirust-capability = ["loop-v2", "dep:iregi-rust"]
 
 [dependencies]
 bincode.workspace = true
