@@ -45,6 +45,44 @@ from tests import test_manager
 
 _v4_model_path = os.path.join(MG5DIR, 'tests', 'input_files', 'full_sm')
 
+# test_madmatrix_hel_recycling_several_libraries: |M|^2 (helicity sum) through
+# umami of a sequence of madmatrix subprocess libraries, in one process.
+# usage: <param_card> '[[library, momenta (check_sa --dump-momenta), npar], ...]'
+# prints the |M|^2 of every call as one JSON list.
+_UMAMI_SEQUENCE_DRIVER = '''
+import ctypes, json, os, sys
+card = sys.argv[1].encode()
+libs = {}
+out = []
+for path, momenta, npar in json.loads(sys.argv[2]):
+    if path not in libs:
+        # madspace loads them with dlopen(RTLD_NOW): RTLD_GLOBAL on macOS
+        lib = ctypes.CDLL(path, mode=os.RTLD_NOW)
+        handle = ctypes.c_void_p()
+        assert lib.umami_initialize(ctypes.byref(handle), card) == 0
+        libs[path] = (lib, handle)
+    lib, handle = libs[path]
+    raw = open(momenta, 'rb').read()
+    count = len(raw) // (8 * 4 * npar)
+    point = (ctypes.c_double * (4 * npar * count)).from_buffer_copy(raw)
+    mom = (ctypes.c_double * (4 * npar * count))()
+    for ievt in range(count):  # (E,px,py,pz) per leg per event -> momenta[mu][leg][event]
+        for ipart in range(npar):
+            for mu in range(4):
+                mom[count * (npar * mu + ipart) + ievt] = point[(ievt * npar + ipart) * 4 + mu]
+    me = (ctypes.c_double * count)()
+    # umami.h: UMAMI_IN_MOMENTA = 0, UMAMI_OUT_MATRIX_ELEMENT = 0
+    status = lib.umami_matrix_element(
+        handle, ctypes.c_size_t(count), ctypes.c_size_t(count), ctypes.c_size_t(0),
+        ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+        (ctypes.c_void_p * 1)(ctypes.addressof(mom)),
+        ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+        (ctypes.c_void_p * 1)(ctypes.addressof(me)))
+    assert status == 0, status
+    out.append(list(me))
+print(json.dumps(out))
+'''
+
 #===============================================================================
 # TestCmd
 #===============================================================================
@@ -2306,6 +2344,82 @@ class TestCmdShell2(unittest.TestCase,
                 compared += 1
         self.assertGreaterEqual(compared, 2, 'the scalar backend did not build')
         return proc['recycled']
+
+    def test_madmatrix_hel_recycling_several_libraries(self):
+        """--hel_recycling: several subprocess libraries in one process must
+        give the |M|^2 that each gives alone.
+
+        Every subprocess library of an output shares one per-thread scratch
+        area (libmadmatrix_common, hr_thread_scratch), zeroed whenever another
+        library takes it over; each library names itself by an address. That
+        address was a static local of the inline hr_page: a weak symbol, the
+        same in every library, which the macOS loader coalesces when the
+        libraries are loaded as madspace loads them (dlopen RTLD_NOW, i.e.
+        RTLD_GLOBAL there). Every library then passed the same owner, the area
+        was never zeroed, and in the rows mode the (helicity, amplitude) pairs
+        a library drops kept the amplitudes another one left there: mg7
+        p p > z j j came out 300 times too high in its 4-quark classes, while
+        check_sa.exe, which loads one library, saw nothing.
+
+        Three subprocesses of z + 2 partons that drop pairs (u u > z u u and
+        u u~ > z u u~ 48, g g > z u u~ 24) are evaluated through umami, each
+        alone in its own process, then all in one process, in turn and more
+        than once; the results must not change (they were off by up to a
+        factor 48 with the weak owner).
+        """
+        import glob
+        import json
+        devnull = open(os.devnull, 'w')
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        self.do('import model sm')
+        self.do('generate u u > z u u')
+        self.do('add process g g > z u u~')
+        self.do('add process u u~ > z u u~')
+        self.do('output standalone %s -f --hel_recycling=True' % self.out_dir)
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        procs = sorted(d for d in os.listdir(proc_root)
+                       if d.startswith('P') and os.path.isdir(pjoin(proc_root, d)))
+        self.assertEqual(len(procs), 3, procs)
+        calls = {}
+        for proc in procs:
+            proc_dir = pjoin(proc_root, proc)
+            self.assertTrue(os.path.exists(pjoin(proc_dir, 'HelRecycling.inc')),
+                            'the --hel_recycling warm-up did not produce the '
+                            'recycled build of %s' % proc)
+            self.assertEqual(0, subprocess.call(['make', 'FPTYPE=d'], stdout=devnull,
+                                                stderr=devnull, cwd=proc_dir))
+            momenta = pjoin(proc_dir, 'momenta.bin')
+            subprocess.call(['./check_sa.exe', 'perf', '--dump-momenta', momenta,
+                             '1', '32', '1'], cwd=proc_dir,
+                            stdout=devnull, stderr=devnull)
+            self.assertTrue(os.path.exists(momenta), 'no momenta for %s' % proc)
+            # libmadmatrix_<model>_<Pdir>_<backend>_<fptype>.so
+            lib = glob.glob(pjoin(self.out_dir, 'lib', 'libmadmatrix_*_%s_*.so' % proc))
+            self.assertEqual(len(lib), 1, lib)
+            calls[proc] = [lib[0], momenta, 5]
+
+        # In a child process: the libraries are loaded RTLD_GLOBAL, as madspace
+        # does on macOS, which would leak their symbols into every library
+        # loaded later in this (shared) test process.
+        driver = pjoin(self.out_dir, 'umami_sequence.py')
+        open(driver, 'w').write(_UMAMI_SEQUENCE_DRIVER)
+        card = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+
+        def run(sequence):
+            out = subprocess.check_output(
+                [sys.executable, driver, card, json.dumps([calls[p] for p in sequence])])
+            return json.loads(out.decode().strip().splitlines()[-1])
+
+        alone = dict((proc, run([proc])[0]) for proc in procs)
+        for proc in procs:
+            self.assertTrue(any(alone[proc]), 'all-zero |M|^2 for %s' % proc)
+        sequence = procs + procs[::-1] + procs
+        for ncall, (proc, values) in enumerate(zip(sequence, run(sequence))):
+            for i, (a, b) in enumerate(zip(alone[proc], values)):
+                self.assertLessEqual(abs(a - b), 1e-12 * abs(a),
+                                     'call %d (%s), event %d: alone %r, after the '
+                                     'other libraries %r' % (ncall, proc, i, a, b))
 
     def test_standalone_cpp_perf_alpha_s_from_param_card(self):
         """check_sa.exe 'perf' mode must use the alpha_s of the param card,
