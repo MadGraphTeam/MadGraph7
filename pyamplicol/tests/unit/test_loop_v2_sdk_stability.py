@@ -501,3 +501,187 @@ def test_loop_induced_sdk_estimates_equal_the_python_api(
     finally:
         sdk.rusticol_virtual_free(handle)
     assert estimated
+
+
+# ------------------------------------------------------------- wrappers
+
+CXX_CLIENT = r"""
+// ./client artifact process input.txt: the stability checks through the C++
+// wrapper (one default rotation and the rescaled reduction check, then the
+// rotation specification "euler:0.1,0.2,0.3"); per evaluation one line, its
+// diagnostics JSON.
+#include "rusticol_virtual.hpp"
+#include <cstdio>
+#include <cstdlib>
+#include <fstream>
+#include <string>
+#include <vector>
+
+static double hex(std::ifstream &in) {
+  std::string token;
+  in >> token;
+  return std::strtod(token.c_str(), nullptr);
+}
+
+int main(int argc, char **argv) {
+  if (argc < 4) return 2;
+  std::ifstream in(argv[3]);
+  std::size_t points = 0, legs = 0;
+  in >> points >> legs;
+  std::vector<double> momenta(points * legs * 4), scales(points);
+  for (std::size_t p = 0; p < points; ++p) {
+    for (std::size_t i = 0; i < legs * 4; ++i) momenta[p * legs * 4 + i] = hex(in);
+    scales[p] = hex(in);
+  }
+  try {
+    rusticol::VirtualRuntime runtime(argv[1], std::string(argv[2]));
+    runtime.set_stability_checks(1, true, true);
+    auto first = runtime.evaluate(momenta, points, scales);
+    std::printf("%s\n", first.diagnostics_json().c_str());
+    const std::string euler = "[\"euler:0.1,0.2,0.3\"]";
+    runtime.set_stability_checks(0, false, false, false, euler);
+    auto second = runtime.evaluate(momenta, points, scales);
+    std::printf("%s\n", second.diagnostics_json().c_str());
+  } catch (const rusticol::VirtualError &error) {
+    std::printf("error %d %s\n", error.status(), error.what());
+    return 1;
+  }
+  return 0;
+}
+"""
+
+FORTRAN_CLIENT = r"""
+program stability_client
+  use, intrinsic :: iso_c_binding
+  use rusticol_virtual
+  implicit none
+  character(len=4096) :: artifact, process, path
+  integer :: unit, points, legs, p, l, i
+  integer(c_int64_t), allocatable :: bits(:)
+  real(c_double), allocatable :: momenta(:,:,:), scales(:)
+  type(virtual_runtime) :: runtime
+  type(virtual_evaluation) :: result
+  integer(c_int) :: ierr
+  character(:), allocatable :: message
+  call get_command_argument(1, artifact)
+  call get_command_argument(2, process)
+  call get_command_argument(3, path)
+  open(newunit=unit, file=trim(path), status='old', action='read')
+  read(unit, *) points, legs
+  allocate(momenta(4, legs, points), scales(points), bits(4*legs+1))
+  do p = 1, points
+    read(unit, *) bits
+    do l = 1, legs
+      do i = 1, 4
+        momenta(i, l, p) = transfer(bits(4*(l-1)+i), 1.0_c_double)
+      end do
+    end do
+    scales(p) = transfer(bits(4*legs+1), 1.0_c_double)
+  end do
+  close(unit)
+  call runtime%load(trim(artifact), process=trim(process), ierr=ierr)
+  if (ierr /= VIRTUAL_OK) stop 1
+  call runtime%set_stability_checks(1_c_int64_t, .true., .true., .false., ierr=ierr, &
+      error_message=message)
+  if (ierr /= VIRTUAL_OK) stop 2
+  call runtime%evaluate(momenta, scales, result, ierr=ierr, error_message=message)
+  if (ierr /= VIRTUAL_OK) stop 3
+  write(*, '(a)') result%diagnostics_json
+  call runtime%set_stability_checks(0_c_int64_t, .false., .false., .false., &
+      rotations='["euler:0.1,0.2,0.3"]', ierr=ierr, error_message=message)
+  if (ierr /= VIRTUAL_OK) stop 4
+  call runtime%evaluate(momenta, scales, result, ierr=ierr, error_message=message)
+  if (ierr /= VIRTUAL_OK) stop 5
+  write(*, '(a)') result%diagnostics_json
+  call runtime%close()
+end program
+"""
+
+
+def test_the_cxx_and_fortran_wrappers_set_the_checks(artifacts, loop_native, tmp_path):
+    """The C++ and Fortran wrappers' ``set_stability_checks`` (a rotation
+    count with the rescaled check, then a rotation specification) give the
+    Python API's estimates (``"stability"`` of the diagnostics) on g g > t t~."""
+
+    import subprocess
+
+    from pyamplicol import Runtime
+    from pyamplicol.api.virtual_results import VirtualStabilityChecks
+    from tests.unit.test_loop_v2_sdk_extras import SDK, _compiler, _staged_sdk
+
+    build = _staged_sdk()
+    link = [f"-L{build}", "-lrusticol_loop_sdk", f"-Wl,-rpath,{build}", "-lm"]
+    (tmp_path / "client.cpp").write_text(CXX_CLIENT)
+    (tmp_path / "client.f90").write_text(FORTRAN_CLIENT)
+    subprocess.run(
+        [
+            _compiler("CXX", "c++"),
+            "-std=c++17",
+            "-O2",
+            f"-I{SDK / 'include'}",
+            str(tmp_path / "client.cpp"),
+            *link,
+            "-o",
+            str(tmp_path / "cpp"),
+        ],
+        check=True,
+        cwd=tmp_path,
+    )
+    subprocess.run(
+        [
+            _compiler("FC", "gfortran"),
+            "-std=f2018",
+            "-O2",
+            f"-J{tmp_path}",
+            str(SDK / "fortran" / "rusticol_virtual.f90"),
+            str(tmp_path / "client.f90"),
+            *link,
+            "-o",
+            str(tmp_path / "fortran"),
+        ],
+        check=True,
+        cwd=tmp_path,
+    )
+    name = "ggtt"
+    point = PROCESSES[name][1]
+    floats = [[float(Decimal(c)) for c in p] for p in point]
+    scales = [float(Decimal(s)) for s in SCALES]
+
+    def feed(bits: bool) -> str:
+        import struct
+
+        def text(value: float) -> str:
+            if bits:
+                return str(struct.unpack("<q", struct.pack("<d", value))[0])
+            return value.hex()
+
+        lines = [f"2 {len(floats)}"]
+        for scale in scales:
+            lines.append(" ".join([text(c) for p in floats for c in p] + [text(scale)]))
+        return "\n".join(lines) + "\n"
+
+    runtime = Runtime.load(artifacts[name], process=name)
+    expected = []
+    for checks in (
+        VirtualStabilityChecks(1, True, rescaled=True),
+        VirtualStabilityChecks(("euler:0.1,0.2,0.3",)),
+    ):
+        result = runtime.evaluate([point, point], mu_r2=SCALES, stability_checks=checks)
+        expected.append([_record(estimate) for estimate in result.stability])
+    for language in ("cpp", "fortran"):
+        path = tmp_path / f"{language}.txt"
+        path.write_text(feed(language == "fortran"))
+        run = subprocess.run(
+            [str(tmp_path / language), str(artifacts[name]), name, str(path)],
+            capture_output=True,
+            text=True,
+            timeout=600,
+            check=False,
+        )
+        assert run.returncode == 0, run.stdout[-2000:] + run.stderr[-2000:]
+        found = [
+            json.loads(line)["stability"]["estimates"]
+            for line in run.stdout.splitlines()
+            if line.strip()
+        ]
+        assert found == expected, language
