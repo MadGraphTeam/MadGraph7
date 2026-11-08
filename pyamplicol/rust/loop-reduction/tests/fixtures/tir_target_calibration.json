@@ -19,15 +19,15 @@
    }
   },
   {
-   "name": "loop-induced stream rows, |A_loop|^2 finite part per point with an admission ratio above 2^-30 (error against TIRust at 256 bits with supplied invariants)",
-   "rows": 11,
-   "items": 65,
-   "max_ratio": 59.36860717117209,
+   "name": "loop-induced stream rows, |A_loop|^2 finite part per point admitted above 2^-30 (error against TIRust at 256 bits with supplied invariants; the point's admission ratio bracketed by an acceptance ladder, max_ratio = error / the bracket's lower end, an upper bound)",
+   "rows": 17,
+   "items": 212,
+   "max_ratio": 55.751229205318715,
    "at": {
-    "ratio": 2.145987038459363e-09,
-    "error": 1.2740426148072088e-07,
-    "row": "li_gg_hhgg",
-    "point": 31
+    "ratio_above": 9.313225746154785e-10,
+    "error": 5.1922378321475084e-08,
+    "row": "li_gg_wpwmg",
+    "point": 2
    }
   }
  ]
