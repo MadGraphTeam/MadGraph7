@@ -133,9 +133,13 @@ from pyamplicol.generation.evaluator_container import (
 from pyamplicol.loops.orders import BornLoopPair, VirtualOrderSector, canonical_order
 from pyamplicol.loops.strategy import R2Selection
 
+# ``reduction.SUMMED`` / ``RESOLVED`` are read through the module at call
+# time (its PEP 562 attributes load the native policy on first use, not at
+# this module's import).
+from . import reduction as _routes
 from .families import Orders, add_orders
 from .native_trees import Program, StoredMember, program_bytes
-from .reduction import RESOLVED, SUMMED, Route, running
+from .reduction import Route, running
 
 PLAN_MEMBER = "schedule/loop-plan-v4.json.zlib"
 # The binary plan member (``ExportedPlan.binary()``, M-FINAL MF-8G-1 item 5),
@@ -2094,7 +2098,7 @@ class V2VirtualRuntime:
             arithmetic,
             precision,
             policy,
-            RESOLVED if selected else SUMMED,
+            _routes.RESOLVED if selected else _routes.SUMMED,
             stability_checks,
         )
         if selected:
@@ -2599,7 +2603,7 @@ class V2VirtualRuntime:
             arithmetic,
             precision,
             options.get("stability"),
-            RESOLVED,
+            _routes.RESOLVED,
             options.get("stability_checks"),
         )
         operation = getattr(self._observable_runtime(), name)

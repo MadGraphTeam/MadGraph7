@@ -424,13 +424,15 @@ def test_every_route_records_its_backend_and_refuses_one_it_does_not_run(
         VirtualRescuePolicy,
     )
     from pyamplicol.correlators import CorrelatedRequest
-    from pyamplicol.loops.v2 import artifact, reduction
+    from pyamplicol.loops.v2 import reduction
     from pyamplicol.loops.v2.reduction import ReductionUnavailable
 
     for name in ("SUMMED", "RESOLVED"):
+        # The artifact runtime reads its routes from ``reduction`` at call
+        # time (lit-sdk-b item [8]: no native load at its import).
         route = getattr(reduction, name)
         monkeypatch.setattr(
-            artifact, name, route._replace(backends=frozenset({"ninjars"}), auto=None)
+            reduction, name, route._replace(backends=frozenset({"ninjars"}), auto=None)
         )
     built = {name: frozenset(reduction.CARRIERS) for name in reduction.BACKENDS}
     monkeypatch.setattr(reduction, "native_backends", lambda native: built)

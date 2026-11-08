@@ -73,7 +73,8 @@ enum rusticol_virtual_point_status {
  * matrix M_X on the amplitude basis (real for a dipole T_i.T_j); a spin source
  * of a declared vector leg enters through its projection on the leg's
  * polarisation vectors (the transverse part). Born counts stay zero there too.
- * The amplitude-basis anchors are the Python API's alone. */
+ * The amplitude-basis anchors and the helicity selection are served by
+ * rusticol_virtual_evaluate_selected (below). */
 typedef struct {
   size_t external_count, born_orders, virtual_orders, helicities;
   size_t born_color_components, virtual_color_components, epsilon_count;
@@ -226,6 +227,78 @@ int rusticol_virtual_result_diagnostics_json(const rusticol_virtual_result *, ch
  * decimal literals in the copy layouts (absent poles null); "null" for a
  * binary64 result. */
 int rusticol_virtual_result_decimal_json(const rusticol_virtual_result *, char *, size_t, size_t *);
+/* Selections (additive, ABI version 2 kept; the Python API's helicities= and
+ * color_resolution=, the tree C ABI's selector conventions). Global selectors
+ * are string IDs, per-point selectors zero-based indices, exactly one per
+ * point; global and per-point selectors are mutually exclusive on the same
+ * axis; a zero count omits a selector (an omitted axis keeps every row).
+ * Every selector is validated before any evaluation; *output is written only
+ * on success (NULL otherwise).
+ *
+ * Loop-induced processes (full colour only, RULED Q8):
+ * - helicity IDs are the capabilities' "helicity_ids" (h<i>) or the tree
+ *   engine's IDs (h:<helicities in leg order>, e.g. "h:-1,-1,+1,+1");
+ *   helicity_by_point[p] is the zero-based helicity row of point p;
+ * - request.resolved = 0: per point the sum over the selected rows of
+ *   |A(h)|^2/avg with the total's average (RULED Q39: the rows of a complete
+ *   selection sum to the ordinary value; no parity or Bose row mapping,
+ *   RULED Q37), in the ordinary layout; with helicity_by_point, each point's
+ *   value is that of the global selection of its own row on that point;
+ * - request.resolved = 1: the selected rows (all without helicity IDs) in
+ *   the resolved layout [successful_point,order,helicity,colour,(epsilon)];
+ *   color_resolution NULL or "contracted": one colour-contracted component
+ *   ("full"); "amplitude-basis": one component per amplitude-basis element t
+ *   ("amplitude-<t>"), Re(conj(a_t) (G a)_t)/avg, an explicitly
+ *   BASIS-DEPENDENT diagnostic split (the basis may be linearly dependent at
+ *   N_c = 3; PLAN 2.a.10) whose components sum to the row's value. Per-point
+ *   selectors are refused for resolved calls (RUSTICOL_VIRTUAL_INVALID_ARGUMENT);
+ * - only the selected rows are dressed and reduced (the executor's row
+ *   liveness, the Python API's path): a single-helicity call costs less than
+ *   the full evaluation; binary64 values are bitwise the Python API's;
+ *   double-double / arbitrary precision as the other calls (decimal_json);
+ * - refused before any evaluation: colour flows (color_ids,
+ *   color_flow_by_point) and an unknown color_resolution with the Python
+ *   API's CompatibilityError texts (RUSTICOL_VIRTUAL_RUNTIME_ERROR); an
+ *   unknown helicity ID (its EvaluationError text), an empty or repeated ID
+ *   (its ValueError texts), an out-of-range index, a wrong per-point length,
+ *   both selectors of one axis, per-point selectors of a resolved call and a
+ *   color_resolution of an ordinary call (RUSTICOL_VIRTUAL_INVALID_ARGUMENT);
+ * - the call takes the handle's poles, arithmetic, reduction backend
+ *   (rusticol_virtual_set_reduction: the same per-call policy, its
+ *   requested / effective / reason record in the diagnostics, failed points
+ *   as FAILED statuses with the Python API's reasons) and model parameters;
+ *   with stability checks set, its diagnostics carry
+ *   "stability": {"estimates": null, "reason": ...} (the Python API
+ *   estimates selections), a cross-backend check whose other backend this
+ *   library lacks is refused by the call (as rusticol_virtual_evaluate's);
+ *   diagnostics "selection": {"helicity_ids": per point the selected h<i>}
+ *   for an ordinary selected call.
+ * Every process: a NULL selection, or one without selectors whose
+ * color_resolution is NULL or "contracted", is rusticol_virtual_evaluate
+ * (values and diagnostics, its monitoring included).
+ * Born-interfered processes: a color_resolution is
+ * refused with the Python API's text; selectors at NLC and full colour with
+ * its text; a leading-colour selection is served by the Python API only (both
+ * RUSTICOL_VIRTUAL_RUNTIME_ERROR). */
+typedef struct {
+  const char *const *helicity_ids; /* global helicity IDs */
+  size_t helicity_count;
+  const char *const *color_ids; /* global colour-flow IDs */
+  size_t color_count;
+  const uint32_t *helicity_by_point; /* zero-based, point_count entries */
+  size_t helicity_by_point_count;
+  const uint32_t *color_flow_by_point; /* zero-based, point_count entries */
+  size_t color_flow_by_point_count;
+  const char *color_resolution; /* resolved: NULL/"contracted" or "amplitude-basis" */
+} rusticol_virtual_selection;
+int rusticol_virtual_evaluate_selected(rusticol_virtual_handle *handle,
+  const rusticol_virtual_batch_request *request,
+  const rusticol_virtual_selection *selection, rusticol_virtual_result **output);
+/* A result's axes as JSON: {"helicity_ids": [...], "color_ids": [...]} (a
+ * resolved result's helicity rows and colour components in its layout order,
+ * also counted by rusticol_virtual_result_shape's axes.helicities and
+ * axes.virtual_color_components; empty lists for an ordinary result). */
+int rusticol_virtual_result_axes_json(const rusticol_virtual_result *, char *, size_t, size_t *);
 /* Additive grouped complex interface. Ordinary v1 structures and functions are
  * unchanged. Every saved history is evaluated once in the recorded ID order
  * ("born", the inclusive Born metric, first; then the declared histories);

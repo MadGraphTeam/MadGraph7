@@ -348,7 +348,13 @@ pole selection and arithmetic (`rusticol_virtual_set_arithmetic`: binary64,
 double-double or arbitrary precision; the exact decimals of the extended
 carriers come with the optional diagnostic result), bitwise equal to the Python
 API in binary64; it has no verification policy (the stability rescue is the
-Python API's alone).
+Python API's alone). For a loop-induced process it also takes the tree
+provider's `UMAMI_IN_HELICITY_INDEX` (per event the zero-based helicity row:
+that row's |A(h)|²/avg, only that row evaluated) and, for resolved output, the
+key `PYAMPLICOL_UMAMI_V1_IN_COLOR_RESOLUTION` (`"amplitude-basis"`: per
+helicity row the amplitude-basis anchors, an explicitly basis-dependent split
+summing to the row's value); a loop-induced process has no colour flows (full
+colour only), and random helicity or colour selection is not offered.
 
 This is a pyAmpliCol extension, not standard UMAMI virtual interoperability.
 It adds separate versioned symbols and keys; the tree ABI described above is

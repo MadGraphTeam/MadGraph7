@@ -50,6 +50,22 @@ The extension accepts standard `UMAMI_IN_MOMENTA` and its own namespaced keys:
 | `PYAMPLICOL_UMAMI_V1_IN_MU_R2` | `double[stride]` | Exactly one scale input |
 | `PYAMPLICOL_UMAMI_V1_IN_MU_R2_SCALAR` | `double[1]` | Alternative broadcast scale |
 | `PYAMPLICOL_UMAMI_V1_IN_POINT_ID` | `uint64_t[stride]` | Optional; defaults to event indices |
+| `UMAMI_IN_HELICITY_INDEX` | `int[stride]` | Optional, ordinary calls of a loop-induced process: the event's zero-based helicity row (the SDK capabilities' `helicity_ids`), as the tree provider's key |
+| `PYAMPLICOL_UMAMI_V1_IN_COLOR_RESOLUTION` | `char[]`, NUL-terminated | Optional, resolved calls of a loop-induced process: `"contracted"` (default) or `"amplitude-basis"` |
+
+**Loop-induced selections (F1).** `UMAMI_IN_HELICITY_INDEX` selects one
+helicity row per event: the event's virtual is that row's |A(h)|²/avg with the
+total's average (RULED Q39; only the selected rows are dressed;
+`rusticol_virtual_evaluate_selected`'s `helicity_by_point`, bitwise the Python
+API's `evaluate(helicities=[that row's ID])`). With `options.resolved = 1`,
+`PYAMPLICOL_UMAMI_V1_IN_COLOR_RESOLUTION = "amplitude-basis"` returns per
+helicity row the amplitude-basis anchors (C = the basis size, the
+capabilities' `color_resolutions`; Re(conj(a_t) (G a)_t)/avg, an explicitly
+basis-dependent split summing to the row's value); the output capacities are
+then checked against the call's own axes before any write. A loop-induced
+process has no colour flows (full colour only); `UMAMI_IN_RANDOM_HELICITY` and
+random colour selection stay unsupported (this extension samples nothing). A
+Born-interfered process refuses both keys, as the C ABI does.
 
 Scales are positive real renormalization scales **squared**, distinct from loop
 momentum mu squared. Binary64 values are read as their exact values. Input

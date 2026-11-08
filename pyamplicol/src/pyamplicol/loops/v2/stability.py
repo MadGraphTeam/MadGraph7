@@ -273,6 +273,64 @@ class Rotation:
 
 
 def default_rotation(index: int) -> Rotation:
+    """The ``index``-th default rotation check (``python_default_rotation``),
+    built by the Rust implementation the native SDKs run
+    (``rusticol_loop_reduction::v2_stability::default_rotation``, the
+    extension's ``stability_default_rotation``; m-lit lit-sdk-b): the exact
+    matrix the Python construction, the oracle, forms (``NATIVE_BINARY64``
+    off: the oracle)."""
+
+    native = _native_rotations() if NATIVE_BINARY64 else None
+    if native is None:
+        return python_default_rotation(index)
+    return _rotation_of(native.stability_default_rotation(int(index)))
+
+
+def native_rotation(specification: str) -> Rotation | None:
+    """The rotation check of a text specification (``api.virtual_results.
+    parse_rotation``'s forms) by the native SDKs' Rust parser (the
+    extension's ``stability_rotation``), or None where it does not apply
+    (``NATIVE_BINARY64`` off, no extension, a specification the parser
+    refuses: the Python parser, the oracle, then forms the rotation or its
+    error)."""
+
+    native = _native_rotations() if NATIVE_BINARY64 else None
+    if native is None:
+        return None
+    try:
+        rows = native.stability_rotation(specification)
+    except ValueError:
+        return None
+    return _rotation_of(rows)
+
+
+def _native_rotations() -> Any:
+    """The native extension when it builds rotations, else None."""
+
+    from pyamplicol.api.errors import DependencyError
+
+    try:
+        from pyamplicol.loops.native import load_loop_native
+
+        native = load_loop_native()
+    except (ImportError, OSError, RuntimeError, DependencyError):
+        return None
+    if not hasattr(native, "stability_default_rotation"):
+        return None
+    return native
+
+
+def _rotation_of(rows: Sequence[Sequence[str]]) -> Rotation:
+    """A rotation of rows of exact rational texts (3x3; ``Rotation``
+    checks the shape and orthogonality)."""
+
+    matrix = [[Fraction(x) for x in row] for row in rows]
+    if len(matrix) != 3 or any(len(row) != 3 for row in matrix):
+        raise ValueError("a rotation is a 3x3 matrix")
+    return Rotation(tuple((row[0], row[1], row[2]) for row in matrix))
+
+
+def python_default_rotation(index: int) -> Rotation:
     """The ``index``-th default rotation check: exact, deterministic, generic.
 
     Axes follow a spherical Fibonacci sequence and angles golden-ratio steps
@@ -350,9 +408,21 @@ class StabilityChecks:
 
 # The recommended configuration (DESIGN §10.4) and the O1 rule's estimate:
 # one generic rotation and the rescaled reduction check (module docstring).
-RECOMMENDED_CHECKS = StabilityChecks(
-    (default_rotation(0),), reduction_direction=True, rescaled=True
-)
+# Formed on first use (``__getattr__``): its rotation is the native
+# builder's (``default_rotation``), and importing this module loads no
+# native extension.
+RECOMMENDED_CHECKS: StabilityChecks
+
+
+def __getattr__(name: str) -> Any:
+    if name == "RECOMMENDED_CHECKS":
+        checks = StabilityChecks(
+            (default_rotation(0),), reduction_direction=True, rescaled=True
+        )
+        globals()[name] = checks
+        return checks
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 # The default ladder of the built-in rescue (``api.virtual_results.
 # VirtualRescuePolicy()``, ``loops.v2.rescue``), modelled on gammaloop's

@@ -267,6 +267,30 @@ def test_the_native_rotation_check_samples_without_counterterms(
 
 
 @pytest.mark.loop_physics
+def test_the_native_rotation_check_without_counterterms_equals_the_oracle(
+    li, monkeypatch
+):
+    """g g > z (no counterterm kets) on the production binary64 path: the
+    estimate the native implementation forms (``stability.NATIVE_BINARY64``,
+    ``_native_induced_estimate``, the SDK's Rust code) is bitwise the Python
+    oracle's (``NATIVE_BINARY64 = False``, whose rotation budget the test
+    above checks), every field by its ``repr`` (shortest round trip: one
+    text per binary64 value, signed zeros distinct)."""
+
+    from pyamplicol.loops.v2 import stability
+    from pyamplicol.loops.v2.assemble import Precision
+    from pyamplicol.loops.v2.stability import RECOMMENDED_CHECKS
+
+    assert stability.NATIVE_BINARY64
+    native = _evaluate(li, "li_gg_z", Precision.double(), 0, RECOMMENDED_CHECKS)
+    monkeypatch.setattr(stability, "NATIVE_BINARY64", False)
+    oracle = _evaluate(li, "li_gg_z", Precision.double(), 0, RECOMMENDED_CHECKS)
+    assert native.stability.checks["rotation-0"] > 0
+    assert repr(native.stability) == repr(oracle.stability)
+    assert repr(native.components) == repr(oracle.components)
+
+
+@pytest.mark.loop_physics
 def test_g_g_to_h_a_is_zero_within_its_estimate_on_the_stored_route(li, tmp_path):
     """g g > h a (Furry; no counterterms) on the stored runtime's route: its
     term floor is at rounding, so the rotation budget carries the estimate.
