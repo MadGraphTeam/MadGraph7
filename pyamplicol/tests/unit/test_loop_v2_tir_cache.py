@@ -3,14 +3,18 @@
 §3.4, §2.b.2-§2.b.3).
 
 * the aligned family export frame (``plan_export.ALIGNED_FAMILY_FRAMES``,
-  opt-in, amplitude mode only): every family of a loop-induced slice is read
+  opt-in, amplitude mode only; on g g > h g, where it moves families): every
+  family of a loop-induced slice is read
   with the process's highest leg in its last entry, so a propagator's shift
   mask is the side not holding that leg in every family (shared
   propagators meet with equal masks, in inclusion order), and
   the value is the default frame's to rounding;
-* the amplitude-mode numerator chunks (``V2Options::input_budget``): a
-  budget that puts every family in its own bucket chunk leaves every value
-  bitwise and lowers the peak of one chunk's family numerators;
+* the amplitude-mode numerator chunks (``V2Options::input_budget``), end
+  to end: a budget that puts every family in its own bucket chunk leaves
+  every value bitwise and lowers the peak of one chunk's family numerators
+  (the split the numerator term alone causes is the Rust unit test
+  ``loop_execution::v2::tests::
+  amplitude_numerators_count_against_the_chunk_budget``);
 * TIRust's profile (``V2Executor.prepare_reduction(profile=True)``): its
   stages join the report and the values stay bitwise.
 """
@@ -61,7 +65,10 @@ def test_aligned_family_frames_share_the_shift_masks(li, monkeypatch):
 
     from .test_loop_v2_induced import _request
 
-    name = "li_gg_zz"
+    # g g > h g: a row whose default dressed frames are not all aligned
+    # (g g > z z's are), so the option moves families and the value check
+    # sees the moved ones.
+    name = "li_gg_hg"
     fixture = _fixture(name)
     compiled = li.model(fixture["scheme_data"].get("restriction") or "default")
     default = li.slice(name)
@@ -70,6 +77,15 @@ def test_aligned_family_frames_share_the_shift_masks(li, monkeypatch):
         aligned = LoopSlice.generate(compiled, _request(fixture, compiled), li.native)
     assert aligned.dressed_frames["aligned"] is True
     assert default.dressed_frames["aligned"] is False
+    moved = [
+        key
+        for key, schedule in aligned.plan.schedules.items()
+        if schedule.trie.frame != default.plan.schedules[key].trie.frame
+    ]
+    assert moved, "no family moved to an aligned frame"
+    assert any(
+        not aligned_frame(key, default.plan.schedules[key].trie.frame) for key in moved
+    )
     for key, schedule in aligned.plan.schedules.items():
         assert aligned_frame(key, schedule.trie.frame), key
         reading = schedule.trie.frame.apply(key)
