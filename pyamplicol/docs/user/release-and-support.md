@@ -49,8 +49,8 @@ their coupling-order limits (`g g > h`, `g g > z z`, `h > g g`), served as
 multiparticle request as separate contributions), and `[loop] reduction`
 selects the reduction backend (`"auto"`: TIRust for loop-induced, NinjaRS for
 Born-interfered processes; TIRust serves explicit `"tirust"` requests in
-binary64, and `"auto"` stays on NinjaRS, with the reason recorded, until the
-two backends' loop-induced agreement is established). `pyamplicol self-test` also
+every arithmetic, and `"auto"` stays on NinjaRS, with the reason recorded:
+TIRust still fails closed on points NinjaRS serves). `pyamplicol self-test` also
 evaluates a shipped loop-induced artifact (`g g > h`) against MadLoop. The
 native SDKs (C, C++, Fortran, Rust, UMAMI) open loop-induced processes directly
 with empty Born counts and the Python API's values, and take the reduction

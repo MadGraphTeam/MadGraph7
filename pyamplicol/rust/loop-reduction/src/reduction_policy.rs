@@ -23,10 +23,13 @@
 //! admit fewer backends (`admitted`). A route ([`Route`]) is what a call
 //! evaluates and the backends its executor runs, and `auto` there takes
 //! only the backends of its `auto` set: NinjaRS on the artifact runtime's
-//! routes ([`SUMMED`], [`RESOLVED`]) until the loop-induced agreement of the
-//! two backends is established (m-lit lit-cache, which adds TIRust to their
-//! `auto` sets here), so `"auto"` keeps NinjaRS for loop-induced processes
-//! too, with the reason recorded, and TIRust serves explicit requests.
+//! routes ([`SUMMED`], [`RESOLVED`]), so `"auto"` keeps NinjaRS for
+//! loop-induced processes too, with the reason recorded, and TIRust serves
+//! explicit requests. The two backends' loop-induced agreement is
+//! established (m-lit lit-cache); what keeps `"auto"` on NinjaRS is that
+//! TIRust still fails closed on points NinjaRS serves (slice-status
+//! DECISIONS 2026-11-08 11:17: no automatic switch in this release; adding
+//! TIRust to the `auto` sets here is that switch).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -97,9 +100,9 @@ pub const SUMMED: &str = "summed";
 pub const RESOLVED: &str = "resolved";
 
 /// The artifact runtime's routes. Both executors run both backends (m-lit
-/// lit-tir); `"auto"` stays on NinjaRS until the loop-induced agreement of
-/// the two backends is checked (m-lit lit-cache adds `"tirust"` to the
-/// `auto` sets here, R3).
+/// lit-tir); `"auto"` stays on NinjaRS: TIRust still fails closed on points
+/// NinjaRS serves (DECISIONS 2026-11-08 11:17; a switch adds `"tirust"` to
+/// the `auto` sets here, R3).
 const ROUTES: [RouteDefinition; 2] = [
     (
         SUMMED,
@@ -286,8 +289,8 @@ pub fn resolve(
             "ninjars",
             format!(
                 "auto: NinjaRS; {}, the {kind} default, serves {} on explicit \
-                 request until its agreement with NinjaRS on loop-induced \
-                 processes is established",
+                 request: it still fails closed on points NinjaRS serves, so \
+                 'auto' keeps NinjaRS",
                 name_of(default),
                 route.serves
             ),
@@ -355,8 +358,8 @@ mod tests {
                 found.reason,
                 format!(
                     "auto: NinjaRS; TIRust, the loop-induced default, serves {} on \
-                     explicit request until its agreement with NinjaRS on \
-                     loop-induced processes is established",
+                     explicit request: it still fails closed on points NinjaRS \
+                     serves, so 'auto' keeps NinjaRS",
                     route.serves
                 )
             );

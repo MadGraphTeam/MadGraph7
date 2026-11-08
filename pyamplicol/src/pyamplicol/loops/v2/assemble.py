@@ -2268,6 +2268,7 @@ class LoopSlice:
         *,
         prune: bool = True,
         native_inputs: bool = False,
+        aligned_frames: bool = False,
     ) -> LoopSlice:
         """Build every generation object of ``request`` (no diagram is listed).
 
@@ -2279,7 +2280,10 @@ class LoopSlice:
         process, ``artifact.generate_process``): a listed feature their export
         does not cover (``native_trees.NATIVE_EXPORT_REFUSALS``) is then refused
         (``NativeExportUnsupported``) as soon as it is known, before the
-        trees are built.
+        trees are built. ``aligned_frames`` (amplitude mode only; a
+        measurement option, off in production) reads every family of a
+        loop-induced slice in an aligned frame (``plan_export.dressed_frames``
+        with ``aligned``, recorded in the slice's ``dressed_frames``).
 
         Listed loop-admission refusals (``refusals.LOOP_ADMISSION_REFUSALS``,
         typed ``LoopRequestUnsupported``) are raised before the structures they
@@ -2295,7 +2299,12 @@ class LoopSlice:
         # generation (``generator_input.full_collections_deferred``).
         with generator_input.full_collections_deferred():
             return cls._generate(
-                compiled, request, native, prune=prune, native_inputs=native_inputs
+                compiled,
+                request,
+                native,
+                prune=prune,
+                native_inputs=native_inputs,
+                aligned_frames=aligned_frames,
             )
 
     @classmethod
@@ -2307,6 +2316,7 @@ class LoopSlice:
         *,
         prune: bool,
         native_inputs: bool,
+        aligned_frames: bool = False,
     ) -> LoopSlice:
         """``generate`` with full collections deferred."""
 
@@ -2756,7 +2766,7 @@ class LoopSlice:
         if request.accuracy != "full" and prune:
             slice_._prune_colour()
         if request.contribution == "loop-induced":
-            slice_._frame_dressed_rows()
+            slice_._frame_dressed_rows(aligned_frames)
             induced.bind(slice_, generation=generation)
         slice_._plan_contraction()
         # The certified-scaleless companion serves the "uv" and "ir" pole
@@ -2879,7 +2889,7 @@ class LoopSlice:
         )
         return extend_seed_table(empty, {}, self.colour, readings, compress=True)
 
-    def _frame_dressed_rows(self) -> None:
+    def _frame_dressed_rows(self, aligned: bool = False) -> None:
         """Amplitude mode (loop-induced): every family in the frame chosen for
         route R2's dressed rows (``plan_export.dressed_frames``; M-LIT
         DECISIONS 2026-11-06 ~09:00 (3)), instead of the generation's frame
@@ -2891,7 +2901,7 @@ class LoopSlice:
 
         from .plan_export import dressed_frames
 
-        frames, record = dressed_frames(self)
+        frames, record = dressed_frames(self, aligned)
         self.dressed_frames = record
         if not record["reframed"]:
             return

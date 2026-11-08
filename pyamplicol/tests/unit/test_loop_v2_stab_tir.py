@@ -309,7 +309,7 @@ def test_levels_resolve_once_per_level_capability_driven(loop_native, monkeypatc
     assert {choice.reason for choice in inherited.values()} == {"requested"}
     kept = choices(auto)
     assert {choice.effective for choice in kept.values()} == {"ninjars"}
-    assert all("agreement with NinjaRS" in choice.reason for choice in kept.values())
+    assert all("fails closed on points" in choice.reason for choice in kept.values())
     # lit-cache's switch (R3) adds TIRust to the route's "auto" set: the
     # same levels then resolve to TIRust, the loop-induced default.
     switched = reduction.Route(SUMMED.serves, SUMMED.backends, SUMMED.backends)
@@ -374,7 +374,7 @@ def test_rescue_attempts_record_each_level_backend(loop_native):
     result = runtime.evaluate(points[:1], mu_r2=scales[:1], stability=ladder)
     first, second = result.rescue[0].attempts
     assert first.reduction.effective == second.reduction.effective == "ninjars"
-    assert "agreement with NinjaRS" in first.reduction.reason
+    assert "fails closed on points" in first.reduction.reason
     if "double-double" not in _tirust(loop_native):
         assert "is unavailable" in second.reduction.reason
 

@@ -246,6 +246,82 @@ impl<T: Carrier> FrameMap<T> {
         }
     }
 
+    /// The transpose of [`Self::coefficients`] on a row of moments: `out`
+    /// such that `Σ_β M_β c'_β = Σ_α out_α c_α` for every lane's
+    /// coefficients `c` and their frame's `c'` (`coefficients(c, rank,
+    /// origin)`), per slot of the moments. A row's lanes then contract their
+    /// own coefficients with it (one map per row instead of one re-expansion
+    /// per lane); equal to the per-lane re-expansion in exact arithmetic,
+    /// rounded differently. The steps are those of `coefficients` in reverse
+    /// order, each transposed: the degree scaling and the reversal are
+    /// diagonal, the shift's per-component binomial expansion gathers where
+    /// it scattered, last component first.
+    // The TIR backend's (`v2_tir`, feature `tir`); NinjaRS's frames re-expand
+    // per lane.
+    #[cfg_attr(not(feature = "tir"), allow(dead_code))]
+    pub(crate) fn moments<const S: usize>(
+        &self,
+        moments: &[[Complex<T>; S]],
+        rank: usize,
+        origin: &[Complex<T>; 4],
+    ) -> Vec<[Complex<T>; S]> {
+        let mut current = moments[..ncoeff(rank)].to_vec();
+        if let Some(x) = &self.scale {
+            let inverse = x.one() / x;
+            let mut power = inverse.clone();
+            for degree in 1..=rank {
+                for m in &mut current[block_offset(degree)..ncoeff(degree)] {
+                    for v in m.iter_mut() {
+                        *v = v.clone() * &power;
+                    }
+                }
+                power = power * &inverse;
+            }
+        }
+        if self.reverse {
+            for degree in (1..=rank).step_by(2) {
+                for m in &mut current[block_offset(degree)..ncoeff(degree)] {
+                    for v in m.iter_mut() {
+                        *v = -v.clone();
+                    }
+                }
+            }
+        }
+        if self.shift {
+            let d = origin.clone().map(|v| -v);
+            let zero = origin[0].re.zero();
+            let czero = Complex::new(zero.clone(), zero.clone());
+            let exponents = monomials(rank);
+            let mut next = current.clone();
+            for component in (0..4).rev() {
+                let mut powers = vec![Complex::new(zero.one(), zero.clone())];
+                for k in 1..=rank {
+                    powers.push(powers[k - 1].clone() * &d[component]);
+                }
+                for (alpha, out) in exponents.iter().zip(next.iter_mut()) {
+                    let e = alpha[component] as usize;
+                    let mut target = *alpha;
+                    let mut binomial: i64 = 1;
+                    let mut sum: [Complex<T>; S] = std::array::from_fn(|_| czero.clone());
+                    // The transpose of (q + d)^e = Σ_k C(e, k) q^k d^(e - k).
+                    for k in (0..=e).rev() {
+                        target[component] = k as u32;
+                        let weight = powers[e - k].clone()
+                            * &Complex::new(zero.from_i64(binomial), zero.clone());
+                        let source = &current[monomial_index(target)];
+                        for (s, v) in sum.iter_mut().zip(source) {
+                            *s += v.clone() * &weight;
+                        }
+                        binomial = binomial * k as i64 / (e - k + 1) as i64;
+                    }
+                    *out = sum;
+                }
+                std::mem::swap(&mut current, &mut next);
+            }
+        }
+        current
+    }
+
     /// The factor that undoes a rescaled frame on its integrals: they are
     /// `x^(4-2N)` times the family's (every Laurent order, the scale moving
     /// with them), so this is `x^(2N) x^-4`; None for an unscaled frame.
@@ -293,6 +369,60 @@ mod tests {
             evaluate(&reversed, q),
             evaluate(&coefficients, q.map(|x| -x))
         );
+    }
+
+    #[test]
+    fn the_moments_map_is_the_transpose_of_the_coefficients_map() {
+        // Every frame kind: Σ_β M_β c'_β (the lane re-expanded into the
+        // frame) equals Σ_α (FrameMap::moments M)_α c_α, per slot.
+        let rank = 4;
+        let n = ncoeff(rank);
+        let c: Vec<Complex<f64>> = (0..n)
+            .map(|k| Complex::new(0.25 * k as f64 - 3.0, 0.5 - 0.125 * k as f64))
+            .collect();
+        let m: Vec<[Complex<f64>; 2]> = (0..n)
+            .map(|k| {
+                [
+                    Complex::new(0.5 * k as f64 - 1.0, 0.25),
+                    Complex::new(1.0, -0.125 * k as f64),
+                ]
+            })
+            .collect();
+        let origin = [0.5, -1.25, 2.0, 0.75].map(|x| Complex::new(x, 0.25));
+        for (reverse, shift, rescale) in [
+            (false, false, false),
+            (true, false, false),
+            (false, true, false),
+            (true, true, false),
+            (false, true, true),
+            (true, true, true),
+        ] {
+            let frame = ReductionFrame {
+                reverse,
+                rotation: 1,
+                shift,
+                rescale,
+            };
+            let map = FrameMap::new(Some(frame), 4, Some(&origin[0]));
+            let mut shifted = Vec::new();
+            map.coefficients(&c, rank, &origin, &mut shifted);
+            let moments = map.moments(&m, rank, &origin);
+            for slot in 0..2 {
+                let forward = m
+                    .iter()
+                    .zip(&shifted)
+                    .fold(Complex::new(0., 0.), |t, (m, c)| t + m[slot] * c);
+                let back = moments
+                    .iter()
+                    .zip(&c)
+                    .fold(Complex::new(0., 0.), |t, (m, c)| t + m[slot] * c);
+                let size = |z: Complex<f64>| (z.re * z.re + z.im * z.im).sqrt();
+                assert!(
+                    size(forward - back) <= 1e-13 * size(forward),
+                    "{frame:?} slot {slot}: {forward:?} vs {back:?}"
+                );
+            }
+        }
     }
 
     #[test]
