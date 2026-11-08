@@ -175,11 +175,13 @@ def test_g_g_to_z_is_zero_within_its_estimate(li, carrier):
 @pytest.mark.loop_physics
 def test_the_rescue_of_g_g_to_z_terminates_under_either_metric(li, tmp_path):
     """Under the default (relative) rescue metric an integrated zero can
-    never meet its target: g g > z climbs binary64 -> double-double ->
-    arbitrary(57) and is kept at the last level with the target marked as
-    not met (PLAN §2.a.8: the rescue terminates, at the cost of every
-    level). The opt-in "scale" metric (E <= target x S, ``VirtualRescueLevel.
-    metric``) on the same ladder accepts it at the first level, its E / S
+    never meet its target: g g > z climbs the loop-induced default stack
+    (TIRust binary64 -> NinjaRS binary64 -> double-double -> arbitrary(57),
+    m-lit F3 (b): ``VirtualRescuePolicy()`` on a loop-induced "auto" call)
+    and is kept at the last level with the target marked as not met (PLAN
+    §2.a.8: the rescue terminates, at the cost of every level). The opt-in
+    "scale" metric (E <= target x S, ``VirtualRescueLevel.metric``) on the
+    same ladder accepts it at the first level, its E / S
     the floor's FLOOR_UNITS x u, its value the binary64 one and within its
     absolute estimate (Q13: zero within the estimate)."""
 
@@ -188,13 +190,24 @@ def test_the_rescue_of_g_g_to_z_terminates_under_either_metric(li, tmp_path):
     from pyamplicol import Runtime
     from pyamplicol.api.virtual_results import VirtualRescuePolicy
     from pyamplicol.loops.v2.assemble import Precision
+    from pyamplicol.loops.v2.rescue import loop_induced_stack
     from pyamplicol.loops.v2.stability import FLOOR_UNITS
 
     output = _generate(tmp_path, (("gg_z", "g g > z"),), _fixture("li_gg_z"))
     point, scale, parameters = li.point("li_gg_z")
     runtime = Runtime.load(output, process="gg_z", model_parameters=parameters)
-    policy = VirtualRescuePolicy()
-    result = runtime.evaluate([point], mu_r2=[str(scale)], stability=policy)
+    # The stack the default policy runs on this loop-induced "auto" call
+    # (TIRust is built in; without it the default ladder itself).
+    from pyamplicol.loops.v2.reduction import native_backends
+
+    policy = (
+        loop_induced_stack()
+        if "tirust" in native_backends(runtime._backend._native)
+        else VirtualRescuePolicy()
+    )
+    result = runtime.evaluate(
+        [point], mu_r2=[str(scale)], stability=VirtualRescuePolicy()
+    )
     (record,) = result.rescue
     assert record.level == len(policy.levels) - 1 and not record.met
     assert [attempt.arithmetic for attempt in record.attempts] == [

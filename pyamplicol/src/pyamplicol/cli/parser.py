@@ -525,10 +525,9 @@ def _add_evaluator_options(
             default=argparse.SUPPRESS,
             help=(
                 "one-loop reduction backend recorded as the artifact's default: "
-                "'auto' (default: TIRust for loop-induced, NinjaRS for "
-                "Born-interfered processes; for now NinjaRS for both: TIRust "
-                "still fails closed on points NinjaRS serves), 'ninjars' "
-                "or 'tirust'"
+                "'auto' (default: TIRust for loop-induced processes, a point it "
+                "refuses or fails evaluated again on NinjaRS; NinjaRS for "
+                "Born-interfered ones), 'ninjars' or 'tirust'"
             ),
         )
         # Removed with the legacy loop engine; still parsed so that naming it
@@ -788,9 +787,20 @@ def _add_evaluation_options(
         default=argparse.SUPPRESS,
         help=(
             "v2 virtuals: the reduction backend, overriding the artifact's "
-            "default; 'auto' takes NinjaRS, with the reason recorded (TIRust, "
-            "the loop-induced default, still fails closed on points NinjaRS "
-            "serves; 'tirust' serves every arithmetic on request)"
+            "default; 'auto' takes TIRust for loop-induced processes (a point "
+            "TIRust refuses or fails is evaluated again on NinjaRS, recorded "
+            "per point) and NinjaRS for Born-interfered ones; 'ninjars' and "
+            "'tirust' request one backend, without a fallback"
+        ),
+    )
+    parser.add_argument(
+        "--reduction-target",
+        dest="evaluation.reduction_target",
+        type=float,
+        default=argparse.SUPPRESS,
+        help=(
+            "v2 virtuals: the target accuracy (relative, per point) that "
+            "TIRust's method-choice acceptance follows; default 1e-5"
         ),
     )
     parser.add_argument(

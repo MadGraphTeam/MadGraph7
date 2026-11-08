@@ -72,6 +72,43 @@ RESCUE_OWNS_CARRIER = (
 )
 
 
+def loop_induced_stack() -> VirtualRescuePolicy:
+    """The loop-induced default stack (m-lit F3 (b), USER 2026-11-08 ~15:40,
+    DECISIONS 15:32): the default ladder's binary64 level on TIRust (at the
+    default target, its acceptance calibrated from it), the same level on
+    NinjaRS, then the default ladder's higher levels (``"auto"``)."""
+
+    first, *rest = VirtualRescuePolicy().levels
+    return VirtualRescuePolicy(
+        (replace(first, reduction="tirust"), replace(first, reduction="ninjars"), *rest)
+    )
+
+
+def default_stack(
+    policy: VirtualRescuePolicy | None,
+    contribution: str,
+    requested: str,
+    fallback: str | None,
+) -> VirtualRescuePolicy | None:
+    """The stack a call runs: the loop-induced default stack
+    (``loop_induced_stack``) for the default policy (``VirtualRescuePolicy()``)
+    of a loop-induced call requesting ``"auto"`` whose ``"auto"`` takes
+    TIRust in binary64 with a per-point NinjaRS fallback (``fallback``, the
+    native policy's choice there: none on a TIR-only artifact or in a build
+    without TIRust); any other policy as given. A call naming a backend runs
+    the default ladder on it at every level (its levels are ``"auto"``)."""
+
+    if (
+        policy is None
+        or policy != VirtualRescuePolicy()
+        or contribution != "loop-induced"
+        or requested != "auto"
+        or fallback != "ninjars"
+    ):
+        return policy
+    return loop_induced_stack()
+
+
 def rescue_policy(
     stability: object,
     *,

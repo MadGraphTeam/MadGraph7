@@ -83,7 +83,7 @@ import time
 import zlib
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from fractions import Fraction
 from functools import cached_property
@@ -124,6 +124,7 @@ from pyamplicol.api.virtual_results import (
 )
 from pyamplicol.config import PoleSelection, R2Strategy
 from pyamplicol.config.models import reduction_request
+from pyamplicol.config.models import reduction_target as reduction_target_value
 from pyamplicol.generation.evaluator_container import (
     PacbinMemberKind,
     PacbinMemberSource,
@@ -139,7 +140,8 @@ from pyamplicol.loops.strategy import R2Selection
 from . import reduction as _routes
 from .families import Orders, add_orders
 from .native_trees import Program, StoredMember, program_bytes
-from .reduction import Route, running
+from .reduction import Route
+from .stability import CROSS
 
 PLAN_MEMBER = "schedule/loop-plan-v4.json.zlib"
 # The binary plan member (``ExportedPlan.binary()``, M-FINAL MF-8G-1 item 5),
@@ -1603,6 +1605,7 @@ class V2VirtualRuntime:
         r2_strategy: str | None = None,
         stability: VirtualRescuePolicy | None = None,
         reduction: str | None = None,
+        reduction_target: float | None = None,
     ) -> None:
         from pyamplicol.artifacts import MANIFEST_NAME, load_manifest
         from pyamplicol.generation.loop_artifact import LOOP_V2_NATIVE_POINT_INPUTS
@@ -1740,6 +1743,13 @@ class V2VirtualRuntime:
             else reduction
         )
         self._reductions: dict[tuple[str, str, Route], VirtualReduction] = {}
+        # The target accuracy of a call that sets none (m-lit F3 (a); None:
+        # the native policy's default).
+        self._reduction_target = (
+            None
+            if reduction_target is None
+            else reduction_target_value(reduction_target)
+        )
         self._born_orders = tuple(
             canonical_order(tuple((n, p) for n, p in order))
             for order in self._metadata["born_orders"]
@@ -2072,17 +2082,21 @@ class V2VirtualRuntime:
         stability_checks: VirtualStabilityChecks | None = None,
         on_failure: Literal["raise", "return"] = "raise",
         reduction: str | None = None,
+        reduction_target: float | None = None,
     ) -> VirtualEvaluation:
         """The virtual of every point in one carrier, or under a rescue
         policy (``stability``, else the load-time default; ``loops.v2.
         rescue``) level by level from the original exact inputs.
         ``reduction`` overrides the runtime's reduction-backend request for
         the call (resolved once per carrier, before any point is
-        evaluated)."""
+        evaluated), ``reduction_target`` its target accuracy (a rescue
+        level's own target drives its level). With the default policy
+        (``VirtualRescuePolicy()``) a loop-induced call requesting ``"auto"``
+        runs the loop-induced default stack (``rescue.default_stack``)."""
 
         from pyamplicol.runtime.virtual import _inputs, v2_options
 
-        from .rescue import rescue, rescue_policy
+        from .rescue import default_stack, rescue, rescue_policy
 
         policy = rescue_policy(
             stability,
@@ -2093,6 +2107,18 @@ class V2VirtualRuntime:
             stability_checks=stability_checks,
         )
         selected = bool(helicities or color_flows)
+        if policy is not None:
+            requested = self._requested(reduction)
+            policy = default_stack(
+                policy,
+                self.contribution_kind,
+                requested,
+                self._reduction(
+                    requested,
+                    "double",
+                    _routes.RESOLVED if selected else _routes.SUMMED,
+                ).fallback,
+            )
         choices = self._reduction_choices(
             reduction,
             arithmetic,
@@ -2100,6 +2126,7 @@ class V2VirtualRuntime:
             policy,
             _routes.RESOLVED if selected else _routes.SUMMED,
             stability_checks,
+            reduction_target,
         )
         if selected:
             # A leading-colour selection (``selection``): one summed output
@@ -2207,15 +2234,18 @@ class V2VirtualRuntime:
     def _reduction_summary(self) -> dict[str, object]:
         """``inspect``'s reduction-backend record."""
 
-        from .reduction import BACKENDS, DEFAULTS, native_backends
+        from .reduction import BACKENDS, auto_default, default_target, native_backends
 
         return {
             "requested": self._reduction_request,
             "artifact_default": self._execution["request"].get("reduction", "auto"),
-            "auto_default": (
-                "tirust"
-                if self._admitted == {"tirust"}
-                else DEFAULTS[self.contribution_kind]
+            # The one helper (``reduction_policy::auto_default``).
+            "auto_default": auto_default(self.contribution_kind, self._admitted),
+            # The target accuracy of a call that sets none (m-lit F3).
+            "target": (
+                default_target()
+                if self._reduction_target is None
+                else self._reduction_target
             ),
             # The backends the artifact admits (m-lit lit-eft: TIR-only).
             "admitted": sorted(BACKENDS if self._admitted is None else self._admitted),
@@ -2225,6 +2255,15 @@ class V2VirtualRuntime:
             },
         }
 
+    def _requested(self, reduction: str | None) -> str:
+        """A call's reduction request: its own, else the runtime's."""
+
+        return (
+            self._reduction_request
+            if reduction is None
+            else reduction_request(reduction)
+        )
+
     def _reduction_choices(
         self,
         reduction: str | None,
@@ -2233,6 +2272,7 @@ class V2VirtualRuntime:
         policy: VirtualRescuePolicy | None,
         route: Route,
         checks: VirtualStabilityChecks | None = None,
+        target: float | None = None,
     ) -> dict[Any, VirtualReduction]:
         """The reduction backend of a call on ``route``, resolved before any
         point is evaluated: keyed by the call's carrier, or under a rescue
@@ -2244,36 +2284,63 @@ class V2VirtualRuntime:
         serve one of them is refused typed, ``auto`` falls back with its
         reason (m-lit Q17 / Q18; never a silent switch). With the
         cross-backend check (``checks``) the other backend must serve the
-        carrier as well (refused typed otherwise)."""
+        carrier as well (refused typed otherwise). Each choice carries its
+        target accuracy (``VirtualReduction.target``): a level's own target
+        under a policy, else the call's ``target``, else the runtime's
+        (m-lit F3 (a))."""
 
-        requested = (
-            self._reduction_request
-            if reduction is None
-            else reduction_request(reduction)
-        )
+        requested = self._requested(reduction)
         if policy is not None:
-            # The levels own their checks (``rescue.RESCUE_OWNS_CARRIER``).
-            return {
-                level: self._reduction(
-                    level.backend_request(requested),
-                    self._carrier(level.arithmetic, level.precision)[0],
-                    route,
+            # The levels own their checks (``rescue.RESCUE_OWNS_CARRIER``)
+            # and their targets.
+            levels = {
+                level: replace(
+                    self._reduction(
+                        level.backend_request(requested),
+                        self._carrier(level.arithmetic, level.precision)[0],
+                        route,
+                    ),
+                    target=level.target,
                 )
                 for level in policy.levels
             }
+            # The policy refuses a repeated (precision bits, reduction) pair
+            # of its levels' requests; an "auto" level may resolve to the
+            # backend another level at its precision names (e.g. a binary64
+            # "auto" and a binary64 "ninjars" level on a Born-interfered
+            # call), which would evaluate the same points again on the same
+            # backend and carrier: refused the same way, before any point.
+            pairs = [
+                (level.precision_bits, choice.effective)
+                for level, choice in levels.items()
+            ]
+            if len(set(pairs)) != len(pairs):
+                raise ValueError(
+                    "two rescue levels at the same precision differ in their "
+                    "reduction backend: repeated (precision bits, backend) pair "
+                    f"in this call's resolved levels {pairs}"
+                )
+            return levels
         carrier = self._carrier(arithmetic, precision)[0]
-        choice = self._reduction(requested, carrier, route)
+        from .reduction import default_target
+
+        # The call's target, else the runtime's, else the policy's default.
+        call_target = (
+            reduction_target_value(target)
+            if target is not None
+            else self._reduction_target
+            if self._reduction_target is not None
+            else default_target()
+        )
+        choice = replace(self._reduction(requested, carrier, route), target=call_target)
         # (A checks value of another type is refused by ``v2_options``.)
         if getattr(checks, "cross_backend", False) is True:
-            from .reduction import cross
+            from .reduction import cross, text
 
             try:
                 self._reduction(cross(choice.effective), carrier, route)
             except ReductionUnavailable as error:
-                raise ReductionUnavailable(
-                    "the cross-backend check (stability_checks cross_backend) "
-                    f"compares with the other reduction backend: {error}"
-                ) from error
+                raise ReductionUnavailable(text("cross", detail=str(error))) from error
         return {carrier: choice}
 
     def _evaluate_level(
@@ -2292,12 +2359,28 @@ class V2VirtualRuntime:
         """One batch of exact points in one carrier with one set of checks
         (the whole ``evaluate`` without a rescue policy, and each level of
         one), on the ``reduction`` backend (one the native executor runs,
-        ``_reduction_choices`` on ``reduction.SUMMED``)."""
+        ``_reduction_choices`` on ``reduction.SUMMED``) at its target, with
+        its per-point fallback (``reduction.with_fallback``: the points it
+        refuses or fails again on NinjaRS, recorded per point; a fallback
+        point's cross-backend check is not run, m-lit R6)."""
 
-        with running(reduction.effective):
-            results, failures = self._run(
-                points, scales, parameters, setting, selection, checks
+        from .reduction import with_fallback
+
+        plain = replace(checks, cross_backend=False) if checks.cross_backend else checks
+
+        def run(indices: list[int] | None) -> tuple[list[Any], dict[int, list[str]]]:
+            if indices is None:
+                return self._run(points, scales, parameters, setting, selection, checks)
+            return self._run(
+                [points[i] for i in indices],
+                [scales[i] for i in indices],
+                parameters,
+                setting,
+                selection,
+                plain,
             )
+
+        results, failures, served = with_fallback(run, reduction, len(points))
         if failures and on_failure == "raise":
             index = min(failures)
             raise EvaluationError(
@@ -2305,7 +2388,15 @@ class V2VirtualRuntime:
                 + "; ".join(failures[index])
             )
         return self._result(
-            results, failures, setting, carrier, r2, selection, checks, reduction
+            results,
+            failures,
+            setting,
+            carrier,
+            r2,
+            selection,
+            checks,
+            reduction,
+            served,
         )
 
     def _run(
@@ -2413,7 +2504,11 @@ class V2VirtualRuntime:
         poles: PoleSelection,
         checks: VirtualStabilityChecks,
         reduction: VirtualReduction | None = None,
+        served: Mapping[int, VirtualReduction] | None = None,
     ) -> VirtualEvaluation:
+        """The public result of a batch; ``served`` maps the points the
+        per-point fallback evaluated again to their own reduction record."""
+
         from pyamplicol.runtime.virtual import v2_public_estimate
 
         with_poles = computes_poles(poles)
@@ -2454,7 +2549,7 @@ class V2VirtualRuntime:
                             ),
                         ),
                         primary_color_contraction=contraction,
-                        reduction=reduction,
+                        reduction=(served or {}).get(index, reduction),
                     )
                 )
                 continue
@@ -2478,14 +2573,19 @@ class V2VirtualRuntime:
                     for sector in self._sectors
                 )
             )
-            estimates.append(
-                v2_public_estimate(
-                    result.stability,
-                    with_poles,
-                    contribution=self.contribution_kind,
-                    sectors=[sector.order for sector in self._sectors],
-                )
+            own = (served or {}).get(index)
+            estimate = v2_public_estimate(
+                result.stability,
+                with_poles,
+                contribution=self.contribution_kind,
+                sectors=[sector.order for sector in self._sectors],
             )
+            if own is not None and estimate is not None and checks.cross_backend:
+                # The fallback point's cross-backend check is not run (R6).
+                estimate = replace(
+                    estimate, not_run=(*estimate.not_run, (CROSS, own.reason))
+                )
+            estimates.append(estimate)
             parts.append(self._pole_parts(result) if splits_poles(poles) else None)
             diagnostics.append(
                 VirtualLaneDiagnostic(
@@ -2495,7 +2595,7 @@ class V2VirtualRuntime:
                     False,
                     detail,
                     primary_color_contraction=contraction,
-                    reduction=reduction,
+                    reduction=(served or {}).get(index, reduction),
                     finiteness=result.finiteness,
                 )
             )
@@ -2595,9 +2695,10 @@ class V2VirtualRuntime:
     ) -> Any:
         """One observable call (``V2ObservablesRuntime``) on the call's
         reduction backend, resolved before it runs (``_reduction_choices`` on
-        ``reduction.RESOLVED``) and recorded in its lane diagnostics as they
-        are built (``reductions``)."""
+        ``reduction.RESOLVED``, with the call's target accuracy) and recorded
+        in its lane diagnostics as they are built (``reductions``)."""
 
+        target = options.pop("reduction_target", None)
         choices = self._reduction_choices(
             reduction,
             arithmetic,
@@ -2605,6 +2706,7 @@ class V2VirtualRuntime:
             options.get("stability"),
             _routes.RESOLVED,
             options.get("stability_checks"),
+            target,
         )
         operation = getattr(self._observable_runtime(), name)
         return operation(

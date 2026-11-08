@@ -12,7 +12,7 @@ from types import MappingProxyType
 from typing import Any, Literal, NamedTuple, TypeAlias, cast
 
 from pyamplicol.config import PoleSelection, R2Strategy
-from pyamplicol.config.models import reduction_request
+from pyamplicol.config.models import reduction_request, reduction_target
 from pyamplicol.correlators import CorrelatedValue
 from pyamplicol.loops.orders import VirtualOrderSector, canonical_order
 from pyamplicol.loops.strategy import R2Selection
@@ -20,7 +20,6 @@ from pyamplicol.loops.v2.poles import ORIGINS
 from pyamplicol.loops.v2.stability import (
     DEFAULT_RESCUE,
     RESCUE_ROTATION,
-    RESCUE_TARGET,
     Rotation,
     StabilityChecks,
 )
@@ -349,20 +348,31 @@ RESCUE_METRICS = ("relative", "finite", "scale")
 @dataclass(frozen=True, slots=True)
 class VirtualReduction:
     """The reduction backend of one evaluation (m-lit PLAN §2.b.4, RULED
-    Q17 / Q18): the ``requested`` one (``"auto"``, ``"ninjars"`` or
-    ``"tirust"``), the ``effective`` one that reduced every loop numerator
-    of the call, and the ``reason`` of the choice. ``"auto"`` takes the
-    per-type default (loop-induced: TIRust; Born-interfered: NinjaRS) and
-    falls back to NinjaRS, with the reason, where TIRust cannot serve the
-    call (for now ``"auto"`` keeps NinjaRS for loop-induced processes too:
-    TIRust still fails closed on points NinjaRS serves); an explicitly
-    requested backend that cannot serve it is refused instead. The choice
-    is made once per call and carrier, never per point (no silent
-    switch)."""
+    Q17 / Q18, F3): the ``requested`` one (``"auto"``, ``"ninjars"`` or
+    ``"tirust"``), the ``effective`` one, and the ``reason`` of the choice.
+    ``"auto"`` takes the per-type default (loop-induced: TIRust;
+    Born-interfered: NinjaRS; TIRust on a TIR-only artifact) and falls back
+    to NinjaRS for the whole call, with the reason, where TIRust cannot serve
+    it; an explicitly requested backend that cannot serve it is refused
+    instead. The choice is made once per call and carrier (no silent
+    switch).
+
+    ``fallback`` is the call's per-point fallback (m-lit F3 (c)): NinjaRS
+    when ``"auto"`` took TIRust and NinjaRS serves the call too, None
+    otherwise (an explicit backend has none). A point TIRust refuses or
+    fails is evaluated again on it, and that point's lane records a
+    ``VirtualReduction`` of its own: ``effective`` the fallback, its
+    ``reason`` the fallback's (with TIRust's failure), ``fallback`` None.
+    ``target`` is the call's (or the rescue level's) target accuracy, the
+    relative accuracy of each point's result that TIRust's acceptance
+    follows (None: the default target, ``loops.v2.reduction.
+    default_target``)."""
 
     requested: Literal["auto", "ninjars", "tirust"]
     effective: Literal["ninjars", "tirust"]
     reason: str
+    fallback: Literal["ninjars", "tirust"] | None = None
+    target: float | None = None
 
     def __post_init__(self) -> None:
         # The choices are ``config.ReductionBackend``'s (one definition, one
@@ -374,6 +384,13 @@ class VirtualReduction:
             raise ValueError("an explicit reduction request is served as requested")
         if not isinstance(self.reason, str) or not self.reason:
             raise ValueError("a reduction choice states its reason")
+        if self.fallback is not None:
+            if reduction_request(self.fallback) in ("auto", self.effective):
+                raise ValueError("a per-point fallback is the other backend")
+            if self.requested != "auto":
+                raise ValueError("only an 'auto' request has a per-point fallback")
+        if self.target is not None:
+            object.__setattr__(self, "target", reduction_target(self.target))
 
 
 def _carrier_bits(arithmetic: str, precision: int | None) -> int:
@@ -384,6 +401,16 @@ def _carrier_bits(arithmetic: str, precision: int | None) -> int:
     if arithmetic == "double-double":
         return 106
     return math.ceil(cast(int, precision) * math.log2(10))
+
+
+def _default_target() -> float:
+    """A level's default target: the call's default target accuracy (m-lit F3
+    (a), the native policy's one definition, ``loops.v2.reduction.
+    default_target``; read when a level is built, not at import)."""
+
+    from pyamplicol.loops.v2.reduction import default_target
+
+    return default_target()
 
 
 @dataclass(frozen=True, slots=True)
@@ -410,25 +437,36 @@ class VirtualRescueLevel:
     evaluates.
 
     ``reduction`` is the level's reduction backend (m-lit PLAN §2.b.4 and
-    §2.b.6, RULED Q17 / Q22): ``"auto"`` (the default) takes the call's
-    request when the call names a backend (``evaluate(..., reduction=)``,
-    else ``Runtime.load(..., reduction=)``, else the artifact's default),
-    else the per-type default with its fallback; ``"ninjars"`` or
-    ``"tirust"`` names the level's own backend (e.g. MadLoop's
-    ``MLReductionLib`` order, one backend per level). Each level resolves its
-    backend once, for its carrier, before any point is evaluated: an
-    explicit backend (the level's, or the call's inherited by ``"auto"``)
-    that cannot serve the level's carrier is refused typed
-    (``ReductionUnavailable``), never switched; the requested and effective
-    backends and the reason are in every attempt of
-    :class:`VirtualRescueRecord`.
+    §2.b.6, RULED Q17 / Q22, F3 (b)): ``"auto"`` (the default) takes the
+    call's request when the call names a backend (``evaluate(...,
+    reduction=)``, else ``Runtime.load(..., reduction=)``, else the
+    artifact's default), else the per-type default with its fallbacks (on
+    TIRust: the per-point NinjaRS fallback at the level's carrier,
+    ``VirtualReduction.fallback``); ``"ninjars"`` or ``"tirust"`` names the
+    level's own backend, without a fallback (its next level is the
+    fallback). Each level resolves its backend once, for its carrier,
+    before any point is evaluated: an explicit backend (the level's, or the
+    call's inherited by ``"auto"``) that cannot serve the level's carrier is
+    refused typed (``ReductionUnavailable``), never switched; the requested
+    and effective backends and the reason are in every attempt of
+    :class:`VirtualRescueRecord`. TIRust's method-choice acceptance at the
+    level follows the level's ``target`` (calibrated, the call's target
+    accuracy's mapping).
+
+    A level is gammaloop's ``StabilityLevelSetting`` with a backend:
+    ``arithmetic`` / ``precision`` is its ``precision`` (Double, Quad =
+    double-double, Arb), ``rotations`` / ``reduction_check`` how stability
+    is assessed (gammaloop: the rotation of ``StabilitySettings.
+    rotation_axis``), ``target`` with ``metric`` its
+    ``required_precision_for_re`` / ``_im`` (one relative target here),
+    and ``reduction`` the backend gammaloop has no counterpart for.
     """
 
     arithmetic: Literal["double", "double-double", "arbitrary"]
     precision: int | None = None
     rotations: tuple[Rotation | str, ...] | int = (RESCUE_ROTATION,)
     reduction_check: Literal["none", "reversed", "rescaled"] = "rescaled"
-    target: float = RESCUE_TARGET
+    target: float = field(default_factory=_default_target)
     metric: Literal["relative", "finite", "scale"] = "relative"
     reduction: Literal["auto", "ninjars", "tirust"] = "auto"
 
@@ -484,9 +522,13 @@ def _default_levels() -> tuple[VirtualRescueLevel, ...]:
 @dataclass(frozen=True, slots=True)
 class VirtualRescuePolicy:
     """The built-in stability rescue of a virtual ``evaluate`` (Python API
-    only; off unless passed): an ordered ladder of :class:`VirtualRescueLevel`
-    in strictly increasing precision bits, modelled on gammaloop's stability
-    levels.
+    only; off unless passed): an ordered stack of :class:`VirtualRescueLevel`
+    in non-decreasing precision bits, modelled on gammaloop's stability
+    levels (``runtime.stability.levels``), each naming how stability is
+    assessed, its working precision and its reduction backend (m-lit F3 (b),
+    USER 2026-11-08 ~15:40): two levels at the same precision differ in
+    their backend (a same-precision level on the other backend), and a
+    repeated (precision bits, reduction) pair is refused.
 
     Level 0 evaluates the whole batch. A point that fails (also in one of its
     rotated evaluations) or misses the level's target is evaluated again at
@@ -498,9 +540,16 @@ class VirtualRescuePolicy:
     the level reached and every attempt.
 
     The default ``VirtualRescuePolicy()`` runs binary64, then double-double,
-    then 57-digit arbitrary precision, each with target 1e-5 on the relative
-    estimate, one rotation ``"euler:0.1,0.2,0.3"`` and the rescaled reduction
-    check (``loops.v2.stability.DEFAULT_RESCUE``).
+    then 57-digit arbitrary precision, each with the default target accuracy
+    (1e-5, ``loops.v2.reduction.default_target``) on the relative estimate,
+    one rotation ``"euler:0.1,0.2,0.3"`` and the rescaled reduction
+    check (``loops.v2.stability.DEFAULT_RESCUE``), every level ``"auto"``.
+    For a loop-induced call whose ``"auto"`` takes TIRust with the NinjaRS
+    fallback (``loops.v2.rescue.default_stack``) it is the loop-induced
+    default stack: TIRust binary64 at the target, then NinjaRS binary64, then
+    the double-double and 57-digit levels (``"auto"``: TIRust with the
+    per-point NinjaRS fallback at their carrier). A call naming a backend
+    runs the default ladder on that backend at every level.
     """
 
     levels: tuple[VirtualRescueLevel, ...] = field(default_factory=_default_levels)
@@ -514,9 +563,15 @@ class VirtualRescuePolicy:
         if any(not isinstance(level, VirtualRescueLevel) for level in levels):
             raise TypeError("rescue levels are VirtualRescueLevel records")
         bits = [level.precision_bits for level in levels]
-        if any(later <= earlier for earlier, later in pairwise(bits)):
+        if any(later < earlier for earlier, later in pairwise(bits)):
             raise ValueError(
-                f"rescue levels need strictly increasing precision bits (got {bits})"
+                f"rescue levels need non-decreasing precision bits (got {bits})"
+            )
+        pairs = [(level.precision_bits, level.reduction) for level in levels]
+        if len(set(pairs)) != len(pairs):
+            raise ValueError(
+                "two rescue levels at the same precision differ in their reduction "
+                f"backend: repeated (precision bits, reduction) pair in {pairs}"
             )
         if any(not level.checks.enabled for level in levels[:-1]):
             raise ValueError(

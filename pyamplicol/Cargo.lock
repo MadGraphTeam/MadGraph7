@@ -1360,7 +1360,7 @@ dependencies = [
 [[package]]
 name = "iregi-masters"
 version = "0.1.0"
-source = "git+https://github.com/huashengshao/TIRust.git?rev=fefb5f2b0a8aaabb4977db990219725f248dfc94#fefb5f2b0a8aaabb4977db990219725f248dfc94"
+source = "git+https://github.com/huashengshao/TIRust.git?rev=2bba1b2502661a8170f7b00eed9afa2ed0ac3e78#2bba1b2502661a8170f7b00eed9afa2ed0ac3e78"
 dependencies = [
  "oneloop",
  "symbolica",
@@ -1369,7 +1369,7 @@ dependencies = [
 [[package]]
 name = "iregi-rust"
 version = "0.1.0"
-source = "git+https://github.com/huashengshao/TIRust.git?rev=fefb5f2b0a8aaabb4977db990219725f248dfc94#fefb5f2b0a8aaabb4977db990219725f248dfc94"
+source = "git+https://github.com/huashengshao/TIRust.git?rev=2bba1b2502661a8170f7b00eed9afa2ed0ac3e78#2bba1b2502661a8170f7b00eed9afa2ed0ac3e78"
 dependencies = [
  "iregi-masters",
  "oneloop",

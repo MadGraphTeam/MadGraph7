@@ -460,6 +460,32 @@ impl V2Runtime {
         result
     }
 
+    /// Run `evaluate` on the other reduction backend ([`cross_reduction`]),
+    /// then return to this one: the evaluations of `"auto"`'s per-point
+    /// fallback (`reduction_policy::Choice::fallback`, m-lit F3 (c)) at the
+    /// carriers `evaluate` uses, on the cross-backend check's backends (built
+    /// on first use and kept with the runtime, so a fallback rebuilds
+    /// nothing). NinjaRS on a TIR-only process is refused typed.
+    pub fn on_other<R>(
+        &mut self,
+        evaluate: impl FnOnce(&mut Self) -> RusticolResult<R>,
+    ) -> RusticolResult<R> {
+        let other = cross_reduction(self.reduction);
+        if other == Reduction::NinjaRs {
+            crate::runtime::ninjars_refusal(&self.process.plan)?;
+        }
+        if other == Reduction::TiRust && !crate::tir::available() {
+            return Err(RusticolError::unsupported_runtime_capability(
+                "tirust",
+                crate::runtime::TIRUST_NOT_BUILT,
+            ));
+        }
+        self.swap_cross(other);
+        let result = evaluate(self);
+        self.swap_cross(other);
+        result
+    }
+
     /// Exchange the evaluation backends with the cross-backend check's
     /// (`other`'s, built on first use and kept with the runtime).
     fn swap_cross(&mut self, other: Reduction) {

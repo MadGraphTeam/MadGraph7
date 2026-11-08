@@ -98,13 +98,26 @@ axes (`"color_resolutions"`: the contracted ID and the anchors' IDs).
 "ninjars" | "tirust")` (C++ `set_reduction`, Fortran `set_reduction`) selects
 the backend of later evaluations, as the Python API's `reduction=`. `"auto"`
 (the default, or the artifact's `[loop] reduction`) follows the one policy the
-Python API reads (`rusticol_loop_reduction::reduction_policy`): today NinjaRS
-for both process types, with the reason recorded. An explicit backend the
-library is built without (TIRust needs the default cargo feature `tir`) is
-refused by the setter, one that cannot serve a call's carrier (TIRust serves
-binary64) by that call, never switched silently. Every result's
-`diagnostics_json` records `"reduction": {"requested", "effective",
-"reason"}`; the capabilities list the backends this library serves.
+Python API reads (`rusticol_loop_reduction::reduction_policy`): TIRust for a
+loop-induced process (TIRust for both types on a TIR-only artifact), NinjaRS
+for a Born-interfered one, with the reason recorded. The SDKs have no rescue
+stack; under `"auto"` on TIRust a point TIRust refuses, or fails in the
+enabled binary64 monitoring's own evaluations, is evaluated again on NinjaRS
+from its original exact inputs, in the call's own arithmetic, after the TIRust
+call (the per-point fallback; none on a TIR-only artifact); a point NinjaRS
+fails too fails with both reasons. An explicit `"ninjars"` or `"tirust"` has
+no fallback. An explicit backend the library is built without (TIRust needs
+the default cargo feature `tir`; without it `"auto"` takes NinjaRS) is refused
+by the setter, one that cannot serve a call's carrier (TIRust serves every
+carrier) by that call, never switched silently. Every result's
+`diagnostics_json` records `"reduction": {"requested", "effective", "reason",
+"fallback", "fallback_points"}` and `"fallbacks"`: per point id the fallback
+evaluated again, the backend that served it (null: it failed on both) and the
+reason; the capabilities list the backends this library serves, the
+`auto_default` and the target. `rusticol_virtual_set_reduction_target(handle,
+target)` (C++ / Fortran / Rust `set_reduction_target`; default 1e-5, the
+relative accuracy of each point's result) sets the calibrated acceptance of
+TIRust's checked method choice, as the Python API's `reduction_target=`.
 
 The ordinary package builds the tree and virtual APIs into one
 `librusticol_capi.a`. Its existing `_sdk` bundle carries the virtual C/C++ headers,

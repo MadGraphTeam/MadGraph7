@@ -77,6 +77,15 @@ LAX = 1e-6
 DOUBLE_DOUBLE = 1e-24
 
 
+# "auto"'s reason on a loop-induced call where TIRust and NinjaRS serve
+# it (the native policy, m-lit F3: TIRust with the per-point NinjaRS
+# fallback).
+AUTO_LOOP_INDUCED = (
+    "auto: TIRust, the loop-induced default; a point it refuses or fails is "
+    "evaluated again on NinjaRS (the per-point fallback, recorded per point)"
+)
+
+
 def _tirust(native) -> bool:
     return bool(native.tirust_available())
 
@@ -126,7 +135,9 @@ def test_tirust_plans_are_built_before_the_first_point_and_refused_typed():
         def __init__(self, refusal=None):
             self.calls, self.refusal = [], refusal
 
-        def prepare_reduction(self, reduction):
+        def prepare_reduction(self, reduction, *, target=None):
+            # The call's target accuracy (m-lit F3; None: the default).
+            assert target is None or target > 0
             self.calls.append(reduction)
             if self.refusal:
                 raise ValueError(self.refusal)
@@ -180,10 +191,10 @@ def test_the_python_reference_path_reduces_on_what_the_query_serves():
         return point
 
     tirust = VirtualReduction("tirust", "tirust", "requested")
-    out, failures = runtime(("ninjars", "tirust"))._run(
+    out, failures, served = runtime(("ninjars", "tirust"))._run(
         ("summed",), python, [[1]], ["1"], [None], {}, tirust
     )
-    assert (out, failures, seen) == ([[1]], {}, ["tirust"])
+    assert (out, failures, served, seen) == ([[1]], {}, {}, ["tirust"])
     with pytest.raises(ReductionUnavailable, match="capability query"):
         runtime(("ninjars",))._run(
             ("summed",), python, [[1]], ["1"], [None], {}, tirust
@@ -545,13 +556,15 @@ def _ew():
 
 
 @pytest.mark.loop_physics
-def test_tirust_is_served_on_request_and_auto_keeps_ninjars(loop_native):
+def test_tirust_is_served_on_request_and_auto_takes_it_for_loop_induced(loop_native):
     """The summed route of the loop-induced self-test (g g > h) and the
     summed and resolved routes of the Born-interfered one serve an explicit
     ``"tirust"`` (recorded as requested) with NinjaRS's values within their
-    re-test estimates; ``"auto"`` keeps NinjaRS with its reason; TIRust at
-    double-double and arbitrary precision is served on request, also on
-    every level of a rescue ladder."""
+    re-test estimates; ``"auto"`` takes TIRust, the loop-induced default, in
+    every arithmetic (m-lit F3, DECISIONS 2026-11-08 15:19 / 15:32) and
+    keeps NinjaRS on the Born-interfered process; TIRust at double-double
+    and arbitrary precision is served on request, also on every level of a
+    rescue ladder."""
 
     from pyamplicol import Runtime
     from pyamplicol.api.virtual_results import VirtualStabilityChecks
@@ -585,8 +598,14 @@ def test_tirust_is_served_on_request_and_auto_keeps_ninjars(loop_native):
             ), (k, sector)
     auto = runtime.evaluate(points[:1], mu_r2=scales[:1])
     (lane,) = auto.diagnostics
-    assert lane.reduction.effective == "ninjars"
-    assert "fails closed on points NinjaRS serves" in lane.reduction.reason
+    assert lane.reduction.effective == "tirust"
+    assert lane.reduction.reason == AUTO_LOOP_INDUCED
+    assert repr(auto.values[0]) == repr(values["tirust"].values[0])
+    (lane,) = runtime.evaluate(
+        points[:1], mu_r2=scales[:1], arithmetic="double-double"
+    ).diagnostics
+    assert lane.reduction.effective == "tirust"
+    assert lane.reduction.reason == AUTO_LOOP_INDUCED
     # The extended carriers on TIRust (m-lit lit-tir-mp): explicitly
     # requested, served and recorded at double-double and arbitrary
     # precision, within the double-double target of NinjaRS's values.
