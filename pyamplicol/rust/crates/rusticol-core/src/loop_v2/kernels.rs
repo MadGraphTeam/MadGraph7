@@ -30,7 +30,10 @@
 //!
 //! - **fused** ([`fused_edge`]): `O'[h] += O[in] · X(J)[block]`, where the
 //!   segment is already contracted with the block current row (vertex times
-//!   outgoing propagator numerator);
+//!   outgoing propagator numerator); the executor runs it in the
+//!   output-stationary order of a [`GatherSchedule`] ([`fused_edge_gathered`],
+//!   bitwise the same values) wherever an output coefficient receives more
+//!   than one term;
 //! - **register-blocked fused** ([`fused_edge_blocked`]): the same product
 //!   for a dense `X` with compile-time end dimensions, accumulating each
 //!   output coefficient in registers;
@@ -403,6 +406,181 @@ fn fused_edge_body<T: FloatLike, const L: usize>(
             &factor[link.block as usize * factor_row..][..factor_row],
             &mut output[link.output as usize * output_row..][..output_row],
         );
+    }
+}
+
+/// The output-stationary order of a fused segment (lit-perf): per output
+/// coefficient `(out, t)` of one cut index, the terms
+/// `input[loop_in][m] · factor[entry]` with `products.target(m, n) = t`, in
+/// layout entry order. [`fused_edge_gathered`] adds them to the output
+/// coefficient in a register accumulator and stores it once, where
+/// [`fused_edge`] reads and writes the output coefficient once per term.
+/// Each output coefficient receives the same products in the same order (an
+/// entry reaches a coefficient through at most one input monomial), so both
+/// forms give bitwise the same values in every carrier.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GatherSchedule {
+    /// Open-end columns of the input and the output (the layout's).
+    loop_in: usize,
+    out: usize,
+    /// Input coefficients per column (`ncoeff(rank)`).
+    sources: usize,
+    /// Output coefficients per column (`ncoeff(rank + degree)`).
+    targets: usize,
+    /// Factor entries per factor row.
+    entries: usize,
+    /// Per output coefficient `out * targets + t`, the end (exclusive) of its
+    /// terms in `terms`; its start is the previous end.
+    ends: Vec<u32>,
+    /// `(input lane vector within one cut index, factor entry)` per term.
+    terms: Vec<[u32; 2]>,
+}
+
+impl GatherSchedule {
+    /// The schedule of `layout` (`loop_in x out`) on input rank
+    /// `products.left_rank()`, or `None` where no output coefficient receives
+    /// two terms: [`fused_edge`] then performs the same loads and stores.
+    /// Panics where an index exceeds `u32` (as [`RowLink`]'s rows).
+    pub fn new(layout: &SegmentLayout, products: &MonomialProductTable) -> Option<Self> {
+        assert!(
+            layout.degree() <= products.right_rank(),
+            "a layout of degree {} on a products table of degree {}",
+            layout.degree(),
+            products.right_rank()
+        );
+        let m_in = ncoeff(products.left_rank());
+        let targets = ncoeff(products.output_rank());
+        let index = |value: usize| u32::try_from(value).expect("a gather index exceeds u32");
+        let mut counts = vec![0usize; layout.out_dimension() * targets];
+        for (entry, &n) in layout.entries().iter().zip(layout.monomials()) {
+            for m in 0..m_in {
+                counts[entry.out * targets + products.target(m, n)] += 1;
+            }
+        }
+        if counts.iter().all(|&count| count <= 1) {
+            return None;
+        }
+        let mut ends = Vec::with_capacity(counts.len());
+        let mut next = Vec::with_capacity(counts.len());
+        let mut total = 0;
+        for &count in &counts {
+            next.push(total);
+            total += count;
+            ends.push(index(total));
+        }
+        let mut terms = vec![[0u32; 2]; total];
+        for (e, (entry, &n)) in layout.entries().iter().zip(layout.monomials()).enumerate() {
+            for m in 0..m_in {
+                let slot = &mut next[entry.out * targets + products.target(m, n)];
+                terms[*slot] = [index(entry.loop_in * m_in + m), index(e)];
+                *slot += 1;
+            }
+        }
+        Some(Self {
+            loop_in: layout.loop_in_dimension(),
+            out: layout.out_dimension(),
+            sources: m_in,
+            targets,
+            entries: layout.entries().len(),
+            ends,
+            terms,
+        })
+    }
+
+    /// Reals the schedule holds (its share of a loaded plan's memory).
+    pub fn len(&self) -> usize {
+        self.ends.len() + 2 * self.terms.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.terms.is_empty()
+    }
+}
+
+dispatched! {
+    /// [`fused_edge`] in the output-stationary order of `schedule` (the
+    /// schedule of the segment's layout and products table): bitwise the same
+    /// values.
+    pub fn fused_edge_gathered<T: FloatLike, const L: usize>(
+        segment: &Segment<'_>,
+        schedule: &GatherSchedule,
+        input: &[T],
+        factor: &[T],
+        links: &[RowLink],
+        output: &mut [T],
+    ) => fused_edge_gathered_body;
+}
+
+#[inline(always)]
+fn fused_edge_gathered_body<T: FloatLike, const L: usize>(
+    segment: &Segment<'_>,
+    schedule: &GatherSchedule,
+    input: &[T],
+    factor: &[T],
+    links: &[RowLink],
+    output: &mut [T],
+) {
+    let m_in = ncoeff(segment.rank());
+    let m_out = ncoeff(segment.output_rank);
+    assert!(
+        schedule.loop_in == segment.incoming
+            && schedule.out == segment.outgoing
+            && schedule.sources == m_in
+            && schedule.targets <= m_out,
+        "a gather schedule does not fit its segment"
+    );
+    let Some(zero) = input.first().map(FloatLike::zero) else {
+        return;
+    };
+    let v = lane_vector_len(L);
+    let input_row = segment.input_row_len() * v;
+    let output_row = segment.output_row_len() * v;
+    let factor_row = schedule.entries * v;
+    let cut_in = segment.incoming * m_in * v;
+    let cut_out = segment.outgoing * m_out * v;
+    debug_assert_eq!(input.len() % input_row, 0, "input is not whole rows");
+    debug_assert_eq!(factor.len() % factor_row, 0, "factor is not whole rows");
+    debug_assert_eq!(output.len() % output_row, 0, "output is not whole rows");
+    let mut acc_re: [T; L] = std::array::from_fn(|_| zero.clone());
+    let mut acc_im: [T; L] = std::array::from_fn(|_| zero.clone());
+    for link in links {
+        let source = &input[link.input as usize * input_row..][..input_row];
+        let x = &factor[link.block as usize * factor_row..][..factor_row];
+        let target = &mut output[link.output as usize * output_row..][..output_row];
+        for a in 0..segment.cut {
+            let src = &source[a * cut_in..][..cut_in];
+            let dst = &mut target[a * cut_out..][..cut_out];
+            let mut start = 0;
+            for (column, ends) in dst
+                .chunks_exact_mut(m_out * v)
+                .zip(schedule.ends.chunks_exact(schedule.targets))
+            {
+                for (d, &end) in column.chunks_exact_mut(v).zip(ends) {
+                    let end = end as usize;
+                    if end == start {
+                        continue;
+                    }
+                    let (d_re, d_im) = d.split_at_mut(L);
+                    for l in 0..L {
+                        acc_re[l].clone_from(&d_re[l]);
+                        acc_im[l].clone_from(&d_im[l]);
+                    }
+                    for &[s, e] in &schedule.terms[start..end] {
+                        let (o_re, o_im) = src[s as usize * v..][..v].split_at(L);
+                        let (y_re, y_im) = x[e as usize * v..][..v].split_at(L);
+                        for l in 0..L {
+                            acc_re[l] += o_re[l].clone() * &y_re[l] - o_im[l].clone() * &y_im[l];
+                            acc_im[l] += o_re[l].clone() * &y_im[l] + o_im[l].clone() * &y_re[l];
+                        }
+                    }
+                    for l in 0..L {
+                        d_re[l].clone_from(&acc_re[l]);
+                        d_im[l].clone_from(&acc_im[l]);
+                    }
+                    start = end;
+                }
+            }
+        }
     }
 }
 

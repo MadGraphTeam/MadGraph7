@@ -951,6 +951,9 @@ pub struct LoopProgramV4 {
     /// seed-weight columns `(o, w)` (the route-R1 columns of the row); empty
     /// for other plans.
     pub row_columns: Vec<Vec<(usize, usize)>>,
+    /// The output-stationary schedules of the fused dressing edges
+    /// (derived at load, never stored: [`Gathers`]).
+    pub gathers: Gathers,
 }
 
 impl LoopProgramV4 {
@@ -959,6 +962,107 @@ impl LoopProgramV4 {
     /// else every observable column.
     pub fn object_columns(&self) -> usize {
         if self.dressed { 1 } else { self.columns }
+    }
+
+    /// The gather schedule of a fused edge of content `content` on products
+    /// table `products` (`None`: the edge runs [`super::kernels::fused_edge`]).
+    #[inline]
+    pub fn gather(
+        &self,
+        content: usize,
+        products: usize,
+        seeded: bool,
+    ) -> Option<&super::kernels::GatherSchedule> {
+        self.gathers.get(content, products, seeded)
+    }
+}
+
+/// The output-stationary schedules ([`super::kernels::GatherSchedule`]) of
+/// the fused dressing edges a loaded plan runs (schedule B's fused steps,
+/// schedule F's states and schedule M's fused steps), one per distinct
+/// (content, products table, seeded) and only where an output coefficient
+/// receives more than one term: a property of the plan's data, decided once
+/// at load. The schedules change the order of loads and stores only, never a
+/// value; they are derived, so stored plans are unchanged.
+#[derive(Clone, Debug, Default)]
+pub struct Gathers {
+    products: usize,
+    /// Per `(content * products + table) * 2 + seeded`, the schedule index
+    /// plus one (0: none).
+    index: Vec<u32>,
+    schedules: Vec<super::kernels::GatherSchedule>,
+}
+
+impl Gathers {
+    /// The schedules of every fused edge of `program`.
+    fn build(program: &LoopProgramV4) -> Self {
+        let products = program.products.len();
+        let mut gathers = Self {
+            products,
+            index: vec![0; program.contents.len() * products * 2],
+            schedules: Vec::new(),
+        };
+        let mut used = BTreeSet::new();
+        let fused = |step: &Step, used: &mut BTreeSet<(usize, usize, bool)>| {
+            if step.split.is_none() {
+                for edge in &step.edges {
+                    used.insert((edge.content, edge.products, step.seeded));
+                }
+            }
+        };
+        for family in &program.families {
+            for step in &family.steps {
+                fused(step, &mut used);
+            }
+        }
+        if let Some(merged) = &program.merged {
+            for state in &merged.states {
+                fused(&state.step, &mut used);
+            }
+        }
+        for state in program.forward.iter().flatten() {
+            used.insert((state.content, state.products, state.seeded));
+        }
+        for (content, table, seeded) in used {
+            let layout = if seeded {
+                &program.contents[content].seeded
+            } else {
+                &program.contents[content].open
+            };
+            let products = &program.products[table];
+            if let Some(schedule) = super::kernels::GatherSchedule::new(layout, products) {
+                gathers.schedules.push(schedule);
+                let slot = gathers.slot(content, table, seeded);
+                gathers.index[slot] =
+                    u32::try_from(gathers.schedules.len()).expect("gather schedules exceed u32");
+            }
+        }
+        gathers
+    }
+
+    fn slot(&self, content: usize, products: usize, seeded: bool) -> usize {
+        (content * self.products + products) * 2 + usize::from(seeded)
+    }
+
+    #[inline]
+    fn get(
+        &self,
+        content: usize,
+        products: usize,
+        seeded: bool,
+    ) -> Option<&super::kernels::GatherSchedule> {
+        match self.index.get(self.slot(content, products, seeded)) {
+            Some(&id) if id > 0 => Some(&self.schedules[id as usize - 1]),
+            _ => None,
+        }
+    }
+
+    /// Schedules and the reals (u32 words) they hold.
+    pub fn size(&self) -> (usize, usize) {
+        (
+            self.schedules.len(),
+            self.index.len() + self.schedules.iter().map(|s| s.len()).sum::<usize>(),
+        )
     }
 }
 
@@ -1805,6 +1909,7 @@ impl LoopProgramV4 {
             dressed,
             key_vectors,
             row_columns: Vec::new(),
+            gathers: Gathers::default(),
         };
         if dressed {
             let mut row_columns = vec![Vec::new(); program.rows];
@@ -1822,6 +1927,7 @@ impl LoopProgramV4 {
         // close the Born rows a column reads (the exact helicity-zero
         // filter's drops are not dressed).
         program.prune_dead_rows(&mut tables.links);
+        program.gathers = Gathers::build(&program);
         Ok(program)
     }
 

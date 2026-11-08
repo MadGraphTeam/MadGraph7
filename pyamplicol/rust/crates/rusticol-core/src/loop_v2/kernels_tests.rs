@@ -571,3 +571,118 @@ fn the_simd_cap_only_lowers_the_width() {
     // Other carriers take the baseline whatever the cap.
     assert_eq!(Simd::detect::<f32>(), Simd::Baseline);
 }
+
+/// Runs one fused segment in both orders ([`fused_edge`] and
+/// [`fused_edge_gathered`]) in carrier `T` with `LANES` lanes, accumulating
+/// into the same non-zero output.
+fn scatter_and_gather<T: FloatLike + 'static, const LANES: usize>(
+    segment: &Segment<'_>,
+    layout: &SegmentLayout,
+    data: &[Vec<Rational>; 3],
+    links: &[RowLink],
+    convert: impl Fn(&Rational) -> T,
+) -> [Vec<T>; 2] {
+    let schedule =
+        GatherSchedule::new(layout, segment.products()).expect("terms share output coefficients");
+    let [input, factor, output] = data
+        .each_ref()
+        .map(|values| values.iter().map(&convert).collect::<Vec<T>>());
+    let mut scatter = output.clone();
+    fused_edge::<T, LANES>(segment, layout, &input, &factor, links, &mut scatter);
+    let mut gather = output;
+    fused_edge_gathered::<T, LANES>(segment, &schedule, &input, &factor, links, &mut gather);
+    [scatter, gather]
+}
+
+#[test]
+fn gathered_fused_edges_are_bitwise_the_scatter_order() {
+    fn sample<const LANES: usize>(rng: &mut Lcg, count: usize) -> Vec<Rational> {
+        (0..count * lane_vector_len(LANES))
+            .map(|_| rng.rational())
+            .collect()
+    }
+    fn check<const LANES: usize>(rng: &mut Lcg, rank: usize, degree: usize, sparse: bool) {
+        let products = MonomialProductTable::new(rank, degree);
+        // A graded output one rank above the product's.
+        let segment = Segment::new(4, 3, 1, 2, &products, rank + degree + 1);
+        let dense = dense_layout(3, 2, degree);
+        let layout = if sparse {
+            let entries = dense
+                .entries()
+                .iter()
+                .filter(|_| !rng.next().is_multiple_of(3))
+                .copied()
+                .collect();
+            SegmentLayout::new(3, 2, entries).unwrap()
+        } else {
+            dense
+        };
+        // Several links into one output row, one irregular.
+        let links: Vec<RowLink> = (0..5)
+            .map(|r| RowLink {
+                output: (r / 2) as u32,
+                input: ((r * 3) % 5) as u32,
+                block: (r % 2) as u32,
+            })
+            .collect();
+        let data = [
+            sample::<LANES>(rng, 5 * segment.input_row_len()),
+            sample::<LANES>(rng, 2 * layout.entries().len()),
+            sample::<LANES>(rng, 3 * segment.output_row_len()),
+        ];
+        let [s, g] = scatter_and_gather::<f64, LANES>(&segment, &layout, &data, &links, |r| {
+            r.to_f64()
+        });
+        let bits = |values: &[f64]| values.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+        assert_eq!(bits(&s), bits(&g), "binary64, rank {rank}, degree {degree}");
+        let [s, g] = scatter_and_gather::<DoubleFloat, LANES>(
+            &segment,
+            &layout,
+            &data,
+            &links,
+            |r| DoubleFloat::from(r),
+        );
+        assert!(s == g, "double-double, rank {rank}, degree {degree}");
+        let [s, g] = scatter_and_gather::<_, LANES>(&segment, &layout, &data, &links, |r| {
+            r.to_multi_prec_float(200)
+        });
+        assert!(s == g, "MPFR, rank {rank}, degree {degree}");
+        let [s, g] = scatter_and_gather::<Rational, LANES>(
+            &segment,
+            &layout,
+            &data,
+            &links,
+            Rational::clone,
+        );
+        assert!(s == g, "exact, rank {rank}, degree {degree}");
+    }
+    let mut rng = Lcg(0x6a7e);
+    for rank in 0..=3 {
+        for degree in 1..=2 {
+            check::<L>(&mut rng, rank, degree, false);
+            check::<L>(&mut rng, rank, degree, true);
+        }
+    }
+    // The binary64 executor's width (AVX-512 where the CPU has it).
+    check::<16>(&mut rng, 3, 1, true);
+    check::<16>(&mut rng, 4, 2, false);
+}
+
+#[test]
+fn gather_schedules_exist_only_where_terms_share_a_coefficient() {
+    // A seeded layout: one input coefficient, one entry per (out, monomial).
+    let seeded = MonomialProductTable::new(0, 1);
+    assert_eq!(GatherSchedule::new(&dense_layout(1, 4, 1), &seeded), None);
+    // An open end with two columns: two entries reach every coefficient.
+    let open = MonomialProductTable::new(0, 0);
+    let schedule = GatherSchedule::new(&dense_layout(2, 1, 0), &open).unwrap();
+    assert_eq!(schedule.ends, vec![2]);
+    assert_eq!(schedule.terms, vec![[0, 0], [1, 1]]);
+    // Rank one times degree one: q0 * 1 and 1 * q0 meet on q0 in entry order.
+    let raise = MonomialProductTable::new(1, 1);
+    let schedule = GatherSchedule::new(&dense_layout(1, 1, 1), &raise).unwrap();
+    assert_eq!(schedule.ends.len(), ncoeff(2));
+    let q0 = 1;
+    let terms = &schedule.terms[schedule.ends[q0 - 1] as usize..schedule.ends[q0] as usize];
+    assert_eq!(terms, &[[1, 0], [0, 1]]);
+}

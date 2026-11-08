@@ -75,6 +75,7 @@ pub fn run_forward<T: Carrier, const L: usize>(
                 state.seeded,
                 state.d_alpha,
                 &plan.products[state.products],
+                plan.gather(state.content, state.products, state.seeded),
                 state.rank,
                 input,
                 factors.get(state.factor),
