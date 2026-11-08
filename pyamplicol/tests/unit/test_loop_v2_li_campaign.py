@@ -49,11 +49,16 @@ def test_campaign_run_passes_its_rules(name, tmp_path_factory, loop_native):
     record = lm.evaluate(
         name, work, ap=bool(entry["ap"]), skip=skip, high_checked=not plain
     )
+    if record.get("transformed_points"):
+        # LI-L1 on TIRust (``li_manifest.py identity-tirust``), folded into L5
+        record["identity_tirust"] = lm.identity_tirust(name, work, record)
     path.write_text(json.dumps(record, indent=1) + "\n")
     judged = lm.judge(record, entry)
     statuses = {c: judged[c]["status"] for c in lm.CHECKS if c in judged}
     assert "fail" not in statuses.values(), statuses
     assert "effective_backend_switched" not in judged["L6"]["double"], judged["L6"]
+    if record.get("transformed_points"):
+        assert judged["L5"]["tirust"]["status"] != "not run", judged["L5"]
     for check in entry["checks"]:
         if check in lm.CHECKS and check != "L9":
             assert check in statuses, (check, statuses)
@@ -111,3 +116,23 @@ def test_crossing_identity(tmp_path_factory, loop_native):
     statuses = [r["status"] for r in judged["runs"].values()]
     assert "pass" in statuses, judged
     assert not {"fail", "estimate miss", "not run"} & set(statuses), judged
+
+
+@pytest.mark.parametrize("check", sorted(i for i in lm.COLOUR if i.startswith("LI-")))
+def test_colour_check(check, tmp_path_factory, loop_native):
+    """LI-27's f^abc part of g g > a g (``li_manifest.py fabc``): the run's
+    amplitude-basis anchor asymmetry within its bounds at every fixture
+    point and carrier, the control g g > z g's beyond them somewhere (the
+    check sees an f^abc part); never a theorem-based zero (Q13)."""
+
+    work = _work(tmp_path_factory)
+    spec = lm.COLOUR[check]
+    for name in (spec["run"], spec["control"]):
+        path = work / name / "record.json"
+        record = json.loads(path.read_text()) if path.is_file() else {}
+        if not record.get("complete"):
+            record = lm.evaluate(name, work, ap=False, identity=False)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(record, indent=1) + "\n")
+    result = lm.fabc_check(work, spec)
+    assert result["status"] == "pass", result

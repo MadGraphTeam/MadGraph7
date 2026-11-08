@@ -173,7 +173,8 @@ def _record(name):
     t64c = {"points": [_point(near[0] * (1 + 2e-13), 1e-12 * v[0]), *t64["points"][1:]]}
     dd = {"points": [_point(x, 1e-30 * x, finiteness=1e-31, pole=1e-31) for x in v]}
     refused = {
-        "refused": "ReductionUnavailable: TIRust does not serve the double-double carrier"
+        "refused": "ReductionUnavailable: TIRust does not serve the double-double "
+        "carrier"
     }
     return {
         "fixture": name,
@@ -321,6 +322,9 @@ def test_lit_json_is_keyed_by_the_registry_and_read_by_the_report(entries, tmp_p
     assert "TIRust fails 2 of 3 binary64 points closed" in row["note"]
     assert out["rows"]["gg_zz"]["status"] == "not run"
     assert "LI-24" in out["ids"] and "LI-A7" in out["ids"]
+    # a §4.1 check not run (SPEC unrun_checks) makes its id and rows partial
+    assert out["ids"]["LI-24"]["status"] == "partial"
+    assert "LI-24 lambda_hhh scan: not run" in row["note"]
     # each run's checks once: an id's run a registry row carries names it
     assert out["ids"]["LI-24"]["runs"]["li_gg_hh"] == {
         "status": row["status"],
@@ -516,7 +520,9 @@ def test_tirust_arms_before_lit_tir_mp_wait_and_after_it_are_judged(
     wrong = json.loads(json.dumps(stale))
     for label in ("tirust/double/plain", "tirust/double/checked"):
         for point in wrong["arms"][label]["points"]:
-            point["values"][0]["finite"] = repr(float(point["values"][0]["finite"]) * 1.01)
+            point["values"][0]["finite"] = repr(
+                float(point["values"][0]["finite"]) * 1.01
+            )
     assert lm.judge(wrong, entry)["L6"]["status"] == "fail"
     # Resumption: the staged extension's hash against the record's natives.
     monkeypatch.setattr(lm, "_native", lambda: {"extension_sha256": "new"})
@@ -556,8 +562,9 @@ def test_ward_probes_at_the_fixture_points_judge_l4(entries):
     ] * 3
     assert lm.judge(bad, entry)["L4"]["status"] == "fail"
     gap = json.loads(json.dumps(record))
-    gap["ward_probes"]["arms"]["tirust/double"] = ok[:2] + [
-        {"error": "FailedPoints: box refused"}
+    gap["ward_probes"]["arms"]["tirust/double"] = [
+        *ok[:2],
+        {"error": "FailedPoints: box refused"},
     ]
     gap["ward_probes"]["arms"]["ninjars/double-double"] = {"not_run": "slow"}
     judged = lm.judge(gap, entry)["L4"]
@@ -834,14 +841,20 @@ def test_lane_details_are_compacted_by_reason():
     masked) once, counted, never cut; '; ' inside parentheses and the items
     of a quoted list are respected; the arm's typed reasons count lanes."""
 
-    lane = "family {f} lane LaneKey {{ family: {f}, order: 0, column: {c} }}: TIRust Unstable: conditioning {x}e-3 (refused by the gates; binary64 only)"
+    lane = (
+        "family {f} lane LaneKey {{ family: {f}, order: 0, column: {c} }}: TIRust "
+        "Unstable: conditioning {x}e-3 (refused by the gates; binary64 only)"
+    )
     detail = "; ".join(
         lane.format(f=f, c=c, x=f + 2) for f in range(2) for c in range(3)
     )
     compact = lm.compact_detail(detail)
     assert compact == "6 x " + lane.format(f=0, c=0, x=2)
     assert lm.compact_detail(compact) == compact
-    listed = "ArithmeticError: failed: ['term scale 0: bad (a; b)', 'term scale 1: bad (a; b)']"
+    listed = (
+        "ArithmeticError: failed: ['term scale 0: bad (a; b)', 'term scale 1: bad "
+        "(a; b)']"
+    )
     assert lm.compact_detail(listed).count("term scale") == 2
     arm = {"points": [{"status": "failed", "detail": detail}] * 2}
     assert list(lm._reasons(arm).values()) == [12]
@@ -881,7 +894,9 @@ def test_born_lanes_compare_judge_and_split_numerical_zeros():
     result = lm.compare_lanes({"ninjars": [n], "tirust": [off]}, margin, floor)
     assert result["worst_beyond_10x"] >= lm.LAX and lm.born_verdict(result) == "fail"
     # below LAX relative, beyond 10 E: lax
-    near = _lanes({"a": big, "z": [1e-18j, 1e-19j, 0j], "b": [1e-3 * (1 + 1e-9), 1e-4, 0.0]})
+    near = _lanes(
+        {"a": big, "z": [1e-18j, 1e-19j, 0j], "b": [1e-3 * (1 + 1e-9), 1e-4, 0.0]}
+    )
     result = lm.compare_lanes({"ninjars": [n], "tirust": [near]}, margin, floor)
     assert result["beyond_10x"] == 1 and not result["beyond_10x_zero"]
     assert 0 < result["worst_beyond_10x"] < lm.LAX
@@ -893,9 +908,7 @@ def test_born_lanes_compare_judge_and_split_numerical_zeros():
     )
     assert result["no_estimate"] == 1 and lm.born_verdict(result) == "fail"
     closed = {"failed": ["family 3 lane 1: TIRust Unstable: ill-conditioned Gram 1e9"]}
-    result = lm.compare_lanes(
-        {"ninjars": [n, n], "tirust": [t, closed]}, margin, floor
-    )
+    result = lm.compare_lanes({"ninjars": [n, n], "tirust": [t, closed]}, margin, floor)
     assert result["failed_points"] == {"ninjars": 0, "tirust": 1}
     assert sum(result["failed"]["tirust"].values()) == 1
     assert lm.born_verdict(result) == "partial"
@@ -917,25 +930,135 @@ def test_forward_points_are_exact_terminating_decimals(monkeypatch):
 
     mw = Fraction(80419002245, 10**9) + Fraction(1, 3 * 10**12)  # not decimal
     masses = [Fraction(0), Fraction(0), mw, mw]
-    monkeypatch.setattr(assemble, "_leg_masses", lambda *_: tuple(m * m for m in masses))
-    first = [["250", "0", "0", "250"], ["250", "0", "0", "-250"],
-             ["250", "100", "0", "0"], ["250", "-100", "0", "0"]]
+    monkeypatch.setattr(
+        assemble, "_leg_masses", lambda *_: tuple(m * m for m in masses)
+    )
+    first = [
+        ["250", "0", "0", "250"],
+        ["250", "0", "0", "-250"],
+        ["250", "100", "0", "0"],
+        ["250", "-100", "0", "0"],
+    ]
     run = SimpleNamespace(
-        slice=None, parameters={}, reference=SimpleNamespace(points=[first], scales=["8315.0"])
+        slice=None,
+        parameters={},
+        reference=SimpleNamespace(points=[first], scales=["8315.0"]),
     )
     values = ["1e-3", "1e-4"]
-    points, scales, energy = lm.forward_points(run, values)
+    points, scales, figures = lm.forward_points(run, values)
+    energy = figures["sqrt_s_target"]
     assert scales == ["8315.0"] * 2 and 400 < energy < 625
-    for theta, point in zip(values, points):
+    for index, (theta, point) in enumerate(zip(values, points, strict=True)):
         exact = [[Fraction(Decimal(c)) for c in p] for p in point]
         for k in range(4):
             assert exact[0][k] + exact[1][k] == exact[2][k] + exact[3][k]
-        for p, m in zip(exact, masses):
+        for p, m in zip(exact, masses, strict=True):
             shell = p[0] ** 2 - p[1] ** 2 - p[2] ** 2 - p[3] ** 2
             assert abs(shell - m * m) <= Fraction(1, 10**lm.DIGITS) * max(m * m, 1)
         assert abs(float(exact[2][1]) - float(theta) * energy / 2) <= 1e-12 * energy
+        # the recorded figures: the constructed sqrt(s) and the CM angle,
+        # theta / beta (pt = theta sqrt(s_target) / 2, |p| = beta sqrt(s) / 2)
+        s = (exact[0][0] + exact[1][0]) ** 2 - (exact[0][3] + exact[1][3]) ** 2
+        assert figures["sqrt_s"][index] == pytest.approx(float(s) ** 0.5, rel=1e-15)
+        beta = (1 - 4 * float(mw * mw) / float(s)) ** 0.5
+        cm = float(theta) * energy / figures["sqrt_s"][index] / beta
+        assert figures["cm_theta"][index] == pytest.approx(cm, rel=1e-6)
     masses[3] = Fraction(91)
     assert lm.forward_points(run, values).startswith("no forward construction")
+
+
+def _ruled(direct: dict, estimate: dict, virtual=(1.0, 0.5, 0.25)):
+    """One point of ``ruled_lanes``' output: lanes with their L6 estimate."""
+
+    return {"direct": direct, "estimate": estimate, "virtual": {"o": list(virtual)}}
+
+
+def test_born_lanes_under_the_l6_estimate():
+    """LI-B1's binary64 L6 estimate stage (ruling (6), R3 (b)): a point set
+    the screen flags (a lane beyond 10 x the reduction-direction re-test, or
+    one >= LAX relative) is judged per Laurent coefficient against 10 x the
+    larger L6 estimate through the one comparison (``backends._compare``);
+    the screen's estimate alone may miss what the L6 estimate covers."""
+
+    margin, floor = 10.0, 4 * 2.0**-53
+    a, b = [1.0, 0.25, 0.0], [1.0 + 6.8e-5, 0.25, 0.0]
+    # the screen: a reduction-direction re-test of 4.3e-6 flags the lane
+    screen = lm.compare_lanes(
+        {
+            "ninjars": [_lanes({"w": b}, {"w": [1.0 + 6.8e-5 - 4.3e-6, 0.25, 0.0]})],
+            "tirust": [_lanes({"w": a})],
+        },
+        margin,
+        floor,
+    )
+    assert lm.screened(screen) and lm.born_verdict(screen) == "fail"
+    # the L6 estimate (rotations + rescaled re-test) of 1.1e-4 covers it
+    covered = {
+        "ninjars": [_ruled({"w": b}, {"w": (1.1e-4, 1e-12, 0.0)})],
+        "tirust": [_ruled({"w": a}, {"w": (2e-14, 1e-15, 0.0)})],
+    }
+    result = lm.compare_lanes(covered, margin, floor)
+    assert result["beyond_10x"] == 0 and lm.born_verdict(result) == "pass"
+    assert result["worst_over_10x"] == pytest.approx(6.8e-5 / 1.1e-3, rel=1e-6)
+    # per coefficient: a pole off beyond its own bound fails at >= LAX
+    pole = {
+        "ninjars": [_ruled({"w": [1.0, 0.25 + 1e-3, 0.0]}, {"w": (1e-3, 1e-12, 0.0)})],
+        "tirust": [_ruled({"w": [1.0, 0.25, 0.0]}, {"w": (1e-3, 1e-12, 0.0)})],
+    }
+    result = lm.compare_lanes(pole, margin, floor)
+    assert result["beyond_10x"] == 1 and lm.born_verdict(result) == "fail"
+    # a lane with no estimate of its own fails; an unflagged screen stays
+    blind = {
+        "ninjars": [_ruled({"w": a}, {})],
+        "tirust": [_ruled({"w": a}, {"w": (1e-16, 0.0, 0.0)})],
+    }
+    assert lm.compare_lanes(blind, margin, floor)["no_estimate"] == 1
+    calm = lm.compare_lanes(
+        {"ninjars": [_lanes({"w": a})], "tirust": [_lanes({"w": a})]}, margin, floor
+    )
+    assert not lm.screened(calm)
+
+
+def test_ruled_lanes_combine_the_checks_per_lane():
+    """``ruled_lanes``: the executor's ``runs`` with ``backends.checks()``
+    (three rotations, the rescaled re-test), per lane and coefficient E =
+    SAFETY x (largest rotation deviation + re-test deviation) + FLOOR_UNITS
+    u |lane|; a point a check run fails is failed with its reasons."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.v2.stability import FLOOR_UNITS, RESCALED, SAFETY
+
+    def laurent(*values):
+        return SimpleNamespace(coefficients=tuple(values))
+
+    def evaluation(lane, retest=None):
+        return SimpleNamespace(
+            families={"l": laurent(*lane)},
+            retest_families={"l": laurent(*(retest or lane))},
+            result=SimpleNamespace(components={"virtual": {"o": laurent(*lane)}}),
+        )
+
+    calls = {}
+
+    class Executor:
+        def runs(self, points, scales, **options):
+            calls.update(options)
+            reference = [evaluation([2.0, 1.0, 0.0], [2.0 + 1e-10, 1.0, 0.0])] * 2
+            rotated = [
+                [evaluation([2.0 + d, 1.0, 0.0])] * 2 for d in (3e-10, -5e-10, 1e-10)
+            ]
+            unit = SimpleNamespace(unit_roundoff=2.0**-53)
+            return unit, reference, rotated, {1: ["rotation-2: NinjaRS Unstable"]}
+
+    out, _seconds = lm.ruled_lanes(Executor(), [0, 1], [0, 0], {}, "ninjars")
+    stability = calls["stability"]
+    assert calls["reduction"] == "ninjars" and stability.reduction == RESCALED
+    assert len(stability.rotations) == 3
+    expected = SAFETY * (5e-10 + 1e-10) + FLOOR_UNITS * 2.0**-53 * 2.0
+    assert out[0]["estimate"]["l"][0] == pytest.approx(expected, rel=1e-6)
+    assert out[0]["estimate"]["l"][2] == 0.0
+    assert out[1] == {"failed": ["rotation-2: NinjaRS Unstable"]}
 
 
 def test_run_skips_are_spec_data():
@@ -968,11 +1091,37 @@ def test_a_failing_lane_is_judged_against_the_double_double_truth():
     assert result["status"] == "estimate miss"
     assert result["estimate_miss"] == {"ninjars": 1, "tirust": 0}
     assert result["truth"][0]["ninjars"]["error"] > margin * floor
-    disagree = {"ninjars": [_lanes({"a": truth})], "tirust": [_lanes({"a": [3.1, 1.0, 0.5]})]}
+    disagree = {
+        "ninjars": [_lanes({"a": truth})],
+        "tirust": [_lanes({"a": [3.1, 1.0, 0.5]})],
+    }
     result = lm.compare_lanes(found, margin, floor)
     result["status"] = lm.born_verdict(result)
     lm.judge_truth(result, found, disagree, [0], margin, floor)
     assert result["status"] == "fail" and "disagree" in result["truth"][0]["truth"]
+    # the backends' double-double agreement is formed in the carrier (a
+    # binary64 difference of the values would read 0 here)
+    from decimal import Decimal
+
+    from pyamplicol.loops.v2.reference_executor import Complex
+
+    def dd(x: str) -> list:
+        return [
+            Complex(Decimal(x), Decimal(0)),
+            Complex(Decimal(1)),
+            Complex(Decimal("0.5")),
+        ]
+
+    close = {
+        "ninjars": [_lanes({"a": dd("3")})],
+        "tirust": [_lanes({"a": dd("3.000000000000000000003")})],
+    }
+    result = lm.compare_lanes(found, margin, floor)
+    result["status"] = lm.born_verdict(result)
+    lm.judge_truth(result, found, close, [0], margin, floor)
+    agreement = result["truth"][0]["double_double_backends_relative"]
+    assert agreement == pytest.approx(1e-21, rel=1e-6)
+    assert result["status"] == "estimate miss"
 
 
 def test_identity_l5_on_tirust_is_judged_and_folded(entries):
