@@ -691,49 +691,31 @@ impl TirReductionBackend {
             let other = second_of[r];
             let map =
                 other.map(|_| FrameMap::<f64>::new(Some(frame), g.propagators, g.shifts.first()));
-            // The row's moments in the contraction's layout, once per row.
-            let slots: Result<Slots, String> = first
-                .moments
-                .as_ref()
-                .map(|m| Slots::new(&m.values, width))
-                .map_err(Clone::clone);
-            let other_slots: Option<Result<Slots, String>> = other.map(|other| {
-                other
-                    .moments
-                    .as_ref()
-                    .map(|m| Slots::new(&m.values, width))
-                    .map_err(Clone::clone)
-            });
             for lane in row.start..row.end {
                 let c = &g.coefficients[lane * declared..lane * declared + monomials];
-                let value: LaneOutcome<f64> = match &slots {
-                    Ok(slots) => Ok(slots.contract(c)),
-                    Err(reason) => Err(reason.clone()),
-                };
-                let again = other.zip(other_slots.as_ref()).map(
-                    |(other, slots)| -> Result<Vec<Complex<f64>>, String> {
-                        let slots = match slots {
-                            Ok(slots) => slots,
-                            Err(reason) => return Err(reason.clone()),
-                        };
-                        shifted.clear();
-                        map.as_ref().expect("a checked row's frame").coefficients(
-                            c,
-                            row.rank,
-                            &other.origin,
-                            &mut shifted,
-                        );
-                        let mut value = slots.contract(&shifted);
-                        if let Some(factor) = &other.undo {
-                            for v in &mut value {
-                                *v *= *factor;
-                            }
+                let value = first
+                    .moments
+                    .as_ref()
+                    .map(|m| contract(&m.values, c, width));
+                let again = other.map(|other| -> Result<Vec<Complex<f64>>, String> {
+                    let moments = other.moments.as_ref().map_err(Clone::clone)?;
+                    shifted.clear();
+                    map.as_ref().expect("a checked row's frame").coefficients(
+                        c,
+                        row.rank,
+                        &other.origin,
+                        &mut shifted,
+                    );
+                    let mut value = contract(&moments.values, &shifted, width);
+                    if let Some(factor) = &other.undo {
+                        for v in &mut value {
+                            *v *= *factor;
                         }
-                        Ok(value)
-                    },
-                );
+                    }
+                    Ok(value)
+                });
                 self.counters.lanes += 1;
-                let verified = match (&first.moments, value, &again) {
+                let verified = match (&first.moments, &value, &again) {
                     (Ok(m), Ok(value), Some(again)) if m.choice => match again {
                         Ok(again) => {
                             let scale = term_scale(&m.values, c, width);
@@ -743,7 +725,7 @@ impl TirReductionBackend {
                                 .map(|(a, b)| complex(&(*a - b)))
                                 .fold(0f64, f64::max);
                             if deviation <= self.options.acceptance * scale {
-                                Ok(value)
+                                Ok(value.clone())
                             } else {
                                 self.counters.unverified += 1;
                                 Err(format!(
@@ -761,7 +743,7 @@ impl TirReductionBackend {
                             ))
                         }
                     },
-                    (_, value, _) => value,
+                    (_, value, _) => value.clone().map_err(Clone::clone),
                 };
                 direct_out[row.group].push(verified);
                 if let Some(check_out) = &mut check_out {
@@ -894,95 +876,18 @@ fn permuted(values: &[Complex<f64>], position: &[usize]) -> Vec<[Complex<f64>; 4
         .collect()
 }
 
-/// A row's moments in the first `width` slots (finite, 1/ε, 1/ε², UV), the
-/// real and imaginary parts of each slot contiguous: the layout of the
-/// contraction `Σ_α c_α M_α` of every lane of the row (lit-cache, PLAN
-/// §2.b.2 item 4), built once per row.
-struct Slots {
-    re: Vec<f64>,
-    im: Vec<f64>,
-    monomials: usize,
-    /// Every moment is finite (the row's moments are taken at its highest
-    /// rank: a lane of lower rank has zero coefficients where it does not
-    /// read a moment).
-    finite: bool,
-}
-
-impl Slots {
-    fn new(moments: &[[Complex<f64>; 4]], width: usize) -> Self {
-        let monomials = moments.len();
-        let mut re = Vec::with_capacity(width * monomials);
-        let mut im = Vec::with_capacity(width * monomials);
-        for slot in 0..width {
-            re.extend(moments.iter().map(|m| m[slot].re));
-            im.extend(moments.iter().map(|m| m[slot].im));
+/// `Σ_α c_α M_α` in the first `width` slots (finite, 1/ε, 1/ε², UV).
+fn contract(moments: &[[Complex<f64>; 4]], c: &[Complex<f64>], width: usize) -> Vec<Complex<f64>> {
+    let mut out = vec![Complex::new(0., 0.); width];
+    for (m, c) in moments.iter().zip(c) {
+        if c.re == 0. && c.im == 0. {
+            continue;
         }
-        let finite = re.iter().chain(&im).all(|x| x.is_finite());
-        Self {
-            re,
-            im,
-            monomials,
-            finite,
+        for (slot, value) in out.iter_mut().enumerate() {
+            *value += *c * m[slot];
         }
     }
-
-    /// `Σ_α c_α M_α` per slot of one lane's coefficients `c` (one per
-    /// monomial of the row). A row with a non-finite moment sums only the
-    /// terms of nonzero coefficients, in monomial order (the sequential
-    /// contraction: a moment the lane does not read never enters its value
-    /// as `0 · ∞`).
-    fn contract(&self, c: &[Complex<f64>]) -> Vec<Complex<f64>> {
-        debug_assert_eq!(c.len(), self.monomials);
-        let m = self.monomials;
-        if !self.finite {
-            return self
-                .re
-                .chunks_exact(m.max(1))
-                .zip(self.im.chunks_exact(m.max(1)))
-                .map(|(re, im)| {
-                    let mut sum = Complex::new(0., 0.);
-                    for ((c, &x), &y) in c.iter().zip(re).zip(im) {
-                        if c.re != 0. || c.im != 0. {
-                            sum += *c * Complex::new(x, y);
-                        }
-                    }
-                    sum
-                })
-                .collect();
-        }
-        self.re
-            .chunks_exact(m.max(1))
-            .zip(self.im.chunks_exact(m.max(1)))
-            .map(|(re, im)| dot(c, re, im))
-            .collect()
-    }
-}
-
-/// `Σ_α c_α (re_α + i im_α)` in four independent partial sums (the lanes of
-/// a vector unit: no reassociation inside a sum, so the compiler may
-/// vectorise them), added in a fixed order.
-fn dot(c: &[Complex<f64>], re: &[f64], im: &[f64]) -> Complex<f64> {
-    let n = c.len().min(re.len());
-    let mut acc = [[0f64; 2]; 4];
-    let full = n - n % 4;
-    for i in (0..full).step_by(4) {
-        for (j, acc) in acc.iter_mut().enumerate() {
-            let (a, b) = (c[i + j].re, c[i + j].im);
-            let (x, y) = (re[i + j], im[i + j]);
-            acc[0] += a * x - b * y;
-            acc[1] += a * y + b * x;
-        }
-    }
-    for (k, i) in (full..n).enumerate() {
-        let (a, b) = (c[i].re, c[i].im);
-        let (x, y) = (re[i], im[i]);
-        acc[k][0] += a * x - b * y;
-        acc[k][1] += a * y + b * x;
-    }
-    Complex::new(
-        (acc[0][0] + acc[1][0]) + (acc[2][0] + acc[3][0]),
-        (acc[0][1] + acc[1][1]) + (acc[2][1] + acc[3][1]),
-    )
+    out
 }
 
 /// The lane's term scale: `max_s Σ_α |c_α| |M_α[s]|` over its `width` slots.
@@ -1002,87 +907,4 @@ fn term_scale(moments: &[[Complex<f64>; 4]], c: &[Complex<f64>], width: usize) -
 /// basis (the fixed layout permutation, lit-spike-tir T3).
 pub fn layout_positions(rank: usize) -> RusticolResult<Vec<usize>> {
     Ok(Bin::new(1, rank)?.position)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The row-layout contraction is `Σ_α c_α M_α` per slot: equal to the
-    /// sequential sum to rounding of the term scale, at every monomial count
-    /// (the four partial sums' tail included) and width.
-    #[test]
-    fn the_row_layout_contraction_is_the_sum_of_its_terms() {
-        let value = |k: usize, s: usize| {
-            let x = ((k * 7 + s * 3) % 11) as f64 - 5.0;
-            Complex::new(x * 0.37 + 1e-3 * k as f64, 0.21 * (s as f64) - x * 0.11)
-        };
-        for monomials in [1usize, 3, 4, 5, 15, 35, 70, 126] {
-            let moments: Vec<[Complex<f64>; 4]> = (0..monomials)
-                .map(|k| [0, 1, 2, 3].map(|s| value(k, s)))
-                .collect();
-            let c: Vec<Complex<f64>> = (0..monomials).map(|k| value(k + 13, 7)).collect();
-            for width in 1..=4 {
-                let found = Slots::new(&moments, width).contract(&c);
-                assert_eq!(found.len(), width);
-                for (slot, z) in found.iter().enumerate() {
-                    let mut sum = Complex::new(0., 0.);
-                    let mut scale = 0.;
-                    for (m, c) in moments.iter().zip(&c) {
-                        sum += *c * m[slot];
-                        scale += complex(c) * complex(&m[slot]);
-                    }
-                    assert!(
-                        complex(&(*z - sum)) <= 4. * f64::EPSILON * scale,
-                        "{monomials} {width} {slot}: {z:?} vs {sum:?}"
-                    );
-                }
-            }
-        }
-    }
-
-    /// A non-finite moment enters only the lanes that read it: a lane with a
-    /// zero coefficient there keeps the sum of its other terms (the
-    /// sequential contraction's value), one that reads it is non-finite.
-    #[test]
-    fn a_non_finite_moment_reaches_only_the_lanes_reading_it() {
-        let one = Complex::new(1.0, 0.0);
-        let zero = Complex::new(0.0, 0.0);
-        let moments: Vec<[Complex<f64>; 4]> = (0..6)
-            .map(|k| {
-                let z = if k == 5 {
-                    Complex::new(f64::INFINITY, f64::NAN)
-                } else {
-                    Complex::new(0.5 + k as f64, -0.25 * k as f64)
-                };
-                [z, z * Complex::new(2.0, 1.0), one, zero]
-            })
-            .collect();
-        let slots = Slots::new(&moments, 4);
-        assert!(!slots.finite);
-        // A lower-rank lane: no coefficient on the last monomial.
-        let low: Vec<Complex<f64>> = (0..6)
-            .map(|k| {
-                if k == 5 {
-                    zero
-                } else {
-                    Complex::new(0.3 * k as f64 - 0.7, 0.1)
-                }
-            })
-            .collect();
-        let found = slots.contract(&low);
-        for (slot, z) in found.iter().enumerate() {
-            let mut sum = zero;
-            for (m, c) in moments.iter().zip(&low).take(5) {
-                sum += *c * m[slot];
-            }
-            assert_eq!((z.re, z.im), (sum.re, sum.im), "slot {slot}");
-        }
-        let mut high = low.clone();
-        high[5] = one;
-        let found = slots.contract(&high);
-        assert!(!found[0].re.is_finite() || !found[0].im.is_finite());
-        // Finite rows take the four-sum contraction.
-        assert!(Slots::new(&moments[..5], 4).finite);
-    }
 }
