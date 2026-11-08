@@ -403,6 +403,8 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         parameters). On any failure the directory keeps the ordinary code: correct
         but not recycled, which is the right way round to fail."""
         exporters = model_handling.OneProcessExporterMadMatrix._hr_warmups
+        axial = helas_call_writers.axial_gauge_requested(
+                            (getattr(self, 'opt', None) or {}).get('output_options'))
         # only this output's directories, whatever happens: the list is shared
         # by every exporter of the session
         mine = [e for e in exporters if self._is_own_dir(e.path)]
@@ -422,9 +424,17 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
                         'written without recycling.\n%s', name,
                         built.stdout.decode(errors='replace')[-1500:])
                     continue
-                # perf mode: 64 distinct RAMBO events, which the probe's
-                # good-helicity scan samples (matrix mode repeats ONE point)
+                # what the probe records is the good-helicity scan that
+                # umami_initialize runs (goodHelScanEvents: 64 RAMBO points
+                # under MG_HR_PROBE, half of them boosted, per crossing at its
+                # own masses) over every extended flavor id; any perf run
+                # triggers it
                 env = dict(os.environ, MG_DUMP_GOODHEL='1')
+                env.pop('MG_HR_EXACT_ZERO', None)
+                if axial:
+                    # the axial reference-vector zeros are a rounding residual
+                    # the collinear limit needs: drop exact zeros only
+                    env['MG_HR_EXACT_ZERO'] = '1'
                 run = subprocess.run([pjoin(dirpath, 'check_sa.exe'), 'perf',
                                       '1', '64', '1'],
                                      cwd=dirpath, env=env, stdout=subprocess.PIPE,
@@ -434,7 +444,16 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
                     logger.warning('hel_recycling warm-up run failed in %s; it is '
                                    'written without recycling.', name)
                     continue
-                good_hels, zero_perhel = self._parse_hel_warmup(output)
+                good_hels, zero_perhel, offshell = self._parse_hel_warmup(output)
+                if offshell:
+                    # its vanishing amplitudes were measured off shell, and the
+                    # recycled build has no fallback for one it dropped (a
+                    # crossing with no phase space at all is not scanned)
+                    logger.warning('hel_recycling warm-up has no points at the '
+                        'masses of crossing %s in %s (RAMBO did not converge); '
+                        'it is written without recycling.',
+                        ', '.join(str(k) for k in offshell), name)
+                    continue
                 if not good_hels:
                     logger.warning('hel_recycling warm-up found no helicity in %s; '
                                    'it is written without recycling.', name)
@@ -459,17 +478,20 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
 
     @staticmethod
     def _parse_hel_warmup(output):
-        """The good helicities (1-based rows of cHel) and the (row, amplitude)
+        """The good helicities (1-based rows of cHel), the (row, amplitude)
         pairs that vanish, as printed by sigmaKin_setGoodHel under MG_HR_PROBE --
-        the protocol madevent's helicity filter prints."""
-        good, zeros = [], []
+        the protocol madevent's helicity filter prints -- and the crossing rows
+        that were scanned on points off shell for them (HEL/OFFSHELL)."""
+        good, zeros, offshell = [], [], []
         for line in output.splitlines():
             if line.startswith('Matrix Element/Good Helicity:'):
                 good.append(int(line.split()[-1]))
             elif line.startswith('HEL/ZEROAMP:'):
                 _me, hel, amp = line.split()[1:4]
                 zeros.append((int(hel), int(amp)))
-        return sorted(set(good)), sorted(set(zeros))
+            elif line.startswith('HEL/OFFSHELL:'):
+                offshell.append(int(line.split()[1]))
+        return sorted(set(good)), sorted(set(zeros)), sorted(set(offshell))
 
     @staticmethod
     def _clean_warmup_build(dirpath, makeargs=(), added=()):
@@ -554,6 +576,8 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
         out = super().generate_subprocess_directory(matrix_element, cpp_helas_call_writer, proc_number)
         if not hasattr(self, 'processes_of_subprocess'):
             self.processes_of_subprocess = []
+        crossed, crossed_flavors = self.crossed_flavor_ids(
+            matrix_element, os.path.basename(self.process_info[-1]['path']))
         self.processes_of_subprocess.append((
             [[leg.get('id') for leg in process.get_legs_with_decays()]
              for process in matrix_element.get('processes')],
@@ -562,8 +586,42 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
             sorted(wf.get('number_external')
                    for wf in matrix_element.get_external_wavefunctions()
                    if wf.get('offshell')),
+            # the crossed processes folded onto this one (--use_crossing):
+            # listed nowhere else, and evaluated through the extended flavor
+            # index only
+            crossed, crossed_flavors,
             self.scale_dependence(matrix_element)))
         return out
+
+    def crossed_flavor_ids(self, matrix_element, proc_dir_name):
+        """The crossed processes folded onto matrix_element, as their leg ids
+        (decays expanded to their leaves, merged labels as they are), and
+        [extended flavor id, pdgs] for every pdg combination of theirs, the pdgs
+        in the leg order of the crossed process: the rows of the crossing table
+        (the one ProcessTables.h was written from, in the coupling-class
+        convention of the C++ flavor index, export_cpp get_crossing_table) that
+        serve them. No flavor id when the directory has no crossing machinery."""
+        folded = self.folded_crossed_processes(matrix_element)
+        legs = [[leg.get('id') for leg in process.get_legs_with_decays()]
+                for process in folded]
+        if not folded:
+            return legs, []
+        tables = pjoin(self.dir_path, 'SubProcesses', proc_dir_name, 'ProcessTables.h')
+        try:
+            with open(tables) as fsock:
+                if 'constexpr bool use_crossing = true;' not in fsock.read():
+                    return legs, []
+        except IOError:
+            return legs, []
+        crossing_all = str((self.opt.get('output_options') or {}).get(
+            'crossing_table', '')).lower() == 'all'
+        table = export_v4.ProcessExporterFortran.get_crossing_table(
+            self, matrix_element, 'classes', all_applicable=crossing_all)
+        nflav = len(matrix_element.get_external_flavors_with_iden())
+        # a decay-chain base records its crossings at the production level:
+        # the table's records carry their leaf ids
+        legs = [list(record.labels) for record in table.records]
+        return legs, [[a.index(nflav), list(a.pdgs)] for a in table.assignments()]
 
     @staticmethod
     def scale_dependence(matrix_element):
@@ -615,14 +673,25 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
         """SubProcesses/madmatrix_processes.json: per subprocess, its library
         (with the make variables LIBTAG, BACKEND and FPTYPE left as '{libtag}',
         '{backend}' and '{fptype}', as for the common library, common_library),
-        its legs, the processes it evaluates, its off-shell legs
-        and, per flavor index, every pdg combination (in the leg order of the
-        process) that this index stands for, and what of it depends on the
-        renormalisation scale beyond alpha_s (scale_dependence)."""
+        its legs, the processes it evaluates, its off-shell legs, the crossed
+        processes folded onto it, per flavor index, every pdg combination (in
+        the leg order of the process) that this index stands for and, for the
+        crossed processes, [extended flavor id, pdgs] for each of their pdg
+        combinations (crossed_flavors).
+
+        A crossed process is evaluated with an extended flavor index (crossing
+        row K of ProcessTables.h, K*nmaxflavor + flavor). Its selected
+        helicity is the crossed process's own code, but its colour-flow and
+        diagram indices number the BASE subprocess's flows and diagrams: decode
+        them through row K (see the note above umami_matrix_element in
+        umami.cc), as `output mg7` does.
+
+        It also lists what of a subprocess depends on the renormalisation scale
+        beyond alpha_s (scale_dependence)."""
         import json
         subprocesses = []
-        for info, (processes, offshell, scale) in zip(self.process_info,
-                                                      getattr(self, 'processes_of_subprocess', [])):
+        for info, (processes, offshell, crossed, crossed_flavors, scale) in zip(
+                self.process_info, getattr(self, 'processes_of_subprocess', [])):
             path = os.path.basename(info['path'])
             flavors = []
             for flavor in info['flavors']:
@@ -637,9 +706,11 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
                 'legs': list(info['incoming']) + list(info['outgoing']),
                 'processes': processes,
                 'offshell': offshell,
+                'crossed': crossed,
                 # what depends on MU_R besides alpha_s (scale_dependence)
                 'scale_dependence': scale,
-                'flavors': flavors})
+                'flavors': flavors,
+                'crossed_flavors': crossed_flavors})
         with open(pjoin(self.dir_path, 'SubProcesses', self.processes_file), 'w') as fsock:
             json.dump({'common_library': 'libmadmatrix_common{libtag}_%s_{backend}_{fptype}.so'
                                          % self.lib_model_name,

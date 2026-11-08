@@ -1716,7 +1716,7 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
                 if not foundG:
                     # Comment out the default UFO assignment of mdl_sqrt__aS (from aS) and of G (from mdl_sqrt__aS), but keep them for reference
                     # (WARNING! This Python CODEGEN code essentially assumes that this refers precisely and only to mdl_sqrt__aS and G)
-                    dcoupsetdpar.append( '    ' + line.replace('constexpr double', '//const fptype_sv') )
+                    dcoupsetdpar.append( '    ' + line.replace('constexpr double', '//const fptype_sv').replace('constexpr cxsmpl<double>', '//const cxtype_sv') )
                 ###elif pdep.name == 'mdl_G__exp__2' : # added for UFO mg5amcnlo#89 (complex in susy, should be double as in heft/smeft), now fixed
                 ###    # Hardcode a custom assignment (valid for both SUSY and SMEFT) instead of replacing double or complex by fptype in 'line'
                 ###    dcoupsetdpar.append('        const fptype_sv ' + pdep.name + ' = G * G;' )
@@ -1733,7 +1733,8 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
                         if ' ' + gpar + ' ' in line and not gpar in gparamcoded:
                             gparamcoded.add(gpar)
                             dcoupsetdpar.append('        const fptype_sv ' + gpar + ' = ' + gparameters[gpar] + ';' )
-                    dcoupsetdpar.append( '    ' + line.replace('constexpr double', 'const fptype_sv') )
+                    # A complex parameter (e.g. any sqrt-derived one under the complex-mass scheme) is per-event complex
+                    dcoupsetdpar.append( '    ' + line.replace('constexpr double', 'const fptype_sv').replace('constexpr cxsmpl<double>', 'const cxtype_sv') )
                 if pdep.name == 'G':
                     foundG = True
                     dcoupsetdpar.append('        // *** NB Compute all dependent parameters, including aS, in terms of G rather than in terms of aS ***')
@@ -1749,7 +1750,7 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
             # Special handling in EFT for fptype=float using SIMD
             dcoupoutfptypev2 = [ '      fptype_v %sr_v;\n      fptype_v %si_v;'%(name,name) for name in self.coups_dep ]
             replace_dict['dcoupoutfptypev2'] = ( '\n' if len(self.coups_dep) > 0 else '' ) + '\n'.join( dcoupoutfptypev2 )
-            replace_dict['dcoupsetdpar2'] = replace_dict['dcoupsetdpar'].replace('fptype_sv','fptype')
+            replace_dict['dcoupsetdpar2'] = replace_dict['dcoupsetdpar'].replace('fptype_sv','fptype').replace('cxtype_sv','cxtype')
             dcoupsetdcoup2 = [ '    ' + line.replace('constexpr cxsmpl<double> ','const cxtype ').replace('mdl_complexi', 'cI') for line in self.write_hardcoded_parameters(list(self.coups_dep.values())).split('\n') if line != '' ]
             dcoupsetdcoup2 += [ '        %sr_v[i] = cxreal( %s );\n        %si_v[i] = cximag( %s );'%(name,name,name,name) for name in self.coups_dep ]
             replace_dict['dcoupsetdcoup2'] = '  ' + '\n'.join( dcoupsetdcoup2 )
@@ -2239,6 +2240,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ('const int iParity', 'iParity'),
         ('const bool storeChannelWeights', 'storeChannelWeights'),
         ('const FLV_COUPLING_ARRAY<nIPF, nMF>& flvCOUPs', 'flvCOUPs'),
+        # (CDPF_ACCESS is HostAccessCouplings on the CPU, see calculate_jamps)
         ('const FLV_COUPLING_ARRAY<nDPF, nMF, HostAccessCouplings::flv_stride>&'
          ' flvCOUPs_dep', 'flvCOUPs_dep'),
         ('const fptype* cIPD', 'cIPD'),
@@ -2257,6 +2259,19 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         '    using CI_ACCESS [[maybe_unused]] = HostAccessCouplingsFixed;\n'
         '    using CDPF_ACCESS [[maybe_unused]] = HostAccessCouplings;\n'
         '    using F_ACCESS [[maybe_unused]] = HostAccessIflavorVec;\n')
+
+    # With crossing, the recycled calls also read the per-lane permuted momenta
+    # and NSF signs of the crossing preamble (see crossing_preamble_recycled)
+    HR_CHUNK_STATE_CROSSING = [
+        ('const fptype_momenta* xmom', 'xmom'),
+        ('const fptype_sv* icsign', 'icsign'),
+    ]
+
+    def hr_chunk_state(self):
+        """The (declaration, name) pairs a recycled chunk function takes."""
+        if getattr(self, 'use_crossing', False):
+            return self.HR_CHUNK_STATE + self.HR_CHUNK_STATE_CROSSING
+        return self.HR_CHUNK_STATE
 
     # Above this many statements of code (hr_count_statements: the tables of
     # the tabulated P1N groups do not count) the recycled block is declined and
@@ -2302,7 +2317,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         return sum(1 for line in calls.split('\n')
                    if line.split('//')[0].strip()
                    and not line.lstrip().startswith('static constexpr'))
-
     def hel_recycling_chunk_size(self, nstmt):
         """Statements per chunk for a block of `nstmt` statements (0: inline),
         from --hel_recycling_chunk if given."""
@@ -2353,13 +2367,14 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         per_chunk = self.hel_recycling_chunk_size(nstmt)
         if per_chunk <= 0 or nstmt <= per_chunk:
             return '', [], calls
+        state = self.hr_chunk_state()
         params = ',\n              '.join('[[maybe_unused]] ' + decl
-                                          for decl, _ in self.HR_CHUNK_STATE)
+                                          for decl, _ in state)
         # the declarations SigmaKin.cc sees leave the names out: there, cIPD &co
         # are its own tables
         types = ', '.join(re.sub(r'\b%s\b' % name, '', decl).strip()
-                          for decl, name in self.HR_CHUNK_STATE)
-        args = ', '.join(name for _, name in self.HR_CHUNK_STATE)
+                          for decl, name in state)
+        args = ', '.join(name for _, name in state)
         units, unit, unit_stmts, nchunks = [], [], 0, 0
         for chunk in self.hr_split_statements(lines, per_chunk):
             unit.append(chunk)
@@ -2406,11 +2421,13 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         so = export_v4.split_order_tables(self.matrix_elements[0])
         if so and so['nampso'] > 1:
             return 'split amplitude orders'
-        if getattr(self, 'use_crossing', False):
-            # the recycler reads the calls before the crossing preamble is
-            # threaded through them: a crossed lane would be evaluated as the
-            # base process, at momenta that are not its own
-            return 'folded crossings (output with --use_crossing=False to recycle)'
+        # A crossing that moves a massive leg into a slot of another mass is
+        # scanned by the warm-up on points of its own masses. One with no
+        # phase space there (a crossed decay lighter than its products) is
+        # never evaluated on shell and is not scanned, as in the fortran
+        # warm-up. When RAMBO finds no point for one that has phase space,
+        # the warm-up says so and the directory is written without recycling
+        # (_run_hel_recycling_warmups).
         return None
 
     @staticmethod
@@ -2532,6 +2549,10 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 os.path.basename(self.path), nstmt, len(kept), limit)
             return None
         decls, units, calls = self.hr_chunk_calls(calls.lstrip('\n'))
+        if getattr(self, 'use_crossing', False):
+            # after the cut, so that it stays in calculate_all_jamps and the
+            # chunks get its arrays as arguments
+            calls = self.helas_call_writer.crossing_preamble_recycled() + calls
         for stale in glob.glob(pjoin(self.path, self.HR_CHUNK_FILE.replace('%d', '*'))):
             os.remove(stale)
         for k, unit in enumerate(units):
@@ -2575,10 +2596,17 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             # Crossing symmetry: tell the helas writer to emit the per-event
             # momentum-permutation preamble + NSF-blended external calls. Read at
             # emission time and reset afterwards (the writer is reused across
-            # outputs, per the fortran/standalone_cpp lesson).
+            # outputs, per the fortran/standalone_cpp lesson). The calls the
+            # recycler reads need it as much as the ordinary ones: without it
+            # every crossed lane of the recycled build would be the base process.
             self.helas_call_writer.use_crossing_ic = getattr(self, 'use_crossing', False)
             self.helas_call_writer.hr_probe = recycle
             try:
+                if recycle:
+                    self._hr_calls = self.hr_orig_calls(color_amplitudes[0])
+                    if self not in OneProcessExporterMadMatrix._hr_warmups:
+                        OneProcessExporterMadMatrix._hr_warmups.append(self)
+                self.helas_call_writer.hr_probe = recycle
                 helas_calls = self.helas_call_writer.get_matrix_element_calls(\
                                                     self.matrix_elements[0],
                                                     color_amplitudes[0],
@@ -2750,10 +2778,34 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         # (zero placeholders and use_crossing=false when crossing is off).
         replace_dict['crossing_tables'] = \
             self.get_madmatrix_crossing_tables(self.matrix_elements[0])['crossing_tables']
+        replace_dict.update(self.get_good_helicity_tables(self.matrix_elements[0]))
 
         ff = open(pjoin(self.path, 'ProcessTables.h'), 'w')
         ff.write(template % replace_dict)
         ff.close()
+
+    @staticmethod
+    def get_good_helicity_tables(matrix_element):
+        """ProcessTables.h 'hel_massive' and 'hel_frame_leg', read by the
+        good-helicity scan (sigmaKin_getGoodHel). The scan points sit at a
+        fixed sqrt(s) (rambo::helicity_scan_points), where a row suppressed by
+        powers of m/E -- a helicity flip on a b quark at 1500 GeV -- looks
+        negligible, while near threshold it carries several % of |M|^2. So a
+        process with a massive external leg only drops exact zeros
+        (hel_massive), and the list is closed over the legs whose helicity
+        states mix under a boost (the C++ twin of the fortran warm-up's HMV,
+        export_v4 frame_dependent_helicity_legs). A crossing keeps the mass of
+        every base slot, so the base legs decide for every crossing."""
+        legs = export_v4.ProcessExporterFortranSA.frame_dependent_helicity_legs(
+            matrix_element)
+        ncol = len(next(iter(matrix_element.get_helicity_matrix())))
+        if len(legs) != ncol:
+            # a helicity table of another shape: close over every leg
+            legs = [True] * ncol
+        massive = any(str(wf.get('mass')).lower() != 'zero'
+                      for wf in matrix_element.get_external_wavefunctions())
+        return {'hel_massive': 'true' if massive else 'false',
+                'hel_frame_leg': ', '.join('1' if leg else '0' for leg in legs)}
 
     def _folded_crossing_flavorids(self, matrix_element):
         """Extended flavor ids (0-based, K*nmaxflavor + flav0) of the crossed
@@ -3270,6 +3322,23 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     # subprocess (see ProcessExporterMG7.generate_subprocess_directory): only
     # the identity could be asked for, and the plain path computes it.
     # ------------------------------------------------------------------
+    def crossing_rows_on_shell(self, matrix_element):
+        """Per crossing-table row, 1 when the points of the base process (its
+        masses, slot by slot: RAMBO in umami_initialize, check_sa) are on shell
+        for that crossing, i.e. input slot k and the base leg it is fed to
+        (D[k]) carry the same mass; 0 when a massive leg moves into a slot of
+        another mass. That happens with the recorded crossings of the default
+        mode too, whenever one process definition puts the massive particle on
+        both sides: `define q = g t t~; generate q q > q q` records g t > g t
+        on g g > t t~, and `define q = u u~; define x = g z; generate
+        q x > q x QED=1 QCD=1` records u z > u g on u g > u z.
+        --crossing_table=all adds more (p p > z j with the z moved into the
+        initial state). Such a row gets scan points of its own masses
+        (xmass_slot_tab, scan_points in umami.cc)."""
+        masses = [wf.get('mass') for wf in matrix_element.get_external_wavefunctions()]
+        return [int(all(masses[k] == masses[row.D[k]] for k in range(len(masses))))
+                for row in self.get_crossing_table(matrix_element)]
+
     def get_madmatrix_crossing_tables(self, matrix_element):
         """ProcessTables.h 'crossing_tables' and CPPProcess.cc 'flavorpdg_body'."""
 
@@ -3298,6 +3367,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 "    __device__ constexpr int xpinv_tab[ProcessData::npar] = %(identity)s;\n"
                 "    __device__ constexpr int xsgni_tab[ProcessData::npar] = %(ones)s;\n"
                 "    __device__ constexpr int xspincol_tab[ncross] = {};\n"
+                "    constexpr int xspincol_host_tab[ncross] = {};\n"
+                "    constexpr int xonshell_tab[ncross] = { 1 };\n"
+                "    constexpr int xmass_slot_tab[ProcessData::npar] = %(identity)s;\n"
                 "    __device__ constexpr int ids_base[ProcessData::npar] = {};\n"
                 "    __device__ constexpr int antipid_base[ProcessData::npar] = {};\n"
                 "    __device__ constexpr int countable_tab[ProcessData::npar] = {};\n"
@@ -3317,20 +3389,18 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         table = self.get_crossing_table(me)
 
         # Per-leg helicity states used to re-encode a crossed helicity config
-        # into its canonical code. allow_reverse=True is NOT optional: it is the
-        # order the cHel/tHel table itself is built in (get_helicity_matrix,
-        # allow_reverse=True) AND the order the fortran ENCODE_HEL STATES table
-        # uses (get_helicity_encoder_dict), which together define the canonical
-        # code. get_helicity_states reverses the list for an ANTIparticle leg,
-        # so with allow_reverse=False every such leg's digit lookup is off by one
+        # into its canonical code: the lists the cHel/tHel table itself is
+        # built from (get_helicity_matrix, allow_reverse=True), which are also
+        # the ones the fortran ENCODE_HEL STATES table uses
+        # (ProcessExporterFortran._helstate_data), so that the code IS the row
+        # of that table. allow_reverse=True is NOT optional:
+        # get_helicity_states reverses the list for an ANTIparticle leg, so
+        # with allow_reverse=False every such leg's digit lookup is off by one
         # state and the code comes out wrong: for u u~ > t t~ legs 1 and 4 give
-        # (+1,-1) not (-1,+1), and all 16 rows mis-encode. Like the fortran
-        # encoder this deliberately ignores wf['polarization'] -- the code space
-        # is the FULL mixed-radix space, a polarized leg simply never reaches
-        # its filtered-out digits.
-        pdict = me.get('processes')[0].get('model').get('particle_dict')
-        hstates = [pdict[wf.get('pdg_code')].get_helicity_states(True)
-                   for wf in me.get_external_wavefunctions()]
+        # (+1,-1) not (-1,+1), and all 16 rows mis-encode. A polarized leg
+        # never gets here (it breaks crossing symmetry), but its list would be
+        # the restricted one, exactly as in the table.
+        hstates = [list(s) for s in me.get_helicity_per_particle()]
         hnstate = [len(s) for s in hstates]
         maxhel = max(hnstate) if hnstate else 1
         # Per crossing row K and crossed slot k, the states its code digit runs
@@ -3363,6 +3433,18 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             "    __device__ constexpr int xsgni_tab[ncross * ProcessData::npar] = %(xsgni)s;\n"
             "    // initial-state spin*colour average of the crossed process\n"
             "    __device__ constexpr int xspincol_tab[ncross] = %(xspincol)s;\n"
+            "    // host copy of xspincol_tab: the GPU good-helicity scan skips a row\n"
+            "    // of 0 (a placeholder naming no process), as backend/cpu does\n"
+            "    constexpr int xspincol_host_tab[ncross] = %(xspincol)s;\n"
+            "    // 1 when the points of the base process are on shell for the row: no\n"
+            "    // massive leg moves into a slot of another mass (host only: picks the\n"
+            "    // good-helicity scan points of the row, scan_points in umami.cc, and\n"
+            "    // the --hel_recycling probe's off-shell list in SigmaKin.cc)\n"
+            "    constexpr int xonshell_tab[ncross] = %(xonshell)s;\n"
+            "    // host copy of xpinv_tab: input slot k of row K carries the mass of\n"
+            "    // base slot xmass_slot_tab[K*npar+k], the masses the good-helicity\n"
+            "    // scan makes the row's own points at (choose_good_helicities, umami.cc)\n"
+            "    constexpr int xmass_slot_tab[ncross * ProcessData::npar] = %(xpinv)s;\n"
             "    // per-leg flavor-group representative PDG, and its charge conjugate\n"
             "    __device__ constexpr int ids_base[ProcessData::npar] = %(ids_base)s;\n"
             "    __device__ constexpr int antipid_base[ProcessData::npar] = %(antipid_base)s;\n"
@@ -3381,6 +3463,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
              'xperm': arr(table.flat('B')), 'xsgn': arr(table.flat('SB')),
              'xpinv': arr(table.flat('D')), 'xsgni': arr(table.flat('SD')),
              'xspincol': arr(table.spincol(tables['spincol_part'])),
+             'xonshell': arr(self.crossing_rows_on_shell(me)),
              'ids_base': arr(tables['ids_base']),
              'antipid_base': arr(tables['antipid_base']),
              'countable': arr(tables['countable']),
@@ -3868,7 +3951,9 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         # Crossing symmetry: the per-event momentum permutation opens
         # EvaluateDiagrams.inc, i.e. it runs inside calculate_jamps right after
         # backend/<variant>/SigmaKin.cc has set up momenta/iflavor for the page
-        if getattr(self, 'use_crossing_ic', False):
+        # (not in the calls the recycler reads: it keeps calls only, and
+        # write_recycled opens the recycled block with its own copy)
+        if getattr(self, 'use_crossing_ic', False) and not self.hr_orig:
             res.append(self._crossing_preamble(matrix_element))
         diagrams = matrix_element.get('diagrams')
         diag_to_config = {}
@@ -4300,20 +4385,26 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
       int xperm[npar], xic[npar];
       cross_gather( (int)( iflavor_ext / (unsigned int)nmaxflavor ), xperm, xic );
 #else
-      // === CROSSING SYMMETRY: per-event momentum permutation (NOT vectorized) ===
+""" + self.CROSSING_GATHER_HEAD + """      // 2 scratch external wavefunctions for the per-event NSF-sign blend
+      fptype_momenta_sv pvec_x[2][np4];
+      cxtype_amp_sv w_x[2][nw6];
+      ALOHAOBJ aloha_x[2];
+      aloha_x[0] = ALOHAOBJ{ pvec_x[0], w_x[0] };
+      aloha_x[1] = ALOHAOBJ{ pvec_x[1], w_x[1] };
+""" + self.CROSSING_GATHER_LOOP + """#endif
+"""
+
+    # The per-lane gather of the crossing preamble (CPU/SIMD), in two pieces
+    # so that the recycled block (crossing_preamble_recycled) shares them
+    CROSSING_GATHER_HEAD = """      // === CROSSING SYMMETRY: per-event momentum permutation (NOT vectorized) ===
       // Each event's crossing-table row (cross_gather, the base-slot view):
       // base slot s takes the momentum of input slot xperm[s], NSF sign xic[s].
       // A row out of range gathers the identity; its denominator is 0.
       // (momenta precision: double for FPTYPE=v, see xblend)
       alignas( mgOnGpu::cppAlign ) fptype_momenta xmom[npar * np4 * neppV];
       fptype_sv icsign[npar];
-      // 2 scratch external wavefunctions for the per-event NSF-sign blend
-      fptype_momenta_sv pvec_x[2][np4];
-      cxtype_amp_sv w_x[2][nw6];
-      ALOHAOBJ aloha_x[2];
-      aloha_x[0] = ALOHAOBJ{ pvec_x[0], w_x[0] };
-      aloha_x[1] = ALOHAOBJ{ pvec_x[1], w_x[1] };
-      for( int ieppV = 0; ieppV < neppV; ++ieppV )
+"""
+    CROSSING_GATHER_LOOP = """      for( int ieppV = 0; ieppV < neppV; ++ieppV )
       {
         const int xcr = (int)( iflavorVec[ievt0 + ieppV] / nmaxflavor );
         int xperm[npar], xic[npar];
@@ -4327,8 +4418,14 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
           reinterpret_cast<fptype*>( &icsign[s] )[ieppV] = (fptype)xic[s];
         }
       }
-#endif
 """
+
+    def crossing_preamble_recycled(self):
+        """The crossing preamble of the recycled block (calculate_all_jamps,
+        CPU only): the same per-lane gather, without the blend scratch, which
+        each crossed external of the recycled calls declares for itself (see
+        _crossing_external_block, hr_orig)."""
+        return self.CROSSING_GATHER_HEAD + self.CROSSING_GATHER_LOOP
 
     def _crossing_external_block(self, wf, argument):
         """External HELAS call under crossing symmetry (C++/SIMD).
@@ -4345,30 +4442,57 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         get_amp downstream stays fully SIMD. Scalars carry no helicity, so
         their two calls only differ by the NSF flag. GPU: one event per
         thread, a direct call on the input slot xperm[s] with the helicity and
-        the NSF flag both times xic[s] (see _crossing_preamble)."""
+        the NSF flag both times xic[s] (see _crossing_preamble).
+
+        --axial_gauge: a vector with a reference leg is vxxxxxr, its gauge
+        vector the momentum at the reference's base slot (xmom slot ref on
+        the CPU, input slot xperm[ref] on the GPU), as the fortran writer
+        passes P(0,ref) of the crossed call."""
         routine = helas_call_writers.HelasCallWriter.mother_dict[
             argument.get_spin_state_number()].lower()
         routine = routine + 'x' * (6 - len(routine))
+        spin = argument.get('spin')
+        axial = spin == 3 and self.has_axial_gauge_ref(wf)
+        ref = self.get_axial_gauge_ref(wf) - 1 if axial else None
+        if axial:
+            routine = routine + 'r'
         routine = routine + '<M_ACCESS, W_ACCESS>'
         s = wf.get('number_external') - 1
         me = wf.get('me_id') - 1
-        spin = argument.get('spin')
         if spin == 1:
             nsf = (-1) ** (wf.get('state') == 'initial')
         elif argument.is_boson():
             nsf = (-1) ** (wf.get('state') == 'initial')
         else:
             nsf = - (-1) ** wf.get_with_flow('is_part')
-        mass = wf.get('mass')
+        # A leg marked off-shell ('*') takes the invariant mass of the
+        # momentum that lands in its base slot, as the uncrossed call
+        # (get_external_line) takes that of its own: crossing keeps the
+        # particle of a slot up to its antiparticle, and the mass of a
+        # momentum does not see the side flip. The flag is the slot's own
+        # (wf); a crossing records only partners whose '*' legs pair up
+        # (crossing_flavor_pairing). CPU: the gathered xmom slot s; GPU: the
+        # input slot xperm[s], whose momentum (the thread's own event) gives
+        # the invariant mass there too (backend/gpu/SigmaKin.cc).
+        offshell = spin != 1 and wf.get('offshell')
+        if offshell:
+            mass = 'offshell_mass<M_ACCESS>( m_pars->%s, xmom, %d )' % (wf.get('mass'), s)
+            gpu_mass = 'offshell_mass<M_ACCESS>( m_pars->%s, momenta, xperm[%d] )' % (wf.get('mass'), s)
+        else:
+            mass = gpu_mass = 'm_pars->%s' % wf.get('mass')
 
         def one_call(sign, obj, hel=None):
             if spin == 1:
                 call = '%s( xmom, %+d, cFlavors[iflavor][%d], %s, %d );' % \
                        (routine, sign, s, obj, s)
             else:
-                call = '%s( xmom, m_pars->%s, %s, %+d, cFlavors[iflavor][%d], %s, %d );' % \
-                       (routine, mass, hel, sign, s, obj, s)
+                call = '%s( xmom, %s, %s, %+d, cFlavors[iflavor][%d], %s, %d%s );' % \
+                       (routine, mass, hel, sign, s, obj, s,
+                        ', %d' % ref if axial else '')
             return self.format_coupling(call)
+
+        if self.hr_orig:
+            return self._crossing_external_orig(one_call, spin, s, me, nsf)
 
         hel = None if spin == 1 else 'hel_sv[%d]' % s
         lines = ['#ifndef MGONGPUCPP_GPUIMPL']
@@ -4388,11 +4512,42 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             gpu = '%s( momenta, %+d * xic[%d], cFlavors[iflavor][%d], aloha_obj[%d], xperm[%d] );' % \
                   (routine, nsf, s, s, me, s)
         else:
-            gpu = '%s( momenta, m_pars->%s, hel_sv[%d] * xic[%d], %+d * xic[%d], cFlavors[iflavor][%d], aloha_obj[%d], xperm[%d] );' % \
-                  (routine, mass, s, s, nsf, s, s, me, s)
+            gpu = '%s( momenta, %s, hel_sv[%d] * xic[%d], %+d * xic[%d], cFlavors[iflavor][%d], aloha_obj[%d], xperm[%d]%s );' % \
+                  (routine, gpu_mass, s, s, nsf, s, s, me, s,
+                   ', xperm[%d]' % ref if axial else '')
         lines.append('      ' + self.format_coupling(gpu))
         lines.append('#endif\n')
         return '\n'.join(lines)
+
+    def _crossing_external_orig(self, one_call, spin, s, me, nsf):
+        """The crossed external of _crossing_external_block in the form the
+        helicity recycler reads (hr_orig, CPU only): a head call it unfolds
+        like any external -- (+nsf, h) into the leg's own slot -- then a
+        //HREXT tail that CppDialect.render_external stamps after every copy,
+        ${hel} being the copy's helicity and ${out} its slot. The tail makes
+        the (-nsf, -h) call and keeps it on the lanes whose leg changed side
+        (icsign -1): the base row's all-outgoing configuration, so the one
+        good-helicity table serves every lane. It reaches the slot only through
+        aloha_obj (the chunk functions of a big block see nothing else) and
+        declares its own scratch."""
+        hel = None if spin == 1 else 'hel_sv[%d]' % s
+        tail_hel = None if spin == 1 else '-( ${hel} )'
+        out = 'aloha_obj[${out}]'
+        return '\n'.join([
+            one_call(nsf, 'aloha_obj[%d]' % me, hel),
+            '//HREXT %d' % s,
+            '      {',
+            '        fptype_momenta_sv _px[np4];',
+            '        cxtype_amp_sv _wx[nw6];',
+            '        ALOHAOBJ _ax{ _px, _wx };',
+            '        ' + one_call(-nsf, '_ax', tail_hel),
+            '        const fptype_sv _sp = ( icsign[%d] + (fptype)1. ) * (fptype)0.5;' % s,
+            '        const fptype_sv _sm = ( (fptype)1. - icsign[%d] ) * (fptype)0.5;' % s,
+            '        cxtype_amp_sv* _w = reinterpret_cast<cxtype_amp_sv*>( %s.w );' % out,
+            '        for( int _k = 0; _k < np4; _k++ ) %s.pvec[_k] = xblend( _sp, _sm, %s.pvec[_k], _px[_k] );' % (out, out),
+            '        for( int _k = 0; _k < nw6; _k++ ) _w[_k] = _sp * _w[_k] + _sm * _wx[_k];',
+            '      }',
+            '//HRENDEXT'])
 
     # AV - replace helas_call_writers.GPUFOHelasCallWriter method (improve formatting)
     # [GPUFOHelasCallWriter.format_coupling is called by GPUFOHelasCallWriter.get_external_line/generate_helas_call]

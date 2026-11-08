@@ -166,10 +166,12 @@ C     the MOMENTA -- it is also the NSF direction flag -- so
 C     slot XK gets P_IN(PERM(XK)) and NHEL_IN(XK), and a crossed
 C     leg is evaluated with the physical helicity NHEL_IN(XK) of
 C     the particle it has become. This is the view of a caller
-C     holding helicities of the crossed process
-C     (GET_DENSITY_IDX, GET_ALL_INTER_IDX, an f2py caller before
-C     GET_AMP). SMATRIX evaluates its own base table instead,
-C     through APPLY_CROSSING_ROWS.
+C     holding helicities of the crossed process per base slot
+C     (GET_DENSITY_IDX's table, an f2py caller before GET_AMP;
+C     GET_ALL_INTER_IDX takes them in the caller's leg order
+C     and gives base slot XK NHEL(PERM(XK)) itself). SMATRIX
+C     evaluates its own base table instead, through
+C     APPLY_CROSSING_ROWS.
       DO XR = 1, NROW
         DO XK = 1, NEXTERNAL
           NHEL(XK,XR) = NHEL_IN(XK,XR)
@@ -269,6 +271,34 @@ C     is GET_IDENT_CROSS.
         RETURN
       ENDIF
       %(proc_prefix)sGET_SPINCOL_CROSS = XSPINCOL(CROSS)
+
+      RETURN
+      END
+
+
+      INTEGER FUNCTION %(proc_prefix)sGET_HELAVG_CROSS(CROSS, BEAM)
+C     Helicity states of initial leg BEAM (1 or 2) of the
+C     process row CROSS crosses into, or of both for BEAM=0:
+C     the HELAVGFACTOR / BEAMS_HELAVGFACTOR of that process. A
+C     crossing that brings a massive vector or a scalar into
+C     the initial state changes it, so a single helicity code
+C     (SMATRIXHEL) or a polarised beam undoes this average,
+C     not the base process's.
+      IMPLICIT NONE
+      INTEGER NCROSS
+      PARAMETER (NCROSS=%(ncross)d)
+      INTEGER CROSS, BEAM, I
+      INTEGER XBEAMHEL(0:2*NCROSS-1)
+%(xbeamhel_data)s
+
+      %(proc_prefix)sGET_HELAVG_CROSS = 0
+      IF (CROSS .LT. 0 .OR. CROSS .GT. NCROSS-1) RETURN
+      IF (BEAM .EQ. 0) THEN
+        %(proc_prefix)sGET_HELAVG_CROSS = XBEAMHEL(2*CROSS)
+     &   * XBEAMHEL(2*CROSS+1)
+      ELSE IF (BEAM .EQ. 1 .OR. BEAM .EQ. 2) THEN
+        %(proc_prefix)sGET_HELAVG_CROSS = XBEAMHEL(2*CROSS+BEAM-1)
+      ENDIF
 
       RETURN
       END
@@ -379,19 +409,28 @@ C     in the same order, and SMATRIX evaluates a base row with
 C     the side-changing legs' helicities negated
 C     (APPLY_CROSSING_ROWS): the crossed leg's helicity H is
 C     base value SGNI(K)*H. An uncrossed index, or a CODE < 1
-C     (no helicity requested), comes back unchanged.
+C     (no helicity requested), comes back unchanged; so does a
+C     CODE above NCOMB, which names no row and answers 0, as
+C     in the expanded output.
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
       INTEGER    MAXHEL
       PARAMETER (MAXHEL=%(maxhel)d)
       INTEGER FLAV_IDX_IN, CODE, BCODE
       INTEGER PINV(NEXTERNAL), SGNI(NEXTERNAL), XF, I, K, R, B, V
+      INTEGER NC
       INTEGER DIG(NEXTERNAL)
       INTEGER NHSTATE(NEXTERNAL), STATES(MAXHEL,NEXTERNAL)
 %(nhstate_data)s
 %(states_data)s
       BCODE = CODE
       IF (CODE .LT. 1) RETURN
+C     the digit decoding below would wrap a code above NCOMB
+      NC = 1
+      DO K = 1, NEXTERNAL
+        NC = NC*NHSTATE(K)
+      ENDDO
+      IF (CODE .GT. NC) RETURN
       CALL %(proc_prefix)sGET_CROSS_PINV(FLAV_IDX_IN, PINV, SGNI, XF)
       R = CODE - 1
       DO K = NEXTERNAL, 1, -1
@@ -408,6 +447,37 @@ C     (no helicity requested), comes back unchanged.
         R = R*NHSTATE(K) + DIG(K)
       ENDDO
       BCODE = R + 1
+
+      RETURN
+      END
+
+      SUBROUTINE %(proc_prefix)sCROSS_NHEL_TABLE(FLAV_IDX_IN, NCOMB_IN,
+     & NHEL_OUT)
+C     The helicity table of the process FLAV_IDX_IN names, in
+C     its own leg order: column C holds the helicities of its
+C     OWN code C, the code SMATRIXHEL takes (the inverse of
+C     CROSS_HELCODE). Slot K carries base leg PINV(K), with the
+C     states of that leg in the same order, so an uncrossed
+C     index gives back the base table.
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INTEGER    MAXHEL
+      PARAMETER (MAXHEL=%(maxhel)d)
+      INTEGER FLAV_IDX_IN, NCOMB_IN
+      INTEGER NHEL_OUT(NEXTERNAL,NCOMB_IN)
+      INTEGER PINV(NEXTERNAL), SGNI(NEXTERNAL), XF, I, K, R, B, C
+      INTEGER NHSTATE(NEXTERNAL), STATES(MAXHEL,NEXTERNAL)
+%(nhstate_data)s
+%(states_data)s
+      CALL %(proc_prefix)sGET_CROSS_PINV(FLAV_IDX_IN, PINV, SGNI, XF)
+      DO C = 1, NCOMB_IN
+        R = C - 1
+        DO K = NEXTERNAL, 1, -1
+          B = PINV(K)
+          NHEL_OUT(K,C) = STATES(MOD(R, NHSTATE(B))+1, B)
+          R = R / NHSTATE(B)
+        ENDDO
+      ENDDO
 
       RETURN
       END

@@ -1,0 +1,6 @@
+#!/bin/sh
+# hipconfig of the host emulation of HIP: madmatrix.mk takes HIP_HOME from it
+case "$1" in
+    --rocmpath|--path) cd "$(dirname "$0")/.." && pwd ;;
+    *) echo "host emulation of HIP (.github/gpu_ci/host_hip)" ;;
+esac

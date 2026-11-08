@@ -29,9 +29,9 @@ CF2PY double precision, intent(in) :: SCALE2
 C     Crossing-aware twin of SMATRIXHEL. PROCINDEX is the
 C     1-based get_pdg_order slot of the matrix element and
 C     FLAV_IDX the extended flavor index (cross*NFLAV+flav) of
-C     the process to evaluate. A folded crossed subprocess is
-C     reachable only this way: it has no PDG entry of its own,
-C     and the FLAVOR array cannot carry a crossing.
+C     the process to evaluate, for a caller that resolved the
+C     crossing itself. SMATRIXHEL reaches a folded crossed
+C     subprocess by its PDG codes too (F77_CROSSED_SMATRIXHEL).
 
 CF2PY double precision, intent(in), dimension(0:3,npdg) :: p
 CF2PY integer, intent(in) :: procindex
@@ -78,13 +78,13 @@ CF2PY integer, intent(hide), depend(PDGS) :: NPDG = len(PDGS)
       SUBROUTINE %(f2py_prefix)sPY_GET_DENSITY_BATCH(PDGS, PROCID, P, POS, ALLOW_HEL, ALPHAS, SCALE2, NBATCH, NEXT, INTER, N_CHANGING, N_COMB, NPDG)
 C     PY_GET_DENSITY for NBATCH phase-space points in one call.
 C
-C     The density itself is cheap; crossing into fortran is not. MadSpin's
-C     max-weight scan evaluates hundreds of decay configurations against the
-C     same production event, so paying the f2py entry once per point dominated
-C     the cost. Everything is per point except POS/ALLOW_HEL, which describe
-C     the helicity structure and are shared: PDGS is per point because a decay
-C     pool mixes flavours, and ALPHAS/SCALE2 because nothing guarantees the
-C     points share a scale.
+C     The density is cheap; the f2py entry is not. The MadSpin
+C     max-weight scan tests hundreds of decay configurations
+C     against one production event, so one entry per point
+C     dominated the cost. All inputs are per point except
+C     POS/ALLOW_HEL (shared helicity structure): PDGS since a
+C     decay pool mixes flavours, ALPHAS/SCALE2 since points
+C     need not share a scale.
       IMPLICIT NONE
 CF2PY double precision, intent(in), dimension(0:3,next,nbatch) :: p
 CF2PY integer, intent(in), dimension(npdg,nbatch) :: pdgs
@@ -119,14 +119,21 @@ CF2PY integer, intent(hide), depend(PDGS) :: NPDG = len(PDGS)
       end
 
       SUBROUTINE %(f2py_prefix)sPY_GET_ALL_INTER(PDGS, PROCID, P, NHEL, POS, ALLOW_HEL, INTER, N_CHANGING, N_COMB, NPDG)
-C     PY_GET_DENSITY for ONE helicity of the legs not in POS: the
-C     interference terms between the N_COMB helicity combinations
-C     ALLOW_HEL of the legs POS, with every other leg at its NHEL
-C     helicity (the entries of NHEL at POS are ignored). Summed over
-C     those other helicities it gives PY_GET_DENSITY (unpolarised
-C     beams).
-C     No ALPHAS here: the couplings are the ones last set (INITIALISE,
-C     SMATRIXHEL or PY_GET_DENSITY).
+C     PY_GET_DENSITY for ONE helicity of the legs not in POS:
+C     the interference terms between the N_COMB helicity
+C     combinations ALLOW_HEL of the legs POS, every other leg
+C     at its NHEL helicity (NHEL at POS is ignored). Summed
+C     over the rows of the helicity table (<prefix>NHEL) it
+C     gives PY_GET_DENSITY for unpolarised beams.
+C     No ALPHAS here: the couplings are the ones last set
+C     (INITIALISE, SMATRIXHEL or PY_GET_DENSITY).
+C     P, POS and NHEL are all in the caller's leg order. As
+C     for PY_GET_DENSITY, same-code legs not in POS may come
+C     in any order inside the initial or the final state
+C     (each keeps its NHEL), a folded crossed subprocess is
+C     found by its PDG codes too (F77_CROSSED_GET_ALL_INTER),
+C     and PDGS that no process matches give NaN (with an
+C     ERROR line), not zeros.
       IMPLICIT NONE
 CF2PY double precision, intent(in), dimension(0:3,npdg) :: p
 CF2PY integer, intent(in), dimension(npdg) :: pdgs
