@@ -1023,3 +1023,28 @@ def test_rambo_points_are_on_shell_and_conserve_momentum():
         for k in range(4):
             total = sum(v[k] for v in point[:2]) - sum(v[k] for v in point[2:])
             assert abs(total) <= 1e-12 * 1000.0
+
+
+def test_fabc_check_needs_the_run_within_and_the_control_beyond(monkeypatch, tmp_path):
+    """LI-27 (Q13: numerical, never by rule): g g > a g's anchor asymmetry
+    within its bounds at every point and carrier, the control's beyond them
+    somewhere; a run beyond, or a control that never shows an f^abc part,
+    fails; the spec names the runs; LI-24's lambda_hhh scan is recorded not
+    run with its reason."""
+
+    def fake(asymmetry):
+        return {
+            c: {"points": [{"asymmetry": asymmetry, "bound": 1e-9}] * 2}
+            for c in lm.CARRIERS
+        }
+
+    values = {"li_gg_ag": 1e-12, "li_gg_zg": 1.0}
+    monkeypatch.setattr(lm, "anchor_asymmetry", lambda name, work: fake(values[name]))
+    check = lm.COLOUR["LI-27"]
+    assert set(check.values()) == set(values)
+    assert lm.fabc_check(tmp_path, check)["status"] == "pass"
+    values["li_gg_ag"] = 1e-6
+    assert lm.fabc_check(tmp_path, check)["status"] == "fail"
+    values.update(li_gg_ag=1e-12, li_gg_zg=1e-12)
+    assert lm.fabc_check(tmp_path, check)["status"] == "fail"
+    assert "lambda_hhh scan" in lm.UNRUN["LI-24"]

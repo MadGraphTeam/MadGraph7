@@ -303,5 +303,18 @@
     "ward/tirust/double-double": "not run: as the NinjaRS double-double Ward arm of this run (L4 in binary64 here)"
    }
   }
+ },
+ "colour_checks": {
+  "what": "§4.1 LI-27: the f^abc part of g g > a g (expected to vanish by C-parity) checked numerically, never removed by rule (Q13): per helicity row the difference of the two amplitude-basis anchors relative to their sum (Re(conj(a_t) (G a)_t), induced_observables: on a basis pair exchanged by the quark loop's orientation the difference is the d^abc-f^abc interference), at every fixture point, binary64 (within 10 x the point's relative estimate) and double-double (within the 1e-24 target); the control g g > z g (V_GGGZ: d + f) must exceed the same bounds (the check sees an f^abc part); the |f|^2 projection itself needs the loop amplitude's colour vector, which the public route does not serve",
+  "LI-27": {
+   "run": "li_gg_ag",
+   "control": "li_gg_zg"
+  }
+ },
+ "unrun_checks": {
+  "what": "§4.1 per-row checks lit-ref's manifest does not carry and lit-val does not run, with the reason (never dropped silently)",
+  "LI-24": {
+   "lambda_hhh scan": "not run: the campaign model (loop_qcd_qed_sm = MG5 loop_sm) has no external trilinear coupling (lam = MH^2/(2 v^2) is internal), so lambda_hhh cannot be scanned alone; no model with an independent kappa_lambda is in tools/loop_reference/li_campaign.json. The triangle-box cancellation and the threshold are li_gg_hh's runs and its stress points"
+  }
  }
 }
