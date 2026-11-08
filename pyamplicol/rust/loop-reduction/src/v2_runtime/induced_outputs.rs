@@ -961,7 +961,7 @@ impl V2Runtime {
         let arith = DecimalArith::new(precision.working_digits());
         match precision {
             V2Precision::Double => Err(invalid(
-                "binary64 loop-induced outputs are V2Runtime::evaluate_induced_call'",
+                "binary64 loop-induced outputs are V2Runtime::evaluate_induced_call",
             )),
             V2Precision::DoubleDouble => self.induced_call(
                 call,

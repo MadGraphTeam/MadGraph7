@@ -843,8 +843,8 @@ impl Runtime {
     /// its colour-contracted value or its amplitude-basis anchors) of a
     /// loop-induced process, through the one Rust path the Python API's
     /// binary64 path runs: only the selected rows are dressed (the
-    /// executor's row liveness). Without any selector and colour resolution
-    /// this is [`Runtime::evaluate`]. Refused (nothing evaluated): colour
+    /// executor's row liveness). Without any selector (and with the
+    /// contracted colour resolution) this is [`Runtime::evaluate`]. Refused (nothing evaluated): colour
     /// flows of a loop-induced process (full colour only, RULED Q8) and an
     /// unknown colour resolution, in the Python API's words (typed
     /// `Compatibility`); an unknown helicity ID (the Python API's words) or
@@ -1007,8 +1007,13 @@ impl Runtime {
                  helicity row below {rows}"
             )));
         }
-        if !resolved && kept.is_none() && selection.helicity_by_point.is_none() {
-            return self.evaluate_decimal(momenta, point_ids, scales, false, strategy);
+        if kept.is_none()
+            && selection.helicity_by_point.is_none()
+            && (!resolved || resolution == Resolution::Contracted)
+        {
+            // Nothing selected: the ordinary or resolved call
+            // (`rusticol_virtual_evaluate`), its records included.
+            return self.evaluate_decimal(momenta, point_ids, scales, resolved, strategy);
         }
         let inputs = self.prepare_inputs(momenta, point_ids, scales)?;
         if let Some(strategy) = strategy {

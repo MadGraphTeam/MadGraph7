@@ -273,8 +273,10 @@ int rusticol_virtual_result_decimal_json(const rusticol_virtual_result *, char *
  *   library lacks is refused by the call (as rusticol_virtual_evaluate's);
  *   diagnostics "selection": {"helicity_ids": per point the selected h<i>}
  *   for an ordinary selected call.
- * Born-interfered processes: a NULL selection (or one without selectors and
- * colour resolution) is rusticol_virtual_evaluate; a color_resolution is
+ * Every process: a NULL selection, or one without selectors whose
+ * color_resolution is NULL or "contracted", is rusticol_virtual_evaluate
+ * (values and diagnostics, its monitoring included).
+ * Born-interfered processes: a color_resolution is
  * refused with the Python API's text; selectors at NLC and full colour with
  * its text; a leading-colour selection is served by the Python API only (both
  * RUSTICOL_VIRTUAL_RUNTIME_ERROR). */

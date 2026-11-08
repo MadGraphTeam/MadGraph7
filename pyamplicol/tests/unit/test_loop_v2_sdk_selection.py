@@ -538,6 +538,37 @@ def test_c_abi_selections_on_fresh_points_equal_the_python_api(
         sdk.rusticol_virtual_free(handle)
 
 
+def _outputs(sdk, function, handle, request, *selection) -> dict:
+    """One call's statuses, value bits, axes and diagnostics."""
+
+    result = ctypes.c_void_p()
+    status = function(handle, ctypes.byref(request), *selection, ctypes.byref(result))
+    assert status == 0, _error(sdk)
+    try:
+        shape = _ResultShape()
+        assert sdk.rusticol_virtual_result_shape(result, ctypes.byref(shape)) == 0
+        loop = (ctypes.c_double * max(shape.virtual_values, 1))()
+        statuses = (ctypes.c_uint32 * max(request.point_count, 1))()
+        assert (
+            sdk.rusticol_virtual_result_copy_virtual(result, loop, shape.virtual_values)
+            == 0
+        )
+        assert (
+            sdk.rusticol_virtual_result_copy_statuses(
+                result, statuses, request.point_count
+            )
+            == 0
+        )
+        return {
+            "virtual": [_bits(x) for x in list(loop)[: shape.virtual_values]],
+            "statuses": list(statuses)[: request.point_count],
+            "axes": _json(sdk.rusticol_virtual_result_axes_json, result),
+            "diagnostics": _json(sdk.rusticol_virtual_result_diagnostics_json, result),
+        }
+    finally:
+        sdk.rusticol_virtual_result_free(result)
+
+
 def test_c_abi_selection_refusals(artifacts):
     """Every invalid selection is refused before any evaluation (no result
     written), in the Python API's words where it has them."""
@@ -596,19 +627,34 @@ def test_c_abi_selection_refusals(artifacts):
             found = _call(sdk, handle, points, scales, **selectors)
             assert found["status"] == status, (selectors, found)
             assert message in found["error"], (selectors, found["error"])
-        # A NULL selection is the ordinary evaluation.
+        # No selector (a NULL selection, an empty one, or only the contracted
+        # resolution) is rusticol_virtual_evaluate, ordinary and resolved:
+        # values, statuses, axes and diagnostics (the monitoring and the
+        # cross-backend record included).
+        from tests.unit.test_loop_v2_sdk_stability import _set
+
+        assert _set(sdk, handle, 1, None, True, True, True) == 0
         flat = [c for point in points for p in point for c in p]
         momenta = (ctypes.c_double * len(flat))(*flat)
         mu = (ctypes.c_double * len(scales))(*scales)
-        request = _Request(momenta, len(flat), len(points), None, mu, len(scales))
-        result = ctypes.c_void_p()
-        assert (
-            sdk.rusticol_virtual_evaluate_selected(
-                handle, ctypes.byref(request), None, ctypes.byref(result)
-            )
-            == 0
-        )
-        sdk.rusticol_virtual_result_free(result)
+        for resolved in (0, 1):
+            request = _Request(momenta, len(flat), len(points), None, mu, len(scales))
+            request.resolved = resolved
+            ordinary = _outputs(sdk, sdk.rusticol_virtual_evaluate, handle, request)
+            assert ordinary["diagnostics"]["stability"]["estimates"] or resolved
+            empty = _Selection()
+            contracted = _Selection()
+            contracted.color_resolution = b"contracted"
+            for selection in (None, empty, contracted)[: 3 if resolved else 2]:
+                found = _outputs(
+                    sdk,
+                    sdk.rusticol_virtual_evaluate_selected,
+                    handle,
+                    request,
+                    None if selection is None else ctypes.byref(selection),
+                )
+                assert found == ordinary, (resolved, selection)
+        assert _set(sdk, handle, 0, None, False, False, False) == 0
     finally:
         sdk.rusticol_virtual_free(handle)
 

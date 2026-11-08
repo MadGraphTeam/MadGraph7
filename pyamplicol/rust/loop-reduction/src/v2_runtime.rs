@@ -633,6 +633,51 @@ impl Runner {
         Complex<T>: Real + EvaluationDomain,
         TreeRuntime<T>: Send,
     {
+        self.bind_and_fill(
+            precision,
+            lanes,
+            values,
+            scales,
+            zero,
+            |trees, runtime, plan, bound| {
+                trees.inputs_with(
+                    runtime,
+                    plan,
+                    &bound.trees,
+                    incoming,
+                    &bound.constants,
+                    poles,
+                    sources,
+                    zero,
+                )
+            },
+        )
+    }
+
+    /// The tree runtime of `precision` (formed once) and the executor of
+    /// `lanes`: the batch's parameters bound, then its tree inputs formed by
+    /// `inputs` (the program, the runtime, the plan, the bound parameters),
+    /// both on the executor's pool ([`Runner::fill`], [`Runner::fill_live`]).
+    fn bind_and_fill<T: Native, F>(
+        &mut self,
+        precision: V2Precision,
+        lanes: usize,
+        values: &[Rational],
+        scales: &[Rational],
+        zero: &T,
+        inputs: F,
+    ) -> RusticolResult<(BoundParameters<T>, TreeInputs<T>)>
+    where
+        Complex<T>: Real + EvaluationDomain,
+        TreeRuntime<T>: Send,
+        F: FnOnce(
+                &TreeProgram,
+                &mut TreeRuntime<T>,
+                &LoopProgramV4,
+                &BoundParameters<T>,
+            ) -> RusticolResult<TreeInputs<T>>
+            + Send,
+    {
         self.executor(lanes)?;
         if !self.runtimes.contains_key(&precision) {
             let runtime = self.trees.runtime(zero)?;
@@ -647,16 +692,7 @@ impl Runner {
         let trees = &self.trees;
         executor.install(|| -> RusticolResult<_> {
             let bound = trees.bind(runtime, values, scales, zero)?;
-            let inputs = trees.inputs_with(
-                runtime,
-                executor.plan(),
-                &bound.trees,
-                incoming,
-                &bound.constants,
-                poles,
-                sources,
-                zero,
-            )?;
+            let inputs = inputs(trees, runtime, executor.plan(), &bound)?;
             Ok((bound, inputs))
         })
     }
@@ -727,36 +763,29 @@ impl Runner {
                 precision, lanes, values, scales, incoming, poles, None, zero,
             );
         };
-        self.executor(lanes)?;
-        if !self.runtimes.contains_key(&precision) {
-            let runtime = self.trees.runtime(zero)?;
-            self.runtimes.insert(precision, Box::new(runtime));
-        }
-        let runtime = self
-            .runtimes
-            .get_mut(&precision)
-            .and_then(|runtime| runtime.downcast_mut::<TreeRuntime<T>>())
-            .ok_or_else(|| invalid("a tree runtime of another carrier"))?;
-        let executor = &self.executors[&lanes];
-        let trees = &self.trees;
-        executor.install(|| -> RusticolResult<_> {
-            let bound = trees.bind(runtime, values, scales, zero)?;
-            let chunk = trees.fill_points::<T>(incoming.len(), false, TREE_FILL_BUDGET);
-            let inputs = trees.inputs_chunked(
-                runtime,
-                executor.plan(),
-                &bound.trees,
-                incoming,
-                &bound.constants,
-                poles,
-                None,
-                None,
-                chunk,
-                Some(tree_rows),
-                zero,
-            )?;
-            Ok((bound, inputs))
-        })
+        self.bind_and_fill(
+            precision,
+            lanes,
+            values,
+            scales,
+            zero,
+            |trees, runtime, plan, bound| {
+                let chunk = trees.fill_points::<T>(incoming.len(), false, TREE_FILL_BUDGET);
+                trees.inputs_chunked(
+                    runtime,
+                    plan,
+                    &bound.trees,
+                    incoming,
+                    &bound.constants,
+                    poles,
+                    None,
+                    None,
+                    chunk,
+                    Some(tree_rows),
+                    zero,
+                )
+            },
+        )
     }
 
     /// [`Runner::evaluate`] of a call with a row liveness
