@@ -387,12 +387,23 @@ def test_explicit_tirust_levels_are_refused_before_any_point(loop_native, monkey
 
     from pyamplicol import ReductionUnavailable
     from pyamplicol.api.virtual_results import VirtualRescueLevel, VirtualRescuePolicy
+    from pyamplicol.loops.v2.reduction import SUMMED
 
     served = _tirust(loop_native)
-    if "double-double" in served:
-        pytest.skip("this native extension serves TIRust at double-double")
     runtime, points, scales = _load(_li())
     backend = runtime._backend
+    if "double-double" in served:
+        # After lit-tir-mp (capability-driven, never a skip: the CI loop tier
+        # admits none): the explicit double-double level resolves to TIRust.
+        own = VirtualRescuePolicy(
+            (
+                VirtualRescueLevel("double", reduction="ninjars"),
+                VirtualRescueLevel("double-double", reduction="tirust"),
+            )
+        )
+        found = backend._reduction_choices(None, None, None, own, SUMMED)
+        assert found[own.levels[1]].effective == "tirust"
+        return
 
     def never(*_args, **_kwargs):
         raise AssertionError("a point was evaluated")
@@ -473,7 +484,10 @@ def test_the_cross_backend_check_is_refused_where_the_other_backend_is_not(
     from pyamplicol.api.virtual_results import VirtualStabilityChecks
 
     if "double-double" in _tirust(loop_native):
-        pytest.skip("this native extension serves TIRust at double-double")
+        # After lit-tir-mp the check is admitted at double-double; that is
+        # asserted by test_double_double_tir_levels_stay_on_tir_after_lit_tir_mp
+        # (never a skip here: the CI loop tier admits none).
+        return
     runtime, points, scales = _load(_li())
     monkeypatch.setattr(
         runtime._backend,
@@ -709,9 +723,20 @@ def test_double_double_tir_levels_stay_on_tir_after_lit_tir_mp(loop_native):
     )
     from pyamplicol.loops.v2.stability import CROSS
 
-    if "double-double" not in _tirust(loop_native):
-        pytest.skip(f"{WAITS}: TIRust does not serve double-double in this native")
     runtime, points, scales = _load(_li())
+    if "double-double" not in _tirust(loop_native):
+        # Before lit-tir-mp (capability-driven, never a skip: the CI loop tier
+        # admits none): the explicit TIRust double-double level is refused
+        # typed; the full check below runs once the native serves it.
+        from pyamplicol import ReductionUnavailable
+
+        policy = _forced(
+            VirtualRescueLevel("double", reduction="ninjars"),
+            VirtualRescueLevel("double-double", reduction="tirust"),
+        )
+        with pytest.raises(ReductionUnavailable, match="double-double"):
+            runtime.evaluate(points, mu_r2=scales, stability=policy)
+        return
     found = {}
     for backend in ("tirust", "ninjars"):
         policy = _forced(

@@ -2272,6 +2272,34 @@ def test_report_builder_loop_induced_table_markers_backend_floor_and_reports(
     write_manifest(runs)
     with pytest.raises(ValueError, match="two production timings of madloop"):
         build()
+    # A provider whose record excludes its values as a reference: timed and
+    # shown with its match open (lit-perf's call); where it is the fastest,
+    # the ratio to the fastest other provider beside the cell (no choice).
+    excluded = timing_record(
+        "excluded.json",
+        madloop=ml(0.04),
+        openloops={"median_seconds_per_point": 0.01},
+        recola={"median_seconds_per_point": 0.004, "values_excluded": "widths"},
+    )
+    runs["gg_hh"] = [run("gg_hh", [excluded])]
+    write_manifest(runs)
+    (data / "li-timing.json").write_text(json.dumps(timing))
+    rows, out = build()
+    prov = rows["gg_hh"]["providers"]
+    assert prov["providers"]["recola"]["match"] == builder.LI_MATCH_OPEN
+    assert prov["providers"]["recola"]["values_excluded"] == "widths"
+    assert "match" not in prov["providers"]["openloops"]
+    assert prov["fastest"]["key"] == "recola"
+    assert prov["fastest"]["match"] == builder.LI_MATCH_OPEN
+    assert prov["fastest_settled"]["key"] == "openloops"
+    hh = rows["gg_hh"]["timing"]
+    assert hh["ratio_to_fastest"] == pytest.approx(0.002 / 0.004)
+    assert hh["ratio_to_fastest_settled"] == pytest.approx(0.002 / 0.01)
+    drawn = {f["key"]: f for f in builder.li_figure(out, 1.3)["rows"]}
+    assert drawn["gg_hh"]["match_open"] == ["Recola"]
+    assert drawn["gg_hgg"]["match_open"] == []
+    assert "fastest_settled" not in rows["gg_hgg"]["providers"]
+    assert "ratio_to_fastest_settled" not in rows["gg_hgg"]["timing"]
     runs["gg_hh"] = [run("gg_hh", [production, opp])]
     write_manifest(runs)
     # The batch is chosen before the backend: TIRust timed at B = 1 only and
@@ -2458,6 +2486,154 @@ def test_report_builder_figure_one_draws_loop_induced_rows_with_a_time_and_a_pro
     committed = json.loads((data / "summary-li.json").read_text())
     factor = json.loads((data / "summary.json").read_text())["meta"]["gate_factor"]
     assert committed["figure"] == builder.li_figure(committed, factor)
+
+
+def test_report_builder_loop_induced_cell_is_the_auto_record_never_a_failed_one(
+    tmp_path,
+):
+    """The loop-induced cell is the record of the backend "auto" serves at
+    the row's newest revision (m-lit DECISIONS 2026-11-07 21:50 R9: "auto"
+    is NinjaRS until lit-cache's switch), whatever the registry's default
+    and whichever backend is faster; it is never a record with failed
+    points: a TIRust call that fails points closed (ruling 17:20 (d)) is
+    timed whole, carries no time per point and is shown beside the cell
+    with its served fraction and recorded causes only, its time per point
+    only where it served every point; an "auto" record that failed points
+    leaves the row a marker, never another backend's record; a refused
+    request is named with its reason. Inconsistent records are refused:
+    an explicit request run on another backend, a time per point on a
+    record with failed points, a served fraction its failed points do not
+    give. The figure draws the cell's backend only."""
+
+    import json
+
+    builder = _report_builder()
+    ms = _loop_induced_milestone(_loop_induced_registry())
+    data = tmp_path / "data"
+    data.mkdir()
+    gen = {"seconds": 12.0, "probes_seconds": 3.0, "peak_gib": 0.5}
+    ruling_d = "ruling (d): conditioning-gate refusals, method choice off"
+
+    def rec(key, requested, backend, *, failed=None, seconds=None, **extra):
+        r = {
+            "key": key,
+            "revision": "bbbbbbbb",
+            "requested": requested,
+            "backend": backend,
+            "effective": backend,
+            "batch": 128,
+            "host": "testhost",
+            "failed_points": failed or [0] * 7,
+            "source": f"test/{key}",
+            **extra,
+        }
+        if seconds is not None:
+            r["seconds_per_point"] = seconds
+        if failed and any(failed):
+            r["served_fraction"] = 1 - sum(failed) / (128 * len(failed))
+            r["whole_call_seconds_per_point"] = 0.001
+        return r
+
+    auto = "auto: NinjaRS; TIRust ... on explicit request"
+    records = [
+        rec("gg_hh", "auto", "ninjars", seconds=0.002, generation=gen, reason=auto),
+        rec(
+            "gg_hh", "tirust", "tirust", failed=[43] * 7, failure_causes={ruling_d: 43}
+        ),
+        rec("gg_hgg", "auto", "ninjars", seconds=0.04, generation=gen, reason=auto),
+        rec(
+            "gg_hgg",
+            "tirust",
+            "tirust",
+            failed=[128] * 7,
+            failure_causes={ruling_d: 128},
+        ),
+        # TIRust faster and served: the cell stays "auto"'s.
+        rec("gg_zzg", "auto", "ninjars", seconds=0.5, generation=gen, reason=auto),
+        rec("gg_zzg", "tirust", "tirust", seconds=0.4),
+        # "auto" itself failed points: a marker, not the served TIRust record.
+        rec(
+            "gg_hhh",
+            "auto",
+            "ninjars",
+            failed=[3] * 7,
+            generation=gen,
+            failure_causes={"a lane status": 3},
+        ),
+        rec("gg_hhh", "tirust", "tirust", seconds=0.01),
+        rec("gg_zzz", "auto", "ninjars", seconds=0.3, generation=gen, reason=auto),
+        rec("gg_zzz", "tirust", "tirust", refused="ReductionUnavailable: rank"),
+    ]
+    (data / "li-timing.json").write_text(json.dumps({"records": records}))
+    recency = builder.Recency(tmp_path, ms["ancestry"])
+    out = builder.build_loop_induced(ms, recency, data=data, repo=tmp_path)
+    rows = {r["key"]: r for g in out["groups"] for r in g["rows"]}
+
+    hgg = rows["gg_hgg"]["timing"]
+    assert hgg["status"] == "measured" and hgg["backend"] == "ninjars"
+    assert hgg["backend_label"] == "NinjaRS per amplitude"
+    assert hgg["requested"] == "auto" and hgg["reason"] == auto
+    assert hgg["seconds_per_point"] == 0.04 and not hgg["default_backend"]
+    other = hgg["other_backend"]
+    assert other["status"] == "failed closed" and other["every_point"]
+    assert other["failed_points"] == [128, 128] and other["served_fraction"] == 0.0
+    assert other["causes"] == {ruling_d: 128} and "seconds_per_point" not in other
+    assert other["label"] == f"failed closed on every point (128/128), {ruling_d}"
+    assert rows["gg_hgg"]["generation"]["seconds"] == 15.0
+    hh = rows["gg_hh"]["timing"]["other_backend"]
+    assert hh["failed_points"] == [43, 43] and not hh["every_point"]
+    assert hh["served_fraction"] == pytest.approx(85 / 128)
+    assert hh["label"] == f"43/128 failed closed, {ruling_d}"
+    zzg = rows["gg_zzg"]["timing"]
+    assert zzg["backend"] == "ninjars" and zzg["seconds_per_point"] == 0.5
+    assert zzg["other_backend"] == {
+        "backend": "tirust",
+        "backend_label": "TIRust",
+        "requested": "tirust",
+        "status": "served",
+        "served_fraction": 1.0,
+        "label": "128/128",
+        "seconds_per_point": 0.4,
+    }
+    hhh = rows["gg_hhh"]["timing"]
+    assert hhh["status"] == "failed closed" and hhh["requested"] == "auto"
+    assert hhh["failed_points"] == [3, 3] and "seconds_per_point" not in hhh
+    assert rows["gg_hhh"]["generation"]["status"] == "measured"
+    zzz = rows["gg_zzz"]["timing"]["other_backend"]
+    assert zzz["status"] == "refused" and zzz["reason"] == "ReductionUnavailable: rank"
+    figure = builder.li_figure(out, 1.3)
+    assert all(f["backend_label"] != "TIRust" for f in figure["rows"])
+
+    def refused(record, match):
+        (data / "li-timing.json").write_text(json.dumps({"records": [record]}))
+        with pytest.raises(ValueError, match=match):
+            builder.build_loop_induced(ms, recency, data=data, repo=tmp_path)
+
+    # A row not generated or timed: its measured reason on both cells; the
+    # run stopped before its request was resolved names no backend.
+    why = "generation beyond the 45-min rule (probes running at 45 min)"
+    stopped = rec("gg_zzz", "auto", "ninjars", missing=why)
+    del stopped["backend"], stopped["effective"], stopped["failed_points"]
+    (data / "li-timing.json").write_text(json.dumps({"records": [stopped]}))
+    out = builder.build_loop_induced(ms, recency, data=data, repo=tmp_path)
+    rows = {r["key"]: r for g in out["groups"] for r in g["rows"]}
+    zzz = rows["gg_zzz"]
+    assert zzz["timing"]["status"] == zzz["generation"]["status"] == "not run"
+    assert zzz["timing"]["reason"] == zzz["generation"]["reason"] == why
+    assert zzz["timing"]["requested"] == "auto"
+    assert zzz["timing"]["effective"] == "not resolved"
+    assert "backend" not in zzz["timing"]
+    assert zzz["timing"]["source"] == "li-timing.json records[gg_zzz, auto, bbbbbbbb]"
+    refused(rec("gg_zzz", "auto", "ninjars", missing=why), "resolved no backend")
+    refused(rec("gg_hgg", "tirust", "ninjars", seconds=0.04), "was requested but")
+    refused(
+        rec("gg_hgg", "tirust", "tirust", failed=[1] * 7, seconds=0.04),
+        "has no time per point",
+    )
+    refused(rec("gg_hgg", "tirust", "tirust"), "without its time per point")
+    bad = rec("gg_hgg", "tirust", "tirust", failed=[64] * 7)
+    bad["served_fraction"] = 1.0
+    refused(bad, "served fraction")
 
 
 def test_madloop_columns_share_the_production_run_setup(tmp_path, monkeypatch):
