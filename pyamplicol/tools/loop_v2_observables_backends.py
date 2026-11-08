@@ -57,10 +57,11 @@ count for neither). The check exits 0 when every output passes, 1 when one fails
 the NinjaRS arm itself does not run), and 2 when the TIRust arm was not
 exercised: TIRust does not serve the loop-induced observable calls yet
 (``reduction.ReductionUnavailable``: the RESOLVED route or the executor's
-``runs(reduction=)`` not wired, m-lit LIT-TIR), it fails points closed (in
-binary64 a row its conditioning gates refuse, its method choice being off
-until m-lit LIT-TIR-MP: the outputs of the points it serves are compared
-and the failed ones recorded, ``tirust_failed``), a result names another
+``runs(reduction=)`` not wired, m-lit LIT-TIR), it fails points closed (a
+row its conditioning gates refuse, in binary64 also after its method choice
+and the method choice's acceptance check, m-lit LIT-TIR-MP: the outputs of
+the points it serves are compared and the failed ones recorded,
+``tirust_failed``), a result names another
 effective backend, or the arms agree bitwise on a row (``bitwise_equal``).
 Every row is run either way. It writes one JSON record
 (``--output``) with every comparison.

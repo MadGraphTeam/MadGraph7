@@ -660,8 +660,8 @@ class Runtime:
         process, falling back to NinjaRS with the reason recorded (for now
         ``"auto"`` keeps NinjaRS for loop-induced processes too, until the
         two backends' agreement there is established; ``"tirust"`` is served
-        on request in binary64); an explicit backend that cannot serve the
-        call is refused. The requested and
+        on request in every arithmetic); an explicit backend that cannot
+        serve the call is refused. The requested and
         effective backends and the reason are in every lane diagnostic
         (``VirtualLaneDiagnostic.reduction``).
         """

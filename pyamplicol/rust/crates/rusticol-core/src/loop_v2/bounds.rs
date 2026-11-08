@@ -44,12 +44,13 @@ pub fn check_legs(legs: usize) -> Result<u64, String> {
 pub enum Reducer {
     /// NinjaRS (integrand reduction): rank <= N + 2 ([`ninjars::RankClass`]).
     NinjaRs = 0,
-    /// TIRust (tensor-integral reduction). Its own capability is what its
-    /// plan construction serves (the TIR backend refuses typed with
-    /// TIRust's reason); until artifacts admit families beyond rank N + 2
-    /// (m-lit `lit-eft`: TIR-only artifacts) its families are held to the
-    /// artifacts' admission, NinjaRS's, so that every artifact serves both
-    /// backends.
+    /// TIRust (tensor-integral reduction). Its own capability is TIRust's
+    /// capability query, read by the TIR backend after this admission
+    /// (`rusticol_loop_reduction::v2_tir::capability_refusal`; the
+    /// generator's `runtime::rank_refusal`), never a bound of this crate;
+    /// until artifacts admit families beyond rank N + 2 (m-lit `lit-eft`:
+    /// TIR-only artifacts) its families are held to the artifacts'
+    /// admission, NinjaRS's, so that every artifact serves both backends.
     TiRust = 1,
 }
 

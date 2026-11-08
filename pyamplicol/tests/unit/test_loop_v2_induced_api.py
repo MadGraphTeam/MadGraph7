@@ -627,7 +627,8 @@ def test_reduction_finiteness_and_estimates_on_the_public_route(shipped):
     """On the shipped g g > h: every lane names its reduction backend (auto
     falls back to NinjaRS while TIRust is not built in, with the reason);
     an explicit NinjaRS request is bitwise auto's; an explicit TIRust request
-    is refused before any point is evaluated, also through a rescue level;
+    is served (on every level of a rescue ladder too, m-lit lit-tir-mp) when
+    the native extension has TIRust, else refused before any point;
     with poles and checks the lanes carry the finiteness ratio, the
     estimates E and S, and the "scale" metric accepts the points at level 0;
     the poles vanish within the absolute estimate (Q11 (b), Q13)."""
@@ -683,8 +684,14 @@ def test_reduction_finiteness_and_estimates_on_the_public_route(shipped):
             VirtualRescueLevel("double-double", metric="scale"),
         )
     )
-    with pytest.raises(ReductionUnavailable):
-        shipped.evaluate(points, mu_r2=scales, stability=ladder, reduction="tirust")
+    if load_loop_native().tirust_available():
+        rescued = shipped.evaluate(
+            points, mu_r2=scales, stability=ladder, reduction="tirust"
+        )
+        assert {lane.reduction.effective for lane in rescued.diagnostics} == {"tirust"}
+    else:
+        with pytest.raises(ReductionUnavailable):
+            shipped.evaluate(points, mu_r2=scales, stability=ladder, reduction="tirust")
     checks = VirtualStabilityChecks(1, True, rescaled=True)
     checked = shipped.evaluate(points, mu_r2=scales, stability_checks=checks)
     assert checked.values == auto.values
