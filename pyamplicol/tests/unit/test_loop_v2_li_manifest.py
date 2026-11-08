@@ -973,3 +973,53 @@ def test_a_failing_lane_is_judged_against_the_double_double_truth():
     result["status"] = lm.born_verdict(result)
     lm.judge_truth(result, found, disagree, [0], margin, floor)
     assert result["status"] == "fail" and "disagree" in result["truth"][0]["truth"]
+
+
+def test_identity_l5_on_tirust_is_judged_and_folded(entries):
+    """LI-L1 on TIRust (§4.1 backends N, T): its binary64 value at the
+    transformed points within 10 E of its value at the fixture points;
+    points it fails closed are partial with the typed reasons; an estimate
+    miss and a missing record are told apart; TIRust's L5 folds into L5."""
+
+    good = {"points": [_point(1.0, 1e-12), _point(2.0, 1e-12)]}
+    moved = {"points": [_point(1.0 + 1e-12, None), _point(2.0, None)]}
+    l5 = lm._identity_l5(good, moved, zero=False)
+    assert l5["status"] == "pass" and l5["served"] == 2 and l5["failed_points"] == 0
+    far = {"points": [_point(1.0 + 1e-9, None), _point(2.0, None)]}
+    assert lm._identity_l5(good, far, zero=False)["status"] == "estimate miss"
+    closed = {"points": [_point(1.0, 1e-12), _point(0, None, status="failed")]}
+    l5 = lm._identity_l5(closed, moved, zero=False)
+    assert l5["status"] == "partial" and l5["failed_points"] == 1 and l5["reasons"]
+    assert lm._identity_l5(good, far, zero=True)["status"] == "recorded"
+    entry = {e["fixture"]: e for e in entries}["li_gg_hh"]
+    record = _after_tir_mp(_record("li_gg_hh"))
+    assert lm.judge(record, entry)["L5"]["tirust"]["status"] == "not run"
+    arm = record["arms"]["tirust/double/checked"]
+    record["identity_tirust"] = {
+        "fixture": arm,
+        "transformed": arm,
+        "bitwise_record": True,
+        "native": {"build": "x"},
+    }
+    l5 = lm.judge(record, entry)["L5"]
+    failed = sum(p["status"] != "success" for p in arm["points"])
+    assert l5["tirust"]["bitwise_record"] and l5["tirust"]["failed_points"] == failed
+    assert l5["status"] == lm._worst([l5["status"], l5["tirust"]["status"]])
+
+
+def test_rambo_points_are_on_shell_and_conserve_momentum():
+    """Fig. 7's massive RAMBO (the calibration tool's massless RAMBO,
+    rescaled by a converged Newton): every final leg on its shell and
+    momentum conserved to binary64 rounding."""
+
+    import random
+
+    rng = random.Random(7)
+    for masses in ([91.1876] * 4, [0.0, 0.0, 125.0], [173.0, 173.0]):
+        point = [[float(c) for c in v] for v in lm.rambo(masses, 1000.0, rng)]
+        for v, m in zip(point[2:], masses, strict=True):
+            shell = v[0] ** 2 - v[1] ** 2 - v[2] ** 2 - v[3] ** 2
+            assert abs(shell - m * m) <= 1e-12 * 1000.0**2
+        for k in range(4):
+            total = sum(v[k] for v in point[:2]) - sum(v[k] for v in point[2:])
+            assert abs(total) <= 1e-12 * 1000.0
