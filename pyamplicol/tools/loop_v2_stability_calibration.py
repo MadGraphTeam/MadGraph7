@@ -46,8 +46,10 @@ sector and Laurent coefficient (the user's x10 rule, DESIGN §10.4), records
 
 TIR frames (m-lit lit-stab-t, PLAN §2.b.6, the T7 light re-run): ``--reduction
 tirust`` reduces the checked evaluations with TIRust in its shipped default
-(its frames: the reduction-direction check is the cyclic rotation by one with
-the origin shift, the rescaled one adds x = 7/10); the truth stays NinjaRS at
+(its frames, ``v2_tir.rs::tir_frame``: the reduction-direction check is the
+cyclic relabelling by one, TIRust's rotation copy from the direct pass's own
+calls; the rescaled one is the rotation by one with the origin shift at inputs
+rescaled by x = 7/10); the truth stays NinjaRS at
 Float(256) on the same exact points (DECISIONS 2026-11-07 19:49 / 21:39: exact
 rational points, consistent inputs). ``--cross-backend`` adds the
 cross-backend check (``stability.CROSS``: the evaluation on the other backend)
@@ -57,7 +59,8 @@ the checked one bitwise). A point the backend fails closed is recorded with
 its reason; ``report`` gives the served fraction and the reasons per row, and
 per point the check whose budget carries the estimate at its worst entry.
 ``--truth-from DIR`` reuses the truth of an earlier run of the same points
-(the point must be identical).
+(the point must be identical; with ``--truth-served`` for the served points
+it has, the others are evaluated).
 
 Usage:
     python tools/loop_v2_stability_calibration.py run PROCESS START STOP OUTDIR
@@ -589,11 +592,19 @@ def run(options) -> int:
                     for k, record in enumerate(records):
                         if k not in served:
                             record[carrier] = {"skipped": "no checked carrier served"}
-                    if not served:
+                    # A truth of the same point from ``--truth-from`` serves.
+                    fresh = []
+                    for k in served:
+                        reused = truths.get(indices[k], {})
+                        if reused.get("point") == points[k]:
+                            records[k][carrier] = reused["truth"]
+                        else:
+                            fresh.append(k)
+                    if not fresh:
                         continue
-                    subset = [points[k] for k in served]
+                    subset = [points[k] for k in fresh]
                     for k, value in zip(
-                        served,
+                        fresh,
                         _evaluate(executor, subset, precision, None, parameters),
                         strict=True,
                     ):
@@ -631,7 +642,8 @@ def _truths(directory: Path, name: str) -> dict[int, dict[str, Any]]:
         for line in path.read_text().splitlines():
             record = json.loads(line)
             truth = record.get("truth")
-            if truth is not None and "failure" not in truth and "point" in record:
+            # A failed or skipped truth (`--truth-served`) has no virtual.
+            if truth is not None and "virtual" in truth and "point" in record:
                 out[record["index"]] = {"truth": truth, "point": record["point"]}
     return out
 
