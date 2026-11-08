@@ -7947,8 +7947,22 @@ class RunCardMG7(RunCard):
                     raise
 
     def read_data(self, data, unknown_warning=True):
-        """Fill the card from a parsed TOML mapping (section -> {key: value})."""
-        for section, content in data.items():
+        """Fill the card from a parsed TOML mapping (section -> {key: value}).
+
+        The free-form sections ([multiparticles], [cuts], ...) are read last:
+        setting beam.max_jet_flavor updates a standard jet multiparticle
+        (_sync_jet_group), and the jet list the card writes has to win over
+        that."""
+        self._reading = True
+        try:
+            items = sorted(data.items(), key=lambda item:
+                           item[0].lower() in self.dynamic_sections)
+            self._read_items(items, unknown_warning)
+        finally:
+            self._reading = False
+
+    def _read_items(self, items, unknown_warning):
+        for section, content in items:
             sl = section.lower()
             if sl in self.dynamic_sections:
                 self.dynamic_sections[sl] = collections.OrderedDict(content)
@@ -8035,7 +8049,53 @@ class RunCardMG7(RunCard):
                 # function matches the parameter name as written, case included
                 self.set_custom_parameter(parts[1], name.split('.')[2], value)
                 return
+            if lname == 'beam.max_jet_flavor':
+                old = self['beam']['max_jet_flavor']
+                out = super(RunCardMG7, self).set(name, value, *args, **opts)
+                self._sync_jet_group(old, self['beam']['max_jet_flavor'],
+                                     verbose=not getattr(self, '_reading', False))
+                return out
         return super(RunCardMG7, self).set(name, value, *args, **opts)
+
+    def _sync_jet_group(self, old, new, verbose=False):
+        """Make the ``jet`` multiparticle follow a change of
+        ``beam.max_jet_flavor`` from ``old`` to ``new``, as madevent's
+        maxjetflavor does: the jet cuts (pt, eta, delta_r) then apply to the
+        same quarks the MLM clustering treats as jets. In a 5-flavour model the
+        b is a jet; with the 4-flavour list a final-state b would get no cut
+        at all, and a massless one makes g b > X b collinear divergent.
+
+        Only a jet list that is the standard group of ``old`` (the quarks up
+        to that flavour, their antiquarks and the gluon) is replaced: a list
+        the user wrote is kept, with a warning. Returns whether the list was
+        changed."""
+        try:
+            old, new = int(old), int(new)
+        except (TypeError, ValueError):
+            return False
+        multiparticles = self.dynamic_sections['multiparticles']
+        current = multiparticles.get('jet')
+        if old == new or current is None:
+            return False
+        try:
+            current_set = set(int(p) for p in current)
+        except (TypeError, ValueError):
+            current_set = None
+        if current_set == set(self._lo_jet_group(new)):
+            return False
+        if current_set != set(self._lo_jet_group(old)):
+            if verbose:
+                logger.warning(
+                    "beam.max_jet_flavor is now %s but the jet multiparticle %s "
+                    "is not the standard one of max_jet_flavor = %s: it is kept "
+                    "as it is. Edit [multiparticles] jet if the jet cuts should "
+                    "apply to other quark flavours.", new, list(current), old)
+            return False
+        multiparticles['jet'] = self._lo_jet_group(new)
+        if verbose:
+            logger.info("multiparticles.jet follows beam.max_jet_flavor = %s: %s",
+                        new, multiparticles['jet'])
+        return True
 
     custom_function_kinds = ('cut', 'scale', 'pdf', 'bias')
 
@@ -8795,8 +8855,13 @@ class RunCardMG7(RunCard):
             # flavour scheme of the model, as madevent's maxjetflavor does: 5
             # once the b is massless and in the proton
             nflav = get_model_flavour_scheme(proc_def) or 4
+            old = self['beam']['max_jet_flavor']
             self['beam']['max_jet_flavor'] = max(
                 [nflav] + [abs(i) for i in beam_id if -7 < i < 7])
+            # and so do the jet cuts: in a 5-flavour model a final-state b is
+            # a jet (madevent applies ptj/etaj/drjj to it), not an uncut
+            # particle
+            self._sync_jet_group(old, self['beam']['max_jet_flavor'])
 
         if beam_id and beam_id <= leptons:
             # lepton collider: no PDF, lower default energy, no hadronic cuts
