@@ -251,6 +251,7 @@ pub(super) fn reduction_target(target: Option<f64>) -> PyResult<f64> {
 /// [`tir_options`] at the target accuracy `target` (None: the default):
 /// its calibrated acceptance (`v2_tir::TirOptions::for_target`) unless
 /// `acceptance` overrides it (an expert's validation setting).
+#[cfg(feature = "tir")]
 pub(super) fn tir_options_at(
     target: Option<f64>,
     method_choice: Option<bool>,
