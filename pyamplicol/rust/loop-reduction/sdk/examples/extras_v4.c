@@ -7,7 +7,8 @@
  * hexadecimal), then the spin-leg count and per spin leg its label and 8 values
  * (re, im of four components). Per call it prints "call <name>", then
  * "born ..." and "virtual ..." (doubles as %a; complex as re im pairs) and
- * "decimal <json>" (the exact values of the extended carriers, else null). */
+ * "decimal <json>" (the exact values of the extended carriers, else null), or
+ * "refused <message>" for a pole selection the process does not serve. */
 #include "rusticol_virtual.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -74,10 +75,15 @@ int main(int argc, char **argv) {
     call_t call = calls[k];
     size_t n = call.points < points ? call.points : points;
     if (rusticol_virtual_set_arithmetic(runtime, call.arithmetic, call.digits)) fail("arithmetic");
-    if (rusticol_virtual_set_poles(runtime, call.poles)) fail("poles");
+    printf("call %s\n", call.name);
+    if (rusticol_virtual_set_poles(runtime, call.poles)) {
+      /* A pole selection the process does not serve (a loop-induced
+       * process serves "all" and "none"): the refusal, then the next call. */
+      printf("refused %s\n", rusticol_virtual_last_error_message());
+      continue;
+    }
     rusticol_virtual_batch_request request = {momenta, n * legs * 4, n, NULL, scales, n,
                                               call.kind == 3, NULL};
-    printf("call %s\n", call.name);
     if (call.kind == 0 || call.kind == 3) {
       rusticol_virtual_result *result = NULL;
       rusticol_virtual_result_shape_info info;

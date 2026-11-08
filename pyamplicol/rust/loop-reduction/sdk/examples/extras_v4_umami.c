@@ -72,7 +72,12 @@ int main(int argc, char **argv) {
     call_t call = calls[k];
     size_t n = call.points < points ? call.points : points, stride = n;
     if (rusticol_virtual_set_arithmetic(runtime, call.arithmetic, call.digits)) fail("arithmetic");
-    if (rusticol_virtual_set_poles(runtime, call.poles)) fail("poles");
+    if (rusticol_virtual_set_poles(runtime, call.poles)) {
+      /* A pole selection the process does not serve (loop-induced: "all"
+       * and "none"): the refusal, then the next call. */
+      printf("call %s\nrefused %s\n", call.name, rusticol_virtual_last_error_message());
+      continue;
+    }
     double *momenta = malloc(stride * legs * 4 * sizeof(double));
     for (size_t p = 0; p < n; p++)
       for (size_t leg = 0; leg < legs; leg++)

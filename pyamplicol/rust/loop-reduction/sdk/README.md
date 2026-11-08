@@ -29,8 +29,20 @@ squared by the one native square the Python API calls), double-double and
 arbitrary precision as `Decimal` values (squared in the canonical order). A
 loop-induced process serves the pole selections `"all"` and `"none"`; `"uv"`
 and `"ir"` are refused (`RUSTICOL_VIRTUAL_RUNTIME_ERROR`, the Python API's
-message). Its resolved and correlated outputs are not served by the SDK yet
-(`resolved_available = 0`, the capabilities' `observables_unavailable`).
+message). Its resolved and correlated outputs are served as the Python API's
+(`evaluate_resolved`, `evaluate_correlated_many`): quadratic forms on the
+point's one amplitude vector, one executor run per call. A resolved call gives
+|A(h)|²/avg per helicity row with one colour-contracted component (`"full"`;
+the rows sum to the ordinary value); the correlated history `"born"` is the
+colour metric itself (|A|², the identity-metric history: there is no Born),
+each declared history its stored matrix M_X on the amplitude basis (real for a
+dipole T_i·T_j, complex otherwise), with zero Born values; a spin source of a
+declared vector leg enters through its projection on the leg's polarisation
+vectors. Binary64 values are bitwise the Python API's (the same Rust code:
+`rusticol_loop_reduction::v2_runtime::induced_outputs`, which the Python API's
+binary64 outputs call), double-double and arbitrary precision equal `Decimal`
+values. The amplitude-basis anchors (`color_resolution="amplitude-basis"`)
+are served by the Python API only.
 
 **Reduction backend.** `rusticol_virtual_set_reduction(handle, "auto" |
 "ninjars" | "tirust")` (C++ `set_reduction`, Fortran `set_reduction`) selects

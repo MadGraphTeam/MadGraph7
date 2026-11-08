@@ -64,9 +64,14 @@ program extras_v4_fortran
     n = min(counts(k), points)
     call runtime%set_arithmetic(trim(arithmetics(k)), digits=digits(k), ierr=ierr)
     if (ierr /= VIRTUAL_OK) call fail('arithmetic')
-    call runtime%set_poles(trim(poles(k)), ierr=ierr)
-    if (ierr /= VIRTUAL_OK) call fail('poles')
     write(*, '(a)') 'call '//trim(names(k))
+    call runtime%set_poles(trim(poles(k)), ierr=ierr)
+    if (ierr /= VIRTUAL_OK) then
+      ! A pole selection the process does not serve (loop-induced: 'all'
+      ! and 'none'): the refusal, then the next call.
+      write(*, '(a)') 'refused '//virtual_last_error()
+      cycle
+    end if
     if (kinds(k) == 0 .or. kinds(k) == 3) then
       call runtime%evaluate(momenta(:, :, 1:n), scales(1:n), result, resolved=(kinds(k) == 3), &
           ierr=ierr, error_message=message)

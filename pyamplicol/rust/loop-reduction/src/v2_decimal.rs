@@ -45,6 +45,18 @@ fn digits(value: &Integer) -> i64 {
     value.to_string().trim_start_matches('-').len() as i64
 }
 
+/// floor(sqrt(n)) of a positive integer (Newton's iteration from above).
+fn isqrt(n: &Integer) -> Integer {
+    let mut x = ten(((digits(n) + 1) / 2) as u64);
+    loop {
+        let y = (&x + &(n / &x)) / &Integer::from(2);
+        if y >= x {
+            return x;
+        }
+        x = y;
+    }
+}
+
 impl Decimal {
     pub fn zero() -> Self {
         Self {
@@ -130,11 +142,60 @@ impl Decimal {
             .expect("a decimal literal")
     }
 
-    fn negated(&self) -> Self {
+    pub(crate) fn negated(&self) -> Self {
         Self {
             neg: !self.neg,
             ..self.clone()
         }
+    }
+
+    /// Whether the value is below zero (`x < 0`; `-0` is not).
+    pub fn is_negative(&self) -> bool {
+        self.neg && !self.is_zero()
+    }
+
+    /// Value comparison (Python's `Decimal` ordering; `-0 == 0`).
+    pub fn cmp_value(&self, other: &Self) -> Ordering {
+        self.compare(other)
+    }
+
+    /// The exact value of a rational whose denominator divides a power of
+    /// ten (`Decimal(str(x))` of a decimal literal read as a fraction, e.g.
+    /// the SDK's exact binary64 inputs); None for any other denominator.
+    pub fn from_rational_exact(value: &symbolica::domains::rational::Rational) -> Option<Self> {
+        let numerator = value.numerator();
+        let mut denominator = value.denominator();
+        let (mut twos, mut fives) = (0_u64, 0_u64);
+        let two = Integer::from(2);
+        let five = Integer::from(5);
+        loop {
+            let (q, r) = denominator.quot_rem(&two);
+            if !r.is_zero() {
+                break;
+            }
+            denominator = q;
+            twos += 1;
+        }
+        loop {
+            let (q, r) = denominator.quot_rem(&five);
+            if !r.is_zero() {
+                break;
+            }
+            denominator = q;
+            fives += 1;
+        }
+        if !denominator.is_one() {
+            return None;
+        }
+        let n = twos.max(fives);
+        // numerator / (2^a 5^b) = numerator * 2^(n-a) 5^(n-b) / 10^n.
+        let scale = two.pow(n - twos) * five.pow(n - fives);
+        let coefficient = numerator.abs() * scale;
+        Some(Self {
+            neg: numerator.is_negative(),
+            coefficient,
+            exponent: -(n as i64),
+        })
     }
 
     /// The signed coefficient at exponent `exponent <= self.exponent`.
@@ -220,8 +281,12 @@ impl DecimalContext {
         self.round(neg, value.abs(), Integer::one(), exponent)
     }
 
-    /// `+x`: `x` rounded to the context.
+    /// `+x`: `x` rounded to the context (Python's `Decimal.__pos__`: a
+    /// zero is `0`, also `-0`).
     pub fn plus(&self, x: &Decimal) -> Decimal {
+        if x.is_zero() {
+            return Decimal::zero();
+        }
         self.round(x.neg, x.coefficient.clone(), Integer::one(), x.exponent)
     }
 
@@ -265,6 +330,80 @@ impl DecimalContext {
             b.coefficient.clone(),
             a.exponent - b.exponent,
         )
+    }
+
+    /// `abs(x)` (Python's `Decimal.__abs__`, rounded to the context).
+    pub fn abs(&self, x: &Decimal) -> Decimal {
+        self.round(false, x.coefficient.clone(), Integer::one(), x.exponent)
+    }
+
+    /// `Decimal(numerator) / Decimal(denominator)` of a fraction (Python's
+    /// `Fraction` read into the context), correctly rounded.
+    pub fn rational(&self, value: &symbolica::domains::rational::Rational) -> Decimal {
+        let numerator = value.numerator();
+        self.round(
+            numerator.is_negative(),
+            numerator.abs(),
+            value.denominator(),
+            0,
+        )
+    }
+
+    /// `x.sqrt()` (Python's `Decimal.sqrt`: the square root correctly
+    /// rounded to the context's digits, half to even; `x >= 0`).
+    pub fn sqrt(&self, x: &Decimal) -> Decimal {
+        assert!(!x.is_negative(), "the square root of a negative decimal");
+        if x.is_zero() {
+            return Decimal::zero();
+        }
+        // x = c 10^e with e even (c scaled by ten otherwise), then
+        // N = c 10^(2s) with floor(sqrt(N)) of at least digits + 2 digits.
+        let (mut coefficient, mut exponent) = (x.coefficient.clone(), x.exponent);
+        if exponent.rem_euclid(2) != 0 {
+            coefficient = &coefficient * &Integer::from(10);
+            exponent -= 1;
+        }
+        let precision = i64::from(self.digits);
+        let shift = (precision + 2 - digits(&coefficient) / 2).max(0);
+        let n = &coefficient * &ten(2 * shift as u64);
+        let root = isqrt(&n);
+        let exact = &root * &root == n;
+        let exponent = exponent / 2 - shift;
+        let excess = digits(&root) - precision;
+        if excess <= 0 {
+            debug_assert!(exact);
+            return Decimal {
+                neg: false,
+                coefficient: root,
+                exponent,
+            };
+        }
+        let unit = ten(excess as u64);
+        let (mut kept, tail) = root.quot_rem(&unit);
+        let half = &unit / &Integer::from(2);
+        let up = match tail.cmp(&half) {
+            Ordering::Greater => true,
+            Ordering::Less => false,
+            Ordering::Equal => {
+                !exact || {
+                    let (_, parity) = kept.quot_rem(&Integer::from(2));
+                    !parity.is_zero()
+                }
+            }
+        };
+        let mut exponent = exponent + excess;
+        if up {
+            kept = kept + Integer::one();
+            if kept == ten(self.digits as u64) {
+                kept = ten(u64::from(self.digits) - 1);
+                exponent += 1;
+            }
+        }
+        Decimal {
+            neg: false,
+            coefficient: kept,
+            exponent,
+        }
     }
 
     /// pi at the context's digits (`assemble._decimal_pi`): Machin's

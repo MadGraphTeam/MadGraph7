@@ -407,6 +407,9 @@ def _parse(stdout: str) -> dict:
             current[kind] = [_double(token) for token in rest.split()]
         elif kind == "decimal":
             current["decimal"] = json.loads(rest)
+        elif kind == "refused":
+            # A pole selection the process does not serve (loop-induced).
+            current["refused"] = rest
         else:
             raise AssertionError(line)
     return found

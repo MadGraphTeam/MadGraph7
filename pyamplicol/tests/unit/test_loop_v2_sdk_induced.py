@@ -403,3 +403,256 @@ def test_tirust_in_extended_precision_follows_the_capability_query(
         assert [Decimal(x) for x in literals] == [Decimal(x) for x in values]
     finally:
         sdk.rusticol_virtual_free(handle)
+
+
+# ------------------------------------------------ observables (increment 2)
+#
+# The loop-induced resolved and correlated outputs (m-lit LIT-SDK, PLAN §3.5
+# Done; DECISIONS 2026-11-07 21:50 R7): the C, C++, Fortran and UMAMI
+# clients of ``test_loop_v2_sdk_extras`` (and the safe Rust ``Runtime``,
+# opt-in as there) run every call of ``examples/extras_v4*`` on the two LI-O1
+# rows and equal the Python API's ``evaluate``, ``evaluate_correlated_many``
+# (one request per history, ``born`` the colour metric: |A|^2) and
+# ``evaluate_resolved`` (per helicity row, one colour-contracted component):
+# binary64 bitwise, double-double and arbitrary precision as ``Decimal``
+# values; the "uv" and "ir" calls are refused in the Python API's words. The
+# Python API's binary64 outputs run the same Rust code
+# (``induced_observables.NATIVE_BINARY64``), bitwise its ``Decimal`` oracle.
+
+from tests.unit.test_loop_v2_sdk_extras import (  # noqa: E402
+    CALLS,
+    _bits,
+    _compare,
+    _flat,
+    _laurent,
+    _parse,
+    _run,
+    clients,  # noqa: F401 (the compiled clients fixture)
+)
+
+# The spin source of the first declared gluon class: a literal complex
+# vector, not transverse (the output is that of its transverse projection).
+SPIN = [(0.5, 0.25), (0.75, -0.125), (0.375, 1.0), (-0.625, 0.5)]
+
+
+def _case(name: str, runtime) -> dict:
+    """The clients' inputs of row ``name``: two fixture points and their
+    mu_R^2 in binary64, and a spin source on the first declared class."""
+
+    del runtime
+    points, scales = _inputs(name)
+    classes = _spin_classes(name)
+    assert classes, name
+    return {"points": points, "scales": scales, "spin": {classes[0][0]: SPIN}}
+
+
+def _spin_classes(name: str) -> list[list[int]]:
+    """The row's declared spin classes (``loop_v2_induced_observables_rows.
+    generate``: every gluon alone)."""
+
+    from tests.unit.loop_v2_induced_observables_rows import gluons
+
+    return [[leg] for leg in gluons(_fixture(name)["pdgs"])]
+
+
+def _induced_references(runtime, case: dict) -> tuple[dict, dict]:
+    """The Python API's values of every client call in the SDK layouts
+    (``test_loop_v2_sdk_extras.references``), and per refused call the
+    Python API's message."""
+
+    from pyamplicol.api.errors import CompatibilityError
+    from pyamplicol.correlators import CorrelatedRequest
+
+    histories = [item.id for item in runtime.available_color_correlations()]
+    assert histories[0] == "born" and len(histories) > 1
+    points, scales = _exact(case["points"], case["scales"])
+    spin = {
+        leg: [(str(Decimal(re)), str(Decimal(im))) for re, im in vector]
+        for leg, vector in case["spin"].items()
+    }
+    calls, refused = {}, {}
+    for label, arithmetic, digits, poles, kind, count in CALLS:
+        options = {"mu_r2": scales[:count], "poles": poles}
+        if arithmetic != "double":
+            options["arithmetic"] = arithmetic
+        if digits is not None:
+            options["precision"] = digits
+        batch = points[:count]
+        if poles in ("uv", "ir"):
+            with pytest.raises(CompatibilityError) as error:
+                runtime.evaluate(batch, **options)
+            refused[label] = str(error.value)
+            continue
+        if kind == 0:
+            result = runtime.evaluate(batch, **options)
+            born = [v for b in result.born_values for v in b]
+            virtual = [x for v in result.values for lc in v for x in _laurent(lc)]
+        elif kind == 3:
+            result = runtime.evaluate_resolved(batch, **options)
+            born = [x for b in result.born_values for o in b for r in o for x in r]
+            virtual = [
+                x
+                for v in result.values
+                for sector in v
+                for row in sector
+                for lc in row
+                for x in _laurent(lc)
+            ]
+        else:
+            vectors = spin if kind == 2 else {}
+            found = runtime.evaluate_correlated_many(
+                batch, {h: CorrelatedRequest(h, vectors) for h in histories}, **options
+            )
+            born, virtual = [], []
+            for p in range(count):
+                for h in histories:
+                    born += list(found[h].born_values[p])
+                    virtual += [x for lc in found[h].values[p] for x in _laurent(lc)]
+        assert born == [], (label, born)
+        complex_layout = kind in (1, 2)
+        calls[label] = {
+            "born": _flat(born, complex_layout),
+            "virtual": _flat(virtual, complex_layout),
+            "complex": complex_layout,
+        }
+    return calls, refused
+
+
+def _induced_feed(case: dict, path: Path, *, bits: bool) -> Path:
+    """``test_loop_v2_sdk_extras._feed`` with the row's own scales."""
+
+    def text(value: float) -> str:
+        return str(_bits(float(value))) if bits else float(value).hex()
+
+    lines = [f"{len(case['points'])} {len(case['points'][0])}"]
+    for point, scale in zip(case["points"], case["scales"], strict=True):
+        lines.append(" ".join([text(c) for p in point for c in p] + [text(scale)]))
+    lines.append(str(len(case["spin"])))
+    for leg in sorted(case["spin"]):
+        lines.append(str(leg))
+        lines += [f"{text(re)} {text(im)}" for re, im in case["spin"][leg]]
+    path.write_text("\n".join(lines) + "\n")
+    return path
+
+
+def _compare_induced(label: str, expected: tuple[dict, dict], found: dict) -> None:
+    values, refused = expected
+    assert sorted(found) == sorted([*values, *refused]), label
+    for call, message in refused.items():
+        assert message in found[call].get("refused", ""), (label, call, found[call])
+    _compare(label, values, {call: found[call] for call in values})
+
+
+@pytest.fixture(scope="module")
+def induced_cases(artifacts):
+    from pyamplicol import Runtime
+
+    out = {}
+    for name in sorted(ROWS):
+        runtime = Runtime.load(artifacts[name], process="p")
+        case = _case(name, runtime)
+        out[name] = (case, _induced_references(runtime, case))
+    return out
+
+
+@pytest.mark.parametrize("language", ["c", "cpp", "fortran", "umami"])
+def test_loop_induced_sdk_observables_equal_the_python_api(
+    language, artifacts, induced_cases, clients, tmp_path
+):
+    for name, (case, expected) in induced_cases.items():
+        feed = _induced_feed(case, tmp_path / f"{name}.txt", bits=language == "fortran")
+        found = _run(clients[language], artifacts[name], "p", feed)
+        _compare_induced(f"{language}:{name}", expected, found)
+
+
+def test_loop_induced_sdk_announces_its_observables(artifacts):
+    """The capabilities list the resolved and correlated outputs: ``born``
+    and the declared histories, the declared spin classes, one helicity row
+    per plan row and one colour-contracted component; the Born counts stay
+    zero."""
+
+    from pyamplicol import Runtime
+
+    sdk = _sdk()
+    for name in sorted(ROWS):
+        runtime = Runtime.load(artifacts[name], process="p")
+        handle = _open(sdk, artifacts[name])
+        try:
+            capabilities = _json(sdk, sdk.rusticol_virtual_capabilities_json, handle)
+            assert capabilities["resolved"] and capabilities["correlations"]
+            assert capabilities["observables_unavailable"] is None
+            assert capabilities["correlation_histories"] == [
+                item.id for item in runtime.available_color_correlations()
+            ]
+            assert capabilities["spin_correlation_classes"] == _spin_classes(name)
+            assert capabilities["resolved_color_ids"] == ["full"]
+            axes = _Axes()
+            assert sdk.rusticol_virtual_shape(handle, ctypes.byref(axes)) == 0
+            assert axes.resolved_available == 1
+            assert axes.born_orders == 0 and axes.born_color_components == 0
+            assert axes.helicities == len(capabilities["helicity_rows"])
+        finally:
+            sdk.rusticol_virtual_free(handle)
+
+
+def test_python_binary64_observables_run_the_native_implementation(artifacts):
+    """The Python API's binary64 loop-induced outputs (the native forms,
+    spin coefficients and projected vectors the SDK shares) are bitwise its
+    ``Decimal`` oracle (``NATIVE_BINARY64 = False``) on both rows: correlated
+    with and without a spin source, resolved."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.correlators import CorrelatedRequest
+    from pyamplicol.loops.v2 import induced_observables as io
+
+    def values(runtime, case) -> list:
+        points, scales = _exact(case["points"], case["scales"])
+        spin = {
+            leg: [(str(Decimal(re)), str(Decimal(im))) for re, im in vector]
+            for leg, vector in case["spin"].items()
+        }
+        histories = [item.id for item in runtime.available_color_correlations()]
+        out = []
+        for vectors in ({}, spin):
+            found = runtime.evaluate_correlated_many(
+                points,
+                {h: CorrelatedRequest(h, vectors) for h in histories},
+                mu_r2=scales,
+            )
+            out += [
+                complex(x)
+                for h in histories
+                for point in found[h].values
+                for lc in point
+                for x in _laurent(lc)
+            ]
+        resolved = runtime.evaluate_resolved(points, mu_r2=scales)
+        out += [
+            x
+            for v in resolved.values
+            for sector in v
+            for row in sector
+            for lc in row
+            for x in _laurent(lc)
+        ]
+        return out
+
+    for name in sorted(ROWS):
+        native = Runtime.load(artifacts[name], process="p")
+        case = _case(name, native)
+        assert io.NATIVE_BINARY64
+        found = values(native, case)
+        io.NATIVE_BINARY64 = False
+        try:
+            oracle = values(Runtime.load(artifacts[name], process="p"), case)
+        finally:
+            io.NATIVE_BINARY64 = True
+        assert len(found) == len(oracle) > 0
+        for k, (a, b) in enumerate(zip(found, oracle, strict=True)):
+            a, b = complex(a), complex(b)
+            assert _bits(a.real) == _bits(b.real) and _bits(a.imag) == _bits(b.imag), (
+                name,
+                k,
+                a,
+                b,
+            )

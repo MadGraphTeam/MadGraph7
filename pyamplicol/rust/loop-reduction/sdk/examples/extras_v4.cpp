@@ -64,10 +64,17 @@ int main(int argc, char **argv) {
     for (const auto &call : calls) {
       const std::size_t n = call.points < points ? call.points : points;
       runtime.set_arithmetic(call.arithmetic, call.digits);
-      runtime.set_poles(call.poles);
+      std::printf("call %s\n", call.name);
+      try {
+        runtime.set_poles(call.poles);
+      } catch (const rusticol::VirtualError &refused) {
+        // A pole selection the process does not serve (loop-induced: "all"
+        // and "none"): the refusal, then the next call.
+        std::printf("refused %s\n", refused.what());
+        continue;
+      }
       std::vector<double> p(momenta.begin(), momenta.begin() + n * legs * 4);
       std::vector<double> s(scales.begin(), scales.begin() + n);
-      std::printf("call %s\n", call.name);
       if (call.kind == 0 || call.kind == 3) {
         auto result = runtime.evaluate(p, n, s, {}, call.kind == 3);
         std::printf("born");

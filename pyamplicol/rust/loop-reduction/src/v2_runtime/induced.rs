@@ -45,6 +45,41 @@ pub(crate) struct AmplitudeRecord {
     pub(crate) colour_zero_orders: Vec<Orders>,
     /// Whether the whole request is an exact colour zero.
     pub(crate) colour_zero: bool,
+    /// The declared observables (`induced_observables.correlators_record`):
+    /// absent without a declaration.
+    #[serde(default)]
+    pub(crate) correlators: Option<CorrelatorsRecord>,
+}
+
+/// A loop-induced process's declared observables
+/// (`induced_observables.correlators_record`): the resolved
+/// `CorrelatorConfig` (its colour histories in order, its spin classes) and
+/// each history's matrix M_X on the amplitude basis at N_c = 3.
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct CorrelatorsRecord {
+    pub(crate) declaration: Declaration,
+    pub(crate) matrices: Vec<MatrixRecord>,
+}
+
+/// The parts of a stored `CorrelatorConfig` the outputs read.
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct Declaration {
+    #[serde(default)]
+    pub(crate) color_correlations: Vec<HistoryRecord>,
+    #[serde(default)]
+    pub(crate) spin_correlations: Vec<Vec<usize>>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct HistoryRecord {
+    pub(crate) id: String,
+}
+
+/// One history's matrix: exact rationals `[re, im]` per cell.
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct MatrixRecord {
+    pub(crate) id: String,
+    pub(crate) matrix: Vec<Vec<(String, String)>>,
 }
 
 /// The carrier arithmetic of the loop-induced assembly: the Python API's
@@ -182,7 +217,7 @@ impl Squaring for DecimalArith {
 pub(crate) struct Induced {
     pub(crate) record: AmplitudeRecord,
     /// G_{tt'} as exact rationals (real, imaginary), row-major.
-    metric: Vec<(Rational, Rational)>,
+    metric: Vec<Exact>,
     /// The plan's loop orders in the executor's slot order (the native
     /// record's `orders`).
     plan_orders: Vec<Orders>,
@@ -251,41 +286,60 @@ impl Induced {
         })
     }
 
-    /// |A|² per record sector (`[finite, 1/ε, 1/ε²]` or the finite part,
-    /// `width`) of one point from the executor's bare amplitude slots
-    /// (`amplitudes[order * rows * T + row * T + t]`, Laurent coefficients)
-    /// and the point's counterterm kets (`rows × ket components`; none
-    /// without counterterms), in the carrier of `arith` (`bits`: the
-    /// executor carrier's).
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn square_point<T: Native, A: Lift<T> + Squaring>(
+    /// The plan's helicity rows as the Python API's `rx.Row` (per leg, in
+    /// order, its 0-based index and helicity): `induced.rows_of`.
+    pub(crate) fn plan_rows(&self) -> Vec<Row> {
+        self.record
+            .rows
+            .iter()
+            .map(|row| row.iter().copied().enumerate().collect())
+            .collect()
+    }
+
+    /// The amplitude basis size T.
+    pub(crate) fn size(&self) -> usize {
+        self.record.size
+    }
+
+    /// The colour metric G at N_c = 3, exact (row-major).
+    pub(crate) fn metric(&self) -> &[Exact] {
+        &self.metric
+    }
+
+    /// The amplitude vectors a = a_bare + A^CT of one point per (loop
+    /// order, helicity row), in the Python API's insertion order
+    /// (`read_native`'s bare vectors per (plan order, row), then the
+    /// counterterm kets' new keys; `add_amplitudes`), from the executor's
+    /// bare amplitude slots (`amplitudes[order * rows * T + row * T + t]`,
+    /// Laurent coefficients) and the point's counterterm kets (`rows × ket
+    /// components`; none without counterterms), in the carrier of `arith`
+    /// (`bits`: the executor carrier's).
+    pub(crate) fn vectors_point<T: Native, A: Lift<T> + Squaring>(
         &self,
         arith: &A,
         amplitudes: &[Vec<Complex<T>>],
         kets: Option<&[Complex<T>]>,
-        rows: usize,
         width: usize,
         bits: u32,
-        average: i64,
-    ) -> RusticolResult<Vec<Vec<A::N>>>
+    ) -> RusticolResult<Vectors<A::N>>
     where
         Complex<T>: symbolica::domains::float::Real + symbolica::evaluate::EvaluationDomain,
         rusticol_core::loop_v2::trees::TreeRuntime<T>: Send,
     {
         let size = self.record.size;
+        let rows = self.plan_rows();
         let zero = C::new(arith.zero(), arith.zero());
-        let columns = rows * size;
+        let columns = rows.len() * size;
         // `read_native`'s bare vectors per (plan order, row): every slot's
         // Laurent coefficients (an empty basis has none).
-        let mut bare: BTreeMap<(Orders, usize), AmplitudeVector<A::N>> = BTreeMap::new();
-        let mut order_keys: Vec<(Orders, usize)> = Vec::new();
+        let mut bare: Vectors<A::N> = Vectors::default();
         if size > 0 && amplitudes.len() != self.plan_orders.len() * columns {
             return Err(invalid(
                 "the executor's amplitude slots differ from the plan's",
             ));
         }
         for (o, order) in self.plan_orders.iter().enumerate() {
-            for r in 0..rows {
+            for (r, row) in rows.iter().enumerate() {
                 let mut vector = Vec::with_capacity(size);
                 for t in 0..size {
                     let slot = &amplitudes[o * columns + r * size + t];
@@ -295,29 +349,24 @@ impl Induced {
                             .collect::<RusticolResult<Vec<_>>>()?,
                     );
                 }
-                order_keys.push((order.clone(), r));
-                bare.insert((order.clone(), r), vector);
+                bare.insert((order.clone(), row.clone()), vector);
             }
         }
         // `native_kets`: A^CT per (loop order, row) on the basis.
-        let mut ket_vectors: BTreeMap<(Orders, usize), AmplitudeVector<A::N>> = BTreeMap::new();
-        let mut ket_keys: Vec<(Orders, usize)> = Vec::new();
+        let mut ket_vectors: Vectors<A::N> = Vectors::default();
         if let Some(values) = kets {
             let components = self.record.ket_map.len();
-            if values.len() != rows * components {
+            if values.len() != rows.len() * components {
                 return Err(invalid("the counterterm kets differ from the ket map"));
             }
-            for r in 0..rows {
+            for (r, row) in rows.iter().enumerate() {
                 for (j, (t, k, order, nc)) in self.record.ket_map.iter().enumerate() {
                     if *k >= width {
                         continue;
                     }
                     let value = arith.complex(&values[r * components + j], bits)?;
-                    let key = (order.clone(), r);
-                    let ket = ket_vectors.entry(key.clone()).or_insert_with(|| {
-                        ket_keys.push(key);
-                        vec![vec![zero.clone(); width]; size]
-                    });
+                    let ket = ket_vectors
+                        .entry((order.clone(), row.clone()), || vec![vec![zero.clone(); width]; size]);
                     let scaled = arith.times_real(&value, &arith.three_power(*nc));
                     ket[*t][*k] = cadd(arith, &ket[*t][*k], &scaled);
                 }
@@ -331,13 +380,10 @@ impl Induced {
         }
         // `add_amplitudes(bare, kets)`: zero, plus every part's cells in
         // order.
-        let mut total: BTreeMap<(Orders, usize), AmplitudeVector<A::N>> = BTreeMap::new();
-        for (keys, part) in [(&order_keys, &bare), (&ket_keys, &ket_vectors)] {
-            for key in keys {
-                let vector = &part[key];
-                let cells = total
-                    .entry(key.clone())
-                    .or_insert_with(|| vec![vec![zero.clone(); width]; size]);
+        let mut total: Vectors<A::N> = Vectors::default();
+        for part in [&bare, &ket_vectors] {
+            for (key, vector) in part.iter() {
+                let cells = total.entry(key.clone(), || vec![vec![zero.clone(); width]; size]);
                 for t in 0..size {
                     for k in 0..width {
                         cells[t][k] = cadd(arith, &cells[t][k], &vector[t][k]);
@@ -345,32 +391,119 @@ impl Induced {
                 }
             }
         }
-        // `metric(slice_, numbers)`: `numbers.colour(cell, 0)`, the cell
-        // times `2^0` (Python's `complex * 1.0`, `Complex * Decimal(1)`).
-        let one = arith.int(1);
-        let gram = self
-            .metric
-            .iter()
-            .map(|(re, im)| {
-                let cell = C::new(arith.rational(re)?, arith.rational(im)?);
-                Ok(arith.times_real(&cell, &one))
-            })
-            .collect::<RusticolResult<Vec<_>>>()?;
-        let vectors: Vec<Option<AmplitudeVector<A::N>>> = self
+        Ok(total)
+    }
+
+    /// An exact matrix on the amplitude basis in the carrier ([`carrier`]).
+    pub(crate) fn carrier<A: Squaring>(
+        &self,
+        arith: &A,
+        cells: &[Exact],
+    ) -> RusticolResult<Vec<C<A::N>>> {
+        carrier(arith, cells)
+    }
+
+    /// The canonical square (`induced.native_square` / `induced.square`) of
+    /// `vectors` with the carrier matrix `metric` over the helicity rows
+    /// `rows` (in their order): per record sector its Laurent coefficients.
+    pub(crate) fn square_vectors<A: Squaring>(
+        &self,
+        arith: &A,
+        vectors: &Vectors<A::N>,
+        rows: &[Row],
+        metric: &[C<A::N>],
+        width: usize,
+        average: i64,
+    ) -> RusticolResult<Vec<Vec<A::N>>> {
+        let dense: Vec<Option<AmplitudeVector<A::N>>> = self
             .slots
             .iter()
-            .flat_map(|order| (0..rows).map(move |r| (order.clone(), r)))
-            .map(|key| total.remove(&key))
+            .flat_map(|order| rows.iter().map(move |row| (order, row)))
+            .map(|(order, row)| vectors.get(&(order.clone(), row.clone())).cloned())
             .collect();
         arith.square(
-            &vectors,
+            &dense,
             self.slots.len(),
-            rows,
-            size,
+            rows.len(),
+            self.record.size,
             width,
-            &gram,
+            metric,
             &self.pairs,
             average,
         )
+    }
+}
+
+/// An exact matrix on the amplitude basis in the carrier
+/// (`numbers.colour(cell, 0)`: the cell times `2^0`, Python's `complex *
+/// 1.0`, `Complex * Decimal(1)`).
+pub(crate) fn carrier<A: Squaring>(arith: &A, cells: &[Exact]) -> RusticolResult<Vec<C<A::N>>> {
+    let one = arith.int(1);
+    cells
+        .iter()
+        .map(|(re, im)| {
+            let cell = C::new(arith.rational(re)?, arith.rational(im)?);
+            Ok(arith.times_real(&cell, &one))
+        })
+        .collect()
+}
+
+/// A helicity row as the Python API's `rx.Row`: per leg its 0-based index
+/// and helicity (a spin-correlated output's rows drop the spin legs).
+pub type Row = Vec<(usize, i32)>;
+/// An exact complex cell (real, imaginary).
+pub type Exact = (Rational, Rational);
+
+/// Amplitude vectors per (loop order, row) in insertion order, as the
+/// Python API's dicts (`amplitude_vectors`): iteration in insertion order,
+/// lookup by key.
+#[derive(Clone, Debug)]
+pub struct Vectors<N> {
+    keys: Vec<(Orders, Row)>,
+    values: BTreeMap<(Orders, Row), AmplitudeVector<N>>,
+}
+
+impl<N> Default for Vectors<N> {
+    fn default() -> Self {
+        Self {
+            keys: Vec::new(),
+            values: BTreeMap::new(),
+        }
+    }
+}
+
+impl<N> Vectors<N> {
+    /// `out[key] = vector` (a new key appends, an old one keeps its place).
+    pub fn insert(&mut self, key: (Orders, Row), vector: AmplitudeVector<N>) {
+        if !self.values.contains_key(&key) {
+            self.keys.push(key.clone());
+        }
+        self.values.insert(key, vector);
+    }
+    /// The vector of `key`, made by `make` when absent (`out.get(key)` or
+    /// `out[key] = make()`).
+    pub fn entry(
+        &mut self,
+        key: (Orders, Row),
+        make: impl FnOnce() -> AmplitudeVector<N>,
+    ) -> &mut AmplitudeVector<N> {
+        if !self.values.contains_key(&key) {
+            self.keys.push(key.clone());
+            self.values.insert(key.clone(), make());
+        }
+        self.values.get_mut(&key).expect("an entry")
+    }
+    pub fn get(&self, key: &(Orders, Row)) -> Option<&AmplitudeVector<N>> {
+        self.values.get(key)
+    }
+    /// (key, vector) in insertion order.
+    pub fn iter(&self) -> impl Iterator<Item = (&(Orders, Row), &AmplitudeVector<N>)> {
+        self.keys.iter().map(|key| (key, &self.values[key]))
+    }
+    pub fn len(&self) -> usize {
+        self.keys.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.keys.is_empty()
     }
 }

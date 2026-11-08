@@ -82,8 +82,13 @@ fn v4_extras_follow_the_python_api() {
         runtime
             .set_arithmetic(Arithmetic::parse(arithmetic, digits).unwrap())
             .unwrap();
-        runtime.set_poles(Poles::parse(poles).unwrap()).unwrap();
         writeln!(out, "call {name}").unwrap();
+        if let Err(refused) = runtime.set_poles(Poles::parse(poles).unwrap()) {
+            // A pole selection the process does not serve (loop-induced:
+            // "all" and "none").
+            writeln!(out, "refused {refused}").unwrap();
+            continue;
+        }
         if kind == 0 || kind == 3 {
             let result = runtime
                 .evaluate(&momenta, &ids, &scales, kind == 3, None)

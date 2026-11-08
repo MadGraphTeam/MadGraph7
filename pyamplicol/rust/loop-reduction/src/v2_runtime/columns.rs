@@ -373,6 +373,9 @@ impl V2Runtime {
     /// order (`born` first): the ids `evaluate_columns("correlated", ...)`
     /// returns.
     pub fn correlation_histories(&mut self) -> RusticolResult<Vec<String>> {
+        if self.induced.is_some() {
+            return self.induced_histories();
+        }
         Ok(self
             .stored_observables()?
             .keys("correlated")?
@@ -383,6 +386,9 @@ impl V2Runtime {
 
     /// The declared joint spin-correlation classes (1-based legs).
     pub fn spin_correlation_classes(&mut self) -> RusticolResult<Vec<Vec<usize>>> {
+        if self.induced.is_some() {
+            return self.induced_spin_classes();
+        }
         Ok(self.stored_observables()?.spin_classes().to_vec())
     }
 
@@ -392,6 +398,11 @@ impl V2Runtime {
     /// holds one entry per basis element).
     #[allow(clippy::type_complexity)]
     pub fn resolved_axes(&mut self) -> RusticolResult<(Vec<Vec<(usize, i32)>>, usize, String)> {
+        if let Some(induced) = &self.induced {
+            // A loop-induced process resolves its helicity rows with one
+            // colour-contracted component (`induced_observables.CONTRACTED`).
+            return Ok((self.induced_rows(), induced.size(), "helicity".to_owned()));
+        }
         let observables = self.stored_observables()?;
         Ok((
             observables.rows().to_vec(),
@@ -404,6 +415,9 @@ impl V2Runtime {
     /// component indices (the component of a helicity resolution is 0):
     /// the column keys `[row, basis element]` on the stored rows.
     pub fn resolved_keys(&mut self) -> RusticolResult<Vec<(usize, usize)>> {
+        if self.induced.is_some() {
+            return Ok((0..self.induced_rows().len()).map(|row| (row, 0)).collect());
+        }
         let observables = self.stored_observables()?;
         let rows = observables.rows().to_vec();
         observables
@@ -464,6 +478,10 @@ impl V2Runtime {
 
     /// The squared Born orders of the observable outputs (their Born axis).
     pub fn column_born_axis(&self) -> RusticolResult<Vec<Orders>> {
+        if self.induced.is_some() {
+            // No Born (RULED Q36).
+            return Ok(Vec::new());
+        }
         self.column_born_orders()
     }
 
@@ -480,6 +498,18 @@ impl V2Runtime {
         spins: &[BTreeMap<usize, [(Rational, Rational); 4]>],
         mode: V2Poles,
     ) -> RusticolResult<Vec<ColumnPoint<f64>>> {
+        if self.induced.is_some() {
+            return self.induced_columns(
+                kind,
+                momenta,
+                scales,
+                spins,
+                mode,
+                V2Precision::Double,
+                &0.0,
+                &Binary64,
+            );
+        }
         self.columns_batch(
             kind,
             momenta,
@@ -505,6 +535,27 @@ impl V2Runtime {
         precision: V2Precision,
     ) -> RusticolResult<Vec<ColumnPoint<Decimal>>> {
         let arith = DecimalArith::new(precision.working_digits());
+        if self.induced.is_some() {
+            return match precision {
+                V2Precision::Double => Err(invalid(
+                    "binary64 column evaluations are V2Runtime::evaluate_columns'",
+                )),
+                V2Precision::DoubleDouble => self.induced_columns(
+                    kind,
+                    momenta,
+                    scales,
+                    spins,
+                    mode,
+                    precision,
+                    &DoubleFloat::from(0.0),
+                    &arith,
+                ),
+                V2Precision::Arbitrary(_) => {
+                    let zero = Float::with_val(precision.bits()?, 0);
+                    self.induced_columns(kind, momenta, scales, spins, mode, precision, &zero, &arith)
+                }
+            };
+        }
         match precision {
             V2Precision::Double => Err(invalid(
                 "binary64 column evaluations are V2Runtime::evaluate_columns'",

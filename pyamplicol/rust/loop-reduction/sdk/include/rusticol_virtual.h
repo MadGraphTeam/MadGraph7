@@ -63,7 +63,17 @@ enum rusticol_virtual_point_status {
  * born_values = 0 in every result (copy_born copies nothing); the virtual
  * orders are the loop x loop sectors; each value is |A_loop|^2 per sector and
  * epsilon power, full colour (one contracted colour component). Its poles are
- * computed as a finiteness cross-check: they vanish up to rounding. */
+ * computed as a finiteness cross-check: they vanish up to rounding.
+ * Its resolved and correlated outputs (resolved_available = 1) are quadratic
+ * forms on the point's one amplitude vector (the Python API's, the same Rust
+ * code in binary64): request.resolved gives |A(h)|^2/avg per helicity row with
+ * one colour-contracted component (the rows sum to the ordinary value); the
+ * correlated history "born" is the colour metric itself, i.e. |A|^2 (the
+ * identity metric's history, no Born), each declared history X its stored
+ * matrix M_X on the amplitude basis (real for a dipole T_i.T_j); a spin source
+ * of a declared vector leg enters through its projection on the leg's
+ * polarisation vectors (the transverse part). Born counts stay zero there too.
+ * The amplitude-basis anchors are the Python API's alone. */
 typedef struct {
   size_t external_count, born_orders, virtual_orders, helicities;
   size_t born_color_components, virtual_color_components, epsilon_count;

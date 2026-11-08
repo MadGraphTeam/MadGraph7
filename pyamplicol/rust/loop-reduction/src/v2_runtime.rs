@@ -89,6 +89,7 @@
 
 mod columns;
 mod induced;
+pub mod induced_outputs;
 
 pub use columns::{COLUMN_SETS, ColumnPoint, ColumnValues, INCLUSIVE};
 
@@ -821,6 +822,8 @@ pub struct V2Runtime {
     /// LIT-SDK); none for a Born-interfered process. Chosen at open: a
     /// runtime assembles one process type (no per-point branch).
     induced: Option<Arc<induced::Induced>>,
+    /// A loop-induced process's declared observables, read on first use.
+    induced_observables: Option<induced_outputs::Observables>,
 }
 
 /// Whether the artifact at `path` serves its processes through the v2 loop
@@ -985,6 +988,7 @@ impl V2Runtime {
             }),
             observables: None,
             induced,
+            induced_observables: None,
         })
     }
 
@@ -1647,8 +1651,8 @@ impl V2Runtime {
     /// reduce` of an amplitude-mode plan and `induced.assemble`): the tree
     /// program's inputs and counterterm kets, the executor's bare loop
     /// amplitudes per (loop order, row, basis element), and |A|² per sector
-    /// ([`induced::Induced::square_point`]); no Born values (Q36: the Born
-    /// fields are empty).
+    /// ([`induced::Induced::square_vectors`] with G over every row); no Born
+    /// values (Q36: the Born fields are empty).
     #[allow(clippy::too_many_arguments)]
     fn evaluate_induced<T: Native, A: Lift<T> + induced::Squaring>(
         &mut self,
@@ -1664,51 +1668,27 @@ impl V2Runtime {
         Complex<T>: Real + EvaluationDomain,
         TreeRuntime<T>: Send,
     {
-        let poles = mode.poles();
-        let width = if poles { 3 } else { 1 };
-        let bits = precision.bits()?;
-        let lanes = precision.lanes(momenta.len());
-        let incoming = self.incoming(momenta);
-        let values = self.parameter_values()?;
-        let (bound, inputs) = self.process.fill(
-            precision, lanes, &values, scales, &incoming, poles, None, zero,
-        )?;
-        let kets = inputs.kets;
-        let batch = v2_batch(incoming, scales, bound, inputs.block_rows, inputs.born);
-        let options = V2Options {
-            poles: mode.lanes(),
-            contraction: contraction(&self.artifact.metadata.color_contraction),
-            ..V2Options::default()
-        };
-        self.backend(precision)?;
-        let backend = self.backends.get_mut(&precision).expect("the backend");
-        let results = self
-            .process
-            .evaluate(lanes, &batch, zero, backend, options)?;
-        let rows = self.process.plan.rows;
-        let mut out = Vec::with_capacity(results.len());
-        for (index, result) in results.into_iter().enumerate() {
-            if !result.failures.is_empty() {
-                out.push(Err(result.failures));
-                continue;
-            }
-            let squared = induced.square_point(
-                arith,
-                &result.amplitudes,
-                kets.as_ref().map(|kets| kets[index].as_slice()),
-                rows,
-                width,
-                bits,
-                self.record.average,
-            )?;
-            let virtual_values = self
-                .sector_index
-                .iter()
-                .map(|&s| squared[s].clone())
-                .collect();
-            out.push(Ok((Vec::new(), virtual_values)));
-        }
-        Ok(out)
+        // `induced.assemble`: G in the carrier, every plan row.
+        let gram = induced.carrier(arith, induced.metric())?;
+        let rows = induced.plan_rows();
+        let average = self.record.average;
+        let sector_index = self.sector_index.clone();
+        self.induced_points(
+            induced,
+            momenta,
+            scales,
+            mode,
+            precision,
+            zero,
+            arith,
+            |_, vectors, width| {
+                let squared = induced.square_vectors(arith, vectors, &rows, &gram, width, average)?;
+                Ok((
+                    Vec::new(),
+                    sector_index.iter().map(|&s| squared[s].clone()).collect(),
+                ))
+            },
+        )
     }
 }
 
