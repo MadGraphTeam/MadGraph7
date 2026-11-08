@@ -84,17 +84,26 @@ IDS = [
     "pp-initial-boosted",
     "pp-ttx-initial",
 ]
+# every layout with the symmetric map, those with an incoming emitter also with
+# the asymmetric one of FKSRadiation
+MAP_LAYOUTS = [layout + ("symmetric",) for layout in LAYOUTS] + [
+    layout + ("asymmetric",) for layout in LAYOUTS if layout[4] < 2
+]
+MAP_IDS = IDS + [f"{name}-asymmetric" for name, l in zip(IDS, LAYOUTS) if l[4] < 2]
 
 
 def real_masses(masses, i_fks):
     return np.insert(np.array([0.0, 0.0] + list(masses)), i_fks, 0.0)
 
 
-@pytest.mark.parametrize("masses,leptonic,beam_rapidity,i_fks,j_fks", LAYOUTS, ids=IDS)
-def test_round_trip(masses, leptonic, beam_rapidity, i_fks, j_fks):
+@pytest.mark.parametrize(
+    "masses,leptonic,beam_rapidity,i_fks,j_fks,initial_map", MAP_LAYOUTS, ids=MAP_IDS
+)
+def test_round_trip(masses, leptonic, beam_rapidity, i_fks, j_fks, initial_map):
     batch = 2000
     born = born_mapping(masses, leptonic, beam_rapidity)
-    mapping = ms.FKSMapping(born, i_fks, j_fks)
+    mapping = ms.FKSMapping(born, i_fks, j_fks, initial_map=initial_map)
+    assert mapping.radiation().initial_map() == ms.FKSRadiation.InitialMap(initial_map)
     assert mapping.random_dim() == born.random_dim() + 3
     assert mapping.particle_count() == len(masses) + 3
     assert mapping.radiation().emitter_mass() == (
@@ -142,13 +151,15 @@ def test_round_trip(masses, leptonic, beam_rapidity, i_fks, j_fks):
     np.testing.assert_allclose(det * det_inv, 1.0, rtol=1e-9)
 
 
-@pytest.mark.parametrize("masses,leptonic,beam_rapidity,i_fks,j_fks", LAYOUTS, ids=IDS)
-def test_frame_of_the_born(masses, leptonic, beam_rapidity, i_fks, j_fks):
+@pytest.mark.parametrize(
+    "masses,leptonic,beam_rapidity,i_fks,j_fks,initial_map", MAP_LAYOUTS, ids=MAP_IDS
+)
+def test_frame_of_the_born(masses, leptonic, beam_rapidity, i_fks, j_fks, initial_map):
     """Without the emission (xi -> 0) the real emission is the Born of the Born
     mapping with a soft i, in the lab frame."""
     batch = 500
     born = born_mapping(masses, leptonic, beam_rapidity)
-    mapping = ms.FKSMapping(born, i_fks, j_fks)
+    mapping = ms.FKSMapping(born, i_fks, j_fks, initial_map=initial_map)
     r = random_numbers(mapping, batch, seed=2)
     r[:, -3] = 0.0
     momenta, x1, x2, _ = forward(mapping, r)
@@ -197,37 +208,53 @@ def assert_same_mean(weight, weight_ref):
     assert abs(mean - mean_ref) < 5 * math.hypot(err, err_ref)
 
 
-# (leptonic, j_fks): every emitter of t t~ g, incoming ones only with PDFs
-VOLUME_CASES = [(True, 2), (True, 3), (False, 0), (False, 1), (False, 2), (False, 3)]
+# (leptonic, j_fks, initial_map): every emitter of t t~ g, incoming ones only
+# with PDFs and with both maps
+VOLUME_CASES = [
+    (True, 2, "symmetric"),
+    (True, 3, "symmetric"),
+    (False, 0, "symmetric"),
+    (False, 1, "symmetric"),
+    (False, 0, "asymmetric"),
+    (False, 1, "asymmetric"),
+    (False, 2, "symmetric"),
+    (False, 3, "symmetric"),
+]
 
 
 @pytest.mark.parametrize(
-    "leptonic,j_fks",
+    "leptonic,j_fks,initial_map",
     VOLUME_CASES,
-    ids=[f"{'ee' if lep else 'pp'}-j{j}" for lep, j in VOLUME_CASES],
+    ids=[f"{'ee' if lep else 'pp'}-j{j}-{m}" for lep, j, m in VOLUME_CASES],
 )
-def test_volume(leptonic, j_fks):
+def test_volume(leptonic, j_fks, initial_map):
     """Each FKS configuration of t t~ g covers its phase space once, as a
     PhaseSpaceMapping of the real process does, momentum fractions included."""
     batch = 400000
     born = born_mapping([173.0, 173.0], leptonic)
-    mapping = ms.FKSMapping(born, 4, j_fks)
+    mapping = ms.FKSMapping(born, 4, j_fks, initial_map=initial_map)
     *_, det = forward(mapping, random_numbers(mapping, batch, seed=10 + j_fks))
     real = born_mapping([173.0, 173.0, 0.0], leptonic)
     *_, det_real = forward(real, random_numbers(real, batch, seed=20 + j_fks))
     assert_same_mean(det, det_real)
 
 
+@pytest.mark.parametrize("initial_map", ["symmetric", "asymmetric"])
 @pytest.mark.parametrize("j_fks", [0, 1])
-def test_volume_bounded(j_fks):
+def test_volume_bounded(j_fks, initial_map):
     """With a lower bound on the partonic energy of the real emission, an
     incoming emitter covers the part of the phase space above it."""
     batch = 400000
     s_hat_min = 600.0**2
     born = born_mapping([173.0, 173.0], False)
-    mapping = ms.FKSMapping(born, 4, j_fks, s_hat_min=s_hat_min)
+    mapping = ms.FKSMapping(
+        born, 4, j_fks, s_hat_min=s_hat_min, initial_map=initial_map
+    )
     _, x1, x2, det = forward(mapping, random_numbers(mapping, batch, seed=30 + j_fks))
-    assert (x1 * x2 * SQRT_S**2 >= s_hat_min * (1 - 1e-12)).all()
+    # the asymmetric map has no event above the bound where s_born / x of the
+    # emitter is below it (det = 0)
+    assert ((x1 <= 1) & (x2 <= 1)).all()
+    assert (x1 * x2 * SQRT_S**2 >= s_hat_min * (1 - 1e-12))[det > 0].all()
     real = born_mapping([173.0, 173.0, 0.0], False)
     _, x1_real, x2_real, det_real = forward(
         real, random_numbers(real, batch, seed=40 + j_fks)
@@ -281,21 +308,31 @@ def mirror(p):
     return q
 
 
-MIRROR_LAYOUTS = [layout for layout in LAYOUTS if not layout[1]]
-MIRROR_IDS = [name for name, layout in zip(IDS, LAYOUTS) if not layout[1]]
+MIRROR_LAYOUTS = [layout for layout in MAP_LAYOUTS if not layout[1]]
+MIRROR_IDS = [name for name, layout in zip(MAP_IDS, MAP_LAYOUTS) if not layout[1]]
 
 
 @pytest.mark.parametrize(
-    "masses,leptonic,beam_rapidity,i_fks,j_fks", MIRROR_LAYOUTS, ids=MIRROR_IDS
+    "masses,leptonic,beam_rapidity,i_fks,j_fks,initial_map",
+    MIRROR_LAYOUTS,
+    ids=MIRROR_IDS,
 )
-def test_mirrored_beams(masses, leptonic, beam_rapidity, i_fks, j_fks):
+def test_mirrored_beams(masses, leptonic, beam_rapidity, i_fks, j_fks, initial_map):
     """With mirror_beams, index 0 is the mapping without, and index 1 its
     rotation by pi about the x axis in the frame of the beams: leg 1 from beam
     2 along -z, with the same momentum fractions and weight."""
     batch = 2000
-    plain = ms.FKSMapping(born_mapping(masses, leptonic, beam_rapidity), i_fks, j_fks)
+    plain = ms.FKSMapping(
+        born_mapping(masses, leptonic, beam_rapidity),
+        i_fks,
+        j_fks,
+        initial_map=initial_map,
+    )
     mirrored = ms.FKSMapping(
-        born_mapping(masses, leptonic, beam_rapidity, mirror_beams=True), i_fks, j_fks
+        born_mapping(masses, leptonic, beam_rapidity, mirror_beams=True),
+        i_fks,
+        j_fks,
+        initial_map=initial_map,
     )
     r = random_numbers(plain, batch, seed=60 + i_fks + j_fks, low=0.02, high=0.98)
     momenta, x1, x2, det = forward(plain, r)

@@ -33,7 +33,8 @@ namespace madspace {
  * final-state emitter it is that of the incoming momenta, for an incoming
  * emitter that of the system recoiling against @f$i@f$ (the instruction
  * `fks_recoil_light_cone`), which has zero longitudinal momentum in the frame
- * of the Born.
+ * of the Born, and with the asymmetric map that of the momentum fractions of
+ * the Born (`fks_initial_asymmetric_born_fractions`).
  *
  * The weight is the product of the weights of the two mappings, so that
  * @f$\mathrm{d}x_1\,\mathrm{d}x_2\,\mathrm{d}\Phi_{n+1} = w\,\mathrm{d}r@f$ in
@@ -99,11 +100,14 @@ public:
     /// @param s_hat_min  Lower bound on the partonic energy squared of the
     ///                   real emission, for an incoming emitter. See
     ///                   @ref FKSRadiation.
+    /// @param initial_map  The map of an emission off an incoming parton, see
+    ///                     FKSRadiation::InitialMap.
     FKSMapping(
         const PhaseSpaceMapping& born,
         std::size_t i_fks,
         std::size_t j_fks,
-        double s_hat_min = 0.
+        double s_hat_min = 0.,
+        FKSRadiation::InitialMap initial_map = FKSRadiation::symmetric
     );
     /// Number of continuous random inputs: those of the Born mapping and 3.
     std::size_t random_dim() const { return _born.random_dim() + 3; }
@@ -232,7 +236,9 @@ double fks_sqrt_s_hat_min(const Cuts& cuts, const std::vector<double>& outgoing_
  * permuted into the order of the real process of the configuration last
  * (`permute_momenta`). Event by event, the results are those of the
  * @ref FKSMapping of the configuration (for a final-state emitter with a
- * Born mapping that has the floor as a cut on sqrt(s_hat)).
+ * Born mapping that has the floor as a cut on sqrt(s_hat)). An incoming emitter
+ * radiates with the symmetric or the asymmetric map of @ref FKSRadiation
+ * (@p initial_map).
  *
  * Drawing `fks_index`, uniformly or with an adaptive discrete sampler, and its
  * weight belong to the integrand, as for the `permutation_index` of a
@@ -331,13 +337,18 @@ public:
      *                          rapidity and no mirrored beams, and an incoming
      *                          emitter radiates without the projection of the
      *                          event (@p s_hat_min is not used).
+     * @param initial_map       The map of an emission off an incoming parton
+     *                          with hadron beams, see
+     *                          FKSRadiation::InitialMap. Lepton beams keep
+     *                          their own.
      */
     FKSConfigurationMapping(
         const PhaseSpaceMapping& born,
         const std::vector<Configuration>& configurations,
         double s_hat_min = 0.,
         double sqrt_s_hat_floor = 0.,
-        const std::optional<LeptonLuminosity>& luminosity = std::nullopt
+        const std::optional<LeptonLuminosity>& luminosity = std::nullopt,
+        FKSRadiation::InitialMap initial_map = FKSRadiation::symmetric
     );
     /**
      * @param born              The @ref PhaseSpaceMapping of the Born process,
@@ -352,13 +363,16 @@ public:
      *                          constructor from (i_fks, j_fks).
      * @param luminosity        For lepton beams, see the constructor from
      *                          (i_fks, j_fks).
+     * @param initial_map       The map of an emission off an incoming parton,
+     *                          see the constructor from (i_fks, j_fks).
      */
     FKSConfigurationMapping(
         const PhaseSpaceMapping& born,
         const std::vector<FKSConfiguration>& configurations,
         double s_hat_min = 0.,
         double sqrt_s_hat_floor = 0.,
-        const std::optional<LeptonLuminosity>& luminosity = std::nullopt
+        const std::optional<LeptonLuminosity>& luminosity = std::nullopt,
+        FKSRadiation::InitialMap initial_map = FKSRadiation::symmetric
     );
     /// The Born mapping.
     const PhaseSpaceMapping& born() const { return _born; }
@@ -370,6 +384,8 @@ public:
     double sqrt_s_hat_floor() const { return _sqrt_s_hat_floor; }
     /// The luminosity of lepton beams, if any.
     const std::optional<LeptonLuminosity>& luminosity() const { return _luminosity; }
+    /// The map of an emission off an incoming parton with hadron beams.
+    FKSRadiation::InitialMap initial_map() const { return _initial_map; }
     /// Number of random numbers, those of the Born mapping, two of the
     /// luminosity of lepton beams and three of the emission.
     std::size_t random_dim() const {
@@ -474,6 +490,11 @@ private:
         const NamedVector<Value>& conditions,
         Value sqrt_s
     ) const;
+    // the masses of the final state of the Born, for the mass shell of the
+    // asymmetric map of an incoming emitter
+    std::vector<double> final_masses() const {
+        return {_born_masses.begin() + 2, _born_masses.end()};
+    }
     // per event the value of the kind of its emitter
     Value pick(FunctionBuilder& fb, const ValueVec& by_kind, Value slot) const;
     // per event the momenta (rows each) of the kind of its emitter
@@ -493,6 +514,7 @@ private:
     double _s_hat_min;
     double _sqrt_s_hat_floor;
     std::optional<LeptonLuminosity> _luminosity;
+    FKSRadiation::InitialMap _initial_map;
     // per configuration the lower end of the energy squared of the Born of
     // lepton beams
     std::vector<double> _born_s_min;

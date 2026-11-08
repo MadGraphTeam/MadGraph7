@@ -153,7 +153,9 @@ def checked_configurations(born_pdgs, particle_count, configurations):
     return configurations["configurations"]
 
 
-def fks_mappings(born, configurations, s_hat_min=0.0, cuts=None):
+def fks_mappings(
+    born, configurations, s_hat_min=0.0, cuts=None, initial_map="symmetric"
+):
     """The FKSMappings of the FKS configurations of a Born, in their order.
 
     Args:
@@ -170,6 +172,9 @@ def fks_mappings(born, configurations, s_hat_min=0.0, cuts=None):
             the Born mapping for a final-state emitter, and raises s_hat_min
             for an incoming one. They stay to be applied to the real emission
             and the counter-events.
+        initial_map: the map of an emission off an incoming parton,
+            "symmetric" (genps_fks.f) or "asymmetric" (FKSISRMapping 2), see
+            FKSRadiation.InitialMap.
 
     Raises:
         ValueError: if the Born mapping does not have the particles of the
@@ -195,17 +200,24 @@ def fks_mappings(born, configurations, s_hat_min=0.0, cuts=None):
     ):
         i_fks, j_fks = configuration["i_fks"] - 1, configuration["j_fks"] - 1
         if cuts is None:
-            mapping = FKSMapping(born, i_fks, j_fks, s_hat_min=s_hat_min)
+            mapping = FKSMapping(born, i_fks, j_fks, s_hat_min, initial_map)
         elif j_fks >= 2:
-            mapping = FKSMapping(born_final, i_fks, j_fks, s_hat_min=s_hat_min)
+            mapping = FKSMapping(born_final, i_fks, j_fks, s_hat_min, initial_map)
         else:
-            mapping = FKSMapping(born_plain, i_fks, j_fks, s_hat_min=s_hat_min_initial)
+            mapping = FKSMapping(
+                born_plain, i_fks, j_fks, s_hat_min_initial, initial_map
+            )
         mappings.append(mapping)
     return mappings
 
 
 def fks_configuration_mapping(
-    born, configurations, s_hat_min=0.0, cuts=None, luminosity=None
+    born,
+    configurations,
+    s_hat_min=0.0,
+    cuts=None,
+    luminosity=None,
+    initial_map="symmetric",
 ):
     """The FKSConfigurationMapping of the FKS configurations of a Born, with
     fks_index the position of the configuration (nFKSprocess - 1): all
@@ -231,6 +243,8 @@ def fks_configuration_mapping(
             sqrt_s_hat_condition=True. An incoming emitter then radiates
             without the projection of the event, see
             FKSConfigurationMapping.
+        initial_map: the map of an emission off an incoming parton with
+            hadron beams, see fks_mappings.
 
     Raises:
         ValueError: as fks_mappings, and if a floor needs the
@@ -252,6 +266,7 @@ def fks_configuration_mapping(
         s_hat_min=s_hat_min,
         sqrt_s_hat_floor=floor,
         luminosity=luminosity,
+        initial_map=initial_map,
     )
 
 

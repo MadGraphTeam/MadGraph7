@@ -9,7 +9,10 @@ the unit-cube vector. The mapping must reproduce them, and its inverse the Born
 and the three random numbers. The weight of the mapping is the full Jacobian,
 while genps_fks.f returns the radiation Jacobian times compute_flux without the
 factor xi, in units of xi_max (xi_norm for a massive emitter) and without the
-factors 1 - stiny and 1 - ctiny of the sampling (see test_fks_kernels.py).
+factors 1 - stiny and 1 - ctiny of the sampling (see test_fks_kernels.py). The
+data of the asymmetric map of an incoming emitter (test_data/fks_asymmetric)
+come from the MCcntRefactor_Sfun branch, whose Jacobians for an incoming
+emitter include those factors.
 """
 
 import glob
@@ -20,7 +23,13 @@ import os
 import numpy as np
 import pytest
 import torch
-from fks_testing import massive_fortran_precision, massive_xi_max
+from fks_testing import (
+    FKS_ASYMMETRIC_DATA,
+    data_id,
+    fortran_sampling_units,
+    massive_fortran_precision,
+    massive_xi_max,
+)
 from madspace_testing import generator
 
 import madspace as ms
@@ -46,10 +55,13 @@ def initial_xi_max(x, omy, opy):
     return 4 * omx2 / (2 * omx2 + opx2 * opy + np.sqrt(np.maximum(disc, 0)))
 
 
-def initial_widths(born, momenta, i_fks, j_fks, x_born, s_hat_min):
+def initial_widths(
+    born, momenta, i_fks, j_fks, x_born, s_hat_min, initial_map="symmetric"
+):
     """xi, xi_max, rho = s_born / s_hat_min (1 without a bound) and the widths
     xi_max - xi_min and y_upp - y_low of the ranges of xi and y of the emission
-    off an incoming parton."""
+    off an incoming parton. The asymmetric map has xi_max = 1 - x of the emitter
+    and the whole range of y."""
     p1, p2, p_i = momenta[:, 0], momenta[:, 1], momenta[:, i_fks]
     p_in = p1 + p2
     xi = 2 * minkowski(p_i, p_in) / minkowski(p_in, p_in)
@@ -57,6 +69,8 @@ def initial_widths(born, momenta, i_fks, j_fks, x_born, s_hat_min):
     opy = 2 - omy
     x1, x2 = x_born
     xi_max = np.minimum(initial_xi_max(x1, omy, opy), initial_xi_max(x2, opy, omy))
+    if initial_map == "asymmetric":
+        xi_max = 1 - (x1 if j_fks == 0 else x2)
     born_in = born[:, 0] + born[:, 1]
     rho = np.ones_like(xi)
     if s_hat_min > 0:
@@ -64,7 +78,7 @@ def initial_widths(born, momenta, i_fks, j_fks, x_born, s_hat_min):
     xi_min = 1 - rho
     width_y = np.full_like(xi, 2.0)
     bounded = xi_min > 0
-    if bounded.any():
+    if bounded.any() and initial_map != "asymmetric":
         xa, xb = (x1, x2) if j_fks == 0 else (x2, x1)
         rho_b, xi_min_b = rho[bounded], xi_min[bounded]
         xa, xb = xa[bounded], xb[bounded]
@@ -77,7 +91,15 @@ def initial_widths(born, momenta, i_fks, j_fks, x_born, s_hat_min):
 
 
 def conditioning(
-    r, born, momenta, i_fks, j_fks, x_born=None, s_hat_min=0.0, emitter_mass=0.0
+    r,
+    born,
+    momenta,
+    i_fks,
+    j_fks,
+    x_born=None,
+    s_hat_min=0.0,
+    emitter_mass=0.0,
+    initial_map="symmetric",
 ):
     """Precision to which the real momenta determine the random numbers and the
     Jacobian.
@@ -129,7 +151,7 @@ def conditioning(
     x_edge = 0.0
     if x_born is not None and j_fks < 2:
         xi, xi_max, rho, width_xi, width_y = initial_widths(
-            born, momenta, i_fks, j_fks, x_born, s_hat_min
+            born, momenta, i_fks, j_fks, x_born, s_hat_min, initial_map
         )
         # xi to eps xi and, through s_born, xi_min to eps rho
         range_xi = (xi + np.where(rho < 1, rho, 0.0)) / width_xi
@@ -163,12 +185,18 @@ def azimuth_difference(r_phi, r_phi_ref):
     return np.abs((r_phi - r_phi_ref + 0.5) % 1.0 - 0.5)
 
 
-DATA = sorted(
-    glob.glob(
-        os.path.join(
-            os.path.dirname(os.path.realpath(__file__)), "test_data", "fks", "*.json"
+DATA = (
+    sorted(
+        glob.glob(
+            os.path.join(
+                os.path.dirname(os.path.realpath(__file__)),
+                "test_data",
+                "fks",
+                "*.json",
+            )
         )
     )
+    + FKS_ASYMMETRIC_DATA
 )
 
 
@@ -247,7 +275,7 @@ def reference_cases():
             j = conf["j_fks"]
             points = [p for p in conf["points"] if p["jac"] > 0 and "rad_jac" in p]
             if points:
-                name = os.path.basename(path)[:-5]
+                name = data_id(path)
                 kind = "initial" if j <= nin else "final"
                 if j > nin and conf["masses"][j - 1] > 0:
                     kind = "massive"
@@ -274,6 +302,7 @@ def test_matches_genps_fks(data, conf, points, prefix):
     assert len(taus) == 1
     s_hat_min = taus.pop() * s_lab if prefix == "cut" else 0.0
     m_j = conf["masses"][j_fks]
+    initial_map = data.get("initial_map", "symmetric")
     mapping = ms.FKSRadiation(
         nex - 1,
         i_fks,
@@ -281,6 +310,8 @@ def test_matches_genps_fks(data, conf, points, prefix):
         leptonic=leptonic,
         s_hat_min=s_hat_min,
         emitter_mass=m_j if j_fks >= 2 else 0.0,
+        initial_map=initial_map,
+        born_masses=list(np.delete(conf["masses"], i_fks)),
     )
     assert mapping.random_dim() == 3
     assert mapping.initial_state() == (j_fks < 2)
@@ -330,14 +361,13 @@ def test_matches_genps_fks(data, conf, points, prefix):
     second = field("isolsign") == -1
     if m_j > 0:
         width = np.where(second, 2 * xi_max_ev - xi_ev, xi_ev) / xi_hat_ev
-    stiny = np.where(second, 0.0, STINY)
     fortran = field("rad_jac") / flux_factor(field("rad_shat_ev"), nex)
-    expected = fortran * xi_ev * width * (1 - stiny) * (1 - CTINY)
+    expected = fortran * xi_ev * width * fortran_sampling_units(data, j_fks, second)
     assert (np.abs(det / expected - 1) <= 1e-12 + 50 * prec_jac).all()
 
     r_inv, born_inv, x_inv, det_inv = inverse(mapping, p_ev, x)
     bound_r, bound_phi, bound_det = conditioning(
-        r, p_born, p_ev, i_fks, j_fks, x_born, s_hat_min, m_j
+        r, p_born, p_ev, i_fks, j_fks, x_born, s_hat_min, m_j, initial_map
     )
     bound_r = bound_r + 10 * prec_dir / r[:, 1]
     assert (np.abs(r_inv[:, :2] - r[:, :2]).max(1) <= bound_r).all()
@@ -468,23 +498,41 @@ INITIAL_LAYOUTS = [
 S_HAT_MINS = [0.0, 1.5 * SQRT_S**2]
 
 
+@pytest.mark.parametrize("initial_map", ["symmetric", "asymmetric"])
 @pytest.mark.parametrize("s_hat_min", S_HAT_MINS, ids=["uncut", "bounded"])
 @pytest.mark.parametrize("masses,i_fks,j_fks", INITIAL_LAYOUTS)
-def test_round_trip_initial(masses, i_fks, j_fks, s_hat_min):
+def test_round_trip_initial(masses, i_fks, j_fks, s_hat_min, initial_map):
     batch = 2000
     n_born = len(masses) + 2
     born, _, _ = rambo([0.0, 0.0] + masses, batch, seed=40 + n_born)
     x_born = random_born_x(batch, seed=41)
     r = np.random.default_rng(42).random((batch, 3))
-    mapping = ms.FKSRadiation(n_born, i_fks, j_fks, s_hat_min=s_hat_min)
+    mapping = ms.FKSRadiation(
+        n_born,
+        i_fks,
+        j_fks,
+        s_hat_min=s_hat_min,
+        initial_map=initial_map,
+        born_masses=[0.0, 0.0] + masses,
+    )
     assert mapping.initial_state() and not mapping.leptonic()
+    assert mapping.initial_map() == ms.FKSRadiation.InitialMap(initial_map)
     momenta, x, det = forward(mapping, r, born, x_born)
+    assert ((x[0] <= 1) & (x[1] <= 1)).all()
+    if initial_map == "asymmetric":
+        # the partonic energy reaches s_born / x_born of the emitter, which
+        # leaves no room above the bound for some Borns (det = 0 there)
+        room = SQRT_S**2 / x_born[j_fks] > s_hat_min
+        assert room.any()
+        np.testing.assert_array_equal(det[~room], 0.0)
+        born, r, momenta, det = born[room], r[room], momenta[room], det[room]
+        x_born = (x_born[0][room], x_born[1][room])
+        x = (x[0][room], x[1][room])
     x1, x2 = x
 
-    # the real emission: x <= 1, its partonic energy above the bound and its
-    # incoming momenta in the Born c.m. frame, which moves with the Born
-    # rapidity in the lab
-    assert ((x1 <= 1) & (x2 <= 1)).all()
+    # the real emission: its partonic energy above the bound and its incoming
+    # momenta in the Born c.m. frame, which moves with the Born rapidity in
+    # the lab
     s_lab = SQRT_S**2 / TAU
     p_in = momenta[:, 0] + momenta[:, 1]
     s_real = p_in[:, 0] ** 2 - (p_in[:, 1:] ** 2).sum(1)
@@ -495,22 +543,36 @@ def test_round_trip_initial(masses, i_fks, j_fks, s_hat_min):
         plus1, x1 * math.sqrt(s_lab) * np.sqrt(x_born[1] / x_born[0]), rtol=1e-12
     )
 
-    # momentum conservation on top of the Born's, which the transverse boost
-    # of its final state stretches by at most exp(|eta|) = (E + |p_T|) / sqrt(s)
-    # of the recoil
+    # momentum conservation on top of the Born's, which the Lorentz map of its
+    # final state stretches by at most exp(|eta|) = (E + |p|) / sqrt(s) of the
+    # recoil
     recoil = momenta[:, 2:].sum(1) - momenta[:, i_fks]
-    stretch = (recoil[:, 0] + np.hypot(recoil[:, 1], recoil[:, 2])) / SQRT_S
+    stretch = (recoil[:, 0] + np.linalg.norm(recoil[:, 1:], axis=1)) / SQRT_S
     scale = momenta[..., 0].max(1)
     assert (
         violation(momenta) * SQRT_S
         <= stretch * violation(born) * SQRT_S + 1e-14 * scale
     ).all()
-    # the transverse boost leaves the longitudinal momentum of the final state
-    # of the Born unchanged (zero, up to the Born's own violation), so the event
-    # stays in the Born c.m. frame
-    np.testing.assert_allclose(
-        recoil[:, 3] / scale, born[:, 2:, 3].sum(1) / scale, atol=1e-13
-    )
+    if initial_map == "symmetric":
+        # the transverse boost leaves the longitudinal momentum of the final
+        # state of the Born unchanged (zero, up to the Born's own violation),
+        # so the event stays in the Born c.m. frame
+        np.testing.assert_allclose(
+            recoil[:, 3] / scale, born[:, 2:, 3].sum(1) / scale, atol=1e-13
+        )
+    else:
+        # only the emitter changes its momentum fraction, up to 1 - xi_max =
+        # x_born of the emitter, and the spectator keeps its momentum
+        spectator = 1 - j_fks
+        xi = 2 * minkowski(momenta[:, i_fks], p_in) / s_real
+        np.testing.assert_array_equal(x[spectator], x_born[spectator])
+        np.testing.assert_allclose(x[j_fks] * (1 - xi), x_born[j_fks], rtol=1e-12)
+        assert (xi <= (1 - x_born[j_fks]) * (1 + 1e-12)).all()
+        np.testing.assert_allclose(
+            momenta[:, spectator] / scale[:, None],
+            born[:, spectator] / scale[:, None],
+            atol=1e-15,
+        )
     m2 = momenta[..., 0] ** 2 - (momenta[..., 1:] ** 2).sum(-1)
     m2_expected = np.array([0.0] * (n_born + 1))
     for k, m in enumerate(masses):
@@ -522,7 +584,7 @@ def test_round_trip_initial(masses, i_fks, j_fks, s_hat_min):
 
     r_inv, born_inv, x_inv, det_inv = inverse(mapping, momenta, x)
     bound_r, bound_phi, bound_det = conditioning(
-        r, born, momenta, i_fks, j_fks, x_born, s_hat_min
+        r, born, momenta, i_fks, j_fks, x_born, s_hat_min, initial_map=initial_map
     )
     assert (np.abs(r_inv[:, :2] - r[:, :2]).max(1) <= bound_r).all()
     assert (azimuth_difference(r_inv[:, 2], r[:, 2]) <= bound_phi).all()

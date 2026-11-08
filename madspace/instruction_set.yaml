@@ -2839,6 +2839,208 @@ fks_initial_recoil_boost_inverse:
       desc: "the final-state momenta of the Born"
   desc: "Inverse of @ref fks_initial_recoil_boost."
 
+fks_initial_asymmetric_radiate:
+  inputs:
+    - name: xi_hat
+      type: [float]
+      desc: "energy fraction of the FKS parton i, mapped linearly onto [xi_min, xi_max]"
+    - name: y_hat
+      type: [float]
+      desc: "cosine of the angle between i and the incoming emitter j, which this map does not restrict (y = y_hat)"
+    - name: r_phi
+      type: [float]
+      desc: "random number for the azimuth of i about the beam axis"
+    - name: sqrt_s
+      type: [float]
+      desc: "partonic center-of-mass energy of the Born"
+    - name: x1_born
+      type: [float]
+      desc: "momentum fraction of beam 1 in the Born"
+    - name: x2_born
+      type: [float]
+      desc: "momentum fraction of beam 2 in the Born"
+    - name: s_hat_min
+      type: [float]
+      desc: "lower bound on the partonic energy squared of the real emission, 0 for none"
+    - name: beam_sign
+      type: [float]
+      desc: "+1 if j comes from beam 1 (along +z), -1 if from beam 2"
+  outputs:
+    - name: p_in1
+      type: [float, 4]
+      desc: "incoming momentum along +z of the real emission, in the Born center-of-mass frame"
+    - name: p_in2
+      type: [float, 4]
+      desc: "incoming momentum along -z of the real emission, in the Born center-of-mass frame"
+    - name: p_i
+      type: [float, 4]
+      desc: "FKS parton i, in the Born center-of-mass frame"
+    - name: x1
+      type: [float]
+      desc: "momentum fraction of beam 1 in the real emission"
+    - name: x2
+      type: [float]
+      desc: "momentum fraction of beam 2 in the real emission"
+    - name: xi
+      type: [float]
+      desc: "energy fraction 2 E_i / sqrt(s) of i in the center-of-mass frame of the real emission"
+    - name: y
+      type: [float]
+      desc: "cosine of the angle between i and j in the center-of-mass frame of the real emission"
+    - name: xi_min
+      type: [float]
+      desc: "lower bound 1 - sqrt_s^2 / s_hat_min of xi, 0 if the Born is above the bound"
+    - name: xi_max
+      type: [float]
+      desc: "upper bound 1 - xbar_j of xi, from x_j <= 1 for the momentum fraction xbar_j of the emitter in the Born"
+    - name: det_xi
+      type: [float]
+      desc: "Jacobian of (xi_hat, y_hat, r_phi, x1_born, x2_born) to (x1, x2) and the (n+1)-body phase space, in units of the n-body one, divided by xi"
+    - name: p_i_hat
+      type: [float, 4]
+      desc: "momentum of i per unit xi, p_i / xi, which stays finite in the soft limit"
+  desc: "Asymmetric FKS emission off an incoming parton, as generate_momenta_initial_asymmetric of the MCcntRefactor_Sfun branch of MadGraph7 (FKSISRMapping 2). Only the emitter changes its momentum fraction, x_j = xbar_j / (1 - xi), and the spectator keeps its own, so that xi_max = 1 - xbar_j at every y. The real emission has sqrt(s) = sqrt_s / sqrt(1 - xi) and its incoming momenta and i are given in the Born center-of-mass frame, where the final state of the Born is mapped with @ref fks_initial_light_cone_map. With s_hat_min above the Born, xi >= xi_min = 1 - sqrt_s^2 / s_hat_min and y keeps its whole range, and where that leaves no range of xi (xi_max <= xi_min) det_xi is 0 and xi = xi_max. At xi_hat = 0 and y_hat = 1 it gives the soft and collinear counter-events of @ref fks_initial_radiate, the soft one where xi_min = 0. det_xi is that of @ref fks_initial_radiate with the whole range of y, the Jacobian of the map is xi det_xi."
+
+fks_initial_asymmetric_cluster:
+  inputs:
+    - name: p_in1
+      type: [float, 4]
+      desc: "incoming momentum along +z of the real emission, in the Born center-of-mass frame"
+    - name: p_in2
+      type: [float, 4]
+      desc: "incoming momentum along -z of the real emission, in the Born center-of-mass frame"
+    - name: p_i
+      type: [float, 4]
+      desc: "FKS parton i, massless"
+    - name: x1
+      type: [float]
+      desc: "momentum fraction of beam 1 in the real emission"
+    - name: x2
+      type: [float]
+      desc: "momentum fraction of beam 2 in the real emission"
+    - name: s_hat_min
+      type: [float]
+      desc: "lower bound on the partonic energy squared of the real emission, 0 for none"
+    - name: beam_sign
+      type: [float]
+      desc: "+1 if j comes from beam 1 (along +z), -1 if from beam 2"
+  outputs:
+    - name: sqrt_s
+      type: [float]
+      desc: "partonic center-of-mass energy of the Born"
+    - name: x1_born
+      type: [float]
+      desc: "momentum fraction of beam 1 in the Born"
+    - name: x2_born
+      type: [float]
+      desc: "momentum fraction of beam 2 in the Born"
+    - name: xi_hat
+      type: [float]
+      desc: "energy fraction of i in units of the range [xi_min, xi_max]"
+    - name: y_hat
+      type: [float]
+      desc: "cosine of the angle between i and j, equal to y"
+    - name: r_phi
+      type: [float]
+      desc: "random number for the azimuth of i about the beam axis"
+    - name: xi
+      type: [float]
+      desc: "energy fraction of i"
+    - name: y
+      type: [float]
+      desc: "cosine of the angle between i and j in the center-of-mass frame of the real emission"
+    - name: xi_min
+      type: [float]
+      desc: "lower bound of xi"
+    - name: xi_max
+      type: [float]
+      desc: "upper bound of xi"
+    - name: det_xi
+      type: [float]
+      desc: "inverse of det_xi of @ref fks_initial_asymmetric_radiate"
+  desc: "Inverse of @ref fks_initial_asymmetric_radiate. xi = 2 p_i.P / P^2 and 1 -+ y come from the light-cone components of i, as in @ref fks_initial_cluster, and the momentum fraction of the emitter in the Born is x_j (1 - xi). The final state of the Born is mapped back with @ref fks_initial_light_cone_map_inverse."
+
+fks_initial_asymmetric_born_fractions:
+  inputs:
+    - name: p_in1
+      type: [float, 4]
+      desc: "first incoming momentum of the real emission, along the beam axis"
+    - name: p_in2
+      type: [float, 4]
+      desc: "second incoming momentum of the real emission, along the beam axis"
+    - name: p_i
+      type: [float, 4]
+      desc: "FKS parton i, massless, in the same frame"
+    - name: x1
+      type: [float]
+      desc: "momentum fraction of the first incoming parton in the real emission"
+    - name: x2
+      type: [float]
+      desc: "momentum fraction of the second incoming parton in the real emission"
+    - name: beam_sign
+      type: [float]
+      desc: "+1 if j is the first incoming parton, -1 if the second"
+  outputs:
+    - name: x1_born
+      type: [float]
+      desc: "momentum fraction of the first incoming parton in the Born"
+    - name: x2_born
+      type: [float]
+      desc: "momentum fraction of the second incoming parton in the Born"
+  desc: "The momentum fractions of the Born of @ref fks_initial_asymmetric_radiate from the real emission in any frame where the incoming momenta are along the beam axis: x_j (1 - xi) for the emitter, with the invariant xi = 2 p_i.(p_in1 + p_in2) / (p_in1 + p_in2)^2, and that of the spectator unchanged. They give the frame of the Born for the inverse of @ref FKSMapping."
+
+fks_initial_light_cone_map:
+  inputs:
+    - name: p
+      type: [float, n, 4]
+      desc: "final-state momenta of the Born, in its center-of-mass frame"
+    - name: masses
+      type: [float, single, n]
+      desc: "mass of each particle, or a negative value for none (the formulas without the mass shell)"
+    - name: xi
+      type: [float]
+      desc: "energy fraction of the FKS parton i"
+    - name: y
+      type: [float]
+      desc: "cosine of the angle between i and the incoming emitter j"
+    - name: r_phi
+      type: [float]
+      desc: "random number for the azimuth of i about the beam axis"
+    - name: beam_sign
+      type: [float]
+      desc: "+1 if j comes from beam 1 (along +z), -1 if from beam 2"
+  outputs:
+    - name: p_out
+      type: [float, n, 4]
+      desc: "the mapped momenta"
+  desc: "Lorentz map of the final state of the Born in the asymmetric FKS emission off an incoming parton (@ref fks_initial_asymmetric_radiate), apply_isr_recoil_boost of the MCcntRefactor_Sfun branch of MadGraph7. In light-cone components along the emitter, q^+ -> A q^+, q_T -> q_T + b q^+ and q^- -> (q^- + 2 b.q_T + b^2 q^+) / A, with A = 1 + xi (1 - y) / (2 (1 - xi)) and b = -xi sin(theta) / (2 sqrt(1 - xi)) (cos phi, sin phi). It keeps the direction of the spectator and gives the final state the momentum of the real emission without i. Where the mass is known, the smaller light-cone component on input and q^- on output come from the mass shell, which keeps the relative precision of every momentum."
+
+fks_initial_light_cone_map_inverse:
+  inputs:
+    - name: p
+      type: [float, n, 4]
+      desc: "final-state momenta of the real emission without i"
+    - name: masses
+      type: [float, single, n]
+      desc: "mass of each particle, or a negative value for none"
+    - name: xi
+      type: [float]
+      desc: "energy fraction of the FKS parton i"
+    - name: y
+      type: [float]
+      desc: "cosine of the angle between i and the incoming emitter j"
+    - name: r_phi
+      type: [float]
+      desc: "random number for the azimuth of i about the beam axis"
+    - name: beam_sign
+      type: [float]
+      desc: "+1 if j comes from beam 1 (along +z), -1 if from beam 2"
+  outputs:
+    - name: p_out
+      type: [float, n, 4]
+      desc: "the final-state momenta of the Born"
+  desc: "Inverse of @ref fks_initial_light_cone_map, with q^+ -> q^+ / A and the mass shell for the smaller light-cone component on input and q^- on output, so that a momentum close to the axis keeps its precision where A is large."
+
 fks_initial_fixed_radiate:
   inputs:
     - name: xi_hat

@@ -819,6 +819,298 @@ KERNELSPEC void kernel_fks_initial_recoil_boost_inverse(
     fks_initial_recoil_boost<T>(p, xi, y, r_phi, FVal<T>(beam_sign), -1., p_out);
 }
 
+// Lower bound xi_min = 1 - s_born / s_hat_min of xi for an emission off an
+// incoming parton, 0 if the Born is above s_hat_min.
+template <typename T>
+KERNELSPEC FVal<T> fks_initial_xi_min(FVal<T> s_born, FVal<T> s_hat_min) {
+    auto active = s_hat_min > s_born;
+    auto s_min = where(active, s_hat_min, FVal<T>(1.));
+    return where(active, (s_min - s_born) / s_min, FVal<T>(0.));
+}
+
+// The asymmetric emission off an incoming parton (FKSISRMapping 2 of the
+// MCcntRefactor_Sfun branch of MadGraph7): only the emitter j changes its
+// momentum fraction, x_j = xbar_j / (1 - xi), the spectator keeps its own. In
+// the center-of-mass frame of the Born, the emitter has the energy
+// sqrt(s_born) / (2 (1 - xi)) and the spectator sqrt(s_born) / 2, and i the
+// light-cone components along the emitter
+//   p_i^+ = xi sqrt(s_born) (1 + y) / (2 (1 - xi)),
+//   p_i^- = xi sqrt(s_born) (1 - y) / 2,
+// and the transverse momentum xi sqrt(s) sin(theta) / 2 along
+// (cos phi, sin phi), with s = s_born / (1 - xi) and the cosine y of i to j in
+// the center-of-mass frame of the real emission. So xi_max = 1 - xbar_j at
+// every y, and with s_hat_min xi >= xi_min without a bound on y (y = y_hat).
+// det_xi is that of the symmetric map, fks_initial_det_xi. Where the bound
+// leaves no range (xi_max <= xi_min), det_xi is 0 and xi = xi_max.
+template <typename T>
+KERNELSPEC void kernel_fks_initial_asymmetric_radiate(
+    FIn<T, 0> xi_hat,
+    FIn<T, 0> y_hat,
+    FIn<T, 0> r_phi,
+    FIn<T, 0> sqrt_s,
+    FIn<T, 0> x1_born,
+    FIn<T, 0> x2_born,
+    FIn<T, 0> s_hat_min,
+    FIn<T, 0> beam_sign,
+    FOut<T, 1> p_in1,
+    FOut<T, 1> p_in2,
+    FOut<T, 1> p_i,
+    FOut<T, 0> x1,
+    FOut<T, 0> x2,
+    FOut<T, 0> xi,
+    FOut<T, 0> y,
+    FOut<T, 0> xi_min,
+    FOut<T, 0> xi_max,
+    FOut<T, 0> det_xi,
+    FOut<T, 1> p_i_hat
+) {
+    FVal<T> xh = xi_hat, yv = y_hat, rp = r_phi, rs_born = sqrt_s;
+    FVal<T> x1b = x1_born, x2b = x2_born, sign(beam_sign);
+    auto s_born = rs_born * rs_born;
+    auto plus = sign > 0.;
+    auto xmin = fks_initial_xi_min<T>(s_born, FVal<T>(s_hat_min));
+    auto x_j = where(plus, x1b, x2b);
+    auto xm = 1. - x_j;
+    auto width = max(xm - xmin, 0.);
+    // at the upper end 1 - xi is the momentum fraction of the emitter in the
+    // Born exactly, so that x_j = 1 there
+    auto xi_end = xmin + width * xh;
+    auto at_end = xi_end >= xm;
+    auto xiv = where(at_end, xm, xi_end);
+    auto omx = where(at_end, x_j, max(1. - xiv, EPS2));
+    auto rs = rs_born / sqrt(omx);
+    auto omy = 1. - yv, opy = 1. + yv;
+    auto sth = sqrt(max(omy * opy, 0.));
+    auto phi = 2. * PI * rp;
+
+    auto e_j = 0.5 * rs_born / omx;
+    auto e_s = 0.5 * rs_born;
+    auto e1 = where(plus, e_j, e_s), e2 = where(plus, e_s, e_j);
+    store_mom<T>(p_in1, FourMom<T>{e1, FVal<T>(0.), FVal<T>(0.), e1});
+    store_mom<T>(p_in2, FourMom<T>{e2, FVal<T>(0.), FVal<T>(0.), -e2});
+    // i per unit xi
+    auto hat_plus = e_j * opy, hat_minus = e_s * omy;
+    auto hat_t = 0.5 * rs * sth;
+    FourMom<T> hat{
+        0.5 * (hat_plus + hat_minus),
+        hat_t * cos(phi),
+        hat_t * sin(phi),
+        sign * 0.5 * (hat_plus - hat_minus)
+    };
+    store_mom<T>(p_i_hat, hat);
+    store_mom<T>(
+        p_i, FourMom<T>{xiv * hat[0], xiv * hat[1], xiv * hat[2], xiv * hat[3]}
+    );
+    x1 = where(plus, x1b / omx, x1b);
+    x2 = where(plus, x2b, x2b / omx);
+    xi = xiv;
+    y = yv;
+    xi_min = xmin;
+    xi_max = xm;
+    det_xi = fks_initial_det_xi<T>(s_born, width, omx);
+}
+
+// Inverse of fks_initial_asymmetric_radiate, from the real emission in the
+// center-of-mass frame of the Born: xi = 2 p_i.P / P^2 and 1 -+ y_beam from
+// the light-cone components of i, as fks_initial_cluster, and the momentum
+// fraction of the emitter xbar_j = x_j (1 - xi).
+template <typename T>
+KERNELSPEC void kernel_fks_initial_asymmetric_cluster(
+    FIn<T, 1> p_in1,
+    FIn<T, 1> p_in2,
+    FIn<T, 1> p_i,
+    FIn<T, 0> x1,
+    FIn<T, 0> x2,
+    FIn<T, 0> s_hat_min,
+    FIn<T, 0> beam_sign,
+    FOut<T, 0> sqrt_s,
+    FOut<T, 0> x1_born,
+    FOut<T, 0> x2_born,
+    FOut<T, 0> xi_hat,
+    FOut<T, 0> y_hat,
+    FOut<T, 0> r_phi,
+    FOut<T, 0> xi,
+    FOut<T, 0> y,
+    FOut<T, 0> xi_min,
+    FOut<T, 0> xi_max,
+    FOut<T, 0> det_xi
+) {
+    FVal<T> sign(beam_sign);
+    auto p1 = load_mom<T>(p_in1);
+    auto p2 = load_mom<T>(p_in2);
+    auto pi = load_mom<T>(p_i);
+    auto e1 = p1[0], e2 = p2[0];
+    auto s = 4. * e1 * e2;
+
+    auto pt2 = pi[1] * pi[1] + pi[2] * pi[2];
+    auto forward = pi[3] >= 0.;
+    auto big = where(forward, pi[0] + pi[3], pi[0] - pi[3]);
+    auto small = pt2 / max(big, EPS);
+    auto pi_dot_1 = e1 * where(forward, small, big);
+    auto pi_dot_2 = e2 * where(forward, big, small);
+    auto pi_dot_p = pi_dot_1 + pi_dot_2;
+    auto xiv = 2. * pi_dot_p / s;
+    auto omy_beam = 2. * pi_dot_1 / pi_dot_p;
+    auto opy_beam = 2. * pi_dot_2 / pi_dot_p;
+
+    auto plus = sign > 0.;
+    auto omx = max(1. - xiv, EPS2);
+    FVal<T> xr1 = x1, xr2 = x2;
+    auto x1b = where(plus, xr1 * omx, xr1);
+    auto x2b = where(plus, xr2, xr2 * omx);
+    auto s_born = s * omx;
+    auto xmin = fks_initial_xi_min<T>(s_born, FVal<T>(s_hat_min));
+    auto xm = 1. - where(plus, x1b, x2b);
+    auto width = max(xm - xmin, 0.);
+    auto omy = where(plus, omy_beam, opy_beam);
+    auto opy = where(plus, opy_beam, omy_beam);
+    auto yv = where(omy <= opy, 1. - omy, opy - 1.);
+
+    auto rphi = atan2(pi[2], pi[1]) / (2. * PI);
+    sqrt_s = sqrt(max(s_born, 0.));
+    x1_born = x1b;
+    x2_born = x2b;
+    xi_hat = (xiv - xmin) / max(width, EPS2);
+    y_hat = yv;
+    r_phi = where(rphi < 0., rphi + 1., rphi);
+    xi = xiv;
+    y = yv;
+    xi_min = xmin;
+    xi_max = xm;
+    det_xi = 1. / max(fks_initial_det_xi<T>(s_born, width, omx), EPS2);
+}
+
+// The momentum fractions of the Born of the asymmetric emission off an incoming
+// parton, from the real emission in any frame with the incoming momenta along
+// the beam axis: xbar_j = x_j (1 - xi), the spectator's unchanged, with the
+// invariant xi = 2 p_i.(p_in1 + p_in2) / (p_in1 + p_in2)^2. Each p_i.p_in is
+// E_in times the light-cone component of i against p_in, the smaller one from
+// its mass shell.
+template <typename T>
+KERNELSPEC void kernel_fks_initial_asymmetric_born_fractions(
+    FIn<T, 1> p_in1,
+    FIn<T, 1> p_in2,
+    FIn<T, 1> p_i,
+    FIn<T, 0> x1,
+    FIn<T, 0> x2,
+    FIn<T, 0> beam_sign,
+    FOut<T, 0> x1_born,
+    FOut<T, 0> x2_born
+) {
+    auto p1 = load_mom<T>(p_in1);
+    auto p2 = load_mom<T>(p_in2);
+    auto pi = load_mom<T>(p_i);
+    auto pt2 = pi[1] * pi[1] + pi[2] * pi[2];
+    auto forward = pi[3] >= 0.;
+    auto big = where(forward, pi[0] + pi[3], pi[0] - pi[3]);
+    auto small = pt2 / max(big, EPS);
+    auto lc_plus = where(forward, big, small);  // E + p_z
+    auto lc_minus = where(forward, small, big); // E - p_z
+    // p_i.p for a massless p along +z is E_p (E - p_z) of i, along -z E_p (E + p_z)
+    auto dot1 = p1[0] * where(p1[3] >= 0., lc_minus, lc_plus);
+    auto dot2 = p2[0] * where(p2[3] >= 0., lc_minus, lc_plus);
+    auto xiv = (dot1 + dot2) / (2. * p1[0] * p2[0]);
+    auto omx = max(1. - xiv, EPS2);
+    auto plus = FVal<T>(beam_sign) > 0.;
+    FVal<T> xr1 = x1, xr2 = x2;
+    x1_born = where(plus, xr1 * omx, xr1);
+    x2_born = where(plus, xr2, xr2 * omx);
+}
+
+// The Lorentz map of the final state of the Born in the asymmetric emission off
+// an incoming parton (apply_isr_recoil_boost of the MCcntRefactor_Sfun branch
+// of MadGraph7). With the light-cone components q^+- = E +- beam_sign p_z
+// along the emitter and the transverse momentum q_T,
+//   q^+ -> A q^+,  q_T -> q_T + b q^+,  q^- -> (q^- + 2 b.q_T + b^2 q^+) / A,
+// A = 1 + xi (1 - y) / (2 (1 - xi)), b = -xi sin(theta) / (2 sqrt(1 - xi))
+// (cos phi, sin phi). It keeps the direction of the spectator and maps the
+// momentum (sqrt(s_born), 0) of the final state of the Born onto that of the
+// real emission without i. The smaller light-cone component of each momentum
+// on input, and q^- on output (q^+ with direction = -1), come from the mass
+// shell where the mass is known, as in fks_beam_boost, which keeps the precision
+// of a momentum close to the axis also where A is large (small 1 - xi).
+// direction = -1 gives the inverse.
+template <typename T>
+KERNELSPEC void fks_initial_light_cone_map(
+    FIn<T, 2> p,
+    FSIn<T, 1> masses,
+    FVal<T> xi,
+    FVal<T> y,
+    FVal<T> r_phi,
+    FVal<T> beam_sign,
+    double direction,
+    FOut<T, 2> p_out
+) {
+    auto omx = max(1. - xi, EPS2);
+    auto omy = 1. - y, opy = 1. + y;
+    auto a = 1. + xi * omy / (2. * omx);
+    auto bn = -xi * sqrt(max(omy * opy, 0.)) / (2. * sqrt(omx));
+    auto phi = 2. * PI * r_phi;
+    auto b1 = bn * cos(phi), b2 = bn * sin(phi);
+    auto b_sq = bn * bn;
+    for (std::size_t i = 0; i < p.size(); ++i) {
+        auto q = p[i];
+        auto q_out = p_out[i];
+        FVal<T> mass(masses[i]);
+        FVal<T> q0(q[0]), q1(q[1]), q2(q[2]), q3(beam_sign * q[3]);
+        auto known = mass >= 0.;
+        auto m2 = where(known, mass * mass, FVal<T>(0.));
+        auto forward = q3 >= 0.;
+        auto big = where(forward, q0 + q3, q0 - q3);
+        auto small = (m2 + q1 * q1 + q2 * q2) / max(big, FVal<T>(EPS2));
+        auto qp = where(known, where(forward, big, small), q0 + q3);
+        auto qm = where(known, where(forward, small, big), q0 - q3);
+        FVal<T> np, nt1, nt2, nm_direct;
+        if (direction > 0.) {
+            np = a * qp;
+            nt1 = q1 + b1 * qp;
+            nt2 = q2 + b2 * qp;
+            nm_direct = (qm + 2. * (b1 * q1 + b2 * q2) + b_sq * qp) / a;
+        } else {
+            np = qp / a;
+            nt1 = q1 - b1 * np;
+            nt2 = q2 - b2 * np;
+            nm_direct = a * qm - 2. * (b1 * nt1 + b2 * nt2) - b_sq * np;
+        }
+        auto nm_shell = (m2 + nt1 * nt1 + nt2 * nt2) / max(np, FVal<T>(EPS2));
+        auto nm = where(known & (np > 0.), nm_shell, nm_direct);
+        q_out[0] = 0.5 * (np + nm);
+        q_out[1] = nt1;
+        q_out[2] = nt2;
+        q_out[3] = beam_sign * 0.5 * (np - nm);
+    }
+}
+
+template <typename T>
+KERNELSPEC void kernel_fks_initial_light_cone_map(
+    FIn<T, 2> p,
+    FSIn<T, 1> masses,
+    FIn<T, 0> xi,
+    FIn<T, 0> y,
+    FIn<T, 0> r_phi,
+    FIn<T, 0> beam_sign,
+    FOut<T, 2> p_out
+) {
+    fks_initial_light_cone_map<T>(
+        p, masses, xi, y, r_phi, FVal<T>(beam_sign), 1., p_out
+    );
+}
+
+template <typename T>
+KERNELSPEC void kernel_fks_initial_light_cone_map_inverse(
+    FIn<T, 2> p,
+    FSIn<T, 1> masses,
+    FIn<T, 0> xi,
+    FIn<T, 0> y,
+    FIn<T, 0> r_phi,
+    FIn<T, 0> beam_sign,
+    FOut<T, 2> p_out
+) {
+    fks_initial_light_cone_map<T>(
+        p, masses, xi, y, r_phi, FVal<T>(beam_sign), -1., p_out
+    );
+}
+
 // The emission off an incoming parton without the projection of the event onto
 // the Born, for lepton PDFs (generate_momenta_initial_noevpr of genps_fks.f):
 // the real emission keeps the partonic energy sqrt(s) and the momentum

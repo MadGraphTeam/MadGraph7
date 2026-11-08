@@ -70,7 +70,9 @@ FKSRadiation::FKSRadiation(
     std::size_t j_fks,
     bool leptonic,
     double s_hat_min,
-    double emitter_mass
+    double emitter_mass,
+    InitialMap initial_map,
+    const std::vector<double>& born_masses
 ) :
     Mapping(
         "FKSRadiation",
@@ -85,7 +87,17 @@ FKSRadiation::FKSRadiation(
     _j_fks(j_fks),
     _leptonic(leptonic),
     _s_hat_min(s_hat_min),
-    _emitter_mass(emitter_mass) {
+    _emitter_mass(emitter_mass),
+    _initial_map(initial_map),
+    _final_masses(born_particle_count - INCOMING_COUNT, -1.) {
+    if (!born_masses.empty()) {
+        if (born_masses.size() != born_particle_count) {
+            throw std::invalid_argument(
+                "FKSRadiation: born_masses needs one mass per particle of the Born"
+            );
+        }
+        _final_masses.assign(born_masses.begin() + INCOMING_COUNT, born_masses.end());
+    }
     if (s_hat_min < 0.) {
         throw std::invalid_argument("FKSRadiation: s_hat_min must not be negative");
     }
@@ -127,6 +139,7 @@ FKSRadiation::Emission FKSRadiation::build_emission(
     auto p_born = fb.unstack(born);
     if (initial_state()) {
         double beam_sign = _j_fks == 0 ? 1. : -1.;
+        bool asymmetric = _initial_map == InitialMap::asymmetric;
         auto
             [p_in1,
              p_in2,
@@ -138,13 +151,27 @@ FKSRadiation::Emission FKSRadiation::build_emission(
              xi_min,
              xi_max,
              det_xi,
-             p_i_hat] =
-                fb.fks_initial_radiate(
-                    xi_hat, y_var, r_phi, sqrt_s, x1, x2, _s_hat_min, beam_sign
-                );
+             p_i_hat] = asymmetric
+            ? fb.fks_initial_asymmetric_radiate(
+                  xi_hat, y_var, r_phi, sqrt_s, x1, x2, _s_hat_min, beam_sign
+              )
+            : fb.fks_initial_radiate(
+                  xi_hat, y_var, r_phi, sqrt_s, x1, x2, _s_hat_min, beam_sign
+              );
         ValueVec final_state(p_born.begin() + INCOMING_COUNT, p_born.end());
         auto boosted = fb.unstack(
-            fb.fks_initial_recoil_boost(fb.stack(final_state), xi, y, r_phi, beam_sign)
+            asymmetric
+                ? fb.fks_initial_light_cone_map(
+                      fb.stack(final_state),
+                      Value(_final_masses),
+                      xi,
+                      y,
+                      r_phi,
+                      beam_sign
+                  )
+                : fb.fks_initial_recoil_boost(
+                      fb.stack(final_state), xi, y, r_phi, beam_sign
+                  )
         );
         ValueVec real{p_in1, p_in2};
         for (std::size_t r = INCOMING_COUNT, k = 0; r < _born_particle_count + 1; ++r) {
@@ -383,6 +410,7 @@ Mapping::Result FKSRadiation::build_initial_inverse(
     FunctionBuilder& fb, const NamedVector<Value>& inputs
 ) const {
     double beam_sign = _j_fks == 0 ? 1. : -1.;
+    bool asymmetric = _initial_map == InitialMap::asymmetric;
     auto p_real = fb.unstack(inputs.at(0));
     auto
         [sqrt_s,
@@ -395,16 +423,25 @@ Mapping::Result FKSRadiation::build_initial_inverse(
          y,
          xi_min,
          xi_max,
-         det_xi_inv] =
-            fb.fks_initial_cluster(
-                p_real.at(0),
-                p_real.at(1),
-                p_real.at(_i_fks),
-                inputs.at(1),
-                inputs.at(2),
-                _s_hat_min,
-                beam_sign
-            );
+         det_xi_inv] = asymmetric
+        ? fb.fks_initial_asymmetric_cluster(
+              p_real.at(0),
+              p_real.at(1),
+              p_real.at(_i_fks),
+              inputs.at(1),
+              inputs.at(2),
+              _s_hat_min,
+              beam_sign
+          )
+        : fb.fks_initial_cluster(
+              p_real.at(0),
+              p_real.at(1),
+              p_real.at(_i_fks),
+              inputs.at(1),
+              inputs.at(2),
+              _s_hat_min,
+              beam_sign
+          );
     auto [r_xi, r_y, det_sample_inv] = fb.fks_xi_y_sample_inverse(xi_hat, y_hat);
 
     ValueVec final_state;
@@ -413,9 +450,15 @@ Mapping::Result FKSRadiation::build_initial_inverse(
             final_state.push_back(p_real.at(r));
         }
     }
-    auto boosted = fb.unstack(fb.fks_initial_recoil_boost_inverse(
-        fb.stack(final_state), xi, y, r_phi, beam_sign
-    ));
+    auto boosted = fb.unstack(
+        asymmetric
+            ? fb.fks_initial_light_cone_map_inverse(
+                  fb.stack(final_state), Value(_final_masses), xi, y, r_phi, beam_sign
+              )
+            : fb.fks_initial_recoil_boost_inverse(
+                  fb.stack(final_state), xi, y, r_phi, beam_sign
+              )
+    );
     auto [p_in1, p_in2] = fb.com_p_in(sqrt_s);
     ValueVec born{p_in1, p_in2};
     born.insert(born.end(), boosted.begin(), boosted.end());

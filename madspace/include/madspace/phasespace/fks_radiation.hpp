@@ -57,7 +57,20 @@ namespace madspace {
  * exactly the real emissions with @f$s \ge \hat s_\mathrm{min}@f$ and no
  * sampling is wasted on the others. @f$\hat\xi@f$ and the variable @f$\hat y@f$
  * that the random number gives are then mapped linearly onto the allowed
- * ranges.
+ * ranges. This is the symmetric map of genps_fks.f (@p initial_map
+ * `symmetric`).
+ *
+ * The asymmetric map (`asymmetric`, FKSISRMapping 2 of the MCcntRefactor_Sfun
+ * branch of MadGraph7) changes only the momentum fraction of the emitter,
+ * @f$x_j = \bar x_j/(1 - \xi)@f$, and keeps that of the spectator. The final
+ * state of the Born recoils against @f$i@f$ by a Lorentz map that keeps the
+ * direction of the spectator (`fks_initial_light_cone_map`), and
+ * @f$\xi_\mathrm{max} = 1 - \bar x_j@f$ at every @f$y@f$, so that
+ * @f$\xi \ge \xi_\mathrm{min}@f$ leaves the range of @f$y@f$ whole
+ * (@f$\hat y = y@f$). Its counter-events are those of the symmetric map. The
+ * event has the same @f$\xi@f$, @f$y@f$ and @f$\phi@f$ in the center-of-mass
+ * frame of the real emission, but another range of @f$\xi@f$ and other
+ * momenta in the frame of the Born.
  *
  * The random numbers are mapped as
  * @f[
@@ -70,7 +83,8 @@ namespace madspace {
  * instructions `fks_xi_y_sample`, `fks_final_massless_radiate`,
  * `fks_final_massive_sample`, `fks_final_massive_radiate`,
  * `fks_recoil_boost`, `fks_initial_radiate` and `fks_initial_recoil_boost`,
- * and their inverses.
+ * `fks_initial_asymmetric_radiate` and `fks_initial_light_cone_map`, and their
+ * inverses.
  *
  * The weight is the Jacobian of the full map, so that
  * @f$\mathrm{d}x_1\,\mathrm{d}x_2\,\mathrm{d}\Phi_{n+1} = w\,
@@ -122,6 +136,17 @@ namespace madspace {
  */
 class FKSRadiation : public Mapping {
 public:
+    /**
+     * The map of an emission off an incoming parton.
+     */
+    enum InitialMap {
+        /// both momentum fractions change, and the final state of the Born
+        /// keeps zero longitudinal momentum (genps_fks.f)
+        symmetric,
+        /// only the momentum fraction of the emitter changes (FKSISRMapping 2)
+        asymmetric,
+    };
+
     /// @param born_particle_count  Number of particles of the Born, incoming
     ///                             included.
     /// @param i_fks                Position of the radiated parton i in the
@@ -138,13 +163,21 @@ public:
     /// @param emitter_mass         Mass of a final-state emitter j (incoming
     ///                             ones are massless). The Born emitter must
     ///                             have this mass.
+    /// @param initial_map          The map of an emission off an incoming
+    ///                             parton, see @ref InitialMap.
+    /// @param born_masses          The masses of the particles of the Born,
+    ///                             for the mass shell of its final state in
+    ///                             the asymmetric map. Empty for none (the map
+    ///                             is then linear in the momenta).
     FKSRadiation(
         std::size_t born_particle_count,
         std::size_t i_fks,
         std::size_t j_fks,
         bool leptonic = false,
         double s_hat_min = 0.,
-        double emitter_mass = 0.
+        double emitter_mass = 0.,
+        InitialMap initial_map = symmetric,
+        const std::vector<double>& born_masses = {}
     );
     /// Number of uniform random inputs consumed by the forward mapping (3).
     std::size_t random_dim() const { return 3; }
@@ -160,6 +193,8 @@ public:
     double s_hat_min() const { return _s_hat_min; }
     /// Mass of the emitter, zero for a massless one.
     double emitter_mass() const { return _emitter_mass; }
+    /// The map of an emission off an incoming parton.
+    InitialMap initial_map() const { return _initial_map; }
     /// Whether the emitter j is an incoming parton.
     bool initial_state() const { return _j_fks < 2; }
     /// The FKS counter-events: `soft`, `collinear` and `soft_collinear`, for
@@ -248,6 +283,9 @@ private:
     bool _leptonic;
     double _s_hat_min;
     double _emitter_mass;
+    InitialMap _initial_map;
+    // the masses of the final state of the Born, -1 where unknown
+    std::vector<double> _final_masses;
 };
 
 } // namespace madspace

@@ -224,7 +224,8 @@ FKSMapping::FKSMapping(
     const PhaseSpaceMapping& born,
     std::size_t i_fks,
     std::size_t j_fks,
-    double s_hat_min
+    double s_hat_min,
+    FKSRadiation::InitialMap initial_map
 ) :
     Mapping(
         "FKSMapping",
@@ -239,7 +240,9 @@ FKSMapping::FKSMapping(
         j_fks,
         born.leptonic(),
         s_hat_min,
-        emitter_mass(born, i_fks, j_fks)
+        emitter_mass(born, i_fks, j_fks),
+        initial_map,
+        born.external_masses()
     ),
     _born_masses(born.external_masses()),
     _real_masses(real_masses(born, i_fks)) {}
@@ -542,14 +545,16 @@ FKSConfigurationMapping::FKSConfigurationMapping(
     const std::vector<FKSConfiguration>& configurations,
     double s_hat_min,
     double sqrt_s_hat_floor,
-    const std::optional<LeptonLuminosity>& luminosity
+    const std::optional<LeptonLuminosity>& luminosity,
+    FKSRadiation::InitialMap initial_map
 ) :
     FKSConfigurationMapping(
         born,
         configuration_pairs(born, configurations),
         s_hat_min,
         sqrt_s_hat_floor,
-        luminosity
+        luminosity,
+        initial_map
     ) {}
 
 FKSConfigurationMapping::FKSConfigurationMapping(
@@ -557,7 +562,8 @@ FKSConfigurationMapping::FKSConfigurationMapping(
     const std::vector<Configuration>& configurations,
     double s_hat_min,
     double sqrt_s_hat_floor,
-    const std::optional<LeptonLuminosity>& luminosity
+    const std::optional<LeptonLuminosity>& luminosity,
+    FKSRadiation::InitialMap initial_map
 ) :
     Mapping(
         "FKSConfigurationMapping",
@@ -575,6 +581,7 @@ FKSConfigurationMapping::FKSConfigurationMapping(
     _s_hat_min(s_hat_min),
     _sqrt_s_hat_floor(sqrt_s_hat_floor),
     _luminosity(luminosity),
+    _initial_map(initial_map),
     _born_masses(born.external_masses()) {
     std::size_t n = born.particle_count();
     _layout_masses = _born_masses;
@@ -858,6 +865,7 @@ FKSConfigurationMapping::Emission FKSConfigurationMapping::build_emission(
 ) const {
     const auto& c = context;
     if (kind == incoming) {
+        bool asymmetric = _initial_map == FKSRadiation::asymmetric;
         auto
             [p_in1,
              p_in2,
@@ -869,20 +877,21 @@ FKSConfigurationMapping::Emission FKSConfigurationMapping::build_emission(
              xi_min,
              xi_max,
              det_xi,
-             p_i_hat] =
-                fb.fks_initial_radiate(
-                    xi_hat,
-                    y_var,
-                    c.r_phi,
-                    c.sqrt_s,
-                    c.x1,
-                    c.x2,
-                    c.s_hat_min,
-                    c.beam_sign
-                );
-        auto boosted = fb.unstack(fb.fks_initial_recoil_boost(
-            fb.stack(c.final_state), xi, y, c.r_phi, c.beam_sign
-        ));
+             p_i_hat] = asymmetric
+            ? fb.fks_initial_asymmetric_radiate(
+                  xi_hat, y_var, c.r_phi, c.sqrt_s, c.x1, c.x2, c.s_hat_min, c.beam_sign
+              )
+            : fb.fks_initial_radiate(
+                  xi_hat, y_var, c.r_phi, c.sqrt_s, c.x1, c.x2, c.s_hat_min, c.beam_sign
+              );
+        auto final_state = fb.stack(c.final_state);
+        auto boosted = fb.unstack(
+            asymmetric
+                ? fb.fks_initial_light_cone_map(
+                      final_state, Value(final_masses()), xi, y, c.r_phi, c.beam_sign
+                  )
+                : fb.fks_initial_recoil_boost(final_state, xi, y, c.r_phi, c.beam_sign)
+        );
         ValueVec layout{p_in1, p_in2};
         layout.insert(layout.end(), boosted.begin(), boosted.end());
         layout.push_back(p_i);
@@ -1284,7 +1293,20 @@ Mapping::Result FKSConfigurationMapping::build_inverse_impl(
     ValueVec plus_k, minus_k;
     auto p_lab = fb.unstack(layout);
     for (auto kind : _kinds) {
-        if (kind == incoming) {
+        if (kind == incoming && _initial_map == FKSRadiation::asymmetric) {
+            auto [x1_born, x2_born] = fb.fks_initial_asymmetric_born_fractions(
+                p_lab.at(0),
+                p_lab.at(1),
+                p_lab.at(n),
+                x1,
+                x2,
+                fb.gather(fks_index, _beam_signs)
+            );
+            auto [plus, minus] =
+                fks_born_frame(fb, _born, x1_born, x2_born, conditions);
+            plus_k.push_back(plus);
+            minus_k.push_back(minus);
+        } else if (kind == incoming) {
             auto [plus, minus] =
                 fb.fks_recoil_light_cone(p_lab.at(0), p_lab.at(1), p_lab.at(n));
             plus_k.push_back(plus);
@@ -1328,6 +1350,7 @@ Mapping::Result FKSConfigurationMapping::build_inverse_impl(
     ValueVec born_k, x1_k, x2_k, r_xi_k, r_y_k, r_phi_k, det_k;
     for (auto kind : _kinds) {
         if (kind == incoming) {
+            bool asymmetric = _initial_map == FKSRadiation::asymmetric;
             auto
                 [sqrt_s_born,
                  x1_born,
@@ -1339,15 +1362,25 @@ Mapping::Result FKSConfigurationMapping::build_inverse_impl(
                  y,
                  xi_min,
                  xi_max,
-                 det_xi_inv] =
-                    fb.fks_initial_cluster(
-                        p.at(0), p.at(1), p_i, x1, x2, s_hat_min, beam_sign
-                    );
+                 det_xi_inv] = asymmetric
+                ? fb.fks_initial_asymmetric_cluster(
+                      p.at(0), p.at(1), p_i, x1, x2, s_hat_min, beam_sign
+                  )
+                : fb.fks_initial_cluster(
+                      p.at(0), p.at(1), p_i, x1, x2, s_hat_min, beam_sign
+                  );
             auto [r_xi, r_y, det_sample_inv] =
                 fb.fks_xi_y_sample_inverse(xi_hat, y_hat);
-            auto boosted_final = fb.unstack(fb.fks_initial_recoil_boost_inverse(
-                fb.stack(final_state), xi, y, r_phi, beam_sign
-            ));
+            auto final_stack = fb.stack(final_state);
+            auto boosted_final = fb.unstack(
+                asymmetric
+                    ? fb.fks_initial_light_cone_map_inverse(
+                          final_stack, Value(final_masses()), xi, y, r_phi, beam_sign
+                      )
+                    : fb.fks_initial_recoil_boost_inverse(
+                          final_stack, xi, y, r_phi, beam_sign
+                      )
+            );
             auto [p_in1, p_in2] = fb.com_p_in(sqrt_s_born);
             ValueVec born{p_in1, p_in2};
             born.insert(born.end(), boosted_final.begin(), boosted_final.end());
@@ -1600,7 +1633,14 @@ Mapping::Result FKSMapping::build_inverse_impl(
     // into the center-of-mass frame of the Born: that of the incoming momenta
     // for a final-state emitter, of the recoil against i for an incoming one
     Value plus, minus;
-    if (_radiation.initial_state()) {
+    if (_radiation.initial_state() &&
+        _radiation.initial_map() == FKSRadiation::asymmetric) {
+        auto p = fb.unstack(momenta);
+        auto [x1_born, x2_born] = fb.fks_initial_asymmetric_born_fractions(
+            p.at(0), p.at(1), p.at(i_fks()), x1, x2, j_fks() == 0 ? 1. : -1.
+        );
+        std::tie(plus, minus) = born_frame(fb, x1_born, x2_born, conditions);
+    } else if (_radiation.initial_state()) {
         auto p = fb.unstack(momenta);
         auto [lc_plus, lc_minus] =
             fb.fks_recoil_light_cone(p.at(0), p.at(1), p.at(i_fks()));

@@ -13,7 +13,11 @@ genps_fks.f (the rad_ entries, and the cut_ ones with the lower bound on the
 partonic energy), with their Jacobians in the conventions of
 test_fks_kernels.py and test_fks_radiation.py, and its counter-events must be
 generated exactly where genps_fks.f generates them. Lepton PDFs have their
-own mapping, see test_fks_lepton.py.
+own mapping, see test_fks_lepton.py. The data of the asymmetric map of an
+incoming emitter (test_data/fks_asymmetric, from the MCcntRefactor_Sfun branch)
+are compared in the same way, with its conventions: Jacobians with the factors
+1 - stiny and 1 - ctiny of the sampling, and soft counter-events also below the
+lower bound on the partonic energy, which madspace does not generate.
 """
 
 import glob
@@ -24,19 +28,29 @@ import os
 import numpy as np
 import pytest
 import torch
-from fks_testing import massive_fortran_precision
+from fks_testing import (
+    FKS_ASYMMETRIC_DATA,
+    data_id,
+    fortran_sampling_units,
+    massive_fortran_precision,
+)
 from madspace_testing import default_context
 
 import madspace as ms
 from madspace.fks import fks_mappings
 
-STINY, CTINY = 1e-6, 5e-7
-DATA = sorted(
-    glob.glob(
-        os.path.join(
-            os.path.dirname(os.path.realpath(__file__)), "test_data", "fks", "*.json"
+DATA = (
+    sorted(
+        glob.glob(
+            os.path.join(
+                os.path.dirname(os.path.realpath(__file__)),
+                "test_data",
+                "fks",
+                "*.json",
+            )
         )
     )
+    + FKS_ASYMMETRIC_DATA
 )
 # position k + 2 of the counter-events k = 0, 1, 2 of genps_fks.f
 POSITIONS = {"soft": 2, "collinear": 3, "soft_collinear": 4}
@@ -89,7 +103,7 @@ def cases():
             kind = "initial" if j <= nin else "final"
             if j > nin and conf["masses"][j - 1] > 0:
                 kind = "massive"
-            name = f"{os.path.basename(path)[:-5]}-fks{conf['nfks']}-{kind}"
+            name = f"{data_id(path)}-fks{conf['nfks']}-{kind}"
             for prefix in ["rad", "cut"] if kind == "initial" else ["rad"]:
                 out.append(
                     pytest.param(data, conf, points, prefix, id=f"{name}-{prefix}")
@@ -118,10 +132,12 @@ def test_matches_genps_fks(data, conf, points, prefix):
         leptonic=leptonic,
         mode=ms.PhaseSpaceMapping.TChannelMode.rambo,
     )
-    # the configuration from the metadata of the FKS exporter (fks.py)
-    mapping = fks_mappings(born, data["fks_configurations"], s_hat_min)[
-        conf["nfks"] - 1
-    ]
+    # the configuration from the metadata of the FKS exporter (fks.py), with
+    # the map of an incoming emitter of the data
+    initial_map = data.get("initial_map", "symmetric")
+    mapping = fks_mappings(
+        born, data["fks_configurations"], s_hat_min, initial_map=initial_map
+    )[conf["nfks"] - 1]
     assert (mapping.i_fks(), mapping.j_fks()) == (i_fks, j_fks)
     kinematics = ms.FKSKinematics(mapping)
     names = list(mapping.counter_event_types().keys())
@@ -204,7 +220,7 @@ def test_matches_genps_fks(data, conf, points, prefix):
         width = np.where(second, 2 * field("rad_xiimax_ev") - xi_ev, xi_ev) / xi_hat_ev
     else:
         width = field("rad_xiimax_ev") - xi_min
-    units = (1 - np.where(second, 0.0, STINY)) * (1 - CTINY)
+    units = fortran_sampling_units(data, j_fks, second)
     # xi_max = 1 - M_rec^2 / s_hat (final-state emitter) takes the deviation of
     # the Born relative to xi_max, which goes to 0 at the edge of the Born phase
     # space
@@ -214,10 +230,14 @@ def test_matches_genps_fks(data, conf, points, prefix):
     expected = fortran * xi_ev * width * units
     assert (np.abs(rad_weight / expected - 1) <= rtol_jac).all()
 
-    # the counter-events, where genps_fks.f generates them
+    # the counter-events, where genps_fks.f generates them: the soft ones not
+    # below the lower bound on the partonic energy (xi_min > 0), which the
+    # MCcntRefactor_Sfun branch generates there anyway
     jac_cnt = field("rad_jac_cnt")
     for name, pos in POSITIONS.items():
         valid = jac_cnt[:, pos] > 0
+        if name != "collinear":
+            valid &= xi_min <= 0
         if name + "_det" not in out:
             assert not valid.any()
             continue

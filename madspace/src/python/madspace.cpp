@@ -1300,15 +1300,36 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("FKSCouplingOrders::qcd")
         );
 
-    py::classh<FKSRadiation, Mapping>(m, "FKSRadiation", pydoc::doc("FKSRadiation"))
+    py::classh<FKSRadiation, Mapping> fks_radiation(
+        m, "FKSRadiation", pydoc::doc("FKSRadiation")
+    );
+    add_enum<FKSRadiation::InitialMap>(
+        fks_radiation,
+        "InitialMap",
+        {
+            {"symmetric", FKSRadiation::symmetric},
+            {"asymmetric", FKSRadiation::asymmetric},
+        }
+    );
+    fks_radiation
         .def(
-            py::init<std::size_t, std::size_t, std::size_t, bool, double, double>(),
+            py::init<
+                std::size_t,
+                std::size_t,
+                std::size_t,
+                bool,
+                double,
+                double,
+                FKSRadiation::InitialMap,
+                const std::vector<double>&>(),
             py::arg("born_particle_count"),
             py::arg("i_fks"),
             py::arg("j_fks"),
             py::arg("leptonic") = false,
             py::arg("s_hat_min") = 0.,
             py::arg("emitter_mass") = 0.,
+            py::arg("initial_map") = FKSRadiation::symmetric,
+            py::arg("born_masses") = std::vector<double>{},
             pydoc::doc("FKSRadiation::FKSRadiation")
         )
         .def(
@@ -1331,6 +1352,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             "emitter_mass",
             &FKSRadiation::emitter_mass,
             pydoc::doc("FKSRadiation::emitter_mass")
+        )
+        .def(
+            "initial_map",
+            &FKSRadiation::initial_map,
+            pydoc::doc("FKSRadiation::initial_map")
         )
         .def(
             "initial_state",
@@ -1912,11 +1938,17 @@ PYBIND11_MODULE(_madspace_py, m) {
 
     py::classh<FKSMapping, Mapping>(m, "FKSMapping", pydoc::doc("FKSMapping"))
         .def(
-            py::init<const PhaseSpaceMapping&, std::size_t, std::size_t, double>(),
+            py::init<
+                const PhaseSpaceMapping&,
+                std::size_t,
+                std::size_t,
+                double,
+                FKSRadiation::InitialMap>(),
             py::arg("born"),
             py::arg("i_fks"),
             py::arg("j_fks"),
             py::arg("s_hat_min") = 0.,
+            py::arg("initial_map") = FKSRadiation::symmetric,
             pydoc::doc("FKSMapping::FKSMapping")
         )
         .def(
@@ -1954,12 +1986,14 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<FKSConfigurationMapping::Configuration>&,
                 double,
                 double,
-                const std::optional<LeptonLuminosity>&>(),
+                const std::optional<LeptonLuminosity>&,
+                FKSRadiation::InitialMap>(),
             py::arg("born"),
             py::arg("configurations"),
             py::arg("s_hat_min") = 0.,
             py::arg("sqrt_s_hat_floor") = 0.,
             py::arg("luminosity") = std::nullopt,
+            py::arg("initial_map") = FKSRadiation::symmetric,
             pydoc::doc("FKSConfigurationMapping::FKSConfigurationMapping")
         )
         .def(
@@ -1968,17 +2002,24 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<FKSConfiguration>&,
                 double,
                 double,
-                const std::optional<LeptonLuminosity>&>(),
+                const std::optional<LeptonLuminosity>&,
+                FKSRadiation::InitialMap>(),
             py::arg("born"),
             py::arg("configurations"),
             py::arg("s_hat_min") = 0.,
             py::arg("sqrt_s_hat_floor") = 0.,
-            py::arg("luminosity") = std::nullopt
+            py::arg("luminosity") = std::nullopt,
+            py::arg("initial_map") = FKSRadiation::symmetric
         )
         .def(
             "luminosity",
             &FKSConfigurationMapping::luminosity,
             pydoc::doc("FKSConfigurationMapping::luminosity")
+        )
+        .def(
+            "initial_map",
+            &FKSConfigurationMapping::initial_map,
+            pydoc::doc("FKSConfigurationMapping::initial_map")
         )
         .def(
             "born",

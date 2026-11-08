@@ -123,14 +123,16 @@ class Process:
     """FKSKinematics and FKSPrefactors of one FKS configuration of reference
     data at a fixed Born point."""
 
-    def __init__(self, name, index, born_random, s_hat_min=0.0):
+    def __init__(
+        self, name, index, born_random, s_hat_min=0.0, initial_map="symmetric"
+    ):
         data = reference(FKS_DATA[FKS_DATA_IDS.index(name)])
         self.born = born_mapping(data)
         self.configurations = data["fks_configurations"]
         self.index = index
         self.born_random = np.array(born_random)
         self.mapping = fks_configuration_mapping(
-            self.born, self.configurations, s_hat_min=s_hat_min
+            self.born, self.configurations, s_hat_min=s_hat_min, initial_map=initial_map
         )
         self.names = list(self.mapping.counter_event_types().keys())
 
@@ -321,6 +323,48 @@ def test_initial_emitter_collinear(r_xi, cuts):
     scale = sum(np.sum(w * jac_y * np.abs(t)) for t in terms) / h_c[0]
     exact = subtracted(2.0, 2 * CTINY, lim, cuts["delta_i"])
     check(numeric, exact, scale, plus(2.0, cuts["delta_i"]))
+
+
+@pytest.mark.parametrize("cuts", CUTS, ids=CUT_IDS)
+@pytest.mark.parametrize("born", [SMALL_X, LARGE_X], ids=["small_x", "large_x"])
+def test_initial_emitter_asymmetric(born, cuts):
+    """With the asymmetric map the range of xi, up to 1 - x of the emitter,
+    does not depend on y, and the collinear counter-event shares xi with the
+    event: the real emission and all counterterms in xi and 1 - y at once, the
+    product of the two one-dimensional integrals as for a massless final-state
+    emitter, with delta_I."""
+    process = Process(INITIAL, 0, born, initial_map="asymmetric")
+    ends = process.kinematics(0.5, [0.1, 0.9])
+    h = ends["xi_max"][0]
+    np.testing.assert_array_equal(ends["xi_max"], h)
+    np.testing.assert_allclose(h, 1 - ends["born_x1"][0], rtol=1e-15)
+    lim_xi = min(h, cuts["xi_s_cut"])
+    r_xi, w_xi = nodes([0.0, r_of_xi_hat(lim_xi / h), 1.0])
+    r_y, w_y = nodes([0.0, r_of_omy(min(cuts["delta_s"], 2.0)), 1.0])
+    rx, ry = (a.ravel() for a in np.meshgrid(r_xi, r_y, indexing="ij"))
+    weight = np.outer(w_xi, w_y).ravel()
+    out = process.kinematics(rx, ry)
+    f = process.prefactors(out, cuts)
+    soft, collinear, soft_collinear = conditions(out, cuts)
+    np.testing.assert_allclose(out["collinear_xi"], out["xi"], rtol=1e-14)
+    xi, omy = out["xi"], 1 - out["y"]
+    jac = h * 2 * (1 - STINY) * rx * 4 * (1 - CTINY) * ry
+    terms = [
+        f["f_r"] * F(xi) * F(omy),
+        -soft * f["f_s"] * F(0.0) * F(omy),
+        -collinear * f["f_c"] * F(xi) * F(0.0),
+        soft_collinear * f["f_sc"] * F(0.0) ** 2,
+    ]
+    numeric = np.sum(weight * jac * sum(terms))
+    scale = sum(np.sum(weight * jac * np.abs(t)) for t in terms)
+    in_xi = subtracted(h, h * STINY, lim_xi, cuts["xicut"])
+    in_y = subtracted(2.0, 2 * CTINY, min(cuts["delta_s"], 2.0), cuts["delta_i"])
+    check(
+        numeric,
+        in_xi * in_y,
+        scale,
+        plus(h, cuts["xicut"]) * plus(2.0, cuts["delta_i"]),
+    )
 
 
 def test_initial_emitter_below_threshold():

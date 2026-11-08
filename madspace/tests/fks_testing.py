@@ -22,6 +22,38 @@ FKS_DATA = sorted(
     )
 )
 FKS_DATA_IDS = [os.path.basename(p)[:-5] for p in FKS_DATA]
+# the kinematics of the asymmetric map of an incoming emitter, from the
+# MCcntRefactor_Sfun branch of MadGraph7 (fks_reference/
+# make_fks_asymmetric_reference.py)
+FKS_ASYMMETRIC_DATA = sorted(
+    glob.glob(
+        os.path.join(
+            os.path.dirname(os.path.realpath(__file__)),
+            "test_data",
+            "fks_asymmetric",
+            "*.json",
+        )
+    )
+)
+
+
+def data_id(path):
+    """The name of reference data in test ids, with the directory of the
+    asymmetric map."""
+    name = os.path.basename(path)[:-5]
+    return f"asymmetric-{name}" if "fks_asymmetric" in path else name
+
+
+def fortran_sampling_units(data, j_fks, second=False):
+    """The factors 1 - stiny and 1 - ctiny of the sampling that the Jacobians of
+    reference data leave out: genps_fks.f of main for every emitter (only
+    1 - ctiny for the second solution of a massive emitter, whose xi is
+    linear), the MCcntRefactor_Sfun branch only for a final-state emitter
+    (jac_sampling_factors)."""
+    stiny, ctiny = 1e-6, 5e-7
+    if data.get("jac_sampling_factors") and j_fks < 2:
+        return 1.0
+    return (1 - np.where(second, 0.0, stiny)) * (1 - ctiny)
 
 
 def reference(path):

@@ -54,14 +54,20 @@ def born_mapping(masses, leptonic, **options):
     )
 
 
-def configurations(masses, leptonic, i_fks, emitters, **options):
+def configurations(
+    masses, leptonic, i_fks, emitters, initial_map="symmetric", **options
+):
     born = born_mapping(masses, leptonic, **options)
-    return [ms.FKSMapping(born, i_fks, j) for j in emitters]
+    return [ms.FKSMapping(born, i_fks, j, initial_map=initial_map) for j in emitters]
 
 
-def configuration_mapping(masses, leptonic, i_fks, emitters, **options):
+def configuration_mapping(
+    masses, leptonic, i_fks, emitters, initial_map="symmetric", **options
+):
     return ms.FKSConfigurationMapping(
-        born_mapping(masses, leptonic, **options), [(i_fks, j) for j in emitters]
+        born_mapping(masses, leptonic, **options),
+        [(i_fks, j) for j in emitters],
+        initial_map=initial_map,
     )
 
 
@@ -183,11 +189,22 @@ def compare_events(mapping, configs, r, index, conditions=()):
     by_configuration(index, count, same_kinematics)
 
 
-@pytest.mark.parametrize("masses,leptonic,i_fks,emitters", LAYOUTS, ids=IDS)
-def test_configuration_of_each_event(masses, leptonic, i_fks, emitters):
-    configs = configurations(masses, leptonic, i_fks, emitters)
-    mapping = configuration_mapping(masses, leptonic, i_fks, emitters)
+# the layouts with hadron beams also with the asymmetric map of an incoming
+# emitter
+MAP_LAYOUTS = [layout + ("symmetric",) for layout in LAYOUTS] + [
+    layout + ("asymmetric",) for layout in LAYOUTS if not layout[1]
+]
+MAP_IDS = IDS + [f"{name}-asymmetric" for name, l in zip(IDS, LAYOUTS) if not l[1]]
+
+
+@pytest.mark.parametrize(
+    "masses,leptonic,i_fks,emitters,initial_map", MAP_LAYOUTS, ids=MAP_IDS
+)
+def test_configuration_of_each_event(masses, leptonic, i_fks, emitters, initial_map):
+    configs = configurations(masses, leptonic, i_fks, emitters, initial_map)
+    mapping = configuration_mapping(masses, leptonic, i_fks, emitters, initial_map)
     count = len(configs)
+    assert mapping.initial_map() == ms.FKSRadiation.InitialMap(initial_map)
     assert mapping.configurations() == [(i_fks, j) for j in emitters]
     assert mapping.random_dim() == configs[0].random_dim()
     assert mapping.particle_count() == configs[0].particle_count()
@@ -196,17 +213,20 @@ def test_configuration_of_each_event(masses, leptonic, i_fks, emitters):
     compare_events(mapping, configs, r, fks_indices(count, batch, seed=14))
 
 
+@pytest.mark.parametrize("initial_map", ["symmetric", "asymmetric"])
 @pytest.mark.parametrize(
     "masses,i_fks,emitters",
     [([173.0, 173.0], 4, [0, 1, 2, 3]), ([0.0, 0.0, 0.0], 5, [0, 1, 2, 3, 4])],
     ids=["pp-ttx", "pp-3j"],
 )
-def test_mirrored_and_boosted_beams(masses, i_fks, emitters):
+def test_mirrored_and_boosted_beams(masses, i_fks, emitters, initial_map):
     """mirror_index and the fks_index of each event together, with beams of
     different energies"""
     options = dict(mirror_beams=True, beam_rapidity=0.3)
-    configs = configurations(masses, False, i_fks, emitters, **options)
-    mapping = configuration_mapping(masses, False, i_fks, emitters, **options)
+    configs = configurations(masses, False, i_fks, emitters, initial_map, **options)
+    mapping = configuration_mapping(
+        masses, False, i_fks, emitters, initial_map, **options
+    )
     count = len(configs)
     batch = count * PER_CHANNEL
     rng = np.random.default_rng(16)
