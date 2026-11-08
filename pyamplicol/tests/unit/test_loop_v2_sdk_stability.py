@@ -598,21 +598,85 @@ end program
 """
 
 
-def test_the_cxx_and_fortran_wrappers_set_the_checks(artifacts, loop_native, tmp_path):
-    """The C++ and Fortran wrappers' ``set_stability_checks`` (a rotation
-    count with the rescaled check, then a rotation specification) give the
-    Python API's estimates (``"stability"`` of the diagnostics) on g g > t t~."""
+RUST_CLIENT = """
+// ./client artifact process input.txt: the stability checks through the
+// packaged single-file Rust wrapper (as the C++ client), the input doubles as
+// IEEE bit patterns (signed 64-bit integers, as the Fortran client's).
+#[path = "@WRAPPER@"]
+#[allow(dead_code)]
+mod rusticol;
+use rusticol::virtual_amplitudes::Runtime;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args: Vec<String> = std::env::args().collect();
+    let text = std::fs::read_to_string(&args[3])?;
+    let mut lines = text.lines();
+    let head: Vec<usize> = lines
+        .next()
+        .ok_or("empty input")?
+        .split_whitespace()
+        .map(|v| v.parse())
+        .collect::<Result<_, _>>()?;
+    let (points, legs) = (head[0], head[1]);
+    let (mut momenta, mut scales) = (Vec::new(), Vec::new());
+    for line in lines.take(points) {
+        let values: Vec<f64> = line
+            .split_whitespace()
+            .map(|v| v.parse::<i64>().map(|bits| f64::from_bits(bits as u64)))
+            .collect::<Result<_, _>>()?;
+        momenta.extend_from_slice(&values[..4 * legs]);
+        scales.push(values[4 * legs]);
+    }
+    let mut runtime = Runtime::open(&args[1], Some(args[2].as_str()), None, None)?;
+    runtime.set_stability_checks(1, None, true, true, false)?;
+    let first = runtime.evaluate(&momenta, points, None, &scales, false, None)?;
+    println!("{}", first.diagnostics_json);
+    runtime.set_stability_checks(0, Some(&["euler:0.1,0.2,0.3"]), false, false, false)?;
+    let second = runtime.evaluate(&momenta, points, None, &scales, false, None)?;
+    println!("{}", second.diagnostics_json);
+    Ok(())
+}
+"""
+
+
+def test_the_cxx_fortran_and_rust_wrappers_set_the_checks(
+    artifacts, loop_native, tmp_path
+):
+    """The C++, Fortran and packaged Rust wrappers' ``set_stability_checks``
+    (a rotation count with the rescaled check, then a rotation specification)
+    give the Python API's estimates (``"stability"`` of the diagnostics) on
+    g g > t t~."""
 
     import subprocess
 
     from pyamplicol import Runtime
     from pyamplicol.api.virtual_results import VirtualStabilityChecks
-    from tests.unit.test_loop_v2_sdk_extras import SDK, _compiler, _staged_sdk
+    from tests.unit.test_loop_v2_sdk_extras import SDK, WRAPPER, _compiler, _staged_sdk
 
     build = _staged_sdk()
     link = [f"-L{build}", "-lrusticol_loop_sdk", f"-Wl,-rpath,{build}", "-lm"]
     (tmp_path / "client.cpp").write_text(CXX_CLIENT)
     (tmp_path / "client.f90").write_text(FORTRAN_CLIENT)
+    (tmp_path / "client.rs").write_text(RUST_CLIENT.replace("@WRAPPER@", str(WRAPPER)))
+    subprocess.run(
+        [
+            _compiler("RUSTC", "rustc"),
+            "--edition=2021",
+            "-D",
+            "warnings",
+            str(tmp_path / "client.rs"),
+            "-o",
+            str(tmp_path / "rust"),
+            "-L",
+            f"native={build}",
+            "-l",
+            "dylib=rusticol_loop_sdk",
+            "-C",
+            f"link-arg=-Wl,-rpath,{build}",
+        ],
+        check=True,
+        cwd=tmp_path,
+    )
     subprocess.run(
         [
             _compiler("CXX", "c++"),
@@ -668,9 +732,9 @@ def test_the_cxx_and_fortran_wrappers_set_the_checks(artifacts, loop_native, tmp
     ):
         result = runtime.evaluate([point, point], mu_r2=SCALES, stability_checks=checks)
         expected.append([_record(estimate) for estimate in result.stability])
-    for language in ("cpp", "fortran"):
+    for language in ("cpp", "fortran", "rust"):
         path = tmp_path / f"{language}.txt"
-        path.write_text(feed(language == "fortran"))
+        path.write_text(feed(language != "cpp"))
         run = subprocess.run(
             [str(tmp_path / language), str(artifacts[name]), name, str(path)],
             capture_output=True,
