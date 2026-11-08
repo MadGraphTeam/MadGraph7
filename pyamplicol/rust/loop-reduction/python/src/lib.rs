@@ -130,9 +130,10 @@ fn reduction_policy() -> String {
 /// backends `served` (backend -> carriers), the artifact's `admitted`
 /// backends (None: every one) and the route (`serves`, the backends its
 /// executor runs, those `"auto"` may take: None, every one it runs).
-/// Returns `("ok", requested, effective, reason)`, or `("unavailable", "",
-/// "", message)` (the typed `ReductionUnavailable`) or `("invalid", "", "",
-/// message)` (a `ValueError`).
+/// Returns `("ok", requested, effective, reason, fallback)` (`fallback`: the
+/// per-point fallback backend, or None), or `("unavailable", "", "",
+/// message, None)` (the typed `ReductionUnavailable`) or `("invalid", "",
+/// "", message, None)` (a `ValueError`).
 #[pyfunction]
 #[pyo3(signature = (requested, contribution, carrier, served, admitted, serves, backends, auto))]
 #[allow(clippy::too_many_arguments)]
@@ -145,7 +146,7 @@ fn reduction_resolve(
     serves: String,
     backends: BTreeSet<String>,
     auto: Option<BTreeSet<String>>,
-) -> (&'static str, String, String, String) {
+) -> (&'static str, String, String, String, Option<String>) {
     use rusticol_loop_reduction::reduction_policy::{Refusal, Route, resolve};
     let route = Route {
         serves,
@@ -160,11 +161,50 @@ fn reduction_resolve(
         admitted.as_ref(),
         &route,
     ) {
-        Ok(choice) => ("ok", choice.requested, choice.effective, choice.reason),
+        Ok(choice) => (
+            "ok",
+            choice.requested,
+            choice.effective,
+            choice.reason,
+            choice.fallback,
+        ),
         Err(Refusal::Unavailable(message)) => {
-            ("unavailable", String::new(), String::new(), message)
+            ("unavailable", String::new(), String::new(), message, None)
         }
-        Err(Refusal::Invalid(message)) => ("invalid", String::new(), String::new(), message),
+        Err(Refusal::Invalid(message)) => {
+            ("invalid", String::new(), String::new(), message, None)
+        }
+    }
+}
+
+/// `reduction_policy::auto_default`: the backend `"auto"` takes by default
+/// for `contribution` on an artifact admitting `admitted` (None: every
+/// backend), or None for an unknown contribution.
+#[pyfunction]
+#[pyo3(signature = (contribution, admitted=None))]
+fn reduction_auto_default(
+    contribution: &str,
+    admitted: Option<BTreeSet<String>>,
+) -> Option<&'static str> {
+    rusticol_loop_reduction::reduction_policy::auto_default(contribution, admitted.as_ref())
+}
+
+/// The texts of the per-point fallback and of the cross-backend check's
+/// refusal (`reduction_policy::fallback_served`, `fallback_failed`,
+/// `cross_refusal`): `kind` "served" (`a`, `b`, `text`: the primary
+/// backend, the fallback and the primary's failure), "failed" (`a`: the
+/// fallback, `text`: its reason) or "cross" (`text`: the refusal).
+#[pyfunction]
+#[pyo3(signature = (kind, a, b, text))]
+fn reduction_text(kind: &str, a: &str, b: &str, text: &str) -> PyResult<String> {
+    use rusticol_loop_reduction::reduction_policy as policy;
+    match kind {
+        "served" => Ok(policy::fallback_served(a, b, text)),
+        "failed" => Ok(policy::fallback_failed(a, text)),
+        "cross" => Ok(policy::cross_refusal(text)),
+        other => Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "unknown reduction text {other:?}"
+        ))),
     }
 }
 
@@ -193,6 +233,8 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(reduction_backends, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_policy, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_resolve, module)?)?;
+    module.add_function(wrap_pyfunction!(reduction_auto_default, module)?)?;
+    module.add_function(wrap_pyfunction!(reduction_text, module)?)?;
     v2::register(module)?;
     v2_catalogue::register(module)?;
     v2_closure::register(module)?;

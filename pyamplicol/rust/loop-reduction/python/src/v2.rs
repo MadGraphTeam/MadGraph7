@@ -225,7 +225,34 @@ pub(super) fn tir_options(
     acceptance: Option<f64>,
     acceptance_frame: &Option<String>,
 ) -> PyResult<rusticol_loop_reduction::v2_tir::TirOptions> {
-    let defaults = rusticol_loop_reduction::v2_tir::TirOptions::default();
+    tir_options_at(None, method_choice, alternative_first, acceptance, acceptance_frame)
+}
+
+/// The validated target accuracy of a call (`reduction_policy::target`,
+/// a `ValueError` with its one message), or the default.
+pub(super) fn reduction_target(target: Option<f64>) -> PyResult<f64> {
+    use rusticol_loop_reduction::reduction_policy::{self, Refusal};
+    match target {
+        None => Ok(reduction_policy::DEFAULT_TARGET),
+        Some(value) => reduction_policy::target(value).map_err(|refusal| match refusal {
+            Refusal::Invalid(message) | Refusal::Unavailable(message) => {
+                pyo3::exceptions::PyValueError::new_err(message)
+            }
+        }),
+    }
+}
+
+/// [`tir_options`] at the target accuracy `target` (None: the default):
+/// its calibrated acceptance (`v2_tir::TirOptions::for_target`) unless
+/// `acceptance` overrides it (an expert's validation setting).
+pub(super) fn tir_options_at(
+    target: Option<f64>,
+    method_choice: Option<bool>,
+    alternative_first: &Option<Limit>,
+    acceptance: Option<f64>,
+    acceptance_frame: &Option<String>,
+) -> PyResult<rusticol_loop_reduction::v2_tir::TirOptions> {
+    let defaults = rusticol_loop_reduction::v2_tir::TirOptions::for_target(reduction_target(target)?);
     let acceptance_frame = match acceptance_frame.as_deref() {
         None => defaults.acceptance_frame,
         Some(name @ ("rotated" | "rescaled")) => rusticol_loop_reduction::runtime::ReductionFrame {
@@ -310,9 +337,13 @@ impl V2TirReducer {
                 acceptance,
                 acceptance_frame,
             );
-            rusticol_loop_reduction::runtime::V2Backends::tirust([], 53)
-                .map(Self)
-                .map_err(error)
+            rusticol_loop_reduction::runtime::V2Backends::tirust(
+                [],
+                53,
+                rusticol_loop_reduction::reduction_policy::DEFAULT_TARGET,
+            )
+            .map(Self)
+            .map_err(error)
         }
     }
     /// The (propagators, rank) plans built so far.

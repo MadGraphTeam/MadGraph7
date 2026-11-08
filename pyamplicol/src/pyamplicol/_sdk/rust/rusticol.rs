@@ -238,6 +238,16 @@ pub mod virtual_amplitudes {
                 ffi::rusticol_virtual_set_reduction(self.handle.as_ptr(), reduction.as_ptr())
             })
         }
+        /// Target accuracy of later evaluations, the Python API's
+        /// `reduction_target=` (default 1e-5 relative per point): TIRust's
+        /// acceptance follows it; a value that is not finite and positive is
+        /// an invalid-argument error.
+        pub fn set_reduction_target(&mut self, target: f64) -> Result<()> {
+            // SAFETY: exclusive live handle.
+            check(unsafe {
+                ffi::rusticol_virtual_set_reduction_target(self.handle.as_ptr(), target)
+            })
+        }
         /// Stability checks of later evaluations, the Python API's
         /// `stability_checks=`: `rotation_count` default rotations, or (with
         /// a count of 0) the rotation specifications `rotations`, the
@@ -802,6 +812,10 @@ pub mod virtual_amplitudes {
             pub(super) fn rusticol_virtual_set_reduction(
                 handle: *mut c_void,
                 reduction: *const c_char,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_set_reduction_target(
+                handle: *mut c_void,
+                target: f64,
             ) -> c_int;
             pub(super) fn rusticol_virtual_set_stability_checks(
                 handle: *mut c_void,

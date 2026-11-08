@@ -15,11 +15,12 @@ use rusticol_loop_reduction::reduction_policy::{self, Choice, Refusal};
 use rusticol_loop_reduction::runtime::Reduction;
 #[cfg(test)]
 use rusticol_loop_reduction::runtime::{Batch, Data};
-use rusticol_loop_reduction::v2_runtime::cross_reduction;
+use rusticol_loop_reduction::v2_runtime::{Monitored, cross_reduction};
 use rusticol_loop_reduction::v2_runtime::{
     C, ColumnPoint, Decimal, Rational, V2Point, V2Poles, V2Precision, V2Runtime, decimal_parameter,
     is_v2_artifact, named_parameters,
 };
+use rusticol_loop_reduction::v2_stability::CROSS;
 pub use rusticol_loop_reduction::v2_stability::{
     Estimate, Rotation, StabilityChecks, default_rotation,
 };
@@ -253,6 +254,10 @@ pub struct Runtime {
     /// "ninjars" or "tirust"; the artifact's generation default until
     /// [`Runtime::set_reduction`]).
     reduction: String,
+    /// The target accuracy of later evaluations (the artifact's generation
+    /// default, else `reduction_policy::DEFAULT_TARGET`, until
+    /// [`Runtime::set_reduction_target`]).
+    target: f64,
     /// The stability checks of later binary64 evaluations (none by default:
     /// no estimate, no extra cost; [`Runtime::set_stability_checks`]).
     checks: StabilityChecks,
@@ -312,6 +317,9 @@ impl Runtime {
         }
         let accuracy = native.metadata().color_accuracy.clone();
         let reduction = native.artifact_reduction().to_owned();
+        let target = native
+            .artifact_target()
+            .unwrap_or(reduction_policy::DEFAULT_TARGET);
         // The stored observable columns (correlated, spin-correlated and
         // resolved outputs), when the process has them.
         let observables = (|| -> RusticolResult<_> {
@@ -362,6 +370,7 @@ impl Runtime {
             poles: Poles::All,
             arithmetic: Arithmetic::Double,
             reduction,
+            target,
             checks: StabilityChecks::default(),
             history_ids,
             spin_classes,
@@ -390,10 +399,11 @@ impl Runtime {
     /// call's carrier by that call; nothing changes on a refusal.
     pub fn set_reduction(&mut self, reduction: &str) -> RusticolResult<()> {
         let served = reduction_policy::served();
+        let backend = reduction_policy::BACKENDS.contains(&reduction);
         match reduction {
             "auto" => {}
-            "ninjars" | "tirust" if served.contains_key(reduction) => {}
-            "ninjars" | "tirust" => {
+            _ if backend && served.contains_key(reduction) => {}
+            _ if backend => {
                 let route =
                     reduction_policy::route(reduction_policy::SUMMED).expect("the summed route");
                 let carrier = self.arithmetic.name();
@@ -415,7 +425,12 @@ impl Runtime {
             other => {
                 return Err(invalid(format!(
                     "unknown reduction backend '{other}': reduction must be \
-                     \"auto\", \"ninjars\" or \"tirust\""
+                     \"auto\", {}",
+                    reduction_policy::BACKENDS
+                        .iter()
+                        .map(|name| format!("\"{name}\""))
+                        .collect::<Vec<_>>()
+                        .join(" or ")
                 )));
             }
         }
@@ -425,6 +440,25 @@ impl Runtime {
     /// The requested reduction backend of later evaluations.
     pub fn reduction(&self) -> &str {
         &self.reduction
+    }
+    /// The target accuracy of later evaluations, the Python API's
+    /// `reduction_target=` (m-lit F3 (a)): the relative accuracy of each
+    /// point's result (every squared-order sector against its own size),
+    /// `reduction_policy::DEFAULT_TARGET` (1e-5) unless the artifact records
+    /// another. TIRust's method-choice acceptance follows it (calibrated,
+    /// `v2_tir::acceptance_of`); NinjaRS has no setting it drives. A value
+    /// that is not a finite positive number is refused (typed
+    /// `InvalidArgument`, `reduction_policy::TARGET_REFUSAL`) and nothing
+    /// changes.
+    pub fn set_reduction_target(&mut self, target: f64) -> RusticolResult<()> {
+        self.target = reduction_policy::target(target).map_err(|refusal| match refusal {
+            Refusal::Invalid(message) | Refusal::Unavailable(message) => invalid(message),
+        })?;
+        Ok(())
+    }
+    /// The target accuracy of later evaluations.
+    pub fn reduction_target(&self) -> f64 {
+        self.target
     }
     /// The stability checks of later evaluations, the Python API's
     /// `stability_checks=` (`VirtualStabilityChecks`): rotations, the
@@ -481,6 +515,7 @@ impl Runtime {
         })?;
         let Engine::V4(native) = &mut self.engine;
         native.set_reduction(Reduction::parse(&choice.effective)?)?;
+        native.set_target(self.target)?;
         Ok(choice)
     }
     pub fn poles(&self) -> Poles {
@@ -525,7 +560,7 @@ impl Runtime {
                 .map(|name| (*name).to_owned())
                 .collect(),
         };
-        let tir_only = admitted == ["tirust"];
+        let admitted_set: BTreeSet<String> = admitted.iter().cloned().collect();
         let colour_zero = native.colour_zero().map(|(exact, orders)| {
             serde_json::json!({
                 "exact_colour_zero": exact,
@@ -541,13 +576,14 @@ impl Runtime {
             "reduction": {
                 "requested": self.reduction,
                 "artifact_default": native.artifact_reduction(),
-                "auto_default": if tir_only {
-                    Some("tirust")
-                } else {
-                    reduction_policy::default_of(&metadata.contribution_kind)
-                },
+                "auto_default": reduction_policy::auto_default(
+                    &metadata.contribution_kind,
+                    Some(&admitted_set),
+                ),
                 "admitted": admitted,
                 "native": served,
+                "target": self.target,
+                "default_target": reduction_policy::DEFAULT_TARGET,
             },
             "colour_zero": colour_zero,
             "execution_mode":"loop_recurrence",
@@ -695,10 +731,7 @@ impl Runtime {
             let message = match refusal {
                 Refusal::Unavailable(message) | Refusal::Invalid(message) => message,
             };
-            RusticolError::compatibility(format!(
-                "the cross-backend check (stability_checks cross_backend) compares with the \
-                 other reduction backend: {message}"
-            ))
+            RusticolError::compatibility(reduction_policy::cross_refusal(&message))
         })
     }
     fn prepare_inputs(
@@ -923,6 +956,140 @@ fn statuses_of<T>(
     (successful, statuses, failures)
 }
 
+/// One evaluation's outcome of a point: its failure reasons when it failed
+/// (the per-point fallback's test, [`with_fallback`]).
+pub(crate) trait PointOutcome: Sized {
+    fn reasons(&self) -> Option<&[String]>;
+    fn failed(reasons: Vec<String>) -> Self;
+}
+
+impl<T> PointOutcome for Result<T, Vec<String>> {
+    fn reasons(&self) -> Option<&[String]> {
+        self.as_ref().err().map(Vec::as_slice)
+    }
+    fn failed(reasons: Vec<String>) -> Self {
+        Err(reasons)
+    }
+}
+
+impl PointOutcome for Monitored {
+    fn reasons(&self) -> Option<&[String]> {
+        self.0.reasons()
+    }
+    fn failed(reasons: Vec<String>) -> Self {
+        (Err(reasons), None, None)
+    }
+}
+
+/// The points of a batch the per-point fallback evaluated again: per index
+/// in the batch, the backend that served it (None: it failed there too) and
+/// the reason (`reduction_policy::fallback_served`, or the fallback's
+/// failure).
+#[derive(Default)]
+pub(crate) struct Fallbacks {
+    fallback: Option<String>,
+    points: BTreeMap<usize, (Option<String>, String)>,
+}
+
+impl Fallbacks {
+    /// The record of the diagnostics: per point id the backend that served
+    /// the point (null: failed on both) and the reason.
+    fn record(&self, ids: &[u64]) -> serde_json::Value {
+        serde_json::Value::Object(
+            self.points
+                .iter()
+                .map(|(&index, (effective, reason))| {
+                    (
+                        ids[index].to_string(),
+                        serde_json::json!({"effective": effective, "reason": reason}),
+                    )
+                })
+                .collect(),
+        )
+    }
+    /// The indices of the points the fallback served.
+    fn served(&self) -> impl Iterator<Item = (usize, &str)> {
+        self.points
+            .iter()
+            .filter(|(_, (effective, _))| effective.is_some())
+            .map(|(&index, (_, reason))| (index, reason.as_str()))
+    }
+}
+
+/// The values at `indices` (None: every value, borrowed).
+fn pick<'a, T: Clone>(values: &'a [T], indices: Option<&[usize]>) -> std::borrow::Cow<'a, [T]> {
+    match indices {
+        None => std::borrow::Cow::Borrowed(values),
+        Some(indices) => indices.iter().map(|&i| values[i].clone()).collect(),
+    }
+}
+
+/// `evaluate` of a batch (`None`: every point; or the points at the given
+/// indices) on the call's effective backend, then, for an `"auto"` call
+/// with a per-point fallback (`Choice::fallback`, m-lit F3 (c): TIRust for
+/// a loop-induced process, NinjaRS behind it), the points it refused or
+/// failed (also in the enabled binary64 monitoring's own evaluations)
+/// again on the fallback, from their original exact inputs, at the call's
+/// carrier, after the primary call: each served point takes the fallback's
+/// outcome, a point the fallback fails too fails with both backends'
+/// reasons; both recorded per point ([`Fallbacks`]). A call without a
+/// fallback (an explicit backend, a Born-interfered or a TIR-only process)
+/// runs `evaluate` once, with nothing else.
+pub(crate) fn with_fallback<P: PointOutcome>(
+    native: &mut V2Runtime,
+    choice: &Choice,
+    mut evaluate: impl FnMut(&mut V2Runtime, Option<&[usize]>) -> RusticolResult<Vec<P>>,
+) -> RusticolResult<(Vec<P>, Fallbacks)> {
+    let mut points = evaluate(native, None)?;
+    let mut record = Fallbacks {
+        fallback: choice.fallback.clone(),
+        points: BTreeMap::new(),
+    };
+    let Some(fallback) = choice.fallback.as_deref() else {
+        return Ok((points, record));
+    };
+    let failed: Vec<usize> = (0..points.len())
+        .filter(|&index| points[index].reasons().is_some())
+        .collect();
+    if failed.is_empty() {
+        return Ok((points, record));
+    }
+    let again = native.on_other(|native| evaluate(native, Some(&failed)))?;
+    if again.len() != failed.len() {
+        return Err(invalid("the fallback evaluation lost points"));
+    }
+    for (&index, point) in failed.iter().zip(again) {
+        let first = points[index].reasons().unwrap_or_default().to_vec();
+        match point.reasons() {
+            None => {
+                record.points.insert(
+                    index,
+                    (
+                        Some(fallback.to_owned()),
+                        reduction_policy::fallback_served(
+                            &choice.effective,
+                            fallback,
+                            &first.join("; "),
+                        ),
+                    ),
+                );
+                points[index] = point;
+            }
+            Some(second) => {
+                let second: Vec<String> = second
+                    .iter()
+                    .map(|reason| reduction_policy::fallback_failed(fallback, reason))
+                    .collect();
+                record.points.insert(index, (None, second.join("; ")));
+                let mut reasons = first;
+                reasons.extend(second);
+                points[index] = P::failed(reasons);
+            }
+        }
+    }
+    Ok((points, record))
+}
+
 impl Evaluation {
     /// One ordinary batch of a plan v4 process in the runtime's arithmetic:
     /// Born per order and the complete virtual per sector and epsilon power
@@ -940,7 +1107,26 @@ impl Evaluation {
         let (momenta, scales) = exact_inputs(&inputs, shape.external_count)?;
         match (arithmetic, monitoring.checks) {
             (Arithmetic::Double, Some(checks)) => {
-                let monitored = native.evaluate_checked(&momenta, &scales, poles.v2(), checks)?;
+                // A fallback point's cross-backend check is not run (m-lit
+                // R6): its other backend is the one that failed it.
+                let plain = checks.without_cross_backend();
+                let (mut monitored, fallbacks) =
+                    with_fallback(native, reduction, |native, indices| {
+                        let checks = if indices.is_some() { &plain } else { checks };
+                        native.evaluate_checked(
+                            &pick(&momenta, indices),
+                            &pick(&scales, indices),
+                            poles.v2(),
+                            checks,
+                        )
+                    })?;
+                if checks.cross_backend() {
+                    for (index, reason) in fallbacks.served() {
+                        if let Some(estimate) = &mut monitored[index].1 {
+                            estimate.not_run.push((CROSS.to_owned(), reason.to_owned()));
+                        }
+                    }
+                }
                 let mut points = Vec::with_capacity(monitored.len());
                 let mut records = Vec::new();
                 let mut finiteness = Vec::new();
@@ -960,22 +1146,34 @@ impl Evaluation {
                     "finiteness": finiteness,
                 });
                 Self::ordinary(
-                    inputs, shape, poles, arithmetic, points, reduction, stability,
+                    inputs, shape, poles, arithmetic, points, reduction, &fallbacks, stability,
                 )
             }
             (Arithmetic::Double, None) => {
-                let points = native.evaluate(&momenta, &scales, poles.v2())?;
+                let (points, fallbacks) = with_fallback(native, reduction, |native, indices| {
+                    native.evaluate(
+                        &pick(&momenta, indices),
+                        &pick(&scales, indices),
+                        poles.v2(),
+                    )
+                })?;
                 let stability = monitoring.not_run();
                 Self::ordinary(
-                    inputs, shape, poles, arithmetic, points, reduction, stability,
+                    inputs, shape, poles, arithmetic, points, reduction, &fallbacks, stability,
                 )
             }
             _ => {
-                let points =
-                    native.evaluate_extended(&momenta, &scales, poles.v2(), arithmetic.v2())?;
+                let (points, fallbacks) = with_fallback(native, reduction, |native, indices| {
+                    native.evaluate_extended(
+                        &pick(&momenta, indices),
+                        &pick(&scales, indices),
+                        poles.v2(),
+                        arithmetic.v2(),
+                    )
+                })?;
                 let stability = monitoring.not_run();
                 Self::ordinary(
-                    inputs, shape, poles, arithmetic, points, reduction, stability,
+                    inputs, shape, poles, arithmetic, points, reduction, &fallbacks, stability,
                 )
             }
         }
@@ -989,6 +1187,7 @@ impl Evaluation {
         arithmetic: Arithmetic,
         points: Vec<V2Point<N>>,
         reduction: &Choice,
+        fallbacks: &Fallbacks,
         stability: serde_json::Value,
     ) -> RusticolResult<Self> {
         let (successful_point_ids, statuses, failures) = statuses_of(&inputs.point_ids, &points);
@@ -1012,6 +1211,7 @@ impl Evaluation {
             poles,
             arithmetic,
             reduction,
+            fallbacks,
             stability,
         )?;
         Ok(Self {
@@ -1047,23 +1247,34 @@ impl Evaluation {
         let stability = monitoring.not_run_resolved();
         match arithmetic {
             Arithmetic::Double => {
-                let points =
-                    native.evaluate_columns("resolved", &momenta, &scales, &[], poles.v2())?;
+                let (points, fallbacks) = with_fallback(native, reduction, |native, indices| {
+                    native.evaluate_columns(
+                        "resolved",
+                        &pick(&momenta, indices),
+                        &pick(&scales, indices),
+                        &[],
+                        poles.v2(),
+                    )
+                })?;
                 Self::resolved(
-                    inputs, shape, poles, arithmetic, axes, &keys, points, reduction, stability,
+                    inputs, shape, poles, arithmetic, axes, &keys, points, reduction, &fallbacks,
+                    stability,
                 )
             }
             _ => {
-                let points = native.evaluate_columns_extended(
-                    "resolved",
-                    &momenta,
-                    &scales,
-                    &[],
-                    poles.v2(),
-                    arithmetic.v2(),
-                )?;
+                let (points, fallbacks) = with_fallback(native, reduction, |native, indices| {
+                    native.evaluate_columns_extended(
+                        "resolved",
+                        &pick(&momenta, indices),
+                        &pick(&scales, indices),
+                        &[],
+                        poles.v2(),
+                        arithmetic.v2(),
+                    )
+                })?;
                 Self::resolved(
-                    inputs, shape, poles, arithmetic, axes, &keys, points, reduction, stability,
+                    inputs, shape, poles, arithmetic, axes, &keys, points, reduction, &fallbacks,
+                    stability,
                 )
             }
         }
@@ -1079,6 +1290,7 @@ impl Evaluation {
         keys: &[(usize, usize)],
         points: Vec<ColumnPoint<N>>,
         reduction: &Choice,
+        fallbacks: &Fallbacks,
         stability: serde_json::Value,
     ) -> RusticolResult<Self> {
         let helicities = axes.rows.len();
@@ -1116,6 +1328,7 @@ impl Evaluation {
             poles,
             arithmetic,
             reduction,
+            fallbacks,
             stability,
         )?;
         Ok(Self {
@@ -1287,13 +1500,14 @@ fn public_estimate(estimate: &Estimate, with_poles: bool, native: &V2Runtime) ->
 
 /// The diagnostics record of an evaluation.
 #[allow(clippy::too_many_arguments)]
-fn diagnostics(
+pub(crate) fn diagnostics(
     requested: &[u64],
     successful: &[u64],
     failures: &BTreeMap<u64, Vec<String>>,
     poles: Poles,
     arithmetic: Arithmetic,
     reduction: &Choice,
+    fallbacks: &Fallbacks,
     stability: serde_json::Value,
 ) -> RusticolResult<String> {
     serde_json::to_string(&serde_json::json!({
@@ -1302,12 +1516,21 @@ fn diagnostics(
         // Python API's `VirtualStabilityEstimate`), or why none is formed.
         "stability": stability,
         // The reduction backend of the call (the Python API's
-        // `VirtualReduction`): requested, effective and why.
+        // `VirtualReduction`): requested, effective and why; the per-point
+        // fallback (m-lit F3 (c): null without one) and how many points it
+        // evaluated again.
         "reduction": {
             "requested": reduction.requested,
             "effective": reduction.effective,
             "reason": reduction.reason,
+            "fallback": fallbacks.fallback,
+            "fallback_points": fallbacks.points.len(),
         },
+        // Per point the fallback evaluated again (by point id): the backend
+        // that served it (null: it failed there too, with both backends'
+        // reasons in "failures") and the reason. Every other point is the
+        // call's effective backend's.
+        "fallbacks": fallbacks.record(requested),
         "requested_point_ids":requested,
         "successful_point_ids":successful,
         "failures":failures,

@@ -862,7 +862,9 @@ struct V2Executor {
 /// function of the backend slots, so an evaluation can borrow the executor
 /// alongside. `engine` is NinjaRS's binary64 reduction engine (the extended
 /// carriers always reduce with its generic engine); TIRust's plans are built
-/// from the `plan`'s (propagators, rank) histogram (`V2Backends::tirust`).
+/// from the `plan`'s (propagators, rank) histogram at the default target
+/// accuracy (`V2Backends::tirust`; `V2Executor.prepare_reduction` sets a
+/// call's target).
 fn backend_of<'a>(
     slots: &'a mut [Option<V2Backends>; 2],
     carrier: Carriers,
@@ -894,8 +896,12 @@ fn backend_of<'a>(
                 })
             }
             Reduction::TiRust => {
-                V2Backends::tirust(runtime::plan_histogram(plan), carrier_bits(carrier)?)
-                    .map_err(error)?
+                V2Backends::tirust(
+                    runtime::plan_histogram(plan),
+                    carrier_bits(carrier)?,
+                    rusticol_loop_reduction::reduction_policy::DEFAULT_TARGET,
+                )
+                .map_err(error)?
             }
         });
     }
@@ -1540,7 +1546,12 @@ impl V2Executor {
     /// evaluation builds them; TIRust's typed refusal of a family is raised
     /// here: the artifact runtime calls it once per call and carrier on
     /// TIRust). Returns the (propagators, rank) plans TIRust built (empty
-    /// for NinjaRS). For validation, TIRust's keywords `method_choice`,
+    /// for NinjaRS). `target` is the call's target accuracy (the relative
+    /// accuracy of each point's result; None: `reduction_policy::
+    /// DEFAULT_TARGET`; a `ValueError` unless finite and positive): TIRust's
+    /// method-choice acceptance follows it (`v2_tir::acceptance_of`), and its
+    /// backend is rebuilt when it changes; NinjaRS has no setting it drives.
+    /// For validation, TIRust's keywords `method_choice`,
     /// `alternative_first`, `acceptance` and `acceptance_frame` (those of
     /// `V2TirReducer`; omitted,
     /// the backend's defaults) set its settings: its backend is rebuilt when
@@ -1552,11 +1563,12 @@ impl V2Executor {
     /// (with `store`: `v2_tir::TirOptions::masters_census`, the bound of a
     /// canonical masters provider; values unchanged) likewise. NinjaRS
     /// refuses them.
-    #[pyo3(signature = (reduction="tirust", *, method_choice=None, alternative_first=super::v2::Limit::default_limit(), acceptance=None, acceptance_frame=None, profile=None, store=None, masters_census=None))]
+    #[pyo3(signature = (reduction="tirust", *, target=None, method_choice=None, alternative_first=super::v2::Limit::default_limit(), acceptance=None, acceptance_frame=None, profile=None, store=None, masters_census=None))]
     #[allow(clippy::too_many_arguments)] // Python keyword arguments
     fn prepare_reduction(
         &mut self,
         reduction: &str,
+        target: Option<f64>,
         method_choice: Option<bool>,
         alternative_first: Option<super::v2::Limit>,
         acceptance: Option<f64>,
@@ -1566,6 +1578,7 @@ impl V2Executor {
         masters_census: Option<bool>,
     ) -> PyResult<Vec<(usize, usize)>> {
         let reduction = Reduction::parse(reduction).map_err(error)?;
+        super::v2::reduction_target(target)?;
         if reduction != Reduction::TiRust
             && (super::v2::tir_settings_given(
                 method_choice,
@@ -1589,7 +1602,8 @@ impl V2Executor {
                 profile: profile.unwrap_or(false),
                 store: store.unwrap_or(false),
                 masters_census: masters_census.unwrap_or(false),
-                ..super::v2::tir_options(
+                ..super::v2::tir_options_at(
+                    target,
                     method_choice,
                     &alternative_first,
                     acceptance,
@@ -1602,7 +1616,16 @@ impl V2Executor {
                 Some(V2Backends::TiRust(backend)) => Some(*backend.options()),
                 _ => None,
             };
-            if current != Some(options) {
+            if let (Some(current), Some(backend)) = (current, slot.as_mut())
+                && current != options
+                && rusticol_loop_reduction::v2_tir::TirOptions {
+                    acceptance: options.acceptance,
+                    ..current
+                } == options
+            {
+                // Another target: the acceptance only, the plans stay.
+                backend.set_target_acceptance(options.acceptance);
+            } else if current != Some(options) {
                 *slot = Some(
                     V2Backends::tirust_with(
                         runtime::plan_histogram(self.executor.plan()),

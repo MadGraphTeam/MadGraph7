@@ -187,9 +187,12 @@ pub struct TirOptions {
     /// (DECISIONS 2026-11-07 ~10:05: [`iregi_rust::direct::EXPANSION_TOLERANCE`]).
     pub alternative_first: Option<f64>,
     /// Largest accepted deviation of a binary64 method-choice lane between
-    /// its two frames, relative to the lane's term scale: the expansions'
-    /// own acceptance (`EXPANSION_TOLERANCE`); the extended carriers take it
-    /// to their precision.
+    /// its two frames, relative to the lane's term scale: by default the
+    /// calibrated acceptance of the default target accuracy
+    /// ([`acceptance_of`] of `reduction_policy::DEFAULT_TARGET`; a call's
+    /// target sets it, [`TirOptions::for_target`]; overridable for experts);
+    /// the extended carriers take it to their precision (where the method
+    /// choice is off by default, so it acts on nothing).
     pub acceptance: f64,
     /// The frame in which every method-choice row is verified (the call's
     /// check row serves when the call checks in this frame): by default the
@@ -233,6 +236,42 @@ pub struct TirOptions {
     pub masters_census: bool,
 }
 
+/// The calibration of the method-choice acceptance against a target
+/// accuracy (m-lit F3 (a), lit-tirust-default): the largest measured ratio
+/// of a true relative error to the frame deviation the acceptance compares
+/// (the deviation between a method-choice lane's two frames relative to its
+/// term scale, what [`TirOptions::acceptance`] bounds). The deviation
+/// under-states the error by up to this factor, so admitting deviations up
+/// to `target / UNDERSTATEMENT` keeps every calibration item served within
+/// `target`. Measured against consistent truths (DECISIONS 2026-11-07 19:49
+/// / 20:20): lit-tir-mp's synthetic method-choice lanes (the lanes its
+/// rescaled acceptance refuses at the expansions' tolerance and a rotated one
+/// serves, error against NinjaRS at 60 digits: largest ratio 579.2, error
+/// 2.69e-6 at deviation 4.64e-9) and the loop-induced rows of the frozen
+/// streams at the point level (|A_loop|^2 finite part against TIRust at 256
+/// bits with supplied invariants; tests/fixtures/loop/v2/
+/// tir_target_calibration.json, which a test reads against this value).
+pub const UNDERSTATEMENT: f64 = 580.0;
+
+/// The method-choice acceptance of a target accuracy (the relative accuracy
+/// of each point's result, `reduction_policy::DEFAULT_TARGET`): `target /`
+/// [`UNDERSTATEMENT`]. The one mapping: the runtime's and the SDKs' target,
+/// and each rescue level's target in the Python API, go through it.
+pub fn acceptance_of(target: f64) -> f64 {
+    target / UNDERSTATEMENT
+}
+
+impl TirOptions {
+    /// The default settings with the acceptance of `target`
+    /// ([`acceptance_of`]).
+    pub fn for_target(target: f64) -> Self {
+        Self {
+            acceptance: acceptance_of(target),
+            ..Self::default()
+        }
+    }
+}
+
 impl Default for TirOptions {
     fn default() -> Self {
         Self {
@@ -242,7 +281,7 @@ impl Default for TirOptions {
             method_choice_gate: 1e-15,
             expansion_boost: 12,
             alternative_first: Some(iregi_rust::direct::EXPANSION_TOLERANCE),
-            acceptance: iregi_rust::direct::EXPANSION_TOLERANCE,
+            acceptance: acceptance_of(crate::reduction_policy::DEFAULT_TARGET),
             acceptance_frame: tir_frame(ReductionCheck::RESCALED),
             rotation_copy: true,
             profile: false,
@@ -808,6 +847,13 @@ impl TirReductionBackend {
 
     pub fn options(&self) -> &TirOptions {
         &self.options
+    }
+
+    /// Set the method-choice acceptance ([`TirOptions::acceptance`]: a
+    /// call's target accuracy, [`acceptance_of`]); the plans stay (the
+    /// acceptance only admits lanes, never changes a value).
+    pub fn set_acceptance(&mut self, acceptance: f64) {
+        self.options.acceptance = acceptance;
     }
 
     fn bin(&mut self, n: usize, rank: usize) -> RusticolResult<&mut Bin> {

@@ -242,6 +242,12 @@ public:
     void set_reduction(const std::string &reduction) {
         virtual_detail::check(rusticol_virtual_set_reduction(handle_.get(), reduction.c_str()));
     }
+    // Target accuracy of later evaluations (the Python API's reduction_target=;
+    // default 1e-5 relative per point): TIRust's acceptance follows it; a value
+    // that is not finite and positive throws VirtualError.
+    void set_reduction_target(double target) {
+        virtual_detail::check(rusticol_virtual_set_reduction_target(handle_.get(), target));
+    }
     // Stability checks of later evaluations (the Python API's stability_checks=):
     // rotation_count default rotations, or the rotation specifications of
     // `rotations` (a JSON array; rotation_count then 0); all off, the default,

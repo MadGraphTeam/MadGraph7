@@ -504,10 +504,16 @@ impl V2Precision {
 
     /// The `reduction` backend of the carrier (`v2_executor.backend_of`):
     /// NinjaRS, or TIRust (its plans built for `plan`'s (propagators, rank)
-    /// histogram at the carrier's precision, the other plans' on first use).
-    fn backend(self, reduction: Reduction, plan: &LoopProgramV4) -> RusticolResult<V2Backends> {
+    /// histogram at the carrier's precision, the other plans' on first use;
+    /// its acceptance from the target accuracy `target`).
+    fn backend(
+        self,
+        reduction: Reduction,
+        plan: &LoopProgramV4,
+        target: f64,
+    ) -> RusticolResult<V2Backends> {
         if reduction == Reduction::TiRust {
-            return V2Backends::tirust(crate::runtime::plan_histogram(plan), self.bits()?);
+            return V2Backends::tirust(crate::runtime::plan_histogram(plan), self.bits()?, target);
         }
         let reducer = match self {
             Self::Double => V2Reducer::new("double", None, "fast", true),
@@ -797,6 +803,8 @@ pub struct V2Runtime {
     process: Runner,
     /// The reduction backend of every evaluation ([`V2Runtime::set_reduction`]).
     reduction: Reduction,
+    /// The target accuracy of every evaluation ([`V2Runtime::set_target`]).
+    target: f64,
     backends: BTreeMap<V2Precision, V2Backends>,
     /// The other backend's, for the stability monitoring's cross-backend
     /// check (`monitor`), built on first use.
@@ -965,25 +973,45 @@ impl V2Runtime {
         process
             .runtimes
             .insert(V2Precision::Double, Box::new(runtime));
-        // The default backend: NinjaRS, or TIRust for a TIR-only process (its
-        // only backend; refused typed in a build without TIRust).
-        let reduction = if crate::runtime::ninjars_refusal(&process.plan).is_ok() {
-            Reduction::NinjaRs
-        } else if crate::tir::available() {
-            Reduction::TiRust
-        } else {
-            return Err(RusticolError::unsupported_runtime_capability(
-                "tirust",
-                format!(
-                    "this process is TIR-only (a family beyond NinjaRS's rank <= N+2) and {}",
-                    crate::runtime::TIRUST_NOT_BUILT
-                ),
-            ));
+        // The default backend: what "auto" takes for the process type at
+        // binary64 (the one policy, `reduction_policy::resolve`: TIRust for a
+        // loop-induced or a TIR-only process where this library serves it,
+        // else NinjaRS); a TIR-only process in a build without TIRust is
+        // refused typed.
+        let tir_only = crate::runtime::ninjars_refusal(&process.plan).is_err();
+        let admitted = tir_only.then(|| BTreeSet::from(["tirust".to_owned()]));
+        let route = crate::reduction_policy::route(crate::reduction_policy::SUMMED)
+            .expect("the summed route");
+        let reduction = match crate::reduction_policy::resolve(
+            "auto",
+            &artifact.metadata.contribution_kind,
+            "double",
+            &crate::reduction_policy::served(),
+            admitted.as_ref(),
+            &route,
+        ) {
+            Ok(choice) => Reduction::parse(&choice.effective)?,
+            Err(_) if tir_only => {
+                return Err(RusticolError::unsupported_runtime_capability(
+                    "tirust",
+                    format!(
+                        "this process is TIR-only (a family beyond NinjaRS's rank <= N+2) and {}",
+                        crate::runtime::TIRUST_NOT_BUILT
+                    ),
+                ));
+            }
+            Err(crate::reduction_policy::Refusal::Unavailable(message))
+            | Err(crate::reduction_policy::Refusal::Invalid(message)) => {
+                return Err(RusticolError::unsupported_runtime_capability(
+                    "auto", message,
+                ));
+            }
         };
+        let target = crate::reduction_policy::DEFAULT_TARGET;
         let mut backends = BTreeMap::new();
         backends.insert(
             V2Precision::Double,
-            V2Precision::Double.backend(reduction, &process.plan)?,
+            V2Precision::Double.backend(reduction, &process.plan, target)?,
         );
         Ok(Self {
             path,
@@ -991,6 +1019,7 @@ impl V2Runtime {
             record,
             process,
             reduction,
+            target,
             backends,
             cross_backends: BTreeMap::new(),
             scaleless_inputs: native.scaleless.map(Arc::new),
@@ -1357,6 +1386,16 @@ impl V2Runtime {
             .unwrap_or("auto")
     }
 
+    /// The generation request's target accuracy (`[loop] reduction_target`,
+    /// the artifact's default of a call that sets none; None when absent:
+    /// `reduction_policy::DEFAULT_TARGET`).
+    pub fn artifact_target(&self) -> Option<f64> {
+        self.artifact
+            .request
+            .get("reduction_target")
+            .and_then(serde_json::Value::as_f64)
+    }
+
     /// One mu_R² per point, `4 × legs` components per point, positive
     /// scales.
     pub(crate) fn check_batch(
@@ -1396,7 +1435,7 @@ impl V2Runtime {
 
     fn backend(&mut self, precision: V2Precision) -> RusticolResult<&mut V2Backends> {
         if !self.backends.contains_key(&precision) {
-            let backend = precision.backend(self.reduction, &self.process.plan)?;
+            let backend = precision.backend(self.reduction, &self.process.plan, self.target)?;
             self.backends.insert(precision, backend);
         }
         Ok(self.backends.get_mut(&precision).expect("the backend"))
@@ -1430,6 +1469,35 @@ impl V2Runtime {
     /// The reduction backend of the following evaluations.
     pub fn reduction(&self) -> Reduction {
         self.reduction
+    }
+
+    /// The target accuracy of the following evaluations (the relative
+    /// accuracy of each point's result, `reduction_policy::DEFAULT_TARGET`
+    /// by default; validated by `reduction_policy::target`): TIRust's
+    /// method-choice acceptance follows it (`v2_tir::acceptance_of`), set on
+    /// the built backends (their plans stay); NinjaRS has no setting it
+    /// drives.
+    pub fn set_target(&mut self, target: f64) -> RusticolResult<()> {
+        let target = crate::reduction_policy::target(target).map_err(|refusal| match refusal {
+            crate::reduction_policy::Refusal::Invalid(message)
+            | crate::reduction_policy::Refusal::Unavailable(message) => invalid(message),
+        })?;
+        if target != self.target {
+            self.target = target;
+            for backend in self
+                .backends
+                .values_mut()
+                .chain(self.cross_backends.values_mut())
+            {
+                backend.set_target(target);
+            }
+        }
+        Ok(())
+    }
+
+    /// The target accuracy of the following evaluations.
+    pub fn target(&self) -> f64 {
+        self.target
     }
 
     /// One batch through the tree program, the executor and the assembly in
