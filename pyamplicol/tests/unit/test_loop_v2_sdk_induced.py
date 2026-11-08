@@ -82,6 +82,25 @@ def _exact(points, scales):
     )
 
 
+def _record(record, expected) -> dict:
+    """The SDK diagnostics' call-level reduction record of the Python API's
+    ``VirtualReduction`` (its fallback, and how many points it evaluated
+    again: the lanes recording another backend than the call's)."""
+
+    moved = [
+        lane
+        for lane in expected.diagnostics
+        if lane.reduction is not None and lane.reduction.effective != record.effective
+    ]
+    return {
+        "requested": record.requested,
+        "effective": record.effective,
+        "reason": record.reason,
+        "fallback": record.fallback,
+        "fallback_points": len(moved),
+    }
+
+
 def _json(sdk, function, handle) -> dict:
     needed = ctypes.c_size_t()
     assert function(handle, None, ctypes.c_size_t(0), ctypes.byref(needed)) == 0
@@ -278,11 +297,7 @@ def test_the_reduction_setter_records_the_python_apis_choice(
         default = _evaluate(sdk, handle, points, scales)
         expected = runtime.evaluate(exact_points, mu_r2=exact_scales)
         record = expected.diagnostics[0].reduction
-        assert default["diagnostics"]["reduction"] == {
-            "requested": record.requested,
-            "effective": record.effective,
-            "reason": record.reason,
-        }
+        assert default["diagnostics"]["reduction"] == _record(record, expected)
         capabilities = _json(sdk, sdk.rusticol_virtual_capabilities_json, handle)
         # What the library serves, as the Python API's inspect lists it.
         assert capabilities["reduction"]["native"] == {
@@ -307,11 +322,7 @@ def test_the_reduction_setter_records_the_python_apis_choice(
                 on_failure="return",
             )
             record = expected.diagnostics[0].reduction
-            assert found["diagnostics"]["reduction"] == {
-                "requested": record.requested,
-                "effective": record.effective,
-                "reason": record.reason,
-            }
+            assert found["diagnostics"]["reduction"] == _record(record, expected)
             served = [value is not None for value in expected.values]
             assert found["statuses"] == [
                 SUCCESS_STATUS if ok else FAILED_STATUS for ok in served
@@ -759,3 +770,87 @@ def test_the_rust_sdk_observables_follow_the_python_api(
         from tests.unit.test_loop_v2_sdk_extras import _parse
 
         _compare_induced(f"rust:{name}", expected, _parse(output.read_text()))
+
+
+def test_the_c_abi_falls_back_per_point_at_a_stated_target(artifacts, loop_native):
+    """F3 (c) through the C ABI: u u~ > h g g point 0 at the target whose
+    calibrated acceptance is half its method-choice lanes' deviation
+    (``rusticol_virtual_set_reduction_target``): "auto" serves it on NinjaRS
+    (bitwise the explicit NinjaRS call's value, the diagnostics' "fallbacks"
+    naming it with the fallback's reason, "fallback_points" 1), the other
+    points on TIRust (bitwise the explicit TIRust call); explicit "tirust"
+    fails it typed; a target that is not finite and positive is an invalid
+    argument and changes nothing. The Python API at the same target records
+    the same backends and values."""
+
+    import re
+
+    from pyamplicol import Runtime
+
+    if "tirust" not in json.loads(loop_native.reduction_backends()):
+        pytest.skip("the staged native extension is built without TIRust")
+    name = "li_uux_hgg"
+    artifact = artifacts[name]
+    points, scales = _inputs(name, 3)
+    exact_points, exact_scales = _exact(points, scales)
+    runtime = Runtime.load(artifact, process="p")
+    tiny = runtime.evaluate(
+        exact_points[:1],
+        mu_r2=exact_scales[:1],
+        reduction="tirust",
+        reduction_target=1e-300,
+        on_failure="return",
+    )
+    ratio = max(
+        float(d) / float(s)
+        for d, s in re.findall(
+            r"deviation ([0-9.eE+-]+) of term scale ([0-9.eE+-]+)",
+            tiny.diagnostics[0].detail,
+        )
+    )
+    target = ratio / 2 / loop_native.tir_acceptance(1.0)
+    sdk = _sdk()
+    set_target = sdk.rusticol_virtual_set_reduction_target
+    set_target.argtypes = [ctypes.c_void_p, ctypes.c_double]
+    handle = _open(sdk, artifact)
+    try:
+        for bad in (0.0, -1.0, math.inf, math.nan):
+            assert set_target(handle, bad) == STATUS_INVALID_ARGUMENT
+            assert "finite positive number" in _error(sdk)
+        capabilities = _json(sdk, sdk.rusticol_virtual_capabilities_json, handle)
+        assert capabilities["reduction"]["target"] == 1e-5
+        assert set_target(handle, target) == 0, _error(sdk)
+        runs = {}
+        for backend in ("ninjars", "tirust", "auto"):
+            assert sdk.rusticol_virtual_set_reduction(handle, backend.encode()) == 0
+            runs[backend] = _evaluate(sdk, handle, points, scales)
+        auto, tirust, ninjars = runs["auto"], runs["tirust"], runs["ninjars"]
+        assert tirust["statuses"] == [FAILED_STATUS, SUCCESS_STATUS, SUCCESS_STATUS]
+        assert auto["statuses"] == [SUCCESS_STATUS] * 3
+        width = len(auto["virtual"]) // 3
+        assert auto["virtual"][:width] == ninjars["virtual"][:width]
+        assert auto["virtual"][width:] == tirust["virtual"]
+        record = auto["diagnostics"]["reduction"]
+        assert (record["effective"], record["fallback"], record["fallback_points"]) == (
+            "tirust",
+            "ninjars",
+            1,
+        )
+        (served,) = auto["diagnostics"]["fallbacks"].items()
+        assert served[0] == "0" and served[1]["effective"] == "ninjars"
+        assert served[1]["reason"].startswith("auto: NinjaRS, the per-point fallback")
+        assert "refused by its check" in served[1]["reason"]
+        assert tirust["diagnostics"]["fallbacks"] == {}
+        assert tirust["diagnostics"]["reduction"]["fallback"] is None
+        expected = runtime.evaluate(
+            exact_points, mu_r2=exact_scales, reduction_target=target
+        )
+        assert [lane.reduction.effective for lane in expected.diagnostics] == [
+            "ninjars",
+            "tirust",
+            "tirust",
+        ]
+        assert expected.diagnostics[0].reduction.reason == served[1]["reason"]
+        assert _same(auto["virtual"], _python_flat(expected))
+    finally:
+        sdk.rusticol_virtual_free(handle)

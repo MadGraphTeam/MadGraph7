@@ -857,6 +857,236 @@ def test_a_binary64_k_perp_is_served_with_its_transverse_budget(artifacts):
     assert estimate.absolute[0].finite > abs(value)
 
 
+# ------------------------------------------------- the per-point fallback
+
+
+def _ratio(reason):
+    """The largest deviation / term scale of the method-choice refusals in
+    a failure text (``v2_tir``'s acceptance check), or None."""
+
+    import re
+
+    found = [
+        float(deviation) / float(scale)
+        for deviation, scale in re.findall(
+            r"deviation ([0-9.eE+-]+) of term scale ([0-9.eE+-]+)", reason
+        )
+    ]
+    return max(found) if found else None
+
+
+def _per_point(auto, explicit, other):
+    """Each point of an ``"auto"`` result (m-lit F3 (c)): served by TIRust
+    where the explicit TIRust call serves it (bitwise its value), else by
+    the per-point fallback on NinjaRS (bitwise the explicit NinjaRS value,
+    its lane recording NinjaRS and the fallback's reason with TIRust's
+    failure). Returns the backend of every point."""
+
+    backends = []
+    for p, lane in enumerate(auto.diagnostics):
+        record = lane.reduction
+        assert record.requested == "auto"
+        if explicit.values[p] is not None:
+            assert record.effective == "tirust" and record.fallback == "ninjars", p
+            assert repr(auto.values[p]) == repr(explicit.values[p]), p
+        else:
+            assert record.effective == "ninjars" and record.fallback is None, p
+            assert record.reason.startswith("auto: NinjaRS, the per-point fallback: ")
+            assert explicit.diagnostics[p].detail in record.reason or (
+                "TIRust refused or failed the point" in record.reason
+            )
+            assert repr(auto.values[p]) == repr(other.values[p]), p
+        backends.append(record.effective)
+    return backends
+
+
+@pytest.mark.loop_physics
+def test_auto_serves_a_point_tirust_refuses_on_ninjars(artifacts, loop_native):
+    """F3 (c) at a stated target: LI-O1 u u~ > h g g point 0 has
+    method-choice lanes whose two frames deviate by r ~ 1.2e-9 of their
+    term scale (lit-cache step 2: 4.44e-28 / 3.71e-19). At the target T
+    whose calibrated acceptance (``tir_acceptance``) is r / 2, explicit
+    TIRust fails the point typed with its check's reason, and "auto" serves
+    it on NinjaRS (its value bitwise the explicit NinjaRS one, its lane
+    recording NinjaRS and the fallback's reason) and the other points on
+    TIRust, bitwise. At the default target (1e-5, acceptance 1e-5 / 580)
+    the lanes are admitted: TIRust serves the point."""
+
+    from pyamplicol.loops.v2.reduction import default_target
+
+    name = "li_uux_hgg"
+    runtime = _runtime(artifacts, name)
+    points, scales = _points(name)
+    options = {"mu_r2": scales, "poles": "none", "on_failure": "return"}
+    # Every method-choice lane refused (the smallest target): its deviation.
+    found = runtime.evaluate(
+        points[:1],
+        reduction="tirust",
+        reduction_target=1e-300,
+        **{**options, "mu_r2": scales[:1]},
+    )
+    ratio = _ratio(found.diagnostics[0].detail)
+    assert ratio is not None and ratio > 0
+    per_target = loop_native.tir_acceptance(1.0)
+    target = ratio / 2 / per_target
+    assert loop_native.tir_acceptance(target) < ratio
+    explicit = runtime.evaluate(
+        points, reduction="tirust", reduction_target=target, **options
+    )
+    assert explicit.values[0] is None
+    assert "TIRust method-choice lane refused by its check" in (
+        explicit.diagnostics[0].detail
+    )
+    other = runtime.evaluate(points, reduction="ninjars", **options)
+    auto = runtime.evaluate(points, reduction_target=target, **options)
+    backends = _per_point(auto, explicit, other)
+    assert backends[0] == "ninjars", f"target {target:e}"
+    assert {lane.reduction.target for lane in auto.diagnostics} == {target}
+    # The default target admits the point's lanes (ratio below its
+    # acceptance): TIRust serves it.
+    default = runtime.evaluate(points, **options)
+    assert ratio <= loop_native.tir_acceptance(default_target())
+    assert [lane.reduction.effective for lane in default.diagnostics] == [
+        "tirust"
+    ] * len(points)
+    # The value TIRust serves at either target is the same value.
+    assert repr(default.values[1:]) == repr(auto.values[1:])
+
+
+@pytest.mark.loop_physics
+def test_auto_serves_a_point_the_monitoring_fails_on_ninjars(artifacts):
+    """F3 (c): with the recommended stability checks at the default target,
+    TIRust's re-test rows refuse some fixture points of u u~ > h g g (the
+    term-scale lanes of the check, lit-tir-mp's open item 2), so the
+    point's monitored evaluation fails; "auto" evaluates those points again,
+    with the same checks, on NinjaRS (values and estimates bitwise the
+    explicit NinjaRS call's), the others on TIRust. With the cross-backend
+    check a fallback point's cross-backend check is not run, with the
+    fallback's reason (R6)."""
+
+    from pyamplicol.api import VirtualStabilityChecks
+    from pyamplicol.loops.v2.stability import CROSS, RECOMMENDED_CHECKS
+
+    name = "li_uux_hgg"
+    runtime = _runtime(artifacts, name)
+    points, scales = _points(name)
+    checks = VirtualStabilityChecks(
+        RECOMMENDED_CHECKS.rotations, reduction_direction=True, rescaled=True
+    )
+    options = {"mu_r2": scales, "on_failure": "return", "stability_checks": checks}
+    explicit = runtime.evaluate(points, reduction="tirust", **options)
+    other = runtime.evaluate(points, reduction="ninjars", **options)
+    auto = runtime.evaluate(points, **options)
+    backends = _per_point(auto, explicit, other)
+    assert "ninjars" in backends, "the default target's checks fail no point"
+    for p, backend in enumerate(backends):
+        source = other if backend == "ninjars" else explicit
+        assert auto.stability[p] == source.stability[p], p
+    crossed = runtime.evaluate(
+        points,
+        **{
+            **options,
+            "stability_checks": VirtualStabilityChecks(
+                RECOMMENDED_CHECKS.rotations,
+                reduction_direction=True,
+                rescaled=True,
+                cross_backend=True,
+            ),
+        },
+    )
+    for p, backend in enumerate(backends):
+        lane = crossed.diagnostics[p]
+        assert lane.reduction.effective == backend, p
+        if backend == "ninjars":
+            assert (CROSS, lane.reduction.reason) in crossed.stability[p].not_run
+            assert repr(crossed.values[p]) == repr(other.values[p])
+
+
+@pytest.mark.loop_physics
+def test_a_double_double_auto_point_falls_back_at_double_double(artifacts, monkeypatch):
+    """F3 (c) CARRIERS (this package's reading of DECISIONS 2026-11-08 15:19
+    'at the same precision'): the per-point fallback evaluates at the call's
+    own arithmetic. TIRust refuses no LI-O1 fixture point in double-double
+    at the default target (its gates there are binary64's squared), so a
+    TIRust failure of point 0 is forced in the executor: "auto" serves it
+    on NinjaRS in double-double, equal to the explicit NinjaRS double-double
+    value, the other points on TIRust."""
+
+    from pyamplicol.loops.v2 import plan_export
+    from pyamplicol.loops.v2.reduction import current
+
+    name = "li_gg_hgg"
+    runtime = _runtime(artifacts, name)
+    points, scales = _points(name)
+    options = {
+        "mu_r2": scales,
+        "poles": "none",
+        "on_failure": "return",
+        "arithmetic": "double-double",
+    }
+    other = runtime.evaluate(points, reduction="ninjars", **options)
+    original = plan_export.NativeExecutor._evaluated
+
+    def failing(self, *args, **kwargs):
+        precision, evaluations, failed = original(self, *args, **kwargs)
+        if current() == "tirust" and 0 in range(len(evaluations)):
+            failed = {**failed, 0: ["refused by a conditioning gate (forced)"]}
+        return precision, evaluations, failed
+
+    monkeypatch.setattr(plan_export.NativeExecutor, "_evaluated", failing)
+    explicit = runtime.evaluate(points, reduction="tirust", **options)
+    assert explicit.values[0] is None and explicit.values[1] is not None
+    auto = runtime.evaluate(points, **options)
+    assert {lane.arithmetic for lane in auto.diagnostics} == {"double-double"}
+    assert _per_point(auto, explicit, other)[:2] == ["ninjars", "tirust"]
+    assert "(forced)" in auto.diagnostics[0].reduction.reason
+
+
+@pytest.mark.loop_physics
+def test_the_loop_induced_default_stack_records_level_and_backend(artifacts):
+    """F3 (b): ``VirtualRescuePolicy()`` on a loop-induced "auto" call is the
+    loop-induced default stack, TIRust binary64 -> NinjaRS binary64 ->
+    double-double -> 57 digits; every point records the level and the
+    backend that served it, a point TIRust fails at level 0 is recorded at a
+    later level (the NinjaRS level when NinjaRS meets the target there).
+    ``reduction="ninjars"`` with the same policy runs NinjaRS at every level
+    (no TIRust attempt), ``"tirust"`` TIRust at every level."""
+
+    from pyamplicol.api import VirtualRescuePolicy
+
+    name = "li_uux_hgg"
+    runtime = _runtime(artifacts, name)
+    points, scales = _points(name)
+    options = {"mu_r2": scales, "on_failure": "return"}
+    stacked = runtime.evaluate(points, stability=VirtualRescuePolicy(), **options)
+    for record in stacked.rescue:
+        first = record.attempts[0]
+        assert (first.arithmetic, first.reduction.effective) == ("double", "tirust")
+        assert first.reduction.requested == "tirust"
+        if len(record.attempts) > 1:
+            second = record.attempts[1]
+            assert (second.arithmetic, second.reduction.effective) == (
+                "double",
+                "ninjars",
+            )
+    # The levels a point reached and the backend that returned it.
+    assert [
+        record.reduction.effective for record in stacked.rescue if record.level == 0
+    ] == ["tirust" for record in stacked.rescue if record.level == 0]
+    assert all(
+        record.reduction.effective == "ninjars"
+        for record in stacked.rescue
+        if record.level == 1
+    )
+    for backend in ("ninjars", "tirust"):
+        one = runtime.evaluate(
+            points, stability=VirtualRescuePolicy(), reduction=backend, **options
+        )
+        for record in one.rescue:
+            assert {item.reduction.effective for item in record.attempts} == {backend}
+            assert len(record.attempts) == record.level + 1
+
+
 # ------------------------------------------------------------- refusals
 
 

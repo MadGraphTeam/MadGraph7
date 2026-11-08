@@ -477,8 +477,13 @@ def test_every_route_records_its_backend_and_refuses_one_it_does_not_run(
             points, born, mu_r2=scales, **kw
         ),
     }
+    # Every record carries the call's target accuracy (m-lit F3: the
+    # default, as is every default level's).
     auto = VirtualReduction(
-        "auto", "ninjars", "auto: NinjaRS, the Born-interfered default"
+        "auto",
+        "ninjars",
+        "auto: NinjaRS, the Born-interfered default",
+        target=reduction.default_target(),
     )
     built_lanes: list[object] = []
     built_results: list[object] = []
