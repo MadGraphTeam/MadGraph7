@@ -4,24 +4,27 @@
 //! T1 scalar and tensor integrals against NinjaRS's generic engine in
 //! double-double, T3 the layout permutation and the split UV column, T4 rank
 //! over-declaration, T5 check frames, T6 chunking and batch composition, T10
-//! unit scaling, the default's fail-closed gate refusals (no method-choice
-//! row), the method choice and its check when enabled, and the typed
+//! unit scaling, the fail-closed gate refusals without the method choice,
+//! the binary64 default's method choice and its rescaled acceptance (the
+//! rotation-blind lanes of lit-tir report §H refused), and the typed
 //! capability refusals. Binary64 TIR lanes are compared within the lax-precision rule
 //! (relative to the lane's largest Laurent coefficient), never bitwise
 //! except where an identity makes them so.
 #![cfg(feature = "tir")]
 
+use iregi_rust::DirectCapabilities;
 use ninjars::fast::tensor_layout::{monomials, ncoeff};
 use rusticol_core::RusticolErrorKind;
 use rusticol_core::loop_execution::v2::{FamilyLanes, LaneKey, LaneOutcome, Poles, V2Backend};
 use rusticol_core::loop_v2::retest::ReductionCheck;
+use rusticol_loop_reduction::NativeFloat;
 use rusticol_loop_reduction::runtime::{
     PoleSelection, Reduction, V2Backends, V2Reducer, V2ReductionBackend,
 };
 use rusticol_loop_reduction::v2_tir::{
-    TirOptions, TirReductionBackend, layout_positions, tir_frame,
+    TirOptions, TirReductionBackend, capability_refusal, carrier_gate, layout_positions, tir_frame,
 };
-use symbolica::domains::float::{Complex, DoubleFloat, RealLike};
+use symbolica::domains::float::{Complex, DoubleFloat, Float, Real, RealLike, SingleFloat};
 
 type C = Complex<f64>;
 
@@ -161,17 +164,18 @@ fn dd(group: &FamilyLanes<f64>) -> FamilyLanes<DoubleFloat> {
     }
 }
 
-/// The TIR backend in its default settings (the method choice off:
-/// gate-refused rows fail closed, DECISIONS 2026-11-07 ~17:20 (d)).
+/// The TIR backend in its default settings (binary64: the method choice on,
+/// its lanes accepted in the rescaled frame, m-lit lit-tir-mp; the extended
+/// carriers: gate-refused rows fail closed).
 fn tir() -> V2Backends {
     V2Backends::TiRust(Box::new(TirReductionBackend::new(TirOptions::default())))
 }
 
-/// The TIR backend with the method choice on (the one option lit-tir-mp
-/// turns back on after its re-pin) and otherwise the defaults.
-fn tir_method_choice() -> V2Backends {
+/// The TIR backend without the method choice (gate-refused rows fail
+/// closed, DECISIONS 2026-11-07 ~17:20 (d)) and otherwise the defaults.
+fn tir_without_method_choice() -> V2Backends {
     V2Backends::TiRust(Box::new(TirReductionBackend::new(TirOptions {
-        method_choice: true,
+        method_choice: false,
         ..TirOptions::default()
     })))
 }
@@ -293,15 +297,17 @@ fn relative(a: &[C], b: &[C]) -> f64 {
         / scale
 }
 
-/// Whether a lane failed closed on TIRust's conditioning gates (the default
-/// settings: the method choice off, DECISIONS 2026-11-07 ~17:20 (d)); any
-/// other failure panics.
+/// Whether a lane failed closed on TIRust's conditioning gates (without
+/// the method choice: DECISIONS 2026-11-07 ~17:20 (d)), on the method
+/// choice or on its acceptance check; any other failure panics.
 fn gate_refused(lane: &LaneOutcome<f64>) -> bool {
     match lane {
         Ok(_) => false,
         Err(reason) => {
             assert!(
-                reason.contains("refused by the conditioning gates"),
+                reason.contains("refused by the conditioning gates")
+                    || reason.contains("refused by the gates, then by the method choice")
+                    || reason.contains("method-choice lane refused by its check"),
                 "not a gate refusal: {reason}"
             );
             true
@@ -397,9 +403,13 @@ fn scalar_and_tensor_integrals_match_ninjars_double_double() {
     groups.push(lanes(family, &[complex], 3, 3, 2, &mut rng));
     let truth = reference(&groups, Poles::Split);
     let total: usize = groups.iter().map(|g| g.keys.len()).sum();
-    // The default (gate-refused rows fail closed) and the method choice on
-    // (every lane served: the boxes the gates refuse too).
-    for (name, mut backend) in [("default", tir()), ("method choice", tir_method_choice())] {
+    // Without the method choice (gate-refused rows fail closed) and the
+    // default, the method choice on (every lane served: the boxes the gates
+    // refuse too).
+    for (name, mut backend) in [
+        ("method choice off", tir_without_method_choice()),
+        ("default", tir()),
+    ] {
         let (found, check) = reduce(
             &mut backend,
             &groups,
@@ -413,7 +423,7 @@ fn scalar_and_tensor_integrals_match_ninjars_double_double() {
         );
         assert!(worst < 1e-6, "TIR vs NinjaRS generic DD: {worst:e}");
         assert!(2 * compared > total, "{name}: {compared} of {total}");
-        if name == "method choice" {
+        if name == "default" {
             assert_eq!(compared, total);
         }
     }
@@ -443,10 +453,13 @@ fn layout_round_trip_and_split_columns() {
         .collect();
     let groups = vec![lanes(0, &points, 4, 4, 3, &mut rng)];
     let (ninja, _) = reduce(&mut ninjars("double", "fast"), &groups, Poles::Split, None);
-    // The default (these boxes may fail closed on the gates, in every pole
-    // mode alike) and the method choice on (every lane served).
-    let configurations: [(&str, fn() -> V2Backends); 2] =
-        [("default", tir), ("method choice", tir_method_choice)];
+    // Without the method choice (these boxes may fail closed on the gates,
+    // in every pole mode alike) and the default, the method choice on
+    // (every lane served).
+    let configurations: [(&str, fn() -> V2Backends); 2] = [
+        ("method choice off", tir_without_method_choice),
+        ("default", tir),
+    ];
     for (name, backend) in configurations {
         let (split, _) = reduce(&mut backend(), &groups, Poles::Split, None);
         let (all, _) = reduce(&mut backend(), &groups, Poles::All, None);
@@ -475,7 +488,7 @@ fn layout_round_trip_and_split_columns() {
             );
         }
         eprintln!("T3 ({name}): {compared} of {} lanes", split[0].len());
-        if name == "method choice" {
+        if name == "default" {
             assert_eq!(compared, split[0].len());
         }
     }
@@ -517,7 +530,7 @@ fn check_frames_rotate_and_rescale() {
         .collect();
     let groups = vec![lanes(0, &points, 3, 3, 2, &mut rng)];
     for check in [ReductionCheck::REVERSED, ReductionCheck::RESCALED] {
-        for mut backend in [tir(), tir_method_choice()] {
+        for mut backend in [tir_without_method_choice(), tir()] {
             let (direct, again) = reduce(&mut backend, &groups, Poles::All, Some(check));
             let again = again.unwrap();
             let (deviation, compared) = worst(&again, &direct);
@@ -624,58 +637,289 @@ fn unit_scaling() {
     }
 }
 
-/// The capability refusals are TIRust's own (typed plan construction) or
-/// read from the row's exact invariants (an on-shell leg next to a
-/// propagator of its mass), never a constant of this crate; a backend
-/// without TIRust refuses typed.
+/// The capability refusals are TIRust's own (its capability query and its
+/// typed plan construction), never a constant of this crate: a family
+/// beyond TIRust's former fixed caps is admitted, one beyond what the
+/// query reports is refused typed with TIRust's reason, in every carrier.
 #[test]
 fn capability_refusals_are_typed() {
-    let found = TirReductionBackend::with_histogram([(1, 3), (3, 3)], TirOptions::default())
+    let found = TirReductionBackend::with_histogram([(1, 3), (3, 3)], 53, TirOptions::default())
         .unwrap()
         .plans();
     assert_eq!(found.len(), 4 + 4);
-    // TIRust's direct engine at this pin serves at most twelve propagators.
-    let refused = match TirReductionBackend::with_histogram([(13, 0)], TirOptions::default()) {
-        Err(error) => error,
-        Ok(_) => panic!("TIRust admitted 13 propagators at this pin"),
-    };
+    // Thirteen propagators (beyond the twelve of TIRust's former fixed cap)
+    // are admitted: the bound is TIRust's capability query, no constant here.
+    let beyond = TirReductionBackend::with_histogram([(13, 2)], 53, TirOptions::default()).unwrap();
+    assert_eq!(beyond.plans(), [(13, 0), (13, 1), (13, 2)]);
+    for bits in [53, 106, 256] {
+        assert_eq!(capability_refusal(13, 2, bits), None);
+        // One propagator more than the query's largest count is refused
+        // typed, with TIRust's reason.
+        let n = DirectCapabilities::of_representation(bits).max_propagators + 1;
+        let refused =
+            match TirReductionBackend::with_histogram([(n, 0)], bits, TirOptions::default()) {
+                Err(error) => error,
+                Ok(_) => panic!("TIRust admitted {n} propagators"),
+            };
+        assert_eq!(
+            refused.kind(),
+            RusticolErrorKind::UnsupportedRuntimeCapability
+        );
+        let message = refused.message();
+        assert!(
+            message.contains(&format!("TIRust cannot reduce {n} propagators"))
+                && message.contains("direct engine"),
+            "{message}"
+        );
+        let reason = capability_refusal(n, 0, bits).unwrap();
+        assert!(message.ends_with(&reason), "{message} / {reason}");
+    }
+    // The artifacts' rank admission (rank <= N + 2 until lit-eft) comes first.
+    assert!(
+        capability_refusal(4, 7, 53)
+            .unwrap()
+            .contains("for both reduction backends")
+    );
     assert_eq!(
-        refused.kind(),
-        RusticolErrorKind::UnsupportedRuntimeCapability
+        rusticol_loop_reduction::runtime::rank_refusal(Reduction::TiRust, 13, 2),
+        None
     );
-    assert!(
-        refused
-            .message()
-            .contains("TIRust cannot reduce 13 propagators"),
-        "{}",
-        refused.message()
-    );
-    assert!(
-        refused.message().contains("direct engine"),
-        "{}",
-        refused.message()
-    );
-    // A top in its own gauge loop: S[1][2] = m_t² next to a top propagator.
+}
+
+/// A top in its own gauge loop: `S[1][2] = m_t²` next to two top
+/// propagators (an exact on-shell configuration). TIRust takes the supplied
+/// S-matrix (U1), so the row is served on the exact on-shell branch in every
+/// carrier and agrees with NinjaRS's generic engine at 80 digits.
+#[test]
+fn an_onshell_leg_next_to_its_propagator_is_served() {
     let mt2 = 173. * 173.;
     let mut rng = Lcg(23);
     let mut onshell = point(3, &[0., mt2, mt2], &mut rng);
     // V_2 - V_1 = (m_t, 0, 0, 0): its invariant is m_t² exactly.
     onshell.shifts[1] = [400., 100., 50., 25.];
     onshell.shifts[2] = [573., 100., 50., 25.];
-    let groups = vec![lanes(0, &[onshell], 2, 2, 1, &mut rng)];
+    let groups = vec![lanes(0, &[onshell], 2, 2, 2, &mut rng)];
     assert_eq!(groups[0].s_matrix[3 + 2].re, mt2);
-    let mut backend = tir();
-    let (direct, _) = reduce(&mut backend, &groups, Poles::All, None);
-    let refusal = direct[0][0].as_ref().unwrap_err();
-    assert!(refusal.contains("TIRust capability"), "{refusal}");
-    let statistics = V2Backend::<f64>::take_statistics(&mut backend);
-    assert!(statistics.counts.contains(&("TIR capability refusals", 1)));
-    // Extended carriers are refused typed before any reduction.
-    let mut backend = tir();
-    let error = V2Backend::<DoubleFloat>::reduce(&mut backend, &[dd(&groups[0])], Poles::All, None)
-        .unwrap_err();
-    assert_eq!(error.kind(), RusticolErrorKind::UnsupportedPrecision);
-    assert_eq!(backend.reduction(), Reduction::TiRust);
+    let truth = reference_arbitrary(&groups, Poles::All, 80);
+    let (found, _) = reduce(&mut tir(), &groups, Poles::All, None);
+    let (worst, compared) = worst(&found, &truth);
+    eprintln!("on-shell top, binary64: {compared} lanes, worst relative {worst:e}");
+    assert_eq!(compared, 2);
+    assert!(worst < 1e-12, "{worst:e}");
+    for (bits, bound) in [(106, 1e-24), (256, 1e-60)] {
+        let deviation = extended_against_truth(&groups, bits, 80, Poles::All);
+        eprintln!("on-shell top, {bits} bits vs 80 digits: {deviation:e}");
+        assert!(deviation < bound, "{bits} bits: {deviation:e}");
+    }
+}
+
+/// The groups lifted exactly into a carrier of `bits` bits, the S-matrix
+/// formed in the carrier from the lifted shifts (inputs consistent to the
+/// carrier's precision, never exactly formed invariants with rounded
+/// shifts: lit-onshell-probe's rule).
+fn lifted(groups: &[FamilyLanes<f64>], bits: u32) -> Vec<FamilyLanes<Float>> {
+    let real = |x: f64| Float::with_val(bits, x);
+    let complex = |z: &C| Complex::new(real(z.re), real(z.im));
+    groups
+        .iter()
+        .map(|g| {
+            let n = g.propagators;
+            let shifts: Vec<Complex<Float>> = g.shifts.iter().map(complex).collect();
+            let mut s_matrix = Vec::new();
+            for lane in 0..g.keys.len() {
+                let v = &shifts[lane * 4 * n..(lane + 1) * 4 * n];
+                for i in 0..n {
+                    for j in 0..n {
+                        let d = |mu: usize| v[4 * i + mu].re.clone() - &v[4 * j + mu].re;
+                        let square = |mu: usize| d(mu) * &d(mu);
+                        let x = square(0) - &square(1) - &square(2) - &square(3);
+                        s_matrix.push(Complex::new(x, real(0.)));
+                    }
+                }
+            }
+            FamilyLanes {
+                family: g.family,
+                propagators: n,
+                rank: g.rank,
+                points: g.points.clone(),
+                keys: g.keys.clone(),
+                shifts,
+                masses: g.masses.iter().map(complex).collect(),
+                scales: g.scales.iter().map(complex).collect(),
+                s_matrix,
+                coefficients: g.coefficients.iter().map(complex).collect(),
+            }
+        })
+        .collect()
+}
+
+/// `groups` in double-double (`bits` 106, the lifted values rounded once,
+/// exactly as they are representable) or at `bits` MPFR bits, reduced by
+/// TIR (or, with `ninjars`, by NinjaRS's generic engine in that carrier),
+/// against NinjaRS's generic engine at `digits` digits on the same
+/// consistent inputs: the worst relative deviation over every lane (all of
+/// them must be served) and its (group, lane).
+fn extended_against_truth(
+    groups: &[FamilyLanes<f64>],
+    bits: u32,
+    digits: u32,
+    poles: Poles,
+) -> f64 {
+    extended_worst(groups, bits, digits, poles, false).0
+}
+
+fn extended_worst(
+    groups: &[FamilyLanes<f64>],
+    bits: u32,
+    digits: u32,
+    poles: Poles,
+    ninjars: bool,
+) -> (f64, (usize, usize)) {
+    let _unlock = pyamplicol::unlock();
+    let truth_bits = Float::decimal_digits_to_bits(f64::from(digits)).unwrap();
+    let exact = lifted(groups, truth_bits.max(bits));
+    let mut ninja = V2Backends::NinjaRs(V2ReductionBackend {
+        reducer: V2Reducer::new("arbitrary", Some(digits), "generic", true).unwrap(),
+        masters: PoleSelection::BOTH,
+    });
+    V2Backend::<Float>::begin(&mut ninja);
+    let (truth, _) = V2Backend::<Float>::reduce(&mut ninja, &exact, poles, None).unwrap();
+    let mut backend = if !ninjars {
+        tir()
+    } else if bits == 106 {
+        V2Backends::NinjaRs(V2ReductionBackend {
+            reducer: V2Reducer::new("double-double", None, "generic", true).unwrap(),
+            masters: PoleSelection::BOTH,
+        })
+    } else {
+        let digits = (f64::from(bits) * std::f64::consts::LOG10_2).floor() as u32;
+        V2Backends::NinjaRs(V2ReductionBackend {
+            reducer: V2Reducer::new("arbitrary", Some(digits), "generic", true).unwrap(),
+            masters: PoleSelection::BOTH,
+        })
+    };
+    let found: Vec<Vec<Vec<Complex<Float>>>> = if bits == 106 {
+        let dd: Vec<FamilyLanes<DoubleFloat>> = lifted(groups, 106)
+            .iter()
+            .map(|g| {
+                let c = |v: &[Complex<Float>]| v.iter().map(Complex::to_double_float).collect();
+                FamilyLanes {
+                    family: g.family,
+                    propagators: g.propagators,
+                    rank: g.rank,
+                    points: g.points.clone(),
+                    keys: g.keys.clone(),
+                    shifts: c(&g.shifts),
+                    masses: c(&g.masses),
+                    scales: c(&g.scales),
+                    s_matrix: c(&g.s_matrix),
+                    coefficients: c(&g.coefficients),
+                }
+            })
+            .collect();
+        V2Backend::<DoubleFloat>::begin(&mut backend);
+        let (found, _) = V2Backend::<DoubleFloat>::reduce(&mut backend, &dd, poles, None).unwrap();
+        // Each double-double value exactly, at the truth's precision.
+        let zero = Float::with_val(truth_bits, 0.);
+        let exact = |x: &DoubleFloat| zero.from_rational(&NativeFloat::exact_rational(x).unwrap());
+        let up = |z: &Complex<DoubleFloat>| Complex::new(exact(&z.re), exact(&z.im));
+        found
+            .into_iter()
+            .map(|g| {
+                g.into_iter()
+                    .map(|l| l.unwrap().iter().map(up).collect())
+                    .collect()
+            })
+            .collect()
+    } else {
+        let mp = lifted(groups, bits);
+        V2Backend::<Float>::begin(&mut backend);
+        let (found, _) = V2Backend::<Float>::reduce(&mut backend, &mp, poles, None).unwrap();
+        found
+            .into_iter()
+            .map(|g| g.into_iter().map(|l| l.unwrap()).collect())
+            .collect()
+    };
+    let norm = |z: &Complex<Float>| (z.re.clone() * &z.re + &(z.im.clone() * &z.im)).sqrt();
+    let mut worst: (f64, (usize, usize)) = (0., (0, 0));
+    for (g, (a, b)) in found.iter().zip(&truth).enumerate() {
+        for (lane, (x, y)) in a.iter().zip(b).enumerate() {
+            let y = y.as_ref().unwrap();
+            let scale = y.iter().map(norm).fold(0f64, |m, v| m.max(v.to_f64()));
+            for (p, q) in x.iter().zip(y) {
+                let deviation = norm(&(p.clone() - q)).to_f64() / scale;
+                if deviation > worst.0 {
+                    worst = (deviation, (g, lane));
+                }
+            }
+        }
+    }
+    worst
+}
+
+/// The extended carriers (m-lit lit-tir-mp, DESIGN §11.1): T1's families
+/// (tadpoles to boxes, massless, massive and complex masses, ranks up to
+/// four), all Laurent orders and the UV residue, in double-double and at
+/// 256 bits on inputs consistent to the carrier, against NinjaRS's generic
+/// engine at 80 digits on the same exact inputs: every lane served (the
+/// carriers' gates, `v2_tir::carrier_gate`); double-double against its
+/// target 1e-24 and 256 bits against 1e-60, measured and printed with
+/// NinjaRS's generic engine in the same carrier for comparison (R5: a
+/// target, asserted within a factor of ten).
+#[test]
+fn extended_carriers_match_ninjars_at_80_digits() {
+    let mut rng = Lcg(7);
+    let mut groups = Vec::new();
+    let cases: [(usize, Vec<f64>); 7] = [
+        (1, vec![173. * 173.]),
+        (2, vec![0., 0.]),
+        (2, vec![173. * 173., 80. * 80.]),
+        (3, vec![0., 0., 0.]),
+        (3, vec![173. * 173., 173. * 173., 173. * 173.]),
+        (4, vec![0., 0., 0., 0.]),
+        (4, vec![173. * 173., 0., 80. * 80., 0.]),
+    ];
+    let mut family = 0;
+    for (n, masses) in cases {
+        let points: Vec<_> = (0..2).map(|_| point(n, &masses, &mut rng)).collect();
+        for rank in 0..=4.min(n + 2) {
+            groups.push(lanes(family, &points, rank, rank, 2, &mut rng));
+            family += 1;
+        }
+    }
+    let mut complex = point(3, &[0., 0., 0.], &mut rng);
+    complex.masses = vec![C::new(173. * 173., -173. * 1.5); 3];
+    groups.push(lanes(family, &[complex], 3, 3, 2, &mut rng));
+    for (bits, target) in [(106, 1e-24), (256, 1e-60)] {
+        let (deviation, (g, lane)) = extended_worst(&groups, bits, 80, Poles::Split, false);
+        let (ninjars, at) = extended_worst(&groups, bits, 80, Poles::Split, true);
+        eprintln!(
+            "T1 at {bits} bits vs NinjaRS generic at 80 digits: TIRust worst relative {deviation:e} \
+             (family {g}: {} propagators, rank {}, lane {lane}); NinjaRS generic in the same carrier \
+             {ninjars:e} (family {}, lane {})",
+            groups[g].propagators, groups[g].rank, at.0, at.1
+        );
+        // The target (DESIGN §11.1's DD = MPFR, 1e-24; R5: measured and
+        // recorded): within a factor of a few of it, as NinjaRS's generic
+        // engine in the same carrier.
+        assert!(deviation < 10. * target, "{bits} bits: {deviation:e}");
+    }
+}
+
+/// Every carrier's gate is the binary64 one carried to its precision
+/// (`carrier_gate`): the same share of the significand.
+#[test]
+fn carrier_gates_keep_the_share_of_the_significand() {
+    assert_eq!(carrier_gate(1e-12, 53), 1e-12);
+    for bits in [106u32, 256, 512] {
+        let gate = carrier_gate(1e-12, bits);
+        let share = gate.log2() / -f64::from(bits);
+        assert!(
+            (share - 1e-12f64.log2() / -53.).abs() < 1e-12,
+            "{bits}: {share}"
+        );
+    }
+    assert!((carrier_gate(1e-12, 106) / 1e-24 - 1.).abs() < 1e-12);
 }
 
 /// Near-forward boxes of a top loop with massless legs (exact Pythagorean
@@ -721,15 +965,15 @@ fn near_forward_boxes() -> Vec<FamilyLanes<f64>> {
     groups
 }
 
-/// The default settings serve no method-choice row (DECISIONS 2026-11-07
-/// ~17:20 (d)): the near-forward boxes the conditioning gates refuse fail
-/// closed with the gates' reason, in the direct and in the check frame,
-/// and the statistics count no method-choice row; the lanes of the rows the
-/// gates pass agree with NinjaRS at 80 digits.
+/// Without the method choice no method-choice row is served (DECISIONS
+/// 2026-11-07 ~17:20 (d)): the near-forward boxes the conditioning gates
+/// refuse fail closed with the gates' reason, in the direct and in the
+/// check frame, and the statistics count no method-choice row; the lanes of
+/// the rows the gates pass agree with NinjaRS at 80 digits.
 #[test]
-fn the_default_serves_no_method_choice_row() {
+fn without_the_method_choice_gate_refused_rows_fail_closed() {
     let groups = near_forward_boxes();
-    let mut backend = tir();
+    let mut backend = tir_without_method_choice();
     let (found, check) = reduce(
         &mut backend,
         &groups,
@@ -777,16 +1021,16 @@ fn the_default_serves_no_method_choice_row() {
     assert!(refused > 0);
 }
 
-/// With the method choice on (`TirOptions::method_choice`, the option
-/// lit-tir-mp turns back on), the rows the conditioning gates refuse take
-/// it (alternative PV first within the expansions' tolerance) and are
-/// verified by their own check row: the near-forward boxes agree with
-/// NinjaRS's generic engine at 80 digits within their estimates, and the
-/// statistics count them.
+/// The binary64 default (`TirOptions::method_choice` on, m-lit
+/// lit-tir-mp): the rows the conditioning gates refuse take the method
+/// choice (alternative PV first within the expansions' tolerance) and are
+/// verified in the rescaled acceptance frame: the near-forward boxes agree
+/// with NinjaRS's generic engine at 80 digits within their estimates, and
+/// the statistics count them.
 #[test]
 fn method_choice_rows_are_checked() {
     let groups = near_forward_boxes();
-    let mut backend = tir_method_choice();
+    let mut backend = tir();
     let (found, check) = reduce(
         &mut backend,
         &groups,
@@ -935,4 +1179,170 @@ fn method_choice_variants() {
             }
         }
     }
+}
+
+/// One of lit-tir's rotation-blind method-choice rows (report §H.1; the
+/// fixture `tir_rotation_blind_row.json`: synthetic LI-32 N4-massive row 24
+/// at rank 4, 11 lanes): a massive box the gates refuse on a massive
+/// sub-triangle. Its S-matrix is the binary64 rounding of the invariants
+/// formed exactly from the binary64 shifts (the inputs of production, and
+/// consistent with the lifted truth, lit-onshell-probe's rule).
+fn rotation_blind_row() -> Vec<FamilyLanes<f64>> {
+    let data: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/tir_rotation_blind_row.json")).unwrap();
+    let number = |v: &serde_json::Value| v.as_str().unwrap().parse::<f64>().unwrap();
+    let pair = |v: &serde_json::Value| C::new(number(&v[0]), number(&v[1]));
+    let shifts: Vec<[f64; 4]> = data["shifts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| std::array::from_fn(|mu| number(&v[mu])))
+        .collect();
+    let n = shifts.len();
+    let masses: Vec<C> = data["masses"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(pair)
+        .collect();
+    let mu2 = number(&data["mu2"]);
+    let rank = data["rank"].as_u64().unwrap() as usize;
+    let exact = |x: f64| Float::with_val(256, x);
+    let mut s_matrix = Vec::with_capacity(n * n);
+    for i in 0..n {
+        for j in 0..n {
+            let d = |mu: usize| exact(shifts[i][mu]) - &exact(shifts[j][mu]);
+            let square = |mu: usize| d(mu) * &d(mu);
+            let x = square(0) - &square(1) - &square(2) - &square(3);
+            s_matrix.push(C::new(x.to_f64(), 0.));
+        }
+    }
+    let lanes = data["lanes"].as_array().unwrap();
+    let mut group = FamilyLanes {
+        family: 0,
+        propagators: n,
+        rank,
+        points: Vec::new(),
+        keys: Vec::new(),
+        shifts: Vec::new(),
+        masses: Vec::new(),
+        scales: Vec::new(),
+        s_matrix: Vec::new(),
+        coefficients: Vec::new(),
+    };
+    for (column, lane) in lanes.iter().enumerate() {
+        group.points.push(0);
+        group.keys.push(LaneKey {
+            family: 0,
+            order: 0,
+            column,
+        });
+        for v in &shifts {
+            group.shifts.extend(v.iter().map(|&x| C::new(x, 0.)));
+        }
+        group.masses.extend(masses.iter().copied());
+        group.scales.push(C::new(mu2, 0.));
+        group.s_matrix.extend(s_matrix.iter().copied());
+        let coefficients = lane["coefficients"].as_array().unwrap();
+        assert_eq!(coefficients.len(), ncoeff(rank));
+        group.coefficients.extend(coefficients.iter().map(pair));
+    }
+    vec![group]
+}
+
+/// NinjaRS's generic engine at `digits` digits on the groups lifted
+/// consistently (`lifted`: the S-matrix formed from the lifted shifts),
+/// read back in binary64.
+fn consistent_truth(groups: &[FamilyLanes<f64>], digits: u32) -> Lanes {
+    let _unlock = pyamplicol::unlock();
+    let bits = Float::decimal_digits_to_bits(f64::from(digits)).unwrap();
+    let exact = lifted(groups, bits);
+    let mut ninja = V2Backends::NinjaRs(V2ReductionBackend {
+        reducer: V2Reducer::new("arbitrary", Some(digits), "generic", true).unwrap(),
+        masters: PoleSelection::BOTH,
+    });
+    V2Backend::<Float>::begin(&mut ninja);
+    let (truth, _) = V2Backend::<Float>::reduce(&mut ninja, &exact, Poles::All, None).unwrap();
+    truth
+        .into_iter()
+        .map(|group| {
+            group
+                .into_iter()
+                .map(|lane| {
+                    lane.map(|v| {
+                        v.into_iter()
+                            .map(|z| C::new(z.re.to_f64(), z.im.to_f64()))
+                            .collect()
+                    })
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// The default's rescaled acceptance (m-lit lit-tir-mp, ruling 21:50 R4)
+/// against a rotated one on a rotation-blind row of lit-tir report §H.1:
+/// with a rotated acceptance frame the method choice serves lanes whose
+/// error against the consistent 60-digit truth is far beyond their rotated
+/// re-test (blind lanes, at this TIRust pin); the default refuses every
+/// such lane with its check's reason and serves nothing beyond 1e-5 of the
+/// truth.
+#[test]
+fn the_rescaled_acceptance_refuses_the_rotation_blind_lanes() {
+    let groups = rotation_blind_row();
+    let truth = consistent_truth(&groups, 60);
+    let mut rotated = V2Backends::TiRust(Box::new(TirReductionBackend::new(TirOptions {
+        acceptance_frame: tir_frame(ReductionCheck::REVERSED),
+        ..TirOptions::default()
+    })));
+    // The call's check in the rotated acceptance frame: its row is the one
+    // the acceptance compared with.
+    let (served, again) = reduce(
+        &mut rotated,
+        &groups,
+        Poles::All,
+        Some(ReductionCheck::REVERSED),
+    );
+    let again = again.unwrap();
+    let (default, _) = reduce(&mut tir(), &groups, Poles::All, None);
+    let statistics = V2Backend::<f64>::take_statistics(&mut rotated);
+    assert!(
+        count(&statistics, "TIR method-choice rows") > 0,
+        "{:?}",
+        statistics.counts
+    );
+    let mut blind = 0;
+    for lane in 0..groups[0].keys.len() {
+        let z = truth[0][lane].as_ref().unwrap();
+        if let (Ok(x), Ok(y)) = (&served[0][lane], &again[0][lane]) {
+            let error = relative(x, z);
+            let estimate = relative(y, x);
+            eprintln!(
+                "lane {lane}: rotated acceptance serves it, {error:e} from the truth, rotated \
+                 re-test {estimate:e}; default: {}",
+                match &default[0][lane] {
+                    Ok(v) => format!("served, {:e} from the truth", relative(v, z)),
+                    Err(reason) => reason.chars().take(90).collect(),
+                }
+            );
+            if error > 1e-8 && error > 10. * estimate {
+                blind += 1;
+                let reason = default[0][lane]
+                    .as_ref()
+                    .expect_err("a blind lane is refused");
+                assert!(
+                    reason.contains("method-choice lane refused by its check"),
+                    "lane {lane}: {reason}"
+                );
+            }
+        }
+        match &default[0][lane] {
+            Ok(v) => assert!(relative(v, z) < 1e-5, "lane {lane}"),
+            Err(reason) => assert!(reason.contains("TIRust"), "{reason}"),
+        }
+    }
+    // At this TIRust pin the rotated frame is blind on some of these lanes
+    // (lit-tir report §H.1); a pin that serves them right makes this count
+    // zero and the rescaled acceptance's reason moot.
+    assert!(blind > 0, "no rotation-blind lane at this TIRust pin");
 }

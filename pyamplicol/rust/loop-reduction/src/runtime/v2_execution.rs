@@ -21,20 +21,18 @@ use rusticol_core::{RusticolError, RusticolResult};
 use symbolica::domains::float::{DoubleFloat, Float};
 
 /// Typed access to the values of a [`Batch`], and the carrier's TIR
-/// reduction (binary64; m-lit `lit-tir-mp` adds the extended carriers).
+/// reduction (every carrier, m-lit lit-tir-mp).
 pub trait TypedBatch: BatchCarrier {
     fn values(data: &Data) -> Option<&[Complex<Self>]>;
 
     /// The TIR backend's reduction in this carrier.
     #[cfg(feature = "tir")]
     fn tir_reduce(
-        _backend: &mut crate::v2_tir::TirReductionBackend,
-        _groups: &[FamilyLanes<Self>],
-        _poles: Poles,
-        _check: Option<ReductionCheck>,
-    ) -> RusticolResult<Reduced<Self>> {
-        Err(RusticolError::unsupported_precision(TIRUST_BINARY64_ONLY))
-    }
+        backend: &mut crate::v2_tir::TirReductionBackend,
+        groups: &[FamilyLanes<Self>],
+        poles: Poles,
+        check: Option<ReductionCheck>,
+    ) -> RusticolResult<Reduced<Self>>;
 }
 
 impl TypedBatch for f64 {
@@ -63,6 +61,16 @@ impl TypedBatch for DoubleFloat {
             _ => None,
         }
     }
+
+    #[cfg(feature = "tir")]
+    fn tir_reduce(
+        backend: &mut crate::v2_tir::TirReductionBackend,
+        groups: &[FamilyLanes<Self>],
+        poles: Poles,
+        check: Option<ReductionCheck>,
+    ) -> RusticolResult<Reduced<Self>> {
+        backend.reduce(groups, poles, check)
+    }
 }
 
 impl TypedBatch for Float {
@@ -71,6 +79,16 @@ impl TypedBatch for Float {
             Data::Arbitrary(values) => Some(values),
             _ => None,
         }
+    }
+
+    #[cfg(feature = "tir")]
+    fn tir_reduce(
+        backend: &mut crate::v2_tir::TirReductionBackend,
+        groups: &[FamilyLanes<Self>],
+        poles: Poles,
+        check: Option<ReductionCheck>,
+    ) -> RusticolResult<Reduced<Self>> {
+        backend.reduce(groups, poles, check)
     }
 }
 
@@ -90,22 +108,35 @@ pub enum V2Backends {
 /// admission's backend, one definition).
 pub use rusticol_core::loop_v2::bounds::Reducer as Reduction;
 
-/// The refusal of a TIRust request at a carrier other than binary64.
-pub const TIRUST_BINARY64_ONLY: &str = "the TIRust reduction backend serves binary64 in this build";
-
 /// The refusal of a TIRust request in a build without it.
 pub const TIRUST_NOT_BUILT: &str =
     "this native library is built without TIRust (the cargo feature tir)";
 
 /// The reduction backends this build serves, by name (`"ninjars"`,
 /// `"tirust"`), with the carriers each serves: what the PyO3 capability
-/// query (`reduction_backends`) reports.
+/// query (`reduction_backends`) reports. TIRust's direct engine serves
+/// every carrier of the executor (`v2_tir`; its own capability query
+/// decides per family, [`crate::v2_tir::capability_refusal`]).
 pub fn backend_carriers() -> Vec<(&'static str, Vec<&'static str>)> {
-    let mut out = vec![("ninjars", vec!["double", "double-double", "arbitrary"])];
+    let carriers = vec!["double", "double-double", "arbitrary"];
+    let mut out = vec![("ninjars", carriers.clone())];
     if crate::tir::available() {
-        out.push(("tirust", vec!["double"]));
+        out.push(("tirust", carriers));
     }
     out
+}
+
+/// `None` if `reduction` reduces a numerator of rank `rank` over
+/// `propagators` loop propagators, else its refusal: the artifacts' rank
+/// admission (`rusticol_core::loop_v2::bounds::rank_refusal`) and, for
+/// TIRust, its capability query (structural bounds, the same for every
+/// carrier: asked for binary64; [`crate::v2_tir::capability_refusal`]).
+pub fn rank_refusal(reduction: Reduction, propagators: usize, rank: usize) -> Option<String> {
+    #[cfg(feature = "tir")]
+    if reduction == Reduction::TiRust {
+        return crate::v2_tir::capability_refusal(propagators, rank, f64::MANTISSA_DIGITS);
+    }
+    rusticol_core::loop_v2::bounds::rank_refusal(reduction, propagators, rank)
 }
 
 /// A plan's (propagators, declared rank) histogram: the TIR backend's plans
@@ -122,17 +153,21 @@ pub fn plan_histogram(
 impl V2Backends {
     /// The TIR backend, its plans built for `families` (an artifact's
     /// (propagators, declared rank) histogram,
-    /// `v2_tir::TirReductionBackend::with_histogram`): TIRust's typed
-    /// refusal is the capability refusal; refused typed in a build without
-    /// TIRust (the cargo feature `tir`).
-    pub fn tirust(families: impl IntoIterator<Item = (usize, usize)>) -> RusticolResult<Self> {
+    /// `v2_tir::TirReductionBackend::with_histogram`) in a carrier of `bits`
+    /// bits: TIRust's typed refusal (its capability query, its plan
+    /// construction) is the capability refusal; refused typed in a build
+    /// without TIRust (the cargo feature `tir`).
+    pub fn tirust(
+        families: impl IntoIterator<Item = (usize, usize)>,
+        bits: u32,
+    ) -> RusticolResult<Self> {
         #[cfg(feature = "tir")]
         {
-            Self::tirust_with(families, crate::v2_tir::TirOptions::default())
+            Self::tirust_with(families, bits, crate::v2_tir::TirOptions::default())
         }
         #[cfg(not(feature = "tir"))]
         {
-            let _ = families.into_iter();
+            let _ = (families.into_iter(), bits);
             Err(RusticolError::unsupported_runtime_capability(
                 "tirust",
                 TIRUST_NOT_BUILT,
@@ -175,10 +210,11 @@ impl V2Backends {
     #[cfg(feature = "tir")]
     pub fn tirust_with(
         families: impl IntoIterator<Item = (usize, usize)>,
+        bits: u32,
         options: crate::v2_tir::TirOptions,
     ) -> RusticolResult<Self> {
         Ok(Self::TiRust(Box::new(
-            crate::v2_tir::TirReductionBackend::with_histogram(families, options)?,
+            crate::v2_tir::TirReductionBackend::with_histogram(families, bits, options)?,
         )))
     }
 
