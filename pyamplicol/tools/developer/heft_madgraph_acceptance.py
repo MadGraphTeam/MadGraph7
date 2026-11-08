@@ -67,6 +67,8 @@ PROCESSES = (
     ProcessSpec("gg_hg", "g g > H g"),
     ProcessSpec("gg_hgg", "g g > H g g"),
     ProcessSpec("gg_hggg", "g g > H g g g"),
+    # A quark line: the gluon exchanged with the H g g vertex is internal.
+    ProcessSpec("uux_hg", "u u~ > H g"),
 )
 
 
@@ -145,7 +147,7 @@ def run_acceptance(
     output_root: Path = DEFAULT_OUTPUT_ROOT,
     runner: StandaloneMadGraphRunner | None = None,
 ) -> dict[str, object]:
-    """Run the four-process scalar HEFT acceptance gate."""
+    """Run the scalar HEFT acceptance gate over ``PROCESSES``."""
 
     model_root = prepare_heft_ufo(model_root)
     output_root = output_root.expanduser().resolve(strict=False)
