@@ -1731,6 +1731,52 @@ pub mod v2 {
             assert!(run(Some(&[true])).is_err());
         }
 
+        /// In amplitude mode a family's numerator and reduction lanes
+        /// ([`numerator_vectors`]) count against the bucket chunks' lane-
+        /// vector budget: the two families of [`PLAN`] share their one
+        /// factor, so their chunk inputs alone fit one chunk at the first
+        /// family's inputs, and a seeded plan keeps that one chunk; an
+        /// amplitude-mode plan (the flag the chunker reads) splits them where
+        /// the second family's numerator would exceed the budget, and keeps
+        /// them together where both fit or without a budget.
+        #[test]
+        fn amplitude_numerators_count_against_the_chunk_budget() {
+            let text = std::str::from_utf8(PLAN).unwrap().replace("FAMILY", FAMILY);
+            let mut plan = LoopProgramV4::load(text.as_bytes()).unwrap();
+            let families = [0usize, 1];
+            let chunks = |plan: &LoopProgramV4, vectors: usize| -> Vec<Vec<usize>> {
+                bucket_chunks(plan, usize::MAX, &families, vectors, None)
+                    .into_iter()
+                    .map(|chunk| chunk.families)
+                    .collect()
+            };
+            let first = &plan.families[0];
+            let inputs: usize = [&first.factors, &first.vertices, &first.currents]
+                .iter()
+                .enumerate()
+                .map(|(store, ids)| {
+                    ids.iter()
+                        .map(|&id| input_vectors(&plan, store, id))
+                        .sum::<usize>()
+                })
+                .sum();
+            assert!(inputs > 0);
+            assert!(!plan.amplitude);
+            assert_eq!(chunks(&plan, inputs), [vec![0, 1]]);
+            assert_eq!(chunks(&plan, usize::MAX), [vec![0, 1]]);
+            plan.amplitude = true;
+            let numerator = numerator_vectors(&plan, &plan.families[0]);
+            // Rank 0, two propagators, one order and one column: the
+            // coefficient twice and 4N + N + 1 + N² kinematics.
+            let coefficients = ninjars::fast::tensor_layout::ncoeff(0);
+            assert_eq!(numerator, 2 * coefficients + 5 * 2 + 1 + 2 * 2);
+            assert_eq!(numerator, numerator_vectors(&plan, &plan.families[1]));
+            assert_eq!(chunks(&plan, inputs), [vec![0], vec![1]]);
+            assert_eq!(chunks(&plan, inputs + numerator), [vec![0], vec![1]]);
+            assert_eq!(chunks(&plan, inputs + 2 * numerator), [vec![0, 1]]);
+            assert_eq!(chunks(&plan, usize::MAX), [vec![0, 1]]);
+        }
+
         /// The next bucket chunk reading an input follows the chunks'
         /// ascending reads; none after the last.
         #[test]
