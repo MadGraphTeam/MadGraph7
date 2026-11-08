@@ -75,6 +75,15 @@ LAX = 1e-6
 DOUBLE_DOUBLE = 1e-24
 
 
+# "auto"'s reason on a loop-induced call where TIRust and NinjaRS serve
+# it (the native policy, m-lit F3: TIRust with the per-point NinjaRS
+# fallback).
+AUTO_LOOP_INDUCED = (
+    "auto: TIRust, the loop-induced default; a point it refuses or fails is "
+    "evaluated again on NinjaRS (the per-point fallback, recorded per point)"
+)
+
+
 def _tirust(native) -> bool:
     return bool(native.tirust_available())
 
@@ -537,13 +546,13 @@ def test_tirust_is_served_on_request_and_auto_takes_it_for_loop_induced(loop_nat
     auto = runtime.evaluate(points[:1], mu_r2=scales[:1])
     (lane,) = auto.diagnostics
     assert lane.reduction.effective == "tirust"
-    assert lane.reduction.reason == "auto: TIRust, the loop-induced default"
+    assert lane.reduction.reason == AUTO_LOOP_INDUCED
     assert repr(auto.values[0]) == repr(values["tirust"].values[0])
     (lane,) = runtime.evaluate(
         points[:1], mu_r2=scales[:1], arithmetic="double-double"
     ).diagnostics
     assert lane.reduction.effective == "tirust"
-    assert lane.reduction.reason == "auto: TIRust, the loop-induced default"
+    assert lane.reduction.reason == AUTO_LOOP_INDUCED
     # The extended carriers on TIRust (m-lit lit-tir-mp): explicitly
     # requested, served and recorded at double-double and arbitrary
     # precision, within the double-double target of NinjaRS's values.

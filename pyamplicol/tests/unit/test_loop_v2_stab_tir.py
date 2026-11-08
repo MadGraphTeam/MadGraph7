@@ -63,6 +63,15 @@ TRUTH_DIGITS = 57
 WAITS = "WAITS ON lit-tir-mp"
 
 
+# "auto"'s reason on a loop-induced call where TIRust and NinjaRS serve
+# it (the native policy, m-lit F3: TIRust with the per-point NinjaRS
+# fallback).
+AUTO_LOOP_INDUCED = (
+    "auto: TIRust, the loop-induced default; a point it refuses or fails is "
+    "evaluated again on NinjaRS (the per-point fallback, recorded per point)"
+)
+
+
 def _li():
     from pyamplicol._internal import selftest_virtual_li
 
@@ -320,7 +329,7 @@ def test_levels_resolve_once_per_level_capability_driven(loop_native, monkeypatc
     found = choices(auto)
     assert {choice.effective for choice in found.values()} == {"tirust"}
     assert all(
-        choice.reason == "auto: TIRust, the loop-induced default"
+        choice.reason == AUTO_LOOP_INDUCED
         for choice in found.values()
     )
     kept = choices(
@@ -387,7 +396,7 @@ def test_rescue_attempts_record_each_level_backend(loop_native):
     result = runtime.evaluate(points[:1], mu_r2=scales[:1], stability=ladder)
     first, second = result.rescue[0].attempts
     assert first.reduction.effective == "tirust"
-    assert first.reduction.reason == "auto: TIRust, the loop-induced default"
+    assert first.reduction.reason == AUTO_LOOP_INDUCED
     if "double-double" not in _tirust(loop_native):
         assert second.reduction.effective == "ninjars"
         assert "is unavailable" in second.reduction.reason

@@ -45,6 +45,15 @@ V5 = "rusticol.loop-runtime.v5"
 NO_NATIVE_KEY = {"PYAMPLICOL_NATIVE_LIBRARY_KEY": "off"}
 
 
+# "auto"'s reason on a loop-induced call where TIRust and NinjaRS serve
+# it (the native policy, m-lit F3: TIRust with the per-point NinjaRS
+# fallback).
+AUTO_LOOP_INDUCED = (
+    "auto: TIRust, the loop-induced default; a point it refuses or fails is "
+    "evaluated again on NinjaRS (the per-point fallback, recorded per point)"
+)
+
+
 def _r2():
     from pyamplicol.config import R2Strategy
     from pyamplicol.loops.strategy import R2Selection
@@ -368,7 +377,7 @@ def test_the_effective_backend_is_one_the_route_runs():
             route=route,
         )
         assert found == VirtualReduction(
-            "auto", "tirust", "auto: TIRust, the loop-induced default"
+            "auto", "tirust", AUTO_LOOP_INDUCED, fallback="ninjars"
         )
         for kind in ("virtual", "loop-induced"):
             found = resolve(
