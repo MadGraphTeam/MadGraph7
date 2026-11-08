@@ -68,7 +68,7 @@ Normal reminder suppression and JSON output behavior remain unchanged.
 | Import `pyamplicol` | Yes | Registers the package key; public exports remain lazy. |
 | Inspect an artifact | Startup only | Reads metadata and indexes only. |
 | Ordinary Python f64 evaluation (`precision=16`) | Startup only | Runs through Rusticol and the artifact's native evaluator. |
-| C11/C++17/Fortran 2008/Rust 2021 runtime | No | Ordinary and opt-in correlated APIs are f64-only. |
+| C11/C++17/Fortran 2008/Rust 2021 runtime and the UMAMI provider (tree) | No: neither a user licence nor the package key | Every tree call is f64-only: values, helicity- and colour-resolved values, global and per-point helicity / colour-flow selections, squared-order partials, colour- and spin-correlated values, the OTF warm-up and parameter updates; see [Concurrent processes without a license](#concurrent-processes-without-a-license). |
 | Direct JIT f64 load | Startup only in Python | Uses the separate MIT-licensed SymJIT runtime. |
 | Compatible C++/ASM evaluator load | Startup only in Python | Uses the artifact's target-native library. |
 | Compile a JSON/UFO model | Yes | Symbolic model construction. |
@@ -123,8 +123,21 @@ to the personal license or to the restricted mode, as the Python side does.
 - Importing pyAmpliCol and f64 tree evaluation perform no Symbolica operation
   in the native code, so any number of unlicensed processes can load and
   evaluate tree artifacts concurrently. This holds for the Python API and for
-  the C, C++ and Fortran API (the static archive links Symbolica through the
-  loop runtime, but tree evaluation never calls it). Tree evaluation at other
+  the native SDKs (the static archive links Symbolica through the loop
+  runtime, but tree evaluation never calls it). The native SDKs need no
+  Symbolica licensing at all in binary64, neither a personal licence nor
+  pyAmpliCol's package key, for every tree call they offer: ordinary values,
+  helicity- and colour-resolved values, global and per-point helicity and
+  colour-flow selections, squared-order partials, colour- and spin-correlated
+  values, the on-the-fly warm-up and model-parameter updates, in the C, C++,
+  Fortran and Rust APIs and the UMAMI provider, in every tree execution mode
+  (recurrence, compiled, on-the-fly, eager). The test
+  `tests/integration/test_native_sdk_tree_licence_free.py` runs them in
+  concurrent processes without `SYMBOLICA_LICENSE` and with
+  `PYAMPLICOL_NATIVE_LIBRARY_KEY=off` while another process holds the
+  restricted Symbolica permit, bitwise as the licensed run. On an x86-64 CPU
+  without AVX and FMA3 a SymJIT tree artifact is refused with the reason
+  rather than evaluated through Symbolica. Tree evaluation at other
   precisions uses the Python `symbolica` module, which the package key
   unlocks, so concurrent unlicensed processes work there too.
 - Virtual (one-loop) evaluation of a v2 artifact in f64 (the default
@@ -161,7 +174,8 @@ to the personal license or to the restricted mode, as the Python side does.
 The wheel's native SDK archive contains this loop runtime and therefore links
 Symbolica. `PYAMPLICOL_NATIVE_LIBRARY_KEY=off` disables the package key in
 the native code (a diagnostic; the portability tests use it to show that f64
-virtual evaluation performs no Symbolica operation).
+virtual evaluation and every f64 tree call of the native SDKs perform no
+Symbolica operation).
 
 See [Runtime and Selectors](runtime-and-selectors.md) and [Native APIs](native-apis.md).
 

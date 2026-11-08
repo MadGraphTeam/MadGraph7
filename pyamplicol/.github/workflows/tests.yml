@@ -148,6 +148,7 @@ jobs:
           tests/integration/test_correlated_native_sdk.py
           tests/integration/test_otf_cache_native_sdk.py
           tests/integration/test_umami_api.py
+          tests/integration/test_native_sdk_tree_licence_free.py
           -- -s
       - name: Run focused Python unit checks (30 GiB RSS limit)
         run: |

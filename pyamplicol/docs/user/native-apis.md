@@ -760,6 +760,18 @@ All native APIs use the Symbolica-independent f64 runtime:
 - C++/ASM evaluator artifacts load only on a compatible target and CPU;
 - no native call imports Symbolica or performs a Symbolica license check.
 
+Every binary64 tree call of the C, C++, Fortran and Rust APIs and of the UMAMI
+provider (ordinary values, helicity- and colour-resolved values, global and
+per-point helicity / colour-flow selections, squared-order partials, colour-
+and spin-correlated values, the OTF warm-up, model-parameter updates) needs no
+Symbolica licensing at all: neither a personal licence nor pyAmpliCol's
+package key. Concurrent unlicensed processes with the key disabled
+(`PYAMPLICOL_NATIVE_LIBRARY_KEY=off`), while another process holds the
+restricted Symbolica permit, return the licensed run's values bit for bit
+(`tests/integration/test_native_sdk_tree_licence_free.py`). On an x86-64 CPU
+without AVX and FMA3, SymJIT tree artifacts are refused with the reason; they
+are never evaluated through Symbolica.
+
 Python is the only standalone driver that can request Symbolica-backed exact
 precision when the artifact retains an exact evaluator. OTF does not retain
 that path and rejects non-f64 precision. See
