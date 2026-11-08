@@ -45,7 +45,10 @@ def test_campaign_run_passes_its_rules(name, tmp_path_factory, loop_native):
     entry = ENTRIES[name]
     work = _work(tmp_path_factory)
     path = work / name / "record.json"
-    record = lm.evaluate(name, work, ap=bool(entry["ap"]))
+    skip, plain = lm.run_skips(name)
+    record = lm.evaluate(
+        name, work, ap=bool(entry["ap"]), skip=skip, high_checked=not plain
+    )
     path.write_text(json.dumps(record, indent=1) + "\n")
     judged = lm.judge(record, entry)
     statuses = {c: judged[c]["status"] for c in lm.CHECKS if c in judged}

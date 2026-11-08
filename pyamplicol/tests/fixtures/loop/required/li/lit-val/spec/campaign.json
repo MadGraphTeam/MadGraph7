@@ -278,6 +278,30 @@
    "source": "§4.1 LI-B1: the theta = 1e-3..1e-5 rows (each 2 -> 2 row with massless beams and equal final masses, at its first reference point's sqrt(s) and scale)"
   },
   "high_points": 1,
-  "high_points_source": "double-double at each row's first point (the binary64 lanes at every tier point and the forward points carry the estimate rule; the double-double side is the 1e-24 target, R5)"
+  "high_points_source": "double-double at each row's first point (the binary64 lanes at every tier point and the forward points carry the estimate rule; the double-double side is the 1e-24 target, R5)",
+  "public": {
+   "hc": "tools/loop_reference/hc_nlo_x0.json (the HC rows, generated as tests/unit/test_loop_v2_hc.py does: public route, no tools-route executor, so the one comparison of tools/loop_v2_observables_backends.py at |A|^2 per Laurent coefficient)"
+  }
+ },
+ "skips": {
+  "what": "the arms the campaign's heavy optional runs (LI-44) do not take, with their measured costs (lit-val STATE 2026-11-08 02:16, 02:23, 08:03); `li_manifest.py run` and the nightly ids record each as not run with this reason (`run_skips`); `high_plain`: the double-double arms without the checks (the value only, about 1/5 the cost)",
+  "li_gg_aagg": {
+   "arms": {
+    "ninjars/arbitrary/plain": "stopped: the 40-digit AP arm of this 2->4 optional run extrapolates to about 6.9 h (its double-double arm 7405 s times the AP / double-double ratio 3.35 of li_gg_hhgg); L7 at six legs is li_gg_hhgg's",
+    "tirust/arbitrary/plain": "not run: this run's NinjaRS AP arm is not run (about 6.9 h), so L6/L7 in AP are li_gg_hhgg's at six legs",
+    "ward/ninjars/double-double": "not run: about 5.5 h (6 gauge legs x ~0.45 x the 7405 s double-double arm of 3 points, the probe/arm ratio measured on li_gg_hggg); L4 here is binary64 at the fixture points + the generation-time double-double probe",
+    "ward/tirust/double-double": "not run: as the NinjaRS double-double Ward arm of this run (L4 in binary64 here)"
+   }
+  },
+  "li_gg_zzzz": {
+   "high_plain": true,
+   "arms": {
+    "identity/ninjars/double-double": "skipped: the double-double side of L5 is recorded information only (L5 is judged in binary64); about 41 min on this run",
+    "l3/ninjars/double-double": "skipped: about 100 min on this run (0.45 times its double-double checked arm, the ratio measured on li_gg_hggg); L3 is the binary64 probes here",
+    "l3/tirust/double-double": "skipped: as the NinjaRS double-double probe of this run (about 100 min at NinjaRS's cost); L3 is the binary64 probes here",
+    "ward/ninjars/double-double": "not run: about 3 h (2 gauge legs x ~0.45 x ~5 x the 2327 s plain double-double arm of 3 points); L4 here is binary64 at the fixture points + the generation-time double-double probe",
+    "ward/tirust/double-double": "not run: as the NinjaRS double-double Ward arm of this run (L4 in binary64 here)"
+   }
+  }
  }
 }
