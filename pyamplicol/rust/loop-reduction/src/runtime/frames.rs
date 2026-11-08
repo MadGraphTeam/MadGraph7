@@ -413,9 +413,10 @@ mod tests {
                     .iter()
                     .zip(&c)
                     .fold(Complex::new(0., 0.), |t, (m, c)| t + m[slot] * c);
+                let size = |z: Complex<f64>| (z.re * z.re + z.im * z.im).sqrt();
                 assert!(
-                    (forward - back).norm() <= 1e-13 * forward.norm(),
-                    "{frame:?} slot {slot}: {forward} vs {back}"
+                    size(forward - back) <= 1e-13 * size(forward),
+                    "{frame:?} slot {slot}: {forward:?} vs {back:?}"
                 );
             }
         }
