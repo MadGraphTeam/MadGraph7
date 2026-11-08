@@ -564,6 +564,26 @@ def test_tirust_is_served_on_request_and_auto_keeps_ninjars(loop_native):
         deviation = max(abs(a - b) for a, b in zip(n_values, t_values, strict=True))
         assert deviation <= LAX * scale, (call, deviation, scale)
         assert repr(found["tirust"].values) != repr(found["ninjars"].values), call
+        # In double-double on both routes (m-lit lit-tir-mp): TIRust served,
+        # within the double-double target of NinjaRS's values (the
+        # self-test's points are exact).
+        found = {
+            backend: getattr(born, call)(
+                points[:1],
+                mu_r2=scales[:1],
+                arithmetic="double-double",
+                reduction=backend,
+            )
+            for backend in ("ninjars", "tirust")
+        }
+        assert {lane.reduction.effective for lane in found["tirust"].diagnostics} == {
+            "tirust"
+        }, call
+        n_values = _flat(found["ninjars"].values)
+        t_values = _flat(found["tirust"].values)
+        scale = max(abs(x) for x in n_values)
+        deviation = max(abs(a - b) for a, b in zip(n_values, t_values, strict=True))
+        assert deviation <= DOUBLE_DOUBLE * scale, (call, deviation, scale)
     auto = born.evaluate(points[:1], mu_r2=scales[:1])
     assert {lane.reduction.effective for lane in auto.diagnostics} == {"ninjars"}
 
