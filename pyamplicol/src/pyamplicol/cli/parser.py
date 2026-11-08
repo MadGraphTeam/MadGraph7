@@ -790,7 +790,7 @@ def _add_evaluation_options(
             "v2 virtuals: the reduction backend, overriding the artifact's "
             "default; 'auto' takes NinjaRS, with the reason recorded (TIRust, "
             "the loop-induced default, once its agreement with NinjaRS there "
-            "is established; 'tirust' serves binary64 on request)"
+            "is established; 'tirust' serves every arithmetic on request)"
         ),
     )
     parser.add_argument(
