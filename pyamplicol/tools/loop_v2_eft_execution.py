@@ -53,7 +53,8 @@ Run (licence in the environment, the staged native of the package)::
         --output <scratch>/eft.json
 
 ``--model`` is the HC_NLO_X0 UFO directory (default
-``PYAMPLICOL_HC_UFO_REFERENCE``, else the workspace copy); ``--work-dir``
+``PYAMPLICOL_HC_UFO_REFERENCE``, else the copy below
+``PYAMPLICOL_LOOP_WORKSPACE``); ``--work-dir``
 keeps the generated artifacts (re-used when present). Exit 0 when every
 check passes, 1 otherwise; one JSON record (``--output``).
 """
@@ -70,10 +71,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CARD = ROOT / "tools" / "loop_reference" / "hc_nlo_x0.json"
-WORKSPACE_MODEL = Path(
-    "/shared/vhirschi/t3code/pyamplicol/workspace/reference/sources/hc-nlo-x0/"
-    "extract/HC_NLO_X0_UFO"
-)
+# The model below the loop workspace (``PYAMPLICOL_LOOP_WORKSPACE``), as the
+# tests' ``hc_nlo_x0_ufo`` input finds it.
+WORKSPACE_MODEL = Path("reference/sources/hc-nlo-x0/extract/HC_NLO_X0_UFO")
 # The rows: expression, the largest family rank excess over N expected.
 ROWS = {"x0x0": ("g g > x0 x0", 2), "x0x0x0": ("g g > x0 x0 x0", 3)}
 # The points' sqrt(s): twelve values from just above the three-x0 threshold
@@ -98,8 +98,14 @@ ARBITRARY_POINTS = 3
 def model_path(given: Path | None) -> Path:
     if given is not None:
         return given
-    configured = os.environ.get("PYAMPLICOL_HC_UFO_REFERENCE")
-    return Path(configured) if configured else WORKSPACE_MODEL
+    if configured := os.environ.get("PYAMPLICOL_HC_UFO_REFERENCE"):
+        return Path(configured)
+    if workspace := os.environ.get("PYAMPLICOL_LOOP_WORKSPACE"):
+        return Path(workspace) / WORKSPACE_MODEL
+    raise SystemExit(
+        "no HC_NLO_X0 model: pass --model, or set PYAMPLICOL_HC_UFO_REFERENCE "
+        "or PYAMPLICOL_LOOP_WORKSPACE"
+    )
 
 
 def _card() -> dict:
