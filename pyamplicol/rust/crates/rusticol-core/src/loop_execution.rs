@@ -696,10 +696,27 @@ pub mod v2 {
             .collect()
     }
 
+    /// The lane vectors an amplitude-mode family's numerator and its
+    /// reduction lanes take in one bucket chunk: per (loop order, column)
+    /// its coefficients twice (the numerator, and the lanes' copy) and the
+    /// lanes' kinematics (`4N` shifts, `N` masses, the scale and the `N²`
+    /// invariants; `lanes_of`), one lane vector each (m-lit PLAN §2.b.3:
+    /// byte-bounded numerator chunks for loop-induced, within
+    /// [`V2Options::input_budget`]).
+    fn numerator_vectors(plan: &LoopProgramV4, family: &Family) -> usize {
+        let n = family.propagators();
+        let per_column = 2 * ninjars::fast::tensor_layout::ncoeff(family.rank) + 5 * n + 1 + n * n;
+        family.orders.len() * plan.columns * per_column
+    }
+
     /// Bucket chunks of `families` (ascending) in bucket order: runs of at
     /// most `size` families of one bucket whose chunk inputs take at most
     /// `vectors` lane vectors (a family alone may take more; `usize::MAX`:
-    /// runs of `size`).
+    /// runs of `size`). In an amplitude-mode plan (loop-induced; decided
+    /// once per plan) a family's numerator and reduction lanes count too
+    /// ([`numerator_vectors`]): its many columns (rows × colour components)
+    /// make them the largest objects of a chunk, so the one budget bounds
+    /// them; seeded plans keep their chunks.
     fn bucket_chunks(
         plan: &LoopProgramV4,
         size: usize,
@@ -745,14 +762,19 @@ pub mod v2 {
                     }
                     total
                 };
-                let mut add = new(&seen, stamp);
+                let numerator = if bounded && plan.amplitude {
+                    numerator_vectors(plan, family)
+                } else {
+                    0
+                };
+                let mut add = new(&seen, stamp) + numerator;
                 if !current.is_empty()
                     && (current.len() >= size.max(1) || held.saturating_add(add) > vectors)
                 {
                     parts.push(std::mem::take(&mut current));
                     stamp += 1;
                     held = 0;
-                    add = new(&seen, stamp);
+                    add = new(&seen, stamp) + numerator;
                 }
                 if bounded {
                     for (store, ids) in ids.iter().enumerate() {
@@ -1707,6 +1729,52 @@ pub mod v2 {
             assert_eq!(lanes, 0);
             assert!(none[0].families.is_empty() && none[0].failures.is_empty());
             assert!(run(Some(&[true])).is_err());
+        }
+
+        /// In amplitude mode a family's numerator and reduction lanes
+        /// ([`numerator_vectors`]) count against the bucket chunks' lane-
+        /// vector budget: the two families of [`PLAN`] share their one
+        /// factor, so their chunk inputs alone fit one chunk at the first
+        /// family's inputs, and a seeded plan keeps that one chunk; an
+        /// amplitude-mode plan (the flag the chunker reads) splits them where
+        /// the second family's numerator would exceed the budget, and keeps
+        /// them together where both fit or without a budget.
+        #[test]
+        fn amplitude_numerators_count_against_the_chunk_budget() {
+            let text = std::str::from_utf8(PLAN).unwrap().replace("FAMILY", FAMILY);
+            let mut plan = LoopProgramV4::load(text.as_bytes()).unwrap();
+            let families = [0usize, 1];
+            let chunks = |plan: &LoopProgramV4, vectors: usize| -> Vec<Vec<usize>> {
+                bucket_chunks(plan, usize::MAX, &families, vectors, None)
+                    .into_iter()
+                    .map(|chunk| chunk.families)
+                    .collect()
+            };
+            let first = &plan.families[0];
+            let inputs: usize = [&first.factors, &first.vertices, &first.currents]
+                .iter()
+                .enumerate()
+                .map(|(store, ids)| {
+                    ids.iter()
+                        .map(|&id| input_vectors(&plan, store, id))
+                        .sum::<usize>()
+                })
+                .sum();
+            assert!(inputs > 0);
+            assert!(!plan.amplitude);
+            assert_eq!(chunks(&plan, inputs), [vec![0, 1]]);
+            assert_eq!(chunks(&plan, usize::MAX), [vec![0, 1]]);
+            plan.amplitude = true;
+            let numerator = numerator_vectors(&plan, &plan.families[0]);
+            // Rank 0, two propagators, one order and one column: the
+            // coefficient twice and 4N + N + 1 + N² kinematics.
+            let coefficients = ninjars::fast::tensor_layout::ncoeff(0);
+            assert_eq!(numerator, 2 * coefficients + 5 * 2 + 1 + 2 * 2);
+            assert_eq!(numerator, numerator_vectors(&plan, &plan.families[1]));
+            assert_eq!(chunks(&plan, inputs), [vec![0], vec![1]]);
+            assert_eq!(chunks(&plan, inputs + numerator), [vec![0], vec![1]]);
+            assert_eq!(chunks(&plan, inputs + 2 * numerator), [vec![0, 1]]);
+            assert_eq!(chunks(&plan, usize::MAX), [vec![0, 1]]);
         }
 
         /// The next bucket chunk reading an input follows the chunks'

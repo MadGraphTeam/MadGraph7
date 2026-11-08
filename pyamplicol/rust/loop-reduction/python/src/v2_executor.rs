@@ -1537,8 +1537,16 @@ impl V2Executor {
     /// `alternative_first`, `acceptance` and `acceptance_frame` (those of
     /// `V2TirReducer`; omitted,
     /// the backend's defaults) set its settings: its backend is rebuilt when
-    /// they differ from its current ones. NinjaRS refuses them.
-    #[pyo3(signature = (reduction="tirust", *, method_choice=None, alternative_first=super::v2::Limit::default_limit(), acceptance=None, acceptance_frame=None))]
+    /// they differ from its current ones. `profile` (a measurement:
+    /// `v2_tir::TirOptions::profile`, TIRust's own stage profile in the
+    /// report's "reduction: TIR ..." seconds) and `store` (a measurement:
+    /// `v2_tir::TirOptions::store`, TIRust's tensor store shared between the
+    /// families of a point chunk; values unchanged) and `masters_census`
+    /// (with `store`: `v2_tir::TirOptions::masters_census`, the bound of a
+    /// canonical masters provider; values unchanged) likewise. NinjaRS
+    /// refuses them.
+    #[pyo3(signature = (reduction="tirust", *, method_choice=None, alternative_first=super::v2::Limit::default_limit(), acceptance=None, acceptance_frame=None, profile=None, store=None, masters_census=None))]
+    #[allow(clippy::too_many_arguments)] // Python keyword arguments
     fn prepare_reduction(
         &mut self,
         reduction: &str,
@@ -1546,31 +1554,41 @@ impl V2Executor {
         alternative_first: Option<super::v2::Limit>,
         acceptance: Option<f64>,
         acceptance_frame: Option<String>,
+        profile: Option<bool>,
+        store: Option<bool>,
+        masters_census: Option<bool>,
     ) -> PyResult<Vec<(usize, usize)>> {
         let reduction = Reduction::parse(reduction).map_err(error)?;
         if reduction != Reduction::TiRust
-            && super::v2::tir_settings_given(
+            && (super::v2::tir_settings_given(
                 method_choice,
                 &alternative_first,
                 acceptance,
                 &acceptance_frame,
-            )
+            ) || profile.is_some()
+                || store.is_some()
+                || masters_census.is_some())
         {
             return Err(error(
-                "method_choice, alternative_first, acceptance and acceptance_frame are TIRust's \
-                 settings",
+                "method_choice, alternative_first, acceptance, acceptance_frame, profile, store \
+                 and masters_census are TIRust's settings",
             ));
         }
         #[cfg(feature = "tir")]
         if reduction == Reduction::TiRust
             && !matches!(self.carrier, Carriers::Exact | Carriers::Prime)
         {
-            let options = super::v2::tir_options(
-                method_choice,
-                &alternative_first,
-                acceptance,
-                &acceptance_frame,
-            )?;
+            let options = rusticol_loop_reduction::v2_tir::TirOptions {
+                profile: profile.unwrap_or(false),
+                store: store.unwrap_or(false),
+                masters_census: masters_census.unwrap_or(false),
+                ..super::v2::tir_options(
+                    method_choice,
+                    &alternative_first,
+                    acceptance,
+                    &acceptance_frame,
+                )?
+            };
             let bits = self.bits()?;
             let slot = &mut self.backends[reduction as usize];
             let current = match slot {
@@ -1594,6 +1612,9 @@ impl V2Executor {
             alternative_first,
             acceptance,
             acceptance_frame,
+            profile,
+            store,
+            masters_census,
         );
         let backend = backend_of(
             &mut self.backends,
