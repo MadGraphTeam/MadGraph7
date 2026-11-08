@@ -1031,3 +1031,79 @@ def test_the_sdk_fallback_and_target_need_no_symbolica_licence(
         "ninjars",
     )
     assert record["arithmetic"] == "double-double"
+
+
+def test_a_structural_tirust_refusal_falls_back_at_the_default_target(
+    loop_native, tmp_path
+):
+    """F3 (c), Done 1 (ii) (1), at the DEFAULT target (1e-5): a refusal no
+    acceptance governs. g g > a a g (LI-33) at its first frozen stream points:
+    TIRust's conditioning gates refuse a row and then its method choice
+    refuses it too ("refused by the gates, then by the method choice"), so
+    explicit "tirust" fails the point typed in the Python API and the C ABI;
+    "auto" serves it on NinjaRS (its value bitwise the explicit NinjaRS one,
+    its record NinjaRS and the fallback's reason), the C ABI's diagnostics
+    naming it under "fallbacks", bitwise the Python API's values."""
+
+    from fractions import Fraction
+
+    from pyamplicol import Runtime
+    from tools.loop_benchmark import streams
+
+    if "tirust" not in json.loads(loop_native.reduction_backends()):
+        pytest.skip("the staged native extension is built without TIRust")
+    artifact = generate(tmp_path / "aag", "li_gg_aag", "g g > a a g")
+    stream = streams.load("li_gg_aag")
+    count = 4
+    exact_points = [
+        [[str(Decimal(float(Fraction(c)))) for c in leg] for leg in point]
+        for point in stream["points"][:count]
+    ]
+    exact_scales = [
+        str(Decimal(float(Fraction(mu) ** 2))) for mu in stream["mu_r"][:count]
+    ]
+    runtime = Runtime.load(artifact, process="p")
+    options = {"mu_r2": exact_scales, "on_failure": "return"}
+    tirust = runtime.evaluate(exact_points, reduction="tirust", **options)
+    ninjars = runtime.evaluate(exact_points, reduction="ninjars", **options)
+    auto = runtime.evaluate(exact_points, **options)
+    refused = [
+        p
+        for p, lane in enumerate(tirust.diagnostics)
+        if "refused by the gates, then by the method choice" in lane.detail
+    ]
+    assert refused, [lane.detail[:200] for lane in tirust.diagnostics]
+    for p, lane in enumerate(auto.diagnostics):
+        if tirust.values[p] is None:
+            assert lane.reduction.effective == "ninjars", p
+            assert (
+                "refused by the gates, then by the method choice"
+                in (lane.reduction.reason)
+                or p not in refused
+            )
+            assert repr(auto.values[p]) == repr(ninjars.values[p]), p
+        else:
+            assert lane.reduction.effective == "tirust", p
+            assert repr(auto.values[p]) == repr(tirust.values[p]), p
+    # The C ABI: the same backends and values.
+    points = [[[float(c) for c in leg] for leg in point] for point in exact_points]
+    scales = [float(Fraction(s)) for s in exact_scales]
+    sdk = _sdk()
+    handle = _open(sdk, artifact)
+    try:
+        found = _evaluate(sdk, handle, points, scales)
+        record = found["diagnostics"]
+        assert record["reduction"]["fallback"] == "ninjars"
+        moved = sorted(int(key) for key in record["fallbacks"])
+        assert moved == [p for p, v in enumerate(tirust.values) if v is None]
+        for key in record["fallbacks"]:
+            assert record["fallbacks"][key]["effective"] == "ninjars"
+        assert found["statuses"] == [SUCCESS_STATUS] * count
+        assert sdk.rusticol_virtual_set_reduction(handle, b"tirust") == 0
+        explicit = _evaluate(sdk, handle, points, scales)
+        assert [s == FAILED_STATUS for s in explicit["statuses"]] == [
+            v is None for v in tirust.values
+        ]
+    finally:
+        sdk.rusticol_virtual_free(handle)
+    assert _same(found["virtual"], _python_flat(auto))
