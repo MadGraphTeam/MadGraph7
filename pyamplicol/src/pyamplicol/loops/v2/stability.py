@@ -321,7 +321,13 @@ def _native_rotations() -> Any:
 
 
 def _rotation_of(rows: Sequence[Sequence[str]]) -> Rotation:
-    return Rotation(tuple(tuple(Fraction(x) for x in row) for row in rows))
+    """A rotation of rows of exact rational texts (3x3; ``Rotation``
+    checks the shape and orthogonality)."""
+
+    matrix = [[Fraction(x) for x in row] for row in rows]
+    if len(matrix) != 3 or any(len(row) != 3 for row in matrix):
+        raise ValueError("a rotation is a 3x3 matrix")
+    return Rotation(tuple((row[0], row[1], row[2]) for row in matrix))
 
 
 def python_default_rotation(index: int) -> Rotation:
