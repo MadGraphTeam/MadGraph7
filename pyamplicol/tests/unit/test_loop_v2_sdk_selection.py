@@ -132,13 +132,13 @@ def _tree_id(row) -> str:
 
 
 def _selectors(capabilities: dict, points: int):
-    """One ID, a subset (the runtime's ID form, the tree engine's and a
-    duplicate) and per point a distinct row."""
+    """One ID, a subset (the runtime's ID form, the tree engine's, and one
+    row named twice: distinct IDs, one row) and per point a distinct row."""
 
     rows = capabilities["helicity_rows"]
     count = len(rows)
     one = f"h{1 % count}"
-    subset = [f"h{2 % count}", _tree_id(rows[5 % count]), f"h{2 % count}"]
+    subset = [f"h{2 % count}", _tree_id(rows[5 % count]), _tree_id(rows[2 % count])]
     by_point = [(3 * p + 1) % count for p in range(points)]
     return one, subset, by_point
 
@@ -409,6 +409,8 @@ def test_c_abi_selection_refusals(artifacts):
             runtime.evaluate_resolved(exact, mu_r2=exact_scales, color_resolution="lc")
         with pytest.raises(EvaluationError) as unknown:
             runtime.evaluate(exact, mu_r2=exact_scales, helicities=["h:bogus"])
+        with pytest.raises(ValueError) as duplicate:
+            runtime.evaluate(exact, mu_r2=exact_scales, helicities=["h1", "h1"])
         cases = [
             ({"colours": ["1"]}, STATUS_RUNTIME_ERROR, str(flows.value)),
             ({"colour_by_point": [0, 0]}, STATUS_RUNTIME_ERROR, str(flows.value)),
@@ -417,6 +419,7 @@ def test_c_abi_selection_refusals(artifacts):
             ({"resolved": True, "resolution": "lc"}, STATUS_RUNTIME_ERROR,
              str(resolution.value)),
             ({"ids": ["h:bogus"]}, STATUS_INVALID_ARGUMENT, str(unknown.value)),
+            ({"ids": ["h1", "h1"]}, STATUS_INVALID_ARGUMENT, str(duplicate.value)),
             ({"by_point": [0, 10**6]}, STATUS_INVALID_ARGUMENT, "out of range"),
             ({"by_point": [0]}, STATUS_INVALID_ARGUMENT, "one selector per point"),
             ({"ids": ["h0"], "by_point": [0, 1]}, STATUS_INVALID_ARGUMENT,
@@ -851,3 +854,57 @@ def test_the_rust_sdk_selections_follow_the_c_abi(artifacts, client_cases, tmp_p
             "by-point", "colour",
         ]
         _check_client(f"rust-sdk:{name}", _parse(output.read_text()), case["reference"], calls)
+
+
+@pytest.mark.loop_nightly
+def test_a_tir_off_library_serves_the_selections_on_ninjars(artifacts, client_cases):
+    """lit-sdk-b item [1], the extension of lit-tirust-default's tir-off C ABI
+    check to the new calls (WAITS ON lit-tirust-default, which owns the
+    tir-off build and check): a librusticol_loop_sdk.so built without the
+    cargo feature ``tir`` (``PYAMPLICOL_TIR_OFF_LOOP_SDK``, e.g. ``cargo
+    build --locked --release --no-default-features -p rusticol-loop-sdk`` in a
+    private target directory) refuses "tirust" at the setter and a
+    cross-backend check by the selection call, in the Python API's words, and
+    its NinjaRS selections equal the tir-on library's bitwise."""
+
+    import os
+
+    library = os.environ.get("PYAMPLICOL_TIR_OFF_LOOP_SDK")
+    if not library:
+        pytest.skip(
+            "opt-in: set PYAMPLICOL_TIR_OFF_LOOP_SDK to a tir-off "
+            "librusticol_loop_sdk.so (lit-tirust-default's tir-off build)"
+        )
+    off = ctypes.CDLL(library)
+    off.rusticol_virtual_last_error_message.restype = ctypes.c_char_p
+    on = _sdk()
+    for name, case in client_cases.items():
+        points, scales = case["points"], case["scales"]
+        handles = {"off": _open(off, artifacts[name]), "on": _open(on, artifacts[name])}
+        try:
+            refused = off.rusticol_virtual_set_reduction(handles["off"], b"tirust")
+            assert refused == STATUS_RUNTIME_ERROR
+            assert "not built into this native extension" in _error(off)
+            for sdk, handle in ((off, handles["off"]), (on, handles["on"])):
+                assert sdk.rusticol_virtual_set_reduction(handle, b"ninjars") == 0
+            selections = [
+                {"resolved": True, "resolution": "amplitude-basis"},
+                {"ids": case["ids"]},
+                {"by_point": case["by_point"]},
+            ]
+            for selectors in selections:
+                found = _call(off, handles["off"], points, scales, **selectors)
+                reference = _call(on, handles["on"], points, scales, **selectors)
+                assert found["status"] == reference["status"] == 0, found
+                assert found["statuses"] == reference["statuses"]
+                assert _bitwise(found["virtual"], reference["virtual"]), selectors
+            # The cross-backend check needs TIRust: refused by the call.
+            assert off.rusticol_virtual_set_stability_checks(
+                handles["off"], 1, None, 1, 0, 1
+            ) == 0
+            found = _call(off, handles["off"], points, scales, ids=case["ids"])
+            assert found["status"] == STATUS_RUNTIME_ERROR, found
+            assert "cross-backend check" in found["error"], found["error"]
+        finally:
+            off.rusticol_virtual_free(handles["off"])
+            on.rusticol_virtual_free(handles["on"])

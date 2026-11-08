@@ -855,6 +855,28 @@ int main(int argc, char **argv) {
       }
       std::printf("\ndiagnostics %s\n", result.diagnostics_json().c_str());
     }
+    // The selections (m-lit lit-sdk-b): the amplitude-basis anchors and one
+    // helicity row, in binary64, or with a fifth argument "extended" in
+    // double-double and arbitrary precision (the package key's carriers).
+    runtime.set_stability_checks(0);
+    const bool extended = argc > 5 && std::strcmp(argv[5], "extended") == 0;
+    for (int pass = 0; pass < 2; ++pass) {
+      if (extended) runtime.set_arithmetic(pass == 0 ? "double-double" : "arbitrary", pass == 0 ? 0 : 32);
+      rusticol::VirtualSelection selection;
+      if (pass == 0) selection.color_resolution = std::string("amplitude-basis");
+      else selection.helicity_ids = {"h1"};
+      auto result = runtime.evaluate_selected(momenta, points, scales, selection, pass == 0);
+      std::printf("statuses");
+      for (auto status : result.statuses()) std::printf(" %u", status);
+      std::printf("\nvirtual");
+      for (double value : result.virtual_values()) {
+        std::uint64_t bits;
+        std::memcpy(&bits, &value, sizeof bits);
+        std::printf(" %" PRIu64, bits);
+      }
+      std::printf("\naxes %s\ndecimal %s\n", result.axes_json().c_str(),
+                  result.decimal_json().c_str());
+    }
   } catch (const rusticol::VirtualError &error) {
     std::printf("error %d %s\n", error.status(), error.what());
     return 1;
@@ -943,9 +965,10 @@ def test_the_sdk_self_test_touches_no_symbolica_state(loop_native, tmp_path):
         str(tmp_path / "input.txt"),
     ]
 
-    def run(env: dict[str, str]) -> list[str]:
+    def run(env: dict[str, str], extra: tuple[str, ...] = ()) -> list[str]:
         done = subprocess.run(
-            command, capture_output=True, text=True, timeout=600, check=False, env=env
+            [*command, *extra], capture_output=True, text=True, timeout=600,
+            check=False, env=env,
         )
         output = done.stdout[-3000:] + done.stderr[-3000:]
         assert done.returncode == 0, output
@@ -963,6 +986,10 @@ def test_the_sdk_self_test_touches_no_symbolica_state(loop_native, tmp_path):
         )
     licensed = run(dict(os.environ))
     assert unlicensed == licensed
+    # The extended carriers of the selections run under pyAmpliCol's package
+    # key without a user licence (D7): equal to the licensed run.
+    extended = run(base, ("extended",))
+    assert extended == run(dict(os.environ), ("extended",))
 
     runtime = Runtime.load(
         artifact, process=selftest.NAME, model_parameters=expected["parameters"]
@@ -987,3 +1014,51 @@ def test_the_sdk_self_test_touches_no_symbolica_state(loop_native, tmp_path):
             assert record is None
         else:
             assert record["estimates"] == [_record(e) for e in result.stability]
+    # The selections: binary64 bitwise the Python API's, axes its IDs; the
+    # extended carriers its Decimal values.
+    anchors = runtime.evaluate_resolved(
+        exact_points, mu_r2=exact_scales, color_resolution="amplitude-basis"
+    )
+    one = runtime.evaluate(exact_points, mu_r2=exact_scales, helicities=["h1"])
+    flat_anchors = [
+        math.nan if x is None else x
+        for v in anchors.values for sector in v for row in sector for c in row
+        for x in (c.finite, c.single_pole, c.double_pole)
+    ]
+    for index, (expected_values, ids) in enumerate(
+        (
+            (flat_anchors, [list(anchors.helicity_ids), list(anchors.virtual_color_ids)]),
+            (_flat(one), [[], []]),
+        )
+    ):
+        statuses, values, axes, decimal = licensed[8 + 4 * index : 12 + 4 * index]
+        assert statuses == "statuses" + " 4" * len(points), statuses
+        bits = [int(b) for b in values.split()[1:]]
+        assert bits == [
+            struct.unpack("<q", struct.pack("<d", float(v)))[0] & mask
+            for v in expected_values
+        ], index
+        axes = json.loads(axes.split(" ", 1)[1])
+        assert [axes["helicity_ids"], axes["color_ids"]] == ids
+        assert decimal == "decimal null"
+    references = (
+        runtime.evaluate_resolved(
+            exact_points, mu_r2=exact_scales, color_resolution="amplitude-basis",
+            arithmetic="double-double",
+        ),
+        runtime.evaluate(
+            exact_points, mu_r2=exact_scales, helicities=["h1"],
+            arithmetic="arbitrary", precision=32,
+        ),
+    )
+    for index, reference in enumerate(references):
+        decimal = json.loads(extended[8 + 4 * index + 3].split(" ", 1)[1])
+        cells = (
+            [c for v in reference.values for sector in v for row in sector for c in row]
+            if index == 0
+            else [sector for v in reference.values for sector in v]
+        )
+        values = [x for c in cells for x in (c.finite, c.single_pole, c.double_pole)]
+        assert [None if x is None else Decimal(x) for x in decimal["virtual"]] == [
+            None if x is None else Decimal(x) for x in values
+        ], index

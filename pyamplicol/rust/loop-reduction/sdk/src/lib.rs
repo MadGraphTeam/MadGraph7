@@ -892,6 +892,22 @@ impl Runtime {
         selection: &Selection,
     ) -> RusticolResult<Evaluation> {
         let points = point_ids.len();
+        // The Python API's selector validation (`api.services._selector_ids`):
+        // nonempty IDs, each once.
+        for (name, kind, ids) in [
+            ("helicity", "HelicityConfiguration", &selection.helicities),
+            ("color-flow", "ColorFlow", &selection.color_flows),
+        ] {
+            let ids = ids.as_deref().unwrap_or_default();
+            if ids.iter().any(String::is_empty) {
+                return Err(invalid(format!(
+                    "{name} selectors must be IDs or {kind}"
+                )));
+            }
+            if ids.iter().collect::<BTreeSet<_>>().len() != ids.len() {
+                return Err(invalid(format!("{name} selectors must be unique")));
+            }
+        }
         for (name, by_point) in [
             ("helicity_by_point", &selection.helicity_by_point),
             ("color_flow_by_point", &selection.color_flow_by_point),
@@ -998,6 +1014,12 @@ impl Runtime {
             v4_r2_strategy(strategy)?;
         }
         let reduction = self.reduce_on(reduction_policy::RESOLVED)?;
+        // The cross-backend check's backend must serve the call's carrier
+        // (the Python API's `_reduction_choices`, every carrier), even though
+        // the selections form no estimate here.
+        if self.checks.enabled() && self.checks.cross_backend() {
+            self.cross_available(&reduction)?;
+        }
         let monitoring = Monitoring {
             checks: None,
             requested: self.checks.enabled(),
