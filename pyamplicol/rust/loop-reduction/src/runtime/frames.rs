@@ -256,6 +256,9 @@ impl<T: Carrier> FrameMap<T> {
     /// order, each transposed: the degree scaling and the reversal are
     /// diagonal, the shift's per-component binomial expansion gathers where
     /// it scattered, last component first.
+    // The TIR backend's (`v2_tir`, feature `tir`); NinjaRS's frames re-expand
+    // per lane.
+    #[cfg_attr(not(feature = "tir"), allow(dead_code))]
     pub(crate) fn moments<const S: usize>(
         &self,
         moments: &[[Complex<T>; S]],
