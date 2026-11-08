@@ -1002,6 +1002,12 @@ def term_values(evaluation: Any) -> dict:
     native = getattr(evaluation, "native_bare", None)
     if native is not None:
         terms = getattr(evaluation, "native_terms", None)
+        if terms is None and not native:
+            # No (loop order, row) slot: no family is routed at any order
+            # (an amplitude of counterterm kets alone, e.g. a ket whose
+            # coupling the restriction makes vanish), so there is no family
+            # term to scale and the native executor returns none.
+            terms = {}
         if terms is None:
             raise ValueError(
                 "a native loop-induced point has no term scale: the executor "

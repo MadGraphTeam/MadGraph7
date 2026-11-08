@@ -71,7 +71,8 @@ class LoopInducedPolicy(StrEnum):
     serves nothing loop-induced (a purely loop-induced request is refused);
     ``only`` serves only the members without a Born (the others are skipped
     with a typed record); ``include`` serves both kinds as separate
-    contributions, never summed (refused until it lands)."""
+    contributions in one artifact, never summed (each concrete process
+    its own: Born members Born-interfered, the others loop-induced)."""
 
     AUTO = "auto"
     SKIP = "skip"
