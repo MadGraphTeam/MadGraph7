@@ -302,8 +302,10 @@ def test_levels_resolve_once_per_level_capability_driven(loop_native, monkeypatc
         ]
         reason = found[auto.levels[1]].reason
         assert "TIRust, the loop-induced default, is unavailable" in reason
-        assert "double-double" in reason
-        with pytest.raises(ReductionUnavailable, match="double-double"):
+        # A tir-off build (no TIRust carrier) names the missing feature.
+        missing = "double-double" if served else "the 'tir' feature"
+        assert missing in reason
+        with pytest.raises(ReductionUnavailable, match=missing):
             choices(explicit)
         if "double" in served:
             with pytest.raises(ReductionUnavailable, match="double-double"):
@@ -493,7 +495,9 @@ def test_explicit_tirust_levels_are_refused_before_any_point(loop_native, monkey
             VirtualRescueLevel("double-double", reduction="tirust"),
         )
     )
-    with pytest.raises(ReductionUnavailable, match="double-double"):
+    # A tir-off build (no TIRust carrier) names the missing feature.
+    missing = "double-double" if served else "the 'tir' feature"
+    with pytest.raises(ReductionUnavailable, match=missing):
         runtime.evaluate(points, mu_r2=scales, stability=own)
     inherited = VirtualRescuePolicy(
         (VirtualRescueLevel("double"), VirtualRescueLevel("double-double"))
@@ -833,7 +837,9 @@ def test_double_double_tir_levels_stay_on_tir_after_lit_tir_mp(loop_native):
             VirtualRescueLevel("double", reduction="ninjars"),
             VirtualRescueLevel("double-double", reduction="tirust"),
         )
-        with pytest.raises(ReductionUnavailable, match="double-double"):
+        # A tir-off build (no TIRust carrier) names the missing feature.
+        missing = "double-double" if _tirust(loop_native) else "the 'tir' feature"
+        with pytest.raises(ReductionUnavailable, match=missing):
             runtime.evaluate(points, mu_r2=scales, stability=policy)
         return
     found = {}
