@@ -1789,15 +1789,17 @@ def point_estimate(
     """The stability estimate of one point's result (``NativeExecutor.
     evaluate``): the rotation checks' budgets of the evaluations at the
     rotated points ``rotated``, the reduction check's re-test budget, the
-    term scale of the floor and the per-family deviations."""
+    cross-backend check's budget (``stability.cross_check``), the term
+    scale of the floor and the per-family deviations."""
 
-    from .stability import ROTATION, StabilityEstimate
+    from .stability import ROTATION, StabilityEstimate, cross_check
 
     budgets = {}
     for k, run in enumerate(rotated):
         budgets[ROTATION.format(k)] = reference.rotation_budget(run)
     if stability.reduction:
         budgets[stability.reduction] = reference.retest_budget
+    not_run = cross_check(reference, budgets) if stability.cross_backend else {}
     components = reference.result.components
     return StabilityEstimate.from_checks(
         components["virtual"] if "virtual" in components else components["bare"],
@@ -1805,6 +1807,7 @@ def point_estimate(
         scale=reference.stability_scale(),
         roundoff=roundoff,
         families=reference.family_deviations,
+        not_run=not_run,
     )
 
 
@@ -2519,7 +2522,37 @@ class NativeExecutor:
                 failures.setdefault(index, []).extend(
                     f"{ROTATION.format(k)}: {reason}" for reason in reasons
                 )
+        if stability.cross_backend:
+            self._cross_runs(
+                points, scales, parameters, precision, poles, schedule, wards
+            ).attach(evaluations)
         return precision, evaluations, rotated, failures
+
+    def _cross_runs(
+        self, points, scales, parameters, precision, poles, schedule, wards
+    ):
+        """The cross-backend check's evaluations (``stability.CROSS``):
+        every point again on the other reduction backend (``reduction.
+        cross`` of the context's), at the same inputs, without re-test. A
+        point the other backend fails, or every point when it refuses the
+        artifact (``ReductionUnavailable`` of its plans), keeps the reason
+        instead: the check is not run there, the point's own result and
+        failures are unchanged (DECISIONS 2026-11-07 21:50 R6)."""
+
+        from pyamplicol.api.errors import ReductionUnavailable
+
+        from .reduction import NAMES, cross, current
+        from .stability import CrossRuns
+
+        backend = cross(current())
+        try:
+            with running(backend):
+                _, runs, failed = self._evaluated(
+                    points, scales, parameters, precision, poles, None, schedule, wards
+                )
+        except ReductionUnavailable as error:
+            return CrossRuns(NAMES[backend], [None] * len(points), {}, str(error))
+        return CrossRuns(NAMES[backend], runs, failed)
 
     def native_inputs(self, points, scales, parameters=None, precision=None):
         """The executor's native tree inputs of a batch (``inputs="native"``):

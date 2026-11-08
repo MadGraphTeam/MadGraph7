@@ -168,6 +168,22 @@ def running(backend: str | None) -> Iterator[None]:
         _EFFECTIVE.reset(token)
 
 
+def current() -> str:
+    """The effective backend of the current context (``running``)."""
+
+    return _EFFECTIVE.get()
+
+
+def cross(backend: str) -> str:
+    """The backend of the cross-backend check of a call reduced by
+    ``backend`` (``stability.CROSS``): the other one of ``BACKENDS``."""
+
+    others = [item for item in BACKENDS if item != backend]
+    if backend not in BACKENDS or len(others) != 1:
+        raise ValueError(f"no other reduction backend than {backend!r} is defined")
+    return others[0]
+
+
 def executor_options() -> dict[str, str]:
     """The native executor's ``reduction`` option in the current context
     (``running``): empty for NinjaRS, the executor's default, so that a
@@ -265,6 +281,8 @@ __all__ = [
     "TIRUST_BINARY64_ONLY",
     "ReductionUnavailable",
     "Route",
+    "cross",
+    "current",
     "executor_options",
     "native_backends",
     "policy",
