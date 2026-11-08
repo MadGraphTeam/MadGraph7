@@ -982,7 +982,7 @@ impl V2Runtime {
         let admitted = tir_only.then(|| BTreeSet::from(["tirust".to_owned()]));
         let route = crate::reduction_policy::route(crate::reduction_policy::SUMMED)
             .expect("the summed route");
-        let reduction = match crate::reduction_policy::resolve(
+        let (reduction, fallback) = match crate::reduction_policy::resolve(
             "auto",
             &artifact.metadata.contribution_kind,
             "double",
@@ -990,7 +990,10 @@ impl V2Runtime {
             admitted.as_ref(),
             &route,
         ) {
-            Ok(choice) => Reduction::parse(&choice.effective)?,
+            Ok(choice) => (
+                Reduction::parse(&choice.effective)?,
+                choice.fallback.is_some(),
+            ),
             Err(_) if tir_only => {
                 return Err(RusticolError::unsupported_runtime_capability(
                     "tirust",
@@ -1009,10 +1012,19 @@ impl V2Runtime {
         };
         let target = crate::reduction_policy::DEFAULT_TARGET;
         let mut backends = BTreeMap::new();
-        backends.insert(
-            V2Precision::Double,
-            V2Precision::Double.backend(reduction, &process.plan, target)?,
-        );
+        match V2Precision::Double.backend(reduction, &process.plan, target) {
+            Ok(backend) => {
+                backends.insert(V2Precision::Double, backend);
+            }
+            // TIRust refuses the plans (its capability query) where "auto"
+            // has the NinjaRS fallback: built on use, each call's refusal
+            // leaves its points to the fallback.
+            Err(error)
+                if fallback
+                    && error.kind()
+                        == rusticol_core::RusticolErrorKind::UnsupportedRuntimeCapability => {}
+            Err(error) => return Err(error),
+        }
         Ok(Self {
             path,
             artifact,

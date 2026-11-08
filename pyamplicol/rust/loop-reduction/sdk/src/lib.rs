@@ -15,11 +15,11 @@ use rusticol_loop_reduction::reduction_policy::{self, Choice, Refusal};
 use rusticol_loop_reduction::runtime::Reduction;
 #[cfg(test)]
 use rusticol_loop_reduction::runtime::{Batch, Data};
-use rusticol_loop_reduction::v2_runtime::{Monitored, cross_reduction};
 use rusticol_loop_reduction::v2_runtime::{
     C, ColumnPoint, Decimal, Rational, V2Point, V2Poles, V2Precision, V2Runtime, decimal_parameter,
     is_v2_artifact, named_parameters,
 };
+use rusticol_loop_reduction::v2_runtime::{Monitored, cross_reduction};
 use rusticol_loop_reduction::v2_stability::CROSS;
 pub use rusticol_loop_reduction::v2_stability::{
     Estimate, Rotation, StabilityChecks, default_rotation,
@@ -1029,15 +1029,31 @@ fn pick<'a, T: Clone>(values: &'a [T], indices: Option<&[usize]>) -> std::borrow
 /// again on the fallback, from their original exact inputs, at the call's
 /// carrier, after the primary call: each served point takes the fallback's
 /// outcome, a point the fallback fails too fails with both backends'
-/// reasons; both recorded per point ([`Fallbacks`]). A call without a
-/// fallback (an explicit backend, a Born-interfered or a TIR-only process)
-/// runs `evaluate` once, with nothing else.
+/// reasons; both recorded per point ([`Fallbacks`]). A primary backend that
+/// refuses the call's plans (TIRust's capability query of a family, a typed
+/// `UnsupportedRuntimeCapability` error before any point) leaves all `count`
+/// points to the fallback. A call without a fallback (an explicit backend, a
+/// Born-interfered or a TIR-only process) runs `evaluate` once, with nothing
+/// else.
 pub(crate) fn with_fallback<P: PointOutcome>(
     native: &mut V2Runtime,
     choice: &Choice,
+    count: usize,
     mut evaluate: impl FnMut(&mut V2Runtime, Option<&[usize]>) -> RusticolResult<Vec<P>>,
 ) -> RusticolResult<(Vec<P>, Fallbacks)> {
-    let mut points = evaluate(native, None)?;
+    let mut points = match evaluate(native, None) {
+        Ok(points) => points,
+        Err(error)
+            if choice.fallback.is_some()
+                && error.kind()
+                    == rusticol_core::RusticolErrorKind::UnsupportedRuntimeCapability =>
+        {
+            (0..count)
+                .map(|_| P::failed(vec![error.to_string()]))
+                .collect()
+        }
+        Err(error) => return Err(error),
+    };
     let mut record = Fallbacks {
         fallback: choice.fallback.clone(),
         points: BTreeMap::new(),
@@ -1108,7 +1124,7 @@ impl Evaluation {
                 // R6): its other backend is the one that failed it.
                 let plain = checks.without_cross_backend();
                 let (mut monitored, fallbacks) =
-                    with_fallback(native, reduction, |native, indices| {
+                    with_fallback(native, reduction, momenta.len(), |native, indices| {
                         let checks = if indices.is_some() { &plain } else { checks };
                         native.evaluate_checked(
                             &pick(&momenta, indices),
@@ -1147,27 +1163,29 @@ impl Evaluation {
                 )
             }
             (Arithmetic::Double, None) => {
-                let (points, fallbacks) = with_fallback(native, reduction, |native, indices| {
-                    native.evaluate(
-                        &pick(&momenta, indices),
-                        &pick(&scales, indices),
-                        poles.v2(),
-                    )
-                })?;
+                let (points, fallbacks) =
+                    with_fallback(native, reduction, momenta.len(), |native, indices| {
+                        native.evaluate(
+                            &pick(&momenta, indices),
+                            &pick(&scales, indices),
+                            poles.v2(),
+                        )
+                    })?;
                 let stability = monitoring.not_run();
                 Self::ordinary(
                     inputs, shape, poles, arithmetic, points, reduction, &fallbacks, stability,
                 )
             }
             _ => {
-                let (points, fallbacks) = with_fallback(native, reduction, |native, indices| {
-                    native.evaluate_extended(
-                        &pick(&momenta, indices),
-                        &pick(&scales, indices),
-                        poles.v2(),
-                        arithmetic.v2(),
-                    )
-                })?;
+                let (points, fallbacks) =
+                    with_fallback(native, reduction, momenta.len(), |native, indices| {
+                        native.evaluate_extended(
+                            &pick(&momenta, indices),
+                            &pick(&scales, indices),
+                            poles.v2(),
+                            arithmetic.v2(),
+                        )
+                    })?;
                 let stability = monitoring.not_run();
                 Self::ordinary(
                     inputs, shape, poles, arithmetic, points, reduction, &fallbacks, stability,
@@ -1244,31 +1262,33 @@ impl Evaluation {
         let stability = monitoring.not_run_resolved();
         match arithmetic {
             Arithmetic::Double => {
-                let (points, fallbacks) = with_fallback(native, reduction, |native, indices| {
-                    native.evaluate_columns(
-                        "resolved",
-                        &pick(&momenta, indices),
-                        &pick(&scales, indices),
-                        &[],
-                        poles.v2(),
-                    )
-                })?;
+                let (points, fallbacks) =
+                    with_fallback(native, reduction, momenta.len(), |native, indices| {
+                        native.evaluate_columns(
+                            "resolved",
+                            &pick(&momenta, indices),
+                            &pick(&scales, indices),
+                            &[],
+                            poles.v2(),
+                        )
+                    })?;
                 Self::resolved(
                     inputs, shape, poles, arithmetic, axes, &keys, points, reduction, &fallbacks,
                     stability,
                 )
             }
             _ => {
-                let (points, fallbacks) = with_fallback(native, reduction, |native, indices| {
-                    native.evaluate_columns_extended(
-                        "resolved",
-                        &pick(&momenta, indices),
-                        &pick(&scales, indices),
-                        &[],
-                        poles.v2(),
-                        arithmetic.v2(),
-                    )
-                })?;
+                let (points, fallbacks) =
+                    with_fallback(native, reduction, momenta.len(), |native, indices| {
+                        native.evaluate_columns_extended(
+                            "resolved",
+                            &pick(&momenta, indices),
+                            &pick(&scales, indices),
+                            &[],
+                            poles.v2(),
+                            arithmetic.v2(),
+                        )
+                    })?;
                 Self::resolved(
                     inputs, shape, poles, arithmetic, axes, &keys, points, reduction, &fallbacks,
                     stability,

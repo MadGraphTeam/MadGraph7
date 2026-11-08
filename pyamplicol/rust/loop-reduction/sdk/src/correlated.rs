@@ -221,30 +221,32 @@ impl Runtime {
         let Engine::V4(native) = &mut self.engine;
         let evaluation = match arithmetic {
             Arithmetic::Double => {
-                let (found, fallbacks) = with_fallback(native, &reduction, |native, indices| {
-                    native.evaluate_columns(
-                        "correlated",
-                        &pick(&momenta, indices),
-                        &pick(&scales, indices),
-                        &pick_rows(&spins, indices),
-                        poles.v2(),
-                    )
-                })?;
+                let (found, fallbacks) =
+                    with_fallback(native, &reduction, momenta.len(), |native, indices| {
+                        native.evaluate_columns(
+                            "correlated",
+                            &pick(&momenta, indices),
+                            &pick(&scales, indices),
+                            &pick_rows(&spins, indices),
+                            poles.v2(),
+                        )
+                    })?;
                 CorrelatedEvaluation::from_columns(
                     inputs, shape, poles, arithmetic, found, &reduction, &fallbacks, stability,
                 )?
             }
             _ => {
-                let (found, fallbacks) = with_fallback(native, &reduction, |native, indices| {
-                    native.evaluate_columns_extended(
-                        "correlated",
-                        &pick(&momenta, indices),
-                        &pick(&scales, indices),
-                        &pick_rows(&spins, indices),
-                        poles.v2(),
-                        arithmetic.v2(),
-                    )
-                })?;
+                let (found, fallbacks) =
+                    with_fallback(native, &reduction, momenta.len(), |native, indices| {
+                        native.evaluate_columns_extended(
+                            "correlated",
+                            &pick(&momenta, indices),
+                            &pick(&scales, indices),
+                            &pick_rows(&spins, indices),
+                            poles.v2(),
+                            arithmetic.v2(),
+                        )
+                    })?;
                 CorrelatedEvaluation::from_columns(
                     inputs, shape, poles, arithmetic, found, &reduction, &fallbacks, stability,
                 )?
@@ -265,10 +267,7 @@ impl Runtime {
 /// out-of-bounds read.
 /// The spin rows of the points at `indices` ([`pick`]; none without spin
 /// sources).
-fn pick_rows<'a, T: Clone>(
-    rows: &'a [T],
-    indices: Option<&[usize]>,
-) -> std::borrow::Cow<'a, [T]> {
+fn pick_rows<'a, T: Clone>(rows: &'a [T], indices: Option<&[usize]>) -> std::borrow::Cow<'a, [T]> {
     if rows.is_empty() {
         std::borrow::Cow::Borrowed(rows)
     } else {
