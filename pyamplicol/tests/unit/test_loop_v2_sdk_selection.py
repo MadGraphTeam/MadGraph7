@@ -47,9 +47,9 @@ from tests.unit.loop_v2_induced_observables_rows import ROWS, generate
 from tests.unit.test_loop_v2_induced import _fixture
 from tests.unit.test_loop_v2_sdk_extras import (
     SDK,
-    _agree,
     UMAMI_HEADERS,
     WRAPPER,
+    _agree,
     _bits,
     _compiler,
     _double,
