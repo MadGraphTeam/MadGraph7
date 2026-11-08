@@ -15,6 +15,7 @@ pub mod runtime;
 pub mod tir;
 pub mod v2_decimal;
 pub mod v2_runtime;
+pub mod v2_stability;
 #[cfg(feature = "tir")]
 pub mod v2_tir;
 

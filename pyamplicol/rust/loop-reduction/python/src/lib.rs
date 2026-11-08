@@ -18,6 +18,7 @@ mod v2_induced;
 mod v2_generate;
 mod v2_lower;
 mod v2_seeds;
+mod v2_stability;
 use batch::NativeBatch;
 
 use pyo3::{exceptions::PyValueError, prelude::*, types::PyBytes};
@@ -203,6 +204,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     v2_colour::register(module)?;
     v2_lower::register(module)?;
     v2_seeds::register(module)?;
+    v2_stability::register(module)?;
     model_proofs::register(module)?;
     Ok(())
 }
