@@ -182,14 +182,15 @@ Fortran `set_stability_checks`) takes every field of the Python API's
 `VirtualStabilityChecks`: a count of default rotations (or rotation
 specifications), the reduction-direction check, its rescaled variant and the
 cross-backend check. The default runs none: no estimate and no extra cost. With
-checks, a binary64 ordinary evaluation of a Born-interfered process (poles
-"all" or "none") returns each successful point's estimate in the result's
-diagnostics (`"stability": {"estimates": [...]}`, one record per successful
-point: the Python API's `VirtualStabilityEstimate` fields), computed by the
-same Rust implementation the Python API's binary64 estimates call
-(`rusticol_loop_reduction::v2_stability`), so bitwise equal. The other
+checks, a binary64 ordinary evaluation (of a Born-interfered process with poles
+"all" or "none", of a loop-induced process) returns each successful point's
+estimate in the result's diagnostics (`"stability": {"estimates": [...]}`, one
+record per successful point: the Python API's `VirtualStabilityEstimate`
+fields; a loop-induced call with poles also its `"finiteness"` ratios),
+computed by the same Rust implementation the Python API's binary64 estimates
+call (`rusticol_loop_reduction::v2_stability`), so bitwise equal. The other
 evaluations (double-double, arbitrary precision, resolved and correlated
-outputs, a loop-induced process) return `"estimates": null` with the reason.
+outputs) return `"estimates": null` with the reason.
 Point statuses keep their meaning; comparing an estimate with a target is the
 caller's.
 

@@ -162,8 +162,9 @@ int rusticol_virtual_set_reduction(rusticol_virtual_handle *handle,
  * (requires reduction_direction) and cross_backend (with another check) are
  * 0 or 1. All 0 and NULL, the default, runs no check: no estimate and no
  * extra cost. Checks the Python API refuses are RUSTICOL_VIRTUAL_INVALID_ARGUMENT
- * with its message, and nothing changes. A binary64 ordinary evaluation of a
- * Born-interfered process ("all" or "none" poles) then also evaluates every
+ * with its message, and nothing changes. A binary64 ordinary evaluation (of a
+ * Born-interfered process with "all" or "none" poles, of a loop-induced
+ * process) then also evaluates every
  * point at each exactly rotated point, re-reduces every lane in the reduction
  * check's frame and evaluates every point on the other reduction backend,
  * and returns each successful point's estimate in its diagnostics:
@@ -171,7 +172,9 @@ int rusticol_virtual_set_reduction(rusticol_virtual_handle *handle,
  * each the Python API's VirtualStabilityEstimate (relative, finite,
  * single_pole, double_pole, checks [[name, relative]], scale, absolute and
  * magnitude per sector and epsilon power, not_run [[name, reason]]), bitwise
- * its values (non-finite values as "inf"); the other evaluations carry
+ * its values (non-finite values as "inf"); a loop-induced call with poles
+ * also "finiteness" per successful point (the Python API's lane diagnostic);
+ * the other evaluations carry
  * {"estimates": null, "reason": ...}, and null without checks. A point whose
  * rotated evaluation fails fails ("rotation-<k>: <reason>"), as in the
  * Python API; one the other backend fails or refuses keeps the other checks'

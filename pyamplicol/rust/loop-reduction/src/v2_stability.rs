@@ -851,8 +851,8 @@ pub struct PointLanes<K> {
 
 /// The cross-backend check of a point: its evaluation on the other backend,
 /// or why the check did not run there (`stability.CrossRuns.of`).
-pub enum CrossRun<K> {
-    Run(PointLanes<K>),
+pub enum CrossRun<P> {
+    Run(P),
     NotRun(String),
 }
 
@@ -937,7 +937,7 @@ pub fn born_interfered_estimate<K: PartialEq + Clone>(
     direct: &PointLanes<K>,
     rotated: &[PointLanes<K>],
     retest: Option<(&str, &[Lane<K>])>,
-    cross: Option<&CrossRun<K>>,
+    cross: Option<&CrossRun<PointLanes<K>>>,
 ) -> RusticolResult<Estimate> {
     let mut budgets = Vec::with_capacity(rotated.len() + 2);
     for (k, run) in rotated.iter().enumerate() {
@@ -959,6 +959,395 @@ pub fn born_interfered_estimate<K: PartialEq + Clone>(
         roundoff,
         not_run,
     )
+}
+
+// ------------------------------------------------------------ loop-induced
+
+/// A binary64 complex value (re, im), operated on as CPython's `complex`
+/// (`_Py_c_sum`, `_Py_c_diff`, `_Py_c_prod`; a real operand is promoted to
+/// (x, 0.0), Python 3.11's rule).
+pub type Cell = (f64, f64);
+
+fn c_add(a: Cell, b: Cell) -> Cell {
+    (a.0 + b.0, a.1 + b.1)
+}
+fn c_sub(a: Cell, b: Cell) -> Cell {
+    (a.0 - b.0, a.1 - b.1)
+}
+fn c_mul(a: Cell, b: Cell) -> Cell {
+    (a.0 * b.0 - a.1 * b.1, a.0 * b.1 + a.1 * b.0)
+}
+fn c_conj(a: Cell) -> Cell {
+    (a.0, -a.1)
+}
+
+/// A key of a loop-induced point's vectors: (loop order, helicity row), as
+/// ids of the caller's order and row tables.
+pub type Key = (usize, usize);
+/// Values per key in insertion order (the Python API's dicts).
+pub type Keyed<V> = Vec<(Key, V)>;
+/// Per basis element t the Laurent coefficients (complex).
+pub type AmplitudeCells = Vec<Vec<Cell>>;
+/// Per basis element t the Laurent coefficients (absolute, real).
+pub type ErrorCells = Vec<Vec<f64>>;
+
+fn lookup<'v, V>(values: &'v Keyed<V>, key: &Key) -> Option<&'v V> {
+    values.iter().find(|(k, _)| k == key).map(|(_, v)| v)
+}
+
+/// The loop-induced budgets' common input: the amplitude basis size, the
+/// Laurent width, the colour metric G (carrier cells, row-major), the plan's
+/// helicity rows (ids, in order), per record sector its (loop order, loop
+/// order) pairs as Python's `sorted(pairs)` (order ids) and the point's
+/// average.
+#[derive(Clone, Debug)]
+pub struct InducedShape {
+    pub size: usize,
+    pub width: usize,
+    pub gram: Vec<Cell>,
+    pub rows: Vec<usize>,
+    pub sectors: Vec<Vec<(usize, usize)>>,
+    pub average: f64,
+}
+
+/// One binary64 evaluation of a loop-induced point (`induced.read_native` and
+/// `assemble`, the native amplitude sum without raw lanes): the amplitude
+/// vectors a = a_bare + A^CT, the bare vectors and the counterterm kets, with
+/// a check the re-test budget (`native_budget`), with the term scale its
+/// values (`native_terms`).
+#[derive(Clone, Debug, Default)]
+pub struct InducedPoint {
+    pub amplitudes: Keyed<AmplitudeCells>,
+    pub bare: Keyed<AmplitudeCells>,
+    pub kets: Keyed<AmplitudeCells>,
+    pub budget: Option<Keyed<ErrorCells>>,
+    pub terms: Option<Keyed<ErrorCells>>,
+}
+
+impl InducedShape {
+    fn metric(&self, t: usize, u: usize) -> Cell {
+        self.gram[t * self.size + u]
+    }
+
+    /// ||x||_G = sqrt(x^dag G x) (`induced.g_norm` in binary64: 0 for a
+    /// non-positive form; `value ** 0.5`).
+    pub fn g_norm(&self, vector: &[Cell]) -> f64 {
+        let mut total: Cell = (0.0, 0.0);
+        for (t, x) in vector.iter().enumerate() {
+            let mut inner: Cell = (0.0, 0.0);
+            for (u, y) in vector.iter().enumerate() {
+                inner = c_add(inner, c_mul(self.metric(t, u), *y));
+            }
+            total = c_add(total, c_mul(c_conj(*x), inner));
+        }
+        let value = total.0;
+        if value <= 0.0 { 0.0 } else { value.powf(0.5) }
+    }
+
+    /// sqrt(e^T |G| e) (`induced._bound_norm`).
+    pub fn bound_norm(&self, errors: &[f64]) -> f64 {
+        let mut total = 0.0_f64;
+        for (t, x) in errors.iter().enumerate() {
+            for (u, y) in errors.iter().enumerate() {
+                let (re, im) = self.metric(t, u);
+                total += x * modulus(re, im) * y;
+            }
+        }
+        total.powf(0.5)
+    }
+
+    /// `induced.sector_form`: per record sector and Laurent coefficient k,
+    /// sum_pairs kappa sum_rows sum_{i+j=k} kernel(x_i, y_j) / avg, with
+    /// x = left((l, row)), y = right((l', row)) (None: no term).
+    fn sector_form<X>(
+        &self,
+        left: impl Fn(Key) -> Option<Vec<X>>,
+        right: impl Fn(Key) -> Option<Vec<X>>,
+        kernel: impl Fn(&X, &X) -> f64,
+    ) -> Budget {
+        self.sectors
+            .iter()
+            .map(|pairs| {
+                let mut totals = vec![0.0_f64; self.width];
+                for &(a, b) in pairs {
+                    let weight = if a == b { 1.0 } else { 2.0 };
+                    for &row in &self.rows {
+                        let (Some(x), Some(y)) = (left((a, row)), right((b, row))) else {
+                            continue;
+                        };
+                        for (k, total) in totals.iter_mut().enumerate() {
+                            for i in 0..=k {
+                                *total += weight * kernel(&x[i], &y[k - i]);
+                            }
+                        }
+                    }
+                }
+                totals
+                    .into_iter()
+                    .map(|value| value / self.average)
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// The |A|^2 budget of absolute amplitude errors per key
+    /// (`induced.quadratic_budget`): sum_pairs kappa sum_h sum_{i+j=k}
+    /// (||a_i||_G e_j + e_i ||a_j||_G + e_i e_j) / avg with e the bound
+    /// norms of the errors.
+    pub fn quadratic_budget(&self, point: &InducedPoint, errors: &Keyed<ErrorCells>) -> Budget {
+        let terms = |key: Key| -> Option<Vec<(f64, f64)>> {
+            let vector = lookup(&point.amplitudes, &key);
+            let error = lookup(errors, &key);
+            Some(
+                (0..self.width)
+                    .map(|k| {
+                        let norm = vector.map_or(0.0, |v| {
+                            self.g_norm(&(0..self.size).map(|t| v[t][k]).collect::<Vec<_>>())
+                        });
+                        let bound = error.map_or(0.0, |e| {
+                            self.bound_norm(&(0..self.size).map(|t| e[t][k]).collect::<Vec<_>>())
+                        });
+                        (norm, bound)
+                    })
+                    .collect(),
+            )
+        };
+        self.sector_form(terms, terms, |&(a, da), &(b, db)| a * db + da * b + da * db)
+    }
+
+    /// Per helicity row the little-group phase of `rotated` against
+    /// `direct` (`induced._row_phases` with the finite parts): the phase of
+    /// sum conj(a') a over the row's loop orders and t (1 where it vanishes).
+    pub fn row_phases(&self, direct: &InducedPoint, rotated: &InducedPoint) -> Vec<(usize, Cell)> {
+        self.rows
+            .iter()
+            .map(|&row| {
+                let mut total: Cell = (0.0, 0.0);
+                for ((order, key_row), vector) in &direct.amplitudes {
+                    if *key_row != row {
+                        continue;
+                    }
+                    let Some(other) = lookup(&rotated.amplitudes, &(*order, row)) else {
+                        continue;
+                    };
+                    for t in 0..self.size {
+                        total = c_add(total, c_mul(c_conj(other[t][0]), vector[t][0]));
+                    }
+                }
+                let magnitude = modulus(total.0, total.1);
+                let phase = if magnitude == 0.0 {
+                    (1.0, 0.0)
+                } else {
+                    c_mul(total, (1.0 / magnitude, 0.0))
+                };
+                (row, phase)
+            })
+            .collect()
+    }
+
+    /// The phase-corrected deviations of `rotated` from `direct`
+    /// (`induced._rotation_deviations` of a native point without raw lanes):
+    /// per key of the counterterm kets, then of the bare vectors, in their
+    /// union order, |y phase - x| per t and k, summed.
+    pub fn deviations(
+        &self,
+        direct: &InducedPoint,
+        rotated: &InducedPoint,
+        phases: &[(usize, Cell)],
+    ) -> RusticolResult<Keyed<ErrorCells>> {
+        let phase = |row: usize| -> RusticolResult<Cell> {
+            phases
+                .iter()
+                .find(|(r, _)| *r == row)
+                .map(|(_, p)| *p)
+                .ok_or_else(|| invalid("a vector of a row outside the plan's rows"))
+        };
+        let mut errors: Keyed<ErrorCells> = Vec::new();
+        for (mine, theirs) in [(&direct.kets, &rotated.kets), (&direct.bare, &rotated.bare)] {
+            let mut keys: Vec<Key> = Vec::new();
+            for (key, _) in mine.iter().chain(theirs.iter()) {
+                if !keys.contains(key) {
+                    keys.push(*key);
+                }
+            }
+            for key in keys {
+                let (a, b) = (lookup(mine, &key), lookup(theirs, &key));
+                let p = phase(key.1)?;
+                let at = match errors.iter().position(|(k, _)| *k == key) {
+                    Some(at) => at,
+                    None => {
+                        errors.push((key, vec![vec![0.0; self.width]; self.size]));
+                        errors.len() - 1
+                    }
+                };
+                let cell = &mut errors[at].1;
+                for t in 0..self.size {
+                    for k in 0..self.width {
+                        let x = a.map_or((0.0, 0.0), |v| v[t][k]);
+                        let y = b.map_or((0.0, 0.0), |v| v[t][k]);
+                        let d = c_sub(c_mul(y, p), x);
+                        cell[t][k] += modulus(d.0, d.1);
+                    }
+                }
+            }
+        }
+        Ok(errors)
+    }
+
+    /// The budget of one rotation check (`induced.rotation_budget`).
+    pub fn rotation(
+        &self,
+        direct: &InducedPoint,
+        rotated: &InducedPoint,
+    ) -> RusticolResult<Budget> {
+        let phases = self.row_phases(direct, rotated);
+        Ok(self.quadratic_budget(direct, &self.deviations(direct, rotated, &phases)?))
+    }
+
+    /// The budget of the cross-backend check (`induced.cross_budget`): the
+    /// deviations without a little-group phase.
+    pub fn cross(&self, direct: &InducedPoint, other: &InducedPoint) -> RusticolResult<Budget> {
+        let unit: Vec<(usize, Cell)> = self.rows.iter().map(|&row| (row, (1.0, 0.0))).collect();
+        Ok(self.quadratic_budget(direct, &self.deviations(direct, other, &unit)?))
+    }
+
+    /// The re-test's budget (`induced.budgets`: `quadratic_budget` of the
+    /// executor's per-component re-test deviations).
+    pub fn retest(&self, point: &InducedPoint) -> RusticolResult<Budget> {
+        let budget = point
+            .budget
+            .as_ref()
+            .ok_or_else(|| invalid("the reduction check returned no amplitude budget"))?;
+        Ok(self.quadratic_budget(point, budget))
+    }
+
+    /// The per-row term floors (`induced.row_scales`): per key of the term
+    /// scale, then of the kets, per Laurent coefficient k, S_k = sum_t
+    /// T_{t,k} sqrt(G_tt) + ||A^CT_k||_G, floored at S_0.
+    pub fn row_scales(&self, point: &InducedPoint) -> RusticolResult<Keyed<Vec<f64>>> {
+        let empty = Vec::new();
+        let terms = match &point.terms {
+            Some(terms) => terms,
+            // No (loop order, row) slot: no family term to scale.
+            None if point.bare.is_empty() => &empty,
+            None => {
+                return Err(invalid(
+                    "a native loop-induced point has no term scale: the executor forms it \
+                     with the stability checks (term_scale)",
+                ));
+            }
+        };
+        let roots: Vec<f64> = (0..self.size)
+            .map(|t| py_max(self.metric(t, t).0, 0.0).powf(0.5))
+            .collect();
+        let mut keys: Vec<Key> = Vec::new();
+        for key in terms
+            .iter()
+            .map(|(k, _)| k)
+            .chain(point.kets.iter().map(|(k, _)| k))
+        {
+            if !keys.contains(key) {
+                keys.push(*key);
+            }
+        }
+        Ok(keys
+            .into_iter()
+            .map(|key| {
+                let (vector, ket) = (lookup(terms, &key), lookup(&point.kets, &key));
+                let values: Vec<f64> = (0..self.width)
+                    .map(|k| {
+                        let mut value = 0.0_f64;
+                        if let Some(vector) = vector {
+                            value =
+                                (0..self.size).fold(0.0, |sum, t| sum + vector[t][k] * roots[t]);
+                        }
+                        if let Some(ket) = ket {
+                            value +=
+                                self.g_norm(&(0..self.size).map(|t| ket[t][k]).collect::<Vec<_>>());
+                        }
+                        value
+                    })
+                    .collect();
+                let floor = values[0];
+                (
+                    key,
+                    values
+                        .into_iter()
+                        .map(|value| py_max(value, floor))
+                        .collect(),
+                )
+            })
+            .collect())
+    }
+
+    /// The scale S of the estimate's floor (`induced.scale`): the |A|^2
+    /// product of the per-row term floors.
+    pub fn scale(&self, point: &InducedPoint) -> RusticolResult<Budget> {
+        let scales = self.row_scales(point)?;
+        let get = |key: Key| lookup(&scales, &key).cloned();
+        Ok(self.sector_form(get, get, |a, b| a * b))
+    }
+
+    /// The point's finiteness ratio (`induced.point_finiteness` with the
+    /// term scale): the largest ||a_{-k}||_G / S_k(h) over its keys and pole
+    /// coefficients; None without poles.
+    pub fn finiteness(&self, point: &InducedPoint) -> RusticolResult<Option<f64>> {
+        if self.width == 1 {
+            return Ok(None);
+        }
+        let scales = self.row_scales(point)?;
+        let mut worst: Option<f64> = None;
+        for (key, vector) in &point.amplitudes {
+            let mut ratio = 0.0_f64;
+            for k in 1..self.width {
+                let residue =
+                    self.g_norm(&(0..self.size).map(|t| vector[t][k]).collect::<Vec<_>>());
+                if residue != 0.0 {
+                    let bound = lookup(&scales, key).map_or(0.0, |s| s[k]);
+                    ratio = py_max(
+                        ratio,
+                        if bound != 0.0 {
+                            residue / bound
+                        } else {
+                            f64::INFINITY
+                        },
+                    );
+                }
+            }
+            worst = Some(worst.map_or(ratio, |w| py_max(w, ratio)));
+        }
+        Ok(Some(worst.unwrap_or(0.0)))
+    }
+}
+
+/// The stability estimate of one loop-induced point (`plan_export.
+/// point_estimate` of an amplitude-mode point): its rotation checks' budgets,
+/// the re-test's (named `reduction`), the cross-backend check's (or its
+/// `not_run` record), against |A|^2 per sector (`reference`), with the term
+/// floor's scale.
+pub fn induced_estimate(
+    shape: &InducedShape,
+    roundoff: f64,
+    reference: &Budget,
+    direct: &InducedPoint,
+    rotated: &[InducedPoint],
+    reduction: Option<&str>,
+    cross: Option<&CrossRun<InducedPoint>>,
+) -> RusticolResult<Estimate> {
+    let mut budgets = Vec::with_capacity(rotated.len() + 2);
+    for (k, run) in rotated.iter().enumerate() {
+        budgets.push((rotation_name(k), shape.rotation(direct, run)?));
+    }
+    if let Some(name) = reduction {
+        budgets.push((name.to_string(), shape.retest(direct)?));
+    }
+    let mut not_run = Vec::new();
+    match cross {
+        Some(CrossRun::Run(run)) => budgets.push((CROSS.to_string(), shape.cross(direct, run)?)),
+        Some(CrossRun::NotRun(why)) => not_run.push((CROSS.to_string(), why.clone())),
+        None => {}
+    }
+    Estimate::from_checks(reference, budgets, shape.scale(direct)?, roundoff, not_run)
 }
 
 #[cfg(test)]

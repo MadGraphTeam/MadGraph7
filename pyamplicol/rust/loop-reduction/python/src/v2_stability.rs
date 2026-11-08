@@ -7,7 +7,8 @@
 
 use super::*;
 use rusticol_loop_reduction::v2_stability::{
-    self as stability, Budget, CrossRun, Estimate, LaneShape, PointLanes, Rotation,
+    self as stability, Budget, CrossRun, Estimate, InducedPoint, InducedShape, LaneShape,
+    PointLanes, Rotation,
 };
 
 /// A lane as Python passes it: (key, sector index, (re, im) per Laurent
@@ -104,7 +105,36 @@ fn stability_born_interfered(
         cross.as_ref(),
     )
     .map_err(error)?;
-    Ok((
+    Ok(fields(estimate))
+}
+
+/// A loop-induced evaluation as Python passes it (`InducedPoint`): per key
+/// ((loop order id, row id), insertion order) the amplitude vectors, the bare
+/// vectors and the counterterm kets ((re, im) per t and Laurent
+/// coefficient), the re-test budget and the term scale (absolute values per
+/// t and coefficient; None when not formed).
+type PyCells = Vec<((usize, usize), Vec<Vec<(f64, f64)>>)>;
+type PyErrors = Vec<((usize, usize), Vec<Vec<f64>>)>;
+type PyInduced = (
+    PyCells,
+    PyCells,
+    PyCells,
+    Option<PyErrors>,
+    Option<PyErrors>,
+);
+
+fn induced_point((amplitudes, bare, kets, budget, terms): PyInduced) -> InducedPoint {
+    InducedPoint {
+        amplitudes,
+        bare,
+        kets,
+        budget,
+        terms,
+    }
+}
+
+fn fields(estimate: Estimate) -> PyEstimate {
+    (
         estimate.relative,
         estimate.coefficients,
         estimate.checks,
@@ -112,10 +142,71 @@ fn stability_born_interfered(
         estimate.budgets,
         estimate.scale,
         estimate.not_run,
-    ))
+    )
+}
+
+/// The binary64 stability estimate of one loop-induced point
+/// (`plan_export.point_estimate` of an amplitude-mode point): `shape` (basis
+/// size, Laurent width, the colour metric's cells row-major, the plan's row
+/// ids, per record sector its sorted (loop order id, loop order id) pairs,
+/// the average), the unit roundoff, |A|^2 per sector, the point's
+/// evaluation, each rotated evaluation's, the reduction check's name, and
+/// the cross-backend check's evaluation or the reason it did not run.
+#[pyfunction]
+#[pyo3(signature = (shape, roundoff, reference, direct, rotated, reduction=None, cross=None, cross_reason=None))]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn stability_loop_induced(
+    shape: (
+        usize,
+        usize,
+        Vec<(f64, f64)>,
+        Vec<usize>,
+        Vec<Vec<(usize, usize)>>,
+        f64,
+    ),
+    roundoff: f64,
+    reference: Budget,
+    direct: PyInduced,
+    rotated: Vec<PyInduced>,
+    reduction: Option<String>,
+    cross: Option<PyInduced>,
+    cross_reason: Option<String>,
+) -> PyResult<PyEstimate> {
+    let (size, width, gram, rows, sectors, average) = shape;
+    let shape = InducedShape {
+        size,
+        width,
+        gram,
+        rows,
+        sectors,
+        average,
+    };
+    let cross = match (cross, cross_reason) {
+        (Some(run), None) => Some(CrossRun::Run(induced_point(run))),
+        (None, Some(why)) => Some(CrossRun::NotRun(why)),
+        (None, None) => None,
+        (Some(_), Some(_)) => {
+            return Err(PyValueError::new_err(
+                "the cross-backend check either ran or did not",
+            ));
+        }
+    };
+    let rotated: Vec<_> = rotated.into_iter().map(induced_point).collect();
+    stability::induced_estimate(
+        &shape,
+        roundoff,
+        &reference,
+        &induced_point(direct),
+        &rotated,
+        reduction.as_deref(),
+        cross.as_ref(),
+    )
+    .map(fields)
+    .map_err(error)
 }
 
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    module.add_function(wrap_pyfunction!(stability_loop_induced, module)?)?;
     module.add_function(wrap_pyfunction!(stability_default_rotation, module)?)?;
     module.add_function(wrap_pyfunction!(stability_rotation, module)?)?;
     module.add_function(wrap_pyfunction!(stability_born_interfered, module)?)?;

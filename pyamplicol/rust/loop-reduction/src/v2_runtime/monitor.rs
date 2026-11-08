@@ -10,9 +10,12 @@
 //! API's; a point the other backend fails or refuses keeps the estimate of
 //! the other checks, the cross-backend check in its `not_run` record.
 
+use super::induced::Induced;
+use super::induced_outputs::{InducedCollected, Monitoring};
 use super::*;
 use crate::v2_stability::{
-    self as stability, CrossRun, Estimate, Frame, LaneShape, PointLanes, StabilityChecks,
+    self as stability, CrossRun, Estimate, Frame, InducedPoint, InducedShape, LaneShape,
+    PointLanes, StabilityChecks,
 };
 
 /// A collected lane: its key, its sector and its Laurent values.
@@ -46,9 +49,10 @@ impl Collected<f64> {
     }
 }
 
-/// One monitored point: its values (or failures) and, for a successful
-/// point, its stability estimate.
-pub type Monitored = (V2Point, Option<Estimate>);
+/// One monitored point: its values (or failures), for a successful point its
+/// stability estimate and, for a loop-induced point with poles, its
+/// finiteness ratio (`VirtualLaneDiagnostic.finiteness`).
+pub type Monitored = (V2Point, Option<Estimate>, Option<f64>);
 
 /// The name of a reduction backend in the cross-backend check's records
 /// (`reduction.NAMES`).
@@ -85,15 +89,15 @@ impl V2Runtime {
             return Ok(self
                 .evaluate(momenta, scales, mode)?
                 .into_iter()
-                .map(|point| (point, None))
+                .map(|point| (point, None, None))
                 .collect());
         }
-        if self.loop_induced() {
-            return Err(RusticolError::unsupported_runtime_capability(
-                "stability checks",
-                "the native stability checks of a loop-induced process are not built yet; \
-                 the Python API estimates them",
-            ));
+        if let Some(induced) = self.induced.clone() {
+            self.check_batch(momenta, scales)?;
+            self.check_poles(mode)?;
+            return self.partitioned(momenta, scales, mode, |runtime, momenta, scales| {
+                runtime.induced_checked_batch(&induced, momenta, scales, mode, checks)
+            });
         }
         if mode.split() {
             return Err(RusticolError::unsupported_runtime_capability(
@@ -137,14 +141,7 @@ impl V2Runtime {
             .collect();
         let mut rotated = Vec::with_capacity(checks.rotations().len());
         for (k, rotation) in checks.rotations().iter().enumerate() {
-            let moved = momenta
-                .iter()
-                .map(|point| {
-                    let legs: Vec<Vec<Rational>> =
-                        point.chunks_exact(4).map(<[Rational]>::to_vec).collect();
-                    Ok(rotation.apply(&legs)?.concat())
-                })
-                .collect::<RusticolResult<Vec<_>>>()?;
+            let moved = rotate(rotation, momenta)?;
             let mut runs = Vec::with_capacity(momenta.len());
             let turned = self.evaluate_batch::<f64, Binary64, true>(
                 &moved,
@@ -181,7 +178,7 @@ impl V2Runtime {
         let mut out = Vec::with_capacity(points.len());
         for (index, point) in points.into_iter().enumerate() {
             if !failures[index].is_empty() {
-                out.push((Err(std::mem::take(&mut failures[index])), None));
+                out.push((Err(std::mem::take(&mut failures[index])), None, None));
                 continue;
             }
             let run = |runs: &[Option<Collected<f64>>]| {
@@ -220,9 +217,193 @@ impl V2Runtime {
                     .map(|(name, lanes)| (*name, lanes.as_slice())),
                 cross.as_ref().map(|runs| &runs[index]),
             )?;
-            out.push((point, Some(estimate)));
+            out.push((point, Some(estimate), None));
         }
         Ok(out)
+    }
+
+    /// One loop-induced batch of one scale partition with its checks
+    /// (`NativeExecutor._runs` of an amplitude-mode plan: the reference
+    /// evaluation with the re-test frame and the term scale, the rotated and
+    /// cross-backend evaluations without; `point_estimate`).
+    fn induced_checked_batch(
+        &mut self,
+        induced: &Induced,
+        momenta: &[Vec<Rational>],
+        scales: &[Rational],
+        mode: V2Poles,
+        checks: &StabilityChecks,
+    ) -> RusticolResult<Vec<Monitored>> {
+        let width = if mode.poles() { 3 } else { 1 };
+        let frame = checks.frame().map(|frame| match frame {
+            Frame::Reversed => ReductionCheck::REVERSED,
+            Frame::Rescaled => ReductionCheck::RESCALED,
+        });
+        let gram = induced.carrier(&Binary64, induced.metric())?;
+        let rows = induced.plan_rows();
+        let average = self.record.average;
+        let mut collected = Vec::with_capacity(momenta.len());
+        let points = self.induced_points_with(
+            induced,
+            momenta,
+            scales,
+            mode,
+            V2Precision::Double,
+            &0.0,
+            &Binary64,
+            Monitoring {
+                check: frame,
+                term_scale: true,
+                collected: Some(&mut collected),
+            },
+            &mut |_, vectors, width| {
+                induced.square_vectors(&Binary64, vectors, &rows, &gram, width, average)
+            },
+        )?;
+        let mut failures: Vec<Vec<String>> = points
+            .iter()
+            .map(|point| point.as_ref().err().cloned().unwrap_or_default())
+            .collect();
+        let mut rotated = Vec::with_capacity(checks.rotations().len());
+        for (k, rotation) in checks.rotations().iter().enumerate() {
+            let moved = rotate(rotation, momenta)?;
+            let mut runs = Vec::with_capacity(momenta.len());
+            let turned = self.induced_points_with(
+                induced,
+                &moved,
+                scales,
+                mode,
+                V2Precision::Double,
+                &0.0,
+                &Binary64,
+                Monitoring {
+                    check: None,
+                    term_scale: false,
+                    collected: Some(&mut runs),
+                },
+                &mut |_, _, _| Ok(()),
+            )?;
+            for (index, point) in turned.iter().enumerate() {
+                if let Err(reasons) = point {
+                    failures[index].extend(
+                        reasons
+                            .iter()
+                            .map(|reason| format!("{}: {reason}", stability::rotation_name(k))),
+                    );
+                }
+            }
+            rotated.push(runs);
+        }
+        let cross = if checks.cross_backend() {
+            Some(self.induced_cross_runs(induced, momenta, scales, mode)?)
+        } else {
+            None
+        };
+        // The key tables: loop orders (the squaring's slots first) and plan
+        // rows by id.
+        let mut orders: Vec<Orders> = induced.slots().to_vec();
+        let shape = InducedShape {
+            size: induced.size(),
+            width,
+            gram: gram.iter().map(|z| (z.re, z.im)).collect(),
+            rows: (0..rows.len()).collect(),
+            sectors: induced.pairs().to_vec(),
+            average: average as f64,
+        };
+        let mut convert =
+            |found: &InducedCollected<f64>| induced_point(induced, &rows, &mut orders, found);
+        let mut out = Vec::with_capacity(points.len());
+        for (index, point) in points.into_iter().enumerate() {
+            if !failures[index].is_empty() {
+                out.push((Err(std::mem::take(&mut failures[index])), None, None));
+                continue;
+            }
+            let squared = point.map_err(|_| invalid("a successful point without values"))?;
+            let missing = || invalid("a successful point without its collected vectors");
+            let direct = convert(collected[index].as_ref().ok_or_else(missing)?)?;
+            let turned = rotated
+                .iter()
+                .map(|runs: &Vec<Option<InducedCollected<f64>>>| {
+                    convert(runs[index].as_ref().ok_or_else(missing)?)
+                })
+                .collect::<RusticolResult<Vec<_>>>()?;
+            let other = match cross.as_ref().map(|runs| &runs[index]) {
+                Some(CrossRun::Run(found)) => Some(CrossRun::Run(convert(found)?)),
+                Some(CrossRun::NotRun(why)) => Some(CrossRun::NotRun(why.clone())),
+                None => None,
+            };
+            let estimate = stability::induced_estimate(
+                &shape,
+                2.0_f64.powi(-53),
+                &squared,
+                &direct,
+                &turned,
+                checks.reduction(),
+                other.as_ref(),
+            )?;
+            let finiteness = shape.finiteness(&direct)?;
+            let values = self
+                .sector_index
+                .iter()
+                .map(|&s| squared[s].clone())
+                .collect();
+            out.push((Ok((Vec::new(), values)), Some(estimate), finiteness));
+        }
+        Ok(out)
+    }
+
+    /// [`V2Runtime::cross_runs`] of a loop-induced batch.
+    fn induced_cross_runs(
+        &mut self,
+        induced: &Induced,
+        momenta: &[Vec<Rational>],
+        scales: &[Rational],
+        mode: V2Poles,
+    ) -> RusticolResult<Vec<CrossRun<InducedCollected<f64>>>> {
+        let other = cross_reduction(self.reduction);
+        let name = backend_name(other);
+        self.swap_cross(other);
+        let result: RusticolResult<Vec<CrossRun<InducedCollected<f64>>>> = (|| {
+            if let Err(refusal) = self.backend(V2Precision::Double) {
+                let why = format!(
+                    "{name} refused the call: reduction '{}' cannot serve this artifact: {refusal}",
+                    other.name()
+                );
+                return Ok((0..momenta.len())
+                    .map(|_| CrossRun::NotRun(why.clone()))
+                    .collect());
+            }
+            let mut runs = Vec::with_capacity(momenta.len());
+            let points = self.induced_points_with(
+                induced,
+                momenta,
+                scales,
+                mode,
+                V2Precision::Double,
+                &0.0,
+                &Binary64,
+                Monitoring {
+                    check: None,
+                    term_scale: false,
+                    collected: Some(&mut runs),
+                },
+                &mut |_, _, _| Ok(()),
+            )?;
+            points
+                .iter()
+                .zip(runs)
+                .map(|(point, run)| match (point, run) {
+                    (Err(reasons), _) => Ok(CrossRun::NotRun(format!(
+                        "{name} failed the point: {}",
+                        reasons.join("; ")
+                    ))),
+                    (Ok(_), Some(run)) => Ok(CrossRun::Run(run)),
+                    (Ok(_), None) => Err(invalid("a successful point without its vectors")),
+                })
+                .collect()
+        })();
+        self.swap_cross(other);
+        result
     }
 
     /// The cross-backend check's evaluations (`NativeExecutor._cross_runs`):
@@ -234,11 +415,11 @@ impl V2Runtime {
         momenta: &[Vec<Rational>],
         scales: &[Rational],
         mode: V2Poles,
-    ) -> RusticolResult<Vec<CrossRun<LaneKey>>> {
+    ) -> RusticolResult<Vec<CrossRun<PointLanes<LaneKey>>>> {
         let other = cross_reduction(self.reduction);
         let name = backend_name(other);
         self.swap_cross(other);
-        let result: RusticolResult<Vec<CrossRun<LaneKey>>> = (|| {
+        let result: RusticolResult<Vec<CrossRun<PointLanes<LaneKey>>>> = (|| {
             if let Err(refusal) = self.backend(V2Precision::Double) {
                 let why = format!(
                     "{name} refused the call: reduction '{}' cannot serve this artifact: {refusal}",
@@ -286,4 +467,95 @@ impl V2Runtime {
             other
         };
     }
+}
+
+/// Every point's momenta rotated exactly (`Rotation.apply` of each point,
+/// whose legs are its four-component chunks).
+fn rotate(
+    rotation: &stability::Rotation,
+    momenta: &[Vec<Rational>],
+) -> RusticolResult<Vec<Vec<Rational>>> {
+    momenta
+        .iter()
+        .map(|point| {
+            let legs: Vec<Vec<Rational>> =
+                point.chunks_exact(4).map(<[Rational]>::to_vec).collect();
+            Ok(rotation.apply(&legs)?.concat())
+        })
+        .collect()
+}
+
+/// A collected loop-induced run as the shared estimate reads it
+/// (`InducedPoint`): keys by (loop order id in `orders`, plan row id), the
+/// executor's per-slot re-test budget and term scale per (plan order, row)
+/// as `induced.read_native` reads them.
+fn induced_point(
+    induced: &Induced,
+    rows: &[induced::Row],
+    orders: &mut Vec<Orders>,
+    found: &InducedCollected<f64>,
+) -> RusticolResult<InducedPoint> {
+    let mut key = |order: &Orders, row: &induced::Row| -> RusticolResult<(usize, usize)> {
+        let o = match orders.iter().position(|o| o == order) {
+            Some(o) => o,
+            None => {
+                orders.push(order.clone());
+                orders.len() - 1
+            }
+        };
+        let r = rows
+            .iter()
+            .position(|r| r == row)
+            .ok_or_else(|| invalid("a vector of a row outside the plan's rows"))?;
+        Ok((o, r))
+    };
+    let mut cells = |vectors: &induced::Vectors<f64>| -> RusticolResult<_> {
+        vectors
+            .iter()
+            .map(|((order, row), vector)| {
+                Ok((
+                    key(order, row)?,
+                    vector
+                        .iter()
+                        .map(|cell| cell.iter().map(|z| (z.re, z.im)).collect())
+                        .collect(),
+                ))
+            })
+            .collect::<RusticolResult<Vec<_>>>()
+    };
+    let amplitudes = cells(&found.parts.total)?;
+    let bare = cells(&found.parts.bare)?;
+    let kets = cells(&found.parts.kets)?;
+    let size = induced.size();
+    let columns = rows.len() * size;
+    let mut slots = |values: &Option<Vec<Vec<f64>>>| -> RusticolResult<Option<_>> {
+        let Some(values) = values else {
+            return Ok(None);
+        };
+        let mut out = Vec::new();
+        for (o, order) in induced.plan_orders().iter().enumerate() {
+            for (r, row) in rows.iter().enumerate() {
+                let base = o * columns + r * size;
+                let vector = (0..size)
+                    .map(|t| {
+                        values
+                            .get(base + t)
+                            .cloned()
+                            .ok_or_else(|| invalid("the executor's slots differ from the plan's"))
+                    })
+                    .collect::<RusticolResult<Vec<_>>>()?;
+                out.push((key(order, row)?, vector));
+            }
+        }
+        Ok(Some(out))
+    };
+    let budget = slots(&found.budget)?;
+    let terms = slots(&found.terms)?;
+    Ok(InducedPoint {
+        amplitudes,
+        bare,
+        kets,
+        budget,
+        terms,
+    })
 }

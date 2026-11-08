@@ -354,3 +354,150 @@ def test_sdk_estimates_equal_the_python_api(artifacts, loop_native, name):
     finally:
         sdk.rusticol_virtual_free(handle)
     assert estimated
+
+
+# ------------------------------------------------------------ loop-induced
+
+INDUCED_CONFIGURATIONS = [
+    (2, None, True, True, False, "all", "auto"),
+    (1, None, True, False, False, "none", "auto"),
+    (0, ["euler:0.1,0.2,0.3"], False, False, False, "all", "auto"),
+    (1, None, True, True, True, "all", "auto"),
+    (1, None, True, True, False, "all", "tirust"),
+]
+
+
+@pytest.fixture(scope="module")
+def induced_artifacts(loop_sm_ufo, loop_native, tmp_path_factory):
+    from tests.unit.loop_v2_induced_observables_rows import ROWS, generate
+
+    return {
+        name: generate(tmp_path_factory.mktemp(name), name, expression)
+        for name, expression in ROWS.items()
+    }
+
+
+def _induced_python(runtime, points, scales, configuration):
+    from pyamplicol.api.errors import ReductionUnavailable
+
+    *_, poles, reduction = configuration
+    try:
+        return runtime.evaluate(
+            points,
+            mu_r2=scales,
+            poles=poles,
+            reduction=reduction,
+            stability_checks=_checks(configuration),
+            on_failure="return",
+        ), None
+    except ReductionUnavailable as error:
+        return None, error
+
+
+@pytest.mark.parametrize("name", ["li_gg_hgg", "li_uux_hgg"])
+def test_loop_induced_native_estimates_equal_the_python_assembly(
+    induced_artifacts, loop_native, monkeypatch, name
+):
+    """The loop-induced binary64 estimates through the native implementation
+    equal the Python assembly (``induced.rotation_budget``, ``budgets``,
+    ``cross_budget``, ``scale``) bitwise, the values and the finiteness
+    diagnostics unchanged."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.loops.v2 import stability
+    from tests.unit.test_loop_v2_sdk_induced import _exact, _inputs
+
+    runtime = Runtime.load(induced_artifacts[name], process="p")
+    points, scales = _exact(*_inputs(name, 2))
+    compared = 0
+    for configuration in INDUCED_CONFIGURATIONS:
+        monkeypatch.setattr(stability, "NATIVE_BINARY64", True)
+        native, refused = _induced_python(runtime, points, scales, configuration)
+        monkeypatch.setattr(stability, "NATIVE_BINARY64", False)
+        oracle, refused_too = _induced_python(runtime, points, scales, configuration)
+        assert (refused is None) == (refused_too is None), configuration
+        if native is None:
+            assert str(refused) == str(refused_too)
+            continue
+        assert native.values == oracle.values, configuration
+        assert native.stability == oracle.stability, configuration
+        assert [d.finiteness for d in native.diagnostics] == [
+            d.finiteness for d in oracle.diagnostics
+        ]
+        compared += sum(estimate is not None for estimate in native.stability)
+    assert compared
+
+
+@pytest.mark.parametrize("name", ["li_gg_hgg", "li_uux_hgg"])
+def test_loop_induced_sdk_estimates_equal_the_python_api(
+    induced_artifacts, loop_native, name
+):
+    """The SDK's loop-induced estimates and finiteness ratios equal the
+    Python API's bitwise; on TIRust, where it fails points closed, the same
+    failed statuses and reasons."""
+
+    from pyamplicol import Runtime
+    from tests.unit.test_loop_v2_sdk_induced import _exact, _inputs
+
+    artifact = induced_artifacts[name]
+    runtime = Runtime.load(artifact, process="p")
+    points, scales = _inputs(name, 2)
+    exact_points, exact_scales = _exact(points, scales)
+    sdk = _sdk()
+    handle = ctypes.c_void_p()
+    status = sdk.rusticol_virtual_open(
+        str(artifact).encode(), b"p", None, None, ctypes.byref(handle)
+    )
+    assert status == 0, _error(sdk)
+    estimated = 0
+    try:
+        for configuration in INDUCED_CONFIGURATIONS:
+            count, specifications, direction, rescaled, cross, poles, reduction = (
+                configuration
+            )
+            assert sdk.rusticol_virtual_set_poles(handle, poles.encode()) == 0
+            status = sdk.rusticol_virtual_set_reduction(handle, reduction.encode())
+            expected, refused = _induced_python(
+                runtime, exact_points, exact_scales, configuration
+            )
+            if reduction == "tirust" and "tirust" not in _served(loop_native):
+                assert status == STATUS_RUNTIME_ERROR and refused is not None
+                continue
+            assert status == 0, _error(sdk)
+            status = _set(
+                sdk, handle, count, specifications, direction, rescaled, cross
+            )
+            assert status == 0, _error(sdk)
+            status, found = _evaluate(sdk, handle, points, scales)
+            if refused is not None:
+                assert status == STATUS_RUNTIME_ERROR, configuration
+                assert str(refused) in _error(sdk)
+                continue
+            assert status == 0, (configuration, _error(sdk))
+            served = [value is not None for value in expected.values]
+            assert found["statuses"] == [
+                SUCCESS_STATUS if ok else FAILED_STATUS for ok in served
+            ], configuration
+            assert _same(found["virtual"], _flat(expected)), configuration
+            failures = found["diagnostics"]["failures"]
+            for index, ok in enumerate(served):
+                if not ok:
+                    assert "; ".join(failures[str(index)]) == (
+                        expected.diagnostics[index].detail
+                    ), configuration
+            record = found["diagnostics"]["stability"]
+            assert record["estimates"] == [
+                _record(estimate)
+                for estimate in expected.stability
+                if estimate is not None
+            ], configuration
+            ratios = [
+                _number(d.finiteness)
+                for d, ok in zip(expected.diagnostics, served, strict=True)
+                if ok
+            ]
+            assert record["finiteness"] == (None if poles == "none" else ratios)
+            estimated += len(record["estimates"])
+    finally:
+        sdk.rusticol_virtual_free(handle)
+    assert estimated

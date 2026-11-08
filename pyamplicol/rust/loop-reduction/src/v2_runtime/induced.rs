@@ -326,6 +326,41 @@ impl Induced {
         Complex<T>: symbolica::domains::float::Real + symbolica::evaluate::EvaluationDomain,
         rusticol_core::loop_v2::trees::TreeRuntime<T>: Send,
     {
+        Ok(self
+            .vector_parts(arith, amplitudes, kets, width, bits)?
+            .total)
+    }
+
+    /// The sectors' loop orders, sorted (the squaring's slots).
+    pub(crate) fn slots(&self) -> &[Orders] {
+        &self.slots
+    }
+
+    /// Per record sector its loop-order slot pairs, sorted.
+    pub(crate) fn pairs(&self) -> &[Vec<(usize, usize)>] {
+        &self.pairs
+    }
+
+    /// The plan's loop orders in the executor's slot order.
+    pub(crate) fn plan_orders(&self) -> &[Orders] {
+        &self.plan_orders
+    }
+
+    /// [`Induced::vectors_point`] with its parts: the bare vectors
+    /// (`bare_vectors`), the counterterm kets (`counterterm_vectors`) and
+    /// their sum (`amplitude_vectors`).
+    pub(crate) fn vector_parts<T: Native, A: Lift<T> + Squaring>(
+        &self,
+        arith: &A,
+        amplitudes: &[Vec<Complex<T>>],
+        kets: Option<&[Complex<T>]>,
+        width: usize,
+        bits: u32,
+    ) -> RusticolResult<VectorParts<A::N>>
+    where
+        Complex<T>: symbolica::domains::float::Real + symbolica::evaluate::EvaluationDomain,
+        rusticol_core::loop_v2::trees::TreeRuntime<T>: Send,
+    {
         let size = self.record.size;
         let rows = self.plan_rows();
         let zero = C::new(arith.zero(), arith.zero());
@@ -392,7 +427,11 @@ impl Induced {
                 }
             }
         }
-        Ok(total)
+        Ok(VectorParts {
+            bare,
+            kets: ket_vectors,
+            total,
+        })
     }
 
     /// An exact matrix on the amplitude basis in the carrier ([`carrier`]).
@@ -447,6 +486,13 @@ pub(crate) fn carrier<A: Squaring>(arith: &A, cells: &[Exact]) -> RusticolResult
             Ok(arith.times_real(&cell, &one))
         })
         .collect()
+}
+
+/// One point's amplitude vectors with their parts (`induced.assemble`).
+pub(crate) struct VectorParts<N> {
+    pub(crate) bare: Vectors<N>,
+    pub(crate) kets: Vectors<N>,
+    pub(crate) total: Vectors<N>,
 }
 
 /// A helicity row as the Python API's `rx.Row`: per leg its 0-based index

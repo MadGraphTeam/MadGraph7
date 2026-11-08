@@ -30,13 +30,14 @@
 
 use super::columns::{ColumnPoint, ColumnValues, INCLUSIVE};
 pub use super::induced::{Exact, Row, Vectors};
-use super::induced::{Induced, Squaring, carrier};
+use super::induced::{Induced, Squaring, VectorParts, carrier};
 use super::{Lift, Native, V2Poles, V2Precision, V2Runtime, contraction, invalid, v2_batch};
 use crate::Complex;
 use crate::v2_decimal::{Arith, C, Decimal, DecimalArith, DecimalContext, cadd, cmul};
 use rusticol_core::RusticolResult;
 use rusticol_core::loop_execution::v2::V2Options;
 use rusticol_core::loop_v2::dress::parse_rational;
+use rusticol_core::loop_v2::retest::ReductionCheck;
 use rusticol_core::loop_v2::trees::TreeRuntime;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -900,6 +901,7 @@ impl V2Runtime {
     /// `per_point` (with the point index and the Laurent width). Points
     /// fail alone.
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn induced_points<T: Native, A: Lift<T> + Squaring, R>(
         &mut self,
         induced: &Induced,
@@ -910,6 +912,39 @@ impl V2Runtime {
         zero: &T,
         arith: &A,
         mut per_point: impl FnMut(usize, &Vectors<A::N>, usize) -> RusticolResult<R>,
+    ) -> RusticolResult<Vec<Result<R, Vec<String>>>>
+    where
+        Complex<T>: Real + EvaluationDomain,
+        TreeRuntime<T>: Send,
+    {
+        self.induced_points_with(
+            induced,
+            momenta,
+            scales,
+            mode,
+            precision,
+            zero,
+            arith,
+            Monitoring::default(),
+            &mut per_point,
+        )
+    }
+
+    /// [`V2Runtime::induced_points`] with the stability monitoring's
+    /// executor options and collection (`monitoring`, the reference
+    /// evaluation of a monitored batch: its re-test frame and term scale).
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn induced_points_with<T: Native, A: Lift<T> + Squaring, R>(
+        &mut self,
+        induced: &Induced,
+        momenta: &[Vec<Rational>],
+        scales: &[Rational],
+        mode: V2Poles,
+        precision: V2Precision,
+        zero: &T,
+        arith: &A,
+        mut monitoring: Monitoring<'_, A::N>,
+        per_point: &mut impl FnMut(usize, &Vectors<A::N>, usize) -> RusticolResult<R>,
     ) -> RusticolResult<Vec<Result<R, Vec<String>>>>
     where
         Complex<T>: Real + EvaluationDomain,
@@ -929,6 +964,8 @@ impl V2Runtime {
         let options = V2Options {
             poles: mode.lanes(),
             contraction: contraction(&self.artifact.metadata.color_contraction),
+            check: monitoring.check,
+            term_scale: monitoring.term_scale,
             ..V2Options::default()
         };
         self.backend(precision)?;
@@ -939,20 +976,72 @@ impl V2Runtime {
         let mut out = Vec::with_capacity(results.len());
         for (index, result) in results.into_iter().enumerate() {
             if !result.failures.is_empty() {
+                if let Some(collected) = monitoring.collected.as_deref_mut() {
+                    collected.push(None);
+                }
                 out.push(Err(result.failures));
                 continue;
             }
-            let vectors = induced.vectors_point(
-                arith,
-                &result.amplitudes,
-                kets.as_ref().map(|kets| kets[index].as_slice()),
-                width,
-                bits,
-            )?;
-            out.push(Ok(per_point(index, &vectors, width)?));
+            let point_kets = kets.as_ref().map(|kets| kets[index].as_slice());
+            let Some(collected) = monitoring.collected.as_deref_mut() else {
+                let vectors =
+                    induced.vectors_point(arith, &result.amplitudes, point_kets, width, bits)?;
+                out.push(Ok(per_point(index, &vectors, width)?));
+                continue;
+            };
+            // What the point's stability budgets read (`induced.read_native`:
+            // the bare vectors, kets and their sum, the re-test budget and
+            // the term scale, per executor slot).
+            let parts = induced.vector_parts(arith, &result.amplitudes, point_kets, width, bits)?;
+            let lift = |slots: &[Vec<T>]| -> RusticolResult<Vec<Vec<A::N>>> {
+                slots
+                    .iter()
+                    .map(|slot| slot.iter().map(|x| arith.real(x, bits)).collect())
+                    .collect()
+            };
+            let budget = result.amplitude_budget.as_deref().map(lift).transpose()?;
+            let terms = if monitoring.term_scale {
+                Some(lift(&result.amplitude_scale)?)
+            } else {
+                None
+            };
+            out.push(Ok(per_point(index, &parts.total, width)?));
+            collected.push(Some(InducedCollected {
+                parts,
+                budget,
+                terms,
+            }));
         }
         Ok(out)
     }
+}
+
+/// The stability monitoring of a loop-induced executor run: the re-test
+/// frame, whether the executor forms the term scale, and where each point's
+/// collected inputs go (none: an evaluation without checks).
+pub(super) struct Monitoring<'a, N> {
+    pub(super) check: Option<ReductionCheck>,
+    pub(super) term_scale: bool,
+    pub(super) collected: Option<&'a mut Vec<Option<InducedCollected<N>>>>,
+}
+
+impl<N> Default for Monitoring<'_, N> {
+    fn default() -> Self {
+        Self {
+            check: None,
+            term_scale: false,
+            collected: None,
+        }
+    }
+}
+
+/// What a monitored loop-induced run collects per successful point: its
+/// vectors and their parts, and per executor slot (`order * rows * T + row *
+/// T + t`) the re-test budget and the term scale when formed.
+pub(super) struct InducedCollected<N> {
+    pub(super) parts: VectorParts<N>,
+    pub(super) budget: Option<Vec<Vec<N>>>,
+    pub(super) terms: Option<Vec<Vec<N>>>,
 }
 
 #[cfg(test)]

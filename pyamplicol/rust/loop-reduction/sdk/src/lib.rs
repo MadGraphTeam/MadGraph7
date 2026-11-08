@@ -427,9 +427,10 @@ impl Runtime {
     /// `stability_checks=` (`VirtualStabilityChecks`): rotations, the
     /// reduction-direction check (rescaled: masters recomputed) and the
     /// cross-backend check (`StabilityChecks`). The default runs none: no
-    /// estimate and nothing else runs. Binary64 ordinary evaluations of a
-    /// Born-interfered process in the pole selections "all" and "none"
-    /// return each successful point's estimate in their diagnostics
+    /// estimate and nothing else runs. Binary64 ordinary evaluations (of a
+    /// Born-interfered process in the pole selections "all" and "none", of a
+    /// loop-induced one in both of its selections) return each successful
+    /// point's estimate in their diagnostics
     /// (`"stability"`), bitwise the Python API's; the other evaluations
     /// return none and say why there. A cross-backend check in a library
     /// without the other backend is refused when a call is resolved (the
@@ -909,16 +910,25 @@ impl Evaluation {
         let (momenta, scales) = exact_inputs(&inputs, shape.external_count)?;
         match (arithmetic, monitoring.checks) {
             (Arithmetic::Double, Some(checks)) => {
-                let (points, estimates): (Vec<_>, Vec<_>) = native
-                    .evaluate_checked(&momenta, &scales, poles.v2(), checks)?
-                    .into_iter()
-                    .unzip();
-                let records: Vec<serde_json::Value> = estimates
-                    .iter()
-                    .flatten()
-                    .map(|estimate| public_estimate(estimate, poles != Poles::None, native))
-                    .collect();
-                let stability = serde_json::json!({ "estimates": records });
+                let monitored = native.evaluate_checked(&momenta, &scales, poles.v2(), checks)?;
+                let mut points = Vec::with_capacity(monitored.len());
+                let mut records = Vec::new();
+                let mut finiteness = Vec::new();
+                for (point, estimate, ratio) in monitored {
+                    if let Some(estimate) = &estimate {
+                        records.push(public_estimate(estimate, poles != Poles::None, native));
+                        finiteness.push(ratio.map(number));
+                    }
+                    points.push(point);
+                }
+                // A loop-induced point's finiteness ratio, with poles
+                // (`VirtualLaneDiagnostic.finiteness`): per successful point.
+                let finiteness =
+                    (native.loop_induced() && poles != Poles::None).then_some(finiteness);
+                let stability = serde_json::json!({
+                    "estimates": records,
+                    "finiteness": finiteness,
+                });
                 Self::ordinary(
                     inputs, shape, poles, arithmetic, points, reduction, stability,
                 )
@@ -1158,9 +1168,9 @@ fn ratio(error: f64, scale: f64) -> f64 {
 }
 
 /// The public record of a point's estimate, the Python API's
-/// `VirtualStabilityEstimate` (`runtime.virtual.v2_public_estimate` of a
-/// Born-interfered result): `relative`, `finite`, `single_pole` and
-/// `double_pole` (null without poles), `checks` (name, relative budget),
+/// `VirtualStabilityEstimate` (`runtime.virtual.v2_public_estimate`):
+/// `relative`, `finite`, `single_pole` and `double_pole` (null without
+/// poles; a loop-induced result's are E / S), `checks` (name, relative budget),
 /// `scale` (the largest E / S), `absolute` E and `magnitude` S per declared
 /// sector and Laurent coefficient (absent poles null), `not_run` (name,
 /// reason).
@@ -1203,11 +1213,25 @@ fn public_estimate(estimate: &Estimate, with_poles: bool, native: &V2Runtime) ->
         out.resize(3, serde_json::Value::Null);
         serde_json::Value::Array(out)
     };
+    // A loop-induced result's pole estimates are E / S too (its poles
+    // vanish, so their own size is no scale; m-lit PLAN §2.a.7).
+    let induced = native.loop_induced();
     let pole = |k: usize| {
-        if with_poles {
-            number(estimate.coefficients[k])
-        } else {
+        if !with_poles {
             serde_json::Value::Null
+        } else if induced {
+            let mut worst: Option<f64> = None;
+            for (error, size) in errors.iter().zip(&sizes) {
+                let value = ratio(error[k], size[k]);
+                worst = Some(match worst {
+                    Some(current) if value > current => value,
+                    Some(current) => current,
+                    None => value,
+                });
+            }
+            number(worst.unwrap_or(0.0))
+        } else {
+            number(estimate.coefficients[k])
         }
     };
     serde_json::json!({
