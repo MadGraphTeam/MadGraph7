@@ -331,6 +331,23 @@ and selected outputs each check it, so a result never names a backend that
 did not reduce it. Every lane diagnostic records the requested and effective
 backend and the reason ([Configuration](configuration.md#reduction-backend)).
 
+`VirtualStabilityChecks(..., cross_backend=True)` adds the cross-backend
+check: every point is evaluated a second time on the other backend (TIRust
+for a call on NinjaRS, NinjaRS for one on TIRust) and the deviation of its
+reduction lanes enters the estimate as the check `"cross-backend"`. It
+samples what neither backend's own frames see (the two reductions round
+differently everywhere), costs one more evaluation of every point, and
+combines with at least one other check: a point the other backend fails or
+refuses keeps the estimate of the other checks and names the check, with
+the reason, in its estimate's `not_run` (a refusal of the other backend says
+nothing about the value). It is a runtime option of the call, never stored in
+an artifact; a carrier the other backend does not serve (TIRust at
+double-double in this release, or a native extension built without TIRust)
+refuses it before any point (`ReductionUnavailable`). The values are those
+of the call without it, bit for bit. It runs on `evaluate` and on the
+resolved, correlated and selected outputs of both process types (not on the
+Python reference executor, which refuses it).
+
 With stability checks every estimate carries, besides the relative
 estimates, the absolute estimate E per sector and Laurent coefficient
 (`absolute`), the scale S it is measured against (`magnitude`, the size of
@@ -752,7 +769,22 @@ has:
   order against its largest Laurent coefficient), `"finite"` (the finite
   part against itself) or `"scale"` (E <= target x S, the estimate against
   the scale of what cancelled: an opt-in acceptance rule for values that may
-  vanish, such as a loop-induced zero, which no relative target can reach).
+  vanish, such as a loop-induced zero, which no relative target can reach);
+- its reduction backend `reduction`: `"auto"` (the default: the call's
+  `reduction=` request when it names a backend, else the runtime's or the
+  artifact's, else the per-type default with its fallback), `"ninjars"` or
+  `"tirust"`. Naming one backend per level emulates MadLoop's
+  `MLReductionLib` order, e.g. `VirtualRescueLevel("double",
+  reduction="tirust")` followed by `VirtualRescueLevel("double-double",
+  reduction="ninjars")`. Each level's backend is resolved once, for its
+  carrier, before the first point: an explicit one (the level's, or the
+  call's inherited by an `"auto"` level) that cannot serve the level's
+  carrier is refused (`ReductionUnavailable`; TIRust serves binary64 in this
+  release, so a `"tirust"` double-double level is refused), never switched.
+  Each `VirtualRescueAttempt` records the level's `reduction`
+  (`VirtualReduction`: requested, effective, reason), so
+  `result.rescue[i].attempts` shows the backend of every level a point
+  reached (`result.rescue[i].reduction` is the returning level's).
 
 Only the last level may run without a check; it then keeps every point it
 evaluates, with no estimate. How a batch runs:
@@ -802,7 +834,8 @@ selections `"all"` and `"none"`, full colour and its helicity selections
 (`helicities=`); it has no colour flows to select (`CompatibilityError`). The reduction backend (`reduction=`) is
 resolved for every level's carrier before the first point is evaluated: an
 explicitly requested backend that cannot serve one of them is refused, an
-`"auto"` one records its choice per level in the lane diagnostics. `stability=` together with
+`"auto"` one records its choice per level in the lane diagnostics and the
+attempts. `stability=` together with
 `arithmetic`, a non-default `precision` or `stability_checks` is refused with a
 `CompatibilityError` (the levels own them), as is a policy on
 `evaluate_resolved` and `evaluate_correlated(_many)`, and a load-time policy

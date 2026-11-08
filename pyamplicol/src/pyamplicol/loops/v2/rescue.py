@@ -162,16 +162,24 @@ def _attempt(
     evaluation: VirtualEvaluation, lane: int, level: VirtualRescueLevel
 ) -> VirtualRescueAttempt:
     diagnostic = evaluation.diagnostics[lane]
+    # The level's reduction backend as its evaluation recorded it
+    # (``VirtualLaneDiagnostic.reduction``: requested, effective, reason).
     if not diagnostic.valid:
         return VirtualRescueAttempt(
             diagnostic.arithmetic,
             diagnostic.precision_bits,
             None,
             diagnostic.detail or diagnostic.status,
+            diagnostic.reduction,
         )
     estimate = None if evaluation.stability is None else evaluation.stability[lane]
     value = None if estimate is None else float(getattr(estimate, level.metric))
-    return VirtualRescueAttempt(diagnostic.arithmetic, diagnostic.precision_bits, value)
+    return VirtualRescueAttempt(
+        diagnostic.arithmetic,
+        diagnostic.precision_bits,
+        value,
+        reduction=diagnostic.reduction,
+    )
 
 
 def _detail(record: VirtualRescueRecord, metric: str) -> str:

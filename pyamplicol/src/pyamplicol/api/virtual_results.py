@@ -166,12 +166,25 @@ class VirtualStabilityChecks:
     estimate is returned. Escalating the arithmetic is the caller's decision.
     ``VirtualStabilityChecks(1, True, rescaled=True)`` is the recommended
     configuration (``loops.v2.stability.RECOMMENDED_CHECKS``).
+
+    ``cross_backend`` (m-lit PLAN §2.b.6, RULED Q21) evaluates every point a
+    second time on the other reduction backend (NinjaRS for a call reduced
+    by TIRust, TIRust for one reduced by NinjaRS) and adds the deviation of
+    its reduction lanes to the estimate (``checks`` names it
+    ``cross-backend``). It is a runtime option of the call, never declared
+    in an artifact; a native extension or carrier without the other backend
+    refuses it typed (``ReductionUnavailable``) before any point. A point the
+    other backend fails or refuses keeps the estimate of the other checks
+    and names the check with the reason in ``not_run`` of its estimate (a
+    refusal says nothing about the value), so it combines with at least one
+    other check. It costs one more evaluation of every point.
     """
 
     # Normalised to exact ``Rotation`` records by ``__post_init__``.
     rotations: tuple[Rotation | str, ...] | int = ()
     reduction_direction: bool = False
     rescaled: bool = False
+    cross_backend: bool = False
 
     def __post_init__(self) -> None:
         given = self.rotations
@@ -191,11 +204,16 @@ class VirtualStabilityChecks:
             raise TypeError("reduction_direction must be a boolean")
         if type(self.rescaled) is not bool:
             raise TypeError("rescaled must be a boolean")
+        if type(self.cross_backend) is not bool:
+            raise TypeError("cross_backend must be a boolean")
         object.__setattr__(
             self,
             "rotations",
             StabilityChecks(
-                rotations, self.reduction_direction, self.rescaled
+                rotations,
+                self.reduction_direction,
+                self.rescaled,
+                self.cross_backend,
             ).rotations,
         )
 
@@ -208,6 +226,7 @@ class VirtualStabilityChecks:
             cast(tuple[Rotation, ...], self.rotations),
             self.reduction_direction,
             self.rescaled,
+            self.cross_backend,
         )
 
 
@@ -266,6 +285,11 @@ class VirtualStabilityEstimate:
     ``double_pole`` are measured against S as well (max over sectors of E /
     S): its poles vanish, so their own size is no scale (m-lit PLAN §2.a.7,
     "Pole shape").
+
+    ``not_run`` names each requested check that did not run at this point,
+    with its reason (``cross-backend``: the other reduction backend failed
+    or refused the point, ``VirtualStabilityChecks.cross_backend``); the
+    estimate is then the other checks'.
     """
 
     relative: float
@@ -276,6 +300,7 @@ class VirtualStabilityEstimate:
     scale: float | None = None
     absolute: tuple[LaurentCoefficients, ...] | None = None
     magnitude: tuple[LaurentCoefficients, ...] | None = None
+    not_run: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         for name in ("relative", "finite", "single_pole", "double_pole", "scale"):
@@ -289,6 +314,13 @@ class VirtualStabilityEstimate:
         if not checks or len({name for name, _ in checks}) != len(checks):
             raise ValueError("an estimate names its distinct checks")
         object.__setattr__(self, "checks", checks)
+        skipped = tuple((str(name), str(reason)) for name, reason in self.not_run)
+        names = [name for name, _ in skipped]
+        if len(set(names)) != len(names) or set(names) & {n for n, _ in checks}:
+            raise ValueError("a check that did not run is named once, not as run")
+        if any(not reason for _, reason in skipped):
+            raise ValueError("a check that did not run states its reason")
+        object.__setattr__(self, "not_run", skipped)
         given = [item is None for item in (self.scale, self.absolute, self.magnitude)]
         if any(given) != all(given):
             raise ValueError("scale, absolute and magnitude are given together")
@@ -368,6 +400,20 @@ class VirtualRescueLevel:
     ``target``. A level without any check accepts no point by its
     estimate; it may only be the last level, which keeps every point it
     evaluates.
+
+    ``reduction`` is the level's reduction backend (m-lit PLAN §2.b.4 and
+    §2.b.6, RULED Q17 / Q22): ``"auto"`` (the default) takes the call's
+    request when the call names a backend (``evaluate(..., reduction=)``,
+    else ``Runtime.load(..., reduction=)``, else the artifact's default),
+    else the per-type default with its fallback; ``"ninjars"`` or
+    ``"tirust"`` names the level's own backend (e.g. MadLoop's
+    ``MLReductionLib`` order, one backend per level). Each level resolves its
+    backend once, for its carrier, before any point is evaluated: an
+    explicit backend (the level's, or the call's inherited by ``"auto"``)
+    that cannot serve the level's carrier is refused typed
+    (``ReductionUnavailable``), never switched; the requested and effective
+    backends and the reason are in every attempt of
+    :class:`VirtualRescueRecord`.
     """
 
     arithmetic: Literal["double", "double-double", "arbitrary"]
@@ -376,9 +422,12 @@ class VirtualRescueLevel:
     reduction_check: Literal["none", "reversed", "rescaled"] = "rescaled"
     target: float = RESCUE_TARGET
     metric: Literal["relative", "finite", "scale"] = "relative"
+    reduction: Literal["auto", "ninjars", "tirust"] = "auto"
 
     def __post_init__(self) -> None:
         VirtualArithmeticSpec(self.arithmetic, self.precision)
+        # The one validator of every reduction request (lit-api).
+        object.__setattr__(self, "reduction", reduction_request(self.reduction))
         if self.reduction_check not in REDUCTION_CHECKS:
             raise ValueError(f"reduction_check must be one of {REDUCTION_CHECKS}")
         if self.metric not in RESCUE_METRICS:
@@ -409,6 +458,12 @@ class VirtualRescueLevel:
     @property
     def precision_bits(self) -> int:
         return _carrier_bits(self.arithmetic, self.precision)
+
+    def backend_request(self, call: str) -> str:
+        """The level's reduction request in a call that requests ``call``
+        (``reduction``: its own, or with ``"auto"`` the call's)."""
+
+        return reduction_request(call) if self.reduction == "auto" else self.reduction
 
 
 def _default_levels() -> tuple[VirtualRescueLevel, ...]:
@@ -466,14 +521,21 @@ class VirtualRescuePolicy:
 class VirtualRescueAttempt:
     """One level's evaluation of one point: its carrier, the value of the
     level's metric (``None`` when the point failed or the level runs no
-    check) or the failure."""
+    check) or the failure, and the level's reduction backend (requested,
+    effective and the reason, ``VirtualRescueLevel.reduction``; ``None``
+    from a runtime that records none)."""
 
     arithmetic: Literal["double", "double-double", "arbitrary"]
     precision_bits: int
     estimate: float | None
     failure: str | None = None
+    reduction: VirtualReduction | None = None
 
     def __post_init__(self) -> None:
+        if self.reduction is not None and not isinstance(
+            self.reduction, VirtualReduction
+        ):
+            raise TypeError("an attempt's reduction is a VirtualReduction record")
         if self.failure is not None:
             if not isinstance(self.failure, str) or self.estimate is not None:
                 raise ValueError("a failed attempt names its failure, no estimate")
@@ -525,6 +587,13 @@ class VirtualRescueRecord:
         """Whether the point failed at every level."""
 
         return self.attempts[-1].failure is not None
+
+    @property
+    def reduction(self) -> VirtualReduction | None:
+        """The reduction backend of the level whose evaluation the point
+        returns (its last attempt's; every level's is in ``attempts``)."""
+
+        return self.attempts[-1].reduction
 
 
 @dataclass(frozen=True, slots=True)
@@ -1092,6 +1161,8 @@ def _rescue(
             diagnostic.precision_bits,
         ):
             raise ValueError("a lane's carrier is its rescue level's")
+        if record.reduction != diagnostic.reduction:
+            raise ValueError("a lane's reduction backend is its rescue level's")
     return cast(tuple[VirtualRescueRecord, ...], records)
 
 
