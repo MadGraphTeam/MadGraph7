@@ -1546,6 +1546,7 @@ impl V2Executor {
     /// canonical masters provider; values unchanged) likewise. NinjaRS
     /// refuses them.
     #[pyo3(signature = (reduction="tirust", *, method_choice=None, alternative_first=super::v2::Limit::default_limit(), acceptance=None, acceptance_frame=None, profile=None, store=None, masters_census=None))]
+    #[allow(clippy::too_many_arguments)] // Python keyword arguments
     fn prepare_reduction(
         &mut self,
         reduction: &str,

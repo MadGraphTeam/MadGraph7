@@ -557,15 +557,24 @@ impl Counters {
 /// canonical argument bits, and the counts (misses, canonical repeats).
 #[derive(Default)]
 struct MastersCensus {
-    state: std::sync::Mutex<(std::collections::HashSet<(u8, Vec<u64>)>, u64, u64)>,
+    state: std::sync::Mutex<CensusState>,
+}
+
+/// The census of one chunk: the canonical argument bits seen, the misses
+/// and the repeats.
+#[derive(Default)]
+struct CensusState {
+    seen: std::collections::HashSet<(u8, Vec<u64>)>,
+    misses: u64,
+    repeats: u64,
 }
 
 impl MastersCensus {
     /// The counts since the last call, and a new chunk.
     fn take(&self) -> (u64, u64) {
         let mut state = self.state.lock().expect("census");
-        let counts = (state.1, state.2);
-        *state = Default::default();
+        let counts = (state.misses, state.repeats);
+        *state = CensusState::default();
         counts
     }
 }
@@ -604,9 +613,9 @@ impl MasterProvider for MastersCensus {
             .flat_map(|z| [z.re.to_bits(), z.im.to_bits()])
             .collect();
         let mut state = self.state.lock().expect("census");
-        state.1 += 1;
-        if !state.0.insert((code, bits)) {
-            state.2 += 1;
+        state.misses += 1;
+        if !state.seen.insert((code, bits)) {
+            state.repeats += 1;
         }
         None
     }
