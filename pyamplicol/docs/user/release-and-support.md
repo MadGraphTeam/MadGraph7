@@ -47,14 +47,20 @@ their coupling-order limits (`g g > h`, `g g > z z`, `h > g g`), served as
 [Python API](python-api.md#one-loop-virtuals-and-loop-induced-processes).
 `process.loop_induced` routes them (`"include"` serves both kinds of a mixed
 multiparticle request as separate contributions), and `[loop] reduction`
-selects the reduction backend (`"auto"`: TIRust for loop-induced, NinjaRS for
-Born-interfered processes; TIRust serves explicit `"tirust"` requests in
-binary64, and `"auto"` stays on NinjaRS, with the reason recorded, until the
-two backends' loop-induced agreement is established). `pyamplicol self-test` also
+selects the reduction backend (`"auto"`: TIRust for loop-induced processes,
+at a target accuracy of 1e-5 relative per point (`reduction_target`), a point
+it refuses or fails evaluated again on NinjaRS and recorded per point;
+NinjaRS for Born-interfered processes; `"ninjars"` and `"tirust"` without a
+fallback; TIRust serves every arithmetic). The Python API's stability rescue
+is a stack of (precision, backend) levels; its loop-induced default runs
+TIRust then NinjaRS in binary64 before double-double and arbitrary
+precision. `pyamplicol self-test` also
 evaluates a shipped loop-induced artifact (`g g > h`) against MadLoop. The
 native SDKs (C, C++, Fortran, Rust, UMAMI) open loop-induced processes directly
 with empty Born counts and the Python API's values, and take the reduction
-backend per call (`rusticol_virtual_set_reduction`); they also serve the
+backend per call (`rusticol_virtual_set_reduction`; `"auto"` with the
+per-point NinjaRS fallback, no rescue stack) and the target accuracy
+(`rusticol_virtual_set_reduction_target`); they also serve the
 helicity-resolved and the colour- and spin-correlated outputs (the correlated
 history `"born"` is |A|^2 itself), with the Python API's values, and monitor
 binary64 stability for both process types (`rusticol_virtual_set_stability_checks`:

@@ -11,14 +11,17 @@ PLAN §2.b.4, §2.b.6, §2.a.8; RULED Q17 / Q21 / Q22; DECISIONS 2026-11-07
   ``VirtualRescueAttempt`` records the level's ``VirtualReduction``
   (requested, effective, reason).
 * Before lit-tir-mp (capability-driven: the carriers the native extension
-  reports for TIRust): an ``"auto"`` double-double level of a loop-induced
-  call whose request is ``"auto"`` runs on NinjaRS with its reason; an
-  explicit ``"tirust"`` double-double level, or an ``"auto"`` one inheriting
-  an explicit call-level ``"tirust"``, is refused typed
+  reports for TIRust): an ``"auto"`` level of a loop-induced call whose
+  request is ``"auto"`` takes TIRust, the loop-induced default, where the
+  native serves TIRust at the level's carrier (binary64; lit-cache's switch,
+  R3) and NinjaRS with its reason elsewhere (double-double); an explicit
+  ``"tirust"`` double-double level, or an ``"auto"`` one inheriting an
+  explicit call-level ``"tirust"``, is refused typed
   (``ReductionUnavailable``) before any point. After it (a native reporting
   TIRust at every carrier, here a capability-reporting stub): those levels
-  resolve to TIRust and stay there; ``"auto"`` keeps NinjaRS until the
-  route's ``auto`` set holds TIRust (lit-cache's switch, R3).
+  resolve to TIRust and stay there, and so does every ``"auto"`` level; a
+  route whose ``auto`` set leaves TIRust out keeps NinjaRS on them with its
+  reason.
 * The cross-backend check (``VirtualStabilityChecks.cross_backend``): every
   point again on the other backend, its lane deviation an additive budget
   (``stability.CROSS``) of the estimate; the values are bitwise those of
@@ -283,7 +286,11 @@ def test_levels_resolve_once_per_level_capability_driven(loop_native, monkeypatc
         # Before lit-tir-mp: "auto" falls back with its reason, explicit
         # requests (own or inherited) are refused typed.
         found = choices(auto)
-        assert [found[level].effective for level in auto.levels] == ["ninjars"] * 2
+        binary64 = "tirust" if "double" in served else "ninjars"
+        assert [found[level].effective for level in auto.levels] == [
+            binary64,
+            "ninjars",
+        ]
         reason = found[auto.levels[1]].reason
         assert "TIRust, the loop-induced default, is unavailable" in reason
         assert "double-double" in reason
@@ -307,18 +314,22 @@ def test_levels_resolve_once_per_level_capability_driven(loop_native, monkeypatc
     inherited = choices(auto, "tirust")
     assert {choice.effective for choice in inherited.values()} == {"tirust"}
     assert {choice.reason for choice in inherited.values()} == {"requested"}
-    kept = choices(auto)
-    assert {choice.effective for choice in kept.values()} == {"ninjars"}
-    assert all("agreement with NinjaRS" in choice.reason for choice in kept.values())
-    # lit-cache's switch (R3) adds TIRust to the route's "auto" set: the
-    # same levels then resolve to TIRust, the loop-induced default.
-    switched = reduction.Route(SUMMED.serves, SUMMED.backends, SUMMED.backends)
-    found = choices(auto, None, switched)
+    # lit-cache's switch (R3): the route's "auto" set holds TIRust, so the
+    # "auto" levels resolve to TIRust, the loop-induced default; a route
+    # whose "auto" set leaves it out keeps NinjaRS with that reason.
+    found = choices(auto)
     assert {choice.effective for choice in found.values()} == {"tirust"}
     assert all(
         choice.reason == "auto: TIRust, the loop-induced default"
         for choice in found.values()
     )
+    kept = choices(
+        auto,
+        None,
+        reduction.Route(SUMMED.serves, SUMMED.backends, frozenset({"ninjars"})),
+    )
+    assert {choice.effective for choice in kept.values()} == {"ninjars"}
+    assert all("on explicit request only" in choice.reason for choice in kept.values())
     # The cross-backend check is admitted at every carrier the stub serves
     # both backends at, and refused typed by a native without TIRust (a
     # tir-off build: USER 2026-11-06 ~13:35).
@@ -338,7 +349,9 @@ def test_rescue_attempts_record_each_level_backend(loop_native):
     double-double on NinjaRS; every point climbs (level 0 accepts none) and
     records both levels' backends; the kept double-double values are
     bitwise NinjaRS's double-double values of the same points. A loop-
-    induced "auto" ladder records NinjaRS with the resolver's reasons."""
+    induced "auto" ladder records the resolver's choices: TIRust, the
+    loop-induced default, at binary64 (lit-cache's switch, R3) and, before
+    lit-tir-mp, NinjaRS with its reason at double-double."""
 
     from pyamplicol.api.virtual_results import VirtualRescueLevel
 
@@ -373,9 +386,10 @@ def test_rescue_attempts_record_each_level_backend(loop_native):
     ladder = _forced(VirtualRescueLevel("double"), VirtualRescueLevel("double-double"))
     result = runtime.evaluate(points[:1], mu_r2=scales[:1], stability=ladder)
     first, second = result.rescue[0].attempts
-    assert first.reduction.effective == second.reduction.effective == "ninjars"
-    assert "agreement with NinjaRS" in first.reduction.reason
+    assert first.reduction.effective == "tirust"
+    assert first.reduction.reason == "auto: TIRust, the loop-induced default"
     if "double-double" not in _tirust(loop_native):
+        assert second.reduction.effective == "ninjars"
         assert "is unavailable" in second.reduction.reason
 
 
@@ -538,7 +552,12 @@ def test_a_point_the_other_backend_fails_keeps_the_other_estimate(
         pytest.skip("the staged native extension is built without TIRust")
     runtime, points, scales = _load(_li())
     plain = VirtualStabilityChecks(1, True)
-    base = runtime.evaluate(points, mu_r2=scales, stability_checks=plain)
+    # NinjaRS named as the call's backend, so that the other backend is
+    # TIRust whatever "auto" takes (TIRust, the loop-induced default, where it
+    # serves the carrier: lit-cache's switch, R3).
+    base = runtime.evaluate(
+        points, mu_r2=scales, stability_checks=plain, reduction="ninjars"
+    )
     original = plan_export.NativeExecutor._evaluated
 
     def failing(self, *args, **kwargs):
@@ -552,6 +571,7 @@ def test_a_point_the_other_backend_fails_keeps_the_other_estimate(
         points,
         mu_r2=scales,
         stability_checks=VirtualStabilityChecks(1, True, cross_backend=True),
+        reduction="ninjars",
     )
     assert repr(found.values) == repr(base.values)
     first = found.stability[0]

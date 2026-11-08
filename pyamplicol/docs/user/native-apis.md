@@ -788,6 +788,33 @@ monitoring, never touches Symbolica: the shipped loop-induced self-test
 artifact evaluates through the C ABI without `SYMBOLICA_LICENSE` while another
 process holds the restricted Symbolica permit.
 
+The reduction backend (`rusticol_virtual_set_reduction`; C++ and Fortran
+`set_reduction`, the packaged Rust wrapper's `set_reduction`) is the Python
+API's `reduction=`: `"auto"` takes TIRust for a loop-induced process and
+NinjaRS for a Born-interfered one. The SDKs have no rescue stack; instead,
+under `"auto"` on TIRust, a point TIRust refuses, or fails in the enabled
+binary64 monitoring's own evaluations (for example a rotated evaluation), is
+evaluated again on NinjaRS from its original exact inputs, in the call's own
+arithmetic, after the TIRust call (the per-point fallback). The result's
+`diagnostics_json` records it: `"reduction"` holds the call's `requested`,
+`effective` and `reason` with its `"fallback"` backend and
+`"fallback_points"` count, and `"fallbacks"` maps the id of every point the
+fallback evaluated again to `{"effective", "reason"}` (`effective` null: the
+point failed on NinjaRS too, with both backends' reasons in `"failures"`;
+such a point's cross-backend check is in `not_run`). An explicit `"ninjars"`
+or `"tirust"` has no fallback, nor has a TIR-only artifact (NinjaRS refused
+typed); a library built without TIRust takes NinjaRS under `"auto"`, with the
+reason, and refuses `"tirust"`. The target accuracy
+`rusticol_virtual_set_reduction_target(handle, target)` (C++ and Fortran
+`set_reduction_target`, the packaged Rust wrapper's `set_reduction_target`;
+default 1e-5, the relative accuracy of each point's result) sets the
+calibrated acceptance of TIRust's checked method choice, as the Python API's
+`reduction_target=`; a value that is not a finite positive number is an
+invalid argument. The fallback and the target need no Symbolica licence: a
+binary64 call on NinjaRS or TIRust touches no Symbolica state, and a
+double-double or arbitrary-precision fallback runs under the package key as
+any SDK call in that arithmetic.
+
 ## Common setup failures
 
 | Symptom | Resolution |

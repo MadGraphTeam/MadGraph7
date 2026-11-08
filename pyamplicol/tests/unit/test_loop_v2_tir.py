@@ -494,13 +494,15 @@ def _ew():
 
 
 @pytest.mark.loop_physics
-def test_tirust_is_served_on_request_and_auto_keeps_ninjars(loop_native):
+def test_tirust_is_served_on_request_and_auto_takes_it_for_loop_induced(loop_native):
     """The summed route of the loop-induced self-test (g g > h) and the
     summed and resolved routes of the Born-interfered one serve an explicit
     ``"tirust"`` (recorded as requested) with NinjaRS's values within their
-    re-test estimates; ``"auto"`` keeps NinjaRS with its reason; TIRust at
-    double-double and arbitrary precision is served on request, also on
-    every level of a rescue ladder."""
+    re-test estimates; ``"auto"`` takes TIRust, the loop-induced default, in
+    every arithmetic (m-lit lit-cache, DECISIONS 2026-11-07 21:50 R3) and
+    keeps NinjaRS on the Born-interfered process; TIRust at double-double
+    and arbitrary precision is served on request, also on every level of a
+    rescue ladder."""
 
     from pyamplicol import Runtime
     from pyamplicol.api.virtual_results import VirtualStabilityChecks
@@ -534,8 +536,14 @@ def test_tirust_is_served_on_request_and_auto_keeps_ninjars(loop_native):
             ), (k, sector)
     auto = runtime.evaluate(points[:1], mu_r2=scales[:1])
     (lane,) = auto.diagnostics
-    assert lane.reduction.effective == "ninjars"
-    assert "agreement with NinjaRS on loop-induced processes" in lane.reduction.reason
+    assert lane.reduction.effective == "tirust"
+    assert lane.reduction.reason == "auto: TIRust, the loop-induced default"
+    assert repr(auto.values[0]) == repr(values["tirust"].values[0])
+    (lane,) = runtime.evaluate(
+        points[:1], mu_r2=scales[:1], arithmetic="double-double"
+    ).diagnostics
+    assert lane.reduction.effective == "tirust"
+    assert lane.reduction.reason == "auto: TIRust, the loop-induced default"
     # The extended carriers on TIRust (m-lit lit-tir-mp): explicitly
     # requested, served and recorded at double-double and arbitrary
     # precision, within the double-double target of NinjaRS's values.

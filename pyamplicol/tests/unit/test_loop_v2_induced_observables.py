@@ -638,7 +638,11 @@ def test_one_call_is_one_evaluation_whatever_the_spin_sources(artifacts, monkeyp
         "s1": CorrelatedRequest("born", {leg_a: _spin(rows[0]["vector"])}),
         "s2": CorrelatedRequest("T1T4", {leg_b: _spin(rows[-1]["vector"])}),
     }
-    many = runtime.evaluate_correlated_many(points, requests, mu_r2=scales)
+    # NinjaRS named: the call semantics, whatever "auto" takes (TIRust,
+    # the loop-induced default, where it serves the carrier).
+    many = runtime.evaluate_correlated_many(
+        points, requests, mu_r2=scales, reduction="ninjars"
+    )
     assert calls == ["ninjars"]
     assert {
         lane.reduction.effective
@@ -647,7 +651,7 @@ def test_one_call_is_one_evaluation_whatever_the_spin_sources(artifacts, monkeyp
     } == {"ninjars"}
     for label, request in requests.items():
         alone = runtime.evaluate_correlated_many(
-            points, {label: request}, mu_r2=scales
+            points, {label: request}, mu_r2=scales, reduction="ninjars"
         )[label]
         assert alone.values == many[label].values, label
     assert len(calls) == 1 + len(requests)
@@ -664,7 +668,10 @@ def test_one_call_is_one_evaluation_whatever_the_spin_sources(artifacts, monkeyp
     zero = (Decimal(0), Decimal(0))
     timelike = ((Decimal(1), Decimal(0)), zero, zero, zero)
     (value,) = runtime.evaluate_correlated_many(
-        points, {"x": CorrelatedRequest("born", {leg_a: timelike})}, mu_r2=scales
+        points,
+        {"x": CorrelatedRequest("born", {leg_a: timelike})},
+        mu_r2=scales,
+        reduction="ninjars",
     )["x"].values
     assert complex(value[0].finite) == 0
     assert len(calls) == 2 + len(requests)
