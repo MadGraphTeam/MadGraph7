@@ -383,16 +383,24 @@ def test_rescue_attempts_record_each_level_backend(loop_native):
 def test_explicit_tirust_levels_are_refused_before_any_point(loop_native, monkeypatch):
     """An explicit TIRust level at a carrier TIRust does not serve, its own
     or inherited from the call by "auto", is refused typed when the policy
-    is resolved: no point is evaluated."""
+    is resolved: no point is evaluated. (A native serving TIRust at
+    double-double, m-lit lit-tir-mp, reports binary64 only through a
+    capability stub here.)"""
 
     from pyamplicol import ReductionUnavailable
     from pyamplicol.api.virtual_results import VirtualRescueLevel, VirtualRescuePolicy
+    from pyamplicol.loops.v2.reduction import CARRIERS
 
     served = _tirust(loop_native)
-    if "double-double" in served:
-        pytest.skip("this native extension serves TIRust at double-double")
     runtime, points, scales = _load(_li())
     backend = runtime._backend
+    if "double-double" in served:
+        served = frozenset({"double"})
+        monkeypatch.setattr(
+            backend,
+            "_native",
+            _Native({"ninjars": list(CARRIERS), "tirust": sorted(served)}),
+        )
 
     def never(*_args, **_kwargs):
         raise AssertionError("a point was evaluated")
@@ -467,14 +475,21 @@ def test_the_cross_backend_check_on_the_summed_route(loop_native, module, main):
 def test_the_cross_backend_check_is_refused_where_the_other_backend_is_not(
     loop_native, monkeypatch
 ):
-    """Before any point: a carrier the other backend does not serve."""
+    """Before any point: a carrier the other backend does not serve (a
+    native serving TIRust at double-double, m-lit lit-tir-mp, reports
+    binary64 only through a capability stub here)."""
 
     from pyamplicol import ReductionUnavailable
     from pyamplicol.api.virtual_results import VirtualStabilityChecks
+    from pyamplicol.loops.v2.reduction import CARRIERS
 
-    if "double-double" in _tirust(loop_native):
-        pytest.skip("this native extension serves TIRust at double-double")
     runtime, points, scales = _load(_li())
+    if "double-double" in _tirust(loop_native):
+        monkeypatch.setattr(
+            runtime._backend,
+            "_native",
+            _Native({"ninjars": list(CARRIERS), "tirust": ["double"]}),
+        )
     monkeypatch.setattr(
         runtime._backend,
         "_evaluate_level",
