@@ -960,3 +960,99 @@ def test_the_sdk_self_test_touches_no_symbolica_state(loop_native, tmp_path):
             assert record is None
         else:
             assert record["estimates"] == [_record(e) for e in result.stability]
+
+
+def test_auto_through_the_c_abi_reads_the_librarys_backends(loop_native):
+    """m-lit F3 (c) / R14 evidence minor 0, deciding on the capability (no
+    skip): on the shipped loop-induced self-test artifact (g g > h), a
+    library built with TIRust takes TIRust under "auto" with the per-point
+    NinjaRS fallback armed (capabilities' ``auto_default`` "tirust"); a
+    library built without it (the cargo feature ``tir`` off) takes NinjaRS
+    under "auto" with the reason, refuses "tirust" typed in the setter
+    (RUSTICOL_VIRTUAL_RUNTIME_ERROR, the Python API's ReductionUnavailable),
+    and serves the same NinjaRS values bitwise."""
+
+    from pyamplicol._internal import selftest_virtual_li as selftest
+
+    artifact = selftest.fixture_root() / "artifact"
+    expected = json.loads((selftest.fixture_root() / "expected.json").read_text())
+    tir = "tirust" in json.loads(loop_native.reduction_backends())
+    sdk = _sdk()
+    handle = ctypes.c_void_p()
+    parameters = json.dumps(
+        {key: [value, "0"] for key, value in expected["parameters"].items()}
+    ).encode()
+    status = sdk.rusticol_virtual_open(
+        str(artifact).encode(),
+        selftest.NAME.encode(),
+        parameters,
+        None,
+        ctypes.byref(handle),
+    )
+    assert status == 0, _error(sdk)
+    points = [
+        [[float(Decimal(c)) for c in p] for p in point] for point in expected["points"]
+    ]
+    scales = [float(Decimal(s)) for s in expected["mu_r2"]]
+
+    def evaluate():
+        flat = [c for point in points for p in point for c in p]
+        momenta = (ctypes.c_double * len(flat))(*flat)
+        mu = (ctypes.c_double * len(scales))(*scales)
+        request = _Request(momenta, len(flat), len(points), None, mu, len(scales))
+        result = ctypes.c_void_p()
+        status = sdk.rusticol_virtual_evaluate(
+            handle, ctypes.byref(request), ctypes.byref(result)
+        )
+        assert status == 0, _error(sdk)
+        try:
+            shape = _ResultShape()
+            assert sdk.rusticol_virtual_result_shape(result, ctypes.byref(shape)) == 0
+            values = (ctypes.c_double * max(shape.virtual_values, 1))()
+            assert (
+                sdk.rusticol_virtual_result_copy_virtual(
+                    result, values, shape.virtual_values
+                )
+                == 0
+            )
+            needed = ctypes.c_size_t()
+            function = sdk.rusticol_virtual_result_diagnostics_json
+            assert function(result, None, ctypes.c_size_t(0), ctypes.byref(needed)) == 0
+            buffer = ctypes.create_string_buffer(needed.value)
+            assert function(result, buffer, needed, ctypes.byref(needed)) == 0
+            return list(values)[: shape.virtual_values], json.loads(buffer.value)
+        finally:
+            sdk.rusticol_virtual_result_free(result)
+
+    try:
+        needed = ctypes.c_size_t()
+        function = sdk.rusticol_virtual_capabilities_json
+        assert function(handle, None, ctypes.c_size_t(0), ctypes.byref(needed)) == 0
+        buffer = ctypes.create_string_buffer(needed.value)
+        assert function(handle, buffer, needed, ctypes.byref(needed)) == 0
+        capabilities = json.loads(buffer.value)["reduction"]
+        assert capabilities["auto_default"] == "tirust"
+        auto, record = evaluate()
+        reduction = record["reduction"]
+        assert sdk.rusticol_virtual_set_reduction(handle, b"ninjars") == 0
+        ninjars, _ = evaluate()
+        if tir:
+            assert (reduction["effective"], reduction["fallback"]) == (
+                "tirust",
+                "ninjars",
+            )
+            assert sorted(capabilities["native"]) == ["ninjars", "tirust"]
+        else:
+            assert (reduction["effective"], reduction["fallback"]) == ("ninjars", None)
+            assert (
+                "TIRust, the loop-induced default, is unavailable"
+                in (reduction["reason"])
+            )
+            assert "'tir' feature" in reduction["reason"]
+            assert sorted(capabilities["native"]) == ["ninjars"]
+            assert auto == ninjars
+            status = sdk.rusticol_virtual_set_reduction(handle, b"tirust")
+            assert status == 3  # RUSTICOL_VIRTUAL_RUNTIME_ERROR
+            assert "not built into" in _error(sdk)
+    finally:
+        sdk.rusticol_virtual_free(handle)
