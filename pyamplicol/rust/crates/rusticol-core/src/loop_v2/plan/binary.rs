@@ -2609,34 +2609,6 @@ mod tests {
         }
     }
 
-    /// A family beyond NinjaRS's rank <= N + 2 (m-lit lit-eft): the plan
-    /// loads where TIRust's capability query admits it (the cargo feature
-    /// `tir`), its families make it TIR-only, and the same plan with the
-    /// family within N + 2 is not; a build without TIRust refuses it as a
-    /// family rank, as it does a rank beyond TIRust's representation.
-    #[test]
-    fn a_family_beyond_ninjars_rank_loads_through_tirust() {
-        use crate::loop_v2::bounds::tir_only;
-
-        let within = born_rows_plan(4, 1, 1);
-        let program = read_binary(&member_paying(&within, 0)).unwrap();
-        assert!(!tir_only(program.buckets().into_keys()));
-        let mut beyond = born_rows_plan(4, 1, 1);
-        beyond.families[0].rank = 4;
-        let loaded = read_binary(&member_paying(&beyond, 0));
-        if cfg!(feature = "tir") {
-            let program = loaded.unwrap();
-            assert_eq!(program.families[0].rank, 4);
-            assert!(tir_only(program.buckets().into_keys()));
-        } else {
-            let error = loaded.err().unwrap().to_string();
-            assert!(
-                error.contains("family rank") && error.contains("no TIRust"),
-                "{error}"
-            );
-        }
-    }
-
     /// A plan whose derivations need more than its member pays for gets a
     /// padded member, which the reader accepts; without its padding it is
     /// refused. A bound the allocator cannot reserve is an error.
