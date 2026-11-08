@@ -239,6 +239,39 @@ def test_judge_records_partial_waits_and_passes(entries):
     assert judged["L1"]["status"] == "recorded" and "L8" in judged
 
 
+def test_arms_not_run_keep_their_reason(entries):
+    """An arm recorded not run (``run --skip-arm``) keeps its reason: the AP
+    arm makes L6 / L7 in AP 'not run', a skipped identity double-double arm
+    leaves L5 on binary64 with the reason beside it, a skipped L3 probe arm
+    makes L3 partial; ``LABEL=REASON`` arguments parse or are refused."""
+
+    entry = {e["fixture"]: e for e in entries}["li_gg_hh"]
+    record = _record("li_gg_hh")
+    record["l3_probes"]["tirust/double"] = [{"worst": 0.2, "passed": True}] * 3
+    assert lm.judge(record, entry)["L3"]["status"] == "pass"
+    reason = "the AP arm extrapolates to hours"
+    record["arms"][f"ninjars/{lm.ARBITRARY}/plain"] = {"not_run": reason}
+    record["arms"]["identity/ninjars/double-double"] = {"not_run": "slow"}
+    record["l3_probes"]["ninjars/double-double"] = {"not_run": "slower"}
+    judged = lm.judge(record, entry)
+    assert judged["L7"] == {"status": "not run", "reason": reason}
+    assert judged["L6"][lm.ARBITRARY]["status"] == "not run"
+    assert judged["L5"]["status"] == "pass"
+    assert judged["L5"]["double_double_not_run"] == "slow"
+    assert judged["L5"]["double_double_max_relative"] is None
+    assert judged["L3"]["ninjars/double-double"] == {
+        "status": "not run",
+        "reason": "slower",
+    }
+    assert judged["L3"]["status"] == "partial"
+    assert lm.skip_arms(["l3/ninjars/double-double=slow", "a=b=c"]) == {
+        "l3/ninjars/double-double": "slow",
+        "a": "b=c",
+    }
+    with pytest.raises(ValueError, match="LABEL=REASON"):
+        lm.skip_arms(["ninjars/arbitrary/plain"])
+
+
 def test_lit_json_is_keyed_by_the_registry_and_read_by_the_report(entries, tmp_path):
     """data/lit.json: rows keyed by the registry keys in the LI_VALIDATION
     schema (status, references, points, note, source), the validation-only
