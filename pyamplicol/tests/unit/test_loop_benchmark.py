@@ -2852,6 +2852,30 @@ def test_the_most_optimistic_protocol_sets_each_provider_up_for_speed(
     assert providers.cmake_build(tmp_path, root, "recola") is None
 
 
+def test_one_helicity_arms_select_one_row_for_one_call():
+    """PLAN §5.1 (Q39): a loop-induced one-helicity arm dresses the plan's
+    first helicity row alone (``NativeExecutor.row_mask``) for its calls and
+    restores every row after; its label and record name the row."""
+
+    import types
+
+    from tools.loop_benchmark import pyamplicol_v2
+
+    rows = [((1, -1), (2, -1)), ((1, -1), (2, 1)), ((1, 1), (2, 1))]
+    executor = types.SimpleNamespace(exported=types.SimpleNamespace(rows=rows))
+    executor.row_mask = None
+    run = types.SimpleNamespace(executor=executor)
+    backend = {"requested": "tirust"}
+    arm = {"backend": backend, "size": 128, "row": 0}
+    with pyamplicol_v2.InducedRun._one_row(run, arm):
+        assert executor.row_mask == (True, False, False)
+    assert executor.row_mask is None
+    assert arm["row_helicities"] == [-1, -1]
+    assert pyamplicol_v2._arm_label(arm) == "tirust B=128 helicity row 0"
+    with pyamplicol_v2.InducedRun._one_row(run, {"backend": backend, "size": 1}):
+        assert executor.row_mask is None
+
+
 def _induced_run(seconds: list[float], failed: list[int], values: dict) -> dict:
     """One backend run of a loop-induced harness record (``InducedRun``)."""
 
