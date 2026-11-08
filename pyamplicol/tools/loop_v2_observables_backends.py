@@ -169,10 +169,16 @@ def _generate_plain(root: Path, name: str, expression: str) -> Path:
         for order, value in fixture["loop_orders"].items()
         if order != "QCD"
     )
-    card = _card(output, (("p", expression),), fixture).replace(
-        'loop_coupling_orders = ["QCD"]',
-        f'loop_coupling_orders = ["QCD"]\nmax_coupling_orders = {{{orders}}}',
-    )
+    base = _card(output, (("p", expression),), fixture)
+    anchor = 'loop_coupling_orders = ["QCD"]'
+    if base.count(anchor) != 1:
+        # The orders must reach the card: never a row generated silently
+        # without its electroweak coupling-order selection.
+        raise RuntimeError(
+            f"{name}: the card of test_loop_v2_induced._card no longer holds "
+            f"exactly one {anchor!r} line to add max_coupling_orders after"
+        )
+    card = base.replace(anchor, f"{anchor}\nmax_coupling_orders = {{{orders}}}")
     (root / "card.toml").write_text(card)
     Generator(resolve_config(root / "card.toml")).generate(
         ProcessSet((ProcessRequest.parse(expression, name="p"),)), output
@@ -465,12 +471,10 @@ def main() -> int:
         runtime = Runtime.load(
             _artifact(args.work_dir, name, row_set[name], observables), process="p"
         )
+        served: dict = {}
+        record["served"][name] = served
         try:
-            served = {
-                backend: _served(name, runtime, backend, carrier)
-                for backend in BACKENDS
-            }
-            record["served"][name] = served
+            served["ninjars"] = _served(name, runtime, "ninjars", carrier)
             ninjars = _entries(
                 name, runtime, "ninjars", stability, carrier, {}, observables
             )
@@ -480,6 +484,16 @@ def main() -> int:
             write()
             print(f"FAIL: the NinjaRS arm does not run: {error}")
             return 1
+        failures: dict = {}
+        try:
+            # A TIRust refusal (a carrier or native without TIRust, another
+            # effective backend) is the TIRust arm's: not exercised (exit 2).
+            served["tirust"] = _served(name, runtime, "tirust", carrier)
+            tirust = _entries(
+                name, runtime, "tirust", stability, carrier, failures, observables
+            )
+        except (ReductionUnavailable, NotExercised) as error:
+            return not_exercised(str(error))
         missing = sorted(
             point
             for point, status in served["ninjars"].items()
@@ -490,13 +504,6 @@ def main() -> int:
             # TIRust does not.
             record.setdefault("tirust_unserved", {})[name] = missing
             print(f"{name}: TIRust does not serve {missing} at the shipped settings")
-        failures: dict = {}
-        try:
-            tirust = _entries(
-                name, runtime, "tirust", stability, carrier, failures, observables
-            )
-        except (ReductionUnavailable, NotExercised) as error:
-            return not_exercised(str(error))
         if failures:
             record.setdefault("tirust_failed", {})[name] = failures
             print(f"{name}: TIRust failed {len(failures)} outputs' points closed")
