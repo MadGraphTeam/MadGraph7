@@ -39,6 +39,7 @@ import pytest
 from tests.unit.loop_v2_induced_observables_rows import ROWS, generate
 from tests.unit.test_loop_v2_induced import _fixture
 from tests.unit.test_loop_v2_sdk_extras import (
+    _agree,
     _Axes,
     _error,
     _Request,
@@ -249,7 +250,7 @@ def test_loop_induced_sdk_values_equal_the_python_api(artifacts, loop_native, na
             literals = found["decimal"]["virtual"]
             values = [x for laurent in expected.values[0] for x in laurent]
             assert found["decimal"]["born"] == []
-            assert [Decimal(x) for x in literals] == [Decimal(x) for x in values]
+            assert _agree(values, literals), (arithmetic, values, literals)
             assert found["virtual"] == [float(Decimal(x)) for x in literals]
     finally:
         sdk.rusticol_virtual_free(handle)

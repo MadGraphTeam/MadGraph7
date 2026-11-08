@@ -425,6 +425,26 @@ def _decimals(values: list, complex_layout: bool) -> list:
     return out
 
 
+# Double-double and arbitrary-precision values of two native libraries agree to the
+# double-double target (ruling R5: 1e-24 relative, measured and recorded), not
+# bitwise: their summation order can differ with the host's CPU and thread count
+# (Tests 42500959743 on a CI runner: 6e-28 relative on loop-induced rows, while a
+# local run was bitwise). Binary64 stays bitwise.
+EXTENDED_TOLERANCE = Decimal("1e-24")
+
+
+def _agree(want: list, got: list) -> bool:
+    """True when every entry of ``got`` is within the double-double target of
+    ``want``, relative to the largest magnitude in ``want`` (a vanishing pole of a
+    loop-induced row is judged against the point's finite part)."""
+    scale = max((abs(Decimal(a)) for a in want if a is not None), default=Decimal(0))
+    return all(
+        (a is None) == (b is None)
+        and (a is None or abs(Decimal(a) - Decimal(b)) <= EXTENDED_TOLERANCE * scale)
+        for a, b in zip(want, got, strict=True)
+    )
+
+
 def _compare(name: str, expected: dict, found: dict) -> None:
     assert sorted(found) == sorted(expected), name
     for call, values in expected.items():
@@ -447,13 +467,12 @@ def _compare(name: str, expected: dict, found: dict) -> None:
             else:
                 literals = _decimals(decimal[axis], values["complex"])
                 assert len(literals) == len(want), (name, call, axis)
-                for k, (a, b) in enumerate(zip(want, literals, strict=True)):
-                    if a is None:
-                        assert b is None, (name, call, axis, k)
-                        continue
-                    # The exact value, and its nearest double.
-                    assert Decimal(a) == Decimal(b), (name, call, axis, k, a, b)
-                    assert float(Decimal(a)) == doubles[k], (name, call, axis, k)
+                # The value to the double-double target, and the call's double is the
+                # nearest double of its own literal.
+                assert _agree(want, literals), (name, call, axis, want, literals)
+                for k, b in enumerate(literals):
+                    if b is not None:
+                        assert float(Decimal(b)) == doubles[k], (name, call, axis, k)
 
 
 def _run(
