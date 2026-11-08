@@ -1472,11 +1472,12 @@ class V2InducedObservablesRuntime(V2ObservablesRuntime):
     with one colour-contracted component (``"full"``), or with
     ``color_resolution="amplitude-basis"`` per amplitude-basis anchor
     (``amplitude-<t>``: Re(conj(a_t) (G a)_t)/avg, a basis-dependent split
-    summing to the row's value). The native executor runs every call, one
-    batch (and one per rotation) per call: ``evaluate_correlated_many``
-    forms every request, whatever its spin sources, on the same amplitude
-    vectors; the call's effective reduction backend goes to the executor
-    (``induced_observables.InducedColumns``)."""
+    summing to the row's value); a helicity selection of either call
+    dresses the selected rows only (``_resolved_key``). The native executor
+    runs every call, one batch (and one per rotation) per call:
+    ``evaluate_correlated_many`` forms every request, whatever its spin
+    sources, on the same amplitude vectors; the call's effective reduction
+    backend goes to the executor (``induced_observables.InducedColumns``)."""
 
     contribution_kind = "loop-induced"
 
