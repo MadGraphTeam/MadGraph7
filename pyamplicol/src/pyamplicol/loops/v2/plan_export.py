@@ -399,8 +399,37 @@ def catalogue_kinematics(slice_: Any) -> rx.CatalogueKinematics:
 # per-row closures (``_dressed_work``).
 _DRESSED_WORK = ("best/seed", "best/step", "closure")
 
+# The aligned family export frame (m-lit lit-cache, PLAN §2.b.3; opt-in, an
+# amplitude-mode option: seeded plans never read it): when set, every family
+# of a loop-induced slice is read in an aligned frame (``aligned_frame``), so
+# that a propagator shared by two families has the same shift mask in both
+# and the families list their common propagators in the same order: the
+# frame in which a persistent tensor store (TIRust's ``TensorStore``) meets
+# a parent family's pinched sub-integrals in the other families across
+# reduce calls. Off by default: the frame stays the cheapest one to dress.
+ALIGNED_FAMILY_FRAMES = False
 
-def dressed_frames(slice_: Any) -> tuple[dict[FamilyKey, Any], dict[str, Any]]:
+
+def aligned_frame(key: FamilyKey, frame: Any) -> bool:
+    """Whether ``frame``'s reading of family ``key`` is aligned: its last
+    entry carries the process's highest external leg (the top bit of the
+    union of the key's leg masks; data, not a leg name). Then every
+    propagator's shift mask (``families.shifts``: positions 1..i) is the side
+    of the propagator not holding that leg, the same leg set in every
+    family holding the propagator, and the shift masks of any reading grow
+    by inclusion, so common propagators keep their relative order."""
+
+    reading = frame.apply(key)
+    union = 0
+    for mask, _mass in reading:
+        union |= mask
+    top = 1 << (union.bit_length() - 1)
+    return bool(reading[-1][0] & top)
+
+
+def dressed_frames(
+    slice_: Any, aligned: bool | None = None
+) -> tuple[dict[FamilyKey, Any], dict[str, Any]]:
     """Frames chosen for dressed rows (amplitude mode, route R2k; M-LIT
     DECISIONS 2026-11-06 ~09:00 (3)): per family of ``slice_``'s plan, among
     its frames (``schedules.candidate_tries`` of its skeletons, the reading
@@ -412,14 +441,19 @@ def dressed_frames(slice_: Any) -> tuple[dict[FamilyKey, Any], dict[str, Any]]:
     (``vector_groups``), so every reading of every frame gets a seed class
     (``colour.extend_seed_table``; its vectors are taken on the extended
     table's coefficient cells, ``colour.amplitude_basis``). A tie keeps the
-    family's frame. Returns the frame per family and a record (seconds,
-    modelled work before and after, families re-framed)."""
+    family's frame. With ``aligned`` (None: ``ALIGNED_FAMILY_FRAMES``) the
+    choice is among the family's aligned frames only (``aligned_frame``;
+    every family has one: each rotation of its reading is a candidate).
+    Returns the frame per family and a record (seconds, modelled work before
+    and after, families re-framed, ``aligned``)."""
 
     import time
 
     from .colour import amplitude_basis, extend_seed_table
     from .schedules import SkeletonView, candidate_tries
 
+    if aligned is None:
+        aligned = ALIGNED_FAMILY_FRAMES
     start = time.perf_counter()
     plan = slice_.plan
     view = SkeletonView(slice_.loop_catalogue, slice_.colour)
@@ -466,9 +500,11 @@ def dressed_frames(slice_: Any) -> tuple[dict[FamilyKey, Any], dict[str, Any]]:
             )
             for frame, trie in tries
         ]
+        before += next(item[0] for item in work if not item[1])
+        if aligned:
+            work = [item for item in work if aligned_frame(key, item[2])]
         cost, _moved, frame = min(work, key=lambda item: item[:2])
         frames[key] = frame
-        before += next(item[0] for item in work if not item[1])
         after += cost
         moved += frame != current
     record = {
@@ -477,6 +513,7 @@ def dressed_frames(slice_: Any) -> tuple[dict[FamilyKey, Any], dict[str, Any]]:
         "work": after,
         "families": len(frames),
         "reframed": moved,
+        "aligned": aligned,
     }
     return frames, record
 

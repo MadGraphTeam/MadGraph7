@@ -140,7 +140,8 @@ use crate::runtime::frames::{FrameMap, ReductionFrame};
 use crate::runtime::{Carrier, TypedBatch};
 use iregi_rust::{
     BatchResult, Convention, DirectCapabilities, DirectReductionPlan, DirectWorkspace,
-    InvariantInput, KinematicsBatch, LaneStatus, ReductionSettings, ScaleInput, TensorWeights,
+    InvariantInput, KinematicsBatch, LaneStatus, MasterFamily, MasterProvider, ReductionSettings,
+    ScaleInput, TensorStore, TensorStoreOptions, TensorWeights,
 };
 use ninjars::fast::tensor_layout::{monomials, ncoeff};
 use rusticol_core::loop_execution::v2::{
@@ -203,6 +204,33 @@ pub struct TirOptions {
     /// of its cost in lit-tirust-store's timing); off: a separate call in that
     /// frame.
     pub rotation_copy: bool,
+    /// TIRust's own profile of every moment call (`DirectWorkspace::
+    /// set_profiling`: geometry, scalar masters, recursion, gather, output),
+    /// added to the statistics as the "reduction: TIR ..." seconds; a
+    /// measurement option (default off: its timers cost time), never a value
+    /// change.
+    pub profile: bool,
+    /// Share TIRust's per-subset results (scalar masters, sub-integrals,
+    /// gathered moments) between the families of a chunk of points through
+    /// one `iregi_rust::TensorStore` per backend: every plan registered
+    /// before the first reduce, every workspace attached, the store cleared
+    /// once per point chunk ([`TirReductionBackend::begin`], and per
+    /// family-group call). Every entry is a pure function of its exact key,
+    /// so values are bit-identical with the store on and off (TIRust's
+    /// rotation copy reads no store entry: its `check_view`); opt-in (m-lit
+    /// lit-cache STEP 3: adopted only at >= 1.3x on the reduction stage,
+    /// Q19).
+    pub store: bool,
+    /// With [`Self::store`]: the bound of a masters provider over a
+    /// canonical cache (m-lit lit-cache STEP 3, PLAN §3.4: pyAmpliCol's
+    /// `MasterCache` canonical order). The store gets a provider that
+    /// declines every master (TIRust's kernels compute it: values
+    /// unchanged) and counts the masters that reach it, i.e. the store's
+    /// misses, and those equal to an earlier miss of the chunk up to the
+    /// relabellings `MasterCache` canonicalises (the masters such a provider
+    /// could serve). A measurement option (default off); check passes count
+    /// too, so measure without checks.
+    pub masters_census: bool,
 }
 
 impl Default for TirOptions {
@@ -217,6 +245,9 @@ impl Default for TirOptions {
             acceptance: iregi_rust::direct::EXPANSION_TOLERANCE,
             acceptance_frame: tir_frame(ReductionCheck::RESCALED),
             rotation_copy: true,
+            profile: false,
+            store: false,
+            masters_census: false,
         }
     }
 }
@@ -406,6 +437,7 @@ impl Bin {
         choice: bool,
         options: &TirOptions,
         prototype: &T,
+        store: Option<&TensorStore>,
     ) -> RusticolResult<&mut DirectWorkspace<T>>
     where
         Complex<T>: EvaluationDomain,
@@ -433,6 +465,12 @@ impl Bin {
             let mut workspace = self.plan.workspace(prototype.clone()).map_err(|e| {
                 RusticolError::unsupported_runtime_capability("tirust", e.to_string())
             })?;
+            if options.profile {
+                workspace.set_profiling(true);
+            }
+            if store.is_some() {
+                workspace.set_tensor_store(store);
+            }
             let binary64 = bits == f64::MANTISSA_DIGITS;
             if choice {
                 let gate = gate_in(prototype, options.method_choice_gate);
@@ -491,6 +529,129 @@ struct Counters {
     expansion_rows: u64,
     acceptance_rows: u64,
     unverified: u64,
+    /// Scalar-master evaluations of TIRust's moment calls.
+    masters: u64,
+    /// [`TirOptions::profile`]: TIRust's profile (geometry, masters,
+    /// recursion, gather, output), in seconds.
+    profile: Option<[f64; 5]>,
+    /// [`TirOptions::store`]: the store's counts, summed over its clears
+    /// (masters reused / computed, sub-integrals reused / computed, moments
+    /// reused / computed).
+    store: Option<[u64; 6]>,
+    /// [`TirOptions::masters_census`]: the store's master misses and those
+    /// repeating an earlier miss up to `MasterCache`'s relabellings.
+    census: Option<[u64; 2]>,
+}
+
+impl Counters {
+    /// Add the store's counts since its last clear (before clearing it),
+    /// and the census's ([`TirOptions::masters_census`]).
+    fn store(&mut self, store: &TensorStore, census: Option<&MastersCensus>) {
+        if let Some(census) = census {
+            let (misses, repeats) = census.take();
+            let total = self.census.get_or_insert([0; 2]);
+            total[0] += misses;
+            total[1] += repeats;
+        }
+        let s = store.statistics();
+        let counts = [
+            s.masters_reused,
+            s.masters_computed,
+            s.subsets_reused,
+            s.subsets_computed,
+            s.moments_reused,
+            s.moments_computed,
+        ];
+        let total = self.store.get_or_insert([0; 6]);
+        for (t, c) in total.iter_mut().zip(counts) {
+            *t += c;
+        }
+    }
+
+    /// Add one TIRust call's scalar-master count, and its profile when
+    /// profiling.
+    fn call<T: TirCarrier>(&mut self, workspace: &DirectWorkspace<T>, profiling: bool)
+    where
+        Complex<T>: EvaluationDomain,
+    {
+        self.masters += workspace.last_master_rows() as u64;
+        if profiling {
+            let p = workspace.last_profile();
+            let seconds = [p.geometry, p.masters, p.recurrence, p.gather, p.output];
+            let total = self.profile.get_or_insert([0.; 5]);
+            for (t, s) in total.iter_mut().zip(seconds) {
+                *t += s.as_secs_f64();
+            }
+        }
+    }
+}
+
+/// [`TirOptions::masters_census`]: the store's master misses of a chunk, by
+/// canonical argument bits, and the counts (misses, canonical repeats).
+#[derive(Default)]
+struct MastersCensus {
+    state: std::sync::Mutex<CensusState>,
+}
+
+/// The census of one chunk: the canonical argument bits seen, the misses
+/// and the repeats.
+#[derive(Default)]
+struct CensusState {
+    seen: std::collections::HashSet<(u8, Vec<u64>)>,
+    misses: u64,
+    repeats: u64,
+}
+
+impl MastersCensus {
+    /// The counts since the last call, and a new chunk.
+    fn take(&self) -> (u64, u64) {
+        let mut state = self.state.lock().expect("census");
+        let counts = (state.misses, state.repeats);
+        *state = CensusState::default();
+        counts
+    }
+}
+
+impl MasterProvider for MastersCensus {
+    fn master(
+        &self,
+        family: MasterFamily,
+        arguments: &[Complex<f64>],
+    ) -> Option<[Complex<f64>; 3]> {
+        use ninjars::fast::{C64, FastMaster};
+        let row: Vec<C64> = arguments.iter().map(|z| C64::new(z.re, z.im)).collect();
+        let mut canonical = row.clone();
+        let code = match family {
+            MasterFamily::Triangle => {
+                crate::runtime::canonical_master_row(FastMaster::C0, &row, &mut canonical);
+                2
+            }
+            MasterFamily::Box => {
+                crate::runtime::canonical_master_row(FastMaster::D0, &row, &mut canonical);
+                3
+            }
+            // The scalar B0 is symmetric in its two masses.
+            MasterFamily::Bubble => {
+                if (row[2].re.to_bits(), row[2].im.to_bits())
+                    < (row[1].re.to_bits(), row[1].im.to_bits())
+                {
+                    canonical.swap(1, 2);
+                }
+                1
+            }
+            MasterFamily::Tadpole => 0,
+        };
+        let bits = canonical
+            .iter()
+            .flat_map(|z| [z.re.to_bits(), z.im.to_bits()])
+            .collect();
+        let mut state = self.state.lock().expect("census");
+        state.misses += 1;
+        if !state.seen.insert((code, bits)) {
+            state.repeats += 1;
+        }
+        None
+    }
 }
 
 /// The TIR backend (module docs).
@@ -498,6 +659,10 @@ pub struct TirReductionBackend {
     options: TirOptions,
     bins: BTreeMap<(usize, usize), Bin>,
     counters: Counters,
+    /// [`TirOptions::store`]: the backend's one tensor store.
+    store: Option<TensorStore>,
+    /// [`TirOptions::masters_census`]: the store's census provider.
+    census: Option<std::sync::Arc<MastersCensus>>,
 }
 
 /// `|z|` in binary64.
@@ -584,10 +749,21 @@ fn retried<T: Carrier>(
 
 impl TirReductionBackend {
     pub fn new(options: TirOptions) -> Self {
+        let census = (options.store && options.masters_census)
+            .then(|| std::sync::Arc::new(MastersCensus::default()));
         Self {
             options,
             bins: BTreeMap::new(),
             counters: Counters::default(),
+            store: options.store.then(|| {
+                TensorStore::with_options(TensorStoreOptions {
+                    masters: census
+                        .clone()
+                        .map(|census| census as std::sync::Arc<dyn MasterProvider>),
+                    ..Default::default()
+                })
+            }),
+            census,
         }
     }
 
@@ -635,18 +811,39 @@ impl TirReductionBackend {
     }
 
     fn bin(&mut self, n: usize, rank: usize) -> RusticolResult<&mut Bin> {
-        bin_of(&mut self.bins, n, rank)
+        bin_of(&mut self.bins, n, rank, self.store.as_ref())
     }
 
-    pub fn begin(&mut self) {}
+    /// A new chunk of points: the store ([`TirOptions::store`]) forgets the
+    /// last chunk's entries (its counts are kept in the statistics).
+    pub fn begin(&mut self) {
+        if let Some(store) = &self.store {
+            self.counters.store(store, self.census.as_deref());
+            store.clear();
+        }
+    }
 
     pub fn take_statistics(&mut self) -> BackendStatistics {
+        if let Some(store) = &self.store {
+            self.counters.store(store, self.census.as_deref());
+            store.clear();
+        }
         let c = std::mem::take(&mut self.counters);
+        let mut seconds = vec![
+            ("reduction: tensor moments", c.moments),
+            ("reduction: contraction", c.contraction),
+        ];
+        if let Some([geometry, masters, recursion, gather, output]) = c.profile {
+            seconds.extend([
+                ("reduction: TIR geometry", geometry),
+                ("reduction: TIR masters", masters),
+                ("reduction: TIR recursion", recursion),
+                ("reduction: TIR gather", gather),
+                ("reduction: TIR output", output),
+            ]);
+        }
         BackendStatistics {
-            seconds: vec![
-                ("reduction: tensor moments", c.moments),
-                ("reduction: contraction", c.contraction),
-            ],
+            seconds,
             counts: vec![
                 ("tensor moment rows", c.rows),
                 ("contracted lanes", c.lanes),
@@ -659,7 +856,26 @@ impl TirReductionBackend {
                     "TIR method-choice lanes refused by their check",
                     c.unverified,
                 ),
-            ],
+                ("TIR master evaluations", c.masters),
+            ]
+            .into_iter()
+            .chain(c.store.into_iter().flat_map(|[mr, mc, sr, sc, or, oc]| {
+                [
+                    ("TIR store masters reused", mr),
+                    ("TIR store masters computed", mc),
+                    ("TIR store sub-integrals reused", sr),
+                    ("TIR store sub-integrals computed", sc),
+                    ("TIR store moments reused", or),
+                    ("TIR store moments computed", oc),
+                ]
+            }))
+            .chain(c.census.into_iter().flat_map(|[misses, repeats]| {
+                [
+                    ("TIR masters census: store misses", misses),
+                    ("TIR masters census: canonical repeats", repeats),
+                ]
+            }))
+            .collect(),
         }
     }
 
@@ -733,14 +949,14 @@ impl TirReductionBackend {
         let choice = T::method_choice(&self.options);
         for ((n, rank), (members, values)) in bins {
             let options = self.options;
-            let bin = bin_of(&mut self.bins, n, rank)?;
+            let bin = bin_of(&mut self.bins, n, rank, self.store.as_ref())?;
             let width = values.len() / members.len();
             let batch = KinematicsBatch {
                 rows: members.len(),
                 components: 1,
                 values,
             };
-            let workspace = bin.workspace(false, &options, prototype)?;
+            let workspace = bin.workspace(false, &options, prototype, self.store.as_ref())?;
             let (result, copied) = match copy {
                 Some(rotation) => {
                     let (result, copied) = workspace
@@ -750,6 +966,7 @@ impl TirReductionBackend {
                 }
                 None => (workspace.reduce_batch(&batch).map_err(tirust)?, None),
             };
+            self.counters.call(workspace, options.profile);
             let refused = gated(&result, &members, &bin.position, &mut out);
             let refused_copy = match (&copied, &mut copies) {
                 (Some(copied), Some(copies)) => gated(copied, &members, &bin.position, copies),
@@ -800,10 +1017,11 @@ impl TirReductionBackend {
                 .filter(|k| refused.binary_search(k).is_err())
                 .collect();
             if let (false, Some(rotation), Some(copies)) = (both.is_empty(), copy, &mut copies) {
-                let workspace = bin.workspace(true, &options, prototype)?;
+                let workspace = bin.workspace(true, &options, prototype, self.store.as_ref())?;
                 let (result, copied) = workspace
                     .reduce_batch_with_rotation(&retry(&both), rotation)
                     .map_err(tirust)?;
+                self.counters.call(workspace, options.profile);
                 // TIRust's diagnostics describe the primary.
                 let flagged = workspace.last_gram_lanes().to_vec();
                 self.counters.rows += 2 * both.len() as u64;
@@ -812,8 +1030,9 @@ impl TirReductionBackend {
                 retried(&copied, &rows, position, &[], copies, c);
             }
             if !alone.is_empty() {
-                let workspace = bin.workspace(true, &options, prototype)?;
+                let workspace = bin.workspace(true, &options, prototype, self.store.as_ref())?;
                 let result = workspace.reduce_batch(&retry(&alone)).map_err(tirust)?;
+                self.counters.call(workspace, options.profile);
                 let flagged = workspace.last_gram_lanes().to_vec();
                 self.counters.rows += alone.len() as u64;
                 let (rows, position, c) = (indices(&alone), &bin.position, &mut self.counters);
@@ -826,8 +1045,9 @@ impl TirReductionBackend {
                     .plan
                     .rotated_batch(&retry(&copy_alone), rotation)
                     .map_err(tirust)?;
-                let workspace = bin.workspace(true, &options, prototype)?;
+                let workspace = bin.workspace(true, &options, prototype, self.store.as_ref())?;
                 let result = workspace.reduce_batch(&rotated).map_err(tirust)?;
+                self.counters.call(workspace, options.profile);
                 let flagged = workspace.last_gram_lanes().to_vec();
                 self.counters.rows += copy_alone.len() as u64;
                 let (rows, position, c) = (indices(&copy_alone), &bin.position, &mut self.counters);
@@ -1053,6 +1273,8 @@ impl TirReductionBackend {
         check: Option<ReductionCheck>,
     ) -> RusticolResult<crate::runtime::V2Output> {
         use crate::runtime::Data;
+        // One call is one set of points: the store starts empty.
+        self.begin();
         match groups.first().map(|g| g.shifts.data()) {
             None | Some(Data::Double(_)) => self.family_groups::<f64>(groups, poles, check),
             Some(Data::DoubleDouble(_)) => self.family_groups::<DoubleFloat>(groups, poles, check),
@@ -1155,14 +1377,24 @@ impl TirReductionBackend {
 }
 
 /// The bin of (`n`, `rank`), built on first use.
-fn bin_of(
-    bins: &mut BTreeMap<(usize, usize), Bin>,
+fn bin_of<'a>(
+    bins: &'a mut BTreeMap<(usize, usize), Bin>,
     n: usize,
     rank: usize,
-) -> RusticolResult<&mut Bin> {
+    store: Option<&TensorStore>,
+) -> RusticolResult<&'a mut Bin> {
     Ok(match bins.entry((n, rank)) {
         std::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
-        std::collections::btree_map::Entry::Vacant(entry) => entry.insert(Bin::new(n, rank)?),
+        std::collections::btree_map::Entry::Vacant(entry) => {
+            let bin = Bin::new(n, rank)?;
+            // Registered when built: `prepare` builds every plan of the call
+            // before the first reduce, so which moments meet does not depend
+            // on the order of the families (TIRust's store docs).
+            if let Some(store) = store {
+                store.register(&bin.plan);
+            }
+            entry.insert(bin)
+        }
     })
 }
 
