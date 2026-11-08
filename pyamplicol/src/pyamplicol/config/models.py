@@ -946,7 +946,10 @@ class GenerationConfig:
                 "generation.allow_anomalous_veto must be a boolean"
             )
         if not isinstance(self.loop_induced_probes, bool):
-            raise ConfigurationError("generation.loop_induced_probes must be a boolean")
+            # The card's message too (``resolver``): one message per route.
+            raise ConfigurationError(
+                "generation.loop_induced_probes must be true or false"
+            )
         if not isinstance(self.allow_failed_probes, bool):
             raise ConfigurationError("generation.allow_failed_probes must be a boolean")
         failure = _finite_float(

@@ -111,7 +111,7 @@ def test_loop_induced_probes_is_an_explicit_boolean_option() -> None:
     for value in (1, 0, "true", "on", None, 1.0):
         with pytest.raises(
             ConfigurationError,
-            match=r"^generation\.loop_induced_probes must be a boolean$",
+            match=r"^generation\.loop_induced_probes must be true or false$",
         ):
             GenerationConfig(loop_induced_probes=value)
 
