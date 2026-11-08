@@ -406,6 +406,9 @@ def test_explicit_tirust_levels_are_refused_before_any_point(loop_native, monkey
         )
         found = backend._reduction_choices(None, None, None, own, SUMMED)
         assert found[own.levels[1]].effective == "tirust"
+        # A fresh runtime (the choices are cached per runtime) on the stub.
+        runtime, points, scales = _load(_li())
+        backend = runtime._backend
         served = frozenset({"double"})
         monkeypatch.setattr(
             backend,
