@@ -321,6 +321,13 @@ def test_lit_json_is_keyed_by_the_registry_and_read_by_the_report(entries, tmp_p
     assert "TIRust fails 2 of 3 binary64 points closed" in row["note"]
     assert out["rows"]["gg_zz"]["status"] == "not run"
     assert "LI-24" in out["ids"] and "LI-A7" in out["ids"]
+    # each run's checks once: an id's run a registry row carries names it
+    assert out["ids"]["LI-24"]["runs"]["li_gg_hh"] == {
+        "status": row["status"],
+        "row": "gg_hh",
+    }
+    ward = out["ids"]["LI-W1"]["runs"]["li_gg_hh"]
+    assert ward["row"] == "gg_hh" and "status" in ward
     path = (
         lm.WT / "docs" / "performance_reports" / "loop" / "scripts" / "build_summary.py"
     )
