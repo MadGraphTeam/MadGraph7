@@ -781,8 +781,8 @@ to the Python API's `VirtualStabilityEstimate`; the precision rescue stays the
 Python API's. The SDK reads every binary64 input as its exact value, so its
 counterpart is the Python API given those exact values (for example
 `str(decimal.Decimal(x))`). The Python API reads a float by its shortest
-decimal (`33.6`, not the double's exact value), so where the two differ the
-rotation check turns points half an ulp apart and the estimates differ in
+decimal (`33.6`, not the double's exact value): where the two differ, its
+point lies half an ulp from the SDK's, and values and estimates may differ in
 their last digits. Binary64 evaluation, with or without the
 monitoring, never touches Symbolica: the shipped loop-induced self-test
 artifact evaluates through the C ABI without `SYMBOLICA_LICENSE` while another

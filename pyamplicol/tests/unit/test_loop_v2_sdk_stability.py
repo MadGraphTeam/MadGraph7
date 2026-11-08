@@ -872,11 +872,11 @@ def test_the_sdk_self_test_touches_no_symbolica_state(loop_native, tmp_path):
     expected = json.loads((selftest.fixture_root() / "expected.json").read_text())
     # The SDK reads each binary64 input as its exact value
     # (rusticol_virtual.h), so the Python API is given those exact values
-    # (the decimal text of the doubles). A Python float is read by its
-    # shortest decimal (assemble._fraction) where the rotation check turns the
-    # point, so float inputs whose shortest decimal is not their exact value
-    # (here 33.6, 50.592, ...) are turned from a point half an ulp away: here
-    # the same values, estimates that differ in their last digits.
+    # (the decimal text of the doubles). The Python API reads a float by its
+    # shortest decimal (runtime/virtual.py, assemble._fraction), half an ulp
+    # from the double where the two differ (here 33.6, 50.592, ...): g g > h's
+    # values do not see it (its invariants are exact either way), its
+    # rotation check does (estimates that differ in their last digits).
     points = [
         [[float(Decimal(c)) for c in p] for p in point] for point in expected["points"]
     ]
