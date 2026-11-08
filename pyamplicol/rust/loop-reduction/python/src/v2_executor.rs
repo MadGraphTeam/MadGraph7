@@ -853,6 +853,9 @@ struct V2Executor {
     /// built on first use (`backend_of`).
     backends: [Option<V2Backends>; 2],
     trees: Option<Trees>,
+    /// Whether the plan is TIR-only (a family beyond NinjaRS's rank <= N + 2,
+    /// m-lit lit-eft): NinjaRS then checks the dressed families per call.
+    tir_only: bool,
 }
 
 /// The `reduction` backend of a carrier, built on first use. A free
@@ -1448,12 +1451,15 @@ impl V2Executor {
             }
             executor = executor.with_fourier(record.as_bytes()).map_err(error)?;
         }
+        let tir_only =
+            rusticol_core::loop_v2::bounds::tir_only(runtime::plan_histogram(executor.plan()));
         Ok(Self {
             executor,
             carrier,
             engine: engine.to_owned(),
             backends: [None, None],
             trees,
+            tir_only,
         })
     }
 
@@ -1525,6 +1531,7 @@ impl V2Executor {
             engine: engine.to_owned(),
             backends: [None, None],
             trees,
+            tir_only: self.tir_only,
         })
     }
 
@@ -1976,7 +1983,7 @@ impl V2Executor {
         }
         // NinjaRS refuses a family beyond its rank <= N + 2 among the dressed
         // ones (a TIR-only plan's, m-lit lit-eft) typed, before dressing.
-        if reduction == Reduction::NinjaRs {
+        if reduction == Reduction::NinjaRs && self.tir_only {
             let kept = |index: usize| {
                 selection
                     .families
