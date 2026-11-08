@@ -63,8 +63,8 @@
 //! - a vertex id at or beyond the number of terms that carry one (the loader
 //!   requires every id up to the largest to be defined by a term);
 //! - a family reading of more entries than legs, or a family rank the
-//!   artifacts do not admit (`bounds::rank_refusal` of
-//!   `bounds::Reducer::ARTIFACT`: NinjaRS reduces rank <= N+2);
+//!   artifacts do not admit (`bounds::admission_refusal`: NinjaRS reduces
+//!   rank <= N+2, TIRust what its capability query admits);
 //! - a schedule-B step whose output rank `rank_in + degree` exceeds its
 //!   family's rank (a trace step's is checked, and an open step's output
 //!   feeds a later step's input rank); a schedule-M state above the largest
@@ -75,13 +75,14 @@
 //!   `tensor_layout::monomial_index` computes recursively, one call per unit
 //!   of exponent (an exponent of 2^20 overflows the stack before the check,
 //!   and exponents summing to 2^32 wrap the layout's `u32` degree to 0);
-//! - a fused entry of q-degree above the largest rank the reducer admits
-//!   over the plan's legs (`bounds::largest_rank`), whatever its content's
-//!   degree: not implied for a content no step reads, whose degree nothing
-//!   checks, but no plan has one (a content's degree is at most a family's
-//!   rank, the family of a pruned selection's content included, and a family
-//!   has at most one propagator per leg), and the recursion above has no
-//!   other bound;
+//! - a fused entry of q-degree above the largest admitted rank: NinjaRS's
+//!   over the plan's legs (`bounds::largest_rank`), or the plan's largest
+//!   family rank where it is higher (a TIR-only plan's, bounded by TIRust's
+//!   capability query), whatever its content's degree: not implied for a
+//!   content no step reads, whose degree nothing checks, but no plan has one
+//!   (a content's degree is at most a family's rank, the family of a pruned
+//!   selection's content included, and a family has at most one propagator
+//!   per leg), and the recursion above has no other bound;
 //! - a decimal weight whose power of ten is 2^32 or more (numerica panics).
 
 use super::super::links::Row;
@@ -457,8 +458,9 @@ fn ncoeff(rank: u64) -> u64 {
 const ROW: usize = size_of::<Row>();
 
 /// The (rank, degree) pairs whose monomial tables the derivations build,
-/// tracked for ranks and degrees up to the largest rank the reducer admits
-/// over the plan's legs (the largest any table of a valid plan has).
+/// tracked for ranks and degrees up to NinjaRS's largest rank over the plan's
+/// legs (`bounds::largest_rank`), raised to the plan's largest admitted family
+/// rank (a TIR-only family may exceed it).
 struct Tables {
     /// The tracked ranks and degrees: `0..width`.
     width: usize,
@@ -777,26 +779,22 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
         file.helicities.len() == file.legs,
         "plan helicities per leg differ from its legs",
     )?;
-    // The families' readings and ranks (the reducer's admission), and the
+    // The families' readings and ranks (the artifacts' admission), and the
     // largest family rank (merged states); every monomial table and fused
-    // entry is bounded by the largest rank the reducer admits over the legs.
-    let admitted_rank =
-        crate::loop_v2::bounds::largest_rank(crate::loop_v2::bounds::Reducer::ARTIFACT, file.legs);
+    // entry is bounded by the largest admitted rank: NinjaRS's over the legs,
+    // or the largest family rank of a TIR-only plan where it is higher.
     let mut largest_rank = 0;
     for f in &file.families {
         require(
             f.sequence.len() <= file.legs,
             "a family reading of more entries than legs",
         )?;
-        if let Some(refusal) = crate::loop_v2::bounds::rank_refusal(
-            crate::loop_v2::bounds::Reducer::ARTIFACT,
-            f.sequence.len(),
-            f.rank,
-        ) {
+        if let Some(refusal) = crate::loop_v2::bounds::admission_refusal(f.sequence.len(), f.rank) {
             return Err(invalid(format!("family rank: {refusal}")));
         }
         largest_rank = largest_rank.max(f.rank);
     }
+    let admitted_rank = crate::loop_v2::bounds::largest_rank(file.legs).max(largest_rank);
     let mut tally = Tally::default();
     let counts: Vec<u64> = file.helicities.iter().map(|h| h.len() as u64).collect();
     let (rows, columns) = (file.rows as u64, file.columns as u64);

@@ -24,6 +24,13 @@ symbolica-runtime = ["dep:symbolica", "dep:pyamplicol", "dep:tracing", "dep:trac
 # polynomials in the NinjaRS tensor layout). Enabled by the loop consumer
 # (rusticol-loop-reduction), so the native extension ships it.
 loop-v2 = ["dep:brotli", "dep:flate2", "dep:ninjars", "symbolica-runtime", "f64-symjit"]
+# TIRust's capability query in the loop engine's rank admission (m-lit
+# lit-eft: families beyond NinjaRS's rank <= N+2 are admitted when TIRust
+# reduces them; `loop_v2::bounds`). Not the TIRust backend (the default
+# feature `tir` of the crates that link it): enabled only by the loop
+# consumer's `tir` (rusticol-loop-reduction), so a `--no-default-features`
+# build links no TIRust; not a default here.
+tirust-capability = ["loop-v2", "dep:iregi-rust"]
 
 [dependencies]
 bincode.workspace = true
@@ -33,6 +40,9 @@ flate2 = { workspace = true, optional = true }
 libloading = { version = "0.9", optional = true }
 libc.workspace = true
 ninjars = { git = "https://github.com/alphal00p/ninjars.git", rev = "5b6a8f5709b1e540a70ac6278ca36185c4cdad16", optional = true }
+# The loop consumer's TIRust pin (rusticol-loop-reduction's `iregi-rust`, the
+# same revision): its capability query only (feature `tir`).
+iregi-rust = { git = "https://github.com/huashengshao/TIRust.git", rev = "fefb5f2b0a8aaabb4977db990219725f248dfc94", optional = true }
 # pyAmpliCol's Symbolica library key (the crate named after the package the
 # key is issued for).
 pyamplicol = { path = "../pyamplicol", optional = true }

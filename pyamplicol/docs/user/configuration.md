@@ -308,6 +308,10 @@ the truncation, so SU(N_c) identities such as colour conservation hold degree
 by degree. For example the colour factor of `u d > u d` is `(N^2 - 1)/4`
 exactly, `(N^2 + 1)/4` at inherited LC and `N^2/4` at strict LC; see
 [Correlation Conventions](../correlator-conventions.md#strict-colour-the-formal-1nc-expansion).
+Since a tree request defaults to `lc`, compare a tree with a full-colour
+reference (MadGraph standalone, an analytic formula, a loop-induced |A|^2)
+at `accuracy = "full"`: at `lc` the gluon pair of `g g > h` (HEFT) carries
+`N^2` instead of `N^2 - 1`, exactly 9/8 of the full-colour value.
 
 Strict tree artifacts report their value split by N_c degree (graded output:
 `Runtime.evaluate_graded`, the contracted colour axis of `evaluate_resolved`,
@@ -765,6 +769,26 @@ its point the same way. TIRust's qualified domain is up to six
 loop propagators at numerator rank six (reported, never enforced: beyond it
 the achieved precision is measured, as everywhere). `loop.reduction` other
 than `"auto"` needs a one-loop request (`process.loop_coupling_orders`).
+
+**Rank beyond N+2 (TIR-only artifacts; open, untested for correctness).**
+NinjaRS reduces loop numerators of rank at most N+2 over N propagators;
+TIRust has no such limit (its own capability query decides). A family beyond
+N+2, which effective operators produce (in Feynman gauge each insertion of a
+dimension-five or -six operator with both loop legs raises the rank by at
+most one, so it takes three such insertions, e.g. `g g > x0 x0 x0` in
+HC_NLO_X0), is generated when TIRust reduces it, and the artifact is then
+*TIR-only*: it records `reductions = ["tirust"]`, `"auto"` takes TIRust for
+both process types in every arithmetic and on every rescue level (the reason
+says so), and an explicit `"ninjars"` (also as the cross-backend stability
+check or a rescue level's backend) is refused typed (`ReductionUnavailable`),
+as is a generation default `loop.reduction = "ninjars"`; a native extension
+without TIRust refuses the artifact. **Such results carry no correctness
+claim**: the rational terms (R2) and counterterms of rank > N+2 numerators
+would need dimension-eight operators that no model provides, so the values are
+neither validated against a reference nor gauge invariant in general. The
+feature only runs (`tools/loop_v2_eft_execution.py`: the two backends agree on
+the families NinjaRS reduces). Artifacts whose families stay within N+2 are
+unchanged.
 
 **Momenta and arithmetic.** Every arithmetic (`double`, `double-double`,
 `arbitrary`) takes each external leg's invariant p² in the loop integrals to be

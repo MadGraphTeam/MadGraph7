@@ -825,16 +825,34 @@ fn capability_refusals_are_typed() {
         let reason = capability_refusal(n, 0, bits).unwrap();
         assert!(message.ends_with(&reason), "{message} / {reason}");
     }
-    // The artifacts' rank admission (rank <= N + 2 until lit-eft) comes first.
+    // TIRust has no rank <= N + 2 limit (m-lit lit-eft): a family beyond
+    // NinjaRS's rank is TIRust's in every carrier, and the artifacts admit
+    // it; beyond TIRust's own representation it is refused with its reason.
+    for bits in [53, 106, 256] {
+        assert_eq!(capability_refusal(4, 7, bits), None);
+        assert_eq!(capability_refusal(5, 11, bits), None);
+    }
+    let max_rank = usize::from(DirectCapabilities::of_representation(53).max_rank);
+    let reason = capability_refusal(1, max_rank + 1, 53).unwrap();
     assert!(
-        capability_refusal(4, 7, 53)
-            .unwrap()
-            .contains("for both reduction backends")
+        reason.contains("TIRust cannot reduce 1 propagators"),
+        "{reason}"
     );
     assert_eq!(
-        rusticol_loop_reduction::runtime::rank_refusal(Reduction::TiRust, 13, 2),
-        None
+        rusticol_core::loop_v2::bounds::rank_refusal(Reduction::TiRust, 1, max_rank + 1),
+        Some(reason)
     );
+    for (n, rank) in [(13, 2), (4, 7)] {
+        assert_eq!(
+            rusticol_loop_reduction::runtime::rank_refusal(Reduction::TiRust, n, rank),
+            None
+        );
+        assert_eq!(
+            rusticol_core::loop_v2::bounds::admission_refusal(n, rank),
+            None
+        );
+    }
+    assert!(rusticol_loop_reduction::runtime::rank_refusal(Reduction::NinjaRs, 4, 7).is_some());
 }
 
 /// A top in its own gauge loop: `S[1][2] = m_t²` next to two top
