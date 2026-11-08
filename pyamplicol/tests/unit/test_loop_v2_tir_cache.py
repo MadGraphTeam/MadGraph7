@@ -197,9 +197,10 @@ def test_tirust_tensor_store_keeps_the_values_and_counts_its_reuse(li, loop_nati
     counts = stored[2]["counts"]
     assert counts["TIR store masters reused"] > 0
     assert counts["TIR store masters computed"] > 0
-    # Fewer scalar masters evaluated with the store.
+    # TIRust's own count of the master rows its calls request is the same
+    # (the store serves some of them).
     evaluated = "TIR master evaluations"
-    assert counts[evaluated] < plain[2]["counts"][evaluated]
+    assert counts[evaluated] == plain[2]["counts"][evaluated] > 0
 
 
 @pytest.mark.loop_fast
