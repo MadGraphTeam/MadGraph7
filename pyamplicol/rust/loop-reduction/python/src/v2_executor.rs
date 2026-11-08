@@ -2252,8 +2252,13 @@ type V2ArtifactPoint = (Option<(Vec<f64>, Vec<Vec<f64>>)>, Vec<String>);
 /// parameter values (exact strings), `poles` the pole selection ("all",
 /// "none", "uv" or "ir"; True and False are "all" and "none"; a
 /// loop-induced process serves "all" and "none"), `reduction` the backend
-/// ("ninjars", the default, or "tirust"). A loop-induced process returns an
-/// empty Born and |A_loop|² per declared sector.
+/// ("ninjars" or "tirust"; by default the one `V2Runtime::open` takes, the
+/// binary64 choice of "auto" (`reduction_policy::resolve`: TIRust for a
+/// loop-induced or TIR-only process where this library serves it, else
+/// NinjaRS) WITHOUT "auto"'s per-point NinjaRS fallback, which the SDK
+/// runtime and the Python API add: here a point TIRust refuses is a failed
+/// point with its reason). A loop-induced process returns an empty Born and
+/// |A_loop|² per declared sector.
 #[pyfunction]
 #[pyo3(signature = (path, momenta, scales, *, process=None, parameters=None, poles=None, threads=None, reduction=None))]
 #[allow(clippy::too_many_arguments)]

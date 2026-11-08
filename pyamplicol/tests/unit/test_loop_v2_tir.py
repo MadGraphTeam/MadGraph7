@@ -510,7 +510,7 @@ def test_tirust_is_served_on_request_and_auto_takes_it_for_loop_induced(loop_nat
     summed and resolved routes of the Born-interfered one serve an explicit
     ``"tirust"`` (recorded as requested) with NinjaRS's values within their
     re-test estimates; ``"auto"`` takes TIRust, the loop-induced default, in
-    every arithmetic (m-lit lit-cache, DECISIONS 2026-11-07 21:50 R3) and
+    every arithmetic (m-lit F3, DECISIONS 2026-11-08 15:19 / 15:32) and
     keeps NinjaRS on the Born-interfered process; TIRust at double-double
     and arbitrary precision is served on request, also on every level of a
     rescue ladder."""

@@ -13,8 +13,8 @@ PLAN §2.b.4, §2.b.6, §2.a.8; RULED Q17 / Q21 / Q22; DECISIONS 2026-11-07
 * Before lit-tir-mp (capability-driven: the carriers the native extension
   reports for TIRust): an ``"auto"`` level of a loop-induced call whose
   request is ``"auto"`` takes TIRust, the loop-induced default, where the
-  native serves TIRust at the level's carrier (binary64; lit-cache's switch,
-  R3) and NinjaRS with its reason elsewhere (double-double); an explicit
+  native serves TIRust at the level's carrier (binary64; the m-lit F3 switch,
+  which supersedes R3) and NinjaRS with its reason elsewhere (double-double); an explicit
   ``"tirust"`` double-double level, or an ``"auto"`` one inheriting an
   explicit call-level ``"tirust"``, is refused typed
   (``ReductionUnavailable``) before any point. After it (a native reporting
@@ -323,7 +323,7 @@ def test_levels_resolve_once_per_level_capability_driven(loop_native, monkeypatc
     inherited = choices(auto, "tirust")
     assert {choice.effective for choice in inherited.values()} == {"tirust"}
     assert {choice.reason for choice in inherited.values()} == {"requested"}
-    # lit-cache's switch (R3): the route's "auto" set holds TIRust, so the
+    # The m-lit F3 switch (superseding R3): the route's "auto" set holds TIRust, so the
     # "auto" levels resolve to TIRust, the loop-induced default; a route
     # whose "auto" set leaves it out keeps NinjaRS with that reason.
     found = choices(auto)
@@ -356,7 +356,7 @@ def test_rescue_attempts_record_each_level_backend(loop_native):
     records both levels' backends; the kept double-double values are
     bitwise NinjaRS's double-double values of the same points. A loop-
     induced "auto" ladder records the resolver's choices: TIRust, the
-    loop-induced default, at binary64 (lit-cache's switch, R3) and, before
+    loop-induced default, at binary64 (the m-lit F3 switch) and, before
     lit-tir-mp, NinjaRS with its reason at double-double."""
 
     from pyamplicol.api.virtual_results import VirtualRescueLevel
@@ -560,7 +560,7 @@ def test_a_point_the_other_backend_fails_keeps_the_other_estimate(
     plain = VirtualStabilityChecks(1, True)
     # NinjaRS named as the call's backend, so that the other backend is
     # TIRust whatever "auto" takes (TIRust, the loop-induced default, where it
-    # serves the carrier: lit-cache's switch, R3).
+    # serves the carrier: the m-lit F3 switch).
     base = runtime.evaluate(
         points, mu_r2=scales, stability_checks=plain, reduction="ninjars"
     )

@@ -177,9 +177,9 @@ def route(key: str) -> Route:
     "resolved": the colour-, spin- and helicity-resolved outputs and
     selections) from the native policy: what it serves, the backends its
     executor runs (the native executor's ``reduction`` option, m-lit lit-tir)
-    and those ``"auto"`` takes there (NinjaRS until the loop-induced
-    agreement of the two backends is checked; m-lit lit-cache adds TIRust in
-    the native policy)."""
+    and those ``"auto"`` may take there (both, m-lit F3: which one a call
+    takes is ``resolve``'s, TIRust for a loop-induced process with the
+    per-point NinjaRS fallback, NinjaRS for a Born-interfered one)."""
 
     found = policy()["routes"][key]
     return Route(

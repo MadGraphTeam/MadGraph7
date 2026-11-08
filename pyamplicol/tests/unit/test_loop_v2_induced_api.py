@@ -341,7 +341,7 @@ def test_the_effective_backend_is_one_the_route_runs():
     """The guard of every route: the artifact runtime's summed route and its
     resolved outputs run both backends (m-lit lit-tir), so an explicit
     TIRust is served there, and ``auto`` takes the per-type default on them
-    (m-lit lit-cache: TIRust for a loop-induced call, NinjaRS for a
+    (m-lit F3: TIRust for a loop-induced call, NinjaRS for a
     Born-interfered one); a route whose ``auto`` set leaves TIRust out
     serves it on explicit request only, the reason saying so; a route whose
     executor does not run TIRust refuses it typed and its ``auto`` names the
@@ -680,7 +680,7 @@ def test_reduction_finiteness_and_estimates_on_the_public_route(shipped):
     auto = shipped.evaluate(points, mu_r2=scales)
     assert auto.contribution == "loop-induced" and auto.born_orders == ()
     # "auto" takes TIRust, the loop-induced default, in an extension built
-    # with it (m-lit lit-cache), NinjaRS with the reason otherwise.
+    # with it (m-lit F3), NinjaRS with the reason otherwise.
     default = "tirust" if "tirust" in reduction["native"] else "ninjars"
     for lane in auto.diagnostics:
         assert lane.reduction.requested == "auto"

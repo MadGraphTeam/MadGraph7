@@ -260,11 +260,6 @@ impl Runtime {
     }
 }
 
-/// Per point the exact spin sources of every leg: `sources` maps a one-based
-/// leg to its four complex components per point (`4 * points` pairs, point
-/// major). A leg 0 or a vector of another length (e.g. one broadcast row
-/// passed to the per-point decimal API) is an invalid argument, never an
-/// out-of-bounds read.
 /// The spin rows of the points at `indices` ([`pick`]; none without spin
 /// sources).
 fn pick_rows<'a, T: Clone>(rows: &'a [T], indices: Option<&[usize]>) -> std::borrow::Cow<'a, [T]> {
@@ -275,6 +270,11 @@ fn pick_rows<'a, T: Clone>(rows: &'a [T], indices: Option<&[usize]>) -> std::bor
     }
 }
 
+/// Per point the exact spin sources of every leg: `sources` maps a one-based
+/// leg to its four complex components per point (`4 * points` pairs, point
+/// major). A leg 0 or a vector of another length (e.g. one broadcast row
+/// passed to the per-point decimal API) is an invalid argument, never an
+/// out-of-bounds read.
 fn spin_rows(
     sources: &BTreeMap<usize, Vec<[String; 2]>>,
     points: usize,
