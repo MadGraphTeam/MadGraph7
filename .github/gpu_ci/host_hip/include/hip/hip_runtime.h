@@ -35,6 +35,15 @@
 #define HOST_HIP_HD
 #endif
 
+// CUDA/HIP declare the device math functions (signbit, isnan, ...) in the global
+// namespace. libstdc++'s <cmath> puts the classification functions in std:: only
+// (libc++ declares both), so a host build with g++ would not find ::signbit.
+#include <cmath>
+using std::isfinite;
+using std::isinf;
+using std::isnan;
+using std::signbit;
+
 struct dim3
 {
   unsigned int x, y, z;
