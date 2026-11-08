@@ -399,6 +399,7 @@ def catalogue_kinematics(slice_: Any) -> rx.CatalogueKinematics:
 # per-row closures (``_dressed_work``).
 _DRESSED_WORK = ("best/seed", "best/step", "closure")
 
+
 def aligned_frame(key: FamilyKey, frame: Any) -> bool:
     """Whether ``frame``'s reading of family ``key`` is aligned: its last
     entry carries the process's highest external leg (the top bit of the
