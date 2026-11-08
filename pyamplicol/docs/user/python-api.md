@@ -779,8 +779,8 @@ has:
   reduction="ninjars")`. Each level's backend is resolved once, for its
   carrier, before the first point: an explicit one (the level's, or the
   call's inherited by an `"auto"` level) that cannot serve the level's
-  carrier is refused (`ReductionUnavailable`; TIRust serves binary64 in this
-  release, so a `"tirust"` double-double level is refused), never switched.
+  carrier is refused (`ReductionUnavailable`; for instance a `"tirust"` level
+  in a native extension built without TIRust), never switched.
   Each `VirtualRescueAttempt` records the level's `reduction`
   (`VirtualReduction`: requested, effective, reason), so
   `result.rescue[i].attempts` shows the backend of every level a point
