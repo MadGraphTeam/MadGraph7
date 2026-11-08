@@ -2940,3 +2940,27 @@ def test_value_exceptions_leave_their_points_out():
     assert found["excepted_points"] == [7] and found["exception"] == "unstable"
     plain = gate.compare_values("li_gg_zzzz", mine, theirs)["recola"]
     assert plain["max_finite_deviation"] == 0.8
+
+
+def test_blocks_without_their_core_are_left_out():
+    """``gate.valid_blocks``: a loop-induced block whose process had less than
+    the minimal CPU share of its wall time (a shared core, or a job a host
+    guard stopped) is left out of the median and listed; all blocks kept
+    without shares."""
+
+    summary = {
+        "samples_seconds_per_point": [1.0, 1.1, 9.0, 1.2],
+        "median_seconds_per_point": 1.15,
+        "min_seconds_per_point": 1.0,
+        "max_seconds_per_point": 9.0,
+        "blocks": 4,
+        "failed_points": [0, 1, 2, 3],
+        "cpu_share": [0.99, 0.99, 0.12, 0.98],
+    }
+    kept = gate.valid_blocks(summary, gate.MIN_CPU_SHARE)
+    assert kept["samples_seconds_per_point"] == [1.0, 1.1, 1.2]
+    assert kept["median_seconds_per_point"] == 1.1 and kept["blocks"] == 3
+    assert kept["failed_points"] == [0, 1, 3]
+    assert kept["dropped_blocks"] == {"2": 0.12}
+    del summary["cpu_share"]
+    assert gate.valid_blocks(summary, gate.MIN_CPU_SHARE) is summary
