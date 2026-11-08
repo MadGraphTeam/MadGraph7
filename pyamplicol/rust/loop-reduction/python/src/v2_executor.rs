@@ -1539,8 +1539,11 @@ impl V2Executor {
     /// the backend's defaults) set its settings: its backend is rebuilt when
     /// they differ from its current ones. `profile` (a measurement:
     /// `v2_tir::TirOptions::profile`, TIRust's own stage profile in the
-    /// report's "reduction: TIR ..." seconds) likewise. NinjaRS refuses them.
-    #[pyo3(signature = (reduction="tirust", *, method_choice=None, alternative_first=super::v2::Limit::default_limit(), acceptance=None, acceptance_frame=None, profile=None))]
+    /// report's "reduction: TIR ..." seconds) and `store` (a measurement:
+    /// `v2_tir::TirOptions::store`, TIRust's tensor store shared between the
+    /// families of a point chunk; values unchanged) likewise. NinjaRS refuses
+    /// them.
+    #[pyo3(signature = (reduction="tirust", *, method_choice=None, alternative_first=super::v2::Limit::default_limit(), acceptance=None, acceptance_frame=None, profile=None, store=None))]
     fn prepare_reduction(
         &mut self,
         reduction: &str,
@@ -1549,6 +1552,7 @@ impl V2Executor {
         acceptance: Option<f64>,
         acceptance_frame: Option<String>,
         profile: Option<bool>,
+        store: Option<bool>,
     ) -> PyResult<Vec<(usize, usize)>> {
         let reduction = Reduction::parse(reduction).map_err(error)?;
         if reduction != Reduction::TiRust
@@ -1557,11 +1561,12 @@ impl V2Executor {
                 &alternative_first,
                 acceptance,
                 &acceptance_frame,
-            ) || profile.is_some())
+            ) || profile.is_some()
+                || store.is_some())
         {
             return Err(error(
-                "method_choice, alternative_first, acceptance, acceptance_frame and profile are \
-                 TIRust's settings",
+                "method_choice, alternative_first, acceptance, acceptance_frame, profile and \
+                 store are TIRust's settings",
             ));
         }
         #[cfg(feature = "tir")]
@@ -1570,6 +1575,7 @@ impl V2Executor {
         {
             let options = rusticol_loop_reduction::v2_tir::TirOptions {
                 profile: profile.unwrap_or(false),
+                store: store.unwrap_or(false),
                 ..super::v2::tir_options(
                     method_choice,
                     &alternative_first,
@@ -1601,6 +1607,7 @@ impl V2Executor {
             acceptance,
             acceptance_frame,
             profile,
+            store,
         );
         let backend = backend_of(
             &mut self.backends,

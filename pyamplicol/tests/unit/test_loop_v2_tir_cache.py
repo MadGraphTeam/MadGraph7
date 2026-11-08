@@ -17,6 +17,9 @@
   amplitude_numerators_count_against_the_chunk_budget``);
 * TIRust's profile (``V2Executor.prepare_reduction(profile=True)``): its
   stages join the report and the values stay bitwise;
+* TIRust's tensor store (``prepare_reduction(store=True)``, opt-in): the
+  families of a point chunk share TIRust's per-subset results, the values
+  stay bitwise and the reuse is counted;
 * the exit codes of the L6 both-backends check
   (``tools/loop_v2_observables_backends.py``, extended by lit-cache for the
   lit-amp rows), on a stubbed runtime.
@@ -167,6 +170,36 @@ def test_tirust_profile_joins_the_report_and_keeps_the_values(li, loop_native):
     assert profiled[2]["counts"]["TIR master evaluations"] > 0
     native.prepare_reduction("tirust")
     assert _native_run(executor, li, name, reduction="tirust")[0] == plain[0]
+
+
+@pytest.mark.loop_physics
+def test_tirust_tensor_store_keeps_the_values_and_counts_its_reuse(li, loop_native):
+    """``prepare_reduction(store=True)`` (``TirOptions::store``, m-lit
+    lit-cache STEP 3): the families of g g > z z share TIRust's per-subset
+    results within a point chunk; every lane is bitwise the store-off value
+    and the store's reuse is reported; NinjaRS refuses the keyword."""
+
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+
+    if not loop_native.tirust_available():
+        pytest.skip("the staged native extension is built without TIRust")
+    name = "li_gg_zz"
+    executor = NativeExecutor(li.slice(name), forward=False, inputs="native")
+    native = executor.native("double", None, 1)
+    with pytest.raises(Exception, match="TIRust's settings"):
+        native.prepare_reduction("ninjars", store=True)
+    native.prepare_reduction("tirust")
+    plain = _native_run(executor, li, name, reduction="tirust")
+    native.prepare_reduction("tirust", store=True)
+    stored = _native_run(executor, li, name, reduction="tirust")
+    assert plain[0] == stored[0] and plain[1] == stored[1] == [[]]
+    assert not any(key.startswith("TIR store") for key in plain[2]["counts"])
+    counts = stored[2]["counts"]
+    assert counts["TIR store masters reused"] > 0
+    assert counts["TIR store masters computed"] > 0
+    # Fewer scalar masters evaluated with the store.
+    evaluated = "TIR master evaluations"
+    assert counts[evaluated] < plain[2]["counts"][evaluated]
 
 
 @pytest.mark.loop_fast

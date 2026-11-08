@@ -125,7 +125,7 @@ use crate::runtime::frames::{FrameMap, ReductionFrame};
 use crate::runtime::{Carrier, TypedBatch};
 use iregi_rust::{
     Convention, DirectCapabilities, DirectReductionPlan, DirectWorkspace, InvariantInput,
-    KinematicsBatch, LaneStatus, ReductionSettings, ScaleInput, TensorWeights,
+    KinematicsBatch, LaneStatus, ReductionSettings, ScaleInput, TensorStore, TensorWeights,
 };
 use ninjars::fast::tensor_layout::{monomials, ncoeff};
 use rusticol_core::loop_execution::v2::{
@@ -187,6 +187,16 @@ pub struct TirOptions {
     /// measurement option (default off: its timers cost time), never a value
     /// change.
     pub profile: bool,
+    /// Share TIRust's per-subset results (scalar masters, sub-integrals,
+    /// gathered moments) between the families of a chunk of points through
+    /// one `iregi_rust::TensorStore` per backend: every plan registered
+    /// before the first reduce, every workspace attached, the store cleared
+    /// once per point chunk ([`TirReductionBackend::begin`], and per
+    /// family-group call). Every entry is a pure function of its exact key,
+    /// so values are bit-identical with the store on and off; opt-in
+    /// (m-lit lit-cache STEP 3: adopted only at >= 1.3x on the reduction
+    /// stage, Q19).
+    pub store: bool,
 }
 
 impl Default for TirOptions {
@@ -201,6 +211,7 @@ impl Default for TirOptions {
             acceptance: iregi_rust::direct::EXPANSION_TOLERANCE,
             acceptance_frame: tir_frame(ReductionCheck::RESCALED),
             profile: false,
+            store: false,
         }
     }
 }
@@ -384,6 +395,7 @@ impl Bin {
         choice: bool,
         options: &TirOptions,
         prototype: &T,
+        store: Option<&TensorStore>,
     ) -> RusticolResult<&mut DirectWorkspace<T>>
     where
         Complex<T>: EvaluationDomain,
@@ -413,6 +425,9 @@ impl Bin {
             })?;
             if options.profile {
                 workspace.set_profiling(true);
+            }
+            if store.is_some() {
+                workspace.set_tensor_store(store);
             }
             let binary64 = bits == f64::MANTISSA_DIGITS;
             if choice {
@@ -474,9 +489,30 @@ struct Counters {
     /// [`TirOptions::profile`]: TIRust's profile (geometry, masters,
     /// recursion, gather, output), in seconds.
     profile: Option<[f64; 5]>,
+    /// [`TirOptions::store`]: the store's counts, summed over its clears
+    /// (masters reused / computed, sub-integrals reused / computed, moments
+    /// reused / computed).
+    store: Option<[u64; 6]>,
 }
 
 impl Counters {
+    /// Add the store's counts since its last clear (before clearing it).
+    fn store(&mut self, store: &TensorStore) {
+        let s = store.statistics();
+        let counts = [
+            s.masters_reused,
+            s.masters_computed,
+            s.subsets_reused,
+            s.subsets_computed,
+            s.moments_reused,
+            s.moments_computed,
+        ];
+        let total = self.store.get_or_insert([0; 6]);
+        for (t, c) in total.iter_mut().zip(counts) {
+            *t += c;
+        }
+    }
+
     /// Add one TIRust call's scalar-master count, and its profile when
     /// profiling.
     fn call<T: TirCarrier>(&mut self, workspace: &DirectWorkspace<T>, profiling: bool)
@@ -500,6 +536,8 @@ pub struct TirReductionBackend {
     options: TirOptions,
     bins: BTreeMap<(usize, usize), Bin>,
     counters: Counters,
+    /// [`TirOptions::store`]: the backend's one tensor store.
+    store: Option<TensorStore>,
 }
 
 /// `|z|` in binary64.
@@ -524,6 +562,7 @@ impl TirReductionBackend {
             options,
             bins: BTreeMap::new(),
             counters: Counters::default(),
+            store: options.store.then(TensorStore::new),
         }
     }
 
@@ -571,12 +610,23 @@ impl TirReductionBackend {
     }
 
     fn bin(&mut self, n: usize, rank: usize) -> RusticolResult<&mut Bin> {
-        bin_of(&mut self.bins, n, rank)
+        bin_of(&mut self.bins, n, rank, self.store.as_ref())
     }
 
-    pub fn begin(&mut self) {}
+    /// A new chunk of points: the store ([`TirOptions::store`]) forgets the
+    /// last chunk's entries (its counts are kept in the statistics).
+    pub fn begin(&mut self) {
+        if let Some(store) = &self.store {
+            self.counters.store(store);
+            store.clear();
+        }
+    }
 
     pub fn take_statistics(&mut self) -> BackendStatistics {
+        if let Some(store) = &self.store {
+            self.counters.store(store);
+            store.clear();
+        }
         let c = std::mem::take(&mut self.counters);
         let mut seconds = vec![
             ("reduction: tensor moments", c.moments),
@@ -606,7 +656,19 @@ impl TirReductionBackend {
                     c.unverified,
                 ),
                 ("TIR master evaluations", c.masters),
-            ],
+            ]
+            .into_iter()
+            .chain(c.store.into_iter().flat_map(|[mr, mc, sr, sc, or, oc]| {
+                [
+                    ("TIR store masters reused", mr),
+                    ("TIR store masters computed", mc),
+                    ("TIR store sub-integrals reused", sr),
+                    ("TIR store sub-integrals computed", sc),
+                    ("TIR store moments reused", or),
+                    ("TIR store moments computed", oc),
+                ]
+            }))
+            .collect(),
         }
     }
 
@@ -663,14 +725,14 @@ impl TirReductionBackend {
         let choice = T::method_choice(&self.options);
         for ((n, rank), (members, values)) in bins {
             let options = self.options;
-            let bin = bin_of(&mut self.bins, n, rank)?;
+            let bin = bin_of(&mut self.bins, n, rank, self.store.as_ref())?;
             let width = values.len() / members.len();
             let batch = KinematicsBatch {
                 rows: members.len(),
                 components: 1,
                 values,
             };
-            let workspace = bin.workspace(false, &options, prototype)?;
+            let workspace = bin.workspace(false, &options, prototype, self.store.as_ref())?;
             let result = workspace
                 .reduce_batch(&batch)
                 .map_err(|e| RusticolError::evaluation(format!("TIRust: {e}")))?;
@@ -715,7 +777,7 @@ impl TirReductionBackend {
                     .flat_map(|&k| batch.values[k * width..(k + 1) * width].iter().cloned())
                     .collect(),
             };
-            let workspace = bin.workspace(true, &options, prototype)?;
+            let workspace = bin.workspace(true, &options, prototype, self.store.as_ref())?;
             let result = workspace
                 .reduce_batch(&retry)
                 .map_err(|e| RusticolError::evaluation(format!("TIRust: {e}")))?;
@@ -956,6 +1018,8 @@ impl TirReductionBackend {
         check: Option<ReductionCheck>,
     ) -> RusticolResult<crate::runtime::V2Output> {
         use crate::runtime::Data;
+        // One call is one set of points: the store starts empty.
+        self.begin();
         match groups.first().map(|g| g.shifts.data()) {
             None | Some(Data::Double(_)) => self.family_groups::<f64>(groups, poles, check),
             Some(Data::DoubleDouble(_)) => self.family_groups::<DoubleFloat>(groups, poles, check),
@@ -1058,14 +1122,24 @@ impl TirReductionBackend {
 }
 
 /// The bin of (`n`, `rank`), built on first use.
-fn bin_of(
-    bins: &mut BTreeMap<(usize, usize), Bin>,
+fn bin_of<'a>(
+    bins: &'a mut BTreeMap<(usize, usize), Bin>,
     n: usize,
     rank: usize,
-) -> RusticolResult<&mut Bin> {
+    store: Option<&TensorStore>,
+) -> RusticolResult<&'a mut Bin> {
     Ok(match bins.entry((n, rank)) {
         std::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
-        std::collections::btree_map::Entry::Vacant(entry) => entry.insert(Bin::new(n, rank)?),
+        std::collections::btree_map::Entry::Vacant(entry) => {
+            let bin = Bin::new(n, rank)?;
+            // Registered when built: `prepare` builds every plan of the call
+            // before the first reduce, so which moments meet does not depend
+            // on the order of the families (TIRust's store docs).
+            if let Some(store) = store {
+                store.register(&bin.plan);
+            }
+            entry.insert(bin)
+        }
     })
 }
 
