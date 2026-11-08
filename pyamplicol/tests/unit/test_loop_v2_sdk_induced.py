@@ -659,3 +659,90 @@ def test_python_binary64_observables_run_the_native_implementation(artifacts):
                 a,
                 b,
             )
+
+
+@pytest.mark.loop_nightly
+def test_the_rust_sdk_observables_follow_the_python_api(
+    artifacts, induced_cases, tmp_path
+):
+    """The safe Rust ``Runtime`` (``sdk/tests/v4_extras.rs``) on both rows,
+    compared as the other clients (opt-in as
+    ``test_loop_v2_sdk_extras.test_the_rust_sdk_extras_follow_the_python_api``:
+    ``PYAMPLICOL_SDK_CARGO_TARGET_DIR``, a private cargo target directory)."""
+
+    import os
+    import subprocess
+
+    from tools.developer.build_loop_native import _CODEGEN_DEFAULTS
+
+    target = os.environ.get("PYAMPLICOL_SDK_CARGO_TARGET_DIR")
+    if not target:
+        pytest.skip(
+            "opt-in: set PYAMPLICOL_SDK_CARGO_TARGET_DIR to a private cargo "
+            "target directory to build and run the Rust SDK's control"
+        )
+    shared = os.environ.get("CARGO_TARGET_DIR")
+    if shared and Path(shared).resolve() == Path(target).resolve():
+        pytest.fail("PYAMPLICOL_SDK_CARGO_TARGET_DIR is the shared CARGO_TARGET_DIR")
+    root = Path(__file__).resolve().parents[2]
+    mask = 2**64 - 1
+    for name, (case, expected) in induced_cases.items():
+        feed = tmp_path / f"{name}.json"
+        feed.write_text(
+            json.dumps(
+                {
+                    "artifact": str(artifacts[name]),
+                    "process": "p",
+                    "points": [
+                        [_bits(float(c)) & mask for p in point for c in p]
+                        + [_bits(scale) & mask]
+                        for point, scale in zip(
+                            case["points"], case["scales"], strict=True
+                        )
+                    ],
+                    "spin_legs": sorted(case["spin"]),
+                    "spin": [
+                        [
+                            _bits(float(x)) & mask
+                            for pair in case["spin"][leg]
+                            for x in pair
+                        ]
+                        for leg in sorted(case["spin"])
+                    ],
+                }
+            )
+        )
+        output = tmp_path / f"{name}.out"
+        env = {k: v for k, v in os.environ.items() if k != "CARGO_TARGET_DIR"}
+        env = {
+            **_CODEGEN_DEFAULTS,
+            **env,
+            "PYAMPLICOL_V4_EXTRAS_FEED": str(feed),
+            "PYAMPLICOL_V4_EXTRAS_OUTPUT": str(output),
+        }
+        run = subprocess.run(
+            [
+                "cargo",
+                "test",
+                "--locked",
+                "--release",
+                "--target-dir",
+                target,
+                "-p",
+                "rusticol-loop-sdk",
+                "--test",
+                "v4_extras",
+                "--",
+                "--ignored",
+            ],
+            cwd=root,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=7200,
+            check=False,
+        )
+        assert run.returncode == 0, run.stdout[-4000:] + run.stderr[-4000:]
+        from tests.unit.test_loop_v2_sdk_extras import _parse
+
+        _compare_induced(f"rust:{name}", expected, _parse(output.read_text()))
