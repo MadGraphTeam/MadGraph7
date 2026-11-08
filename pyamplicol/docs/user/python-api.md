@@ -319,8 +319,8 @@ or `"tirust"` on `Runtime.load` and on every evaluation; default: the
 artifact's `[loop] reduction`): `"auto"` takes TIRust for a loop-induced and
 NinjaRS for a Born-interfered process and falls back to NinjaRS, with the
 reason recorded, where TIRust cannot serve the call (for now `"auto"` stays
-on NinjaRS for loop-induced processes too, until the two backends' agreement
-there is established; `"tirust"` is served on request in every arithmetic,
+on NinjaRS for loop-induced processes too: TIRust still fails closed on
+points NinjaRS serves; `"tirust"` is served on request in every arithmetic,
 binary64, double-double and arbitrary precision, also on every level of a
 rescue ladder); an
 explicit backend that cannot serve it is refused before any point is
@@ -341,9 +341,9 @@ combines with at least one other check: a point the other backend fails or
 refuses keeps the estimate of the other checks and names the check, with
 the reason, in its estimate's `not_run` (a refusal of the other backend says
 nothing about the value). It is a runtime option of the call, never stored in
-an artifact; a carrier the other backend does not serve (TIRust at
-double-double in this release, or a native extension built without TIRust)
-refuses it before any point (`ReductionUnavailable`). The values are those
+an artifact; a carrier the other backend does not serve (in this release
+TIRust serves every carrier, so only a native extension built without
+TIRust) refuses it before any point (`ReductionUnavailable`). The values are those
 of the call without it, bit for bit. It runs on `evaluate` and on the
 resolved, correlated and selected outputs of both process types (not on the
 Python reference executor, which refuses it).

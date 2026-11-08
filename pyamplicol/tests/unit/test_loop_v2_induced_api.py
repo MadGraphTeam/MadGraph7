@@ -332,8 +332,9 @@ def test_the_effective_backend_is_one_the_route_runs():
     """The guard of every route: the artifact runtime's summed route and its
     resolved outputs run both backends (m-lit lit-tir), so an explicit
     TIRust is served there; ``auto`` keeps NinjaRS on them for both kinds
-    until the loop-induced agreement is established (m-lit lit-cache), the
-    reason saying so; a route whose executor does not run TIRust refuses it
+    (TIRust still fails closed on points NinjaRS serves: no automatic switch
+    in this release, DECISIONS 2026-11-08 11:17), the reason saying so; a
+    route whose executor does not run TIRust refuses it
     typed and its ``auto`` names the route. One choice list and one
     validator (``config.ReductionBackend``, ``reduction_request``)."""
 
@@ -366,7 +367,7 @@ def test_the_effective_backend_is_one_the_route_runs():
             route=route,
         )
         assert found.effective == "ninjars"
-        assert "agreement with NinjaRS on loop-induced processes" in found.reason
+        assert "fails closed on points NinjaRS serves" in found.reason
         assert route.serves in found.reason
         for kind in ("virtual", "loop-induced"):
             found = resolve(

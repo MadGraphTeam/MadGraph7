@@ -346,8 +346,8 @@ class VirtualReduction:
     of the call, and the ``reason`` of the choice. ``"auto"`` takes the
     per-type default (loop-induced: TIRust; Born-interfered: NinjaRS) and
     falls back to NinjaRS, with the reason, where TIRust cannot serve the
-    call (for now ``"auto"`` keeps NinjaRS for loop-induced processes too,
-    until the two backends' agreement there is established); an explicitly
+    call (for now ``"auto"`` keeps NinjaRS for loop-induced processes too:
+    TIRust still fails closed on points NinjaRS serves); an explicitly
     requested backend that cannot serve it is refused instead. The choice
     is made once per call and carrier, never per point (no silent
     switch)."""

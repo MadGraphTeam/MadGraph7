@@ -158,7 +158,7 @@ class ReductionBackend(StrEnum):
     NinjaRS (integrand reduction) for a Born-interfered one, and falls back
     to NinjaRS with a recorded reason where TIRust cannot serve the call
     (for now ``auto`` keeps NinjaRS for loop-induced processes too, with
-    the reason, until the two backends' agreement there is established);
+    the reason: TIRust still fails closed on points NinjaRS serves);
     ``ninjars`` and ``tirust`` request one backend, refused when it cannot
     serve the call. ``loop.reduction`` is the generation default recorded in
     the artifact (artifacts are backend-independent), ``evaluation.

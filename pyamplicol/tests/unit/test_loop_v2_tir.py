@@ -33,8 +33,10 @@ lit-tir, PLAN §3.3 and §2.b.2-§2.b.6).
 * T8: binary64 TIRust touches no Symbolica state: a fresh interpreter
   without the licence and with pyAmpliCol's native library key disabled
   evaluates the shipped loop-induced and Born-interfered self-test artifacts
-  on TIRust while another process holds the restricted Symbolica permit,
-  with the licensed run's bits (the same on NinjaRS is the baseline).
+  on TIRust (also with its opt-in tensor store, masters census and profile,
+  bitwise the default's values) while another process holds the restricted
+  Symbolica permit, with the licensed run's bits (the same on NinjaRS is the
+  baseline).
 """
 
 from __future__ import annotations
@@ -134,9 +136,54 @@ def test_tirust_plans_are_built_before_the_first_point_and_refused_typed():
     with running("tirust"):
         prepare(executor)
     assert executor.calls == ["tirust"]
-    refused = Executor("TIRust cannot reduce 13 propagators at rank 0: too many")
-    with running("tirust"), pytest.raises(ReductionUnavailable, match="13 propagators"):
+    refused = Executor("TIRust cannot reduce this family: a test refusal")
+    with running("tirust"), pytest.raises(ReductionUnavailable, match="test refusal"):
         prepare(refused)
+
+
+@pytest.mark.loop_fast
+def test_the_python_reference_path_reduces_on_what_the_query_serves():
+    """The observables runtime's Python reference executor (``executor=
+    "python"``) runs a call on its effective backend where the native
+    extension's capability query serves it (TIRust here: every point's
+    reduction sees ``reduction.current() == "tirust"``), and refuses it
+    typed from the query otherwise (m-lit lit-perf, lit-tir-mp audit minor
+    (a): no pyAmpliCol-side 'NinjaRS only' constant)."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol import ReductionUnavailable
+    from pyamplicol.api.virtual_results import VirtualReduction
+    from pyamplicol.loops.v2.reduction import CARRIERS, current
+    from pyamplicol.runtime.virtual import V2ObservablesRuntime
+
+    def runtime(backends):
+        native = SimpleNamespace(
+            reduction_backends=lambda: json.dumps(
+                {name: list(CARRIERS) for name in backends}
+            )
+        )
+        slice_ = SimpleNamespace(sectors=(), native=native)
+        return V2ObservablesRuntime(
+            SimpleNamespace(slice=slice_, spin_classes=(), histories=(), rows=()),
+            executor="python",
+        )
+
+    seen = []
+
+    def python(point, scale, spin):
+        seen.append(current())
+        return point
+
+    tirust = VirtualReduction("tirust", "tirust", "requested")
+    out, failures = runtime(("ninjars", "tirust"))._run(
+        ("summed",), python, [[1]], ["1"], [None], {}, tirust
+    )
+    assert (out, failures, seen) == ([[1]], {}, ["tirust"])
+    with pytest.raises(ReductionUnavailable, match="capability query"):
+        runtime(("ninjars",))._run(
+            ("summed",), python, [[1]], ["1"], [None], {}, tirust
+        )
 
 
 # -------------------------------------------------------------------- T2, T6
@@ -535,7 +582,7 @@ def test_tirust_is_served_on_request_and_auto_keeps_ninjars(loop_native):
     auto = runtime.evaluate(points[:1], mu_r2=scales[:1])
     (lane,) = auto.diagnostics
     assert lane.reduction.effective == "ninjars"
-    assert "agreement with NinjaRS on loop-induced processes" in lane.reduction.reason
+    assert "fails closed on points NinjaRS serves" in lane.reduction.reason
     # The extended carriers on TIRust (m-lit lit-tir-mp): explicitly
     # requested, served and recorded at double-double and arbitrary
     # precision, within the double-double target of NinjaRS's values.
@@ -641,6 +688,19 @@ from pyamplicol import Runtime
 from pyamplicol._internal import selftest_virtual_ew as ew
 from pyamplicol._internal import selftest_virtual_li as li
 backend = sys.argv[1]
+if backend == "tirust-opt-in":
+    # TIRust with its opt-in measurement options (the tensor store, the
+    # masters census and TIRust's profile): T8 on their paths too.
+    from pyamplicol.loops.v2 import plan_export, reduction
+    default = plan_export.prepare
+    def prepare(executor):
+        if reduction.current() != "tirust":
+            return default(executor)
+        executor.prepare_reduction(
+            "tirust", profile=True, store=True, masters_census=True
+        )
+    plan_export.prepare = prepare
+    backend = "tirust"
 out = {}
 for module in (li, ew):
     root = module.fixture_root()
@@ -656,6 +716,11 @@ for module in (li, ew):
     }
 print(json.dumps(out))
 """
+
+
+# T8's backends: NinjaRS (the baseline), TIRust, and TIRust with its opt-in
+# store, masters census and profile (m-lit lit-perf, lit-cache minor (iv)).
+T8_BACKENDS = ("ninjars", "tirust", "tirust-opt-in")
 
 
 def _run_t8(backend: str, env: dict[str, str]) -> dict:
@@ -688,11 +753,11 @@ def test_binary64_tirust_touches_no_symbolica_state(loop_native, tmp_path):
     with portability.RestrictedPermit(lock_dir=str(lock)) as permit:
         assert permit.record["verified"], permit.record
         env = permit.environment({**base, **NO_NATIVE_KEY})
-        unlicensed = {
-            backend: _run_t8(backend, env) for backend in ("ninjars", "tirust")
-        }
-    for backend in ("ninjars", "tirust"):
+        unlicensed = {backend: _run_t8(backend, env) for backend in T8_BACKENDS}
+    for backend in T8_BACKENDS:
         licensed = _run_t8(backend, dict(os.environ))
         assert unlicensed[backend] == licensed, backend
         for record in licensed.values():
-            assert record["effective"] == [backend]
+            assert record["effective"] == [backend.split("-")[0]]
+    # The opt-in options leave TIRust's values bitwise.
+    assert unlicensed["tirust-opt-in"] == unlicensed["tirust"]

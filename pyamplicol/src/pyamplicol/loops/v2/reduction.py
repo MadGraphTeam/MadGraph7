@@ -37,10 +37,12 @@ leading-colour selections through the stored observable columns), and the
 effective backend is one the route's executor runs: the guard of every
 route, so that a result never names a backend its values were not reduced
 by. Both routes run both backends; ``"auto"`` takes on a route only the
-backends of its ``auto`` set: NinjaRS, until the loop-induced agreement of
-the two backends is established (m-lit lit-cache), so ``"auto"`` keeps
-NinjaRS for loop-induced processes too, with the reason recorded, and
-TIRust serves explicit requests.
+backends of its ``auto`` set: NinjaRS, so ``"auto"`` keeps NinjaRS for
+loop-induced processes too, with the reason recorded, and TIRust serves
+explicit requests. The two backends' loop-induced agreement is established
+(m-lit lit-cache); what keeps ``"auto"`` on NinjaRS is that TIRust still
+fails closed on points NinjaRS serves (slice-status DECISIONS 2026-11-08
+11:17: no automatic switch in this release).
 """
 
 from __future__ import annotations
@@ -86,9 +88,9 @@ class Route(NamedTuple):
 
 
 # The routes and the backends their executors run (the native executor's
-# ``reduction`` option, m-lit lit-tir). ``"auto"`` stays on NinjaRS until the
-# loop-induced agreement of the two backends is checked (m-lit lit-cache,
-# which adds TIRust to ``auto``).
+# ``reduction`` option, m-lit lit-tir). ``"auto"`` stays on NinjaRS: TIRust
+# still fails closed on points NinjaRS serves (DECISIONS 2026-11-08 11:17; a
+# TIRust that serves every point is what would add it to ``auto``).
 SUMMED = Route(
     "the summed virtual", frozenset({"ninjars", "tirust"}), frozenset({"ninjars"})
 )
@@ -264,8 +266,8 @@ def resolve(
             "auto",
             "ninjars",
             f"auto: NinjaRS; {NAMES[default]}, the {kind} default, serves "
-            f"{route.serves} on explicit request until its agreement with "
-            "NinjaRS on loop-induced processes is established",
+            f"{route.serves} on explicit request: it still fails closed on "
+            "points NinjaRS serves, so 'auto' keeps NinjaRS",
         )
     if why is None:
         reason = (

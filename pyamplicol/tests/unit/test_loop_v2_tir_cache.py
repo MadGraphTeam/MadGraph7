@@ -2,7 +2,7 @@
 """TIR throughput levers for loop-induced processes (m-lit lit-cache, PLAN
 §3.4, §2.b.2-§2.b.3).
 
-* the aligned family export frame (``plan_export.ALIGNED_FAMILY_FRAMES``,
+* the aligned family export frame (``LoopSlice.generate(aligned_frames=True)``,
   opt-in, amplitude mode only; on g g > h g, where it moves families): every
   family of a loop-induced slice is read
   with the process's highest leg in its last entry, so a propagator's shift
@@ -64,8 +64,7 @@ def _shift_masks(reading) -> list[int]:
 
 
 @pytest.mark.loop_physics
-def test_aligned_family_frames_share_the_shift_masks(li, monkeypatch):
-    from pyamplicol.loops.v2 import plan_export
+def test_aligned_family_frames_share_the_shift_masks(li):
     from pyamplicol.loops.v2.assemble import LoopSlice
     from pyamplicol.loops.v2.plan_export import NativeExecutor, aligned_frame
 
@@ -78,9 +77,9 @@ def test_aligned_family_frames_share_the_shift_masks(li, monkeypatch):
     fixture = _fixture(name)
     compiled = li.model(fixture["scheme_data"].get("restriction") or "default")
     default = li.slice(name)
-    with monkeypatch.context() as patch:
-        patch.setattr(plan_export, "ALIGNED_FAMILY_FRAMES", True)
-        aligned = LoopSlice.generate(compiled, _request(fixture, compiled), li.native)
+    aligned = LoopSlice.generate(
+        compiled, _request(fixture, compiled), li.native, aligned_frames=True
+    )
     assert aligned.dressed_frames["aligned"] is True
     assert default.dressed_frames["aligned"] is False
     moved = [
@@ -167,7 +166,7 @@ def test_tirust_profile_joins_the_report_and_keeps_the_values(li, loop_native):
     assert "reduction: TIR masters" not in plain[2]["seconds"]
     for stage in ("geometry", "masters", "recursion", "gather", "output"):
         assert f"reduction: TIR {stage}" in profiled[2]["seconds"]
-    assert profiled[2]["counts"]["TIR master evaluations"] > 0
+    assert profiled[2]["counts"]["TIR master requests"] > 0
     native.prepare_reduction("tirust")
     assert _native_run(executor, li, name, reduction="tirust")[0] == plain[0]
 
@@ -199,8 +198,20 @@ def test_tirust_tensor_store_keeps_the_values_and_counts_its_reuse(li, loop_nati
     assert counts["TIR store masters computed"] > 0
     # TIRust's own count of the master rows its calls request is the same
     # (the store serves some of them).
-    evaluated = "TIR master evaluations"
+    evaluated = "TIR master requests"
     assert counts[evaluated] == plain[2]["counts"][evaluated] > 0
+    # The masters census counts the store's misses: refused without it.
+    with pytest.raises(Exception, match="masters_census"):
+        native.prepare_reduction("tirust", masters_census=True)
+    native.prepare_reduction("tirust", store=True, masters_census=True)
+    census = _native_run(executor, li, name, reduction="tirust")
+    assert census[0] == plain[0] and census[1] == [[]]
+    families = ("tadpole", "bubble", "triangle", "box")
+    for count in ("store misses", "canonical repeats"):
+        assert census[2]["counts"][f"TIR masters census: {count}"] == sum(
+            census[2]["counts"][f"TIR masters census: {family} {count}"]
+            for family in families
+        )
 
 
 @pytest.mark.loop_fast
