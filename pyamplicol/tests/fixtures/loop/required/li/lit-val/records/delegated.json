@@ -2,7 +2,7 @@
  "what": "the §4.1 rows other packages run (li_manifest.DELEGATED), recorded in data/lit.json from their records (m-lit brief R8: LI-B1 from lit-tir's report)",
  "LI-B1": {
   "status": "partial",
-  "owner": "lit-tir (this record); the Born-interfered L6 on the M-QCD, M-SM, decay and HC campaigns WAITS ON lit-tir-mp",
+  "owner": "lit-tir (this record) and lit-tir-mp (its G1 evidence at the re-pin); the Born-interfered L6 on the M-QCD, M-SM, decay and HC campaigns is NOT RUN (lit-val remaining): lit-tir's scripts/li_b1.py and lib1_lanes.py serve only the G1 keys of tools/loop_benchmark/processes.json (KeyError on z_emep_ew, uux_emepg), so those rows need their campaigns' own generation (mqcd.py, msm_manifest.py, dec_manifest.py) under the same per-lane comparison",
   "source": "workspace/reports/engine-v2/m-lit/lit-tir-report.md §F.4 and §G.3 (§G.3 replaces §4's synthetic tally); native loop-native-lit-tir-e8d076d1 = the slice's e852f448 (digest c3fda0c4)",
   "rule": "L6 per lane: |T - N| <= 10 max(E_N, E_T, 4u x lane scale), every Laurent order",
   "g1_six_leg_lanes": {
@@ -30,8 +30,8 @@
    "worst_ratio": 97.5,
    "note": "worst at 1.1e-11 of the lane; every bin with a deviation > 1e-5 has worst ratio <= 6.8"
   },
-  "executor_level": "TIRust fails every point closed on the 6- and 7-leg G1 rows at this pin (gate refusals, method choice off: ruling 17:20 (d)); the served-lane comparison is the cross-backend evidence",
-  "waits_on": "lit-tir-mp (re-pin to ac1e234 or newer): the executor-level L6 on every Born-interfered campaign, re-run with workspace/tmp/lit-tir/scripts/li_b1.py and lib1_lanes.py"
+  "executor_level": "TIRust fails every point closed on the 6- and 7-leg G1 rows at this pin (gate refusals, method choice off: ruling 17:20 (d)); the served-lane comparison is the cross-backend evidence (at lit-tir's pin; at lit-tir-mp's: at_lit_tir_mp)",
+  "at_lit_tir_mp": "slice-status DECISIONS 2026-11-08 06:08 (lit-tir-mp integrated at f1e8c98e, native loop-native-v2-slice-f1e8c98e, TIRust fefb5f2b): Born-interfered NinjaRS bitwise unchanged (N0 4 x 256/256, plans identical); the pulled range changes no served value (36,586 / 36,586 lanes bitwise ac1e234 -> fefb5f2); with the binary64 method choice on (rescaled-frame acceptance) TIRust serves G1 points gg_ggg 7/16 and uux_emepggg 3/16, the 6-leg rows still 16/16 fail closed; the 21 rotation-blind lanes are all refused by the rescaled check"
  },
  "LI-B2": {
   "status": "delegated",
