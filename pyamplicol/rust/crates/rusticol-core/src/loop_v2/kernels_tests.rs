@@ -630,18 +630,14 @@ fn gathered_fused_edges_are_bitwise_the_scatter_order() {
             sample::<LANES>(rng, 2 * layout.entries().len()),
             sample::<LANES>(rng, 3 * segment.output_row_len()),
         ];
-        let [s, g] = scatter_and_gather::<f64, LANES>(&segment, &layout, &data, &links, |r| {
-            r.to_f64()
-        });
+        let [s, g] =
+            scatter_and_gather::<f64, LANES>(&segment, &layout, &data, &links, |r| r.to_f64());
         let bits = |values: &[f64]| values.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
         assert_eq!(bits(&s), bits(&g), "binary64, rank {rank}, degree {degree}");
-        let [s, g] = scatter_and_gather::<DoubleFloat, LANES>(
-            &segment,
-            &layout,
-            &data,
-            &links,
-            |r| DoubleFloat::from(r),
-        );
+        let [s, g] =
+            scatter_and_gather::<DoubleFloat, LANES>(&segment, &layout, &data, &links, |r| {
+                DoubleFloat::from(r)
+            });
         assert!(s == g, "double-double, rank {rank}, degree {degree}");
         let [s, g] = scatter_and_gather::<_, LANES>(&segment, &layout, &data, &links, |r| {
             r.to_multi_prec_float(200)
