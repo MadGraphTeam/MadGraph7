@@ -383,18 +383,21 @@ def test_rescue_attempts_record_each_level_backend(loop_native):
 def test_explicit_tirust_levels_are_refused_before_any_point(loop_native, monkeypatch):
     """An explicit TIRust level at a carrier TIRust does not serve, its own
     or inherited from the call by "auto", is refused typed when the policy
-    is resolved: no point is evaluated."""
+    is resolved: no point is evaluated. (A native serving TIRust at
+    double-double, m-lit lit-tir-mp, reports binary64 only through a
+    capability stub here.)"""
 
     from pyamplicol import ReductionUnavailable
     from pyamplicol.api.virtual_results import VirtualRescueLevel, VirtualRescuePolicy
-    from pyamplicol.loops.v2.reduction import SUMMED
+    from pyamplicol.loops.v2.reduction import CARRIERS, SUMMED
 
     served = _tirust(loop_native)
     runtime, points, scales = _load(_li())
     backend = runtime._backend
     if "double-double" in served:
         # After lit-tir-mp (capability-driven, never a skip: the CI loop tier
-        # admits none): the explicit double-double level resolves to TIRust.
+        # admits none): the explicit double-double level resolves to TIRust;
+        # the refusal itself is checked below with the capability stub.
         own = VirtualRescuePolicy(
             (
                 VirtualRescueLevel("double", reduction="ninjars"),
@@ -403,7 +406,15 @@ def test_explicit_tirust_levels_are_refused_before_any_point(loop_native, monkey
         )
         found = backend._reduction_choices(None, None, None, own, SUMMED)
         assert found[own.levels[1]].effective == "tirust"
-        return
+        # A fresh runtime (the choices are cached per runtime) on the stub.
+        runtime, points, scales = _load(_li())
+        backend = runtime._backend
+        served = frozenset({"double"})
+        monkeypatch.setattr(
+            backend,
+            "_native",
+            _Native({"ninjars": list(CARRIERS), "tirust": sorted(served)}),
+        )
 
     def never(*_args, **_kwargs):
         raise AssertionError("a point was evaluated")
@@ -478,17 +489,25 @@ def test_the_cross_backend_check_on_the_summed_route(loop_native, module, main):
 def test_the_cross_backend_check_is_refused_where_the_other_backend_is_not(
     loop_native, monkeypatch
 ):
-    """Before any point: a carrier the other backend does not serve."""
+    """Before any point: a carrier the other backend does not serve (a
+    native serving TIRust at double-double, m-lit lit-tir-mp, reports
+    binary64 only through a capability stub here)."""
 
     from pyamplicol import ReductionUnavailable
     from pyamplicol.api.virtual_results import VirtualStabilityChecks
+    from pyamplicol.loops.v2.reduction import CARRIERS
 
-    if "double-double" in _tirust(loop_native):
-        # After lit-tir-mp the check is admitted at double-double; that is
-        # asserted by test_double_double_tir_levels_stay_on_tir_after_lit_tir_mp
-        # (never a skip here: the CI loop tier admits none).
-        return
     runtime, points, scales = _load(_li())
+    if "double-double" in _tirust(loop_native):
+        # After lit-tir-mp the check is admitted at double-double (asserted by
+        # test_double_double_tir_levels_stay_on_tir_after_lit_tir_mp; never a
+        # skip here: the CI loop tier admits none); the refusal is checked
+        # with the capability stub.
+        monkeypatch.setattr(
+            runtime._backend,
+            "_native",
+            _Native({"ninjars": list(CARRIERS), "tirust": ["double"]}),
+        )
     monkeypatch.setattr(
         runtime._backend,
         "_evaluate_level",
@@ -662,18 +681,20 @@ def test_tir_single_point_estimates_bracket_the_error_gg_z(li, loop_native):
 def test_tir_calibration_has_no_served_miss_beyond_the_margin():
     """The recorded TIR calibration (TIRust's shipped default, against
     NinjaRS at Float(256) on the same exact points; 400 points of g g > g g g
-    and u u~ > e- e+ d d~ g, 2000 of g g > h h and g g > z): on every served
-    point, every check configuration with a reduction re-test (TIR's frames:
-    the rotation by one with the origin shift, rescaled or not) or the
-    cross-backend check holds the absolute error within 10 E, per sector and
-    Laurent coefficient, and the recommended one (rescaled re-test + a
-    rotation) misses none at all. Rotations alone are no TIR estimate (lit-tir
-    finding (B)): on g g > g g g one rotation missed two of the 82 served
-    points by more than 10 E (at true errors ~1e-12), which every re-test
-    frame and the other rotation see. Served fractions, refusal reasons and
-    the check carrying each estimate are recorded; the cross-backend check
-    leaves every virtual bitwise; a carrier TIRust serves no point of waits on
-    lit-tir-mp (double-double here)."""
+    and u u~ > e- e+ d d~ g, the first 100 also in double-double, 2000 of
+    g g > h h and g g > z, the first 400 also in double-double; re-run by
+    m-lit lit-tir-mp with the binary64 method choice on and TIRust serving
+    double-double): on every served point of either carrier, every check
+    configuration with a reduction re-test (TIR's frames: the rotation by one
+    with the origin shift, rescaled or not) or the cross-backend check holds
+    the absolute error within 10 E, per sector and Laurent coefficient, and
+    the recommended one (rescaled re-test + a rotation) misses none at all.
+    Rotations alone are no TIR estimate (lit-tir finding (B)): they miss
+    served points by more than 10 E, which every re-test frame sees. Served
+    fractions, refusal reasons and the check carrying each estimate are
+    recorded; the cross-backend check leaves every virtual bitwise; a carrier
+    TIRust serves no point of is recorded as waiting (none since
+    lit-tir-mp)."""
 
     from pyamplicol.loops.v2.stability import CROSS, FRAMES
 
@@ -688,7 +709,7 @@ def test_tir_calibration_has_no_served_miss_beyond_the_margin():
             if not record["points"]:
                 assert record["status"] == WAITS, (name, carrier)
                 continue
-            assert carrier == "double"
+            assert carrier in ("double", "double-double"), carrier
             for configuration, rates in record["configurations"].items():
                 checks = set(configuration.split(" + "))
                 if checks & {*FRAMES, CROSS}:
@@ -701,9 +722,12 @@ def test_tir_calibration_has_no_served_miss_beyond_the_margin():
             assert sum(record["carried_by"].values()) == record["points"]
             cost = record["cross_backend_cost"]
             assert cost["virtual_bitwise"] == cost["compared"] == record["points"]
-    assert rows["li_gg_hh"]["double-double"]["points"] == 0
     assert rows["li_gg_hh"]["double"]["points"] >= 1900
     assert rows["li_gg_z"]["double"]["points"] == 2000
+    for name in ("li_gg_hh", "li_gg_z"):
+        assert rows[name]["double-double"]["points"] == 400, name
+    for name in ("gg_ggg", "uux_emepddxg"):
+        assert rows[name]["double-double"]["points"] >= 90, name
 
 
 # ------------------------------------------- after lit-tir-mp (ready to run)

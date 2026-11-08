@@ -16,7 +16,9 @@ lost the massive spinor of a b moving along -z (a Born of ~1e-33).
 
 Each test evaluates one rounded point in the production path (native
 executor, native inputs) in binary64, DoubleFloat and MPFR, and its exactly
-on-shell, momentum-conserving 140-digit neighbour in MPFR:
+on-shell, momentum-conserving 140-digit neighbour in MPFR, on NinjaRS (and,
+for the massive-b reproducer and g g > t t~, again on TIRust, which takes
+the S-matrix the executor forms: m-lit lit-tir-mp):
 
 * DoubleFloat equals MPFR on the same inputs within 1e-24 (binary64
   observable rule, DESIGN §10.4);
@@ -256,24 +258,33 @@ def _binary64(laurents) -> dict:
     }
 
 
-def _agree_across_carriers(executors, name: str):
+def _agree_across_carriers(executors, name: str, reduction: str = "ninjars"):
+    """The contract on case ``name`` with every carrier reduced by
+    ``reduction`` (``loops.v2.reduction.running``: NinjaRS, the default, or
+    TIRust, m-lit lit-tir-mp)."""
+
+    from pyamplicol.loops.v2.reduction import running
+
     slice_, executor = executors(name)
     *_, masses, point_of = CASES[name]
     point = point_of()
 
     def evaluate(at, precision, stability=None):
-        (result,) = executor.evaluate(
-            [at],
-            [SCALE],
-            parameters=PARAMETERS,
-            precision=precision,
-            stability=stability,
-        )
+        with running(reduction):
+            (result,) = executor.evaluate(
+                [at],
+                [SCALE],
+                parameters=PARAMETERS,
+                precision=precision,
+                stability=stability,
+            )
         return result
 
     reference = evaluate(point, Precision.arbitrary(32))
     double_double = evaluate(point, Precision.double_double())
-    assert deviation(_virtual(reference), _virtual(double_double)) < DOUBLE_DOUBLE
+    measured = deviation(_virtual(reference), _virtual(double_double))
+    print(f"{name} on {reduction}: double-double vs MPFR {measured:.3e}")
+    assert measured < DOUBLE_DOUBLE, measured
     double = evaluate(point, None, StabilityChecks(reduction_direction=True))
     estimate = double.stability.relative
     assert estimate <= ESTIMATE_CAP, estimate
@@ -281,7 +292,7 @@ def _agree_across_carriers(executors, name: str):
     assert error <= max(BINARY64, ESTIMATE_MARGIN * estimate), (error, estimate)
     onshell = evaluate(_onshell_neighbour(point, masses), Precision.arbitrary(32))
     assert deviation(_virtual(onshell), _virtual(reference)) < ONSHELL_NEIGHBOUR
-    return slice_, point, reference
+    return slice_, point, reference, onshell
 
 
 @pytest.mark.loop_fast
@@ -354,7 +365,7 @@ def test_the_massive_b_reproducer_agrees_in_every_carrier(executors):
     DoubleFloat Born of ~1e-33). The Python reference's MPFR value equals the
     native one."""
 
-    slice_, point, native = _agree_across_carriers(executors, "bbx_ttx")
+    slice_, point, native, _onshell = _agree_across_carriers(executors, "bbx_ttx")
     reference = slice_.evaluate(
         point, SCALE, parameters=PARAMETERS, precision=Precision.arbitrary(32)
     )
@@ -369,6 +380,34 @@ def test_a_rounded_massive_qcd_point_agrees_in_every_carrier(executors):
 
 
 @pytest.mark.loop_physics
+@pytest.mark.parametrize("name", ["bbx_ttx", "gg_ttx"])
+def test_the_contract_holds_on_tirust(executors, loop_native, name):
+    """The same contract with every carrier reduced by TIRust (m-lit
+    lit-tir-mp: TIRust takes the S-matrix the executor forms, so the
+    on-shell entries keep the legs' squared masses exactly in every
+    carrier): the massive-b reproducer and the rounded g g > t t~ point.
+    TIRust's MPFR value equals NinjaRS's at the exactly on-shell neighbour
+    within the double-double target (PLAN §4.0 L6), and at the rounded
+    point to the inputs' own order (both backends read the same inputs, but
+    a point off its shells by ~1e-16 moves each at that order, DESIGN
+    §11.1)."""
+
+    if not loop_native.tirust_available():
+        pytest.skip("the staged native extension is built without TIRust")
+    _slice, _point, tirust, tirust_onshell = _agree_across_carriers(
+        executors, name, "tirust"
+    )
+    _slice, _point, ninjars, ninjars_onshell = _agree_across_carriers(executors, name)
+    onshell = deviation(_virtual(ninjars_onshell), _virtual(tirust_onshell))
+    rounded = deviation(_virtual(ninjars), _virtual(tirust))
+    print(
+        f"{name}: MPFR TIRust vs NinjaRS on shell {onshell:.3e}, rounded {rounded:.3e}"
+    )
+    assert onshell < DOUBLE_DOUBLE, onshell
+    assert rounded < ONSHELL_NEIGHBOUR, rounded
+
+
+@pytest.mark.loop_physics
 def test_an_internal_top_mass_is_bound_on_shell(executors, internal_mt_executors):
     """loop_sm with MT internal (MT = MTx, an external parameter of the same
     value; genericity audit M2): the top's loop propagators (``["output",
@@ -379,7 +418,9 @@ def test_an_internal_top_mass_is_bound_on_shell(executors, internal_mt_executors
     neighbour), binds the external MT's exact masses (173 is a binary64
     value), equals its virtual and keeps Catani's prediction."""
 
-    slice_, point, mpfr = _agree_across_carriers(internal_mt_executors, "gg_ttx")
+    slice_, point, mpfr, _onshell = _agree_across_carriers(
+        internal_mt_executors, "gg_ttx"
+    )
     _slice, executor = internal_mt_executors("gg_ttx")
     program = executor.exported.trees.program["parameters"]
     assert any(isinstance(mass, list) for mass in program["plan_masses"])

@@ -326,6 +326,58 @@ def test_binary64_equals_madloop_the_oracle_and_the_python_route(li, name, analy
         assert abs(float(pole)) <= 1e-9 * abs(float(_total(native)))
 
 
+# The seven lit-amp rows (M-LIT-a): L6 (NinjaRS vs TIRust) and L7
+# (double-double vs MPFR) in the extended carriers, m-lit lit-tir-mp.
+LIT_AMP_ROWS = [
+    "li_gg_h",
+    "li_h_gg",
+    "li_gg_aa",
+    "li_gg_zz",
+    "li_gg_hh",
+    "li_gg_hg",
+    "li_uux_hg",
+]
+# PLAN §4.0 L6 / L7 in double-double and MPFR (DESIGN §11.1's target; R5:
+# measured and recorded).
+EXTENDED = 1e-24
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("name", LIT_AMP_ROWS)
+def test_l6_and_l7_hold_in_double_double_and_mpfr_on_tirust(li, name):
+    """L6 (|A|^2 of NinjaRS against TIRust's) and L7 (TIRust's
+    double-double against its MPFR value) at the row's reference point, every
+    sector and Laurent coefficient relative to the largest one, within the
+    extended carriers' target."""
+
+    if not li.native.tirust_available():
+        pytest.skip("the staged native extension is built without TIRust")
+    from pyamplicol.loops.v2.assemble import Precision
+    from pyamplicol.loops.v2.reduction import running
+
+    found = {}
+    for backend in ("ninjars", "tirust"):
+        with running(backend):
+            for carrier, precision in (
+                ("double-double", Precision.double_double()),
+                ("arbitrary", Precision.arbitrary(32)),
+            ):
+                found[backend, carrier] = li.native_value(name, precision).totals
+
+    def deviation(a, b) -> float:
+        scale = max(abs(x) for x in b)
+        return float(max(abs(x - y) for x, y in zip(a, b, strict=True)) / scale)
+
+    l6 = {
+        carrier: deviation(found["tirust", carrier], found["ninjars", carrier])
+        for carrier in ("double-double", "arbitrary")
+    }
+    l7 = deviation(found["tirust", "double-double"], found["tirust", "arbitrary"])
+    print(f"{name}: L6 {l6}, L7 {l7:.3e}")
+    assert max(l6.values()) <= EXTENDED, l6
+    assert l7 <= EXTENDED, l7
+
+
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("name", [name for name, analytic in ROWS if analytic])
 def test_double_double_equals_the_analytic_oracle(li, name):

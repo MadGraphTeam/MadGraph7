@@ -320,7 +320,9 @@ artifact's `[loop] reduction`): `"auto"` takes TIRust for a loop-induced and
 NinjaRS for a Born-interfered process and falls back to NinjaRS, with the
 reason recorded, where TIRust cannot serve the call (for now `"auto"` stays
 on NinjaRS for loop-induced processes too, until the two backends' agreement
-there is established; `"tirust"` is served on request in binary64); an
+there is established; `"tirust"` is served on request in every arithmetic,
+binary64, double-double and arbitrary precision, also on every level of a
+rescue ladder); an
 explicit backend that cannot serve it is refused before any point is
 evaluated (`pyamplicol.ReductionUnavailable`, a `CompatibilityError` with key
 `reduction-unavailable`). The effective backend is always one that
