@@ -22,6 +22,20 @@ Two MadLoop-style checks, individually configurable and combinable:
   determinant) is measured too. Neither the cached re-reduction nor a
   rotation can see it: both keep every invariant, so every master returns
   the same value. It costs the master evaluations of a second pass.
+* **Cross-backend check** (``StabilityChecks(cross_backend=True)``, m-lit
+  PLAN §2.b.6, RULED Q21). The point is evaluated a second time on the
+  other reduction backend (``reduction.cross``: NinjaRS for a call reduced
+  by TIRust, TIRust for one reduced by NinjaRS), in the same carrier and at
+  the same exact inputs; its budget is the reduction lanes' deviation
+  between the two backends (``CROSS``), as a rotation's at the unrotated
+  point. Integrand and tensor-integral reduction round differently
+  everywhere (masters, Gram determinants, contraction), so it samples what
+  a backend's own frames cannot (a TIR frame keeps the PV reference
+  propagators' Gram conditioning). A point the other backend fails or
+  refuses (a capability or conditioning refusal says nothing about the
+  served value) keeps the estimate of the other checks, with the check in
+  ``StabilityEstimate.not_run`` and the reason (DECISIONS 2026-11-07 21:50
+  R6); the check therefore combines with at least one other.
 
 Every check yields an absolute error budget per squared-order sector and
 Laurent coefficient that lets no two contributions cancel (design §10.2):
@@ -91,14 +105,16 @@ FLOOR_UNITS = 16
 ROTATION = "rotation-{}"
 REDUCTION = "reduction-direction"
 RESCALED = "reduction-rescaled"
+CROSS = "cross-backend"
 # The re-reduction frame of each reduction check (``V2Reducer.reduce``).
 FRAMES = {REDUCTION: "reversed", RESCALED: "rescaled"}
 # An input budget: an output's change over the inputs its given input
 # determines only to within a part the output cannot read (a loop-induced
 # spin vector's non-transverse part, ``induced_observables.PointOutputs``).
-# Budgets in FRAMES or ADDITIVE add up; the rotations' is their largest.
+# Budgets in FRAMES or ADDITIVE add up (the cross-backend check's as a
+# reduction check's); the rotations' is their largest.
 TRANSVERSE = "spin-transverse"
-ADDITIVE = (*FRAMES, TRANSVERSE)
+ADDITIVE = (*FRAMES, TRANSVERSE, CROSS)
 
 _AXES = {"x": 1, "y": 2, "z": 3}
 
@@ -283,12 +299,14 @@ def _determinant(m) -> Fraction:
 class StabilityChecks:
     """Which checks an evaluation runs: rotations (any number) and/or one
     reduction check, the reduction-direction check (cached masters) or, with
-    ``rescaled``, its rescaled variant (masters recomputed). The default runs
-    none."""
+    ``rescaled``, its rescaled variant (masters recomputed); and, with
+    ``cross_backend``, the evaluation on the other reduction backend (with
+    at least one other check: module docstring). The default runs none."""
 
     rotations: tuple[Rotation, ...] = ()
     reduction_direction: bool = False
     rescaled: bool = False
+    cross_backend: bool = False
 
     def __post_init__(self) -> None:
         rotations = tuple(self.rotations)
@@ -298,6 +316,13 @@ class StabilityChecks:
             raise ValueError("the identity is no rotation check")
         if self.rescaled and not self.reduction_direction:
             raise ValueError("rescaled is a variant of the reduction-direction check")
+        if self.cross_backend and not (rotations or self.reduction_direction):
+            raise ValueError(
+                "the cross-backend check adds to the estimate of the other "
+                "checks (a point the other backend does not serve keeps "
+                "theirs): combine it with a rotation or the reduction-direction "
+                "check"
+            )
         object.__setattr__(self, "rotations", rotations)
 
     @property
@@ -419,7 +444,9 @@ class StabilityEstimate:
     the Laurent vector, without safety factor and floor. ``budgets``
     (absolute, per check and sector) and ``scale`` (the absolute sums S) let
     ``subset`` re-combine fewer checks; ``families`` holds |Omega - Omega'|
-    per reduction lane when the reduction check ran.
+    per reduction lane when the reduction check ran. ``not_run`` names each
+    requested check that did not run at the point with its reason (the
+    cross-backend check where the other backend fails the point).
 
     A relative estimate of order 1 or more says that the value has no
     correct digit: it is then measured against a value that is itself
@@ -435,6 +462,7 @@ class StabilityEstimate:
     scale: Mapping[Any, Budget] = field(repr=False)
     roundoff: float = field(repr=False)
     families: Mapping[Any, Any] | None = field(default=None, repr=False)
+    not_run: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def finite(self) -> float:
@@ -450,11 +478,13 @@ class StabilityEstimate:
         scale: Mapping[Any, Any],
         roundoff: float,
         families: Mapping[Any, Any] | None = None,
+        not_run: Mapping[str, str] | None = None,
     ) -> StabilityEstimate:
         """Combine the absolute budgets of named checks (``ROTATION``,
         ``REDUCTION`` and ``ADDITIVE`` names) for the reference Laurent values
         per sector; ``scale`` are the absolute sums S and ``roundoff`` the
-        carrier's unit roundoff."""
+        carrier's unit roundoff; ``not_run`` the requested checks that did
+        not run, with their reasons."""
 
         if not budgets:
             raise ValueError("a stability estimate needs at least one check")
@@ -494,6 +524,7 @@ class StabilityEstimate:
             scale,
             roundoff,
             families,
+            dict(not_run or {}),
         )
 
     def subset(self, names: Iterable[str]) -> StabilityEstimate:
@@ -509,7 +540,59 @@ class StabilityEstimate:
             scale=self.scale,
             roundoff=self.roundoff,
             families=self.families if set(names) & set(FRAMES) else None,
+            not_run=self.not_run,
         )
+
+
+@dataclass(frozen=True)
+class CrossRuns:
+    """The cross-backend check's evaluations of one batch on the other
+    backend (named ``backend``; ``plan_export.NativeExecutor._cross_runs``):
+    the per-point ``runs``, the ``failures`` per point index, or the
+    ``refusal`` of the whole call (the other backend's typed refusal of the
+    artifact, e.g. a family outside its capability)."""
+
+    backend: str
+    runs: Sequence[Any]
+    failures: Mapping[int, Sequence[str]]
+    refusal: str | None = None
+
+    def of(self, index: int) -> tuple[Any, str]:
+        """(the point's run, "") or (None, why the check did not run)."""
+
+        if self.refusal is not None:
+            return None, f"{self.backend} refused the call: {self.refusal}"
+        reasons = self.failures.get(index)
+        if reasons:
+            return None, f"{self.backend} failed the point: " + "; ".join(reasons)
+        return self.runs[index], ""
+
+    def attach(self, evaluations: Sequence[Any]) -> None:
+        """Set ``cross_run`` (``of``) on each point's reference evaluation."""
+
+        for index, evaluation in enumerate(evaluations):
+            evaluation.cross_run = self.of(index)
+
+
+def cross_check(reference: Any, budgets: dict) -> dict[str, str]:
+    """Add the cross-backend check's budget of one point to ``budgets``:
+    the deviation of ``reference`` (a point evaluation) from its evaluation
+    on the other backend (``reference.cross_run``, ``CrossRuns.of``) as a
+    rotation's at the unrotated point (every lane and local component;
+    loop-induced: lane by lane without a little-group phase,
+    ``induced.cross_budget``). Returns the ``not_run`` record: the check and
+    the reason when the other backend did not serve the point."""
+
+    run, why = reference.cross_run
+    if run is None:
+        return {CROSS: why}
+    if reference.slice.amplitude is not None:
+        from . import induced
+
+        budgets[CROSS] = induced.cross_budget(reference, run)
+    else:
+        budgets[CROSS] = reference.rotation_budget(run)
+    return {}
 
 
 def _at(budget: Any, k: int) -> float:
@@ -518,6 +601,7 @@ def _at(budget: Any, k: int) -> float:
 
 __all__ = [
     "ADDITIVE",
+    "CROSS",
     "DEFAULT_RESCUE",
     "FLOOR_UNITS",
     "FRAMES",
@@ -530,9 +614,11 @@ __all__ = [
     "SAFETY",
     "TRANSVERSE",
     "Budget",
+    "CrossRuns",
     "Rotation",
     "StabilityChecks",
     "StabilityEstimate",
+    "cross_check",
     "default_rotation",
     "deviation",
     "differences",

@@ -113,6 +113,11 @@ def correlator_matrices(basis: Any, histories: Sequence[Any]) -> dict[str, Matri
     from pyamplicol.color.correlator_matrices import literal_correlator_matrices
 
     histories = [history for history in histories if history.id != INCLUSIVE]
+    if not histories:
+        # Only |A|^2 itself (no correlator declared): no matrix, so a stored
+        # amplitude basis without its legs (an artifact without correlator
+        # matrices) needs none.
+        return {}
     matrices = literal_correlator_matrices(basis.legs, basis.tensors, histories)
     return {
         history.id: matrix for history, matrix in zip(histories, matrices, strict=True)
@@ -668,16 +673,27 @@ class PointOutputs:
                 self.rows_of(output),
             )
 
-    def budgets(self, output: Output, rotated: Sequence[PointOutputs], frame: Any):
-        """The named budgets of the output's estimate (module docstring)."""
+    def budgets(
+        self,
+        output: Output,
+        rotated: Sequence[PointOutputs],
+        frame: Any,
+        cross: PointOutputs | None = None,
+    ):
+        """The named budgets of the output's estimate (module docstring);
+        ``cross``: the point's outputs on the other reduction backend (the
+        cross-backend check, compared as a rotation's)."""
 
-        from .stability import ROTATION, TRANSVERSE, Budget
+        from .stability import CROSS, ROTATION, TRANSVERSE, Budget
 
         direct = self.value(output)
         out: dict[str, dict] = {}
-        for k, other in enumerate(rotated):
+        others = [(ROTATION.format(k), other) for k, other in enumerate(rotated)]
+        if cross is not None:
+            others.append((CROSS, cross))
+        for name, other in others:
             moved = other.value(output)
-            out[ROTATION.format(k)] = {
+            out[name] = {
                 sector: Budget(
                     tuple(
                         float(abs(y - x))
@@ -746,7 +762,12 @@ class PointOutputs:
         _h, _k, magnitude = self.forms(output.metric)
         return _bound(evaluation, magnitude, floors, floors, self.rows_of(output))
 
-    def estimate(self, output: Output, rotated, frame, roundoff) -> Any:
+    def estimate(
+        self, output: Output, rotated, frame, roundoff, cross=None, not_run=None
+    ) -> Any:
+        """The output's estimate; ``cross`` and ``not_run`` as ``budgets``'
+        and ``StabilityEstimate.from_checks``'."""
+
         from .assemble import Laurent
         from .stability import StabilityEstimate
 
@@ -755,9 +776,10 @@ class PointOutputs:
         }
         return StabilityEstimate.from_checks(
             values,
-            self.budgets(output, rotated, frame),
+            self.budgets(output, rotated, frame, cross),
             scale=self.scale(output),
             roundoff=roundoff,
+            not_run=not_run,
         )
 
 
@@ -946,6 +968,28 @@ class InducedColumns:
                     ]
                 return found
 
+            crossed: dict[int, PointOutputs] = {}
+
+            def cross(
+                g: int, index: int = index, point: Any = point, crossed: dict = crossed
+            ) -> tuple[PointOutputs | None, dict[str, str]]:
+                """The assignment's outputs on the other reduction backend
+                (the cross-backend check), or None and why it did not run."""
+
+                from .stability import CROSS
+
+                if not stability.cross_backend:
+                    return None, {}
+                run, why = references[index].cross_run
+                if run is None:
+                    return None, {CROSS: why}
+                found = crossed.get(g)
+                if found is None:
+                    found = crossed[g] = PointOutputs(
+                        run, forms, sources, point, assignments[index][g]
+                    )
+                return found, {}
+
             result = {}
             for output in self.outputs:
                 g = output.spin
@@ -965,11 +1009,14 @@ class InducedColumns:
                         precision.unit_roundoff,
                     )
                 elif stability.enabled:
+                    other, skipped = cross(g)
                     estimate = outputs[g].estimate(
                         output,
                         rotations(g),
                         stability.reduction,
                         precision.unit_roundoff,
+                        other,
+                        skipped,
                     )
                 value = point_result(
                     reference, outputs[g].value(output), estimate, output.rows
