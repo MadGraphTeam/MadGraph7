@@ -58,6 +58,9 @@ SubProcesses/P*/symfact.dat
 SubProcesses/P*/fort.77
 SubProcesses/P*/fort.78
 SubProcesses/P*/MadLoop5_resources/HelFilter.dat
+SubProcesses/P*/channels_hard.txt
+SubProcesses/P*/real_channels_x0.dat
+SubProcesses/P*/madevent_mintMC.real_channels_x0.dat
 check_poles_input.txt
 test_MC_input.txt
 test_ME_input.txt
