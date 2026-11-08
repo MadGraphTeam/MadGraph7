@@ -234,9 +234,11 @@ def test_judge_records_partial_waits_and_passes(entries):
     assert judged["L3"]["ninjars/double"]["status"] == "pass"
     assert judged["L3"]["tirust/double"]["status"] == "partial"
     assert judged["L3"]["tirust/double"]["served"] == 1
-    # L4: the generation-time probes only (one point, the probed legs).
+    # L4 without the fixture-point Ward probes: the generation-time ones
+    # only (one point, the probed legs) are partial.
     assert judged["L4"]["status"] == "partial"
-    assert judged["L4"]["probed_legs"] == {"ward": [1]}
+    assert judged["L4"]["generation"]["probes"]["ward"]["legs"] == [1]
+    assert judged["L4"]["fixture_points"]["status"] == "not run"
     assert judged["L5"]["status"] == "pass"
     l6 = judged["L6"]
     assert l6["status"] == "partial" and l6["double"]["status"] == "partial"
@@ -520,6 +522,49 @@ def test_tirust_arms_before_lit_tir_mp_wait_and_after_it_are_judged(
     assert lm.tirust_carriers(stale) is None
 
 
+def test_ward_probes_at_the_fixture_points_judge_l4(entries):
+    """L4: the fixture-point Ward probes on every external massless
+    gauge-boson leg, both backends in binary64 and double-double, with the
+    generation-time probes: every leg within ten times its estimate passes,
+    one leg beyond fails, a TIRust point failed closed is partial, an arm
+    not run keeps its reason; a row without such a leg is recorded (no
+    Ward probe reaches it), never passed."""
+
+    entry = {e["fixture"]: e for e in entries}["li_gg_hh"]
+    record = _after_tir_mp(_record("li_gg_hh"))
+    ok = [{"worst": {"1": 0.1, "2": 0.2}, "passed": True}] * 3
+    record["ward_probes"] = {
+        "legs": [1, 2],
+        "zeroed_widths": [],
+        "arms": {
+            f"{b}/{c}": ok for b in lm.BACKENDS for c in ("double", "double-double")
+        },
+    }
+    judged = lm.judge(record, entry)["L4"]
+    assert judged["status"] == "pass" and judged["legs"] == [1, 2]
+    assert judged["ninjars/double"]["worst_ratio"] == 0.2
+    bad = json.loads(json.dumps(record))
+    bad["ward_probes"]["arms"]["ninjars/double-double"] = [
+        {"worst": {"1": 0.1, "2": 14.0}, "passed": False}
+    ] * 3
+    assert lm.judge(bad, entry)["L4"]["status"] == "fail"
+    gap = json.loads(json.dumps(record))
+    gap["ward_probes"]["arms"]["tirust/double"] = ok[:2] + [
+        {"error": "FailedPoints: box refused"}
+    ]
+    gap["ward_probes"]["arms"]["ninjars/double-double"] = {"not_run": "slow"}
+    judged = lm.judge(gap, entry)["L4"]
+    assert judged["tirust/double"]["status"] == "partial"
+    assert judged["ninjars/double-double"] == {"status": "not run", "reason": "slow"}
+    assert judged["status"] == "partial"
+    none = json.loads(json.dumps(record))
+    none["ward_probes"] = {"legs": [], "zeroed_widths": [], "arms": {}}
+    none["generation"]["probes"]["ward"] = {"legs": [], "passed": True, "worst": 0.0}
+    judged = lm.judge(none, entry)["L4"]
+    assert judged["status"] == "recorded"
+    assert "no external massless gauge-boson leg" in judged["fixture_points"]["reason"]
+
+
 def test_an_interrupted_refresh_is_resumed(tmp_path, monkeypatch):
     """``_resumable``: a record unfinished in a refresh by the staged
     extension continues (its kept arms are never recomputed); a complete
@@ -531,6 +576,7 @@ def test_an_interrupted_refresh_is_resumed(tmp_path, monkeypatch):
         "refreshed": [{"backend": "tirust", "native": {"extension_sha256": "new"}}],
         "arms": {"ninjars/double/plain": {"points": []}},
         "l3_probes": {},
+        "ward_probes": {"legs": [], "arms": {}},
         "complete": False,
     }
     path = tmp_path / "record.json"
