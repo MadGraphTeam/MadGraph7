@@ -102,6 +102,11 @@
    "L9": {
     "note": "LI-A1's HEFT ratio (reported, no limit rule): the loop-induced g g > h over the built-in-sm-heft tree at the loop run's colour accuracy (full), whose large-m_t limit is 1; the 8/9 of the first scan was the tree's leading-colour default (colour factor N^2 against N^2 - 1, lit-heft), not a model defect"
    }
+  },
+  "li_gg_h_tb": {
+   "L9": {
+    "note": "LI-A1's HEFT ratio in the four-flavour scheme (reported, no limit rule): the b-quark loop (m_b = y_b = 4.7) does not decouple as m_t = y_t grows, so the loop-induced g g > h over the full-colour HEFT tree (the top loop's limit) tends to |A_t + A_b|^2 / |A_t|^2 at m_t -> infinity (0.8885 at the fixture points), a physical constant of the scheme, not 1; the first scan's 0.7898 was 8/9 of it (the tree's leading-colour default, lit-heft)"
+   }
   }
  }
 }

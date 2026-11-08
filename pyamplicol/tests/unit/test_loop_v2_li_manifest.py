@@ -667,6 +667,76 @@ def test_exact_colour_zero_and_reference_findings(entries):
     assert fixed["status"] == "pass"
 
 
+def test_heft_oracle_takes_the_loop_runs_colour_accuracy(tmp_path, monkeypatch):
+    """LI-A7 / LI-A1: the HEFT tree a heavy-top scan divides by is generated
+    at the loop artifact's own colour accuracy (its effective ``[color]
+    accuracy``), not at a tree request's leading-colour default (lit-heft:
+    N^2 against N^2 - 1 put 9/8 into every ratio), and its directory is
+    keyed by that accuracy, so a tree of another accuracy is never reused.
+    No generation: the generator and the runtime are stand-ins."""
+
+    import pyamplicol
+    import pyamplicol.api
+    import pyamplicol.config
+
+    artifact = tmp_path / "li_gg_h" / "artifact"
+    (artifact / "config").mkdir(parents=True)
+    (artifact / "config" / "effective.toml").write_text('[color]\naccuracy = "full"\n')
+    assert lm._color_accuracy(artifact) == "full"
+
+    cards, loads = [], []
+
+    def resolve(path):
+        cards.append(tomllib.loads(path.read_text()))
+        return path
+
+    class Generator:
+        def __init__(self, config):
+            self.config = config
+
+        def generate(self, processes, output):
+            output.mkdir(parents=True, exist_ok=True)
+            (output / "artifact.json").write_text("{}")
+
+    class Runtime:
+        @staticmethod
+        def load(output, process):
+            loads.append(output)
+            return output
+
+    monkeypatch.setattr(pyamplicol.config, "resolve_config", resolve)
+    monkeypatch.setattr(pyamplicol.api, "Generator", Generator)
+    monkeypatch.setattr(pyamplicol, "Runtime", Runtime, raising=False)
+    data = {"name": "li_gg_h"}
+    for accuracy in ("full", "lc", "full"):
+        lm._heft_runtime(data, tmp_path, "g g > h", accuracy)
+    # One tree per accuracy, each generated at it; the second 'full' reuses
+    # the first.
+    assert [card["color"]["accuracy"] for card in cards] == ["full", "lc"]
+    assert all(card["model"]["source"] == lm.HEFT for card in cards)
+    roots = [tmp_path / f"heft-li_gg_h-{a}" / "artifact" for a in ("full", "lc")]
+    assert loads == [roots[0], roots[1], roots[0]]
+
+
+def test_a_heavy_top_limit_is_judged_within_its_error_and_the_oracle_floor():
+    """LI-A7's verdict per point: |R_inf - 1| <= 10 (extrapolation error +
+    the binary64 oracle's FLOOR_UNITS u). An exactly decoupling scan (g g > h
+    over its full-colour HEFT tree: 1 - 4e-16 at an error of ~1e-17) passes;
+    a limit off by more than the floor (1 + 1e-12 at a tiny error) or a
+    constant off by 9/8 does not."""
+
+    from pyamplicol.loops.v2.stability import FLOOR_UNITS
+
+    floor = FLOOR_UNITS * 2.0**-53
+    exact = lm.judge_limit(1 - 4e-16, 8.3e-18)
+    assert exact["passed"] and exact["oracle_floor"] == floor
+    assert not lm.judge_limit(1 + 1e-12, 1e-17)["passed"]
+    assert not lm.judge_limit(8 / 9, 1.2e-6)["passed"]
+    # The low-energy theorem's scan: decoupling at its extrapolation error.
+    assert lm.judge_limit(1 + 9e-11, 1.8e-7)["passed"]
+    assert not lm.judge_limit(1 + 2e-6, 1.8e-7)["passed"]
+
+
 def test_madloop_stress_and_fig7_figures(entries):
     """The stress points' MadLoop QP rows are compared with the AP value
     (recorded, with MadLoop's own estimate); the Fig. 7 figures are the
