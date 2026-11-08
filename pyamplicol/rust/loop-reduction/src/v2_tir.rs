@@ -125,7 +125,8 @@ use crate::runtime::frames::{FrameMap, ReductionFrame};
 use crate::runtime::{Carrier, TypedBatch};
 use iregi_rust::{
     Convention, DirectCapabilities, DirectReductionPlan, DirectWorkspace, InvariantInput,
-    KinematicsBatch, LaneStatus, ReductionSettings, ScaleInput, TensorStore, TensorWeights,
+    KinematicsBatch, LaneStatus, MasterFamily, MasterProvider, ReductionSettings, ScaleInput,
+    TensorStore, TensorStoreOptions, TensorWeights,
 };
 use ninjars::fast::tensor_layout::{monomials, ncoeff};
 use rusticol_core::loop_execution::v2::{
@@ -197,6 +198,16 @@ pub struct TirOptions {
     /// (m-lit lit-cache STEP 3: adopted only at >= 1.3x on the reduction
     /// stage, Q19).
     pub store: bool,
+    /// With [`Self::store`]: the bound of a masters provider over a
+    /// canonical cache (m-lit lit-cache STEP 3, PLAN §3.4: pyAmpliCol's
+    /// `MasterCache` canonical order). The store gets a provider that
+    /// declines every master (TIRust's kernels compute it: values
+    /// unchanged) and counts the masters that reach it, i.e. the store's
+    /// misses, and those equal to an earlier miss of the chunk up to the
+    /// relabellings `MasterCache` canonicalises (the masters such a provider
+    /// could serve). A measurement option (default off); check passes count
+    /// too, so measure without checks.
+    pub masters_census: bool,
 }
 
 impl Default for TirOptions {
@@ -212,6 +223,7 @@ impl Default for TirOptions {
             acceptance_frame: tir_frame(ReductionCheck::RESCALED),
             profile: false,
             store: false,
+            masters_census: false,
         }
     }
 }
@@ -493,11 +505,21 @@ struct Counters {
     /// (masters reused / computed, sub-integrals reused / computed, moments
     /// reused / computed).
     store: Option<[u64; 6]>,
+    /// [`TirOptions::masters_census`]: the store's master misses and those
+    /// repeating an earlier miss up to `MasterCache`'s relabellings.
+    census: Option<[u64; 2]>,
 }
 
 impl Counters {
-    /// Add the store's counts since its last clear (before clearing it).
-    fn store(&mut self, store: &TensorStore) {
+    /// Add the store's counts since its last clear (before clearing it),
+    /// and the census's ([`TirOptions::masters_census`]).
+    fn store(&mut self, store: &TensorStore, census: Option<&MastersCensus>) {
+        if let Some(census) = census {
+            let (misses, repeats) = census.take();
+            let total = self.census.get_or_insert([0; 2]);
+            total[0] += misses;
+            total[1] += repeats;
+        }
         let s = store.statistics();
         let counts = [
             s.masters_reused,
@@ -531,6 +553,65 @@ impl Counters {
     }
 }
 
+/// [`TirOptions::masters_census`]: the store's master misses of a chunk, by
+/// canonical argument bits, and the counts (misses, canonical repeats).
+#[derive(Default)]
+struct MastersCensus {
+    state: std::sync::Mutex<(std::collections::HashSet<(u8, Vec<u64>)>, u64, u64)>,
+}
+
+impl MastersCensus {
+    /// The counts since the last call, and a new chunk.
+    fn take(&self) -> (u64, u64) {
+        let mut state = self.state.lock().expect("census");
+        let counts = (state.1, state.2);
+        *state = Default::default();
+        counts
+    }
+}
+
+impl MasterProvider for MastersCensus {
+    fn master(
+        &self,
+        family: MasterFamily,
+        arguments: &[Complex<f64>],
+    ) -> Option<[Complex<f64>; 3]> {
+        use ninjars::fast::{C64, FastMaster};
+        let row: Vec<C64> = arguments.iter().map(|z| C64::new(z.re, z.im)).collect();
+        let mut canonical = row.clone();
+        let code = match family {
+            MasterFamily::Triangle => {
+                crate::runtime::canonical_master_row(FastMaster::C0, &row, &mut canonical);
+                2
+            }
+            MasterFamily::Box => {
+                crate::runtime::canonical_master_row(FastMaster::D0, &row, &mut canonical);
+                3
+            }
+            // The scalar B0 is symmetric in its two masses.
+            MasterFamily::Bubble => {
+                if (row[2].re.to_bits(), row[2].im.to_bits())
+                    < (row[1].re.to_bits(), row[1].im.to_bits())
+                {
+                    canonical.swap(1, 2);
+                }
+                1
+            }
+            MasterFamily::Tadpole => 0,
+        };
+        let bits = canonical
+            .iter()
+            .flat_map(|z| [z.re.to_bits(), z.im.to_bits()])
+            .collect();
+        let mut state = self.state.lock().expect("census");
+        state.1 += 1;
+        if !state.0.insert((code, bits)) {
+            state.2 += 1;
+        }
+        None
+    }
+}
+
 /// The TIR backend (module docs).
 pub struct TirReductionBackend {
     options: TirOptions,
@@ -538,6 +619,8 @@ pub struct TirReductionBackend {
     counters: Counters,
     /// [`TirOptions::store`]: the backend's one tensor store.
     store: Option<TensorStore>,
+    /// [`TirOptions::masters_census`]: the store's census provider.
+    census: Option<std::sync::Arc<MastersCensus>>,
 }
 
 /// `|z|` in binary64.
@@ -558,11 +641,21 @@ fn status_text(status: &LaneStatus) -> String {
 
 impl TirReductionBackend {
     pub fn new(options: TirOptions) -> Self {
+        let census = (options.store && options.masters_census)
+            .then(|| std::sync::Arc::new(MastersCensus::default()));
         Self {
             options,
             bins: BTreeMap::new(),
             counters: Counters::default(),
-            store: options.store.then(TensorStore::new),
+            store: options.store.then(|| {
+                TensorStore::with_options(TensorStoreOptions {
+                    masters: census
+                        .clone()
+                        .map(|census| census as std::sync::Arc<dyn MasterProvider>),
+                    ..Default::default()
+                })
+            }),
+            census,
         }
     }
 
@@ -617,14 +710,14 @@ impl TirReductionBackend {
     /// last chunk's entries (its counts are kept in the statistics).
     pub fn begin(&mut self) {
         if let Some(store) = &self.store {
-            self.counters.store(store);
+            self.counters.store(store, self.census.as_deref());
             store.clear();
         }
     }
 
     pub fn take_statistics(&mut self) -> BackendStatistics {
         if let Some(store) = &self.store {
-            self.counters.store(store);
+            self.counters.store(store, self.census.as_deref());
             store.clear();
         }
         let c = std::mem::take(&mut self.counters);
@@ -666,6 +759,12 @@ impl TirReductionBackend {
                     ("TIR store sub-integrals computed", sc),
                     ("TIR store moments reused", or),
                     ("TIR store moments computed", oc),
+                ]
+            }))
+            .chain(c.census.into_iter().flat_map(|[misses, repeats]| {
+                [
+                    ("TIR masters census: store misses", misses),
+                    ("TIR masters census: canonical repeats", repeats),
                 ]
             }))
             .collect(),
