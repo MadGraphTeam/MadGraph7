@@ -3048,5 +3048,10 @@ def test_blocks_without_their_core_are_left_out():
     assert kept["median_seconds_per_point"] == 1.1 and kept["blocks"] == 3
     assert kept["failed_points"] == [0, 1, 3]
     assert kept["dropped_blocks"] == {"2": 0.12}
+    # No block at the minimum: kept whole and marked.
+    shared = {**summary, "cpu_share": [0.8, 0.7, 0.12, 0.85]}
+    marked = gate.valid_blocks(shared, gate.MIN_CPU_SHARE)
+    assert marked["samples_seconds_per_point"] == summary["samples_seconds_per_point"]
+    assert marked["below_min_cpu_share"] == gate.MIN_CPU_SHARE
     del summary["cpu_share"]
     assert gate.valid_blocks(summary, gate.MIN_CPU_SHARE) is summary
