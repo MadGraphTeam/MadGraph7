@@ -129,7 +129,13 @@ Useful generation options include:
   relations at generation time (off by default because the high-precision
   probes are costly);
 - `--post-build-validation` for an optional immediate native total-versus-
-  resolved smoke after writing the artifact.
+  resolved smoke after writing the artifact;
+- `--loop-induced-probes` to run the generation-time finiteness, Ward and
+  Goldstone probes of loop-induced processes (binary64, double-double where
+  a binary64 probe fails or is refused; off by default because the written
+  artifact does not depend on them; they validate a new or edited loop UFO,
+  see [Configuration](configuration.md)), and `--allow-failed-probes` to
+  store a process whose probe failed (it acts only with the probes on).
 
 Planning is non-writing:
 

@@ -372,10 +372,12 @@ unit-numerator reduction per family monomial and point with NinjaRS:
 1.3 times a plain evaluation on `g g > z z`, 2 times on `g g > h`). The
 stability checks form it anyway, as the floor of E; a call without checks
 pays nothing for it. Without the ratio the computed poles still vanish
-against the finite part (the necessary-only cross-check), and the artifact
-itself passed the generation's double-double finiteness probe (a failed
-probe refuses the process unless `generation.allow_failed_probes`, which is
-recorded). An exact
+against the finite part (the necessary-only cross-check). An artifact
+generated with `generation.loop_induced_probes = true` (off by default) also
+passed the generation-time finiteness probe, in binary64 or, where binary64
+failed or was refused, in double-double (a failed probe refuses the process
+unless `generation.allow_failed_probes`, which is recorded); without the
+option its record reads `{"status": "off"}`: not run. An exact
 colour zero (every colour coefficient of the loop amplitude vanishes at
 N_c = 3 by colour algebra, as for `h > g a`, Tr T^a = 0) evaluates to an
 exact 0 and its lanes say so.
