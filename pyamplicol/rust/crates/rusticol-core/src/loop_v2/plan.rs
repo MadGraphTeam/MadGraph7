@@ -1056,14 +1056,6 @@ impl Gathers {
             _ => None,
         }
     }
-
-    /// Schedules and the reals (u32 words) they hold.
-    pub fn size(&self) -> (usize, usize) {
-        (
-            self.schedules.len(),
-            self.index.len() + self.schedules.iter().map(|s| s.len()).sum::<usize>(),
-        )
-    }
 }
 
 /// The rows of the chunk inputs schedule B reads (`plan/live.rs`): the

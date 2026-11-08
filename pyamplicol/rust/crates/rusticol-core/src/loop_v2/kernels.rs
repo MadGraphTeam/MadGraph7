@@ -486,15 +486,6 @@ impl GatherSchedule {
             terms,
         })
     }
-
-    /// Reals the schedule holds (its share of a loaded plan's memory).
-    pub fn len(&self) -> usize {
-        self.ends.len() + 2 * self.terms.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.terms.is_empty()
-    }
 }
 
 dispatched! {
