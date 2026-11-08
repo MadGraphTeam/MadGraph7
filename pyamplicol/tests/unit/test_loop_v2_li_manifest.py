@@ -651,3 +651,22 @@ def test_crossing_maps_points_and_identity(entries):
     )
     assert list(out["ids"]["LI-C1"]["runs"]) == ["li_gg_aa_cms"]
     assert out["ids"][lm.CROSSING_ID]["status"] == "estimate miss"
+
+
+def test_lane_details_are_compacted_by_reason():
+    """A failed point's detail lists every failed lane of every frame (tens
+    of MB on a 2->3 row): it is recorded with each distinct reason (numbers
+    masked) once, counted, never cut; '; ' inside parentheses and the items
+    of a quoted list are respected; the arm's typed reasons count lanes."""
+
+    lane = "family {f} lane LaneKey {{ family: {f}, order: 0, column: {c} }}: TIRust Unstable: conditioning {x}e-3 (refused by the gates; binary64 only)"
+    detail = "; ".join(
+        lane.format(f=f, c=c, x=f + 2) for f in range(2) for c in range(3)
+    )
+    compact = lm.compact_detail(detail)
+    assert compact == "6 x " + lane.format(f=0, c=0, x=2)
+    assert lm.compact_detail(compact) == compact
+    listed = "ArithmeticError: failed: ['term scale 0: bad (a; b)', 'term scale 1: bad (a; b)']"
+    assert lm.compact_detail(listed).count("term scale") == 2
+    arm = {"points": [{"status": "failed", "detail": detail}] * 2}
+    assert list(lm._reasons(arm).values()) == [12]
