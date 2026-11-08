@@ -756,7 +756,12 @@ arithmetic TIRust serves only the kinematic rows its conditioning gates
 accept (in double-double and arbitrary precision the gate is binary64's taken
 to the arithmetic's precision): a row they refuse fails its point with the
 gates' reason (no automatic switch to NinjaRS; the rescue ladder moves the
-point to its next level). METHOD_CHOICE_SENTENCE TIRust's qualified domain is up to six
+point to its next level). In binary64 the rows the gates refuse are tried
+once more with TIRust's own method choice (small-Gram expansions or an
+alternative reduction), and each such value is kept only if it agrees with
+the same row evaluated again at rescaled inputs (a check that sees the wrong
+values a rotated frame alone misses); a value that fails this check fails
+its point the same way. TIRust's qualified domain is up to six
 loop propagators at numerator rank six (reported, never enforced: beyond it
 the achieved precision is measured, as everywhere). `loop.reduction` other
 than `"auto"` needs a one-loop request (`process.loop_coupling_orders`).

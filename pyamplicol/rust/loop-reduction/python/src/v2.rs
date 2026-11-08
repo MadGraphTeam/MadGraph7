@@ -269,11 +269,12 @@ pub(super) fn tir_options(
 /// adds the rescaling); `reverse` and `shift` are NinjaRS's and ignored.
 /// The keywords override the backend's settings (`v2_tir::TirOptions`,
 /// whose defaults they keep when omitted; for validation): `method_choice`
-/// (default off: gate-refused rows fail closed; True: TIRust's method
-/// choice and its check, in every carrier), `alternative_first` ([`Limit`])
-/// `acceptance` (the method-choice check's binary64 tolerance) and
-/// `acceptance_frame` (its frame, `"rotated"` or `"rescaled"`). Refused
-/// typed in a build without TIRust.
+/// (default: on in binary64 with its acceptance check, off in the extended
+/// carriers; False: gate-refused rows fail closed in every carrier; True:
+/// TIRust's method choice and its check in every carrier),
+/// `alternative_first` ([`Limit`]), `acceptance` (the method-choice check's
+/// binary64 tolerance) and `acceptance_frame` (its frame, `"rotated"` or
+/// `"rescaled"`, the default). Refused typed in a build without TIRust.
 #[pyclass]
 struct V2TirReducer(rusticol_loop_reduction::runtime::V2Backends);
 
@@ -301,7 +302,12 @@ impl V2TirReducer {
         }
         #[cfg(not(feature = "tir"))]
         {
-            let _ = (method_choice, alternative_first, acceptance, acceptance_frame);
+            let _ = (
+                method_choice,
+                alternative_first,
+                acceptance,
+                acceptance_frame,
+            );
             rusticol_loop_reduction::runtime::V2Backends::tirust([], 53)
                 .map(Self)
                 .map_err(error)

@@ -61,15 +61,16 @@
 //! stay off (PLAN §2.b.6): a gate-refused row fails closed with the gates'
 //! reason, and the caller's rescue ladder decides.
 //!
-//! **Method choice (off by default on every carrier) and its check
-//! (lit-spike-tir F2, DECISIONS 2026-11-07 ~10:05, ~17:20 (d), 21:50 R4).**
-//! With [`TirOptions::method_choice`] (binary64) or
-//! [`TirOptions::extended_method_choice`] on, the rows the gates refuse are
-//! retried in a second workspace with TIRust's a priori (COLLIER-style)
-//! method choice: small-Gram expansions or the alternative PV reduction for
-//! the boxes and triangles whose PV estimate is too large, with the
-//! alternative PV first wherever its estimate is within the expansions' own
-//! tolerance (`DirectWorkspace::set_alternative_first`,
+//! **Method choice and its acceptance (lit-spike-tir F2; DECISIONS
+//! 2026-11-07 ~10:05, ~17:20 (d), 21:50 R4).** With
+//! [`TirOptions::method_choice`] (binary64; on by default) or
+//! [`TirOptions::extended_method_choice`] (double-double, MPFR; off by
+//! default) the rows the gates refuse are retried in a second workspace
+//! with TIRust's a priori (COLLIER-style) method choice: small-Gram
+//! expansions or the alternative PV reduction for the boxes and triangles
+//! whose PV estimate is too large, with the alternative PV first wherever
+//! its estimate is within the expansions' own tolerance
+//! (`DirectWorkspace::set_alternative_first`,
 //! [`TirOptions::alternative_first`]). TIRust leaves those values unchecked
 //! ("callers verify the lanes"; its convergence test bounds the expansions'
 //! truncation, not the rounding of what they read), so every lane of a
@@ -79,13 +80,19 @@
 //! checks in that very frame) must agree with the direct one within
 //! [`TirOptions::acceptance`] of the lane's term scale `Σ_α |c_α| |M_α|`
 //! (its size before the contraction's cancellations); a lane that does not,
-//! or whose acceptance row is refused, fails closed with its reason. A
-//! rotated acceptance frame alone is blind on some wrong method-choice lanes
-//! (massive boxes and pentagons refused on a massive sub-triangle; lit-tir
-//! report §H): only a rescaled frame (masters recomputed) sees them. A row
-//! still refused after the method choice, or with a TIRust `InvalidInput` /
-//! `MasterFailure` status, fails every lane of the row (a best-effort array
-//! is never a value).
+//! or whose acceptance row is refused, fails closed with its reason. The
+//! acceptance frame is the rescaled one (rotation by one with the origin
+//! shift at inputs rescaled by 7/10, masters recomputed): a rotated frame
+//! alone is blind on some wrong method-choice lanes (massive boxes and
+//! pentagons the gates refuse on a massive sub-triangle; lit-tir report
+//! §H), the rescaled one sees them (m-lit lit-tir-mp: every one of those 21
+//! lanes refused; no method-choice lane of the synthetic set served beyond
+//! 1.3e-7 of a consistent truth; about 3 % of the lanes the rotated frame
+//! accepts refused, nearly all of them right). A row still refused after the
+//! method choice, or with a TIRust `InvalidInput` / `MasterFailure` status,
+//! fails every lane of the row (a best-effort array is never a value). The
+//! extended carriers keep it off until it is measured there: their
+//! gate-refused rows fail closed and the caller's rescue ladder decides.
 //!
 //! **Check frames (lit-spike-tir F3).** `q -> -q` leaves the moments bitwise
 //! (odd moments flip exactly), so TIR's frame of a [`ReductionCheck`] never
@@ -133,16 +140,17 @@ use symbolica::domains::float::{DoubleFloat, Float};
 use symbolica::evaluate::EvaluationDomain;
 
 /// The settings of the TIR backend. Every value is overridable; the
-/// defaults are TIRust's own (module docs), apart from the method choice,
-/// off on every carrier (DECISIONS 2026-11-07 ~17:20 (d), 21:50 R4).
+/// defaults are TIRust's own (module docs), apart from the method choice
+/// (on in binary64 with its rescaled acceptance frame, off in the extended
+/// carriers; DECISIONS 2026-11-07 ~17:20 (d), 21:50 R4; module docs).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TirOptions {
     /// Whether binary64 rows the conditioning gates refuse get the method
-    /// choice (default off: they fail closed with the gates' reason; on: the
-    /// method choice and its acceptance check, module docs).
+    /// choice and its acceptance check (default on, module docs; off: they
+    /// fail closed with the gates' reason).
     pub method_choice: bool,
     /// The same for the extended carriers (double-double, MPFR); default
-    /// off.
+    /// off (not measured there: their gate-refused rows fail closed).
     pub extended_method_choice: bool,
     /// The binary64 conditioning gate of the first pass: TIRust's direct
     /// engine default (1e-12; `EmbedderOptions::gate` `None`, not a public
@@ -168,26 +176,24 @@ pub struct TirOptions {
     /// to their precision.
     pub acceptance: f64,
     /// The frame in which every method-choice row is verified (the call's
-    /// check row serves when the call checks in this frame).
+    /// check row serves when the call checks in this frame): by default the
+    /// rescaled rotation-by-one frame (`tir_frame(ReductionCheck::
+    /// RESCALED)`; a rotated frame alone is blind on some wrong lanes,
+    /// module docs).
     pub acceptance_frame: ReductionFrame,
 }
 
 impl Default for TirOptions {
     fn default() -> Self {
         Self {
-            method_choice: false,
+            method_choice: true,
             extended_method_choice: false,
             gate: 1e-12,
             method_choice_gate: 1e-15,
             expansion_boost: 12,
             alternative_first: Some(iregi_rust::direct::EXPANSION_TOLERANCE),
             acceptance: iregi_rust::direct::EXPANSION_TOLERANCE,
-            acceptance_frame: ReductionFrame {
-                reverse: false,
-                rotation: 1,
-                shift: true,
-                rescale: false,
-            },
+            acceptance_frame: tir_frame(ReductionCheck::RESCALED),
         }
     }
 }
@@ -587,7 +593,10 @@ impl TirReductionBackend {
             invariants.clear();
             let origin = map.shifts(&g.shifts[lane * 4 * n..(lane + 1) * 4 * n], &mut shifts);
             map.masses(&g.masses[lane * n..(lane + 1) * n], &mut masses);
-            map.s_matrix(&g.s_matrix[lane * n * n..(lane + 1) * n * n], &mut invariants);
+            map.s_matrix(
+                &g.s_matrix[lane * n * n..(lane + 1) * n * n],
+                &mut invariants,
+            );
             let scale = map.squared(&g.scales[lane]);
             out.push(FrameRow {
                 moments: Err(String::new()),
@@ -818,38 +827,39 @@ impl TirReductionBackend {
                     .moments
                     .as_ref()
                     .map(|m| contract(&m.values, c, width));
-                let mut in_frame =
-                    |other: &FrameRow<T>, map: &FrameMap<T>| -> Result<Vec<Complex<T>>, String> {
-                        let moments = other.moments.as_ref().map_err(Clone::clone)?;
-                        shifted.clear();
-                        map.coefficients(c, row.rank, &other.origin, &mut shifted);
-                        let mut value = contract(&moments.values, &shifted, width);
-                        if let Some(factor) = &other.undo {
-                            for v in &mut value {
-                                *v = v.clone() * factor;
-                            }
+                let mut in_frame = |other: &FrameRow<T>,
+                                    map: &FrameMap<T>,
+                                    width: usize|
+                 -> Result<Vec<Complex<T>>, String> {
+                    let moments = other.moments.as_ref().map_err(Clone::clone)?;
+                    shifted.clear();
+                    map.coefficients(c, row.rank, &other.origin, &mut shifted);
+                    let mut value = contract(&moments.values, &shifted, width);
+                    if let Some(factor) = &other.undo {
+                        for v in &mut value {
+                            *v = v.clone() * factor;
                         }
-                        Ok(value)
-                    };
+                    }
+                    Ok(value)
+                };
                 let again = checked
                     .as_ref()
                     .zip(check_map.as_ref())
-                    .map(|(checked, map)| in_frame(&checked[r], map));
+                    .map(|(checked, map)| in_frame(&checked[r], map, width));
                 self.counters.lanes += 1;
                 let verified = match (&first.moments, &value) {
                     (Ok(m), Ok(value)) if m.choice => {
+                        // The acceptance compares every Laurent slot the
+                        // moments carry, whatever the call's pole mode, so
+                        // that a lane is served or refused alike in every
+                        // mode (its finite part identical, ADDENDUM I).
                         let other = accepted[r].expect("a method-choice row's acceptance row");
                         let map = acceptance_map.as_ref().expect("its frame");
-                        let shared = check_frame == Some(acceptance);
-                        let second = if shared {
-                            again.clone().expect("the check row")
-                        } else {
-                            in_frame(other, map)
-                        };
-                        match second {
+                        let full = contract(&m.values, c, SLOTS);
+                        match in_frame(other, map, SLOTS) {
                             Ok(second) => {
-                                let scale = term_scale(&m.values, c, width);
-                                let deviation = value
+                                let scale = term_scale(&m.values, c, SLOTS);
+                                let deviation = full
                                     .iter()
                                     .zip(&second)
                                     .map(|(a, b)| norm(&(a.clone() - b)))
@@ -901,9 +911,7 @@ impl TirReductionBackend {
         use crate::runtime::Data;
         match groups.first().map(|g| g.shifts.data()) {
             None | Some(Data::Double(_)) => self.family_groups::<f64>(groups, poles, check),
-            Some(Data::DoubleDouble(_)) => {
-                self.family_groups::<DoubleFloat>(groups, poles, check)
-            }
+            Some(Data::DoubleDouble(_)) => self.family_groups::<DoubleFloat>(groups, poles, check),
             Some(Data::Arbitrary(_)) => self.family_groups::<Float>(groups, poles, check),
         }
     }
@@ -923,7 +931,9 @@ impl TirReductionBackend {
                 RusticolError::invalid_argument("TIR: the family groups mix carriers")
             })
         };
-        let bits = groups.first().map_or(f64::MANTISSA_DIGITS, |g| g.shifts.precision_bits());
+        let bits = groups
+            .first()
+            .map_or(f64::MANTISSA_DIGITS, |g| g.shifts.precision_bits());
         let mut lanes = Vec::with_capacity(groups.len());
         let mut ids = Vec::with_capacity(groups.len());
         for (family, g) in groups.iter().enumerate() {
@@ -1012,6 +1022,9 @@ fn bin_of(
     })
 }
 
+/// The Laurent slots of a row's moments (`[finite, UV1 + IR1, IR2, UV1]`).
+const SLOTS: usize = 4;
+
 /// TIRust's lane array (`[UV1, IR1, IR2, finite]` per basis entry) in
 /// NinjaRS order: `position[k]` is monomial `k`'s basis entry.
 fn permuted<T: Carrier>(values: &[Complex<T>], position: &[usize]) -> Vec<[Complex<T>; 4]> {
@@ -1019,7 +1032,12 @@ fn permuted<T: Carrier>(values: &[Complex<T>], position: &[usize]) -> Vec<[Compl
         .iter()
         .map(|&b| {
             let s = &values[4 * b..4 * b + 4];
-            [s[3].clone(), s[0].clone() + &s[1], s[2].clone(), s[0].clone()]
+            [
+                s[3].clone(),
+                s[0].clone() + &s[1],
+                s[2].clone(),
+                s[0].clone(),
+            ]
         })
         .collect()
 }

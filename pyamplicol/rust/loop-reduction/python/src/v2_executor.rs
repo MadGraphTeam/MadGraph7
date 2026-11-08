@@ -1589,7 +1589,12 @@ impl V2Executor {
             }
         }
         #[cfg(not(feature = "tir"))]
-        let _ = (method_choice, alternative_first, acceptance, acceptance_frame);
+        let _ = (
+            method_choice,
+            alternative_first,
+            acceptance,
+            acceptance_frame,
+        );
         let backend = backend_of(
             &mut self.backends,
             self.carrier,

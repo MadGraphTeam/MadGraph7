@@ -11,16 +11,19 @@ lit-tir, PLAN §3.3 and §2.b.2-§2.b.6).
   estimates (PLAN §4 L6), all Laurent orders, plus 1e-12 of the lane's
   largest coefficient (``ROUNDING``: where both re-tests are blind, e.g.
   NinjaRS's reversed frame on a bubble, agreement to rounding passes too;
-  inside the precision-lax rule); in the default settings TIRust serves no
-  method-choice row (DECISIONS 2026-11-07 ~17:20 (d)): a point whose row
-  the conditioning gates refuse fails closed with the gates' reason; a top
+  inside the precision-lax rule); in the default settings the binary64 rows
+  the conditioning gates refuse take TIRust's method choice, every such
+  lane accepted in the rescaled frame (m-lit lit-tir-mp, ruling 21:50 R4):
+  a point with a lane refused there fails closed with TIRust's reason; a top
   in its own gauge loop (g g > t t~), whose invariants need the supplied
   S-matrix (lit-spike-tir F1), is served on the exact on-shell branch and
   agrees with NinjaRS within L6 in binary64 and to the double-double target
   in double-double (m-lit lit-tir-mp);
 * T6: the family threads leave TIRust's values bitwise;
 * the executor's TIRust validation settings (``prepare_reduction``) rebuild
-  its backend and reset to the defaults bitwise; NinjaRS refuses them;
+  its backend (the method choice off: gate-refused rows fail closed, no
+  method-choice row) and reset to the defaults bitwise; NinjaRS refuses
+  them;
 * the public API serves an explicit ``reduction="tirust"`` on the summed and
   the resolved routes (values reduced by TIRust: within the lax precision
   of NinjaRS's and not bitwise equal to them), records it and keeps
@@ -255,8 +258,18 @@ def _agree(name, ninja, tir) -> tuple[int, float, int]:
     return count, worst, failed
 
 
+# The reasons of TIRust's fail-closed lanes: the conditioning gates (without
+# the method choice), the method choice after them, or its acceptance check.
+FAIL_CLOSED = (
+    "refused by the conditioning gates",
+    "refused by the gates, then by the method choice",
+    "method-choice lane refused by its check",
+    "method-choice lane unverified",
+)
+
+
 def _no_method_choice(report) -> None:
-    """The default settings serve no method-choice row (module docstring)."""
+    """Without the method choice no method-choice row is served."""
 
     counts = report["counts"]
     for name in (
@@ -265,6 +278,19 @@ def _no_method_choice(report) -> None:
         "TIR method-choice check rows",
     ):
         assert counts.get(name, 0) == 0, (name, counts)
+
+
+def _method_choice_accepted(report) -> None:
+    """The default settings' statistics (module docstring): the method
+    choice serves gate-refused rows only, and its acceptance compares at
+    most the rows it served directly."""
+
+    counts = report["counts"]
+    refused = counts.get("TIR gate refusals", 0)
+    chosen = counts.get("TIR method-choice rows", 0)
+    expansions = counts.get("TIR method-choice rows with expansions", 0)
+    assert expansions <= chosen <= refused, counts
+    assert counts.get("TIR method-choice check rows", 0) <= chosen, counts
 
 
 @pytest.mark.loop_physics
@@ -280,10 +306,10 @@ def test_raw_lanes_agree_with_ninjars_within_their_estimates(slices, name):
     assert lanes > 0
     statistics = executor.last_report["counts"]
     assert statistics["contracted lanes"] > 0 and statistics["tensor moment rows"] > 0
-    _no_method_choice(executor.last_report)
+    _method_choice_accepted(executor.last_report)
     if failed:
         reasons = [r for point in tir if isinstance(point, list) for r in point]
-        assert any("refused by the conditioning gates" in r for r in reasons), reasons
+        assert any(any(why in r for why in FAIL_CLOSED) for r in reasons), reasons
 
 
 @pytest.mark.loop_physics
@@ -349,14 +375,14 @@ def test_family_threads_leave_tirust_bitwise(slices):
 @pytest.mark.loop_physics
 def test_validation_settings_rebuild_and_reset_the_tirust_backend(slices, monkeypatch):
     """``V2Executor.prepare_reduction``'s TIRust settings (the validation
-    knobs of the discriminating test, DECISIONS 2026-11-07 15:12; the
-    method choice is the one option lit-tir-mp turns back on): NinjaRS
-    refuses them, an unknown limit name is refused; another setting
-    rebuilds TIRust's backend for a validation run (the artifact runtime's
-    ``reduction.prepare`` bypassed: the method choice on, the gate-refused
-    rows take it), and the artifact runtime's next call restores the
-    defaults (``reduction.prepare``) and their lanes bit for bit (no
-    method-choice row)."""
+    knobs of the discriminating test, DECISIONS 2026-11-07 15:12): NinjaRS
+    refuses them, an unknown limit name or acceptance frame is refused;
+    another setting rebuilds TIRust's backend for a validation run (the
+    artifact runtime's ``reduction.prepare`` bypassed: the method choice
+    off, no method-choice row, the gate-refused rows fail closed with the
+    gates' reason), and the artifact runtime's next call restores the
+    defaults (``reduction.prepare``: the method choice on) and their lanes
+    bit for bit."""
 
     from pyamplicol.loops.v2 import plan_export
 
@@ -367,26 +393,25 @@ def test_validation_settings_rebuild_and_reset_the_tirust_backend(slices, monkey
         native.prepare_reduction("ninjars", alternative_first=None)
     with pytest.raises(Exception, match="alternative_first must be"):
         native.prepare_reduction("tirust", alternative_first="fastest")
+    with pytest.raises(Exception, match="acceptance_frame must be"):
+        native.prepare_reduction("tirust", acceptance_frame="reversed")
     plans = native.prepare_reduction("tirust")
     default = _lanes(executor, points, scales, "tirust")
-    _no_method_choice(executor.last_report)
+    _method_choice_accepted(executor.last_report)
     validation = native.prepare_reduction(
-        "tirust", method_choice=True, alternative_first="default", acceptance=0.0
+        "tirust", method_choice=False, alternative_first="default"
     )
     assert validation == plans
     with monkeypatch.context() as patch:
         patch.setattr(plan_export, "prepare", lambda native: None)
         chosen = _lanes(executor, points, scales, "tirust")
-    counts = executor.last_report["counts"]
-    if counts["TIR gate refusals"]:
-        # Every gate-refused row took the method choice: served, or refused
-        # by it or by its check (acceptance 0) with that reason.
-        reasons = [r for point in chosen if isinstance(point, list) for r in point]
-        assert counts["TIR method-choice rows"] > 0 or any(
-            "then by the method choice" in r for r in reasons
-        ), (counts, reasons)
-    assert _lanes(executor, points, scales, "tirust") == default
     _no_method_choice(executor.last_report)
+    if executor.last_report["counts"].get("TIR gate refusals", 0):
+        # Every gate-refused row fails closed with the gates' reason.
+        reasons = [r for point in chosen if isinstance(point, list) for r in point]
+        assert any("refused by the conditioning gates" in r for r in reasons), reasons
+    assert _lanes(executor, points, scales, "tirust") == default
+    _method_choice_accepted(executor.last_report)
 
 
 @pytest.mark.loop_physics
@@ -442,7 +467,7 @@ def test_complex_mass_lanes_agree(loop_sm_ufo, loop_native, tmp_path_factory):
     tir = _lanes(executor, points, ["62500"], "tirust")
     lanes, _worst, _failed = _agree("bbx_wpwm_cms", ninja, tir)
     assert lanes > 0
-    _no_method_choice(executor.last_report)
+    _method_choice_accepted(executor.last_report)
 
 
 # ---------------------------------------------------------------- public API
