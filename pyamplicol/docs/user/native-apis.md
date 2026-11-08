@@ -219,6 +219,11 @@ shared libraries ship next to the archive (on macOS `libmpc.3.dylib`,
 `link.json` lists them in link order, so `rusticol-config --libs` names them
 by path with a run path to `lib/` (see
 [GMP, MPFR and MPC in the wheels](installation.md#gmp-mpfr-and-mpc-in-the-wheels)).
+The Python extension's own copies, which the wheel repair bundles next to
+`_rusticol` (`pyamplicol.libs/` on Linux, `pyamplicol.dylibs/` on macOS),
+carry the repair tool's file names (on Linux and macOS possibly with a content
+hash in the name) and are not part of the SDK's link line: link only what
+`rusticol-config --libs` names.
 A source build links them statically and ships only the archive.
 
 ### The SDK archive cache
@@ -245,9 +250,13 @@ partial archive. The installation itself is only read, so a read-only
 `site-packages` works; the cache directory must be writable (set
 `PYAMPLICOL_CACHE_DIR` otherwise). Metadata-only queries (`--cflags`,
 `--include-dir`, `--version`, ...) never unpack. Each pyAmpliCol version
-unpacks its own copy; delete `<cache>/sdk/` to reclaim the space of
-versions no longer installed. A source build ships the plain archive, which
-is used in place.
+unpacks its own copy (about 50 MB), and nothing deletes the copies of
+earlier versions automatically: `rusticol-config --prune-other-versions`
+removes every `<cache>/sdk/<version>-<sha256>/` directory other than this
+installation's own and prints what it removed (other files under the cache
+root are never touched; another installed version unpacks its copy again on
+its next use). A source build ships the plain archive, which is used in
+place.
 
 `rusticol-config` validates this SDK and emits correctly quoted paths and
 target-specific link arguments:
@@ -758,6 +767,26 @@ that path and rejects non-f64 precision. See
 The separate Python correlated API is also Symbolica-backed at precision 16;
 the native correlated entry points instead use the independent RustiCol
 binary64 executor described above.
+
+The one-loop SDK (`rusticol_virtual.h`) monitors binary64 stability like the
+Python API's `stability_checks=`: `rusticol_virtual_set_stability_checks`
+(C++ and Fortran `set_stability_checks`, the packaged Rust wrapper's
+`set_stability_checks`) takes a count of default rotations or rotation
+specifications, the reduction-direction check, its rescaled variant and the
+cross-backend check. Without checks (the default, or a rotation count of 0
+with the other checks off) nothing else runs and no estimate is formed. With
+checks, every successful point of a binary64 ordinary evaluation carries its
+estimate in the result's `diagnostics_json` (`"stability"`), equal bit for bit
+to the Python API's `VirtualStabilityEstimate`; the precision rescue stays the
+Python API's. The SDK reads every binary64 input as its exact value, so its
+counterpart is the Python API given those exact values (for example
+`str(decimal.Decimal(x))`). The Python API reads a float by its shortest
+decimal (`33.6`, not the double's exact value): where the two differ, its
+point lies half an ulp from the SDK's, and values and estimates may differ in
+their last digits. Binary64 evaluation, with or without the
+monitoring, never touches Symbolica: the shipped loop-induced self-test
+artifact evaluates through the C ABI without `SYMBOLICA_LICENSE` while another
+process holds the restricted Symbolica permit.
 
 ## Common setup failures
 

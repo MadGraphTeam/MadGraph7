@@ -57,6 +57,23 @@ enum rusticol_virtual_point_status {
   RUSTICOL_VIRTUAL_FAILED = 3,
   RUSTICOL_VIRTUAL_ACCURACY_NOT_ESTABLISHED = 4
 };
+/* Loop-induced processes (metadata_json "contribution_kind": "loop-induced",
+ * "interference": "conj(loop)*loop"; |A_loop|^2, no Born) are opened directly,
+ * with the same shapes: born_orders = 0 and born_color_components = 0 here,
+ * born_values = 0 in every result (copy_born copies nothing); the virtual
+ * orders are the loop x loop sectors; each value is |A_loop|^2 per sector and
+ * epsilon power, full colour (one contracted colour component). Its poles are
+ * computed as a finiteness cross-check: they vanish up to rounding.
+ * Its resolved and correlated outputs (resolved_available = 1) are quadratic
+ * forms on the point's one amplitude vector (the Python API's, the same Rust
+ * code in binary64): request.resolved gives |A(h)|^2/avg per helicity row with
+ * one colour-contracted component (the rows sum to the ordinary value); the
+ * correlated history "born" is the colour metric itself, i.e. |A|^2 (the
+ * identity metric's history, no Born), each declared history X its stored
+ * matrix M_X on the amplitude basis (real for a dipole T_i.T_j); a spin source
+ * of a declared vector leg enters through its projection on the leg's
+ * polarisation vectors (the transverse part). Born counts stay zero there too.
+ * The amplitude-basis anchors are the Python API's alone. */
 typedef struct {
   size_t external_count, born_orders, virtual_orders, helicities;
   size_t born_color_components, virtual_color_components, epsilon_count;
@@ -105,7 +122,10 @@ int rusticol_virtual_update_parameters(rusticol_virtual_handle *handle,
  * the poles are the bare loop's UV poles) or "ir" (plan v4: the poles are the
  * renormalised virtual's IR poles). The split selections run the stored
  * companion of the certified-scaleless families; the finite part is the same
- * in every selection. Plan v1-v3 artifacts accept "all" only.
+ * in every selection. Plan v1-v3 artifacts accept "all" only. A loop-induced
+ * process serves "all" and "none" only (its UV and IR parts are not additive
+ * in |A|^2): "uv" and "ir" return RUSTICOL_VIRTUAL_RUNTIME_ERROR with the
+ * Python API's message and change nothing (the capabilities' "pole_selections").
  */
 int rusticol_virtual_set_poles(rusticol_virtual_handle *handle, const char *poles);
 /* Arithmetic of later evaluations (the Python API's arithmetic=/precision=):
@@ -119,6 +139,53 @@ int rusticol_virtual_set_poles(rusticol_virtual_handle *handle, const char *pole
  */
 int rusticol_virtual_set_arithmetic(rusticol_virtual_handle *handle,
   const char *arithmetic, uint32_t digits);
+/* Reduction backend of later evaluations (the Python API's reduction=;
+ * additive, ABI version 2 kept): "auto" (NULL, the default), "ninjars" or
+ * "tirust". "auto" takes the process type's default where it serves the call
+ * (one policy, shared with the Python API: today NinjaRS for both process
+ * types, the reason recorded), else NinjaRS. An explicit backend this library
+ * is built without (TIRust needs the cargo feature tir) is refused here, one
+ * that cannot serve a later call's carrier (the library's capability query) by that
+ * call; both RUSTICOL_VIRTUAL_RUNTIME_ERROR (the Python API's
+ * ReductionUnavailable), never a silent switch. Every result's diagnostics
+ * record "reduction": {"requested","effective","reason"}; the handle's
+ * capabilities list what this library serves ("reduction": "native").
+ */
+int rusticol_virtual_set_reduction(rusticol_virtual_handle *handle,
+  const char *reduction);
+/* Stability checks of later evaluations (the Python API's stability_checks=,
+ * VirtualStabilityChecks; additive, ABI version 2 kept): rotation_count
+ * default rotations (the Python API's count; any number), or, with
+ * rotation_count 0, the rotations of the JSON array of rotation
+ * specifications `rotations` ("<x|y|z>:<cos>:<sin>", "<ax>,<ay>,<az>:<radians>",
+ * "euler:<alpha>,<beta>,<gamma>"; NULL: none); reduction_direction, rescaled
+ * (requires reduction_direction) and cross_backend (with another check) are
+ * 0 or 1. All 0 and NULL, the default, runs no check: no estimate and no
+ * extra cost. Checks the Python API refuses are RUSTICOL_VIRTUAL_INVALID_ARGUMENT
+ * with its message, and nothing changes. A binary64 ordinary evaluation (of a
+ * Born-interfered process with "all" or "none" poles, of a loop-induced
+ * process) then also evaluates every
+ * point at each exactly rotated point, re-reduces every lane in the reduction
+ * check's frame and evaluates every point on the other reduction backend,
+ * and returns each successful point's estimate in its diagnostics:
+ * "stability": {"estimates": [one record per successful point, in order]},
+ * each the Python API's VirtualStabilityEstimate (relative, finite,
+ * single_pole, double_pole, checks [[name, relative]], scale, absolute and
+ * magnitude per sector and epsilon power, not_run [[name, reason]]), bitwise
+ * its values (non-finite values as "inf"); a loop-induced call with poles
+ * also "finiteness" per successful point (the Python API's lane diagnostic);
+ * the other evaluations carry
+ * {"estimates": null, "reason": ...}, and null without checks. A point whose
+ * rotated evaluation fails fails ("rotation-<k>: <reason>"), as in the
+ * Python API; one the other backend fails or refuses keeps the other checks'
+ * estimate with the cross-backend check in not_run. A cross-backend check
+ * without the other backend in this library is refused by the call
+ * (RUSTICOL_VIRTUAL_RUNTIME_ERROR, the Python API's ReductionUnavailable).
+ * Point statuses keep their meaning: comparing an estimate with a target,
+ * and any precision rescue, is the caller's (the rescue is the Python API's). */
+int rusticol_virtual_set_stability_checks(rusticol_virtual_handle *handle,
+  uint64_t rotation_count, const char *rotations, uint32_t reduction_direction,
+  uint32_t rescaled, uint32_t cross_backend);
 int rusticol_virtual_shape(const rusticol_virtual_handle *handle,
   rusticol_virtual_shape_info *output);
 /* JSON size query: output=NULL, capacity=0; needed includes terminal NUL.
@@ -131,7 +198,8 @@ int rusticol_virtual_capabilities_json(const rusticol_virtual_handle *handle,
 /* Returns OK for a completed batch even if some points failed. Inspect statuses.
  * Numerical rows exist ONLY for successful_point_ids in their original order.
  * Every finite binary64 input is read as its exact value. Stability estimates
- * and the precision rescue are the Python API's.
+ * follow rusticol_virtual_set_stability_checks; the precision rescue is the
+ * Python API's.
  */
 int rusticol_virtual_evaluate(rusticol_virtual_handle *handle,
   const rusticol_virtual_batch_request *request, rusticol_virtual_result **output);

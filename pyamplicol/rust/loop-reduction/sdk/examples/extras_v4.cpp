@@ -26,6 +26,8 @@ struct Call {
 
 int main(int argc, char **argv) {
   if (argc < 4) return 2;
+  // An optional fourth argument "binary64" runs the binary64 calls only.
+  const bool binary64_only = argc > 4 && std::string(argv[4]) == "binary64";
   std::ifstream in(argv[3]);
   std::size_t points = 0, legs = 0, spin_legs = 0;
   in >> points >> legs;
@@ -62,12 +64,20 @@ int main(int argc, char **argv) {
         {"resolved-ap", "arbitrary", 32, "all", 3, 1},
     };
     for (const auto &call : calls) {
+      if (binary64_only && std::string(call.arithmetic) != "double") continue;
       const std::size_t n = call.points < points ? call.points : points;
       runtime.set_arithmetic(call.arithmetic, call.digits);
-      runtime.set_poles(call.poles);
+      std::printf("call %s\n", call.name);
+      try {
+        runtime.set_poles(call.poles);
+      } catch (const rusticol::VirtualError &refused) {
+        // A pole selection the process does not serve (loop-induced: "all"
+        // and "none"): the refusal, then the next call.
+        std::printf("refused %s\n", refused.what());
+        continue;
+      }
       std::vector<double> p(momenta.begin(), momenta.begin() + n * legs * 4);
       std::vector<double> s(scales.begin(), scales.begin() + n);
-      std::printf("call %s\n", call.name);
       if (call.kind == 0 || call.kind == 3) {
         auto result = runtime.evaluate(p, n, s, {}, call.kind == 3);
         std::printf("born");

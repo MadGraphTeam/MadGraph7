@@ -2228,9 +2228,12 @@ type V2ArtifactPoint = (Option<(Vec<f64>, Vec<Vec<f64>>)>, Vec<String>);
 /// physical momenta of every leg (`4 × legs` exact decimal or fraction
 /// strings), `scales` mu_R² per point, `parameters` the caller's model
 /// parameter values (exact strings), `poles` the pole selection ("all",
-/// "none", "uv" or "ir"; True and False are "all" and "none").
+/// "none", "uv" or "ir"; True and False are "all" and "none"; a
+/// loop-induced process serves "all" and "none"), `reduction` the backend
+/// ("ninjars", the default, or "tirust"). A loop-induced process returns an
+/// empty Born and |A_loop|² per declared sector.
 #[pyfunction]
-#[pyo3(signature = (path, momenta, scales, *, process=None, parameters=None, poles=None, threads=None))]
+#[pyo3(signature = (path, momenta, scales, *, process=None, parameters=None, poles=None, threads=None, reduction=None))]
 #[allow(clippy::too_many_arguments)]
 fn evaluate_v2_artifact(
     py: Python<'_>,
@@ -2241,8 +2244,13 @@ fn evaluate_v2_artifact(
     parameters: Option<BTreeMap<String, String>>,
     poles: Option<Bound<'_, PyAny>>,
     threads: Option<usize>,
+    reduction: Option<&str>,
 ) -> PyResult<Vec<V2ArtifactPoint>> {
     use rusticol_loop_reduction::v2_runtime::{V2Poles, V2Runtime};
+    let reduction = reduction
+        .map(rusticol_loop_reduction::runtime::Reduction::parse)
+        .transpose()
+        .map_err(error)?;
 
     let poles = match poles {
         None => V2Poles::All,
@@ -2270,6 +2278,9 @@ fn evaluate_v2_artifact(
     let points = py
         .detach(|| {
             let mut runtime = V2Runtime::open(path, process, threads)?;
+            if let Some(reduction) = reduction {
+                runtime.set_reduction(reduction)?;
+            }
             if let Some(values) = &parameters {
                 runtime.set_parameters(values.iter().map(|(k, v)| (k.as_str(), v.as_str())))?;
             }

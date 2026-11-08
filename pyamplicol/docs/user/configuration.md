@@ -308,6 +308,10 @@ the truncation, so SU(N_c) identities such as colour conservation hold degree
 by degree. For example the colour factor of `u d > u d` is `(N^2 - 1)/4`
 exactly, `(N^2 + 1)/4` at inherited LC and `N^2/4` at strict LC; see
 [Correlation Conventions](../correlator-conventions.md#strict-colour-the-formal-1nc-expansion).
+Since a tree request defaults to `lc`, compare a tree with a full-colour
+reference (MadGraph standalone, an analytic formula, a loop-induced |A|^2)
+at `accuracy = "full"`: at `lc` the gluon pair of `g g > h` (HEFT) carries
+`N^2` instead of `N^2 - 1`, exactly 9/8 of the full-colour value.
 
 Strict tree artifacts report their value split by N_c degree (graded output:
 `Runtime.evaluate_graded`, the contracted colour axis of `evaluate_resolved`,
@@ -1384,8 +1388,13 @@ through `rusticol_virtual_result_decimal_json`); helicity-resolved and colour-
 and spin-correlated calls (`request.resolved = 1`,
 `rusticol_virtual_evaluate_correlated[_with_sources]`) evaluate the process's
 stored observable columns, bitwise equal to the Python API's `evaluate_resolved`
-and `evaluate_correlated_many` in binary64. The stability rescue is the Python
-API's alone. A
+and `evaluate_correlated_many` in binary64;
+`rusticol_virtual_set_stability_checks(handle, rotation_count, rotations,
+reduction_direction, rescaled, cross_backend)` sets the Python API's
+`stability_checks=` (off by default: no estimate, no extra cost), and each
+successful point of a binary64 ordinary call then carries the Python API's
+estimate in the result's diagnostics (`"stability"`). The stability rescue is
+the Python API's alone. A
 v2 artifact carries no API
 bundle (a requested `emit_api_bundle` is dropped with a recorded configuration
 adjustment).

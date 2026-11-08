@@ -73,10 +73,21 @@ rescue policy fails that point alone); the scale S of the floor is the same
 form of the per-row term floors (``induced.term_values`` and the
 counterterm kets), never the output itself (RULED Q13: a zero is "zero
 within the estimate").
+
+Binary64 outputs run the one Rust implementation the native SDK runs
+(``rusticol_loop_reduction::v2_runtime::induced_outputs``, m-lit LIT-SDK,
+DECISIONS 2026-11-07 21:50 R7): the carrier forms (``Forms``), the spin
+coefficients (``PointOutputs``) and the spin-projected vectors
+(``spin_amplitudes``) through the native extension (``induced_form``,
+``induced_spin_coefficients``, ``induced_spin_amplitudes``), the square
+natively as before. The ``Decimal`` code of this module stays the oracle
+(``NATIVE_BINARY64 = False`` runs it in binary64 too) and the
+double-double / arbitrary-precision path.
 """
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Hashable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, localcontext
@@ -98,6 +109,15 @@ AMPLITUDE_BASIS = "amplitude-basis"
 COLOUR_RESOLUTIONS = (CONTRACTED, AMPLITUDE_BASIS)
 ANCHOR_ID = "amplitude-{}"
 INCLUSIVE = "born"
+# Binary64 outputs through the native implementation the SDK shares (module
+# docstring); False runs this module's Decimal oracle in binary64 too.
+NATIVE_BINARY64 = True
+# The guard digits of a spin leg's polarisation vectors and coefficients over
+# the carrier's working digits (``Precision.working_digits``, itself floored
+# at the tree replay's digits): their square roots, products and sums round
+# in that context, so a coefficient enters the carrier correctly rounded
+# (the native one is ``induced_outputs::SPIN_GUARD_DIGITS``).
+SPIN_GUARD_DIGITS = 10
 
 Matrix = tuple[tuple[ExactColorCoefficient, ...], ...]
 
@@ -366,8 +386,10 @@ def spin_amplitudes(
     helicities of prod_j c_j(h_j) a(row); ``coefficients`` maps each spin
     leg's 0-based index to its carrier coefficients per helicity. The
     remaining row keeps the other legs' helicities (a spin leg's entry is
-    dropped)."""
+    dropped). Binary64 runs natively (module docstring)."""
 
+    if numbers.double and NATIVE_BINARY64:
+        return _native_spin_amplitudes(amplitudes, coefficients, width, size)
     zero = numbers.zero
     out: dict[tuple[Orders, rx.Row], list[list[Any]]] = {}
     for (order, row), vector in amplitudes.items():
@@ -394,6 +416,66 @@ def spin_amplitudes(
                 for k in range(width):
                     total[t][k] = total[t][k] + weight * vector[t][k]
     return out
+
+
+def _native() -> Any:
+    from pyamplicol.loops.native import load_loop_native
+
+    return load_loop_native()
+
+
+def _native_spin_amplitudes(
+    amplitudes: Mapping[tuple[Orders, rx.Row], Sequence[Sequence[Any]]],
+    coefficients: Mapping[int, Mapping[int, Any]],
+    width: int,
+    size: int,
+) -> dict[tuple[Orders, rx.Row], list[list[Any]]]:
+    """``spin_amplitudes`` of binary64 vectors by the native implementation
+    (``induced_spin_amplitudes``), in the same insertion order."""
+
+    found = _native().induced_spin_amplitudes(
+        [
+            (key, [[(z.real, z.imag) for z in cell] for cell in vector])
+            for key, vector in amplitudes.items()
+        ],
+        {
+            leg: [(h, c.real, c.imag) for h, c in values.items()]
+            for leg, values in coefficients.items()
+        },
+        width,
+        size,
+    )
+    return {
+        (tuple(tuple(item) for item in order), tuple(tuple(item) for item in row)): [
+            [complex(re, im) for re, im in cell] for cell in vector
+        ]
+        for (order, row), vector in found
+    }
+
+
+def _native_coefficients(
+    sources_json: str,
+    leg: int,
+    momentum: Sequence[Any],
+    vector: Sequence[tuple[Any, Any]],
+    digits: int,
+) -> dict[int, complex] | None:
+    """The binary64 spin coefficients of one spin leg by the native
+    implementation (``induced_spin_coefficients``), or None where an input
+    is not the decimal text or ``Decimal`` the native reads exactly as
+    ``_decimal`` does (a ``Fraction``, which ``_decimal`` rounds)."""
+
+    parts = [*momentum, *(x for pair in vector for x in pair)]
+    if any(not isinstance(x, (str, Decimal, int)) for x in parts):
+        return None
+    found = _native().induced_spin_coefficients(
+        sources_json,
+        leg,
+        [str(x) for x in momentum],
+        [(str(re), str(im)) for re, im in vector],
+        digits,
+    )
+    return {h: complex(re, im) for h, re, im in found}
 
 
 # ----------------------------------------------------------------- outputs
@@ -438,13 +520,30 @@ class Forms:
                 exact = self._matrices[metric]
                 h, k = hermitian_parts(exact)
             numbers = self._numbers
-            with numbers.scope():
-                carrier = [[numbers.colour(cell, 0) for cell in row] for row in h]
+            if numbers.double and NATIVE_BINARY64:
+                # The native forms (module docstring): H and K of a history's
+                # matrix, else the metric itself.
+                native_h, native_k = _native().induced_form(
+                    [
+                        [(str(cell.real), str(cell.imag)) for cell in row]
+                        for row in exact
+                    ],
+                    not (metric == INCLUSIVE or isinstance(metric, tuple)),
+                )
+                carrier = [[complex(re, im) for re, im in row] for row in native_h]
                 imaginary = (
                     None
-                    if k is None
-                    else [[numbers.colour(cell, 0) for cell in row] for row in k]
+                    if native_k is None
+                    else [[complex(re, im) for re, im in row] for row in native_k]
                 )
+            else:
+                with numbers.scope():
+                    carrier = [[numbers.colour(cell, 0) for cell in row] for row in h]
+                    imaginary = (
+                        None
+                        if k is None
+                        else [[numbers.colour(cell, 0) for cell in row] for row in k]
+                    )
             magnitude = [[abs(complex(cell)) for cell in row] for row in exact]
             found = self._found[metric] = (carrier, imaginary, magnitude)
         return found
@@ -625,16 +724,34 @@ class PointOutputs:
         self.changes: dict[int, dict[int, float]] = {}
         self._transverse: dict | None = None
         if spin:
+            sources_json = (
+                json.dumps(list(sources))
+                if numbers.double and NATIVE_BINARY64
+                else None
+            )
             with localcontext() as context:
-                context.prec = max(numbers.precision.working_digits, 34) + 10
+                context.prec = numbers.precision.working_digits + SPIN_GUARD_DIGITS
                 for leg, vector in spin.items():
                     label = int(leg)
                     momentum = point[label - 1]
                     waves = polarisations(sources, label, momentum)
                     exact = spin_coefficients(vector, waves)
-                    self.coefficients[label - 1] = {
-                        h: numbers.pair(re, im) for h, (re, im) in exact.items()
-                    }
+                    native = (
+                        None
+                        if sources_json is None
+                        else _native_coefficients(
+                            sources_json,
+                            label,
+                            momentum,
+                            vector,
+                            numbers.precision.working_digits,
+                        )
+                    )
+                    self.coefficients[label - 1] = (
+                        native
+                        if native is not None
+                        else {h: numbers.pair(re, im) for h, (re, im) in exact.items()}
+                    )
                     rho = transverse_residual(
                         vector, momentum, waves, exact, massless(sources, label)
                     )
@@ -1186,6 +1303,7 @@ __all__ = [
     "ANCHOR_ID",
     "COLOUR_RESOLUTIONS",
     "CONTRACTED",
+    "NATIVE_BINARY64",
     "InducedColumns",
     "InducedObservables",
     "Output",

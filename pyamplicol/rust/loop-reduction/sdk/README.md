@@ -14,8 +14,47 @@ These additive Rust/C/C++/Fortran interfaces call the same `VirtualRuntime` used
 facade. It reads ordinary verified process artifacts and needs no Python process,
 model importer, graph generator or alternate reducer. The existing tree SDK is
 unchanged. All interfaces return physical Born–loop interference, all generated
-squared coupling orders, and finite/single/double poles. Loop amplitudes squared
-and loop-induced production remain unsupported.
+squared coupling orders, and finite/single/double poles.
+
+**Loop-induced processes** (|A_loop|², no Born; m-lit LIT-SDK) are opened by the
+same `rusticol_virtual_open`, with no opt-in, in artifacts of their own or mixed
+with Born-interfered processes: `metadata_json` names `"contribution_kind":
+"loop-induced"` and `"interference": "conj(loop)*loop"`; the shape has zero Born
+orders and Born colour components and every result zero Born values; the
+virtual orders are the loop × loop sectors, each value |A_loop|² per sector and
+epsilon power, full colour (one contracted component), whose computed poles
+vanish up to rounding (a finiteness cross-check). The values are the Python
+API's: binary64 bitwise (the executor's amplitude sum plus the counterterm kets,
+squared by the one native square the Python API calls), double-double and
+arbitrary precision as `Decimal` values (squared in the canonical order). A
+loop-induced process serves the pole selections `"all"` and `"none"`; `"uv"`
+and `"ir"` are refused (`RUSTICOL_VIRTUAL_RUNTIME_ERROR`, the Python API's
+message). Its resolved and correlated outputs are served as the Python API's
+(`evaluate_resolved`, `evaluate_correlated_many`): quadratic forms on the
+point's one amplitude vector, one executor run per call. A resolved call gives
+|A(h)|²/avg per helicity row with one colour-contracted component (`"full"`;
+the rows sum to the ordinary value); the correlated history `"born"` is the
+colour metric itself (|A|², the identity-metric history: there is no Born),
+each declared history its stored matrix M_X on the amplitude basis (real for a
+dipole T_i·T_j, complex otherwise), with zero Born values; a spin source of a
+declared vector leg enters through its projection on the leg's polarisation
+vectors. Binary64 values are bitwise the Python API's (the same Rust code:
+`rusticol_loop_reduction::v2_runtime::induced_outputs`, which the Python API's
+binary64 outputs call), double-double and arbitrary precision equal `Decimal`
+values. The amplitude-basis anchors (`color_resolution="amplitude-basis"`)
+are served by the Python API only.
+
+**Reduction backend.** `rusticol_virtual_set_reduction(handle, "auto" |
+"ninjars" | "tirust")` (C++ `set_reduction`, Fortran `set_reduction`) selects
+the backend of later evaluations, as the Python API's `reduction=`. `"auto"`
+(the default, or the artifact's `[loop] reduction`) follows the one policy the
+Python API reads (`rusticol_loop_reduction::reduction_policy`): today NinjaRS
+for both process types, with the reason recorded. An explicit backend the
+library is built without (TIRust needs the default cargo feature `tir`) is
+refused by the setter, one that cannot serve a call's carrier (TIRust serves
+binary64) by that call, never switched silently. Every result's
+`diagnostics_json` records `"reduction": {"requested", "effective",
+"reason"}`; the capabilities list the backends this library serves.
 
 The ordinary package builds the tree and virtual APIs into one
 `librusticol_capi.a`. Its existing `_sdk` bundle carries the virtual C/C++ headers,
@@ -134,8 +173,26 @@ Results store compact successful IDs alongside statuses for **all** requested
 IDs. Failed points have no numerical row. An ordinary success reports accuracy
 not established. The SDK has no verification policy (ABI version 2 dropped
 version 1's `rusticol_virtual_open_with_policy` and the batch request's
-`verification_json`, which plan v4 refused): stability estimates and the
-precision rescue are the Python API's (`stability=` on the native evaluate).
+`verification_json`, which plan v4 refused); the precision rescue is the
+Python API's.
+
+**Stability monitoring** (m-lit LIT-SDK, binary64): `Runtime::set_stability_checks`
+(C `rusticol_virtual_set_stability_checks`, C++ `set_stability_checks`,
+Fortran `set_stability_checks`) takes every field of the Python API's
+`VirtualStabilityChecks`: a count of default rotations (or rotation
+specifications), the reduction-direction check, its rescaled variant and the
+cross-backend check. The default runs none: no estimate and no extra cost. With
+checks, a binary64 ordinary evaluation (of a Born-interfered process with poles
+"all" or "none", of a loop-induced process) returns each successful point's
+estimate in the result's diagnostics (`"stability": {"estimates": [...]}`, one
+record per successful point: the Python API's `VirtualStabilityEstimate`
+fields; a loop-induced call with poles also its `"finiteness"` ratios),
+computed by the same Rust implementation the Python API's binary64 estimates
+call (`rusticol_loop_reduction::v2_stability`), so bitwise equal. The other
+evaluations (double-double, arbitrary precision, resolved and correlated
+outputs) return `"estimates": null` with the reason.
+Point statuses keep their meaning; comparing an estimate with a target is the
+caller's.
 
 Inclusive output axes are `[point,order,epsilon]`. Resolved output adds helicity
 and colour-component axes before epsilon. Resolved LC components are signed

@@ -407,6 +407,9 @@ def _parse(stdout: str) -> dict:
             current[kind] = [_double(token) for token in rest.split()]
         elif kind == "decimal":
             current["decimal"] = json.loads(rest)
+        elif kind == "refused":
+            # A pole selection the process does not serve (loop-induced).
+            current["refused"] = rest
         else:
             raise AssertionError(line)
     return found
@@ -453,9 +456,11 @@ def _compare(name: str, expected: dict, found: dict) -> None:
                     assert float(Decimal(a)) == doubles[k], (name, call, axis, k)
 
 
-def _run(client: Path, artifact: Path, name: str, feed: Path) -> dict:
+def _run(
+    client: Path, artifact: Path, name: str, feed: Path, extra: tuple = ()
+) -> dict:
     run = subprocess.run(
-        [str(client), str(artifact), name, str(feed)],
+        [str(client), str(artifact), name, str(feed), *extra],
         capture_output=True,
         text=True,
         timeout=1800,
@@ -479,7 +484,6 @@ def test_sdk_capabilities_list_the_extras(artifacts):
     """The stored observables are announced: resolved and correlated outputs,
     the histories (``born`` first), the spin classes, the helicity rows and
     the three arithmetics; the correlated shape counts every history."""
-
 
     build = _staged_sdk()
     sdk = ctypes.CDLL(str(build / "librusticol_loop_sdk.so"))
@@ -724,7 +728,9 @@ def _sdk_call(sdk, artifact, name, points, poles, arithmetic, digits, resolved):
             born = (ctypes.c_double * shape.born_values)()
             loop = (ctypes.c_double * shape.virtual_values)()
             assert sdk.rusticol_virtual_result_copy_born(result, born, len(born)) == 0
-            assert sdk.rusticol_virtual_result_copy_virtual(result, loop, len(loop)) == 0
+            assert (
+                sdk.rusticol_virtual_result_copy_virtual(result, loop, len(loop)) == 0
+            )
             needed = ctypes.c_size_t()
             get = sdk.rusticol_virtual_result_decimal_json
             assert get(result, None, ctypes.c_size_t(0), ctypes.byref(needed)) == 0
@@ -885,7 +891,10 @@ def test_sdk_spin_sources_of_another_length_are_refused(artifacts):
             )
             result = ctypes.c_void_p()
             found = sdk.rusticol_virtual_evaluate_correlated_with_sources(
-                handle, ctypes.byref(request), ctypes.byref(sources), ctypes.byref(result)
+                handle,
+                ctypes.byref(request),
+                ctypes.byref(sources),
+                ctypes.byref(result),
             )
             assert found == status, _error(sdk)
             if status:
