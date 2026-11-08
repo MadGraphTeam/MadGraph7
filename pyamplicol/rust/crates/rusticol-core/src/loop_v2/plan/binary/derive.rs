@@ -458,8 +458,9 @@ fn ncoeff(rank: u64) -> u64 {
 const ROW: usize = size_of::<Row>();
 
 /// The (rank, degree) pairs whose monomial tables the derivations build,
-/// tracked for ranks and degrees up to the largest rank the reducer admits
-/// over the plan's legs (the largest any table of a valid plan has).
+/// tracked for ranks and degrees up to NinjaRS's largest rank over the plan's
+/// legs (`bounds::largest_rank`), raised to the plan's largest admitted family
+/// rank (a TIR-only family may exceed it).
 struct Tables {
     /// The tracked ranks and degrees: `0..width`.
     width: usize,
