@@ -452,6 +452,7 @@ class DefaultCliServices:
             or evaluation.on_failure != "raise"
             or evaluation.reduction is not None
             or evaluation.reduction_target is not None
+            or evaluation.reduction_unchecked
             or v2_options
         ):
             raise ConfigurationError(
@@ -499,6 +500,11 @@ class DefaultCliServices:
                         {}
                         if evaluation.reduction_target is None
                         else {"reduction_target": evaluation.reduction_target}
+                    ),
+                    **(
+                        {"reduction_unchecked": True}
+                        if evaluation.reduction_unchecked
+                        else {}
                     ),
                 )
             return Runtime.load(

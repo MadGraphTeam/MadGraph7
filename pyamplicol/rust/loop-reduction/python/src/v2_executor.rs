@@ -1560,8 +1560,11 @@ impl V2Executor {
     /// families of a point chunk; values unchanged) and `masters_census`
     /// (with `store`: `v2_tir::TirOptions::masters_census`, the bound of a
     /// canonical masters provider; values unchanged) likewise. NinjaRS
-    /// refuses them.
-    #[pyo3(signature = (reduction="tirust", *, target=None, method_choice=None, alternative_first=super::v2::Limit::default_limit(), acceptance=None, acceptance_frame=None, profile=None, store=None, masters_census=None))]
+    /// refuses them. `unchecked` is the call's unchecked setting (both
+    /// backends; None: off, `reduction_policy::DEFAULT_UNCHECKED`; m-lit
+    /// lit-unchecked): set on the built backend like the target (TIRust's
+    /// plans stay); `evaluate`'s `unchecked` sets it per call as well.
+    #[pyo3(signature = (reduction="tirust", *, target=None, method_choice=None, alternative_first=super::v2::Limit::default_limit(), acceptance=None, acceptance_frame=None, profile=None, store=None, masters_census=None, unchecked=None))]
     #[allow(clippy::too_many_arguments)] // Python keyword arguments
     fn prepare_reduction(
         &mut self,
@@ -1574,8 +1577,11 @@ impl V2Executor {
         profile: Option<bool>,
         store: Option<bool>,
         masters_census: Option<bool>,
+        unchecked: Option<bool>,
     ) -> PyResult<Vec<(usize, usize)>> {
         let reduction = Reduction::parse(reduction).map_err(error)?;
+        let unchecked =
+            unchecked.unwrap_or(rusticol_loop_reduction::reduction_policy::DEFAULT_UNCHECKED);
         super::v2::reduction_target(target)?;
         if reduction != Reduction::TiRust
             && (super::v2::tir_settings_given(
@@ -1600,6 +1606,7 @@ impl V2Executor {
                 profile: profile.unwrap_or(false),
                 store: store.unwrap_or(false),
                 masters_census: masters_census.unwrap_or(false),
+                unchecked,
                 ..super::v2::tir_options_at(
                     target,
                     method_choice,
@@ -1618,12 +1625,15 @@ impl V2Executor {
                 current != options
                     && (rusticol_loop_reduction::v2_tir::TirOptions {
                         acceptance: options.acceptance,
+                        unchecked: options.unchecked,
                         ..current
                     }) == options
             });
             if let (true, Some(backend)) = (target_only, slot.as_mut()) {
-                // Another target: the acceptance only, the plans stay.
+                // Another target or unchecked setting: the acceptance and
+                // the mode only, the plans stay.
                 backend.set_target_acceptance(options.acceptance);
+                backend.set_unchecked(options.unchecked);
             } else if current != Some(options) {
                 *slot = Some(
                     V2Backends::tirust_with(
@@ -1652,6 +1662,7 @@ impl V2Executor {
             reduction,
             self.executor.plan(),
         )?;
+        backend.set_unchecked(unchecked);
         Ok(backend.plans())
     }
 
@@ -1934,7 +1945,10 @@ impl V2Executor {
     /// `rescale` the rotation with the origin shift at rescaled inputs:
     /// `reverse` and `shift` are NinjaRS's; `v2_tir::tir_frame`); the
     /// caller (`loops.v2.reduction.resolve`) has chosen it once per call.
-    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both", contraction="auto", part_points=None, fill_points=None, input_budget=None, rows=None, basis=None, components=None, families=None, dipoles=None, raw_lanes=false, term_scale=false, reduction="ninjars"))]
+    /// `unchecked` is the call's unchecked setting (m-lit lit-unchecked,
+    /// default off): the backend reduces without its own acceptance and
+    /// refusal checks (`V2Backends::set_unchecked`), fixed for the call.
+    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both", contraction="auto", part_points=None, fill_points=None, input_budget=None, rows=None, basis=None, components=None, families=None, dipoles=None, raw_lanes=false, term_scale=false, reduction="ninjars", unchecked=false))]
     #[allow(clippy::too_many_arguments)]
     fn evaluate(
         &mut self,
@@ -1962,6 +1976,7 @@ impl V2Executor {
         raw_lanes: bool,
         term_scale: bool,
         reduction: &str,
+        unchecked: bool,
     ) -> PyResult<Evaluation> {
         let reduction = Reduction::parse(reduction).map_err(error)?;
         let poles = match poles {
@@ -2070,6 +2085,7 @@ impl V2Executor {
             self.executor.plan(),
         )?;
         backend.set_masters(masters).map_err(error)?;
+        backend.set_unchecked(unchecked);
         let executor = &self.executor;
         let trees = self.trees.as_mut();
         let dipoles = dipoles.as_ref().map(|d| &*d.correlator);
@@ -2258,9 +2274,10 @@ type V2ArtifactPoint = (Option<(Vec<f64>, Vec<Vec<f64>>)>, Vec<String>);
 /// NinjaRS) WITHOUT "auto"'s per-point NinjaRS fallback, which the SDK
 /// runtime and the Python API add: here a point TIRust refuses is a failed
 /// point with its reason). A loop-induced process returns an empty Born and
-/// |A_loop|² per declared sector.
+/// |A_loop|² per declared sector. `unchecked` is the unchecked setting
+/// (`V2Runtime::set_unchecked`; default off).
 #[pyfunction]
-#[pyo3(signature = (path, momenta, scales, *, process=None, parameters=None, poles=None, threads=None, reduction=None))]
+#[pyo3(signature = (path, momenta, scales, *, process=None, parameters=None, poles=None, threads=None, reduction=None, unchecked=false))]
 #[allow(clippy::too_many_arguments)]
 fn evaluate_v2_artifact(
     py: Python<'_>,
@@ -2272,6 +2289,7 @@ fn evaluate_v2_artifact(
     poles: Option<Bound<'_, PyAny>>,
     threads: Option<usize>,
     reduction: Option<&str>,
+    unchecked: bool,
 ) -> PyResult<Vec<V2ArtifactPoint>> {
     use rusticol_loop_reduction::v2_runtime::{V2Poles, V2Runtime};
     let reduction = reduction
@@ -2308,6 +2326,7 @@ fn evaluate_v2_artifact(
             if let Some(reduction) = reduction {
                 runtime.set_reduction(reduction)?;
             }
+            runtime.set_unchecked(unchecked);
             if let Some(values) = &parameters {
                 runtime.set_parameters(values.iter().map(|(k, v)| (k.as_str(), v.as_str())))?;
             }

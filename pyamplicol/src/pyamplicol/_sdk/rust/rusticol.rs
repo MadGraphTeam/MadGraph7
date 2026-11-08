@@ -248,6 +248,18 @@ pub mod virtual_amplitudes {
                 ffi::rusticol_virtual_set_reduction_target(self.handle.as_ptr(), target)
             })
         }
+        /// Unchecked setting of later evaluations, the Python API's
+        /// `reduction_unchecked=` (default false): the reduction backends
+        /// without their own acceptance and refusal checks.
+        pub fn set_reduction_unchecked(&mut self, unchecked: bool) -> Result<()> {
+            // SAFETY: exclusive live handle.
+            check(unsafe {
+                ffi::rusticol_virtual_set_reduction_unchecked(
+                    self.handle.as_ptr(),
+                    c_int::from(unchecked),
+                )
+            })
+        }
         /// Stability checks of later evaluations, the Python API's
         /// `stability_checks=`: `rotation_count` default rotations, or (with
         /// a count of 0) the rotation specifications `rotations`, the
@@ -816,6 +828,10 @@ pub mod virtual_amplitudes {
             pub(super) fn rusticol_virtual_set_reduction_target(
                 handle: *mut c_void,
                 target: f64,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_set_reduction_unchecked(
+                handle: *mut c_void,
+                unchecked: c_int,
             ) -> c_int;
             pub(super) fn rusticol_virtual_set_stability_checks(
                 handle: *mut c_void,

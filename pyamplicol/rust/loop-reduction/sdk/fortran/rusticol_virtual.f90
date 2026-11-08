@@ -100,6 +100,7 @@ module rusticol_virtual
     procedure :: set_arithmetic
     procedure :: set_reduction
     procedure :: set_reduction_target
+    procedure :: set_reduction_unchecked
     procedure :: set_stability_checks
     procedure :: evaluate
     procedure :: evaluate_correlated
@@ -206,6 +207,13 @@ module rusticol_virtual
       import
       type(c_ptr), value :: handle
       real(c_double), value :: target
+      integer(c_int) :: value
+    end function
+    function c_set_reduction_unchecked(handle, unchecked) &
+        bind(C, name="rusticol_virtual_set_reduction_unchecked") result(value)
+      import
+      type(c_ptr), value :: handle
+      integer(c_int), value :: unchecked
       integer(c_int) :: value
     end function
     function c_set_stability_checks(handle, rotation_count, rotations, reduction_direction, rescaled, &
@@ -677,6 +685,21 @@ contains
     integer(c_int), optional, intent(out) :: ierr
     character(:), allocatable, optional, intent(out) :: error_message
     call finish(c_set_reduction_target(handle_of(self),target),ierr, &
+      error_message=error_message)
+  end subroutine
+
+  ! Unchecked setting of later evaluations (the Python API's
+  ! reduction_unchecked=; default .false.): the reduction backends without
+  ! their own acceptance and refusal checks.
+  subroutine set_reduction_unchecked(self,unchecked,ierr,error_message)
+    class(virtual_runtime), intent(inout) :: self
+    logical, intent(in) :: unchecked
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable, optional, intent(out) :: error_message
+    integer(c_int) :: flag
+    flag = 0_c_int
+    if (unchecked) flag = 1_c_int
+    call finish(c_set_reduction_unchecked(handle_of(self),flag),ierr, &
       error_message=error_message)
   end subroutine
 

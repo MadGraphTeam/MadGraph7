@@ -394,6 +394,13 @@ poles = "all"
 # result, every squared-order sector against its own size; a finite positive
 # number). Default absent: 1e-5.
 # reduction_target = 1e-5
+# evaluation.reduction_unchecked: v2 virtuals: true reduces without the
+# reduction backends' own acceptance and refusal checks (TIRust: its gates and
+# method choice as method selection, no acceptance pass, plain PV at gate 0
+# for what they refuse; NinjaRS: zero stability thresholds); only points
+# without a finite value fail. pyAmpliCol's stability checks stay their own
+# settings. Default false.
+reduction_unchecked = false
 
 [evaluation.stability]
 # The precision-rescue policy was removed with the legacy loop engine: only

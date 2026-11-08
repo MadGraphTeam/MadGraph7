@@ -804,6 +804,19 @@ def _add_evaluation_options(
         ),
     )
     parser.add_argument(
+        "--reduction-unchecked",
+        dest="evaluation.reduction_unchecked",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "v2 virtuals: reduce without the reduction backends' own "
+            "acceptance and refusal checks (TIRust: its gates and method "
+            "choice as method selection, no acceptance pass, plain PV at gate "
+            "0 for what they refuse; NinjaRS: zero stability thresholds); "
+            "default off"
+        ),
+    )
+    parser.add_argument(
         "--resolved",
         dest="evaluation.resolved",
         action=argparse.BooleanOptionalAction,

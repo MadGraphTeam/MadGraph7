@@ -35,6 +35,19 @@ the native policy, 1e-5): the relative accuracy of each point's result
 calibrated in the native extension (``v2_tir::acceptance_of``); a rescue
 level's own target drives its level. NinjaRS has no setting it drives.
 
+The UNCHECKED setting (``evaluate(..., reduction_unchecked=)``, else
+``Runtime.load(..., reduction_unchecked=)``, else off, the native policy's
+``DEFAULT_UNCHECKED``; m-lit lit-unchecked) drops the backends' own
+acceptance and refusal checks for a call, every reduction of the call
+(rescue levels, the per-point fallback, the call's own stability checks'
+re-evaluations) included: TIRust keeps its conditioning gates and method
+choice as method selection, never computes its acceptance pass (the target
+then drives nothing), and serves what they refuse by plain PV at gate 0 (its
+last resort); NinjaRS runs with zero stability thresholds. ``resolve``'s
+backend choice is unchanged; ``"auto"``'s per-point fallback then acts only
+on the points the unchecked TIRust still fails. ``running`` carries it to
+the executors (``executor_options``, ``prepare``).
+
 What a backend serves is the native extension's capability, never a
 constant of this module: ``native.reduction_backends()`` (a JSON object
 naming each built-in backend and the carriers it serves: TIRust at every
@@ -131,6 +144,13 @@ def default_target() -> float:
     return float(policy()["target"]["default"])
 
 
+def default_unchecked() -> bool:
+    """The default of the unchecked setting (the native policy's one
+    definition, ``reduction_policy::DEFAULT_UNCHECKED``: off)."""
+
+    return bool(policy()["unchecked"]["default"])
+
+
 def auto_default(contribution: str, admitted: Collection[str] | None = None) -> str:
     """The backend ``"auto"`` takes by default for ``contribution`` on an
     artifact admitting ``admitted`` (None: every backend): the native
@@ -205,26 +225,34 @@ def __getattr__(name: str) -> Route:
 _EFFECTIVE: ContextVar[str] = ContextVar("pyamplicol_v2_reduction", default="ninjars")
 # The target accuracy of the current context (None: the default target).
 _TARGET: ContextVar[float | None] = ContextVar("pyamplicol_v2_target", default=None)
+# The unchecked setting of the current context (off by default).
+_UNCHECKED: ContextVar[bool] = ContextVar("pyamplicol_v2_unchecked", default=False)
 _KEEP: Any = object()
 
 
 @contextmanager
-def running(backend: str | None, target: float | None = _KEEP) -> Iterator[None]:
+def running(
+    backend: str | None, target: float | None = _KEEP, unchecked: bool = _KEEP
+) -> Iterator[None]:
     """Run the native executor calls of this context on the effective
     ``backend`` (``resolve``'s ``VirtualReduction.effective``; None:
     NinjaRS), chosen once per call and carrier, never per point, at the
     target accuracy ``target`` (``VirtualReduction.target``; None: the
     default; omitted: the enclosing context's, e.g. for a cross-backend
-    check's evaluations)."""
+    check's evaluations) and with the unchecked setting ``unchecked``
+    (``VirtualReduction.unchecked``; omitted: the enclosing context's)."""
 
     if backend is not None and backend not in BACKENDS:
         raise ValueError(f"unknown reduction backend {backend!r}")
     token = _EFFECTIVE.set(backend or "ninjars")
     kept = target is _KEEP
     held = None if kept else _TARGET.set(target)
+    mode = None if unchecked is _KEEP else _UNCHECKED.set(bool(unchecked))
     try:
         yield
     finally:
+        if mode is not None:
+            _UNCHECKED.reset(mode)
         if held is not None:
             _TARGET.reset(held)
         _EFFECTIVE.reset(token)
@@ -243,6 +271,12 @@ def current_target() -> float | None:
     return _TARGET.get()
 
 
+def current_unchecked() -> bool:
+    """The unchecked setting of the current context (``running``)."""
+
+    return _UNCHECKED.get()
+
+
 def cross(backend: str) -> str:
     """The backend of the cross-backend check of a call reduced by
     ``backend`` (``stability.CROSS``): the other one of ``BACKENDS``."""
@@ -253,13 +287,17 @@ def cross(backend: str) -> str:
     return others[0]
 
 
-def executor_options() -> dict[str, str]:
-    """The native executor's ``reduction`` option in the current context
-    (``running``): empty for NinjaRS, the executor's default, so that a
-    NinjaRS call passes exactly what it passed before the option existed."""
+def executor_options() -> dict[str, object]:
+    """The native executor's ``reduction`` and ``unchecked`` options in the
+    current context (``running``): empty for NinjaRS without the unchecked
+    setting, the executor's defaults, so that such a call passes exactly
+    what it passed before the options existed."""
 
     backend = _EFFECTIVE.get()
-    return {} if backend == "ninjars" else {"reduction": backend}
+    options: dict[str, object] = {} if backend == "ninjars" else {"reduction": backend}
+    if _UNCHECKED.get():
+        options["unchecked"] = True
+    return options
 
 
 def prepare(executor: Any) -> None:
@@ -276,8 +314,9 @@ def prepare(executor: Any) -> None:
 
     if _EFFECTIVE.get() != "tirust":
         return
+    unchecked = {"unchecked": True} if _UNCHECKED.get() else {}
     try:
-        executor.prepare_reduction("tirust", target=_TARGET.get())
+        executor.prepare_reduction("tirust", target=_TARGET.get(), **unchecked)
     except ValueError as error:
         raise ReductionUnavailable(
             f"reduction 'tirust' cannot serve this artifact: {error}"
@@ -371,7 +410,7 @@ def with_fallback(
 
     fallback = choice.fallback
     try:
-        with running(choice.effective, choice.target):
+        with running(choice.effective, choice.target, choice.unchecked):
             results, failures = run(None)
     except ReductionUnavailable as error:
         # The primary backend refuses the call's plans (TIRust's capability
@@ -385,7 +424,7 @@ def with_fallback(
     if fallback is None or not failures:
         return results, failures, records
     indices = sorted(failures)
-    with running(fallback, choice.target):
+    with running(fallback, choice.target, choice.unchecked):
         again, still = run(indices)
     results = list(results)
     failures = dict(failures)
@@ -395,7 +434,11 @@ def with_fallback(
             second = [text("failed", fallback, "", reason) for reason in still[local]]
             failures[index] = [*failures[index], *second]
             records[index] = VirtualReduction(
-                choice.requested, fallback, "; ".join(second), target=choice.target
+                choice.requested,
+                fallback,
+                "; ".join(second),
+                target=choice.target,
+                unchecked=choice.unchecked,
             )
             continue
         results[index] = again[local]
@@ -405,6 +448,7 @@ def with_fallback(
             fallback,
             text("served", choice.effective, fallback, first),
             target=choice.target,
+            unchecked=choice.unchecked,
         )
     return results, failures, records
 
@@ -419,7 +463,9 @@ __all__ = [
     "cross",
     "current",
     "current_target",
+    "current_unchecked",
     "default_target",
+    "default_unchecked",
     "executor_options",
     "native_backends",
     "policy",

@@ -94,6 +94,29 @@
 //! extended carriers keep it off until it is measured there: their
 //! gate-refused rows fail closed and the caller's rescue ladder decides.
 //!
+//! **Unchecked mode (m-lit lit-unchecked, USER 2026-11-08 ~21:14 / ~22:34,
+//! DECISIONS 22:34 (1); [`TirOptions::unchecked`], off by default; the
+//! public setting `reduction_unchecked`).** The a priori conditioning gates
+//! and the method choice stay, as METHOD SELECTION (as COLLIER inside
+//! Recola or OpenLoops in their optimistic settings); the a posteriori
+//! acceptance pass of the method-choice rows (their second frame) and its
+//! comparison are never computed, so their lanes are returned as computed
+//! and the call's target accuracy drives nothing here. The rows the method
+//! choice still refuses (for any of its causes: an expansion that does not
+//! converge, an alternative PV estimate above its limit, a cancelling det X,
+//! vanishing adjugates, a triangle below the requested rank, its own gate),
+//! and in a carrier whose method choice is off the rows the gates refuse,
+//! are served by their LAST RESORT: the same rows in a third workspace at
+//! gate 0, i.e. plain PV ([`Bin::last_resort`], counted as "TIR
+//! last-resort rows"). Every row is served by construction except those
+//! without a finite value in any scheme: an exactly singular pivot after
+//! TIRust's affine-relation variants, a non-finite output, and TIRust's
+//! `InvalidInput` / `MasterFailure` statuses (which keep their reasons); the
+//! capability refusal stays a call-level typed refusal. Gate-passed and
+//! method-choice values are bitwise those of the checked mode. A call's own
+//! check frame (pyAmpliCol's stability checks, when the caller enables
+//! them) runs through the same three passes.
+//!
 //! **Check frames (lit-spike-tir F3; the rotation copy, m-lit lit-stab-t,
 //! Q21 (b)).** `q -> -q` leaves the moments bitwise (odd moments flip
 //! exactly), so TIR's frame of a [`ReductionCheck`] never reverses
@@ -234,6 +257,16 @@ pub struct TirOptions {
     /// could serve). A measurement option (default off); check passes count
     /// too, so measure without checks.
     pub masters_census: bool,
+    /// The UNCHECKED mode (`reduction_policy::DEFAULT_UNCHECKED`, off; m-lit
+    /// lit-unchecked, module docs 'Unchecked mode'): the conditioning gates
+    /// and the method choice stay as method selection; the acceptance pass
+    /// of the method-choice rows and its comparison are never computed (the
+    /// lanes are returned as computed: [`Self::acceptance`] and
+    /// [`Self::acceptance_frame`] drive nothing); the rows the method choice
+    /// refuses (where it is off for the carrier, the rows the gates refuse)
+    /// are served by plain PV in a third workspace at gate 0, the last
+    /// resort ("TIR last-resort rows").
+    pub unchecked: bool,
 }
 
 /// The calibration of the method-choice acceptance against a target
@@ -287,6 +320,7 @@ impl Default for TirOptions {
             profile: false,
             store: false,
             masters_census: false,
+            unchecked: crate::reduction_policy::DEFAULT_UNCHECKED,
         }
     }
 }
@@ -401,10 +435,12 @@ impl TirCarrier for Float {
 }
 
 /// A plan's workspaces in one carrier: the conditioning gates' and the
-/// method choice's, each built on first use.
+/// method choice's, each built on first use; in the unchecked mode
+/// ([`TirOptions::unchecked`]) also the last resort's (gate 0).
 pub struct Slots<T: Carrier> {
     gates: Option<DirectWorkspace<T>>,
     choice: Option<DirectWorkspace<T>>,
+    last_resort: Option<DirectWorkspace<T>>,
 }
 
 impl<T: Carrier> Default for Slots<T> {
@@ -412,6 +448,7 @@ impl<T: Carrier> Default for Slots<T> {
         Self {
             gates: None,
             choice: None,
+            last_resort: None,
         }
     }
 }
@@ -489,27 +526,7 @@ impl Bin {
             &mut slots.gates
         };
         if slot.is_none() {
-            let settings = self.plan.settings();
-            DirectReductionPlan::capabilities(prototype)
-                .admits(settings)
-                .map_err(|e| {
-                    RusticolError::unsupported_runtime_capability(
-                        "tirust",
-                        format!(
-                            "TIRust cannot reduce {} propagators at rank {} at {bits} bits: {e}",
-                            settings.propagators, settings.rank
-                        ),
-                    )
-                })?;
-            let mut workspace = self.plan.workspace(prototype.clone()).map_err(|e| {
-                RusticolError::unsupported_runtime_capability("tirust", e.to_string())
-            })?;
-            if options.profile {
-                workspace.set_profiling(true);
-            }
-            if store.is_some() {
-                workspace.set_tensor_store(store);
-            }
+            let mut workspace = new_workspace(&self.plan, options, prototype, store)?;
             let binary64 = bits == f64::MANTISSA_DIGITS;
             if choice {
                 let gate = gate_in(prototype, options.method_choice_gate);
@@ -523,6 +540,66 @@ impl Bin {
         }
         Ok(slot.as_mut().expect("workspace"))
     }
+
+    /// The carrier's last-resort workspace of the unchecked mode
+    /// ([`TirOptions::unchecked`]): plain PV at gate 0 (no method choice;
+    /// every `condition < 0` gate test is false, so only an exactly singular
+    /// pivot or a non-finite value still refuses), built on first use at the
+    /// precision of `prototype`.
+    fn last_resort<T: TirCarrier>(
+        &mut self,
+        options: &TirOptions,
+        prototype: &T,
+        store: Option<&TensorStore>,
+    ) -> RusticolResult<&mut DirectWorkspace<T>>
+    where
+        Complex<T>: EvaluationDomain,
+    {
+        let slot = &mut T::slots(&mut self.workspaces, prototype.get_precision()).last_resort;
+        if slot.is_none() {
+            let mut workspace = new_workspace(&self.plan, options, prototype, store)?;
+            workspace.set_stability_threshold(prototype.zero());
+            *slot = Some(workspace);
+        }
+        Ok(slot.as_mut().expect("workspace"))
+    }
+}
+
+/// A new workspace of `plan` at the precision of `prototype` (TIRust's
+/// capability query of the plan at that precision first), with the options'
+/// profiling and the backend's `store`.
+fn new_workspace<T: TirCarrier>(
+    plan: &DirectReductionPlan,
+    options: &TirOptions,
+    prototype: &T,
+    store: Option<&TensorStore>,
+) -> RusticolResult<DirectWorkspace<T>>
+where
+    Complex<T>: EvaluationDomain,
+{
+    let bits = prototype.get_precision();
+    let settings = plan.settings();
+    DirectReductionPlan::capabilities(prototype)
+        .admits(settings)
+        .map_err(|e| {
+            RusticolError::unsupported_runtime_capability(
+                "tirust",
+                format!(
+                    "TIRust cannot reduce {} propagators at rank {} at {bits} bits: {e}",
+                    settings.propagators, settings.rank
+                ),
+            )
+        })?;
+    let mut workspace = plan
+        .workspace(prototype.clone())
+        .map_err(|e| RusticolError::unsupported_runtime_capability("tirust", e.to_string()))?;
+    if options.profile {
+        workspace.set_profiling(true);
+    }
+    if store.is_some() {
+        workspace.set_tensor_store(store);
+    }
+    Ok(workspace)
 }
 
 /// One kinematic row: lanes `start..end` of group `group`, reduced at
@@ -568,6 +645,8 @@ struct Counters {
     expansion_rows: u64,
     acceptance_rows: u64,
     unverified: u64,
+    /// [`TirOptions::unchecked`]: rows the gate-0 last resort served.
+    last_resort_rows: u64,
     /// Scalar-master evaluations of TIRust's moment calls.
     masters: u64,
     /// [`TirOptions::profile`]: TIRust's profile (geometry, masters,
@@ -751,7 +830,9 @@ fn gated<T: Carrier>(
 /// A method-choice pass's lanes into `out`: lane `r` of `result` is the
 /// gate-refused row `rows[r]`; `flagged` the lanes TIRust served with
 /// small-Gram expansions (`last_gram_lanes`; empty where TIRust's
-/// diagnostics describe another result: the rotation copy's).
+/// diagnostics describe another result: the rotation copy's). Returns the
+/// lanes `r` the method choice refused (`Unstable`: for the unchecked
+/// mode's last resort), ascending.
 fn retried<T: Carrier>(
     result: &BatchResult<T>,
     rows: &[usize],
@@ -759,7 +840,8 @@ fn retried<T: Carrier>(
     flagged: &[bool],
     out: &mut [FrameRow<T>],
     counters: &mut Counters,
-) {
+) -> Vec<usize> {
+    let mut refused = Vec::new();
     for (r, &index) in rows.iter().enumerate() {
         match result.lane(r) {
             Ok(values) => {
@@ -773,6 +855,9 @@ fn retried<T: Carrier>(
                 });
             }
             Err(status) => {
+                if matches!(status, LaneStatus::Unstable(_)) {
+                    refused.push(r);
+                }
                 out[index].moments = Err(format!(
                     "{} (refused by the gates, then by the method choice: {})",
                     match &out[index].moments {
@@ -781,6 +866,38 @@ fn retried<T: Carrier>(
                     },
                     status_text(status)
                 ));
+            }
+        }
+    }
+    refused
+}
+
+/// The unchecked mode's last-resort pass into `out` (module docs
+/// 'Unchecked mode'): lane `r` of `result` is the refused row `rows[r]`,
+/// served by plain PV at gate 0, or still refused (its reason extended).
+fn resorted<T: Carrier>(
+    result: &BatchResult<T>,
+    rows: &[usize],
+    position: &[usize],
+    out: &mut [FrameRow<T>],
+    counters: &mut Counters,
+) {
+    for (r, &index) in rows.iter().enumerate() {
+        match result.lane(r) {
+            Ok(values) => {
+                counters.last_resort_rows += 1;
+                out[index].moments = Ok(Moments {
+                    values: permuted(values, position),
+                    choice: false,
+                });
+            }
+            Err(status) => {
+                if let Err(reason) = &mut out[index].moments {
+                    reason.push_str(&format!(
+                        " (then by the unchecked mode's gate-0 last resort: {})",
+                        status_text(status)
+                    ));
+                }
             }
         }
     }
@@ -856,6 +973,13 @@ impl TirReductionBackend {
         self.options.acceptance = acceptance;
     }
 
+    /// Set the unchecked mode ([`TirOptions::unchecked`]) of the following
+    /// reductions; the plans and workspaces stay (the last resort's are
+    /// built on first use).
+    pub fn set_unchecked(&mut self, unchecked: bool) {
+        self.options.unchecked = unchecked;
+    }
+
     fn bin(&mut self, n: usize, rank: usize) -> RusticolResult<&mut Bin> {
         bin_of(&mut self.bins, n, rank, self.store.as_ref())
     }
@@ -905,6 +1029,12 @@ impl TirReductionBackend {
                 ("TIR master evaluations", c.masters),
             ]
             .into_iter()
+            // The unchecked mode's own count (absent otherwise: the checked
+            // statistics are unchanged).
+            .chain(
+                (self.options.unchecked || c.last_resort_rows > 0)
+                    .then_some(("TIR last-resort rows", c.last_resort_rows)),
+            )
             .chain(c.store.into_iter().flat_map(|[mr, mc, sr, sc, or, oc]| {
                 [
                     ("TIR store masters reused", mr),
@@ -1025,6 +1155,20 @@ impl TirReductionBackend {
                 continue;
             }
             if !choice {
+                if options.unchecked {
+                    // The unchecked mode without the method choice: the
+                    // last resort serves the gates' refusals.
+                    self.last_resort(
+                        (n, rank),
+                        &batch,
+                        &members,
+                        [&refused, &refused_copy],
+                        copy,
+                        (&mut out, copies.as_mut()),
+                        prototype,
+                    )?;
+                    continue;
+                }
                 let closed = |row: &mut FrameRow<T>| {
                     if let Err(reason) = &mut row.moments {
                         reason.push_str(
@@ -1062,6 +1206,9 @@ impl TirReductionBackend {
                 .copied()
                 .filter(|k| refused.binary_search(k).is_err())
                 .collect();
+            // The rows the method choice refuses (unchecked mode: its last
+            // resort's), direct and copies, as row indices `k` of the bin.
+            let (mut last, mut last_copy) = (Vec::new(), Vec::new());
             if let (false, Some(rotation), Some(copies)) = (both.is_empty(), copy, &mut copies) {
                 let workspace = bin.workspace(true, &options, prototype, self.store.as_ref())?;
                 let (result, copied) = workspace
@@ -1072,8 +1219,10 @@ impl TirReductionBackend {
                 let flagged = workspace.last_gram_lanes().to_vec();
                 self.counters.rows += 2 * both.len() as u64;
                 let (rows, position, c) = (indices(&both), &bin.position, &mut self.counters);
-                retried(&result, &rows, position, &flagged, &mut out, c);
-                retried(&copied, &rows, position, &[], copies, c);
+                let refused = retried(&result, &rows, position, &flagged, &mut out, c);
+                last.extend(refused.into_iter().map(|r| both[r]));
+                let refused = retried(&copied, &rows, position, &[], copies, c);
+                last_copy.extend(refused.into_iter().map(|r| both[r]));
             }
             if !alone.is_empty() {
                 let workspace = bin.workspace(true, &options, prototype, self.store.as_ref())?;
@@ -1082,7 +1231,8 @@ impl TirReductionBackend {
                 let flagged = workspace.last_gram_lanes().to_vec();
                 self.counters.rows += alone.len() as u64;
                 let (rows, position, c) = (indices(&alone), &bin.position, &mut self.counters);
-                retried(&result, &rows, position, &flagged, &mut out, c);
+                let refused = retried(&result, &rows, position, &flagged, &mut out, c);
+                last.extend(refused.into_iter().map(|r| alone[r]));
             }
             if let (false, Some(rotation), Some(copies)) =
                 (copy_alone.is_empty(), copy, &mut copies)
@@ -1097,11 +1247,93 @@ impl TirReductionBackend {
                 let flagged = workspace.last_gram_lanes().to_vec();
                 self.counters.rows += copy_alone.len() as u64;
                 let (rows, position, c) = (indices(&copy_alone), &bin.position, &mut self.counters);
-                retried(&result, &rows, position, &flagged, copies, c);
+                let refused = retried(&result, &rows, position, &flagged, copies, c);
+                last_copy.extend(refused.into_iter().map(|r| copy_alone[r]));
+            }
+            if options.unchecked && !(last.is_empty() && last_copy.is_empty()) {
+                last.sort_unstable();
+                last_copy.sort_unstable();
+                self.last_resort(
+                    (n, rank),
+                    &batch,
+                    &members,
+                    [&last, &last_copy],
+                    copy,
+                    (&mut out, copies.as_mut()),
+                    prototype,
+                )?;
             }
         }
         self.counters.moments += started.elapsed().as_secs_f64();
         Ok((out, copies))
+    }
+
+    /// The unchecked mode's last resort (module docs 'Unchecked mode') in
+    /// the bin `key`: the rows `rows[0]` of its `batch` (row `k` is
+    /// `out[members[k]]`) and the rotation copies (by `copy`) of the rows
+    /// `rows[1]` (into `copies`), by plain PV at gate 0
+    /// ([`Bin::last_resort`]).
+    #[allow(clippy::too_many_arguments)]
+    fn last_resort<T: TirCarrier>(
+        &mut self,
+        key: (usize, usize),
+        batch: &KinematicsBatch<T>,
+        members: &[usize],
+        rows: [&[usize]; 2],
+        copy: Option<usize>,
+        (out, copies): (&mut [FrameRow<T>], Option<&mut Vec<FrameRow<T>>>),
+        prototype: &T,
+    ) -> RusticolResult<()>
+    where
+        Complex<T>: EvaluationDomain,
+    {
+        let tirust =
+            |e: iregi_rust::ReductionError| RusticolError::evaluation(format!("TIRust: {e}"));
+        let options = self.options;
+        let bin = bin_of(&mut self.bins, key.0, key.1, self.store.as_ref())?;
+        let width = batch.values.len() / batch.rows;
+        let subset = |ks: &[usize]| KinematicsBatch {
+            rows: ks.len(),
+            components: 1,
+            values: ks
+                .iter()
+                .flat_map(|&k| batch.values[k * width..(k + 1) * width].iter().cloned())
+                .collect(),
+        };
+        let [direct, copied] = rows;
+        // The copies' rows relabelled first (TIRust's rotation copy is bit
+        // for bit a separate call on the relabelled rows).
+        let rotated = match (copied.is_empty(), copy) {
+            (false, Some(rotation)) => Some(
+                bin.plan
+                    .rotated_batch(&subset(copied), rotation)
+                    .map_err(tirust)?,
+            ),
+            _ => None,
+        };
+        let workspace = bin.last_resort(&options, prototype, self.store.as_ref())?;
+        let mut results = [None, None];
+        if !direct.is_empty() {
+            results[0] = Some(workspace.reduce_batch(&subset(direct)).map_err(tirust)?);
+            self.counters.call(workspace, options.profile);
+            self.counters.rows += direct.len() as u64;
+        }
+        if let Some(rotated) = &rotated {
+            results[1] = Some(workspace.reduce_batch(rotated).map_err(tirust)?);
+            self.counters.call(workspace, options.profile);
+            self.counters.rows += copied.len() as u64;
+        }
+        let indices = |ks: &[usize]| ks.iter().map(|&k| members[k]).collect::<Vec<_>>();
+        let [direct_result, copy_result] = results;
+        if let Some(result) = direct_result {
+            let rows = indices(direct);
+            resorted(&result, &rows, &bin.position, out, &mut self.counters);
+        }
+        if let (Some(result), Some(copies)) = (copy_result, copies) {
+            let rows = indices(copied);
+            resorted(&result, &rows, &bin.position, copies, &mut self.counters);
+        }
+        Ok(())
     }
 
     /// Reduce every lane of `groups` (module docs), in their carrier.
@@ -1180,8 +1412,12 @@ impl TirReductionBackend {
             (None, None) => None,
         };
         let acceptance = self.options.acceptance_frame;
+        // The unchecked mode computes no acceptance pass and no comparison:
+        // its method-choice lanes are returned as computed (module docs
+        // 'Unchecked mode').
+        let verify = !self.options.unchecked;
         let choice_rows: Vec<usize> = (0..rows.len())
-            .filter(|&r| matches!(&direct[r].moments, Ok(m) if m.choice))
+            .filter(|&r| verify && matches!(&direct[r].moments, Ok(m) if m.choice))
             .collect();
         let own = if choice_rows.is_empty() || check_frame == Some(acceptance) {
             Vec::new()
@@ -1258,7 +1494,7 @@ impl TirReductionBackend {
                     .map(|(checked, map)| in_frame(&checked[r], map, width));
                 self.counters.lanes += 1;
                 let verified = match (&first.moments, &value) {
-                    (Ok(m), Ok(value)) if m.choice => {
+                    (Ok(m), Ok(value)) if verify && m.choice => {
                         // The acceptance compares every Laurent slot the
                         // moments carry, whatever the call's pole mode, so
                         // that a lane is served or refused alike in every

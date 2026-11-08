@@ -248,6 +248,13 @@ public:
     void set_reduction_target(double target) {
         virtual_detail::check(rusticol_virtual_set_reduction_target(handle_.get(), target));
     }
+    // Unchecked setting of later evaluations (the Python API's
+    // reduction_unchecked=; default false): the reduction backends without
+    // their own acceptance and refusal checks.
+    void set_reduction_unchecked(bool unchecked) {
+        virtual_detail::check(
+            rusticol_virtual_set_reduction_unchecked(handle_.get(), unchecked ? 1 : 0));
+    }
     // Stability checks of later evaluations (the Python API's stability_checks=):
     // rotation_count default rotations, or the rotation specifications of
     // `rotations` (a JSON array; rotation_count then 0); all off, the default,

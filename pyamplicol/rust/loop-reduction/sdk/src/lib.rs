@@ -258,6 +258,10 @@ pub struct Runtime {
     /// (`reduction_policy::DEFAULT_TARGET` until
     /// [`Runtime::set_reduction_target`]).
     target: f64,
+    /// The unchecked setting of later evaluations
+    /// (`reduction_policy::DEFAULT_UNCHECKED`, off, until
+    /// [`Runtime::set_reduction_unchecked`]).
+    unchecked: bool,
     /// The stability checks of later binary64 evaluations (none by default:
     /// no estimate, no extra cost; [`Runtime::set_stability_checks`]).
     checks: StabilityChecks,
@@ -369,6 +373,7 @@ impl Runtime {
             arithmetic: Arithmetic::Double,
             reduction,
             target,
+            unchecked: reduction_policy::DEFAULT_UNCHECKED,
             checks: StabilityChecks::default(),
             history_ids,
             spin_classes,
@@ -458,6 +463,24 @@ impl Runtime {
     pub fn reduction_target(&self) -> f64 {
         self.target
     }
+    /// The unchecked setting of later evaluations, the Python API's
+    /// `reduction_unchecked=` (m-lit lit-unchecked; off by default,
+    /// `reduction_policy::DEFAULT_UNCHECKED`): the reduction backends reduce
+    /// without their own acceptance and refusal checks
+    /// (`reduction_policy::UNCHECKED_RECORD`: TIRust's gates and method
+    /// choice as method selection without the acceptance pass, its gate-0
+    /// last resort; NinjaRS's zero stability thresholds); "auto" keeps its
+    /// backend choice and its per-point fallback, which then acts only on
+    /// the points the unchecked backend still fails. The stability checks
+    /// ([`Runtime::set_stability_checks`]) stay separate settings. Each
+    /// result records it (its "reduction" diagnostics).
+    pub fn set_reduction_unchecked(&mut self, unchecked: bool) {
+        self.unchecked = unchecked;
+    }
+    /// The unchecked setting of later evaluations.
+    pub fn reduction_unchecked(&self) -> bool {
+        self.unchecked
+    }
     /// The stability checks of later evaluations, the Python API's
     /// `stability_checks=` (`VirtualStabilityChecks`): rotations, the
     /// reduction-direction check (rescaled: masters recomputed) and the
@@ -514,7 +537,11 @@ impl Runtime {
         let Engine::V4(native) = &mut self.engine;
         native.set_reduction(Reduction::parse(&choice.effective)?)?;
         native.set_target(self.target)?;
-        Ok(choice)
+        native.set_unchecked(self.unchecked);
+        Ok(Choice {
+            unchecked: self.unchecked,
+            ..choice
+        })
     }
     pub fn poles(&self) -> Poles {
         self.poles
@@ -582,6 +609,8 @@ impl Runtime {
                 "native": served,
                 "target": self.target,
                 "default_target": reduction_policy::DEFAULT_TARGET,
+                "unchecked": self.unchecked,
+                "default_unchecked": reduction_policy::DEFAULT_UNCHECKED,
             },
             "colour_zero": colour_zero,
             "execution_mode":"loop_recurrence",
@@ -1543,6 +1572,8 @@ pub(crate) fn diagnostics(
             "reason": reduction.reason,
             "fallback": fallbacks.fallback,
             "fallback_points": fallbacks.points.len(),
+            // The call's unchecked setting (m-lit lit-unchecked).
+            "unchecked": reduction.unchecked,
         },
         // Per point the fallback evaluated again (by point id): the backend
         // that served it (null: it failed there too, with both backends'

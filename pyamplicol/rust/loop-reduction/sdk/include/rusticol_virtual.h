@@ -174,6 +174,18 @@ int rusticol_virtual_set_reduction(rusticol_virtual_handle *handle,
  * RUSTICOL_VIRTUAL_INVALID_ARGUMENT and nothing changes. */
 int rusticol_virtual_set_reduction_target(rusticol_virtual_handle *handle,
   double target);
+/* Unchecked setting of later evaluations (the Python API's
+ * reduction_unchecked=; additive, ABI version 2 kept): 1 reduces without the
+ * reduction backends' own acceptance and refusal checks (TIRust: its gates and
+ * method choice as method selection without the acceptance pass, plain PV at
+ * gate 0 as the last resort; NinjaRS: zero stability thresholds), so only rows
+ * without a finite value fail; "auto" keeps its backend choice and its
+ * per-point fallback. 0, the default, restores the checks. The stability
+ * checks stay separate settings. Each result records it in its "reduction"
+ * diagnostics. Any other value is RUSTICOL_VIRTUAL_INVALID_ARGUMENT and
+ * nothing changes. */
+int rusticol_virtual_set_reduction_unchecked(rusticol_virtual_handle *handle,
+  int unchecked);
 /* Stability checks of later evaluations (the Python API's stability_checks=,
  * VirtualStabilityChecks; additive, ABI version 2 kept): rotation_count
  * default rotations (the Python API's count; any number), or, with

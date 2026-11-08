@@ -805,6 +805,8 @@ pub struct V2Runtime {
     reduction: Reduction,
     /// The target accuracy of every evaluation ([`V2Runtime::set_target`]).
     target: f64,
+    /// The unchecked mode of every evaluation ([`V2Runtime::set_unchecked`]).
+    unchecked: bool,
     backends: BTreeMap<V2Precision, V2Backends>,
     /// The other backend's, for the stability monitoring's cross-backend
     /// check (`monitor`), built on first use.
@@ -1032,6 +1034,7 @@ impl V2Runtime {
             process,
             reduction,
             target,
+            unchecked: crate::reduction_policy::DEFAULT_UNCHECKED,
             backends,
             cross_backends: BTreeMap::new(),
             scaleless_inputs: native.scaleless.map(Arc::new),
@@ -1437,7 +1440,8 @@ impl V2Runtime {
 
     fn backend(&mut self, precision: V2Precision) -> RusticolResult<&mut V2Backends> {
         if !self.backends.contains_key(&precision) {
-            let backend = precision.backend(self.reduction, &self.process.plan, self.target)?;
+            let mut backend = precision.backend(self.reduction, &self.process.plan, self.target)?;
+            backend.set_unchecked(self.unchecked);
             self.backends.insert(precision, backend);
         }
         Ok(self.backends.get_mut(&precision).expect("the backend"))
@@ -1500,6 +1504,31 @@ impl V2Runtime {
     /// The target accuracy of the following evaluations.
     pub fn target(&self) -> f64 {
         self.target
+    }
+
+    /// The unchecked mode of the following evaluations (m-lit
+    /// lit-unchecked; `reduction_policy::DEFAULT_UNCHECKED`, off): every
+    /// reduction backend of the runtime (the cross-backend check's and the
+    /// per-point fallback's too) reduces without its own acceptance and
+    /// refusal checks (`V2Backends::set_unchecked`), set on the built
+    /// backends (their plans stay). The runtime's own stability checks are
+    /// separate settings.
+    pub fn set_unchecked(&mut self, unchecked: bool) {
+        if unchecked != self.unchecked {
+            self.unchecked = unchecked;
+            for backend in self
+                .backends
+                .values_mut()
+                .chain(self.cross_backends.values_mut())
+            {
+                backend.set_unchecked(unchecked);
+            }
+        }
+    }
+
+    /// The unchecked mode of the following evaluations.
+    pub fn unchecked(&self) -> bool {
+        self.unchecked
     }
 
     /// One batch through the tree program, the executor and the assembly in
