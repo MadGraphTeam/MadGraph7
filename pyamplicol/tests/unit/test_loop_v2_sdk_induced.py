@@ -854,3 +854,180 @@ def test_the_c_abi_falls_back_per_point_at_a_stated_target(artifacts, loop_nativ
         assert _same(auto["virtual"], _python_flat(expected))
     finally:
         sdk.rusticol_virtual_free(handle)
+
+
+FALLBACK_CLIENT = r"""
+// ./client artifact process input.txt target arithmetic: one "auto" evaluation
+// of a loop-induced artifact through the C++ wrapper at the target accuracy
+// `target` in `arithmetic` ("double" or "double-double"): the statuses, the
+// virtual values as bit patterns and the diagnostics JSON, one line each.
+#include "rusticol_virtual.hpp"
+#include <cinttypes>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <fstream>
+#include <string>
+#include <vector>
+
+int main(int argc, char **argv) {
+  if (argc < 6) return 2;
+  std::ifstream in(argv[3]);
+  std::size_t points = 0, legs = 0;
+  in >> points >> legs;
+  std::vector<double> momenta(points * legs * 4), scales(points);
+  std::string token;
+  for (std::size_t p = 0; p < points; ++p) {
+    for (std::size_t i = 0; i < legs * 4; ++i) {
+      in >> token;
+      momenta[p * legs * 4 + i] = std::strtod(token.c_str(), nullptr);
+    }
+    in >> token;
+    scales[p] = std::strtod(token.c_str(), nullptr);
+  }
+  try {
+    rusticol::VirtualRuntime runtime(argv[1], std::string(argv[2]));
+    runtime.set_reduction_target(std::strtod(argv[4], nullptr));
+    runtime.set_arithmetic(argv[5]);
+    auto result = runtime.evaluate(momenta, points, scales);
+    std::printf("statuses");
+    for (auto status : result.statuses()) std::printf(" %u", status);
+    std::printf("\nvirtual");
+    for (double value : result.virtual_values()) {
+      std::uint64_t bits;
+      std::memcpy(&bits, &value, sizeof bits);
+      std::printf(" %" PRIu64, bits);
+    }
+    std::printf("\ndiagnostics %s\n", result.diagnostics_json().c_str());
+  } catch (const rusticol::VirtualError &error) {
+    std::printf("error %d %s\n", error.status(), error.what());
+    return 1;
+  }
+  return 0;
+}
+"""
+
+
+def test_the_sdk_fallback_and_target_need_no_symbolica_licence(
+    artifacts, loop_native, tmp_path
+):
+    """Done 5 of m-lit lit-tirust-default (USER 2026-11-08 ~15:25: no SDK
+    call may need a user Symbolica licence): a fresh process with
+    ``SYMBOLICA_LICENSE`` removed and ``PYAMPLICOL_NATIVE_LIBRARY_KEY=off``,
+    while another process holds the restricted Symbolica permit, sets the
+    target accuracy and runs "auto" in binary64 on u u~ > h g g at the
+    target that refuses point 0's method-choice lanes: the per-point NinjaRS
+    fallback serves point 0, and the output equals the licensed run's. A
+    double-double "auto" call without ``SYMBOLICA_LICENSE`` (the package
+    library key on, as every SDK double-double call) runs on TIRust with its
+    fallback armed and equals the licensed run's."""
+
+    import importlib.util
+    import os
+    import re
+    import subprocess
+
+    from pyamplicol import Runtime
+    from tests.unit.test_loop_v2_sdk_extras import SDK, _compiler, _staged_sdk
+
+    if "tirust" not in json.loads(loop_native.reduction_backends()):
+        pytest.skip("the staged native extension is built without TIRust")
+    root = Path(__file__).resolve().parents[2]
+    spec = importlib.util.spec_from_file_location(
+        "loop_artifact_portability", root / "tools" / "loop_artifact_portability.py"
+    )
+    assert spec is not None and spec.loader is not None
+    portability = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(portability)
+    name = "li_uux_hgg"
+    artifact = artifacts[name]
+    points, scales = _inputs(name, 3)
+    exact_points, exact_scales = _exact(points, scales)
+    tiny = Runtime.load(artifact, process="p").evaluate(
+        exact_points[:1],
+        mu_r2=exact_scales[:1],
+        reduction="tirust",
+        reduction_target=1e-300,
+        on_failure="return",
+    )
+    ratio = max(
+        float(d) / float(s)
+        for d, s in re.findall(
+            r"deviation ([0-9.eE+-]+) of term scale ([0-9.eE+-]+)",
+            tiny.diagnostics[0].detail,
+        )
+    )
+    target = ratio / 2 / loop_native.tir_acceptance(1.0)
+    build = _staged_sdk()
+    (tmp_path / "client.cpp").write_text(FALLBACK_CLIENT)
+    subprocess.run(
+        [
+            _compiler("CXX", "c++"),
+            "-std=c++17",
+            "-O2",
+            f"-I{SDK / 'include'}",
+            str(tmp_path / "client.cpp"),
+            f"-L{build}",
+            "-lrusticol_loop_sdk",
+            f"-Wl,-rpath,{build}",
+            "-lm",
+            "-o",
+            str(tmp_path / "client"),
+        ],
+        check=True,
+        cwd=tmp_path,
+    )
+    lines = [f"{len(points)} {len(points[0])}"]
+    for point, scale in zip(points, scales, strict=True):
+        lines.append(" ".join(v.hex() for v in [*(c for p in point for c in p), scale]))
+    (tmp_path / "input.txt").write_text("\n".join(lines) + "\n")
+
+    def run(env: dict[str, str], arithmetic: str, chosen: float) -> list[str]:
+        done = subprocess.run(
+            [
+                str(tmp_path / "client"),
+                str(artifact),
+                "p",
+                str(tmp_path / "input.txt"),
+                repr(chosen),
+                arithmetic,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=600,
+            check=False,
+            env=env,
+        )
+        output = done.stdout[-3000:] + done.stderr[-3000:]
+        assert done.returncode == 0, output
+        assert "restricted Symbolica" not in output
+        return done.stdout.splitlines()
+
+    lock = tmp_path / "symbolica-locks"
+    lock.mkdir()
+    lock.chmod(0o700)
+    base = {k: v for k, v in os.environ.items() if k != "SYMBOLICA_LICENSE"}
+    with portability.RestrictedPermit(lock_dir=str(lock)) as permit:
+        assert permit.record["verified"], permit.record
+        unlicensed = run(
+            permit.environment({**base, "PYAMPLICOL_NATIVE_LIBRARY_KEY": "off"}),
+            "double",
+            target,
+        )
+    licensed = run(dict(os.environ), "double", target)
+    assert unlicensed == licensed
+    statuses, _values, diagnostics = licensed
+    assert statuses == "statuses" + " 4" * len(points)
+    record = json.loads(diagnostics.split(" ", 1)[1])
+    assert record["reduction"]["effective"] == "tirust"
+    assert record["reduction"]["fallback_points"] == 1
+    assert record["fallbacks"]["0"]["effective"] == "ninjars"
+    # Double-double, no user licence (the package key on).
+    keyed = run(base, "double-double", 1e-5)
+    assert keyed == run(dict(os.environ), "double-double", 1e-5)
+    record = json.loads(keyed[2].split(" ", 1)[1])
+    assert (record["reduction"]["effective"], record["reduction"]["fallback"]) == (
+        "tirust",
+        "ninjars",
+    )
+    assert record["arithmetic"] == "double-double"

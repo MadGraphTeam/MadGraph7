@@ -1,0 +1,34 @@
+{
+ "about": "Calibration of TIRust's method-choice acceptance against a target accuracy (m-lit F3 (a), lit-tirust-default): max_ratio is the largest true relative error over the frame deviation the acceptance compares (deviation between a method-choice lane's two frames relative to its term scale; for a point, its largest such lane ratio), each against a consistent truth; v2_tir::UNDERSTATEMENT is the largest, rounded up to two significant digits. Records in the package scratch (workspace/tmp/lit-tir-mp/mc3/evidence.json, workspace/tmp/lit-tirust-default/calib/out/*.json) and m-lit/lit-tirust-default-report.md.",
+ "understatement": 580.0,
+ "sources": [
+  {
+   "name": "synthetic method-choice lanes (lit-tir-mp mc3: refused at 2^-30 by the rescaled check, served by a rotated one; error against NinjaRS at 60 digits)",
+   "items": 1079,
+   "max_ratio": 579.1706910348973,
+   "at": {
+    "ratio": 4.643932733408669e-09,
+    "error": 2.689629730327878e-06,
+    "lane": [
+     "li-rows.json",
+     "LI-32 N5-massive R5",
+     20,
+     6,
+     51
+    ]
+   }
+  },
+  {
+   "name": "loop-induced stream rows, |A_loop|^2 finite part per point with an admission ratio above 2^-30 (error against TIRust at 256 bits with supplied invariants)",
+   "rows": 11,
+   "items": 65,
+   "max_ratio": 59.36860717117209,
+   "at": {
+    "ratio": 2.145987038459363e-09,
+    "error": 1.2740426148072088e-07,
+    "row": "li_gg_hhgg",
+    "point": 31
+   }
+  }
+ ]
+}
