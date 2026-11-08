@@ -887,6 +887,46 @@ def test_sdk_leading_colour_resolved_rows_equal_the_python_api(leading):
     _compare("lc:uugg", expected, found)
 
 
+def test_sdk_leading_colour_selection_is_the_python_apis(leading):
+    """A Born-interfered leading-colour process (m-lit lit-sdk-b): the Python
+    API serves its helicity and colour-flow selection; the SDK's selection
+    call refuses it typed (RUSTICOL_VIRTUAL_RUNTIME_ERROR, "served by the
+    Python API"), and a colour resolution in the Python API's words."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.api.errors import CompatibilityError
+    from tests.unit.test_loop_v2_sdk_selection import STATUS_RUNTIME_ERROR, _call
+
+    runtime = Runtime.load(leading, process="uugg")
+    point = [[float(c) for c in p] for p in LEADING_POINTS[0]]
+    exact = [[[str(Decimal(c)) for c in p] for p in point]]
+    scale = float(SCALES[0])
+    served = runtime.evaluate(exact, mu_r2=str(Decimal(scale)), helicities=["h0"])
+    assert served.values[0] is not None
+    with pytest.raises(CompatibilityError) as resolution:
+        runtime.evaluate_resolved(
+            exact, mu_r2=str(Decimal(scale)), color_resolution="amplitude-basis"
+        )
+    sdk = _sdk()
+    handle = ctypes.c_void_p()
+    status = sdk.rusticol_virtual_open(
+        str(leading).encode(), b"uugg", None, None, ctypes.byref(handle)
+    )
+    assert status == 0, _error(sdk)
+    try:
+        for selectors in ({"ids": ["h0"]}, {"colours": ["1"]}, {"by_point": [0]}):
+            found = _call(sdk, handle, [point], [scale], **selectors)
+            assert found["status"] == STATUS_RUNTIME_ERROR, (selectors, found)
+            assert "served by the Python API" in found["error"], found["error"]
+        found = _call(
+            sdk, handle, [point], [scale], resolved=True, resolution="amplitude-basis"
+        )
+        assert found["status"] == STATUS_RUNTIME_ERROR
+        assert str(resolution.value) in found["error"]
+    finally:
+        sdk.rusticol_virtual_free(handle)
+
+
 def test_sdk_spin_sources_of_another_length_are_refused(artifacts):
     """A spin-source buffer that is neither one row nor one row per point is
     an invalid argument with a message (status 1), never a read past it; one
