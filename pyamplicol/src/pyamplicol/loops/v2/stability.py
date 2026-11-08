@@ -408,9 +408,21 @@ class StabilityChecks:
 
 # The recommended configuration (DESIGN §10.4) and the O1 rule's estimate:
 # one generic rotation and the rescaled reduction check (module docstring).
-RECOMMENDED_CHECKS = StabilityChecks(
-    (default_rotation(0),), reduction_direction=True, rescaled=True
-)
+# Formed on first use (``__getattr__``): its rotation is the native
+# builder's (``default_rotation``), and importing this module loads no
+# native extension.
+RECOMMENDED_CHECKS: StabilityChecks
+
+
+def __getattr__(name: str) -> Any:
+    if name == "RECOMMENDED_CHECKS":
+        checks = StabilityChecks(
+            (default_rotation(0),), reduction_direction=True, rescaled=True
+        )
+        globals()[name] = checks
+        return checks
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 # The default ladder of the built-in rescue (``api.virtual_results.
 # VirtualRescuePolicy()``, ``loops.v2.rescue``), modelled on gammaloop's

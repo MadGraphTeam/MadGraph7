@@ -124,6 +124,39 @@ def test_the_native_rotations_are_the_python_ones(loop_native, monkeypatch):
         assert str(native.value) == str(python.value), text
 
 
+def test_importing_the_virtual_api_loads_no_native_extension(loop_native):
+    """Importing the virtual result types, the stability module or the
+    artifact module loads no native extension (the recommended checks'
+    native rotation is formed on first use); the recommended rotation is
+    the oracle's."""
+
+    import subprocess
+    import sys
+
+    from pyamplicol.loops.v2 import stability
+
+    modules = (
+        "pyamplicol.api.virtual_results",
+        "pyamplicol.loops.v2.stability",
+        "pyamplicol.loops.v2.artifact",
+    )
+    for module in modules:
+        found = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                f"import sys, {module}; print('pyamplicol._rusticol' in sys.modules)",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert found.stdout.strip() == "False", (module, found.stderr)
+    (rotation,) = stability.RECOMMENDED_CHECKS.rotations
+    assert rotation.matrix == stability.python_default_rotation(0).matrix
+    assert stability.RECOMMENDED_CHECKS.reduction_direction
+
+
 def _checks(configuration):
     from pyamplicol.api.virtual_results import VirtualStabilityChecks
 
