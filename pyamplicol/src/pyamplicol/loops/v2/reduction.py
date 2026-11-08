@@ -26,8 +26,11 @@ m-lit lit-tir-mp; which families it serves is TIRust's own capability
 query, refused typed when the plans are built, ``prepare``) when the
 extension has the query, else NinjaRS at every carrier (an extension built
 before the TIRust backend, m-lit lit-tir, which adds the query). An artifact
-may admit fewer backends (``admitted``: TIR-only artifacts of rank > N + 2,
-m-lit lit-eft). A call also runs on one route of the artifact runtime
+may admit fewer backends (``admitted``: TIR-only artifacts, whose
+declarations record ``reductions = ["tirust"]`` for a family beyond NinjaRS's
+rank <= N + 2, m-lit lit-eft; ``"auto"`` takes TIRust there at every carrier
+and rescue level, NinjaRS is refused typed, and their rank > N + 2 results
+carry no correctness claim). A call also runs on one route of the artifact runtime
 (``Route``: ``SUMMED``, the summed virtual through the native executor, or
 ``RESOLVED``, the colour-, spin- and helicity-resolved outputs and the
 leading-colour selections through the stored observable columns), and the
@@ -267,7 +270,7 @@ def resolve(
     if why is None:
         reason = (
             f"auto: {NAMES[default]}, the {kind} default"
-            if default == DEFAULTS[contribution]
+            if allowed != {"tirust"}
             else f"auto: {NAMES[default]}, the only backend the artifact admits"
         )
         return VirtualReduction("auto", cast(Any, default), reason)

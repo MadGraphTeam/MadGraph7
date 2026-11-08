@@ -383,9 +383,20 @@ fn reducer_rank_refusal(
     ))
 }
 
+/// `None` if an artifact admits a family of rank `rank` over `propagators`
+/// loop propagators, else every backend's refusal: a reduction backend of
+/// this build reduces it (`rusticol_core::loop_v2::bounds::
+/// admission_refusal`, the plan loader's admission; a family beyond
+/// NinjaRS's rank makes the artifact TIR-only, m-lit lit-eft).
+#[pyfunction]
+fn family_rank_refusal(propagators: usize, rank: usize) -> Option<String> {
+    rusticol_core::loop_v2::bounds::admission_refusal(propagators, rank)
+}
+
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<V2Generation>()?;
     module.add_function(wrap_pyfunction!(trace_overlaps, module)?)?;
     module.add_function(wrap_pyfunction!(reducer_rank_refusal, module)?)?;
+    module.add_function(wrap_pyfunction!(family_rank_refusal, module)?)?;
     Ok(())
 }

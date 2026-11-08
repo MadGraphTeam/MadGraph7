@@ -702,6 +702,45 @@ mod tests {
         assert!(error.message().contains("crosses a chunk"), "{error}");
     }
 
+    /// A family beyond NinjaRS's rank <= N + 2 (m-lit lit-eft): the plan
+    /// loads where TIRust's capability query admits it (the cargo feature
+    /// `tirust-capability`) and its families make it TIR-only, the same plan
+    /// within N + 2 is not; a build without TIRust refuses it as a family
+    /// rank, as every build refuses a rank beyond TIRust's representation.
+    #[test]
+    fn a_family_beyond_ninjars_rank_loads_through_tirust() {
+        use crate::loop_v2::bounds::tir_only;
+
+        let load = |rank: usize| {
+            let family = FAMILY.replace(r#""rank":0"#, &format!(r#""rank":{rank}"#));
+            let text = PLAN
+                .replace("CONTENT0", &CONTENT.replace("KERNEL", "0"))
+                .replace("CONTENT1", &CONTENT.replace("KERNEL", "1"))
+                .replace("FAMILY", &family);
+            LoopProgramV4::load(text.as_bytes())
+        };
+        assert!(!tir_only(plan().buckets().into_keys()));
+        assert!(!tir_only(load(4).unwrap().buckets().into_keys()));
+        // Two propagators at rank 5: beyond NinjaRS's N + 2.
+        let loaded = load(5);
+        if cfg!(feature = "tirust-capability") {
+            let program = loaded.unwrap();
+            assert_eq!(program.families[0].rank, 5);
+            assert!(tir_only(program.buckets().into_keys()));
+        } else {
+            let error = loaded.unwrap_err().to_string();
+            assert!(
+                error.contains("family rank") && error.contains("no TIRust"),
+                "{error}"
+            );
+        }
+        let error = load(1_000_000).unwrap_err().to_string();
+        assert!(
+            error.contains("family rank") && error.contains("NinjaRS reduces rank <= N+2"),
+            "{error}"
+        );
+    }
+
     /// Closures above their family's rank are refused when the plan loads
     /// (a closure never truncates a coefficient while it evaluates).
     #[test]

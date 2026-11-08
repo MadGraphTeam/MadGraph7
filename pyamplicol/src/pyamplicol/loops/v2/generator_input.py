@@ -70,7 +70,7 @@ from .families import (
     Position,
     PrefixGraph,
     _closed_loop_classes,
-    reducer_rank_refusal,
+    family_rank_refusal,
     retest_relabelling,
 )
 from .schedules import (
@@ -577,7 +577,7 @@ class NativeGeneration:
             out = {}
             for raw, rank, closures in raws:
                 key = _key(tables, raw)
-                refusal = reducer_rank_refusal(len(key), rank)
+                refusal = family_rank_refusal(len(key), rank)
                 if refusal is not None:
                     raise ValueError(
                         f"family {key} has structural rank {rank}: {refusal}"
