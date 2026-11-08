@@ -2357,7 +2357,7 @@ class V2VirtualRuntime:
                 plain,
             )
 
-        results, failures, served = with_fallback(run, reduction)
+        results, failures, served = with_fallback(run, reduction, len(points))
         if failures and on_failure == "raise":
             index = min(failures)
             raise EvaluationError(

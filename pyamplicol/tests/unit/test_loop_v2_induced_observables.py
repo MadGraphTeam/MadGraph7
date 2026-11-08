@@ -1103,6 +1103,41 @@ def test_a_double_double_auto_point_falls_back_at_double_double(artifacts, monke
 
 
 @pytest.mark.loop_physics
+def test_auto_serves_every_point_when_tirust_refuses_the_plans(artifacts, monkeypatch):
+    """F3 (c), capability refusals (not governed by the acceptance): TIRust's
+    refusal of the call's plans (its capability query of a family, the typed
+    ``ReductionUnavailable`` before any point; forced here) leaves every point
+    to the per-point fallback under "auto", each recording NinjaRS and the
+    refusal; explicit TIRust is refused typed."""
+
+    from pyamplicol.api.errors import ReductionUnavailable
+    from pyamplicol.loops.v2 import plan_export, reduction
+
+    name = "li_gg_hgg"
+    runtime = _runtime(artifacts, name)
+    points, scales = _points(name)
+    options = {"mu_r2": scales, "poles": "none", "on_failure": "return"}
+    other = runtime.evaluate(points, reduction="ninjars", **options)
+    original = plan_export.prepare
+
+    def refusing(executor):
+        if reduction.current() == "tirust":
+            raise ReductionUnavailable(
+                "reduction 'tirust' cannot serve this artifact: (forced)"
+            )
+        original(executor)
+
+    monkeypatch.setattr(plan_export, "prepare", refusing)
+    with pytest.raises(ReductionUnavailable, match="forced"):
+        runtime.evaluate(points, reduction="tirust", **options)
+    auto = runtime.evaluate(points, **options)
+    assert repr(auto.values) == repr(other.values)
+    for lane in auto.diagnostics:
+        assert lane.reduction.effective == "ninjars"
+        assert "(forced)" in lane.reduction.reason
+
+
+@pytest.mark.loop_physics
 def test_the_loop_induced_default_stack_records_level_and_backend(artifacts):
     """F3 (b): ``VirtualRescuePolicy()`` on a loop-induced "auto" call is the
     loop-induced default stack, TIRust binary64 -> NinjaRS binary64 ->

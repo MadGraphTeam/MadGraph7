@@ -630,7 +630,7 @@ class V2ObservablesRuntime:
             if reduction is None:
                 with running(None):
                     return run(None)
-            results, failures, served = with_fallback(run, reduction)
+            results, failures, served = with_fallback(run, reduction, len(points))
             self._served = served
             return results, failures
         if effective not in (None, "ninjars"):

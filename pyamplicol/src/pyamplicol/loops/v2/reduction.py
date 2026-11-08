@@ -350,7 +350,8 @@ _R = TypeVar("_R")
 def with_fallback(
     run: Callable[[list[int] | None], tuple[list[_R], dict[int, list[str]]]],
     choice: VirtualReduction,
-) -> tuple[list[_R], dict[int, list[str]], dict[int, VirtualReduction]]:
+    count: int,
+) -> tuple[list[_R | None], dict[int, list[str]], dict[int, VirtualReduction]]:
     """``run`` of a batch on the call's effective backend at its target
     (``running``; ``run(None)``: every point; ``run(indices)``: the points
     at those batch indices, in that order; each returns its per-point
@@ -361,15 +362,26 @@ def with_fallback(
     failures (a point the fallback fails too keeps both backends' reasons)
     and, per point the fallback evaluated again, its record (the backend
     that served it and the reason; a failed point's: the fallback's
-    failure). A choice without a fallback runs ``run`` once (nothing else:
-    Born-interfered, explicit and TIR-only calls)."""
+    failure). A primary backend that refuses the call's plans (TIRust's
+    capability query, ``ReductionUnavailable``) leaves all ``count`` points
+    to the fallback. A choice without a fallback runs ``run`` once (nothing
+    else: Born-interfered, explicit and TIR-only calls)."""
 
     from pyamplicol.api.virtual_results import VirtualReduction
 
-    with running(choice.effective, choice.target):
-        results, failures = run(None)
-    records: dict[int, VirtualReduction] = {}
     fallback = choice.fallback
+    try:
+        with running(choice.effective, choice.target):
+            results, failures = run(None)
+    except ReductionUnavailable as error:
+        # The primary backend refuses the call's plans (TIRust's capability
+        # query of a family): with a fallback, every point is the
+        # fallback's, with that reason.
+        if fallback is None:
+            raise
+        results = [None] * count
+        failures = {index: [str(error)] for index in range(count)}
+    records: dict[int, VirtualReduction] = {}
     if fallback is None or not failures:
         return results, failures, records
     indices = sorted(failures)
