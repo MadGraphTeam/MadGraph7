@@ -1233,9 +1233,15 @@ def test_a_complete_selection_carries_the_ordinary_records(
         ordinary = _call(sdk, handle, points, scales)
         assert selected["status"] == ordinary["status"] == 0
         assert selected["statuses"] == ordinary["statuses"]
-        mine = dict(selected["diagnostics"])
+        mine = json.loads(json.dumps(selected["diagnostics"]))
+        theirs = json.loads(json.dumps(ordinary["diagnostics"]))
         assert mine.pop("selection") == {"helicity_ids": [every] * len(points)}
-        assert mine == ordinary["diagnostics"]
+        # The reduction record's reason names the call's route (selections
+        # are the resolved route's, the Python API's ``RESOLVED``).
+        reason = mine["reduction"].pop("reason")
+        summed = theirs["reduction"].pop("reason")
+        assert "resolved" in reason or reason == summed, (reason, summed)
+        assert mine == theirs
         for a, b in zip(selected["virtual"], ordinary["virtual"], strict=True):
             assert (a != a and b != b) or abs(a - b) <= 1e-12 * max(abs(b), 1e-300)
     finally:
