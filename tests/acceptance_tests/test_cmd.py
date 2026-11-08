@@ -2735,6 +2735,33 @@ class TestCmdShell2(unittest.TestCase,
         expected = 8 * alphas ** 2 * r2 / (3 * M ** 2)
         self.assertLess(abs(width - expected) / expected, 1e-10)
 
+        # a decaying quarkonium has its own decay LDME (Block ldme_decay; for
+        # a colour octet it is not related to the production one), by default
+        # <O^H>/(2J_H+1): Gamma(1S0[8] -> g g) =
+        # 5 pi alpha_s^2 <O_8>_H / (6 m_c^2), and it scales with that entry only
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        mg_cmd.exec_cmd('generate Jpsi(1|1S08) > g g')
+        mg_cmd.exec_cmd('output standalone_fortran %s -f' % self.out_dir)
+        proc_dir = glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*'))[0]
+        card = pjoin(self.out_dir, 'Cards', 'onia_card.dat')
+        text = open(card).read()
+        self.assertNotIn('Block ldme\n', text)
+        decay_ldme = float(re.search(r'(?ms)^Block ldme_decay\n.*?^\s*9941003\s+([0-9.Ee+-]+)',
+                                     text).group(1))
+        # the default is the vacuum-saturation value <O^H>/(2J_H+1) of the
+        # production LDME of sm_onia, 0.0146 GeV^3 (J_H = 1 for the J/psi)
+        self.assertAlmostEqual(decay_ldme, 0.0146 / 3, places=12)
+        me = self._onia_check_me(proc_dir, [P, k1, k2])
+        width = me * (M / 2) / (8 * math.pi * M ** 2)
+        expected = 5 * math.pi * alphas ** 2 * decay_ldme / (6 * mc ** 2)
+        self.assertLess(abs(width - expected) / expected, 1e-10)
+        # (the card reader keeps 20 characters per value)
+        open(card, 'w').write(re.sub(r'(?m)^(\s*9941003\s+)[0-9.Ee+-]+', r'\g<1>%.12e' % (2 * decay_ldme),
+                                     text))
+        me2 = self._onia_check_me(proc_dir, [P, k1, k2])
+        self.assertLess(abs(me2 / me - 2), 1e-12)
+
         # a decaying onium at its physical mass (Block onia_decay): the decay
         # products are rescaled onto m1+m2 in its rest frame. A soft gluon
         # must stay on shell: the |M|^2 of Jpsi > g g g is smooth as one gluon

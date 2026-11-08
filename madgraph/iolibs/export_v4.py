@@ -4733,23 +4733,25 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
         if contains_onia:
 
             (onia_info, onia_ids) = self.get_onia_info(matrix_elements)
-            decaying = any(leg.get('onium') and leg.get('state') == False
-                           for me in self.iter_onia_matrix_elements(matrix_elements)
-                           for proc in me.get('processes')
-                           for leg in proc.get('legs'))
+            # A produced onium takes its production LDME (Block ldme), a
+            # decaying quarkonium its decay LDME (Block ldme_decay), colour
+            # singlet or octet. A leptonium has one LDME, from its Coulomb
+            # wave function, for production and decay: it stays in Block ldme.
+            prod_ids = [row[0] for row in onia_info if row[4] or (row[5] and row[6])]
+            decay_ids = [row[0] for row in onia_info if row[5] and not row[6]]
 
-            self.create_onia_card(onia_info, decaying=decaying)
+            self.create_onia_card(onia_info, decaying=bool(decay_ids))
 
             filename = pjoin(self.dir_path, 'Source', 'MODEL', 'ldme.inc')
             self.write_ldme_file(writers.FortranWriter(filename),
-                         onia_ids)
+                         onia_ids, decay_ids)
 
             filename = pjoin(self.dir_path, 'Source', 'MODEL', 'onia_read.inc')
             self.write_onia_read(writers.FortranWriter(filename),
-                         onia_ids)
+                         onia_ids, decay_ids, prod_ids)
 
             filename = pjoin(self.dir_path, 'Cards', 'ident_card.dat')
-            self.extend_ident_card(filename, onia_ids)
+            self.extend_ident_card(filename, onia_ids, decay_ids, prod_ids)
 
 
         else:
@@ -4771,8 +4773,18 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
 
 
     def create_onia_card(self, onia_info, decaying=False):
-        """Write Cards/onia_card.dat: the LDMEs and masses of the bound
-        states, and for a decaying onium the choice of its mass."""
+        """Write Cards/onia_card.dat: the production LDMEs (Block ldme), the
+        decay LDMEs of the decaying quarkonia (Block ldme_decay), the masses,
+        and for a decaying onium the choice of its mass. onia_info rows are
+        [pdg, name, mass, production LDME, produced, decaying, leptonium]
+        (get_onia_info).
+
+        The decay LDME <O_n>_H of a quarkonium Fock state is a parameter of
+        its own: for colour octets it is not related to the production one.
+        Its default is the vacuum-saturation value <O^H_n>/(2J_H+1), exact at
+        LO in v for colour singlets (2J_H+1 is the last digit of the PDG
+        code). A leptonium has one LDME, from its Coulomb wave function, for
+        production and decay: it is listed in Block ldme in both cases."""
 
         shutil.copy(pjoin(self.mgme_dir, 'Template/Common/Cards/onia_card.dat'),
                                pjoin(self.dir_path,'Cards'))
@@ -4784,12 +4796,28 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
                     with open(pjoin(self.dir_path, 'Cards',card + '_default.dat'), 'w') as f:
                         with open(pjoin(self.dir_path, 'Cards',card + '.dat'),'r') as source:
                             shutil.copyfileobj(source, f)
-                        f.write('#*********************************************************************\n')
-                        f.write('# Long distance matrix elements (LDME)                               *\n')
-                        f.write('#*********************************************************************\n')
-                        f.write('Block ldme\n')
-                        for onium_info in onia_info:
-                            f.write('   {id:7}  {value:.16f}   # LDME for {name}\n'.format(id=onium_info[0],name=onium_info[1],value=onium_info[3]))
+                        in_ldme = lambda row: row[4] or (row[5] and row[6])
+                        if any(in_ldme(onium_info) for onium_info in onia_info):
+                            f.write('#*********************************************************************\n')
+                            f.write('# Long distance matrix elements (LDME)                               *\n')
+                            f.write('#*********************************************************************\n')
+                            f.write('Block ldme\n')
+                            for onium_info in onia_info:
+                                if in_ldme(onium_info):
+                                    f.write('   {id:7}  {value:.16f}   # LDME for {name}\n'.format(id=onium_info[0],name=onium_info[1],value=onium_info[3]))
+                        if any(row[5] and not row[6] for row in onia_info):
+                            f.write('#*********************************************************************\n')
+                            f.write('# Decay LDMEs <O_n>_H of the decaying quarkonia                     *\n')
+                            f.write('#  (independent of the production LDMEs; the default is the vacuum- *\n')
+                            f.write('#   saturation value <O^H_n>/(2J_H+1), exact at LO in v for colour  *\n')
+                            f.write('#   singlets)                                                       *\n')
+                            f.write('#*********************************************************************\n')
+                            f.write('Block ldme_decay\n')
+                            for onium_info in onia_info:
+                                if onium_info[5] and not onium_info[6]:
+                                    f.write('   {id:7}  {value:.16f}   # decay LDME for {name}\n'.format(
+                                        id=onium_info[0], name=onium_info[1],
+                                        value=onium_info[3] / (onium_info[0] % 10)))
                         f.write('#*********************************************************************\n')
                         f.write('# Masses                                                             *\n')
                         f.write('#*********************************************************************\n')
@@ -4829,29 +4857,40 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
                 yield me
 
     def get_onia_info(self, matrix_elements):
+        """The bound states of an output, as rows [pdg, name, mass,
+        production LDME, produced, decaying, leptonium] sorted by pdg
+        (produced and decaying tell whether the Fock state appears in the
+        final or initial state of some process), and their pdg codes."""
 
-        info = []
+        rows = {}
         for me in self.iter_onia_matrix_elements(matrix_elements):
                 for proc in me.get('processes'):
                     for leg in proc.get('legs'):
                         if leg.get('onium'):
-                            info += [[abs(leg.get('onium').get('id')),leg.get('onium').get('name').replace('+','').replace('-',''),leg.get('onium').get('mass'),leg.get('onium').get('ldme')]]
+                            onium = leg.get('onium')
+                            pdg = abs(onium.get('id'))
+                            row = rows.setdefault(pdg, [pdg,
+                                onium.get('name').replace('+','').replace('-',''),
+                                onium.get('mass'), onium.get('ldme'), False, False,
+                                abs(leg.get('id')) in (11, 13, 15)])
+                            if leg.get('state'):
+                                row[4] = True
+                            else:
+                                row[5] = True
 
-        info = sorted(info, key=lambda x: (x[0]))
-        for i in reversed(range(1,len(info))):
-            if info[i]==info[i-1]:
-                del info[i]
-
+        info = [rows[pdg] for pdg in sorted(rows)]
         ids = [x[0] for x in info]
 
         return info, ids
 
 
 
-    def write_ldme_file(self, writer, onia_ids):
-        """ write ldme.inc """
+    def write_ldme_file(self, writer, onia_ids, decay_ids=()):
+        """ write ldme.inc: the LDMEs LDME_<pdg>, the decay LDMEs LDMED_<pdg>
+        of the decaying quarkonia and the masses"""
 
         ldmes = ["LDME_%i"%(onium_id) for onium_id in onia_ids]
+        ldmeds = ["LDMED_%i"%(onium_id) for onium_id in decay_ids]
         masses = ["mdl_M%i"%(onium_id) for onium_id in onia_ids]
 
         lines = []
@@ -4864,6 +4903,12 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
                             (",".join(str(x) for x in ldmes)))
             lines.append("COMMON/ONIUM_MASS/ %s"% \
                             (",".join(str(x) for x in masses)))
+        if ldmeds:
+            lines.append("DOUBLE PRECISION %s"% \
+                            (",".join(str(x) for x in ldmeds)))
+            lines.append("COMMON/LDME_DECAY/ %s"% \
+                            (",".join(str(x) for x in ldmeds)))
+        if onia_ids:
             # mass of a decaying onium: 0 = m1+m2 (default), 1 = onium_mass
             lines.append("DOUBLE PRECISION ONIA_DECAY_MASS")
             lines.append("COMMON/ONIA_DECAY/ONIA_DECAY_MASS")
@@ -4873,12 +4918,17 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
 
 
 
-    def write_onia_read(self, writer, onia_ids):
-        """write onia_read.inc"""
+    def write_onia_read(self, writer, onia_ids, decay_ids=(), prod_ids=None):
+        """write onia_read.inc: the LDMEs of Block ldme (by default of all the
+        onia), the decay LDMEs of the decaying quarkonia and the masses"""
 
+        if prod_ids is None:
+            prod_ids = onia_ids
         lines = []
-        for onium_id in onia_ids:
+        for onium_id in prod_ids:
             lines.append("CALL LHA_GET_REAL(NONIA,ONIA,VALUE,'LDME_{id}',LDME_{id},1D0)".format(id=onium_id))
+        for onium_id in decay_ids:
+            lines.append("CALL LHA_GET_REAL(NONIA,ONIA,VALUE,'LDMED_{id}',LDMED_{id},1D0)".format(id=onium_id))
 
         for onium_id in onia_ids:
             lines.append("CALL LHA_GET_REAL(NONIA,ONIA,VALUE,'mdl_M{id}',mdl_M{id},-1D0)".format(id=onium_id))
@@ -4892,13 +4942,18 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
 
 
 
-    def extend_ident_card(self, card, onia_ids):
-        """append ldmes to ident_card.dat"""
+    def extend_ident_card(self, card, onia_ids, decay_ids=(), prod_ids=None):
+        """append the LDMEs (production and decay) and masses to ident_card.dat"""
 
+        if prod_ids is None:
+            prod_ids = onia_ids
         if os.path.isfile(card):
             with open(card, 'a') as f:
-                for onium_id in onia_ids:
+                for onium_id in prod_ids:
                     f.write("\nldme {id} LDME_{id}\n".format(id=onium_id))
+
+                for onium_id in decay_ids:
+                    f.write("\nldme_decay {id} LDMED_{id}\n".format(id=onium_id))
 
                 for onium_id in onia_ids:
                     f.write("\nonium_mass {id} mdl_M{id}\n".format(id=onium_id))
@@ -4934,7 +4989,16 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
                 if leg.get('onium'):
                     if leg.get('onium').get('index') not in onia:
                         onia += [leg.get('onium').get('index')]
-                        ldmes += ['LDME_{id}'.format(id=abs(leg.get('onium').get('id')))]
+                        pdg = abs(leg.get('onium').get('id'))
+                        if leg.get('state'):
+                            ldmes += ['LDME_{id}'.format(id=pdg)]
+                        elif abs(leg.get('id')) in (11, 13, 15):
+                            # a decaying leptonium: its Coulomb LDME, with
+                            # <O_H> = <O^H>/(2J_H+1) (exact at LO)
+                            ldmes += ['(LDME_{id}/{jh}D0)'.format(id=pdg, jh=pdg % 10)]
+                        else:
+                            # a decaying quarkonium: its decay LDME
+                            ldmes += ['LDMED_{id}'.format(id=pdg)]
 
         ldme_product = '*'.join(ldmes)
 

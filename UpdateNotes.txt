@@ -9,8 +9,13 @@ ANNOUNCEMENT:
        waves, colour singlet and octet, with 'output madevent' and 'output
        standalone_fortran'):
        - a bound state can now be the decaying particle, e.g. "generate etac > g g",
-         "generate chic2(1|3P21) > a a", "generate Ps(1|3S1) > a a a"; the decay LDME is
-         the production LDME of the onia card by vacuum saturation, <O^H>/(2J_H+1).
+         "generate chic2(1|3P21) > a a", "generate Ps(1|3S1) > a a a". A decaying
+         quarkonium Fock state has its own decay LDME <O_n>_H in the new Block
+         ldme_decay of the onia card ("set onia_card ldme_decay <pdg> <value>"),
+         independent of the production LDMEs of Block ldme (colour-octet production
+         and decay LDMEs differ); its default is the vacuum-saturation value
+         <O^H>/(2J_H+1), exact at LO for colour singlets. A leptonium keeps its one
+         Coulomb LDME (Block ldme) for production and decay.
          Its mass is m1+m2 by default; "set onia_card onia_decay 1 1" uses the
          onium_mass of the card (the decay products are rescaled onto the
          constituent kinematics for the matrix element).

@@ -508,10 +508,11 @@ C       Computing normalisation factor from color projector
 C       Computing normalisation factor for LDME convention
         LDME = LDME*PMASS_RESH(QQ)/(2D0*PMASS_ONIA(Q1)*PMASS_ONIA(Q2))
         IF (ONIA_IN(I).EQ.1) THEN
-C         A decaying onium: the decay LDME by vacuum saturation,
-C         <O_H> = <O^H>/(2J_H+1); the average over the 2J+1 states of
-C         the Fock state is in IDEN
-          NPOL = DBLE(JH2_ONIA(I))
+C         A decaying onium: the product of LDMEs below holds its decay
+C         LDME <O_H> (Block ldme_decay for a quarkonium, the Coulomb
+C         <O^H>/(2J_H+1) for a leptonium); the average over the 2J+1
+C         states of the Fock state is in IDEN
+          NPOL = 1D0
         ELSE
           NPOL = 2D0*J_ONIA(I)+1D0
         ENDIF

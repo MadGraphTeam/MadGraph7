@@ -2683,7 +2683,8 @@ class TestMECmdShell(unittest.TestCase):
         width = self.cmd_line.results.current['cross']
         mc, alpha = 1.55, 1 / 132.507
         M = 2 * mc
-        r2 = self._onia_card_value(card, 'ldme', 441) * 4 * math.pi / 6
+        # the decay LDME of the eta_c (J_H = 0): <O_1>_H = N_[1] |R(0)|^2 / (4 pi)
+        r2 = self._onia_card_value(card, 'ldme_decay', 441) * 4 * math.pi / 6
         expected = 12 * (2. / 3) ** 4 * alpha ** 2 * r2 / M ** 2
         self.assertLess(abs(width - expected) / expected, 1e-4,
                         '%s against %s' % (width, expected))
