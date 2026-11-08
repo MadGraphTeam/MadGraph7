@@ -542,6 +542,15 @@ int main(int argc, char **argv) {
   }
   try {
     rusticol::VirtualRuntime runtime(argv[1], std::string(argv[2]));
+    // The target accuracy setter (m-lit F3): a finite positive target is
+    // taken, another one refused as an invalid argument.
+    runtime.set_reduction_target(1e-7);
+    try {
+      runtime.set_reduction_target(-1.0);
+      return 7;
+    } catch (const rusticol::VirtualError &error) {
+      if (error.status() != 1) return 8;
+    }
     runtime.set_stability_checks(1, true, true);
     auto first = runtime.evaluate(momenta, points, scales);
     std::printf("%s\n", first.diagnostics_json().c_str());
@@ -588,6 +597,10 @@ program stability_client
   close(unit)
   call runtime%load(trim(artifact), process=trim(process), ierr=ierr)
   if (ierr /= VIRTUAL_OK) stop 1
+  call runtime%set_reduction_target(1.0e-7_c_double, ierr=ierr)
+  if (ierr /= VIRTUAL_OK) stop 6
+  call runtime%set_reduction_target(-1.0_c_double, ierr=ierr, error_message=message)
+  if (ierr == VIRTUAL_OK) stop 7
   call runtime%set_stability_checks(1_c_int64_t, .true., .true., .false., ierr=ierr, &
       error_message=message)
   if (ierr /= VIRTUAL_OK) stop 2
@@ -635,6 +648,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         scales.push(values[4 * legs]);
     }
     let mut runtime = Runtime::open(&args[1], Some(args[2].as_str()), None, None)?;
+    runtime.set_reduction_target(1e-7)?;
+    if runtime.set_reduction_target(-1.0).is_ok() {
+        return Err("a negative target accuracy was accepted".into());
+    }
     runtime.set_stability_checks(1, None, true, true, false)?;
     let first = runtime.evaluate(&momenta, points, None, &scales, false, None)?;
     println!("{}", first.diagnostics_json);
@@ -652,7 +669,8 @@ def test_the_cxx_fortran_and_rust_wrappers_set_the_checks(
     """The C++, Fortran and packaged Rust wrappers' ``set_stability_checks``
     (a rotation count with the rescaled check, then a rotation specification)
     give the Python API's estimates (``"stability"`` of the diagnostics) on
-    g g > t t~."""
+    g g > t t~; each also sets the target accuracy (``set_reduction_target``,
+    m-lit F3) and has a negative one refused."""
 
     import subprocess
 
