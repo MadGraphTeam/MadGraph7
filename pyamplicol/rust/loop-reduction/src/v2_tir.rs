@@ -902,6 +902,10 @@ struct Slots {
     re: Vec<f64>,
     im: Vec<f64>,
     monomials: usize,
+    /// Every moment is finite (the row's moments are taken at its highest
+    /// rank: a lane of lower rank has zero coefficients where it does not
+    /// read a moment).
+    finite: bool,
 }
 
 impl Slots {
@@ -913,14 +917,39 @@ impl Slots {
             re.extend(moments.iter().map(|m| m[slot].re));
             im.extend(moments.iter().map(|m| m[slot].im));
         }
-        Self { re, im, monomials }
+        let finite = re.iter().chain(&im).all(|x| x.is_finite());
+        Self {
+            re,
+            im,
+            monomials,
+            finite,
+        }
     }
 
     /// `Σ_α c_α M_α` per slot of one lane's coefficients `c` (one per
-    /// monomial of the row).
+    /// monomial of the row). A row with a non-finite moment sums only the
+    /// terms of nonzero coefficients, in monomial order (the sequential
+    /// contraction: a moment the lane does not read never enters its value
+    /// as `0 · ∞`).
     fn contract(&self, c: &[Complex<f64>]) -> Vec<Complex<f64>> {
         debug_assert_eq!(c.len(), self.monomials);
         let m = self.monomials;
+        if !self.finite {
+            return self
+                .re
+                .chunks_exact(m.max(1))
+                .zip(self.im.chunks_exact(m.max(1)))
+                .map(|(re, im)| {
+                    let mut sum = Complex::new(0., 0.);
+                    for ((c, &x), &y) in c.iter().zip(re).zip(im) {
+                        if c.re != 0. || c.im != 0. {
+                            sum += *c * Complex::new(x, y);
+                        }
+                    }
+                    sum
+                })
+                .collect();
+        }
         self.re
             .chunks_exact(m.max(1))
             .zip(self.im.chunks_exact(m.max(1)))
@@ -1010,5 +1039,50 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// A non-finite moment enters only the lanes that read it: a lane with a
+    /// zero coefficient there keeps the sum of its other terms (the
+    /// sequential contraction's value), one that reads it is non-finite.
+    #[test]
+    fn a_non_finite_moment_reaches_only_the_lanes_reading_it() {
+        let one = Complex::new(1.0, 0.0);
+        let zero = Complex::new(0.0, 0.0);
+        let moments: Vec<[Complex<f64>; 4]> = (0..6)
+            .map(|k| {
+                let z = if k == 5 {
+                    Complex::new(f64::INFINITY, f64::NAN)
+                } else {
+                    Complex::new(0.5 + k as f64, -0.25 * k as f64)
+                };
+                [z, z * Complex::new(2.0, 1.0), one, zero]
+            })
+            .collect();
+        let slots = Slots::new(&moments, 4);
+        assert!(!slots.finite);
+        // A lower-rank lane: no coefficient on the last monomial.
+        let low: Vec<Complex<f64>> = (0..6)
+            .map(|k| {
+                if k == 5 {
+                    zero
+                } else {
+                    Complex::new(0.3 * k as f64 - 0.7, 0.1)
+                }
+            })
+            .collect();
+        let found = slots.contract(&low);
+        for (slot, z) in found.iter().enumerate() {
+            let mut sum = zero;
+            for (m, c) in moments.iter().zip(&low).take(5) {
+                sum += *c * m[slot];
+            }
+            assert_eq!((z.re, z.im), (sum.re, sum.im), "slot {slot}");
+        }
+        let mut high = low.clone();
+        high[5] = one;
+        let found = slots.contract(&high);
+        assert!(!found[0].re.is_finite() || !found[0].im.is_finite());
+        // Finite rows take the four-sum contraction.
+        assert!(Slots::new(&moments[..5], 4).finite);
     }
 }
