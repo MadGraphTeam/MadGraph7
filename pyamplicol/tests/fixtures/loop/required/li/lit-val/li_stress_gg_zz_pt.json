@@ -2,14 +2,14 @@
  "name": "li_stress_gg_zz_pt",
  "li_row": "LI-21",
  "stress": {
+  "base": "li_gg_zz",
   "kind": "pt",
   "values": [
    "1",
    "0.1",
    "0.01"
   ],
-  "energy": "500",
-  "base": "li_gg_zz"
+  "energy": "500"
  },
  "loop_induced": true,
  "pdgs": [
@@ -165,5 +165,5 @@
    "providers": {}
   }
  ],
- "source": "PLAN \u00a74.1 stress points (M \u00a74.7): exact decimal CM points of tools/loop_benchmark/li_manifest.py write_stress; no provider reference (the binary64 estimate against double-double and AP, NinjaRS against TIRust)"
+ "source": "PLAN \u00a74.1 stress points (M \u00a74.7; \u00a74.1: gg>VV at pT,V = 1, 0.1, 0.01 GeV): exact decimal points of tools/loop_benchmark/li_manifest.py write_stress; no provider reference in the fixture (the binary64 estimate against double-double and AP, NinjaRS against TIRust, MadLoop QP: stress-madloop)"
 }

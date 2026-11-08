@@ -2,14 +2,14 @@
  "name": "li_stress_gg_ag_forward",
  "li_row": "LI-27",
  "stress": {
+  "base": "li_gg_ag",
   "kind": "forward",
   "values": [
    "1e-3",
    "1e-4",
    "1e-5"
   ],
-  "energy": "500",
-  "base": "li_gg_ag"
+  "energy": "500"
  },
  "loop_induced": true,
  "pdgs": [
@@ -165,5 +165,5 @@
    "providers": {}
   }
  ],
- "source": "PLAN \u00a74.1 stress points (M \u00a74.7): exact decimal CM points of tools/loop_benchmark/li_manifest.py write_stress; no provider reference (the binary64 estimate against double-double and AP, NinjaRS against TIRust)"
+ "source": "PLAN \u00a74.1 stress points (M \u00a74.7; \u00a74.1: gg>ag forward theta = 1e-3 .. 1e-5): exact decimal points of tools/loop_benchmark/li_manifest.py write_stress; no provider reference in the fixture (the binary64 estimate against double-double and AP, NinjaRS against TIRust, MadLoop QP: stress-madloop)"
 }

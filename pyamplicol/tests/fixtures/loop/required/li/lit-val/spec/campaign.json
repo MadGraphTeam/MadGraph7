@@ -1,0 +1,265 @@
+{
+ "what": "lit-val's campaign specification (tools/loop_benchmark/li_manifest.py reads it; data, not code): the identity rows' row ids, the loading options of a source UFO by its directory name, the PLAN §4.1 stress points (M §4.7) and the fixtures this package derives from lit-ref's (LI-Z1's exact colour zeros, which MG5 generates no diagram for). `li_manifest.py stress` writes every derived fixture from it; tests/unit/test_loop_v2_li_manifest.py checks they are current.",
+ "identities": {
+  "checks": {
+   "LI-W1": "L4",
+   "LI-L1": "L5",
+   "LI-P1": "L3"
+  },
+  "crossing_row": "LI-26",
+  "flavour_row": "LI-A5",
+  "limit_row": "LI-A7",
+  "heft_ratio_row": "LI-A1",
+  "ward_cited": {
+   "both_gauges": "tests/unit/test_loop_v2_induced_ew_gauge.py::test_qcd_induced_massive_vectors_agree_in_both_gauges (lit-ew; [li_gg_wpwm] default tier, [li_gg_hz] nightly): the QCD-only g g > w+ w- / g g > h z |A|^2 in unitary and 't Hooft-Feynman gauge agree in binary64 within 1e-9 at every fixture point (§4.0 L4's both-gauges equality)",
+   "goldstone": "the generation-time Goldstone probe on massive external vectors where the artifact records it (lit-ew: tests/unit/test_loop_v2_induced_ew_gauge.py)"
+  }
+ },
+ "ufo_options": {
+  "loop_qcd_qed_sm_Gmu_py3": {
+   "loop": {
+    "external_photons": "none"
+   },
+   "loop.preparation": {
+    "compatibility": "gmu_particle_anti"
+   }
+  }
+ },
+ "stress": [
+  {
+   "base": "li_gg_zz",
+   "kind": "pt",
+   "values": [
+    "1",
+    "0.1",
+    "0.01"
+   ],
+   "energy": "500",
+   "source": "§4.1: gg>VV at pT,V = 1, 0.1, 0.01 GeV"
+  },
+  {
+   "base": "li_gg_hh",
+   "kind": "threshold",
+   "values": [
+    "1e-2",
+    "1e-3",
+    "1e-4"
+   ],
+   "energy": null,
+   "pt": "0.01",
+   "source": "§4.1: gg>hh at sqrt(s) -> 2 m_h"
+  },
+  {
+   "base": "li_gg_hh",
+   "kind": "forward",
+   "values": [
+    "1e-3",
+    "1e-4",
+    "1e-5"
+   ],
+   "energy": "500",
+   "source": "§4.1: gg>hh at theta -> 0"
+  },
+  {
+   "base": "li_gg_aa",
+   "kind": "forward",
+   "values": [
+    "1e-3",
+    "1e-4",
+    "1e-5"
+   ],
+   "energy": "500",
+   "source": "§4.1: gg>aa forward theta = 1e-3 .. 1e-5"
+  },
+  {
+   "base": "li_gg_ag",
+   "kind": "forward",
+   "values": [
+    "1e-3",
+    "1e-4",
+    "1e-5"
+   ],
+   "energy": "500",
+   "source": "§4.1: gg>ag forward theta = 1e-3 .. 1e-5"
+  },
+  {
+   "base": "li_gg_hh",
+   "kind": "top-threshold",
+   "values": [
+    "-1e-3",
+    "1e-3"
+   ],
+   "energy": null,
+   "rho": "4",
+   "source": "§4.1: sqrt(s) ~ 2 m_t just above and below"
+  },
+  {
+   "base": "li_gg_zz",
+   "kind": "top-threshold",
+   "values": [
+    "-1e-3",
+    "1e-3"
+   ],
+   "energy": null,
+   "rho": "4",
+   "source": "§4.1: sqrt(s) ~ 2 m_t just above and below"
+  },
+  {
+   "base": "li_gg_wpwm",
+   "kind": "pt",
+   "values": [
+    "1",
+    "0.1",
+    "0.01"
+   ],
+   "energy": "500",
+   "source": "§4.1: gg>VV at pT,V = 1, 0.1, 0.01 GeV (V = W)"
+  },
+  {
+   "base": "li_gg_hgg",
+   "kind": "planar",
+   "values": [
+    "1e-2",
+    "1e-3",
+    "1e-4"
+   ],
+   "energy": "500",
+   "fractions": [
+    "0.3",
+    "0.3",
+    "0.4"
+   ],
+   "transverse": [
+    [
+     "0.5",
+     "0.4"
+    ],
+    [
+     "-0.3",
+     "-0.4"
+    ]
+   ],
+   "source": "§4.1: planar 2->3 (5-point Gram -> 0): the out-of-plane transverse components scaled by the value"
+  },
+  {
+   "base": "li_gg_zz_cms",
+   "kind": "top-threshold",
+   "name": "li_stress_gg_zwpwm_cms_top-threshold",
+   "values": [
+    "1e-2",
+    "1e-3",
+    "1e-4"
+   ],
+   "energy": null,
+   "fractions": [
+    "0.36",
+    "0.32",
+    "0.32"
+   ],
+   "transverse": [
+    [
+     "0.3",
+     "0.2"
+    ],
+    [
+     "-0.1",
+     "0.25"
+    ]
+   ],
+   "masses": [
+    null,
+    null,
+    "MZ",
+    "MW",
+    "MW"
+   ],
+   "process": {
+    "pdgs": [
+     21,
+     21,
+     23,
+     24,
+     -24
+    ],
+    "madloop_process": "g g > z w+ w- [sqrvirt=QCD]",
+    "loop_orders": {
+     "QCD": 2,
+     "QED": 3
+    },
+    "squared_orders": {
+     "QCD": 4,
+     "QED": 6
+    },
+    "fixed_parameters": {
+     "WW": "0"
+    }
+   },
+   "source": "§4.1: several on-shell loop propagators (gg>ZWW-type: pentagons with three top and one bottom propagator on shell just above 2 m_t, arXiv:1507.00020 (c.10)), complex-mass scheme with the scheme's Gamma_t, external W/Z widths zero (the cms-external-width remedy)"
+  }
+ ],
+ "derived": [
+  {
+   "name": "li_h_ga",
+   "base": "li_h_gg",
+   "li_row": "LI-Z1",
+   "pdgs": [
+    25,
+    21,
+    22
+   ],
+   "madloop_process": "h > g a [sqrvirt=QCD]",
+   "loop_orders": {
+    "QCD": 1,
+    "QED": 2
+   },
+   "squared_orders": {
+    "QCD": 2,
+    "QED": 4
+   },
+   "exact_colour_zero": true,
+   "source": "§4.1 LI-Z1: exact colour zero (every loop has one coloured attachment, Tr T^a = 0; MG5 generates no diagram, NoDiagramException); the base's points and scheme"
+  },
+  {
+   "name": "li_z_ga",
+   "base": "li_z_gg",
+   "li_row": "LI-Z1",
+   "pdgs": [
+    23,
+    21,
+    22
+   ],
+   "madloop_process": "z > g a [sqrvirt=QCD]",
+   "loop_orders": {
+    "QCD": 1,
+    "QED": 2
+   },
+   "squared_orders": {
+    "QCD": 2,
+    "QED": 4
+   },
+   "exact_colour_zero": true,
+   "source": "§4.1 LI-Z1: exact colour zero (every loop has one coloured attachment, Tr T^a = 0; MG5 generates no diagram, NoDiagramException); the base's points and scheme"
+  }
+ ],
+ "fig7": {
+  "source": "arXiv:1604.01363 (Hirschi, Peraro), Fig. 7 (fig:StabilityPlot_zz) with §4.2 'Stability study': MadLoop + Ninja in binary64, loop-induced g g > n Z, one helicity configuration g(-) g(-) > n Z(-) (all-minus) or n Z(0) (longitudinal), random points at sqrt(s) = 1 TeV without cuts for the loop-induced processes, 100K / 10K / 1K points for 2 / 3 / 4 final states; the plotted accuracy is MadLoop's own stability ESTIMATE (the loop-direction test combined with a Lorentz-rotation test), the fraction of points with an accuracy below Delta; b quarks massive in all SM processes (§4: 'The b-quarks are considered massive in all SM processes'), otherwise MG5 defaults (no parameter table for Fig. 7)",
+  "comparison_material": "USER 2026-11-06 ~14:55 (DECISIONS ~14:55 (3)): comparison material, compared on what it shares with §4.1 (gg>zz LI-21, gg>zzz LI-34, gg>zzzz LI-44); the paper's curves are an image, so only their features are compared",
+  "scheme_of": "li_gg_hhgg_p15",
+  "scheme_note": "MG5 loop_sm default restriction at the MG5 default card (arXiv:1507.00020 tableParams, the same group's MG5 defaults): massive b (m_b = y_b = 4.7) and tau, fixed tree widths at the card values, Gamma_t = 0, widthless loop propagators",
+  "energy": "1000",
+  "mu_r": "1000",
+  "seed": 20160105,
+  "chunk": 10,
+  "selections": {
+   "all-minus": -1,
+   "longitudinal": 0
+  },
+  "initial_helicity": -1,
+  "checks": "VirtualStabilityChecks(1, reduction_direction=True, rescaled=True): one generic rotation and the loop-direction re-test, as MadLoop's two tests, plus the rescaled re-test",
+  "runs": {
+   "li_gg_zz": 200,
+   "li_gg_zzz": 50,
+   "li_gg_zzzz": 50
+  }
+ }
+}

@@ -10,7 +10,9 @@ per run, the 6- and 7-leg rows take minutes to hours of generation.
 A run passes when no check fails: estimate misses, TIRust's failed points
 (partial, its typed reasons recorded) and the double-double / AP arms of L6
 that wait on lit-tir-mp are recorded, not failures (m-lit rulings (5), (8));
-a deviation below ~1e-5 relative is never a failure (precision lax).
+L6's verdict is the worst of its carriers, so once TIRust serves double-
+double / AP (lit-tir-mp) a disagreement there fails the run; a deviation
+below ~1e-5 relative is never a failure (precision lax).
 
 With ``PYAMPLICOL_LI_CAMPAIGN_RECORDS=<dir>`` the records are kept there
 (``li_manifest.py lit --records <dir>`` writes data/lit.json from them).
@@ -19,6 +21,7 @@ With ``PYAMPLICOL_LI_CAMPAIGN_RECORDS=<dir>`` the records are kept there
 from __future__ import annotations
 
 import json
+import math
 import os
 from pathlib import Path
 
@@ -46,6 +49,7 @@ def test_campaign_run_passes_its_rules(name, tmp_path_factory, loop_native):
     judged = lm.judge(record, entry)
     statuses = {c: judged[c]["status"] for c in lm.CHECKS if c in judged}
     assert "fail" not in statuses.values(), statuses
+    assert "effective_backend_switched" not in judged["L6"]["double"], judged["L6"]
     for check in entry["checks"]:
         if check in lm.CHECKS and check != "L9":
             assert check in statuses, (check, statuses)
@@ -56,16 +60,31 @@ def test_campaign_run_passes_its_rules(name, tmp_path_factory, loop_native):
 )
 def test_heavy_top_limit(target, tmp_path_factory, loop_native):
     """LI-A7: the heavy-top scan decouples to its limit oracle (the
-    low-energy theorem; the HEFT trees carry a recorded reference finding,
-    ``tests/fixtures/loop/required/li/lit-val/records/delegated.json``)."""
+    low-energy theorem). The HEFT trees carry a recorded reference finding
+    (``tests/fixtures/loop/required/li/lit-val/records/delegated.json``):
+    there the scan must decouple to the finding's expected limit (8/9)
+    within ten times its extrapolation error at every point, so a loop
+    regression, or the tree's fix, shows here. LI-A1's runs (the HEFT ratio,
+    reported) must only scan."""
 
     work = _work(tmp_path_factory)
     if not (work / target["fixture"] / "artifact" / "artifact.json").is_file():
         lm.evaluate(target["fixture"], work, ap=False, identity=False)
     result = lm.limits(target["fixture"], target["oracle"], work)
-    findings = json.loads(lm.DELEGATED_RECORDS.read_text()).get("findings", {})
-    if "L9" in findings.get(target["fixture"], {}):
-        pytest.xfail(findings[target["fixture"]]["L9"][:200])
+    entry = ENTRIES[target["fixture"]]
+    if lm.LIMIT_ROW not in entry["ids"]:
+        assert all(math.isfinite(p["ratios"][0]) for p in result["points"]), result
+        return
+    finding = (
+        json.loads(lm.DELEGATED_RECORDS.read_text())
+        .get("findings", {})
+        .get(target["fixture"], {})
+        .get("L9")
+    )
+    if isinstance(finding, dict) and "expected_limit" in finding:
+        lm._apply_finding(result, finding)
+        assert result["status"] == "reference defect", result
+        return
     assert result["status"] == "pass", result
 
 

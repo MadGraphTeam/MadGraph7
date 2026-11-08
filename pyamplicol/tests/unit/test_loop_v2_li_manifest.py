@@ -220,10 +220,13 @@ def test_judge_records_partial_waits_and_passes(entries):
     assert judged["L3"]["ninjars/double"]["status"] == "pass"
     assert judged["L3"]["tirust/double"]["status"] == "partial"
     assert judged["L3"]["tirust/double"]["served"] == 1
-    assert judged["L4"]["status"] == "pass"
+    # L4: the generation-time probes only (one point, the probed legs).
+    assert judged["L4"]["status"] == "partial"
+    assert judged["L4"]["probed_legs"] == {"ward": [1]}
     assert judged["L5"]["status"] == "pass"
     l6 = judged["L6"]
-    assert l6["status"] == "partial"
+    assert l6["status"] == "partial" and l6["double"]["status"] == "partial"
+    assert l6["waits_on"] == lm.TIR_MP
     assert l6["double"]["tirust_served"] == 1 and l6["double"]["of"] == 3
     assert l6["double"]["beyond_10E"] == 0 and l6["double"]["compared_entries"] == 3
     assert any("conditioning" in k for k in l6["double"]["tirust_failed_reasons"])
@@ -295,7 +298,10 @@ def test_lit_json_is_keyed_by_the_registry_and_read_by_the_report(entries, tmp_p
     assert row["status"] == "partial"
     assert set(row["references"]) == {"madloop", "openloops", "recola"}
     assert row["points"] == 3 and row["source"] == "test"
-    assert "TIRust serves 1/3" in row["note"]
+    assert row["note"].startswith(f"WAITS ON {lm.TIR_MP}") and row["waits_on"] == [
+        lm.TIR_MP
+    ]
+    assert "TIRust fails 2 of 3 binary64 points closed" in row["note"]
     assert out["rows"]["gg_zz"]["status"] == "not run"
     assert "LI-24" in out["ids"] and "LI-A7" in out["ids"]
     path = (
@@ -313,29 +319,73 @@ def test_lit_json_is_keyed_by_the_registry_and_read_by_the_report(entries, tmp_p
 
 
 def test_stress_fixtures_are_exact_and_current(entries):
-    """PLAN §4.1's stress points: the committed stress fixtures are what
-    ``write_stress`` builds (deterministic), every point exact (terminating
-    decimals, on the base's mass shells, momentum conserving), validation-
-    only runs with the AP carrier."""
+    """PLAN §4.1's stress points and LI-Z1's exact colour zeros: the
+    committed derived fixtures are what ``derived_fixtures`` builds from the
+    specification (deterministic), every stress point exact (terminating
+    decimals, on the mass shells, momentum conserving; the n-body kinds at
+    their target sqrt(s) to ~1e-12, the planar kind's out-of-plane
+    components scaled by the value), validation-only runs with the AP
+    carrier; §4.1's kinds are all there (gg>VV pT on Z Z and W+ W-, the
+    gg>hh threshold and forward, 2 m_t, gg>aa / ag forward, planar 2->3,
+    several on-shell loop propagators under the complex-mass scheme)."""
 
     by_fixture = {e["fixture"]: e for e in entries}
-    for name, kind, values, energy in lm.STRESS:
-        base = lm.fixture(name)
-        stress = lm.fixture(f"li_stress_{name.removeprefix('li_')}_{kind}")
-        assert stress["points"] == lm.stress_points(base, kind, values, energy)
-        assert stress["scheme_data"] == base["scheme_data"]
-        mass = None
+    for data in lm.derived_fixtures():
+        assert lm.fixture(data["name"]) == json.loads(json.dumps(data))
+    kinds = set()
+    for entry in lm.stress_entries():
+        base = lm.fixture(entry["base"])
+        stress = lm.fixture(lm.stress_name(entry))
+        kinds.add((stress["madloop_process"].split("[")[0].strip(), entry["kind"]))
+        assert stress["points"] == lm.stress_points(base, entry)
+        assert stress["scheme_data"]["parameters"] == base["scheme_data"]["parameters"]
+        initial = stress["initial"]
+        shells = None
         for point in stress["points"]:
             p = [[Fraction(c) for c in m] for m in point]
             for k in range(4):
-                assert p[0][k] + p[1][k] == p[2][k] + p[3][k]
+                assert sum(m[k] for m in p[:initial]) == sum(m[k] for m in p[initial:])
             squares = [m[0] ** 2 - m[1] ** 2 - m[2] ** 2 - m[3] ** 2 for m in p]
-            assert squares[0] == squares[1] == 0 and squares[2] == squares[3]
-            assert mass is None or squares[2] == mass
-            mass = squares[2]
-        entry = by_fixture[stress["name"]]
-        assert entry["key"] is None and entry["tiers"] == ["stress"]
+            assert squares[:initial] == [0] * initial
+            assert shells is None or squares == shells
+            shells = squares
+        if "masses" in entry:
+            assert shells[initial:] == lm._stress_masses(base, entry)
+        if entry["kind"] == "planar":
+            # each leg's out-of-plane over in-plane transverse component
+            # scales with the value (5-point Gram ~ value^2)
+            slopes = [
+                [
+                    Fraction(m[2]) / Fraction(m[1]) / Fraction(v)
+                    for m in q[initial:]
+                    if Fraction(m[1])
+                ]
+                for q, v in zip(stress["points"], entry["values"], strict=True)
+            ]
+            assert all(s == slopes[0] for s in slopes)
+        e = by_fixture[stress["name"]]
+        assert e["key"] is None and e["tiers"] == ["stress"]
         assert lm.ARBITRARY in stress["carriers"]
+    assert {
+        ("g g > z z", "pt"),
+        ("g g > w+ w-", "pt"),
+        ("g g > h h", "threshold"),
+        ("g g > h h", "forward"),
+        ("g g > a a", "forward"),
+        ("g g > a g", "forward"),
+        ("g g > h h", "top-threshold"),
+        ("g g > h g g", "planar"),
+        ("g g > z w+ w-", "top-threshold"),
+    } <= kinds
+    cms = lm.fixture("li_stress_gg_zwpwm_cms_top-threshold")
+    assert cms["scheme_data"]["complex_mass_scheme"]
+    assert cms["scheme_data"]["fixed_parameters"]["WW"] == "0"
+    assert cms["scheme_data"]["fixed_parameters"]["WZ"] == "0"
+    assert cms["normalization"]["denominator"] == 256
+    # LI-Z1: validation-only exact colour zeros, never a tier's AP run.
+    for name in ("li_h_ga", "li_z_ga"):
+        e = by_fixture[name]
+        assert e["ids"] == ["LI-Z1"] and e["exact_zero"] and not e["ap"]
 
 
 def test_high_precision_backend_arm_is_ready_for_lit_tir_mp(entries):
@@ -355,6 +405,136 @@ def test_high_precision_backend_arm_is_ready_for_lit_tir_mp(entries):
         point["values"][0]["finite"] = repr(value * (1 + 1e-9))
     record["arms"]["tirust/double-double/checked"] = moved
     assert lm.judge(record, entry)["L6"]["double-double"]["status"] == "pass (lax)"
+
+
+def test_a_failing_high_precision_arm_fails_the_row(entries):
+    """L6's verdict is the worst of its carriers: a TIRust double-double /
+    AP arm beyond ~1e-5 fails L6, the run and the row, though binary64
+    passes; a silent backend switch fails L6 too."""
+
+    entry = {e["fixture"]: e for e in entries}["li_gg_hh"]
+    record = _record("li_gg_hh")
+    record["l3_probes"]["tirust/double"] = [{"worst": 0.2, "passed": True}] * 3
+    record["arms"]["tirust/double/plain"] = json.loads(
+        json.dumps(record["arms"]["ninjars/double/plain"])
+    )
+    record["arms"]["tirust/double/checked"] = json.loads(
+        json.dumps(record["arms"]["ninjars/double/checked"])
+    )
+    moved = json.loads(json.dumps(record["arms"]["ninjars/double-double/checked"]))
+    for point in moved["points"]:
+        point["values"][0]["finite"] = repr(float(point["values"][0]["finite"]) * 1.001)
+    record["arms"]["tirust/double-double/checked"] = moved
+    record["arms"][f"tirust/{lm.ARBITRARY}/plain"] = moved
+    record["arms"][f"ninjars/{lm.ARBITRARY}/plain"] = json.loads(
+        json.dumps(record["arms"]["ninjars/double-double/checked"])
+    )
+    judged = lm.judge(record, entry)
+    assert judged["L6"]["double"]["status"] == "pass"
+    assert judged["L6"]["double-double"]["status"] == "fail"
+    assert judged["L6"][lm.ARBITRARY]["status"] == "fail"
+    assert judged["L6"]["status"] == "fail" and lm._run_status(judged) == "fail"
+    assert (
+        lm.lit({"li_gg_hh": record}, entries, "test")["rows"]["gg_hh"]["status"]
+        == "fail"
+    )
+    # A served TIRust lane whose effective backend is NinjaRS: never compared.
+    switched = _record("li_gg_hh")
+    switched["arms"]["tirust/double/plain"]["points"][0]["reduction"] = [
+        "tirust",
+        "ninjars",
+        "fallback",
+    ]
+    judged = lm.judge(switched, entry)
+    assert judged["L6"]["status"] == "fail"
+    assert judged["L6"]["double"]["effective_backend_switched"]
+
+
+def test_exact_colour_zero_and_reference_findings(entries):
+    """LI-Z1: an exact colour zero passes L8 only with the generation's
+    colour record and every served value exactly 0 (Q13: the one exact-zero
+    mechanism); its Ward probe is vacuous ('recorded'). A recorded HEFT
+    finding relabels a failing L9 'reference defect' only where the limit
+    is its expected value within ten times the extrapolation error."""
+
+    entry = {e["fixture"]: e for e in entries}["li_h_ga"]
+    record = _record("li_gg_hh")
+    record["fixture"] = "li_h_ga"
+    record["generation"]["probes"] = {"exact_colour_zero": True}
+    for arm in record["arms"].values():
+        for point in arm.get("points", []):
+            if point["values"]:
+                point["values"][0]["finite"] = "0.0"
+    judged = lm.judge(record, entry)
+    assert judged["L8"]["status"] == "pass" and judged["L8"]["exact_colour_zero_record"]
+    assert judged["L4"]["status"] == "recorded"
+    record["generation"]["probes"] = {}
+    assert lm.judge(record, entry)["L8"]["status"] == "fail"
+    finding = {"note": "the oracle is 9/8 too large", "expected_limit": "8/9"}
+    explained = {
+        "status": "fail",
+        "points": [{"limit": 0.8889023, "extrapolation_error": 1.4e-4}],
+    }
+    lm._apply_finding(explained, finding)
+    assert explained["status"] == "reference defect" and explained["finding_explains"]
+    other = {"status": "fail", "points": [{"limit": 0.5, "extrapolation_error": 1e-6}]}
+    lm._apply_finding(other, finding)
+    assert other["status"] == "fail" and not other["finding_explains"]
+    fixed = {"status": "pass", "points": [{"limit": 1.0, "extrapolation_error": 1e-8}]}
+    lm._apply_finding(fixed, finding)
+    assert fixed["status"] == "pass"
+
+
+def test_madloop_stress_and_fig7_figures(entries):
+    """The stress points' MadLoop QP rows are compared with the AP value
+    (recorded, with MadLoop's own estimate); the Fig. 7 figures are the
+    cumulative fractions of the true error and of the estimate."""
+
+    record = _record("li_gg_hh")
+    record["arms"][f"ninjars/{lm.ARBITRARY}/plain"] = record["arms"][
+        "ninjars/double-double/checked"
+    ]
+    value = float(
+        record["arms"]["ninjars/double-double/checked"]["points"][0]["values"][0][
+            "finite"
+        ]
+    )
+    madloop = {
+        "rows": [{"value": value * (1 + 1e-12), "accuracy": 1e-11, "status": 217}] * 3,
+        "seconds": 1.0,
+    }
+    judged = lm.judge_madloop(madloop, record)
+    assert judged["status"] == "recorded" and judged["truth"].endswith("exact points")
+    assert (
+        judged["points"][0]["covered"]
+        and judged["points"][0]["relative_to_truth"] < 1e-11
+    )
+    assert (
+        lm.judge_madloop({"status": "not run", "reason": "x"}, record)["status"]
+        == "not run"
+    )
+    result = {
+        "own_scheme": False,
+        "processes": {
+            "li_gg_zz": {
+                "points": 4,
+                "selections": {
+                    "all-minus": {
+                        "errors": [1e-14, 1e-12, 1e-10, 1e-8],
+                        "estimates": [1e-12, 1e-11, 1e-9, 1e-7],
+                    }
+                },
+            }
+        },
+    }
+    figures = lm.judge_fig7([result])
+    selection = figures["runs"][0]["processes"]["li_gg_zz"]["selections"]["all-minus"]
+    assert (
+        selection["error_below"]["1e-09"] == 0.75
+        and selection["estimate_below"]["1e-09"] == 0.5
+    )
+    assert selection["max_error_over_estimate"] == 0.1
+    assert figures["runs"][0]["matched"] and "1604.01363" in figures["source"]
 
 
 def _legs(*spec):
@@ -401,9 +581,14 @@ def test_crossing_maps_points_and_identity(entries):
         return {
             "double": {"points": [point(x * scale, 1e-12) for x in values]},
             "double-double": {"points": [point(x * scale, 1e-30) for x in values]},
+            "tirust/double": {"points": [point(x * scale, 1e-12) for x in values]},
         }
 
     records = {n: _record(n) for n in ("li_gg_hg", "li_ug_hu")}
+    for record in records.values():
+        record["arms"]["tirust/double/checked"] = record["arms"][
+            "ninjars/double/checked"
+        ]
     near = [
         float(p["values"][0]["finite"])
         for p in records["li_gg_hg"]["arms"]["ninjars/double/checked"]["points"]
@@ -424,6 +609,7 @@ def test_crossing_maps_points_and_identity(entries):
                 "arms": {
                     "double": arms(near)["double"],
                     "double-double": arms(exact)["double-double"],
+                    "tirust/double": arms(near)["double"],
                 },
             },
             {
@@ -448,8 +634,12 @@ def test_crossing_maps_points_and_identity(entries):
     statuses = [r["status"] for r in judged["runs"].values()]
     assert statuses == ["pass", "partial", "estimate miss"]
     first = next(iter(judged["runs"].values()))
-    assert first["double_double_max_relative"] == 0.0
-    assert "exactly zero" in list(judged["runs"].values())[1]["reason"]
+    assert (
+        first["double_double_max_relative"] == 0.0
+        and first["tirust"]["status"] == "pass"
+    )
+    fermion = list(judged["runs"].values())[1]
+    assert fermion["exactly_zero"] and fermion["finding"] == lm.CROSSING_FINDING
     assert judged["status"] == "estimate miss"
     cms = {e["fixture"]: e for e in entries}["li_gg_aa_cms"]
     assert "LI-C1" in cms["ids"]
