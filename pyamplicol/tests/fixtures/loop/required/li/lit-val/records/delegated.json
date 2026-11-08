@@ -98,27 +98,9 @@
   "records": "workspace/tmp/lit-val/obs/backends.json, backends-dd.json (logs b64.log, dd.log)"
  },
  "findings": {
-  "li_gg_hg": {
-   "L9": {
-    "note": "the HEFT oracle is the defect: pyAmpliCol's built-in-sm-heft tree is 9/8 of the analytic LO HEFT value at g g > h (G_F alpha_s^2 m_H^4 c(r)^2 / (288 sqrt2 pi^2) with the model's own c(r); reproducer workspace/tmp/lit-val/findings/heft_gg_h.py), and the loop-induced g g > h (= Spira's analytic formula, = MadLoop / OpenLoops / Recola) over that tree extrapolates to the same 8/9; here the scan extrapolates to 8/9 within ten times its extrapolation error at every point (decoupling holds, the oracle is 9/8 too large; finding to the coordinator). The relabel 'reference defect' applies only while every point's limit is 8/9 within that error (expected_limit): any other failure stays a failure",
-    "expected_limit": "8/9"
-   }
-  },
-  "li_uux_hg": {
-   "L9": {
-    "note": "the HEFT oracle is the defect: pyAmpliCol's built-in-sm-heft tree is 9/8 of the analytic LO HEFT value at g g > h (G_F alpha_s^2 m_H^4 c(r)^2 / (288 sqrt2 pi^2) with the model's own c(r); reproducer workspace/tmp/lit-val/findings/heft_gg_h.py), and the loop-induced g g > h (= Spira's analytic formula, = MadLoop / OpenLoops / Recola) over that tree extrapolates to the same 8/9; here the scan extrapolates to 8/9 within ten times its extrapolation error at every point (decoupling holds, the oracle is 9/8 too large; finding to the coordinator). The relabel 'reference defect' applies only while every point's limit is 8/9 within that error (expected_limit): any other failure stays a failure",
-    "expected_limit": "8/9"
-   }
-  },
-  "li_gg_hgg": {
-   "L9": {
-    "note": "the HEFT oracle is the defect: pyAmpliCol's built-in-sm-heft tree is 9/8 of the analytic LO HEFT value at g g > h (G_F alpha_s^2 m_H^4 c(r)^2 / (288 sqrt2 pi^2) with the model's own c(r); reproducer workspace/tmp/lit-val/findings/heft_gg_h.py), and the loop-induced g g > h (= Spira's analytic formula, = MadLoop / OpenLoops / Recola) over that tree extrapolates to the same 8/9; here the scan extrapolates to 8/9 within ten times its extrapolation error at every point (decoupling holds, the oracle is 9/8 too large; finding to the coordinator). The relabel 'reference defect' applies only while every point's limit is 8/9 within that error (expected_limit): any other failure stays a failure",
-    "expected_limit": "8/9"
-   }
-  },
   "li_gg_h": {
    "L9": {
-    "note": "LI-A1's HEFT ratio (reported, no limit rule): the loop-induced g g > h over the built-in-sm-heft tree; its large-m_t limit is the 8/9 of the HEFT tree finding (li_gg_hg's note)"
+    "note": "LI-A1's HEFT ratio (reported, no limit rule): the loop-induced g g > h over the built-in-sm-heft tree at the loop run's colour accuracy (full), whose large-m_t limit is 1; the 8/9 of the first scan was the tree's leading-colour default (colour factor N^2 against N^2 - 1, lit-heft), not a model defect"
    }
   }
  }

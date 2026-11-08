@@ -69,12 +69,13 @@ def test_campaign_run_passes_its_rules(name, tmp_path_factory, loop_native):
 )
 def test_heavy_top_limit(target, tmp_path_factory, loop_native):
     """LI-A7: the heavy-top scan decouples to its limit oracle (the
-    low-energy theorem). The HEFT trees carry a recorded reference finding
-    (``tests/fixtures/loop/required/li/lit-val/records/delegated.json``):
-    there the scan must decouple to the finding's expected limit (8/9)
-    within ten times its extrapolation error at every point, so a loop
-    regression, or the tree's fix, shows here. LI-A1's runs (the HEFT ratio,
-    reported) must only scan."""
+    low-energy theorem, or the HEFT tree at the loop run's colour accuracy).
+    A recorded reference finding
+    (``tests/fixtures/loop/required/li/lit-val/records/delegated.json``)
+    with an expected limit makes the scan decouple to that limit within ten
+    times its extrapolation error at every point instead, so a loop
+    regression, or the reference's fix, shows here. LI-A1's runs (the HEFT
+    ratio, reported) must only scan."""
 
     work = _work(tmp_path_factory)
     if not (work / target["fixture"] / "artifact" / "artifact.json").is_file():
