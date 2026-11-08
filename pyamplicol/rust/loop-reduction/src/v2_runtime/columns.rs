@@ -552,7 +552,9 @@ impl V2Runtime {
                 ),
                 V2Precision::Arbitrary(_) => {
                     let zero = Float::with_val(precision.bits()?, 0);
-                    self.induced_columns(kind, momenta, scales, spins, mode, precision, &zero, &arith)
+                    self.induced_columns(
+                        kind, momenta, scales, spins, mode, precision, &zero, &arith,
+                    )
                 }
             };
         }

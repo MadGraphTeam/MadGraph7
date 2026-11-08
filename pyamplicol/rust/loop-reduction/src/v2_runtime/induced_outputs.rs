@@ -29,8 +29,8 @@
 //! operation for operation (equal `Decimal` values).
 
 use super::columns::{ColumnPoint, ColumnValues, INCLUSIVE};
-use super::induced::{Induced, Squaring, carrier};
 pub use super::induced::{Exact, Row, Vectors};
+use super::induced::{Induced, Squaring, carrier};
 use super::{Lift, Native, V2Poles, V2Precision, V2Runtime, contraction, invalid, v2_batch};
 use crate::Complex;
 use crate::v2_decimal::{Arith, C, Decimal, DecimalArith, DecimalContext, cadd, cmul};
@@ -77,12 +77,17 @@ pub fn anchor_metric(gram: &[Exact], size: usize, t: usize) -> Vec<Exact> {
     for r in 0..size {
         for u in 0..size {
             let cell = &gram[r * size + u];
-            let left = if r == t { cell.clone() } else { (zero.clone(), zero.clone()) };
-            let right = if u == t { cell.clone() } else { (zero.clone(), zero.clone()) };
-            out.push((
-                (&left.0 + &right.0) * &half,
-                (&left.1 + &right.1) * &half,
-            ));
+            let left = if r == t {
+                cell.clone()
+            } else {
+                (zero.clone(), zero.clone())
+            };
+            let right = if u == t {
+                cell.clone()
+            } else {
+                (zero.clone(), zero.clone())
+            };
+            out.push(((&left.0 + &right.0) * &half, (&left.1 + &right.1) * &half));
         }
     }
     out
@@ -145,7 +150,10 @@ fn massless_vector(ctx: &DecimalContext, p: &[Decimal; 4], helicity: i32) -> Rus
         &ctx.add(&ctx.mul(px, px), &ctx.mul(py, py)),
         "vector source",
     )?;
-    let wf3 = (ctx.mul(&ctx.div(&ctx.mul(&hel, &pt), &pp), &sqh), zero.clone());
+    let wf3 = (
+        ctx.mul(&ctx.div(&ctx.mul(&hel, &pt), &pp), &sqh),
+        zero.clone(),
+    );
     let (wf1, wf2);
     if !pt.is_zero() {
         let pz = if positive { pz.clone() } else { neg(ctx, pz) };
@@ -169,10 +177,7 @@ fn massless_vector(ctx: &DecimalContext, p: &[Decimal; 4], helicity: i32) -> Rus
     } else {
         wf1 = (ctx.mul(&neg(ctx, &hel), &sqh), zero.clone());
         let sign = fortran_sign(ctx, &sqh, pz);
-        wf2 = (
-            zero.clone(),
-            if positive { sign } else { neg(ctx, &sign) },
-        );
+        wf2 = (zero.clone(), if positive { sign } else { neg(ctx, &sign) });
     }
     Ok([(zero.clone(), zero), wf1, wf2, wf3])
 }
@@ -320,7 +325,9 @@ pub fn polarisations(
         }
     }
     if out.is_empty() {
-        return Err(invalid(format!("leg {leg} has no source of the tree program")));
+        return Err(invalid(format!(
+            "leg {leg} has no source of the tree program"
+        )));
     }
     Ok(out)
 }
@@ -380,27 +387,25 @@ pub fn exact_vector(vector: &[(Rational, Rational); 4]) -> RusticolResult<[(Deci
     ])
 }
 
-/// The spin coefficients of every spin leg of one point in the carrier:
-/// per 0-based leg its coefficient per helicity (`PointOutputs`:
+/// The spin coefficients of every spin leg of one point (`point`: its
+/// physical momenta, four exact components per leg) in the carrier: per
+/// 0-based leg its coefficient per helicity (`PointOutputs`:
 /// `numbers.pair(re, im)` in the spin context, i.e. the nearest binary64
 /// values or the `Decimal` values at the spin context's digits).
 pub fn point_coefficients<A: CarrierPair>(
     arith: &A,
     sources: &[serde_json::Value],
-    point: &[Vec<Rational>],
+    point: &[Rational],
     spin: &BTreeMap<usize, [(Rational, Rational); 4]>,
     working_digits: u32,
 ) -> RusticolResult<BTreeMap<usize, Vec<(i32, C<A::N>)>>> {
     let ctx = spin_context(working_digits);
     let mut out = BTreeMap::new();
     for (&leg, vector) in spin {
-        if leg == 0 || leg > point.len() {
+        if leg == 0 || 4 * leg > point.len() {
             return Err(invalid(format!("spin-vector leg {leg} is not a leg")));
         }
-        let momentum = &point[leg - 1];
-        if momentum.len() != 4 {
-            return Err(invalid("a momentum has four components"));
-        }
+        let momentum = &point[4 * (leg - 1)..4 * leg];
         let momentum = [
             exact(&momentum[0])?,
             exact(&momentum[1])?,
@@ -684,10 +689,8 @@ impl V2Runtime {
     fn induced_observables(&mut self) -> RusticolResult<&Observables> {
         if self.induced_observables.is_none() {
             let induced = self.induced.clone().expect("a loop-induced process");
-            self.induced_observables = Some(Observables::new(
-                &induced,
-                &self.process_inputs.trees_json,
-            )?);
+            self.induced_observables =
+                Some(Observables::new(&induced, &self.process_inputs.trees_json)?);
         }
         Ok(self.induced_observables.as_ref().expect("the observables"))
     }
@@ -705,7 +708,10 @@ impl V2Runtime {
     /// The resolved outputs' helicity rows (the plan's, per row its
     /// (0-based leg, helicity) pairs) of a loop-induced process.
     pub(super) fn induced_rows(&self) -> Vec<Vec<(usize, i32)>> {
-        self.induced.as_ref().expect("a loop-induced process").plan_rows()
+        self.induced
+            .as_ref()
+            .expect("a loop-induced process")
+            .plan_rows()
     }
 
     /// The outputs of the column set `kind` of a loop-induced process
@@ -820,12 +826,13 @@ impl V2Runtime {
                                 }
                             };
                             let (h, k) = forms.of(&output.metric);
-                            let real =
-                                induced.square_vectors(arith, amplitudes, &rows, h, width, average)?;
+                            let real = induced
+                                .square_vectors(arith, amplitudes, &rows, h, width, average)?;
                             let imaginary = k
                                 .as_ref()
                                 .map(|k| {
-                                    induced.square_vectors(arith, amplitudes, &rows, k, width, average)
+                                    induced
+                                        .square_vectors(arith, amplitudes, &rows, k, width, average)
                                 })
                                 .transpose()?;
                             let virtual_values = sector_index
@@ -835,9 +842,10 @@ impl V2Runtime {
                                         .map(|j| {
                                             C::new(
                                                 real[s][j].clone(),
-                                                imaginary
-                                                    .as_ref()
-                                                    .map_or_else(|| arith.zero(), |y| y[s][j].clone()),
+                                                imaginary.as_ref().map_or_else(
+                                                    || arith.zero(),
+                                                    |y| y[s][j].clone(),
+                                                ),
                                             )
                                         })
                                         .collect()

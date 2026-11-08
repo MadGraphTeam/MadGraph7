@@ -1682,7 +1682,8 @@ impl V2Runtime {
             zero,
             arith,
             |_, vectors, width| {
-                let squared = induced.square_vectors(arith, vectors, &rows, &gram, width, average)?;
+                let squared =
+                    induced.square_vectors(arith, vectors, &rows, &gram, width, average)?;
                 Ok((
                     Vec::new(),
                     sector_index.iter().map(|&s| squared[s].clone()).collect(),

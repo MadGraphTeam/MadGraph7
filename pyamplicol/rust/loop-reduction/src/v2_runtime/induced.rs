@@ -365,8 +365,9 @@ impl Induced {
                         continue;
                     }
                     let value = arith.complex(&values[r * components + j], bits)?;
-                    let ket = ket_vectors
-                        .entry((order.clone(), row.clone()), || vec![vec![zero.clone(); width]; size]);
+                    let ket = ket_vectors.entry((order.clone(), row.clone()), || {
+                        vec![vec![zero.clone(); width]; size]
+                    });
                     let scaled = arith.times_real(&value, &arith.three_power(*nc));
                     ket[*t][*k] = cadd(arith, &ket[*t][*k], &scaled);
                 }

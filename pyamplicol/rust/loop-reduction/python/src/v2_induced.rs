@@ -86,7 +86,7 @@ fn induced_spin_coefficients(
     };
     let v = [component(0)?, component(1)?, component(2)?, component(3)?];
     let found = outputs::binary64_spin_coefficients(&sources, leg, &p, &v, working_digits)
-        .map_err(|e| PyValueError::new_err(e.message()))?;
+        .map_err(|e| PyValueError::new_err(e.message().to_owned()))?;
     Ok(found.into_iter().map(|(h, z)| (h, z.re, z.im)).collect())
 }
 
