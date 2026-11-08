@@ -37,10 +37,12 @@ leading-colour selections through the stored observable columns), and the
 effective backend is one the route's executor runs: the guard of every
 route, so that a result never names a backend its values were not reduced
 by. Both routes run both backends; ``"auto"`` takes on a route only the
-backends of its ``auto`` set: NinjaRS, until the loop-induced agreement of
-the two backends is established (m-lit lit-cache), so ``"auto"`` keeps
-NinjaRS for loop-induced processes too, with the reason recorded, and
-TIRust serves explicit requests.
+backends of its ``auto`` set: NinjaRS, so ``"auto"`` keeps NinjaRS for
+loop-induced processes too, with the reason recorded, and TIRust serves
+explicit requests. The two backends' loop-induced agreement is established
+(m-lit lit-cache); what keeps ``"auto"`` on NinjaRS is that TIRust still
+fails closed on points NinjaRS serves (slice-status DECISIONS 2026-11-08
+11:17: no automatic switch in this release).
 
 The policy has ONE definition, in Rust (``rusticol_loop_reduction::
 reduction_policy``, m-lit DECISIONS 2026-11-07 21:50 R7), which the native
@@ -127,9 +129,8 @@ def route(key: str) -> Route:
     "resolved": the colour-, spin- and helicity-resolved outputs and
     selections) from the native policy: what it serves, the backends its
     executor runs (the native executor's ``reduction`` option, m-lit lit-tir)
-    and those ``"auto"`` takes there (NinjaRS until the loop-induced
-    agreement of the two backends is checked; m-lit lit-cache adds TIRust in
-    the native policy)."""
+    and those ``"auto"`` takes there (NinjaRS: TIRust still fails closed on
+    points NinjaRS serves; a switch adds TIRust in the native policy)."""
 
     found = policy()["routes"][key]
     return Route(

@@ -21,7 +21,9 @@
 //! catalogue terms and numbered model constants. The order of every sum and
 //! product is that of the Python reference executor.
 
-use super::kernels::{RowLink, Segment, clear, fused_edge, lane_vector_len};
+use super::kernels::{
+    GatherSchedule, RowLink, Segment, clear, fused_edge, fused_edge_gathered, lane_vector_len,
+};
 use super::plan::{Content, Family, KernelInput, LoopProgramV4, ReadRows};
 use super::poly::MonomialProductTable;
 use crate::{RusticolError, RusticolResult};
@@ -985,25 +987,39 @@ impl<T: Carrier> Pool<T> {
 ///
 /// `seeded` inputs hold one lane vector per object row (a seed times
 /// `δ_ab`) and use the content's seeded layout; open-loop inputs hold
-/// `d_alpha × d_in × C(r+4,4)` lane vectors per row.
+/// `d_alpha × d_in × C(r+4,4)` lane vectors per row. `gather` is the
+/// plan's schedule of this (content, products table, seeded)
+/// ([`super::plan::LoopProgramV4::gather`]): the same values in the
+/// output-stationary order.
 #[allow(clippy::too_many_arguments)]
 pub fn dress_edge<T: Carrier, const L: usize>(
     content: &Content,
     seeded: bool,
     d_alpha: usize,
     products: &MonomialProductTable,
+    gather: Option<&GatherSchedule>,
     rank_out: usize,
     input: &[T],
     factor: &[T],
     links: &[RowLink],
     output: &mut [T],
 ) {
-    if seeded {
-        let segment = Segment::new(1, 1, 1, content.d_in * content.d_out, products, rank_out);
-        fused_edge::<T, L>(&segment, &content.seeded, input, factor, links, output);
+    let (segment, layout) = if seeded {
+        (
+            Segment::new(1, 1, 1, content.d_in * content.d_out, products, rank_out),
+            &content.seeded,
+        )
     } else {
-        let segment = Segment::new(d_alpha, content.d_in, 1, content.d_out, products, rank_out);
-        fused_edge::<T, L>(&segment, &content.open, input, factor, links, output);
+        (
+            Segment::new(d_alpha, content.d_in, 1, content.d_out, products, rank_out),
+            &content.open,
+        )
+    };
+    match gather {
+        Some(schedule) => {
+            fused_edge_gathered::<T, L>(&segment, schedule, input, factor, links, output)
+        }
+        None => fused_edge::<T, L>(&segment, layout, input, factor, links, output),
     }
 }
 

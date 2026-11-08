@@ -786,9 +786,9 @@ the reason; also in the CLI's JSON). TIRust is built into the native
 extension by default (the cargo feature `tir`) and serves every arithmetic
 (binary64, double-double and arbitrary precision, also on every level of a
 rescue ladder) on every output of both process types when requested
-(`"tirust"`); until its agreement with NinjaRS on loop-induced processes is
-established, `"auto"` stays on NinjaRS for loop-induced processes too and
-records why. Which loop families TIRust serves is TIRust's own capability
+(`"tirust"`); its agreement with NinjaRS on loop-induced processes is
+established, but TIRust still fails closed on points NinjaRS serves, so
+`"auto"` stays on NinjaRS for loop-induced processes too and records why. Which loop families TIRust serves is TIRust's own capability
 (the number of propagators, the rank, read from TIRust): a family outside it
 is refused typed with TIRust's own reason before any point. TIRust reads the
 same external invariants as NinjaRS (below), so a loop with an on-shell

@@ -376,6 +376,22 @@ def _mapping_kind(member: Any) -> str:
     return "a permutation alias" if member.alias else "a flavour member"
 
 
+def _require_backend(native: Any, backend: str) -> None:
+    """Refuse typed (``ReductionUnavailable``) a reduction backend the
+    native extension does not serve (its capability query,
+    ``loops.v2.reduction.native_backends``)."""
+
+    from pyamplicol.api.errors import ReductionUnavailable
+    from pyamplicol.loops.v2.reduction import NAMES, native_backends
+
+    if backend not in native_backends(native):
+        raise ReductionUnavailable(
+            f"reduction {backend!r} was requested, but {NAMES[backend]} is not "
+            "built into this native extension (its reduction-backend capability "
+            "query)"
+        )
+
+
 class V2ObservablesRuntime:
     """The public virtual-runtime calls over a generated v2 slice's
     observables; the artifact runtime (``loops.v2.artifact.V2VirtualRuntime``)
@@ -599,20 +615,19 @@ class V2ObservablesRuntime:
 
             with running(effective):
                 return isolate_scale_failures(batch, scales)
-        if effective not in (None, "ninjars"):
-            from pyamplicol.api.errors import ReductionUnavailable
-
-            raise ReductionUnavailable(
-                f"the Python reference executor reduces with NinjaRS only, not "
-                f"{effective!r}"
-            )
+        if effective is not None:
+            # The Python reference executor reduces on the backends the
+            # native extension serves (``reduction.native_backends``: its
+            # capability query; TIRust through ``V2TirReducer``).
+            _require_backend(self._observables.slice.native, effective)
         out: list[Any] = []
         failures: dict[int, list[str]] = {}
         for index, (point, scale, spin) in enumerate(
             zip(points, scales, spins, strict=True)
         ):
             try:
-                out.append(python(point, scale, spin))
+                with running(effective):
+                    out.append(python(point, scale, spin))
             except ArithmeticError as error:
                 out.append(None)
                 failures[index] = [str(error)]
@@ -948,16 +963,26 @@ class V2ObservablesRuntime:
         v2_options(on_failure=on_failure, **options)
         points, scales = _inputs(momenta, mu_r2, self.external_count)
         if reductions is None and any(
-            item.reduction not in ("auto", "ninjars") for item in policy.levels
+            item.reduction != "auto" for item in policy.levels
         ):
-            # A direct runtime resolves no backend: it reduces with NinjaRS.
-            from pyamplicol.api.errors import ReductionUnavailable
+            # A direct runtime resolves each level's requested backend for its
+            # carrier from the native extension's capability query
+            # (``reduction.resolve`` on the summed route, as the artifact
+            # runtime does): an explicit backend it cannot serve is refused
+            # typed.
+            from pyamplicol.loops.v2.reduction import SUMMED, resolve
 
-            raise ReductionUnavailable(
-                "a rescue level requests a reduction backend, but this v2 "
-                "runtime reduces with NinjaRS only (the artifact runtime "
-                "resolves each level's backend)"
-            )
+            native = self._observables.slice.native
+            reductions = {
+                item: resolve(
+                    item.backend_request("auto"),
+                    contribution=self.contribution_kind,
+                    carrier=item.arithmetic,
+                    native=native,
+                    route=SUMMED,
+                )
+                for item in policy.levels
+            }
 
         def level(indices: tuple[int, ...], rung: Any) -> VirtualEvaluation:
             return self.evaluate(

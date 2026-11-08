@@ -93,6 +93,7 @@ pub fn run_family_on<T: Carrier, const L: usize>(
                         step.seeded,
                         step.d_alpha,
                         &plan.products[edge.products],
+                        plan.gather(edge.content, edge.products, step.seeded),
                         step.rank_out,
                         &input,
                         inputs.factors.get(edge.factor),

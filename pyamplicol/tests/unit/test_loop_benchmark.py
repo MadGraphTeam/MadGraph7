@@ -2273,8 +2273,8 @@ def test_report_builder_loop_induced_table_markers_backend_floor_and_reports(
     with pytest.raises(ValueError, match="two production timings of madloop"):
         build()
     # A provider whose record excludes its values as a reference: timed and
-    # shown with its match open (lit-perf's call); where it is the fastest,
-    # the ratio to the fastest other provider beside the cell (no choice).
+    # shown, not a matched provider (lit-perf: never the fastest matched one
+    # nor a limit), the ratio to it beside the cell.
     excluded = timing_record(
         "excluded.json",
         madloop=ml(0.04),
@@ -2286,20 +2286,33 @@ def test_report_builder_loop_induced_table_markers_backend_floor_and_reports(
     (data / "li-timing.json").write_text(json.dumps(timing))
     rows, out = build()
     prov = rows["gg_hh"]["providers"]
-    assert prov["providers"]["recola"]["match"] == builder.LI_MATCH_OPEN
+    assert prov["providers"]["recola"]["match"] == builder.LI_NOT_MATCHED
     assert prov["providers"]["recola"]["values_excluded"] == "widths"
     assert "match" not in prov["providers"]["openloops"]
-    assert prov["fastest"]["key"] == "recola"
-    assert prov["fastest"]["match"] == builder.LI_MATCH_OPEN
-    assert prov["fastest_settled"]["key"] == "openloops"
+    assert prov["fastest"]["key"] == "openloops" and "match" not in prov["fastest"]
+    assert prov["fastest_unmatched"]["key"] == "recola"
     hh = rows["gg_hh"]["timing"]
-    assert hh["ratio_to_fastest"] == pytest.approx(0.002 / 0.004)
-    assert hh["ratio_to_fastest_settled"] == pytest.approx(0.002 / 0.01)
+    assert hh["ratio_to_fastest"] == pytest.approx(0.002 / 0.01)
+    assert hh["ratio_to_fastest_unmatched"] == pytest.approx(0.002 / 0.004)
     drawn = {f["key"]: f for f in builder.li_figure(out, 1.3)["rows"]}
-    assert drawn["gg_hh"]["match_open"] == ["Recola"]
-    assert drawn["gg_hgg"]["match_open"] == []
-    assert "fastest_settled" not in rows["gg_hgg"]["providers"]
-    assert "ratio_to_fastest_settled" not in rows["gg_hgg"]["timing"]
+    assert drawn["gg_hh"]["not_matched"] == ["Recola"]
+    assert drawn["gg_hgg"]["not_matched"] == []
+    assert "fastest_unmatched" not in rows["gg_hgg"]["providers"]
+    assert "ratio_to_fastest_unmatched" not in rows["gg_hgg"]["timing"]
+    # Figure 1's gate limit: MadLoop and 1.3 x each matched provider (the
+    # unmatched Recola gives none); none while a matched reference has no
+    # production time yet.
+    assert builder._li_limit(prov, 1.3) == {
+        "seconds": pytest.approx(1.3 * 0.01),
+        "binding": "OpenLoops",
+    }
+    pending = {
+        "providers": {
+            "madloop": {"seconds_per_point": 0.04},
+            "openloops": {"status": "not timed", "reason": "no production timing yet"},
+        }
+    }
+    assert builder._li_limit(pending, 1.3) is None
     runs["gg_hh"] = [run("gg_hh", [production, opp])]
     write_manifest(runs)
     # The batch is chosen before the backend: TIRust timed at B = 1 only and
@@ -2393,7 +2406,8 @@ def test_report_builder_figure_one_draws_loop_induced_rows_with_a_time_and_a_pro
     loop-induced table with a batched pyAmpliCol time and a matched provider
     time, in the table's order, with its providers' times and, from 2 -> 3
     upward, the gate limit (MadLoop's time and the gate factor times each
-    other provider's, the smallest); the other rows are not drawn, listed by
+    other matched provider's, the smallest; none while a matched reference
+    has no production time yet); the other rows are not drawn, listed by
     reason. The committed summary-li.json holds the figure of its own rows."""
 
     import json
@@ -2475,7 +2489,9 @@ def test_report_builder_figure_one_draws_loop_induced_rows_with_a_time_and_a_pro
     assert hh["providers"] == {"madloop": 0.001} and hh["fastest"] == "madloop"
     assert hhh["limit"] == {"seconds": pytest.approx(1.3 * 0.0056), "binding": "Recola"}
     assert hhh["providers"] == {"madloop": 0.009, "recola": 0.0056, "openloops": 0.0229}
-    assert hgg["limit"] == {"seconds": 0.004, "binding": "MadLoop"}
+    # Recola, a reference of the row, has no production time yet: no
+    # complete gate limit (Table 1's rule).
+    assert hgg["limit"] is None
     assert hgg["gate"]["status"] == "not gated" and hgg["group"] == "2->3"
     assert figure["not_drawn"] == {
         builder.LI_NO_TIME: ["aa", "zzg"],
@@ -2748,3 +2764,318 @@ def test_provider_records_carry_the_specification_value_annotations(
         == streams.spec("li_gg_zzzz")["recola"]["value_exceptions"]
     )
     assert entry["value_exceptions"]["points"] == [7, 13]
+
+
+def test_the_most_optimistic_protocol_sets_each_provider_up_for_speed(
+    tmp_path, monkeypatch
+):
+    # m-lit F4: OpenLoops without its stability system, MadLoop without its
+    # stability test, Recola without dynamic settings (alpha_s and the scales
+    # of the generation, no per-point setter in the timer), its build
+    # recorded; loop-induced rows only.
+    import json
+    import types
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        providers,
+        "Trees",
+        lambda options: types.SimpleNamespace(
+            madloop_export=lambda spec, override: tmp_path
+        ),
+    )
+    seen = {}
+
+    def provider(name):
+        def run(*args):
+            seen[name] = args
+            return {"provider": name, "mean_seconds_per_point": 1.0}
+
+        return run
+
+    monkeypatch.setattr(providers, "openloops", provider("openloops"))
+    monkeypatch.setattr(providers, "recola", provider("recola"))
+    monkeypatch.setattr(providers, "madloop", provider("madloop"))
+    options = types.SimpleNamespace(
+        process="li_gg_hh",
+        points=2,
+        work=tmp_path / "work",
+        json=tmp_path / "record.json",
+        cpu=0,
+        providers=["openloops", "recola", "madloop"],
+        protocol="optimistic",
+        madloop_export=None,
+        madloop_param=["MLReductionLib=6|7|1"],
+        madloop_stages=False,
+    )
+    assert providers.main(options) == 0
+    assert json.loads(options.json.read_text())["protocol"] == "optimistic"
+    assert seen["openloops"][-1] == seen["recola"][-1] == "optimistic"
+    assert seen["madloop"][-1] == {"CTModeRun": "1", "MLReductionLib": "6|7|1"}
+    with pytest.raises(SystemExit, match="loop-induced rows"):
+        providers.main(types.SimpleNamespace(**{**vars(options), "process": "gg_ggg"}))
+
+    # The Recola driver: dynamic settings and the per-point setters follow
+    # the ``dynamic`` command (1, the production default, keeps them).
+    built = []
+    monkeypatch.setattr(
+        providers.subprocess, "run", lambda command, **kw: built.append(command)
+    )
+    providers._recola_driver(tmp_path, tmp_path, [])
+    source = (tmp_path / "recola_driver_production.f90").read_text()
+    assert "integer :: dynamic = 1" in source
+    assert "call set_dynamic_settings_rcl(dynamic)" in source
+    assert "set_dynamic_settings_rcl(1)" not in source
+    assert (
+        "    if (dynamic == 1) then\n"
+        "      call set_alphas_rcl(stored_alpha_s, scales(i), stored_nf)\n"
+    ) in source
+
+    # The build of the library a Recola run links, from the root's CMake builds.
+    root, tree = tmp_path / "root", tmp_path / "root/sources/recola"
+    build = root / "builds/recola"
+    (build / "src/CMakeFiles/recola.dir").mkdir(parents=True)
+    tree.mkdir(parents=True)
+    (build / "CMakeCache.txt").write_text(
+        f"//comment\nCMAKE_BUILD_TYPE:STRING=\nCMAKE_HOME_DIRECTORY:INTERNAL={tree}\n"
+    )
+    (build / "src/CMakeFiles/recola.dir/flags.make").write_text(
+        "Fortran_FLAGS = -cpp -J/abs/include -fPIC\n"
+        "# Custom flags: src/CMakeFiles/recola.dir/a.f90.o_FLAGS = -O2\n"
+    )
+    assert providers.cmake_build(tree, root, "recola") == {
+        "build_dir": "builds/recola",
+        "build_type": "(none)",
+        "fortran_flags": "-cpp -fPIC",
+        "source_flags": ["-O2"],
+    }
+    assert providers.cmake_build(tmp_path, root, "recola") is None
+
+
+def test_one_helicity_arms_select_one_row_for_one_call():
+    """PLAN §5.1 (Q39): a loop-induced one-helicity arm dresses the plan's
+    first helicity row alone (``NativeExecutor.row_mask``) for its calls and
+    restores every row after; its label and record name the row."""
+
+    import types
+
+    from tools.loop_benchmark import pyamplicol_v2
+
+    rows = [((1, -1), (2, -1)), ((1, -1), (2, 1)), ((1, 1), (2, 1))]
+    executor = types.SimpleNamespace(exported=types.SimpleNamespace(rows=rows))
+    executor.row_mask = None
+    run = types.SimpleNamespace(executor=executor)
+    backend = {"requested": "tirust"}
+    arm = {"backend": backend, "size": 128, "row": 0}
+    with pyamplicol_v2.InducedRun._one_row(run, arm):
+        assert executor.row_mask == (True, False, False)
+    assert executor.row_mask is None
+    assert arm["row_helicities"] == [-1, -1]
+    assert pyamplicol_v2._arm_label(arm) == "tirust B=128 helicity row 0"
+    with pyamplicol_v2.InducedRun._one_row(run, {"backend": backend, "size": 1}):
+        assert executor.row_mask is None
+
+
+def _induced_run(seconds: list[float], failed: list[int], values: dict) -> dict:
+    """One backend run of a loop-induced harness record (``InducedRun``)."""
+
+    summary = {
+        "blocks": len(seconds),
+        "points_per_block": 128,
+        "median_seconds_per_point": sorted(seconds)[len(seconds) // 2],
+        "min_seconds_per_point": min(seconds),
+        "max_seconds_per_point": max(seconds),
+        "samples_seconds_per_point": seconds,
+        "stages_per_point": {"dressing": seconds[0] / 2, "squaring": 1e-5},
+        "counts_per_block": {"TIR gate refusals": 3},
+        "reals_per_lane": {},
+        "throughput": None,
+        "values": values,
+        "failed_points": failed,
+        "failure_causes": {"x": max(failed)} if any(failed) else {},
+    }
+    return summary
+
+
+def test_loop_induced_gate_on_tirust_with_the_born_free_metric(tmp_path):
+    """``gate.build`` on a loop-induced row (m-lit lit-perf, PLAN §5.2): one
+    configuration per requested backend; the verdict on TIRust; NinjaRS per
+    amplitude reported as the second mode with its ratios; a TIRust run that
+    failed points closed has no verdict (the gap), its served points' time
+    beside it; the value metric is Born-free; a provider whose values are
+    excluded is no matched provider (reported beside the verdict, its values
+    not compared) and an excepted point is left out; the li-timing records
+    carry the request, per block the failed points, the served fraction and
+    the verdict, under the registry key."""
+
+    import json
+
+    key = "li_gg_emepmupmum"
+    rows = [{"born": 0.0, "finite": 1.0 + 1e-6 * i, "seconds": 0.01} for i in range(2)]
+    providers = {
+        "kind": "providers",
+        "process": key,
+        "cpu": 130,
+        "points": 2,
+        "providers": {
+            "madloop": {
+                "points": 2,
+                "mean_seconds_per_point": 0.040,
+                "median_seconds_per_point": 0.040,
+                "rows": rows,
+            },
+            "openloops": {
+                "points": 2,
+                "mean_seconds_per_point": 0.010,
+                "median_seconds_per_point": 0.010,
+                "rows": rows,
+            },
+            "recola": {
+                "points": 2,
+                "mean_seconds_per_point": 0.004,
+                "median_seconds_per_point": 0.004,
+                "rows": [{**r, "raw": {"finite": r["finite"]}} for r in rows],
+                "values_excluded": "width convention",
+            },
+        },
+    }
+    values = {"0": [0.0, 1.0], "1": [0.0, 1.0]}
+    record = {
+        **_pyamplicol_record(key, [0.006]),
+        "contribution": "loop-induced",
+        "host": "testhost",
+        "host_cpus": [7],
+        "native": {"directory": "loop-native-x", "digest": "d" * 64},
+        "generation": {
+            "generate": {"seconds": 1.0, "peak_gib": 0.5},
+            "export": {"seconds": 0.5},
+            "filter": {"seconds": 0.1, "peak_gib": 0.5, "dropped_rows": 0},
+            "probes": {"seconds": 9.0, "peak_gib": 0.7, "split_seconds": {}},
+            "plan_mb": 0.1,
+        },
+        "batches": {},
+        "backend_runs": {
+            "auto": {
+                "requested": "auto",
+                "effective": "ninjars",
+                "reason": "auto: NinjaRS; test",
+                "batches": {"128": _induced_run([0.008] * 5, [0] * 5, values)},
+                "served": {},
+                "profiled": {},
+            },
+            "tirust": {
+                "requested": "tirust",
+                "effective": "tirust",
+                "reason": "requested",
+                "batches": {"128": _induced_run([0.006] * 5, [0] * 5, values)},
+                "served": {},
+                "profiled": {},
+            },
+        },
+    }
+    failing = json.loads(json.dumps(record))
+    failing["revision"] = "1" * 40
+    run = failing["backend_runs"]["tirust"]
+    run["batches"]["128"] = _induced_run([0.007] * 5, [3] * 5, values)
+    run["served"] = {
+        "128": {**_induced_run([0.0065] * 5, [0] * 5, values), "points_per_block": 125}
+    }
+    paths = []
+    for index, item in enumerate([providers, record]):
+        path = tmp_path / f"r{index}.json"
+        path.write_text(json.dumps(item))
+        paths.append(path)
+    document, _ = gate.build(paths)
+    (row,) = document["processes"]
+    assert row["loop_induced"] and row["gate_backend"] == "tirust"
+    assert set(row["not_matched"]) == {"recola"}
+    tirust = row["pyamplicol"]["native/full/tirust"]
+    auto = row["pyamplicol"]["native/full/auto"]
+    verdict = tirust["batches"]["128"]["gate"]
+    # The limit: MadLoop 40 ms and 1.3 x OpenLoops 10 ms; Recola beside it.
+    assert verdict["status"] == "pass" and verdict["binding_provider"] == "openloops"
+    assert verdict["not_matched"]["recola"]["ratio"] == 0.006 / 0.004
+    assert auto["batches"]["128"]["gate"]["status"] == gate.SECOND_MODE_STATUS
+    assert auto["batches"]["128"]["gate"]["measured_status"] == "pass"
+    assert tirust["reduction"]["requested"] == "tirust"
+    compared = tirust["values_vs_providers"]
+    assert compared["recola"] == {"excluded": "width convention"}
+    assert compared["madloop"]["metric"] == gate.INDUCED_METRIC
+    worst = abs(1.0 - (1.0 + 1e-6)) / (1.0 + 1e-6)
+    assert compared["madloop"]["max_finite_deviation"] == worst
+    assert "squaring" in tirust["stages"]["128"]
+    # TIRust failed points closed: no verdict, the gap with its numbers.
+    paths[1].write_text(json.dumps(failing))
+    document, _ = gate.build(paths)
+    (row,) = document["processes"]
+    gap = row["pyamplicol"]["native/full/tirust"]["batches"]["128"]["gate"]
+    assert gap["status"] == gate.FAILED_CLOSED_STATUS
+    assert gap["failed_points"] == [3] * 5 and "ratio_to_binding_limit" not in gap
+    assert gap["served_points"]["points"] == 125
+    assert gap["served_fraction"] == 1 - 3 / 128
+    records = gate.li_timing_records(
+        document,
+        [{"key": "gg_emepmupmum", "ids": ["LI-43"], "process": "g g > e+ e- mu+ mu-"}],
+    )
+    by = {(r["requested"], r["batch"]): r for r in records}
+    tir = by[("tirust", 128)]
+    assert tir["key"] == "gg_emepmupmum" and tir["host"] == "testhost"
+    assert tir["failed_points"] == [3] * 5 and "seconds_per_point" not in tir
+    assert tir["whole_call_seconds_per_point"] == 0.007
+    assert tir["gate"]["status"] == gate.FAILED_CLOSED_STATUS
+    assert (
+        tir["generation"]["seconds"] == 1.6
+        and tir["generation"]["probes_seconds"] == 9.0
+    )
+    nin = by[("auto", 128)]
+    assert nin["seconds_per_point"] == 0.008 and nin["effective"] == "ninjars"
+    assert nin["reason"] == "auto: NinjaRS; test"
+    target = tmp_path / "li-timing.json"
+    target.write_text(json.dumps({"records": [{"key": "other", "revision": "2" * 40}]}))
+    gate.write_li_timing(target, records)
+    gate.write_li_timing(target, records)
+    merged = json.loads(target.read_text())["records"]
+    assert len(merged) == 1 + len(records)
+
+
+def test_value_exceptions_leave_their_points_out():
+    """``compare_values`` honours a provider's ``value_exceptions``: its
+    listed stream points are not compared (named in the result)."""
+
+    mine = {0: (0.0, 1.0), 7: (0.0, 1.0), 9: (0.0, 2.0)}
+    theirs = {"recola": {0: (0.0, 1.0), 7: (0.0, 5.0), 9: (0.0, 2.0)}}
+    notes = {"recola": {"value_exceptions": {"points": [7], "reason": "unstable"}}}
+    found = gate.compare_values("li_gg_zzzz", mine, theirs, notes)["recola"]
+    assert found["max_finite_deviation"] == 0.0 and found["points"] == 2
+    assert found["excepted_points"] == [7] and found["exception"] == "unstable"
+    plain = gate.compare_values("li_gg_zzzz", mine, theirs)["recola"]
+    assert plain["max_finite_deviation"] == 0.8
+
+
+def test_blocks_without_their_core_are_left_out():
+    """``gate.valid_blocks``: a loop-induced block whose process had less than
+    the minimal CPU share of its wall time (a shared core, or a job a host
+    guard stopped) is left out of the median and listed; all blocks kept
+    without shares."""
+
+    summary = {
+        "samples_seconds_per_point": [1.0, 1.1, 9.0, 1.2],
+        "median_seconds_per_point": 1.15,
+        "min_seconds_per_point": 1.0,
+        "max_seconds_per_point": 9.0,
+        "blocks": 4,
+        "failed_points": [0, 1, 2, 3],
+        "cpu_share": [0.99, 0.99, 0.12, 0.98],
+    }
+    kept = gate.valid_blocks(summary, gate.MIN_CPU_SHARE)
+    assert kept["samples_seconds_per_point"] == [1.0, 1.1, 1.2]
+    assert kept["median_seconds_per_point"] == 1.1 and kept["blocks"] == 3
+    assert kept["failed_points"] == [0, 1, 3]
+    assert kept["dropped_blocks"] == {"2": 0.12}
+    # No block at the minimum: kept whole and marked.
+    shared = {**summary, "cpu_share": [0.8, 0.7, 0.12, 0.85]}
+    marked = gate.valid_blocks(shared, gate.MIN_CPU_SHARE)
+    assert marked["samples_seconds_per_point"] == summary["samples_seconds_per_point"]
+    assert marked["below_min_cpu_share"] == gate.MIN_CPU_SHARE
+    del summary["cpu_share"]
+    assert gate.valid_blocks(summary, gate.MIN_CPU_SHARE) is summary
