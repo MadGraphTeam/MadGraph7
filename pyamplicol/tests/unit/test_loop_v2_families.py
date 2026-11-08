@@ -407,9 +407,10 @@ def test_vertex_momentum_degree_rejects_unknown_momentum_forms(control):
             degree(structure, (1, 2))
 
 
-@pytest.mark.loop_fast
-def test_rank_beyond_the_reducer_admission_fails(control):
-    model, catalogue = control
+def _raised(catalogue, excess: int):
+    """``catalogue`` with every vertex's q-degree raised by ``excess``."""
+
+    from dataclasses import replace
 
     class Raised:
         def __init__(self, inner):
@@ -419,22 +420,43 @@ def test_rank_beyond_the_reducer_admission_fails(control):
             return getattr(self.inner, name)
 
         def vertices(self, loop_in):
-            from dataclasses import replace
-
             return tuple(
-                replace(v, q_degree=v.q_degree + 2)
+                replace(v, q_degree=v.q_degree + excess)
                 for v in self.inner.vertices(loop_in)
             )
 
         def reflected(self, vertex):
-            from dataclasses import replace
+            base = self.inner.reflected(
+                replace(vertex, q_degree=vertex.q_degree - excess)
+            )
+            return replace(base, q_degree=base.q_degree + excess)
 
-            base = self.inner.reflected(replace(vertex, q_degree=vertex.q_degree - 2))
-            return replace(base, q_degree=base.q_degree + 2)
+    return Raised(catalogue)
 
-    # The reducer's own admission (NinjaRS RankClass::of), asked natively.
-    with pytest.raises(ValueError, match=r"NinjaRS reduces rank <= N\+2"):
-        _generate(model, Raised(catalogue), ["g", "g"], ["g", "g"], {"QCD": 2})
+
+@pytest.mark.loop_fast
+def test_rank_beyond_the_reducer_admission_fails(control, loop_native):
+    """The backends' own admission (NinjaRS ``RankClass::of``, TIRust's
+    capability query), asked natively (m-lit lit-eft): a family beyond
+    NinjaRS's rank <= N+2 is generated where TIRust reduces it (a TIR-only
+    family set) and refused without TIRust; a rank beyond every backend's
+    capability (here beyond TIRust's u16 settings) is refused with every
+    backend's reason."""
+
+    from pyamplicol.loops.v2.families import tir_only
+
+    model, catalogue = control
+    if loop_native.tirust_available():
+        found = _generate(
+            model, _raised(catalogue, 2), ["g", "g"], ["g", "g"], {"QCD": 2}
+        )
+        ranks = [(len(key), family.rank) for key, family in found.families.items()]
+        assert tir_only(ranks) and max(rank - n for n, rank in ranks) > 2, ranks
+    else:
+        with pytest.raises(ValueError, match=r"NinjaRS reduces rank <= N\+2"):
+            _generate(model, _raised(catalogue, 2), ["g", "g"], ["g", "g"], {"QCD": 2})
+    with pytest.raises(ValueError, match=r"NinjaRS reduces rank <= N\+2.*TIRust"):
+        _generate(model, _raised(catalogue, 10**5), ["g", "g"], ["g", "g"], {"QCD": 2})
 
 
 @pytest.mark.loop_fast
