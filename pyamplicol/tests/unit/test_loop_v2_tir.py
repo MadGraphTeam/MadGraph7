@@ -93,8 +93,11 @@ def test_the_capability_query_reports_tirust_at_every_carrier(loop_native):
         # its former fixed cap of twelve propagators, refused only past what
         # the query reports (no constant of pyAmpliCol's).
         assert loop_native.reducer_rank_refusal(13, 2, "tirust") is None
-        refusal = loop_native.reducer_rank_refusal(65, 0, "tirust")
-        assert "TIRust cannot reduce 65 propagators" in refusal, refusal
+        # The first propagator count past TIRust's own bound (its
+        # capability query), as the Rust test derives it.
+        beyond = json.loads(loop_native.tirust_capabilities())["max_propagators"] + 1
+        refusal = loop_native.reducer_rank_refusal(beyond, 0, "tirust")
+        assert f"TIRust cannot reduce {beyond} propagators" in refusal, refusal
         # TIRust has no rank <= N + 2 limit (m-lit lit-eft): a family beyond
         # NinjaRS's rank is admitted through TIRust alone (a TIR-only
         # artifact), up to TIRust's own representation.
@@ -105,6 +108,7 @@ def test_the_capability_query_reports_tirust_at_every_carrier(loop_native):
         assert "NinjaRS" in refused and "TIRust cannot reduce" in refused, refused
     else:
         assert "tirust" not in found
+        assert loop_native.tirust_capabilities() is None
         assert "no TIRust" in loop_native.family_rank_refusal(4, 7)
 
 

@@ -113,6 +113,18 @@ fn reduction_backends() -> String {
     serde_json::Value::Object(record).to_string()
 }
 
+/// TIRust's own structural bounds at a carrier of `bits` bits, as JSON
+/// `{"max_propagators": n, "max_rank": r}` (`tir::capabilities`), or None
+/// in a build without TIRust: the numbers its capability query
+/// (`reducer_rank_refusal`) decides on.
+#[pyfunction]
+#[pyo3(signature = (bits=53))]
+fn tirust_capabilities(bits: u32) -> Option<String> {
+    rusticol_loop_reduction::tir::capabilities(bits).map(|(propagators, rank)| {
+        serde_json::json!({"max_propagators": propagators, "max_rank": rank}).to_string()
+    })
+}
+
 #[pymodule]
 fn _loop_reduction(module: &Bound<'_, PyModule>) -> PyResult<()> {
     register(module)
@@ -136,6 +148,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(canonical_saved_evaluator, module)?)?;
     module.add_function(wrap_pyfunction!(tirust_available, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_backends, module)?)?;
+    module.add_function(wrap_pyfunction!(tirust_capabilities, module)?)?;
     v2::register(module)?;
     v2_catalogue::register(module)?;
     v2_closure::register(module)?;

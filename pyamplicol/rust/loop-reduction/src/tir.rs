@@ -20,6 +20,22 @@ pub fn available() -> bool {
     }
 }
 
+/// TIRust's own structural bounds at a carrier of `bits` bits, (the largest
+/// number of propagators, the largest tensor rank), the numbers its
+/// capability query decides on (`v2_tir::capabilities`); None in a build
+/// without the `tir` feature.
+pub fn capabilities(bits: u32) -> Option<(usize, usize)> {
+    #[cfg(feature = "tir")]
+    {
+        Some(crate::v2_tir::capabilities(bits))
+    }
+    #[cfg(not(feature = "tir"))]
+    {
+        let _ = bits;
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

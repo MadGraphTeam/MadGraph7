@@ -330,6 +330,15 @@ pub fn capability_refusal(propagators: usize, rank: usize, bits: u32) -> Option<
         .map(|e| format!("TIRust cannot reduce {propagators} propagators at rank {rank}: {e}"))
 }
 
+/// TIRust's own structural bounds at a carrier of `bits` bits
+/// (`DirectCapabilities::of_representation`): the largest number of
+/// propagators and the largest tensor rank it represents (the numbers
+/// [`capability_refusal`] decides on; never a pyAmpliCol constant).
+pub fn capabilities(bits: u32) -> (usize, usize) {
+    let found = DirectCapabilities::of_representation(bits);
+    (found.max_propagators, usize::from(found.max_rank))
+}
+
 /// A carrier of the TIR backend: binary64, double-double or MPFR, each with
 /// its own workspaces of a plan.
 pub trait TirCarrier: TypedBatch {
@@ -1279,12 +1288,30 @@ impl TirReductionBackend {
                     })
                     .map_err(Clone::clone)
             });
+            // The magnitudes of a method-choice row's moments per slot, once
+            // per row (the lanes' term scales, `scale_of`).
+            let magnitudes: Option<Vec<[f64; SLOTS]>> = match &first.moments {
+                Ok(m) if m.choice => Some(
+                    m.values
+                        .iter()
+                        .map(|slots| std::array::from_fn(|s| norm(&slots[s])))
+                        .collect(),
+                ),
+                _ => None,
+            };
             for lane in row.start..row.end {
                 let c = &g.coefficients[lane * declared..lane * declared + monomials];
-                let value = first
-                    .moments
-                    .as_ref()
-                    .map(|m| contract(&m.values, c, width));
+                // A method-choice lane's every slot (its acceptance compares
+                // them all; its value is their first `width`, the same sums);
+                // any other lane's `width` slots.
+                let full = match &first.moments {
+                    Ok(m) if m.choice => Some(contract(&m.values, c, SLOTS)),
+                    _ => None,
+                };
+                let value = first.moments.as_ref().map(|m| match &full {
+                    Some(full) => full[..width].to_vec(),
+                    None => contract(&m.values, c, width),
+                });
                 let mut in_frame = |other: &FrameRow<T>,
                                     map: &FrameMap<T>,
                                     width: usize|
@@ -1316,10 +1343,15 @@ impl TirReductionBackend {
                             .expect("a method-choice row's acceptance row")
                             .as_ref()
                             .map(|moments| contract(moments, c, SLOTS));
-                        let full = contract(&m.values, c, SLOTS);
+                        let full = full.as_ref().expect("a method-choice lane's slots");
                         match second {
                             Ok(second) => {
-                                let scale = term_scale(&m.values, c, SLOTS);
+                                let scale = scale_of(
+                                    magnitudes
+                                        .as_ref()
+                                        .expect("a method-choice row's magnitudes"),
+                                    c,
+                                );
                                 let deviation = full
                                     .iter()
                                     .zip(&second)
@@ -1534,17 +1566,17 @@ fn contract<T: Carrier>(
     out
 }
 
-/// The lane's term scale: `max_s Σ_α |c_α| |M_α[s]|` over its `width` slots.
-fn term_scale<T: Carrier>(moments: &[[Complex<T>; 4]], c: &[Complex<T>], width: usize) -> f64 {
-    (0..width)
-        .map(|slot| {
-            moments
-                .iter()
-                .zip(c)
-                .map(|(m, c)| norm(c) * norm(&m[slot]))
-                .sum::<f64>()
-        })
-        .fold(0f64, f64::max)
+/// A lane's term scale `max_s Σ_α |c_α| |M_α[s]|` over every slot, from the
+/// row's moment magnitudes `|M_α[s]|` (formed once per row).
+fn scale_of<T: Carrier>(magnitudes: &[[f64; SLOTS]], c: &[Complex<T>]) -> f64 {
+    let mut sums = [0f64; SLOTS];
+    for (m, c) in magnitudes.iter().zip(c) {
+        let size = norm(c);
+        for (sum, m) in sums.iter_mut().zip(m) {
+            *sum += size * m;
+        }
+    }
+    sums.into_iter().fold(0f64, f64::max)
 }
 
 /// Position `position[k]` of NinjaRS monomial `k` in TIRust's rank-`rank`
