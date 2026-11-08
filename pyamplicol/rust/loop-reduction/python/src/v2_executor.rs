@@ -1974,6 +1974,30 @@ impl V2Executor {
                 "selection masks: one flag per plan Born row and per plan Born component",
             ));
         }
+        // NinjaRS refuses a family beyond its rank <= N + 2 among the dressed
+        // ones (a TIR-only plan's, m-lit lit-eft) typed, before dressing.
+        if reduction == Reduction::NinjaRs {
+            let kept = |index: usize| {
+                selection
+                    .families
+                    .as_ref()
+                    .is_none_or(|kept| kept.get(index).copied().unwrap_or(false))
+            };
+            let dressed = plan
+                .families
+                .iter()
+                .enumerate()
+                .filter(|&(index, _)| kept(index))
+                .map(|(_, family)| (family.propagators(), family.rank));
+            if let Some(refusal) =
+                rusticol_core::loop_v2::bounds::refused_families(Reduction::NinjaRs, dressed)
+            {
+                return Err(error(format!(
+                    "reduction ninjars cannot serve this plan (TIR-only: it admits the reduction \
+                     tirust only): {refusal}"
+                )));
+            }
+        }
         let selection = &selection;
         let bits = self.bits()?;
         let carrier = self.carrier;

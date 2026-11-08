@@ -2352,6 +2352,7 @@ dependencies = [
  "bincode",
  "brotli",
  "flate2",
+ "iregi-rust",
  "libc",
  "libloading",
  "ninjars",

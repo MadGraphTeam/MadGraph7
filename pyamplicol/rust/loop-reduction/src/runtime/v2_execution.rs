@@ -127,16 +127,33 @@ pub fn backend_carriers() -> Vec<(&'static str, Vec<&'static str>)> {
 }
 
 /// `None` if `reduction` reduces a numerator of rank `rank` over
-/// `propagators` loop propagators, else its refusal: the artifacts' rank
-/// admission (`rusticol_core::loop_v2::bounds::rank_refusal`) and, for
-/// TIRust, its capability query (structural bounds, the same for every
-/// carrier: asked for binary64; [`crate::v2_tir::capability_refusal`]).
+/// `propagators` loop propagators, else its refusal: NinjaRS's rank
+/// admission (`rusticol_core::loop_v2::bounds::rank_refusal`), TIRust's
+/// capability query (structural bounds, the same for every carrier: asked
+/// for binary64 with the TIR backend's settings;
+/// [`crate::v2_tir::capability_refusal`]).
 pub fn rank_refusal(reduction: Reduction, propagators: usize, rank: usize) -> Option<String> {
     #[cfg(feature = "tir")]
     if reduction == Reduction::TiRust {
         return crate::v2_tir::capability_refusal(propagators, rank, f64::MANTISSA_DIGITS);
     }
     rusticol_core::loop_v2::bounds::rank_refusal(reduction, propagators, rank)
+}
+
+/// NinjaRS's refusal of a plan whose families it cannot reduce: a TIR-only
+/// plan (a family beyond its rank <= N + 2, m-lit lit-eft;
+/// `rusticol_core::loop_v2::bounds::tir_only`), refused typed when its
+/// backend is built for the plan, before any point is evaluated (never a
+/// switch to TIRust: the caller names the backend).
+pub fn ninjars_refusal(plan: &rusticol_core::loop_v2::plan::LoopProgramV4) -> RusticolResult<()> {
+    match rusticol_core::loop_v2::bounds::refused_families(Reduction::NinjaRs, plan_histogram(plan))
+    {
+        None => Ok(()),
+        Some(refusal) => Err(RusticolError::unsupported_runtime_capability(
+            "ninjars",
+            format!("this artifact is TIR-only, it admits the reduction tirust only: {refusal}"),
+        )),
+    }
 }
 
 /// A plan's (propagators, declared rank) histogram: the TIR backend's plans

@@ -1612,6 +1612,9 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                                 # Loop-induced: kind, interference, poles
                                 # (m-lit LIT-AMP; absent for a virtual).
                                 **process.contribution(),
+                                # A TIR-only process's one backend (m-lit
+                                # lit-eft; None otherwise, not recorded).
+                                reductions=process.reductions(),
                             ),
                             validation_point=build_process_validation_point(
                                 entry.process_ir,

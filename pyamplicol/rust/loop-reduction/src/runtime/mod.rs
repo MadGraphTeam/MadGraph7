@@ -29,7 +29,7 @@ pub use reduction::{
 };
 pub use v2_execution::{
     Reduction, TIRUST_NOT_BUILT, TypedBatch, V2Backends, V2ReductionBackend, backend_carriers,
-    plan_histogram, rank_refusal,
+    ninjars_refusal, plan_histogram, rank_refusal,
 };
 pub use v2_reduce::{
     FamilyGroup, NATIVE_ONSHELL_THRESHOLD, PoleSelection, Poles, ReduceOptions, ReductionFrame,

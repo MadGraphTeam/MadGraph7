@@ -66,15 +66,37 @@ def orders_within(orders: Orders, cap: Orders) -> bool:
 def reducer_rank_refusal(
     propagators: int, rank: int, reducer: str = "ninjars"
 ) -> str | None:
-    """``None`` if the reduction backend ``reducer`` (``"ninjars"``, the
-    artifacts' admission, or ``"tirust"``) reduces a numerator of ``rank``
-    over ``propagators`` loop propagators, else its refusal: the backend's
-    own admission (NinjaRS ``RankClass::of``, through the native module),
-    which the plan loader and the runtime backends ask too."""
+    """``None`` if the reduction backend ``reducer`` (``"ninjars"`` or
+    ``"tirust"``) reduces a numerator of ``rank`` over ``propagators`` loop
+    propagators, else its refusal: the backend's own admission (NinjaRS
+    ``RankClass::of``, rank <= N + 2; TIRust's capability query, through the
+    native module), which the runtime backends ask too."""
 
     from pyamplicol.loops.native import load_loop_native
 
     return load_loop_native().reducer_rank_refusal(propagators, rank, reducer)
+
+
+@cache
+def family_rank_refusal(propagators: int, rank: int) -> str | None:
+    """``None`` if an artifact admits a family numerator of ``rank`` over
+    ``propagators`` loop propagators, else every backend's refusal: a
+    reduction backend of the native build reduces it (the plan loader's
+    admission, ``rusticol_core::loop_v2::bounds::admission_refusal``). A
+    family beyond NinjaRS's rank <= N + 2 that TIRust reduces makes the
+    artifact TIR-only (m-lit lit-eft, ``tir_only``)."""
+
+    from pyamplicol.loops.native import load_loop_native
+
+    return load_loop_native().family_rank_refusal(propagators, rank)
+
+
+def tir_only(buckets: Iterable[Sequence[int]]) -> bool:
+    """Whether an artifact of reduction ``buckets`` (``(N, R, ...)``) is
+    TIR-only: a family beyond NinjaRS's rank <= N + 2 (m-lit lit-eft; its
+    artifacts admit TIRust only, which their declarations record)."""
+
+    return any(reducer_rank_refusal(n, r, "ninjars") is not None for n, r, *_ in buckets)
 
 
 def lowest_leg(mask: int) -> int:
@@ -711,7 +733,7 @@ class _Recursion:
                 state = graph.extend(state, position)
             closures.append(Closure(state, symmetric, self.multiplicity.get(cut, 1)))
             rank = max(rank, sum(p.vertex.q_degree for p in positions))
-        refusal = reducer_rank_refusal(len(key), rank)
+        refusal = family_rank_refusal(len(key), rank)
         if refusal is not None:
             raise ValueError(f"family {key} has structural rank {rank}: {refusal}")
         return Family(key, rank, tuple(closures))

@@ -107,8 +107,10 @@
 //! query (`DirectCapabilities::admits` of the plan's settings at the
 //! carrier's precision, [`capability_refusal`]) and its typed plan
 //! construction, each refusal carried verbatim (`ReductionUnavailable` in
-//! Python); the artifacts' rank admission ([`rank_refusal`], rank <= N + 2
-//! until m-lit lit-eft) comes first. No TIRust limit is stated here; the
+//! Python); it is the artifacts' rank admission of TIRust as well
+//! ([`rank_refusal`], which asks the same query at binary64: TIRust has no
+//! rank <= N + 2 limit, so its artifacts may hold families NinjaRS cannot
+//! reduce, m-lit lit-eft's TIR-only artifacts). No TIRust limit is stated here; the
 //! validated domain (N <= 6, R <= 6) is reported, never enforced. A carrier
 //! exponent range left by a lane is TIRust's typed per-lane `Unstable`
 //! status. Plans are built from an artifact's (propagators, rank) histogram
@@ -250,13 +252,11 @@ fn settings(propagators: usize, rank: usize) -> RusticolResult<ReductionSettings
 }
 
 /// TIRust's refusal of a family of `propagators` at numerator rank `rank`
-/// in a carrier of `bits` bits, or `None` (module docs, 'Capability'): the
-/// artifacts' rank admission ([`rank_refusal`]), then TIRust's capability
-/// query, its reason carried.
+/// in a carrier of `bits` bits, or `None` (module docs, 'Capability'):
+/// TIRust's capability query of this backend's settings, its reason
+/// carried (the artifacts' admission of TIRust, [`rank_refusal`], asks it
+/// at binary64).
 pub fn capability_refusal(propagators: usize, rank: usize, bits: u32) -> Option<String> {
-    if let Some(refusal) = rank_refusal(Reducer::TiRust, propagators, rank) {
-        return Some(refusal);
-    }
     let settings = match settings(propagators, rank) {
         Ok(settings) => settings,
         Err(error) => return Some(error.message().to_owned()),

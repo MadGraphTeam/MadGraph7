@@ -121,7 +121,11 @@ pub struct LoopV2Sector {
 /// `poles` lists the pole selections an evaluation may
 /// request (`PoleSelection`, DESIGN.md §12.4): every pole ("all"), the finite
 /// part only ("none"), and the ultraviolet ("uv") or infrared ("ir") parts:
-/// always all four ([`LOOP_V2_POLE_SELECTIONS`]).
+/// always all four ([`LOOP_V2_POLE_SELECTIONS`]). `reductions` names the
+/// reduction backends a TIR-only process admits (`["tirust"]`: a family
+/// beyond NinjaRS's rank <= N+2, m-lit lit-eft,
+/// `loop_v2::bounds::tir_only`), and is absent otherwise (every backend:
+/// the declarations of other processes keep their bytes).
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct LoopV2ExecutionMetadata {
@@ -151,6 +155,8 @@ pub struct LoopV2ExecutionMetadata {
     pub dimension: String,
     pub interference: String,
     pub scheme_status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reductions: Option<Vec<String>>,
 }
 
 /// One external leg of a plan v4 process, in momentum order.
@@ -464,6 +470,16 @@ pub fn load_loop_v2_artifact(
             .into_iter()
             .map(|((n, r), families)| (n, r, families.len()))
             .collect();
+        // A TIR-only plan (m-lit lit-eft) declares its one backend, any
+        // other plan none.
+        let tir_only = crate::loop_v2::bounds::tir_only(buckets.iter().map(|&(n, r, _)| (n, r)));
+        require(
+            metadata.reductions
+                == tir_only
+                    .then(|| vec![crate::loop_v2::bounds::Reducer::TiRust.name().to_owned()]),
+            "plan v4 families beyond NinjaRS's rank <= N+2 are declared exactly by the \
+             reductions [\"tirust\"] (a TIR-only process)",
+        )?;
         require(
             program.families.len() == metadata.families
                 && buckets == metadata.buckets

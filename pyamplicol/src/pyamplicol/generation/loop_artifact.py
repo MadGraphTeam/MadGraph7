@@ -115,10 +115,17 @@ class LoopV2ExecutionMetadata:
     dimension: str = "D=4-2*epsilon"
     interference: str = ORDINARY_INTERFERENCE
     scheme_status: str = "declared-not-certified"
+    # m-lit lit-eft: the reduction backends a TIR-only process admits
+    # (``("tirust",)``: a family beyond NinjaRS's rank <= N + 2,
+    # ``loops.v2.families.tir_only``); None (not recorded, every backend)
+    # otherwise, so other declarations keep their bytes.
+    reductions: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.scheme, LoopSchemeDeclaration):
             raise TypeError("loop metadata requires a typed scheme declaration")
+        if self.reductions not in (None, ("tirust",)):
+            raise ValueError("a TIR-only process declares the reductions ('tirust',)")
         induced = self.contribution_kind == "loop-induced"
         if self.contribution_kind not in ("virtual", "loop-induced"):
             raise ValueError(f"unknown contribution {self.contribution_kind!r}")
@@ -270,6 +277,18 @@ def recorded_conventions(
     return None
 
 
+def _metadata_record(metadata: LoopV2ExecutionMetadata) -> dict[str, object]:
+    """The physics record of ``metadata``: its fields, ``reductions`` only
+    when declared (a TIR-only process)."""
+
+    record = asdict(metadata)
+    if record["reductions"] is None:
+        del record["reductions"]
+    else:
+        record["reductions"] = list(record["reductions"])
+    return record
+
+
 def _v2_process_payloads(
     process: LoopV2ProcessArtifact,
 ) -> tuple[dict[str, object], dict[str, object]]:
@@ -282,7 +301,7 @@ def _v2_process_payloads(
         "schema_version": LOOP_V2_PHYSICS_SCHEMA,
         "kind": LOOP_PHYSICS_KIND,
         "process_id": process.process_id,
-        "metadata": asdict(process.metadata),
+        "metadata": _metadata_record(process.metadata),
         "external_pdgs": list(process.external_pdgs),
         "state_legs": [dict(leg) for leg in process.state_legs],
         "helicities": [list(row) for row in process.helicities],

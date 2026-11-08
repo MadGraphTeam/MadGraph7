@@ -16,7 +16,7 @@ publish = false
 # workspace's Symbolica and oneloop sources and feature sets, so NinjaRS's
 # numerics are the same either way.
 default = ["tir"]
-tir = ["dep:iregi-rust", "dep:iregi-masters"]
+tir = ["dep:iregi-rust", "dep:iregi-masters", "rusticol-core/tir"]
 
 [dependencies]
 feynkit-kinematics = { git = "https://github.com/alphal00p/gammaloop.git", rev = "d1904bf2bd5bf4f26969a73b415095e941a55610", default-features = false, features = ["native"] }
