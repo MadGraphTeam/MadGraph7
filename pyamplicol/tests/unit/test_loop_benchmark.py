@@ -2766,6 +2766,92 @@ def test_provider_records_carry_the_specification_value_annotations(
     assert entry["value_exceptions"]["points"] == [7, 13]
 
 
+def test_the_most_optimistic_protocol_sets_each_provider_up_for_speed(
+    tmp_path, monkeypatch
+):
+    # m-lit F4: OpenLoops without its stability system, MadLoop without its
+    # stability test, Recola without dynamic settings (alpha_s and the scales
+    # of the generation, no per-point setter in the timer), its build
+    # recorded; loop-induced rows only.
+    import json
+    import types
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        providers,
+        "Trees",
+        lambda options: types.SimpleNamespace(
+            madloop_export=lambda spec, override: tmp_path
+        ),
+    )
+    seen = {}
+
+    def provider(name):
+        def run(*args):
+            seen[name] = args
+            return {"provider": name, "mean_seconds_per_point": 1.0}
+
+        return run
+
+    monkeypatch.setattr(providers, "openloops", provider("openloops"))
+    monkeypatch.setattr(providers, "recola", provider("recola"))
+    monkeypatch.setattr(providers, "madloop", provider("madloop"))
+    options = types.SimpleNamespace(
+        process="li_gg_hh",
+        points=2,
+        work=tmp_path / "work",
+        json=tmp_path / "record.json",
+        cpu=0,
+        providers=["openloops", "recola", "madloop"],
+        protocol="optimistic",
+        madloop_export=None,
+        madloop_param=["MLReductionLib=6|7|1"],
+        madloop_stages=False,
+    )
+    assert providers.main(options) == 0
+    assert json.loads(options.json.read_text())["protocol"] == "optimistic"
+    assert seen["openloops"][-1] == seen["recola"][-1] == "optimistic"
+    assert seen["madloop"][-1] == {"CTModeRun": "1", "MLReductionLib": "6|7|1"}
+    with pytest.raises(SystemExit, match="loop-induced rows"):
+        providers.main(types.SimpleNamespace(**{**vars(options), "process": "gg_ggg"}))
+
+    # The Recola driver: dynamic settings and the per-point setters follow
+    # the ``dynamic`` command (1, the production default, keeps them).
+    built = []
+    monkeypatch.setattr(
+        providers.subprocess, "run", lambda command, **kw: built.append(command)
+    )
+    providers._recola_driver(tmp_path, tmp_path, [])
+    source = (tmp_path / "recola_driver_production.f90").read_text()
+    assert "integer :: dynamic = 1" in source
+    assert "call set_dynamic_settings_rcl(dynamic)" in source
+    assert "set_dynamic_settings_rcl(1)" not in source
+    assert (
+        "    if (dynamic == 1) then\n"
+        "      call set_alphas_rcl(stored_alpha_s, scales(i), stored_nf)\n"
+    ) in source
+
+    # The build of the library a Recola run links, from the root's CMake builds.
+    root, tree = tmp_path / "root", tmp_path / "root/sources/recola"
+    build = root / "builds/recola"
+    (build / "src/CMakeFiles/recola.dir").mkdir(parents=True)
+    tree.mkdir(parents=True)
+    (build / "CMakeCache.txt").write_text(
+        f"//comment\nCMAKE_BUILD_TYPE:STRING=\nCMAKE_HOME_DIRECTORY:INTERNAL={tree}\n"
+    )
+    (build / "src/CMakeFiles/recola.dir/flags.make").write_text(
+        "Fortran_FLAGS = -cpp -J/abs/include -fPIC\n"
+        "# Custom flags: src/CMakeFiles/recola.dir/a.f90.o_FLAGS = -O2\n"
+    )
+    assert providers.cmake_build(tree, root, "recola") == {
+        "build_dir": "builds/recola",
+        "build_type": "(none)",
+        "fortran_flags": "-cpp -fPIC",
+        "source_flags": ["-O2"],
+    }
+    assert providers.cmake_build(tmp_path, root, "recola") is None
+
+
 def _induced_run(seconds: list[float], failed: list[int], values: dict) -> dict:
     """One backend run of a loop-induced harness record (``InducedRun``)."""
 
