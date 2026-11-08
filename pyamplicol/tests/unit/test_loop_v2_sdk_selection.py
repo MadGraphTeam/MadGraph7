@@ -1120,3 +1120,123 @@ def test_a_tir_off_library_serves_the_selections_on_ninjars(artifacts, client_ca
         finally:
             off.rusticol_virtual_free(handles["off"])
             on.rusticol_virtual_free(handles["on"])
+
+
+def test_born_interfered_selections_refuse_typed_and_null_is_ordinary():
+    """A Born-interfered process (the shipped self-test artifact
+    ``assets/selftest_virtual/ew``): a colour resolution is refused in the
+    Python API's words; a helicity selection too (at NLC / full colour in the
+    Python API's words; its leading-colour selection is the Python API's,
+    refused typed by the SDK); a NULL selection is the ordinary evaluation,
+    bitwise."""
+
+    from pyamplicol import Runtime
+    from pyamplicol._internal import selftest_virtual_ew as ew
+    from pyamplicol.api.errors import CompatibilityError
+
+    expected = json.loads((ew.fixture_root() / "expected.json").read_text())
+    artifact = ew.fixture_root() / "artifact"
+    points = [
+        [[float(Decimal(c)) for c in p] for p in point]
+        for point in expected["points"][:2]
+    ]
+    scales = [float(Decimal(s)) for s in expected["mu_r2"][:2]]
+    exact = [[[str(Decimal(c)) for c in p] for p in point] for point in points]
+    exact_scales = [str(Decimal(s)) for s in scales]
+    runtime = Runtime.load(artifact, process=ew.NAME)
+    sdk = _sdk()
+    handle = ctypes.c_void_p()
+    assert (
+        sdk.rusticol_virtual_open(
+            str(artifact).encode(), ew.NAME.encode(), None, None, ctypes.byref(handle)
+        )
+        == 0
+    ), _error(sdk)
+    try:
+        capabilities = _json(sdk.rusticol_virtual_capabilities_json, handle)
+        assert capabilities["helicity_selection"] is False
+        assert capabilities["color_resolutions"] is None
+        with pytest.raises(CompatibilityError) as resolution:
+            runtime.evaluate_resolved(
+                exact, mu_r2=exact_scales, color_resolution="amplitude-basis"
+            )
+        found = _call(
+            sdk, handle, points, scales, resolved=True, resolution="amplitude-basis"
+        )
+        assert found["status"] == STATUS_RUNTIME_ERROR
+        assert str(resolution.value) in found["error"]
+        accuracy = capabilities["color_accuracy"]
+        found = _call(sdk, handle, points, scales, ids=["h0"])
+        assert found["status"] == STATUS_RUNTIME_ERROR
+        if accuracy == "lc":
+            assert "served by the Python API" in found["error"]
+        else:
+            with pytest.raises(CompatibilityError) as selection:
+                runtime.evaluate(exact, mu_r2=exact_scales, helicities=["h0"])
+            assert str(selection.value) in found["error"]
+        flat = [c for point in points for p in point for c in p]
+        momenta = (ctypes.c_double * len(flat))(*flat)
+        mu = (ctypes.c_double * len(scales))(*scales)
+        request = _Request(momenta, len(flat), len(points), None, mu, len(scales))
+        values = []
+        for function in (
+            "rusticol_virtual_evaluate",
+            "rusticol_virtual_evaluate_selected",
+        ):
+            result = ctypes.c_void_p()
+            arguments = [handle, ctypes.byref(request)]
+            if function.endswith("selected"):
+                arguments.append(None)
+            status = getattr(sdk, function)(*arguments, ctypes.byref(result))
+            assert status == 0, _error(sdk)
+            shape = _ResultShape()
+            assert sdk.rusticol_virtual_result_shape(result, ctypes.byref(shape)) == 0
+            loop = (ctypes.c_double * shape.virtual_values)()
+            assert (
+                sdk.rusticol_virtual_result_copy_virtual(
+                    result, loop, shape.virtual_values
+                )
+                == 0
+            )
+            values.append([_bits(x) for x in loop])
+            sdk.rusticol_virtual_result_free(result)
+        assert values[0] == values[1] and values[0]
+    finally:
+        sdk.rusticol_virtual_free(handle)
+
+
+@pytest.mark.parametrize("backend", ["auto", "tirust"])
+def test_a_complete_selection_carries_the_ordinary_records(
+    artifacts, loop_native, backend
+):
+    """[D11] (F3 interplay; WAITS ON lit-tirust-default for its per-point
+    fallback record, deciding on the capability): a selection of every row
+    dresses what the ordinary evaluation dresses (no row mask), so its
+    diagnostics are the ordinary call's record for record (reduction choice,
+    failures and whatever per-point record the backend policy adds, such as
+    F3's NinjaRS fallback) apart from its own "selection"; its values equal
+    the ordinary ones within rounding."""
+
+    name = "li_uux_hgg"
+    points, scales, _exact, _scales = _inputs(name)
+    sdk = _sdk()
+    handle = _open(sdk, artifacts[name])
+    try:
+        if sdk.rusticol_virtual_set_reduction(handle, backend.encode()) != 0:
+            assert backend == "tirust" and "tirust" not in json.loads(
+                loop_native.reduction_backends()
+            )
+            return
+        capabilities = _json(sdk.rusticol_virtual_capabilities_json, handle)
+        every = [f"h{k}" for k in range(len(capabilities["helicity_rows"]))]
+        selected = _call(sdk, handle, points, scales, ids=every)
+        ordinary = _call(sdk, handle, points, scales)
+        assert selected["status"] == ordinary["status"] == 0
+        assert selected["statuses"] == ordinary["statuses"]
+        mine = dict(selected["diagnostics"])
+        assert mine.pop("selection") == {"helicity_ids": [every] * len(points)}
+        assert mine == ordinary["diagnostics"]
+        for a, b in zip(selected["virtual"], ordinary["virtual"], strict=True):
+            assert (a != a and b != b) or abs(a - b) <= 1e-12 * max(abs(b), 1e-300)
+    finally:
+        sdk.rusticol_virtual_free(handle)
