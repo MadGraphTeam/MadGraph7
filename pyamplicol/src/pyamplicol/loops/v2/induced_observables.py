@@ -112,6 +112,12 @@ INCLUSIVE = "born"
 # Binary64 outputs through the native implementation the SDK shares (module
 # docstring); False runs this module's Decimal oracle in binary64 too.
 NATIVE_BINARY64 = True
+# The guard digits of a spin leg's polarisation vectors and coefficients over
+# the carrier's working digits (``Precision.working_digits``, itself floored
+# at the tree replay's digits): their square roots, products and sums round
+# in that context, so a coefficient enters the carrier correctly rounded
+# (the native one is ``induced_outputs::SPIN_GUARD_DIGITS``).
+SPIN_GUARD_DIGITS = 10
 
 Matrix = tuple[tuple[ExactColorCoefficient, ...], ...]
 
@@ -724,7 +730,7 @@ class PointOutputs:
                 else None
             )
             with localcontext() as context:
-                context.prec = max(numbers.precision.working_digits, 34) + 10
+                context.prec = numbers.precision.working_digits + SPIN_GUARD_DIGITS
                 for leg, vector in spin.items():
                     label = int(leg)
                     momentum = point[label - 1]

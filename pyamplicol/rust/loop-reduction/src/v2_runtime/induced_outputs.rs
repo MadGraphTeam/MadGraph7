@@ -14,7 +14,7 @@
 //! * spin-correlated: a spin vector v of a declared leg j enters through its
 //!   coefficients c_h = -v . conj(w_h) on the leg's polarisation vectors
 //!   ([`polarisations`], [`spin_coefficients`]: `Decimal` at the working
-//!   digits (at least 34) plus ten, as `PointOutputs`), A(v) = sum_h c_h
+//!   digits plus [`SPIN_GUARD_DIGITS`], as `PointOutputs`), A(v) = sum_h c_h
 //!   A(h) ([`spin_amplitudes`]);
 //! * helicity-resolved: per helicity row the inclusive form over that row
 //!   alone (the colour-contracted resolution, `CONTRACTED`); the
@@ -365,10 +365,18 @@ pub fn spin_coefficients(
         .collect()
 }
 
+/// The guard digits of the spin coefficients over the carrier's working
+/// digits (`induced_observables.SPIN_GUARD_DIGITS`): the polarisation
+/// vectors' square roots and the coefficients' products and sums round in
+/// this context, so that a coefficient enters the carrier correctly rounded.
+pub const SPIN_GUARD_DIGITS: u32 = 10;
+
 /// The `Decimal` context of the spin coefficients of a carrier with
-/// `working_digits` (`PointOutputs`: at least 34 digits, plus ten).
+/// `working_digits` (`PointOutputs`: the working digits, which
+/// `Precision.working_digits` already floors at its tree-replay digits, plus
+/// [`SPIN_GUARD_DIGITS`]).
 pub fn spin_context(working_digits: u32) -> DecimalContext {
-    DecimalContext::new(working_digits.max(34) + 10)
+    DecimalContext::new(working_digits + SPIN_GUARD_DIGITS)
 }
 
 /// An exact input as the `Decimal` value the Python API reads from its text
@@ -986,7 +994,7 @@ mod tests {
 
     #[test]
     fn massless_polarisations_are_transverse_and_unit() {
-        let ctx = spin_context(17);
+        let ctx = spin_context(super::V2Precision::Double.working_digits());
         let sources = vec![
             serde_json::json!({"leg_label": 1, "wavefunction_kind": "vector", "dimension": 4,
                 "applied_crossing": {"momentum_transform": "identity"},
