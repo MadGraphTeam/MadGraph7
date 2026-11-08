@@ -259,8 +259,10 @@ def _compare(label, found: dict, expected, resolved: bool) -> None:
     failures = found["diagnostics"]["failures"]
     for index, ok in enumerate(served):
         if not ok:
+            # The SDK lists the reasons; the Python API joins them in the
+            # failure record (its lane detail adds the executor's prefix).
             assert "; ".join(failures[str(index)]) == (
-                expected.diagnostics[index].detail
+                expected.diagnostics[index].failures[0].detail
             ), label
     record = expected.diagnostics[0].reduction
     assert found["diagnostics"]["reduction"] == {
@@ -299,6 +301,88 @@ def _per_point(runtime, exact, scales, by_point, **options):
     return SimpleNamespace(values=values, diagnostics=diagnostics)
 
 
+def _check_selections(sdk, handle, runtime, inputs, selectors, tag, **options):
+    """Every new call on ``inputs`` (the C ABI's doubles and mu_R^2, the
+    Python API's exact texts) against the Python API: values bitwise,
+    statuses, failure reasons, the reduction record and the axes; returns
+    the calls (selectors, the Python result, resolved)."""
+
+    points, scales, exact, exact_scales = inputs
+    one, subset, by_point = selectors
+    backend = options["reduction"]
+    calls = {
+        "anchors": (
+            {"resolved": True, "resolution": "amplitude-basis"},
+            runtime.evaluate_resolved(
+                exact,
+                mu_r2=exact_scales,
+                color_resolution="amplitude-basis",
+                **options,
+            ),
+            True,
+        ),
+        "one": (
+            {"ids": [one]},
+            runtime.evaluate(exact, mu_r2=exact_scales, helicities=[one], **options),
+            False,
+        ),
+        "subset": (
+            {"ids": subset},
+            runtime.evaluate(exact, mu_r2=exact_scales, helicities=subset, **options),
+            False,
+        ),
+        "resolved-subset": (
+            {"resolved": True, "ids": subset, "resolution": "contracted"},
+            runtime.evaluate_resolved(
+                exact, mu_r2=exact_scales, helicities=subset, **options
+            ),
+            True,
+        ),
+        "anchors-subset": (
+            {"resolved": True, "ids": subset, "resolution": "amplitude-basis"},
+            runtime.evaluate_resolved(
+                exact,
+                mu_r2=exact_scales,
+                helicities=subset,
+                color_resolution="amplitude-basis",
+                **options,
+            ),
+            True,
+        ),
+        "by-point": (
+            {"by_point": by_point},
+            _per_point(runtime, exact, exact_scales, by_point, reduction=backend),
+            False,
+        ),
+    }
+    found = {}
+    for label, (chosen, expected, resolved) in calls.items():
+        found[label] = _call(sdk, handle, points, scales, **chosen)
+        if label == "by-point":
+            # The per-point reference is one call per point: values,
+            # statuses and reasons (its record is the same call's).
+            assert found[label]["status"] == 0, found[label].get("error")
+            served = [v is not None for v in expected.values]
+            assert found[label]["statuses"] == [
+                SUCCESS_STATUS if ok else FAILED_STATUS for ok in served
+            ], label
+            assert _bitwise(found[label]["virtual"], _python_values(expected, False)), (
+                label
+            )
+            failures = found[label]["diagnostics"]["failures"]
+            for index, ok in enumerate(served):
+                if not ok:
+                    assert "; ".join(failures[str(index)]) == (
+                        expected.diagnostics[index].failures[0].detail
+                    ), label
+            assert found[label]["diagnostics"]["selection"] == {
+                "helicity_ids": [[f"h{row}"] for row in by_point]
+            }
+            continue
+        _compare(f"{tag}:{label}", found[label], expected, resolved)
+    return calls
+
+
 @pytest.mark.parametrize("backend", BACKENDS)
 @pytest.mark.parametrize("name", sorted(ROWS))
 def test_c_abi_selections_equal_the_python_api(artifacts, loop_native, name, backend):
@@ -328,74 +412,15 @@ def test_c_abi_selections_equal_the_python_api(artifacts, loop_native, name, bac
                 )
             return
         one, subset, by_point = _selectors(capabilities, len(points))
-        calls = {
-            "anchors": (
-                {"resolved": True, "resolution": "amplitude-basis"},
-                runtime.evaluate_resolved(
-                    exact,
-                    mu_r2=exact_scales,
-                    color_resolution="amplitude-basis",
-                    **options,
-                ),
-                True,
-            ),
-            "one": (
-                {"ids": [one]},
-                runtime.evaluate(
-                    exact, mu_r2=exact_scales, helicities=[one], **options
-                ),
-                False,
-            ),
-            "subset": (
-                {"ids": subset},
-                runtime.evaluate(
-                    exact, mu_r2=exact_scales, helicities=subset, **options
-                ),
-                False,
-            ),
-            "resolved-subset": (
-                {"resolved": True, "ids": subset, "resolution": "contracted"},
-                runtime.evaluate_resolved(
-                    exact, mu_r2=exact_scales, helicities=subset, **options
-                ),
-                True,
-            ),
-            "anchors-subset": (
-                {"resolved": True, "ids": subset, "resolution": "amplitude-basis"},
-                runtime.evaluate_resolved(
-                    exact,
-                    mu_r2=exact_scales,
-                    helicities=subset,
-                    color_resolution="amplitude-basis",
-                    **options,
-                ),
-                True,
-            ),
-            "by-point": (
-                {"by_point": by_point},
-                _per_point(runtime, exact, exact_scales, by_point, reduction=backend),
-                False,
-            ),
-        }
-        found = {}
-        for label, (selectors, expected, resolved) in calls.items():
-            found[label] = _call(sdk, handle, points, scales, **selectors)
-            if label == "by-point":
-                # The per-point reference is one call per point: values,
-                # statuses and reasons (its record is the same call's).
-                assert found[label]["status"] == 0, found[label].get("error")
-                served = [v is not None for v in expected.values]
-                assert found[label]["statuses"] == [
-                    SUCCESS_STATUS if ok else FAILED_STATUS for ok in served
-                ]
-                assert _bitwise(
-                    found[label]["virtual"], _python_values(expected, False)
-                ), label
-                assert found[label]["diagnostics"]["selection"] == {
-                    "helicity_ids": [[f"h{row}"] for row in by_point]
-                }
-                continue
-            _compare(f"{name}:{backend}:{label}", found[label], expected, resolved)
+        calls = _check_selections(
+            sdk,
+            handle,
+            runtime,
+            (points, scales, exact, exact_scales),
+            (one, subset, by_point),
+            f"{name}:{backend}",
+            **options,
+        )
         # The sums (Q39; the anchors' split): within rounding, where served.
         total = runtime.evaluate(exact, mu_r2=exact_scales, **options)
         contracted = runtime.evaluate_resolved(exact, mu_r2=exact_scales, **options)
@@ -423,6 +448,92 @@ def test_c_abi_selections_equal_the_python_api(artifacts, loop_native, name, bac
                 selected = everything["virtual"][row * width : (row + 1) * width]
                 for k, value in enumerate(point):
                     assert abs(selected[3 * k] - value.finite) <= 1e-12 * scale
+    finally:
+        sdk.rusticol_virtual_free(handle)
+
+
+def _fresh_inputs(name: str, count: int = 8):
+    """``count`` fresh points of a 2 -> 3 row with a 125 mass (the
+    deterministic exact sequence beyond the fixture's points; different
+    scales per point) in the forms of ``_inputs``."""
+
+    from fractions import Fraction
+
+    from tools.loop_reference import exact_points
+
+    stored = [
+        [[Fraction(Decimal(c)) for c in p] for p in point]
+        for point in _fixture(name)["points"]
+    ]
+    generated = exact_points.generate(
+        [0, 0, 125, 0, 0],
+        count=count + len(stored),
+        cut=Fraction(1, 1000),
+        resonances=(),
+        scale_window=(Fraction(700), Fraction(3000)),
+    )
+    fresh = [
+        point
+        for point in generated
+        if [[Fraction(c) for c in p] for p in point] not in stored
+    ][:count]
+    points = [[[float(c) for c in p] for p in point] for point in fresh]
+    mu = [900, 1300, 500, 2000, 800, 1100, 650, 1700]
+    scales = [float(mu[p % len(mu)]) ** 2 for p in range(len(points))]
+    exact = [[[str(Decimal(c)) for c in p] for p in point] for point in points]
+    return points, scales, exact, [str(Decimal(s)) for s in scales]
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_c_abi_selections_on_fresh_points_equal_the_python_api(
+    artifacts, loop_native, backend
+):
+    """Fresh points of g g > h g g on which TIRust fails closed: every new
+    call keeps the Python API's statuses, failure reasons and values (a
+    resolved helicity selection dresses its rows only in both, so a lane
+    refused in an unselected row fails neither), and the per-point
+    selection puts several points in one row group."""
+
+    from pyamplicol import Runtime
+
+    name = "li_gg_hgg"
+    artifact = artifacts[name]
+    runtime = Runtime.load(artifact, process="p")
+    inputs = _fresh_inputs(name)
+    sdk = _sdk()
+    handle = _open(sdk, artifact)
+    try:
+        status = sdk.rusticol_virtual_set_reduction(handle, backend.encode())
+        if status != 0:
+            # Not built into this library: the fixture-point test checks the
+            # refusal.
+            assert backend == "tirust" and status == STATUS_RUNTIME_ERROR
+            return
+        capabilities = _json(sdk.rusticol_virtual_capabilities_json, handle)
+        one, subset, _ = _selectors(capabilities, 1)
+        count = len(capabilities["helicity_rows"])
+        by_point = [r % count for r in (1, 1, 4, 1, 4, 7, 7, 1)][: len(inputs[0])]
+        assert len(set(by_point)) < len(by_point)
+        calls = _check_selections(
+            sdk,
+            handle,
+            runtime,
+            inputs,
+            (one, subset, by_point),
+            f"fresh:{backend}",
+            reduction=backend,
+            on_failure="return",
+        )
+        if backend == "tirust":
+            every = [v is not None for v in calls["anchors"][1].values]
+            kept = [v is not None for v in calls["anchors-subset"][1].values]
+            assert not all(every), (
+                "TIRust serves every fresh point at this pin: extend the point "
+                "set so a fail-closed point stays exercised"
+            )
+            assert any(k and not e for e, k in zip(every, kept, strict=True)), (
+                "no fresh point fails in an unselected row only: extend the point set"
+            )
     finally:
         sdk.rusticol_virtual_free(handle)
 

@@ -1271,10 +1271,20 @@ class InducedObservables:
         keys): ``correlated`` (history ids, or (spin source assignment,
         history id) pairs: ``V2InducedObservablesRuntime.
         evaluate_correlated_many``), ``resolved`` (a colour resolution,
-        ``COLOUR_RESOLUTIONS``) or ``selection`` (a ``selection.column``: its
-        helicity rows, a ``member``'s own)."""
+        ``COLOUR_RESOLUTIONS``, or (resolution, the selected helicity rows):
+        a resolved helicity selection, whose outputs read, so whose
+        executor dresses, the selected rows only) or ``selection`` (a
+        ``selection.column``: its helicity rows). Rows are a ``member``'s
+        own."""
 
         from .selection import SELECTION
+
+        def representative(rows: Any) -> Any:
+            if member is None or rows is None:
+                return rows
+            # A member's selection names its own rows.
+            found = {member.row(row): row for row in self.rows}
+            return frozenset(found[row] for row in rows)
 
         if kind == "correlated":
             outputs = []
@@ -1283,13 +1293,15 @@ class InducedObservables:
                 self.history(name)
                 outputs.append(Output(item, name, None, spin))
         elif kind == "resolved":
-            if value not in COLOUR_RESOLUTIONS:
-                raise ValueError(f"unknown loop-induced resolution {value!r}")
+            resolution, selected = (value, None) if isinstance(value, str) else value
+            if resolution not in COLOUR_RESOLUTIONS:
+                raise ValueError(f"unknown loop-induced resolution {resolution!r}")
             anchors = (
                 (None,)
-                if value == CONTRACTED
+                if resolution == CONTRACTED
                 else tuple(range(len(self.slice.amplitude)))
             )
+            kept = representative(selected)
             outputs = [
                 Output(
                     (row, b),
@@ -1297,17 +1309,13 @@ class InducedObservables:
                     frozenset({row}),
                 )
                 for row in self.rows
+                if kept is None or row in kept
                 for b in anchors
             ]
         elif kind == SELECTION:
             if value.basis is not None:
                 raise ValueError("a loop-induced process has no colour-flow selection")
-            rows = value.rows
-            if member is not None and rows is not None:
-                # A member's selection names its own rows.
-                representative = {member.row(row): row for row in self.rows}
-                rows = frozenset(representative[row] for row in rows)
-            outputs = [Output(value.key, INCLUSIVE, rows)]
+            outputs = [Output(value.key, INCLUSIVE, representative(value.rows))]
         else:
             raise ValueError(f"unknown column set {kind!r}")
         return InducedColumns(self, outputs, member, resolved=kind == "resolved")

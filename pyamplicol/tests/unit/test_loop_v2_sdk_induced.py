@@ -321,8 +321,11 @@ def test_the_reduction_setter_records_the_python_apis_choice(
             failures = found["diagnostics"]["failures"]
             for index, ok in enumerate(served):
                 if not ok:
+                    # The SDK lists the reasons; the Python API joins them
+                    # in the failure record (its lane detail adds the
+                    # executor's prefix).
                     assert "; ".join(failures[str(index)]) == (
-                        expected.diagnostics[index].detail
+                        expected.diagnostics[index].failures[0].detail
                     )
         assert sdk.rusticol_virtual_set_reduction(handle, b"golem") == (
             STATUS_INVALID_ARGUMENT
