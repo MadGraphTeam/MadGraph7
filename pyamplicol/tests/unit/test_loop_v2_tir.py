@@ -93,9 +93,17 @@ def test_the_capability_query_reports_tirust_at_every_carrier(loop_native):
         assert loop_native.reducer_rank_refusal(13, 2, "tirust") is None
         refusal = loop_native.reducer_rank_refusal(65, 0, "tirust")
         assert "TIRust cannot reduce 65 propagators" in refusal, refusal
-        assert "rank <= N+2" in loop_native.reducer_rank_refusal(4, 7, "tirust")
+        # TIRust has no rank <= N + 2 limit (m-lit lit-eft): a family beyond
+        # NinjaRS's rank is admitted through TIRust alone (a TIR-only
+        # artifact), up to TIRust's own representation.
+        assert loop_native.reducer_rank_refusal(4, 7, "tirust") is None
+        assert "rank <= N+2" in loop_native.reducer_rank_refusal(4, 7, "ninjars")
+        assert loop_native.family_rank_refusal(4, 7) is None
+        refused = loop_native.family_rank_refusal(1, 1_000_000)
+        assert "NinjaRS" in refused and "TIRust cannot reduce" in refused, refused
     else:
         assert "tirust" not in found
+        assert "no TIRust" in loop_native.family_rank_refusal(4, 7)
 
 
 @pytest.mark.loop_fast

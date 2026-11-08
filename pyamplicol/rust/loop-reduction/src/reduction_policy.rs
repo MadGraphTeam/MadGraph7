@@ -11,7 +11,9 @@
 //! the effective backend once per call and carrier, never per point:
 //!
 //! * `"auto"` takes the per-type default ([`default_of`]) when it serves the
-//!   carrier on the call's route, else NinjaRS, with the reason recorded;
+//!   carrier on the call's route, else NinjaRS, with the reason recorded; on
+//!   a TIR-only artifact (`admitted` = TIRust, m-lit lit-eft) it takes TIRust
+//!   for both process types, with no NinjaRS fallback;
 //! * an explicit backend that cannot serve the call is refused typed
 //!   ([`Refusal::Unavailable`], the Python API's `ReductionUnavailable`):
 //!   never a silent switch.
@@ -292,7 +294,9 @@ pub fn resolve(
         ));
     }
     let Some(why) = why else {
-        let reason = if default == type_default {
+        // A TIR-only artifact's reason names its one backend for both
+        // process types (m-lit lit-eft), the loop-induced default included.
+        let reason = if !tir_only {
             format!("auto: {}, the {kind} default", name_of(default))
         } else {
             format!(
@@ -397,6 +401,12 @@ mod tests {
         );
         let only = set(&["tirust"]);
         let found = resolve("auto", "virtual", "double", &tir, Some(&only), &every).unwrap();
+        assert_eq!(found.effective, "tirust");
+        assert_eq!(
+            found.reason,
+            "auto: TIRust, the only backend the artifact admits"
+        );
+        let found = resolve("auto", "loop-induced", "double", &tir, Some(&only), &every).unwrap();
         assert_eq!(found.effective, "tirust");
         assert_eq!(
             found.reason,

@@ -21,8 +21,10 @@
 //!    `threads` bound of [`V2Runtime::open`]);
 //! 2. the plan's executor dresses and reduces every family
 //!    (`loop_execution::v2::V2Executor`, NinjaRS through
-//!    [`crate::runtime::V2ReductionBackend`] by default, or TIRust in
-//!    binary64, [`V2Runtime::set_reduction`]);
+//!    [`crate::runtime::V2ReductionBackend`] by default, or TIRust,
+//!    [`V2Runtime::set_reduction`]; a TIR-only process, whose families go
+//!    beyond NinjaRS's rank <= N + 2 (m-lit lit-eft), reduces with TIRust by
+//!    default and refuses NinjaRS typed);
 //! 3. the components are assembled per sector exactly as
 //!    `loops/v2/assemble._PointEvaluation._assemble` does for the Python
 //!    API's native lane (`plan_export.NativeExecutor(inputs="native")`), in
@@ -963,17 +965,32 @@ impl V2Runtime {
         process
             .runtimes
             .insert(V2Precision::Double, Box::new(runtime));
+        // The default backend: NinjaRS, or TIRust for a TIR-only process (its
+        // only backend; refused typed in a build without TIRust).
+        let reduction = if crate::runtime::ninjars_refusal(&process.plan).is_ok() {
+            Reduction::NinjaRs
+        } else if crate::tir::available() {
+            Reduction::TiRust
+        } else {
+            return Err(RusticolError::unsupported_runtime_capability(
+                "tirust",
+                format!(
+                    "this process is TIR-only (a family beyond NinjaRS's rank <= N+2) and {}",
+                    crate::runtime::TIRUST_NOT_BUILT
+                ),
+            ));
+        };
         let mut backends = BTreeMap::new();
         backends.insert(
             V2Precision::Double,
-            V2Precision::Double.backend(Reduction::NinjaRs, &process.plan)?,
+            V2Precision::Double.backend(reduction, &process.plan)?,
         );
         Ok(Self {
             path,
             artifact,
             record,
             process,
-            reduction: Reduction::NinjaRs,
+            reduction,
             backends,
             cross_backends: BTreeMap::new(),
             scaleless_inputs: native.scaleless.map(Arc::new),
@@ -1386,7 +1403,8 @@ impl V2Runtime {
     }
 
     /// The reduction backend of the following evaluations: NinjaRS (the
-    /// default) or TIRust (every carrier; a build without it refuses typed,
+    /// default; refused typed on a TIR-only process, whose default is
+    /// TIRust) or TIRust (every carrier; a build without it refuses typed,
     /// a family outside TIRust's capability when a batch would reduce on
     /// it). The choice
     /// is the caller's (m-lit PLAN §2.b.4: the SDK has the per-call
@@ -1397,6 +1415,9 @@ impl V2Runtime {
                 "tirust",
                 crate::runtime::TIRUST_NOT_BUILT,
             ));
+        }
+        if reduction == Reduction::NinjaRs {
+            crate::runtime::ninjars_refusal(&self.process.plan)?;
         }
         if reduction != self.reduction {
             self.reduction = reduction;

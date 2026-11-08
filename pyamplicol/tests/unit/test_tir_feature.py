@@ -59,12 +59,31 @@ def test_tir_is_a_default_feature_every_dependent_can_turn_off() -> None:
             assert f"{dependency}/tir" in data["features"]["tir"], (name, dependency)
 
     reduction = with_tir["rusticol-loop-reduction"]
-    assert set(reduction["features"]["tir"]) == {"dep:iregi-rust", "dep:iregi-masters"}
+    assert set(reduction["features"]["tir"]) == {
+        "dep:iregi-rust",
+        "dep:iregi-masters",
+        "rusticol-core/tirust-capability",
+    }
+    # rusticol-core asks TIRust's capability query in the rank admission
+    # (m-lit lit-eft) behind a feature only the loop crate's tir turns on:
+    # not a default, so a --no-default-features build links no TIRust.
+    core = manifests["rusticol-core"][1]
+    assert core["features"]["tirust-capability"] == ["loop-v2", "dep:iregi-rust"]
+    assert "tirust-capability" not in core["features"]["default"]
+    for name, (_, data) in manifests.items():
+        for feature, members in data.get("features", {}).items():
+            if "rusticol-core/tirust-capability" in members:
+                assert (name, feature) == ("rusticol-loop-reduction", "tir")
+    # One TIRust pin across the workspace.
     pins = set()
+    for name, (_, data) in manifests.items():
+        for crate, spec in data.get("dependencies", {}).items():
+            if isinstance(spec, dict) and spec.get("git") == TIRUST:
+                assert spec["optional"] is True, (name, crate)
+                pins.add(spec["rev"])
     for crate in ("iregi-rust", "iregi-masters"):
-        spec = reduction["dependencies"][crate]
-        assert spec["optional"] is True and spec["git"] == TIRUST
-        pins.add(spec["rev"])
+        assert reduction["dependencies"][crate]["git"] == TIRUST
+    assert core["dependencies"]["iregi-rust"]["git"] == TIRUST
     assert len(pins) == 1 and len(next(iter(pins))) == 40
 
 

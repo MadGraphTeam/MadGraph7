@@ -766,6 +766,26 @@ loop propagators at numerator rank six (reported, never enforced: beyond it
 the achieved precision is measured, as everywhere). `loop.reduction` other
 than `"auto"` needs a one-loop request (`process.loop_coupling_orders`).
 
+**Rank beyond N+2 (TIR-only artifacts; open, untested for correctness).**
+NinjaRS reduces loop numerators of rank at most N+2 over N propagators;
+TIRust has no such limit (its own capability query decides). A family beyond
+N+2, which effective operators produce (in Feynman gauge each insertion of a
+dimension-five or -six operator with both loop legs raises the rank by at
+most one, so it takes three such insertions, e.g. `g g > x0 x0 x0` in
+HC_NLO_X0), is generated when TIRust reduces it, and the artifact is then
+*TIR-only*: it records `reductions = ["tirust"]`, `"auto"` takes TIRust for
+both process types in every arithmetic and on every rescue level (the reason
+says so), and an explicit `"ninjars"` (also as the cross-backend stability
+check or a rescue level's backend) is refused typed (`ReductionUnavailable`),
+as is a generation default `loop.reduction = "ninjars"`; a native extension
+without TIRust refuses the artifact. **Such results carry no correctness
+claim**: the rational terms (R2) and counterterms of rank > N+2 numerators
+would need dimension-eight operators that no model provides, so the values are
+neither validated against a reference nor gauge invariant in general. The
+feature only runs (`tools/loop_v2_eft_execution.py`: the two backends agree on
+the families NinjaRS reduces). Artifacts whose families stay within N+2 are
+unchanged.
+
 **Momenta and arithmetic.** Every arithmetic (`double`, `double-double`,
 `arbitrary`) takes each external leg's invariant p² in the loop integrals to be
 the leg's squared mass at the evaluation's model parameters (zero, or a mass

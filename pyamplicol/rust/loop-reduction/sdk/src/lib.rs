@@ -24,7 +24,10 @@ pub use rusticol_loop_reduction::v2_stability::{
     Estimate, Rotation, StabilityChecks, default_rotation,
 };
 use serde::Serialize;
-use std::{collections::BTreeMap, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::Path,
+};
 
 fn invalid(message: impl ToString) -> RusticolError {
     RusticolError::invalid_argument(message.to_string())
@@ -399,7 +402,7 @@ impl Runtime {
                     self.contribution(),
                     carrier,
                     &served,
-                    None,
+                    self.admitted().as_ref(),
                     &route,
                 ) {
                     Err(Refusal::Unavailable(message)) => {
@@ -447,17 +450,29 @@ impl Runtime {
         let Engine::V4(native) = &self.engine;
         &native.metadata().contribution_kind
     }
+    /// The reduction backends the artifact admits: those its declaration
+    /// names (`reductions`, a TIR-only process: TIRust, m-lit lit-eft), else
+    /// every one (`None`), as the Python API's runtime reads them.
+    fn admitted(&self) -> Option<BTreeSet<String>> {
+        let Engine::V4(native) = &self.engine;
+        native
+            .metadata()
+            .reductions
+            .as_ref()
+            .map(|names| names.iter().cloned().collect())
+    }
     /// The backend of a call on `route` at the current arithmetic
     /// (`reduction_policy::resolve`), applied to the native runtime: once
     /// per call, never per point.
     fn reduce_on(&mut self, route: &str) -> RusticolResult<Choice> {
         let route = reduction_policy::route(route).expect("an artifact route");
+        let admitted = self.admitted();
         let choice = reduction_policy::resolve(
             &self.reduction,
             self.contribution(),
             self.arithmetic.name(),
             &reduction_policy::served(),
-            None,
+            admitted.as_ref(),
             &route,
         )
         .map_err(|refusal| match refusal {
@@ -501,6 +516,16 @@ impl Runtime {
             .into_iter()
             .map(|(name, carriers)| (name, serde_json::json!(carriers)))
             .collect();
+        // The backends the artifact admits (sorted names), every one unless
+        // it is TIR-only (m-lit lit-eft), as the Python API's inspect record.
+        let admitted: Vec<String> = match self.admitted() {
+            Some(names) => names.into_iter().collect(),
+            None => reduction_policy::BACKENDS
+                .iter()
+                .map(|name| (*name).to_owned())
+                .collect(),
+        };
+        let tir_only = admitted == ["tirust"];
         let colour_zero = native.colour_zero().map(|(exact, orders)| {
             serde_json::json!({
                 "exact_colour_zero": exact,
@@ -516,7 +541,12 @@ impl Runtime {
             "reduction": {
                 "requested": self.reduction,
                 "artifact_default": native.artifact_reduction(),
-                "auto_default": reduction_policy::default_of(&metadata.contribution_kind),
+                "auto_default": if tir_only {
+                    Some("tirust")
+                } else {
+                    reduction_policy::default_of(&metadata.contribution_kind)
+                },
+                "admitted": admitted,
                 "native": served,
             },
             "colour_zero": colour_zero,
@@ -657,7 +687,7 @@ impl Runtime {
             self.contribution(),
             self.arithmetic.name(),
             &reduction_policy::served(),
-            None,
+            self.admitted().as_ref(),
             &route,
         )
         .map(|_| ())

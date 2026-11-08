@@ -853,6 +853,9 @@ struct V2Executor {
     /// built on first use (`backend_of`).
     backends: [Option<V2Backends>; 2],
     trees: Option<Trees>,
+    /// Whether the plan is TIR-only (a family beyond NinjaRS's rank <= N + 2,
+    /// m-lit lit-eft): NinjaRS then checks the dressed families per call.
+    tir_only: bool,
 }
 
 /// The `reduction` backend of a carrier, built on first use. A free
@@ -1448,12 +1451,15 @@ impl V2Executor {
             }
             executor = executor.with_fourier(record.as_bytes()).map_err(error)?;
         }
+        let tir_only =
+            rusticol_core::loop_v2::bounds::tir_only(runtime::plan_histogram(executor.plan()));
         Ok(Self {
             executor,
             carrier,
             engine: engine.to_owned(),
             backends: [None, None],
             trees,
+            tir_only,
         })
     }
 
@@ -1525,6 +1531,7 @@ impl V2Executor {
             engine: engine.to_owned(),
             backends: [None, None],
             trees,
+            tir_only: self.tir_only,
         })
     }
 
@@ -1995,6 +2002,30 @@ impl V2Executor {
             return Err(error(
                 "selection masks: one flag per plan Born row and per plan Born component",
             ));
+        }
+        // NinjaRS refuses a family beyond its rank <= N + 2 among the dressed
+        // ones (a TIR-only plan's, m-lit lit-eft) typed, before dressing.
+        if reduction == Reduction::NinjaRs && self.tir_only {
+            let kept = |index: usize| {
+                selection
+                    .families
+                    .as_ref()
+                    .is_none_or(|kept| kept.get(index).copied().unwrap_or(false))
+            };
+            let dressed = plan
+                .families
+                .iter()
+                .enumerate()
+                .filter(|&(index, _)| kept(index))
+                .map(|(_, family)| (family.propagators(), family.rank));
+            if let Some(refusal) =
+                rusticol_core::loop_v2::bounds::refused_families(Reduction::NinjaRs, dressed)
+            {
+                return Err(error(format!(
+                    "reduction ninjars cannot serve this plan (TIR-only: it admits the reduction \
+                     tirust only): {refusal}"
+                )));
+            }
         }
         let selection = &selection;
         let bits = self.bits()?;
