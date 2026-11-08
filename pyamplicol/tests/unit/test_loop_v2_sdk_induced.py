@@ -425,7 +425,6 @@ from tests.unit.test_loop_v2_sdk_extras import (  # noqa: E402
     _compare,
     _flat,
     _laurent,
-    _parse,
     _run,
     clients,  # noqa: F401 (the compiled clients fixture)
 )
@@ -557,7 +556,11 @@ def induced_cases(artifacts):
 
 @pytest.mark.parametrize("language", ["c", "cpp", "fortran", "umami"])
 def test_loop_induced_sdk_observables_equal_the_python_api(
-    language, artifacts, induced_cases, clients, tmp_path
+    language,
+    artifacts,
+    induced_cases,
+    clients,  # noqa: F811 (the imported fixture)
+    tmp_path,
 ):
     for name, (case, expected) in induced_cases.items():
         feed = _induced_feed(case, tmp_path / f"{name}.txt", bits=language == "fortran")

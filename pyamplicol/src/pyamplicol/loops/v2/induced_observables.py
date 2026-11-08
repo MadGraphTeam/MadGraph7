@@ -518,7 +518,10 @@ class Forms:
                 # The native forms (module docstring): H and K of a history's
                 # matrix, else the metric itself.
                 native_h, native_k = _native().induced_form(
-                    [[(str(cell.real), str(cell.imag)) for cell in row] for row in exact],
+                    [
+                        [(str(cell.real), str(cell.imag)) for cell in row]
+                        for row in exact
+                    ],
                     not (metric == INCLUSIVE or isinstance(metric, tuple)),
                 )
                 carrier = [[complex(re, im) for re, im in row] for row in native_h]
@@ -1291,10 +1294,10 @@ class InducedObservables:
 
 __all__ = [
     "AMPLITUDE_BASIS",
-    "NATIVE_BINARY64",
     "ANCHOR_ID",
     "COLOUR_RESOLUTIONS",
     "CONTRACTED",
+    "NATIVE_BINARY64",
     "InducedColumns",
     "InducedObservables",
     "Output",
