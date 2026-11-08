@@ -1829,8 +1829,13 @@ def point_estimate(
     cross-backend check's budget (``stability.cross_check``), the term
     scale of the floor and the per-family deviations."""
 
-    from .stability import ROTATION, StabilityEstimate, cross_check
+    from .stability import ROTATION, StabilityEstimate, cross_check, native_estimate
 
+    # Binary64 Born-interfered points: the Rust implementation the native
+    # SDKs share (bitwise this assembly, the oracle).
+    found = native_estimate(reference, rotated, stability, roundoff)
+    if found is not None:
+        return found
     budgets = {}
     for k, run in enumerate(rotated):
         budgets[ROTATION.format(k)] = reference.rotation_budget(run)

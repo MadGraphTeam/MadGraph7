@@ -117,6 +117,11 @@ TRANSVERSE = "spin-transverse"
 ADDITIVE = (*FRAMES, TRANSVERSE, CROSS)
 
 _AXES = {"x": 1, "y": 2, "z": 3}
+# The binary64 estimates of the native executor's Born-interfered points
+# through the one Rust implementation the native SDKs share
+# (``native_estimate``; m-lit LIT-SDK, PLAN §3.5); False forms them with this
+# module's assembly, the oracle, as every other estimate.
+NATIVE_BINARY64 = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -595,6 +600,214 @@ def cross_check(reference: Any, budgets: dict) -> dict[str, str]:
     return {}
 
 
+def native_estimate(
+    reference: Any, rotated: Sequence[Any], checks: StabilityChecks, roundoff: float
+) -> StabilityEstimate | None:
+    """The stability estimate of one binary64 Born-interfered point of the
+    native executor (``plan_export.point_estimate``'s) by the Rust
+    implementation the native SDKs run (``rusticol_loop_reduction::
+    v2_stability``, bitwise this module's assembly): the point's reduction
+    lanes and local components, those of its ``rotated`` evaluations, its
+    re-test lanes and its cross-backend run. None where it does not apply
+    (``NATIVE_BINARY64`` off, an extended carrier, a loop-induced point of
+    the Python reference or with raw lanes): the Python assembly forms that
+    estimate. A loop-induced point is the native amplitude sum's
+    (``_native_induced_estimate``)."""
+
+    if not NATIVE_BINARY64 or not reference.numbers.double:
+        return None
+    if reference.slice.amplitude is not None:
+        return _native_induced_estimate(reference, rotated, checks, roundoff)
+    from pyamplicol.loops.native import load_loop_native
+
+    from .assemble import LOCAL_COMPONENTS
+
+    sectors = [sector for sector, _pairs in reference.slice.sectors]
+    index = {sector: k for k, sector in enumerate(sectors)}
+    components = reference.result.components
+    # The local components enter the budgets where the point has them (a
+    # native point without counterterm outputs has the bare part alone).
+    local = (
+        LOCAL_COMPONENTS if all(name in components for name in LOCAL_COMPONENTS) else ()
+    )
+    keys: dict[Any, int] = {}
+
+    def lanes(families: Mapping[Any, Any]) -> list:
+        return [
+            (
+                keys.setdefault(lane, len(keys)),
+                index[lane[2]],
+                [(x.real, x.imag) for x in laurent.coefficients],
+            )
+            for lane, laurent in families.items()
+        ]
+
+    def point(evaluation: Any) -> tuple:
+        found = evaluation.result.components
+        return (
+            lanes(evaluation.families),
+            [
+                [
+                    [float(x) for x in found[name][sector].coefficients]
+                    for sector in sectors
+                ]
+                for name in local
+            ],
+        )
+
+    values = components["virtual"] if "virtual" in components else components["bare"]
+    retest = (
+        None
+        if checks.reduction is None
+        else (checks.reduction, lanes(reference.retest_families))
+    )
+    cross = reason = None
+    if checks.cross_backend:
+        run, why = reference.cross_run
+        if run is None:
+            reason = why
+        else:
+            cross = point(run)
+    found = load_loop_native().stability_born_interfered(
+        (len(sectors), 3 if reference.poles else 1, float(reference.average)),
+        roundoff,
+        [[float(x) for x in values[sector].coefficients] for sector in sectors],
+        point(reference),
+        [point(run) for run in rotated],
+        retest,
+        cross,
+        reason,
+    )
+    relative_, coefficients, relatives, absolute, budgets, scale, not_run = found
+
+    def budget(rows: Sequence[Sequence[float]]) -> dict:
+        return {
+            sector: Budget(tuple(row))
+            for sector, row in zip(sectors, rows, strict=True)
+        }
+
+    return StabilityEstimate(
+        relative_,
+        tuple(coefficients),
+        dict(relatives),
+        budget(absolute),
+        {name: budget(rows) for name, rows in budgets},
+        values,
+        budget(scale),
+        roundoff,
+        reference.family_deviations,
+        dict(not_run),
+    )
+
+
+def _native_induced_estimate(
+    reference: Any, rotated: Sequence[Any], checks: StabilityChecks, roundoff: float
+) -> StabilityEstimate | None:
+    """``native_estimate`` of a loop-induced point of the native amplitude sum
+    (``induced.read_native`` without raw lanes; None otherwise): its
+    amplitude, bare and counterterm-ket vectors, re-test budget and term
+    scale, those of its ``rotated`` evaluations and of its cross-backend
+    run, on the colour metric and the sectors' pairs."""
+
+    from pyamplicol.loops.native import load_loop_native
+
+    from . import induced
+
+    runs = [reference, *rotated]
+    if checks.cross_backend:
+        run, _why = reference.cross_run
+        if run is not None:
+            runs.append(run)
+    if any(getattr(run, "native_bare", None) is None or run.families for run in runs):
+        return None
+    size = len(reference.slice.amplitude)
+    width = induced.width_of(reference)
+    rows = induced.rows_of(reference)
+    row_ids = {row: r for r, row in enumerate(rows)}
+    orders: dict[Any, int] = {}
+
+    def key(item: Any) -> tuple[int, int]:
+        order, row = item
+        return orders.setdefault(order, len(orders)), row_ids[row]
+
+    def cells(vectors: Mapping) -> list:
+        return [
+            (key(item), [[(z.real, z.imag) for z in cell] for cell in vector])
+            for item, vector in vectors.items()
+        ]
+
+    def errors(vectors: Mapping | None) -> list | None:
+        if vectors is None:
+            return None
+        return [
+            (key(item), [[float(x) for x in cell] for cell in vector])
+            for item, vector in vectors.items()
+        ]
+
+    def point(evaluation: Any) -> tuple:
+        return (
+            cells(evaluation.amplitude_vectors),
+            cells(evaluation.bare_vectors),
+            cells(evaluation.counterterm_vectors),
+            errors(evaluation.native_budget),
+            errors(evaluation.native_terms),
+        )
+
+    sectors = reference.slice.sectors
+    shape = (
+        size,
+        width,
+        [(complex(x).real, complex(x).imag) for line in reference.gram for x in line],
+        list(range(len(rows))),
+        [
+            [
+                (orders.setdefault(a, len(orders)), orders.setdefault(b, len(orders)))
+                for a, b in sorted(pairs)
+            ]
+            for _sector, pairs in sectors
+        ],
+        float(reference.average),
+    )
+    values = reference.result.components["virtual"]
+    cross = reason = None
+    if checks.cross_backend:
+        run, why = reference.cross_run
+        if run is None:
+            reason = why
+        else:
+            cross = point(run)
+    found = load_loop_native().stability_loop_induced(
+        shape,
+        roundoff,
+        [[float(x) for x in values[sector].coefficients] for sector, _ in sectors],
+        point(reference),
+        [point(run) for run in rotated],
+        checks.reduction,
+        cross,
+        reason,
+    )
+    relative_, coefficients, relatives, absolute, budgets, scale, not_run = found
+    names = [sector for sector, _pairs in sectors]
+
+    def budget(rows_: Sequence[Sequence[float]]) -> dict:
+        return {
+            sector: Budget(tuple(row)) for sector, row in zip(names, rows_, strict=True)
+        }
+
+    return StabilityEstimate(
+        relative_,
+        tuple(coefficients),
+        dict(relatives),
+        budget(absolute),
+        {name: budget(rows_) for name, rows_ in budgets},
+        values,
+        budget(scale),
+        roundoff,
+        reference.family_deviations,
+        dict(not_run),
+    )
+
+
 def _at(budget: Any, k: int) -> float:
     return abs(float(budget.coefficients[k]))
 
@@ -605,6 +818,7 @@ __all__ = [
     "DEFAULT_RESCUE",
     "FLOOR_UNITS",
     "FRAMES",
+    "NATIVE_BINARY64",
     "RECOMMENDED_CHECKS",
     "REDUCTION",
     "RESCALED",
@@ -622,6 +836,7 @@ __all__ = [
     "default_rotation",
     "deviation",
     "differences",
+    "native_estimate",
     "per_coefficient",
     "relative",
 ]

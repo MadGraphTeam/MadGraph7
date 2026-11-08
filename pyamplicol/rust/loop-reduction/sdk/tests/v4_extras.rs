@@ -21,6 +21,9 @@ struct Feed {
     spin_legs: Vec<usize>,
     /// Per spin leg its four complex components (re, im), as bit patterns.
     spin: Vec<Vec<u64>>,
+    /// Run the binary64 calls only.
+    #[serde(default)]
+    binary64_only: bool,
 }
 
 const CALLS: [(&str, &str, Option<u32>, &str, u8, usize); 13] = [
@@ -70,6 +73,9 @@ fn v4_extras_follow_the_python_api() {
         .collect();
     let mut out = String::new();
     for (name, arithmetic, digits, poles, kind, count) in CALLS {
+        if feed.binary64_only && arithmetic != "double" {
+            continue;
+        }
         let n = count.min(feed.points.len());
         let mut momenta = Vec::new();
         let mut scales = Vec::new();
@@ -82,8 +88,13 @@ fn v4_extras_follow_the_python_api() {
         runtime
             .set_arithmetic(Arithmetic::parse(arithmetic, digits).unwrap())
             .unwrap();
-        runtime.set_poles(Poles::parse(poles).unwrap()).unwrap();
         writeln!(out, "call {name}").unwrap();
+        if let Err(refused) = runtime.set_poles(Poles::parse(poles).unwrap()) {
+            // A pole selection the process does not serve (loop-induced:
+            // "all" and "none").
+            writeln!(out, "refused {refused}").unwrap();
+            continue;
+        }
         if kind == 0 || kind == 3 {
             let result = runtime
                 .evaluate(&momenta, &ids, &scales, kind == 3, None)

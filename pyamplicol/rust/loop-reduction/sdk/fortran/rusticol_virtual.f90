@@ -98,6 +98,8 @@ module rusticol_virtual
     procedure :: update_parameters
     procedure :: set_poles
     procedure :: set_arithmetic
+    procedure :: set_reduction
+    procedure :: set_stability_checks
     procedure :: evaluate
     procedure :: evaluate_correlated
     procedure :: correlation_histories_json
@@ -191,6 +193,19 @@ module rusticol_virtual
     function c_set_poles(handle, poles) bind(C, name="rusticol_virtual_set_poles") result(value)
       import
       type(c_ptr), value :: handle, poles
+      integer(c_int) :: value
+    end function
+    function c_set_reduction(handle, reduction) bind(C, name="rusticol_virtual_set_reduction") result(value)
+      import
+      type(c_ptr), value :: handle, reduction
+      integer(c_int) :: value
+    end function
+    function c_set_stability_checks(handle, rotation_count, rotations, reduction_direction, rescaled, &
+        cross_backend) bind(C, name="rusticol_virtual_set_stability_checks") result(value)
+      import
+      type(c_ptr), value :: handle, rotations
+      integer(c_int64_t), value :: rotation_count
+      integer(c_int32_t), value :: reduction_direction, rescaled, cross_backend
       integer(c_int) :: value
     end function
     function c_evaluate(handle, request, output) bind(C, name="rusticol_virtual_evaluate") result(value)
@@ -629,6 +644,44 @@ contains
     if (present(digits)) count=int(digits,c_int32_t)
     buffer=cstring(arithmetic)
     call finish(c_set_arithmetic(handle_of(self),c_loc(buffer),count),ierr)
+  end subroutine
+
+  ! Reduction backend of later evaluations (the Python API's reduction=):
+  ! "auto" (default), "ninjars" or "tirust"; an unavailable explicit backend
+  ! is refused with a runtime-error status and its message.
+  subroutine set_reduction(self,reduction,ierr,error_message)
+    class(virtual_runtime), intent(inout) :: self
+    character(*), intent(in) :: reduction
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable, optional, intent(out) :: error_message
+    character(c_char), allocatable, target :: buffer(:)
+    buffer=cstring(reduction)
+    call finish(c_set_reduction(handle_of(self),c_loc(buffer)),ierr, &
+      error_message=error_message)
+  end subroutine
+
+  ! Stability checks of later evaluations (the Python API's stability_checks=):
+  ! rotation_count default rotations, or the rotation specifications of
+  ! rotations (a JSON array; rotation_count then 0); all off, the default,
+  ! runs none. Estimates are in the diagnostics ("stability").
+  subroutine set_stability_checks(self,rotation_count,reduction_direction,rescaled,cross_backend, &
+      rotations,ierr,error_message)
+    class(virtual_runtime), intent(inout) :: self
+    integer(c_int64_t), intent(in) :: rotation_count
+    logical, intent(in) :: reduction_direction, rescaled, cross_backend
+    character(*), optional, intent(in) :: rotations
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable, optional, intent(out) :: error_message
+    character(c_char), allocatable, target :: buffer(:)
+    type(c_ptr) :: specification
+    specification=c_null_ptr
+    if (present(rotations)) then
+      buffer=cstring(rotations)
+      specification=c_loc(buffer)
+    end if
+    call finish(c_set_stability_checks(handle_of(self),rotation_count,specification, &
+      merge(1_c_int32_t,0_c_int32_t,reduction_direction),merge(1_c_int32_t,0_c_int32_t,rescaled), &
+      merge(1_c_int32_t,0_c_int32_t,cross_backend)),ierr,error_message=error_message)
   end subroutine
 
   subroutine evaluate(self,momenta,mu_r2,output,point_ids,resolved,r2_strategy,ierr,error_message)

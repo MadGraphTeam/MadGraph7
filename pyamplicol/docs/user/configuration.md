@@ -1388,8 +1388,13 @@ through `rusticol_virtual_result_decimal_json`); helicity-resolved and colour-
 and spin-correlated calls (`request.resolved = 1`,
 `rusticol_virtual_evaluate_correlated[_with_sources]`) evaluate the process's
 stored observable columns, bitwise equal to the Python API's `evaluate_resolved`
-and `evaluate_correlated_many` in binary64. The stability rescue is the Python
-API's alone. A
+and `evaluate_correlated_many` in binary64;
+`rusticol_virtual_set_stability_checks(handle, rotation_count, rotations,
+reduction_direction, rescaled, cross_backend)` sets the Python API's
+`stability_checks=` (off by default: no estimate, no extra cost), and each
+successful point of a binary64 ordinary call then carries the Python API's
+estimate in the result's diagnostics (`"stability"`). The stability rescue is
+the Python API's alone. A
 v2 artifact carries no API
 bundle (a requested `emit_api_bundle` is dropped with a recorded configuration
 adjustment).

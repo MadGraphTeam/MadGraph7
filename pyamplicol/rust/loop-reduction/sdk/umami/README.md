@@ -33,6 +33,15 @@ mappings and per-event coupling overrides are not exposed here. Saved directed
 colour histories use the separate complex operation below.
 No model or process names are used to infer support.
 
+Loop-induced processes (|A_loop|², no Born; the metadata's
+`contribution_kind` is `"loop-induced"` and its `interference`
+`"conj(loop)*loop"`) are opened and evaluated the same way: their Born
+catalogue is empty, so `PYAMPLICOL_UMAMI_V1_OUT_BORN` has zero width (a
+requested Born output is left untouched) and `PYAMPLICOL_UMAMI_V1_OUT_VIRTUAL`
+holds |A_loop|² per loop × loop sector and epsilon power (its computed poles
+vanish up to rounding: a finiteness cross-check). The SDK's reduction setter
+(`rusticol_virtual_set_reduction`) and pole selection apply to the handle.
+
 The extension accepts standard `UMAMI_IN_MOMENTA` and its own namespaced keys:
 
 | Input | Type and shape | Requirement |

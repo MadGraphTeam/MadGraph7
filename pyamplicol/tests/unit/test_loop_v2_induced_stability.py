@@ -239,10 +239,13 @@ def test_the_native_rotation_check_samples_without_counterterms(
     raw lanes a native amplitude-mode point does not hold (an empty, hence
     zero, budget that left the check silently measuring nothing)."""
 
-    from pyamplicol.loops.v2 import induced
+    from pyamplicol.loops.v2 import induced, stability
     from pyamplicol.loops.v2.assemble import Precision, _NativePoint
     from pyamplicol.loops.v2.stability import RECOMMENDED_CHECKS
 
+    # The Python assembly (the oracle; the binary64 estimate's native
+    # implementation equals it bitwise, test_loop_v2_sdk_stability.py).
+    monkeypatch.setattr(stability, "NATIVE_BINARY64", False)
     seen = []
     original = _NativePoint.rotation_budget
 

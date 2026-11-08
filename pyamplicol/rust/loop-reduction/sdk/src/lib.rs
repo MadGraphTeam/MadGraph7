@@ -11,14 +11,23 @@ use rusticol_core::loop_artifact::{LOOP_RUNTIME_CAPABILITY, LOOP_V2_RUNTIME_CAPA
 use rusticol_core::loop_execution::LoopInputs;
 pub use rusticol_core::source_bindings::SourceOverrides;
 use rusticol_core::{RusticolError, RusticolResult};
+use rusticol_loop_reduction::reduction_policy::{self, Choice, Refusal};
+use rusticol_loop_reduction::runtime::Reduction;
 #[cfg(test)]
 use rusticol_loop_reduction::runtime::{Batch, Data};
+use rusticol_loop_reduction::v2_runtime::cross_reduction;
 use rusticol_loop_reduction::v2_runtime::{
     C, ColumnPoint, Decimal, Rational, V2Point, V2Poles, V2Precision, V2Runtime, decimal_parameter,
     is_v2_artifact, named_parameters,
 };
+pub use rusticol_loop_reduction::v2_stability::{
+    Estimate, Rotation, StabilityChecks, default_rotation,
+};
 use serde::Serialize;
-use std::{collections::BTreeMap, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::Path,
+};
 
 fn invalid(message: impl ToString) -> RusticolError {
     RusticolError::invalid_argument(message.to_string())
@@ -240,6 +249,13 @@ pub struct Runtime {
     shape: Shape,
     poles: Poles,
     arithmetic: Arithmetic,
+    /// The requested reduction backend of later evaluations ("auto",
+    /// "ninjars" or "tirust"; the artifact's generation default until
+    /// [`Runtime::set_reduction`]).
+    reduction: String,
+    /// The stability checks of later binary64 evaluations (none by default:
+    /// no estimate, no extra cost; [`Runtime::set_stability_checks`]).
+    checks: StabilityChecks,
     color_components: Vec<String>,
     history_ids: Vec<String>,
     spin_classes: Vec<Vec<usize>>,
@@ -295,6 +311,7 @@ impl Runtime {
             native.set_parameters(real_overrides(values)?)?;
         }
         let accuracy = native.metadata().color_accuracy.clone();
+        let reduction = native.artifact_reduction().to_owned();
         // The stored observable columns (correlated, spin-correlated and
         // resolved outputs), when the process has them.
         let observables = (|| -> RusticolResult<_> {
@@ -325,12 +342,15 @@ impl Runtime {
             Ok(axes) => (axes.rows.len(), axes.colour_ids.len()),
             Err(_) => (native.helicities(), 1),
         };
+        // A loop-induced process has no Born (Q36): zero Born orders and
+        // colour components.
+        let born_colours = if native.loop_induced() { 0 } else { colours };
         let shape = Shape {
             external_count: native.external_count(),
             born_orders: native.born_orders(),
             virtual_orders: native.sectors(),
             helicities,
-            born_color_components: colours,
+            born_color_components: born_colours,
             virtual_color_components: colours,
             epsilon_count: 3,
             resolved_available: u32::from(observables.is_ok()),
@@ -341,6 +361,8 @@ impl Runtime {
             shape,
             poles: Poles::All,
             arithmetic: Arithmetic::Double,
+            reduction,
+            checks: StabilityChecks::default(),
             history_ids,
             spin_classes,
             observables,
@@ -350,10 +372,116 @@ impl Runtime {
         self.shape
     }
     /// The pole selection of later evaluations (default all): "all",
-    /// "none", "uv" or "ir", the Python API's four (`Poles`).
+    /// "none", "uv" or "ir", the Python API's four (`Poles`); a selection
+    /// the process does not serve (a loop-induced process serves "all" and
+    /// "none", m-lit PLAN §2.a.7) is refused with a typed `Compatibility`
+    /// error in the Python API's words, and nothing changes.
     pub fn set_poles(&mut self, poles: Poles) -> RusticolResult<()> {
+        let Engine::V4(native) = &self.engine;
+        native.check_poles(poles.v2())?;
         self.poles = poles;
         Ok(())
+    }
+    /// The reduction backend of later evaluations, the Python API's
+    /// `reduction=`: "auto", "ninjars" or "tirust" (the one policy,
+    /// `rusticol_loop_reduction::reduction_policy`). A backend this native
+    /// library does not build is refused here (typed `Compatibility`, the
+    /// Python API's `ReductionUnavailable`), one that cannot serve a later
+    /// call's carrier by that call; nothing changes on a refusal.
+    pub fn set_reduction(&mut self, reduction: &str) -> RusticolResult<()> {
+        let served = reduction_policy::served();
+        match reduction {
+            "auto" => {}
+            "ninjars" | "tirust" if served.contains_key(reduction) => {}
+            "ninjars" | "tirust" => {
+                let route =
+                    reduction_policy::route(reduction_policy::SUMMED).expect("the summed route");
+                let carrier = self.arithmetic.name();
+                return match reduction_policy::resolve(
+                    reduction,
+                    self.contribution(),
+                    carrier,
+                    &served,
+                    self.admitted().as_ref(),
+                    &route,
+                ) {
+                    Err(Refusal::Unavailable(message)) => {
+                        Err(RusticolError::compatibility(message))
+                    }
+                    Err(Refusal::Invalid(message)) => Err(invalid(message)),
+                    Ok(_) => unreachable!("an unbuilt backend serves no carrier"),
+                };
+            }
+            other => {
+                return Err(invalid(format!(
+                    "unknown reduction backend '{other}': reduction must be \
+                     \"auto\", \"ninjars\" or \"tirust\""
+                )));
+            }
+        }
+        self.reduction = reduction.to_owned();
+        Ok(())
+    }
+    /// The requested reduction backend of later evaluations.
+    pub fn reduction(&self) -> &str {
+        &self.reduction
+    }
+    /// The stability checks of later evaluations, the Python API's
+    /// `stability_checks=` (`VirtualStabilityChecks`): rotations, the
+    /// reduction-direction check (rescaled: masters recomputed) and the
+    /// cross-backend check (`StabilityChecks`). The default runs none: no
+    /// estimate and nothing else runs. Binary64 ordinary evaluations (of a
+    /// Born-interfered process in the pole selections "all" and "none", of a
+    /// loop-induced one in both of its selections) return each successful
+    /// point's estimate in their diagnostics
+    /// (`"stability"`), bitwise the Python API's; the other evaluations
+    /// return none and say why there. A cross-backend check in a library
+    /// without the other backend is refused when a call is resolved (the
+    /// Python API's `ReductionUnavailable`).
+    pub fn set_stability_checks(&mut self, checks: StabilityChecks) {
+        self.checks = checks;
+    }
+    /// The stability checks of later evaluations.
+    pub fn stability_checks(&self) -> &StabilityChecks {
+        &self.checks
+    }
+    /// The process type: "virtual" (Born-interfered) or "loop-induced".
+    pub fn contribution(&self) -> &str {
+        let Engine::V4(native) = &self.engine;
+        &native.metadata().contribution_kind
+    }
+    /// The reduction backends the artifact admits: those its declaration
+    /// names (`reductions`, a TIR-only process: TIRust, m-lit lit-eft), else
+    /// every one (`None`), as the Python API's runtime reads them.
+    fn admitted(&self) -> Option<BTreeSet<String>> {
+        let Engine::V4(native) = &self.engine;
+        native
+            .metadata()
+            .reductions
+            .as_ref()
+            .map(|names| names.iter().cloned().collect())
+    }
+    /// The backend of a call on `route` at the current arithmetic
+    /// (`reduction_policy::resolve`), applied to the native runtime: once
+    /// per call, never per point.
+    fn reduce_on(&mut self, route: &str) -> RusticolResult<Choice> {
+        let route = reduction_policy::route(route).expect("an artifact route");
+        let admitted = self.admitted();
+        let choice = reduction_policy::resolve(
+            &self.reduction,
+            self.contribution(),
+            self.arithmetic.name(),
+            &reduction_policy::served(),
+            admitted.as_ref(),
+            &route,
+        )
+        .map_err(|refusal| match refusal {
+            Refusal::Unavailable(message) => RusticolError::compatibility(message),
+            Refusal::Invalid(message) => invalid(message),
+        })?;
+        let Engine::V4(native) = &mut self.engine;
+        native.set_reduction(Reduction::parse(&choice.effective)?)?;
+        Ok(choice)
     }
     pub fn poles(&self) -> Poles {
         self.poles
@@ -384,15 +512,52 @@ impl Runtime {
                 Some(reason.clone()),
             ),
         };
+        let served: serde_json::Map<String, serde_json::Value> = reduction_policy::served()
+            .into_iter()
+            .map(|(name, carriers)| (name, serde_json::json!(carriers)))
+            .collect();
+        // The backends the artifact admits (sorted names), every one unless
+        // it is TIR-only (m-lit lit-eft), as the Python API's inspect record.
+        let admitted: Vec<String> = match self.admitted() {
+            Some(names) => names.into_iter().collect(),
+            None => reduction_policy::BACKENDS
+                .iter()
+                .map(|name| (*name).to_owned())
+                .collect(),
+        };
+        let tir_only = admitted == ["tirust"];
+        let colour_zero = native.colour_zero().map(|(exact, orders)| {
+            serde_json::json!({
+                "exact_colour_zero": exact,
+                "colour_zero_loop_orders": orders
+                    .iter()
+                    .map(|order| order.iter().cloned().collect::<BTreeMap<String, i64>>())
+                    .collect::<Vec<_>>(),
+            })
+        });
         serde_json::to_string(&serde_json::json!({
-            "contribution_kind":"virtual", "execution_mode":"loop_recurrence",
+            "contribution_kind":metadata.contribution_kind,
+            "interference":metadata.interference,
+            "reduction": {
+                "requested": self.reduction,
+                "artifact_default": native.artifact_reduction(),
+                "auto_default": if tir_only {
+                    Some("tirust")
+                } else {
+                    reduction_policy::default_of(&metadata.contribution_kind)
+                },
+                "admitted": admitted,
+                "native": served,
+            },
+            "colour_zero": colour_zero,
+            "execution_mode":"loop_recurrence",
             "engine":"v2", "plan_sha256":native.plan_sha256(),
             "point_inputs":"native-v2",
             "arithmetic":["double", "double-double", "arbitrary"],
             "current_arithmetic": self.arithmetic.name(),
             "current_digits": self.arithmetic.digits(),
             "epsilon_powers":[0,-1,-2],
-            "pole_selections":["all","none","uv","ir"],
+            "pole_selections":metadata.poles,
             "poles":self.poles.name(),
             "resolved":resolved, "correlations":resolved,
             "correlation_histories":self.history_ids,
@@ -473,11 +638,68 @@ impl Runtime {
             let axes = self.observables.clone().map_err(|reason| {
                 RusticolError::compatibility(format!("{NO_OBSERVABLES}: {reason}"))
             })?;
+            let reduction = self.reduce_on(reduction_policy::RESOLVED)?;
+            let requested = self.checks.enabled();
             let Engine::V4(native) = &mut self.engine;
-            return Evaluation::resolved_v4(native, inputs, shape, poles, arithmetic, &axes);
+            return Evaluation::resolved_v4(
+                native,
+                inputs,
+                shape,
+                poles,
+                arithmetic,
+                &axes,
+                &reduction,
+                Monitoring {
+                    checks: None,
+                    requested,
+                },
+            );
         }
+        let reduction = self.reduce_on(reduction_policy::SUMMED)?;
+        let monitored = arithmetic == Arithmetic::Double && self.checks.enabled();
+        if monitored && self.checks.cross_backend() {
+            self.cross_available(&reduction)?;
+        }
+        let checks = monitored.then(|| self.checks.clone());
         let Engine::V4(native) = &mut self.engine;
-        Evaluation::from_v4(native, inputs, shape, poles, arithmetic)
+        Evaluation::from_v4(
+            native,
+            inputs,
+            shape,
+            poles,
+            arithmetic,
+            &reduction,
+            Monitoring {
+                checks: checks.as_ref(),
+                requested: self.checks.enabled(),
+            },
+        )
+    }
+    /// The cross-backend check's backend serves the call (the Python API's
+    /// `V2VirtualRuntime._reduction_choices`): the other backend, resolved as
+    /// an explicit request at the call's carrier and route, else refused
+    /// typed in the Python API's words.
+    fn cross_available(&self, reduction: &Choice) -> RusticolResult<()> {
+        let other = cross_reduction(Reduction::parse(&reduction.effective)?);
+        let route = reduction_policy::route(reduction_policy::SUMMED).expect("the summed route");
+        reduction_policy::resolve(
+            other.name(),
+            self.contribution(),
+            self.arithmetic.name(),
+            &reduction_policy::served(),
+            self.admitted().as_ref(),
+            &route,
+        )
+        .map(|_| ())
+        .map_err(|refusal| {
+            let message = match refusal {
+                Refusal::Unavailable(message) | Refusal::Invalid(message) => message,
+            };
+            RusticolError::compatibility(format!(
+                "the cross-backend check (stability_checks cross_backend) compares with the \
+                 other reduction backend: {message}"
+            ))
+        })
     }
     fn prepare_inputs(
         &self,
@@ -712,27 +934,62 @@ impl Evaluation {
         shape: Shape,
         poles: Poles,
         arithmetic: Arithmetic,
+        reduction: &Choice,
+        monitoring: Monitoring<'_>,
     ) -> RusticolResult<Self> {
         let (momenta, scales) = exact_inputs(&inputs, shape.external_count)?;
-        match arithmetic {
-            Arithmetic::Double => {
+        match (arithmetic, monitoring.checks) {
+            (Arithmetic::Double, Some(checks)) => {
+                let monitored = native.evaluate_checked(&momenta, &scales, poles.v2(), checks)?;
+                let mut points = Vec::with_capacity(monitored.len());
+                let mut records = Vec::new();
+                let mut finiteness = Vec::new();
+                for (point, estimate, ratio) in monitored {
+                    if let Some(estimate) = &estimate {
+                        records.push(public_estimate(estimate, poles != Poles::None, native));
+                        finiteness.push(ratio.map(number));
+                    }
+                    points.push(point);
+                }
+                // A loop-induced point's finiteness ratio, with poles
+                // (`VirtualLaneDiagnostic.finiteness`): per successful point.
+                let finiteness =
+                    (native.loop_induced() && poles != Poles::None).then_some(finiteness);
+                let stability = serde_json::json!({
+                    "estimates": records,
+                    "finiteness": finiteness,
+                });
+                Self::ordinary(
+                    inputs, shape, poles, arithmetic, points, reduction, stability,
+                )
+            }
+            (Arithmetic::Double, None) => {
                 let points = native.evaluate(&momenta, &scales, poles.v2())?;
-                Self::ordinary(inputs, shape, poles, arithmetic, points)
+                let stability = monitoring.not_run();
+                Self::ordinary(
+                    inputs, shape, poles, arithmetic, points, reduction, stability,
+                )
             }
             _ => {
                 let points =
                     native.evaluate_extended(&momenta, &scales, poles.v2(), arithmetic.v2())?;
-                Self::ordinary(inputs, shape, poles, arithmetic, points)
+                let stability = monitoring.not_run();
+                Self::ordinary(
+                    inputs, shape, poles, arithmetic, points, reduction, stability,
+                )
             }
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn ordinary<N: Output>(
         inputs: LoopInputs,
         shape: Shape,
         poles: Poles,
         arithmetic: Arithmetic,
         points: Vec<V2Point<N>>,
+        reduction: &Choice,
+        stability: serde_json::Value,
     ) -> RusticolResult<Self> {
         let (successful_point_ids, statuses, failures) = statuses_of(&inputs.point_ids, &points);
         let mut born = Reals::default();
@@ -754,6 +1011,8 @@ impl Evaluation {
             &failures,
             poles,
             arithmetic,
+            reduction,
+            stability,
         )?;
         Ok(Self {
             requested_point_ids: inputs.point_ids,
@@ -772,6 +1031,7 @@ impl Evaluation {
     /// `evaluate_resolved`): per Born helicity row (and at leading colour
     /// per Born basis element) the Born and the virtual, from the stored
     /// resolved columns, in the layout point/order/helicity/colour/(epsilon).
+    #[allow(clippy::too_many_arguments)]
     fn resolved_v4(
         native: &mut V2Runtime,
         inputs: LoopInputs,
@@ -779,14 +1039,19 @@ impl Evaluation {
         poles: Poles,
         arithmetic: Arithmetic,
         axes: &Observables,
+        reduction: &Choice,
+        monitoring: Monitoring<'_>,
     ) -> RusticolResult<Self> {
         let (momenta, scales) = exact_inputs(&inputs, shape.external_count)?;
         let keys = native.resolved_keys()?;
+        let stability = monitoring.not_run_resolved();
         match arithmetic {
             Arithmetic::Double => {
                 let points =
                     native.evaluate_columns("resolved", &momenta, &scales, &[], poles.v2())?;
-                Self::resolved(inputs, shape, poles, arithmetic, axes, &keys, points)
+                Self::resolved(
+                    inputs, shape, poles, arithmetic, axes, &keys, points, reduction, stability,
+                )
             }
             _ => {
                 let points = native.evaluate_columns_extended(
@@ -797,7 +1062,9 @@ impl Evaluation {
                     poles.v2(),
                     arithmetic.v2(),
                 )?;
-                Self::resolved(inputs, shape, poles, arithmetic, axes, &keys, points)
+                Self::resolved(
+                    inputs, shape, poles, arithmetic, axes, &keys, points, reduction, stability,
+                )
             }
         }
     }
@@ -811,6 +1078,8 @@ impl Evaluation {
         axes: &Observables,
         keys: &[(usize, usize)],
         points: Vec<ColumnPoint<N>>,
+        reduction: &Choice,
+        stability: serde_json::Value,
     ) -> RusticolResult<Self> {
         let helicities = axes.rows.len();
         let colours = axes.colour_ids.len();
@@ -846,6 +1115,8 @@ impl Evaluation {
             &failures,
             poles,
             arithmetic,
+            reduction,
+            stability,
         )?;
         Ok(Self {
             requested_point_ids: inputs.point_ids,
@@ -871,15 +1142,172 @@ impl Evaluation {
     }
 }
 
+/// The stability monitoring of one evaluation: the checks it runs (binary64
+/// ordinary evaluations), and whether checks were set at all.
+struct Monitoring<'a> {
+    checks: Option<&'a StabilityChecks>,
+    requested: bool,
+}
+
+/// The reason an evaluation with checks set forms no estimate.
+const BINARY64_MONITORING: &str = "the native SDKs monitor binary64 evaluations (the Python \
+    API estimates every carrier)";
+const ORDINARY_MONITORING: &str = "the native SDKs monitor the ordinary evaluations (the \
+    Python API estimates the resolved and correlated outputs)";
+
+impl Monitoring<'_> {
+    fn record(&self, reason: &str) -> serde_json::Value {
+        if self.requested {
+            serde_json::json!({ "estimates": null, "reason": reason })
+        } else {
+            serde_json::Value::Null
+        }
+    }
+    fn not_run(&self) -> serde_json::Value {
+        self.record(BINARY64_MONITORING)
+    }
+    fn not_run_resolved(&self) -> serde_json::Value {
+        self.record(ORDINARY_MONITORING)
+    }
+}
+
+/// A binary64 value of an estimate record: a JSON number, or `"inf"` /
+/// `"nan"` (an estimate on an exact zero is infinite).
+fn number(value: f64) -> serde_json::Value {
+    if value.is_finite() {
+        serde_json::json!(value)
+    } else if value.is_nan() {
+        serde_json::json!("nan")
+    } else if value > 0.0 {
+        serde_json::json!("inf")
+    } else {
+        serde_json::json!("-inf")
+    }
+}
+
+/// E / S (`runtime.virtual._ratio`): 0 for an exact zero estimate, inf for
+/// E > 0 at S = 0.
+fn ratio(error: f64, scale: f64) -> f64 {
+    if error == 0.0 {
+        0.0
+    } else if scale != 0.0 {
+        error / scale
+    } else {
+        f64::INFINITY
+    }
+}
+
+/// The public record of a point's estimate, the Python API's
+/// `VirtualStabilityEstimate` (`runtime.virtual.v2_public_estimate`):
+/// `relative`, `finite`, `single_pole` and `double_pole` (null without
+/// poles; a loop-induced result's are E / S), `checks` (name, relative budget),
+/// `scale` (the largest E / S), `absolute` E and `magnitude` S per declared
+/// sector and Laurent coefficient (absent poles null), `not_run` (name,
+/// reason).
+fn public_estimate(estimate: &Estimate, with_poles: bool, native: &V2Runtime) -> serde_json::Value {
+    let width = if with_poles { 3 } else { 1 };
+    let floats = |values: &[Vec<f64>], sector: usize| -> Vec<f64> {
+        (0..width)
+            .map(|k| {
+                values
+                    .get(sector)
+                    .and_then(|row| row.get(k))
+                    .map_or(0.0, |x| x.abs())
+            })
+            .collect()
+    };
+    let errors: Vec<Vec<f64>> = native
+        .sector_index()
+        .iter()
+        .map(|&s| floats(&estimate.absolute, s))
+        .collect();
+    let sizes: Vec<Vec<f64>> = native
+        .sector_index()
+        .iter()
+        .map(|&s| floats(&estimate.scale, s))
+        .collect();
+    let mut scale: Option<f64> = None;
+    for k in 0..width {
+        for (error, size) in errors.iter().zip(&sizes) {
+            let value = ratio(error[k], size[k]);
+            // Python's `max`: the current value unless `value` is larger.
+            scale = Some(match scale {
+                Some(current) if value > current => value,
+                Some(current) => current,
+                None => value,
+            });
+        }
+    }
+    let laurent = |values: &[f64]| -> serde_json::Value {
+        let mut out: Vec<serde_json::Value> = values.iter().map(|x| number(*x)).collect();
+        out.resize(3, serde_json::Value::Null);
+        serde_json::Value::Array(out)
+    };
+    // A loop-induced result's pole estimates are E / S too (its poles
+    // vanish, so their own size is no scale; m-lit PLAN §2.a.7).
+    let induced = native.loop_induced();
+    let pole = |k: usize| {
+        if !with_poles {
+            serde_json::Value::Null
+        } else if induced {
+            let mut worst: Option<f64> = None;
+            for (error, size) in errors.iter().zip(&sizes) {
+                let value = ratio(error[k], size[k]);
+                worst = Some(match worst {
+                    Some(current) if value > current => value,
+                    Some(current) => current,
+                    None => value,
+                });
+            }
+            number(worst.unwrap_or(0.0))
+        } else {
+            number(estimate.coefficients[k])
+        }
+    };
+    serde_json::json!({
+        "relative": number(estimate.relative),
+        "finite": number(estimate.coefficients[0]),
+        "single_pole": pole(1),
+        "double_pole": pole(2),
+        "checks": estimate
+            .checks
+            .iter()
+            .map(|(name, value)| serde_json::json!([name, number(*value)]))
+            .collect::<Vec<_>>(),
+        "scale": number(scale.unwrap_or(0.0)),
+        "absolute": errors.iter().map(|row| laurent(row)).collect::<Vec<_>>(),
+        "magnitude": sizes.iter().map(|row| laurent(row)).collect::<Vec<_>>(),
+        "not_run": estimate
+            .not_run
+            .iter()
+            .map(|(name, reason)| serde_json::json!([name, reason]))
+            .collect::<Vec<_>>(),
+    })
+}
+
 /// The diagnostics record of an evaluation.
+#[allow(clippy::too_many_arguments)]
 fn diagnostics(
     requested: &[u64],
     successful: &[u64],
     failures: &BTreeMap<u64, Vec<String>>,
     poles: Poles,
     arithmetic: Arithmetic,
+    reduction: &Choice,
+    stability: serde_json::Value,
 ) -> RusticolResult<String> {
     serde_json::to_string(&serde_json::json!({
+        // The stability monitoring (`Runtime::set_stability_checks`): null
+        // without checks, else per successful point its estimate (the
+        // Python API's `VirtualStabilityEstimate`), or why none is formed.
+        "stability": stability,
+        // The reduction backend of the call (the Python API's
+        // `VirtualReduction`): requested, effective and why.
+        "reduction": {
+            "requested": reduction.requested,
+            "effective": reduction.effective,
+            "reason": reduction.reason,
+        },
         "requested_point_ids":requested,
         "successful_point_ids":successful,
         "failures":failures,

@@ -26,6 +26,8 @@ typedef struct {
 
 int main(int argc, char **argv) {
   if (argc < 4) return 2;
+  /* An optional fourth argument "binary64" runs the binary64 calls only. */
+  int binary64_only = argc > 4 && strcmp(argv[4], "binary64") == 0;
   FILE *input = fopen(argv[3], "r");
   size_t points = 0, legs = 0, spin_legs = 0;
   if (!input || fscanf(input, "%zu %zu", &points, &legs) != 2) return 2;
@@ -70,19 +72,28 @@ int main(int argc, char **argv) {
   };
   for (size_t k = 0; k < sizeof(calls) / sizeof(calls[0]); k++) {
     call_t call = calls[k];
+    if (binary64_only && strcmp(call.arithmetic, "double") != 0) continue;
     size_t n = call.points < points ? call.points : points, stride = n;
     if (rusticol_virtual_set_arithmetic(runtime, call.arithmetic, call.digits)) fail("arithmetic");
-    if (rusticol_virtual_set_poles(runtime, call.poles)) fail("poles");
+    if (rusticol_virtual_set_poles(runtime, call.poles)) {
+      /* A pole selection the process does not serve (loop-induced: "all"
+       * and "none"): the refusal, then the next call. */
+      printf("call %s\nrefused %s\n", call.name, rusticol_virtual_last_error_message());
+      continue;
+    }
     double *momenta = malloc(stride * legs * 4 * sizeof(double));
     for (size_t p = 0; p < n; p++)
       for (size_t leg = 0; leg < legs; leg++)
         for (size_t c = 0; c < 4; c++) momenta[p + stride * (leg + legs * c)] = flat[p * legs * 4 + leg * 4 + c];
     uint32_t *statuses = malloc(stride * sizeof(uint32_t));
     int resolved = call.kind == 3;
+    /* Born and virtual colour axes apart: a loop-induced process has no Born
+     * colour component (born_color_components = 0) and one virtual one. */
     size_t H = resolved ? shape.helicities : 1, C = resolved ? shape.born_color_components : 1;
+    size_t VC = resolved ? shape.virtual_color_components : 1;
     size_t J = call.kind == 1 || call.kind == 2 ? correlated.histories : 1;
     size_t O = shape.born_orders, V = shape.virtual_orders, E = shape.epsilon_count;
-    size_t born_width = O * H * C * J, virtual_width = V * H * C * E * J;
+    size_t born_width = O * H * C * J, virtual_width = V * H * VC * E * J;
     int complex_values = call.kind == 1 || call.kind == 2;
     size_t element = complex_values ? sizeof(rusticol_virtual_complex64) : sizeof(double);
     void *born = malloc(stride * born_width * element), *virt = malloc(stride * virtual_width * element);
@@ -111,8 +122,8 @@ int main(int argc, char **argv) {
       for (size_t p = 0; p < n; p++)
         for (size_t o = 0; o < V; o++)
           for (size_t h = 0; h < H; h++)
-            for (size_t c = 0; c < C; c++)
-              for (size_t e = 0; e < E; e++) printf(" %a", v[p + stride * (o + V * (h + H * (c + C * e)))]);
+            for (size_t c = 0; c < VC; c++)
+              for (size_t e = 0; e < E; e++) printf(" %a", v[p + stride * (o + V * (h + H * (c + VC * e)))]);
       size_t needed = 0;
       if (rusticol_virtual_result_decimal_json(diagnostic, NULL, 0, &needed)) fail("json");
       char *text = malloc(needed);
