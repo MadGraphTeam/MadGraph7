@@ -253,7 +253,8 @@ impl Rotation {
                 .collect::<RusticolResult<Vec<_>>>()?;
             if angles.len() != 3 {
                 return Err(invalid(format!(
-                    "rotation {specification:?} needs three Euler angles"
+                    "rotation {} needs three Euler angles",
+                    py_repr(specification)
                 )));
             }
             return Self::from_euler(angles[0], angles[1], angles[2], EULER_RESOLUTION);
@@ -270,8 +271,9 @@ impl Rotation {
             return Self::from_axis_angle(axis, angle, AXIS_ANGLE_RESOLUTION);
         }
         Err(invalid(format!(
-            "rotation {specification:?} is neither '<x|y|z>:<cos>:<sin>', \
-             '<ax>,<ay>,<az>:<radians>' nor 'euler:<alpha>,<beta>,<gamma>'"
+            "rotation {} is neither '<x|y|z>:<cos>:<sin>', \
+             '<ax>,<ay>,<az>:<radians>' nor 'euler:<alpha>,<beta>,<gamma>'",
+            py_repr(specification)
         )))
     }
 
@@ -300,6 +302,15 @@ impl Rotation {
                 Ok(out)
             })
             .collect()
+    }
+}
+
+/// Python's `repr` of a plain text (single quotes unless it holds one).
+fn py_repr(text: &str) -> String {
+    if text.contains('\'') && !text.contains('"') {
+        format!("\"{text}\"")
+    } else {
+        format!("'{}'", text.replace('\\', "\\\\").replace('\'', "\\'"))
     }
 }
 

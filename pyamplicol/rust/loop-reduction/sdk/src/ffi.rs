@@ -285,6 +285,54 @@ pub unsafe extern "C" fn rusticol_virtual_set_reduction(
         Ok(())
     })
 }
+/// The stability checks of the handle's later evaluations, the Python API's
+/// `stability_checks=` (`VirtualStabilityChecks`; additive, ABI version 2
+/// kept): `rotation_count` default rotations (the Python API's count), or,
+/// with `rotation_count` 0, the rotations of `rotations`, a JSON array of
+/// rotation specifications (`"<x|y|z>:<cos>:<sin>"`,
+/// `"<ax>,<ay>,<az>:<radians>"`, `"euler:<alpha>,<beta>,<gamma>"`; NULL: none);
+/// `reduction_direction`, `rescaled` and `cross_backend` are 0 or 1. All zero
+/// and NULL (the default) runs no check: no estimate, no extra cost. Checks
+/// the Python API refuses are `RUSTICOL_VIRTUAL_INVALID_ARGUMENT` with its
+/// message, and nothing changes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_set_stability_checks(
+    handle: *mut VirtualHandle,
+    rotation_count: u64,
+    rotations: *const c_char,
+    reduction_direction: u32,
+    rescaled: u32,
+    cross_backend: u32,
+) -> c_int {
+    guard(|| unsafe {
+        let flag = |value: u32, name: &str| match value {
+            0 => Ok(false),
+            1 => Ok(true),
+            _ => Err(bad(format!("{name} must be a boolean (0 or 1)"))),
+        };
+        let rotations = match text(rotations)? {
+            None => (0..rotation_count)
+                .map(crate::default_rotation)
+                .collect::<RusticolResult<Vec<_>>>()?,
+            Some(_) if rotation_count != 0 => {
+                return Err(bad("rotations take a count or rotation records"));
+            }
+            Some(json) => serde_json::from_str::<Vec<String>>(json)
+                .map_err(|e| bad(format!("rotations must be a JSON array of strings: {e}")))?
+                .iter()
+                .map(|specification| Rotation::parse(specification))
+                .collect::<RusticolResult<Vec<_>>>()?,
+        };
+        let checks = StabilityChecks::new(
+            rotations,
+            flag(reduction_direction, "reduction_direction")?,
+            flag(rescaled, "rescaled")?,
+            flag(cross_backend, "cross_backend")?,
+        )?;
+        mutable(handle)?.0.set_stability_checks(checks);
+        Ok(())
+    })
+}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rusticol_virtual_shape(
     handle: *const VirtualHandle,

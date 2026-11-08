@@ -242,6 +242,18 @@ public:
     void set_reduction(const std::string &reduction) {
         virtual_detail::check(rusticol_virtual_set_reduction(handle_.get(), reduction.c_str()));
     }
+    // Stability checks of later evaluations (the Python API's stability_checks=):
+    // rotation_count default rotations, or the rotation specifications of
+    // `rotations` (a JSON array; rotation_count then 0); all off, the default,
+    // runs none. Estimates are in the diagnostics ("stability"); a refused
+    // configuration throws VirtualError.
+    void set_stability_checks(std::uint64_t rotation_count, bool reduction_direction = false,
+                              bool rescaled = false, bool cross_backend = false,
+                              const std::optional<std::string> &rotations = std::nullopt) {
+        virtual_detail::check(rusticol_virtual_set_stability_checks(
+            handle_.get(), rotation_count, rotations ? rotations->c_str() : nullptr,
+            reduction_direction ? 1u : 0u, rescaled ? 1u : 0u, cross_backend ? 1u : 0u));
+    }
     std::uint64_t update_parameters(const std::string &exact_json) {
         std::uint64_t revision = 0;
         virtual_detail::check(rusticol_virtual_update_parameters(handle_.get(), exact_json.c_str(), &revision));

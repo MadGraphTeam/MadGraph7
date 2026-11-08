@@ -145,7 +145,7 @@ int rusticol_virtual_set_arithmetic(rusticol_virtual_handle *handle,
  * (one policy, shared with the Python API: today NinjaRS for both process
  * types, the reason recorded), else NinjaRS. An explicit backend this library
  * is built without (TIRust needs the cargo feature tir) is refused here, one
- * that cannot serve a later call's carrier (TIRust serves binary64) by that
+ * that cannot serve a later call's carrier (the library's capability query) by that
  * call; both RUSTICOL_VIRTUAL_RUNTIME_ERROR (the Python API's
  * ReductionUnavailable), never a silent switch. Every result's diagnostics
  * record "reduction": {"requested","effective","reason"}; the handle's
@@ -153,6 +153,36 @@ int rusticol_virtual_set_arithmetic(rusticol_virtual_handle *handle,
  */
 int rusticol_virtual_set_reduction(rusticol_virtual_handle *handle,
   const char *reduction);
+/* Stability checks of later evaluations (the Python API's stability_checks=,
+ * VirtualStabilityChecks; additive, ABI version 2 kept): rotation_count
+ * default rotations (the Python API's count; any number), or, with
+ * rotation_count 0, the rotations of the JSON array of rotation
+ * specifications `rotations` ("<x|y|z>:<cos>:<sin>", "<ax>,<ay>,<az>:<radians>",
+ * "euler:<alpha>,<beta>,<gamma>"; NULL: none); reduction_direction, rescaled
+ * (requires reduction_direction) and cross_backend (with another check) are
+ * 0 or 1. All 0 and NULL, the default, runs no check: no estimate and no
+ * extra cost. Checks the Python API refuses are RUSTICOL_VIRTUAL_INVALID_ARGUMENT
+ * with its message, and nothing changes. A binary64 ordinary evaluation of a
+ * Born-interfered process ("all" or "none" poles) then also evaluates every
+ * point at each exactly rotated point, re-reduces every lane in the reduction
+ * check's frame and evaluates every point on the other reduction backend,
+ * and returns each successful point's estimate in its diagnostics:
+ * "stability": {"estimates": [one record per successful point, in order]},
+ * each the Python API's VirtualStabilityEstimate (relative, finite,
+ * single_pole, double_pole, checks [[name, relative]], scale, absolute and
+ * magnitude per sector and epsilon power, not_run [[name, reason]]), bitwise
+ * its values (non-finite values as "inf"); the other evaluations carry
+ * {"estimates": null, "reason": ...}, and null without checks. A point whose
+ * rotated evaluation fails fails ("rotation-<k>: <reason>"), as in the
+ * Python API; one the other backend fails or refuses keeps the other checks'
+ * estimate with the cross-backend check in not_run. A cross-backend check
+ * without the other backend in this library is refused by the call
+ * (RUSTICOL_VIRTUAL_RUNTIME_ERROR, the Python API's ReductionUnavailable).
+ * Point statuses keep their meaning: comparing an estimate with a target,
+ * and any precision rescue, is the caller's (the rescue is the Python API's). */
+int rusticol_virtual_set_stability_checks(rusticol_virtual_handle *handle,
+  uint64_t rotation_count, const char *rotations, uint32_t reduction_direction,
+  uint32_t rescaled, uint32_t cross_backend);
 int rusticol_virtual_shape(const rusticol_virtual_handle *handle,
   rusticol_virtual_shape_info *output);
 /* JSON size query: output=NULL, capacity=0; needed includes terminal NUL.
@@ -165,7 +195,8 @@ int rusticol_virtual_capabilities_json(const rusticol_virtual_handle *handle,
 /* Returns OK for a completed batch even if some points failed. Inspect statuses.
  * Numerical rows exist ONLY for successful_point_ids in their original order.
  * Every finite binary64 input is read as its exact value. Stability estimates
- * and the precision rescue are the Python API's.
+ * follow rusticol_virtual_set_stability_checks; the precision rescue is the
+ * Python API's.
  */
 int rusticol_virtual_evaluate(rusticol_virtual_handle *handle,
   const rusticol_virtual_batch_request *request, rusticol_virtual_result **output);

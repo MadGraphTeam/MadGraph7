@@ -238,6 +238,57 @@ pub mod virtual_amplitudes {
                 ffi::rusticol_virtual_set_reduction(self.handle.as_ptr(), reduction.as_ptr())
             })
         }
+        /// Stability checks of later evaluations, the Python API's
+        /// `stability_checks=`: `rotation_count` default rotations, or (with
+        /// a count of 0) the rotation specifications `rotations`, the
+        /// reduction-direction check, its rescaled variant and the
+        /// cross-backend check; all off (the default) runs none. Estimates
+        /// are in the diagnostics (`"stability"`).
+        pub fn set_stability_checks(
+            &mut self,
+            rotation_count: u64,
+            rotations: Option<&[&str]>,
+            reduction_direction: bool,
+            rescaled: bool,
+            cross_backend: bool,
+        ) -> Result<()> {
+            let rotations = rotations
+                .map(|specifications| {
+                    let quoted: Vec<String> = specifications
+                        .iter()
+                        .map(|text| {
+                            let mut out = String::from("\"");
+                            for c in text.chars() {
+                                match c {
+                                    '"' => out.push_str("\\\""),
+                                    '\\' => out.push_str("\\\\"),
+                                    c if (c as u32) < 0x20 => {
+                                        out.push_str(&format!("\\u{:04x}", c as u32))
+                                    }
+                                    c => out.push(c),
+                                }
+                            }
+                            out.push('"');
+                            out
+                        })
+                        .collect();
+                    checked_cstring(&format!("[{}]", quoted.join(",")), "rotations")
+                })
+                .transpose()?;
+            // SAFETY: exclusive live handle and owned string (or null).
+            check(unsafe {
+                ffi::rusticol_virtual_set_stability_checks(
+                    self.handle.as_ptr(),
+                    rotation_count,
+                    rotations
+                        .as_ref()
+                        .map_or(std::ptr::null(), |text| text.as_ptr()),
+                    u32::from(reduction_direction),
+                    u32::from(rescaled),
+                    u32::from(cross_backend),
+                )
+            })
+        }
         /// One native bulk call; binary64 inputs are read as their exact values.
         pub fn evaluate(
             &mut self,
@@ -751,6 +802,14 @@ pub mod virtual_amplitudes {
             pub(super) fn rusticol_virtual_set_reduction(
                 handle: *mut c_void,
                 reduction: *const c_char,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_set_stability_checks(
+                handle: *mut c_void,
+                rotation_count: u64,
+                rotations: *const c_char,
+                reduction_direction: u32,
+                rescaled: u32,
+                cross_backend: u32,
             ) -> c_int;
             pub(super) fn rusticol_virtual_result_decimal_json(
                 handle: *const c_void,

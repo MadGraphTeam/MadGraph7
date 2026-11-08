@@ -1,0 +1,356 @@
+# SPDX-License-Identifier: 0BSD
+"""Binary64 stability monitoring in the native SDK (m-lit LIT-SDK, PLAN §3.5;
+the revision-2c ruling: one Rust implementation, ``rusticol_loop_reduction::
+v2_stability``, called by the Python API's binary64 path and by the SDKs,
+the Python assembly kept as the oracle).
+
+* The exact rotations: the Rust default rotations (the C ABI's rotation
+  count) and the rotation specifications are the Python ones, Fraction for
+  Fraction, and the refused specifications are refused in the same words.
+* The Python API's binary64 Born-interfered estimates through the native
+  implementation (``stability.NATIVE_BINARY64``) equal the Python assembly
+  bitwise (every public estimate field, the values unchanged) on g g > t t~
+  and g g > g g, for rotations, the (rescaled) reduction check, rotation
+  specifications and the cross-backend check.
+* The C ABI's setter (``rusticol_virtual_set_stability_checks``) takes every
+  ``VirtualStabilityChecks`` field; the SDK's estimates (``"stability"`` of
+  the diagnostics) equal the Python API's bitwise, with the same statuses,
+  failures and ``not_run`` records, on NinjaRS and on TIRust; without
+  checks there is no estimate; a configuration the Python API refuses is an
+  invalid argument with its message; the other evaluations say why they
+  form none.
+"""
+
+from __future__ import annotations
+
+import ctypes
+import json
+import math
+from decimal import Decimal
+from fractions import Fraction
+
+import pytest
+
+from tests.unit.test_loop_v2_sdk_extras import _error, _Request, _ResultShape, _sdk
+from tests.unit.test_loop_v2_sdk_parity import GG_POINT, POINT_173, _generate
+
+pytestmark = pytest.mark.loop_physics
+
+STATUS_INVALID_ARGUMENT = 1
+STATUS_RUNTIME_ERROR = 3
+SUCCESS_STATUS = 4  # RUSTICOL_VIRTUAL_ACCURACY_NOT_ESTABLISHED
+FAILED_STATUS = 3
+SCALES = ["1000000", "490000"]
+PROCESSES = {"ggtt": ("g g > t t~", POINT_173), "gggg": ("g g > g g", GG_POINT)}
+# (rotation count, rotation specifications, reduction_direction, rescaled,
+# cross_backend, poles, reduction).
+CONFIGURATIONS = [
+    (2, None, True, True, False, "all", "auto"),
+    (1, None, True, False, False, "none", "auto"),
+    (0, ["euler:0.1,0.2,0.3", "z:3/5:4/5"], False, False, False, "all", "auto"),
+    (1, None, True, True, True, "all", "auto"),
+    (1, None, True, True, False, "all", "tirust"),
+    (0, None, True, False, True, "none", "tirust"),
+]
+SPECIFICATIONS = [
+    "z:3/5:4/5",
+    "x:-0.6:0.8",
+    "1,1,0:0.9",
+    "0.3,-0.2,0.9:2.5",
+    "euler:0.1,0.2,0.3",
+    "euler:-1.5,0.25,3",
+]
+REFUSED = ["z:1/2:1/2", "euler:0.1,0.2", "q:1:0", "1,0:0.5", "0,0,0:1"]
+
+
+@pytest.fixture(scope="module")
+def artifacts(loop_sm_compiled_model, loop_native, tmp_path_factory):
+    return {
+        name: _generate(
+            loop_sm_compiled_model, tmp_path_factory.mktemp(name), expression, name
+        )
+        for name, (expression, _point) in PROCESSES.items()
+    }
+
+
+def _exact(matrix) -> tuple:
+    return tuple(tuple(Fraction(x) for x in row) for row in matrix)
+
+
+def test_the_native_rotations_are_the_python_ones(loop_native):
+    from pyamplicol.api.virtual_results import parse_rotation
+    from pyamplicol.loops.v2.stability import RESCUE_ROTATION, default_rotation
+
+    for k in range(64):
+        assert _exact(loop_native.stability_default_rotation(k)) == (
+            default_rotation(k).matrix
+        ), k
+    for text in (*SPECIFICATIONS, RESCUE_ROTATION):
+        assert _exact(loop_native.stability_rotation(text)) == (
+            parse_rotation(text).matrix
+        ), text
+    for text in REFUSED:
+        with pytest.raises(ValueError) as python:
+            parse_rotation(text)
+        with pytest.raises(ValueError) as native:
+            loop_native.stability_rotation(text)
+        assert str(native.value) == str(python.value), text
+
+
+def _checks(configuration):
+    from pyamplicol.api.virtual_results import VirtualStabilityChecks
+
+    count, specifications, direction, rescaled, cross, _poles, _reduction = (
+        configuration
+    )
+    return VirtualStabilityChecks(
+        tuple(specifications) if specifications else count,
+        direction,
+        rescaled=rescaled,
+        cross_backend=cross,
+    )
+
+
+def _served(loop_native) -> dict:
+    return json.loads(loop_native.reduction_backends())
+
+
+def _python(runtime, point, configuration):
+    """The Python API's call of one configuration (None: refused, with the
+    error)."""
+
+    from pyamplicol.api.errors import ReductionUnavailable
+
+    *_, poles, reduction = configuration
+    try:
+        return runtime.evaluate(
+            [point, point],
+            mu_r2=SCALES,
+            poles=poles,
+            reduction=reduction,
+            stability_checks=_checks(configuration),
+            on_failure="return",
+        ), None
+    except ReductionUnavailable as error:
+        return None, error
+
+
+@pytest.mark.parametrize("name", sorted(PROCESSES))
+def test_the_native_estimates_equal_the_python_assembly(
+    artifacts, loop_native, monkeypatch, name
+):
+    from pyamplicol import Runtime
+    from pyamplicol.loops.v2 import stability
+
+    runtime = Runtime.load(artifacts[name], process=name)
+    point = PROCESSES[name][1]
+    compared = 0
+    for configuration in CONFIGURATIONS:
+        monkeypatch.setattr(stability, "NATIVE_BINARY64", True)
+        native, refused = _python(runtime, point, configuration)
+        monkeypatch.setattr(stability, "NATIVE_BINARY64", False)
+        oracle, refused_too = _python(runtime, point, configuration)
+        assert (refused is None) == (refused_too is None), configuration
+        if native is None:
+            assert str(refused) == str(refused_too)
+            continue
+        assert native.values == oracle.values, configuration
+        assert native.stability == oracle.stability, configuration
+        compared += sum(estimate is not None for estimate in native.stability)
+    assert compared
+
+
+def _number(value):
+    if value is None:
+        return None
+    return "inf" if value == math.inf else value
+
+
+def _record(estimate) -> dict:
+    """The SDK's JSON form of the Python API's public estimate."""
+
+    def laurent(values):
+        return [_number(x) for x in values]
+
+    return {
+        "relative": _number(estimate.relative),
+        "finite": _number(estimate.finite),
+        "single_pole": _number(estimate.single_pole),
+        "double_pole": _number(estimate.double_pole),
+        "checks": [[name, _number(value)] for name, value in estimate.checks],
+        "scale": _number(estimate.scale),
+        "absolute": [laurent(row) for row in estimate.absolute],
+        "magnitude": [laurent(row) for row in estimate.magnitude],
+        "not_run": [[name, reason] for name, reason in estimate.not_run],
+    }
+
+
+def _setter(sdk):
+    function = sdk.rusticol_virtual_set_stability_checks
+    function.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_uint64,
+        ctypes.c_char_p,
+        ctypes.c_uint32,
+        ctypes.c_uint32,
+        ctypes.c_uint32,
+    ]
+    return function
+
+
+def _set(sdk, handle, count, specifications, direction, rescaled, cross) -> int:
+    text = None if specifications is None else json.dumps(specifications).encode()
+    return _setter(sdk)(handle, count, text, int(direction), int(rescaled), int(cross))
+
+
+def _json(function, result) -> dict:
+    needed = ctypes.c_size_t()
+    assert function(result, None, ctypes.c_size_t(0), ctypes.byref(needed)) == 0
+    buffer = ctypes.create_string_buffer(needed.value)
+    assert function(result, buffer, needed, ctypes.byref(needed)) == 0
+    return json.loads(buffer.value)
+
+
+def _evaluate(sdk, handle, points, scales):
+    """One ordinary C ABI evaluation: its status, values, statuses and
+    diagnostics (None on a refused call)."""
+
+    flat = [c for point in points for p in point for c in p]
+    momenta = (ctypes.c_double * len(flat))(*flat)
+    mu = (ctypes.c_double * len(scales))(*scales)
+    request = _Request(momenta, len(flat), len(points), None, mu, len(scales))
+    result = ctypes.c_void_p()
+    status = sdk.rusticol_virtual_evaluate(
+        handle, ctypes.byref(request), ctypes.byref(result)
+    )
+    if status != 0:
+        return status, None
+    try:
+        shape = _ResultShape()
+        assert sdk.rusticol_virtual_result_shape(result, ctypes.byref(shape)) == 0
+        loop = (ctypes.c_double * max(shape.virtual_values, 1))()
+        statuses = (ctypes.c_uint32 * len(points))()
+        assert (
+            sdk.rusticol_virtual_result_copy_virtual(result, loop, shape.virtual_values)
+            == 0
+        )
+        assert (
+            sdk.rusticol_virtual_result_copy_statuses(result, statuses, len(points))
+            == 0
+        )
+        return status, {
+            "virtual": list(loop)[: shape.virtual_values],
+            "statuses": list(statuses),
+            "diagnostics": _json(sdk.rusticol_virtual_result_diagnostics_json, result),
+        }
+    finally:
+        sdk.rusticol_virtual_result_free(result)
+
+
+def _flat(result) -> list:
+    out = []
+    for point in result.values:
+        if point is None:
+            continue
+        for laurent in point:
+            out.extend(math.nan if x is None else x for x in laurent)
+    return out
+
+
+def _same(found: list, expected: list) -> bool:
+    return len(found) == len(expected) and all(
+        (math.isnan(a) and math.isnan(float(b))) or a == b
+        for a, b in zip(found, expected, strict=True)
+    )
+
+
+@pytest.mark.parametrize("name", sorted(PROCESSES))
+def test_sdk_estimates_equal_the_python_api(artifacts, loop_native, name):
+    from pyamplicol import Runtime
+
+    artifact = artifacts[name]
+    runtime = Runtime.load(artifact, process=name)
+    point = PROCESSES[name][1]
+    points = [[[float(Decimal(c)) for c in p] for p in point]] * 2
+    scales = [float(Decimal(s)) for s in SCALES]
+    sdk = _sdk()
+    handle = ctypes.c_void_p()
+    status = sdk.rusticol_virtual_open(
+        str(artifact).encode(), name.encode(), None, None, ctypes.byref(handle)
+    )
+    assert status == 0, _error(sdk)
+    estimated = 0
+    try:
+        # No checks (the default): no estimate.
+        status, found = _evaluate(sdk, handle, points, scales)
+        assert status == 0 and found["diagnostics"]["stability"] is None
+        for configuration in CONFIGURATIONS:
+            count, specifications, direction, rescaled, cross, poles, reduction = (
+                configuration
+            )
+            assert sdk.rusticol_virtual_set_poles(handle, poles.encode()) == 0
+            status = sdk.rusticol_virtual_set_reduction(handle, reduction.encode())
+            expected, refused = _python(runtime, point, configuration)
+            if reduction == "tirust" and "tirust" not in _served(loop_native):
+                assert status == STATUS_RUNTIME_ERROR and refused is not None
+                continue
+            assert status == 0, _error(sdk)
+            status = _set(
+                sdk, handle, count, specifications, direction, rescaled, cross
+            )
+            assert status == 0, _error(sdk)
+            status, found = _evaluate(sdk, handle, points, scales)
+            if refused is not None:
+                assert status == STATUS_RUNTIME_ERROR, configuration
+                assert str(refused) in _error(sdk)
+                continue
+            assert status == 0, (configuration, _error(sdk))
+            served = [value is not None for value in expected.values]
+            assert found["statuses"] == [
+                SUCCESS_STATUS if ok else FAILED_STATUS for ok in served
+            ], configuration
+            assert _same(found["virtual"], _flat(expected)), configuration
+            failures = found["diagnostics"]["failures"]
+            for index, ok in enumerate(served):
+                if not ok:
+                    assert "; ".join(failures[str(index)]) == (
+                        expected.diagnostics[index].detail
+                    ), configuration
+            records = found["diagnostics"]["stability"]["estimates"]
+            assert records == [
+                _record(estimate)
+                for estimate in expected.stability
+                if estimate is not None
+            ], configuration
+            estimated += len(records)
+        # A configuration the Python API refuses: its message, nothing set.
+        from pyamplicol.api.virtual_results import VirtualStabilityChecks
+
+        with pytest.raises(ValueError) as python:
+            VirtualStabilityChecks(0, False, rescaled=True)
+        assert _set(sdk, handle, 0, None, False, True, False) == (
+            STATUS_INVALID_ARGUMENT
+        )
+        assert str(python.value) in _error(sdk)
+        assert _set(sdk, handle, 1, ["z:3/5:4/5"], False, False, False) == (
+            STATUS_INVALID_ARGUMENT
+        )
+        # Another carrier forms no estimate and says why; statuses unchanged.
+        assert sdk.rusticol_virtual_set_reduction(handle, b"auto") == 0
+        assert _set(sdk, handle, 1, None, True, False, False) == 0
+        status = sdk.rusticol_virtual_set_arithmetic(
+            handle, b"double-double", ctypes.c_uint32(0)
+        )
+        assert status == 0, _error(sdk)
+        status, found = _evaluate(sdk, handle, points, scales)
+        assert status == 0
+        assert found["statuses"] == [SUCCESS_STATUS] * 2
+        record = found["diagnostics"]["stability"]
+        assert record["estimates"] is None and "binary64" in record["reason"]
+        # Checks off again: no estimate, no record.
+        assert _set(sdk, handle, 0, None, False, False, False) == 0
+        status, found = _evaluate(sdk, handle, points, scales)
+        assert status == 0 and found["diagnostics"]["stability"] is None
+    finally:
+        sdk.rusticol_virtual_free(handle)
+    assert estimated

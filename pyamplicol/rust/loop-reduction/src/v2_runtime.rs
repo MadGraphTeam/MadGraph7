@@ -90,6 +90,8 @@
 mod columns;
 mod induced;
 pub mod induced_outputs;
+mod monitor;
+pub use monitor::{Monitored, cross_reduction};
 
 pub use columns::{COLUMN_SETS, ColumnPoint, ColumnValues, INCLUSIVE};
 
@@ -110,6 +112,7 @@ use rusticol_core::loop_execution::v2::{
 };
 use rusticol_core::loop_v2::dress::{V2Batch, parse_rational};
 use rusticol_core::loop_v2::plan::LoopProgramV4;
+use rusticol_core::loop_v2::retest::ReductionCheck;
 use rusticol_core::loop_v2::trees::{
     BoundParameters, PointSources, TreeCarrier, TreeInputs, TreeProgram, TreeRuntime,
 };
@@ -793,6 +796,9 @@ pub struct V2Runtime {
     /// The reduction backend of every evaluation ([`V2Runtime::set_reduction`]).
     reduction: Reduction,
     backends: BTreeMap<V2Precision, V2Backends>,
+    /// The other backend's, for the stability monitoring's cross-backend
+    /// check (`monitor`), built on first use.
+    cross_backends: BTreeMap<V2Precision, V2Backends>,
     /// The stored companion's tree program (none: the process has no
     /// certified-scaleless families) and, once a split selection ran, the
     /// companion itself.
@@ -969,6 +975,7 @@ impl V2Runtime {
             process,
             reduction: Reduction::NinjaRs,
             backends,
+            cross_backends: BTreeMap::new(),
             scaleless_inputs: native.scaleless.map(Arc::new),
             scaleless: None,
             threads,
@@ -1047,6 +1054,12 @@ impl V2Runtime {
 
     pub fn born_orders(&self) -> usize {
         self.born_index.len()
+    }
+
+    /// Per declared (public) sector its record sector, the sector order of
+    /// a stability estimate's per-sector values.
+    pub fn sector_index(&self) -> &[usize] {
+        &self.sector_index
     }
 
     pub fn sectors(&self) -> usize {
@@ -1174,7 +1187,16 @@ impl V2Runtime {
         mode: V2Poles,
     ) -> RusticolResult<Vec<V2Point>> {
         self.partitioned(momenta, scales, mode, |runtime, momenta, scales| {
-            runtime.evaluate_batch(momenta, scales, mode, V2Precision::Double, &0.0, &Binary64)
+            runtime.evaluate_batch::<_, _, false>(
+                momenta,
+                scales,
+                mode,
+                V2Precision::Double,
+                &0.0,
+                &Binary64,
+                None,
+                &mut Vec::new(),
+            )
         })
     }
 
@@ -1196,20 +1218,31 @@ impl V2Runtime {
             V2Precision::Double => Err(invalid("binary64 evaluations are V2Runtime::evaluate's")),
             V2Precision::DoubleDouble => {
                 self.partitioned(momenta, scales, mode, |runtime, momenta, scales| {
-                    runtime.evaluate_batch(
+                    runtime.evaluate_batch::<_, _, false>(
                         momenta,
                         scales,
                         mode,
                         precision,
                         &DoubleFloat::from(0.0),
                         &arith,
+                        None,
+                        &mut Vec::new(),
                     )
                 })
             }
             V2Precision::Arbitrary(_) => {
                 let zero = Float::with_val(precision.bits()?, 0);
                 self.partitioned(momenta, scales, mode, |runtime, momenta, scales| {
-                    runtime.evaluate_batch(momenta, scales, mode, precision, &zero, &arith)
+                    runtime.evaluate_batch::<_, _, false>(
+                        momenta,
+                        scales,
+                        mode,
+                        precision,
+                        &zero,
+                        &arith,
+                        None,
+                        &mut Vec::new(),
+                    )
                 })
             }
         }
@@ -1217,17 +1250,13 @@ impl V2Runtime {
 
     /// The input checks of a batch and its evaluation, per exact `mu_R²`
     /// where the model needs it (`partitions`).
-    fn partitioned<N>(
+    fn partitioned<P>(
         &mut self,
         momenta: &[Vec<Rational>],
         scales: &[Rational],
         mode: V2Poles,
-        mut batch: impl FnMut(
-            &mut Self,
-            &[Vec<Rational>],
-            &[Rational],
-        ) -> RusticolResult<Vec<V2Point<N>>>,
-    ) -> RusticolResult<Vec<V2Point<N>>> {
+        mut batch: impl FnMut(&mut Self, &[Vec<Rational>], &[Rational]) -> RusticolResult<Vec<P>>,
+    ) -> RusticolResult<Vec<P>> {
         self.check_batch(momenta, scales)?;
         self.check_poles(mode)?;
         if momenta.is_empty() {
@@ -1247,7 +1276,7 @@ impl V2Runtime {
             });
             parts[part].1.push(index);
         }
-        let mut out: Vec<Option<V2Point<N>>> = (0..momenta.len()).map(|_| None).collect();
+        let mut out: Vec<Option<P>> = (0..momenta.len()).map(|_| None).collect();
         for (scale, indices) in parts {
             let part_momenta: Vec<Vec<Rational>> =
                 indices.iter().map(|&i| momenta[i].clone()).collect();
@@ -1372,6 +1401,7 @@ impl V2Runtime {
         if reduction != self.reduction {
             self.reduction = reduction;
             self.backends.clear();
+            self.cross_backends.clear();
         }
         Ok(())
     }
@@ -1385,7 +1415,14 @@ impl V2Runtime {
     /// the carrier of `zero` and the arithmetic `arith`
     /// (`plan_export.NativeExecutor.reduce`, `assemble._PointEvaluation.
     /// set_lanes` and `_assemble`, in the same operations and order).
-    fn evaluate_batch<T: Native, A: Lift<T> + induced::Squaring>(
+    ///
+    /// `check` re-reduces every lane in that frame (the stability checks'
+    /// reduction check); with `COLLECT` (a compile-time choice: an
+    /// evaluation without checks collects nothing) every successful point's
+    /// lanes, re-test lanes, local components and reference values per
+    /// record sector go to `collected` (`monitor`), a failed point's `None`.
+    #[allow(clippy::too_many_arguments)]
+    fn evaluate_batch<T: Native, A: Lift<T> + induced::Squaring, const COLLECT: bool>(
         &mut self,
         momenta: &[Vec<Rational>],
         scales: &[Rational],
@@ -1393,12 +1430,19 @@ impl V2Runtime {
         precision: V2Precision,
         zero: &T,
         arith: &A,
+        check: Option<ReductionCheck>,
+        collected: &mut Vec<Option<monitor::Collected<A::N>>>,
     ) -> RusticolResult<Vec<V2Point<A::N>>>
     where
         Complex<T>: Real + EvaluationDomain,
         TreeRuntime<T>: Send,
     {
         if let Some(induced) = self.induced.clone() {
+            if COLLECT || check.is_some() {
+                return Err(invalid(
+                    "the loop-induced stability checks are the induced monitor's",
+                ));
+            }
             return self.evaluate_induced(&induced, momenta, scales, mode, precision, zero, arith);
         }
         let poles = mode.poles();
@@ -1427,6 +1471,7 @@ impl V2Runtime {
         let options = V2Options {
             poles: mode.lanes(),
             contraction: contraction(&self.artifact.metadata.color_contraction),
+            check,
             ..V2Options::default()
         };
         self.backend(precision)?;
@@ -1510,6 +1555,9 @@ impl V2Runtime {
                 failures.extend(twin.failures.iter().cloned());
             }
             if !failures.is_empty() {
+                if COLLECT {
+                    collected.push(None);
+                }
                 out.push(Err(failures));
                 continue;
             }
@@ -1636,6 +1684,59 @@ impl V2Runtime {
                     None => Ok(arith.zero()),
                 })
                 .collect::<RusticolResult<Vec<_>>>()?;
+            if COLLECT {
+                // What the point's stability budgets read
+                // (`_PointEvaluation.families`, `retest_families` and
+                // `result.components`, per record sector).
+                if mode.split() {
+                    return Err(invalid(
+                        "the native stability checks serve the pole selections all and none",
+                    ));
+                }
+                let lift = |lanes: &[(LaneKey, Vec<Complex<T>>)]| {
+                    lanes
+                        .iter()
+                        .map(|(key, value)| {
+                            let lifted = value
+                                .iter()
+                                .map(|z| arith.complex(z, bits))
+                                .collect::<RusticolResult<Vec<_>>>()?;
+                            Ok((*key, key.column, lifted))
+                        })
+                        .collect::<RusticolResult<Vec<_>>>()
+                };
+                let truncated =
+                    |values: [A::N; 3]| -> Vec<A::N> { values.into_iter().take(width).collect() };
+                let components = ["r2", "uv_local", FIELD_COMPONENT]
+                    .map(|name| {
+                        (0..sectors)
+                            .map(|s| truncated(laurent(&local, name, s)))
+                            .collect::<Vec<_>>()
+                    })
+                    .to_vec();
+                let reference = (0..sectors)
+                    .map(|s| {
+                        (0..width)
+                            .map(|k| {
+                                let bare = sums[s]
+                                    .as_ref()
+                                    .map_or_else(|| real_zero.clone(), |terms| bare_of(&terms[k]));
+                                let uv = arith.add(
+                                    &value_of(&local, "uv_local", s, k),
+                                    &value_of(&local, FIELD_COMPONENT, s, k),
+                                );
+                                arith.add(&arith.add(&bare, &uv), &value_of(&local, "r2", s, k))
+                            })
+                            .collect()
+                    })
+                    .collect();
+                collected.push(Some(monitor::Collected {
+                    lanes: lift(&result.families)?,
+                    retest: result.check.as_deref().map(lift).transpose()?,
+                    local: components,
+                    reference,
+                }));
+            }
             out.push(Ok((born_values, virtual_values)));
         }
         Ok(out)

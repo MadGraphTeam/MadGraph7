@@ -173,8 +173,25 @@ Results store compact successful IDs alongside statuses for **all** requested
 IDs. Failed points have no numerical row. An ordinary success reports accuracy
 not established. The SDK has no verification policy (ABI version 2 dropped
 version 1's `rusticol_virtual_open_with_policy` and the batch request's
-`verification_json`, which plan v4 refused): stability estimates and the
-precision rescue are the Python API's (`stability=` on the native evaluate).
+`verification_json`, which plan v4 refused); the precision rescue is the
+Python API's.
+
+**Stability monitoring** (m-lit LIT-SDK, binary64): `Runtime::set_stability_checks`
+(C `rusticol_virtual_set_stability_checks`, C++ `set_stability_checks`,
+Fortran `set_stability_checks`) takes every field of the Python API's
+`VirtualStabilityChecks`: a count of default rotations (or rotation
+specifications), the reduction-direction check, its rescaled variant and the
+cross-backend check. The default runs none: no estimate and no extra cost. With
+checks, a binary64 ordinary evaluation of a Born-interfered process (poles
+"all" or "none") returns each successful point's estimate in the result's
+diagnostics (`"stability": {"estimates": [...]}`, one record per successful
+point: the Python API's `VirtualStabilityEstimate` fields), computed by the
+same Rust implementation the Python API's binary64 estimates call
+(`rusticol_loop_reduction::v2_stability`), so bitwise equal. The other
+evaluations (double-double, arbitrary precision, resolved and correlated
+outputs, a loop-induced process) return `"estimates": null` with the reason.
+Point statuses keep their meaning; comparing an estimate with a target is the
+caller's.
 
 Inclusive output axes are `[point,order,epsilon]`. Resolved output adds helicity
 and colour-component axes before epsilon. Resolved LC components are signed
