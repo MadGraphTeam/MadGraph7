@@ -308,6 +308,10 @@ the truncation, so SU(N_c) identities such as colour conservation hold degree
 by degree. For example the colour factor of `u d > u d` is `(N^2 - 1)/4`
 exactly, `(N^2 + 1)/4` at inherited LC and `N^2/4` at strict LC; see
 [Correlation Conventions](../correlator-conventions.md#strict-colour-the-formal-1nc-expansion).
+Since a tree request defaults to `lc`, compare a tree with a full-colour
+reference (MadGraph standalone, an analytic formula, a loop-induced |A|^2)
+at `accuracy = "full"`: at `lc` the gluon pair of `g g > h` (HEFT) carries
+`N^2` instead of `N^2 - 1`, exactly 9/8 of the full-colour value.
 
 Strict tree artifacts report their value split by N_c degree (graded output:
 `Runtime.evaluate_graded`, the contracted colour axis of `evaluate_resolved`,
