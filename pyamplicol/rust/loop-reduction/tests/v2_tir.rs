@@ -1096,10 +1096,16 @@ fn carrier_gates_keep_the_share_of_the_significand() {
 /// determinant, no on-shell decision), ranks 4 and 6: rows the conditioning
 /// gates refuse.
 fn near_forward_boxes() -> Vec<FamilyLanes<f64>> {
+    forward_boxes(&[100., 1000., 9000.])
+}
+
+/// [`near_forward_boxes`] at the angles `sin(theta) = 2m / (m^2 + 1)` of
+/// `ms`.
+fn forward_boxes(ms: &[f64]) -> Vec<FamilyLanes<f64>> {
     let mut groups = Vec::new();
     let mut family = 0;
     let mt2 = C::new(173. * 173., 0.);
-    for m in [100f64, 1000., 9000.] {
+    for &m in ms {
         // (m^2 - 1, 2m, m^2 + 1) / 2^k: sin(theta) = 2m / (m^2 + 1).
         let unit = 2f64.powi(-(((m * m + 1.) / 500.).log2().ceil() as i32));
         let (a, b, c) = ((m * m - 1.) * unit, 2. * m * unit, (m * m + 1.) * unit);
@@ -1871,4 +1877,64 @@ where
         }
     }
     statistics.counts
+}
+
+/// NinjaRS's unchecked mode (m-lit lit-unchecked; `runtime::fast_options`:
+/// zero stability thresholds; `V2Reducer::set_unchecked`): near-forward
+/// boxes at angles where NinjaRS's binary64 stability tests refuse lanes
+/// (`Unstable`). Unchecked, every lane the checked reducer serves keeps its
+/// value bitwise (a threshold only refuses), and a refused lane is served
+/// unless a tested quantity is exactly zero or NaN or the result is not
+/// finite; the same reducer set back to checked is the checked default
+/// again, bitwise (the amplitudes are cached per mode).
+#[test]
+fn ninjars_zero_thresholds_serve_its_threshold_refusals() {
+    let groups = forward_boxes(&[1e5, 1e6, 1e7, 1e8]);
+    let mut backend = ninjars("double", "fast");
+    let (checked, _) = reduce(&mut backend, &groups, Poles::All, None);
+    let V2Backends::NinjaRs(inner) = &mut backend else {
+        unreachable!("a NinjaRS backend")
+    };
+    inner.reducer.set_unchecked(true);
+    assert!(backend.unchecked());
+    let (found, _) = reduce(&mut backend, &groups, Poles::All, None);
+    let truth = reference_arbitrary(&groups, Poles::All, 80);
+    let (mut refused, mut served) = (0, 0);
+    for (g, group) in checked.iter().enumerate() {
+        for (lane, value) in group.iter().enumerate() {
+            match (value, &found[g][lane]) {
+                (Ok(a), Ok(b)) => assert_eq!(a, b, "family {g} lane {lane}"),
+                (Err(reason), Ok(b)) => {
+                    refused += 1;
+                    served += 1;
+                    assert!(reason.contains("Unstable"), "{reason}");
+                    let error = relative(b, truth[g][lane].as_ref().unwrap());
+                    eprintln!(
+                        "family {g} lane {lane}: refused checked ({reason}), unchecked \
+                         {error:e} from the truth"
+                    );
+                    assert!(b.iter().all(|z| z.re.is_finite() && z.im.is_finite()));
+                }
+                (Err(reason), Err(again)) => {
+                    refused += 1;
+                    eprintln!("family {g} lane {lane}: {reason}; unchecked: {again}");
+                    assert!(
+                        again.contains("NonFinite")
+                            || again.contains("MasterFailed")
+                            || again.contains("Unstable"),
+                        "{again}"
+                    );
+                }
+                (Ok(_), Err(again)) => panic!("family {g} lane {lane}: {again}"),
+            }
+        }
+    }
+    eprintln!("NinjaRS checked refusals {refused}, served unchecked {served}");
+    assert!(refused > 0 && served > 0, "{refused} {served}");
+    let V2Backends::NinjaRs(inner) = &mut backend else {
+        unreachable!("a NinjaRS backend")
+    };
+    inner.reducer.set_unchecked(false);
+    let (again, _) = reduce(&mut backend, &groups, Poles::All, None);
+    assert_eq!(again, checked);
 }

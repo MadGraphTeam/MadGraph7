@@ -341,8 +341,9 @@ backend that cannot serve the call is refused before any point is evaluated
 call's executor runs: the summed `evaluate` and the resolved, correlated and
 selected outputs each check it, so a result never names a backend that did
 not reduce it. Every lane diagnostic records the requested and effective
-backend, the reason, the call's fallback and target
-(`VirtualReduction(requested, effective, reason, fallback, target)`;
+backend, the reason, the call's fallback, target and unchecked setting
+(`VirtualReduction(requested, effective, reason, fallback, target,
+unchecked)`;
 [Configuration](configuration.md#reduction-backend)).
 
 TIRust serves at a **target accuracy** (`reduction_target=` on `Runtime.load`
@@ -367,6 +368,60 @@ rescue stack for an estimate. NinjaRS has no
 setting the target drives, and in double-double and arbitrary precision,
 where TIRust's method choice is off, the target acts on nothing. A value that
 is not a finite positive number is refused (`ValueError`).
+
+**Unchecked reductions** (`reduction_unchecked=True` on `Runtime.load` and on
+every evaluation; `[evaluation] reduction_unchecked = true`; CLI
+`--reduction-unchecked`; the SDKs' `rusticol_virtual_set_reduction_unchecked`;
+default **off**). The setting drops the reduction backends' own acceptance and
+refusal checks, so that a backend serves every point it can give a finite
+value for, the way the one-loop providers' most optimistic settings run
+(OpenLoops and Recola with COLLIER's method choice and no stability system):
+
+* TIRust keeps its a priori conditioning gates and its method choice
+  (small-Gram expansions or the alternative reduction) as *method selection*
+  and returns the method-choice values as computed: the acceptance check of
+  those values (their re-evaluation at rescaled inputs and the comparison)
+  is not computed at all, so the target accuracy drives nothing on TIRust
+  under the setting. The rows the method choice refuses (an expansion that
+  does not converge, an alternative estimate above its limit, a cancelling
+  determinant, vanishing adjugates, a triangle below the requested rank, its
+  own gate) are served by their **last resort**, plain Passarino-Veltman at
+  gate 0. Every other row's value is bitwise the checked one.
+* NinjaRS runs its binary64 engine with zero stability thresholds (Ninja's
+  `stability_threshold` and `relative_tolerance` 0): a lane fails only where
+  a tested quantity is exactly zero or NaN.
+* The **residual failures**, which no scheme gives a finite value for, stay
+  failed points with their reasons: an exactly singular pivot (TIRust, after
+  its affine-relation variants), a non-finite output (TIRust's "nonfinite
+  direct-engine coefficient", a non-finite numerator, NinjaRS's `NonFinite`),
+  a master failure (TIRust's `MasterFailure`, NinjaRS's `MasterFailed`),
+  TIRust's `InvalidInput` and a NaN lane of NinjaRS (e.g. a cut whose two
+  momenta span a Euclidean plane). A family outside TIRust's capability stays
+  a call-level `ReductionUnavailable`.
+* `"auto"` keeps its rule, each backend in its unchecked form: TIRust for a
+  loop-induced process, NinjaRS for a Born-interfered one, TIRust without a
+  fallback on a TIR-only artifact, NinjaRS where the native extension has no
+  TIRust. Its per-point NinjaRS fallback (unchecked, in the call's
+  arithmetic) acts only on the residual failures of the unchecked TIRust,
+  recorded per point; where nothing fails, an `"auto"` call is a pure TIRust
+  call. Explicit `"tirust"` and `"ninjars"` have no fallback.
+* Arithmetics: in double-double and arbitrary precision TIRust's method
+  choice is off, so there the conditioning gates select and the last resort
+  serves what they refuse. NinjaRS's generic engine (double-double, arbitrary
+  precision, and the binary64 lanes the fast engine routes to it) tests no
+  stability threshold, so the setting changes nothing there.
+* pyAmpliCol's own stability checks (`stability_checks=`, the SDKs'
+  monitoring) and the rescue stack (`stability=`) stay their own settings:
+  combined with the setting they check the unchecked values, and the rescue
+  levels (each reducing unchecked) or the per-point fallback act on the
+  points those checks fail.
+
+The setting is recorded in every lane diagnostic
+(`VirtualReduction.unchecked`) and in the SDKs' `"reduction"` diagnostics.
+It is a user choice for speed, not a production default: without it, the
+default `"auto"` serves loop-induced processes on TIRust at the checked
+target accuracy above with the per-point NinjaRS fallback. A value that is
+not a bool is refused (`ValueError`).
 
 `VirtualStabilityChecks(..., cross_backend=True)` adds the cross-backend
 check: every point is evaluated a second time on the other backend (TIRust

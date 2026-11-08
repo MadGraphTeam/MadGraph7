@@ -582,7 +582,7 @@ mod tests {
 
     #[test]
     fn the_unchecked_setting_is_off_by_default_and_a_boolean() {
-        assert!(!DEFAULT_UNCHECKED);
+        const { assert!(!DEFAULT_UNCHECKED) };
         assert_eq!(unchecked(0), Ok(false));
         assert_eq!(unchecked(1), Ok(true));
         for bad in [-1, 2, i64::MAX, i64::MIN] {

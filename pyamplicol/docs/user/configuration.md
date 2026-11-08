@@ -732,6 +732,7 @@ reduction = "auto"             # generation default: auto, ninjars, tirust
 [evaluation]
 reduction = "ninjars"          # override for this evaluation (default: the artifact's)
 reduction_target = 1e-5        # TIRust's target accuracy (relative, per point; default 1e-5)
+reduction_unchecked = false    # true: no backend acceptance or refusal checks (default false)
 ```
 
 `"auto"` takes the per-type default, TIRust for a loop-induced and NinjaRS
@@ -784,7 +785,19 @@ about 1e-7 relative), so a target tighter than that can be missed; it is a
 calibrated acceptance, not a certificate. In double-double and arbitrary
 precision, where TIRust's method choice is off, it acts on nothing, and
 NinjaRS has no setting it drives. A target that is not a finite positive
-number is refused. TIRust's qualified domain is up to six
+number is refused. `evaluation.reduction_unchecked = true` (CLI
+`--reduction-unchecked`, Python `reduction_unchecked=True`, the SDKs'
+`set_reduction_unchecked`; default false) reduces without the backends' own
+acceptance and refusal checks: TIRust's gates and method choice select the
+method, its method-choice values are not re-checked (the target then drives
+nothing), and plain Passarino-Veltman at gate 0 serves what they refuse;
+NinjaRS runs with zero stability thresholds. Only points without a finite
+value in any scheme (an exactly singular pivot, a non-finite output, a
+master failure) still fail; `"auto"` keeps its choice of backend and its
+per-point fallback acts only on those. pyAmpliCol's stability checks and
+rescue stack stay their own settings and check the unchecked values when
+enabled ([Python API](python-api.md), "Unchecked reductions"). It is off by
+default: the default is the checked target accuracy. TIRust's qualified domain is up to six
 loop propagators at numerator rank six (reported, never enforced: beyond it
 the achieved precision is measured, as everywhere). `loop.reduction` other
 than `"auto"` needs a one-loop request (`process.loop_coupling_orders`).

@@ -810,7 +810,19 @@ reason, and refuses `"tirust"`. The target accuracy
 default 1e-5, the relative accuracy of each point's result) sets the
 calibrated acceptance of TIRust's checked method choice, as the Python API's
 `reduction_target=`; a value that is not a finite positive number is an
-invalid argument. The fallback and the target need no Symbolica licence: a
+invalid argument. The unchecked setting
+`rusticol_virtual_set_reduction_unchecked(handle, unchecked)` (C++
+`set_reduction_unchecked(bool)`, Fortran `set_reduction_unchecked(logical)`,
+the packaged Rust wrapper's `set_reduction_unchecked(bool)`; 1 or 0, default
+0, as the Python API's `reduction_unchecked=`) reduces without the backends'
+own acceptance and refusal checks (TIRust: its gates and method choice as
+method selection, no acceptance pass, plain PV at gate 0 as the last resort;
+NinjaRS: zero stability thresholds; only points without a finite value
+fail); `"auto"` keeps its backend and its per-point fallback, which then
+acts only on those points; the stability monitoring stays its own setting;
+`"reduction"` in `diagnostics_json` records `"unchecked"`, and any other
+value is an invalid argument. It is off by default. The fallback, the target
+and the unchecked setting need no Symbolica licence: a
 binary64 call on NinjaRS or TIRust touches no Symbolica state, and a
 double-double or arbitrary-precision fallback runs under the package key as
 any SDK call in that arithmetic.

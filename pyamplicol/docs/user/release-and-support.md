@@ -59,8 +59,10 @@ evaluates a shipped loop-induced artifact (`g g > h`) against MadLoop. The
 native SDKs (C, C++, Fortran, Rust, UMAMI) open loop-induced processes directly
 with empty Born counts and the Python API's values, and take the reduction
 backend per call (`rusticol_virtual_set_reduction`; `"auto"` with the
-per-point NinjaRS fallback, no rescue stack) and the target accuracy
-(`rusticol_virtual_set_reduction_target`); they also serve the
+per-point NinjaRS fallback, no rescue stack), the target accuracy
+(`rusticol_virtual_set_reduction_target`) and the unchecked setting
+(`rusticol_virtual_set_reduction_unchecked`: no backend acceptance or refusal
+checks, off by default, as the Python API's `reduction_unchecked=`); they also serve the
 helicity-resolved and the colour- and spin-correlated outputs (the correlated
 history `"born"` is |A|^2 itself), with the Python API's values, and monitor
 binary64 stability for both process types (`rusticol_virtual_set_stability_checks`:

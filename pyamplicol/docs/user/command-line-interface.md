@@ -445,9 +445,16 @@ lane diagnostic); `ninjars` and `tirust` request one backend without a
 fallback (`tirust` serves every arithmetic); an explicit backend that cannot
 serve the call is refused. `--reduction-target X` sets TIRust's target
 accuracy (the relative accuracy of each point's result, default 1e-5; it
-sets the calibrated acceptance of TIRust's checked method choice). The JSON
-output's lane diagnostics name the requested and effective backends, the
-reason, the fallback and the target. A
+sets the calibrated acceptance of TIRust's checked method choice).
+`--reduction-unchecked` (default off) reduces without the backends' own
+acceptance and refusal checks: TIRust's gates and method choice select the
+method without re-checking its values, plain Passarino-Veltman at gate 0
+serves what they refuse, NinjaRS runs with zero stability thresholds; only
+points without a finite value still fail, `auto` keeps its backend choice and
+its fallback acts on those only ([Python API](python-api.md), "Unchecked
+reductions"). The JSON output's lane diagnostics name the requested and
+effective backends, the reason, the fallback, the target and the unchecked
+setting. A
 loop-induced artifact (`contribution: "loop-induced"` in the JSON, empty
 `born_values`) takes `--poles all` or `none` only.
 

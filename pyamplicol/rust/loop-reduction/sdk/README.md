@@ -68,6 +68,14 @@ reason; the capabilities list the backends this library serves, the
 target)` (C++ / Fortran / Rust `set_reduction_target`; default 1e-5, the
 relative accuracy of each point's result) sets the calibrated acceptance of
 TIRust's checked method choice, as the Python API's `reduction_target=`.
+`rusticol_virtual_set_reduction_unchecked(handle, unchecked)` (C++ / Fortran
+/ Rust `set_reduction_unchecked`; 0 by default, 1 on) reduces without the
+backends' own acceptance and refusal checks, as the Python API's
+`reduction_unchecked=` (`reduction_policy::UNCHECKED_RECORD`: TIRust's gates
+and method choice as method selection without the acceptance pass, plain PV
+at gate 0 as its last resort; NinjaRS's zero stability thresholds); `"auto"`
+keeps its backend and per-point fallback; each result records `"unchecked"`
+in its `"reduction"` diagnostics; any other value is an invalid argument.
 
 The ordinary package builds the tree and virtual APIs into one
 `librusticol_capi.a`. Its existing `_sdk` bundle carries the virtual C/C++ headers,
