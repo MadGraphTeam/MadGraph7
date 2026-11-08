@@ -16,9 +16,9 @@ ANNOUNCEMENT:
          and decay LDMEs differ); its default is the vacuum-saturation value
          <O^H>/(2J_H+1), exact at LO for colour singlets. A leptonium keeps its one
          Coulomb LDME (Block ldme) for production and decay.
-         Its mass is m1+m2 by default; "set onia_card onia_decay 1 1" uses the
-         onium_mass of the card (the decay products are rescaled onto the
-         constituent kinematics for the matrix element).
+         Its mass is the onium_mass of the onia card, as in production: the
+         decay products are rescaled onto the constituent kinematics (m1+m2)
+         for the matrix element; set the onium_mass to m1+m2 for strict LO.
        - onia produced in 1 -> N decays, e.g. "generate z > Jpsi(1|3S11) a",
          "generate t > w+ Bc-(1|1S01) c": the momentum reshuffling works at the fixed
          mass of the decaying particle (it also checks the particle at position 2,
@@ -44,7 +44,7 @@ ANNOUNCEMENT:
          onium channels gave the s-channel particle of the first subprocess of a group
          only, and the clustering read 0 for the others (e.g. q g > Jpsi q next to
          g q > Jpsi q).
-       - Bug fix: with a decaying onium at its physical mass (onia_decay 1 1), a soft
+       - Bug fix: with a decaying onium at a mass other than m1+m2, a soft
          decay product was put off shell by the momentum rescale (a cut-off on |p|^2):
          "Jpsi(1|3S11) > g g g" gave widths of order 1e27 GeV.
        - Bug fix: a P-wave onium (almost) at rest, e.g. a decaying one with the 1d-14

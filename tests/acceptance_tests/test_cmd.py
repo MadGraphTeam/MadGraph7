@@ -2711,9 +2711,10 @@ class TestCmdShell2(unittest.TestCase,
                     onia = open(pjoin(proc_dir, 'onia.inc')).read()
                     self.assertIn('DATA (ONIA_IN(I),I=1,1)/1/', onia)
                     pmass = open(pjoin(proc_dir, 'pmass.inc')).read()
-                    self.assertIn('ONIA_DECAY_MASS', pmass)
+                    # the same mass as in production: the onium_mass of the card
+                    self.assertIn('MDL_M', pmass.upper())
                     card = open(pjoin(self.out_dir, 'Cards', 'onia_card.dat')).read()
-                    self.assertIn('Block onia_decay', card)
+                    self.assertNotIn('onia_decay', card)
             # the decay LDME is <O^H>/(2J_H+1), production divides by 2J_n+1
             dec, pro = values[0] * jratio, values[1]
             self.assertLess(abs(dec - pro) / max(abs(dec), abs(pro)), 1e-12,
@@ -2762,7 +2763,7 @@ class TestCmdShell2(unittest.TestCase,
         me2 = self._onia_check_me(proc_dir, [P, k1, k2])
         self.assertLess(abs(me2 / me - 2), 1e-12)
 
-        # a decaying onium at its physical mass (Block onia_decay): the decay
+        # a decaying onium at its physical mass (its onium_mass): the decay
         # products are rescaled onto m1+m2 in its rest frame. A soft gluon
         # must stay on shell: the |M|^2 of Jpsi > g g g is smooth as one gluon
         # goes soft (it was 1d37 below 3d-4 GeV, from a cut-off on |p|^2)
@@ -2774,7 +2775,6 @@ class TestCmdShell2(unittest.TestCase,
         card = pjoin(self.out_dir, 'Cards', 'onia_card.dat')
         text = open(card).read()
         text = re.sub(r'(?m)^(\s*443\s+)[0-9.Ee+-]+(\s+# mass)', r'\g<1>3.0969\2', text)
-        text = re.sub(r'(?m)^(\s*1\s+)0(\s+# onia_decay_mass)', r'\g<1>1\2', text)
         open(card, 'w').write(text)
         Mphys = 3.0969
         g2 = [1.5484078569, -0.79031221670, 0.68500128333, 1.1418172942]

@@ -1863,25 +1863,15 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
         onium = -1
         onium_mass = 0
         counter = 0
-        # constituent masses of every bound state
-        constituent_masses = {}
-        for wf in matrix_element.get_external_wavefunctions():
-            if wf.get('onium'):
-                constituent_masses.setdefault(wf.get('onium').get('index'), []).append(
-                    model.get('particle_dict')[wf.get('pdg_code')].get('mass'))
         for wf in matrix_element.get_external_wavefunctions():
             mass = model.get('particle_dict')[wf.get('pdg_code')].get('mass')
             if wf.get('onium'):
                 if onium == -1:
                     onium = wf.get('onium').get('index')
+                    # the onium_mass of the onia card, for a produced and a
+                    # decaying onium alike (the matrix element is evaluated at
+                    # m1+m2 after the momentum reshuffling)
                     mass = "mdl_M%i"%abs(wf.get('onium').get('id'))
-                    if wf.get('leg_state') == False:
-                        # a decaying onium: m1+m2 unless the onia card
-                        # (Block onia_decay) asks for its onium_mass
-                        msum = "+".join("abs(%s)" % m for m in
-                                        constituent_masses[onium]
-                                        if m.lower() != 'zero') or "0d0"
-                        mass = "MERGE(%s,%s,ONIA_DECAY_MASS.GT.0.5D0)" % (mass, msum)
                 elif onium == wf.get('onium').get('index'):
                     onium = -1
                     counter += 1
@@ -4740,7 +4730,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
             prod_ids = [row[0] for row in onia_info if row[4] or (row[5] and row[6])]
             decay_ids = [row[0] for row in onia_info if row[5] and not row[6]]
 
-            self.create_onia_card(onia_info, decaying=bool(decay_ids))
+            self.create_onia_card(onia_info)
 
             filename = pjoin(self.dir_path, 'Source', 'MODEL', 'ldme.inc')
             self.write_ldme_file(writers.FortranWriter(filename),
@@ -4772,12 +4762,12 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
 
 
 
-    def create_onia_card(self, onia_info, decaying=False):
+    def create_onia_card(self, onia_info):
         """Write Cards/onia_card.dat: the production LDMEs (Block ldme), the
-        decay LDMEs of the decaying quarkonia (Block ldme_decay), the masses,
-        and for a decaying onium the choice of its mass. onia_info rows are
-        [pdg, name, mass, production LDME, produced, decaying, leptonium]
-        (get_onia_info).
+        decay LDMEs of the decaying quarkonia (Block ldme_decay) and the
+        masses (Block onium_mass), the same for production and decay.
+        onia_info rows are [pdg, name, mass, production LDME, produced,
+        decaying, leptonium] (get_onia_info).
 
         The decay LDME <O_n>_H of a quarkonium Fock state is a parameter of
         its own: for colour octets it is not related to the production one.
@@ -4824,15 +4814,6 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
                         f.write('Block onium_mass\n')
                         for onium_info in onia_info:
                             f.write('   {id:7}  {value:.16f}   # mass for {name}\n'.format(id=onium_info[0],name=onium_info[1],value=onium_info[2]))
-                        if decaying:
-                            f.write('#*********************************************************************\n')
-                            f.write('# Mass of a decaying onium (phase space and flux)                     *\n')
-                            f.write('#  0 = m1+m2, the sum of its constituent masses (LO NRQCD)          *\n')
-                            f.write('#  1 = its onium_mass above; the decay products are then rescaled   *\n')
-                            f.write('#      onto the constituent kinematics for the matrix element       *\n')
-                            f.write('#*********************************************************************\n')
-                            f.write('Block onia_decay\n')
-                            f.write('         1  0   # onia_decay_mass\n')
                     shutil.copy(pjoin(self.dir_path, 'Cards',card + '_default.dat'),
                                    pjoin(self.dir_path, 'Cards', card + '.dat'))
                 except IOError:
@@ -4908,10 +4889,6 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
                             (",".join(str(x) for x in ldmeds)))
             lines.append("COMMON/LDME_DECAY/ %s"% \
                             (",".join(str(x) for x in ldmeds)))
-        if onia_ids:
-            # mass of a decaying onium: 0 = m1+m2 (default), 1 = onium_mass
-            lines.append("DOUBLE PRECISION ONIA_DECAY_MASS")
-            lines.append("COMMON/ONIA_DECAY/ONIA_DECAY_MASS")
 
         # Write the file
         writer.writelines(lines)
@@ -4933,9 +4910,6 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
         for onium_id in onia_ids:
             lines.append("CALL LHA_GET_REAL(NONIA,ONIA,VALUE,'mdl_M{id}',mdl_M{id},-1D0)".format(id=onium_id))
 
-        if onia_ids:
-            # only written for a decaying onium: silent when absent
-            lines.append("CALL LHA_GET_REAL_SILENT(NONIA,ONIA,VALUE,'onia_decay_mass',ONIA_DECAY_MASS,0D0)")
 
         # Write the file
         writer.writelines(lines)
@@ -4958,8 +4932,6 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
                 for onium_id in onia_ids:
                     f.write("\nonium_mass {id} mdl_M{id}\n".format(id=onium_id))
 
-                if onia_ids:
-                    f.write("\nonia_decay 1 onia_decay_mass\n")
 
         else:
             raise MadGraph5Error("LDMEs cannot be added to 'ident_card.dat'")

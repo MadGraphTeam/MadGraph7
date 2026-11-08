@@ -2664,9 +2664,10 @@ class TestMECmdShell(unittest.TestCase):
 
     def test_onium_decay_width(self):
         """Onium decays in madevent: Gamma(eta_c -> gamma gamma) at LO NRQCD,
-        12 e_c^4 alpha^2 |R(0)|^2 / M^2 with M = 2 m_c by default, and with the
-        physical mass of the onia card (Block onia_decay) the 2-body width
-        scales as M/M_phys."""
+        12 e_c^4 alpha^2 |R(0)|^2 / M^2 with M = 2 m_c when the onium_mass of
+        the onia card is 2 m_c, and at the onium_mass of the card by default
+        (the same mass as in production), where the 2-body width scales as
+        M/M_phys."""
 
         mg_cmd = MGCmd.MasterCmd()
         mg_cmd.no_notification()
@@ -2677,22 +2678,28 @@ class TestMECmdShell(unittest.TestCase):
         self.cmd_line.no_notification()
         self.cmd_line.exec_cmd('set automatic_html_opening False')
         card = pjoin(self.run_dir, 'Cards', 'onia_card.dat')
-        self.assertEqual(self._onia_card_value(card, 'onia_decay', 1), 0)
-
-        self.do('generate_events -f')
-        width = self.cmd_line.results.current['cross']
+        self.assertNotIn('onia_decay', open(card).read())
+        mphys = self._onia_card_value(card, 'onium_mass', 441)
         mc, alpha = 1.55, 1 / 132.507
         M = 2 * mc
+
+        # strict LO: the onium_mass set to m1+m2
+        text = open(card).read()
+        text = re.sub(r'(?m)^(\s*441\s+)[0-9.Ee+-]+(\s+# mass)', r'\g<1>%.12e\2' % M, text)
+        open(card, 'w').write(text)
+        self.do('generate_events -f')
+        width = self.cmd_line.results.current['cross']
         # the decay LDME of the eta_c (J_H = 0): <O_1>_H = N_[1] |R(0)|^2 / (4 pi)
         r2 = self._onia_card_value(card, 'ldme_decay', 441) * 4 * math.pi / 6
         expected = 12 * (2. / 3) ** 4 * alpha ** 2 * r2 / M ** 2
         self.assertLess(abs(width - expected) / expected, 1e-4,
                         '%s against %s' % (width, expected))
 
-        # the physical mass: flux and phase space at M_phys
-        mphys = self._onia_card_value(card, 'onium_mass', 441)
+        # the default onium_mass (the physical mass): flux and phase space at
+        # M_phys, the |M|^2 at m1+m2
+        self.assertNotAlmostEqual(mphys, M, places=3)
         text = open(card).read()
-        text = re.sub(r'(?m)^(\s*1\s+)0(\s+# onia_decay_mass)', r'\g<1>1\2', text)
+        text = re.sub(r'(?m)^(\s*441\s+)[0-9.Ee+-]+(\s+# mass)', r'\g<1>%.12e\2' % mphys, text)
         open(card, 'w').write(text)
         self.do('generate_events -f')
         width2 = self.cmd_line.results.current['cross']

@@ -803,7 +803,7 @@ class ParamCard(dict):
                 continue
             block = split[0]
             # the blocks of the onia card (read by setonia, not setpara)
-            if block in ['ldme','ldme_decay','onium_mass','onia_decay']:
+            if block in ['ldme','ldme_decay','onium_mass']:
                 continue
             lhaid = [int(i) for i in split[1:-1]]
             variable = split[-1]
