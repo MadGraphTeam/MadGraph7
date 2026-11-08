@@ -602,14 +602,7 @@ impl Observables {
                 )
             }
         };
-        let program: serde_json::Value = serde_json::from_slice(trees_json)
-            .map_err(|e| invalid(format!("the tree program: {e}")))?;
-        let sources = program
-            .pointer("/source_fill/sources")
-            .or_else(|| program.pointer("/program/source_fill/sources"))
-            .and_then(serde_json::Value::as_array)
-            .cloned()
-            .unwrap_or_default();
+        let sources = source_records(trees_json)?;
         Ok(Self {
             histories,
             matrices,
@@ -628,6 +621,29 @@ impl Observables {
     pub(crate) fn spin_classes(&self) -> &[Vec<usize>] {
         &self.spin_classes
     }
+}
+
+/// The tree program's source records (`source_fill.sources`, which
+/// `induced_observables.polarisations` reads): from the head of a binary
+/// tree program (`rusticol_core::loop_v2::trees::binary`) or the JSON one.
+fn source_records(trees_json: &[u8]) -> RusticolResult<Vec<serde_json::Value>> {
+    use rusticol_core::loop_v2::trees::binary;
+    let head = if binary::is_container(trees_json) {
+        binary::read_container(trees_json)?
+            .into_iter()
+            .find(|section| section.name == "head" && section.encoding == binary::JSON)
+            .ok_or_else(|| invalid("a binary tree program without its head"))?
+            .payload
+    } else {
+        trees_json
+    };
+    let program: serde_json::Value =
+        serde_json::from_slice(head).map_err(|e| invalid(format!("the tree program: {e}")))?;
+    program
+        .pointer("/source_fill/sources")
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .ok_or_else(|| invalid("the tree program has no source records"))
 }
 
 /// The metric of one output (`Output.metric`).
