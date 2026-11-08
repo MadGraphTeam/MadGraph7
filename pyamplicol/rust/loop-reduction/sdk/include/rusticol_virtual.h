@@ -256,19 +256,23 @@ int rusticol_virtual_result_decimal_json(const rusticol_virtual_result *, char *
  *   liveness, the Python API's path): a single-helicity call costs less than
  *   the full evaluation; binary64 values are bitwise the Python API's;
  *   double-double / arbitrary precision as the other calls (decimal_json);
- * - colour flows (color_ids, color_flow_by_point) are refused with the
- *   Python API's CompatibilityError text (RUSTICOL_VIRTUAL_RUNTIME_ERROR), an
- *   unknown helicity ID with its EvaluationError text and an out-of-range
- *   index RUSTICOL_VIRTUAL_INVALID_ARGUMENT, an unknown color_resolution with
- *   its CompatibilityError text (RUSTICOL_VIRTUAL_RUNTIME_ERROR);
+ * - refused before any evaluation: colour flows (color_ids,
+ *   color_flow_by_point) and an unknown color_resolution with the Python
+ *   API's CompatibilityError texts (RUSTICOL_VIRTUAL_RUNTIME_ERROR); an
+ *   unknown helicity ID (its EvaluationError text), an empty or repeated ID
+ *   (its ValueError texts), an out-of-range index, a wrong per-point length,
+ *   both selectors of one axis, per-point selectors of a resolved call and a
+ *   color_resolution of an ordinary call (RUSTICOL_VIRTUAL_INVALID_ARGUMENT);
  * - the call takes the handle's poles, arithmetic, reduction backend
  *   (rusticol_virtual_set_reduction: the same per-call policy, its
  *   requested / effective / reason record in the diagnostics, failed points
  *   as FAILED statuses with the Python API's reasons) and model parameters;
  *   with stability checks set, its diagnostics carry
  *   "stability": {"estimates": null, "reason": ...} (the Python API
- *   estimates selections); diagnostics "selection": {"helicity_ids": per
- *   point the selected h<i>} for an ordinary selected call.
+ *   estimates selections), a cross-backend check whose other backend this
+ *   library lacks is refused by the call (as rusticol_virtual_evaluate's);
+ *   diagnostics "selection": {"helicity_ids": per point the selected h<i>}
+ *   for an ordinary selected call.
  * Born-interfered processes: a NULL selection (or one without selectors and
  * colour resolution) is rusticol_virtual_evaluate; a color_resolution is
  * refused with the Python API's text; selectors at NLC and full colour with

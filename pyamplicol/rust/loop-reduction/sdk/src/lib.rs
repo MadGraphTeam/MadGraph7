@@ -802,7 +802,7 @@ impl Runtime {
             );
         }
         let reduction = self.reduce_on(reduction_policy::SUMMED)?;
-        // The native monitoring serves binary64 in the pole selections
+        // The native monitoring runs in binary64 for the pole selections
         // "all" and "none" (a loop-induced process serves no other); a
         // Born-interfered "uv" / "ir" call returns its values with the
         // documented null record (the Python API estimates those selections).
