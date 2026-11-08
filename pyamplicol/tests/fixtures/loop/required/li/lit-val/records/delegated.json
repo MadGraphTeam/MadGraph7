@@ -2,7 +2,7 @@
  "what": "the §4.1 rows other packages run (li_manifest.DELEGATED), recorded in data/lit.json from their records (m-lit brief R8: LI-B1 from lit-tir's report)",
  "LI-B1": {
   "status": "partial",
-  "owner": "lit-tir (this record) and lit-tir-mp (its G1 evidence at the re-pin); the Born-interfered L6 on the M-QCD, M-SM, decay and HC campaigns is NOT RUN (lit-val remaining): lit-tir's scripts/li_b1.py and lib1_lanes.py serve only the G1 keys of tools/loop_benchmark/processes.json (KeyError on z_emep_ew, uux_emepg), so those rows need their campaigns' own generation (mqcd.py, msm_manifest.py, dec_manifest.py) under the same per-lane comparison",
+  "owner": "lit-tir (this record) and lit-tir-mp (its G1 evidence at the re-pin); the Born-interfered L6 on the M-QCD, M-SM (CMS included), decay XX01-08 and HC campaigns and the theta = 1e-3..1e-5 forward points is lit-val's (R8): `li_manifest.py born-l6` runs lit-tir's scripts/li_b1.py `lanes` (passed by path) on each campaign's own generation (mqcd.Campaign) and the HC rows on the public route through the one comparison (public_l6); its rows are ids['LI-B1'].campaigns",
   "source": "workspace/reports/engine-v2/m-lit/lit-tir-report.md §F.4 and §G.3 (§G.3 replaces §4's synthetic tally); native loop-native-lit-tir-e8d076d1 = the slice's e852f448 (digest c3fda0c4)",
   "rule": "L6 per lane: |T - N| <= 10 max(E_N, E_T, 4u x lane scale), every Laurent order",
   "g1_six_leg_lanes": {
@@ -46,7 +46,56 @@
  "LI-O1": {
   "status": "partial",
   "owner": "lit-obs",
-  "source": "tools/loop_v2_observables_backends.py (lit-tir report §F.5, §G.3): exit 2 'not exercised' at this pin, TIRust fails points closed (g g > h g g 141 outputs, u u~ > h g g 93); WAITS ON lit-tir-mp"
+  "source": "lit-val's run of lit-obs's tools/loop_v2_observables_backends.py (LI-O1 set) at e80d31e4 (native loop-native-v2-slice-e80d31e4, digest b367124c), binary64 with the checks and double-double; the same tool, rows and E configuration as lit-tir-mp's workspace/tmp/lit-tir-mp/obs/{b64final,dd,ap,truth} at f1e8c98e and lit-cache's s2-agree-o1 at f1e8c98e (lit-cache report, R3 (b)), whose figures it reproduces",
+  "binary64": {
+   "rule": "|N - T| <= 10 max(E_N, E_T) per Laurent coefficient (backends.checks())",
+   "status": "partial: every compared output passes; TIRust fails outputs closed",
+   "li_gg_hgg": {
+    "outputs_compared": 16,
+    "coefficients": 48,
+    "beyond_bound": 0,
+    "worst_over_bound": 0.0273,
+    "tirust_failed_outputs": 125,
+    "tirust_reasons": {
+     "term scale of family # monomial #: TIRust method-choice lane refused by its check (deviation between its two frames above 2^-30 of the term scale)": 125
+    }
+   },
+   "li_uux_hgg": {
+    "outputs_compared": 30,
+    "coefficients": 90,
+    "beyond_bound": 0,
+    "worst_over_bound": 0.00841,
+    "tirust_failed_outputs": 87,
+    "tirust_reasons": {
+     "term scale of family # monomial #: TIRust method-choice lane refused by its check (deviation between its two frames above 2^-30 of the term scale)": 62,
+     "family # lane: TIRust method-choice lane refused by its check (deviation between its two frames above 2^-30 of the term scale)": 25
+    }
+   },
+   "agreement": "lit-tir-mp's b64final: 125 / 87 TIRust-failed outputs, worst 0.027 / 0.0084 of the bound; lit-cache's s2-agree-o1 (checks on): 128 / 90 failed outputs, worst 0.0273 / 0.00841; u u~ > h g g p0 not served by TIRust at the shipped settings"
+  },
+  "double-double": {
+   "rule": "|N - T| <= 1e-24 x the output sector's largest coefficient (a target, R5)",
+   "status": "pass (lax): every output served by both backends; the target is missed below ~1e-5 relative only",
+   "li_gg_hgg": {
+    "outputs": 471,
+    "coefficients": 1413,
+    "beyond_target": 145,
+    "outputs_beyond": 143,
+    "worst_over_target": 3980.0,
+    "worst_of_sector_largest": 3.98e-21
+   },
+   "li_uux_hgg": {
+    "outputs": 303,
+    "coefficients": 909,
+    "beyond_target": 3,
+    "outputs_beyond": 3,
+    "worst_over_target": 2.13,
+    "worst_of_sector_largest": 2.13e-24
+   },
+   "truth": "lit-tir-mp's obs/truth/gg_hgg.json (both backends at 50 digits on the fixture points): the misses are TIRust's double-double, <= 4.1e-21 of the anchor (3.1e-24 of the point's largest anchor); NinjaRS double-double <= 1.7e-22 of the anchor; TIRust at 50 digits <= 3.3e-52"
+  },
+  "arbitrary": "lit-tir-mp's obs/ap (40 digits, f1e8c98e): 48 outputs beyond 1e-24 of the sector, all numerical zeros near 1e-70 on both backends; li_gg_hgg worst 9.2e-18 of the bound",
+  "records": "workspace/tmp/lit-val/obs/backends.json, backends-dd.json (logs b64.log, dd.log)"
  },
  "findings": {
   "li_gg_hg": {

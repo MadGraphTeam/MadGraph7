@@ -845,3 +845,106 @@ def test_lane_details_are_compacted_by_reason():
     assert lm.compact_detail(listed).count("term scale") == 2
     arm = {"points": [{"status": "failed", "detail": detail}] * 2}
     assert list(lm._reasons(arm).values()) == [12]
+
+
+def _lanes(direct: dict, check: dict | None = None, virtual=(1.0, 0.5, 0.25)):
+    """One point of lit-tir's ``lanes`` output (li_b1.py)."""
+
+    return {
+        "direct": direct,
+        "check": direct if check is None else check,
+        "virtual": {"o": list(virtual)},
+    }
+
+
+def test_born_lanes_compare_judge_and_split_numerical_zeros():
+    """LI-B1's per-lane L6 (lit-tir's rule, DECISIONS 08:31): a lane within
+    10 E passes; beyond it below ~1e-5 relative is 'pass (lax)'; a lane
+    whose deviation sits within 10 x the floor of the point's lane scale is a
+    numerical zero (its re-test reproduces its rounding: estimate 0), lax
+    too and kept out of the worst relative deviation; >= 1e-5 relative on a
+    lane that is not a zero, or a lane without an estimate, fails; a point a
+    backend fails closed makes the row partial with its typed reasons."""
+
+    margin, floor = 10.0, 4 * 2.0**-53
+    big = [3.0, 1.0, 0.5]
+    n = _lanes({"a": big, "z": [1e-18j, 1e-19j, 0j], "b": [1e-3, 1e-4, 0.0]})
+    t = _lanes({"a": big, "z": [1.4e-17j, 1e-19j, 0j], "b": [1e-3, 1e-4, 0.0]})
+    result = lm.compare_lanes({"ninjars": [n], "tirust": [t]}, margin, floor)
+    assert result["lanes"] == 3 and result["beyond_10x"] == 1
+    assert result["beyond_10x_zero"] == 1 and result["worst_beyond_10x"] == 0.0
+    assert 0 < result["worst_zero_point_relative"] < margin * floor
+    assert result["beyond"][0]["zero"] and result["beyond"][0]["lane"] == "z"
+    assert lm.born_verdict(result) == "pass (lax)"
+    # a real deviation >= LAX relative on a lane above the point's resolution
+    off = _lanes({"a": big, "z": [1e-18j, 1e-19j, 0j], "b": [1.01e-3, 1e-4, 0.0]})
+    result = lm.compare_lanes({"ninjars": [n], "tirust": [off]}, margin, floor)
+    assert result["worst_beyond_10x"] >= lm.LAX and lm.born_verdict(result) == "fail"
+    # below LAX relative, beyond 10 E: lax
+    near = _lanes({"a": big, "z": [1e-18j, 1e-19j, 0j], "b": [1e-3 * (1 + 1e-9), 1e-4, 0.0]})
+    result = lm.compare_lanes({"ninjars": [n], "tirust": [near]}, margin, floor)
+    assert result["beyond_10x"] == 1 and not result["beyond_10x_zero"]
+    assert 0 < result["worst_beyond_10x"] < lm.LAX
+    assert lm.born_verdict(result) == "pass (lax)"
+    # an unchecked lane fails; a failed point is partial with its reason
+    blind = _lanes({"a": big}, {"a": None})
+    result = lm.compare_lanes(
+        {"ninjars": [_lanes({"a": big})], "tirust": [blind]}, margin, floor
+    )
+    assert result["no_estimate"] == 1 and lm.born_verdict(result) == "fail"
+    closed = {"failed": ["family 3 lane 1: TIRust Unstable: ill-conditioned Gram 1e9"]}
+    result = lm.compare_lanes(
+        {"ninjars": [n, n], "tirust": [t, closed]}, margin, floor
+    )
+    assert result["failed_points"] == {"ninjars": 0, "tirust": 1}
+    assert sum(result["failed"]["tirust"].values()) == 1
+    assert lm.born_verdict(result) == "partial"
+    result = lm.compare_lanes({"ninjars": [closed], "tirust": [closed]}, margin, floor)
+    assert not result["lanes"] and lm.born_verdict(result) == "partial"
+
+
+def test_forward_points_are_exact_terminating_decimals(monkeypatch):
+    """LI-B1's theta rows: each 2 -> 2 row with massless beams and equal final
+    masses gets exact points at pt = theta sqrt(s) / 2 (sqrt(s) a 2^x 5^y
+    near the row's first point), every entry a terminating decimal, momentum
+    conserved exactly and the final shells within 10^-DIGITS of the model's
+    (derived, non-terminating) squared mass; other rows get a reason."""
+
+    from decimal import Decimal
+    from types import SimpleNamespace
+
+    import pyamplicol.loops.v2.assemble as assemble
+
+    mw = Fraction(80419002245, 10**9) + Fraction(1, 3 * 10**12)  # not decimal
+    masses = [Fraction(0), Fraction(0), mw, mw]
+    monkeypatch.setattr(assemble, "_leg_masses", lambda *_: tuple(m * m for m in masses))
+    first = [["250", "0", "0", "250"], ["250", "0", "0", "-250"],
+             ["250", "100", "0", "0"], ["250", "-100", "0", "0"]]
+    run = SimpleNamespace(
+        slice=None, parameters={}, reference=SimpleNamespace(points=[first], scales=["8315.0"])
+    )
+    values = ["1e-3", "1e-4"]
+    points, scales, energy = lm.forward_points(run, values)
+    assert scales == ["8315.0"] * 2 and 400 < energy < 625
+    for theta, point in zip(values, points):
+        exact = [[Fraction(Decimal(c)) for c in p] for p in point]
+        for k in range(4):
+            assert exact[0][k] + exact[1][k] == exact[2][k] + exact[3][k]
+        for p, m in zip(exact, masses):
+            shell = p[0] ** 2 - p[1] ** 2 - p[2] ** 2 - p[3] ** 2
+            assert abs(shell - m * m) <= Fraction(1, 10**lm.DIGITS) * max(m * m, 1)
+        assert abs(float(exact[2][1]) - float(theta) * energy / 2) <= 1e-12 * energy
+    masses[3] = Fraction(91)
+    assert lm.forward_points(run, values).startswith("no forward construction")
+
+
+def test_run_skips_are_spec_data():
+    """LI-44's measured skips live in the spec file (``skips``): the arms and
+    their reasons, and ``high_plain``; a run without an entry skips nothing."""
+
+    arms, plain = lm.run_skips("li_gg_zzzz")
+    assert plain and "ward/ninjars/double-double" in arms
+    assert all(isinstance(r, str) and r for r in arms.values())
+    arms, plain = lm.run_skips("li_gg_aagg")
+    assert not plain and "ninjars/arbitrary/plain" in arms
+    assert lm.run_skips("li_gg_hh") == ({}, False)
