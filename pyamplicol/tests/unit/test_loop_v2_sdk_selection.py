@@ -260,7 +260,8 @@ def _compare(label, found: dict, expected, resolved: bool) -> None:
     for index, ok in enumerate(served):
         if not ok:
             # The SDK lists the reasons; the Python API joins them in the
-            # failure record (its lane detail adds the executor's prefix).
+            # point's failure record (failures[0].detail; the point-level
+            # detail adds the executor's prefix "v2 native executor: ").
             assert "; ".join(failures[str(index)]) == (
                 expected.diagnostics[index].failures[0].detail
             ), label

@@ -322,8 +322,8 @@ def test_the_reduction_setter_records_the_python_apis_choice(
             for index, ok in enumerate(served):
                 if not ok:
                     # The SDK lists the reasons; the Python API joins them
-                    # in the failure record (its lane detail adds the
-                    # executor's prefix).
+                    # in the point's failure record (failures[0].detail; the
+                    # point-level detail adds the executor's prefix).
                     assert "; ".join(failures[str(index)]) == (
                         expected.diagnostics[index].failures[0].detail
                     )
