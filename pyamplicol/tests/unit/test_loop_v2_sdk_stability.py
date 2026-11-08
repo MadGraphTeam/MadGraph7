@@ -97,7 +97,9 @@ def test_the_native_rotations_are_the_python_ones(loop_native, monkeypatch):
         python_default_rotation,
     )
 
-    produced = [parse_rotation(text).matrix for text in (*SPECIFICATIONS, RESCUE_ROTATION)]
+    produced = [
+        parse_rotation(text).matrix for text in (*SPECIFICATIONS, RESCUE_ROTATION)
+    ]
     for k in range(64):
         oracle = python_default_rotation(k).matrix
         assert _exact(loop_native.stability_default_rotation(k)) == oracle, k
@@ -861,11 +863,14 @@ int main(int argc, char **argv) {
     runtime.set_stability_checks(0);
     const bool extended = argc > 5 && std::strcmp(argv[5], "extended") == 0;
     for (int pass = 0; pass < 2; ++pass) {
-      if (extended) runtime.set_arithmetic(pass == 0 ? "double-double" : "arbitrary", pass == 0 ? 0 : 32);
+      if (extended && pass == 0) runtime.set_arithmetic("double-double");
+      if (extended && pass == 1) runtime.set_arithmetic("arbitrary", 32);
       rusticol::VirtualSelection selection;
       if (pass == 0) selection.color_resolution = std::string("amplitude-basis");
       else selection.helicity_ids = {"h1"};
-      auto result = runtime.evaluate_selected(momenta, points, scales, selection, pass == 0);
+      bool resolved = pass == 0;
+      auto result =
+          runtime.evaluate_selected(momenta, points, scales, selection, resolved);
       std::printf("statuses");
       for (auto status : result.statuses()) std::printf(" %u", status);
       std::printf("\nvirtual");
@@ -967,8 +972,12 @@ def test_the_sdk_self_test_touches_no_symbolica_state(loop_native, tmp_path):
 
     def run(env: dict[str, str], extra: tuple[str, ...] = ()) -> list[str]:
         done = subprocess.run(
-            [*command, *extra], capture_output=True, text=True, timeout=600,
-            check=False, env=env,
+            [*command, *extra],
+            capture_output=True,
+            text=True,
+            timeout=600,
+            check=False,
+            env=env,
         )
         output = done.stdout[-3000:] + done.stderr[-3000:]
         assert done.returncode == 0, output
@@ -1022,12 +1031,18 @@ def test_the_sdk_self_test_touches_no_symbolica_state(loop_native, tmp_path):
     one = runtime.evaluate(exact_points, mu_r2=exact_scales, helicities=["h1"])
     flat_anchors = [
         math.nan if x is None else x
-        for v in anchors.values for sector in v for row in sector for c in row
+        for v in anchors.values
+        for sector in v
+        for row in sector
+        for c in row
         for x in (c.finite, c.single_pole, c.double_pole)
     ]
     for index, (expected_values, ids) in enumerate(
         (
-            (flat_anchors, [list(anchors.helicity_ids), list(anchors.virtual_color_ids)]),
+            (
+                flat_anchors,
+                [list(anchors.helicity_ids), list(anchors.virtual_color_ids)],
+            ),
             (_flat(one), [[], []]),
         )
     ):
@@ -1043,12 +1058,17 @@ def test_the_sdk_self_test_touches_no_symbolica_state(loop_native, tmp_path):
         assert decimal == "decimal null"
     references = (
         runtime.evaluate_resolved(
-            exact_points, mu_r2=exact_scales, color_resolution="amplitude-basis",
+            exact_points,
+            mu_r2=exact_scales,
+            color_resolution="amplitude-basis",
             arithmetic="double-double",
         ),
         runtime.evaluate(
-            exact_points, mu_r2=exact_scales, helicities=["h1"],
-            arithmetic="arbitrary", precision=32,
+            exact_points,
+            mu_r2=exact_scales,
+            helicities=["h1"],
+            arithmetic="arbitrary",
+            precision=32,
         ),
     )
     for index, reference in enumerate(references):

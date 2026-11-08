@@ -133,12 +133,12 @@ from pyamplicol.generation.evaluator_container import (
 from pyamplicol.loops.orders import BornLoopPair, VirtualOrderSector, canonical_order
 from pyamplicol.loops.strategy import R2Selection
 
-from .families import Orders, add_orders
-from .native_trees import Program, StoredMember, program_bytes
 # ``reduction.SUMMED`` / ``RESOLVED`` are read through the module at call
 # time (its PEP 562 attributes load the native policy on first use, not at
 # this module's import).
 from . import reduction as _routes
+from .families import Orders, add_orders
+from .native_trees import Program, StoredMember, program_bytes
 from .reduction import Route, running
 
 PLAN_MEMBER = "schedule/loop-plan-v4.json.zlib"

@@ -900,9 +900,7 @@ impl Runtime {
         ] {
             let ids = ids.as_deref().unwrap_or_default();
             if ids.iter().any(String::is_empty) {
-                return Err(invalid(format!(
-                    "{name} selectors must be IDs or {kind}"
-                )));
+                return Err(invalid(format!("{name} selectors must be IDs or {kind}")));
             }
             if ids.iter().collect::<BTreeSet<_>>().len() != ids.len() {
                 return Err(invalid(format!("{name} selectors must be unique")));
@@ -926,7 +924,10 @@ impl Runtime {
                 "helicity ids and helicity_by_point are mutually exclusive",
             ));
         }
-        if selection.color_flows.as_ref().is_some_and(|ids| !ids.is_empty())
+        if selection
+            .color_flows
+            .as_ref()
+            .is_some_and(|ids| !ids.is_empty())
             && selection.color_flow_by_point.is_some()
         {
             return Err(invalid(
@@ -1548,7 +1549,8 @@ impl Evaluation {
         };
         let mut evaluation = match request.arithmetic {
             Arithmetic::Double => {
-                let points = native.evaluate_induced_call(call, &momenta, &scales, request.poles.v2())?;
+                let points =
+                    native.evaluate_induced_call(call, &momenta, &scales, request.poles.v2())?;
                 Self::resolved(
                     inputs,
                     Shape {
@@ -1627,7 +1629,8 @@ impl Evaluation {
                 )
             })
         }
-        let ids = |rows: &[usize]| -> Vec<String> { rows.iter().map(|r| format!("h{r}")).collect() };
+        let ids =
+            |rows: &[usize]| -> Vec<String> { rows.iter().map(|r| format!("h{r}")).collect() };
         macro_rules! run {
             ($evaluate:expr) => {{
                 let mut points: Vec<Option<_>> = (0..by_point.len()).map(|_| None).collect();
@@ -1667,12 +1670,16 @@ impl Evaluation {
         let poles = request.poles.v2();
         match request.arithmetic {
             Arithmetic::Double => {
-                run!(|call: &InducedCall, m: &[Vec<Rational>], sc: &[Rational]| native
-                    .evaluate_induced_call(call, m, sc, poles))
+                run!(
+                    |call: &InducedCall, m: &[Vec<Rational>], sc: &[Rational]| native
+                        .evaluate_induced_call(call, m, sc, poles)
+                )
             }
             arithmetic => {
-                run!(|call: &InducedCall, m: &[Vec<Rational>], sc: &[Rational]| native
-                    .evaluate_induced_call_extended(call, m, sc, poles, arithmetic.v2()))
+                run!(
+                    |call: &InducedCall, m: &[Vec<Rational>], sc: &[Rational]| native
+                        .evaluate_induced_call_extended(call, m, sc, poles, arithmetic.v2())
+                )
             }
         }
     }

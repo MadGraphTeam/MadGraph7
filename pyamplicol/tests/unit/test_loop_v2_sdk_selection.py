@@ -143,8 +143,19 @@ def _selectors(capabilities: dict, points: int):
     return one, subset, by_point
 
 
-def _call(sdk, handle, points, scales, *, resolved=False, ids=(), by_point=(),
-          colours=(), colour_by_point=(), resolution=None) -> dict:
+def _call(
+    sdk,
+    handle,
+    points,
+    scales,
+    *,
+    resolved=False,
+    ids=(),
+    by_point=(),
+    colours=(),
+    colour_by_point=(),
+    resolution=None,
+) -> dict:
     """One ``rusticol_virtual_evaluate_selected`` call: its status, message
     and, on success, shape, values, statuses, records and axes."""
 
@@ -160,8 +171,14 @@ def _call(sdk, handle, points, scales, *, resolved=False, ids=(), by_point=(),
     rows = (ctypes.c_uint32 * max(len(by_point), 1))(*by_point)
     flow_rows = (ctypes.c_uint32 * max(len(colour_by_point), 1))(*colour_by_point)
     selection = _Selection(
-        names, len(encoded), flow_names, len(flows), rows, len(by_point),
-        flow_rows, len(colour_by_point),
+        names,
+        len(encoded),
+        flow_names,
+        len(flows),
+        rows,
+        len(by_point),
+        flow_rows,
+        len(colour_by_point),
         None if resolution is None else resolution.encode(),
     )
     result = ctypes.c_void_p(1)
@@ -177,12 +194,14 @@ def _call(sdk, handle, points, scales, *, resolved=False, ids=(), by_point=(),
         assert sdk.rusticol_virtual_result_shape(result, ctypes.byref(shape)) == 0
         loop = (ctypes.c_double * max(shape.virtual_values, 1))()
         statuses = (ctypes.c_uint32 * max(len(points), 1))()
-        assert sdk.rusticol_virtual_result_copy_virtual(
-            result, loop, shape.virtual_values
-        ) == 0
-        assert sdk.rusticol_virtual_result_copy_statuses(
-            result, statuses, len(points)
-        ) == 0
+        assert (
+            sdk.rusticol_virtual_result_copy_virtual(result, loop, shape.virtual_values)
+            == 0
+        )
+        assert (
+            sdk.rusticol_virtual_result_copy_statuses(result, statuses, len(points))
+            == 0
+        )
         return {
             "status": 0,
             "shape": shape,
@@ -268,8 +287,11 @@ def _per_point(runtime, exact, scales, by_point, **options):
     values, diagnostics = [], []
     for p, row in enumerate(by_point):
         found = runtime.evaluate(
-            [exact[p]], mu_r2=[scales[p]], helicities=[f"h{row}"],
-            on_failure="return", **options,
+            [exact[p]],
+            mu_r2=[scales[p]],
+            helicities=[f"h{row}"],
+            on_failure="return",
+            **options,
         )
         values += list(found.values)
         diagnostics += list(found.diagnostics)
@@ -300,26 +322,34 @@ def test_c_abi_selections_equal_the_python_api(artifacts, loop_native, name, bac
             # as the Python API refuses the call.
             assert backend == "tirust" and status == STATUS_RUNTIME_ERROR
             with pytest.raises(ReductionUnavailable):
-                runtime.evaluate(exact, mu_r2=exact_scales, helicities=["h0"], **options)
+                runtime.evaluate(
+                    exact, mu_r2=exact_scales, helicities=["h0"], **options
+                )
             return
         one, subset, by_point = _selectors(capabilities, len(points))
         calls = {
             "anchors": (
                 {"resolved": True, "resolution": "amplitude-basis"},
                 runtime.evaluate_resolved(
-                    exact, mu_r2=exact_scales, color_resolution="amplitude-basis",
+                    exact,
+                    mu_r2=exact_scales,
+                    color_resolution="amplitude-basis",
                     **options,
                 ),
                 True,
             ),
             "one": (
                 {"ids": [one]},
-                runtime.evaluate(exact, mu_r2=exact_scales, helicities=[one], **options),
+                runtime.evaluate(
+                    exact, mu_r2=exact_scales, helicities=[one], **options
+                ),
                 False,
             ),
             "subset": (
                 {"ids": subset},
-                runtime.evaluate(exact, mu_r2=exact_scales, helicities=subset, **options),
+                runtime.evaluate(
+                    exact, mu_r2=exact_scales, helicities=subset, **options
+                ),
                 False,
             ),
             "resolved-subset": (
@@ -332,8 +362,11 @@ def test_c_abi_selections_equal_the_python_api(artifacts, loop_native, name, bac
             "anchors-subset": (
                 {"resolved": True, "ids": subset, "resolution": "amplitude-basis"},
                 runtime.evaluate_resolved(
-                    exact, mu_r2=exact_scales, helicities=subset,
-                    color_resolution="amplitude-basis", **options,
+                    exact,
+                    mu_r2=exact_scales,
+                    helicities=subset,
+                    color_resolution="amplitude-basis",
+                    **options,
                 ),
                 True,
             ),
@@ -367,7 +400,10 @@ def test_c_abi_selections_equal_the_python_api(artifacts, loop_native, name, bac
         contracted = runtime.evaluate_resolved(exact, mu_r2=exact_scales, **options)
         split = calls["anchors"][1]
         everything = _call(
-            sdk, handle, points, scales,
+            sdk,
+            handle,
+            points,
+            scales,
             ids=[f"h{k}" for k in range(len(capabilities["helicity_rows"]))],
         )
         for p, point in enumerate(total.values):
@@ -383,7 +419,7 @@ def test_c_abi_selections_equal_the_python_api(artifacts, loop_native, name, bac
                     s == SUCCESS_STATUS for s in everything["statuses"]
                 )
                 row = sum(s == SUCCESS_STATUS for s in everything["statuses"][:p])
-                selected = everything["virtual"][row * width:(row + 1) * width]
+                selected = everything["virtual"][row * width : (row + 1) * width]
                 for k, value in enumerate(point):
                     assert abs(selected[3 * k] - value.finite) <= 1e-12 * scale
     finally:
@@ -414,20 +450,35 @@ def test_c_abi_selection_refusals(artifacts):
         cases = [
             ({"colours": ["1"]}, STATUS_RUNTIME_ERROR, str(flows.value)),
             ({"colour_by_point": [0, 0]}, STATUS_RUNTIME_ERROR, str(flows.value)),
-            ({"resolved": True, "colours": ["1"]}, STATUS_RUNTIME_ERROR,
-             str(flows.value)),
-            ({"resolved": True, "resolution": "lc"}, STATUS_RUNTIME_ERROR,
-             str(resolution.value)),
+            (
+                {"resolved": True, "colours": ["1"]},
+                STATUS_RUNTIME_ERROR,
+                str(flows.value),
+            ),
+            (
+                {"resolved": True, "resolution": "lc"},
+                STATUS_RUNTIME_ERROR,
+                str(resolution.value),
+            ),
             ({"ids": ["h:bogus"]}, STATUS_INVALID_ARGUMENT, str(unknown.value)),
             ({"ids": ["h1", "h1"]}, STATUS_INVALID_ARGUMENT, str(duplicate.value)),
             ({"by_point": [0, 10**6]}, STATUS_INVALID_ARGUMENT, "out of range"),
             ({"by_point": [0]}, STATUS_INVALID_ARGUMENT, "one selector per point"),
-            ({"ids": ["h0"], "by_point": [0, 1]}, STATUS_INVALID_ARGUMENT,
-             "mutually exclusive"),
-            ({"resolved": True, "by_point": [0, 1]}, STATUS_INVALID_ARGUMENT,
-             "global helicity ids"),
-            ({"resolution": "amplitude-basis"}, STATUS_INVALID_ARGUMENT,
-             "resolved evaluation"),
+            (
+                {"ids": ["h0"], "by_point": [0, 1]},
+                STATUS_INVALID_ARGUMENT,
+                "mutually exclusive",
+            ),
+            (
+                {"resolved": True, "by_point": [0, 1]},
+                STATUS_INVALID_ARGUMENT,
+                "global helicity ids",
+            ),
+            (
+                {"resolution": "amplitude-basis"},
+                STATUS_INVALID_ARGUMENT,
+                "resolved evaluation",
+            ),
         ]
         for selectors, status, message in cases:
             found = _call(sdk, handle, points, scales, **selectors)
@@ -439,9 +490,12 @@ def test_c_abi_selection_refusals(artifacts):
         mu = (ctypes.c_double * len(scales))(*scales)
         request = _Request(momenta, len(flat), len(points), None, mu, len(scales))
         result = ctypes.c_void_p()
-        assert sdk.rusticol_virtual_evaluate_selected(
-            handle, ctypes.byref(request), None, ctypes.byref(result)
-        ) == 0
+        assert (
+            sdk.rusticol_virtual_evaluate_selected(
+                handle, ctypes.byref(request), None, ctypes.byref(result)
+            )
+            == 0
+        )
         sdk.rusticol_virtual_result_free(result)
     finally:
         sdk.rusticol_virtual_free(handle)
@@ -470,8 +524,9 @@ def test_c_abi_extended_selections_equal_the_python_decimals(
         options = {"arithmetic": arithmetic}
         if digits:
             options["precision"] = digits
-        anchors = _call(sdk, handle, points, scales, resolved=True,
-                        resolution="amplitude-basis")
+        anchors = _call(
+            sdk, handle, points, scales, resolved=True, resolution="amplitude-basis"
+        )
         expected = runtime.evaluate_resolved(
             exact, mu_r2=exact_scales, color_resolution="amplitude-basis", **options
         )
@@ -526,7 +581,9 @@ def test_python_binary64_selections_run_the_native_implementation(artifacts):
         selected = runtime.evaluate(exact, mu_r2=scales, helicities=["h1", "h2"])
         out += _python_values(selected, False)
         subset = runtime.evaluate_resolved(
-            exact, mu_r2=scales, helicities=["h0", "h3"],
+            exact,
+            mu_r2=scales,
+            helicities=["h0", "h3"],
             color_resolution="amplitude-basis",
         )
         out += _python_values(subset, True)
@@ -548,8 +605,17 @@ def test_python_binary64_selections_run_the_native_implementation(artifacts):
 # ------------------------------------------------------------ clients
 
 CLIENT_CALLS = [
-    "anchors", "one", "subset", "resolved-subset", "anchors-subset", "by-point",
-    "colour", "anchors-dd", "by-point-dd", "anchors-ap", "subset-ap",
+    "anchors",
+    "one",
+    "subset",
+    "resolved-subset",
+    "anchors-subset",
+    "by-point",
+    "colour",
+    "anchors-dd",
+    "by-point-dd",
+    "anchors-ap",
+    "subset-ap",
 ]
 UMAMI_CALLS = ["anchors", "by-point", "anchors-dd", "by-point-dd", "anchors-ap"]
 
@@ -569,18 +635,55 @@ def selection_clients(tmp_path_factory):
         _compiler("CXX", "c++"),
         _compiler("FC", "gfortran"),
     )
-    out = {language: root / f"selection-{language}" for language in
-           ("c", "cpp", "fortran", "umami")}
+    out = {
+        language: root / f"selection-{language}"
+        for language in ("c", "cpp", "fortran", "umami")
+    }
     commands = [
-        [cc, "-std=c11", "-O2", *include, str(examples / "selection_v4.c"), *link,
-         "-o", str(out["c"])],
-        [cxx, "-std=c++17", "-O2", *include, str(examples / "selection_v4.cpp"),
-         *link, "-o", str(out["cpp"])],
-        [fc, "-std=f2018", "-O2", f"-J{root}", str(SDK / "fortran" / "rusticol_virtual.f90"),
-         str(examples / "selection_v4.f90"), *link, "-o", str(out["fortran"])],
-        [cc, "-std=c11", "-O2", *include, f"-I{SDK / 'umami'}", f"-I{UMAMI_HEADERS}",
-         str(SDK / "umami" / "pyamplicol_umami_virtual_v1.c"),
-         str(examples / "selection_v4_umami.c"), *link, "-o", str(out["umami"])],
+        [
+            cc,
+            "-std=c11",
+            "-O2",
+            *include,
+            str(examples / "selection_v4.c"),
+            *link,
+            "-o",
+            str(out["c"]),
+        ],
+        [
+            cxx,
+            "-std=c++17",
+            "-O2",
+            *include,
+            str(examples / "selection_v4.cpp"),
+            *link,
+            "-o",
+            str(out["cpp"]),
+        ],
+        [
+            fc,
+            "-std=f2018",
+            "-O2",
+            f"-J{root}",
+            str(SDK / "fortran" / "rusticol_virtual.f90"),
+            str(examples / "selection_v4.f90"),
+            *link,
+            "-o",
+            str(out["fortran"]),
+        ],
+        [
+            cc,
+            "-std=c11",
+            "-O2",
+            *include,
+            f"-I{SDK / 'umami'}",
+            f"-I{UMAMI_HEADERS}",
+            str(SDK / "umami" / "pyamplicol_umami_virtual_v1.c"),
+            str(examples / "selection_v4_umami.c"),
+            *link,
+            "-o",
+            str(out["umami"]),
+        ],
     ]
     for command in commands:
         subprocess.run(command, check=True, cwd=root)
@@ -637,34 +740,61 @@ def client_cases(artifacts):
             one, subset, by_point = _selectors(capabilities, len(points))
             ids = [one, *subset[1:]]
             calls = {
-                "anchors": ("double", 0, 2, {"resolved": True, "resolution": "amplitude-basis"}),
+                "anchors": (
+                    "double",
+                    0,
+                    2,
+                    {"resolved": True, "resolution": "amplitude-basis"},
+                ),
                 "one": ("double", 0, 2, {"ids": ids[:1]}),
                 "subset": ("double", 0, 2, {"ids": ids}),
-                "resolved-subset": ("double", 0, 2,
-                                    {"resolved": True, "ids": ids, "resolution": "contracted"}),
-                "anchors-subset": ("double", 0, 2, {"resolved": True, "ids": ids,
-                                                    "resolution": "amplitude-basis"}),
+                "resolved-subset": (
+                    "double",
+                    0,
+                    2,
+                    {"resolved": True, "ids": ids, "resolution": "contracted"},
+                ),
+                "anchors-subset": (
+                    "double",
+                    0,
+                    2,
+                    {"resolved": True, "ids": ids, "resolution": "amplitude-basis"},
+                ),
                 "by-point": ("double", 0, 2, {"by_point": by_point}),
                 "colour": ("double", 0, 2, {"colours": ["1"]}),
-                "anchors-dd": ("double-double", 0, 1,
-                               {"resolved": True, "resolution": "amplitude-basis"}),
+                "anchors-dd": (
+                    "double-double",
+                    0,
+                    1,
+                    {"resolved": True, "resolution": "amplitude-basis"},
+                ),
                 "by-point-dd": ("double-double", 0, 1, {"by_point": by_point[:1]}),
-                "anchors-ap": ("arbitrary", 32, 1,
-                               {"resolved": True, "resolution": "amplitude-basis"}),
+                "anchors-ap": (
+                    "arbitrary",
+                    32,
+                    1,
+                    {"resolved": True, "resolution": "amplitude-basis"},
+                ),
                 "subset-ap": ("arbitrary", 32, 1, {"ids": ids}),
             }
             reference = {}
             for label, (arithmetic, digits, count, selectors) in calls.items():
                 if name == SLOW_EXTENDED and arithmetic != "double":
                     continue
-                assert sdk.rusticol_virtual_set_arithmetic(
-                    handle, arithmetic.encode(), ctypes.c_uint32(digits)
-                ) == 0
+                assert (
+                    sdk.rusticol_virtual_set_arithmetic(
+                        handle, arithmetic.encode(), ctypes.c_uint32(digits)
+                    )
+                    == 0
+                )
                 reference[label] = _call(
                     sdk, handle, points[:count], scales[:count], **selectors
                 )
             out[name] = {
-                "points": points, "scales": scales, "ids": ids, "by_point": by_point,
+                "points": points,
+                "scales": scales,
+                "ids": ids,
+                "by_point": by_point,
                 "anchors": len(capabilities["color_resolutions"]["amplitude-basis"]),
                 "reference": reference,
             }
@@ -694,53 +824,92 @@ def test_selection_clients_return_the_c_abi_values(
 ):
     for name, case in client_cases.items():
         feed = _feed(
-            tmp_path / f"{name}.txt", case["points"], case["scales"], case["ids"],
-            case["by_point"], bits=language == "fortran",
+            tmp_path / f"{name}.txt",
+            case["points"],
+            case["scales"],
+            case["ids"],
+            case["by_point"],
+            bits=language == "fortran",
         )
-        command = [str(selection_clients[language]), str(artifacts[name]), "p", str(feed)]
+        command = [
+            str(selection_clients[language]),
+            str(artifacts[name]),
+            "p",
+            str(feed),
+        ]
         if language == "umami":
             command.append(str(case["anchors"]))
         if name == SLOW_EXTENDED:
             command.append("binary64")
-        run = subprocess.run(command, capture_output=True, text=True, timeout=3600,
-                             check=False)
+        run = subprocess.run(
+            command, capture_output=True, text=True, timeout=3600, check=False
+        )
         assert run.returncode == 0, run.stdout[-3000:] + run.stderr[-3000:]
         calls = UMAMI_CALLS if language == "umami" else CLIENT_CALLS
-        _check_client(f"{language}:{name}", _parse(run.stdout), case["reference"], calls)
+        _check_client(
+            f"{language}:{name}", _parse(run.stdout), case["reference"], calls
+        )
 
 
 WRAPPER_CLIENT = """
 #[path = "{wrapper}"]
 #[allow(dead_code)]
 mod rusticol;
-use rusticol::virtual_amplitudes::{{Runtime, Selection}};
+use rusticol::virtual_amplitudes::{{PointStatus, Runtime, Selection}};
+
+fn doubles(text: &str) -> Vec<f64> {{
+    text.split(',').map(|v| f64::from_bits(v.parse().unwrap())).collect()
+}}
+
+fn selection(ids: &[String], resolution: Option<&str>) -> Selection {{
+    Selection {{
+        helicity_ids: ids.to_vec(),
+        color_resolution: resolution.map(str::to_owned),
+        ..Default::default()
+    }}
+}}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {{
     let args: Vec<String> = std::env::args().collect();
-    let momenta: Vec<f64> = args[3].split(',').map(|v| f64::from_bits(v.parse().unwrap())).collect();
-    let scales: Vec<f64> = args[4].split(',').map(|v| f64::from_bits(v.parse().unwrap())).collect();
+    let (momenta, scales) = (doubles(&args[3]), doubles(&args[4]));
     let ids: Vec<String> = args[5].split(' ').map(str::to_owned).collect();
     let rows: Vec<u32> = args[6].split(',').map(|v| v.parse().unwrap()).collect();
     let mut runtime = Runtime::open(&args[1], Some(args[2].as_str()), None, None)?;
     let points = scales.len();
+    let by_point = Selection {{
+        helicity_by_point: rows,
+        ..Default::default()
+    }};
+    let colour = Selection {{
+        color_ids: vec!["1".into()],
+        ..Default::default()
+    }};
     let calls: Vec<(&str, bool, Selection)> = vec![
-        ("anchors", true, Selection {{ color_resolution: Some("amplitude-basis".into()), ..Default::default() }}),
-        ("one", false, Selection {{ helicity_ids: ids[..1].to_vec(), ..Default::default() }}),
-        ("subset", false, Selection {{ helicity_ids: ids.clone(), ..Default::default() }}),
-        ("anchors-subset", true, Selection {{ helicity_ids: ids.clone(), color_resolution: Some("amplitude-basis".into()), ..Default::default() }}),
-        ("by-point", false, Selection {{ helicity_by_point: rows.clone(), ..Default::default() }}),
-        ("colour", false, Selection {{ color_ids: vec!["1".into()], ..Default::default() }}),
+        ("anchors", true, selection(&[], Some("amplitude-basis"))),
+        ("one", false, selection(&ids[..1], None)),
+        ("subset", false, selection(&ids, None)),
+        ("anchors-subset", true, selection(&ids, Some("amplitude-basis"))),
+        ("by-point", false, by_point),
+        ("colour", false, colour),
     ];
-    for (name, resolved, selection) in calls {{
+    for (name, resolved, chosen) in calls {{
         println!("call {{name}}");
-        match runtime.evaluate_selected(&momenta, points, None, &scales, resolved, None, &selection) {{
+        let found = runtime.evaluate_selected(
+            &momenta, points, None, &scales, resolved, None, &chosen,
+        );
+        match found {{
             Ok(result) => {{
-                let statuses: Vec<String> = result.statuses.iter().map(|s| match s {{
-                    rusticol::virtual_amplitudes::PointStatus::Failed => "3".to_owned(),
-                    _ => "4".to_owned(),
-                }}).collect();
+                let statuses: Vec<&str> = result
+                    .statuses
+                    .iter()
+                    .map(|s| if *s == PointStatus::Failed {{ "3" }} else {{ "4" }})
+                    .collect();
                 println!("statuses {{}}", statuses.join(" "));
-                let bits: Vec<String> = result.virtual_values.iter().map(|v| format!("b:{{:016x}}", v.to_bits())).collect();
+                let bits: Vec<String> = result
+                    .virtual_values
+                    .iter()
+                    .map(|v| format!("b:{{:016x}}", v.to_bits()))
+                    .collect();
                 println!("virtual {{}}", bits.join(" "));
                 println!("decimal {{}}", result.decimal_json);
                 println!("axes {{}}", result.axes_json);
@@ -765,9 +934,19 @@ def test_packaged_rust_wrapper_serves_the_selections(artifacts, client_cases, tm
     binary = tmp_path / "selection-wrapper"
     subprocess.run(
         [
-            _compiler("RUSTC", "rustc"), "--edition=2021", "-D", "warnings",
-            str(source), "-o", str(binary), "-L", f"native={build}",
-            "-l", "dylib=rusticol_loop_sdk", "-C", f"link-arg=-Wl,-rpath,{build}",
+            _compiler("RUSTC", "rustc"),
+            "--edition=2021",
+            "-D",
+            "warnings",
+            str(source),
+            "-o",
+            str(binary),
+            "-L",
+            f"native={build}",
+            "-l",
+            "dylib=rusticol_loop_sdk",
+            "-C",
+            f"link-arg=-Wl,-rpath,{build}",
         ],
         check=True,
         cwd=tmp_path,
@@ -776,14 +955,23 @@ def test_packaged_rust_wrapper_serves_the_selections(artifacts, client_cases, tm
     for name, case in client_cases.items():
         run = subprocess.run(
             [
-                str(binary), str(artifacts[name]), "p",
-                ",".join(str(_bits(c) & mask) for point in case["points"]
-                         for p in point for c in p),
+                str(binary),
+                str(artifacts[name]),
+                "p",
+                ",".join(
+                    str(_bits(c) & mask)
+                    for point in case["points"]
+                    for p in point
+                    for c in p
+                ),
                 ",".join(str(_bits(s) & mask) for s in case["scales"]),
                 " ".join(case["ids"]),
                 ",".join(str(row) for row in case["by_point"]),
             ],
-            capture_output=True, text=True, timeout=1800, check=False,
+            capture_output=True,
+            text=True,
+            timeout=1800,
+            check=False,
         )
         assert run.returncode == 0, run.stdout[-3000:] + run.stderr[-3000:]
         calls = ["anchors", "one", "subset", "anchors-subset", "by-point", "colour"]
@@ -842,18 +1030,39 @@ def test_the_rust_sdk_selections_follow_the_c_abi(artifacts, client_cases, tmp_p
         }
         run = subprocess.run(
             [
-                "cargo", "test", "--locked", "--release", "--target-dir", target,
-                "-p", "rusticol-loop-sdk", "--test", "v4_selection", "--", "--ignored",
+                "cargo",
+                "test",
+                "--locked",
+                "--release",
+                "--target-dir",
+                target,
+                "-p",
+                "rusticol-loop-sdk",
+                "--test",
+                "v4_selection",
+                "--",
+                "--ignored",
             ],
-            cwd=root, env=env, capture_output=True, text=True, timeout=7200,
+            cwd=root,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=7200,
             check=False,
         )
         assert run.returncode == 0, run.stdout[-4000:] + run.stderr[-4000:]
         calls = [
-            "anchors", "one", "subset", "resolved-subset", "anchors-subset",
-            "by-point", "colour",
+            "anchors",
+            "one",
+            "subset",
+            "resolved-subset",
+            "anchors-subset",
+            "by-point",
+            "colour",
         ]
-        _check_client(f"rust-sdk:{name}", _parse(output.read_text()), case["reference"], calls)
+        _check_client(
+            f"rust-sdk:{name}", _parse(output.read_text()), case["reference"], calls
+        )
 
 
 @pytest.mark.loop_nightly
@@ -899,9 +1108,12 @@ def test_a_tir_off_library_serves_the_selections_on_ninjars(artifacts, client_ca
                 assert found["statuses"] == reference["statuses"]
                 assert _bitwise(found["virtual"], reference["virtual"]), selectors
             # The cross-backend check needs TIRust: refused by the call.
-            assert off.rusticol_virtual_set_stability_checks(
-                handles["off"], 1, None, 1, 0, 1
-            ) == 0
+            assert (
+                off.rusticol_virtual_set_stability_checks(
+                    handles["off"], 1, None, 1, 0, 1
+                )
+                == 0
+            )
             found = _call(off, handles["off"], points, scales, ids=case["ids"])
             assert found["status"] == STATUS_RUNTIME_ERROR, found
             assert "cross-backend check" in found["error"], found["error"]

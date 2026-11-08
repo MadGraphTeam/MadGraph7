@@ -885,7 +885,11 @@ impl V2Runtime {
                     None => plan_rows.clone(),
                     Some(rows) => kept(rows)?,
                 };
-                let size = self.induced.as_ref().expect("a loop-induced process").size();
+                let size = self
+                    .induced
+                    .as_ref()
+                    .expect("a loop-induced process")
+                    .size();
                 let metrics: Vec<Metric> = match resolution {
                     Resolution::Contracted => vec![Metric::Inclusive],
                     Resolution::AmplitudeBasis => (0..size).map(Metric::Anchor).collect(),
@@ -971,16 +975,16 @@ impl V2Runtime {
             ),
             V2Precision::Arbitrary(_) => {
                 let zero = symbolica::domains::float::Float::with_val(precision.bits()?, 0);
-                self.induced_call(
-                    call, momenta, scales, &[], mode, precision, &zero, &arith,
-                )
+                self.induced_call(call, momenta, scales, &[], mode, precision, &zero, &arith)
             }
         }
     }
 
     fn require_induced(&self) -> RusticolResult<()> {
         if self.induced.is_none() {
-            return Err(invalid("a Born-interfered process has no loop-induced outputs"));
+            return Err(invalid(
+                "a Born-interfered process has no loop-induced outputs",
+            ));
         }
         Ok(())
     }
@@ -1106,9 +1110,11 @@ impl V2Runtime {
                         .map(|output| {
                             let rows: Vec<Row> = match &output.rows {
                                 None => rows.clone(),
-                                Some(kept) => {
-                                    rows.iter().filter(|row| kept.contains(row)).cloned().collect()
-                                }
+                                Some(kept) => rows
+                                    .iter()
+                                    .filter(|row| kept.contains(row))
+                                    .cloned()
+                                    .collect(),
                             };
                             let (h, k) = forms.of(&output.metric);
                             let real = induced

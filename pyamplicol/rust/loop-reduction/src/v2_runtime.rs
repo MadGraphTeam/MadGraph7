@@ -723,7 +723,9 @@ impl Runner {
         TreeRuntime<T>: Send,
     {
         let Some(tree_rows) = &rows.trees else {
-            return self.fill(precision, lanes, values, scales, incoming, poles, None, zero);
+            return self.fill(
+                precision, lanes, values, scales, incoming, poles, None, zero,
+            );
         };
         self.executor(lanes)?;
         if !self.runtimes.contains_key(&precision) {
