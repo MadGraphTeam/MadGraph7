@@ -61,6 +61,14 @@ fn py_max(a: f64, b: f64) -> f64 {
     if b > a { b } else { a }
 }
 
+/// Python's `x ** y` of floats: libm's `pow`. The exponent is hidden from
+/// constant folding, which would replace `pow(x, 0.5)` by `sqrt(x)` and
+/// `pow(x, 2.0)` by `x * x`: libm's `pow` differs from both in the last bit
+/// for about 0.1 % of the arguments.
+fn py_pow(x: f64, y: f64) -> f64 {
+    x.powf(std::hint::black_box(y))
+}
+
 /// Python's `max(iterable)` of floats (the first maximal element; `None` for
 /// an empty iterable).
 fn py_max_of(values: impl IntoIterator<Item = f64>) -> Option<f64> {
@@ -138,7 +146,10 @@ impl Rotation {
     /// with denominators up to `resolution`.
     pub fn from_axis_angle(axis: [f64; 3], angle: f64, resolution: u64) -> RusticolResult<Self> {
         // sum(float(x) ** 2 for x in axis): 0 + x0^2 + x1^2 + x2^2.
-        let norm = axis.iter().fold(0.0_f64, |sum, x| sum + x.powf(2.0)).sqrt();
+        let norm = axis
+            .iter()
+            .fold(0.0_f64, |sum, x| sum + py_pow(*x, 2.0))
+            .sqrt();
         if norm == 0.0 || !angle.is_finite() {
             return Err(invalid(
                 "a rotation needs a non-zero 3-axis and a finite angle",
@@ -581,7 +592,7 @@ pub type Budget = Vec<Vec<f64>>;
 /// The factor of a lane's |delta Omega| in the bare virtual's budget,
 /// 2 / (16 pi^2 average) (`_PointEvaluation._lane_budget`).
 pub fn lane_factor(average: f64) -> f64 {
-    2.0 / (LOOP_FACTOR_DENOMINATOR * std::f64::consts::PI.powf(2.0) * average)
+    2.0 / (LOOP_FACTOR_DENOMINATOR * py_pow(std::f64::consts::PI, 2.0) * average)
 }
 
 /// `_PointEvaluation._lane_budget`: per sector (of `sectors`, `width`
@@ -1041,7 +1052,11 @@ impl InducedShape {
             total = c_add(total, c_mul(c_conj(*x), inner));
         }
         let value = total.0;
-        if value <= 0.0 { 0.0 } else { value.powf(0.5) }
+        if value <= 0.0 {
+            0.0
+        } else {
+            py_pow(value, 0.5)
+        }
     }
 
     /// sqrt(e^T |G| e) (`induced._bound_norm`).
@@ -1053,7 +1068,7 @@ impl InducedShape {
                 total += x * modulus(re, im) * y;
             }
         }
-        total.powf(0.5)
+        py_pow(total, 0.5)
     }
 
     /// `induced.sector_form`: per record sector and Laurent coefficient k,
@@ -1238,7 +1253,7 @@ impl InducedShape {
             }
         };
         let roots: Vec<f64> = (0..self.size)
-            .map(|t| py_max(self.metric(t, t).0, 0.0).powf(0.5))
+            .map(|t| py_pow(py_max(self.metric(t, t).0, 0.0), 0.5))
             .collect();
         let mut keys: Vec<Key> = Vec::new();
         for key in terms
