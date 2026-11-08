@@ -1314,18 +1314,25 @@ class ProbeResult:
         return self.worst <= ESTIMATE_FACTOR
 
 
-def _probe_runs(executor, runs, scale, parameters, precision, frame, term_scale=False):
+class ProbePointRefused(ArithmeticError):
+    """The native backend refused a probe run's point or lane in the
+    probe's carrier (``_probe_runs``): the probe has no verdict there (the
+    generation-time probes re-run it in double-double, ``generation_probes``)."""
+
+
+def _probe_batch(executor, runs, scale, parameters, precision, frame, term_scale=False):
     """One native batch of probe runs, (point, Ward value or None) each, at
     one scale, with the reduction re-test in ``frame`` (None: none), the raw
     lanes (``rotation_errors`` sums its deviations over them) and, with
     ``term_scale``, the term scale: (the carrier's precision, the
-    evaluations). The points of a batch run concurrently."""
+    evaluations, the failures per run index; a failed run's evaluation is
+    unassembled). The points of a batch run concurrently."""
 
     wards = [ward for _point, ward in runs]
     executor.term_scale = term_scale
     raw, executor.raw_lanes = executor.raw_lanes, True
     try:
-        precision, evaluations, failures = executor._evaluated(
+        return executor._evaluated(
             [point for point, _ward in runs],
             [scale] * len(runs),
             dict(parameters or {}),
@@ -1338,9 +1345,18 @@ def _probe_runs(executor, runs, scale, parameters, precision, frame, term_scale=
     finally:
         executor.term_scale = False
         executor.raw_lanes = raw
+
+
+def _probe_runs(executor, runs, scale, parameters, precision, frame, term_scale=False):
+    """``_probe_batch`` of runs that must all succeed: (the carrier's
+    precision, the evaluations); a failed run raises ``ProbePointRefused``."""
+
+    precision, evaluations, failures = _probe_batch(
+        executor, runs, scale, parameters, precision, frame, term_scale
+    )
     if failures:
         index = min(failures)
-        raise ArithmeticError(f"the probe point failed: {failures[index]}")
+        raise ProbePointRefused(f"the probe point failed: {failures[index]}")
     return precision, evaluations
 
 
@@ -1349,6 +1365,7 @@ def physical_floors(
     point: Sequence[Sequence[Any]],
     scale: Any,
     parameters: Mapping[str, str] | None = None,
+    precision: Any = None,
 ) -> dict:
     """The row term floors (``row_scales``) of the physical amplitude at a
     point, from a binary64 run with the term scale: a scale is a magnitude,
@@ -1357,14 +1374,48 @@ def physical_floors(
     double-double against 3 s in binary64 on g g > z z g. Where the
     numerators cancel term by term (a Furry zero) the floor is rounding in
     either carrier; the rotation budget carries those probes
-    (``rotation_errors``)."""
+    (``rotation_errors``). ``precision``: the run's carrier (default
+    binary64; the generation-time probes take double-double only where the
+    backend refuses the binary64 run, ``probe_floors``)."""
 
     from .assemble import Precision
 
     _carrier, (evaluation,) = _probe_runs(
-        executor, [(point, None)], scale, parameters, Precision.double(), None, True
+        executor,
+        [(point, None)],
+        scale,
+        parameters,
+        precision or Precision.double(),
+        None,
+        True,
     )
     return row_scales(evaluation)
+
+
+def probe_floors(
+    executor: Any,
+    point: Sequence[Sequence[Any]],
+    scale: Any,
+    parameters: Mapping[str, str] | None = None,
+) -> tuple[dict, dict[str, Any]]:
+    """The physical row floors of the generation-time probes
+    (``physical_floors``) in binary64, or in double-double where the backend
+    refuses the binary64 run (a scale is a magnitude: either carrier serves
+    it); with the record of the carrier that formed them."""
+
+    from .assemble import Precision
+
+    try:
+        return physical_floors(executor, point, scale, parameters), {
+            "carrier": Precision.double().arithmetic
+        }
+    except ProbePointRefused as error:
+        precision = Precision.double_double()
+        floors = physical_floors(executor, point, scale, parameters, precision)
+        return floors, {
+            "carrier": precision.arithmetic,
+            "fallback": {"reason": "refused", "detail": str(error)},
+        }
 
 
 def ward_floors(physical: Mapping, leg: int) -> dict:
@@ -1459,7 +1510,41 @@ def probes(
 ) -> list[ProbeResult]:
     """``probe`` for every Ward value of ``wards`` (None: the finiteness
     probe) at one point: the probes' runs in one native batch with the
-    re-test, their rotated runs in another without it."""
+    re-test, their rotated runs in another without it. A run the backend
+    refuses raises ``ProbePointRefused`` (``probe_results`` returns it per
+    probe instead)."""
+
+    found = probe_results(
+        executor,
+        point,
+        scale,
+        wards,
+        parameters=parameters,
+        precision=precision,
+        checks=checks,
+        physical=physical,
+    )
+    for result in found:
+        if isinstance(result, str):
+            raise ProbePointRefused(result)
+    return found
+
+
+def probe_results(
+    executor: Any,
+    point: Sequence[Sequence[Any]],
+    scale: Any,
+    wards: Sequence[Any],
+    *,
+    parameters: Mapping[str, str] | None = None,
+    precision: Any = None,
+    checks: Any = None,
+    physical: Mapping | None = None,
+) -> list[ProbeResult | str]:
+    """``probes``, with a probe whose run (direct or rotated) the backend
+    refuses in the carrier returned as the refusal's text ("the probe point
+    failed: ..."), the other probes' results unchanged (the runs of a batch
+    are independent points)."""
 
     from .assemble import Precision, _fraction
     from .stability import RECOMMENDED_CHECKS
@@ -1472,14 +1557,18 @@ def probes(
         raise ValueError("a probe needs the reduction re-test")
     exact = tuple(tuple(_fraction(x) for x in p) for p in point)
     moved = [rotation.apply(exact) for rotation in checks.rotations]
+    stride = len(moved)
     # Two batches: the probes' runs with the re-test, their rotated runs
     # without it (a rotation compares values, ``rotation_errors``).
-    carrier, evaluations = _probe_runs(
+    carrier, evaluations, failures = _probe_batch(
         executor, [(point, ward) for ward in wards], scale, parameters, precision, frame
     )
+    refused: dict[int, str] = {
+        index: f"the probe point failed: {failures[index]}" for index in failures
+    }
     rotated = []
     if moved:
-        _carrier, rotated = _probe_runs(
+        _carrier, rotated, turned_failures = _probe_batch(
             executor,
             [
                 (turned, None if ward is None else rotated_ward(rotation, ward))
@@ -1491,15 +1580,22 @@ def probes(
             precision,
             None,
         )
+        for index in sorted(turned_failures):
+            refused.setdefault(
+                index // stride,
+                f"the probe point failed: {turned_failures[index]}",
+            )
     # The term floor is the physical amplitude's, a magnitude: formed once in
     # binary64 (``physical_floors``; in double-double the term scale's unit
     # reductions would dominate the probe's cost) and shared by the Ward
     # probes of the point (``physical``).
     if physical is None:
         physical = physical_floors(executor, point, scale, parameters)
-    stride = len(moved)
-    out = []
+    out: list[ProbeResult | str] = []
     for index, ward in enumerate(wards):
+        if index in refused:
+            out.append(refused[index])
+            continue
         evaluation = evaluations[index]
         turned = [
             rotation_errors(evaluation, run)
@@ -1697,6 +1793,67 @@ def _particle_square(slice_: Any, record: Any, digits: int) -> Fraction | None:
     return value * value
 
 
+# The reduction backend of the generation-time probes: NinjaRS at every
+# carrier, named in the record (requested / effective / reason); never the
+# artifact's run-time choice (``reduction.resolve``), so a change of the
+# run-time 'auto' rule never moves the probes silently.
+PROBE_REDUCTION = "ninjars"
+PROBE_REDUCTION_REASON = (
+    "the generation-time probes reduce on NinjaRS at every carrier (their "
+    "x10 estimate, re-test and rotation, is calibrated there; m-lit Q12)"
+)
+
+
+def probe_carriers(precision: Any = None) -> tuple[Any, ...]:
+    """The carriers of the generation-time probes, in order: binary64, then
+    double-double for a probe whose binary64 run fails its verdict or is
+    refused (DECISIONS 2026-11-08 22:34 (3)); ``precision`` given: that
+    carrier alone (no fallback)."""
+
+    from .assemble import Precision
+
+    if precision is not None:
+        return (precision,)
+    return (Precision.double(), Precision.double_double())
+
+
+def _fallback(result: Any) -> dict[str, Any]:
+    """Why a probe's run in one carrier did not decide it (the next carrier
+    re-runs it): the backend's refusal, or the ratio of its failed verdict."""
+
+    if isinstance(result, str):
+        return {"reason": "refused", "detail": result}
+    return {"reason": "verdict", "worst": _short(result.worst)}
+
+
+def _decided(
+    entries: list[dict[str, Any]], outcomes: Sequence[Any], carriers: Sequence[Any]
+) -> list[Any]:
+    """The verdict of each probe: its result in the first carrier that gave
+    a passing one, else in the last carrier that ran it (a refusal text
+    where every carrier refused); ``entries`` gets the record per probe."""
+
+    out = []
+    for entry, runs in zip(entries, outcomes, strict=True):
+        result = runs[-1]
+        carrier = carriers[len(runs) - 1]
+        entry["carrier"] = carrier.arithmetic
+        if isinstance(result, str):
+            entry["passed"] = False
+            entry["refused"] = result
+        else:
+            entry["worst"] = _short(result.worst)
+            entry["passed"] = result.passed
+        fallbacks = [
+            {"carrier": carriers[i].arithmetic, **_fallback(run)}
+            for i, run in enumerate(runs[:-1])
+        ]
+        if fallbacks:
+            entry["fallback"] = fallbacks if len(fallbacks) > 1 else fallbacks[0]
+        out.append(result)
+    return out
+
+
 def generation_probes(
     slice_: Any,
     compiled: Any,
@@ -1707,92 +1864,185 @@ def generation_probes(
     precision: Any = None,
 ) -> dict[str, Any]:
     """The generation-time probes of a loop-induced slice (m-lit Q12, PLAN
-    §2.a.7 items 5-6), in double-double by default: the finiteness probe and,
-    on one leg of every external massless gauge-boson species (gluons and
-    photons), the amplitude-level Ward probe epsilon_j -> p_j / E_j, on
-    a slice of the request generated on the full tree kernels at zero widths
-    outside the complex-mass scheme (``probe_request``; the production slice
-    itself when it already is one). The point is the candidate binary64
-    point (``candidates``, the generation's validation points) farthest from
-    every tree pole, lifted by ``probe_point``. A probe passes within ten
-    times its own estimate (``ESTIMATE_FACTOR``); a failure raises
-    ``ProbeFailure`` unless ``allow_failure`` (recorded). An exact colour
-    zero has nothing to probe. Massive external vectors take the
-    Goldstone-equivalence probe (``goldstone``, m-lit LIT-EW) on one leg of
-    every species with a Goldstone partner, in a 't Hooft-Feynman gauge
-    request only (the identity needs the Goldstone vertices; a QCD-only
-    request in unitary gauge has its both-gauges equality as a validation
-    check instead), recorded as ``goldstone``.
+    §2.a.7 items 5-6), run only when the user enables them
+    (``generation.loop_induced_probes``, off by default: DECISIONS
+    2026-11-08 22:34 (3); nothing the artifact stores or evaluates depends
+    on them): the finiteness probe and, on one leg of every external
+    massless gauge-boson species (gluons and photons), the amplitude-level
+    Ward probe epsilon_j -> p_j / E_j, on a slice of the request generated
+    on the full tree kernels at zero widths outside the complex-mass scheme
+    (``probe_request``; the production slice itself when it already is
+    one). The point is the candidate binary64 point (``candidates``, the
+    generation's validation points) farthest from every tree pole, lifted
+    once by ``probe_point`` at the digits of the last carrier, so that every
+    carrier evaluates the same exact point.
 
-    Returns the record the artifact stores (``generation_filters``)."""
+    Every probe runs first in binary64 (``probe_carriers``); a probe whose
+    binary64 run fails its verdict or is refused by the backend
+    (``ProbePointRefused``) is re-run in double-double, and only those (the
+    term floors stay binary64, formed once per point, ``probe_floors``).
+    ``precision`` given: that carrier alone (a measurement of one carrier).
+    A probe passes within ten times its own estimate (``ESTIMATE_FACTOR``);
+    its verdict is the first passing carrier's, else the last one's. A
+    failure after the fallback raises ``ProbeFailure`` unless
+    ``allow_failure`` (recorded). An exact colour zero has nothing to
+    probe. Massive external vectors take the Goldstone-equivalence probe
+    (``goldstone``, m-lit LIT-EW) on one leg of every species with a
+    Goldstone partner, in a 't Hooft-Feynman gauge request only (the
+    identity needs the Goldstone vertices; a QCD-only request in unitary
+    gauge has its both-gauges equality as a validation check instead),
+    with the same carriers, recorded as ``goldstone``. The probes reduce on
+    ``PROBE_REDUCTION`` (recorded).
 
-    from .assemble import Precision
+    Returns the record the artifact stores (``generation_filters``): per
+    probe the carrier that decided, its worst ratio, the fallback's reason
+    (the binary64 ratio or the refusal) and its time, and the time of each
+    stage (``seconds``: the probe slice, the lift, the floors, the native
+    passes per carrier, the Goldstone slices and probes, the total)."""
+
+    import time
+
     from .plan_export import NativeExecutor
+    from .reduction import running
     from .ward import gauge_legs, gauge_ward, ward_slice
 
     if slice_.amplitude.colour_zero:
         return {"exact_colour_zero": True}
-    precision = precision or Precision.double_double()
-    request, zeroed = probe_request(slice_)
-    blocks = slice_.blocks
-    if zeroed or getattr(blocks, "kernel_variant", None) != "full":
-        target = ward_slice(compiled, request, native)
-    else:
-        target = slice_
-    digits = 2 * precision.working_digits
-    lifted = [probe_point(target, momenta, digits) for momenta in candidates]
-    index = max(
-        range(len(lifted)),
-        key=lambda i: float("inf") if lifted[i][1] is None else lifted[i][1],
-    )
-    point, distance = lifted[index]
-    executor = NativeExecutor(target, forward=False, inputs="native")
-    scale = _point_scale(point, sum(1 for leg in blocks.process.legs if leg.is_initial))
-    # One Ward probe per external gauge-boson species (its first leg; Bose
-    # symmetry relates the others) at c = 1: the amplitude is linear in the
-    # substituted vector, so c = i (needed where an interference takes a
-    # real part, ``ward.WARD_FACTORS``) has the same norm.
-    species = {int(leg.label): int(leg.pdg) for leg in target.blocks.process.legs}
-    first: dict[int, int] = {}
-    for leg in gauge_legs(target):
-        first.setdefault(species[leg], leg)
-    legs = sorted(first.values())
-    found = probes(
-        executor,
-        point,
-        scale,
-        [None, *(gauge_ward(leg, (1, 0), point) for leg in legs)],
-        precision=precision,
-    )
-    results = [("finiteness", None, found[0])] + [
-        ("ward", leg, result) for leg, result in zip(legs, found[1:], strict=True)
-    ]
-    goldstones = _goldstone_probes(
-        target, compiled, request, native, point, scale, precision, found[0].scales
-    )
-    results += [("goldstone", leg, result) for leg, result in goldstones["results"]]
-    finiteness = results[0][2]
-    wards = [result for kind, _, result in results if kind == "ward"]
+
+    carriers = probe_carriers(precision)
+    start = time.perf_counter()
+    seconds: dict[str, Any] = {}
+    with running(PROBE_REDUCTION):
+        request, zeroed = probe_request(slice_)
+        blocks = slice_.blocks
+        if zeroed or getattr(blocks, "kernel_variant", None) != "full":
+            clock = time.perf_counter()
+            target = ward_slice(compiled, request, native)
+            seconds["probe_slice"] = time.perf_counter() - clock
+        else:
+            target = slice_
+            seconds["probe_slice"] = 0.0
+        clock = time.perf_counter()
+        digits = 2 * max(carrier.working_digits for carrier in carriers)
+        lifted = [probe_point(target, momenta, digits) for momenta in candidates]
+        index = max(
+            range(len(lifted)),
+            key=lambda i: float("inf") if lifted[i][1] is None else lifted[i][1],
+        )
+        point, distance = lifted[index]
+        executor = NativeExecutor(target, forward=False, inputs="native")
+        scale = _point_scale(
+            point, sum(1 for leg in blocks.process.legs if leg.is_initial)
+        )
+        seconds["point"] = time.perf_counter() - clock
+        clock = time.perf_counter()
+        floors, floors_record = probe_floors(executor, point, scale)
+        seconds["floors"] = time.perf_counter() - clock
+        # One Ward probe per external gauge-boson species (its first leg;
+        # Bose symmetry relates the others) at c = 1: the amplitude is
+        # linear in the substituted vector, so c = i (needed where an
+        # interference takes a real part, ``ward.WARD_FACTORS``) has the
+        # same norm.
+        species = {int(leg.label): int(leg.pdg) for leg in target.blocks.process.legs}
+        first: dict[int, int] = {}
+        for leg in gauge_legs(target):
+            first.setdefault(species[leg], leg)
+        legs = sorted(first.values())
+        wards = [None, *(gauge_ward(leg, (1, 0), point) for leg in legs)]
+        entries: list[dict[str, Any]] = [{"probe": "finiteness"}] + [
+            {"probe": "ward", "leg": leg} for leg in legs
+        ]
+        outcomes: list[list[Any]] = [[] for _ in wards]
+        pending = list(range(len(wards)))
+        for carrier in carriers:
+            if not pending:
+                break
+            clock = time.perf_counter()
+            found = probe_results(
+                executor,
+                point,
+                scale,
+                [wards[i] for i in pending],
+                precision=carrier,
+                physical=floors,
+            )
+            elapsed = time.perf_counter() - clock
+            seconds[carrier.arithmetic] = elapsed
+            for i, result in zip(pending, found, strict=True):
+                outcomes[i].append(result)
+                # The probes of one pass share its native batches.
+                entries[i]["seconds"] = _short(entries[i].get("seconds", 0.0) + elapsed)
+            pending = [
+                i
+                for i in pending
+                if isinstance(outcomes[i][-1], str) or not outcomes[i][-1].passed
+            ]
+        decided = _decided(entries, outcomes, carriers)
+        goldstones = _goldstone_probes(
+            target, compiled, request, native, point, scale, carriers, floors
+        )
+    entries += goldstones["entries"]
+    seconds.update(goldstones["seconds"])
+    seconds["total"] = time.perf_counter() - start
+
+    def passed(result: Any) -> bool:
+        return not isinstance(result, str) and result.passed
+
+    def worst(result: Any) -> float:
+        return float("inf") if isinstance(result, str) else result.worst
+
     record: dict[str, Any] = {
-        "precision": precision.arithmetic,
+        "status": "run",
+        "carriers": [carrier.arithmetic for carrier in carriers],
+        "reduction": {
+            "requested": PROBE_REDUCTION,
+            "effective": PROBE_REDUCTION,
+            "reason": PROBE_REDUCTION_REASON,
+        },
         "widths": "complex-mass" if not zeroed and _complex_mass(slice_) else "zero",
         **({"zeroed_widths": list(zeroed)} if zeroed else {}),
         "candidate": index,
         "pole_distance": None if distance is None else _short(distance),
-        "finiteness": {"worst": _short(finiteness.worst), "passed": finiteness.passed},
+        "lift_digits": digits,
+        "floors": floors_record,
+        "finiteness": {
+            "worst": _short(worst(decided[0])),
+            "passed": passed(decided[0]),
+            "carrier": entries[0]["carrier"],
+        },
         "ward": {
             "legs": list(legs),
-            "worst": _short(max((r.worst for r in wards), default=0.0)),
-            "passed": all(r.passed for r in wards),
+            "worst": _short(max((worst(r) for r in decided[1:]), default=0.0)),
+            "passed": all(passed(r) for r in decided[1:]),
+            "carriers": {
+                str(entry["leg"]): entry["carrier"]
+                for entry in entries
+                if entry["probe"] == "ward"
+            },
         },
         **({"goldstone": goldstones["record"]} if goldstones["record"] else {}),
+        "probes": entries,
+        "fallbacks": sum(1 for entry in entries if "fallback" in entry),
+        "seconds": {
+            key: (
+                {k: _short(v) for k, v in value.items()}
+                if isinstance(value, dict)
+                else _short(value)
+            )
+            for key, value in seconds.items()
+        },
     }
     failed = [
-        f"{kind} probe"
-        + ("" if where is None else f" (leg {where})")
-        + f": {result.worst:.3g} times its estimate"
-        for kind, where, result in results
-        if not result.passed
+        f"{entry['probe']} probe"
+        + (f" (leg {entry['leg']})" if "leg" in entry else "")
+        + (
+            f": {entry['refused']}"
+            if "refused" in entry
+            else f": {entry['worst']} times its estimate"
+        )
+        + f" in {entry['carrier']}"
+        for entry in entries
+        if not entry["passed"]
     ]
     if failed:
         record["failed"] = failed
@@ -1800,10 +2050,11 @@ def generation_probes(
             raise ProbeFailure(
                 f"{slice_.request.process!r}: the loop-induced generation-time "
                 f"probes failed ({'; '.join(failed)}; pass within "
-                f"{ESTIMATE_FACTOR} times the probe's own estimate, m-lit Q12): "
-                "a missing family or counterterm (finiteness), R2 vertex "
-                "(Ward) or Goldstone-side vertex or counterterm (Goldstone). "
-                "generation.allow_failed_probes = true stores the "
+                f"{ESTIMATE_FACTOR} times the probe's own estimate, binary64 "
+                "first and double-double where binary64 fails or is refused, "
+                "m-lit Q12): a missing family or counterterm (finiteness), R2 "
+                "vertex (Ward) or Goldstone-side vertex or counterterm "
+                "(Goldstone). generation.allow_failed_probes = true stores the "
                 "artifact anyway, with the failure recorded"
             )
         record["allowed_failure"] = True
@@ -1811,30 +2062,45 @@ def generation_probes(
 
 
 def _goldstone_probes(
-    target, compiled, request, native, point, scale, precision, physical
+    target, compiled, request, native, point, scale, carriers, physical
 ) -> dict[str, Any]:
     """The Goldstone-equivalence probes of a probe slice (``goldstone``,
     m-lit LIT-EW): in a 't Hooft-Feynman gauge slice, one per external
     massive-vector species with a Goldstone partner, at the probe point,
-    with the physical row floors of its finiteness probe. Returns the
-    (leg, ``GoldstoneResult``) pairs and the record (None without such a
-    leg); a Goldstone side the engine refuses is recorded as skipped, never
-    a silent pass, and when every side is refused the probe did not run:
-    the record is ``status`` "not-run" with the refusals, and no
-    ``passed``."""
+    with the physical row floors of its finiteness probe, in ``carriers``
+    in order (``probe_carriers``; None: binary64, then double-double): a
+    probe whose run fails its verdict or is refused (``ProbePointRefused``)
+    runs again in the next one. Returns the (leg, ``GoldstoneResult`` or
+    refusal text) pairs, the per-probe record entries, the stage times and
+    the record (None without such a leg); a Goldstone side the engine
+    refuses is recorded as skipped, never a silent pass, and when every
+    side is refused the probe did not run: the record is ``status``
+    "not-run" with the refusals, and no ``passed``."""
+
+    import time
 
     from . import goldstone
     from .plan_export import NativeExecutor
     from .refusals import LoopRequestUnsupported
 
+    empty: dict[str, Any] = {
+        "results": [],
+        "entries": [],
+        "seconds": {},
+        "record": None,
+    }
     if str(target.compiled.ir.gauge) != "feynman":
-        return {"results": [], "record": None}
+        return empty
     massive = goldstone.massive_vector_legs(target)
     if not massive:
-        return {"results": [], "record": None}
+        return empty
+    carriers = probe_carriers() if carriers is None else tuple(carriers)
     vector = None
-    results, phases, skipped = [], {}, {}
+    results, phases, skipped, entries = [], {}, {}, []
+    slices: dict[str, float] = {}
+    probes_seconds: dict[str, float] = {}
     for leg, partner in massive.items():
+        clock = time.perf_counter()
         try:
             side = goldstone.goldstone_slice(
                 compiled, request, native, target, leg, partner
@@ -1843,35 +2109,74 @@ def _goldstone_probes(
             # The listed refusal's text: its key, rule and remedy.
             skipped[str(leg)] = str(error)
             continue
+        slices[str(leg)] = time.perf_counter() - clock
+        clock = time.perf_counter()
         if vector is None:
             vector = NativeExecutor(target, forward=False, inputs="native")
-        result = goldstone.probe(
-            vector,
-            NativeExecutor(side, forward=False, inputs="native"),
-            point,
-            scale,
-            leg,
-            precision=precision,
-            physical=physical,
-        )
+        partner_executor = NativeExecutor(side, forward=False, inputs="native")
+        runs: list[Any] = []
+        for carrier in carriers:
+            try:
+                result = goldstone.probe(
+                    vector,
+                    partner_executor,
+                    point,
+                    scale,
+                    leg,
+                    precision=carrier,
+                    physical=physical,
+                )
+            except ProbePointRefused as error:
+                result = str(error)
+            runs.append(result)
+            if not isinstance(result, str) and result.passed:
+                break
+        probes_seconds[str(leg)] = time.perf_counter() - clock
+        entry: dict[str, Any] = {
+            "probe": "goldstone",
+            "leg": leg,
+            "seconds": _short(probes_seconds[str(leg)]),
+        }
+        (result,) = _decided([entry], [runs], carriers)
+        entries.append(entry)
         results.append((leg, result))
-        if result.phase is not None:
+        if not isinstance(result, str) and result.phase is not None:
             phases[str(leg)] = [_short(x) for x in result.phase]
+    seconds = (
+        {"goldstone_slices": slices, "goldstone": probes_seconds} if slices else {}
+    )
     if not results:
         # Every Goldstone side was refused: nothing was probed, which is not
         # a pass (all([]) would read True).
         return {
             "results": [],
+            "entries": [],
+            "seconds": seconds,
             "record": {"status": "not-run", "legs": [], "skipped": skipped},
         }
+
+    def passed(result: Any) -> bool:
+        return not isinstance(result, str) and result.passed
+
     record: dict[str, Any] = {
         "legs": [leg for leg, _ in results],
-        "worst": _short(max((r.worst for _, r in results), default=0.0)),
-        "passed": all(r.passed for _, r in results),
+        "worst": _short(
+            max(
+                (float("inf") if isinstance(r, str) else r.worst for _, r in results),
+                default=0.0,
+            )
+        ),
+        "passed": all(passed(r) for _, r in results),
+        "carriers": {str(entry["leg"]): entry["carrier"] for entry in entries},
         **({"phases": phases} if phases else {}),
         **({"skipped": skipped} if skipped else {}),
     }
-    return {"results": results, "record": record}
+    return {
+        "results": results,
+        "entries": entries,
+        "seconds": seconds,
+        "record": record,
+    }
 
 
 def _short(value: float) -> float | str:
@@ -1913,8 +2218,10 @@ def g_norm(vector: Sequence[Any], gram: Sequence[Sequence[Any]], numbers: Any) -
 __all__ = [
     "ESTIMATE_FACTOR",
     "LOOP_INDUCED_INTERFERENCE",
+    "PROBE_REDUCTION",
     "AmplitudeSeeds",
     "ProbeFailure",
+    "ProbePointRefused",
     "ProbeResult",
     "StoredAmplitude",
     "add_amplitudes",
@@ -1932,8 +2239,11 @@ __all__ = [
     "metric",
     "physical_floors",
     "probe",
+    "probe_carriers",
+    "probe_floors",
     "probe_point",
     "probe_request",
+    "probe_results",
     "probes",
     "rotation_errors",
     "row_scales",

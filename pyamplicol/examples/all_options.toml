@@ -212,10 +212,18 @@ emit_api_bundle = true
 # are refused by default. Recorded in the artifact. Needs particle_veto.
 # Virtual-only. Default false.
 # allow_anomalous_veto = true
+# generation.loop_induced_probes: Run the generation-time finiteness, Ward and
+# Goldstone probes of loop-induced processes (binary64, double-double where a
+# binary64 probe fails its verdict or is refused; pass within ten times the
+# probe's own estimate): they validate the model's R2 vertices, the loop
+# families and the Goldstone-side vertices, and a failure refuses the process.
+# The written artifact and its values do not depend on them. Recorded in the
+# artifact. Virtual-only. Default false.
+# loop_induced_probes = true
 # generation.allow_failed_probes: Store a loop-induced process whose
-# generation-time finiteness or Ward probe (double-double, within ten times the
-# probe's own estimate) failed; such processes are refused by default. Recorded
-# in the artifact. Virtual-only. Default false.
+# generation-time finiteness or Ward probe failed; such processes are refused
+# by default. Recorded in the artifact. Acts only with loop_induced_probes.
+# Virtual-only. Default false.
 # allow_failed_probes = true
 # generation.helicity_filter_failure_probability: The stated failure
 # probability of the exact helicity-zero filter of loop-induced processes (that
