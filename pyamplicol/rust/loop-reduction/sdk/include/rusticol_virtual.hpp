@@ -96,6 +96,25 @@ public:
     std::string decimal_json() const {
         return virtual_detail::json(handle_.get(), rusticol_virtual_result_decimal_json);
     }
+    // {"helicity_ids": [...], "color_ids": [...]}: a resolved result's axes in
+    // layout order (a selection's rows, "amplitude-<t>" anchors); empty lists
+    // for an ordinary result.
+    std::string axes_json() const {
+        return virtual_detail::json(handle_.get(), rusticol_virtual_result_axes_json);
+    }
+};
+
+// The selectors of VirtualRuntime::evaluate_selected (rusticol_virtual_selection):
+// global helicity IDs (h<i> or h:<helicities in leg order>), per-point
+// zero-based helicity rows (one per point), colour flows (refused for
+// loop-induced processes: full colour only) and a resolved evaluation's
+// colour resolution ("contracted", the default, or "amplitude-basis").
+struct VirtualSelection {
+    std::vector<std::string> helicity_ids;
+    std::vector<std::string> color_ids;
+    std::vector<std::uint32_t> helicity_by_point;
+    std::vector<std::uint32_t> color_flow_by_point;
+    std::optional<std::string> color_resolution;
 };
 
 // Complex grouped axes: point/history/order/(epsilon), never positive weights.
@@ -272,6 +291,33 @@ public:
             resolved ? 1u : 0u, virtual_detail::optional_string(r2_strategy)};
         rusticol_virtual_result *p = nullptr;
         virtual_detail::check(rusticol_virtual_evaluate(handle_.get(), &request, &p));
+        return VirtualEvaluation(p);
+    }
+    // rusticol_virtual_evaluate_selected: the selected helicity rows of a
+    // loop-induced process (resolved = false: their sum per point, RULED Q39;
+    // resolved = true: per selected row its colour components in the
+    // selection's colour resolution). Refusals throw VirtualError.
+    VirtualEvaluation evaluate_selected(const std::vector<double> &momenta, std::size_t point_count,
+                                        const std::vector<double> &mu_r2,
+                                        const VirtualSelection &selection, bool resolved = false,
+                                        const std::vector<std::uint64_t> &point_ids = {},
+                                        const std::optional<std::string> &r2_strategy = std::nullopt) {
+        if (!point_ids.empty() && point_ids.size() != point_count)
+            throw VirtualError("point_ids must have one entry per input point");
+        std::vector<const char *> helicities, colours;
+        for (const auto &id : selection.helicity_ids) helicities.push_back(id.c_str());
+        for (const auto &id : selection.color_ids) colours.push_back(id.c_str());
+        rusticol_virtual_selection selectors{
+            helicities.data(), helicities.size(), colours.data(), colours.size(),
+            selection.helicity_by_point.data(), selection.helicity_by_point.size(),
+            selection.color_flow_by_point.data(), selection.color_flow_by_point.size(),
+            virtual_detail::optional_string(selection.color_resolution)};
+        rusticol_virtual_batch_request request{
+            momenta.data(), momenta.size(), point_count,
+            point_ids.empty() ? nullptr : point_ids.data(), mu_r2.data(), mu_r2.size(),
+            resolved ? 1u : 0u, virtual_detail::optional_string(r2_strategy)};
+        rusticol_virtual_result *p = nullptr;
+        virtual_detail::check(rusticol_virtual_evaluate_selected(handle_.get(), &request, &selectors, &p));
         return VirtualEvaluation(p);
     }
 };

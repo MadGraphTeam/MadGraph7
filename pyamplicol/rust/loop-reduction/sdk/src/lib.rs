@@ -16,6 +16,9 @@ use rusticol_loop_reduction::runtime::Reduction;
 #[cfg(test)]
 use rusticol_loop_reduction::runtime::{Batch, Data};
 use rusticol_loop_reduction::v2_runtime::cross_reduction;
+use rusticol_loop_reduction::v2_runtime::induced_outputs::{
+    AMPLITUDE_BASIS, CONTRACTED, InducedCall, Resolution, anchor_id,
+};
 use rusticol_loop_reduction::v2_runtime::{
     C, ColumnPoint, Decimal, Rational, V2Point, V2Poles, V2Precision, V2Runtime, decimal_parameter,
     is_v2_artifact, named_parameters,
@@ -80,6 +83,13 @@ pub struct Evaluation {
     pub virtual_values: Vec<f64>,
     pub shape: Shape,
     pub resolved: bool,
+    /// A resolved result's helicity row IDs (`h<i>`, the capabilities'
+    /// `helicity_ids`) and colour component IDs, in the layout's order
+    /// (the result's own axes: a selection keeps its rows, the
+    /// amplitude-basis anchors are `amplitude-<t>`); empty for an ordinary
+    /// result.
+    pub helicity_ids: Vec<String>,
+    pub color_ids: Vec<String>,
     pub diagnostics_json: String,
     /// Double-double and arbitrary-precision evaluations: the exact values
     /// (the Python API's `Decimal` results) as decimal literals, in the
@@ -244,6 +254,121 @@ impl Poles {
     }
 }
 
+/// The selection of an evaluation ([`Runtime::evaluate_selected`]; m-lit
+/// lit-sdk-b, the USER's F1 ruling: the tree-level selectors at parity).
+/// Global selectors are string IDs, per-point selectors zero-based indices
+/// (one per point); global and per-point selectors are mutually exclusive
+/// on the same axis, as the tree C ABI's `rusticol_runtime_evaluate_selected_f64`.
+/// A loop-induced process serves helicity selection (the Python API's
+/// `helicities=`: the runtime's `h<i>` IDs or the tree engine's
+/// `h:<values in leg order>`) and, for a resolved evaluation, the colour
+/// resolution (`color_resolution=`: "contracted", the default, or
+/// "amplitude-basis"); it has no colour flows (full colour only, RULED Q8).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Selection {
+    /// Global helicity IDs (None or empty: every row).
+    pub helicities: Option<Vec<String>>,
+    /// Global colour-flow IDs or ordinals (None or empty: every flow).
+    pub color_flows: Option<Vec<String>>,
+    /// Per point its zero-based helicity row (ordinary evaluations).
+    pub helicity_by_point: Option<Vec<u32>>,
+    /// Per point its zero-based colour flow (ordinary evaluations).
+    pub color_flow_by_point: Option<Vec<u32>>,
+    /// The colour axis of a resolved evaluation (None: "contracted").
+    pub color_resolution: Option<String>,
+}
+
+impl Selection {
+    fn helicities(&self) -> Option<&[String]> {
+        self.helicities.as_deref().filter(|ids| !ids.is_empty())
+    }
+    fn colour_selected(&self) -> bool {
+        self.color_flows.as_ref().is_some_and(|ids| !ids.is_empty())
+            || self.color_flow_by_point.is_some()
+    }
+    fn selects(&self) -> bool {
+        self.helicities().is_some() || self.helicity_by_point.is_some() || self.colour_selected()
+    }
+}
+
+/// The Python API's refusal of colour flows on a loop-induced process
+/// (`V2InducedObservablesRuntime._require_selection`).
+const NO_COLOUR_FLOWS: &str = "a loop-induced process is evaluated at full colour only and \
+    has no colour flows to select; select helicity rows (helicities=...) or resolve the \
+    amplitude-basis anchors (evaluate_resolved(color_resolution='amplitude-basis'))";
+
+/// The Python API's refusal of a colour resolution on a Born-interfered
+/// process (`V2ObservablesRuntime._resolution`).
+const BORN_RESOLUTION: &str = "color_resolution selects the colour axis of a loop-induced \
+    process's resolved output; a Born-interfered virtual resolves its colour by its accuracy";
+
+/// A Born-interfered process's leading-colour selection is the Python
+/// API's (the native SDKs serve the loop-induced selections; m-lit
+/// lit-sdk-b).
+const BORN_SELECTION: &str = "the native SDKs select helicity rows of loop-induced \
+    processes; a Born-interfered process's leading-colour helicity and colour-flow \
+    selection is served by the Python API (Runtime.evaluate(helicities=..., \
+    color_flows=...))";
+
+/// Python's `repr` of a string (the quotes of its messages).
+fn python_repr(text: &str) -> String {
+    let quote = if text.contains('\'') && !text.contains('"') {
+        '"'
+    } else {
+        '\''
+    };
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push(quote);
+    for c in text.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c == quote => {
+                out.push('\\');
+                out.push(c);
+            }
+            c => out.push(c),
+        }
+    }
+    out.push(quote);
+    out
+}
+
+/// The tree engine's ID of a helicity row (`selection.helicity_id`:
+/// `h:` and the helicities in leg order, signed).
+fn tree_helicity_id(row: &[(usize, i32)]) -> String {
+    let mut row = row.to_vec();
+    row.sort();
+    let values: Vec<String> = row.iter().map(|(_, h)| format!("{h:+}")).collect();
+    format!("h:{}", values.join(","))
+}
+
+/// The helicity rows (indices, sorted, each once) of global helicity IDs
+/// (`selection.Catalogue.resolve`): the runtime's `h<i>` or the tree
+/// engine's `h:<values in leg order>`, surrounding whitespace ignored; an
+/// unknown ID is refused in the Python API's words (typed `Selector`).
+fn helicity_rows(rows: &[Vec<(usize, i32)>], ids: &[String]) -> RusticolResult<Vec<usize>> {
+    let mut index: BTreeMap<String, usize> = BTreeMap::new();
+    for (k, row) in rows.iter().enumerate() {
+        index.insert(tree_helicity_id(row), k);
+        index.insert(format!("h{k}"), k);
+    }
+    let mut kept = BTreeSet::new();
+    for name in ids {
+        let row = index.get(name.trim()).ok_or_else(|| {
+            RusticolError::selector(format!(
+                "unknown helicity selector {}; choose a helicity ID of the process \
+                 (h:<values in leg order>)",
+                python_repr(name)
+            ))
+        })?;
+        kept.insert(*row);
+    }
+    Ok(kept.into_iter().collect())
+}
+
 pub struct Runtime {
     engine: Engine,
     shape: Shape,
@@ -271,6 +396,9 @@ struct Observables {
     rows: Vec<Vec<(usize, i32)>>,
     colour_ids: Vec<String>,
     born_orders: usize,
+    /// A loop-induced process's amplitude-basis size (its anchors); 0 for
+    /// a Born-interfered one.
+    anchors: usize,
 }
 
 impl Runtime {
@@ -329,6 +457,7 @@ impl Runtime {
                         .collect(),
                     colour_ids,
                     born_orders: native.column_born_axis()?.len(),
+                    anchors: if native.loop_induced() { basis } else { 0 },
                 },
                 native.correlation_histories()?,
                 native.spin_correlation_classes()?,
@@ -512,6 +641,21 @@ impl Runtime {
                 Some(reason.clone()),
             ),
         };
+        // A loop-induced process's resolved colour axes by colour resolution
+        // and its helicity selection (`Runtime::evaluate_selected`).
+        let induced = resolved && native.loop_induced();
+        let colour_resolutions = match &self.observables {
+            Ok(axes) if induced => {
+                let mut found = serde_json::Map::new();
+                found.insert(CONTRACTED.into(), serde_json::json!(axes.colour_ids));
+                found.insert(
+                    AMPLITUDE_BASIS.into(),
+                    serde_json::json!((0..axes.anchors).map(anchor_id).collect::<Vec<_>>()),
+                );
+                Some(serde_json::Value::Object(found))
+            }
+            _ => None,
+        };
         let served: serde_json::Map<String, serde_json::Value> = reduction_policy::served()
             .into_iter()
             .map(|(name, carriers)| (name, serde_json::json!(carriers)))
@@ -566,6 +710,8 @@ impl Runtime {
             "helicity_rows": rows,
             "helicity_ids": (0..rows.len()).map(|i| format!("h{i}")).collect::<Vec<_>>(),
             "resolved_color_ids": colour_ids,
+            "color_resolutions": colour_resolutions,
+            "helicity_selection": induced,
             "observables_unavailable": unavailable,
             "color_accuracy":metadata.color_accuracy,
             "color_contraction":metadata.color_contraction,
@@ -675,6 +821,215 @@ impl Runtime {
             },
         )
     }
+    /// Whether the process is loop-induced (|A_loop|^2, no Born).
+    pub fn loop_induced(&self) -> bool {
+        let Engine::V4(native) = &self.engine;
+        native.loop_induced()
+    }
+
+    /// One evaluation with a selection ([`Selection`]; m-lit lit-sdk-b):
+    /// the Python API's `evaluate(helicities=...)` (`resolved` false: per
+    /// point the sum over the selected helicity rows of |A(h)|^2/avg with
+    /// the total's average, RULED Q39; with `helicity_by_point` each point's
+    /// own row, its value that of `evaluate(helicities=[that row's ID])` on
+    /// that point) and `evaluate_resolved(helicities=...,
+    /// color_resolution=...)` (`resolved` true: the selected rows, each with
+    /// its colour-contracted value or its amplitude-basis anchors) of a
+    /// loop-induced process, through the one Rust path the Python API's
+    /// binary64 path runs: only the selected rows are dressed (the
+    /// executor's row liveness). Without any selector and colour resolution
+    /// this is [`Runtime::evaluate`]. Refused (nothing evaluated): colour
+    /// flows of a loop-induced process (full colour only, RULED Q8) and an
+    /// unknown colour resolution, in the Python API's words (typed
+    /// `Compatibility`); an unknown helicity ID (the Python API's words) or
+    /// row index, per-point selectors of a resolved evaluation and the
+    /// mutually exclusive axes (typed `Selector` / `InvalidArgument`); a
+    /// colour resolution of a Born-interfered process (the Python API's
+    /// words) and its selections (at NLC and full colour the Python API's
+    /// words; its leading-colour selection is the Python API's).
+    #[allow(clippy::too_many_arguments)]
+    pub fn evaluate_selected(
+        &mut self,
+        momenta: &[f64],
+        point_ids: &[u64],
+        scales: &[f64],
+        resolved: bool,
+        strategy: Option<&str>,
+        selection: &Selection,
+    ) -> RusticolResult<Evaluation> {
+        let exact_momenta = momenta
+            .iter()
+            .map(|&v| exact_double(v))
+            .collect::<RusticolResult<_>>()?;
+        let exact_scales = scales
+            .iter()
+            .map(|&v| exact_double(v))
+            .collect::<RusticolResult<Vec<_>>>()?;
+        self.evaluate_selected_decimal(
+            exact_momenta,
+            point_ids.to_vec(),
+            exact_scales,
+            resolved,
+            strategy,
+            selection,
+        )
+    }
+
+    /// [`Runtime::evaluate_selected`] of exact decimal inputs.
+    pub fn evaluate_selected_decimal(
+        &mut self,
+        momenta: Vec<String>,
+        point_ids: Vec<u64>,
+        scales: Vec<String>,
+        resolved: bool,
+        strategy: Option<&str>,
+        selection: &Selection,
+    ) -> RusticolResult<Evaluation> {
+        let points = point_ids.len();
+        for (name, by_point) in [
+            ("helicity_by_point", &selection.helicity_by_point),
+            ("color_flow_by_point", &selection.color_flow_by_point),
+        ] {
+            if let Some(by_point) = by_point
+                && by_point.len() != points
+            {
+                return Err(invalid(format!(
+                    "{name} has length {}, expected {points} (one selector per point)",
+                    by_point.len()
+                )));
+            }
+        }
+        if selection.helicities().is_some() && selection.helicity_by_point.is_some() {
+            return Err(invalid(
+                "helicity ids and helicity_by_point are mutually exclusive",
+            ));
+        }
+        if selection.color_flows.as_ref().is_some_and(|ids| !ids.is_empty())
+            && selection.color_flow_by_point.is_some()
+        {
+            return Err(invalid(
+                "color ids and color_flow_by_point are mutually exclusive",
+            ));
+        }
+        if !resolved && selection.color_resolution.is_some() {
+            return Err(invalid(
+                "color_resolution selects the colour axis of a resolved evaluation",
+            ));
+        }
+        if !self.loop_induced() {
+            if selection.color_resolution.is_some() {
+                return Err(RusticolError::compatibility(BORN_RESOLUTION));
+            }
+            if selection.selects() {
+                let Engine::V4(native) = &self.engine;
+                let accuracy = native.metadata().color_accuracy.clone();
+                if accuracy != "lc" {
+                    let name = match accuracy.as_str() {
+                        "nlc" => "next-to-leading",
+                        other => other,
+                    };
+                    let instead = if resolved {
+                        "evaluate_resolved without selectors returns every helicity row"
+                    } else {
+                        "use evaluate_resolved for per-helicity outputs"
+                    };
+                    return Err(RusticolError::compatibility(format!(
+                        "v2 virtual runtimes evaluate every helicity and colour at {name} \
+                         colour; helicity and colour-flow selection is available at leading \
+                         colour (color.accuracy='lc'); {instead}"
+                    )));
+                }
+                return Err(RusticolError::compatibility(BORN_SELECTION));
+            }
+            return self.evaluate_decimal(momenta, point_ids, scales, resolved, strategy);
+        }
+        // A loop-induced process: the Python API's order (the colour
+        // resolution, then the colour flows, then the helicity IDs).
+        let resolution = match selection.color_resolution.as_deref() {
+            None => Resolution::Contracted,
+            Some(name) => Resolution::parse(name).ok_or_else(|| {
+                RusticolError::compatibility(format!(
+                    "unknown loop-induced colour resolution {}; choose one of [{}, {}]",
+                    python_repr(name),
+                    python_repr(CONTRACTED),
+                    python_repr(AMPLITUDE_BASIS)
+                ))
+            })?,
+        };
+        if selection.colour_selected() {
+            return Err(RusticolError::compatibility(NO_COLOUR_FLOWS));
+        }
+        if resolved && selection.helicity_by_point.is_some() {
+            return Err(invalid(
+                "helicity_by_point selects ordinary evaluations; a resolved evaluation \
+                 takes global helicity ids",
+            ));
+        }
+        let axes = self.observables.clone().map_err(|reason| {
+            RusticolError::compatibility(format!("{NO_OBSERVABLES}: {reason}"))
+        })?;
+        let rows = axes.rows.len();
+        let kept = match selection.helicities() {
+            Some(ids) => Some(helicity_rows(&axes.rows, ids)?),
+            None => None,
+        };
+        if let Some(by_point) = &selection.helicity_by_point
+            && let Some((point, &row)) = by_point
+                .iter()
+                .enumerate()
+                .find(|(_, row)| **row as usize >= rows)
+        {
+            return Err(RusticolError::selector(format!(
+                "helicity_by_point[{point}] = {row} is out of range; choose a zero-based \
+                 helicity row below {rows}"
+            )));
+        }
+        if !resolved && kept.is_none() && selection.helicity_by_point.is_none() {
+            return self.evaluate_decimal(momenta, point_ids, scales, false, strategy);
+        }
+        let inputs = self.prepare_inputs(momenta, point_ids, scales)?;
+        if let Some(strategy) = strategy {
+            v4_r2_strategy(strategy)?;
+        }
+        let reduction = self.reduce_on(reduction_policy::RESOLVED)?;
+        let monitoring = Monitoring {
+            checks: None,
+            requested: self.checks.enabled(),
+        };
+        let (shape, poles, arithmetic) = (self.shape, self.poles, self.arithmetic);
+        let Engine::V4(native) = &mut self.engine;
+        let request = InducedRequest {
+            shape,
+            poles,
+            arithmetic,
+            reduction: &reduction,
+            stability: monitoring.not_selected(),
+        };
+        if resolved {
+            let kept_rows: Vec<usize> = match &kept {
+                Some(kept) => (0..rows).filter(|row| kept.contains(row)).collect(),
+                None => (0..rows).collect(),
+            };
+            let components: Vec<String> = match resolution {
+                Resolution::Contracted => axes.colour_ids.clone(),
+                Resolution::AmplitudeBasis => (0..axes.anchors).map(anchor_id).collect(),
+            };
+            let call = InducedCall::Resolved {
+                resolution,
+                rows: kept.is_some().then(|| kept_rows.clone()),
+            };
+            return Evaluation::induced_resolved(
+                native, inputs, &call, &kept_rows, components, request,
+            );
+        }
+        let by_point: Vec<Vec<usize>> = match (&kept, &selection.helicity_by_point) {
+            (Some(kept), _) => vec![kept.clone(); inputs.point_ids.len()],
+            (None, Some(by_point)) => by_point.iter().map(|&row| vec![row as usize]).collect(),
+            (None, None) => unreachable!("an unselected ordinary evaluation returned above"),
+        };
+        Evaluation::induced_selected(native, inputs, &by_point, request)
+    }
+
     /// The cross-backend check's backend serves the call (the Python API's
     /// `V2VirtualRuntime._reduction_choices`): the other backend, resolved as
     /// an explicit request at the call's carrier and route, else refused
@@ -1022,6 +1377,8 @@ impl Evaluation {
             virtual_values: virtual_values.values.clone(),
             shape,
             resolved: false,
+            helicity_ids: Vec::new(),
+            color_ids: Vec::new(),
             diagnostics_json,
             decimal: decimal_values(arithmetic, born, virtual_values),
         })
@@ -1129,10 +1486,184 @@ impl Evaluation {
                 ..shape
             },
             resolved: true,
+            helicity_ids: (0..helicities).map(|i| format!("h{i}")).collect(),
+            color_ids: axes.colour_ids.clone(),
             diagnostics_json,
             decimal: decimal_values(arithmetic, born, virtual_values),
         })
     }
+
+    /// A loop-induced resolved call with its selection
+    /// ([`Runtime::evaluate_selected`]): the outputs of `call`
+    /// (`V2Runtime::evaluate_induced_call`, row-major over `rows`, then the
+    /// `components`) in the layout point/order/helicity/colour/(epsilon),
+    /// no Born.
+    fn induced_resolved(
+        native: &mut V2Runtime,
+        inputs: LoopInputs,
+        call: &InducedCall,
+        rows: &[usize],
+        components: Vec<String>,
+        request: InducedRequest<'_>,
+    ) -> RusticolResult<Self> {
+        let shape = request.shape;
+        let (momenta, scales) = exact_inputs(&inputs, shape.external_count)?;
+        let keys: Vec<(usize, usize)> = (0..rows.len())
+            .flat_map(|row| (0..components.len()).map(move |colour| (row, colour)))
+            .collect();
+        let axes = Observables {
+            rows: vec![Vec::new(); rows.len()],
+            colour_ids: components,
+            born_orders: 0,
+            anchors: 0,
+        };
+        let mut evaluation = match request.arithmetic {
+            Arithmetic::Double => {
+                let points = native.evaluate_induced_call(call, &momenta, &scales, request.poles.v2())?;
+                Self::resolved(
+                    inputs,
+                    Shape {
+                        helicities: rows.len(),
+                        virtual_color_components: axes.colour_ids.len(),
+                        ..shape
+                    },
+                    request.poles,
+                    request.arithmetic,
+                    &axes,
+                    &keys,
+                    points,
+                    request.reduction,
+                    request.stability,
+                )?
+            }
+            arithmetic => {
+                let points = native.evaluate_induced_call_extended(
+                    call,
+                    &momenta,
+                    &scales,
+                    request.poles.v2(),
+                    arithmetic.v2(),
+                )?;
+                Self::resolved(
+                    inputs,
+                    Shape {
+                        helicities: rows.len(),
+                        virtual_color_components: axes.colour_ids.len(),
+                        ..shape
+                    },
+                    request.poles,
+                    request.arithmetic,
+                    &axes,
+                    &keys,
+                    points,
+                    request.reduction,
+                    request.stability,
+                )?
+            }
+        };
+        evaluation.helicity_ids = rows.iter().map(|row| format!("h{row}")).collect();
+        Ok(evaluation)
+    }
+
+    /// A loop-induced helicity selection ([`Runtime::evaluate_selected`]):
+    /// per point the sum over its kept rows (`by_point`), in the ordinary
+    /// layout. Points sharing their rows are evaluated in one batch (each
+    /// point's values are those of its own batch: the executor and the tree
+    /// fill run every lane alone), in their order.
+    fn induced_selected(
+        native: &mut V2Runtime,
+        inputs: LoopInputs,
+        by_point: &[Vec<usize>],
+        request: InducedRequest<'_>,
+    ) -> RusticolResult<Self> {
+        let shape = request.shape;
+        let (momenta, scales) = exact_inputs(&inputs, shape.external_count)?;
+        let mut groups: Vec<(&Vec<usize>, Vec<usize>)> = Vec::new();
+        for (point, rows) in by_point.iter().enumerate() {
+            match groups.iter_mut().find(|(kept, _)| *kept == rows) {
+                Some((_, points)) => points.push(point),
+                None => groups.push((rows, vec![point])),
+            }
+        }
+        fn summed<N: Clone>(point: ColumnPoint<N>) -> V2Point<N> {
+            point.map(|columns| {
+                let column = columns.into_iter().next().expect("one selection output");
+                (
+                    Vec::new(),
+                    column
+                        .virtual_values
+                        .into_iter()
+                        .map(|laurent| laurent.into_iter().map(|z| z.re).collect())
+                        .collect(),
+                )
+            })
+        }
+        let ids = |rows: &[usize]| -> Vec<String> { rows.iter().map(|r| format!("h{r}")).collect() };
+        macro_rules! run {
+            ($evaluate:expr) => {{
+                let mut points: Vec<Option<_>> = (0..by_point.len()).map(|_| None).collect();
+                for (rows, members) in &groups {
+                    let call = InducedCall::Selection {
+                        rows: (*rows).clone(),
+                    };
+                    let part_momenta: Vec<Vec<Rational>> =
+                        members.iter().map(|&p| momenta[p].clone()).collect();
+                    let part_scales: Vec<Rational> =
+                        members.iter().map(|&p| scales[p].clone()).collect();
+                    let found = $evaluate(&call, &part_momenta, &part_scales)?;
+                    for (&point, value) in members.iter().zip(found) {
+                        points[point] = Some(summed(value));
+                    }
+                }
+                let points: Vec<_> = points
+                    .into_iter()
+                    .map(|point| point.expect("every point is in a group"))
+                    .collect();
+                let mut evaluation = Self::ordinary(
+                    inputs,
+                    shape,
+                    request.poles,
+                    request.arithmetic,
+                    points,
+                    request.reduction,
+                    request.stability.clone(),
+                )?;
+                evaluation.diagnostics_json = with_selection(
+                    &evaluation.diagnostics_json,
+                    &by_point.iter().map(|rows| ids(rows)).collect::<Vec<_>>(),
+                )?;
+                Ok(evaluation)
+            }};
+        }
+        let poles = request.poles.v2();
+        match request.arithmetic {
+            Arithmetic::Double => {
+                run!(|call: &InducedCall, m: &[Vec<Rational>], sc: &[Rational]| native
+                    .evaluate_induced_call(call, m, sc, poles))
+            }
+            arithmetic => {
+                run!(|call: &InducedCall, m: &[Vec<Rational>], sc: &[Rational]| native
+                    .evaluate_induced_call_extended(call, m, sc, poles, arithmetic.v2()))
+            }
+        }
+    }
+}
+
+/// The shared inputs of a loop-induced call's assembly.
+struct InducedRequest<'a> {
+    shape: Shape,
+    poles: Poles,
+    arithmetic: Arithmetic,
+    reduction: &'a Choice,
+    stability: serde_json::Value,
+}
+
+/// The diagnostics record with the selection's helicity IDs per point
+/// (`"selection": {"helicity_ids": [[...] per point]}`).
+fn with_selection(diagnostics: &str, ids: &[Vec<String>]) -> RusticolResult<String> {
+    let mut record: serde_json::Value = serde_json::from_str(diagnostics).map_err(serialization)?;
+    record["selection"] = serde_json::json!({ "helicity_ids": ids });
+    serde_json::to_string(&record).map_err(serialization)
 }
 
 impl Evaluation {
@@ -1154,6 +1685,9 @@ const BINARY64_MONITORING: &str = "the native SDKs monitor binary64 evaluations 
     API estimates every carrier)";
 const ORDINARY_MONITORING: &str = "the native SDKs monitor the ordinary evaluations (the \
     Python API estimates the resolved and correlated outputs)";
+const SELECTION_MONITORING: &str = "the native SDKs monitor the ordinary evaluations without \
+    a selection (the Python API estimates the helicity selections and the resolved and \
+    correlated outputs)";
 
 impl Monitoring<'_> {
     fn record(&self, reason: &str) -> serde_json::Value {
@@ -1168,6 +1702,9 @@ impl Monitoring<'_> {
     }
     fn not_run_resolved(&self) -> serde_json::Value {
         self.record(ORDINARY_MONITORING)
+    }
+    fn not_selected(&self) -> serde_json::Value {
+        self.record(SELECTION_MONITORING)
     }
 }
 
