@@ -20,7 +20,8 @@ cosa = 1, top vetoed, QCD corrections, model R2/UV, full colour, MU_R = 125):
   further: NinjaRS serves every family. L6 on the public API (the summed
   virtual, every sector and Laurent coefficient; ``tools/loop_v2_observables_
   backends.py``'s comparison: |N - T| <= 10 max(E_N, E_T) in binary64, E from
-  three generic rotations and the rescaled re-test).
+  three generic rotations and the rescaled re-test; in double-double within
+  1e-24 of the sector's largest coefficient).
 * ``x0x0x0``: g g > x0 x0 x0, three insertions (QNP = 3): its pentagons reach
   rank N+3, so the artifact is TIR-only (declared ``reductions =
   ["tirust"]``):
@@ -248,6 +249,7 @@ def public_agreement(loaded, pts, scales) -> dict:
         if t is not None:
             rows += [{"point": p, **row} for row in _compare(n, t, True)]
     differ = any(row["difference"] > 0 for row in rows)
+    double_double = double_double_agreement(loaded, pts, scales)
     return {
         "rule": "L6: |N - T| <= 10 max(E_N, E_T), E from three generic rotations "
         "and the rescaled re-test (binary64)",
@@ -256,11 +258,40 @@ def public_agreement(loaded, pts, scales) -> dict:
         "passed": bool(rows)
         and all(row["passed"] for row in rows)
         and differ
-        and not failed["ninjars"],
+        and not failed["ninjars"]
+        and double_double["passed"],
         "worst": max(
             (r["difference"] / r["bound"] for r in rows if r["bound"]), default=0.0
         ),
         "backends_differ": differ,
+        "double_double": double_double,
+    }
+
+
+def double_double_agreement(loaded, pts, scales) -> dict:
+    """L6 in double-double on the public API's summed virtual (``x0x0``):
+    |N - T| <= 1e-24 of the sector's largest coefficient, no checks
+    (``tools/loop_v2_observables_backends.py``'s extended-carrier rule)."""
+
+    from loop_v2_observables_backends import _compare, _laurents
+
+    arms = {}
+    for backend in ("ninjars", "tirust"):
+        result = loaded.evaluate(
+            pts, mu_r2=scales, arithmetic="double-double", reduction=backend
+        )
+        assert all(lane.reduction.effective == backend for lane in result.diagnostics)
+        arms[backend] = [_laurents(values, None) for values in result.values]
+    rows = []
+    for p, (n, t) in enumerate(zip(arms["ninjars"], arms["tirust"], strict=True)):
+        rows += [{"point": p, **row} for row in _compare(n, t, False)]
+    return {
+        "rule": "L6: |N - T| <= 1e-24 max |coefficient| of the sector (double-double)",
+        "rows": len(rows),
+        "passed": bool(rows) and all(row["passed"] for row in rows),
+        "worst": max(
+            (r["difference"] / r["bound"] for r in rows if r["bound"]), default=0.0
+        ),
     }
 
 
