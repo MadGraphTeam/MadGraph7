@@ -54,8 +54,10 @@ two backends' loop-induced agreement is established). `pyamplicol self-test` als
 evaluates a shipped loop-induced artifact (`g g > h`) against MadLoop. The
 native SDKs (C, C++, Fortran, Rust, UMAMI) open loop-induced processes directly
 with empty Born counts and the Python API's values, and take the reduction
-backend per call (`rusticol_virtual_set_reduction`); their loop-induced
-resolved and correlated outputs are not served yet.
+backend per call (`rusticol_virtual_set_reduction`); they also serve the
+helicity-resolved and the colour- and spin-correlated outputs (the correlated
+history `"born"` is |A|^2 itself), with the Python API's values; native
+stability estimates are not served yet.
 
 ## 1.0.2 release
 

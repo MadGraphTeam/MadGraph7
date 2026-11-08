@@ -46,6 +46,10 @@ use symbolica::evaluate::EvaluationDomain;
 
 /// A polarisation vector: four complex `Decimal` components.
 pub type Wave = [(Decimal, Decimal); 4];
+/// Per 0-based spin leg its carrier coefficient per helicity.
+pub type Coefficients<N> = BTreeMap<usize, Vec<(i32, C<N>)>>;
+/// A metric's carrier forms: H and, for a directed history, K.
+type Form<N> = (Vec<C<N>>, Option<Vec<C<N>>>);
 
 /// (H, K) with M = H + i K (`induced_observables.hermitian_parts`): H =
 /// (M + M^dag)/2, K = (M - M^dag)/2i, exact, row-major; K is None when M is
@@ -398,7 +402,7 @@ pub fn point_coefficients<A: CarrierPair>(
     point: &[Rational],
     spin: &BTreeMap<usize, [(Rational, Rational); 4]>,
     working_digits: u32,
-) -> RusticolResult<BTreeMap<usize, Vec<(i32, C<A::N>)>>> {
+) -> RusticolResult<Coefficients<A::N>> {
     let ctx = spin_context(working_digits);
     let mut out = BTreeMap::new();
     for (&leg, vector) in spin {
@@ -452,7 +456,7 @@ impl CarrierPair for DecimalArith {
 pub fn spin_amplitudes<A: Arith>(
     arith: &A,
     amplitudes: &Vectors<A::N>,
-    coefficients: &BTreeMap<usize, Vec<(i32, C<A::N>)>>,
+    coefficients: &Coefficients<A::N>,
     width: usize,
     size: usize,
 ) -> Vectors<A::N> {
@@ -663,7 +667,7 @@ struct Output {
 
 /// The carrier forms of a call's outputs (`Forms`): per metric (H, K).
 struct Forms<N> {
-    found: BTreeMap<String, (Vec<C<N>>, Option<Vec<C<N>>>)>,
+    found: BTreeMap<String, Form<N>>,
 }
 
 impl<N: Clone> Forms<N> {
@@ -693,7 +697,7 @@ impl<N: Clone> Forms<N> {
         Ok(Self { found })
     }
 
-    fn of(&self, metric: &Metric) -> &(Vec<C<N>>, Option<Vec<C<N>>>) {
+    fn of(&self, metric: &Metric) -> &Form<N> {
         match metric {
             Metric::Inclusive => &self.found[INCLUSIVE],
             Metric::History(id) => &self.found[id],

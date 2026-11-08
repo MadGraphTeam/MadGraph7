@@ -393,7 +393,7 @@ impl DecimalContext {
         };
         let mut exponent = exponent + excess;
         if up {
-            kept = kept + Integer::one();
+            kept += Integer::one();
             if kept == ten(self.digits as u64) {
                 kept = ten(u64::from(self.digits) - 1);
                 exponent += 1;
