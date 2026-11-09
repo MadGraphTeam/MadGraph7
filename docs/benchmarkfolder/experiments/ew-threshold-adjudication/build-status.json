@@ -1,0 +1,11 @@
+{
+  "command": [
+    "make",
+    "-f",
+    "trace.mk",
+    "SHELL=/home/external/.nix-profile/bin/bash",
+    "-j1",
+    "trace-build"
+  ],
+  "returncode": 0
+}

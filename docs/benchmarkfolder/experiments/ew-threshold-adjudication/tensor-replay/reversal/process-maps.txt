@@ -1,0 +1,73 @@
+5e00dd86d000-5e00dd938000 r--p 00000000 00:2c 70126013                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-threshold-tensor-replay-reversal/replay
+5e00dd938000-5e00e0dd1000 r-xp 000cb000 00:2c 70126013                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-threshold-tensor-replay-reversal/replay
+5e00e0dd1000-5e00e14f1000 r--p 03564000 00:2c 70126013                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-threshold-tensor-replay-reversal/replay
+5e00e14f1000-5e00e158b000 r--p 03c83000 00:2c 70126013                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-threshold-tensor-replay-reversal/replay
+5e00e158b000-5e00e1595000 rw-p 03d1d000 00:2c 70126013                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-threshold-tensor-replay-reversal/replay
+5e00e1595000-5e00e1598000 rw-p 00000000 00:00 0 
+5e0119bd9000-5e0119c3c000 rw-p 00000000 00:00 0                          [heap]
+755db63f6000-755db63fb000 rw-p 00000000 00:00 0 
+755db63fb000-755db63fe000 r--p 00000000 00:21 205221                     /nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0
+755db63fe000-755db642a000 r-xp 00003000 00:21 205221                     /nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0
+755db642a000-755db6441000 r--p 0002f000 00:21 205221                     /nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0
+755db6441000-755db6442000 r--p 00045000 00:21 205221                     /nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0
+755db6442000-755db6443000 rw-p 00046000 00:21 205221                     /nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0
+755db6443000-755db6445000 rw-p 00000000 00:00 0 
+755db6445000-755db64a7000 r--p 00000000 00:2c 70849586                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-threshold-tensor-replay-runtime/libmadloop_tirust.so
+755db64a7000-755db9c4f000 r-xp 00062000 00:2c 70849586                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-threshold-tensor-replay-runtime/libmadloop_tirust.so
+755db9c4f000-755dba1cc000 r--p 0380a000 00:2c 70849586                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-threshold-tensor-replay-runtime/libmadloop_tirust.so
+755dba1cc000-755dba219000 r--p 03d87000 00:2c 70849586                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-threshold-tensor-replay-runtime/libmadloop_tirust.so
+755dba219000-755dba21e000 rw-p 03dd4000 00:2c 70849586                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-threshold-tensor-replay-runtime/libmadloop_tirust.so
+755dba21e000-755dba21f000 rw-p 00000000 00:00 0 
+755dba21f000-755dba247000 r--p 00000000 00:21 196673                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6
+755dba247000-755dba3c9000 r-xp 00028000 00:21 196673                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6
+755dba3c9000-755dba418000 r--p 001aa000 00:21 196673                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6
+755dba418000-755dba41c000 r--p 001f8000 00:21 196673                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6
+755dba41c000-755dba41e000 rw-p 001fc000 00:21 196673                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6
+755dba41e000-755dba42b000 rw-p 00000000 00:00 0 
+755dba42b000-755dba43b000 r--p 00000000 00:21 196680                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6
+755dba43b000-755dba4b7000 r-xp 00010000 00:21 196680                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6
+755dba4b7000-755dba511000 r--p 0008c000 00:21 196680                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6
+755dba511000-755dba512000 r--p 000e5000 00:21 196680                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6
+755dba512000-755dba513000 rw-p 000e6000 00:21 196680                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6
+755dba513000-755dba537000 r--p 00000000 00:21 1448349                    /nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0
+755dba537000-755dba831000 r-xp 00024000 00:21 1448349                    /nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0
+755dba831000-755dba868000 r--p 0031e000 00:21 1448349                    /nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0
+755dba868000-755dba86a000 r--p 00355000 00:21 1448349                    /nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0
+755dba86a000-755dba86b000 rw-p 00357000 00:21 1448349                    /nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0
+755dba86b000-755dba86c000 r--p 00000000 00:21 196695                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0
+755dba86c000-755dba86d000 r-xp 00001000 00:21 196695                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0
+755dba86d000-755dba86e000 r--p 00002000 00:21 196695                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0
+755dba86e000-755dba86f000 r--p 00002000 00:21 196695                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0
+755dba86f000-755dba870000 rw-p 00003000 00:21 196695                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0
+755dba870000-755dba872000 rw-p 00000000 00:00 0 
+755dba872000-755dba873000 r--p 00000000 00:21 196699                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1
+755dba873000-755dba874000 r-xp 00001000 00:21 196699                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1
+755dba874000-755dba875000 r--p 00002000 00:21 196699                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1
+755dba875000-755dba876000 r--p 00002000 00:21 196699                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1
+755dba876000-755dba877000 rw-p 00003000 00:21 196699                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1
+755dba877000-755dba878000 r--p 00000000 00:21 196703                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1
+755dba878000-755dba879000 r-xp 00001000 00:21 196703                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1
+755dba879000-755dba87a000 r--p 00002000 00:21 196703                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1
+755dba87a000-755dba87b000 r--p 00002000 00:21 196703                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1
+755dba87b000-755dba87c000 rw-p 00003000 00:21 196703                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1
+755dba87c000-755dba87d000 r--p 00000000 00:21 196678                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2
+755dba87d000-755dba87e000 r-xp 00001000 00:21 196678                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2
+755dba87e000-755dba87f000 r--p 00002000 00:21 196678                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2
+755dba87f000-755dba880000 r--p 00002000 00:21 196678                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2
+755dba880000-755dba881000 rw-p 00003000 00:21 196678                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2
+755dba881000-755dba885000 r--p 00000000 00:21 183818                     /nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1
+755dba885000-755dba8a8000 r-xp 00004000 00:21 183818                     /nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1
+755dba8a8000-755dba8ac000 r--p 00027000 00:21 183818                     /nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1
+755dba8ac000-755dba8ad000 r--p 0002b000 00:21 183818                     /nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1
+755dba8ad000-755dba8ae000 rw-p 0002c000 00:21 183818                     /nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1
+755dba8ae000-755dba8b0000 rw-p 00000000 00:00 0 
+755dba8b0000-755dba8b4000 r--p 00000000 00:00 0                          [vvar]
+755dba8b4000-755dba8b6000 r--p 00000000 00:00 0                          [vvar_vclock]
+755dba8b6000-755dba8b8000 r-xp 00000000 00:00 0                          [vdso]
+755dba8b8000-755dba8b9000 r--p 00000000 00:21 196667                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2
+755dba8b9000-755dba8e3000 r-xp 00001000 00:21 196667                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2
+755dba8e3000-755dba8ed000 r--p 0002b000 00:21 196667                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2
+755dba8ed000-755dba8ef000 r--p 00035000 00:21 196667                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2
+755dba8ef000-755dba8f1000 rw-p 00037000 00:21 196667                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2
+7ffc12484000-7ffc124a7000 rwxp 00000000 00:00 0                          [stack]
+ffffffffff600000-ffffffffff601000 --xp 00000000 00:00 0                  [vsyscall]

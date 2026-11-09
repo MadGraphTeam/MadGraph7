@@ -1,0 +1,26 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 4655,
+      "sha256": "d61b80edc674a14aa3e2290b646ff8eeb3d4b78e5d81938a35e343ed88cb7842"
+    },
+    "audit.json": {
+      "bytes": 10918,
+      "sha256": "51849bda5f5e34e6609e35e0b885d825c2e8abf0b3918f55c73245e4d190c57c"
+    },
+    "audit.py": {
+      "bytes": 9821,
+      "sha256": "0e37cc8fb8925a1387e8d2c95268212af214e0049815146bbf0dd79f69ac28bb"
+    },
+    "diagnostic-512-source.patch": {
+      "bytes": 1524,
+      "sha256": "c9e647661f5b43a27768b31e7e514cafb5445cdcc079778f6f51cc191b923295"
+    },
+    "source-excerpts.md": {
+      "bytes": 34472,
+      "sha256": "f773a97b7498418c23bffb9e5521c8c178d1d661e5427cd953f7430a872492f2"
+    }
+  },
+  "schema": 1,
+  "scope": "Source-only audit and unexecuted private diagnostic recipe; no numerical qualification or production-policy change."
+}

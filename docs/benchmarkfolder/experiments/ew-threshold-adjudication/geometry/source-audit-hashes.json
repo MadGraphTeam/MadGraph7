@@ -1,0 +1,28 @@
+{
+  "scope": "Read-only source audit after geometry execution; no production source modifications.",
+  "sources": {
+    ".tirust-build/cargo-home/git/checkouts/ninjars-3842d69907c1a3a3/41a4c00/crates/ninjars-symbolica/src/integration.rs": "4e293d45e4ee42aea0d67c034c232347b2960848b5beeb26d6ae31fd08e20abf",
+    ".tirust-build/cargo-home/git/checkouts/ninjars-3842d69907c1a3a3/41a4c00/crates/ninjars-symbolica/src/masters.rs": "7ed7a2743289ce82132cf77915841c9663706ef623e41247be72cd218defad83",
+    ".tirust-build/cargo-home/git/checkouts/ninjars-3842d69907c1a3a3/41a4c00/crates/ninjars/src/amplitude.rs": "45842b03bbd54f73b1051d9d5f595fba15e87885fc869c33f31ea78ea7df62f8",
+    ".tirust-build/cargo-home/git/checkouts/oneloopmaster-1e046f4c0b16c2f9/5b71043/src/labelling.rs": "facda9ff876a0e720c72ceed453bca363308a9487cb0cf3cbee507c8c4f29cb4",
+    ".tirust-build/physical-stress/unchecked/ew_n3_epem_ttxa/candidate-9-qp-init-dp/Source/MODEL/lha_read.f": "319682ba82c7f585b6673f81256723719ef1fc3a5c78c5debd183cd4ba171cca",
+    ".tirust-build/physical-stress/unchecked/ew_n3_epem_ttxa/candidate-9-qp-init-dp/Source/MODEL/param_read.inc": "12ddee970e7400f12cc324d676196120b0fa6b71c13d56dfdf36aae0cac6b5da",
+    ".tirust-build/physical-stress/unchecked/ew_n3_epem_ttxa/candidate-9-qp-init-dp/SubProcesses/P0_epem_ttxa/CT_interface.f": "ac240d6ffc2f7e1a15a72e61a325a53d0acf776f65b9329e4e9518cd85f3da0a",
+    ".tirust-build/physical-stress/unchecked/ew_n3_epem_ttxa/candidate-9-qp-init-dp/SubProcesses/P0_epem_ttxa/TIRUST_interface.f": "e60570ec599263807165f2f289add2076a4c5b71b9e09fe0de83306e9ab2f7ff",
+    ".tirust-build/physical-stress/unchecked/ew_n3_epem_ttxa/candidate-9-qp-init-dp/SubProcesses/P0_epem_ttxa/improve_ps.f": "7ae30d4c3719d6f00a3306463b4c442bfef93d0a7976d1f72bc3d114842af1eb",
+    ".tirust-build/physical-stress/unchecked/ew_n3_epem_ttxa/candidate-9-qp-init-dp/SubProcesses/P0_epem_ttxa/loop_matrix.f": "e40430b9bb99f8abe8a91871be5949384fce51687fd7cf8e996c09a5375cf860",
+    ".tirust-build/physical-stress/unchecked/ew_n3_epem_ttxa/candidate-9-qp-init-dp/SubProcesses/P0_epem_ttxa/loop_num.f": "f35095a2bab6d2c70514874d5a2439b6939223215d4409b817d6c4496d9c5b94",
+    ".tirust-build/physical-stress/unchecked/ew_n3_epem_ttxa/candidate-9-qp-init-dp/SubProcesses/P0_epem_ttxa/mp_compute_loop_coefs.f": "7518213871f13f57fa2b666b8bf3b4e488392373e1bf74ecbafb0adad8a3bd8d",
+    "HEPTools/ninja/Ninja/src/mninja.F90": "dbcb7aad866a85d054900e2915289ea3bdc6e78c9896134f24e6f8c29493e4a5",
+    "HEPTools/ninja/Ninja/src/quadninja/types.hh": "92cc6bc5e4f05014a9abfdc11ae7e4580a3d6ad13a60983d63a637341dc1892f",
+    "HEPTools/ninja/Ninja/src/quadsources/avholo_interface.cc": "135bdef6b4170690d5067fea3c3e2dbf90b128eb308c133b243ad746eb245e34",
+    "HEPTools/ninja/Ninja/src/quadsources/avholo_wrapper.F90": "8cc485de04c0588b8a832e020e3daf29140c4ff9efae88c37b1629ab438e7e6f",
+    "HEPTools/ninja/Ninja/src/quadsources/ninja_wraps.cc": "10dfc38829ba6ddda4db730fcfa7de6f126d0dc2f3668d17a67d8c596bbdc579",
+    "HEPTools/ninjars/include/mninjars.f90": "9f20fb4280ba6d86a0323ce5bb4f4b358c15168166dbdb4e220e172952fbdbb7",
+    "HEPTools/oneloop/OneLOop-3.6/avh_olo.f90": "f3cd1a8a24a6ed0eeafad13dfb76db4d92b76a650557bffe1ece66f19ed0075f",
+    "Template/NLO/SubProcesses/fks_singular.f": "65c9ba67697b697deac3d626cb425ee0dbc747afba5abefbd0808a0a8fba26a7",
+    "vendor/CutTools/src/cts/cts_cutroutines.f90": "6dd0bb5247616d84114661c71c59e30a555e6c7af67c77b4ca35d3e1062ec49b",
+    "vendor/CutTools/src/cts/cts_cuttools.f90": "7c6cb8d037a93cfacb7ada5d54d078838ae6d26b3ef8ec2af52a00d7de3e8fab",
+    "vendor/ninjars/src/lib.rs": "567d984aabd8c94492653741fde71ec4f0ada0c7d8bbc6a48a8229b6de292443"
+  }
+}

@@ -1,0 +1,186 @@
+{
+  "conclusion": "At original scalar cutoff1e-6, QP denominator transport alone does not resolve the EW threshold discrepancy; retain the changed finite/single-pole failure.",
+  "evidence_sha256": {
+    "MadLoopParams.dat": "4a89d4ef01e6c15fa06317d965fd98464f868a727fd9d1ee10ef5b84332b87c9",
+    "README.md": "c64a35a7b81a13e465a96767512391181a48908ca48f544b3ff9f7515dcfe218",
+    "analyze.py": "9b02cfb4b0003bad2d6a34f73761848f74a223b3174804a23f4707e8f061f60f",
+    "build-status.json": "5c4d6a509647b6bdc739fe880294ad1da708c091bd0238dacdd7f72432ddacff",
+    "build.log": "581bba1d5df0c6364aa533cd01b30923793d1f3a18edc366461643c3edff4aa8",
+    "compilation.json": "c443949bdc444c8930c5dd339aa0ff7bc8cfe6f9b67d58eb99161bd83f9cd3ff",
+    "ct_transport.mk": "4ad6401af950a53594467d53cf9db8826f5ba5c29184bd455ac06367ddb7fcf9",
+    "dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "execution.json": "53b45a8fae7340bbe1754b7c79f3491136241202b29d84a578e1e39ba49fcfa8",
+    "ldd.txt": "6640e857e5dffaed5b1c12765eaf781dcaae5973f0bfd0a94c464ea672f2e323",
+    "output.log": "d5ffb00580ae44a4396e1d016c5a885edf90e160f339a124dd3c7e75b95b72d8",
+    "param_card.dat": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8",
+    "prepared.json": "6cf901e3443af027534d51f4d28276f4ba61b09d0b9baf3e0e3ddcd3e9402cfd",
+    "raw/command.json": "0b540767051269273427fe7b71a3520614998c443247b823cdee4b0ba2f83a44",
+    "raw/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "raw/timed_status.dat": "30b83418734aa7ee423a9f28a7f8a2aedd7f321aa0fddc651266bfa7f14f8d35",
+    "raw/timing.dat": "55156940bd9e6bc600163761a55f5fb533d6883e22076272e3d951b6cfe87348",
+    "raw/values.dat": "c8e1ad24be16de25b5a4d9707910adf74c3bcb08acd7fca89ba56c1d2c74cac0",
+    "run.py": "e69cdf3cf338fcd36cccfb77f687f64d3f1579ba85515d6312cbb642b0014410",
+    "selected.dat": "f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3",
+    "sources/CT_interface.f": "a037cf2ca40c4c9d682b995d9bdecd3e751c87b4f101112ae7141da1391588e4",
+    "sources/CT_interface.f.original": "ac240d6ffc2f7e1a15a72e61a325a53d0acf776f65b9329e4e9518cd85f3da0a",
+    "sources/CT_interface.f.patch": "4d183b9896c8cb76aadea73625e463b85f103e0042aa651dc452139d631fcd73",
+    "sources/cts_cutroutines_qpinput.f90": "32bb7912c18887591c8007a0163fe83fd07ee6205bf7c62fb9a51231b5f39a1d",
+    "sources/cts_cutroutines_qpinput.f90.original": "6dd0bb5247616d84114661c71c59e30a555e6c7af67c77b4ca35d3e1062ec49b",
+    "sources/cts_cutroutines_qpinput.f90.patch": "1dba2448750239afbdb21b289b8d961d16854331a19a7fec38843f1721295746",
+    "sources/tirust_benchmark_worker.py": "33c7b986798b468bdd0a5649283ce1ab707d16edc7373e6c8930d134f22d01ee",
+    "timed_status.dat": "30b83418734aa7ee423a9f28a7f8a2aedd7f321aa0fddc651266bfa7f14f8d35",
+    "values.dat": "c8e1ad24be16de25b5a4d9707910adf74c3bcb08acd7fca89ba56c1d2c74cac0"
+  },
+  "generated_dispatch_sites": 7,
+  "geometry_summary_sha256": "9d793d53419e5ffe7c34c3bcb5c603a84cc89533890d8a05d6fdc167da143c01",
+  "independent_pole_limit": "Uses returned DP Born and DP GAL coupling; not an independent QP Born certificate.",
+  "metric": "abs(a-b)/max(abs(a),abs(b)); zero-zero=0. Distinct from the campaign abs(a-b)/abs(a+b) metric.",
+  "original_DP_subroutine_bytes_preserved": 3777,
+  "results": [
+    {
+      "double_pole_relative_residual": "1.4747242992954899748408073894976365955137225595527356593043474742534969820818615E-15",
+      "historical_values": {
+        "1": {
+          "born": "1.83136852584749221E-7",
+          "double": "-4.39933585131251638E-10",
+          "finite": "1.79028888377298791E-9",
+          "single": "7.70441568183461375E-10"
+        },
+        "6": {
+          "born": "1.83136852584749221E-7",
+          "double": "-4.39933585131251741E-10",
+          "finite": "1.79028888377297943E-9",
+          "single": "7.70441568183462822E-10"
+        },
+        "8": {
+          "born": "1.83136852584749221E-7",
+          "double": "-4.39933585131251741E-10",
+          "finite": "1.79028888377297943E-9",
+          "single": "7.70441568183462822E-10"
+        },
+        "9": {
+          "born": "1.83136852584749221E-7",
+          "double": "-4.39933585131251741E-10",
+          "finite": "1.79028888377297799E-9",
+          "single": "7.70441568183463029E-10"
+        }
+      },
+      "independent_double_pole_from_reported_DP_born": "-4.3993358513125259678074806923927278147837878121051637109881305268896392267652123E-10",
+      "point": 1,
+      "private_QP_denominator_values": {
+        "born": "1.83136852584749221E-7",
+        "double": "-4.39933585131251948E-10",
+        "finite": "1.79028888377296785E-9",
+        "single": "7.70441568183461168E-10"
+      },
+      "relative_errors_against_historical": {
+        "1": {
+          "born": "0",
+          "double": "7.0465181672254705535479116345031904909910259200655285217038092099215720531485514E-16",
+          "finite": "1.1204895579602809377526914883455191010919145791187277520442967488885875121958270E-14",
+          "single": "2.6867709187610724982768327772670842288165739067969093903691307028393197025713727E-16"
+        },
+        "6": {
+          "born": "0",
+          "double": "4.7052556794053948534981216398134207472101366627534335612667371175927916612959682E-16",
+          "finite": "6.4682298510369465197849168402595567355811854094375195779443766428318457982172066E-15",
+          "single": "2.1468208210776838482275803685352922278418851892548206503044063769820872996355129E-15"
+        },
+        "8": {
+          "born": "0",
+          "double": "4.7052556794053948534981216398134207472101366627534335612667371175927916612959682E-16",
+          "finite": "6.4682298510369465197849168402595567355811854094375195779443766428318457982172066E-15",
+          "single": "2.1468208210776838482275803685352922278418851892548206503044063769820872996355129E-15"
+        },
+        "9": {
+          "born": "0",
+          "double": "4.7052556794053948534981216398134207472101366627534335612667371175927916612959682E-16",
+          "finite": "5.6638903876955691248286426665946607998612137671367569472408445714530172375850224E-15",
+          "single": "2.4154979129537899444521136738056603404235006133531121138714055015948451916734396E-15"
+        }
+      }
+    },
+    {
+      "double_pole_relative_residual": "7.6901732847012099365102760597461542839687804786934365631319704681560730577924826E-10",
+      "historical_values": {
+        "1": {
+          "born": "8410001.39800201356",
+          "double": "-20202.6081349496999",
+          "finite": "600226600087.822632",
+          "single": "14590.8285529699115"
+        },
+        "6": {
+          "born": "8410001.39800201356",
+          "double": "-20202.6081403520802",
+          "finite": "600234517478.116211",
+          "single": "1628311.75979916193"
+        },
+        "8": {
+          "born": "8410001.39800201356",
+          "double": "-20202.6081403520802",
+          "finite": "600224466462.054688",
+          "single": "14590.7746478513927"
+        },
+        "9": {
+          "born": "8410001.39800201356",
+          "double": "-9839.38784795378706",
+          "finite": "600225966214.539185",
+          "single": "192261.634642011079"
+        }
+      },
+      "independent_double_pole_from_reported_DP_born": "-20202.608124815931759777718478243137642820415530681056989881802392830445417986878",
+      "point": 2,
+      "private_QP_denominator_values": {
+        "born": "8410001.39800201356",
+        "double": "-20202.6081403520875",
+        "finite": "602020348035.903320",
+        "single": "-142959026.708562553"
+      },
+      "relative_errors_against_historical": {
+        "1": {
+          "born": "0",
+          "double": "2.6741040376907731971001616374451935907061559924723781877996858253571550052826280E-10",
+          "finite": "0.0029795470434393230327230469036783686514898768060038902144773757852861646869461288",
+          "single": "1.0001020630098630630336314957580232989590062054292697876816406003950305660003890"
+        },
+        "6": {
+          "born": "0",
+          "double": "3.6133948395599464834457971792601318002719647040964555691890205221682412307038436E-16",
+          "finite": "0.0029663956768461346870746910959342814467153538708105522391131040035583742607433637",
+          "single": "1.0113900590769875040390168200293728245605566481723992598399627898450119141299681"
+        },
+        "8": {
+          "born": "0",
+          "double": "3.6133948395599464834457971792601318002719647040964555691890205221682412307038436E-16",
+          "finite": "0.0029830911524962759626901471531377998969460157951404994240859383779785909278188612",
+          "single": "1.0001020626327961526055728484133467760248800877077308398487991816613294347552258"
+        },
+        "9": {
+          "born": "0",
+          "double": "0.51296447569554710276945182878024483769620527548912985672879665088475055722095570",
+          "finite": "0.0029805999535037668960607443387035222878701419809342825967289108190728645630618533",
+          "single": "1.0013448722971089977256943122444807676464691856323782759438437229943886649176748"
+        }
+      }
+    }
+  ],
+  "scope": "Unchecked fixed-QP denominator transport diagnostic. No numerical/performance acceptance.",
+  "validation": "PASS: frozen inputs, isolated source/object delta, original cutoff/policy.",
+  "warning_scope": "Includes initialization/warmup/measured work; not attributed to a specific measured call.",
+  "whole_worker_unstable_warning_ids": [
+    5,
+    6,
+    23,
+    62,
+    63,
+    108,
+    109,
+    142,
+    143,
+    147,
+    148,
+    149,
+    151,
+    176
+  ]
+}

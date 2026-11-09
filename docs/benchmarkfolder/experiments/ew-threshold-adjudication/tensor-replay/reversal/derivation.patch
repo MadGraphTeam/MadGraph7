@@ -1,0 +1,107 @@
+--- forward/run.py
++++ reversal/run.py
+@@ -43,7 +43,7 @@
+     checks = dict(manifest['sources_and_link_inputs'])
+     checks[name(REPORT / 'source-manifest.json')] = selected['source_manifest_sha256']
+     for item in ('trace', 'summary', 'execution'):
+-        checks[name(REPORT.parent / (item + '.json'))] = selected['parent_' + item + '_sha256']
++        checks[name(REPORT.parents[1] / (item + '.json'))] = selected['parent_' + item + '_sha256']
+     for path in (REPORT / 'selected-inputs.dat', WORK / 'selected-inputs.dat'):
+         checks[name(path)] = selected['input_stream_sha256']
+     checks[name(WORK / 'replay.f90')] = digest(REPORT / 'replay.f90')
+@@ -53,47 +53,6 @@
+         if digest(ROOT / path) != expected:
+             raise ValueError('Protected input changed: ' + path)
+     return checks
+-
+-
+-def build():
+-    if (REPORT / 'compilation.json').exists() or (REPORT / 'build.log').exists():
+-        raise ValueError('Refusing to overwrite prior build evidence')
+-    protected = verify()
+-    fc = shutil.which('gfortran')
+-    if fc is None:
+-        raise ValueError('Load tools/tirust_env.sh before building')
+-    compile_command = [fc, '-O2', '-ffree-line-length-none', '-I' + str(RUNTIME),
+-        '-J' + str(WORK), '-c', str(WORK / 'replay.f90'), '-o', str(WORK / 'replay.o')]
+-    before = shlex.split((ROOT / 'HEPTools/ninjars/lib/ninjars-link-before.txt').read_text())
+-    native = shlex.split((ROOT / 'HEPTools/ninjars/lib/ninjars-native-libs.txt').read_text())
+-    link_command = [fc, '-o', str(WORK / 'replay'), str(WORK / 'replay.o'),
+-        str(RUNTIME / 'libtirust.a'), *before, str(ROOT / 'HEPTools/ninjars/lib/libninjars.a'),
+-        *native, str(RUNTIME / 'libmadloop_tirust.so'), '-Wl,-rpath,' + str(RUNTIME), '-lquadmath']
+-    result = {'compile_command': compile_command, 'link_command': link_command,
+-        'compiler': fc, 'compiler_sha256': digest(Path(fc)), 'timeout_seconds': 180,
+-        'run_script_sha256': digest(Path(__file__)), 'protected_inputs_before': protected,
+-        'complete': False, 'performance_eligible': False}
+-    deadline = time.monotonic() + 180
+-    try:
+-        result['compiler_version'] = subprocess.check_output([fc, '--version'], text=True, timeout=10)
+-        with (REPORT / 'build.log').open('x') as log:
+-            for command in (compile_command, link_command):
+-                completed = subprocess.run(command, cwd=WORK, stdout=log, stderr=subprocess.STDOUT,
+-                    timeout=max(.1, deadline - time.monotonic()), check=False)
+-                result['returncode'] = completed.returncode
+-                completed.check_returncode()
+-        result['artifacts_sha256'] = {name(WORK / p): digest(WORK / p)
+-            for p in ('replay.f90', 'replay.o', 'replay', 'selected-inputs.dat')}
+-        result['complete'] = True
+-    except BaseException as exc:
+-        result['error'] = {'type': type(exc).__name__, 'message': str(exc)}
+-        raise
+-    finally:
+-        result['protected_inputs_after'] = verify()
+-        result['protected_inputs_unchanged'] = result['protected_inputs_after'] == protected
+-        if (REPORT / 'build.log').exists():
+-            result['build_log_sha256'] = digest(REPORT / 'build.log')
+-        dump(REPORT / 'compilation.json', result)
+ 
+ 
+ def run(cpu):
+@@ -177,7 +136,7 @@
+ 
+ if __name__ == '__main__':
+     parser = argparse.ArgumentParser(description=__doc__)
+-    parser.add_argument('action', choices=('build', 'run'))
++    parser.add_argument('action', choices=('run',))
+     parser.add_argument('--cpu', type=int, default=9)
+     args = parser.parse_args()
+-    build() if args.action == 'build' else run(args.cpu)
++    run(args.cpu)
+--- forward/analyze.py
++++ reversal/analyze.py
+@@ -7,7 +7,7 @@
+ from prepare import extract
+ 
+ HERE=Path(__file__).resolve().parent
+-ROOT=HERE.parents[4]
++ROOT=HERE.parents[5]
+ D=Decimal
+ 
+ 
+@@ -30,8 +30,8 @@
+     assert execution['output_sha256']==digest(HERE/'output.log')
+     assert execution['input_stream_sha256']==inputs['input_stream_sha256']
+     assert execution['source_manifest_sha256']==inputs['source_manifest_sha256']
+-    required_artifacts={'.tirust-build/ew-threshold-tensor-replay/replay.o',
+-                        '.tirust-build/ew-threshold-tensor-replay/replay'}
++    required_artifacts={'.tirust-build/ew-threshold-tensor-replay-reversal/replay.o',
++                        '.tirust-build/ew-threshold-tensor-replay-reversal/replay'}
+     assert required_artifacts<=set(execution['artifacts_sha256'])
+     for name,expected_hash in execution['artifacts_sha256'].items():
+         assert digest(ROOT/name)==expected_hash,name
+@@ -43,12 +43,12 @@
+     assert digest(HERE/'selected-inputs.dat')==inputs['input_stream_sha256']
+     for name,expected_hash in sources['sources_and_link_inputs'].items():
+         assert digest(ROOT/name)==expected_hash,name
+-    private_work=ROOT/'.tirust-build/ew-threshold-tensor-replay'
++    private_work=ROOT/'.tirust-build/ew-threshold-tensor-replay-reversal'
+     assert digest(private_work/'replay.f90')==digest(HERE/'replay.f90')
+     assert digest(private_work/'selected-inputs.dat')==inputs['input_stream_sha256']
+     for name in ('trace','summary','execution'):
+-        assert digest(HERE.parent/(name+'.json'))==inputs['parent_'+name+'_sha256'],name
+-    trace=json.loads((HERE.parent/'trace.json').read_text())
++        assert digest(HERE.parents[1]/(name+'.json'))==inputs['parent_'+name+'_sha256'],name
++    trace=json.loads((HERE.parents[1]/'trace.json').read_text())
+     expected={(r['point'],r['group']):r for r in inputs['records']}
+     assert len(expected)==len(inputs['records'])
+     for key,record in expected.items():

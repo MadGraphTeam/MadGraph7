@@ -1,0 +1,23 @@
+This is a source audit and an **unexecuted diagnostic recipe**. It changes no installed library, production gate, benchmark policy or frozen parent trace. Run `PYTHONDONTWRITEBYTECODE=1 python docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/guard-audit/audit.py` from the MadGraph root after sourcing `tools/tirust_env.sh` to regenerate the audit and file inventory against the recorded source identities.
+
+The historical bridge evaluates binary128 inputs at 256 working bits and rejects a Gram subsystem when its powered conditioning estimate falls below `2^-136`. Interpreting that estimate as inverse error amplification gives a *heuristic* retained precision of `256 - 136 = 120` bits, seven bits above binary128. The estimate is a scaled determinant diagnostic, **not a certified reciprocal condition number or error bound**. Upstream explicitly cautions that the gate alone bounds nothing. The final physical accuracy check remains necessary.
+
+For ordinary undotted D4 rank-three integrals, the traced box coefficient exponent is three. An N4R3 top box needs rank-three coefficients; an N5R3 Denner–Dittmaier reduction passes the same rank to its box children. The bridge MP workspace enables no small-Gram rank boost.
+
+| Traced example | Condition | Heuristic loss `-3 log2(condition)` | Nominal bits left at 256 | Nominal bits left at 512 |
+|---|---:|---:|---:|---:|
+| Point 2, group 5, N4R3 | 5.2240781e-30 | 291.818 | -35.818 | 220.182 |
+| Point 2, group 23, N4R3 | 1.5702918e-15 | 147.534 | 108.466 | 364.466 |
+| N5R3 box-child example | 9.4217468e-15 | 139.779 | 116.221 | 372.221 |
+
+These values distinguish a potentially insufficient working precision from a conservative refusal relative to a 120-bit target; they do **not** establish the accuracy of any accepted tensor. Inputs already rounded to binary128 cannot regain lost information by raising working precision. The independent `3e-6` physical truth criterion is also a different quantity from this tensor-level estimate, especially after cancellations in the amplitude.
+
+The proposed private diagnostic keeps the same input precision and uses `2^-(p-120)`: the original `2^-136` at 256 bits, `2^-264` at 384, and `2^-392` at 512. `diagnostic-512-source.patch` changes only the historical bridge working precision, the full/poles MP threshold expressions, and one corresponding comment. It leaves binary128 parsing and `set_input_precision(113)` unchanged, retaining the lightlike classification tolerance `2^-100`. The patch has **not been compiled or evaluated**. Its before/after source hashes are in `audit.json`.
+
+This setter also governs other direct-engine checks: scalar and modified Cayley matrices, the higher-rank pentagon Gram recursion, and six-point coordinate systems. It is therefore a precision-dependent acceptance-policy change across those checks. Increasing `MP_BITS` alone keeps the old threshold; a condition that remains unchanged will still fail, although its recomputed estimate can itself shift with precision. Each historical refusal exposes only the first failed subset, so 512 bits is not guaranteed to serve every traced lane.
+
+Upstream supports caller-managed retries through `set_stability_threshold`, `set_input_precision` and `last_conditions`. Its binary64-target rescue ladder uses `2^-(p-40)` (with separate double-double rules); reference tests also use 56 retained bits and rotation checks. Those lower retained-bit targets do not justify relaxing the production binary128 policy at 256 bits. Any future production retry must expose actual working precision and retain independent stability checks. A configurable gate also needs a cache identity or invalidation rule; the present QP cache includes working precision but assumes one fixed gate per library.
+
+The stress trace reports an unchecked host status of 120 and omits 37 refused groups. Its incorrect aggregate pole alone does not prove that a served tensor was inaccurate. The next adjudication must match identical binary128 tensor inputs against NinjaRS, retain ordinary controls and historical refusals, and compare original/reversed ordering. Newly served 512-bit results need independent tensor comparisons, rotation/reversal and preferably further precision convergence before complete-amplitude validation. No production fallback should be promoted from the gate heuristic alone.
+
+`audit.json` records the source and parent-trace identities, exact calculations and validation requirements. `source-excerpts.md` preserves the relevant source passages with line numbers. `evidence-index.json` hashes this entire new evidence folder; it excludes itself.

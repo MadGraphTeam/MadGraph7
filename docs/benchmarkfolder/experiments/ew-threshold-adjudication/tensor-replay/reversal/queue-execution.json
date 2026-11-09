@@ -1,0 +1,25 @@
+{
+  "admission_policy": "Observe the normal flock free for one second, releasing each probe immediately; then invoke the unchanged nonblocking runner. This is not an atomic reservation. A final acquisition failure is preserved by that runner.",
+  "command": [
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/reversal/run.py",
+    "run",
+    "--cpu",
+    "9"
+  ],
+  "frozen_runner_sha256": "90940cfa5e8f15132d8ee2079a57a0766b32b53a6c2224dbba41f66dccb70a4a",
+  "frozen_runner_unchanged": true,
+  "native_execution_sha256": "bd8af718eb23f0369c0188cc31499de1eb128796f6de9a768f4600b3ae319935",
+  "native_launcher_started": true,
+  "native_timeout_seconds": 180,
+  "performance_eligible": false,
+  "queue_elapsed_seconds": 909.3601800291799,
+  "queue_source_sha256": "a13491e0a5898da1fd3bbfb373fa137b6b537941ff5045e27b802389d0f1fdf1",
+  "queue_source_unchanged": true,
+  "queue_timeout_seconds": 2100.0,
+  "returncode": 0,
+  "schema": 1,
+  "state": "complete",
+  "total_elapsed_seconds_not_a_benchmark": 916.7982845799997
+}

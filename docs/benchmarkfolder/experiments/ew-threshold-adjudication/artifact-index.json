@@ -1,0 +1,1013 @@
+{
+  "files": [
+    {
+      "bytes": 4224,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/CURRENT-STATUS.md",
+      "sha256": "ed1cbcfb61ef9e3ad78ef704cf1ea97e2456d8cf1eeb9bfd1963b6c1693ee15c"
+    },
+    {
+      "bytes": 14622,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/MadLoopParams.dat",
+      "sha256": "e145689b4e1b9fb5aeb464c9962be726dc1a302711a0a5889cc1a80f9b3558a1"
+    },
+    {
+      "bytes": 7640,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/README.md",
+      "sha256": "aa6ae2c89a179a5b3b3b7f6718098ff7ea62a3159f113ef906adc57a27f0f868"
+    },
+    {
+      "bytes": 7477,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/analyze.py",
+      "sha256": "2c3a6a23fc4a3269e2457a63fa24470210e7d3cea0ebd303bc9eb7c3f93316bb"
+    },
+    {
+      "bytes": 1903,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/audit_runtime.py",
+      "sha256": "8aba569f9bc31d16cdd2542849e8f055ae692850798a7ef0b3820b6bb1edc655"
+    },
+    {
+      "bytes": 159,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/build-status.json",
+      "sha256": "fb1ee6c896591977d576a8a2ca64eaa5515172854b182fec65c1831455550502"
+    },
+    {
+      "bytes": 3502,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/build.log",
+      "sha256": "4137b80c3288f52131f326f1f89707764026a83b079126c46ef372c72c36182c"
+    },
+    {
+      "bytes": 385330,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/compilation.json",
+      "sha256": "c49f035f9a5db3c4257ca6c11508c2fea811dbdc94fd346b261aaae9bde3eca8"
+    },
+    {
+      "bytes": 14622,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/MadLoopParams.dat",
+      "sha256": "4a89d4ef01e6c15fa06317d965fd98464f868a727fd9d1ee10ef5b84332b87c9"
+    },
+    {
+      "bytes": 4073,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/README.md",
+      "sha256": "c64a35a7b81a13e465a96767512391181a48908ca48f544b3ff9f7515dcfe218"
+    },
+    {
+      "bytes": 7440,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/analyze.py",
+      "sha256": "9b02cfb4b0003bad2d6a34f73761848f74a223b3174804a23f4707e8f061f60f"
+    },
+    {
+      "bytes": 173,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/build-status.json",
+      "sha256": "5c4d6a509647b6bdc739fe880294ad1da708c091bd0238dacdd7f72432ddacff"
+    },
+    {
+      "bytes": 2757,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/build.log",
+      "sha256": "581bba1d5df0c6364aa533cd01b30923793d1f3a18edc366461643c3edff4aa8"
+    },
+    {
+      "bytes": 40438,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/compilation.json",
+      "sha256": "c443949bdc444c8930c5dd339aa0ff7bc8cfe6f9b67d58eb99161bd83f9cd3ff"
+    },
+    {
+      "bytes": 560,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/ct_transport.mk",
+      "sha256": "4ad6401af950a53594467d53cf9db8826f5ba5c29184bd455ac06367ddb7fcf9"
+    },
+    {
+      "bytes": 37,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/dimensions.dat",
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    {
+      "bytes": 2450,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/execution.json",
+      "sha256": "53b45a8fae7340bbe1754b7c79f3491136241202b29d84a578e1e39ba49fcfa8"
+    },
+    {
+      "bytes": 1841,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/ldd.txt",
+      "sha256": "6640e857e5dffaed5b1c12765eaf781dcaae5973f0bfd0a94c464ea672f2e323"
+    },
+    {
+      "bytes": 6656,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/output.log",
+      "sha256": "d5ffb00580ae44a4396e1d016c5a885edf90e160f339a124dd3c7e75b95b72d8"
+    },
+    {
+      "bytes": 4538,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/param_card.dat",
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    {
+      "bytes": 86964,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/prepared.json",
+      "sha256": "6cf901e3443af027534d51f4d28276f4ba61b09d0b9baf3e0e3ddcd3e9402cfd"
+    },
+    {
+      "bytes": 206,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/raw/command.json",
+      "sha256": "0b540767051269273427fe7b71a3520614998c443247b823cdee4b0ba2f83a44"
+    },
+    {
+      "bytes": 37,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/raw/dimensions.dat",
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    {
+      "bytes": 27,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/raw/timed_status.dat",
+      "sha256": "30b83418734aa7ee423a9f28a7f8a2aedd7f321aa0fddc651266bfa7f14f8d35"
+    },
+    {
+      "bytes": 53,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/raw/timing.dat",
+      "sha256": "55156940bd9e6bc600163761a55f5fb533d6883e22076272e3d951b6cfe87348"
+    },
+    {
+      "bytes": 620,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/raw/values.dat",
+      "sha256": "c8e1ad24be16de25b5a4d9707910adf74c3bcb08acd7fca89ba56c1d2c74cac0"
+    },
+    {
+      "bytes": 13976,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/run.py",
+      "sha256": "e69cdf3cf338fcd36cccfb77f687f64d3f1579ba85515d6312cbb642b0014410"
+    },
+    {
+      "bytes": 974,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/selected.dat",
+      "sha256": "f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3"
+    },
+    {
+      "bytes": 75199,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/sources/CT_interface.f",
+      "sha256": "a037cf2ca40c4c9d682b995d9bdecd3e751c87b4f101112ae7141da1391588e4"
+    },
+    {
+      "bytes": 69917,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/sources/CT_interface.f.original",
+      "sha256": "ac240d6ffc2f7e1a15a72e61a325a53d0acf776f65b9329e4e9518cd85f3da0a"
+    },
+    {
+      "bytes": 8266,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/sources/CT_interface.f.patch",
+      "sha256": "4d183b9896c8cb76aadea73625e463b85f103e0042aa651dc452139d631fcd73"
+    },
+    {
+      "bytes": 19436,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/sources/cts_cutroutines_qpinput.f90",
+      "sha256": "32bb7912c18887591c8007a0163fe83fd07ee6205bf7c62fb9a51231b5f39a1d"
+    },
+    {
+      "bytes": 19407,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/sources/cts_cutroutines_qpinput.f90.original",
+      "sha256": "6dd0bb5247616d84114661c71c59e30a555e6c7af67c77b4ca35d3e1062ec49b"
+    },
+    {
+      "bytes": 1475,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/sources/cts_cutroutines_qpinput.f90.patch",
+      "sha256": "1dba2448750239afbdb21b289b8d961d16854331a19a7fec38843f1721295746"
+    },
+    {
+      "bytes": 17094,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/sources/tirust_benchmark_worker.py",
+      "sha256": "33c7b986798b468bdd0a5649283ce1ab707d16edc7373e6c8930d134f22d01ee"
+    },
+    {
+      "bytes": 9656,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/summary.json",
+      "sha256": "e513d14ee9da5b0648dad914fdd345830316889b93d4ce43b0e01cb7fd44f231"
+    },
+    {
+      "bytes": 27,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/timed_status.dat",
+      "sha256": "30b83418734aa7ee423a9f28a7f8a2aedd7f321aa0fddc651266bfa7f14f8d35"
+    },
+    {
+      "bytes": 620,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/values.dat",
+      "sha256": "c8e1ad24be16de25b5a4d9707910adf74c3bcb08acd7fca89ba56c1d2c74cac0"
+    },
+    {
+      "bytes": 37,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/dimensions.dat",
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    {
+      "bytes": 2916387,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ew-tensor-trace.dat",
+      "sha256": "50629c54e18ed3ecebee90b52c1f2cceb7de07688820aad3f02834a8f3199830"
+    },
+    {
+      "bytes": 600,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/execution.json",
+      "sha256": "7c4287927254cf0dc76510ed488509117ff2a38c1fd2beeddd160ea0d627d985"
+    },
+    {
+      "bytes": 586,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/failed-setup-attempt/README.md",
+      "sha256": "27bcf62e1c0c8ed98efb1c1d4adfc3ebcb00b0e18ff80550e31f48b2e94e1fa3"
+    },
+    {
+      "bytes": 37,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/failed-setup-attempt/dimensions.dat",
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    {
+      "bytes": 828,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/failed-setup-attempt/execution.json",
+      "sha256": "5168205116cdf218086a0bbe0d5b0d532017e81f6eb4a05a2c780c051b4b8a20"
+    },
+    {
+      "bytes": 1838,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/failed-setup-attempt/ldd.txt",
+      "sha256": "552ff1aa73cdc080dcaba65703a004ca24f1a35480094a43d823f6f419585cdd"
+    },
+    {
+      "bytes": 4150,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/failed-setup-attempt/output.log",
+      "sha256": "60cd6e1939032ceda5a83b3755d443abf4271938cf9e8c302a55894196b1523f"
+    },
+    {
+      "bytes": 84217,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/failed-setup-attempt/prepared.json",
+      "sha256": "437cc7aa51bcc1a3e068bd244f9fd8eea1466fd5d8d11a1a4362ec748442cefa"
+    },
+    {
+      "bytes": 11004,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/failed-setup-attempt/run.py",
+      "sha256": "10ecc63e907472fb05ab75d80ec75b0cd0ba942702d04c107af9b8fec378a9f6"
+    },
+    {
+      "bytes": 27,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/failed-setup-attempt/timed_status.dat",
+      "sha256": "30b83418734aa7ee423a9f28a7f8a2aedd7f321aa0fddc651266bfa7f14f8d35"
+    },
+    {
+      "bytes": 620,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/failed-setup-attempt/values.dat",
+      "sha256": "73dc0813aed04648a35ace4cb8f7a5f336158cd69f3d2c13ec968f34419b52f2"
+    },
+    {
+      "bytes": 1750,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/freeze.py",
+      "sha256": "ff5bdcb698b5973c7c387c54c31f28d4b5d619eacba2d46590d83da67148eb6b"
+    },
+    {
+      "bytes": 14622,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/geometry/MadLoopParams.dat",
+      "sha256": "e145689b4e1b9fb5aeb464c9962be726dc1a302711a0a5889cc1a80f9b3558a1"
+    },
+    {
+      "bytes": 4912,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/geometry/README.md",
+      "sha256": "e6971f63056875af1d9253b56c3de64eb1fcc56e4d2a4a6f0136c55088d3d35a"
+    },
+    {
+      "bytes": 9177,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/geometry/analyze.py",
+      "sha256": "6d8db3bed81ce5e0b672f3c3d610eb04b3b7ec7fa373710ec27cdb32f7f3535a"
+    },
+    {
+      "bytes": 165,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/geometry/build-status.json",
+      "sha256": "8d60938f31457d70ee7f72a6649abb7727e2779469b44a22c4fa50619ad9be12"
+    },
+    {
+      "bytes": 2476,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/geometry/build.log",
+      "sha256": "776cacfc96abe407022fea6ad731f234e93af81b35a2feee0af79c94a0460d61"
+    },
+    {
+      "bytes": 39467,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/geometry/execution.json",
+      "sha256": "eb277b8a80f5fca969fb350e5f60b64405b018267e9391a29d7ec250e37fdf92"
+    },
+    {
+      "bytes": 363,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/geometry/geometry.mk",
+      "sha256": "8847ed214bf12bec43dd641e927ad714fe66a83d19cd106a26b784c97a756710"
+    },
+    {
+      "bytes": 2534,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/geometry/link-inputs-post-execution.json",
+      "sha256": "783a039e07a2ee94d7f9d785e23d15a0280730d945a1118fba539f0d73b9add3"
+    },
+    {
+      "bytes": 4538,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/geometry/param_card.dat",
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    {
+      "bytes": 83884,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/geometry/prepared.json",
+      "sha256": "6043ea75d482e61ba8f6a92ee1209db81927a1e7beb33fa3178074906432aae8"
+    },
+    {
+      "bytes": 4874,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/geometry/probe.f",
+      "sha256": "d3be68942cbc32857d0734e9b6a64aba0d833343cdecde561b23431e84e3eb17"
+    },
+    {
+      "bytes": 292341,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/geometry/raw.log",
+      "sha256": "c4dfbcfff68138066901eb531e0598faf72d8ad7026f9c8f4d1328ba94518b7d"
+    },
+    {
+      "bytes": 6794,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/geometry/run.py",
+      "sha256": "5db7a9a9d652cbd1a2111cec5105c43778ebd4a6fe46c290c516c9e0052b8a9d"
+    },
+    {
+      "bytes": 974,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/geometry/selected.dat",
+      "sha256": "f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3"
+    },
+    {
+      "bytes": 3685,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/geometry/source-audit-hashes.json",
+      "sha256": "cd29684b890fa9c557eacb8290d71e1f2388cfeb89628c6fc3891af4bcc11fcd"
+    },
+    {
+      "bytes": 8106,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/geometry/source-audit.md",
+      "sha256": "cf6dc3be585b33ceaeab5f017ea17711b3fe9d169f98911a244374d2ad94f60d"
+    },
+    {
+      "bytes": 14907,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/geometry/summary.json",
+      "sha256": "9d793d53419e5ffe7c34c3bcb5c603a84cc89533890d8a05d6fdc167da143c01"
+    },
+    {
+      "bytes": 670,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/gram-guard.json",
+      "sha256": "16449e1c7522a6659d12757abab6ed727acda88270fefbc14b8f45ba2eecf52b"
+    },
+    {
+      "bytes": 1838,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ldd.txt",
+      "sha256": "c7408b2f5224a9f246e01131d9917aa45ca879a5cbe2d483b29732bb3cd68258"
+    },
+    {
+      "bytes": 6089,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/output.log",
+      "sha256": "be78ff5360f8abaac7f221995c95c6bdeac5c924f99554d2f44737e58db449d0"
+    },
+    {
+      "bytes": 4538,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/param_card.dat",
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    {
+      "bytes": 84298,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/prepared.json",
+      "sha256": "c104bd88cc17c6172dcd06e61b43e0c674c6f13a97c60b01ae83bd480893b4de"
+    },
+    {
+      "bytes": 190,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/raw/command.json",
+      "sha256": "41910d7045ef297bd5a3df03f13b7f8f338743c50f5cbd19b2cf7b8ab65966fa"
+    },
+    {
+      "bytes": 37,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/raw/dimensions.dat",
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    {
+      "bytes": 27,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/raw/timed_status.dat",
+      "sha256": "30b83418734aa7ee423a9f28a7f8a2aedd7f321aa0fddc651266bfa7f14f8d35"
+    },
+    {
+      "bytes": 53,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/raw/timing.dat",
+      "sha256": "2d7aff82c19791edb3dd939810a3fcabf3bf07bcabb9355859f7c98b602f9346"
+    },
+    {
+      "bytes": 620,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/raw/values.dat",
+      "sha256": "73dc0813aed04648a35ace4cb8f7a5f336158cd69f3d2c13ec968f34419b52f2"
+    },
+    {
+      "bytes": 11288,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/run.py",
+      "sha256": "11be34cba261db0a51edba3beb7939eeae0de7c1fc55731538bc4702a566fec7"
+    },
+    {
+      "bytes": 16888,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/runtime-audit.json",
+      "sha256": "a0642fcf30817dbd8b595acc5a219b5932c5afdecb08a78b6cbdcf1bdd7f95a3"
+    },
+    {
+      "bytes": 974,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/selected.dat",
+      "sha256": "f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3"
+    },
+    {
+      "bytes": 12280,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/sources/TIRUST_interface.f",
+      "sha256": "6057a77eb59391ed0d6799234f4983dbb4c28bffaca17ab2ed4d9053b8c56629"
+    },
+    {
+      "bytes": 12164,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/sources/TIRUST_interface.f.original",
+      "sha256": "e60570ec599263807165f2f289add2076a4c5b71b9e09fe0de83306e9ab2f7ff"
+    },
+    {
+      "bytes": 5484,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/sources/check_sa.f",
+      "sha256": "6c2b21d4e5946c59c908ee30fbd6ec59228265f8849a9ca6058c8d31349da89e"
+    },
+    {
+      "bytes": 5403,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/sources/check_sa.f.original",
+      "sha256": "99bc61556a1e604736ec9402a5ce3f71d1ddfbcddc7e26f3fde2ba9ec46e71ac"
+    },
+    {
+      "bytes": 17094,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/sources/tirust_benchmark_worker.py",
+      "sha256": "33c7b986798b468bdd0a5649283ce1ab707d16edc7373e6c8930d134f22d01ee"
+    },
+    {
+      "bytes": 11689,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/summary.json",
+      "sha256": "296539397d0560e8a2beffedb862dd56af821876bf0a986d31600d721bc9f36c"
+    },
+    {
+      "bytes": 5951,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/README.md",
+      "sha256": "e378f05809c44d40f4b315f015ff057e1d09db9db8e3b12ee3c88bd926d125ee"
+    },
+    {
+      "bytes": 5953,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/RESULTS.md",
+      "sha256": "51256bfab64e6c0b08c77401db42590deaf8527cfd6200cc83482bba1e67aa0c"
+    },
+    {
+      "bytes": 4138,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/analytic-poles/README.md",
+      "sha256": "92307ef997ebebb4a6ec7d4912ca78403f3876bb025a3b9c6076eafc13b4015f"
+    },
+    {
+      "bytes": 11504,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/analytic-poles/audit.py",
+      "sha256": "f9f8bdae70cccf9c0601cf77d21538d72717561332b59cebd3e161fcf68be8c8"
+    },
+    {
+      "bytes": 7398,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/analytic-poles/compare.py",
+      "sha256": "109a79416c7034724a6c51abc0dabf415cc267541be740a643cf21e3f046314c"
+    },
+    {
+      "bytes": 34768,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/analytic-poles/comparisons.json",
+      "sha256": "1258f663458662f313c0b728a684c39bfe38b377db3cde560aaacbc1b666bcad"
+    },
+    {
+      "bytes": 930,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/analytic-poles/evidence-index.json",
+      "sha256": "7545ca5444f56b55f9fa1021510f905e72aaa3bfb7cdce8bbbc7de44530c70d4"
+    },
+    {
+      "bytes": 6325,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/analytic-poles/source-review.md",
+      "sha256": "c656f56058486f9f51d09b762b8e437d406f7517efc7ed68e3c96ba55e72b5ab"
+    },
+    {
+      "bytes": 14844,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/analytic-poles/summary.json",
+      "sha256": "623a3b36ddd4049d5c4e4bdaf30f4aef2c6afa83c5ef35c5444eef08425cdbc6"
+    },
+    {
+      "bytes": 9450,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/analyze.py",
+      "sha256": "14c8a88d0012b6d042902ee88afbcdebe8749e33197d158d21220092a7a87f04"
+    },
+    {
+      "bytes": 314,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/build.log",
+      "sha256": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51"
+    },
+    {
+      "bytes": 10330,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/compilation.json",
+      "sha256": "7fa23f3ac0c5c110ce22b700aff7bf949ba346eaaeb2443aff499b8d155b0dd7"
+    },
+    {
+      "bytes": 11463,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/execution.json",
+      "sha256": "41ca507123a8fa630cd7acd1c7e6080d0866084d17e32521eb189b78cd9229c5"
+    },
+    {
+      "bytes": 2158,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/gram-consistency/README.md",
+      "sha256": "f3b341164ff7a82d124bd834be208289140aa8715e28cfdef309a4bdb3f1293a"
+    },
+    {
+      "bytes": 6173,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/gram-consistency/audit.py",
+      "sha256": "c5172634143abba6030347a2ebc3187c6f567f106ac50b16afa43453aaf77819"
+    },
+    {
+      "bytes": 523,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/gram-consistency/evidence-index.json",
+      "sha256": "0840443eaea7c83597c753634160f996600e8bb306a464af5ae56faa83524cba"
+    },
+    {
+      "bytes": 18058,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/gram-consistency/summary.json",
+      "sha256": "1b6b3b413e081d999a22514e76c7b005604e9034ab3afbceddf711add7b6736b"
+    },
+    {
+      "bytes": 4655,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/guard-audit/README.md",
+      "sha256": "d61b80edc674a14aa3e2290b646ff8eeb3d4b78e5d81938a35e343ed88cb7842"
+    },
+    {
+      "bytes": 10918,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/guard-audit/audit.json",
+      "sha256": "51849bda5f5e34e6609e35e0b885d825c2e8abf0b3918f55c73245e4d190c57c"
+    },
+    {
+      "bytes": 9821,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/guard-audit/audit.py",
+      "sha256": "0e37cc8fb8925a1387e8d2c95268212af214e0049815146bbf0dd79f69ac28bb"
+    },
+    {
+      "bytes": 1524,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/guard-audit/diagnostic-512-source.patch",
+      "sha256": "c9e647661f5b43a27768b31e7e514cafb5445cdcc079778f6f51cc191b923295"
+    },
+    {
+      "bytes": 844,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/guard-audit/evidence-index.json",
+      "sha256": "1f61edac33eaea6c3110511c3b0f2393d8c2398fb8436ea87a8769f5afc3fc46"
+    },
+    {
+      "bytes": 34472,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/guard-audit/source-excerpts.md",
+      "sha256": "f773a97b7498418c23bffb9e5521c8c178d1d661e5427cd953f7430a872492f2"
+    },
+    {
+      "bytes": 2702,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/README.md",
+      "sha256": "a483b295a98005836bc49054554ee1a8116ee8ea27047636664f2eda35585fc1"
+    },
+    {
+      "bytes": 3250,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/analysis/README.md",
+      "sha256": "77b8c4bcdd3b6faaef3dcfea2ec847624aebbc240eb248f3ba33e94c35a3cf8f"
+    },
+    {
+      "bytes": 5666,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/analysis/summarize.py",
+      "sha256": "665c1d5845ee3600cde9f7780b49a7fd4ad14e20aa225d691915f70bc6676025"
+    },
+    {
+      "bytes": 372906,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/analysis/summary.json",
+      "sha256": "01fba5310d825c0021475db64a658e2067f3a959366a4abfba1d948ae0da99de"
+    },
+    {
+      "bytes": 88002,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/build.json",
+      "sha256": "adad13cb1e0f8664468dc6afa9f3776b23de37938b202f309d5281cfb93d2873"
+    },
+    {
+      "bytes": 0,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/build.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 8381,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/build.py",
+      "sha256": "81e1fb2e3077e87d7e05f74281354300ee8616f8055da933adfbe959283fe5a3"
+    },
+    {
+      "bytes": 1955,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/dynamic.txt",
+      "sha256": "9a3e766109da55fa7080ac65e98a55492ebf43fe19fbcacb30d41dd5516b10e4"
+    },
+    {
+      "bytes": 515,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/exports.txt",
+      "sha256": "1d3d4bfb6248ee1a195ff9150153c54a313cc2f6e32c0725c72c8ef0f2b713cb"
+    },
+    {
+      "bytes": 43146,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/preparation.json",
+      "sha256": "560ea4642702788c8a4bf57a7c26b3ce8db53664a5966e163116bbf9dddd72a5"
+    },
+    {
+      "bytes": 8152,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/prepare_replays.py",
+      "sha256": "4559887d7a74080d96739370bfc3f576777e3dab7525e918411d1042eaf6e2c1"
+    },
+    {
+      "bytes": 9364,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/analyze.py",
+      "sha256": "897c3d7e6ca95ac7e6831d4d1280e1d307de427c5b9f4a95d4c4a45da73b694e"
+    },
+    {
+      "bytes": 314,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/build.log",
+      "sha256": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51"
+    },
+    {
+      "bytes": 10619,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/compilation.json",
+      "sha256": "f944b8b4f2e30fb165fbd2a2b3c502884a58c0b242929c4990ce555c54b8050b"
+    },
+    {
+      "bytes": 4674,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/derivation.patch",
+      "sha256": "b3b9014fe18f55602b89f44e6a7cd8cfcdb7ee3bb55bdccda0d4635bfdae0b1c"
+    },
+    {
+      "bytes": 22955,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/execution.json",
+      "sha256": "d456c600402dfca901aa9cb2ca1a8e1d92c0e8c1a3143e26f1f1d2fbdbfa7ceb"
+    },
+    {
+      "bytes": 1423,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/ldd.txt",
+      "sha256": "0d58a635ba7943312647d7e6c7ceb4bd140861187f825f63b041790432334197"
+    },
+    {
+      "bytes": 340,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/lock-admission-attempt/README.md",
+      "sha256": "e629675b0dfe362e7a574904af4b925c95ea9331c5de99cdc14f746ab2009793"
+    },
+    {
+      "bytes": 21120,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/lock-admission-attempt/execution.json",
+      "sha256": "abb32f4623a3028d2c24cceb7802ee3e7756d9d480207f82200bffd7fc7e576f"
+    },
+    {
+      "bytes": 1423,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/lock-admission-attempt/ldd.txt",
+      "sha256": "e981d32847dcb0489e8e9617ff385105e428b116aac60e65289ca0e0f9d3623c"
+    },
+    {
+      "bytes": 163396,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/output.log",
+      "sha256": "be7ed8a39b84514506f7ca8ba4769581fb26faafbeebdc06338563c7f41f9ae6"
+    },
+    {
+      "bytes": 965,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/prepare.py",
+      "sha256": "ce6874962fcccead583bf20e5d9e196d9c8601d54bb1cdd2fbfaae865155863b"
+    },
+    {
+      "bytes": 10245,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/process-maps.txt",
+      "sha256": "9d0389ac1c1d6654e1c4d623007a93917698df8f5392fb25fec09415f74c4d1b"
+    },
+    {
+      "bytes": 5081,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/replay.f90",
+      "sha256": "44f8702d46b6d5b2e5f77d107f4ac958b52a9cccccb5388b2250125b5f830fde"
+    },
+    {
+      "bytes": 7066,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/run.py",
+      "sha256": "a1166b7a47c806928d98fab53f0dab3f60aa9bc5ece66e05984c2c4862d2cff8"
+    },
+    {
+      "bytes": 5481,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/selected-inputs.dat",
+      "sha256": "a357490c15bc615869b3b11677788efb74d1529814056108aa2b57e2c06244e9"
+    },
+    {
+      "bytes": 59613,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/selected-inputs.json",
+      "sha256": "6463588a04fefc53fcf13630598e38065b9bbc0956a87c6e89c634a83bd073f2"
+    },
+    {
+      "bytes": 9045,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/source-manifest.json",
+      "sha256": "c0fb0f55457a751079a4bb313498fbd5b40245d172e514672899352c4bfb5d63"
+    },
+    {
+      "bytes": 321570,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/summary.json",
+      "sha256": "d7a42e54cd5eedcc149c9cdd06653f6eab890e989f63b879bdf8880a75263264"
+    },
+    {
+      "bytes": 9364,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-reversal/analyze.py",
+      "sha256": "897c3d7e6ca95ac7e6831d4d1280e1d307de427c5b9f4a95d4c4a45da73b694e"
+    },
+    {
+      "bytes": 314,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-reversal/build.log",
+      "sha256": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51"
+    },
+    {
+      "bytes": 10623,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-reversal/compilation.json",
+      "sha256": "2f450205fcabbf75f0ff7b6ac92d6f686ac9f3d715e5e48bd11e4e963a6ea678"
+    },
+    {
+      "bytes": 4676,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-reversal/derivation.patch",
+      "sha256": "a6af49d219cfc1bef928dfaddd4778265ef40bde132bcc81305618ff849df1ea"
+    },
+    {
+      "bytes": 30156,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-reversal/execution.json",
+      "sha256": "ceb6bad6c8d63663c44cb166ef95c72a04175e7270cf1484223b7d6259109ad2"
+    },
+    {
+      "bytes": 1423,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-reversal/ldd.txt",
+      "sha256": "a1f109ec1bd70674ed6e8bab79346f6d62238e17467045322b07442a94126536"
+    },
+    {
+      "bytes": 54486,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-reversal/output.log",
+      "sha256": "4477da6fc6bef569c5319699d837e54c50626912553cdc9b5e36979152ccdb40"
+    },
+    {
+      "bytes": 977,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-reversal/prepare.py",
+      "sha256": "e7979e492a9dbbcef0489a1486b1e16c28200b468d8bdca4ccd1390451e771bd"
+    },
+    {
+      "bytes": 10250,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-reversal/process-maps.txt",
+      "sha256": "9ad925096e0e7eeb7e3f2c0b4029bef531167839497f908ee70d05f630dd52a4"
+    },
+    {
+      "bytes": 5081,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-reversal/replay.f90",
+      "sha256": "44f8702d46b6d5b2e5f77d107f4ac958b52a9cccccb5388b2250125b5f830fde"
+    },
+    {
+      "bytes": 7066,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-reversal/run.py",
+      "sha256": "a1166b7a47c806928d98fab53f0dab3f60aa9bc5ece66e05984c2c4862d2cff8"
+    },
+    {
+      "bytes": 1841,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-reversal/selected-inputs.dat",
+      "sha256": "7bbf2ff23a2227ba34711c410261b639828f757c4de7e6cd545ac81910905867"
+    },
+    {
+      "bytes": 5276,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-reversal/selected-inputs.json",
+      "sha256": "9a44cd1cda49d1e3b0ef8fda6ef97aade99742cca387582c63873266d1ede162"
+    },
+    {
+      "bytes": 12792,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-reversal/source-manifest.json",
+      "sha256": "f3593f99a5071729f0c3bd65e19e52eebceef82c2e9d4d20fa0514ed5922d83e"
+    },
+    {
+      "bytes": 89267,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-reversal/summary.json",
+      "sha256": "5179909819a723a06ee4f55de8bc2e6e88ca72e03b21085a58375980f57d44ca"
+    },
+    {
+      "bytes": 35857,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/source/Cargo.lock",
+      "sha256": "c4f59f296c7d2838a63b62bd4d47aa0e6e5eaaefd22b2d28d30e94d9f26179e4"
+    },
+    {
+      "bytes": 1092,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/source/Cargo.toml",
+      "sha256": "3c478c376e11bcf2828bcda17ed2e6ac4bb27d97b3c0428a0badd811e45af29c"
+    },
+    {
+      "bytes": 1524,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/source/diagnostic-512-source.patch",
+      "sha256": "c9e647661f5b43a27768b31e7e514cafb5445cdcc079778f6f51cc191b923295"
+    },
+    {
+      "bytes": 41008,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/source/lib.rs",
+      "sha256": "59184358f8c2f91b1ac38397e76f8accc6e4ffce8aaa529bdde2acbaee985871"
+    },
+    {
+      "bytes": 40960,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/source/lib.rs.original",
+      "sha256": "1eab09d61652e4dfade900a22f8c63a071b4fecee2e7454e8144f934f17e34e0"
+    },
+    {
+      "bytes": 1796,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/input-consistency/README.md",
+      "sha256": "b344a274aced63beaac4bf39b4387cfeee1fd17f0168c9ebb5f8c7702bd6cc4f"
+    },
+    {
+      "bytes": 4090,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/input-consistency/audit.py",
+      "sha256": "0cbb8734403893b1644cb6782db8697a1a91130e8e2a16f224ba4b0b3a6a2d63"
+    },
+    {
+      "bytes": 11731,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/input-consistency/summary.json",
+      "sha256": "6eb8ba5090354fcb1c1b6b37dc044e353f68e8c143057352f180eca221c83b61"
+    },
+    {
+      "bytes": 1433,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/ldd.txt",
+      "sha256": "8b2ab95c34e2ed0ef200ac0e3d6b860360b1313599c099fe006f7397ab06ac5c"
+    },
+    {
+      "bytes": 11296,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/metrics.json",
+      "sha256": "dc4cd0683815d95f443dbe9ac60f3ff1af55eb83d6c2a5db398f06d75285ba59"
+    },
+    {
+      "bytes": 127892,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/output.log",
+      "sha256": "f0b94826638e037a7a9f88388a85cf0b2498b418e14d9c3fc9bd0337022f0eaf"
+    },
+    {
+      "bytes": 8644,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/prepare.py",
+      "sha256": "3be19f295445df334298394f6f93789f8c41e8c4e8a2e14ca10da006fc0cfb0d"
+    },
+    {
+      "bytes": 10270,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/process-maps.txt",
+      "sha256": "2a7347bdb47e9f073294bbec347a0c35798247e406fb9a15e545e743ee81fa22"
+    },
+    {
+      "bytes": 5081,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/replay.f90",
+      "sha256": "44f8702d46b6d5b2e5f77d107f4ac958b52a9cccccb5388b2250125b5f830fde"
+    },
+    {
+      "bytes": 2884,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/reversal/README.md",
+      "sha256": "7864b796b64ef933c2928883551de2a604862ed702028ec1161729fc61097609"
+    },
+    {
+      "bytes": 4117,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/reversal/RESULTS.md",
+      "sha256": "ce168e5f2f1b3c65cc0de9abab5b042d355de104c0f816f875396e399195d6b3"
+    },
+    {
+      "bytes": 9485,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/reversal/analyze.py",
+      "sha256": "2459493b99e461588772bc9b4565ffe96567fb30b2567090fccef8697a195837"
+    },
+    {
+      "bytes": 314,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/reversal/build.log",
+      "sha256": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51"
+    },
+    {
+      "bytes": 2576,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/reversal/compare.py",
+      "sha256": "19fa5ad9ac7517d74e2c95c1b4e7c7cb4f7a6292e1f05d3b6eb4b6455a05330b"
+    },
+    {
+      "bytes": 51741,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/reversal/comparison.json",
+      "sha256": "46a5de9e332787af5a7034e333925acbfe5374dfaec29dae9a1a36879ade2030"
+    },
+    {
+      "bytes": 10674,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/reversal/compilation.json",
+      "sha256": "197ec4b44b6a6d48ecac3bb316a3d9b1e493513fd4c44fb96aa7f3a7e01f36d0"
+    },
+    {
+      "bytes": 5699,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/reversal/derivation.patch",
+      "sha256": "64a1db5b0d5811b91cab88e788f1761192926e9ec4da2c4a8ab74ef44a71d0e7"
+    },
+    {
+      "bytes": 18226,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/reversal/execution.json",
+      "sha256": "bd8af718eb23f0369c0188cc31499de1eb128796f6de9a768f4600b3ae319935"
+    },
+    {
+      "bytes": 1433,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/reversal/ldd.txt",
+      "sha256": "94ee3a6d1d94b96184e155990f350c378b59ea8e2b5685a7c5530a9fa3c3249f"
+    },
+    {
+      "bytes": 18976,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/reversal/output.log",
+      "sha256": "fba510d224b1f9f9fc0bc19b8c64d24db1844d2d3de43529ecaa889f0f696e49"
+    },
+    {
+      "bytes": 5976,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/reversal/prepare.py",
+      "sha256": "5f05ef8e7757077ebe918a918d863495427c2ea4f95d39670ae90af856ab5730"
+    },
+    {
+      "bytes": 10315,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/reversal/process-maps.txt",
+      "sha256": "2f79d0481a60d51af01d6d4db9f490312a23de3a171cc3f58e167ae403fe3af9"
+    },
+    {
+      "bytes": 1198,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/reversal/queue-execution.json",
+      "sha256": "b8fb0fddcfed2f21fe4f4b530a2d11671c244502069034985704f5d906f73fdc"
+    },
+    {
+      "bytes": 3684,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/reversal/queue.py",
+      "sha256": "a13491e0a5898da1fd3bbfb373fa137b6b537941ff5045e27b802389d0f1fdf1"
+    },
+    {
+      "bytes": 5081,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/reversal/replay.f90",
+      "sha256": "44f8702d46b6d5b2e5f77d107f4ac958b52a9cccccb5388b2250125b5f830fde"
+    },
+    {
+      "bytes": 7057,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/reversal/run.py",
+      "sha256": "90940cfa5e8f15132d8ee2079a57a0766b32b53a6c2224dbba41f66dccb70a4a"
+    },
+    {
+      "bytes": 1841,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/reversal/selected-inputs.dat",
+      "sha256": "7bbf2ff23a2227ba34711c410261b639828f757c4de7e6cd545ac81910905867"
+    },
+    {
+      "bytes": 5156,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/reversal/selected-inputs.json",
+      "sha256": "cbd5a244192c1d1bfe272257dfc14a60c9d679b04dc077f0604a37e5e4ad35bb"
+    },
+    {
+      "bytes": 6645,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/reversal/source-manifest.json",
+      "sha256": "80bb53228686e2ba2f9030d9ae576aa3ad3b1a5b9acf80f6cf7828f93ee78c76"
+    },
+    {
+      "bytes": 27530,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/reversal/summary.json",
+      "sha256": "1e70d5ae70f58e73439357e1b6b3c12b67bbbdfee632b874980bb9fe4908c2bc"
+    },
+    {
+      "bytes": 9539,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/run.py",
+      "sha256": "f52b73b0f04646d48a50fa6b48f2cbcf5a5a3b24b0227233d216e0eb58fe05f3"
+    },
+    {
+      "bytes": 1232,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/runtime-snapshot.json",
+      "sha256": "aa34559d049e09b2da0d56f0a4ed13a1de065c4163012e2112313babf950b85f"
+    },
+    {
+      "bytes": 5481,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/selected-inputs.dat",
+      "sha256": "a357490c15bc615869b3b11677788efb74d1529814056108aa2b57e2c06244e9"
+    },
+    {
+      "bytes": 59482,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/selected-inputs.json",
+      "sha256": "6e13ab1cbfbd88e746c83bb725a547343330375acea741ce1caef2fd16822305"
+    },
+    {
+      "bytes": 3038,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/source-manifest.json",
+      "sha256": "97b93227e0475f7bb0037434d041e49d190aa25dcf1b786e26870dc173a4f4a4"
+    },
+    {
+      "bytes": 2867,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/summarize.py",
+      "sha256": "fc2b133d78197510ae1e4a328e04baa51c4cdf6a544f3ea49b66c25a3b2dc84b"
+    },
+    {
+      "bytes": 256295,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/summary.json",
+      "sha256": "18c12d9829012de9c5476e75610815e7d0294c249db19ebb766d6792f4d51cee"
+    },
+    {
+      "bytes": 27,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/timed_status.dat",
+      "sha256": "30b83418734aa7ee423a9f28a7f8a2aedd7f321aa0fddc651266bfa7f14f8d35"
+    },
+    {
+      "bytes": 3334,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/trace.f",
+      "sha256": "79cf02dec7c93ea3a8ae15a435c989eedc46ce1b38434148ec1491f89be5b8c0"
+    },
+    {
+      "bytes": 5122843,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/trace.json",
+      "sha256": "03fbfd3795a468661162c0e574a7de6878065efbab79ca9d0f80e743f29e787f"
+    },
+    {
+      "bytes": 328,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/trace.mk",
+      "sha256": "91c1d7c6a24ea81330b87453456c1da9cc082ca73369ac8c32bd1816a2916be7"
+    },
+    {
+      "bytes": 620,
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/values.dat",
+      "sha256": "73dc0813aed04648a35ace4cb8f7a5f336158cd69f3d2c13ec968f34419b52f2"
+    }
+  ],
+  "original_extreme_point_qualified": false,
+  "production_changed": false,
+  "schema": 1,
+  "scope": "EW threshold source/geometry and separately labeled causal diagnostics"
+}

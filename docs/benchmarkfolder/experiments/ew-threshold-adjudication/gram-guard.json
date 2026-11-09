@@ -1,0 +1,14 @@
+{
+  "MP_BITS_only_change_leaves_guard_threshold_unchanged": true,
+  "bridge_source_line": 172,
+  "bridge_threshold": "2^-136 at all MP_BITS",
+  "guard_source_line": 1671,
+  "input_bits": 113,
+  "native_condition": "condition.pow(subset.coefficient_rank) < threshold",
+  "scope": "Source audit of the observed native Gram rejections; no precision or guard modification.",
+  "sources": {
+    ".tirust-build/bridge-poles/src/lib.rs": "1eab09d61652e4dfade900a22f8c63a071b4fecee2e7454e8144f934f17e34e0",
+    ".tirust-build/pole-development/crates/iregi-rust/src/direct/exec.rs": "255b250f6997cfd08f017a9962ac79e6a4a87421f1f2d9f7ddb6a8bc1129eace"
+  },
+  "working_bits": 256
+}
