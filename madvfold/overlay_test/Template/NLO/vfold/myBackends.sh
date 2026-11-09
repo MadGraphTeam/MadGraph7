@@ -20,9 +20,13 @@ step=
 refstep=
 cudascan=0
 ninjaAndCollier=0
+noopt7=0
+onlyNoopt7=0
 usage() {
-  echo "Usage: $0 [--ninja-and-collier] <--launch|--launch-o|--launch-o-cudascan> <step>"
+  echo "Usage: $0 [--ninja-and-collier] [--noopt7|--only-noopt7] <--launch|--launch-o|--launch-o-cudascan> <step>"
   echo "       (--ninja-and-collier: also run F1 with the other MadLoop reduction library)"
+  echo "       (--noopt7: also run F1 without the stock MadGraph7 Born cache and gscale, in <step>Su)"
+  echo "       (--only-noopt7: only add <step>Su to the existing runs of <step>)"
   echo "Usage: $0 <--diff|--diff-o> <step>"
   echo "Usage: $0 <--diff2|--diff2-o> <refstep> <step>"
   exit 1
@@ -30,6 +34,10 @@ usage() {
 while [ "$1" != "" ]; do
   if [ "$1" == "--ninja-and-collier" ]; then
     ninjaAndCollier=1; shift
+  elif [ "$1" == "--noopt7" ]; then
+    noopt7=1; shift
+  elif [ "$1" == "--only-noopt7" ]; then
+    onlyNoopt7=1; shift
   elif [ "$mode" == "" ] && [ "$1" == "--launch" ]; then
     mode=$1; shift
   elif [ "$mode" == "" ] && [ "$1" == "--launch-o" ]; then
@@ -60,6 +68,8 @@ if [ "$step" == "$refstep" ]; then
   echo refstep=${step}
   usage
 fi
+if [ "$noopt7" == "1" ] && [ "$onlyNoopt7" == "1" ]; then usage; fi
+if [ "$noopt7$onlyNoopt7" != "00" ] && [ "$mode" != "--launch" ]; then usage; fi
 ###echo mode=${mode}
 ###echo step=${step}
 
@@ -67,7 +77,17 @@ fi
 if [ "$mode" == "--launch" ]; then
 
   events=Events/${step}
-  if [ "$(ls -d1 ${events}* 2>/dev/null | grep -v '.txt$')" != "" ]; then
+  if [ "$onlyNoopt7" == "1" ]; then
+    # Step 15e: add the F1 run without the MadGraph7 Born reuse to the existing runs of this step
+    if [ ! -d ${events}S ]; then
+      echo "ERROR! ${events}S does not exist: --only-noopt7 adds ${events}Su to an existing test"
+      exit 1
+    fi
+    if [ -e ${events}Su ]; then
+      echo "ERROR! ${events}Su exists"
+      exit 1
+    fi
+  elif [ "$(ls -d1 ${events}* 2>/dev/null | grep -v '.txt$')" != "" ]; then
     echo "ERROR! ${events}* directories exist"
     ls -d1 ${events}* | grep -v '.txt$'
     exit 1
@@ -82,6 +102,13 @@ if [ "$mode" == "--launch" ]; then
 
   set -e
   ###set -x
+
+  # Step 15e: with --only-noopt7, this is the only run (without -x: this is also the only build)
+  if [ "$onlyNoopt7" == "1" ]; then
+    ENV_VFOLD_MG7BORNNOOPT=1 ENV_VFOLD_ME_MODE=F1 ./vfold/myLaunch.sh ${oOpt}
+    mv Events/run_01 ${events}Su
+    exit 0
+  fi
 
   ENV_VFOLD_ME_MODE=F0 ./vfold/myLaunch.sh ${oOpt}
   mv Events/run_01 ${events}Z
@@ -99,6 +126,12 @@ if [ "$mode" == "--launch" ]; then
     fi
     ENV_VFOLDTEST_MLREDUCTION=${other} ENV_VFOLD_ME_MODE=F1 ./vfold/myLaunch.sh ${oOpt} ${xOpt}
     mv Events/run_01 ${events}${otherS}
+  fi
+
+  # Step 15e: also F1 without the stock MadGraph7 Born cache and gscale, for the timing table
+  if [ "$noopt7" == "1" ]; then
+    ENV_VFOLD_MG7BORNNOOPT=1 ENV_VFOLD_ME_MODE=F1 ./vfold/myLaunch.sh ${oOpt} ${xOpt}
+    mv Events/run_01 ${events}Su
   fi
 
   ENV_VFOLD_ME_MODE=F2 ./vfold/myLaunch.sh ${oOpt} ${xOpt}
@@ -190,6 +223,10 @@ elif [ "$mode" == "--diff" ]; then
       echo "  ./vfold/myDiffRun.sh ${oOpt} ${events}${sfx} ${events}F || status=1" >> ${cmdtmp}
     fi
   done
+  # Step 15e: F1 without the MadGraph7 Born reuse is equal to F within tolerance (gscale rescales amplitudes)
+  if [ -d Events/${events}Su ]; then
+    echo "  ./vfold/myDiffRun.sh ${oOpt} -nd5 ${events}F ${events}Su || status=1" >> ${cmdtmp}
+  fi
   # Each C (all CPU backends, all cuda and cudb/cudbr vecsizes found) is equal to F within tolerance
   for d in $(for d in Events/${events}C*; do if [ -d ${d} ]; then echo ${d#Events/}; fi; done | sort -V); do
     echo "  ./vfold/myDiffRun.sh ${oOpt} -nd5 ${events}F ${d} || status=1" >> ${cmdtmp}
@@ -202,7 +239,7 @@ elif [ "$mode" == "--diff" ]; then
   echo "Compared results using"
   echo "  $0 ${ARGS}"
   echo "Modes F1/S, F2/T (and F1 with the MadLoop library of F) and F give identical results"
-  echo "Modes F and all Cs are equal within tolerance"
+  echo "Modes F and all Cs (and F1 without the MadGraph7 Born reuse, if any) are equal within tolerance"
   sed 's/ || status=1$//' ${cmdtmp}
   if [ "${notcmp}" != "" ]; then echo "NOT compared:${notcmp}"; fi
   echo "STATUS=${status} (all comparisons above)"

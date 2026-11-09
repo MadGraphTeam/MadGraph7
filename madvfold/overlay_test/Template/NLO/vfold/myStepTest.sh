@@ -11,10 +11,12 @@ PROC=$(basename $(pwd))
 
 # Command line arguments
 usage() {
-  echo "Usage:   $0 --ref <REF<n>/<tag>> [--diffonly] [--tsts '<tst1 tst2...>'] [--ninja-and-collier] <step>"
+  echo "Usage:   $0 --ref <REF<n>/<tag>> [--diffonly] [--tsts '<tst1 tst2...>'] [--ninja-and-collier] [--noopt7|--only-noopt7] <step>"
   echo "         (--ref: results in Events/REF<n>/<tag>, e.g. --ref REF4/GOLD; no default)"
   echo "         (--diffonly: no launch, only diff and timing table of existing results in Events/REF<n>/<tag>)"
   echo "         (--ninja-and-collier: also run F1 with the other MadLoop reduction library, see myLaunch.sh)"
+  echo "         (--noopt7: also run F1 without the stock MadGraph7 Born cache and gscale, in <step>Su)"
+  echo "         (--only-noopt7: only add <step>Su to existing tests, then redo their diff log and timing table)"
   echo "Example: $0 --ref REF4/GOLD step14s"
   exit 1
 }
@@ -23,9 +25,12 @@ diffonly=0
 tag=
 tsts=
 ninjaAndCollier=
+noopt7=
 while [ "$1" != "" ]; do
   if [ "$1" == "--ninja-and-collier" ]; then
     ninjaAndCollier=--ninja-and-collier; shift
+  elif { [ "$1" == "--noopt7" ] || [ "$1" == "--only-noopt7" ]; } && [ "$noopt7" == "" ]; then
+    noopt7=$1; shift
   elif [ "$1" == "--ref" ] && [ "$2" != "" ] && [ "$ref" == "" ]; then
     ref=$2; shift; shift
   elif [ "$1" == "--diffonly" ] && [ "$diffonly" == "0" ]; then
@@ -38,6 +43,7 @@ while [ "$1" != "" ]; do
     usage
   fi
 done
+if [ "$noopt7" != "" ] && [ "$diffonly" == "1" ]; then usage; fi
 
 # Check if this is part of step8, step9, step10, step11 or a later step
 if [ "${step}" == "--diffonly" ] || [ "${step}" == "--tsts" ] || [ "${step}" == "--ref" ]; then
@@ -188,7 +194,14 @@ for tst in ${tsts}; do
   #====================
   if [ "$diffonly" == "0" ]; then
     mkdir -p $(dirname ${outL})
-    echo | tee $outL
+    if [ "${noopt7}" == "--only-noopt7" ]; then
+      # Step 15e: keep the log of the existing test and append to it
+      echo | tee -a $outL
+      echo "===============================================================================" | tee -a $outL
+      echo "Add the F1 run without the MadGraph7 Born reuse (--only-noopt7)" | tee -a $outL
+    else
+      echo | tee $outL
+    fi
     echo "START:    $start" | tee -a $outL
     echo "HOSTNAME: $(hostname)" | tee -a $outL
     echo "PROC:     ${PROC}" | tee -a $outL
@@ -196,7 +209,7 @@ for tst in ${tsts}; do
     echo "-------------------------------------------------------------------------------" | tee -a $outL
     echo | tee -a $outL
     echo "Launch ${PROC} tests on $(hostname):" | tee -a $outL
-    cmd="./vfold/myBackends.sh ${ninjaAndCollier} ${launch} ${refstep}"
+    cmd="./vfold/myBackends.sh ${ninjaAndCollier} ${noopt7} ${launch} ${refstep}"
     echo "  ${env} \\" | tee -a $outL
     echo "    ${cmd}" | tee -a $outL
     echo | tee -a $outL

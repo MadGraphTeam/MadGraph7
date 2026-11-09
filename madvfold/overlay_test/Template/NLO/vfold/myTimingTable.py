@@ -45,6 +45,7 @@ import sys
 MODES = [
     ('Z', 'F0'), ('S', 'F1'),
     ('Sn', 'F1[n]'), ('Sc', 'F1[c]'),  # step 14h: F1 also with the other MadLoop reduction library
+    ('Su', 'F1[u]'),  # step 15e: F1 unoptimized, without the stock MadGraph7 Born cache and gscale
     ('T', 'F2'), ('F', 'F'),
     ('Cnone', 'C/none'), ('Csse4', 'C/sse4'), ('Cavx2', 'C/avx2'),
     ('C512y', 'C/512y'), ('C512z', 'C/512z'), ('Ccuda', 'C/cuda'),
