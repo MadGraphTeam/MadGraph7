@@ -7596,13 +7596,13 @@ class RunCardMG7(RunCard):
         self.add_toml_param('madnis', 'discrete_activation', "leaky_relu",
             allowed=['relu', 'leaky_relu', 'elu', 'gelu', 'sigmoid', 'softplus'],
             comment="activation function of the discrete-dimension network")
-        self.add_toml_param('madnis', 'flavor_levels', False,
+        self.add_toml_param('madnis', 'flavor_levels', True,
             comment="sample the flavours in three levels: initial state, final-state "
                     "content (both learned) and flavour")
         self.add_toml_param('madnis', 'flavor_prior_floor', 0.05,
             comment="with flavor_levels, the fraction of the learned levels sampled "
                     "from their prior")
-        self.add_toml_param('madnis', 'flavor_logit_bound', 0.0,
+        self.add_toml_param('madnis', 'flavor_logit_bound', 2.5,
             comment="with flavor_levels, bound c of the learned logits, c tanh(x / c); "
                     "0: unbounded")
         self.add_toml_param('madnis', 'cwnet_hidden_dim', 64, auto=True,
