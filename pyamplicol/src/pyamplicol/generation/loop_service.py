@@ -10,6 +10,7 @@ removed (user ruling 2026-10-28, M-QCD Q3).
 from __future__ import annotations
 
 import cmath
+import json
 import logging
 import os
 import time
@@ -1213,8 +1214,11 @@ def _plan_v2(backend, processes, blockers, *, model=None):
     planned artifact's union, ``runtime_capability`` the one runtime when
     every process shares it (else None). One ``preparation_cache.
     PreparationMemo`` serves the order inference's and the processes'
-    model preparations (by recipe; every request's refusals run for it)."""
-    from pyamplicol.loops.preparation_cache import PreparationMemo
+    model preparations (by recipe; every request's refusals run for it),
+    with the persistent store of lowered programs unless it is off
+    (``preparation_cache.store_for``): a dry run fills it when the compiled
+    model is available (it never compiles one)."""
+    from pyamplicol.loops.preparation_cache import PreparationMemo, store_for
     from pyamplicol.loops.v2.assemble import prepare_request_model
     from pyamplicol.loops.v2.native_trees import NATIVE_EXPORT_REFUSALS
     from pyamplicol.loops.v2.refusals import (
@@ -1238,7 +1242,7 @@ def _plan_v2(backend, processes, blockers, *, model=None):
                     "loop-generation-plan", backend._progress, len(processes.requests)
                 ),
             )
-            memo = PreparationMemo()
+            memo = PreparationMemo(store_for(backend._run_config.model))
             context, requests, dags, skipped = _born_members(backend, context, memo)
             for entry, request, dag, zero in zip(
                 context.expanded, requests, dags, context.colour_zero, strict=True
@@ -1269,6 +1273,7 @@ def _plan_v2(backend, processes, blockers, *, model=None):
                 # The process's runtime: from its request's contribution.
                 record["runtime_capability"] = loop_v2_capability(request.contribution)
                 coverage.append(record)
+            _LOGGER.info("loop preparation: %s", json.dumps(memo.report()))
         except (ValueError, TypeError, RuntimeError, ImportError, PyAmpliColError) as e:
             # A listed key first (``refusals.keyed_error``).
             blockers = (str(keyed_error(e)),)
@@ -1479,14 +1484,17 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
 
     One ``preparation_cache.PreparationMemo`` serves every model
     preparation of the call (the order inference, the process slices, the
-    probe and Goldstone slices) and is dropped with it.
+    probe and Goldstone slices) and is dropped with it; its persistent store
+    of lowered programs (``preparation_cache.store_for``, unless off) serves
+    them across generations. Its state is logged, never written into the
+    artifact.
     """
     from pyamplicol.artifacts.process_groups import (
         grouping_process,
         initial_process_groups,
     )
     from pyamplicol.loops.native import load_loop_native
-    from pyamplicol.loops.preparation_cache import PreparationMemo
+    from pyamplicol.loops.preparation_cache import PreparationMemo, store_for
     from pyamplicol.loops.v2.artifact import generate_process, write_plan
     from pyamplicol.loops.v2.blocks import born_dag_scope
 
@@ -1516,7 +1524,7 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
     )
     started = time.perf_counter()
     grouping = backend._run_config.process.flavor_blind
-    memo = PreparationMemo()
+    memo = PreparationMemo(store_for(backend._run_config.model))
     stack = ExitStack()
     try:
         with reporter.phase(
@@ -1704,6 +1712,9 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                         )
                     )
                     phase.update(index + 1, message=name)
+            # The preparation memo and store state (log only: the artifact
+            # is the same whatever the cache state).
+            _LOGGER.info("loop preparation: %s", json.dumps(memo.report()))
             process_groups = None
             if grouping:
                 artifacts = [
