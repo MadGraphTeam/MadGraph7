@@ -497,7 +497,11 @@ none). Generation threshold of this example: at most 10 minutes and 8 GiB.
 Measured (2026-11-09), before lit-ewprep: generation 205 s, peak 7.67 GiB, of
 which 27 s is the electroweak request-model preparation (`minimal`: 221 s and
 7.73 GiB; with the correlators 200 s, 7.28 GiB), within the 10 min / 8 GiB
-threshold; `check` of the card 228 s (preparation 25 s), 7.20 GiB. Per point,
+threshold; `check` of the card 228 s (preparation 25 s), 7.20 GiB. After
+lit-ewprep (the shared preparation and its cache, cold): generation 206 s,
+peak 7.64 GiB, preparation 11.7 s; `check` of the card 244 s (preparation
+12.5 s), 7.64 GiB (both beside other jobs; the process's own generation
+dominates). Per point,
 one pinned core, a batch of 8: NinjaRS (`auto`) 113-120 ms checked, 121-123 ms
 unchecked; TIRust 125 ms with 2 of 8 points refused, 131-133 ms unchecked.
 **`check` fails this example** (exit 1): the poles of the QCD^2 QED^8 and
@@ -509,7 +513,8 @@ Born alone fails its QED^10 sector identically, while `u u~ > d d~` and
 (package report lit-examples §0); the walkthrough shows it as it is. The
 whole walkthrough at two points: 550 s (`check` 275 s, generation 242 s on a
 loaded host), peak 7.6 GiB in the generation's child process; at one point
-(the CI smoke test): 671 s.
+(the CI smoke test): 671 s. After lit-ewprep: 472 s at two points (`check`
+239 s, generation 203 s).
 
 ### `g g > z g g`, loop-induced (every quark loop)
 
@@ -539,12 +544,14 @@ on gluon 1. One squared order.
 
 Measured (2026-11-09), before lit-ewprep: generation 153 s, peak 4.30 GiB, of
 which 49 s is the electroweak request-model preparation (with the correlators
-147 s, 4.20 GiB); `check` of the card 149 s (preparation 50 s), 4.22 GiB. Per
+147 s, 4.20 GiB); `check` of the card 149 s (preparation 50 s), 4.22 GiB.
+After lit-ewprep (cache cold): generation 129 s, peak 4.19 GiB, preparation
+20.0 s; `check` of the card 132 s (preparation 20.5 s), 4.23 GiB. Per
 point, one pinned core, a batch of 8: TIRust (`auto`) 3.1 ms checked and
 unchecked; NinjaRS 4.6-4.7 ms; one helicity 1.8 ms against 3.1 ms summed
 (0.58). The whole walkthrough at two points: 301-367 s (two runs on a
 loaded host), peak 4.4 GiB in the generation's child process; at one point
-(the CI smoke test): 338 s.
+(the CI smoke test): 338 s. After lit-ewprep: 266 s at two points.
 
 ## Typed Python
 
