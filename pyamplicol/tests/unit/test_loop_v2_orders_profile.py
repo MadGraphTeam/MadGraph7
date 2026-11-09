@@ -114,6 +114,44 @@ def test_the_stage_groups_split_the_wall_time():
     assert profile_stages(seconds, 1.0, "virtual")["rest"] == 0.0
 
 
+@pytest.mark.loop_fast
+def test_the_profile_counts_every_native_batch_of_a_call():
+    from pyamplicol.runtime.virtual import collected_stage_seconds
+
+    class Executor:
+        def __init__(self) -> None:
+            self.last_report = None
+
+        def evaluate(self, batches: int) -> None:
+            # A call of several native batches (a per-point fallback, a
+            # rescue level, one batch per scale), each with its report.
+            for _ in range(batches):
+                self.last_report = {"seconds": {"trees": 1.0, "reduction": 2.0}}
+
+    class Backend:
+        def __init__(self) -> None:
+            self._executor = Executor()
+
+    class Runtime:
+        def __init__(self) -> None:
+            self._backend = Backend()
+
+    runtime, other = Runtime(), Runtime()
+    with collected_stage_seconds(runtime) as seconds:
+        runtime._backend._executor.evaluate(3)
+        other._backend._executor.evaluate(1)
+        assert runtime._backend._executor.last_report["seconds"]["trees"] == 1.0
+    assert seconds == {"trees": 3.0, "reduction": 6.0}
+    # Only the profiled runtime's executor recorded, and only while active.
+    assert type(runtime._backend._executor) is Executor
+    assert type(other._backend._executor) is Executor
+    runtime._backend._executor.evaluate(1)
+    assert seconds == {"trees": 3.0, "reduction": 6.0}
+    assert "_collected_stage_seconds" not in vars(runtime._backend._executor)
+    with collected_stage_seconds(object()) as nothing:
+        assert nothing is None
+
+
 @pytest.mark.loop_physics
 def test_evaluate_orders_is_a_view_of_one_evaluation(uux_ddx, monkeypatch):
     from pyamplicol import Runtime

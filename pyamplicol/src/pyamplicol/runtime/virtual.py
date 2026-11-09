@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 from numbers import Integral, Real
@@ -106,17 +107,62 @@ def profile_stages(
     return out
 
 
-def last_stage_seconds(runtime: Any) -> dict[str, float] | None:
-    """The stage report of a loaded v2 virtual runtime's latest native call
-    (the executor's always-on timers; nothing is timed for it), or None when
-    the runtime has no native executor report."""
+@contextmanager
+def collected_stage_seconds(runtime: Any) -> Iterator[dict[str, float] | None]:
+    """Collect the stage seconds of every native call a loaded v2 virtual
+    runtime's executor makes while the context is active: each call's
+    always-on stage report (``NativeExecutor.last_report["seconds"]``) is
+    added to the yielded mapping, so a public call that runs several native
+    batches (a per-point fallback, a rescue level, one batch per scale)
+    counts every one. Nothing is timed for it, and only this runtime's
+    executor records, for the duration of the context (its class is switched
+    to a recording subclass and back); None is yielded for a runtime without
+    a native executor report."""
 
     backend = getattr(runtime, "_backend", runtime)
     executor = getattr(backend, "_executor", None)
-    report = getattr(executor, "last_report", None)
-    if not isinstance(report, Mapping) or "seconds" not in report:
-        return None
-    return {str(name): float(value) for name, value in report["seconds"].items()}
+    if not hasattr(executor, "last_report") or not hasattr(executor, "__dict__"):
+        yield None
+        return
+    original = type(executor)
+    totals: dict[str, float] = {}
+    executor.__class__ = _recording_executor(original)
+    executor.__dict__[_STAGE_TOTALS] = totals
+    try:
+        yield totals
+    finally:
+        executor.__class__ = original
+        executor.__dict__.pop(_STAGE_TOTALS, None)
+
+
+_STAGE_TOTALS = "_collected_stage_seconds"
+_RECORDING: dict[type, type] = {}
+
+
+def _recording_executor(base: type) -> type:
+    """``base`` with a ``last_report`` that also adds each assigned report's
+    stage seconds to the instance's collected totals (``_STAGE_TOTALS``)."""
+
+    found = _RECORDING.get(base)
+    if found is not None:
+        return found
+
+    def get(self: Any) -> Any:
+        return self.__dict__.get("last_report")
+
+    def put(self: Any, report: Any) -> None:
+        self.__dict__["last_report"] = report
+        totals = self.__dict__.get(_STAGE_TOTALS)
+        seconds = report.get("seconds") if isinstance(report, Mapping) else None
+        if totals is not None and isinstance(seconds, Mapping):
+            for name, value in seconds.items():
+                totals[str(name)] = totals.get(str(name), 0.0) + float(value)
+
+    recording = type(base.__name__, (base,), {"last_report": property(get, put)})
+    recording.__qualname__ = base.__qualname__
+    recording.__module__ = base.__module__
+    _RECORDING[base] = recording
+    return recording
 
 
 def _number(value: object, description: str) -> str:

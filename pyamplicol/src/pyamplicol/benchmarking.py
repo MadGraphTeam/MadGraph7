@@ -2763,7 +2763,9 @@ class VirtualProfileResult:
     and ``high`` the fastest and slowest call's); ``stages`` splits the
     timed calls' total wall time per point into the groups of
     ``runtime.virtual.PROFILE_GROUPS`` from the executor's always-on stage
-    report of the same calls (no other timer runs, so ``label`` is None).
+    reports of the same calls, every native batch of a call counted
+    (``runtime.virtual.collected_stage_seconds``; no other timer runs, so
+    ``label`` is None).
     ``reduction`` is the requested, effective backend and reason of the
     last call; ``unchecked`` the reduction_unchecked setting."""
 
@@ -2817,7 +2819,7 @@ def profile_virtual(
     invariant mass of its initial state)."""
 
     from pyamplicol.api import Runtime
-    from pyamplicol.runtime.virtual import last_stage_seconds, profile_stages
+    from pyamplicol.runtime.virtual import collected_stage_seconds, profile_stages
 
     run = config if isinstance(config, RunConfig) else None
     bench = run.benchmark if run is not None else config or BenchmarkConfig()
@@ -2870,13 +2872,13 @@ def profile_virtual(
     contribution = runtime.contribution_kind
     result: Any = None
     for _ in range(max(bench.minimum_samples, 1)):
-        begin = time.perf_counter()
-        result = runtime.evaluate(batch, **options)
-        wall = time.perf_counter() - begin
+        with collected_stage_seconds(runtime) as seconds:
+            begin = time.perf_counter()
+            result = runtime.evaluate(batch, **options)
+            wall = time.perf_counter() - begin
         walls.append(wall)
         failed += sum(1 for valid in result.valid if not valid)
-        seconds = last_stage_seconds(runtime) or {}
-        for group, value in profile_stages(seconds, wall, contribution).items():
+        for group, value in profile_stages(seconds or {}, wall, contribution).items():
             totals[group] = totals.get(group, 0.0) + value
     count = len(batch) * len(walls)
     reduction = next(
