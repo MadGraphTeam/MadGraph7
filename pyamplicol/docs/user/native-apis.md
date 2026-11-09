@@ -843,7 +843,8 @@ the packaged Rust wrapper's `set_reduction_unchecked(bool)`; 1 or 0, default
 0, as the Python API's `reduction_unchecked=`) reduces without the backends'
 own acceptance and refusal checks (TIRust: its gates and method choice as
 method selection, no acceptance pass, plain PV at gate 0 as the last resort;
-NinjaRS: zero stability thresholds; only points without a finite value
+NinjaRS: zero stability thresholds, its box mu-expansion's conditioning
+bound active; only points without a finite value or refused by that bound
 fail); `"auto"` keeps its backend and its per-point fallback, which then
 acts only on those points; the stability monitoring stays its own setting;
 `"reduction"` in `diagnostics_json` records `"unchecked"`, and any other
