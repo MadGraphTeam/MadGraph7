@@ -44,7 +44,7 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 132
+    assert len(FIELD_REGISTRY) == 133
     # m-lit lit-unchecked: the unchecked reduction setting, a runtime option
     # (off by default).
     assert FIELD_REGISTRY["evaluation.reduction_unchecked"].default is False

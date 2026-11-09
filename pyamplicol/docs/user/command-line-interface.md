@@ -192,9 +192,12 @@ For the dedicated direct/FFT/reference scaling scan, see
 [FullColor FFT Profiling](fullcolor-fft-profiling.md).
 
 `--dry-run` performs the operation exposed as `Generator.plan()`. It creates no
-artifact, output directory, or model-cache entry. A raw UFO or JSON source must
-already have a reusable compiled-model cache entry, or be compiled explicitly,
-because planning never compiles trusted model input as a side effect.
+artifact, output directory, or compiled-model cache entry. A raw UFO or JSON
+source must already have a reusable compiled-model cache entry, or be compiled
+explicitly, because planning never compiles trusted model input as a side
+effect. A one-loop dry run runs the request-model preparations and so fills the
+one-loop preparation cache (unless it is off), preparing a later generation
+ahead.
 
 See [Generation Modes and Evaluators](generation-modes-and-evaluators.md) before
 combining execution modes and prepared-model backends.
@@ -602,6 +605,13 @@ pyamplicol model processes "p p > all all" \
 
 The distinction between portable model IR and prepared kernel bundles is
 explained in [Models and Processes](models-and-processes.md).
+
+The model caches are controlled by `--model-cache` / `--no-model-cache`,
+`--model-cache-dir DIR` and, for one-loop generation, `--loop-preparation-cache`
+/ `--no-loop-preparation-cache` (the persistent cache of the lowered model
+programs, on by default, `[model] loop_preparation_cache`; also off with
+`--no-model-cache` or `PYAMPLICOL_LOOP_PREPARATION_CACHE=0`). See
+[Model caches and the one-loop preparation cache](configuration.md#model-caches-and-the-one-loop-preparation-cache).
 
 ## Examples and installed workspaces
 

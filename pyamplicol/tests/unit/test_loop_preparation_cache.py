@@ -27,6 +27,7 @@ import os
 import subprocess
 import sys
 import textwrap
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -100,10 +101,8 @@ def _generate(work: Path, row: str, extra: str = "") -> Path:
     return output
 
 
-def _plan(work: Path, row: str, output: Path) -> dict:
-    """The public dry run of ``row`` (its card naming ``output``) as JSON."""
-
-    from dataclasses import asdict
+def _plan(work: Path, row: str, output: Path):
+    """The public dry run of ``row`` (its card naming ``output``)."""
 
     from pyamplicol.api import Generator
     from pyamplicol.config import resolve_config
@@ -111,8 +110,7 @@ def _plan(work: Path, row: str, output: Path) -> dict:
     work.mkdir(parents=True, exist_ok=True)
     card = work / "card.toml"
     card.write_text(_card(output, row))
-    plan = Generator(resolve_config(card)).plan(_processes(row))
-    return json.loads(json.dumps(asdict(plan), default=str))
+    return Generator(resolve_config(card)).plan(_processes(row))
 
 
 # Fields that differ between two cache-off generations: the manifest's
@@ -260,7 +258,9 @@ def test_artifacts_and_dry_runs_are_byte_identical_off_cold_and_warm(
     # (warm, in this process) and off.
     planned = _plan(tmp_path / "plan-warm", row, tmp_path / "planned")
     monkeypatch.setenv(ENVIRONMENT, "0")
-    assert _plan(tmp_path / "plan-off", row, tmp_path / "planned") == planned
+    off = _plan(tmp_path / "plan-off", row, tmp_path / "planned")
+    assert not planned.unsupported_features
+    assert repr(off) == repr(planned)
     assert len(_entries(root)) == 1
 
 
@@ -284,7 +284,7 @@ def test_one_preparation_per_recipe_and_one_lowering_per_model(
     _generate(tmp_path / "cold", "induced")
     _generate(tmp_path / "warm", "induced")
     planned = _plan(tmp_path / "plan", "induced", tmp_path / "planned")
-    assert planned["unsupported_features"] == []
+    assert not planned.unsupported_features
     cold, warm, plan = (memo.counts for memo in spy.memos)
     for counts in (cold, warm):
         assert counts["requests"] == 3 and counts["request_hits"] == 1
@@ -349,8 +349,9 @@ def test_probe_slices_share_the_preparation(seeded, monkeypatch, tmp_path):
     assert seen == [{"memo": memo}]
 
 
+@dataclass(frozen=True)
 class _Request:
-    process = "x > y"
+    process: str = "x > y"
 
 
 # ------------------------------------------------------------ (viii) refusals
@@ -405,8 +406,11 @@ def test_a_shared_preparation_keeps_every_request_s_refusals(
 
     monkeypatch.setattr(ew_policy, "require_loop_gauge", require_loop_gauge)
     monkeypatch.setattr(assemble, "require_labelled_counterterms_for_veto", veto)
-    store = PreparationStore(tmp_path / "loop-preparations")
-    for memo in (PreparationMemo(store), PreparationMemo(store)):
+    lowered = []
+    for memo in (
+        PreparationMemo(PreparationStore(tmp_path / "loop-preparations")),
+        PreparationMemo(PreparationStore(tmp_path / "loop-preparations")),
+    ):
         calls.clear()
         prepare_request_model(compiled, first, memo=memo)
         with pytest.raises(LoopRequestUnsupported, match="d d~ > u u~"):
@@ -418,8 +422,11 @@ def test_a_shared_preparation_keeps_every_request_s_refusals(
             ("gauge", "d d~ > u u~"),
             ("veto", "d d~ > u u~"),
         ]
-    # The second memo read the first's program from the store.
-    assert memo.counts["program_loads"] == 1 and memo.counts["lowerings"] == 0
+        lowered.append(memo.counts["lowerings"])
+    # The second memo read the first's programs from the store (the
+    # unrepaired source and its repaired form: two).
+    assert lowered[0] >= 1 and lowered[1] == 0
+    assert memo.counts["program_loads"] == lowered[0]
 
 
 # ------------------------------------------- (b) one lowering, the same program
@@ -570,7 +577,8 @@ def test_content_simplification_and_code_identity_invalidate(
     store = cache.PreparationStore(tmp_path / "loop-preparations")
 
     def prepared(raw, simplify=True):
-        memo = cache.PreparationMemo(store)
+        # A new store per generation (each forms its keys once).
+        memo = cache.PreparationMemo(cache.PreparationStore(store.directory))
         declarations = memo.restrictions(raw, simplify=simplify)
         program = declarations.program or None
         return memo, declarations, program
