@@ -107,6 +107,24 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     assert FIELD_REGISTRY["evaluation.stability_checks.rotation_count"].default == 0
     assert FIELD_REGISTRY["evaluation.stability_checks.rescaled"].default is False
     assert FIELD_REGISTRY["loop.preparation"].nullable
+    # lit-ewprep: the persistent cache of one-loop model preparations is on
+    # by default (``loops.preparation_cache``).
+    assert FIELD_REGISTRY["model.loop_preparation_cache"].kind == "bool"
+    assert FIELD_REGISTRY["model.loop_preparation_cache"].default is True
+
+
+def test_loop_preparation_cache_is_a_boolean_model_option() -> None:
+    """lit-ewprep: ``model.loop_preparation_cache`` takes a boolean only;
+    any other value is refused with the one message."""
+
+    assert ModelConfig().loop_preparation_cache is True
+    assert ModelConfig(loop_preparation_cache=False).loop_preparation_cache is False
+    for value in (1, 0, "true", "off", None, 1.0):
+        with pytest.raises(
+            ConfigurationError,
+            match=r"^model\.loop_preparation_cache must be a boolean$",
+        ):
+            ModelConfig(loop_preparation_cache=value)
 
 
 def test_loop_induced_probes_is_an_explicit_boolean_option() -> None:
