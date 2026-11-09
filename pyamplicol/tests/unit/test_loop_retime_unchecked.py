@@ -153,7 +153,9 @@ def test_the_stage_split_is_labelled_and_complete():
     # moments and contraction, the timer's rest outside them in glue.
     import importlib.util
 
-    path = ROOT / "docs" / "performance_reports" / "loop" / "scripts" / "build_summary.py"
+    path = (
+        ROOT / "docs" / "performance_reports" / "loop" / "scripts" / "build_summary.py"
+    )
     spec = importlib.util.spec_from_file_location("li_report_build_summary", path)
     builder = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(builder)

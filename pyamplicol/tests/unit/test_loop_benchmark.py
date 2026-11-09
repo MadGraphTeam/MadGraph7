@@ -93,7 +93,9 @@ def test_streams_are_exact_distinct_and_start_with_the_campaign(key):
             exact_points.check(point, masses, incoming)
             continue
         for mu in range(4):
-            assert sum(p[mu] for p in point[:incoming]) == sum(p[mu] for p in point[incoming:])
+            assert sum(p[mu] for p in point[:incoming]) == sum(
+                p[mu] for p in point[incoming:]
+            )
         for p, m in zip(point, masses, strict=True):
             assert abs(exact_points._dot(p, p) - m * m) <= p[0] ** 2 / 10**27
     assert streams.campaign_agreement(key, stream) in (True, None)
@@ -2484,94 +2486,249 @@ def test_report_builder_backend_table_and_missing_box(tmp_path):
     import json
 
     builder = _report_builder()
-    ti_stages = {"inputs": 0.1, "numerator": 0.5, "scatter": 0.1, "moments": 0.2,
-                 "contraction": 0.05, "glue": 0.05, "untimed": 0.0}
-    nj_stages = {"inputs": 0.1, "numerator": 0.5, "scatter": 0.1, "ninjars": 0.6,
-                 "masters": 0.2, "glue": 0.05, "untimed": 0.0}
-    acc = {"points": 128, "max_relative": 2e-3, "lax": 1e-5, "above": 3, "worst": 2e-3,
-           "served_by": ["last resort"], "failed": 0, "failed_classes": [], "note": True}
+    ti_stages = {
+        "inputs": 0.1,
+        "numerator": 0.5,
+        "scatter": 0.1,
+        "moments": 0.2,
+        "contraction": 0.05,
+        "glue": 0.05,
+        "untimed": 0.0,
+    }
+    nj_stages = {
+        "inputs": 0.1,
+        "numerator": 0.5,
+        "scatter": 0.1,
+        "ninjars": 0.6,
+        "masters": 0.2,
+        "glue": 0.05,
+        "untimed": 0.0,
+    }
+    acc = {
+        "points": 128,
+        "max_relative": 2e-3,
+        "lax": 1e-5,
+        "above": 3,
+        "worst": 2e-3,
+        "served_by": ["last resort"],
+        "failed": 0,
+        "failed_classes": [],
+        "note": True,
+    }
     li_row = {
-        "key": "gg_hgg", "math": "g g -> h g g", "label": "g g > h g g",
+        "key": "gg_hgg",
+        "math": "g g -> h g g",
+        "label": "g g > h g g",
         "generation": {"status": "measured"},
         "providers": {"status": "recorded", "fastest": {"key": "openloops"}},
-        "validation": {"status": "partial", "note": "li_gg_hgg: L3 partial (x); li_gg_hgg: L6 partial"
-                       " (TIRust fails 2 of 3 binary64 points closed (typed))"},
+        "validation": {
+            "status": "partial",
+            "note": "li_gg_hgg: L3 partial (x); li_gg_hgg: L6 partial"
+            " (TIRust fails 2 of 3 binary64 points closed (typed))",
+        },
         "timing": {
-            "status": "measured", "unchecked": True, "backend": "tirust",
-            "backend_label": "TIRust", "seconds_per_point": 1.0, "revision": "aaaaaaaa",
-            "stages": ti_stages, "accuracy": acc, "source": "test",
-            "gate": {"status": "fail", "ratio_to_limit": 1.2, "backend_label": "TIRust"},
-            "other_backend": {"backend": "ninjars", "backend_label": "NinjaRS per amplitude",
-                              "status": "served", "seconds_per_point": 2.5, "stages": nj_stages},
+            "status": "measured",
+            "unchecked": True,
+            "backend": "tirust",
+            "backend_label": "TIRust",
+            "seconds_per_point": 1.0,
+            "revision": "aaaaaaaa",
+            "stages": ti_stages,
+            "accuracy": acc,
+            "source": "test",
+            "gate": {
+                "status": "fail",
+                "ratio_to_limit": 1.2,
+                "backend_label": "TIRust",
+            },
+            "other_backend": {
+                "backend": "ninjars",
+                "backend_label": "NinjaRS per amplitude",
+                "status": "served",
+                "seconds_per_point": 2.5,
+                "stages": nj_stages,
+            },
         },
     }
     untimed = {
-        "key": "li_x1", "math": None, "label": "EFT row",
+        "key": "li_x1",
+        "math": None,
+        "label": "EFT row",
         "generation": {"status": "not timed", "reason": "execution check only"},
         "timing": {"status": "not timed", "reason": "execution check only"},
-        "providers": {"status": "no reference"}, "validation": {"status": "pass"},
+        "providers": {"status": "no reference"},
+        "validation": {"status": "pass"},
     }
-    loop_induced = {"groups": [{"name": "2->3", "rows": [li_row]}, {"name": "EFT", "rows": [untimed]}]}
+    loop_induced = {
+        "groups": [
+            {"name": "2->3", "rows": [li_row]},
+            {"name": "EFT", "rows": [untimed]},
+        ]
+    }
 
     def g1(key, math, gate=None, lc="measured"):
         return {
-            "key": key, "math": math,
+            "key": key,
+            "math": math,
             "generation": {"main": {"status": "measured"}},
             "leading_colour": {"main": {"status": lc, "reason": "refused by design"}},
-            "full_colour": {"main": {"status": "measured", "gate": gate, "stages": nj_stages},
-                            "gate_rule": "G1"},
+            "full_colour": {
+                "main": {"status": "measured", "gate": gate, "stages": nj_stages},
+                "gate_rule": "G1",
+            },
         }
 
-    summary = {"groups": [
-        {"name": "2->2", "rows": [g1("gg_gg", "g g -> g g")]},
-        {"name": "2->3", "rows": [g1("gg_ggg", "g g -> g g g", {"status": "open", "ratio_to_limit": 1.0}),
-                                  g1("uux_ggg", "u overline(u) -> g g g", lc="not supported")]},
-    ]}
+    summary = {
+        "groups": [
+            {"name": "2->2", "rows": [g1("gg_gg", "g g -> g g")]},
+            {
+                "name": "2->3",
+                "rows": [
+                    g1(
+                        "gg_ggg",
+                        "g g -> g g g",
+                        {"status": "open", "ratio_to_limit": 1.0},
+                    ),
+                    g1("uux_ggg", "u overline(u) -> g g g", lc="not supported"),
+                ],
+            },
+        ]
+    }
     data = tmp_path / "data"
     data.mkdir()
-    (data / "lit.json").write_text(json.dumps({
-        "rows": {"gg_hgg": {"runs": {"li_gg_hgg": {"L6": {"double": {
-            "status": "partial", "tirust_served": 1, "of": 3, "finite_max_relative": 3e-12}}}}}},
-        "ids": {"LI-B1": {"status": "partial", "campaigns": {"m": {"rows": {
-            "A": {"status": "pass"}, "B": {"status": "partial"}, "C": {"status": "pass"}}}}}},
-    }))
+    (data / "lit.json").write_text(
+        json.dumps(
+            {
+                "rows": {
+                    "gg_hgg": {
+                        "runs": {
+                            "li_gg_hgg": {
+                                "L6": {
+                                    "double": {
+                                        "status": "partial",
+                                        "tirust_served": 1,
+                                        "of": 3,
+                                        "finite_max_relative": 3e-12,
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "ids": {
+                    "LI-B1": {
+                        "status": "partial",
+                        "campaigns": {
+                            "m": {
+                                "rows": {
+                                    "A": {"status": "pass"},
+                                    "B": {"status": "partial"},
+                                    "C": {"status": "pass"},
+                                }
+                            }
+                        },
+                    }
+                },
+            }
+        )
+    )
     table = builder.build_backend_table(summary, loop_induced, data=data)
     (li,) = table["loop_induced"]["rows"]
     assert li["ratio"] == 2.5 and li["tirust"]["accuracy"] == acc
-    assert li["tirust"]["stages"]["moments"] == 0.2 and "ninjars" in li["ninjars"]["stages"]
-    assert li["l6"]["runs"] == [{"run": "li_gg_hgg", "status": "partial", "tirust_served": 1,
-                                 "of": 3, "finite_max_relative": 3e-12}]
+    assert (
+        li["tirust"]["stages"]["moments"] == 0.2
+        and "ninjars" in li["ninjars"]["stages"]
+    )
+    assert li["l6"]["runs"] == [
+        {
+            "run": "li_gg_hgg",
+            "status": "partial",
+            "tirust_served": 1,
+            "of": 3,
+            "finite_max_relative": 3e-12,
+        }
+    ]
     assert table["loop_induced"]["not_unchecked"] == ["li_x1"]
     born = table["born_interfered"]
     assert [r["key"] for r in born["rows"]] == ["gg_ggg", "uux_ggg"]
     assert born["l6"]["rows"] == {"pass": 2, "partial": 1} and not born["present"]
-    assert all(r["tirust"]["status"] == r["ninjars"]["status"] == "not timed" for r in born["rows"])
-    (data / "backends-born.json").write_text(json.dumps({"records": [
-        {"key": "gg_ggg", "backend": "tirust", "seconds_per_point": 0.01, "revision": "b" * 40,
-         "stages_per_point": {"reduction": 0.004, "reduction: tensor moments": 0.003,
-                              "reduction: contraction": 0.0005, "dressing": 0.005},
-         "agreement": {"max_relative": 1e-12, "points": 128}},
-        {"key": "gg_ggg", "backend": "ninjars", "seconds_per_point": 0.02, "revision": "b" * 40,
-         "stages_per_point": {"reduction": 0.012, "reduction: masters": 0.002, "dressing": 0.005}},
-        {"key": "uux_ggg", "backend": "tirust", "missing": "outside the row budget"},
-    ]}))
-    born = builder.build_backend_table(summary, loop_induced, data=data)["born_interfered"]
+    assert all(
+        r["tirust"]["status"] == r["ninjars"]["status"] == "not timed"
+        for r in born["rows"]
+    )
+    (data / "backends-born.json").write_text(
+        json.dumps(
+            {
+                "records": [
+                    {
+                        "key": "gg_ggg",
+                        "backend": "tirust",
+                        "seconds_per_point": 0.01,
+                        "revision": "b" * 40,
+                        "stages_per_point": {
+                            "reduction": 0.004,
+                            "reduction: tensor moments": 0.003,
+                            "reduction: contraction": 0.0005,
+                            "dressing": 0.005,
+                        },
+                        "agreement": {"max_relative": 1e-12, "points": 128},
+                    },
+                    {
+                        "key": "gg_ggg",
+                        "backend": "ninjars",
+                        "seconds_per_point": 0.02,
+                        "revision": "b" * 40,
+                        "stages_per_point": {
+                            "reduction": 0.012,
+                            "reduction: masters": 0.002,
+                            "dressing": 0.005,
+                        },
+                    },
+                    {
+                        "key": "uux_ggg",
+                        "backend": "tirust",
+                        "missing": "outside the row budget",
+                    },
+                ]
+            }
+        )
+    )
+    born = builder.build_backend_table(summary, loop_induced, data=data)[
+        "born_interfered"
+    ]
     ggg = born["rows"][0]
     assert ggg["ratio"] == 2.0 and ggg["agreement"]["max_relative"] == 1e-12
     assert ggg["tirust"]["stages"]["moments"] == 0.003
     assert ggg["tirust"]["stages"]["glue"] == pytest.approx(0.0005)
     assert ggg["ninjars"]["stages"]["ninjars"] == 0.01
-    assert born["rows"][1]["tirust"] == {"status": "not run", "reason": "outside the row budget"}
+    assert born["rows"][1]["tirust"] == {
+        "status": "not run",
+        "reason": "outside the row budget",
+    }
     missing = builder.build_missing(summary, loop_induced)
     texts = {(e["table"], e["kind"], e["text"]): e for e in missing}
-    assert ("1", "no value", "leading colour: not supported (refused by design)") in texts
+    assert (
+        "1",
+        "no value",
+        "leading colour: not supported (refused by design)",
+    ) in texts
     gate1 = texts[("1", "gate", "open")]
-    assert gate1["rows"] == ["g g -> g g g"] and gate1["dominant"][0]["stage"] == "ninjars"
+    assert (
+        gate1["rows"] == ["g g -> g g g"] and gate1["dominant"][0]["stage"] == "ninjars"
+    )
     gate2 = texts[("2", "gate", "fail on TIRust")]
     assert gate2["ratio"] == [1.2] and gate2["dominant"][0]["stage"] == "numerator"
-    assert ("2", "validation", "partial: L3, L6; TIRust fails 2 of 3 binary64 fixture points"
-            " closed (checked default; lit.json)") in texts
-    assert ("2", "accuracy", "TIRust unchecked: 3/128 points above 1e-05, worst 2.0e-03") in texts
+    assert (
+        "2",
+        "validation",
+        "partial: L3, L6; TIRust fails 2 of 3 binary64 fixture points"
+        " closed (checked default; lit.json)",
+    ) in texts
+    assert (
+        "2",
+        "accuracy",
+        "TIRust unchecked: 3/128 points above 1e-05, worst 2.0e-03",
+    ) in texts
     assert ("2", "no value", "not timed: execution check only") in texts
     assert [e["table"] for e in missing] == sorted(e["table"] for e in missing)
 
@@ -2989,8 +3146,56 @@ def test_the_most_optimistic_protocol_sets_each_provider_up_for_speed(
     assert json.loads(options.json.read_text())["protocol"] == "optimistic"
     assert seen["openloops"][-1] == seen["recola"][-1] == "optimistic"
     assert seen["madloop"][-1] == {"CTModeRun": "1", "MLReductionLib": "6|7|1"}
-    with pytest.raises(SystemExit, match="loop-induced rows"):
-        providers.main(types.SimpleNamespace(**{**vars(options), "process": "gg_ggg"}))
+    # Born-interfered rows (lit-report G5): the same settings; Recola, whose
+    # scale is the generation's, times the stream points at the first
+    # point's mu_R (their indices recorded); a production record of the
+    # same tool checks every provider's values at the timed points.
+    seen.clear()
+    born = types.SimpleNamespace(
+        **{**vars(options), "process": "gg_ggg", "points": 4, "madloop_param": []}
+    )
+
+    def recola(spec, points, *args):
+        seen["recola"] = (points, *args)
+        return {
+            "provider": "recola",
+            "mean_seconds_per_point": 1.0,
+            "rows": [{"finite": 2.0 + 1e-9}] * len(points["points"]),
+        }
+
+    def rows(name, values):
+        def run(*args):
+            seen[name] = args
+            return {"provider": name, "mean_seconds_per_point": 1.0,
+                    "rows": [{"finite": v} for v in values]}
+
+        return run
+
+    monkeypatch.setattr(providers, "recola", recola)
+    monkeypatch.setattr(providers, "openloops", rows("openloops", [1.0, 2.0, 3.0, 4.0]))
+    monkeypatch.setattr(providers, "madloop", rows("madloop", [1.0, 2.0, 3.0, 4.5]))
+    production = tmp_path / "production.json"
+    production.write_text(json.dumps({"providers": {
+        name: {"rows": [{"finite": v} for v in (2.0, 9.0, 9.0, 2.0)]}
+        for name in ("recola", "openloops", "madloop")}}))
+    born.production_json = production
+    born.json = tmp_path / "born.json"
+    assert providers.main(born) == 0
+    stream = streams.load("gg_ggg")
+    first = stream["mu_r"][0]
+    kept = [i for i in range(4) if stream["mu_r"][i] == first]
+    assert seen["recola"][0]["mu_r"] == [first] * len(kept)
+    assert seen["openloops"][-1] == "optimistic" and seen["recola"][-1] == "optimistic"
+    assert seen["madloop"][-1] == {"CTModeRun": "1"}
+    record = json.loads(born.json.read_text())["providers"]
+    assert record["recola"]["stream_points"] == kept == [0, 3]
+    assert record["recola"]["production_check"]["passed"]
+    assert record["recola"]["production_check"]["points"] == 2
+    assert not record["openloops"]["production_check"]["passed"]
+    assert record["madloop"]["production_check"]["max_relative"] == pytest.approx(7 / 9)
+    assert providers.same_scale(
+        {"points": [1, 2, 3], "mu_r": ["7", "5", "7"], "pdgs": []}
+    ) == ({"points": [1, 3], "mu_r": ["7", "7"], "pdgs": []}, [0, 2])
 
     # The Recola driver: dynamic settings and the per-point setters follow
     # the ``dynamic`` command (1, the production default, keeps them).

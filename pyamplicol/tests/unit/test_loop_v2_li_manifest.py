@@ -362,7 +362,9 @@ def test_lit_json_is_keyed_by_the_registry_and_read_by_the_report(entries, tmp_p
     assert out["ids"]["LI-24"]["status"] == row["status"]
     assert out["ids"]["LI-24"]["not_applicable"] == lm.NOT_APPLICABLE["LI-24"]
     assert "not_run" not in out["ids"]["LI-24"]
-    assert "LI-24 lambda_hhh scan: not applicable (USER 2026-11-09 ~08:42)" in row["note"]
+    assert (
+        "LI-24 lambda_hhh scan: not applicable (USER 2026-11-09 ~08:42)" in row["note"]
+    )
     # each run's checks once: an id's run a registry row carries names it
     assert out["ids"]["LI-24"]["runs"]["li_gg_hh"] == {
         "status": row["status"],
