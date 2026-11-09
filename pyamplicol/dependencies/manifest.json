@@ -29,8 +29,8 @@
       ],
       "url": "https://github.com/alphal00p/ninjars.git",
       "ref": "main",
-      "revision": "5b6a8f5709b1e540a70ac6278ca36185c4cdad16",
-      "note": "main 1ef7b7ae (b3a29c85 = PR #14, the 0BSD relicence 36e30a49) + the re-pin of its manifests on oneloopmaster a7cf4587 and Symbolica b9eaa735 (6ab0a53e, merged as 816715fb) + the re-pin on Symbolica dfe6bd97 (520b220b, merged as 7444beba) + the re-pin on oneloopmaster bd703d09 (5b6a8f57; no source change); it reaches main through a merge commit, which the coordinator pushes before this pin lands"
+      "revision": "a1108daf9394fc63763881c10ac07400bd771f46",
+      "note": "the topic pyamplicol/box-mu-conditioning (a1108daf: the box mu-expansion's conditioning bound in both engines, docs/box-mu-conditioning.md) on main 98e223da, whose tree is 5b6a8f57's: main 1ef7b7ae (b3a29c85 = PR #14, the 0BSD relicence 36e30a49) + the re-pins on oneloopmaster a7cf4587 and Symbolica b9eaa735, Symbolica dfe6bd97 and oneloopmaster bd703d09; it reaches main through a merge commit, which the coordinator pushes before this pin lands"
     },
     {
       "name": "oneloopmaster",
