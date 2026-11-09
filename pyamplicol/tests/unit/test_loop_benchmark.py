@@ -2740,18 +2740,35 @@ def test_report_builder_accuracy_line_without_a_truth_is_the_labelled_cross_back
     the truth's line per backend."""
 
     builder = _report_builder()
-    acc = {"lax": 1e-5, "rows": {
-        "li_gg_aagg": {"points": 128, "revision": "bbbbbbbb", "cross_backend": {
-            "points": 126, "failed": 2, "max_relative": 3e-5, "above_1e-5": 1,
-            "reason": "256-bit truth 405 s per point"}},
-        "li_gg_hh": {"points": 128, "revision": "bbbbbbbb", "tirust": {
-            "max_relative": 1e-9, "above_1e-5": [], "failed": []}},
-    }}
+    acc = {
+        "lax": 1e-5,
+        "rows": {
+            "li_gg_aagg": {
+                "points": 128,
+                "revision": "bbbbbbbb",
+                "cross_backend": {
+                    "points": 126,
+                    "failed": 2,
+                    "max_relative": 3e-5,
+                    "above_1e-5": 1,
+                    "reason": "256-bit truth 405 s per point",
+                },
+            },
+            "li_gg_hh": {
+                "points": 128,
+                "revision": "bbbbbbbb",
+                "tirust": {"max_relative": 1e-9, "above_1e-5": [], "failed": []},
+            },
+        },
+    }
     for backend in ("tirust", "ninjars"):
         line = builder._li_accuracy(acc, "li_gg_aagg", backend)
         assert line["cross_backend"] and line["note"] and line["above"] == 1
         assert line["worst"] == 3e-5 and line["failed"] == 2
-        assert line["source"] == "li-unchecked-accuracy.json rows[li_gg_aagg].cross_backend"
+        assert (
+            line["source"]
+            == "li-unchecked-accuracy.json rows[li_gg_aagg].cross_backend"
+        )
     truth = builder._li_accuracy(acc, "li_gg_hh", "tirust")
     assert truth["max_relative"] == 1e-9 and "cross_backend" not in truth
     assert builder._li_accuracy(acc, "li_gg_hh", "ninjars") is None
@@ -3190,8 +3207,11 @@ def test_the_most_optimistic_protocol_sets_each_provider_up_for_speed(
     def rows(name, values):
         def run(*args):
             seen[name] = args
-            return {"provider": name, "mean_seconds_per_point": 1.0,
-                    "rows": [{"finite": v} for v in values]}
+            return {
+                "provider": name,
+                "mean_seconds_per_point": 1.0,
+                "rows": [{"finite": v} for v in values],
+            }
 
         return run
 
@@ -3199,9 +3219,16 @@ def test_the_most_optimistic_protocol_sets_each_provider_up_for_speed(
     monkeypatch.setattr(providers, "openloops", rows("openloops", [1.0, 2.0, 3.0, 4.0]))
     monkeypatch.setattr(providers, "madloop", rows("madloop", [1.0, 2.0, 3.0, 4.5]))
     production = tmp_path / "production.json"
-    production.write_text(json.dumps({"providers": {
-        name: {"rows": [{"finite": v} for v in (2.0, 9.0, 9.0, 2.0)]}
-        for name in ("recola", "openloops", "madloop")}}))
+    production.write_text(
+        json.dumps(
+            {
+                "providers": {
+                    name: {"rows": [{"finite": v} for v in (2.0, 9.0, 9.0, 2.0)]}
+                    for name in ("recola", "openloops", "madloop")
+                }
+            }
+        )
+    )
     born.production_json = production
     born.json = tmp_path / "born.json"
     assert providers.main(born) == 0
@@ -3256,6 +3283,27 @@ def test_the_most_optimistic_protocol_sets_each_provider_up_for_speed(
         "source_flags": ["-O2"],
     }
     assert providers.cmake_build(tmp_path, root, "recola") is None
+
+
+def test_a_provider_subset_of_the_stream_keeps_its_stream_indices():
+    """lit-report G5: a provider timing a subset of the stream (Recola's
+    Born-interfered most optimistic arm, ``stream_points``) is compared with
+    pyAmpliCol and written to the values document at those stream points,
+    not at the first n."""
+
+    born = [{"born": 1.0, "finite": float(i), "seconds": 0.1} for i in (0, 3)]
+    record = {
+        "providers": {
+            "openloops": {"rows": [{"born": 1.0, "finite": 9.0}] * 2},
+            "madloop": {"rows": born, "stream_points": [0, 3]},
+        }
+    }
+    values = gate._provider_values("gg_ggg", record)
+    assert sorted(values["madloop"]) == [0, 3]
+    assert values["madloop"][3] == (1.0, 3.0)
+    assert sorted(values["openloops"]) == [0, 1]
+    assert list(gate.stream_indices({"rows": [{}, {}, {}]})) == [0, 1, 2]
+    assert gate.stream_indices({"rows": [{}], "stream_points": [5]}) == [5]
 
 
 def test_one_helicity_arms_select_one_row_for_one_call():
