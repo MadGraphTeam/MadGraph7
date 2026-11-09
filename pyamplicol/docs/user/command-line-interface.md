@@ -611,9 +611,19 @@ pyamplicol loop_gg_zgg_check.toml                      # action = "check"
 ```
 
 The target is a run card (its process entries as its generation would make
-them) or an artifact directory (the request its `config/effective.toml`
-records). Every process is **regenerated in memory** through the generation
-service (nothing is written): the request on the model's full tree kernels,
+them) or an artifact directory: every process its manifest stores (`id` and
+expression, `artifact.json`), regenerated with the configuration its
+`config/effective.toml` records, from the model the artifact stores. The
+prepared model must be the stored one (its manifest record: name, source
+kind, content hash and restriction) and the regenerated processes exactly the
+stored ones, else `check` refuses the artifact before generating anything
+(exit 2). An artifact generated from a UFO directory records only the
+directory's name; name the model with `--model SOURCE` (`check.model`, a
+source as `model.source` takes it; it must still be the stored model).
+Every process is **regenerated in memory** through the generation
+service (nothing is written; one model preparation shared by the process
+and its probe slices, the persistent preparation cache serving it as at
+generation): the request on the model's full tree kernels,
 with every width zeroed outside the complex-mass scheme (a fixed width in a
 tree propagator breaks the identities; the complex-mass scheme is gauge
 invariant and keeps its widths), as the generation-time probes do. Checks run
@@ -631,10 +641,13 @@ squared invariant mass of the initial state, on NinjaRS at every carrier:
 `--precision auto` (default) runs binary64 first and double-double only for a
 row whose binary64 run fails, is refused or is out of its criterion's scope
 (a pole row whose relative estimate exceeds the default target accuracy
-1e-5; a Ward row with E above 1e-9 of the physical scale); `double` or
-`double-double` runs one carrier alone. A sector Catani's operators do not
+1e-5 or that carries no estimate; a Ward row with E above 1e-9 of the
+physical scale or without an estimate); `double` or `double-double` runs one
+carrier alone, and there a row out of its carrier's scope reads "not run"
+(exit 3), never a failure or a pass. A sector Catani's operators do not
 predict (a QCD correction of a process with photon-exchange Borns, ...) is
-listed as "no prediction" with its reason; a check that does not apply (no
+listed as "no prediction" with its reason (as is any sector the evaluation
+formed no pole row for); a check that does not apply (no
 external gluon or photon, no massive vector, a unitary-gauge request) reads
 "not applicable" with the reason; a Goldstone side the engine refuses reads
 "not run". None of these is a pass.
@@ -651,8 +664,9 @@ nothing to check (or an applicable check did not run). `--json` returns the
 `CheckReport` (`source`, `source_kind`, `points`, `seed`, `precision`,
 `carriers`, `regeneration`, `seconds`, `exit_code`, and per process `process`,
 `expression`, `contribution`, `widths`, `zeroed_widths`, `reduction`,
-`status`, `seconds` and `rows` with the fields above). Python:
-`pyamplicol.api.check(target, points=..., seed=..., precision=...)`.
+`status`, `seconds` and `rows` with the fields above); `source` names the run
+card or artifact checked. Python: `pyamplicol.api.check(target, points=...,
+seed=..., precision=..., model=...)`.
 
 Cost: one probe-slice generation per process (about the generation's own
 cost: the request-model preparation included) plus a few evaluations per
