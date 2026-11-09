@@ -369,9 +369,11 @@ class DefaultCliServices:
         *,
         resolution: ConfigResolution | None = None,
         correlators: CorrelatorConfig | None = None,
+        card: Path | None = None,
     ) -> None:
         self._resolution = resolution
         self._correlators = correlators
+        self._card = card
 
     def _generation_config(self, config: RunConfig) -> RunConfig | ConfigResolution:
         if self._resolution is None:
@@ -619,6 +621,8 @@ class DefaultCliServices:
             precision=cast(
                 Literal["auto", "double", "double-double"], str(config.check.precision)
             ),
+            model=config.check.model,
+            source=None if self._card is None else str(self._card),
             progress=progress,
         )
 

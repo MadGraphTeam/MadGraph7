@@ -477,6 +477,11 @@ seed = 12345
 # fails, is refused or is out of scope), "double", or "double-double".
 # Default auto.
 precision = "auto"
+# check.model: Optional model source to regenerate the request from (resolved
+# as model.source); null takes model.source, or for an artifact the source its
+# config/effective.toml records, which must resolve to the stored model.
+# Default null.
+model = "loop_sm"
 
 [output]
 # output.format: typed API/config provenance default. The CLI uses --json.

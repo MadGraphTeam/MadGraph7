@@ -1098,6 +1098,18 @@ def build_parser() -> argparse.ArgumentParser:
             "fails, is refused or is out of scope; or one carrier alone"
         ),
     )
+    check.add_argument(
+        "--model",
+        dest="check.model",
+        default=argparse.SUPPRESS,
+        metavar="SOURCE",
+        help=(
+            "the model source to regenerate the request from (default: the "
+            "card's model.source; an artifact: the source its "
+            "config/effective.toml records, which must resolve to the stored "
+            "model)"
+        ),
+    )
 
     inspect = subparsers.add_parser(
         "inspect",

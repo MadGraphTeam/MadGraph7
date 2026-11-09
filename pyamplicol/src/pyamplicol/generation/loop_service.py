@@ -624,6 +624,24 @@ def _blocked(backend, processes) -> tuple[str, ...]:
     return _feature_blockers(backend, processes) + _v2_blockers(backend)
 
 
+def _raise_blocked(backend, processes) -> None:
+    """Raise the first listed configuration refusal of ``_blocked``, typed
+    (its key); the message names every one."""
+
+    blockers = _blocked(backend, processes)
+    if not blockers:
+        return
+    first = blockers[0]
+    if len(blockers) == 1:
+        raise first.error()
+    from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+    raise LoopRequestUnsupported(
+        first.key,
+        first.message + "; also: " + "; ".join(blockers[1:]),
+    )
+
+
 def v2_loop_orders(
     born_orders: Sequence[Sequence[tuple[str, int]]],
     corrections: Sequence[str],
@@ -1505,19 +1523,7 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
         invert_permutation,
     )
 
-    blockers = _blocked(backend, processes)
-    if blockers:
-        # The first listed configuration refusal, typed (its key); the
-        # message names every one.
-        first = blockers[0]
-        if len(blockers) == 1:
-            raise first.error()
-        from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
-
-        raise LoopRequestUnsupported(
-            first.key,
-            first.message + "; also: " + "; ".join(blockers[1:]),
-        )
+    _raise_blocked(backend, processes)
     reporter = GenerationPhaseReporter(backend._progress)
     reporter.start_generation(
         total=3, details={"execution_mode": "loop_recurrence", "engine": "v2"}
@@ -1840,35 +1846,41 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
 
 
 def check_loop_requests(
-    backend, processes, *, model=None, points: int, seed: int, precision=None
+    backend,
+    processes,
+    *,
+    model=None,
+    points: int,
+    seed: int,
+    precision=None,
+    stored=None,
 ):
     """``pyamplicol check`` (``loops.v2.checks``): every process the request
     serves, regenerated IN MEMORY through this service's own preparation
-    (``_prepare`` and ``_born_members``, as ``generate``; nothing written),
-    checked at ``points`` seeded phase-space points of the generation's
-    validation convention (``build_process_validation_point`` at seeds
-    ``seed``, ``seed + 1``, ...: decays at rest, scatterings in the
-    centre-of-mass frame) in the carriers of ``induced.probe_carriers(
-    precision)`` (None: binary64, then double-double where binary64 fails,
-    is refused or is out of scope). Returns one ``checks.ProcessCheck`` per
-    served process."""
+    (``_prepare`` and ``_born_members``, as ``generate``, with one
+    ``preparation_cache.PreparationMemo`` shared by the processes' and the
+    probe / Goldstone slices; nothing written), checked at ``points`` seeded
+    phase-space points of the generation's validation convention
+    (``build_process_validation_point`` at seeds ``seed``, ``seed + 1``,
+    ...: decays at rest, scatterings in the centre-of-mass frame) in the
+    carriers of ``induced.probe_carriers(precision)`` (None: binary64, then
+    double-double where binary64 fails, is refused or is out of scope).
+    ``stored`` (an artifact's manifest, ``artifacts.manifest.
+    ArtifactManifest``) guards an artifact input: the prepared model must be
+    the stored one (its manifest record: name, source kind, content hash,
+    restriction) and the expanded processes exactly the stored ones (id and
+    expression), else ``ArtifactError`` before anything is generated.
+    Returns one ``checks.ProcessCheck`` per served process."""
 
     from pyamplicol.loops.native import load_loop_native
+    from pyamplicol.loops.preparation_cache import PreparationMemo, store_for
     from pyamplicol.loops.v2.blocks import born_dag_scope
     from pyamplicol.loops.v2.checks import check_request
     from pyamplicol.loops.v2.induced import probe_carriers
 
-    blockers = _blocked(backend, processes)
-    if blockers:
-        first = blockers[0]
-        if len(blockers) == 1:
-            raise first.error()
-        from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
-
-        raise LoopRequestUnsupported(
-            first.key, first.message + "; also: " + "; ".join(blockers[1:])
-        )
+    _raise_blocked(backend, processes)
     carriers = probe_carriers(precision)
+    memo = PreparationMemo(store_for(backend._run_config.model))
     checked = []
     with born_dag_scope():
         context = _prepare(
@@ -1878,7 +1890,9 @@ def check_loop_requests(
             planning=False,
             phase=PhaseHandle("loop-check", backend._progress, len(processes.requests)),
         )
-        context, requests, _dags, _skipped = _born_members(backend, context)
+        if stored is not None:
+            _require_stored(context, stored)
+        context, requests, _dags, _skipped = _born_members(backend, context, memo)
         del _dags
         native = load_loop_native()
         compiled = context.resolved.compiled
@@ -1906,9 +1920,46 @@ def check_loop_requests(
                     native,
                     momenta,
                     carriers,
+                    memo=memo,
                 )
             )
     return checked
+
+
+def _require_stored(context, stored) -> None:
+    """``check_loop_requests``' artifact guard: the prepared model is the
+    stored one (``artifact_writer._model_metadata``, the record the writer
+    stores) and the expanded processes are the stored ones (id and
+    expression); else ``ArtifactError`` naming the difference."""
+
+    from pyamplicol.api.errors import ArtifactError
+
+    from .artifact_writer import _model_metadata
+
+    prepared = _model_metadata(context.resolved.source, context.resolved.compiled)
+    keys = ("name", "source_kind", "content_sha256", "restriction")
+    differ = [
+        f"{key} {stored.model.get(key)!r} stored, {prepared.get(key)!r} prepared"
+        for key in keys
+        if stored.model.get(key) != prepared.get(key)
+    ]
+    if differ:
+        raise ArtifactError(
+            f"{stored.root}: the model check prepared is not the artifact's "
+            f"stored model ({'; '.join(differ)}): check regenerates the stored "
+            "processes from their own model; give the stored model's source "
+            "(model= / --model)"
+        )
+    expected = {str(p["id"]): str(p["expression"]) for p in stored.processes}
+    regenerated = {
+        str(entry.request.name): str(entry.request.expression)
+        for entry in context.expanded
+    }
+    if regenerated != expected:
+        raise ArtifactError(
+            f"{stored.root}: the regenerated processes {regenerated} are not the "
+            f"stored ones {expected}"
+        )
 
 
 def _loop_induced_candidates(context, entry, process, validation, index):

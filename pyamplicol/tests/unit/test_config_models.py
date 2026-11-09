@@ -44,7 +44,7 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 136
+    assert len(FIELD_REGISTRY) == 137
     # m-lit lit-examples: `pyamplicol check` (the check action's section).
     assert FIELD_REGISTRY["check.points"].default == 3
     assert FIELD_REGISTRY["check.seed"].nullable
@@ -55,6 +55,8 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
         "double-double",
     )
     assert "check" in FIELD_REGISTRY["action"].choices
+    assert FIELD_REGISTRY["check.model"].nullable
+    assert FIELD_REGISTRY["check.model"].default is None
     # m-lit lit-unchecked: the unchecked reduction setting, a runtime option
     # (off by default).
     assert FIELD_REGISTRY["evaluation.reduction_unchecked"].default is False

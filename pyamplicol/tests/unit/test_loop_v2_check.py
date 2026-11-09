@@ -17,6 +17,15 @@ and Ward checks of a one-loop request regenerated in memory
   double-double fallback; the CLI exits 1.
 * **Exit codes and statuses** of the report (pure records), and a process
   with nothing to check (an exact colour zero, h > g a) exits 3.
+* **Rows without a criterion** (pure records): a binary64 pole or Ward row
+  without its estimate or out of the binary64 scope is "not run" (the next
+  carrier decides; with binary64 alone no pass), and a sector without a
+  pole row is listed "no prediction", never omitted.
+* **An artifact is checked on what it stores**: an API-generated artifact
+  whose configuration names another process is checked on its stored
+  process; a model that is not the stored one (content hash) or a source
+  that does not resolve is refused (``ArtifactError``), and ``--model`` /
+  ``model=`` names the stored model's source.
 
 The Goldstone-equivalence path itself (an external massive vector in
 't Hooft-Feynman gauge) is lit-probe's (``test_loop_v2_induced_probes``,
@@ -151,6 +160,56 @@ def test_the_catani_criterion_is_the_harness_rule():
     assert not catani_dd_comparison([0.0, 2.0 * (1 + 1e-11), -3.0], poles)[2]
 
 
+@pytest.mark.loop_fast
+def test_rows_without_a_criterion_are_not_run_and_no_sector_is_omitted():
+    from types import SimpleNamespace as NS
+
+    from pyamplicol.loops.v2 import checks
+
+    first, second = (("QCD", 4),), (("QCD", 2), ("QED", 2))
+
+    def laurent(*values):
+        return NS(coefficients=list(values))
+
+    result = NS(
+        stability=None,
+        components={"virtual": {first: laurent(0.0, 2.0, -3.0)}},
+        ir_poles={first: (2.0, -3.0)},
+    )
+    rows = checks._pole_rows_binary64(result, 0, 1e-5)
+    assert {row.verdict for row in rows.values()} == {checks.NOT_RUN}
+    assert all(row.reason.startswith("no criterion") for row in rows.values())
+    scoped = NS(
+        relative=1e-3,
+        absolute={first: laurent(0.0, 1e-12, 1e-12)},
+        scale={first: laurent(1.0, 1.0, 1.0)},
+    )
+    rows = checks._pole_rows_binary64(NS(**{**vars(result), "stability": scoped}), 0, 1e-5)
+    assert {row.verdict for row in rows.values()} == {checks.NOT_RUN}
+    assert all("binary64 scope" in row.reason for row in rows.values())
+    # A sector with neither a pole row nor a listed reason: "no prediction".
+    slice_ = NS(unpredicted_sectors=lambda: {})
+    (row,) = checks._unpredicted_rows(slice_, [first, second], True, 0, {first})
+    assert row.verdict == checks.NO_PREDICTION and row.subject == "QCD^2 QED^2"
+    # A Ward row whose virtual part is out of the binary64 scope: not run
+    # (its Born part passed), a failure when its Born part fails.
+    ward = {
+        "leg": 3,
+        "factor": (1, 0),
+        "born": 0.0,
+        "born_passed": True,
+        "parts": {"virtual": [1e-3]},
+        "estimate": [1e-6],
+        "estimate_over": [1.0],
+        "o1_over": [0.5],
+        "in_scope": False,
+        "passed": False,
+    }
+    assert checks._ward_row(ward, "double", 0).verdict == checks.NOT_RUN
+    failed = checks._ward_row({**ward, "born": 1.0, "born_passed": False}, "double", 0)
+    assert failed.verdict == checks.FAIL
+
+
 # --------------------------------------------------------------- physics
 
 
@@ -261,6 +320,55 @@ def test_a_dropped_r2_vertex_fails_the_ward_check(tmp_path):
     code, payload = _cli(str(card))
     assert code == 1 and payload["exit_code"] == 1
     assert payload["processes"][0]["status"] == "failed"
+    # The report names the card it checked.
+    assert payload["source"] == str(card.resolve())
+    assert payload["source_kind"] == "card"
+
+
+@pytest.mark.loop_physics
+def test_an_artifact_is_checked_on_its_stored_processes_and_model(tmp_path):
+    """The artifact's configuration names u u~ > g g, the API call generated
+    g g > a a (``api_p``) from a copy of loop_sm given by path: check takes
+    the stored process; the copy's name alone (``effective.toml``) does not
+    resolve, a model that is not the stored one is refused."""
+
+    from pyamplicol.api import ArtifactError, Generator, ProcessRequest, ProcessSet
+    from pyamplicol.api.services import check
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loops.v2 import checks
+
+    shipped = Path(
+        str(resources.files("pyamplicol").joinpath("assets", "models", "ufo"))
+    )
+    copy = tmp_path / "loop_sm_copy"
+    shutil.copytree(shipped / "loop_sm", copy)
+    card = _card(
+        tmp_path / "gen",
+        "u u~ > g g",
+        source=str(copy),
+        fixed=_nf5(),
+        veto=("t",),
+        action="generate",
+    )
+    config = resolve_config(card)
+    output = Path(config.effective.generation.output)
+    Generator(config).generate(
+        ProcessSet((ProcessRequest.parse("g g > a a", name="api_p"),)), output
+    )
+    # effective.toml keeps the UFO directory's name only.
+    with pytest.raises(ArtifactError, match="cannot be resolved"):
+        check(output, points=1)
+    code, payload = _cli(str(output), "--points", "1", "--model", str(copy))
+    assert code == 0 and payload["source_kind"] == "artifact"
+    (entry,) = payload["processes"]
+    assert entry["process"] == "api_p" and entry["contribution"] == "loop-induced"
+    assert entry["status"] == checks.PASSED
+    # Another model (the copy without an R2 vertex): not the stored one.
+    dropped = tmp_path / "loop_sm_r2_dropped"
+    shutil.copytree(shipped / "loop_sm", dropped)
+    assert drop_r2_vertex(dropped, [21, 21, 22, 22])
+    with pytest.raises(ArtifactError, match="not the artifact's stored model"):
+        check(output, points=1, model=str(dropped))
 
 
 @pytest.mark.loop_physics

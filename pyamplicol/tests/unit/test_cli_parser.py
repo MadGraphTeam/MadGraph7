@@ -827,6 +827,13 @@ def test_check_takes_a_card_or_an_artifact_and_its_options(tmp_path: Path) -> No
     assert direct.evaluation.artifact == artifact.resolve()
     assert (direct.check.points, direct.check.seed) == (3, None)
     assert direct.check.precision == "auto"
+    assert direct.check.model is None
+    # --model: the model source to regenerate from, resolved as model.source
+    # (a bare shipped name selects the packaged UFO).
+    ufo = tmp_path / "my_ufo"
+    ufo.mkdir()
+    named = parse_cli(("check", str(artifact), "--model", str(ufo))).resolve()
+    assert named.effective.check.model == str(ufo.resolve())
     with pytest.raises(SystemExit):
         build_parser().parse_args(("check", str(card), "--precision", "quad"))
 

@@ -25,6 +25,9 @@ def check_report_summary(report: Any, *, prettytable: Any, color: bool) -> str:
     deviation and E over the row's scale (``checks.CheckRow``), verdict,
     fallback or reason) and the overall verdict with the exit code."""
 
+    from pyamplicol.loops.v2 import checks
+    from pyamplicol.loops.v2.induced import ESTIMATE_FACTOR
+
     from .summary import _paint
 
     header = prettytable.PrettyTable(("field", "value"))
@@ -49,10 +52,12 @@ def check_report_summary(report: Any, *, prettytable: Any, color: bool) -> str:
             ),
             (
                 "criteria",
-                "poles: |pole - Catani| <= 10 E + 1e-12 |Catani| (binary64, "
-                "recommended checks; double-double 1e-12 relative); loop-induced "
-                "finiteness, Ward and Goldstone probes within 10x their own "
-                "estimate; Born-interfered Ward: ward.ward_row. ratio <= 1 passes",
+                f"poles: |pole - Catani| <= {checks.ESTIMATES} E + "
+                f"{checks.CATANI_FLOOR:g} |Catani| (binary64, recommended "
+                f"checks; double-double {checks.CATANI_DD_FLOOR:g} relative); "
+                "loop-induced finiteness, Ward and Goldstone probes within "
+                f"{ESTIMATE_FACTOR}x their own estimate; Born-interfered Ward: "
+                "ward.ward_row. ratio <= 1 passes",
             ),
             ("seconds", f"{report.seconds:.3g}"),
         )

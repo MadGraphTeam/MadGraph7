@@ -3430,9 +3430,12 @@ class GenerationBackend:
         points: int,
         seed: int,
         precision=None,
+        stored=None,
     ):
         """``pyamplicol check`` of a one-loop request (``loop_service.
-        check_loop_requests``): one ``checks.ProcessCheck`` per process."""
+        check_loop_requests``; ``stored``: an artifact input's manifest, the
+        model and processes the regeneration must match): one
+        ``checks.ProcessCheck`` per process."""
 
         if not self._loop_execution_enabled:
             raise GenerationError(
@@ -3442,7 +3445,13 @@ class GenerationBackend:
         from .loop_service import check_loop_requests
 
         return check_loop_requests(
-            self, processes, model=model, points=points, seed=seed, precision=precision
+            self,
+            processes,
+            model=model,
+            points=points,
+            seed=seed,
+            precision=precision,
+            stored=stored,
         )
 
     def generate(

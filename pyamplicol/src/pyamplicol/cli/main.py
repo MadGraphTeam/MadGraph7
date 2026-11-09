@@ -194,7 +194,9 @@ def run_cli(
         )
         logging_configured = True
         selected_services = (
-            DefaultCliServices(resolution=resolution) if services is None else services
+            DefaultCliServices(resolution=resolution, card=invocation.card)
+            if services is None
+            else services
         )
         if invocation.correlators is not None:
             from pyamplicol.correlators import CorrelatorConfig
@@ -209,7 +211,7 @@ def run_cli(
                 json.loads(invocation.correlators.read_text())
             )
             selected_services = DefaultCliServices(
-                resolution=resolution, correlators=declarations
+                resolution=resolution, correlators=declarations, card=invocation.card
             )
         result = dispatch(
             config,

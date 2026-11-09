@@ -242,42 +242,48 @@ def _evaluate(executor: Any, point: Any, scale: Any, carrier: Any, checks: Any) 
 
 
 def _pole_rows_binary64(result: Any, index: int, target: float) -> dict[Any, CheckRow]:
-    """The binary64 pole rows of one evaluated point, keyed by (sector, k)."""
+    """The binary64 pole rows of one evaluated point, keyed by (sector, k).
+    A row without its criterion (no estimate E) or out of the binary64 scope
+    (relative estimate above ``target``) is "not run" with the reason: the
+    next carrier decides it, and with binary64 alone it is no pass."""
 
     estimate = result.stability
     rows: dict[Any, CheckRow] = {}
-    scoped = estimate is not None and float(estimate.relative) <= target
+    reason = None
+    if estimate is None:
+        reason = "no criterion: the binary64 evaluation carries no estimate E"
+    elif float(estimate.relative) > target:
+        reason = (
+            f"out of the binary64 scope: relative estimate "
+            f"{float(estimate.relative):.3g} above the default target "
+            f"accuracy {target:g}"
+        )
     for sector, laurent in result.components["virtual"].items():
         values = [complex(x).real for x in laurent.coefficients]
         poles = (result.ir_poles or {}).get(sector)
         if poles is None or len(values) != 3:
             continue
-        absolute = [abs(float(x)) for x in estimate.absolute[sector].coefficients]
-        scale = [abs(float(x)) for x in estimate.scale[sector].coefficients]
+        absolute = scale = None
+        if estimate is not None:
+            absolute = [abs(float(x)) for x in estimate.absolute[sector].coefficients]
+            scale = [abs(float(x)) for x in estimate.scale[sector].coefficients]
         _catani, deviations, bounds, _ok = catani_comparison(values, poles, absolute)
         for k in (1, 2):
             deviation, bound = deviations[k - 1], bounds[k - 1]
-            ok = deviation <= bound
             ratio = (
                 deviation / bound if bound else (0.0 if not deviation else float("inf"))
             )
-            reason = None
-            if not scoped:
-                ok = False
-                reason = (
-                    f"out of the binary64 scope: relative estimate "
-                    f"{float(estimate.relative):.3g} above the default target "
-                    f"accuracy {target:g}"
-                )
+            verdict = NOT_RUN if reason else PASS if deviation <= bound else FAIL
+            over = scale[k] if scale is not None else 0.0
             rows[(sector, k)] = CheckRow(
                 "poles",
                 f"{_sector_name(sector)} {POLE_NAMES[k]}",
                 index,
                 "double",
-                PASS if ok else FAIL,
+                verdict,
                 _short(ratio),
-                _short(deviation / scale[k]) if scale[k] else None,
-                _short(absolute[k] / scale[k]) if scale[k] else None,
+                _short(deviation / over) if over else None,
+                _short(absolute[k] / over) if over and absolute is not None else None,
                 reason=reason,
             )
     return rows
@@ -309,9 +315,15 @@ def _pole_rows_dd(result: Any, index: int) -> dict[Any, CheckRow]:
 
 
 def _unpredicted_rows(
-    slice_: Any, sectors: Sequence[Any], formed: bool, index: int
+    slice_: Any,
+    sectors: Sequence[Any],
+    formed: bool,
+    index: int,
+    judged: Sequence[Any] = (),
 ) -> list[CheckRow]:
-    """A row per sector without Catani's prediction, with its reason."""
+    """A row per sector without Catani's prediction, with its reason: the
+    sectors the operators do not predict and every other sector of
+    ``sectors`` without a pole row (``judged``), never omitted."""
 
     unpredicted = slice_.unpredicted_sectors()
     rows = []
@@ -325,6 +337,11 @@ def _unpredicted_rows(
             reason = (
                 "no prediction formed: Catani's native operator needs a "
                 "full-colour request with two coloured legs (dipoles.correlator)"
+            )
+        elif sector not in judged:
+            reason = (
+                "no prediction or pole coefficients formed for this sector at "
+                "this point"
             )
         else:
             continue
@@ -401,7 +418,11 @@ def born_rows(
                 CheckRow("poles", "every sector", index, None, FAIL, reason=refusal)
             )
         rows.extend(decided.values())
-        rows.extend(_unpredicted_rows(target, sectors, formed, index))
+        rows.extend(
+            _unpredicted_rows(
+                target, sectors, formed, index, {key[0] for key in decided}
+            )
+        )
         # Ward identities on every gluon and photon leg.
         if legs:
             rows.extend(_born_ward_rows(executor, point, scale, legs, carriers, index))
@@ -459,10 +480,18 @@ def _ward_row(row: Mapping[str, Any], carrier: str, index: int) -> CheckRow:
             f"out of the binary64 scope: E above {ward.BINARY64_SCOPE:g} of the "
             "physical scale"
         )
-    factor = "c = 1" if tuple(row["factor"]) == (1, 0) else "c = i"
-    verdict = PASS if row["passed"] is True else FAIL
-    if row["passed"] is None:
+    elif row["passed"] is None:
         reason = "no criterion: the binary64 evaluation carries no estimate"
+    factor = "c = 1" if tuple(row["factor"]) == (1, 0) else "c = i"
+    if row["passed"] is True:
+        verdict = PASS
+    elif not row["born_passed"] or reason is None:
+        verdict = FAIL
+    else:
+        # The virtual part without its binary64 criterion (no estimate, or
+        # out of scope) and the tree-level Born part passed: the next
+        # carrier decides; with binary64 alone the row is no pass.
+        verdict = NOT_RUN
     return CheckRow(
         "ward",
         f"leg {row['leg']}, {factor}",
@@ -552,10 +581,12 @@ def induced_rows(
     native: Any,
     points: Sequence[tuple[Any, Any]],
     carriers: Sequence[Any],
+    *,
+    memo: Any = None,
 ) -> list[CheckRow]:
     """The finiteness, Ward and Goldstone rows of a loop-induced probe slice
     (``induced.point_probes``, ``induced.goldstone_point``) at the lifted
-    ``points``."""
+    ``points``; ``memo`` shares the Goldstone sides' model preparation."""
 
     from . import induced
     from .plan_export import NativeExecutor
@@ -581,7 +612,7 @@ def induced_rows(
     skipped: Mapping[str, str] = {}
     if applicability is None:
         sides, skipped, _seconds = induced.goldstone_sides(
-            target, compiled, request, native
+            target, compiled, request, native, memo=memo
         )
     executors: dict[Any, Any] = {}
     rows: list[CheckRow] = []
@@ -699,11 +730,15 @@ def check_request(
     native: Any,
     momenta: Sequence[Sequence[Sequence[float]]],
     carriers: Sequence[Any],
+    *,
+    memo: Any = None,
 ) -> ProcessCheck:
     """The checks of one generation request (``SliceRequest``) at the
     binary64 phase-space points ``momenta`` (module docstring): its probe
     slice is generated in memory, the points lifted once at the digits of
-    the last carrier."""
+    the last carrier. ``memo`` (the check's ``preparation_cache.
+    PreparationMemo``) shares the model preparation of the probe and
+    Goldstone slices, as at generation."""
 
     from .induced import (
         PROBE_REDUCTION,
@@ -718,7 +753,7 @@ def check_request(
     start = time.perf_counter()
     with running(PROBE_REDUCTION):
         probe, zeroed = probe_request_of(compiled, request)
-        target = ward_slice(compiled, probe, native)
+        target = ward_slice(compiled, probe, native, memo=memo)
         digits = 2 * max(carrier.working_digits for carrier in carriers)
         initial = sum(1 for leg in target.blocks.process.legs if leg.is_initial)
         points = []
@@ -726,7 +761,9 @@ def check_request(
             point, _distance = probe_point(target, momentum, digits)
             points.append((point, _point_scale(point, initial)))
         if request.contribution == "loop-induced":
-            rows = induced_rows(target, compiled, probe, native, points, carriers)
+            rows = induced_rows(
+                target, compiled, probe, native, points, carriers, memo=memo
+            )
         else:
             rows = born_rows(target, points, carriers)
     return ProcessCheck(
