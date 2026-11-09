@@ -1,0 +1,23 @@
+{
+  "command": [
+    "gfortran",
+    "-O3",
+    "-frounding-math",
+    "-fno-automatic",
+    "-fcheck=all",
+    "-ffixed-line-length-132",
+    "-ffree-line-length-none",
+    "constants.f",
+    "public.f",
+    "oracle.f90",
+    "traced.f",
+    "guards.f90",
+    "-o",
+    "guards"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3",
+  "returncode": 0,
+  "stdout": "",
+  "stderr": "",
+  "elapsed": 1.284562110900879
+}

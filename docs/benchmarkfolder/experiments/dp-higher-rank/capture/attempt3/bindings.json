@@ -1,0 +1,41 @@
+{
+  "caller_flags_scope": "IEEE_GET_FLAG(IEEE_ALL,DP_CAPTURE_FLAGS) executes inline in generated coefficient-construction caller immediately before recording, matching production capture placement.",
+  "caller_sha256": "6845bdf8123c5409d8b9d82b9fa6a75e0c2536c6657c531ccc99c2cf7dabafc9",
+  "captures": {
+    "capture-r2-1.txt": {
+      "array_payload_equal_attempt2": true,
+      "caller_flags": " F F F F T",
+      "halting_modes": " F F F F F",
+      "header": "           2          70           5",
+      "sha256": "ae344c436fdc514b1cc8b27b192829ca522e1c8fe4bee1578880b139cf4f9ddc"
+    },
+    "capture-r2-2.txt": {
+      "array_payload_equal_attempt2": true,
+      "caller_flags": " F F F F T",
+      "halting_modes": " F F F F F",
+      "header": "           2          70           5",
+      "sha256": "cbd0e8655e3a09fe9ef5fe22da3bb03ca4ee78386f9446dbd54403437b08bf16"
+    },
+    "capture-r3-1.txt": {
+      "array_payload_equal_attempt2": true,
+      "caller_flags": " F F F F T",
+      "halting_modes": " F F F F F",
+      "header": "           3          70           5",
+      "sha256": "d69400c5a634f8575355eb6466a8fc525a84af6d4f717c34d537b293c7252f18"
+    },
+    "capture-r3-2.txt": {
+      "array_payload_equal_attempt2": true,
+      "caller_flags": " F F F F T",
+      "halting_modes": " F F F F F",
+      "header": "           3          70           5",
+      "sha256": "6a2104e2ff264993d18023b111b180079a95dab0c0ce14e537773b0ea3d8e88e"
+    }
+  },
+  "changed_object": "coef_construction_1.o",
+  "executable_sha256": "b0cd23dc1b6403fc4df1623b1686c71cf7cb34a8e1fc8b3e547abde223ee83c7",
+  "object_sha256": "81557d97cb790ef85d214afd5f03c02e87b500be76d8f84bcf6b97f0541a4229",
+  "old_attempt_limitation": "Attempt2 queried procedure-local IEEE state inside the new recorder; those clear flags do not establish actual caller admission. Its array payloads are retained as historical evidence.",
+  "parameter_card_sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433",
+  "points_sha256": "c1dc86e4e0cdd8a049d7a9a87b98831af74f3b6b79fc63fd0bbfe16a7fe55450",
+  "reduction_card_sha256": "aee4d44106587c991036d1bc9691fedd7c4f46b2b4934851f520080beea99543"
+}

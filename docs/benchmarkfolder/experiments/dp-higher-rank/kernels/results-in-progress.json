@@ -1,0 +1,862 @@
+{
+  "scope": "synthetic private kernels, no acceptance timing; numerical results require independent COMB and consumer proof",
+  "commands": [
+    {
+      "command": [
+        "gfortran",
+        "-O3",
+        "-frounding-math",
+        "-fcheck=all",
+        "-ffixed-line-length-132",
+        "-ffree-line-length-none",
+        "constants.f",
+        "public.f",
+        "oracle.f90",
+        "traced.f",
+        "guards.f90",
+        "-o",
+        "guards"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+      "returncode": 0,
+      "stdout": "",
+      "stderr": "",
+      "elapsed": 0.7778737545013428
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2/guards"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+      "returncode": 0,
+      "stdout": " PASS      384000         176      383824\n",
+      "stderr": "",
+      "elapsed": 8.173156023025513
+    },
+    {
+      "command": [
+        "gfortran",
+        "-O3",
+        "-frounding-math",
+        "-fno-automatic",
+        "-fcheck=all",
+        "-ffixed-line-length-132",
+        "-ffree-line-length-none",
+        "constants.f",
+        "public.f",
+        "oracle.f90",
+        "traced.f",
+        "guards.f90",
+        "-o",
+        "guards"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+      "returncode": 0,
+      "stdout": "",
+      "stderr": "",
+      "elapsed": 0.773078203201294
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2/guards"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+      "returncode": 0,
+      "stdout": " PASS      384000         176      383824\n",
+      "stderr": "",
+      "elapsed": 7.648375034332275
+    },
+    {
+      "command": [
+        "gfortran",
+        "-O0",
+        "-ffixed-line-length-132",
+        "-c",
+        "constants.f",
+        "caller.f",
+        "reference.f"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+      "returncode": 0,
+      "stdout": "",
+      "stderr": "",
+      "elapsed": 0.07702851295471191
+    },
+    {
+      "command": [
+        "gfortran",
+        "-O3",
+        "-frounding-math",
+        "-fcheck=all",
+        "-ffixed-line-length-132",
+        "-ffree-line-length-none",
+        "constants.f",
+        "public.f",
+        "oracle.f90",
+        "private.f",
+        "merge.f",
+        "consumer.f",
+        "caller.o",
+        "reference.o",
+        "consumer_driver.f90",
+        "-o",
+        "consumer"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+      "returncode": 0,
+      "stdout": "",
+      "stderr": "",
+      "elapsed": 0.7265517711639404
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2/consumer"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+      "returncode": 0,
+      "stdout": " PASS CALLER CREATE MERGE\n",
+      "stderr": "",
+      "elapsed": 0.006692647933959961
+    },
+    {
+      "command": [
+        "gfortran",
+        "-O3",
+        "-fcheck=all",
+        "-ffixed-line-length-132",
+        "-ffree-line-length-none",
+        "constants.f",
+        "public.f",
+        "private.f",
+        "timing.f90",
+        "-o",
+        "timing"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+      "returncode": 0,
+      "stdout": "",
+      "stderr": "",
+      "elapsed": 0.45676255226135254
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2/timing",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+      "returncode": 0,
+      "stdout": "TIMING 500   3.5442249999999998E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.013177633285522461
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2/timing",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+      "returncode": 0,
+      "stdout": "TIMING 500   1.4625560000000001E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.008485555648803711
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2/timing",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+      "returncode": 0,
+      "stdout": "TIMING 500   1.4652160000000001E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.008575439453125
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2/timing",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+      "returncode": 0,
+      "stdout": "TIMING 500   3.5825950000000001E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.011413335800170898
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2/timing",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+      "returncode": 0,
+      "stdout": "TIMING 500   3.5534249999999998E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.011375188827514648
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2/timing",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+      "returncode": 0,
+      "stdout": "TIMING 500   1.4587660000000000E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.010158538818359375
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2/timing",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+      "returncode": 0,
+      "stdout": "TIMING 500   1.5868270000000001E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.0094146728515625
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2/timing",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+      "returncode": 0,
+      "stdout": "TIMING 500   3.7153249999999998E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.011722564697265625
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2/timing",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+      "returncode": 0,
+      "stdout": "TIMING 500   4.0339970000000001E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.012115240097045898
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2/timing",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+      "returncode": 0,
+      "stdout": "TIMING 500   1.4637260000000000E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.008892059326171875
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2/timing",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+      "returncode": 0,
+      "stdout": "TIMING 500   1.5028260000000001E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.008865833282470703
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2/timing",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+      "returncode": 0,
+      "stdout": "TIMING 500   3.5615339999999999E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.012375831604003906
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2/timing",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+      "returncode": 0,
+      "stdout": "TIMING 500   3.5474450000000002E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.011482954025268555
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2/timing",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+      "returncode": 0,
+      "stdout": "TIMING 500   1.4566160000000000E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.008893966674804688
+    },
+    {
+      "command": [
+        "gfortran",
+        "-O3",
+        "-frounding-math",
+        "-fcheck=all",
+        "-ffixed-line-length-132",
+        "-ffree-line-length-none",
+        "constants.f",
+        "public.f",
+        "oracle.f90",
+        "traced.f",
+        "guards.f90",
+        "-o",
+        "guards"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3",
+      "returncode": 0,
+      "stdout": "",
+      "stderr": "",
+      "elapsed": 0.7696847915649414
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3/guards"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3",
+      "returncode": 0,
+      "stdout": " PASS      384000         176      383824\n",
+      "stderr": "",
+      "elapsed": 12.680875301361084
+    },
+    {
+      "command": [
+        "gfortran",
+        "-O3",
+        "-frounding-math",
+        "-fno-automatic",
+        "-fcheck=all",
+        "-ffixed-line-length-132",
+        "-ffree-line-length-none",
+        "constants.f",
+        "public.f",
+        "oracle.f90",
+        "traced.f",
+        "guards.f90",
+        "-o",
+        "guards"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3",
+      "returncode": 0,
+      "stdout": "",
+      "stderr": "",
+      "elapsed": 1.284562110900879
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3/guards"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3",
+      "returncode": 0,
+      "stdout": " PASS      384000         176      383824\n",
+      "stderr": "",
+      "elapsed": 8.304854393005371
+    },
+    {
+      "command": [
+        "gfortran",
+        "-O0",
+        "-ffixed-line-length-132",
+        "-c",
+        "constants.f",
+        "caller.f",
+        "reference.f"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3",
+      "returncode": 0,
+      "stdout": "",
+      "stderr": "",
+      "elapsed": 0.08020281791687012
+    },
+    {
+      "command": [
+        "gfortran",
+        "-O3",
+        "-frounding-math",
+        "-fcheck=all",
+        "-ffixed-line-length-132",
+        "-ffree-line-length-none",
+        "constants.f",
+        "public.f",
+        "oracle.f90",
+        "private.f",
+        "merge.f",
+        "consumer.f",
+        "caller.o",
+        "reference.o",
+        "consumer_driver.f90",
+        "-o",
+        "consumer"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3",
+      "returncode": 0,
+      "stdout": "",
+      "stderr": "",
+      "elapsed": 0.7142560482025146
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3/consumer"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3",
+      "returncode": 0,
+      "stdout": " PASS CALLER CREATE MERGE\n",
+      "stderr": "",
+      "elapsed": 0.0069065093994140625
+    },
+    {
+      "command": [
+        "gfortran",
+        "-O3",
+        "-fcheck=all",
+        "-ffixed-line-length-132",
+        "-ffree-line-length-none",
+        "constants.f",
+        "public.f",
+        "private.f",
+        "timing.f90",
+        "-o",
+        "timing"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3",
+      "returncode": 0,
+      "stdout": "",
+      "stderr": "",
+      "elapsed": 0.4634068012237549
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3/timing",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3",
+      "returncode": 0,
+      "stdout": "TIMING 500   7.7361319999999997E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.016142606735229492
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3/timing",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3",
+      "returncode": 0,
+      "stdout": "TIMING 500   2.7082209999999998E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.009874343872070312
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3/timing",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3",
+      "returncode": 0,
+      "stdout": "TIMING 500   2.9596520000000001E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.010188102722167969
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3/timing",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3",
+      "returncode": 0,
+      "stdout": "TIMING 500   8.0958730000000000E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.01639842987060547
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3/timing",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3",
+      "returncode": 0,
+      "stdout": "TIMING 500   7.7860320000000000E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.016381263732910156
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3/timing",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3",
+      "returncode": 0,
+      "stdout": "TIMING 500   2.7296320000000001E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.01032257080078125
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3/timing",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3",
+      "returncode": 0,
+      "stdout": "TIMING 500   2.7418109999999998E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.010162591934204102
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3/timing",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3",
+      "returncode": 0,
+      "stdout": "TIMING 500   7.7363220000000003E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.016326904296875
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3/timing",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3",
+      "returncode": 0,
+      "stdout": "TIMING 500   7.7923519999999998E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.016330957412719727
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3/timing",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3",
+      "returncode": 0,
+      "stdout": "TIMING 500   2.7140210000000001E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.010176897048950195
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3/timing",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3",
+      "returncode": 0,
+      "stdout": "TIMING 500   2.8277720000000001E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.010337352752685547
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3/timing",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3",
+      "returncode": 0,
+      "stdout": "TIMING 500   7.7360720000000001E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.016259431838989258
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3/timing",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3",
+      "returncode": 0,
+      "stdout": "TIMING 500   7.7371020000000000E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.01618647575378418
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3/timing",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3",
+      "returncode": 0,
+      "stdout": "TIMING 500   2.7160309999999998E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+      "stderr": "",
+      "elapsed": 0.010226726531982422
+    }
+  ],
+  "checks": [
+    {
+      "rank": 2,
+      "mode": "o3",
+      "guard": " PASS      384000         176      383824\n"
+    },
+    {
+      "rank": 2,
+      "mode": "static",
+      "guard": " PASS      384000         176      383824\n"
+    },
+    {
+      "rank": 2,
+      "consumer": " PASS CALLER CREATE MERGE\n"
+    },
+    {
+      "rank": 3,
+      "mode": "o3",
+      "guard": " PASS      384000         176      383824\n"
+    },
+    {
+      "rank": 3,
+      "mode": "static",
+      "guard": " PASS      384000         176      383824\n"
+    },
+    {
+      "rank": 3,
+      "consumer": " PASS CALLER CREATE MERGE\n"
+    }
+  ],
+  "timings": [
+    {
+      "rank": 2,
+      "pair": 0,
+      "method": 0,
+      "iterations": 500,
+      "seconds": 0.003544225,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    },
+    {
+      "rank": 2,
+      "pair": 0,
+      "method": 1,
+      "iterations": 500,
+      "seconds": 0.001462556,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    },
+    {
+      "rank": 2,
+      "pair": 1,
+      "method": 1,
+      "iterations": 500,
+      "seconds": 0.001465216,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    },
+    {
+      "rank": 2,
+      "pair": 1,
+      "method": 0,
+      "iterations": 500,
+      "seconds": 0.003582595,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    },
+    {
+      "rank": 2,
+      "pair": 2,
+      "method": 0,
+      "iterations": 500,
+      "seconds": 0.003553425,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    },
+    {
+      "rank": 2,
+      "pair": 2,
+      "method": 1,
+      "iterations": 500,
+      "seconds": 0.001458766,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    },
+    {
+      "rank": 2,
+      "pair": 3,
+      "method": 1,
+      "iterations": 500,
+      "seconds": 0.001586827,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    },
+    {
+      "rank": 2,
+      "pair": 3,
+      "method": 0,
+      "iterations": 500,
+      "seconds": 0.003715325,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    },
+    {
+      "rank": 2,
+      "pair": 4,
+      "method": 0,
+      "iterations": 500,
+      "seconds": 0.004033997,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    },
+    {
+      "rank": 2,
+      "pair": 4,
+      "method": 1,
+      "iterations": 500,
+      "seconds": 0.001463726,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    },
+    {
+      "rank": 2,
+      "pair": 5,
+      "method": 1,
+      "iterations": 500,
+      "seconds": 0.001502826,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    },
+    {
+      "rank": 2,
+      "pair": 5,
+      "method": 0,
+      "iterations": 500,
+      "seconds": 0.003561534,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    },
+    {
+      "rank": 2,
+      "pair": 6,
+      "method": 0,
+      "iterations": 500,
+      "seconds": 0.003547445,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    },
+    {
+      "rank": 2,
+      "pair": 6,
+      "method": 1,
+      "iterations": 500,
+      "seconds": 0.001456616,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    },
+    {
+      "rank": 3,
+      "pair": 0,
+      "method": 0,
+      "iterations": 500,
+      "seconds": 0.007736132,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    },
+    {
+      "rank": 3,
+      "pair": 0,
+      "method": 1,
+      "iterations": 500,
+      "seconds": 0.002708221,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    },
+    {
+      "rank": 3,
+      "pair": 1,
+      "method": 1,
+      "iterations": 500,
+      "seconds": 0.002959652,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    },
+    {
+      "rank": 3,
+      "pair": 1,
+      "method": 0,
+      "iterations": 500,
+      "seconds": 0.008095873,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    },
+    {
+      "rank": 3,
+      "pair": 2,
+      "method": 0,
+      "iterations": 500,
+      "seconds": 0.007786032,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    },
+    {
+      "rank": 3,
+      "pair": 2,
+      "method": 1,
+      "iterations": 500,
+      "seconds": 0.002729632,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    },
+    {
+      "rank": 3,
+      "pair": 3,
+      "method": 1,
+      "iterations": 500,
+      "seconds": 0.002741811,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    },
+    {
+      "rank": 3,
+      "pair": 3,
+      "method": 0,
+      "iterations": 500,
+      "seconds": 0.007736322,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    },
+    {
+      "rank": 3,
+      "pair": 4,
+      "method": 0,
+      "iterations": 500,
+      "seconds": 0.007792352,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    },
+    {
+      "rank": 3,
+      "pair": 4,
+      "method": 1,
+      "iterations": 500,
+      "seconds": 0.002714021,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    },
+    {
+      "rank": 3,
+      "pair": 5,
+      "method": 1,
+      "iterations": 500,
+      "seconds": 0.002827772,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    },
+    {
+      "rank": 3,
+      "pair": 5,
+      "method": 0,
+      "iterations": 500,
+      "seconds": 0.007736072,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    },
+    {
+      "rank": 3,
+      "pair": 6,
+      "method": 0,
+      "iterations": 500,
+      "seconds": 0.007737102,
+      "checksum_real": 2233.266733266744,
+      "checksum_imag": -945.554445554436
+    }
+  ]
+}

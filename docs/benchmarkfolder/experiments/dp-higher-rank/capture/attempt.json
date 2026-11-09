@@ -1,0 +1,13 @@
+{
+  "build": {
+    "bound_seconds": 60,
+    "command": [
+      "make",
+      "-j1",
+      "check"
+    ],
+    "returncode": 2,
+    "seconds": 0.03758902521803975,
+    "status": "completed"
+  }
+}

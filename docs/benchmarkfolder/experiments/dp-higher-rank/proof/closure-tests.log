@@ -1,0 +1,9 @@
+test_actual_full_closure (__main__.FullClosureMutations.test_actual_full_closure) ... ok
+test_missing_capture_and_extra_wavefunction_consumer (__main__.FullClosureMutations.test_missing_capture_and_extra_wavefunction_consumer) ... ok
+test_table_write_alias_escape_and_shadow_in_other_units (__main__.FullClosureMutations.test_table_write_alias_escape_and_shadow_in_other_units) ... ok
+test_wrong_rank_or_missing_expected_producer (__main__.FullClosureMutations.test_wrong_rank_or_missing_expected_producer) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 5.927s
+
+OK

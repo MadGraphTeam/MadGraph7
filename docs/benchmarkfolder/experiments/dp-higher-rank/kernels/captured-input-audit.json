@@ -1,0 +1,89 @@
+{
+  "note": "Checks raw IEEE binary64 words and recorded flags; replay explicitly selects nearest rounding, which was not recorded by capture header",
+  "cases": [
+    {
+      "rank": 2,
+      "sample": 1,
+      "active_real_components": 640,
+      "operand_bounds_pass": true,
+      "recorded_flags": [
+        "F",
+        "F",
+        "F",
+        "F",
+        "T"
+      ],
+      "recorded_halting": [
+        "F",
+        "F",
+        "F",
+        "F",
+        "F"
+      ],
+      "sha256": "ae344c436fdc514b1cc8b27b192829ca522e1c8fe4bee1578880b139cf4f9ddc"
+    },
+    {
+      "rank": 2,
+      "sample": 2,
+      "active_real_components": 640,
+      "operand_bounds_pass": true,
+      "recorded_flags": [
+        "F",
+        "F",
+        "F",
+        "F",
+        "T"
+      ],
+      "recorded_halting": [
+        "F",
+        "F",
+        "F",
+        "F",
+        "F"
+      ],
+      "sha256": "cbd0e8655e3a09fe9ef5fe22da3bb03ca4ee78386f9446dbd54403437b08bf16"
+    },
+    {
+      "rank": 3,
+      "sample": 1,
+      "active_real_components": 1280,
+      "operand_bounds_pass": true,
+      "recorded_flags": [
+        "F",
+        "F",
+        "F",
+        "F",
+        "T"
+      ],
+      "recorded_halting": [
+        "F",
+        "F",
+        "F",
+        "F",
+        "F"
+      ],
+      "sha256": "d69400c5a634f8575355eb6466a8fc525a84af6d4f717c34d537b293c7252f18"
+    },
+    {
+      "rank": 3,
+      "sample": 2,
+      "active_real_components": 1280,
+      "operand_bounds_pass": true,
+      "recorded_flags": [
+        "F",
+        "F",
+        "F",
+        "F",
+        "T"
+      ],
+      "recorded_halting": [
+        "F",
+        "F",
+        "F",
+        "F",
+        "F"
+      ],
+      "sha256": "6a2104e2ff264993d18023b111b180079a95dab0c0ce14e537773b0ea3d8e88e"
+    }
+  ]
+}

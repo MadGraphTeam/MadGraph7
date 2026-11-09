@@ -1,0 +1,20 @@
+{
+  "command": [
+    "gfortran",
+    "-O3",
+    "-fcheck=all",
+    "-ffixed-line-length-132",
+    "-ffree-line-length-none",
+    "constants.f",
+    "public.f",
+    "private.f",
+    "timing.f90",
+    "-o",
+    "timing"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3",
+  "returncode": 0,
+  "stdout": "",
+  "stderr": "",
+  "elapsed": 0.4634068012237549
+}

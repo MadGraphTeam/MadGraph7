@@ -1,0 +1,10 @@
+{
+  "command": [
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3/guards"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r3",
+  "returncode": 0,
+  "stdout": " PASS      384000         176      383824\n",
+  "stderr": "",
+  "elapsed": 12.680875301361084
+}

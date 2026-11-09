@@ -1,0 +1,90 @@
+[
+  {
+    "active_complex_B": 80,
+    "active_operands_bounded": true,
+    "caller_flags": [
+      "F",
+      "F",
+      "F",
+      "F",
+      "T"
+    ],
+    "file": "capture/attempt3/capture-r2-1.txt",
+    "halting_modes": [
+      "F",
+      "F",
+      "F",
+      "F",
+      "F"
+    ],
+    "nonzero_complex_B": 32,
+    "rank": 2,
+    "scope": "First two recorded terminalcontexts perrank atfirstretainedphysicalpoint; notglobal admissionorhelicity frequency."
+  },
+  {
+    "active_complex_B": 80,
+    "active_operands_bounded": true,
+    "caller_flags": [
+      "F",
+      "F",
+      "F",
+      "F",
+      "T"
+    ],
+    "file": "capture/attempt3/capture-r2-2.txt",
+    "halting_modes": [
+      "F",
+      "F",
+      "F",
+      "F",
+      "F"
+    ],
+    "nonzero_complex_B": 40,
+    "rank": 2,
+    "scope": "First two recorded terminalcontexts perrank atfirstretainedphysicalpoint; notglobal admissionorhelicity frequency."
+  },
+  {
+    "active_complex_B": 80,
+    "active_operands_bounded": true,
+    "caller_flags": [
+      "F",
+      "F",
+      "F",
+      "F",
+      "T"
+    ],
+    "file": "capture/attempt3/capture-r3-1.txt",
+    "halting_modes": [
+      "F",
+      "F",
+      "F",
+      "F",
+      "F"
+    ],
+    "nonzero_complex_B": 40,
+    "rank": 3,
+    "scope": "First two recorded terminalcontexts perrank atfirstretainedphysicalpoint; notglobal admissionorhelicity frequency."
+  },
+  {
+    "active_complex_B": 80,
+    "active_operands_bounded": true,
+    "caller_flags": [
+      "F",
+      "F",
+      "F",
+      "F",
+      "T"
+    ],
+    "file": "capture/attempt3/capture-r3-2.txt",
+    "halting_modes": [
+      "F",
+      "F",
+      "F",
+      "F",
+      "F"
+    ],
+    "nonzero_complex_B": 40,
+    "rank": 3,
+    "scope": "First two recorded terminalcontexts perrank atfirstretainedphysicalpoint; notglobal admissionorhelicity frequency."
+  }
+]
