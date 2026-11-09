@@ -142,15 +142,23 @@ def test_the_stage_split_is_labelled_and_complete():
     }
     split = module._stage_split(stages, "tirust")
     assert split["label"] == "instrumented run: stage shares, not the timed call"
-    seconds = split["seconds_per_point"]
-    assert list(seconds) == [
-        "trees + CT kets",
-        "dressing",
-        "scatter",
-        "reduction",
-        "rest",
-    ]
-    assert seconds["rest"] == pytest.approx(0.1)
-    assert sum(seconds.values()) == pytest.approx(split["total"])
+    # The run's stages verbatim (the reduction with its backend's own
+    # sub-stages): the report groups them (build_summary.py _split).
+    per = stages["backend_runs"]["tirust"]["batches"]["128"]["stages_per_point"]
+    assert split["seconds_per_point"] == per
+    assert split["total"] == 1.0 and split["batch"] == 128
     assert module._stage_split(stages, "ninjars") is None
     assert module._stage_split(None, "tirust") is None
+    # The report's grouping of the record: TIRust's reduction as its tensor
+    # moments and contraction, the timer's rest outside them in glue.
+    import importlib.util
+
+    path = ROOT / "docs" / "performance_reports" / "loop" / "scripts" / "build_summary.py"
+    spec = importlib.util.spec_from_file_location("li_report_build_summary", path)
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
+    grouped = builder._li_stages({"stages": split})
+    assert grouped["inputs"] == 0.1 and grouped["numerator"] == 0.5
+    assert grouped["moments"] == 0.15 and grouped["contraction"] == 0.0
+    assert grouped["glue"] == pytest.approx(0.01 + 0.05)
+    assert "ninjars" not in grouped and "masters" not in grouped

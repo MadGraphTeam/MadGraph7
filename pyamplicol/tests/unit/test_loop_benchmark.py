@@ -2470,6 +2470,112 @@ def test_report_builder_loop_induced_untimed_row_prints_its_marker(tmp_path):
     assert row["timing"]["status"] == "pending"
 
 
+def test_report_builder_backend_table_and_missing_box(tmp_path):
+    """The backend-comparison table (m-lit Q40): TIRust and NinjaRS under
+    the unchecked setting per loop-induced row (time, stages grouped with the
+    backend's own reduction stages, ratio, accuracy, the L6 verdict of
+    lit.json) and per Born-interfered 2->3 / 2->4 row of Table 1 (the
+    records of backends-born.json, else the 'not timed' marker), LI-B1's L6
+    tally; the "Missing or incomplete" box lists the cells without a value,
+    a failing gate with its dominating stage, a partial validation (its
+    partial checks and TIRust's failed fixture points) and an accuracy note,
+    rows sharing a reason on one line."""
+
+    import json
+
+    builder = _report_builder()
+    ti_stages = {"inputs": 0.1, "numerator": 0.5, "scatter": 0.1, "moments": 0.2,
+                 "contraction": 0.05, "glue": 0.05, "untimed": 0.0}
+    nj_stages = {"inputs": 0.1, "numerator": 0.5, "scatter": 0.1, "ninjars": 0.6,
+                 "masters": 0.2, "glue": 0.05, "untimed": 0.0}
+    acc = {"points": 128, "max_relative": 2e-3, "lax": 1e-5, "above": 3, "worst": 2e-3,
+           "served_by": ["last resort"], "failed": 0, "failed_classes": [], "note": True}
+    li_row = {
+        "key": "gg_hgg", "math": "g g -> h g g", "label": "g g > h g g",
+        "generation": {"status": "measured"},
+        "providers": {"status": "recorded", "fastest": {"key": "openloops"}},
+        "validation": {"status": "partial", "note": "li_gg_hgg: L3 partial (x); li_gg_hgg: L6 partial"
+                       " (TIRust fails 2 of 3 binary64 points closed (typed))"},
+        "timing": {
+            "status": "measured", "unchecked": True, "backend": "tirust",
+            "backend_label": "TIRust", "seconds_per_point": 1.0, "revision": "aaaaaaaa",
+            "stages": ti_stages, "accuracy": acc, "source": "test",
+            "gate": {"status": "fail", "ratio_to_limit": 1.2, "backend_label": "TIRust"},
+            "other_backend": {"backend": "ninjars", "backend_label": "NinjaRS per amplitude",
+                              "status": "served", "seconds_per_point": 2.5, "stages": nj_stages},
+        },
+    }
+    untimed = {
+        "key": "li_x1", "math": None, "label": "EFT row",
+        "generation": {"status": "not timed", "reason": "execution check only"},
+        "timing": {"status": "not timed", "reason": "execution check only"},
+        "providers": {"status": "no reference"}, "validation": {"status": "pass"},
+    }
+    loop_induced = {"groups": [{"name": "2->3", "rows": [li_row]}, {"name": "EFT", "rows": [untimed]}]}
+
+    def g1(key, math, gate=None, lc="measured"):
+        return {
+            "key": key, "math": math,
+            "generation": {"main": {"status": "measured"}},
+            "leading_colour": {"main": {"status": lc, "reason": "refused by design"}},
+            "full_colour": {"main": {"status": "measured", "gate": gate, "stages": nj_stages},
+                            "gate_rule": "G1"},
+        }
+
+    summary = {"groups": [
+        {"name": "2->2", "rows": [g1("gg_gg", "g g -> g g")]},
+        {"name": "2->3", "rows": [g1("gg_ggg", "g g -> g g g", {"status": "open", "ratio_to_limit": 1.0}),
+                                  g1("uux_ggg", "u overline(u) -> g g g", lc="not supported")]},
+    ]}
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "lit.json").write_text(json.dumps({
+        "rows": {"gg_hgg": {"runs": {"li_gg_hgg": {"L6": {"double": {
+            "status": "partial", "tirust_served": 1, "of": 3, "finite_max_relative": 3e-12}}}}}},
+        "ids": {"LI-B1": {"status": "partial", "campaigns": {"m": {"rows": {
+            "A": {"status": "pass"}, "B": {"status": "partial"}, "C": {"status": "pass"}}}}}},
+    }))
+    table = builder.build_backend_table(summary, loop_induced, data=data)
+    (li,) = table["loop_induced"]["rows"]
+    assert li["ratio"] == 2.5 and li["tirust"]["accuracy"] == acc
+    assert li["tirust"]["stages"]["moments"] == 0.2 and "ninjars" in li["ninjars"]["stages"]
+    assert li["l6"]["runs"] == [{"run": "li_gg_hgg", "status": "partial", "tirust_served": 1,
+                                 "of": 3, "finite_max_relative": 3e-12}]
+    assert table["loop_induced"]["not_unchecked"] == ["li_x1"]
+    born = table["born_interfered"]
+    assert [r["key"] for r in born["rows"]] == ["gg_ggg", "uux_ggg"]
+    assert born["l6"]["rows"] == {"pass": 2, "partial": 1} and not born["present"]
+    assert all(r["tirust"]["status"] == r["ninjars"]["status"] == "not timed" for r in born["rows"])
+    (data / "backends-born.json").write_text(json.dumps({"records": [
+        {"key": "gg_ggg", "backend": "tirust", "seconds_per_point": 0.01, "revision": "b" * 40,
+         "stages_per_point": {"reduction": 0.004, "reduction: tensor moments": 0.003,
+                              "reduction: contraction": 0.0005, "dressing": 0.005},
+         "agreement": {"max_relative": 1e-12, "points": 128}},
+        {"key": "gg_ggg", "backend": "ninjars", "seconds_per_point": 0.02, "revision": "b" * 40,
+         "stages_per_point": {"reduction": 0.012, "reduction: masters": 0.002, "dressing": 0.005}},
+        {"key": "uux_ggg", "backend": "tirust", "missing": "outside the row budget"},
+    ]}))
+    born = builder.build_backend_table(summary, loop_induced, data=data)["born_interfered"]
+    ggg = born["rows"][0]
+    assert ggg["ratio"] == 2.0 and ggg["agreement"]["max_relative"] == 1e-12
+    assert ggg["tirust"]["stages"]["moments"] == 0.003
+    assert ggg["tirust"]["stages"]["glue"] == pytest.approx(0.0005)
+    assert ggg["ninjars"]["stages"]["ninjars"] == 0.01
+    assert born["rows"][1]["tirust"] == {"status": "not run", "reason": "outside the row budget"}
+    missing = builder.build_missing(summary, loop_induced)
+    texts = {(e["table"], e["kind"], e["text"]): e for e in missing}
+    assert ("1", "no value", "leading colour: not supported (refused by design)") in texts
+    gate1 = texts[("1", "gate", "open")]
+    assert gate1["rows"] == ["g g -> g g g"] and gate1["dominant"][0]["stage"] == "ninjars"
+    gate2 = texts[("2", "gate", "fail on TIRust")]
+    assert gate2["ratio"] == [1.2] and gate2["dominant"][0]["stage"] == "numerator"
+    assert ("2", "validation", "partial: L3, L6; TIRust fails 2 of 3 binary64 fixture points"
+            " closed (checked default; lit.json)") in texts
+    assert ("2", "accuracy", "TIRust unchecked: 3/128 points above 1e-05, worst 2.0e-03") in texts
+    assert ("2", "no value", "not timed: execution check only") in texts
+    assert [e["table"] for e in missing] == sorted(e["table"] for e in missing)
+
+
 def test_report_builder_figure_one_draws_loop_induced_rows_with_a_time_and_a_provider():
     """Figure 1's loop-induced rows (USER 2026-11-07 ~10:40): every row of the
     loop-induced table with a batched pyAmpliCol time and a matched provider
