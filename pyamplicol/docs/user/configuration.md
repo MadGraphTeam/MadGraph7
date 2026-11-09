@@ -261,7 +261,10 @@ own generation (the probe slice, a second generation of the process, is
 generation 5 s and 8 s); 161 s and 344 s for g g > a a g g and
 g g > z z z z (engine generation 10 s and 9 s). No probe needed the
 double-double rerun there; double-double alone took 5-191 s per 2->3
-process and 7 and 13 minutes for g g > h h g g and g g > h g g g. On the
+process and 7 and 13 minutes for g g > h h g g and g g > h g g g. Sizing
+the probes' binary64 lanes to their few points then cut these probe times
+by a further 1.5-1.8x (g g > z z g 15.5 -> 10.4 s, g g > a a g g 149 -> 96
+s, g g > h g g g 80 -> 44 s). On the
 electroweak UFOs the probe slice and each Goldstone slice generate the
 process again, so the probes cost one generation of the process or more
 (e+ e- > g g g: 44 s, of which 39 s is the probe slice, against 43 s).
