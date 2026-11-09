@@ -298,6 +298,27 @@ def test_one_preparation_per_recipe_and_one_lowering_per_model(
 
 
 @pytest.mark.loop_physics
+def test_a_dry_run_prepares_a_generation_ahead(seeded, monkeypatch, tmp_path):
+    """With the compiled model cached, the dry run (``Generator.plan``)
+    fills the preparation cache; the generation that follows (a fresh
+    process) lowers nothing and gives the cache-off artifact."""
+
+    _, reference = seeded
+    root = _root(seeded, tmp_path / "cache")
+    monkeypatch.setenv("PYAMPLICOL_CACHE_DIR", str(root))
+    monkeypatch.delenv(ENVIRONMENT, raising=False)
+    spy = _Memos(monkeypatch)
+    planned = _plan(tmp_path / "plan", "born", tmp_path / "planned")
+    assert not planned.unsupported_features
+    (memo,) = spy.memos
+    assert memo.counts["lowerings"] == 1 and memo.counts["program_saves"] == 1
+    assert len(_entries(root)) == 1
+    (report,) = _subprocess_generate(root, tmp_path / "warm", "born")
+    assert report.get("lowerings", 0) == 0 and report["program_loads"] == 1
+    assert _identity(tmp_path / "warm" / "artifact") == _identity(reference["born"])
+
+
+@pytest.mark.loop_physics
 def test_probe_slices_share_the_preparation(seeded, monkeypatch, tmp_path):
     """With ``generation.loop_induced_probes`` the probe slice of g g > h
     (zero widths already: the production recipe) reuses the slice's
