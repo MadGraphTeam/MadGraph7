@@ -16,11 +16,11 @@
 //! `O' += T · V` once per group and target row.
 
 use super::closure::{FamilyNumerator, close_column, close_row, trace_into, trace_rows_into};
-use super::dress::{Carrier, ChunkInputs, LaneData, Pool, Workspaces, dress_edge, written_rows};
-use super::kernels::{
-    DiagonalSchedule, Segment, TraceTerm, lane_vector_len, split_edge, split_vertex, trace_row,
+use super::dress::{Carrier, ChunkInputs, LaneData, Pool, Workspaces, dress_edge};
+use super::kernels::{Segment, TraceTerm, lane_vector_len, split_edge, split_vertex, trace_row};
+use super::plan::{
+    DiagonalLinks, Edge, Family, LoopProgramV4, RowTrace, Source, SplitStep, Step, Walk,
 };
-use super::plan::{Edge, Family, LoopProgramV4, RowTrace, Source, SplitStep, Step};
 use super::seeds::Seeds;
 use crate::{RusticolError, RusticolResult};
 use ninjars::fast::tensor_layout::ncoeff;
@@ -124,15 +124,25 @@ pub fn run_family_on<T: Carrier, const L: usize>(
         .collect();
     // A split part's row links, unpacked (`plan::PackedLinks`).
     let mut links = Vec::new();
-    // The rows each fused step writes (and its consumer reads): only those
-    // are zeroed (a row-pruned copy writes the kept rows only).
-    let written = written_rows(family, columns);
+    // The walk data derived at load (`plan::Walk`): the rows each fused
+    // step writes (and its consumer reads; only those are zeroed, a
+    // row-pruned copy writes the kept rows only) and the rows each trace
+    // step closes.
+    let derived;
+    let walk: &Walk = match &family.walk {
+        Some(walk) => walk,
+        None => {
+            derived = plan.walk_of(family);
+            &derived
+        }
+    };
     let mut closures = 0;
     for (s, step) in family.steps.iter().enumerate() {
+        let traced = walk.traces[s].as_ref();
         // A fused trace step forms only the diagonal its trace reads
         // (lit-dress lever A; decided per step from the plan).
-        if let (Some(accumulator), None) = (step.trace, &step.split)
-            && let Some(diagonals) = diagonals(plan, step)
+        if let (Some(accumulator), Some(trace_rows)) = (step.trace, traced)
+            && let Some(diagonal) = &trace_rows.diagonal
         {
             let sources = step
                 .edges
@@ -144,7 +154,8 @@ pub fn run_family_on<T: Carrier, const L: usize>(
             closures += close_diagonal::<T, L>(
                 plan,
                 step,
-                &diagonals,
+                &trace_rows.closed,
+                diagonal,
                 &sources,
                 inputs,
                 row_trace,
@@ -160,7 +171,7 @@ pub fn run_family_on<T: Carrier, const L: usize>(
             }
             continue;
         }
-        let mut out = match &written[s] {
+        let mut out = match &walk.written[s] {
             Some(rows) => pool.take_rows(
                 step.rows * columns * step.out_row() * v,
                 step.out_row() * v,
@@ -218,22 +229,24 @@ pub fn run_family_on<T: Carrier, const L: usize>(
                 }
             }
         }
-        match (step.trace, family.row_traces.get(s)) {
-            (Some(accumulator), Some(Some(row_trace))) => {
+        match (step.trace, family.row_traces.get(s), traced) {
+            (Some(accumulator), Some(Some(row_trace)), Some(trace_rows)) => {
                 // Dressed rows: the per-row closure with the amplitude
-                // vector of the step's seed key (decided per step).
+                // vector of the step's seed key (decided per step), of the
+                // rows some link writes (`plan::TraceRows`).
                 let vector = key_vector(plan, row_trace, data);
                 let keys = &plan.key_columns[row_trace.key as usize];
-                closures += row_trace
-                    .rows
+                closures += trace_rows
+                    .closed
                     .iter()
-                    .map(|&h| keys.row(h as usize).len())
+                    .map(|&r| keys.row(row_trace.rows[r as usize] as usize).len())
                     .sum::<usize>();
                 trace_rows_into::<T, L>(
                     step,
                     &out,
                     &mut numerator.accumulators[accumulator],
                     &row_trace.rows,
+                    &trace_rows.closed,
                     &plan.key_columns[row_trace.key as usize],
                     slots(family),
                     &vector,
@@ -242,7 +255,7 @@ pub fn run_family_on<T: Carrier, const L: usize>(
                 );
                 pool.give(out);
             }
-            (Some(accumulator), _) => {
+            (Some(accumulator), ..) => {
                 closures += columns;
                 trace_into::<T, L>(
                     step,
@@ -254,7 +267,7 @@ pub fn run_family_on<T: Carrier, const L: usize>(
                 );
                 pool.give(out);
             }
-            (None, _) => outputs[s] = Some(out),
+            (None, ..) => outputs[s] = Some(out),
         }
     }
     for out in outputs.into_iter().flatten() {
@@ -288,37 +301,26 @@ fn key_vector<T: Carrier, const L: usize>(
         .collect()
 }
 
-/// The diagonal schedules of a fused trace step's edges (lit-dress lever
-/// A), or `None` where an edge has none: the step then forms its whole
-/// output.
-fn diagonals<'a>(plan: &'a LoopProgramV4, step: &Step) -> Option<Vec<&'a DiagonalSchedule>> {
-    step.edges
-        .iter()
-        .map(|edge| {
-            (plan.contents[edge.content].d_out == step.d_out)
-                .then(|| plan.diagonal(edge.content, edge.products, step.seeded, step.d_alpha))
-                .flatten()
-        })
-        .collect()
-}
-
 /// Close a fused trace step from the diagonal of its output (lit-dress
-/// lever A): per traced object row, in row order, its trace
-/// ([`trace_row`]: the diagonal coefficients accumulated over the row's
-/// links in edge and link order, each from zero, then summed over the cut
-/// index in order) and its closure into the accumulator (dressed rows:
-/// [`close_row`] with the row's Born columns; seeded: [`close_column`]),
-/// the operations [`dress_edge`] into a zeroed output followed by
-/// [`trace_rows_into`] or [`trace_into`] perform on what the closure
-/// reads, so the accumulator is bitwise theirs. The traced rows are the row
-/// closure's rows (dressed rows) or the object columns (seeded plans, as
-/// `trace_into`); a link into another row is not formed (no closure reads
-/// it), nor is a row no link reaches closed (it would add exact zeros).
+/// lever A): per closed row (`closed`: the traced rows some link writes,
+/// ascending), its trace ([`trace_row`]: the diagonal coefficients
+/// accumulated over the row's links in edge and link order, each from
+/// zero, then summed over the cut index in order) and its closure into the
+/// accumulator (dressed rows: [`close_row`] with the row's Born columns;
+/// seeded: [`close_column`]), the operations [`dress_edge`] into a zeroed
+/// output followed by [`trace_rows_into`] or [`trace_into`] perform on what
+/// the closure reads, so the accumulator is bitwise theirs. The traced rows
+/// are the row closure's rows (dressed rows) or the object columns (seeded
+/// plans, as `trace_into`); a link into another row is not formed (no
+/// closure reads it), nor is a row no link reaches closed (it would add
+/// exact zeros). The row and link order are derived at load
+/// ([`DiagonalLinks`]).
 #[allow(clippy::too_many_arguments)]
 fn close_diagonal<T: Carrier, const L: usize>(
     plan: &LoopProgramV4,
     step: &Step,
-    diagonals: &[&DiagonalSchedule],
+    closed: &[u32],
+    diagonal: &DiagonalLinks,
     sources: &[Vec<T>],
     inputs: &ChunkInputs<T>,
     row_trace: Option<&RowTrace>,
@@ -329,92 +331,36 @@ fn close_diagonal<T: Carrier, const L: usize>(
     data: &LaneData<T, L>,
 ) -> usize {
     let v = lane_vector_len(L);
-    let traced = row_trace.map_or(plan.object_columns(), |r| r.rows.len());
     let mut closures = 0;
-    // Per edge: its input row and factor row lengths.
-    let shapes: Vec<(usize, usize)> = step
-        .edges
-        .iter()
-        .map(|edge| {
-            let content = &plan.contents[edge.content];
-            let products = &plan.products[edge.products];
-            let input_row = if step.seeded {
-                Segment::new(
-                    1,
-                    1,
-                    1,
-                    content.d_in * content.d_out,
-                    products,
-                    step.rank_out,
-                )
-            } else {
-                Segment::new(
-                    step.d_alpha,
-                    content.d_in,
-                    1,
-                    content.d_out,
-                    products,
-                    step.rank_out,
-                )
-            }
-            .input_row_len();
-            (input_row * v, content.factor_row() * v)
-        })
-        .collect();
-    // The links into each traced row, in edge then link order.
-    let mut starts = vec![0usize; traced + 1];
-    for edge in &step.edges {
-        for link in &edge.links {
-            if let Some(count) = starts.get_mut(link.output as usize + 1) {
-                *count += 1;
-            }
-        }
-    }
-    for r in 0..traced {
-        starts[r + 1] += starts[r];
-    }
-    let mut next = starts.clone();
-    let mut order = vec![(0u32, 0u32); starts[traced]];
-    for (e, edge) in step.edges.iter().enumerate() {
-        for (l, link) in edge.links.iter().enumerate() {
-            let row = link.output as usize;
-            if row < traced {
-                order[next[row]] = (e as u32, l as u32);
-                next[row] += 1;
-            }
-        }
-    }
     let vector = row_trace.map(|r| key_vector(plan, r, data));
     let mut term = vec![data.zero.clone(); v];
     let mut contributions: Vec<TraceTerm<'_, T>> = Vec::new();
-    for r in 0..traced {
-        let links = &order[starts[r]..starts[r + 1]];
-        if links.is_empty() {
-            continue;
-        }
+    for (i, &r) in closed.iter().enumerate() {
+        let links = &diagonal.links[diagonal.starts[i] as usize..diagonal.starts[i + 1] as usize];
         contributions.clear();
         for &(e, l) in links {
             let edge = &step.edges[e as usize];
             let link = edge.links[l as usize];
-            let (input_row, factor_row) = shapes[e as usize];
+            let (input_row, factor_row) = diagonal.shapes[e as usize];
+            let (input_row, factor_row) = (input_row * v, factor_row * v);
             contributions.push(TraceTerm {
                 input: &sources[e as usize][link.input as usize * input_row..][..input_row],
                 factor: &inputs.factors.get(edge.factor)[link.block as usize * factor_row..]
                     [..factor_row],
-                schedule: diagonals[e as usize],
+                schedule: plan.diagonal_schedule(diagonal.schedules[e as usize]),
             });
         }
         trace_row::<T, L>(&contributions, trace);
         match (row_trace, &vector) {
             (Some(row_trace), Some(vector)) => {
-                let columns =
-                    plan.key_columns[row_trace.key as usize].row(row_trace.rows[r] as usize);
+                let columns = plan.key_columns[row_trace.key as usize]
+                    .row(row_trace.rows[r as usize] as usize);
                 closures += columns.len();
                 close_row::<T, L>(trace, accumulator, columns, slots, vector, rank, &mut term)
             }
             _ => {
                 closures += 1;
-                close_column::<T, L>(trace, accumulator, r, rank)
+                close_column::<T, L>(trace, accumulator, r as usize, rank)
             }
         }
     }

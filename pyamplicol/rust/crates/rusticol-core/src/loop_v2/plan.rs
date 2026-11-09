@@ -452,6 +452,38 @@ impl Content {
     pub fn factor_row(&self) -> usize {
         self.open.entries().len()
     }
+
+    /// The fused form of an edge of this content: its layout and its cut,
+    /// incoming and outgoing dimensions. A seeded step reads `δ_αβ` seeds
+    /// (cut and open end of dimension 1, output end `α × β'`); an open-loop
+    /// step reads `d_alpha × d_in` per row.
+    pub fn fused_shape(
+        &self,
+        seeded: bool,
+        d_alpha: usize,
+    ) -> (&SegmentLayout, usize, usize, usize) {
+        if seeded {
+            (&self.seeded, 1, 1, self.d_in * self.d_out)
+        } else {
+            (&self.open, d_alpha, self.d_in, self.d_out)
+        }
+    }
+
+    /// The fused segment of an edge of this content on products table
+    /// `products` ([`Self::fused_shape`]) and its layout.
+    pub fn fused_segment<'a>(
+        &'a self,
+        seeded: bool,
+        d_alpha: usize,
+        products: &'a MonomialProductTable,
+        rank_out: usize,
+    ) -> (super::kernels::Segment<'a>, &'a SegmentLayout) {
+        let (layout, cut, incoming, outgoing) = self.fused_shape(seeded, d_alpha);
+        (
+            super::kernels::Segment::new(cut, incoming, 1, outgoing, products, rank_out),
+            layout,
+        )
+    }
 }
 
 /// A seed term `K × conj(A0[component])`, exact: `weight` indexes the
@@ -701,6 +733,44 @@ pub struct Family {
     /// close into ([`Support`], derived at load and for every row-pruned
     /// copy, never stored); `None`: every column (seeded plans).
     pub support: Option<Arc<Support>>,
+    /// What a walk of the family reads besides its steps ([`Walk`],
+    /// derived at load and for every row-pruned copy, never stored);
+    /// `None`: derived by the walk.
+    pub walk: Option<Arc<Walk>>,
+}
+
+/// What a family walk reads besides its steps (lit-dress: derived from the
+/// plan's data at load and for every row-pruned copy, never stored, so no
+/// walk recomputes it): per step the rows its output zeroes
+/// ([`super::dress::written_rows`]) and per trace step the rows it closes
+/// ([`TraceRows`]).
+#[derive(Clone, Debug, Default)]
+pub struct Walk {
+    pub written: Vec<Option<Vec<bool>>>,
+    pub traces: Vec<Option<TraceRows>>,
+}
+
+/// The rows a trace step closes: the traced object rows some link writes,
+/// ascending (every other row's trace is an exact zero, which no closure
+/// adds), and for a fused step whose every edge has a diagonal schedule
+/// (lit-dress lever A) how it forms their diagonals ([`DiagonalLinks`]).
+#[derive(Clone, Debug, Default)]
+pub struct TraceRows {
+    pub closed: Vec<u32>,
+    pub diagonal: Option<DiagonalLinks>,
+}
+
+/// A diagonal trace step's edges and links (lit-dress lever A).
+#[derive(Clone, Debug, Default)]
+pub struct DiagonalLinks {
+    /// Per edge its diagonal schedule ([`LoopProgramV4::diagonal_schedule`]).
+    pub schedules: Vec<u32>,
+    /// Per edge its input and fused factor row lengths, in lane vectors.
+    pub shapes: Vec<(usize, usize)>,
+    /// Per closed row `i` its links `links[starts[i]..starts[i + 1]]`, as
+    /// (edge, link) in edge then link order.
+    pub starts: Vec<u32>,
+    pub links: Vec<(u32, u32)>,
 }
 
 /// The support of a dressed-row family's accumulators (lit-dress lever D):
@@ -1080,6 +1150,134 @@ impl LoopProgramV4 {
         }
     }
 
+    /// Derive every family's walk data (at load, after the gathers).
+    fn set_walks(&mut self) {
+        let walks: Vec<_> = self.families.iter().map(|f| self.walk_of(f)).collect();
+        for (family, walk) in self.families.iter_mut().zip(walks) {
+            family.walk = Some(walk);
+        }
+    }
+
+    /// The walk data of `family` ([`Walk`]): its steps' written rows and
+    /// its trace steps' closed rows, from the plan's data only.
+    pub fn walk_of(&self, family: &Family) -> Arc<Walk> {
+        let columns = self.object_columns();
+        let index = |value: usize| u32::try_from(value).expect("trace links exceed u32");
+        let traces = family
+            .steps
+            .iter()
+            .enumerate()
+            .map(|(s, step)| {
+                step.trace?;
+                let traced = family
+                    .row_traces
+                    .get(s)
+                    .and_then(Option::as_ref)
+                    .map_or(columns, |trace| trace.rows.len());
+                let mut reached = vec![false; traced];
+                let mut reach = |output: u32| {
+                    if let Some(row) = reached.get_mut(output as usize) {
+                        *row = true;
+                    }
+                };
+                match &step.split {
+                    None => step
+                        .edges
+                        .iter()
+                        .flat_map(|edge| &edge.links)
+                        .for_each(|link| reach(link.output)),
+                    Some(split) => split
+                        .parts
+                        .iter()
+                        .flatten()
+                        .flat_map(|part| part.links.iter())
+                        .for_each(|link| reach(link.output)),
+                }
+                let closed: Vec<u32> = (0..traced).filter(|&r| reached[r]).map(index).collect();
+                let schedules: Option<Vec<u32>> = step
+                    .split
+                    .is_none()
+                    .then(|| {
+                        step.edges
+                            .iter()
+                            .map(|edge| {
+                                (self.contents[edge.content].d_out == step.d_out)
+                                    .then(|| {
+                                        self.gathers.diagonals.get(&(
+                                            edge.content,
+                                            edge.products,
+                                            step.seeded,
+                                            step.d_alpha,
+                                        ))
+                                    })
+                                    .flatten()
+                                    .map(|&id| index(id))
+                            })
+                            .collect()
+                    })
+                    .flatten();
+                let diagonal = schedules.map(|schedules| {
+                    let shapes = step
+                        .edges
+                        .iter()
+                        .map(|edge| {
+                            let content = &self.contents[edge.content];
+                            let (segment, _layout) = content.fused_segment(
+                                step.seeded,
+                                step.d_alpha,
+                                &self.products[edge.products],
+                                step.rank_out,
+                            );
+                            (segment.input_row_len(), content.factor_row())
+                        })
+                        .collect();
+                    // The links into each closed row, in edge then link
+                    // order (the order `fused_edge_gathered` adds them).
+                    let mut slot = vec![u32::MAX; traced];
+                    for (i, &r) in closed.iter().enumerate() {
+                        slot[r as usize] = index(i);
+                    }
+                    let mut starts = vec![0u32; closed.len() + 1];
+                    for link in step.edges.iter().flat_map(|edge| &edge.links) {
+                        if let Some(&i) = slot.get(link.output as usize) {
+                            starts[i as usize + 1] += 1;
+                        }
+                    }
+                    for i in 0..closed.len() {
+                        starts[i + 1] += starts[i];
+                    }
+                    let mut next = starts.clone();
+                    let mut links = vec![(0u32, 0u32); starts[closed.len()] as usize];
+                    for (e, edge) in step.edges.iter().enumerate() {
+                        for (l, link) in edge.links.iter().enumerate() {
+                            if let Some(&i) = slot.get(link.output as usize) {
+                                links[next[i as usize] as usize] = (index(e), index(l));
+                                next[i as usize] += 1;
+                            }
+                        }
+                    }
+                    DiagonalLinks {
+                        schedules,
+                        shapes,
+                        starts,
+                        links,
+                    }
+                });
+                Some(TraceRows { closed, diagonal })
+            })
+            .collect();
+        Arc::new(Walk {
+            written: super::dress::written_rows(family, columns),
+            traces,
+        })
+    }
+
+    /// The diagonal schedule `id` of a [`DiagonalLinks`].
+    #[inline]
+    pub fn diagonal_schedule(&self, id: u32) -> &super::kernels::DiagonalSchedule {
+        &self.gathers.diagonal_schedules[id as usize]
+    }
+
     /// The observable columns an open-loop object carries per row: one in a
     /// dressed-row plan (its trace steps spread the rows over the columns),
     /// else every observable column.
@@ -1205,11 +1403,7 @@ impl Gathers {
         }
         for (content, table, seeded, d_alpha) in traced {
             let content_ = &program.contents[content];
-            let (layout, cut, incoming) = if seeded {
-                (&content_.seeded, 1, 1)
-            } else {
-                (&content_.open, d_alpha, content_.d_in)
-            };
+            let (layout, cut, incoming, _outgoing) = content_.fused_shape(seeded, d_alpha);
             if let Some(schedule) = super::kernels::DiagonalSchedule::new(
                 layout,
                 &program.products[table],
@@ -2115,6 +2309,7 @@ impl LoopProgramV4 {
         program.prune_dead_rows(&mut tables.links);
         program.set_supports();
         program.gathers = Gathers::build(&program);
+        program.set_walks();
         Ok(program)
     }
 
@@ -2303,6 +2498,7 @@ impl LoopProgramV4 {
             currents: currents.into_iter().collect(),
             row_traces,
             support: None,
+            walk: None,
         })
     }
 

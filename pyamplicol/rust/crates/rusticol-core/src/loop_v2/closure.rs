@@ -263,19 +263,25 @@ fn close_column_body<T: Carrier, const L: usize>(
 }
 
 /// Close a trace step of a dressed-row plan (route R2, M-LIT LIT-R2) into
-/// an accumulator: per object row `r` (one object column) its trace
+/// an accumulator: per object row `r` of `closed` (one object column; the
+/// rows some link writes, ascending, `plan::TraceRows`) its trace
 /// `τ_r[m] = Σ_α out[r][α][α][m]`, then for each observable column `o` of
 /// its Born row `born[r]` whose seed-weight column `w` has a non-zero
 /// weight in the amplitude vector `u` of the step's seed key (`columns`,
 /// [`KeyColumns`]) `acc[o][m] += u[w] τ_r[m]`, with `u` in the carrier
 /// (`(re, im)` per seed-weight column, the same for every lane). The step's
-/// rank is at most the family rank (checked when the plan loads).
+/// rank is at most the family rank (checked when the plan loads). A row no
+/// link writes has an exact zero trace, whose products change no
+/// accumulator (one started at `+0` never holds `-0`), so skipping it is
+/// bitwise; its columns need not be in the family's [`Support`] (a
+/// row-pruned copy's support holds the kept rows' columns only).
 #[allow(clippy::too_many_arguments)]
 pub fn trace_rows_into<T: Carrier, const L: usize>(
     step: &Step,
     output: &[T],
     accumulator: &mut [T],
     born: &[u32],
+    closed: &[u32],
     columns: &KeyColumns,
     slots: &[u32],
     vector: &[(T, T)],
@@ -288,7 +294,8 @@ pub fn trace_rows_into<T: Carrier, const L: usize>(
     let row = step.out_row() * v;
     let mut trace = vec![zero.clone(); n_out * v];
     let mut term = vec![zero.clone(); v];
-    for (r, &h) in born.iter().enumerate() {
+    for &r in closed {
+        let (r, h) = (r as usize, born[r as usize]);
         row_trace(step, &output[r * row..][..row], &mut trace);
         close_row::<T, L>(
             &trace,
@@ -511,6 +518,7 @@ mod tests {
             currents: Vec::new(),
             row_traces: Vec::new(),
             support: None,
+            walk: None,
         };
         let columns = 5;
         let support = Arc::new(Support {

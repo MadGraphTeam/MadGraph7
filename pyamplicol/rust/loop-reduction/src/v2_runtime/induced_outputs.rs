@@ -25,9 +25,11 @@
 //!   inclusive form over the selected rows, with the total's average.
 //!
 //! A call that reads some helicity rows only (a selection, or a resolved
-//! output restricted to some rows) dresses those rows only: the executor's
-//! row liveness ([`InducedCall::row_mask`], `Runner::row_liveness`), as the
-//! Python API's `NativeExecutor.runs(rows=...)` through the Python binding.
+//! output restricted to some rows) evaluates those rows only: the executor's
+//! row liveness ([`InducedCall::row_mask`], `Runner::row_liveness`: their
+//! trees, counterterm kets, dressing, closure, scatter and reduction lanes)
+//! and their amplitude vectors (lit-dress (H)), as the Python API's
+//! `NativeExecutor.runs(rows=...)` through the Python binding.
 //!
 //! The Python API's binary64 outputs call these functions through PyO3
 //! (`induced_spin_coefficients`, `induced_spin_amplitudes`,
@@ -1265,15 +1267,22 @@ impl V2Runtime {
             }
             let point_kets = kets.as_ref().map(|kets| kets[index].as_slice());
             let Some(collected) = monitoring.collected.as_deref_mut() else {
-                let vectors =
-                    induced.vectors_point(arith, &result.amplitudes, point_kets, width, bits)?;
+                let vectors = induced.vectors_point(
+                    arith,
+                    &result.amplitudes,
+                    point_kets,
+                    width,
+                    bits,
+                    rows,
+                )?;
                 out.push(Ok(per_point(index, &vectors, width)?));
                 continue;
             };
             // What the point's stability budgets read (`induced.read_native`:
             // the bare vectors, kets and their sum, the re-test budget and
             // the term scale, per executor slot).
-            let parts = induced.vector_parts(arith, &result.amplitudes, point_kets, width, bits)?;
+            let parts =
+                induced.vector_parts(arith, &result.amplitudes, point_kets, width, bits, rows)?;
             let lift = |slots: &[Vec<T>]| -> RusticolResult<Vec<Vec<A::N>>> {
                 slots
                     .iter()

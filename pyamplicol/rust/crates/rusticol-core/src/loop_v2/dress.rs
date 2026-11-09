@@ -22,7 +22,7 @@
 //! product is that of the Python reference executor.
 
 use super::kernels::{
-    GatherSchedule, RowLink, Segment, clear, fused_edge, fused_edge_gathered, lane_vector_len,
+    GatherSchedule, RowLink, clear, fused_edge, fused_edge_gathered, lane_vector_len,
 };
 use super::plan::{Content, Family, KernelInput, LoopProgramV4, ReadRows};
 use super::poly::MonomialProductTable;
@@ -974,26 +974,7 @@ impl<T: Carrier> Pool<T> {
     /// A zeroed buffer of `len` reals: the held buffer of the smallest
     /// capacity that fits (never reallocated), else a new one.
     pub fn take(&mut self, len: usize) -> Vec<T> {
-        let fit = self
-            .free
-            .iter()
-            .enumerate()
-            .filter(|(_, buffer)| buffer.capacity() >= len)
-            .min_by_key(|(_, buffer)| buffer.capacity())
-            .map(|(index, _)| index);
-        let buffer = match fit {
-            Some(index) => {
-                let mut buffer = self.free.swap_remove(index);
-                buffer.truncate(len);
-                clear(&mut buffer);
-                buffer.resize(len, self.zero.clone());
-                buffer
-            }
-            None => vec![self.zero.clone(); len],
-        };
-        self.live += len;
-        self.peak = self.peak.max(self.live);
-        buffer
+        self.take_with(len, |held| clear(held))
     }
 
     /// A buffer of `len` reals, `row` reals per row, of which only the rows
@@ -1001,6 +982,19 @@ impl<T: Carrier> Pool<T> {
     /// them, [`written_rows`]); a held buffer of the smallest capacity that
     /// fits, else a new (zero) one.
     pub fn take_rows(&mut self, len: usize, row: usize, written: &[bool]) -> Vec<T> {
+        self.take_with(len, |held| {
+            for (r, values) in held.chunks_mut(row.max(1)).enumerate() {
+                if written.get(r).copied().unwrap_or(true) {
+                    clear(values);
+                }
+            }
+        })
+    }
+
+    /// A buffer of `len` reals: the held buffer of the smallest capacity
+    /// that fits (never reallocated), its held values (up to `len`) given
+    /// to `zero` and the rest zero, else a new zero one.
+    fn take_with(&mut self, len: usize, zero: impl FnOnce(&mut [T])) -> Vec<T> {
         let fit = self
             .free
             .iter()
@@ -1012,13 +1006,8 @@ impl<T: Carrier> Pool<T> {
             Some(index) => {
                 let mut buffer = self.free.swap_remove(index);
                 buffer.truncate(len);
-                let held = buffer.len();
+                zero(&mut buffer);
                 buffer.resize(len, self.zero.clone());
-                for (r, values) in buffer[..held].chunks_mut(row.max(1)).enumerate() {
-                    if written.get(r).copied().unwrap_or(true) {
-                        clear(values);
-                    }
-                }
                 buffer
             }
             None => vec![self.zero.clone(); len],
@@ -1168,17 +1157,7 @@ pub fn dress_edge<T: Carrier, const L: usize>(
     links: &[RowLink],
     output: &mut [T],
 ) {
-    let (segment, layout) = if seeded {
-        (
-            Segment::new(1, 1, 1, content.d_in * content.d_out, products, rank_out),
-            &content.seeded,
-        )
-    } else {
-        (
-            Segment::new(d_alpha, content.d_in, 1, content.d_out, products, rank_out),
-            &content.open,
-        )
-    };
+    let (segment, layout) = content.fused_segment(seeded, d_alpha, products, rank_out);
     match gather {
         Some(schedule) => {
             fused_edge_gathered::<T, L>(&segment, schedule, input, factor, links, output)

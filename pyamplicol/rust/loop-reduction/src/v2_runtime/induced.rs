@@ -313,7 +313,10 @@ impl Induced {
     /// bare amplitude slots (`amplitudes[order * rows * T + row * T + t]`,
     /// Laurent coefficients) and the point's counterterm kets (`rows × ket
     /// components`; none without counterterms), in the carrier of `arith`
-    /// (`bits`: the executor carrier's).
+    /// (`bits`: the executor carrier's). A row selection (`rows`, one flag
+    /// per plan row; `NativeExecutor.runs(rows=...)`) forms its kept rows'
+    /// vectors only (lit-dress (H): the others are neither dressed nor
+    /// given counterterm kets).
     pub(crate) fn vectors_point<T: Native, A: Lift<T> + Squaring>(
         &self,
         arith: &A,
@@ -321,13 +324,14 @@ impl Induced {
         kets: Option<&[Complex<T>]>,
         width: usize,
         bits: u32,
+        rows: Option<&[bool]>,
     ) -> RusticolResult<Vectors<A::N>>
     where
         Complex<T>: symbolica::domains::float::Real + symbolica::evaluate::EvaluationDomain,
         rusticol_core::loop_v2::trees::TreeRuntime<T>: Send,
     {
         Ok(self
-            .vector_parts(arith, amplitudes, kets, width, bits)?
+            .vector_parts(arith, amplitudes, kets, width, bits, rows)?
             .total)
     }
 
@@ -348,7 +352,8 @@ impl Induced {
 
     /// [`Induced::vectors_point`] with its parts: the bare vectors
     /// (`bare_vectors`), the counterterm kets (`counterterm_vectors`) and
-    /// their sum (`amplitude_vectors`).
+    /// their sum (`amplitude_vectors`), of the `kept` rows (None: every
+    /// row).
     pub(crate) fn vector_parts<T: Native, A: Lift<T> + Squaring>(
         &self,
         arith: &A,
@@ -356,6 +361,7 @@ impl Induced {
         kets: Option<&[Complex<T>]>,
         width: usize,
         bits: u32,
+        kept: Option<&[bool]>,
     ) -> RusticolResult<VectorParts<A::N>>
     where
         Complex<T>: symbolica::domains::float::Real + symbolica::evaluate::EvaluationDomain,
@@ -373,8 +379,9 @@ impl Induced {
                 "the executor's amplitude slots differ from the plan's",
             ));
         }
+        let keeps = |r: usize| kept.is_none_or(|kept| kept[r]);
         for (o, order) in self.plan_orders.iter().enumerate() {
-            for (r, row) in rows.iter().enumerate() {
+            for (r, row) in rows.iter().enumerate().filter(|&(r, _)| keeps(r)) {
                 let mut vector = Vec::with_capacity(size);
                 for t in 0..size {
                     let slot = &amplitudes[o * columns + r * size + t];
@@ -394,7 +401,7 @@ impl Induced {
             if values.len() != rows.len() * components {
                 return Err(invalid("the counterterm kets differ from the ket map"));
             }
-            for (r, row) in rows.iter().enumerate() {
+            for (r, row) in rows.iter().enumerate().filter(|&(r, _)| keeps(r)) {
                 for (j, (t, k, order, nc)) in self.record.ket_map.iter().enumerate() {
                     if *k >= width {
                         continue;

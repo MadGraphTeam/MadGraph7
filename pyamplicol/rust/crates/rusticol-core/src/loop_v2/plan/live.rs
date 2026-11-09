@@ -166,7 +166,9 @@ impl LoopProgramV4 {
 /// kept whenever it drops a link, so the call dresses, closes, scatters and
 /// reduces exactly the restriction of its kept rows (a copy is a subset of
 /// its template, the memory a call adds); a family whose every link is
-/// reached runs its template. A family left without a step is never
+/// reached runs its template. A kept copy gets its walk data (`plan::Walk`:
+/// written rows, closed trace rows) when it is formed, as a loaded family
+/// does at load. A family left without a step is never
 /// dressed. In a seeded plan, if the kept copies together would hold more
 /// heap than the dressed families themselves (their own lists, steps,
 /// edges, fused links, split groups and parts, and the part lists they
@@ -325,15 +327,20 @@ impl LiveRows {
 impl LoopProgramV4 {
     /// The row liveness of an evaluation keeping the Born rows `rows` (one
     /// flag per plan row) and dressing `families` (ascending) by schedule B
-    /// ([`LiveRows`], copies kept up to [`KEPT_SHARE`] of their heap);
-    /// `None` when `rows` drops no row a column seeds (nothing to prune).
-    /// The families are pruned on the calling thread.
+    /// ([`LiveRows`]): a seeded plan keeps a family's pruned copy up to
+    /// [`KEPT_SHARE`] of its links (and none when the copies would hold
+    /// more heap than their families); a dressed-row plan keeps every copy
+    /// that drops a link (the selection's row restriction). `None` when
+    /// `rows` drops no row a column seeds (nothing to prune). The families
+    /// are pruned on the calling thread.
     pub fn live_rows(&self, rows: &[bool], families: &[usize]) -> RusticolResult<Option<LiveRows>> {
         self.live_rows_keeping(rows, families, KEPT_SHARE)
     }
 
-    /// [`Self::live_rows`] keeping a pruned copy that runs at most `share`
-    /// (numerator, denominator) of its family's row links.
+    /// [`Self::live_rows`] keeping a seeded plan's pruned copy that runs at
+    /// most `share` (numerator, denominator) of its family's row links;
+    /// `share` does not apply to a dressed-row plan, whose copies run
+    /// whenever they drop a link.
     pub fn live_rows_keeping(
         &self,
         rows: &[bool],
@@ -410,6 +417,7 @@ impl LoopProgramV4 {
                 };
                 if copy.steps.is_empty() || kept {
                     let bytes = own_bytes(&copy) + steps_bytes(&copy) + lists;
+                    copy.walk = Some(self.walk_of(&copy));
                     (Some(copy), links, bytes)
                 } else {
                     (None, whole, 0)
@@ -723,6 +731,7 @@ fn prune_family(
         currents: currents.into_iter().collect(),
         row_traces,
         support: None,
+        walk: None,
     };
     (family, lists)
 }
