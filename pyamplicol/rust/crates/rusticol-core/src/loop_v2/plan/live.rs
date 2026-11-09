@@ -167,10 +167,15 @@ impl LoopProgramV4 {
 /// reduces exactly the restriction of its kept rows (a copy is a subset of
 /// its template, the memory a call adds); a family whose every link is
 /// reached runs its template. A family left without a step is never
-/// dressed. If the kept copies together would
-/// hold more heap than the dressed families themselves (their own lists,
-/// steps, edges, fused links, split groups and parts, and the part lists
-/// they read, each once), every family runs whole. The families are pruned
+/// dressed. In a seeded plan, if the kept copies together would hold more
+/// heap than the dressed families themselves (their own lists, steps,
+/// edges, fused links, split groups and parts, and the part lists they
+/// read, each once), every family runs whole. A dressed-row plan keeps its
+/// copies regardless (USER 2026-11-08 ~22:34: a selection evaluates only
+/// its rows): each copy keeps a subset of its template's steps, edges and
+/// links, so the copies add at most the sum of the listed families' own
+/// heaps (the report's "row-pruned family bytes" against "row-liveness
+/// dressed bytes"; the call's peak is measured). The families are pruned
 /// on the calling thread with one link interner, so the copies and the
 /// pruning's scratch sit in one allocator arena and equal shortened lists
 /// are shared across families (a parallel prune spread them over the
@@ -411,8 +416,10 @@ impl LoopProgramV4 {
                 }
             })
             .collect();
-        // The copies of the call together hold no more than the families
-        // they replace, else every family with a step runs whole.
+        // Seeded plans: the copies of the call together hold no more than
+        // the families they replace, else every family with a step runs
+        // whole. Dressed rows keep their copies (each a subset of its
+        // template: the selection's restriction is the requirement).
         let mut seen = HashSet::new();
         let dressed: usize = families
             .iter()
@@ -422,7 +429,7 @@ impl LoopProgramV4 {
             })
             .sum();
         let copies: usize = pruned.iter().map(|&(.., bytes)| bytes).sum();
-        if copies > dressed {
+        if !self.dressed && copies > dressed {
             for (&f, entry) in families.iter().zip(&mut pruned) {
                 if entry.0.as_ref().is_some_and(|copy| !copy.steps.is_empty()) {
                     *entry = (None, family_links(&self.families[f]), 0);
