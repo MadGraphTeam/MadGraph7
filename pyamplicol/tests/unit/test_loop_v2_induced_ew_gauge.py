@@ -240,7 +240,7 @@ def test_goldstone_probe_with_every_side_refused_is_not_run(monkeypatch):
     from pyamplicol.loops.v2 import goldstone, induced, plan_export
     from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
 
-    def refused(compiled, request, native, slice_, leg, partner):
+    def refused(compiled, request, native, slice_, leg, partner, **options):
         raise LoopRequestUnsupported("feynman-gauge", f"leg {leg} ({partner})")
 
     def unexpected(*args, **kwargs):
