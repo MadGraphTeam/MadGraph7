@@ -1054,7 +1054,9 @@ def test_a_structural_tirust_refusal_falls_back_at_the_default_target(
     its value is bitwise the explicit NinjaRS one; above it (its binary64
     reduction-direction estimate; points 0..2 here, 3.7e-5..9.3e-5 at pin
     5b6a8f57) the point fails typed with the guard's reason, in the Python
-    API and the C ABI alike, with the same estimate."""
+    API and the C ABI alike, with the same estimate; at a target twice the
+    largest of those estimates every refused point is served and accepted,
+    bitwise the explicit NinjaRS value."""
 
     from fractions import Fraction
 
@@ -1132,3 +1134,53 @@ def test_a_structural_tirust_refusal_falls_back_at_the_default_target(
     finally:
         sdk.rusticol_virtual_free(handle)
     assert _same(found["virtual"], _python_flat(auto))
+
+    # The guard's served branch (m-lit lit-fallback-guard Done 1 / 2): at a
+    # target above every guard estimate of the default call (twice the
+    # largest) TIRust's refusal stands (no acceptance governs it) and every
+    # point the fallback serves is accepted: its value bitwise the explicit
+    # NinjaRS one and its estimate that of the default call (the same check
+    # of the same point), in the Python API and the C ABI alike.
+    estimates = [
+        lane.reduction.guard_estimate
+        for lane in auto.diagnostics
+        if lane.reduction.guard_estimate is not None
+    ]
+    assert estimates, [lane.reduction for lane in auto.diagnostics]
+    wider = 2 * max(estimates)
+    widened = runtime.evaluate(exact_points, reduction_target=wider, **options)
+    refused_wider = runtime.evaluate(
+        exact_points, reduction="tirust", reduction_target=wider, **options
+    )
+    served = [
+        p
+        for p, lane in enumerate(widened.diagnostics)
+        if lane.reduction.effective == "ninjars"
+    ]
+    assert served and served == [
+        p for p, v in enumerate(refused_wider.values) if v is None
+    ]
+    for p in served:
+        assert widened.values[p] is not None, widened.diagnostics[p].detail
+        assert repr(widened.values[p]) == repr(ninjars.values[p]), p
+        assert (
+            widened.diagnostics[p].reduction.guard_estimate
+            == auto.diagnostics[p].reduction.guard_estimate
+        ), p
+    set_target = sdk.rusticol_virtual_set_reduction_target
+    set_target.argtypes = [ctypes.c_void_p, ctypes.c_double]
+    handle = _open(sdk, artifact)
+    try:
+        assert set_target(handle, wider) == 0
+        found = _evaluate(sdk, handle, points, scales)
+    finally:
+        sdk.rusticol_virtual_free(handle)
+    record = found["diagnostics"]["fallbacks"]
+    assert sorted(int(key) for key in record) == served
+    for key, item in record.items():
+        lane = widened.diagnostics[int(key)]
+        assert item["effective"] == "ninjars", key
+        assert item["guard_estimate"] == lane.reduction.guard_estimate, key
+        assert item["reason"] == lane.reduction.reason, key
+    assert found["statuses"] == [SUCCESS_STATUS] * len(points)
+    assert _same(found["virtual"], _python_flat(widened))

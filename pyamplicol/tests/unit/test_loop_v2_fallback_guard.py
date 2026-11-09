@@ -357,6 +357,38 @@ def test_the_target_nan_and_calls_without_fallback(loop_native):
         VirtualReduction("auto", "ninjars", "x", guard_estimate="1")
 
 
+@pytest.mark.loop_fast
+def test_the_guard_stays_on_under_the_unchecked_setting(loop_native):
+    """Q1 (ruled, DECISIONS 2026-11-09 06:21 (2): the unchecked setting
+    governs only the backends' own checks; pyAmpliCol's checks stay
+    separate settings acting on the unchecked values): a call under
+    ``reduction_unchecked=True`` whose fallback serves a point (a residual
+    class of TIRust's) guards it as without the setting, with the same
+    decisions, estimates and reasons."""
+
+    from pyamplicol.loops.v2.reduction import with_fallback
+
+    outcomes = []
+    for unchecked in (False, True):
+        runner = _Runner(refused={1, 4}, cached={1: 1e-9, 4: 3.0})
+        choice = replace(_choice(), unchecked=unchecked)
+        results, failures, records = with_fallback(runner, choice, 8, None, "double")
+        assert [call[:2] for call in runner.calls] == [
+            ("tirust", None),
+            ("ninjars", (1, 4)),
+        ]
+        assert results[1] is not None and results[4] is None
+        assert "reduction-direction check" in failures[4][0]
+        outcomes.append(
+            (
+                results,
+                failures,
+                {k: (r.guard_estimate, r.reason) for k, r in records.items()},
+            )
+        )
+    assert outcomes[0] == outcomes[1]
+
+
 # ------------------------------------------- g g > z z z through the public API
 
 
@@ -679,7 +711,8 @@ def test_the_guard_at_double_double_and_arbitrary_precision(hh, loop_native):
 
 
 def _c_inputs(points, scales):
-    """The C ABI's binary64 inputs of the fixture's binary64 texts (exact)."""
+    """The C ABI's binary64 inputs of the fixture's binary64 texts (each
+    text's nearest double)."""
 
     return (
         [[[float(c) for c in leg] for leg in point] for point in points],
@@ -687,19 +720,73 @@ def _c_inputs(points, scales):
     )
 
 
-def _python_guard(found) -> dict:
-    """The Python API's per-point fallback record of each guard-rejected or
-    accepted point, as the SDK's diagnostics "fallbacks" name it."""
+def _same_inputs(points, scales):
+    """The Python API's texts of the C ABI's inputs (``_c_inputs``): the
+    exact decimal expansions of the doubles. The SDK reads every binary64
+    input as its exact value, the Python API a text exactly; a shortest
+    decimal text (the fixture's) lies up to half an ulp from its double
+    (docs/user/native-apis.md), so only these texts give both APIs the same
+    point."""
 
-    return {
-        str(index): {
-            "effective": None if found.values[index] is None else "ninjars",
-            "reason": lane.reduction.reason,
-            "guard_estimate": lane.reduction.guard_estimate,
-        }
-        for index, lane in enumerate(found.diagnostics)
+    c_points, c_scales = _c_inputs(points, scales)
+    return (
+        [[[str(Decimal(c)) for c in leg] for leg in point] for point in c_points],
+        [str(Decimal(scale)) for scale in c_scales],
+    )
+
+
+ULPS = 4
+
+
+def _per_point(found: dict) -> list:
+    """The C ABI's values per point (None: a failed point, which returns
+    none)."""
+
+    from tests.unit.test_loop_v2_sdk_induced import FAILED_STATUS
+
+    served = [status != FAILED_STATUS for status in found["statuses"]]
+    width = len(found["virtual"]) // max(1, sum(served))
+    values = iter(found["virtual"])
+    return [[next(values) for _ in range(width)] if ok else None for ok in served]
+
+
+def _ulps(a: float, b: float) -> float:
+    """The distance of two estimates in units in the last place."""
+
+    return abs(a - b) / math.ulp(max(abs(a), abs(b)))
+
+
+def _same_guard(sdk_record: dict, python, arithmetic: str) -> None:
+    """The SDK's per-point fallback record (diagnostics "fallbacks") against
+    the Python API's on the same exact inputs: the same points, backend and
+    decision, the guard's estimates equal (bitwise in binary64, the one
+    implementation ``v2_stability``; within ``ULPS`` units in the last place
+    in the extended carriers, whose colour-metric norms of the amplitude
+    vectors the Python assembly forms in the carrier and the SDK in binary64
+    (``induced.quadratic_budget`` / ``InducedShape::g_norm``)), and the same
+    reason where the estimates agree bitwise."""
+
+    expected = {
+        str(index): lane.reduction
+        for index, lane in enumerate(python.diagnostics)
         if lane.reduction is not None and lane.reduction.effective == "ninjars"
     }
+    assert set(sdk_record) == set(expected), (arithmetic, sdk_record, expected)
+    for key, record in expected.items():
+        mine = sdk_record[key]
+        served = python.values[int(key)] is not None
+        assert mine["effective"] == ("ninjars" if served else None), (arithmetic, key)
+        theirs = record.guard_estimate
+        if theirs is None or mine["guard_estimate"] is None:
+            assert theirs is None and mine["guard_estimate"] is None, (key, mine)
+        elif arithmetic == "double":
+            assert mine["guard_estimate"] == theirs, (key, mine, theirs)
+        else:
+            assert _ulps(mine["guard_estimate"], theirs) <= ULPS, (key, mine, theirs)
+        if mine["guard_estimate"] == theirs:
+            assert mine["reason"] == record.reason, (arithmetic, key)
+        if not served:
+            assert mine["reason"].endswith(f"({arithmetic})") or theirs is None, key
 
 
 @pytest.mark.loop_physics
@@ -708,27 +795,28 @@ def test_the_sdk_guard_fails_typed_and_records_its_estimate(
 ):
     """The SDK's ``with_fallback`` guard through the C ABI and the C++
     wrapper (m-lit lit-fallback-guard Done 2), at binary64, double-double
-    and arbitrary precision:
+    and arbitrary precision, against the Python API on the SAME exact
+    inputs (``_same_inputs``: the doubles' decimal expansions):
 
     * binary64, the tilt-1e-11 point at the target that refuses TIRust
       there: status Failed (not AccuracyNotEstablished), the one reason and
       the guard's estimate in the "fallbacks" record, the estimate bitwise
-      the SDK monitoring's own cached reduction-direction estimate of the
-      point (explicit NinjaRS with that check alone: the one binary64
-      implementation, ``v2_stability``); the C++ wrapper returns the C
-      ABI's record;
+      the Python API's and the SDK monitoring's own cached
+      reduction-direction estimate of the point (explicit NinjaRS with that
+      check alone: the one binary64 implementation, ``v2_stability``); the
+      C++ wrapper returns the C ABI's record;
     * double-double, z z z points 44 and 57 (the defect): Failed, the
-      guard's reason naming the carrier, estimates above the target;
-    * the g g > h h near-forward points: double-double and 20 digits
-      accept (estimates within 1e-5), 16 digits at the target 1e-6 rejects,
-      as the Python API decides on the same points.
+      guard's reason naming the carrier, the Python API's estimates;
+    * the g g > h h near-forward points in double-double, at 20 digits and
+      at 16 digits with the target 1e-6: the Python API's decisions and
+      estimates per point, every accepted value bitwise the SDK's explicit
+      NinjaRS value (the summed call's fallback evaluation carries the
+      guard's check: one evaluation per served point) and equal to the
+      Python API's.
 
-    The SDK's extended-carrier estimates are not compared bitwise with the
-    Python API's: the SDK's explicit NinjaRS evaluations of these binary64
-    inputs already differ from the Python API's at the base (by 5e-17 to
-    1e-16 at regular points and up to 7.5e-10 at these near-degenerate
-    ones), so the two guards measure different roundings of one reduction
-    (report §0)."""
+    The extended carriers' estimates agree within ``ULPS`` units in the
+    last place (the colour-metric norms, ``_same_guard``); binary64
+    bitwise."""
 
     import subprocess
 
@@ -756,13 +844,14 @@ def test_the_sdk_guard_fails_typed_and_records_its_estimate(
         finally:
             sdk.rusticol_virtual_free(handle)
         return
+    options = {"poles": "none", "on_failure": "return"}
+    same_tilt, same_tilt_scales = _same_inputs(tilt, tilt_scales)
     refused = runtime.evaluate(
-        tilt,
-        mu_r2=tilt_scales,
+        same_tilt,
+        mu_r2=same_tilt_scales,
         reduction="tirust",
         reduction_target=1e-300,
-        poles="none",
-        on_failure="return",
+        **options,
     )
     target = _ratio(refused.diagnostics[0].detail) / 2 / loop_native.tir_acceptance(1.0)
 
@@ -777,7 +866,11 @@ def test_the_sdk_guard_fails_typed_and_records_its_estimate(
         finally:
             sdk.rusticol_virtual_free(handle)
 
-    # Binary64: the guard is the monitoring's cached check.
+    # Binary64: the guard is the monitoring's cached check, bitwise the
+    # Python API's guard on the same point.
+    python = runtime.evaluate(
+        same_tilt, mu_r2=same_tilt_scales, reduction_target=target, **options
+    )
     found = call(zzz, tilt, tilt_scales, reduction_target=lambda h: (h, target))
     monitored = call(
         zzz,
@@ -794,16 +887,28 @@ def test_the_sdk_guard_fails_typed_and_records_its_estimate(
     assert found["diagnostics"]["failures"]["0"] == [record["reason"]]
     assert "reduction-direction check: estimate" in record["reason"]
     assert record["reason"].endswith("(double)")
+    _same_guard(found["diagnostics"]["fallbacks"], python, "double")
 
-    # Double-double at the defect's points: rejected typed.
+    # Double-double at the defect's points: rejected typed, as the Python
+    # API rejects them.
+    same_stream, same_stream_scales = _same_inputs(stream, stream_scales)
+    python = runtime.evaluate(
+        same_stream,
+        mu_r2=same_stream_scales,
+        arithmetic="double-double",
+        **options,
+    )
     found = call(zzz, stream, stream_scales, b"double-double")
     assert found["statuses"] == [FAILED_STATUS, FAILED_STATUS]
     for key, item in found["diagnostics"]["fallbacks"].items():
-        assert item["effective"] is None and not item["guard_estimate"] <= TARGET
-        assert item["reason"].endswith("(double-double)"), key
+        assert item["effective"] is None, key
+        assert item["guard_estimate"] is None or not item["guard_estimate"] <= TARGET
+    _same_guard(found["diagnostics"]["fallbacks"], python, "double-double")
 
-    # The extended carriers on g g > h h: the Python API's decisions.
+    # The extended carriers on g g > h h: the Python API's decisions and
+    # estimates; accepted values bitwise the explicit NinjaRS ones.
     artifact, points, scales = hh
+    same_points, same_scales = _same_inputs(points, scales)
     hh_runtime = Runtime.load(artifact, process="p")
     for arithmetic, digits, chosen in (
         ("double-double", 0, TARGET),
@@ -811,35 +916,46 @@ def test_the_sdk_guard_fails_typed_and_records_its_estimate(
         ("arbitrary", 16, 1e-6),
     ):
         python = hh_runtime.evaluate(
-            points,
-            mu_r2=scales,
+            same_points,
+            mu_r2=same_scales,
             arithmetic=arithmetic,
             reduction_target=chosen,
-            poles="none",
-            on_failure="return",
+            **options,
             **({"precision": digits} if digits else {}),
         )
+
+        def chosen_target(h, chosen=chosen):
+            return (h, chosen)
+
         found = call(
             artifact,
             points,
             scales,
             arithmetic.encode(),
             digits,
-            reduction_target=lambda h, chosen=chosen: (h, chosen),
+            reduction_target=chosen_target,
         )
-        expected = _python_guard(python)
+        explicit = call(
+            artifact,
+            points,
+            scales,
+            arithmetic.encode(),
+            digits,
+            reduction_target=chosen_target,
+            reduction=lambda h: (h, b"ninjars"),
+        )
         record = found["diagnostics"]["fallbacks"]
-        assert set(record) == set(expected), (arithmetic, digits)
-        for key, item in expected.items():
-            mine = record[key]
-            assert mine["effective"] == item["effective"], (arithmetic, key)
-            assert (mine["guard_estimate"] <= chosen) == (
-                item["guard_estimate"] <= chosen
-            )
-            status = SUCCESS_STATUS if item["effective"] else FAILED_STATUS
-            assert found["statuses"][int(key)] == status
-            if item["effective"] is None:
-                assert mine["reason"].endswith(f"({arithmetic})")
+        _same_guard(record, python, arithmetic)
+        mine, plain = _per_point(found), _per_point(explicit)
+        for p, value in enumerate(python.values):
+            status = FAILED_STATUS if value is None else SUCCESS_STATUS
+            assert found["statuses"][p] == status, (arithmetic, digits, p)
+            if value is None:
+                continue
+            assert mine[p][0] == float(value[0].finite), (arithmetic, digits, p)
+            if str(p) in record:
+                # Served: bitwise the unguarded (explicit NinjaRS) value.
+                assert [repr(x) for x in mine[p]] == [repr(x) for x in plain[p]]
 
     # The C++ wrapper: the C ABI's binary64 record.
     build = _staged_sdk()

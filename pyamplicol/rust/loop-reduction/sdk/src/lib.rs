@@ -145,12 +145,9 @@ impl Arithmetic {
             ))),
         }
     }
+    /// The carrier's name (`V2Precision::name`, `reduction_policy::CARRIERS`).
     pub fn name(self) -> &'static str {
-        match self {
-            Self::Double => "double",
-            Self::DoubleDouble => "double-double",
-            Self::Arbitrary(_) => "arbitrary",
-        }
+        self.v2().name()
     }
     /// The requested digits of arbitrary precision.
     pub fn digits(self) -> Option<u32> {
@@ -1393,6 +1390,21 @@ impl<T> PointOutcome for Result<T, Vec<String>> {
     }
 }
 
+/// A point of an evaluation that ran the per-point fallback's guard check
+/// with it (`V2Runtime::evaluate_extended_guarded`): its outcome and, when
+/// it succeeded, the guard's estimate.
+impl<T> PointOutcome for (Result<T, Vec<String>>, Option<f64>) {
+    fn reasons(&self) -> Option<&[String]> {
+        self.0.reasons()
+    }
+    fn failed(reasons: Vec<String>) -> Self {
+        (Err(reasons), None)
+    }
+    fn guard_estimate(&self) -> Option<f64> {
+        self.1
+    }
+}
+
 impl PointOutcome for Monitored {
     fn reasons(&self) -> Option<&[String]> {
         self.0.reasons()
@@ -1465,6 +1477,24 @@ pub(crate) struct Guard<'a> {
     pub(crate) precision: V2Precision,
 }
 
+impl<'a> Guard<'a> {
+    /// The guard of a batch's exact inputs in the call's pole selection and
+    /// arithmetic.
+    pub(crate) fn new(
+        momenta: &'a [Vec<Rational>],
+        scales: &'a [Rational],
+        poles: Poles,
+        arithmetic: Arithmetic,
+    ) -> Self {
+        Self {
+            momenta,
+            scales,
+            mode: poles.v2(),
+            precision: arithmetic.v2(),
+        }
+    }
+}
+
 /// The values at `indices` (None: every value, borrowed).
 fn pick<'a, T: Clone>(values: &'a [T], indices: Option<&[usize]>) -> std::borrow::Cow<'a, [T]> {
     match indices {
@@ -1485,9 +1515,14 @@ fn pick<'a, T: Clone>(values: &'a [T], indices: Option<&[usize]>) -> std::borrow
 /// fallback serves is GUARDED (m-lit lit-fallback-guard, DECISIONS
 /// 2026-11-09 05:56 (1); the Python API's `loops.v2.reduction.
 /// with_fallback`): the relative estimate of its cached reduction-direction
-/// re-test at the call's carrier (`guard`: the outcome's own when the
-/// monitoring ran that check, [`PointOutcome::guard_estimate`], else
-/// [`V2Runtime::fallback_estimates`] on the fallback backend) is recorded,
+/// re-test at the call's carrier is recorded: the outcome's own
+/// ([`PointOutcome::guard_estimate`]) when the fallback's evaluation ran
+/// that check (a binary64 monitoring whose checks include it; the summed
+/// calls without monitoring, whose fallback evaluation runs it:
+/// `StabilityChecks::fallback_guard`, `V2Runtime::
+/// evaluate_extended_guarded`), else one pass of
+/// [`V2Runtime::fallback_estimates`] on the fallback backend (`guard`: the
+/// rescaled checks, the resolved, correlated and selected calls),
 /// and a point whose estimate exceeds the runtime's target (`V2Runtime::
 /// target`; `reduction_policy::fallback_accepted`) fails with the one
 /// reason `reduction_policy::fallback_rejected` (a point the guard's
@@ -1651,12 +1686,7 @@ impl Evaluation {
                     native,
                     reduction,
                     momenta.len(),
-                    Guard {
-                        momenta: &momenta,
-                        scales: &scales,
-                        mode: poles.v2(),
-                        precision: arithmetic.v2(),
-                    },
+                    Guard::new(&momenta, &scales, poles, arithmetic),
                     |native, indices| {
                         let checks = if indices.is_some() { &plain } else { checks };
                         native.evaluate_checked(
@@ -1697,24 +1727,31 @@ impl Evaluation {
                 )
             }
             (Arithmetic::Double, None) => {
+                // The fallback's points run with the guard's cached check
+                // (m-lit lit-fallback-guard: one evaluation per served
+                // point, as the Python API's): their values are the
+                // unchecked evaluation's, the estimate only feeds the guard.
+                let guard = StabilityChecks::fallback_guard();
                 let (points, fallbacks) = with_fallback(
                     native,
                     reduction,
                     momenta.len(),
-                    Guard {
-                        momenta: &momenta,
-                        scales: &scales,
-                        mode: poles.v2(),
-                        precision: arithmetic.v2(),
-                    },
-                    |native, indices| {
-                        native.evaluate(
+                    Guard::new(&momenta, &scales, poles, arithmetic),
+                    |native, indices| match indices {
+                        None => Ok(native
+                            .evaluate(&momenta, &scales, poles.v2())?
+                            .into_iter()
+                            .map(|point| (point, None, None))
+                            .collect()),
+                        Some(_) => native.evaluate_checked(
                             &pick(&momenta, indices),
                             &pick(&scales, indices),
                             poles.v2(),
-                        )
+                            &guard,
+                        ),
                     },
                 )?;
+                let points = points.into_iter().map(|(point, _, _)| point).collect();
                 // Checks set but not run in binary64: a split pole selection.
                 let stability = monitoring.record(SPLIT_MONITORING);
                 Self::ordinary(
@@ -1726,21 +1763,25 @@ impl Evaluation {
                     native,
                     reduction,
                     momenta.len(),
-                    Guard {
-                        momenta: &momenta,
-                        scales: &scales,
-                        mode: poles.v2(),
-                        precision: arithmetic.v2(),
-                    },
-                    |native, indices| {
-                        native.evaluate_extended(
+                    Guard::new(&momenta, &scales, poles, arithmetic),
+                    // The fallback's points run with the guard's cached
+                    // check in the call's carrier (one evaluation per
+                    // served point, as the Python API's).
+                    |native, indices| match indices {
+                        None => Ok(native
+                            .evaluate_extended(&momenta, &scales, poles.v2(), arithmetic.v2())?
+                            .into_iter()
+                            .map(|point| (point, None))
+                            .collect()),
+                        Some(_) => native.evaluate_extended_guarded(
                             &pick(&momenta, indices),
                             &pick(&scales, indices),
                             poles.v2(),
                             arithmetic.v2(),
-                        )
+                        ),
                     },
                 )?;
+                let points = points.into_iter().map(|(point, _)| point).collect();
                 let stability = monitoring.not_run();
                 Self::ordinary(
                     inputs, shape, poles, arithmetic, points, reduction, &fallbacks, stability,
@@ -1823,12 +1864,7 @@ impl Evaluation {
                     native,
                     reduction,
                     momenta.len(),
-                    Guard {
-                        momenta: &momenta,
-                        scales: &scales,
-                        mode: poles.v2(),
-                        precision: arithmetic.v2(),
-                    },
+                    Guard::new(&momenta, &scales, poles, arithmetic),
                     |native, indices| {
                         native.evaluate_columns(
                             "resolved",
@@ -1849,12 +1885,7 @@ impl Evaluation {
                     native,
                     reduction,
                     momenta.len(),
-                    Guard {
-                        momenta: &momenta,
-                        scales: &scales,
-                        mode: poles.v2(),
-                        precision: arithmetic.v2(),
-                    },
+                    Guard::new(&momenta, &scales, poles, arithmetic),
                     |native, indices| {
                         native.evaluate_columns_extended(
                             "resolved",
@@ -1973,12 +2004,7 @@ impl Evaluation {
                     native,
                     request.reduction,
                     momenta.len(),
-                    Guard {
-                        momenta: &momenta,
-                        scales: &scales,
-                        mode: request.poles.v2(),
-                        precision: request.arithmetic.v2(),
-                    },
+                    Guard::new(&momenta, &scales, request.poles, request.arithmetic),
                     |native, indices| {
                         native.evaluate_induced_call(
                             call,
@@ -2010,12 +2036,7 @@ impl Evaluation {
                     native,
                     request.reduction,
                     momenta.len(),
-                    Guard {
-                        momenta: &momenta,
-                        scales: &scales,
-                        mode: request.poles.v2(),
-                        precision: request.arithmetic.v2(),
-                    },
+                    Guard::new(&momenta, &scales, request.poles, request.arithmetic),
                     |native, indices| {
                         native.evaluate_induced_call_extended(
                             call,
@@ -2104,12 +2125,12 @@ impl Evaluation {
                         native,
                         request.reduction,
                         members.len(),
-                        Guard {
-                            momenta: &part_momenta,
-                            scales: &part_scales,
-                            mode: request.poles.v2(),
-                            precision: request.arithmetic.v2(),
-                        },
+                        Guard::new(
+                            &part_momenta,
+                            &part_scales,
+                            request.poles,
+                            request.arithmetic,
+                        ),
                         |native, indices| {
                             $evaluate(
                                 native,

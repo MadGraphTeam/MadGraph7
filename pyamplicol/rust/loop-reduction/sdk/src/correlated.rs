@@ -225,12 +225,7 @@ impl Runtime {
                     native,
                     &reduction,
                     momenta.len(),
-                    Guard {
-                        momenta: &momenta,
-                        scales: &scales,
-                        mode: poles.v2(),
-                        precision: arithmetic.v2(),
-                    },
+                    Guard::new(&momenta, &scales, poles, arithmetic),
                     |native, indices| {
                         native.evaluate_columns(
                             "correlated",
@@ -250,12 +245,7 @@ impl Runtime {
                     native,
                     &reduction,
                     momenta.len(),
-                    Guard {
-                        momenta: &momenta,
-                        scales: &scales,
-                        mode: poles.v2(),
-                        precision: arithmetic.v2(),
-                    },
+                    Guard::new(&momenta, &scales, poles, arithmetic),
                     |native, indices| {
                         native.evaluate_columns_extended(
                             "correlated",

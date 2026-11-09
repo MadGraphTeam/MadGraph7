@@ -169,11 +169,7 @@ impl V2Runtime {
         } else {
             None
         };
-        let shape = LaneShape {
-            sectors: self.record.sectors.len(),
-            width: if mode.poles() { 3 } else { 1 },
-            factor: stability::lane_factor(self.record.average as f64),
-        };
+        let shape = self.lane_shape(mode);
         let roundoff = 2.0_f64.powi(-53);
         let mut out = Vec::with_capacity(points.len());
         for (index, point) in points.into_iter().enumerate() {
@@ -234,7 +230,6 @@ impl V2Runtime {
         mode: V2Poles,
         checks: &StabilityChecks,
     ) -> RusticolResult<Vec<Monitored>> {
-        let width = if mode.poles() { 3 } else { 1 };
         let frame = checks.frame().map(|frame| match frame {
             Frame::Reversed => ReductionCheck::REVERSED,
             Frame::Rescaled => ReductionCheck::RESCALED,
@@ -304,14 +299,13 @@ impl V2Runtime {
         // The key tables: loop orders (the squaring's slots first) and plan
         // rows by id.
         let mut orders: Vec<Orders> = induced.slots().to_vec();
-        let shape = InducedShape {
-            size: induced.size(),
-            width,
-            gram: gram.iter().map(|z| (z.re, z.im)).collect(),
-            rows: (0..rows.len()).collect(),
-            sectors: induced.pairs().to_vec(),
-            average: average as f64,
-        };
+        let shape = induced_shape(
+            induced,
+            gram.iter().map(|z| (z.re, z.im)).collect(),
+            rows.len(),
+            mode,
+            average,
+        );
         let mut convert =
             |found: &InducedCollected<f64>| induced_point(induced, &rows, &mut orders, found);
         let mut out = Vec::with_capacity(points.len());
@@ -469,13 +463,13 @@ impl V2Runtime {
     /// current backend (the fallback's, inside [`V2Runtime::on_other`]),
     /// NaN where it is not a number; a point the evaluation or its re-test
     /// fails keeps its reasons. Binary64 is [`V2Runtime::evaluate_checked`]
-    /// with that check alone (the one estimate implementation,
-    /// `crate::v2_stability`, bitwise the Python API's); double-double and
-    /// arbitrary precision run the monitored evaluation in the carrier and
-    /// read its re-test budget, term scale (loop-induced) or lanes
-    /// (Born-interfered) and values in binary64 into the same estimate
-    /// functions, as the Python API's assembly reads them (`float(x)`), at
-    /// the carrier's unit roundoff ([`V2Precision::unit_roundoff`]).
+    /// with that check alone ([`StabilityChecks::fallback_guard`]: the one
+    /// estimate implementation, `crate::v2_stability`, bitwise the Python
+    /// API's); double-double and arbitrary precision are
+    /// [`V2Runtime::evaluate_extended_guarded`]. The SDK's summed calls
+    /// take the estimate with the fallback's own evaluation instead (one
+    /// evaluation per served point, as the Python API's); this pass serves
+    /// the calls whose fallback evaluation runs no cached check.
     pub fn fallback_estimates(
         &mut self,
         momenta: &[Vec<Rational>],
@@ -483,18 +477,45 @@ impl V2Runtime {
         mode: V2Poles,
         precision: V2Precision,
     ) -> RusticolResult<Vec<Result<f64, Vec<String>>>> {
-        let alone = StabilityChecks::new(Vec::new(), true, false, false)?;
-        let read = |estimate: Option<&Estimate>| {
-            estimate
-                .and_then(Estimate::reduction_direction)
-                .unwrap_or(f64::NAN)
-        };
         if precision == V2Precision::Double {
             return Ok(self
-                .evaluate_checked(momenta, scales, mode, &alone)?
+                .evaluate_checked(momenta, scales, mode, &StabilityChecks::fallback_guard())?
                 .into_iter()
-                .map(|(point, estimate, _)| point.map(|_| read(estimate.as_ref())))
+                .map(|(point, estimate, _)| point.map(|_| guard_estimate(estimate.as_ref())))
                 .collect());
+        }
+        Ok(self
+            .evaluate_extended_guarded(momenta, scales, mode, precision)?
+            .into_iter()
+            .map(|(point, estimate)| point.map(|_| estimate.unwrap_or(f64::NAN)))
+            .collect())
+    }
+
+    /// [`V2Runtime::evaluate_extended`] with the per-point fallback's guard
+    /// (m-lit lit-fallback-guard): per point its values, as
+    /// `evaluate_extended` returns them (the same executor run and
+    /// assembly, with the re-test frame collected beside it), and, for a
+    /// successful point, the relative estimate of the cached
+    /// reduction-direction re-test in the carrier `precision` (NaN where it
+    /// is not a number). The monitored run in the carrier (loop-induced:
+    /// `induced_points_with` with the reversed re-test and the term scale;
+    /// Born-interfered: `evaluate_batch` collecting the lanes and their
+    /// re-test) is read in binary64 into the shared estimate functions
+    /// (`v2_stability::induced_estimate` / `born_interfered_estimate`, those
+    /// of the binary64 monitoring), as the Python API's assembly reads the
+    /// executor's budgets (`float(x)`), at the carrier's unit roundoff
+    /// ([`V2Precision::unit_roundoff`]).
+    pub fn evaluate_extended_guarded(
+        &mut self,
+        momenta: &[Vec<Rational>],
+        scales: &[Rational],
+        mode: V2Poles,
+        precision: V2Precision,
+    ) -> RusticolResult<Vec<(V2Point<Decimal>, Option<f64>)>> {
+        if precision == V2Precision::Double {
+            return Err(invalid(
+                "the binary64 guard is V2Runtime::evaluate_checked's",
+            ));
         }
         self.check_batch(momenta, scales)?;
         self.check_poles(mode)?;
@@ -509,9 +530,9 @@ impl V2Runtime {
         let mut batch = |runtime: &mut Self,
                          momenta: &[Vec<Rational>],
                          scales: &[Rational]|
-         -> RusticolResult<Vec<Result<f64, Vec<String>>>> {
+         -> RusticolResult<Vec<(V2Point<Decimal>, Option<f64>)>> {
             match (precision, &induced) {
-                (V2Precision::DoubleDouble, Some(induced)) => runtime.induced_estimates(
+                (V2Precision::DoubleDouble, Some(induced)) => runtime.induced_guarded(
                     induced,
                     momenta,
                     scales,
@@ -520,7 +541,7 @@ impl V2Runtime {
                     &DoubleFloat::from(0.0),
                     &arith,
                 ),
-                (V2Precision::DoubleDouble, None) => runtime.lane_estimates(
+                (V2Precision::DoubleDouble, None) => runtime.lane_guarded(
                     momenta,
                     scales,
                     mode,
@@ -528,7 +549,7 @@ impl V2Runtime {
                     &DoubleFloat::from(0.0),
                     &arith,
                 ),
-                (_, Some(induced)) => runtime.induced_estimates(
+                (_, Some(induced)) => runtime.induced_guarded(
                     induced,
                     momenta,
                     scales,
@@ -537,7 +558,7 @@ impl V2Runtime {
                     &Float::with_val(precision.bits()?, 0),
                     &arith,
                 ),
-                (_, None) => runtime.lane_estimates(
+                (_, None) => runtime.lane_guarded(
                     momenta,
                     scales,
                     mode,
@@ -550,11 +571,13 @@ impl V2Runtime {
         self.partitioned(momenta, scales, mode, &mut batch)
     }
 
-    /// [`V2Runtime::fallback_estimates`] of one loop-induced batch of one
-    /// scale partition in an extended carrier (`induced_checked_batch`'s
-    /// reference evaluation: the re-test frame and the term scale).
+    /// [`V2Runtime::evaluate_extended_guarded`] of one loop-induced batch of
+    /// one scale partition in an extended carrier: `evaluate_induced`'s
+    /// assembly (the colour metric in the carrier, every plan row) on
+    /// `induced_checked_batch`'s reference evaluation (the re-test frame
+    /// and the term scale).
     #[allow(clippy::too_many_arguments)]
-    fn induced_estimates<T: Native>(
+    fn induced_guarded<T: Native>(
         &mut self,
         induced: &Induced,
         momenta: &[Vec<Rational>],
@@ -563,15 +586,15 @@ impl V2Runtime {
         precision: V2Precision,
         zero: &T,
         arith: &DecimalArith,
-    ) -> RusticolResult<Vec<Result<f64, Vec<String>>>>
+    ) -> RusticolResult<Vec<(V2Point<Decimal>, Option<f64>)>>
     where
         Complex<T>: Real + EvaluationDomain,
         TreeRuntime<T>: Send,
     {
-        let width = if mode.poles() { 3 } else { 1 };
         let gram = induced.carrier(arith, induced.metric())?;
         let rows = induced.plan_rows();
         let average = self.record.average;
+        let sector_index = self.sector_index.clone();
         let mut collected = Vec::with_capacity(momenta.len());
         let points = self.induced_points_with(
             induced,
@@ -594,21 +617,20 @@ impl V2Runtime {
         // The estimate reads binary64 (the Python assembly's floats): the
         // colour metric, the values and the collected vectors.
         let metric = induced.carrier(&Binary64, induced.metric())?;
-        let shape = InducedShape {
-            size: induced.size(),
-            width,
-            gram: metric.iter().map(|z| (z.re, z.im)).collect(),
-            rows: (0..rows.len()).collect(),
-            sectors: induced.pairs().to_vec(),
-            average: average as f64,
-        };
+        let shape = induced_shape(
+            induced,
+            metric.iter().map(|z| (z.re, z.im)).collect(),
+            rows.len(),
+            mode,
+            average,
+        );
         let mut orders: Vec<Orders> = induced.slots().to_vec();
         let mut out = Vec::with_capacity(points.len());
         for (index, point) in points.into_iter().enumerate() {
             let squared = match point {
                 Ok(squared) => squared,
                 Err(reasons) => {
-                    out.push(Err(reasons));
+                    out.push((Err(reasons), None));
                     continue;
                 }
             };
@@ -629,15 +651,19 @@ impl V2Runtime {
                 Some(stability::REDUCTION),
                 None,
             )?;
-            out.push(Ok(estimate.reduction_direction().unwrap_or(f64::NAN)));
+            let values = sector_index.iter().map(|&s| squared[s].clone()).collect();
+            out.push((
+                Ok((Vec::new(), values)),
+                Some(guard_estimate(Some(&estimate))),
+            ));
         }
         Ok(out)
     }
 
-    /// [`V2Runtime::fallback_estimates`] of one Born-interfered batch of one
-    /// scale partition in an extended carrier (`checked_batch`'s reference
-    /// evaluation with the re-test lanes).
-    fn lane_estimates<T: Native>(
+    /// [`V2Runtime::evaluate_extended_guarded`] of one Born-interfered batch
+    /// of one scale partition in an extended carrier (`checked_batch`'s
+    /// reference evaluation with the re-test lanes).
+    fn lane_guarded<T: Native>(
         &mut self,
         momenta: &[Vec<Rational>],
         scales: &[Rational],
@@ -645,7 +671,7 @@ impl V2Runtime {
         precision: V2Precision,
         zero: &T,
         arith: &DecimalArith,
-    ) -> RusticolResult<Vec<Result<f64, Vec<String>>>>
+    ) -> RusticolResult<Vec<(V2Point<Decimal>, Option<f64>)>>
     where
         Complex<T>: Real + EvaluationDomain,
         TreeRuntime<T>: Send,
@@ -661,11 +687,7 @@ impl V2Runtime {
             Some(ReductionCheck::REVERSED),
             &mut collected,
         )?;
-        let shape = LaneShape {
-            sectors: self.record.sectors.len(),
-            width: if mode.poles() { 3 } else { 1 },
-            factor: stability::lane_factor(self.record.average as f64),
-        };
+        let shape = self.lane_shape(mode);
         let lanes = |lanes: &[CollectedLane<Decimal>]| -> Vec<stability::Lane<LaneKey>> {
             lanes
                 .iter()
@@ -688,8 +710,8 @@ impl V2Runtime {
         };
         let mut out = Vec::with_capacity(points.len());
         for (index, point) in points.into_iter().enumerate() {
-            if let Err(reasons) = point {
-                out.push(Err(reasons));
+            if point.is_err() {
+                out.push((point, None));
                 continue;
             }
             let found = collected[index]
@@ -712,9 +734,19 @@ impl V2Runtime {
                 Some((stability::REDUCTION, lanes(retest).as_slice())),
                 None,
             )?;
-            out.push(Ok(estimate.reduction_direction().unwrap_or(f64::NAN)));
+            out.push((point, Some(guard_estimate(Some(&estimate)))));
         }
         Ok(out)
+    }
+
+    /// The lane shape of a Born-interfered monitored batch in the pole
+    /// selection `mode` (its sectors, Laurent width and lane factor).
+    fn lane_shape(&self, mode: V2Poles) -> LaneShape {
+        LaneShape {
+            sectors: self.record.sectors.len(),
+            width: if mode.poles() { 3 } else { 1 },
+            factor: stability::lane_factor(self.record.average as f64),
+        }
     }
 
     /// Run `evaluate` on the other reduction backend ([`cross_reduction`]),
@@ -782,6 +814,36 @@ fn induced_point(
     found: &InducedCollected<f64>,
 ) -> RusticolResult<InducedPoint> {
     induced_point_of(induced, rows, orders, found, |x: &f64| *x)
+}
+
+/// The guard's estimate of a monitored point (m-lit lit-fallback-guard):
+/// the cached reduction-direction check's relative estimate
+/// ([`Estimate::reduction_direction`]), NaN where that check gave no number
+/// or did not run.
+fn guard_estimate(estimate: Option<&Estimate>) -> f64 {
+    estimate
+        .and_then(Estimate::reduction_direction)
+        .unwrap_or(f64::NAN)
+}
+
+/// The loop-induced shape of a monitored batch: the colour metric `gram`
+/// (binary64, as the Python assembly reads it), every plan row (`rows`),
+/// the Laurent width of `mode`, the squared-order sectors and the average.
+fn induced_shape(
+    induced: &Induced,
+    gram: Vec<(f64, f64)>,
+    rows: usize,
+    mode: V2Poles,
+    average: i64,
+) -> InducedShape {
+    InducedShape {
+        size: induced.size(),
+        width: if mode.poles() { 3 } else { 1 },
+        gram,
+        rows: (0..rows).collect(),
+        sectors: induced.pairs().to_vec(),
+        average: average as f64,
+    }
 }
 
 /// [`induced_point`] of a run collected in any carrier, its values read in

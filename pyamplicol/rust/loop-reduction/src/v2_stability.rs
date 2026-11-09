@@ -537,6 +537,19 @@ impl StabilityChecks {
         })
     }
 
+    /// The per-point fallback's guard (m-lit lit-fallback-guard,
+    /// `reduction_policy::FALLBACK_CHECK`): the cached reduction-direction
+    /// check alone (`VirtualStabilityChecks(reduction_direction=True)`; the
+    /// Python API's `loops.v2.reduction._reduction_check`).
+    pub fn fallback_guard() -> Self {
+        Self {
+            rotations: Vec::new(),
+            reduction_direction: true,
+            rescaled: false,
+            cross_backend: false,
+        }
+    }
+
     /// `count` default rotations ([`default_rotation`]) and the other checks
     /// (`VirtualStabilityChecks(count, ...)`).
     pub fn with_default_rotations(
