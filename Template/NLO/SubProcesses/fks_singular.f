@@ -1823,6 +1823,10 @@ c equal to ione, so no need to define separate factors.
             ! counter-events take the electron density with the Born
             ! omx_ee, and with the full range the Delta-scheme cross
             ! sections come out unphysical.
+            ! TODO: check the PDF-scheme prefactors and the counter-events
+            ! of lepton beams with event projection again. The NLL MSbar
+            ! set is also negative there (e+ e- > mu+ mu- at 240 GeV,
+            ! see PR 415), so the range of xi may not be the only issue.
             xilim_pdfsch=min(xiimax_cnt(1),xiScut_used)
             if (use_evpr .and. j_fks.le.nincoming) then
                if (abs(lpp(j_fks)).eq.3 .or. abs(lpp(j_fks)).eq.4)
