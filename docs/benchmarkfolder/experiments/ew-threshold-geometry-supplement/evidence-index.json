@@ -1,0 +1,35 @@
+{
+  "file_count": 7,
+  "files": {
+    "README.md": {
+      "bytes": 6451,
+      "sha256": "a9b355c75db6fe6afd5dd573adb45ab528f3ef6eab757888d6516253b354960b"
+    },
+    "audit.py": {
+      "bytes": 9473,
+      "sha256": "c6e2204c454e4750373ea30465e475ac10f2b8876c0cfc3d835940829086066b"
+    },
+    "freeze.py": {
+      "bytes": 2649,
+      "sha256": "c59ec1923058670f17533db497696708d9cc9e7389328c6cd4d1bd817a216361"
+    },
+    "pinch-summary.json": {
+      "bytes": 165491,
+      "sha256": "148ba9ae819128a1425b9862ea0f5bbf577da43569b9b0e8ce55eb1c4c0c92a8"
+    },
+    "pinch.py": {
+      "bytes": 13805,
+      "sha256": "b94b82726a616a16a6ed3b434e201dc96ada7659ec2cd4e0d87734b2661ae711"
+    },
+    "source-excerpts.txt": {
+      "bytes": 7410,
+      "sha256": "84c31c46e7cf68244b2564480d2cc5116c905aa649593f52bd0c2d70e7a4501a"
+    },
+    "summary.json": {
+      "bytes": 90894,
+      "sha256": "414f56117fde64cd174b83d6b1da7bdde4b5a1a7f2356a788d642c97cbab3678"
+    }
+  },
+  "schema": 1,
+  "scope": "Saved-data rank-one geometry supplement; no native execution or production change."
+}

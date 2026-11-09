@@ -1,0 +1,30 @@
+CutTools_archive: nm -A --defined-only vendor/CutTools/includects/libcts.a
+vendor/CutTools/includects/libcts.a:avh_olo.o:000000000020f490 T __avh_olo_forcuttools_MOD_olo_onshell
+vendor/CutTools/includects/libcts.a:avh_olo.o:000000000004d7f0 T __avh_olo_forcuttools_dp_MOD_olo_onshell
+vendor/CutTools/includects/libcts.a:avh_olo.o:0000000000006c00 B __avh_olo_forcuttools_dp_MOD_onshellthrs
+vendor/CutTools/includects/libcts.a:avh_olo.o:000000000020f250 T __avh_olo_forcuttools_mp_MOD_olo_onshell
+vendor/CutTools/includects/libcts.a:avh_olo.o:0000000000000000 B __avh_olo_forcuttools_mp_MOD_onshellthrs
+vendor/CutTools/includects/libcts.a:avh_olo.o:00000000001159b0 T __avh_olo_forcuttools_qp_MOD_olo_onshell
+vendor/CutTools/includects/libcts.a:avh_olo.o:0000000000006680 B __avh_olo_forcuttools_qp_MOD_onshellthrs
+
+Ninja_scalar_state: readelf -Ws HEPTools/ninja/lib/libninja.so
+   170: 0000000000363f63    64 FUNC    GLOBAL DEFAULT   12 __avh_olo_qp_MOD_olo_onshell
+   550: 00000000002a89e5    65 FUNC    GLOBAL DEFAULT   12 __avh_olo_dp_MOD_olo_onshell
+   795: 000000000036411c    31 FUNC    GLOBAL DEFAULT   12 __avh_olo_MOD_olo_onshell
+   277: 0000000000379cc0     8 OBJECT  LOCAL  DEFAULT   25 __avh_olo_dp_MOD_onshellthrs
+   289: 0000000000379cc8     4 OBJECT  LOCAL  DEFAULT   25 __avh_olo_dp_MOD_nonzerothrs
+   293: 0000000000379740    16 OBJECT  LOCAL  DEFAULT   25 __avh_olo_qp_MOD_onshellthrs
+   294: 0000000000379750     4 OBJECT  LOCAL  DEFAULT   25 __avh_olo_qp_MOD_nonzerothrs
+   489: 000000000036411c    31 FUNC    GLOBAL DEFAULT   12 __avh_olo_MOD_olo_onshell
+   635: 00000000002a89e5    65 FUNC    GLOBAL DEFAULT   12 __avh_olo_dp_MOD_olo_onshell
+   888: 0000000000363f63    64 FUNC    GLOBAL DEFAULT   12 __avh_olo_qp_MOD_olo_onshell
+
+Collier_foreign_scalar_symbols: nm -D HEPTools/collier/libcollier.so
+(no matching symbols)
+
+private_CMS_entrypoints: nm --defined-only .tirust-build/complex-stress-cuttools-qp-transport/SubProcesses/P0_epem_mupmum/check
+0000000004c371a0 B __avh_olo_forcuttools_dp_MOD_onshellthrs
+0000000004c305a0 B __avh_olo_forcuttools_mp_MOD_onshellthrs
+0000000004c36c20 B __avh_olo_forcuttools_qp_MOD_onshellthrs
+0000000000ccf370 T ctsinit_
+000000000018ecaa T ctsxcut_qpinput_

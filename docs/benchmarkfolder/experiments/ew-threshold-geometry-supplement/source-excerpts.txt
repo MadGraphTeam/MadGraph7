@@ -1,0 +1,132 @@
+Numbered source excerpts; full source-file SHA-256 precedes each selection.
+
+.tirust-build/pole-development/crates/iregi-rust/src/direct/exec.rs
+SHA256 255b250f6997cfd08f017a9962ac79e6a4a87421f1f2d9f7ddb6a8bc1129eace
+
+ 1534:                     self.geometry[geometry.m0 as usize] = self.masses[origin].clone();
+ 1535:                     for i in 0..momenta {
+ 1536:                         let member = members[i + 1];
+ 1537:                         self.geometry[geometry.f as usize + i] = cadd(
+ 1538:                             &csub(d(origin, member), &self.masses[member]),
+ 1539:                             &self.masses[origin],
+ 1540:                         );
+ 1541:                         for a in 0..4 {
+ 1542:                             self.geometry[geometry.p as usize + 4 * i + a] =
+ 1543:                                 csub(&self.shifts[member][a], &self.shifts[origin][a]);
+ 1544:                         }
+ 1545:                     }
+ 1546:                     for a in 0..4 {
+ 1547:                         self.geometry[geometry.origin as usize + a] = self.shifts[origin][a].clone();
+
+ 1623:                         for i in 0..size {
+ 1624:                             for j in 0..size {
+ 1625:                                 let (mi, mj) = (members[i + 1], members[j + 1]);
+ 1626:                                 self.matrix[i * size + j] =
+ 1627:                                     csub(&cadd(d(origin, mi), d(origin, mj)), d(mi, mj));
+ 1628:                                 self.rhs[i * size + j] =
+ 1629:                                     if i == j { self.one.clone() } else { self.zero.clone() };
+ 1630:                             }
+ 1631:                         }
+ 1632:                         for value in &self.matrix[..size * size] {
+
+ 1696:                             let mut zs = self.zero.clone();
+ 1697:                             let mut zf = self.zero.clone();
+ 1698:                             for i in 0..size {
+ 1699:                                 let value = self.rhs[j * size + i].clone();
+ 1700:                                 zs = cadd(&zs, &value);
+ 1701:                                 cfma(&mut zf, &value, &self.geometry[geometry.f as usize + i]);
+ 1702:                                 self.geometry[geometry.zinv as usize + j * size + i] = value;
+ 1703:                             }
+ 1704:                             self.geometry[geometry.zs as usize + j] = zs;
+ 1705:                             self.geometry[geometry.zf as usize + j] = zf;
+
+ 3338:             // 4. Translation along the nonzero origin axes.
+ 3339:             let origin = geometry.origin as usize;
+ 3340:             for axis in 0..4 {
+ 3341:                 let shift = &self.geometry[origin + axis];
+ 3342:                 if shift.re.is_zero() && shift.im.is_zero() {
+ 3343:                     continue;
+ 3344:                 }
+ 3345:                 let t = csub(&self.zero, shift);
+ 3346:                 self.tpow[0] = self.one.clone();
+ 3347:                 for k in 1..=rank {
+ 3348:                     self.tpow[k] = cmul(&self.tpow[k - 1], &t);
+ 3349:                 }
+ 3350:                 for (others, line) in &table.lines[axis] {
+ 3351:                     let others = usize::from(*others);
+ 3352:                     if others > rank {
+ 3353:                         continue;
+ 3354:                     }
+ 3355:                     let length = rank - others;
+ 3356:                     for j in (1..=length).rev() {
+ 3357:                         let mut total = self.values[moment_base + line[j] as usize].clone();
+ 3358:                         for k in 0..j {
+
+ 3619:             for (index, flags) in self.output_flags.iter().enumerate() {
+ 3620:                 let v = &source[plan.output[index] as usize];
+ 3621:                 let uv = if flags.uv_zero { self.zero.clone() } else { v[0].clone() };
+ 3622:                 let mut out: L4<T> = match convention {
+ 3623:                     Convention::OneLoop => [uv, v[1].clone(), v[2].clone(), v[3].clone()],
+ 3624:                     Convention::MadLoop => {
+ 3625:                         let mut out = [uv, v[1].clone(), v[2].clone(), v[3].clone()];
+ 3626:                         if flags.odd {
+ 3627:                             for slot in &mut out[..if POLES { 3 } else { 4 }] {
+ 3628:                                 *slot = csub(&self.zero, slot);
+ 3629:                             }
+ 3630:                         }
+ 3631:                         out
+ 3632:                     }
+
+.tirust-build/pole-development/crates/iregi-rust/src/direct/plan.rs
+SHA256 f24b05ca3fbd74c68fde719da0efb6280d341b0a75e6eee7cc9ca42711626b2a
+
+ 1116:                 // Momentum coefficients, Eq. (5.11).
+ 1117:                 for kappa in compositions(r, momenta) {
+ 1118:                     let dst = layout.lookup[&(0, kappa.clone())];
+ 1119:                     let j = kappa.iter().position(|&x| x != 0).unwrap();
+ 1120:                     let mut rest = kappa.clone();
+ 1121:                     rest[j] -= 1;
+ 1122:                     let n32 = momenta as u32;
+ 1123:                     let mut terms = vec![
+ 1124:                         builder.term(
+ 1125:                             layout.spz[&(0, rest.clone())],
+ 1126:                             geometry.zs + j as u32,
+ 1127:                             rational(-1, 1),
+ 1128:                         ),
+ 1129:                         builder.term(
+ 1130:                             layout.lookup[&(0, rest.clone())],
+ 1131:                             geometry.zf + j as u32,
+ 1132:                             rational(-1, 1),
+ 1133:                         ),
+ 1134:                     ];
+ 1135:                     for i in 0..momenta {
+ 1136:                         let zinv = geometry.zinv + j as u32 * n32 + i as u32;
+ 1137:                         if rest[i] == 0 {
+ 1138:                             let child_mask = without(subset.mask, subset.members[i + 1]);
+ 1139:                             let mut child = rest.clone();
+ 1140:                             child.remove(i);
+ 1141:                             let src = layouts[&child_mask].lookup[&(0, child)];
+ 1142:                             terms.push(builder.term(src, zinv, rational(1, 1)));
+ 1143:                         } else {
+ 1144:                             let mut child = rest.clone();
+ 1145:                             child[i] -= 1;
+ 1146:                             let src = layout.lookup[&(1, child)];
+ 1147:                             terms.push(builder.term(src, zinv, rational(-2 * i64::from(rest[i]), 1)));
+ 1148:                         }
+ 1149:                     }
+ 1150:                     coefficient_program.push(builder.instruction(dst, terms, PostOp::None));
+ 1151:                 }
+ 1152:             }
+ 1153:         }
+
+docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/replay.f90
+SHA256 44f8702d46b6d5b2e5f77d107f4ac958b52a9cccccb5388b2250125b5f830fde
+
+   97:       enddo
+   98:       if (degree>rank.or.mapping(i)>nc) stop 13
+   99:       unit=cmplx(0.0_q,0.0_q,kind=q)
+  100:       ! TIRust MadLoop moments already have this sign. Apply it only to NRS.
+  101:       unit(i+1)=cmplx(real((-1)**degree,q),0.0_q,kind=q)
+  102:       call ninjars_tensor_evaluate(unit,n,rank,s,p,masses,mu2,result,r1,ns,pole_mode=0)
+  103:       write(*,'(A,4I6)') 'NRS_UNIT ',i,degree,mapping(i),ns
+

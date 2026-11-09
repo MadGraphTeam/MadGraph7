@@ -1,0 +1,33 @@
+{
+  "audited_file_differs_from_recorded_HEAD": true,
+  "audited_working_tree_file_sha256": "0020f509bdadf5ec3a50de08148e2ac325922f58a92045bc8c50b2374aac4a9b",
+  "capture_script_sha256": "e7dfd829774802ad7cb76e49dc6c2c0b21ee7eb7b3e3e1d249a9bbe17eca942e",
+  "current_source_observation": {
+    "repository_HEAD": "1594423e642b7afbb2538cde10d219ecaf5eaeff",
+    "working_tree_file_sha256": "d70191aca87f27dfb9f4e6511704f91113913db75e0c05280a03887536daf2c4"
+  },
+  "interpretation": "The original git_head field names the repository pointer. Its source_sha256 field independently identifies audited working-tree bytes, which included an uncommitted DP-terminal exporter change. The original audit did not identify those bytes with the Git commit.",
+  "original_audit_files_unchanged": {
+    "README.md": "ba2f2e2ea53fe30ffc3bd6d52d8e497341fb6670602034d59f4e7553da4ab060",
+    "audit.json": "f4e9f2aa90fdbbf1f14f5f771facb430c01ffd0f2b72874f5265d44b8a91a1fd",
+    "audit_sources.py": "de28d6812cc672a3a6c60f74d2099120da36e3b88899749e2049e28419681b3f",
+    "namespace-evidence.txt": "4d44cab8ce2f1cc05b35a6c33908157d72c26cf526c0e12aeffdfcb09f58d44c"
+  },
+  "original_audit_sha256": "f4e9f2aa90fdbbf1f14f5f771facb430c01ffd0f2b72874f5265d44b8a91a1fd",
+  "production_changes_or_compiler_or_reducer_jobs": false,
+  "recorded_HEAD_blob_oid": "76294168e1e8619841acc187edfbe8317d48f018",
+  "recorded_HEAD_file_sha256": "0541caac8650b6ff0225f998bbbe10a3aecebf21c08150d174c441251364d426",
+  "recorded_repository_HEAD": "5b88a0b3f569d4318c8c7cf55e9db1fb4f1690c3",
+  "recovery_method": "Strict in-memory unified-diff application to git show recorded_HEAD:path; every context/deletion and hunk count checked; exact original audited SHA-256 required.",
+  "recovery_source_identity": "docs/benchmarkfolder/experiments/dp-terminal-production/initial-proof-hardening/inputs/source-identities/c1d6ea3d354aab9e63056a5700724d32f25a02423af10049d83cac956838bdc7.json",
+  "recovery_source_identity_sha256": "6c8894d8002880dc1106030079062b5aac321cd8b7dd047af194b5bfa1121217",
+  "recovery_whole_patch_path": "docs/benchmarkfolder/experiments/dp-terminal-production/initial-proof-hardening/inputs/source-identities/c1d6ea3d354aab9e63056a5700724d32f25a02423af10049d83cac956838bdc7.patch",
+  "recovery_whole_patch_sha256": "4763974aac59a2c012d9574646971c79ef1f2441b1fc08f8278f69ea5c62a2a1",
+  "schema": 1,
+  "scope": "Recovery of the exact dirty working-tree source already bound by the original read-only CMS audit; not a current-source re-audit or numerical qualification.",
+  "snapshot_sha256": {
+    "audited-loop_exporters.py": "0020f509bdadf5ec3a50de08148e2ac325922f58a92045bc8c50b2374aac4a9b",
+    "audited-working-tree.patch": "eb0038582fefd96a33e92f67d310ad9463b685002fe221a81c2165d00c72fbbc",
+    "recorded-head-loop_exporters.py": "0541caac8650b6ff0225f998bbbe10a3aecebf21c08150d174c441251364d426"
+  }
+}
