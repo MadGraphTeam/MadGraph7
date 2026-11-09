@@ -1747,6 +1747,8 @@ c terms.
       double precision xilim_pdfsch
       double precision f_pdfsch_d,f_pdfsch_p,f_pdfsch_l
       common/factor_pdfsch/f_pdfsch_d,f_pdfsch_p,f_pdfsch_l
+      logical use_evpr
+      common /to_use_evpr/use_evpr
       double precision pmass(nexternal)
       include 'pmass.inc'
       call cpu_time(tBefore)
@@ -1817,7 +1819,15 @@ c equal to ione, so no need to define separate factors.
             ! its end, which turn [1/xi] and [log(xi)/xi] into the plus
             ! distributions in z=1-xi. The range ends at xiimax_cnt(1)
             ! where that is below xiScut_used (large Bjorken x).
+            ! Lepton beams with event projection keep xiScut_used. Their
+            ! counter-events take the electron density with the Born
+            ! omx_ee, and with the full range the Delta-scheme cross
+            ! sections come out unphysical.
             xilim_pdfsch=min(xiimax_cnt(1),xiScut_used)
+            if (use_evpr .and. j_fks.le.nincoming) then
+               if (abs(lpp(j_fks)).eq.3 .or. abs(lpp(j_fks)).eq.4)
+     &              xilim_pdfsch=xiScut_used
+            endif
             prefact_pdfsch_d=xinorm_cnt(1)/xilim_pdfsch/deltaS
             f_pdfsch_d=prefact_pdfsch_d*jac_cnt(2)/(shat/(32*pi**2))
      &           *fkssymmetryfactorDeg*vegas_wgt
