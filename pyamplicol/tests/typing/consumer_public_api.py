@@ -50,6 +50,7 @@ from pyamplicol import (
     load,
 )
 from pyamplicol.api import GeneratorBackend, ModelParameters, Momenta, RuntimeBackend
+from pyamplicol.benchmarking import VirtualProfileResult
 from pyamplicol.config import (
     CONFIG_SECTIONS,
     FIELD_REGISTRY,
@@ -137,8 +138,16 @@ def exercise_runtime(artifact: Path) -> None:
     runtime.mute_warnings()
     runtime.unmute_warnings()
     runtime.clear()
-    assert_type(BenchmarkRunner(BenchmarkConfig()).run(runtime), BenchmarkResult)
-    assert_type(benchmark(runtime, points=MOMENTA), BenchmarkResult)
+    # A loop runtime profiles to a VirtualProfileResult; a tree runtime to a
+    # BenchmarkResult, which a consumer narrows to.
+    profiled = BenchmarkRunner(BenchmarkConfig()).run(runtime)
+    assert_type(profiled, BenchmarkResult | VirtualProfileResult)
+    if isinstance(profiled, BenchmarkResult):
+        assert_type(profiled, BenchmarkResult)
+    one_shot = benchmark(runtime, points=MOMENTA)
+    assert_type(one_shot, BenchmarkResult | VirtualProfileResult)
+    if isinstance(one_shot, BenchmarkResult):
+        assert_type(one_shot, BenchmarkResult)
 
 
 def exercise_virtual_runtime(artifact: Path) -> None:

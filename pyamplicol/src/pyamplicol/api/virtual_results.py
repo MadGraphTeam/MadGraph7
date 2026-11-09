@@ -1484,9 +1484,11 @@ class VirtualOrderEvaluation:
         Laurent coefficient (``math.fsum``, exactly for decimals)."""
 
         def summed(point: tuple[LaurentCoefficients, ...]) -> LaurentCoefficients:
+            # A pole of a finite-only evaluation is explicitly absent.
+            absent = cast(VirtualScalar, None)
             return LaurentCoefficients(
                 *(
-                    None
+                    absent
                     if any(sector[k] is None for sector in point)
                     else _sum(tuple(sector[k] for sector in point))
                     for k in range(3)
