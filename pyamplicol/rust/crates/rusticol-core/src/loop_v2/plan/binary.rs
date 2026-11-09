@@ -402,9 +402,12 @@ pub fn read_binary_with(member: &[u8], policy: FormPolicy) -> RusticolResult<Loo
 }
 
 /// SHA-256 of a loaded program's validated and derived tables (its `Debug`
-/// form, streamed, every field included): equal tables give equal digests
-/// and any differing value changes it. A test tool for comparing the JSON and
-/// binary loads; no artifact carries it. Not bounded by the member: the
+/// form, streamed, every field included but a family's walk cache, which a
+/// walk fills: [`super::WalkCache`]): equal tables give equal digests and any
+/// differing value changes it. Every derived table prints in an order fixed
+/// by the plan (no hash-ordered map), so the digest is a function of the
+/// plan alone, the same from either reader and on every load. A test tool
+/// for comparing the JSON and binary loads; no artifact carries it. Not bounded by the member: the
 /// `Debug` form writes a multi-precision weight in decimal (GMP's conversion,
 /// through C `malloc`, several times the number's size), so a plan with a
 /// weight of 10^8 digits takes it about 20 s and, under an address-space
