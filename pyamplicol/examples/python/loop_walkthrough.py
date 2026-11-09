@@ -226,25 +226,31 @@ def _selection(runtime: Any, points: Any, scales: Any) -> str:
 
 def _orders(runtime: Any, points: Any, scales: Any, color: bool) -> None:
     """The partial weights per squared coupling order of one evaluation, and
-    their explicit sum against an independent public path: the resolved
-    evaluation summed over helicities, colour components and orders."""
+    their explicit sum against an independent public path: the correlated
+    route's "born" history (the ordinary value, formed from the artifact's
+    stored observable columns, not from the inclusive plan) summed over the
+    orders. (The resolved evaluation summed over helicities and colour
+    components is another such path, at a far larger memory cost at full
+    colour.)"""
 
     view = runtime.evaluate_orders(points, mu_r2=scales, stability_checks=RECOMMENDED)
     print(render_summary(view, color=color))
     if len(view.orders) == 1:
         print("one squared-order sector: its partial is the value")
-    total = runtime.evaluate_resolved(points, mu_r2=scales).total()
+    total = runtime.evaluate_correlated_many(
+        points, {"total": CorrelatedRequest("born")}, mu_r2=scales
+    )["total"]
     worst = 0.0
     for point, summed in enumerate(view.sum_orders()):
         estimate = view.evaluation.stability[point]
         for k in range(3):
-            independent = math.fsum(float(s[k]) for s in total.values[point])
+            independent = math.fsum(complex(s[k]).real for s in total.values[point])
             bound = 10 * math.fsum(float(e[k]) for e in estimate.absolute)
             ratio = abs(float(summed[k]) - independent) / bound if bound else 0.0
             worst = max(worst, ratio)
     verdict = "PASS" if worst <= 1 else "FAIL"
     print(
-        f"sum over orders vs the resolved total: {verdict} (largest deviation "
+        f"sum over orders vs the correlated total: {verdict} (largest deviation "
         f"{worst:.3g} x the bound 10 E, E the evaluation's own estimate)"
     )
     if worst > 1:

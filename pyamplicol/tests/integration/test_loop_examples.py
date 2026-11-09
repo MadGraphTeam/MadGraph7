@@ -178,7 +178,7 @@ def test_the_example_runs_end_to_end(walkthrough, name):
     assert output.count("Time per stage") == 2
     assert "unchecked (timing mode, no accuracy certificate)" in output
     assert "Correlated request: total" in output
-    assert "sum over orders vs the resolved total: PASS" in output
+    assert "sum over orders vs the correlated total: PASS" in output
     # The native client, without a Symbolica licence.
     assert "SYMBOLICA_LICENSE unset" in output
     assert "auto (checked):" in output and "auto (unchecked):" in output

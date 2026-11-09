@@ -601,9 +601,11 @@ view.sum_born_orders() # explicit per-point sum over the Born orders
 ```
 
 The sum of the partials is an identity: the walkthrough
-(`examples/python/loop_walkthrough.py`) checks it against an independent public
-path, `evaluate_resolved(...).total()` summed over the sectors, within ten
-times the evaluation's own estimate.
+(`examples/python/loop_walkthrough.py`) checks it against the correlated
+route's `"born"` history summed over the sectors (cheap; it agrees bitwise
+on the examples), and the test suite against `evaluate_resolved(...).total()`
+summed over the sectors (a separate contraction; it costs far more memory at
+full colour), each within ten times the evaluation's own estimate.
 
 ## Check a one-loop request
 

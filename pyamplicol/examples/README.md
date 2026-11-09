@@ -435,8 +435,8 @@ The walkthrough steps, in order:
    selected rows are formed).
 7. **Partial weights per squared coupling order**: `evaluate_orders`, one
    evaluation viewed per sector and Born order, and its explicit sum checked
-   against the resolved evaluation summed over helicities, colour components
-   and orders (within ten times the evaluation's own estimate).
+   against the correlated route's `"born"` total summed over the orders
+   (within ten times the evaluation's own estimate).
 8. **The native SDK** (`make -C native loop`, then `native/loop_client ARTIFACT
    PROCESS MOMENTA.txt [HELICITY]`, which the walkthrough calls with
    `SYMBOLICA_LICENSE` unset): open, `auto` and the other backend, the
