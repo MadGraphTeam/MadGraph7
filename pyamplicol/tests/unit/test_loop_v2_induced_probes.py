@@ -460,7 +460,7 @@ def test_a_goldstone_probe_refused_in_binary64_runs_in_double_double(monkeypatch
     monkeypatch.setattr(
         goldstone, "massive_vector_legs", lambda target: {3: 250, 4: 251}
     )
-    monkeypatch.setattr(goldstone, "goldstone_slice", lambda *args: object())
+    monkeypatch.setattr(goldstone, "goldstone_slice", lambda *args, **options: object())
     monkeypatch.setattr(goldstone, "probe", probe)
     monkeypatch.setattr(plan_export, "NativeExecutor", lambda *a, **k: object())
     target = SimpleNamespace(

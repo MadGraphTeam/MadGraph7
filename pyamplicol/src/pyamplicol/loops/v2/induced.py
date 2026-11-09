@@ -1986,6 +1986,7 @@ def generation_probes(
     *,
     allow_failure: bool = False,
     precision: Any = None,
+    memo: Any = None,
 ) -> dict[str, Any]:
     """The generation-time probes of a loop-induced slice (m-lit Q12, PLAN
     §2.a.7 items 5-6), run only when the user enables them
@@ -2022,7 +2023,10 @@ def generation_probes(
     probe the carrier that decided, its worst ratio, the fallback's reason
     (the binary64 ratio or the refusal) and its time, and the time of each
     stage (``seconds``: the probe slice, the lift, the floors, the native
-    passes per carrier, the Goldstone slices and probes, the total)."""
+    passes per carrier, the Goldstone slices and probes, the total).
+    ``memo`` (the generation's ``preparation_cache.PreparationMemo``)
+    shares the probe and Goldstone slices' model preparation with the
+    generation's."""
 
     from .plan_export import NativeExecutor
     from .reduction import running
@@ -2039,7 +2043,7 @@ def generation_probes(
         blocks = slice_.blocks
         if zeroed or getattr(blocks, "kernel_variant", None) != "full":
             clock = time.perf_counter()
-            target = ward_slice(compiled, request, native)
+            target = ward_slice(compiled, request, native, memo=memo)
             seconds["probe_slice"] = time.perf_counter() - clock
         else:
             target = slice_
@@ -2067,7 +2071,15 @@ def generation_probes(
             executor, point, scale, legs, carriers, floors, seconds
         )
         goldstones = _goldstone_probes(
-            target, compiled, request, native, point, scale, carriers, floors
+            target,
+            compiled,
+            request,
+            native,
+            point,
+            scale,
+            carriers,
+            floors,
+            memo=memo,
         )
     entries += goldstones["entries"]
     seconds.update(goldstones["seconds"])
@@ -2169,13 +2181,15 @@ def goldstone_applicability(target: Any) -> str | None:
 
 
 def goldstone_sides(
-    target: Any, compiled: Any, request: Any, native: Any
+    target: Any, compiled: Any, request: Any, native: Any, *, memo: Any = None
 ) -> tuple[dict[int, Any], dict[str, str], dict[str, float]]:
     """The Goldstone sides of a probe slice served by the probe
     (``goldstone_applicability``): per external massive-vector leg (one per
     species) its Goldstone slice (``goldstone.goldstone_slice``), the legs
     whose side the engine refuses with the refusal's text (key, rule and
-    remedy), and each side's generation time."""
+    remedy), and each side's generation time. ``memo`` (the generation's
+    ``preparation_cache.PreparationMemo``) shares the model preparation:
+    a Goldstone side's recipe is its probe slice's."""
 
     from . import goldstone
     from .refusals import LoopRequestUnsupported
@@ -2187,7 +2201,7 @@ def goldstone_sides(
         clock = time.perf_counter()
         try:
             side = goldstone.goldstone_slice(
-                compiled, request, native, target, leg, partner
+                compiled, request, native, target, leg, partner, memo=memo
             )
         except LoopRequestUnsupported as error:
             # The listed refusal's text: its key, rule and remedy.
@@ -2264,7 +2278,7 @@ def goldstone_point(
 
 
 def _goldstone_probes(
-    target, compiled, request, native, point, scale, carriers, physical
+    target, compiled, request, native, point, scale, carriers, physical, memo=None
 ) -> dict[str, Any]:
     """The Goldstone-equivalence probes of a probe slice (``goldstone``,
     m-lit LIT-EW): in a 't Hooft-Feynman gauge slice, one per external
@@ -2288,7 +2302,9 @@ def _goldstone_probes(
     if goldstone_applicability(target) is not None:
         return empty
     carriers = probe_carriers() if carriers is None else tuple(carriers)
-    sides, skipped, slices = goldstone_sides(target, compiled, request, native)
+    sides, skipped, slices = goldstone_sides(
+        target, compiled, request, native, memo=memo
+    )
     results, entries, phases, probes_seconds = goldstone_point(
         target, sides, point, scale, carriers, physical, {}
     )
